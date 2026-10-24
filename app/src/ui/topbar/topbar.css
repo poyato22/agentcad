@@ -7,6 +7,7 @@
 .topbar-right { justify-content: flex-end; gap: 12px; padding-left: 16px; overflow: hidden; }
 .crumb { display: flex; align-items: center; white-space: pre; overflow: hidden; color: var(--dim); }
 .crumb-part { color: var(--ink); overflow: hidden; text-overflow: ellipsis; }
+.crumb-fallback { color: var(--dim); overflow: hidden; text-overflow: ellipsis; }
 .crumb-none { color: var(--faint); }
 .tabs { display: flex; align-items: stretch; }
 .tab {

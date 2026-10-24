@@ -199,19 +199,32 @@ describe("stop all", () => {
   });
 });
 
+const plate = (part_id: string) => ({ part_id, vars: {}, metrics: null, mtime: 1 });
+
 describe("Breadcrumb", () => {
   it("shows_no_part_without_selection", () => {
     render(<Breadcrumb />);
     expect(document.body.textContent).toContain("◇ LOCAL / no part");
   });
   it("shows_part_label", () => {
+    parts.value = [plate("bolt_m3"), plate("mount_plate")];
     selectedPartId.value = "mount_plate";
-    parts.value = [];
     render(<Breadcrumb />);
     expect(document.body.textContent).toContain("◇ LOCAL / Part · mount plate");
+    expect(document.querySelector("[data-crumb=part]")?.getAttribute("data-fallback")).toBeNull();
+  });
+  it("shows_the_fallback_part_plainly_like_viewer_and_variables", () => {
+    // nothing selected: the viewer and Variables show the first part, so does the breadcrumb (not as selected)
+    parts.value = [plate("bolt_m3"), plate("mount_plate")];
+    render(<Breadcrumb />);
+    const el = document.querySelector("[data-crumb=part]") as HTMLElement;
+    expect(el.textContent).toBe("Part · bolt m3");
+    expect(el.getAttribute("data-fallback")).toBe("true");
+    expect(el.className).toBe("crumb-fallback");
   });
   it("breadcrumb_never_shows_auto_numbered", () => {
     // labels come from partLabel unchanged; ids are chosen names (the core rejects numbered ids)
+    parts.value = [plate("mount_plate"), plate("bolt_m3")];
     for (const [id, label] of [["mount_plate", "Part · mount plate"], ["bolt_m3", "Part · bolt m3"]]) {
       selectedPartId.value = id;
       const { unmount } = render(<Breadcrumb />);
