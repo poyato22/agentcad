@@ -131,3 +131,43 @@ async def test_stdio_proxy_forwards(rt, home):
             "mirror_part_list"]
     finally:
         stop(port)
+
+
+async def test_stdio_proxy_uses_env_url_and_mcp_token(rt, tmp_path):
+    # C2a: an agent's proxy gets the MCP-only token via its environment, never server.json
+    rid = rt.create_external_run("codex", provider="openai", model="gpt-x")
+    port, _token = serve(rt, mcp_token="mcp-only-xyz")
+    empty = tmp_path / "nohome"
+    empty.mkdir()
+    try:
+        env = {**os.environ, "MISES_HOME": str(empty),
+               "MISES_MCP_URL": f"http://127.0.0.1:{port}/mcp", "MISES_MCP_TOKEN": "mcp-only-xyz"}
+        params = StdioServerParameters(command=sys.executable,
+                                       args=["-m", "mises.server.stdio_proxy", "--run", rid],
+                                       env=env)
+        async with Client(params) as client:
+            res = await client.call_tool("mirror_part_list", {})
+        assert res.is_error is False
+        assert not (empty / "server.json").exists()
+    finally:
+        stop(port)
+
+
+@pytest.mark.skipif(not os.path.exists("/usr/bin/sandbox-exec"), reason="no sandbox-exec")
+async def test_stdio_proxy_works_inside_agent_sandbox(rt):
+    # C2b: the proxy an ACP agent spawns inherits the agent sandbox and still works
+    from mises.platform import agent_sandboxed_command
+    rid = rt.create_external_run("codex", provider="openai", model="gpt-x")
+    port, _token = serve(rt, mcp_token="mcp-only-xyz")
+    try:
+        wd = rt.workdir(rid)
+        argv = agent_sandboxed_command(
+            [sys.executable, "-m", "mises.server.stdio_proxy", "--run", rid], rt.home, wd)
+        env = {**os.environ, "MISES_HOME": str(rt.home),
+               "MISES_MCP_URL": f"http://127.0.0.1:{port}/mcp", "MISES_MCP_TOKEN": "mcp-only-xyz"}
+        params = StdioServerParameters(command=argv[0], args=argv[1:], env=env, cwd=str(wd))
+        async with Client(params) as client:
+            res = await client.call_tool("mirror_part_list", {})
+        assert res.is_error is False
+    finally:
+        stop(port)

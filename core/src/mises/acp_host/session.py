@@ -5,6 +5,11 @@ its CAD tool calls go through Mises's Gate. Its `session/update` stream becomes 
 events; `session/request_permission` becomes a Mises approval card; `fs/*` is confined to
 the run's workdir; `terminal/*` is refused.
 
+The agent runs under sandbox-exec (`platform.agent_sandbox_profile`): it cannot read or write
+the Mises home (server.json, mises.db, other runs, parts) except its own workdir. Its stdio MCP
+proxy inherits that sandbox, so it gets the server url and the MCP-only token through its
+environment (MISES_MCP_URL / MISES_MCP_TOKEN) instead of reading server.json.
+
 The caller owns the run: it calls `runtime.create_external_run(agent=spec.name,
 provider="acp", model=spec.name)` and passes the id in. `close()` / `cancel()` finish it.
 """
@@ -14,6 +19,7 @@ import asyncio
 import contextlib
 import logging
 import os
+import shutil
 import signal
 import sys
 from pathlib import Path
@@ -45,6 +51,7 @@ from acp.schema import (
 from acp.transports import default_environment
 
 from ..events import Event
+from ..platform import agent_sandboxed_command
 from ..types import ErrorCode, MisesError, StepKind
 
 log = logging.getLogger(__name__)
@@ -154,8 +161,8 @@ class AcpSession:
         self.runtime = runtime
         self.spec = spec
         self.run_id = run_id
-        # Kept for callers/agents that could use HTTP MCP directly. The stdio proxy reads
-        # url/token from <MISES_HOME>/server.json, so they are not put on the command line.
+        # The MCP-only token (never the admin token): it reaches the stdio proxy through its
+        # environment, not the command line.
         self.mcp_url = mcp_url
         self.mcp_token = mcp_token
         self.cancel_timeout_s = cancel_timeout_s
@@ -185,7 +192,8 @@ class AcpSession:
         return [McpServerStdio(
             name="mises", command=sys.executable,
             args=["-m", "mises.server.stdio_proxy", "--run", self.run_id],
-            env=[EnvVariable(name="MISES_HOME", value=str(self.runtime.home))])]
+            env=[EnvVariable(name="MISES_MCP_URL", value=self.mcp_url),
+                 EnvVariable(name="MISES_MCP_TOKEN", value=self.mcp_token)])]
 
     async def start(self) -> None:
         """Spawn the agent and run initialize + session/new within handshake_timeout_s.
@@ -221,9 +229,14 @@ class AcpSession:
 
     async def _start(self) -> None:
         self._stderr = open(self.workdir / "agent-stderr.log", "ab")
+        env = agent_environment(self.spec.env)
+        # resolve here: under sandbox-exec a missing command would not raise at spawn time
+        exe = shutil.which(self.spec.command, path=env.get("PATH"))
+        if exe is None:
+            raise FileNotFoundError(f"{self.spec.command!r} not found on PATH")
+        argv = agent_sandboxed_command([exe, *self.spec.args], self.runtime.home, self.workdir)
         self._proc = await asyncio.create_subprocess_exec(
-            self.spec.command, *self.spec.args, cwd=str(self.workdir),
-            env=agent_environment(self.spec.env),
+            *argv, cwd=str(self.workdir), env=env,
             stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
             stderr=self._stderr, start_new_session=True, limit=STDIO_LIMIT)
         self._conn = connect_to_agent(_Client(self), self._proc.stdin, self._proc.stdout)

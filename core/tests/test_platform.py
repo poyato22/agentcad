@@ -81,3 +81,55 @@ def test_sandboxed_command(tmp_path):
     assert cmd[:2] == ["/usr/bin/sandbox-exec", "-p"]
     assert cmd[2] == p.sandbox_profile(tmp_path)
     assert cmd[3:] == ["python", "-I", "x.py"]
+
+
+def test_agent_sandbox_profile_shape(tmp_path):
+    home = tmp_path / "home"
+    wd = home / "runs" / "r1"
+    wd.mkdir(parents=True)
+    s = p.agent_sandbox_profile(home, wd)
+    assert "(allow default)" in s and "network" not in s
+    assert f'(subpath "{home.resolve()}")' in s and f'(subpath "{wd.resolve()}")' in s
+    with pytest.raises(ValueError):
+        p.agent_sandbox_profile(home, tmp_path / "elsewhere")   # workdir must be inside home
+    with pytest.raises(ValueError):
+        p.agent_sandbox_profile(Path('/tmp/a"b'), wd)
+
+
+@pytest.mark.skipif(not os.path.exists("/usr/bin/sandbox-exec"), reason="no sandbox-exec")
+def test_agent_sandbox_real(tmp_path):
+    # C2b: an ACP agent cannot read server.json / mises.db / other runs / parts, can use its workdir
+    home = tmp_path / "home"
+    wd = home / "runs" / "r1"
+    other = home / "runs" / "r2"
+    for d in (wd, other, home / "parts" / "box"):
+        d.mkdir(parents=True)
+    (home / "server.json").write_text('{"token": "admin"}')
+    (home / "mises.db").write_text("db")
+    (home / "mises.db-wal").write_text("wal")
+    (other / "secret.txt").write_text("s")
+    (home / "parts" / "box" / "vars.json").write_text("{}")
+    (wd / "parts").symlink_to(home / "parts", target_is_directory=True)
+    outside = tmp_path / "outside.txt"
+    outside.write_text("fine")
+    script = (
+        "import os, sys\n"
+        "def tryread(p):\n"
+        "    try:\n"
+        "        open(p).read(); return 'ok'\n"
+        "    except OSError: return 'denied'\n"
+        "def trywrite(p):\n"
+        "    try:\n"
+        "        open(p, 'w').write('x'); return 'ok'\n"
+        "    except OSError: return 'denied'\n"
+        f"h = {str(home)!r}; w = {str(wd)!r}\n"
+        "print(tryread(h + '/server.json'), tryread(h + '/mises.db'), tryread(h + '/mises.db-wal'),"
+        " tryread(h + '/runs/r2/secret.txt'), tryread(h + '/parts/box/vars.json'),"
+        " tryread(w + '/parts/box/vars.json'), trywrite(h + '/mises.db'),"
+        " trywrite(h + '/evil.txt'), trywrite(w + '/ok.txt'), tryread(w + '/ok.txt'),"
+        f" tryread({str(outside)!r}), os.getcwd() == os.path.realpath(w))\n")
+    cmd = p.agent_sandboxed_command(["/usr/bin/python3", "-c", script], home, wd)
+    r = subprocess.run(cmd, capture_output=True, text=True, cwd=wd)
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.split() == ["denied"] * 6 + ["denied", "denied", "ok", "ok", "ok", "True"]
+    assert (home / "mises.db").read_text() == "db" and not (home / "evil.txt").exists()

@@ -225,7 +225,32 @@ async def test_session_new_passes_mises_mcp_server(rt):
     assert srv["name"] == "mises"
     assert srv["command"] == sys.executable
     assert srv["args"] == ["-m", "mises.server.stdio_proxy", "--run", s.run_id]
-    assert {"name": "MISES_HOME", "value": str(rt.home)} in srv["env"]
+    env = {e["name"]: e["value"] for e in srv["env"]}
+    assert env["MISES_MCP_URL"] == "http://127.0.0.1:1/mcp" and env["MISES_MCP_TOKEN"] == "t"
+
+
+@pytest.mark.skipif(not os.path.exists("/usr/bin/sandbox-exec"), reason="no sandbox-exec")
+async def test_agent_is_sandboxed_from_mises_home(rt):
+    # C2b: the agent process cannot read the admin token or the database, but uses its workdir
+    (rt.home / "server.json").write_text('{"port": 1, "token": "admin"}')
+    s = await _session(rt)
+    try:
+        text = await s.prompt(f"peek:{rt.home / 'server.json'} peek:{rt.home / 'mises.db'}")
+    finally:
+        await s.close()
+    assert text.split() == ["peek:denied", "peek:denied"]
+    assert _log(rt, s.run_id)[0]["event"] == "session_new"   # wrote its workdir log fine
+
+
+async def test_missing_agent_command_is_not_found(rt):
+    spec = AcpAgentSpec(name="nope", command="definitely-not-a-command-xyz", install_hint="hint")
+    run_id = rt.create_external_run(spec.name, provider="acp", model=spec.name)
+    s = AcpSession(rt, spec, run_id, mcp_url="http://127.0.0.1:1/mcp", mcp_token="t")
+    from mises.types import ErrorCode, MisesError
+    with pytest.raises(MisesError) as e:
+        await s.start()
+    assert e.value.code == ErrorCode.NOT_FOUND
+    assert rt.store.get_run(run_id).status == "failed"
 
 
 def test_known_agents():
