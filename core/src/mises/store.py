@@ -183,6 +183,24 @@ class Store:
         rows = self._all("SELECT * FROM runs ORDER BY created_at DESC, rowid DESC LIMIT ?", (limit,))
         return [AgentRun(**dict(r)) for r in rows]
 
+    def run_family(self, run_id: str) -> tuple[str, list[str]]:
+        """(root run id, ids of the root and all its descendants) for a run's parent_id tree."""
+        root, seen = run_id, {run_id}
+        while True:
+            row = self._one("SELECT parent_id FROM runs WHERE id=?", (root,))
+            parent = row[0] if row else None
+            if parent is None or parent in seen:
+                break
+            seen.add(parent)
+            root = parent
+        family, frontier = [root], [root]
+        while frontier:
+            rows = self._all(f"SELECT id FROM runs WHERE parent_id IN ({','.join('?' * len(frontier))})",
+                             tuple(frontier))
+            frontier = [r[0] for r in rows if r[0] not in family]
+            family += frontier
+        return root, family
+
     def running_runs(self) -> list[AgentRun]:
         rows = self._all("SELECT * FROM runs WHERE status='running' ORDER BY created_at")
         return [AgentRun(**dict(r)) for r in rows]
@@ -347,13 +365,20 @@ class Store:
                              (run_id,))
             return cur.rowcount
 
-    def ledger_used(self, user: str, *, since: float, run_id: str | None = None) -> int:
+    def ledger_used(self, user: str, *, since: float, run_id: str | None = None,
+                    run_ids: list[str] | None = None) -> int:
+        """Counted + reserved calls; optionally only for one run or a set of runs."""
         sql = ("SELECT COALESCE(SUM(CASE WHEN state='reserved' THEN estimate ELSE 1 END),0) FROM ledger"
                " WHERE user=? AND ts>=? AND (state='reserved' OR (state='settled' AND counted=1))")
         args: list[Any] = [user, since]
         if run_id is not None:
             sql += " AND run_id=?"
             args.append(run_id)
+        if run_ids is not None:
+            if not run_ids:
+                return 0
+            sql += f" AND run_id IN ({','.join('?' * len(run_ids))})"
+            args += list(run_ids)
         row = self._one(sql, tuple(args))
         return int(row[0])
 

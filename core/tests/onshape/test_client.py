@@ -123,3 +123,35 @@ async def test_idempotency_keys_unique_per_request(fake, client, store, run):
     await client.request("GET", mv_path(fake), run_id=run.id)
     keys = [r[0] for r in store._all("SELECT idempotency_key FROM ledger")]
     assert len(set(keys)) == 2 and all(len(k) == 64 for k in keys)
+
+
+async def test_run_cap_covers_whole_run_family(fake, client, store):
+    # I3: children each get the parent's remaining cap, but together they cannot exceed it
+    import asyncio
+    ALL = [C.READ, C.LOCAL_MUTATE, C.ONSHAPE_MUTATE, C.IRREVERSIBLE]
+    parent = store.create_run("designer", "fake", "m", "t")
+    store.create_policy(parent.id, ["*"], ["*"], Caps(onshape_calls_run=3), ALL)
+    kids = []
+    for _ in range(2):
+        k = store.create_run("designer", "fake", "m", "t", parent_id=parent.id)
+        store.create_policy(k.id, ["*"], ["*"], Caps(onshape_calls_run=3), ALL)
+        kids.append(k)
+    grandkid = store.create_run("designer", "fake", "m", "t", parent_id=kids[0].id)
+    store.create_policy(grandkid.id, ["*"], ["*"], Caps(onshape_calls_run=3), ALL)
+
+    async def two(rid):
+        out = []
+        for _ in range(2):
+            try:
+                await client.request("GET", mv_path(fake), run_id=rid)
+                out.append("ok")
+            except MisesError as e:
+                out.append(str(e.code))
+        return out
+    res = await asyncio.gather(two(kids[0].id), two(kids[1].id))
+    flat = res[0] + res[1]
+    assert flat.count("ok") == 3 and flat.count("budget_exhausted") == 1
+    assert len(fake.requests) == 3
+    with pytest.raises(MisesError) as e:      # the grandchild shares the family budget too
+        await client.request("GET", mv_path(fake), run_id=grandkid.id)
+    assert e.value.code == ErrorCode.BUDGET_EXHAUSTED
