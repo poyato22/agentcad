@@ -156,12 +156,16 @@ describe("Breadcrumb", () => {
     expect(document.body.textContent).toContain("◇ LOCAL / Part · mount plate");
   });
   it("breadcrumb_never_shows_auto_numbered", () => {
-    for (const id of ["bracket_v2", "gusset1", "GEOM-01"]) {
+    // labels come from partLabel unchanged; ids are chosen names (the core rejects numbered ids)
+    for (const [id, label] of [["mount_plate", "Part · mount plate"], ["bolt_m3", "Part · bolt m3"]]) {
       selectedPartId.value = id;
       const { unmount } = render(<Breadcrumb />);
-      const purpose = document.querySelector("[data-crumb=part]")?.textContent ?? "";
-      expect(isAutoNumbered(purpose)).toBe(false);
+      expect(document.querySelector("[data-crumb=part]")?.textContent).toBe(label);
       unmount();
     }
+    selectedPartId.value = null;
+    const { unmount } = render(<Breadcrumb />);
+    expect(isAutoNumbered(document.querySelector("[data-crumb=part]")?.textContent ?? "")).toBe(false);
+    unmount();
   });
 });

@@ -1,6 +1,6 @@
 .topbar {
   position: relative; height: 44px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: stretch;
-  background: #141414; border-bottom: 1px solid #333333; padding: 0 12px 0 72px; /* room for the macOS window buttons */
+  background: var(--head); border-bottom: 1px solid var(--line2); padding: 0 12px 0 72px; /* room for the macOS window buttons */
 }
 .topbar-left, .topbar-right { display: flex; align-items: center; min-width: 0; }
 .topbar-right { justify-content: flex-end; gap: 12px; }
