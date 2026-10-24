@@ -2,21 +2,27 @@
 // last 500 rows (+ "show earlier"). Follow keeps the view at the bottom; scrolling up turns it
 // off, the view then never moves and new rows are counted on the "N new ↓" chip.
 // Everything agent- or tool-provided renders as text (no HTML, no Markdown).
+// A focus request (focusedStepId: an evidence link, a History row) switches to that step's run,
+// opens its fold, turns follow off, scrolls the row into view and highlights it for ~2 s.
+import { batch } from "@preact/signals";
 import type { JSX } from "preact";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import type { Step } from "../../api/types";
 import { fmtClock } from "../../lib/format";
-import { actions, follow } from "../../state/store";
+import { actions, filter, focusedStepId, follow, steps } from "../../state/store";
 import { ApprovalCard } from "./approvals/ApprovalCard";
 import { QuestionCard } from "./approvals/QuestionCard";
 import { expandedFolds, labelOf, logFrame, retainLogFrames, toggleFold } from "./derived";
 import { DiffView } from "./DiffView";
 import { createFollow, type FollowController } from "./follow";
-import { callFoldKey, foldKey, itemKey, type LogItem } from "./logModel";
+import { callFoldKey, findStepRow, foldKey, itemKey, type LogItem } from "./logModel";
 import { ToolCallRow } from "./ToolCallRow";
 
 export const WINDOW = 500;
 const AT_BOTTOM_PX = 4;
+export const FOCUS_HIGHLIGHT_MS = 2000;
+/** Renders a focus request may wait for its row (frame rebuilds, a fold opening) before giving up. */
+const FOCUS_MAX_TRIES = 20;
 
 /** Render counters (tests, and the e2e volume check via window.__misesConsole). */
 export const renderStats = { stepLog: 0 };
@@ -41,6 +47,34 @@ export function StepLog(): JSX.Element {
   const pinned = useRef<number | null>(null);
   const lastStart = useRef(0);
   const keepFromBottom = useRef<number | null>(null);
+  const focusReq = useRef<{ stepId: number; runId: string; tries: number } | null>(null);
+  const [highlight, setHighlight] = useState<string | null>(null);
+  const [, rerender] = useState(0);
+  const requested = focusedStepId.value;
+
+  // take a focus request: switch to its run's log, follow off; the row is found once the frame is rebuilt
+  useEffect(() => {
+    if (requested === null) return;
+    focusedStepId.value = null;
+    let runId: string | null = null;
+    for (const [rid, list] of steps.peek()) if (list.some((x) => x.id === requested)) { runId = rid; break; }
+    if (runId === null) return;
+    focusReq.current = { stepId: requested, runId, tries: 0 };
+    const rid = runId;
+    batch(() => {
+      actions.selectRun(rid);
+      const f = filter.peek();
+      if (f.scope !== "run") actions.setFilter({ ...f, scope: "run" });
+      actions.setFollow(false);
+    });
+    rerender((n) => n + 1);
+  }, [requested]);
+
+  useEffect(() => {
+    if (highlight === null) return;
+    const t = setTimeout(() => setHighlight(null), FOCUS_HIGHLIGHT_MS);
+    return () => clearTimeout(t);
+  }, [highlight]);
 
   // store → controller (⤓ in Filters, or anything else that sets `follow`)
   if (followOn && !fc.following) fc.resume();
@@ -66,6 +100,34 @@ export function StepLog(): JSX.Element {
   const end = Math.min(items.length, start + span);
   lastStart.current = start;
   const shown = items.slice(start, end);
+
+  useLayoutEffect(() => {
+    const req = focusReq.current;
+    if (!req) return;
+    const kind = filter.peek().kind;
+    if (frame.key !== `run|${kind}|${req.runId}`) return; // the frame for that run isn't built yet
+    if (++req.tries > FOCUS_MAX_TRIES) { focusReq.current = null; return; }
+    const loc = findStepRow(items, req.stepId, steps.peek().get(req.runId) ?? []);
+    if (!loc) {
+      // hidden by the kind filter: show everything; otherwise the step has no row
+      if (kind !== "everything") actions.setFilter({ scope: "run", kind: "everything" });
+      else focusReq.current = null;
+      return;
+    }
+    if (loc.unfold) {
+      if (!expandedFolds.peek().has(loc.unfold)) toggleFold(loc.unfold);
+      return;
+    }
+    if (loc.index < start || loc.index >= end) {
+      pinned.current = Math.max(0, loc.index - Math.floor(WINDOW / 2));
+      rerender((n) => n + 1);
+      return;
+    }
+    focusReq.current = null;
+    const row = [...(scroller.current?.querySelectorAll<HTMLElement>("[data-row]") ?? [])].find((r) => r.getAttribute("data-key") === loc.key);
+    row?.scrollIntoView?.({ block: "center" });
+    setHighlight(loc.key);
+  });
 
   useLayoutEffect(() => {
     const el = scroller.current;
@@ -100,7 +162,7 @@ export function StepLog(): JSX.Element {
       <div class="con-log-scroll" data-log-scroll ref={scroller} onScroll={onScroll} role="log" aria-live="off">
         {start > 0 && <button type="button" class="con-earlier" onClick={showEarlier}>{`show earlier · ${start}`}</button>}
         {items.length === 0 && <div class="pane-empty">no steps yet</div>}
-        {shown.map((it) => <Row key={itemKey(it)} item={it} expanded={expanded} />)}
+        {shown.map((it) => <Row key={itemKey(it)} item={it} expanded={expanded} focused={highlight === itemKey(it)} />)}
       </div>
       {!fc.following && fc.pendingNew > 0 && (
         <button type="button" class="con-chip" onClick={resume}>{`${fc.pendingNew} new ↓`}</button>
@@ -109,11 +171,11 @@ export function StepLog(): JSX.Element {
   );
 }
 
-function Row({ item, expanded }: { item: LogItem; expanded: ReadonlySet<string> }): JSX.Element {
+function Row({ item, expanded, focused }: { item: LogItem; expanded: ReadonlySet<string>; focused: boolean }): JSX.Element {
   const key = itemKey(item);
   const label = item.runLabel;
   return (
-    <div data-row data-kind={item.kind} data-key={key}>
+    <div data-row data-kind={item.kind} data-key={key} data-focused={focused ? "" : undefined} class={focused ? "con-focused" : undefined}>
       {item.kind === "call" && expanded.has(callFoldKey(item)) && (
         <button type="button" class="con-fold con-fold-open" onClick={() => toggleFold(callFoldKey(item))}>▾ fold tool calls</button>
       )}

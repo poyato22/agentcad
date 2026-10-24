@@ -57,6 +57,39 @@ describe("StepLog", () => {
     expect(container.textContent).toContain("▸ 499 more tool calls");
   });
 
+  it("focus_step_switches_run_unfolds_stops_follow_and_highlights_the_call_row", async () => {
+    setRuns([run("r1", { created_at: 1 }), run("r2", { created_at: 2 })]);
+    selectedRunId.value = "r2";
+    filter.value = { scope: "all", kind: "errors" };
+    // r1: five ok measure calls → the first shows, four fold; the 3rd call's result is the evidence
+    const list: Step[] = [message("r1", "user", "go", 99)];
+    for (let i = 0; i < 5; i++) list.push(toolCall("r1", `m${i}`, "mirror_measure", {}, 100 + i), toolResult("r1", `m${i}`, "mirror_measure", 100.5 + i, { kind: "measure" }));
+    const measure = list[6]; // result step of m2
+    setSteps([...list, message("r2", "user", "other", 200)]);
+    const scrolled: string[] = [];
+    const proto = HTMLElement.prototype as unknown as { scrollIntoView?: (o?: unknown) => void };
+    const orig = proto.scrollIntoView;
+    proto.scrollIntoView = function (this: HTMLElement) { scrolled.push(this.getAttribute("data-key") ?? ""); };
+    try {
+      const { container } = render(<StepLog />);
+      await frame();
+      actions.focusStep(measure.id);
+      for (let i = 0; i < 6; i++) await frame();
+      expect(selectedRunId.value).toBe("r1");
+      expect(filter.value.scope).toBe("run");
+      expect(follow.value).toBe(false);
+      const row = container.querySelector('[data-row][data-key="c:m2"]') as HTMLElement;
+      expect(row).not.toBeNull();                       // its fold was opened
+      expect(row.hasAttribute("data-focused")).toBe(true);
+      expect(scrolled).toContain("c:m2");
+      // the highlight goes away after ~2 s
+      await act(async () => { await new Promise((r) => setTimeout(r, 2100)); });
+      expect(row.hasAttribute("data-focused")).toBe(false);
+    } finally {
+      proto.scrollIntoView = orig;
+    }
+  });
+
   it("renders_at_most_500_rows_with_show_earlier", async () => {
     setRuns([run("r1")]);
     selectedRunId.value = "r1";

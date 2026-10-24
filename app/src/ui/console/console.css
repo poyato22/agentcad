@@ -49,6 +49,7 @@
 /* ---- log */
 .con-log { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; }
 .con-log-scroll { flex: 1; min-height: 0; overflow: auto; padding: 4px 0; overflow-anchor: none; }
+.con-focused { background: var(--blue-tint); outline: 1px solid var(--blue); outline-offset: -1px; }
 .con-row { display: grid; grid-template-columns: 52px 12px minmax(0, 1fr); gap: 6px; padding: 3px 8px; font-size: 11px; color: var(--dim); }
 .con-result { padding-top: 0; }
 .con-click { cursor: pointer; }

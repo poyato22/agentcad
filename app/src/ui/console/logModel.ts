@@ -77,6 +77,36 @@ export function itemKey(item: LogItem): string {
   return item.runLabel !== undefined && item.runId ? `${item.runId}/${k}` : k;
 }
 
+/** Where a step shows in the log: the row (index, key), or the fold that must open first. */
+export type StepRowLocation = { index: number; key: string; unfold: string | null };
+
+/**
+ * The row that shows step `stepId` (one run's items, run scope). A step of a tool call (its
+ * tool_call, result, measure or diff step) maps to the call's row; other steps to their own row
+ * (message, error, decision, note), and steps attached to a call (onshape_call) to that call.
+ * A call hidden in a fold returns the fold's index and key to open.
+ */
+export function findStepRow(items: readonly LogItem[], stepId: number, runSteps: readonly Step[]): StepRowLocation | null {
+  const step = runSteps.find((s) => s.id === stepId);
+  const cid = step && typeof step.payload.call_id === "string" ? step.payload.call_id : null;
+  const at = (index: number, unfold: string | null = null): StepRowLocation => ({ index, key: itemKey(items[index]), unfold });
+  if (cid) {
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      if (it.kind === "call" && it.callId === cid) return at(i);
+      if (it.kind === "fold" && it.calls.some((c) => c.callId === cid)) return at(i, foldKey(it));
+    }
+  }
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    if ("step" in it && it.step.id === stepId) return at(i);
+    if (it.kind === "note" && it.stepId === stepId) return at(i);
+    if (it.kind === "call" && (it.result?.id === stepId || it.attached.some((s) => s.id === stepId))) return at(i);
+    if (it.kind === "fold" && it.calls.some((c) => c.result?.id === stepId || c.attached.some((s) => s.id === stepId))) return at(i, foldKey(it));
+  }
+  return null;
+}
+
 export function buildLog(input: BuildLogInput): LogItem[] {
   return fold(applyFilter(baseItems(input), input.filter.kind), input.expandedFolds);
 }

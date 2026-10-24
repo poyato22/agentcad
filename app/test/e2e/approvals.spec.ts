@@ -72,6 +72,19 @@ test("card_face_shows_branch_to_target_and_agent_summary_faint", async ({ page }
   await expect(card(page).locator("[data-diff]")).toHaveCount(0);
 });
 
+test("evidence_link_scrolls_to_and_highlights_the_call_row", async ({ page, fake }) => {
+  await mountCard(page);
+  // the log is scrolled to the bottom (the card); the user then looks at all runs
+  await page.locator(`[data-evidence="5"]`).click();
+  const row = page.locator('[data-row][data-key="c:c2"]');
+  await expect(row).toHaveAttribute("data-focused", "");
+  await expect(row).toBeInViewport();
+  await expect(row).toContainText("mirror_measure");
+  await expect(row).toHaveCSS("background-color", "rgba(61, 139, 255, 0.1)");
+  await expect(row).not.toHaveAttribute("data-focused", "", { timeout: 4000 });
+  expect(await decideCalls(fake)).toEqual([]);
+});
+
 test("no_global_approve_shortcut", async ({ page, fake }) => {
   await mountCard(page);
   await page.waitForTimeout(ARM_WAIT_MS);
