@@ -259,3 +259,35 @@ async def test_cancel_all_runs_external_cancel_hooks_and_is_best_effort(home, mo
     await asyncio.sleep(0.05)
     assert hooked == [ext]
     assert rt.store.get_run(good).status == "cancelled"
+
+
+def test_cors_allows_if_none_match_and_exposes_etag(client, rt):
+    # T1 follow-up: the webview revalidates model.glb with If-None-Match and reads the ETag
+    r = client.options("/parts/mount_plate/model.glb",
+                       headers={"Origin": ORIGIN, "Access-Control-Request-Method": "GET",
+                                "Access-Control-Request-Headers": "authorization, if-none-match"})
+    assert r.status_code == 200
+    assert "if-none-match" in r.headers["access-control-allow-headers"].lower()
+    write_part(rt)
+    ok = client.get("/parts/mount_plate/model.glb", headers={**AUTH, "Origin": ORIGIN})
+    assert ok.status_code == 200
+    assert "etag" in ok.headers["access-control-expose-headers"].lower()
+
+
+def test_models_keychain_lookups_run_off_the_event_loop(client, monkeypatch):
+    # T1 follow-up: keychain_get spawns `security`; it must not block the event loop
+    import asyncio as _asyncio
+    on_loop = []
+
+    def kc(*a):
+        try:
+            _asyncio.get_running_loop()
+            on_loop.append(True)
+        except RuntimeError:
+            on_loop.append(False)
+        return None
+    monkeypatch.setattr("mises.platform.keychain_get", kc)
+    for var in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY"):
+        monkeypatch.delenv(var, raising=False)
+    assert client.get("/models", headers=AUTH).status_code == 200
+    assert on_loop and not any(on_loop)

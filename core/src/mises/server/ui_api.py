@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, FastAPI, Request, Response
+from starlette.concurrency import run_in_threadpool
 from starlette.middleware.cors import CORSMiddleware
 
 from .. import platform as _platform
@@ -37,7 +38,8 @@ def add_cors(app: FastAPI) -> None:
     """Add CORS as the OUTERMOST middleware (call after the auth middleware is added) so an
     unauthenticated preflight never reaches the bearer check. Real requests still need the token."""
     app.add_middleware(CORSMiddleware, allow_origins=UI_ORIGINS, allow_methods=["GET", "POST"],
-                       allow_headers=["Authorization", "Content-Type"], allow_credentials=False)
+                       allow_headers=["Authorization", "Content-Type", "If-None-Match"],
+                       expose_headers=["ETag"], allow_credentials=False)
 
 
 def _core_version() -> str:
@@ -101,8 +103,8 @@ def build_ui_router(runtime: Runtime) -> APIRouter:
         return [{"name": d.name, "description": d.description, "model": d.model}
                 for d in sorted(runtime.definitions.values(), key=lambda d: d.name)]
 
-    @router.get("/models")
-    async def models():
+    def _vendor_keys() -> list[dict]:
+        # blocking: keychain_get runs the `security` CLI, so this runs in a worker thread
         vendors = []
         for vendor, spec in VENDORS.items():
             if spec.env_key is None:
@@ -114,7 +116,11 @@ def build_ui_router(runtime: Runtime) -> APIRouter:
             else:
                 key = "none"
             vendors.append({"vendor": vendor, "key": key})
-        return {"default": DEFAULT_MODEL, "vendors": vendors}
+        return vendors
+
+    @router.get("/models")
+    async def models():
+        return {"default": DEFAULT_MODEL, "vendors": await run_in_threadpool(_vendor_keys)}
 
     @router.get("/parts")
     async def parts():
