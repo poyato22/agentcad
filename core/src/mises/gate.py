@@ -79,7 +79,10 @@ class Gate:
             payload = args.model_dump()
 
         cacheable = t.safety != SafetyClass.READ                                 # 7
-        key = sha256_hex(canonical_json([run_id, name, payload]))
+        # local_mutate replays by input; Onshape writes and irreversible calls dedupe only a
+        # retry of the same call, so a new call with identical input really runs again.
+        scope = [call_id] if t.safety in (SafetyClass.ONSHAPE_MUTATE, SafetyClass.IRREVERSIBLE) else []
+        key = sha256_hex(canonical_json([run_id, name, payload, *scope]))
         if cacheable:
             hit = self.store.cache_get(key)
             if hit is not None:

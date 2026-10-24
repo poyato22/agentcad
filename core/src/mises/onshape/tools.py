@@ -88,7 +88,9 @@ class ProposeArgs(BaseModel):
         description="Microversion the plan was made against: from onshape_doc_open/features_list"
                     " for the first proposal, then the microversion the last proposal returned")
     variables: dict[str, str] | None = Field(
-        default=None, description="Variable name -> expression, e.g. {'rib_height': '12 mm'}")
+        default=None, description="Variable Studio only (url = the Variable Studio tab): name ->"
+                                  " expression, e.g. {'rib_height': '12 mm'}. Not combinable with"
+                                  " feature_updates; Part Studio #variables are features.")
     feature_updates: list[dict] | None = Field(
         default=None, description="BTMFeature-134 partial updates: {featureId, parameters:[...]}")
     summary: str = Field(description="One line: what this change does and why")
@@ -114,7 +116,13 @@ async def onshape_doc_open(ctx: ToolContext, args: UrlArgs) -> ToolOutput:
     if ref.wvm == "m":       # Onshape serves variables only from a workspace or version
         variables, warnings = [], ["variables are not readable at a microversion URL"]
     else:
-        variables = await ad.variables(ref, ctx.run_id, microversion=mv)
+        try:
+            variables = await ad.variables(ref, ctx.run_id, microversion=mv)
+        except MisesError as e:
+            if e.code in (ErrorCode.BUDGET_EXHAUSTED, ErrorCode.DENIED, ErrorCode.CANCELLED):
+                raise
+            # e.g. a Part Studio URL: /variables serves Variable Studios; #vars are features.
+            variables, warnings = [], [f"variables not read ({e.code}): {e.message}"]
     rows = _feature_rows(feats, with_params=False)
     return ToolOutput(warnings=warnings,
         summary=f"Opened document {ref.did} at microversion {mv}: {len(rows)} features,"

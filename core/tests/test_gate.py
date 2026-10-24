@@ -259,3 +259,40 @@ async def test_preview_error_propagates_without_approval(env):
     assert e.code == ErrorCode.STALE_VERSION and env.calls == 0
     assert env.store.pending_approvals() == []
     assert env.store.steps(env.run.id)[-1].kind == StepKind.ERROR
+
+
+async def _approve_all(env, n):
+    done = 0
+    while done < n:
+        for a in env.store.pending_approvals():
+            env.approvals.decide(a.id, a.payload_hash, True, "me")
+            done += 1
+        await asyncio.sleep(0.01)
+
+
+async def test_irreversible_identical_input_new_call_runs_again(env):
+    env.add(safety=C.IRREVERSIBLE)
+    h = asyncio.create_task(_approve_all(env, 2))
+    await env.call("t", {"n": 1}, "c1")
+    await env.call("t", {"n": 1}, "c2")
+    await h
+    assert env.calls == 2
+    n_appr = env.store._one("SELECT COUNT(*) FROM approvals")[0]
+    assert n_appr == 2
+
+
+async def test_irreversible_same_call_id_deduplicated(env):
+    env.add(safety=C.IRREVERSIBLE)
+    h = asyncio.create_task(_approve_all(env, 2))
+    await env.call("t", {"n": 1}, "c1")
+    await env.call("t", {"n": 1}, "c1")
+    await h
+    assert env.calls == 1
+
+
+async def test_onshape_mutate_keyed_by_call_id(env):
+    env.add(safety=C.ONSHAPE_MUTATE)
+    await env.call("t", {"n": 1}, "c1")
+    await env.call("t", {"n": 1}, "c2")
+    await env.call("t", {"n": 1}, "c2")
+    assert env.calls == 2

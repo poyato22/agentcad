@@ -79,6 +79,17 @@ def variable_type(expression: str) -> str:
     return "ANY"
 
 
+_VARS_HINT = ("`variables` sets a Variable Studio (pass its URL, in its own proposal); to change a"
+              " Part Studio #variable, edit its Variable feature via feature_updates")
+
+
+def _not_variable_studio(e: MisesError) -> MisesError:
+    if e.code in (ErrorCode.INVALID_INPUT, ErrorCode.NOT_FOUND):
+        return MisesError(e.code, f"cannot set variables on this element: {e.message}",
+                          hint=_VARS_HINT)
+    return e
+
+
 def _need_eid(ref: DocRef) -> str:
     if not ref.eid:
         raise MisesError(ErrorCode.INVALID_INPUT, "URL has no element (/e/<eid>)",
@@ -191,7 +202,13 @@ class OnshapeAdapter:
     def validate_proposal(variables: dict[str, str] | None, feature_updates: list[dict] | None) -> None:
         if not variables and not feature_updates:
             raise MisesError(ErrorCode.INVALID_INPUT, "nothing to propose",
-                             hint="pass variables and/or feature_updates")
+                             hint="pass variables or feature_updates")
+        if variables and feature_updates:
+            # setVariables targets a Variable Studio, features/updates a Part Studio: one element
+            # cannot be both, so a combined call could only half-apply.
+            raise MisesError(ErrorCode.INVALID_INPUT,
+                             "variables and feature_updates target different element types",
+                             hint=_VARS_HINT)
         for name, expr in (variables or {}).items():
             check_name(name)
             if not _VAR_NAME_RE.match(name):
@@ -233,15 +250,19 @@ class OnshapeAdapter:
             raise _stale()
         if variables:
             # setVariables takes the whole table, so merge into what is there.
-            current = {v["name"]: v for v in await self._read_variables(branch, run_id)
-                       if isinstance(v.get("name"), str)}
-            for name, expr in variables.items():
-                current[name] = {"name": name, "expression": expr,
-                                 "type": variable_type(expr),
-                                 "description": current.get(name, {}).get("description", "")}
-            table = [{k: v.get(k) for k in ("name", "type", "expression", "description")
-                      if v.get(k) is not None} for v in current.values()]
-            await self._post(f"/variables{base}/variables", run_id, table)
+            try:
+                current = {v["name"]: v for v in await self._read_variables(branch, run_id)
+                           if isinstance(v.get("name"), str)}
+                for name, expr in variables.items():
+                    old = current.get(name, {})
+                    current[name] = {"name": name, "expression": expr,
+                                     "type": old.get("type") or variable_type(expr),
+                                     "description": old.get("description", "")}
+                table = [{k: v.get(k) for k in ("name", "type", "expression", "description")
+                          if v.get(k) is not None} for v in current.values()]
+                await self._post(f"/variables{base}/variables", run_id, table)
+            except MisesError as e:
+                raise _not_variable_studio(e) from None
             latest = None
         changes: dict = {"mass": None, "volume": None, "bbox": None}
         warnings: list[str] = []

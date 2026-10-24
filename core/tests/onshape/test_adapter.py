@@ -77,7 +77,7 @@ async def test_propose_updates_and_reports_changes(fake, adapter, run):
     b = await _branch(fake, adapter, run)
     src = fake.mv(b.wvmid)
     out = await adapter.propose(b, run.id, source_microversion=src,
-                                variables={"rib_height": "12 mm", "thickness": "4 mm"},
+                                variables=None,
                                 feature_updates=[{"featureId": "FaaA", "parameters": [
                                     {"btType": "BTMParameterQuantity-147",
                                      "parameterId": "depth", "expression": "20 mm"}]}])
@@ -87,8 +87,6 @@ async def test_propose_updates_and_reports_changes(fake, adapter, run):
     assert fake.count(r"/features/updates$") == 1          # one batched call
     ws = fake.workspaces[b.wvmid]
     assert ws["features"][0]["parameters"][0]["expression"] == "20 mm"
-    names = {v["name"]: v for v in ws["variables"]}
-    assert names["rib_height"]["type"] == "LENGTH" and names["thickness"]["expression"] == "4 mm"
     assert fake.workspaces[fake.main]["features"][0]["parameters"][0]["expression"] == "10 mm"
     assert out["microversion"] == fake.mv(b.wvmid)
     assert set(out["changes"]) >= {"mass", "volume", "bbox"}
@@ -168,3 +166,47 @@ async def test_merge_requires_preview(fake, adapter, run):
     with pytest.raises(MisesError) as e:
         await adapter.merge(b, parse_url(fake.url()), run.id)
     assert e.value.code == ErrorCode.NEEDS_APPROVAL and fake.merges == []
+
+
+async def test_propose_variables(fake, adapter, run):
+    b = await _branch(fake, adapter, run)
+    out = await adapter.propose(b, run.id, source_microversion=fake.mv(b.wvmid),
+                                variables={"rib_height": "12 mm", "thickness": "4 mm"},
+                                feature_updates=None)
+    names = {v["name"]: v for v in fake.workspaces[b.wvmid]["variables"]}
+    assert names["rib_height"]["type"] == "LENGTH" and names["thickness"]["expression"] == "4 mm"
+    assert out["microversion"] == fake.mv(b.wvmid)
+
+
+async def test_propose_keeps_existing_variable_type(fake, adapter, run):
+    b = await _branch(fake, adapter, run)
+    await adapter.propose(b, run.id, source_microversion=fake.mv(b.wvmid),
+                          variables={"thickness": "#base * 2", "ratio": "#base * 2"},
+                          feature_updates=None)
+    names = {v["name"]: v for v in fake.workspaces[b.wvmid]["variables"]}
+    assert names["thickness"]["type"] == "LENGTH"          # existing type kept
+    assert names["thickness"]["expression"] == "#base * 2"
+    assert names["ratio"]["type"] == "ANY"                 # new: inferred
+
+
+async def test_propose_rejects_variables_with_feature_updates(fake, adapter, run):
+    b = await _branch(fake, adapter, run)
+    before = len(fake.requests)
+    with pytest.raises(MisesError) as e:
+        await adapter.propose(b, run.id, source_microversion=fake.mv(b.wvmid),
+                              variables={"rib_height": "3 mm"},
+                              feature_updates=[{"featureId": "FaaA", "parameters": []}])
+    assert e.value.code == ErrorCode.INVALID_INPUT and "feature_updates" in e.value.hint
+    assert len(fake.requests) == before                     # no partial write
+
+
+async def test_propose_variables_on_non_variable_studio_writes_nothing(fake, adapter, run):
+    b = await _branch(fake, adapter, run)
+    path = f"/api/v17/variables/d/{fake.did}/w/{b.wvmid}/e/{fake.eid}/variables"
+    fake.fail[path] = [400]            # Onshape refuses: element is not a Variable Studio
+    with pytest.raises(MisesError) as e:
+        await adapter.propose(b, run.id, source_microversion=fake.mv(b.wvmid),
+                              variables={"rib_height": "3 mm"}, feature_updates=None)
+    assert e.value.code == ErrorCode.INVALID_INPUT and "feature_updates" in e.value.hint
+    assert not any(m == "POST" for m, p in fake.requests if p == path)
+    assert not any(p.endswith("/features/updates") for _, p in fake.requests)

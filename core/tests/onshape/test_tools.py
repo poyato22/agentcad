@@ -180,3 +180,11 @@ async def test_doc_open_costs_three_calls(env, fake, store):
     await env.call("onshape_doc_open", {"url": fake.url()})
     assert len(fake.requests) == 3
     assert store.ledger_used("me", since=0) == 3
+
+
+async def test_doc_open_variables_failure_is_warning(env, fake):
+    fake.fail[f"/api/v17/variables/d/{fake.did}/w/{fake.main}/e/{fake.eid}/variables"] = [400]
+    out = await env.call("onshape_doc_open", {"url": fake.url()})
+    assert out.ok and out.data["untrusted_user_data"]["variables"] == []
+    assert any("variables" in w for w in out.warnings)
+    assert out.data["untrusted_user_data"]["features"]
