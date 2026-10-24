@@ -79,6 +79,33 @@ def test_release_run_reservations(store, run):
     assert store.ledger_used("u", since=0) == 0
 
 
+def test_external_flag_defaults_false_and_persists(store, run):
+    assert run.external is False
+    ext = store.create_run("codex", "acp", "codex", "external agent: codex", external=True)
+    assert store.get_run(ext.id).external is True
+    assert {r.id: r.external for r in store.list_runs()} == {run.id: False, ext.id: True}
+    # status updates keep it
+    assert store.update_run(ext.id, status="done").external is True
+
+
+def test_external_column_migrates_old_databases(tmp_path):
+    import sqlite3
+    path = tmp_path / "old.db"
+    db = sqlite3.connect(path)
+    db.executescript(
+        "CREATE TABLE runs (id TEXT PRIMARY KEY, parent_id TEXT, agent TEXT, provider TEXT,"
+        " model TEXT, task TEXT, status TEXT, branch TEXT, onshape_calls INTEGER,"
+        " input_tokens INTEGER, output_tokens INTEGER, usd REAL, created_at REAL, updated_at REAL,"
+        " owner_pid INTEGER);"
+        "INSERT INTO runs VALUES ('old1', NULL, 'designer', 'acp', 'm', 't', 'done', NULL, 0, 0, 0,"
+        " 0.0, 1.0, 1.0, NULL);")
+    db.commit()
+    db.close()
+    s = Store(path)
+    assert s.get_run("old1").external is False
+    assert s.create_run("codex", "acp", "codex", "x", external=True).external is True
+
+
 def test_cache(store):
     assert store.cache_get("k") is None
     store.cache_put("k", {"v": 1})

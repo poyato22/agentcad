@@ -1,4 +1,4 @@
 import type { AgentRun } from "../../../api/types";
 
-/** External (ACP-driven) runs cannot take messages; the core creates them with provider "acp". */
-export const isExternal = (run: AgentRun): boolean => run.provider === "acp";
+/** External runs (driven by an outside agent) cannot take messages: the core's persisted flag. */
+export const isExternal = (run: AgentRun): boolean => run.external === true;

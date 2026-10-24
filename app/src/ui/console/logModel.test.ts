@@ -6,7 +6,7 @@ import { buildLog, filterCounts, itemKey, lineDelta, type LogItem } from "./logM
 import { approval, input, message, pairs, resetIds, run, step, toolCall, toolFailure, toolResult } from "./testSteps";
 
 const FIXTURE_STEPS = JSON.parse(readFileSync(resolve(__dirname, "../../../test/fixtures/core-ui/steps.json"), "utf8")) as Step[];
-const FIXTURE_RUN = "b7c79a57cbb4";
+const FIXTURE_RUN = FIXTURE_STEPS[0].run_id;
 
 const kinds = (items: LogItem[]) => items.map((i) => i.kind);
 type Call = Extract<LogItem, { kind: "call" }>;

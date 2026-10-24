@@ -90,6 +90,11 @@ def test_create_external_run_endpoint(client, rt):
         "claude-cli", "anthropic", "m1", "running")
     pol = rt.store.current_policy(rid)
     assert pol.edit_scope == ["part_a"] and pol.read_scope == ["part_b"]
+    # external runs say so, whatever their provider; GET /runs carries the flag for every run
+    assert run["external"] is True
+    own = client.post("/runs", headers=AUTH, json={"agent": "designer", "prompt": "hi"}).json()["run_id"]
+    flags = {r["id"]: r["external"] for r in client.get("/runs", headers=AUTH).json()}
+    assert flags[rid] is True and flags[own] is False
 
 
 def _pending_approval(rt):

@@ -122,7 +122,7 @@ export function loadScenario(s: string | Scenario): Scenario {
 function stateFrom(sc: Scenario, token: string): FakeState {
   return {
     token,
-    runs: new Map(sc.runs.map((r) => [r.id, r])),
+    runs: new Map(sc.runs.map((r) => [r.id, { external: false, ...r }])),
     steps: [...sc.steps].sort((a, b) => a.id - b.id),
     approvals: new Map(sc.approvals.map((a) => [a.id, a])),
     questions: new Map((sc.questions ?? []).map((q) => [q.question_id, q])),
@@ -252,7 +252,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
 
   function emit(evIn: EventIn, extras: EmitExtras = {}): { step_ids: number[] } {
     const ev: MisesEvent = { type: evIn.type, run_id: evIn.run_id ?? null, data: evIn.data ?? {}, ts: evIn.ts ?? now() };
-    if (extras.run) state.runs.set(extras.run.id, extras.run);
+    if (extras.run) state.runs.set(extras.run.id, { external: false, ...extras.run });
     const ids = (extras.steps ?? []).map((s) => appendStep(s, ev.run_id).id);
     if (extras.approval) state.approvals.set(extras.approval.id, extras.approval);
     if (extras.parts) state.parts = extras.parts;
@@ -291,11 +291,11 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     return a;
   }
 
-  function newRun(agent: string, provider: string, model: string, task: string): AgentRun {
+  function newRun(agent: string, provider: string, model: string, task: string, external = false): AgentRun {
     const t = now();
     const run: AgentRun = {
       id: hex(6), parent_id: null, agent, provider, model, task, status: "running", branch: null,
-      onshape_calls: 0, input_tokens: 0, output_tokens: 0, usd: 0, created_at: t, updated_at: t, owner_pid: process.pid,
+      onshape_calls: 0, input_tokens: 0, output_tokens: 0, usd: 0, created_at: t, updated_at: t, owner_pid: process.pid, external,
     };
     state.runs.set(run.id, run);
     return run;
@@ -345,7 +345,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         const provider = req(b, "provider", "string");
         const model = req(b, "model", "string");
         if (!agent) throw mises("invalid_input", "external run needs an agent name");
-        const run = newRun(agent, provider, model, `external agent: ${agent}`);
+        const run = newRun(agent, provider, model, `external agent: ${agent}`, true);
         emit({ type: "run_started", run_id: run.id, data: { agent, provider, model, parent_id: null, external: true } });
         return { run_id: run.id };
       },
@@ -375,6 +375,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       method: "POST", re: /^\/runs\/([^/]+)\/message$/, h: (m, _q, raw) => {
         const text = req(asBody(raw), "text", "string");
         const r = getRun(m[1]);
+        if (r.external) throw mises("invalid_input", "run is driven by an external agent", "send the message to that agent instead");
         if (r.status === "running") throw mises("invalid_input", "run is still working", "wait for it to finish or stop it");
         appendStep({ kind: "message", payload: { role: "user", text } }, r.id);
         emit({ type: "run_started", run_id: r.id, data: { resumed: true } });

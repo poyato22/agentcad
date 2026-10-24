@@ -18,6 +18,9 @@ export interface AgentRun {
   output_tokens: number; usd: number; created_at: number; updated_at: number;
   /** The core process driving the run (null: from before owner tracking). Not shown in the UI. */
   owner_pid?: number | null;
+  /** Driven by an outside agent (POST /runs/external, ACP, the REPL): it never takes messages.
+   *  Persisted by the core; absent from cores older than the flag (treated as false). */
+  external?: boolean;
 }
 
 export type StepKind = "message" | "plan" | "tool_call" | "tool_result" | "diff" | "decision" | "error"

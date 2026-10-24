@@ -157,7 +157,7 @@ class Runtime:
                             allowed_classes: set[SafetyClass] | None = None) -> str:
         if not agent:
             raise MisesError(ErrorCode.INVALID_INPUT, "external run needs an agent name")
-        run = self.store.create_run(agent, provider, model, f"external agent: {agent}")
+        run = self.store.create_run(agent, provider, model, f"external agent: {agent}", external=True)
         classes = set(SafetyClass) if allowed_classes is None else set(allowed_classes)
         self.store.create_policy(run.id, list(edit_scope), list(read_scope), caps,
                                  [c for c in SafetyClass if c in classes])

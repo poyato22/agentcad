@@ -32,6 +32,7 @@ class AgentRun(BaseModel):
     created_at: float
     updated_at: float
     owner_pid: int | None = None  # process that created (drives) the run
+    external: bool = False  # driven by an outside agent (Runtime.create_external_run), not a loop
 
 
 class AgentPolicy(BaseModel):
@@ -128,6 +129,8 @@ class Store:
         cols = {r[1] for r in self._db.execute("PRAGMA table_info(runs)")}
         if "owner_pid" not in cols:  # databases from before owner tracking
             self._db.execute("ALTER TABLE runs ADD COLUMN owner_pid INTEGER")
+        if "external" not in cols:  # databases from before the external flag
+            self._db.execute("ALTER TABLE runs ADD COLUMN external INTEGER NOT NULL DEFAULT 0")
 
     @contextmanager
     def _tx(self):
@@ -151,15 +154,15 @@ class Store:
 
     # ---- runs
     def create_run(self, agent: str, provider: str, model: str, task: str,
-                   parent_id: str | None = None) -> AgentRun:
+                   parent_id: str | None = None, external: bool = False) -> AgentRun:
         now = time.time()
         rid = uuid.uuid4().hex[:12]
         with self._tx() as db:
             db.execute("INSERT INTO runs (id, parent_id, agent, provider, model, task, status,"
                        " branch, onshape_calls, input_tokens, output_tokens, usd, created_at,"
-                       " updated_at, owner_pid) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                       " updated_at, owner_pid, external) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                        (rid, parent_id, agent, provider, model, task, "running", None,
-                        0, 0, 0, 0.0, now, now, os.getpid()))
+                        0, 0, 0, 0.0, now, now, os.getpid(), int(external)))
         return self.get_run(rid)
 
     def get_run(self, run_id: str) -> AgentRun:

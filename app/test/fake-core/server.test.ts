@@ -233,6 +233,19 @@ describe("fake core", () => {
     await expect(client.answer("q1", "left")).rejects.toBeInstanceOf(CoreError);
   });
 
+  it("external_runs_carry_the_flag_and_refuse_messages_like_the_core", async () => {
+    const res = await fetch(`${core.url}/runs/external`, {
+      method: "POST", headers: { Authorization: `Bearer ${core.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ agent: "codex", provider: "openai", model: "gpt-x" }),
+    });
+    const { run_id } = (await res.json()) as { run_id: string };
+    expect((await client.getRun(run_id)).external).toBe(true);
+    expect((await client.getRun(RID)).external).toBe(false);
+    core.emit({ type: "run_finished", run_id, data: { status: "done", stop_reason: "end_turn", error: null, final_text: "", external: true } });
+    const e = await failure(client.message(run_id, "hi"));
+    expect([e.code, e.message]).toEqual(["invalid_input", "run is driven by an external agent"]);
+  });
+
   it("glb_route_validates_ids", async () => {
     const bad = await fetch(core.url + "/parts/Bad1/model.glb", { headers: { Authorization: "Bearer t0k" } });
     expect(bad.status).toBe(400);
