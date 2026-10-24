@@ -6,6 +6,9 @@ import random
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Literal, Protocol
 
+import httpx
+import httpx2
+
 from pydantic import BaseModel, Field
 
 from mises.types import ErrorCode, Message, MisesError
@@ -58,7 +61,11 @@ class ModelProvider(Protocol):
     name: str
 
     def stream(self, req: ModelRequest) -> AsyncIterator[StreamEvent]:
-        """Yield events; a successful stream always ends with exactly one Done."""
+        """Yield events; a successful stream always ends with exactly one Done.
+
+        Providers never emit Done("error"): failures are raised as MisesError (the
+        exception is the error channel); the literal exists only for consumers that
+        synthesize a terminal event themselves."""
         ...
 
 
@@ -113,3 +120,21 @@ def classify_status(status: int, *, key_hint: str) -> MisesError | None:
         return MisesError(ErrorCode.INVALID_INPUT, f"provider rejected the request (HTTP {status})")
     return None
 
+
+
+TRANSPORT_ERRORS = (httpx.TransportError, httpx2.TransportError)  # incl. timeouts, read errors
+
+
+def classify_stream_error_type(err_type: str | None, *, key_hint: str) -> MisesError | None:
+    """Map a provider's in-stream error type string (e.g. Anthropic `event: error`)."""
+    if err_type in ("overloaded_error", "api_error", "rate_limit_error", "timeout_error",
+                    "server_error", "rate_limit_exceeded", "service_unavailable"):
+        return MisesError(ErrorCode.TRANSIENT, f"provider error in stream: {err_type}")
+    if err_type in ("invalid_request_error", "request_too_large"):
+        return MisesError(ErrorCode.INVALID_INPUT, f"provider error in stream: {err_type}")
+    if err_type in ("authentication_error", "permission_error"):
+        return MisesError(ErrorCode.DENIED, f"provider error in stream: {err_type}",
+                          hint=key_hint)
+    if err_type == "not_found_error":
+        return MisesError(ErrorCode.NOT_FOUND, f"provider error in stream: {err_type}")
+    return None

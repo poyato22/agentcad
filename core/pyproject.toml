@@ -5,7 +5,7 @@ description = "Mises harness core"
 requires-python = ">=3.13"
 dependencies = [
   "pydantic>=2.12", "anthropic>=2.3", "openai>=3.37", "mcp>=2.3",
-  "agent-client-protocol>=0.12", "build123d>=0.13", "httpx>=0.28",
+  "agent-client-protocol>=0.12", "build123d>=0.13", "httpx>=0.28", "httpx2>=2.16",
   "fastapi", "uvicorn", "rich", "prompt_toolkit", "pyyaml",
 ]
 

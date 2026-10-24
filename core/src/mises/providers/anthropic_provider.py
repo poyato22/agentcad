@@ -8,7 +8,8 @@ import anthropic
 import httpx2 as httpx
 
 from mises.providers.base import (Done, ModelRequest, StreamEvent, TextDelta, ToolCall, Usage,
-                                  classify_status, retried_stream)
+                                  TRANSPORT_ERRORS, classify_status, classify_stream_error_type,
+                                  retried_stream)
 from mises.types import ErrorCode, ImageBlock, Message, MisesError, TextBlock, ToolResultBlock, \
     ToolUseBlock
 
@@ -38,10 +39,14 @@ def _messages(msgs: list[Message]) -> list[dict]:
 def map_error(e: Exception, key_hint: str = KEY_HINT) -> MisesError:
     if isinstance(e, MisesError):
         return e
-    if isinstance(e, anthropic.APIConnectionError):  # includes timeouts
+    if isinstance(e, anthropic.APIConnectionError) or isinstance(e, TRANSPORT_ERRORS):
         return MisesError(ErrorCode.TRANSIENT, f"connection problem: {e}")
     if isinstance(e, anthropic.APIStatusError):
-        m = classify_status(e.status_code, key_hint=key_hint)
+        body = e.body if isinstance(e.body, dict) else {}
+        inner = body.get("error") if isinstance(body.get("error"), dict) else body
+        m = classify_stream_error_type(inner.get("type"), key_hint=key_hint)
+        if m is None:
+            m = classify_status(e.status_code, key_hint=key_hint)
         if m:
             m.message = f"{m.message}: {e.message}"
             return m
@@ -100,7 +105,7 @@ class AnthropicProvider:
                         out_tok = ev.usage.output_tokens or out_tok
         except MisesError:
             raise
-        except (anthropic.APIError, httpx.HTTPError, json.JSONDecodeError) as e:
+        except (anthropic.APIError, httpx.HTTPError, *TRANSPORT_ERRORS, json.JSONDecodeError) as e:
             raise map_error(e) from e
         yield Usage(input_tokens=in_tok, output_tokens=out_tok, cache_read_tokens=cache_read)
         yield Done(stop_reason=stop)

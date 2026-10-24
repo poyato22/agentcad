@@ -8,7 +8,8 @@ import httpx
 import openai
 
 from mises.providers.base import (Done, ModelRequest, StreamEvent, TextDelta, ToolCall, Usage,
-                                  classify_status, retried_stream)
+                                  TRANSPORT_ERRORS, classify_status, classify_stream_error_type,
+                                  retried_stream)
 from mises.types import ErrorCode, ImageBlock, Message, MisesError, TextBlock, ToolResultBlock, \
     ToolUseBlock
 
@@ -49,12 +50,17 @@ def _messages(system: str, msgs: list[Message]) -> list[dict]:
 def map_error(e: Exception, key_hint: str) -> MisesError:
     if isinstance(e, MisesError):
         return e
-    if isinstance(e, openai.APIConnectionError):  # includes timeouts
+    if isinstance(e, openai.APIConnectionError) or isinstance(e, TRANSPORT_ERRORS):
         return MisesError(ErrorCode.TRANSIENT, f"connection problem: {e}")
     if isinstance(e, openai.APIStatusError):
         m = classify_status(e.status_code, key_hint=key_hint)
         if m:
             m.message = f"{m.message}: {e.message}"
+            return m
+    if isinstance(e, openai.APIError):  # in-stream error chunk: no HTTP status
+        m = classify_stream_error_type(getattr(e, "type", None) or getattr(e, "code", None),
+                                       key_hint=key_hint)
+        if m:
             return m
     return MisesError(ErrorCode.TOOL_FAILED, f"provider error: {e}")
 
@@ -112,7 +118,7 @@ class OpenAICompatProvider:
                         finish = choice.finish_reason
         except MisesError:
             raise
-        except (openai.OpenAIError, httpx.HTTPError) as e:
+        except (openai.OpenAIError, httpx.HTTPError, *TRANSPORT_ERRORS) as e:
             raise map_error(e, self._hint) from e
         for i in sorted(acc):
             slot = acc[i]
