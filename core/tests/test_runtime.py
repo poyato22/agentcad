@@ -194,3 +194,51 @@ async def test_provider_failure_marks_run_failed(tmp_path):
     rid = await rt.start_run("designer", "go")
     r = await rt.wait(rid)
     assert r.stop_reason == "error" and rt.store.get_run(rid).status == "failed"
+
+
+async def test_create_external_run_has_policy_and_workdir_but_no_loop(tmp_path):
+    rt, fake, _ = make(tmp_path, [])
+    sub = rt.events.subscribe()
+    rid = rt.create_external_run("codex", provider="openai", model="gpt-x",
+                                 edit_scope=("part_a",), read_scope=("part_b",),
+                                 allowed_classes={C.READ})
+    started = await next_event(sub, "run_started")
+    assert started.run_id == rid and started.data["external"] is True
+    run = rt.store.get_run(rid)
+    assert (run.status, run.agent, run.provider, run.model) == ("running", "codex", "openai", "gpt-x")
+    pol = rt.store.current_policy(rid)
+    assert pol.edit_scope == ["part_a"] and pol.read_scope == ["part_b"]
+    assert pol.allowed_classes == [C.READ]
+    assert (tmp_path / "home" / "runs" / rid).is_dir()
+    assert fake.requests == []
+    # the gate works for it
+    out = await rt.gate.call(rid, "mirror_part_list", {}, call_id="x1", workdir=rt.workdir(rid))
+    assert out.ok
+    with pytest.raises(MisesError) as e:
+        await rt.send(rid, "hi")
+    assert e.value.code == ErrorCode.INVALID_INPUT
+
+
+async def test_finish_external_run(tmp_path):
+    rt, _, _ = make(tmp_path, [])
+    rid = rt.create_external_run("codex", provider="openai", model="gpt-x")
+    a = await rt.approvals.request(rid, "danger", {"n": 1})
+    sub = rt.events.subscribe(rid)
+    rt.finish_external_run(rid, "done")
+    fin = await next_event(sub, "run_finished")
+    assert fin.data["status"] == "done"
+    assert rt.store.get_run(rid).status == "done"
+    assert rt.store.get_approval(a.id).status == "rejected"
+    with pytest.raises(MisesError) as e:
+        rt.finish_external_run(rid, "bogus")
+    assert e.value.code == ErrorCode.INVALID_INPUT
+    with pytest.raises(MisesError) as e:
+        rt.finish_external_run("nope", "done")
+    assert e.value.code == ErrorCode.NOT_FOUND
+
+
+async def test_cancel_external_run(tmp_path):
+    rt, _, _ = make(tmp_path, [])
+    rid = rt.create_external_run("codex", provider="openai", model="gpt-x")
+    rt.cancel(rid)
+    assert rt.store.get_run(rid).status == "cancelled"

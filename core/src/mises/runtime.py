@@ -64,6 +64,7 @@ class Runtime:
         for w in self.definitions.warnings:
             log.warning("agent definition skipped: %s", w)
         self._runs: dict[str, _RunState] = {}
+        self._external: set[str] = set()
         self._questions: dict[str, tuple[str, asyncio.Future[str]]] = {}
 
     async def aclose(self) -> None:
@@ -105,6 +106,39 @@ class Runtime:
         st.task = asyncio.create_task(self._drive(run.id, prompt))
         return run.id
 
+    # ---- external runs (an outside agent drives the run through the MCP endpoint)
+    def create_external_run(self, agent: str, *, provider: str, model: str, edit_scope=("*",),
+                            read_scope=("*",), caps: Caps = Caps(),
+                            allowed_classes: set[SafetyClass] | None = None) -> str:
+        if not agent:
+            raise MisesError(ErrorCode.INVALID_INPUT, "external run needs an agent name")
+        run = self.store.create_run(agent, provider, model, f"external agent: {agent}")
+        classes = set(SafetyClass) if allowed_classes is None else set(allowed_classes)
+        self.store.create_policy(run.id, list(edit_scope), list(read_scope), caps,
+                                 [c for c in SafetyClass if c in classes])
+        self.workdir(run.id)
+        self._external.add(run.id)
+        self.events.publish(Event(type="run_started", run_id=run.id, data={
+            "agent": agent, "provider": provider, "model": model, "parent_id": None,
+            "external": True}))
+        return run.id
+
+    def finish_external_run(self, run_id: str, status: str) -> None:
+        if status not in ("done", "failed", "cancelled"):
+            raise MisesError(ErrorCode.INVALID_INPUT, f"bad final status: {status!r}",
+                             hint="use done, failed or cancelled")
+        try:
+            self.store.get_run(run_id)
+        except KeyError:
+            raise MisesError(ErrorCode.NOT_FOUND, f"unknown run: {run_id}") from None
+        self.approvals.cancel_run(run_id)
+        self.store.release_run_reservations(run_id)
+        self.store.update_run(run_id, status=status)
+        self._external.discard(run_id)
+        self.events.publish(Event(type="run_finished", run_id=run_id, data={
+            "status": status, "stop_reason": status, "error": None, "final_text": "",
+            "external": True}))
+
     async def _drive(self, run_id: str, prompt: str) -> RunResult:
         st = self._runs[run_id]
         try:
@@ -137,6 +171,9 @@ class Runtime:
         return st
 
     async def send(self, run_id: str, text: str) -> None:
+        if run_id in self._external:
+            raise MisesError(ErrorCode.INVALID_INPUT, "run is driven by an external agent",
+                             hint="send the message to that agent instead")
         st = self._state(run_id)
         if st.task is not None and not st.task.done():
             raise MisesError(ErrorCode.INVALID_INPUT, "run is still working",
@@ -152,6 +189,9 @@ class Runtime:
         return await asyncio.shield(st.task)
 
     def cancel(self, run_id: str) -> None:
+        if run_id in self._external:
+            self.finish_external_run(run_id, "cancelled")
+            return
         st = self._state(run_id)
         st.cancel_requested = True
         st.loop.cancel()
