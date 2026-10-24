@@ -20,8 +20,10 @@ PART_ID_RE = re.compile(r"^[a-z][a-z0-9_]{1,40}$")
 _locks: dict[str, asyncio.Lock] = {}
 
 
-def _lock(key: Path) -> asyncio.Lock:
-    return _locks.setdefault(str(key), asyncio.Lock())
+def _lock(part_dir: Path) -> asyncio.Lock:
+    # keyed on the real path: every run reaches the shared parts dir through its own
+    # <workdir>/parts symlink, so the unresolved path differs per run
+    return _locks.setdefault(str(Path(part_dir).resolve()), asyncio.Lock())
 
 
 def _bad(msg: str, hint: str | None = None) -> MisesError:
