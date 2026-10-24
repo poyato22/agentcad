@@ -1,9 +1,9 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/preact";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CoreClient } from "../../api/client";
-import type { AgentRun, Approval, CoreStatusInfo } from "../../api/types";
+import type { AgentRun, Approval, CancelAllResult, CoreStatusInfo } from "../../api/types";
 import { isAutoNumbered } from "../../lib/names";
-import { approvals, bindClient, conn, coreStatus, parts, resetStore, runs, selectedPartId, shellStatus } from "../../state/store";
+import { approvals, bindClient, conn, coreStatus, parts, questions, resetStore, retiredApprovals, runs, selectedPartId, shellStatus } from "../../state/store";
 import { Breadcrumb } from "./Breadcrumb";
 import { ModeTabs } from "./ModeTabs";
 import { StatusLights } from "./StatusLights";
@@ -81,6 +81,18 @@ describe("StatusLights", () => {
     await waitFor(() => expect(light("agents").textContent).toContain("· 1 needs you"));
   });
 
+  it("needs_you_matches_the_roster_questions_count_retired_cards_do_not", async () => {
+    render(<StatusLights />);
+    runs.value = new Map([["a", run("a")]]);
+    const ap = { id: "x", run_id: "a", status: "pending" } as unknown as Approval;
+    approvals.value = new Map([["x", ap]]);
+    await waitFor(() => expect(light("agents").textContent).toContain("· 1 needs you"));
+    retiredApprovals.value = new Set(["x"]); // replaced by another proposal; the store still says pending
+    await waitFor(() => expect(light("agents").textContent).not.toContain("needs you"));
+    questions.value = new Map([["q", { question_id: "q", run_id: "a", question: "which side?", options: [] }]]);
+    await waitFor(() => expect(light("agents").textContent).toContain("· 1 needs you"));
+  });
+
   it("printer_is_faint", () => {
     render(<StatusLights />);
     expect(light("printer").textContent).toContain("no printer");
@@ -88,13 +100,13 @@ describe("StatusLights", () => {
 });
 
 describe("stop all", () => {
-  function bindFake(cancelAll: () => Promise<{ cancelled: string[] }>): void {
+  function bindFake(cancelAll: () => Promise<CancelAllResult>): void {
     bindClient({ cancelAll } as unknown as CoreClient);
   }
 
   it("stop_all_button_calls_cancel_all_once", async () => {
-    let resolveIt: (v: { cancelled: string[] }) => void = () => {};
-    const cancelAll = vi.fn(() => new Promise<{ cancelled: string[] }>((r) => { resolveIt = r; }));
+    let resolveIt: (v: CancelAllResult) => void = () => {};
+    const cancelAll = vi.fn(() => new Promise<CancelAllResult>((r) => { resolveIt = r; }));
     bindFake(cancelAll);
     runs.value = new Map([["a", run("a")]]);
     render(<TopBar />);
@@ -102,14 +114,14 @@ describe("stop all", () => {
     fireEvent.click(btn);
     fireEvent.click(btn);
     expect(cancelAll).toHaveBeenCalledTimes(1);
-    resolveIt({ cancelled: ["a", "b"] });
+    resolveIt({ cancelled: ["a", "b"], failed: [] });
     await waitFor(() => expect(screen.getByRole("status").textContent).toBe("stopped 2"));
     fireEvent.click(btn);
     expect(cancelAll).toHaveBeenCalledTimes(2);
   });
 
   it("button_is_red_only_while_a_run_is_running", async () => {
-    bindFake(() => Promise.resolve({ cancelled: [] }));
+    bindFake(() => Promise.resolve({ cancelled: [], failed: [] }));
     render(<TopBar />);
     const btn = screen.getByRole("button", { name: /stop all/i });
     expect(btn.className).not.toContain("btn-danger");
@@ -118,7 +130,7 @@ describe("stop all", () => {
   });
 
   it("shortcut_works_while_typing_in_command_line", async () => {
-    const cancelAll = vi.fn(() => Promise.resolve({ cancelled: ["a"] }));
+    const cancelAll = vi.fn(() => Promise.resolve({ cancelled: ["a"], failed: [] }));
     bindFake(cancelAll);
     const off = installStopAllShortcut();
     const input = document.createElement("input");
@@ -132,8 +144,15 @@ describe("stop all", () => {
     input.remove();
   });
 
+  it("toast_counts_runs_the_core_could_not_cancel", async () => {
+    bindFake(() => Promise.resolve({ cancelled: ["a", "b"], failed: [{ run_id: "c", error: "RuntimeError: stuck" }] }));
+    render(<TopBar />);
+    fireEvent.click(screen.getByRole("button", { name: /stop all/i }));
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("stopped 2 · 1 failed"));
+  });
+
   it("failure_shows_a_toast_and_releases_busy", async () => {
-    const cancelAll = vi.fn().mockRejectedValueOnce(new Error("down")).mockResolvedValue({ cancelled: [] });
+    const cancelAll = vi.fn().mockRejectedValueOnce(new Error("down")).mockResolvedValue({ cancelled: [], failed: [] });
     bindFake(cancelAll);
     render(<TopBar />);
     const btn = screen.getByRole("button", { name: /stop all/i });

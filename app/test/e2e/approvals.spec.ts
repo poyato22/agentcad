@@ -1,7 +1,5 @@
-// Approval safety with real browser input (trusted clicks and keys, real paste events).
-// Until Task 7/10 put ApprovalCard into the console, each test mounts the real ApprovalCard
-// module into the running app (same Vite module graph, so the same store, client and event
-// stream as the app) over the viewer area.
+// Approval safety with real browser input (trusted clicks and keys, real paste events), on the
+// real cards the console renders inline in the step log.
 import type { Page } from "@playwright/test";
 import type { Approval } from "../../src/api/types";
 import { expect, test, type FakeControl } from "./fixtures";
@@ -11,38 +9,15 @@ const AID = "ap_merge_01";
 const HASH = "3f9a1c2e7b6d5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d9c8b7a6f5e4d3c2b1a09";
 const ARM_WAIT_MS = 450;
 
+/** Opens the app and waits for the console to show the scenario's approval card. */
 async function mountCard(page: Page, approvalId = AID): Promise<void> {
   await page.goto("/");
   await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
-  await page.evaluate(async (id) => {
-    const load = (p: string) => import(/* @vite-ignore */ p);
-    // the exact preact module URL the app uses (one preact instance, so signals + hooks work)
-    const mainSrc = await (await fetch("/src/main.tsx")).text();
-    const m = /from\s*["']([^"']*\/preact\.js(?:\?[^"']*)?)["']/.exec(mainSrc);
-    if (!m) throw new Error("preact import not found in /src/main.tsx");
-    const preact = await load(m[1]);
-    const store = await load("/src/state/store.ts");
-    const { ApprovalCard } = await load("/src/ui/console/approvals/ApprovalCard.tsx");
-    const { QuestionCard } = await load("/src/ui/console/approvals/QuestionCard.tsx");
-    const host = document.createElement("div");
-    host.id = "card-host";
-    host.style.cssText = "position:fixed;left:260px;top:60px;width:420px;z-index:50;background:#111";
-    const outside = document.createElement("input");
-    outside.id = "outside-input";
-    outside.placeholder = "outside";
-    const cardRoot = document.createElement("div");
-    host.append(outside, cardRoot);
-    document.body.append(host);
-    function Host() {
-      const a = store.approvals.value.get(id);
-      const label = "designer · stiffen upright bracket";
-      const qs = [...store.questions.value.values()].map((q) => preact.h(QuestionCard, { key: q.question_id, question: q, runLabel: label }));
-      return preact.h("div", null, a ? preact.h(ApprovalCard, { approval: a, runLabel: label }) : null, ...qs);
-    }
-    preact.render(preact.h(Host, null), cardRoot);
-  }, approvalId);
-  await expect(page.locator(`[data-approval="${approvalId}"]`)).toBeVisible();
+  await expect(page.locator(`[data-region=console] [data-approval="${approvalId}"]`)).toBeVisible();
 }
+
+/** A text input outside the card: the console's command line. */
+const outsideInput = (page: Page) => page.getByLabel("Command line");
 
 const card = (page: Page) => page.locator(`[data-approval="${AID}"]`);
 const decideCalls = async (fake: FakeControl) => (await fake.calls()).filter((c) => c.path.endsWith("/decide"));
@@ -122,12 +97,12 @@ test("key_r_rejects_and_key_k_keeps_branch", async ({ page, fake }) => {
 test("key_ignored_when_focus_elsewhere", async ({ page, fake }) => {
   await mountCard(page);
   await page.waitForTimeout(ARM_WAIT_MS);
-  await page.locator("#outside-input").focus();
+  await outsideInput(page).focus();
   await page.keyboard.press("m");
   await page.keyboard.press("a");
   await settle(page);
   expect(await decideCalls(fake)).toEqual([]);
-  await expect(page.locator("#outside-input")).toHaveValue("ma");
+  await expect(outsideInput(page)).toHaveValue("ma");
 });
 
 test("key_ignored_when_untrusted", async ({ page, fake }) => {

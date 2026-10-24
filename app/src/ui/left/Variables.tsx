@@ -16,7 +16,9 @@ export function Variables(): JSX.Element {
     <dl class="vars">
       {names.map((name) => {
         const c = changes.get(name);
-        const value = c ? c.now : part.vars[name];
+        // whichever is newer: the part list (current state) or the run's change (its diff step can
+        // land before the part list refetch does)
+        const value = c && (!(name in part.vars) || c.ts > part.mtime) ? c.now : part.vars[name];
         const title = c ? `was ${c.prev === null ? "unknown" : c.prev.toFixed(2)} · set by ${who}` : undefined;
         return (
           <div class="var-row" key={name}>

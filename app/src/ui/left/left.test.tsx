@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/preact";
 import { readFileSync } from "node:fs";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentRun, PartSummary, Step } from "../../api/types";
 import { isAutoNumbered } from "../../lib/names";
 import { actions, focusedStepId, inflight, parts, resetStore, runs, selectedPartId, selectedRunId, steps } from "../../state/store";
@@ -39,6 +39,61 @@ describe("left pane", () => {
     render(<PartList />);
     expect(screen.getByText("Part · mount plate")).toBeTruthy();
     expect(screen.getByText("5.7 g")).toBeTruthy();
+  });
+
+  it("first_part_fallback_is_shown_but_not_selected", () => {
+    load();
+    expect(selectedPartId.value).toBeNull();
+    render(<div><PartList /><Variables /></div>);
+    const row = screen.getByRole("button", { name: /mount plate/ });
+    expect(row.getAttribute("aria-pressed")).toBe("false");
+    expect(row.className).not.toContain("sel"); // no blue without a selection
+    expect(screen.getByTestId("var-thickness")).toBeTruthy(); // its variables still show
+  });
+
+  it("variables_show_the_current_value_not_the_runs", () => {
+    load();
+    selectedRunId.value = RUN;
+    // the part was changed again after this run's diff (newer mtime): show the current value
+    parts.value = fixtureParts.map((p) => ({ ...p, vars: { ...p.vars, thickness: 7 }, mtime: 9e9 }));
+    render(<Variables />);
+    const v = screen.getByTestId("var-thickness");
+    expect(v.textContent).toBe("7.00 mm");
+    expect(v.getAttribute("data-changed")).toBe("true");
+  });
+
+  it("variables_show_the_runs_value_while_the_part_list_lags", () => {
+    load();
+    selectedRunId.value = RUN;
+    // the diff step landed; the /parts refetch hasn't yet (older mtime, old value)
+    parts.value = fixtureParts.map((p) => ({ ...p, vars: { ...p.vars, thickness: 5 }, mtime: 1 }));
+    render(<Variables />);
+    expect(screen.getByTestId("var-thickness").textContent).toBe("6.00 mm");
+  });
+
+  it("left_pane_follows_the_run_the_console_shows", () => {
+    load();
+    // newer but finished run vs the (older) running fixture run: the console shows the running one
+    const newer: AgentRun = { ...fixtureRuns[0], id: "newer0000000", task: "drill the holes", status: "done", created_at: fixtureRuns[0].created_at + 600, updated_at: fixtureRuns[0].created_at + 660 };
+    runs.value = new Map([[RUN, fixtureRuns[0]], [newer.id, newer]]);
+    render(<Variables />);
+    expect(screen.getByTestId("var-thickness").getAttribute("data-changed")).toBe("true");
+  });
+
+  it("running_elapsed_ticks", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date(1_000_000 * 1000));
+      const r: AgentRun = { ...fixtureRuns[0], status: "running", created_at: 1_000_000 - 5, updated_at: 1_000_000 - 5 };
+      runs.value = new Map([[r.id, r]]);
+      render(<History />);
+      const row = screen.getByTestId("run-row");
+      expect(row.textContent).toContain("5s");
+      act(() => { vi.advanceTimersByTime(3000); });
+      expect(row.textContent).toContain("8s");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("selecting_part_updates_store", () => {

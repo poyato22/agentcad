@@ -8,6 +8,13 @@ const NO_HTML_INJECTION = [
   { selector: "MemberExpression[property.name=/^(innerHTML|outerHTML)$/]", message: "innerHTML/outerHTML are banned: use textContent or JSX." },
   { selector: "CallExpression[callee.property.name='insertAdjacentHTML']", message: "insertAdjacentHTML is banned." },
   { selector: "CallExpression[callee.object.name='document'][callee.property.name=/^(write|writeln)$/]", message: "document.write is banned." },
+  // computed spellings: el["innerHTML"], el[`srcdoc`]
+  { selector: "MemberExpression[computed=true][property.value=/^(innerHTML|outerHTML|srcdoc)$/]", message: "HTML sinks are banned, also via computed keys." },
+  { selector: "MemberExpression[computed=true][property.type='TemplateLiteral'][property.quasis.0.value.raw=/^(innerHTML|outerHTML|srcdoc)$/]", message: "HTML sinks are banned, also via computed keys." },
+  { selector: "MemberExpression[property.name='srcdoc']", message: "iframe srcdoc is banned." },
+  { selector: "JSXAttribute[name.name=/^src[dD]oc$/]", message: "iframe srcdoc is banned." },
+  { selector: "NewExpression[callee.name='DOMParser']", message: "DOMParser is banned: it parses untrusted HTML." },
+  { selector: "CallExpression[callee.property.name=/^(createContextualFragment|setHTMLUnsafe|parseHTMLUnsafe)$/]", message: "HTML parsing sinks are banned." },
 ];
 
 export default tseslint.config(

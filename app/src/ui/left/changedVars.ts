@@ -1,6 +1,6 @@
 import type { Step } from "../../api/types";
 
-export interface VarChange { name: string; now: number; prev: number | null; runId: string; stepId: number }
+export interface VarChange { name: string; now: number; prev: number | null; runId: string; stepId: number; ts: number }
 
 type Rec = Record<string, unknown>;
 const isRec = (v: unknown): v is Rec => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -19,37 +19,48 @@ function numVars(v: unknown): Record<string, number> {
   return r;
 }
 
+const callIdOf = (s: Step): string | null => (typeof s.payload["call_id"] === "string" ? s.payload["call_id"] : null);
+
 /**
- * Variables of `partId` changed by mirror_part_set_vars in this run. For each tool_call
- * (name=mirror_part_set_vars, input.part_id=partId) the names come from input.vars; `now` is the value in
- * the following diff step's output.data.vars; `prev` is the latest earlier create/set_vars output value
- * for that part, else null. The latest change per name wins. Calls without a diff yet are skipped.
+ * Every variable change in one pass over a run's steps, by the diff step that made it. For each
+ * tool_call (name=mirror_part_set_vars) the names come from input.vars; `now` is the value in the
+ * following diff step's output.data.vars (paired by call_id; steps without a call_id never pair);
+ * `prev` is the latest earlier create/set_vars output value for that part, else null.
  */
-export function changedVars(partId: string, runSteps: readonly Step[]): Map<string, VarChange> {
-  const result = new Map<string, VarChange>();
-  const known: Record<string, number> = {};       // latest vars seen so far for this part
-  const pending = new Map<string, string[]>();    // call_id → variable names being set
+export function varChangesByStep(runSteps: readonly Step[], onlyPart?: string): Map<number, VarChange[]> {
+  const out = new Map<number, VarChange[]>();
+  const known = new Map<string, Record<string, number>>();             // part → latest vars seen
+  const pending = new Map<string, { part: string; names: string[] }>(); // call_id → vars being set
   for (const s of runSteps) {
+    const callId = callIdOf(s);
     if (s.kind === "tool_call") {
       const input = s.payload["input"];
-      if (s.payload["name"] === "mirror_part_set_vars" && isRec(input) && input["part_id"] === partId) {
-        pending.set(String(s.payload["call_id"]), Object.keys(numVars(input["vars"])));
+      const part = isRec(input) ? input["part_id"] : undefined;
+      if (callId && s.payload["name"] === "mirror_part_set_vars" && isRec(input) && typeof part === "string" && (onlyPart === undefined || part === onlyPart)) {
+        pending.set(callId, { part, names: Object.keys(numVars(input["vars"])) });
       }
       continue;
     }
     const data = outData(s);
-    if (!data || data["part_id"] !== partId) continue;
+    const part = data ? data["part_id"] : undefined;
+    if (!data || typeof part !== "string" || (onlyPart !== undefined && part !== onlyPart)) continue;
     const vars = numVars(data["vars"]);
-    const callId = String(s.payload["call_id"]);
-    const names = pending.get(callId);
-    if (names && s.kind === "diff") {
-      for (const name of names) {
-        if (!(name in vars)) continue;
-        result.set(name, { name, now: vars[name], prev: name in known ? known[name] : null, runId: s.run_id, stepId: s.id });
-      }
+    const seen = known.get(part) ?? {};
+    const p = callId ? pending.get(callId) : undefined;
+    if (p && callId && p.part === part && s.kind === "diff") {
+      const changes = p.names.filter((n) => n in vars)
+        .map((name) => ({ name, now: vars[name], prev: name in seen ? seen[name] : null, runId: s.run_id, stepId: s.id, ts: s.ts }));
+      if (changes.length) out.set(s.id, changes);
       pending.delete(callId);
     }
-    if (s.payload["name"] === "mirror_part_create" || s.payload["name"] === "mirror_part_set_vars") Object.assign(known, vars);
+    if (s.payload["name"] === "mirror_part_create" || s.payload["name"] === "mirror_part_set_vars") known.set(part, { ...seen, ...vars });
   }
+  return out;
+}
+
+/** Variables of `partId` changed by mirror_part_set_vars in this run; the latest change per name wins. */
+export function changedVars(partId: string, runSteps: readonly Step[]): Map<string, VarChange> {
+  const result = new Map<string, VarChange>();
+  for (const changes of varChangesByStep(runSteps, partId).values()) for (const c of changes) result.set(c.name, c);
   return result;
 }

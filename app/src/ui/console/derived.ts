@@ -4,7 +4,8 @@
 import { computed, effect, signal, type ReadonlySignal } from "@preact/signals";
 import type { AgentRun } from "../../api/types";
 import { runLabel } from "../../lib/names";
-import { approvals, filter, inflight, liveText, questions, runs, selectedRunId, steps } from "../../state/store";
+import { effectiveRunId, rosterOrder } from "../../state/selection";
+import { approvals, filter, inflight, liveText, questions, runs, steps } from "../../state/store";
 import { buildLogFrame, type BuildLogInput, type LogFrame } from "./logModel";
 
 /** Folds the user opened, by foldKey. */
@@ -19,15 +20,10 @@ export function toggleFold(key: string): void {
 export const runList: ReadonlySignal<readonly AgentRun[]> = computed(() => [...runs.value.values()]);
 
 /** Roster order: running first, then newest first. */
-export const rosterRuns: ReadonlySignal<readonly AgentRun[]> = computed(() =>
-  [...runList.value].sort((a, b) => Number(b.status === "running") - Number(a.status === "running") || b.created_at - a.created_at));
+export const rosterRuns: ReadonlySignal<readonly AgentRun[]> = computed(() => rosterOrder(runList.value));
 
-/** The run the console shows: the selected one, else the newest running run, else the newest run. */
-export const effectiveRunId: ReadonlySignal<string | null> = computed(() => {
-  const sel = selectedRunId.value;
-  if (sel && runs.value.has(sel)) return sel;
-  return rosterRuns.value[0]?.id ?? sel ?? null;
-});
+/** The run the console shows (shared with the command line and the left pane; state/selection.ts). */
+export { effectiveRunId };
 
 export const runLabels: ReadonlySignal<ReadonlyMap<string, string>> = computed(() => {
   const all = runList.value;

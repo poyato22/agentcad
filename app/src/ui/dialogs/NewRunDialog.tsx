@@ -43,7 +43,8 @@ function DialogBody(): JSX.Element {
 
   useEffect(() => {
     let live = true;
-    Promise.all([actions.client().agents(), actions.client().models()]).then(([as, ms]) => {
+    // via a promise so "core client not ready" (⌘N before the core is up) shows as an error
+    Promise.resolve().then(() => Promise.all([actions.client().agents(), actions.client().models()])).then(([as, ms]) => {
       if (!live) return;
       setAgents(as);
       setModels(ms);

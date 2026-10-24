@@ -46,7 +46,22 @@ describe("evidenceFor", () => {
       step(4, "tool_call", { call_id: "m2", name: "onshape_merge_request", input: {} }),
       step(5, "measure", out("mirror_measure", "c_part")),
     ];
-    expect(evidenceFor(approval, steps).map((e) => e.stepId)).toEqual([1, 3]);
+    // lower bound: the previous call of the same action (its evidence belongs to that card)
+    expect(evidenceFor(approval, steps).map((e) => e.stepId)).toEqual([3]);
+  });
+
+  it("an_earlier_card_matches_its_own_call_by_payload", () => {
+    const steps = [
+      step(1, "measure", out("mirror_measure", "a_part")),
+      step(2, "tool_call", { call_id: "m1", name: "onshape_merge_request", input: { branch: "b1" } }),
+      step(3, "measure", out("mirror_measure", "b_part")),
+      step(4, "tool_call", { call_id: "m2", name: "onshape_merge_request", input: { branch: "b2" } }),
+    ];
+    // payload = the gate's model_dump of the input (may carry defaults the input left out)
+    const first = { ...approval, id: "ap1", status: "rejected" as const, payload: { branch: "b1", note: null } };
+    const second = { ...approval, id: "ap2", payload: { branch: "b2", note: null } };
+    expect(evidenceFor(first, steps).map((e) => e.stepId)).toEqual([1]);
+    expect(evidenceFor(second, steps).map((e) => e.stepId)).toEqual([3]);
   });
 
   it("ignores_other_runs_and_other_tool_calls", () => {

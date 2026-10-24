@@ -1,12 +1,13 @@
 // Typed HTTP client for the local core. Every request carries the bearer token; every response
 // is validated with zod. Failures always surface as CoreError (never a raw fetch/zod error).
 import { z } from "zod";
+import { debug } from "../lib/log";
 import {
-  agentInfoSchema, agentRunSchema, approvalSchema, cancelledSchema, coreErrorBodySchema, coreStatusSchema,
+  agentInfoSchema, agentRunSchema, approvalSchema, cancelAllSchema, coreErrorBodySchema, coreStatusSchema,
   modelsInfoSchema, okSchema, partSummarySchema, runIdSchema, stepSchema,
 } from "./schemas";
 import type {
-  AgentInfo, AgentRun, Approval, CoreInfo, CoreStatusInfo, DecisionBody, ErrorCode, ModelsInfo, NewRunBody,
+  AgentInfo, AgentRun, Approval, CancelAllResult, CoreInfo, CoreStatusInfo, DecisionBody, ErrorCode, ModelsInfo, NewRunBody,
   PartSummary, Step,
 } from "./types";
 
@@ -48,15 +49,16 @@ export class CoreClient {
 
   listRuns(limit = 50): Promise<AgentRun[]> { return this.json("GET", "/runs", z.array(agentRunSchema), { query: { limit } }); }
   getRun(id: string): Promise<AgentRun> { return this.json("GET", `/runs/${enc(id)}`, agentRunSchema); }
+  /** One malformed step (e.g. a kind this UI doesn't know yet) is dropped, not the whole page. */
   steps(runId: string, afterId = 0): Promise<Step[]> {
-    return this.json("GET", `/runs/${enc(runId)}/steps`, z.array(stepSchema), { query: { after_id: afterId } });
+    return this.json("GET", `/runs/${enc(runId)}/steps`, lenientSteps, { query: { after_id: afterId } });
   }
   createRun(body: NewRunBody): Promise<{ run_id: string }> { return this.json("POST", "/runs", runIdSchema, { body }); }
   message(runId: string, text: string): Promise<{ ok: true }> {
     return this.json("POST", `/runs/${enc(runId)}/message`, okSchema, { body: { text } });
   }
   cancel(runId: string): Promise<{ ok: true }> { return this.json("POST", `/runs/${enc(runId)}/cancel`, okSchema); }
-  cancelAll(): Promise<{ cancelled: string[] }> { return this.json("POST", "/runs/cancel_all", cancelledSchema); }
+  cancelAll(): Promise<CancelAllResult> { return this.json("POST", "/runs/cancel_all", cancelAllSchema); }
 
   pendingApprovals(runId?: string): Promise<Approval[]> {
     return this.json("GET", "/approvals", z.array(approvalSchema), { query: { status: "pending", run_id: runId } });
@@ -156,6 +158,16 @@ function summarizeDetail(body: unknown): string {
   return detail.slice(0, 3).map((d: { loc?: unknown[]; msg?: string }) =>
     `${Array.isArray(d.loc) ? d.loc.join(".") : "?"}: ${d.msg ?? "invalid"}`).join("; ");
 }
+
+const lenientSteps: z.ZodType<Step[]> = z.array(z.unknown()).transform((items) => {
+  const out: Step[] = [];
+  for (const item of items) {
+    const r = stepSchema.safeParse(item);
+    if (r.success) out.push(r.data);
+    else debug("dropping malformed step", (item as { id?: unknown } | null)?.id, r.error.issues[0]?.message);
+  }
+  return out;
+});
 
 const enc = encodeURIComponent;
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));

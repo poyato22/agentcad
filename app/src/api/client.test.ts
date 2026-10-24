@@ -128,6 +128,24 @@ describe("CoreClient", () => {
     ]);
   });
 
+  it("one_bad_step_does_not_block_the_page", async () => {
+    const ok = (id: number) => ({ id, run_id: "r1", ts: id, kind: "compaction", payload: { summarized_messages: 1 }, evidence_hash: "e", prev_hash: null, collapsed: false });
+    const { client } = clientWith(async () => json([ok(1), { ...ok(2), kind: "hologram" }, ok(3)]));
+    expect((await client.steps("r1")).map((s) => s.id)).toEqual([1, 3]);
+    // a page that is not a list at all is still a validation error
+    const bad = clientWith(async () => json({ nope: true }));
+    expect((await caught(bad.client.steps("r1"))).code).toBe("validation");
+  });
+
+  it("cancel_all_parses_failed_list", async () => {
+    const body = { cancelled: ["r1"], failed: [{ run_id: "r2", error: "RuntimeError: boom" }] };
+    const { client } = clientWith(async () => json(body));
+    expect(await client.cancelAll()).toEqual(body);
+    // an older core without `failed` still parses (as no failures)
+    const old = clientWith(async () => json({ cancelled: [] }));
+    expect(await old.client.cancelAll()).toEqual({ cancelled: [], failed: [] });
+  });
+
   it("unknown_error_body_falls_back_by_status", async () => {
     const { client } = clientWith(async () => json({ detail: "Not Found" }, 404));
     const e = await caught(client.getRun("nope"));

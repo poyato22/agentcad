@@ -21,9 +21,7 @@ export async function stopAll(): Promise<string[]> {
   stopBusy.value = true;
   try {
     const res = await actions.client().cancelAll();
-    // The core is adding `failed`; the client schema may not carry it yet.
-    const failed = (res as { failed?: unknown }).failed;
-    const nFailed = Array.isArray(failed) ? failed.length : 0;
+    const nFailed = res.failed.length;
     showToast(nFailed ? `stopped ${res.cancelled.length} · ${nFailed} failed` : `stopped ${res.cancelled.length}`);
     return res.cancelled;
   } catch {

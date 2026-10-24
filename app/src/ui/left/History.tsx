@@ -1,10 +1,10 @@
 import type { JSX } from "preact";
-import { useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import type { AgentRun, Step } from "../../api/types";
 import { fmtElapsed, fmtSigned } from "../../lib/format";
 import { runLabel } from "../../lib/names";
 import { actions, runs, steps } from "../../state/store";
-import { changedVars } from "./changedVars";
+import { varChangesByStep } from "./changedVars";
 import { allRuns, newestFirst, num } from "./derived";
 import { Led, type LedTone } from "../common/Led";
 
@@ -17,12 +17,12 @@ function isRec(v: unknown): v is Record<string, unknown> { return typeof v === "
 /** The diff/decision steps of a run as "v-step: thickness 5→6 · +0.96 g". */
 export function stepRows(list: readonly Step[]): StepRow[] {
   const rows: StepRow[] = [];
-  list.forEach((s, i) => {
+  const byStep = varChangesByStep(list); // one pass, not one per diff
+  list.forEach((s) => {
     const out = isRec(s.payload["output"]) ? s.payload["output"] : null;
     const data = out && isRec(out["data"]) ? out["data"] : null;
     if (s.kind === "diff") {
-      const partId = data && typeof data["part_id"] === "string" ? data["part_id"] : null;
-      const ch = partId ? [...changedVars(partId, list.slice(0, i + 1)).values()].filter((c) => c.stepId === s.id) : [];
+      const ch = byStep.get(s.id) ?? [];
       const delta = data && isRec(data["delta"]) ? data["delta"] : null;
       const mass = delta && typeof delta["mass_g"] === "number" ? delta["mass_g"] : null;
       let text = ch.length
@@ -38,6 +38,19 @@ export function stepRows(list: readonly Step[]): StepRow[] {
   return rows;
 }
 
+/** Running: time since start, ticking each second. Finished: start → last update. */
+function Elapsed({ run }: { run: AgentRun }): JSX.Element {
+  const running = run.status === "running";
+  const [now, setNow] = useState(() => Date.now() / 1000);
+  useEffect(() => {
+    if (!running) return;
+    setNow(Date.now() / 1000);
+    const id = setInterval(() => setNow(Date.now() / 1000), 1000);
+    return () => clearInterval(id);
+  }, [running]);
+  return <>{fmtElapsed((running ? now : run.updated_at) - run.created_at)}</>;
+}
+
 function RunItem({ run, open, onToggle }: { run: AgentRun; open: boolean; onToggle: () => void }): JSX.Element {
   const rows = open ? stepRows(steps.value.get(run.id) ?? []) : [];
   return (
@@ -45,7 +58,7 @@ function RunItem({ run, open, onToggle }: { run: AgentRun; open: boolean; onTogg
       <button type="button" class="left-row" aria-expanded={open} onClick={() => { actions.selectRun(run.id); onToggle(); }}>
         <Led tone={TONE[run.status]} title={run.status} />
         <span class="row-name" data-label>{runLabel(run, allRuns.value)}</span>
-        <span class="row-right faint">{fmtElapsed(run.updated_at - run.created_at)}</span>
+        <span class="row-right faint"><Elapsed run={run} /></span>
       </button>
       {open && (
         <ul class="step-list">

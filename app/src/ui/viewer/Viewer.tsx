@@ -3,8 +3,8 @@ import { computed } from "@preact/signals";
 import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { Vector3 } from "three";
-import type { PartSummary } from "../../api/types";
-import { actions, inflight, parts, runs, selectedPartId, steps } from "../../state/store";
+import { activePart } from "../../state/selection";
+import { actions, inflight, runs, steps } from "../../state/store";
 import { runLabel as formatRunLabel } from "../../lib/names";
 import type { PartScene } from "./loadPart";
 import { PartLoader } from "./partLoader";
@@ -13,13 +13,8 @@ import { TitleBlock } from "./TitleBlock";
 import { ViewerTools, type ViewMode } from "./ViewerTools";
 import "./viewer.css";
 
-/** The part on the sheet: the selected one, or the first part when nothing is selected. */
-export const activePart = computed<PartSummary | null>(() => {
-  const list = parts.value;
-  const sel = selectedPartId.value;
-  if (sel === null) return list[0] ?? null;
-  return list.find((p) => p.part_id === sel) ?? null;
-});
+/** The part on the sheet: the selected one, else the first part (state/selection.ts). */
+export { activePart };
 
 /** True while an agent tool call on the active part is in flight (edges turn blue). */
 export const highlighted = computed<boolean>(() => {

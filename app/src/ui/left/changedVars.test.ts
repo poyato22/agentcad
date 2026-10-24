@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Step } from "../../api/types";
 import steps from "../../../test/fixtures/core-ui/steps.json";
-import { changedVars } from "./changedVars";
+import { changedVars, varChangesByStep } from "./changedVars";
 
 const fixture = steps as unknown as Step[];
 
@@ -19,6 +19,30 @@ describe("changedVars", () => {
     expect(c?.stepId).toBe(7);
     expect(c?.runId).toBe(fixture[0].run_id);
     expect(changedVars("other_part", fixture).size).toBe(0);
+  });
+
+  it("steps_without_call_id_never_pair", () => {
+    // String(undefined) used to make both "undefined" and pair them
+    const s = [
+      step(1, "tool_call", { name: "mirror_part_set_vars", input: { part_id: "p", vars: { width: 9 } } }),
+      step(2, "diff", { name: "mirror_part_set_vars", output: { data: { part_id: "p", vars: { width: 9 } } } }),
+    ];
+    expect(changedVars("p", s).size).toBe(0);
+  });
+
+  it("varChangesByStep_matches_changedVars_per_prefix_in_one_pass", () => {
+    const s = [
+      step(1, "tool_call", { call_id: "a", name: "mirror_part_set_vars", input: { part_id: "p", vars: { t: 6 } } }),
+      step(2, "diff", { call_id: "a", name: "mirror_part_set_vars", output: { data: { part_id: "p", vars: { t: 6 } } } }),
+      step(3, "tool_call", { call_id: "b", name: "mirror_part_set_vars", input: { part_id: "q", vars: { w: 2 } } }),
+      step(4, "diff", { call_id: "b", name: "mirror_part_set_vars", output: { data: { part_id: "q", vars: { w: 2 } } } }),
+      step(5, "tool_call", { call_id: "c", name: "mirror_part_set_vars", input: { part_id: "p", vars: { t: 7 } } }),
+      step(6, "diff", { call_id: "c", name: "mirror_part_set_vars", output: { data: { part_id: "p", vars: { t: 7 } } } }),
+    ];
+    const by = varChangesByStep(s);
+    expect(by.get(2)).toEqual([{ name: "t", now: 6, prev: null, runId: "r", stepId: 2, ts: 2 }]);
+    expect(by.get(4)).toEqual([{ name: "w", now: 2, prev: null, runId: "r", stepId: 4, ts: 4 }]);
+    expect(by.get(6)).toEqual([{ name: "t", now: 7, prev: 6, runId: "r", stepId: 6, ts: 6 }]);
   });
 
   it("changedVars_prev_unknown_is_null", () => {

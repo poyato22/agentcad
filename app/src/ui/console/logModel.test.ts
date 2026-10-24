@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Step } from "../../api/types";
-import { buildLog, filterCounts, itemKey, type LogItem } from "./logModel";
+import { buildLog, filterCounts, itemKey, lineDelta, type LogItem } from "./logModel";
 import { approval, input, message, pairs, resetIds, run, step, toolCall, toolFailure, toolResult } from "./testSteps";
 
 const FIXTURE_STEPS = JSON.parse(readFileSync(resolve(__dirname, "../../../test/fixtures/core-ui/steps.json"), "utf8")) as Step[];
@@ -12,6 +12,25 @@ const kinds = (items: LogItem[]) => items.map((i) => i.kind);
 type Call = Extract<LogItem, { kind: "call" }>;
 
 beforeEach(() => resetIds());
+
+describe("lineDelta", () => {
+  it("counts_like_a_line_diff_moves_included", () => {
+    expect(lineDelta("a\nb\nc\n", "a\nB\nc\n")).toEqual({ added: 1, removed: 1 });
+    expect(lineDelta("a\nb\nc", "c\na\nb")).toEqual({ added: 1, removed: 1 }); // a moved line is -1 +1
+    expect(lineDelta("x\nx\ny", "y\nx\nx")).toEqual({ added: 1, removed: 1 });
+    expect(lineDelta("", "a\nb")).toEqual({ added: 2, removed: 0 });
+    expect(lineDelta("a\nb", "")).toEqual({ added: 0, removed: 2 });
+    expect(lineDelta("same\n", "same\n")).toEqual({ added: 0, removed: 0 });
+  });
+
+  it("huge_inputs_stay_bounded", () => {
+    const big = Array.from({ length: 5000 }, (_, i) => `line ${i}`).join("\n");
+    const t0 = performance.now();
+    const d = lineDelta(big, big + "\nextra");
+    expect(performance.now() - t0).toBeLessThan(500);
+    expect(d).toEqual({ added: 1, removed: 0 });
+  });
+});
 
 describe("buildLog", () => {
   it("pairs_call_with_result_by_call_id", () => {
@@ -263,6 +282,19 @@ describe("buildLog on real core sequences", () => {
     expect(errs.map((i) => (i.kind === "call" ? i.callId : i.kind))).toEqual(["t2"]);
   });
 
+  it("a_call_that_never_finished_does_not_absorb_later_steps", () => {
+    const s: Step[] = [
+      toolCall("r1", "a", "onshape_read", {}, 100),                       // never gets a result
+      message("r1", "user", "try again", 101),                            // a new turn
+      toolCall("r1", "b", "onshape_read", {}, 102), toolResult("r1", "b", "onshape_read", 103),
+      step("r1", "onshape_call", { method: "GET", path: "/api/v10/documents/d1", status: 200 }, 104),
+    ];
+    const items = buildLog(input({ stepList: s, selectedRunId: "r1" }));
+    const calls = items.filter((i): i is Call => i.kind === "call");
+    expect(calls.find((c) => c.callId === "a")?.attached).toEqual([]);
+    expect(calls.find((c) => c.callId === "b")?.attached.map((x) => x.kind)).toEqual(["onshape_call"]);
+  });
+
   it("onshape_calls_attach_to_their_call_and_do_not_break_folding", () => {
     // core onshape/client.py: onshape_call {method, path, status, counted, ledger_id}, no call_id, written while the tool runs
     const s: Step[] = [];
@@ -293,6 +325,20 @@ describe("buildLog on real core sequences", () => {
     // with no call to attach to it is a quiet note
     const alone = buildLog(input({ stepList: [message("r1", "user", "hi", 1), step("r1", "verify", { summary: "ok" }, 2, { id: 7777 })], selectedRunId: "r1" }));
     expect(alone[1]).toMatchObject({ kind: "note", text: "verify · ok", stepId: 7777 });
+  });
+
+  it("folds_carry_run_id_and_never_span_runs_in_all_scope", () => {
+    const runs = [run("r1"), run("r2", { agent: "checker" })];
+    // same call ids in both runs, interleaved in time so both runs' calls are adjacent when merged
+    const s = [...pairs("r1", 4, 100), ...pairs("r2", 4, 200)];
+    const all = buildLog(input({ stepList: s, runs, filter: { scope: "all", kind: "everything" } }));
+    const folds = all.filter((i): i is Extract<LogItem, { kind: "fold" }> => i.kind === "fold");
+    expect(folds).toHaveLength(2);
+    expect(folds.map((f) => f.runId)).toEqual(["r1", "r2"]);
+    for (const f of folds) expect(new Set(f.calls.map((c) => c.runId)).size).toBe(1);
+    const keys = all.map(itemKey);
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(keys.filter((k) => k.includes("f:"))).toEqual(["r1/f:k1", "r2/f:k1"]);
   });
 
   it("keys_use_step_ids_and_run_prefix_in_all_scope", () => {

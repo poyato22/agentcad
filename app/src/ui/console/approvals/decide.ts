@@ -5,7 +5,7 @@
 import { signal, type Signal } from "@preact/signals";
 import { CoreError } from "../../../api/client";
 import type { Approval } from "../../../api/types";
-import { actions } from "../../../state/store";
+import { actions, retiredApprovals } from "../../../state/store";
 
 export type Decision = "approve" | "keep_branch" | "reject";
 export interface CardNotice { text: string; tone: "blue" | "red" }
@@ -17,7 +17,7 @@ export const notices: Signal<ReadonlyMap<string, CardNotice>> = signal<ReadonlyM
 /** Rejections the user made with "Keep branch" (UI-only until the core records an outcome). */
 export const keptBranch: Signal<ReadonlySet<string>> = signal<ReadonlySet<string>>(new Set());
 /** Cards whose proposal was replaced by a different approval: they can no longer decide. */
-export const retired: Signal<ReadonlySet<string>> = signal<ReadonlySet<string>>(new Set());
+export const retired: Signal<ReadonlySet<string>> = retiredApprovals; // lives in the store: counters read it too
 
 const inflight = new Map<string, Promise<Approval>>();
 

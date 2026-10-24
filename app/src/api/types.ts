@@ -54,6 +54,9 @@ export interface NewRunBody { agent: string; prompt: string; model_ref?: string 
 /** edited_payload is not sent in v1. */
 export interface DecisionBody { payload_hash: string; approve: boolean }
 
+/** POST /runs/cancel_all. `failed` lists runs the core could not cancel. */
+export interface CancelAllResult { cancelled: string[]; failed: { run_id: string; error: string }[] }
+
 /** GET /agents item. `model` may be "inherit". */
 export interface AgentInfo { name: string; description: string; model: string }
 

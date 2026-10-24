@@ -14,17 +14,27 @@ vi.mock("./ui/viewer/scene", () => ({
 afterEach(() => { cleanup(); resetStore(); });
 
 describe("App shell", () => {
-  it("renders_all_regions_and_stubs", () => {
+  it("renders_every_real_pane_in_its_region", () => {
     const { container } = render(<App />);
+    const inRegion = (region: string, sel: string) => container.querySelector(`[data-region="${region}"] ${sel}`);
     for (const r of ["app", "topbar", "left", "viewer", "console"]) {
       expect(container.querySelector(`[data-region="${r}"]`)).not.toBeNull();
     }
-    expect(container.querySelector('[data-testid="viewer"]')).not.toBeNull(); // real viewer (Task 6)
-    for (const s of ["LeftPane", "CommandLine"]) { // remaining stub markers; Task 10 replaces this test
-      expect(container.querySelector(`[data-stub="${s}"]`)).not.toBeNull();
-    }
-    expect(container.querySelector('[data-region="console"] [data-console]')).not.toBeNull(); // Task 7
-    expect(container.querySelector('[data-stub="NewRunDialog"]')).toBeNull();
+    expect(inRegion("topbar", "nav[aria-label=location]")).not.toBeNull();             // Task 4
+    expect(screen.getByRole("button", { name: /stop all/i }).closest("[data-region=topbar]")).not.toBeNull();
+    expect(inRegion("left", '[data-testid="left-pane"]')).not.toBeNull();              // Task 5
+    expect(container.querySelector('[data-region="left"]')?.textContent).toMatch(/Parts[\s\S]*Variables[\s\S]*History/i);
+    expect(inRegion("viewer", '[data-testid="viewer"]')).not.toBeNull();               // Task 6
+    expect(inRegion("console", "[data-console] [data-roster]")).not.toBeNull();        // Task 7
+    expect(inRegion("console", "[data-console] [data-log-scroll]")).not.toBeNull();
+    expect(inRegion("console", "[data-console] [data-command-line] textarea")).not.toBeNull(); // Task 9
+    expect(container.querySelector("[data-stub]")).toBeNull(); // no placeholder left anywhere
+  });
+
+  it("roster_new_run_button_opens_the_dialog", async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "+ new run" }));
+    expect(await screen.findByRole("dialog")).toBeTruthy();
   });
 
   it("reflects_connection_state", async () => {
@@ -43,7 +53,7 @@ describe("App shell", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("card_stubs_render_untrusted_text_as_text", () => {
+  it("cards_render_untrusted_text_as_text", () => {
     const a: Approval = {
       id: "a", run_id: "r", action: "<img src=x onerror=alert(1)>", payload: {}, payload_hash: "h", microversion: null,
       deltas: {}, status: "pending", expires_at: 0, decided_by: null, decided_at: null, edited_payload: null,

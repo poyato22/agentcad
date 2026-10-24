@@ -1,12 +1,14 @@
 import type { JSX } from "preact";
 import { fmtGrams } from "../../lib/format";
 import { partLabel } from "../../lib/names";
-import { actions, parts } from "../../state/store";
-import { activePart, changingParts } from "./derived";
+import { actions, parts, selectedPartId } from "../../state/store";
+import { changingParts } from "./derived";
 
 export function PartList(): JSX.Element {
   const list = parts.value;
-  const sel = activePart.value?.part_id ?? null;
+  // Only an explicit choice is "selected" (blue). The viewer shows the first part when nothing
+  // is selected, but that fallback row stays plain.
+  const sel = selectedPartId.value;
   const changing = changingParts.value;
   if (list.length === 0) return <div class="pane-empty">no parts yet</div>;
   return (

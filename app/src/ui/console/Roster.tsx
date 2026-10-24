@@ -7,7 +7,8 @@ import { useEffect, useState } from "preact/hooks";
 import type { AgentRun } from "../../api/types";
 import { fmtElapsed, fmtTokens, fmtUsd } from "../../lib/format";
 import { debug } from "../../lib/log";
-import { actions, approvals, questions } from "../../state/store";
+import { needsYou as needsYouSignal } from "../../state/selection";
+import { actions } from "../../state/store";
 import { Led, type LedTone } from "../common/Led";
 import { effectiveRunId, rosterRuns, runLabels } from "./derived";
 
@@ -35,9 +36,7 @@ export function Roster(): JSX.Element {
   const list = rosterRuns.value;
   const labels = runLabels.value;
   const selected = effectiveRunId.value;
-  const pendingApprovals = [...approvals.value.values()].filter((a) => a.status === "pending");
-  const needsYou = pendingApprovals.length + questions.value.size;
-  const needsRun = new Set([...pendingApprovals.map((a) => a.run_id), ...[...questions.value.values()].map((q) => q.run_id)]);
+  const { count: needsYou, runIds: needsRun } = needsYouSignal.value;
   const running = list.filter((r) => r.status === "running").length;
   const tokens = list.reduce((n, r) => n + r.input_tokens + r.output_tokens, 0);
   const usd = list.reduce((n, r) => n + r.usd, 0);

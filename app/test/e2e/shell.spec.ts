@@ -104,8 +104,8 @@ test("connects_to_fake_core_without_errors", async ({ page, fake }) => {
   page.on("pageerror", (e) => errors.push(String(e)));
   await page.goto("/");
   await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
-  // the resync on open went through CORS + bearer auth
+  // the resync on open went through CORS + bearer auth; the viewer then loads the first part's GLB
   await expect.poll(async () => (await fake.calls()).map((c) => c.path).sort()).toEqual(
-    ["/approvals", "/parts", "/runs", "/runs/b7c79a57cbb4/steps", "/status"]);
+    ["/approvals", "/parts", "/parts/mount_plate/model.glb", "/runs", "/runs/b7c79a57cbb4/steps", "/status"]);
   expect(errors).toEqual([]);
 });

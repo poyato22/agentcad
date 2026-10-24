@@ -26,10 +26,10 @@ test("new_run_flow", async ({ page, fake }) => {
     agent: "designer", prompt: "stiffen the upright", model_ref: "anthropic/claude-sonnet-5-5", edit_scope: ["*"], read_scope: ["*"],
   });
 
-  // The roster belongs to the console task; once it is merged the new run shows up as "designer · stiffen upright".
-  if ((await page.locator('[data-stub="ConsolePane"]').count()) === 0) {
-    await expect(page.locator("[data-region=console]").getByText("designer · stiffen upright").first()).toBeVisible();
-  }
+  // the new run shows up in the roster as "designer · stiffen upright", selected
+  const row = page.locator("[data-roster] [data-run]", { hasText: "designer · stiffen upright" });
+  await expect(row).toHaveCount(1);
+  await expect(row).toHaveAttribute("aria-selected", "true");
 });
 
 test("message_routes_to_at_target", async ({ page, fake }) => {

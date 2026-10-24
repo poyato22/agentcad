@@ -170,6 +170,7 @@ function runItems(runId: string, input: BuildLogInput, prevVars: ReadonlyMap<num
 
   // Calls started and not finished at this point of the walk; onshape_call steps attach to the newest.
   const open: CallItem[] = [];
+  let lastStarted: CallItem | null = null;
   const close = (cid: string) => {
     const i = open.findIndex((c) => c.callId === cid);
     if (i >= 0) open.splice(i, 1);
@@ -178,7 +179,10 @@ function runItems(runId: string, input: BuildLogInput, prevVars: ReadonlyMap<num
    *  before it, else show a quiet note. Either way it never splits a run of calls. */
   const attachOrNote = (s: Step, text: string) => {
     const last = out[out.length - 1]?.item;
-    const host = open[open.length - 1] ?? (last && last.kind === "call" ? last : null);
+    // only the most recently started call can still be running; an older unfinished one (its
+    // result never came) must not absorb steps of later calls
+    const newest = open[open.length - 1];
+    const host = (newest && newest === lastStarted ? newest : null) ?? (last && last.kind === "call" ? last : null);
     if (host) host.attached.push(s);
     else push({ kind: "note", text, ts: s.ts, stepId: s.id }, s.ts);
   };
@@ -192,6 +196,7 @@ function runItems(runId: string, input: BuildLogInput, prevVars: ReadonlyMap<num
       const result = results.get(cid) ?? null;
       const item = callItem(cid, str(p.name) ?? "", rec(p.input), s.ts, result);
       push(item, s.ts, s.collapsed);
+      lastStarted = item;
       if (result) {
         const extra = resultExtra(result, rec(p.input), prevVars);
         if (extra) push(extra, s.ts);
@@ -219,6 +224,7 @@ function runItems(runId: string, input: BuildLogInput, prevVars: ReadonlyMap<num
       case "message": {
         const text = str(p.text) ?? "";
         const role = p.role === "user" ? "user" : "assistant";
+        open.length = 0;                            // a new message: earlier calls are over
         if (!text.trim()) continue;                 // tool-use-only turn: its calls are the rows
         push({ kind: "message", step: s, role, text }, s.ts);
         lastMessage = role === "assistant" ? text : null;
@@ -296,20 +302,41 @@ function fileItem(s: Step, callId: string | null): LogItem {
   return { kind: "file", step: s, callId, path: str(s.payload.path) ?? "", added, removed };
 }
 
-/** +/- line counts: lines of the new text not matched in the old text and vice versa (multiset match). */
+/** Above this many cells the LCS table is skipped and lines are matched as a multiset. */
+const LCS_MAX_CELLS = 4_000_000;
+
+/** +/- line counts as a line diff reports them: lines outside the longest common subsequence
+ *  (common head and tail trimmed first; a very large middle falls back to a multiset match). */
 export function lineDelta(oldText: string, newText: string): { added: number; removed: number } {
   const lines = (t: string) => (t === "" ? [] : t.replace(/\n$/, "").split("\n"));
-  const pool = new Map<string, number>();
-  for (const l of lines(oldText)) pool.set(l, (pool.get(l) ?? 0) + 1);
-  let added = 0;
-  for (const l of lines(newText)) {
-    const n = pool.get(l) ?? 0;
-    if (n > 0) pool.set(l, n - 1);
-    else added++;
+  const a = lines(oldText);
+  const b = lines(newText);
+  let head = 0;
+  while (head < a.length && head < b.length && a[head] === b[head]) head++;
+  let tail = 0;
+  while (tail < a.length - head && tail < b.length - head && a[a.length - 1 - tail] === b[b.length - 1 - tail]) tail++;
+  const x = a.slice(head, a.length - tail);
+  const y = b.slice(head, b.length - tail);
+  if (x.length === 0 || y.length === 0) return { added: y.length, removed: x.length };
+  let common: number;
+  if (x.length * y.length <= LCS_MAX_CELLS) {
+    let prev = new Uint32Array(y.length + 1);
+    let cur = new Uint32Array(y.length + 1);
+    for (let i = 1; i <= x.length; i++) {
+      for (let j = 1; j <= y.length; j++) cur[j] = x[i - 1] === y[j - 1] ? prev[j - 1] + 1 : Math.max(prev[j], cur[j - 1]);
+      [prev, cur] = [cur, prev];
+    }
+    common = prev[y.length];
+  } else {
+    const pool = new Map<string, number>();
+    for (const l of x) pool.set(l, (pool.get(l) ?? 0) + 1);
+    common = 0;
+    for (const l of y) {
+      const n = pool.get(l) ?? 0;
+      if (n > 0) { pool.set(l, n - 1); common++; }
+    }
   }
-  let removed = 0;
-  for (const n of pool.values()) removed += n;
-  return { added, removed };
+  return { added: y.length - common, removed: x.length - common };
 }
 
 /** Extra row after a call: a diff box for diff results, a decision row for decision results. */
@@ -408,7 +435,7 @@ function fold(rows: Raw[], expanded: ReadonlySet<string>): LogItem[] {
   while (i < rows.length) {
     if (!foldable(rows[i])) { out.push(rows[i].item); i++; continue; }
     let j = i;
-    while (foldable(rows[j])) j++;
+    while (foldable(rows[j]) && rows[j].runId === rows[i].runId) j++; // a fold never spans runs ("all" scope)
     const group = rows.slice(i, j);
     const folded = group.map((r, k) => (group.length >= 3 ? k > 0 : r.collapsed));
     let k = 0;
@@ -420,6 +447,7 @@ function fold(rows: Raw[], expanded: ReadonlySet<string>): LogItem[] {
       if (expanded.has(callFoldKey(calls[0]))) out.push(...calls);
       else {
         const f: LogItem = { kind: "fold", calls, names: [...new Set(calls.map((c) => c.name))] };
+        f.runId = calls[0].runId;
         if (calls[0].runLabel) f.runLabel = calls[0].runLabel;
         out.push(f);
       }

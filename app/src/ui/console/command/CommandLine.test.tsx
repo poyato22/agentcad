@@ -15,7 +15,7 @@ const client = { message: vi.fn(), cancel: vi.fn(), cancelAll: vi.fn() };
 beforeEach(() => {
   client.message.mockReset().mockResolvedValue({ ok: true });
   client.cancel.mockReset().mockResolvedValue({ ok: true });
-  client.cancelAll.mockReset().mockResolvedValue({ cancelled: [] });
+  client.cancelAll.mockReset().mockResolvedValue({ cancelled: [], failed: [] });
   bindClient(client as unknown as CoreClient);
   runs.value = new Map([
     ["r1", run("r1", "designer", "stiffen upright", "done")],
@@ -85,9 +85,15 @@ describe("CommandLine", () => {
     render(<CommandLine />);
     fireEvent.paste(box(), { clipboardData: { getData: () => "hi\nthere" } });
     type("hi\nthere");
-    await Promise.resolve();
+    // the browser inserts a pasted newline as text: no keydown Enter, so nothing is sent
+    await new Promise((r) => setTimeout(r, 20));
     expect(client.message).not.toHaveBeenCalled();
+    expect(client.cancelAll).not.toHaveBeenCalled();
     expect(box().value).toBe("hi\nthere");
+    // Shift+Enter adds a line, never sends
+    enter({ shiftKey: true });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(client.message).not.toHaveBeenCalled();
     enter();
     await waitFor(() => expect(client.message).toHaveBeenCalledWith("r1", "hi\nthere"));
   });
@@ -100,6 +106,25 @@ describe("CommandLine", () => {
     const err = await screen.findByRole("alert");
     expect(err.textContent).toBe("run is still working — wait or stop it");
     expect(box().value).toBe("hello"); // kept so it can be re-sent
+  });
+
+  it("unknown_target_error_clears_when_the_line_is_edited", async () => {
+    render(<CommandLine />);
+    type("@ghost hello");
+    enter();
+    expect((await screen.findByRole("alert")).textContent).toContain("@ghost");
+    type("@designer hello");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("without_a_selection_targets_the_run_the_console_shows", async () => {
+    actions.selectRun(null);
+    render(<CommandLine />);
+    // the console shows the newest running run when nothing is selected (console/derived.ts)
+    expect(screen.getByTestId("target-chip").textContent).toMatch(/^→ planner · plan/);
+    type("status?");
+    enter();
+    await waitFor(() => expect(client.message).toHaveBeenCalledWith("r2", "status?"));
   });
 
   it("slash_stopall_calls_cancel_all", async () => {
@@ -140,6 +165,7 @@ describe("CommandLine", () => {
 
   it("no_selection_explains", async () => {
     selectedRunId.value = null;
+    runs.value = new Map(); // with runs, the console's fallback run is the target
     render(<CommandLine />);
     type("hello");
     enter();

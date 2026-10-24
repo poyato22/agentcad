@@ -5,7 +5,7 @@
 import { z } from "zod";
 import {
   ERROR_CODES, STEP_KINDS,
-  type AgentInfo, type AgentRun, type Approval, type CoreErrorBody, type CoreStatusInfo, type MisesEvent,
+  type AgentInfo, type AgentRun, type Approval, type CancelAllResult, type CoreErrorBody, type CoreStatusInfo, type MisesEvent,
   type ModelsInfo, type PartHole, type PartMetrics, type PartSummary, type Step, type ToolOutput,
 } from "./types";
 
@@ -75,7 +75,11 @@ export const coreErrorBodySchema = z.object({
 
 export const okSchema = z.object({ ok: z.literal(true) });
 export const runIdSchema = z.object({ run_id: z.string() });
-export const cancelledSchema = z.object({ cancelled: z.array(z.string()) });
+/** `failed` defaults to [] so a core that predates it still parses. */
+export const cancelAllSchema = z.object({
+  cancelled: z.array(z.string()),
+  failed: z.array(z.object({ run_id: z.string(), error: z.string() })).default([]),
+});
 
 /** Data of a `question_asked` event (the run id comes from the event itself). */
 export const questionAskedSchema = z.object({
@@ -98,4 +102,5 @@ export type SchemaChecks = [
   Assert<Same<z.infer<typeof partMetricsSchema>, PartMetrics>>,
   Assert<Same<z.infer<typeof partSummarySchema>, PartSummary>>,
   Assert<Same<z.infer<typeof coreErrorBodySchema>, CoreErrorBody>>,
+  Assert<Same<z.infer<typeof cancelAllSchema>, CancelAllResult>>,
 ];

@@ -51,6 +51,10 @@ function frames() {
       for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
     },
     get pending() { return queued !== null; },
+    /** Flush frames until none is booked (fetch results land one frame after they resolve). */
+    async drain() {
+      for (let i = 0; i < 20 && queued !== null; i++) await this.flush();
+    },
   };
 }
 
@@ -68,8 +72,7 @@ describe("startSync", () => {
     const stop = startSync(client, s as never, { schedule: f.schedule });
     s.state("open");
     expect(conn.value).toBe("open");
-    await f.flush();
-    await f.flush();
+    await f.drain();
     expect(c.listRuns).toHaveBeenCalledTimes(1);
     expect(c.pendingApprovals).toHaveBeenCalledTimes(1);
     expect(c.parts).toHaveBeenCalledTimes(1);
@@ -80,6 +83,22 @@ describe("startSync", () => {
     expect(coreStatus.value).toEqual(status);
     expect(parts.value).toEqual([]);
     expect(approvals.value.size).toBe(0);
+    stop();
+  });
+
+  it("fetch_results_land_in_the_next_frame_not_between_frames", async () => {
+    const { client } = fakeClient(() => [step(1)]);
+    const s = new FakeStream();
+    const f = frames();
+    const stop = startSync(client, s as never, { schedule: f.schedule });
+    s.state("open");
+    await f.flush(); // starts the fetches; their results resolve after this frame
+    expect(runs.value.size).toBe(0); // resolved, but not written outside a frame
+    expect(coreStatus.value).toBeNull();
+    expect(f.pending).toBe(true); // a frame is booked for them
+    await f.flush();
+    expect(runs.value.get(RID)?.agent).toBe("designer");
+    expect(coreStatus.value).toEqual(status);
     stop();
   });
 
@@ -94,6 +113,7 @@ describe("startSync", () => {
       s.emit(toolCall(RID, i));
       await f.flush();
     }
+    await f.drain();
     expect(c.steps.mock.calls.map((x) => x[1])).toEqual([0, 3, 5]);
     const ids = steps.value.get(RID)?.map((x) => x.id) ?? [];
     expect(ids).toEqual([1, 2, 3, 4, 5, 6]);
@@ -140,14 +160,12 @@ describe("startSync", () => {
     const f = frames();
     const stop = startSync(client, s as never, { schedule: f.schedule });
     s.state("open");
-    await f.flush();
-    await f.flush();
+    await f.drain();
     expect(steps.value.get(RID)?.map((x) => x.id)).toEqual([7, 8, 9]);
     s.state("reconnecting");
     expect(conn.value).toBe("reconnecting");
     s.state("open");
-    await f.flush();
-    await f.flush();
+    await f.drain();
     expect(c.steps).toHaveBeenLastCalledWith(RID, 9);
     expect(steps.value.get(RID)?.map((x) => x.id)).toEqual([7, 8, 9, 10]);
     stop();
@@ -164,6 +182,7 @@ describe("startSync", () => {
     await f.flush();
     s.emit(toolCall(RID, 2));
     await f.flush();
+    await f.drain();
     expect(c.steps).toHaveBeenCalledTimes(2);
     expect(steps.value.get(RID)?.map((x) => x.id)).toEqual([1]);
     stop();
@@ -188,8 +207,7 @@ describe("startSync", () => {
     await f.flush();                      // card upserted; fetchApprovals marked dirty
     expect(approvals.value.has(appr.id)).toBe(true);
     releaseStale([]);                     // stale response: no pending approvals
-    await f.flush();
-    await f.flush();
+    await f.drain();
     expect(c.pendingApprovals).toHaveBeenCalledTimes(2);
     expect(approvals.value.get(appr.id)?.status).toBe("pending");
     stop();
@@ -201,12 +219,10 @@ describe("startSync", () => {
     const f = frames();
     const stop = startSync(client, s as never, { schedule: f.schedule });
     s.state("open");
-    await f.flush();
-    await f.flush();
+    await f.drain();
     expect(steps.value.get(RID)).toEqual([]);
     s.emit({ type: "run_finished", run_id: "zzz", data: { status: "done" }, ts: 1 }); // triggers fetchRuns again
-    await f.flush();
-    await f.flush();
+    await f.drain();
     expect(c.listRuns).toHaveBeenCalledTimes(2);
     expect(c.steps.mock.calls.filter((x) => x[0] === RID)).toHaveLength(1);
     stop();

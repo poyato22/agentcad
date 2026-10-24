@@ -1,27 +1,19 @@
-// Derived left-pane state (computed from the store; no new store fields).
+// Derived left-pane state (computed from the store; no new store fields). The current run and
+// part are the ones every pane shares (state/selection.ts).
 import { computed } from "@preact/signals";
-import type { AgentRun, PartSummary, Step } from "../../api/types";
-import { inflight, parts, runs, selectedPartId, selectedRunId, steps } from "../../state/store";
+import type { AgentRun, Step } from "../../api/types";
+import { activePart, effectiveRun } from "../../state/selection";
+import { inflight, runs, steps } from "../../state/store";
 import { changedVars, type VarChange } from "./changedVars";
+
+export { activePart };
 
 export function newestFirst(m: ReadonlyMap<string, AgentRun>): AgentRun[] {
   return [...m.values()].sort((a, b) => b.created_at - a.created_at);
 }
 
-/** The selected part, else the first one. */
-export const activePart = computed<PartSummary | null>(() => {
-  const id = selectedPartId.value;
-  const list = parts.value;
-  return list.find((p) => p.part_id === id) ?? list[0] ?? null;
-});
-
-/** The selected run, else the newest. */
-export const activeRun = computed<AgentRun | null>(() => {
-  const m = runs.value;
-  const sel = selectedRunId.value;
-  if (sel && m.has(sel)) return m.get(sel) ?? null;
-  return newestFirst(m)[0] ?? null;
-});
+/** The run the console shows (selected, else the newest running run, else the newest). */
+export const activeRun = effectiveRun;
 
 export const activeSteps = computed<readonly Step[]>(() => {
   const r = activeRun.value;

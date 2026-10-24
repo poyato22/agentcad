@@ -285,8 +285,10 @@ describe("ConsolePane", () => {
     expect(container.querySelector("[data-roster]")).not.toBeNull();
     expect(container.querySelector("[data-filters]")).not.toBeNull();
     expect(container.querySelector("[data-log-scroll]")).not.toBeNull();
-    expect(container.querySelector('[data-stub="CommandLine"]')).not.toBeNull();
-    expect(container.querySelector('[data-stub="ApprovalCard"]')?.textContent).toContain("designer · stiffen upright");
+    expect(container.querySelector("[data-command-line]")).not.toBeNull();
+    const card = container.querySelector('[data-card][data-approval="a1"]');
+    expect(card?.textContent).toContain("designer · stiffen upright");
+    expect(card?.querySelector("button")).not.toBeNull(); // the real ApprovalCard, not a placeholder
   });
 
   it("defaults_to_the_latest_running_run", async () => {

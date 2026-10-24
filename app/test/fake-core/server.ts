@@ -21,6 +21,16 @@ export const DEFAULT_GLB = resolve(HERE, "../../../core/tests/fixtures/ui/mount_
 /** Same list as core ui_api.UI_ORIGINS. */
 export const UI_ORIGINS = ["tauri://localhost", "http://tauri.localhost", "http://localhost:1420", "http://127.0.0.1:1420"];
 
+/** Same list as core ui_api.add_cors (allow_headers); ETag is exposed. */
+export const CORS_ALLOW_HEADERS = ["Authorization", "Content-Type", "If-None-Match"];
+
+/** Same rule as core ui_api._etag_matches: "*", or any listed tag (W/ prefix ignored). */
+export function etagMatches(header: string | undefined, etag: string): boolean {
+  if (!header) return false;
+  if (header.trim() === "*") return true;
+  return header.split(",").some((t) => t.trim().replace(/^W\//, "") === etag);
+}
+
 const PART_ID_RE = /^[a-z][a-z0-9_]{1,40}$/;
 const DECIDED_BY = "local-user";
 
@@ -335,7 +345,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       method: "POST", re: /^\/runs\/cancel_all$/, h: () => {
         const ids = [...state.runs.values()].filter((r) => r.status === "running").map((r) => r.id);
         ids.forEach(cancelRun);
-        return { cancelled: ids };
+        return { cancelled: ids, failed: [] };
       },
     },
     {
@@ -421,7 +431,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         if (!part || !existsSync(file)) throw mises("not_found", `no model.glb for part ${id}`, "build the part first");
         const size = statSync(file).size;
         const etag = `"${BigInt(Math.round(part.mtime * 1e9))}-${size}"`;
-        if (r.headers["if-none-match"] === etag) {
+        if (etagMatches(r.headers["if-none-match"], etag)) {
           res.writeHead(304, { ETag: etag });
           res.end();
           return RAW;
@@ -466,8 +476,15 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         res.end("Disallowed CORS origin");
         return;
       }
+      // Starlette's CORSMiddleware refuses a preflight asking for a header outside the list
+      const asked = String(r.headers["access-control-request-headers"] ?? "").split(",").map((h) => h.trim().toLowerCase()).filter(Boolean);
+      if (asked.some((h) => !CORS_ALLOW_HEADERS.map((x) => x.toLowerCase()).includes(h))) {
+        res.writeHead(400, { "Content-Type": "text/plain" });
+        res.end("Disallowed CORS headers");
+        return;
+      }
       res.writeHead(200, {
-        "Access-Control-Allow-Methods": "GET, POST", "Access-Control-Allow-Headers": "Authorization, Content-Type",
+        "Access-Control-Allow-Methods": "GET, POST", "Access-Control-Allow-Headers": CORS_ALLOW_HEADERS.join(", "),
         "Access-Control-Max-Age": "600", "Content-Length": 0,
       });
       res.end();

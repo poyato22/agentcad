@@ -3,7 +3,8 @@ import type { JSX } from "preact";
 import type { ShellCoreStatus } from "../../api/connection";
 import type { StreamState } from "../../api/events";
 import type { CoreStatusInfo } from "../../api/types";
-import { approvals, conn, coreStatus, runs, shellStatus } from "../../state/store";
+import { needsYou } from "../../state/selection";
+import { conn, coreStatus, runs, shellStatus } from "../../state/store";
 import { Led, type LedTone } from "../common/Led";
 
 export function coreTone(shell: ShellCoreStatus, stream: StreamState): LedTone {
@@ -39,8 +40,7 @@ export function StatusLights(): JSX.Element {
   const os = onshapeTone(coreStatus.value);
   let running = 0;
   for (const r of runs.value.values()) if (r.status === "running") running++;
-  let needs = 0;
-  for (const a of approvals.value.values()) if (a.status === "pending") needs++;
+  const needs = needsYou.value.count;
 
   return (
     <div class="lights">

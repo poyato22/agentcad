@@ -60,6 +60,31 @@ describe("NewRunDialog", () => {
     expect(screen.getByText(/mises keys set openai/, { selector: "[data-hint]" })).toBeTruthy();
   });
 
+  it("double_click_on_start_creates_one_run", async () => {
+    let finish: (v: { run_id: string }) => void = () => {};
+    client.createRun.mockImplementation(() => new Promise((r) => { finish = r; }));
+    await open();
+    fireEvent.input(screen.getByLabelText("Task"), { target: { value: "stiffen the upright" } });
+    const btn = screen.getByText("Start");
+    fireEvent.click(btn);
+    fireEvent.click(btn); // same tick: no re-render in between
+    expect(client.createRun).toHaveBeenCalledTimes(1);
+    finish({ run_id: "newrun" });
+    await waitFor(() => expect(newRunOpen.value).toBe(false));
+  });
+
+  it("bad_model_400_keeps_dialog_open_with_core_message", async () => {
+    client.createRun.mockRejectedValue(new CoreError("invalid_input", "unknown vendor or empty model in \"anthropic/\"", { status: 400, hint: "vendors: anthropic, openai, ollama" }));
+    await open();
+    fireEvent.input(screen.getByLabelText("Task"), { target: { value: "stiffen the upright" } });
+    fireEvent.click(screen.getByText("Start"));
+    const err = await screen.findByRole("alert");
+    expect(err.textContent).toContain("unknown vendor or empty model");
+    expect(err.textContent).toContain("vendors: anthropic, openai, ollama");
+    expect(newRunOpen.value).toBe(true);
+    expect((screen.getByText("Start") as HTMLButtonElement).disabled).toBe(false); // can retry after fixing
+  });
+
   it("start_posts_exact_body_and_selects_run", async () => {
     await open();
     expect((screen.getByText("Start") as HTMLButtonElement).disabled).toBe(true); // task required

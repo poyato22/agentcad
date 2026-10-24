@@ -23,6 +23,9 @@ export const liveText: Signal<ReadonlyMap<string, string>> = signal<ReadonlyMap<
 export const inflight: Signal<ReadonlyMap<string, InflightCall>> = signal<ReadonlyMap<string, InflightCall>>(new Map());
 export const approvals: Signal<ReadonlyMap<string, Approval>> = signal<ReadonlyMap<string, Approval>>(new Map());
 export const questions: Signal<ReadonlyMap<string, Question>> = signal<ReadonlyMap<string, Question>>(new Map());
+/** Approval cards whose proposal a 409 showed was replaced: they can no longer be decided and no
+ *  longer count as "needs you", even before the next /approvals sync drops them. */
+export const retiredApprovals: Signal<ReadonlySet<string>> = signal<ReadonlySet<string>>(new Set());
 export const parts: Signal<readonly PartSummary[]> = signal<readonly PartSummary[]>([]);
 export const coreStatus: Signal<CoreStatusInfo | null> = signal<CoreStatusInfo | null>(null);
 
@@ -95,6 +98,7 @@ export function resetStore(): void {
     inflight.value = new Map();
     approvals.value = new Map();
     questions.value = new Map();
+    retiredApprovals.value = new Set();
     parts.value = [];
     coreStatus.value = null;
     selectedRunId.value = null;

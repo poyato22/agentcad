@@ -4,7 +4,9 @@ import { CoreError } from "../../../api/client";
 import type { AgentRun } from "../../../api/types";
 import { registerShortcut } from "../../../lib/keys";
 import { runLabel } from "../../../lib/names";
-import { actions, filter, follow, runs, selectedRunId, type LogFilter } from "../../../state/store";
+import { effectiveRun } from "../../../state/selection";
+import { actions, filter, follow, runs, type LogFilter } from "../../../state/store";
+import { stopAll } from "../../topbar/stopAll";
 import { isExternal } from "./isExternal";
 import { parseCommand, type Command } from "./parseCommand";
 import "./command.css";
@@ -40,7 +42,8 @@ export function CommandLine(): JSX.Element {
 
   const allRuns = [...runs.value.values()];
   const parsed: Command = value.trim() ? parseCommand(value, allRuns) : { kind: "message", target: "selected", text: "" };
-  const selected = selectedRunId.value ? runs.value.get(selectedRunId.value) : undefined;
+  // the run the console shows (selected, else the newest running run): what the chip names
+  const selected = effectiveRun.value ?? undefined;
   const chip = chipText(parsed, selected, allRuns);
 
   async function execute(cmd: Command): Promise<boolean> {
@@ -87,7 +90,7 @@ export function CommandLine(): JSX.Element {
           if (!selected) { setError("select a run first"); return false; }
           await actions.client().cancel(selected.id);
           return true;
-        case "stopall": await actions.client().cancelAll(); return true;
+        case "stopall": await stopAll(); return true; // same request, guard and toast as ⌘⇧.
         case "follow": {
           const a = arg.toLowerCase();
           if (a && a !== "on" && a !== "off") { setError("/follow on or /follow off"); return false; }
@@ -157,10 +160,9 @@ export function CommandLine(): JSX.Element {
     }
   }
 
-  // data-stub is kept only so the foundation App.test still finds the region; Task 10 drops it.
   const rows = Math.min(5, Math.max(1, value.split("\n").length));
   return (
-    <div class="cmd" data-stub="CommandLine">
+    <div class="cmd" data-command-line>
       {chip && <div class="cmd-chip dim" data-testid="target-chip">{chip}</div>}
       <div class="cmd-row">
         <span class="cmd-prompt" aria-hidden="true">❯</span>
@@ -172,7 +174,7 @@ export function CommandLine(): JSX.Element {
           rows={rows}
           value={value}
           spellcheck={false}
-          onInput={(e) => { setValue(e.currentTarget.value); cursor.current = -1; }}
+          onInput={(e) => { setValue(e.currentTarget.value); cursor.current = -1; setError(null); }}
           onKeyDown={onKeyDown}
         />
       </div>

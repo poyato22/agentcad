@@ -50,7 +50,7 @@ test("live_text_streams_then_settles", async ({ fake, page }) => {
 test("fold_expand_collapse", async ({ fake, page }) => {
   await fake.reset("console");
   await page.goto("/");
-  await page.locator(`[data-run="${CHECKER}"]`).click();
+  await page.locator(`[data-roster] [data-run="${CHECKER}"]`).click();
   const fold = page.getByRole("button", { name: "▸ 5 more tool calls · mirror_measure" });
   await expect(fold).toBeVisible();
   await expect(rows(page, "call")).toHaveCount(2);          // first measure + the failed set_vars
@@ -66,7 +66,7 @@ test("filters_switch", async ({ fake, page }) => {
   await fake.reset("console");
   await page.goto("/");
   await expect(chip(page, /^errors/)).toHaveText("errors 0");
-  await page.locator(`[data-run="${CHECKER}"]`).click();
+  await page.locator(`[data-roster] [data-run="${CHECKER}"]`).click();
   await expect(chip(page, /^errors/)).toHaveText("errors 1");
   await chip(page, /^errors/).click();
   await expect(rows(page)).toHaveCount(1);

@@ -65,6 +65,30 @@ describe("fake core", () => {
     expect(simple.headers.get("access-control-allow-origin")).toBe("tauri://localhost");
   });
 
+  it("cors_preflight_allows_if_none_match_and_exposes_etag_like_the_core", async () => {
+    const pre = await fetch(core.url + "/parts/mount_plate/model.glb", { method: "OPTIONS", headers: { Origin: "http://localhost:1420", "Access-Control-Request-Method": "GET", "Access-Control-Request-Headers": "authorization,if-none-match" } });
+    expect(pre.status).toBe(200);
+    expect(pre.headers.get("access-control-allow-headers")?.toLowerCase()).toContain("if-none-match");
+    // like Starlette's CORSMiddleware: a header outside the allow list fails the preflight
+    const odd = await fetch(core.url + "/runs", { method: "OPTIONS", headers: { Origin: "http://localhost:1420", "Access-Control-Request-Method": "GET", "Access-Control-Request-Headers": "x-evil" } });
+    expect(odd.status).toBe(400);
+    const glb = await fetch(core.url + "/parts/mount_plate/model.glb", { headers: { Origin: "http://localhost:1420", Authorization: "Bearer t0k" } });
+    expect(glb.headers.get("access-control-expose-headers")).toBe("ETag");
+  });
+
+  it("if_none_match_matches_like_the_core", async () => {
+    const auth = { Authorization: "Bearer t0k" };
+    const first = await fetch(core.url + "/parts/mount_plate/model.glb", { headers: auth });
+    const etag = first.headers.get("etag") as string;
+    await first.arrayBuffer();
+    for (const inm of [etag, `W/${etag}`, `"nope", ${etag}`, "*"]) {
+      const r = await fetch(core.url + "/parts/mount_plate/model.glb", { headers: { ...auth, "If-None-Match": inm } });
+      expect(r.status, inm).toBe(304);
+    }
+    const miss = await fetch(core.url + "/parts/mount_plate/model.glb", { headers: { ...auth, "If-None-Match": '"other"' } });
+    expect(miss.status).toBe(200);
+  });
+
   it("serves_base_scenario_through_the_typed_client", async () => {
     expect(await client.health()).toEqual({ ok: true });
     const runs = await client.listRuns();
@@ -163,7 +187,7 @@ describe("fake core", () => {
 
   it("cancel_all_cancels_running_runs_and_emits_run_finished", async () => {
     const { ws, events } = await openWs("t0k");
-    expect(await client.cancelAll()).toEqual({ cancelled: [RID] });
+    expect(await client.cancelAll()).toEqual({ cancelled: [RID], failed: [] });
     await until(() => events.some((e) => e.type === "run_finished"));
     expect((await client.getRun(RID)).status).toBe("cancelled");
     expect(await client.pendingApprovals()).toEqual([]);
@@ -172,7 +196,7 @@ describe("fake core", () => {
     expect(a?.status).toBe("rejected");
     expect(a?.decided_by).toBe("system:cancel");
     expect(typeof a?.decided_at).toBe("number");
-    expect(await client.cancelAll()).toEqual({ cancelled: [] });
+    expect(await client.cancelAll()).toEqual({ cancelled: [], failed: [] });
     ws.close();
   });
 
