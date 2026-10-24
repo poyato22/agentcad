@@ -1,0 +1,38 @@
+/* Drawing sheet. Square corners; grey only, blue is reserved for the highlighted edges in the canvas. */
+.vp {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--vp);
+  background-image:
+    linear-gradient(rgba(255, 255, 255, .07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, .07) 1px, transparent 1px),
+    linear-gradient(rgba(255, 255, 255, .025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, .025) 1px, transparent 1px);
+  background-size: 100px 100px, 100px 100px, 20px 20px, 20px 20px;
+}
+.vp-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+.tick { position: absolute; width: 10px; height: 10px; border: 0 solid var(--dim); pointer-events: none; }
+.tick-tl { left: 8px; top: 8px; border-left-width: 1px; border-top-width: 1px; }
+.tick-tr { right: 8px; top: 8px; border-right-width: 1px; border-top-width: 1px; }
+.tick-bl { left: 8px; bottom: 8px; border-left-width: 1px; border-bottom-width: 1px; }
+.tick-br { right: 8px; bottom: 8px; border-right-width: 1px; border-bottom-width: 1px; }
+.vp-fig { position: absolute; left: 22px; top: 18px; pointer-events: none; }
+.vp-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+
+.viewer-tools { position: absolute; right: 22px; top: 14px; display: flex; gap: 0; }
+.vt-btn {
+  font: var(--fs-small)/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase;
+  color: var(--dim); background: var(--paper); border: 1px solid var(--line2); padding: 5px 9px; margin-left: -1px; cursor: pointer;
+}
+.vt-btn:hover { color: var(--ink); }
+.vt-btn[data-active="true"] { color: var(--blue2); border-color: var(--blue); position: relative; }
+.vt-btn[aria-disabled="true"] { color: var(--faint); cursor: default; }
+.vt-btn[aria-disabled="true"]:hover { color: var(--faint); }
+
+.title-block { position: absolute; right: 22px; bottom: 22px; max-width: calc(100% - 44px); background: var(--vp); }
+.tb-cells { display: flex; border: 1px solid var(--dim); }
+.tb-cell { display: flex; flex-direction: column; gap: 4px; padding: 5px 10px; min-width: 70px; border-left: 1px solid var(--dim); }
+.tb-cell:first-child { border-left: 0; }
+.tb-value { color: var(--ink); white-space: nowrap; }
+.tb-error { border: 1px solid var(--dim); border-top: 0; padding: 4px 10px; color: var(--red); }
