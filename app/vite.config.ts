@@ -7,5 +7,6 @@ export default defineConfig({
   plugins: [preact()],
   clearScreen: false,
   server: { port: 1420, strictPort: true },
-  build: { target: "es2022" },
+  // font-src 'self' in the CSP: never inline fonts (or anything) as data: URIs
+  build: { target: "es2022", assetsInlineLimit: 0 },
 });
