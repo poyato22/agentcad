@@ -132,7 +132,22 @@ export function startSync(client: CoreClient, stream: Source, opts: SyncOptions 
       }
       case "fetchStatus": {
         const s = await client.status();
-        return () => { coreStatus.value = s; };
+        return () => {
+          coreStatus.value = s;
+          // A dropped event (bus overflow drops the oldest at 1000) shows up as counts that
+          // disagree with ours: reload approvals and runs. Skipped while either is already
+          // being fetched (its answer is newer than this comparison could be).
+          if (["fetchRuns", "fetchApprovals"].some((k) => running.has(k) || queued.has(k))) return;
+          const st = readAppState();
+          let pending = 0;
+          for (const a of st.approvals.values()) if (a.status === "pending") pending++;
+          let busy = 0;
+          for (const r of st.runs.values()) if (r.status === "running") busy++;
+          if (pending !== s.approvals_pending || busy !== s.runs_running) {
+            enqueue({ kind: "fetchApprovals" });
+            enqueue({ kind: "fetchRuns" });
+          }
+        };
       }
     }
   }

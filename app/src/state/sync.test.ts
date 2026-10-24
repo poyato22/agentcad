@@ -98,6 +98,36 @@ describe("startSync", () => {
     stop();
   });
 
+  it("status_counts_disagreeing_with_local_state_refetch_approvals_and_runs", async () => {
+    // an approval_requested event was dropped (bus overflow): only /status still knows about it
+    const { c, client } = fakeClient(() => []);
+    const ap: Approval = {
+      id: "ap1", run_id: RID, action: "fixture_merge", payload: {}, payload_hash: "h".repeat(64), microversion: null,
+      deltas: {}, status: "pending", expires_at: 4e9, decided_by: null, decided_at: null, edited_payload: null,
+    };
+    const s = new FakeStream();
+    const f = frames();
+    const stop = startSync(client, s as never, { schedule: f.schedule });
+    s.state("open");
+    await f.drain();
+    expect(c.pendingApprovals).toHaveBeenCalledTimes(1);
+    expect(c.listRuns).toHaveBeenCalledTimes(1);
+    // counts agree (1 running run, 0 approvals): a later status fetch changes nothing
+    s.emit({ type: "tool_result", run_id: RID, data: { call_id: "o1", name: "onshape_budget_get", ok: true, summary: "ok" }, ts: 5 });
+    await f.drain();
+    expect(c.status).toHaveBeenCalledTimes(2);
+    expect(c.pendingApprovals).toHaveBeenCalledTimes(1);
+    // now the core has a pending approval we never heard of
+    c.status.mockResolvedValue({ ...status, approvals_pending: 1 });
+    c.pendingApprovals.mockResolvedValue([ap]);
+    s.emit({ type: "tool_result", run_id: RID, data: { call_id: "o2", name: "onshape_budget_get", ok: true, summary: "ok" }, ts: 6 });
+    await f.drain();
+    expect(c.pendingApprovals).toHaveBeenCalledTimes(2);
+    expect(c.listRuns).toHaveBeenCalledTimes(2);
+    expect(approvals.value.get("ap1")?.status).toBe("pending");
+    stop();
+  });
+
   it("fetch_results_land_in_the_next_frame_not_between_frames", async () => {
     const { client } = fakeClient(() => [step(1)]);
     const s = new FakeStream();
