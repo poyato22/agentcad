@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import AsyncIterator
 
 from pydantic import BaseModel, Field
 
@@ -35,12 +34,41 @@ class EventBus:
                     except asyncio.QueueEmpty:
                         pass
 
-    async def subscribe(self, run_id: str | None = None) -> AsyncIterator[Event]:
-        q: asyncio.Queue[Event] = asyncio.Queue(maxsize=self.QUEUE_MAX)
-        entry = (run_id, q)
-        self._subs.append(entry)
-        try:
-            while True:
-                yield await q.get()
-        finally:
-            self._subs.remove(entry)
+    def subscribe(self, run_id: str | None = None) -> "Subscription":
+        """Register eagerly; events published after this call are never lost."""
+        sub = Subscription(self, run_id)
+        self._subs.append((run_id, sub.queue))
+        return sub
+
+
+class Subscription:
+    def __init__(self, bus: EventBus, run_id: str | None):
+        self._bus = bus
+        self.queue: asyncio.Queue[Event] = asyncio.Queue(maxsize=EventBus.QUEUE_MAX)
+        self._entry = (run_id, self.queue)
+        self._closed = False
+
+    def __aiter__(self) -> "Subscription":
+        return self
+
+    async def __anext__(self) -> Event:
+        if self._closed:
+            raise StopAsyncIteration
+        return await self.queue.get()
+
+    async def aclose(self) -> None:
+        self.close()
+
+    def close(self) -> None:
+        if not self._closed:
+            self._closed = True
+            try:
+                self._bus._subs.remove(self._entry)
+            except ValueError:
+                pass
+
+    async def __aenter__(self) -> "Subscription":
+        return self
+
+    async def __aexit__(self, *exc) -> None:
+        self.close()

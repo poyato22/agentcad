@@ -26,3 +26,21 @@ async def test_overflow_drops_oldest():
     rest = [await asyncio.wait_for(it.__anext__(), 1) for _ in range(999)]
     assert [first.data["i"]] + [e.data["i"] for e in rest] == list(range(500, 1500))
     await it.aclose()
+
+
+async def test_subscribe_registers_eagerly():
+    bus = EventBus()
+    sub = bus.subscribe("A")
+    bus.publish(Event(type="early", run_id="A", data={}))
+    ev = await asyncio.wait_for(sub.__anext__(), 1)
+    assert ev.type == "early"
+    await sub.aclose()
+    assert bus._subs == []
+
+
+async def test_subscribe_context_manager_unregisters():
+    bus = EventBus()
+    async with bus.subscribe() as sub:
+        bus.publish(Event(type="e", run_id=None, data={}))
+        assert (await sub.__anext__()).type == "e"
+    assert bus._subs == []
