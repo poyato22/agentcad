@@ -178,6 +178,14 @@ test("token_rotation_reconnects", async ({ page, fake }) => {
   // and the resync went through with the new token (the fake only logs authorized calls)
   await expect.poll(async () => (await fake.calls()).map((c) => c.path)).toContain("/runs");
   await expect(page.locator('[data-light="core"] .led')).toHaveClass(/led-green/);
+  // the viewer fetches the next GLB with the new client (the fake only logs authorized calls)
+  const parts = (await (await fetch(`${fake.url}/parts`, { headers: { Authorization: `Bearer ${fake.token}` } })).json()) as { part_id: string; mtime: number }[];
+  const glbOk = async () => (await fake.calls()).filter((c) => c.path === "/parts/mount_plate/model.glb").length;
+  const before = await glbOk();
+  await fake.emit({ type: "tool_result", run_id: "0ld0ld0ld0ld", data: { call_id: "rot1", name: "mirror_part_set_vars", ok: true, summary: "ok" } },
+    { parts: parts.map((p) => ({ ...p, mtime: p.mtime + 7 })) as never });
+  await expect.poll(glbOk, { timeout: 10_000 }).toBeGreaterThan(before);
+  await expect(page.locator(".tb-error")).toHaveCount(0);
 });
 
 test("stop_all_mid_run", async ({ page, fake }) => {

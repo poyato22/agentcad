@@ -109,9 +109,9 @@ export function Viewer(): JSX.Element {
       setSize(null);
       return;
     }
-    let client;
-    try { client = actions.client(); } catch { return; }
-    loaderRef.current ??= new PartLoader(client);
+    try { actions.client(); } catch { return; } // no core bound yet
+    // the client is looked up per fetch: the session rebinds a new one after a token rotation
+    loaderRef.current ??= new PartLoader(() => actions.client());
     void loaderRef.current.load(partId, mtime).then((r) => {
       if (r.status === "error") { setError(r.message); return; }
       if (r.status !== "loaded") { setError(null); return; }

@@ -8,15 +8,21 @@ export type LoadResult =
   | { status: "stale" }
   | { status: "error"; message: string };
 
+type GlbClient = Pick<CoreClient, "partGlb">;
+
 export class PartLoader {
   private current: { partId: string; mtime: number; etag: string } | null = null;
   private seq = 0;
 
-  private readonly client: Pick<CoreClient, "partGlb">;
+  private readonly getClient: () => GlbClient;
   private readonly parse: (bytes: ArrayBuffer) => Promise<PartScene>;
 
-  constructor(client: Pick<CoreClient, "partGlb">, parse: (bytes: ArrayBuffer) => Promise<PartScene> = loadPart) {
-    this.client = client;
+  /**
+   * `client` may be a getter: it is then called for every fetch, so a CoreClient rebound after a
+   * token rotation is used instead of the first one (whose token now 401s).
+   */
+  constructor(client: GlbClient | (() => GlbClient), parse: (bytes: ArrayBuffer) => Promise<PartScene> = loadPart) {
+    this.getClient = typeof client === "function" ? client : () => client;
     this.parse = parse;
   }
 
@@ -46,13 +52,14 @@ export class PartLoader {
    * Conditional GET first. A webview talking cross-origin to a core whose CORS preflight does not allow
    * `If-None-Match` fails with a network error; then fall back to a plain GET so the model still reloads.
    */
-  private async fetch(partId: string, etag: string | undefined): ReturnType<Pick<CoreClient, "partGlb">["partGlb"]> {
-    if (!etag) return this.client.partGlb(partId);
+  private async fetch(partId: string, etag: string | undefined): ReturnType<GlbClient["partGlb"]> {
+    const client = this.getClient();
+    if (!etag) return client.partGlb(partId);
     try {
-      return await this.client.partGlb(partId, etag);
+      return await client.partGlb(partId, etag);
     } catch (e) {
       if (e instanceof CoreError && e.code !== "network") throw e;
-      return this.client.partGlb(partId);
+      return client.partGlb(partId);
     }
   }
 

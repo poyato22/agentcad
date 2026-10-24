@@ -23,6 +23,19 @@ describe("PartLoader", () => {
     expect(parse).toHaveBeenCalledTimes(2);
   });
 
+  it("resolves_the_client_per_fetch_so_a_rotated_token_is_used", async () => {
+    // the session rebinds a new CoreClient after a token rotation: the loader must not keep the first one
+    const oldGlb = vi.fn().mockResolvedValue({ bytes, etag: '"a"' });
+    const newGlb = vi.fn().mockResolvedValue({ bytes, etag: '"b"' });
+    let current: { partGlb: typeof oldGlb } = { partGlb: oldGlb };
+    const l = new PartLoader(() => current, async () => scene());
+    await l.load("p", 1);
+    current = { partGlb: newGlb };
+    expect((await l.load("p", 2)).status).toBe("loaded");
+    expect(oldGlb).toHaveBeenCalledTimes(1);
+    expect(newGlb).toHaveBeenCalledTimes(1);
+  });
+
   it("does not send an etag for a different part", async () => {
     const partGlb = vi.fn().mockResolvedValue({ bytes, etag: '"a"' });
     const l = new PartLoader({ partGlb }, async () => scene());
