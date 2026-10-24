@@ -151,3 +151,12 @@ async def test_openai_status_mapping(status, code):
     assert ei.value.code == code
     if code == ErrorCode.DENIED:
         assert ei.value.hint
+
+
+async def test_openai_missing_tool_call_ids_are_unique_across_streams():
+    body = sse(chunk(tc(0, name="t", args="{}")), chunk({}, finish="tool_calls"))
+    ids = []
+    for _ in range(2):
+        evs = [e async for e in make(respond(body)).stream(req())]
+        ids += [e.id for e in evs if isinstance(e, ToolCall)]
+    assert len(ids) == 2 and ids[0] != ids[1] and all(ids)

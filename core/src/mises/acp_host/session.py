@@ -2,8 +2,8 @@
 
 The agent gets the `mises` MCP server (stdio proxy bound to this run) in `session/new`, so
 its CAD tool calls go through Mises's Gate. Its `session/update` stream becomes Steps and
-events; `session/request_permission` becomes a Mises approval card; `fs/*` is confined to
-the run's workdir; `terminal/*` is refused.
+events; `session/request_permission` becomes a Mises approval card; `fs/*` and `terminal/*` are refused
+(the host is unsandboxed, so a check-then-open file API would be raceable).
 
 The agent runs under sandbox-exec (`platform.agent_sandbox_profile`): it cannot read or write
 the Mises home (server.json, mises.db, other runs, parts) except its own workdir. Its stdio MCP
@@ -125,13 +125,13 @@ class _Client:
 
     async def read_text_file(self, session_id: str, path: str, line: int | None = None,
                              limit: int | None = None, **kw: Any) -> ReadTextFileResponse:
-        return self._s._on_read(path, line, limit)
+        raise RequestError.method_not_found("fs/read_text_file")
 
     async def write_text_file(self, session_id: str, path: str, content: str,
                               **kw: Any) -> WriteTextFileResponse:
-        return self._s._on_write(path, content)
+        raise RequestError.method_not_found("fs/write_text_file")
 
-    # terminal/* is not offered (clientCapabilities.terminal = false); refuse if called anyway
+    # fs/* and terminal/* are not offered (clientCapabilities.terminal = false); refuse if called anyway
     async def create_terminal(self, *a: Any, **kw: Any):
         raise RequestError.method_not_found("terminal/create")
 
@@ -245,7 +245,7 @@ class AcpSession:
         init = await self._conn.initialize(
             protocol_version=PROTOCOL_VERSION,
             client_capabilities=ClientCapabilities(
-                fs=FileSystemCapabilities(read_text_file=True, write_text_file=True),
+                fs=FileSystemCapabilities(read_text_file=False, write_text_file=False),
                 terminal=False),
             client_info=Implementation(name="mises", title="Mises", version="0.1.0"))
         self.agent_info = _dump(init.agent_info) if init.agent_info else None
@@ -487,42 +487,3 @@ class AcpSession:
             return cancelled
         return RequestPermissionResponse(outcome=AllowedOutcome(outcome="selected",
                                                                 option_id=option_id))
-
-    # ---- fs/* confined to the workdir
-    def _confine(self, path: str, op: str) -> Path:
-        p = Path(path)
-        root = self.workdir.resolve()
-        resolved = p.resolve() if p.is_absolute() else None
-        if resolved is None or not resolved.is_relative_to(root):
-            self.runtime.store.append_step(self.run_id, StepKind.ERROR, {
-                "code": str(ErrorCode.OUT_OF_SCOPE), "op": op, "path": path,
-                "message": "agent file access outside its workdir refused"})
-            raise RequestError.invalid_params({
-                "code": str(ErrorCode.OUT_OF_SCOPE), "path": path,
-                "message": f"{op} is limited to absolute paths inside {self.workdir}"})
-        return resolved
-
-    def _on_read(self, path: str, line: int | None, limit: int | None) -> ReadTextFileResponse:
-        p = self._confine(path, "fs/read_text_file")
-        try:
-            text = p.read_text()
-        except FileNotFoundError:
-            raise RequestError.resource_not_found(path) from None
-        except (OSError, UnicodeDecodeError) as e:
-            raise RequestError.internal_error({"details": str(e)}) from None
-        if line is not None or limit is not None:
-            lines = text.splitlines(keepends=True)
-            start = max((line or 1) - 1, 0)
-            end = None if limit is None else start + max(limit, 0)
-            text = "".join(lines[start:end])
-        return ReadTextFileResponse(content=text)
-
-    def _on_write(self, path: str, content: str) -> WriteTextFileResponse:
-        p = self._confine(path, "fs/write_text_file")
-        try:
-            p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text(content)
-        except OSError as e:
-            raise RequestError.internal_error({"details": str(e)}) from None
-        self._publish("file_written", path=str(p), bytes=len(content.encode("utf-8")))
-        return WriteTextFileResponse()

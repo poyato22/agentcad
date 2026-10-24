@@ -151,31 +151,45 @@ def test_choose_option_never_allow_always():
     assert choose_option(opts("allow_once", "allow_always"), False) is None
 
 
-async def test_fs_write_outside_workdir_refused(rt, tmp_path):
+async def test_client_advertises_no_fs_capability(rt):
+    s = await _session(rt)
+    try:
+        pass
+    finally:
+        await s.close()
+    caps = [r for r in _log(rt, s.run_id) if r["event"] == "session_new"][0]["client_capabilities"]
+    assert caps["fs"].get("readTextFile", False) is False
+    assert caps["fs"].get("writeTextFile", False) is False
+
+
+async def test_fs_requests_refused_without_touching_filesystem(rt, tmp_path, monkeypatch):
+    secret = tmp_path / "server.json"
+    secret.write_text("admin-token")
     outside = tmp_path / "outside.txt"
+    opened: list[str] = []
+    real_open, real_read = Path.open, Path.read_text
+
+    def spy_open(self, *a, **kw):
+        opened.append(str(self))
+        return real_open(self, *a, **kw)
+
+    def spy_read(self, *a, **kw):
+        opened.append(str(self))
+        return real_read(self, *a, **kw)
+
     s = await _session(rt)
-    inside = rt.workdir(s.run_id) / "sub" / "inside.txt"
+    inside = rt.workdir(s.run_id) / "inside.txt"
+    monkeypatch.setattr(Path, "open", spy_open)
+    monkeypatch.setattr(Path, "read_text", spy_read)
     try:
-        text = await s.prompt(f"write:{outside} write:{inside}")
+        await s.prompt(f"read:{secret} read:{inside} write:{outside} write:{inside}")
     finally:
         await s.close()
-    assert not outside.exists()
-    writes = {r["path"]: r["result"] for r in _log(rt, s.run_id) if r["event"] == "write"}
-    assert writes[str(outside)].startswith("error:")
-    assert writes[str(inside)] == "ok" and inside.read_text() == "hello"
-    assert "write:error" in text
-
-
-async def test_fs_symlink_escape_refused(rt, tmp_path):
-    s = await _session(rt)
-    wd = rt.workdir(s.run_id)
-    (wd / "esc").symlink_to(tmp_path, target_is_directory=True)
-    try:
-        await s.prompt(f"write:{wd / 'esc' / 'x.txt'} write:{wd / '..' / 'y.txt'}")
-    finally:
-        await s.close()
-    assert not (tmp_path / "x.txt").exists()
-    assert not (wd.parent / "y.txt").exists()
+    log = _log(rt, s.run_id)
+    assert [r["result"] for r in log if r["event"] == "read"] == ["error:-32601"] * 2
+    assert [r["result"] for r in log if r["event"] == "write"] == ["error:-32601"] * 2
+    assert not outside.exists() and not inside.exists()
+    assert not any(p in (str(secret), str(inside), str(outside)) for p in opened)
 
 
 async def test_terminal_not_supported(rt):

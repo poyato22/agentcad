@@ -121,6 +121,15 @@ class FakeAgent:
                 _log(self.cwd, event="write", path=path, result=result)
                 await c.session_update(session_id, update_agent_message(text_block(f"write:{result}")))
         for word in text.split():
+            if word.startswith("read:"):
+                path = word[len("read:"):]
+                try:
+                    await c.read_text_file(session_id=session_id, path=path)
+                    result = "ok"
+                except RequestError as e:
+                    result = f"error:{e.code}"
+                _log(self.cwd, event="read", path=path, result=result)
+        for word in text.split():
             if word.startswith("peek:"):
                 path = word[len("peek:"):]
                 try:
