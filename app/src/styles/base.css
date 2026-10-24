@@ -1,0 +1,98 @@
+/* Base styles and shared primitives (pane header, LED, buttons, inputs). */
+
+* { box-sizing: border-box; border-radius: 0 !important; }
+
+html, body { margin: 0; height: 100%; }
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font: var(--fs)/1.4 var(--font-mono);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+#app { height: 100%; }
+
+h1, h2, h3, h4 { font-family: var(--font-head); font-weight: 600; margin: 0; }
+
+/* Untrusted text (agent output, tool I/O, names, paths) is rendered as text with pre-wrap. */
+.text { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+::selection { background: var(--blue-tint); }
+
+/* ---- app grid */
+.app {
+  display: grid;
+  grid-template-rows: var(--topbar-h) 1fr;
+  grid-template-columns: var(--left-w) 1fr var(--console-w);
+  width: 100vw;
+  height: 100vh;
+  min-width: 1280px;
+  min-height: 800px;
+  background: var(--paper);
+  overflow: hidden;
+}
+.region { min-width: 0; min-height: 0; overflow: hidden; position: relative; }
+.region-topbar { grid-row: 1; grid-column: 1 / -1; }
+.region-left { grid-row: 2; grid-column: 1; border-right: 1px solid var(--line2); }
+.region-viewer { grid-row: 2; grid-column: 2; }
+.region-console { grid-row: 2; grid-column: 3; border-left: 1px solid var(--line2); }
+
+/* ---- pane */
+.pane { display: flex; flex-direction: column; background: var(--paper); min-height: 0; height: 100%; }
+.pane-head {
+  display: flex; align-items: center; gap: 8px; flex: none;
+  height: var(--pane-head-h); padding: 0 8px;
+  border-bottom: 1px solid var(--line); background: var(--head);
+}
+.pane-title {
+  font: 600 var(--fs-label)/1 var(--font-head);
+  letter-spacing: .14em; text-transform: uppercase; color: var(--dim);
+}
+.pane-right { margin-left: auto; color: var(--faint); font-size: 10px; }
+.pane-body { flex: 1; min-height: 0; overflow: auto; position: relative; }
+.pane-empty { padding: 10px 8px; color: var(--faint); }
+
+.label { font-size: var(--fs-label); letter-spacing: .14em; text-transform: uppercase; color: var(--faint); }
+.faint { color: var(--faint); }
+.dim { color: var(--dim); }
+
+/* ---- LED */
+.led { display: inline-block; width: 7px; height: 7px; flex: none; background: var(--faint); }
+.led-blue { background: var(--blue); }
+.led-green { background: var(--green); }
+.led-amber { background: var(--amber); }
+.led-red { background: var(--red); }
+.led-faint { background: var(--faint); }
+
+/* ---- buttons */
+button { font: inherit; color: inherit; }
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 2px 9px; border: 1px solid var(--line2); background: transparent;
+  color: var(--ink); font: 500 var(--fs-small)/1.5 var(--font-mono); cursor: pointer;
+}
+.btn:hover:not(:disabled) { border-color: var(--dim); }
+.btn:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
+.btn:disabled, .btn[aria-disabled="true"] { color: var(--faint); cursor: default; }
+.btn-primary { background: var(--blue); border-color: var(--blue); color: #fff; font-weight: 600; }
+.btn-primary:hover:not(:disabled) { border-color: var(--blue2); }
+.btn-primary:disabled { background: transparent; border-color: var(--line2); }
+.btn-ink { background: var(--ink); border-color: var(--ink); color: #000; font-weight: 600; }
+.btn-danger { color: var(--red); }
+.btn-ghost { border-color: transparent; color: var(--dim); }
+
+/* ---- inputs */
+input, textarea, select {
+  font: inherit; color: var(--ink); background: var(--bg);
+  border: 1px solid var(--line2); padding: 3px 6px;
+}
+input:focus, textarea:focus, select:focus { outline: none; border-color: var(--blue); }
+input::placeholder, textarea::placeholder { color: var(--faint); }
+
+/* ---- cards (approvals, questions) */
+[data-card] { border: 1px solid var(--line2); }
+
+/* scrollbars */
+* { scrollbar-width: thin; scrollbar-color: var(--line2) transparent; }

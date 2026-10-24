@@ -1,0 +1,161 @@
+// Typed HTTP client for the local core. Every request carries the bearer token; every response
+// is validated with zod. Failures always surface as CoreError (never a raw fetch/zod error).
+import { z } from "zod";
+import {
+  agentInfoSchema, agentRunSchema, approvalSchema, cancelledSchema, coreErrorBodySchema, coreStatusSchema,
+  modelsInfoSchema, okSchema, partSummarySchema, runIdSchema, stepSchema,
+} from "./schemas";
+import type {
+  AgentInfo, AgentRun, Approval, CoreInfo, CoreStatusInfo, DecisionBody, ErrorCode, ModelsInfo, NewRunBody,
+  PartSummary, Step,
+} from "./types";
+
+export type CoreErrorCode = ErrorCode | "unauthorized" | "validation" | "network";
+
+export class CoreError extends Error {
+  readonly status: number;
+  readonly code: CoreErrorCode;
+  readonly hint: string | null;
+  readonly retryable: boolean;
+
+  constructor(code: CoreErrorCode, message: string, opts: { status?: number; hint?: string | null; retryable?: boolean } = {}) {
+    super(message);
+    this.name = "CoreError";
+    this.code = code;
+    this.status = opts.status ?? 0;
+    this.hint = opts.hint ?? null;
+    this.retryable = opts.retryable ?? false;
+  }
+}
+
+/** Status → code when the body isn't the core's error JSON (e.g. FastAPI's `{"detail":"Not Found"}`). */
+const FALLBACK: Record<number, ErrorCode> = { 400: "invalid_input", 403: "denied", 404: "not_found", 409: "stale_version", 429: "budget_exhausted", 503: "transient" };
+
+type Query = Record<string, string | number | null | undefined>;
+
+export class CoreClient {
+  private readonly base: string;
+  private readonly token: string;
+  private readonly fetchImpl: typeof fetch;
+
+  constructor(info: CoreInfo, fetchImpl?: typeof fetch) {
+    this.base = info.baseUrl.replace(/\/+$/, "");
+    this.token = info.token;
+    this.fetchImpl = fetchImpl ?? ((input, init) => globalThis.fetch(input, init));
+  }
+
+  health(): Promise<{ ok: true }> { return this.json("GET", "/health", okSchema); }
+
+  listRuns(limit = 50): Promise<AgentRun[]> { return this.json("GET", "/runs", z.array(agentRunSchema), { query: { limit } }); }
+  getRun(id: string): Promise<AgentRun> { return this.json("GET", `/runs/${enc(id)}`, agentRunSchema); }
+  steps(runId: string, afterId = 0): Promise<Step[]> {
+    return this.json("GET", `/runs/${enc(runId)}/steps`, z.array(stepSchema), { query: { after_id: afterId } });
+  }
+  createRun(body: NewRunBody): Promise<{ run_id: string }> { return this.json("POST", "/runs", runIdSchema, { body }); }
+  message(runId: string, text: string): Promise<{ ok: true }> {
+    return this.json("POST", `/runs/${enc(runId)}/message`, okSchema, { body: { text } });
+  }
+  cancel(runId: string): Promise<{ ok: true }> { return this.json("POST", `/runs/${enc(runId)}/cancel`, okSchema); }
+  cancelAll(): Promise<{ cancelled: string[] }> { return this.json("POST", "/runs/cancel_all", cancelledSchema); }
+
+  pendingApprovals(runId?: string): Promise<Approval[]> {
+    return this.json("GET", "/approvals", z.array(approvalSchema), { query: { status: "pending", run_id: runId } });
+  }
+  decide(approvalId: string, body: DecisionBody): Promise<Approval> {
+    // Exactly {payload_hash, approve}: edited_payload is never sent in v1.
+    const exact: DecisionBody = { payload_hash: body.payload_hash, approve: body.approve };
+    return this.json("POST", `/approvals/${enc(approvalId)}/decide`, approvalSchema, { body: exact });
+  }
+  answer(questionId: string, text: string): Promise<{ ok: true }> {
+    return this.json("POST", `/questions/${enc(questionId)}/answer`, okSchema, { body: { text } });
+  }
+
+  status(): Promise<CoreStatusInfo> { return this.json("GET", "/status", coreStatusSchema); }
+  agents(): Promise<AgentInfo[]> { return this.json("GET", "/agents", z.array(agentInfoSchema)); }
+  models(): Promise<ModelsInfo> { return this.json("GET", "/models", modelsInfoSchema); }
+  parts(): Promise<PartSummary[]> { return this.json("GET", "/parts", z.array(partSummarySchema)); }
+
+  async partGlb(partId: string, etag?: string): Promise<{ bytes: ArrayBuffer; etag: string } | "not-modified"> {
+    const headers: Record<string, string> = {};
+    if (etag) headers["If-None-Match"] = etag;
+    const res = await this.request("GET", `/parts/${enc(partId)}/model.glb`, { headers });
+    if (res.status === 304) return "not-modified";
+    if (!res.ok) throw await toError(res);
+    let bytes: ArrayBuffer;
+    try {
+      bytes = await res.arrayBuffer();
+    } catch (e) {
+      throw new CoreError("network", `reading model.glb failed: ${errText(e)}`, { retryable: true });
+    }
+    return { bytes, etag: res.headers.get("etag") ?? "" };
+  }
+
+  // ---- internals
+
+  private async json<T>(method: "GET" | "POST", path: string, schema: z.ZodType<T>, opts: { query?: Query; body?: unknown } = {}): Promise<T> {
+    const res = await this.request(method, path, opts);
+    if (!res.ok) throw await toError(res);
+    let data: unknown;
+    try {
+      data = await res.json();
+    } catch {
+      throw new CoreError("validation", `${method} ${path}: response is not JSON`, { status: res.status });
+    }
+    const parsed = schema.safeParse(data);
+    if (!parsed.success) {
+      const issues = parsed.error.issues.slice(0, 5)
+        .map((i) => `${i.path.length ? i.path.join(".") : "(root)"}: ${i.message}`).join("; ");
+      throw new CoreError("validation", `${method} ${path}: unexpected response shape (${issues})`, { status: res.status });
+    }
+    return parsed.data;
+  }
+
+  private async request(method: "GET" | "POST", path: string, opts: { query?: Query; body?: unknown; headers?: Record<string, string> }): Promise<Response> {
+    let url = this.base + path;
+    if (opts.query) {
+      const q = new URLSearchParams();
+      for (const [k, v] of Object.entries(opts.query)) if (v !== undefined && v !== null) q.set(k, String(v));
+      const s = q.toString();
+      if (s) url += `?${s}`;
+    }
+    const headers: Record<string, string> = { Authorization: `Bearer ${this.token}`, ...opts.headers };
+    const init: RequestInit = { method, headers };
+    if (opts.body !== undefined) {
+      headers["Content-Type"] = "application/json";
+      init.body = JSON.stringify(opts.body);
+    }
+    try {
+      return await this.fetchImpl(url, init);
+    } catch (e) {
+      throw new CoreError("network", `${method} ${path}: ${errText(e)}`, { retryable: true });
+    }
+  }
+}
+
+async function toError(res: Response): Promise<CoreError> {
+  let body: unknown = null;
+  try { body = await res.json(); } catch { /* not JSON */ }
+  const message = typeof (body as { message?: unknown })?.message === "string"
+    ? (body as { message: string }).message : `HTTP ${res.status}`;
+  if (res.status === 401) return new CoreError("unauthorized", message, { status: 401 });
+  if (res.status === 422) {
+    return new CoreError("validation", `request rejected: ${summarizeDetail(body)}`, { status: 422 });
+  }
+  const parsed = coreErrorBodySchema.safeParse(body);
+  if (parsed.success) {
+    return new CoreError(parsed.data.error, parsed.data.message, { status: res.status, hint: parsed.data.hint, retryable: parsed.data.retryable });
+  }
+  const code = FALLBACK[res.status] ?? "tool_failed";
+  const detail = typeof (body as { detail?: unknown })?.detail === "string" ? (body as { detail: string }).detail : message;
+  return new CoreError(code, detail, { status: res.status, retryable: code === "transient" });
+}
+
+function summarizeDetail(body: unknown): string {
+  const detail = (body as { detail?: unknown })?.detail;
+  if (!Array.isArray(detail)) return "invalid request";
+  return detail.slice(0, 3).map((d: { loc?: unknown[]; msg?: string }) =>
+    `${Array.isArray(d.loc) ? d.loc.join(".") : "?"}: ${d.msg ?? "invalid"}`).join("; ");
+}
+
+const enc = encodeURIComponent;
+const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
