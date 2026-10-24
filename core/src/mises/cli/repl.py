@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import time
+from datetime import datetime
 from pathlib import Path
 
 from rich.console import Console
@@ -224,7 +224,8 @@ class Repl:
         rt = self.runtime
         run = rt.store.get_run(self.run_id)
         caps = rt.store.current_policy(self.run_id).caps
-        year = rt.store.ledger_used(USER, since=time.time() - 365 * 86400)
+        # calendar year, like the gate's and the Onshape client's allowance checks
+        year = rt.store.ledger_used(USER, since=datetime(datetime.now().year, 1, 1).timestamp())
         self.renderer.say(
             f"tokens: {run.input_tokens} in / {run.output_tokens} out · cost: ${run.usd:.4f}\n"
             f"Onshape calls: {run.onshape_calls}/{caps.onshape_calls_run} this run · "

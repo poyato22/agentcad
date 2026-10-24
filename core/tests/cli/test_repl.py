@@ -224,3 +224,19 @@ async def test_approval_panel_names_requesting_agent_and_run(tmp_path, console, 
     await r.handle(Event(type="approval_requested", run_id=rid, data=a.model_dump(mode="json")))
     text = out.getvalue()
     assert "verifier" in text and rid in text and "check the gusset" in text
+
+
+async def test_slash_cost_counts_calendar_year(tmp_path, console, out):
+    # M9: same window as the gate and the Onshape client (since Jan 1), not a rolling 365 days
+    from datetime import datetime
+    rt, _ = make_runtime(tmp_path, [[TextDelta(text="hi"), Done(stop_reason="end_turn")]])
+    repl = Repl(rt, "designer", "fake/x", console=console, read_line=Lines())
+    await repl.handle_line("hello")
+    jan1 = datetime(datetime.now().year, 1, 1).timestamp()
+    old = rt.store.ledger_reserve("local", repl.run_id, "GET /old", 1, "k-old")
+    rt.store.ledger_settle(old.id, 200)
+    rt.store._db.execute("UPDATE ledger SET ts=? WHERE id=?", (jan1 - 3600, old.id))
+    new = rt.store.ledger_reserve("local", repl.run_id, "GET /new", 1, "k-new")
+    rt.store.ledger_settle(new.id, 200)
+    await repl.handle_line("/cost")
+    assert "1/2500 this year" in out.getvalue()
