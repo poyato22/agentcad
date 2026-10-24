@@ -128,6 +128,105 @@ describe("startSync", () => {
     stop();
   });
 
+  it("dropped_approval_then_silence_is_recovered_by_the_status_poll", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    try {
+      const { c, client } = fakeClient(() => []);
+      const ap: Approval = {
+        id: "ap9", run_id: RID, action: "fixture_merge", payload: {}, payload_hash: "h".repeat(64), microversion: null,
+        deltas: {}, status: "pending", expires_at: 4e9, decided_by: null, decided_at: null, edited_payload: null,
+      };
+      const s = new FakeStream();
+      const f = frames();
+      const stop = startSync(client, s as never, { schedule: f.schedule, pollMs: 10_000 });
+      s.state("open");
+      await f.drain();
+      expect(c.status).toHaveBeenCalledTimes(1);
+      // the approval_requested event is lost; the core says so only via /status; no event follows
+      c.status.mockResolvedValue({ ...status, approvals_pending: 1 });
+      c.pendingApprovals.mockResolvedValue([ap]);
+      vi.advanceTimersByTime(9_999);
+      await f.drain();
+      expect(c.status).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(1);                // one poll interval (a run is running locally)
+      await f.drain();
+      expect(c.status).toHaveBeenCalledTimes(2);
+      expect(approvals.value.get("ap9")?.status).toBe("pending");
+      stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("status_poll_stops_when_nothing_is_running_or_pending", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    try {
+      const { c, client } = fakeClient(() => []);
+      c.listRuns.mockResolvedValue([{ ...run(RID), status: "done" }]);
+      c.status.mockResolvedValue({ ...status, runs_running: 0 });
+      const s = new FakeStream();
+      const f = frames();
+      const stop = startSync(client, s as never, { schedule: f.schedule, pollMs: 10_000 });
+      s.state("open");
+      await f.drain();
+      vi.advanceTimersByTime(30_000);
+      await f.drain();
+      expect(c.status).toHaveBeenCalledTimes(1);
+      stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("an_old_running_run_beyond_the_loaded_window_does_not_refetch_on_every_status", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    try {
+      const { c, client } = fakeClient(() => []);
+      // a full window of 50 runs, one running; the core also counts a stuck running run outside it
+      const window = Array.from({ length: 50 }, (_, i) => ({ ...run(`r${i}`), status: i === 0 ? "running" as const : "done" as const }));
+      c.listRuns.mockResolvedValue(window);
+      c.status.mockResolvedValue({ ...status, runs_running: 2 });
+      const s = new FakeStream();
+      const f = frames();
+      const stop = startSync(client, s as never, { schedule: f.schedule, pollMs: 10_000 });
+      s.state("open");
+      await f.drain();
+      for (let i = 0; i < 5; i++) { vi.advanceTimersByTime(10_000); await f.drain(); }
+      expect(c.status.mock.calls.length).toBeGreaterThanOrEqual(6);
+      expect(c.listRuns.mock.calls.length).toBeLessThanOrEqual(2);
+      // a mismatch that a refetch can't fix (same numbers again) is not refetched again either
+      c.pendingApprovals.mockResolvedValue([]);
+      c.status.mockResolvedValue({ ...status, approvals_pending: 3, runs_running: 2 });
+      const before = c.pendingApprovals.mock.calls.length;
+      for (let i = 0; i < 5; i++) { vi.advanceTimersByTime(10_000); await f.drain(); }
+      expect(c.pendingApprovals.mock.calls.length - before).toBe(1);
+      stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("window_focus_and_visible_tab_fetch_status", async () => {
+    const { c, client } = fakeClient(() => []);
+    const s = new FakeStream();
+    const f = frames();
+    const win = new EventTarget();
+    const doc = Object.assign(new EventTarget(), { visibilityState: "visible" });
+    const stop = startSync(client, s as never, { schedule: f.schedule, win: win as never, doc: doc as never });
+    s.state("open");
+    await f.drain();
+    win.dispatchEvent(new Event("focus"));
+    await f.drain();
+    expect(c.status).toHaveBeenCalledTimes(2);
+    doc.dispatchEvent(new Event("visibilitychange"));
+    await f.drain();
+    expect(c.status).toHaveBeenCalledTimes(3);
+    stop();
+    win.dispatchEvent(new Event("focus"));
+    await f.drain();
+    expect(c.status).toHaveBeenCalledTimes(3);
+  });
+
   it("fetch_results_land_in_the_next_frame_not_between_frames", async () => {
     const { client } = fakeClient(() => [step(1)]);
     const s = new FakeStream();

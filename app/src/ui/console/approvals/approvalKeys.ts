@@ -6,6 +6,8 @@
 // The letter shortcuts m/a/k/r also need focus to have entered the card by KEYBOARD (Tab /
 // :focus-visible) at least ARM_MS ago; a pointer press inside the card turns them off until the
 // card is focused by keyboard again, so clicking card text and then typing can never decide.
+// Leaving the window (Cmd-Tab) turns them off too, and the focus the browser re-fires on the
+// same element when the window comes back is not keyboard focus (the Meta of Cmd-Tab is a key).
 import { isTrustedKey, msSinceLastPaste } from "../../../lib/keys";
 
 export type ApprovalAction = "approve" | "keep_branch" | "reject" | "diff";
@@ -24,13 +26,23 @@ const DECISION_LETTERS = new Set(["m", "a", "k", "r"]);
 type Modality = "keyboard" | "pointer" | null;
 let lastModality: Modality = null;
 let trackedDoc: Document | null = null;
+/** Bumps on every window blur: keyboard focus recorded before it no longer counts. */
+let blurEpoch = 0;
+/** The element that was focused when the window blurred: its re-fired focusin is a restore. */
+let refocusTarget: Element | null = null;
 const onTrackedKey = (e: KeyboardEvent) => { if (isTrustedKey(e)) lastModality = "keyboard"; };
 const onTrackedPointer = () => { lastModality = "pointer"; };
+const onWindowBlur = (e: Event) => {
+  if (!trackedDoc || e.target instanceof Node) return; // the window itself, not an element's blur
+  blurEpoch++;
+  refocusTarget = trackedDoc.activeElement;
+};
 
 function untrack(doc: Document): void {
   doc.removeEventListener("keydown", onTrackedKey, true);
   doc.removeEventListener("pointerdown", onTrackedPointer, true);
   doc.removeEventListener("mousedown", onTrackedPointer, true);
+  doc.defaultView?.removeEventListener("blur", onWindowBlur);
 }
 
 /** Installs (once per document) capture listeners that remember the last input modality. */
@@ -40,7 +52,23 @@ export function trackFocusModality(doc: Document): void {
   doc.addEventListener("keydown", onTrackedKey, true);
   doc.addEventListener("pointerdown", onTrackedPointer, true);
   doc.addEventListener("mousedown", onTrackedPointer, true);
+  doc.defaultView?.addEventListener("blur", onWindowBlur);
   trackedDoc = doc;
+}
+
+/** Current window-blur epoch (keyboard focus is valid only within the epoch it was taken in). */
+export function windowEpoch(): number {
+  return blurEpoch;
+}
+
+/**
+ * A focusin on `target`: true if it is the browser restoring focus to the element that was
+ * active when the window blurred (not keyboard focus). Any focusin ends the restore window.
+ */
+export function consumeRefocus(target: EventTarget | null): boolean {
+  const restore = refocusTarget !== null && target === refocusTarget;
+  refocusTarget = null;
+  return restore;
 }
 
 /** Tests only. */
@@ -48,6 +76,7 @@ export function resetFocusModality(): void {
   if (trackedDoc) untrack(trackedDoc);
   trackedDoc = null;
   lastModality = null;
+  refocusTarget = null;
 }
 
 /**
@@ -63,7 +92,7 @@ export function focusIsKeyboard(el: Element): boolean {
   }
 }
 
-const TEXT_INPUT_TYPES =new Set(["", "text", "search", "url", "tel", "email", "password", "number"]);
+const TEXT_INPUT_TYPES = new Set(["", "text", "search", "url", "tel", "email", "password", "number"]);
 
 /** True for elements that take typed text (keys there are text, never commands). */
 export function isTextInput(el: EventTarget | null): boolean {

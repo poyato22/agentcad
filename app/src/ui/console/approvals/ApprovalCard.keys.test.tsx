@@ -97,6 +97,44 @@ describe("ApprovalCard keys", () => {
     expect(decideCalls()).toEqual([]);
   });
 
+  it("window_refocus_after_cmd_tab_does_not_rearm_letters", async () => {
+    const card = mount();
+    clock += 5000;
+    // pointer focus (letters off), then Cmd-Tab away: the trusted Meta key flips the modality to keyboard
+    const text = card.querySelector(".acard-what") as HTMLElement;
+    text.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    card.focus();
+    window.dispatchEvent(new Event("blur"));
+    press(document.body, "Meta", { metaKey: true });
+    // Cmd-Tab back: the browser re-fires focus/focusin on the element that was active
+    window.dispatchEvent(new Event("focus"));
+    card.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    clock += 5000;
+    for (const k of ["m", "a", "k", "r"]) press(card, k);
+    await settle();
+    expect(decideCalls()).toEqual([]);
+    // a real Tab-in afterwards still arms them
+    card.blur();
+    keyboardFocus(card);
+    clock += 500;
+    press(card, "m");
+    await vi.waitFor(() => expect(decideCalls()).toHaveLength(1));
+  });
+
+  it("window_blur_clears_keyboard_focus", async () => {
+    const card = mount();
+    clock += 5000;
+    keyboardFocus(card);
+    clock += 500;
+    window.dispatchEvent(new Event("blur"));
+    window.dispatchEvent(new Event("focus"));
+    card.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    clock += 5000;
+    press(card, "m");
+    await settle();
+    expect(decideCalls()).toEqual([]);
+  });
+
   it("tab_into_card_then_wait_then_m_decides_once", async () => {
     const card = mount();
     clock += 5000;

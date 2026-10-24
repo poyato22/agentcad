@@ -9,8 +9,8 @@ import { fmtElapsed, fmtHM, fmtSigned, shortHash } from "../../../lib/format";
 import { actions, approvals, steps } from "../../../state/store";
 import { Button } from "../../common/Button";
 import {
-  decisionClickCounts, focusIsKeyboard, isActivationKey, isTrustedActivation, keyGuardsPass, keyToAction,
-  trackFocusModality, type ApprovalAction,
+  consumeRefocus, decisionClickCounts, focusIsKeyboard, isActivationKey, isTrustedActivation, keyGuardsPass,
+  keyToAction, trackFocusModality, windowEpoch, type ApprovalAction,
 } from "./approvalKeys";
 import { canDecide, deciding, decide, isExpired, keptBranch, notices, retired, type Decision } from "./decide";
 import { evidenceFor } from "./evidence";
@@ -104,7 +104,8 @@ export function ApprovalCard(props: { approval: Approval; runLabel: string }): J
   // last trusted pointerdown on a decision button
   const press = useRef<{ action: Decision; at: number } | null>(null);
   // when focus last entered the card by keyboard; null after pointer focus or any pointer press inside
-  const keyFocus = useRef<number | null>(null);
+  // (and the window-blur epoch it was taken in: leaving the window ends it)
+  const keyFocus = useRef<{ at: number; epoch: number } | null>(null);
   trackFocusModality(document); // idempotent; installed before the first focus can land on the card
 
   const pending = a.status === "pending";
@@ -171,7 +172,8 @@ export function ApprovalCard(props: { approval: Approval; runLabel: string }): J
       if (keyGuardsPass(e, card, arm.current.at, performance.now())) choose(target);
       return;
     }
-    const action = keyToAction(e, card, arm.current.at, performance.now(), keyFocus.current);
+    const kf = keyFocus.current;
+    const action = keyToAction(e, card, arm.current.at, performance.now(), kf && kf.epoch === windowEpoch() ? kf.at : null);
     if (!action) return;
     e.preventDefault();
     e.stopPropagation();
@@ -179,7 +181,9 @@ export function ApprovalCard(props: { approval: Approval; runLabel: string }): J
   };
 
   const onFocusIn = (e: FocusEvent) => {
-    keyFocus.current = e.target instanceof Element && focusIsKeyboard(e.target) ? performance.now() : null;
+    const restored = consumeRefocus(e.target); // the window came back: not keyboard focus
+    keyFocus.current = !restored && e.target instanceof Element && focusIsKeyboard(e.target)
+      ? { at: performance.now(), epoch: windowEpoch() } : null;
   };
   const onPointerDownIn = () => { keyFocus.current = null; };
 

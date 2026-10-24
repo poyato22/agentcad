@@ -17,7 +17,16 @@ export interface SyncOptions {
   /** Schedules one flush; returns a cancel function. Default: requestAnimationFrame. */
   schedule?: (cb: () => void) => () => void;
   onError?: (err: unknown, effect: Effect) => void;
+  /** Status poll period while a run is running or an approval is pending locally. Default 10 s. */
+  pollMs?: number;
+  /** Where window focus / tab visibility come from (default: the global window / document). */
+  win?: Pick<EventTarget, "addEventListener" | "removeEventListener">;
+  doc?: Pick<EventTarget, "addEventListener" | "removeEventListener"> & { visibilityState?: string };
 }
+
+export const STATUS_POLL_MS = 10_000;
+/** GET /runs window the app loads (client.listRuns default). */
+const RUNS_WINDOW = 50;
 
 type Source = Pick<EventStream, "onEvent" | "onState">;
 
@@ -45,6 +54,10 @@ export function startSync(client: CoreClient, stream: Source, opts: SyncOptions 
   const queued = new Map<string, Effect>();
   const running = new Set<string>();   // in flight or waiting for its frame (keeps the steps cursor right)
   const dirty = new Map<string, Effect>();
+  /** The last fetchRuns returned a full window: the core may have running runs we never loaded. */
+  let runsWindowFull = false;
+  /** Counts (core vs ours) of the last mismatch we refetched for: the same again isn't refetched. */
+  let lastMismatch: string | null = null;
 
   const requestFrame = () => {
     if (stopped || cancelFrame) return;
@@ -116,6 +129,7 @@ export function startSync(client: CoreClient, stream: Source, opts: SyncOptions 
       case "fetchRuns": {
         const list = await client.listRuns();
         return () => {
+          runsWindowFull = list.length >= RUNS_WINDOW;
           const next = applyRuns(readAppState(), list);
           commitAppState(next);
           // runs we have never loaded steps for (new, or first boot); started later in this frame
@@ -143,10 +157,15 @@ export function startSync(client: CoreClient, stream: Source, opts: SyncOptions 
           for (const a of st.approvals.values()) if (a.status === "pending") pending++;
           let busy = 0;
           for (const r of st.runs.values()) if (r.status === "running") busy++;
-          if (pending !== s.approvals_pending || busy !== s.runs_running) {
-            enqueue({ kind: "fetchApprovals" });
-            enqueue({ kind: "fetchRuns" });
-          }
+          // with a full window loaded, more running runs on the core than here may be older runs
+          // beyond it (e.g. one stuck "running"): only fewer is a sure sign we missed something
+          const runsOff = runsWindowFull ? busy > s.runs_running : busy !== s.runs_running;
+          if (pending === s.approvals_pending && !runsOff) { lastMismatch = null; return; }
+          const sig = `${s.approvals_pending}/${s.runs_running}|${pending}/${busy}`;
+          if (sig === lastMismatch) return; // a refetch already ran for exactly this; it can't fix it
+          lastMismatch = sig;
+          enqueue({ kind: "fetchApprovals" });
+          enqueue({ kind: "fetchRuns" });
         };
       }
     }
@@ -170,8 +189,32 @@ export function startSync(client: CoreClient, stream: Source, opts: SyncOptions 
     requestFrame();
   });
 
+  // Events can be lost without a trace (bus overflow) and be followed by silence: while something
+  // is in flight, ask /status every pollMs (one GET at a time: effects are deduped per key), and
+  // whenever the window regains focus or the tab becomes visible.
+  const pollStatus = () => {
+    if (stopped || conn.peek() !== "open") return;
+    enqueue({ kind: "fetchStatus" });
+    requestFrame();
+  };
+  const busyLocally = () => {
+    const st = readAppState();
+    for (const r of st.runs.values()) if (r.status === "running") return true;
+    for (const a of st.approvals.values()) if (a.status === "pending") return true;
+    return false;
+  };
+  const timer = setInterval(() => { if (busyLocally()) pollStatus(); }, opts.pollMs ?? STATUS_POLL_MS);
+  const win = opts.win ?? (typeof window !== "undefined" ? window : undefined);
+  const doc = opts.doc ?? (typeof document !== "undefined" ? document : undefined);
+  const onVisible = () => { if (!doc || doc.visibilityState === undefined || doc.visibilityState === "visible") pollStatus(); };
+  win?.addEventListener("focus", pollStatus);
+  doc?.addEventListener("visibilitychange", onVisible);
+
   return () => {
     stopped = true;
+    clearInterval(timer);
+    win?.removeEventListener("focus", pollStatus);
+    doc?.removeEventListener("visibilitychange", onVisible);
     offState();
     offEvent();
     cancelFrame?.();
