@@ -15,6 +15,7 @@
     "lint": "eslint . --max-warnings 0 && tsc -b",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
+    "build:app": "scripts/build-dev-app.sh",
     "fake-core": "tsx test/fake-core/cli.ts --port 7400 --token dev-token --scenario base"
   },
   "dependencies": {
