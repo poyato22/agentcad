@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Step } from "../../api/types";
-import { buildLog, filterCounts, type LogItem } from "./logModel";
+import { buildLog, filterCounts, itemKey, type LogItem } from "./logModel";
 import { approval, input, message, pairs, resetIds, run, step, toolCall, toolFailure, toolResult } from "./testSteps";
 
 const FIXTURE_STEPS = JSON.parse(readFileSync(resolve(__dirname, "../../../test/fixtures/core-ui/steps.json"), "utf8")) as Step[];
@@ -87,12 +87,12 @@ describe("buildLog", () => {
     if (fold.kind !== "fold") throw new Error("no fold");
     expect(fold.calls.map((c) => c.callId)).toEqual(["y"]);
     // expanded by its key (first folded call id) it shows
-    expect(kinds(buildLog(input({ stepList: s, selectedRunId: "r1", expandedFolds: new Set(["y"]) })))).toEqual(["call", "call"]);
+    expect(kinds(buildLog(input({ stepList: s, selectedRunId: "r1", expandedFolds: new Set(["r1/y"]) })))).toEqual(["call", "call"]);
   });
 
   it("expanded_fold_shows_all", () => {
     const s = pairs("r1", 5, 100);
-    const items = buildLog(input({ stepList: s, selectedRunId: "r1", expandedFolds: new Set(["k1"]) }));
+    const items = buildLog(input({ stepList: s, selectedRunId: "r1", expandedFolds: new Set(["r1/k1"]) }));
     expect(kinds(items)).toEqual(["call", "call", "call", "call", "call"]);
   });
 
@@ -206,5 +206,107 @@ describe("buildLog", () => {
     const s = [message("r1", "user", "go", 100)];
     const items = buildLog({ ...input({ stepList: s, selectedRunId: "r1" }), inflight: new Map([["z1", { run_id: "r1", name: "mirror_measure", input: { part_id: "p" } }]]) });
     expect(items[1]).toMatchObject({ kind: "call", callId: "z1", name: "mirror_measure", result: null, ok: null });
+  });
+});
+
+// Fix round 1: real core step sequences.
+describe("buildLog on real core sequences", () => {
+  it("failed_tool_output_error_step_keeps_reason", () => {
+    // core cad/tools.py _fail → gate._finish: kind = output.step_kind = "error", payload {call_id, name, output}
+    const failedOutput = step("r1", "error", {
+      call_id: "c1", name: "mirror_part_create",
+      output: { ok: false, summary: "build failed: Box() missing 1 required positional argument", data: { stdout_tail: "Traceback …" }, handles: [], warnings: [], step_kind: "error" },
+    }, 101);
+    // core gate.py MisesError: kind "error", payload {call_id, name, error, message, hint, retryable}
+    const misesError = step("r1", "error", { call_id: "c2", name: "mirror_part_set_vars", error: "out_of_scope", message: "part_id='bracket' is outside this run's scope", hint: "ask the user to widen the scope", retryable: false }, 103);
+    const s = [
+      toolCall("r1", "c1", "mirror_part_create", { part_id: "mount_plate" }, 100), failedOutput,
+      toolCall("r1", "c2", "mirror_part_set_vars", { part_id: "bracket" }, 102), misesError,
+    ];
+    const items = buildLog(input({ stepList: s, selectedRunId: "r1" }));
+    expect(items).toHaveLength(2);
+    expect(items[0]).toMatchObject({ kind: "call", ok: false, summary: "build failed: Box() missing 1 required positional argument", hint: null });
+    expect(items[1]).toMatchObject({ kind: "call", ok: false, summary: "part_id='bracket' is outside this run's scope", hint: "ask the user to widen the scope" });
+    const errs = buildLog(input({ stepList: s, selectedRunId: "r1", filter: { scope: "run", kind: "errors" } }));
+    expect(errs).toHaveLength(2);
+  });
+
+  // core acp_host/session.py: tool_call → diff step(s) {call_id, path, old_text, new_text, source} → tool_result {ok, status, output, text}
+  const acpCall = (cid: string, ts: number) => step("r1", "tool_call", { call_id: cid, name: "Edit part.py", kind: "edit", status: "pending", input: { file_path: "/w/part.py" }, source: "acp" }, ts);
+  const acpDiff = (cid: string, path: string, oldText: string, newText: string, ts: number) =>
+    step("r1", "diff", { call_id: cid, path, old_text: oldText, new_text: newText, source: "acp" }, ts);
+  const acpResult = (cid: string, status: "completed" | "failed", ts: number, text = "") =>
+    step("r1", "tool_result", { call_id: cid, name: "Edit part.py", status, ok: status === "completed", output: null, text, source: "acp" }, ts);
+
+  it("acp_call_pairs_with_its_tool_result_and_diffs_are_file_rows", () => {
+    const s = [
+      acpCall("t1", 100),
+      acpDiff("t1", "/w/part.py", "a\nb\n", "a\nc\nd\n", 101),
+      acpDiff("t1", "/w/README.md", "", "x\n", 102),
+      acpResult("t1", "completed", 103, "edited 2 files"),
+    ];
+    const items = buildLog(input({ stepList: s, selectedRunId: "r1" }));
+    expect(kinds(items)).toEqual(["call", "file", "file"]);
+    expect(items[0]).toMatchObject({ kind: "call", ok: true, summary: "edited 2 files" });
+    expect((items[0] as Call).result?.kind).toBe("tool_result");
+    expect(items[1]).toMatchObject({ kind: "file", callId: "t1", path: "/w/part.py", added: 2, removed: 1 });
+    expect(items[2]).toMatchObject({ kind: "file", path: "/w/README.md", added: 1, removed: 0 });
+    const files = buildLog(input({ stepList: s, selectedRunId: "r1", filter: { scope: "run", kind: "files" } }));
+    expect(kinds(files)).toEqual(["file", "file"]);
+  });
+
+  it("failed_acp_tool_result_is_a_failed_call_under_errors", () => {
+    const s = [acpCall("t2", 100), acpDiff("t2", "/w/part.py", "a\n", "b\n", 101), acpResult("t2", "failed", 102)];
+    const items = buildLog(input({ stepList: s, selectedRunId: "r1" }));
+    expect(items[0]).toMatchObject({ kind: "call", ok: false, summary: "failed" });
+    const errs = buildLog(input({ stepList: s, selectedRunId: "r1", filter: { scope: "run", kind: "errors" } }));
+    expect(errs.map((i) => (i.kind === "call" ? i.callId : i.kind))).toEqual(["t2"]);
+  });
+
+  it("onshape_calls_attach_to_their_call_and_do_not_break_folding", () => {
+    // core onshape/client.py: onshape_call {method, path, status, counted, ledger_id}, no call_id, written while the tool runs
+    const s: Step[] = [];
+    for (let i = 0; i < 5; i++) {
+      s.push(toolCall("r1", `o${i}`, "onshape_get_features", { did: "d1" }, 100 + i));
+      s.push(step("r1", "onshape_call", { method: "GET", path: "/api/v10/partstudios/d/d1/w/w1/e/e1/features", status: 200, counted: true, ledger_id: 10 + i }, 100 + i + 0.1));
+      s.push(step("r1", "onshape_call", { method: "GET", path: "/api/v10/documents/d1", status: 200, counted: true, ledger_id: 20 + i }, 100 + i + 0.2));
+      s.push(toolResult("r1", `o${i}`, "onshape_get_features", 100 + i + 0.5));
+    }
+    const items = buildLog(input({ stepList: s, selectedRunId: "r1" }));
+    expect(kinds(items)).toEqual(["call", "fold"]);
+    expect((items[0] as Call).attached.map((x) => x.kind)).toEqual(["onshape_call", "onshape_call"]);
+    const fold = items[1];
+    if (fold.kind !== "fold") throw new Error("no fold");
+    expect(fold.calls).toHaveLength(4);
+    expect(fold.calls.every((c) => c.attached.length === 2)).toBe(true);
+  });
+
+  it("unknown_kinds_never_split_a_fold_run", () => {
+    const s: Step[] = [
+      ...pairs("r1", 1, 100, "a"),
+      step("r1", "sim_run", { output: { summary: "max stress 12 MPa" } }, 101.8),   // no call_id, after a result
+      ...pairs("r1", 2, 102, "b"),
+    ];
+    const items = buildLog(input({ stepList: s, selectedRunId: "r1" }));
+    expect(kinds(items)).toEqual(["call", "fold"]);
+    expect((items[0] as Call).attached.map((x) => x.kind)).toEqual(["sim_run"]);
+    // with no call to attach to it is a quiet note
+    const alone = buildLog(input({ stepList: [message("r1", "user", "hi", 1), step("r1", "verify", { summary: "ok" }, 2, { id: 7777 })], selectedRunId: "r1" }));
+    expect(alone[1]).toMatchObject({ kind: "note", text: "verify · ok", stepId: 7777 });
+  });
+
+  it("keys_use_step_ids_and_run_prefix_in_all_scope", () => {
+    const runs = [run("r1"), run("r2", { agent: "checker" })];
+    const s = [
+      toolCall("r1", "c1", "mirror_measure", {}, 100), toolResult("r1", "c1", "mirror_measure", 101),
+      { ...toolCall("r1", "c1", "mirror_measure", {}, 102), run_id: "r2" }, { ...toolResult("r1", "c1", "mirror_measure", 103), run_id: "r2" },
+      step("r1", "compaction", { summarized_messages: 3 }, 104, { id: 5555 }),
+    ];
+    const all = buildLog(input({ stepList: s, runs, filter: { scope: "all", kind: "everything" } }));
+    const keys = all.map(itemKey);
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(keys).toEqual(["r1/c:c1", "r2/c:c1", "r1/n:5555"]);
+    const one = buildLog(input({ stepList: s, runs, selectedRunId: "r1" }));
+    expect(one.map(itemKey)).toEqual(["c:c1", "n:5555"]);
   });
 });

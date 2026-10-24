@@ -68,8 +68,8 @@
 .con-box-hd b { color: var(--ink); font-weight: 500; }
 .con-box-bd { margin: 0; padding: 3px 6px; color: var(--dim); line-height: 1.35; font: inherit; }
 .con-box-bd > span { display: block; }
-.add { color: var(--green); }
-.del { color: var(--red); }
+.con-add { color: var(--green); }
+.con-del { color: var(--red); }
 .con-fold {
   display: block; width: calc(100% - 86px); margin: 2px 8px 4px 78px; text-align: left; color: var(--faint); font-size: 10px;
   border: 1px dashed var(--line2); padding: 2px 6px; background: transparent; cursor: pointer;

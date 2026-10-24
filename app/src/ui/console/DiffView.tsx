@@ -10,9 +10,9 @@ export function DiffView(props: { item: Extract<LogItem, { kind: "diff" }> }): J
   const { partId, vars, delta } = props.item;
   const lines: JSX.Element[] = [];
   for (const v of vars) {
-    if (v.prev !== null && v.prev !== v.now) lines.push(<span class="del text" key={`-${v.name}`}>{`- ${v.name} = ${fmtMm(v.prev)}`}</span>);
+    if (v.prev !== null && v.prev !== v.now) lines.push(<span class="con-del text" key={`-${v.name}`}>{`- ${v.name} = ${fmtMm(v.prev)}`}</span>);
     if (v.prev === v.now) lines.push(<span class="dim text" key={`=${v.name}`}>{`  ${v.name} = ${fmtMm(v.now)}`}</span>);
-    else lines.push(<span class="add text" key={`+${v.name}`}>{`+ ${v.name} = ${fmtMm(v.now)}`}</span>);
+    else lines.push(<span class="con-add text" key={`+${v.name}`}>{`+ ${v.name} = ${fmtMm(v.now)}`}</span>);
   }
   const parts: string[] = [];
   if (typeof delta.mass_g === "number") parts.push(`mass ${fmtSigned(delta.mass_g, 2, " g")}`);

@@ -138,13 +138,62 @@ describe("StepLog", () => {
   });
 });
 
+describe("StepLog rows for real core shapes (fix round 1)", () => {
+  it("renders_acp_files_onshape_counts_hints_and_acp_decisions", async () => {
+    setRuns([run("r1")]);
+    selectedRunId.value = "r1";
+    setSteps([
+      step("r1", "decision", { acp: "session_started", agent: "claude-code", session_id: "s-1", protocol_version: 1, agent_info: null }, 99),
+      step("r1", "tool_call", { call_id: "t1", name: "Edit part.py", kind: "edit", status: "pending", input: {}, source: "acp" }, 100),
+      step("r1", "diff", { call_id: "t1", path: "/w/part.py", old_text: "a\nb\n", new_text: "a\nc\nd\n", source: "acp" }, 101),
+      step("r1", "tool_result", { call_id: "t1", name: "Edit part.py", status: "completed", ok: true, output: null, text: "", source: "acp" }, 102),
+      step("r1", "decision", { acp: "permission", approval_id: "ap1", status: "approved", tool_call_id: "t1", option_id: "allow_once" }, 103),
+      toolCall("r1", "o1", "onshape_get_features", {}, 104),
+      step("r1", "onshape_call", { method: "GET", path: "/api/v10/documents/d1", status: 200, counted: true, ledger_id: 1 }, 104.1),
+      step("r1", "onshape_call", { method: "GET", path: "/api/v10/documents/d2", status: 200, counted: true, ledger_id: 2 }, 104.2),
+      toolResult("r1", "o1", "onshape_get_features", 105),
+      toolCall("r1", "g1", "mirror_part_set_vars", {}, 106),
+      step("r1", "error", { call_id: "g1", name: "mirror_part_set_vars", error: "out_of_scope", message: "outside this run's scope", hint: "ask the user to widen the scope", retryable: false }, 107),
+    ]);
+    const { container } = render(<StepLog />);
+    await frame();
+    const text = container.textContent ?? "";
+    expect(text).toContain("ACP session started · claude-code");
+    expect(text).toContain("permission approved · allow_once");
+    const file = container.querySelector('[data-kind="file"]');
+    expect(file?.textContent).toContain("/w/part.py");
+    expect(file?.querySelector(".con-add")?.textContent).toBe("+2");
+    expect(file?.querySelector(".con-del")?.textContent).toBe("−1");
+    expect(container.querySelector('[data-key="c:o1"]')?.textContent).toContain("2 Onshape calls");
+    expect(container.querySelectorAll('[data-kind="note"]')).toHaveLength(0);
+    expect(container.querySelector('[data-key="c:g1"]')?.textContent).toContain("ask the user to widen the scope");
+  });
+
+  it("view_change_resets_show_earlier", async () => {
+    setRuns([run("r1"), run("r2", { agent: "checker" })]);
+    selectedRunId.value = "r1";
+    const list: Step[] = [];
+    for (let i = 0; i < 600; i++) list.push(toolCall("r1", `f${i}`, "m", {}, 100 + i), toolFailure("r1", `f${i}`, "m", 100.5 + i));
+    for (let i = 0; i < 600; i++) list.push(toolCall("r2", `g${i}`, "m", {}, 100 + i), toolFailure("r2", `g${i}`, "m", 100.5 + i));
+    setSteps(list);
+    const { container } = render(<StepLog />);
+    await frame();
+    fireEvent.click(screen.getByText(/show earlier/));
+    await frame();
+    expect(container.querySelectorAll("[data-row]")).toHaveLength(600);
+    selectedRunId.value = "r2";                  // a different view: back to the last 500
+    await frame();
+    expect(container.querySelectorAll("[data-row]")).toHaveLength(500);
+  });
+});
+
 describe("DiffView", () => {
   it("shows_removed_added_and_delta", () => {
     const s = step("r1", "diff", { call_id: "c2", name: "mirror_part_set_vars", output: {} }, 100);
     const { container } = render(<DiffView item={{ kind: "diff", step: s, partId: "mount_plate", vars: [{ name: "thickness", prev: 5, now: 6 }], delta: { mass_g: 0.8, volume_mm3: 800 } }} />);
     expect(container.textContent).toContain("Part · mount plate");
-    const del = container.querySelector(".del");
-    const add = container.querySelector(".add");
+    const del = container.querySelector(".con-del");
+    const add = container.querySelector(".con-add");
     expect(del?.textContent).toBe("- thickness = 5.00 mm");
     expect(add?.textContent).toBe("+ thickness = 6.00 mm");
     expect(container.textContent).toContain("Δ mass +0.80 g · volume +800 mm³");

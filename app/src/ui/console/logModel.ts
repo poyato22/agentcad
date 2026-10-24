@@ -10,6 +10,11 @@ import type { LogFilter } from "../../state/store";
 type CallItem = {
   kind: "call"; callId: string; name: string; input: Record<string, unknown>; result: Step | null;
   ok: boolean | null; summary: string | null; startedTs: number; endedTs: number | null;
+  /** Hint from a failed result (gate MisesError shape), shown under the summary. */
+  hint: string | null;
+  /** Steps that happened inside this call and show on its row instead of as rows of their own
+   *  (onshape_call ledger steps, other step kinds without a call_id). */
+  attached: Step[];
 };
 
 type LogItemBody =
@@ -19,11 +24,17 @@ type LogItemBody =
   | { kind: "diff"; step: Step; partId: string | null; vars: { name: string; prev: number | null; now: number }[];
       delta: { volume_mm3?: number; mass_g?: number; bbox_size?: number[] } }
   | { kind: "error"; step: Step; code: string; message: string; hint: string | null }
-  | { kind: "decision"; step: Step } | { kind: "note"; text: string; ts: number }
+  | { kind: "file"; step: Step; callId: string | null; path: string; added: number; removed: number }  // ACP file edit
+  | { kind: "decision"; step: Step } | { kind: "note"; text: string; ts: number; stepId: number | null }
   | { kind: "approval"; approval: Approval } | { kind: "question"; question: Question }
   | { kind: "live"; runId: string; text: string };                                   // streaming text_delta tail
 
-type Labelled = { /** Set in the "all" scope: the run's label, shown before the row. */ runLabel?: string };
+type Labelled = {
+  /** Set in the "all" scope: the run's label, shown before the row (keys then get a run prefix). */
+  runLabel?: string;
+  /** The run this row belongs to (set on every row built from a run). */
+  runId?: string;
+};
 
 export type LogItem = LogItemBody & Labelled;
 
@@ -40,22 +51,30 @@ export interface BuildLogInput {
   inflight?: ReadonlyMap<string, InflightCall>;
 }
 
-/** A fold's key (for expandedFolds): the call id of its first folded call. */
-export function foldKey(item: Extract<LogItem, { kind: "fold" }>): string {
-  return item.calls[0]?.callId ?? "";
+/** Expansion key of a fold that starts at this call: "<run id>/<call id>". */
+export function callFoldKey(call: { callId: string; runId?: string }): string {
+  return `${call.runId ?? ""}/${call.callId}`;
 }
 
-/** Stable key per row (Preact keys, scroll anchoring). */
+/** A fold's key (for expandedFolds): its first folded call's callFoldKey. */
+export function foldKey(item: Extract<LogItem, { kind: "fold" }>): string {
+  return item.calls[0] ? callFoldKey(item.calls[0]) : "";
+}
+
+/** Stable key per row (Preact keys, scroll anchoring). In the "all" scope every key gets a run
+ *  prefix (call ids like "c1" repeat across runs). */
 export function itemKey(item: LogItem): string {
+  let k: string;
   switch (item.kind) {
-    case "call": return `c:${item.callId}`;
-    case "fold": return `f:${foldKey(item)}`;
-    case "approval": return `a:${item.approval.id}`;
-    case "question": return `q:${item.question.question_id}`;
-    case "live": return `l:${item.runId}`;
-    case "note": return `n:${item.ts}`;
-    default: return `s:${item.step.id}`;
+    case "call": k = `c:${item.callId}`; break;
+    case "fold": k = `f:${item.calls[0]?.callId ?? ""}`; break;
+    case "approval": k = `a:${item.approval.id}`; break;
+    case "question": k = `q:${item.question.question_id}`; break;
+    case "live": k = `l:${item.runId}`; break;
+    case "note": k = item.stepId !== null ? `n:${item.stepId}` : `n:${item.ts}`; break;
+    default: k = `s:${item.step.id}`;
   }
+  return item.runLabel !== undefined && item.runId ? `${item.runId}/${k}` : k;
 }
 
 export function buildLog(input: BuildLogInput): LogItem[] {
@@ -96,12 +115,10 @@ function baseItems(input: BuildLogInput): Raw[] {
   const prevVars = diffPrevVars(input.steps);
   const perRun = scopeRuns(input).map((id) => runItems(id, input, prevVars));
   const merged = perRun.length === 1 ? perRun[0] : mergeByTs(perRun);
+  for (const r of merged) r.item.runId = r.runId;
   if (input.filter.scope === "all") {
     const labels = new Map(input.runs.map((r) => [r.id, runLabel(r, input.runs)]));
-    for (const r of merged) {
-      const label = labels.get(r.runId);
-      if (label) r.item.runLabel = label;
-    }
+    for (const r of merged) r.item.runLabel = labels.get(r.runId) ?? "agent";
   }
   return merged;
 }
@@ -140,14 +157,31 @@ function runItems(runId: string, input: BuildLogInput, prevVars: ReadonlyMap<num
     out.push({ item, ts: clock, collapsed, runId });
   };
 
+  // A call's result is its terminal step (tool_result / error / gate result kinds). ACP file-edit
+  // diff steps (path/old_text/new_text) that arrive in between are rows of their own.
   const results = new Map<string, Step>();
   const calls = new Map<string, Step>();
   for (const s of steps) {
     const cid = s.payload.call_id;
     if (typeof cid !== "string") continue;
     if (s.kind === "tool_call") { if (!calls.has(cid)) calls.set(cid, s); }
-    else if (!results.has(cid)) results.set(cid, s);
+    else if (!isAcpDiff(s) && !results.has(cid)) results.set(cid, s);
   }
+
+  // Calls started and not finished at this point of the walk; onshape_call steps attach to the newest.
+  const open: CallItem[] = [];
+  const close = (cid: string) => {
+    const i = open.findIndex((c) => c.callId === cid);
+    if (i >= 0) open.splice(i, 1);
+  };
+  /** A step that is not a row: attach it to the enclosing call, else to the call shown just
+   *  before it, else show a quiet note. Either way it never splits a run of calls. */
+  const attachOrNote = (s: Step, text: string) => {
+    const last = out[out.length - 1]?.item;
+    const host = open[open.length - 1] ?? (last && last.kind === "call" ? last : null);
+    if (host) host.attached.push(s);
+    else push({ kind: "note", text, ts: s.ts, stepId: s.id }, s.ts);
+  };
 
   let lastMessage: string | null = null;
   for (const s of steps) {
@@ -156,16 +190,23 @@ function runItems(runId: string, input: BuildLogInput, prevVars: ReadonlyMap<num
     if (s.kind === "tool_call" && cid) {
       if (calls.get(cid) !== s) continue;
       const result = results.get(cid) ?? null;
-      push(callItem(cid, str(p.name) ?? "", rec(p.input), s.ts, result), s.ts, s.collapsed);
+      const item = callItem(cid, str(p.name) ?? "", rec(p.input), s.ts, result);
+      push(item, s.ts, s.collapsed);
       if (result) {
         const extra = resultExtra(result, rec(p.input), prevVars);
         if (extra) push(extra, s.ts);
       }
+      if (!result || result.id > s.id) open.push(item);   // open until the walk passes its result
+      lastMessage = null;
+      continue;
+    }
+    if (cid && isAcpDiff(s)) {
+      push(fileItem(s, cid), s.ts);
       lastMessage = null;
       continue;
     }
     if (cid && s.kind !== "message") {
-      if (calls.has(cid)) continue;                 // shown with its call
+      if (calls.has(cid)) { if (results.get(cid) === s) close(cid); continue; }   // shown with its call
       if (results.get(cid) !== s) continue;
       // orphan result: show as a call on its own
       push(callItem(cid, str(p.name) ?? "", {}, s.ts, s), s.ts, s.collapsed);
@@ -178,7 +219,7 @@ function runItems(runId: string, input: BuildLogInput, prevVars: ReadonlyMap<num
       case "message": {
         const text = str(p.text) ?? "";
         const role = p.role === "user" ? "user" : "assistant";
-        if (!text.trim()) break;                    // tool-use-only turn: its calls are the rows
+        if (!text.trim()) continue;                 // tool-use-only turn: its calls are the rows
         push({ kind: "message", step: s, role, text }, s.ts);
         lastMessage = role === "assistant" ? text : null;
         continue;
@@ -191,18 +232,21 @@ function runItems(runId: string, input: BuildLogInput, prevVars: ReadonlyMap<num
         break;
       case "compaction": {
         const n = typeof p.summarized_messages === "number" ? p.summarized_messages : null;
-        push({ kind: "note", text: n === null ? "compacted the conversation" : `compacted ${n} messages`, ts: s.ts }, s.ts);
+        push({ kind: "note", text: n === null ? "compacted the conversation" : `compacted ${n} messages`, ts: s.ts, stepId: s.id }, s.ts);
         break;
       }
       case "diff": {
+        if (typeof p.path === "string") { push(fileItem(s, null), s.ts); break; }
         const d = diffItem(s, {}, prevVars);
         if (d) push(d, s.ts);
         break;
       }
       default: {
-        const out = rec(p.output);
-        const summary = str(out.summary) ?? str(p.summary);
-        push({ kind: "note", text: summary ? `${s.kind} · ${summary}` : s.kind, ts: s.ts }, s.ts);
+        // onshape_call ({method, path, status, …}, no call_id) and any other kind
+        const o = rec(p.output);
+        const summary = str(o.summary) ?? str(p.summary);
+        attachOrNote(s, summary ? `${s.kind} · ${summary}` : s.kind);
+        continue;
       }
     }
     lastMessage = null;
@@ -224,19 +268,48 @@ function runItems(runId: string, input: BuildLogInput, prevVars: ReadonlyMap<num
 }
 
 function callItem(callId: string, name: string, input: Record<string, unknown>, startedTs: number, result: Step | null): CallItem {
-  if (!result) return { kind: "call", callId, name, input, result: null, ok: null, summary: null, startedTs, endedTs: null };
+  const base = { kind: "call" as const, callId, input, startedTs, attached: [] as Step[] };
+  if (!result) return { ...base, name, result: null, ok: null, summary: null, hint: null, endedTs: null };
   const p = result.payload;
+  const o = rec(p.output);
   let ok: boolean;
   let summary: string | null;
   if (result.kind === "error") {
+    // gate MisesError {error, message, hint} or a failed ToolOutput {output: {ok: false, summary, data}}
     ok = false;
-    summary = str(p.message) ?? str(p.error) ?? null;
+    summary = nonEmpty(p.message) ?? nonEmpty(o.summary) ?? nonEmpty(p.error);
   } else {
-    const o = rec(p.output);
-    ok = o.ok !== false && p.ok !== false;
-    summary = str(o.summary) ?? str(p.summary) ?? str(p.message) ?? null;
+    // gate ToolOutput {output: {ok, summary}} or ACP {ok, status, output: <raw>, text}
+    ok = o.ok !== false && p.ok !== false && p.status !== "failed";
+    summary = nonEmpty(o.summary) ?? nonEmpty(p.summary) ?? nonEmpty(p.message) ?? nonEmpty(p.text) ?? nonEmpty(p.status);
   }
-  return { kind: "call", callId, name: name || (str(p.name) ?? ""), input, result, ok, summary, startedTs, endedTs: result.ts };
+  return { ...base, name: name || (str(p.name) ?? ""), result, ok, summary, hint: nonEmpty(p.hint), endedTs: result.ts };
+}
+
+/** ACP file edit (acp_host/session.py _tool_content): a diff step with path/old_text/new_text, no ToolOutput. */
+function isAcpDiff(s: Step): boolean {
+  return s.kind === "diff" && typeof s.payload.path === "string" && s.payload.output === undefined;
+}
+
+function fileItem(s: Step, callId: string | null): LogItem {
+  const { added, removed } = lineDelta(str(s.payload.old_text) ?? "", str(s.payload.new_text) ?? "");
+  return { kind: "file", step: s, callId, path: str(s.payload.path) ?? "", added, removed };
+}
+
+/** +/- line counts: lines of the new text not matched in the old text and vice versa (multiset match). */
+export function lineDelta(oldText: string, newText: string): { added: number; removed: number } {
+  const lines = (t: string) => (t === "" ? [] : t.replace(/\n$/, "").split("\n"));
+  const pool = new Map<string, number>();
+  for (const l of lines(oldText)) pool.set(l, (pool.get(l) ?? 0) + 1);
+  let added = 0;
+  for (const l of lines(newText)) {
+    const n = pool.get(l) ?? 0;
+    if (n > 0) pool.set(l, n - 1);
+    else added++;
+  }
+  let removed = 0;
+  for (const n of pool.values()) removed += n;
+  return { added, removed };
 }
 
 /** Extra row after a call: a diff box for diff results, a decision row for decision results. */
@@ -305,13 +378,14 @@ function matches(i: LogItem, kind: LogFilter["kind"]): boolean {
   switch (kind) {
     case "everything": return true;
     case "decisions": return i.kind === "decision" || i.kind === "approval" || i.kind === "question";
-    case "tool_calls": return i.kind === "call" || i.kind === "fold" || i.kind === "diff";
+    case "tool_calls": return i.kind === "call" || i.kind === "fold" || i.kind === "diff" || i.kind === "file";
     case "files": return isFileItem(i);
     case "errors": return i.kind === "error" || (i.kind === "call" && i.ok === false);
   }
 }
 
 function isFileItem(i: LogItem): boolean {
+  if (i.kind === "file") return true;
   if (i.kind === "call") {
     if (!i.result) return false;
     const out = rec(i.result.payload.output);
@@ -343,7 +417,7 @@ function fold(rows: Raw[], expanded: ReadonlySet<string>): LogItem[] {
       let m = k;
       while (m < group.length && folded[m]) m++;
       const calls = group.slice(k, m).map((r) => r.item as CallItem & Labelled);
-      if (expanded.has(calls[0].callId)) out.push(...calls);
+      if (expanded.has(callFoldKey(calls[0]))) out.push(...calls);
       else {
         const f: LogItem = { kind: "fold", calls, names: [...new Set(calls.map((c) => c.name))] };
         if (calls[0].runLabel) f.runLabel = calls[0].runLabel;
@@ -357,6 +431,8 @@ function fold(rows: Raw[], expanded: ReadonlySet<string>): LogItem[] {
 }
 
 function str(v: unknown): string | null { return typeof v === "string" ? v : null; }
+
+function nonEmpty(v: unknown): string | null { return typeof v === "string" && v.trim() !== "" ? v : null; }
 
 function rec(v: unknown): Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : {};

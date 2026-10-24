@@ -28,6 +28,24 @@ export function inputPreview(input: Record<string, unknown>, max = 80): string {
   return s.length > max ? `${s.slice(0, max - 1)}…` : s;
 }
 
+/** "2 Onshape calls · 1 sim_run step" for steps shown on this call's row (onshape_call etc.). */
+export function attachedText(item: Call): string {
+  if (item.attached.length === 0) return "";
+  const counts = new Map<string, number>();
+  for (const s of item.attached) counts.set(s.kind, (counts.get(s.kind) ?? 0) + 1);
+  return [...counts].map(([kind, n]) => (kind === "onshape_call"
+    ? `${n} Onshape call${n === 1 ? "" : "s"}` : `${n} ${kind} step${n === 1 ? "" : "s"}`)).join(" · ");
+}
+
+/** onshape_call: "GET /api/v10/documents/d1 → 200"; other kinds: "kind · summary". */
+function attachedLine(s: Call["attached"][number]): string {
+  const p = s.payload;
+  if (s.kind === "onshape_call") return `${String(p.method ?? "")} ${String(p.path ?? "")} → ${String(p.status ?? "")}${p.counted === false ? " (not counted)" : ""}`;
+  const out = (typeof p.output === "object" && p.output !== null ? p.output : {}) as Record<string, unknown>;
+  const summary = typeof out.summary === "string" ? out.summary : typeof p.summary === "string" ? p.summary : "";
+  return summary ? `${s.kind} · ${summary}` : s.kind;
+}
+
 function pretty(v: unknown): string {
   try {
     return JSON.stringify(v, null, 2) ?? "";
@@ -56,13 +74,17 @@ export function ToolCallRow(props: { item: Call; label?: string }): JSX.Element 
           {" "}<span class="faint text">{inputPreview(item.input)}</span>
           {running && <span class="faint"> · running</span>}
           {dur && <span class="faint">{` · ${dur}`}</span>}
+          {attachedText(item) && <span class="faint">{` · ${attachedText(item)}`}</span>}
         </span>
       </div>
       {item.summary !== null && (
         <div class="con-row con-result">
           <span class="con-ts" />
           <span class={`con-g ${item.ok === false ? "con-g-fail" : "faint"}`}>{item.ok === false ? "✕" : "◆"}</span>
-          <span class="con-body dim text">{item.summary}</span>
+          <span class="con-body">
+            <span class="dim text">{item.summary}</span>
+            {item.hint && <span class="faint text con-hint">{item.hint}</span>}
+          </span>
         </div>
       )}
       {open && (
@@ -71,6 +93,10 @@ export function ToolCallRow(props: { item: Call; label?: string }): JSX.Element 
           <pre class="con-box-bd text">{pretty(item.input)}</pre>
           {output !== null && <div class="con-box-hd"><b>output</b></div>}
           {output !== null && <pre class="con-box-bd text">{pretty(output)}</pre>}
+          {item.attached.length > 0 && <div class="con-box-hd"><b>during this call</b></div>}
+          {item.attached.length > 0 && (
+            <pre class="con-box-bd text">{item.attached.map(attachedLine).join("\n")}</pre>
+          )}
         </div>
       )}
     </div>

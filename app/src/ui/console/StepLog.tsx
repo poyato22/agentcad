@@ -12,7 +12,7 @@ import { QuestionCard } from "./approvals/QuestionCard";
 import { expandedFolds, labelOf, logFrame, retainLogFrames, toggleFold } from "./derived";
 import { DiffView } from "./DiffView";
 import { createFollow, type FollowController } from "./follow";
-import { foldKey, itemKey, type LogItem } from "./logModel";
+import { callFoldKey, foldKey, itemKey, type LogItem } from "./logModel";
 import { ToolCallRow } from "./ToolCallRow";
 
 export const WINDOW = 500;
@@ -34,7 +34,9 @@ export function StepLog(): JSX.Element {
   const ctl = useRef<FollowController | null>(null);
   if (!ctl.current) ctl.current = createFollow((on) => actions.setFollow(on));
   const fc = ctl.current;
-  const [earlier, setEarlier] = useState(0);
+  // "show earlier" belongs to one view (scope · filter · run): another view starts at the last 500
+  const [earlierFor, setEarlierFor] = useState<{ key: string; n: number }>({ key: "", n: 0 });
+  const earlier = earlierFor.key === frame.key ? earlierFor.n : 0;
   const seen = useRef<{ frame: unknown; key: string; unfolded: number }>({ frame: null, key: "", unfolded: 0 });
   const pinned = useRef<number | null>(null);
   const lastStart = useRef(0);
@@ -44,9 +46,10 @@ export function StepLog(): JSX.Element {
   if (followOn && !fc.following) fc.resume();
   if (!followOn && fc.following) fc.onScroll(false);
 
-  // count new rows once per frame (a view change is not "new")
+  // count new rows once per frame (a view change is not "new", and unpins the window)
   if (seen.current.frame !== frame) {
     if (seen.current.key === frame.key) fc.onAppend(frame.unfolded - seen.current.unfolded);
+    else { pinned.current = null; lastStart.current = 0; }
     seen.current = { frame, key: frame.key, unfolded: frame.unfolded };
   }
 
@@ -87,10 +90,10 @@ export function StepLog(): JSX.Element {
     const el = scroller.current;
     if (el) keepFromBottom.current = el.scrollHeight - el.scrollTop;
     if (pinned.current !== null) pinned.current = Math.max(0, pinned.current - WINDOW);
-    setEarlier(earlier + WINDOW);
+    setEarlierFor({ key: frame.key, n: earlier + WINDOW });
   };
 
-  const resume = () => { fc.resume(); setEarlier(0); };
+  const resume = () => { fc.resume(); setEarlierFor({ key: "", n: 0 }); };
 
   return (
     <div class="con-log">
@@ -111,8 +114,8 @@ function Row({ item, expanded }: { item: LogItem; expanded: ReadonlySet<string> 
   const label = item.runLabel;
   return (
     <div data-row data-kind={item.kind} data-key={key}>
-      {item.kind === "call" && expanded.has(item.callId) && (
-        <button type="button" class="con-fold con-fold-open" onClick={() => toggleFold(item.callId)}>▾ fold tool calls</button>
+      {item.kind === "call" && expanded.has(callFoldKey(item)) && (
+        <button type="button" class="con-fold con-fold-open" onClick={() => toggleFold(callFoldKey(item))}>▾ fold tool calls</button>
       )}
       <RowBody item={item} label={label} />
     </div>
@@ -152,6 +155,18 @@ function RowBody({ item, label }: { item: LogItem; label?: string }): JSX.Elemen
     }
     case "diff":
       return <div class="con-indent"><DiffView item={item} /></div>;
+    case "file":
+      return (
+        <div class="con-row" data-file>
+          <span class="con-ts">{fmtClock(item.step.ts)}</span>
+          <span class="con-g faint">◆</span>
+          <span class="con-body">
+            <Prefix label={label} />
+            <span class="faint">file · </span><span class="ink text">{item.path}</span>
+            {" "}<span class="con-add">{`+${item.added}`}</span>{" "}<span class="con-del">{`−${item.removed}`}</span>
+          </span>
+        </div>
+      );
     case "error":
       return (
         <div class="con-row">
@@ -203,6 +218,17 @@ function DecisionText({ step }: { step: Step }): JSX.Element {
     const text = entries.map((e) => (typeof e === "object" && e !== null && typeof (e as Record<string, unknown>).content === "string"
       ? (e as Record<string, unknown>).content as string : JSON.stringify(e))).join(" · ");
     return <><span class="ink">Plan</span><span class="dim text">{text ? ` · ${text}` : ""}</span></>;
+  }
+  if (p.acp === "session_started") {
+    // acp_host/session.py: {acp, agent, session_id, protocol_version, agent_info}
+    const parts = [typeof p.agent === "string" ? p.agent : "", typeof p.protocol_version === "number" ? `protocol ${p.protocol_version}` : ""].filter(Boolean);
+    return <><span class="ink">ACP session started</span><span class="dim text">{parts.length ? ` · ${parts.join(" · ")}` : ""}</span></>;
+  }
+  if (p.acp === "permission") {
+    // acp_host/session.py: {acp, approval_id, status, tool_call_id, option_id}
+    const status = typeof p.status === "string" ? p.status : "decided";
+    const option = typeof p.option_id === "string" ? p.option_id : "no option (cancelled)";
+    return <><span class="ink">{`permission ${status}`}</span><span class="dim text">{` · ${option}`}</span></>;
   }
   const skipped = Array.isArray(p.skipped_tools) ? p.skipped_tools.filter((x): x is string => typeof x === "string") : [];
   const reason = typeof p.reason === "string" ? p.reason : "";
