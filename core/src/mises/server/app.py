@@ -31,6 +31,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from ..types import ErrorCode, MisesError
 from .mcp_server import RUN_HEADER, build_mcp_server
+from .ui_api import add_cors, build_ui_router
 
 if TYPE_CHECKING:
     from ..runtime import Runtime
@@ -152,6 +153,8 @@ def create_app(runtime: Runtime, token: str) -> FastAPI:
     app.state.runtime = runtime
     app.state.mcp_session_manager = manager
     app.add_middleware(_BearerAuth, token=token)
+    add_cors(app)  # added last = outermost: preflights are answered before the bearer check
+    app.include_router(build_ui_router(runtime))
 
     @app.exception_handler(MisesError)
     async def _mises_error(_req, e: MisesError):

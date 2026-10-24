@@ -1,0 +1,22 @@
+[
+  {
+    "name": "designer",
+    "description": "Main CAD agent. Designs and edits parts using the local mirror and Onshape.",
+    "model": "inherit"
+  },
+  {
+    "name": "planner",
+    "description": "Turns a design request into a step-by-step plan. Produces a plan only; changes nothing.",
+    "model": "inherit"
+  },
+  {
+    "name": "sim",
+    "description": "Placeholder for simulation work (milestone 4). Simulation is not available yet.",
+    "model": "inherit"
+  },
+  {
+    "name": "verifier",
+    "description": "Skeptical read-only checker. Tries to prove a change wrong and reports pass/fail per requirement.",
+    "model": "inherit"
+  }
+]

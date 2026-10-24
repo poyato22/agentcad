@@ -1,0 +1,18 @@
+[
+  {
+    "id": "a332e73aa8f2",
+    "run_id": "b7c79a57cbb4",
+    "action": "fixture_merge",
+    "payload": {
+      "part_id": "mount_plate"
+    },
+    "payload_hash": "f340f4e1fa8ae34092bf3a8c8d58a3ff866253aadd8512f337db0b56512710b9",
+    "microversion": null,
+    "deltas": {},
+    "status": "pending",
+    "expires_at": 1792871220.0936902,
+    "decided_by": null,
+    "decided_at": null,
+    "edited_payload": null
+  }
+]
