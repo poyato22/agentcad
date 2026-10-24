@@ -337,3 +337,20 @@ async def test_agent_env_allowlist(rt, monkeypatch):
     assert env == {"LANG": "en_US.UTF-8", "TMPDIR": "/tmp/mises-test",
                    "HTTPS_PROXY": "http://proxy:3128", "no_proxy": "localhost",
                    "SSL_CERT_FILE": "/etc/ssl/cert.pem", "FROM_SPEC": "yes"}
+
+
+async def test_runtime_cancel_kills_acp_agent(rt):
+    # M8: runtime.cancel(run_id) (e.g. the app's stop button) must stop the agent process
+    s = await _session(rt, "--hang", cancel_timeout_s=0.5)
+    pending = asyncio.create_task(s.prompt("chat"))
+    await asyncio.sleep(0.3)
+    pid = s.pid
+    rt.cancel(s.run_id)
+    assert rt.store.get_run(s.run_id).status == "cancelled"
+    deadline = time.monotonic() + 5
+    while not _dead(pid) and time.monotonic() < deadline:
+        await asyncio.sleep(0.05)
+    assert _dead(pid)
+    await asyncio.wait_for(pending, 3)
+    await s.close()
+    assert not rt._cancel_hooks

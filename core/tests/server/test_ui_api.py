@@ -208,7 +208,7 @@ async def test_cancel_all_cancels_running_and_orphans(home):
         assert rt.store.get_run(live).status == "cancelled"
         assert rt.store.get_run(orphan).status == "cancelled"
         r2 = await c.post("/runs/cancel_all", headers=AUTH)
-        assert r2.json() == {"cancelled": []}
+        assert r2.json() == {"cancelled": [], "failed": []}
 
 
 @pytest.mark.slow
@@ -228,3 +228,34 @@ def test_dump_ui_fixtures(tmp_path):
     diffs = [s for s in steps if s["kind"] == "diff"]
     assert diffs and "delta" in diffs[0]["payload"]["output"]["data"]
     assert (out / "mount_plate.glb").read_bytes()[:4] == b"glTF"
+
+
+async def test_cancel_all_runs_external_cancel_hooks_and_is_best_effort(home, monkeypatch):
+    # M8: an external run's owner hook (AcpSession.cancel) runs; T1: one failing run does not
+    # stop the others and is reported under "failed"
+    rt = Runtime(home, provider_resolver=lambda ref: (FakeProvider([]), "m"))
+    ext = rt.create_external_run("claude", provider="acp", model="claude")
+    hooked = []
+
+    async def hook():
+        hooked.append(ext)
+    rt.register_cancel_hook(ext, hook)
+    bad = rt.create_external_run("codex", provider="acp", model="codex")
+    good = rt.create_external_run("gemini", provider="acp", model="gemini")
+    real_cancel = rt.cancel
+
+    def cancel(run_id):
+        if run_id == bad:
+            raise RuntimeError("boom")
+        real_cancel(run_id)
+    monkeypatch.setattr(rt, "cancel", cancel)
+    transport = httpx.ASGITransport(app=create_app(rt, TOKEN))
+    async with httpx.AsyncClient(transport=transport, base_url="http://t") as c:
+        r = await c.post("/runs/cancel_all", headers=AUTH)
+    assert r.status_code == 200
+    body = r.json()
+    assert sorted(body["cancelled"]) == sorted([ext, good])
+    assert body["failed"] == [{"run_id": bad, "error": "RuntimeError: boom"}]
+    await asyncio.sleep(0.05)
+    assert hooked == [ext]
+    assert rt.store.get_run(good).status == "cancelled"

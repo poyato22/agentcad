@@ -182,6 +182,8 @@ class AcpSession:
         self._cancelling = False
         self._failed = False
         self._finished = False
+        # runtime.cancel(run_id) / cancel_all must kill this agent, not just mark the run
+        runtime.register_cancel_hook(run_id, self.cancel)
 
     @property
     def pid(self) -> int | None:
@@ -371,6 +373,7 @@ class AcpSession:
         if self._finished:
             return
         self._finished = True
+        self.runtime.unregister_cancel_hook(self.run_id)
         try:
             if self.runtime.store.get_run(self.run_id).status != "running":
                 return      # already finished elsewhere (e.g. runtime.cancel); keep that status

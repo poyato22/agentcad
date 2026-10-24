@@ -5,6 +5,7 @@ import asyncio
 import logging
 import os
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -71,6 +72,9 @@ class Runtime:
         self._runs: dict[str, _RunState] = {}
         self._external: set[str] = set()
         self._questions: dict[str, tuple[str, asyncio.Future[str]]] = {}
+        # external run id -> owner's async cancel (e.g. AcpSession.cancel kills the agent)
+        self._cancel_hooks: dict[str, Callable[[], Awaitable[None]]] = {}
+        self._hook_tasks: set[asyncio.Task] = set()
         self.interrupted = self._fail_orphaned_runs()
 
     # ---- crash recovery
@@ -164,6 +168,33 @@ class Runtime:
             "external": True}))
         return run.id
 
+    def register_cancel_hook(self, run_id: str, hook: Callable[[], Awaitable[None]]) -> None:
+        """The owner of an external run (e.g. AcpSession) registers how to stop its agent;
+        cancel(run_id) and POST /runs/cancel_all then run it."""
+        self._cancel_hooks[run_id] = hook
+
+    def unregister_cancel_hook(self, run_id: str) -> None:
+        self._cancel_hooks.pop(run_id, None)
+
+    def _run_cancel_hook(self, run_id: str) -> None:
+        hook = self._cancel_hooks.pop(run_id, None)
+        if hook is None:
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            log.warning("cannot run the cancel hook of %s: no event loop", run_id)
+            return
+
+        async def run() -> None:
+            try:
+                await hook()
+            except Exception:
+                log.exception("cancel hook of run %s failed", run_id)
+        task = loop.create_task(run())
+        self._hook_tasks.add(task)
+        task.add_done_callback(self._hook_tasks.discard)
+
     def finish_external_run(self, run_id: str, status: str) -> None:
         if status not in ("done", "failed", "cancelled"):
             raise MisesError(ErrorCode.INVALID_INPUT, f"bad final status: {status!r}",
@@ -243,7 +274,10 @@ class Runtime:
 
     def cancel(self, run_id: str) -> None:
         if run_id in self._external:
+            # mark it cancelled first (the MCP endpoint then refuses its calls), then let the
+            # owner stop the agent process
             self.finish_external_run(run_id, "cancelled")
+            self._run_cancel_hook(run_id)
             return
         st = self._state(run_id)
         st.cancel_requested = True

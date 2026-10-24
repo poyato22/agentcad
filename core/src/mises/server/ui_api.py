@@ -155,30 +155,40 @@ def build_ui_router(runtime: Runtime) -> APIRouter:
             return Response(status_code=304, headers=headers)
         return Response(real.read_bytes(), media_type="model/gltf-binary", headers=headers)
 
+    def _cancel_orphan(run_id: str) -> None:
+        # "running" in the database but not driven here: nothing live to stop, fix the record
+        runtime.approvals.cancel_run(run_id)
+        runtime.store.release_run_reservations(run_id)
+        runtime.store.update_run(run_id, status="cancelled")
+        runtime.events.publish(Event(type="run_finished", run_id=run_id, data={
+            "status": "cancelled", "stop_reason": "cancelled",
+            "error": "orphaned run cancelled", "final_text": ""}))
+
     @router.post("/runs/cancel_all")
     async def cancel_all():
+        """Best effort: every running run is tried; failures are reported, not raised."""
         cancelled: list[str] = []
+        failed: list[dict] = []
         for run in runtime.store.list_runs(10_000):
             if run.status != "running":
                 continue
             if runtime.is_cancelling(run.id):
                 continue  # already stopping; keeps the call idempotent
             try:
-                # Internal runs: cancel the loop. External (ACP/MCP) runs are marked cancelled
-                # here; the outside agent process is killed by whoever owns it.
-                runtime.cancel(run.id)
-            except MisesError as e:
-                if e.code != ErrorCode.NOT_FOUND:
-                    raise
-                # left "running" by a crashed core: nothing live to stop, fix the record
-                runtime.approvals.cancel_run(run.id)
-                runtime.store.release_run_reservations(run.id)
-                runtime.store.update_run(run.id, status="cancelled")
-                runtime.events.publish(Event(type="run_finished", run_id=run.id, data={
-                    "status": "cancelled", "stop_reason": "cancelled",
-                    "error": "orphaned run cancelled", "final_text": ""}))
+                try:
+                    # Internal runs: cancel the loop. External runs: marked cancelled, and the
+                    # owner's cancel hook (e.g. AcpSession) kills the agent process.
+                    runtime.cancel(run.id)
+                except MisesError as e:
+                    if e.code != ErrorCode.NOT_FOUND:
+                        raise
+                    _cancel_orphan(run.id)
+            except Exception as e:  # noqa: BLE001 - keep stopping the rest
+                log.exception("cancel_all: could not cancel run %s", run.id)
+                failed.append({"run_id": run.id, "error": f"{type(e).__name__}: {e}"})
+                continue
             cancelled.append(run.id)
-        log.info("cancel_all: cancelled %d run(s)", len(cancelled))
-        return {"cancelled": cancelled}
+        log.info("cancel_all: cancelled %d run(s), %d failed", len(cancelled), len(failed))
+        return {"cancelled": cancelled, "failed": failed}
 
     return router
