@@ -4,12 +4,13 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import secrets
 import signal
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ..platform import sandbox_profile
+from ..platform import sandboxed_command
 
 WORKER = Path(__file__).resolve().parent / "worker.py"
 _TAIL = 4000
@@ -19,6 +20,7 @@ _TAIL = 4000
 class BuildResult:
     ok: bool
     metrics: dict = field(default_factory=dict)
+    vars: dict = field(default_factory=dict)
     error: str | None = None
     stdout_tail: str = ""
 
@@ -39,11 +41,13 @@ async def run_build(part_dir: Path, vars: dict[str, float], *, timeout_s: float 
     tmp.mkdir(parents=True, exist_ok=True)
     vp = vars_path or (tmp / "build_vars.json")
     vp.write_text(json.dumps(vars))
-    env = {"PATH": "/usr/bin:/bin", "TMPDIR": str(tmp), "HOME": str(tmp),
+    result_path = part_dir / "result.json"
+    result_path.unlink(missing_ok=True)  # no stale marker may survive into this build
+    nonce = secrets.token_hex(16)
+    env = {"MISES_NONCE": nonce, "PATH": "/usr/bin:/bin", "TMPDIR": str(tmp), "HOME": str(tmp),
            "MISES_DENSITY": repr(density_g_cm3), "PYTHONDONTWRITEBYTECODE": "1"}
     proc = await asyncio.create_subprocess_exec(
-        "/usr/bin/sandbox-exec", "-p", sandbox_profile(part_dir),
-        sys.executable, "-I", str(WORKER), str(part_dir), str(vp),
+        *sandboxed_command([sys.executable, "-I", str(WORKER), str(part_dir), str(vp)], part_dir),
         stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE, env=env, start_new_session=True)
     try:
@@ -62,7 +66,11 @@ async def run_build(part_dir: Path, vars: dict[str, float], *, timeout_s: float 
         msg = err.decode(errors="replace")[-_TAIL:].strip() or f"worker exited {proc.returncode}"
         return BuildResult(False, error=msg, stdout_tail=tail)
     try:
-        metrics = json.loads((part_dir / "metrics.json").read_text())
+        result = json.loads(result_path.read_text())
+        if not isinstance(result, dict) or result.get("nonce") != nonce:
+            raise ValueError("result marker missing or nonce mismatch")
     except Exception as e:  # noqa: BLE001
-        return BuildResult(False, error=f"no metrics produced: {e}", stdout_tail=tail)
-    return BuildResult(True, metrics=metrics, stdout_tail=tail)
+        return BuildResult(False, error=f"build did not complete (no valid result): {e}",
+                           stdout_tail=tail)
+    return BuildResult(True, metrics=result["metrics"], vars=result.get("vars", {}),
+                       stdout_tail=tail)

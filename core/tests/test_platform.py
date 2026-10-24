@@ -74,3 +74,10 @@ def test_sandbox_exec_real(tmp_path):
         assert (w / "ok").exists() and not (other / "bad").exists()
     finally:
         shutil.rmtree(other, ignore_errors=True)
+
+
+def test_sandboxed_command(tmp_path):
+    cmd = p.sandboxed_command(["python", "-I", "x.py"], tmp_path)
+    assert cmd[:2] == ["/usr/bin/sandbox-exec", "-p"]
+    assert cmd[2] == p.sandbox_profile(tmp_path)
+    assert cmd[3:] == ["python", "-I", "x.py"]

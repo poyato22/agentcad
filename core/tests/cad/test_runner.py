@@ -72,3 +72,28 @@ async def test_write_outside_denied(tmp_path):
 async def test_script_error_reported(tmp_path):
     r = await run_build(mk(tmp_path, "def build(v):\n    raise ValueError('boom')\n"), {})
     assert not r.ok and "boom" in r.error
+
+
+async def test_sys_exit_zero_is_failure(tmp_path):
+    r = await run_build(mk(tmp_path, "import sys\ndef build(v):\n    sys.exit(0)\n"), {})
+    assert not r.ok
+
+
+async def test_os_exit_zero_is_failure(tmp_path):
+    r = await run_build(mk(tmp_path, "import os\ndef build(v):\n    os._exit(0)\n"), {})
+    assert not r.ok
+
+
+async def test_forged_result_rejected(tmp_path):
+    script = ("import os, json\ndef build(v):\n"
+              "    json.dump({'nonce': 'x', 'metrics': {'volume_mm3': 1}, 'vars': {}}, open('result.json','w'))\n"
+              "    os._exit(0)\n")
+    r = await run_build(mk(tmp_path, script), {})
+    assert not r.ok
+
+
+async def test_nonce_not_in_environment(tmp_path):
+    script = ("import os\ndef build(v):\n"
+              "    assert 'MISES_NONCE' not in os.environ\n    raise RuntimeError('probe ok')\n")
+    r = await run_build(mk(tmp_path, script), {})
+    assert not r.ok and "probe ok" in r.error

@@ -61,6 +61,22 @@ def _atomic_write(path: Path, text: str) -> None:
     os.replace(tmp, path)
 
 
+_OUTPUTS = ("part.py", "vars.json", "metrics.json", "model.step", "model.stl", "model.glb")
+
+
+def _snapshot(d: Path) -> dict[str, bytes]:
+    return {n: (d / n).read_bytes() for n in _OUTPUTS if (d / n).exists()}
+
+
+def _restore(d: Path, snap: dict[str, bytes]) -> None:
+    """Undo anything a failed (possibly hostile) build left behind in the part dir."""
+    for n in _OUTPUTS:
+        if n in snap:
+            (d / n).write_bytes(snap[n])
+        else:
+            (d / n).unlink(missing_ok=True)
+
+
 def _read_json(path: Path) -> dict:
     return json.loads(path.read_text())
 
@@ -105,18 +121,18 @@ async def mirror_part_create(ctx: ToolContext, args: CreateArgs) -> ToolOutput:
     d = _part_dir(ctx, args.part_id)
     async with _lock(d):
         d.mkdir(parents=True, exist_ok=True)
-        old_script = (d / "part.py").read_text() if (d / "part.py").exists() else None
+        snap = _snapshot(d)
         (d / "part.py").write_text(args.script)
         res = await run_build(d, args.vars)
         if not res.ok:
-            if old_script is None:
+            if not snap:
                 shutil.rmtree(d, ignore_errors=True)
             else:
-                (d / "part.py").write_text(old_script)
+                _restore(d, snap)
             return _fail(res.error or "build failed", res.stdout_tail)
-        _atomic_write(d / "vars.json", json.dumps(args.vars))
+        _atomic_write(d / "vars.json", json.dumps(res.vars))
     return ToolOutput(summary=_summary(args.part_id, res.metrics),
-                      data={"part_id": args.part_id, "vars": args.vars, **res.metrics})
+                      data={"part_id": args.part_id, "vars": res.vars, **res.metrics})
 
 
 @tool("mirror_part_set_vars", safety=SafetyClass.LOCAL_MUTATE, scope_arg="part_id",
@@ -132,10 +148,13 @@ async def mirror_part_set_vars(ctx: ToolContext, args: SetVarsArgs) -> ToolOutpu
             raise _bad(f"unknown variables {unknown}; known: {sorted(current)}")
         new_vars = {**current, **args.vars}
         prev = _read_json(d / "metrics.json")
+        snap = _snapshot(d)
         res = await run_build(d, new_vars)
         if not res.ok:
+            _restore(d, snap)
             return _fail(res.error or "build failed", res.stdout_tail)
-        _atomic_write(d / "vars.json", json.dumps(new_vars))
+        _atomic_write(d / "vars.json", json.dumps(res.vars))
+        new_vars = res.vars
     m = res.metrics
     delta = {"volume_mm3": m["volume_mm3"] - prev["volume_mm3"],
              "mass_g": m["mass_g"] - prev["mass_g"],

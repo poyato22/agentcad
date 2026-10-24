@@ -49,3 +49,8 @@ def sandbox_profile(write_dir: Path) -> str:
         "(version 1)\n(allow default)\n(deny network*)\n(deny file-write*)\n"
         f'(allow file-write* (subpath "{d}") (literal "/dev/null"))\n'
     )
+
+
+def sandboxed_command(argv: list[str], write_dir: Path) -> list[str]:
+    """Prefix argv with sandbox-exec so it can only write under write_dir and has no network."""
+    return ["/usr/bin/sandbox-exec", "-p", sandbox_profile(write_dir), *argv]

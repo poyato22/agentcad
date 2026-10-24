@@ -78,3 +78,24 @@ def test_registration():
     register_mirror_tools(reg)
     assert {t.name for t in reg.list()} == {"mirror_part_create", "mirror_part_set_vars",
                                             "mirror_measure", "mirror_export", "mirror_part_list"}
+
+
+async def test_forged_metrics_then_raise_keeps_state(ctx, tmp_path):
+    script = ('from build123d import *\nVARS={"length":40.0}\ndef build(v):\n'
+              '    if v["length"] > 100:\n'
+              '        open("metrics.json","w").write("{\\"forged\\": 1}")\n'
+              '        raise ValueError("x")\n    return Box(v["length"],20,10)\n')
+    await mirror_part_create.handler(ctx, CreateArgs(part_id="bracket", script=script, vars={}))
+    d = tmp_path / "parts" / "bracket"
+    vj, mj = (d / "vars.json").read_text(), (d / "metrics.json").read_text()
+    r = await mirror_part_set_vars.handler(ctx, SetVarsArgs(part_id="bracket", vars={"length": 200}))
+    assert not r.ok
+    assert (d / "vars.json").read_text() == vj and (d / "metrics.json").read_text() == mj
+
+
+async def test_script_var_defaults_recorded(ctx):
+    await mirror_part_create.handler(ctx, CreateArgs(part_id="bracket", script=BOX, vars={}))
+    lst = await mirror_part_list.handler(ctx, ListArgs())
+    assert lst.data["parts"] == [{"part_id": "bracket", "vars": {"length": 40.0}}]
+    r = await mirror_part_set_vars.handler(ctx, SetVarsArgs(part_id="bracket", vars={"length": 50}))
+    assert r.ok, r.summary

@@ -94,17 +94,31 @@ def main(argv: list[str]) -> int:
     part_dir = Path(argv[1]).resolve()
     vars_path = Path(argv[2])
     density = float(os.environ.get("MISES_DENSITY", "1.24"))
+    # Read the nonce before the part script runs and keep it out of the environment.
+    nonce = os.environ.pop("MISES_NONCE", "")
+    if not nonce:
+        raise RuntimeError("missing build nonce")
     variables = json.loads(vars_path.read_text())
 
     spec = importlib.util.spec_from_file_location("mises_part", part_dir / "part.py")
     mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
+    try:
+        spec.loader.exec_module(mod)
+    except BaseException as e:  # noqa: BLE001
+        if isinstance(e, Exception):
+            raise
+        raise RuntimeError(f"part.py raised {type(e).__name__}: {e}") from None
     merged = dict(getattr(mod, "VARS", {}) or {})
     merged.update(variables)
     if hasattr(mod, "VARS"):  # scripts may read module-level VARS inside build()
         mod.VARS.clear()
         mod.VARS.update(merged)
-    shape = mod.build(dict(merged))
+    try:
+        shape = mod.build(dict(merged))
+    except BaseException as e:  # noqa: BLE001  (SystemExit/KeyboardInterrupt from user code)
+        if isinstance(e, Exception):
+            raise
+        raise RuntimeError(f"build() raised {type(e).__name__}: {e}") from None
 
     import build123d as b3
     if not hasattr(shape, "volume"):
@@ -122,6 +136,10 @@ def main(argv: list[str]) -> int:
     (tmp / "new_metrics.json").write_text(json.dumps(metrics))
     for name in list(outs) + ["metrics.json"]:
         os.replace(tmp / ("new_" + name), part_dir / name)
+    # Very last step: the result marker the runner trusts (carries the nonce).
+    (tmp / "new_result.json").write_text(
+        json.dumps({"nonce": nonce, "metrics": metrics, "vars": merged}))
+    os.replace(tmp / "new_result.json", part_dir / "result.json")
     return 0
 
 
