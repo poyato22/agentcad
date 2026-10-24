@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Screens v4</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0a0a; --paper:#111111; --paper2:#161616; --head:#141414; --vp:#0d0d0d;
+  --line:#242424; --line2:#333333;
+  --ink:#ececec; --dim:#9a9a9a; --faint:#5e5e5e;
+  --blue:#3d8bff; --blue2:#8dbaff; --blueBg:rgba(61,139,255,.10);
+  --green:#4fd18b; --amber:#f2b134; --red:#ff5a4a;
+}
+*{box-sizing:border-box;border-radius:0!important}
+body{margin:0;background:var(--bg);color:var(--ink);font:12px/1.4 "IBM Plex Mono",ui-monospace,Menlo,monospace;padding:28px 32px 60px}
+h1{font:600 20px "IBM Plex Sans Condensed",sans-serif;letter-spacing:.04em;margin:0 0 4px;text-transform:uppercase}
+h2{font:600 15px "IBM Plex Sans Condensed",sans-serif;letter-spacing:.06em;margin:40px 0 4px;text-transform:uppercase;color:var(--ink)}
+h2 span{color:var(--blue2)}
+.sub{color:var(--dim);margin:0 0 14px;max-width:1000px}
+.sub b{color:var(--blue2);font-weight:500}
+.frame{border:1px solid var(--line2)}
+.app{display:grid;background:var(--paper);overflow:hidden}
+.top{display:flex;align-items:center;border-bottom:1px solid var(--line2);background:var(--head);white-space:nowrap}
+.top > div{padding:0 12px;height:100%;display:flex;align-items:center;gap:7px;border-right:1px solid var(--line)}
+.lbl{font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+.val{color:var(--ink)}
+.crumb{color:var(--dim)} .crumb b{color:var(--ink);font-weight:500} .crumb i{font-style:normal;color:var(--faint);padding:0 4px}
+.led{width:7px;height:7px;display:inline-block;background:var(--green)}
+.led.a{background:var(--amber)} .led.b{background:var(--blue)} .led.g{background:var(--faint)}
+.seg{display:flex;height:100%}
+.seg i{font-style:normal;padding:0 12px;display:flex;align-items:center;color:var(--dim);border-left:1px solid var(--line)}
+.seg i.on{color:#000;background:var(--ink)}
+.seg i.onb{color:#fff;background:var(--blue)}
+.pane{background:var(--paper);position:relative;overflow:hidden}
+.ph{display:flex;align-items:center;gap:8px;height:24px;padding:0 8px;border-bottom:1px solid var(--line);background:var(--head);white-space:nowrap}
+.ph .lbl{color:var(--dim)}
+.ph .n{color:var(--faint);margin-left:auto;font-size:10px}
+.vp{position:relative;background-color:var(--vp);
+  background-image:linear-gradient(rgba(255,255,255,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.07) 1px,transparent 1px),
+   linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px);
+  background-size:100px 100px,100px 100px,20px 20px,20px 20px}
+.vp > svg{position:absolute;inset:0;width:100%;height:100%}
+.paper{background-color:#141414;background-image:radial-gradient(rgba(255,255,255,.09) 1px,transparent 1px);background-size:16px 16px}
+.corner{position:absolute;width:14px;height:14px;border:1px solid var(--dim)}
+.c1{left:8px;top:8px;border-width:1px 0 0 1px}.c2{right:8px;top:8px;border-width:1px 1px 0 0}
+.c3{left:8px;bottom:8px;border-width:0 0 1px 1px}.c4{right:8px;bottom:8px;border-width:0 1px 1px 0}
+.fig{position:absolute;left:14px;top:14px;color:var(--dim);font-size:10px;letter-spacing:.14em}
+.vtools{position:absolute;right:14px;top:12px;display:flex;border:1px solid var(--line2);background:rgba(10,10,10,.85)}
+.vtools i{font-style:normal;padding:2px 7px;color:var(--dim);border-left:1px solid var(--line);font-size:10px}
+.vtools i:first-child{border-left:0}.vtools i.on{color:var(--blue2);background:var(--blueBg)}
+.titleblock{position:absolute;right:14px;bottom:14px;border:1px solid var(--dim);font-size:9.5px;display:grid;grid-auto-flow:column;background:rgba(10,10,10,.85)}
+.titleblock div{padding:3px 7px;border:1px solid var(--line2)}
+.titleblock .k{color:var(--faint);font-size:8.5px;letter-spacing:.1em;display:block}
+.tag{position:absolute;padding:2px 6px;font-size:10px;border:1px solid var(--blue);color:var(--blue2);background:rgba(10,10,10,.9);white-space:nowrap}
+.tag.g{border-color:var(--line2);color:var(--dim)}
+.tr{padding:3px 10px;color:var(--dim);display:flex;gap:6px;border-left:2px solid transparent;white-space:nowrap}
+.tr.sel{color:var(--ink);background:var(--blueBg);border-left-color:var(--blue)}
+.tr.ghost{color:var(--faint)}
+.tr .x{margin-left:auto;font-size:10px;color:var(--faint)}
+.tr .ind{display:inline-block;width:12px}
+.prm{display:grid;grid-template-columns:1fr 64px}
+.prm div{padding:3px 10px;border-bottom:1px solid var(--line);color:var(--dim)}
+.prm div:nth-child(2n){color:var(--ink);border-left:1px solid var(--line);text-align:right}
+.kv{display:flex;justify-content:space-between;padding:2px 10px;color:var(--dim);white-space:nowrap}
+.kv b{color:var(--ink);font-weight:500}
+.ok{color:var(--green)!important}.wn{color:var(--amber)!important}.bad{color:var(--red)!important}.bl{color:var(--blue2)!important}
+.btn{display:inline-block;padding:2px 9px;border:1px solid var(--line2);color:var(--ink);font-size:10.5px;margin-right:4px;margin-top:5px;white-space:nowrap}
+.btn.p{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}
+.btn.w{background:var(--ink);border-color:var(--ink);color:#000;font-weight:600}
+.step{display:grid;grid-template-columns:52px 12px 1fr;gap:6px;padding:3px 8px;font-size:11px;color:var(--dim)}
+.step .ts{color:var(--faint);font-size:10px}.step .k{color:var(--blue)}.step b{color:var(--ink);font-weight:500}
+.approve{margin:6px 8px;border:1px solid var(--blue);background:var(--blueBg);padding:6px 8px}
+.approve .q{color:var(--blue2);font-size:10px;letter-spacing:.12em;text-transform:uppercase}
+.cmd{border-top:1px solid var(--line2);display:flex;align-items:center;gap:8px;padding:7px 8px;background:var(--head)}
+.cmd .in{flex:1;color:var(--faint)}
+.cmd .to{border:1px solid var(--line2);padding:1px 6px;color:var(--dim);font-size:10px}
+.chip{border:1px solid var(--line2);padding:1px 6px;color:var(--dim);font-size:10.5px;white-space:nowrap}
+.chip.on{border-color:var(--blue);color:var(--blue2)}
+.study{display:grid;grid-template-columns:18px 1fr auto;gap:6px;padding:5px 10px;border-bottom:1px solid var(--line);color:var(--dim);align-items:center}
+.study.sel{background:var(--blueBg);color:var(--ink);box-shadow:inset 2px 0 var(--blue)}
+.study .be{font-size:9.5px;color:var(--faint);display:block}
+.ico{color:var(--dim);text-align:center}
+.gd{display:grid;grid-template-columns:repeat(3,1fr);gap:0;border-top:1px solid var(--line)}
+.gd > div{border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:4px;position:relative;height:118px}
+.gd > div.sel{outline:1px solid var(--blue);outline-offset:-1px;background:var(--blueBg)}
+.gd svg{width:100%;height:78px}
+.gd .m{font-size:9.5px;color:var(--dim);display:flex;justify-content:space-between}
+.gd .m b{color:var(--ink);font-weight:500}
+.tool{display:flex;flex-direction:column;gap:0;border-right:1px solid var(--line2);background:var(--head)}
+.tool i{font-style:normal;width:40px;height:36px;display:flex;align-items:center;justify-content:center;color:var(--dim);border-bottom:1px solid var(--line);font-size:14px}
+.tool i.on{color:#fff;background:var(--blue)}
+.q{border:1px solid var(--line2);margin:4px 8px;padding:5px 7px;color:var(--dim)}
+.q b{color:var(--ink);font-weight:500}
+.top2{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:0 16px;border-bottom:1px solid var(--line2);background:var(--head);white-space:nowrap}
+.tb-l{display:flex;align-items:center;gap:12px;color:var(--dim)} .tb-l .mark{color:var(--blue);font-size:14px}
+.tb-l b{color:var(--ink);font-weight:500} .tb-l i{font-style:normal;color:var(--faint);padding:0 6px}
+.tb-c{display:flex;height:100%} .tb-c a{padding:0 18px;display:flex;align-items:center;color:var(--dim);font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;border-bottom:2px solid transparent}
+.tb-c a.on{color:var(--ink);border-bottom-color:var(--blue)}
+.tb-r{justify-self:end;display:flex;gap:20px;color:var(--dim);font-size:11px} .st{display:flex;align-items:center;gap:7px}
+.focus{position:absolute;left:14px;bottom:14px;display:flex;border:1px solid var(--line2);background:rgba(10,10,10,.85)}
+.focus i{font-style:normal;padding:3px 9px;color:var(--dim);border-left:1px solid var(--line);font-size:10px}.focus i:first-child{border-left:0}
+.focus i.on{color:#fff;background:var(--blue)}
+</style>
+</head>
+<body>
+<h1>Revision E · roomier top bar</h1>
+<p class="sub">Same greyscale + blue system. Screen 1 is the main workspace now living inside an <b>assembly</b>: you focus one part while its neighbours stay visible as ghosts and its mating faces are locked. Screen 2 is the <b>Studies</b> tab for heavy analysis: topology optimization, generative design, CFD wind tunnel, with a choice of solver (open-source local, Ansys, or cloud). Screen 3 is <b>Sketch</b>: draw roughly, Claude turns it into a constrained part.</p>
+
+<svg width="0" height="0" style="position:absolute"><defs>
+  <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10z" fill="#9a9a9a"/></marker>
+  <marker id="arB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="#3d8bff"/></marker>
+  <linearGradient id="vel" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#2a5fc0"/><stop offset=".5" stop-color="#8dbaff"/><stop offset="1" stop-color="#ffffff"/></linearGradient>
+  <!-- focused bracket -->
+  <g id="part" fill="rgba(61,139,255,.10)" stroke="#ffffff" stroke-width="1.4" stroke-linejoin="round">
+    <polygon points="0,60 150,0 280,52 130,112"/>
+    <polygon points="0,60 130,112 130,130 0,78"/>
+    <polygon points="130,112 280,52 280,70 130,130"/>
+    <polygon points="160,-100 280,-48 280,52 160,0"/>
+    <polygon points="145,-94 160,-100 280,-48 265,-42"/>
+    <polygon points="145,-94 265,-42 265,58 145,6" fill="rgba(61,139,255,.16)"/>
+    <polygon points="178,46 245,18 245,-30" fill="rgba(61,139,255,.3)" stroke="#8dbaff"/>
+    <ellipse cx="70" cy="62" rx="15" ry="8"/><ellipse cx="200" cy="72" rx="15" ry="8"/>
+  </g>
+  <!-- organic topo-opt shape (side view) -->
+  <path id="topo" d="M20 150 L20 128 C60 126 90 118 110 96 C128 76 132 52 140 20 L172 20 C168 54 176 84 200 104 C220 120 250 128 280 128 L280 150 Z M70 136 C92 132 108 124 120 112 L132 132 Z M178 112 C190 124 210 132 232 136 L168 134 Z"/>
+</defs></svg>
+
+<!-- ================= SCREEN 1: ASSEMBLY FOCUS ================= -->
+<h2>1 · Design <span>— focus a part inside the assembly</span></h2>
+<p class="sub">The left panel is now the assembly tree with the focused part's feature tree nested inside. "In context" mode shows the handlebar, clamp and phone cradle as grey ghosts. Faces that mate with other parts are pinned with a lock, and agents can't change them without asking. Changes are checked against the whole build for collisions.</p>
+<div class="frame"><div class="app" style="height:640px;grid-template-rows:44px 1fr;grid-template-columns:250px 1fr 380px">
+  <div class="top2" style="grid-column:1/-1">
+   <div class="tb-l"><span class="mark">◇</span><span>BIKE-MOUNT<i>/</i><b>Bracket</b></span></div>
+   <div class="tb-c"><a class="on">Design</a><a>Studies</a><a>Sketch</a><a>Drawing</a><a>Print</a></div>
+   <div class="tb-r"><span class="st"><span class="led"></span>Onshape v15</span><span class="st"><span class="led"></span>X1C idle</span><span class="st"><span class="led b"></span>3 agents</span></div>
+  </div>
+  <div class="pane" style="border-right:1px solid var(--line2)">
+   <div class="ph"><span class="lbl">Assembly</span><span class="n">5 parts · 9 mates</span></div>
+   <div class="tr">▾ BIKE-MOUNT<span class="x">asm</span></div>
+   <div class="tr ghost"><span class="ind"></span>▣ Handlebar Ø31.8<span class="x">ref 🔒</span></div>
+   <div class="tr"><span class="ind"></span>▣ Clamp ×2<span class="x">v9</span></div>
+   <div class="tr sel"><span class="ind"></span>▾ Bracket<span class="x" style="color:var(--blue2)">focused</span></div>
+   <div class="tr" style="padding-left:40px">▣ Extrude · plate</div>
+   <div class="tr" style="padding-left:40px">◯ Hole · M4 ×4 <span class="x">🔒 mate</span></div>
+   <div class="tr" style="padding-left:40px;color:var(--blue2)">▤ Extrude · upright <span class="x" style="color:var(--blue2)">GEOM-01</span></div>
+   <div class="tr" style="padding-left:40px;color:var(--blue2)">◢ Gusset · upright <span class="x" style="color:var(--blue2)">+ new</span></div>
+   <div class="tr" style="padding-left:40px">⌒ Fillet · 2mm</div>
+   <div class="tr"><span class="ind"></span>▣ Phone cradle<span class="x">v4</span></div>
+   <div class="tr ghost"><span class="ind"></span>▣ M4×12 ×4<span class="x">McMaster</span></div>
+   <div class="ph" style="margin-top:10px;border-top:1px solid var(--line)"><span class="lbl">Interfaces</span><span class="n">locked for agents</span></div>
+   <div class="kv"><span>🔒 clamp face</span><b>planar · 80×12</b></div>
+   <div class="kv"><span>🔒 cradle holes</span><b>4× M4 · 60 c/c</b></div>
+   <div class="kv"><span>clearance to bar</span><b class="ok">≥ 3.0 mm</b></div>
+   <div class="ph" style="margin-top:10px;border-top:1px solid var(--line)"><span class="lbl">Build checks</span><span class="n">whole assembly</span></div>
+   <div class="kv"><span>Collisions</span><b class="ok">0</b></div>
+   <div class="kv"><span>Total mass</span><b>212 g <span style="color:var(--faint)">+4</span></b></div>
+   <div class="kv"><span>Weakest part</span><b class="wn">Clamp · SF 1.7</b></div>
+  </div>
+  <div class="pane vp">
+   <div class="corner c1"></div><div class="corner c2"></div><div class="corner c3"></div><div class="corner c4"></div>
+   <div class="fig">FIG. 1 — BRACKET IN CONTEXT</div>
+   <div class="focus"><i>Isolate</i><i class="on">In context</i><i>Full build</i></div>
+   <div class="vtools"><i class="on">shaded</i><i>wire</i><i>section</i><i>explode</i></div>
+   <svg viewBox="-140 -230 640 440">
+     <!-- ghost handlebar -->
+     <g fill="none" stroke="#4a4a4a" stroke-width="1.2" stroke-dasharray="4 3">
+       <path d="M-130 -150 L 470 -150 M-130 -110 L 470 -110"/><ellipse cx="-130" cy="-130" rx="8" ry="20"/><ellipse cx="470" cy="-130" rx="8" ry="20"/>
+     </g>
+     <!-- ghost clamp -->
+     <g fill="rgba(255,255,255,.03)" stroke="#5a5a5a" stroke-width="1.2">
+       <path d="M150 -170 C190 -172 220 -152 220 -130 C220 -108 190 -88 150 -90 Z"/>
+       <rect x="160" y="-95" width="110" height="18"/>
+     </g>
+     <!-- ghost phone cradle -->
+     <g fill="rgba(255,255,255,.03)" stroke="#5a5a5a" stroke-width="1.2" stroke-dasharray="5 3">
+       <polygon points="-110,20 40,-40 40,60 -110,120"/><polygon points="-110,20 -96,14 54,-46 40,-40"/>
+     </g>
+     <use href="#part"/>
+     <!-- locked interface highlight -->
+     <polygon points="145,-94 160,-100 280,-48 265,-42" fill="none" stroke="#f2b134" stroke-width="2"/>
+     <g stroke="#9a9a9a" stroke-width=".8" fill="#bdbdbd" font-family="IBM Plex Mono" font-size="10">
+       <line x1="296" y1="-46" x2="296" y2="54" marker-start="url(#ar)" marker-end="url(#ar)"/><text x="302" y="6" stroke="none">42.00</text>
+       <line x1="285" y1="-77" x2="285" y2="-52" stroke="#4fd18b" marker-start="url(#ar)" marker-end="url(#ar)"/><text x="292" y="-62" stroke="none" fill="#4fd18b">3.0 clr</text>
+     </g>
+   </svg>
+   <div class="tag g" style="left:6%;top:12%">Handlebar · ref</div>
+   <div class="tag g" style="left:47%;top:11%">Clamp</div>
+   <div class="tag g" style="left:9%;top:48%">Phone cradle</div>
+   <div class="tag" style="left:58%;top:30%;border-color:var(--amber);color:var(--amber)">🔒 mate face</div>
+   <div class="titleblock"><div><span class="k">FOCUS</span>BRACKET</div><div><span class="k">REV</span>v15</div><div><span class="k">COLL.</span><span class="ok">0</span></div><div><span class="k">SF</span><span class="ok">2.4</span></div></div>
+  </div>
+  <div class="pane" style="border-left:1px solid var(--line2);display:flex;flex-direction:column">
+   <div class="ph"><span class="lbl">Agents</span><span style="color:var(--ink)">scope: Bracket</span><span class="n">assembly read-only</span></div>
+   <div style="flex:1;padding-top:4px">
+    <div class="step"><span class="ts">14:02:11</span><span class="k">▸</span><span><b>Scope</b> · may edit Bracket · may read whole BIKE-MOUNT</span></div>
+    <div class="step"><span class="ts">14:02:12</span><span class="k">⚙</span><span>asm.interfaces · <b>2 locked</b> (clamp face, cradle holes)</span></div>
+    <div class="step"><span class="ts">14:02:14</span><span class="k">⚙</span><span>updateFeature Upright · addFeature Gusset · upright</span></div>
+    <div class="step"><span class="ts">14:02:20</span><span class="k">⚙</span><span>asm.interference · <b class="ok">0 collisions</b> · clr to bar 3.0</span></div>
+    <div class="step"><span class="ts">14:02:41</span><span class="k">◆</span><span>Clamp is now the weakest part (SF 1.7). <b>Outside my scope.</b></span></div>
+    <div class="approve"><div class="q">▲ Needs you</div>
+      Expand scope to <b>Clamp</b> so I can thicken its ear 2→3 mm? Touches 1 locked mate.
+      <div><span class="btn p">Allow Clamp</span><span class="btn">Spawn new agent</span><span class="btn">No</span></div></div>
+   </div>
+   <div class="cmd"><span style="color:var(--blue)">❯</span><span class="in">message, @all, or select a face…</span><span class="to">→ GEOM-01</span></div>
+  </div>
+</div></div>
+
+<!-- ================= SCREEN 2: STUDIES ================= -->
+<h2>2 · Studies <span>— topology optimization, generative design, CFD</span></h2>
+<p class="sub">Each study shows which solver runs it. Light ones run locally on open-source solvers. Heavy ones can go to Ansys (through its Python API) or a cloud solver. An agent sets up each study, runs it, and turns the result back into editable Onshape features.</p>
+<div class="frame"><div class="app" style="height:640px;grid-template-rows:44px 1fr 230px;grid-template-columns:260px 1fr 1fr">
+  <div class="top2" style="grid-column:1/-1">
+   <div class="tb-l"><span class="mark">◇</span><span>BIKE-MOUNT<i>/</i><b>Bracket</b></span></div>
+   <div class="tb-c"><a>Design</a><a class="on">Studies</a><a>Sketch</a><a>Drawing</a><a>Print</a></div>
+   <div class="tb-r"><span class="st"><span class="led"></span>Onshape v15</span><span class="st"><span class="led"></span>X1C idle</span><span class="st"><span class="led b"></span>3 agents</span></div>
+  </div>
+  <div class="pane" style="grid-row:2/4;border-right:1px solid var(--line2)">
+   <div class="ph"><span class="lbl">Studies</span><span class="n">+ new</span></div>
+   <div class="kv" style="border-bottom:1px solid var(--line);padding:4px 10px"><span>Mac · Ansys ✓ · cloud</span><b>$2.10</b></div>
+   <div class="study"><span class="ico">▦</span><span>Static stress<span class="be">CalculiX · local</span></span><span class="ok">✓</span></div>
+   <div class="study"><span class="ico">♨</span><span>Thermal · 80°C<span class="be">CalculiX · local</span></span><span class="ok">✓</span></div>
+   <div class="study"><span class="ico">∿</span><span>Modal · vib 12 Hz<span class="be">CalculiX · local</span></span><span class="ok">✓</span></div>
+   <div class="study sel"><span class="ico">◍</span><span>Topology opt<span class="be">Ansys Mechanical · PyAnsys</span></span><span class="bl">62%</span></div>
+   <div class="study"><span class="ico">✱</span><span>Generative · 6 outcomes<span class="be">cloud · 40 variants</span></span><span class="ok">✓</span></div>
+   <div class="study"><span class="ico">≋</span><span>Wind tunnel · 30 km/h<span class="be">OpenFOAM · local</span></span><span class="bl">run</span></div>
+   <div class="study"><span class="ico">⟲</span><span>Fatigue · 10⁶ cycles<span class="be">Ansys · queued</span></span><span style="color:var(--faint)">—</span></div>
+   <div class="ph" style="margin-top:10px;border-top:1px solid var(--line)"><span class="lbl">Topology setup</span><span class="n">by SIM-02</span></div>
+   <div class="kv"><span>Keep-in</span><b class="bl">clamp face · 4 holes</b></div>
+   <div class="kv"><span>Keep-out</span><b>handlebar + 3mm</b></div>
+   <div class="kv"><span>Loads</span><b>5 kg ↓ · 12 Hz</b></div>
+   <div class="kv"><span>Goal</span><b>min mass · SF ≥ 2</b></div>
+   <div class="kv"><span>Process</span><b>FDM · no supports</b></div>
+   <div class="kv"><span>Material</span><b>PETG-CF</b></div>
+   <div style="padding:6px 10px"><span class="btn">Edit setup</span><span class="btn p">Rebuild as features</span></div>
+  </div>
+  <div class="pane vp" style="border-right:1px solid var(--line2)">
+   <div class="corner c1"></div><div class="corner c3"></div>
+   <div class="fig">FIG. 2 — TOPOLOGY · ITER 38/60</div>
+   <div class="vtools"><i>density</i><i class="on">smoothed</i><i>vs original</i></div>
+   <svg viewBox="-20 -10 340 190">
+     <rect x="20" y="20" width="260" height="130" fill="none" stroke="#3a3a3a" stroke-dasharray="4 3"/>
+     <use href="#topo" fill="rgba(255,255,255,.08)" stroke="#ffffff" stroke-width="1.4" fill-rule="evenodd"/>
+     <rect x="140" y="12" width="32" height="8" fill="none" stroke="#f2b134" stroke-width="1.5"/>
+     <rect x="20" y="150" width="260" height="6" fill="none" stroke="#f2b134" stroke-width="1.5"/>
+     <g stroke="#3d8bff" stroke-width="1.5"><line x1="156" y1="-8" x2="156" y2="10" marker-end="url(#arB)"/></g>
+     <text x="24" y="34" fill="#5e5e5e" font-family="IBM Plex Mono" font-size="9">design space</text>
+     <text x="176" y="10" fill="#f2b134" font-family="IBM Plex Mono" font-size="9">keep-in</text>
+   </svg>
+   <div class="titleblock"><div><span class="k">MASS</span>38.2→<span class="ok">21.6 g</span></div><div><span class="k">SF</span><span class="ok">2.1</span></div><div><span class="k">ITER</span>38</div></div>
+  </div>
+  <div class="pane vp" style="background-color:#0b0b0b">
+   <div class="corner c2"></div><div class="corner c4"></div>
+   <div class="fig">FIG. 3 — WIND TUNNEL · 30 KM/H</div>
+   <div class="vtools"><i class="on">streamlines</i><i>pressure</i><i>vortices</i></div>
+   <svg viewBox="0 0 340 190">
+     <g fill="none" stroke-width="1.1">
+       <path d="M0 30 C80 30 140 28 200 26 S300 24 340 24" stroke="#2a5fc0"/>
+       <path d="M0 50 C80 50 120 44 160 40 S260 44 340 46" stroke="#4a78d0"/>
+       <path d="M0 70 C70 70 100 54 140 52 S230 66 340 68" stroke="#8dbaff"/>
+       <path d="M0 90 C60 90 92 62 140 60 C170 60 190 96 230 104 S300 92 340 90" stroke="#ffffff"/>
+       <path d="M0 110 C60 110 96 140 140 142 C176 144 200 118 236 112 S300 112 340 112" stroke="#ffffff"/>
+       <path d="M0 130 C70 130 100 150 140 152 S240 140 340 134" stroke="#8dbaff"/>
+       <path d="M0 150 C80 150 130 160 180 160 S280 154 340 154" stroke="#4a78d0"/>
+       <path d="M0 170 C80 170 160 172 220 172 S300 172 340 172" stroke="#2a5fc0"/>
+       <path d="M220 96 c16 -6 26 6 18 14 c-8 8 -20 -2 -12 -8" stroke="#ffffff" opacity=".7"/>
+       <path d="M228 118 c14 6 22 -6 14 -12" stroke="#ffffff" opacity=".6"/>
+     </g>
+     <path d="M110 74 L150 64 C176 70 196 84 204 100 C196 116 176 128 150 134 L110 126 Z" fill="#1a1a1a" stroke="#ececec" stroke-width="1.3"/>
+     <text x="122" y="104" fill="#9a9a9a" font-family="IBM Plex Mono" font-size="9">cradle</text>
+     <g stroke="#3d8bff" stroke-width="1.2"><line x1="10" y1="12" x2="50" y2="12" marker-end="url(#arB)"/></g><text x="56" y="15" fill="#8dbaff" font-family="IBM Plex Mono" font-size="9">8.3 m/s</text>
+   </svg>
+   <div style="position:absolute;left:14px;bottom:16px;width:150px"><div style="height:6px;background:linear-gradient(90deg,#2a5fc0,#8dbaff,#fff)"></div>
+     <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--dim)"><span>0</span><span>velocity</span><span>11 m/s</span></div></div>
+   <div class="titleblock"><div><span class="k">Cd</span>0.82</div><div><span class="k">DRAG</span>0.31 N</div><div><span class="k">LIFT</span>0.04 N</div></div>
+  </div>
+  <div class="pane" style="grid-column:2/4;border-top:1px solid var(--line2)">
+   <div class="ph"><span class="lbl">Generative outcomes</span><span style="color:var(--ink)">6 of 40 · pareto</span><span class="n">sort: mass ▾ · filter SF ≥ 2 · printable</span></div>
+   <div class="gd" style="grid-template-columns:repeat(6,1fr)">
+    <div class="sel"><svg viewBox="0 0 300 170"><use href="#topo" fill="rgba(61,139,255,.25)" stroke="#8dbaff" stroke-width="3" fill-rule="evenodd"/></svg><div class="m"><span>A · <b>21.6g</b></span><span>SF <b class="ok">2.1</b></span></div><div class="m"><span>1h02 print</span><span class="bl">picked</span></div></div>
+    <div><svg viewBox="0 0 300 170"><use href="#topo" fill="rgba(255,255,255,.07)" stroke="#ddd" stroke-width="5" fill-rule="evenodd"/></svg><div class="m"><span>B · <b>24.0g</b></span><span>SF <b class="ok">2.6</b></span></div><div class="m"><span>1h08</span><span></span></div></div>
+    <div><svg viewBox="0 0 300 170"><g transform="translate(300 0) scale(-1 1)"><use href="#topo" fill="rgba(255,255,255,.07)" stroke="#ddd" stroke-width="2" fill-rule="evenodd"/></g></svg><div class="m"><span>C · <b>19.8g</b></span><span>SF <b class="wn">1.9</b></span></div><div class="m"><span>0h58</span><span></span></div></div>
+    <div><svg viewBox="0 0 300 170"><g transform="translate(20 10) scale(.88 .9)"><use href="#topo" fill="rgba(255,255,255,.07)" stroke="#ddd" stroke-width="4" fill-rule="evenodd"/></g></svg><div class="m"><span>D · <b>26.3g</b></span><span>SF <b class="ok">3.0</b></span></div><div class="m"><span>1h15</span><span></span></div></div>
+    <div><svg viewBox="0 0 300 170"><g transform="translate(0 20) scale(1 .85)"><use href="#topo" fill="rgba(255,255,255,.07)" stroke="#ddd" stroke-width="2.5" fill-rule="evenodd"/></g></svg><div class="m"><span>E · <b>22.9g</b></span><span>SF <b class="ok">2.2</b></span></div><div class="m"><span>1h05</span><span class="wn">supports</span></div></div>
+    <div><svg viewBox="0 0 300 170"><g transform="translate(30 0) scale(.8 1)"><use href="#topo" fill="rgba(255,255,255,.07)" stroke="#ddd" stroke-width="6" fill-rule="evenodd"/></g></svg><div class="m"><span>F · <b>29.1g</b></span><span>SF <b class="ok">3.4</b></span></div><div class="m"><span>1h21</span><span></span></div></div>
+   </div>
+   <div style="padding:6px 10px;color:var(--dim)">SIM-02: <b style="color:var(--ink);font-weight:500">A</b> saves 43% mass and still passes all 3 environments. Rebuilding it as editable Onshape features (sketch + loft + fillets) rather than a mesh. <span class="btn p">Rebuild A</span><span class="btn">Compare A vs D</span></div>
+  </div>
+</div></div>
+
+<!-- ================= SCREEN 3: SKETCH ================= -->
+<h2>3 · Sketch <span>— draw it roughly, Claude builds it</span></h2>
+<p class="sub">Draw with mouse, trackpad or Apple Pencil, or drop in a photo of a paper napkin sketch. Scribbled numbers and notes count. Claude shows how it read your sketch side by side and asks only about what it couldn't tell, before it builds anything in Onshape.</p>
+<div class="frame"><div class="app" style="height:600px;grid-template-rows:44px 1fr;grid-template-columns:40px 1fr 1fr 360px">
+  <div class="top2" style="grid-column:1/-1">
+   <div class="tb-l"><span class="mark">◇</span><span>BIKE-MOUNT<i>/</i><b>New part</b></span></div>
+   <div class="tb-c"><a>Design</a><a>Studies</a><a class="on">Sketch</a><a>Drawing</a><a>Print</a></div>
+   <div class="tb-r"><span class="st"><span class="led"></span>Onshape v15</span><span class="st"><span class="led"></span>X1C idle</span><span class="st"><span class="led b"></span>3 agents</span></div>
+  </div>
+  <div class="tool"><i class="on">✎</i><i>╱</i><i>◯</i><i>T</i><i>⟷</i><i>⌫</i><i>⇪</i></div>
+  <div class="pane paper" style="border-right:1px solid var(--line2)">
+   <div class="fig">YOUR SKETCH · APPLE PENCIL</div>
+   <svg viewBox="0 0 420 360" style="position:absolute;inset:0;width:100%;height:100%">
+     <g fill="none" stroke="#e8e8e8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+       <path d="M92 252 C140 250 210 254 300 251 C304 251 306 255 305 262 L303 278 C230 281 160 279 90 280 C86 270 88 260 92 252"/>
+       <path d="M262 251 C264 200 261 150 266 92 C270 90 288 91 299 93 C300 150 302 205 301 252"/>
+       <path d="M200 250 C230 220 250 190 263 160" stroke-width="1.8"/>
+       <path d="M128 266 m-9 0 a9 6 0 1 0 18 0 a9 6 0 1 0 -18 0"/>
+       <path d="M225 267 m-9 0 a9 6 0 1 0 18 0 a9 6 0 1 0 -18 0"/>
+     </g>
+     <g fill="none" stroke="#3d8bff" stroke-width="1.6" stroke-linecap="round">
+       <path d="M318 96 C322 150 320 200 322 250"/><path d="M314 104 l4 -9 l5 9 M316 242 l5 9 l4 -9"/>
+       <path d="M95 300 C160 302 230 299 300 301"/>
+       <path d="M150 230 C170 215 185 222 196 236 l-2 -10 m2 10 l-9 -3"/>
+     </g>
+     <g fill="#8dbaff" font-family="Bradley Hand, Segoe Print, cursive" font-size="17">
+       <text x="330" y="180">~40</text><text x="180" y="322">80 mm</text>
+       <text x="70" y="214">brace?</text><text x="100" y="246" font-size="13">M4 holes</text>
+       <text x="305" y="84" font-size="14">clamps here</text>
+     </g>
+   </svg>
+  </div>
+  <div class="pane vp" style="border-right:1px solid var(--line2)">
+   <div class="fig">CLAUDE'S READ</div>
+   <div class="vtools"><i class="on">2D constrained</i><i>3D preview</i></div>
+   <svg viewBox="0 0 420 360">
+     <g fill="rgba(255,255,255,.04)" stroke="#ffffff" stroke-width="1.4">
+       <path d="M90 250 H300 V280 H90 Z"/><path d="M265 90 H300 V250 H265 Z"/>
+     </g>
+     <path d="M200 250 L265 160 L265 250 Z" fill="rgba(61,139,255,.2)" stroke="#3d8bff" stroke-width="1.4" stroke-dasharray="5 3"/>
+     <g fill="none" stroke="#ffffff" stroke-width="1.2"><circle cx="128" cy="265" r="7"/><circle cx="225" cy="265" r="7"/></g>
+     <g stroke="#9a9a9a" stroke-width=".8" fill="#bdbdbd" font-family="IBM Plex Mono" font-size="10">
+       <line x1="90" y1="300" x2="300" y2="300" marker-start="url(#ar)" marker-end="url(#ar)"/><text x="178" y="314" stroke="none">80.00</text>
+       <line x1="318" y1="90" x2="318" y2="250" marker-start="url(#ar)" marker-end="url(#ar)"/><text x="324" y="174" stroke="none">40.00</text>
+       <line x1="128" y1="236" x2="225" y2="236" marker-start="url(#ar)" marker-end="url(#ar)"/><text x="160" y="232" stroke="none">37.00</text>
+       <text x="110" y="222" stroke="none" fill="#8dbaff">2× Ø4.2</text>
+     </g>
+     <g font-family="IBM Plex Mono" font-size="9" fill="#5e5e5e"><text x="276" y="86">⊥</text><text x="92" y="246">═ horiz</text><text x="270" y="270">∥</text></g>
+     <rect x="262" y="86" width="41" height="10" fill="none" stroke="#f2b134" stroke-width="1.2"/>
+     <text x="232" y="80" fill="#f2b134" font-family="IBM Plex Mono" font-size="9">→ clamp mate</text>
+   </svg>
+   <div class="titleblock"><div><span class="k">CONSTRAINED</span><span class="ok">fully</span></div><div><span class="k">GUESSED</span><span class="wn">3</span></div><div><span class="k">CONF</span>0.86</div></div>
+  </div>
+  <div class="pane" style="display:flex;flex-direction:column">
+   <div class="ph"><span class="lbl">Agents</span><span style="color:var(--ink)">SKETCH-05 · claude code</span><span class="n">reading</span></div>
+   <div style="flex:1;padding-top:4px">
+    <div class="step"><span class="ts">14:20:02</span><span class="k">▸</span><span><b>Read</b> · L-bracket, 80 × 40, 2 holes, optional brace, top clamps to existing Clamp</span></div>
+    <div class="step"><span class="ts">14:20:03</span><span class="k">⚙</span><span>asm.findMate "clamps here" → <b>Clamp · face 3</b></span></div>
+    <div class="step"><span class="ts">14:20:05</span><span class="k">⚙</span><span>"M4 holes" → <b>Ø4.2 clearance</b>, spacing snapped to cradle 37 mm</span></div>
+    <div class="ph" style="margin-top:8px;border-top:1px solid var(--line)"><span class="lbl">Only 3 questions</span></div>
+    <div class="q"><b>Thickness?</b> You didn't mark one.<br><span class="btn w">3 mm</span><span class="btn">4 mm</span><span class="btn">let sim decide</span></div>
+    <div class="q"><b>"brace?"</b> Include the gusset?<br><span class="btn w">yes</span><span class="btn">no</span><span class="btn">try both in sim</span></div>
+    <div class="q"><b>Width</b> (into the page)?<br><span class="btn">match clamp · 12</span><span class="btn">20</span><span class="btn">type…</span></div>
+   </div>
+   <div style="padding:8px;border-top:1px solid var(--line2)"><span class="btn p">Build in Onshape</span><span class="btn">Redraw</span><span class="btn">Build + run studies</span></div>
+   <div class="cmd"><span style="color:var(--blue)">❯</span><span class="in">or just tell it…</span><span class="to">→ SKETCH-05</span></div>
+  </div>
+</div></div>
+</body>
+</html>

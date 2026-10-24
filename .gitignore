@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.db
+.superpowers/
+.DS_Store
+core/.pytest_cache/
+*.egg-info/

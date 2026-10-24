@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Mises overview</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+@page{size:11in 8.5in;margin:0}
+:root{--bg:#0a0a0a;--p:#111;--l:#2a2a2a;--ink:#ececec;--dim:#9a9a9a;--faint:#5e5e5e;--b:#3d8bff;--b2:#8dbaff;--g:#4fd18b;--a:#f2b134;--r:#ff5a4a}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg);-webkit-print-color-adjust:exact;print-color-adjust:exact}
+body{color:var(--ink);font:13px/1.5 "IBM Plex Sans",sans-serif}
+.page{width:11in;height:8.5in;padding:.5in .6in;position:relative;page-break-after:always;overflow:hidden;
+ background-image:linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px);background-size:.5in .5in}
+.page:last-child{page-break-after:auto}
+.k{font:500 10px "IBM Plex Mono";letter-spacing:.16em;text-transform:uppercase;color:var(--faint)}
+.k b{color:var(--b2);font-weight:500}
+h1{font:700 64px/1 "IBM Plex Sans Condensed";letter-spacing:.01em;margin:.25in 0 .15in}
+h2{font:600 30px/1.1 "IBM Plex Sans Condensed";margin:.08in 0 .12in}
+h2 em{font-style:normal;color:var(--b2)}
+.lead{font-size:17px;color:#cfcfcf;max-width:7.4in;line-height:1.5}
+.sub{color:var(--dim);max-width:9.6in;margin-bottom:.16in}
+.foot{position:absolute;left:.6in;right:.6in;bottom:.3in;display:flex;justify-content:space-between;font:10px "IBM Plex Mono";color:var(--faint);border-top:1px solid var(--l);padding-top:6px}
+.shot{border:1px solid #3a3a3a;width:100%;display:block}
+.cols{display:grid;gap:.25in}
+.box{border:1px solid var(--l);background:rgba(17,17,17,.9);padding:12px 14px}
+.box h3{font:600 15px "IBM Plex Sans Condensed";letter-spacing:.04em;text-transform:uppercase;margin-bottom:6px}
+.box p,.box li{color:#c4c4c4;font-size:12.5px}
+.box ul{padding-left:16px}
+.num{font:600 11px "IBM Plex Mono";color:var(--b2);display:inline-block;border:1px solid var(--b);padding:0 6px;margin-right:6px}
+.loop{display:grid;grid-template-columns:repeat(6,1fr);gap:0;margin:.12in 0 .2in}
+.loop div{border:1px solid var(--l);border-left-width:0;padding:10px 10px 12px;background:rgba(17,17,17,.9);position:relative}
+.loop div:first-child{border-left-width:1px}
+.loop div b{display:block;font:600 14px "IBM Plex Sans Condensed";text-transform:uppercase;letter-spacing:.04em;margin:4px 0 3px}
+.loop div span{color:var(--dim);font-size:11.5px}
+.loop div.hl{border-color:var(--b);border-left-width:1px;background:rgba(61,139,255,.08)}
+.callouts{display:grid;grid-template-columns:repeat(3,1fr);gap:8px 18px;margin-top:.14in}
+.callouts div{font-size:12px;color:#c4c4c4}
+.callouts b{color:var(--ink);font-weight:500}
+.pill{font:500 10px "IBM Plex Mono";border:1px solid var(--l);padding:1px 7px;color:var(--dim);margin-right:4px}
+.pill.b{border-color:var(--b);color:var(--b2)}
+table{border-collapse:collapse;width:100%;font-size:12.5px}
+td,th{border:1px solid var(--l);padding:7px 10px;text-align:left;vertical-align:top}
+th{font:500 10px "IBM Plex Mono";letter-spacing:.12em;text-transform:uppercase;color:var(--faint);background:#111}
+td.y{color:var(--g)} td.n{color:var(--faint)}
+.diagram{font:11.5px "IBM Plex Mono";color:#cfcfcf}
+.arch{display:grid;grid-template-columns:1fr;gap:0}
+.layer{border:1px solid var(--l);padding:10px 12px;background:rgba(17,17,17,.9);margin-top:-1px}
+.layer .t{font:600 13px "IBM Plex Sans Condensed";text-transform:uppercase;letter-spacing:.06em}
+.layer .d{color:var(--dim);font-size:11.5px}
+.chips span{display:inline-block;border:1px solid #333;padding:2px 7px;margin:4px 4px 0 0;font:11px "IBM Plex Mono";color:#cfcfcf}
+.chips span.b{border-color:var(--b);color:var(--b2)}
+.ext{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px}
+.ext div{border:1px dashed #3a3a3a;padding:8px 10px;font-size:11.5px;color:var(--dim)}
+.ext div b{display:block;color:var(--ink);font:600 12px "IBM Plex Sans Condensed";text-transform:uppercase;letter-spacing:.05em}
+.big{font:600 44px "IBM Plex Sans Condensed";color:var(--b2);line-height:1}
+.tick{position:absolute;width:18px;height:18px;border:1px solid var(--dim)}
+</style></head><body>
+
+<!-- 1 COVER -->
+<div class="page">
+ <div class="tick" style="left:.3in;top:.3in;border-width:1px 0 0 1px"></div><div class="tick" style="right:.3in;top:.3in;border-width:1px 1px 0 0"></div>
+ <div class="tick" style="left:.3in;bottom:.3in;border-width:0 0 1px 1px"></div><div class="tick" style="right:.3in;bottom:.3in;border-width:0 1px 1px 0"></div>
+ <div class="k">Design overview · rev 1 · 2026-10-24 · <b>Mac + Windows</b></div>
+ <h1>MISES</h1>
+ <p class="lead">A desktop app where you and AI agents design physical parts together, on the same live model, test them in real-world conditions, and send them to your printer.</p>
+ <img class="shot" src="../img/01-core-loop.png" style="margin-top:.28in;width:9.8in">
+ <div class="cols" style="grid-template-columns:repeat(3,1fr);margin-top:.22in">
+  <div><span class="num">01</span><b>Onshape stays the master.</b> <span style="color:var(--dim)">Collaborate in the browser like always; agents work on their own branches.</span></div>
+  <div><span class="num">02</span><b>Any AI agent.</b> <span style="color:var(--dim)">Claude, Codex, Gemini and others, several at once, all visible in one console.</span></div>
+  <div><span class="num">03</span><b>Test before you print.</b> <span style="color:var(--dim)">A built-in simulator checks parts against heat, load and vibration.</span></div>
+ </div>
+ <div class="foot"><span>MISES · working name</span><span>1 / 8</span></div>
+</div>
+
+<!-- 2 CORE LOOP -->
+<div class="page">
+ <div class="k">The first version</div>
+ <h2>The core loop: <em>agent edits → test → you approve → print</em></h2>
+ <p class="sub">Version 1 does one thing end to end. Everything else (assemblies, sketching, heavy studies) builds on top of this loop.</p>
+ <div class="loop">
+  <div><span class="num">1</span><b>Connect</b><span>Open an Onshape part. The tree, variables and 3D model mirror into the app.</span></div>
+  <div><span class="num">2</span><b>Ask</b><span>Tell an agent what you want: "it flexes under 5 kg, stiffen it".</span></div>
+  <div class="hl"><span class="num">3</span><b>Iterate locally</b><span>The agent tries variations on a copy on your computer. Free, fast, no Onshape calls.</span></div>
+  <div><span class="num">4</span><b>Test</b><span>The simulator checks each version against the environment you picked.</span></div>
+  <div class="hl"><span class="num">5</span><b>Approve</b><span>You see the change, the stress result and the cost, then merge into Onshape.</span></div>
+  <div><span class="num">6</span><b>Print</b><span>Slice and send to your Prusa or Bambu, with a final confirm.</span></div>
+ </div>
+ <div class="cols" style="grid-template-columns:1.1fr 1fr">
+  <div class="box"><h3>Why agents work on a local copy</h3>
+   <p>Onshape allows only 2,500 API calls a year on free and student plans, about 7 a day. If agents edited Onshape directly they would burn that in an afternoon.</p>
+   <p style="margin-top:6px">So the app keeps a simplified copy of each part, driven by the same Onshape variables. Agents experiment on it for free, and only the winning numbers go back to Onshape, about <b style="color:var(--b2)">3 calls per approved change</b>.</p></div>
+  <div class="box"><h3>What always needs you</h3>
+   <ul><li>Merging a change into Onshape main</li><li>Touching a face that mates with another part</li><li>Letting an agent edit a part outside its scope</li><li>Starting a print</li><li>Spending paid credits</li></ul>
+   <p style="margin-top:6px;color:var(--a)">The simulator is a guide, not a guarantee. Every result says which solver and inputs it used.</p></div>
+ </div>
+ <div class="foot"><span>MISES · core loop</span><span>2 / 8</span></div>
+</div>
+
+<!-- 3 DESIGN SCREEN -->
+<div class="page">
+ <div class="k">Screen · Design</div>
+ <h2>The main screen</h2>
+ <img class="shot" src="../img/01-core-loop.png">
+ <div class="callouts">
+  <div><b>Top bar.</b> Part name left, mode tabs center, status lights right for Onshape, printer and agents.</div>
+  <div><b>Feature tree + variables.</b> Mirrored from Onshape. Values an agent changed glow blue.</div>
+  <div><b>Environment bar.</b> Switch test conditions: desk, bike mount, car dashboard at 80°C, or your own.</div>
+  <div><b>Design | stress.</b> Your model and its live stress map side by side, updating together.</div>
+  <div><b>Agent console.</b> Every running agent, its steps, tool calls and diffs, with filters so lots of output stays manageable.</div>
+  <div><b>Approval card.</b> Merge, diff, keep the branch, or reject, with mass, print time and test results.</div>
+  <div><b>Printer.</b> Status, estimate, preview slice, send.</div>
+  <div><b>Filament.</b> Live list with heat resistance, strength and price per kg.</div>
+  <div><b>Env matrix.</b> Safety factor for each material in each environment. Red means it fails there.</div>
+ </div>
+ <div class="foot"><span>MISES · design screen</span><span>3 / 8</span></div>
+</div>
+
+<!-- 4 ASSEMBLY -->
+<div class="page">
+ <div class="k">Screen · Design inside an assembly</div>
+ <h2>Focus one part, <em>keep the whole build in view</em></h2>
+ <img class="shot" src="../img/02-assembly.png">
+ <div class="cols" style="grid-template-columns:repeat(3,1fr);margin-top:.18in">
+  <div class="box"><h3>Ghosted neighbors</h3><p>The handlebar, clamp and phone cradle stay visible as grey outlines while you edit the bracket. Switch between Isolate, In context and Full build.</p></div>
+  <div class="box"><h3>Locked interfaces</h3><p>Faces that bolt or clamp to other parts are outlined amber and locked. Agents must ask before changing them.</p></div>
+  <div class="box"><h3>Whole-build checks</h3><p>Every change is checked for collisions and clearance. If the agent finds the weak point is in another part, it asks to expand its scope.</p></div>
+ </div>
+ <div class="foot"><span>MISES · assembly focus</span><span>4 / 8</span></div>
+</div>
+
+<!-- 5 STUDIES -->
+<div class="page">
+ <div class="k">Screen · Studies · <b>paid tier for heavy runs</b></div>
+ <h2>Topology optimization, generative design, <em>wind tunnel</em></h2>
+ <img class="shot" src="../img/03-studies.png">
+ <div class="cols" style="grid-template-columns:repeat(3,1fr);margin-top:.18in">
+  <div class="box"><h3>Solver per study</h3><p>Light studies (stress, heat, vibration) run free on your computer. Heavy ones run in the cloud on the paid tier.</p></div>
+  <div class="box"><h3>Weight vs strength</h3><p>Generative results line up as tradeoffs: mass, safety factor, print time, and warnings like "needs supports".</p></div>
+  <div class="box"><h3>Back to real CAD</h3><p>The chosen shape gets rebuilt as editable Onshape features, not a mesh. This starts rough, with your help, and gets more automatic later.</p></div>
+ </div>
+ <div class="foot"><span>MISES · studies</span><span>5 / 8</span></div>
+</div>
+
+<!-- 6 SKETCH -->
+<div class="page">
+ <div class="k">Screen · Sketch</div>
+ <h2>Draw it roughly, <em>an agent builds it</em></h2>
+ <img class="shot" src="../img/04-sketch.png">
+ <div class="cols" style="grid-template-columns:repeat(3,1fr);margin-top:.18in">
+  <div class="box"><h3>Any input</h3><p>Mouse, trackpad, pen tablet or Apple Pencil, or a photo of a napkin sketch. Scribbled numbers and notes count.</p></div>
+  <div class="box"><h3>Shows its reading</h3><p>Side by side: your sketch, and the clean dimensioned version the agent understood, with how much it had to guess.</p></div>
+  <div class="box"><h3>Few questions</h3><p>It links notes to the build ("clamps here" → the clamp's face) and asks only what it couldn't tell, then builds in Onshape.</p></div>
+ </div>
+ <div class="foot"><span>MISES · sketch</span><span>6 / 8</span></div>
+</div>
+
+<!-- 7 HOW IT CONNECTS -->
+<div class="page">
+ <div class="k">Under the hood</div>
+ <h2>How it connects</h2>
+ <p class="sub">One app for Mac and Windows. Everything runs on your computer by default; the cloud is only used for a small notification relay, accounts, and the paid heavy solvers.</p>
+ <div class="cols" style="grid-template-columns:1.35fr 1fr">
+  <div class="arch">
+   <div class="layer"><div class="t">The app window</div><div class="d">Viewer, feature tree, agent console, simulator views, printer and filament panels.</div></div>
+   <div class="layer"><div class="t">Local engine (on your computer)</div><div class="d">Does the real work.</div>
+    <div class="chips"><span>Onshape connection + call budget</span><span>Local part copy</span><span>Simulator</span><span>Printer drivers</span><span>Filament data</span></div></div>
+   <div class="layer" style="border-color:var(--b)"><div class="t" style="color:var(--b2)">One tool server for every agent</div><div class="d">All agents use the same set of tools: edit the copy, run a test, propose to Onshape, slice, look up filament. Works with agents hosted in the app and with outside ones like Claude Code, Codex or Cursor.</div>
+    <div class="chips"><span class="b">Claude</span><span class="b">Codex</span><span class="b">Gemini</span><span class="b">Cursor</span><span class="b">+ any compatible agent</span></div></div>
+   <div class="ext"><div><b>Onshape</b>Master copy, collaboration, versions. Agents get their own branches.</div><div><b>Your printer</b>Prusa (PrusaLink) and Bambu (LAN mode), on your network.</div><div><b>Mises cloud</b>Notification relay, accounts, paid heavy solvers.</div></div>
+  </div>
+  <div>
+   <div class="box"><h3>Built to official rules</h3><ul>
+    <li>Uses Anthropic's official Agent SDK and open agent standards, never leaked code.</li>
+    <li>Users bring their own AI agent or key on the free tier, so AI costs are theirs.</li>
+    <li>No tricks to dodge Onshape's limits; every call is counted and capped.</li></ul></div>
+   <div class="box" style="margin-top:10px;border-color:var(--a)"><h3 style="color:var(--a)">To confirm with Onshape</h3><p>If shared as a private app, every user's calls would count against the developer's allowance. Listing in Onshape's App Store should avoid that, but Onshape's own docs disagree with themselves, so this needs confirming before launch. Until then, users connect with their own Onshape keys.</p></div>
+  </div>
+ </div>
+ <div class="foot"><span>MISES · architecture</span><span>7 / 8</span></div>
+</div>
+
+<!-- 8 TIERS + ROADMAP -->
+<div class="page">
+ <div class="k">Pricing and plan</div>
+ <h2>Cheap for everyone, <em>paid for the power</em></h2>
+ <div class="cols" style="grid-template-columns:1fr 1.15fr">
+  <table>
+   <tr><th>Feature</th><th>Free</th><th>Paid</th></tr>
+   <tr><td>Core loop with Onshape</td><td class="y">✓</td><td class="y">✓</td></tr>
+   <tr><td>Local stress, heat, vibration tests</td><td class="y">✓</td><td class="y">✓</td></tr>
+   <tr><td>Prusa + Bambu printing</td><td class="y">✓</td><td class="y">✓</td></tr>
+   <tr><td>Filament lookup</td><td class="y">✓</td><td class="y">✓</td></tr>
+   <tr><td>Bring your own AI agent</td><td class="y">✓</td><td class="y">✓</td></tr>
+   <tr><td>Agents at once</td><td>1–2</td><td>many</td></tr>
+   <tr><td>Topology optimization</td><td class="n">—</td><td class="y">✓ cloud</td></tr>
+   <tr><td>Generative design</td><td class="n">—</td><td class="y">✓ cloud</td></tr>
+   <tr><td>Wind tunnel (CFD)</td><td class="n">—</td><td class="y">✓ cloud</td></tr>
+   <tr><td>Hosted AI credits (no key needed)</td><td class="n">—</td><td class="y">✓</td></tr>
+   <tr><td>Team features</td><td class="n">—</td><td class="y">✓</td></tr>
+  </table>
+  <div>
+   <div class="box"><h3>Build order</h3>
+    <table style="font-size:11.5px">
+     <tr><td><span class="pill">M0</span>App shell on Mac + Windows</td><td><span class="pill">M5</span>Prusa, then Bambu printing</td></tr>
+     <tr><td><span class="pill">M1</span>Onshape mirror + call budget</td><td><span class="pill">M6</span>Many agents at once</td></tr>
+     <tr><td><span class="pill">M2</span>Local part copy</td><td><span class="pill">M7</span>Assembly focus</td></tr>
+     <tr><td><span class="pill b">M3</span>Agents + approve + merge</td><td><span class="pill">M8</span>Filament service</td></tr>
+     <tr><td><span class="pill">M4</span>Simulator</td><td><span class="pill">M9</span>Sketch to part</td></tr>
+     <tr><td colspan="2"><span class="pill b">M10</span>Paid tier + cloud studies</td></tr>
+    </table>
+    <p style="margin-top:8px">M0 to M5 is the full first version.</p></div>
+   <div class="box" style="margin-top:10px"><h3>Why the free tier stays cheap</h3><p>Everything heavy runs on the user's own computer, AI costs are theirs, and Onshape calls hit their own allowance. Our running cost per free user is close to zero; the paid tier pays for cloud compute.</p></div>
+  </div>
+ </div>
+ <div class="foot"><span>MISES · full design: docs/design/2026-10-24-mises-design.md</span><span>8 / 8</span></div>
+</div>
+</body></html>
