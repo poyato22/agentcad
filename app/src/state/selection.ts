@@ -10,11 +10,14 @@ export function rosterOrder(list: Iterable<AgentRun>): AgentRun[] {
   return [...list].sort((a, b) => Number(b.status === "running") - Number(a.status === "running") || b.created_at - a.created_at);
 }
 
-/** The selected run, else the newest running run, else the newest run. */
+/**
+ * The selected run (even one not in `runs` yet, e.g. just created and not listed), else the
+ * newest running run, else the newest run.
+ */
 export const effectiveRunId: ReadonlySignal<string | null> = computed(() => {
   const sel = selectedRunId.value;
-  if (sel && runs.value.has(sel)) return sel;
-  return rosterOrder(runs.value.values())[0]?.id ?? sel ?? null;
+  if (sel) return sel;
+  return rosterOrder(runs.value.values())[0]?.id ?? null;
 });
 
 export const effectiveRun: ReadonlySignal<AgentRun | null> = computed(() => {
