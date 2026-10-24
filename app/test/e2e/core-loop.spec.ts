@@ -258,3 +258,21 @@ test("blue_only_where_allowed", async ({ page, fake }) => {
   });
   expect(offenders).toEqual([]);
 });
+
+test("topbar_zones_never_overlap_with_busy_lights", async ({ page, fake }) => {
+  await midRun(page, fake); // 2 agents · 2 needs you: the widest the lights get
+  for (const width of [1440, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    const box = async (sel: string) => {
+      const b = await page.locator(sel).first().boundingBox();
+      if (!b) throw new Error(`no box for ${sel}`);
+      return b;
+    };
+    const tabs = await box(".tabs");
+    const lights = await box(".lights");
+    const crumb = await box(".crumb");
+    expect(lights.x, `lights overlap the tabs at ${width}px`).toBeGreaterThanOrEqual(tabs.x + tabs.width);
+    expect(crumb.x + crumb.width, `breadcrumb overlaps the tabs at ${width}px`).toBeLessThanOrEqual(tabs.x);
+    await expect(page.getByRole("button", { name: "STOP ALL" })).toBeInViewport({ ratio: 1 });
+  }
+});

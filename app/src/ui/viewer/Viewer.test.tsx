@@ -2,9 +2,9 @@ import { act, cleanup, render, waitFor } from "@testing-library/preact";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CoreClient } from "../../api/client";
 import type { PartSummary } from "../../api/types";
-import { bindClient, inflight, parts, resetStore, selectedPartId } from "../../state/store";
+import { bindClient, inflight, parts, resetStore, runs, selectedPartId, steps } from "../../state/store";
 import type { ViewerHandle } from "./scene";
-import { Viewer, highlighted } from "./Viewer";
+import { Viewer, changingRunLabel, highlighted } from "./Viewer";
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -74,6 +74,18 @@ describe("Viewer", () => {
     parts.value = [mk(1)];
     const { findByText } = render(<Viewer />);
     await findByText("GLB failed: no model.glb");
+  });
+
+  it("title block credits the run that created the part, not 'you'", () => {
+    parts.value = [mk(1)];
+    const run = { id: "r1", parent_id: null, agent: "designer", provider: "fake", model: "m", task: "make a mount plate", status: "done" as const,
+      branch: null, onshape_calls: 0, input_tokens: 0, output_tokens: 0, usd: 0, created_at: 1, updated_at: 2 };
+    runs.value = new Map([["r1", run]]);
+    expect(changingRunLabel.value).toBeNull();
+    // the real core: mirror_part_create's result step is kind tool_result with output.data.part_id
+    steps.value = new Map([["r1", [{ id: 4, run_id: "r1", ts: 2, kind: "tool_result", evidence_hash: "e", prev_hash: null, collapsed: false,
+      payload: { call_id: "c1", name: "mirror_part_create", output: { ok: true, summary: "s", data: { part_id: "mount_plate" }, handles: [], warnings: [], step_kind: "tool_result" } } }]]]);
+    expect(changingRunLabel.value).toBe("designer · make mount plate");
   });
 
   it("highlighted is true only while an agent call targets the active part", () => {

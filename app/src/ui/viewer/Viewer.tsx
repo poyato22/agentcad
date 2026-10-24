@@ -26,7 +26,7 @@ export const highlighted = computed<boolean>(() => {
   return false;
 });
 
-/** Label of the run that is changing the part now, else the run behind its latest diff step, else null ("you"). */
+/** Label of the run that is changing the part now, else the run behind its latest diff / create, else null ("you"). */
 export const changingRunLabel = computed<string | null>(() => {
   const id = activePart.value?.part_id;
   if (!id) return null;
@@ -39,7 +39,9 @@ export const changingRunLabel = computed<string | null>(() => {
     let best = -1;
     for (const list of steps.value.values()) {
       for (const s of list) {
-        if (s.kind !== "diff" || s.id <= best) continue;
+        // a set_vars diff, or the create that built the part (its result step is a tool_result)
+        const builds = s.kind === "diff" || (s.kind === "tool_result" && s.payload["name"] === "mirror_part_create");
+        if (!builds || s.id <= best) continue;
         const out = s.payload["output"];
         const data = typeof out === "object" && out !== null ? (out as Record<string, unknown>)["data"] : null;
         if (typeof data === "object" && data !== null && (data as Record<string, unknown>)["part_id"] === id) { best = s.id; runId = s.run_id; }
