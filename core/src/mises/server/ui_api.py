@@ -1,8 +1,9 @@
 """Routes and CORS for the Mac app's webview: parts, GLB, agents, models, status, stop-all.
 
 The webview cannot use the MCP endpoint (it needs a live run's X-Mises-Run), so these thin
-read routes sit beside the run/approval API in app.py. Every route here still requires the
-bearer token; only CORS preflights are answered without it.
+read routes sit beside the run/approval API in app.py. Every route here requires the admin
+bearer token (the MCP-only token agents get is refused with 403); only CORS preflights are
+answered without a token.
 """
 from __future__ import annotations
 
