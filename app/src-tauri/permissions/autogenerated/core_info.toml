@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-core-info"
+description = "Enables the core_info command without any pre-configured scope."
+commands.allow = ["core_info"]
+
+[[permission]]
+identifier = "deny-core-info"
+description = "Denies the core_info command without any pre-configured scope."
+commands.deny = ["core_info"]

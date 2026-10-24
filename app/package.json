@@ -13,6 +13,8 @@
     "test": "vitest run",
     "e2e": "playwright test",
     "lint": "eslint . --max-warnings 0 && tsc -b",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
     "fake-core": "tsx test/fake-core/cli.ts --port 7400 --token dev-token --scenario base"
   },
   "dependencies": {
@@ -29,6 +31,7 @@
     "@playwright/test": "1.64.1",
     "@preact/preset-vite": "2.10.6",
     "@testing-library/preact": "3.2.6",
+    "@tauri-apps/cli": "2.12.4",
     "@types/node": "24.19.2",
     "@types/three": "0.186.0",
     "@types/ws": "8.18.2",
