@@ -10,6 +10,13 @@ import { StatusLights } from "./StatusLights";
 import { TopBar } from "./TopBar";
 import { installStopAllShortcut, resetStopAll } from "./stopAll";
 
+const invokeMock = vi.hoisted(() => vi.fn(async () => null));
+vi.mock("@tauri-apps/api/core", async (orig) => ({
+  ...(await orig<typeof import("@tauri-apps/api/core")>()),
+  isTauri: () => true,
+  invoke: invokeMock,
+}));
+
 const run = (id: string, status: AgentRun["status"] = "running"): AgentRun => ({
   id, parent_id: null, agent: "designer", provider: "fake", model: "m", task: "t", status, branch: null,
   onshape_calls: 0, input_tokens: 0, output_tokens: 0, usd: 0, created_at: 1, updated_at: 1,
@@ -52,6 +59,35 @@ describe("StatusLights", () => {
     conn.value = "unauthorized";
     shellStatus.value = { state: "starting" };
     await waitFor(() => expect(led("core").className).toContain("led-red"));
+  });
+
+  it("attached_core_lost_for_5s_while_shell_ready_turns_red_and_restarts_on_click", async () => {
+    vi.useFakeTimers();
+    try {
+      const info = { baseUrl: "http://127.0.0.1:1", wsUrl: "ws://127.0.0.1:1/events", token: "t", owned: false };
+      shellStatus.value = { state: "ready", info };
+      conn.value = "open";
+      render(<StatusLights />);
+      conn.value = "reconnecting";
+      await vi.advanceTimersByTimeAsync(4900);
+      expect(led("core").className).toContain("led-amber");
+      expect(light("core").getAttribute("role")).toBeNull();
+      await vi.advanceTimersByTimeAsync(200);
+      expect(led("core").className).toContain("led-red");
+      expect(light("core").getAttribute("role")).toBe("button");
+      expect(light("core").getAttribute("title")).toContain("click to restart");
+      fireEvent.click(light("core"));
+      expect(invokeMock).toHaveBeenCalledWith("core_restart");
+      // back online: green again, and a later short blip stays amber
+      conn.value = "open";
+      await vi.advanceTimersByTimeAsync(0);
+      expect(led("core").className).toContain("led-green");
+      conn.value = "closed";
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(led("core").className).toContain("led-amber");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("onshape_states_and_amber_at_80_percent", async () => {
