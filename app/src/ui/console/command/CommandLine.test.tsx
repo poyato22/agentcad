@@ -21,6 +21,7 @@ beforeEach(() => {
     ["r1", run("r1", "designer", "stiffen upright", "done")],
     ["r2", run("r2", "planner", "plan the bracket", "running")],
     ["r3", run("r3", "verifier", "check mass", "done")],
+    ["r4", { ...run("r4", "claude", "external work", "done"), provider: "acp" }],
   ]);
   actions.selectRun("r1");
 });
@@ -69,7 +70,15 @@ describe("CommandLine", () => {
     await waitFor(() => expect(client.message).toHaveBeenCalledTimes(2));
     const ids = client.message.mock.calls.map((c) => c[0]).sort();
     expect(ids).toEqual(["r1", "r3"]);
-    expect((await screen.findByTestId("cmd-info")).textContent).toBe("sent to 2 runs · skipped 1 still working");
+    expect((await screen.findByTestId("cmd-info")).textContent).toBe("sent to 2 runs · skipped 1 still working · skipped 1 external");
+  });
+
+  it("multiline_slash_is_sent_as_text_not_executed", async () => {
+    render(<CommandLine />);
+    type("/stopall\nrest");
+    enter();
+    await waitFor(() => expect(client.message).toHaveBeenCalledWith("r1", "/stopall\nrest"));
+    expect(client.cancelAll).not.toHaveBeenCalled();
   });
 
   it("paste_with_newline_not_sent", async () => {

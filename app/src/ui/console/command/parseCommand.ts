@@ -22,11 +22,13 @@ export function parseCommand(line: string, runs: readonly AgentRun[]): Command {
   const text = line.trim();
   if (!text) return invalid("nothing to send");
 
-  if (text.startsWith("/")) {
+  // A multi-line input is never a command (pasted text must not trigger one): it is a message.
+  if (text.startsWith("/") && !text.includes("\n")) {
     const m = /^\/(\S*)\s*([\s\S]*)$/.exec(text);
     const name = (m?.[1] ?? "").toLowerCase();
     const arg = (m?.[2] ?? "").trim();
     if (name === "approve") return invalid("approve on the card");
+    if (["new", "stop", "stopall", "clear"].includes(name) && arg) return invalid(`/${name} takes no argument`);
     if ((SLASH_NAMES as readonly string[]).includes(name)) return { kind: "slash", name: name as SlashName, arg };
     return invalid(`unknown command /${name} — try /help`);
   }

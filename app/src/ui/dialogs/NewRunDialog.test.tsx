@@ -104,6 +104,12 @@ describe("NewRunDialog", () => {
     expect(selectedRunId.value).toBeNull();
   });
 
+  it("esc_closes_from_anywhere", async () => {
+    await open();
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await waitFor(() => expect(newRunOpen.value).toBe(false));
+  });
+
   it("esc_closes_and_cmd_n_opens", async () => {
     await open();
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });

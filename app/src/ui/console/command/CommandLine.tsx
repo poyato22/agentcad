@@ -5,6 +5,7 @@ import type { AgentRun } from "../../../api/types";
 import { registerShortcut } from "../../../lib/keys";
 import { runLabel } from "../../../lib/names";
 import { actions, filter, follow, runs, selectedRunId, type LogFilter } from "../../../state/store";
+import { isExternal } from "./isExternal";
 import { parseCommand, type Command } from "./parseCommand";
 import "./command.css";
 
@@ -23,7 +24,7 @@ function describeError(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-const isIdle = (r: AgentRun) => r.status !== "running";
+const isIdle = (r: AgentRun) => r.status !== "running" && !isExternal(r);
 
 export function CommandLine(): JSX.Element {
   const [value, setValue] = useState("");
@@ -47,13 +48,15 @@ export function CommandLine(): JSX.Element {
     if (cmd.kind === "slash") return slash(cmd.name, cmd.arg);
     if (cmd.target === "all") {
       const targets = allRuns.filter(isIdle);
-      const skipped = allRuns.length - targets.length;
-      if (targets.length === 0) { setError("no idle runs to message — every run is still working"); return false; }
+      const working = allRuns.filter((r) => !isExternal(r) && r.status === "running").length;
+      const external = allRuns.filter(isExternal).length;
+      if (targets.length === 0) { setError("no idle runs to message — every run is still working or external"); return false; }
       const results = await Promise.allSettled(targets.map((r) => actions.client().message(r.id, cmd.text)));
       const failed = results.flatMap((res, i) => (res.status === "rejected" ? [`${runLabel(targets[i], allRuns)}: ${describeError(res.reason)}`] : []));
       const sent = targets.length - failed.length;
       const parts = [`sent to ${sent} run${sent === 1 ? "" : "s"}`];
-      if (skipped) parts.push(`skipped ${skipped} still working`);
+      if (working) parts.push(`skipped ${working} still working`);
+      if (external) parts.push(`skipped ${external} external`);
       setInfo(parts.join(" · "));
       if (failed.length) { setError(failed.join("\n")); return false; }
       return true;
@@ -126,18 +129,19 @@ export function CommandLine(): JSX.Element {
     }
   }
 
-  function browse(dir: -1 | 1): void {
+  function browse(dir: -1 | 1): boolean {
     const h = history.current;
     if (cursor.current === -1) {
-      if (dir === 1 || h.length === 0) return;
+      if (dir === 1 || h.length === 0) return false;
       draft.current = value;
       cursor.current = h.length - 1;
     } else {
       cursor.current += dir;
-      if (cursor.current >= h.length) { cursor.current = -1; setValue(draft.current); return; }
+      if (cursor.current >= h.length) { cursor.current = -1; setValue(draft.current); return true; }
       if (cursor.current < 0) cursor.current = 0;
     }
     setValue(h[cursor.current] ?? "");
+    return true;
   }
 
   function onKeyDown(e: KeyboardEvent): void {
@@ -147,11 +151,9 @@ export function CommandLine(): JSX.Element {
       e.preventDefault();
       void submit();
     } else if (e.key === "ArrowUp" && !e.shiftKey && !el.value.slice(0, el.selectionStart).includes("\n")) {
-      e.preventDefault();
-      browse(-1);
+      if (browse(-1)) e.preventDefault();
     } else if (e.key === "ArrowDown" && !e.shiftKey && !el.value.slice(el.selectionEnd).includes("\n")) {
-      e.preventDefault();
-      browse(1);
+      if (browse(1)) e.preventDefault();
     }
   }
 

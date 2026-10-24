@@ -38,6 +38,14 @@ describe("parseCommand", () => {
     expect(parseCommand("/approve", runs)).toEqual({ kind: "invalid", reason: "approve on the card" });
     expect(parseCommand("/APPROVE abc", runs)).toEqual({ kind: "invalid", reason: "approve on the card" });
   });
+  it("multiline_input_is_never_a_command", () => {
+    expect(parseCommand("/stopall\nrest", runs)).toEqual({ kind: "message", target: "selected", text: "/stopall\nrest" });
+    expect(parseCommand("/new\n/stop", runs).kind).toBe("message");
+  });
+  it("no_arg_commands_reject_arguments", () => {
+    for (const n of ["stop", "stopall", "new", "clear"]) expect(parseCommand(`/${n} now`, runs).kind).toBe("invalid");
+    expect(parseCommand("/follow off", runs).kind).toBe("slash");
+  });
   it("same_agent_prefers_idle_run", () => {
     const two = [run("a", "designer", "one", "running", 2000), run("b", "designer", "two", "done", 1000)];
     expect(parseCommand("@designer go", two)).toMatchObject({ target: { label: "designer · two" } });

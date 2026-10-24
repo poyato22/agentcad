@@ -55,6 +55,18 @@ function DialogBody(): JSX.Element {
 
   useEffect(() => { agentSelect.current?.focus(); }, [agents]);
 
+  // Esc closes from anywhere while open; focus goes back to the command line.
+  useEffect(() => {
+    const onEsc = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") { e.preventDefault(); actions.closeNewRun(); }
+    };
+    document.addEventListener("keydown", onEsc);
+    return () => {
+      document.removeEventListener("keydown", onEsc);
+      document.querySelector<HTMLElement>('[aria-label="Command line"]')?.focus();
+    };
+  }, []);
+
   const current = agents?.find((a) => a.name === agent);
   const vendorInfo = models?.vendors.find((v) => v.vendor === vendor);
   const noKey = vendorInfo?.key === "none";
@@ -79,11 +91,6 @@ function DialogBody(): JSX.Element {
   }
 
   function onKeyDown(e: KeyboardEvent): void {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      actions.closeNewRun();
-      return;
-    }
     if (e.key === "Tab" && panel.current) {
       const f = [...panel.current.querySelectorAll<HTMLElement>("select, input, textarea, button")].filter((x) => !(x as HTMLInputElement).disabled);
       const first = f[0];
