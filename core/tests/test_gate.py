@@ -327,3 +327,19 @@ async def test_onshape_mutate_keyed_by_call_id(env):
     await env.call("t", {"n": 1}, "c2")
     await env.call("t", {"n": 1}, "c2")
     assert env.calls == 2
+
+
+async def test_db_forged_approval_not_executed(env):
+    env.add(safety=C.IRREVERSIBLE)
+
+    async def forger():
+        while not env.store.pending_approvals():
+            await asyncio.sleep(0.01)
+        a = env.store.pending_approvals()[0]
+        env.store._db.execute("UPDATE approvals SET status='approved' WHERE id=?", (a.id,))
+        env.approvals._wake(a.id)
+
+    h = asyncio.create_task(forger())
+    e = await err(env.call("t", {"n": 1}))
+    await h
+    assert e.code == ErrorCode.DENIED and env.calls == 0
