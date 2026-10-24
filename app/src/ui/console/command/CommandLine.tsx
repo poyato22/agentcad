@@ -1,11 +1,191 @@
 import type { JSX } from "preact";
+import { useEffect, useRef, useState } from "preact/hooks";
+import { CoreError } from "../../../api/client";
+import type { AgentRun } from "../../../api/types";
+import { registerShortcut } from "../../../lib/keys";
+import { runLabel } from "../../../lib/names";
+import { actions, filter, follow, runs, selectedRunId, type LogFilter } from "../../../state/store";
+import { isExternal } from "./isExternal";
+import { parseCommand, type Command } from "./parseCommand";
+import "./command.css";
 
-// STUB (Task 2). Task 9 replaces this file: "❯" prompt, routing, slash commands, history.
+const FILTER_KINDS: readonly LogFilter["kind"][] = ["everything", "decisions", "tool_calls", "files", "errors"];
+
+const HELP = [
+  "@designer … message a run by agent or label · @all … every idle run",
+  "/new  new run · /stop  stop the selected run · /stopall  stop every run (⌘⇧.)",
+  "/follow [on|off] · /filter everything|decisions|tool_calls|files|errors|all|run · /clear",
+  "approvals are decided on their card, never here",
+].join("\n");
+
+/** The core's message plus its hint: "run is still working — wait or stop it". */
+function describeError(e: unknown): string {
+  if (e instanceof CoreError) return e.hint ? `${e.message} — ${e.hint}` : e.message;
+  return e instanceof Error ? e.message : String(e);
+}
+
+const isIdle = (r: AgentRun) => r.status !== "running" && !isExternal(r);
+
 export function CommandLine(): JSX.Element {
+  const [value, setValue] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const input = useRef<HTMLTextAreaElement>(null);
+  const history = useRef<string[]>([]);
+  const cursor = useRef<number>(-1); // -1 = not browsing history
+  const draft = useRef("");
+
+  useEffect(() => registerShortcut("Meta+K", () => input.current?.focus()), []);
+
+  const allRuns = [...runs.value.values()];
+  const parsed: Command = value.trim() ? parseCommand(value, allRuns) : { kind: "message", target: "selected", text: "" };
+  const selected = selectedRunId.value ? runs.value.get(selectedRunId.value) : undefined;
+  const chip = chipText(parsed, selected, allRuns);
+
+  async function execute(cmd: Command): Promise<boolean> {
+    if (cmd.kind === "invalid") { setError(cmd.reason); return false; }
+    if (cmd.kind === "slash") return slash(cmd.name, cmd.arg);
+    if (cmd.target === "all") {
+      const targets = allRuns.filter(isIdle);
+      const working = allRuns.filter((r) => !isExternal(r) && r.status === "running").length;
+      const external = allRuns.filter(isExternal).length;
+      if (targets.length === 0) { setError("no idle runs to message — every run is still working or external"); return false; }
+      const results = await Promise.allSettled(targets.map((r) => actions.client().message(r.id, cmd.text)));
+      const failed = results.flatMap((res, i) => (res.status === "rejected" ? [`${runLabel(targets[i], allRuns)}: ${describeError(res.reason)}`] : []));
+      const sent = targets.length - failed.length;
+      const parts = [`sent to ${sent} run${sent === 1 ? "" : "s"}`];
+      if (working) parts.push(`skipped ${working} still working`);
+      if (external) parts.push(`skipped ${external} external`);
+      setInfo(parts.join(" · "));
+      if (failed.length) { setError(failed.join("\n")); return false; }
+      return true;
+    }
+    let run: AgentRun | undefined;
+    if (cmd.target === "selected") {
+      run = selected;
+      if (!run) { setError("select a run first, or address one with @agent"); return false; }
+    } else {
+      const label = cmd.target.label;
+      run = allRuns.find((r) => runLabel(r, allRuns) === label);
+      if (!run) { setError(`no run matches @${label}`); return false; }
+    }
+    try {
+      await actions.client().message(run.id, cmd.text);
+      return true;
+    } catch (e) {
+      setError(describeError(e));
+      return false;
+    }
+  }
+
+  async function slash(name: string, arg: string): Promise<boolean> {
+    try {
+      switch (name) {
+        case "new": actions.openNewRun(); return true;
+        case "stop":
+          if (!selected) { setError("select a run first"); return false; }
+          await actions.client().cancel(selected.id);
+          return true;
+        case "stopall": await actions.client().cancelAll(); return true;
+        case "follow": {
+          const a = arg.toLowerCase();
+          if (a && a !== "on" && a !== "off") { setError("/follow on or /follow off"); return false; }
+          actions.setFollow(a ? a === "on" : !follow.value);
+          return true;
+        }
+        case "filter": {
+          const a = arg.toLowerCase();
+          const f = filter.value;
+          if (a === "all" || a === "run") actions.setFilter({ ...f, scope: a });
+          else if ((FILTER_KINDS as readonly string[]).includes(a)) actions.setFilter({ ...f, kind: a as LogFilter["kind"] });
+          else { setError(`/filter ${FILTER_KINDS.join("|")}|all|run`); return false; }
+          return true;
+        }
+        case "clear": history.current = []; setInfo(null); return true;
+        case "help": setInfo(HELP); return true;
+        default: return false;
+      }
+    } catch (e) {
+      setError(describeError(e));
+      return false;
+    }
+  }
+
+  async function submit(): Promise<void> {
+    if (busy) return;
+    const line = value;
+    if (!line.trim()) return;
+    setBusy(true);
+    setError(null);
+    setInfo(null);
+    const cmd = parseCommand(line, allRuns);
+    const ok = await execute(cmd);
+    setBusy(false);
+    if (ok) {
+      if (cmd.kind !== "slash" || cmd.name !== "clear") history.current.push(line);
+      cursor.current = -1;
+      setValue("");
+    }
+  }
+
+  function browse(dir: -1 | 1): boolean {
+    const h = history.current;
+    if (cursor.current === -1) {
+      if (dir === 1 || h.length === 0) return false;
+      draft.current = value;
+      cursor.current = h.length - 1;
+    } else {
+      cursor.current += dir;
+      if (cursor.current >= h.length) { cursor.current = -1; setValue(draft.current); return true; }
+      if (cursor.current < 0) cursor.current = 0;
+    }
+    setValue(h[cursor.current] ?? "");
+    return true;
+  }
+
+  function onKeyDown(e: KeyboardEvent): void {
+    if (e.isComposing) return;
+    const el = e.currentTarget as HTMLTextAreaElement;
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      void submit();
+    } else if (e.key === "ArrowUp" && !e.shiftKey && !el.value.slice(0, el.selectionStart).includes("\n")) {
+      if (browse(-1)) e.preventDefault();
+    } else if (e.key === "ArrowDown" && !e.shiftKey && !el.value.slice(el.selectionEnd).includes("\n")) {
+      if (browse(1)) e.preventDefault();
+    }
+  }
+
+  // data-stub is kept only so the foundation App.test still finds the region; Task 10 drops it.
+  const rows = Math.min(5, Math.max(1, value.split("\n").length));
   return (
-    <div data-stub="CommandLine" style={{ display: "flex", alignItems: "center", gap: "8px", padding: "7px 8px", borderTop: "1px solid var(--line2)", background: "var(--head)" }}>
-      <span class="faint">❯</span>
-      <input aria-label="Command line" placeholder="message an agent, @all, or / for commands…" disabled style={{ flex: "1" }} />
+    <div class="cmd" data-stub="CommandLine">
+      {chip && <div class="cmd-chip dim" data-testid="target-chip">{chip}</div>}
+      <div class="cmd-row">
+        <span class="cmd-prompt" aria-hidden="true">❯</span>
+        <textarea
+          ref={input}
+          class="cmd-input"
+          aria-label="Command line"
+          placeholder="message an agent, @all, or / for commands…"
+          rows={rows}
+          value={value}
+          spellcheck={false}
+          onInput={(e) => { setValue(e.currentTarget.value); cursor.current = -1; }}
+          onKeyDown={onKeyDown}
+        />
+      </div>
+      {error && <div class="cmd-error text" role="alert">{error}</div>}
+      {info && !error && <div class="cmd-info text dim" data-testid="cmd-info">{info}</div>}
     </div>
   );
+}
+
+function chipText(cmd: Command, selected: AgentRun | undefined, all: readonly AgentRun[]): string {
+  if (cmd.kind === "slash") return `/${cmd.name}`;
+  if (cmd.kind === "invalid") return "";
+  if (cmd.target === "all") return "→ all idle runs";
+  if (cmd.target === "selected") return selected ? `→ ${runLabel(selected, all)}` : "→ no run selected";
+  return `→ ${cmd.target.label}`;
 }
