@@ -23,7 +23,8 @@ export function Variables(): JSX.Element {
         return (
           <div class="var-row" key={name}>
             <dt class="var-name">{name}</dt>
-            <dd class={c ? "var-value changed" : "var-value"} data-testid={`var-${name}`} data-changed={c ? "true" : undefined} title={title}>
+            <dd class={c ? "var-value changed" : "var-value"} data-testid={`var-${name}`} data-changed={c ? "true" : undefined}
+              data-changing={c ? "" : undefined} title={title}>
               {fmtMm(value)}
             </dd>
           </div>

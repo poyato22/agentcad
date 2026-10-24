@@ -226,13 +226,19 @@ describe("contract: real core fixtures ↔ schemas ↔ fake core", () => {
         if (real) problems.push(...shapeDiff(real, s, `steps[${s.id}]`).filter((p) => !(/\.payload\.(input|output\.data)\./.test(p) && /: missing/.test(p))));
       }
       // scripted events: envelope always, data where the real core sent the same type
-      for (const [i, entry] of (sc.script ?? []).entries()) {
+      // timed scripts and trigger scripts ("$run" stands for the run they play for)
+      const entries = [...(sc.script ?? []), ...Object.values(sc.on ?? {}).flat()];
+      for (const [i, entry] of entries.entries()) {
         const ev = { type: entry.event.type, run_id: entry.event.run_id ?? null, data: entry.event.data ?? {}, ts: entry.event.ts ?? 0 };
         check(eventSchema, ev, `script[${i}]`);
         const real = realEvents.find((x) => x.type === ev.type && (x.data.name === undefined || x.data.name === ev.data.name));
         if (real && ev.type !== "approval_requested") problems.push(...shapeDiff(real.data, ev.data, `script[${i}].${ev.type}`));
         if (ev.type === "approval_requested") check(approvalSchema, ev.data, `script[${i}].approval`);
-        for (const st of entry.steps ?? []) check(stepSchema.partial().required({ kind: true }), st, `script[${i}].steps`);
+        for (const st of entry.steps ?? []) {
+          check(stepSchema.partial().required({ kind: true }), st, `script[${i}].steps`);
+          const realStep = realSteps.find((x) => discriminator(x) === discriminator(st)) as Record<string, unknown> | undefined;
+          if (realStep) problems.push(...shapeDiff(realStep.payload, st.payload, `script[${i}].steps.payload`).filter((p) => !(/\.(input|output\.data)\./.test(p) && /: missing/.test(p))));
+        }
       }
       expect(problems).toEqual([]);
     });

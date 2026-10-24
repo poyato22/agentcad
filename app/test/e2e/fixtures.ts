@@ -5,7 +5,7 @@ import { test as base, expect } from "@playwright/test";
 import type { Approval, MisesEvent, PartSummary, Step, AgentRun } from "../../src/api/types";
 import { CORE_TOKEN, CORE_URL } from "./ports";
 
-export interface FakeCall { method: string; path: string; query: Record<string, string>; body: unknown; ts: number }
+export interface FakeCall { method: string; path: string; query: Record<string, string>; body: unknown; ts: number; ifNoneMatch?: string }
 export interface EmitExtras {
   steps?: Partial<Step>[]; approval?: Approval; run?: AgentRun; parts?: PartSummary[];
 }
@@ -16,7 +16,7 @@ export interface FakeControl {
   reset(scenario?: string | Record<string, unknown>): Promise<void>;
   emit(event: Omit<MisesEvent, "ts"> & { ts?: number }, extras?: EmitExtras): Promise<void>;
   calls(): Promise<FakeCall[]>;
-  dropSockets(): Promise<void>;
+  dropSockets(mode?: "close" | "terminate"): Promise<void>;
   rotateToken(token: string): Promise<void>;
 }
 
@@ -38,7 +38,7 @@ function control(): FakeControl {
       const r = await fetch(CORE_URL + "/__fake/calls", { headers: { Authorization: `Bearer ${token}` } });
       return (await r.json()) as FakeCall[];
     },
-    dropSockets: () => post("/__fake/drop_sockets", {}),
+    dropSockets: (mode = "close") => post("/__fake/drop_sockets", { mode }),
     rotateToken: (t) => post("/__fake/rotate_token", { token: t }).then(() => { token = t; }),
   };
 }

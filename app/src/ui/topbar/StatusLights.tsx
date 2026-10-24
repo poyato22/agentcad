@@ -54,7 +54,7 @@ export function StatusLights(): JSX.Element {
       <span class="light" data-light="agents">
         <Led tone={running > 0 ? "blue" : "faint"} /> AGENTS{" "}
         <span class="light-val">{running} {running === 1 ? "agent" : "agents"}</span>
-        {needs > 0 && <span class="light-need"> · {needs} needs you</span>}
+        {needs > 0 && <span class="light-need needs-you"> · {needs} needs you</span>}
       </span>
       <span class="light" data-light="printer"><Led tone="faint" /> PRINTER <span class="light-val">no printer</span></span>
     </div>

@@ -63,7 +63,7 @@ export function ToolCallRow(props: { item: Call; label?: string }): JSX.Element 
   const dur = item.endedTs !== null ? `${Math.max(0, item.endedTs - item.startedTs).toFixed(1)}s` : null;
   const output = item.result ? (item.result.payload.output ?? item.result.payload) : null;
   return (
-    <div class="con-call" data-ok={item.ok === null ? "running" : String(item.ok)}>
+    <div class="con-call" data-ok={item.ok === null ? "running" : String(item.ok)} data-changing={running ? "" : undefined}>
       <div class="con-row con-click" data-call-head role="button" tabIndex={0} aria-expanded={open}
         onClick={() => setOpen(!open)} onKeyDown={(e) => { if (e.key === "Enter") setOpen(!open); }}>
         <span class="con-ts">{fmtClock(item.startedTs)}</span>

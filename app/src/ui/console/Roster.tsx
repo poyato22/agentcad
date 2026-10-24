@@ -48,7 +48,7 @@ export function Roster(): JSX.Element {
         <span class="pane-title">Agents</span>
         <span class="ink">{`${running} running`}</span>
         <span class="pane-right">
-          <span class={needsYou > 0 ? "con-needs" : ""}>{`${needsYou} needs you`}</span>
+          <span class={needsYou > 0 ? "con-needs needs-you" : ""}>{`${needsYou} needs you`}</span>
           {` · ${fmtTokens(tokens)} · ${fmtUsd(usd)}`}
         </span>
       </header>
@@ -58,6 +58,7 @@ export function Roster(): JSX.Element {
           const sel = r.id === selected;
           return (
             <div key={r.id} class={`con-ag${sel ? " sel" : ""}`} data-run={r.id} role="option" aria-selected={sel}
+              data-selected={sel ? "" : undefined} data-changing={r.status === "running" ? "" : undefined}
               tabIndex={0} onClick={() => actions.selectRun(r.id)}
               onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); actions.selectRun(r.id); } }}>
               <Led tone={needsRun.has(r.id) || r.status === "running" ? "blue" : LED[r.status]} title={needsRun.has(r.id) ? "needs you" : r.status} />

@@ -18,7 +18,8 @@ export function PartList(): JSX.Element {
         const cls = ["left-row", p.part_id === sel ? "sel" : "", busy ? "changing" : ""].filter(Boolean).join(" ");
         return (
           <li key={p.part_id}>
-            <button type="button" class={cls} aria-pressed={p.part_id === sel} onClick={() => actions.selectPart(p.part_id)}>
+            <button type="button" class={cls} aria-pressed={p.part_id === sel} onClick={() => actions.selectPart(p.part_id)}
+              data-selected={p.part_id === sel ? "" : undefined} data-changing={busy ? "" : undefined}>
               <span class="row-name" data-label>{partLabel(p.part_id)}</span>
               {busy && <span class="tag-changing">changing</span>}
               <span class="row-right faint">{p.metrics ? fmtGrams(p.metrics.mass_g, 1) : ""}</span>

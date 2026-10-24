@@ -7,7 +7,7 @@ export interface ViewerToolsProps { mode: ViewMode; onMode(m: ViewMode): void }
 /** Tool strip along the top of the sheet: shaded · wire, with section and measure shown disabled. */
 export function ViewerTools({ mode, onMode }: ViewerToolsProps): JSX.Element {
   const toggle = (m: ViewMode, text: string) => (
-    <button type="button" class="vt-btn" aria-pressed={mode === m} data-active={mode === m} onClick={() => onMode(m)}>{text}</button>
+    <button type="button" class="vt-btn" aria-pressed={mode === m} data-active={mode === m} data-selected={mode === m ? "" : undefined} onClick={() => onMode(m)}>{text}</button>
   );
   const later = (text: string) => (
     <button type="button" class="vt-btn" aria-disabled="true" title="later" onClick={(e) => e.preventDefault()}>{text}</button>

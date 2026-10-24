@@ -1,0 +1,1114 @@
+{
+ "_comment": "Task 10 core loop. One finished run and a 5 mm mount_plate. POST /runs plays on.create_run for the new run: four reads (fold), set_vars 5→6 (diff + new part mtime → GLB reload), measure, then a fixture_merge approval. Approving plays on.decide: merge result, final text, run_finished done. Shapes from the real-core fixtures.",
+ "runs": [
+  {
+   "id": "0ld0ld0ld0ld",
+   "parent_id": null,
+   "agent": "designer",
+   "provider": "fake",
+   "model": "fake-model",
+   "task": "drill the mounting holes",
+   "status": "done",
+   "branch": null,
+   "onshape_calls": 0,
+   "input_tokens": 0,
+   "output_tokens": 0,
+   "usd": 0.0,
+   "created_at": 1792868100.0,
+   "updated_at": 1792868160.0,
+   "owner_pid": 37495
+  }
+ ],
+ "steps": [],
+ "approvals": [],
+ "parts": [
+  {
+   "part_id": "mount_plate",
+   "vars": {
+    "thickness": 5.0
+   },
+   "metrics": {
+    "valid": true,
+    "volume_mm3": 3861.4557639766895,
+    "area_mm2": 2276.5291970414473,
+    "mass_g": 4.7882051473310945,
+    "bbox": {
+     "min": [
+      -20.0,
+      -10.0,
+      -2.5
+     ],
+     "max": [
+      20.0,
+      10.0,
+      2.5
+     ],
+     "size": [
+      40.0,
+      20.0,
+      5.0
+     ]
+    },
+    "center_of_mass": [
+     3.189489881356246e-16,
+     -1.2682862350235098e-16,
+     1.7563595855833278e-17
+    ],
+    "faces": 8,
+    "edges": 18,
+    "holes": [
+     {
+      "diameter_mm": 4.2,
+      "axis": [
+       -0.0,
+       -0.0,
+       1.0
+      ],
+      "center": [
+       -10.0,
+       0.0,
+       0.0
+      ],
+      "depth_mm": 5.0
+     },
+     {
+      "diameter_mm": 4.2,
+      "axis": [
+       -0.0,
+       -0.0,
+       1.0
+      ],
+      "center": [
+       10.0,
+       0.0,
+       0.0
+      ],
+      "depth_mm": 5.0
+     }
+    ],
+    "solids": 1
+   },
+   "mtime": 1792869000.0
+  }
+ ],
+ "agents": [
+  {
+   "name": "designer",
+   "description": "Main CAD agent. Designs and edits parts using the local mirror and Onshape.",
+   "model": "inherit"
+  },
+  {
+   "name": "planner",
+   "description": "Turns a design request into a step-by-step plan. Produces a plan only; changes nothing.",
+   "model": "inherit"
+  },
+  {
+   "name": "sim",
+   "description": "Placeholder for simulation work (milestone 4). Simulation is not available yet.",
+   "model": "inherit"
+  },
+  {
+   "name": "verifier",
+   "description": "Skeptical read-only checker. Tries to prove a change wrong and reports pass/fail per requirement.",
+   "model": "inherit"
+  }
+ ],
+ "models": {
+  "default": "anthropic/claude-sonnet-5-5",
+  "vendors": [
+   {
+    "vendor": "anthropic",
+    "key": "env"
+   },
+   {
+    "vendor": "openai",
+    "key": "none"
+   },
+   {
+    "vendor": "gemini",
+    "key": "none"
+   },
+   {
+    "vendor": "openrouter",
+    "key": "none"
+   },
+   {
+    "vendor": "ollama",
+    "key": "not_needed"
+   },
+   {
+    "vendor": "lmstudio",
+    "key": "not_needed"
+   }
+  ]
+ },
+ "status": {
+  "core_version": "0.1.0",
+  "onshape": "not_configured",
+  "onshape_calls_year": 0,
+  "onshape_cap_year": 2500,
+  "runs_running": 0,
+  "approvals_pending": 0
+ },
+ "script": [],
+ "glb": {
+  "mount_plate": "glb/mount_plate_5mm.glb"
+ },
+ "on": {
+  "create_run": [
+   {
+    "at_ms": 120,
+    "event": {
+     "type": "tool_call",
+     "run_id": "$run",
+     "data": {
+      "call_id": "c1",
+      "name": "mirror_part_list",
+      "input": {}
+     }
+    },
+    "steps": [
+     {
+      "run_id": "$run",
+      "kind": "message",
+      "payload": {
+       "role": "assistant",
+       "text": "",
+       "stop_reason": "tool_use",
+       "tool_calls": [
+        {
+         "id": "c1",
+         "name": "mirror_part_list"
+        },
+        {
+         "id": "c2",
+         "name": "mirror_measure"
+        },
+        {
+         "id": "c3",
+         "name": "mirror_measure"
+        },
+        {
+         "id": "c4",
+         "name": "mirror_measure"
+        }
+       ]
+      }
+     },
+     {
+      "run_id": "$run",
+      "kind": "tool_call",
+      "payload": {
+       "call_id": "c1",
+       "name": "mirror_part_list",
+       "input": {}
+      }
+     }
+    ]
+   },
+   {
+    "at_ms": 240,
+    "event": {
+     "type": "tool_result",
+     "run_id": "$run",
+     "data": {
+      "call_id": "c1",
+      "name": "mirror_part_list",
+      "ok": true,
+      "summary": "1 part: mount_plate"
+     }
+    },
+    "steps": [
+     {
+      "run_id": "$run",
+      "kind": "tool_result",
+      "payload": {
+       "call_id": "c1",
+       "name": "mirror_part_list",
+       "output": {
+        "ok": true,
+        "summary": "1 part: mount_plate",
+        "data": {
+         "parts": [
+          {
+           "part_id": "mount_plate",
+           "vars": {
+            "thickness": 5.0
+           }
+          }
+         ]
+        },
+        "handles": [],
+        "warnings": [],
+        "step_kind": "tool_result"
+       }
+      }
+     }
+    ]
+   },
+   {
+    "at_ms": 360,
+    "event": {
+     "type": "tool_call",
+     "run_id": "$run",
+     "data": {
+      "call_id": "c2",
+      "name": "mirror_measure",
+      "input": {
+       "part_id": "mount_plate"
+      }
+     }
+    },
+    "steps": [
+     {
+      "run_id": "$run",
+      "kind": "tool_call",
+      "payload": {
+       "call_id": "c2",
+       "name": "mirror_measure",
+       "input": {
+        "part_id": "mount_plate"
+       }
+      }
+     }
+    ]
+   },
+   {
+    "at_ms": 480,
+    "event": {
+     "type": "tool_result",
+     "run_id": "$run",
+     "data": {
+      "call_id": "c2",
+      "name": "mirror_measure",
+      "ok": true,
+      "summary": "mount_plate: volume 3861.5 mm3, mass 4.79 g, bbox 40.0x20.0x5.0 mm, 2 hole(s), valid=True"
+     }
+    },
+    "steps": [
+     {
+      "run_id": "$run",
+      "kind": "measure",
+      "payload": {
+       "call_id": "c2",
+       "name": "mirror_measure",
+       "output": {
+        "data": {
+         "area_mm2": 2276.5291970414473,
+         "bbox": {
+          "min": [
+           -20.0,
+           -10.0,
+           -2.5
+          ],
+          "max": [
+           20.0,
+           10.0,
+           2.5
+          ],
+          "size": [
+           40.0,
+           20.0,
+           5.0
+          ]
+         },
+         "center_of_mass": [
+          3.189489881356246e-16,
+          -1.2682862350235098e-16,
+          1.7563595855833278e-17
+         ],
+         "edges": 18,
+         "faces": 8,
+         "holes": [
+          {
+           "diameter_mm": 4.2,
+           "axis": [
+            -0.0,
+            -0.0,
+            1.0
+           ],
+           "center": [
+            -10.0,
+            0.0,
+            0.0
+           ],
+           "depth_mm": 5.0
+          },
+          {
+           "diameter_mm": 4.2,
+           "axis": [
+            -0.0,
+            -0.0,
+            1.0
+           ],
+           "center": [
+            10.0,
+            0.0,
+            0.0
+           ],
+           "depth_mm": 5.0
+          }
+         ],
+         "mass_g": 4.7882051473310945,
+         "part_id": "mount_plate",
+         "solids": 1,
+         "valid": true,
+         "volume_mm3": 3861.4557639766895
+        },
+        "handles": [],
+        "ok": true,
+        "step_kind": "measure",
+        "summary": "mount_plate: volume 3861.5 mm3, mass 4.79 g, bbox 40.0x20.0x5.0 mm, 2 hole(s), valid=True",
+        "warnings": []
+       }
+      }
+     }
+    ]
+   },
+   {
+    "at_ms": 600,
+    "event": {
+     "type": "tool_call",
+     "run_id": "$run",
+     "data": {
+      "call_id": "c3",
+      "name": "mirror_measure",
+      "input": {
+       "part_id": "mount_plate"
+      }
+     }
+    },
+    "steps": [
+     {
+      "run_id": "$run",
+      "kind": "tool_call",
+      "payload": {
+       "call_id": "c3",
+       "name": "mirror_measure",
+       "input": {
+        "part_id": "mount_plate"
+       }
+      }
+     }
+    ]
+   },
+   {
+    "at_ms": 720,
+    "event": {
+     "type": "tool_result",
+     "run_id": "$run",
+     "data": {
+      "call_id": "c3",
+      "name": "mirror_measure",
+      "ok": true,
+      "summary": "mount_plate: volume 3861.5 mm3, mass 4.79 g, bbox 40.0x20.0x5.0 mm, 2 hole(s), valid=True"
+     }
+    },
+    "steps": [
+     {
+      "run_id": "$run",
+      "kind": "measure",
+      "payload": {
+       "call_id": "c3",
+       "name": "mirror_measure",
+       "output": {
+        "data": {
+         "area_mm2": 2276.5291970414473,
+         "bbox": {
+          "min": [
+           -20.0,
+           -10.0,
+           -2.5
+          ],
+          "max": [
+           20.0,
+           10.0,
+           2.5
+          ],
+          "size": [
+           40.0,
+           20.0,
+           5.0
+          ]
+         },
+         "center_of_mass": [
+          3.189489881356246e-16,
+          -1.2682862350235098e-16,
+          1.7563595855833278e-17
+         ],
+         "edges": 18,
+         "faces": 8,
+         "holes": [
+          {
+           "diameter_mm": 4.2,
+           "axis": [
+            -0.0,
+            -0.0,
+            1.0
+           ],
+           "center": [
+            -10.0,
+            0.0,
+            0.0
+           ],
+           "depth_mm": 5.0
+          },
+          {
+           "diameter_mm": 4.2,
+           "axis": [
+            -0.0,
+            -0.0,
+            1.0
+           ],
+           "center": [
+            10.0,
+            0.0,
+            0.0
+           ],
+           "depth_mm": 5.0
+          }
+         ],
+         "mass_g": 4.7882051473310945,
+         "part_id": "mount_plate",
+         "solids": 1,
+         "valid": true,
+         "volume_mm3": 3861.4557639766895
+        },
+        "handles": [],
+        "ok": true,
+        "step_kind": "measure",
+        "summary": "mount_plate: volume 3861.5 mm3, mass 4.79 g, bbox 40.0x20.0x5.0 mm, 2 hole(s), valid=True",
+        "warnings": []
+       }
+      }
+     }
+    ]
+   },
+   {
+    "at_ms": 840,
+    "event": {
+     "type": "tool_call",
+     "run_id": "$run",
+     "data": {
+      "call_id": "c4",
+      "name": "mirror_measure",
+      "input": {
+       "part_id": "mount_plate"
+      }
+     }
+    },
+    "steps": [
+     {
+      "run_id": "$run",
+      "kind": "tool_call",
+      "payload": {
+       "call_id": "c4",
+       "name": "mirror_measure",
+       "input": {
+        "part_id": "mount_plate"
+       }
+      }
+     }
+    ]
+   },
+   {
+    "at_ms": 960,
+    "event": {
+     "type": "tool_result",
+     "run_id": "$run",
+     "data": {
+      "call_id": "c4",
+      "name": "mirror_measure",
+      "ok": true,
+      "summary": "mount_plate: volume 3861.5 mm3, mass 4.79 g, bbox 40.0x20.0x5.0 mm, 2 hole(s), valid=True"
+     }
+    },
+    "steps": [
+     {
+      "run_id": "$run",
+      "kind": "measure",
+      "payload": {
+       "call_id": "c4",
+       "name": "mirror_measure",
+       "output": {
+        "data": {
+         "area_mm2": 2276.5291970414473,
+         "bbox": {
+          "min": [
+           -20.0,
+           -10.0,
+           -2.5
+          ],
+          "max": [
+           20.0,
+           10.0,
+           2.5
+          ],
+          "size": [
+           40.0,
+           20.0,
+           5.0
+          ]
+         },
+         "center_of_mass": [
+          3.189489881356246e-16,
+          -1.2682862350235098e-16,
+          1.7563595855833278e-17
+         ],
+         "edges": 18,
+         "faces": 8,
+         "holes": [
+          {
+           "diameter_mm": 4.2,
+           "axis": [
+            -0.0,
+            -0.0,
+            1.0
+           ],
+           "center": [
+            -10.0,
+            0.0,
+            0.0
+           ],
+           "depth_mm": 5.0
+          },
+          {
+           "diameter_mm": 4.2,
+           "axis": [
+            -0.0,
+            -0.0,
+            1.0
+           ],
+           "center": [
+            10.0,
+            0.0,
+            0.0
+           ],
+           "depth_mm": 5.0
+          }
+         ],
+         "mass_g": 4.7882051473310945,
+         "part_id": "mount_plate",
+         "solids": 1,
+         "valid": true,
+         "volume_mm3": 3861.4557639766895
+        },
+        "handles": [],
+        "ok": true,
+        "step_kind": "measure",
+        "summary": "mount_plate: volume 3861.5 mm3, mass 4.79 g, bbox 40.0x20.0x5.0 mm, 2 hole(s), valid=True",
+        "warnings": []
+       }
+      }
+     }
+    ]
+   },
+   {
+    "at_ms": 1160,
+    "event": {
+     "type": "tool_call",
+     "run_id": "$run",
+     "data": {
+      "call_id": "c5",
+      "name": "mirror_part_set_vars",
+      "input": {
+       "part_id": "mount_plate",
+       "vars": {
+        "thickness": 6.0
+       }
+      }
+     }
+    },
+    "steps": [
+     {
+      "run_id": "$run",
+      "kind": "message",
+      "payload": {
+       "role": "assistant",
+       "text": "",
+       "stop_reason": "tool_use",
+       "tool_calls": [
+        {
+         "id": "c5",
+         "name": "mirror_part_set_vars"
+        }
+       ]
+      }
+     },
+     {
+      "run_id": "$run",
+      "kind": "tool_call",
+      "payload": {
+       "call_id": "c5",
+       "name": "mirror_part_set_vars",
+       "input": {
+        "part_id": "mount_plate",
+        "vars": {
+         "thickness": 6.0
+        }
+       }
+      }
+     }
+    ]
+   },
+   {
+    "at_ms": 1360,
+    "event": {
+     "type": "tool_result",
+     "run_id": "$run",
+     "data": {
+      "call_id": "c5",
+      "name": "mirror_part_set_vars",
+      "ok": true,
+      "summary": "mount_plate: volume 4633.7 mm3, mass 5.75 g, bbox 40.0x20.0x6.0 mm, 2 hole(s), valid=True; volume delta +772.3 mm3"
+     }
+    },
+    "steps": [
+     {
+      "run_id": "$run",
+      "kind": "diff",
+      "payload": {
+       "call_id": "c5",
+       "name": "mirror_part_set_vars",
+       "output": {
+        "data": {
+         "area_mm2": 2422.9185753316015,
+         "bbox": {
+          "max": [
+           20.0,
+           10.0,
+           3.0
+          ],
+          "min": [
+           -20.0,
+           -10.0,
+           -3.0
+          ],
+          "size": [
+           40.0,
+           20.0,
+           6.0
+          ]
+         },
+         "center_of_mass": [
+          3.189489881356246e-16,
+          -1.2682862350235098e-16,
+          1.7563595855833278e-17
+         ],
+         "delta": {
+          "bbox_size": [
+           0.0,
+           0.0,
+           1.0
+          ],
+          "mass_g": 0.9576410294662194,
+          "volume_mm3": 772.2911527953379
+         },
+         "edges": 18,
+         "faces": 8,
+         "holes": [
+          {
+           "axis": [
+            -0.0,
+            -0.0,
+            1.0
+           ],
+           "center": [
+            -10.0,
+            0.0,
+            0.0
+           ],
+           "depth_mm": 6.0,
+           "diameter_mm": 4.2
+          },
+          {
+           "axis": [
+            -0.0,
+            -0.0,
+            1.0
+           ],
+           "center": [
+            10.0,
+            0.0,
+            0.0
+           ],
+           "depth_mm": 6.0,
+           "diameter_mm": 4.2
+          }
+         ],
+         "mass_g": 5.745846176797314,
+         "part_id": "mount_plate",
+         "solids": 1,
+         "valid": true,
+         "vars": {
+          "thickness": 6.0
+         },
+         "volume_mm3": 4633.746916772027
+        },
+        "handles": [],
+        "ok": true,
+        "step_kind": "diff",
+        "summary": "mount_plate: volume 4633.7 mm3, mass 5.75 g, bbox 40.0x20.0x6.0 mm, 2 hole(s), valid=True; volume delta +772.3 mm3",
+        "warnings": []
+       }
+      }
+     }
+    ],
+    "parts": [
+     {
+      "part_id": "mount_plate",
+      "vars": {
+       "thickness": 6.0
+      },
+      "metrics": {
+       "valid": true,
+       "volume_mm3": 4633.746916772027,
+       "area_mm2": 2422.9185753316015,
+       "mass_g": 5.745846176797314,
+       "bbox": {
+        "min": [
+         -20.0,
+         -10.0,
+         -3.0
+        ],
+        "max": [
+         20.0,
+         10.0,
+         3.0
+        ],
+        "size": [
+         40.0,
+         20.0,
+         6.0
+        ]
+       },
+       "center_of_mass": [
+        3.189489881356246e-16,
+        -1.2682862350235098e-16,
+        1.7563595855833278e-17
+       ],
+       "faces": 8,
+       "edges": 18,
+       "holes": [
+        {
+         "diameter_mm": 4.2,
+         "axis": [
+          -0.0,
+          -0.0,
+          1.0
+         ],
+         "center": [
+          -10.0,
+          0.0,
+          0.0
+         ],
+         "depth_mm": 6.0
+        },
+        {
+         "diameter_mm": 4.2,
+         "axis": [
+          -0.0,
+          -0.0,
+          1.0
+         ],
+         "center": [
+          10.0,
+          0.0,
+          0.0
+         ],
+         "depth_mm": 6.0
+        }
+       ],
+       "solids": 1
+      },
+      "mtime": 1792869600.0
+     }
+    ],
+    "glb": {
+     "mount_plate": "../../../../core/tests/fixtures/ui/mount_plate.glb"
+    }
+   },
+   {
+    "at_ms": 1480,
+    "event": {
+     "type": "tool_call",
+     "run_id": "$run",
+     "data": {
+      "call_id": "c6",
+      "name": "mirror_measure",
+      "input": {
+       "part_id": "mount_plate"
+      }
+     }
+    },
+    "steps": [
+     {
+      "run_id": "$run",
+      "kind": "message",
+      "payload": {
+       "role": "assistant",
+       "text": "",
+       "stop_reason": "tool_use",
+       "tool_calls": [
+        {
+         "id": "c6",
+         "name": "mirror_measure"
+        }
+       ]
+      }
+     },
+     {
+      "run_id": "$run",
+      "kind": "tool_call",
+      "payload": {
+       "call_id": "c6",
+       "name": "mirror_measure",
+       "input": {
+        "part_id": "mount_plate"
+       }
+      }
+     }
+    ]
+   },
+   {
+    "at_ms": 1600,
+    "event": {
+     "type": "tool_result",
+     "run_id": "$run",
+     "data": {
+      "call_id": "c6",
+      "name": "mirror_measure",
+      "ok": true,
+      "summary": "mount_plate: volume 4633.7 mm3, mass 5.75 g, bbox 40.0x20.0x6.0 mm, 2 hole(s), valid=True"
+     }
+    },
+    "steps": [
+     {
+      "run_id": "$run",
+      "kind": "measure",
+      "payload": {
+       "call_id": "c6",
+       "name": "mirror_measure",
+       "output": {
+        "data": {
+         "area_mm2": 2422.9185753316015,
+         "bbox": {
+          "max": [
+           20.0,
+           10.0,
+           3.0
+          ],
+          "min": [
+           -20.0,
+           -10.0,
+           -3.0
+          ],
+          "size": [
+           40.0,
+           20.0,
+           6.0
+          ]
+         },
+         "center_of_mass": [
+          3.189489881356246e-16,
+          -1.2682862350235098e-16,
+          1.7563595855833278e-17
+         ],
+         "edges": 18,
+         "faces": 8,
+         "holes": [
+          {
+           "axis": [
+            -0.0,
+            -0.0,
+            1.0
+           ],
+           "center": [
+            -10.0,
+            0.0,
+            0.0
+           ],
+           "depth_mm": 6.0,
+           "diameter_mm": 4.2
+          },
+          {
+           "axis": [
+            -0.0,
+            -0.0,
+            1.0
+           ],
+           "center": [
+            10.0,
+            0.0,
+            0.0
+           ],
+           "depth_mm": 6.0,
+           "diameter_mm": 4.2
+          }
+         ],
+         "mass_g": 5.745846176797314,
+         "part_id": "mount_plate",
+         "solids": 1,
+         "valid": true,
+         "volume_mm3": 4633.746916772027
+        },
+        "handles": [],
+        "ok": true,
+        "step_kind": "measure",
+        "summary": "mount_plate: volume 4633.7 mm3, mass 5.75 g, bbox 40.0x20.0x6.0 mm, 2 hole(s), valid=True",
+        "warnings": []
+       }
+      }
+     }
+    ]
+   },
+   {
+    "at_ms": 1660,
+    "event": {
+     "type": "text_delta",
+     "run_id": "$run",
+     "data": {
+      "text": "Thickened the plate to 6 mm; asking to merge."
+     }
+    },
+    "steps": [
+     {
+      "run_id": "$run",
+      "kind": "message",
+      "payload": {
+       "role": "assistant",
+       "text": "Thickened the plate to 6 mm; asking to merge.",
+       "stop_reason": "tool_use",
+       "tool_calls": [
+        {
+         "id": "c7",
+         "name": "fixture_merge"
+        }
+       ]
+      }
+     }
+    ]
+   },
+   {
+    "at_ms": 1740,
+    "event": {
+     "type": "tool_call",
+     "run_id": "$run",
+     "data": {
+      "call_id": "c7",
+      "name": "fixture_merge",
+      "input": {
+       "part_id": "mount_plate"
+      }
+     }
+    },
+    "steps": [
+     {
+      "run_id": "$run",
+      "kind": "tool_call",
+      "payload": {
+       "call_id": "c7",
+       "name": "fixture_merge",
+       "input": {
+        "part_id": "mount_plate"
+       }
+      }
+     }
+    ]
+   },
+   {
+    "at_ms": 1780,
+    "event": {
+     "type": "approval_requested",
+     "run_id": "$run",
+     "data": {
+      "id": "ap_$run",
+      "run_id": "$run",
+      "action": "fixture_merge",
+      "payload": {
+       "part_id": "mount_plate"
+      },
+      "payload_hash": "5c0e1a7d9b3f2e4c6a8d0b1f3e5c7a9d2b4f6e8a0c1d3e5f7a9b1c3d5e7f9a0b",
+      "microversion": null,
+      "deltas": {},
+      "status": "pending",
+      "expires_at": 4102444800.0,
+      "decided_by": null,
+      "decided_at": null,
+      "edited_payload": null
+     }
+    }
+   }
+  ],
+  "decide": [
+   {
+    "at_ms": 100,
+    "event": {
+     "type": "tool_result",
+     "run_id": "$run",
+     "data": {
+      "call_id": "c7",
+      "name": "fixture_merge",
+      "ok": true,
+      "summary": "merged mount_plate"
+     }
+    },
+    "steps": [
+     {
+      "run_id": "$run",
+      "kind": "decision",
+      "payload": {
+       "call_id": "c7",
+       "name": "fixture_merge",
+       "output": {
+        "ok": true,
+        "summary": "merged mount_plate",
+        "data": {
+         "part_id": "mount_plate"
+        },
+        "handles": [],
+        "warnings": [],
+        "step_kind": "decision"
+       }
+      }
+     }
+    ]
+   },
+   {
+    "at_ms": 250,
+    "event": {
+     "type": "text_delta",
+     "run_id": "$run",
+     "data": {
+      "text": "Merged: the plate is 6 mm thick."
+     }
+    },
+    "steps": [
+     {
+      "run_id": "$run",
+      "kind": "message",
+      "payload": {
+       "role": "assistant",
+       "text": "Merged: the plate is 6 mm thick.",
+       "stop_reason": "end_turn",
+       "tool_calls": []
+      }
+     }
+    ]
+   },
+   {
+    "at_ms": 400,
+    "event": {
+     "type": "run_finished",
+     "run_id": "$run",
+     "data": {
+      "status": "done",
+      "stop_reason": "end_turn",
+      "error": null,
+      "final_text": "Merged: the plate is 6 mm thick."
+     }
+    }
+   }
+  ]
+ }
+}

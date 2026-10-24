@@ -202,7 +202,7 @@ function RowBody({ item, label }: { item: LogItem; label?: string }): JSX.Elemen
       return <QuestionCard question={item.question} runLabel={labelOf(item.question.run_id)} />;
     case "live":
       return (
-        <div class="con-row" data-live>
+        <div class="con-row" data-live data-changing>
           <span class="con-ts" />
           <span class="con-g con-g-live">▸</span>
           <span class="con-body"><Prefix label={label} /><span class="ink text">{item.text}</span><span class="con-caret">▍</span></span>

@@ -53,6 +53,8 @@ export interface EmitExtras {
   run?: AgentRun;
   /** Replaces the part list. */
   parts?: PartSummary[];
+  /** Replaces GLB files per part_id (paths relative to the scenarios dir), e.g. after a rebuild. */
+  glb?: Record<string, string>;
 }
 
 export interface ScriptEntry extends EmitExtras { at_ms: number; event: EventIn }
@@ -64,11 +66,15 @@ export interface Scenario {
   questions?: Question[];
   /** Timed emits, started when the first WebSocket client connects after a (re)set. */
   script?: ScriptEntry[];
+  /** Scripts played when something happens; "$run" anywhere in their text becomes that run's id.
+   *  create_run: after POST /runs (the new run). decide: after an approval is approved
+   *  (its run); decide_reject: after a rejection. */
+  on?: { create_run?: ScriptEntry[]; decide?: ScriptEntry[]; decide_reject?: ScriptEntry[] };
   /** Optional GLB per part_id (path relative to the scenarios dir); default DEFAULT_GLB. */
   glb?: Record<string, string>;
 }
 
-export interface FakeCall { method: string; path: string; query: Record<string, string>; body: unknown; ts: number }
+export interface FakeCall { method: string; path: string; query: Record<string, string>; body: unknown; ts: number; ifNoneMatch?: string }
 
 export interface FakeState {
   token: string;
@@ -82,6 +88,7 @@ export interface FakeState {
   status: CoreStatusInfo;
   glb: Record<string, string>;
   script: ScriptEntry[];
+  on: NonNullable<Scenario["on"]>;
   calls: FakeCall[];
 }
 
@@ -120,7 +127,7 @@ function stateFrom(sc: Scenario, token: string): FakeState {
     approvals: new Map(sc.approvals.map((a) => [a.id, a])),
     questions: new Map((sc.questions ?? []).map((q) => [q.question_id, q])),
     parts: sc.parts, agents: sc.agents, models: sc.models, status: sc.status,
-    glb: sc.glb ?? {}, script: sc.script ?? [], calls: [],
+    glb: sc.glb ?? {}, script: sc.script ?? [], on: sc.on ?? {}, calls: [],
   };
 }
 
@@ -249,6 +256,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     const ids = (extras.steps ?? []).map((s) => appendStep(s, ev.run_id).id);
     if (extras.approval) state.approvals.set(extras.approval.id, extras.approval);
     if (extras.parts) state.parts = extras.parts;
+    if (extras.glb) state.glb = { ...state.glb, ...extras.glb };
     applyEvent(ev);
     broadcast(ev);
     return { step_ids: ids };
@@ -326,6 +334,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         const run = newRun(agent, vendor, model, prompt);
         appendStep({ kind: "message", payload: { role: "user", text: prompt } }, run.id);
         emit({ type: "run_started", run_id: run.id, data: { agent, provider: vendor, model, parent_id: null } });
+        play(state.on.create_run, run.id);
         return { run_id: run.id };
       },
     },
@@ -400,6 +409,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         const edited = approve && b.edited_payload && typeof b.edited_payload === "object" ? (b.edited_payload as Record<string, unknown>) : null;
         const decided: Approval = { ...a, status: approve ? "approved" : "rejected", decided_by: DECIDED_BY, decided_at: now(), edited_payload: edited };
         state.approvals.set(a.id, decided);
+        play(approve ? state.on.decide : state.on.decide_reject, a.run_id);
         return decided;
       },
     },
@@ -506,7 +516,8 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         send(res, 200, out);
         return;
       }
-      state.calls.push({ method, path: url.pathname, query: Object.fromEntries(url.searchParams), body: body ?? null, ts: now() });
+      const inm = r.headers["if-none-match"];
+      state.calls.push({ method, path: url.pathname, query: Object.fromEntries(url.searchParams), body: body ?? null, ts: now(), ...(typeof inm === "string" ? { ifNoneMatch: inm } : {}) });
       const matching = routes.filter((x) => x.re.test(url.pathname));
       const route = matching.find((x) => x.method === method);
       if (!route) throw new HttpError(matching.length ? 405 : 404, { detail: matching.length ? "Method Not Allowed" : "Not Found" });
@@ -545,6 +556,16 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     if (scriptStarted) return;
     scriptStarted = true;
     for (const entry of state.script) {
+      const { at_ms, event, ...extras } = entry;
+      scriptTimers.push(setTimeout(() => emit(event, extras), at_ms));
+    }
+  }
+
+  /** Plays a trigger script for `runId` ("$run" in it becomes the id). Entries run in order. */
+  function play(entries: ScriptEntry[] | undefined, runId: string) {
+    if (!entries?.length) return;
+    const bound = JSON.parse(JSON.stringify(entries).replaceAll("$run", runId)) as ScriptEntry[];
+    for (const entry of bound) {
       const { at_ms, event, ...extras } = entry;
       scriptTimers.push(setTimeout(() => emit(event, extras), at_ms));
     }

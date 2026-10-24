@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";
-import { startFakeCore, type FakeCore } from "./server";
+import { loadScenario, startFakeCore, type FakeCore } from "./server";
 import { CoreClient, CoreError } from "../../src/api/client";
 import type { MisesEvent } from "../../src/api/types";
 
@@ -87,6 +87,30 @@ describe("fake core", () => {
     }
     const miss = await fetch(core.url + "/parts/mount_plate/model.glb", { headers: { ...auth, "If-None-Match": '"other"' } });
     expect(miss.status).toBe(200);
+  });
+
+  it("scenario_triggers_play_for_the_new_run_and_after_a_decision", async () => {
+    const sc = loadScenario("base");
+    sc.on = {
+      create_run: [{ at_ms: 0, event: { type: "tool_call", run_id: "$run", data: { call_id: "k1", name: "mirror_measure", input: {} } },
+        steps: [{ kind: "tool_call", run_id: "$run", payload: { call_id: "k1", name: "mirror_measure", input: {} } }] }],
+      decide: [{ at_ms: 0, event: { type: "run_finished", run_id: "$run", data: { status: "done", stop_reason: "end_turn", error: null, final_text: "ok" } } }],
+    };
+    core.reset(sc);
+    const { ws, events } = await openWs("t0k");
+    const { run_id } = await client.createRun({ agent: "designer", prompt: "go" });
+    await until(() => events.some((e) => e.type === "tool_call" && e.run_id === run_id));
+    expect((await client.steps(run_id)).map((s) => s.kind)).toEqual(["message", "tool_call"]);
+    const a = (await client.pendingApprovals())[0];
+    await client.decide(a.id, { payload_hash: a.payload_hash, approve: true });
+    await until(() => events.some((e) => e.type === "run_finished" && e.run_id === a.run_id));
+    expect((await client.getRun(a.run_id)).status).toBe("done");
+    ws.close();
+  });
+
+  it("call_log_records_if_none_match", async () => {
+    await fetch(core.url + "/parts/mount_plate/model.glb", { headers: { Authorization: "Bearer t0k", "If-None-Match": '"x"' } });
+    expect(core.state.calls.at(-1)?.ifNoneMatch).toBe('"x"');
   });
 
   it("serves_base_scenario_through_the_typed_client", async () => {

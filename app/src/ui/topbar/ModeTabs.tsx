@@ -13,7 +13,7 @@ export function ModeTabs(): JSX.Element {
             key={t}
             type="button"
             role="tab"
-            class={active ? "tab tab-active" : "tab"}
+            class={active ? "tab tab-active active-tab" : "tab"}
             aria-selected={active}
             aria-disabled={active ? undefined : "true"}
             title={active ? undefined : "later"}

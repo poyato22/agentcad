@@ -7,5 +7,6 @@ import type { JSX } from "preact";
 export type LedTone = "blue" | "green" | "amber" | "red" | "faint";
 
 export function Led({ tone, title }: { tone: LedTone; title?: string }): JSX.Element {
-  return <i class={`led led-${tone}`} data-tone={tone} title={title} aria-hidden={title ? undefined : true} />;
+  // blue is only ever "changing" or "needs you": the marker the blue-usage e2e check looks for
+  return <i class={`led led-${tone}`} data-tone={tone} data-changing={tone === "blue" ? "" : undefined} title={title} aria-hidden={title ? undefined : true} />;
 }
