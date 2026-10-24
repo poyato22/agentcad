@@ -5,14 +5,17 @@ WebSocket takes `?token=`.
 """
 from __future__ import annotations
 
+import asyncio
 import hmac
 import json
 import logging
 import os
 import secrets
 import socket
+import tempfile
 import threading
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import anyio
@@ -26,7 +29,6 @@ from starlette.datastructures import Headers
 from starlette.routing import Route
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from ..platform import data_home
 from ..types import ErrorCode, MisesError
 from .mcp_server import RUN_HEADER, build_mcp_server
 
@@ -262,44 +264,125 @@ def create_app(runtime: Runtime, token: str) -> FastAPI:
 
 # ---- serving
 
+def _bind(port: int) -> socket.socket:
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        sock.bind((HOST, port))
+        sock.listen(128)
+    except OSError:
+        sock.close()
+        raise
+    return sock
+
+
+class _CallerSignalsServer(uvicorn.Server):
+    """uvicorn server that leaves signal handling to the caller (embedded use)."""
+
+    @contextmanager
+    def capture_signals(self):
+        yield
+
+
+def _uvicorn(runtime: Runtime, token: str, cls: type[uvicorn.Server] = uvicorn.Server):
+    config = uvicorn.Config(create_app(runtime, token), lifespan="on", log_level="warning",
+                            access_log=False, timeout_graceful_shutdown=5)
+    return cls(config)
+
+
+def _server_json(runtime: Runtime) -> Path:
+    home = Path(runtime.home)
+    home.mkdir(parents=True, exist_ok=True)
+    return home / "server.json"
+
+
+def _write_server_json(path: Path, info: dict[str, Any]) -> None:
+    """Atomic write: 0600 temp file in the same directory, then os.replace."""
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".server.json.")
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w") as f:
+            json.dump(info, f)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def _remove_server_json(path: Path, port: int) -> None:
+    try:
+        if json.loads(path.read_text()).get("port") == port:
+            path.unlink()
+    except (OSError, ValueError):
+        pass
+
+
+class ServerHandle:
+    """A server running on the caller's event loop (from `serve_async`)."""
+
+    def __init__(self, port: int, token: str, server: uvicorn.Server, task: asyncio.Task,
+                 sock: socket.socket, info_path: Path):
+        self.port, self.token = port, token
+        self._server, self._task, self._sock, self._info_path = server, task, sock, info_path
+
+    async def stop(self) -> None:
+        self._server.should_exit = True
+        try:
+            await self._task
+        finally:
+            self._sock.close()
+            _remove_server_json(self._info_path, self.port)
+
+
+async def serve_async(runtime: Runtime, *, port: int = 0,
+                      token: str | None = None) -> tuple[int, str, ServerHandle]:
+    """Run the server on the caller's event loop, bound to 127.0.0.1 only.
+
+    Waits until uvicorn has started, writes {"port","token","pid"} to
+    runtime.home/server.json (0600) and returns (port, token, handle); `await handle.stop()`.
+    """
+    token = token or secrets.token_urlsafe(32)
+    sock = _bind(port)
+    bound = sock.getsockname()[1]
+    server = _uvicorn(runtime, token, _CallerSignalsServer)
+    task = asyncio.create_task(server.serve(sockets=[sock]), name=f"mises-server-{bound}")
+    while not server.started:
+        if task.done():
+            sock.close()
+            exc = task.exception()
+            raise RuntimeError("mises server failed to start") from exc
+        await asyncio.sleep(0.01)
+    info_path = _server_json(runtime)
+    _write_server_json(info_path, {"port": bound, "token": token, "pid": os.getpid()})
+    return bound, token, ServerHandle(bound, token, server, task, sock, info_path)
+
+
 class _Running:
-    def __init__(self, server: uvicorn.Server, thread: threading.Thread, sock: socket.socket):
-        self.server, self.thread, self.sock = server, thread, sock
+    def __init__(self, server: uvicorn.Server, thread: threading.Thread, sock: socket.socket,
+                 info_path: Path):
+        self.server, self.thread, self.sock, self.info_path = server, thread, sock, info_path
 
 
 _servers: dict[int, _Running] = {}
 
 
-def _server_json():
-    return data_home() / "server.json"
-
-
-def _write_server_json(info: dict[str, Any]) -> None:
-    path = _server_json()
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    try:
-        os.fchmod(fd, 0o600)
-        os.write(fd, json.dumps(info).encode())
-    finally:
-        os.close(fd)
-
-
 def serve(runtime: Runtime, *, port: int = 0, token: str | None = None) -> tuple[int, str]:
     """Start the server on 127.0.0.1 in a background thread; returns (port, token).
 
-    There is deliberately no host parameter. Writes {"port","token","pid"} to
-    data_home()/server.json (mode 0600). After this call the runtime is driven by the
-    server thread's event loop. Stop it with `stop(port)`; `wait(port)` blocks until it exits.
+    For standalone `mises serve`. There is deliberately no host parameter. Writes
+    {"port","token","pid"} to runtime.home/server.json (0600). After this call the runtime
+    is driven by the server thread's event loop. `stop(port)` stops it; `wait(port)` blocks
+    until it exits. Code that already runs an event loop should use `serve_async`.
     """
     token = token or secrets.token_urlsafe(32)
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    sock.bind((HOST, port))
-    sock.listen(128)
+    sock = _bind(port)
     bound = sock.getsockname()[1]
-    config = uvicorn.Config(create_app(runtime, token), lifespan="on", log_level="warning",
-                            access_log=False)
-    server = uvicorn.Server(config)
+    server = _uvicorn(runtime, token)
     thread = threading.Thread(target=server.run, kwargs={"sockets": [sock]},
                               name=f"mises-server-{bound}", daemon=True)
     thread.start()
@@ -308,8 +391,9 @@ def serve(runtime: Runtime, *, port: int = 0, token: str | None = None) -> tuple
             sock.close()
             raise RuntimeError("mises server failed to start")
         thread.join(0.01)
-    _servers[bound] = _Running(server, thread, sock)
-    _write_server_json({"port": bound, "token": token, "pid": os.getpid()})
+    info_path = _server_json(runtime)
+    _servers[bound] = _Running(server, thread, sock, info_path)
+    _write_server_json(info_path, {"port": bound, "token": token, "pid": os.getpid()})
     return bound, token
 
 
@@ -326,9 +410,4 @@ def stop(port: int, timeout: float = 10.0) -> None:
     r.server.should_exit = True
     r.thread.join(timeout)
     r.sock.close()
-    path = _server_json()
-    try:
-        if json.loads(path.read_text()).get("port") == port:
-            path.unlink()
-    except (OSError, ValueError):
-        pass
+    _remove_server_json(r.info_path, port)
