@@ -1,0 +1,45 @@
+{
+  "name": "mises-app",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "e2e": "playwright test",
+    "lint": "eslint . --max-warnings 0 && tsc -b",
+    "fake-core": "tsx test/fake-core/cli.ts --port 7400 --token dev-token --scenario base"
+  },
+  "dependencies": {
+    "@fontsource/ibm-plex-mono": "5.3.0",
+    "@fontsource/ibm-plex-sans-condensed": "5.3.0",
+    "@preact/signals": "2.11.3",
+    "@tauri-apps/api": "2.12.4",
+    "preact": "10.29.8",
+    "three": "0.186.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.64.1",
+    "@preact/preset-vite": "2.10.6",
+    "@testing-library/preact": "3.2.6",
+    "@types/node": "24.19.2",
+    "@types/three": "0.186.0",
+    "@types/ws": "8.18.2",
+    "eslint": "10.13.0",
+    "globals": "17.13.0",
+    "jsdom": "30.1.3",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.0",
+    "vite": "8.3.5",
+    "vitest": "5.0.5",
+    "ws": "8.22.0"
+  }
+}

@@ -1,0 +1,32 @@
+/* Design tokens. Exact values from the plan's Global Constraints — do not add colors.
+   Blue: selected / being changed by an agent / needs the human. Only.
+   Green / amber / red: pass / warn / fail (amber also marks locked interfaces). Only. */
+:root {
+  --bg: #0a0a0a;
+  --paper: #111111;
+  --paper2: #161616;
+  --head: #141414;
+  --vp: #0d0d0d;
+  --line: #242424;
+  --line2: #333333;
+  --ink: #ececec;
+  --dim: #9a9a9a;
+  --faint: #5e5e5e;
+  --blue: #3d8bff;
+  --blue2: #8dbaff;
+  --blue-tint: rgba(61,139,255,.10);
+  --green: #4fd18b;
+  --amber: #f2b134;
+  --red: #ff5a4a;
+
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  --font-head: "IBM Plex Sans Condensed", "IBM Plex Mono", sans-serif;
+  --fs: 12px;
+  --fs-small: 10.5px;
+  --fs-label: 9.5px;
+
+  --topbar-h: 44px;
+  --left-w: 240px;
+  --console-w: 420px;
+  --pane-head-h: 24px;
+}
