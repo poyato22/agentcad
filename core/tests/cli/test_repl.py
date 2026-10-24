@@ -210,3 +210,17 @@ async def test_plan_runs_orchestrator(tmp_path, console, out):
     await repl.handle_line("/plan make a gearbox")
     text = out.getvalue()
     assert "t1" in text and "done" in text and "built it" in text
+
+
+async def test_approval_panel_names_requesting_agent_and_run(tmp_path, console, out):
+    # M3: parallel /plan children must be distinguishable on the approval card
+    from mises.cli.render import EventRenderer
+    rt, _ = make_runtime(tmp_path, [])
+    rid = rt.create_external_run("verifier", provider="p", model="m")
+    rt.store.update_run(rid, task="check the gusset thickness")
+    a = await rt.approvals.request(rid, "danger_merge", {"n": 1})
+    from mises.events import Event
+    r = EventRenderer(rt, console, Lines(""))
+    await r.handle(Event(type="approval_requested", run_id=rid, data=a.model_dump(mode="json")))
+    text = out.getvalue()
+    assert "verifier" in text and rid in text and "check the gusset" in text
