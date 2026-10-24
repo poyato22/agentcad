@@ -1,0 +1,29 @@
+{
+  "default": "anthropic/claude-sonnet-5-5",
+  "vendors": [
+    {
+      "vendor": "anthropic",
+      "key": "none"
+    },
+    {
+      "vendor": "openai",
+      "key": "none"
+    },
+    {
+      "vendor": "gemini",
+      "key": "none"
+    },
+    {
+      "vendor": "openrouter",
+      "key": "none"
+    },
+    {
+      "vendor": "ollama",
+      "key": "not_needed"
+    },
+    {
+      "vendor": "lmstudio",
+      "key": "not_needed"
+    }
+  ]
+}
