@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Main window: core events plus the two app commands. Nothing else.",
+  "description": "Main window: core events plus the three app commands. Nothing else.",
   "windows": ["main"],
-  "permissions": ["core:default", "core:event:default", "allow-core-info", "allow-core-restart"]
+  "permissions": ["core:default", "core:event:default", "allow-core-info", "allow-core-restart", "allow-core-status"]
 }

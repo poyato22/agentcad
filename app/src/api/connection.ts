@@ -59,6 +59,20 @@ export function devCoreInfo(url: string | undefined, token: string | undefined):
   return { baseUrl, wsUrl, token, owned: false };
 }
 
+/**
+ * The shell's current core status (`invoke("core_status")`), or null outside Tauri / on error.
+ * Needed because a status the shell emits during setup ("`uv` not found") fires before the
+ * webview is listening for `core-status`.
+ */
+export async function fetchCoreStatus(): Promise<ShellCoreStatus | null> {
+  if (!isTauri()) return null;
+  try {
+    return parseShellStatus(await invoke<unknown>("core_status"));
+  } catch {
+    return null;
+  }
+}
+
 /** Subscribes to the shell's `core-status` events. No-op (never calls back) in a plain browser. */
 export function onCoreStatus(cb: (s: ShellCoreStatus) => void): () => void {
   if (!isTauri()) return () => {};

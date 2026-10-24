@@ -109,3 +109,35 @@ test("connects_to_fake_core_without_errors", async ({ page, fake }) => {
     ["/approvals", "/parts", "/parts/mount_plate/model.glb", "/runs", "/runs/b7c79a57cbb4/steps", "/status"]);
   expect(errors).toEqual([]);
 });
+
+test("tauri_startup_crash_before_listen_shows_red_core_light_with_reason", async ({ page }) => {
+  // Mocked Tauri IPC: the shell already crashed at setup ("uv" not found) and emitted that before
+  // the webview listened, so no core-status event ever arrives; core_info rejects with crashed:.
+  await page.addInitScript(() => {
+    const w = window as unknown as Record<string, unknown>;
+    const calls: string[] = [];
+    w.__ipcCalls = calls;
+    w.isTauri = true;
+    let cb = 0;
+    w.__TAURI_INTERNALS__ = {
+      transformCallback: () => ++cb,
+      unregisterCallback: () => {},
+      invoke: (cmd: string) => {
+        calls.push(cmd);
+        const reason = "could not find `uv`; install it with `brew install uv`";
+        if (cmd === "core_status") return Promise.resolve({ state: "crashed", code: null, stderrTail: reason, restarts: 0 });
+        if (cmd === "core_info") return Promise.reject(`crashed: ${reason}`);
+        if (cmd === "core_restart") return Promise.resolve(null);
+        if (cmd.startsWith("plugin:event|")) return Promise.resolve(1);
+        return Promise.reject(`unexpected command ${cmd}`);
+      },
+    };
+  });
+  await page.goto("/");
+  const core = page.locator("[data-light=core]");
+  await expect(core.locator(".led")).toHaveClass(/led-red/);
+  await expect(core).toHaveAttribute("title", /could not find `uv`/);
+  await expect(core).toHaveAttribute("role", "button");
+  await core.click();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __ipcCalls: string[] }).__ipcCalls)).toContain("core_restart");
+});

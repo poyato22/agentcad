@@ -197,3 +197,29 @@ fn serializes_camel_case_for_the_webview() {
         serde_json::json!({"state":"ready","info":{"baseUrl":"b","wsUrl":"w","token":"t","owned":true}})
     );
 }
+
+#[test]
+fn core_status_reports_a_startup_failure_emitted_before_anyone_listened() {
+    // `uv` missing: the Crashed event fires during setup, before the webview subscribes. The
+    // core_status command must still hand the webview that state on load.
+    let sup = Supervisor::failed("could not find `uv`".into(), Arc::new(|_| {}));
+    assert_eq!(
+        core_status_of(&sup),
+        CoreStatus::Crashed { code: None, stderr_tail: "could not find `uv`".into(), restarts: 0 }
+    );
+    assert_eq!(
+        serde_json::to_value(core_status_of(&sup)).unwrap(),
+        serde_json::json!({"state":"crashed","code":null,"stderrTail":"could not find `uv`","restarts":0})
+    );
+}
+
+#[test]
+fn core_status_command_is_allowed_for_the_webview() {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let build = std::fs::read_to_string(dir.join("build.rs")).unwrap();
+    assert!(build.contains("\"core_status\""), "core_status missing from build.rs app manifest");
+    let caps: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.join("capabilities/default.json")).unwrap()).unwrap();
+    let perms: Vec<&str> = caps["permissions"].as_array().unwrap().iter().filter_map(|p| p.as_str()).collect();
+    assert!(perms.contains(&"allow-core-status"), "{perms:?}");
+}

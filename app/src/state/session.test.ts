@@ -126,6 +126,62 @@ describe("session", () => {
     session.stop();
   });
 
+  it("startup_crash_reported_before_listening_shows_red_from_core_status", async () => {
+    // `uv` not found: the shell emitted crashed before the webview listened; no event ever arrives
+    FakeStream.all = [];
+    const crashed: ShellCoreStatus = { state: "crashed", code: null, stderrTail: "could not find `uv`", restarts: 0 };
+    const getCoreStatus = vi.fn(async () => crashed);
+    const resolve = vi.fn<() => Promise<CoreInfo>>().mockRejectedValue(new Error("crashed: could not find `uv`"));
+    const session = startSession({
+      resolveCoreInfo: resolve, getCoreStatus, onCoreStatus: () => () => {}, createStream: (i) => new FakeStream(i) as never,
+      startSync: () => () => {}, retryMs: [100], onError: () => {},
+    });
+    await settle();
+    expect(getCoreStatus).toHaveBeenCalled();
+    expect(shellStatus.value).toEqual(crashed);
+    // every failed resolve with crashed:/stopped asks again
+    const calls = getCoreStatus.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(100);
+    await settle();
+    expect(getCoreStatus.mock.calls.length).toBeGreaterThan(calls);
+    session.stop();
+  });
+
+  it("stopped_resolve_error_refreshes_shell_status_but_a_newer_event_wins", async () => {
+    FakeStream.all = [];
+    let statusCb: ((s: ShellCoreStatus) => void) | null = null;
+    let release: (s: ShellCoreStatus) => void = () => {};
+    const getCoreStatus = vi.fn(() => new Promise<ShellCoreStatus | null>((r) => { release = r; }));
+    const session = startSession({
+      resolveCoreInfo: () => Promise.reject(new Error("stopped")), getCoreStatus,
+      onCoreStatus: (cb) => { statusCb = cb; return () => {}; }, createStream: (i) => new FakeStream(i) as never,
+      startSync: () => () => {}, retryMs: [10_000], onError: () => {},
+    });
+    await settle();
+    (statusCb as unknown as (s: ShellCoreStatus) => void)({ state: "starting" });
+    release({ state: "stopped" });  // answered after a newer event: ignored
+    await settle();
+    expect(shellStatus.value.state).toBe("starting");
+    session.stop();
+  });
+
+  it("shell_ready_after_failed_first_connect_connects_now", async () => {
+    FakeStream.all = [];
+    let statusCb: ((s: ShellCoreStatus) => void) | null = null;
+    const resolve = vi.fn<() => Promise<CoreInfo>>().mockRejectedValueOnce(new Error("crashed: boom")).mockResolvedValue(info("t1"));
+    const session = startSession({
+      resolveCoreInfo: resolve, getCoreStatus: async () => null,
+      onCoreStatus: (cb) => { statusCb = cb; return () => {}; }, createStream: (i) => new FakeStream(i) as never,
+      startSync: () => () => {}, retryMs: [10_000], onError: () => {},
+    });
+    await settle();
+    expect(FakeStream.all).toHaveLength(0);
+    (statusCb as unknown as (s: ShellCoreStatus) => void)({ state: "ready", info: info("t1") });
+    await settle();
+    expect(FakeStream.all).toHaveLength(1);
+    session.stop();
+  });
+
   it("stop_tears_down_and_ignores_late_events", async () => {
     const h = harness(["t1", "t2"]);
     await settle();

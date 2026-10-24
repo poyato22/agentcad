@@ -396,6 +396,17 @@ pub fn core_info(state: tauri::State<SharedSupervisor>) -> Result<CoreInfo, Stri
     }
 }
 
+/// The supervisor's current status. The webview asks for it on load: a `core-status` event
+/// emitted during setup (e.g. "`uv` not found") fires before the webview is listening.
+pub fn core_status_of(sup: &Supervisor) -> CoreStatus {
+    sup.status()
+}
+
+#[tauri::command]
+pub fn core_status(state: tauri::State<SharedSupervisor>) -> CoreStatus {
+    core_status_of(&state)
+}
+
 #[tauri::command]
 pub fn core_restart(state: tauri::State<SharedSupervisor>) -> Result<(), String> {
     let sup = state.inner().clone();
