@@ -15,7 +15,8 @@
    "output_tokens": 0,
    "usd": 0.0,
    "created_at": 1792869413.016629,
-   "updated_at": 1792869413.016629
+   "updated_at": 1792869413.016629,
+   "owner_pid": 37495
   },
   {
    "id": "c4e1a9f0d2b3",
@@ -31,7 +32,8 @@
    "output_tokens": 4000,
    "usd": 0.12,
    "created_at": 1792869300.0,
-   "updated_at": 1792869390.0
+   "updated_at": 1792869390.0,
+   "owner_pid": 37495
   }
  ],
  "steps": [
@@ -891,7 +893,8 @@
    "payload": {
     "role": "assistant",
     "stop_reason": "end_turn",
-    "text": "Walls are 6.00 mm everywhere; nothing thinner than 0.8 mm."
+    "text": "Walls are 6.00 mm everywhere; nothing thinner than 0.8 mm.",
+    "tool_calls": []
    },
    "evidence_hash": "0000000000000000000000000000000000000000000000000000000000000023",
    "prev_hash": "0000000000000000000000000000000000000000000000000000000000000022",

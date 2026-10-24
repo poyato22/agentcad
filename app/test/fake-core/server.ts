@@ -287,7 +287,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     const t = now();
     const run: AgentRun = {
       id: hex(6), parent_id: null, agent, provider, model, task, status: "running", branch: null,
-      onshape_calls: 0, input_tokens: 0, output_tokens: 0, usd: 0, created_at: t, updated_at: t,
+      onshape_calls: 0, input_tokens: 0, output_tokens: 0, usd: 0, created_at: t, updated_at: t, owner_pid: process.pid,
     };
     state.runs.set(run.id, run);
     return run;

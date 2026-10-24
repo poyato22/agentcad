@@ -16,6 +16,8 @@ export interface AgentRun {
   id: string; parent_id: string | null; agent: string; provider: string; model: string;
   task: string; status: RunStatus; branch: string | null; onshape_calls: number; input_tokens: number;
   output_tokens: number; usd: number; created_at: number; updated_at: number;
+  /** The core process driving the run (null: from before owner tracking). Not shown in the UI. */
+  owner_pid?: number | null;
 }
 
 export type StepKind = "message" | "plan" | "tool_call" | "tool_result" | "diff" | "decision" | "error"
