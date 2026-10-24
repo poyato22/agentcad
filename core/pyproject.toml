@@ -1,0 +1,29 @@
+[project]
+name = "mises"
+version = "0.1.0"
+description = "Mises harness core"
+requires-python = ">=3.13"
+dependencies = [
+  "pydantic>=2.12", "anthropic>=2.3", "openai>=3.37", "mcp>=2.3",
+  "agent-client-protocol>=0.12", "build123d>=0.13", "httpx>=0.28",
+  "fastapi", "uvicorn", "rich", "prompt_toolkit", "pyyaml",
+]
+
+[project.scripts]
+mises = "mises.cli.main:main"
+
+[dependency-groups]
+dev = ["pytest", "pytest-asyncio", "pytest-timeout"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mises"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+timeout = 30
+testpaths = ["tests"]
