@@ -127,11 +127,22 @@ class OnshapeClient:
                              f"Onshape allowance reached: {used_year}/{caps.onshape_calls_year}"
                              " calls this year", hint="ask the user to raise the cap")
         if run_id is not None:
+            # own cap, and the root run's cap over the whole family: subagents each get the
+            # parent's remaining cap, so only the family sum keeps them within it together
+            root, family = self.store.run_family(run_id)
             used_run = self.store.ledger_used(self.user, since=0, run_id=run_id)
             if used_run + estimate > caps.onshape_calls_run:
                 raise MisesError(ErrorCode.BUDGET_EXHAUSTED,
                                  f"run Onshape cap reached: {used_run}/{caps.onshape_calls_run}",
                                  hint="ask the user to raise the run cap")
+            if len(family) > 1:
+                root_cap = self._caps(root).onshape_calls_run
+                used_family = self.store.ledger_used(self.user, since=0, run_ids=family)
+                if used_family + estimate > root_cap:
+                    raise MisesError(ErrorCode.BUDGET_EXHAUSTED,
+                                     f"Onshape cap of the root run reached: {used_family}/"
+                                     f"{root_cap} across it and its subagents",
+                                     hint="ask the user to raise the run cap")
 
     def _host_allowed(self, url: httpx.URL) -> bool:
         host = url.host

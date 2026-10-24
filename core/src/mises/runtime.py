@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -21,7 +23,7 @@ from .platform import data_home, keychain_get
 from .providers.registry import DEFAULT_MODEL, resolve
 from .store import Store
 from .tools.registry import ToolRegistry
-from .types import Caps, ErrorCode, Message, MisesError, SafetyClass
+from .types import Caps, ErrorCode, Message, MisesError, SafetyClass, StepKind
 from .ui_tools import register_ui_tools
 
 log = logging.getLogger(__name__)
@@ -70,6 +72,45 @@ class Runtime:
         self._runs: dict[str, _RunState] = {}
         self._external: set[str] = set()
         self._questions: dict[str, tuple[str, asyncio.Future[str]]] = {}
+        # external run id -> owner's async cancel (e.g. AcpSession.cancel kills the agent)
+        self._cancel_hooks: dict[str, Callable[[], Awaitable[None]]] = {}
+        self._hook_tasks: set[asyncio.Task] = set()
+        self.interrupted = self._fail_orphaned_runs()
+
+    # ---- crash recovery
+    @staticmethod
+    def _pid_alive(pid: int) -> bool:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        return True
+
+    def _fail_orphaned_runs(self) -> list[str]:
+        """Fail runs left "running" by a process that is gone (crash, kill -9, power loss):
+        stop_reason "interrupted", reservations released, pending approvals rejected. Runs
+        owned by another live process (e.g. a `mises serve` next to this CLI) are left alone.
+        Once failed, the MCP endpoint refuses them (it only serves running runs)."""
+        out = []
+        for run in self.store.running_runs():
+            pid = run.owner_pid
+            if pid is not None and (pid == os.getpid() or self._pid_alive(pid)):
+                continue
+            self.approvals.cancel_run(run.id)
+            self.store.release_run_reservations(run.id)
+            self.store.append_step(run.id, StepKind.ERROR, {
+                "stop_reason": "interrupted", "error": str(ErrorCode.CANCELLED),
+                "message": "the process driving this run exited before it finished"})
+            self.store.update_run(run.id, status="failed")
+            self.events.publish(Event(type="run_finished", run_id=run.id, data={
+                "status": "failed", "stop_reason": "interrupted",
+                "error": "interrupted: the process driving this run exited", "final_text": ""}))
+            out.append(run.id)
+        if out:
+            log.warning("marked %d interrupted run(s) failed: %s", len(out), ", ".join(out))
+        return out
 
     async def aclose(self) -> None:
         ad = self.gate.services.get("onshape")
@@ -127,6 +168,33 @@ class Runtime:
             "external": True}))
         return run.id
 
+    def register_cancel_hook(self, run_id: str, hook: Callable[[], Awaitable[None]]) -> None:
+        """The owner of an external run (e.g. AcpSession) registers how to stop its agent;
+        cancel(run_id) and POST /runs/cancel_all then run it."""
+        self._cancel_hooks[run_id] = hook
+
+    def unregister_cancel_hook(self, run_id: str) -> None:
+        self._cancel_hooks.pop(run_id, None)
+
+    def _run_cancel_hook(self, run_id: str) -> None:
+        hook = self._cancel_hooks.pop(run_id, None)
+        if hook is None:
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            log.warning("cannot run the cancel hook of %s: no event loop", run_id)
+            return
+
+        async def run() -> None:
+            try:
+                await hook()
+            except Exception:
+                log.exception("cancel hook of run %s failed", run_id)
+        task = loop.create_task(run())
+        self._hook_tasks.add(task)
+        task.add_done_callback(self._hook_tasks.discard)
+
     def finish_external_run(self, run_id: str, status: str) -> None:
         if status not in ("done", "failed", "cancelled"):
             raise MisesError(ErrorCode.INVALID_INPUT, f"bad final status: {status!r}",
@@ -155,6 +223,9 @@ class Runtime:
             self.approvals.cancel_run(run_id)
             self.store.release_run_reservations(run_id)
             self.store.update_run(run_id, status="cancelled")
+            self.events.publish(Event(type="run_finished", run_id=run_id, data={
+                "status": "cancelled", "stop_reason": "cancelled", "error": "run task cancelled",
+                "final_text": ""}))
             raise
         except Exception as e:
             log.exception("run %s crashed", run_id)
@@ -203,7 +274,10 @@ class Runtime:
 
     def cancel(self, run_id: str) -> None:
         if run_id in self._external:
+            # mark it cancelled first (the MCP endpoint then refuses its calls), then let the
+            # owner stop the agent process
             self.finish_external_run(run_id, "cancelled")
+            self._run_cancel_hook(run_id)
             return
         st = self._state(run_id)
         st.cancel_requested = True

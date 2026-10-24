@@ -151,31 +151,45 @@ def test_choose_option_never_allow_always():
     assert choose_option(opts("allow_once", "allow_always"), False) is None
 
 
-async def test_fs_write_outside_workdir_refused(rt, tmp_path):
+async def test_client_advertises_no_fs_capability(rt):
+    s = await _session(rt)
+    try:
+        pass
+    finally:
+        await s.close()
+    caps = [r for r in _log(rt, s.run_id) if r["event"] == "session_new"][0]["client_capabilities"]
+    assert caps["fs"].get("readTextFile", False) is False
+    assert caps["fs"].get("writeTextFile", False) is False
+
+
+async def test_fs_requests_refused_without_touching_filesystem(rt, tmp_path, monkeypatch):
+    secret = tmp_path / "server.json"
+    secret.write_text("admin-token")
     outside = tmp_path / "outside.txt"
+    opened: list[str] = []
+    real_open, real_read = Path.open, Path.read_text
+
+    def spy_open(self, *a, **kw):
+        opened.append(str(self))
+        return real_open(self, *a, **kw)
+
+    def spy_read(self, *a, **kw):
+        opened.append(str(self))
+        return real_read(self, *a, **kw)
+
     s = await _session(rt)
-    inside = rt.workdir(s.run_id) / "sub" / "inside.txt"
+    inside = rt.workdir(s.run_id) / "inside.txt"
+    monkeypatch.setattr(Path, "open", spy_open)
+    monkeypatch.setattr(Path, "read_text", spy_read)
     try:
-        text = await s.prompt(f"write:{outside} write:{inside}")
+        await s.prompt(f"read:{secret} read:{inside} write:{outside} write:{inside}")
     finally:
         await s.close()
-    assert not outside.exists()
-    writes = {r["path"]: r["result"] for r in _log(rt, s.run_id) if r["event"] == "write"}
-    assert writes[str(outside)].startswith("error:")
-    assert writes[str(inside)] == "ok" and inside.read_text() == "hello"
-    assert "write:error" in text
-
-
-async def test_fs_symlink_escape_refused(rt, tmp_path):
-    s = await _session(rt)
-    wd = rt.workdir(s.run_id)
-    (wd / "esc").symlink_to(tmp_path, target_is_directory=True)
-    try:
-        await s.prompt(f"write:{wd / 'esc' / 'x.txt'} write:{wd / '..' / 'y.txt'}")
-    finally:
-        await s.close()
-    assert not (tmp_path / "x.txt").exists()
-    assert not (wd.parent / "y.txt").exists()
+    log = _log(rt, s.run_id)
+    assert [r["result"] for r in log if r["event"] == "read"] == ["error:-32601"] * 2
+    assert [r["result"] for r in log if r["event"] == "write"] == ["error:-32601"] * 2
+    assert not outside.exists() and not inside.exists()
+    assert not any(p in (str(secret), str(inside), str(outside)) for p in opened)
 
 
 async def test_terminal_not_supported(rt):
@@ -225,7 +239,32 @@ async def test_session_new_passes_mises_mcp_server(rt):
     assert srv["name"] == "mises"
     assert srv["command"] == sys.executable
     assert srv["args"] == ["-m", "mises.server.stdio_proxy", "--run", s.run_id]
-    assert {"name": "MISES_HOME", "value": str(rt.home)} in srv["env"]
+    env = {e["name"]: e["value"] for e in srv["env"]}
+    assert env["MISES_MCP_URL"] == "http://127.0.0.1:1/mcp" and env["MISES_MCP_TOKEN"] == "t"
+
+
+@pytest.mark.skipif(not os.path.exists("/usr/bin/sandbox-exec"), reason="no sandbox-exec")
+async def test_agent_is_sandboxed_from_mises_home(rt):
+    # C2b: the agent process cannot read the admin token or the database, but uses its workdir
+    (rt.home / "server.json").write_text('{"port": 1, "token": "admin"}')
+    s = await _session(rt)
+    try:
+        text = await s.prompt(f"peek:{rt.home / 'server.json'} peek:{rt.home / 'mises.db'}")
+    finally:
+        await s.close()
+    assert text.split() == ["peek:denied", "peek:denied"]
+    assert _log(rt, s.run_id)[0]["event"] == "session_new"   # wrote its workdir log fine
+
+
+async def test_missing_agent_command_is_not_found(rt):
+    spec = AcpAgentSpec(name="nope", command="definitely-not-a-command-xyz", install_hint="hint")
+    run_id = rt.create_external_run(spec.name, provider="acp", model=spec.name)
+    s = AcpSession(rt, spec, run_id, mcp_url="http://127.0.0.1:1/mcp", mcp_token="t")
+    from mises.types import ErrorCode, MisesError
+    with pytest.raises(MisesError) as e:
+        await s.start()
+    assert e.value.code == ErrorCode.NOT_FOUND
+    assert rt.store.get_run(run_id).status == "failed"
 
 
 def test_known_agents():
@@ -312,3 +351,20 @@ async def test_agent_env_allowlist(rt, monkeypatch):
     assert env == {"LANG": "en_US.UTF-8", "TMPDIR": "/tmp/mises-test",
                    "HTTPS_PROXY": "http://proxy:3128", "no_proxy": "localhost",
                    "SSL_CERT_FILE": "/etc/ssl/cert.pem", "FROM_SPEC": "yes"}
+
+
+async def test_runtime_cancel_kills_acp_agent(rt):
+    # M8: runtime.cancel(run_id) (e.g. the app's stop button) must stop the agent process
+    s = await _session(rt, "--hang", cancel_timeout_s=0.5)
+    pending = asyncio.create_task(s.prompt("chat"))
+    await asyncio.sleep(0.3)
+    pid = s.pid
+    rt.cancel(s.run_id)
+    assert rt.store.get_run(s.run_id).status == "cancelled"
+    deadline = time.monotonic() + 5
+    while not _dead(pid) and time.monotonic() < deadline:
+        await asyncio.sleep(0.05)
+    assert _dead(pid)
+    await asyncio.wait_for(pending, 3)
+    await s.close()
+    assert not rt._cancel_hooks

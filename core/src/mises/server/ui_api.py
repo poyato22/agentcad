@@ -1,8 +1,9 @@
 """Routes and CORS for the Mac app's webview: parts, GLB, agents, models, status, stop-all.
 
 The webview cannot use the MCP endpoint (it needs a live run's X-Mises-Run), so these thin
-read routes sit beside the run/approval API in app.py. Every route here still requires the
-bearer token; only CORS preflights are answered without it.
+read routes sit beside the run/approval API in app.py. Every route here requires the admin
+bearer token (the MCP-only token agents get is refused with 403); only CORS preflights are
+answered without a token.
 """
 from __future__ import annotations
 
@@ -15,6 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, FastAPI, Request, Response
+from starlette.concurrency import run_in_threadpool
 from starlette.middleware.cors import CORSMiddleware
 
 from .. import platform as _platform
@@ -37,7 +39,8 @@ def add_cors(app: FastAPI) -> None:
     """Add CORS as the OUTERMOST middleware (call after the auth middleware is added) so an
     unauthenticated preflight never reaches the bearer check. Real requests still need the token."""
     app.add_middleware(CORSMiddleware, allow_origins=UI_ORIGINS, allow_methods=["GET", "POST"],
-                       allow_headers=["Authorization", "Content-Type"], allow_credentials=False)
+                       allow_headers=["Authorization", "Content-Type", "If-None-Match"],
+                       expose_headers=["ETag"], allow_credentials=False)
 
 
 def _core_version() -> str:
@@ -101,8 +104,8 @@ def build_ui_router(runtime: Runtime) -> APIRouter:
         return [{"name": d.name, "description": d.description, "model": d.model}
                 for d in sorted(runtime.definitions.values(), key=lambda d: d.name)]
 
-    @router.get("/models")
-    async def models():
+    def _vendor_keys() -> list[dict]:
+        # blocking: keychain_get runs the `security` CLI, so this runs in a worker thread
         vendors = []
         for vendor, spec in VENDORS.items():
             if spec.env_key is None:
@@ -114,7 +117,11 @@ def build_ui_router(runtime: Runtime) -> APIRouter:
             else:
                 key = "none"
             vendors.append({"vendor": vendor, "key": key})
-        return {"default": DEFAULT_MODEL, "vendors": vendors}
+        return vendors
+
+    @router.get("/models")
+    async def models():
+        return {"default": DEFAULT_MODEL, "vendors": await run_in_threadpool(_vendor_keys)}
 
     @router.get("/parts")
     async def parts():
@@ -155,30 +162,40 @@ def build_ui_router(runtime: Runtime) -> APIRouter:
             return Response(status_code=304, headers=headers)
         return Response(real.read_bytes(), media_type="model/gltf-binary", headers=headers)
 
+    def _cancel_orphan(run_id: str) -> None:
+        # "running" in the database but not driven here: nothing live to stop, fix the record
+        runtime.approvals.cancel_run(run_id)
+        runtime.store.release_run_reservations(run_id)
+        runtime.store.update_run(run_id, status="cancelled")
+        runtime.events.publish(Event(type="run_finished", run_id=run_id, data={
+            "status": "cancelled", "stop_reason": "cancelled",
+            "error": "orphaned run cancelled", "final_text": ""}))
+
     @router.post("/runs/cancel_all")
     async def cancel_all():
+        """Best effort: every running run is tried; failures are reported, not raised."""
         cancelled: list[str] = []
+        failed: list[dict] = []
         for run in runtime.store.list_runs(10_000):
             if run.status != "running":
                 continue
             if runtime.is_cancelling(run.id):
                 continue  # already stopping; keeps the call idempotent
             try:
-                # Internal runs: cancel the loop. External (ACP/MCP) runs are marked cancelled
-                # here; the outside agent process is killed by whoever owns it.
-                runtime.cancel(run.id)
-            except MisesError as e:
-                if e.code != ErrorCode.NOT_FOUND:
-                    raise
-                # left "running" by a crashed core: nothing live to stop, fix the record
-                runtime.approvals.cancel_run(run.id)
-                runtime.store.release_run_reservations(run.id)
-                runtime.store.update_run(run.id, status="cancelled")
-                runtime.events.publish(Event(type="run_finished", run_id=run.id, data={
-                    "status": "cancelled", "stop_reason": "cancelled",
-                    "error": "orphaned run cancelled", "final_text": ""}))
+                try:
+                    # Internal runs: cancel the loop. External runs: marked cancelled, and the
+                    # owner's cancel hook (e.g. AcpSession) kills the agent process.
+                    runtime.cancel(run.id)
+                except MisesError as e:
+                    if e.code != ErrorCode.NOT_FOUND:
+                        raise
+                    _cancel_orphan(run.id)
+            except Exception as e:  # noqa: BLE001 - keep stopping the rest
+                log.exception("cancel_all: could not cancel run %s", run.id)
+                failed.append({"run_id": run.id, "error": f"{type(e).__name__}: {e}"})
+                continue
             cancelled.append(run.id)
-        log.info("cancel_all: cancelled %d run(s)", len(cancelled))
-        return {"cancelled": cancelled}
+        log.info("cancel_all: cancelled %d run(s), %d failed", len(cancelled), len(failed))
+        return {"cancelled": cancelled, "failed": failed}
 
     return router

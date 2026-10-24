@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import AsyncIterator
+from uuid import uuid4
 
 import httpx
 import openai
@@ -127,9 +128,9 @@ class OpenAICompatProvider:
                 parsed = json.loads(raw) if raw.strip() else {}
                 if not isinstance(parsed, dict):
                     raise ValueError("arguments are not an object")
-                yield ToolCall(id=slot["id"] or f"call_{i}", name=slot["name"], input=parsed)
+                yield ToolCall(id=slot["id"] or f"call_{uuid4().hex[:12]}", name=slot["name"], input=parsed)
             except ValueError:
-                yield ToolCall(id=slot["id"] or f"call_{i}", name=slot["name"], input={}, raw=raw)
+                yield ToolCall(id=slot["id"] or f"call_{uuid4().hex[:12]}", name=slot["name"], input={}, raw=raw)
         yield Usage(input_tokens=in_tok, output_tokens=out_tok, cache_read_tokens=cache_read)
         stop = _STOP.get(finish or "stop", "end_turn")
         if acc and stop == "end_turn":

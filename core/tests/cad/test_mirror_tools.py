@@ -99,3 +99,34 @@ async def test_script_var_defaults_recorded(ctx):
     assert lst.data["parts"] == [{"part_id": "bracket", "vars": {"length": 40.0}}]
     r = await mirror_part_set_vars.handler(ctx, SetVarsArgs(part_id="bracket", vars={"length": 50}))
     assert r.ok, r.summary
+
+
+async def test_part_lock_shared_across_runs(tmp_path, monkeypatch):
+    # I4: two runs see the shared parts dir through their own symlink; builds must serialize
+    import asyncio
+    import mises.cad.tools as tools_mod
+    from mises.cad.runner import BuildResult
+    shared = tmp_path / "parts"
+    shared.mkdir()
+    ctxs = []
+    for name in ("r1", "r2"):
+        wd = tmp_path / "runs" / name
+        wd.mkdir(parents=True)
+        (wd / "parts").symlink_to(shared, target_is_directory=True)
+        ctxs.append(SimpleNamespace(workdir=wd))
+    active, peak = 0, 0
+
+    async def fake_build(d, vars, **kw):
+        nonlocal active, peak
+        active += 1
+        peak = max(peak, active)
+        await asyncio.sleep(0.05)
+        active -= 1
+        metrics = {"volume_mm3": 1.0, "mass_g": 1.0, "bbox": {"size": [1, 1, 1]}, "holes": [],
+                   "valid": True}
+        (d / "metrics.json").write_text(json.dumps(metrics))
+        return BuildResult(True, metrics=metrics, vars=dict(vars))
+    monkeypatch.setattr(tools_mod, "run_build", fake_build)
+    await asyncio.gather(*(mirror_part_create.handler(c, CreateArgs(part_id="shared_box", script="x"))
+                           for c in ctxs))
+    assert peak == 1

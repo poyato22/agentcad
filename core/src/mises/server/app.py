@@ -2,6 +2,10 @@
 
 Binds 127.0.0.1 only; every HTTP route needs `Authorization: Bearer <token>`, the events
 WebSocket takes `?token=`.
+
+Two tokens: the admin token (the UI/CLI; every route) and the MCP-only token, the one handed to
+agents. The MCP-only token is accepted on /mcp and /health only (403 elsewhere), so an agent can
+never decide its own approvals, answer questions or drive runs through this API.
 """
 from __future__ import annotations
 
@@ -57,20 +61,35 @@ def _token_ok(given: str | None, token: str) -> bool:
     return given is not None and hmac.compare_digest(given.encode(), token.encode())
 
 
-class _BearerAuth:
-    """Rejects any HTTP request without the session bearer token (WebSockets check ?token=)."""
+MCP_SCOPE_PATHS = frozenset({"/mcp", "/mcp/", "/health"})
 
-    def __init__(self, app: ASGIApp, token: str):
+
+class _BearerAuth:
+    """Rejects any HTTP request without a valid bearer token (WebSockets check ?token=).
+
+    The admin token opens every route; the MCP-only token opens MCP_SCOPE_PATHS only."""
+
+    def __init__(self, app: ASGIApp, token: str, mcp_token: str):
         self.app = app
         self.token = token
+        self.mcp_token = mcp_token
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] == "http":
             auth = Headers(scope=scope).get("authorization", "")
             given = auth[7:] if auth.lower().startswith("bearer ") else None
-            if not _token_ok(given, self.token):
+            resp = None
+            if _token_ok(given, self.token):
+                pass
+            elif _token_ok(given, self.mcp_token):
+                if scope.get("path") not in MCP_SCOPE_PATHS:
+                    resp = JSONResponse({"error": "denied",
+                                         "message": "this token only opens the MCP endpoint"},
+                                        status_code=403)
+            else:
                 resp = JSONResponse({"error": "unauthorized", "message": "missing or bad token"},
                                     status_code=401, headers={"WWW-Authenticate": "Bearer"})
+            if resp is not None:
                 await resp(scope, receive, send)
                 return
         await self.app(scope, receive, send)
@@ -131,9 +150,13 @@ class Decision(BaseModel):
     edited_payload: dict | None = None
 
 
-def create_app(runtime: Runtime, token: str) -> FastAPI:
+def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None) -> FastAPI:
+    """`token` is the admin token; `mcp_token` (generated if omitted) opens /mcp and /health only."""
     if not token:
         raise ValueError("a non-empty token is required")
+    mcp_token = mcp_token or secrets.token_urlsafe(32)
+    if hmac.compare_digest(mcp_token.encode(), token.encode()):
+        raise ValueError("the MCP-only token must differ from the admin token")
     mcp_server = build_mcp_server(runtime)
     manager = StreamableHTTPSessionManager(
         app=mcp_server, json_response=True, stateless=True,
@@ -152,7 +175,7 @@ def create_app(runtime: Runtime, token: str) -> FastAPI:
                   openapi_url=None)
     app.state.runtime = runtime
     app.state.mcp_session_manager = manager
-    app.add_middleware(_BearerAuth, token=token)
+    app.add_middleware(_BearerAuth, token=token, mcp_token=mcp_token)
     add_cors(app)  # added last = outermost: preflights are answered before the bearer check
     app.include_router(build_ui_router(runtime))
 
@@ -234,7 +257,7 @@ def create_app(runtime: Runtime, token: str) -> FastAPI:
     async def events(ws: WebSocket, token: str = "", run_id: str | None = None):
         if not _token_ok(token, app.state.token):
             await ws.accept()
-            await ws.close(code=4401)
+            await ws.close(code=4403 if _token_ok(token, app.state.mcp_token) else 4401)
             return
         sub = runtime.events.subscribe(run_id)
         try:
@@ -260,6 +283,7 @@ def create_app(runtime: Runtime, token: str) -> FastAPI:
             sub.close()
 
     app.state.token = token
+    app.state.mcp_token = mcp_token
     app.router.routes.append(Route("/mcp", endpoint=_McpEndpoint(
         runtime, StreamableHTTPASGIApp(manager)), methods=["GET", "POST", "DELETE"]))
     return app
@@ -287,8 +311,10 @@ class _CallerSignalsServer(uvicorn.Server):
         yield
 
 
-def _uvicorn(runtime: Runtime, token: str, cls: type[uvicorn.Server] = uvicorn.Server):
-    config = uvicorn.Config(create_app(runtime, token), lifespan="on", log_level="warning",
+def _uvicorn(runtime: Runtime, token: str, mcp_token: str,
+             cls: type[uvicorn.Server] = uvicorn.Server):
+    config = uvicorn.Config(create_app(runtime, token, mcp_token=mcp_token), lifespan="on",
+                            log_level="warning",
                             access_log=False, timeout_graceful_shutdown=5)
     return cls(config)
 
@@ -328,10 +354,14 @@ def _remove_server_json(path: Path, port: int) -> None:
 class ServerHandle:
     """A server running on the caller's event loop (from `serve_async`)."""
 
-    def __init__(self, port: int, token: str, server: uvicorn.Server, task: asyncio.Task,
-                 sock: socket.socket, info_path: Path):
-        self.port, self.token = port, token
+    def __init__(self, port: int, token: str, mcp_token: str, server: uvicorn.Server,
+                 task: asyncio.Task, sock: socket.socket, info_path: Path | None):
+        self.port, self.token, self.mcp_token = port, token, mcp_token
         self._server, self._task, self._sock, self._info_path = server, task, sock, info_path
+
+    @property
+    def mcp_url(self) -> str:
+        return f"http://{HOST}:{self.port}/mcp"
 
     async def stop(self) -> None:
         self._server.should_exit = True
@@ -339,20 +369,25 @@ class ServerHandle:
             await self._task
         finally:
             self._sock.close()
-            _remove_server_json(self._info_path, self.port)
+            if self._info_path is not None:
+                _remove_server_json(self._info_path, self.port)
 
 
-async def serve_async(runtime: Runtime, *, port: int = 0,
-                      token: str | None = None) -> tuple[int, str, ServerHandle]:
+async def serve_async(runtime: Runtime, *, port: int = 0, token: str | None = None,
+                      write_server_json: bool = True) -> tuple[int, str, ServerHandle]:
     """Run the server on the caller's event loop, bound to 127.0.0.1 only.
 
-    Waits until uvicorn has started, writes {"port","token","pid"} to
-    runtime.home/server.json (0600) and returns (port, token, handle); `await handle.stop()`.
+    Waits until uvicorn has started and returns (port, admin token, handle);
+    `handle.mcp_token` is the MCP-only token for agents; `await handle.stop()`. With
+    write_server_json (default) it writes {"port","token","pid"} to runtime.home/server.json
+    (0600) and removes it on stop; pass False for an embedded server (e.g. `mises acp`) so a
+    running `mises serve`'s server.json is left alone.
     """
     token = token or secrets.token_urlsafe(32)
+    mcp_token = secrets.token_urlsafe(32)
     sock = _bind(port)
     bound = sock.getsockname()[1]
-    server = _uvicorn(runtime, token, _CallerSignalsServer)
+    server = _uvicorn(runtime, token, mcp_token, _CallerSignalsServer)
     task = asyncio.create_task(server.serve(sockets=[sock]), name=f"mises-server-{bound}")
     while not server.started:
         if task.done():
@@ -360,9 +395,11 @@ async def serve_async(runtime: Runtime, *, port: int = 0,
             exc = task.exception()
             raise RuntimeError("mises server failed to start") from exc
         await asyncio.sleep(0.01)
-    info_path = _server_json(runtime)
-    _write_server_json(info_path, {"port": bound, "token": token, "pid": os.getpid()})
-    return bound, token, ServerHandle(bound, token, server, task, sock, info_path)
+    info_path = None
+    if write_server_json:
+        info_path = _server_json(runtime)
+        _write_server_json(info_path, {"port": bound, "token": token, "pid": os.getpid()})
+    return bound, token, ServerHandle(bound, token, mcp_token, server, task, sock, info_path)
 
 
 class _Running:
@@ -374,7 +411,8 @@ class _Running:
 _servers: dict[int, _Running] = {}
 
 
-def serve(runtime: Runtime, *, port: int = 0, token: str | None = None) -> tuple[int, str]:
+def serve(runtime: Runtime, *, port: int = 0, token: str | None = None,
+          mcp_token: str | None = None) -> tuple[int, str]:
     """Start the server on 127.0.0.1 in a background thread; returns (port, token).
 
     For standalone `mises serve`. There is deliberately no host parameter. Writes
@@ -385,7 +423,7 @@ def serve(runtime: Runtime, *, port: int = 0, token: str | None = None) -> tuple
     token = token or secrets.token_urlsafe(32)
     sock = _bind(port)
     bound = sock.getsockname()[1]
-    server = _uvicorn(runtime, token)
+    server = _uvicorn(runtime, token, mcp_token or secrets.token_urlsafe(32))
     thread = threading.Thread(target=server.run, kwargs={"sockets": [sock]},
                               name=f"mises-server-{bound}", daemon=True)
     thread.start()

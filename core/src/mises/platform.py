@@ -54,3 +54,37 @@ def sandbox_profile(write_dir: Path) -> str:
 def sandboxed_command(argv: list[str], write_dir: Path) -> list[str]:
     """Prefix argv with sandbox-exec so it can only write under write_dir and has no network."""
     return ["/usr/bin/sandbox-exec", "-p", sandbox_profile(write_dir), *argv]
+
+
+SANDBOX_EXEC = "/usr/bin/sandbox-exec"
+
+
+def agent_sandbox_profile(home: Path, workdir: Path) -> str:
+    """sandbox-exec profile for an external (ACP) agent and everything it spawns.
+
+    Everything is allowed (agents need their own config, the network, npx caches, ...) except
+    reading or writing the Mises home: server.json (admin token), mises.db* (approvals, ledger),
+    other runs and parts. The run's own workdir inside the home stays readable and writable.
+    Metadata of the home and runs/ directories stays readable so path lookups of the workdir
+    (getcwd, realpath) work; their contents do not.
+    """
+    h = Path(home).resolve()
+    w = Path(workdir).resolve()
+    if any(_unsafe(str(x)) for x in (home, workdir, h, w)):
+        raise ValueError("path contains characters unsafe for a sandbox profile")
+    if not w.is_relative_to(h) or w == h:
+        raise ValueError("the agent workdir must be inside the Mises home")
+    lookups = " ".join(f'(literal "{d}")' for d in [h, *w.parents] if d.is_relative_to(h))
+    return (
+        "(version 1)\n(allow default)\n"
+        f'(deny file-read* file-write* (subpath "{h}"))\n'
+        f"(allow file-read-metadata {lookups})\n"
+        f'(allow file-read* file-write* (subpath "{w}"))\n'
+    )
+
+
+def agent_sandboxed_command(argv: list[str], home: Path, workdir: Path) -> list[str]:
+    """Prefix argv with sandbox-exec under agent_sandbox_profile(home, workdir)."""
+    if not os.path.exists(SANDBOX_EXEC):
+        raise RuntimeError(f"{SANDBOX_EXEC} is missing; external agents cannot be sandboxed")
+    return [SANDBOX_EXEC, "-p", agent_sandbox_profile(home, workdir), *argv]

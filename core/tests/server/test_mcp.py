@@ -40,12 +40,12 @@ async def test_mcp_list_tools_has_annotations(rt):
         async with http, client:
             tools = {t.name: t for t in (await client.list_tools()).tools}
         assert {"mirror_part_list", "mirror_part_create", "ui_note"} <= set(tools)
-        by_class = {t.safety: t.name for t in rt.registry.list()}
+        by_class = {t.safety: t.name for t in rt.registry.list() if t.name in tools}
         read = tools[by_class[C.READ]].annotations
         assert read.read_only_hint is True and read.destructive_hint is False
         local = tools[by_class[C.LOCAL_MUTATE]].annotations
         assert local.read_only_hint is False and local.destructive_hint is False
-        assert local.idempotent_hint is True
+        assert local.idempotent_hint is False
         irr = tools[by_class[C.IRREVERSIBLE]].annotations
         assert irr.destructive_hint is True and irr.read_only_hint is False
         schema = rt.registry.schema(rt.registry.get("mirror_part_create"))
@@ -59,7 +59,8 @@ async def test_mcp_list_tools_filtered_by_run_policy(rt):
         http, client = mcp_client(app, rid)
         async with http, client:
             names = {t.name for t in (await client.list_tools()).tools}
-        assert names == {t.name for t in rt.registry.list(classes={C.READ})}
+        from mises.server.mcp_server import INTERNAL_ONLY
+        assert names == {t.name for t in rt.registry.list(classes={C.READ})} - INTERNAL_ONLY
         assert "mirror_part_list" in names and "mirror_part_create" not in names
 
 
@@ -125,9 +126,87 @@ async def test_stdio_proxy_forwards(rt, home):
         async with Client(params) as client:
             names = {t.name for t in (await client.list_tools()).tools}
             res = await client.call_tool("mirror_part_list", {})
-        assert names == {t.name for t in rt.registry.list()}
+        from mises.server.mcp_server import INTERNAL_ONLY
+        assert names == {t.name for t in rt.registry.list()} - INTERNAL_ONLY
         assert res.is_error is False and json.loads(res.content[0].text)["ok"] is True
         assert [s.payload["name"] for s in rt.store.steps(rid, [StepKind.TOOL_CALL])] == [
             "mirror_part_list"]
     finally:
         stop(port)
+
+
+async def test_stdio_proxy_uses_env_url_and_mcp_token(rt, tmp_path):
+    # C2a: an agent's proxy gets the MCP-only token via its environment, never server.json
+    rid = rt.create_external_run("codex", provider="openai", model="gpt-x")
+    port, _token = serve(rt, mcp_token="mcp-only-xyz")
+    empty = tmp_path / "nohome"
+    empty.mkdir()
+    try:
+        env = {**os.environ, "MISES_HOME": str(empty),
+               "MISES_MCP_URL": f"http://127.0.0.1:{port}/mcp", "MISES_MCP_TOKEN": "mcp-only-xyz"}
+        params = StdioServerParameters(command=sys.executable,
+                                       args=["-m", "mises.server.stdio_proxy", "--run", rid],
+                                       env=env)
+        async with Client(params) as client:
+            res = await client.call_tool("mirror_part_list", {})
+        assert res.is_error is False
+        assert not (empty / "server.json").exists()
+    finally:
+        stop(port)
+
+
+@pytest.mark.skipif(not os.path.exists("/usr/bin/sandbox-exec"), reason="no sandbox-exec")
+async def test_stdio_proxy_works_inside_agent_sandbox(rt):
+    # C2b: the proxy an ACP agent spawns inherits the agent sandbox and still works
+    from mises.platform import agent_sandboxed_command
+    rid = rt.create_external_run("codex", provider="openai", model="gpt-x")
+    port, _token = serve(rt, mcp_token="mcp-only-xyz")
+    try:
+        wd = rt.workdir(rid)
+        argv = agent_sandboxed_command(
+            [sys.executable, "-m", "mises.server.stdio_proxy", "--run", rid], rt.home, wd)
+        env = {**os.environ, "MISES_HOME": str(rt.home),
+               "MISES_MCP_URL": f"http://127.0.0.1:{port}/mcp", "MISES_MCP_TOKEN": "mcp-only-xyz"}
+        params = StdioServerParameters(command=argv[0], args=argv[1:], env=env, cwd=str(wd))
+        async with Client(params) as client:
+            res = await client.call_tool("mirror_part_list", {})
+        assert res.is_error is False
+    finally:
+        stop(port)
+
+
+async def test_mcp_refuses_interrupted_run(rt, home):
+    # I1: after a restart, a run orphaned by the dead process can no longer call tools
+    import subprocess
+    from mises.runtime import Runtime
+    rid = rt.create_external_run("codex", provider="openai", model="gpt-x")
+    p = subprocess.Popen(["/usr/bin/true"])
+    p.wait()
+    rt.store._db.execute("UPDATE runs SET owner_pid=? WHERE id=?", (p.pid, rid))
+    rt2 = Runtime(home, provider_resolver=rt.provider_resolver)
+    assert rid in rt2.interrupted
+    async with running(rt2) as app:
+        async with httpx2.AsyncClient(transport=httpx2.ASGITransport(app=app),
+                                      base_url="http://127.0.0.1") as http:
+            r = await http.post("/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "tools/list",
+                                              "params": {}},
+                                headers={**AUTH, "X-Mises-Run": rid,
+                                         "Content-Type": "application/json",
+                                         "Accept": "application/json, text/event-stream"})
+            assert r.status_code == 409
+
+
+async def test_mcp_hides_orchestration_tools(rt):
+    # M5: external runs cannot spawn Mises subagents or run plans
+    hidden = {"orchestrator_run", "agent_spawn", "orchestrator_submit_plan"}
+    async with running(rt) as app:
+        rid = rt.create_external_run("codex", provider="openai", model="gpt-x")
+        http, client = mcp_client(app, rid)
+        async with http, client:
+            names = {t.name for t in (await client.list_tools()).tools}
+            assert not names & hidden
+            for name in hidden:
+                res = await client.call_tool(name, {"goal": "x", "agent": "designer",
+                                                    "prompt": "x"})
+                assert res.is_error and json.loads(res.content[0].text)["error"] == "not_found"
+    assert rt.store.list_runs(10)[0].id == rid      # nothing was spawned

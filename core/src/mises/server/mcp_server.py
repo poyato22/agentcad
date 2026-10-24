@@ -15,12 +15,15 @@ from mcp.server.context import ServerRequestContext
 from mcp.shared.exceptions import MCPError
 
 from ..tools.registry import ToolDef
-from ..types import MisesError, SafetyClass, canonical_json
+from ..types import ErrorCode, MisesError, SafetyClass, canonical_json
 
 if TYPE_CHECKING:
     from ..runtime import Runtime
 
 RUN_HEADER = "x-mises-run"
+# Mises' own orchestration: only Mises agents may spawn subagents or run plans. External runs
+# never see these tools, and calling them by name is not_found.
+INTERNAL_ONLY = frozenset({"orchestrator_run", "agent_spawn", "orchestrator_submit_plan"})
 
 
 def run_id_of(ctx: ServerRequestContext[Any, Any]) -> str:
@@ -35,8 +38,9 @@ def annotations_for(t: ToolDef) -> types.ToolAnnotations:
     return types.ToolAnnotations(
         read_only_hint=t.safety == SafetyClass.READ,
         destructive_hint=t.safety == SafetyClass.IRREVERSIBLE,
-        # non-read calls are replayed from the gate's cache / deduped per call
-        idempotent_hint=t.safety != SafetyClass.READ,
+        # the gate dedupes only a retry of the same call; every MCP call is a new call, so a
+        # repeated non-read call really runs again
+        idempotent_hint=False,
         open_world_hint=t.safety in (SafetyClass.ONSHAPE_MUTATE, SafetyClass.IRREVERSIBLE)
         or t.onshape_cost > 0,
     )
@@ -52,6 +56,8 @@ def build_mcp_server(runtime: Runtime) -> Server:
             raise MCPError(types.INVALID_PARAMS, f"unknown run: {run_id}") from None
         tools = []
         for t in runtime.registry.list(classes=set(policy.allowed_classes)):
+            if t.name in INTERNAL_ONLY:
+                continue
             schema = runtime.registry.schema(t)
             tools.append(types.Tool(name=t.name, description=t.description,
                                     input_schema=schema["input_schema"],
@@ -65,6 +71,8 @@ def build_mcp_server(runtime: Runtime) -> Server:
         # gate's per-call dedupe; every MCP call gets a fresh call id.
         call_id = f"mcp_{uuid.uuid4().hex}"
         try:
+            if params.name in INTERNAL_ONLY:
+                raise MisesError(ErrorCode.NOT_FOUND, f"unknown tool: {params.name}")
             out = await runtime.gate.call(run_id, params.name, dict(params.arguments or {}),
                                           call_id=call_id, workdir=runtime.workdir(run_id))
         except MisesError as e:

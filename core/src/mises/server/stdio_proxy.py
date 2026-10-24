@@ -1,12 +1,15 @@
 """stdio MCP server that forwards tools/list and tools/call to the local Mises HTTP endpoint.
 
 For agents that only speak stdio MCP:  python -m mises.server.stdio_proxy --run <run_id>
-reads the url/token from data_home()/server.json written by `serve()`.
+takes the url and MCP-only token from MISES_MCP_URL / MISES_MCP_TOKEN (how Mises launches it for
+ACP agents, which run sandboxed away from the Mises home); without them it falls back to
+data_home()/server.json written by `serve()` (standalone `mises mcp-stdio`).
 """
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from typing import Any
 
@@ -24,8 +27,15 @@ from ..platform import data_home
 RUN_HEADER = "X-Mises-Run"
 
 
+ENV_URL = "MISES_MCP_URL"
+ENV_TOKEN = "MISES_MCP_TOKEN"
+
+
 def server_url_and_token() -> tuple[str, str]:
-    """Read data_home()/server.json; returns (mcp url, token)."""
+    """(mcp url, token): from MISES_MCP_URL/MISES_MCP_TOKEN if both set, else server.json."""
+    url, token = os.environ.get(ENV_URL), os.environ.get(ENV_TOKEN)
+    if url and token:
+        return url, token
     path = data_home() / "server.json"
     try:
         info = json.loads(path.read_text())

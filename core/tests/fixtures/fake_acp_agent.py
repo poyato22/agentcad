@@ -8,6 +8,7 @@ The prompt text selects behaviour (words may be combined):
   perm         request permission and echo the chosen option id
   term         ask the client for a terminal, log ok/error
   write:<p>    ask the client to write "hello" to absolute path <p>, echo ok/error
+  peek:<p>     open absolute path <p> directly (no ACP), echo peek:ok/peek:denied
 In --hang mode every prompt blocks forever, session/cancel and SIGTERM are ignored.
 In --no-init mode `initialize` never answers (an agent waiting for a login, say).
 Everything the agent observes is appended as JSON lines to <cwd>/fake_agent.jsonl.
@@ -119,6 +120,25 @@ class FakeAgent:
                     result = f"error:{e.code}"
                 _log(self.cwd, event="write", path=path, result=result)
                 await c.session_update(session_id, update_agent_message(text_block(f"write:{result}")))
+        for word in text.split():
+            if word.startswith("read:"):
+                path = word[len("read:"):]
+                try:
+                    await c.read_text_file(session_id=session_id, path=path)
+                    result = "ok"
+                except RequestError as e:
+                    result = f"error:{e.code}"
+                _log(self.cwd, event="read", path=path, result=result)
+        for word in text.split():
+            if word.startswith("peek:"):
+                path = word[len("peek:"):]
+                try:
+                    open(path, "rb").read()
+                    result = "ok"
+                except OSError:
+                    result = "denied"
+                _log(self.cwd, event="peek", path=path, result=result)
+                await c.session_update(session_id, update_agent_message(text_block(f"peek:{result} ")))
         if "term" in text.split():
             try:
                 await c.create_terminal(session_id=session_id, command="ls")

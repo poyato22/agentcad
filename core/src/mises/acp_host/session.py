@@ -2,8 +2,13 @@
 
 The agent gets the `mises` MCP server (stdio proxy bound to this run) in `session/new`, so
 its CAD tool calls go through Mises's Gate. Its `session/update` stream becomes Steps and
-events; `session/request_permission` becomes a Mises approval card; `fs/*` is confined to
-the run's workdir; `terminal/*` is refused.
+events; `session/request_permission` becomes a Mises approval card; `fs/*` and `terminal/*` are refused
+(the host is unsandboxed, so a check-then-open file API would be raceable).
+
+The agent runs under sandbox-exec (`platform.agent_sandbox_profile`): it cannot read or write
+the Mises home (server.json, mises.db, other runs, parts) except its own workdir. Its stdio MCP
+proxy inherits that sandbox, so it gets the server url and the MCP-only token through its
+environment (MISES_MCP_URL / MISES_MCP_TOKEN) instead of reading server.json.
 
 The caller owns the run: it calls `runtime.create_external_run(agent=spec.name,
 provider="acp", model=spec.name)` and passes the id in. `close()` / `cancel()` finish it.
@@ -14,6 +19,7 @@ import asyncio
 import contextlib
 import logging
 import os
+import shutil
 import signal
 import sys
 from pathlib import Path
@@ -45,6 +51,7 @@ from acp.schema import (
 from acp.transports import default_environment
 
 from ..events import Event
+from ..platform import agent_sandboxed_command
 from ..types import ErrorCode, MisesError, StepKind
 
 log = logging.getLogger(__name__)
@@ -118,13 +125,13 @@ class _Client:
 
     async def read_text_file(self, session_id: str, path: str, line: int | None = None,
                              limit: int | None = None, **kw: Any) -> ReadTextFileResponse:
-        return self._s._on_read(path, line, limit)
+        raise RequestError.method_not_found("fs/read_text_file")
 
     async def write_text_file(self, session_id: str, path: str, content: str,
                               **kw: Any) -> WriteTextFileResponse:
-        return self._s._on_write(path, content)
+        raise RequestError.method_not_found("fs/write_text_file")
 
-    # terminal/* is not offered (clientCapabilities.terminal = false); refuse if called anyway
+    # fs/* and terminal/* are not offered (clientCapabilities.terminal = false); refuse if called anyway
     async def create_terminal(self, *a: Any, **kw: Any):
         raise RequestError.method_not_found("terminal/create")
 
@@ -154,8 +161,8 @@ class AcpSession:
         self.runtime = runtime
         self.spec = spec
         self.run_id = run_id
-        # Kept for callers/agents that could use HTTP MCP directly. The stdio proxy reads
-        # url/token from <MISES_HOME>/server.json, so they are not put on the command line.
+        # The MCP-only token (never the admin token): it reaches the stdio proxy through its
+        # environment, not the command line.
         self.mcp_url = mcp_url
         self.mcp_token = mcp_token
         self.cancel_timeout_s = cancel_timeout_s
@@ -175,6 +182,8 @@ class AcpSession:
         self._cancelling = False
         self._failed = False
         self._finished = False
+        # runtime.cancel(run_id) / cancel_all must kill this agent, not just mark the run
+        runtime.register_cancel_hook(run_id, self.cancel)
 
     @property
     def pid(self) -> int | None:
@@ -185,7 +194,8 @@ class AcpSession:
         return [McpServerStdio(
             name="mises", command=sys.executable,
             args=["-m", "mises.server.stdio_proxy", "--run", self.run_id],
-            env=[EnvVariable(name="MISES_HOME", value=str(self.runtime.home))])]
+            env=[EnvVariable(name="MISES_MCP_URL", value=self.mcp_url),
+                 EnvVariable(name="MISES_MCP_TOKEN", value=self.mcp_token)])]
 
     async def start(self) -> None:
         """Spawn the agent and run initialize + session/new within handshake_timeout_s.
@@ -221,16 +231,21 @@ class AcpSession:
 
     async def _start(self) -> None:
         self._stderr = open(self.workdir / "agent-stderr.log", "ab")
+        env = agent_environment(self.spec.env)
+        # resolve here: under sandbox-exec a missing command would not raise at spawn time
+        exe = shutil.which(self.spec.command, path=env.get("PATH"))
+        if exe is None:
+            raise FileNotFoundError(f"{self.spec.command!r} not found on PATH")
+        argv = agent_sandboxed_command([exe, *self.spec.args], self.runtime.home, self.workdir)
         self._proc = await asyncio.create_subprocess_exec(
-            self.spec.command, *self.spec.args, cwd=str(self.workdir),
-            env=agent_environment(self.spec.env),
+            *argv, cwd=str(self.workdir), env=env,
             stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
             stderr=self._stderr, start_new_session=True, limit=STDIO_LIMIT)
         self._conn = connect_to_agent(_Client(self), self._proc.stdin, self._proc.stdout)
         init = await self._conn.initialize(
             protocol_version=PROTOCOL_VERSION,
             client_capabilities=ClientCapabilities(
-                fs=FileSystemCapabilities(read_text_file=True, write_text_file=True),
+                fs=FileSystemCapabilities(read_text_file=False, write_text_file=False),
                 terminal=False),
             client_info=Implementation(name="mises", title="Mises", version="0.1.0"))
         self.agent_info = _dump(init.agent_info) if init.agent_info else None
@@ -358,6 +373,7 @@ class AcpSession:
         if self._finished:
             return
         self._finished = True
+        self.runtime.unregister_cancel_hook(self.run_id)
         try:
             if self.runtime.store.get_run(self.run_id).status != "running":
                 return      # already finished elsewhere (e.g. runtime.cancel); keep that status
@@ -471,42 +487,3 @@ class AcpSession:
             return cancelled
         return RequestPermissionResponse(outcome=AllowedOutcome(outcome="selected",
                                                                 option_id=option_id))
-
-    # ---- fs/* confined to the workdir
-    def _confine(self, path: str, op: str) -> Path:
-        p = Path(path)
-        root = self.workdir.resolve()
-        resolved = p.resolve() if p.is_absolute() else None
-        if resolved is None or not resolved.is_relative_to(root):
-            self.runtime.store.append_step(self.run_id, StepKind.ERROR, {
-                "code": str(ErrorCode.OUT_OF_SCOPE), "op": op, "path": path,
-                "message": "agent file access outside its workdir refused"})
-            raise RequestError.invalid_params({
-                "code": str(ErrorCode.OUT_OF_SCOPE), "path": path,
-                "message": f"{op} is limited to absolute paths inside {self.workdir}"})
-        return resolved
-
-    def _on_read(self, path: str, line: int | None, limit: int | None) -> ReadTextFileResponse:
-        p = self._confine(path, "fs/read_text_file")
-        try:
-            text = p.read_text()
-        except FileNotFoundError:
-            raise RequestError.resource_not_found(path) from None
-        except (OSError, UnicodeDecodeError) as e:
-            raise RequestError.internal_error({"details": str(e)}) from None
-        if line is not None or limit is not None:
-            lines = text.splitlines(keepends=True)
-            start = max((line or 1) - 1, 0)
-            end = None if limit is None else start + max(limit, 0)
-            text = "".join(lines[start:end])
-        return ReadTextFileResponse(content=text)
-
-    def _on_write(self, path: str, content: str) -> WriteTextFileResponse:
-        p = self._confine(path, "fs/write_text_file")
-        try:
-            p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text(content)
-        except OSError as e:
-            raise RequestError.internal_error({"details": str(e)}) from None
-        self._publish("file_written", path=str(p), bytes=len(content.encode("utf-8")))
-        return WriteTextFileResponse()

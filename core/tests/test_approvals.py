@@ -117,3 +117,45 @@ async def test_cancel_run_rejects_pending(svc):
     got = await asyncio.wait_for(t, 1)
     assert got.status == "rejected" and got.decided_by == "system:cancel"
     assert svc.store.get_approval(b.id).status == "pending"
+
+
+async def test_db_forged_approval_is_not_accepted(svc):
+    # C2c: a row flipped to "approved" outside decide() (e.g. an agent writing mises.db)
+    a = await svc.request("r1", "x", P)
+    svc.store._db.execute("UPDATE approvals SET status='approved', decided_by='me' WHERE id=?",
+                          (a.id,))
+    got = await asyncio.wait_for(svc.wait(a.id), 1)
+    assert got.status != "approved"
+    assert svc.store.get_approval(a.id).status == "rejected"
+    with pytest.raises(MisesError) as e:
+        svc.consume(a.id, h(P))
+    assert e.value.code == ErrorCode.NEEDS_APPROVAL
+
+
+async def test_forged_approval_consume_refused(svc):
+    a = await svc.request("r1", "x", P)
+    svc.store._db.execute("UPDATE approvals SET status='approved' WHERE id=?", (a.id,))
+    with pytest.raises(MisesError) as e:
+        svc.consume(a.id, h(P))
+    assert e.value.code == ErrorCode.NEEDS_APPROVAL
+
+
+async def test_payload_swapped_in_db_after_decide_refused(svc):
+    a = await svc.request("r1", "x", P)
+    svc.decide(a.id, a.payload_hash, True, "u")
+    evil = {"a": 666}
+    svc.store._db.execute("UPDATE approvals SET edited_payload=? WHERE id=?",
+                          (canonical_json(evil), a.id))
+    with pytest.raises(MisesError) as e:
+        svc.consume(a.id, h(evil))
+    assert e.value.code == ErrorCode.NEEDS_APPROVAL
+
+
+async def test_payload_swapped_in_db_before_decide_is_stale(svc):
+    a = await svc.request("r1", "x", P)
+    evil = {"a": 666}
+    svc.store._db.execute("UPDATE approvals SET payload=?, payload_hash=? WHERE id=?",
+                          (canonical_json(evil), h(evil), a.id))
+    with pytest.raises(MisesError) as e:
+        svc.decide(a.id, h(evil), True, "u")
+    assert e.value.code == ErrorCode.STALE_VERSION

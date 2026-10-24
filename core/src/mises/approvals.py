@@ -1,4 +1,11 @@
-"""Human approval requests: first decision wins, hash-bound, single consume."""
+"""Human approval requests: first decision wins, hash-bound, single consume.
+
+Only decisions made through this service instance count. mises.db is a plain file, so a
+status or payload changed in the database by anything else (e.g. an agent process writing the
+file) must never execute: the service keeps, in memory, the payload hash each approval was
+requested with and the effective payload hash each approval was decided with, and `wait` /
+`consume` accept an "approved" row only if it matches what this process decided.
+"""
 from __future__ import annotations
 
 import asyncio
@@ -19,6 +26,8 @@ class ApprovalService:
         self.store = store
         self.events = events
         self._waiters: dict[str, asyncio.Event] = {}
+        self._requested: dict[str, str] = {}   # approval id -> payload hash at request time
+        self._decided: dict[str, str] = {}     # approval id -> effective payload hash approved here
 
     def _event(self, approval_id: str) -> asyncio.Event:
         return self._waiters.setdefault(approval_id, asyncio.Event())
@@ -40,6 +49,7 @@ class ApprovalService:
             id=uuid.uuid4().hex[:12], run_id=run_id, action=action, payload=payload,
             payload_hash=hash_payload(payload), microversion=microversion,
             deltas=deltas or {}, expires_at=time.time() + ttl_s))
+        self._requested[a.id] = a.payload_hash
         self._event(a.id)
         self.events.publish(Event(type="approval_requested", run_id=run_id,
                                   data=a.model_dump(mode="json")))
@@ -50,6 +60,8 @@ class ApprovalService:
         deadline = None if timeout_s is None else time.time() + timeout_s
         while True:
             a = self._expire_if_due(self.store.get_approval(approval_id))
+            if a.status == "approved" and not self._decided_here(a):
+                return self._reject_untrusted(a)
             if a.status != "pending":
                 return a
             limit = a.expires_at - time.time()
@@ -64,10 +76,24 @@ class ApprovalService:
             except asyncio.TimeoutError:
                 pass
 
+    def _decided_here(self, a: Approval) -> bool:
+        """True if `a` was approved by decide() in this process with this effective payload."""
+        effective = a.edited_payload if a.edited_payload is not None else a.payload
+        want = self._decided.get(a.id)
+        return want is not None and want == hash_payload(effective)
+
+    def _reject_untrusted(self, a: Approval) -> Approval:
+        self.store.cas_approval(a.id, from_status="approved", to_status="rejected",
+                                decided_by="system:untrusted", decided_at=time.time())
+        self._wake(a.id)
+        return self.store.get_approval(a.id)
+
     def decide(self, approval_id: str, payload_hash: str, approve: bool, decided_by: str,
                edited_payload: dict | None = None) -> Approval:
         a = self._expire_if_due(self.store.get_approval(approval_id))
-        if a.payload_hash != payload_hash:
+        requested = self._requested.get(approval_id)
+        if a.payload_hash != payload_hash or (requested is not None and (
+                requested != payload_hash or hash_payload(a.payload) != requested)):
             raise MisesError(ErrorCode.STALE_VERSION,
                              "approval payload changed since the card was shown",
                              hint="refresh the approval card")
@@ -76,8 +102,13 @@ class ApprovalService:
         fields: dict = {"decided_by": decided_by, "decided_at": time.time()}
         if approve and edited_payload is not None:
             fields["edited_payload"] = edited_payload
-        self.store.cas_approval(approval_id, from_status="pending",
-                                to_status="approved" if approve else "rejected", **fields)
+        if approve:
+            # recorded before the row changes, so a waiter woken by it can verify the decision
+            self._decided[approval_id] = hash_payload(
+                edited_payload if edited_payload is not None else a.payload)
+        if not self.store.cas_approval(approval_id, from_status="pending",
+                                       to_status="approved" if approve else "rejected", **fields):
+            self._decided.pop(approval_id, None)
         self._wake(approval_id)
         return self.store.get_approval(approval_id)
 
@@ -88,6 +119,11 @@ class ApprovalService:
             raise MisesError(ErrorCode.NEEDS_APPROVAL, "unknown approval") from None
         if a.status != "approved":
             raise MisesError(ErrorCode.NEEDS_APPROVAL, f"approval is {a.status}, not approved")
+        if not self._decided_here(a):
+            self._reject_untrusted(a)
+            raise MisesError(ErrorCode.NEEDS_APPROVAL,
+                             "approval was not decided through Mises; ignored",
+                             hint="request a new approval")
         if time.time() >= a.expires_at:
             self.store.cas_approval(approval_id, from_status="approved", to_status="expired")
             raise MisesError(ErrorCode.NEEDS_APPROVAL, "approval expired",

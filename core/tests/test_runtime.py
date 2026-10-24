@@ -242,3 +242,54 @@ async def test_cancel_external_run(tmp_path):
     rid = rt.create_external_run("codex", provider="openai", model="gpt-x")
     rt.cancel(rid)
     assert rt.store.get_run(rid).status == "cancelled"
+
+
+def _dead_pid() -> int:
+    import subprocess
+    p = subprocess.Popen(["/usr/bin/true"])
+    p.wait()
+    return p.pid
+
+
+async def test_restart_fails_orphaned_runs_and_releases_reservations(tmp_path):
+    # I1: a run left "running" by a crashed process is failed (interrupted) on the next start
+    rt, _, _ = make(tmp_path, [])
+    orphan = rt.store.create_run("designer", "fake", "m", "t")
+    rt.store.create_policy(orphan.id, ["*"], ["*"], Caps(), list(C))
+    rt.store._db.execute("UPDATE runs SET owner_pid=? WHERE id=?", (_dead_pid(), orphan.id))
+    legacy = rt.store.create_run("designer", "fake", "m", "t")
+    rt.store._db.execute("UPDATE runs SET owner_pid=NULL WHERE id=?", (legacy.id,))
+    alive = rt.create_external_run("codex", provider="p", model="m")  # this process: live
+    rt.store.ledger_reserve("local", orphan.id, "GET /x", 5, "k1")
+    rt.store.ledger_reserve("local", alive, "GET /y", 1, "k2")
+    assert rt.store.ledger_used("local", since=0) == 6
+    rt2, _, _ = make(tmp_path, [])
+    for rid in (orphan.id, legacy.id):
+        assert rt2.store.get_run(rid).status == "failed"
+        last = rt2.store.steps(rid)[-1]
+        assert last.kind == StepKind.ERROR and last.payload["stop_reason"] == "interrupted"
+    assert rt2.store.get_run(alive).status == "running"     # owned by a live process
+    assert rt2.store.ledger_used("local", since=0) == 1
+
+
+async def test_outer_cancel_publishes_run_finished(tmp_path):
+    rt, _, _ = make(tmp_path, [])
+
+    @tool("hang", description="d", safety=C.READ)
+    async def hang(ctx, args: In) -> ToolOutput:
+        await asyncio.sleep(30)
+        return ToolOutput(summary="")
+    rt.registry.register(hang)
+    rt, fake, _ = rt, FakeProvider([[ToolCall(id="c1", name="hang", input={}),
+                                     Done(stop_reason="tool_use")]]), None
+    rt.provider_resolver = lambda ref: (fake, "fake-model")
+    sub = rt.events.subscribe()
+    rid = await rt.start_run("designer", "x")
+    while not rt.store.steps(rid, [StepKind.TOOL_CALL]):
+        await asyncio.sleep(0.01)
+    rt._runs[rid].task.cancel()                       # e.g. event loop shutdown
+    with pytest.raises(asyncio.CancelledError):
+        await rt._runs[rid].task
+    ev = await next_event(sub, "run_finished")
+    assert ev.run_id == rid and ev.data["status"] == "cancelled"
+    assert rt.store.get_run(rid).status == "cancelled"

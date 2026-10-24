@@ -192,8 +192,21 @@ class EventRenderer:
         self.console.print(Panel(Group(*body), title=f"#{n} {c.name}", border_style="dim"))
 
     # ---- approvals
+    def _requester(self, run_id: str | None) -> str:
+        """`<agent> · run <id> · <task excerpt>` so parallel subagents' cards are told apart."""
+        if not run_id:
+            return "unknown run"
+        try:
+            run = self.runtime.store.get_run(run_id)
+        except KeyError:
+            return f"run {run_id}"
+        task = " ".join(run.task.split())
+        task = task if len(task) <= 60 else task[:59] + "…"
+        return f"{run.agent} · run {run_id}" + (f" · {task}" if task else "")
+
     def _approval_panel(self, d: dict, payload: dict, edited: bool) -> None:
-        parts: list[Any] = [Text(f"action: {d.get('action')}", style="bold"),
+        parts: list[Any] = [Text(f"requested by: {self._requester(d.get('run_id'))}"),
+                            Text(f"action: {d.get('action')}", style="bold"),
                             Text(short_json(payload))]
         if edited:
             parts.append(Text("(edited payload)", style="yellow"))

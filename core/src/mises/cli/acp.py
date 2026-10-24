@@ -42,9 +42,11 @@ async def run_acp(runtime, spec: AcpAgentSpec, prompt: str | None, *, console: C
     session = None
     code = 0
     try:
-        port, token, handle = await serve_async(runtime)
-        session = AcpSession(runtime, spec, run_id, mcp_url=f"http://127.0.0.1:{port}/mcp",
-                             mcp_token=token)
+        # embedded server: never touch server.json (a `mises serve` may own it); the agent
+        # gets only the MCP-only token, and decisions are made in this process
+        _port, _token, handle = await serve_async(runtime, write_server_json=False)
+        session = AcpSession(runtime, spec, run_id, mcp_url=handle.mcp_url,
+                             mcp_token=handle.mcp_token)
         await session.start()
         console.print(f"mises acp · {spec.name} · run {run_id}")
 

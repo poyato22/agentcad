@@ -171,3 +171,53 @@ def test_bind_localhost_only(rt, home):
     finally:
         stop(port)
     assert not (home / "server.json").exists()
+
+
+MCP_TOKEN = "mcp-only-token-456"
+MCP_AUTH = {"Authorization": f"Bearer {MCP_TOKEN}"}
+
+
+@pytest.fixture
+def split_client(rt):
+    with TestClient(create_app(rt, TOKEN, mcp_token=MCP_TOKEN), base_url="http://127.0.0.1") as c:
+        yield c
+
+
+def test_mcp_token_limited_to_mcp_and_health(split_client, rt):
+    # C2a: the token handed to agents cannot decide approvals, answer questions or drive runs
+    c = split_client
+    a = _pending_approval(rt)
+    assert c.get("/health", headers=MCP_AUTH).status_code == 200
+    for method, path, body in [
+            ("post", "/approvals/ap1/decide", {"payload_hash": a.payload_hash, "approve": True}),
+            ("post", "/questions/q1/answer", {"text": "yes"}),
+            ("get", "/runs", None), ("post", "/runs", {"agent": "designer", "prompt": "x"}),
+            ("post", "/runs/external", {"agent": "a", "provider": "p", "model": "m"}),
+            ("post", f"/runs/{a.run_id}/cancel", None), ("post", "/runs/cancel_all", None),
+            ("get", "/approvals", None), ("get", "/status", None), ("get", "/parts", None)]:
+        kw = {"json": body} if body is not None else {}
+        r = getattr(c, method)(path, headers=MCP_AUTH, **kw)
+        assert r.status_code == 403, (path, r.status_code)
+    assert rt.store.get_approval("ap1").status == "pending"
+    with c.websocket_connect(f"/events?token={MCP_TOKEN}") as ws:
+        with pytest.raises(WebSocketDisconnect) as e:
+            ws.receive_json()
+    assert e.value.code == 4403
+    # the admin token still works everywhere
+    r = c.post("/approvals/ap1/decide", headers=AUTH,
+               json={"payload_hash": a.payload_hash, "approve": True})
+    assert r.status_code == 200 and r.json()["status"] == "approved"
+    assert c.get("/runs", headers=AUTH).status_code == 200
+
+
+def test_mcp_token_reaches_mcp_endpoint(split_client, rt):
+    hdrs = {**MCP_AUTH, "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream"}
+    r = split_client.post("/mcp", headers=hdrs,
+                          json={"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}})
+    assert r.status_code == 400 and r.json()["error"] == "invalid_input"  # past auth: no run header
+
+
+def test_tokens_must_differ(rt):
+    with pytest.raises(ValueError):
+        create_app(rt, TOKEN, mcp_token=TOKEN)

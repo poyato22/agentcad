@@ -51,3 +51,21 @@ async def test_live_events_ws_streams_run_events(rt, tmp_path, monkeypatch):
 async def test_serve_async_rejects_host(rt):
     with pytest.raises(TypeError):
         await serve_async(rt, host="0.0.0.0")
+
+
+async def test_serve_async_without_server_json_keeps_existing(rt):
+    # M7: `mises acp` must not clobber (or delete) a running `mises serve`'s server.json
+    info_path = rt.home / "server.json"
+    info_path.write_text(json.dumps({"port": 1, "token": "other", "pid": 1}))
+    port, token, handle = await serve_async(rt, write_server_json=False)
+    try:
+        assert json.loads(info_path.read_text())["token"] == "other"
+        assert handle.mcp_token and handle.mcp_token != token
+        async with httpx2.AsyncClient(base_url=f"http://127.0.0.1:{port}") as http:
+            r = await http.get("/runs", headers={"Authorization": f"Bearer {handle.mcp_token}"})
+            assert r.status_code == 403
+            r = await http.get("/runs", headers={"Authorization": f"Bearer {token}"})
+            assert r.status_code == 200
+    finally:
+        await handle.stop()
+    assert json.loads(info_path.read_text())["token"] == "other"

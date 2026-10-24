@@ -39,13 +39,25 @@ class Gate:
         try:
             out = await self._run(run_id, tool_name, raw_input, call_id, Path(workdir))
         except MisesError as e:
-            self.store.append_step(run_id, StepKind.ERROR,
-                                   {"call_id": call_id, "name": tool_name, **e.to_dict()})
-            self.events.publish(Event(type="tool_result", run_id=run_id,
-                                      data={"call_id": call_id, "name": tool_name, "ok": False,
-                                            **e.to_dict()}))
+            self._error(run_id, tool_name, call_id, e)
+            raise
+        except asyncio.CancelledError:
+            # every tool_call Step gets an outcome Step, also when the run is cancelled
+            self._error(run_id, tool_name, call_id,
+                        MisesError(ErrorCode.CANCELLED, "call cancelled before it finished"))
+            raise
+        except Exception as e:
+            self._error(run_id, tool_name, call_id,
+                        MisesError(ErrorCode.TOOL_FAILED, f"{type(e).__name__}: {e}"))
             raise
         return out
+
+    def _error(self, run_id: str, name: str, call_id: str, e: MisesError) -> None:
+        self.store.append_step(run_id, StepKind.ERROR, {"call_id": call_id, "name": name,
+                                                        **e.to_dict()})
+        self.events.publish(Event(type="tool_result", run_id=run_id,
+                                  data={"call_id": call_id, "name": name, "ok": False,
+                                        **e.to_dict()}))
 
     async def _run(self, run_id: str, name: str, raw_input: dict, call_id: str,
                    workdir: Path) -> ToolOutput:
@@ -79,10 +91,10 @@ class Gate:
             payload = args.model_dump()
 
         cacheable = t.safety != SafetyClass.READ                                 # 7
-        # local_mutate replays by input; Onshape writes and irreversible calls dedupe only a
-        # retry of the same call, so a new call with identical input really runs again.
-        scope = [call_id] if t.safety in (SafetyClass.ONSHAPE_MUTATE, SafetyClass.IRREVERSIBLE) else []
-        key = sha256_hex(canonical_json([run_id, name, payload, *scope]))
+        # The cache only dedupes a retry of the SAME call (same call_id). A new call with
+        # identical input really runs again: state may have changed in between (e.g. set 20,
+        # set 10, set 20), and a re-run verifier must give a fresh verdict.
+        key = sha256_hex(canonical_json([run_id, name, payload, call_id]))
         if cacheable:
             hit = self.store.cache_get(key)
             if hit is not None:
@@ -101,7 +113,8 @@ class Gate:
             raise MisesError(ErrorCode.TOOL_FAILED, f"{type(e).__name__}: {e}") from None
 
         out = self._spill(out, workdir, call_id)                                 # 9
-        if cacheable:                                                            # 10
+        if cacheable and out.ok:                                                 # 10
+            # ok=False is never cached: a retry of a failed call must really run again
             self.store.cache_put(key, out.model_dump(mode="json"))
         self._finish(run_id, name, call_id, out)
         return out
@@ -121,17 +134,27 @@ class Gate:
             raise MisesError(ErrorCode.TOOL_FAILED, f"{t.name} preview must return a dict")
         return deltas
 
+    @staticmethod
+    def _norm_scope(s: Any) -> Any:
+        # Onshape ids are hex and case-insensitive; parse_url lowercases them
+        return s.lower() if isinstance(s, str) and s.lower().startswith("onshape:") else s
+
     def _check_scope(self, t: ToolDef, args: Any, policy) -> None:
-        if not t.scope_arg:
+        if t.scope_keys is not None:
+            keys, label = list(t.scope_keys(args)), "scope"
+        elif t.scope_arg:
+            keys, label = [getattr(args, t.scope_arg, None)], t.scope_arg
+        else:
             return
-        value = getattr(args, t.scope_arg, None)
         allowed = set(policy.edit_scope)
         if t.safety == SafetyClass.READ:
             allowed |= set(policy.read_scope)
-        if "*" in allowed or value in allowed:
+        allowed = {self._norm_scope(a) for a in allowed}
+        if "*" in allowed or any(self._norm_scope(k) in allowed for k in keys):
             return
+        shown = keys[0] if t.scope_keys is None else ", ".join(map(str, keys))
         raise MisesError(ErrorCode.OUT_OF_SCOPE,
-                         f"{t.scope_arg}={value!r} is outside this run's scope",
+                         f"{label}={shown!r} is outside this run's scope",
                          hint="ask the user to widen the scope")
 
     def _check_budget(self, t: ToolDef, run_id: str, policy) -> None:
