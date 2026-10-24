@@ -30,6 +30,12 @@ function armed() {
   vi.spyOn(performance, "now").mockImplementation(() => realNow() + offset);
 }
 
+/** A mouse click: pointerdown then a single click (detail 1). */
+function tap(el: Element, detail = 1) {
+  fireEvent.pointerDown(el);
+  fireEvent.click(el, { detail });
+}
+
 function mount(a: Approval = pending(), runLabel = "designer · stiffen upright bracket") {
   actions.upsertApproval(a);
   return render(<ApprovalCard approval={a} runLabel={runLabel} />);
@@ -89,7 +95,7 @@ describe("ApprovalCard", () => {
   it("merge_click_sends_approve_true_with_hash", async () => {
     mount();
     armed();
-    fireEvent.click(screen.getByRole("button", { name: /^Merge/ }));
+    tap(screen.getByRole("button", { name: /^Merge/ }));
     await waitFor(() => expect(decideCalls()).toHaveLength(1));
     const call = decideCalls()[0];
     expect(call.path).toBe(`/approvals/${AID}/decide`);
@@ -103,7 +109,7 @@ describe("ApprovalCard", () => {
   it("reject_and_keep_send_approve_false", async () => {
     mount();
     armed();
-    fireEvent.click(screen.getByRole("button", { name: /^Keep branch/ }));
+    tap(screen.getByRole("button", { name: /^Keep branch/ }));
     await waitFor(() => expect(decideCalls()).toHaveLength(1));
     expect(decideCalls()[0].body).toEqual({ payload_hash: pending().payload_hash, approve: false });
     await waitFor(() => expect(document.querySelector("[data-card]")?.textContent).toMatch(/kept branch · rejected by local-user/));
@@ -113,7 +119,7 @@ describe("ApprovalCard", () => {
     resetApprovalUi();
     mount(pending());
     armed();
-    fireEvent.click(screen.getByRole("button", { name: /^Reject/ }));
+    tap(screen.getByRole("button", { name: /^Reject/ }));
     await waitFor(() => expect(decideCalls()).toHaveLength(1));
     expect(decideCalls()[0].body).toEqual({ payload_hash: pending().payload_hash, approve: false });
     await waitFor(() => expect(document.querySelector("[data-card]")?.textContent).toMatch(/rejected by local-user/));
@@ -140,7 +146,7 @@ describe("ApprovalCard", () => {
 
   it("click_within_400ms_of_mount_is_ignored", async () => {
     mount();
-    fireEvent.click(screen.getByRole("button", { name: /^Merge/ }));
+    tap(screen.getByRole("button", { name: /^Merge/ }));
     await new Promise((r) => setTimeout(r, 30));
     expect(decideCalls()).toEqual([]);
   });
@@ -149,18 +155,65 @@ describe("ApprovalCard", () => {
     mount();
     armed();
     const btn = screen.getByRole("button", { name: /^Merge/ });
-    fireEvent.click(btn);
-    fireEvent.click(btn);
-    fireEvent.click(screen.queryByRole("button", { name: /^Reject/ }) ?? btn);
+    tap(btn);
+    tap(btn);
+    tap(screen.queryByRole("button", { name: /^Reject/ }) ?? btn);
     await waitFor(() => expect(approvals.value.get(AID)?.status).toBe("approved"));
     await new Promise((r) => setTimeout(r, 30));
     expect(decideCalls()).toHaveLength(1);
   });
 
+  it("real_double_click_second_click_never_counts", async () => {
+    mount();
+    armed();
+    const btn = screen.getByRole("button", { name: /^Merge/ });
+    // first click lands while a press is still being judged; only the detail-2 click arrives
+    fireEvent.pointerDown(btn);
+    fireEvent.click(btn, { detail: 2 });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(decideCalls()).toEqual([]);
+  });
+
+  it("mouse_press_started_before_hash_change_does_not_count", async () => {
+    const a = pending();
+    mount(a);
+    armed();
+    const btn = screen.getByRole("button", { name: /^Merge/ });
+    fireEvent.pointerDown(btn);
+    armed();
+    actions.upsertApproval({ ...a, payload_hash: "abcdef01".padEnd(64, "9") });
+    await waitFor(() => expect(document.querySelector("[data-hash]")?.textContent).toBe("hash abcdef01"));
+    armed();
+    fireEvent.click(btn, { detail: 1 });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(decideCalls()).toEqual([]);
+    // a fresh press after the change counts
+    tap(btn);
+    await waitFor(() => expect(decideCalls()).toHaveLength(1));
+  });
+
+  it("click_without_pointerdown_does_not_count", async () => {
+    mount();
+    armed();
+    const btn = screen.getByRole("button", { name: /^Merge/ });
+    fireEvent.click(btn, { detail: 1 }); // no press on this button
+    fireEvent.pointerDown(btn);
+    fireEvent.click(btn, { detail: 0 }); // keyboard-style activation
+    fireEvent.pointerDown(screen.getByRole("button", { name: /^Reject/ }));
+    fireEvent.click(btn, { detail: 1 }); // pressed on another button
+    await new Promise((r) => setTimeout(r, 30));
+    expect(decideCalls()).toEqual([]);
+  });
+
+  it("merge_card_lists_both_approve_keys", () => {
+    mount();
+    expect(screen.getByRole("button", { name: /^Merge/ }).getAttribute("aria-keyshortcuts")).toBe("m a");
+  });
+
   it("buttons_disabled_while_in_flight", async () => {
     mount();
     armed();
-    fireEvent.click(screen.getByRole("button", { name: /^Merge/ }));
+    tap(screen.getByRole("button", { name: /^Merge/ }));
     for (const name of [/^Merge/, /^Keep branch/, /^Reject/]) {
       expect((screen.getByRole("button", { name }) as HTMLButtonElement).disabled).toBe(true);
     }
@@ -174,7 +227,7 @@ describe("ApprovalCard", () => {
     const changed: Approval = { ...shown, payload: { ...shown.payload, summary: "stiffen upright, 3 ribs" }, payload_hash: "77aa55cc".padEnd(64, "0"), deltas: { ...shown.deltas, summary: "3 ribs now" } };
     core.state.approvals.set(AID, changed);
     armed();
-    fireEvent.click(screen.getByRole("button", { name: /^Merge/ }));
+    tap(screen.getByRole("button", { name: /^Merge/ }));
     await waitFor(() => expect(document.querySelector("[data-card]")?.textContent).toContain("proposal changed — review again"));
     const card = document.querySelector("[data-card]") as HTMLElement;
     expect(card.textContent).toContain("hash 77aa55cc");
@@ -187,12 +240,12 @@ describe("ApprovalCard", () => {
     expect(core.state.approvals.get(AID)?.status).toBe("pending");
     // the refreshed card is re-armed: an immediate click does nothing
     vi.spyOn(performance, "now").mockImplementation(() => realNow() + 10_000);
-    fireEvent.click(screen.getByRole("button", { name: /^Merge/ }));
+    tap(screen.getByRole("button", { name: /^Merge/ }));
     await new Promise((r) => setTimeout(r, 30));
     expect(decideCalls()).toHaveLength(1);
     // after review, an explicit click approves the new payload
     vi.spyOn(performance, "now").mockImplementation(() => realNow() + 20_000);
-    fireEvent.click(screen.getByRole("button", { name: /^Merge/ }));
+    tap(screen.getByRole("button", { name: /^Merge/ }));
     await waitFor(() => expect(decideCalls()).toHaveLength(2));
     expect(decideCalls()[1].body).toEqual({ payload_hash: changed.payload_hash, approve: true });
   });
@@ -203,7 +256,7 @@ describe("ApprovalCard", () => {
     for (const name of [/^Merge/, /^Keep branch/, /^Reject/]) {
       const b = screen.getByRole("button", { name }) as HTMLButtonElement;
       expect(b.disabled).toBe(true);
-      fireEvent.click(b);
+      tap(b);
     }
     expect(document.querySelector("[data-card]")?.textContent).toContain("expired");
     await new Promise((r) => setTimeout(r, 30));
@@ -246,7 +299,7 @@ describe("ApprovalCard", () => {
     core.state.approvals.set(AID, { ...pending(), status: "rejected", decided_by: "local-user", decided_at: Date.now() / 1000 });
     mount({ ...pending(), status: "pending" });
     armed();
-    fireEvent.click(screen.getByRole("button", { name: /^Merge/ }));
+    tap(screen.getByRole("button", { name: /^Merge/ }));
     await waitFor(() => expect(document.querySelector("[data-card]")?.textContent).toMatch(/rejected by local-user/));
     expect(decideCalls()).toHaveLength(1);
   });

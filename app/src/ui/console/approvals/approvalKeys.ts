@@ -26,28 +26,50 @@ export function isTextInput(el: EventTarget | null): boolean {
   return el instanceof HTMLElement && el.isContentEditable;
 }
 
-export function keyToAction(e: KeyboardEvent, card: HTMLElement, armedAt: number, now: number): ApprovalAction | null {
-  if (!isTrustedKey(e)) return null;
-  if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return null;
+/** Every key rule except the key map: trusted, not repeat, unmodified, focus in card, armed, paste-quiet, not typing. */
+export function keyGuardsPass(e: KeyboardEvent, card: HTMLElement, armedAt: number, now: number): boolean {
+  if (!isTrustedKey(e)) return false;
+  if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return false;
   const focused = card.ownerDocument.activeElement;
-  if (!focused || !card.contains(focused)) return null;
-  if (now - armedAt < ARM_MS) return null;
-  if (msSinceLastPaste() < PASTE_QUIET_MS) return null;
-  if (isTextInput(e.target) || isTextInput(focused)) return null;
+  if (!focused || !card.contains(focused)) return false;
+  if (now - armedAt < ARM_MS) return false;
+  if (msSinceLastPaste() < PASTE_QUIET_MS) return false;
+  return !(isTextInput(e.target) || isTextInput(focused));
+}
+
+export function keyToAction(e: KeyboardEvent, card: HTMLElement, armedAt: number, now: number): ApprovalAction | null {
+  if (!keyGuardsPass(e, card, armedAt, now)) return null;
   return typeof e.key === "string" ? KEY_ACTIONS[e.key.toLowerCase()] ?? null : null;
 }
 
-/** A real user activation (mouse click, or Enter/Space on a focused button): never `el.click()`. */
+/** Enter / Space: the keys that natively activate a focused button. */
+export function isActivationKey(e: KeyboardEvent): boolean {
+  return e.key === "Enter" || e.key === " " || e.key === "Spacebar";
+}
+
+/** A real user activation: never `el.click()` or a dispatched event. */
 export function isTrustedActivation(e: Event): boolean {
   return e.isTrusted === true;
 }
 
 /**
  * Timing half of the click rule: armed, and not the 2nd+ click of a multi-click (so a double
- * click can't land its second click on a card that just refreshed). The card also requires
+ * click can't land its second click on a card that just refreshed). Callers also require
  * isTrustedActivation(e).
  */
 export function clickArmed(e: MouseEvent, armedAt: number, now: number): boolean {
   if (now - armedAt < ARM_MS) return false;
   return !(e.detail > 1);
+}
+
+/**
+ * The full rule for a decision button's click: armed, exactly one mouse click (native keyboard
+ * activation has detail 0; Enter/Space are handled at keydown by keyGuardsPass instead), and
+ * its pointerdown happened after the card armed for the current hash, so a press that started
+ * before the card changed never counts. Callers also require isTrustedActivation(e).
+ */
+export function decisionClickCounts(e: MouseEvent, pointerDownAt: number | null, armedAt: number, now: number): boolean {
+  if (!clickArmed(e, armedAt, now)) return false;
+  if (e.detail !== 1) return false;
+  return pointerDownAt !== null && pointerDownAt >= armedAt;
 }

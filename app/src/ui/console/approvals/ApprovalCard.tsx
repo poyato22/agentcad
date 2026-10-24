@@ -8,7 +8,9 @@ import type { Approval } from "../../../api/types";
 import { fmtElapsed, fmtHM, fmtSigned, shortHash } from "../../../lib/format";
 import { actions, approvals, steps } from "../../../state/store";
 import { Button } from "../../common/Button";
-import { clickArmed, isTrustedActivation, keyToAction, type ApprovalAction } from "./approvalKeys";
+import {
+  decisionClickCounts, isActivationKey, isTrustedActivation, keyGuardsPass, keyToAction, type ApprovalAction,
+} from "./approvalKeys";
 import { canDecide, deciding, decide, isExpired, keptBranch, notices, retired, type Decision } from "./decide";
 import { evidenceFor } from "./evidence";
 import "./approvals.css";
@@ -75,6 +77,8 @@ export function ApprovalCard(props: { approval: Approval; runLabel: string }): J
   // armed ARM_MS after mount and again whenever the payload (hash) changes
   const arm = useRef({ hash: a.payload_hash, at: performance.now() });
   if (arm.current.hash !== a.payload_hash) arm.current = { hash: a.payload_hash, at: performance.now() };
+  // last trusted pointerdown on a decision button
+  const press = useRef<{ action: Decision; at: number } | null>(null);
 
   const pending = a.status === "pending";
   const nowS = useNowS(pending);
@@ -103,17 +107,43 @@ export function ApprovalCard(props: { approval: Approval; runLabel: string }): J
     void decide(a, action as Decision);
   };
 
+  // Mouse: a click counts only if its pointerdown landed on the same button after the card armed
+  // for the current hash.
+  const onPress = (action: Decision) => (e: PointerEvent) => {
+    press.current = isTrustedActivation(e) ? { action, at: performance.now() } : null;
+  };
   const onButton = (action: Decision) => (e: MouseEvent) => {
-    if (!isTrustedActivation(e) || !clickArmed(e, arm.current.at, performance.now())) return;
+    const pd = press.current;
+    press.current = null;
+    const pressedAt = pd && pd.action === action ? pd.at : null;
+    if (!isTrustedActivation(e) || !decisionClickCounts(e, pressedAt, arm.current.at, performance.now())) return;
     choose(action);
   };
 
+  /** The decision button (Merge/Approve, Keep branch, Reject) a key event is aimed at, if any. */
+  const decisionTarget = (e: KeyboardEvent): Decision | null => {
+    const t = e.target instanceof Element ? e.target.closest("[data-decision]") : null;
+    return t && ref.current?.contains(t) ? (t.getAttribute("data-decision") as Decision) : null;
+  };
+
+  const onKeyUp = (e: KeyboardEvent) => {
+    // Space activates a button on keyup: never let that native activation happen
+    if (isActivationKey(e) && decisionTarget(e)) e.preventDefault();
+  };
+
   const onKeyDown = (e: KeyboardEvent) => {
-    // a held key never acts: keyToAction drops repeats, and a held Enter/Space must not
-    // auto-click the focused button over and over
-    if (e.repeat && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); return; }
     const card = ref.current;
     if (!card) return;
+    const target = decisionTarget(e);
+    if (target && isActivationKey(e)) {
+      // Enter/Space on a decision button never use the browser's activation (it would skip the
+      // paste, modifier and repeat rules, and Space would be judged at release): they go
+      // through the same key guards as m/k/r, checked now, at keydown.
+      e.preventDefault();
+      e.stopPropagation();
+      if (keyGuardsPass(e, card, arm.current.at, performance.now())) choose(target);
+      return;
+    }
     const action = keyToAction(e, card, arm.current.at, performance.now());
     if (!action) return;
     e.preventDefault();
@@ -128,7 +158,7 @@ export function ApprovalCard(props: { approval: Approval; runLabel: string }): J
   return (
     <div ref={ref} data-card data-approval={a.id} data-status={expired ? "expired" : a.status}
       class={expired || isRetired ? "acard acard-inert" : "acard acard-live"} tabIndex={0} role="group"
-      aria-label={`Needs you: ${a.action}`} onKeyDown={onKeyDown}>
+      aria-label={`Needs you: ${a.action}`} onKeyDown={onKeyDown} onKeyUp={onKeyUp}>
       <div class="acard-head">
         <span class="acard-flag">▲ NEEDS YOU</span>
         <span class="acard-action text">{a.action}</span>
@@ -157,15 +187,18 @@ export function ApprovalCard(props: { approval: Approval; runLabel: string }): J
       )}
       {notice && <div class={`acard-notice tone-${notice.tone}`} role="status">{notice.text}</div>}
       <div class="acard-buttons">
-        <Button variant="primary" disabled={disabled} onClick={onButton("approve")}
-          aria-keyshortcuts={isMerge ? "m" : "a"}>
+        {/* m and a both approve on every card; the merge card lists both */}
+        <Button variant="primary" disabled={disabled} data-decision="approve" onPointerDown={onPress("approve")}
+          onClick={onButton("approve")} aria-keyshortcuts={isMerge ? "m a" : "a m"}>
           {isMerge ? "Merge" : "Approve"} <kbd>{isMerge ? "m" : "a"}</kbd>
         </Button>
         <Button onClick={() => choose("diff")} aria-pressed={showDiff} aria-keyshortcuts="d">Diff <kbd>d</kbd></Button>
         {isMerge && (
-          <Button disabled={disabled} onClick={onButton("keep_branch")} aria-keyshortcuts="k">Keep branch <kbd>k</kbd></Button>
+          <Button disabled={disabled} data-decision="keep_branch" onPointerDown={onPress("keep_branch")}
+            onClick={onButton("keep_branch")} aria-keyshortcuts="k">Keep branch <kbd>k</kbd></Button>
         )}
-        <Button disabled={disabled} onClick={onButton("reject")} aria-keyshortcuts="r">Reject <kbd>r</kbd></Button>
+        <Button disabled={disabled} data-decision="reject" onPointerDown={onPress("reject")}
+          onClick={onButton("reject")} aria-keyshortcuts="r">Reject <kbd>r</kbd></Button>
       </div>
       {showDiff && (
         <div class="acard-diff">

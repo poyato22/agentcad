@@ -40,7 +40,8 @@ function mount(): HTMLElement {
 }
 
 beforeEach(async () => {
-  clock = 100_000;
+  // monotonic across tests: the paste tracker keeps the last paste time between tests
+  clock += 100_000;
   vi.spyOn(performance, "now").mockImplementation(() => clock);
   stopPastes = trackPastes(document);
   core = await startFakeCore({ port: 0, token: "t", scenario: "approvals" });
@@ -161,6 +162,91 @@ describe("ApprovalCard keys", () => {
     Object.defineProperty(paste, "clipboardData", { value: { getData: () => "m\n", types: ["text/plain"] } });
     card.dispatchEvent(paste);
     fireEvent.input(card, { data: "m\n" });
+    await settle();
+    expect(decideCalls()).toEqual([]);
+  });
+
+  it("enter_or_space_on_focused_merge_after_arming_decides_once", async () => {
+    mount();
+    clock += 500;
+    const merge = screen.getByRole("button", { name: /^Merge/ });
+    merge.focus();
+    const down = press(merge, "Enter");
+    expect(down.defaultPrevented).toBe(true);
+    await vi.waitFor(() => expect(decideCalls()).toHaveLength(1));
+    press(merge, "Enter");
+    press(merge, " ");
+    await settle();
+    expect(decideCalls()).toHaveLength(1);
+    expect(decideCalls()[0].body).toMatchObject({ approve: true });
+  });
+
+  it("space_on_focused_reject_decides_at_keydown_and_blocks_keyup_activation", async () => {
+    mount();
+    clock += 500;
+    const reject = screen.getByRole("button", { name: /^Reject/ });
+    reject.focus();
+    expect(press(reject, " ").defaultPrevented).toBe(true);
+    const up = new KeyboardEvent("keyup", { key: " ", bubbles: true, cancelable: true });
+    reject.dispatchEvent(up);
+    expect(up.defaultPrevented).toBe(true);
+    await vi.waitFor(() => expect(decideCalls()).toHaveLength(1));
+    expect(decideCalls()[0].body).toMatchObject({ approve: false });
+  });
+
+  it("enter_on_merge_within_1s_after_paste_is_ignored", async () => {
+    mount();
+    clock += 500;
+    const merge = screen.getByRole("button", { name: /^Merge/ });
+    merge.focus();
+    document.dispatchEvent(new Event("paste", { bubbles: true }));
+    clock += 500;
+    expect(press(merge, "Enter").defaultPrevented).toBe(true);
+    expect(press(merge, " ").defaultPrevented).toBe(true);
+    await settle();
+    expect(decideCalls()).toEqual([]);
+  });
+
+  it("modified_enter_on_merge_is_ignored", async () => {
+    mount();
+    clock += 500;
+    const merge = screen.getByRole("button", { name: /^Merge/ });
+    merge.focus();
+    for (const mod of ["metaKey", "shiftKey", "ctrlKey", "altKey"] as const) {
+      expect(press(merge, "Enter", { [mod]: true }).defaultPrevented).toBe(true);
+    }
+    await settle();
+    expect(decideCalls()).toEqual([]);
+  });
+
+  it("enter_on_merge_within_400ms_is_ignored", async () => {
+    mount();
+    const merge = screen.getByRole("button", { name: /^Merge/ });
+    merge.focus();
+    clock += 300;
+    expect(press(merge, "Enter").defaultPrevented).toBe(true);
+    await settle();
+    expect(decideCalls()).toEqual([]);
+  });
+
+  it("held_space_across_hash_change_never_decides", async () => {
+    mount();
+    clock += 500;
+    const merge = screen.getByRole("button", { name: /^Merge/ });
+    merge.focus();
+    // the proposal changes while Space is already held (its first keydown came before this card's arm)
+    const a = core.state.approvals.get(AID) as Approval;
+    const changed = { ...a, payload_hash: "77aa55cc".padEnd(64, "0") };
+    core.state.approvals.set(AID, changed);
+    actions.upsertApproval(changed);
+    await vi.waitFor(() => expect(document.querySelector("[data-hash]")?.textContent).toBe("hash 77aa55cc"));
+    press(merge, " ");
+    clock += 600;
+    press(merge, " ", { repeat: true });
+    press(merge, " ", { repeat: true });
+    const up = new KeyboardEvent("keyup", { key: " ", bubbles: true, cancelable: true });
+    merge.dispatchEvent(up);
+    expect(up.defaultPrevented).toBe(true);
     await settle();
     expect(decideCalls()).toEqual([]);
   });

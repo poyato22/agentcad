@@ -23,6 +23,7 @@ async function mountCard(page: Page, approvalId = AID): Promise<void> {
     const preact = await load(m[1]);
     const store = await load("/src/state/store.ts");
     const { ApprovalCard } = await load("/src/ui/console/approvals/ApprovalCard.tsx");
+    const { QuestionCard } = await load("/src/ui/console/approvals/QuestionCard.tsx");
     const host = document.createElement("div");
     host.id = "card-host";
     host.style.cssText = "position:fixed;left:260px;top:60px;width:420px;z-index:50;background:#111";
@@ -34,7 +35,9 @@ async function mountCard(page: Page, approvalId = AID): Promise<void> {
     document.body.append(host);
     function Host() {
       const a = store.approvals.value.get(id);
-      return a ? preact.h(ApprovalCard, { approval: a, runLabel: "designer · stiffen upright bracket" }) : null;
+      const label = "designer · stiffen upright bracket";
+      const qs = [...store.questions.value.values()].map((q) => preact.h(QuestionCard, { key: q.question_id, question: q, runLabel: label }));
+      return preact.h("div", null, a ? preact.h(ApprovalCard, { approval: a, runLabel: label }) : null, ...qs);
     }
     preact.render(preact.h(Host, null), cardRoot);
   }, approvalId);
@@ -45,6 +48,16 @@ const card = (page: Page) => page.locator(`[data-approval="${AID}"]`);
 const decideCalls = async (fake: FakeControl) => (await fake.calls()).filter((c) => c.path.endsWith("/decide"));
 /** Gives a wrongly-sent request time to show up before asserting there is none. */
 const settle = (page: Page) => page.waitForTimeout(250);
+
+const NEW_HASH = "77aa55cc".padEnd(64, "0");
+
+/** The proposal changes in the core and the UI hears about it (approval_requested, same id). */
+async function changeProposal(fake: FakeControl): Promise<void> {
+  const res = await fetch(`${fake.url}/approvals?status=pending&run_id=${RID}`, { headers: { Authorization: `Bearer ${fake.token}` } });
+  const shown = ((await res.json()) as Approval[])[0];
+  const changed = { ...shown, payload_hash: NEW_HASH, deltas: { ...shown.deltas, summary: "merge: 3 ribs now" } };
+  await fake.emit({ type: "approval_requested", run_id: RID, data: changed as unknown as Record<string, unknown> });
+}
 
 test.beforeEach(async ({ fake, page }) => {
   await fake.reset("approvals");
@@ -195,10 +208,12 @@ test("key_ignored_within_1s_after_paste", async ({ page, fake }) => {
 });
 
 test("pasting_text_into_card_never_approves", async ({ page, fake, context }) => {
-  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  // WebKit has no clipboard permissions in Playwright: there the real ⌘V pastes an empty
+  // clipboard and the dispatched ClipboardEvent below carries the "m\n"
+  const clipboard = await context.grantPermissions(["clipboard-read", "clipboard-write"]).then(() => true, () => false);
   await mountCard(page);
   await page.waitForTimeout(ARM_WAIT_MS);
-  await page.evaluate(() => navigator.clipboard.writeText("m\n"));
+  if (clipboard) await page.evaluate(() => navigator.clipboard.writeText("m\n"));
   await card(page).focus();
   await page.keyboard.press("Meta+V");
   await page.keyboard.press("Control+V");
@@ -226,7 +241,6 @@ test("stale_hash_409_refreshes_card_without_retry", async ({ page, fake }) => {
   // the proposal changes in the core after the card was shown (no event tells the UI)
   const res = await fetch(`${fake.url}/approvals?status=pending&run_id=${RID}`, { headers: { Authorization: `Bearer ${fake.token}` } });
   const shown = ((await res.json()) as Approval[])[0];
-  const NEW_HASH = "77aa55cc".padEnd(64, "0");
   await fake.emit({ type: "test_noop", run_id: RID, data: {} }, {
     approval: { ...shown, payload_hash: NEW_HASH, deltas: { ...shown.deltas, summary: "merge: 3 ribs now" } },
   });
@@ -273,4 +287,103 @@ test("card_styles_blue_border_square_corners", async ({ page }) => {
   expect(s).toEqual({ border: "rgb(61, 139, 255)", width: "1px", radius: "0px", bg: "rgba(61, 139, 255, 0.1)" });
   const primary = await page.getByRole("button", { name: /^Merge/ }).evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(primary).toBe("rgb(61, 139, 255)");
+});
+
+// ---- fix round 1: native button activation, presses across a change, question cards
+
+test("enter_on_focused_merge_after_arming_decides_once", async ({ page, fake }) => {
+  await mountCard(page);
+  await page.waitForTimeout(ARM_WAIT_MS);
+  await page.getByRole("button", { name: /^Merge/ }).focus();
+  await page.keyboard.press("Enter");
+  await expect(card(page)).toHaveAttribute("data-status", "approved");
+  await settle(page);
+  expect((await decideCalls(fake)).map((c) => c.body)).toEqual([{ payload_hash: HASH, approve: true }]);
+});
+
+test("space_on_focused_merge_after_arming_decides_once", async ({ page, fake }) => {
+  await mountCard(page);
+  await page.waitForTimeout(ARM_WAIT_MS);
+  await page.getByRole("button", { name: /^Merge/ }).focus();
+  await page.keyboard.press(" ");
+  await expect(card(page)).toHaveAttribute("data-status", "approved");
+  await settle(page);
+  expect(await decideCalls(fake)).toHaveLength(1);
+});
+
+test("paste_then_enter_on_focused_merge_is_ignored", async ({ page, fake }) => {
+  await mountCard(page);
+  await page.waitForTimeout(ARM_WAIT_MS);
+  await page.getByRole("button", { name: /^Merge/ }).focus();
+  await page.evaluate(() => {
+    const dt = new DataTransfer();
+    dt.setData("text/plain", "\n");
+    document.activeElement?.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true }));
+  });
+  await page.keyboard.press("Enter");
+  await page.keyboard.press(" ");
+  await settle(page);
+  expect(await decideCalls(fake)).toEqual([]);
+});
+
+test("modified_enter_on_focused_merge_is_ignored", async ({ page, fake }) => {
+  await mountCard(page);
+  await page.waitForTimeout(ARM_WAIT_MS);
+  await page.getByRole("button", { name: /^Merge/ }).focus();
+  for (const k of ["Meta+Enter", "Shift+Enter", "Alt+Enter", "Control+Enter", "Shift+Space"]) await page.keyboard.press(k);
+  await settle(page);
+  expect(await decideCalls(fake)).toEqual([]);
+  await expect(card(page)).toHaveAttribute("data-status", "pending");
+});
+
+test("held_space_across_hash_change_never_decides", async ({ page, fake }) => {
+  await mountCard(page);
+  await page.getByRole("button", { name: /^Merge/ }).focus();
+  await page.keyboard.down(" ");
+  await changeProposal(fake);
+  await expect(card(page)).toContainText("hash 77aa55cc");
+  await page.waitForTimeout(ARM_WAIT_MS + 100);
+  await page.keyboard.down(" "); // auto-repeat while held
+  await page.keyboard.up(" ");
+  await settle(page);
+  expect(await decideCalls(fake)).toEqual([]);
+  await expect(card(page)).toHaveAttribute("data-status", "pending");
+});
+
+test("mouse_press_across_hash_change_does_not_count", async ({ page, fake }) => {
+  await mountCard(page);
+  await page.waitForTimeout(ARM_WAIT_MS);
+  const box = await page.getByRole("button", { name: /^Merge/ }).boundingBox();
+  if (!box) throw new Error("no Merge button");
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await changeProposal(fake);
+  await expect(card(page)).toContainText("hash 77aa55cc");
+  await page.waitForTimeout(ARM_WAIT_MS + 100);
+  await page.mouse.up();
+  await settle(page);
+  expect(await decideCalls(fake)).toEqual([]);
+  // a fresh click after the change decides the new payload
+  await page.getByRole("button", { name: /^Merge/ }).click();
+  await expect(card(page)).toHaveAttribute("data-status", "approved");
+  expect((await decideCalls(fake)).map((c) => c.body)).toEqual([{ payload_hash: NEW_HASH, approve: true }]);
+});
+
+test("question_option_needs_trusted_armed_click", async ({ page, fake }) => {
+  await mountCard(page);
+  await fake.emit({ type: "question_asked", run_id: RID, data: { question_id: "q_merge_now", question: "merge now?", options: ["yes", "no"] } });
+  const q = page.locator('[data-question="q_merge_now"]');
+  await expect(q).toBeVisible();
+  await page.evaluate(() => {
+    const yes = [...document.querySelectorAll('[data-question="q_merge_now"] button')].find((b) => b.textContent === "yes") as HTMLButtonElement;
+    yes.click();
+  });
+  await settle(page);
+  expect((await fake.calls()).filter((c) => c.path.endsWith("/answer"))).toEqual([]);
+  await page.waitForTimeout(ARM_WAIT_MS);
+  await q.getByRole("button", { name: "yes" }).click();
+  await expect(q).toHaveCount(0);
+  const answers = (await fake.calls()).filter((c) => c.path.endsWith("/answer"));
+  expect(answers.map((c) => c.body)).toEqual([{ text: "yes" }]);
+  expect(await decideCalls(fake)).toEqual([]);
 });

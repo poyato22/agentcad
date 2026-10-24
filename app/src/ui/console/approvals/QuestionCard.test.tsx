@@ -1,22 +1,36 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/preact";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { startFakeCore, type FakeCore } from "../../../../test/fake-core/server";
 import { CoreClient } from "../../../api/client";
 import type { Question } from "../../../api/types";
 import { bindClient, questions, resetStore } from "../../../state/store";
 import { QuestionCard } from "./QuestionCard";
 
+// jsdom can't make trusted clicks: the trust check follows `trusted` (real-input path: e2e).
+let trusted = true;
+vi.mock("./approvalKeys", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./approvalKeys")>()),
+  isTrustedActivation: () => trusted,
+}));
+
 const QID = "q_thick_01";
 let core: FakeCore;
+let clock = 0;
 
 const answerCalls = () => core.state.calls.filter((c) => c.path.endsWith("/answer"));
 
-function mount(q: Question = core.state.questions.get(QID) as Question) {
+/** Renders the card, then moves the clock past the arm delay. */
+function mount(q: Question = core.state.questions.get(QID) as Question, arm = true) {
   questions.value = new Map([[q.question_id, q]]);
-  return render(<QuestionCard question={q} runLabel="designer · stiffen upright bracket" />);
+  const r = render(<QuestionCard question={q} runLabel="designer · stiffen upright bracket" />);
+  if (arm) clock += 500;
+  return r;
 }
 
 beforeEach(async () => {
+  trusted = true;
+  clock = 100_000;
+  vi.spyOn(performance, "now").mockImplementation(() => clock);
   core = await startFakeCore({ port: 0, token: "t", scenario: "approvals" });
   bindClient(new CoreClient({ baseUrl: core.url, wsUrl: "", token: "t", owned: false }));
 });
@@ -76,6 +90,34 @@ describe("QuestionCard", () => {
     fireEvent.click(screen.getByRole("button", { name: "2 mm" }));
     await waitFor(() => expect(document.querySelector("[data-error]")?.textContent).toContain("no open question"));
     expect((screen.getByRole("button", { name: "2 mm" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("option_click_within_400ms_is_ignored", async () => {
+    mount(undefined, false);
+    clock += 399;
+    fireEvent.click(screen.getByRole("button", { name: "2 mm" }));
+    await new Promise((r) => setTimeout(r, 30));
+    expect(answerCalls()).toEqual([]);
+    clock += 1;
+    fireEvent.click(screen.getByRole("button", { name: "2 mm" }));
+    await waitFor(() => expect(answerCalls()).toHaveLength(1));
+  });
+
+  it("untrusted_or_double_clicks_never_answer", async () => {
+    mount();
+    trusted = false;
+    fireEvent.click(screen.getByRole("button", { name: "2 mm" }));
+    fireEvent.input(screen.getByRole("textbox"), { target: { value: "yes merge" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    trusted = true;
+    fireEvent.click(screen.getByRole("button", { name: "3 mm" }), { detail: 2 });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(answerCalls()).toEqual([]);
+  });
+
+  it("duplicate_options_render_with_distinct_keys", () => {
+    mount({ question_id: "q3", run_id: "r", question: "again?", options: ["yes", "yes"] });
+    expect(screen.getAllByRole("button", { name: "yes" })).toHaveLength(2);
   });
 
   it("untrusted_text_renders_as_text", () => {
