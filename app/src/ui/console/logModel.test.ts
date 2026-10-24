@@ -153,11 +153,29 @@ describe("buildLog", () => {
     for (const kind of ["everything", "decisions", "tool_calls", "files", "errors"] as const) {
       expect(counts[kind]).toBe(buildLog({ ...base, filter: { scope: "run", kind } }).length);
     }
-    expect(counts.errors).toBe(2);
-    expect(counts.files).toBe(1);
+    // the pending approval shows under every filter (it needs the human)
+    expect(counts.errors).toBe(3);
+    expect(counts.files).toBe(2);
     expect(counts.decisions).toBe(2); // decision step + pending approval
     const tc = buildLog({ ...base, filter: { scope: "run", kind: "tool_calls" } });
-    expect(new Set(kinds(tc))).toEqual(new Set(["call", "fold", "diff"]));
+    expect(new Set(kinds(tc))).toEqual(new Set(["call", "fold", "diff", "approval"]));
+  });
+
+  it("pending_approvals_and_open_questions_show_under_every_filter", () => {
+    const s: Step[] = [toolCall("r1", "c1", "mirror_measure", {}, 100), toolResult("r1", "c1", "mirror_measure", 101)];
+    const q = { question_id: "q1", run_id: "r1", question: "which side?", options: ["left"] };
+    const base = input({
+      stepList: s, selectedRunId: "r1", runs: [run("r1")], questions: [q],
+      approvals: [approval("live", "r1"), approval("done", "r1", { status: "approved" })],
+    });
+    for (const kind of ["everything", "decisions", "tool_calls", "files", "errors"] as const) {
+      const items = buildLog({ ...base, filter: { scope: "run", kind } });
+      const keys = items.map(itemKey);
+      expect(keys, kind).toContain("a:live");
+      expect(keys, kind).toContain("q:q1");
+      // a decided card is history: it follows the filter (decisions / everything only)
+      expect(keys.includes("a:done"), kind).toBe(kind === "everything" || kind === "decisions");
+    }
   });
 
   it("errors_filter_includes_failed_tool_results", () => {

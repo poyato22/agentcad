@@ -432,9 +432,12 @@ function applyFilter(rows: Raw[], kind: LogFilter["kind"]): Raw[] {
 }
 
 function matches(i: LogItem, kind: LogFilter["kind"]): boolean {
+  // what needs the human is never filtered away: pending approvals and open questions
+  if (i.kind === "question") return true;
+  if (i.kind === "approval" && i.approval.status === "pending") return true;
   switch (kind) {
     case "everything": return true;
-    case "decisions": return i.kind === "decision" || i.kind === "approval" || i.kind === "question";
+    case "decisions": return i.kind === "decision" || i.kind === "approval"; // decided cards (open ones are above)
     case "tool_calls": return i.kind === "call" || i.kind === "fold" || i.kind === "diff" || i.kind === "file";
     case "files": return isFileItem(i);
     case "errors": return i.kind === "error" || (i.kind === "call" && i.ok === false);
