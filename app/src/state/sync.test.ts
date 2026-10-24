@@ -169,6 +169,49 @@ describe("startSync", () => {
     stop();
   });
 
+  it("stale_approvals_response_does_not_drop_new_card", async () => {
+    const appr: Approval = {
+      id: "a332e73aa8f2", run_id: RID, action: "fixture_merge", payload: {}, payload_hash: "f".repeat(64),
+      microversion: null, deltas: {}, status: "pending", expires_at: 4102444800, decided_by: null, decided_at: null, edited_payload: null,
+    };
+    const { c, client } = fakeClient(() => []);
+    let releaseStale: (v: Approval[]) => void = () => {};
+    c.pendingApprovals
+      .mockImplementationOnce(() => new Promise<Approval[]>((r) => { releaseStale = r; }))  // started before the approval existed
+      .mockImplementation(async () => [appr]);
+    const s = new FakeStream();
+    const f = frames();
+    const stop = startSync(client, s as never, { schedule: f.schedule });
+    s.state("open");
+    await f.flush();                      // fetchApprovals #1 in flight
+    s.emit({ type: "approval_requested", run_id: RID, data: appr as unknown as Record<string, unknown>, ts: 1 });
+    await f.flush();                      // card upserted; fetchApprovals marked dirty
+    expect(approvals.value.has(appr.id)).toBe(true);
+    releaseStale([]);                     // stale response: no pending approvals
+    await f.flush();
+    await f.flush();
+    expect(c.pendingApprovals).toHaveBeenCalledTimes(2);
+    expect(approvals.value.get(appr.id)?.status).toBe("pending");
+    stop();
+  });
+
+  it("run_with_no_steps_is_fetched_once", async () => {
+    const { c, client } = fakeClient(() => []);
+    const s = new FakeStream();
+    const f = frames();
+    const stop = startSync(client, s as never, { schedule: f.schedule });
+    s.state("open");
+    await f.flush();
+    await f.flush();
+    expect(steps.value.get(RID)).toEqual([]);
+    s.emit({ type: "run_finished", run_id: "zzz", data: { status: "done" }, ts: 1 }); // triggers fetchRuns again
+    await f.flush();
+    await f.flush();
+    expect(c.listRuns).toHaveBeenCalledTimes(2);
+    expect(c.steps.mock.calls.filter((x) => x[0] === RID)).toHaveLength(1);
+    stop();
+  });
+
   it("stop_unsubscribes", async () => {
     const { c, client } = fakeClient(() => []);
     const s = new FakeStream();

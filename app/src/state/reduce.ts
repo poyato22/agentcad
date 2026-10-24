@@ -85,7 +85,9 @@ function reduceUnsafe(s: AppState, e: MisesEvent): Out {
     case "approval_requested": {
       const a = approvalSchema.safeParse(d);
       if (!a.success) return { state: s, effects: [{ kind: "fetchApprovals" }, { kind: "fetchStatus" }] };
-      return { state: { ...s, approvals: setIn(s.approvals, a.data.id, a.data) }, effects: [{ kind: "fetchStatus" }] };
+      // fetchApprovals too: a fetch already in flight may predate this approval and would drop it;
+      // the runner's dirty re-run guarantees one more fetch that starts after now.
+      return { state: { ...s, approvals: setIn(s.approvals, a.data.id, a.data) }, effects: [{ kind: "fetchStatus" }, { kind: "fetchApprovals" }] };
     }
     case "question_asked": {
       const q = questionAskedSchema.safeParse(d);
@@ -130,7 +132,10 @@ export function mergeSteps(existing: readonly Step[], incoming: readonly Step[])
  * in-flight entry (in case its tool_result event was dropped).
  */
 export function applySteps(s: AppState, runId: string, incoming: readonly Step[]): AppState {
-  const prev = s.steps.get(runId) ?? [];
+  const known = s.steps.get(runId);
+  // record "fetched, zero steps" so fetchRuns doesn't keep re-queuing this run
+  if (!known && incoming.length === 0) return { ...s, steps: setIn(s.steps, runId, []) };
+  const prev = known ?? [];
   const merged = mergeSteps(prev, incoming);
   if (merged === prev) return s;
   const prevIds = new Set(prev.map((x) => x.id));
@@ -173,9 +178,19 @@ export function mergeApprovals(current: ReadonlyMap<string, Approval>, pending: 
   return out;
 }
 
+/**
+ * A run that stopped running loses its live text, in-flight calls and open questions (the core
+ * drops a pending question on cancel without emitting question_answered).
+ */
 function clearRunTransients(s: AppState, runId: string): AppState {
   let next = s;
   if (next.liveText.has(runId)) next = { ...next, liveText: deleteIn(next.liveText, runId) };
+  const qs = [...next.questions.values()].filter((q) => q.run_id === runId).map((q) => q.question_id);
+  if (qs.length) {
+    const questions = new Map(next.questions);
+    for (const id of qs) questions.delete(id);
+    next = { ...next, questions };
+  }
   const calls = [...next.inflight].filter(([, c]) => c.run_id === runId).map(([id]) => id);
   if (calls.length) {
     const inflight = new Map(next.inflight);

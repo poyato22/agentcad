@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { emptyState, mergeApprovals, mergeSteps, reduce, applySteps, type AppState } from "./reduce";
+import { applyRuns, emptyState, mergeApprovals, mergeSteps, reduce, applySteps, type AppState } from "./reduce";
 import type { AgentRun, Approval, MisesEvent, Step } from "../api/types";
 
 const RID = "b7c79a57cbb4";
@@ -65,6 +65,31 @@ describe("reduce", () => {
     const { state, effects } = reduce(withRun(), ev("approval_requested", a as unknown as Record<string, unknown>));
     expect(state.approvals.get(a.id)).toEqual(a);
     expect(effects).toContainEqual({ kind: "fetchStatus" });
+    // guarantees a fetch that starts after the approval exists (an older in-flight one may be stale)
+    expect(effects).toContainEqual({ kind: "fetchApprovals" });
+  });
+
+  it("run_finished_clears_that_runs_questions", () => {
+    let s = withRun();
+    s = reduce(s, ev("question_asked", { question_id: "q1", question: "Which side?", options: [] })).state;
+    s = reduce(s, ev("question_asked", { question_id: "q2", question: "Other run?", options: [] }, "other")).state;
+    s = reduce(s, ev("run_finished", { status: "cancelled", stop_reason: "cancelled", error: null, final_text: null })).state;
+    expect([...s.questions.keys()]).toEqual(["q2"]);
+  });
+
+  it("applyRuns_terminal_status_clears_questions", () => {
+    let s = reduce(withRun(), ev("question_asked", { question_id: "q1", question: "Which side?", options: [] })).state;
+    s = applyRuns(s, [run({ status: "running" })]);
+    expect(s.questions.has("q1")).toBe(true);
+    s = applyRuns(s, [run({ status: "cancelled" })]);
+    expect(s.questions.has("q1")).toBe(false);
+  });
+
+  it("empty_step_page_records_an_empty_list", () => {
+    const s = applySteps(withRun(), RID, []);
+    expect(s.steps.get(RID)).toEqual([]);
+    // a second empty page changes nothing
+    expect(applySteps(s, RID, [])).toBe(s);
   });
 
   it("malformed_approval_requested_refetches_instead", () => {

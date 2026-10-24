@@ -248,8 +248,11 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     const r = state.runs.get(id);
     if (!r || r.status !== "running") return;
     state.runs.set(id, { ...r, status: "cancelled", updated_at: now() });
+    // same as core approvals.py on cancel
     for (const a of state.approvals.values()) {
-      if (a.run_id === id && a.status === "pending") state.approvals.set(a.id, { ...a, status: "expired" });
+      if (a.run_id === id && a.status === "pending") {
+        state.approvals.set(a.id, { ...a, status: "rejected", decided_by: "system:cancel", decided_at: now() });
+      }
     }
     for (const q of [...state.questions.values()]) if (q.run_id === id) state.questions.delete(q.question_id);
     emit({ type: "run_finished", run_id: id, data: { status: "cancelled", stop_reason: "cancelled", error: null, final_text: null } });

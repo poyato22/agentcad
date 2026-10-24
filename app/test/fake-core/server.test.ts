@@ -167,6 +167,11 @@ describe("fake core", () => {
     await until(() => events.some((e) => e.type === "run_finished"));
     expect((await client.getRun(RID)).status).toBe("cancelled");
     expect(await client.pendingApprovals()).toEqual([]);
+    // like the real core: the cancelled run's pending approval is rejected by the system
+    const a = core.state.approvals.get("a332e73aa8f2");
+    expect(a?.status).toBe("rejected");
+    expect(a?.decided_by).toBe("system:cancel");
+    expect(typeof a?.decided_at).toBe("number");
     expect(await client.cancelAll()).toEqual({ cancelled: [] });
     ws.close();
   });
