@@ -10,6 +10,7 @@ import type { Approval } from "../../../api/types";
 import { trackPastes } from "../../../lib/keys";
 import { actions, approvals, bindClient, resetStore } from "../../../state/store";
 import { ApprovalCard } from "./ApprovalCard";
+import { resetFocusModality } from "./approvalKeys";
 import { resetApprovalUi } from "./decide";
 
 vi.mock("../../../lib/keys", async (importOriginal) => ({
@@ -30,6 +31,12 @@ function press(target: Element, key: string, init: KeyboardEventInit & { trusted
   if (init.trusted !== false) Object.defineProperty(e, "testTrusted", { value: true });
   target.dispatchEvent(e);
   return e;
+}
+
+/** Focus arriving by keyboard: a trusted Tab keydown, then the focus move it causes. */
+function keyboardFocus(el: HTMLElement) {
+  press(document.body, "Tab");
+  el.focus();
 }
 
 function mount(): HTMLElement {
@@ -53,14 +60,15 @@ afterEach(async () => {
   cleanup();
   resetStore();
   resetApprovalUi();
+  resetFocusModality();
   await core.stop();
 });
 
 describe("ApprovalCard keys", () => {
   it("key_m_approves_only_when_card_focused", async () => {
     const card = mount();
+    keyboardFocus(card);
     clock += 500;
-    card.focus();
     const e = press(card, "m");
     expect(e.defaultPrevented).toBe(true);
     await vi.waitFor(() => expect(decideCalls()).toHaveLength(1));
@@ -68,10 +76,47 @@ describe("ApprovalCard keys", () => {
     await vi.waitFor(() => expect(approvals.value.get(AID)?.status).toBe("approved"));
   });
 
+  it("click_card_text_then_letter_never_decides", async () => {
+    const card = mount();
+    clock += 5000;
+    // a pointer press on the card's text focuses the card (tabIndex=0): the next typed letter is not a decision
+    const text = card.querySelector(".acard-what") as HTMLElement;
+    text.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    card.focus();
+    clock += 5000;
+    for (const k of ["m", "a", "k", "r"]) press(card, k);
+    await settle();
+    expect(decideCalls()).toEqual([]);
+    // keyboard focus first, then a click inside the card: letters are off again
+    card.blur();
+    keyboardFocus(card);
+    clock += 500;
+    text.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    press(card, "m");
+    await settle();
+    expect(decideCalls()).toEqual([]);
+  });
+
+  it("tab_into_card_then_wait_then_m_decides_once", async () => {
+    const card = mount();
+    clock += 5000;
+    keyboardFocus(card);
+    clock += 399;
+    press(card, "m");
+    await settle();
+    expect(decideCalls()).toEqual([]);
+    clock += 1;
+    press(card, "m");
+    press(card, "m");
+    await vi.waitFor(() => expect(decideCalls()).toHaveLength(1));
+    await settle();
+    expect(decideCalls()).toHaveLength(1);
+  });
+
   it("key_r_and_k_send_approve_false_and_d_toggles_diff", async () => {
     const card = mount();
+    keyboardFocus(card);
     clock += 500;
-    card.focus();
     press(card, "d");
     await settle();
     expect(document.querySelector("[data-diff]")).not.toBeNull();
@@ -97,7 +142,7 @@ describe("ApprovalCard keys", () => {
   it("key_ignored_when_untrusted", async () => {
     const card = mount();
     clock += 500;
-    card.focus();
+    keyboardFocus(card);
     card.dispatchEvent(new KeyboardEvent("keydown", { key: "m", bubbles: true }));
     press(card, "a", { trusted: false });
     await settle();
@@ -107,7 +152,7 @@ describe("ApprovalCard keys", () => {
   it("key_ignored_on_repeat", async () => {
     const card = mount();
     clock += 500;
-    card.focus();
+    keyboardFocus(card);
     press(card, "m", { repeat: true });
     // a held Enter on the focused Merge button must not turn into repeated clicks
     const merge = screen.getByRole("button", { name: /^Merge/ });
@@ -121,7 +166,7 @@ describe("ApprovalCard keys", () => {
   it("key_ignored_with_modifier", async () => {
     const card = mount();
     clock += 500;
-    card.focus();
+    keyboardFocus(card);
     press(card, "m", { metaKey: true });
     press(card, "m", { ctrlKey: true });
     await settle();
@@ -130,7 +175,7 @@ describe("ApprovalCard keys", () => {
 
   it("key_ignored_within_400ms_of_mount", async () => {
     const card = mount();
-    card.focus();
+    keyboardFocus(card);
     clock += 399;
     press(card, "m");
     await settle();
@@ -143,7 +188,7 @@ describe("ApprovalCard keys", () => {
   it("key_ignored_within_1s_after_paste", async () => {
     const card = mount();
     clock += 500;
-    card.focus();
+    keyboardFocus(card);
     document.dispatchEvent(new Event("paste", { bubbles: true }));
     clock += 999;
     press(card, "m");
@@ -157,7 +202,7 @@ describe("ApprovalCard keys", () => {
   it("pasting_text_into_card_never_approves", async () => {
     const card = mount();
     clock += 5000;
-    card.focus();
+    keyboardFocus(card);
     const paste = new Event("paste", { bubbles: true, cancelable: true });
     Object.defineProperty(paste, "clipboardData", { value: { getData: () => "m\n", types: ["text/plain"] } });
     card.dispatchEvent(paste);

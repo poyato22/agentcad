@@ -88,8 +88,11 @@ test("create_run_to_merge", async ({ page, fake }) => {
   await expect(card).toContainText(LABEL);
   await expect(page.locator("[data-roster-head]")).toContainText("1 needs you");
 
-  // focus the card and press m (after the arm delay): one decide with the card's hash
+  // Tab into the card and press m (after the arm delay): one decide with the card's hash
   await card.focus();
+  await page.keyboard.press("Shift+Tab");
+  await page.keyboard.press("Tab");
+  await expect(card).toBeFocused();
   await page.waitForTimeout(ARM_WAIT_MS);
   await page.keyboard.press("m");
   await expect(card).toHaveAttribute("data-status", "approved");

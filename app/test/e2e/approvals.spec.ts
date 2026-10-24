@@ -74,8 +74,8 @@ test("no_global_approve_shortcut", async ({ page, fake }) => {
 
 test("key_m_approves_only_when_card_focused", async ({ page, fake }) => {
   await mountCard(page);
-  await page.waitForTimeout(ARM_WAIT_MS);
   await card(page).focus();
+  await page.waitForTimeout(ARM_WAIT_MS);
   await page.keyboard.press("m");
   await expect(card(page)).toHaveAttribute("data-status", "approved");
   const calls = await decideCalls(fake);
@@ -85,13 +85,50 @@ test("key_m_approves_only_when_card_focused", async ({ page, fake }) => {
 
 test("key_r_rejects_and_key_k_keeps_branch", async ({ page, fake }) => {
   await mountCard(page);
-  await page.waitForTimeout(ARM_WAIT_MS);
   await card(page).focus();
+  await page.waitForTimeout(ARM_WAIT_MS);
   await page.keyboard.press("d");
   await expect(card(page).locator("[data-diff]")).toBeVisible();
   await page.keyboard.press("k");
   await expect(card(page)).toContainText(/kept branch · rejected by local-user/);
   expect((await decideCalls(fake)).map((c) => c.body)).toEqual([{ payload_hash: HASH, approve: false }]);
+});
+
+test("click_on_card_text_then_typed_letter_never_decides", async ({ page, fake }) => {
+  await mountCard(page);
+  await page.waitForTimeout(ARM_WAIT_MS);
+  // a click on the card's text focuses the card (tabIndex=0); then the user starts typing a message
+  await card(page).locator(".acard-what").click();
+  await expect(card(page)).toBeFocused();
+  await page.waitForTimeout(ARM_WAIT_MS);
+  await page.keyboard.type("make it thicker");
+  for (const k of ["m", "a", "k", "r"]) await page.keyboard.press(k);
+  await settle(page);
+  expect(await decideCalls(fake)).toEqual([]);
+  await expect(card(page)).toHaveAttribute("data-status", "pending");
+});
+
+test("tab_into_card_then_wait_then_m_decides_once", async ({ page, fake }) => {
+  await mountCard(page);
+  await page.waitForTimeout(ARM_WAIT_MS);
+  // pointer on the card first (letters off), then a click into the command line below the card
+  // and Shift+Tab back up until focus enters the card by keyboard
+  await card(page).locator(".acard-what").click();
+  await outsideInput(page).click();
+  for (let i = 0; i < 20 && !(await card(page).evaluate((el) => el === document.activeElement)); i++) {
+    await page.keyboard.press("Shift+Tab");
+  }
+  await expect(card(page)).toBeFocused();
+  // within 400 ms of focus entering: ignored
+  await page.keyboard.press("m");
+  await settle(page);
+  expect(await decideCalls(fake)).toEqual([]);
+  await page.waitForTimeout(ARM_WAIT_MS);
+  await page.keyboard.press("m");
+  await page.keyboard.press("m");
+  await expect(card(page)).toHaveAttribute("data-status", "approved");
+  await settle(page);
+  expect((await decideCalls(fake)).map((c) => c.body)).toEqual([{ payload_hash: HASH, approve: true }]);
 });
 
 test("key_ignored_when_focus_elsewhere", async ({ page, fake }) => {

@@ -4,10 +4,12 @@ import { render } from "preact";
 import { App } from "./App";
 import { trackPastes } from "./lib/keys";
 import { startSession } from "./state/session";
+import { trackFocusModality } from "./ui/console/approvals/approvalKeys";
 import "./styles/fonts";
 import "./styles/tokens.css";
 import "./styles/base.css";
 
 trackPastes(document);
+trackFocusModality(document);
 render(<App />, document.getElementById("app") as HTMLElement);
 startSession();

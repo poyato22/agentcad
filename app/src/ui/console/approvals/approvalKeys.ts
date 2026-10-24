@@ -3,6 +3,9 @@
 // unmodified key pressed while focus is inside that card. Never a paste, never a global shortcut,
 // never a synthetic event. Both paths wait ARM_MS after the card appears or its payload changes,
 // so a card that pops up (or refreshes) under a click or key in progress can't be decided by it.
+// The letter shortcuts m/a/k/r also need focus to have entered the card by KEYBOARD (Tab /
+// :focus-visible) at least ARM_MS ago; a pointer press inside the card turns them off until the
+// card is focused by keyboard again, so clicking card text and then typing can never decide.
 import { isTrustedKey, msSinceLastPaste } from "../../../lib/keys";
 
 export type ApprovalAction = "approve" | "keep_branch" | "reject" | "diff";
@@ -16,7 +19,51 @@ const KEY_ACTIONS: Record<string, ApprovalAction> = {
   m: "approve", a: "approve", k: "keep_branch", r: "reject", d: "diff",
 };
 
-const TEXT_INPUT_TYPES = new Set(["", "text", "search", "url", "tel", "email", "password", "number"]);
+const DECISION_LETTERS = new Set(["m", "a", "k", "r"]);
+
+type Modality = "keyboard" | "pointer" | null;
+let lastModality: Modality = null;
+let trackedDoc: Document | null = null;
+const onTrackedKey = (e: KeyboardEvent) => { if (isTrustedKey(e)) lastModality = "keyboard"; };
+const onTrackedPointer = () => { lastModality = "pointer"; };
+
+function untrack(doc: Document): void {
+  doc.removeEventListener("keydown", onTrackedKey, true);
+  doc.removeEventListener("pointerdown", onTrackedPointer, true);
+  doc.removeEventListener("mousedown", onTrackedPointer, true);
+}
+
+/** Installs (once per document) capture listeners that remember the last input modality. */
+export function trackFocusModality(doc: Document): void {
+  if (trackedDoc === doc) return;
+  if (trackedDoc) untrack(trackedDoc);
+  doc.addEventListener("keydown", onTrackedKey, true);
+  doc.addEventListener("pointerdown", onTrackedPointer, true);
+  doc.addEventListener("mousedown", onTrackedPointer, true);
+  trackedDoc = doc;
+}
+
+/** Tests only. */
+export function resetFocusModality(): void {
+  if (trackedDoc) untrack(trackedDoc);
+  trackedDoc = null;
+  lastModality = null;
+}
+
+/**
+ * Did focus land on `el` by keyboard? Never when the last input was a pointer press, always when
+ * it was a trusted key (Tab); before any input, the browser's own :focus-visible heuristic.
+ */
+export function focusIsKeyboard(el: Element): boolean {
+  if (lastModality !== null) return lastModality === "keyboard";
+  try {
+    return el.matches(":focus-visible");
+  } catch {
+    return lastModality === "keyboard";
+  }
+}
+
+const TEXT_INPUT_TYPES =new Set(["", "text", "search", "url", "tel", "email", "password", "number"]);
 
 /** True for elements that take typed text (keys there are text, never commands). */
 export function isTextInput(el: EventTarget | null): boolean {
@@ -37,9 +84,19 @@ export function keyGuardsPass(e: KeyboardEvent, card: HTMLElement, armedAt: numb
   return !(isTextInput(e.target) || isTextInput(focused));
 }
 
-export function keyToAction(e: KeyboardEvent, card: HTMLElement, armedAt: number, now: number): ApprovalAction | null {
+/**
+ * The card's shortcut for this key, or null. `keyFocusAt` is when focus last entered the card by
+ * keyboard (null: it came by pointer, or a pointer pressed inside the card since): the decision
+ * letters m/a/k/r need it to be at least ARM_MS old. Enter/Space use keyGuardsPass only.
+ */
+export function keyToAction(
+  e: KeyboardEvent, card: HTMLElement, armedAt: number, now: number, keyFocusAt: number | null,
+): ApprovalAction | null {
   if (!keyGuardsPass(e, card, armedAt, now)) return null;
-  return typeof e.key === "string" ? KEY_ACTIONS[e.key.toLowerCase()] ?? null : null;
+  if (typeof e.key !== "string") return null;
+  const k = e.key.toLowerCase();
+  if (DECISION_LETTERS.has(k) && (keyFocusAt === null || now - keyFocusAt < ARM_MS)) return null;
+  return KEY_ACTIONS[k] ?? null;
 }
 
 /** Enter / Space: the keys that natively activate a focused button. */

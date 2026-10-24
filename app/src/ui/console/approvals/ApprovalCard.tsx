@@ -9,7 +9,8 @@ import { fmtElapsed, fmtHM, fmtSigned, shortHash } from "../../../lib/format";
 import { actions, approvals, steps } from "../../../state/store";
 import { Button } from "../../common/Button";
 import {
-  decisionClickCounts, isActivationKey, isTrustedActivation, keyGuardsPass, keyToAction, type ApprovalAction,
+  decisionClickCounts, focusIsKeyboard, isActivationKey, isTrustedActivation, keyGuardsPass, keyToAction,
+  trackFocusModality, type ApprovalAction,
 } from "./approvalKeys";
 import { canDecide, deciding, decide, isExpired, keptBranch, notices, retired, type Decision } from "./decide";
 import { evidenceFor } from "./evidence";
@@ -79,6 +80,9 @@ export function ApprovalCard(props: { approval: Approval; runLabel: string }): J
   if (arm.current.hash !== a.payload_hash) arm.current = { hash: a.payload_hash, at: performance.now() };
   // last trusted pointerdown on a decision button
   const press = useRef<{ action: Decision; at: number } | null>(null);
+  // when focus last entered the card by keyboard; null after pointer focus or any pointer press inside
+  const keyFocus = useRef<number | null>(null);
+  trackFocusModality(document); // idempotent; installed before the first focus can land on the card
 
   const pending = a.status === "pending";
   const nowS = useNowS(pending);
@@ -144,12 +148,17 @@ export function ApprovalCard(props: { approval: Approval; runLabel: string }): J
       if (keyGuardsPass(e, card, arm.current.at, performance.now())) choose(target);
       return;
     }
-    const action = keyToAction(e, card, arm.current.at, performance.now());
+    const action = keyToAction(e, card, arm.current.at, performance.now(), keyFocus.current);
     if (!action) return;
     e.preventDefault();
     e.stopPropagation();
     choose(action);
   };
+
+  const onFocusIn = (e: FocusEvent) => {
+    keyFocus.current = e.target instanceof Element && focusIsKeyboard(e.target) ? performance.now() : null;
+  };
+  const onPointerDownIn = () => { keyFocus.current = null; };
 
   const evidence = evidenceFor(a, steps.value.get(a.run_id) ?? []).slice(-MAX_EVIDENCE);
   const chips = deltaChips(a);
@@ -158,7 +167,8 @@ export function ApprovalCard(props: { approval: Approval; runLabel: string }): J
   return (
     <div ref={ref} data-card data-approval={a.id} data-status={expired ? "expired" : a.status}
       class={expired || isRetired ? "acard acard-inert" : "acard acard-live"} tabIndex={0} role="group"
-      aria-label={`Needs you: ${a.action}`} onKeyDown={onKeyDown} onKeyUp={onKeyUp}>
+      aria-label={`Needs you: ${a.action}`} onKeyDown={onKeyDown} onKeyUp={onKeyUp}
+      onFocusIn={onFocusIn} onPointerDownCapture={onPointerDownIn} onMouseDownCapture={onPointerDownIn}>
       <div class="acard-head">
         <span class="acard-flag">▲ NEEDS YOU</span>
         <span class="acard-action text">{a.action}</span>
