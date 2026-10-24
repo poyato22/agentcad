@@ -218,3 +218,44 @@ async def test_events_published(env):
     await env.call("t", {})
     types = [(await sub.__anext__()).type for _ in range(2)]
     assert types == ["tool_call", "tool_result"]
+
+
+async def test_preview_result_in_approval_deltas(env):
+    seen = []
+
+    async def preview(ctx, args: In) -> dict:
+        seen.append(ctx.run_id)
+        return {"would_change": args.n}
+
+    @tool("pv", description="d", safety=C.IRREVERSIBLE, preview=preview)
+    async def f(ctx, args: In) -> ToolOutput:
+        env.calls += 1
+        return ToolOutput(summary="done")
+    env.reg.register(f)
+
+    async def human():
+        while not env.store.pending_approvals():
+            await asyncio.sleep(0.01)
+        a = env.store.pending_approvals()[0]
+        assert a.deltas == {"would_change": 4}
+        env.approvals.decide(a.id, a.payload_hash, False, "me")
+
+    h = asyncio.create_task(human())
+    e = await err(env.call("pv", {"n": 4}))
+    await h
+    assert e.code == ErrorCode.DENIED and env.calls == 0 and seen == [env.run.id]
+
+
+async def test_preview_error_propagates_without_approval(env):
+    async def preview(ctx, args: In) -> dict:
+        raise MisesError(ErrorCode.STALE_VERSION, "moved")
+
+    @tool("pv", description="d", safety=C.IRREVERSIBLE, preview=preview)
+    async def f(ctx, args: In) -> ToolOutput:
+        env.calls += 1
+        return ToolOutput(summary="done")
+    env.reg.register(f)
+    e = await err(env.call("pv", {}))
+    assert e.code == ErrorCode.STALE_VERSION and env.calls == 0
+    assert env.store.pending_approvals() == []
+    assert env.store.steps(env.run.id)[-1].kind == StepKind.ERROR

@@ -40,6 +40,9 @@ class ToolDef:
     onshape_cost: int = 0
     scope_arg: str | None = None
     timeout_s: float = 120
+    # Optional, for irreversible tools: computes what the call would change; the gate puts the
+    # result in the approval card's `deltas`. It runs before approval, so it must not mutate.
+    preview: Callable[[ToolContext, BaseModel], Awaitable[dict]] | None = None
 
 
 def _input_model_of(fn: Callable) -> type[BaseModel]:
@@ -56,11 +59,12 @@ def _input_model_of(fn: Callable) -> type[BaseModel]:
 
 
 def tool(name: str, *, description: str, safety: SafetyClass = SafetyClass.IRREVERSIBLE,
-         onshape_cost: int = 0, scope_arg: str | None = None, timeout_s: float = 120):
+         onshape_cost: int = 0, scope_arg: str | None = None, timeout_s: float = 120,
+         preview: Callable[[ToolContext, Any], Awaitable[dict]] | None = None):
     def deco(fn: Callable[[ToolContext, Any], Awaitable[ToolOutput]]) -> ToolDef:
         return ToolDef(name=name, description=description, input_model=_input_model_of(fn),
                        safety=safety, handler=fn, onshape_cost=onshape_cost,
-                       scope_arg=scope_arg, timeout_s=timeout_s)
+                       scope_arg=scope_arg, timeout_s=timeout_s, preview=preview)
     return deco
 
 

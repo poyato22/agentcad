@@ -62,8 +62,11 @@ class Gate:
         self._check_budget(t, run_id, policy)                                    # 5
 
         payload = args.model_dump()
+        ctx = ToolContext(run_id=run_id, user=self.user, store=self.store, events=self.events,
+                          workdir=workdir, policy=policy, call_id=call_id, services=self.services)
         if t.safety == SafetyClass.IRREVERSIBLE:                                 # 6
-            appr = await self.approvals.request(run_id, name, payload, deltas={})
+            deltas = await self._preview(t, ctx, args) if t.preview else {}
+            appr = await self.approvals.request(run_id, name, payload, deltas=deltas)
             appr = await self.approvals.wait(appr.id)
             if appr.status != "approved":
                 raise MisesError(ErrorCode.DENIED, f"approval {appr.status} for {name}")
@@ -84,8 +87,6 @@ class Gate:
                 self._finish(run_id, name, call_id, out)
                 return out
 
-        ctx = ToolContext(run_id=run_id, user=self.user, store=self.store, events=self.events,
-                          workdir=workdir, policy=policy, call_id=call_id, services=self.services)
         try:                                                                     # 8
             out = await asyncio.wait_for(t.handler(ctx, args), t.timeout_s)
         except MisesError:
@@ -101,6 +102,21 @@ class Gate:
             self.store.cache_put(key, out.model_dump(mode="json"))
         self._finish(run_id, name, call_id, out)
         return out
+
+    @staticmethod
+    async def _preview(t: ToolDef, ctx: ToolContext, args: Any) -> dict:
+        try:
+            deltas = await asyncio.wait_for(t.preview(ctx, args), t.timeout_s)
+        except MisesError:
+            raise
+        except asyncio.TimeoutError:
+            raise MisesError(ErrorCode.TRANSIENT, f"{t.name} preview timed out after {t.timeout_s}s",
+                             hint="retry the call") from None
+        except Exception as e:
+            raise MisesError(ErrorCode.TOOL_FAILED, f"preview {type(e).__name__}: {e}") from None
+        if not isinstance(deltas, dict):
+            raise MisesError(ErrorCode.TOOL_FAILED, f"{t.name} preview must return a dict")
+        return deltas
 
     def _check_scope(self, t: ToolDef, args: Any, policy) -> None:
         if not t.scope_arg:
