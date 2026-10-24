@@ -87,21 +87,24 @@ pub fn core_command(core_dir: &Path) -> Result<CoreCommand, String> {
     choose_core_command(core_dir, uv)
 }
 
-/// `uv run` when uv is found (it keeps the venv in step with uv.lock), else the synced venv's own
-/// entry point. Either way a SIGKILLed app ends the core: `uv run` stays as the core's parent but
-/// holds only the read end of our stdin pipe, so the core still sees EOF once the app's write end
-/// closes (tests/lifecycle.rs: sigkill_of_the_app_on_the_uv_path_still_ends_the_core_by_stdin_eof).
+/// The synced venv's own entry point when it exists, else `uv run`. Not because of stdin EOF: a
+/// SIGKILLed app ends the core on both paths (`uv run` stays as the core's parent but holds only
+/// the read end of our stdin pipe, so EOF still arrives once the app's write end closes; see
+/// tests/lifecycle.rs sigkill_of_the_app_on_the_uv_path_still_ends_the_core_by_stdin_eof). The
+/// venv comes first because a clean stop is cleaner there: the process-group SIGTERM reaches
+/// `mises serve` alone and it removes server.json, while under `uv run` uv's own handling of the
+/// same signal ends the core before that cleanup (stale server.json, which attach/spawn tolerate).
 pub fn choose_core_command(core_dir: &Path, uv: Option<PathBuf>) -> Result<CoreCommand, String> {
-    if let Some(uv) = uv {
-        return Ok(uv_core_command(&uv, core_dir));
-    }
     let venv_mises = core_dir.join(".venv/bin/mises");
     if venv_mises.is_file() {
         let args = ["serve", "--port", "0", "--exit-on-stdin-eof"].map(String::from).to_vec();
         return Ok(CoreCommand { program: venv_mises, args, cwd: core_dir.to_path_buf(), env: vec![] });
     }
-    Err("could not find `uv` (looked in $MISES_UV, /opt/homebrew/bin, /usr/local/bin, ~/.local/bin, ~/.cargo/bin, PATH) \
-         and the core has no synced venv; install uv with `brew install uv`".into())
+    match uv {
+        Some(uv) => Ok(uv_core_command(&uv, core_dir)),
+        None => Err("could not find `uv` (looked in $MISES_UV, /opt/homebrew/bin, /usr/local/bin, ~/.local/bin, ~/.cargo/bin, PATH); \
+                     install it with `brew install uv`".into()),
+    }
 }
 
 /// `uv run --project <core> mises serve --port 0 --exit-on-stdin-eof`.

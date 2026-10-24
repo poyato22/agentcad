@@ -101,18 +101,20 @@ fn default_command_runs_uv_serve_on_port_zero() {
 }
 
 #[test]
-fn uv_run_is_preferred_and_the_synced_venv_is_the_fallback_without_uv() {
+fn synced_venv_is_run_directly_and_uv_run_is_the_fallback() {
     let d = tempfile::tempdir().unwrap();
-    std::fs::create_dir_all(d.path().join(".venv/bin")).unwrap();
-    std::fs::write(d.path().join(".venv/bin/mises"), "").unwrap();
-    // uv found: `uv run` even with a venv present (stdin EOF reaches the core either way, M8)
+    // no venv: `uv run`
     let c = choose_core_command(d.path(), Some(PathBuf::from("/opt/uv"))).unwrap();
     assert_eq!(c.program, PathBuf::from("/opt/uv"));
     assert_eq!(c.args[..2], ["run", "--project"]);
-    // no uv (Finder-launched app without uv on PATH): the venv's entry point
-    let c = choose_core_command(d.path(), None).unwrap();
-    assert_eq!(c.program, d.path().join(".venv/bin/mises"));
-    assert_eq!(c.args, ["serve", "--port", "0", "--exit-on-stdin-eof"]);
+    // a synced venv wins, uv or not (clean SIGTERM stop removes server.json; see choose_core_command)
+    std::fs::create_dir_all(d.path().join(".venv/bin")).unwrap();
+    std::fs::write(d.path().join(".venv/bin/mises"), "").unwrap();
+    for uv in [Some(PathBuf::from("/opt/uv")), None] {
+        let c = choose_core_command(d.path(), uv).unwrap();
+        assert_eq!(c.program, d.path().join(".venv/bin/mises"));
+        assert_eq!(c.args, ["serve", "--port", "0", "--exit-on-stdin-eof"]);
+    }
     // neither: a clear reason for the red light
     let e = choose_core_command(Path::new("/nonexistent/core"), None).unwrap_err();
     assert!(e.contains("could not find `uv`"), "{e}");
