@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Real-core smoke run: starts the Python core with a throwaway MISES_HOME, points the app at it
+# Real-core smoke run: starts the Python core with a fresh throwaway MISES_HOME (always a new temp
+# dir, removed on exit; an inherited MISES_HOME is ignored), points the app at it
 # (VITE_MISES_URL / VITE_MISES_TOKEN from its server.json) and runs Vite on :1420, the dev origin
 # the core's CORS allows. Ctrl-C stops both.
 #
@@ -18,9 +19,24 @@ CORE="$(cd ../core && pwd)"
 SCRIPTED=0
 if [[ "${1:-}" == "--scripted" ]]; then SCRIPTED=1; shift; fi
 
-export MISES_HOME="${MISES_HOME:-$(mktemp -d -t mises-smoke)}"
+# Always a fresh throwaway home: an inherited MISES_HOME (maybe the real one, with real runs,
+# keys and server.json) is ignored. It must be under a system temp dir and is removed on exit.
+SMOKE_HOME="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/mises-smoke.XXXXXX")" && pwd -P)"
+case "$SMOKE_HOME" in
+  /tmp/*|/private/tmp/*|/var/folders/*|/private/var/folders/*) ;;
+  *) rm -rf "$SMOKE_HOME"; echo "refusing to run: $SMOKE_HOME is not under a system temp dir" >&2; exit 1 ;;
+esac
+export MISES_HOME="$SMOKE_HOME"
 INFO="$MISES_HOME/server.json"
-rm -f "$INFO"
+CORE_PID=""
+cleanup() {
+  if [[ -n "$CORE_PID" ]]; then kill "$CORE_PID" 2>/dev/null || true; wait "$CORE_PID" 2>/dev/null || true; fi
+  rm -rf "$SMOKE_HOME"
+}
+trap cleanup EXIT
+trap 'exit 130' INT TERM
+
+if [[ "${MISES_SMOKE_DRY_RUN:-}" == 1 ]]; then echo "MISES_HOME=$MISES_HOME"; exit 0; fi  # tests
 
 if [[ $SCRIPTED == 1 ]]; then
   uv run --project "$CORE" python "$APP/scripts/smoke_core_scripted.py" --port 0 &
@@ -28,8 +44,6 @@ else
   uv run --project "$CORE" mises serve --port 0 &
 fi
 CORE_PID=$!
-cleanup() { kill "$CORE_PID" 2>/dev/null || true; wait "$CORE_PID" 2>/dev/null || true; }
-trap cleanup EXIT INT TERM
 
 for _ in $(seq 1 600); do
   [[ -s "$INFO" ]] && break
