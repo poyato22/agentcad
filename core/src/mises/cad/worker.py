@@ -130,7 +130,9 @@ def main(argv: list[str]) -> int:
 
     tmp = part_dir / "tmp"
     tmp.mkdir(exist_ok=True)
-    outs = {"model.step": b3.export_step, "model.stl": b3.export_stl, "model.glb": b3.export_gltf}
+    def export_glb(s, path):  # binary=True: one self-contained .glb, no external .bin
+        b3.export_gltf(s, path, binary=True)
+    outs = {"model.step": b3.export_step, "model.stl": b3.export_stl, "model.glb": export_glb}
     for name, fn in outs.items():
         fn(shape, str(tmp / ("new_" + name)))
     (tmp / "new_metrics.json").write_text(json.dumps(metrics))

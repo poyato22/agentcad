@@ -161,8 +161,7 @@ def build_ui_router(runtime: Runtime) -> APIRouter:
         for run in runtime.store.list_runs(10_000):
             if run.status != "running":
                 continue
-            live = runtime._runs.get(run.id)
-            if live is not None and live.cancel_requested:
+            if runtime.is_cancelling(run.id):
                 continue  # already stopping; keeps the call idempotent
             try:
                 # Internal runs: cancel the loop. External (ACP/MCP) runs are marked cancelled

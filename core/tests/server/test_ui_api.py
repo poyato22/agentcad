@@ -161,6 +161,27 @@ class _In(BaseModel):
     pass
 
 
+async def test_runtime_is_cancelling(home):
+    fake = FakeProvider([[ToolCall(id="c1", name="slow_tool", input={}),
+                          Done(stop_reason="tool_use")]])
+    rt = Runtime(home, provider_resolver=lambda ref: (fake, "fake-model"))
+    started = asyncio.Event()
+
+    @tool("slow_tool", description="slow", safety=SafetyClass.READ)
+    async def slow(ctx, args: _In) -> ToolOutput:
+        started.set()
+        await asyncio.sleep(30)
+        return ToolOutput(summary="late")
+    rt.registry.register(slow)
+    rid = await rt.start_run("designer", "work")
+    await asyncio.wait_for(started.wait(), 5)
+    assert rt.is_live(rid) and not rt.is_cancelling(rid)
+    rt.cancel(rid)
+    assert rt.is_cancelling(rid)
+    await asyncio.wait_for(rt.wait(rid), 5)
+    assert not rt.is_live("nope") and not rt.is_cancelling("nope")
+
+
 async def test_cancel_all_cancels_running_and_orphans(home):
     fake = FakeProvider([[ToolCall(id="c1", name="slow_tool", input={}),
                           Done(stop_reason="tool_use")]])
@@ -206,6 +227,4 @@ def test_dump_ui_fixtures(tmp_path):
     steps = json.loads((out / "steps.json").read_text())
     diffs = [s for s in steps if s["kind"] == "diff"]
     assert diffs and "delta" in diffs[0]["payload"]["output"]["data"]
-    # known core quirk: model.glb is JSON glTF (not binary "glTF") referencing an external .bin
-    glb = json.loads((out / "mount_plate.glb").read_text())
-    assert glb["asset"]["version"] == "2.0"
+    assert (out / "mount_plate.glb").read_bytes()[:4] == b"glTF"

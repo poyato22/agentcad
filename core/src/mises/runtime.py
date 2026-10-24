@@ -192,6 +192,15 @@ class Runtime:
         assert st.task is not None
         return await asyncio.shield(st.task)
 
+    def is_live(self, run_id: str) -> bool:
+        """True if this process drives the run (internal loop or external)."""
+        return run_id in self._runs or run_id in self._external
+
+    def is_cancelling(self, run_id: str) -> bool:
+        """True if cancel was requested on an internal run and it has not been resumed since."""
+        st = self._runs.get(run_id)
+        return st is not None and st.cancel_requested
+
     def cancel(self, run_id: str) -> None:
         if run_id in self._external:
             self.finish_external_run(run_id, "cancelled")
