@@ -23,17 +23,29 @@ def rt(tmp_path, monkeypatch):
     return Runtime(home, provider_resolver=lambda ref: (_ for _ in ()).throw(AssertionError(ref)))
 
 
-def _spec(*extra: str) -> AcpAgentSpec:
+def _spec(*extra: str, env: dict | None = None) -> AcpAgentSpec:
     return AcpAgentSpec(name="fake", command=sys.executable, args=[FAKE, *extra],
-                        install_hint="test fixture")
+                        env=env or {}, install_hint="test fixture")
 
 
-async def _session(rt: Runtime, *extra: str, **kw) -> AcpSession:
-    spec = _spec(*extra)
+def _new(rt: Runtime, *extra: str, env: dict | None = None, **kw) -> AcpSession:
+    spec = _spec(*extra, env=env)
     run_id = rt.create_external_run(spec.name, provider="acp", model=spec.name)
-    s = AcpSession(rt, spec, run_id, mcp_url="http://127.0.0.1:1/mcp", mcp_token="t", **kw)
+    return AcpSession(rt, spec, run_id, mcp_url="http://127.0.0.1:1/mcp", mcp_token="t", **kw)
+
+
+async def _session(rt: Runtime, *extra: str, env: dict | None = None, **kw) -> AcpSession:
+    s = _new(rt, *extra, env=env, **kw)
     await s.start()
     return s
+
+
+def _dead(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return True
+    return False
 
 
 def _log(rt: Runtime, run_id: str) -> list[dict]:
@@ -222,3 +234,81 @@ def test_known_agents():
         assert spec.name == name and spec.command and spec.install_hint
     assert "--acp" in KNOWN_AGENTS["gemini"].args
     assert all("@zed-industries" not in a for s in KNOWN_AGENTS.values() for a in s.args)
+
+
+async def test_start_times_out_when_agent_never_answers(rt):
+    from mises.types import ErrorCode, MisesError
+
+    s = _new(rt, "--no-init", handshake_timeout_s=1)
+    t0 = time.monotonic()
+    with pytest.raises(MisesError) as ei:
+        await s.start()
+    assert time.monotonic() - t0 < 3
+    assert ei.value.code == ErrorCode.TRANSIENT
+    assert s.pid is not None and _dead(s.pid)
+    assert rt.store.get_run(s.run_id).status == "failed"
+
+
+async def test_caller_cancelling_start_kills_agent(rt):
+    s = _new(rt, "--no-init", handshake_timeout_s=30)
+    task = asyncio.create_task(s.start())
+    for _ in range(100):
+        if s.pid is not None:
+            break
+        await asyncio.sleep(0.05)
+    await asyncio.sleep(0.2)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert s.pid is not None and _dead(s.pid)
+    assert rt.store.get_run(s.run_id).status == "cancelled"
+
+
+async def test_cancel_while_permission_pending(rt):
+    s = await _session(rt)
+    rt.store.ledger_reserve("local", s.run_id, "GET /features", 1, "idem-1")
+    sub = rt.events.subscribe(s.run_id)
+    pending = asyncio.create_task(s.prompt("perm"))
+    async for ev in sub:
+        if ev.type == "approval_requested":
+            approval_id = ev.data["id"]
+            break
+    sub.close()
+    await s.cancel()
+    text = await asyncio.wait_for(pending, 5)
+    perm = [r for r in _log(rt, s.run_id) if r["event"] == "permission"]
+    assert perm[0]["outcome"] == {"outcome": "cancelled"}
+    assert "permission:cancelled" in text
+    assert rt.store.get_approval(approval_id).status != "pending"
+    assert rt.store.pending_approvals(s.run_id) == []
+    assert rt.store.get_run(s.run_id).status == "cancelled"
+    rows = rt.store._all("SELECT state FROM ledger WHERE run_id=?", (s.run_id,))
+    assert [r["state"] for r in rows] == ["released"]
+    await s.close()
+
+
+async def test_permission_expiry_rejects(rt):
+    s = await _session(rt, approval_ttl_s=0.3)
+    try:
+        text = await asyncio.wait_for(s.prompt("perm"), 10)
+    finally:
+        await s.close()
+    perm = [r for r in _log(rt, s.run_id) if r["event"] == "permission"]
+    assert perm[0]["outcome"] == {"outcome": "selected", "optionId": "opt-reject"}
+    assert "permission:opt-reject" in text
+
+
+async def test_agent_env_allowlist(rt, monkeypatch):
+    monkeypatch.setenv("LANG", "en_US.UTF-8")
+    monkeypatch.setenv("TMPDIR", "/tmp/mises-test")
+    monkeypatch.setenv("HTTPS_PROXY", "http://proxy:3128")
+    monkeypatch.setenv("no_proxy", "localhost")
+    monkeypatch.setenv("SSL_CERT_FILE", "/etc/ssl/cert.pem")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-secret")
+    monkeypatch.setenv("MISES_TEST_SECRET", "nope")
+    s = await _session(rt, env={"FROM_SPEC": "yes"})
+    await s.close()
+    env = [r for r in _log(rt, s.run_id) if r["event"] == "session_new"][0]["env"]
+    assert env == {"LANG": "en_US.UTF-8", "TMPDIR": "/tmp/mises-test",
+                   "HTTPS_PROXY": "http://proxy:3128", "no_proxy": "localhost",
+                   "SSL_CERT_FILE": "/etc/ssl/cert.pem", "FROM_SPEC": "yes"}

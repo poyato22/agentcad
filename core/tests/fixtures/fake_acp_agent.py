@@ -9,12 +9,14 @@ The prompt text selects behaviour (words may be combined):
   term         ask the client for a terminal, log ok/error
   write:<p>    ask the client to write "hello" to absolute path <p>, echo ok/error
 In --hang mode every prompt blocks forever, session/cancel and SIGTERM are ignored.
+In --no-init mode `initialize` never answers (an agent waiting for a login, say).
 Everything the agent observes is appended as JSON lines to <cwd>/fake_agent.jsonl.
 """
 from __future__ import annotations
 
 import asyncio
 import json
+import os
 import signal
 import sys
 from pathlib import Path
@@ -38,6 +40,9 @@ from acp import (
 from acp.schema import PermissionOption, ToolCallUpdate
 
 HANG = "--hang" in sys.argv
+NO_INIT = "--no-init" in sys.argv
+ENV_KEYS = ("LANG", "TMPDIR", "HTTPS_PROXY", "no_proxy", "SSL_CERT_FILE", "ANTHROPIC_API_KEY",
+            "MISES_TEST_SECRET", "FROM_SPEC")
 
 
 def _log(where: str, **rec: Any) -> None:
@@ -55,12 +60,15 @@ class FakeAgent:
 
     async def initialize(self, protocol_version: int, client_capabilities=None, client_info=None,
                          **kw: Any) -> InitializeResponse:
+        if NO_INIT:
+            await asyncio.Event().wait()
         self._caps = client_capabilities.model_dump(mode="json", by_alias=True, exclude_none=True) if client_capabilities else None
         return InitializeResponse(protocol_version=PROTOCOL_VERSION)
 
     async def new_session(self, cwd: str, mcp_servers=None, **kw: Any) -> NewSessionResponse:
         self.cwd = cwd
         _log(cwd, event="session_new", cwd=cwd, client_capabilities=self._caps,
+             env={k: os.environ[k] for k in ENV_KEYS if k in os.environ},
              mcp_servers=[m.model_dump(mode="json", by_alias=True, exclude_none=True) for m in (mcp_servers or [])])
         return NewSessionResponse(session_id="sess-1")
 
@@ -122,7 +130,7 @@ class FakeAgent:
 
 
 async def main() -> None:
-    if HANG:
+    if HANG or NO_INIT:
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
     await run_agent(FakeAgent())
 

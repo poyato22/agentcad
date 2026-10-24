@@ -53,6 +53,23 @@ STDIO_LIMIT = 50 * 1024 * 1024          # same default the acp package uses for 
 TERM_GRACE_S = 0.5                      # SIGTERM -> SIGKILL grace when killing the agent
 CLOSE_GRACE_S = 2.0                     # stdin EOF -> SIGTERM on a normal close
 _FINAL = ("completed", "failed")
+# Non-secret variables agents commonly need, on top of acp's default (HOME, PATH, ...).
+# Provider API keys are deliberately not inherited: pass them in AcpAgentSpec.env.
+EXTRA_ENV_VARS = (
+    "LANG", "LC_ALL", "TMPDIR", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME",
+    "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "https_proxy", "http_proxy", "no_proxy",
+    "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE",
+)
+
+
+def agent_environment(extra: dict[str, str] | None = None) -> dict[str, str]:
+    env = default_environment()
+    for key in EXTRA_ENV_VARS:
+        value = os.environ.get(key)
+        if value is not None and not value.startswith("()"):
+            env[key] = value
+    env.update(extra or {})
+    return env
 
 
 def choose_option(options: list[PermissionOption], approve: bool) -> str | None:
@@ -132,7 +149,8 @@ class _Client:
 
 class AcpSession:
     def __init__(self, runtime, spec, run_id: str, *, mcp_url: str, mcp_token: str,
-                 cancel_timeout_s: float = 10):
+                 cancel_timeout_s: float = 10, handshake_timeout_s: float = 60,
+                 approval_ttl_s: float = 1800):
         self.runtime = runtime
         self.spec = spec
         self.run_id = run_id
@@ -141,6 +159,8 @@ class AcpSession:
         self.mcp_url = mcp_url
         self.mcp_token = mcp_token
         self.cancel_timeout_s = cancel_timeout_s
+        self.handshake_timeout_s = handshake_timeout_s
+        self.approval_ttl_s = approval_ttl_s
         self.workdir: Path = runtime.workdir(run_id)
         self.session_id: str | None = None
         self.agent_info: dict | None = None
@@ -168,35 +188,54 @@ class AcpSession:
             env=[EnvVariable(name="MISES_HOME", value=str(self.runtime.home))])]
 
     async def start(self) -> None:
-        env = default_environment()
-        env.update(self.spec.env)
+        """Spawn the agent and run initialize + session/new within handshake_timeout_s.
+
+        On any failure (timeout, protocol error, bad response, caller cancellation) the
+        agent's process group is killed and the run is finished failed (cancelled if the
+        caller cancelled), then the error is raised.
+        """
+        try:
+            await asyncio.wait_for(self._start(), self.handshake_timeout_s)
+        except BaseException as e:
+            cancelled = isinstance(e, asyncio.CancelledError)
+            if not cancelled:
+                self._fail(f"ACP start failed: {type(e).__name__}: {e}")
+            await asyncio.shield(self._shutdown(kill=True))
+            self._finish("cancelled" if cancelled else "failed")
+            if isinstance(e, TimeoutError):
+                raise MisesError(
+                    ErrorCode.TRANSIENT,
+                    f"{self.spec.name} did not finish the ACP handshake in "
+                    f"{self.handshake_timeout_s:g}s",
+                    hint="the agent may be waiting for a login, still downloading, or not "
+                         f"speaking ACP on stdout; see agent-stderr.log. {self.spec.install_hint}",
+                ) from None
+            if isinstance(e, (RequestError, ConnectionError)):
+                raise MisesError(ErrorCode.TOOL_FAILED,
+                                 f"{self.spec.name} failed to start a session: {e}",
+                                 hint=self.spec.install_hint) from None
+            if isinstance(e, OSError):  # spawn failed (ConnectionError handled above)
+                raise MisesError(ErrorCode.NOT_FOUND, f"could not start agent {self.spec.name}: {e}",
+                                 hint=self.spec.install_hint) from None
+            raise
+
+    async def _start(self) -> None:
         self._stderr = open(self.workdir / "agent-stderr.log", "ab")
-        try:
-            self._proc = await asyncio.create_subprocess_exec(
-                self.spec.command, *self.spec.args, cwd=str(self.workdir), env=env,
-                stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
-                stderr=self._stderr, start_new_session=True, limit=STDIO_LIMIT)
-        except OSError as e:
-            self._stderr.close()
-            self._fail(f"could not start {self.spec.name}: {e}")
-            raise MisesError(ErrorCode.NOT_FOUND, f"could not start agent {self.spec.name}: {e}",
-                             hint=self.spec.install_hint) from None
+        self._proc = await asyncio.create_subprocess_exec(
+            self.spec.command, *self.spec.args, cwd=str(self.workdir),
+            env=agent_environment(self.spec.env),
+            stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+            stderr=self._stderr, start_new_session=True, limit=STDIO_LIMIT)
         self._conn = connect_to_agent(_Client(self), self._proc.stdin, self._proc.stdout)
-        try:
-            init = await self._conn.initialize(
-                protocol_version=PROTOCOL_VERSION,
-                client_capabilities=ClientCapabilities(
-                    fs=FileSystemCapabilities(read_text_file=True, write_text_file=True),
-                    terminal=False),
-                client_info=Implementation(name="mises", title="Mises", version="0.1.0"))
-            self.agent_info = _dump(init.agent_info) if init.agent_info else None
-            new = await self._conn.new_session(cwd=str(self.workdir),
-                                               mcp_servers=self.mcp_servers())
-        except (RequestError, ConnectionError) as e:
-            self._fail(f"ACP handshake failed: {e}")
-            await self._shutdown(kill=True)
-            raise MisesError(ErrorCode.TOOL_FAILED, f"{self.spec.name} failed to start a session: {e}",
-                             hint=self.spec.install_hint) from None
+        init = await self._conn.initialize(
+            protocol_version=PROTOCOL_VERSION,
+            client_capabilities=ClientCapabilities(
+                fs=FileSystemCapabilities(read_text_file=True, write_text_file=True),
+                terminal=False),
+            client_info=Implementation(name="mises", title="Mises", version="0.1.0"))
+        self.agent_info = _dump(init.agent_info) if init.agent_info else None
+        new = await self._conn.new_session(cwd=str(self.workdir),
+                                           mcp_servers=self.mcp_servers())
         self.session_id = new.session_id
         self.runtime.store.append_step(self.run_id, StepKind.DECISION, {
             "acp": "session_started", "agent": self.spec.name, "session_id": self.session_id,
@@ -245,7 +284,8 @@ class AcpSession:
         self.runtime.approvals.cancel_run(self.run_id)
         if self._conn is not None and self.session_id is not None:
             with contextlib.suppress(Exception):
-                await self._conn.cancel(session_id=self.session_id)
+                await asyncio.wait_for(self._conn.cancel(session_id=self.session_id),
+                                       self.cancel_timeout_s)
         hung = False
         if self._inflight is not None and not self._inflight.done():
             done, _ = await asyncio.wait({self._inflight}, timeout=self.cancel_timeout_s)
@@ -412,7 +452,8 @@ class AcpSession:
             return cancelled
         approvals = self.runtime.approvals
         a = await approvals.request(self.run_id, "acp_permission", {
-            "tool_call": _dump(tool_call), "options": [_dump(o) for o in options]})
+            "tool_call": _dump(tool_call), "options": [_dump(o) for o in options]},
+            ttl_s=self.approval_ttl_s)
         a = await approvals.wait(a.id)
         if self._cancelling or self._finished:
             return cancelled
