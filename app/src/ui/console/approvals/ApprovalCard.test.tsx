@@ -81,8 +81,41 @@ describe("ApprovalCard", () => {
     expect(screen.getByRole("button", { name: /^Approve/ })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /^Keep branch/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /^Merge/ })).toBeNull();
-    // summary falls back to the action name
-    expect(document.querySelector(".acard-what")?.textContent).toBe("fixture_merge");
+    // no agent summary: nothing claims to be one; the payload fields are on the face
+    expect(document.querySelector("[data-agent-says]")).toBeNull();
+    expect(document.querySelector("[data-payload-fields]")?.textContent).toBe("part_id: mount_plate");
+  });
+
+  it("merge_card_face_shows_branch_to_target_and_agent_summary_as_unverified", () => {
+    mount();
+    const route = document.querySelector("[data-route]") as HTMLElement;
+    expect(route.textContent).toBe("branch https://cad.onshape.com/documents/d1/w/w2 → target https://cad.onshape.com/documents/d1/w/w1");
+    const says = document.querySelector("[data-agent-says]") as HTMLElement;
+    expect(says.textContent).toBe("agent says: merge agent/designer into main: 2 ribs on the upright");
+    expect(says.className).toContain("faint");
+    expect(says.className).not.toMatch(/tone-(blue|green)|needs-you/);
+    // the full JSON is only behind Diff
+    expect(document.querySelector("[data-diff]")).toBeNull();
+  });
+
+  it("merge_route_falls_back_to_the_payload_url_the_real_core_sends", () => {
+    mount({ ...pending(), payload: { url: "https://cad.onshape.com/documents/d9/w/main", summary: "s" }, deltas: { branch_url: "https://cad.onshape.com/documents/d9/w/agent" } });
+    expect(document.querySelector("[data-route]")?.textContent).toBe("branch https://cad.onshape.com/documents/d9/w/agent → target https://cad.onshape.com/documents/d9/w/main");
+    expect(document.querySelector("[data-agent-says]")?.textContent).toBe("agent says: s");
+  });
+
+  it("non_merge_card_lists_top_level_payload_fields_truncated", () => {
+    const long = "x".repeat(300);
+    mount({ ...pending(), action: "mirror_export", deltas: {}, payload: { part_id: "mount_plate", vars: { thickness: 6 }, note: long, summary: "export it" } });
+    const items = [...document.querySelectorAll("[data-payload-fields] [data-field]")].map((e) => e.textContent ?? "");
+    expect(items[0]).toBe("part_id: mount_plate");
+    expect(items[1]).toBe('vars: {"thickness":6}');
+    expect(items[2].startsWith("note: xxx")).toBe(true);
+    expect(items[2].endsWith("…")).toBe(true);
+    expect(items[2].length).toBeLessThan(100);
+    // the summary is the agent's claim, shown once as such
+    expect(items.some((t) => t.startsWith("summary"))).toBe(false);
+    expect(document.querySelector("[data-agent-says]")?.textContent).toBe("agent says: export it");
   });
 
   it("short_hash_is_8_chars", () => {

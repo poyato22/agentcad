@@ -62,6 +62,16 @@ test("full_merge_from_card", async ({ page, fake }) => {
   expect(await decideCalls(fake)).toHaveLength(1);
 });
 
+test("card_face_shows_branch_to_target_and_agent_summary_faint", async ({ page }) => {
+  await mountCard(page);
+  await expect(card(page).locator("[data-route]")).toHaveText(
+    "branch https://cad.onshape.com/documents/d1/w/w2 → target https://cad.onshape.com/documents/d1/w/w1");
+  const says = card(page).locator("[data-agent-says]");
+  await expect(says).toHaveText("agent says: merge agent/designer into main: 2 ribs on the upright");
+  await expect(says).toHaveCSS("color", "rgb(94, 94, 94)");
+  await expect(card(page).locator("[data-diff]")).toHaveCount(0);
+});
+
 test("no_global_approve_shortcut", async ({ page, fake }) => {
   await mountCard(page);
   await page.waitForTimeout(ARM_WAIT_MS);

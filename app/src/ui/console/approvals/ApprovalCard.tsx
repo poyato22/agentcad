@@ -27,9 +27,32 @@ const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? 
 const rec = (v: unknown): Record<string, unknown> | null =>
   (typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
 
-/** One line: what will change if approved. */
-function whatChanges(a: Approval): string {
-  return str(a.deltas.summary) ?? str(a.payload.summary) ?? a.action;
+const MAX_FIELDS = 8;
+const MAX_VALUE = 60;
+
+/** The agent's own one-line summary: a claim, shown as "agent says", never as what will happen. */
+function agentSays(a: Approval): string | null {
+  return str(a.deltas.summary) ?? str(a.payload.summary);
+}
+
+/** Merge: which branch goes into which workspace (from the core's preview, else the tool args). */
+function mergeRoute(a: Approval): { branch: string; target: string } {
+  return {
+    branch: str(a.deltas.branch_url) ?? str(a.payload.branch_url) ?? "unknown",
+    target: str(a.deltas.target_url) ?? str(a.payload.target_url) ?? str(a.payload.url) ?? "unknown",
+  };
+}
+
+const clip = (t: string) => (t.length > MAX_VALUE ? `${t.slice(0, MAX_VALUE - 1)}…` : t);
+
+/** Top-level payload fields as short "key: value" strings (the summary is shown as agent says). */
+function payloadFields(a: Approval): { items: string[]; more: number } {
+  const entries = Object.entries(a.payload).filter(([k]) => k !== "summary");
+  const items = entries.slice(0, MAX_FIELDS).map(([k, v]) => {
+    const text = typeof v === "string" ? v : (JSON.stringify(v) ?? String(v));
+    return clip(`${k}: ${text}`);
+  });
+  return { items, more: Math.max(0, entries.length - MAX_FIELDS) };
 }
 
 /** "+4.1 g", "+3200 mm³", "+3m 10s print" from deltas (top level or deltas.delta). */
@@ -162,6 +185,9 @@ export function ApprovalCard(props: { approval: Approval; runLabel: string }): J
 
   const evidence = evidenceFor(a, steps.value.get(a.run_id) ?? []).slice(-MAX_EVIDENCE);
   const chips = deltaChips(a);
+  const says = agentSays(a);
+  const route = mergeRoute(a);
+  const fields = payloadFields(a);
   const preview = mergePreviewSummary(a.deltas.merge_preview);
 
   return (
@@ -174,7 +200,17 @@ export function ApprovalCard(props: { approval: Approval; runLabel: string }): J
         <span class="acard-action text">{a.action}</span>
         <span class="faint text acard-run">{props.runLabel}</span>
       </div>
-      <div class="acard-what text">{whatChanges(a)}</div>
+      {isMerge ? (
+        <div class="acard-what text" data-route>
+          <span class="faint">branch </span>{route.branch}<span class="faint"> → target </span>{route.target}
+        </div>
+      ) : (
+        <div class="acard-what acard-fields text" data-payload-fields>
+          {fields.items.map((f, i) => <span key={i} data-field>{f}</span>)}
+          {fields.more > 0 && <span class="faint">+{fields.more} more (Diff)</span>}
+        </div>
+      )}
+      {says && <div class="acard-says faint text" data-agent-says>agent says: {says}</div>}
       {chips.length > 0 && <div class="acard-deltas">{chips.map((c) => <span key={c}>{c}</span>)}</div>}
       <div class="acard-meta faint">
         <span data-hash={shortHash(a.payload_hash)}>hash {shortHash(a.payload_hash)}</span>

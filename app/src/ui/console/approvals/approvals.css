@@ -9,6 +9,10 @@
 .acard-inert .acard-flag { color: var(--faint); }
 .acard-run { margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .acard-what, .qcard-question { margin: 4px 0; color: var(--ink); }
+.acard-what[data-route] { overflow-wrap: anywhere; }
+.acard-fields { display: flex; flex-direction: column; gap: 1px; overflow-wrap: anywhere; }
+/* the agent's own claim: unverified, so faint and never blue/green */
+.acard-says { margin: 2px 0 4px; padding-left: 6px; border-left: 1px dashed var(--line2); color: var(--faint); }
 .acard-deltas { display: flex; gap: 12px; color: var(--ink); }
 .acard-meta { margin-top: 2px; font-size: var(--fs-small); }
 .acard-evidence { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-top: 4px; }
