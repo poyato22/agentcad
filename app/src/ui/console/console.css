@@ -1,0 +1,87 @@
+/* Agent console (mockups/core-loop.html). Tokens only; blue = selected / changing / needs you,
+   green / red = pass / fail (diff add/remove markers, done/failed). */
+.con { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--paper); }
+
+/* ---- roster */
+.con-roster { flex: none; display: flex; flex-direction: column; max-height: 40%; min-height: 0; }
+.con-roster-rows { overflow: auto; min-height: 0; }
+.con-needs { color: var(--blue2); }
+.con-ag {
+  display: grid; grid-template-columns: 8px minmax(0, 1.3fr) minmax(0, 1fr) 42px 52px 14px; gap: 6px; align-items: center;
+  padding: 5px 8px; border-bottom: 1px solid var(--line); color: var(--dim); cursor: pointer;
+}
+.con-ag:hover { background: var(--paper2); }
+.con-ag:focus-visible { outline: 1px solid var(--blue); outline-offset: -1px; }
+.con-ag.sel { background: var(--blue-tint); color: var(--ink); box-shadow: inset 2px 0 var(--blue); }
+.con-ag-name { min-width: 0; }
+.con-ag .con-ag-label { display: block; color: var(--ink); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.con-ag .con-ag-who { display: block; font-size: 9px; color: var(--faint); letter-spacing: .04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.con-ag .con-ag-task { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.con-ag-t { text-align: right; font-size: 10px; color: var(--faint); }
+.con-ag-x { visibility: hidden; border: 0; background: transparent; color: var(--dim); padding: 0; cursor: pointer; font-size: 10px; }
+.con-ag:hover .con-ag-x, .con-ag-x:focus-visible { visibility: visible; }
+.con-ag-x:hover { color: var(--red); }
+.con-bar { height: 3px; background: var(--line2); position: relative; }
+.con-bar i { position: absolute; inset: 0; background: var(--ink); }
+.con-bar-running i { background: var(--blue); }
+.con-bar-done i { background: var(--green); }
+.con-bar-failed i { background: var(--red); }
+.con-bar-cancelled i { background: var(--faint); }
+.con-newrun {
+  flex: none; text-align: left; padding: 4px 8px; border: 0; border-bottom: 1px solid var(--line2);
+  background: transparent; color: var(--faint); font-size: 10.5px; cursor: pointer;
+}
+.con-newrun:hover { color: var(--ink); }
+
+/* ---- filters */
+.con-filters { flex: none; display: flex; border-bottom: 1px solid var(--line); min-width: 0; }
+.con-chipf {
+  flex: none; padding: 3px 6px; font-size: 10px; color: var(--faint); background: transparent; border: 0; border-right: 1px solid var(--line);
+  cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.con-chipf.con-chipf-run { flex: 0 1 auto; min-width: 48px; max-width: 160px; }
+.con-chipf.on { color: var(--ink); background: var(--paper2); }
+.con-chipf:hover { color: var(--ink); }
+.con-filters-gap { flex: 1 1 0; min-width: 0; }
+.con-filters .con-chipf:last-child { border-right: 0; border-left: 1px solid var(--line); }
+.con-err-n { color: var(--red); }
+
+/* ---- log */
+.con-log { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; }
+.con-log-scroll { flex: 1; min-height: 0; overflow: auto; padding: 4px 0; overflow-anchor: none; }
+.con-row { display: grid; grid-template-columns: 52px 12px minmax(0, 1fr); gap: 6px; padding: 3px 8px; font-size: 11px; color: var(--dim); }
+.con-result { padding-top: 0; }
+.con-click { cursor: pointer; }
+.con-click:hover { background: var(--paper2); }
+.con-ts { color: var(--faint); font-size: 10px; }
+.con-g { color: var(--faint); }
+.con-g-live { color: var(--blue); }
+.con-g-fail { color: var(--red); }
+.con-body { min-width: 0; }
+.con-hint { display: block; }
+.ink { color: var(--ink); }
+.con-caret { color: var(--blue); }
+.con-indent { margin: 2px 8px 4px 78px; }
+.con-box { border: 1px solid var(--line2); background: var(--vp); font-size: 10.5px; }
+.con-details { margin: 2px 8px 4px 78px; }
+.con-box-hd { display: flex; gap: 8px; padding: 2px 6px; border-bottom: 1px solid var(--line); color: var(--faint); }
+.con-box-hd b { color: var(--ink); font-weight: 500; }
+.con-box-bd { margin: 0; padding: 3px 6px; color: var(--dim); line-height: 1.35; font: inherit; }
+.con-box-bd > span { display: block; }
+.add { color: var(--green); }
+.del { color: var(--red); }
+.con-fold {
+  display: block; width: calc(100% - 86px); margin: 2px 8px 4px 78px; text-align: left; color: var(--faint); font-size: 10px;
+  border: 1px dashed var(--line2); padding: 2px 6px; background: transparent; cursor: pointer;
+}
+.con-fold:hover { color: var(--ink); }
+.con-fold-open { border-style: solid; border-color: var(--line); }
+.con-earlier {
+  display: block; margin: 2px 8px 6px; border: 1px solid var(--line2); background: transparent; color: var(--faint);
+  font-size: 10px; padding: 2px 6px; cursor: pointer;
+}
+.con-chip {
+  position: absolute; right: 10px; bottom: 8px; padding: 2px 9px; font-size: 10.5px; cursor: pointer;
+  background: var(--paper2); color: var(--ink); border: 1px solid var(--line2);
+}
+.con-chip:hover { border-color: var(--dim); }

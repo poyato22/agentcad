@@ -1,17 +1,18 @@
+// Agent console (right column): roster · filters · step log (approval / question cards inline)
+// · command line.
 import type { JSX } from "preact";
-import { Pane, PaneEmpty } from "../common/Pane";
 import { CommandLine } from "./command/CommandLine";
+import { Filters } from "./Filters";
+import { Roster } from "./Roster";
+import { StepLog } from "./StepLog";
+import "./console.css";
 
-// STUB (Task 2). Task 7 replaces this file: roster · filters · step log (with ApprovalCard /
-// QuestionCard inline) · CommandLine at the bottom.
 export function ConsolePane(): JSX.Element {
   return (
-    <div data-stub="ConsolePane" style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <div style={{ flex: "1", minHeight: "0" }}>
-        <Pane title="Agents">
-          <PaneEmpty>no runs yet</PaneEmpty>
-        </Pane>
-      </div>
+    <div class="con" data-console>
+      <Roster />
+      <Filters />
+      <StepLog />
       <CommandLine />
     </div>
   );

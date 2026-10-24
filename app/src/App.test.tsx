@@ -14,9 +14,10 @@ describe("App shell", () => {
     for (const r of ["app", "topbar", "left", "viewer", "console"]) {
       expect(container.querySelector(`[data-region="${r}"]`)).not.toBeNull();
     }
-    for (const s of ["TopBar", "LeftPane", "Viewer", "ConsolePane", "CommandLine"]) {
+    for (const s of ["TopBar", "LeftPane", "Viewer", "CommandLine"]) {
       expect(container.querySelector(`[data-stub="${s}"]`)).not.toBeNull();
     }
+    expect(container.querySelector('[data-region="console"] [data-console]')).not.toBeNull(); // Task 7
     expect(container.querySelector('[data-stub="NewRunDialog"]')).toBeNull();
   });
 
