@@ -3,6 +3,7 @@
 // token-rotation and stop-all paths, and the visual rules (§5.1) over the whole running app.
 import type { Page } from "@playwright/test";
 import { expect, test, type FakeControl } from "./fixtures";
+import { isAutoNumbered } from "../../src/lib/names";
 import { CORE_TOKEN, CORE_URL } from "./ports";
 
 test.use({ launchOptions: { args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] } });
@@ -222,33 +223,37 @@ async function midRun(page: Page, fake: FakeControl): Promise<void> {
 
 test("no_auto_numbered_anywhere", async ({ page, fake }) => {
   await midRun(page, fake);
-  const found = await page.evaluate(() => {
-    const TRAILING_NUMBER = /\d+\s*$/;
-    const CODE_NAME = /^[A-Z]+-\d+$/;
-    const auto = (s: string) => TRAILING_NUMBER.test(s) || CODE_NAME.test(s.trim());
-    // allowed tiebreakers in labels (design §5.1): model ids, HH:MM(:SS) start times
-    const models = new Set([...document.querySelectorAll(".con-ag-who")].flatMap((e) => (e.textContent ?? "").split(" · ")));
-    const tiebreak = (s: string) => models.has(s.trim()) || /^[a-z][a-z0-9.]*(-[a-z0-9.]+)*-\d+(\.\d+)?$/.test(s.trim()) || /^\d\d:\d\d(:\d\d)?$/.test(s.trim());
-    const bad: string[] = [];
-    // 1) every "Type · purpose" text node
+  // the page only collects text; the rule is the app's own isAutoNumbered (src/lib/names.ts)
+  const seen = await page.evaluate(() => {
+    const segments: string[][] = [];
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     for (let n = walker.nextNode(); n; n = walker.nextNode()) {
       const t = (n.textContent ?? "").trim();
-      if (!t.includes(" · ")) continue;
-      const [type, ...rest] = t.split(" · ");
-      if (!/^[A-Za-z][\w-]*$/.test(type)) continue;               // a value line ("2 running · …"), not a name
-      for (const seg of rest) if (auto(seg) && !tiebreak(seg)) bad.push(t);
+      if (t.includes(" · ")) segments.push(t.split(" · "));
     }
-    // 2) every label cell, whole
-    for (const el of document.querySelectorAll("[data-label], [data-run-label], [data-crumb], .tb-name, .acard-run, .pane-title")) {
-      const t = (el.textContent ?? "").trim();
-      const last = t.split(" · ").at(-1) ?? t;
-      if (auto(t) && !tiebreak(last)) bad.push(t);
-    }
-    return { bad, labels: [...document.querySelectorAll("[data-run-label], [data-label]")].map((e) => e.textContent) };
+    const cells = [...document.querySelectorAll("[data-label], [data-run-label], [data-crumb], .tb-name, .acard-run, .pane-title")]
+      .map((el) => (el.textContent ?? "").trim());
+    const models = [...document.querySelectorAll(".con-ag-who")].flatMap((e) => (e.textContent ?? "").split(" · ").map((x) => x.trim()));
+    return { segments, cells, models, labels: [...document.querySelectorAll("[data-run-label], [data-label]")].map((e) => e.textContent) };
   });
-  expect(found.labels.length).toBeGreaterThanOrEqual(3);
-  expect(found.bad).toEqual([]);
+  // allowed tiebreakers (design §5.1): exactly a model id the roster shows, or an HH:MM(:SS) start time
+  const models = new Set(seen.models);
+  const tiebreak = (x: string) => models.has(x.trim()) || /^\d\d:\d\d(:\d\d)?$/.test(x.trim());
+  // the allowance is narrow: a counter that merely looks like a model id is still caught
+  for (const counter of ["agent 2", "designer-2", "Part Studio 1", "GEOM-01"]) expect(isAutoNumbered(counter) && !tiebreak(counter), counter).toBe(true);
+  const bad: string[] = [];
+  // 1) every "Type · purpose" text node
+  for (const [type, ...rest] of seen.segments) {
+    if (!/^[A-Za-z][\w-]*$/.test(type)) continue;               // a value line ("2 running · …"), not a name
+    for (const seg of rest) if (isAutoNumbered(seg) && !tiebreak(seg)) bad.push([type, ...rest].join(" · "));
+  }
+  // 2) every label cell, whole
+  for (const t of seen.cells) {
+    const last = t.split(" · ").at(-1) ?? t;
+    if (isAutoNumbered(t) && !tiebreak(last)) bad.push(t);
+  }
+  expect(seen.labels.length).toBeGreaterThanOrEqual(3);
+  expect(bad).toEqual([]);
 });
 
 test("blue_only_where_allowed", async ({ page, fake }) => {
