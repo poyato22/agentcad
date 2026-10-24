@@ -79,10 +79,10 @@ class Gate:
             payload = args.model_dump()
 
         cacheable = t.safety != SafetyClass.READ                                 # 7
-        # local_mutate replays by input; Onshape writes and irreversible calls dedupe only a
-        # retry of the same call, so a new call with identical input really runs again.
-        scope = [call_id] if t.safety in (SafetyClass.ONSHAPE_MUTATE, SafetyClass.IRREVERSIBLE) else []
-        key = sha256_hex(canonical_json([run_id, name, payload, *scope]))
+        # The cache only dedupes a retry of the SAME call (same call_id). A new call with
+        # identical input really runs again: state may have changed in between (e.g. set 20,
+        # set 10, set 20), and a re-run verifier must give a fresh verdict.
+        key = sha256_hex(canonical_json([run_id, name, payload, call_id]))
         if cacheable:
             hit = self.store.cache_get(key)
             if hit is not None:
@@ -101,7 +101,8 @@ class Gate:
             raise MisesError(ErrorCode.TOOL_FAILED, f"{type(e).__name__}: {e}") from None
 
         out = self._spill(out, workdir, call_id)                                 # 9
-        if cacheable:                                                            # 10
+        if cacheable and out.ok:                                                 # 10
+            # ok=False is never cached: a retry of a failed call must really run again
             self.store.cache_put(key, out.model_dump(mode="json"))
         self._finish(run_id, name, call_id, out)
         return out

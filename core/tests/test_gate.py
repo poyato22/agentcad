@@ -152,10 +152,41 @@ async def test_irreversible_rejected_denied(env):
 async def test_idempotent_replay(env):
     env.add(safety=C.LOCAL_MUTATE)
     a = await env.call("t", {"n": 1}, "c1")
-    b = await env.call("t", {"n": 1}, "c2")
+    b = await env.call("t", {"n": 1}, "c1")      # retry of the same call: replayed
     assert env.calls == 1 and a == b
-    await env.call("t", {"n": 2}, "c3")
+    await env.call("t", {"n": 1}, "c2")          # new call, same input: runs again
     assert env.calls == 2
+    await env.call("t", {"n": 2}, "c3")
+    assert env.calls == 3
+
+
+async def test_local_mutate_toggle_rebuilds_every_time(env):
+    # C1: set 20 -> set 10 -> set 20 must really apply the last set, not replay the first
+    state = {"width": 10}
+
+    @tool("setw", description="d", safety=C.LOCAL_MUTATE)
+    async def f(ctx, args: In) -> ToolOutput:
+        state["width"] = args.n
+        return ToolOutput(summary=f"width {args.n}")
+    env.reg.register(f)
+    for i, w in enumerate([20, 10, 20]):
+        await env.call("setw", {"n": w}, f"c{i}")
+    assert state["width"] == 20
+    await env.call("setw", {"n": 10}, "c9")
+    assert state["width"] == 10
+
+
+async def test_failed_output_not_cached(env):
+    results = iter([False, True])
+
+    @tool("flaky", description="d", safety=C.LOCAL_MUTATE)
+    async def f(ctx, args: In) -> ToolOutput:
+        env.calls += 1
+        return ToolOutput(ok=next(results), summary="x")
+    env.reg.register(f)
+    a = await env.call("flaky", {}, "c1")
+    b = await env.call("flaky", {}, "c1")        # same call retried after ok=False: runs again
+    assert not a.ok and b.ok and env.calls == 2
 
 
 async def test_read_not_cached(env):

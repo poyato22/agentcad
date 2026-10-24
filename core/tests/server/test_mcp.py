@@ -45,7 +45,7 @@ async def test_mcp_list_tools_has_annotations(rt):
         assert read.read_only_hint is True and read.destructive_hint is False
         local = tools[by_class[C.LOCAL_MUTATE]].annotations
         assert local.read_only_hint is False and local.destructive_hint is False
-        assert local.idempotent_hint is True
+        assert local.idempotent_hint is False
         irr = tools[by_class[C.IRREVERSIBLE]].annotations
         assert irr.destructive_hint is True and irr.read_only_hint is False
         schema = rt.registry.schema(rt.registry.get("mirror_part_create"))

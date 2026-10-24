@@ -35,8 +35,9 @@ def annotations_for(t: ToolDef) -> types.ToolAnnotations:
     return types.ToolAnnotations(
         read_only_hint=t.safety == SafetyClass.READ,
         destructive_hint=t.safety == SafetyClass.IRREVERSIBLE,
-        # non-read calls are replayed from the gate's cache / deduped per call
-        idempotent_hint=t.safety != SafetyClass.READ,
+        # the gate dedupes only a retry of the same call; every MCP call is a new call, so a
+        # repeated non-read call really runs again
+        idempotent_hint=False,
         open_world_hint=t.safety in (SafetyClass.ONSHAPE_MUTATE, SafetyClass.IRREVERSIBLE)
         or t.onshape_cost > 0,
     )
