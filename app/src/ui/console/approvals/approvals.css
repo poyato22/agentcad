@@ -1,0 +1,35 @@
+/* Approval and question cards. Blue = needs the human; green/amber/red only for pass/warn/fail. */
+[data-card].acard, [data-card].qcard { margin: 6px 8px; padding: 6px 8px; display: block; }
+[data-card].acard-live, [data-card].qcard { border: 1px solid var(--blue); background: var(--blue-tint); }
+[data-card].acard-inert, [data-card].acard-done { border: 1px solid var(--line2); background: transparent; }
+[data-card].acard:focus, [data-card].acard:focus-within { outline: 1px solid var(--blue2); outline-offset: 1px; }
+
+.acard-head, .qcard-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.acard-flag, .qcard-flag { color: var(--blue2); font: 600 var(--fs-label)/1.4 var(--font-head); letter-spacing: .14em; }
+.acard-inert .acard-flag { color: var(--faint); }
+.acard-run { margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acard-what, .qcard-question { margin: 4px 0; color: var(--ink); }
+.acard-deltas { display: flex; gap: 12px; color: var(--ink); }
+.acard-meta { margin-top: 2px; font-size: var(--fs-small); }
+.acard-evidence { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-top: 4px; }
+.acard-link {
+  border: 0; background: none; padding: 0; cursor: pointer; color: var(--dim);
+  font: inherit; font-size: var(--fs-small); text-decoration: underline; text-decoration-color: var(--line2);
+}
+.acard-link:hover { color: var(--ink); }
+.acard-link:focus-visible { outline: 1px solid var(--blue); }
+.acard-notice { margin-top: 4px; }
+.acard-buttons, .qcard-options { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.acard-buttons kbd { font: inherit; opacity: .6; }
+.acard-diff { margin-top: 6px; border-top: 1px solid var(--line); padding-top: 4px; }
+.acard-diff pre { margin: 4px 0 0; max-height: 240px; overflow: auto; color: var(--dim); font-size: var(--fs-small); }
+.acard-outcome { font-weight: 600; }
+.qcard-free { display: flex; gap: 6px; margin-top: 6px; }
+.qcard-free input { flex: 1; min-width: 0; }
+.qcard-error { margin-top: 4px; }
+
+.tone-blue { color: var(--blue2); }
+.tone-green { color: var(--green); }
+.tone-amber { color: var(--amber); }
+.tone-red { color: var(--red); }
+.tone-dim { color: var(--dim); }

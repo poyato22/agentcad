@@ -15,7 +15,12 @@ export default defineConfig({
     ...devices["Desktop Chrome"],
     viewport: { width: 1440, height: 900 },
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } } }],
+  projects: [
+    { name: "chromium", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } } },
+    // The app runs in WKWebView: approval input safety is also checked on WebKit
+    // (needs `npx playwright install webkit`).
+    { name: "webkit", testMatch: "**/approvals.spec.ts", use: { ...devices["Desktop Safari"], viewport: { width: 1440, height: 900 } } },
+  ],
   webServer: [
     {
       command: `npx tsx test/fake-core/cli.ts --port ${CORE_PORT} --token ${CORE_TOKEN} --scenario base --origin ${APP_ORIGIN}`,
