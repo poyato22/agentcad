@@ -1,13 +1,17 @@
 import type { JSX } from "preact";
-import { Pane, PaneEmpty } from "../common/Pane";
+import { Pane } from "../common/Pane";
+import "./left.css";
+import { History } from "./History";
+import { PartList } from "./PartList";
+import { Variables } from "./Variables";
 
-// STUB (Task 2). Task 5 replaces this file: PARTS · VARIABLES · HISTORY.
+/** Three stacked sections: PARTS · VARIABLES · HISTORY. */
 export function LeftPane(): JSX.Element {
   return (
-    <div data-stub="LeftPane" style={{ height: "100%" }}>
-      <Pane title="Parts">
-        <PaneEmpty>no parts yet</PaneEmpty>
-      </Pane>
+    <div class="left-pane" data-testid="left-pane" data-stub="LeftPane"> {/* data-stub kept: App.test.tsx (Task 2) still looks for it; Task 10 may drop it */}
+      <Pane title="Parts" class="left-parts"><PartList /></Pane>
+      <Pane title="Variables" class="left-vars"><Variables /></Pane>
+      <Pane title="History" class="left-history"><History /></Pane>
     </div>
   );
 }

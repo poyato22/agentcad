@@ -1,0 +1,32 @@
+/* Left pane. Blue only for: selected, being changed by an agent. LED colors come from base.css. */
+.left-pane { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.left-pane > .pane { height: auto; flex: 1 1 0; border-bottom: 1px solid var(--line); }
+.left-pane > .pane:last-child { border-bottom: 0; flex: 1.4 1 0; }
+
+.left-list, .step-list { list-style: none; margin: 0; padding: 0; }
+.left-row {
+  display: flex; align-items: center; gap: 6px; width: 100%; text-align: left;
+  padding: 3px 8px; border: 0; border-left: 2px solid transparent; background: transparent;
+  color: var(--ink); font: inherit; cursor: pointer;
+}
+.left-row:hover { background: var(--paper2); }
+.left-row:focus-visible { outline: 1px solid var(--blue); outline-offset: -1px; }
+.left-row.sel { border-left-color: var(--blue); background: var(--blue-tint); }
+.left-row.changing { color: var(--blue2); }
+.row-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-right { margin-left: auto; flex: none; font-size: var(--fs-small); }
+.tag-changing { flex: none; color: var(--blue2); font-size: var(--fs-label); letter-spacing: .1em; text-transform: uppercase; }
+
+.vars { margin: 0; padding: 2px 0; }
+.var-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 2px 8px; }
+.var-name { color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.var-value { margin: 0; text-align: right; color: var(--ink); font-variant-numeric: tabular-nums; }
+.var-value.changed { color: var(--blue2); background: var(--blue-tint); padding: 0 4px; }
+
+.step-list { padding-left: 21px; }
+.step-row {
+  display: block; width: 100%; text-align: left; padding: 2px 8px; border: 0; background: transparent;
+  color: var(--dim); font: inherit; font-size: var(--fs-small); cursor: pointer;
+}
+.step-row:hover { background: var(--paper2); color: var(--ink); }
+.step-empty { padding: 2px 8px; font-size: var(--fs-small); }
