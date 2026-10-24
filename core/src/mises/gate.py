@@ -122,17 +122,27 @@ class Gate:
             raise MisesError(ErrorCode.TOOL_FAILED, f"{t.name} preview must return a dict")
         return deltas
 
+    @staticmethod
+    def _norm_scope(s: Any) -> Any:
+        # Onshape ids are hex and case-insensitive; parse_url lowercases them
+        return s.lower() if isinstance(s, str) and s.lower().startswith("onshape:") else s
+
     def _check_scope(self, t: ToolDef, args: Any, policy) -> None:
-        if not t.scope_arg:
+        if t.scope_keys is not None:
+            keys, label = list(t.scope_keys(args)), "scope"
+        elif t.scope_arg:
+            keys, label = [getattr(args, t.scope_arg, None)], t.scope_arg
+        else:
             return
-        value = getattr(args, t.scope_arg, None)
         allowed = set(policy.edit_scope)
         if t.safety == SafetyClass.READ:
             allowed |= set(policy.read_scope)
-        if "*" in allowed or value in allowed:
+        allowed = {self._norm_scope(a) for a in allowed}
+        if "*" in allowed or any(self._norm_scope(k) in allowed for k in keys):
             return
+        shown = keys[0] if t.scope_keys is None else ", ".join(map(str, keys))
         raise MisesError(ErrorCode.OUT_OF_SCOPE,
-                         f"{t.scope_arg}={value!r} is outside this run's scope",
+                         f"{label}={shown!r} is outside this run's scope",
                          hint="ask the user to widen the scope")
 
     def _check_budget(self, t: ToolDef, run_id: str, policy) -> None:

@@ -9,6 +9,9 @@ run finds or creates that branch (branched from the microversion the agent read)
 as `run.branch = "<did>:<wid>"`; later proposals in the run reuse it without listing workspaces.
 Each proposal returns the branch microversion to pass as `source_microversion` next time.
 
+Scope: every URL-taking tool is scoped on "onshape:<did>" / "onshape:<did>/<eid>" (see
+`scope_keys`); writes need the run's edit scope, reads edit or read scope; "*" allows all.
+
 Merging: `onshape_merge_request` is `irreversible`, so the gate always asks a human. Its
 `preview` hook calls `merge_preview` (one ledgered call) and the gate puts that preview in the
 approval card's `deltas`. Only after approval does the handler merge; the adapter refuses if the
@@ -70,6 +73,20 @@ def _variable_rows(variables: list[dict]) -> list[dict]:
             for v in variables]
 
 
+def scope_keys(url: str) -> list[str]:
+    """Scope keys of an Onshape URL: "onshape:<did>" and, with an element, "onshape:<did>/<eid>".
+    A run's edit/read scope may list either (whole document, or one element)."""
+    ref = parse_url(url)
+    keys = [f"onshape:{ref.did}"]
+    if ref.eid:
+        keys.append(f"onshape:{ref.did}/{ref.eid}")
+    return keys
+
+
+def _url_scope(args) -> list[str]:
+    return scope_keys(args.url)
+
+
 def _run_branch(ctx: ToolContext, ref: DocRef) -> DocRef | None:
     rec = ctx.store.get_run(ctx.run_id).branch or ""
     did, _, wid = rec.partition(":")
@@ -106,7 +123,7 @@ class NoArgs(BaseModel):
 
 
 @tool("onshape_doc_open", description="Open an Onshape Part Studio: microversion, feature rows and"
-      " variables (3 Onshape calls).", safety=SafetyClass.READ, onshape_cost=3)
+      " variables (3 Onshape calls).", safety=SafetyClass.READ, onshape_cost=3, scope_keys=_url_scope)
 async def onshape_doc_open(ctx: ToolContext, args: UrlArgs) -> ToolOutput:
     ad = _adapter(ctx)
     ref = parse_url(args.url)
@@ -132,7 +149,7 @@ async def onshape_doc_open(ctx: ToolContext, args: UrlArgs) -> ToolOutput:
 
 
 @tool("onshape_features_list", description="List features with their parameters (cached per"
-      " microversion).", safety=SafetyClass.READ, onshape_cost=1)
+      " microversion).", safety=SafetyClass.READ, onshape_cost=1, scope_keys=_url_scope)
 async def onshape_features_list(ctx: ToolContext, args: UrlArgs) -> ToolOutput:
     ad = _adapter(ctx)
     feats = await ad.features(parse_url(args.url), ctx.run_id)
@@ -144,7 +161,7 @@ async def onshape_features_list(ctx: ToolContext, args: UrlArgs) -> ToolOutput:
 
 
 @tool("onshape_variables_get", description="Read Variable Studio variables.",
-      safety=SafetyClass.READ, onshape_cost=1)
+      safety=SafetyClass.READ, onshape_cost=1, scope_keys=_url_scope)
 async def onshape_variables_get(ctx: ToolContext, args: UrlArgs) -> ToolOutput:
     ad = _adapter(ctx)
     variables = await ad.variables(parse_url(args.url), ctx.run_id)
@@ -156,7 +173,7 @@ async def onshape_variables_get(ctx: ToolContext, args: UrlArgs) -> ToolOutput:
 @tool("onshape_propose", description="Apply variable and feature parameter changes on this"
       " agent's own Onshape branch (never the main workspace). Returns mass/volume/bbox and the"
       " branch microversion for the next proposal.",
-      safety=SafetyClass.ONSHAPE_MUTATE, onshape_cost=4)
+      safety=SafetyClass.ONSHAPE_MUTATE, onshape_cost=4, scope_keys=_url_scope)
 async def onshape_propose(ctx: ToolContext, args: ProposeArgs) -> ToolOutput:
     ad = _adapter(ctx)
     ref = parse_url(args.url)
@@ -219,7 +236,8 @@ async def _merge_preview(ctx: ToolContext, args: MergeArgs) -> dict:
 
 @tool("onshape_merge_request", description="Ask the human to merge this agent's branch into a"
       " workspace. Shows them Onshape's merge preview; merges only after approval.",
-      safety=SafetyClass.IRREVERSIBLE, onshape_cost=3, preview=_merge_preview)
+      safety=SafetyClass.IRREVERSIBLE, onshape_cost=3, preview=_merge_preview,
+      scope_keys=_url_scope)
 async def onshape_merge_request(ctx: ToolContext, args: MergeArgs) -> ToolOutput:
     ad, branch, target = await _merge_refs(ctx, args)
     out = await ad.merge(branch, target, ctx.run_id)

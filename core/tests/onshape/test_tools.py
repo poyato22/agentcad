@@ -188,3 +188,43 @@ async def test_doc_open_variables_failure_is_warning(env, fake):
     assert out.ok and out.data["untrusted_user_data"]["variables"] == []
     assert any("variables" in w for w in out.warnings)
     assert out.data["untrusted_user_data"]["features"]
+
+
+def _scoped_run(store, edit, read):
+    r = store.create_run("designer", "fake", "m", "t")
+    store.create_policy(r.id, edit, read, __import__("mises.types", fromlist=["Caps"]).Caps(),
+                        [C.READ, C.LOCAL_MUTATE, C.ONSHAPE_MUTATE, C.IRREVERSIBLE])
+    return r
+
+
+async def test_out_of_scope_propose_refused(tmp_path, store, adapter, fake):
+    # I2: edit scope is enforced on a normalized onshape:<did>[/<eid>] key from the URL
+    other = "a" * 24
+    run = _scoped_run(store, ["part_x", f"onshape:{other}"], [])
+    env = Env(tmp_path, store, run, adapter)
+    before = fake.count(r".")
+    e = await err(env.call("onshape_propose", _propose(fake, fake.mv())))
+    assert e.code == ErrorCode.OUT_OF_SCOPE
+    e = await err(env.call("onshape_doc_open", {"url": fake.url()}))
+    assert e.code == ErrorCode.OUT_OF_SCOPE
+    e = await err(env.call("onshape_merge_request", {"url": fake.url(), "summary": "s"}))
+    assert e.code == ErrorCode.OUT_OF_SCOPE
+    assert fake.count(r".") == before            # refused before any Onshape call
+
+
+async def test_read_scope_allows_reads_not_writes(tmp_path, store, adapter, fake):
+    run = _scoped_run(store, [], [f"onshape:{fake.did.upper()}"])
+    env = Env(tmp_path, store, run, adapter)
+    assert (await env.call("onshape_features_list", {"url": fake.url()})).ok
+    e = await err(env.call("onshape_propose", _propose(fake, fake.mv())))
+    assert e.code == ErrorCode.OUT_OF_SCOPE
+
+
+async def test_element_scope(tmp_path, store, adapter, fake):
+    run = _scoped_run(store, [f"onshape:{fake.did}/{fake.eid}"], [])
+    env = Env(tmp_path, store, run, adapter)
+    out = await env.call("onshape_propose", _propose(fake, fake.mv()))
+    assert out.ok
+    url_other_element = fake.url().rsplit("/", 1)[0] + "/" + "b" * 24
+    e = await err(env.call("onshape_features_list", {"url": url_other_element}))
+    assert e.code == ErrorCode.OUT_OF_SCOPE
