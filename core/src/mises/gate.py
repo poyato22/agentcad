@@ -39,13 +39,25 @@ class Gate:
         try:
             out = await self._run(run_id, tool_name, raw_input, call_id, Path(workdir))
         except MisesError as e:
-            self.store.append_step(run_id, StepKind.ERROR,
-                                   {"call_id": call_id, "name": tool_name, **e.to_dict()})
-            self.events.publish(Event(type="tool_result", run_id=run_id,
-                                      data={"call_id": call_id, "name": tool_name, "ok": False,
-                                            **e.to_dict()}))
+            self._error(run_id, tool_name, call_id, e)
+            raise
+        except asyncio.CancelledError:
+            # every tool_call Step gets an outcome Step, also when the run is cancelled
+            self._error(run_id, tool_name, call_id,
+                        MisesError(ErrorCode.CANCELLED, "call cancelled before it finished"))
+            raise
+        except Exception as e:
+            self._error(run_id, tool_name, call_id,
+                        MisesError(ErrorCode.TOOL_FAILED, f"{type(e).__name__}: {e}"))
             raise
         return out
+
+    def _error(self, run_id: str, name: str, call_id: str, e: MisesError) -> None:
+        self.store.append_step(run_id, StepKind.ERROR, {"call_id": call_id, "name": name,
+                                                        **e.to_dict()})
+        self.events.publish(Event(type="tool_result", run_id=run_id,
+                                  data={"call_id": call_id, "name": name, "ok": False,
+                                        **e.to_dict()}))
 
     async def _run(self, run_id: str, name: str, raw_input: dict, call_id: str,
                    workdir: Path) -> ToolOutput:

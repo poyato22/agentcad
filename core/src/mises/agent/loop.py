@@ -121,6 +121,7 @@ class AgentLoop:
         self._cancelled = False
         self._inflight: asyncio.Task | None = None
         self._announced_skips = False
+        self._to_gate: set[str] = set()  # call ids handed to the gate (it records their outcome)
 
     # ---- control
     def cancel(self) -> None:
@@ -203,6 +204,7 @@ class AgentLoop:
                 try:
                     await self._guard(self._execute(turn.calls, set(offered), results))
                 except _Cancelled:
+                    self._record_unrun(turn.calls, results)
                     messages.append(self._results_message(turn.calls, results))
                     raise
                 messages.append(self._results_message(turn.calls, results))
@@ -311,6 +313,7 @@ class AgentLoop:
                                    {"call_id": c.id, "name": c.name, **err.to_dict()})
             self._publish("tool_result", call_id=c.id, name=c.name, ok=False, **err.to_dict())
         else:
+            self._to_gate.add(c.id)
             try:
                 out = await self.gate.call(self.run_id, c.name, c.input, call_id=c.id,
                                            workdir=self.workdir)
@@ -334,6 +337,17 @@ class AgentLoop:
             return True
         except MisesError:
             return False
+
+    def _record_unrun(self, calls: list[ToolCall], results: dict[str, ToolResultBlock]) -> None:
+        """Error Steps for calls the cancellation left without a result and that never reached
+        the gate (the gate records its own cancelled outcome for calls it was running)."""
+        for c in calls:
+            if c.id in results or c.id in self._to_gate:
+                continue
+            err = MisesError(ErrorCode.CANCELLED, "run cancelled before this call started")
+            self.store.append_step(self.run_id, StepKind.ERROR,
+                                   {"call_id": c.id, "name": c.name, **err.to_dict()})
+            self._publish("tool_result", call_id=c.id, name=c.name, ok=False, **err.to_dict())
 
     @staticmethod
     def _results_message(calls: list[ToolCall], results: dict[str, ToolResultBlock]) -> Message:

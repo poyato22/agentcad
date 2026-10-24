@@ -111,6 +111,7 @@ async def test_irreversible_waits_for_human(env):
             await asyncio.sleep(0.01)
         await asyncio.sleep(0.05)
         a = env.store.pending_approvals()[0]
+        assert env.calls == 0          # nothing ran before the human decided
         env.approvals.decide(a.id, a.payload_hash, True, "me")
 
     h = asyncio.create_task(human())
@@ -343,3 +344,31 @@ async def test_db_forged_approval_not_executed(env):
     e = await err(env.call("t", {"n": 1}))
     await h
     assert e.code == ErrorCode.DENIED and env.calls == 0
+
+
+async def test_cancel_during_approval_wait_records_error_step(env):
+    # M2: a cancelled call leaves an outcome Step, not a dangling tool_call
+    env.add(safety=C.IRREVERSIBLE)
+    task = asyncio.create_task(env.call("t", {"n": 1}))
+    while not env.store.pending_approvals():
+        await asyncio.sleep(0.01)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    last = env.store.steps(env.run.id)[-1]
+    assert last.kind == StepKind.ERROR and last.payload["error"] == "cancelled"
+    assert last.payload["call_id"] == "c1" and env.calls == 0
+    assert env.store.verify_chain(env.run.id)
+
+
+async def test_unexpected_exception_records_error_step(env, monkeypatch):
+    env.add(safety=C.READ)
+
+    def boom(*a, **kw):
+        raise RuntimeError("store exploded")
+    monkeypatch.setattr(env.gate, "_spill", boom)
+    with pytest.raises(RuntimeError):
+        await env.call("t", {})
+    last = env.store.steps(env.run.id)[-1]
+    assert last.kind == StepKind.ERROR and last.payload["error"] == "tool_failed"
+    assert "store exploded" in last.payload["message"]

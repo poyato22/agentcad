@@ -265,6 +265,11 @@ async def test_cancel_mid_tool(tmp_path):
     res = results_of(r.messages[-1])
     assert [b.tool_use_id for b in res] == ["c1", "c2"]
     assert all(b.is_error and json.loads(b.content)["error"] == "cancelled" for b in res)
+    # M2: both calls have exactly one cancelled outcome Step (c1 from the gate, c2 the loop)
+    errs = [st.payload for st in env.store.steps(env.run_id, [StepKind.ERROR])
+            if st.payload.get("call_id")]
+    assert sorted(e["call_id"] for e in errs) == ["c1", "c2"]
+    assert all(e["error"] == "cancelled" for e in errs)
 
 
 async def test_cancel_rejects_pending_approval(tmp_path):
