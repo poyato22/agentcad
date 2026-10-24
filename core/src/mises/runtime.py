@@ -16,6 +16,7 @@ from .gate import Gate
 from .onshape.adapter import OnshapeAdapter
 from .onshape.client import OnshapeClient
 from .onshape.tools import register_onshape_tools
+from .orchestrator import Orchestrator, register_orchestrator_tools
 from .platform import data_home, keychain_get
 from .providers.registry import DEFAULT_MODEL, resolve
 from .store import Store
@@ -52,7 +53,10 @@ class Runtime:
         register_mirror_tools(self.registry)
         register_onshape_tools(self.registry)
         register_ui_tools(self.registry)
-        services: dict = {"approvals": self.approvals, "runtime": self}
+        register_orchestrator_tools(self.registry)
+        self.orchestrator = Orchestrator(self)
+        services: dict = {"approvals": self.approvals, "runtime": self,
+                          "orchestrator": self.orchestrator}
         creds = keychain_get("mises", "onshape")
         if creds and ":" in creds:
             access, secret = creds.split(":", 1)
