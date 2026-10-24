@@ -1,0 +1,612 @@
+{
+ "_comment": "Top bar: two running runs, one pending approval, Onshape connected at 214/2,500.",
+ "runs": [
+  {
+   "id": "b7c79a57cbb4",
+   "parent_id": null,
+   "agent": "designer",
+   "provider": "fake",
+   "model": "fake-model",
+   "task": "thicken the mount plate to 6 mm",
+   "status": "running",
+   "branch": null,
+   "onshape_calls": 0,
+   "input_tokens": 0,
+   "output_tokens": 0,
+   "usd": 0,
+   "created_at": 1792869413.016629,
+   "updated_at": 1792869413.016629
+  },
+  {
+   "id": "c2d4e6f8a0b1",
+   "parent_id": null,
+   "agent": "verifier",
+   "provider": "fake",
+   "model": "fake-model",
+   "task": "check clearance around the holes",
+   "status": "running",
+   "branch": null,
+   "onshape_calls": 0,
+   "input_tokens": 0,
+   "output_tokens": 0,
+   "usd": 0,
+   "created_at": 1792869418.016629,
+   "updated_at": 1792869418.016629
+  }
+ ],
+ "steps": [
+  {
+   "id": 1,
+   "run_id": "b7c79a57cbb4",
+   "ts": 1792869413.01761,
+   "kind": "message",
+   "payload": {
+    "role": "user",
+    "text": "thicken the mount plate to 6 mm"
+   },
+   "evidence_hash": "e4623f4bf306455619cddfe9e7402a8a9a9568fd7cc8da75187f8673942cb7eb",
+   "prev_hash": null,
+   "collapsed": false
+  },
+  {
+   "id": 2,
+   "run_id": "b7c79a57cbb4",
+   "ts": 1792869413.01964,
+   "kind": "message",
+   "payload": {
+    "role": "assistant",
+    "stop_reason": "tool_use",
+    "text": "",
+    "tool_calls": [
+     {
+      "id": "c1",
+      "name": "mirror_part_create"
+     }
+    ]
+   },
+   "evidence_hash": "a0d6708d672a3fb3bb6f2525f09df67eb30324f58ab6edf8bb4a6f6f5f681524",
+   "prev_hash": "e4623f4bf306455619cddfe9e7402a8a9a9568fd7cc8da75187f8673942cb7eb",
+   "collapsed": false
+  },
+  {
+   "id": 3,
+   "run_id": "b7c79a57cbb4",
+   "ts": 1792869413.019851,
+   "kind": "tool_call",
+   "payload": {
+    "call_id": "c1",
+    "input": {
+     "part_id": "mount_plate",
+     "script": "from build123d import *\nVARS = {\"thickness\": 5.0}\ndef build(v):\n    with BuildPart() as p:\n        Box(40, 20, v[\"thickness\"])\n        with Locations((10, 0, 0), (-10, 0, 0)):\n            Hole(2.1)\n    return p.part\n",
+     "vars": {
+      "thickness": 5
+     }
+    },
+    "name": "mirror_part_create"
+   },
+   "evidence_hash": "13ed25e62e085a5e19888ee64772e49e84d7b802ebf46a61569c7b307466727d",
+   "prev_hash": "a0d6708d672a3fb3bb6f2525f09df67eb30324f58ab6edf8bb4a6f6f5f681524",
+   "collapsed": false
+  },
+  {
+   "id": 4,
+   "run_id": "b7c79a57cbb4",
+   "ts": 1792869416.845841,
+   "kind": "tool_result",
+   "payload": {
+    "call_id": "c1",
+    "name": "mirror_part_create",
+    "output": {
+     "data": {
+      "area_mm2": 2276.5291970414473,
+      "bbox": {
+       "max": [
+        20,
+        10,
+        2.5
+       ],
+       "min": [
+        -20,
+        -10,
+        -2.5
+       ],
+       "size": [
+        40,
+        20,
+        5
+       ]
+      },
+      "center_of_mass": [
+       -5.888289011734608e-17,
+       -5.502091439831045e-17,
+       -1.124175016826848e-17
+      ],
+      "edges": 18,
+      "faces": 8,
+      "holes": [
+       {
+        "axis": [
+         0,
+         0,
+         1
+        ],
+        "center": [
+         -10,
+         0,
+         0
+        ],
+        "depth_mm": 5,
+        "diameter_mm": 4.2
+       },
+       {
+        "axis": [
+         0,
+         0,
+         1
+        ],
+        "center": [
+         10,
+         0,
+         0
+        ],
+        "depth_mm": 5,
+        "diameter_mm": 4.2
+       }
+      ],
+      "mass_g": 4.7882051473310945,
+      "part_id": "mount_plate",
+      "solids": 1,
+      "valid": true,
+      "vars": {
+       "thickness": 5
+      },
+      "volume_mm3": 3861.4557639766895
+     },
+     "handles": [],
+     "ok": true,
+     "step_kind": "tool_result",
+     "summary": "mount_plate: volume 3861.5 mm3, mass 4.79 g, bbox 40.0x20.0x5.0 mm, 2 hole(s), valid=True",
+     "warnings": []
+    }
+   },
+   "evidence_hash": "ec285809520f811d96dd9dc0b7fa446f4dc8dc7ddead2635d59eb4bff0af1955",
+   "prev_hash": "13ed25e62e085a5e19888ee64772e49e84d7b802ebf46a61569c7b307466727d",
+   "collapsed": false
+  },
+  {
+   "id": 5,
+   "run_id": "b7c79a57cbb4",
+   "ts": 1792869416.846715,
+   "kind": "message",
+   "payload": {
+    "role": "assistant",
+    "stop_reason": "tool_use",
+    "text": "",
+    "tool_calls": [
+     {
+      "id": "c2",
+      "name": "mirror_part_set_vars"
+     }
+    ]
+   },
+   "evidence_hash": "63294619b4730bba478efae532ab0960fb47c76b8efb54dfa13768e4b193ded8",
+   "prev_hash": "ec285809520f811d96dd9dc0b7fa446f4dc8dc7ddead2635d59eb4bff0af1955",
+   "collapsed": false
+  },
+  {
+   "id": 6,
+   "run_id": "b7c79a57cbb4",
+   "ts": 1792869416.846847,
+   "kind": "tool_call",
+   "payload": {
+    "call_id": "c2",
+    "input": {
+     "part_id": "mount_plate",
+     "vars": {
+      "thickness": 6
+     }
+    },
+    "name": "mirror_part_set_vars"
+   },
+   "evidence_hash": "077f7f26d831dbd3cad4787703a13d22ff6d0ae1a80a4df5ccd027634943d058",
+   "prev_hash": "63294619b4730bba478efae532ab0960fb47c76b8efb54dfa13768e4b193ded8",
+   "collapsed": false
+  },
+  {
+   "id": 7,
+   "run_id": "b7c79a57cbb4",
+   "ts": 1792869420.092098,
+   "kind": "diff",
+   "payload": {
+    "call_id": "c2",
+    "name": "mirror_part_set_vars",
+    "output": {
+     "data": {
+      "area_mm2": 2422.9185753316015,
+      "bbox": {
+       "max": [
+        20,
+        10,
+        3
+       ],
+       "min": [
+        -20,
+        -10,
+        -3
+       ],
+       "size": [
+        40,
+        20,
+        6
+       ]
+      },
+      "center_of_mass": [
+       3.189489881356246e-16,
+       -1.2682862350235098e-16,
+       1.7563595855833278e-17
+      ],
+      "delta": {
+       "bbox_size": [
+        0,
+        0,
+        1
+       ],
+       "mass_g": 0.9576410294662194,
+       "volume_mm3": 772.2911527953379
+      },
+      "edges": 18,
+      "faces": 8,
+      "holes": [
+       {
+        "axis": [
+         0,
+         0,
+         1
+        ],
+        "center": [
+         -10,
+         0,
+         0
+        ],
+        "depth_mm": 6,
+        "diameter_mm": 4.2
+       },
+       {
+        "axis": [
+         0,
+         0,
+         1
+        ],
+        "center": [
+         10,
+         0,
+         0
+        ],
+        "depth_mm": 6,
+        "diameter_mm": 4.2
+       }
+      ],
+      "mass_g": 5.745846176797314,
+      "part_id": "mount_plate",
+      "solids": 1,
+      "valid": true,
+      "vars": {
+       "thickness": 6
+      },
+      "volume_mm3": 4633.746916772027
+     },
+     "handles": [],
+     "ok": true,
+     "step_kind": "diff",
+     "summary": "mount_plate: volume 4633.7 mm3, mass 5.75 g, bbox 40.0x20.0x6.0 mm, 2 hole(s), valid=True; volume delta +772.3 mm3",
+     "warnings": []
+    }
+   },
+   "evidence_hash": "71e39dfe10f4f2031186e820284dcf44cdc405829abb594684bd30162cb5e526",
+   "prev_hash": "077f7f26d831dbd3cad4787703a13d22ff6d0ae1a80a4df5ccd027634943d058",
+   "collapsed": false
+  },
+  {
+   "id": 8,
+   "run_id": "b7c79a57cbb4",
+   "ts": 1792869420.092502,
+   "kind": "message",
+   "payload": {
+    "role": "assistant",
+    "stop_reason": "tool_use",
+    "text": "",
+    "tool_calls": [
+     {
+      "id": "c3",
+      "name": "mirror_measure"
+     }
+    ]
+   },
+   "evidence_hash": "ac4176f4c91fc9977e3f585325915d8f143f232649ab21b52d843e61a43f5acd",
+   "prev_hash": "71e39dfe10f4f2031186e820284dcf44cdc405829abb594684bd30162cb5e526",
+   "collapsed": false
+  },
+  {
+   "id": 9,
+   "run_id": "b7c79a57cbb4",
+   "ts": 1792869420.0927181,
+   "kind": "tool_call",
+   "payload": {
+    "call_id": "c3",
+    "input": {
+     "part_id": "mount_plate"
+    },
+    "name": "mirror_measure"
+   },
+   "evidence_hash": "6f1794a8aa77db67ed6ead7abc7f1e84145a866d0868133a7b916f9dd5ff2adf",
+   "prev_hash": "ac4176f4c91fc9977e3f585325915d8f143f232649ab21b52d843e61a43f5acd",
+   "collapsed": false
+  },
+  {
+   "id": 10,
+   "run_id": "b7c79a57cbb4",
+   "ts": 1792869420.0930219,
+   "kind": "measure",
+   "payload": {
+    "call_id": "c3",
+    "name": "mirror_measure",
+    "output": {
+     "data": {
+      "area_mm2": 2422.9185753316015,
+      "bbox": {
+       "max": [
+        20,
+        10,
+        3
+       ],
+       "min": [
+        -20,
+        -10,
+        -3
+       ],
+       "size": [
+        40,
+        20,
+        6
+       ]
+      },
+      "center_of_mass": [
+       3.189489881356246e-16,
+       -1.2682862350235098e-16,
+       1.7563595855833278e-17
+      ],
+      "edges": 18,
+      "faces": 8,
+      "holes": [
+       {
+        "axis": [
+         0,
+         0,
+         1
+        ],
+        "center": [
+         -10,
+         0,
+         0
+        ],
+        "depth_mm": 6,
+        "diameter_mm": 4.2
+       },
+       {
+        "axis": [
+         0,
+         0,
+         1
+        ],
+        "center": [
+         10,
+         0,
+         0
+        ],
+        "depth_mm": 6,
+        "diameter_mm": 4.2
+       }
+      ],
+      "mass_g": 5.745846176797314,
+      "part_id": "mount_plate",
+      "solids": 1,
+      "valid": true,
+      "volume_mm3": 4633.746916772027
+     },
+     "handles": [],
+     "ok": true,
+     "step_kind": "measure",
+     "summary": "mount_plate: volume 4633.7 mm3, mass 5.75 g, bbox 40.0x20.0x6.0 mm, 2 hole(s), valid=True",
+     "warnings": []
+    }
+   },
+   "evidence_hash": "098e317fcf3baf95130ab1b336c8c37d23b3f515bb12a143c7ba83e0db452791",
+   "prev_hash": "6f1794a8aa77db67ed6ead7abc7f1e84145a866d0868133a7b916f9dd5ff2adf",
+   "collapsed": false
+  },
+  {
+   "id": 11,
+   "run_id": "b7c79a57cbb4",
+   "ts": 1792869420.0934231,
+   "kind": "message",
+   "payload": {
+    "role": "assistant",
+    "stop_reason": "tool_use",
+    "text": "Thickened the plate to 6 mm; asking to merge.",
+    "tool_calls": [
+     {
+      "id": "c4",
+      "name": "fixture_merge"
+     }
+    ]
+   },
+   "evidence_hash": "7269d82f69b55fee284653a67b6988a8a886173e1d0fac1dd3a005bae8953945",
+   "prev_hash": "098e317fcf3baf95130ab1b336c8c37d23b3f515bb12a143c7ba83e0db452791",
+   "collapsed": false
+  },
+  {
+   "id": 12,
+   "run_id": "b7c79a57cbb4",
+   "ts": 1792869420.093528,
+   "kind": "tool_call",
+   "payload": {
+    "call_id": "c4",
+    "input": {
+     "part_id": "mount_plate"
+    },
+    "name": "fixture_merge"
+   },
+   "evidence_hash": "093ab4737714c773bdc965efd8900bd62ab66e75eb5379ab66626acfa0b500f9",
+   "prev_hash": "7269d82f69b55fee284653a67b6988a8a886173e1d0fac1dd3a005bae8953945",
+   "collapsed": false
+  }
+ ],
+ "approvals": [
+  {
+   "id": "a332e73aa8f2",
+   "run_id": "b7c79a57cbb4",
+   "action": "fixture_merge",
+   "payload": {
+    "part_id": "mount_plate"
+   },
+   "payload_hash": "f340f4e1fa8ae34092bf3a8c8d58a3ff866253aadd8512f337db0b56512710b9",
+   "microversion": null,
+   "deltas": {},
+   "status": "pending",
+   "expires_at": 4102444800,
+   "decided_by": null,
+   "decided_at": null,
+   "edited_payload": null
+  }
+ ],
+ "parts": [
+  {
+   "part_id": "mount_plate",
+   "vars": {
+    "thickness": 6
+   },
+   "metrics": {
+    "valid": true,
+    "volume_mm3": 4633.746916772027,
+    "area_mm2": 2422.9185753316015,
+    "mass_g": 5.745846176797314,
+    "bbox": {
+     "min": [
+      -20,
+      -10,
+      -3
+     ],
+     "max": [
+      20,
+      10,
+      3
+     ],
+     "size": [
+      40,
+      20,
+      6
+     ]
+    },
+    "center_of_mass": [
+     3.189489881356246e-16,
+     -1.2682862350235098e-16,
+     1.7563595855833278e-17
+    ],
+    "faces": 8,
+    "edges": 18,
+    "holes": [
+     {
+      "diameter_mm": 4.2,
+      "axis": [
+       0,
+       0,
+       1
+      ],
+      "center": [
+       -10,
+       0,
+       0
+      ],
+      "depth_mm": 6
+     },
+     {
+      "diameter_mm": 4.2,
+      "axis": [
+       0,
+       0,
+       1
+      ],
+      "center": [
+       10,
+       0,
+       0
+      ],
+      "depth_mm": 6
+     }
+    ],
+    "solids": 1
+   },
+   "mtime": 1792869420.0914402
+  }
+ ],
+ "agents": [
+  {
+   "name": "designer",
+   "description": "Main CAD agent. Designs and edits parts using the local mirror and Onshape.",
+   "model": "inherit"
+  },
+  {
+   "name": "planner",
+   "description": "Turns a design request into a step-by-step plan. Produces a plan only; changes nothing.",
+   "model": "inherit"
+  },
+  {
+   "name": "sim",
+   "description": "Placeholder for simulation work (milestone 4). Simulation is not available yet.",
+   "model": "inherit"
+  },
+  {
+   "name": "verifier",
+   "description": "Skeptical read-only checker. Tries to prove a change wrong and reports pass/fail per requirement.",
+   "model": "inherit"
+  }
+ ],
+ "models": {
+  "default": "anthropic/claude-sonnet-5-5",
+  "vendors": [
+   {
+    "vendor": "anthropic",
+    "key": "env"
+   },
+   {
+    "vendor": "openai",
+    "key": "none"
+   },
+   {
+    "vendor": "gemini",
+    "key": "none"
+   },
+   {
+    "vendor": "openrouter",
+    "key": "none"
+   },
+   {
+    "vendor": "ollama",
+    "key": "not_needed"
+   },
+   {
+    "vendor": "lmstudio",
+    "key": "not_needed"
+   }
+  ]
+ },
+ "status": {
+  "core_version": "0.1.0",
+  "onshape": "connected",
+  "onshape_calls_year": 214,
+  "onshape_cap_year": 2500,
+  "runs_running": 2,
+  "approvals_pending": 1
+ },
+ "script": []
+}

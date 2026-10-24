@@ -1,0 +1,28 @@
+.topbar {
+  position: relative; height: 44px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: stretch;
+  background: var(--head); border-bottom: 1px solid var(--line2); padding: 0 12px 0 72px; /* room for the macOS window buttons */
+}
+.topbar-left, .topbar-right { display: flex; align-items: center; min-width: 0; }
+.topbar-right { justify-content: flex-end; gap: 12px; }
+.crumb { display: flex; align-items: center; white-space: pre; overflow: hidden; color: var(--dim); }
+.crumb-part { color: var(--ink); overflow: hidden; text-overflow: ellipsis; }
+.crumb-none { color: var(--faint); }
+.tabs { display: flex; align-items: stretch; }
+.tab {
+  background: transparent; border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 0 14px;
+  color: var(--dim); font: inherit; cursor: pointer;
+}
+.tab-active { color: var(--ink); border-bottom-color: var(--blue); }
+.tab[aria-disabled="true"] { color: var(--faint); cursor: default; }
+.tab:focus-visible { outline: 1px solid var(--blue); outline-offset: -3px; }
+.lights { display: flex; gap: 14px; align-items: center; white-space: nowrap; color: var(--dim); font-size: 11px; }
+.light { display: inline-flex; gap: 5px; align-items: center; }
+.light-val { color: var(--ink); }
+.light-need { color: var(--blue2); }
+.light-click { cursor: pointer; }
+.stop-all { flex: none; }
+.toast {
+  position: absolute; right: 12px; top: 46px; z-index: 5; background: var(--paper2); border: 1px solid var(--line2);
+  padding: 3px 8px; color: var(--ink); pointer-events: none;
+}
+.toast:empty { display: none; }
