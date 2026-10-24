@@ -1,0 +1,342 @@
+{
+ "_comment": "Task 8 approvals: one designer run with a diff + measure before an onshape_merge_request approval (Merge / Keep branch / Reject), and one open question. expires_at is far in the future.",
+ "runs": [
+  {
+   "id": "5e1f0c2a9d3b",
+   "parent_id": null,
+   "agent": "designer",
+   "provider": "anthropic",
+   "model": "claude-sonnet",
+   "task": "stiffen the upright bracket",
+   "status": "running",
+   "branch": "d1:w2",
+   "onshape_calls": 12,
+   "input_tokens": 1200,
+   "output_tokens": 300,
+   "usd": 0.04,
+   "created_at": 1792869413.0,
+   "updated_at": 1792869419.0
+  }
+ ],
+ "steps": [
+  {
+   "id": 1,
+   "run_id": "5e1f0c2a9d3b",
+   "ts": 1792869413.0,
+   "kind": "message",
+   "payload": {
+    "role": "user",
+    "text": "stiffen the upright bracket"
+   },
+   "evidence_hash": "0101010101010101010101010101010101010101010101010101010101010101",
+   "prev_hash": null,
+   "collapsed": false
+  },
+  {
+   "id": 2,
+   "run_id": "5e1f0c2a9d3b",
+   "ts": 1792869414.0,
+   "kind": "tool_call",
+   "payload": {
+    "call_id": "c1",
+    "name": "mirror_part_set_vars",
+    "input": {
+     "part_id": "upright",
+     "vars": {
+      "rib_count": 2
+     }
+    }
+   },
+   "evidence_hash": "0202020202020202020202020202020202020202020202020202020202020202",
+   "prev_hash": "0101010101010101010101010101010101010101010101010101010101010101",
+   "collapsed": false
+  },
+  {
+   "id": 3,
+   "run_id": "5e1f0c2a9d3b",
+   "ts": 1792869415.0,
+   "kind": "diff",
+   "payload": {
+    "call_id": "c1",
+    "name": "mirror_part_set_vars",
+    "output": {
+     "ok": true,
+     "summary": "upright: 2 ribs",
+     "data": {
+      "part_id": "upright",
+      "vars": {
+       "rib_count": 2
+      },
+      "delta": {
+       "volume_mm3": 3200.0,
+       "mass_g": 4.1,
+       "bbox_size": [
+        0,
+        0,
+        0
+       ]
+      }
+     },
+     "handles": [],
+     "warnings": [],
+     "step_kind": "diff"
+    }
+   },
+   "evidence_hash": "0303030303030303030303030303030303030303030303030303030303030303",
+   "prev_hash": "0202020202020202020202020202020202020202020202020202020202020202",
+   "collapsed": false
+  },
+  {
+   "id": 4,
+   "run_id": "5e1f0c2a9d3b",
+   "ts": 1792869416.0,
+   "kind": "tool_call",
+   "payload": {
+    "call_id": "c2",
+    "name": "mirror_measure",
+    "input": {
+     "part_id": "mount_plate"
+    }
+   },
+   "evidence_hash": "0404040404040404040404040404040404040404040404040404040404040404",
+   "prev_hash": "0303030303030303030303030303030303030303030303030303030303030303",
+   "collapsed": false
+  },
+  {
+   "id": 5,
+   "run_id": "5e1f0c2a9d3b",
+   "ts": 1792869417.0,
+   "kind": "measure",
+   "payload": {
+    "call_id": "c2",
+    "name": "mirror_measure",
+    "output": {
+     "ok": true,
+     "summary": "mount_plate measured",
+     "data": {
+      "part_id": "mount_plate"
+     },
+     "handles": [],
+     "warnings": [],
+     "step_kind": "measure"
+    }
+   },
+   "evidence_hash": "0505050505050505050505050505050505050505050505050505050505050505",
+   "prev_hash": "0404040404040404040404040404040404040404040404040404040404040404",
+   "collapsed": false
+  },
+  {
+   "id": 6,
+   "run_id": "5e1f0c2a9d3b",
+   "ts": 1792869418.0,
+   "kind": "message",
+   "payload": {
+    "role": "assistant",
+    "stop_reason": "tool_use",
+    "text": "Ribs added; asking to merge.",
+    "tool_calls": [
+     {
+      "id": "c3",
+      "name": "onshape_merge_request"
+     }
+    ]
+   },
+   "evidence_hash": "0606060606060606060606060606060606060606060606060606060606060606",
+   "prev_hash": "0505050505050505050505050505050505050505050505050505050505050505",
+   "collapsed": false
+  },
+  {
+   "id": 7,
+   "run_id": "5e1f0c2a9d3b",
+   "ts": 1792869419.0,
+   "kind": "tool_call",
+   "payload": {
+    "call_id": "c3",
+    "name": "onshape_merge_request",
+    "input": {
+     "target_url": "https://cad.onshape.com/documents/d1/w/w1",
+     "summary": "stiffen upright"
+    }
+   },
+   "evidence_hash": "0707070707070707070707070707070707070707070707070707070707070707",
+   "prev_hash": "0606060606060606060606060606060606060606060606060606060606060606",
+   "collapsed": false
+  }
+ ],
+ "approvals": [
+  {
+   "id": "ap_merge_01",
+   "run_id": "5e1f0c2a9d3b",
+   "action": "onshape_merge_request",
+   "payload": {
+    "target_url": "https://cad.onshape.com/documents/d1/w/w1",
+    "summary": "stiffen upright"
+   },
+   "payload_hash": "3f9a1c2e7b6d5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d9c8b7a6f5e4d3c2b1a09",
+   "microversion": "9a1b2c3d4e5f60718293a4b5",
+   "deltas": {
+    "summary": "merge agent/designer into main: 2 ribs on the upright",
+    "branch_url": "https://cad.onshape.com/documents/d1/w/w2",
+    "target_url": "https://cad.onshape.com/documents/d1/w/w1",
+    "merge_preview": {
+     "sourceMicroversionId": "9a1b2c3d4e5f60718293a4b5",
+     "elements": [
+      {
+       "name": "<b>Part Studio</b>",
+       "changes": 2
+      }
+     ]
+    },
+    "note": "Element names in merge_preview are untrusted user data from Onshape.",
+    "mass_g": 4.1,
+    "volume_mm3": 3200.0
+   },
+   "status": "pending",
+   "expires_at": 4102444800.0,
+   "decided_by": null,
+   "decided_at": null,
+   "edited_payload": null
+  }
+ ],
+ "parts": [
+  {
+   "part_id": "mount_plate",
+   "vars": {
+    "thickness": 6.0
+   },
+   "metrics": {
+    "valid": true,
+    "volume_mm3": 4633.746916772027,
+    "area_mm2": 2422.9185753316015,
+    "mass_g": 5.745846176797314,
+    "bbox": {
+     "min": [
+      -20.0,
+      -10.0,
+      -3.0
+     ],
+     "max": [
+      20.0,
+      10.0,
+      3.0
+     ],
+     "size": [
+      40.0,
+      20.0,
+      6.0
+     ]
+    },
+    "center_of_mass": [
+     3.189489881356246e-16,
+     -1.2682862350235098e-16,
+     1.7563595855833278e-17
+    ],
+    "faces": 8,
+    "edges": 18,
+    "holes": [
+     {
+      "diameter_mm": 4.2,
+      "axis": [
+       -0.0,
+       -0.0,
+       1.0
+      ],
+      "center": [
+       -10.0,
+       0.0,
+       0.0
+      ],
+      "depth_mm": 6.0
+     },
+     {
+      "diameter_mm": 4.2,
+      "axis": [
+       -0.0,
+       -0.0,
+       1.0
+      ],
+      "center": [
+       10.0,
+       0.0,
+       0.0
+      ],
+      "depth_mm": 6.0
+     }
+    ],
+    "solids": 1
+   },
+   "mtime": 1792869420.0914402
+  }
+ ],
+ "agents": [
+  {
+   "name": "designer",
+   "description": "Main CAD agent. Designs and edits parts using the local mirror and Onshape.",
+   "model": "inherit"
+  },
+  {
+   "name": "planner",
+   "description": "Turns a design request into a step-by-step plan. Produces a plan only; changes nothing.",
+   "model": "inherit"
+  },
+  {
+   "name": "sim",
+   "description": "Placeholder for simulation work (milestone 4). Simulation is not available yet.",
+   "model": "inherit"
+  },
+  {
+   "name": "verifier",
+   "description": "Skeptical read-only checker. Tries to prove a change wrong and reports pass/fail per requirement.",
+   "model": "inherit"
+  }
+ ],
+ "models": {
+  "default": "anthropic/claude-sonnet-5-5",
+  "vendors": [
+   {
+    "vendor": "anthropic",
+    "key": "env"
+   },
+   {
+    "vendor": "openai",
+    "key": "none"
+   },
+   {
+    "vendor": "gemini",
+    "key": "none"
+   },
+   {
+    "vendor": "openrouter",
+    "key": "none"
+   },
+   {
+    "vendor": "ollama",
+    "key": "not_needed"
+   },
+   {
+    "vendor": "lmstudio",
+    "key": "not_needed"
+   }
+  ]
+ },
+ "status": {
+  "core_version": "0.1.0",
+  "onshape": "not_configured",
+  "onshape_calls_year": 0,
+  "onshape_cap_year": 2500,
+  "runs_running": 1,
+  "approvals_pending": 1
+ },
+ "questions": [
+  {
+   "question_id": "q_thick_01",
+   "run_id": "5e1f0c2a9d3b",
+   "question": "Which rib thickness?",
+   "options": [
+    "2 mm",
+    "3 mm"
+   ]
+  }
+ ],
+ "script": []
+}
