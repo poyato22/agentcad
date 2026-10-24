@@ -23,6 +23,8 @@ def _parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("serve", help="run the local HTTP/WebSocket/MCP server")
     p.add_argument("--port", type=int, default=0)
+    p.add_argument("--exit-on-stdin-eof", action="store_true",
+                   help="stop cleanly when stdin closes (parent app died)")
 
     p = sub.add_parser("mcp-stdio", help="stdio MCP proxy for agents that only speak stdio")
     p.add_argument("--run", required=True, metavar="ID")
@@ -72,7 +74,22 @@ def _serve(args) -> int:
     from ..runtime import Runtime
     from ..server import app as server_app
 
+    import signal
+    import threading
+
     rt = Runtime()
+    if args.exit_on_stdin_eof:
+        def _watch_stdin() -> None:
+            try:
+                while sys.stdin.buffer.read(4096):
+                    pass
+            except (OSError, ValueError):
+                pass
+            os.kill(os.getpid(), signal.SIGINT)  # main thread: KeyboardInterrupt -> clean stop
+
+        threading.Thread(target=_watch_stdin, daemon=True).start()
+    if threading.current_thread() is threading.main_thread():
+        signal.signal(signal.SIGTERM, signal.default_int_handler)  # clean stop removes server.json
     port, _token = server_app.serve(rt, port=args.port)
     print(f"mises server listening on http://127.0.0.1:{port}")
     print(f"token and port are in {rt.home / 'server.json'}; Ctrl-C to stop")

@@ -11,6 +11,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![core_info, core_restart])
         .setup(|app| {
             let sup: SharedSupervisor = Arc::new(Supervisor::start(app.handle().clone()));
+            core::install_signal_stop(sup.clone());
             app.manage(sup);
             Ok(())
         })

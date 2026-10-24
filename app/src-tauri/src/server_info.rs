@@ -3,11 +3,21 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
-#[derive(Deserialize, Debug, Clone, PartialEq)]
+#[derive(Deserialize, Clone, PartialEq)]
 pub struct ServerInfo {
     pub port: u16,
     pub token: String,
     pub pid: u32,
+}
+
+impl std::fmt::Debug for ServerInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ServerInfo")
+            .field("port", &self.port)
+            .field("token", &"<redacted>")
+            .field("pid", &self.pid)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

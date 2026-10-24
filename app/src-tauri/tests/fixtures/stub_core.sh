@@ -1,13 +1,22 @@
 #!/bin/sh
-# Stub for `mises serve`. Env: MISES_HOME (required), STUB_MODE=serve|crash|fork, STUB_DELAY (s before
-# writing server.json), STUB_PIDFILE (fork mode: grandchild pid, then own pid).
+# Stub for `mises serve --exit-on-stdin-eof`. Env: MISES_HOME (required), STUB_MODE=serve|crash|fork,
+# STUB_DELAY (s before writing server.json), STUB_PIDFILE (fork mode: grandchild pid, then own pid),
+# STUB_PIDLOG (append own pid here). Like the real core it exits when stdin reaches EOF (parent died);
+# it also takes its whole process group with it, standing in for the core's own children.
+[ -n "$STUB_PIDLOG" ] && echo $$ >> "$STUB_PIDLOG"
 case "${STUB_MODE:-serve}" in
   crash) echo "stub: boom" >&2; exit 1 ;;
   fork) sleep 300 & echo $! > "$STUB_PIDFILE"; echo $$ >> "$STUB_PIDFILE" ;;
 esac
-exec python3 - <<'PY'
-import http.server, json, os, time
+PYSRC=$(cat <<'PY'
+import http.server, json, os, signal, sys, threading, time
 home = os.environ["MISES_HOME"]; token = "stub-token"
+def watch():
+    try:
+        while sys.stdin.buffer.read(4096): pass
+    except Exception: pass
+    os.killpg(os.getpgrp(), signal.SIGKILL)
+threading.Thread(target=watch, daemon=True).start()
 class H(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         ok = self.path == "/health" and self.headers.get("Authorization") == "Bearer " + token
@@ -23,3 +32,5 @@ os.write(fd, json.dumps({"port": srv.server_address[1], "token": token, "pid": o
 os.replace(path + ".tmp", path)
 srv.serve_forever()
 PY
+)
+exec python3 -c "$PYSRC"

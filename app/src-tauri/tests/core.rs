@@ -96,8 +96,20 @@ fn default_command_runs_uv_serve_on_port_zero() {
     let c = core_command(Path::new("/x/core")).unwrap();
     std::env::remove_var("MISES_UV");
     assert_eq!(c.program, uv);
-    assert_eq!(c.args, ["run", "--project", "/x/core", "mises", "serve", "--port", "0"]);
+    assert_eq!(c.args, ["run", "--project", "/x/core", "mises", "serve", "--port", "0", "--exit-on-stdin-eof"]);
     assert_eq!(c.cwd, PathBuf::from("/x/core"));
+}
+
+#[test]
+fn synced_venv_is_run_directly_so_stdin_eof_reaches_the_core() {
+    let _g = ENV.lock().unwrap();
+    std::env::remove_var("MISES_CORE_CMD");
+    let d = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(d.path().join(".venv/bin")).unwrap();
+    std::fs::write(d.path().join(".venv/bin/mises"), "").unwrap();
+    let c = core_command(d.path()).unwrap();
+    assert_eq!(c.program, d.path().join(".venv/bin/mises"));
+    assert_eq!(c.args, ["serve", "--port", "0", "--exit-on-stdin-eof"]);
 }
 
 #[test]

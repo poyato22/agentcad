@@ -14,15 +14,27 @@ use std::time::{Duration, Instant, SystemTime};
 const START_TIMEOUT: Duration = Duration::from_secs(20);
 const KILL_GRACE: Duration = Duration::from_secs(5);
 const BACKOFF_SECS: [u64; 3] = [1, 2, 4];
+const HEALTHY_RESET: Duration = Duration::from_secs(60);
 const TAIL_BYTES: usize = 4096;
 
-#[derive(Serialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct CoreInfo {
     pub base_url: String,
     pub ws_url: String,
     pub token: String,
     pub owned: bool,
+}
+
+impl std::fmt::Debug for CoreInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CoreInfo")
+            .field("base_url", &self.base_url)
+            .field("ws_url", &self.ws_url)
+            .field("token", &"<redacted>")
+            .field("owned", &self.owned)
+            .finish()
+    }
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq)]
@@ -61,14 +73,23 @@ pub fn core_dir() -> PathBuf {
 pub fn core_command(core_dir: &Path) -> Result<CoreCommand, String> {
     let cwd = core_dir.to_path_buf();
     let env = vec![];
-    if let Some(ov) = std::env::var("MISES_CORE_CMD").ok().filter(|v| !v.trim().is_empty()) {
+    // The override is a test hook: ignored in release builds so a stray env var can't run arbitrary code.
+    let ov = if cfg!(debug_assertions) { std::env::var("MISES_CORE_CMD").ok() } else { None };
+    if let Some(ov) = ov.filter(|v| !v.trim().is_empty()) {
         let mut parts = ov.split_whitespace().map(String::from);
         let program = PathBuf::from(parts.next().unwrap_or_default());
         return Ok(CoreCommand { program, args: parts.collect(), cwd, env });
     }
+    // `uv run` does not exec: it stays as the parent holding a copy of our stdin pipe, so the core
+    // would never see EOF if the app is SIGKILLed. Prefer the synced venv's entry point directly.
+    let venv_mises = core_dir.join(".venv/bin/mises");
+    if venv_mises.is_file() {
+        let args = ["serve", "--port", "0", "--exit-on-stdin-eof"].map(String::from).to_vec();
+        return Ok(CoreCommand { program: venv_mises, args, cwd, env });
+    }
     let uv = find_uv_with(std::env::var_os("MISES_UV").map(PathBuf::from), &platform::uv_candidates(), std::env::var_os("PATH"))
         .ok_or("could not find `uv` (looked in $MISES_UV, /opt/homebrew/bin, /usr/local/bin, ~/.local/bin, ~/.cargo/bin, PATH); install it with `brew install uv`")?;
-    let args = ["run", "--project", &core_dir.display().to_string(), "mises", "serve", "--port", "0"];
+    let args = ["run", "--project", &core_dir.display().to_string(), "mises", "serve", "--port", "0", "--exit-on-stdin-eof"];
     Ok(CoreCommand { program: uv, args: args.map(String::from).to_vec(), cwd, env })
 }
 
@@ -88,6 +109,10 @@ pub struct Supervisor {
     emit: Emit,
     status: Arc<Mutex<CoreStatus>>,
     run: Mutex<Option<(Arc<AtomicBool>, JoinHandle<()>)>>,
+    /// Held across stop()/restart() so concurrent lifecycle calls can't interleave.
+    lifecycle: Mutex<()>,
+    /// Set once by stop(); no core may be launched afterwards.
+    shutting_down: AtomicBool,
 }
 
 struct Ctx {
@@ -151,13 +176,24 @@ impl Supervisor {
     pub fn failed(msg: String, emit: Emit) -> Self {
         let s = CoreStatus::Crashed { code: None, stderr_tail: msg, restarts: 0 };
         emit(&s);
-        Self { cfg: None, emit, status: Arc::new(Mutex::new(s)), run: Mutex::new(None) }
+        Self::new(None, emit, s)
     }
 
     pub fn start_with(cfg: SupervisorConfig, emit: Emit) -> Self {
-        let sup = Self { cfg: Some(cfg), emit, status: Arc::new(Mutex::new(CoreStatus::Starting)), run: Mutex::new(None) };
+        let sup = Self::new(Some(cfg), emit, CoreStatus::Starting);
         sup.launch();
         sup
+    }
+
+    fn new(cfg: Option<SupervisorConfig>, emit: Emit, status: CoreStatus) -> Self {
+        Self {
+            cfg,
+            emit,
+            status: Arc::new(Mutex::new(status)),
+            run: Mutex::new(None),
+            lifecycle: Mutex::new(()),
+            shutting_down: AtomicBool::new(false),
+        }
     }
 
     pub fn status(&self) -> CoreStatus {
@@ -166,15 +202,18 @@ impl Supervisor {
 
     fn launch(&self) {
         let Some(cfg) = self.cfg.clone() else { return };
+        if self.shutting_down.load(Ordering::SeqCst) {
+            return;
+        }
         let stop = Arc::new(AtomicBool::new(false));
         let ctx = Ctx { cfg, emit: self.emit.clone(), status: self.status.clone(), stop: stop.clone() };
         let handle = std::thread::spawn(move || monitor(&ctx));
         *self.run.lock().unwrap() = Some((stop, handle));
     }
 
-    /// Stops an owned core (SIGTERM to its process group, SIGKILL after 5 s). An attached core is left alone.
-    pub fn stop(&self) {
-        if let Some((stop, handle)) = self.run.lock().unwrap().take() {
+    fn stop_running(&self) {
+        let running = self.run.lock().unwrap().take();
+        if let Some((stop, handle)) = running {
             stop.store(true, Ordering::SeqCst);
             let _ = handle.join();
         }
@@ -184,17 +223,48 @@ impl Supervisor {
         }
     }
 
+    /// Final shutdown: stops an owned core (SIGTERM to its process group, SIGKILL after 5 s) and
+    /// forbids further launches. An attached core is left alone. Idempotent.
+    pub fn stop(&self) {
+        let _life = self.lifecycle.lock().unwrap();
+        self.shutting_down.store(true, Ordering::SeqCst);
+        self.stop_running();
+    }
+
     pub fn restart(&self) {
-        self.stop();
+        let _life = self.lifecycle.lock().unwrap();
+        if self.shutting_down.load(Ordering::SeqCst) {
+            return;
+        }
+        self.stop_running();
         *self.status.lock().unwrap() = CoreStatus::Starting;
         (self.emit)(&CoreStatus::Starting);
         self.launch();
     }
 }
 
+impl Drop for Supervisor {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
+
+/// Stop the owned core on SIGTERM/SIGINT/SIGHUP, then exit. (SIGKILL is covered by the core's
+/// `--exit-on-stdin-eof`: the pipe we hold on its stdin closes when we die.)
+pub fn install_signal_stop(sup: SharedSupervisor) {
+    use signal_hook::consts::{SIGHUP, SIGINT, SIGTERM};
+    let Ok(mut signals) = signal_hook::iterator::Signals::new([SIGTERM, SIGINT, SIGHUP]) else { return };
+    std::thread::spawn(move || {
+        if let Some(sig) = signals.forever().next() {
+            sup.stop();
+            std::process::exit(128 + sig);
+        }
+    });
+}
+
 fn spawn(cmd: &CoreCommand, tail_buf: &Arc<Mutex<String>>) -> std::io::Result<Child> {
     let mut c = Command::new(&cmd.program);
-    c.args(&cmd.args).envs(cmd.env.iter().cloned()).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::piped());
+    c.args(&cmd.args).envs(cmd.env.iter().cloned()).stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::piped());
     if cmd.cwd.is_dir() {
         c.current_dir(&cmd.cwd);
     }
@@ -237,7 +307,8 @@ fn terminate(ctx: &Ctx, child: &mut Child) {
 
 enum Outcome {
     Stopped,
-    Exited(Option<i32>),
+    /// Exit code and how long the core had been healthy (zero if it never became ready).
+    Exited(Option<i32>, Duration),
 }
 
 fn monitor(ctx: &Ctx) {
@@ -246,15 +317,20 @@ fn monitor(ctx: &Ctx) {
     ctx.set(CoreStatus::Starting);
     if let Ok(info) = read_server_info(&ctx.info_path(), None) {
         if health_ok(&info, Duration::from_secs(2)) {
+            // Possibly left by a previous app instance: attach anyway (never kill blindly), but say so.
+            eprintln!("mises: attaching to existing core (pid {}); not started by this app instance", info.pid);
             ctx.set(ready(&info, false));
             return;
         }
     }
     loop {
-        let code = match run_once(ctx, &tail_buf) {
+        let (code, uptime) = match run_once(ctx, &tail_buf) {
             Outcome::Stopped => return,
-            Outcome::Exited(code) => code,
+            Outcome::Exited(code, up) => (code, up),
         };
+        if uptime >= ctx.scaled(HEALTHY_RESET) {
+            restarts = 0; // it ran fine for a while; a new crash starts a fresh budget
+        }
         if ctx.stopped() {
             return;
         }
@@ -276,9 +352,10 @@ fn run_once(ctx: &Ctx, tail_buf: &Arc<Mutex<String>>) -> Outcome {
         Ok(c) => c,
         Err(e) => {
             *tail_buf.lock().unwrap() = format!("failed to start {}: {e}", ctx.cfg.command.program.display());
-            return Outcome::Exited(None);
+            return Outcome::Exited(None, Duration::ZERO);
         }
     };
+    let mut ready_at: Option<Instant> = None;
     let deadline = Instant::now() + ctx.scaled(START_TIMEOUT);
     let mut announced = false;
     loop {
@@ -289,19 +366,20 @@ fn run_once(ctx: &Ctx, tail_buf: &Arc<Mutex<String>>) -> Outcome {
         if let Ok(Some(status)) = child.try_wait() {
             platform::signal_group(child.id(), true);
             std::thread::sleep(Duration::from_millis(50)); // let the stderr reader drain
-            return Outcome::Exited(status.code());
+            return Outcome::Exited(status.code(), ready_at.map_or(Duration::ZERO, |t| t.elapsed()));
         }
         if !announced {
             if let Ok(info) = read_server_info(&ctx.info_path(), Some(spawned_at)) {
                 if health_ok(&info, Duration::from_millis(500)) {
                     ctx.set(ready(&info, true));
                     announced = true;
+                    ready_at = Some(Instant::now());
                 }
             }
             if !announced && Instant::now() > deadline {
                 *tail_buf.lock().unwrap() += "\ncore did not become healthy in time";
                 terminate(ctx, &mut child);
-                return Outcome::Exited(None);
+                return Outcome::Exited(None, Duration::ZERO);
             }
         }
         std::thread::sleep(Duration::from_millis(50));
