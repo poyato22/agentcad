@@ -83,17 +83,31 @@ pub fn core_command(core_dir: &Path) -> Result<CoreCommand, String> {
         let program = PathBuf::from(parts.next().unwrap_or_default());
         return Ok(CoreCommand { program, args: parts.collect(), cwd, env });
     }
-    // `uv run` does not exec: it stays as the parent holding a copy of our stdin pipe, so the core
-    // would never see EOF if the app is SIGKILLed. Prefer the synced venv's entry point directly.
+    let uv = find_uv_with(std::env::var_os("MISES_UV").map(PathBuf::from), &platform::uv_candidates(), std::env::var_os("PATH"));
+    choose_core_command(core_dir, uv)
+}
+
+/// `uv run` when uv is found (it keeps the venv in step with uv.lock), else the synced venv's own
+/// entry point. Either way a SIGKILLed app ends the core: `uv run` stays as the core's parent but
+/// holds only the read end of our stdin pipe, so the core still sees EOF once the app's write end
+/// closes (tests/lifecycle.rs: sigkill_of_the_app_on_the_uv_path_still_ends_the_core_by_stdin_eof).
+pub fn choose_core_command(core_dir: &Path, uv: Option<PathBuf>) -> Result<CoreCommand, String> {
+    if let Some(uv) = uv {
+        return Ok(uv_core_command(&uv, core_dir));
+    }
     let venv_mises = core_dir.join(".venv/bin/mises");
     if venv_mises.is_file() {
         let args = ["serve", "--port", "0", "--exit-on-stdin-eof"].map(String::from).to_vec();
-        return Ok(CoreCommand { program: venv_mises, args, cwd, env });
+        return Ok(CoreCommand { program: venv_mises, args, cwd: core_dir.to_path_buf(), env: vec![] });
     }
-    let uv = find_uv_with(std::env::var_os("MISES_UV").map(PathBuf::from), &platform::uv_candidates(), std::env::var_os("PATH"))
-        .ok_or("could not find `uv` (looked in $MISES_UV, /opt/homebrew/bin, /usr/local/bin, ~/.local/bin, ~/.cargo/bin, PATH); install it with `brew install uv`")?;
+    Err("could not find `uv` (looked in $MISES_UV, /opt/homebrew/bin, /usr/local/bin, ~/.local/bin, ~/.cargo/bin, PATH) \
+         and the core has no synced venv; install uv with `brew install uv`".into())
+}
+
+/// `uv run --project <core> mises serve --port 0 --exit-on-stdin-eof`.
+pub fn uv_core_command(uv: &Path, core_dir: &Path) -> CoreCommand {
     let args = ["run", "--project", &core_dir.display().to_string(), "mises", "serve", "--port", "0", "--exit-on-stdin-eof"];
-    Ok(CoreCommand { program: uv, args: args.map(String::from).to_vec(), cwd, env })
+    CoreCommand { program: uv.to_path_buf(), args: args.map(String::from).to_vec(), cwd: core_dir.to_path_buf(), env: vec![] }
 }
 
 #[derive(Clone)]

@@ -1,8 +1,8 @@
 # Mises Mac app
 
 Tauri 2 shell + Preact UI over the Python core (`../core`). The shell spawns
-`mises serve --port 0 --exit-on-stdin-eof` (from `<core>/.venv/bin/mises` when it
-exists, otherwise via `uv run`), reads `server.json` for the port and token, and
+`mises serve --port 0 --exit-on-stdin-eof` (via `uv run` when uv is found, otherwise from
+`<core>/.venv/bin/mises`), reads `server.json` for the port and token, and
 stops the core when the app quits.
 
 ## Prerequisites

@@ -84,6 +84,63 @@ fn run_child_and_kill(sig: i32) {
     assert!(until(5, || pids.iter().all(|p| !alive(*p))), "core or its group outlived the app (signal {sig})");
 }
 
+/// Not a real test: the child body for the uv-path parent-death test below (the REAL core,
+/// started with `uv run`, exactly as core_command builds it when the venv entry point is absent).
+#[test]
+fn supervise_real_uv_child_entry() {
+    let Some(home) = std::env::var_os("SUP_UV_HOME").map(PathBuf::from) else { return };
+    let uv = PathBuf::from(std::env::var_os("SUP_UV").unwrap());
+    let mut command = uv_core_command(&uv, &core_dir());
+    command.env.push(("MISES_HOME".into(), home.display().to_string()));
+    let log: Arc<Mutex<Vec<CoreStatus>>> = Arc::default();
+    let l = log.clone();
+    let _sup = Supervisor::start_with(SupervisorConfig { command, home: home.clone(), time_scale: 1.0 },
+        Arc::new(move |s| l.lock().unwrap().push(s.clone())));
+    assert!(until(90, || ready_count(&log) > 0), "real core never became ready: {:?}", log.lock().unwrap());
+    std::fs::write(home.join("child-ready"), "").unwrap();
+    std::thread::sleep(Duration::from_secs(120));
+}
+
+/// M8: does a SIGKILLed app's stdin EOF reach the Python core when it runs under `uv run`
+/// (uv stays as the parent)? It does: uv only holds the pipe's read end, and EOF comes once
+/// every write end (the app's) is closed. Skipped when uv isn't installed.
+#[test]
+fn sigkill_of_the_app_on_the_uv_path_still_ends_the_core_by_stdin_eof() {
+    let Some(uv) = find_uv_with(std::env::var_os("MISES_UV").map(PathBuf::from), &mises_app_lib::platform::uv_candidates(),
+        std::env::var_os("PATH")) else {
+        eprintln!("skipped: uv not found");
+        return;
+    };
+    let home = tempfile::tempdir().unwrap();
+    let mut child = Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", "supervise_real_uv_child_entry", "--nocapture", "--test-threads=1"])
+        .env("SUP_UV_HOME", home.path())
+        .env("SUP_UV", &uv)
+        .spawn()
+        .unwrap();
+    let ready = until(120, || home.path().join("child-ready").exists());
+    let info: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(home.path().join("server.json")).unwrap_or_else(|_| "{}".into())).unwrap();
+    let core_pid = info["pid"].as_i64().unwrap_or(0) as i32;
+    let alive_before = core_pid > 0 && alive(core_pid);
+    // the core really runs under uv: its parent is the uv process, not the app
+    let parent = Command::new("ps").args(["-o", "ppid=,comm=", "-p", &core_pid.to_string()]).output().ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
+    let ppid: i32 = parent.split_whitespace().next().and_then(|x| x.parse().ok()).unwrap_or(0);
+    let pcomm = Command::new("ps").args(["-o", "comm=", "-p", &ppid.to_string()]).output().ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
+    unsafe { libc::kill(child.id() as i32, libc::SIGKILL) };
+    let _ = child.wait();
+    assert!(ready, "child never became ready");
+    assert!(alive_before, "core {core_pid} not running before the kill");
+    assert!(pcomm.ends_with("uv"), "core parent is {pcomm:?}, not uv");
+    let gone = until(20, || !alive(core_pid));
+    if !gone {
+        unsafe { libc::kill(core_pid, libc::SIGKILL) }; // never leave an orphan behind
+    }
+    assert!(gone, "the core under `uv run` outlived a SIGKILLed app (no stdin EOF)");
+}
+
 #[test]
 fn sigkill_of_the_app_takes_the_core_and_its_group_down() {
     run_child_and_kill(libc::SIGKILL);
