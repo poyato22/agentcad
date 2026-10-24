@@ -1,0 +1,8 @@
+.cmd { flex: none; border-top: 1px solid var(--line2); background: var(--head); padding: 6px 8px; }
+.cmd-chip { font-size: var(--fs-small); margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmd-row { display: flex; align-items: flex-start; gap: 8px; }
+.cmd-prompt { color: var(--blue); line-height: 1.4; padding-top: 3px; }
+.cmd-input { flex: 1; min-width: 0; resize: none; background: transparent; border: none; padding: 3px 0; line-height: 1.4; }
+.cmd-input:focus { border: none; }
+.cmd-error { color: var(--red); margin-top: 4px; }
+.cmd-info { margin-top: 4px; }
