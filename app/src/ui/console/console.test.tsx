@@ -324,6 +324,18 @@ describe("ConsolePane", () => {
     expect(card?.querySelector("button")).not.toBeNull(); // the real ApprovalCard, not a placeholder
   });
 
+  it("roster_fallback_is_locked_in_so_a_new_run_does_not_steal_the_selection", async () => {
+    setRuns([run("first", { created_at: 1 })]);
+    const { container } = render(<ConsolePane />);
+    await frame();
+    expect(selectedRunId.value).toBe("first");          // the fallback became an explicit choice
+    setRuns([run("first", { created_at: 1 }), run("second", { agent: "checker", created_at: 2 })]);
+    await frame();
+    expect(selectedRunId.value).toBe("first");
+    expect(container.querySelector('[data-run="first"][aria-selected="true"]')).not.toBeNull();
+    expect(container.querySelector('[data-run="second"][aria-selected="true"]')).toBeNull();
+  });
+
   it("defaults_to_the_latest_running_run", async () => {
     setRuns([run("old", { created_at: 1 }), run("new", { agent: "checker", created_at: 2 }), run("done", { agent: "x", created_at: 3, status: "done" })]);
     setSteps([message("old", "user", "old msg", 1), message("new", "user", "new msg", 2), message("done", "user", "done msg", 3)]);

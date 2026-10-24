@@ -8,7 +8,7 @@ import type { AgentRun } from "../../api/types";
 import { fmtElapsed, fmtTokens, fmtUsd } from "../../lib/format";
 import { debug } from "../../lib/log";
 import { needsYou as needsYouSignal } from "../../state/selection";
-import { actions } from "../../state/store";
+import { actions, selectedRunId } from "../../state/store";
 import { Led, type LedTone } from "../common/Led";
 import { effectiveRunId, rosterRuns, runLabels } from "./derived";
 
@@ -41,6 +41,11 @@ export function Roster(): JSX.Element {
   const tokens = list.reduce((n, r) => n + r.input_tokens + r.output_tokens, 0);
   const usd = list.reduce((n, r) => n + r.usd, 0);
   const now = useNow(running > 0);
+  // the first fallback (newest running run) becomes an explicit choice once, so the blue row and
+  // the command target don't jump to a run that starts later
+  useEffect(() => {
+    if (selected !== null && selectedRunId.peek() === null) actions.selectRun(selected);
+  }, [selected]);
 
   return (
     <section class="con-roster" data-roster aria-label="Agents">
