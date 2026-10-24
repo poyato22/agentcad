@@ -20,9 +20,10 @@ describe("App shell", () => {
       expect(container.querySelector(`[data-region="${r}"]`)).not.toBeNull();
     }
     expect(container.querySelector('[data-testid="viewer"]')).not.toBeNull(); // real viewer (Task 6)
-    for (const s of ["TopBar", "LeftPane", "ConsolePane", "CommandLine"]) {
+    for (const s of ["LeftPane", "CommandLine"]) { // remaining stub markers; Task 10 replaces this test
       expect(container.querySelector(`[data-stub="${s}"]`)).not.toBeNull();
     }
+    expect(container.querySelector('[data-region="console"] [data-console]')).not.toBeNull(); // Task 7
     expect(container.querySelector('[data-stub="NewRunDialog"]')).toBeNull();
   });
 
