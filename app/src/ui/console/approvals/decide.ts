@@ -5,7 +5,7 @@
 import { signal, type Signal } from "@preact/signals";
 import { CoreError } from "../../../api/client";
 import type { Approval } from "../../../api/types";
-import { actions, retiredApprovals } from "../../../state/store";
+import { actions, approvals, retiredApprovals } from "../../../state/store";
 
 export type Decision = "approve" | "keep_branch" | "reject";
 export interface CardNotice { text: string; tone: "blue" | "red" }
@@ -35,7 +35,10 @@ export function canDecide(a: Approval, nowS?: number): boolean {
 export function decide(a: Approval, action: Decision): Promise<Approval> {
   const running = inflight.get(a.id);
   if (running) return running;
-  if (!canDecide(a)) return Promise.resolve(a);
+  // judge the latest copy the store has (decided elsewhere, expired, or a newer proposal), not
+  // the caller's; a different hash means the human hasn't seen this proposal: never send it
+  const latest = approvals.peek().get(a.id) ?? a;
+  if (!canDecide(latest) || latest.payload_hash !== a.payload_hash) return Promise.resolve(latest);
   setIn(deciding, a.id, true);
   const p = send(a, action).finally(() => {
     inflight.delete(a.id);
@@ -52,6 +55,7 @@ async function send(a: Approval, action: Decision): Promise<Approval> {
     out = await actions.client().decide(a.id, { payload_hash: a.payload_hash, approve: action === "approve" });
   } catch (e) {
     if (e instanceof CoreError && e.code === "stale_version") return refresh(a);
+    if (e instanceof CoreError && e.code === "network") return recheck(a, e);
     setNotice(a.id, { text: `decision not sent: ${errText(e)}`, tone: "red" });
     return a;
   }
@@ -78,6 +82,33 @@ async function refresh(a: Approval): Promise<Approval> {
   }
   setIn(retired, a.id, true);
   setNotice(a.id, { text: "proposal changed — this card is no longer pending", tone: "blue" });
+  return a;
+}
+
+/**
+ * No answer from the core: the decision may or may not have landed. Ask the core for the run's
+ * pending approvals and show what it says, never retrying the decision.
+ */
+async function recheck(a: Approval, cause: unknown): Promise<Approval> {
+  let list: Approval[];
+  try {
+    list = await actions.client().pendingApprovals(a.run_id);
+  } catch {
+    setNotice(a.id, { text: `decision may not have been sent: ${errText(cause)} · could not check the core`, tone: "red" });
+    return a;
+  }
+  const fresh = list.find((x) => x.id === a.id);
+  if (fresh) {
+    actions.upsertApproval(fresh);
+    setNotice(a.id, { text: `decision not sent: ${errText(cause)} · the core still shows it pending`, tone: "red" });
+    return fresh;
+  }
+  // decided (perhaps by this very request) or expired on the core: this card can't decide again
+  setIn(retired, a.id, true);
+  setNotice(a.id, {
+    text: "no answer from the core, and it no longer lists this as pending — it was decided or expired; see the log",
+    tone: "blue",
+  });
   return a;
 }
 
