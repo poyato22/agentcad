@@ -158,7 +158,7 @@ function DialogBody(): JSX.Element {
 
         <div class="dlg-actions">
           <Button variant="ghost" onClick={() => actions.closeNewRun()}>Close</Button>
-          <Button variant="primary" disabled={!ready} onClick={() => { void start(); }}>Start</Button>
+          <Button variant="ink" disabled={!ready} onClick={() => { void start(); }}>Start</Button>
         </div>
       </div>
     </div>

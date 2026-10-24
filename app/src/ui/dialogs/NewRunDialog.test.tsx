@@ -33,6 +33,25 @@ async function open() {
 }
 
 describe("NewRunDialog", () => {
+  it("start_is_a_neutral_ink_button_never_blue", async () => {
+    // blue is only for what needs the human (Merge/Approve), not for starting a run
+    await open();
+    const start = screen.getByRole("button", { name: "Start" });
+    expect(start.className).toContain("btn-ink");
+    expect(start.className).not.toContain("btn-primary");
+  });
+
+  it("button_fills_use_palette_tokens_not_raw_black_or_white", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const css = readFileSync(resolve(import.meta.dirname, "../../styles/base.css"), "utf8");
+    for (const sel of [".btn-primary", ".btn-ink"]) {
+      const rule = css.split("\n").find((l) => l.startsWith(`${sel} {`)) ?? "";
+      expect(rule).not.toBe("");
+      expect(rule).not.toMatch(/#fff\b|#000\b|#ffffff|#000000|\bwhite\b|\bblack\b/i);
+    }
+  });
+
   it("dialog_lists_agents_and_vendors", async () => {
     await open();
     const agentOpts = within("Agent");
