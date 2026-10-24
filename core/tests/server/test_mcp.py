@@ -171,3 +171,24 @@ async def test_stdio_proxy_works_inside_agent_sandbox(rt):
         assert res.is_error is False
     finally:
         stop(port)
+
+
+async def test_mcp_refuses_interrupted_run(rt, home):
+    # I1: after a restart, a run orphaned by the dead process can no longer call tools
+    import subprocess
+    from mises.runtime import Runtime
+    rid = rt.create_external_run("codex", provider="openai", model="gpt-x")
+    p = subprocess.Popen(["/usr/bin/true"])
+    p.wait()
+    rt.store._db.execute("UPDATE runs SET owner_pid=? WHERE id=?", (p.pid, rid))
+    rt2 = Runtime(home, provider_resolver=rt.provider_resolver)
+    assert rid in rt2.interrupted
+    async with running(rt2) as app:
+        async with httpx2.AsyncClient(transport=httpx2.ASGITransport(app=app),
+                                      base_url="http://127.0.0.1") as http:
+            r = await http.post("/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "tools/list",
+                                              "params": {}},
+                                headers={**AUTH, "X-Mises-Run": rid,
+                                         "Content-Type": "application/json",
+                                         "Accept": "application/json, text/event-stream"})
+            assert r.status_code == 409

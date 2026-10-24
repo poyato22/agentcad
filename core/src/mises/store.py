@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import threading
 import time
@@ -30,6 +31,7 @@ class AgentRun(BaseModel):
     usd: float = 0.0
     created_at: float
     updated_at: float
+    owner_pid: int | None = None  # process that created (drives) the run
 
 
 class AgentPolicy(BaseModel):
@@ -123,6 +125,9 @@ class Store:
         self._db.row_factory = sqlite3.Row
         self._db.execute("PRAGMA journal_mode=WAL")
         self._db.executescript(_SCHEMA)
+        cols = {r[1] for r in self._db.execute("PRAGMA table_info(runs)")}
+        if "owner_pid" not in cols:  # databases from before owner tracking
+            self._db.execute("ALTER TABLE runs ADD COLUMN owner_pid INTEGER")
 
     @contextmanager
     def _tx(self):
@@ -150,9 +155,11 @@ class Store:
         now = time.time()
         rid = uuid.uuid4().hex[:12]
         with self._tx() as db:
-            db.execute("INSERT INTO runs VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            db.execute("INSERT INTO runs (id, parent_id, agent, provider, model, task, status,"
+                       " branch, onshape_calls, input_tokens, output_tokens, usd, created_at,"
+                       " updated_at, owner_pid) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                        (rid, parent_id, agent, provider, model, task, "running", None,
-                        0, 0, 0, 0.0, now, now))
+                        0, 0, 0, 0.0, now, now, os.getpid()))
         return self.get_run(rid)
 
     def get_run(self, run_id: str) -> AgentRun:
@@ -174,6 +181,10 @@ class Store:
 
     def list_runs(self, limit: int = 50) -> list[AgentRun]:
         rows = self._all("SELECT * FROM runs ORDER BY created_at DESC, rowid DESC LIMIT ?", (limit,))
+        return [AgentRun(**dict(r)) for r in rows]
+
+    def running_runs(self) -> list[AgentRun]:
+        rows = self._all("SELECT * FROM runs WHERE status='running' ORDER BY created_at")
         return [AgentRun(**dict(r)) for r in rows]
 
     def add_usage(self, run_id: str, *, input_tokens: int = 0, output_tokens: int = 0,
