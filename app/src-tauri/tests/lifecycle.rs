@@ -140,7 +140,7 @@ fn restart_racing_with_shutdown_leaves_no_core() {
 
 #[test]
 fn debug_output_never_contains_the_token() {
-    let info = CoreInfo { base_url: "b".into(), ws_url: "w".into(), token: "sekrit".into(), owned: true };
+    let info = CoreInfo { base_url: "b".into(), ws_url: "w".into(), token: "sekrit".into(), owned: true, pid: 7 };
     let st = CoreStatus::Ready { info: info.clone() };
     let si = mises_app_lib::server_info::ServerInfo { port: 1, token: "sekrit".into(), pid: 2 };
     for d in [format!("{info:?}"), format!("{st:?}"), format!("{si:?}"), format!("{info:#?}")] {

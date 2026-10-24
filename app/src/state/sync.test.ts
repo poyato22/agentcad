@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { startSync } from "./sync";
-import { approvals, conn, coreStatus, liveText, parts, resetStore, runs, steps } from "./store";
+import { approvals, conn, coreStatus, liveText, parts, resetStore, runs, sessionRuns, steps } from "./store";
 import type { CoreClient } from "../api/client";
 import type { StreamState } from "../api/events";
 import type { AgentRun, Approval, CoreStatusInfo, MisesEvent, Step } from "../api/types";
@@ -83,6 +83,18 @@ describe("startSync", () => {
     expect(coreStatus.value).toEqual(status);
     expect(parts.value).toEqual([]);
     expect(approvals.value.size).toBe(0);
+    stop();
+  });
+
+  it("run_started_events_mark_runs_of_this_core_session_but_resumes_do_not", async () => {
+    const { client } = fakeClient(() => []);
+    const s = new FakeStream();
+    const f = frames();
+    const stop = startSync(client, s as never, { schedule: f.schedule });
+    s.emit({ type: "run_started", run_id: "new1", data: { agent: "designer", provider: "fake", model: "m", parent_id: null }, ts: 1 });
+    s.emit({ type: "run_started", run_id: "old1", data: { resumed: true }, ts: 2 });
+    await f.flush();
+    expect([...sessionRuns.value]).toEqual(["new1"]);
     stop();
   });
 

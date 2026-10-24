@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/pr
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CoreError, type CoreClient } from "../../../api/client";
 import type { AgentRun } from "../../../api/types";
-import { actions, bindClient, newRunOpen, resetStore, runs, selectedRunId } from "../../../state/store";
+import { actions, beginCoreSession, bindClient, corePid, newRunOpen, resetStore, runs, selectedRunId, sessionRuns } from "../../../state/store";
 import { CommandLine } from "./CommandLine";
 
 function run(id: string, agent: string, task: string, status: AgentRun["status"] = "done"): AgentRun {
@@ -25,6 +25,8 @@ beforeEach(() => {
     // an ACP provider name alone does not make a run external: the core says so with `external`
     ["r5", { ...run("r5", "reviewer", "acp named but own loop", "done"), provider: "acp", external: false }],
   ]);
+  // started in this core session (seen by this UI): everything above
+  sessionRuns.value = new Set(["r1", "r2", "r3", "r4", "r5"]);
   actions.selectRun("r1");
 });
 afterEach(() => { cleanup(); resetStore(); });
@@ -73,6 +75,40 @@ describe("CommandLine", () => {
     const ids = client.message.mock.calls.map((c) => c[0]).sort();
     expect(ids).toEqual(["r1", "r3", "r5"]);
     expect((await screen.findByTestId("cmd-info")).textContent).toBe("sent to 3 runs · skipped 1 still working · skipped 1 external");
+  });
+
+  it("at_all_only_resumes_done_runs_live_in_this_core_session", async () => {
+    runs.value = new Map([
+      ...runs.value,
+      ["r6", run("r6", "designer", "abandoned try", "cancelled")],
+      ["r7", run("r7", "verifier", "broken check", "failed")],
+      ["r8", run("r8", "planner", "yesterday's plan", "done")], // done, but from an earlier core process
+    ]);
+    sessionRuns.value = new Set([...sessionRuns.value, "r6", "r7"]);
+    render(<CommandLine />);
+    type("@all wrap up");
+    enter();
+    await waitFor(() => expect(client.message).toHaveBeenCalledTimes(3));
+    expect(client.message.mock.calls.map((c) => c[0]).sort()).toEqual(["r1", "r3", "r5"]);
+    expect((await screen.findByTestId("cmd-info")).textContent).toBe(
+      "sent to 3 runs · skipped 1 still working · skipped 2 stopped · skipped 1 external · skipped 1 from an earlier core session");
+  });
+
+  it("at_all_liveness_uses_the_core_pid_when_the_shell_knows_it", async () => {
+    beginCoreSession(4242);
+    expect(sessionRuns.value.size).toBe(0);
+    runs.value = new Map([
+      ["a", { ...run("a", "designer", "this core", "done"), owner_pid: 4242 }],
+      ["b", { ...run("b", "verifier", "older core", "done"), owner_pid: 999 }],
+      ["c", { ...run("c", "planner", "before owner tracking", "done"), owner_pid: null }],
+    ]);
+    expect(corePid.value).toBe(4242);
+    render(<CommandLine />);
+    type("@all go");
+    enter();
+    await waitFor(() => expect(client.message).toHaveBeenCalledTimes(1));
+    expect(client.message).toHaveBeenCalledWith("a", "go");
+    expect((await screen.findByTestId("cmd-info")).textContent).toBe("sent to 1 run · skipped 2 from an earlier core session");
   });
 
   it("multiline_slash_is_sent_as_text_not_executed", async () => {

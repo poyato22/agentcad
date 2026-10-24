@@ -123,6 +123,9 @@ fn attach_when_healthy_core_running() {
     assert!(!info.owned);
     assert!(info.base_url.starts_with("http://127.0.0.1:"));
     assert!(info.ws_url.starts_with("ws://127.0.0.1:") && info.ws_url.ends_with("/events"));
+    // the core's pid from server.json: the webview tells runs of this core session by owner_pid
+    let on_disk = read_server_info(&home.path().join("server.json"), None).unwrap();
+    assert_eq!(info.pid, on_disk.pid);
     second.stop();
     assert!(read_server_info(&home.path().join("server.json"), None).is_ok(), "attached core untouched");
     assert!(last_ready_info(&l1).owned);
@@ -190,11 +193,11 @@ fn serializes_camel_case_for_the_webview() {
         serde_json::json!({"state":"crashed","code":1,"stderrTail":"x","restarts":2})
     );
     let r = CoreStatus::Ready {
-        info: CoreInfo { base_url: "b".into(), ws_url: "w".into(), token: "t".into(), owned: true },
+        info: CoreInfo { base_url: "b".into(), ws_url: "w".into(), token: "t".into(), owned: true, pid: 42 },
     };
     assert_eq!(
         serde_json::to_value(&r).unwrap(),
-        serde_json::json!({"state":"ready","info":{"baseUrl":"b","wsUrl":"w","token":"t","owned":true}})
+        serde_json::json!({"state":"ready","info":{"baseUrl":"b","wsUrl":"w","token":"t","owned":true,"pid":42}})
     );
 }
 

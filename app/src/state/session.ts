@@ -9,7 +9,7 @@ import {
 import { EventStream } from "../api/events";
 import type { CoreInfo } from "../api/types";
 import { debug } from "../lib/log";
-import { bindClient, shellStatus } from "./store";
+import { beginCoreSession, bindClient, shellStatus } from "./store";
 import { startSync as runSync } from "./sync";
 
 type StreamLike = Pick<EventStream, "onEvent" | "onState" | "start" | "stop">;
@@ -88,6 +88,7 @@ export function startSession(deps: SessionDeps = {}): Session {
     }
     if (stopped || gen !== generation) return;
     stopCurrent();
+    if (!info || info.token !== next.token || info.baseUrl !== next.baseUrl) beginCoreSession(next.pid ?? null);
     info = next;
     const client = createClient(next);
     bindClient(client);

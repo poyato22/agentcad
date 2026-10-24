@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { startSession } from "./session";
-import { actions, resetStore, shellStatus } from "./store";
+import { actions, corePid, resetStore, sessionRuns, shellStatus } from "./store";
 import type { ShellCoreStatus } from "../api/connection";
 import type { StreamState } from "../api/events";
 import type { CoreInfo, MisesEvent } from "../api/types";
@@ -179,6 +179,31 @@ describe("session", () => {
     (statusCb as unknown as (s: ShellCoreStatus) => void)({ state: "ready", info: info("t1") });
     await settle();
     expect(FakeStream.all).toHaveLength(1);
+    session.stop();
+  });
+
+  it("a_new_core_begins_a_new_core_session_with_its_pid", async () => {
+    FakeStream.all = [];
+    const queue = [{ ...info("t1"), pid: 111 }, { ...info("t1"), pid: 111 }, { ...info("t2"), pid: 222 }];
+    let statusCb: ((s: ShellCoreStatus) => void) | null = null;
+    const session = startSession({
+      resolveCoreInfo: async () => queue.shift() ?? info("t9"), getCoreStatus: async () => null,
+      onCoreStatus: (cb) => { statusCb = cb; return () => {}; }, createStream: (i) => new FakeStream(i) as never,
+      startSync: () => () => {}, retryMs: [100], onError: () => {},
+    });
+    await settle();
+    expect(corePid.value).toBe(111);
+    sessionRuns.value = new Set(["r1"]);
+    // a 4401 that re-resolves the same core keeps the session
+    FakeStream.all[0].state("unauthorized");
+    await vi.advanceTimersByTimeAsync(100);
+    await settle();
+    expect(sessionRuns.value.has("r1")).toBe(true);
+    // the shell reports a restarted core (new token): a new session
+    (statusCb as unknown as (s: ShellCoreStatus) => void)({ state: "ready", info: { ...info("t2"), pid: 222 } });
+    await settle();
+    expect(corePid.value).toBe(222);
+    expect(sessionRuns.value.size).toBe(0);
     session.stop();
   });
 

@@ -24,6 +24,8 @@ pub struct CoreInfo {
     pub ws_url: String,
     pub token: String,
     pub owned: bool,
+    /// The core (Python) process from server.json: runs whose owner_pid matches are live in it.
+    pub pid: u32,
 }
 
 impl std::fmt::Debug for CoreInfo {
@@ -33,6 +35,7 @@ impl std::fmt::Debug for CoreInfo {
             .field("ws_url", &self.ws_url)
             .field("token", &"<redacted>")
             .field("owned", &self.owned)
+            .field("pid", &self.pid)
             .finish()
     }
 }
@@ -152,6 +155,7 @@ fn ready(info: &ServerInfo, owned: bool) -> CoreStatus {
             ws_url: format!("ws://127.0.0.1:{}/events", info.port),
             token: info.token.clone(),
             owned,
+            pid: info.pid,
         },
     }
 }

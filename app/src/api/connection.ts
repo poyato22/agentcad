@@ -10,7 +10,9 @@ import type { CoreInfo } from "./types";
 export type ShellCoreStatus = { state: "starting" } | { state: "ready"; info: CoreInfo }
   | { state: "crashed"; code: number | null; stderrTail: string; restarts: number } | { state: "stopped" };
 
-const coreInfoSchema = z.object({ baseUrl: z.string(), wsUrl: z.string(), token: z.string().min(1), owned: z.boolean() });
+const coreInfoSchema = z.object({
+  baseUrl: z.string(), wsUrl: z.string(), token: z.string().min(1), owned: z.boolean(), pid: z.number().int().nullish(),
+});
 
 const shellStatusSchema = z.union([
   z.object({ state: z.literal("starting") }),

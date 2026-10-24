@@ -11,7 +11,7 @@ import type { EventStream } from "../api/events";
 import type { MisesEvent } from "../api/types";
 import { debug } from "../lib/log";
 import { applyRuns, applySteps, mergeApprovals, reduce, type Effect } from "./reduce";
-import { approvals, commitAppState, conn, coreStatus, parts, readAppState } from "./store";
+import { approvals, commitAppState, conn, coreStatus, noteRunStarted, parts, readAppState } from "./store";
 
 export interface SyncOptions {
   /** Schedules one flush; returns a cancel function. Default: requestAnimationFrame. */
@@ -76,6 +76,7 @@ export function startSync(client: CoreClient, stream: Source, opts: SyncOptions 
       if (events.length) {
         let state = readAppState();
         for (const ev of events) {
+          if (ev.type === "run_started" && ev.run_id && ev.data.resumed !== true) noteRunStarted(ev.run_id);
           const r = reduce(state, ev);
           state = r.state;
           r.effects.forEach(enqueue);

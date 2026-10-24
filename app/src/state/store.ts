@@ -34,6 +34,10 @@ export const selectedPartId: Signal<string | null> = signal<string | null>(null)
 export const focusedStepId: Signal<number | null> = signal<number | null>(null);
 export const filter: Signal<LogFilter> = signal<LogFilter>(DEFAULT_FILTER);
 export const follow: Signal<boolean> = signal<boolean>(true);
+/** The core process pid when the shell knows it (Tauri: server.json); null in dev/test. */
+export const corePid: Signal<number | null> = signal<number | null>(null);
+/** Runs this UI saw start (run_started, not resumed) since it connected to the current core. */
+export const sessionRuns: Signal<ReadonlySet<string>> = signal<ReadonlySet<string>>(new Set());
 /** Whether the new-run dialog is open (opened by ⌘N, "+ new run" in the roster, or /new). */
 export const newRunOpen: Signal<boolean> = signal<boolean>(false);
 
@@ -69,7 +73,21 @@ export const actions = {
   },
 };
 
-// ---- used by state/sync.ts (and tests); UI code should not call these
+// ---- used by state/sync.ts and state/session.ts (and tests); UI code should not call these
+
+/** A different core (new token / address): forget which runs started in the previous one. */
+export function beginCoreSession(pid: number | null): void {
+  batch(() => {
+    corePid.value = pid;
+    sessionRuns.value = new Set();
+  });
+}
+
+/** A run_started event (not a resume) for this core session. */
+export function noteRunStarted(runId: string): void {
+  if (sessionRuns.peek().has(runId)) return;
+  sessionRuns.value = new Set([...sessionRuns.peek(), runId]);
+}
 
 export function readAppState(): AppState {
   return { runs: runs.value, steps: steps.value, liveText: liveText.value, inflight: inflight.value, approvals: approvals.value, questions: questions.value };
@@ -107,6 +125,8 @@ export function resetStore(): void {
     filter.value = DEFAULT_FILTER;
     follow.value = true;
     newRunOpen.value = false;
+    corePid.value = null;
+    sessionRuns.value = new Set();
   });
   boundClient = null;
 }

@@ -87,7 +87,11 @@ export interface PartMetrics {
 export interface PartSummary { part_id: string; vars: Record<string, number>; metrics: PartMetrics | null; mtime: number }
 
 /** From the Rust shell's `core_info` command (camelCase), or the dev/test env fallback. */
-export interface CoreInfo { baseUrl: string; wsUrl: string; token: string; owned: boolean }
+export interface CoreInfo {
+  baseUrl: string; wsUrl: string; token: string; owned: boolean;
+  /** The core process (from the shell's server.json); absent in dev/test (VITE_MISES_*). */
+  pid?: number | null;
+}
 
 /** Error JSON of every non-2xx core response except 401/422. */
 export interface CoreErrorBody { error: ErrorCode; message: string; hint: string | null; retryable: boolean }

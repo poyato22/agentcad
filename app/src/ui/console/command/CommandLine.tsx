@@ -5,16 +5,16 @@ import type { AgentRun } from "../../../api/types";
 import { registerShortcut } from "../../../lib/keys";
 import { runLabel } from "../../../lib/names";
 import { effectiveRun } from "../../../state/selection";
-import { actions, filter, follow, runs, type LogFilter } from "../../../state/store";
+import { actions, corePid, filter, follow, runs, sessionRuns, type LogFilter } from "../../../state/store";
 import { stopAll } from "../../topbar/stopAll";
-import { isExternal } from "./isExternal";
+import { allTargets } from "./isExternal";
 import { parseCommand, type Command } from "./parseCommand";
 import "./command.css";
 
 const FILTER_KINDS: readonly LogFilter["kind"][] = ["everything", "decisions", "tool_calls", "files", "errors"];
 
 const HELP = [
-  "@designer … message a run by agent or label · @all … every idle run",
+  "@designer … message a run by agent or label · @all … every finished (done) run of this core session",
   "/new  new run · /stop  stop the selected run · /stopall  stop every run (⌘⇧.)",
   "/follow [on|off] · /filter everything|decisions|tool_calls|files|errors|all|run · /clear",
   "approvals are decided on their card, never here",
@@ -25,8 +25,6 @@ function describeError(e: unknown): string {
   if (e instanceof CoreError) return e.hint ? `${e.message} — ${e.hint}` : e.message;
   return e instanceof Error ? e.message : String(e);
 }
-
-const isIdle = (r: AgentRun) => r.status !== "running" && !isExternal(r);
 
 export function CommandLine(): JSX.Element {
   const [value, setValue] = useState("");
@@ -50,16 +48,19 @@ export function CommandLine(): JSX.Element {
     if (cmd.kind === "invalid") { setError(cmd.reason); return false; }
     if (cmd.kind === "slash") return slash(cmd.name, cmd.arg);
     if (cmd.target === "all") {
-      const targets = allRuns.filter(isIdle);
-      const working = allRuns.filter((r) => !isExternal(r) && r.status === "running").length;
-      const external = allRuns.filter(isExternal).length;
-      if (targets.length === 0) { setError("no idle runs to message — every run is still working or external"); return false; }
+      const { targets, skipped } = allTargets(allRuns, { pid: corePid.value, started: sessionRuns.value });
+      if (targets.length === 0) {
+        setError("no idle runs to message — @all only resumes finished (done) runs of this core session");
+        return false;
+      }
       const results = await Promise.allSettled(targets.map((r) => actions.client().message(r.id, cmd.text)));
       const failed = results.flatMap((res, i) => (res.status === "rejected" ? [`${runLabel(targets[i], allRuns)}: ${describeError(res.reason)}`] : []));
       const sent = targets.length - failed.length;
       const parts = [`sent to ${sent} run${sent === 1 ? "" : "s"}`];
-      if (working) parts.push(`skipped ${working} still working`);
-      if (external) parts.push(`skipped ${external} external`);
+      if (skipped.working) parts.push(`skipped ${skipped.working} still working`);
+      if (skipped.stopped) parts.push(`skipped ${skipped.stopped} stopped`);
+      if (skipped.external) parts.push(`skipped ${skipped.external} external`);
+      if (skipped.notLive) parts.push(`skipped ${skipped.notLive} from an earlier core session`);
       setInfo(parts.join(" · "));
       if (failed.length) { setError(failed.join("\n")); return false; }
       return true;
