@@ -1,7 +1,10 @@
 """AgentLoop: stream a turn from any provider, run its tool calls through the gate, repeat.
 
 Turn policy:
-- A turn is retried as a whole on TRANSIENT provider errors (3 attempts in total). The partial
+- A turn is retried as a whole on TRANSIENT provider errors raised after the stream's first
+  event (a mid-stream drop; 3 attempts in total). A TRANSIENT error before the first event was
+  already retried by the provider (`retried_stream`), so it stops the run with "error" instead
+  of multiplying the retries. The partial
   text and tool calls of a failed attempt are discarded; the assistant `message` Step is only
   recorded once a turn completes, so retries never duplicate Steps. Text deltas of a failed
   attempt may already have been published; a `turn_retry` event tells listeners to drop them.
@@ -14,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import random
 from collections.abc import Coroutine
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -24,7 +28,7 @@ from pydantic import BaseModel
 from ..events import Event, EventBus
 from ..gate import Gate
 from ..providers.base import (Done, ModelProvider, ModelRequest, TextDelta, ToolCall, ToolSchema,
-                              Usage, with_retries)
+                              Usage)
 from ..store import Store
 from ..tools.registry import ToolRegistry
 from ..types import (Block, ErrorCode, ImageBlock, Message, MisesError, SafetyClass, StepKind,
@@ -232,22 +236,30 @@ class AgentLoop:
 
     # ---- one model turn
     async def _turn(self, req: ModelRequest) -> _Turn:
-        attempt = 0
+        return await self._retrying(req, publish=True)
 
-        async def once() -> _Turn:
-            nonlocal attempt
-            attempt += 1
-            if attempt > 1:
+    async def _retrying(self, req: ModelRequest, *, publish: bool) -> _Turn:
+        """Stream a turn; retry only TRANSIENT errors raised after the first stream event."""
+        for attempt in range(1, TURN_ATTEMPTS + 1):
+            if attempt > 1 and publish:
                 self._publish("turn_retry", attempt=attempt)
-            return await self._stream(req, publish=True)
+            started: list[bool] = [False]
+            try:
+                return await self._stream(req, publish=publish, started=started)
+            except MisesError as e:
+                if e.code != ErrorCode.TRANSIENT or not started[0] or attempt == TURN_ATTEMPTS:
+                    raise
+            await asyncio.sleep(self.config.retry_base_delay * (2 ** (attempt - 1))
+                                * (0.5 + random.random()))
+        raise AssertionError("unreachable")  # pragma: no cover
 
-        return await with_retries(once, attempts=TURN_ATTEMPTS,
-                                  base_delay=self.config.retry_base_delay)
-
-    async def _stream(self, req: ModelRequest, *, publish: bool) -> _Turn:
+    async def _stream(self, req: ModelRequest, *, publish: bool,
+                      started: list[bool] | None = None) -> _Turn:
         out = _Turn()
         text: list[str] = []
         async for ev in self.provider.stream(req):
+            if started is not None:
+                started[0] = True
             if isinstance(ev, TextDelta):
                 text.append(ev.text)
                 if publish:
@@ -362,12 +374,8 @@ class AgentLoop:
                            messages=[Message(role="user", content=[TextBlock(
                                text="Summarise this session so far:\n\n" + _render(old))])])
 
-        async def once() -> _Turn:
-            return await self._stream(req, publish=False)
-
         try:
-            turn = await self._guard(with_retries(once, attempts=TURN_ATTEMPTS,
-                                                  base_delay=self.config.retry_base_delay))
+            turn = await self._guard(self._retrying(req, publish=False))
         except MisesError as e:
             log.warning("compaction failed, continuing uncompacted: %s", e.message)
             return messages
