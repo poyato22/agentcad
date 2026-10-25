@@ -151,7 +151,7 @@ class ClaudeCodeSession:
             "--verbose", "--include-partial-messages", "--tools", "Agent", "--strict-mcp-config",
             "--mcp-config", str(wd / MCP_FILE), "--allowedTools", "mcp__mises__*,Agent",
             "--disallowedTools", ",".join(f"Agent({t})" for t in BUILTIN_AGENT_TYPES),
-            "--setting-sources", "",
+            "--setting-sources=",           # the Agent SDK's form for setting_sources=[]
             "--append-system-prompt-file", str(wd / RULES_FILE),
             "--agents", str(wd / AGENTS_FILE),
             *(["--resume", self.session_id] if self.resumed else ["--session-id", self.session_id]),

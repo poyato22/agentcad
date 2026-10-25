@@ -79,7 +79,7 @@ async def test_start_passes_exactly_the_documented_flags(rt, claude_bin):
         "--mcp-config", str(wd / "claude-mcp.json"), "--allowedTools", "mcp__mises__*,Agent",
         "--disallowedTools", "Agent(general-purpose),Agent(Explore),Agent(Plan),Agent(claude),"
         "Agent(statusline-setup),Agent(claude-code-guide)",
-        "--setting-sources", "",
+        "--setting-sources=",
         "--append-system-prompt-file", str(wd / "mises-rules.md"),
         "--agents", str(wd / "claude-agents.json"), "--session-id", s.session_id,
         "--model", "sonnet", "--name", f"Mises {s.run_id}"]
