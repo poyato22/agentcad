@@ -4,11 +4,11 @@ import { z } from "zod";
 import { debug } from "../lib/log";
 import {
   agentInfoSchema, agentRunSchema, approvalSchema, cancelAllSchema, claudeCodeStatusSchema, coreErrorBodySchema, coreStatusSchema,
-  keyStatusSchema, modelsInfoSchema, okSchema, onshapeTestSchema, partSummarySchema, profileSchema, runIdSchema, setupStateSchema,
+  keyStatusSchema, localTestSchema, modelsInfoSchema, okSchema, onshapeTestSchema, partSummarySchema, profileSchema, runIdSchema, setupStateSchema,
   stepSchema,
 } from "./schemas";
 import type {
-  AgentInfo, AgentRun, Approval, CancelAllResult, ClaudeCodeStatus, CoreInfo, CoreStatusInfo, DecisionBody, ErrorCode, KeyStatus,
+  AgentInfo, AgentRun, Approval, CancelAllResult, ClaudeCodeStatus, CoreInfo, CoreStatusInfo, DecisionBody, ErrorCode, KeyStatus, LocalTestResult,
   ModelsInfo, NewRunBody, OnshapeTestResult, PartSummary, Profile, ProfilePatch, SetupState, Step, UiContext,
 } from "./types";
 
@@ -116,6 +116,9 @@ export class CoreClient {
   deleteKey(vendor: string): Promise<KeyStatus> { return this.json("DELETE", `/keys/${enc(vendor)}`, keyStatusSchema); }
   /** One ledgered Onshape call; wrong keys → {ok:false, error:"denied"}. */
   testOnshape(): Promise<OnshapeTestResult> { return this.json("POST", "/onshape/test", onshapeTestSchema); }
+
+  /** Does a local model server answer at this URL (loopback only)? "No answer" is {ok:false, error}, not a throw. */
+  testLocal(url: string): Promise<LocalTestResult> { return this.json("POST", "/local/test", localTestSchema, { body: { url } }); }
 
   setupState(): Promise<SetupState> { return this.json("GET", "/setup", setupStateSchema); }
   /** Marks setup done (sets profile.setup_completed_at). Re-read setupState() for the result. */

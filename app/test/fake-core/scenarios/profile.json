@@ -1,0 +1,35 @@
+{
+  "_comment": "Profile screen (Plan 3 Task 5): setup finished. Claude Code signed in; Anthropic key in the Keychain, OpenAI key from the environment; Onshape keys saved (340 of 2500 calls this year); Ollama endpoint set and answering.",
+  "runs": [],
+  "steps": [],
+  "approvals": [],
+  "parts": [],
+  "agents": [
+    { "name": "designer", "description": "Main CAD agent. Designs and edits parts using the local mirror and Onshape.", "model": "inherit" },
+    { "name": "verifier", "description": "Skeptical read-only checker. Tries to prove a change wrong and reports pass/fail per requirement.", "model": "inherit" }
+  ],
+  "models": {
+    "default": "anthropic/claude-sonnet-5-5",
+    "vendors": [
+      { "vendor": "anthropic", "key": "keychain" },
+      { "vendor": "openai", "key": "env" },
+      { "vendor": "gemini", "key": "none" },
+      { "vendor": "openrouter", "key": "none" },
+      { "vendor": "ollama", "key": "not_needed" },
+      { "vendor": "lmstudio", "key": "not_needed" },
+      { "vendor": "claude-code", "key": "signed_in", "models": ["sonnet", "opus", "haiku"] }
+    ]
+  },
+  "status": {
+    "core_version": "0.1.0", "onshape": "connected", "onshape_calls_year": 340, "onshape_cap_year": 2500,
+    "runs_running": 0, "approvals_pending": 0
+  },
+  "setup": {
+    "profile": { "display_name": "Hartigan", "setup_completed_at": 1790000000, "local_endpoints": { "ollama": "http://localhost:11434/v1" } },
+    "keys": { "anthropic": "keychain", "openai": "env", "onshape": "keychain" },
+    "claude": { "installed": true, "version": "2.1.4", "signed_in": true, "auth_method": "claude.ai" },
+    "login_after_polls": 1,
+    "onshape_user": "Hartigan Deely",
+    "local_answering": ["ollama"]
+  }
+}

@@ -1,0 +1,56 @@
+/* Profile panel: right-hand sheet on the plan tokens only. Blue marks the selected section and the
+   sign-in that waits for the human; green/amber/red only mean pass/warn/fail. */
+.profile {
+  position: fixed; top: var(--topbar-h); right: 0; bottom: 0; z-index: 150; display: flex; flex-direction: column;
+  width: 820px; max-width: 100vw; background: var(--paper); border-left: 1px solid var(--line2);
+}
+.profile-head {
+  flex: none; height: var(--pane-head-h); display: flex; align-items: center; gap: 12px; padding: 0 8px 0 12px;
+  background: var(--head); border-bottom: 1px solid var(--line2);
+}
+.profile-title { font: 600 var(--fs-label)/1 var(--font-head); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+.profile-close { margin-left: auto; }
+.profile-main { flex: 1; min-height: 0; display: flex; }
+.profile-nav { flex: none; width: 168px; display: flex; flex-direction: column; border-right: 1px solid var(--line); padding: 8px 0; }
+.profile-nav-item {
+  text-align: left; font: inherit; color: var(--dim); background: transparent; border: 0; border-left: 2px solid transparent;
+  padding: 6px 12px; cursor: pointer;
+}
+.profile-nav-item:hover { color: var(--ink); }
+.profile-nav-item:focus-visible { outline: 1px solid var(--blue); outline-offset: -1px; }
+.profile-nav-item[aria-current="page"] { color: var(--ink); border-left-color: var(--blue); background: var(--blue-tint); }
+.profile-body { flex: 1; min-width: 0; overflow: auto; padding: 16px; }
+
+.profile-section { display: flex; flex-direction: column; gap: 12px; max-width: 640px; }
+.profile-h { font-size: 18px; letter-spacing: .02em; border-bottom: 1px solid var(--line2); padding-bottom: 8px; margin: 0; }
+.profile-card { background: var(--paper2); border: 1px solid var(--line2); padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.profile-card p { margin: 0; }
+.profile-card-title { margin: 0; font: 600 var(--fs-label)/1 var(--font-head); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+.profile-field { display: flex; flex-direction: column; gap: 3px; }
+.profile-field input, .profile-field select { width: 100%; }
+.profile-pair { display: grid; grid-template-columns: 180px 1fr; gap: 8px; }
+.profile-row { display: flex; align-items: center; gap: 8px; min-height: 22px; flex-wrap: wrap; }
+.profile-status { display: inline-flex; align-items: center; gap: 6px; }
+.profile-error { color: var(--red); }
+.profile-hint { color: var(--dim); }
+.profile-code { padding: 6px 8px; background: var(--bg); border: 1px solid var(--line); display: block; }
+.profile-dl { display: grid; grid-template-columns: 160px 1fr; gap: 4px 12px; margin: 0; }
+.profile-dl dd { margin: 0; }
+
+.profile-table { width: 100%; border-collapse: collapse; }
+.profile-table th { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line2); font-weight: 400; }
+.profile-table td { padding: 6px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.profile-actions { text-align: right; }
+.profile-inline { display: inline-flex; align-items: center; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+.profile-confirm { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+.profile-local { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.profile-local-name { width: 70px; flex: none; }
+.profile-local input { flex: 1; min-width: 180px; }
+
+.profile-bar { height: 8px; background: var(--bg); border: 1px solid var(--line2); }
+.profile-bar-fill { height: 100%; background: var(--dim); }
+.profile-bar[data-tone="amber"] .profile-bar-fill { background: var(--amber); }
+.profile-bar[data-tone="red"] .profile-bar-fill { background: var(--red); }
+
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

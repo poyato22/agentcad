@@ -128,6 +128,8 @@ export interface SetupState { complete: boolean; has_model: boolean; has_onshape
 
 /** POST /onshape/test: exactly one ledgered Onshape call. Wrong keys → {ok:false, error:"denied"}. */
 export interface OnshapeTestResult { ok: boolean; user_name?: string | null; error?: string | null }
+/** POST /local/test: does a local model server answer at this URL? */
+export interface LocalTestResult { ok: boolean; error?: string | null }
 
 /** GET /claude-code/status (from the user's own `claude auth status`; non-secret fields only). */
 export interface ClaudeCodeStatus { installed: boolean; version: string | null; signed_in: boolean; auth_method: string | null }

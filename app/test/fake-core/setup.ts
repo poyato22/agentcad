@@ -8,6 +8,7 @@ import { asBody, HttpError, mises, wrongType, type Body, type Route, type Scenar
 /** Same list as core VENDORS ∪ {"onshape"} (GET /keys order). */
 export const KEY_VENDORS = ["anthropic", "openai", "gemini", "openrouter", "ollama", "lmstudio", "onshape"];
 /** Vendors without an API key in core VENDORS (env_key None). */
+const LOCAL_DEFAULTS: Record<string, string> = { ollama: "http://localhost:11434/v1", lmstudio: "http://localhost:1234/v1" };
 const NO_KEY = new Set(["ollama", "lmstudio"]);
 
 export interface SetupScenario {
@@ -150,6 +151,15 @@ export function setupRoutes(get: () => FakeSetup): Route[] {
         const st = get();
         if (!("onshape" in st.keys)) return { ok: false, error: "no Onshape keys saved" };
         return st.onshapeUser ? { ok: true, user_name: st.onshapeUser } : { ok: false, error: "denied" };
+      },
+    },
+    {
+      method: "POST", re: /^\/local\/test$/, h: (_m, _q, raw) => {
+        const b = asBody(raw);
+        if (typeof b.url !== "string" || !b.url.trim()) throw mises("invalid_input", "url is required", "send the endpoint URL");
+        const st = get();
+        const answering = st.localAnswering.some((v) => st.profile.local_endpoints[v] === b.url || LOCAL_DEFAULTS[v] === b.url);
+        return answering ? { ok: true } : { ok: false, error: "no answer" };
       },
     },
     { method: "GET", re: /^\/setup$/, h: () => setupStateOf(get()) },

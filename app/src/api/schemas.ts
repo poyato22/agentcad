@@ -6,7 +6,7 @@ import { z } from "zod";
 import {
   ERROR_CODES, SETUP_PIECES, STEP_KINDS,
   type AgentInfo, type AgentRun, type Approval, type CancelAllResult, type ClaudeCodeStatus, type CoreErrorBody, type CoreStatusInfo,
-  type KeyStatus, type MisesEvent, type ModelsInfo, type OnshapeTestResult, type PartHole, type PartMetrics, type PartSummary,
+  type KeyStatus, type MisesEvent, type ModelsInfo, type LocalTestResult, type OnshapeTestResult, type PartHole, type PartMetrics, type PartSummary,
   type Profile, type SetupState, type Step, type ToolOutput,
 } from "./types";
 
@@ -110,6 +110,7 @@ export const setupStateSchema = z.object({
   complete: z.boolean(), has_model: z.boolean(), has_onshape: z.boolean(), missing: z.array(z.enum(SETUP_PIECES)),
 });
 
+export const localTestSchema = z.object({ ok: z.boolean(), error: z.string().nullish() });
 export const onshapeTestSchema = z.object({ ok: z.boolean(), user_name: z.string().nullish(), error: z.string().nullish() });
 
 export const claudeCodeStatusSchema = z.object({
@@ -138,5 +139,6 @@ export type SchemaChecks = [
   Assert<Same<z.infer<typeof keyStatusSchema>, KeyStatus>>,
   Assert<Same<z.infer<typeof setupStateSchema>, SetupState>>,
   Assert<Same<z.infer<typeof onshapeTestSchema>, OnshapeTestResult>>,
+  Assert<Same<z.infer<typeof localTestSchema>, LocalTestResult>>,
   Assert<Same<z.infer<typeof claudeCodeStatusSchema>, ClaudeCodeStatus>>,
 ];
