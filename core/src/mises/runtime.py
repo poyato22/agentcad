@@ -20,6 +20,7 @@ from .onshape.client import OnshapeClient
 from .onshape.tools import register_onshape_tools
 from .orchestrator import Orchestrator, register_orchestrator_tools
 from .platform import data_home, keychain_get
+from .profile import load_profile
 from .providers.registry import DEFAULT_MODEL, resolve
 from .store import Store
 from .tools.registry import ToolRegistry
@@ -59,11 +60,9 @@ class Runtime:
         self.orchestrator = Orchestrator(self)
         services: dict = {"approvals": self.approvals, "runtime": self,
                           "orchestrator": self.orchestrator}
-        creds = keychain_get("mises", "onshape")
-        if creds and ":" in creds:
-            access, secret = creds.split(":", 1)
-            client = OnshapeClient(access, secret, store=self.store, user=USER)
-            services["onshape"] = OnshapeAdapter(client, self.store)
+        adapter = self._onshape_adapter(keychain_get("mises", "onshape"))
+        if adapter is not None:
+            services["onshape"] = adapter
         self.gate = Gate(self.registry, self.store, self.approvals, self.events,
                          user=USER, services=services)
         self.definitions = load_definitions([self.home / "agents"])
@@ -112,6 +111,25 @@ class Runtime:
             log.warning("marked %d interrupted run(s) failed: %s", len(out), ", ".join(out))
         return out
 
+    def _onshape_adapter(self, creds: str | None) -> OnshapeAdapter | None:
+        if creds and ":" in creds:
+            access, secret = creds.split(":", 1)
+            return OnshapeAdapter(OnshapeClient(access, secret, store=self.store, user=USER),
+                                  self.store)
+        return None
+
+    async def set_onshape_credentials(self, creds: str | None) -> None:
+        """Swap the live Onshape adapter after the keys changed ("access:secret" or None)."""
+        old = self.gate.services.pop("onshape", None)
+        new = self._onshape_adapter(creds)
+        if new is not None:
+            self.gate.services["onshape"] = new
+        if old is not None:
+            await old.client.aclose()
+
+    def profile(self):
+        return load_profile(self.home)
+
     async def aclose(self) -> None:
         ad = self.gate.services.get("onshape")
         if ad is not None:
@@ -129,14 +147,19 @@ class Runtime:
         return wd
 
     async def start_run(self, agent: str, prompt: str, *, model_ref: str | None = None,
-                        edit_scope=("*",), read_scope=("*",), caps: Caps = Caps(),
+                        edit_scope=("*",), read_scope=("*",), caps: Caps | None = None,
                         parent_id: str | None = None,
                         allowed_classes: set[SafetyClass] | None = None) -> str:
         defn = self.definitions.get(agent)
         if defn is None:
             raise MisesError(ErrorCode.NOT_FOUND, f"unknown agent: {agent}",
                              hint=f"agents: {', '.join(sorted(self.definitions))}")
-        ref = model_ref or (defn.model if defn.model != "inherit" else DEFAULT_MODEL)
+        prof = self.profile()
+        if caps is None:
+            caps = Caps(onshape_calls_run=prof.onshape_calls_run_cap,
+                        onshape_calls_year=prof.onshape_calls_year_cap)
+        ref = (model_ref or prof.default_model
+               or (defn.model if defn.model != "inherit" else DEFAULT_MODEL))
         provider, model = self.provider_resolver(ref)
         run = self.store.create_run(agent, provider.name, model, prompt, parent_id=parent_id)
         classes = set(SafetyClass) if allowed_classes is None else set(allowed_classes)

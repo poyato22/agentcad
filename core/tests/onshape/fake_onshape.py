@@ -134,6 +134,7 @@ class FakeOnshape:
             (r"/documents/(\w+)/w/(\w+)/mergePreview", self.get_merge_preview),
             (r"/documents/(\w+)/workspaces/(\w+)/merge", self.post_merge),
             (r"/redirected/(\w+)", self.get_redirected),
+            (r"/users/sessioninfo", self.get_sessioninfo),
         ]
 
     def _ws(self, wid: str) -> dict | None:
@@ -244,6 +245,9 @@ class FakeOnshape:
         mv = self.bump(wid)
         return httpx.Response(200, json={"resultDocumentMicroversionId": mv,
                                          "sourceDocumentMicroversionId": src["microversion"]})
+
+    def get_sessioninfo(self, req, body):
+        return httpx.Response(200, json={"name": "Ada Lovelace", "id": "u1"})
 
     def get_redirected(self, req, body, x):
         return httpx.Response(200, json={"redirected": x, "via": req.url.params.get("via")})

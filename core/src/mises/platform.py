@@ -37,6 +37,17 @@ def keychain_set(service: str, account: str, secret: str) -> None:
         raise RuntimeError(f"keychain_set failed for service {service!r} (exit {r.returncode})")
 
 
+def keychain_delete(service: str, account: str) -> bool:
+    """Remove the item; True if one was removed, False if there was none (exit 44)."""
+    r = subprocess.run([_SECURITY, "delete-generic-password", "-s", service, "-a", account],
+                       capture_output=True, text=True)
+    if r.returncode == 0:
+        return True
+    if r.returncode == 44:
+        return False
+    raise RuntimeError(f"keychain_delete failed for service {service!r} (exit {r.returncode})")
+
+
 def _unsafe(s: str) -> bool:
     return any(c in s for c in '"\\') or any(ord(c) < 32 or ord(c) == 127 for c in s)
 

@@ -35,6 +35,8 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from ..types import ErrorCode, MisesError
 from .mcp_server import RUN_HEADER, build_mcp_server
+from ..profile import ClaudeStatusFn, LocalProbeFn, load_profile, probe_local
+from .profile_api import build_profile_router
 from .ui_api import add_cors, build_ui_router
 
 if TYPE_CHECKING:
@@ -125,7 +127,7 @@ class _McpEndpoint:
 
 
 class NewRun(BaseModel):
-    agent: str
+    agent: str | None = None  # the profile's default_agent when omitted
     prompt: str
     model_ref: str | None = None
     edit_scope: list[str] = ["*"]
@@ -150,7 +152,9 @@ class Decision(BaseModel):
     edited_payload: dict | None = None
 
 
-def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None) -> FastAPI:
+def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
+               claude_status: ClaudeStatusFn | None = None,
+               local_probe: LocalProbeFn = probe_local) -> FastAPI:
     """`token` is the admin token; `mcp_token` (generated if omitted) opens /mcp and /health only."""
     if not token:
         raise ValueError("a non-empty token is required")
@@ -178,6 +182,7 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None) ->
     app.add_middleware(_BearerAuth, token=token, mcp_token=mcp_token)
     add_cors(app)  # added last = outermost: preflights are answered before the bearer check
     app.include_router(build_ui_router(runtime))
+    app.include_router(build_profile_router(runtime, claude_status, local_probe))
 
     @app.exception_handler(MisesError)
     async def _mises_error(_req, e: MisesError):
@@ -195,7 +200,8 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None) ->
 
     @app.post("/runs")
     async def create_run(body: NewRun):
-        rid = await runtime.start_run(body.agent, body.prompt, model_ref=body.model_ref,
+        agent = body.agent or load_profile(runtime.home).default_agent
+        rid = await runtime.start_run(agent, body.prompt, model_ref=body.model_ref,
                                       edit_scope=tuple(body.edit_scope),
                                       read_scope=tuple(body.read_scope))
         return {"run_id": rid}
