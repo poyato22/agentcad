@@ -133,3 +133,61 @@ def test_agent_sandbox_real(tmp_path):
     assert r.returncode == 0, r.stderr
     assert r.stdout.split() == ["denied"] * 6 + ["denied", "denied", "ok", "ok", "ok", "True"]
     assert (home / "mises.db").read_text() == "db" and not (home / "evil.txt").exists()
+
+
+def test_claude_sandbox_profile_shape(tmp_path):
+    home = tmp_path / "home"
+    wd = home / "runs" / "r1"
+    wd.mkdir(parents=True)
+    cfg = tmp_path / "dot-claude"
+    bindir = tmp_path / "local" / "bin"
+    s = p.claude_sandbox_profile(home, wd, cfg, binary_dir=bindir)
+    # the agent profile, plus Claude's own config dir (read/write) and its install dir (read)
+    assert s.startswith(p.agent_sandbox_profile(home, wd))
+    assert f'(allow file-read* file-write* (subpath "{cfg.resolve()}"))' in s
+    assert f'(allow file-read* (subpath "{bindir.resolve()}"))' in s
+    assert "deny network" not in s
+    # a config or install dir that would re-open the Mises home is refused
+    with pytest.raises(ValueError):
+        p.claude_sandbox_profile(home, wd, tmp_path)
+    with pytest.raises(ValueError):
+        p.claude_sandbox_profile(home, wd, cfg, binary_dir=home)
+    with pytest.raises(ValueError):
+        p.claude_sandbox_profile(home, wd, home / "runs" / "r2")
+    with pytest.raises(ValueError):
+        p.claude_sandbox_profile(home, wd, Path('/tmp/a"b'))
+
+
+def test_claude_sandboxed_command_refuses_without_sandbox_exec(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    wd = home / "runs" / "r1"
+    wd.mkdir(parents=True)
+    monkeypatch.setattr(p, "SANDBOX_EXEC", str(tmp_path / "missing"))
+    with pytest.raises(RuntimeError):
+        p.claude_sandboxed_command(["claude"], home, wd, tmp_path / "cfg")
+
+
+@pytest.mark.skipif(not os.path.exists("/usr/bin/sandbox-exec"), reason="no sandbox-exec")
+def test_claude_sandbox_real(tmp_path):
+    home = tmp_path / "home"
+    wd = home / "runs" / "r1"
+    wd.mkdir(parents=True)
+    (home / "server.json").write_text('{"token": "admin"}')
+    cfg = tmp_path / "cfg"
+    cfg.mkdir()
+    script = (
+        "import sys\n"
+        "def tryread(p):\n"
+        "    try:\n"
+        "        open(p).read(); return 'ok'\n"
+        "    except OSError: return 'denied'\n"
+        "def trywrite(p):\n"
+        "    try:\n"
+        "        open(p, 'w').write('x'); return 'ok'\n"
+        "    except OSError: return 'denied'\n"
+        f"print(tryread({str(home / 'server.json')!r}), trywrite({str(cfg / 'session.jsonl')!r}),"
+        f" trywrite({str(wd / 'ok.txt')!r}))\n")
+    cmd = p.claude_sandboxed_command(["/usr/bin/python3", "-c", script], home, wd, cfg)
+    r = subprocess.run(cmd, capture_output=True, text=True, cwd=wd)
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.split() == ["denied", "ok", "ok"]
