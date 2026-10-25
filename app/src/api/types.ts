@@ -65,8 +65,10 @@ export interface CancelAllResult { cancelled: string[]; failed: { run_id: string
 /** GET /agents item. `model` may be "inherit". */
 export interface AgentInfo { name: string; description: string; model: string }
 
-export type KeySource = "env" | "keychain" | "none" | "not_needed";
-export interface ModelsInfo { default: string; vendors: { vendor: string; key: KeySource }[] }
+/** signed_in / signed_out / not_installed: the "claude-code" vendor (Plan 3 Task 3). */
+export type KeySource = "env" | "keychain" | "none" | "not_needed" | "signed_in" | "signed_out" | "not_installed";
+/** `models`: aliases the vendor offers, when the core lists them (claude-code: sonnet, opus, haiku, fable). */
+export interface ModelsInfo { default: string; vendors: { vendor: string; key: KeySource; models?: string[] }[] }
 
 export interface CoreStatusInfo {
   core_version: string; onshape: "connected" | "not_configured"; onshape_calls_year: number;
@@ -95,3 +97,40 @@ export interface CoreInfo {
 
 /** Error JSON of every non-2xx core response except 401/422. */
 export interface CoreErrorBody { error: ErrorCode; message: string; hint: string | null; retryable: boolean }
+
+// ---- Plan 3: profile, keys, setup, Claude Code, Onshape test, UI context (core server/profile_api.py)
+
+/** data_home()/profile.json. Never holds secrets. */
+export interface Profile {
+  display_name: string; units: "mm"; default_material: string; default_agent: string;
+  /** e.g. "claude-code/sonnet", "anthropic/claude-sonnet-5-5", "ollama/qwen3"; null = the core's default. */
+  default_model: string | null;
+  onshape_calls_year_cap: number; onshape_calls_run_cap: number; max_parallel_agents: number;
+  /** {"ollama": "http://localhost:11434/v1", "lmstudio": ...} */
+  local_endpoints: Record<string, string>;
+  setup_completed_at: number | null;
+}
+
+/** PUT /profile body: a partial merge. setup_completed_at is set only by POST /setup/complete. */
+export type ProfilePatch = Partial<Omit<Profile, "setup_completed_at" | "units">>;
+
+/** Where a secret comes from. The secret itself is never returned by any route. */
+export type SecretSource = "env" | "keychain" | "none";
+
+/** GET /keys item, and the answer of POST/DELETE /keys/{vendor}. */
+export interface KeyStatus { vendor: string; present: boolean; source: SecretSource }
+
+export type SetupPiece = "model" | "onshape" | "profile";
+export const SETUP_PIECES = ["model", "onshape", "profile"] as const satisfies readonly SetupPiece[];
+
+/** GET /setup. complete = has_model and setup marked complete; Onshape is optional. */
+export interface SetupState { complete: boolean; has_model: boolean; has_onshape: boolean; missing: SetupPiece[] }
+
+/** POST /onshape/test: exactly one ledgered Onshape call. Wrong keys → {ok:false, error:"denied"}. */
+export interface OnshapeTestResult { ok: boolean; user_name?: string | null; error?: string | null }
+
+/** GET /claude-code/status (from the user's own `claude auth status`; non-secret fields only). */
+export interface ClaudeCodeStatus { installed: boolean; version: string | null; signed_in: boolean; auth_method: string | null }
+
+/** PUT /context: what the user has selected, for the agent's mises_context_get tool. */
+export interface UiContext { selected_part_id: string | null; selected_run_id: string | null; picks: unknown[] }

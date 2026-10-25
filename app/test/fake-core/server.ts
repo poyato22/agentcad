@@ -13,6 +13,7 @@ import type {
   AgentInfo, AgentRun, Approval, CoreStatusInfo, ErrorCode, MisesEvent, ModelsInfo, PartSummary, Question, Step, StepKind,
 } from "../../src/api/types";
 import { handleControl } from "./control";
+import { setupFrom, setupRoutes, type FakeSetup, type SetupScenario } from "./setup";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const SCENARIO_DIR = resolve(HERE, "scenarios");
@@ -72,6 +73,8 @@ export interface Scenario {
   on?: { create_run?: ScriptEntry[]; decide?: ScriptEntry[]; decide_reject?: ScriptEntry[] };
   /** Optional GLB per part_id (path relative to the scenarios dir); default DEFAULT_GLB. */
   glb?: Record<string, string>;
+  /** Profile / keys / Claude Code / Onshape-test state (Plan 3). Absent: setup already complete. */
+  setup?: SetupScenario;
 }
 
 export interface FakeCall { method: string; path: string; query: Record<string, string>; body: unknown; ts: number; ifNoneMatch?: string }
@@ -90,6 +93,7 @@ export interface FakeState {
   script: ScriptEntry[];
   on: NonNullable<Scenario["on"]>;
   calls: FakeCall[];
+  setup: FakeSetup;
 }
 
 export interface FakeCore {
@@ -128,6 +132,7 @@ function stateFrom(sc: Scenario, token: string): FakeState {
     questions: new Map((sc.questions ?? []).map((q) => [q.question_id, q])),
     parts: sc.parts, agents: sc.agents, models: sc.models, status: sc.status,
     glb: sc.glb ?? {}, script: sc.script ?? [], on: sc.on ?? {}, calls: [],
+    setup: setupFrom(sc),
   };
 }
 
@@ -136,7 +141,7 @@ const hex = (bytes: number) => randomBytes(bytes).toString("hex");
 
 // ---- HTTP helpers
 
-class HttpError extends Error {
+export class HttpError extends Error {
   readonly status: number;
   readonly body: unknown;
   constructor(status: number, body: unknown) {
@@ -146,19 +151,19 @@ class HttpError extends Error {
   }
 }
 
-function mises(code: ErrorCode, message: string, hint: string | null = null, status?: number): HttpError {
+export function mises(code: ErrorCode, message: string, hint: string | null = null, status?: number): HttpError {
   return new HttpError(status ?? HTTP_STATUS[code], { error: code, message, hint, retryable: code === "transient" });
 }
 
-function missing(field: string, input: unknown): HttpError {
+export function missing(field: string, input: unknown): HttpError {
   return new HttpError(422, { detail: [{ type: "missing", loc: ["body", field], msg: "Field required", input }] });
 }
 
-function wrongType(field: string, type: string, input: unknown): HttpError {
+export function wrongType(field: string, type: string, input: unknown): HttpError {
   return new HttpError(422, { detail: [{ type: `${type}_type`, loc: ["body", field], msg: `Input should be a valid ${type}`, input }] });
 }
 
-type Body = Record<string, unknown>;
+export type Body = Record<string, unknown>;
 
 function req<T extends "string" | "boolean">(b: Body, field: string, type: T): T extends "string" ? string : boolean {
   if (!(field in b)) throw missing(field, b);
@@ -185,7 +190,7 @@ async function readBody(r: IncomingMessage): Promise<unknown> {
   }
 }
 
-function asBody(v: unknown): Body {
+export function asBody(v: unknown): Body {
   if (typeof v !== "object" || v === null || Array.isArray(v)) {
     throw new HttpError(422, { detail: [{ type: "model_attributes_type", loc: ["body"], msg: "Input should be a valid dictionary", input: v ?? null }] });
   }
@@ -308,8 +313,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
 
   // -- routes
 
-  type Handler = (m: RegExpMatchArray, q: URLSearchParams, body: unknown, r: IncomingMessage, res: ServerResponse) => unknown;
-  const routes: { method: "GET" | "POST"; re: RegExp; h: Handler }[] = [
+  const routes: Route[] = [
     { method: "GET", re: /^\/health$/, h: () => ({ ok: true }) },
     {
       method: "POST", re: /^\/runs$/, h: (_m, _q, raw) => {
@@ -326,9 +330,10 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         const slash = ref.indexOf("/");
         const vendor = slash > 0 ? ref.slice(0, slash) : "";
         const model = slash > 0 ? ref.slice(slash + 1) : "";
-        const spec = state.models.vendors.find((v) => v.vendor === vendor);
+        const vendors = models().vendors;
+        const spec = vendors.find((v) => v.vendor === vendor);
         if (!spec || !model) {
-          throw mises("invalid_input", `unknown vendor or empty model in ${JSON.stringify(ref)}`, `vendors: ${state.models.vendors.map((v) => v.vendor).join(", ")}`);
+          throw mises("invalid_input", `unknown vendor or empty model in ${JSON.stringify(ref)}`, `vendors: ${vendors.map((v) => v.vendor).join(", ")}`);
         }
         if (spec.key === "none") throw mises("denied", `no API key for ${vendor}`, `run \`mises keys set ${vendor}\``);
         const run = newRun(agent, vendor, model, prompt);
@@ -431,7 +436,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       }),
     },
     { method: "GET", re: /^\/agents$/, h: () => state.agents },
-    { method: "GET", re: /^\/models$/, h: () => state.models },
+    { method: "GET", re: /^\/models$/, h: () => models() },
     { method: "GET", re: /^\/parts$/, h: () => [...state.parts].sort((a, b) => a.part_id.localeCompare(b.part_id)) },
     {
       method: "GET", re: /^\/parts\/([^/]+)\/model\.glb$/, h: (m, _q, _b, r, res) => {
@@ -452,7 +457,22 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         return RAW;
       },
     },
+    ...setupRoutes(() => state.setup),
   ];
+
+  /** /models: with a setup block, vendor key status follows the saved keys and Claude Code status. */
+  function models(): ModelsInfo {
+    const st = state.setup;
+    if (!st.derived) return state.models;
+    return {
+      ...state.models,
+      vendors: state.models.vendors.map((v) => {
+        if (v.vendor === "claude-code") return { ...v, key: !st.claude.installed ? "not_installed" : st.claude.signed_in ? "signed_in" : "signed_out" };
+        if (v.key === "not_needed") return v;
+        return { ...v, key: st.keys[v.vendor] ?? "none" };
+      }),
+    };
+  }
 
   // -- request pipeline: CORS (outermost) → auth → control/real routes
 
@@ -495,7 +515,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         return;
       }
       res.writeHead(200, {
-        "Access-Control-Allow-Methods": "GET, POST", "Access-Control-Allow-Headers": CORS_ALLOW_HEADERS.join(", "),
+        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE", "Access-Control-Allow-Headers": CORS_ALLOW_HEADERS.join(", "),
         "Access-Control-Max-Age": "600", "Content-Length": 0,
       });
       res.end();
@@ -510,7 +530,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     }
 
     try {
-      const body = method === "POST" ? await readBody(r) : undefined;
+      const body = method === "POST" || method === "PUT" ? await readBody(r) : undefined;
       if (url.pathname.startsWith("/__fake/")) {
         const out = await handleControl(api, method, url.pathname, body);
         if (out === undefined) throw new HttpError(404, { detail: "Not Found" });
@@ -617,3 +637,6 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
 }
 
 const RAW = Symbol("raw-response");
+
+export type Handler = (m: RegExpMatchArray, q: URLSearchParams, body: unknown, r: IncomingMessage, res: ServerResponse) => unknown;
+export interface Route { method: "GET" | "POST" | "PUT" | "DELETE"; re: RegExp; h: Handler }

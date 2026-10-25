@@ -1,0 +1,41 @@
+/* Setup wizard: full-screen sheet on the drafting look (faint grid, square cards, plan tokens only).
+   Blue only marks the current step (selected) and the sign-in that waits for the human. */
+.setup {
+  position: fixed; inset: 0; z-index: 200; display: flex; flex-direction: column; overflow: auto;
+  background-color: var(--bg);
+  background-image: linear-gradient(var(--paper) 1px, transparent 1px), linear-gradient(90deg, var(--paper) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+.setup-head {
+  flex: none; height: var(--topbar-h); display: flex; align-items: center; gap: 16px; padding: 0 16px;
+  background: var(--head); border-bottom: 1px solid var(--line2);
+}
+.setup-title { font: 600 13px/1 var(--font-head); letter-spacing: .08em; text-transform: uppercase; color: var(--ink); }
+.setup-steps { display: flex; gap: 14px; margin: 0; padding: 0; list-style: none; height: 100%; }
+.setup-steps li { display: flex; align-items: center; height: 100%; font-size: var(--fs-small); border-bottom: 2px solid transparent; }
+.setup-steps li[aria-current="step"] { color: var(--ink); border-bottom-color: var(--blue); }
+.setup-close { margin-left: auto; }
+
+.setup-body { width: 720px; max-width: calc(100vw - 32px); margin: 32px auto; display: flex; flex-direction: column; gap: 12px; }
+.setup-step { display: flex; flex-direction: column; gap: 12px; }
+.setup-step > p { margin: 0; max-width: 62ch; }
+.setup-step-head { display: flex; flex-direction: column; gap: 4px; border-bottom: 1px solid var(--line2); padding-bottom: 8px; }
+.setup-h { font-size: 20px; letter-spacing: .02em; }
+.setup-sub { margin: 0; }
+
+.setup-cards { display: flex; flex-direction: column; gap: 8px; }
+.setup-card { background: var(--paper2); border: 1px solid var(--line2); padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.setup-card p { margin: 0; }
+.setup-card-title { font: 600 var(--fs-label)/1 var(--font-head); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+.setup-form { gap: 6px; }
+.setup-field { display: flex; flex-direction: column; gap: 3px; }
+.setup-field input, .setup-field select { width: 100%; }
+.setup-pair { display: grid; grid-template-columns: 180px 1fr; gap: 8px; }
+.setup-row { display: flex; align-items: center; gap: 8px; min-height: 22px; }
+.setup-spacer { flex: 1; }
+.setup-status { display: flex; align-items: center; gap: 6px; }
+.setup-meta { font-size: var(--fs-small); }
+.setup-code { margin: 0; padding: 6px 8px; background: var(--bg); border: 1px solid var(--line); font: inherit; }
+.setup-error { color: var(--red); }
+.setup-summary { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.setup-actions { display: flex; align-items: center; gap: 8px; margin-top: 4px; }

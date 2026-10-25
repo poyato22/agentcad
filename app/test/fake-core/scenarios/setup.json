@@ -1,0 +1,35 @@
+{
+  "_comment": "First-run setup (Plan 3 Task 4): nothing saved yet. Claude Code installed but signed out (signed in after 1 status poll once login starts); no API keys; Onshape keys accepted as 'Hartigan Deely'; the Ollama endpoint answers.",
+  "runs": [],
+  "steps": [],
+  "approvals": [],
+  "parts": [],
+  "agents": [
+    { "name": "designer", "description": "Main CAD agent. Designs and edits parts using the local mirror and Onshape.", "model": "inherit" },
+    { "name": "verifier", "description": "Skeptical read-only checker. Tries to prove a change wrong and reports pass/fail per requirement.", "model": "inherit" }
+  ],
+  "models": {
+    "default": "anthropic/claude-sonnet-5-5",
+    "vendors": [
+      { "vendor": "anthropic", "key": "none" },
+      { "vendor": "openai", "key": "none" },
+      { "vendor": "gemini", "key": "none" },
+      { "vendor": "openrouter", "key": "none" },
+      { "vendor": "ollama", "key": "not_needed" },
+      { "vendor": "lmstudio", "key": "not_needed" },
+      { "vendor": "claude-code", "key": "signed_out", "models": ["sonnet", "opus", "haiku", "fable"] }
+    ]
+  },
+  "status": {
+    "core_version": "0.1.0", "onshape": "not_configured", "onshape_calls_year": 0, "onshape_cap_year": 2500,
+    "runs_running": 0, "approvals_pending": 0
+  },
+  "setup": {
+    "profile": { "display_name": "", "setup_completed_at": null },
+    "keys": {},
+    "claude": { "installed": true, "version": "2.1.4", "signed_in": false, "auth_method": null },
+    "login_after_polls": 1,
+    "onshape_user": "Hartigan Deely",
+    "local_answering": ["ollama"]
+  }
+}

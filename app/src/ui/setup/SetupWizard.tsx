@@ -1,0 +1,98 @@
+// First-run setup: Welcome → Connect a model → Onshape (optional) → Profile basics → Done.
+// Every step saves to the core as it goes, so closing or reloading mid-way loses nothing and the
+// wizard resumes at the first piece still missing. Secrets go straight to the core (Keychain) and
+// are never shown again: inputs are password fields that clear after a save.
+import type { JSX } from "preact";
+import { useEffect, useState } from "preact/hooks";
+import type { ClaudeCodeStatus, KeyStatus, ModelsInfo, Profile, SetupState } from "../../api/types";
+import { actions } from "../../state/store";
+import { Button } from "../common/Button";
+import { skipped } from "./gate";
+import { resumeStep, STEPS, type StepId } from "./logic";
+import { DoneStep } from "./steps/DoneStep";
+import { describeError } from "./steps/common";
+import { ModelStep } from "./steps/ModelStep";
+import { OnshapeStep } from "./steps/OnshapeStep";
+import { ProfileStep } from "./steps/ProfileStep";
+import { WelcomeStep } from "./steps/WelcomeStep";
+import "./setup.css";
+
+export interface SetupData {
+  setup: SetupState; profile: Profile; keys: KeyStatus[]; claude: ClaudeCodeStatus; models: ModelsInfo;
+}
+
+/** What every step gets: the loaded data, setters that keep it current, and navigation. */
+export interface StepProps {
+  data: SetupData;
+  update(patch: Partial<SetupData>): void;
+  /** Re-reads GET /setup (and /models, whose key status follows). */
+  refresh(): Promise<SetupState>;
+  go(step: StepId): void;
+  close(): void;
+}
+
+async function load(): Promise<SetupData> {
+  const c = actions.client();
+  const [setup, profile, keys, claude, models] = await Promise.all([
+    c.setupState(), c.getProfile(), c.listKeys(), c.claudeCodeStatus(), c.models(),
+  ]);
+  return { setup, profile, keys, claude, models };
+}
+
+export function SetupWizard({ reopened, onClose }: { reopened: boolean; onClose: () => void }): JSX.Element {
+  const [data, setData] = useState<SetupData | null>(null);
+  const [step, setStep] = useState<StepId | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    let live = true;
+    setError(null);
+    Promise.resolve().then(load).then((d) => {
+      if (!live) return;
+      setData(d);
+      setStep((s) => s ?? resumeStep(d.setup, { reopened, modelSkipped: skipped("model"), onshapeSkipped: skipped("onshape") }));
+    }, (e: unknown) => { if (live) setError(describeError(e)); });
+    return () => { live = false; };
+  }, [attempt]);
+
+  // Esc never closes the wizard by accident; the explicit Close button does.
+  const update = (patch: Partial<SetupData>): void => setData((d) => (d ? { ...d, ...patch } : d));
+  const refresh = async (): Promise<SetupState> => {
+    const c = actions.client();
+    const [setup, models] = await Promise.all([c.setupState(), c.models().catch(() => null)]);
+    setData((d) => (d ? { ...d, setup, models: models ?? d.models } : d));
+    return setup;
+  };
+
+  const props: StepProps | null = data ? { data, update, refresh, go: setStep, close: onClose } : null;
+  const current = STEPS.findIndex((s) => s.id === step);
+
+  return (
+    <div class="setup" role="dialog" aria-modal="true" aria-label="Set up Mises">
+      <header class="setup-head">
+        <span class="setup-title">Set up Mises</span>
+        <ol class="setup-steps" aria-label="Setup steps">
+          {STEPS.map((s, i) => (
+            <li key={s.id} aria-current={s.id === step ? "step" : undefined} class={i < current ? "dim" : s.id === step ? "" : "faint"}>{s.label}</li>
+          ))}
+        </ol>
+        <Button variant="ghost" class="setup-close" onClick={onClose}>Close — finish later</Button>
+      </header>
+      <div class="setup-body">
+        {error && (
+          <div class="setup-card">
+            <div class="setup-error text" role="alert">{error}</div>
+            <div class="setup-actions"><Button onClick={() => setAttempt((n) => n + 1)}>Try again</Button></div>
+          </div>
+        )}
+        {!error && !props && <div class="faint">loading…</div>}
+        {props && step === "welcome" && <WelcomeStep {...props} />}
+        {props && step === "model" && <ModelStep {...props} />}
+        {props && step === "onshape" && <OnshapeStep {...props} />}
+        {props && step === "profile" && <ProfileStep {...props} />}
+        {props && step === "done" && <DoneStep {...props} />}
+      </div>
+    </div>
+  );
+}
