@@ -73,6 +73,8 @@ export interface ModelsInfo { default: string; vendors: { vendor: string; key: K
 export interface CoreStatusInfo {
   core_version: string; onshape: "connected" | "not_configured"; onshape_calls_year: number;
   onshape_cap_year: number; runs_running: number; approvals_pending: number;
+  /** Core data folder (absolute path); absent on older cores. */
+  data_dir?: string | null;
 }
 
 export type Vec3 = [number, number, number];

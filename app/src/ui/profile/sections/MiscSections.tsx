@@ -6,14 +6,15 @@ import { Button } from "../../common/Button";
 import { openSetupWizard } from "../../setup/gate";
 import { Card, SectionBox, type SectionProps } from "../common";
 
-/** Core data home (core platform.data_home). The webview can't read $HOME, so it shows the `~` form. */
+/** Fallback when /status has no data_dir: the core's default data home in `~` form (the webview can't read $HOME). */
 export const DATA_DIR = "~/Library/Application Support/Mises";
 
-export function DataSection(): JSX.Element {
+export function DataSection({ data }: SectionProps): JSX.Element {
+  const dir = data.status?.data_dir || DATA_DIR;
   const [note, setNote] = useState<string | null>(null);
   async function copy(): Promise<void> {
     try {
-      await navigator.clipboard.writeText(DATA_DIR);
+      await navigator.clipboard.writeText(dir);
       setNote("copied");
     } catch {
       setNote("could not copy: select the path and copy it");
@@ -24,7 +25,7 @@ export function DataSection(): JSX.Element {
     <SectionBox title="Data">
       <Card title="Data folder">
         <p class="dim">Runs, parts, the CAD mirror and your profile live here. Nothing leaves this Mac except calls you set up.</p>
-        <code class="profile-code text" data-testid="data-path">{DATA_DIR}</code>
+        <code class="profile-code text" data-testid="data-path">{dir}</code>
         <div class="profile-row">
           <Button onClick={() => { void copy(); }}>Copy path</Button>
           {note && <span class="dim">{note}</span>}

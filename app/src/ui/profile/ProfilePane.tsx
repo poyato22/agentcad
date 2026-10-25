@@ -6,7 +6,7 @@ import type { JSX } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { actions } from "../../state/store";
 import { Button } from "../common/Button";
-import { describeError, type ProfileData } from "./common";
+import { describeError, type ProfileData, type SectionProps } from "./common";
 import { AgentsSection } from "./sections/AgentsSection";
 import { AboutSection, DataSection, SetupSection } from "./sections/MiscSections";
 import { ModelsSection } from "./sections/ModelsSection";
@@ -62,7 +62,7 @@ function ProfilePaneBody({ onClose }: { onClose: () => void }): JSX.Element {
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const update = (patch: Partial<ProfileData>): void => setData((d) => (d ? { ...d, ...patch } : d));
+  const update: SectionProps["update"] = (patch) => setData((d) => (d ? { ...d, ...(typeof patch === "function" ? patch(d) : patch) } : d));
   const props = data ? { data, update } : null;
 
   return (
@@ -91,7 +91,7 @@ function ProfilePaneBody({ onClose }: { onClose: () => void }): JSX.Element {
           {props && section === "models" && <ModelsSection {...props} />}
           {props && section === "onshape" && <OnshapeSection {...props} />}
           {props && section === "agents" && <AgentsSection {...props} />}
-          {props && section === "data" && <DataSection />}
+          {props && section === "data" && <DataSection {...props} />}
           {props && section === "setup" && <SetupSection onClose={onClose} />}
           {props && section === "about" && <AboutSection {...props} />}
         </div>

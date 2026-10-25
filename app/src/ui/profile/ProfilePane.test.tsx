@@ -231,6 +231,18 @@ describe("Models section: API keys", () => {
     expect(await screen.findByRole("button", { name: "Add anthropic key" })).toBeTruthy();
   });
 
+  it("an_env_key_row_says_the_variable_takes_precedence_and_a_replace_repeats_it", async () => {
+    client.setKey.mockImplementation(async (vendor: string) => ({ vendor, present: true, source: "env" }));
+    await openSection("Models");
+    const row = screen.getByRole("row", { name: /openai/ });
+    expect(row.textContent).toContain("from environment variable — it takes precedence over a saved key");
+    fireEvent.click(screen.getByRole("button", { name: "Replace openai key" }));
+    type("openai API key", SECRET);
+    fireEvent.click(screen.getByRole("button", { name: "Save key" }));
+    expect(await screen.findByText("Saved to Keychain. The environment variable still takes precedence; the saved key is used only when it is unset.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Remove openai key" })).toBeNull();
+  });
+
   it("a_key_from_the_environment_cannot_be_removed_here", async () => {
     await openSection("Models");
     expect(screen.queryByRole("button", { name: "Remove openai key" })).toBeNull();
@@ -339,6 +351,19 @@ describe("Onshape section", () => {
     await waitFor(() => expect(client.updateProfile).toHaveBeenCalledWith({ onshape_calls_year_cap: 4000 }));
   });
 
+  it("env_onshape_keys_say_the_variable_takes_precedence_and_cannot_be_removed", async () => {
+    client.listKeys.mockResolvedValue(keys.map((k) => (k.vendor === "onshape" ? { ...k, source: "env" } : k)));
+    client.setOnshapeKeys.mockResolvedValue({ vendor: "onshape", present: true, source: "env" });
+    await openSection("Onshape");
+    expect(screen.getByText("from environment variable — it takes precedence over a saved key")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Remove keys" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Replace keys" }));
+    type("Access key", ACCESS);
+    type("Secret key", ONSHAPE_SECRET);
+    fireEvent.click(screen.getByRole("button", { name: "Save keys" }));
+    expect(await screen.findByText(/The environment variable still takes precedence/)).toBeTruthy();
+  });
+
   it("the_usage_bar_is_amber_near_the_cap", async () => {
     client.status.mockResolvedValue({ ...status, onshape_calls_year: 2300 });
     await openSection("Onshape");
@@ -401,6 +426,18 @@ describe("Data, Setup and About", () => {
     fireEvent.click(screen.getByRole("button", { name: "Copy path" }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("~/Library/Application Support/Mises"));
     expect(await screen.findByText("copied")).toBeTruthy();
+  });
+
+  it("data_prefers_the_core_reported_folder", async () => {
+    client.status.mockResolvedValue({ ...status, data_dir: "/Users/h/custom/Mises" });
+    await openSection("Data");
+    expect(screen.getByTestId("data-path").textContent).toBe("/Users/h/custom/Mises");
+  });
+
+  it("units_come_from_the_profile", async () => {
+    client.getProfile.mockResolvedValue({ ...profile, units: "in" as "mm" });
+    await openSection("Profile");
+    expect(screen.getByText("in")).toBeTruthy();
   });
 
   it("run_setup_again_opens_the_wizard_and_closes_the_panel", async () => {

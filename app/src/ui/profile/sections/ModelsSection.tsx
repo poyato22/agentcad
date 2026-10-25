@@ -6,13 +6,13 @@ import { Button } from "../../common/Button";
 import { Led } from "../../common/Led";
 import { pollUntil } from "../../setup/logic";
 import {
-  Card, ConfirmRemove, ErrorLine, LOCAL_URLS, LOCAL_VENDORS, SECRET_INPUT, SectionBox, useTask, type SectionProps,
+  Card, ConfirmRemove, ENV_SAVED_NOTE, ENV_TEXT, ErrorLine, LOCAL_URLS, LOCAL_VENDORS, SECRET_INPUT, SectionBox, upsertKey, useTask, type SectionProps,
 } from "../common";
 
 const SIGN_IN_POLL_MS = 2000;
 const SIGN_IN_TIMEOUT_MS = 120_000;
 const NOT_API_KEYS = new Set<string>([...LOCAL_VENDORS, "onshape"]);
-const SOURCE_TEXT = { keychain: "Keychain", env: "environment", none: "no key" } as const;
+const SOURCE_TEXT = { keychain: "Keychain", env: ENV_TEXT, none: "no key" } as const;
 
 export function ModelsSection(p: SectionProps): JSX.Element {
   return (
@@ -94,15 +94,17 @@ function KeysCard({ data, update }: SectionProps): JSX.Element {
   const task = useTask();
   const rows = data.keys.filter((k) => !NOT_API_KEYS.has(k.vendor));
 
-  const replaceKey = (next: KeyStatus): void => update({ keys: data.keys.map((k) => (k.vendor === next.vendor ? next : k)) });
-  function open(m: KeyMode): void { setMode(m); setSecret(""); task.clear(); }
+  const [saveNote, setSaveNote] = useState<string | null>(null);
+  const replaceKey = (next: KeyStatus): void => update((d) => ({ keys: upsertKey(d.keys, next) }));
+  function open(m: KeyMode): void { setMode(m); setSecret(""); setSaveNote(null); task.clear(); }
 
   async function save(vendor: string): Promise<void> {
     const value = secret.trim();
     if (!value) return;
-    const ok = await task.run(async () => { replaceKey(await actions.client().setKey(vendor, value)); });
+    let saved: KeyStatus | null = null;
+    const ok = await task.run(async () => { saved = await actions.client().setKey(vendor, value); replaceKey(saved); });
     setSecret("");
-    if (ok) setMode(null);
+    if (ok) { setMode(null); setSaveNote((saved as KeyStatus | null)?.source === "env" ? ENV_SAVED_NOTE : null); }
   }
   async function remove(vendor: string): Promise<void> {
     const ok = await task.run(async () => { replaceKey(await actions.client().deleteKey(vendor)); });
@@ -142,7 +144,7 @@ function KeysCard({ data, update }: SectionProps): JSX.Element {
                       {k.present && k.source === "keychain" && (
                         <Button variant="ghost" onClick={() => open({ kind: "remove", vendor: k.vendor })} aria-label={`Remove ${k.vendor} key`}>Remove</Button>
                       )}
-                      {k.present && k.source === "env" && <span class="faint">change it in the environment</span>}
+                      
                     </span>
                   )}
                 </td>
@@ -151,6 +153,7 @@ function KeysCard({ data, update }: SectionProps): JSX.Element {
           })}
         </tbody>
       </table>
+      {saveNote && <div class="profile-hint">{saveNote}</div>}
       <ErrorLine error={task.error} />
     </Card>
   );

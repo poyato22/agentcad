@@ -34,7 +34,7 @@ export function ProfileSection({ data, update }: SectionProps): JSX.Element {
         <label class="profile-field"><span class="label">Default material</span>
           <input aria-label="Default material" value={material} onInput={(e) => { setMaterial(e.currentTarget.value); task.clear(); }} />
         </label>
-        <div class="profile-field"><span class="label">Units</span><span>mm</span></div>
+        <div class="profile-field"><span class="label">Units</span><span>{p.units}</span></div>
         <div class="profile-row">
           <Button variant="ink" disabled={!dirty || task.busy} onClick={() => { void save(); }}>Save</Button>
           {task.note && <span class="dim">{task.note}</span>}

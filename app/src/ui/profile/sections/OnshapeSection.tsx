@@ -5,7 +5,7 @@ import { actions } from "../../../state/store";
 import { Button } from "../../common/Button";
 import { Led } from "../../common/Led";
 import {
-  Card, ConfirmRemove, ErrorLine, KeyLine, SECRET_INPUT, SectionBox, useTask, wholeNumber, type SectionProps,
+  Card, ConfirmRemove, ENV_SAVED_NOTE, ErrorLine, KeyLine, upsertKey, SECRET_INPUT, SectionBox, useTask, wholeNumber, type SectionProps,
 } from "../common";
 
 const fmt = (n: number): string => n.toLocaleString("en-US");
@@ -31,22 +31,24 @@ function KeysCard({ data, update }: SectionProps): JSX.Element {
   const [access, setAccess] = useState("");
   const [secretKey, setSecretKey] = useState("");
   const [result, setResult] = useState<OnshapeTestResult | null>(null);
+  const [saveNote, setSaveNote] = useState<string | null>(null);
   const task = useTask();
   const canSave = !!access.trim() && !!secretKey.trim() && !task.busy;
 
   const put = (next: KeyStatus): void => {
-    update({ keys: data.keys.some((k) => k.vendor === next.vendor) ? data.keys.map((k) => (k.vendor === next.vendor ? next : k)) : [...data.keys, next] });
+    update((d) => ({ keys: upsertKey(d.keys, next) }));
   };
-  function reset(m: "replace" | "remove" | null): void { setMode(m); setAccess(""); setSecretKey(""); setResult(null); task.clear(); }
+  function reset(m: "replace" | "remove" | null): void { setMode(m); setAccess(""); setSecretKey(""); setResult(null); setSaveNote(null); task.clear(); }
 
   async function save(): Promise<void> {
     if (!canSave) return;
     const a = access.trim();
     const s = secretKey.trim();
-    const ok = await task.run(async () => { put(await actions.client().setOnshapeKeys(a, s)); });
+    let saved: KeyStatus | null = null;
+    const ok = await task.run(async () => { saved = await actions.client().setOnshapeKeys(a, s); put(saved); });
     setAccess("");
     setSecretKey("");
-    if (ok) setMode(null);
+    if (ok) { setMode(null); setSaveNote((saved as KeyStatus | null)?.source === "env" ? ENV_SAVED_NOTE : null); }
   }
   async function remove(): Promise<void> {
     const ok = await task.run(async () => { put(await actions.client().deleteKey("onshape")); });
@@ -61,6 +63,7 @@ function KeysCard({ data, update }: SectionProps): JSX.Element {
     <Card title="Onshape API keys">
       <p class="dim">An API key pair from Onshape's developer portal. Both keys go to the macOS Keychain and are never shown again.</p>
       <KeyLine status={status} />
+      {saveNote && <div class="profile-hint">{saveNote}</div>}
       {mode === "replace" && (
         <div class="profile-pair">
           <label class="profile-field"><span class="label">Access key</span>

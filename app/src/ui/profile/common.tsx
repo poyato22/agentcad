@@ -18,7 +18,8 @@ export interface ProfileData {
 
 export interface SectionProps {
   data: ProfileData;
-  update(patch: Partial<ProfileData>): void;
+  /** Merge a patch; pass a function to derive it from the latest data (use after an await). */
+  update(patch: Partial<ProfileData> | ((d: ProfileData) => Partial<ProfileData>)): void;
 }
 
 export function describeError(e: unknown): string {
@@ -95,7 +96,7 @@ export function KeyLine({ status }: { status: KeyStatus | undefined }): JSX.Elem
     return <div class="profile-status"><Led tone="green" /><span>saved ●●●● from Keychain</span></div>;
   }
   if (status?.present && status.source === "env") {
-    return <div class="profile-status"><Led tone="green" /><span>set in the environment</span></div>;
+    return <div class="profile-status"><Led tone="green" /><span>{ENV_TEXT}</span></div>;
   }
   return <div class="profile-status"><Led tone="faint" /><span class="faint">no key saved</span></div>;
 }
@@ -105,6 +106,14 @@ export function wholeNumber(s: string, min: number, max = Number.MAX_SAFE_INTEGE
   if (!/^\d+$/.test(s.trim())) return null;
   const n = Number(s);
   return n >= min && n <= max ? n : null;
+}
+
+export const ENV_TEXT = "from environment variable — it takes precedence over a saved key";
+export const ENV_SAVED_NOTE = "Saved to Keychain. The environment variable still takes precedence; the saved key is used only when it is unset.";
+
+/** Replace (or append) one vendor's status in a key list. */
+export function upsertKey(keys: KeyStatus[], next: KeyStatus): KeyStatus[] {
+  return keys.some((k) => k.vendor === next.vendor) ? keys.map((k) => (k.vendor === next.vendor ? next : k)) : [...keys, next];
 }
 
 export const LOCAL_VENDORS = ["ollama", "lmstudio"] as const;
