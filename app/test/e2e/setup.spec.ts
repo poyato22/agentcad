@@ -1,10 +1,11 @@
 // First-run setup wizard against the fake core ("setup" scenario: nothing saved, Claude Code
-// installed but signed out, Onshape keys accepted, Ollama answering). Until Task 6 mounts
-// <SetupGate/> in App, the gate runs on its dev/test harness page.
+// installed but signed out, Onshape keys accepted, no local model server unless a test says so).
+// The app mounts <SetupGate/> at its root: the wizard covers the app while setup is incomplete.
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
 
-const PAGE = "/src/ui/setup/harness.html";
+const PAGE = "/";
+const appShell = (page: Page) => page.locator("[data-region=app]");
 const API_SECRET = "sk-ant-api03-E2E-SECRET-never-shown";
 const ONSHAPE_ACCESS = "on-access-E2E-1111";
 const ONSHAPE_SECRET = "on-secret-E2E-2222";
@@ -35,7 +36,7 @@ test("wizard_hidden_when_setup_is_complete", async ({ page, fake }) => {
   await fake.reset("base");
   const answered = page.waitForResponse((r) => r.url().endsWith("/setup") && r.request().method() === "GET");
   await page.goto(PAGE);
-  await expect(page.getByTestId("app-shell")).toBeVisible();
+  await expect(appShell(page)).toBeVisible();
   await answered;
   await expect(wizard(page)).toHaveCount(0);
 });
@@ -110,7 +111,7 @@ test("full_path_claude_code_api_key_onshape_profile_done", async ({ page, fake }
   // a reload does not bring it back
   const again = page.waitForResponse((r) => r.url().endsWith("/setup") && r.request().method() === "GET");
   await page.reload();
-  await expect(page.getByTestId("app-shell")).toBeVisible();
+  await expect(appShell(page)).toBeVisible();
   await again;
   await expect(wizard(page)).toHaveCount(0);
 });
@@ -139,14 +140,23 @@ test("reload_mid_way_resumes_at_the_first_missing_step", async ({ page, fake }) 
 });
 
 test("local_only_and_skip_onshape_path", async ({ page, fake }) => {
-  await fake.reset("setup");
+  const sc = JSON.parse(JSON.stringify(await import("../fake-core/scenarios/setup.json", { with: { type: "json" } }).then((m) => m.default))) as Record<string, unknown> & { setup: Record<string, unknown> };
+  sc.setup.local_answering = ["ollama"];         // Ollama runs on this Mac
+  await fake.reset(sc);
   await page.goto(PAGE);
-  await page.getByRole("button", { name: "Get started" }).click();
-  // Local model: the core checks the endpoint (Ollama answers in this scenario)
+  // like the real core, an Ollama answering at its default address already counts as a model:
+  // the wizard opens at Onshape; go back to look at the local model card
+  await expect(heading(page, "Connect Onshape")).toBeVisible();
+  await page.getByRole("button", { name: "Back" }).click();
+  await expect(heading(page, "Connect a model")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Continue" })).toBeEnabled();
+  // Local model: the core checks the endpoint and only an answering one is saved
   await page.getByLabel("Local app").selectOption("ollama");
   await expect(field(page, "Endpoint")).toHaveValue("http://localhost:11434/v1");
   await page.getByRole("region", { name: "Local model" }).getByRole("button", { name: "Test" }).click();
-  await expect(page.getByRole("region", { name: "Local model" })).toContainText("answering");
+  await expect(page.getByRole("region", { name: "Local model" })).toContainText("answering — saved");
+  expect((await fake.calls()).filter((c) => c.path === "/local/test")).toHaveLength(1);
+  expect(await getJson(fake, "/profile")).toMatchObject({ local_endpoints: { ollama: "http://localhost:11434/v1" } });
   await page.getByRole("button", { name: "Continue" }).click();
 
   await page.getByRole("button", { name: "Skip for now" }).click();

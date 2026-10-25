@@ -1,10 +1,10 @@
 // Profile panel against the fake core ("profile" scenario: setup finished, Claude Code signed in,
 // Anthropic key in the Keychain, OpenAI key from the environment, Onshape keys saved, Ollama set).
-// Until Task 6 wires the top-bar button in App, the panel runs on its dev/test harness page.
+// The panel opens from the app's top-bar Profile button (the display name's initials).
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
 
-const PAGE = "/src/ui/profile/harness.html";
+const PAGE = "/";
 const API_SECRET = "sk-gem-E2E-SECRET-never-shown";
 const ONSHAPE_ACCESS = "on-access-E2E-1111";
 const ONSHAPE_SECRET = "on-secret-E2E-2222";
@@ -27,9 +27,18 @@ async function noSecretsAnywhere(page: Page, secrets: string[]) {
   }
 }
 
+/** The top-bar button (reads "H" for "Hartigan"; its accessible name is always "Profile"). */
+async function openPanel(page: Page) {
+  const btn = page.locator("[data-region=topbar]").getByRole("button", { name: "Profile", exact: true });
+  await expect(btn).not.toHaveText("Profile");   // the name has loaded
+  await btn.click();
+  await expect(panel(page)).toBeVisible();
+}
+
 async function open(page: Page, section?: string) {
   await page.goto(PAGE);
-  await expect(panel(page)).toBeVisible();
+  await expect(page.locator("[data-region=topbar]").getByRole("button", { name: "Profile", exact: true })).toHaveText("H");
+  await openPanel(page);
   await expect(nav(page, "Models")).toBeVisible();
   if (section) await nav(page, section).click();
 }
@@ -55,6 +64,9 @@ test("edit_name_and_material_persist_across_a_reload_and_never_send_setup_comple
   expect(await getJson(fake, "/profile")).toMatchObject({ display_name: "Hartigan D", default_material: "PETG", units: "mm", setup_completed_at: 1790000000 });
 
   await page.reload();
+  // the top-bar button shows the new name's initials
+  await expect(page.locator("[data-region=topbar]").getByRole("button", { name: "Profile", exact: true })).toHaveText("HD");
+  await openPanel(page);
   await expect(field(page, "Name")).toHaveValue("Hartigan D");
   await expect(field(page, "Default material")).toHaveValue("PETG");
 });
@@ -72,6 +84,7 @@ test("agents_and_budgets_persist", async ({ page, fake }) => {
   });
 
   await page.reload();
+  await openPanel(page);
   await nav(page, "Agents & budgets").click();
   await expect(field(page, "Default agent")).toHaveValue("verifier");
   await expect(field(page, "Default model")).toHaveValue("claude-code/opus");
@@ -176,7 +189,8 @@ test("onshape_keys_test_usage_and_caps", async ({ page, fake }) => {
 
 test("data_about_and_run_setup_again", async ({ page }) => {
   await open(page, "Data");
-  await expect(panel(page).getByTestId("data-path")).toHaveText("~/Library/Application Support/Mises");
+  // the folder the core reports (GET /status data_dir)
+  await expect(panel(page).getByTestId("data-path")).toHaveText("/Users/fake/Library/Application Support/Mises");
   await expect(panel(page).getByRole("button", { name: "Copy path" })).toBeVisible();
 
   await nav(page, "About").click();

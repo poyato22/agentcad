@@ -1,11 +1,13 @@
 // Profile panel: a right-hand sheet with seven sections (Profile, Models, Onshape, Agents & budgets,
-// Data, Setup, About). Task 6 mounts <ProfilePane open onClose/> from a top-bar button.
+// Data, Setup, About). App mounts <ProfilePane/> once; the top-bar Profile button opens it
+// (ui/profile/open.ts), as do the "connect a model" notice and the new-run dialog.
 // Every section reads and writes the core routes directly; secrets only ever go out (password
 // inputs, cleared after a save) and are never rendered. Removing anything asks inside the panel.
 import type { JSX } from "preact";
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { actions } from "../../state/store";
 import { Button } from "../common/Button";
+import { useFocusTrap } from "../common/focusTrap";
 import { describeError, type ProfileData, type SectionProps } from "./common";
 import { AgentsSection } from "./sections/AgentsSection";
 import { AboutSection, DataSection, SetupSection } from "./sections/MiscSections";
@@ -35,16 +37,18 @@ async function load(): Promise<ProfileData> {
   return { profile, keys, claude, status, models, agents };
 }
 
-export function ProfilePane({ open, onClose }: { open: boolean; onClose: () => void }): JSX.Element | null {
+export function ProfilePane({ open, onClose, section }: { open: boolean; onClose: () => void; section?: SectionId }): JSX.Element | null {
   if (!open) return null;
-  return <ProfilePaneBody onClose={onClose} />;
+  return <ProfilePaneBody onClose={onClose} initial={section ?? "profile"} />;
 }
 
-function ProfilePaneBody({ onClose }: { onClose: () => void }): JSX.Element {
+function ProfilePaneBody({ onClose, initial }: { onClose: () => void; initial: SectionId }): JSX.Element {
   const [data, setData] = useState<ProfileData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
-  const [section, setSection] = useState<SectionId>("profile");
+  const [section, setSection] = useState<SectionId>(initial);
+  const root = useRef<HTMLDivElement>(null);
+  useFocusTrap(root, () => root.current?.querySelector<HTMLElement>(".profile-nav-item[aria-current]") ?? null);
 
   useEffect(() => {
     let live = true;
@@ -66,7 +70,7 @@ function ProfilePaneBody({ onClose }: { onClose: () => void }): JSX.Element {
   const props = data ? { data, update } : null;
 
   return (
-    <div class="profile" role="dialog" aria-modal="true" aria-label="Profile">
+    <div ref={root} class="profile" role="dialog" aria-modal="true" aria-label="Profile">
       <header class="profile-head">
         <span class="profile-title">Profile</span>
         <Button variant="ghost" class="profile-close" onClick={onClose}>Close</Button>

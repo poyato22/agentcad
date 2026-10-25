@@ -39,3 +39,10 @@
 .setup-error { color: var(--red); }
 .setup-summary { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
 .setup-actions { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+
+/* "Connect a model" notice: setup is finished but nothing can run yet (amber = warn). */
+.setup-notice {
+  position: fixed; top: calc(var(--topbar-h) + 8px); left: 50%; transform: translateX(-50%); z-index: 150;
+  display: flex; align-items: center; gap: 10px; max-width: calc(100vw - 32px); padding: 6px 10px;
+  background: var(--paper2); border: 1px solid var(--line2); color: var(--ink);
+}

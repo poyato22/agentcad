@@ -4,17 +4,12 @@ import type { KeyStatus, OnshapeTestResult } from "../../../api/types";
 import { actions } from "../../../state/store";
 import { Button } from "../../common/Button";
 import { Led } from "../../common/Led";
+import { onshapeTestText as testText } from "../../setup/logic";
 import {
   Card, ConfirmRemove, ENV_SAVED_NOTE, ErrorLine, KeyLine, upsertKey, SECRET_INPUT, SectionBox, useTask, wholeNumber, type SectionProps,
 } from "../common";
 
 const fmt = (n: number): string => n.toLocaleString("en-US");
-
-function testText(r: OnshapeTestResult): string {
-  if (r.ok) return r.user_name ? `connected as ${r.user_name}` : "connected";
-  if (r.error === "denied") return "Onshape refused these keys (denied). Check the access key and secret key in Onshape's developer portal, then save them again.";
-  return `Onshape test failed: ${r.error ?? "unknown error"}`;
-}
 
 export function OnshapeSection({ data, update }: SectionProps): JSX.Element {
   return (

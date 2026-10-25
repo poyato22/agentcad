@@ -2,7 +2,7 @@
 // same routes, bearer auth and 401 body, error JSON and status codes, 422 shape, CORS for the
 // app origins, and `WS /events?token=&run_id=` with close 4401 on a bad token.
 // Test-only control routes live under /__fake/* (see control.ts).
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -33,6 +33,11 @@ export function etagMatches(header: string | undefined, etag: string): boolean {
 }
 
 const PART_ID_RE = /^[a-z][a-z0-9_]{1,40}$/;
+const CLAUDE_CODE = "claude-code";
+/** Core claude_code.session.model_alias: what may follow "claude-code/". */
+const CLAUDE_ALIAS_RE = /^[A-Za-z0-9][A-Za-z0-9._[\]-]{0,79}$/;
+/** GET /status data_dir when a scenario leaves it out (the real core always sends it). */
+const FAKE_DATA_DIR = "/Users/fake/Library/Application Support/Mises";
 const DECIDED_BY = "local-user";
 
 const HTTP_STATUS: Record<ErrorCode, number> = {
@@ -126,7 +131,7 @@ export function loadScenario(s: string | Scenario): Scenario {
 function stateFrom(sc: Scenario, token: string): FakeState {
   return {
     token,
-    runs: new Map(sc.runs.map((r) => [r.id, { external: false, ...r }])),
+    runs: new Map(sc.runs.map((r) => [r.id, { external: false, session_ref: null, ...r }])),
     steps: [...sc.steps].sort((a, b) => a.id - b.id),
     approvals: new Map(sc.approvals.map((a) => [a.id, a])),
     questions: new Map((sc.questions ?? []).map((q) => [q.question_id, q])),
@@ -257,7 +262,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
 
   function emit(evIn: EventIn, extras: EmitExtras = {}): { step_ids: number[] } {
     const ev: MisesEvent = { type: evIn.type, run_id: evIn.run_id ?? null, data: evIn.data ?? {}, ts: evIn.ts ?? now() };
-    if (extras.run) state.runs.set(extras.run.id, { external: false, ...extras.run });
+    if (extras.run) state.runs.set(extras.run.id, { external: false, session_ref: null, ...extras.run });
     const ids = (extras.steps ?? []).map((s) => appendStep(s, ev.run_id).id);
     if (extras.approval) state.approvals.set(extras.approval.id, extras.approval);
     if (extras.parts) state.parts = extras.parts;
@@ -301,6 +306,8 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     const run: AgentRun = {
       id: hex(6), parent_id: null, agent, provider, model, task, status: "running", branch: null,
       onshape_calls: 0, input_tokens: 0, output_tokens: 0, usd: 0, created_at: t, updated_at: t, owner_pid: process.pid, external,
+      // the core keeps the Claude Code session id it resumes with
+      session_ref: provider === CLAUDE_CODE ? randomUUID() : null,
     };
     state.runs.set(run.id, run);
     return run;
@@ -336,9 +343,14 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
           throw mises("invalid_input", `unknown vendor or empty model in ${JSON.stringify(ref)}`, `vendors: ${vendors.map((v) => v.vendor).join(", ")}`);
         }
         if (spec.key === "none") throw mises("denied", `no API key for ${vendor}`, `run \`mises keys set ${vendor}\``);
-        const run = newRun(agent, vendor, model, prompt);
+        // the user's Claude Code: same checks and answers as core Runtime._start_claude_run
+        const claude = vendor === CLAUDE_CODE;
+        if (claude && !CLAUDE_ALIAS_RE.test(model)) throw mises("invalid_input", `bad Claude Code model alias: ${JSON.stringify(model)}`, "use claude-code/sonnet, opus, haiku or fable");
+        if (claude && spec.key === "not_installed") throw mises("not_found", "Claude Code is not installed", "install it from code.claude.com, then sign in from Setup");
+        if (claude && spec.key !== "signed_in") throw mises("denied", "Claude Code is not signed in", "sign in from Setup or Profile (runs `claude auth login`)");
+        const run = newRun(agent, vendor, model, prompt, claude);
         appendStep({ kind: "message", payload: { role: "user", text: prompt } }, run.id);
-        emit({ type: "run_started", run_id: run.id, data: { agent, provider: vendor, model, parent_id: null } });
+        emit({ type: "run_started", run_id: run.id, data: { agent, provider: vendor, model, parent_id: null, ...(claude ? { external: true } : {}) } });
         play(state.on.create_run, run.id);
         return { run_id: run.id };
       },
@@ -380,7 +392,8 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       method: "POST", re: /^\/runs\/([^/]+)\/message$/, h: (m, _q, raw) => {
         const text = req(asBody(raw), "text", "string");
         const r = getRun(m[1]);
-        if (r.external) throw mises("invalid_input", "run is driven by an external agent", "send the message to that agent instead");
+        // Claude Code runs are external but take messages: the core continues (or resumes) the session
+        if (r.external && r.provider !== CLAUDE_CODE) throw mises("invalid_input", "run is driven by an external agent", "send the message to that agent instead");
         if (r.status === "running") throw mises("invalid_input", "run is still working", "wait for it to finish or stop it");
         appendStep({ kind: "message", payload: { role: "user", text } }, r.id);
         emit({ type: "run_started", run_id: r.id, data: { resumed: true } });
@@ -430,6 +443,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     },
     {
       method: "GET", re: /^\/status$/, h: () => ({
+        data_dir: FAKE_DATA_DIR,
         ...state.status,
         runs_running: [...state.runs.values()].filter((r) => r.status === "running").length,
         approvals_pending: [...state.approvals.values()].filter((a) => a.status === "pending").length,
@@ -457,7 +471,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         return RAW;
       },
     },
-    ...setupRoutes(() => state.setup),
+    ...setupRoutes(() => state.setup, () => state.parts),
   ];
 
   /** /models: with a setup block, vendor key status follows the saved keys and Claude Code status. */

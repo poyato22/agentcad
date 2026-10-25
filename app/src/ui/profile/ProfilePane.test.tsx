@@ -92,6 +92,19 @@ describe("ProfilePane shell", () => {
     expect(within(nav).getByRole("button", { name: "Profile" }).getAttribute("aria-current")).toBeNull();
   });
 
+  it("opens_at_the_section_it_was_asked_for_and_traps_focus", async () => {
+    render(<ProfilePane open onClose={() => undefined} section="models" />);
+    const dlg = await pane();
+    await screen.findByRole("region", { name: "Models" });
+    const current = screen.getByRole("button", { name: "Models" });
+    expect(current.getAttribute("aria-current")).toBe("page");
+    expect(document.activeElement).toBe(current);
+    const all = [...dlg.querySelectorAll("button:not([disabled]), input:not([disabled]), select:not([disabled])")] as HTMLElement[];
+    all[all.length - 1].focus();
+    fireEvent.keyDown(all[all.length - 1], { key: "Tab" });
+    expect(document.activeElement).toBe(all[0]);
+  });
+
   it("closes_from_the_button_and_from_escape", async () => {
     const onClose = await openSection("Profile");
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
@@ -175,6 +188,20 @@ describe("Models section: Claude Code", () => {
     expect(document.querySelectorAll(".led-blue").length).toBe(0);
   });
 
+  it("closing_the_panel_while_the_login_starts_never_starts_polling", async () => {
+    client.claudeCodeStatus.mockResolvedValue({ ...claude, signed_in: false, auth_method: null });
+    const { unmount } = render(<ProfilePane open onClose={() => undefined} section="models" />);
+    await screen.findByRole("button", { name: "Sign in" });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    let finish: () => void = () => {};
+    client.claudeCodeLogin.mockImplementation(() => new Promise<void>((r) => { finish = r; }));
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    const before = client.claudeCodeStatus.mock.calls.length;
+    unmount();
+    await act(async () => { finish(); await vi.advanceTimersByTimeAsync(20_000); });
+    expect(client.claudeCodeStatus.mock.calls.length).toBe(before);
+  });
+
   it("not_installed_shows_the_install_hint_and_no_sign_in", async () => {
     client.claudeCodeStatus.mockResolvedValue({ installed: false, version: null, signed_in: false, auth_method: null });
     await openSection("Models");
@@ -189,6 +216,12 @@ describe("Models section: API keys", () => {
     const table = screen.getByRole("table", { name: "API keys" });
     const rows = within(table).getAllByRole("row").slice(1);
     expect(rows.map((r) => r.querySelector("td")?.textContent)).toEqual(["anthropic", "openai", "gemini", "openrouter"]);
+    // an allow-list: a vendor a newer core adds (or the user's Claude Code) never shows as an API key
+    cleanup();
+    client.listKeys.mockResolvedValue([...keys, { vendor: "claude-code", present: false, source: "none" }, { vendor: "future", present: false, source: "none" }]);
+    await openSection("Models");
+    const again = within(screen.getByRole("table", { name: "API keys" })).getAllByRole("row").slice(1);
+    expect(again.map((r) => r.querySelector("td")?.textContent)).toEqual(["anthropic", "openai", "gemini", "openrouter"]);
     expect(rows[0].textContent).toContain("Keychain");
     expect(rows[1].textContent).toContain("environment");
     expect(rows[2].textContent).toContain("no key");
@@ -266,10 +299,10 @@ describe("Models section: local endpoints", () => {
     fireEvent.click(screen.getByRole("button", { name: "Test ollama" }));
     await waitFor(() => expect(client.testLocal).toHaveBeenCalledWith("http://localhost:11434/v1"));
     expect(await screen.findByText("answering")).toBeTruthy();
-    client.testLocal.mockResolvedValue({ ok: false, error: "no answer" });
+    client.testLocal.mockResolvedValue({ ok: false, error: "unreachable" });
     type("lmstudio endpoint", "http://localhost:1234/v1");
     fireEvent.click(screen.getByRole("button", { name: "Test lmstudio" }));
-    expect(await screen.findByText(/no answer from http:\/\/localhost:1234\/v1/)).toBeTruthy();
+    expect(await screen.findByText("no answer from http://localhost:1234/v1 — is LM Studio running?")).toBeTruthy();
   });
 
   it("save_writes_the_whole_local_endpoints_map", async () => {
@@ -327,6 +360,20 @@ describe("Onshape section", () => {
     await openSection("Onshape");
     fireEvent.click(screen.getByRole("button", { name: "Test" }));
     expect((await screen.findByRole("alert")).textContent).toMatch(/refused these keys/);
+  });
+
+  it.each([
+    ["not_configured", /No Onshape keys are saved yet/],
+    ["unreachable", /Onshape did not answer/],
+    ["budget", /call budget is used up/],
+    ["failed", /The Onshape test failed/],
+  ])("a_%s_test_reads_as_a_sentence", async (code, text) => {
+    client.testOnshape.mockResolvedValue({ ok: false, error: code });
+    await openSection("Onshape");
+    fireEvent.click(screen.getByRole("button", { name: "Test" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(text);
+    expect(alert.textContent).not.toContain(`: ${code}`);
   });
 
   it("remove_confirms_in_the_panel_then_deletes", async () => {

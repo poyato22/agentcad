@@ -4,6 +4,7 @@ import { runs } from "../../state/store";
 import { Button } from "../common/Button";
 import { Breadcrumb } from "./Breadcrumb";
 import { ModeTabs } from "./ModeTabs";
+import { ProfileButton } from "./ProfileButton";
 import { StatusLights } from "./StatusLights";
 import { installStopAllShortcut, toast, useStopAll } from "./stopAll";
 import "./topbar.css";
@@ -19,6 +20,7 @@ export function TopBar(): JSX.Element {
       <ModeTabs />
       <div class="topbar-right">
         <StatusLights />
+        <ProfileButton />
         <Button variant={anyRunning ? "danger" : "default"} class="stop-all" title="Stop all runs (⌘⇧.)" aria-busy={busy || undefined}
           onClick={() => { void stopAll(); }}>STOP ALL</Button>
       </div>

@@ -53,3 +53,9 @@ export function runLabel(run: AgentRun, all: readonly AgentRun[]): string {
   if (clash.every((r) => fmtHM(r.created_at) !== hm)) return `${base} · ${hm}`;
   return `${base} · ${fmtClock(run.created_at)}`;
 }
+
+/** Shown provider names. The user's own Claude Code is a provider "Claude Code (your account)",
+ *  never a Mises feature name. Others show as the core names them. */
+export function providerLabel(provider: string): string {
+  return provider === "claude-code" ? "Claude Code (your account)" : provider;
+}

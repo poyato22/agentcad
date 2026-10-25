@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { displayName, isAutoNumbered, partLabel, runLabel } from "./names";
+import { displayName, isAutoNumbered, partLabel, providerLabel, runLabel } from "./names";
 import type { AgentRun } from "../api/types";
 
 function run(over: Partial<AgentRun>): AgentRun {
@@ -83,6 +83,11 @@ describe("runLabel", () => {
     expect(runLabel(b, [a, b])).toBe("designer · stiffen upright · ollama");
     const c = run({ id: "c", model: "claude-haiku-5-5" });
     expect(runLabel(c, [a, c])).toBe("designer · stiffen upright · claude-haiku-5-5");
+  });
+
+  it("provider_label_names_the_users_claude_code_and_passes_others_through", () => {
+    expect(providerLabel("claude-code")).toBe("Claude Code (your account)");
+    expect(providerLabel("anthropic")).toBe("anthropic");
   });
 
   it("same minute adds seconds", () => {

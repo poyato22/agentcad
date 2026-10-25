@@ -21,7 +21,7 @@ export const agentRunSchema = z.object({
   task: z.string(), status: z.enum(["running", "done", "failed", "cancelled"]), branch: z.string().nullable(),
   onshape_calls: z.number(), input_tokens: z.number(), output_tokens: z.number(), usd: z.number(),
   created_at: z.number(), updated_at: z.number(), owner_pid: z.number().nullish(),
-  external: z.boolean().optional(),
+  external: z.boolean().optional(), session_ref: z.string().nullish(),
 });
 
 export const stepSchema = z.object({

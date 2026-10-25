@@ -146,6 +146,29 @@ describe("CoreClient", () => {
     expect(await old.client.cancelAll()).toEqual({ cancelled: [], failed: [] });
   });
 
+  it("a_422_with_the_core_error_json_keeps_its_message_and_hint", async () => {
+    // PUT /profile answers 422 with the core's own error JSON, not pydantic's detail list
+    const { client } = clientWith(async () => json({
+      error: "invalid_input", message: "invalid profile: max_parallel_agents: Input should be less than or equal to 16",
+      hint: "fix the listed fields", retryable: false,
+    }, 422));
+    const e = await caught(client.updateProfile({ max_parallel_agents: 40 }));
+    expect([e.status, e.code, e.hint]).toEqual([422, "invalid_input", "fix the listed fields"]);
+    expect(e.message).toContain("max_parallel_agents");
+    const pyd = clientWith(async () => json({ detail: [{ loc: ["body", "x"], msg: "Field required" }] }, 422));
+    expect((await caught(pyd.client.updateProfile({}))).code).toBe("validation");
+  });
+
+  it("claude_code_status_passes_the_abort_signal", async () => {
+    const { client, f } = clientWith(async () => json({ installed: true, version: "2.1.4", signed_in: false, auth_method: null }));
+    const ctl = new AbortController();
+    await client.claudeCodeStatus(ctl.signal);
+    expect(f.mock.calls[0][1].signal).toBe(ctl.signal);
+    const aborted = clientWith(async (_u, init) => { if (init.signal?.aborted) throw new DOMException("aborted", "AbortError"); return json({}); });
+    ctl.abort();
+    expect((await caught(aborted.client.claudeCodeStatus(ctl.signal))).code).toBe("network");
+  });
+
   it("unknown_error_body_falls_back_by_status", async () => {
     const { client } = clientWith(async () => json({ detail: "Not Found" }, 404));
     const e = await caught(client.getRun("nope"));

@@ -3,10 +3,11 @@
 // wizard resumes at the first piece still missing. Secrets go straight to the core (Keychain) and
 // are never shown again: inputs are password fields that clear after a save.
 import type { JSX } from "preact";
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import type { ClaudeCodeStatus, KeyStatus, ModelsInfo, Profile, SetupState } from "../../api/types";
 import { actions } from "../../state/store";
 import { Button } from "../common/Button";
+import { useFocusTrap } from "../common/focusTrap";
 import { skipped } from "./gate";
 import { resumeStep, STEPS, type StepId } from "./logic";
 import { DoneStep } from "./steps/DoneStep";
@@ -24,7 +25,9 @@ export interface SetupData {
 /** What every step gets: the loaded data, setters that keep it current, and navigation. */
 export interface StepProps {
   data: SetupData;
-  update(patch: Partial<SetupData>): void;
+  /** Merge a patch; pass a function to derive it from the latest data (use after an await, so a
+   *  save that finished meanwhile is not overwritten with stale data). */
+  update(patch: Partial<SetupData> | ((d: SetupData) => Partial<SetupData>)): void;
   /** Re-reads GET /setup (and /models, whose key status follows). */
   refresh(): Promise<SetupState>;
   go(step: StepId): void;
@@ -51,13 +54,15 @@ export function SetupWizard({ reopened, onClose }: { reopened: boolean; onClose:
     Promise.resolve().then(load).then((d) => {
       if (!live) return;
       setData(d);
-      setStep((s) => s ?? resumeStep(d.setup, { reopened, modelSkipped: skipped("model"), onshapeSkipped: skipped("onshape") }));
+      setStep((s) => s ?? resumeStep(d.setup, {
+        reopened, modelSkipped: skipped("model"), onshapeSkipped: skipped("onshape"), profileNamed: !!d.profile.display_name.trim(),
+      }));
     }, (e: unknown) => { if (live) setError(describeError(e)); });
     return () => { live = false; };
   }, [attempt]);
 
   // Esc never closes the wizard by accident; the explicit Close button does.
-  const update = (patch: Partial<SetupData>): void => setData((d) => (d ? { ...d, ...patch } : d));
+  const update: StepProps["update"] = (patch) => setData((d) => (d ? { ...d, ...(typeof patch === "function" ? patch(d) : patch) } : d));
   const refresh = async (): Promise<SetupState> => {
     const c = actions.client();
     const [setup, models] = await Promise.all([c.setupState(), c.models().catch(() => null)]);
@@ -67,9 +72,17 @@ export function SetupWizard({ reopened, onClose }: { reopened: boolean; onClose:
 
   const props: StepProps | null = data ? { data, update, refresh, go: setStep, close: onClose } : null;
   const current = STEPS.findIndex((s) => s.id === step);
+  const root = useRef<HTMLDivElement>(null);
+  useFocusTrap(root);
+  // a new step: focus its first control (the trap keeps Tab inside the wizard)
+  useEffect(() => {
+    const body = root.current?.querySelector<HTMLElement>(".setup-body");
+    if (!body || !step || body.contains(document.activeElement)) return;
+    body.querySelector<HTMLElement>("button:not([disabled]), input:not([disabled]), select:not([disabled])")?.focus();
+  }, [step]);
 
   return (
-    <div class="setup" role="dialog" aria-modal="true" aria-label="Set up Mises">
+    <div ref={root} class="setup" role="dialog" aria-modal="true" aria-label="Set up Mises">
       <header class="setup-head">
         <span class="setup-title">Set up Mises</span>
         <ol class="setup-steps" aria-label="Setup steps">

@@ -56,6 +56,31 @@ describe("session", () => {
     h.session.stop();
   });
 
+  it("each_core_session_sends_the_ui_context_and_stops_it_on_rebuild", async () => {
+    FakeStream.all = [];
+    const ctxStops: ReturnType<typeof vi.fn>[] = [];
+    const clients: unknown[] = [];
+    const queue = ["t1", "t2"];
+    const session = startSession({
+      resolveCoreInfo: async () => info(queue.length > 1 ? (queue.shift() as string) : queue[0]),
+      onCoreStatus: () => () => {},
+      createStream: (i) => new FakeStream(i) as never,
+      startSync: () => () => {},
+      startContext: (c) => { clients.push(c); const s = vi.fn(); ctxStops.push(s); return s; },
+      retryMs: [100],
+    });
+    await settle();
+    expect(ctxStops).toHaveLength(1);
+    FakeStream.all[0].state("unauthorized");
+    expect(ctxStops[0]).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(100);
+    await settle();
+    expect(ctxStops).toHaveLength(2);           // the new core gets the selection again
+    expect(clients[1]).not.toBe(clients[0]);
+    session.stop();
+    expect(ctxStops[1]).toHaveBeenCalledTimes(1);
+  });
+
   it("unauthorized_close_reresolves_and_rebuilds", async () => {
     const h = harness(["t1", "t2"]);
     await settle();

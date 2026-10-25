@@ -111,6 +111,24 @@ describe("CommandLine", () => {
     expect((await screen.findByTestId("cmd-info")).textContent).toBe("sent to 1 run · skipped 2 from an earlier core session");
   });
 
+  it("at_all_includes_finished_claude_code_runs_the_core_can_resume", async () => {
+    // Claude Code runs are external (the user's own claude drives them) but take messages: the
+    // core continues the session, or resumes it with --resume after a restart
+    beginCoreSession(4242);
+    runs.value = new Map([
+      ["cc1", { ...run("cc1", "designer", "own claude here", "done"), provider: "claude-code", external: true, owner_pid: 4242 }],
+      ["cc2", { ...run("cc2", "verifier", "own claude earlier", "done"), provider: "claude-code", external: true, owner_pid: 999 }],
+      ["cc3", { ...run("cc3", "planner", "own claude busy", "running"), provider: "claude-code", external: true, owner_pid: 4242 }],
+      ["acp", { ...run("acp", "claude", "acp agent", "done"), provider: "acp", external: true, owner_pid: 4242 }],
+    ]);
+    render(<CommandLine />);
+    type("@all go");
+    enter();
+    await waitFor(() => expect(client.message).toHaveBeenCalledTimes(2));
+    expect(client.message.mock.calls.map((c) => c[0]).sort()).toEqual(["cc1", "cc2"]);
+    expect((await screen.findByTestId("cmd-info")).textContent).toBe("sent to 2 runs · skipped 1 still working · skipped 1 external");
+  });
+
   it("multiline_slash_is_sent_as_text_not_executed", async () => {
     render(<CommandLine />);
     type("/stopall\nrest");

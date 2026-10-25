@@ -10,6 +10,7 @@ import { EventStream } from "../api/events";
 import type { CoreInfo } from "../api/types";
 import { debug } from "../lib/log";
 import { beginCoreSession, bindClient, shellStatus } from "./store";
+import { startContextSync } from "./context";
 import { startSync as runSync } from "./sync";
 
 type StreamLike = Pick<EventStream, "onEvent" | "onState" | "start" | "stop">;
@@ -22,6 +23,8 @@ export interface SessionDeps {
   createClient?: (info: CoreInfo) => CoreClient;
   createStream?: (info: CoreInfo) => StreamLike;
   startSync?: (client: CoreClient, stream: StreamLike) => () => void;
+  /** PUT /context on selection changes (default: state/context.ts). */
+  startContext?: (client: CoreClient) => () => void;
   /** Delays before re-resolving after a failure or a 4401; the last value repeats. */
   retryMs?: number[];
   onError?: (err: unknown) => void;
@@ -39,6 +42,7 @@ export function startSession(deps: SessionDeps = {}): Session {
   const createClient = deps.createClient ?? ((i: CoreInfo) => new CoreClient(i));
   const createStream = deps.createStream ?? ((i: CoreInfo) => new EventStream(i));
   const startSync = deps.startSync ?? ((c: CoreClient, s: StreamLike) => runSync(c, s));
+  const startContext = deps.startContext ?? ((c: CoreClient) => startContextSync(c));
   const retry = deps.retryMs?.length ? deps.retryMs : DEFAULT_RETRY_MS;
   const onError = deps.onError ?? ((e: unknown) => debug("core session error", e));
   const getCoreStatus = deps.getCoreStatus ?? fetchCoreStatus;
@@ -94,6 +98,7 @@ export function startSession(deps: SessionDeps = {}): Session {
     bindClient(client);
     const stream = createStream(next);
     const stopSync = startSync(client, stream);
+    const stopContext = startContext(client);
     const offState = stream.onState((s) => {
       if (stopped || gen !== generation) return;
       if (s === "open") attempt = 0;
@@ -102,7 +107,7 @@ export function startSession(deps: SessionDeps = {}): Session {
         schedule(nextDelay());
       }
     });
-    teardown = () => { offState(); stopSync(); stream.stop(); };
+    teardown = () => { offState(); stopSync(); stopContext(); stream.stop(); };
     stream.start();
   }
 

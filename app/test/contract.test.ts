@@ -15,7 +15,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 import { z } from "zod";
 import {
-  agentInfoSchema, agentRunSchema, approvalSchema, coreStatusSchema, eventSchema, modelsInfoSchema, partSummarySchema, stepSchema,
+  agentInfoSchema, agentRunSchema, approvalSchema, claudeCodeStatusSchema, coreStatusSchema, eventSchema, keyStatusSchema, localTestSchema,
+  modelsInfoSchema, onshapeTestSchema, partSummarySchema, profileSchema, setupStateSchema, stepSchema,
 } from "../src/api/schemas";
 import type { MisesEvent } from "../src/api/types";
 import { emptyState, KNOWN_EVENTS, reduce, type AppState } from "../src/state/reduce";
@@ -60,6 +61,8 @@ function discriminator(v: unknown): string | null {
   const o = v as Record<string, unknown>;
   const p = (typeof o.payload === "object" && o.payload !== null ? o.payload : {}) as Record<string, unknown>;
   if (typeof o.kind === "string") return `${o.kind}:${String(p.name ?? p.role ?? "")}`;
+  // /models vendors and /keys rows: each pairs with the same vendor (claude-code has `models`)
+  if (typeof o.vendor === "string") return `vendor:${o.vendor}`;
   return null;
 }
 
@@ -104,9 +107,11 @@ let core: FakeCore;
 const RUN_ID = (read(DIR, "runs.json") as { id: string }[])[0].id;
 const FAKE_RUN_ID = loadScenario("base").runs[0].id;
 
-async function getFake(path: string): Promise<Json> {
-  const r = await fetch(core.url + path, { headers: { Authorization: `Bearer ${core.token}` } });
-  expect(r.status, path).toBe(200);
+async function getFake(path: string, method = "GET", body?: unknown): Promise<Json> {
+  const headers: Record<string, string> = { Authorization: `Bearer ${core.token}` };
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+  const r = await fetch(core.url + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+  expect(r.status, `${method} ${path}`).toBe(200);
   return (await r.json()) as Json;
 }
 
@@ -115,7 +120,13 @@ beforeAll(async () => {
 });
 afterAll(async () => { await core.stop(); });
 
-interface Route { fixture: string; schema: z.ZodType<unknown>; fake: () => string; root: string }
+interface Route {
+  fixture: string; schema: z.ZodType<unknown>; fake: () => string; root: string;
+  /** Write routes: the same call the dump script made (core/scripts/dump_ui_fixtures.py). */
+  method?: "POST" | "PUT"; body?: () => unknown;
+}
+/** Answers the client ignores (it re-reads status instead): any JSON, but the fake's must look like the core's. */
+const anyJson = z.unknown();
 const ROUTES: Route[] = [
   { fixture: "runs.json", schema: z.array(agentRunSchema), fake: () => "/runs?limit=50", root: "runs" },
   { fixture: "steps.json", schema: z.array(stepSchema), fake: () => `/runs/${FAKE_RUN_ID}/steps?after_id=0`, root: "steps" },
@@ -124,6 +135,19 @@ const ROUTES: Route[] = [
   { fixture: "agents.json", schema: z.array(agentInfoSchema), fake: () => "/agents", root: "agents" },
   { fixture: "models.json", schema: modelsInfoSchema, fake: () => "/models", root: "models" },
   { fixture: "status.json", schema: coreStatusSchema, fake: () => "/status", root: "status" },
+  // Plan 3: profile, keys, setup, the user's Claude Code, local/Onshape tests, UI context
+  { fixture: "profile.json", schema: profileSchema, fake: () => "/profile", root: "profile" },
+  { fixture: "profile_put.json", schema: profileSchema, fake: () => "/profile", root: "profile_put", method: "PUT", body: () => ({ display_name: "Fixture User" }) },
+  { fixture: "keys.json", schema: z.array(keyStatusSchema), fake: () => "/keys", root: "keys" },
+  { fixture: "setup.json", schema: setupStateSchema, fake: () => "/setup", root: "setup" },
+  { fixture: "setup_complete.json", schema: setupStateSchema, fake: () => "/setup/complete", root: "setup_complete", method: "POST" },
+  { fixture: "claude_code_status.json", schema: claudeCodeStatusSchema, fake: () => "/claude-code/status", root: "claude_code_status" },
+  { fixture: "claude_code_logout.json", schema: claudeCodeStatusSchema, fake: () => "/claude-code/logout", root: "claude_code_logout", method: "POST" },
+  { fixture: "claude_code_login.json", schema: anyJson, fake: () => "/claude-code/login", root: "claude_code_login", method: "POST" },
+  { fixture: "local_test.json", schema: localTestSchema, fake: () => "/local/test", root: "local_test", method: "POST", body: () => ({ url: "http://localhost:11434/v1" }) },
+  { fixture: "onshape_test.json", schema: onshapeTestSchema, fake: () => "/onshape/test", root: "onshape_test", method: "POST" },
+  { fixture: "context_put.json", schema: anyJson, fake: () => "/context", root: "context_put", method: "PUT",
+    body: () => ({ selected_part_id: "mount_plate", selected_run_id: FAKE_RUN_ID, picks: [] }) },
 ];
 
 describe("contract: real core fixtures ↔ schemas ↔ fake core", () => {
@@ -139,7 +163,8 @@ describe("contract: real core fixtures ↔ schemas ↔ fake core", () => {
       });
 
       it("fake_core_answer_has_the_same_shape", async () => {
-        const fake = await getFake(r.fake());
+        core.reset("base");            // write routes change state: every route starts from the base scenario
+        const fake = await getFake(r.fake(), r.method, r.body?.());
         expect(r.schema.safeParse(fake).success).toBe(true);
         expect(shapeDiff(read(DIR, r.fixture), fake, r.root)).toEqual([]);
       });

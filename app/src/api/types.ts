@@ -18,9 +18,13 @@ export interface AgentRun {
   output_tokens: number; usd: number; created_at: number; updated_at: number;
   /** The core process driving the run (null: from before owner tracking). Not shown in the UI. */
   owner_pid?: number | null;
-  /** Driven by an outside agent (POST /runs/external, ACP, the REPL): it never takes messages.
-   *  Persisted by the core; absent from cores older than the flag (treated as false). */
+  /** Driven by an outside agent (POST /runs/external, ACP, the REPL, the user's Claude Code).
+   *  Persisted by the core; absent from cores older than the flag (treated as false).
+   *  External runs never take messages, except Claude Code runs (provider "claude-code"): the
+   *  core continues or resumes their session. See ui/console/command/isExternal.ts. */
   external?: boolean;
+  /** Claude Code runs: the session id Mises resumes with `--resume`. Not shown in the UI. */
+  session_ref?: string | null;
 }
 
 export type StepKind = "message" | "plan" | "tool_call" | "tool_result" | "diff" | "decision" | "error"
@@ -125,7 +129,9 @@ export interface KeyStatus { vendor: string; present: boolean; source: SecretSou
 export type SetupPiece = "model" | "onshape" | "profile";
 export const SETUP_PIECES = ["model", "onshape", "profile"] as const satisfies readonly SetupPiece[];
 
-/** GET /setup. complete = has_model and setup marked complete; Onshape is optional. */
+/** GET /setup. complete = setup_completed_at is set (the wizard was finished, possibly without a
+ *  model); "profile" stays in `missing` until then. has_model is separate: the app shows a
+ *  "connect a model" notice when complete && !has_model. Onshape is optional. */
 export interface SetupState { complete: boolean; has_model: boolean; has_onshape: boolean; missing: SetupPiece[] }
 
 /** POST /onshape/test: exactly one ledgered Onshape call. Wrong keys → {ok:false, error:"denied"}. */

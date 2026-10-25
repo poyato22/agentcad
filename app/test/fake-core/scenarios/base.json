@@ -582,6 +582,16 @@
    {
     "vendor": "lmstudio",
     "key": "not_needed"
+   },
+   {
+    "vendor": "claude-code",
+    "key": "signed_in",
+    "models": [
+     "sonnet",
+     "opus",
+     "haiku",
+     "fable"
+    ]
    }
   ]
  },
@@ -591,7 +601,8 @@
   "onshape_calls_year": 0,
   "onshape_cap_year": 2500,
   "runs_running": 1,
-  "approvals_pending": 1
+  "approvals_pending": 1,
+  "data_dir": "/Users/fake/Library/Application Support/Mises"
  },
  "script": []
 }

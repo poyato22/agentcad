@@ -1,7 +1,9 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/preact";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
-import { actions, conn, resetStore } from "./state/store";
+import type { CoreClient } from "./api/client";
+import { actions, bindClient, conn, resetStore } from "./state/store";
+import { closeProfile } from "./ui/profile/open";
 import { ApprovalCard } from "./ui/console/approvals/ApprovalCard";
 import { QuestionCard } from "./ui/console/approvals/QuestionCard";
 import type { Approval } from "./api/types";
@@ -42,6 +44,26 @@ describe("App shell", () => {
     conn.value = "open";
     await Promise.resolve();
     expect(container.querySelector('[data-region="app"]')?.getAttribute("data-conn")).toBe("open");
+  });
+
+  it("mounts_the_setup_gate_and_the_profile_button_opens_profile", async () => {
+    const setup = { complete: false, has_model: false, has_onshape: false, missing: ["model", "onshape", "profile"] };
+    const profile = { display_name: "", units: "mm", default_material: "PLA", default_agent: "designer", default_model: null,
+      onshape_calls_year_cap: 2500, onshape_calls_run_cap: 200, max_parallel_agents: 2, local_endpoints: {}, setup_completed_at: null };
+    const c = {
+      setupState: vi.fn().mockResolvedValue(setup), getProfile: vi.fn().mockResolvedValue(profile), listKeys: vi.fn().mockResolvedValue([]),
+      claudeCodeStatus: vi.fn().mockResolvedValue({ installed: false, version: null, signed_in: false, auth_method: null }),
+      models: vi.fn().mockResolvedValue({ default: "a/b", vendors: [] }), status: vi.fn().mockRejectedValue(new Error("x")),
+      agents: vi.fn().mockResolvedValue([]), listRuns: vi.fn().mockResolvedValue([]), parts: vi.fn().mockResolvedValue([]),
+    };
+    bindClient(c as unknown as CoreClient);
+    render(<App />);
+    // first run: the wizard covers the app
+    expect(await screen.findByRole("dialog", { name: "Set up Mises" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Close — finish later" }));
+    fireEvent.click(screen.getByRole("button", { name: "Profile" }));
+    expect(await screen.findByRole("dialog", { name: "Profile" })).toBeTruthy();
+    closeProfile();
   });
 
   it("new_run_dialog_opens_from_store", async () => {

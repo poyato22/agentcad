@@ -6,14 +6,9 @@ import { actions } from "../../../state/store";
 import { Button } from "../../common/Button";
 import { Led } from "../../common/Led";
 import { setSkipped } from "../gate";
+import { onshapeTestText as testText } from "../logic";
 import type { StepProps } from "../SetupWizard";
 import { Card, describeError, KeyLine, SECRET_INPUT, StepHead } from "./common";
-
-function testText(r: OnshapeTestResult): string {
-  if (r.ok) return r.user_name ? `connected as ${r.user_name}` : "connected";
-  if (r.error === "denied") return "Onshape refused these keys (denied). Check the access key and secret key in Onshape's developer portal, then save them again.";
-  return `Onshape test failed: ${r.error ?? "unknown error"}`;
-}
 
 export function OnshapeStep({ data, update, refresh, go }: StepProps): JSX.Element {
   const [access, setAccess] = useState("");
@@ -33,7 +28,7 @@ export function OnshapeStep({ data, update, refresh, go }: StepProps): JSX.Eleme
       const st = await actions.client().setOnshapeKeys(access.trim(), secretKey.trim());
       setAccess("");
       setSecretKey("");
-      update({ keys: data.keys.some((k) => k.vendor === st.vendor) ? data.keys.map((k) => (k.vendor === st.vendor ? st : k)) : [...data.keys, st] });
+      update((d) => ({ keys: d.keys.some((k) => k.vendor === st.vendor) ? d.keys.map((k) => (k.vendor === st.vendor ? st : k)) : [...d.keys, st] }));
       await refresh().catch(() => undefined);
     } catch (e) {
       setError(describeError(e));

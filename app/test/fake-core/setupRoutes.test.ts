@@ -51,13 +51,18 @@ describe("setup routes", () => {
     const put = core.state.calls.at(-1);
     expect(put?.method).toBe("PUT");
     expect(put?.body).toEqual({ display_name: "Hartigan", max_parallel_agents: 3 });
-    expect((await client.setupState()).missing).not.toContain("profile");
+    // like the core: "profile" stays missing until the wizard is finished (POST /setup/complete)
+    expect((await client.setupState()).missing).toContain("profile");
   });
 
-  it("profile_put_validation_is_a_422", async () => {
+  it("profile_put_validation_is_a_422_with_the_core_error_json", async () => {
     const e = await failure(client.updateProfile({ max_parallel_agents: "four" as unknown as number }));
-    expect(e.code).toBe("validation");
+    expect(e.code).toBe("invalid_input");
     expect(e.status).toBe(422);
+    expect(e.message).toContain("max_parallel_agents");
+    expect(e.hint).toBe("fix the listed fields");
+    expect((await failure(client.updateProfile({ local_endpoints: { ollama: "http://example.com/v1" } }))).status).toBe(422);
+    expect((await failure(client.updateProfile({ nickname: "x" } as never))).message).toContain("nickname");
   });
 
   it("keys_list_status_only_and_save_never_echoes_the_secret", async () => {
@@ -96,8 +101,13 @@ describe("setup routes", () => {
   });
 
   it("empty_secret_or_unknown_vendor_is_rejected", async () => {
-    expect((await failure(client.setKey("anthropic", ""))).code).toBe("invalid_input");
-    expect((await failure(client.setKey("nope", "x"))).code).toBe("not_found");
+    // the core answers 400 invalid_input for both (the /keys bodies are parsed by hand: never a 422)
+    const empty = await failure(client.setKey("anthropic", ""));
+    expect([empty.code, empty.status, empty.message, empty.hint]).toEqual(["invalid_input", 400, "secret is required", "send a non-empty string"]);
+    const unknown = await failure(client.setKey("nope", "x"));
+    expect([unknown.code, unknown.status]).toEqual(["invalid_input", 400]);
+    expect((await failure(client.setKey("claude-code", "x"))).code).toBe("invalid_input");
+    expect((await failure(client.deleteKey("ollama"))).status).toBe(400);
   });
 
   it("claude_code_sign_in_flips_after_polls", async () => {
@@ -117,15 +127,21 @@ describe("setup routes", () => {
     const sc = loadScenario("setup");
     sc.setup = { ...sc.setup, claude: { installed: false, version: null, signed_in: false, auth_method: null } };
     core.reset(sc);
-    expect((await failure(client.claudeCodeLogin())).code).toBe("invalid_input");
+    const e = await failure(client.claudeCodeLogin());
+    expect([e.code, e.status, e.message]).toEqual(["not_found", 404, "Claude Code is not installed"]);
     expect((await client.models()).vendors.find((v) => v.vendor === "claude-code")?.key).toBe("not_installed");
   });
 
   it("local_endpoint_counts_as_a_model_only_when_it_answers", async () => {
+    const sc = loadScenario("setup");
+    sc.setup = { ...sc.setup, local_answering: ["ollama"] };
+    core.reset(sc);
+    // like the core: an answering default endpoint counts with nothing saved
+    expect((await client.setupState()).has_model).toBe(true);
+    sc.setup = { ...sc.setup, local_answering: [] };
+    core.reset(sc);
     await client.updateProfile({ local_endpoints: { lmstudio: "http://localhost:1234/v1" } });
     expect((await client.setupState()).has_model).toBe(false);
-    await client.updateProfile({ local_endpoints: { ollama: "http://localhost:11434/v1" } });
-    expect((await client.setupState()).has_model).toBe(true);
   });
 
   it("complete_sets_completed_at", async () => {
@@ -138,6 +154,10 @@ describe("setup routes", () => {
   it("put_context", async () => {
     await client.putContext({ selected_part_id: "mount_plate", selected_run_id: null, picks: [] });
     expect(core.state.calls.at(-1)).toMatchObject({ method: "PUT", path: "/context", body: { selected_part_id: "mount_plate", selected_run_id: null, picks: [] } });
+    expect(await (await fetch(core.url + "/context", { headers: { Authorization: `Bearer ${core.token}` } })).json())
+      .toMatchObject({ selected_part_id: "mount_plate", selected_run_id: null, picks: [], doc_url: null, recent_sim: null });
+    const bad = await failure(client.putContext({ selected_part_id: "Part 1", selected_run_id: null, picks: [] }));
+    expect(bad.status).toBe(422);
   });
 
   it("cors_preflight_allows_put_and_delete", async () => {
@@ -169,7 +189,13 @@ describe("POST /local/test", () => {
 
   it("answers_ok_for_a_working_endpoint_and_ok_false_for_the_rest", async () => {
     expect(await client.testLocal("http://localhost:11434/v1")).toEqual({ ok: true });
-    expect(await client.testLocal("http://localhost:1234/v1")).toEqual({ ok: false, error: "no answer" });
+    expect(await client.testLocal("http://localhost:1234/v1")).toEqual({ ok: false, error: "unreachable" });
+  });
+
+  it("rejects_a_url_off_this_mac_like_the_core", async () => {
+    const e = await failure(client.testLocal("http://example.com/v1"));
+    expect([e.code, e.status]).toEqual(["invalid_input", 400]);
+    expect(e.hint).toBe("e.g. http://localhost:11434/v1");
   });
 
   it("rejects_an_empty_url", async () => {

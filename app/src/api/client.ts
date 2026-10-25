@@ -124,7 +124,10 @@ export class CoreClient {
   /** Marks setup done (sets profile.setup_completed_at). Re-read setupState() for the result. */
   async completeSetup(): Promise<void> { await this.json("POST", "/setup/complete", anyBody); }
 
-  claudeCodeStatus(): Promise<ClaudeCodeStatus> { return this.json("GET", "/claude-code/status", claudeCodeStatusSchema); }
+  /** `signal` aborts the request (sign-in polling gives each status check a deadline). */
+  claudeCodeStatus(signal?: AbortSignal): Promise<ClaudeCodeStatus> {
+    return this.json("GET", "/claude-code/status", claudeCodeStatusSchema, { signal });
+  }
   /** Starts the user's own `claude auth login` (Anthropic's browser flow). Returns at once; poll claudeCodeStatus(). */
   async claudeCodeLogin(): Promise<void> { await this.json("POST", "/claude-code/login", anyBody); }
   async claudeCodeLogout(): Promise<void> { await this.json("POST", "/claude-code/logout", anyBody); }
@@ -133,7 +136,7 @@ export class CoreClient {
 
   // ---- internals
 
-  private async json<T>(method: Method, path: string, schema: z.ZodType<T>, opts: { query?: Query; body?: unknown } = {}): Promise<T> {
+  private async json<T>(method: Method, path: string, schema: z.ZodType<T>, opts: { query?: Query; body?: unknown; signal?: AbortSignal } = {}): Promise<T> {
     const res = await this.request(method, path, opts);
     if (!res.ok) throw await toError(res);
     let data: unknown;
@@ -151,7 +154,7 @@ export class CoreClient {
     return parsed.data;
   }
 
-  private async request(method: Method, path: string, opts: { query?: Query; body?: unknown; headers?: Record<string, string> }): Promise<Response> {
+  private async request(method: Method, path: string, opts: { query?: Query; body?: unknown; headers?: Record<string, string>; signal?: AbortSignal }): Promise<Response> {
     let url = this.base + path;
     if (opts.query) {
       const q = new URLSearchParams();
@@ -161,6 +164,7 @@ export class CoreClient {
     }
     const headers: Record<string, string> = { Authorization: `Bearer ${this.token}`, ...opts.headers };
     const init: RequestInit = { method, headers };
+    if (opts.signal) init.signal = opts.signal;
     if (opts.body !== undefined) {
       headers["Content-Type"] = "application/json";
       init.body = JSON.stringify(opts.body);
@@ -179,10 +183,12 @@ async function toError(res: Response): Promise<CoreError> {
   const message = typeof (body as { message?: unknown })?.message === "string"
     ? (body as { message: string }).message : `HTTP ${res.status}`;
   if (res.status === 401) return new CoreError("unauthorized", message, { status: 401 });
-  if (res.status === 422) {
+  const parsed = coreErrorBodySchema.safeParse(body);
+  // a 422 is pydantic's {"detail": [...]}, except where the core answers with its own error JSON
+  // (PUT /profile: "invalid profile: max_parallel_agents: ...")
+  if (res.status === 422 && !parsed.success) {
     return new CoreError("validation", `request rejected: ${summarizeDetail(body)}`, { status: 422 });
   }
-  const parsed = coreErrorBodySchema.safeParse(body);
   if (parsed.success) {
     return new CoreError(parsed.data.error, parsed.data.message, { status: res.status, hint: parsed.data.hint, retryable: parsed.data.retryable });
   }

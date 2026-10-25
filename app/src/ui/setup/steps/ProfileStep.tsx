@@ -1,14 +1,29 @@
 // Profile basics: display name, default material, default model (only ones that work now), parallel agents.
 import type { JSX } from "preact";
-import { useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import { actions } from "../../../state/store";
 import { Button } from "../../common/Button";
 import { availableModels } from "../logic";
+import { LOCAL_APPS } from "./ModelStep";
 import type { StepProps } from "../SetupWizard";
 import { describeError, StepHead } from "./common";
 
 const MATERIALS = ["PLA", "PETG", "ABS", "ASA", "TPU", "Nylon"];
 const AGENTS = [1, 2, 3, 4];
+
+/** Local servers the core finds answering at their default URL (nothing saved for them yet). */
+export function useDetectedLocal(data: StepProps["data"]): string[] {
+  const [found, setFound] = useState<string[]>([]);
+  useEffect(() => {
+    let live = true;
+    const unsaved = LOCAL_APPS.filter((a) => !(a.vendor in data.profile.local_endpoints)
+      && data.models.vendors.some((v) => v.vendor === a.vendor && v.key === "not_needed"));
+    void Promise.all(unsaved.map((a) => actions.client().testLocal(a.url).then((r) => (r.ok ? a.vendor : null), () => null)))
+      .then((vs) => { if (live) setFound(vs.filter((v): v is (typeof LOCAL_APPS)[number]["vendor"] => v !== null)); });
+    return () => { live = false; };
+  }, []);
+  return found;
+}
 
 export function ProfileStep({ data, update, refresh, go }: StepProps): JSX.Element {
   const p = data.profile;
@@ -18,7 +33,8 @@ export function ProfileStep({ data, update, refresh, go }: StepProps): JSX.Eleme
   const [agents, setAgents] = useState(Math.min(4, Math.max(1, p.max_parallel_agents)));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const options = availableModels(data.models, p);
+  const detected = useDetectedLocal(data);
+  const options = availableModels(data.models, p, detected);
   const ready = !!name.trim() && !!material.trim() && !busy;
 
   async function save(): Promise<void> {

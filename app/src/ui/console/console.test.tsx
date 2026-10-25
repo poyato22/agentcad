@@ -257,6 +257,13 @@ describe("Roster", () => {
     expect(container.textContent).toContain("openai · gpt-5");
   });
 
+  it("a_claude_code_run_reads_claude_code_your_account", () => {
+    setRuns([run("r1", { provider: "claude-code", model: "sonnet", external: true })]);
+    const { container } = render(<Roster />);
+    expect(container.querySelector("[data-run=r1] .con-ag-who")?.textContent).toBe("Claude Code (your account) · sonnet");
+    expect(container.textContent).not.toContain("claude-code");
+  });
+
   it("selects_a_run_and_opens_new_run", () => {
     setRuns([run("r1"), run("r2", { agent: "checker", created_at: 1792869500 })]);
     const { container } = render(<Roster />);

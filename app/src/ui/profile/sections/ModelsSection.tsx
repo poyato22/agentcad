@@ -4,14 +4,15 @@ import type { KeyStatus } from "../../../api/types";
 import { actions } from "../../../state/store";
 import { Button } from "../../common/Button";
 import { Led } from "../../common/Led";
-import { pollUntil } from "../../setup/logic";
+import { apiKeyVendors, localTestText, pollUntil } from "../../setup/logic";
 import {
   Card, ConfirmRemove, ENV_SAVED_NOTE, ENV_TEXT, ErrorLine, LOCAL_URLS, LOCAL_VENDORS, SECRET_INPUT, SectionBox, upsertKey, useTask, type SectionProps,
 } from "../common";
 
+const LOCAL_LABELS: Record<string, string> = { ollama: "Ollama", lmstudio: "LM Studio" };
+
 const SIGN_IN_POLL_MS = 2000;
 const SIGN_IN_TIMEOUT_MS = 120_000;
-const NOT_API_KEYS = new Set<string>([...LOCAL_VENDORS, "onshape"]);
 const SOURCE_TEXT = { keychain: "Keychain", env: ENV_TEXT, none: "no key" } as const;
 
 export function ModelsSection(p: SectionProps): JSX.Element {
@@ -29,17 +30,20 @@ function ClaudeCard({ data, update }: SectionProps): JSX.Element {
   const c = data.claude;
   const [phase, setPhase] = useState<"idle" | "waiting" | "timeout">("idle");
   const poll = useRef<{ stop: () => void } | null>(null);
+  // the panel can close while the login request is in flight: never start polling after that
+  const mounted = useRef(true);
   const task = useTask();
-  useEffect(() => () => { poll.current?.stop(); }, []);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; poll.current?.stop(); }; }, []);
 
   async function signIn(): Promise<void> {
     const started = await task.run(() => actions.client().claudeCodeLogin());
-    if (!started) return;
+    if (!started || !mounted.current) return;
     setPhase("waiting");
-    const run = pollUntil(() => actions.client().claudeCodeStatus(), (s) => s.signed_in, { intervalMs: SIGN_IN_POLL_MS, timeoutMs: SIGN_IN_TIMEOUT_MS });
+    const run = pollUntil((signal) => actions.client().claudeCodeStatus(signal), (s) => s.signed_in, { intervalMs: SIGN_IN_POLL_MS, timeoutMs: SIGN_IN_TIMEOUT_MS });
     poll.current = run;
     const r = await run.result;
     if (poll.current === run) poll.current = null;
+    if (!mounted.current) return;
     if (r.outcome === "done") {
       update({ claude: r.value });
       setPhase("idle");
@@ -92,7 +96,7 @@ function KeysCard({ data, update }: SectionProps): JSX.Element {
   const [mode, setMode] = useState<KeyMode>(null);
   const [secret, setSecret] = useState("");
   const task = useTask();
-  const rows = data.keys.filter((k) => !NOT_API_KEYS.has(k.vendor));
+  const rows = apiKeyVendors(data.keys);
 
   const [saveNote, setSaveNote] = useState<string | null>(null);
   const replaceKey = (next: KeyStatus): void => update((d) => ({ keys: upsertKey(d.keys, next) }));
@@ -182,8 +186,7 @@ function LocalCard({ data, update }: SectionProps): JSX.Element {
     const url = (urls[vendor] ?? "").trim();
     await task.run(async () => {
       const r = await actions.client().testLocal(url);
-      const why = r.error && r.error !== "no answer" ? ` — ${r.error}` : "";
-      setResults((all) => ({ ...all, [vendor]: r.ok ? { ok: true, text: "answering" } : { ok: false, text: `no answer from ${url}${why}` } }));
+      setResults((all) => ({ ...all, [vendor]: { ok: r.ok, text: localTestText(r, url, LOCAL_LABELS[vendor] ?? vendor) } }));
     });
   }
   async function remove(vendor: string): Promise<void> {

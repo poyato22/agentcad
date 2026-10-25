@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CoreError, type CoreClient } from "../../api/client";
 import type { AgentInfo, ModelsInfo, PartSummary } from "../../api/types";
 import { actions, bindClient, newRunOpen, parts, resetStore, selectedRunId } from "../../state/store";
+import { closeProfile, profileOpen, profileSection } from "../profile/open";
 import { NewRunDialog } from "./NewRunDialog";
 
 const agents: AgentInfo[] = [
@@ -14,16 +15,17 @@ const models: ModelsInfo = {
   vendors: [{ vendor: "anthropic", key: "env" }, { vendor: "openai", key: "none" }, { vendor: "ollama", key: "not_needed" }],
 };
 
-const client = { agents: vi.fn(), models: vi.fn(), createRun: vi.fn() };
+const client = { agents: vi.fn(), models: vi.fn(), createRun: vi.fn(), getProfile: vi.fn() };
 
 beforeEach(() => {
   client.agents.mockReset().mockResolvedValue(agents);
   client.models.mockReset().mockResolvedValue(models);
   client.createRun.mockReset().mockResolvedValue({ run_id: "newrun" });
+  client.getProfile.mockReset().mockRejectedValue(new Error("no profile route"));
   bindClient(client as unknown as CoreClient);
   parts.value = [{ part_id: "mount_plate", vars: {}, metrics: null, mtime: 0 } as PartSummary];
 });
-afterEach(() => { cleanup(); resetStore(); });
+afterEach(() => { cleanup(); resetStore(); closeProfile(); });
 
 async function open() {
   render(<NewRunDialog />);
@@ -146,6 +148,56 @@ describe("NewRunDialog", () => {
     expect(err.textContent).toBe("no API key for anthropic — run `mises keys set anthropic`");
     expect(newRunOpen.value).toBe(true);
     expect(selectedRunId.value).toBeNull();
+  });
+
+  it("lists_the_users_claude_code_with_its_models", async () => {
+    client.models.mockResolvedValue({ ...models, vendors: [...models.vendors, { vendor: "claude-code", key: "signed_in", models: ["sonnet", "opus"] }] });
+    await open();
+    expect(within("Vendor")).toEqual(["anthropic", "openai · no API key", "ollama", "Claude Code (your account)"]);
+    fireEvent.change(screen.getByLabelText("Vendor"), { target: { value: "claude-code" } });
+    const model = screen.getByLabelText("Model") as HTMLSelectElement;
+    expect(model.tagName).toBe("SELECT");
+    expect([...model.options].map((o) => o.value)).toEqual(["sonnet", "opus"]);
+    expect(model.value).toBe("sonnet");
+    fireEvent.change(model, { target: { value: "opus" } });
+    fireEvent.input(screen.getByLabelText("Task"), { target: { value: "stiffen the upright" } });
+    fireEvent.click(screen.getByText("Start"));
+    await waitFor(() => expect(client.createRun).toHaveBeenCalledTimes(1));
+    expect(client.createRun.mock.calls[0][0].model_ref).toBe("claude-code/opus");
+  });
+
+  it.each([
+    ["signed_out", "signed out"],
+    ["not_installed", "not installed"],
+  ] as const)("claude_code_%s_is_disabled_and_points_to_profile", async (key, words) => {
+    client.agents.mockResolvedValue([{ name: "designer", description: "Main CAD agent.", model: "claude-code/sonnet" }]);
+    client.models.mockResolvedValue({ ...models, vendors: [...models.vendors, { vendor: "claude-code", key, models: ["sonnet", "opus"] }] });
+    await open();
+    const opt = screen.getByRole("option", { name: /Claude Code \(your account\)/ }) as HTMLOptionElement;
+    expect(opt.disabled).toBe(true);
+    expect(opt.textContent).toContain(words);
+    expect(opt.textContent).toContain("Sign in in Profile");
+    // prefilled from the agent: Start is blocked, the hint links to Profile
+    fireEvent.input(screen.getByLabelText("Task"), { target: { value: "go" } });
+    expect((screen.getByText("Start") as HTMLButtonElement).disabled).toBe(true);
+    const hint = screen.getByText(new RegExp(`Claude Code \\(your account\\) is ${words}`), { selector: "[data-hint] *" });
+    expect(hint).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Sign in in Profile" }));
+    expect(newRunOpen.value).toBe(false);
+    expect(profileOpen.value).toBe(true);
+    expect(profileSection.value).toBe("models");
+    expect(client.createRun).not.toHaveBeenCalled();
+  });
+
+  it("prefills_the_profile_default_model_when_the_agent_inherits", async () => {
+    client.getProfile.mockResolvedValue({ default_model: "claude-code/haiku" });
+    client.models.mockResolvedValue({ ...models, vendors: [...models.vendors, { vendor: "claude-code", key: "signed_in", models: ["sonnet", "haiku"] }] });
+    await open();
+    await waitFor(() => expect((screen.getByLabelText("Vendor") as HTMLSelectElement).value).toBe("claude-code"));
+    expect((screen.getByLabelText("Model") as HTMLSelectElement).value).toBe("haiku");
+    // an agent's own model still wins
+    fireEvent.change(screen.getByLabelText("Agent"), { target: { value: "verifier" } });
+    expect((screen.getByLabelText("Vendor") as HTMLSelectElement).value).toBe("openai");
   });
 
   it("esc_closes_from_anywhere", async () => {

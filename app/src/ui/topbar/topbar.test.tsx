@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/preact";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/preact";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CoreClient } from "../../api/client";
 import type { AgentRun, Approval, CancelAllResult, CoreStatusInfo } from "../../api/types";
@@ -8,6 +8,8 @@ import { Breadcrumb } from "./Breadcrumb";
 import { ModeTabs } from "./ModeTabs";
 import { StatusLights } from "./StatusLights";
 import { TopBar } from "./TopBar";
+import { initials, ProfileButton } from "./ProfileButton";
+import { closeProfile, openProfile, profileOpen, profileSection } from "../profile/open";
 import { installStopAllShortcut, resetStopAll } from "./stopAll";
 
 const invokeMock = vi.hoisted(() => vi.fn(async () => null));
@@ -48,11 +50,11 @@ describe("StatusLights", () => {
 
   it("core_light_states", async () => {
     render(<StatusLights />);
-    conn.value = "open";
+    act(() => { conn.value = "open"; });
     await waitFor(() => expect(led("core").className).toContain("led-green"));
     conn.value = "reconnecting";
     await waitFor(() => expect(led("core").className).toContain("led-amber"));
-    conn.value = "open";
+    act(() => { conn.value = "open"; });
     shellStatus.value = { state: "crashed", code: 1, stderrTail: "boom: port in use", restarts: 2 };
     await waitFor(() => expect(led("core").className).toContain("led-red"));
     expect(light("core").getAttribute("title")).toContain("boom: port in use");
@@ -235,5 +237,53 @@ describe("Breadcrumb", () => {
     const { unmount } = render(<Breadcrumb />);
     expect(isAutoNumbered(document.querySelector("[data-crumb=part]")?.textContent ?? "")).toBe(false);
     unmount();
+  });
+});
+
+describe("ProfileButton", () => {
+  afterEach(() => { closeProfile(); });
+
+  it("shows_initials_of_the_display_name_or_profile_and_opens_the_panel", async () => {
+    const getProfile = vi.fn().mockResolvedValue({ display_name: "Hartigan Deely" });
+    bindClient({ getProfile } as unknown as CoreClient);
+    render(<ProfileButton />);
+    const btn = screen.getByRole("button", { name: "Profile" });
+    expect(btn.textContent).toBe("Profile");
+    await waitFor(() => expect(btn.textContent).toBe("HD"));
+    expect(btn.getAttribute("title")).toBe("Profile · Hartigan Deely");
+    fireEvent.click(btn);
+    expect(profileOpen.value).toBe(true);
+    expect(profileSection.value).toBe("profile");
+  });
+
+  it("re_reads_the_name_when_profile_closes_and_after_a_reconnect", async () => {
+    const getProfile = vi.fn().mockResolvedValue({ display_name: "" });
+    bindClient({ getProfile } as unknown as CoreClient);
+    render(<ProfileButton />);
+    await waitFor(() => expect(getProfile).toHaveBeenCalledTimes(1));
+    getProfile.mockResolvedValue({ display_name: "hartigan" });
+    act(() => openProfile());
+    act(() => closeProfile());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Profile" }).textContent).toBe("H"));
+    act(() => { conn.value = "open"; });               // the first connect: the boot read answered
+    await act(async () => { await Promise.resolve(); });
+    expect(getProfile).toHaveBeenCalledTimes(2);
+    act(() => { conn.value = "reconnecting"; });
+    act(() => { conn.value = "open"; });               // a reconnect (the core may have restarted)
+    await waitFor(() => expect(getProfile).toHaveBeenCalledTimes(3));
+  });
+
+  it("a_boot_read_before_the_core_was_ready_is_retried_on_the_first_connect", async () => {
+    const getProfile = vi.fn().mockRejectedValueOnce(new Error("core client not ready")).mockResolvedValue({ display_name: "Ada" });
+    bindClient({ getProfile } as unknown as CoreClient);
+    render(<ProfileButton />);
+    await waitFor(() => expect(getProfile).toHaveBeenCalledTimes(1));
+    act(() => { conn.value = "open"; });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Profile" }).textContent).toBe("A"));
+  });
+
+  it("initials_take_at_most_two_words", () => {
+    expect(initials("  ada  lovelace byron ")).toBe("AL");
+    expect(initials("")).toBe("");
   });
 });

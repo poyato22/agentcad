@@ -7,12 +7,10 @@ import { actions } from "../../../state/store";
 import { Button } from "../../common/Button";
 import { Led } from "../../common/Led";
 import { setSkipped } from "../gate";
-import { pollUntil } from "../logic";
+import { apiKeyVendors, localTestText, pollUntil } from "../logic";
 import type { StepProps } from "../SetupWizard";
 import { Card, describeError, KeyLine, SECRET_INPUT, StepHead } from "./common";
 
-/** Vendors that are not API keys (no key) or not models (onshape). */
-const NOT_API_KEYS = new Set(["ollama", "lmstudio", "onshape"]);
 export const LOCAL_APPS = [
   { vendor: "ollama", label: "Ollama", url: "http://localhost:11434/v1" },
   { vendor: "lmstudio", label: "LM Studio", url: "http://localhost:1234/v1" },
@@ -49,8 +47,11 @@ function ClaudeCard({ data, update, refresh }: StepProps): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
   const poll = useRef<{ stop: () => void } | null>(null);
+  // the card can unmount while a request is in flight (the user leaves the step): nothing may
+  // start polling or set state after that
+  const mounted = useRef(true);
 
-  useEffect(() => () => poll.current?.stop(), []);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; poll.current?.stop(); }; }, []);
 
   const setStatus = (claude: ClaudeCodeStatus): void => update({ claude });
 
@@ -61,15 +62,18 @@ function ClaudeCard({ data, update, refresh }: StepProps): JSX.Element {
       // Runs the user's own `claude auth login`: Anthropic's sign-in opens in the browser.
       await actions.client().claudeCodeLogin();
     } catch (e) {
+      if (!mounted.current) return;
       setError(describeError(e));
       setPhase("idle");
       return;
     }
+    if (!mounted.current) return;
     setPhase("waiting");
-    const run = pollUntil(() => actions.client().claudeCodeStatus(), (s) => s.signed_in, { intervalMs: SIGN_IN_POLL_MS, timeoutMs: SIGN_IN_TIMEOUT_MS });
+    const run = pollUntil((signal) => actions.client().claudeCodeStatus(signal), (s) => s.signed_in, { intervalMs: SIGN_IN_POLL_MS, timeoutMs: SIGN_IN_TIMEOUT_MS });
     poll.current = run;
     const r = await run.result;
     if (poll.current === run) poll.current = null;
+    if (!mounted.current) return;
     if (r.outcome === "done") {
       setStatus(r.value);
       setPhase("idle");
@@ -82,8 +86,13 @@ function ClaudeCard({ data, update, refresh }: StepProps): JSX.Element {
   async function checkAgain(): Promise<void> {
     setChecking(true);
     setError(null);
-    try { setStatus(await actions.client().claudeCodeStatus()); } catch (e) { setError(describeError(e)); }
-    setChecking(false);
+    try {
+      const st = await actions.client().claudeCodeStatus();
+      if (mounted.current) setStatus(st);
+    } catch (e) {
+      if (mounted.current) setError(describeError(e));
+    }
+    if (mounted.current) setChecking(false);
   }
 
   let body: JSX.Element;
@@ -128,7 +137,7 @@ function ClaudeCard({ data, update, refresh }: StepProps): JSX.Element {
 }
 
 function ApiKeyCard({ data, update, refresh }: StepProps): JSX.Element {
-  const vendors = data.keys.filter((k) => !NOT_API_KEYS.has(k.vendor));
+  const vendors = apiKeyVendors(data.keys);
   const [vendor, setVendor] = useState(vendors[0]?.vendor ?? "");
   const [secret, setSecret] = useState("");
   const [busy, setBusy] = useState(false);
@@ -142,7 +151,7 @@ function ApiKeyCard({ data, update, refresh }: StepProps): JSX.Element {
     try {
       const st: KeyStatus = await actions.client().setKey(vendor, secret);
       setSecret("");
-      update({ keys: data.keys.map((k) => (k.vendor === st.vendor ? st : k)) });
+      update((d) => ({ keys: d.keys.map((k) => (k.vendor === st.vendor ? st : k)) }));
       await refresh().catch(() => undefined);
     } catch (e) {
       setError(describeError(e));
@@ -187,15 +196,19 @@ function LocalCard({ data, update, refresh }: StepProps): JSX.Element {
     if (!endpoint) return;
     setBusy(true);
     setResult(null);
-    const before = data.setup.has_model;
+    const app = LOCAL_APPS.find((a) => a.vendor === vendor)?.label ?? vendor;
     try {
-      // The core checks the endpoint (the webview never calls it): save it, then ask GET /setup.
-      const profile = await actions.client().updateProfile({ local_endpoints: { ...data.profile.local_endpoints, [vendor]: endpoint } });
-      update({ profile });
-      const s = await refresh();
-      if (before) setResult({ ok: true, text: "saved — a model already works; Mises uses this endpoint when you pick it" });
-      else if (s.has_model) setResult({ ok: true, text: "answering" });
-      else setResult({ ok: false, text: `no answer from ${endpoint} — is ${LOCAL_APPS.find((a) => a.vendor === vendor)?.label ?? vendor} running?` });
+      // The core checks the endpoint (the webview never calls it). Only an endpoint that answers
+      // is saved, so a typo never ends up in the profile.
+      const r = await actions.client().testLocal(endpoint);
+      if (r.ok) {
+        const profile = await actions.client().updateProfile({ local_endpoints: { ...data.profile.local_endpoints, [vendor]: endpoint } });
+        update({ profile });
+        await refresh().catch(() => undefined);
+        setResult({ ok: true, text: `${localTestText(r, endpoint, app)} — saved` });
+      } else {
+        setResult({ ok: false, text: `${localTestText(r, endpoint, app)} Nothing was saved.` });
+      }
     } catch (e) {
       setResult({ ok: false, text: describeError(e) });
     }

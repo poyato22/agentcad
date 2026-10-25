@@ -12,7 +12,9 @@ export function splitModelRef(ref: string): { vendor: string; model: string } {
   return { vendor: ref.slice(0, i), model: ref.slice(i + 1) };
 }
 
-/** The agent's own model unless it says "inherit", else the core's default. */
-export function defaultModelRef(agent: AgentInfo, models: ModelsInfo): string {
-  return agent.model && agent.model !== "inherit" ? agent.model : models.default;
+/** Same precedence as the core (Runtime.model_ref_for): the agent's own model unless it says
+ *  "inherit", else the profile's default model, else the core's default. */
+export function defaultModelRef(agent: AgentInfo, models: ModelsInfo, profileDefault: string | null = null): string {
+  if (agent.model && agent.model !== "inherit") return agent.model;
+  return profileDefault || models.default;
 }

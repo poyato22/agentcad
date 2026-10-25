@@ -6,6 +6,7 @@ import type { JSX } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import type { AgentRun } from "../../api/types";
 import { fmtElapsed, fmtTokens, fmtUsd } from "../../lib/format";
+import { providerLabel } from "../../lib/names";
 import { debug } from "../../lib/log";
 import { needsYou as needsYouSignal } from "../../state/selection";
 import { actions, selectedRunId } from "../../state/store";
@@ -69,7 +70,7 @@ export function Roster(): JSX.Element {
               <Led tone={needsRun.has(r.id) || r.status === "running" ? "blue" : LED[r.status]} title={needsRun.has(r.id) ? "needs you" : r.status} />
               <span class="con-ag-name">
                 <span class="con-ag-label text" data-run-label>{label}</span>
-                <span class="con-ag-who text">{`${r.provider} · ${r.model}`}</span>
+                <span class="con-ag-who text">{`${providerLabel(r.provider)} · ${r.model}`}</span>
               </span>
               <span class="con-ag-task text" title={r.task}>{r.task.split("\n")[0]}</span>
               <span class={`con-bar con-bar-${r.status}`} aria-hidden="true"><i /></span>
