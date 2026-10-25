@@ -39,6 +39,20 @@ describe("reduce", () => {
     expect(effects).toContainEqual({ kind: "fetchSteps", runId: RID });
   });
 
+  it("claude_codes_own_echo_of_a_mises_tool_call_adds_no_second_inflight_row", () => {
+    // a Claude Code run: the Gate reports the mises call (c-gate); Claude's stream echoes the same
+    // call under its own id and the mcp__mises__ name. Only the Gate's shows as in flight.
+    let s = reduce(withRun(), ev("tool_call", { call_id: "toolu_1", name: "mcp__mises__mirror_part_list", source: "claude-code" })).state;
+    expect(s.inflight.size).toBe(0);
+    s = reduce(s, ev("tool_call", { call_id: "mcp_1", name: "mirror_part_list", input: {} })).state;
+    expect([...s.inflight.keys()]).toEqual(["mcp_1"]);
+    // its own subagent tool (not a mises tool) still shows while it runs
+    s = reduce(s, ev("tool_call", { call_id: "toolu_2", name: "Task", source: "claude-code" })).state;
+    expect(s.inflight.get("toolu_2")?.name).toBe("Task");
+    s = reduce(s, ev("tool_result", { call_id: "toolu_2", ok: true, source: "claude-code" })).state;
+    expect(s.inflight.has("toolu_2")).toBe(false);
+  });
+
   it("tool_result_clears_inflight", () => {
     const s1 = reduce(withRun(), ev("tool_call", { call_id: "c3", name: "mirror_measure", input: {} })).state;
     const { state, effects } = reduce(s1, ev("tool_result", { call_id: "c3", name: "mirror_measure", ok: true, summary: "x" }));

@@ -70,6 +70,9 @@ function reduceUnsafe(s: AppState, e: MisesEvent): Out {
     }
     case "tool_call": {
       if (!rid || typeof d.call_id !== "string") return { state: s, effects: steps() };
+      // a Claude Code run's own echo of a mises tool call: the Gate reports that call itself
+      // (its own call_id, the plain tool name), so this would be a second in-flight row
+      if (d.source === "claude-code" && typeof d.name === "string" && d.name.startsWith("mcp__mises__")) return { state: s, effects: steps() };
       const call: InflightCall = { run_id: rid, name: typeof d.name === "string" ? d.name : "", input: isRecord(d.input) ? d.input : {} };
       return { state: { ...s, inflight: setIn(s.inflight, d.call_id, call) }, effects: steps() };
     }
