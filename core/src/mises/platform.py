@@ -99,3 +99,37 @@ def agent_sandboxed_command(argv: list[str], home: Path, workdir: Path) -> list[
     if not os.path.exists(SANDBOX_EXEC):
         raise RuntimeError(f"{SANDBOX_EXEC} is missing; external agents cannot be sandboxed")
     return [SANDBOX_EXEC, "-p", agent_sandbox_profile(home, workdir), *argv]
+
+
+def claude_sandbox_profile(home: Path, workdir: Path, claude_config_dir: Path,
+                           *, binary_dir: Path | None = None) -> str:
+    """sandbox-exec profile for the user's Claude Code (`claude -p`) and everything it spawns.
+
+    agent_sandbox_profile (the Mises home is unreadable except the run's workdir; network and
+    the rest of the Mac stay allowed), plus explicit allows for Claude Code's own config dir
+    (read/write: sessions, settings; from `claude auth status` configDirectory, default
+    ~/.claude) and the binary's install dir (read). Neither may overlap the Mises home, or the
+    allow would re-open server.json / mises.db / other runs.
+    """
+    base = agent_sandbox_profile(home, workdir)
+    h = Path(home).resolve()
+    extra = []
+    for path, rule in ((claude_config_dir, "file-read* file-write*"), (binary_dir, "file-read*")):
+        if path is None:
+            continue
+        r = Path(path).expanduser().resolve()
+        if _unsafe(str(path)) or _unsafe(str(r)):
+            raise ValueError("path contains characters unsafe for a sandbox profile")
+        if h.is_relative_to(r) or r.is_relative_to(h):
+            raise ValueError(f"{r} overlaps the Mises home; refusing to allow it")
+        extra.append(f'(allow {rule} (subpath "{r}"))\n')
+    return base + "".join(extra)
+
+
+def claude_sandboxed_command(argv: list[str], home: Path, workdir: Path, claude_config_dir: Path,
+                             *, binary_dir: Path | None = None) -> list[str]:
+    """Prefix argv with sandbox-exec under claude_sandbox_profile; refuses without sandbox-exec."""
+    if not os.path.exists(SANDBOX_EXEC):
+        raise RuntimeError(f"{SANDBOX_EXEC} is missing; Claude Code cannot be sandboxed")
+    return [SANDBOX_EXEC, "-p", claude_sandbox_profile(home, workdir, claude_config_dir,
+                                                       binary_dir=binary_dir), *argv]

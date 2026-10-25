@@ -37,6 +37,7 @@ from ..types import ErrorCode, MisesError
 from .mcp_server import RUN_HEADER, build_mcp_server
 from ..profile import ClaudeStatusFn, LocalProbeFn, load_profile, probe_local
 from .profile_api import build_profile_router
+from .context_api import build_context_router
 from .ui_api import add_cors, build_ui_router
 
 if TYPE_CHECKING:
@@ -183,6 +184,7 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
     add_cors(app)  # added last = outermost: preflights are answered before the bearer check
     app.include_router(build_ui_router(runtime))
     app.include_router(build_profile_router(runtime, claude_status, local_probe))
+    app.include_router(build_context_router(runtime))
 
     @app.exception_handler(MisesError)
     async def _mises_error(_req, e: MisesError):
