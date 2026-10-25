@@ -205,3 +205,23 @@ async def start_login(info: ClaudeInfo, *, console: bool = False) -> LoginHandle
     h = LoginHandle(info=info, proc=proc)
     h._pump = asyncio.create_task(h._read_stderr())
     return h
+
+
+async def logout(info: ClaudeInfo) -> bool:
+    """Run `claude auth logout` (Claude Code removes its own credentials); True on exit 0.
+    Its output is discarded unread."""
+    if not info.path:
+        return False
+    proc = await asyncio.create_subprocess_exec(
+        info.path, "auth", "logout", env=claude_environment(), stdin=asyncio.subprocess.DEVNULL,
+        stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
+        start_new_session=True)
+    try:
+        return await asyncio.wait_for(proc.wait(), STATUS_TIMEOUT_S) == 0
+    except asyncio.TimeoutError:
+        return False
+    finally:
+        if proc.returncode is None:
+            with contextlib.suppress(ProcessLookupError, PermissionError):
+                os.killpg(proc.pid, signal.SIGKILL)
+            await asyncio.shield(proc.wait())

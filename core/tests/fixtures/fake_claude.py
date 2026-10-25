@@ -9,6 +9,7 @@ Run through a `claude` shim on PATH. Never touches the network or any real Claud
 - `auth login [--console]`   -> waits a moment, prints a token-looking string on stdout and
                                 stderr (Mises must never keep it), writes signed_in to the
                                 state, its argv to $HOME/fake-claude-login-args.json
+- `auth logout`              -> writes signed_out to the state
   (state lives under $HOME because Mises runs claude with an allowlisted environment)
 - `-p ...` session           -> logs argv to <cwd>/fake_claude.jsonl, then reads stream-json
                                 user messages from stdin. The prompt text picks the behaviour:
@@ -229,6 +230,12 @@ def main(argv: list[str]) -> int:
         return auth_status()
     if argv[:2] == ["auth", "login"]:
         return auth_login(argv)
+    if argv[:2] == ["auth", "logout"]:
+        sf = state_file()
+        if sf:
+            sf.write_text("signed_out")
+        print("Successfully logged out")
+        return 0
     if "-p" in argv:
         return asyncio.run(session(argv))
     print(f"fake claude: unsupported args {argv}", file=sys.stderr)

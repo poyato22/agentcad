@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
 import uuid
@@ -13,6 +14,10 @@ from .agent.definitions import load_definitions
 from .agent.loop import AgentLoop, LoopConfig, RunResult
 from .approvals import ApprovalService
 from .cad.tools import register_mirror_tools
+from .claude_code import detect as claude_detect
+from .claude_code.session import MCP_FILE as CLAUDE_MCP_FILE, SOURCE as CLAUDE_CODE
+from .claude_code.session import ClaudeCodeSession, model_alias
+from .context_tools import build_context, ui_context
 from .events import Event, EventBus
 from .gate import Gate
 from .onshape.adapter import OnshapeAdapter
@@ -31,6 +36,8 @@ log = logging.getLogger(__name__)
 
 USER = "local"
 
+LOGIN_TIMEOUT_S = 600.0            # a `claude auth login` left open in the browser is stopped
+
 _STATUS = {"end_turn": "done", "max_tokens": "done", "cancelled": "cancelled",
            "error": "failed", "circuit_open": "failed", "max_turns": "failed"}
 
@@ -41,6 +48,16 @@ class _RunState:
     task: asyncio.Task | None = None
     result: RunResult | None = None
     history: list[Message] = field(default_factory=list)
+    cancel_requested: bool = False
+
+
+@dataclass
+class _ClaudeRun:
+    """A run driven by the user's Claude Code: its live session (None or dead between a cancel
+    or a restart and the next message, which resumes it) and the current turn's task."""
+    session: ClaudeCodeSession | None = None
+    task: asyncio.Task | None = None
+    result: RunResult | None = None
     cancel_requested: bool = False
 
 
@@ -74,7 +91,14 @@ class Runtime:
         # external run id -> owner's async cancel (e.g. AcpSession.cancel kills the agent)
         self._cancel_hooks: dict[str, Callable[[], Awaitable[None]]] = {}
         self._hook_tasks: set[asyncio.Task] = set()
+        # Claude Code runs this process drives; the MCP endpoint (url, MCP-only token) of the
+        # server serving this runtime, set by serve()/serve_async(); an optional starter for it
+        self._claude: dict[str, _ClaudeRun] = {}
+        self.mcp_endpoint: tuple[str, str] | None = None
+        self._mcp_autostart: Callable[[], Awaitable[None]] | None = None
+        self._login: claude_detect.LoginHandle | None = None
         self.interrupted = self._fail_orphaned_runs()
+        self._remove_stale_mcp_files()
 
     # ---- crash recovery
     @staticmethod
@@ -111,6 +135,18 @@ class Runtime:
             log.warning("marked %d interrupted run(s) failed: %s", len(out), ", ".join(out))
         return out
 
+    def _remove_stale_mcp_files(self) -> None:
+        """A Claude Code session's MCP config (it holds an MCP-only token) is deleted when the
+        session ends; if the process that ran it died, delete it here."""
+        for path in (self.home / "runs").glob(f"*/{CLAUDE_MCP_FILE}"):
+            try:
+                pid = self.store.get_run(path.parent.name).owner_pid
+            except KeyError:
+                pid = None
+            if pid is not None and pid != os.getpid() and self._pid_alive(pid):
+                continue
+            path.unlink(missing_ok=True)
+
     def _onshape_adapter(self, creds: str | None) -> OnshapeAdapter | None:
         if creds and ":" in creds:
             access, secret = creds.split(":", 1)
@@ -125,15 +161,95 @@ class Runtime:
         if new is not None:
             self.gate.services["onshape"] = new
         if old is not None:
-            await old.client.aclose()
+            try:
+                await old.client.aclose()
+            except Exception:  # noqa: BLE001 - the old client is dropped either way
+                log.warning("closing the previous Onshape client failed", exc_info=True)
 
     def profile(self):
         return load_profile(self.home)
 
     async def aclose(self) -> None:
+        """Shut down: every live Claude Code session is closed (no orphan `claude` process or
+        MCP token file), a sign-in in progress is stopped, the Onshape client is closed."""
+        await self.close_claude_sessions()
         ad = self.gate.services.get("onshape")
         if ad is not None:
             await ad.client.aclose()
+
+    # ---- the MCP endpoint Claude Code runs reach Mises through
+    def attach_mcp(self, url: str, mcp_token: str) -> None:
+        self.mcp_endpoint = (url, mcp_token)
+
+    def detach_mcp(self, url: str | None = None) -> None:
+        if url is None or (self.mcp_endpoint is not None and self.mcp_endpoint[0] == url):
+            self.mcp_endpoint = None
+
+    def set_mcp_autostart(self, start: Callable[[], Awaitable[None]] | None) -> None:
+        """For embedded use (`mises chat`): how to start a server when a Claude Code run needs
+        one. `start` must end with attach_mcp (serve_async does)."""
+        self._mcp_autostart = start
+
+    async def _mcp(self) -> tuple[str, str]:
+        if self.mcp_endpoint is None and self._mcp_autostart is not None:
+            await self._mcp_autostart()
+        if self.mcp_endpoint is None:
+            raise MisesError(ErrorCode.DENIED,
+                             "Claude Code runs need the Mises server: it is how Claude Code "
+                             "reaches the Mises tools",
+                             hint="open the Mises app or run `mises serve`, then retry")
+        return self.mcp_endpoint
+
+    # ---- the user's Claude Code: status, sign-in
+    async def claude_status(self) -> tuple[claude_detect.ClaudeInfo, claude_detect.AuthStatus]:
+        info = await asyncio.to_thread(claude_detect.find_claude)
+        auth = (await claude_detect.auth_status(info)) if info.path else claude_detect.NOT_SIGNED_IN
+        return info, auth
+
+    async def _claude_ready(self) -> tuple[claude_detect.ClaudeInfo, claude_detect.AuthStatus]:
+        info, auth = await self.claude_status()
+        if not info.path:
+            raise MisesError(ErrorCode.NOT_FOUND, "Claude Code is not installed",
+                             hint="install it from code.claude.com, then sign in from Setup")
+        if not auth.signed_in:
+            raise MisesError(ErrorCode.DENIED, "Claude Code is not signed in",
+                             hint="sign in from Setup or Profile (runs `claude auth login`)")
+        return info, auth
+
+    async def start_claude_login(self, *, console: bool = False) -> bool:
+        """Start Anthropic's `claude auth login` (opens the browser) and return at once; False
+        if one is already in progress. Poll claude_status() for the outcome."""
+        if self._login is not None and not self._login.done:
+            return False
+        info = await asyncio.to_thread(claude_detect.find_claude)
+        if not info.path:
+            raise MisesError(ErrorCode.NOT_FOUND, "Claude Code is not installed",
+                             hint="install it from code.claude.com, then retry")
+        h = self._login = await claude_detect.start_login(info, console=console)
+
+        async def finish() -> None:
+            try:
+                await h.wait(LOGIN_TIMEOUT_S)
+            except Exception:  # noqa: BLE001
+                log.warning("claude auth login did not finish cleanly", exc_info=True)
+            finally:
+                if self._login is h:
+                    self._login = None
+        self._track(asyncio.get_running_loop().create_task(finish()))
+        return True
+
+    async def claude_logout(self) -> bool:
+        h = self._login
+        if h is not None and not h.done:
+            await h.cancel()
+        info = await asyncio.to_thread(claude_detect.find_claude)
+        if not info.path:
+            raise MisesError(ErrorCode.NOT_FOUND, "Claude Code is not installed")
+        return await claude_detect.logout(info)
+
+    def _track(self, task: asyncio.Task) -> None:
+        self._hook_tasks.add(task)
+        task.add_done_callback(self._hook_tasks.discard)
 
     # ---- runs
     def workdir(self, run_id: str) -> Path:
@@ -158,8 +274,13 @@ class Runtime:
         if caps is None:
             caps = Caps(onshape_calls_run=prof.onshape_calls_run_cap,
                         onshape_calls_year=prof.onshape_calls_year_cap)
-        ref = (model_ref or prof.default_model
-               or (defn.model if defn.model != "inherit" else DEFAULT_MODEL))
+        ref = self.model_ref_for(defn, model_ref, prof)
+        alias = model_alias(ref)
+        if alias is not None:
+            return await self._start_claude_run(agent, prompt, alias, edit_scope=edit_scope,
+                                                read_scope=read_scope, caps=caps,
+                                                parent_id=parent_id,
+                                                allowed_classes=allowed_classes)
         provider, model = self.provider_resolver(ref)
         run = self.store.create_run(agent, provider.name, model, prompt, parent_id=parent_id)
         classes = set(SafetyClass) if allowed_classes is None else set(allowed_classes)
@@ -174,22 +295,185 @@ class Runtime:
         st.task = asyncio.create_task(self._drive(run.id, prompt))
         return run.id
 
+    def model_ref_for(self, defn, model_ref: str | None = None, prof=None) -> str:
+        """model_ref, else the definition's model (unless "inherit"), else the profile's
+        default model, else DEFAULT_MODEL."""
+        if model_ref:
+            return model_ref
+        if defn is not None and defn.model and defn.model != "inherit":
+            return defn.model
+        prof = prof if prof is not None else self.profile()
+        return prof.default_model or DEFAULT_MODEL
+
+    def check_model_ref(self, ref: str) -> None:
+        """Raise MisesError if `ref` cannot name a model (claude-code/<alias> or vendor/model)."""
+        if model_alias(ref) is None:
+            self.provider_resolver(ref)
+
+    # ---- Claude Code runs (the user's own `claude`, through the MCP endpoint and the Gate)
+    async def _start_claude_run(self, agent: str, prompt: str, alias: str, *, edit_scope,
+                                read_scope, caps: Caps, parent_id: str | None,
+                                allowed_classes: set[SafetyClass] | None) -> str:
+        url, token = await self._mcp()
+        info, auth = await self._claude_ready()
+        rid = self.create_external_run(agent, provider=CLAUDE_CODE, model=alias,
+                                       edit_scope=edit_scope, read_scope=read_scope, caps=caps,
+                                       allowed_classes=allowed_classes, parent_id=parent_id,
+                                       task=prompt)
+        st = self._claude[rid] = _ClaudeRun()
+        await self._spawn_claude(rid, st, alias, info, auth, url, token, resume=None)
+        if st.cancel_requested:          # cancelled while it started
+            await st.session.close()
+            return rid
+        st.task = asyncio.create_task(self._drive_claude(rid, prompt, first=True))
+        return rid
+
+    async def _spawn_claude(self, rid: str, st: _ClaudeRun, alias: str, info, auth, url: str,
+                            token: str, *, resume: str | None) -> None:
+        s = st.session = ClaudeCodeSession(self, rid, model_alias=alias, info=info, mcp_url=url,
+                                           mcp_token=token, resume_session_id=resume,
+                                           config_dir=auth.config_dir)
+        try:
+            await s.start()          # a failure is recorded on the run (error step) and raised
+        except BaseException:
+            if self._claude.get(rid) is st:
+                del self._claude[rid]
+            raise
+        self.store.update_run(rid, session_ref=s.session_id, owner_pid=os.getpid())
+
+    def _claude_context(self, rid: str) -> dict | None:
+        """The app's UI context for the first prompt, when the user has selected something."""
+        try:
+            ui = ui_context(self)
+            if not (ui.selected_part_id or ui.selected_run_id or ui.picks):
+                return None
+            return build_context(self, rid)
+        except Exception:  # noqa: BLE001 - context is a convenience, never a reason to fail
+            log.warning("could not build the UI context for run %s", rid, exc_info=True)
+            return None
+
+    async def _drive_claude(self, rid: str, text: str, *, first: bool) -> RunResult:
+        st = self._claude[rid]
+        assert st.session is not None
+        try:
+            final = await st.session.prompt(text, context=self._claude_context(rid) if first
+                                            else None)
+            result = RunResult(final_text=final, messages=[], stop_reason="end_turn")
+        except MisesError as e:
+            stop = "cancelled" if e.code == ErrorCode.CANCELLED else "error"
+            result = RunResult(final_text="", messages=[], stop_reason=stop, error=e.message)
+        st.result = result
+        return result
+
+    def _is_claude_run(self, run_id: str) -> bool:
+        if run_id in self._claude:
+            return True
+        try:
+            run = self.store.get_run(run_id)
+        except KeyError:
+            return False
+        return run.external and run.provider == CLAUDE_CODE
+
+    async def resume_run(self, run_id: str) -> None:
+        """Re-spawn the user's Claude Code for a Claude Code run with `--resume <session>`
+        (after a cancel, a crash or a Mises restart). The run's status changes with its next
+        message. No-op while its session is alive."""
+        try:
+            run = self.store.get_run(run_id)
+        except KeyError:
+            raise MisesError(ErrorCode.NOT_FOUND, f"unknown run: {run_id}") from None
+        if not (run.external and run.provider == CLAUDE_CODE):
+            raise MisesError(ErrorCode.INVALID_INPUT, "only Claude Code runs can be resumed",
+                             hint="send a message to continue other runs")
+        st = self._claude.get(run_id)
+        if st is not None and st.session is not None and st.session.alive:
+            return
+        if st is not None and st.task is not None and not st.task.done():
+            raise MisesError(ErrorCode.INVALID_INPUT, "run is still working",
+                             hint="wait for it to finish or cancel it")
+        if run.status == "running" and run_id not in self._external:
+            raise MisesError(ErrorCode.INVALID_INPUT, "run is driven by another Mises process",
+                             hint="continue it there, or cancel it first")
+        if not run.session_ref:
+            raise MisesError(ErrorCode.INVALID_INPUT,
+                             "this run has no Claude Code session to resume",
+                             hint="start a new run")
+        url, token = await self._mcp()
+        info, auth = await self._claude_ready()
+        if st is not None and st.session is not None:
+            await st.session.close()     # the dead one: drop its hooks before the new one
+        st = self._claude[run_id] = _ClaudeRun()
+        await self._spawn_claude(run_id, st, run.model, info, auth, url, token,
+                                 resume=run.session_ref)
+
+    async def _send_claude(self, run_id: str, text: str) -> None:
+        st = self._claude.get(run_id)
+        if st is not None and st.task is not None and not st.task.done():
+            raise MisesError(ErrorCode.INVALID_INPUT, "run is still working",
+                             hint="wait for it to finish or cancel it")
+        if st is None or st.session is None or not st.session.alive:
+            await self.resume_run(run_id)
+            st = self._claude[run_id]
+        st.cancel_requested = False
+        st.task = asyncio.create_task(self._drive_claude(run_id, text, first=False))
+
+    async def close_claude_sessions(self) -> None:
+        """Close every live Claude Code session (and stop a sign-in in progress)."""
+        h, self._login = self._login, None
+        if h is not None and not h.done:
+            with contextlib.suppress(Exception):
+                await h.cancel()
+        states = list(self._claude.values())
+        self._claude.clear()
+        sessions = [st.session for st in states if st.session is not None]
+        for r in await asyncio.gather(*(s.close() for s in sessions), return_exceptions=True):
+            if isinstance(r, BaseException):
+                log.warning("closing a Claude Code session failed: %r", r)
+        tasks = [st.task for st in states if st.task is not None and not st.task.done()]
+        if tasks:
+            await asyncio.wait(tasks, timeout=5)
+
     # ---- external runs (an outside agent drives the run through the MCP endpoint)
     def create_external_run(self, agent: str, *, provider: str, model: str, edit_scope=("*",),
                             read_scope=("*",), caps: Caps = Caps(),
-                            allowed_classes: set[SafetyClass] | None = None) -> str:
+                            allowed_classes: set[SafetyClass] | None = None,
+                            parent_id: str | None = None, task: str | None = None) -> str:
         if not agent:
             raise MisesError(ErrorCode.INVALID_INPUT, "external run needs an agent name")
-        run = self.store.create_run(agent, provider, model, f"external agent: {agent}", external=True)
+        run = self.store.create_run(agent, provider, model, task or f"external agent: {agent}",
+                                    parent_id=parent_id, external=True)
         classes = set(SafetyClass) if allowed_classes is None else set(allowed_classes)
         self.store.create_policy(run.id, list(edit_scope), list(read_scope), caps,
                                  [c for c in SafetyClass if c in classes])
         self.workdir(run.id)
         self._external.add(run.id)
         self.events.publish(Event(type="run_started", run_id=run.id, data={
-            "agent": agent, "provider": provider, "model": model, "parent_id": None,
+            "agent": agent, "provider": provider, "model": model, "parent_id": parent_id,
             "external": True}))
         return run.id
+
+    def reopen_external_run(self, run_id: str, *,
+                            cancel_hook: Callable[[], Awaitable[None]] | None = None,
+                            **data) -> bool:
+        """A new turn on an external run whose last turn finished (or was cancelled): mark it
+        running in this process again, so the MCP endpoint serves its calls and cancel() and
+        cancel_all reach its owner. Returns False if it was already running here."""
+        try:
+            run = self.store.get_run(run_id)
+        except KeyError:
+            raise MisesError(ErrorCode.NOT_FOUND, f"unknown run: {run_id}") from None
+        if not run.external:
+            raise MisesError(ErrorCode.INVALID_INPUT, "not an external run",
+                             hint="use send() for runs Mises drives itself")
+        if run.status == "running" and run_id in self._external:
+            return False
+        self.store.update_run(run_id, status="running", owner_pid=os.getpid())
+        self._external.add(run_id)
+        if cancel_hook is not None:
+            self.register_cancel_hook(run_id, cancel_hook)
+        self.events.publish(Event(type="run_started", run_id=run_id, data={
+            "resumed": True, "external": True, **data}))
+        return True
 
     def register_cancel_hook(self, run_id: str, hook: Callable[[], Awaitable[None]]) -> None:
         """The owner of an external run (e.g. AcpSession) registers how to stop its agent;
@@ -214,9 +498,7 @@ class Runtime:
                 await hook()
             except Exception:
                 log.exception("cancel hook of run %s failed", run_id)
-        task = loop.create_task(run())
-        self._hook_tasks.add(task)
-        task.add_done_callback(self._hook_tasks.discard)
+        self._track(loop.create_task(run()))
 
     def finish_external_run(self, run_id: str, status: str) -> None:
         if status not in ("done", "failed", "cancelled"):
@@ -269,6 +551,9 @@ class Runtime:
         return st
 
     async def send(self, run_id: str, text: str) -> None:
+        if self._is_claude_run(run_id):
+            await self._send_claude(run_id, text)
+            return
         if run_id in self._external:
             raise MisesError(ErrorCode.INVALID_INPUT, "run is driven by an external agent",
                              hint="send the message to that agent instead")
@@ -282,13 +567,16 @@ class Runtime:
         st.task = asyncio.create_task(self._drive(run_id, text))
 
     async def wait(self, run_id: str) -> RunResult:
+        cst = self._claude.get(run_id)
+        if cst is not None and cst.task is not None:
+            return await asyncio.shield(cst.task)
         st = self._state(run_id)
         assert st.task is not None
         return await asyncio.shield(st.task)
 
     def is_live(self, run_id: str) -> bool:
         """True if this process drives the run (internal loop or external)."""
-        return run_id in self._runs or run_id in self._external
+        return run_id in self._runs or run_id in self._external or run_id in self._claude
 
     def is_cancelling(self, run_id: str) -> bool:
         """True if cancel was requested on an internal run and it has not been resumed since."""
@@ -299,8 +587,19 @@ class Runtime:
         if run_id in self._external:
             # mark it cancelled first (the MCP endpoint then refuses its calls), then let the
             # owner stop the agent process
+            if run_id in self._claude:
+                self._claude[run_id].cancel_requested = True
             self.finish_external_run(run_id, "cancelled")
             self._run_cancel_hook(run_id)
+            return
+        cst = self._claude.get(run_id)
+        if cst is not None:
+            # a Claude Code run idle between turns: stop its process; the run keeps the status
+            # of its last turn and the next message resumes the session (--resume)
+            cst.cancel_requested = True
+            self._cancel_hooks.pop(run_id, None)
+            if cst.session is not None and cst.session.alive:
+                self._track(asyncio.get_running_loop().create_task(cst.session.cancel()))
             return
         st = self._state(run_id)
         st.cancel_requested = True

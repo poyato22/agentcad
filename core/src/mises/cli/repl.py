@@ -164,7 +164,7 @@ class Repl:
                 say(f"model: {self.model_ref or '(agent default)'}")
                 return True
             try:
-                rt.provider_resolver(arg)
+                rt.check_model_ref(arg)
             except MisesError as e:
                 self.renderer.error(e)
                 return True

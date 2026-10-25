@@ -104,6 +104,9 @@ def test_external_column_migrates_old_databases(tmp_path):
     s = Store(path)
     assert s.get_run("old1").external is False
     assert s.create_run("codex", "acp", "codex", "x", external=True).external is True
+    # and the nullable session_ref (Claude Code --resume) added after it
+    assert s.get_run("old1").session_ref is None
+    assert s.update_run("old1", session_ref="550e8400-e29b").session_ref == "550e8400-e29b"
 
 
 def test_cache(store):

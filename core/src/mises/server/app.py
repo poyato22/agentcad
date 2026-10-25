@@ -147,6 +147,10 @@ class Text(BaseModel):
     text: str
 
 
+class Resume(BaseModel):
+    text: str | None = None
+
+
 class Decision(BaseModel):
     payload_hash: str
     approve: bool
@@ -173,8 +177,12 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
-        async with manager.run():
-            yield
+        try:
+            async with manager.run():
+                yield
+        finally:
+            # Claude Code sessions reach Mises only through this server: close them with it
+            await runtime.close_claude_sessions()
 
     app = FastAPI(title="Mises", lifespan=lifespan, docs_url=None, redoc_url=None,
                   openapi_url=None)
@@ -232,6 +240,16 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
     async def message(run_id: str, body: Text):
         _run(run_id)
         await runtime.send(run_id, body.text)
+        return {"ok": True}
+
+    @app.post("/runs/{run_id}/resume")
+    async def resume(run_id: str, body: Resume | None = None):
+        """Re-spawn a Claude Code run's session (`--resume`), e.g. after Mises restarted;
+        with `text`, also send it as the next message."""
+        _run(run_id)
+        await runtime.resume_run(run_id)
+        if body is not None and body.text:
+            await runtime.send(run_id, body.text)
         return {"ok": True}
 
     @app.post("/runs/{run_id}/cancel")
@@ -363,8 +381,10 @@ class ServerHandle:
     """A server running on the caller's event loop (from `serve_async`)."""
 
     def __init__(self, port: int, token: str, mcp_token: str, server: uvicorn.Server,
-                 task: asyncio.Task, sock: socket.socket, info_path: Path | None):
+                 task: asyncio.Task, sock: socket.socket, info_path: Path | None,
+                 runtime: Runtime):
         self.port, self.token, self.mcp_token = port, token, mcp_token
+        self._runtime = runtime
         self._server, self._task, self._sock, self._info_path = server, task, sock, info_path
 
     @property
@@ -372,6 +392,7 @@ class ServerHandle:
         return f"http://{HOST}:{self.port}/mcp"
 
     async def stop(self) -> None:
+        self._runtime.detach_mcp(self.mcp_url)
         self._server.should_exit = True
         try:
             await self._task
@@ -407,13 +428,16 @@ async def serve_async(runtime: Runtime, *, port: int = 0, token: str | None = No
     if write_server_json:
         info_path = _server_json(runtime)
         _write_server_json(info_path, {"port": bound, "token": token, "pid": os.getpid()})
-    return bound, token, ServerHandle(bound, token, mcp_token, server, task, sock, info_path)
+    handle = ServerHandle(bound, token, mcp_token, server, task, sock, info_path, runtime)
+    runtime.attach_mcp(handle.mcp_url, mcp_token)
+    return bound, token, handle
 
 
 class _Running:
     def __init__(self, server: uvicorn.Server, thread: threading.Thread, sock: socket.socket,
-                 info_path: Path):
+                 info_path: Path, runtime: Runtime, mcp_url: str):
         self.server, self.thread, self.sock, self.info_path = server, thread, sock, info_path
+        self.runtime, self.mcp_url = runtime, mcp_url
 
 
 _servers: dict[int, _Running] = {}
@@ -429,9 +453,10 @@ def serve(runtime: Runtime, *, port: int = 0, token: str | None = None,
     until it exits. Code that already runs an event loop should use `serve_async`.
     """
     token = token or secrets.token_urlsafe(32)
+    mcp_token = mcp_token or secrets.token_urlsafe(32)
     sock = _bind(port)
     bound = sock.getsockname()[1]
-    server = _uvicorn(runtime, token, mcp_token or secrets.token_urlsafe(32))
+    server = _uvicorn(runtime, token, mcp_token)
     thread = threading.Thread(target=server.run, kwargs={"sockets": [sock]},
                               name=f"mises-server-{bound}", daemon=True)
     thread.start()
@@ -441,7 +466,9 @@ def serve(runtime: Runtime, *, port: int = 0, token: str | None = None,
             raise RuntimeError("mises server failed to start")
         thread.join(0.01)
     info_path = _server_json(runtime)
-    _servers[bound] = _Running(server, thread, sock, info_path)
+    mcp_url = f"http://{HOST}:{bound}/mcp"
+    _servers[bound] = _Running(server, thread, sock, info_path, runtime, mcp_url)
+    runtime.attach_mcp(mcp_url, mcp_token)
     _write_server_json(info_path, {"port": bound, "token": token, "pid": os.getpid()})
     return bound, token
 
@@ -456,6 +483,7 @@ def stop(port: int, timeout: float = 10.0) -> None:
     r = _servers.pop(port, None)
     if r is None:
         return
+    r.runtime.detach_mcp(r.mcp_url)
     r.server.should_exit = True
     r.thread.join(timeout)
     r.sock.close()

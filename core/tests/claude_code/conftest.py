@@ -6,6 +6,7 @@ import pytest
 
 import mises.runtime as runtime_mod
 from mises.claude_code import detect
+from mises.claude_code.detect import find_claude as REAL_FIND_CLAUDE
 from mises.runtime import Runtime
 
 FAKE = Path(__file__).resolve().parents[1] / "fixtures" / "fake_claude.py"
@@ -27,6 +28,7 @@ def claude_bin(tmp_path, monkeypatch):
     shim = make_shim(tmp_path / "bin")
     monkeypatch.setenv("PATH", f"{shim.parent}{os.pathsep}/usr/bin:/bin")
     monkeypatch.setattr(detect, "FALLBACK_DIRS", ())
+    monkeypatch.setattr(detect, "find_claude", REAL_FIND_CLAUDE)  # undo tests/conftest.py's stub
     # the fake keeps its state under $HOME: Mises runs claude with an allowlisted environment
     user_home = tmp_path / "userhome"
     user_home.mkdir()

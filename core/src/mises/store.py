@@ -33,6 +33,7 @@ class AgentRun(BaseModel):
     updated_at: float
     owner_pid: int | None = None  # process that created (drives) the run
     external: bool = False  # driven by an outside agent (Runtime.create_external_run), not a loop
+    session_ref: str | None = None  # the outside agent's own session id (Claude Code --resume)
 
 
 class AgentPolicy(BaseModel):
@@ -106,7 +107,8 @@ CREATE TABLE IF NOT EXISTS ledger (
 CREATE TABLE IF NOT EXISTS tool_cache (key TEXT PRIMARY KEY, value TEXT);
 """
 
-_RUN_FIELDS = {"status", "branch", "agent", "provider", "model", "task", "parent_id"}
+_RUN_FIELDS = {"status", "branch", "agent", "provider", "model", "task", "parent_id",
+               "session_ref", "owner_pid"}
 _APPROVAL_JSON = {"payload", "deltas", "edited_payload"}
 
 
@@ -131,6 +133,8 @@ class Store:
             self._db.execute("ALTER TABLE runs ADD COLUMN owner_pid INTEGER")
         if "external" not in cols:  # databases from before the external flag
             self._db.execute("ALTER TABLE runs ADD COLUMN external INTEGER NOT NULL DEFAULT 0")
+        if "session_ref" not in cols:  # databases from before resumable external sessions
+            self._db.execute("ALTER TABLE runs ADD COLUMN session_ref TEXT")
 
     @contextmanager
     def _tx(self):
@@ -154,15 +158,17 @@ class Store:
 
     # ---- runs
     def create_run(self, agent: str, provider: str, model: str, task: str,
-                   parent_id: str | None = None, external: bool = False) -> AgentRun:
+                   parent_id: str | None = None, external: bool = False,
+                   session_ref: str | None = None) -> AgentRun:
         now = time.time()
         rid = uuid.uuid4().hex[:12]
         with self._tx() as db:
             db.execute("INSERT INTO runs (id, parent_id, agent, provider, model, task, status,"
                        " branch, onshape_calls, input_tokens, output_tokens, usd, created_at,"
-                       " updated_at, owner_pid, external) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                       " updated_at, owner_pid, external, session_ref)"
+                       " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                        (rid, parent_id, agent, provider, model, task, "running", None,
-                        0, 0, 0, 0.0, now, now, os.getpid(), int(external)))
+                        0, 0, 0, 0.0, now, now, os.getpid(), int(external), session_ref))
         return self.get_run(rid)
 
     def get_run(self, run_id: str) -> AgentRun:

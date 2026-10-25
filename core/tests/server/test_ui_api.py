@@ -67,12 +67,13 @@ def test_ui_routes_need_token(client, path):
     assert client.post("/runs/cancel_all").status_code == 401
 
 
-def test_status_shape(client):
+def test_status_shape(client, rt):
     r = client.get("/status", headers=AUTH)
     assert r.status_code == 200
     body = r.json()
     assert set(body) == {"core_version", "onshape", "onshape_calls_year", "onshape_cap_year",
-                         "runs_running", "approvals_pending"}
+                         "runs_running", "approvals_pending", "data_dir"}
+    assert body["data_dir"] == str(rt.home)
     assert body["onshape"] == "not_configured"
     assert body["onshape_cap_year"] == 2500
     assert body["onshape_calls_year"] == 0

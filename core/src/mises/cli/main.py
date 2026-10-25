@@ -16,7 +16,9 @@ def _parser() -> argparse.ArgumentParser:
     sub = ap.add_subparsers(dest="cmd", metavar="COMMAND")
 
     p = sub.add_parser("chat", help="interactive chat with a CAD agent")
-    p.add_argument("--model", metavar="REF", help="vendor/model, e.g. anthropic/claude-haiku-5-5")
+    p.add_argument("--model", metavar="REF",
+                   help="vendor/model, e.g. anthropic/claude-haiku-5-5, or claude-code/sonnet "
+                        "(runs your Claude Code)")
     p.add_argument("--agent", default="designer", help="agent definition (default: designer)")
     p.add_argument("--scope", nargs="+", default=[], metavar="PART",
                    help="parts the agent may edit (default: all)")
@@ -42,6 +44,11 @@ def _parser() -> argparse.ArgumentParser:
 
     sub.add_parser("agents", help="list agent definitions")
 
+    p = sub.add_parser("claude", help="your Claude Code: status, sign in, sign out")
+    p.add_argument("claude_cmd", choices=["status", "login", "logout"])
+    p.add_argument("--console", action="store_true",
+                   help="login: sign in with an Anthropic Console account")
+
     p = sub.add_parser("runs", help="recent runs, or one run's steps")
     p.add_argument("--steps", metavar="ID", help="show the steps of this run")
     return ap
@@ -57,7 +64,17 @@ def _chat(args) -> int:
     from .repl import Repl
 
     async def go() -> None:
+        from ..server.app import serve_async
         rt = Runtime()
+        handle = None
+
+        async def start_server() -> None:
+            # claude-code/<alias> runs reach Mises through the MCP endpoint: an embedded
+            # server (no server.json, so a running `mises serve` is left alone)
+            nonlocal handle
+            if handle is None:
+                _port, _token, handle = await serve_async(rt, write_server_json=False)
+        rt.set_mcp_autostart(start_server)
         try:
             if args.agent not in rt.definitions:
                 print(f"mises: unknown agent {args.agent!r}; agents: "
@@ -66,6 +83,8 @@ def _chat(args) -> int:
             await Repl(rt, args.agent, args.model, scope=tuple(args.scope)).run()
         finally:
             await rt.aclose()
+            if handle is not None:
+                await handle.stop()
     asyncio.run(go())
     return 0
 
@@ -140,6 +159,11 @@ def _models(_args) -> int:
         else:
             source = "none"
         print(f"{name:<12} {source:<16} {DEFAULT_MODEL if name == 'anthropic' else ''}".rstrip())
+    from ..claude_code import MODEL_ALIASES, auth_status, detect
+    info = detect.find_claude()
+    cc = ("not installed" if not info.path
+          else "signed in" if asyncio.run(auth_status(info)).signed_in else "signed out")
+    print(f"{'claude-code':<12} {cc:<16} {', '.join(MODEL_ALIASES)}")
     onshape = "keychain" if keychain_get("mises", "onshape") else "none"
     print(f"{'onshape':<12} {onshape:<16}")
     print(f"\ndefault model: {DEFAULT_MODEL}")
@@ -167,6 +191,33 @@ def _keys_set(args) -> int:
         return _err(str(e))
     print(f"stored {vendor} key in the Keychain")
     return 0
+
+
+def _claude(args) -> int:
+    """`mises claude status|login|logout`: the user's own Claude Code. Sign-in is Anthropic's
+    `claude auth login` flow; Mises only shows the non-secret status."""
+    from ..claude_code import auth_status, detect, logout, start_login
+
+    async def go() -> int:
+        info = detect.find_claude()
+        if not info.path:
+            print("Claude Code is not installed (see code.claude.com)")
+            return 1
+        if args.claude_cmd == "login":
+            print("opening the Claude sign-in page in your browser...")
+            h = await start_login(info, console=args.console)
+            st = await h.wait()
+            print("signed in" if st.signed_in else "not signed in")
+            return 0 if st.signed_in else 1
+        if args.claude_cmd == "logout":
+            ok = await logout(info)
+            print("signed out" if ok else "sign-out failed")
+            return 0 if ok else 1
+        st = await auth_status(info)
+        print(f"Claude Code {info.version} at {info.path}")
+        print(f"signed in ({st.auth_method})" if st.signed_in else "not signed in")
+        return 0 if st.signed_in else 1
+    return asyncio.run(go())
 
 
 def _agents(_args) -> int:
@@ -203,7 +254,8 @@ def main(argv: list[str] | None = None) -> int:
         ap.print_help(sys.stderr)
         raise SystemExit(2)
     handlers = {"chat": _chat, "serve": _serve, "mcp-stdio": _mcp_stdio, "acp": _acp,
-                "models": _models, "keys": _keys_set, "agents": _agents, "runs": _runs}
+                "models": _models, "keys": _keys_set, "agents": _agents, "runs": _runs,
+                "claude": _claude}
     try:
         return handlers[args.cmd](args)
     except KeyboardInterrupt:

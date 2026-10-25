@@ -21,6 +21,7 @@ from starlette.middleware.cors import CORSMiddleware
 
 from .. import platform as _platform
 from ..cad.tools import PART_ID_RE
+from ..claude_code.session import MODEL_ALIASES, SOURCE as CLAUDE_CODE
 from ..events import Event
 from ..providers.registry import DEFAULT_MODEL, VENDORS
 from ..types import Caps, ErrorCode, MisesError
@@ -97,6 +98,7 @@ def build_ui_router(runtime: Runtime) -> APIRouter:
             "runs_running": sum(1 for r in runtime.store.list_runs(10_000)
                                 if r.status == "running"),
             "approvals_pending": len(runtime.store.pending_approvals()),
+            "data_dir": str(runtime.home),
         }
 
     @router.get("/agents")
@@ -119,9 +121,16 @@ def build_ui_router(runtime: Runtime) -> APIRouter:
             vendors.append({"vendor": vendor, "key": key})
         return vendors
 
+    async def _claude_code_vendor() -> dict:
+        info, auth = await runtime.claude_status()
+        key = ("not_installed" if not info.path else "signed_in" if auth.signed_in
+               else "signed_out")
+        return {"vendor": CLAUDE_CODE, "key": key, "models": list(MODEL_ALIASES)}
+
     @router.get("/models")
     async def models():
-        return {"default": DEFAULT_MODEL, "vendors": await run_in_threadpool(_vendor_keys)}
+        vendors = await run_in_threadpool(_vendor_keys)
+        return {"default": DEFAULT_MODEL, "vendors": [*vendors, await _claude_code_vendor()]}
 
     @router.get("/parts")
     async def parts():

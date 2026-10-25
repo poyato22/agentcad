@@ -33,6 +33,7 @@ import contextlib
 import json
 import logging
 import os
+import re
 import signal
 import sys
 import uuid
@@ -48,7 +49,10 @@ from .prompts import SUBAGENTS, agents_json, context_block, mises_rules_md
 
 log = logging.getLogger(__name__)
 
-SOURCE = "claude-code"
+SOURCE = "claude-code"            # the provider name of its runs, and the model-ref prefix
+# the aliases Mises offers (`--model <alias>`); `claude-code/<other alias>` is accepted too
+MODEL_ALIASES = ("sonnet", "opus", "haiku", "fable")
+_ALIAS_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._\[\]-]{0,79}")
 MISES_TOOL_PREFIX = "mcp__mises__"
 # Built-ins a run may have: Agent (Task is its pre-2.1.63 name) for the Mises subagents, and
 # EndConversation, which per the tools reference no --tools list can remove while any other
@@ -67,6 +71,18 @@ STDERR_TAIL_CHARS = 2048
 TERM_GRACE_S = 5.0                     # SIGTERM -> SIGKILL
 CLOSE_GRACE_S = 2.0                    # stdin EOF -> SIGTERM on a normal close
 MCP_FILE, AGENTS_FILE, RULES_FILE = "claude-mcp.json", "claude-agents.json", "mises-rules.md"
+
+
+def model_alias(model_ref: str) -> str | None:
+    """`claude-code/<alias>` -> the alias; None for any other model ref. An alias that could not
+    be a plain `--model` value (empty, a flag, spaces) is refused."""
+    vendor, sep, alias = model_ref.partition("/")
+    if vendor != SOURCE or not sep:
+        return None
+    if not _ALIAS_RE.fullmatch(alias):
+        raise MisesError(ErrorCode.INVALID_INPUT, f"bad Claude Code model {alias!r}",
+                         hint=f"use claude-code/<alias>, e.g. {', '.join(MODEL_ALIASES)}")
+    return alias
 
 
 def default_config_dir() -> Path:
@@ -114,6 +130,13 @@ class ClaudeCodeSession:
     @property
     def pid(self) -> int | None:
         return self._proc.pid if self._proc else None
+
+    @property
+    def alive(self) -> bool:
+        """The claude process is running and this session can take another prompt."""
+        p = self._proc
+        return (p is not None and p.returncode is None
+                and not (self._closed or self._aborted or self._cancelling or self._stopping))
 
     @property
     def stderr_tail(self) -> str:
@@ -275,12 +298,8 @@ class ClaudeCodeSession:
         if self._status() == "running":
             return
         self._failed = False
-        self.runtime.store.update_run(self.run_id, status="running")
-        # TODO(Task 3): a Runtime.reopen_external_run() would own this bookkeeping
-        self.runtime._external.add(self.run_id)
-        self.runtime.register_cancel_hook(self.run_id, self.cancel)
-        self._publish("run_started", resumed=True, external=True, provider=SOURCE,
-                      model=self.model_alias)
+        self.runtime.reopen_external_run(self.run_id, cancel_hook=self.cancel, provider=SOURCE,
+                                         model=self.model_alias)
 
     def _error(self, message: str, **extra: Any) -> None:
         self._failed = True

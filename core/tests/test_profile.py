@@ -80,7 +80,9 @@ def keys(**src):
     ({"openai": "keychain"}, False, False, False, True, True, True, ["onshape"]),
     ({}, True, False, False, True, True, True, ["onshape"]),
     ({}, False, True, True, True, True, True, []),
-    ({"onshape": "keychain"}, False, False, True, True, False, False, ["model"]),
+    # complete = the user finished (or skipped) the wizard; a missing model is only a notice
+    ({"onshape": "keychain"}, False, False, True, True, False, True, ["model"]),
+    ({}, False, False, False, True, False, True, ["model", "onshape"]),
 ])
 async def test_setup_truth_table(tmp_path, keysrc, claude, local, onshape, done, has_model,
                                  complete, missing):

@@ -102,7 +102,9 @@ async def probe_local(urls: list[str]) -> bool:
 async def setup_state(home: Path, keys: KeyStatusFn, claude: ClaudeStatusFn | None = None,
                       local_probe: LocalProbeFn = probe_local) -> SetupState:
     """has_model: any API key, a signed-in Claude Code, or a local endpoint that answers.
-    complete: has_model and the user finished setup. Onshape is optional for completeness."""
+    complete: the user finished (or skipped) the setup wizard; a missing model is reported in
+    has_model/missing (the app shows a "connect a model" notice), so local-only users are not
+    sent through the wizard on every launch. Onshape is optional."""
     profile = load_profile(home)
     status = keys()
     key_model = any(src != "none" for v, src in status.items()
@@ -128,5 +130,5 @@ async def setup_state(home: Path, keys: KeyStatusFn, claude: ClaudeStatusFn | No
         missing.append("onshape")
     if not done:
         missing.append("profile")
-    return SetupState(complete=has_model and done, has_model=has_model, has_onshape=has_onshape,
+    return SetupState(complete=done, has_model=has_model, has_onshape=has_onshape,
                       missing=missing)

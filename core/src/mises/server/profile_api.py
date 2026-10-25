@@ -7,6 +7,7 @@ never echo the submitted value (FastAPI's default 422 body includes the input).
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import time
@@ -27,6 +28,9 @@ if TYPE_CHECKING:
     from ..runtime import Runtime
 
 log = logging.getLogger(__name__)
+
+LOCAL_TEST_TIMEOUT_S = 3.0
+_MAX_URL = 2048
 
 SERVICE = "mises"
 KEY_VENDORS = [*VENDORS, "onshape"]
@@ -83,9 +87,12 @@ def build_profile_router(runtime: Runtime, claude_status: ClaudeStatusFn | None 
             return _invalid("body must be JSON")
         if not isinstance(patch, dict):
             return _invalid("body must be a JSON object")
-        merged = {**_profile().model_dump(), **patch}
+        current = _profile()
+        merged = {**current.model_dump(), **patch}
         try:
-            if "setup_completed_at" in patch:
+            # the app sends the whole profile back: an unchanged value is fine
+            if ("setup_completed_at" in patch
+                    and patch["setup_completed_at"] != current.setup_completed_at):
                 raise ValueError("setup_completed_at is set by POST /setup/complete")
             p = Profile.model_validate(merged)
         except (ValidationError, ValueError) as e:
@@ -166,10 +173,58 @@ def build_profile_router(runtime: Runtime, claude_status: ClaudeStatusFn | None 
             out["user_name"] = name[:100]
         return out
 
+    # ---- local model servers
+    @router.post("/local/test")
+    async def local_test(request: Request):
+        """Does an OpenAI-compatible server answer at this URL? Same rule as the profile's
+        local_endpoints (http(s) on localhost/127.0.0.1 only); nothing is saved."""
+        try:
+            body = await request.json()
+        except ValueError:
+            raise _bad("body must be JSON") from None
+        url = body.get("url") if isinstance(body, dict) else None
+        if not isinstance(url, str) or not url or len(url) > _MAX_URL:
+            raise _bad("url is required", "send {\"url\": \"http://localhost:11434/v1\"}")
+        try:
+            Profile(local_endpoints={"test": url})
+        except ValidationError:
+            raise _bad("a local model URL must be http(s) on this Mac (localhost or 127.0.0.1)",
+                       "e.g. http://localhost:11434/v1") from None
+        try:
+            ok = bool(await asyncio.wait_for(local_probe([url]), LOCAL_TEST_TIMEOUT_S))
+        except Exception:  # noqa: BLE001 - timeout or probe failure: it did not answer
+            ok = False
+        return {"ok": True} if ok else {"ok": False, "error": "unreachable"}
+
+    # ---- the user's Claude Code (status from `claude auth status`; sign-in is Anthropic's)
+    def _claude_status_body(info, auth) -> dict:
+        return {"installed": bool(info.path), "version": info.version,
+                "signed_in": bool(info.path) and auth.signed_in,
+                "auth_method": auth.auth_method if info.path else None}
+
+    @router.get("/claude-code/status")
+    async def claude_code_status():
+        return _claude_status_body(*await runtime.claude_status())
+
+    @router.post("/claude-code/login")
+    async def claude_code_login():
+        """Starts `claude auth login` (it opens the browser) and returns at once."""
+        started = await runtime.start_claude_login()
+        return {"started": started}
+
+    @router.post("/claude-code/logout")
+    async def claude_code_logout():
+        await runtime.claude_logout()
+        return _claude_status_body(*await runtime.claude_status())
+
+    async def _claude_signed_in() -> bool:
+        return (await runtime.claude_status())[1].signed_in
+
     # ---- setup
     async def _setup() -> SetupState:
         keys = await run_in_threadpool(lambda: {v: _source(v) for v in KEY_VENDORS})
-        return await setup_state(runtime.home, lambda: keys, claude_status, local_probe)
+        return await setup_state(runtime.home, lambda: keys, claude_status or _claude_signed_in,
+                                 local_probe)
 
     @router.get("/setup")
     async def get_setup():
