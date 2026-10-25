@@ -75,8 +75,11 @@ async def test_start_passes_exactly_the_documented_flags(rt, claude_bin):
     argv = _log(rt, s.run_id)[0]["argv"]
     assert argv == [
         "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
-        "--include-partial-messages", "--tools", "", "--strict-mcp-config",
-        "--mcp-config", str(wd / "claude-mcp.json"), "--allowedTools", "mcp__mises__*",
+        "--include-partial-messages", "--tools", "Agent", "--strict-mcp-config",
+        "--mcp-config", str(wd / "claude-mcp.json"), "--allowedTools", "mcp__mises__*,Agent",
+        "--disallowedTools", "Agent(general-purpose),Agent(Explore),Agent(Plan),Agent(claude),"
+        "Agent(statusline-setup),Agent(claude-code-guide)",
+        "--setting-sources", "",
         "--append-system-prompt-file", str(wd / "mises-rules.md"),
         "--agents", str(wd / "claude-agents.json"), "--session-id", s.session_id,
         "--model", "sonnet", "--name", f"Mises {s.run_id}"]
@@ -88,11 +91,19 @@ async def test_start_passes_exactly_the_documented_flags(rt, claude_bin):
                                    "MISES_MCP_TOKEN": "mcp-only-t", "MISES_HOME": str(rt.home)}
     agents = json.loads((wd / "claude-agents.json").read_text())
     assert set(agents) == {"designer", "verifier"}
+    # explicit mises tool names, no wildcard; orchestration tools are not served over MCP
+    tools = agents["designer"]["tools"]
+    assert "mcp__mises__mirror_part_list" in tools and "mcp__mises__orchestrator_run" not in tools
+    assert all(t.startswith("mcp__mises__") and "*" not in t for t in tools)
     assert "Mises harness rules" in (wd / "mises-rules.md").read_text()
     # the token file is gone once the session is closed
     assert not (wd / "claude-mcp.json").exists()
     env_keys = set(_log(rt, s.run_id)[0]["env_keys"])
-    assert "FAKE_CLAUDE_STATE" not in env_keys          # environment is an allowlist
+    assert env_keys <= {"HOME", "LOGNAME", "PATH", "SHELL", "TERM", "USER", "LANG", "LC_ALL",
+                        "TMPDIR", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME",
+                        "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "https_proxy", "http_proxy",
+                        "no_proxy", "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "CLAUDE_CONFIG_DIR",
+                        "PWD", "SHLVL", "_", "__CF_USER_TEXT_ENCODING", "OLDPWD"}
 
 
 async def test_text_streams_as_message_step_and_deltas(rt, claude_bin, caplog):
@@ -317,3 +328,81 @@ async def test_not_installed_refuses(rt):
         await s.start()
     assert ei.value.code == "not_found"
     assert rt.store.get_run(rid).status == "failed"
+
+
+async def _aborted_run(rt, init: dict | list | None, prompt: str):
+    s = _new(rt)
+    if init is not None:
+        (rt.workdir(s.run_id) / "fake_init.json").write_text(json.dumps(init))
+    await s.start()
+    pid = s.pid
+    with pytest.raises(MisesError):
+        await asyncio.wait_for(s.prompt(prompt), 10)
+    mcp_gone = not (rt.workdir(s.run_id) / "claude-mcp.json").exists()
+    await s.close()
+    await _wait_for(lambda: _dead(pid))
+    assert rt.store.get_run(s.run_id).status == "failed"
+    return s, mcp_gone
+
+
+async def test_output_before_init_fails_closed(rt, claude_bin):
+    s, mcp_gone = await _aborted_run(rt, {"skip": True}, "hello")
+    errs = _errors(rt, s.run_id)
+    assert errs and "confinement unverified" in errs[0]["message"]
+    assert mcp_gone                       # the token file goes with the aborted process
+    assert not [st for st in rt.store.steps(s.run_id, [StepKind.MESSAGE])
+                if st.payload["role"] == "assistant"]
+
+
+async def test_tool_use_before_init_fails_closed(rt, claude_bin):
+    s, _ = await _aborted_run(rt, {"skip": True}, "rogue")
+    assert "confinement unverified" in _errors(rt, s.run_id)[0]["message"]
+
+
+async def test_mises_server_not_connected_fails(rt, claude_bin):
+    s, _ = await _aborted_run(rt, {"mcp_servers": [{"name": "mises", "status": "failed"}]},
+                              "hello")
+    msg = _errors(rt, s.run_id)[0]["message"]
+    assert "did not connect" in msg and "failed" in msg
+
+
+async def test_mises_server_missing_fails(rt, claude_bin):
+    s, _ = await _aborted_run(rt, {"mcp_servers": []}, "hello")
+    assert "missing" in _errors(rt, s.run_id)[0]["message"]
+
+
+async def test_builtin_tool_use_fails_the_run(rt, claude_bin):
+    s, mcp_gone = await _aborted_run(rt, None, "rogue")
+    msg = _errors(rt, s.run_id)[0]["message"]
+    assert "'Bash'" in msg and "outside the Mises tools" in msg
+    assert mcp_gone
+
+
+async def test_builtin_subagent_type_fails_the_run(rt, claude_bin):
+    s, _ = await _aborted_run(rt, None, "agent:general-purpose")
+    assert "'general-purpose'" in _errors(rt, s.run_id)[0]["message"]
+
+
+async def test_unknown_agent_in_init_fails_the_run(rt, claude_bin):
+    s, _ = await _aborted_run(rt, {"agents": ["designer", "verifier", "my-user-agent"]}, "hello")
+    assert "agent my-user-agent" in _errors(rt, s.run_id)[0]["message"]
+
+
+async def test_mises_subagent_is_allowed(rt, claude_bin):
+    s = _new(rt)
+    await s.start()
+    try:
+        text = await asyncio.wait_for(s.prompt("agent:verifier"), 10)
+    finally:
+        await s.close()
+    assert text == "delegated to verifier"
+    assert rt.store.get_run(s.run_id).status == "done" and not _errors(rt, s.run_id)
+
+
+async def test_mcp_file_removed_when_claude_exits_on_its_own(rt, claude_bin):
+    s = _new(rt)
+    await s.start()
+    with pytest.raises(MisesError):
+        await asyncio.wait_for(s.prompt("crash"), 10)
+    assert not (rt.workdir(s.run_id) / "claude-mcp.json").exists()
+    await s.close()

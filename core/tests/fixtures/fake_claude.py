@@ -3,10 +3,13 @@
 Run through a `claude` shim on PATH. Never touches the network or any real Claude config.
 
 - `--version`                -> "2.1.310 (Claude Code)"
-- `auth status`              -> JSON per $FAKE_CLAUDE_STATE (a file holding signed_in |
-                                signed_out | malformed; missing = signed_out)
+- `auth status`              -> JSON per $HOME/fake-claude-state (signed_in | signed_out |
+                                malformed; missing = signed_out); logs its env keys to
+                                $HOME/fake-claude-status-env.json
 - `auth login [--console]`   -> waits a moment, prints a token-looking string on stdout and
-                                stderr (Mises must never keep it), writes signed_in to the state
+                                stderr (Mises must never keep it), writes signed_in to the
+                                state, its argv to $HOME/fake-claude-login-args.json
+  (state lives under $HOME because Mises runs claude with an allowlisted environment)
 - `-p ...` session           -> logs argv to <cwd>/fake_claude.jsonl, then reads stream-json
                                 user messages from stdin. The prompt text picks the behaviour:
     hello         partial text deltas, an assistant message and a success result
@@ -16,7 +19,10 @@ Run through a `claude` shim on PATH. Never touches the network or any real Claud
     crash         prints to stderr (with a token-looking string) and exits 3 mid-turn
     hang          ignores SIGTERM and never answers
     peek:<path>   tries to read <path>; answers "peek:denied" or "peek:read"
-  <cwd>/fake_init.json, if present, is the tools list reported in system/init.
+    rogue         an assistant tool_use of the built-in Bash tool
+    agent:<type>  an assistant tool_use of the Agent tool with that subagent_type
+  <cwd>/fake_init.json, if present, overrides system/init: a list (the tools) or an object
+  with any of "tools", "mcp_servers", "agents", and "skip": true (emit no init at all).
 """
 from __future__ import annotations
 
@@ -40,12 +46,19 @@ def flag(argv: list[str], name: str) -> str | None:
     return argv[argv.index(name) + 1] if name in argv else None
 
 
+def home_file(name: str) -> Path | None:
+    h = os.environ.get("HOME")
+    return Path(h) / name if h else None
+
+
 def state_file() -> Path | None:
-    p = os.environ.get("FAKE_CLAUDE_STATE")
-    return Path(p) if p else None
+    return home_file("fake-claude-state")
 
 
 def auth_status() -> int:
+    envlog = home_file("fake-claude-status-env.json")
+    if envlog:
+        envlog.write_text(json.dumps(sorted(os.environ)))
     sf = state_file()
     state = sf.read_text().strip() if sf and sf.exists() else "signed_out"
     if state == "malformed":
@@ -68,8 +81,9 @@ def auth_login(argv: list[str]) -> int:
     sf = state_file()
     if sf:
         sf.write_text("signed_in")
-    if os.environ.get("FAKE_CLAUDE_LOGIN_ARGS"):
-        Path(os.environ["FAKE_CLAUDE_LOGIN_ARGS"]).write_text(json.dumps(argv))
+    args = home_file("fake-claude-login-args.json")
+    if args:
+        args.write_text(json.dumps(argv))
     return 0
 
 
@@ -99,13 +113,19 @@ class Session:
         if self.inited:
             return
         self.inited = True
-        tools = ["mcp__mises__mirror_part_list", "mcp__mises__mirror_measure", "EndConversation"]
+        cfg = {"tools": ["Agent", "mcp__mises__mirror_part_list", "mcp__mises__mirror_measure",
+                         "EndConversation"],
+               "mcp_servers": [{"name": "mises", "status": "connected"}],
+               "agents": ["designer", "verifier", "general-purpose", "Explore", "Plan"]}
         custom = self.cwd / "fake_init.json"
         if custom.exists():
-            tools = json.loads(custom.read_text())
+            c = json.loads(custom.read_text())
+            cfg.update({"tools": c} if isinstance(c, list) else c)
+        if cfg.get("skip"):
+            return
         emit({"type": "system", "subtype": "init", "session_id": self.session_id,
-              "model": self.model, "tools": tools, "cwd": str(self.cwd),
-              "mcp_servers": [{"name": "mises", "status": "connected"}],
+              "model": self.model, "tools": cfg["tools"], "cwd": str(self.cwd),
+              "mcp_servers": cfg["mcp_servers"], "agents": cfg["agents"],
               "claude_code_version": "2.1.310", "permissionMode": "default",
               "uuid": "u-init"})
 
@@ -154,6 +174,17 @@ class Session:
         elif text.startswith("hang"):
             signal.signal(signal.SIGTERM, signal.SIG_IGN)
             await asyncio.sleep(3600)
+        elif text.startswith("rogue"):
+            self.assistant([{"type": "tool_use", "id": "toolu_9", "name": "Bash",
+                             "input": {"command": "cat ~/.ssh/id_rsa"}}])
+            self.result("ran bash")
+        elif text.startswith("agent:"):
+            kind = text.split(":", 1)[1].strip()
+            self.assistant([{"type": "tool_use", "id": "toolu_a", "name": "Agent",
+                             "input": {"subagent_type": kind, "description": "check",
+                                       "prompt": "measure the part"}}])
+            self.assistant([{"type": "text", "text": f"delegated to {kind}"}])
+            self.result(f"delegated to {kind}")
         elif text.startswith("peek:"):
             outs = []
             for word in text.split():

@@ -20,6 +20,8 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ..acp_host.session import agent_environment
+
 VERSION_TIMEOUT_S = 10
 STATUS_TIMEOUT_S = 15
 STDERR_TAIL_BYTES = 2048
@@ -31,9 +33,22 @@ FALLBACK_DIRS: tuple[str, ...] = (
 )
 
 _TOKENISH = re.compile(
-    r"sk-ant-[A-Za-z0-9_\-]+"                      # Anthropic keys / OAuth tokens
-    r"|[A-Za-z0-9_\-\.+/=]{32,}"                   # any long opaque run (JWTs, codes, hashes)
+    r"sk-ant-[A-Za-z0-9_\-]+"                       # Anthropic keys / OAuth tokens: always
+    # any other long opaque run (JWT parts, codes, hashes), unless it is a path segment: a run
+    # next to "/" is kept, so file paths in error messages stay readable
+    r"|(?<![/A-Za-z0-9_\-.+=])[A-Za-z0-9_\-.+=]{32,}(?![/A-Za-z0-9_\-.+=])"
 )
+
+
+def claude_environment() -> dict[str, str]:
+    """The environment every `claude` Mises starts gets (status, login and runs alike, so the
+    status shown matches what a run sees): the acp agent allowlist (HOME, PATH, locale,
+    proxies...) plus CLAUDE_CONFIG_DIR when the user set it. Never synthesized: setting it
+    changes which Keychain entry Claude Code uses. No API keys or tokens are passed."""
+    env = agent_environment()
+    if os.environ.get("CLAUDE_CONFIG_DIR"):
+        env["CLAUDE_CONFIG_DIR"] = os.environ["CLAUDE_CONFIG_DIR"]
+    return env
 
 
 def redact(text: str) -> str:
@@ -63,6 +78,7 @@ NOT_SIGNED_IN = AuthStatus(signed_in=False, auth_method="none", email=None, conf
 def _version(path: str) -> str | None:
     try:
         r = subprocess.run([path, "--version"], capture_output=True, text=True,
+                           env=claude_environment(),
                            timeout=VERSION_TIMEOUT_S, stdin=subprocess.DEVNULL)
     except (OSError, subprocess.SubprocessError):
         return None
@@ -111,7 +127,8 @@ async def auth_status(info: ClaudeInfo) -> AuthStatus:
         return NOT_SIGNED_IN
     try:
         proc = await asyncio.create_subprocess_exec(
-            info.path, "auth", "status", stdin=asyncio.subprocess.DEVNULL,
+            info.path, "auth", "status", env=claude_environment(),
+            stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
             start_new_session=True)
     except OSError:
@@ -182,7 +199,8 @@ async def start_login(info: ClaudeInfo, *, console: bool = False) -> LoginHandle
         raise FileNotFoundError("claude is not installed")
     argv = [info.path, "auth", "login", *(["--console"] if console else [])]
     proc = await asyncio.create_subprocess_exec(
-        *argv, stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.DEVNULL,
+        *argv, env=claude_environment(), stdin=asyncio.subprocess.DEVNULL,
+        stdout=asyncio.subprocess.DEVNULL,
         stderr=asyncio.subprocess.PIPE, start_new_session=True)
     h = LoginHandle(info=info, proc=proc)
     h._pump = asyncio.create_task(h._read_stderr())

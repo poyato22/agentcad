@@ -27,14 +27,21 @@ def claude_bin(tmp_path, monkeypatch):
     shim = make_shim(tmp_path / "bin")
     monkeypatch.setenv("PATH", f"{shim.parent}{os.pathsep}/usr/bin:/bin")
     monkeypatch.setattr(detect, "FALLBACK_DIRS", ())
-    state = tmp_path / "fake-claude-state"
-    monkeypatch.setenv("FAKE_CLAUDE_STATE", str(state))
+    # the fake keeps its state under $HOME: Mises runs claude with an allowlisted environment
+    user_home = tmp_path / "userhome"
+    user_home.mkdir()
+    monkeypatch.setenv("HOME", str(user_home))
     return shim
 
 
 @pytest.fixture
-def auth_state(claude_bin, tmp_path):
-    return tmp_path / "fake-claude-state"
+def user_home(claude_bin, tmp_path):
+    return tmp_path / "userhome"
+
+
+@pytest.fixture
+def auth_state(user_home):
+    return user_home / "fake-claude-state"
 
 
 @pytest.fixture

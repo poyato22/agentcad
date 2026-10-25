@@ -57,29 +57,46 @@ async def test_auth_status_not_installed():
     assert st.signed_in is False and st.raw_ok is False and st.auth_method == "none"
 
 
-async def test_login_waits_and_rechecks_without_keeping_stdout(claude_bin, auth_state, tmp_path,
-                                                               monkeypatch):
-    args_file = tmp_path / "login-args.json"
-    monkeypatch.setenv("FAKE_CLAUDE_LOGIN_ARGS", str(args_file))
+async def test_login_waits_and_rechecks_without_keeping_stdout(claude_bin, auth_state, user_home):
     auth_state.write_text("signed_out")
     handle = await start_login(find_claude())
     st = await handle.wait(timeout=10)
     assert st.signed_in is True and handle.returncode == 0
-    assert json.loads(args_file.read_text()) == ["auth", "login"]
+    assert json.loads((user_home / "fake-claude-login-args.json").read_text()) == ["auth", "login"]
     # stdout is discarded; the stderr tail is kept with token-looking strings redacted
     assert LEAK not in repr(vars(handle)) and LEAK not in handle.stderr_tail
     assert "[redacted]" in handle.stderr_tail
 
 
-async def test_login_console(claude_bin, auth_state, tmp_path, monkeypatch):
-    args_file = tmp_path / "login-args.json"
-    monkeypatch.setenv("FAKE_CLAUDE_LOGIN_ARGS", str(args_file))
+async def test_login_console(claude_bin, auth_state, user_home):
     handle = await start_login(find_claude(), console=True)
     await handle.wait(timeout=10)
-    assert json.loads(args_file.read_text()) == ["auth", "login", "--console"]
+    assert json.loads((user_home / "fake-claude-login-args.json").read_text()) == [
+        "auth", "login", "--console"]
+
+
+async def test_status_runs_with_the_session_environment_allowlist(claude_bin, auth_state,
+                                                                   user_home, monkeypatch):
+    # the status Mises shows must match what a run sees: same allowlisted environment
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-api03-not-for-claude")
+    monkeypatch.setenv("SOME_OTHER_VAR", "x")
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(user_home / ".claude-work"))
+    auth_state.write_text("signed_in")
+    await auth_status(find_claude())
+    keys = set(json.loads((user_home / "fake-claude-status-env.json").read_text()))
+    assert "ANTHROPIC_API_KEY" not in keys and "SOME_OTHER_VAR" not in keys
+    assert {"HOME", "PATH", "CLAUDE_CONFIG_DIR"} <= keys
 
 
 def test_redact():
     text = f"x {LEAK} y sk-ant-api03-short_but_key-ish z ok"
     out = detect.redact(text)
     assert LEAK not in out and "sk-ant-api03" not in out and out.endswith("z ok")
+
+
+def test_redact_keeps_slash_led_paths():
+    path = ("/Users/someone/Library/Application Support/Mises/runs/"
+            "0123456789abcdef0123456789abcdef/claude-mcp.json")
+    text = f"error reading {path}: denied"
+    assert detect.redact(text) == text
+    assert detect.redact(f"{path} {LEAK}") == f"{path} [redacted]"

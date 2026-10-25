@@ -1,15 +1,21 @@
 """ClaudeCodeSession: the user's own `claude` binary, run headless as a Mises agent.
 
-Mises spawns `claude -p` with stream-json in and out, no built-in tools (`--tools ""`), only the
-`mises` MCP server (`--strict-mcp-config --mcp-config`, a stdio proxy bound to this run) and
-`--allowedTools "mcp__mises__*"`, so every action goes through the Gate (which records the
-tool_call Steps and raises approval cards for irreversible actions). The process runs under
+Mises spawns `claude -p` with stream-json in and out; the only built-in tool is Agent
+(`--tools "Agent"`, for the Mises designer/verifier subagents; Claude Code's own subagent
+types are denied), the only MCP server is `mises` (`--strict-mcp-config --mcp-config`, a stdio
+proxy bound to this run), no user/project/local settings load (`--setting-sources ""`: no
+user hooks, plugins, CLAUDE.md or permission rules), and `--allowedTools
+"mcp__mises__*,Agent"`. So every action goes through the Gate (which records the tool_call
+Steps and raises approval cards for irreversible actions). The process runs under
 sandbox-exec (`platform.claude_sandbox_profile`): the Mises home is unreadable except the run's
 workdir; Claude Code's own config dir and the network stay available. Mises never touches
 Claude's credentials: sign-in is `claude auth login`'s business (see detect.py).
 
 Stream-json mapping (code.claude.com/docs/en/headless):
-- `system/init`            -> decision Step; tools other than mcp__mises__* fail the run
+- `system/init`            -> decision Step; a tool, agent or MCP server outside the allowed
+                              set, or `mises` not connected, fails the run
+- anything before a valid init, or a tool_use outside the allowed set, fails the run too
+  (the confinement tripwire fails closed if Claude Code's output changes)
 - `stream_event` deltas    -> text_delta / thought_delta events (live UI)
 - `assistant`              -> message Step (text); tool_use -> lightweight tool_call event
 - `user` tool_result       -> lightweight tool_result event (the Gate already has the Steps)
@@ -33,20 +39,28 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from ..acp_host.session import agent_environment
 from ..events import Event
 from ..platform import claude_sandboxed_command
 from ..types import ErrorCode, MisesError, StepKind
-from .detect import ClaudeInfo, redact
-from .prompts import agents_json, context_block, mises_rules_md
+from ..server.mcp_server import INTERNAL_ONLY
+from .detect import ClaudeInfo, claude_environment, redact
+from .prompts import SUBAGENTS, agents_json, context_block, mises_rules_md
 
 log = logging.getLogger(__name__)
 
 SOURCE = "claude-code"
 MISES_TOOL_PREFIX = "mcp__mises__"
-# Built-ins Claude Code keeps even with --tools "": per the tools reference, EndConversation
-# can't be removed while any other tool remains, and it only ends the session.
-UNREMOVABLE_BUILTINS = frozenset({"EndConversation"})
+# Built-ins a run may have: Agent (Task is its pre-2.1.63 name) for the Mises subagents, and
+# EndConversation, which per the tools reference no --tools list can remove while any other
+# tool remains (it only ends the session).
+ALLOWED_BUILTINS = frozenset({"Agent", "Task", "EndConversation"})
+AGENT_TOOLS = frozenset({"Agent", "Task"})
+# Claude Code's own subagent types (sub-agents docs: Explore, Plan, general-purpose, plus
+# claude, statusline-setup, claude-code-guide), denied with Agent(<type>) rules.
+BUILTIN_AGENT_TYPES = ("general-purpose", "Explore", "Plan", "claude", "statusline-setup",
+                       "claude-code-guide")
+ALLOWED_AGENTS = frozenset(SUBAGENTS) | frozenset(BUILTIN_AGENT_TYPES)
+UNVERIFIED = "Claude Code output not recognised — confinement unverified"
 STDIO_LIMIT = 50 * 1024 * 1024
 STDERR_KEEP_BYTES = 8192
 STDERR_TAIL_CHARS = 2048
@@ -58,16 +72,6 @@ MCP_FILE, AGENTS_FILE, RULES_FILE = "claude-mcp.json", "claude-agents.json", "mi
 def default_config_dir() -> Path:
     env = os.environ.get("CLAUDE_CONFIG_DIR")
     return Path(env).expanduser() if env else Path.home() / ".claude"
-
-
-def claude_environment() -> dict[str, str]:
-    """The acp agent allowlist (HOME, PATH, locale, proxies...) plus CLAUDE_CONFIG_DIR when the
-    user set it. Never synthesized: setting it changes which Keychain entry Claude Code uses.
-    No API keys or tokens are added."""
-    env = agent_environment()
-    if os.environ.get("CLAUDE_CONFIG_DIR"):
-        env["CLAUDE_CONFIG_DIR"] = os.environ["CLAUDE_CONFIG_DIR"]
-    return env
 
 
 def _int(v: Any) -> int:
@@ -99,7 +103,8 @@ class ClaudeCodeSession:
         self._turn: asyncio.Future[str] | None = None
         self._turn_text: list[str] = []
         self._first_sent = False
-        self._aborted = False          # init check failed: ignore anything else it says
+        self._aborted = False          # confinement check failed: ignore anything else it says
+        self._init_ok = False          # a valid system/init has been seen
         self._stopping = False         # we are stopping it: its exit is not a crash
         self._cancelling = False
         self._failed = False
@@ -128,7 +133,8 @@ class ClaudeCodeSession:
             defn = self.runtime.definitions.get(self.runtime.store.get_run(self.run_id).agent)
             role = defn.body if defn is not None else None
         (self.workdir / RULES_FILE).write_text(mises_rules_md(role))
-        (self.workdir / AGENTS_FILE).write_text(json.dumps(agents_json(), indent=1))
+        tools = [t.name for t in self.runtime.registry.list() if t.name not in INTERNAL_ONLY]
+        (self.workdir / AGENTS_FILE).write_text(json.dumps(agents_json(tools), indent=1))
         path = self.workdir / MCP_FILE
         path.unlink(missing_ok=True)
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -136,12 +142,16 @@ class ClaudeCodeSession:
             json.dump(self.mcp_config(), f)
 
     def claude_args(self) -> list[str]:
-        """Exactly the documented invocation (global constraints); resume swaps --session-id."""
+        """The global-constraints invocation with the controller's rulings A (Agent tool for the
+        Mises subagents only) and B (no user/project/local settings); resume swaps
+        --session-id for --resume."""
         wd = self.workdir
         return [
             "-p", "--input-format", "stream-json", "--output-format", "stream-json",
-            "--verbose", "--include-partial-messages", "--tools", "", "--strict-mcp-config",
-            "--mcp-config", str(wd / MCP_FILE), "--allowedTools", "mcp__mises__*",
+            "--verbose", "--include-partial-messages", "--tools", "Agent", "--strict-mcp-config",
+            "--mcp-config", str(wd / MCP_FILE), "--allowedTools", "mcp__mises__*,Agent",
+            "--disallowedTools", ",".join(f"Agent({t})" for t in BUILTIN_AGENT_TYPES),
+            "--setting-sources", "",
             "--append-system-prompt-file", str(wd / RULES_FILE),
             "--agents", str(wd / AGENTS_FILE),
             *(["--resume", self.session_id] if self.resumed else ["--session-id", self.session_id]),
@@ -369,6 +379,7 @@ class ClaudeCodeSession:
         rc = proc.returncode if proc else None
         with contextlib.suppress(ProcessLookupError, PermissionError, TypeError):
             os.killpg(proc.pid, signal.SIGKILL)
+        (self.workdir / MCP_FILE).unlink(missing_ok=True)
         if self._stopping or self._aborted:
             return
         turn_open = self._turn is not None and not self._turn.done()
@@ -381,6 +392,9 @@ class ClaudeCodeSession:
 
     def _on_message(self, msg: dict) -> None:
         kind = msg.get("type")
+        if not self._init_ok and kind in ("assistant", "stream_event", "user"):
+            self._abort(f"{UNVERIFIED}: a {kind!r} message arrived before system/init")
+            return
         if kind == "system":
             self._on_system(msg)
         elif kind == "stream_event":
@@ -405,26 +419,64 @@ class ClaudeCodeSession:
             self.runtime.store.append_step(self.run_id, StepKind.DECISION,
                                            {"claude_code": "init", **self.init_info})
             bad = [t for t in tools
-                   if not t.startswith(MISES_TOOL_PREFIX) and t not in UNREMOVABLE_BUILTINS]
+                   if not t.startswith(MISES_TOOL_PREFIX) and t not in ALLOWED_BUILTINS]
             bad += [f"mcp server {s}" for s in servers if s != "mises"]
+            agents = msg.get("agents")
+            if isinstance(agents, list):
+                bad += [f"agent {a}" for a in agents if a not in ALLOWED_AGENTS]
             if bad:
-                self._abort(f"unexpected tools in Claude Code session: {', '.join(bad)}; "
-                            "only mcp__mises__* tools are allowed")
+                self._abort(f"unexpected tools in Claude Code session: {', '.join(map(str, bad))}"
+                            "; only mcp__mises__* tools and the Mises agents are allowed")
+                return
+            mises = [s for s in msg.get("mcp_servers") or []
+                     if isinstance(s, dict) and s.get("name") == "mises"]
+            status = mises[0].get("status") if mises else "missing"
+            if status != "connected":
+                self._abort(f"the Mises tools did not connect to Claude Code (mises server: "
+                            f"{status}); the run cannot act")
+                return
+            self._init_ok = True
         elif sub == "api_retry":
             self._publish("retry", source=SOURCE, attempt=msg.get("attempt"),
                           error=msg.get("error"), error_status=msg.get("error_status"))
+
+    def _tool_allowed(self, name: Any, tool_input: Any) -> str | None:
+        """None if a tool_use is within the confinement, else what it tried to use."""
+        if not isinstance(name, str):
+            return "a tool without a name"
+        if name.startswith(MISES_TOOL_PREFIX) or name == "EndConversation":
+            return None
+        if name in AGENT_TOOLS:
+            kind = tool_input.get("subagent_type") if isinstance(tool_input, dict) else None
+            if kind in SUBAGENTS:
+                return None
+            return f"the Agent tool with subagent type {kind!r}"
+        return f"the tool {name!r}"
 
     def _abort(self, message: str) -> None:
         self._aborted = True
         self._error(message)
         self._kill_group(signal.SIGKILL)
+        (self.workdir / MCP_FILE).unlink(missing_ok=True)
         self._fail_turn(MisesError(ErrorCode.DENIED, message,
                                    hint="check the user's Claude Code settings and plugins"))
         self._finish("failed")
 
     def _on_partial(self, msg: dict) -> None:
         ev = msg.get("event")
-        if not isinstance(ev, dict) or ev.get("type") != "content_block_delta":
+        if not isinstance(ev, dict):
+            return
+        if ev.get("type") == "content_block_start":
+            block = ev.get("content_block") or {}
+            if isinstance(block, dict) and block.get("type") == "tool_use":
+                # its input streams later; only the name can be checked here
+                name = block.get("name")
+                if not (isinstance(name, str) and (name.startswith(MISES_TOOL_PREFIX)
+                                                   or name in ALLOWED_BUILTINS)):
+                    self._abort(f"Claude Code tried to use {self._tool_allowed(name, None)}, "
+                                "outside the Mises tools")
+            return
+        if ev.get("type") != "content_block_delta":
             return
         delta = ev.get("delta") or {}
         parent = msg.get("parent_tool_use_id")
@@ -444,6 +496,10 @@ class ClaudeCodeSession:
             if block.get("type") == "text" and isinstance(block.get("text"), str):
                 texts.append(block["text"])
             elif block.get("type") == "tool_use":
+                why = self._tool_allowed(block.get("name"), block.get("input"))
+                if why is not None:
+                    self._abort(f"Claude Code tried to use {why}, outside the Mises tools")
+                    return
                 # the Gate records mises tool calls as Steps; this is only for the live UI
                 self._publish("tool_call", call_id=block.get("id"), name=block.get("name"),
                               source=SOURCE)
@@ -463,6 +519,9 @@ class ClaudeCodeSession:
                               ok=not block.get("is_error", False), source=SOURCE)
 
     def _on_result(self, msg: dict) -> None:
+        if not self._init_ok and not msg.get("is_error"):
+            self._abort(f"{UNVERIFIED}: a result arrived before system/init")
+            return
         usage = msg.get("usage") or {}
         tokens_in = (_int(usage.get("input_tokens")) + _int(usage.get("cache_read_input_tokens"))
                      + _int(usage.get("cache_creation_input_tokens")))

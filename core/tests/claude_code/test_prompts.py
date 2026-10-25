@@ -22,14 +22,20 @@ def test_rules_can_carry_the_run_role():
     assert md.index("# Mises harness rules") < md.index("# Role: designer")
 
 
-def test_agents_json_designer_and_verifier_from_builtins():
-    a = agents_json()
+def test_agents_json_lists_mises_tools_explicitly():
+    names = ["mirror_part_create", "mirror_measure", "mirror_part_list", "onshape_doc_open",
+             "ui_note", "mises_context_get"]
+    a = agents_json(names)
     assert set(a) == {"designer", "verifier"}
     defs = load_definitions()
     for name in ("designer", "verifier"):
         assert a[name]["description"] == defs[name].description
         assert defs[name].body.strip() in a[name]["prompt"]
-        assert a[name]["tools"] == ["mcp__mises__*"]
+        assert all(t.startswith("mcp__mises__") and "*" not in t for t in a[name]["tools"])
+    assert a["designer"]["tools"] == [f"mcp__mises__{n}" for n in names]
+    # the verifier keeps its own read-only list (no mirror_part_create)
+    assert a["verifier"]["tools"] == ["mcp__mises__mirror_measure", "mcp__mises__mirror_part_list",
+                                      "mcp__mises__ui_note"]
     json.dumps(a)
 
 
