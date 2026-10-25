@@ -73,6 +73,8 @@ export interface ModelsInfo { default: string; vendors: { vendor: string; key: K
 export interface CoreStatusInfo {
   core_version: string; onshape: "connected" | "not_configured"; onshape_calls_year: number;
   onshape_cap_year: number; runs_running: number; approvals_pending: number;
+  /** Core data folder (absolute path); absent on older cores. */
+  data_dir?: string | null;
 }
 
 export type Vec3 = [number, number, number];
@@ -128,6 +130,8 @@ export interface SetupState { complete: boolean; has_model: boolean; has_onshape
 
 /** POST /onshape/test: exactly one ledgered Onshape call. Wrong keys → {ok:false, error:"denied"}. */
 export interface OnshapeTestResult { ok: boolean; user_name?: string | null; error?: string | null }
+/** POST /local/test: does a local model server answer at this URL? */
+export interface LocalTestResult { ok: boolean; error?: string | null }
 
 /** GET /claude-code/status (from the user's own `claude auth status`; non-secret fields only). */
 export interface ClaudeCodeStatus { installed: boolean; version: string | null; signed_in: boolean; auth_method: string | null }

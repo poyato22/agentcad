@@ -159,3 +159,21 @@ describe("setup schemas", () => {
     expect(modelsInfoSchema.parse({ default: "a/b", vendors: [{ vendor: "claude-code", key: "signed_out", models: ["sonnet"] }, { vendor: "a", key: "env" }] }).vendors[1]).toEqual({ vendor: "a", key: "env" });
   });
 });
+
+describe("POST /local/test", () => {
+  beforeEach(async () => {
+    core = await startFakeCore({ port: 0, token: "t0k", scenario: "profile" });
+    client = new CoreClient({ baseUrl: core.url, wsUrl: core.url.replace("http", "ws") + "/events", token: core.token, owned: false });
+  });
+  afterEach(async () => { await core.stop(); });
+
+  it("answers_ok_for_a_working_endpoint_and_ok_false_for_the_rest", async () => {
+    expect(await client.testLocal("http://localhost:11434/v1")).toEqual({ ok: true });
+    expect(await client.testLocal("http://localhost:1234/v1")).toEqual({ ok: false, error: "no answer" });
+  });
+
+  it("rejects_an_empty_url", async () => {
+    const e = await failure(client.testLocal("  "));
+    expect(e.code).toBe("invalid_input");
+  });
+});
