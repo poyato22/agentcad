@@ -263,3 +263,25 @@ async def test_agent_spawn_wraps_child_answer_as_delimited_data(tmp_path):
     # what the parent model saw is the same wrapped block
     sent = json.dumps([m_.model_dump(mode="json") for m_ in prov.requests[-1].messages])
     assert "nonce=" in sent
+
+
+async def test_children_release_their_claude_session_once_collected(tmp_path, monkeypatch):
+    # orchestrated children (planner, plan tasks, agent_spawn) are not left with an idle
+    # Claude Code process waiting for a message: release_claude_session runs for each
+    prov = RoleProvider(
+        designer=[calls(tc("s1", "agent_spawn", agent="verifier", prompt="check it")),
+                  text("parent done"), text("built the bracket")],
+        planner=[calls(tc("p1", "orchestrator_submit_plan", plan=PLAN)), text("submitted")],
+        verifier=[text("spawned check ok"), text("bracket verified")])
+    rt = make(tmp_path, prov)
+    released: list[str] = []
+
+    async def release(rid):
+        released.append(rid)
+    monkeypatch.setattr(rt, "release_claude_session", release)
+    parent = await parent_run(rt)
+    kids = [r.id for r in rt.store.list_runs() if r.parent_id == parent]
+    assert len(kids) == 1 and released == kids          # agent_spawn's child
+    await rt.orchestrator.run("bracket", parent_run_id=parent)
+    kids = {r.id for r in rt.store.list_runs() if r.parent_id == parent}
+    assert set(released) == kids and len(released) == len(kids) == 4

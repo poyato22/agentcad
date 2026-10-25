@@ -1,0 +1,9 @@
+{
+  "complete": false,
+  "has_model": true,
+  "has_onshape": false,
+  "missing": [
+    "onshape",
+    "profile"
+  ]
+}

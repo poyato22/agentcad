@@ -113,11 +113,25 @@ class Orchestrator:
 
     async def _plan(self, goal: str, parent_run_id: str, model_ref: str | None) -> Plan:
         rt = self.runtime
+        pid: str | None = None
+        try:
+            pid = await self._start_planner(goal, parent_run_id, model_ref)
+            return await self._collect_plan(pid)
+        finally:
+            if pid is not None:
+                await rt.release_claude_session(pid)
+
+    async def _start_planner(self, goal: str, parent_run_id: str, model_ref: str | None) -> str:
+        rt = self.runtime
         known = set(rt.definitions) - {PLANNER}
         prompt = (f"Goal: {goal}\n\nAvailable agents for tasks: {', '.join(sorted(known))}.\n"
                   "Submit the plan with orchestrator_submit_plan.")
-        pid = await rt.start_run(PLANNER, prompt, model_ref=model_ref,
-                                 **child_policy(rt, parent_run_id, PLANNER))
+        return await rt.start_run(PLANNER, prompt, model_ref=model_ref,
+                                  **child_policy(rt, parent_run_id, PLANNER))
+
+    async def _collect_plan(self, pid: str) -> Plan:
+        rt = self.runtime
+        known = set(rt.definitions) - {PLANNER}
         problems: list[str] = []
         for attempt in range(2):
             try:
@@ -151,6 +165,8 @@ class Orchestrator:
             except asyncio.CancelledError:
                 rt.cancel(rid)
                 raise
+            finally:
+                await rt.release_claude_session(rid)
             return TaskResult(task_id=task.id, status=_result_status(res.stop_reason),  # type: ignore[arg-type]
                               output=res.final_text or res.error or "", run_id=rid)
 
@@ -205,6 +221,9 @@ async def agent_spawn(ctx: ToolContext, args: SpawnArgs) -> ToolOutput:
     except asyncio.CancelledError:
         rt.cancel(rid)
         raise
+    finally:
+        # the child's answer is collected: free its idle Claude Code process (if it has one)
+        await rt.release_claude_session(rid)
     status = _result_status(res.stop_reason)
     text = res.final_text or res.error or ""
     # the child's text is untrusted data for the parent model: delimited, never in the summary

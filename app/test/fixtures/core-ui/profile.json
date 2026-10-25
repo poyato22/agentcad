@@ -1,0 +1,12 @@
+{
+  "display_name": "",
+  "units": "mm",
+  "default_material": "PLA",
+  "default_agent": "designer",
+  "default_model": null,
+  "onshape_calls_year_cap": 2500,
+  "onshape_calls_run_cap": 200,
+  "max_parallel_agents": 2,
+  "local_endpoints": {},
+  "setup_completed_at": null
+}

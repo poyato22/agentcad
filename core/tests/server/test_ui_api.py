@@ -220,8 +220,19 @@ def test_dump_ui_fixtures(tmp_path):
     subprocess.run([sys.executable, str(core / "scripts" / "dump_ui_fixtures.py"),
                     "--out", str(out)], check=True, cwd=core, timeout=240)
     for n in ("runs.json", "steps.json", "approvals.json", "events.jsonl", "parts.json",
-              "agents.json", "models.json", "status.json", "mount_plate.glb"):
+              "agents.json", "models.json", "status.json", "mount_plate.glb",
+              # Plan 3 routes
+              "profile.json", "profile_put.json", "keys.json", "setup.json", "setup_complete.json",
+              "claude_code_status.json", "claude_code_login.json", "claude_code_logout.json",
+              "local_test.json", "onshape_test.json", "context_put.json"):
         assert (out / n).is_file(), n
+    # the stand-in Claude Code is signed in; nothing secret-looking is in any answer
+    models = json.loads((out / "models.json").read_text())
+    assert {"vendor": "claude-code", "key": "signed_in",
+            "models": ["sonnet", "opus", "haiku", "fable"]} in models["vendors"]
+    assert json.loads((out / "context_put.json").read_text())["selected_part_id"] == "mount_plate"
+    for f in out.glob("*.json"):
+        assert "sk-ant" not in f.read_text() and "secret" not in f.read_text().lower(), f.name
     approvals = json.loads((out / "approvals.json").read_text())
     assert len(approvals) == 1 and len(approvals[0]["payload_hash"]) == 64
     int(approvals[0]["payload_hash"], 16)

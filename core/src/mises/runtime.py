@@ -5,6 +5,7 @@ import asyncio
 import contextlib
 import logging
 import os
+import time
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -37,6 +38,9 @@ log = logging.getLogger(__name__)
 USER = "local"
 
 LOGIN_TIMEOUT_S = 600.0            # a `claude auth login` left open in the browser is stopped
+# GET /models and GET /setup reuse a `claude auth status` answer this young (the app asks both on
+# every screen load); /claude-code/status and run starts always ask afresh
+CLAUDE_STATUS_TTL_S = 5.0
 
 _STATUS = {"end_turn": "done", "max_tokens": "done", "cancelled": "cancelled",
            "error": "failed", "circuit_open": "failed", "max_turns": "failed"}
@@ -97,6 +101,9 @@ class Runtime:
         self.mcp_endpoint: tuple[str, str] | None = None
         self._mcp_autostart: Callable[[], Awaitable[None]] | None = None
         self._login: claude_detect.LoginHandle | None = None
+        self._claude_status_cache: tuple[float, tuple[claude_detect.ClaudeInfo,
+                                                      claude_detect.AuthStatus]] | None = None
+        self._claude_status_lock = asyncio.Lock()
         self.interrupted = self._fail_orphaned_runs()
         self._remove_stale_mcp_files()
 
@@ -201,10 +208,36 @@ class Runtime:
         return self.mcp_endpoint
 
     # ---- the user's Claude Code: status, sign-in
-    async def claude_status(self) -> tuple[claude_detect.ClaudeInfo, claude_detect.AuthStatus]:
-        info = await asyncio.to_thread(claude_detect.find_claude)
-        auth = (await claude_detect.auth_status(info)) if info.path else claude_detect.NOT_SIGNED_IN
-        return info, auth
+    async def claude_status(self, *, max_age: float = 0.0
+                            ) -> tuple[claude_detect.ClaudeInfo, claude_detect.AuthStatus]:
+        """Where `claude` is and whether it is signed in. With `max_age` > 0 an answer at most
+        that many seconds old is reused (concurrent callers share one check); 0 always asks
+        `claude auth status` again and refreshes what later cached reads see."""
+        def cached():
+            c = self._claude_status_cache
+            if max_age > 0 and c is not None and time.monotonic() - c[0] <= max_age:
+                return c[1]
+            return None
+        hit = cached()
+        if hit is not None:
+            return hit
+        async with self._claude_status_lock:
+            hit = cached()
+            if hit is not None:
+                return hit
+            info = await asyncio.to_thread(claude_detect.find_claude)
+            auth = ((await claude_detect.auth_status(info)) if info.path
+                    else claude_detect.NOT_SIGNED_IN)
+            self._claude_status_cache = (time.monotonic(), (info, auth))
+            return info, auth
+
+    async def claude_status_cached(self) -> tuple[claude_detect.ClaudeInfo,
+                                                  claude_detect.AuthStatus]:
+        """claude_status() reusing an answer up to CLAUDE_STATUS_TTL_S old (/models, /setup)."""
+        return await self.claude_status(max_age=CLAUDE_STATUS_TTL_S)
+
+    def forget_claude_status(self) -> None:
+        self._claude_status_cache = None
 
     async def _claude_ready(self) -> tuple[claude_detect.ClaudeInfo, claude_detect.AuthStatus]:
         info, auth = await self.claude_status()
@@ -225,6 +258,7 @@ class Runtime:
         if not info.path:
             raise MisesError(ErrorCode.NOT_FOUND, "Claude Code is not installed",
                              hint="install it from code.claude.com, then retry")
+        self.forget_claude_status()
         h = self._login = await claude_detect.start_login(info, console=console)
 
         async def finish() -> None:
@@ -245,7 +279,10 @@ class Runtime:
         info = await asyncio.to_thread(claude_detect.find_claude)
         if not info.path:
             raise MisesError(ErrorCode.NOT_FOUND, "Claude Code is not installed")
-        return await claude_detect.logout(info)
+        try:
+            return await claude_detect.logout(info)
+        finally:
+            self.forget_claude_status()
 
     def _track(self, task: asyncio.Task) -> None:
         self._hook_tasks.add(task)
@@ -417,6 +454,21 @@ class Runtime:
         st.cancel_requested = False
         st.task = asyncio.create_task(self._drive_claude(run_id, text, first=False))
 
+    async def release_claude_session(self, run_id: str) -> None:
+        """Close an idle Claude Code session once its result is collected (orchestrated
+        children): no `claude` process waits on stdin for a message that never comes. A later
+        message resumes it (--resume). No-op for other runs and while a turn is running."""
+        st = self._claude.get(run_id)
+        if st is None or (st.task is not None and not st.task.done()):
+            return
+        del self._claude[run_id]
+        if st.session is not None:
+            try:
+                await st.session.close()
+            except Exception:  # noqa: BLE001 - the session is dropped either way
+                log.warning("closing the Claude Code session of %s failed", run_id,
+                            exc_info=True)
+
     async def close_claude_sessions(self) -> None:
         """Close every live Claude Code session (and stop a sign-in in progress)."""
         h, self._login = self._login, None
@@ -568,8 +620,25 @@ class Runtime:
 
     async def wait(self, run_id: str) -> RunResult:
         cst = self._claude.get(run_id)
-        if cst is not None and cst.task is not None:
-            return await asyncio.shield(cst.task)
+        if cst is not None:
+            if cst.task is not None:
+                return await asyncio.shield(cst.task)
+            # no turn running: cancelled while it started, or resumed without a message
+            if cst.result is not None:
+                return cst.result
+            stop = "cancelled" if cst.cancel_requested else "end_turn"
+            return RunResult(final_text="", messages=[], stop_reason=stop,
+                             error="run cancelled" if stop == "cancelled" else None)
+        if run_id not in self._runs and self._is_claude_run(run_id):
+            # a Claude Code run this process no longer holds (released, closed, or another
+            # process's): its last turn's outcome is the run's stored status
+            status = self.store.get_run(run_id).status
+            stop = {"done": "end_turn", "cancelled": "cancelled", "failed": "error"}.get(status)
+            if stop is None:
+                raise MisesError(ErrorCode.NOT_FOUND, f"run {run_id} is not driven here",
+                                 hint="it is running in another Mises process")
+            return RunResult(final_text="", messages=[], stop_reason=stop,
+                             error=None if stop == "end_turn" else f"run {status}")
         st = self._state(run_id)
         assert st.task is not None
         return await asyncio.shield(st.task)

@@ -1,0 +1,37 @@
+[
+  {
+    "vendor": "anthropic",
+    "present": false,
+    "source": "none"
+  },
+  {
+    "vendor": "openai",
+    "present": false,
+    "source": "none"
+  },
+  {
+    "vendor": "gemini",
+    "present": false,
+    "source": "none"
+  },
+  {
+    "vendor": "openrouter",
+    "present": false,
+    "source": "none"
+  },
+  {
+    "vendor": "ollama",
+    "present": false,
+    "source": "none"
+  },
+  {
+    "vendor": "lmstudio",
+    "present": false,
+    "source": "none"
+  },
+  {
+    "vendor": "onshape",
+    "present": false,
+    "source": "none"
+  }
+]

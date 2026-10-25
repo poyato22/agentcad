@@ -122,7 +122,7 @@ def build_ui_router(runtime: Runtime) -> APIRouter:
         return vendors
 
     async def _claude_code_vendor() -> dict:
-        info, auth = await runtime.claude_status()
+        info, auth = await runtime.claude_status_cached()
         key = ("not_installed" if not info.path else "signed_in" if auth.signed_in
                else "signed_out")
         return {"vendor": CLAUDE_CODE, "key": key, "models": list(MODEL_ALIASES)}

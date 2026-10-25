@@ -24,6 +24,16 @@
     {
       "vendor": "lmstudio",
       "key": "not_needed"
+    },
+    {
+      "vendor": "claude-code",
+      "key": "signed_in",
+      "models": [
+        "sonnet",
+        "opus",
+        "haiku",
+        "fable"
+      ]
     }
   ]
 }

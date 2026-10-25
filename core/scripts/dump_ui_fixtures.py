@@ -42,9 +42,28 @@ async def dump(out: Path) -> None:
     from mises.tools.registry import tool
     from mises.types import SafetyClass, ToolOutput
 
+    from mises.claude_code import detect
+
     mises.platform.keychain_get = lambda *a: None  # no Keychain access, deterministic status
     runtime_mod.keychain_get = lambda *a: None
-    os.environ.pop("ANTHROPIC_API_KEY", None)
+    for spec_env in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY"):
+        os.environ.pop(spec_env, None)
+
+    # never the user's real `claude`: a signed-in stand-in, so /models and /claude-code/* show
+    # the signed-in shapes (the fields are the same when signed out)
+    detect.find_claude = lambda: detect.ClaudeInfo(path="/opt/fixture/claude", version="2.1.4")
+
+    async def _auth(info):
+        return detect.AuthStatus(signed_in=True, auth_method="claude.ai", email=None,
+                                 config_dir=None, raw_ok=True)
+
+    async def _logout(info):
+        return True
+    detect.auth_status = _auth
+    detect.logout = _logout
+
+    async def _no_local(urls):          # no local model server answers
+        return False
 
     home = Path(tempfile.mkdtemp(prefix="mises-fixtures-"))
     os.environ["MISES_HOME"] = str(home)
@@ -88,19 +107,42 @@ async def dump(out: Path) -> None:
         while not sub.queue.empty():
             events.append(sub.queue.get_nowait().model_dump_json())
 
-        transport = httpx.ASGITransport(app=create_app(rt, token))
+        async def _login(*, console: bool = False) -> bool:   # no browser, no `claude auth login`
+            return True
+        rt.start_claude_login = _login
+
+        transport = httpx.ASGITransport(app=create_app(rt, token, local_probe=_no_local))
         async with httpx.AsyncClient(transport=transport, base_url="http://core") as c:
-            async def get(path: str):
-                r = await c.get(path, headers=auth)
+            async def call(method: str, path: str, body=None):
+                r = await c.request(method, path, headers=auth, json=body)
                 r.raise_for_status()
                 return r
+
+            async def get(path: str):
+                return await call("GET", path)
 
             out.mkdir(parents=True, exist_ok=True)
             routes = {"status.json": "/status", "agents.json": "/agents",
                       "models.json": "/models", "parts.json": "/parts", "runs.json": "/runs",
-                      "steps.json": f"/runs/{run_id}/steps", "approvals.json": "/approvals"}
+                      "steps.json": f"/runs/{run_id}/steps", "approvals.json": "/approvals",
+                      # Plan 3 (profile_api.py, context_api.py)
+                      "profile.json": "/profile", "keys.json": "/keys", "setup.json": "/setup",
+                      "claude_code_status.json": "/claude-code/status"}
             for name, path in routes.items():
                 (out / name).write_text(json.dumps((await get(path)).json(), indent=2) + "\n")
+            writes = {
+                "profile_put.json": ("PUT", "/profile", {"display_name": "Fixture User"}),
+                "local_test.json": ("POST", "/local/test", {"url": "http://localhost:11434/v1"}),
+                "onshape_test.json": ("POST", "/onshape/test", None),
+                "claude_code_login.json": ("POST", "/claude-code/login", None),
+                "claude_code_logout.json": ("POST", "/claude-code/logout", None),
+                "context_put.json": ("PUT", "/context", {
+                    "selected_part_id": "mount_plate", "selected_run_id": run_id, "picks": []}),
+                "setup_complete.json": ("POST", "/setup/complete", None),
+            }
+            for name, (method, path, body) in writes.items():
+                r = await call(method, path, body)
+                (out / name).write_text(json.dumps(r.json(), indent=2) + "\n")
             (out / "mount_plate.glb").write_bytes((await get("/parts/mount_plate/model.glb")).content)
         (out / "events.jsonl").write_text("".join(line + "\n" for line in events))
     finally:

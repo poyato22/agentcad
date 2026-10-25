@@ -218,7 +218,7 @@ def build_profile_router(runtime: Runtime, claude_status: ClaudeStatusFn | None 
         return _claude_status_body(*await runtime.claude_status())
 
     async def _claude_signed_in() -> bool:
-        return (await runtime.claude_status())[1].signed_in
+        return (await runtime.claude_status_cached())[1].signed_in
 
     # ---- setup
     async def _setup() -> SetupState:

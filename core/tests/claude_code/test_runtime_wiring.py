@@ -291,6 +291,10 @@ async def test_models_lists_claude_code(rt, claude_bin, auth_state):
             assert entry == {"vendor": "claude-code", "key": "signed_out",
                              "models": ["sonnet", "opus", "haiku", "fable"]}
             auth_state.write_text("signed_in")
+            # /models reuses a few-seconds-old answer; /claude-code/status (what the app polls
+            # while signing in) asks afresh and refreshes it
+            assert cc((await c.get("/models")).json())["key"] == "signed_out"
+            assert (await c.get("/claude-code/status")).json()["signed_in"] is True
             assert cc((await c.get("/models")).json())["key"] == "signed_in"
 
 
