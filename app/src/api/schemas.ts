@@ -4,9 +4,10 @@
 // The `Same<...>` checks at the bottom fail the type check if a schema and its type drift apart.
 import { z } from "zod";
 import {
-  ERROR_CODES, STEP_KINDS,
-  type AgentInfo, type AgentRun, type Approval, type CancelAllResult, type CoreErrorBody, type CoreStatusInfo, type MisesEvent,
-  type ModelsInfo, type PartHole, type PartMetrics, type PartSummary, type Step, type ToolOutput,
+  ERROR_CODES, SETUP_PIECES, STEP_KINDS,
+  type AgentInfo, type AgentRun, type Approval, type CancelAllResult, type ClaudeCodeStatus, type CoreErrorBody, type CoreStatusInfo,
+  type KeyStatus, type MisesEvent, type ModelsInfo, type OnshapeTestResult, type PartHole, type PartMetrics, type PartSummary,
+  type Profile, type SetupState, type Step, type ToolOutput,
 } from "./types";
 
 const record = z.record(z.string(), z.unknown());
@@ -49,7 +50,11 @@ export const agentInfoSchema = z.object({ name: z.string(), description: z.strin
 
 export const modelsInfoSchema = z.object({
   default: z.string(),
-  vendors: z.array(z.object({ vendor: z.string(), key: z.enum(["env", "keychain", "none", "not_needed"]) })),
+  vendors: z.array(z.object({
+    vendor: z.string(),
+    key: z.enum(["env", "keychain", "none", "not_needed", "signed_in", "signed_out", "not_installed"]),
+    models: z.array(z.string()).optional(),
+  })),
 });
 
 export const coreStatusSchema = z.object({
@@ -87,6 +92,31 @@ export const questionAskedSchema = z.object({
   question_id: z.string(), question: z.string(), options: z.array(z.string()).default([]),
 });
 
+// ---- Plan 3: profile, keys, setup, Claude Code, Onshape test
+
+/** Defaults mirror core profile.Profile, so a core that adds a field later still parses here. */
+export const profileSchema = z.object({
+  display_name: z.string().default(""), units: z.literal("mm").default("mm"), default_material: z.string().default("PLA"),
+  default_agent: z.string().default("designer"), default_model: z.string().nullable().default(null),
+  onshape_calls_year_cap: z.number().default(2500), onshape_calls_run_cap: z.number().default(200),
+  max_parallel_agents: z.number().int().default(2), local_endpoints: z.record(z.string(), z.string()).default({}),
+  setup_completed_at: z.number().nullable().default(null),
+});
+
+/** Status only. Any extra key (a secret, by mistake) is stripped before it reaches the UI. */
+export const keyStatusSchema = z.object({ vendor: z.string(), present: z.boolean(), source: z.enum(["env", "keychain", "none"]) });
+
+export const setupStateSchema = z.object({
+  complete: z.boolean(), has_model: z.boolean(), has_onshape: z.boolean(), missing: z.array(z.enum(SETUP_PIECES)),
+});
+
+export const onshapeTestSchema = z.object({ ok: z.boolean(), user_name: z.string().nullish(), error: z.string().nullish() });
+
+export const claudeCodeStatusSchema = z.object({
+  installed: z.boolean(), version: z.string().nullable().default(null), signed_in: z.boolean(),
+  auth_method: z.string().nullable().default(null),
+});
+
 // ---- compile-time drift checks between schemas and types.ts
 type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 type Assert<T extends true> = T;
@@ -104,4 +134,9 @@ export type SchemaChecks = [
   Assert<Same<z.infer<typeof partSummarySchema>, PartSummary>>,
   Assert<Same<z.infer<typeof coreErrorBodySchema>, CoreErrorBody>>,
   Assert<Same<z.infer<typeof cancelAllSchema>, CancelAllResult>>,
+  Assert<Same<z.infer<typeof profileSchema>, Profile>>,
+  Assert<Same<z.infer<typeof keyStatusSchema>, KeyStatus>>,
+  Assert<Same<z.infer<typeof setupStateSchema>, SetupState>>,
+  Assert<Same<z.infer<typeof onshapeTestSchema>, OnshapeTestResult>>,
+  Assert<Same<z.infer<typeof claudeCodeStatusSchema>, ClaudeCodeStatus>>,
 ];

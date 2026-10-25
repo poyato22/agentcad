@@ -3,13 +3,19 @@
 import { z } from "zod";
 import { debug } from "../lib/log";
 import {
-  agentInfoSchema, agentRunSchema, approvalSchema, cancelAllSchema, coreErrorBodySchema, coreStatusSchema,
-  modelsInfoSchema, okSchema, partSummarySchema, runIdSchema, stepSchema,
+  agentInfoSchema, agentRunSchema, approvalSchema, cancelAllSchema, claudeCodeStatusSchema, coreErrorBodySchema, coreStatusSchema,
+  keyStatusSchema, modelsInfoSchema, okSchema, onshapeTestSchema, partSummarySchema, profileSchema, runIdSchema, setupStateSchema,
+  stepSchema,
 } from "./schemas";
 import type {
-  AgentInfo, AgentRun, Approval, CancelAllResult, CoreInfo, CoreStatusInfo, DecisionBody, ErrorCode, ModelsInfo, NewRunBody,
-  PartSummary, Step,
+  AgentInfo, AgentRun, Approval, CancelAllResult, ClaudeCodeStatus, CoreInfo, CoreStatusInfo, DecisionBody, ErrorCode, KeyStatus,
+  ModelsInfo, NewRunBody, OnshapeTestResult, PartSummary, Profile, ProfilePatch, SetupState, Step, UiContext,
 } from "./types";
+
+type Method = "GET" | "POST" | "PUT" | "DELETE";
+
+/** For routes whose answer the UI doesn't use (it refetches status instead): any 2xx JSON body. */
+const anyBody = z.unknown();
 
 export type CoreErrorCode = ErrorCode | "unauthorized" | "validation" | "network";
 
@@ -92,9 +98,39 @@ export class CoreClient {
     return { bytes, etag: res.headers.get("etag") ?? "" };
   }
 
+  // ---- Plan 3: profile, keys, setup, Claude Code, Onshape test, UI context (admin token routes)
+
+  getProfile(): Promise<Profile> { return this.json("GET", "/profile", profileSchema); }
+  /** Partial merge; only the fields given are sent. */
+  updateProfile(patch: ProfilePatch): Promise<Profile> { return this.json("PUT", "/profile", profileSchema, { body: patch }); }
+
+  /** Status only ({vendor, present, source}); secrets are never returned. */
+  listKeys(): Promise<KeyStatus[]> { return this.json("GET", "/keys", z.array(keyStatusSchema)); }
+  /** Stores an API key in the Keychain (via the core). The secret goes out in the body only, never in a URL or log. */
+  setKey(vendor: string, secret: string): Promise<KeyStatus> {
+    return this.json("POST", `/keys/${enc(vendor)}`, keyStatusSchema, { body: { secret } });
+  }
+  setOnshapeKeys(accessKey: string, secretKey: string): Promise<KeyStatus> {
+    return this.json("POST", "/keys/onshape", keyStatusSchema, { body: { access_key: accessKey, secret_key: secretKey } });
+  }
+  deleteKey(vendor: string): Promise<KeyStatus> { return this.json("DELETE", `/keys/${enc(vendor)}`, keyStatusSchema); }
+  /** One ledgered Onshape call; wrong keys → {ok:false, error:"denied"}. */
+  testOnshape(): Promise<OnshapeTestResult> { return this.json("POST", "/onshape/test", onshapeTestSchema); }
+
+  setupState(): Promise<SetupState> { return this.json("GET", "/setup", setupStateSchema); }
+  /** Marks setup done (sets profile.setup_completed_at). Re-read setupState() for the result. */
+  async completeSetup(): Promise<void> { await this.json("POST", "/setup/complete", anyBody); }
+
+  claudeCodeStatus(): Promise<ClaudeCodeStatus> { return this.json("GET", "/claude-code/status", claudeCodeStatusSchema); }
+  /** Starts the user's own `claude auth login` (Anthropic's browser flow). Returns at once; poll claudeCodeStatus(). */
+  async claudeCodeLogin(): Promise<void> { await this.json("POST", "/claude-code/login", anyBody); }
+  async claudeCodeLogout(): Promise<void> { await this.json("POST", "/claude-code/logout", anyBody); }
+
+  async putContext(ctx: UiContext): Promise<void> { await this.json("PUT", "/context", anyBody, { body: ctx }); }
+
   // ---- internals
 
-  private async json<T>(method: "GET" | "POST", path: string, schema: z.ZodType<T>, opts: { query?: Query; body?: unknown } = {}): Promise<T> {
+  private async json<T>(method: Method, path: string, schema: z.ZodType<T>, opts: { query?: Query; body?: unknown } = {}): Promise<T> {
     const res = await this.request(method, path, opts);
     if (!res.ok) throw await toError(res);
     let data: unknown;
@@ -112,7 +148,7 @@ export class CoreClient {
     return parsed.data;
   }
 
-  private async request(method: "GET" | "POST", path: string, opts: { query?: Query; body?: unknown; headers?: Record<string, string> }): Promise<Response> {
+  private async request(method: Method, path: string, opts: { query?: Query; body?: unknown; headers?: Record<string, string> }): Promise<Response> {
     let url = this.base + path;
     if (opts.query) {
       const q = new URLSearchParams();
