@@ -4,6 +4,7 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 from .events import Event
+from .sketch import MAX_SKETCH_QUESTIONS, take_question
 from .tools.registry import ToolContext, ToolRegistry, tool
 from .types import ErrorCode, MisesError, SafetyClass, ToolOutput
 
@@ -26,6 +27,10 @@ async def ui_ask_user(ctx: ToolContext, args: AskArgs) -> ToolOutput:
     rt = (ctx.services or {}).get("runtime")
     if rt is None:
         raise MisesError(ErrorCode.DENIED, "no user interface is attached to this run",
+                         hint="proceed without asking, and state your assumptions")
+    if not take_question(ctx.workdir):
+        raise MisesError(ErrorCode.INVALID_INPUT,
+                         f"a sketch run may ask at most {MAX_SKETCH_QUESTIONS} questions",
                          hint="proceed without asking, and state your assumptions")
     answer = await rt.ask(ctx.run_id, args.question, args.options)
     return ToolOutput(summary="The user answered; the answer is in data.answer.",

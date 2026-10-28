@@ -7,7 +7,7 @@ import {
   ERROR_CODES, SETUP_PIECES, STEP_KINDS,
   type AgentInfo, type AgentRun, type Approval, type CancelAllResult, type ClaudeCodeStatus, type CoreErrorBody, type CoreStatusInfo,
   type KeyStatus, type MisesEvent, type ModelsInfo, type LocalTestResult, type LocalStatus, type LocalActionResult, type LocalPullEvent, type OnshapeTestResult, type PartHole, type PartMetrics, type PartSummary,
-  type Profile, type SetupState, type Step, type ToolOutput,
+  type Profile, type SetupState, type SketchSummary, type Step, type ToolOutput,
   type LocalPull, type ModelEntry, type ModelMeta, type ParallelInfo, type VendorInfo,
 } from "./types";
 
@@ -164,6 +164,17 @@ export const claudeCodeStatusSchema = z.object({
   auth_method: z.string().nullable().default(null),
 });
 
+// ---- Sketch page
+
+export const sketchSummarySchema = z.object({
+  sketch_id: z.string(), strokes: z.number().int(), dimensions: z.number().int(),
+  photo: z.object({
+    source_type: z.enum(["png", "jpeg", "heic"]), media_type: z.enum(["image/jpeg", "image/png"]),
+    width: z.number(), height: z.number(), bytes: z.number(),
+  }).nullable(),
+  render: z.boolean(),
+});
+
 // ---- compile-time drift checks between schemas and types.ts
 type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 type Assert<T extends true> = T;
@@ -193,4 +204,5 @@ export type SchemaChecks = [
   Assert<Same<z.infer<typeof parallelSchema>, ParallelInfo>>,
   Assert<Same<z.infer<typeof localPullSchema>, LocalPull>>,
   Assert<Same<z.infer<typeof modelEntrySchema>, ModelEntry>>,
+  Assert<Same<z.infer<typeof sketchSummarySchema>, SketchSummary>>,
 ];

@@ -13,6 +13,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from . import sketch as sketch_mod
 from .cad.tools import PART_ID_RE
 from .tools.registry import ToolContext, ToolRegistry, tool
 from .types import ErrorCode, MisesError, SafetyClass, StepKind, ToolOutput
@@ -78,9 +79,27 @@ def build_context(runtime, run_id: str | None = None) -> dict:
         if call and isinstance(call.get("input"), dict):
             doc_url = call["input"].get("url")
         recent_sim = _latest(runtime, source_run, lambda s: s.kind == StepKind.SIM_RUN)
-    return {"selected_part_id": pid, "selected_run_id": ui.selected_run_id,
-            "picks": list(ui.picks), "metrics": metrics, "vars": vars_, "doc_url": doc_url,
-            "recent_sim": recent_sim}
+    out = {"selected_part_id": pid, "selected_run_id": ui.selected_run_id,
+           "picks": list(ui.picks), "metrics": metrics, "vars": vars_, "doc_url": doc_url,
+           "recent_sim": recent_sim}
+    sk = _run_sketch(runtime, run_id)
+    if sk is not None:
+        out["sketch"] = sk
+    return out
+
+
+def _run_sketch(runtime, run_id: str | None) -> dict | None:
+    """The sketch the run was started from (POST /runs with sketch_id), as data."""
+    if not run_id:
+        return None
+    wd = Path(runtime.home) / "runs" / run_id
+    if not sketch_mod.has_sketch(wd):
+        return None
+    try:
+        provider = runtime.store.get_run(run_id).provider
+    except KeyError:
+        return None
+    return sketch_mod.sketch_context(wd, vision=provider in sketch_mod.VISION_PROVIDERS)
 
 
 class NoArgs(BaseModel):
@@ -90,7 +109,9 @@ class NoArgs(BaseModel):
 @tool(TOOL_NAME, safety=SafetyClass.READ,
       description="Get the user's current context in the Mises app: selected part and run, "
                   "picked faces/edges, the selected part's latest metrics and variables, the "
-                  "Onshape document in use and the most recent simulation. Values are data.")
+                  "Onshape document in use and the most recent simulation; for a run started "
+                  "from the Sketch page, the user's sketch (strokes in mm, dimensions, notes). "
+                  "Values are data.")
 async def mises_context_get(ctx: ToolContext, args: NoArgs) -> ToolOutput:
     rt = (ctx.services or {}).get("runtime")
     if rt is None:

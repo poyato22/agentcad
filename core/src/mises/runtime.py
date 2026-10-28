@@ -20,6 +20,7 @@ from .cad.tools import register_mirror_tools
 from .sim.tools import register_sim_tools
 from .claude_code import detect as claude_detect
 from .claude_code.session import MCP_FILE as CLAUDE_MCP_FILE, SOURCE as CLAUDE_CODE
+from .claude_code.prompts import context_block
 from .claude_code.session import ClaudeCodeSession, model_alias
 from .context_tools import build_context, ui_context
 from .events import Event, EventBus
@@ -35,7 +36,9 @@ from .profile import load_profile
 from .providers.registry import DEFAULT_MODEL, VENDORS, resolve
 from .store import Store
 from .tools.registry import ToolRegistry
-from .types import Caps, ErrorCode, Message, MisesError, SafetyClass, StepKind
+from . import sketch as sketch_mod
+from .types import (Block, Caps, ErrorCode, ImageBlock, Message, MisesError, SafetyClass,
+                    StepKind, TextBlock)
 from .ui_tools import register_ui_tools
 
 log = logging.getLogger(__name__)
@@ -477,11 +480,16 @@ class Runtime:
     async def start_run(self, agent: str, prompt: str, *, model_ref: str | None = None,
                         edit_scope=("*",), read_scope=("*",), caps: Caps | None = None,
                         parent_id: str | None = None,
-                        allowed_classes: set[SafetyClass] | None = None) -> str:
+                        allowed_classes: set[SafetyClass] | None = None,
+                        sketch_id: str | None = None) -> str:
+        """`sketch_id` (from POST /sketches): copy that sketch into the run's workdir and give
+        it to the agent as data (plus its images for vision-capable providers)."""
         defn = self.definitions.get(agent)
         if defn is None:
             raise MisesError(ErrorCode.NOT_FOUND, f"unknown agent: {agent}",
                              hint=f"agents: {', '.join(sorted(self.definitions))}")
+        if sketch_id is not None:
+            sketch_mod.load_summary(self.home, sketch_id)    # unknown → 404 before any run exists
         prof = self.profile()
         if caps is None:
             caps = Caps(onshape_calls_run=prof.onshape_calls_run_cap,
@@ -492,7 +500,8 @@ class Runtime:
             return await self._start_claude_run(agent, prompt, alias, edit_scope=edit_scope,
                                                 read_scope=read_scope, caps=caps,
                                                 parent_id=parent_id,
-                                                allowed_classes=allowed_classes)
+                                                allowed_classes=allowed_classes,
+                                                sketch_id=sketch_id)
         provider, model = self.provider_resolver(ref)
         if hardware.model_kind(ref) == "local":
             await self.refresh_local_sizes()
@@ -507,7 +516,17 @@ class Runtime:
         started = {"agent": agent, "provider": provider.name, "model": model,
                    "parent_id": parent_id}
         slot = self._admit(run.id, ref, started)
-        st.task = asyncio.create_task(self._drive_slotted(run.id, prompt, slot, started))
+        first: str | list[Block] = prompt
+        user_log = None
+        if sketch_id is not None:
+            try:
+                first, user_log = self._sketch_first_prompt(run.id, sketch_id, prompt, provider.name)
+            except BaseException:
+                self.parallel.withdraw(run.id)       # the failed run gives its slot / place back
+                self.parallel.release(run.id)
+                raise
+        st.task = asyncio.create_task(self._drive_slotted(run.id, first, slot, started,
+                                                          user_log=user_log))
         st.task.add_done_callback(functools.partial(self._slotted_done, run.id))
         return run.id
 
@@ -527,8 +546,9 @@ class Runtime:
             if status in ("queued", "running"):
                 self._finish_cancelled(run_id, "run task cancelled")
 
-    async def _drive_slotted(self, run_id: str, prompt: str, slot: asyncio.Future[bool] | None,
-                             started: dict) -> RunResult:
+    async def _drive_slotted(self, run_id: str, prompt: str | list[Block],
+                             slot: asyncio.Future[bool] | None, started: dict, *,
+                             user_log: dict | None = None) -> RunResult:
         """Wait for a slot (queued runs), drive the turn, give the slot back."""
         try:
             granted = await self._await_slot(run_id, slot, started)
@@ -538,7 +558,7 @@ class Runtime:
         if not granted:
             self._runs[run_id].cancel_requested = True
         try:
-            return await self._drive(run_id, prompt)
+            return await self._drive(run_id, prompt, user_log=user_log)
         finally:
             self.parallel.release(run_id)
 
@@ -549,6 +569,44 @@ class Runtime:
         self.events.publish(Event(type="run_finished", run_id=run_id, data={
             "status": "cancelled", "stop_reason": "cancelled", "error": error,
             "final_text": ""}))
+
+    def _attach_sketch(self, rid: str, sketch_id: str, wd: Path) -> None:
+        """Copy the sketch into the new run's workdir; on failure the run is marked failed
+        (with an error step and run_finished), never left "running" without its sketch."""
+        try:
+            sketch_mod.attach_to_run(self.home, sketch_id, wd)
+            return
+        except MisesError as e:
+            err = e
+        except Exception as e:  # noqa: BLE001 - e.g. disk full; reported on the run
+            err = MisesError(ErrorCode.TOOL_FAILED, f"could not attach the sketch: {e}")
+        self._runs.pop(rid, None)
+        self._external.discard(rid)
+        self.store.append_step(rid, StepKind.ERROR, {
+            "stop_reason": "error", "error": err.code.value, "message": err.message,
+            "hint": err.hint, "retryable": False})
+        self.store.update_run(rid, status="failed")
+        self.events.publish(Event(type="run_finished", run_id=rid, data={
+            "status": "failed", "stop_reason": "error", "error": err.message, "final_text": ""}))
+        raise err
+
+    def _sketch_first_prompt(self, rid: str, sketch_id: str, prompt: str,
+                             provider: str) -> tuple[list[Block], dict]:
+        """A native run's first message: the sketch as a <mises-context> data block, the
+        user's prompt with the staged sketch procedure, then the images (vision providers).
+        Also the user step's payload: like a Claude Code run's, the words sent plus the context
+        as its own field (no data block in the text, no image bytes)."""
+        wd = self.workdir(rid)
+        self._attach_sketch(rid, sketch_id, wd)
+        vision = provider in sketch_mod.VISION_PROVIDERS
+        ctx = {"sketch": sketch_mod.sketch_context(wd, vision=vision)}
+        words = f"{prompt}\n\n{sketch_mod.SKETCH_PROCEDURE}"
+        blocks: list[Block] = [TextBlock(text=f"{context_block(ctx)}\n{words}")]
+        if vision:
+            blocks += [ImageBlock(media_type=m, data_b64=d)
+                       for m, d in sketch_mod.sketch_images(wd)]
+        log = {"text": words, "context": ctx, "images": len(blocks) - 1}
+        return blocks, log
 
     def model_ref_for(self, defn, model_ref: str | None = None, prof=None) -> str:
         """model_ref, else the definition's model (unless "inherit"), else the profile's
@@ -568,7 +626,8 @@ class Runtime:
     # ---- Claude Code runs (the user's own `claude`, through the MCP endpoint and the Gate)
     async def _start_claude_run(self, agent: str, prompt: str, alias: str, *, edit_scope,
                                 read_scope, caps: Caps, parent_id: str | None,
-                                allowed_classes: set[SafetyClass] | None) -> str:
+                                allowed_classes: set[SafetyClass] | None,
+                                sketch_id: str | None = None) -> str:
         url, token = await self._mcp()
         info, auth = await self._claude_ready()
         ref = f"{CLAUDE_CODE}/{alias}"
@@ -578,7 +637,13 @@ class Runtime:
                                        task=prompt, slot_ref=ref)
         st = self._claude[rid] = _ClaudeRun(ref=ref)
         st.slot, st.started_data = self._external_slots.pop(rid, (None, {}))
+        text, images = prompt, None
         try:
+            if sketch_id is not None:
+                wd = self.workdir(rid)
+                self._attach_sketch(rid, sketch_id, wd)
+                text = f"{prompt}\n\n{sketch_mod.SKETCH_PROCEDURE}"
+                images = sketch_mod.sketch_images(wd)      # Claude Code sees images
             await self._spawn_claude(rid, st, alias, info, auth, url, token, resume=None)
         except BaseException:
             self.parallel.withdraw(rid)
@@ -591,7 +656,7 @@ class Runtime:
             self.parallel.release(rid)
             await st.session.close()
             return rid
-        st.task = asyncio.create_task(self._drive_claude(rid, prompt, first=True))
+        st.task = asyncio.create_task(self._drive_claude(rid, text, first=True, images=images))
         return rid
 
     async def _spawn_claude(self, rid: str, st: _ClaudeRun, alias: str, info, auth, url: str,
@@ -611,14 +676,16 @@ class Runtime:
         """The app's UI context for the first prompt, when the user has selected something."""
         try:
             ui = ui_context(self)
-            if not (ui.selected_part_id or ui.selected_run_id or ui.picks):
+            if not (ui.selected_part_id or ui.selected_run_id or ui.picks
+                    or sketch_mod.has_sketch(self.home / "runs" / rid)):
                 return None
             return build_context(self, rid)
         except Exception:  # noqa: BLE001 - context is a convenience, never a reason to fail
             log.warning("could not build the UI context for run %s", rid, exc_info=True)
             return None
 
-    async def _drive_claude(self, rid: str, text: str, *, first: bool) -> RunResult:
+    async def _drive_claude(self, rid: str, text: str, *, first: bool,
+                            images: list[tuple[str, str]] | None = None) -> RunResult:
         st = self._claude[rid]
         assert st.session is not None
         slot, st.slot = st.slot, None
@@ -634,7 +701,7 @@ class Runtime:
             return result
         try:
             final = await st.session.prompt(text, context=self._claude_context(rid) if first
-                                            else None)
+                                            else None, images=images)
             result = RunResult(final_text=final, messages=[], stop_reason="end_turn")
         except MisesError as e:
             stop = "cancelled" if e.code == ErrorCode.CANCELLED else "error"
@@ -888,12 +955,15 @@ class Runtime:
             if a.action == call.tool and all(a.payload.get(k) == v for k, v in call.args.items()):
                 self.approvals.decide(a.id, a.payload_hash, False, decided_by="system:cancelled")
 
-    async def _drive(self, run_id: str, prompt: str) -> RunResult:
+    async def _drive(self, run_id: str, prompt: str | list[Block], *,
+                     user_log: dict | None = None) -> RunResult:
         st = self._runs[run_id]
         try:
             if st.cancel_requested:
                 result = RunResult(final_text="", messages=st.history, stop_reason="cancelled",
                                    error="run cancelled")
+            elif user_log:
+                result = await st.loop.run(prompt, st.history, log=user_log)
             else:
                 result = await st.loop.run(prompt, st.history)
         except asyncio.CancelledError:

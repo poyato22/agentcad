@@ -15,6 +15,7 @@ import type {
 import { handleControl } from "./control";
 import { setupFrom, setupRoutes, type FakeSetup, type SetupScenario } from "./setup";
 import { cancelSimsOfRun, clearSimTimers, simRoutes, simsFrom, type FakeSims, type SimScenario } from "./sims";
+import { checkRunSketch, sketchRoutes, type FakeSketch } from "./sketch";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const SCENARIO_DIR = resolve(HERE, "scenarios");
@@ -111,6 +112,8 @@ export interface FakeState {
   /** Downloads in flight: model -> their pending progress timers (POST /local/pull/cancel clears them). */
   pulling: Map<string, ReturnType<typeof setTimeout>[]>;
   sims: FakeSims;
+  /** POST /sketches uploads, by sketch_id. */
+  sketches: Map<string, FakeSketch>;
 }
 
 export interface FakeCore {
@@ -152,6 +155,7 @@ function stateFrom(sc: Scenario, token: string): FakeState {
     setup: setupFrom(sc),
     local: sc.local ? structuredClone(sc.local) : null, localPullMs: sc.local_pull_ms ?? 120, pulling: new Map(),
     sims: simsFrom(sc.sims),
+    sketches: new Map(),
   };
 }
 
@@ -346,6 +350,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         if (modelRef !== undefined && modelRef !== null && typeof modelRef !== "string") throw wrongType("model_ref", "string", modelRef);
         strList(b, "edit_scope", ["*"]);
         strList(b, "read_scope", ["*"]);
+        const sketchId = checkRunSketch(b.sketch_id, state.sketches);
         const def = state.agents.find((a) => a.name === agent);
         if (!def) throw mises("not_found", `unknown agent: ${agent}`, `agents: ${state.agents.map((a) => a.name).join(", ")}`);
         const ref = (typeof modelRef === "string" && modelRef) || (def.model !== "inherit" ? def.model : state.models.default);
@@ -368,7 +373,8 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         const working = [...state.runs.values()].filter((r) => r.status === "running").length;
         const queued = limit !== undefined && working >= limit;
         const run = newRun(agent, vendor, model, prompt, claude, queued ? "queued" : "running");
-        appendStep({ kind: "message", payload: { role: "user", text: prompt } }, run.id);
+        // a sketch run's user step: like the core, the words sent plus the sketch as `context`
+        appendStep({ kind: "message", payload: { role: "user", text: prompt, ...(sketchId ? { context: { sketch: { sketch_id: sketchId } } } : {}) } }, run.id);
         if (queued) {
           emit({ type: "run_queued", run_id: run.id, data: { agent, provider: vendor, model, limit } });
           return { run_id: run.id };
@@ -549,6 +555,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       sims: () => state.sims, parts: () => state.parts, defaultMaterial: () => state.setup.profile.default_material,
       newRun, emit,
     }),
+    ...sketchRoutes(() => state.sketches),
   ];
 
   /** Core ui_api._pull_name: lowercase Ollama names; the submitted name is never echoed. */

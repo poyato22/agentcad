@@ -28,7 +28,7 @@ from fastapi import FastAPI, WebSocket
 from fastapi.responses import JSONResponse
 from mcp.server.streamable_http_manager import StreamableHTTPASGIApp, StreamableHTTPSessionManager
 from mcp.server.transport_security import TransportSecuritySettings
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from starlette.datastructures import Headers
 from starlette.routing import Route
 from starlette.types import ASGIApp, Receive, Scope, Send
@@ -41,6 +41,7 @@ from .context_api import build_context_router
 from .drawing_api import build_drawing_router
 from .print_api import build_print_router
 from .sim_api import build_sim_router
+from .sketch_api import build_sketch_router
 from .ui_api import add_cors, build_ui_router
 
 if TYPE_CHECKING:
@@ -136,6 +137,7 @@ class NewRun(BaseModel):
     model_ref: str | None = None
     edit_scope: list[str] = ["*"]
     read_scope: list[str] = ["*"]
+    sketch_id: str | None = Field(default=None, pattern=r"^sk_[0-9a-f]{12}$")  # POST /sketches
 
 
 class NewExternalRun(BaseModel):
@@ -204,6 +206,7 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
     app.include_router(build_drawing_router(runtime))
     app.include_router(build_print_router(runtime))
     app.include_router(build_sim_router(runtime))
+    app.include_router(build_sketch_router(runtime))
 
     @app.exception_handler(MisesError)
     async def _mises_error(_req, e: MisesError):
@@ -224,7 +227,8 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
         agent = body.agent or load_profile(runtime.home).default_agent
         rid = await runtime.start_run(agent, body.prompt, model_ref=body.model_ref,
                                       edit_scope=tuple(body.edit_scope),
-                                      read_scope=tuple(body.read_scope))
+                                      read_scope=tuple(body.read_scope),
+                                      sketch_id=body.sketch_id)
         return {"run_id": rid}
 
     @app.post("/runs/external")
