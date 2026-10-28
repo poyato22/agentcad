@@ -215,5 +215,6 @@ test("visual_rules_square_corners_and_blue_only_on_the_selected_section", async 
   expect(new Set(radii)).toEqual(new Set(["0px"]));
   await expect(nav(page, "Models")).toHaveAttribute("aria-current", "page");
   await expect(nav(page, "Profile")).not.toHaveAttribute("aria-current", "page");
-  await expect(page.locator(".led-blue")).toHaveCount(0);
+  // inside the panel (the top bar's AGENTS light is rightly blue while a run is working)
+  await expect(panel(page).locator(".led-blue")).toHaveCount(0);
 });

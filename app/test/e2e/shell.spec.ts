@@ -357,12 +357,14 @@ test("tauri_startup_crash_before_listen_shows_red_core_light_with_reason", async
 
 test("connects_to_fake_core_without_errors", async ({ page, fake }) => {
   const errors: string[] = [];
-  page.on("console", (m) => { if (m.type() === "error" || m.type() === "warning") errors.push(m.text()); });
+  // Chromium's own GPU driver notes ("GL Driver Message ... GPU stall due to ReadPixels") are
+  // about the headless GL backend, not the app
+  page.on("console", (m) => { if ((m.type() === "error" || m.type() === "warning") && !m.text().includes("GL Driver Message")) errors.push(m.text()); });
   page.on("pageerror", (e) => errors.push(String(e)));
   await page.goto("/");
   await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
   await expect.poll(async () => (await fake.calls()).map((c) => c.path).filter((p) => p !== "/context").sort()).toEqual(
-    ["/approvals", "/parts", "/parts/mount_plate/model.glb", "/profile", "/runs", "/runs/b7c79a57cbb4/steps", "/setup", "/status"]);
+    ["/approvals", "/parts", "/parts/mount_plate/model.glb", "/printers", "/profile", "/runs", "/runs/b7c79a57cbb4/steps", "/setup", "/status"]);
   const ctx = (await fake.calls()).filter((c) => c.path === "/context");
   expect(ctx.length).toBeGreaterThanOrEqual(1);
   expect(ctx.every((c) => c.method === "PUT")).toBe(true);

@@ -10,7 +10,7 @@ const withSims = (sims: Record<string, unknown>) => ({ ...BASE, sims });
 
 const THEMES = {
   dark: { green: "rgb(79, 209, 139)", amber: "rgb(242, 177, 52)", red: "rgb(255, 90, 74)", blue: "rgb(61, 139, 255)", bg: "rgb(10, 10, 10)" },
-  light: { green: "rgb(31, 138, 76)", amber: "rgb(183, 121, 15)", red: "rgb(200, 50, 30)", blue: "rgb(10, 91, 216)", bg: "rgb(244, 244, 242)" },
+  light: { green: "rgb(23, 118, 63)", amber: "rgb(143, 94, 10)", red: "rgb(200, 50, 30)", blue: "rgb(10, 91, 216)", bg: "rgb(244, 244, 242)" },
 } as const;
 
 async function open(page: Page, theme: "dark" | "light" = "dark") {
@@ -116,8 +116,10 @@ test("run_progress_result_and_history", async ({ page, fake }) => {
   await expect(page.getByTestId("stress-canvas")).toHaveAttribute("data-state", "loaded");
   const post = (await fake.calls()).find((c) => c.method === "POST" && c.path === "/sims");
   expect(post?.body).toEqual({ part_id: "mount_plate", fix: "x-min", load: { face: "x-max", newtons: 20, direction: "-z" }, material: "PETG", environment: "Desk" });
-  // the studies run is in the console like any other run
-  await expect(page.locator("[data-region=console]")).toContainText("studies");
+  // the studies run is a provider "ui" run: like the real core, GET /runs leaves it out of the
+  // console's run list (the page itself shows its progress and result)
+  await page.getByRole("button", { name: "Full log", exact: true }).click();
+  await expect(page.locator("[data-region=console] [data-roster]")).not.toContainText("studies");
 });
 
 test("cancel_stops_a_long_study", async ({ page, fake }) => {
