@@ -31,6 +31,20 @@ def test_resolve_refs(monkeypatch):
     assert isinstance(p, AnthropicProvider) and m == "claude-sonnet-5-5"
 
 
+def test_ollama_honours_profile_local_endpoint():
+    # C7: an Ollama run uses the profile's configured ollama base URL, not the default port.
+    eps = {"ollama": "http://127.0.0.1:12345/v1"}
+    p, m = registry.resolve("ollama/qwen3", local_endpoints=eps)
+    assert isinstance(p, OllamaProvider) and m == "qwen3"
+    assert p._url == "http://127.0.0.1:12345/api/chat"
+    # lmstudio endpoint override too, and no override falls back to the default
+    p2, _ = registry.resolve("lmstudio/qwen3",
+                             local_endpoints={"lmstudio": "http://127.0.0.1:4321/v1"})
+    assert "127.0.0.1:4321" in str(p2._client.base_url)
+    p3, _ = registry.resolve("ollama/qwen3")
+    assert p3._url == "http://localhost:11434/api/chat"
+
+
 def test_openrouter_model_keeps_inner_slash(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "k")
     p, m = registry.resolve("openrouter/anthropic/claude-x")

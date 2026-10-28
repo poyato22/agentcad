@@ -51,7 +51,8 @@ def is_openrouter_free(vendor: str, model: str) -> bool:
     return is_free_model(f"{vendor}/{model}")
 
 
-def resolve(model_ref: str) -> tuple[ModelProvider, str]:
+def resolve(model_ref: str,
+            *, local_endpoints: dict[str, str] | None = None) -> tuple[ModelProvider, str]:
     if "/" in model_ref:
         vendor, model = model_ref.split("/", 1)
     elif model_ref.startswith("claude-"):
@@ -64,6 +65,11 @@ def resolve(model_ref: str) -> tuple[ModelProvider, str]:
     if spec is None or not model:
         raise MisesError(ErrorCode.INVALID_INPUT, f"unknown vendor or empty model in {model_ref!r}",
                          hint=f"vendors: {', '.join(VENDORS)}")
+    # a local vendor (ollama/lmstudio) honours the profile's configured base URL, falling back
+    # to the default port; cloud vendors always use their fixed base URL
+    base_url = spec.base_url
+    if vendor in ("ollama", "lmstudio") and local_endpoints:
+        base_url = local_endpoints.get(vendor) or base_url
     key: str | None = None
     if spec.env_key:
         key = os.environ.get(spec.env_key) or keychain_get("mises", vendor)
@@ -71,11 +77,11 @@ def resolve(model_ref: str) -> tuple[ModelProvider, str]:
             raise MisesError(ErrorCode.DENIED, f"no API key for {vendor}",
                              hint=f"set {spec.env_key} or run `mises keys set {vendor}`")
     if spec.kind == "anthropic":
-        return AnthropicProvider(key or "", spec.base_url), model
+        return AnthropicProvider(key or "", base_url), model
     if vendor == "ollama":
         # native /api/chat: the only Ollama API that takes num_ctx (see ollama_provider.py)
-        return OllamaProvider(spec.base_url), model
+        return OllamaProvider(base_url), model
     limiter = OPENROUTER_FREE_LIMITER if is_openrouter_free(vendor, model) else None
-    return OpenAICompatProvider(vendor, key, spec.base_url,
+    return OpenAICompatProvider(vendor, key, base_url,
                                 reasoning_content=spec.reasoning_content,
                                 rate_limiter=limiter), model

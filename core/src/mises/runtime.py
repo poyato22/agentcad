@@ -516,7 +516,7 @@ class Runtime:
                                                 parent_id=parent_id,
                                                 allowed_classes=allowed_classes,
                                                 sketch_id=sketch_id)
-        provider, model = self.provider_resolver(ref)
+        provider, model = self._resolve_provider(ref, prof)
         if hardware.model_kind(ref) == "local":
             await self.refresh_local_sizes()
         run = self.store.create_run(agent, provider.name, model, prompt, parent_id=parent_id)
@@ -632,6 +632,13 @@ class Runtime:
             return defn.model
         prof = prof if prof is not None else self.profile()
         return prof.default_model or DEFAULT_MODEL
+
+    def _resolve_provider(self, ref: str, prof):
+        """Resolve a provider, letting the real registry honour the profile's local endpoints
+        (Ollama/LM Studio base URLs). Test doubles keep the simple `(ref)` signature."""
+        if self.provider_resolver is resolve:
+            return resolve(ref, local_endpoints=prof.local_endpoints)
+        return self.provider_resolver(ref)
 
     def check_model_ref(self, ref: str) -> None:
         """Raise MisesError if `ref` cannot name a model (claude-code/<alias> or vendor/model)."""
