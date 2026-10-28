@@ -68,6 +68,23 @@ function deltaChips(a: Approval): string[] {
   return out;
 }
 
+const PRINT_ACTION = "print_send";
+
+/** print_send: what the core's preview says will happen (printer, material, time, grams, cost, G-code). */
+function printFacts(a: Approval): string[] | null {
+  if (a.action !== PRINT_ACTION) return null;
+  const d = a.deltas;
+  const p = rec(d.printer);
+  const out: string[] = [];
+  if (p) out.push([str(p.name), str(p.model), str(p.host), str(p.state)].filter(Boolean).join(" · "));
+  const g = num(d.filament_g);
+  const usd = num(d.cost_usd);
+  out.push([str(d.material), str(d.time), g !== null ? `${g.toFixed(2)} g` : null, usd !== null ? `$${usd.toFixed(2)}` : null].filter(Boolean).join(" · "));
+  const file = [str(d.file_name), str(d.gcode_sha256_short) ? `sha256 ${String(d.gcode_sha256_short)}` : null].filter(Boolean).join(" · ");
+  if (file) out.push(file);
+  return out.filter(Boolean);
+}
+
 /** "elements: 1 · conflicts: 0" — counts of the list fields of Onshape's merge preview. */
 function mergePreviewSummary(mp: unknown): string | null {
   const o = rec(mp);
@@ -193,6 +210,7 @@ export function ApprovalCard(props: { approval: Approval; runLabel: string }): J
   const route = mergeRoute(a);
   const fields = payloadFields(a);
   const preview = mergePreviewSummary(a.deltas.merge_preview);
+  const print = printFacts(a);
 
   return (
     <div ref={ref} data-card data-approval={a.id} data-status={expired ? "expired" : a.status}
@@ -212,6 +230,12 @@ export function ApprovalCard(props: { approval: Approval; runLabel: string }): J
         <div class="acard-what acard-fields text" data-payload-fields>
           {fields.items.map((f, i) => <span key={i} data-field>{f}</span>)}
           {fields.more > 0 && <span class="faint">+{fields.more} more (Diff)</span>}
+        </div>
+      )}
+      {print && (
+        <div class="acard-what acard-fields text" data-print-facts>
+          <span class="tone-amber">Approving starts printing on this printer:</span>
+          {print.map((f, i) => <span key={i}>{f}</span>)}
         </div>
       )}
       {says && <div class="acard-says faint text" data-agent-says>agent says: {says}</div>}

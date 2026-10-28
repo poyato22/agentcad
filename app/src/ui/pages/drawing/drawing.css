@@ -1,0 +1,49 @@
+/* Drawing + Print pages: shared page bits (pg-*) and the drawing view. Plan tokens only; square
+   corners; blue only for selected / needs-you; green/amber/red only for pass/warn/fail. */
+.pg-toolbar { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; padding-bottom: 12px; }
+.pg-field { display: flex; flex-direction: column; gap: 3px; min-width: 160px; }
+.pg-spacer { flex: 1; }
+.pg-empty { margin: 0; }
+.pg-error { color: var(--red); }
+.pg-band {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 10px; margin-bottom: 12px;
+  border: 1px solid var(--line2); border-left: 2px solid var(--red); background: var(--paper2);
+}
+
+.drawing { display: flex; flex-direction: column; height: 100%; min-height: 0; position: relative; }
+.drawing-stage { position: relative; flex: 1; min-height: 320px; display: flex; flex-direction: column; border: 1px solid var(--line2); }
+.drawing-tools {
+  position: absolute; top: 6px; right: 6px; z-index: 2; display: flex; align-items: center; gap: 2px;
+  background: var(--paper); border: 1px solid var(--line2); padding: 2px;
+}
+.drawing-zoom { min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; }
+.drawing-viewport {
+  position: relative; flex: 1; min-height: 0; overflow: hidden; cursor: grab; touch-action: none;
+  background-color: var(--vp);
+  background-image: linear-gradient(var(--grid-faint) 1px, transparent 1px), linear-gradient(90deg, var(--grid-faint) 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+.drawing-viewport:active { cursor: grabbing; }
+.drawing-viewport:focus-visible { outline: 1px solid var(--blue); outline-offset: -1px; }
+/* The core draws black lines on a transparent sheet: on the dark palette the picture is
+   inverted so it reads as light lines on the viewport (the print copy is never inverted). */
+.drawing-sheet {
+  position: absolute; left: 0; top: 0; transform-origin: 0 0; user-select: none; pointer-events: none;
+  background: transparent; filter: var(--drawing-filter, invert(.92));
+  outline: 1px solid var(--line2);
+}
+:root[data-theme="light"] .drawing-sheet { --drawing-filter: none; background: var(--paper); }
+@media (prefers-color-scheme: light) {
+  :root[data-theme="system"] .drawing-sheet { --drawing-filter: none; background: var(--paper); }
+}
+.drawing-facts { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 16px; color: var(--dim); }
+.drawing-busy { position: absolute; right: 12px; bottom: 12px; }
+
+.drawing-print { display: none; }
+@media print {
+  @page { size: A4 landscape; margin: 0; }
+  body * { visibility: hidden !important; }
+  .drawing-print, .drawing-print * { visibility: visible !important; }
+  .drawing-print { display: block; position: fixed; inset: 0; background: #ffffff; }
+  .drawing-print img { width: 297mm; height: 210mm; display: block; }
+}

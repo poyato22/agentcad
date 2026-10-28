@@ -13,6 +13,7 @@ import type {
   AgentInfo, AgentRun, Approval, CoreStatusInfo, ErrorCode, MisesEvent, ModelsInfo, PartSummary, Question, Step, StepKind,
 } from "../../src/api/types";
 import { handleControl } from "./control";
+import { printingFrom, printingRoutes, stopPrinting, type FakePrinting, type PrintScenario } from "./printing";
 import { setupFrom, setupRoutes, type FakeSetup, type SetupScenario } from "./setup";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -80,6 +81,8 @@ export interface Scenario {
   glb?: Record<string, string>;
   /** Profile / keys / Claude Code / Onshape-test state (Plan 3). Absent: setup already complete. */
   setup?: SetupScenario;
+  /** Printers, slicer and drawing state (Plan 4). Absent: no printers, PrusaSlicer installed. */
+  print?: PrintScenario;
 }
 
 export interface FakeCall { method: string; path: string; query: Record<string, string>; body: unknown; ts: number; ifNoneMatch?: string }
@@ -99,6 +102,7 @@ export interface FakeState {
   on: NonNullable<Scenario["on"]>;
   calls: FakeCall[];
   setup: FakeSetup;
+  print: FakePrinting;
 }
 
 export interface FakeCore {
@@ -138,6 +142,7 @@ function stateFrom(sc: Scenario, token: string): FakeState {
     parts: sc.parts, agents: sc.agents, models: sc.models, status: sc.status,
     glb: sc.glb ?? {}, script: sc.script ?? [], on: sc.on ?? {}, calls: [],
     setup: setupFrom(sc),
+    print: printingFrom(sc.print),
   };
 }
 
@@ -377,7 +382,9 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     {
       method: "GET", re: /^\/runs$/, h: (_m, q) => {
         const limit = Number(q.get("limit") ?? 50);
-        return [...state.runs.values()].sort((a, b) => b.created_at - a.created_at).slice(0, limit);
+        // like the core: the app's own "ui" run is hidden unless include_ui=1
+        const withUi = Number(q.get("include_ui") ?? 0) !== 0;
+        return [...state.runs.values()].filter((r) => withUi || r.provider !== "ui").sort((a, b) => b.created_at - a.created_at).slice(0, limit);
       },
     },
     { method: "GET", re: /^\/runs\/([^/]+)$/, h: (m) => getRun(m[1]) },
@@ -472,6 +479,10 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       },
     },
     ...setupRoutes(() => state.setup, () => state.parts),
+    ...printingRoutes({
+      get: () => state.print, parts: () => state.parts, defaultMaterial: () => state.setup.profile.default_material,
+      emit: (ev, extras) => { emit(ev, extras); }, approval: (id) => state.approvals.get(id),
+    }),
   ];
 
   /** /models: with a setup block, vendor key status follows the saved keys and Claude Code status. */
@@ -619,6 +630,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     scriptTimers = [];
     scriptStarted = false;
     dropSockets();
+    stopPrinting(state.print);
     state = stateFrom(loadScenario(scenario), token ?? state.token);
   }
 
@@ -641,6 +653,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     },
     async stop() {
       scriptTimers.forEach(clearTimeout);
+      stopPrinting(state.print);
       dropSockets("terminate");
       wss.close();
       server.closeAllConnections();
@@ -650,7 +663,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
   return api;
 }
 
-const RAW = Symbol("raw-response");
+export const RAW = Symbol("raw-response");
 
 export type Handler = (m: RegExpMatchArray, q: URLSearchParams, body: unknown, r: IncomingMessage, res: ServerResponse) => unknown;
 export interface Route { method: "GET" | "POST" | "PUT" | "DELETE"; re: RegExp; h: Handler }

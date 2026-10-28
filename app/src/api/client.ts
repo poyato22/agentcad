@@ -11,6 +11,10 @@ import type {
   AgentInfo, AgentRun, Approval, CancelAllResult, ClaudeCodeStatus, CoreInfo, CoreStatusInfo, DecisionBody, ErrorCode, KeyStatus, LocalTestResult,
   ModelsInfo, NewRunBody, OnshapeTestResult, PartSummary, Profile, ProfilePatch, SetupState, Step, UiContext,
 } from "./types";
+import {
+  drawingInfoSchema, printCallSchema, printCapabilitiesSchema, printerSchema, printerStatusSchema, printStartSchema, sliceSchema, sliceStartSchema,
+} from "./schemas";
+import type { DrawingInfo, NewPrinterBody, PrintCall, PrintCapabilities, Printer, PrinterStatus, PrintStart, Slice, SliceStart } from "./types";
 
 type Method = "GET" | "POST" | "PUT" | "DELETE";
 
@@ -98,6 +102,39 @@ export class CoreClient {
     return { bytes, etag: res.headers.get("etag") ?? "" };
   }
 
+  // ---- Plan 4: drawings (server/drawing_api.py) and printing (server/print_api.py)
+
+  drawingInfo(partId: string, material?: string | null): Promise<DrawingInfo> {
+    return this.json("GET", `/parts/${enc(partId)}/drawing.json`, drawingInfoSchema, { query: { material } });
+  }
+  /** The drawing as a typed Blob (SVG: shown via a blob: URL in an <img>, never as markup). */
+  drawingFile(partId: string, kind: "svg" | "dxf", material?: string | null): Promise<Blob> {
+    return this.blob(`/parts/${enc(partId)}/drawing.${kind}`, kind === "svg" ? "image/svg+xml" : "image/vnd.dxf", { material });
+  }
+
+  printCapabilities(): Promise<PrintCapabilities> { return this.json("GET", "/print/capabilities", printCapabilitiesSchema); }
+  printers(): Promise<Printer[]> { return this.json("GET", "/printers", z.array(printerSchema)); }
+  /** The API key goes out in the body only (to the Keychain via the core) and never comes back. */
+  addPrinter(body: NewPrinterBody): Promise<Printer> { return this.json("POST", "/printers", printerSchema, { body }); }
+  async deletePrinter(id: string): Promise<void> { await this.json("DELETE", `/printers/${enc(id)}`, okSchema); }
+  printerStatus(id: string, signal?: AbortSignal): Promise<PrinterStatus> {
+    return this.json("GET", `/printers/${enc(id)}/status`, printerStatusSchema, { signal });
+  }
+
+  /** 424 (tool_failed, hint = install command) when PrusaSlicer is missing. */
+  startSlice(body: { part_id: string; printer_id: string; material?: string | null }): Promise<SliceStart> {
+    return this.json("POST", "/slices", sliceStartSchema, { body });
+  }
+  getSlice(id: string): Promise<Slice> { return this.json("GET", `/slices/${enc(id)}`, sliceSchema); }
+  async cancelSlice(id: string): Promise<void> { await this.json("POST", `/slices/${enc(id)}/cancel`, okSchema); }
+  slicePreview(id: string): Promise<Blob> { return this.blob(`/slices/${enc(id)}/preview.png`, "image/png"); }
+
+  /** Starts the irreversible print_send call; nothing is sent until its approval card is approved. */
+  startPrint(sliceId: string, printerId: string): Promise<PrintStart> {
+    return this.json("POST", "/prints", printStartSchema, { body: { slice_id: sliceId, printer_id: printerId } });
+  }
+  getPrint(callId: string): Promise<PrintCall> { return this.json("GET", `/prints/${enc(callId)}`, printCallSchema); }
+
   // ---- Plan 3: profile, keys, setup, Claude Code, Onshape test, UI context (admin token routes)
 
   getProfile(): Promise<Profile> { return this.json("GET", "/profile", profileSchema); }
@@ -135,6 +172,17 @@ export class CoreClient {
   async putContext(ctx: UiContext): Promise<void> { await this.json("PUT", "/context", anyBody, { body: ctx }); }
 
   // ---- internals
+
+  /** A binary answer as a Blob of `type` (the type is ours, not the server's). */
+  private async blob(path: string, type: string, query?: Query): Promise<Blob> {
+    const res = await this.request("GET", path, { query });
+    if (!res.ok) throw await toError(res);
+    try {
+      return new Blob([await res.arrayBuffer()], { type });
+    } catch (e) {
+      throw new CoreError("network", `reading ${path} failed: ${errText(e)}`, { retryable: true });
+    }
+  }
 
   private async json<T>(method: Method, path: string, schema: z.ZodType<T>, opts: { query?: Query; body?: unknown; signal?: AbortSignal } = {}): Promise<T> {
     const res = await this.request(method, path, opts);

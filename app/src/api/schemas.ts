@@ -9,6 +9,7 @@ import {
   type KeyStatus, type MisesEvent, type ModelsInfo, type LocalTestResult, type OnshapeTestResult, type PartHole, type PartMetrics, type PartSummary,
   type Profile, type SetupState, type Step, type ToolOutput,
 } from "./types";
+import type { DrawingInfo, PrintCall, PrintCapabilities, Printer, PrinterStatus, PrintStart, Slice, SliceStart } from "./types";
 
 const record = z.record(z.string(), z.unknown());
 const vec3 = z.tuple([z.number(), z.number(), z.number()]);
@@ -143,4 +144,59 @@ export type SchemaChecks = [
   Assert<Same<z.infer<typeof onshapeTestSchema>, OnshapeTestResult>>,
   Assert<Same<z.infer<typeof localTestSchema>, LocalTestResult>>,
   Assert<Same<z.infer<typeof claudeCodeStatusSchema>, ClaudeCodeStatus>>,
+];
+
+// ---- Plan 4: drawings and printing
+
+export const drawingInfoSchema = z.object({
+  sheet: z.tuple([z.number(), z.number()]), scale: z.number(), scale_text: z.string(), views: z.array(z.string()),
+  overall_mm: vec3, holes: z.array(z.string()), label: z.string(), material: z.string(), date: z.string(), step_mtime_ns: z.number(),
+});
+
+export const printCapabilitiesSchema = z.object({
+  slicer: z.object({ installed: z.boolean(), path: z.string().nullable(), install_command: z.string() }),
+  kinds: z.array(z.object({ kind: z.string(), available: z.boolean(), note: z.string().nullable() })),
+  models: z.array(z.string()),
+  materials: z.array(z.object({ name: z.string(), density_g_cm3: z.number(), usd_per_kg: z.number() })),
+});
+
+/** Status only. Any extra key (an api_key, by mistake) is stripped before it reaches the UI. */
+export const printerSchema = z.object({
+  id: z.string(), kind: z.string(), host: z.string(), name: z.string(), model: z.string(), has_key: z.boolean(),
+});
+
+export const printerStatusSchema = z.object({
+  printer_id: z.string(), reachable: z.boolean(), state: z.string().nullable(), sendable: z.boolean(),
+  temp_nozzle: z.number().nullable(), temp_bed: z.number().nullable(),
+  job: z.object({
+    id: z.number().optional(), progress: z.number().optional(), time_remaining: z.number().optional(), time_printing: z.number().optional(),
+  }).nullable(),
+  error: z.string().nullable(), hint: z.string().nullish(),
+});
+
+export const sliceStartSchema = z.object({ slice_id: z.string(), status: z.string(), run_id: z.string(), call_id: z.string() });
+
+export const sliceSchema = z.object({
+  slice_id: z.string(), status: z.enum(["running", "done", "failed", "cancelled"]), part_id: z.string(), printer_id: z.string(),
+  material: z.string(), model: z.string(), created_at: z.number(),
+  estimate: z.object({ time_s: z.number(), time_text: z.string(), filament_mm: z.number(), filament_g: z.number(), cost_usd: z.number() }).nullable(),
+  preview: z.boolean(), error: z.string().nullable(), hint: z.string().nullable(), sent_to: z.string().nullable(),
+});
+
+export const printStartSchema = z.object({ call_id: z.string(), run_id: z.string(), status: z.string() });
+
+export const printCallSchema = z.object({
+  call_id: z.string(), run_id: z.string(), tool: z.string(), status: z.enum(["running", "done", "failed", "cancelled"]),
+  output: record.nullable(), error: record.nullable(),
+});
+
+export type DrawPrintSchemaChecks = [
+  Assert<Same<z.infer<typeof drawingInfoSchema>, DrawingInfo>>,
+  Assert<Same<z.infer<typeof printCapabilitiesSchema>, PrintCapabilities>>,
+  Assert<Same<z.infer<typeof printerSchema>, Printer>>,
+  Assert<Same<z.infer<typeof printerStatusSchema>, PrinterStatus>>,
+  Assert<Same<z.infer<typeof sliceStartSchema>, SliceStart>>,
+  Assert<Same<z.infer<typeof sliceSchema>, Slice>>,
+  Assert<Same<z.infer<typeof printStartSchema>, PrintStart>>,
+  Assert<Same<z.infer<typeof printCallSchema>, PrintCall>>,
 ];

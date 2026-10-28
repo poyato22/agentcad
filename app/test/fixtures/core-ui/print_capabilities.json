@@ -1,0 +1,50 @@
+{
+  "slicer": {
+    "installed": true,
+    "path": "/opt/fixture/PrusaSlicer",
+    "install_command": "brew install --cask prusaslicer"
+  },
+  "kinds": [
+    {
+      "kind": "prusalink",
+      "available": true,
+      "note": null
+    },
+    {
+      "kind": "bambu",
+      "available": false,
+      "note": "coming later"
+    }
+  ],
+  "models": [
+    "MK4",
+    "MINI"
+  ],
+  "materials": [
+    {
+      "name": "PLA",
+      "density_g_cm3": 1.24,
+      "usd_per_kg": 22.0
+    },
+    {
+      "name": "PETG",
+      "density_g_cm3": 1.27,
+      "usd_per_kg": 25.0
+    },
+    {
+      "name": "ABS",
+      "density_g_cm3": 1.04,
+      "usd_per_kg": 22.0
+    },
+    {
+      "name": "ASA",
+      "density_g_cm3": 1.07,
+      "usd_per_kg": 28.0
+    },
+    {
+      "name": "TPU",
+      "density_g_cm3": 1.21,
+      "usd_per_kg": 35.0
+    }
+  ]
+}

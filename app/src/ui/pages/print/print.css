@@ -1,0 +1,24 @@
+/* Print page + the printer form (also used in Profile → Printers). Plan tokens only. */
+.print { display: grid; grid-template-columns: minmax(320px, 1fr) minmax(320px, 1fr); gap: 12px; align-items: start; max-width: 1200px; }
+.pr-install, .pr-result { grid-column: 1 / -1; }
+.pr-card { background: var(--paper2); border: 1px solid var(--line2); padding: 12px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.pr-card p { margin: 0; }
+.pr-card-title { margin: 0; font: 700 var(--fs-label)/1 var(--font-head); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+.pr-install { border-left: 2px solid var(--amber); }
+.pr-code { display: block; padding: 6px 8px; background: var(--bg); border: 1px solid var(--line); user-select: all; }
+.pr-row { display: flex; align-items: flex-end; gap: 8px; flex-wrap: wrap; }
+.pr-status { display: inline-flex; align-items: center; gap: 6px; min-height: 22px; }
+.pr-note { font-size: var(--fs-small); }
+
+.pr-form { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--line); padding-top: 8px; }
+.pr-form-grid { display: grid; grid-template-columns: repeat(2, minmax(140px, 1fr)); gap: 8px; }
+.pr-form-key { grid-column: 1 / -1; }
+.pr-form input[aria-invalid="true"] { border-color: var(--red); }
+
+.pr-result-body { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+.pr-preview { width: 220px; height: 120px; display: flex; align-items: center; justify-content: center; background: var(--vp); border: 1px solid var(--line); }
+.pr-preview img { width: 100%; height: 100%; object-fit: contain; }
+.pr-facts { display: grid; grid-template-columns: 90px 1fr; gap: 4px 12px; margin: 0; }
+.pr-facts dd { margin: 0; }
+.pr-send { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: 8px; }
+.pr-request { display: flex; align-items: center; gap: 6px; }
