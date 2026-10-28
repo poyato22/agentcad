@@ -108,6 +108,29 @@ class ListArgs(BaseModel):
     pass
 
 
+# Tool results over the Gate's 16 KB inline limit are spilled to a file, so the face list rides
+# along only in part: the largest faces first (the likely fixture/load faces). The full list
+# stays in metrics.json; mirror_faces pages through it, and sim face ids resolve from it.
+FACES_INLINE = 40
+FACES_PAGE_MAX = 100
+
+
+class FacesArgs(BaseModel):
+    part_id: str
+    offset: int = Field(0, ge=0)
+    limit: int = Field(FACES_PAGE_MAX, ge=1, le=FACES_PAGE_MAX)
+
+
+def _inline(m: dict) -> dict:
+    faces = m.get("face_list")
+    if faces is None:
+        return m
+    out = {**m, "face_count": len(faces), "face_list_truncated": len(faces) > FACES_INLINE}
+    if len(faces) > FACES_INLINE:
+        out["face_list"] = sorted(faces, key=lambda f: -(f.get("area") or 0))[:FACES_INLINE]
+    return out
+
+
 def _fail(summary: str, stdout: str = "") -> ToolOutput:
     return ToolOutput(ok=False, summary=summary, data={"stdout_tail": stdout},
                       step_kind=StepKind.ERROR)
@@ -134,7 +157,7 @@ async def mirror_part_create(ctx: ToolContext, args: CreateArgs) -> ToolOutput:
             return _fail(res.error or "build failed", res.stdout_tail)
         _atomic_write(d / "vars.json", json.dumps(res.vars))
     return ToolOutput(summary=_summary(args.part_id, res.metrics),
-                      data={"part_id": args.part_id, "vars": res.vars, **res.metrics})
+                      data={"part_id": args.part_id, "vars": res.vars, **_inline(res.metrics)})
 
 
 @tool("mirror_part_set_vars", safety=SafetyClass.LOCAL_MUTATE, scope_arg="part_id",
@@ -162,7 +185,7 @@ async def mirror_part_set_vars(ctx: ToolContext, args: SetVarsArgs) -> ToolOutpu
              "mass_g": m["mass_g"] - prev["mass_g"],
              "bbox_size": [a - b for a, b in zip(m["bbox"]["size"], prev["bbox"]["size"])]}
     return ToolOutput(summary=f"{_summary(args.part_id, m)}; volume delta {delta['volume_mm3']:+.1f} mm3",
-                      data={"part_id": args.part_id, "vars": new_vars, "delta": delta, **m},
+                      data={"part_id": args.part_id, "vars": new_vars, "delta": delta, **_inline(m)},
                       step_kind=StepKind.DIFF)
 
 
@@ -171,7 +194,7 @@ async def mirror_part_set_vars(ctx: ToolContext, args: SetVarsArgs) -> ToolOutpu
 async def mirror_measure(ctx: ToolContext, args: PartArgs) -> ToolOutput:
     d = _existing(ctx, args.part_id)
     m = _read_json(d / "metrics.json")
-    return ToolOutput(summary=_summary(args.part_id, m), data={"part_id": args.part_id, **m},
+    return ToolOutput(summary=_summary(args.part_id, m), data={"part_id": args.part_id, **_inline(m)},
                       step_kind=StepKind.MEASURE)
 
 
@@ -198,6 +221,26 @@ async def mirror_part_list(ctx: ToolContext, args: ListArgs) -> ToolOutput:
     return ToolOutput(summary=f"{len(parts)} part(s)", data={"parts": parts})
 
 
+@tool("mirror_faces", safety=SafetyClass.READ, scope_arg="part_id",
+      description="Page through all faces of a built local part (id, type, centre, outward "
+                  "normal, area), in face-id order. mirror_measure shows only the largest "
+                  f"{FACES_INLINE}; use the ids here as sim fixtures/loads.")
+async def mirror_faces(ctx: ToolContext, args: FacesArgs) -> ToolOutput:
+    d = _existing(ctx, args.part_id)
+    faces = _read_json(d / "metrics.json").get("face_list")
+    if faces is None:
+        raise MisesError(ErrorCode.NOT_FOUND, f"{args.part_id} has no face ids yet",
+                         hint="rebuild it (mirror_part_set_vars with its current vars)")
+    page = faces[args.offset:args.offset + args.limit]
+    nxt = args.offset + len(page)
+    summary = (f"{args.part_id}: faces {args.offset}..{nxt - 1} of {len(faces)}" if page
+               else f"{args.part_id}: no faces at offset {args.offset} ({len(faces)} total)")
+    return ToolOutput(summary=summary,
+                      data={"part_id": args.part_id, "total": len(faces), "offset": args.offset,
+                            "faces": page, "next_offset": nxt if nxt < len(faces) else None},
+                      step_kind=StepKind.MEASURE)
+
+
 def _summary(part_id: str, m: dict) -> str:
     s = m["bbox"]["size"]
     return (f"{part_id}: volume {m['volume_mm3']:.1f} mm3, mass {m['mass_g']:.2f} g, "
@@ -207,5 +250,5 @@ def _summary(part_id: str, m: dict) -> str:
 
 def register_mirror_tools(registry: ToolRegistry) -> None:
     for t in (mirror_part_create, mirror_part_set_vars, mirror_measure, mirror_export,
-              mirror_part_list):
+              mirror_part_list, mirror_faces):
         registry.register(t)

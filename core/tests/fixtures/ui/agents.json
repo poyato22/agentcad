@@ -11,7 +11,7 @@
   },
   {
     "name": "sim",
-    "description": "Placeholder for simulation work (milestone 4). Simulation is not available yet.",
+    "description": "Runs static stress studies (gmsh + CalculiX) on local parts and reports them as a guide.",
     "model": "inherit"
   },
   {

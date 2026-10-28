@@ -71,6 +71,26 @@ def _hole_groups(shape) -> list[dict]:
     return list(groups.values())
 
 
+def _face_list(shape) -> list[dict]:
+    """Face ids ("f0".. in shape.faces() order) with type, centre of mass, area and the
+    outward normal at the centre, so sim fixtures/loads can name a face. Compact on purpose:
+    it rides along in every mirror_measure result."""
+    from build123d import CenterOf
+
+    out = []
+    for i, face in enumerate(shape.faces()):
+        c = face.center(CenterOf.MASS)
+        try:
+            n = face.normal_at(c)
+            normal = [round(n.X, 4) + 0.0, round(n.Y, 4) + 0.0, round(n.Z, 4) + 0.0]
+        except Exception:  # noqa: BLE001 - degenerate/odd surfaces have no usable normal
+            normal = None
+        out.append({"id": f"f{i}", "type": str(face.geom_type).split(".")[-1].lower(),
+                    "center": [round(c.X, 3) + 0.0, round(c.Y, 3) + 0.0, round(c.Z, 3) + 0.0],
+                    "normal": normal, "area": round(float(face.area), 3)})
+    return out
+
+
 def _metrics(shape, density: float) -> dict:
     bb = shape.bounding_box()
     vol = float(shape.volume)
@@ -84,6 +104,7 @@ def _metrics(shape, density: float) -> dict:
                  "size": [bb.size.X, bb.size.Y, bb.size.Z]},
         "center_of_mass": [com.X, com.Y, com.Z],
         "faces": len(shape.faces()),
+        "face_list": _face_list(shape),
         "edges": len(shape.edges()),
         "holes": _hole_groups(shape),
         "solids": len(shape.solids()),
