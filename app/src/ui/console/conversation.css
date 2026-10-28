@@ -1,7 +1,8 @@
 /* Conversation view. Tokens only: blue = selected / being changed by an agent / needs you;
    red = a failed call or error. Messages are plain text (pre-wrap). */
 .cv-top { flex: none; position: relative; border-bottom: 1px solid var(--line2); background: var(--head); }
-.cv-top-row { display: flex; align-items: center; gap: 4px; padding: 4px 6px; min-width: 0; }
+/* right padding: room for the pinned console collapse button (base.css .console-collapse, 24px) */
+.cv-top-row { display: flex; align-items: center; gap: 4px; padding: 4px 30px 4px 6px; min-width: 0; }
 .cv-switch {
   display: inline-flex; align-items: center; gap: 6px; min-width: 0; flex: 0 1 auto; padding: 3px 6px; cursor: pointer;
   background: transparent; border: 1px solid var(--line2); color: var(--ink); font: inherit;
@@ -9,7 +10,10 @@
 .cv-switch:hover:not(:disabled) { border-color: var(--dim); }
 .cv-switch:disabled { color: var(--faint); cursor: default; }
 .cv-switch:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
-.cv-switch-l { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+/* `.cv-switch .cv-switch-l` outranks the global `.text` (pre-wrap): one line, ending in "…" */
+.cv-switch .cv-switch-l { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+/* Stop / + New / Full log never wrap; the run label gives way instead (QA at 1280×800) */
+.cv-top-row > button:not(.cv-switch) { flex: none; white-space: nowrap; }
 .cv-needs { flex: none; padding: 3px 6px; border: 1px solid var(--blue); background: var(--blue-tint); color: var(--blue2); font: inherit; font-size: var(--fs-small); cursor: pointer; }
 .cv-spacer { flex: 1; min-width: 4px; }
 .cv-who { padding: 0 8px 4px 24px; font-size: 9.5px; letter-spacing: .04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

@@ -28,7 +28,7 @@ export function TitleBlock({ part, runLabel, error = null }: TitleBlockProps): J
         {cells.map(([k, v]) => (
           <div class="tb-cell" data-cell={k} key={k}>
             <span class="label">{k}</span>
-            <span class="tb-value">{v}</span>
+            <span class="tb-value" title={v}>{v}</span>
           </div>
         ))}
       </div>

@@ -32,7 +32,10 @@
 
 .title-block { position: absolute; right: 22px; bottom: 22px; max-width: calc(100% - 44px); background: var(--vp); }
 .tb-cells { display: flex; border: 1px solid var(--dim); }
-.tb-cell { display: flex; flex-direction: column; gap: 4px; padding: 5px 10px; min-width: 70px; border-left: 1px solid var(--dim); }
+/* PART / SIZE / MASS keep their width; BY (a run label, can be long) gives way and ends in "…"
+   so no value spills into its neighbour at narrow windows (QA at 1280×800). */
+.tb-cell { display: flex; flex-direction: column; gap: 4px; padding: 5px 10px; min-width: 70px; border-left: 1px solid var(--dim); flex: none; }
+.tb-cell[data-cell="BY"] { flex: 0 1 auto; min-width: 70px; overflow: hidden; }
 .tb-cell:first-child { border-left: 0; }
-.tb-value { color: var(--ink); white-space: nowrap; }
+.tb-value { color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tb-error { border: 1px solid var(--dim); border-top: 0; padding: 4px 10px; color: var(--red); }

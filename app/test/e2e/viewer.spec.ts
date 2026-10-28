@@ -1,4 +1,6 @@
 // Viewer e2e: Chromium with SwiftShader software WebGL.
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import type { Page } from "@playwright/test";
 import type { PartSummary } from "../../src/api/types";
 import { expect, test, type FakeControl } from "./fixtures";
@@ -60,6 +62,29 @@ test("model_bbox_matches_fixture_metrics", async ({ page, fake }) => {
   got.forEach((v, i) => expect(v).toBeCloseTo(expected[i] ?? Number.NaN, 1));
   await expect(page.getByTestId("title-block")).toContainText("40.00 × 20.00 × 6.00");
   await expect(page.getByTestId("title-block")).toContainText("Part · mount plate");
+});
+
+test("title_block_values_never_overlap_at_1280x800", async ({ page, fake }) => {
+  // real-app QA: at 1280×800 PART / SIZE / MASS spilled into the next cell and BY ran out of the box
+  const sc = JSON.parse(readFileSync(resolve(import.meta.dirname, "../fake-core/scenarios/viewer.json"), "utf8")) as { runs: { task: string }[] };
+  sc.runs[0].task = "create a part called mount_plate with two through holes";  // a long BY label
+  await fake.reset(sc as never);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.reload();
+  const tb = page.getByTestId("title-block");
+  await expect(tb).toContainText("Part · mount plate");
+  await expect(tb).toContainText("create part called");
+  const boxes = await tb.locator(".tb-cell").evaluateAll((cells) => cells.map((c) => {
+    const v = c.querySelector(".tb-value") as HTMLElement;
+    const r = c.getBoundingClientRect();
+    return { cell: c.getAttribute("data-cell"), left: r.left, right: r.right, valueFits: v.scrollWidth <= v.clientWidth + 1, valueRight: v.getBoundingClientRect().right };
+  }));
+  for (const b of boxes.filter((x) => x.cell !== "BY")) expect(b.valueFits, `${b.cell} fits its cell`).toBe(true);
+  for (let i = 1; i < boxes.length; i++) expect(boxes[i].left).toBeGreaterThanOrEqual(boxes[i - 1].right - 1);
+  for (const b of boxes) expect(b.valueRight).toBeLessThanOrEqual(b.right + 1);
+  const outer = await tb.boundingBox();
+  const vp = await page.locator(".vp").boundingBox();
+  expect(outer && vp && outer.x + outer.width <= vp.x + vp.width).toBe(true);
 });
 
 test("drafting_grid_and_fig_label_visible", async ({ page }) => {

@@ -24,6 +24,25 @@ async function open(page: Page) {
   await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
 }
 
+test("console_header_stays_one_line_at_1280x800", async ({ page }) => {
+  // real-app QA: the run label wrapped onto a second line and "+ New" / "Full log" broke in two
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await open(page);
+  const row = consoleRegion(page).locator(".cv-top-row");
+  const lineH = await row.locator("[data-run-label]").evaluate((el) => parseFloat(getComputedStyle(el).lineHeight) || 16);
+  for (const name of ["+ New", "Full log"]) {
+    const h = (await row.getByRole("button", { name, exact: true }).boundingBox())?.height ?? 0;
+    expect(h, name).toBeLessThan(lineH * 2);
+  }
+  const label = await row.locator("[data-run-label]").evaluate((el) => ({ h: el.getBoundingClientRect().height, ws: getComputedStyle(el).whiteSpace }));
+  expect(label.ws).toBe("nowrap");
+  expect(label.h).toBeLessThan(lineH * 1.6);
+  // and "Full log" is not under the pinned collapse button
+  const full = await row.getByRole("button", { name: "Full log", exact: true }).boundingBox();
+  const collapse = await page.getByRole("button", { name: "Collapse the agent console" }).boundingBox();
+  expect(full && collapse && full.x + full.width <= collapse.x + 0.5).toBe(true);
+});
+
 test("conversation_is_the_default_with_activity_lines_and_the_approval_card_inline", async ({ page }) => {
   await open(page);
   await expect(consoleRegion(page).locator("[data-view=chat]")).toBeVisible();
