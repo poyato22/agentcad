@@ -10,7 +10,7 @@ import { effectiveRun, needsYou } from "../../state/selection";
 import { actions, selectedRunId } from "../../state/store";
 import { Button } from "../common/Button";
 import { Led, type LedTone } from "../common/Led";
-import { effectiveRunId, labelOf, rosterRuns, runLabels } from "./derived";
+import { effectiveRunId, labelOf, offListRuns, rosterRuns, runLabels } from "./derived";
 import { shownPending } from "./queued";
 import { composerOpen, setConsoleView } from "./view";
 
@@ -30,8 +30,10 @@ function cancelRun(id: string): void {
 
 export function RunSwitcher(): JSX.Element {
   const list = rosterRuns.value;
-  const current = effectiveRun.value ?? shownPending.value;
+  const offList = offListRuns.value;
   const shownId = effectiveRunId.value;
+  // the shown run may be off-list (the app's own "ui" run, whose print / slice cards sit here)
+  const current = effectiveRun.value ?? shownPending.value ?? (shownId ? offList.get(shownId) ?? null : null);
   const { runIds: needs } = needsYou.value;
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
@@ -46,8 +48,14 @@ export function RunSwitcher(): JSX.Element {
     return () => document.removeEventListener("mousedown", away);
   }, [open]);
 
-  const others = list.filter((r) => r.id !== shownId && needs.has(r.id));
-  const label = current ? runLabels.value.get(current.id) ?? runLabel(current, [current]) : shownId ? "starting…" : "no runs yet";
+  // the needs-you list: runs in the roster plus off-list runs (the ui run), minus the shown one
+  const listIds = new Set(list.map((r) => r.id));
+  const otherIds = [
+    ...list.filter((r) => r.id !== shownId && needs.has(r.id)).map((r) => r.id),
+    ...[...needs].filter((id) => id !== shownId && !listIds.has(id)),
+  ];
+  const label = current ? runLabels.value.get(current.id) ?? runLabel(current, [current])
+    : shownId ? (offList.has(shownId) ? labelOf(shownId) : "starting…") : "no runs yet";
   const pick = (id: string) => { actions.selectRun(id); setOpen(false); };
 
   return (
@@ -60,9 +68,9 @@ export function RunSwitcher(): JSX.Element {
           <span class="cv-switch-l text" data-run-label>{label}</span>
           <span class="faint" aria-hidden="true">▾</span>
         </button>
-        {others.length > 0 && (
-          <button type="button" class="cv-needs needs-you" aria-label={`${labelOf(others[0].id)} needs you`} onClick={() => pick(others[0].id)}>
-            {`▲ ${others.length} needs you`}
+        {otherIds.length > 0 && (
+          <button type="button" class="cv-needs needs-you" aria-label={`${labelOf(otherIds[0])} needs you`} onClick={() => pick(otherIds[0])}>
+            {`▲ ${otherIds.length} needs you`}
           </button>
         )}
         <span class="cv-spacer" />

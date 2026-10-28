@@ -71,6 +71,37 @@ for (const theme of ["dark", "light"] as const) {
   });
 }
 
+test("a_sent_card_on_the_ui_run_stays_reachable_via_the_chip_and_show_card", async ({ page, fake }) => {
+  // A1: Send → switch to another run → the print card on the off-list "ui" run is still
+  // reachable, both from the needs-you chip and from the Print page's "Show card" button.
+  await fake.reset(scenario({ printers: [MK4] }));
+  await openPrint(page);
+  await slice(page);
+  await sendBtn(page).click();
+  await expect(printCard(page)).toBeVisible();
+
+  // switch the console to the designer run (the ui run is off the roster list)
+  const switcher = page.locator("[data-run-switcher]").getByRole("button", { name: /^Run:/ });
+  await switcher.click();
+  await page.getByRole("listbox", { name: "Runs" }).getByRole("option", { name: /designer · thicken mount plate/ }).click();
+  await expect(switcher).toContainText("designer · thicken mount plate");
+  await expect(printCard(page)).toHaveCount(0);
+
+  // the card is one click away via the needs-you chip, labelled "You (Mises)"
+  const chip = page.getByRole("button", { name: "You (Mises) needs you" });
+  await expect(chip).toContainText("needs you");
+  await chip.click();
+  await expect(printCard(page)).toBeVisible();
+
+  // and via "Show card" on the Print page after collapsing the console and leaving the ui run
+  await switcher.click();
+  await page.getByRole("listbox", { name: "Runs" }).getByRole("option", { name: /designer · thicken mount plate/ }).click();
+  await page.getByRole("button", { name: "Collapse the agent console" }).click();
+  await pageRegion(page).getByRole("button", { name: "Show card" }).click();
+  await expect(page.locator("[data-region=app]")).toHaveAttribute("data-console", "open");
+  await expect(printCard(page)).toBeVisible();
+});
+
 test("never_sends_to_a_printer_that_reports_an_error", async ({ page, fake }) => {
   await fake.reset(scenario({ printers: [MK4], states: { bench_mk4: { state: "ERROR" } } }));
   await openPrint(page);

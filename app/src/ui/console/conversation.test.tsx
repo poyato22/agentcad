@@ -8,7 +8,7 @@ import type { AgentRun, CoreStatusInfo, Step } from "../../api/types";
 import { actions, approvals, bindClient, coreStatus, focusedStepId, questions, resetStore, runs, selectedRunId, steps } from "../../state/store";
 import { resetCatalog } from "../dialogs/catalog";
 import { ConsolePane } from "./ConsolePane";
-import { expandedFolds } from "./derived";
+import { expandedFolds, resetOffListRuns } from "./derived";
 import { approval, message, resetIds, run, step, toolCall, toolFailure } from "./testSteps";
 import { composerOpen, consoleView, resetConsoleView, VIEW_KEY } from "./view";
 
@@ -47,7 +47,7 @@ function client(over: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => { resetIds(); try { localStorage.removeItem(VIEW_KEY); } catch { /* none */ } resetConsoleView(); });
-afterEach(() => { cleanup(); resetStore(); resetCatalog(); resetConsoleView(); expandedFolds.value = new Set(); });
+afterEach(() => { cleanup(); resetStore(); resetCatalog(); resetConsoleView(); resetOffListRuns(); expandedFolds.value = new Set(); });
 
 describe("conversation view (default)", () => {
   it("renders_the_real_steps_as_a_thread_with_compact_activity_lines", async () => {
@@ -126,6 +126,25 @@ describe("conversation view (default)", () => {
     await frame();
     expect(selectedRunId.value).toBe("r2");
     expect(document.querySelector('[data-approval="ap2"]')).toBeTruthy();
+  });
+
+  it("a_card_on_the_off_list_ui_run_is_reachable_from_the_switcher", async () => {
+    // A1: a print card sits on the "ui" run, which GET /runs leaves out. The needs-you chip
+    // must still list it (labelled "You (Mises)", not "starting…") and reach it in one click.
+    const uiRun = { ...run("ui1"), agent: "you", provider: "ui", model: "ui", task: "external agent: you" };
+    client({ getRun: vi.fn(async () => uiRun) });
+    setRuns([run("r1", { created_at: 2, task: "stiffen the upright" })]);
+    selectedRunId.value = "r1";
+    approvals.value = new Map([["apu", approval("apu", "ui1")]]);
+    render(<ConsolePane />);
+    await frame();
+    const needs = screen.getByRole("button", { name: "You (Mises) needs you" });
+    expect(needs.textContent).toContain("▲ 1 needs you");
+    fireEvent.click(needs);
+    await frame();
+    expect(selectedRunId.value).toBe("ui1");
+    expect(document.querySelector('[data-approval="apu"]')).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^Run: You \(Mises\)/ })).toBeTruthy();
   });
 
   it("run_switcher_is_one_dropdown_with_status_dots", async () => {

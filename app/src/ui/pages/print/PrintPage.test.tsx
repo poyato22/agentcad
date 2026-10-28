@@ -229,6 +229,20 @@ describe("PrintPage: sending (irreversible)", () => {
     await waitFor(() => expect(screen.getByRole("status", { name: "Print request" }).textContent).toContain("sent mises_mount_plate.gcode to Bench MK4"));
   });
 
+  it("show_card_reselects_the_run_and_reopens_the_console", async () => {
+    // A1: after sending, the waiting line offers "Show card" to return to the stranded card
+    // even if the user selected another run and collapsed the console meanwhile.
+    await sliced();
+    await waitFor(() => expect((sendBtn() as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(sendBtn());
+    await screen.findByRole("status", { name: "Print request" });
+    selectedRunId.value = "other-run";
+    setConsoleCollapsed(true);
+    fireEvent.click(screen.getByRole("button", { name: "Show card" }));
+    expect(selectedRunId.value).toBe("uirun000001");
+    expect(consoleCollapsed.value).toBe(false);
+  });
+
   it("send_checks_the_printer_again_at_click_time", async () => {
     await sliced();
     await waitFor(() => expect((sendBtn() as HTMLButtonElement).disabled).toBe(false));

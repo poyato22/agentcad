@@ -282,7 +282,11 @@ export function PrintPage(): JSX.Element {
           {sendError && <div class="pg-error text" role="alert">{sendError}</div>}
           {request && (
             <div class="pr-request" role="status" aria-label="Print request">
-              {!outcome && (<><Led tone="blue" /><span>Approve or reject the card in the console. Nothing is sent until then.</span></>)}
+              {!outcome && (<>
+                <Led tone="blue" />
+                <span>Approve or reject the card in the console. Nothing is sent until then.</span>
+                <Button variant="ghost" onClick={() => { setConsoleCollapsed(false); actions.selectRun(request.start.run_id); }}>Show card</Button>
+              </>)}
               {outcome && (<><Led tone={outcome.tone === "dim" ? "faint" : outcome.tone} /><span class="text">{outcome.text}</span></>)}
             </div>
           )}
