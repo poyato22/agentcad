@@ -1,6 +1,11 @@
 /* Design tokens. Exact values from the plan's Global Constraints — do not add colors.
    Blue: selected / being changed by an agent / needs the human. Only.
-   Green / amber / red: pass / warn / fail (amber also marks locked interfaces). Only. */
+   Green / amber / red: pass / warn / fail (amber also marks locked interfaces). Only.
+
+   Themes are applied through `data-theme` on <html> (ui/profile stores theme in the profile):
+   - the dark palette (unchanged values) lives on :root and is the default;
+   - `data-theme="light"` and `data-theme="system"` under prefers-color-scheme: light switch to the
+     light palette below. Setting it to "dark" always keeps the dark palette. */
 :root {
   --bg: #0a0a0a;
   --paper: #111111;
@@ -19,8 +24,18 @@
   --amber: #f2b134;
   --red: #ff5a4a;
 
-  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
-  --font-head: "IBM Plex Sans Condensed", "IBM Plex Mono", sans-serif;
+  /* Viewer drafting grid (on top of --vp); tinted per theme so it follows the viewport. */
+  --grid-strong: rgba(255,255,255,.07);
+  --grid-faint: rgba(255,255,255,.025);
+  /* Viewer mesh (read by ui/viewer/loadPart.ts + scene.ts; grey only). */
+  --mesh-face: #2a2a2a;
+  --mesh-edge: #e6e6e6;
+
+  color-scheme: dark;
+
+  --font-mono: "Iosevka", ui-monospace, Menlo, monospace;
+  /* Headings use the same family at a heavier weight — no second typeface. */
+  --font-head: "Iosevka", ui-monospace, Menlo, monospace;
   --fs: 12px;
   --fs-small: 10.5px;
   --fs-label: 9.5px;
@@ -28,5 +43,68 @@
   --topbar-h: 44px;
   --left-w: 240px;
   --console-w: 420px;
+  --console-rail-w: 36px;
   --pane-head-h: 24px;
+
+  /* macOS overlay traffic lights sit top-left; keep content out of this zone on every
+     full-height surface that touches the top-left corner. */
+  --chrome-inset-x: 78px;
+  --chrome-inset-y: 28px;
+}
+
+/* ---- light palette: the pages/models/UX Global Constraints values, except where the contrast
+   ruling (text ≥ 4.5:1 on bg/paper/paper2) needed darker text tones: --faint #6a6a6a (ruled), and
+   --green/--amber/--blue2, which are also used as text, darkened in hue (constraint swatches
+   #1f8a4c / #b7790f / #2f6fe0 measured 3.3–4.3:1). The two blocks below must stay identical
+   (theme.test.ts checks parity). */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f4f4f2;
+  --paper: #ffffff;
+  --paper2: #ececea;
+  --head: #ececea;
+  --vp: #ffffff;
+  --line: #d6d6d2;
+  --line2: #bdbdb8;
+  --ink: #111111;
+  --dim: #4a4a4a;
+  --faint: #6a6a6a;
+  --blue: #0a5bd8;
+  --blue2: #2560c4;
+  --blue-tint: rgba(10,91,216,.10);
+  --green: #17763f;
+  --amber: #8f5e0a;
+  --red: #c8321e;
+
+  --grid-strong: rgba(10,20,40,.09);
+  --grid-faint: rgba(10,20,40,.035);
+  --mesh-face: #d6d6d2;
+  --mesh-edge: #4a4a4a;
+}
+
+@media (prefers-color-scheme: light) {
+  :root[data-theme="system"] {
+    color-scheme: light;
+    --bg: #f4f4f2;
+    --paper: #ffffff;
+    --paper2: #ececea;
+    --head: #ececea;
+    --vp: #ffffff;
+    --line: #d6d6d2;
+    --line2: #bdbdb8;
+    --ink: #111111;
+    --dim: #4a4a4a;
+    --faint: #6a6a6a;
+    --blue: #0a5bd8;
+    --blue2: #2560c4;
+    --blue-tint: rgba(10,91,216,.10);
+    --green: #17763f;
+    --amber: #8f5e0a;
+    --red: #c8321e;
+
+    --grid-strong: rgba(10,20,40,.09);
+    --grid-faint: rgba(10,20,40,.035);
+    --mesh-face: #d6d6d2;
+    --mesh-edge: #4a4a4a;
+  }
 }

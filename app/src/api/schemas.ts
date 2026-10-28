@@ -111,6 +111,7 @@ export const profileSchema = z.object({
   default_agent: z.string().default("designer"), default_model: z.string().nullable().default(null),
   onshape_calls_year_cap: z.number().default(2500), onshape_calls_run_cap: z.number().default(200),
   max_parallel_agents: z.union([z.number().int(), z.literal("auto")]).default("auto"), local_endpoints: z.record(z.string(), z.string()).default({}),
+  theme: z.enum(["system", "light", "dark"]).default("system"),
   setup_completed_at: z.number().nullable().default(null),
 });
 

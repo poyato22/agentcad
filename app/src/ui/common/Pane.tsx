@@ -1,7 +1,7 @@
 import type { ComponentChildren, JSX } from "preact";
 
 export interface PaneProps {
-  /** Pane title, shown upper-case in Plex Sans Condensed. */
+  /** Pane title, shown upper-case in Iosevka at the heading weight. */
   title: string;
   /** Faint text or controls at the right end of the header. */
   right?: ComponentChildren;

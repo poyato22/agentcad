@@ -1,25 +1,42 @@
 import type { JSX } from "preact";
+import { useRef } from "preact/hooks";
+import { activePage, PAGES, setPage } from "../pages/router";
 
-const TABS = ["Design", "Studies", "Sketch", "Drawing", "Print"] as const;
-
-/** Only Design exists in v1; the others are shown disabled. */
+/** The top mode tabs. Every tab is clickable and navigates (⌘1–⌘5 do the same); the active tab is
+ *  underlined in blue. Keyboard: one tab stop (roving tabindex); ←/→ move to the previous/next tab
+ *  (wrapping), Home/End to the first/last, and the focused tab opens. */
 export function ModeTabs(): JSX.Element {
+  const current = activePage.value;
+  const list = useRef<HTMLDivElement>(null);
+
+  function onKeyDown(e: KeyboardEvent): void {
+    const i = PAGES.findIndex((p) => p.id === current);
+    let next: number;
+    if (e.key === "ArrowRight") next = (i + 1) % PAGES.length;
+    else if (e.key === "ArrowLeft") next = (i - 1 + PAGES.length) % PAGES.length;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = PAGES.length - 1;
+    else return;
+    e.preventDefault();
+    setPage(PAGES[next].id);
+    list.current?.querySelectorAll<HTMLButtonElement>("[role=tab]")[next]?.focus();
+  }
+
   return (
-    <div class="tabs" role="tablist" aria-label="mode">
-      {TABS.map((t) => {
-        const active = t === "Design";
+    <div ref={list} class="tabs" role="tablist" aria-label="mode" onKeyDown={onKeyDown}>
+      {PAGES.map((p) => {
+        const active = p.id === current;
         return (
           <button
-            key={t}
+            key={p.id}
             type="button"
             role="tab"
             class={active ? "tab tab-active active-tab" : "tab"}
             aria-selected={active}
-            aria-disabled={active ? undefined : "true"}
-            title={active ? undefined : "later"}
+            title={`${p.label} (⌘${p.key})`}
             tabIndex={active ? 0 : -1}
-            onClick={(e) => { if (!active) e.preventDefault(); }}
-          >{t}</button>
+            onClick={() => setPage(p.id)}
+          >{p.label}</button>
         );
       })}
     </div>

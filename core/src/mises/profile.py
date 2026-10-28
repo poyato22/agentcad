@@ -78,6 +78,7 @@ class Profile(BaseModel):
     # "auto": from this Mac's specs and the model (hardware.auto_parallel); an int is a manual limit
     max_parallel_agents: Literal["auto"] | Annotated[StrictInt, Field(ge=1, le=16)] = "auto"
     local_endpoints: dict[str, str] = {}
+    theme: Literal["system", "light", "dark"] = "system"
     setup_completed_at: float | None = None
     printers: list[PrinterEntry] = []
 

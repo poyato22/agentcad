@@ -2,10 +2,21 @@
 // grid shows through), rendered on demand only.
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { EDGE_COLOR, type PartScene } from "./loadPart";
+import { EDGE_COLOR, meshColors, type MeshColors, type PartScene } from "./loadPart";
 
 export { EDGE_COLOR };
+/** Dark-theme default; the live highlight is the theme's --blue token. */
 export const HIGHLIGHT_COLOR = "#3d8bff";
+
+interface ViewerColors extends MeshColors { highlight: string }
+
+function viewerColors(): ViewerColors {
+  let blue = "";
+  if (typeof document !== "undefined" && typeof getComputedStyle === "function") {
+    blue = getComputedStyle(document.documentElement).getPropertyValue("--blue").trim();
+  }
+  return { ...meshColors(), highlight: blue || HIGHLIGHT_COLOR };
+}
 export const ISO_AZIMUTH_DEG = 45;
 export const ISO_ELEVATION_DEG = 35;
 
@@ -110,16 +121,30 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
   canvas.addEventListener("webglcontextlost", onLost);
   canvas.addEventListener("webglcontextrestored", onRestored);
 
+  let colors = viewerColors();
+
   function applyStyle(): void {
     if (!part) return;
     part.object.traverse((o) => {
       if (o instanceof THREE.LineSegments) {
-        (o.material as THREE.LineBasicMaterial).color.set(highlight ? HIGHLIGHT_COLOR : EDGE_COLOR);
+        (o.material as THREE.LineBasicMaterial).color.set(highlight ? colors.highlight : colors.edge);
       } else if (o instanceof THREE.Mesh) {
-        (o.material as THREE.Material).visible = mode === "shaded";
+        const m = o.material as THREE.MeshLambertMaterial;
+        m.visible = mode === "shaded";
+        m.color?.set(colors.face);
       }
     });
   }
+
+  // Follow the theme live: <html data-theme> changes (profile toggle) and OS light/dark changes
+  // (theme "system") re-read the tokens and repaint.
+  const onTheme = () => { colors = viewerColors(); applyStyle(); requestRender(); };
+  const themeObserver = typeof MutationObserver === "function" && typeof document !== "undefined"
+    ? new MutationObserver(onTheme) : null;
+  themeObserver?.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  const osScheme = typeof window !== "undefined" && typeof window.matchMedia === "function"
+    ? window.matchMedia("(prefers-color-scheme: light)") : null;
+  osScheme?.addEventListener("change", onTheme);
 
   function fit(): void {
     if (!part) return;
@@ -158,6 +183,8 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
       disposed = true;
       if (frame) cancelAnimationFrame(frame);
       controls.dispose();
+      themeObserver?.disconnect();
+      osScheme?.removeEventListener("change", onTheme);
       canvas.removeEventListener("webglcontextlost", onLost);
       canvas.removeEventListener("webglcontextrestored", onRestored);
       renderer.dispose();

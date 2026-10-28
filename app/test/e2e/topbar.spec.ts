@@ -7,16 +7,18 @@ test.beforeEach(async ({ fake, page }) => {
 
 const light = (page: import("@playwright/test").Page, name: string) => page.locator(`[data-light=${name}]`);
 
-test("active_tab_blue_underline", async ({ page }) => {
+test("active_tab_blue_underline_and_tabs_navigate", async ({ page }) => {
   await page.goto("/");
   const design = page.getByRole("tab", { name: "Design" });
   await expect(design).toHaveCSS("border-bottom-color", "rgb(61, 139, 255)");
   await expect(design).toHaveCSS("border-bottom-width", "2px");
   const studies = page.getByRole("tab", { name: "Studies" });
-  await expect(studies).toHaveAttribute("aria-disabled", "true");
-  await studies.click({ force: true });
-  await expect(design).toHaveAttribute("aria-selected", "true");
-  await expect(studies).toHaveCSS("color", "rgb(94, 94, 94)");
+  await expect(studies).not.toHaveAttribute("aria-disabled", "true");
+  await studies.click();
+  await expect(studies).toHaveAttribute("aria-selected", "true");
+  await expect(design).toHaveAttribute("aria-selected", "false");
+  await expect(studies).toHaveCSS("border-bottom-color", "rgb(61, 139, 255)");
+  await expect(page.locator('[data-region="page"]')).toContainText("Studies");
 });
 
 test("topbar_geometry_and_colors", async ({ page }) => {

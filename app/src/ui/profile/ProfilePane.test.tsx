@@ -13,7 +13,7 @@ const ONSHAPE_SECRET = "on-secret-BBBB2222";
 const profile: Profile = {
   display_name: "Hartigan", units: "mm", default_material: "PLA", default_agent: "designer", default_model: null,
   onshape_calls_year_cap: 2500, onshape_calls_run_cap: 200, max_parallel_agents: 2,
-  local_endpoints: { ollama: "http://localhost:11434/v1" }, setup_completed_at: 1790000000,
+  local_endpoints: { ollama: "http://localhost:11434/v1" }, theme: "system", setup_completed_at: 1790000000,
 };
 const keys: KeyStatus[] = [
   { vendor: "anthropic", present: true, source: "keychain" }, { vendor: "openai", present: true, source: "env" },

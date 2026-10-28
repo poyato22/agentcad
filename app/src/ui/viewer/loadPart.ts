@@ -1,11 +1,26 @@
-// GLB bytes → a drafting-style scene object: dark low-contrast faces + light feature edges.
+// GLB bytes → a drafting-style scene object: low-contrast faces + feature edges in the theme's greys.
 // The exported GLB is metres and Y-up; the scene is mm and Z-up (CAD frame). No textures are ever loaded.
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
+/** Dark-theme defaults; the live colors come from the --mesh-face / --mesh-edge tokens (meshColors). */
 export const FACE_COLOR = "#2a2a2a";
 export const EDGE_COLOR = "#e6e6e6";
 export const EDGE_THRESHOLD_DEG = 20;
+
+export interface MeshColors { face: string; edge: string }
+
+/** Mesh face/edge colors for the current theme, from the CSS tokens (fallback: the dark defaults). */
+export function meshColors(): MeshColors {
+  let face = "";
+  let edge = "";
+  if (typeof document !== "undefined" && typeof getComputedStyle === "function") {
+    const s = getComputedStyle(document.documentElement);
+    face = s.getPropertyValue("--mesh-face").trim();
+    edge = s.getPropertyValue("--mesh-edge").trim();
+  }
+  return { face: face || FACE_COLOR, edge: edge || EDGE_COLOR };
+}
 
 /** glTF units are metres (build123d exports them that way); the scene is in mm. */
 export const MM_PER_GLTF_UNIT = 1000;
@@ -31,15 +46,16 @@ export async function loadPart(bytes: ArrayBuffer): Promise<PartScene> {
   const meshes: THREE.Mesh[] = [];
   source.traverse((o) => { if (o instanceof THREE.Mesh) meshes.push(o); });
   if (meshes.length === 0) throw new Error("model has no geometry");
+  const colors = meshColors();
   for (const mesh of meshes) {
     const old = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     for (const m of old) m.dispose();
     mesh.material = new THREE.MeshLambertMaterial({
-      color: FACE_COLOR, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
+      color: colors.face, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
     });
     const edges = new THREE.LineSegments(
       new THREE.EdgesGeometry(mesh.geometry, EDGE_THRESHOLD_DEG),
-      new THREE.LineBasicMaterial({ color: EDGE_COLOR }),
+      new THREE.LineBasicMaterial({ color: colors.edge }),
     );
     edges.userData["edges"] = true;
     mesh.add(edges);
