@@ -71,8 +71,8 @@ export interface AgentInfo { name: string; description: string; model: string }
 
 /** signed_in / signed_out / not_installed: the "claude-code" vendor (Plan 3 Task 3). */
 export type KeySource = "env" | "keychain" | "none" | "not_needed" | "signed_in" | "signed_out" | "not_installed";
-/** `models`: aliases the vendor offers, when the core lists them (claude-code: sonnet, opus, haiku, fable). */
-export interface ModelsInfo { default: string; vendors: { vendor: string; key: KeySource; models?: string[] }[] }
+/** `models`: aliases/refs the vendor offers, when the core lists them (claude-code aliases; `ollama/<name>`, `lmstudio/<id>`, `openrouter/<id>`). `free`: every listed model is free. `hint`: why the list is empty (e.g. Ollama not running). */
+export interface ModelsInfo { default: string; vendors: { vendor: string; key: KeySource; models?: string[]; free?: boolean; hint?: string | null }[] }
 
 export interface CoreStatusInfo {
   core_version: string; onshape: "connected" | "not_configured"; onshape_calls_year: number;

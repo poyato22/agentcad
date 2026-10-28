@@ -54,6 +54,8 @@ export const modelsInfoSchema = z.object({
     vendor: z.string(),
     key: z.enum(["env", "keychain", "none", "not_needed", "signed_in", "signed_out", "not_installed"]),
     models: z.array(z.string()).optional(),
+    free: z.boolean().optional(),
+    hint: z.string().nullable().optional(),
   })),
 });
 

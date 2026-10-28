@@ -96,7 +96,8 @@ def test_models_never_leaks_keys(client, monkeypatch):
     assert body["default"].startswith("anthropic/")
     vendors = body["vendors"]
     assert {"vendor": "anthropic", "key": "env"} in vendors
-    assert {"vendor": "ollama", "key": "not_needed"} in vendors
+    ollama = next(v for v in vendors if v["vendor"] == "ollama")
+    assert ollama["key"] == "not_needed" and ollama["models"] == []
     assert {"vendor": "openai", "key": "none"} in vendors
 
 

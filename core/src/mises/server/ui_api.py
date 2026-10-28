@@ -7,6 +7,7 @@ answered without a token.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -25,6 +26,7 @@ from ..claude_code.session import MODEL_ALIASES, SOURCE as CLAUDE_CODE
 from ..events import Event
 from ..providers.registry import DEFAULT_MODEL, VENDORS
 from ..types import Caps, ErrorCode, MisesError
+from .model_lists import ModelLists
 
 if TYPE_CHECKING:
     from ..runtime import Runtime
@@ -87,6 +89,7 @@ def _etag_matches(header: str | None, etag: str) -> bool:
 
 def build_ui_router(runtime: Runtime) -> APIRouter:
     router = APIRouter()
+    model_lists = ModelLists()
 
     @router.get("/status")
     async def status():
@@ -127,10 +130,36 @@ def build_ui_router(runtime: Runtime) -> APIRouter:
                else "signed_out")
         return {"vendor": CLAUDE_CODE, "key": key, "models": list(MODEL_ALIASES)}
 
+    async def _with_lists(vendors: list[dict]) -> list[dict]:
+        """Attach live model lists: `models` (full vendor/id refs), `hint` when a local server
+        is down, `free` for OpenRouter's free tool-capable models. Keys are omitted when unused."""
+        endpoints = runtime.profile().local_endpoints
+
+        def base(vendor: str) -> str:
+            return endpoints.get(vendor) or VENDORS[vendor].base_url or ""
+
+        ollama, lmstudio, free = await asyncio.gather(
+            model_lists.ollama(base("ollama")), model_lists.lmstudio(base("lmstudio")),
+            model_lists.openrouter())
+        out = []
+        for v in vendors:
+            v = dict(v)
+            if v["vendor"] in ("ollama", "lmstudio"):
+                lst = ollama if v["vendor"] == "ollama" else lmstudio
+                v["models"] = lst.models
+                if lst.hint:
+                    v["hint"] = lst.hint
+            elif v["vendor"] == "openrouter":
+                v["models"] = free
+                v["free"] = True
+            out.append(v)
+        return out
+
     @router.get("/models")
     async def models():
         vendors = await run_in_threadpool(_vendor_keys)
-        return {"default": DEFAULT_MODEL, "vendors": [*vendors, await _claude_code_vendor()]}
+        return {"default": DEFAULT_MODEL,
+                "vendors": [*await _with_lists(vendors), await _claude_code_vendor()]}
 
     @router.get("/parts")
     async def parts():
