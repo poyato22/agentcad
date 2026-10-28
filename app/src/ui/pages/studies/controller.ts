@@ -1,14 +1,15 @@
 // Studies page state: solver status, the part's study history, the shown study, and the study
 // being run. A study runs in the core as a "studies" run (POST /sims → 202); the page follows it
-// by polling GET /sims?run_id= (the core documents both that and the sim_progress events; polling
-// needs no change to the shared event reducer) and stops it with POST /runs/{id}/cancel.
+// by polling GET /sims?run_id= and by its `sim_progress` events (onEvent: the stage shows at once,
+// and a terminal stage polls now instead of on the next tick); it stops it with POST /runs/{id}/cancel.
 // One controller per app (module level, see index.tsx): a study keeps running in the core when the
 // user leaves the page, and `active` remembers it. Polling only runs while the page is mounted:
 // the page calls pause() on unmount and resume() on mount, which polls at once and picks the
 // study up where it is (or shows its result if it finished meanwhile).
 import { computed, signal, type ReadonlySignal, type Signal } from "@preact/signals";
 import { CoreError, type CoreClient } from "../../../api/client";
-import type { SimRecord, SimStage, SimSolvers, SimSummary } from "../../../api/sims";
+import { simProgressSchema, type SimRecord, type SimStage, type SimSolvers, type SimSummary } from "../../../api/sims";
+import type { MisesEvent } from "../../../api/types";
 import { askPrompt, setupProblems, startBody, type Setup } from "./model";
 
 export type StudiesClient = Pick<CoreClient, "simSolvers" | "listSims" | "getSim" | "startSim" | "cancel" | "getRun" | "steps" | "createRun">;
@@ -162,6 +163,18 @@ export class StudiesController {
       this.asked.value = { simId: rec.sim_id, runId: null, error: p.hint ? `${p.message} (${p.hint})` : p.message };
       return null;
     }
+  }
+
+  /** A core event: `sim_progress` of the followed study's run updates its stage now; a terminal
+   *  stage (done / failed / cancelled) polls at once for the result. Other events are ignored. */
+  onEvent(ev: MisesEvent): void {
+    if (ev.type !== "sim_progress" || !ev.run_id) return;
+    const a = this.active.peek();
+    if (!a || a.runId !== ev.run_id) return;
+    const p = simProgressSchema.safeParse(ev.data);
+    if (!p.success || p.data.part_id !== a.partId) return;
+    if (a.stage !== p.data.stage || a.simId !== p.data.sim_id) this.active.value = { ...a, stage: p.data.stage, simId: p.data.sim_id };
+    if (p.data.stage === "done" || p.data.stage === "failed" || p.data.stage === "cancelled") this.schedule(a.runId, 0);
   }
 
   /** Stop polling (the page is hidden). The followed study stays in `active`. */

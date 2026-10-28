@@ -154,3 +154,9 @@ export type SimSchemaChecks = [
   Assert<Same<z.infer<typeof simSolversSchema>, SimSolvers>>,
   Assert<Same<z.infer<typeof simStartedSchema>, SimStarted>>,
 ];
+
+/** Data of a `sim_progress` event (core sim/tools.py progress()): the study moved to `stage`. */
+export const simProgressSchema = z.looseObject({
+  sim_id: z.string(), part_id: z.string(), stage: z.enum(SIM_STAGES),
+});
+export type SimProgress = z.infer<typeof simProgressSchema>;

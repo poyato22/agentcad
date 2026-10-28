@@ -200,4 +200,26 @@ describe("StudiesController", () => {
     await until(() => vi.mocked(c.listSims).mock.calls.length > n);
     s.dispose();
   });
+
+  it("a sim_progress event of the followed run shows its stage at once; a terminal stage polls now", async () => {
+    let finished = false;
+    const c = client({
+      listSims: vi.fn(async (f: { runId?: string }) => (f.runId ? (finished ? [summaryOf(DONE)] : []) : LIST)),
+    } as never);
+    const s = new StudiesController(() => c, { pollMs: 60_000 }); // no timer-driven poll in this test
+    await s.start("mount_plate", DEFAULT_SETUP);
+    expect(s.active.value?.stage).toBeNull();
+    const ev = (run_id: string, stage: string) => ({ type: "sim_progress", run_id, ts: 1, data: { sim_id: DONE.sim_id, part_id: "mount_plate", stage } });
+    s.onEvent(ev("other", "mesh_fine"));
+    expect(s.active.value?.stage).toBeNull();            // another run's study
+    s.onEvent(ev("r1", "bogus"));
+    expect(s.active.value?.stage).toBeNull();            // malformed data is ignored
+    s.onEvent(ev("r1", "solve_fine"));
+    expect(s.active.value?.stage).toBe("solve_fine");
+    expect(s.active.value?.simId).toBe(DONE.sim_id);
+    finished = true;
+    s.onEvent(ev("r1", "done"));
+    await until(() => s.active.value === null);
+    s.dispose();
+  });
 });

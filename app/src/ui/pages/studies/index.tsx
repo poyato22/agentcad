@@ -7,6 +7,7 @@
 import { computed, signal } from "@preact/signals";
 import type { JSX } from "preact";
 import { useEffect, useState } from "preact/hooks";
+import { onCoreEvent } from "../../../api/events";
 import { partLabel } from "../../../lib/names";
 import { activePart } from "../../../state/selection";
 import { actions, parts } from "../../../state/store";
@@ -23,6 +24,8 @@ import "./studies.css";
 
 /** One per app: leaving and re-opening the page keeps following a running study. */
 export const studies = new StudiesController(() => actions.client());
+// live stage updates from the core's sim_progress events (polling still covers missed ones)
+onCoreEvent((ev) => studies.onEvent(ev));
 
 /** The setup survives page switches (module state, like the controller). */
 const setupSig = signal<Setup>(DEFAULT_SETUP);
