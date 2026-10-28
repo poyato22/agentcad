@@ -32,7 +32,15 @@ log = logging.getLogger(__name__)
 TRANSPORT: httpx.AsyncBaseTransport | None = None
 STATUS_TIMEOUT_S = 1.5
 PULL_CONNECT_TIMEOUT_S = 5.0
+# a download that sends nothing for this long is treated as stalled rather than hung forever
+PULL_READ_TIMEOUT_S = 300.0
 PULL_MIN_INTERVAL_S = 0.5
+# `ollama serve` runs with an allowlisted env (plus any OLLAMA_* already set): never the
+# provider API keys that live in this process's environment
+OLLAMA_ENV_ALLOW = ("PATH", "HOME", "TMPDIR", "TMP", "TEMP", "LANG", "LC_ALL", "LC_CTYPE",
+                    "SSL_CERT_FILE", "SSL_CERT_DIR", "USER", "LOGNAME")
+# ollama.log is rotated to ollama.log.1 once it passes this size
+LOG_MAX_BYTES = 5 * 1024 * 1024
 MAX_LINE_BYTES = 64 * 1024
 MAX_MODELS = 200
 START_WAIT_S = 5.0
@@ -179,7 +187,7 @@ async def pull(model: str, base_url: str, publish: Publish, *,
         state["status"] = "error"
         publish({**state, "error": _clip(msg)})
 
-    timeout = httpx.Timeout(PULL_CONNECT_TIMEOUT_S, read=None)
+    timeout = httpx.Timeout(PULL_CONNECT_TIMEOUT_S, read=PULL_READ_TIMEOUT_S)
     try:
         async with _client(timeout) as c:
             async with c.stream("POST", f"{_root(base_url)}/api/pull",
@@ -288,6 +296,15 @@ class Puller:
         self._tasks.clear()
 
 
+def _rotate_log(path: Path) -> None:
+    """Move an oversized log aside (keeping one previous file) so it never grows unbounded."""
+    try:
+        if path.exists() and path.stat().st_size > LOG_MAX_BYTES:
+            path.replace(path.with_name(path.name + ".1"))
+    except OSError:
+        log.warning("could not rotate %s", path, exc_info=True)
+
+
 async def is_running(base_url: str) -> bool:
     """Does an Ollama server answer GET /api/version at this base URL?"""
     try:
@@ -312,11 +329,14 @@ async def start_ollama(base_url: str, home: Path, *, wait_s: float = START_WAIT_
     if binary is None:
         return {"ok": False, "error": "not_installed", "hint": INSTALL_HINT}
     u = urlsplit(base_url)
-    env = dict(os.environ)
+    env = {k: v for k, v in os.environ.items()
+           if k in OLLAMA_ENV_ALLOW or k.startswith("OLLAMA_")}
     env["OLLAMA_HOST"] = f"127.0.0.1:{u.port or 11434}"
     logs = Path(home) / "logs"
     logs.mkdir(parents=True, exist_ok=True)
-    with open(logs / "ollama.log", "ab") as out:
+    log_path = logs / "ollama.log"
+    _rotate_log(log_path)
+    with open(log_path, "ab") as out:
         try:
             _popen([binary, "serve"], stdin=subprocess.DEVNULL, stdout=out,
                    stderr=subprocess.STDOUT, start_new_session=True, close_fds=True, env=env)

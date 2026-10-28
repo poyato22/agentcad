@@ -197,6 +197,56 @@ async def test_start_launches_ollama_serve_detached(ollama, monkeypatch, tmp_pat
     assert (tmp_path / "logs").is_dir()
 
 
+async def test_start_passes_a_minimal_env_without_api_keys(ollama, monkeypatch, tmp_path):
+    # C6: `ollama serve` gets an allowlisted env; no provider API keys leak into it.
+    ollama.running = False
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-secret")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-other")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or")
+    monkeypatch.setenv("OLLAMA_MODELS", "/data/models")
+    seen = {}
+
+    def popen(argv, **kw):
+        seen["kw"] = kw
+        ollama.running = True
+        return FakeProc()
+    monkeypatch.setattr(lm, "_popen", popen)
+    await lm.start_ollama(BASE, tmp_path, wait_s=1)
+    env = seen["kw"]["env"]
+    assert "ANTHROPIC_API_KEY" not in env and "OPENAI_API_KEY" not in env
+    assert "OPENROUTER_API_KEY" not in env
+    assert env.get("OLLAMA_MODELS") == "/data/models"   # ollama's own config is kept
+    assert env["OLLAMA_HOST"] == "127.0.0.1:11434" and "PATH" in env
+
+
+async def test_start_rotates_an_oversized_log(ollama, monkeypatch, tmp_path):
+    # C6: a large ollama.log is rotated so it does not grow without bound.
+    ollama.running = False
+    logs = tmp_path / "logs"
+    logs.mkdir(parents=True)
+    (logs / "ollama.log").write_bytes(b"x" * (lm.LOG_MAX_BYTES + 1))
+    monkeypatch.setattr(lm, "_popen", lambda *a, **k: (setattr(ollama, "running", True), FakeProc())[1])
+    await lm.start_ollama(BASE, tmp_path, wait_s=1)
+    assert (logs / "ollama.log.1").stat().st_size == lm.LOG_MAX_BYTES + 1
+    assert (logs / "ollama.log").stat().st_size <= lm.LOG_MAX_BYTES
+
+
+async def test_pull_uses_a_bounded_read_timeout(ollama, monkeypatch):
+    # C6: a stalled download times out on idle reads rather than hanging forever.
+    assert lm.PULL_READ_TIMEOUT_S and lm.PULL_READ_TIMEOUT_S > 0
+    seen = {}
+    real_client = lm._client
+
+    def client(timeout):
+        seen["timeout"] = timeout
+        return real_client(timeout)
+    monkeypatch.setattr(lm, "_client", client)
+    ollama.pull_lines = [{"status": "success"}]
+    await lm.pull("gpt-oss:20b", BASE, lambda e: None, min_interval=0)
+    assert seen["timeout"].read == lm.PULL_READ_TIMEOUT_S
+    assert seen["timeout"].connect == lm.PULL_CONNECT_TIMEOUT_S
+
+
 async def test_start_when_running_does_nothing(ollama, monkeypatch, tmp_path):
     monkeypatch.setattr(lm, "_popen", lambda *a, **k: pytest.fail("must not start"))
     r = await lm.start_ollama(BASE, tmp_path)
