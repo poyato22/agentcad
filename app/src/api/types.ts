@@ -10,7 +10,8 @@ export const ERROR_CODES = [
   "out_of_scope", "denied", "not_found", "tool_failed", "cancelled",
 ] as const satisfies readonly ErrorCode[];
 
-export type RunStatus = "running" | "done" | "failed" | "cancelled";
+/** "queued": waiting for a parallel-agents slot (event `run_queued`); it starts when one frees. */
+export type RunStatus = "queued" | "running" | "done" | "failed" | "cancelled";
 
 export interface AgentRun {
   id: string; parent_id: string | null; agent: string; provider: string; model: string;
@@ -72,14 +73,29 @@ export interface AgentInfo { name: string; description: string; model: string }
 /** signed_in / signed_out / not_installed: the "claude-code" vendor (Plan 3 Task 3). */
 export type KeySource = "env" | "keychain" | "none" | "not_needed" | "signed_in" | "signed_out" | "not_installed";
 /** `models`: aliases/refs the vendor offers, when the core lists them (claude-code aliases; `ollama/<name>`, `lmstudio/<id>`, `openrouter/<id>`). `free`: every listed model is free. `hint`: why the list is empty (e.g. Ollama not running). */
-export interface ModelsInfo { default: string; vendors: { vendor: string; key: KeySource; models?: string[]; free?: boolean; hint?: string | null }[] }
+export interface ModelsInfo {
+  default: string;
+  vendors: { vendor: string; key: KeySource; models?: string[]; free?: boolean; hint?: string | null; entries?: ModelEntry[] }[];
+  /** Every entry with a `recommended` badge: best first, then local, then free. */
+  recommended?: ModelEntry[];
+}
+
+/** "best": the strongest CAD model; "local": a researched local model that fits this Mac; "free": OpenRouter free. */
+export type ModelRecommendation = "best" | "local" | "free";
+/** One model of a vendor (`model` is a full ref, e.g. "claude-code/opus"); `note` is one line. */
+export interface ModelEntry { model: string; recommended: ModelRecommendation | null; note: string | null }
 
 export interface CoreStatusInfo {
   core_version: string; onshape: "connected" | "not_configured"; onshape_calls_year: number;
   onshape_cap_year: number; runs_running: number; approvals_pending: number;
   /** Core data folder (absolute path); absent on older cores. */
   data_dir?: string | null;
+  runs_queued?: number;
+  /** How many agents run at once for the default model, and why ("M5 Pro · 24 GB · cloud model → 3"). */
+  parallel?: ParallelInfo;
 }
+
+export interface ParallelInfo { limit: number; auto: boolean; reason: string }
 
 export type Vec3 = [number, number, number];
 
@@ -111,7 +127,9 @@ export interface Profile {
   display_name: string; units: "mm"; default_material: string; default_agent: string;
   /** e.g. "claude-code/sonnet", "anthropic/claude-sonnet-5-5", "ollama/qwen3"; null = the core's default. */
   default_model: string | null;
-  onshape_calls_year_cap: number; onshape_calls_run_cap: number; max_parallel_agents: number;
+  onshape_calls_year_cap: number; onshape_calls_run_cap: number;
+  /** "auto" (default): from this Mac's specs and the model; a number is a manual limit (1-16). */
+  max_parallel_agents: number | "auto";
   /** {"ollama": "http://localhost:11434/v1", "lmstudio": ...} */
   local_endpoints: Record<string, string>;
   setup_completed_at: number | null;
@@ -138,6 +156,17 @@ export interface SetupState { complete: boolean; has_model: boolean; has_onshape
 export interface OnshapeTestResult { ok: boolean; user_name?: string | null; error?: string | null }
 /** POST /local/test: does a local model server answer at this URL? */
 export interface LocalTestResult { ok: boolean; error?: string | null }
+
+/** GET /local/status (Ollama). `recommended`: researched local models; `fits`: fits this Mac's memory. */
+export interface LocalStatus {
+  installed: boolean; running: boolean; version: string | null;
+  models: { name: string; size_gb: number | null }[];
+  recommended: { name: string; size_gb: number; fits: boolean; note: string }[];
+}
+/** POST /local/start and POST /local/pull. `note`: tell the user (e.g. `ollama serve` keeps running). */
+export interface LocalActionResult { ok: boolean; running?: boolean; note?: string; error?: string; hint?: string }
+/** Data of a `local_pull` event (run_id null). status "success" or "error" ends the download. */
+export interface LocalPullEvent { model: string; completed: number; total: number; status: string; error?: string }
 
 /** GET /claude-code/status (from the user's own `claude auth status`; non-secret fields only). */
 export interface ClaudeCodeStatus { installed: boolean; version: string | null; signed_in: boolean; auth_method: string | null }

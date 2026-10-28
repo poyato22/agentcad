@@ -155,6 +155,12 @@ class Orchestrator:
 
     async def run(self, goal: str, *, parent_run_id: str, model_ref: str | None = None) -> dict:
         rt = self.runtime
+        # the parent only waits from here on: its slot goes to its subagents meanwhile
+        async with rt.waiting_on_subagents(parent_run_id):
+            return await self._run(goal, parent_run_id=parent_run_id, model_ref=model_ref)
+
+    async def _run(self, goal: str, *, parent_run_id: str, model_ref: str | None) -> dict:
+        rt = self.runtime
         plan = await self._plan(goal, parent_run_id, model_ref)
 
         async def spawn(task: PlanTask, deps: dict[str, TaskResult]) -> TaskResult:
@@ -170,7 +176,9 @@ class Orchestrator:
             return TaskResult(task_id=task.id, status=_result_status(res.stop_reason),  # type: ignore[arg-type]
                               output=res.final_text or res.error or "", run_id=rid)
 
-        results = await run_plan(plan, spawn)
+        # never more tasks at once than the parallel-agents limit for the tasks' model
+        ref = rt.model_ref_for(None, model_ref)
+        results = await run_plan(plan, spawn, max_parallel=rt.parallel_limit(ref))
         return {"plan": plan.model_dump(),
                 "results": {k: v.model_dump() for k, v in results.items()}}
 
@@ -214,16 +222,18 @@ async def orchestrator_submit_plan(ctx: ToolContext, args: SubmitPlanArgs) -> To
 async def agent_spawn(ctx: ToolContext, args: SpawnArgs) -> ToolOutput:
     rt, _ = _services(ctx)
     check_depth(rt, ctx.run_id)
-    rid = await rt.start_run(args.agent, args.prompt,
-                             **child_policy(rt, ctx.run_id, args.agent, args.edit_scope))
-    try:
-        res = await rt.wait(rid)
-    except asyncio.CancelledError:
-        rt.cancel(rid)
-        raise
-    finally:
-        # the child's answer is collected: free its idle Claude Code process (if it has one)
-        await rt.release_claude_session(rid)
+    # the parent only waits for its child: its parallel-agents slot is the child's meanwhile
+    async with rt.waiting_on_subagents(ctx.run_id):
+        rid = await rt.start_run(args.agent, args.prompt,
+                                 **child_policy(rt, ctx.run_id, args.agent, args.edit_scope))
+        try:
+            res = await rt.wait(rid)
+        except asyncio.CancelledError:
+            rt.cancel(rid)
+            raise
+        finally:
+            # the child's answer is collected: free its idle Claude Code process (if any)
+            await rt.release_claude_session(rid)
     status = _result_status(res.stop_reason)
     text = res.final_text or res.error or ""
     # the child's text is untrusted data for the parent model: delimited, never in the summary

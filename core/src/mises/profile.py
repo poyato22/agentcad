@@ -8,11 +8,12 @@ import os
 import tempfile
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
 import httpx
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import (BaseModel, ConfigDict, Field, StrictInt, ValidationError,
+                      field_validator)
 
 log = logging.getLogger(__name__)
 
@@ -37,7 +38,8 @@ class Profile(BaseModel):
     default_model: str | None = None
     onshape_calls_year_cap: int = Field(2500, ge=0)
     onshape_calls_run_cap: int = Field(200, ge=0)
-    max_parallel_agents: int = Field(2, ge=1, le=16)
+    # "auto": from this Mac's specs and the model (hardware.auto_parallel); an int is a manual limit
+    max_parallel_agents: Literal["auto"] | Annotated[StrictInt, Field(ge=1, le=16)] = "auto"
     local_endpoints: dict[str, str] = {}
     setup_completed_at: float | None = None
 

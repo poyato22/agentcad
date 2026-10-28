@@ -288,8 +288,11 @@ async def test_models_lists_claude_code(rt, claude_bin, auth_state):
             def cc(body):
                 return next(v for v in body["vendors"] if v["vendor"] == "claude-code")
             entry = cc((await c.get("/models")).json())
-            assert entry == {"vendor": "claude-code", "key": "signed_out",
-                             "models": ["sonnet", "opus", "haiku", "fable"]}
+            assert {k: entry[k] for k in ("vendor", "key", "models")} == {
+                "vendor": "claude-code", "key": "signed_out",
+                "models": ["sonnet", "opus", "haiku", "fable"]}
+            assert [e["model"] for e in entry["entries"]] == [
+                "claude-code/sonnet", "claude-code/opus", "claude-code/haiku", "claude-code/fable"]
             auth_state.write_text("signed_in")
             # /models reuses a few-seconds-old answer; /claude-code/status (what the app polls
             # while signing in) asks afresh and refreshes it

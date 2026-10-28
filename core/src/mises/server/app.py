@@ -175,22 +175,27 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
             allowed_origins=["http://127.0.0.1", "http://127.0.0.1:*",
                              "http://localhost", "http://localhost:*"]))
 
+    ui_router = build_ui_router(runtime)
+
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
         try:
             async with manager.run():
                 yield
         finally:
+            # background work of the UI routes (OpenRouter refresh, model downloads) stops here
+            await ui_router.aclose()
             # Claude Code sessions reach Mises only through this server: close them with it
             await runtime.close_claude_sessions()
 
     app = FastAPI(title="Mises", lifespan=lifespan, docs_url=None, redoc_url=None,
                   openapi_url=None)
     app.state.runtime = runtime
+    app.state.ui_router = ui_router
     app.state.mcp_session_manager = manager
     app.add_middleware(_BearerAuth, token=token, mcp_token=mcp_token)
     add_cors(app)  # added last = outermost: preflights are answered before the bearer check
-    app.include_router(build_ui_router(runtime))
+    app.include_router(ui_router)
     app.include_router(build_profile_router(runtime, claude_status, local_probe))
     app.include_router(build_context_router(runtime))
 

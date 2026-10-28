@@ -10,7 +10,7 @@ from mises.profile import Profile, SetupState, load_profile, save_profile, setup
 def test_defaults_when_missing(tmp_path):
     p = load_profile(tmp_path)
     assert p == Profile() and p.units == "mm" and p.onshape_calls_year_cap == 2500
-    assert p.onshape_calls_run_cap == 200 and p.max_parallel_agents == 2
+    assert p.onshape_calls_run_cap == 200 and p.max_parallel_agents == "auto"
     assert p.default_agent == "designer" and p.default_material == "PLA"
 
 
@@ -42,6 +42,11 @@ def test_validation():
         Profile(units="inch")
     with pytest.raises(ValidationError):
         Profile(max_parallel_agents=0)
+    for bad in ("Auto", "3", 17, True, 2.5, None):
+        with pytest.raises(ValidationError):
+            Profile(max_parallel_agents=bad)
+    assert Profile(max_parallel_agents="auto").max_parallel_agents == "auto"
+    assert Profile(max_parallel_agents=16).max_parallel_agents == 16
     with pytest.raises(ValidationError):
         Profile(onshape_calls_run_cap=-1)
     with pytest.raises(ValidationError):

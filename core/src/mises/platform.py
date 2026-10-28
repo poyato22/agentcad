@@ -6,6 +6,17 @@ import subprocess
 from pathlib import Path
 
 _SECURITY = "/usr/bin/security"
+_SYSCTL = "/usr/sbin/sysctl"
+
+
+def sysctl(name: str) -> str | None:
+    """`sysctl -n <name>` (e.g. hw.memsize); None if the key is unknown or sysctl fails."""
+    try:
+        r = subprocess.run([_SYSCTL, "-n", name], capture_output=True, text=True, timeout=3)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    out = r.stdout.strip()
+    return out if r.returncode == 0 and out else None
 
 
 def data_home() -> Path:
