@@ -13,6 +13,17 @@ def test_builtins_load():
     assert all(d.body.strip() for d in defs.values())
 
 
+def test_builtin_tool_lists_name_real_tools(tmp_path: Path):
+    """Every tool a built-in agent lists exists in the runtime (sim.md stays current)."""
+    from mises.runtime import Runtime
+    rt = Runtime(tmp_path / "home")
+    for d in load_definitions().values():
+        for name in d.tools or []:
+            rt.registry.get(name)          # raises "unknown tool" if a definition went stale
+    sim = load_definitions()["sim"]
+    assert {"sim_env_list", "sim_static_run", "sim_result_get"} <= set(sim.tools)
+
+
 def test_builtins_packaged():
     base = resources.files("mises.agent") / "builtin"
     names = {p.name for p in base.iterdir()}

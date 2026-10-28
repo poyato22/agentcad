@@ -3,10 +3,16 @@ import type { JSX } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import type { ShellCoreStatus } from "../../api/connection";
 import type { StreamState } from "../../api/events";
-import type { CoreStatusInfo } from "../../api/types";
+import type { CoreStatusInfo, Printer, PrinterStatus } from "../../api/types";
+import { printersRev } from "../../state/printers";
 import { needsYou } from "../../state/selection";
-import { conn, coreStatus, runs, shellStatus } from "../../state/store";
+import { actions, conn, coreStatus, runs, shellStatus } from "../../state/store";
 import { Led, type LedTone } from "../common/Led";
+import { printerLight } from "../pages/print/printLogic";
+import { usePoll } from "../pages/print/usePrint";
+
+/** The top bar checks the first printer this often (the Print page polls faster while shown). */
+export const PRINTER_LIGHT_MS = 15_000;
 
 /** How long the stream may be down while the shell says ready before the core counts as lost. */
 export const CORE_LOST_MS = 5000;
@@ -80,7 +86,45 @@ export function StatusLights(): JSX.Element {
         <span class="light-val">{running} {running === 1 ? "agent" : "agents"}</span>
         {needs > 0 && <span class="light-need needs-you"> · {needs} needs you</span>}
       </span>
-      <span class="light" data-light="printer"><Led tone="faint" /> PRINTER <span class="light-val">no printer</span></span>
+      <PrinterLight />
     </div>
+  );
+}
+
+/** PRINTER: GET /printers (re-read when the event stream (re)opens or the list changes), then the
+ *  first printer's status. No printers (or no core): faint "no printer". */
+function PrinterLight(): JSX.Element {
+  const stream = conn.value;
+  const rev = printersRev.value;
+  const [list, setList] = useState<Printer[] | null>(null);
+  useEffect(() => {
+    if (stream !== "open") return;
+    let live = true;
+    try {
+      actions.client().printers().then((p) => { if (live) setList(p); }, () => { if (live) setList(null); });
+    } catch { /* no core bound yet */ }
+    return () => { live = false; };
+  }, [stream, rev]);
+  const first = list?.[0] ?? null;
+  const [st, setSt] = useState<{ id: string; status: PrinterStatus | null; stale: boolean } | null>(null);
+  usePoll(first?.id ?? null, first !== null, () => PRINTER_LIGHT_MS, async () => {
+    if (!first) return false;
+    try {
+      setSt({ id: first.id, status: await actions.client().printerStatus(first.id), stale: false });
+    } catch {
+      setSt({ id: first.id, status: null, stale: true });
+    }
+  });
+  if (!first) {
+    return <span class="light" data-light="printer"><Led tone="faint" /> PRINTER <span class="light-val">no printer</span></span>;
+  }
+  const cur = st && st.id === first.id ? st : null;
+  const l = printerLight(cur?.status ?? null, cur?.stale ?? false);
+  const more = list && list.length > 1 ? ` +${list.length - 1}` : "";
+  const short = cur?.status ? (cur.status.reachable ? (cur.status.state ?? "unknown").toLowerCase() : "unreachable") : "…";
+  return (
+    <span class="light" data-light="printer" title={`${first.name}: ${l.text}`}>
+      <Led tone={l.tone} /> PRINTER <span class="light-val">{first.name}{more} · {short}</span>
+    </span>
   );
 }

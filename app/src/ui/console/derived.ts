@@ -5,7 +5,7 @@ import { computed, effect, signal, type ReadonlySignal } from "@preact/signals";
 import type { AgentRun } from "../../api/types";
 import { runLabel } from "../../lib/names";
 import { effectiveRunId, rosterOrder } from "../../state/selection";
-import { approvals, filter, inflight, liveText, questions, runs, steps } from "../../state/store";
+import { actions, approvals, filter, inflight, liveText, questions, runs, steps } from "../../state/store";
 import { buildLog, buildLogFrame, type BuildLogInput, type LogFrame } from "./logModel";
 import { buildThread, type ThreadItem } from "./threadModel";
 
@@ -26,19 +26,54 @@ export const rosterRuns: ReadonlySignal<readonly AgentRun[]> = computed(() => ro
 /** The run the console shows (shared with the command line and the left pane; state/selection.ts). */
 export { effectiveRunId };
 
+/** Runs a card or question belongs to that GET /runs leaves out (the app's own "ui" run, whose
+ *  print / slice cards sit in the console), fetched once each by id. */
+export const offListRuns = signal<ReadonlyMap<string, AgentRun>>(new Map());
+const lookedUp = new Set<string>();
+
+/** Fetch an unknown run once so its cards get a real label (never retried within a session). */
+export function lookUpRun(runId: string): void {
+  if (lookedUp.has(runId) || runs.peek().has(runId)) return;
+  lookedUp.add(runId);
+  let client;
+  try { client = actions.client(); } catch { lookedUp.delete(runId); return; }
+  client.getRun(runId).then((r) => {
+    offListRuns.value = new Map(offListRuns.value).set(runId, r);
+  }, () => { /* stays "agent" */ });
+}
+
+/** Tests: forget the looked-up runs. */
+export function resetOffListRuns(): void {
+  lookedUp.clear();
+  offListRuns.value = new Map();
+}
+
+export const offListLabels: ReadonlySignal<ReadonlyMap<string, string>> = computed(() =>
+  new Map([...offListRuns.value.values()].map((r) => [r.id, runLabel(r, [r])])));
+
 export const runLabels: ReadonlySignal<ReadonlyMap<string, string>> = computed(() => {
   const all = runList.value;
-  return new Map(all.map((r) => [r.id, runLabel(r, all)]));
+  return new Map([...offListLabels.value, ...all.map((r): [string, string] => [r.id, runLabel(r, all)])]);
 });
 
-/** Label for a run id ("designer · stiffen upright"); never an id or counter. */
+/** Label for a run id ("designer · stiffen upright", "You (Mises)"); never an id or counter. */
 export function labelOf(runId: string): string {
-  return runLabels.value.get(runId) ?? "agent";
+  const l = runLabels.value.get(runId);
+  if (l !== undefined) return l;
+  lookUpRun(runId);
+  return "agent";
+}
+
+/** Look up the runs of cards / questions that are not in the run list. */
+function lookUpCardRuns(): void {
+  const known = runs.value;
+  for (const a of approvals.value.values()) if (!known.has(a.run_id)) lookUpRun(a.run_id);
+  for (const q of questions.value.values()) if (!known.has(q.run_id)) lookUpRun(q.run_id);
 }
 
 function readInput(): BuildLogInput {
   return {
-    runs: runList.peek(), steps: steps.peek(), approvals: [...approvals.peek().values()], questions: [...questions.peek().values()],
+    runs: runList.peek(), extraLabels: offListLabels.peek(), steps: steps.peek(), approvals: [...approvals.peek().values()], questions: [...questions.peek().values()],
     liveText: liveText.peek(), filter: filter.peek(), selectedRunId: effectiveRunId.peek(), expandedFolds: expandedFolds.peek(),
     inflight: inflight.peek(),
   };
@@ -86,6 +121,8 @@ function start(schedule: Schedule): () => void {
     // subscribe to every input; the rebuild itself runs in the next frame
     void runs.value; void steps.value; void approvals.value; void questions.value; void liveText.value;
     void inflight.value; void filter.value; void effectiveRunId.value; void expandedFolds.value;
+    void offListRuns.value;
+    lookUpCardRuns();
     if (!cancel) cancel = schedule(flush);
   });
   return () => { dispose(); cancel?.(); cancel = null; logFrame.value = { ...EMPTY, key: "" }; };
@@ -121,7 +158,8 @@ function startThread(schedule: Schedule): () => void {
   };
   const dispose = effect(() => {
     void runs.value; void steps.value; void approvals.value; void questions.value; void liveText.value;
-    void inflight.value; void effectiveRunId.value; void expandedFolds.value;
+    void inflight.value; void effectiveRunId.value; void expandedFolds.value; void offListRuns.value;
+    lookUpCardRuns();
     if (!cancel) cancel = schedule(flush);
   });
   return () => { dispose(); cancel?.(); cancel = null; threadFrame.value = { runId: null, items: [] }; };

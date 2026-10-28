@@ -24,7 +24,7 @@ function check(dir: string) {
     it(`${file} parses`, () => {
       const data = JSON.parse(readFileSync(resolve(dir, file), "utf8")) as unknown[];
       expect(data.length).toBeGreaterThan(0);
-      // unknown keys (e.g. metrics.face_list, which the UI does not use) are stripped
+      // unknown keys are stripped; what the UI keeps must match the core exactly
       for (const item of data) expect(item).toMatchObject(schema.parse(item) as object);
     });
   }
@@ -34,6 +34,14 @@ function check(dir: string) {
       expect(schema.parse(data)).toEqual(data);
     });
   }
+  it("parts.json keeps metrics.face_list (study faces by id)", () => {
+    const data = JSON.parse(readFileSync(resolve(dir, "parts.json"), "utf8")) as unknown[];
+    const p = partSummarySchema.parse(data[0]);
+    const faces = p.metrics?.face_list ?? [];
+    if (!faces.length) return;            // an older fixture copy without face_list
+    expect(faces.length).toBe(p.metrics?.faces);
+    expect(faces[0].id).toBe("f0");
+  });
   it("events.jsonl parses line by line", () => {
     const lines = readFileSync(resolve(dir, "events.jsonl"), "utf8").split("\n").filter(Boolean);
     expect(lines.length).toBeGreaterThan(0);

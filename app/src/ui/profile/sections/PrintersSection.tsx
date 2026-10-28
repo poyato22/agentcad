@@ -3,6 +3,7 @@
 import type { JSX } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import type { PrintCapabilities, Printer } from "../../../api/types";
+import { printersChanged } from "../../../state/printers";
 import { actions } from "../../../state/store";
 import { Button } from "../../common/Button";
 import { Led } from "../../common/Led";
@@ -37,13 +38,13 @@ export function PrintersSection(): JSX.Element {
           <table class="profile-table">
             <thead><tr><th class="label">Printer</th><th class="label">Host</th><th class="label">Key</th><th class="label">Status</th><th /></tr></thead>
             <tbody>
-              {list.map((p) => <PrinterRow key={p.id} printer={p} onRemoved={() => setList((l) => (l ?? []).filter((x) => x.id !== p.id))} />)}
+              {list.map((p) => <PrinterRow key={p.id} printer={p} onRemoved={() => { setList((l) => (l ?? []).filter((x) => x.id !== p.id)); printersChanged(); }} />)}
             </tbody>
           </table>
         )}
         {adding
           ? <PrinterForm caps={caps} onCancel={() => setAdding(false)}
-              onAdded={(p) => { setList((l) => [...(l ?? []).filter((x) => x.id !== p.id), p]); setAdding(false); }} />
+              onAdded={(p) => { setList((l) => [...(l ?? []).filter((x) => x.id !== p.id), p]); setAdding(false); printersChanged(); }} />
           : (<>
             <div class="profile-row"><Button onClick={() => setAdding(true)}>Add printer</Button></div>
             <p class="faint">{LAN_NOTE}</p>

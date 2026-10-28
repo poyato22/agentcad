@@ -15,6 +15,7 @@ import { fmtUsd } from "../../../lib/format";
 import { partLabel } from "../../../lib/names";
 import { activePart } from "../../../state/selection";
 import { actions } from "../../../state/store";
+import { printersChanged } from "../../../state/printers";
 import { Button } from "../../common/Button";
 import { Led } from "../../common/Led";
 import { describeError } from "../../profile/common";
@@ -178,6 +179,7 @@ export function PrintPage(): JSX.Element {
     setPrinters((list) => [...(list ?? []).filter((x) => x.id !== p.id), p]);
     setPrinterId(p.id);
     setAdding(false);
+    printersChanged();
   };
 
   const noPrinters = printers !== null && printers.length === 0;

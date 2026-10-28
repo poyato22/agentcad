@@ -42,6 +42,11 @@ describe("partLabel", () => {
 });
 
 describe("runLabel", () => {
+  it("the app's own ui run is You (Mises), not an agent", () => {
+    const r = run({ agent: "you", provider: "ui", model: "ui", task: "external agent: you" });
+    expect(runLabel(r, [r])).toBe("You (Mises)");
+  });
+
   it("agent plus first words of the task", () => {
     const r = run({});
     expect(runLabel(r, [r])).toBe("designer · stiffen upright");

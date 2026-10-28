@@ -11,6 +11,7 @@ import { StatusLights } from "./StatusLights";
 import { TopBar } from "./TopBar";
 import { initials, ProfileButton } from "./ProfileButton";
 import { closeProfile, openProfile, profileOpen, profileSection } from "../profile/open";
+import { printersChanged } from "../../state/printers";
 import { installStopAllShortcut, resetStopAll } from "./stopAll";
 
 const invokeMock = vi.hoisted(() => vi.fn(async () => null));
@@ -155,6 +156,23 @@ describe("StatusLights", () => {
   it("printer_is_faint", () => {
     render(<StatusLights />);
     expect(light("printer").textContent).toContain("no printer");
+  });
+
+  it("printer_light_reads_printers_and_the_first_printers_status", async () => {
+    const printers = vi.fn(async () => [] as unknown[]);
+    const printerStatus = vi.fn(async () => ({
+      printer_id: "mk4", reachable: true, state: "IDLE", sendable: true, temp_nozzle: 24, temp_bed: 23, job: null, error: null,
+    }));
+    bindClient({ printers, printerStatus } as unknown as CoreClient);
+    conn.value = "open";
+    render(<StatusLights />);
+    await waitFor(() => expect(printers).toHaveBeenCalledTimes(1));
+    expect(light("printer").textContent).toContain("no printer");     // GET /printers → []
+    printers.mockResolvedValue([{ id: "mk4", kind: "prusalink", host: "10.0.0.5", name: "MK4", model: "MK4", has_key: true }]);
+    act(() => { printersChanged(); });                                 // Profile added one
+    await waitFor(() => expect(light("printer").textContent).toContain("MK4 · idle"));
+    expect(printerStatus).toHaveBeenCalledWith("mk4");
+    expect(light("printer").querySelector("[data-tone='green']")).not.toBeNull();
   });
 });
 

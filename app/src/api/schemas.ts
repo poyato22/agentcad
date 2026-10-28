@@ -6,7 +6,7 @@ import { z } from "zod";
 import {
   ERROR_CODES, SETUP_PIECES, STEP_KINDS,
   type AgentInfo, type AgentRun, type Approval, type CancelAllResult, type ClaudeCodeStatus, type CoreErrorBody, type CoreStatusInfo,
-  type KeyStatus, type MisesEvent, type ModelsInfo, type LocalTestResult, type LocalStatus, type LocalActionResult, type LocalPullEvent, type OnshapeTestResult, type PartHole, type PartMetrics, type PartSummary,
+  type KeyStatus, type MisesEvent, type ModelsInfo, type LocalTestResult, type LocalStatus, type LocalActionResult, type LocalPullEvent, type OnshapeTestResult, type PartFace, type PartHole, type PartMetrics, type PartSummary,
   type Profile, type SetupState, type SketchSummary, type Step, type ToolOutput,
   type LocalPull, type ModelEntry, type ModelMeta, type ParallelInfo, type VendorInfo,
 } from "./types";
@@ -94,10 +94,13 @@ export const coreStatusSchema = z.object({
 
 export const partHoleSchema = z.object({ diameter_mm: z.number(), axis: vec3, center: vec3, depth_mm: z.number() });
 
+export const partFaceSchema = z.object({ id: z.string(), type: z.string(), center: vec3, normal: vec3.nullable(), area: z.number() });
+
 export const partMetricsSchema = z.object({
   valid: z.boolean(), volume_mm3: z.number(), area_mm2: z.number(), mass_g: z.number(),
   bbox: z.object({ min: vec3, max: vec3, size: vec3 }),
   center_of_mass: vec3, faces: z.number(), edges: z.number(), holes: z.array(partHoleSchema), solids: z.number(),
+  face_list: z.array(partFaceSchema).optional(),
 });
 
 export const partSummarySchema = z.object({
@@ -132,7 +135,8 @@ export const profileSchema = z.object({
   max_parallel_agents: z.union([z.number().int(), z.literal("auto")]).default("auto"), local_endpoints: z.record(z.string(), z.string()).default({}),
   theme: z.enum(["system", "light", "dark"]).default("system"),
   setup_completed_at: z.number().nullable().default(null),
-  // the core's Profile carries `schema_version`; it is stripped here (never sent back in PUT /profile)
+  // the core's Profile carries `schema_version` and `printers`; both are stripped here and never sent
+  // back in PUT /profile (the core merges the patch, so they are kept; printers go through /printers)
 });
 
 /** Status only. Any extra key (a secret, by mistake) is stripped before it reaches the UI. */
@@ -190,6 +194,7 @@ export type SchemaChecks = [
   Assert<Same<z.infer<typeof coreStatusSchema>, CoreStatusInfo>>,
   Assert<Same<z.infer<typeof partHoleSchema>, PartHole>>,
   Assert<Same<z.infer<typeof partMetricsSchema>, PartMetrics>>,
+  Assert<Same<z.infer<typeof partFaceSchema>, PartFace>>,
   Assert<Same<z.infer<typeof partSummarySchema>, PartSummary>>,
   Assert<Same<z.infer<typeof coreErrorBodySchema>, CoreErrorBody>>,
   Assert<Same<z.infer<typeof cancelAllSchema>, CancelAllResult>>,

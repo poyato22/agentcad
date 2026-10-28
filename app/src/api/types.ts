@@ -121,10 +121,15 @@ export type Vec3 = [number, number, number];
 /** One detected hole in PartMetrics.holes (cad/metrics). */
 export interface PartHole { diameter_mm: number; axis: Vec3; center: Vec3; depth_mm: number }
 
+/** One face of a part (core cad/worker.py _face_list): ids "f0".. name faces for study fixtures/loads. */
+export interface PartFace { id: string; type: string; center: Vec3; normal: Vec3 | null; area: number }
+
 export interface PartMetrics {
   valid: boolean; volume_mm3: number; area_mm2: number; mass_g: number;
   bbox: { min: Vec3; max: Vec3; size: Vec3 };
   center_of_mass: Vec3; faces: number; edges: number; holes: PartHole[]; solids: number;
+  /** Every face (parts built before Plan 4 have none). */
+  face_list?: PartFace[];
 }
 
 export interface PartSummary { part_id: string; vars: Record<string, number>; metrics: PartMetrics | null; mtime: number }

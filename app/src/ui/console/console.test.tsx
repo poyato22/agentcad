@@ -5,7 +5,7 @@ import type { AgentRun, Step } from "../../api/types";
 import { isAutoNumbered } from "../../lib/names";
 import { actions, approvals, bindClient, filter, follow, newRunOpen, resetStore, runs, selectedRunId, steps } from "../../state/store";
 import { ConsolePane } from "./ConsolePane";
-import { expandedFolds } from "./derived";
+import { expandedFolds, labelOf, resetOffListRuns } from "./derived";
 import { DiffView } from "./DiffView";
 import { Filters } from "./Filters";
 import { Roster } from "./Roster";
@@ -353,5 +353,22 @@ describe("ConsolePane", () => {
     expect(container.textContent).toContain("new msg");
     expect(container.textContent).not.toContain("old msg");
     expect(container.querySelector('[data-run="new"][aria-selected="true"]')).not.toBeNull();
+  });
+});
+
+describe("cards of the app's own ui run", () => {
+  afterEach(() => { resetOffListRuns(); });
+
+  it("a print card on the ui run (left out of GET /runs) is labelled You (Mises), not agent", async () => {
+    const uiRun = { ...run("ui1"), agent: "you", provider: "ui", model: "ui", task: "external agent: you" };
+    const getRun = vi.fn(async () => uiRun);
+    bindClient({ getRun } as unknown as CoreClient);
+    expect(labelOf("ui1")).toBe("agent");                  // unknown yet: looked up once
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+    expect(getRun).toHaveBeenCalledTimes(1);
+    expect(getRun).toHaveBeenCalledWith("ui1");
+    expect(labelOf("ui1")).toBe("You (Mises)");
+    labelOf("ui1");
+    expect(getRun).toHaveBeenCalledTimes(1);
   });
 });

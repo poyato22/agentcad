@@ -43,7 +43,11 @@ export function taskWords(task: string): string {
  * "designer · stiffen upright". On a clash with another run, add the provider if that differs,
  * else the model, else the start time ("14:02", then "14:02:05" for the same minute).
  */
+/** The app's own run (provider "ui": slices, prints and other actions started from a page). */
+export const UI_RUN_LABEL = "You (Mises)";
+
 export function runLabel(run: AgentRun, all: readonly AgentRun[]): string {
+  if (run.provider === "ui") return UI_RUN_LABEL;
   const base = `${run.agent} · ${taskWords(run.task)}`;
   const clash = all.filter((r) => r.id !== run.id && `${r.agent} · ${taskWords(r.task)}` === base);
   if (clash.length === 0) return base;

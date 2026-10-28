@@ -40,6 +40,8 @@ export type LogItem = LogItemBody & Labelled;
 
 export interface BuildLogInput {
   runs: readonly AgentRun[];
+  /** Labels of runs not in `runs` (the app's own "ui" run, which GET /runs leaves out). */
+  extraLabels?: ReadonlyMap<string, string>;
   steps: ReadonlyMap<string, readonly Step[]>;
   approvals: readonly Approval[];
   questions: readonly Question[];
@@ -148,7 +150,7 @@ function baseItems(input: BuildLogInput): Raw[] {
   for (const r of merged) r.item.runId = r.runId;
   if (input.filter.scope === "all") {
     const labels = new Map(input.runs.map((r) => [r.id, runLabel(r, input.runs)]));
-    for (const r of merged) r.item.runLabel = labels.get(r.runId) ?? "agent";
+    for (const r of merged) r.item.runLabel = labels.get(r.runId) ?? input.extraLabels?.get(r.runId) ?? "agent";
   }
   return merged;
 }
