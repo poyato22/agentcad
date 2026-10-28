@@ -97,6 +97,37 @@ describe("createViewer", () => {
     }
   });
 
+  it("edge_color_can_follow_the_theme", async () => {
+    let edge = "#4a4a4a";
+    const r = stubRenderer();
+    const v = createViewer(document.createElement("canvas"), { createRenderer: () => r, edgeColor: () => edge });
+    const p = await loadPart(fixtureBytes());
+    v.setPart(p);
+    expect(edgeColors(p)).toEqual(new Set(["4a4a4a"]));
+    const frame = () => new Promise((ok) => requestAnimationFrame(() => ok(null)));
+    await frame();
+    const before = r.renders;
+    edge = "#e6e6e6";
+    v.setMode("shaded"); // re-applies the style (theme change) and asks for one frame
+    expect(edgeColors(p)).toEqual(new Set(["e6e6e6"]));
+    await frame();
+    expect(r.renders).toBe(before + 1);
+    v.setHighlight(true);
+    expect(edgeColors(p)).toEqual(new Set([hex(HIGHLIGHT_COLOR)]));
+    v.dispose();
+  });
+
+  it("vertex_colored_meshes_keep_their_colors_on_restyle", async () => {
+    const v = createViewer(document.createElement("canvas"), { createRenderer: stubRenderer });
+    const g = new THREE.Group();
+    const mat = new THREE.MeshBasicMaterial({ vertexColors: true });
+    g.add(new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), mat));
+    v.setPart({ object: g, bbox: new THREE.Box3(new THREE.Vector3(-1, -1, -1), new THREE.Vector3(1, 1, 1)), dispose: () => {} });
+    v.setMode("shaded");
+    expect(mat.color.getHexString()).toBe("ffffff"); // the heatmap is never tinted grey
+    v.dispose();
+  });
+
   it("renders_on_demand_only", async () => {
     const r = stubRenderer();
     vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation((cb) => { queueMicrotask(() => cb(0)); return 1; });

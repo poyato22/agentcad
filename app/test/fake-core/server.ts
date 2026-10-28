@@ -14,6 +14,7 @@ import type {
 } from "../../src/api/types";
 import { handleControl } from "./control";
 import { setupFrom, setupRoutes, type FakeSetup, type SetupScenario } from "./setup";
+import { cancelSimsOfRun, clearSimTimers, simRoutes, simsFrom, type FakeSims, type SimScenario } from "./sims";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const SCENARIO_DIR = resolve(HERE, "scenarios");
@@ -84,6 +85,8 @@ export interface Scenario {
   local?: LocalStatus;
   /** ms between `local_pull` progress events (default 120). */
   local_pull_ms?: number;
+  /** Static stress studies: solver status, stored studies, how POST /sims ends (Studies page). */
+  sims?: SimScenario;
 }
 
 export interface FakeCall { method: string; path: string; query: Record<string, string>; body: unknown; ts: number; ifNoneMatch?: string }
@@ -107,6 +110,7 @@ export interface FakeState {
   localPullMs: number;
   /** Downloads in flight: model -> their pending progress timers (POST /local/pull/cancel clears them). */
   pulling: Map<string, ReturnType<typeof setTimeout>[]>;
+  sims: FakeSims;
 }
 
 export interface FakeCore {
@@ -147,6 +151,7 @@ function stateFrom(sc: Scenario, token: string): FakeState {
     glb: sc.glb ?? {}, script: sc.script ?? [], on: sc.on ?? {}, calls: [],
     setup: setupFrom(sc),
     local: sc.local ? structuredClone(sc.local) : null, localPullMs: sc.local_pull_ms ?? 120, pulling: new Map(),
+    sims: simsFrom(sc.sims),
   };
 }
 
@@ -292,6 +297,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       }
     }
     for (const q of [...state.questions.values()]) if (q.run_id === id) state.questions.delete(q.question_id);
+    cancelSimsOfRun(state.sims, id); // like the core: the mesher/solver is killed, the study is cancelled
     emit({ type: "run_finished", run_id: id, data: { status: "cancelled", stop_reason: "cancelled", error: null, final_text: null } });
   }
 
@@ -539,6 +545,10 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         return { ok: true };
       },
     },
+    ...simRoutes({
+      sims: () => state.sims, parts: () => state.parts, defaultMaterial: () => state.setup.profile.default_material,
+      newRun, emit,
+    }),
   ];
 
   /** Core ui_api._pull_name: lowercase Ollama names; the submitted name is never echoed. */
@@ -699,6 +709,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     scriptTimers.forEach(clearTimeout);
     scriptTimers = [];
     scriptStarted = false;
+    clearSimTimers(state.sims);
     dropSockets();
     state = stateFrom(loadScenario(scenario), token ?? state.token);
   }
@@ -722,6 +733,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     },
     async stop() {
       scriptTimers.forEach(clearTimeout);
+      clearSimTimers(state.sims);
       dropSockets("terminate");
       wss.close();
       server.closeAllConnections();
@@ -731,7 +743,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
   return api;
 }
 
-const RAW = Symbol("raw-response");
+export const RAW = Symbol("raw-response");
 
 export type Handler = (m: RegExpMatchArray, q: URLSearchParams, body: unknown, r: IncomingMessage, res: ServerResponse) => unknown;
 export interface Route { method: "GET" | "POST" | "PUT" | "DELETE"; re: RegExp; h: Handler }

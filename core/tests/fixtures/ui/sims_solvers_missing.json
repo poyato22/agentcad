@@ -1,0 +1,15 @@
+{
+  "ccx": {
+    "name": "CalculiX",
+    "found": false,
+    "path": null,
+    "version": null,
+    "install": "conda install -c conda-forge calculix"
+  },
+  "gmsh": {
+    "name": "gmsh",
+    "found": true,
+    "version": "4.15.2",
+    "install": "gmsh is a core dependency: run `uv sync` in core/"
+  }
+}

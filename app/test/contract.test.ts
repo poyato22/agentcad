@@ -8,7 +8,7 @@
 // has the same keys and value types (recursive; a failure lists every drifted path). Every event
 // in events.jsonl parses and is handled by reduce() without reaching its "unknown" branch.
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -18,6 +18,7 @@ import {
   agentInfoSchema, agentRunSchema, approvalSchema, claudeCodeStatusSchema, coreStatusSchema, eventSchema, keyStatusSchema, localActionSchema, localStatusSchema, localTestSchema,
   modelsInfoSchema, onshapeTestSchema, partSummarySchema, profileSchema, setupStateSchema, stepSchema,
 } from "../src/api/schemas";
+import { simRecordSchema, simSolversSchema, simStartedSchema, simSummarySchema } from "../src/api/sims";
 import type { MisesEvent } from "../src/api/types";
 import { emptyState, KNOWN_EVENTS, reduce, type AppState } from "../src/state/reduce";
 import { loadScenario, SCENARIO_DIR, startFakeCore, type FakeCore } from "./fake-core/server";
@@ -273,6 +274,82 @@ describe("contract: real core fixtures ↔ schemas ↔ fake core", () => {
         }
       }
       expect(problems).toEqual([]);
+    });
+  });
+
+  // Static stress studies (core server/sim_api.py). The dump only writes these with CalculiX
+  // installed; the fake core's studies must look like the real ones.
+  describe.skipIf(!existsSync(join(DIR, "sim_done.json")))("sims", () => {
+    const sim = (sims: Record<string, unknown>) => ({ ...loadScenario("base"), sims });
+    const BODY = { part_id: "mount_plate", fix: "x-min", load: { face: "x-max", newtons: 20, direction: "-z" }, material: "PETG", environment: "Desk" };
+    const post = async (body: unknown) => {
+      const r = await fetch(`${core.url}/sims`, {
+        method: "POST", headers: { Authorization: `Bearer ${core.token}`, "Content-Type": "application/json" }, body: JSON.stringify(body),
+      });
+      expect(r.status).toBe(202); // like the core: accepted, the study runs in the background
+      return (await r.json()) as Json;
+    };
+    const settle = async (runId: string) => {
+      for (let i = 0; i < 300; i++) {
+        const list = (await getFake(`/sims?run_id=${runId}`)) as { status: string }[];
+        if (list[0] && list[0].status !== "running") return list;
+        await new Promise((r) => setTimeout(r, 10));
+      }
+      throw new Error("fake study never finished");
+    };
+
+    it.each([
+      ["sim_done.json", simRecordSchema], ["sim_failed.json", simRecordSchema], ["sims_list.json", z.array(simSummarySchema)],
+      ["sims_solvers.json", simSolversSchema], ["sims_solvers_missing.json", simSolversSchema], ["sims_start.json", simStartedSchema],
+    ] as const)("schema parses the real %s", (name, schema) => {
+      const p = (schema as z.ZodType<unknown>).safeParse(read(DIR, name));
+      expect(p.success, p.success ? "" : JSON.stringify(p.error.issues.slice(0, 5))).toBe(true);
+    });
+
+    it("solver status: same shape found and missing", async () => {
+      core.reset(sim({}));
+      expect(shapeDiff(read(DIR, "sims_solvers.json"), await getFake("/sims/solvers"), "solvers")).toEqual([]);
+      core.reset(sim({ ccx: false }));
+      expect(shapeDiff(read(DIR, "sims_solvers_missing.json"), await getFake("/sims/solvers"), "solvers")).toEqual([]);
+    });
+
+    it("a study the fake core runs looks like the real one (start, list, record)", async () => {
+      core.reset(sim({ step_ms: 5 }));
+      const started = await post(BODY);
+      expect(shapeDiff(read(DIR, "sims_start.json"), started, "start")).toEqual([]);
+      const list = await settle((started as { run_id: string }).run_id);
+      const realList = read(DIR, "sims_list.json") as { status: string }[];
+      expect(shapeDiff(realList.find((x) => x.status === "done"), list[0], "list[]")).toEqual([]);
+      const rec = await getFake(`/sims/${(list[0] as unknown as { sim_id: string }).sim_id}`);
+      expect(simRecordSchema.safeParse(rec).success).toBe(true);
+      expect(shapeDiff(read(DIR, "sim_done.json"), rec, "sim")).toEqual([]);
+    });
+
+    it("a study without CalculiX fails like the real one", async () => {
+      core.reset(sim({ ccx: false, step_ms: 5 }));
+      const started = await post(BODY);
+      const list = await settle((started as { run_id: string }).run_id);
+      const rec = await getFake(`/sims/${(list[0] as unknown as { sim_id: string }).sim_id}`);
+      const real = read(DIR, "sim_failed.json") as Record<string, unknown>;
+      expect(shapeDiff(real, rec, "sim")).toEqual([]);
+      expect((rec as Record<string, unknown>).error).toBe(real.error);
+      expect((rec as Record<string, unknown>).hint).toBe(real.hint);
+    });
+
+    it("the events of a study match the real core's (run_started, tool_call, sim_progress, tool_result, run_finished)", async () => {
+      core.reset(sim({ step_ms: 5 }));
+      const ws = new WebSocket(`${core.url.replace("http", "ws")}/events?token=${core.token}`);
+      const got: MisesEvent[] = [];
+      ws.on("message", (d) => got.push(JSON.parse(String(d)) as MisesEvent));
+      await new Promise((ok, fail) => { ws.on("open", ok); ws.on("error", fail); });
+      const started = await post(BODY);
+      await settle((started as { run_id: string }).run_id);
+      for (let i = 0; i < 100 && !got.some((e) => e.type === "run_finished"); i++) await new Promise((r) => setTimeout(r, 5));
+      ws.close();
+      const realSim = readFileSync(join(DIR, "sim_events.jsonl"), "utf8").split("\n").filter((l) => l.trim()).map((l) => JSON.parse(l) as MisesEvent);
+      const realOk = realSim.slice(0, realSim.findIndex((e) => e.type === "run_finished") + 1);
+      expect(got.map((e) => e.type)).toEqual(realOk.map((e) => e.type));
+      got.forEach((e, i) => expect(shapeDiff(realOk[i].data, e.data, `$${e.type}`)).toEqual([]));
     });
   });
 

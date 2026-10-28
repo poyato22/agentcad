@@ -1,0 +1,76 @@
+[
+  {
+    "sim_id": "sim_e43a06431dae",
+    "part_id": "mount_plate",
+    "run_id": "384a673623cc",
+    "status": "failed",
+    "stage": "failed",
+    "created_at": 1793204155.719275,
+    "finished_at": 1793204155.719479,
+    "error": "CalculiX (ccx) is not installed",
+    "hint": "install it with: conda install -c conda-forge calculix",
+    "inputs": {
+      "fix": "x-min",
+      "load": {
+        "face": "x-max",
+        "newtons": 20.0,
+        "direction": "-z"
+      },
+      "material": "PETG",
+      "environment": "Desk"
+    },
+    "results": null,
+    "guide": true,
+    "label": "guide only, not a guarantee",
+    "fidelity_class": "fem",
+    "stale": false
+  },
+  {
+    "sim_id": "sim_3abce9e38773",
+    "part_id": "mount_plate",
+    "run_id": "3a9ff2ba7882",
+    "status": "done",
+    "stage": "done",
+    "created_at": 1793204152.9369118,
+    "finished_at": 1793204155.709716,
+    "error": null,
+    "hint": null,
+    "inputs": {
+      "fix": "x-min",
+      "load": {
+        "face": "x-max",
+        "newtons": 20.0,
+        "direction": "-z"
+      },
+      "material": "PETG",
+      "environment": "Desk"
+    },
+    "results": {
+      "max_von_mises_mpa": 10.392413372891163,
+      "max_von_mises_at": [
+        -9.999999999999991,
+        2.1,
+        3.0
+      ],
+      "max_von_mises_at_fixture_mpa": 6.229826616468381,
+      "max_displacement_mm": 0.8316638894083745,
+      "max_displacement_at": [
+        20.0,
+        -2.4868995751603507e-14,
+        3.0
+      ],
+      "safety_factor": 3.165770915716302,
+      "safety_factor_incl_fixture": 3.165770915716302,
+      "allowable_mpa": 32.9,
+      "coarse_max_von_mises_mpa": 10.919695771690655,
+      "coarse_max_displacement_mm": 0.8276497177720116,
+      "error_band": 0.05073724262883155,
+      "error_band_pct": 5.1,
+      "peak_excludes": "nodes on the fixed face"
+    },
+    "guide": true,
+    "label": "guide only, not a guarantee",
+    "fidelity_class": "fem",
+    "stale": false
+  }
+]

@@ -40,7 +40,12 @@ export interface RendererLike {
   dispose(): void;
 }
 
-export interface ViewerDeps { createRenderer?: (canvas: HTMLCanvasElement) => RendererLike }
+export interface ViewerDeps {
+  createRenderer?: (canvas: HTMLCanvasElement) => RendererLike;
+  /** Edge color when not highlighted (default: the --mesh-edge token). Read on every restyle (setPart /
+   *  setMode / setHighlight / theme change). */
+  edgeColor?: () => string;
+}
 
 function defaultRenderer(canvas: HTMLCanvasElement): RendererLike {
   // preserveDrawingBuffer: frames are rare (on demand), and it lets tests and screenshots read pixels back.
@@ -78,6 +83,7 @@ export function fitOrtho(camera: THREE.OrthographicCamera, bbox: THREE.Box3, asp
 
 export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): ViewerHandle {
   const renderer = (deps.createRenderer ?? defaultRenderer)(canvas);
+  const edgeColor = deps.edgeColor;
   renderer.setClearColor(0x000000, 0);
   renderer.setPixelRatio(typeof window === "undefined" ? 1 : Math.min(window.devicePixelRatio || 1, 2));
 
@@ -127,11 +133,12 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
     if (!part) return;
     part.object.traverse((o) => {
       if (o instanceof THREE.LineSegments) {
-        (o.material as THREE.LineBasicMaterial).color.set(highlight ? colors.highlight : colors.edge);
+        (o.material as THREE.LineBasicMaterial).color.set(highlight ? colors.highlight : (edgeColor?.() ?? colors.edge));
       } else if (o instanceof THREE.Mesh) {
         const m = o.material as THREE.MeshLambertMaterial;
         m.visible = mode === "shaded";
-        m.color?.set(colors.face);
+        // per-vertex colored meshes (the stress heatmap) keep their colors; plain faces follow the theme
+        if (!m.vertexColors) m.color?.set(colors.face);
       }
     });
   }
