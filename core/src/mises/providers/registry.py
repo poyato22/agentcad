@@ -7,7 +7,7 @@ from typing import Literal
 
 from mises.platform import keychain_get
 from mises.providers.anthropic_provider import AnthropicProvider
-from mises.providers.base import ModelProvider
+from mises.providers.base import ModelProvider, RateLimiter
 from mises.providers.openai_provider import OpenAICompatProvider
 from mises.types import ErrorCode, MisesError
 
@@ -19,6 +19,8 @@ class VendorSpec:
     kind: Literal["anthropic", "openai"]
     base_url: str | None
     env_key: str | None
+    # stream `reasoning_content` and send it back on later turns (Moonshot/Kimi requires it)
+    reasoning_content: bool = False
 
 
 VENDORS: dict[str, VendorSpec] = {
@@ -27,9 +29,24 @@ VENDORS: dict[str, VendorSpec] = {
     "gemini": VendorSpec("openai", "https://generativelanguage.googleapis.com/v1beta/openai/",
                          "GEMINI_API_KEY"),
     "openrouter": VendorSpec("openai", "https://openrouter.ai/api/v1", "OPENROUTER_API_KEY"),
+    # Kimi (platform.kimi.ai docs, formerly platform.moonshot.ai): OpenAI-compatible
+    "moonshot": VendorSpec("openai", "https://api.moonshot.ai/v1", "MOONSHOT_API_KEY",
+                           reasoning_content=True),
     "ollama": VendorSpec("openai", "http://localhost:11434/v1", None),
     "lmstudio": VendorSpec("openai", "http://localhost:1234/v1", None),
 }
+
+
+# Kimi ids from the Kimi API docs (K3.1 Pro quickstart; K3 in the thinking-model guide)
+MOONSHOT_MODELS = ("moonshot/kimi-k3.1-pro", "moonshot/kimi-k3.1-pro-highspeed", "moonshot/kimi-k3")
+
+# OpenRouter free models: 20 requests/min per account (openrouter.ai/docs/api-reference/limits),
+# shared by every run using one
+OPENROUTER_FREE_LIMITER = RateLimiter(20, 60.0)
+
+
+def is_openrouter_free(vendor: str, model: str) -> bool:
+    return vendor == "openrouter" and model.endswith(":free")
 
 
 def resolve(model_ref: str) -> tuple[ModelProvider, str]:
@@ -53,4 +70,7 @@ def resolve(model_ref: str) -> tuple[ModelProvider, str]:
                              hint=f"set {spec.env_key} or run `mises keys set {vendor}`")
     if spec.kind == "anthropic":
         return AnthropicProvider(key or "", spec.base_url), model
-    return OpenAICompatProvider(vendor, key, spec.base_url), model
+    limiter = OPENROUTER_FREE_LIMITER if is_openrouter_free(vendor, model) else None
+    return OpenAICompatProvider(vendor, key, spec.base_url,
+                                reasoning_content=spec.reasoning_content,
+                                rate_limiter=limiter), model

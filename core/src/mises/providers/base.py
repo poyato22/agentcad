@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import random
+import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Literal, Protocol
 
@@ -34,6 +35,13 @@ class TextDelta(BaseModel):
     text: str
 
 
+class ReasoningDelta(BaseModel):
+    """Model thinking streamed beside the answer (Kimi's `reasoning_content`). Not answer text:
+    the loop keeps it on the assistant message so it can be sent back on later turns."""
+    type: Literal["reasoning_delta"] = "reasoning_delta"
+    text: str
+
+
 class ToolCall(BaseModel):
     type: Literal["tool_call"] = "tool_call"
     id: str
@@ -54,7 +62,7 @@ class Done(BaseModel):
     stop_reason: Literal["end_turn", "tool_use", "max_tokens", "refusal", "error"]
 
 
-StreamEvent = TextDelta | ToolCall | Usage | Done
+StreamEvent = TextDelta | ReasoningDelta | ToolCall | Usage | Done
 
 
 class ModelProvider(Protocol):
@@ -67,6 +75,32 @@ class ModelProvider(Protocol):
         exception is the error channel); the literal exists only for consumers that
         synthesize a terminal event themselves."""
         ...
+
+
+class RateLimiter:
+    """At most `max_calls` request starts per sliding `period` seconds, shared by every provider
+    that holds it (OpenRouter's free models: 20 requests/min per account). acquire() waits."""
+
+    def __init__(self, max_calls: int, period: float, *,
+                 clock: Callable[[], float] | None = None,
+                 sleep: Callable[[float], Awaitable[None]] | None = None):
+        self.max_calls, self.period = max_calls, period
+        self._clock = clock or time.monotonic
+        self._sleep = sleep or asyncio.sleep
+        self._starts: list[float] = []
+        self._lock: asyncio.Lock | None = None
+
+    async def acquire(self) -> None:
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        async with self._lock:
+            while True:
+                now = self._clock()
+                self._starts = [t for t in self._starts if now - t < self.period]
+                if len(self._starts) < self.max_calls:
+                    self._starts.append(now)
+                    return
+                await self._sleep(self.period - (now - self._starts[0]) + 0.01)
 
 
 async def with_retries[T](fn: Callable[[], Awaitable[T]], *, attempts: int = 3,

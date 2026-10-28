@@ -8,8 +8,8 @@ from uuid import uuid4
 import httpx
 import openai
 
-from mises.providers.base import (Done, ModelRequest, StreamEvent, TextDelta, ToolCall, Usage,
-                                  TRANSPORT_ERRORS, classify_status, classify_stream_error_type,
+from mises.providers.base import (Done, ModelRequest, RateLimiter, ReasoningDelta, StreamEvent,
+                                  TextDelta, ToolCall, Usage, TRANSPORT_ERRORS, classify_status, classify_stream_error_type,
                                   retried_stream)
 from mises.types import ErrorCode, ImageBlock, Message, MisesError, TextBlock, ToolResultBlock, \
     ToolUseBlock
@@ -18,7 +18,9 @@ _STOP = {"tool_calls": "tool_use", "stop": "end_turn", "length": "max_tokens",
          "content_filter": "refusal"}
 
 
-def _messages(system: str, msgs: list[Message]) -> list[dict]:
+def _messages(system: str, msgs: list[Message], *, reasoning: bool = False) -> list[dict]:
+    """`reasoning`: send each assistant message's reasoning back as `reasoning_content` (Kimi:
+    "pass the complete assistant message returned by the API back in messages as-is")."""
     out: list[dict] = [{"role": "system", "content": system}]
     for m in msgs:
         if m.role == "assistant":
@@ -29,6 +31,8 @@ def _messages(system: str, msgs: list[Message]) -> list[dict]:
             msg: dict = {"role": "assistant", "content": text or None}
             if calls:
                 msg["tool_calls"] = calls
+            if reasoning and m.reasoning:
+                msg["reasoning_content"] = m.reasoning
             out.append(msg)
             continue
         # Tool results become their own role "tool" messages, placed first.
@@ -70,8 +74,12 @@ class OpenAICompatProvider:
     def __init__(self, name: str, api_key: str | None, base_url: str | None, *,
                  supports_tools: bool = True, http_client: httpx.AsyncClient | None = None,
                  retry_base_delay: float = 1.0, attempts: int = 3,
-                 key_hint: str | None = None):
+                 key_hint: str | None = None, reasoning_content: bool = False,
+                 rate_limiter: RateLimiter | None = None):
         self.name = name
+        # vendor flag: stream `reasoning_content` deltas and return them on later turns
+        self.reasoning_content = reasoning_content
+        self._rate = rate_limiter
         self.supports_tools = supports_tools
         self._hint = key_hint or f"check the {name} API key (env var or `mises keys set {name}`)"
         # Local servers (Ollama, LM Studio) need no key but the SDK demands a non-empty one.
@@ -81,7 +89,9 @@ class OpenAICompatProvider:
         self._attempts = attempts
 
     def _params(self, req: ModelRequest) -> dict:
-        p: dict = {"model": req.model, "messages": _messages(req.system, req.messages),
+        p: dict = {"model": req.model,
+                   "messages": _messages(req.system, req.messages,
+                                         reasoning=self.reasoning_content),
                    "max_tokens": req.max_tokens, "stream": True,
                    "stream_options": {"include_usage": True}}
         if req.tools and self.supports_tools:
@@ -96,6 +106,8 @@ class OpenAICompatProvider:
         acc: dict[int, dict] = {}
         finish: str | None = None
         in_tok = out_tok = cache_read = 0
+        if self._rate is not None:
+            await self._rate.acquire()
         try:
             stream = await self._client.chat.completions.create(**self._params(req))
             async for chunk in stream:
@@ -106,6 +118,10 @@ class OpenAICompatProvider:
                     cache_read = (d.cached_tokens or 0) if d else 0
                 for choice in chunk.choices:
                     delta = choice.delta
+                    if self.reasoning_content:
+                        thought = getattr(delta, "reasoning_content", None)
+                        if isinstance(thought, str) and thought:
+                            yield ReasoningDelta(text=thought)
                     if delta.content:
                         yield TextDelta(text=delta.content)
                     for tc in delta.tool_calls or []:

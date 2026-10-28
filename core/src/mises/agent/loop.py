@@ -27,8 +27,8 @@ from pydantic import BaseModel
 
 from ..events import Event, EventBus
 from ..gate import Gate
-from ..providers.base import (Done, ModelProvider, ModelRequest, TextDelta, ToolCall, ToolSchema,
-                              Usage)
+from ..providers.base import (Done, ModelProvider, ModelRequest, ReasoningDelta, TextDelta,
+                              ToolCall, ToolSchema, Usage)
 from ..store import Store
 from ..tools.registry import ToolRegistry
 from ..types import (Block, ErrorCode, ImageBlock, Message, MisesError, SafetyClass, StepKind,
@@ -78,6 +78,7 @@ class _Turn:
     text: str = ""
     calls: list[ToolCall] = field(default_factory=list)
     stop: str = "end_turn"
+    reasoning: str = ""
 
 
 def _estimate_tokens(messages: list[Message]) -> int:
@@ -194,7 +195,8 @@ class AgentLoop:
                 final_text = turn.text
                 if not blocks:
                     return RunResult(final_text="", messages=messages, stop_reason="end_turn")
-                messages.append(Message(role="assistant", content=blocks))
+                messages.append(Message(role="assistant", content=blocks,
+                                        reasoning=turn.reasoning or None))
                 self.store.append_step(self.run_id, StepKind.MESSAGE, {
                     "role": "assistant", "text": turn.text, "stop_reason": turn.stop,
                     "tool_calls": [{"id": c.id, "name": c.name} for c in turn.calls]})
@@ -261,6 +263,7 @@ class AgentLoop:
                       started: list[bool] | None = None) -> _Turn:
         out = _Turn()
         text: list[str] = []
+        thoughts: list[str] = []
         async for ev in self.provider.stream(req):
             if started is not None:
                 started[0] = True
@@ -268,6 +271,8 @@ class AgentLoop:
                 text.append(ev.text)
                 if publish:
                     self._publish("text_delta", text=ev.text)
+            elif isinstance(ev, ReasoningDelta):
+                thoughts.append(ev.text)
             elif isinstance(ev, ToolCall):
                 out.calls.append(ev)
             elif isinstance(ev, Usage):
@@ -276,6 +281,7 @@ class AgentLoop:
             elif isinstance(ev, Done):
                 out.stop = ev.stop_reason
         out.text = "".join(text)
+        out.reasoning = "".join(thoughts)
         return out
 
     # ---- tools
