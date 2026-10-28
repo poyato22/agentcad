@@ -72,6 +72,49 @@ async def test_start_run_records_policy_and_steps(tmp_path):
     assert "onshape" not in rt.gate.services and rt.gate.services["runtime"] is rt
 
 
+@pytest.mark.parametrize("ref,withheld", [
+    ("ollama/qwen3.5:9b", True), ("lmstudio/qwen3-coder", True), ("openrouter/qwen/qwen3-coder:free", True),
+    ("anthropic/claude-sonnet-5-5", False), ("openrouter/qwen/qwen3-coder", False),
+])
+async def test_small_models_are_not_offered_planning_tools(tmp_path, monkeypatch, ref, withheld):
+    """Local / free models on an every-tool agent (the designer) get the CAD, sim, drawing, UI
+    and Onshape tools but not orchestrator_run / agent_spawn / orchestrator_submit_plan."""
+    async def no_sizes():
+        return None
+    rt, fake, _ = make(tmp_path, [[TextDelta(text="ok"), Done(stop_reason="end_turn")]])
+    monkeypatch.setattr(rt, "refresh_local_sizes", no_sizes)
+    rid = await rt.start_run("designer", "make a plate", model_ref=ref)
+    await rt.wait(rid)
+    names = {t.name for t in fake.requests[0].tools}
+    assert {"mirror_part_create", "mirror_measure", "sim_static_run", "ui_ask_user"} <= names
+    assert any(n.startswith("onshape_") for n in names)
+    strong = runtime_mod.STRONG_MODEL_TOOLS & {t.name for t in rt.registry.list()}
+    assert strong, "the planning tools are registered"
+    assert (names & strong == set()) is withheld
+    assert runtime_mod.tools_withheld_for(ref) == (runtime_mod.STRONG_MODEL_TOOLS if withheld else frozenset())
+
+
+async def test_planner_keeps_its_listed_planning_tool_on_a_local_model(tmp_path, monkeypatch):
+    async def no_sizes():
+        return None
+    rt, fake, _ = make(tmp_path, [[TextDelta(text="ok"), Done(stop_reason="end_turn")]])
+    monkeypatch.setattr(rt, "refresh_local_sizes", no_sizes)
+    rid = await rt.start_run("planner", "plan a bracket", model_ref="ollama/qwen3.5:9b")
+    await rt.wait(rid)
+    assert "orchestrator_submit_plan" in {t.name for t in fake.requests[0].tools}
+
+
+def test_ui_ask_user_accepts_prompt_as_question():
+    from mises.ui_tools import AskArgs
+    assert AskArgs.model_validate({"prompt": "which side?"}).question == "which side?"
+    assert AskArgs.model_validate({"text": "how thick?", "options": ["3", "5"]}).options == ["3", "5"]
+    assert AskArgs.model_validate({"question": "q", "prompt": "ignored"}).question == "q"
+    with pytest.raises(Exception):
+        AskArgs.model_validate({"options": ["a"]})          # still needs some question
+    # the schema the model sees still names `question`
+    assert "question" in AskArgs.model_json_schema()["required"]
+
+
 async def test_unknown_agent_rejected(tmp_path):
     rt, _, _ = make(tmp_path, [])
     with pytest.raises(MisesError) as e:

@@ -20,6 +20,12 @@ def test_builtin_tool_lists_name_real_tools(tmp_path: Path):
     for d in load_definitions().values():
         for name in d.tools or []:
             rt.registry.get(name)          # raises "unknown tool" if a definition went stale
+    # every tool a built-in prompt names in backticks exists too
+    import re
+    registered = {t.name for t in rt.registry.list()}
+    for d in load_definitions().values():
+        named = set(re.findall(r"`((?:mirror|sim|ui|onshape|orchestrator|agent|drawing|print)_[a-z_]+)`", d.body))
+        assert named <= registered, f"{d.name} names unknown tools: {named - registered}"
     sim = load_definitions()["sim"]
     assert {"sim_env_list", "sim_static_run", "sim_result_get"} <= set(sim.tools)
 

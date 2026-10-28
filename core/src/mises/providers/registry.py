@@ -8,6 +8,7 @@ from typing import Literal
 from mises.platform import keychain_get
 from mises.providers.anthropic_provider import AnthropicProvider
 from mises.providers.base import ModelProvider, RateLimiter
+from mises.providers.ollama_provider import OllamaProvider
 from mises.providers.openai_provider import OpenAICompatProvider
 from mises.types import ErrorCode, MisesError
 
@@ -70,6 +71,9 @@ def resolve(model_ref: str) -> tuple[ModelProvider, str]:
                              hint=f"set {spec.env_key} or run `mises keys set {vendor}`")
     if spec.kind == "anthropic":
         return AnthropicProvider(key or "", spec.base_url), model
+    if vendor == "ollama":
+        # native /api/chat: the only Ollama API that takes num_ctx (see ollama_provider.py)
+        return OllamaProvider(spec.base_url), model
     limiter = OPENROUTER_FREE_LIMITER if is_openrouter_free(vendor, model) else None
     return OpenAICompatProvider(vendor, key, spec.base_url,
                                 reasoning_content=spec.reasoning_content,

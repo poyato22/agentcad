@@ -60,6 +60,8 @@ class LoopConfig:
     keep_recent: int = 6
     max_repeat_errors: int = 3
     retry_base_delay: float = 1.0  # backoff base for whole-turn TRANSIENT retries
+    # tools never offered to this run (model policy: see runtime.tools_withheld_for)
+    withheld_tools: frozenset[str] = frozenset()
 
 
 class RunResult(BaseModel):
@@ -155,7 +157,8 @@ class AgentLoop:
     def _offered(self, classes: set[SafetyClass]) -> list[str]:
         wanted = self.defn.tools
         if wanted is None:
-            return [t.name for t in self.registry.list(classes=classes)]
+            return [t.name for t in self.registry.list(classes=classes)
+                    if t.name not in self.config.withheld_tools]
         known = {t.name for t in self.registry.list()}
         skipped = [n for n in wanted if n not in known]
         if skipped and not self._announced_skips:

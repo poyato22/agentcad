@@ -43,6 +43,17 @@ from .ui_tools import register_ui_tools
 
 log = logging.getLogger(__name__)
 
+#: Tools that plan and coordinate other agents: they need a strong model. Small / local / free
+#: models given them wander off into planning instead of building the part, so an agent that is
+#: offered every tool (the designer) does not get these on such a model. An agent that lists
+#: them by name (the planner) keeps them.
+STRONG_MODEL_TOOLS = frozenset({"orchestrator_run", "agent_spawn", "orchestrator_submit_plan"})
+
+
+def tools_withheld_for(model_ref: str) -> frozenset[str]:
+    """Tools not offered to a run on this model (local Ollama / LM Studio, OpenRouter free)."""
+    return STRONG_MODEL_TOOLS if hardware.model_kind(model_ref) in ("local", "free") else frozenset()
+
 USER = "local"
 
 LOGIN_TIMEOUT_S = 600.0            # a `claude auth login` left open in the browser is stopped
@@ -511,7 +522,8 @@ class Runtime:
                                  [c for c in SafetyClass if c in classes])
         loop = AgentLoop(run_id=run.id, defn=defn, provider=provider, model=model, gate=self.gate,
                          registry=self.registry, store=self.store, events=self.events,
-                         workdir=self.workdir(run.id), config=LoopConfig())
+                         workdir=self.workdir(run.id),
+                         config=LoopConfig(withheld_tools=tools_withheld_for(ref)))
         st = self._runs[run.id] = _RunState(loop=loop, ref=ref)
         started = {"agent": agent, "provider": provider.name, "model": model,
                    "parent_id": parent_id}

@@ -3,6 +3,7 @@ import pytest
 from mises.providers import registry
 from mises.providers.anthropic_provider import AnthropicProvider
 from mises.providers.base import Done, ModelRequest, with_retries
+from mises.providers.ollama_provider import OllamaProvider
 from mises.providers.openai_provider import OpenAICompatProvider
 from mises.types import ErrorCode, MisesError
 
@@ -19,8 +20,11 @@ def clean(monkeypatch):
 def test_resolve_refs(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
     p, m = registry.resolve("ollama/qwen3")
-    assert isinstance(p, OpenAICompatProvider) and m == "qwen3" and p.name == "ollama"
-    assert "localhost:11434" in str(p._client.base_url)
+    # Ollama: the native /api/chat (the only Ollama API that honours num_ctx)
+    assert isinstance(p, OllamaProvider) and m == "qwen3" and p.name == "ollama"
+    assert p._url == "http://localhost:11434/api/chat"
+    p, m = registry.resolve("lmstudio/qwen3")
+    assert isinstance(p, OpenAICompatProvider) and "localhost:1234" in str(p._client.base_url)
     p, m = registry.resolve("claude-haiku-5-5")
     assert isinstance(p, AnthropicProvider) and m == "claude-haiku-5-5"
     p, m = registry.resolve(registry.DEFAULT_MODEL)

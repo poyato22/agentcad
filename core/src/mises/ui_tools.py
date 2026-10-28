@@ -1,7 +1,7 @@
 """ui_* tools: talk to the human through whatever UI is attached to the runtime."""
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from .events import Event
 from .sketch import MAX_SKETCH_QUESTIONS, take_question
@@ -14,6 +14,17 @@ QUESTION_TIMEOUT_S = 24 * 3600  # a human may take a long time to answer
 class AskArgs(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
     options: list[str] = Field(default_factory=list, max_length=12)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _prompt_alias(cls, v):
+        # small models often name the field `prompt` (or `text`); accept those as `question`
+        if isinstance(v, dict) and "question" not in v:
+            for alias in ("prompt", "text"):
+                if isinstance(v.get(alias), str):
+                    v = {**{k: x for k, x in v.items() if k != alias}, "question": v[alias]}
+                    break
+        return v
 
 
 class NoteArgs(BaseModel):
