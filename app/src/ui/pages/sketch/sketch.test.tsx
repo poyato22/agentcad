@@ -156,7 +156,8 @@ describe("SketchPage", () => {
       photo: null,
     });
     const runs = calls.find((c) => c.path === "/runs");
-    expect(runs?.body).toEqual({ agent: "designer", prompt: BUILD_PROMPT, sketch_id: "sk_0123456789ab" });
+    // A6: the run uses exactly the model shown in the build target, not a re-resolved default.
+    expect(runs?.body).toEqual({ agent: "designer", prompt: BUILD_PROMPT, sketch_id: "sk_0123456789ab", model_ref: "anthropic/claude-sonnet-5-5" });
     expect(build.value).toEqual({ state: "started", run_id: "r42", sketch_id: "sk_0123456789ab" });
     expect(selectedRunId.value).toBe("r42");
     expect(screen.getByRole("status").textContent).toMatch(/Run started/);
@@ -221,22 +222,28 @@ describe("SketchPage", () => {
     expect(screen.getByRole("alert").textContent).toMatch(/PNG, JPEG or HEIC/);
   });
 
-  it("keyboard: tool keys, undo/redo, delete; ignored while typing", async () => {
+  it("keyboard: tool keys, undo/redo, delete; scoped to the sketch region; ignored while typing", async () => {
     fakeClient();
-    render(<SketchPage />);
+    const { container } = render(<SketchPage />);
     await flush();
-    fireEvent.keyDown(document, { key: "l" });
+    const region = container.querySelector("[data-sketch-root]") as HTMLElement;
+    expect(region).not.toBeNull();
+    // A5: a key dispatched outside the sketch region (e.g. focus in the console) does nothing
+    fireEvent.keyDown(document.body, { key: "l" });
+    expect(screen.getByRole("button", { name: /^Line/ }).getAttribute("aria-pressed")).toBe("false");
+    // inside the region the shortcuts work
+    fireEvent.keyDown(region, { key: "l" });
     expect(screen.getByRole("button", { name: /^Line/ }).getAttribute("aria-pressed")).toBe("true");
     act(() => sketchActions.addStroke(lineStroke(sketchActions.newStrokeId(), [10, 10], [50, 10])));
-    fireEvent.keyDown(document, { key: "z", metaKey: true });
+    fireEvent.keyDown(region, { key: "z", metaKey: true });
     expect(doc.value.strokes).toHaveLength(0);
-    fireEvent.keyDown(document, { key: "z", metaKey: true, shiftKey: true });
+    fireEvent.keyDown(region, { key: "z", metaKey: true, shiftKey: true });
     expect(doc.value.strokes).toHaveLength(1);
     const notes = screen.getByLabelText("Notes for the agent");
     fireEvent.keyDown(notes, { key: "Backspace" });
     expect(doc.value.strokes).toHaveLength(1);
     act(() => sketchActions.select(doc.value.strokes[0].id));
-    fireEvent.keyDown(document, { key: "Delete" });
+    fireEvent.keyDown(region, { key: "Delete" });
     expect(doc.value.strokes).toHaveLength(0);
   });
 });

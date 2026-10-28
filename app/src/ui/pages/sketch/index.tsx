@@ -42,7 +42,13 @@ export function strokeSummary(s: Stroke): string {
 }
 
 export function SketchPage(): JSX.Element {
+  const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
+    // Scoped to the sketch region (A5): a key fired while focus is elsewhere in the app (the
+    // console, another pane) never reaches these shortcuts — the listener is on the region, so
+    // only keystrokes that bubble up from inside it (a tool button, the canvas, a field) count.
+    const el = root.current;
+    if (!el) return;
     const onKey = (e: KeyboardEvent) => {
       if (isTyping(e.target) || e.isComposing) return;
       const mod = e.metaKey || e.ctrlKey;
@@ -62,13 +68,13 @@ export function SketchPage(): JSX.Element {
       const t = TOOLS.find((x) => x.key === e.key.toLowerCase());
       if (t) sketchActions.setTool(t.id);
     };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    el.addEventListener("keydown", onKey);
+    return () => el.removeEventListener("keydown", onKey);
   }, []);
 
   return (
     <PageShell title="Sketch">
-      <div class="sk-layout">
+      <div class="sk-layout" ref={root} tabIndex={-1} data-sketch-root>
         <div class="sk-stage">
           <ToolBar />
           <SketchCanvas />
@@ -230,7 +236,7 @@ function BuildBox(): JSX.Element {
     try {
       const render = d.strokes.length ? await renderPng(d) : null;
       const { run_id, sketch } = await buildPart(actions.client(),
-        { doc: d, notes: notes.value, photo: photo.value, render, agent: target.agent },
+        { doc: d, notes: notes.value, photo: photo.value, render, agent: target.agent, modelRef: target.modelRef },
         (step) => { build.value = { state: "working", step }; });
       build.value = { state: "started", run_id, sketch_id: sketch.sketch_id };
       actions.selectRun(run_id);

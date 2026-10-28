@@ -28,7 +28,7 @@ export function buildTarget(profile: Profile, agents: readonly AgentInfo[], mode
   return { agent, modelRef, vendor, vision: VISION_VENDORS.has(vendor), keyMissing };
 }
 
-export interface BuildInput { doc: SketchDoc; notes: string; photo: PickedPhoto | null; render: string | null; agent: string }
+export interface BuildInput { doc: SketchDoc; notes: string; photo: PickedPhoto | null; render: string | null; agent: string; modelRef: string }
 
 export async function buildPart(client: CoreClient, input: BuildInput, onStep?: (step: "saving" | "starting") => void): Promise<{ run_id: string; sketch: SketchSummary }> {
   onStep?.("saving");
@@ -38,7 +38,8 @@ export async function buildPart(client: CoreClient, input: BuildInput, onStep?: 
     render_png_b64: input.doc.strokes.length ? input.render : null,
   });
   onStep?.("starting");
-  const { run_id } = await client.createRun({ agent: input.agent, prompt: BUILD_PROMPT, sketch_id: sketch.sketch_id });
+  // pass the model shown in the build target so the run uses exactly it, not a re-resolved default
+  const { run_id } = await client.createRun({ agent: input.agent, prompt: BUILD_PROMPT, sketch_id: sketch.sketch_id, model_ref: input.modelRef });
   return { run_id, sketch };
 }
 

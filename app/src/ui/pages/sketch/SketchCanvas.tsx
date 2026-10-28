@@ -28,15 +28,19 @@ export function SketchCanvas(): JSX.Element {
   const [marker, setMarker] = useState<{ point: Pt; kind: SnapKind } | null>(null);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && drawing.current) {
+    // Scoped to the sketch region (A5), not the whole document: Escape only cancels an
+    // in-progress draw when the keystroke comes from inside the sketch.
+    const region = svg.current?.closest("[data-sketch-root]") ?? svg.current;
+    if (!region) return;
+    const onKey = (e: Event) => {
+      if ((e as KeyboardEvent).key === "Escape" && drawing.current) {
         drawing.current = null;
         setDraft(null);
         setMarker(null);
       }
     };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    region.addEventListener("keydown", onKey);
+    return () => region.removeEventListener("keydown", onKey);
   }, []);
 
   function rect(): DOMRect {
