@@ -1,3 +1,4 @@
+import httpx
 import pytest
 
 import mises.runtime as runtime_mod
@@ -25,3 +26,12 @@ def fake():
 @pytest.fixture
 def rt(home, fake):
     return Runtime(home, provider_resolver=lambda ref: (fake, "fake-model"))
+
+
+@pytest.fixture(autouse=True)
+def _no_real_model_lists(monkeypatch):
+    """/models must never reach Ollama, LM Studio or OpenRouter from the test suite."""
+    import mises.server.model_lists as ml
+
+    monkeypatch.setattr(ml, "TRANSPORT", httpx.MockTransport(
+        lambda req: (_ for _ in ()).throw(httpx.ConnectError("offline in tests"))))

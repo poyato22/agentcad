@@ -369,3 +369,23 @@ async def test_history_is_continued(tmp_path):
     r2 = await loop.run("second", history=r1.messages)
     assert [m.role for m in r2.messages] == ["user", "assistant", "user", "assistant"]
     assert env.provider.requests[1].messages[0].content == [TextBlock(text="first")]
+
+
+async def test_reasoning_is_kept_on_the_assistant_message_for_the_next_turn(tmp_path):
+    from mises.providers.base import ReasoningDelta
+    env = Env(tmp_path, [[ReasoningDelta(text="plan: "), ReasoningDelta(text="call echo"),
+                          call("c1", "echo", n=1), Done(stop_reason="tool_use")],
+                         text_turn("done")])
+    env.add("echo")
+    sub = env.bus.subscribe(env.run_id)
+    r = await env.loop().run("go")
+    assert r.final_text == "done"
+    assistant = env.provider.requests[1].messages[1]
+    assert assistant.role == "assistant" and assistant.reasoning == "plan: call echo"
+    assert r.messages[3].reasoning is None
+    shown = []
+    while not sub.queue.empty():
+        ev = sub.queue.get_nowait()
+        if ev.type == "text_delta":
+            shown.append(ev.data["text"])
+    assert shown == ["done"]  # reasoning is not shown as answer text

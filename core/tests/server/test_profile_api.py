@@ -65,7 +65,8 @@ def test_get_and_put_profile_partial_merge(client, rt):
 
 
 @pytest.mark.parametrize("body", [
-    {"units": "inch"}, {"max_parallel_agents": 0}, {"bogus": 1}, {"setup_completed_at": 5},
+    {"units": "inch"}, {"max_parallel_agents": 0}, {"max_parallel_agents": "many"}, {"bogus": 1},
+    {"setup_completed_at": 5},
     {"local_endpoints": {"ollama": "http://evil.example.com"}}, [1, 2],
 ])
 def test_put_profile_validation_422(client, body, rt):
@@ -83,7 +84,8 @@ def test_keys_status_never_leaks(client, kc, caplog, monkeypatch):
     assert SECRET not in r.text
     r = client.get("/keys", headers=AUTH)
     rows = {x["vendor"]: x for x in r.json()}
-    assert set(rows) == {"anthropic", "openai", "gemini", "openrouter", "ollama", "lmstudio",
+    assert set(rows) == {"anthropic", "openai", "gemini", "openrouter", "moonshot", "ollama",
+                         "lmstudio",
                          "onshape"}
     assert rows["anthropic"] == {"vendor": "anthropic", "present": True, "source": "keychain"}
     assert rows["openai"]["source"] == "env" and rows["gemini"] == {

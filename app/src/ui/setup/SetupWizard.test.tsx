@@ -448,7 +448,7 @@ describe("profile and done", () => {
     const modelOpts = [...(screen.getByLabelText("Default model") as HTMLSelectElement).options].map((o) => o.value);
     expect(modelOpts).toEqual(["", "anthropic/claude-sonnet-5-5", "claude-code/sonnet", "claude-code/opus"]);
     const agentOpts = [...(screen.getByLabelText("Parallel agents") as HTMLSelectElement).options].map((o) => o.value);
-    expect(agentOpts).toEqual(["1", "2", "3", "4"]);
+    expect(agentOpts).toEqual(["auto", "1", "2", "3", "4"]);
     const save = screen.getByRole("button", { name: "Save and continue" }) as HTMLButtonElement;
     expect(save.disabled).toBe(true);
     fireEvent.input(input("Display name"), { target: { value: "Hartigan" } });

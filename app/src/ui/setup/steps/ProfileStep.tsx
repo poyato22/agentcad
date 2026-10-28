@@ -30,7 +30,8 @@ export function ProfileStep({ data, update, refresh, go }: StepProps): JSX.Eleme
   const [name, setName] = useState(p.display_name);
   const [material, setMaterial] = useState(p.default_material);
   const [model, setModel] = useState(p.default_model ?? "");
-  const [agents, setAgents] = useState(Math.min(4, Math.max(1, p.max_parallel_agents)));
+  const [agents, setAgents] = useState<number | "auto">(
+    typeof p.max_parallel_agents === "number" ? Math.min(4, Math.max(1, p.max_parallel_agents)) : "auto");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const detected = useDetectedLocal(data);
@@ -74,7 +75,8 @@ export function ProfileStep({ data, update, refresh, go }: StepProps): JSX.Eleme
         </label>
         {options.length === 0 && <div class="faint">no connected model yet — runs use the agent's default</div>}
         <label class="setup-field"><span class="label">Parallel agents</span>
-          <select aria-label="Parallel agents" value={String(agents)} onChange={(e) => setAgents(Number(e.currentTarget.value))}>
+          <select aria-label="Parallel agents" value={String(agents)} onChange={(e) => { const v = e.currentTarget.value; setAgents(v === "auto" ? "auto" : Number(v)); }}>
+            <option value="auto">Auto</option>
             {AGENTS.map((n) => <option key={n} value={String(n)}>{n}</option>)}
           </select>
         </label>

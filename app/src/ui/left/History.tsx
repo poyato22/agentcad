@@ -8,7 +8,7 @@ import { varChangesByStep } from "./changedVars";
 import { allRuns, newestFirst, num } from "./derived";
 import { Led, type LedTone } from "../common/Led";
 
-const TONE: Record<AgentRun["status"], LedTone> = { running: "blue", done: "green", failed: "red", cancelled: "faint" };
+const TONE: Record<AgentRun["status"], LedTone> = { queued: "faint", running: "blue", done: "green", failed: "red", cancelled: "faint" };
 
 interface StepRow { id: number; text: string }
 

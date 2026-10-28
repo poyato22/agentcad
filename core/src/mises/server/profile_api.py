@@ -100,6 +100,7 @@ def build_profile_router(runtime: Runtime, claude_status: ClaudeStatusFn | None 
                 if isinstance(e, ValidationError) else [str(e)]
             return _invalid("invalid profile: " + "; ".join(msgs))
         await run_in_threadpool(save_profile, runtime.home, p)
+        runtime.parallel.pump()     # a higher max_parallel_agents starts queued runs now
         return p.model_dump(mode="json")
 
     # ---- keys

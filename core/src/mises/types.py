@@ -92,6 +92,9 @@ Block = Annotated[TextBlock | ImageBlock | ToolUseBlock | ToolResultBlock,
 class Message(BaseModel):
     role: Literal["user", "assistant"]
     content: list[Block]
+    # assistant only: the model's thinking for this turn, for providers that require it back on
+    # later turns (Kimi's reasoning_content); never shown as answer text
+    reasoning: str | None = None
 
 
 class ToolOutput(BaseModel):

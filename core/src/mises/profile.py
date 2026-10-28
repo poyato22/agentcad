@@ -9,15 +9,19 @@ import re
 import tempfile
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
 import httpx
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import (BaseModel, ConfigDict, Field, StrictInt, ValidationError,
+                      field_validator)
 
 log = logging.getLogger(__name__)
 
 PROFILE_FILE = "profile.json"
+# 2: max_parallel_agents gained "auto" (the new default). Files without schema_version predate
+# it; their max_parallel_agents of 2 was the old default, not a choice, and becomes "auto".
+PROFILE_SCHEMA_VERSION = 2
 _LOOPBACK = {"localhost", "127.0.0.1", "::1"}
 
 KeyStatusFn = Callable[[], dict[str, str]]          # vendor -> "env" | "keychain" | "none" | ...
@@ -62,6 +66,8 @@ class PrinterEntry(BaseModel):
 class Profile(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    schema_version: int = Field(PROFILE_SCHEMA_VERSION, ge=1)
+
     display_name: str = ""
     units: Literal["mm"] = "mm"
     default_material: str = "PLA"
@@ -69,7 +75,8 @@ class Profile(BaseModel):
     default_model: str | None = None
     onshape_calls_year_cap: int = Field(2500, ge=0)
     onshape_calls_run_cap: int = Field(200, ge=0)
-    max_parallel_agents: int = Field(2, ge=1, le=16)
+    # "auto": from this Mac's specs and the model (hardware.auto_parallel); an int is a manual limit
+    max_parallel_agents: Literal["auto"] | Annotated[StrictInt, Field(ge=1, le=16)] = "auto"
     local_endpoints: dict[str, str] = {}
     setup_completed_at: float | None = None
     printers: list[PrinterEntry] = []
@@ -93,9 +100,20 @@ class Profile(BaseModel):
         return v
 
 
+def _migrate(data):
+    if isinstance(data, dict) and "schema_version" not in data:
+        data = dict(data)
+        if data.get("max_parallel_agents") == 2:
+            data["max_parallel_agents"] = "auto"
+        data["schema_version"] = PROFILE_SCHEMA_VERSION
+    return data
+
+
 def load_profile(home: Path) -> Profile:
+    """The saved profile, migrated to PROFILE_SCHEMA_VERSION (the next save writes it)."""
     try:
-        return Profile.model_validate_json((Path(home) / PROFILE_FILE).read_text())
+        raw = json.loads((Path(home) / PROFILE_FILE).read_text())
+        return Profile.model_validate(_migrate(raw))
     except FileNotFoundError:
         return Profile()
     except (OSError, ValueError, ValidationError):
@@ -110,7 +128,8 @@ def save_profile(home: Path, p: Profile) -> None:
     try:
         os.fchmod(fd, 0o600)
         with os.fdopen(fd, "w") as f:
-            json.dump(p.model_dump(mode="json"), f, indent=2)
+            json.dump({**p.model_dump(mode="json"), "schema_version": PROFILE_SCHEMA_VERSION},
+                      f, indent=2)
             f.flush()
             os.fsync(f.fileno())
         os.replace(tmp, path)

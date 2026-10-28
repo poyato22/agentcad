@@ -13,7 +13,7 @@ import { actions, selectedRunId } from "../../state/store";
 import { Led, type LedTone } from "../common/Led";
 import { effectiveRunId, rosterRuns, runLabels } from "./derived";
 
-const LED: Record<AgentRun["status"], LedTone> = { running: "blue", done: "green", failed: "red", cancelled: "faint" };
+const LED: Record<AgentRun["status"], LedTone> = { queued: "faint", running: "blue", done: "green", failed: "red", cancelled: "faint" };
 
 function useNow(active: boolean): number {
   const [now, setNow] = useState(() => Date.now() / 1000);

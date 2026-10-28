@@ -72,12 +72,14 @@ def test_status_shape(client, rt):
     assert r.status_code == 200
     body = r.json()
     assert set(body) == {"core_version", "onshape", "onshape_calls_year", "onshape_cap_year",
-                         "runs_running", "approvals_pending", "data_dir"}
+                         "runs_running", "runs_queued", "approvals_pending", "data_dir",
+                         "parallel"}
     assert body["data_dir"] == str(rt.home)
     assert body["onshape"] == "not_configured"
     assert body["onshape_cap_year"] == 2500
     assert body["onshape_calls_year"] == 0
     assert body["runs_running"] == 0 and body["approvals_pending"] == 0
+    assert body["runs_queued"] == 0 and set(body["parallel"]) == {"limit", "auto", "reason"}
     assert isinstance(body["core_version"], str) and body["core_version"]
 
 
@@ -95,8 +97,10 @@ def test_models_never_leaks_keys(client, monkeypatch):
     body = r.json()
     assert body["default"].startswith("anthropic/")
     vendors = body["vendors"]
-    assert {"vendor": "anthropic", "key": "env"} in vendors
-    assert {"vendor": "ollama", "key": "not_needed"} in vendors
+    keys = {v["vendor"]: v["key"] for v in vendors}
+    assert keys["anthropic"] == "env" and keys["openai"] == "none"
+    ollama = next(v for v in vendors if v["vendor"] == "ollama")
+    assert ollama["key"] == "not_needed" and ollama["models"] == []
     assert {"vendor": "openai", "key": "none"} in vendors
 
 
@@ -228,8 +232,8 @@ def test_dump_ui_fixtures(tmp_path):
         assert (out / n).is_file(), n
     # the stand-in Claude Code is signed in; nothing secret-looking is in any answer
     models = json.loads((out / "models.json").read_text())
-    assert {"vendor": "claude-code", "key": "signed_in",
-            "models": ["sonnet", "opus", "haiku", "fable"]} in models["vendors"]
+    cc = next(v for v in models["vendors"] if v["vendor"] == "claude-code")
+    assert (cc["key"], cc["models"]) == ("signed_in", ["sonnet", "opus", "haiku", "fable"])
     assert json.loads((out / "context_put.json").read_text())["selected_part_id"] == "mount_plate"
     for f in out.glob("*.json"):
         assert "sk-ant" not in f.read_text() and "secret" not in f.read_text().lower(), f.name

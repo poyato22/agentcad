@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import functools
 import logging
 import os
 import time
@@ -11,6 +12,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from . import hardware, local_models
 from .agent.definitions import load_definitions
 from .agent.loop import AgentLoop, LoopConfig, RunResult
 from .approvals import ApprovalService
@@ -26,10 +28,11 @@ from .onshape.adapter import OnshapeAdapter
 from .onshape.client import OnshapeClient
 from .onshape.tools import register_onshape_tools
 from .orchestrator import Orchestrator, register_orchestrator_tools
+from .parallel import Limits, ParallelLimiter
 from .platform import data_home, keychain_get
 from .print.tools import register_print_tools
 from .profile import load_profile
-from .providers.registry import DEFAULT_MODEL, resolve
+from .providers.registry import DEFAULT_MODEL, VENDORS, resolve
 from .store import Store
 from .tools.registry import ToolRegistry
 from .types import Caps, ErrorCode, Message, MisesError, SafetyClass, StepKind
@@ -43,6 +46,9 @@ LOGIN_TIMEOUT_S = 600.0            # a `claude auth login` left open in the brow
 # GET /models and GET /setup reuse a `claude auth status` answer this young (the app asks both on
 # every screen load); /claude-code/status and run starts always ask afresh
 CLAUDE_STATUS_TTL_S = 5.0
+# sizes of downloaded Ollama models (for auto parallel agents) are reused this long
+LOCAL_SIZES_TTL_S = 60.0
+FREE_GROUP = "openrouter:free"
 
 _STATUS = {"end_turn": "done", "max_tokens": "done", "cancelled": "cancelled",
            "error": "failed", "circuit_open": "failed", "max_turns": "failed"}
@@ -55,6 +61,7 @@ class _RunState:
     result: RunResult | None = None
     history: list[Message] = field(default_factory=list)
     cancel_requested: bool = False
+    ref: str = ""
 
 
 @dataclass
@@ -83,6 +90,10 @@ class _ClaudeRun:
     task: asyncio.Task | None = None
     result: RunResult | None = None
     cancel_requested: bool = False
+    ref: str = ""
+    slot: asyncio.Future[bool] | None = None   # set while the next turn waits for a slot
+    started_data: dict = field(default_factory=dict)
+    restore: str | None = None    # follow-up turns: the status to go back to once a slot frees
 
 
 class Runtime:
@@ -122,12 +133,17 @@ class Runtime:
         # Claude Code runs this process drives; the MCP endpoint (url, MCP-only token) of the
         # server serving this runtime, set by serve()/serve_async(); an optional starter for it
         self._claude: dict[str, _ClaudeRun] = {}
+        self._external_slots: dict[str, tuple[asyncio.Future[bool] | None, dict]] = {}
         self.mcp_endpoint: tuple[str, str] | None = None
         self._mcp_autostart: Callable[[], Awaitable[None]] | None = None
         self._login: claude_detect.LoginHandle | None = None
         self._claude_status_cache: tuple[float, tuple[claude_detect.ClaudeInfo,
                                                       claude_detect.AuthStatus]] | None = None
         self._claude_status_lock = asyncio.Lock()
+        # how many runs talk to their model at once (profile max_parallel_agents)
+        self.parallel = ParallelLimiter(self._limits_for)
+        hardware.machine()          # sysctl once now, not later on the event loop
+        self._local_sizes: tuple[float, dict[str, float]] | None = None
         self.interrupted = self._fail_orphaned_runs()
         self._remove_stale_mcp_files()
 
@@ -148,7 +164,7 @@ class Runtime:
         owned by another live process (e.g. a `mises serve` next to this CLI) are left alone.
         Once failed, the MCP endpoint refuses them (it only serves running runs)."""
         out = []
-        for run in self.store.running_runs():
+        for run in self.store.running_runs(include_queued=True):
             pid = run.owner_pid
             if pid is not None and (pid == os.getpid() or self._pid_alive(pid)):
                 continue
@@ -317,6 +333,136 @@ class Runtime:
         self._hook_tasks.add(task)
         task.add_done_callback(self._hook_tasks.discard)
 
+    # ---- parallel agents (profile max_parallel_agents: "auto" or a number)
+    def _local_size(self, ref: str) -> float | None:
+        vendor, _, model = ref.partition("/")
+        if vendor != "ollama" or self._local_sizes is None:
+            return None
+        return self._local_sizes[1].get(model)
+
+    async def _ollama_sizes(self, base_url: str) -> dict[str, float]:
+        st = await local_models.ollama_status(base_url)
+        return {m["name"]: m["size_gb"] for m in st["models"] if m.get("size_gb")}
+
+    async def refresh_local_sizes(self, *, max_age: float = LOCAL_SIZES_TTL_S) -> None:
+        """Learn the downloaded Ollama models' sizes (a local model runs twice at once only
+        when memory holds two copies). Failures leave sizes unknown: one run at a time."""
+        c = self._local_sizes
+        if c is not None and time.monotonic() - c[0] < max_age:
+            return
+        base = self.profile().local_endpoints.get("ollama") or VENDORS["ollama"].base_url or ""
+        try:
+            sizes = await self._ollama_sizes(base)
+        except Exception:  # noqa: BLE001 - unknown size means the safe choice (1)
+            log.warning("could not read Ollama model sizes", exc_info=True)
+            sizes = {}
+        self._local_sizes = (time.monotonic(), sizes)
+
+    def forget_local_sizes(self) -> None:
+        self._local_sizes = None
+
+    def note_local_sizes(self, models: list[dict]) -> None:
+        """Sizes seen by GET /local/status (same shape as ollama_status()["models"])."""
+        self._local_sizes = (time.monotonic(), {m["name"]: m["size_gb"] for m in models
+                                                if m.get("size_gb")})
+
+    def _total_limit(self, prof=None) -> int:
+        prof = prof if prof is not None else self.profile()
+        if prof.max_parallel_agents == "auto":
+            return hardware.auto_parallel(DEFAULT_MODEL)       # the cloud budget of this Mac
+        return int(prof.max_parallel_agents)
+
+    def _limits_for(self, ref: str) -> Limits:
+        """A run on `ref` may start when fewer than `total` runs work and its group (one local
+        model; all OpenRouter free models) is below its cap. The group caps apply in manual
+        mode too: a number in the profile never oversubscribes a local model."""
+        total = self._total_limit()
+        kind = hardware.model_kind(ref)
+        if kind == "local":
+            size = self._local_size(ref)
+            budget = hardware.usable_memory_gb()
+            # an unknown size claims the whole budget: that model runs with no other local one
+            return Limits(total, group=ref,
+                          group_cap=hardware.auto_parallel(ref, model_size_gb=size),
+                          local_gb=size if size else budget, budget_gb=budget)
+        if kind == "free":
+            return Limits(total, group=FREE_GROUP, group_cap=1)
+        return Limits(total)
+
+    def parallel_limit(self, ref: str | None = None) -> int:
+        """How many runs on `ref` (default: the profile's default model) can work at once."""
+        prof = self.profile()
+        ref = ref or prof.default_model or DEFAULT_MODEL
+        lim = self._limits_for(ref)
+        return min(lim.total, lim.group_cap) if lim.group is not None else lim.total
+
+    def parallel_status(self, ref: str | None = None) -> dict:
+        """GET /status `parallel`: {limit, auto, reason} for `ref` (default: the profile's
+        default model)."""
+        prof = self.profile()
+        ref = ref or prof.default_model or DEFAULT_MODEL
+        limit = self.parallel_limit(ref)
+        auto = prof.max_parallel_agents == "auto"
+        if auto:
+            reason = hardware.parallel_reason(ref, model_size_gb=self._local_size(ref),
+                                              limit=limit)
+        elif limit < int(prof.max_parallel_agents):
+            kind = hardware.model_kind(ref)
+            what = "local model" if kind == "local" else "OpenRouter free model"
+            reason = (f"set in Profile: {prof.max_parallel_agents}; the default {what} runs "
+                      f"{limit} at a time → {limit}")
+        else:
+            reason = f"set in Profile → {limit}"
+        return {"limit": limit, "auto": auto, "reason": reason}
+
+    def _admit(self, run_id: str, ref: str, started: dict) -> asyncio.Future[bool] | None:
+        """Take a slot for the run's next turn now (status running, run_started), or queue it
+        (status queued, run_queued) and return the future that resolves when its slot is free
+        (False: withdrawn by cancel)."""
+        if self.parallel.try_acquire(run_id, ref):
+            self.store.update_run(run_id, status="running")
+            self.events.publish(Event(type="run_started", run_id=run_id, data=started))
+            return None
+        return self._queue(run_id, ref, started)
+
+    def _queue(self, run_id: str, ref: str, started: dict) -> asyncio.Future[bool]:
+        fut = self.parallel.enqueue(run_id, ref)
+        self.store.update_run(run_id, status="queued")
+        lim = self._limits_for(ref)
+        st = self.parallel_status(ref)
+        self.events.publish(Event(type="run_queued", run_id=run_id, data={
+            **started, "position": self.parallel.position(run_id), "limit": lim.total,
+            "reason": st["reason"]}))
+        log.info("run %s queued (limit %d)", run_id, lim.total)
+        return fut
+
+    async def _await_slot(self, run_id: str, fut: asyncio.Future[bool] | None, started: dict,
+                          *, restore: str | None = None) -> bool:
+        """Wait for a queued turn's slot; then status running + run_started (or, with
+        `restore`, back to that status: the Claude Code session reopens the run itself)."""
+        if fut is None:
+            return True
+        try:
+            granted = await fut
+        except asyncio.CancelledError:
+            if not self.parallel.withdraw(run_id):
+                self.parallel.release(run_id)
+            raise
+        if granted:
+            if restore is not None:
+                self.store.update_run(run_id, status=restore)
+            else:
+                self.store.update_run(run_id, status="running")
+                self.events.publish(Event(type="run_started", run_id=run_id, data=started))
+        return granted
+
+    @contextlib.asynccontextmanager
+    async def waiting_on_subagents(self, run_id: str):
+        """A run that waits on its subagents gives its slot up meanwhile (no deadlock with a
+        limit of 1) and takes it back ahead of queued runs."""
+        async with self.parallel.yielding(run_id):
+            yield
+
     # ---- runs
     def workdir(self, run_id: str) -> Path:
         wd = self.home / "runs" / run_id
@@ -348,6 +494,8 @@ class Runtime:
                                                 parent_id=parent_id,
                                                 allowed_classes=allowed_classes)
         provider, model = self.provider_resolver(ref)
+        if hardware.model_kind(ref) == "local":
+            await self.refresh_local_sizes()
         run = self.store.create_run(agent, provider.name, model, prompt, parent_id=parent_id)
         classes = set(SafetyClass) if allowed_classes is None else set(allowed_classes)
         self.store.create_policy(run.id, list(edit_scope), list(read_scope), caps,
@@ -355,11 +503,52 @@ class Runtime:
         loop = AgentLoop(run_id=run.id, defn=defn, provider=provider, model=model, gate=self.gate,
                          registry=self.registry, store=self.store, events=self.events,
                          workdir=self.workdir(run.id), config=LoopConfig())
-        st = self._runs[run.id] = _RunState(loop=loop)
-        self.events.publish(Event(type="run_started", run_id=run.id, data={
-            "agent": agent, "provider": provider.name, "model": model, "parent_id": parent_id}))
-        st.task = asyncio.create_task(self._drive(run.id, prompt))
+        st = self._runs[run.id] = _RunState(loop=loop, ref=ref)
+        started = {"agent": agent, "provider": provider.name, "model": model,
+                   "parent_id": parent_id}
+        slot = self._admit(run.id, ref, started)
+        st.task = asyncio.create_task(self._drive_slotted(run.id, prompt, slot, started))
+        st.task.add_done_callback(functools.partial(self._slotted_done, run.id))
         return run.id
+
+    def _slotted_done(self, run_id: str, task: asyncio.Task) -> None:
+        """Whatever ended the turn's task (even a cancel before its first step, when no code
+        in it ran): its slot or queue place is given back, and a cancelled run is finished."""
+        st = self._runs.get(run_id)
+        if st is not None and st.task is not task:
+            return                       # a newer turn owns the slot now
+        self.parallel.withdraw(run_id)
+        self.parallel.release(run_id)
+        if task.cancelled():
+            try:
+                status = self.store.get_run(run_id).status
+            except KeyError:
+                return
+            if status in ("queued", "running"):
+                self._finish_cancelled(run_id, "run task cancelled")
+
+    async def _drive_slotted(self, run_id: str, prompt: str, slot: asyncio.Future[bool] | None,
+                             started: dict) -> RunResult:
+        """Wait for a slot (queued runs), drive the turn, give the slot back."""
+        try:
+            granted = await self._await_slot(run_id, slot, started)
+        except asyncio.CancelledError:
+            self._finish_cancelled(run_id, "run task cancelled")
+            raise
+        if not granted:
+            self._runs[run_id].cancel_requested = True
+        try:
+            return await self._drive(run_id, prompt)
+        finally:
+            self.parallel.release(run_id)
+
+    def _finish_cancelled(self, run_id: str, error: str) -> None:
+        self.approvals.cancel_run(run_id)
+        self.store.release_run_reservations(run_id)
+        self.store.update_run(run_id, status="cancelled")
+        self.events.publish(Event(type="run_finished", run_id=run_id, data={
+            "status": "cancelled", "stop_reason": "cancelled", "error": error,
+            "final_text": ""}))
 
     def model_ref_for(self, defn, model_ref: str | None = None, prof=None) -> str:
         """model_ref, else the definition's model (unless "inherit"), else the profile's
@@ -382,13 +571,24 @@ class Runtime:
                                 allowed_classes: set[SafetyClass] | None) -> str:
         url, token = await self._mcp()
         info, auth = await self._claude_ready()
+        ref = f"{CLAUDE_CODE}/{alias}"
         rid = self.create_external_run(agent, provider=CLAUDE_CODE, model=alias,
                                        edit_scope=edit_scope, read_scope=read_scope, caps=caps,
                                        allowed_classes=allowed_classes, parent_id=parent_id,
-                                       task=prompt)
-        st = self._claude[rid] = _ClaudeRun()
-        await self._spawn_claude(rid, st, alias, info, auth, url, token, resume=None)
+                                       task=prompt, slot_ref=ref)
+        st = self._claude[rid] = _ClaudeRun(ref=ref)
+        st.slot, st.started_data = self._external_slots.pop(rid, (None, {}))
+        try:
+            await self._spawn_claude(rid, st, alias, info, auth, url, token, resume=None)
+        except BaseException:
+            self.parallel.withdraw(rid)
+            self.parallel.release(rid)
+            if self.store.get_run(rid).status == "queued":
+                self.finish_external_run(rid, "failed")
+            raise
         if st.cancel_requested:          # cancelled while it started
+            self.parallel.withdraw(rid)
+            self.parallel.release(rid)
             await st.session.close()
             return rid
         st.task = asyncio.create_task(self._drive_claude(rid, prompt, first=True))
@@ -421,6 +621,17 @@ class Runtime:
     async def _drive_claude(self, rid: str, text: str, *, first: bool) -> RunResult:
         st = self._claude[rid]
         assert st.session is not None
+        slot, st.slot = st.slot, None
+        granted = await self._await_slot(rid, slot, st.started_data, restore=st.restore)
+        if not granted or st.cancel_requested:
+            self.parallel.release(rid)
+            if (slot is not None and st.restore is not None
+                    and self.store.get_run(rid).status == "queued"):
+                self.store.update_run(rid, status=st.restore)   # a cancelled queued follow-up
+            result = RunResult(final_text="", messages=[], stop_reason="cancelled",
+                               error="run cancelled")
+            st.result = result
+            return result
         try:
             final = await st.session.prompt(text, context=self._claude_context(rid) if first
                                             else None)
@@ -428,6 +639,8 @@ class Runtime:
         except MisesError as e:
             stop = "cancelled" if e.code == ErrorCode.CANCELLED else "error"
             result = RunResult(final_text="", messages=[], stop_reason=stop, error=e.message)
+        finally:
+            self.parallel.release(rid)
         st.result = result
         return result
 
@@ -481,6 +694,14 @@ class Runtime:
             await self.resume_run(run_id)
             st = self._claude[run_id]
         st.cancel_requested = False
+        if not st.ref:
+            st.ref = f"{CLAUDE_CODE}/{self.store.get_run(run_id).model}"
+        # the session marks the run running when its turn begins (reopen_external_run), so
+        # a queued follow-up goes back to its previous status once its slot is free
+        st.restore = self.store.get_run(run_id).status
+        st.started_data = {"resumed": True, "external": True}
+        st.slot = (None if self.parallel.try_acquire(run_id, st.ref)
+                   else self._queue(run_id, st.ref, st.started_data))
         st.task = asyncio.create_task(self._drive_claude(run_id, text, first=False))
 
     async def release_claude_session(self, run_id: str) -> None:
@@ -518,7 +739,11 @@ class Runtime:
     def create_external_run(self, agent: str, *, provider: str, model: str, edit_scope=("*",),
                             read_scope=("*",), caps: Caps = Caps(),
                             allowed_classes: set[SafetyClass] | None = None,
-                            parent_id: str | None = None, task: str | None = None) -> str:
+                            parent_id: str | None = None, task: str | None = None,
+                            slot_ref: str | None = None) -> str:
+        """`slot_ref`: the run's first turn takes a parallel-agents slot for that model (the
+        user's Claude Code); queued if none is free. ACP runs pass none: their agent is
+        already running."""
         if not agent:
             raise MisesError(ErrorCode.INVALID_INPUT, "external run needs an agent name")
         run = self.store.create_run(agent, provider, model, task or f"external agent: {agent}",
@@ -528,9 +753,12 @@ class Runtime:
                                  [c for c in SafetyClass if c in classes])
         self.workdir(run.id)
         self._external.add(run.id)
-        self.events.publish(Event(type="run_started", run_id=run.id, data={
-            "agent": agent, "provider": provider, "model": model, "parent_id": parent_id,
-            "external": True}))
+        started = {"agent": agent, "provider": provider, "model": model,
+                   "parent_id": parent_id, "external": True}
+        if slot_ref is None:
+            self.events.publish(Event(type="run_started", run_id=run.id, data=started))
+        else:
+            self._external_slots[run.id] = (self._admit(run.id, slot_ref, started), started)
         return run.id
 
     def reopen_external_run(self, run_id: str, *,
@@ -593,6 +821,8 @@ class Runtime:
         self.store.release_run_reservations(run_id)
         self.store.update_run(run_id, status=status)
         self._external.discard(run_id)
+        self.parallel.withdraw(run_id)
+        self.parallel.release(run_id)       # idempotent; a turn's own finally releases too
         self.events.publish(Event(type="run_finished", run_id=run_id, data={
             "status": status, "stop_reason": status, "error": None, "final_text": "",
             "external": True}))
@@ -667,12 +897,7 @@ class Runtime:
             else:
                 result = await st.loop.run(prompt, st.history)
         except asyncio.CancelledError:
-            self.approvals.cancel_run(run_id)
-            self.store.release_run_reservations(run_id)
-            self.store.update_run(run_id, status="cancelled")
-            self.events.publish(Event(type="run_finished", run_id=run_id, data={
-                "status": "cancelled", "stop_reason": "cancelled", "error": "run task cancelled",
-                "final_text": ""}))
+            self._finish_cancelled(run_id, "run task cancelled")
             raise
         except Exception as e:
             log.exception("run %s crashed", run_id)
@@ -704,9 +929,12 @@ class Runtime:
             raise MisesError(ErrorCode.INVALID_INPUT, "run is still working",
                              hint="wait for it to finish or cancel it")
         st.cancel_requested = False
-        self.store.update_run(run_id, status="running")
-        self.events.publish(Event(type="run_started", run_id=run_id, data={"resumed": True}))
-        st.task = asyncio.create_task(self._drive(run_id, text))
+        if hardware.model_kind(st.ref) == "local":
+            await self.refresh_local_sizes()
+        started = {"resumed": True}
+        slot = self._admit(run_id, st.ref, started)
+        st.task = asyncio.create_task(self._drive_slotted(run_id, text, slot, started))
+        st.task.add_done_callback(functools.partial(self._slotted_done, run_id))
 
     async def wait(self, run_id: str) -> RunResult:
         cst = self._claude.get(run_id)
@@ -743,6 +971,7 @@ class Runtime:
         return st is not None and st.cancel_requested
 
     def cancel(self, run_id: str) -> None:
+        self.parallel.withdraw(run_id)      # a queued run never starts
         if run_id in self._external:
             # mark it cancelled first (the MCP endpoint then refuses its calls), then let the
             # owner stop the agent process

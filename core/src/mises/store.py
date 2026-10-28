@@ -23,7 +23,8 @@ class AgentRun(BaseModel):
     provider: str
     model: str
     task: str
-    status: Literal["running", "done", "failed", "cancelled"] = "running"
+    # "queued": waiting for a parallel-agents slot (runs.status is plain TEXT: no migration)
+    status: Literal["queued", "running", "done", "failed", "cancelled"] = "running"
     branch: str | None = None
     onshape_calls: int = 0
     input_tokens: int = 0
@@ -210,8 +211,11 @@ class Store:
             family += frontier
         return root, family
 
-    def running_runs(self) -> list[AgentRun]:
-        rows = self._all("SELECT * FROM runs WHERE status='running' ORDER BY created_at")
+    def running_runs(self, *, include_queued: bool = False) -> list[AgentRun]:
+        sql = ("SELECT * FROM runs WHERE status IN ('running','queued') ORDER BY created_at"
+               if include_queued else
+               "SELECT * FROM runs WHERE status='running' ORDER BY created_at")
+        rows = self._all(sql)
         return [AgentRun(**dict(r)) for r in rows]
 
     def add_usage(self, run_id: str, *, input_tokens: int = 0, output_tokens: int = 0,
