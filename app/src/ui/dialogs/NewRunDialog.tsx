@@ -1,3 +1,5 @@
+// New run (⌘N, /new, "+ new run" in the Details roster): agent, model (the shared model picker),
+// task and edit scope. The conversation view's "+ New" uses the inline composer instead.
 import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { CoreError } from "../../api/client";
@@ -7,7 +9,11 @@ import { partLabel, providerLabel } from "../../lib/names";
 import { actions, newRunOpen, parts } from "../../state/store";
 import { Button } from "../common/Button";
 import { openProfile } from "../profile/open";
-import { defaultModelRef, splitModelRef, toModelRef } from "./modelRef";
+import { catalog, refreshCatalog } from "./catalog";
+import { buildModelGroups, pickDefault } from "./modelGroups";
+import { ModelPicker } from "./ModelPicker";
+import { defaultModelRef, splitModelRef } from "./modelRef";
+import "./dialog.css";
 
 type VendorInfo = ModelsInfo["vendors"][number];
 
@@ -18,17 +24,6 @@ function unavailable(v: VendorInfo | undefined): "no_key" | "signed_out" | "not_
   if (v.key === "signed_out" || v.key === "not_installed") return v.key;
   return null;
 }
-
-function vendorOption(v: VendorInfo): string {
-  const name = providerLabel(v.vendor);
-  switch (unavailable(v)) {
-    case "no_key": return `${name} · no API key — run \`mises keys set ${v.vendor}\``;
-    case "signed_out": return `${name} · signed out — Sign in in Profile`;
-    case "not_installed": return `${name} · not installed — Sign in in Profile`;
-    default: return name;
-  }
-}
-import "./dialog.css";
 
 function describeError(e: unknown): string {
   if (e instanceof CoreError) return e.hint ? `${e.message} — ${e.hint}` : e.message;
@@ -44,11 +39,8 @@ export function NewRunDialog(): JSX.Element | null {
 
 function DialogBody(): JSX.Element {
   const [agents, setAgents] = useState<AgentInfo[] | null>(null);
-  const [models, setModels] = useState<ModelsInfo | null>(null);
-  const [profileDefault, setProfileDefault] = useState<string | null>(null);
   const [agent, setAgent] = useState("");
-  const [vendor, setVendor] = useState("");
-  const [modelId, setModelId] = useState("");
+  const [model, setModel] = useState<string | null>(null);
   const [task, setTask] = useState("");
   const [allParts, setAllParts] = useState(true);
   const [picked, setPicked] = useState<readonly string[]>([]);
@@ -56,25 +48,26 @@ function DialogBody(): JSX.Element {
   const [busy, setBusy] = useState(false);
   const panel = useRef<HTMLDivElement>(null);
   const agentSelect = useRef<HTMLSelectElement>(null);
+  const cat = catalog.value;
+  const models = cat.models;
 
-  function prefill(a: AgentInfo, m: ModelsInfo, dflt: string | null = profileDefault): void {
-    const ref = splitModelRef(defaultModelRef(a, m, dflt));
-    setVendor(ref.vendor);
-    setModelId(ref.model);
+  /** Same precedence as the core: the agent's own model, else the profile default, else the core default. */
+  function prefill(a: AgentInfo): void {
+    const m = catalog.peek().models;
+    if (!m) return;
+    const ref = defaultModelRef(a, m, catalog.peek().profileDefault);
+    setModel(ref);
   }
 
   useEffect(() => {
     let live = true;
-    // via a promise so "core client not ready" (⌘N before the core is up) shows as an error;
-    // the profile only adds a default model, so a failure there is quiet
-    const profile = Promise.resolve().then(() => actions.client().getProfile()).then((p) => p.default_model, () => null);
-    Promise.resolve().then(() => Promise.all([actions.client().agents(), actions.client().models(), profile])).then(([as, ms, dflt]) => {
+    // via a promise so "core client not ready" (⌘N before the core is up) shows as an error
+    Promise.resolve().then(() => Promise.all([actions.client().agents(), refreshCatalog()])).then(([as]) => {
       if (!live) return;
       setAgents(as);
-      setModels(ms);
-      setProfileDefault(dflt);
+      if (catalog.peek().error && !catalog.peek().models) setError(catalog.peek().error);
       const first = as[0];
-      if (first) { setAgent(first.name); prefill(first, ms, dflt); }
+      if (first) { setAgent(first.name); prefill(first); }
     }, (e: unknown) => { if (live) setError(describeError(e)); });
     return () => { live = false; };
   }, []);
@@ -94,20 +87,12 @@ function DialogBody(): JSX.Element {
   }, []);
 
   const current = agents?.find((a) => a.name === agent);
-  const vendorInfo = models?.vendors.find((v) => v.vendor === vendor);
+  const ref = model ? splitModelRef(model) : null;
+  const vendorInfo = ref ? models?.vendors.find((v) => v.vendor === ref.vendor) : undefined;
   const blocked = unavailable(vendorInfo);
-  const noKey = blocked === "no_key";
-  /** Vendors that list their models (the user's Claude Code): pick one, don't type it. */
-  const modelList = vendorInfo?.models ?? null;
   const scope = allParts ? ["*"] : [...picked];
   const taskText = task.trim();
-  const ready = !!current && !!models && !!taskText && !!modelId.trim() && !!vendor && !blocked && scope.length > 0 && !busy;
-
-  function pickVendor(next: string): void {
-    setVendor(next);
-    const list = models?.vendors.find((v) => v.vendor === next)?.models;
-    if (list && !list.includes(modelId)) setModelId(list[0] ?? "");
-  }
+  const ready = !!current && !!models && !!taskText && !!model && !!ref?.vendor && !!ref.model && !blocked && scope.length > 0 && !busy;
 
   function signInInProfile(): void {
     actions.closeNewRun();
@@ -115,13 +100,11 @@ function DialogBody(): JSX.Element {
   }
 
   async function start(): Promise<void> {
-    if (!ready) return;
+    if (!ready || !model) return;
     setBusy(true);
     setError(null);
     try {
-      const { run_id } = await actions.client().createRun({
-        agent, prompt: taskText, model_ref: toModelRef(vendor, modelId.trim()), edit_scope: scope, read_scope: ["*"],
-      });
+      const { run_id } = await actions.client().createRun({ agent, prompt: taskText, model_ref: model, edit_scope: scope, read_scope: ["*"] });
       actions.selectRun(run_id);
       actions.closeNewRun();
     } catch (e) {
@@ -145,6 +128,13 @@ function DialogBody(): JSX.Element {
     setPicked(on ? [...picked, id] : picked.filter((p) => p !== id));
   }
 
+  // nothing prefilled yet (no agent default): start on the best model that can run now
+  useEffect(() => {
+    if (model !== null || !models || !current) return;
+    const groups = buildModelGroups(models, { local: cat.local, profile: { default_model: cat.profileDefault } });
+    setModel(pickDefault(groups, null));
+  }, [models, current?.name]);
+
   return (
     <div class="dlg-backdrop">
       <div ref={panel} class="dlg" role="dialog" aria-modal="true" aria-label="New run" onKeyDown={onKeyDown}>
@@ -155,37 +145,18 @@ function DialogBody(): JSX.Element {
           onChange={(e) => {
             const a = agents?.find((x) => x.name === e.currentTarget.value);
             setAgent(e.currentTarget.value);
-            if (a && models) prefill(a, models);
+            if (a) prefill(a);
           }}>
           {(agents ?? []).map((a) => <option key={a.name} value={a.name}>{a.name}</option>)}
         </select>
         <div class="dlg-desc dim text">{current?.description ?? ""}</div>
 
-        <div class="dlg-pair">
-          <div>
-            <label class="dlg-field" for="nr-vendor"><span class="label">Vendor</span></label>
-            <select id="nr-vendor" value={vendor} disabled={!models} aria-label="Vendor" onChange={(e) => pickVendor(e.currentTarget.value)}>
-              {(models?.vendors ?? []).map((v) => (
-                <option key={v.vendor} value={v.vendor} disabled={unavailable(v) !== null}>{vendorOption(v)}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label class="dlg-field" for="nr-model"><span class="label">Model</span></label>
-            {modelList
-              ? (
-                <select id="nr-model" value={modelId} aria-label="Model" onChange={(e) => setModelId(e.currentTarget.value)}>
-                  {!modelList.includes(modelId) && modelId && <option value={modelId}>{modelId}</option>}
-                  {modelList.map((m) => <option key={m} value={m}>{m}</option>)}
-                </select>
-              )
-              : <input id="nr-model" value={modelId} aria-label="Model" spellcheck={false} onInput={(e) => setModelId(e.currentTarget.value)} />}
-          </div>
-        </div>
-        {noKey && <div class="dlg-hint dim" data-hint>no API key for {vendor} — run `mises keys set {vendor}`</div>}
-        {(blocked === "signed_out" || blocked === "not_installed") && (
+        <div class="dlg-field"><span class="label">Model</span></div>
+        <ModelPicker value={model} onChange={setModel} disabled={!models} />
+        {blocked === "no_key" && ref && <div class="dlg-hint dim" data-hint>no API key for {ref.vendor} — run `mises keys set {ref.vendor}`</div>}
+        {(blocked === "signed_out" || blocked === "not_installed") && ref && (
           <div class="dlg-hint dim" data-hint>
-            <span>{`${providerLabel(vendor)} is ${blocked === "signed_out" ? "signed out" : "not installed"} on this Mac.`}</span>
+            <span>{`${providerLabel(ref.vendor)} is ${blocked === "signed_out" ? "signed out" : "not installed"} on this Mac.`}</span>
             {" "}
             <Button variant="ghost" onClick={signInInProfile}>Sign in in Profile</Button>
           </div>
