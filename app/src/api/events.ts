@@ -30,6 +30,24 @@ function tapAll(ev: MisesEvent): void {
   }
 }
 
+const stateTaps = new Set<(s: StreamState) => void>();
+
+/**
+ * Hears the stream state of every running stream (after its own subscribers). For UI that needs
+ * to resync on a (re)connect without owning the stream (e.g. the model picker re-reading
+ * /local/status for in-flight downloads). A tap that throws is logged and skipped.
+ */
+export function onCoreState(cb: (s: StreamState) => void): () => void {
+  stateTaps.add(cb);
+  return () => { stateTaps.delete(cb); };
+}
+
+function tapAllState(s: StreamState): void {
+  for (const cb of [...stateTaps]) {
+    try { cb(s); } catch (e) { debug("state tap failed", s, e); }
+  }
+}
+
 export class EventStream {
   private readonly url: string;
   private readonly backoff: readonly number[];
@@ -129,6 +147,7 @@ export class EventStream {
     if (s === this.current) return;
     this.current = s;
     for (const cb of [...this.stateCbs]) cb(s);
+    tapAllState(s);
   }
 }
 

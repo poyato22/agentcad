@@ -23,8 +23,13 @@ const STOPPED: LocalStatus = {
 
 // The core's events reach UI taps through EventStream; here a captured tap stands in for it.
 const taps: ((e: MisesEvent) => void)[] = [];
-vi.mock("../../api/events", () => ({ onCoreEvent: (cb: (e: MisesEvent) => void) => { taps.push(cb); return () => { taps.splice(taps.indexOf(cb), 1); }; } }));
+const stateTaps: ((s: string) => void)[] = [];
+vi.mock("../../api/events", () => ({
+  onCoreEvent: (cb: (e: MisesEvent) => void) => { taps.push(cb); return () => { taps.splice(taps.indexOf(cb), 1); }; },
+  onCoreState: (cb: (s: string) => void) => { stateTaps.push(cb); return () => { stateTaps.splice(stateTaps.indexOf(cb), 1); }; },
+}));
 const emit = (type: string, data: Record<string, unknown>) => act(() => { for (const t of [...taps]) t({ type, run_id: null, data, ts: 1 }); });
+const emitState = (s: string) => act(() => { for (const t of [...stateTaps]) t(s); });
 
 function client(local: LocalStatus | Error = STOPPED, over: { models?: ReturnType<typeof vi.fn> } = {}) {
   let st = local;
@@ -41,7 +46,7 @@ function client(local: LocalStatus | Error = STOPPED, over: { models?: ReturnTyp
   return c;
 }
 
-afterEach(() => { cleanup(); resetStore(); resetCatalog(); taps.length = 0; });
+afterEach(() => { cleanup(); resetStore(); resetCatalog(); taps.length = 0; stateTaps.length = 0; });
 
 async function openPicker(onChange = vi.fn(), value: string | null = null) {
   render(<ModelPicker value={value} onChange={onChange} />);
@@ -104,6 +109,24 @@ describe("ModelPicker", () => {
     emit("local_pull", { model: "qwen3-coder:30b", completed: 19e9, total: 19e9, status: "success" });
     await waitFor(() => expect(within(local).getByRole("button", { name: /qwen3-coder:30b · 19 GB/ })).toBeTruthy());
     expect(within(local).queryByRole("button", { name: /^Download/ })).toBeNull();
+  });
+
+  it("resyncs_a_finished_download_from_local_status_on_stream_reopen", async () => {
+    // A4: the success event is lost while the stream is down; a reopen re-reads /local/status
+    // and the model becomes a choice, not a stale progress bar.
+    const c = client({ ...STOPPED, running: true });
+    const { panel } = await openPicker();
+    const local = await within(panel).findByRole("group", { name: "On this Mac (Ollama)" });
+    fireEvent.click(within(local).getByRole("button", { name: "Download qwen3-coder:30b (19 GB)" }));
+    emit("local_pull", { model: "qwen3-coder:30b", completed: 7.2e9, total: 19e9, status: "pulling 2f3a" });
+    expect(local.querySelector("[data-pull='qwen3-coder:30b']")).toBeTruthy();
+    // it finishes while disconnected: /local/status now lists it, but no success event arrives
+    c.localStatus.mockResolvedValue({ ...STOPPED, running: true, models: [...STOPPED.models, { name: "qwen3-coder:30b", size_gb: 19 }] });
+    emitState("open");
+    await waitFor(() => expect(within(local).getByRole("button", { name: /qwen3-coder:30b · 19 GB/ })).toBeTruthy());
+    expect(within(local).queryByRole("button", { name: /^Download/ })).toBeNull();
+    expect(local.querySelector("[data-pull='qwen3-coder:30b']")).toBeNull();
+    expect(c.localStatus).toHaveBeenCalledTimes(2);   // the reopen re-read status
   });
 
   it("a_download_can_be_cancelled_and_errors_and_refusals_show_the_core's_reason", async () => {

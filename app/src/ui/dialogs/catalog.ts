@@ -4,7 +4,7 @@
 // concurrent loads share one request set.
 import { signal, type Signal } from "@preact/signals";
 import { CoreError } from "../../api/client";
-import { onCoreEvent } from "../../api/events";
+import { onCoreEvent, onCoreState } from "../../api/events";
 import { localPullSchema } from "../../api/schemas";
 import type { LocalPull, LocalStatus, ModelsInfo } from "../../api/types";
 import { debug } from "../../lib/log";
@@ -129,11 +129,29 @@ function clearPull(model: string): void {
   pulls.value = m;
 }
 
+/** Re-read /local/status and reconcile in-flight downloads with it: a pull that finished while
+ *  the stream was down (its `success` event was lost) is dropped once the model is installed, so
+ *  the picker stops showing a stale progress bar. Called on stream reopen and when a picker opens. */
+export async function resyncPulls(): Promise<void> {
+  await refreshCatalog();
+  const local = catalog.peek().local;
+  if (!local) return;
+  const installed = new Set(local.models.map((m) => m.name));
+  const m = new Map(pulls.peek());
+  let changed = false;
+  for (const [name, p] of m) {
+    // keep terminal rows the user should still see (success / error); drop a download that the
+    // installed list shows as finished
+    if (installed.has(name) && p.status !== "success" && !p.error) { m.delete(name); changed = true; }
+  }
+  if (changed) pulls.value = m;
+}
+
 let untap: (() => void) | null = null;
 
 function ensureTap(): void {
   if (untap) return;
-  untap = onCoreEvent((ev) => {
+  const offEvent = onCoreEvent((ev) => {
     if (ev.type !== "local_pull") return;
     const d = localPullSchema.safeParse(ev.data);
     if (!d.success) { debug("bad local_pull event", d.error.issues[0]?.message); return; }
@@ -144,6 +162,9 @@ function ensureTap(): void {
     setPull({ ...rest, error: failed ? error ?? d.data.status : null });
     if (isDone(d.data)) void refreshCatalog();
   });
+  // on a (re)connect, download progress may have moved on while we were away: resync from status
+  const offState = onCoreState((s) => { if (s === "open") void resyncPulls(); });
+  untap = () => { offEvent(); offState(); };
 }
 
 /** "38% · 7.2 of 19 GB" (or the status word before sizes are known). */

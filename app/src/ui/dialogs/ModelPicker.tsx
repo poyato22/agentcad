@@ -7,7 +7,7 @@ import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { Button } from "../common/Button";
 import { Led } from "../common/Led";
-import { cancelPull, catalog, ollamaStart, pullModel, pullText, pulls, refreshCatalog, startOllama } from "./catalog";
+import { cancelPull, catalog, ollamaStart, pullModel, pullText, pulls, refreshCatalog, resyncPulls, startOllama } from "./catalog";
 import { buildModelGroups, refLabel, type ModelChoice, type ModelGroup } from "./modelGroups";
 import "./modelPicker.css";
 
@@ -29,7 +29,7 @@ export function ModelPicker({ value, onChange, label = "Model", placeholder = "c
   return (
     <div class="mp" data-model-picker>
       <button ref={chip} type="button" class="mp-chip" aria-label={`${label}: ${value ? refLabel(value) : placeholder}`} aria-expanded={open}
-        disabled={disabled} onClick={() => { if (!open) void refreshCatalog(); setOpen(!open); }}>
+        disabled={disabled} onClick={() => { if (!open) void resyncPulls(); setOpen(!open); }}>
         <span class="label">{label}</span>
         <span class={`mp-chip-v text${value ? "" : " faint"}`}>{value ? refLabel(value) : placeholder}</span>
         <span class="faint" aria-hidden="true">{open ? "▴" : "▾"}</span>
