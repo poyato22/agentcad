@@ -6,12 +6,16 @@ into <part_dir>. Outputs are written to temp names and renamed only after all su
 """
 from __future__ import annotations
 
-import importlib.util
+import __future__
 import json
 import math
 import os
 import sys
+import types
 from pathlib import Path
+
+BUILD_SIGNATURE_HINT = ("part.py must define `def build(v: dict)` that returns a build123d "
+                        "Part, Compound or Solid (and optionally VARS = {...}).")
 
 
 def _hole_groups(shape) -> list[dict]:
@@ -90,6 +94,56 @@ def _metrics(shape, density: float) -> dict:
     }
 
 
+def _load_part(part_file: Path):
+    """Execute part.py in a namespace that already has build123d in scope.
+
+    Local models routinely write `-> build123d` annotations or call `Box(...)` /`bd.Box(...)`
+    without importing anything. Annotations are never evaluated (the `annotations` future flag),
+    and compiling with the real filename keeps tracebacks pointing at part.py line numbers."""
+    import build123d
+
+    mod = types.ModuleType("mises_part")
+    mod.__file__ = str(part_file)
+    ns = mod.__dict__
+    ns.update({"math": math, "build123d": build123d, "bd": build123d})
+    exec("from build123d import *", ns)  # noqa: S102 - fixed string
+    ns["math"] = math  # `from build123d import *` must not shadow the stdlib module
+    code = compile(part_file.read_text(), str(part_file), "exec",
+                   flags=__future__.annotations.compiler_flag, dont_inherit=True)
+    exec(code, ns)  # noqa: S102 - the sandboxed part script is the whole point
+    return mod
+
+
+def _hint(e: BaseException) -> str | None:
+    if isinstance(e, NameError):
+        return ("build123d names are pre-imported (Box, BuildPart, Hole, Locations, ..., plus "
+                "`bd`, `build123d`, `math`); check the spelling.")
+    if isinstance(e, _MissingBuild):
+        return BUILD_SIGNATURE_HINT
+    return None
+
+
+class _MissingBuild(Exception):
+    pass
+
+
+def _report(e: BaseException, part_file: Path) -> str:
+    """Short, agent-facing failure text: only the frames inside part.py, then a one-line hint."""
+    import traceback
+
+    frames = [f for f in traceback.extract_tb(e.__traceback__) if f.filename == str(part_file)]
+    lines: list[str] = []
+    if frames:
+        lines.append("Traceback (most recent call last, part.py frames only):")
+        lines += [ln.rstrip("\n") for ln in traceback.format_list(frames)]
+    lines.append("".join(traceback.format_exception_only(type(e), e)).rstrip("\n"))
+    lines.append(f"BUILD_ERROR: {type(e).__name__}: {e}")
+    hint = _hint(e)
+    if hint:
+        lines.append(f"Hint: {hint}")
+    return "\n".join(lines)
+
+
 def main(argv: list[str]) -> int:
     part_dir = Path(argv[1]).resolve()
     vars_path = Path(argv[2])
@@ -100,10 +154,8 @@ def main(argv: list[str]) -> int:
         raise RuntimeError("missing build nonce")
     variables = json.loads(vars_path.read_text())
 
-    spec = importlib.util.spec_from_file_location("mises_part", part_dir / "part.py")
-    mod = importlib.util.module_from_spec(spec)
     try:
-        spec.loader.exec_module(mod)
+        mod = _load_part(part_dir / "part.py")
     except BaseException as e:  # noqa: BLE001
         if isinstance(e, Exception):
             raise
@@ -113,6 +165,8 @@ def main(argv: list[str]) -> int:
     if hasattr(mod, "VARS"):  # scripts may read module-level VARS inside build()
         mod.VARS.clear()
         mod.VARS.update(merged)
+    if not callable(getattr(mod, "build", None)):
+        raise _MissingBuild("part.py does not define a callable build(v)")
     try:
         shape = mod.build(dict(merged))
     except BaseException as e:  # noqa: BLE001  (SystemExit/KeyboardInterrupt from user code)
@@ -149,7 +203,6 @@ if __name__ == "__main__":
     try:
         sys.exit(main(sys.argv))
     except Exception as e:  # noqa: BLE001
-        import traceback
-        traceback.print_exc()
-        sys.stderr.write(f"BUILD_ERROR: {type(e).__name__}: {e}\n")
+        part_file = Path(sys.argv[1]).resolve() / "part.py"
+        sys.stderr.write(_report(e, part_file) + "\n")
         sys.exit(1)

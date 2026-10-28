@@ -113,10 +113,24 @@ def _fail(summary: str, stdout: str = "") -> ToolOutput:
                       step_kind=StepKind.ERROR)
 
 
+EXAMPLE_SCRIPT = '''VARS = {"length": 40.0, "width": 20.0, "height": 10.0, "hole_d": 4.0}
+
+def build(v: dict):
+    with BuildPart() as p:
+        Box(v["length"], v["width"], v["height"])
+        Hole(v["hole_d"] / 2)  # Hole takes a RADIUS; drills down through the top face
+    return p.part
+'''
+
+
 @tool("mirror_part_create", safety=SafetyClass.LOCAL_MUTATE, scope_arg="part_id",
       description="Create (or replace) a local build123d part from a script and build it. "
                   "Returns metrics (volume, mass, bbox, holes). A failed build returns ok=false "
-                  "with the error so you can fix the script.")
+                  "with a short traceback and a hint so you can fix the script. The script must "
+                  "define VARS (dict of numbers) and `def build(v: dict)` returning a Part, "
+                  "Compound or Solid. build123d names (Box, BuildPart, Hole, Locations, ...) "
+                  "and `math` are already imported; do not rely on anything else. Minimal "
+                  "working example:\n" + EXAMPLE_SCRIPT)
 async def mirror_part_create(ctx: ToolContext, args: CreateArgs) -> ToolOutput:
     _check_part_id(args.part_id)
     _check_vars(args.vars)
