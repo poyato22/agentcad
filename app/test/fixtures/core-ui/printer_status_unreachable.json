@@ -1,0 +1,11 @@
+{
+  "printer_id": "bench_mk4",
+  "reachable": false,
+  "state": null,
+  "sendable": false,
+  "temp_nozzle": null,
+  "temp_bed": null,
+  "job": null,
+  "error": "printer unreachable (ConnectError)",
+  "hint": "check that the printer is on and on the same network"
+}

@@ -220,3 +220,52 @@ export interface SketchUpload {
 export interface SketchPhotoInfo { source_type: "png" | "jpeg" | "heic"; media_type: "image/jpeg" | "image/png"; width: number; height: number; bytes: number }
 /** POST /sketches and GET /sketches/{id}. */
 export interface SketchSummary { sketch_id: string; strokes: number; dimensions: number; photo: SketchPhotoInfo | null; render: boolean }
+
+// ---- Plan 4: drawings and printing (core server/drawing_api.py, server/print_api.py)
+
+/** GET /parts/{id}/drawing.json: the A4 sheet the SVG/DXF are drawn on. */
+export interface DrawingInfo {
+  /** Sheet size in mm ([297, 210] = A4 landscape). */
+  sheet: [number, number]; scale: number; scale_text: string; views: string[];
+  overall_mm: Vec3; holes: string[]; label: string; material: string; date: string; step_mtime_ns: number;
+}
+
+export interface PrintMaterial { name: string; density_g_cm3: number; usd_per_kg: number }
+/** GET /print/capabilities. A missing slicer comes with the exact install command. */
+export interface PrintCapabilities {
+  slicer: { installed: boolean; path: string | null; install_command: string };
+  kinds: { kind: string; available: boolean; note: string | null }[];
+  models: string[];
+  materials: PrintMaterial[];
+}
+
+/** GET /printers item. The API key lives in the Keychain; only `has_key` comes back. */
+export interface Printer { id: string; kind: string; host: string; name: string; model: string; has_key: boolean }
+/** POST /printers body. `api_key` goes out once, in the body, and is never returned. */
+export interface NewPrinterBody { name: string; host: string; api_key: string; model?: string; kind?: string }
+
+export interface PrinterJob { id?: number; progress?: number; time_remaining?: number; time_printing?: number }
+/** GET /printers/{id}/status. Unreachable is a 200 with reachable:false and an error. */
+export interface PrinterStatus {
+  printer_id: string; reachable: boolean; state: string | null; sendable: boolean;
+  temp_nozzle: number | null; temp_bed: number | null; job: PrinterJob | null; error: string | null; hint?: string | null;
+}
+
+/** POST /slices answer (the slice runs under the shared "ui" run). */
+export interface SliceStart { slice_id: string; status: string; run_id: string; call_id: string }
+export interface SliceEstimate { time_s: number; time_text: string; filament_mm: number; filament_g: number; cost_usd: number }
+export type SliceStatus = "running" | "done" | "failed" | "cancelled";
+/** GET /slices/{id}. */
+export interface Slice {
+  slice_id: string; status: SliceStatus; part_id: string; printer_id: string; material: string; model: string;
+  created_at: number; estimate: SliceEstimate | null; preview: boolean; error: string | null; hint: string | null;
+  sent_to: string | null;
+}
+
+/** POST /prints answer: the irreversible print_send call; its approval card is in the console. */
+export interface PrintStart { call_id: string; run_id: string; status: string }
+/** GET /prints/{call_id}. `output` is the tool's ToolOutput; `error` the core's error JSON. */
+export interface PrintCall {
+  call_id: string; run_id: string; tool: string; status: "running" | "done" | "failed" | "cancelled";
+  output: Record<string, unknown> | null; error: Record<string, unknown> | null;
+}

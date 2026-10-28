@@ -1,0 +1,14 @@
+{
+  "printer_id": "bench_mk4",
+  "reachable": true,
+  "state": "PRINTING",
+  "sendable": false,
+  "temp_nozzle": 215.0,
+  "temp_bed": 60.0,
+  "job": {
+    "id": 7,
+    "progress": 42.0,
+    "time_remaining": 900
+  },
+  "error": null
+}

@@ -1,0 +1,20 @@
+{
+  "slice_id": "slice_6894629945",
+  "status": "done",
+  "part_id": "mount_plate",
+  "printer_id": "bench_mk4",
+  "material": "PLA",
+  "model": "MK4",
+  "created_at": 1793203626.105862,
+  "estimate": {
+    "time_s": 93802,
+    "time_text": "1d 2h 3m 22s",
+    "filament_mm": 2519.58,
+    "filament_g": 7.51,
+    "cost_usd": 0.1652
+  },
+  "preview": true,
+  "error": null,
+  "hint": null,
+  "sent_to": null
+}

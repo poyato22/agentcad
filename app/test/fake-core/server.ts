@@ -13,6 +13,7 @@ import type {
   AgentInfo, AgentRun, Approval, CoreStatusInfo, ErrorCode, LocalStatus, MisesEvent, ModelsInfo, PartSummary, Question, Step, StepKind,
 } from "../../src/api/types";
 import { handleControl } from "./control";
+import { printingFrom, printingRoutes, stopPrinting, type FakePrinting, type PrintScenario } from "./printing";
 import { setupFrom, setupRoutes, type FakeSetup, type SetupScenario } from "./setup";
 import { cancelSimsOfRun, clearSimTimers, simRoutes, simsFrom, type FakeSims, type SimScenario } from "./sims";
 import { checkRunSketch, sketchRoutes, type FakeSketch } from "./sketch";
@@ -88,6 +89,8 @@ export interface Scenario {
   local_pull_ms?: number;
   /** Static stress studies: solver status, stored studies, how POST /sims ends (Studies page). */
   sims?: SimScenario;
+  /** Printers, slicer and drawing state (Plan 4). Absent: no printers, PrusaSlicer installed. */
+  print?: PrintScenario;
 }
 
 export interface FakeCall { method: string; path: string; query: Record<string, string>; body: unknown; ts: number; ifNoneMatch?: string }
@@ -114,6 +117,7 @@ export interface FakeState {
   sims: FakeSims;
   /** POST /sketches uploads, by sketch_id. */
   sketches: Map<string, FakeSketch>;
+  print: FakePrinting;
 }
 
 export interface FakeCore {
@@ -156,6 +160,7 @@ function stateFrom(sc: Scenario, token: string): FakeState {
     local: sc.local ? structuredClone(sc.local) : null, localPullMs: sc.local_pull_ms ?? 120, pulling: new Map(),
     sims: simsFrom(sc.sims),
     sketches: new Map(),
+    print: printingFrom(sc.print),
   };
 }
 
@@ -406,7 +411,9 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     {
       method: "GET", re: /^\/runs$/, h: (_m, q) => {
         const limit = Number(q.get("limit") ?? 50);
-        return [...state.runs.values()].sort((a, b) => b.created_at - a.created_at).slice(0, limit);
+        // like the core: the app's own "ui" run is hidden unless include_ui=1
+        const withUi = Number(q.get("include_ui") ?? 0) !== 0;
+        return [...state.runs.values()].filter((r) => withUi || r.provider !== "ui").sort((a, b) => b.created_at - a.created_at).slice(0, limit);
       },
     },
     { method: "GET", re: /^\/runs\/([^/]+)$/, h: (m) => getRun(m[1]) },
@@ -556,6 +563,10 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       newRun, emit,
     }),
     ...sketchRoutes(() => state.sketches),
+    ...printingRoutes({
+      get: () => state.print, parts: () => state.parts, defaultMaterial: () => state.setup.profile.default_material,
+      emit: (ev, extras) => { emit(ev, extras); }, approval: (id) => state.approvals.get(id),
+    }),
   ];
 
   /** Core ui_api._pull_name: lowercase Ollama names; the submitted name is never echoed. */
@@ -718,6 +729,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     scriptStarted = false;
     clearSimTimers(state.sims);
     dropSockets();
+    stopPrinting(state.print);
     state = stateFrom(loadScenario(scenario), token ?? state.token);
   }
 
@@ -741,6 +753,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     async stop() {
       scriptTimers.forEach(clearTimeout);
       clearSimTimers(state.sims);
+      stopPrinting(state.print);
       dropSockets("terminate");
       wss.close();
       server.closeAllConnections();

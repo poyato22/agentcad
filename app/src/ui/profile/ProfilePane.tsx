@@ -1,5 +1,5 @@
-// Profile panel: a right-hand sheet with seven sections (Profile, Models, Onshape, Agents & budgets,
-// Data, Setup, About). App mounts <ProfilePane/> once; the top-bar Profile button opens it
+// Profile panel: a right-hand sheet with eight sections (Profile, Models, Onshape, Printers, Agents &
+// budgets, Data, Setup, About). App mounts <ProfilePane/> once; the top-bar Profile button opens it
 // (ui/profile/open.ts), as do the "connect a model" notice and the new-run dialog.
 // Every section reads and writes the core routes directly; secrets only ever go out (password
 // inputs, cleared after a save) and are never rendered. Removing anything asks inside the panel.
@@ -13,6 +13,7 @@ import { AgentsSection } from "./sections/AgentsSection";
 import { AboutSection, DataSection, SetupSection } from "./sections/MiscSections";
 import { ModelsSection } from "./sections/ModelsSection";
 import { OnshapeSection } from "./sections/OnshapeSection";
+import { PrintersSection } from "./sections/PrintersSection";
 import { ProfileSection } from "./sections/ProfileSection";
 import "./profile.css";
 
@@ -20,6 +21,7 @@ export const SECTIONS = [
   { id: "profile", label: "Profile" },
   { id: "models", label: "Models" },
   { id: "onshape", label: "Onshape" },
+  { id: "printers", label: "Printers" },
   { id: "agents", label: "Agents & budgets" },
   { id: "data", label: "Data" },
   { id: "setup", label: "Setup" },
@@ -94,6 +96,7 @@ function ProfilePaneBody({ onClose, initial }: { onClose: () => void; initial: S
           {props && section === "profile" && <ProfileSection {...props} />}
           {props && section === "models" && <ModelsSection {...props} />}
           {props && section === "onshape" && <OnshapeSection {...props} />}
+          {props && section === "printers" && <PrintersSection />}
           {props && section === "agents" && <AgentsSection {...props} />}
           {props && section === "data" && <DataSection {...props} />}
           {props && section === "setup" && <SetupSection onClose={onClose} />}
