@@ -21,7 +21,7 @@ describe("ApprovalCard: print_send", () => {
     const facts = container.querySelector("[data-print-facts]");
     expect(facts).not.toBeNull();
     const t = facts?.textContent ?? "";
-    expect(t).toContain(`Bench MK4 · MK4 · ${String((CARD.deltas.printer as { host: string }).host)} · IDLE`);
+    expect(t).toContain(`Bench MK4 · MK4 · sliced for MK4 · ${String((CARD.deltas.printer as { host: string }).host)} · IDLE`);
     expect(t).toContain("PLA");
     expect(t).toContain("1d 2h 3m 22s");
     expect(t).toContain("7.51 g");
@@ -29,6 +29,15 @@ describe("ApprovalCard: print_send", () => {
     expect(t).toContain("mises_mount_plate.gcode");
     expect(t).toContain("eafcd5bc4670");
     expect(container.textContent).toContain("starts printing");
+  });
+
+  it("shows_the_model_the_slice_was_made_for_from_deltas_as_text", () => {
+    const a: Approval = { ...CARD, deltas: { ...CARD.deltas, slice_model: "<b>MINI</b>" }, expires_at: Date.now() / 1000 + 600 };
+    actions.upsertApproval(a);
+    const { container } = render(<ApprovalCard approval={a} runLabel="you" />);
+    const facts = container.querySelector("[data-print-facts]");
+    expect(facts?.textContent).toContain("Bench MK4 · MK4 · sliced for <b>MINI</b>");
+    expect(facts?.querySelector("b")).toBeNull();
   });
 
   it("other_cards_have_no_print_facts", () => {

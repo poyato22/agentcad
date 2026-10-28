@@ -58,15 +58,13 @@ export function DrawingPage(): JSX.Element {
   useEffect(() => {
     if (!partId) return;
     let live = true;
-    let made: string | null = null;
     setBusy(true);
     setFailure(null);
     const c = actions.client();
     Promise.all([c.drawingFile(partId, "svg", material), c.drawingInfo(partId, material).catch(() => null)]).then(
       ([blob, info]) => {
         if (!live) return;
-        made = URL.createObjectURL(blob);
-        setLoaded({ partId, blob, url: made, info });
+        setLoaded({ partId, blob, url: URL.createObjectURL(blob), info });
         setBusy(false);
       },
       (e: unknown) => {
@@ -76,11 +74,13 @@ export function DrawingPage(): JSX.Element {
         setBusy(false);
       },
     );
-    return () => {
-      live = false;
-      if (made) URL.revokeObjectURL(made);
-    };
+    return () => { live = false; };
   }, [partId, mtime, material, attempt]);
+
+  // a blob URL is released only once the next drawing (or an error) has replaced it, or on unmount,
+  // so the old sheet stays visible while a new one is made
+  const loadedUrl = loaded?.url ?? null;
+  useEffect(() => () => { if (loadedUrl) URL.revokeObjectURL(loadedUrl); }, [loadedUrl]);
 
   async function exportDxf(): Promise<void> {
     if (!partId) return;

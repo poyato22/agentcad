@@ -76,7 +76,10 @@ function printFacts(a: Approval): string[] | null {
   const d = a.deltas;
   const p = rec(d.printer);
   const out: string[] = [];
-  if (p) out.push([str(p.name), str(p.model), str(p.host), str(p.state)].filter(Boolean).join(" · "));
+  // slice_model: the model the G-code was sliced for, next to the target printer's model
+  const sliced = str(d.slice_model);
+  if (p) out.push([str(p.name), str(p.model), sliced ? `sliced for ${sliced}` : null, str(p.host), str(p.state)].filter(Boolean).join(" · "));
+  else if (sliced) out.push(`sliced for ${sliced}`);
   const g = num(d.filament_g);
   const usd = num(d.cost_usd);
   out.push([str(d.material), str(d.time), g !== null ? `${g.toFixed(2)} g` : null, usd !== null ? `$${usd.toFixed(2)}` : null].filter(Boolean).join(" · "));

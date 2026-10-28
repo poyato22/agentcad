@@ -55,8 +55,8 @@ export function PrintersSection(): JSX.Element {
 }
 
 function PrinterRow({ printer, onRemoved }: { printer: Printer; onRemoved: () => void }): JSX.Element {
-  const status = usePrinterStatus(printer.id);
-  const light = printerLight(status);
+  const { status, stale } = usePrinterStatus(printer.id);
+  const light = printerLight(status, stale);
   const [confirm, setConfirm] = useState(false);
   const task = useTask();
   async function remove(): Promise<void> {

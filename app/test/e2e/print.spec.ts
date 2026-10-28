@@ -56,7 +56,7 @@ for (const theme of ["dark", "light"] as const) {
     await expect(pageRegion(page).getByRole("status", { name: "Print request" })).toContainText("approve or reject the card in the agent console");
     await expect(page.locator("[data-region=app]")).toHaveAttribute("data-console", "open");
     await expect(printCard(page)).toBeVisible();
-    await expect(printCard(page).locator("[data-print-facts]")).toContainText("Bench MK4 · MK4 · 192.168.1.20 · IDLE");
+    await expect(printCard(page).locator("[data-print-facts]")).toContainText("Bench MK4 · MK4 · sliced for MK4 · 192.168.1.20 · IDLE");
     await expect(printCard(page).locator("[data-print-facts]")).toContainText("1d 2h 3m 22s");
     await expect(sendBtn(page)).toBeDisabled(); // one request at a time
     expect((await calls(fake, "POST", "/prints"))[0].body).toEqual({ slice_id: expect.stringMatching(/^slice_/), printer_id: "bench_mk4" });

@@ -43,13 +43,23 @@ export function usePoll(key: unknown, active: boolean, ms: () => number, tick: (
   }, [key, active]); // `tick` is the one from when `key` last changed: it must only depend on `key`
 }
 
-/** The selected printer's status, refreshed every POLL.statusMs. null until the first answer. */
-export function usePrinterStatus(printerId: string | null): PrinterStatus | null {
-  const [st, setSt] = useState<{ id: string; status: PrinterStatus } | null>(null);
+export interface PrinterStatusView {
+  /** The last answer; null before the first one and after a failed poll (never act on an old one). */
+  status: PrinterStatus | null;
+  /** The last poll failed: the status is unknown until the next answer. */
+  stale: boolean;
+}
+
+/** The selected printer's status, refreshed every POLL.statusMs. */
+export function usePrinterStatus(printerId: string | null): PrinterStatusView {
+  const [st, setSt] = useState<{ id: string; status: PrinterStatus | null; stale: boolean } | null>(null);
   usePoll(printerId, printerId !== null, () => POLL.statusMs, async () => {
     if (!printerId) return false;
-    const status = await actions.client().printerStatus(printerId);
-    setSt({ id: printerId, status });
+    try {
+      setSt({ id: printerId, status: await actions.client().printerStatus(printerId), stale: false });
+    } catch {
+      setSt({ id: printerId, status: null, stale: true }); // retried at the next tick
+    }
   });
-  return st && st.id === printerId ? st.status : null;
+  return st && st.id === printerId ? { status: st.status, stale: st.stale } : { status: null, stale: false };
 }

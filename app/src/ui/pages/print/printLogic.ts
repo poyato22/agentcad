@@ -16,8 +16,8 @@ export function validHost(h: string): boolean {
   return !v.includes(":") || Number(v.split(":").pop()) <= 65535;
 }
 
-export function printerLight(st: PrinterStatus | null): { tone: LedTone; text: string } {
-  if (!st) return { tone: "faint", text: "checking…" };
+export function printerLight(st: PrinterStatus | null, stale = false): { tone: LedTone; text: string } {
+  if (!st) return stale ? { tone: "faint", text: "status unknown — the core did not answer; retrying" } : { tone: "faint", text: "checking…" };
   if (!st.reachable) return { tone: "red", text: `unreachable — ${st.error ?? "no answer"}` };
   const state = st.state ?? "UNKNOWN";
   const temps = [st.temp_nozzle !== null ? `nozzle ${Math.round(st.temp_nozzle)} °C` : null, st.temp_bed !== null ? `bed ${Math.round(st.temp_bed)} °C` : null]

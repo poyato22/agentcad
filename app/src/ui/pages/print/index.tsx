@@ -73,8 +73,8 @@ export function PrintPage(): JSX.Element {
   useEffect(() => { if (!material && caps?.materials[0]) setMaterial(caps.materials[0].name); }, [caps, material]);
 
   const printer = printers?.find((p) => p.id === printerId) ?? null;
-  const status = usePrinterStatus(printer?.id ?? null);
-  const light = printerLight(status);
+  const { status, stale } = usePrinterStatus(printer?.id ?? null);
+  const light = printerLight(status, stale);
   const slicerInstalled = caps ? caps.slicer.installed : true;
   const installCommand = caps?.slicer.install_command ?? INSTALL_FALLBACK;
   const showInstall = !slicerInstalled || slicerMissing !== null;
@@ -151,11 +151,18 @@ export function PrintPage(): JSX.Element {
   const block = sendBlock({ slice, printer, status, partId, material: material.toUpperCase(), busy: waiting });
 
   async function send(): Promise<void> {
-    // re-check at click time: the status may have changed since the last render
     if (block !== null || !slice || !printer) return;
     setSendError(null);
     setStarting(true);
     try {
+      // re-check with a fresh status read at click time: the shown one may be seconds old
+      const fresh = await actions.client().printerStatus(printer.id);
+      const why = sendBlock({ slice, printer, status: fresh, partId, material: material.toUpperCase(), busy: false });
+      if (why !== null) {
+        setSendError(why);
+        setStarting(false);
+        return;
+      }
       const start = await actions.client().startPrint(slice.slice_id, printer.id);
       currentPrint.value = { start, call: null };
       // the approval card is in this run's thread in the console

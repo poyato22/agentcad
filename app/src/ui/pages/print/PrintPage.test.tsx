@@ -229,6 +229,24 @@ describe("PrintPage: sending (irreversible)", () => {
     await waitFor(() => expect(screen.getByRole("status", { name: "Print request" }).textContent).toContain("sent mises_mount_plate.gcode to Bench MK4"));
   });
 
+  it("send_checks_the_printer_again_at_click_time", async () => {
+    await sliced();
+    await waitFor(() => expect((sendBtn() as HTMLButtonElement).disabled).toBe(false));
+    POLL.statusMs = 60_000; // the shown status stays "idle"; the fresh read says ERROR
+    client.printerStatus.mockResolvedValue({ ...IDLE, state: "ERROR", sendable: false });
+    fireEvent.click(sendBtn());
+    expect((await screen.findByRole("alert")).textContent).toMatch(/reports ERROR/);
+    expect(client.startPrint).not.toHaveBeenCalled();
+  });
+
+  it("a_failed_status_poll_marks_the_status_stale_and_disables_send", async () => {
+    await sliced();
+    await waitFor(() => expect((sendBtn() as HTMLButtonElement).disabled).toBe(false));
+    client.printerStatus.mockRejectedValue(new CoreError("network", "fetch failed", { retryable: true }));
+    await waitFor(() => expect((sendBtn() as HTMLButtonElement).disabled).toBe(true));
+    expect(screen.getByRole("status", { name: "Printer status" }).textContent).toMatch(/status unknown/);
+  });
+
   it("a_refused_send_shows_the_core_reason", async () => {
     await sliced();
     client.startPrint.mockRejectedValue(new CoreError("denied", "printer 'Bench MK4' reports BUSY; not sending a job", { status: 409, hint: "wait until the printer is idle" }));

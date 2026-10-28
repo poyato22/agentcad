@@ -83,6 +83,21 @@ describe("DrawingPage", () => {
     expect(client.drawingFile).toHaveBeenCalledTimes(2);
   });
 
+  it("the_old_blob_url_lives_until_the_new_drawing_replaces_it", async () => {
+    render(<DrawingPage />);
+    const first = ((await sheet()) as HTMLImageElement).getAttribute("src");
+    let release: (b: Blob) => void = () => {};
+    client.drawingFile.mockImplementation(() => new Promise<Blob>((r) => { release = r; }));
+    act(() => { parts.value = [part("mount_plate", 1790000100), part("hinge_arm")]; });
+    await waitFor(() => expect(client.drawingFile).toHaveBeenCalledTimes(2));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(revoked).not.toContain(first);
+    expect(((await sheet()) as HTMLImageElement).getAttribute("src")).toBe(first); // still shown while regenerating
+    await act(async () => { release(new Blob([SVG], { type: "image/svg+xml" })); });
+    await waitFor(() => expect(((screen.getByRole("img", { name: /^Drawing · / })) as HTMLImageElement).getAttribute("src")).not.toBe(first));
+    await waitFor(() => expect(revoked).toContain(first));
+  });
+
   it("material_choice_is_passed_to_the_core", async () => {
     render(<DrawingPage />);
     await sheet();
