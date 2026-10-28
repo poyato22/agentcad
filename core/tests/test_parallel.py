@@ -117,6 +117,42 @@ async def test_cancel_while_reacquiring_withdraws():
     assert lim.active() == set()
 
 
+async def test_yield_cancelled_wait_reacquires_unless_the_run_is_cancelling():
+    # C4: a cancelled wait-on-subagents re-takes the slot so the run can unwind holding it,
+    # unless the run itself is being cancelled (then it is ending and never waits again).
+    lim = ParallelLimiter(limits({}, total=2))
+    assert lim.try_acquire("parent", "x")
+
+    # not cancelling: the cancelled wait re-acquires the (freed) slot
+    async def parent_not_cancelling():
+        async with lim.yielding("parent", is_cancelling=lambda: False):
+            await asyncio.Event().wait()   # pretend to wait on a subagent
+
+    t = asyncio.create_task(parent_not_cancelling())
+    await asyncio.sleep(0.01)
+    assert not lim.holds("parent")          # slot given up while waiting
+    t.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await t
+    assert lim.holds("parent")              # re-acquired on the way out
+
+    lim.release("parent")
+
+    # cancelling: the slot is not re-acquired
+    assert lim.try_acquire("p2", "x")
+
+    async def p2_cancelling():
+        async with lim.yielding("p2", is_cancelling=lambda: True):
+            await asyncio.Event().wait()
+
+    t2 = asyncio.create_task(p2_cancelling())
+    await asyncio.sleep(0.01)
+    t2.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await t2
+    assert not lim.holds("p2")
+
+
 async def test_pump_after_a_limit_change_grants_waiters():
     total = [1]
     lim = ParallelLimiter(lambda ref: Limits(total=total[0]))

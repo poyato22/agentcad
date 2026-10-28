@@ -476,7 +476,8 @@ class Runtime:
     async def waiting_on_subagents(self, run_id: str):
         """A run that waits on its subagents gives its slot up meanwhile (no deadlock with a
         limit of 1) and takes it back ahead of queued runs."""
-        async with self.parallel.yielding(run_id):
+        async with self.parallel.yielding(run_id,
+                                          is_cancelling=lambda: self.is_cancelling(run_id)):
             yield
 
     # ---- runs

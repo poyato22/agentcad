@@ -138,8 +138,14 @@ class ParallelLimiter:
             raise
 
     @contextlib.asynccontextmanager
-    async def yielding(self, run_id: str) -> AsyncIterator[None]:
-        """Give the slot up while waiting on subagents; take it back (ahead of the queue)."""
+    async def yielding(self, run_id: str,
+                       *, is_cancelling: Callable[[], bool] | None = None) -> AsyncIterator[None]:
+        """Give the slot up while waiting on subagents; take it back (ahead of the queue).
+
+        A cancelled wait still re-takes the slot so the run can unwind holding it, unless the
+        run itself is being cancelled (`is_cancelling()` is true): then it is ending and never
+        waits for a slot again.
+        """
         held = self._active.get(run_id)
         if held is None:
             yield
@@ -148,8 +154,11 @@ class ParallelLimiter:
         self.release(run_id)
         try:
             yield
+        except asyncio.CancelledError:
+            if not (is_cancelling is not None and is_cancelling()):
+                await self.acquire(run_id, ref, front=True)
+            raise
         except Exception:
             await self.acquire(run_id, ref, front=True)   # the run goes on after an error
             raise
-        # a cancelled run is ending: it does not wait for its slot again
         await self.acquire(run_id, ref, front=True)
