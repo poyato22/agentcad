@@ -169,6 +169,16 @@ describe("CoreClient", () => {
     expect((await caught(aborted.client.claudeCodeStatus(ctl.signal))).code).toBe("network");
   });
 
+  it("local_model_routes", async () => {
+    const status = { installed: true, running: false, version: "0.12.3", models: [], recommended: [{ name: "qwen3-coder:30b", size_gb: 19, fits: true, note: null }] };
+    const { client, f } = clientWith(async (url) => json(url.endsWith("/local/status") ? status : { ok: true }));
+    expect((await client.localStatus()).recommended[0].name).toBe("qwen3-coder:30b");
+    await client.localStart();
+    await client.localPull("qwen3-coder:30b");
+    const calls = f.mock.calls.map(([u, init]) => `${init.method} ${u.replace(info.baseUrl, "")} ${init.body ?? ""}`);
+    expect(calls).toEqual(["GET /local/status ", "POST /local/start ", 'POST /local/pull {"model":"qwen3-coder:30b"}']);
+  });
+
   it("unknown_error_body_falls_back_by_status", async () => {
     const { client } = clientWith(async () => json({ detail: "Not Found" }, 404));
     const e = await caught(client.getRun("nope"));

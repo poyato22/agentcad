@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { EventStream, type StreamState } from "./events";
+import { EventStream, onCoreEvent, type StreamState } from "./events";
 import type { CoreInfo, MisesEvent } from "./types";
 
 const info: CoreInfo = { baseUrl: "http://127.0.0.1:7400", wsUrl: "ws://127.0.0.1:7400/events", token: "tok", owned: true };
@@ -142,6 +142,33 @@ describe("EventStream", () => {
     off();
     last().send(JSON.stringify({ type: "note", run_id: null, data: {}, ts: 1 }));
     expect(got).toEqual([]);
+    s.stop();
+  });
+
+  it("onCoreEvent_hears_every_stream_without_a_handle_to_it", () => {
+    // UI code that the store's reducer doesn't serve (local_pull progress, run_queued) listens here
+    const got: string[] = [];
+    const off = onCoreEvent((e) => got.push(e.type));
+    const s = stream();
+    s.start();
+    last().open();
+    last().send(JSON.stringify({ type: "local_pull", run_id: null, data: { model: "m", completed: 1, total: 2, status: "pulling" }, ts: 1 }));
+    off();
+    last().send(JSON.stringify({ type: "note", run_id: null, data: {}, ts: 2 }));
+    expect(got).toEqual(["local_pull"]);
+    s.stop();
+  });
+
+  it("a_throwing_tap_never_breaks_the_stream", () => {
+    const off = onCoreEvent(() => { throw new Error("boom"); });
+    const s = stream();
+    const got: string[] = [];
+    s.onEvent((e) => got.push(e.type));
+    s.start();
+    last().open();
+    last().send(JSON.stringify({ type: "note", run_id: null, data: {}, ts: 1 }));
+    off();
+    expect(got).toEqual(["note"]);
     s.stop();
   });
 });

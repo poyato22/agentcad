@@ -8,6 +8,7 @@ import {
   type AgentInfo, type AgentRun, type Approval, type CancelAllResult, type ClaudeCodeStatus, type CoreErrorBody, type CoreStatusInfo,
   type KeyStatus, type MisesEvent, type ModelsInfo, type LocalTestResult, type OnshapeTestResult, type PartHole, type PartMetrics, type PartSummary,
   type Profile, type SetupState, type Step, type ToolOutput,
+  type LocalPull, type LocalStatus, type ModelMeta, type ParallelInfo, type VendorInfo,
 } from "./types";
 
 const record = z.record(z.string(), z.unknown());
@@ -18,7 +19,7 @@ export const stepKindSchema = z.enum(STEP_KINDS);
 
 export const agentRunSchema = z.object({
   id: z.string(), parent_id: z.string().nullable(), agent: z.string(), provider: z.string(), model: z.string(),
-  task: z.string(), status: z.enum(["running", "done", "failed", "cancelled"]), branch: z.string().nullable(),
+  task: z.string(), status: z.enum(["queued", "running", "done", "failed", "cancelled"]), branch: z.string().nullable(),
   onshape_calls: z.number(), input_tokens: z.number(), output_tokens: z.number(), usd: z.number(),
   created_at: z.number(), updated_at: z.number(), owner_pid: z.number().nullish(),
   external: z.boolean().optional(), session_ref: z.string().nullish(),
@@ -48,19 +49,57 @@ export const eventSchema = z.object({
 
 export const agentInfoSchema = z.object({ name: z.string(), description: z.string(), model: z.string() });
 
-export const modelsInfoSchema = z.object({
-  default: z.string(),
-  vendors: z.array(z.object({
-    vendor: z.string(),
-    key: z.enum(["env", "keychain", "none", "not_needed", "signed_in", "signed_out", "not_installed"]),
-    models: z.array(z.string()).optional(),
-  })),
+/** An unknown badge from a newer core is dropped (null), never fatal. */
+const recommendedSchema = z.enum(["best", "local", "free"]).nullable().catch(null);
+
+/** A model entry: a plain id, or an object with its own badges (Plan 4). */
+const modelEntrySchema = z.union([
+  z.string(),
+  z.object({
+    id: z.string(), recommended: recommendedSchema.optional(), note: z.string().nullish(), free: z.boolean().optional(),
+  }),
+]);
+
+const vendorSchema = z.object({
+  vendor: z.string(),
+  key: z.enum(["env", "keychain", "none", "not_needed", "signed_in", "signed_out", "not_installed"]),
+  models: z.array(modelEntrySchema).optional(),
+  free: z.boolean().optional(),
+  hint: z.string().nullable().optional(),
+  recommended: recommendedSchema.optional(),
+  note: z.string().nullable().optional(),
+}).transform((v): VendorInfo => {
+  // object entries become plain ids plus `model_meta`; an all-string list passes through unchanged
+  const { models, ...rest } = v;
+  if (models === undefined) return rest;
+  if (models.every((m) => typeof m === "string")) return { ...rest, models: models as string[] };
+  const meta: Record<string, ModelMeta> = {};
+  const ids = models.map((m) => {
+    if (typeof m === "string") return m;
+    meta[m.id] = { recommended: m.recommended ?? null, note: m.note ?? null, free: m.free ?? false };
+    return m.id;
+  });
+  return { ...rest, models: ids, model_meta: meta };
 });
+
+export const modelsInfoSchema = z.object({ default: z.string(), vendors: z.array(vendorSchema) });
+
+export const parallelSchema = z.object({ limit: z.number().int(), auto: z.boolean(), reason: z.string().default("") });
 
 export const coreStatusSchema = z.object({
   core_version: z.string(), onshape: z.enum(["connected", "not_configured"]), onshape_calls_year: z.number(),
   onshape_cap_year: z.number(), runs_running: z.number(), approvals_pending: z.number(),
-  data_dir: z.string().nullish(),
+  data_dir: z.string().nullish(), parallel: parallelSchema.optional(),
+});
+
+export const localStatusSchema = z.object({
+  installed: z.boolean(), running: z.boolean(), version: z.string().nullable().default(null),
+  models: z.array(z.object({ name: z.string(), size_gb: z.number() })).default([]),
+  recommended: z.array(z.object({ name: z.string(), size_gb: z.number(), fits: z.boolean(), note: z.string().nullable().default(null) })).default([]),
+});
+
+export const localPullSchema = z.object({
+  model: z.string(), completed: z.number().default(0), total: z.number().default(0), status: z.string().default(""),
 });
 
 export const partHoleSchema = z.object({ diameter_mm: z.number(), axis: vec3, center: vec3, depth_mm: z.number() });
@@ -100,8 +139,9 @@ export const profileSchema = z.object({
   display_name: z.string().default(""), units: z.literal("mm").default("mm"), default_material: z.string().default("PLA"),
   default_agent: z.string().default("designer"), default_model: z.string().nullable().default(null),
   onshape_calls_year_cap: z.number().default(2500), onshape_calls_run_cap: z.number().default(200),
-  max_parallel_agents: z.number().int().default(2), local_endpoints: z.record(z.string(), z.string()).default({}),
+  max_parallel_agents: z.union([z.number().int(), z.literal("auto")]).default(2), local_endpoints: z.record(z.string(), z.string()).default({}),
   setup_completed_at: z.number().nullable().default(null),
+  theme: z.enum(["system", "light", "dark"]).optional().catch(undefined),
 });
 
 /** Status only. Any extra key (a secret, by mistake) is stripped before it reaches the UI. */
@@ -142,4 +182,7 @@ export type SchemaChecks = [
   Assert<Same<z.infer<typeof onshapeTestSchema>, OnshapeTestResult>>,
   Assert<Same<z.infer<typeof localTestSchema>, LocalTestResult>>,
   Assert<Same<z.infer<typeof claudeCodeStatusSchema>, ClaudeCodeStatus>>,
+  Assert<Same<z.infer<typeof parallelSchema>, ParallelInfo>>,
+  Assert<Same<z.infer<typeof localStatusSchema>, LocalStatus>>,
+  Assert<Same<z.infer<typeof localPullSchema>, LocalPull>>,
 ];

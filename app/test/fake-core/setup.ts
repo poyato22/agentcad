@@ -148,7 +148,9 @@ const PROFILE_FIELDS: Record<string, (v: unknown) => boolean> = {
   default_model: (v) => v === null || typeof v === "string",
   onshape_calls_year_cap: int(0),
   onshape_calls_run_cap: int(0),
-  max_parallel_agents: int(1, 16),
+  // Plan 4: "auto" (the core sizes it from this Mac and the model) or 1–16
+  max_parallel_agents: (v) => v === "auto" || int(1, 16)(v),
+  theme: (v) => v === "system" || v === "light" || v === "dark",
   local_endpoints: (v) => typeof v === "object" && v !== null && !Array.isArray(v)
     && Object.values(v).every((x) => typeof x === "string" && loopback(x)),
   setup_completed_at: (v) => v === null || typeof v === "number",

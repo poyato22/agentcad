@@ -4,11 +4,11 @@ import { z } from "zod";
 import { debug } from "../lib/log";
 import {
   agentInfoSchema, agentRunSchema, approvalSchema, cancelAllSchema, claudeCodeStatusSchema, coreErrorBodySchema, coreStatusSchema,
-  keyStatusSchema, localTestSchema, modelsInfoSchema, okSchema, onshapeTestSchema, partSummarySchema, profileSchema, runIdSchema, setupStateSchema,
+  keyStatusSchema, localStatusSchema, localTestSchema, modelsInfoSchema, okSchema, onshapeTestSchema, partSummarySchema, profileSchema, runIdSchema, setupStateSchema,
   stepSchema,
 } from "./schemas";
 import type {
-  AgentInfo, AgentRun, Approval, CancelAllResult, ClaudeCodeStatus, CoreInfo, CoreStatusInfo, DecisionBody, ErrorCode, KeyStatus, LocalTestResult,
+  AgentInfo, AgentRun, Approval, CancelAllResult, ClaudeCodeStatus, CoreInfo, CoreStatusInfo, DecisionBody, ErrorCode, KeyStatus, LocalStatus, LocalTestResult,
   ModelsInfo, NewRunBody, OnshapeTestResult, PartSummary, Profile, ProfilePatch, SetupState, Step, UiContext,
 } from "./types";
 
@@ -119,6 +119,15 @@ export class CoreClient {
 
   /** Does a local model server answer at this URL (loopback only)? "No answer" is {ok:false, error}, not a throw. */
   testLocal(url: string): Promise<LocalTestResult> { return this.json("POST", "/local/test", localTestSchema, { body: { url } }); }
+
+  // ---- Plan 4: Ollama on this Mac (admin routes)
+
+  /** Is Ollama installed / running, what's downloaded, which models fit this Mac. */
+  localStatus(): Promise<LocalStatus> { return this.json("GET", "/local/status", localStatusSchema); }
+  /** Starts `ollama serve` when installed but not running. */
+  async localStart(): Promise<void> { await this.json("POST", "/local/start", anyBody); }
+  /** Starts a download; progress arrives as `local_pull` events. */
+  async localPull(model: string): Promise<void> { await this.json("POST", "/local/pull", anyBody, { body: { model } }); }
 
   setupState(): Promise<SetupState> { return this.json("GET", "/setup", setupStateSchema); }
   /** Marks setup done (sets profile.setup_completed_at). Re-read setupState() for the result. */

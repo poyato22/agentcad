@@ -10,7 +10,8 @@ export const ERROR_CODES = [
   "out_of_scope", "denied", "not_found", "tool_failed", "cancelled",
 ] as const satisfies readonly ErrorCode[];
 
-export type RunStatus = "running" | "done" | "failed" | "cancelled";
+/** "queued": waiting for a parallel-agent slot (Plan 4; event `run_queued`, then `run_started`). */
+export type RunStatus = "queued" | "running" | "done" | "failed" | "cancelled";
 
 export interface AgentRun {
   id: string; parent_id: string | null; agent: string; provider: string; model: string;
@@ -71,15 +72,47 @@ export interface AgentInfo { name: string; description: string; model: string }
 
 /** signed_in / signed_out / not_installed: the "claude-code" vendor (Plan 3 Task 3). */
 export type KeySource = "env" | "keychain" | "none" | "not_needed" | "signed_in" | "signed_out" | "not_installed";
-/** `models`: aliases the vendor offers, when the core lists them (claude-code: sonnet, opus, haiku, fable). */
-export interface ModelsInfo { default: string; vendors: { vendor: string; key: KeySource; models?: string[] }[] }
+/** Why the core points a model out (Plan 4): best overall, best that runs on this Mac, free. */
+export type Recommended = "best" | "local" | "free";
+/** Badges of one listed model (when the core sends a model entry as an object). */
+export interface ModelMeta { recommended: Recommended | null; note: string | null; free: boolean }
+
+export interface VendorInfo {
+  vendor: string; key: KeySource;
+  /** Models the vendor offers, when the core lists them: claude-code aliases (sonnet, opus, …),
+   *  or full refs for live lists (`ollama/<name>`, `openrouter/<id>`). */
+  models?: string[];
+  /** Every listed model is free (OpenRouter's free tool-capable models). */
+  free?: boolean;
+  /** Why the list is empty (e.g. "Ollama isn't running — …"). */
+  hint?: string | null;
+  recommended?: Recommended | null;
+  /** One line from the core's research ("strongest at CAD scripts"). Untrusted text. */
+  note?: string | null;
+  /** Per-model badges, by model as listed in `models` (only when the core sent object entries). */
+  model_meta?: Record<string, ModelMeta>;
+}
+export interface ModelsInfo { default: string; vendors: VendorInfo[] }
+
+/** GET /status `parallel`: how many runs may work at once, and why (Plan 4). */
+export interface ParallelInfo { limit: number; auto: boolean; reason: string }
 
 export interface CoreStatusInfo {
   core_version: string; onshape: "connected" | "not_configured"; onshape_calls_year: number;
   onshape_cap_year: number; runs_running: number; approvals_pending: number;
   /** Core data folder (absolute path); absent on older cores. */
   data_dir?: string | null;
+  parallel?: ParallelInfo;
 }
+
+/** GET /local/status (Ollama on this Mac). */
+export interface LocalModel { name: string; size_gb: number }
+export interface LocalRecommended { name: string; size_gb: number; fits: boolean; note: string | null }
+export interface LocalStatus {
+  installed: boolean; running: boolean; version: string | null; models: LocalModel[]; recommended: LocalRecommended[];
+}
+/** Data of a `local_pull` event (Ollama /api/pull progress, bytes). */
+export interface LocalPull { model: string; completed: number; total: number; status: string }
 
 export type Vec3 = [number, number, number];
 
@@ -111,7 +144,11 @@ export interface Profile {
   display_name: string; units: "mm"; default_material: string; default_agent: string;
   /** e.g. "claude-code/sonnet", "anthropic/claude-sonnet-5-5", "ollama/qwen3"; null = the core's default. */
   default_model: string | null;
-  onshape_calls_year_cap: number; onshape_calls_run_cap: number; max_parallel_agents: number;
+  onshape_calls_year_cap: number; onshape_calls_run_cap: number;
+  /** "auto": the core picks from this Mac and the model (GET /status `parallel`). */
+  max_parallel_agents: number | "auto";
+  /** Plan 4: appearance; absent on older cores. */
+  theme?: "system" | "light" | "dark";
   /** {"ollama": "http://localhost:11434/v1", "lmstudio": ...} */
   local_endpoints: Record<string, string>;
   setup_completed_at: number | null;

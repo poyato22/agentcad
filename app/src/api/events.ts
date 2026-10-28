@@ -12,6 +12,24 @@ export const CLOSE_UNAUTHORIZED = 4401;
 
 export interface EventStreamOptions { runId?: string; backoffMs?: number[]; WebSocketImpl?: typeof WebSocket }
 
+const taps = new Set<(e: MisesEvent) => void>();
+
+/**
+ * Hears every event of every running stream (after its own subscribers). For UI that the store's
+ * reducer doesn't serve (e.g. `local_pull` download progress, `run_queued`). A tap that throws
+ * is logged and skipped. Returns an unsubscribe function.
+ */
+export function onCoreEvent(cb: (e: MisesEvent) => void): () => void {
+  taps.add(cb);
+  return () => { taps.delete(cb); };
+}
+
+function tapAll(ev: MisesEvent): void {
+  for (const cb of [...taps]) {
+    try { cb(ev); } catch (e) { debug("event tap failed", ev.type, e); }
+  }
+}
+
 export class EventStream {
   private readonly url: string;
   private readonly backoff: readonly number[];
@@ -81,6 +99,7 @@ export class EventStream {
       const ev = parseFrame(m.data);
       if (!ev) return;
       for (const cb of [...this.eventCbs]) cb(ev);
+      tapAll(ev);
     };
     ws.onerror = () => { /* a close event always follows */ };
     ws.onclose = (c: CloseEvent) => {

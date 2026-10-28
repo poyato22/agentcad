@@ -10,7 +10,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer, type WebSocket } from "ws";
 import type {
-  AgentInfo, AgentRun, Approval, CoreStatusInfo, ErrorCode, MisesEvent, ModelsInfo, PartSummary, Question, Step, StepKind,
+  AgentInfo, AgentRun, Approval, CoreStatusInfo, ErrorCode, LocalStatus, MisesEvent, ModelsInfo, PartSummary, Question, Step, StepKind,
 } from "../../src/api/types";
 import { handleControl } from "./control";
 import { setupFrom, setupRoutes, type FakeSetup, type SetupScenario } from "./setup";
@@ -80,6 +80,10 @@ export interface Scenario {
   glb?: Record<string, string>;
   /** Profile / keys / Claude Code / Onshape-test state (Plan 3). Absent: setup already complete. */
   setup?: SetupScenario;
+  /** Ollama on this Mac (Plan 4 GET /local/status). Absent: the /local routes answer 404 (older core). */
+  local?: LocalStatus;
+  /** ms between `local_pull` progress events (default 120). */
+  local_pull_ms?: number;
 }
 
 export interface FakeCall { method: string; path: string; query: Record<string, string>; body: unknown; ts: number; ifNoneMatch?: string }
@@ -99,6 +103,8 @@ export interface FakeState {
   on: NonNullable<Scenario["on"]>;
   calls: FakeCall[];
   setup: FakeSetup;
+  local: LocalStatus | null;
+  localPullMs: number;
 }
 
 export interface FakeCore {
@@ -138,6 +144,7 @@ function stateFrom(sc: Scenario, token: string): FakeState {
     parts: sc.parts, agents: sc.agents, models: sc.models, status: sc.status,
     glb: sc.glb ?? {}, script: sc.script ?? [], on: sc.on ?? {}, calls: [],
     setup: setupFrom(sc),
+    local: sc.local ? structuredClone(sc.local) : null, localPullMs: sc.local_pull_ms ?? 120,
   };
 }
 
@@ -301,10 +308,10 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     return a;
   }
 
-  function newRun(agent: string, provider: string, model: string, task: string, external = false): AgentRun {
+  function newRun(agent: string, provider: string, model: string, task: string, external = false, status: AgentRun["status"] = "running"): AgentRun {
     const t = now();
     const run: AgentRun = {
-      id: hex(6), parent_id: null, agent, provider, model, task, status: "running", branch: null,
+      id: hex(6), parent_id: null, agent, provider, model, task, status, branch: null,
       onshape_calls: 0, input_tokens: 0, output_tokens: 0, usd: 0, created_at: t, updated_at: t, owner_pid: process.pid, external,
       // the core keeps the Claude Code session id it resumes with
       session_ref: provider === CLAUDE_CODE ? randomUUID() : null,
@@ -348,8 +355,16 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         if (claude && !CLAUDE_ALIAS_RE.test(model)) throw mises("invalid_input", `bad Claude Code model alias: ${JSON.stringify(model)}`, "use claude-code/sonnet, opus, haiku or fable");
         if (claude && spec.key === "not_installed") throw mises("not_found", "Claude Code is not installed", "install it from code.claude.com, then sign in from Setup");
         if (claude && spec.key !== "signed_in") throw mises("denied", "Claude Code is not signed in", "sign in from Setup or Profile (runs `claude auth login`)");
-        const run = newRun(agent, vendor, model, prompt, claude);
+        // Plan 4: beyond the parallel limit a run waits (status "queued", event run_queued)
+        const limit = state.status.parallel?.limit;
+        const working = [...state.runs.values()].filter((r) => r.status === "running").length;
+        const queued = limit !== undefined && working >= limit;
+        const run = newRun(agent, vendor, model, prompt, claude, queued ? "queued" : "running");
         appendStep({ kind: "message", payload: { role: "user", text: prompt } }, run.id);
+        if (queued) {
+          emit({ type: "run_queued", run_id: run.id, data: { agent, provider: vendor, model, limit } });
+          return { run_id: run.id };
+        }
         emit({ type: "run_started", run_id: run.id, data: { agent, provider: vendor, model, parent_id: null, ...(claude ? { external: true } : {}) } });
         play(state.on.create_run, run.id);
         return { run_id: run.id };
@@ -472,7 +487,42 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       },
     },
     ...setupRoutes(() => state.setup, () => state.parts),
+    // ---- Plan 4: Ollama on this Mac (core local_models.py); 404 without a `local` block (older core)
+    { method: "GET", re: /^\/local\/status$/, h: () => localState() },
+    {
+      method: "POST", re: /^\/local\/start$/, h: () => {
+        const l = localState();
+        if (!l.installed) throw mises("not_found", "Ollama is not installed", "install it from ollama.com or `brew install ollama`");
+        state.local = { ...l, running: true };
+        return { ok: true };
+      },
+    },
+    {
+      method: "POST", re: /^\/local\/pull$/, h: (_m, _q, raw) => {
+        const model = req(asBody(raw), "model", "string");
+        const l = localState();
+        if (!l.running) throw mises("invalid_input", "Ollama isn't running", "start it first (POST /local/start)");
+        const rec = l.recommended.find((r) => r.name === model);
+        const total = Math.round((rec?.size_gb ?? 1) * 1e9);
+        const steps = [0, 0.25, 0.6, 1];
+        steps.forEach((f, i) => {
+          scriptTimers.push(setTimeout(() => {
+            const done = i === steps.length - 1;
+            if (done && state.local && !state.local.models.some((m) => m.name === model)) {
+              state.local = { ...state.local, models: [...state.local.models, { name: model, size_gb: rec?.size_gb ?? 1 }] };
+            }
+            emit({ type: "local_pull", run_id: null, data: { model, completed: Math.round(total * f), total, status: done ? "success" : i === 0 ? "pulling manifest" : "downloading" } });
+          }, state.localPullMs * (i + 1)));
+        });
+        return { ok: true };
+      },
+    },
   ];
+
+  function localState(): LocalStatus {
+    if (!state.local) throw new HttpError(404, { detail: "Not Found" });
+    return state.local;
+  }
 
   /** /models: with a setup block, vendor key status follows the saved keys and Claude Code status. */
   function models(): ModelsInfo {
