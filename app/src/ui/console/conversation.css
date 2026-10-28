@@ -23,7 +23,14 @@
 .cv-opt-s.needs-you { color: var(--blue2); }
 .cv-detailsbar { flex: none; display: flex; align-items: center; gap: 6px; padding: 2px 6px 2px 8px; border-bottom: 1px solid var(--line2); background: var(--head); }
 
-.cv-thread { flex: 1; min-height: 0; overflow: auto; padding: 8px 0; display: flex; flex-direction: column; gap: 2px; }
+.cv-wrap { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; }
+.cv-thread { flex: 1; min-height: 0; overflow: auto; padding: 8px 0; display: flex; flex-direction: column; gap: 2px; overflow-anchor: none; }
+.cv-chip-new {
+  position: absolute; right: 10px; bottom: 8px; padding: 2px 9px; font: inherit; font-size: 10.5px; cursor: pointer;
+  background: var(--paper2); color: var(--ink); border: 1px solid var(--line2);
+}
+.cv-chip-new:hover { border-color: var(--dim); }
+.cv-earlier { align-self: flex-start; margin: 2px 10px 6px; border: 1px solid var(--line2); background: transparent; color: var(--faint); font: inherit; font-size: 10px; padding: 2px 6px; cursor: pointer; }
 .cv-empty { padding: 16px 12px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 .cv-msg { margin: 6px 10px; padding: 6px 8px; border: 1px solid var(--line); }
 .cv-msg .label { margin-bottom: 2px; }

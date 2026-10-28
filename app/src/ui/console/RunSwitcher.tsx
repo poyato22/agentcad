@@ -1,6 +1,6 @@
 // Top of the conversation view: one dropdown for the run shown ("● designer · stiffen upright ▾",
 // status dot), a blue "▲ N needs you" button whenever another run waits for you (one click
-// shows it), Stop for a working run, "+ New" (inline composer) and the Details toggle.
+// shows it), Stop for a working run, "+ New" (inline composer) and the "Full log" toggle.
 import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { AgentRun } from "../../api/types";
@@ -70,7 +70,7 @@ export function RunSwitcher(): JSX.Element {
           <Button variant="ghost" aria-label={`Stop ${label}`} title="stop this run" onClick={() => cancelRun(current.id)}>Stop</Button>
         )}
         <Button variant="ghost" onClick={() => { composerOpen.value = true; }}>+ New</Button>
-        <Button variant="ghost" aria-pressed="false" onClick={() => setConsoleView("details")}>Details</Button>
+        <Button variant="ghost" aria-pressed="false" onClick={() => setConsoleView("details")}>Full log</Button>
       </div>
       {current && (
         <div class="cv-who faint text">{`${providerLabel(current.provider)} · ${current.model}`}</div>
@@ -98,7 +98,7 @@ export function RunSwitcher(): JSX.Element {
 export function DetailsBar(): JSX.Element {
   return (
     <div class="cv-detailsbar">
-      <span class="label">Details</span>
+      <span class="label">Full log</span>
       <span class="cv-spacer" />
       <Button variant="ghost" onClick={() => setConsoleView("chat")}>Conversation</Button>
     </div>

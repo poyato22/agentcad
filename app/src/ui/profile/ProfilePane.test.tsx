@@ -443,6 +443,20 @@ describe("Agents & budgets section", () => {
     await waitFor(() => expect(client.updateProfile).toHaveBeenCalledWith({ max_parallel_agents: "auto" }));
   });
 
+  it("a_manual_limit_reads_manual_n_and_status_is_read_again_after_save", async () => {
+    client.status.mockResolvedValue({ ...status, parallel: { limit: 2, auto: false, reason: "set in Profile" } });
+    await openSection("Agents & budgets");
+    const region = screen.getByRole("region", { name: "Agents & budgets" });
+    expect(screen.getByRole("radio", { name: "Auto" })).toBeTruthy();       // no "(2 on this Mac)": that's the manual limit
+    expect(region.textContent).toContain("Manual: 2");
+    const before = client.status.mock.calls.length;
+    client.status.mockResolvedValue(autoStatus);
+    fireEvent.click(screen.getByRole("radio", { name: "Auto" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(client.status.mock.calls.length).toBe(before + 1));
+    await waitFor(() => expect(screen.getByRole("radio", { name: "Auto (3 on this Mac)" })).toBeTruthy());
+  });
+
   it("an_older_core_without_parallel_info_still_offers_auto", async () => {
     client.getProfile.mockResolvedValue({ ...profile, max_parallel_agents: "auto" });
     await openSection("Agents & budgets");

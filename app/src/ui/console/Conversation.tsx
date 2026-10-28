@@ -19,6 +19,8 @@ import type { ThreadItem } from "./threadModel";
 import { composerOpen } from "./view";
 
 const AT_BOTTOM_PX = 24;
+/** Rows rendered at once (the last ones); "show earlier" adds this many more. Same as StepLog. */
+export const THREAD_WINDOW = 500;
 
 export function Conversation(): JSX.Element {
   useEffect(() => retainThreadFrames(), []);
@@ -26,28 +28,82 @@ export function Conversation(): JSX.Element {
   const run = effectiveRun.value ?? shownPending.value;
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
+  const [atBottom, setAtBottom] = useState(true);
+  /** Rows there were when the user scrolled up: the rest count as new. */
+  const seenLen = useRef(0);
   const lastRun = useRef<string | null>(null);
+  /** Approval / question cards already brought into view (by row key). */
+  const seenCards = useRef<Set<string>>(new Set());
+  const keepFromBottom = useRef<number | null>(null);
+  const [earlier, setEarlier] = useState<{ runId: string | null; n: number }>({ runId: null, n: 0 });
+
+  const items = frame.items;
+  const span = THREAD_WINDOW + (earlier.runId === frame.runId ? earlier.n : 0);
+  const start = Math.max(0, items.length - span);
+  const shown = start > 0 ? items.slice(start) : items;
+  const newCount = atBottom ? 0 : Math.max(0, items.length - seenLen.current);
 
   useLayoutEffect(() => {
     const el = scroller.current;
     if (!el) return;
-    if (lastRun.current !== frame.runId) { stick.current = true; lastRun.current = frame.runId; }
-    if (stick.current) el.scrollTop = el.scrollHeight;
+    if (lastRun.current !== frame.runId) {
+      lastRun.current = frame.runId;
+      stick.current = true;
+      seenCards.current = new Set();
+      if (!atBottom) setAtBottom(true);
+    }
+    if (keepFromBottom.current !== null) {
+      el.scrollTop = el.scrollHeight - keepFromBottom.current;
+      keepFromBottom.current = null;
+    } else if (stick.current) {
+      el.scrollTop = el.scrollHeight;
+    }
+    // a card that needs the human is never left out of sight: bring each new one into view
+    for (const it of items) {
+      if ((it.kind !== "approval" && it.kind !== "question") || seenCards.current.has(it.key)) continue;
+      seenCards.current.add(it.key);
+      if (stick.current) continue;            // already at the bottom, where cards land
+      el.querySelector<HTMLElement>(`[data-key="${CSS.escape(it.key)}"]`)?.scrollIntoView?.({ block: "nearest" });
+    }
   });
 
   const onScroll = () => {
     const el = scroller.current;
-    if (el) stick.current = el.scrollHeight - el.scrollTop - el.clientHeight <= AT_BOTTOM_PX;
+    if (!el) return;
+    const bottom = el.scrollHeight - el.scrollTop - el.clientHeight <= AT_BOTTOM_PX;
+    if (bottom === stick.current) return;
+    stick.current = bottom;
+    if (!bottom) seenLen.current = items.length;
+    setAtBottom(bottom);
+  };
+
+  const toBottom = () => {
+    const el = scroller.current;
+    stick.current = true;
+    setAtBottom(true);
+    setEarlier({ runId: null, n: 0 });
+    if (el) el.scrollTop = el.scrollHeight;
+  };
+
+  const showEarlier = () => {
+    const el = scroller.current;
+    if (el) keepFromBottom.current = el.scrollHeight - el.scrollTop;
+    const extra = span - THREAD_WINDOW;
+    setEarlier({ runId: frame.runId, n: extra + THREAD_WINDOW });
   };
 
   return (
-    <div class="cv-thread" ref={scroller} onScroll={onScroll} role="log" aria-label="Conversation" aria-live="off" data-conversation>
-      {!run && frame.items.length === 0 && <Empty />}
-      {frame.items.map((it) => <Item key={it.key} item={it} agent={run?.agent ?? "agent"} />)}
-      {run && frame.items.length === 0 && run.task && (
-        <Item item={{ kind: "user", key: "task", text: run.task, ts: run.created_at, stepIds: [] }} agent={run.agent} />
-      )}
-      {run && run.status === "queued" && <Queued />}
+    <div class="cv-wrap">
+      <div class="cv-thread" ref={scroller} onScroll={onScroll} role="log" aria-label="Conversation" aria-live="off" data-conversation>
+        {start > 0 && <button type="button" class="cv-earlier" onClick={showEarlier}>{`show earlier · ${start}`}</button>}
+        {!run && items.length === 0 && <Empty />}
+        {shown.map((it) => <div key={it.key} class="cv-item" data-key={it.key}><Item item={it} agent={run?.agent ?? "agent"} /></div>)}
+        {run && items.length === 0 && run.task && (
+          <Item item={{ kind: "user", key: "task", text: run.task, ts: run.created_at, stepIds: [] }} agent={run.agent} />
+        )}
+        {run && run.status === "queued" && <Queued />}
+      </div>
+      {newCount > 0 && <button type="button" class="cv-chip-new" onClick={toBottom}>{`${newCount} new ↓`}</button>}
     </div>
   );
 }
@@ -63,7 +119,7 @@ function Empty(): JSX.Element {
 
 function Queued(): JSX.Element {
   const p = coreStatus.value?.parallel;
-  const why = p ? ` · ${p.auto ? "Auto" : "limit"}: ${p.limit} on this Mac` : "";
+  const why = p ? ` · ${p.auto ? `Auto: ${p.limit} on this Mac` : `Manual: ${p.limit}`}` : "";
   return <div class="cv-note faint" data-queued>{`waiting for a free agent slot${why}`}</div>;
 }
 

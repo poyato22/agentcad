@@ -46,14 +46,22 @@ function Panel({ value, onPick, onClose }: { value: string | null; onPick(ref: s
   const typedOk = /^[a-z0-9-]+\/\S+$/i.test(typed.trim());
   return (
     <div class="mp-panel" role="region" aria-label="Choose a model"
-      onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); onClose(); } }}>
+      onKeyDown={(e) => {
+        // the picker sits inside forms (the inline composer): its keys never submit or close them
+        if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); onClose(); }
+        else if (e.key === "Enter") e.stopPropagation();
+      }}>
       {!cat.models && cat.loading && <div class="faint mp-pad">loading models…</div>}
       {cat.error && <div class="mp-err text mp-pad" role="alert">{cat.error}</div>}
       {groups.map((g) => <Group key={g.id} group={g} value={value} onPick={onPick} />)}
       <div class="mp-other">
         <input aria-label="Other model" placeholder="other model: vendor/model" value={typed} spellcheck={false} autocapitalize="off"
           onInput={(e) => setTyped(e.currentTarget.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && typedOk) { e.preventDefault(); onPick(typed.trim()); } }} />
+          onKeyDown={(e) => {
+            if (e.key !== "Enter") return;
+            e.preventDefault();             // never an implicit submit of the surrounding form
+    if (typedOk) onPick(typed.trim());
+          }} />
         <Button disabled={!typedOk} onClick={() => onPick(typed.trim())}>Use</Button>
       </div>
     </div>

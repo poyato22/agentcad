@@ -24,6 +24,7 @@ export function Composer(): JSX.Element {
   const [agent, setAgent] = useState("");
   const [model, setModel] = useState<string | null>(null);
   const [picked, setPicked] = useState(false);
+  const pickedRef = useRef(false);
   const [task, setTask] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +48,8 @@ export function Composer(): JSX.Element {
   const current = agents?.find((a) => a.name === agent);
   // prefill: the agent's own model, else the profile default, else the best one that can run now
   useEffect(() => {
-    if (picked || !cat.models || !current) return;
+    // a ref, not the state: an effect queued before the pick may run after it with a stale closure
+    if (pickedRef.current || !cat.models || !current) return;
     const own = current.model && current.model !== "inherit" ? current.model : null;
     const preferred = cat.profileDefault ?? cat.models.default;
     setModel(own ?? pickDefault(groups, preferred) ?? preferred);
@@ -87,7 +89,7 @@ export function Composer(): JSX.Element {
             {(agents ?? []).map((a) => <option key={a.name} value={a.name}>{a.name}</option>)}
           </select>
         </label>
-        <ModelPicker value={model} onChange={(ref) => { setModel(ref); setPicked(true); }} />
+        <ModelPicker value={model} onChange={(ref) => { pickedRef.current = true; setModel(ref); setPicked(true); }} />
       </div>
       {current?.description && <div class="cv-desc faint text">{current.description}</div>}
       {blocked && <div class="cv-desc dim text" data-hint>{`${model} · ${blocked}`}</div>}

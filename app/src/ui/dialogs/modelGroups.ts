@@ -2,7 +2,7 @@
 // "Recommended", "Your Claude Code", "On this Mac (Ollama)", "Free (OpenRouter)", "API keys".
 // Every choice says whether it can run now and, if not, what's missing. Model ids, names and
 // notes come from the core and the network: they stay plain strings (rendered as text).
-import type { LocalStatus, ModelsInfo, Profile, Recommended, VendorInfo } from "../../api/types";
+import type { LocalStatus, ModelMeta, ModelsInfo, Profile, Recommended, VendorInfo } from "../../api/types";
 import { splitModelRef } from "./modelRef";
 
 export type GroupId = "recommended" | "claude" | "local" | "free" | "keys";
@@ -118,15 +118,21 @@ export function buildModelGroups(models: ModelsInfo, opts: GroupOpts = {}): Mode
       } else {
         for (const id of ids) g.choices.push(choice(v, id, `LM Studio · ${id}`, "local", true, null, false));
       }
-    } else if (v.vendor === "openrouter" && (v.free || ids.some((id) => v.model_meta?.[id]?.free))) {
-      const g = groups.get("free") as ModelGroup;
-      g.note = v.note ?? null;
+    } else if (v.vendor === "openrouter") {
+      // free models (shown even without a key: the key itself is free); paid ones only once a key works
+      const isFree = (id: string) => v.free === true || metaOf(v, id)?.free === true || id.endsWith(":free");
       const usable = WORKS.has(v.key);
-      for (const id of ids) {
-        if (!v.free && !v.model_meta?.[id]?.free) continue;
+      const g = groups.get("free") as ModelGroup;
+      if (ids.some(isFree)) g.note = v.note ?? null;
+      for (const id of ids.filter(isFree)) {
         const c = choice(v, id, id, "free", usable, usable ? null : "needs a free OpenRouter key — add it in Profile", false);
         if (!c.badges.some((b) => b.kind === "free")) c.badges.push({ kind: "free", text: BADGE_TEXT.free });
         g.choices.push(c);
+      }
+      if (usable) {
+        const paid = [...new Set([...ids.filter((id) => !isFree(id)), ...known.filter((k) => k.vendor === v.vendor && k.model).map((k) => k.model)])];
+        const keys = groups.get("keys") as ModelGroup;
+        for (const id of paid) keys.choices.push(choice(v, id, `OpenRouter · ${id}`, "keys", true, null, false));
       }
     } else {
       const g = groups.get("keys") as ModelGroup;
@@ -156,8 +162,13 @@ function vendorPick(v: VendorInfo, ids: readonly string[]): string | null {
   return ids.find((id) => /opus/.test(id)) ?? ids[0];
 }
 
+/** A model's badges: `model_meta` is keyed as the core listed it (bare id or "vendor/id"). */
+function metaOf(v: VendorInfo, id: string): ModelMeta | undefined {
+  return v.model_meta?.[id] ?? v.model_meta?.[`${v.vendor}/${id}`];
+}
+
 function choice(v: VendorInfo, id: string, label: string, group: ModelChoice["group"], usable: boolean, why: string | null, vendorBadge: boolean): ModelChoice {
-  const meta = v.model_meta?.[id];
+  const meta = metaOf(v, id);
   const rec = meta?.recommended ?? (vendorBadge ? v.recommended ?? null : null);
   const c: ModelChoice = {
     ref: `${v.vendor}/${id}`, vendor: v.vendor, model: id, label, badges: [], recommended: rec, note: meta?.note ?? (vendorBadge ? v.note ?? null : null),

@@ -98,6 +98,19 @@ describe("buildModelGroups", () => {
     ]);
   });
 
+  it("with_an_openrouter_key_paid_models_show_under_api_keys", () => {
+    const keyed: ModelsInfo = modelsInfoSchema.parse({
+      default: "anthropic/claude-sonnet-5-5",
+      vendors: [{ vendor: "openrouter", key: "keychain", models: ["openrouter/qwen/qwen3-coder:free", { id: "openrouter/moonshotai/kimi-k3", free: false }] }],
+    });
+    const g = buildModelGroups(keyed, { profile: { default_model: "openrouter/anthropic/claude-sonnet-5" } });
+    expect(refs(g, "free")).toEqual(["openrouter/qwen/qwen3-coder:free"]);
+    expect(refs(g, "keys")).toEqual(["openrouter/moonshotai/kimi-k3", "openrouter/anthropic/claude-sonnet-5"]);
+    // without a key, no paid entries (they couldn't run)
+    const none = { ...keyed, vendors: keyed.vendors.map((v) => ({ ...v, key: "none" as const })) };
+    expect(refs(buildModelGroups(none, { profile: { default_model: "openrouter/anthropic/claude-sonnet-5" } }), "keys")).toEqual([]);
+  });
+
   it("signed_out_claude_code_is_listed_but_not_usable", () => {
     const out = { ...REAL, vendors: REAL.vendors.map((v) => (v.vendor === "claude-code" ? { ...v, key: "signed_out" as const } : v)) };
     const claude = buildModelGroups(out, {}).find((x) => x.id === "claude");

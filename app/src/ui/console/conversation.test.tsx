@@ -57,7 +57,7 @@ describe("conversation view (default)", () => {
     const { container } = render(<ConsolePane />);
     await frame();
     expect(consoleView.value).toBe("chat");
-    expect(container.querySelector("[data-filters]")).toBeNull();      // the dense log is behind Details
+    expect(container.querySelector("[data-filters]")).toBeNull();      // the dense log is behind "Full log"
     const thread = screen.getByRole("log", { name: "Conversation" });
     const you = within(thread).getAllByText("thicken the mount plate to 6 mm");
     expect(you[0].closest("[data-msg=user]")).toBeTruthy();
@@ -151,7 +151,7 @@ describe("conversation view (default)", () => {
     setSteps(REAL);
     const { container } = render(<ConsolePane />);
     await frame();
-    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+    fireEvent.click(screen.getByRole("button", { name: "Full log" }));
     await frame();
     expect(container.querySelector("[data-filters]")).toBeTruthy();
     expect(container.querySelector("[data-roster]")).toBeTruthy();
@@ -183,6 +183,55 @@ describe("conversation view (default)", () => {
     render(<ConsolePane />);
     await frame();
     expect(screen.getByRole("log", { name: "Conversation" }).textContent).toContain("waiting for a free agent slot · Auto: 3 on this Mac");
+  });
+
+  it("scrolled_up_new_rows_show_a_chip_and_a_new_card_is_scrolled_into_view", async () => {
+    client();
+    setRuns([run("r1")]);
+    const base = Array.from({ length: 5 }, (_, i) => message("r1", "assistant", `line ${i}`, 10 + i));
+    setSteps(base);
+    const scrolled: string[] = [];
+    const proto = HTMLElement.prototype as unknown as { scrollIntoView?: (o?: unknown) => void };
+    const orig = proto.scrollIntoView;
+    proto.scrollIntoView = function (this: HTMLElement) { scrolled.push(this.getAttribute("data-key") ?? ""); };
+    try {
+      render(<ConsolePane />);
+      await frame();
+      const log = screen.getByRole("log", { name: "Conversation" });
+      // the user scrolls up (jsdom has no layout: give the box a size)
+      Object.defineProperty(log, "scrollHeight", { configurable: true, value: 1000 });
+      Object.defineProperty(log, "clientHeight", { configurable: true, value: 100 });
+      log.scrollTop = 0;
+      fireEvent.scroll(log);
+      setSteps([...base, message("r1", "assistant", "late a", 30), message("r1", "assistant", "late b", 31)]);
+      await frame();
+      expect(log.scrollTop).toBe(0);                                     // no jump
+      const chip = screen.getByRole("button", { name: "2 new ↓" });
+      // an approval for the shown run: always brought into view
+      approvals.value = new Map([["ap9", approval("ap9", "r1")]]);
+      await frame();
+      expect(scrolled).toContain("a:ap9");
+      fireEvent.click(chip);
+      expect(log.scrollTop).toBe(1000);
+      await frame();
+      expect(screen.queryByRole("button", { name: /new ↓/ })).toBeNull();
+    } finally {
+      proto.scrollIntoView = orig;
+    }
+  });
+
+  it("long_threads_show_the_last_500_rows_with_show_earlier", async () => {
+    client();
+    setRuns([run("r1")]);
+    setSteps(Array.from({ length: 620 }, (_, i) => message("r1", "assistant", `line ${i}`, 10 + i)));
+    render(<ConsolePane />);
+    await frame();
+    const log = screen.getByRole("log", { name: "Conversation" });
+    expect(log.querySelectorAll("[data-msg]")).toHaveLength(500);
+    fireEvent.click(screen.getByRole("button", { name: "show earlier · 120" }));
+    await frame();
+    expect(log.querySelectorAll("[data-msg]")).toHaveLength(620);
+    expect(screen.queryByRole("button", { name: /^show earlier/ })).toBeNull();
   });
 
   it("agent_text_renders_as_text_never_html", async () => {
@@ -228,6 +277,23 @@ describe("inline composer", () => {
     await waitFor(() => expect(form.textContent).toContain("no API key — add one in Profile"));
     fireEvent.input(within(form).getByLabelText("Task"), { target: { value: "go" } });
     expect((within(form).getByRole("button", { name: "Start" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(c.createRun).not.toHaveBeenCalled();
+  });
+
+  it("enter_in_the_picker_never_starts_a_run_and_a_typed_ref_sticks", async () => {
+    const c = client();
+    render(<ConsolePane />);
+    await frame();
+    fireEvent.click(screen.getByRole("button", { name: "+ New" }));
+    const form = screen.getByRole("form", { name: "New run" });
+    await waitFor(() => expect(within(form).getByRole("button", { name: /^Model: Claude Code · opus/ })).toBeTruthy());
+    fireEvent.input(within(form).getByLabelText("Task"), { target: { value: "go" } });
+    fireEvent.click(within(form).getByRole("button", { name: /^Model:/ }));
+    const other = within(form).getByLabelText("Other model");
+    fireEvent.input(other, { target: { value: "gemini/gemini-3-pro" } });
+    fireEvent.keyDown(other, { key: "Enter" });
+    await frame();
+    expect(within(form).getByRole("button", { name: /^Model: gemini · gemini-3-pro/ })).toBeTruthy();
     expect(c.createRun).not.toHaveBeenCalled();
   });
 

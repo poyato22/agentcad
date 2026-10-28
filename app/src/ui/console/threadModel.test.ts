@@ -80,6 +80,14 @@ describe("buildThread rules", () => {
     expect((t[4] as Extract<ThreadItem, { kind: "error" }>).hint).toBe("try again");
   });
 
+  it("onshape_proposals_never_fold", () => {
+    resetIds();
+    const stepList = [message("r1", "user", "push it", 1), ...pairs("r1", 4, 2, "p", "onshape_propose_change")];
+    const t = thread({ runs: [run("r1")], stepList, selectedRunId: "r1" });
+    expect(brief(t).filter((x) => x === "· proposed change on Onshape branch")).toHaveLength(4);
+    expect(t.some((x) => x.kind === "fold")).toBe(false);
+  });
+
   it("live_text_is_an_agent_reply_being_written", () => {
     const t = thread({ runs: [run("r1")], stepList: [message("r1", "user", "hi", 1)], selectedRunId: "r1", liveText: new Map([["r1", "Checking the"]]) });
     const last = t.at(-1) as Extract<ThreadItem, { kind: "agent" }>;

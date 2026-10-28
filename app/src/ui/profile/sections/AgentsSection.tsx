@@ -22,7 +22,8 @@ export function AgentsSection({ data, update }: SectionProps): JSX.Element {
   const agentNames = data.agents.map((a) => a.name);
   if (!agentNames.includes(p.default_agent)) agentNames.unshift(p.default_agent);
   const par = data.status?.parallel;
-  const autoLabel = par ? `Auto (${par.limit} on this Mac)` : "Auto";
+  // the core's limit is "N on this Mac" only when it picked it; a manual limit reads "Manual: N"
+  const autoLabel = par?.auto ? `Auto (${par.limit} on this Mac)` : "Auto";
 
   const nParallel = auto ? null : wholeNumber(parallel, 1, 16);
   const nRunCap = wholeNumber(runCap, 0);
@@ -44,6 +45,9 @@ export function AgentsSection({ data, update }: SectionProps): JSX.Element {
       setAuto(next.max_parallel_agents === "auto");
       if (next.max_parallel_agents !== "auto") setParallel(String(next.max_parallel_agents));
       setRunCap(String(next.onshape_calls_run_cap));
+      // the limit the core now uses (and why) comes from /status; a failed read keeps the old one
+      const st = await actions.client().status().catch(() => null);
+      if (st) update({ status: st });
     }, "saved");
   }
   const edit = (set: (v: string) => void) => (e: { currentTarget: { value: string } }): void => { set(e.currentTarget.value); task.clear(); };
@@ -65,7 +69,8 @@ export function AgentsSection({ data, update }: SectionProps): JSX.Element {
         <fieldset class="profile-field" style={{ border: 0, padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "3px" }}>
           <legend class="label">Parallel agents</legend>
           <label><input type="radio" name="parallel" checked={auto} onChange={() => { setAuto(true); task.clear(); }} /> {autoLabel}</label>
-          {par?.reason && <div class="profile-hint text">{par.reason}</div>}
+          {par?.auto && par.reason && <div class="profile-hint text">{par.reason}</div>}
+          {par && !par.auto && <div class="profile-hint">{`Manual: ${par.limit}`}</div>}
           {!par && <div class="profile-hint">The core picks how many run at once from this Mac's chip, memory and the model.</div>}
           <label><input type="radio" name="parallel" checked={!auto} onChange={() => { setAuto(false); task.clear(); }} /> Choose a number</label>
           {!auto && (

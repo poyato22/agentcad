@@ -130,6 +130,23 @@ describe("ModelPicker", () => {
     expect(onChange).toHaveBeenCalledWith("gemini/gemini-3-pro");
   });
 
+  it("enter_in_other_model_never_submits_a_surrounding_form", async () => {
+    client();
+    const submit = vi.fn((e: Event) => e.preventDefault());
+    const onChange = vi.fn();
+    render(<form onSubmit={submit}><ModelPicker value={null} onChange={onChange} /></form>);
+    fireEvent.click(screen.getByRole("button", { name: /^Model/ }));
+    const panel = await screen.findByRole("region", { name: "Choose a model" });
+    const other = within(panel).getByLabelText("Other model");
+    fireEvent.input(other, { target: { value: "gemini" } });            // partial: not a ref yet
+    const formKeys = vi.fn();
+    panel.closest("form")?.addEventListener("keydown", formKeys);
+    expect(fireEvent.keyDown(other, { key: "Enter" })).toBe(false);    // default (implicit submit) prevented
+    expect(formKeys).not.toHaveBeenCalled();                            // never reaches the form
+    expect(submit).not.toHaveBeenCalled();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it("chip_names_the_current_model_and_escape_closes", async () => {
     client();
     render(<ModelPicker value="claude-code/opus" onChange={vi.fn()} />);

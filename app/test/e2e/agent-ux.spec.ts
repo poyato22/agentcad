@@ -68,7 +68,7 @@ test("failed_calls_and_errors_are_red_inline_and_another_run_needing_you_is_one_
 
 test("details_toggle_shows_the_dense_log_and_is_remembered", async ({ page }) => {
   await open(page);
-  await page.getByRole("button", { name: "Details", exact: true }).click();
+  await page.getByRole("button", { name: "Full log", exact: true }).click();
   await expect(consoleRegion(page).locator("[data-roster]")).toBeVisible();
   await expect(consoleRegion(page).locator("[data-filters]")).toBeVisible();
   await expect(page.locator(`[data-roster] [data-run="${DES}"]`)).toBeVisible();
@@ -94,6 +94,51 @@ test("inline_composer_starts_a_run_with_profile_defaults", async ({ page, fake }
   await expect(switcher(page)).toContainText("designer · stiffen upright");
   await expect(acts(page)).toHaveText(["measured mount plate · 8.0 cm³"]);
   await expect(thread(page).locator("[data-msg=agent]")).toContainText("Measuring the plate first.");
+});
+
+test("enter_in_the_picker's_other_model_box_never_starts_a_run", async ({ page, fake }) => {
+  await open(page);
+  await page.getByRole("button", { name: "+ New" }).click();
+  const form = page.getByRole("form", { name: "New run" });
+  await expect(form.getByRole("button", { name: /^Model: Claude Code · opus/ })).toBeVisible();
+  await form.getByLabel("Task").fill("stiffen the upright");
+  await form.getByRole("button", { name: /^Model:/ }).click();
+  const other = form.getByLabel("Other model");
+  await other.fill("gemini");                                   // a partial ref
+  await other.press("Enter");
+  await other.fill("gemini/gemini-3-pro");                      // a full ref: Enter picks it, still no run
+  await other.press("Enter");
+  await expect(form.getByRole("button", { name: /^Model: gemini · gemini-3-pro/ })).toBeVisible();
+  await page.waitForTimeout(300);
+  expect((await fake.calls()).filter((c) => c.method === "POST" && c.path === "/runs")).toHaveLength(0);
+  await expect(form).toBeVisible();
+});
+
+test("scrolled_up_the_thread_counts_new_rows_and_a_new_card_comes_into_view", async ({ page, fake }) => {
+  await open(page);
+  await expect(acts(page)).toHaveCount(4);
+  const t0 = 1792869500;
+  await fake.emit({ type: "note", run_id: DES, data: { text: "" } }, {
+    steps: Array.from({ length: 40 }, (_, i) => ({ run_id: DES, kind: "message" as const, ts: t0 + i, payload: { role: "assistant", text: `progress line ${i}`, stop_reason: "end_turn" } })),
+  });
+  await expect(thread(page).getByText("progress line 39")).toBeInViewport();
+  await thread(page).hover();
+  await page.mouse.wheel(0, -3000);
+  await expect(thread(page).getByText("progress line 39")).not.toBeInViewport();
+  await fake.emit({ type: "note", run_id: DES, data: { text: "" } }, {
+    steps: Array.from({ length: 3 }, (_, i) => ({ run_id: DES, kind: "message" as const, ts: t0 + 100 + i, payload: { role: "assistant", text: `late line ${i}`, stop_reason: "end_turn" } })),
+  });
+  await expect(page.getByRole("button", { name: "3 new ↓" })).toBeVisible();
+  await expect(thread(page).getByText("late line 2")).not.toBeInViewport();     // no jump
+  await page.getByRole("button", { name: "3 new ↓" }).click();
+  await expect(thread(page).getByText("late line 2")).toBeInViewport();
+  await expect(page.getByRole("button", { name: /new ↓$/ })).toHaveCount(0);
+  // scrolled up again: a question for this run is still brought into view
+  await thread(page).hover();
+  await page.mouse.wheel(0, -3000);
+  await expect(thread(page).getByText("late line 2")).not.toBeInViewport();
+  await fake.emit({ type: "question_asked", run_id: DES, data: { question_id: "q_now", question: "merge now?", options: ["yes", "no"] } });
+  await expect(page.locator('[data-question="q_now"]')).toBeInViewport();
 });
 
 test("model_picker_groups_badges_start_ollama_and_download_with_progress", async ({ page, fake }) => {
