@@ -200,6 +200,15 @@ describe("SketchPage", () => {
     expect((screen.getByRole("button", { name: "Build part" }) as HTMLButtonElement).disabled).toBe(false);
   });
 
+  it("won't send a sketch over the core's point budget", async () => {
+    fakeClient();
+    render(<SketchPage />);
+    await flush();
+    act(() => { for (let i = 0; i < 80; i++) sketchActions.addStroke(circleStroke(sketchActions.newStrokeId(), [50, 50], 1 + i / 10)); });
+    expect((screen.getByRole("button", { name: "Build part" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/too much detail/)).toBeTruthy();
+  });
+
   it("shows a photo error from the file input", async () => {
     fakeClient();
     render(<SketchPage />);

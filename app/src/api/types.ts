@@ -166,6 +166,7 @@ export interface SketchUpload {
   /** The drawing rasterised by the app (PNG), for vision-capable models. */
   render_png_b64?: string | null;
 }
-export interface SketchPhotoInfo { source_type: "png" | "jpeg" | "heic"; width: number; height: number; bytes: number }
+/** The stored photo: JPEG sized for a model's image input (base64 under the 5 MB per-image limit). */
+export interface SketchPhotoInfo { source_type: "png" | "jpeg" | "heic"; media_type: "image/jpeg" | "image/png"; width: number; height: number; bytes: number }
 /** POST /sketches and GET /sketches/{id}. */
 export interface SketchSummary { sketch_id: string; strokes: number; dimensions: number; photo: SketchPhotoInfo | null; render: boolean }

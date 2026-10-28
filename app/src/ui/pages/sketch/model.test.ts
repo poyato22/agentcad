@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   circleStroke, clientToMm, closeIfNear, emptyDoc, endpoints, freehandStroke, hitStroke, History, labelAnchor, lineStroke, measuredLength,
-  parseDimension, rectStroke, SHEET, simplify, snapPoint, toUpload, type SketchDoc,
+  MAX_TOTAL_POINTS, parseDimension, rectStroke, SHEET, simplify, snapPoint, totalPoints, toUpload, withinPointBudget, type SketchDoc, type Stroke,
 } from "./model";
 
 const RECT = { left: 100, top: 50, width: 400, height: 300 }; // exactly 2 px per mm for a 200 x 150 mm sheet
@@ -172,6 +172,27 @@ describe("History", () => {
     let n = 0;
     while (h.canUndo) { h.undo(); n++; }
     expect(n).toBe(3);
+  });
+});
+
+describe("point budget", () => {
+  it("re-simplifies freehand strokes so the sketch stays within the core's 5,000 points", () => {
+    expect(MAX_TOTAL_POINTS).toBe(5000);
+    const wiggle = (id: string, dy: number): Stroke => ({
+      id, kind: "freehand", closed: false, label: "",
+      points: Array.from({ length: 2000 }, (_, i) => [i * 0.1, dy + Math.sin(i / 7) * 3] as [number, number]),
+    });
+    const doc: SketchDoc = { ...emptyDoc(), strokes: [wiggle("a", 20), wiggle("b", 60), wiggle("c", 100), lineStroke("l", [0, 0], [9, 9])] };
+    expect(totalPoints(doc.strokes)).toBe(6002);
+    const up = toUpload(doc);
+    expect(up.strokes.reduce((n, s) => n + s.points.length, 0)).toBeLessThanOrEqual(5000);
+    expect(up.strokes[3].points).toEqual([[0, 0], [9, 9]]);            // lines are never touched
+  });
+
+  it("reports when even simplified it can't fit (too many circles)", () => {
+    const many = Array.from({ length: 80 }, (_, i) => circleStroke(`c${i}`, [i, i], 2));
+    expect(withinPointBudget({ ...emptyDoc(), strokes: many })).toBe(false);
+    expect(withinPointBudget({ ...emptyDoc(), strokes: many.slice(0, 70) })).toBe(true);
   });
 });
 

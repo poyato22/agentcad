@@ -374,6 +374,26 @@ class Runtime:
         st.task = asyncio.create_task(self._drive(run.id, first, log=log))
         return run.id
 
+    def _attach_sketch(self, rid: str, sketch_id: str, wd: Path) -> None:
+        """Copy the sketch into the new run's workdir; on failure the run is marked failed
+        (with an error step and run_finished), never left "running" without its sketch."""
+        try:
+            sketch_mod.attach_to_run(self.home, sketch_id, wd)
+            return
+        except MisesError as e:
+            err = e
+        except Exception as e:  # noqa: BLE001 - e.g. disk full; reported on the run
+            err = MisesError(ErrorCode.TOOL_FAILED, f"could not attach the sketch: {e}")
+        self._runs.pop(rid, None)
+        self._external.discard(rid)
+        self.store.append_step(rid, StepKind.ERROR, {
+            "stop_reason": "error", "error": err.code.value, "message": err.message,
+            "hint": err.hint, "retryable": False})
+        self.store.update_run(rid, status="failed")
+        self.events.publish(Event(type="run_finished", run_id=rid, data={
+            "status": "failed", "stop_reason": "error", "error": err.message, "final_text": ""}))
+        raise err
+
     def _sketch_first_prompt(self, rid: str, sketch_id: str, prompt: str,
                              provider: str) -> tuple[list[Block], dict]:
         """A native run's first message: the sketch as a <mises-context> data block, the
@@ -381,7 +401,7 @@ class Runtime:
         Also the user step's payload: like a Claude Code run's, the words sent plus the context
         as its own field (no data block in the text, no image bytes)."""
         wd = self.workdir(rid)
-        sketch_mod.attach_to_run(self.home, sketch_id, wd)
+        self._attach_sketch(rid, sketch_id, wd)
         vision = provider in sketch_mod.VISION_PROVIDERS
         ctx = {"sketch": sketch_mod.sketch_context(wd, vision=vision)}
         words = f"{prompt}\n\n{sketch_mod.SKETCH_PROCEDURE}"
@@ -421,7 +441,7 @@ class Runtime:
         text, images = prompt, None
         if sketch_id is not None:
             wd = self.workdir(rid)
-            sketch_mod.attach_to_run(self.home, sketch_id, wd)
+            self._attach_sketch(rid, sketch_id, wd)
             text = f"{prompt}\n\n{sketch_mod.SKETCH_PROCEDURE}"
             images = sketch_mod.sketch_images(wd)      # Claude Code sees images
         st = self._claude[rid] = _ClaudeRun()

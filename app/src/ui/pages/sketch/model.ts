@@ -19,6 +19,8 @@ export const SHEET = { width_mm: 200, height_mm: 150 } as const;
 /** Same caps as core sketch.py. */
 export const MAX_POINTS_PER_STROKE = 2000;
 export const MAX_STROKES = 500;
+/** Same as core sketch.MAX_TOTAL_POINTS (keeps the agent's context small). */
+export const MAX_TOTAL_POINTS = 5000;
 const CIRCLE_SEGMENTS = 64;
 const ANGLE_SNAP_DEG = 6;
 
@@ -318,7 +320,7 @@ export function toUpload(doc: SketchDoc): SketchUpload["sketch"] {
   const ids = new Set(doc.strokes.map((s) => s.id));
   return {
     units: "mm", width_mm: SHEET.width_mm, height_mm: SHEET.height_mm,
-    strokes: doc.strokes.map((s) => {
+    strokes: fitPoints(doc.strokes).map((s) => {
       const out: Stroke = { id: s.id, kind: s.kind, points: s.points.map(([x, y]) => [r2(x), r2(y)]), closed: s.closed, label: s.label };
       if (s.center) out.center = [r2(s.center[0]), r2(s.center[1])];
       if (s.radius_mm) out.radius_mm = r2(s.radius_mm);
@@ -327,6 +329,25 @@ export function toUpload(doc: SketchDoc): SketchUpload["sketch"] {
     dimensions: doc.dimensions.filter((d) => ids.has(d.stroke_id)).map((d) => ({ ...d })),
     notes: doc.notes.trim(),
   };
+}
+
+export function totalPoints(strokes: readonly Stroke[]): number {
+  return strokes.reduce((n, s) => n + s.points.length, 0);
+}
+
+/** Freehand strokes re-simplified (coarser each pass, up to 8 mm) until the whole sketch fits
+ *  MAX_TOTAL_POINTS; lines, rectangles and circles are kept exactly. */
+export function fitPoints(strokes: readonly Stroke[]): readonly Stroke[] {
+  let out = strokes;
+  for (let tol = 0.6; totalPoints(out) > MAX_TOTAL_POINTS && tol <= 8; tol *= 2) {
+    out = strokes.map((s) => (s.kind === "freehand" ? { ...s, points: simplify(s.points as Pt[], tol) } : s));
+  }
+  return out;
+}
+
+/** Whether the sketch can be sent (the core refuses more than MAX_TOTAL_POINTS). */
+export function withinPointBudget(doc: SketchDoc): boolean {
+  return totalPoints(fitPoints(doc.strokes)) <= MAX_TOTAL_POINTS;
 }
 
 function clamp(v: number, lo: number, hi: number): number {

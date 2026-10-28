@@ -62,7 +62,7 @@ def test_post_and_get_sketch(client, rt):
     assert out["strokes"] == 1 and out["dimensions"] == 1 and out["render"] is False
     assert out["photo"]["source_type"] == "png"
     sid = out["sketch_id"]
-    assert (rt.home / "sketches" / sid / "photo.png").exists()
+    assert (rt.home / "sketches" / sid / "photo.jpg").exists()
     assert client.get(f"/sketches/{sid}", headers=AUTH).json() == out
     assert client.get("/sketches/sk_000000000000", headers=AUTH).status_code == 404
     assert client.get("/sketches/..%2F..%2Fx", headers=AUTH).status_code in (400, 404)
@@ -88,7 +88,7 @@ def test_run_with_sketch_vision_provider(client, rt, fake):
     run = wait_status(client, rid)
     assert run["task"] == "Build the part shown in my sketch." and run["agent"] == "designer"
     wd = rt.home / "runs" / rid
-    assert (wd / "sketch" / "sketch.json").exists() and (wd / "sketch" / "photo.png").exists()
+    assert (wd / "sketch" / "sketch.json").exists() and (wd / "sketch" / "photo.jpg").exists()
     first = fake.requests[0].messages[0].content
     text = first[0]
     assert isinstance(text, TextBlock)
@@ -97,7 +97,7 @@ def test_run_with_sketch_vision_provider(client, rt, fake):
     assert text.text.count("</mises-context>") == 1
     assert "Build the part shown in my sketch." in text.text and "at most 3" in text.text
     images = [b for b in first if isinstance(b, ImageBlock)]
-    assert [b.media_type for b in images] == ["image/png", "image/png"]
+    assert [b.media_type for b in images] == ["image/jpeg", "image/png"]
     ctx = build_context(rt, rid)
     assert ctx["sketch"]["sketch_id"] == sid
     assert all(i["attached"] for i in ctx["sketch"]["images"])
@@ -129,6 +129,53 @@ def test_run_with_unknown_sketch_is_404_and_creates_nothing(client, rt):
     assert rt.store.list_runs() == []
     r = client.post("/runs", headers=AUTH, json={"prompt": "x", "sketch_id": "../etc"})
     assert r.status_code in (400, 422)
+
+
+def noisy_jpeg_b64(w=4000, h=3000) -> str:
+    import random
+    im = Image.frombytes("RGB", (w, h), random.Random(1).randbytes(w * h * 3))
+    buf = io.BytesIO()
+    im.save(buf, "JPEG", quality=40)
+    return base64.b64encode(buf.getvalue()).decode()
+
+
+def test_noisy_photo_native_run_image_under_5_mb(client, rt, fake):
+    fake.name = "anthropic"
+    out = upload(client, photo={"data_b64": noisy_jpeg_b64()})
+    assert out["photo"]["media_type"] == "image/jpeg"
+    rid = client.post("/runs", headers=AUTH, json={"prompt": "Build it",
+                                                   "sketch_id": out["sketch_id"]}).json()["run_id"]
+    wait_status(client, rid)
+    [img] = [b for b in fake.requests[0].messages[0].content if isinstance(b, ImageBlock)]
+    assert img.media_type == "image/jpeg" and len(img.data_b64) < 5 * 1024 * 1024
+    assert base64.b64decode(img.data_b64)[:3] == b"\xff\xd8\xff"
+
+
+def test_oversized_photo_is_400(client):
+    import struct
+    import zlib
+
+    def chunk(t, d):
+        return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d))
+    png = (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 8000, 8000, 8, 2, 0, 0, 0))
+           + chunk(b"IEND", b""))
+    r = client.post("/sketches", headers=AUTH, json={
+        "sketch": SKETCH, "photo": {"data_b64": base64.b64encode(png).decode()}})
+    assert r.status_code == 400 and "too large" in r.json()["message"]
+
+
+def test_failed_attach_marks_the_run_failed(client, rt, monkeypatch):
+    sid = upload(client)["sketch_id"]
+
+    def boom(*a, **k):
+        raise OSError("disk full")
+    monkeypatch.setattr("mises.sketch.attach_to_run", boom)
+    r = client.post("/runs", headers=AUTH, json={"prompt": "x", "sketch_id": sid})
+    assert r.status_code == 500 and r.json()["error"] == "tool_failed"
+    [run] = rt.store.list_runs()
+    assert run.status == "failed"
+    errs = [s for s in rt.store.steps(run.id) if s.kind.value == "error"]
+    assert errs and "sketch" in errs[0].payload["message"]
 
 
 def test_runs_without_sketch_have_no_sketch_context(client, rt, fake):

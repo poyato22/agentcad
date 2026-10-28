@@ -124,7 +124,10 @@ export const claudeCodeStatusSchema = z.object({
 
 export const sketchSummarySchema = z.object({
   sketch_id: z.string(), strokes: z.number().int(), dimensions: z.number().int(),
-  photo: z.object({ source_type: z.enum(["png", "jpeg", "heic"]), width: z.number(), height: z.number(), bytes: z.number() }).nullable(),
+  photo: z.object({
+    source_type: z.enum(["png", "jpeg", "heic"]), media_type: z.enum(["image/jpeg", "image/png"]),
+    width: z.number(), height: z.number(), bytes: z.number(),
+  }).nullable(),
   render: z.boolean(),
 });
 

@@ -30,7 +30,7 @@ afterEach(async () => { await core.stop(); });
 describe("fake core sketch routes", () => {
   it("stores a sketch and starts a run with it", async () => {
     const s = await client.postSketch({ sketch: SKETCH, photo: { data_b64: PNG.toString("base64"), name: "a.png" } });
-    expect(s).toMatchObject({ strokes: 1, dimensions: 1, render: false, photo: { source_type: "png", width: 1568, height: 392 } });
+    expect(s).toMatchObject({ strokes: 1, dimensions: 1, render: false, photo: { source_type: "png", media_type: "image/jpeg", width: 1568, height: 392 } });
     expect(s.sketch_id).toMatch(/^sk_[0-9a-f]{12}$/);
     expect(await client.getSketch(s.sketch_id)).toEqual(s);
     const { run_id } = await client.createRun({ agent: "designer", prompt: "Build the part shown in my sketch.", sketch_id: s.sketch_id });
@@ -46,6 +46,14 @@ describe("fake core sketch routes", () => {
     expect(e.message).toBe("the photo is larger than 10 MB");
     e = await failure(client.postSketch({ sketch: { ...SKETCH, dimensions: [{ stroke_id: "zz", text: "1", value_mm: 1, kind: "length" }] } }));
     expect([e.status, e.code]).toEqual([422, "validation"]);
+    const huge = Buffer.from(PNG);
+    huge.writeUInt32BE(8000, 16);
+    huge.writeUInt32BE(8000, 20);
+    e = await failure(client.postSketch({ sketch: SKETCH, photo: { data_b64: huge.toString("base64") } }));
+    expect([e.status, e.message]).toEqual([400, "the photo is too large (8000 x 8000 px; at most 40 megapixels)"]);
+    const dense = { ...SKETCH, dimensions: [], strokes: [0, 1, 2].map((i) => ({ id: `f${i}`, kind: "freehand" as const, points: Array.from({ length: 2000 }, (_, k) => [k, i] as [number, number]), closed: false, label: "" })) };
+    e = await failure(client.postSketch({ sketch: dense }));
+    expect(e.status).toBe(422);
     e = await failure(client.createRun({ agent: "designer", prompt: "x", sketch_id: "sk_000000000000" }));
     expect([e.status, e.code]).toEqual([404, "not_found"]);
     e = await failure(client.createRun({ agent: "designer", prompt: "x", sketch_id: "../x" }));

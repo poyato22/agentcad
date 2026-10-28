@@ -70,8 +70,14 @@ async def test_session_prompt_sends_images_as_blocks(rt, claude_bin, signed_in):
 
 @needs_sandbox
 async def test_claude_run_from_sketch(rt, claude_bin, signed_in):
+    # a noisy 4000 x 3000 camera photo: must reach Claude Code as a JPEG under the 5 MB limit
+    import random
+    noisy = Image.frombytes("RGB", (4000, 3000), random.Random(3).randbytes(4000 * 3000 * 3))
+    buf = io.BytesIO()
+    noisy.save(buf, "JPEG", quality=40)
     sid = sk.save_sketch(rt.home, sk.SketchUpload.model_validate(
-        {"sketch": SKETCH, "photo": {"data_b64": _png()}}))["sketch_id"]
+        {"sketch": SKETCH, "photo": {"data_b64": base64.b64encode(buf.getvalue()).decode()}})
+    )["sketch_id"]
     _port, _token, handle = await serve_async(rt, write_server_json=False)
     try:
         rid = await rt.start_run("designer", "Build my sketch", model_ref="claude-code/sonnet",
@@ -83,7 +89,9 @@ async def test_claude_run_from_sketch(rt, claude_bin, signed_in):
     text = first[0]["text"]
     assert text.startswith("<mises-context>") and sid in text and "at most 3" in text
     assert [b["type"] for b in first] == ["text", "image"]
+    src = first[1]["source"]
+    assert src["media_type"] == "image/jpeg" and len(src["data"]) < 5 * 1024 * 1024
     assert rt.store.get_run(rid).task == "Build my sketch"
     ctx = build_context(rt, rid)
-    assert ctx["sketch"]["images"] == [{"kind": "photo", "path": "sketch/photo.png",
+    assert ctx["sketch"]["images"] == [{"kind": "photo", "path": "sketch/photo.jpg",
                                         "attached": True}]

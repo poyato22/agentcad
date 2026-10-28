@@ -54,7 +54,7 @@ def test_save_sketch_without_photo(tmp_path):
     assert data["strokes"][0]["points"] == [[10.0, 10.0], [50.0, 10.0]]
     assert out["photo"] is None and out["render"] is False
     assert out["strokes"] == 3 and out["dimensions"] == 2
-    assert not (d / "photo.png").exists()
+    assert not list(d.glob("photo.*"))
 
 
 def test_dimension_must_reference_a_stroke():
@@ -75,27 +75,91 @@ def test_stroke_ids_unique_and_total_points_capped():
         sk.SketchUpload.model_validate({"sketch": a_sketch(strokes=[
             {"id": "a", "kind": "line", "points": [[0, 0], [1, 1]]},
             {"id": "a", "kind": "line", "points": [[0, 0], [1, 1]]}], dimensions=[])})
-    many = [{"id": f"s{i}", "kind": "freehand", "points": [[0, 0]] * 2000} for i in range(30)]
+    assert sk.MAX_TOTAL_POINTS == 5000
+    ok = [{"id": f"s{i}", "kind": "freehand", "points": [[0, 0]] * 1000} for i in range(5)]
+    sk.SketchUpload.model_validate({"sketch": a_sketch(strokes=ok, dimensions=[])})
+    many = ok + [{"id": "x", "kind": "line", "points": [[0, 0]]}]
     with pytest.raises(ValueError, match="points"):
         sk.SketchUpload.model_validate({"sketch": a_sketch(strokes=many, dimensions=[])})
 
 
-def test_png_photo_is_stored_as_png(tmp_path):
+def test_png_photo_is_stored_as_jpeg(tmp_path):
     up = sk.SketchUpload.model_validate({"sketch": a_sketch(),
                                          "photo": {"data_b64": b64(png_bytes()), "name": "a.png"}})
     out = sk.save_sketch(tmp_path, up)
-    p = tmp_path / "sketches" / out["sketch_id"] / "photo.png"
-    assert p.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
-    assert out["photo"] == {"source_type": "png", "width": 40, "height": 30,
-                            "bytes": p.stat().st_size}
+    p = tmp_path / "sketches" / out["sketch_id"] / "photo.jpg"
+    assert p.read_bytes()[:3] == b"\xff\xd8\xff"
+    assert out["photo"] == {"source_type": "png", "media_type": "image/jpeg", "width": 40,
+                            "height": 30, "bytes": p.stat().st_size}
 
 
-def test_jpeg_photo_is_converted_to_png(tmp_path):
+def test_jpeg_photo_stays_jpeg(tmp_path):
     up = sk.SketchUpload.model_validate({"sketch": a_sketch(),
                                          "photo": {"data_b64": b64(jpeg_bytes())}})
     out = sk.save_sketch(tmp_path, up)
-    p = tmp_path / "sketches" / out["sketch_id"] / "photo.png"
-    assert p.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n" and out["photo"]["source_type"] == "jpeg"
+    p = tmp_path / "sketches" / out["sketch_id"] / "photo.jpg"
+    assert p.read_bytes()[:3] == b"\xff\xd8\xff" and out["photo"]["source_type"] == "jpeg"
+
+
+def noisy_jpeg(w=4000, h=3000) -> bytes:
+    """A camera-like photo: per-pixel noise (worst case for compression), under 10 MB."""
+    import random
+    rnd = random.Random(1)
+    im = Image.frombytes("RGB", (w, h), rnd.randbytes(w * h * 3))
+    buf = io.BytesIO()
+    im.save(buf, "JPEG", quality=40)
+    assert len(buf.getvalue()) < sk.MAX_PHOTO_BYTES
+    return buf.getvalue()
+
+
+def test_noisy_photo_fits_the_per_image_api_budget(tmp_path):
+    up = sk.SketchUpload.model_validate({"sketch": a_sketch(),
+                                         "photo": {"data_b64": b64(noisy_jpeg())}})
+    sid = sk.save_sketch(tmp_path, up)["sketch_id"]
+    wd = tmp_path / "wd"
+    sk.attach_to_run(tmp_path, sid, wd)
+    [(media, data)] = sk.sketch_images(wd)
+    assert media == "image/jpeg" and len(data) < sk.IMAGE_B64_BUDGET < 5 * 1024 * 1024
+
+
+def test_budget_steps_size_down(tmp_path, monkeypatch):
+    monkeypatch.setattr(sk, "IMAGE_B64_BUDGET", 150_000)
+    up = sk.SketchUpload.model_validate({"sketch": a_sketch(),
+                                         "photo": {"data_b64": b64(noisy_jpeg(2000, 1500))}})
+    out = sk.save_sketch(tmp_path, up)
+    p = tmp_path / "sketches" / out["sketch_id"] / "photo.jpg"
+    assert len(b64(p.read_bytes())) < 150_000
+    assert out["photo"]["width"] < sk.MAX_IMAGE_EDGE
+
+
+def _png_header(w: int, h: int) -> bytes:
+    import struct
+    import zlib
+    ihdr = struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)
+    chunk = lambda t, d: (struct.pack(">I", len(d)) + t + d
+                          + struct.pack(">I", zlib.crc32(t + d) & 0xffffffff))
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", b"x") + chunk(b"IEND", b"")
+
+
+def test_oversized_dimensions_rejected_before_decoding(tmp_path):
+    # 8000 x 8000 px (64 MP) declared in a few bytes: refused from the header, never decoded
+    up = sk.SketchUpload.model_validate({"sketch": a_sketch(),
+                                         "photo": {"data_b64": b64(_png_header(8000, 8000))}})
+    with pytest.raises(MisesError) as e:
+        sk.save_sketch(tmp_path, up)
+    assert e.value.code.value == "invalid_input" and "too large" in e.value.message
+    assert "8000 x 8000" in e.value.message
+    # far past Pillow's own bomb limit: still "too large", not "damaged"
+    huge = sk.SketchUpload.model_validate({"sketch": a_sketch(),
+                                           "photo": {"data_b64": b64(_png_header(30000, 30000))}})
+    with pytest.raises(MisesError) as e:
+        sk.save_sketch(tmp_path, huge)
+    assert "too large" in e.value.message
+    render = sk.SketchUpload.model_validate({"sketch": a_sketch(),
+                                             "render_png_b64": b64(_png_header(9000, 9000))})
+    with pytest.raises(MisesError) as e:
+        sk.save_sketch(tmp_path, render)
+    assert "too large" in e.value.message
 
 
 def test_large_photo_is_downscaled(tmp_path):
@@ -131,7 +195,7 @@ def test_bad_base64_is_rejected(tmp_path):
 
 
 @pytest.mark.skipif(shutil.which("sips") is None, reason="HEIC conversion uses macOS sips")
-def test_heic_photo_is_converted_to_png(tmp_path):
+def test_heic_photo_is_converted(tmp_path):
     src = tmp_path / "in.png"
     src.write_bytes(png_bytes(64, 48, (10, 200, 10)))
     heic = tmp_path / "in.heic"
@@ -141,8 +205,8 @@ def test_heic_photo_is_converted_to_png(tmp_path):
     up = sk.SketchUpload.model_validate({"sketch": a_sketch(),
                                          "photo": {"data_b64": b64(heic.read_bytes())}})
     out = sk.save_sketch(tmp_path / "home", up)
-    p = tmp_path / "home" / "sketches" / out["sketch_id"] / "photo.png"
-    assert p.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n" and out["photo"]["source_type"] == "heic"
+    p = tmp_path / "home" / "sketches" / out["sketch_id"] / "photo.jpg"
+    assert p.read_bytes()[:3] == b"\xff\xd8\xff" and out["photo"]["source_type"] == "heic"
     assert (out["photo"]["width"], out["photo"]["height"]) == (64, 48)
 
 
@@ -162,7 +226,7 @@ def test_attach_context_and_images(tmp_path):
     wd = tmp_path / "runs" / "r1"
     wd.mkdir(parents=True)
     sk.attach_to_run(tmp_path, sid, wd)
-    assert (wd / "sketch" / "sketch.json").exists() and (wd / "sketch" / "photo.png").exists()
+    assert (wd / "sketch" / "sketch.json").exists() and (wd / "sketch" / "photo.jpg").exists()
 
     ctx = sk.sketch_context(wd, vision=True)
     assert ctx["sketch_id"] == sid and ctx["units"] == "mm"
@@ -170,15 +234,17 @@ def test_attach_context_and_images(tmp_path):
     s1 = ctx["strokes"][0]
     assert s1["measured"]["length_mm"] == 40.0 and s1["measured"]["bbox_mm"] == [10, 10, 50, 10]
     assert ctx["strokes"][1]["measured"]["length_mm"] == 140.0          # closed rect perimeter
-    assert ctx["strokes"][2]["radius_mm"] == 5
+    assert ctx["strokes"][2]["radius_mm"] == 5 and ctx["strokes"][2]["center"] == [30, 30]
+    assert "points" not in ctx["strokes"][2]          # a circle is its centre + radius
     assert ctx["dimensions"][1]["value_mm"] == 10
     assert ctx["notes"] == "bracket, 5 mm thick"
-    assert ctx["images"] == [{"kind": "photo", "path": "sketch/photo.png", "attached": True},
+    assert ctx["images"] == [{"kind": "photo", "path": "sketch/photo.jpg", "attached": True},
                              {"kind": "render", "path": "sketch/render.png", "attached": True}]
     assert "image_note" not in ctx
     imgs = sk.sketch_images(wd)
-    assert [m for m, _ in imgs] == ["image/png", "image/png"]
-    assert base64.b64decode(imgs[0][1])[:4] == b"\x89PNG"
+    assert [m for m, _ in imgs] == ["image/jpeg", "image/png"]     # line-art render stays PNG
+    assert base64.b64decode(imgs[0][1])[:3] == b"\xff\xd8\xff"
+    assert base64.b64decode(imgs[1][1])[:4] == b"\x89PNG"
 
     blind = sk.sketch_context(wd, vision=False)
     assert all(not i["attached"] for i in blind["images"])
@@ -203,3 +269,29 @@ def test_procedure_is_staged_with_three_questions_max():
         assert word in p
     assert p.index("strokes") < p.index("dimensions") < p.index("constraints")
     assert sk.VISION_PROVIDERS == {"anthropic", "claude-code", "openai", "gemini"}
+
+
+def test_render_over_budget_becomes_jpeg(tmp_path, monkeypatch):
+    monkeypatch.setattr(sk, "IMAGE_B64_BUDGET", 150_000)
+    import random
+    im = Image.frombytes("RGB", (600, 450), random.Random(2).randbytes(600 * 450 * 3))
+    buf = io.BytesIO()
+    im.save(buf, "PNG")
+    up = sk.SketchUpload.model_validate({"sketch": a_sketch(), "render_png_b64": b64(buf.getvalue())})
+    sid = sk.save_sketch(tmp_path, up)["sketch_id"]
+    wd = tmp_path / "wd"
+    sk.attach_to_run(tmp_path, sid, wd)
+    [(media, data)] = sk.sketch_images(wd)
+    assert media == "image/jpeg" and len(data) < 150_000
+
+
+def test_context_block_keeps_points_compact():
+    from mises.claude_code.prompts import context_block
+    up = sk.SketchUpload.model_validate({"sketch": a_sketch()})
+    ctx = {"sketch": {"strokes": [{"points": [[10, 10], [50.5, 10]], "bbox_mm": [1, 2, 3, 4]}]},
+           "selected_part_id": None}
+    block = context_block(ctx)
+    assert "[[10,10],[50.5,10]]" in block and "[1,2,3,4]" in block
+    body = block.split("\n", 2)[2].rsplit("</mises-context>", 1)[0]
+    assert json.loads(body) == ctx
+    assert up.sketch.strokes

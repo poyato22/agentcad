@@ -1,13 +1,16 @@
 // Fake core: Sketch page routes (core server/sketch_api.py + sketch.py). Same shapes and error
 // answers: POST /sketches validates the sketch, checks the photo by content (PNG/JPEG/HEIC) and size
 // (≤ 10 MB) and returns {sketch_id, strokes, dimensions, photo, render}; GET /sketches/{id}.
-// Nothing is converted here: PNG sizes are read from the IHDR, other photos report a nominal size.
+// Nothing is converted here: PNG sizes are read from the IHDR, other photos report a nominal size;
+// photos are reported as stored JPEG (image/jpeg), as the core stores them.
 import { randomBytes } from "node:crypto";
 import type { SketchSummary, SketchUpload } from "../../src/api/types";
 import { asBody, HttpError, mises, type Route } from "./server";
 
 export const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
 const MAX_IMAGE_EDGE = 1568;
+const MAX_TOTAL_POINTS = 5000;
+const MAX_PIXELS = 40_000_000;
 const SKETCH_ID_RE = /^sk_[0-9a-f]{12}$/;
 const STROKE_KINDS = new Set(["freehand", "line", "rect", "circle"]);
 const HEIF_BRANDS = new Set(["heic", "heix", "heim", "heis", "hevc", "hevx", "mif1", "msf1", "heif"]);
@@ -39,14 +42,16 @@ function photoInfo(raw: Buffer): NonNullable<SketchSummary["photo"]> {
   let w = 1568;
   let h = 1176;
   if (kind === "png") {
-    if (raw.length < 24 || raw.toString("latin1", 12, 16) !== "IHDR") throw mises("invalid_input", "could not read this PNG image", "the file may be damaged; try exporting it again");
+    if (raw.length < 24 || raw.toString("latin1", 12, 16) !== "IHDR") throw mises("invalid_input", "could not read this photo", "the file may be damaged; try exporting it again");
     w = raw.readUInt32BE(16);
     h = raw.readUInt32BE(20);
+    // core: refused from the header, before decoding
+    if (w * h > MAX_PIXELS) throw mises("invalid_input", `the photo is too large (${w} x ${h} px; at most 40 megapixels)`, "use a smaller image");
     const s = Math.min(1, MAX_IMAGE_EDGE / Math.max(w, h));
     w = Math.round(w * s);
     h = Math.round(h * s);
   }
-  return { source_type: kind, width: w, height: h, bytes: Math.min(raw.length, 4 * 1024 * 1024) };
+  return { source_type: kind, media_type: "image/jpeg", width: w, height: h, bytes: Math.min(raw.length, 3 * 1024 * 1024) };
 }
 
 function checkSketch(s: unknown): SketchUpload["sketch"] {
@@ -66,6 +71,9 @@ function checkSketch(s: unknown): SketchUpload["sketch"] {
     if (ids.has(st.id)) throw invalid422(["sketch"], "Value error, duplicate stroke id", null);
     ids.add(st.id);
   });
+  if (strokes.reduce((n, st) => n + st.points.length, 0) > MAX_TOTAL_POINTS) {
+    throw invalid422(["sketch"], `Value error, too many points (max ${MAX_TOTAL_POINTS} in a sketch)`, null);
+  }
   for (const d of sk.dimensions ?? []) {
     if (!ids.has(d.stroke_id)) throw invalid422(["sketch"], `Value error, dimension on unknown stroke '${d.stroke_id}'`, null);
   }

@@ -9,7 +9,7 @@ import { Button } from "../../common/Button";
 import { PageShell } from "../PageShell";
 import { setConsoleCollapsed } from "../router";
 import { buildPart, buildTarget, describeError, type BuildTarget } from "./build";
-import { measuredLength, MAX_STROKES, type Stroke } from "./model";
+import { measuredLength, MAX_STROKES, MAX_TOTAL_POINTS, withinPointBudget, type Stroke } from "./model";
 import { formatBytes, readPhoto } from "./photo";
 import { renderPng } from "./render";
 import { SketchCanvas } from "./SketchCanvas";
@@ -220,7 +220,7 @@ function BuildBox(): JSX.Element {
   const b = build.value;
   const d = doc.value;
   const empty = !d.strokes.length && !photo.value;
-  const tooMany = d.strokes.length > MAX_STROKES;
+  const tooMany = d.strokes.length > MAX_STROKES || !withinPointBudget(d);
   const busy = b.state === "working";
   const ready = !!target && !empty && !tooMany && !busy;
 
@@ -259,6 +259,7 @@ function BuildBox(): JSX.Element {
         {busy ? (b.step === "saving" ? "Sending sketch…" : "Starting run…") : "Build part"}
       </Button>
       {empty && <div class="faint sk-p">Draw something or add a photo first.</div>}
+      {tooMany && <div class="sk-err" data-too-many>This sketch has too much detail to send (over {MAX_STROKES} strokes or {MAX_TOTAL_POINTS} points). Delete a few strokes.</div>}
       {b.state === "started" && <div class="dim" role="status">Run started — follow it in the console.</div>}
       {b.state === "error" && <div class="sk-err" role="alert">{b.message}</div>}
     </section>
