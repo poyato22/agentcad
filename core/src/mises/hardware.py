@@ -12,6 +12,7 @@ auto_parallel(model_ref):
 from __future__ import annotations
 
 import functools
+import math
 import os
 from typing import Literal, TypedDict
 
@@ -64,11 +65,33 @@ def model_need_gb(size_gb: float) -> float:
     return size_gb * FIT_FACTOR
 
 
+def _price(v) -> float | None:
+    try:
+        f = float(str(v).strip())
+    except ValueError:
+        return None
+    return f if math.isfinite(f) else None
+
+
+def is_free_model(model_ref: str, pricing: dict | None = None) -> bool:
+    """The one "free model" predicate: an OpenRouter model that is zero-priced, or whose id
+    ends in `:free`. Shared by model_kind, the registry's 20/min limiter, and the live model
+    list (which passes OpenRouter's `pricing`). Free models get the 20/min group cap and the
+    small-model tool filtering."""
+    vendor, _, model = model_ref.partition("/")
+    if vendor != "openrouter":
+        return False
+    if isinstance(pricing, dict) and pricing:
+        if all(_price(pricing.get(k)) == 0.0 for k in ("prompt", "completion")):
+            return True
+    return model.endswith(":free")
+
+
 def model_kind(model_ref: str) -> ModelKind:
     vendor, _, model = model_ref.partition("/")
     if vendor in LOCAL_VENDORS:
         return "local"
-    if vendor == "openrouter" and model.endswith(":free"):
+    if is_free_model(model_ref):
         return "free"
     return "cloud"
 

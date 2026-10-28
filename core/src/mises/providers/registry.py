@@ -47,7 +47,8 @@ OPENROUTER_FREE_LIMITER = RateLimiter(20, 60.0)
 
 
 def is_openrouter_free(vendor: str, model: str) -> bool:
-    return vendor == "openrouter" and model.endswith(":free")
+    from mises.hardware import is_free_model
+    return is_free_model(f"{vendor}/{model}")
 
 
 def resolve(model_ref: str) -> tuple[ModelProvider, str]:

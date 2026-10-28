@@ -86,6 +86,23 @@ def test_model_kind():
     assert hardware.model_kind("claude-sonnet-5-5") == "cloud"
 
 
+def test_is_free_model_shared_predicate():
+    # C5: one predicate — zero-priced OR id ends in :free (OpenRouter only) → free class.
+    assert hardware.is_free_model("openrouter/a/b:free") is True
+    assert hardware.is_free_model("openrouter/a/b") is False
+    assert hardware.is_free_model("anthropic/claude-x") is False
+    zero = {"prompt": "0", "completion": "0"}
+    paid = {"prompt": "0.001", "completion": "0"}
+    assert hardware.is_free_model("openrouter/a/zero", zero) is True
+    assert hardware.is_free_model("openrouter/a/paid", paid) is False
+    # a zero-priced non-OpenRouter model is not in the free class
+    assert hardware.is_free_model("anthropic/x", zero) is False
+    # the registry limiter uses the same predicate
+    from mises.providers.registry import is_openrouter_free
+    assert is_openrouter_free("openrouter", "a/b:free") is True
+    assert is_openrouter_free("anthropic", "claude-x") is False
+
+
 def test_parallel_reason(mac):
     assert hardware.parallel_reason("anthropic/claude-opus-5-5") == \
         "M5 Pro · 24 GB · cloud model → 4"

@@ -12,13 +12,14 @@ import asyncio
 import contextlib
 import json
 import logging
-import math
 import re
 import time
 from dataclasses import dataclass, field
 from typing import Callable
 
 import httpx
+
+from ..hardware import is_free_model
 
 log = logging.getLogger(__name__)
 
@@ -51,14 +52,6 @@ class LocalList:
 def _valid_ids(ids) -> list[str]:
     out = [i for i in ids if isinstance(i, str) and MODEL_ID_RE.fullmatch(i)]
     return out[:MAX_MODELS]
-
-
-def _price(v) -> float | None:
-    try:
-        f = float(str(v).strip())
-    except ValueError:
-        return None
-    return f if math.isfinite(f) else None
 
 
 def _root(base_url: str) -> str:
@@ -131,11 +124,10 @@ class ModelLists:
             if not MODEL_ID_RE.fullmatch(m["id"]):
                 continue
             pricing = m.get("pricing") if isinstance(m.get("pricing"), dict) else {}
-            zero = all(_price(pricing.get(k)) == 0.0 for k in ("prompt", "completion"))
             params = m.get("supported_parameters")
-            free = zero or (m["id"].endswith(":free") and not pricing)
-            if free and isinstance(params, list) and "tools" in params:
-                out.append(f"openrouter/{m['id']}")
+            ref = f"openrouter/{m['id']}"
+            if is_free_model(ref, pricing) and isinstance(params, list) and "tools" in params:
+                out.append(ref)
                 if len(out) >= MAX_MODELS:
                     break
         return out
