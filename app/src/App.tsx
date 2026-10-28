@@ -6,6 +6,7 @@
 import type { JSX } from "preact";
 import { useEffect } from "preact/hooks";
 import { conn } from "./state/store";
+import { needsYou } from "./state/selection";
 import { ConsolePane } from "./ui/console/ConsolePane";
 import { NewRunDialog } from "./ui/dialogs/NewRunDialog";
 import { LeftPane } from "./ui/left/LeftPane";
@@ -38,12 +39,17 @@ function PageRegion(): JSX.Element {
 
 function ConsoleRegion(): JSX.Element {
   if (consoleCollapsed.value) {
+    const needs = needsYou.value.count;
     return (
       <div class="region region-console" data-region="console">
         <div class="console-rail">
           <button type="button" class="console-rail-btn" title="Expand the agent console"
-            aria-label="Expand the agent console" aria-expanded={false}
-            onClick={() => toggleConsole()}>Console</button>
+            aria-label={needs > 0 ? `Expand the agent console · ${needs} needs you` : "Expand the agent console"}
+            aria-expanded={false} onClick={() => toggleConsole()}>Console</button>
+          {needs > 0 && (
+            <span class="console-rail-needs needs-you" data-needs-you aria-hidden="true"
+              title={`${needs} needs you`}>{needs}</span>
+          )}
         </div>
       </div>
     );

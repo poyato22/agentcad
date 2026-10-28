@@ -56,6 +56,11 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: 700; margin: 0; }
 }
 .console-rail-btn:hover { color: var(--ink); }
 .console-rail-btn:focus-visible { outline: 1px solid var(--blue); outline-offset: -2px; }
+/* A card waits for the human: a blue count on the collapsed rail (blue = needs you). */
+.console-rail-needs {
+  color: var(--blue); border: 1px solid var(--blue); font: 600 var(--fs-label)/1 var(--font-mono);
+  min-width: 18px; padding: 2px 3px; margin-top: 2px; text-align: center;
+}
 /* Collapse control pinned in the console pane header (region is position:relative). */
 .console-collapse {
   position: absolute; top: 0; right: 0; z-index: 3; height: var(--pane-head-h); width: 24px;

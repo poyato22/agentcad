@@ -2,7 +2,8 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/preact";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import type { CoreClient } from "./api/client";
-import { actions, bindClient, conn, resetStore } from "./state/store";
+import { actions, approvals, bindClient, conn, resetStore } from "./state/store";
+import { setConsoleCollapsed } from "./ui/pages/router";
 import { closeProfile } from "./ui/profile/open";
 import { ApprovalCard } from "./ui/console/approvals/ApprovalCard";
 import { QuestionCard } from "./ui/console/approvals/QuestionCard";
@@ -13,7 +14,7 @@ vi.mock("./ui/viewer/scene", () => ({
   createViewer: () => ({ setPart: vi.fn(), setMode: vi.fn(), setHighlight: vi.fn(), fit: vi.fn(), resize: vi.fn(), dispose: vi.fn() }),
 }));
 
-afterEach(() => { cleanup(); resetStore(); });
+afterEach(() => { cleanup(); resetStore(); setConsoleCollapsed(false); });
 
 describe("App shell", () => {
   it("renders_every_real_pane_in_its_region", () => {
@@ -74,6 +75,23 @@ describe("App shell", () => {
     fireEvent.click(screen.getByText("Close"));
     await Promise.resolve();
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("collapsed_rail_shows_a_blue_needs_you_count", () => {
+    // A3: when collapsed, the rail still signals that a card waits for the human (blue).
+    const a: Approval = {
+      id: "a1", run_id: "r1", action: "fixture_merge", payload: {}, payload_hash: "h", microversion: null,
+      deltas: {}, status: "pending", expires_at: 0, decided_by: null, decided_at: null, edited_payload: null,
+    };
+    approvals.value = new Map([["a1", a]]);
+    setConsoleCollapsed(true);
+    const { container } = render(<App />);
+    const badge = container.querySelector("[data-region=console] [data-needs-you]");
+    expect(badge).not.toBeNull();
+    expect(badge?.textContent).toContain("1");
+    // blue (needs the human); the rail expands when clicked
+    expect(badge?.classList.contains("needs-you")).toBe(true);
+    expect(container.querySelector('[data-region="app"]')?.getAttribute("data-console")).toBe("rail");
   });
 
   it("cards_render_untrusted_text_as_text", () => {
