@@ -219,7 +219,7 @@ test("non_vision_model_gets_no_image_note", async ({ page, fake }) => {
   await openSketch(page);
   await expect(page.locator("[data-build-target]")).toHaveText("designer · ollama qwen3");
   await page.getByLabel("Choose photo").setInputFiles({ name: "napkin.png", mimeType: "image/png", buffer: PNG_1PX });
-  await expect(page.locator("[data-vision-note]")).toContainText("can’t see images");
+  await expect(page.locator("[data-vision-note]")).toContainText("can't read images");
 });
 
 test("core_error_shows_hint_as_text", async ({ page, fake }) => {

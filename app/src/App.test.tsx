@@ -35,7 +35,7 @@ describe("App shell", () => {
 
   it("new_button_opens_the_inline_composer", async () => {
     render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: "+ New" }));
+    fireEvent.click(screen.getByRole("button", { name: "New" }));
     expect(await screen.findByRole("form", { name: "New run" })).toBeTruthy();
     expect(screen.queryByRole("dialog")).toBeNull();
   });
@@ -61,7 +61,7 @@ describe("App shell", () => {
     render(<App />);
     // first run: the wizard covers the app
     expect(await screen.findByRole("dialog", { name: "Set up Mises" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Close — finish later" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
     fireEvent.click(screen.getByRole("button", { name: "Profile" }));
     expect(await screen.findByRole("dialog", { name: "Profile" })).toBeTruthy();
     closeProfile();

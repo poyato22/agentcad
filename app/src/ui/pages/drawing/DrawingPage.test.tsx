@@ -129,7 +129,7 @@ describe("DrawingPage", () => {
   it("no_parts_shows_an_empty_state", () => {
     parts.value = [];
     render(<DrawingPage />);
-    expect(screen.getByText(/No parts yet/)).toBeTruthy();
+    expect(screen.getByText(/No parts\. Build one/)).toBeTruthy();
     expect(client.drawingFile).not.toHaveBeenCalled();
   });
 

@@ -82,7 +82,7 @@ export function LocalModels(): JSX.Element | null {
   return (
     <div class="mp-standalone" role="group" aria-label="Ollama on this Mac" data-local-models>
       <LocalBar group={g} />
-      {g.local?.state === "running" && g.choices.length === 0 && <div class="faint mp-pad">no models downloaded yet</div>}
+      {g.local?.state === "running" && g.choices.length === 0 && <div class="faint mp-pad">no models downloaded</div>}
       {g.local?.state === "running" && g.choices.map((c) => <div key={c.ref} class="mp-pad text">{c.label}</div>)}
       {g.local?.downloads.map((d) => <Download key={d.name} name={d.name} sizeGb={d.size_gb} note={d.note} running={g.local?.state === "running"} />)}
     </div>
@@ -120,8 +120,8 @@ function LocalBar({ group }: { group: ModelGroup }): JSX.Element | null {
   if (state === "not_installed") {
     return (
       <div class="mp-local mp-pad">
-        <div class="mp-row"><Led tone="faint" /><span>Ollama isn't installed. It runs open models on this Mac, free.</span></div>
-        <div class="faint">Install it from ollama.com, or in Terminal:</div>
+        <div class="mp-row"><Led tone="faint" /><span>Ollama not installed.</span></div>
+        <div class="faint">Install from ollama.com, or:</div>
         <pre class="mp-code text">brew install ollama</pre>
       </div>
     );
@@ -129,7 +129,7 @@ function LocalBar({ group }: { group: ModelGroup }): JSX.Element | null {
   return (
     <div class="mp-local mp-pad">
       <div class="mp-row">
-        <Led tone="faint" /><span>Ollama isn't running.</span>
+        <Led tone="faint" /><span>Ollama not running.</span>
         <span class="mp-spacer" />
         <Button disabled={st.busy} onClick={() => { void startOllama(); }}>{st.busy ? "Starting…" : "Start Ollama"}</Button>
       </div>
@@ -147,7 +147,7 @@ function Download({ name, sizeGb, note, running }: { name: string; sizeGb: numbe
     <div class="mp-dl" data-download={name}>
       <div class="mp-row">
         <span class="mp-opt-l text">{name}</span>
-        <span class="mp-badge" data-badge="local">runs on this Mac</span>
+        <span class="mp-badge" data-badge="local">local</span>
         <span class="mp-spacer" />
         {!active && (
           <Button disabled={!running} aria-label={`Download ${name} (${size})`} title={running ? undefined : "start Ollama first"}

@@ -62,7 +62,7 @@ export function Results({ rec, onAsk, onOpenRun, asked }: {
       <GuideLabel rec={rec} />
       {rec.stale && (
         <div class="st-band st-band-amber" data-testid="stale">
-          <Led tone="amber" /><span>The part's geometry changed since this study: run it again for the current geometry.</span>
+          <Led tone="amber" /><span>The part changed since this study. Run it again.</span>
         </div>
       )}
       <div class="st-head">
@@ -105,7 +105,7 @@ export function Results({ rec, onAsk, onOpenRun, asked }: {
       )}
       <div class="st-actions">
         {/* once sent for this study it stays off (one fix run per study result); a failed send can be retried */}
-        <Button onClick={onAsk} disabled={asked !== null && asked.error === null}>Ask agent to fix</Button>
+        <Button onClick={onAsk} disabled={asked !== null && asked.error === null}>Ask agent</Button>
         {asked?.runId && (
           <>
             <span class="dim" data-testid="asked">Sent to designer with this result.</span>

@@ -13,7 +13,7 @@ const TASK = "make the plate 6 mm thick";
 const HASH = "5c0e1a7d9b3f2e4c6a8d0b1f3e5c7a9d2b4f6e8a0c1d3e5f7a9b1c3d5e7f9a0b";
 
 const wizard = (page: Page) => page.getByRole("dialog", { name: "Set up Mises" });
-const heading = (page: Page, name: string) => page.getByRole("heading", { name });
+const heading = (page: Page, name: string) => page.getByRole("heading", { name, exact: true });
 
 async function scenario(signedIn = false): Promise<Record<string, unknown>> {
   const load = async (n: string) => JSON.parse(JSON.stringify((await import(`../fake-core/scenarios/${n}.json`, { with: { type: "json" } })).default)) as Record<string, unknown>;
@@ -44,10 +44,10 @@ test("first_run_sign_in_then_a_claude_code_run_through_the_gate_to_done", async 
 
   // ---- first run: the wizard covers the app; connect the user's own Claude Code
   await expect(wizard(page)).toBeVisible();
-  await page.getByRole("button", { name: "Get started" }).click();
+  await page.getByRole("button", { name: "Start" }).click();
   // the profile comes first (it's what "signing in" to Mises sets up)
   await page.locator('input[aria-label="Display name"]').fill("Hartigan");
-  await page.getByRole("button", { name: "Save and continue" }).click();
+  await page.getByRole("button", { name: "Continue" }).click();
   const claude = page.getByRole("region", { name: "Use my Claude Code" });
   await expect(claude).toContainText("Runs your Claude Code");
   await claude.getByRole("button", { name: "Sign in" }).click();
@@ -58,9 +58,9 @@ test("first_run_sign_in_then_a_claude_code_run_through_the_gate_to_done", async 
   await dflt.getByRole("group", { name: "Your Claude Code" }).locator("[data-ref='claude-code/sonnet']").click();
   await expect(dflt.getByRole("button", { name: /^Default model: Claude Code · sonnet/ })).toBeVisible();
   await page.getByRole("button", { name: "Continue" }).click();
-  await page.getByRole("button", { name: "Skip for now" }).click();            // no Onshape
-  await expect(heading(page, "Ready")).toBeVisible();
-  await page.getByRole("button", { name: "Start using Mises" }).click();
+  await page.getByRole("button", { name: "Skip" }).click();            // no Onshape
+  await expect(heading(page, "Done")).toBeVisible();
+  await page.getByRole("button", { name: "Finish" }).click();
   await expect(wizard(page)).toHaveCount(0);
   await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
   await expect(page.locator("[data-region=topbar]").getByRole("button", { name: "Profile", exact: true })).toHaveText("H");
@@ -136,7 +136,7 @@ test("signed_out_claude_code_cannot_start_and_points_to_profile", async ({ page,
   await chip.click();
   await dialog.getByLabel("Task").fill(TASK);
   await expect(dialog.getByRole("button", { name: "Start" })).toBeDisabled();
-  await dialog.getByRole("button", { name: "Sign in in Profile" }).click();
+  await dialog.getByRole("button", { name: "Sign in" }).click();
   await expect(dialog).toBeHidden();
   const profile = page.getByRole("dialog", { name: "Profile" });
   await expect(profile).toBeVisible();
@@ -152,6 +152,6 @@ test("finished_setup_without_a_model_shows_the_connect_a_model_notice", async ({
   const notice = page.getByRole("status", { name: "Connect a model" });
   await expect(notice).toBeVisible();
   await expect(wizard(page)).toHaveCount(0);
-  await notice.getByRole("button", { name: "Open Profile" }).click();
+  await notice.getByRole("button", { name: "Connect" }).click();
   await expect(page.getByRole("dialog", { name: "Profile" }).getByRole("region", { name: "Your Claude Code" })).toBeVisible();
 });

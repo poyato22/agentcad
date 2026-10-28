@@ -193,9 +193,9 @@ describe("SketchPage", () => {
     fakeClient({ profile: { default_model: "ollama/qwen3" } });
     render(<SketchPage />);
     await flush();
-    expect(screen.queryByText(/can’t see images/)).toBeNull();
+    expect(screen.queryByText(/can't read images/)).toBeNull();
     act(() => sketchActions.setPhoto({ name: "a.png", kind: "png", size: 10, data_b64: "AA==", previewUrl: null }));
-    expect(screen.getByText(/can’t see images/)).toBeTruthy();
+    expect(screen.getByText(/can't read images/)).toBeTruthy();
     // a photo alone is enough to build
     expect((screen.getByRole("button", { name: "Build part" }) as HTMLButtonElement).disabled).toBe(false);
   });

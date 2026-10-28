@@ -69,7 +69,7 @@ export function RunSwitcher(): JSX.Element {
         {current?.status === "running" && (
           <Button variant="ghost" aria-label={`Stop ${label}`} title="stop this run" onClick={() => cancelRun(current.id)}>Stop</Button>
         )}
-        <Button variant="ghost" onClick={() => { composerOpen.value = true; }}>+ New</Button>
+        <Button variant="ghost" onClick={() => { composerOpen.value = true; }}>New</Button>
         <Button variant="ghost" aria-pressed="false" onClick={() => setConsoleView("details")}>Full log</Button>
       </div>
       {current && (

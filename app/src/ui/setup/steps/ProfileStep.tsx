@@ -11,7 +11,7 @@ import { describeError, StepHead } from "./common";
 
 const MATERIALS = ["PLA", "PETG", "ABS", "ASA", "TPU", "Nylon"];
 type Theme = NonNullable<Profile["theme"]>;
-const THEMES: { id: Theme; label: string }[] = [{ id: "system", label: "Match this Mac" }, { id: "light", label: "Light" }, { id: "dark", label: "Dark" }];
+const THEMES: { id: Theme; label: string }[] = [{ id: "system", label: "System" }, { id: "light", label: "Light" }, { id: "dark", label: "Dark" }];
 
 export function ProfileStep({ data, update, refresh, go }: StepProps): JSX.Element {
   const p = data.profile;
@@ -39,7 +39,7 @@ export function ProfileStep({ data, update, refresh, go }: StepProps): JSX.Eleme
 
   return (
     <div class="setup-step">
-      <StepHead title="Your profile" sub="This is what signing in to Mises sets up. There's no account: it's saved on this Mac, and you can change it later in Profile." />
+      <StepHead title="Profile" />
       <div class="setup-card setup-form">
         <label class="setup-field"><span class="label">Display name</span>
           <input aria-label="Display name" value={name} spellcheck={false} onInput={(e) => setName(e.currentTarget.value)}
@@ -47,7 +47,7 @@ export function ProfileStep({ data, update, refresh, go }: StepProps): JSX.Eleme
         </label>
         <label class="setup-field"><span class="label">Units</span>
           <select aria-label="Units" value="mm" disabled={busy}>
-            <option value="mm">millimetres (mm)</option>
+            <option value="mm">mm</option>
           </select>
         </label>
         <label class="setup-field"><span class="label">Default material</span>
@@ -64,7 +64,7 @@ export function ProfileStep({ data, update, refresh, go }: StepProps): JSX.Eleme
       <div class="setup-actions">
         <Button variant="ghost" onClick={() => go("welcome")}>Back</Button>
         <span class="setup-spacer" />
-        <Button variant="ink" disabled={!ready} onClick={() => { void save(); }}>Save and continue</Button>
+        <Button variant="ink" disabled={!ready} onClick={() => { void save(); }}>Continue</Button>
       </div>
     </div>
   );

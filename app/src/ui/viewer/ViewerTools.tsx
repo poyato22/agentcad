@@ -10,7 +10,7 @@ export function ViewerTools({ mode, onMode }: ViewerToolsProps): JSX.Element {
     <button type="button" class="vt-btn" aria-pressed={mode === m} data-active={mode === m} data-selected={mode === m ? "" : undefined} onClick={() => onMode(m)}>{text}</button>
   );
   const later = (text: string) => (
-    <button type="button" class="vt-btn" aria-disabled="true" title="later" onClick={(e) => e.preventDefault()}>{text}</button>
+    <button type="button" class="vt-btn" aria-disabled="true" title="Not available yet" onClick={(e) => e.preventDefault()}>{text}</button>
   );
   return (
     <div class="viewer-tools" role="toolbar" aria-label="View tools">

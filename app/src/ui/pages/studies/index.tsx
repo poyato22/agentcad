@@ -71,7 +71,7 @@ export function StudiesPage({ controller = studies, deps = {} }: { controller?: 
   const active = c.active.value;
   const rec = c.record.value;
   const recShown = rec && rec.part_id === partId ? rec : null;
-  const why = !partId ? "Build a part first: ask an agent on the Design page."
+  const why = !partId ? "No part. Build one on the Design page."
     : !built ? "This part has no built model yet."
       : c.ccxMissing.value ? "Install CalculiX to run studies." : null;
   const canRun = why === null && solvers !== null;
@@ -91,7 +91,7 @@ export function StudiesPage({ controller = studies, deps = {} }: { controller?: 
           <div class="st-field">
             <label class="label" for="st-part">Part</label>
             {parts.value.length === 0
-              ? <p class="faint" id="st-part">No part yet: ask an agent to create one on the Design page.</p>
+              ? <p class="faint" id="st-part">No part. Build one on the Design page.</p>
               : (
                 <select id="st-part" value={partId ?? ""} onChange={(e) => actions.selectPart((e.target as HTMLSelectElement).value)}>
                   {parts.value.map((p) => (
@@ -129,14 +129,14 @@ export function StudiesPage({ controller = studies, deps = {} }: { controller?: 
           {partId && <History list={c.history.value} selected={c.selectedSimId.value} onSelect={(id) => { void c.select(id); }} error={c.historyError.value} />}
         </aside>
         <section class="st-main" aria-label="Study result">
-          {builtParts.value.length === 0 && <p class="faint">No part yet. Studies run on parts built on the Design page.</p>}
+          {builtParts.value.length === 0 && <p class="faint">No built parts. Build one on the Design page.</p>}
           {c.recordError.value && <p class="tone-red text">Could not open the study: {c.recordError.value}</p>}
           {partId && built && recShown && recShown.status === "done" && (
             <SplitViewer partId={partId} mtime={part.mtime} simId={recShown.sim_id} range={recShown.color_range_mpa ?? null} glb={deps.glb ?? coreGlb} />
           )}
           {recShown && <Results rec={recShown} onAsk={() => { void onAsk(); }} onOpenRun={openRun} asked={asked} />}
           {partId && built && !recShown && !c.recordError.value && c.history.value.length === 0 && (
-            <p class="faint">Set up a study on the left and run it. Results are a guide, not a guarantee.</p>
+            <p class="faint">Set up a study on the left. Results are a guide only.</p>
           )}
         </section>
       </div>

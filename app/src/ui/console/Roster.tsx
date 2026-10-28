@@ -10,6 +10,7 @@ import { providerLabel } from "../../lib/names";
 import { debug } from "../../lib/log";
 import { needsYou as needsYouSignal } from "../../state/selection";
 import { actions, selectedRunId } from "../../state/store";
+import { Button } from "../common/Button";
 import { Led, type LedTone } from "../common/Led";
 import { effectiveRunId, rosterRuns, runLabels } from "./derived";
 
@@ -84,7 +85,7 @@ export function Roster(): JSX.Element {
         })}
         {list.length === 0 && <div class="pane-empty">no runs yet</div>}
       </div>
-      <button type="button" class="con-newrun" onClick={() => actions.openNewRun()}>+ new run</button>
+      <Button class="con-newrun" onClick={() => actions.openNewRun()}>New run</Button>
     </section>
   );
 }

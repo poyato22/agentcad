@@ -53,7 +53,7 @@ for (const theme of ["dark", "light"] as const) {
     // collapse the console first: sending must open it on the card
     await page.getByRole("button", { name: "Collapse the agent console" }).click();
     await sendBtn(page).click();
-    await expect(pageRegion(page).getByRole("status", { name: "Print request" })).toContainText("approve or reject the card in the agent console");
+    await expect(pageRegion(page).getByRole("status", { name: "Print request" })).toContainText("Approve or reject the card in the console");
     await expect(page.locator("[data-region=app]")).toHaveAttribute("data-console", "open");
     await expect(printCard(page)).toBeVisible();
     await expect(printCard(page).locator("[data-print-facts]")).toContainText("Bench MK4 · MK4 · sliced for MK4 · 192.168.1.20 · IDLE");
@@ -63,7 +63,7 @@ for (const theme of ["dark", "light"] as const) {
 
     // nothing happens until the human approves on the card
     await page.waitForTimeout(ARM_WAIT_MS);
-    await expect(pageRegion(page).getByRole("status", { name: "Print request" })).toContainText("Waiting for you");
+    await expect(pageRegion(page).getByRole("status", { name: "Print request" })).toContainText("Approve or reject the card");
     await printCard(page).getByRole("button", { name: /^Approve/ }).click();
     await expect(pageRegion(page).getByRole("status", { name: "Print request" })).toContainText("sent mises_mount_plate.gcode to Bench MK4");
     await expect(light).toContainText("printing", { timeout: 10_000 });
@@ -150,7 +150,7 @@ test("profile_printers_section_lists_and_removes", async ({ page, fake }) => {
   await expect(row).toContainText("192.168.1.20");
   await expect(row).toContainText("idle");
   await row.getByRole("button", { name: "Remove" }).click();
-  await row.getByRole("button", { name: "Yes, remove" }).click();
-  await expect(panel.getByText("No printers yet.")).toBeVisible();
+  await row.getByRole("button", { name: "Remove" }).click();
+  await expect(panel.getByText("No printers.")).toBeVisible();
   expect(await calls(fake, "DELETE", "/printers/bench_mk4")).toHaveLength(1);
 });

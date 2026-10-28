@@ -1,6 +1,6 @@
 .topbar {
   /* breadcrumb takes what is left; the lights never run under the tabs (they clip at the far left) */
-  position: relative; height: 44px; display: grid; grid-template-columns: minmax(80px, 1fr) auto minmax(0, max-content); align-items: stretch;
+  position: relative; height: var(--topbar-h); display: grid; grid-template-columns: minmax(80px, 1fr) auto minmax(0, max-content); align-items: stretch;
   background: var(--head); border-bottom: 1px solid var(--line2); padding: 0 12px 0 var(--chrome-inset-x); /* room for the macOS traffic lights (78px inset) */
 }
 .topbar-left, .topbar-right { display: flex; align-items: center; min-width: 0; }
@@ -21,10 +21,12 @@
 .light { display: inline-flex; gap: 5px; align-items: center; }
 .light-val { color: var(--ink); }
 .light-need { color: var(--blue2); }
-.light-click { cursor: pointer; }
+.light-click { cursor: pointer; border: 1px solid var(--line2); padding: 2px 6px; }
+.light-click:hover { border-color: var(--dim); color: var(--ink); }
+.light-click:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
 .stop-all { flex: none; }
 .toast {
-  position: absolute; right: 12px; top: 46px; z-index: 5; background: var(--paper2); border: 1px solid var(--line2);
+  position: absolute; right: 12px; top: calc(var(--topbar-h) + 2px); z-index: 5; background: var(--paper2); border: 1px solid var(--line2);
   padding: 3px 8px; color: var(--ink); pointer-events: none;
 }
 .toast:empty { display: none; }

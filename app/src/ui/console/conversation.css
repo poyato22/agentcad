@@ -34,7 +34,9 @@
   background: var(--paper2); color: var(--ink); border: 1px solid var(--line2);
 }
 .cv-chip-new:hover { border-color: var(--dim); }
-.cv-earlier { align-self: flex-start; margin: 2px 10px 6px; border: 1px solid var(--line2); background: transparent; color: var(--faint); font: inherit; font-size: 10px; padding: 2px 6px; cursor: pointer; }
+.cv-earlier { align-self: flex-start; margin: 2px 10px 6px; border: 1px solid var(--line2); background: transparent; color: var(--dim); font: inherit; font-size: 10px; padding: 2px 6px; cursor: pointer; }
+.cv-earlier:hover { color: var(--ink); border-color: var(--dim); background: var(--paper2); }
+.cv-earlier:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
 .cv-empty { padding: 16px 12px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 .cv-msg { margin: 6px 10px; padding: 6px 8px; border: 1px solid var(--line); }
 .cv-msg .label { margin-bottom: 2px; }
@@ -43,8 +45,9 @@
 .cv-text { color: var(--ink); line-height: 1.45; }
 .cv-caret { color: var(--blue); }
 .cv-line { display: grid; grid-template-columns: 14px 12px minmax(0, 1fr); gap: 4px; padding: 1px 10px; font-size: 11px; align-items: baseline; }
-.cv-x { border: 0; background: transparent; color: var(--faint); padding: 0; font: inherit; font-size: 10px; cursor: pointer; text-align: left; }
-.cv-x:hover { color: var(--ink); }
+.cv-x { border: 0; background: transparent; color: var(--dim); padding: 0; font: inherit; font-size: 9px; line-height: 12px; cursor: pointer; text-align: center; width: 14px; }
+button.cv-x { border: 1px solid var(--line2); }
+.cv-x:hover { color: var(--ink); border-color: var(--dim); }
 .cv-x:focus-visible { outline: 1px solid var(--blue); }
 .cv-g { text-align: center; }
 .cv-live { color: var(--blue); }

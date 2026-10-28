@@ -72,7 +72,7 @@ export async function startOllama(wait: (ms: number) => Promise<void> = (ms) => 
   try {
     const r = await actions.client().localStart();
     if (!r.ok) {
-      ollamaStart.value = { busy: false, error: r.hint ?? (r.error === "not_installed" ? "Ollama isn't installed" : "Ollama didn't start — open it from Applications, then try again") };
+      ollamaStart.value = { busy: false, error: r.hint ?? (r.error === "not_installed" ? "Ollama isn't installed" : "Ollama didn't start. Open it from Applications and try again.") };
       void refreshCatalog();
       return;
     }
@@ -81,7 +81,7 @@ export async function startOllama(wait: (ms: number) => Promise<void> = (ms) => 
       if (catalog.peek().local?.running) break;
       await wait(START_POLL_MS);
     }
-    ollamaStart.value = { busy: false, error: catalog.peek().local?.running ? null : "Ollama didn't start — open it from Applications, then try again" };
+    ollamaStart.value = { busy: false, error: catalog.peek().local?.running ? null : "Ollama didn't start. Open it from Applications and try again." };
   } catch (e) {
     ollamaStart.value = { busy: false, error: describe(e) };
   }

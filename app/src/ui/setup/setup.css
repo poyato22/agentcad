@@ -6,14 +6,28 @@
   background-image: linear-gradient(var(--paper) 1px, transparent 1px), linear-gradient(90deg, var(--paper) 1px, transparent 1px);
   background-size: 24px 24px;
 }
+/* The header is the window's title strip: as tall as the macOS overlay title bar, so its text sits on
+   the traffic lights' centre line (--chrome-center-y). The 78px left inset is in base.css. */
 .setup-head {
-  flex: none; height: var(--topbar-h); display: flex; align-items: center; gap: 16px; padding: 0 16px;
+  flex: none; height: var(--chrome-h); display: flex; align-items: center; gap: 16px; padding: 0 16px;
   background: var(--head); border-bottom: 1px solid var(--line2);
 }
-.setup-title { font: 600 13px/1 var(--font-head); letter-spacing: .08em; text-transform: uppercase; color: var(--ink); }
-.setup-steps { display: flex; gap: 14px; margin: 0; padding: 0; list-style: none; height: 100%; }
-.setup-steps li { display: flex; align-items: center; height: 100%; font-size: var(--fs-small); border-bottom: 2px solid transparent; }
-.setup-steps li[aria-current="step"] { color: var(--ink); border-bottom-color: var(--blue); }
+.setup-title { font: 600 12px/1 var(--font-head); letter-spacing: .08em; text-transform: uppercase; color: var(--ink); }
+.setup-head nav { height: 100%; }
+.setup-steps { display: flex; gap: 2px; margin: 0; padding: 0; list-style: none; height: 100%; }
+.setup-steps li { display: flex; height: 100%; }
+.setup-step-btn {
+  display: inline-flex; align-items: center; gap: 5px; height: 100%; padding: 0 8px;
+  background: transparent; border: 0; border-bottom: 2px solid transparent; border-top: 2px solid transparent;
+  color: var(--dim); font: inherit; font-size: var(--fs-small); cursor: pointer;
+}
+.setup-step-btn:hover:not(:disabled) { color: var(--ink); border-bottom-color: var(--line2); }
+.setup-step-btn:focus-visible { outline: 1px solid var(--blue); outline-offset: -3px; }
+.setup-step-btn:disabled { cursor: default; }
+.setup-step-btn[data-status="todo"] { color: var(--faint); }
+.setup-step-btn[data-status="todo"]:hover:not(:disabled) { color: var(--ink); }
+.setup-step-btn[aria-current="step"] { color: var(--ink); border-bottom-color: var(--blue); }
+.setup-step-mark { font-size: 9px; width: 9px; text-align: center; }
 .setup-close { margin-left: auto; }
 
 .setup-body { width: 720px; max-width: calc(100vw - 32px); margin: 32px auto; display: flex; flex-direction: column; gap: 12px; }

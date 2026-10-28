@@ -2,6 +2,7 @@
 // vendors are usable, the sentences for test results, sign-in polling.
 import type { KeyStatus, LocalTestResult, ModelsInfo, OnshapeTestResult, Profile, SetupState } from "../../api/types";
 import { splitModelRef } from "../dialogs/modelRef";
+import { skipped } from "./gate";
 
 export type StepId = "welcome" | "model" | "onshape" | "profile" | "done";
 /** Plan 4 order: the profile is what "signing in" to Mises sets up, so it comes first. */
@@ -12,6 +13,19 @@ export const STEPS: readonly { id: StepId; label: string }[] = [
   { id: "onshape", label: "Onshape" },
   { id: "done", label: "Done" },
 ];
+
+export type StepStatus = "done" | "current" | "todo";
+
+/** Whether a step's piece is in place (the step bar's ✓). Welcome counts once the user moved past it. */
+export function stepDone(id: StepId, d: { setup: SetupState; profile: Profile }, passed: boolean, skips: { model: boolean; onshape: boolean } = { model: skipped("model"), onshape: skipped("onshape") }): boolean {
+  switch (id) {
+    case "welcome": return passed || !!d.profile.display_name.trim();
+    case "profile": return !!d.profile.display_name.trim();
+    case "model": return d.setup.has_model || skips.model;
+    case "onshape": return d.setup.has_onshape || skips.onshape;
+    case "done": return d.setup.complete;
+  }
+}
 
 export interface ResumeOpts {
   /** "Skip — local models only" was chosen on the model step. */
@@ -76,15 +90,15 @@ export function onshapeTestText(r: OnshapeTestResult): string {
   if (r.ok) return r.user_name ? `connected as ${r.user_name}` : "connected";
   switch (r.error) {
     case "denied":
-      return "Onshape refused these keys (denied). Check the access key and secret key in Onshape's developer portal, then save them again.";
+      return "Onshape rejected these keys. Check both keys in Onshape's developer portal and save them again.";
     case "not_configured":
-      return "No Onshape keys are saved yet. Save both keys first, then test.";
+      return "No Onshape keys saved. Save both keys, then test.";
     case "unreachable":
-      return "Onshape did not answer. Check this Mac's internet connection, then test again.";
+      return "Onshape did not answer. Check the internet connection and test again.";
     case "budget":
-      return "The Onshape call budget is used up. Raise the yearly call cap in Profile, then test again.";
+      return "Yearly Onshape call cap reached. Raise it in Profile → Onshape.";
     default:
-      return "The Onshape test failed. Try again; if it keeps failing, replace the keys.";
+      return "Onshape test failed. Test again, or replace the keys.";
   }
 }
 

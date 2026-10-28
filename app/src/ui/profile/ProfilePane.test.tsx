@@ -180,7 +180,7 @@ describe("Models section: Claude Code", () => {
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
     await vi.advanceTimersByTimeAsync(0);
     expect(client.claudeCodeLogin).toHaveBeenCalledTimes(1);
-    expect(screen.getByText(/finish signing in in your browser/)).toBeTruthy();
+    expect(screen.getByText(/waiting for browser sign-in/)).toBeTruthy();
     expect(document.querySelectorAll(".led-blue").length).toBe(1);
     client.claudeCodeStatus.mockResolvedValue(claude);
     await act(async () => { await vi.advanceTimersByTimeAsync(2100); });
@@ -235,7 +235,7 @@ describe("Models section: API keys", () => {
     expect(input.type).toBe("password");
     expect(input.autocomplete).toBe("off");
     type("anthropic API key", SECRET);
-    fireEvent.click(screen.getByRole("button", { name: "Save key" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(client.setKey).toHaveBeenCalledWith("anthropic", SECRET));
     await waitFor(() => expect(screen.queryByLabelText("anthropic API key")).toBeNull());
     expect(markup()).not.toContain(SECRET);
@@ -245,7 +245,7 @@ describe("Models section: API keys", () => {
     await openSection("Models");
     fireEvent.click(screen.getByRole("button", { name: "Add gemini key" }));
     type("gemini API key", SECRET);
-    fireEvent.click(screen.getByRole("button", { name: "Save key" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(client.setKey).toHaveBeenCalledWith("gemini", SECRET));
   });
 
@@ -258,7 +258,7 @@ describe("Models section: API keys", () => {
     fireEvent.click(screen.getByRole("button", { name: "Keep" }));
     expect(client.deleteKey).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Remove anthropic key" }));
-    fireEvent.click(screen.getByRole("button", { name: "Yes, remove" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
     await waitFor(() => expect(client.deleteKey).toHaveBeenCalledWith("anthropic"));
     expect(confirmSpy).not.toHaveBeenCalled();
     expect(await screen.findByRole("button", { name: "Add anthropic key" })).toBeTruthy();
@@ -268,11 +268,11 @@ describe("Models section: API keys", () => {
     client.setKey.mockImplementation(async (vendor: string) => ({ vendor, present: true, source: "env" }));
     await openSection("Models");
     const row = screen.getByRole("row", { name: /openai/ });
-    expect(row.textContent).toContain("from environment variable — it takes precedence over a saved key");
+    expect(row.textContent).toContain("environment variable (overrides Keychain)");
     fireEvent.click(screen.getByRole("button", { name: "Replace openai key" }));
     type("openai API key", SECRET);
-    fireEvent.click(screen.getByRole("button", { name: "Save key" }));
-    expect(await screen.findByText("Saved to Keychain. The environment variable still takes precedence; the saved key is used only when it is unset.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("Saved to Keychain. The environment variable still overrides it.")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Remove openai key" })).toBeNull();
   });
 
@@ -286,7 +286,7 @@ describe("Models section: API keys", () => {
     await openSection("Models");
     fireEvent.click(screen.getByRole("button", { name: "Add gemini key" }));
     type("gemini API key", SECRET);
-    fireEvent.click(screen.getByRole("button", { name: "Save key" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect((await screen.findByRole("alert")).textContent).toContain("could not store");
     expect(markup()).not.toContain(SECRET);
   });
@@ -318,7 +318,7 @@ describe("Models section: local endpoints", () => {
     await openSection("Models");
     fireEvent.click(screen.getByRole("button", { name: "Remove ollama endpoint" }));
     expect(client.updateProfile).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Yes, remove" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
     await waitFor(() => expect(client.updateProfile).toHaveBeenCalledWith({ local_endpoints: {} }));
     expect(confirmSpy).not.toHaveBeenCalled();
   });
@@ -336,7 +336,7 @@ describe("Onshape section", () => {
 
   it("replace_sends_both_keys_and_clears_them", async () => {
     await openSection("Onshape");
-    fireEvent.click(screen.getByRole("button", { name: "Replace keys" }));
+    fireEvent.click(screen.getByRole("button", { name: "Replace" }));
     expect(field("Access key").type).toBe("password");
     expect(field("Secret key").type).toBe("password");
     type("Access key", ACCESS);
@@ -359,14 +359,14 @@ describe("Onshape section", () => {
     client.testOnshape.mockResolvedValue({ ok: false, error: "denied" });
     await openSection("Onshape");
     fireEvent.click(screen.getByRole("button", { name: "Test" }));
-    expect((await screen.findByRole("alert")).textContent).toMatch(/refused these keys/);
+    expect((await screen.findByRole("alert")).textContent).toMatch(/rejected these keys/);
   });
 
   it.each([
-    ["not_configured", /No Onshape keys are saved yet/],
+    ["not_configured", /No Onshape keys saved/],
     ["unreachable", /Onshape did not answer/],
-    ["budget", /call budget is used up/],
-    ["failed", /The Onshape test failed/],
+    ["budget", /call cap reached/],
+    ["failed", /Onshape test failed/],
   ])("a_%s_test_reads_as_a_sentence", async (code, text) => {
     client.testOnshape.mockResolvedValue({ ok: false, error: code });
     await openSection("Onshape");
@@ -378,17 +378,17 @@ describe("Onshape section", () => {
 
   it("remove_confirms_in_the_panel_then_deletes", async () => {
     await openSection("Onshape");
-    fireEvent.click(screen.getByRole("button", { name: "Remove keys" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
     expect(client.deleteKey).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Yes, remove" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
     await waitFor(() => expect(client.deleteKey).toHaveBeenCalledWith("onshape"));
     expect(confirmSpy).not.toHaveBeenCalled();
-    expect(await screen.findByRole("button", { name: "Add keys" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Add" })).toBeTruthy();
   });
 
   it("the_yearly_cap_is_editable_and_validated", async () => {
     await openSection("Onshape");
-    const save = screen.getByRole("button", { name: "Save caps" }) as HTMLButtonElement;
+    const save = screen.getByRole("button", { name: "Save call cap" }) as HTMLButtonElement;
     expect(save.disabled).toBe(true);
     type("Yearly call cap", "-5");
     expect(save.disabled).toBe(true);
@@ -402,13 +402,13 @@ describe("Onshape section", () => {
     client.listKeys.mockResolvedValue(keys.map((k) => (k.vendor === "onshape" ? { ...k, source: "env" } : k)));
     client.setOnshapeKeys.mockResolvedValue({ vendor: "onshape", present: true, source: "env" });
     await openSection("Onshape");
-    expect(screen.getByText("from environment variable — it takes precedence over a saved key")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Remove keys" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Replace keys" }));
+    expect(screen.getByText("environment variable (overrides Keychain)")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Remove" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Replace" }));
     type("Access key", ACCESS);
     type("Secret key", ONSHAPE_SECRET);
     fireEvent.click(screen.getByRole("button", { name: "Save keys" }));
-    expect(await screen.findByText(/The environment variable still takes precedence/)).toBeTruthy();
+    expect(await screen.findByText(/The environment variable still overrides it/)).toBeTruthy();
   });
 
   it("the_usage_bar_is_amber_near_the_cap", async () => {
@@ -436,7 +436,7 @@ describe("Agents & budgets section", () => {
   it("a_saved_number_shows_as_manual_and_auto_can_be_chosen_back", async () => {
     client.status.mockResolvedValue(autoStatus);
     await openSection("Agents & budgets");
-    expect((screen.getByRole("radio", { name: "Choose a number" }) as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByRole("radio", { name: "Manual" }) as HTMLInputElement).checked).toBe(true);
     expect(field("Max parallel agents").value).toBe("2");
     fireEvent.click(screen.getByRole("radio", { name: "Auto (3 on this Mac)" }));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -482,7 +482,7 @@ describe("Agents & budgets section", () => {
   it("choosing_the_app_default_sends_null", async () => {
     client.getProfile.mockResolvedValue({ ...profile, default_model: "claude-code/sonnet" });
     await openSection("Agents & budgets");
-    fireEvent.click(screen.getByRole("button", { name: "Use the app default" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reset" }));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(client.updateProfile).toHaveBeenCalledWith({ default_model: null }));
   });

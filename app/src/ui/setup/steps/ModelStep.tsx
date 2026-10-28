@@ -34,7 +34,7 @@ export function ModelStep(p: StepProps): JSX.Element {
   }, [localKey]);
   return (
     <div class="setup-step">
-      <StepHead title="Connect a model" sub="Pick one way to run agents. You can add more later in Profile." />
+      <StepHead title="Model" sub="One is enough to run agents." />
       <div class="setup-cards">
         <ClaudeCard {...p} />
         <ApiKeyCard {...p} />
@@ -44,7 +44,7 @@ export function ModelStep(p: StepProps): JSX.Element {
       <div class="setup-actions">
         <Button variant="ghost" onClick={() => p.go("profile")}>Back</Button>
         <span class="setup-spacer" />
-        <Button variant="ghost" onClick={() => { setSkipped("model", true); p.go("onshape"); }}>Skip — local models only</Button>
+        <Button variant="ghost" onClick={() => { setSkipped("model", true); p.go("onshape"); }}>Skip</Button>
         <Button variant="ink" disabled={!has} onClick={() => { setSkipped("model", false); p.go("onshape"); }}>Continue</Button>
       </div>
     </div>
@@ -65,8 +65,8 @@ function DefaultModelCard({ data, update }: StepProps): JSX.Element {
   }
   return (
     <Card title="Default model">
-      <p class="dim">New runs start on this model. You can pick another for any run.</p>
-      <ModelPicker label="Default model" value={data.profile.default_model} placeholder="the agent's default" onChange={(ref) => { void pick(ref); }} />
+      <p class="dim">Used for new runs.</p>
+      <ModelPicker label="Default model" value={data.profile.default_model} placeholder="agent default" onChange={(ref) => { void pick(ref); }} />
       {error && <div class="setup-error text" role="alert">{error}</div>}
     </Card>
   );
@@ -132,11 +132,10 @@ function ClaudeCard({ data, update, refresh }: StepProps): JSX.Element {
   if (!st.installed) {
     body = (
       <>
-        <div class="setup-status"><Led tone="faint" /><span>Claude Code isn't installed on this Mac.</span></div>
-        <p class="dim">Install it from Anthropic (see docs.anthropic.com/en/docs/claude-code), for example in Terminal:</p>
+        <div class="setup-status"><Led tone="faint" /><span>not installed</span></div>
+        <p class="dim">Install (docs.anthropic.com/en/docs/claude-code):</p>
         <pre class="setup-code text">npm install -g @anthropic-ai/claude-code</pre>
-        <p class="dim">then check again.</p>
-        <div class="setup-row"><Button disabled={checking} onClick={() => { void checkAgain(); }}>Check again</Button></div>
+        <div class="setup-row"><Button disabled={checking} onClick={() => { void checkAgain(); }}>Check</Button></div>
       </>
     );
   } else if (st.signed_in) {
@@ -147,9 +146,9 @@ function ClaudeCard({ data, update, refresh }: StepProps): JSX.Element {
         <div class="setup-status">
           <Led tone={phase === "waiting" ? "blue" : phase === "timeout" ? "amber" : "faint"} />
           <span>
-            {phase === "waiting" ? "finish signing in in your browser"
-              : phase === "timeout" ? "sign-in timed out — try again"
-              : phase === "starting" ? "opening the sign-in…" : "installed, not signed in"}
+            {phase === "waiting" ? "waiting for browser sign-in"
+              : phase === "timeout" ? "sign-in timed out"
+              : phase === "starting" ? "opening sign-in…" : "signed out"}
           </span>
         </div>
         <div class="setup-row">
@@ -161,7 +160,7 @@ function ClaudeCard({ data, update, refresh }: StepProps): JSX.Element {
 
   return (
     <Card title="Use my Claude Code">
-      <p class="dim">Runs your Claude Code with your own Claude account and plan. Sign-in happens in Anthropic's own page in your browser; Mises never sees it.</p>
+      <p class="dim">Runs your Claude Code on your own Claude account and plan. Sign-in is on Anthropic's page in your browser; Mises never sees it.</p>
       {st.version && <div class="faint setup-meta text">version {st.version}</div>}
       {body}
       {error && <div class="setup-error text" role="alert">{error}</div>}
@@ -194,7 +193,7 @@ function ApiKeyCard({ data, update, refresh }: StepProps): JSX.Element {
 
   return (
     <Card title="API key">
-      <p class="dim">Use a key from a model vendor. It goes to the macOS Keychain and is never shown again.</p>
+      <p class="dim">Stored in the macOS Keychain; never shown again.</p>
       <div class="setup-pair">
         <label class="setup-field"><span class="label">Vendor</span>
           <select aria-label="Vendor" value={vendor} onChange={(e) => { setVendor(e.currentTarget.value); setSecret(""); setError(null); }}>
@@ -202,7 +201,7 @@ function ApiKeyCard({ data, update, refresh }: StepProps): JSX.Element {
           </select>
         </label>
         <label class="setup-field"><span class="label">API key</span>
-          <input {...SECRET_INPUT} aria-label="API key" value={secret} placeholder={status?.present ? "replace the saved key" : "paste the key"}
+          <input {...SECRET_INPUT} aria-label="API key" value={secret} placeholder={status?.present ? "replace saved key" : "paste key"}
             onInput={(e) => setSecret(e.currentTarget.value)}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void save(); } }} />
         </label>
@@ -240,7 +239,7 @@ function LocalCard({ data, update, refresh }: StepProps): JSX.Element {
         await refresh().catch(() => undefined);
         setResult({ ok: true, text: `${localTestText(r, endpoint, app)} — saved` });
       } else {
-        setResult({ ok: false, text: `${localTestText(r, endpoint, app)} Nothing was saved.` });
+        setResult({ ok: false, text: `${localTestText(r, endpoint, app)} Not saved.` });
       }
     } catch (e) {
       setResult({ ok: false, text: describeError(e) });
@@ -250,7 +249,7 @@ function LocalCard({ data, update, refresh }: StepProps): JSX.Element {
 
   return (
     <Card title="Local model">
-      <p class="dim">Run open models on this Mac with Ollama or LM Studio — free, and nothing leaves the machine.</p>
+      <p class="dim">Ollama or LM Studio on this Mac. Nothing leaves the machine.</p>
       <LocalModels />
       <div class="setup-pair">
         <label class="setup-field"><span class="label">Local app</span>

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { KeyStatus, ModelsInfo, Profile, SetupState } from "../../api/types";
-import { apiKeyVendors, availableModels, localTestText, onshapeTestText, pollUntil, resumeStep, STEPS } from "./logic";
+import { apiKeyVendors, availableModels, localTestText, onshapeTestText, pollUntil, resumeStep, stepDone, STEPS } from "./logic";
 
 const st = (p: Partial<SetupState>): SetupState => ({ complete: false, has_model: false, has_onshape: false, missing: ["model", "onshape", "profile"], ...p });
 const none = { modelSkipped: false, onshapeSkipped: false, reopened: false, profileNamed: false };
@@ -42,12 +42,12 @@ describe("onshapeTestText", () => {
   it.each([
     [{ ok: true, user_name: "Hartigan Deely" }, "connected as Hartigan Deely"],
     [{ ok: true }, "connected"],
-    [{ ok: false, error: "denied" }, "Onshape refused these keys"],
-    [{ ok: false, error: "not_configured" }, "No Onshape keys are saved yet"],
+    [{ ok: false, error: "denied" }, "Onshape rejected these keys"],
+    [{ ok: false, error: "not_configured" }, "No Onshape keys saved"],
     [{ ok: false, error: "unreachable" }, "Onshape did not answer"],
-    [{ ok: false, error: "budget" }, "Onshape call budget"],
-    [{ ok: false, error: "failed" }, "The Onshape test failed"],
-    [{ ok: false, error: "something new" }, "The Onshape test failed"],
+    [{ ok: false, error: "budget" }, "Onshape call cap reached"],
+    [{ ok: false, error: "failed" }, "Onshape test failed"],
+    [{ ok: false, error: "something new" }, "Onshape test failed"],
   ] as const)("%j", (r, want) => {
     const text = onshapeTestText(r);
     expect(text).toContain(want);
@@ -169,5 +169,23 @@ describe("pollUntil", () => {
     await expect(p.result).resolves.toEqual({ outcome: "stopped" });
     await vi.advanceTimersByTimeAsync(20_000);
     expect(check).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("stepDone", () => {
+  const prof = (display_name: string) => ({ display_name }) as Profile;
+  const no = { model: false, onshape: false };
+  it("each_step_is_done_when_its_piece_is_in_place", () => {
+    const d = { setup: st({}), profile: prof("") };
+    expect(STEPS.map((s) => stepDone(s.id, d, false, no))).toEqual([false, false, false, false, false]);
+    const all = { setup: st({ complete: true, has_model: true, has_onshape: true, missing: [] }), profile: prof("Ada") };
+    expect(STEPS.map((s) => stepDone(s.id, all, false, no))).toEqual([true, true, true, true, true]);
+  });
+  it("welcome_is_done_once_passed_and_skips_count_as_done", () => {
+    const d = { setup: st({}), profile: prof("  ") };
+    expect(stepDone("welcome", d, true, no)).toBe(true);
+    expect(stepDone("profile", d, true, no)).toBe(false);
+    expect(stepDone("model", d, false, { model: true, onshape: false })).toBe(true);
+    expect(stepDone("onshape", d, false, { model: false, onshape: true })).toBe(true);
   });
 });

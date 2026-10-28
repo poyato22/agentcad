@@ -98,10 +98,10 @@ test("fonts_are_local_iosevka", async ({ page }) => {
 });
 
 // ---- traffic lights: no interactive element or text may sit under the overlay window buttons.
-// The reserved zone is the top-left 78px × 28px of the window.
+// The reserved zone is the top-left 78px × 32px of the window (lights moved to y 15–29).
 async function offenders(page: Page): Promise<string[]> {
   return page.evaluate(() => {
-    const ZONE_X = 78, ZONE_Y = 28;
+    const ZONE_X = 78, ZONE_Y = 32;
     const interactive = "a,button,input,select,textarea,[role=tab],[role=button],[tabindex]";
     const seen = new Set<Element>();
     const bad: string[] = [];
@@ -181,7 +181,7 @@ for (const size of [{ width: 1280, height: 800 }, { width: 1600, height: 1000 }]
       await expect(page.locator("[data-region=console] [data-card]").first()).toBeVisible();
       await measure(page, mode, "design + approval card");
       // new-run dialog (composer)
-      await page.keyboard.press("Meta+n");   // the new-run dialog (the console's "+ New" is an inline form)
+      await page.keyboard.press("Meta+n");   // the new-run dialog (the console's "New" is an inline form)
       await expect(page.getByRole("dialog", { name: "New run" })).toBeVisible();
       await measure(page, mode, "new-run dialog");
       await page.getByRole("dialog", { name: "New run" }).getByRole("button", { name: "Close" }).click();
@@ -370,3 +370,43 @@ test("connects_to_fake_core_without_errors", async ({ page, fake }) => {
   expect(ctx.every((c) => c.method === "PUT")).toBe(true);
   expect(errors).toEqual([]);
 });
+
+// ---- title strips at the window top: text sits on the traffic lights' centre line.
+// --chrome-center-y is the lights' vertical centre measured in a built Mises.app (22px: trafficLightPosition centres the lights in the 44px top bar).
+async function chromeOffsets(page: Page, selectors: string[]): Promise<{ centre: number; off: [string, number][] }> {
+  return page.evaluate((sels) => {
+    const centre = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--chrome-center-y"));
+    const off: [string, number][] = [];
+    for (const sel of sels) {
+      const els = [...document.querySelectorAll<HTMLElement>(sel)].filter((el) => el.getBoundingClientRect().height > 0);
+      if (els.length === 0) off.push([`${sel} (missing)`, 999]);
+      for (const el of els) {
+        const r = el.getBoundingClientRect();
+        off.push([sel, Math.abs(r.top + r.height / 2 - centre)]);
+      }
+    }
+    return { centre, off };
+  }, selectors);
+}
+
+for (const theme of ["dark", "light"] as const) {
+  test(`header_text_is_centred_on_the_traffic_lights_${theme}`, async ({ page, fake }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/");
+    await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
+    await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
+    const top = await chromeOffsets(page, [".crumb", ".tab", ".profile-btn", ".stop-all", ".light"]);
+    expect(top.centre).toBe(22);
+    for (const [sel, d] of top.off) expect(d, `top bar ${sel}`).toBeLessThanOrEqual(2);
+    // the setup wizard header
+    await fake.reset("setup");
+    await page.goto("/");
+    await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
+    await expect(page.getByRole("dialog", { name: "Set up Mises" })).toBeVisible();
+    const wiz = await chromeOffsets(page, [".setup-title", ".setup-step-name", ".setup-close"]);
+    for (const [sel, d] of wiz.off) expect(d, `wizard ${sel}`).toBeLessThanOrEqual(2);
+    // and the 78px inset still keeps text clear of the lights
+    const left = await page.locator(".setup-title").evaluate((el) => el.getBoundingClientRect().left);
+    expect(left).toBeGreaterThanOrEqual(78);
+  });
+}

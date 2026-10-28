@@ -73,8 +73,8 @@ export function SetupGate(): JSX.Element | null {
     return (
       <div class="setup-notice" role="status" aria-label="Connect a model">
         <Led tone="amber" />
-        <span>No model is connected yet — runs need one. Connect your Claude Code, an API key or a local model in Profile.</span>
-        <Button onClick={() => openProfile("models")}>Open Profile</Button>
+        <span>No model connected. Runs need one.</span>
+        <Button onClick={() => openProfile("models")}>Connect</Button>
         <Button variant="ghost" onClick={() => setNoticeHidden(true)}>Dismiss</Button>
       </div>
     );

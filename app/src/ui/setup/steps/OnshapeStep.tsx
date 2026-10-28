@@ -50,9 +50,9 @@ export function OnshapeStep({ data, update, refresh, go }: StepProps): JSX.Eleme
 
   return (
     <div class="setup-step">
-      <StepHead title="Connect Onshape" sub="Optional. Without it, agents work on the local CAD mirror only." />
+      <StepHead title="Onshape" sub="Optional. Without it, agents use the local CAD mirror only." />
       <Card title="Onshape API keys">
-        <p class="dim">Create an API key pair in Onshape's developer portal. Both keys go to the macOS Keychain and are never shown again.</p>
+        <p class="dim">From Onshape's developer portal. Stored in the macOS Keychain; never shown again.</p>
         <div class="setup-pair">
           <label class="setup-field"><span class="label">Access key</span>
             <input {...SECRET_INPUT} aria-label="Access key" value={access} onInput={(e) => setAccess(e.currentTarget.value)} />
@@ -75,7 +75,7 @@ export function OnshapeStep({ data, update, refresh, go }: StepProps): JSX.Eleme
       <div class="setup-actions">
         <Button variant="ghost" onClick={() => go("model")}>Back</Button>
         <span class="setup-spacer" />
-        <Button variant="ghost" onClick={() => { setSkipped("onshape", true); go("done"); }}>Skip for now</Button>
+        <Button variant="ghost" onClick={() => { setSkipped("onshape", true); go("done"); }}>Skip</Button>
         <Button variant="ink" disabled={!data.setup.has_onshape} onClick={() => { setSkipped("onshape", false); go("done"); }}>Continue</Button>
       </div>
     </div>

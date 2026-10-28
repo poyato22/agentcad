@@ -95,7 +95,7 @@ export function Conversation(): JSX.Element {
   return (
     <div class="cv-wrap">
       <div class="cv-thread" ref={scroller} onScroll={onScroll} role="log" aria-label="Conversation" aria-live="off" data-conversation>
-        {start > 0 && <button type="button" class="cv-earlier" onClick={showEarlier}>{`show earlier · ${start}`}</button>}
+        {start > 0 && <button type="button" class="cv-earlier" onClick={showEarlier}>{`Show earlier (${start})`}</button>}
         {!run && items.length === 0 && <Empty />}
         {shown.map((it) => <div key={it.key} class="cv-item" data-key={it.key}><Item item={it} agent={run?.agent ?? "agent"} /></div>)}
         {run && items.length === 0 && run.task && (
@@ -111,8 +111,8 @@ export function Conversation(): JSX.Element {
 function Empty(): JSX.Element {
   return (
     <div class="cv-empty">
-      <p class="dim">No runs yet. Describe a change and an agent will make it, measure it and ask before anything reaches Onshape.</p>
-      <Button onClick={() => { composerOpen.value = true; }}>+ New run</Button>
+      <p class="dim">No runs yet.</p>
+      <Button onClick={() => { composerOpen.value = true; }}>New run</Button>
     </div>
   );
 }

@@ -6,8 +6,8 @@ import { Button } from "../../common/Button";
 import { Led } from "../../common/Led";
 
 const WHY: Record<keyof SimSolvers, string> = {
-  ccx: "Studies solve with CalculiX (ccx), a separate program Mises runs on its own. It is not installed.",
-  gmsh: "Studies mesh the part with gmsh, which ships with the Mises core. It is missing.",
+  ccx: "CalculiX (ccx) is not installed. Studies need it to solve.",
+  gmsh: "gmsh is missing from the Mises core. Studies need it to mesh.",
 };
 
 /** The command to copy: the `quoted` part of a hint like "run `uv sync` in core/", else all of it. */

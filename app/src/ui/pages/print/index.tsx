@@ -192,7 +192,7 @@ export function PrintPage(): JSX.Element {
         {showInstall && (
           <section class="pr-card pr-install" role="region" aria-label="Install PrusaSlicer">
             <h2 class="pr-card-title">PrusaSlicer is not installed</h2>
-            <p class="dim">Slicing runs the free PrusaSlicer app as a separate program. Install it, then check again:</p>
+            <p class="dim">Slicing needs PrusaSlicer. Install it, then check again:</p>
             <code class="pr-code text">{installCommand}</code>
             <div class="pr-row">
               <Button onClick={() => { setSlicerMissing(null); setCapsAttempt((n) => n + 1); }}>Check again</Button>
@@ -219,7 +219,7 @@ export function PrintPage(): JSX.Element {
                   {status?.hint && !status.reachable && <span class="faint text"> — {status.hint}</span>}
                 </div>
               )}
-              {!adding && <Button variant="ghost" onClick={() => setAdding(true)}>+ Add printer</Button>}
+              {!adding && <Button variant="ghost" onClick={() => setAdding(true)}>Add printer</Button>}
             </div>
           )}
           {printer && <div class="faint text">{printer.host} · PrusaLink{printer.has_key ? " · key saved in Keychain" : " · no key saved"}</div>}
@@ -227,7 +227,7 @@ export function PrintPage(): JSX.Element {
             <PrinterForm caps={caps} onAdded={onAdded} onCancel={noPrinters ? undefined : () => setAdding(false)} />
           )}
           {!noPrinters && !adding && <p class="faint pr-note">{LAN_NOTE}</p>}
-          <p class="faint pr-note">Bambu printers: coming later.</p>
+          <p class="faint pr-note">Bambu: not supported yet.</p>
         </section>
 
         <section class="pr-card" role="region" aria-label="Slice">
@@ -245,7 +245,7 @@ export function PrintPage(): JSX.Element {
             <Button variant="ink" disabled={!printer || !partId || slicing || showInstall} onClick={() => { void startSlice(); }}>Slice</Button>
             {slicing && <Button variant="ghost" onClick={() => { void cancelSlice(); }}>Cancel slice</Button>}
           </div>
-          {!part && <p class="faint">No parts yet. Build one on the Design page.</p>}
+          {!part && <p class="faint">No parts. Build one on the Design page.</p>}
           {slicing && <div class="dim" role="status" aria-label="Slicing">slicing {partLabel(slice.part_id)} in PrusaSlicer…</div>}
           {sliceError && <div class="pg-error text" role="alert">{sliceError}</div>}
           {slice?.status === "failed" && (
@@ -256,7 +256,7 @@ export function PrintPage(): JSX.Element {
 
         <section class="pr-card pr-result" role="region" aria-label="Slice result">
           <h2 class="pr-card-title">Result</h2>
-          {!est && <p class="faint">Slice to see the preview, print time, filament and cost.</p>}
+          {!est && <p class="faint">Slice for preview, print time, filament and cost.</p>}
           {est && slice && (
             <div class="pr-result-body">
               <div class="pr-preview">
@@ -277,12 +277,12 @@ export function PrintPage(): JSX.Element {
           <div class="pr-send">
             <Button variant="ink" disabled={block !== null} onClick={() => { void send(); }}>Send to printer</Button>
             {block && <span class="dim text">{block}</span>}
-            {!block && <span class="dim">Irreversible: the printer starts the job once you approve the card in the console.</span>}
+            {!block && <span class="dim">Irreversible: printing starts when you approve the card in the console.</span>}
           </div>
           {sendError && <div class="pg-error text" role="alert">{sendError}</div>}
           {request && (
             <div class="pr-request" role="status" aria-label="Print request">
-              {!outcome && (<><Led tone="blue" /><span>Waiting for you: approve or reject the card in the agent console. Nothing is sent before that.</span></>)}
+              {!outcome && (<><Led tone="blue" /><span>Approve or reject the card in the console. Nothing is sent until then.</span></>)}
               {outcome && (<><Led tone={outcome.tone === "dim" ? "faint" : outcome.tone} /><span class="text">{outcome.text}</span></>)}
             </div>
           )}

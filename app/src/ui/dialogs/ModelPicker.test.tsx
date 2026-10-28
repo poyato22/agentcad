@@ -79,7 +79,7 @@ describe("ModelPicker", () => {
     const c = client();
     const { panel } = await openPicker();
     const local = await within(panel).findByRole("group", { name: "On this Mac (Ollama)" });
-    expect(local.textContent).toContain("Ollama isn't running");
+    expect(local.textContent).toContain("Ollama not running");
     fireEvent.click(within(local).getByRole("button", { name: "Start Ollama" }));
     await waitFor(() => expect(c.localStart).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(within(local).queryByRole("button", { name: "Start Ollama" })).toBeNull());

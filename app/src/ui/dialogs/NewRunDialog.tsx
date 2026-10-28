@@ -158,7 +158,7 @@ function DialogBody(): JSX.Element {
           <div class="dlg-hint dim" data-hint>
             <span>{`${providerLabel(ref.vendor)} is ${blocked === "signed_out" ? "signed out" : "not installed"} on this Mac.`}</span>
             {" "}
-            <Button variant="ghost" onClick={signInInProfile}>Sign in in Profile</Button>
+            <Button variant="ghost" onClick={signInInProfile}>Sign in</Button>
           </div>
         )}
 

@@ -1,4 +1,5 @@
-// First-run setup: Welcome → Connect a model → Onshape (optional) → Profile basics → Done.
+// First-run setup: Welcome → Profile → Model → Onshape (optional) → Done. The step bar at the top
+// jumps to any step.
 // Every step saves to the core as it goes, so closing or reloading mid-way loses nothing and the
 // wizard resumes at the first piece still missing. Secrets go straight to the core (Keychain) and
 // are never shown again: inputs are password fields that clear after a save.
@@ -9,7 +10,7 @@ import { actions } from "../../state/store";
 import { Button } from "../common/Button";
 import { useFocusTrap } from "../common/focusTrap";
 import { skipped } from "./gate";
-import { resumeStep, STEPS, type StepId } from "./logic";
+import { resumeStep, stepDone, STEPS, type StepId, type StepStatus } from "./logic";
 import { DoneStep } from "./steps/DoneStep";
 import { describeError } from "./steps/common";
 import { ModelStep } from "./steps/ModelStep";
@@ -77,20 +78,46 @@ export function SetupWizard({ reopened, onClose }: { reopened: boolean; onClose:
   // a new step: focus its first control (the trap keeps Tab inside the wizard)
   useEffect(() => {
     const body = root.current?.querySelector<HTMLElement>(".setup-body");
-    if (!body || !step || body.contains(document.activeElement)) return;
+    // (not when the step was picked in the step bar: focus stays on the bar)
+    if (!body || !step || body.contains(document.activeElement) || document.activeElement?.closest(".setup-steps")) return;
     body.querySelector<HTMLElement>("button:not([disabled]), input:not([disabled]), select:not([disabled])")?.focus();
   }, [step]);
+
+  const status = (id: StepId, i: number): StepStatus => (id === step ? "current" : data && stepDone(id, data, i < current) ? "done" : "todo");
+  // ←/→ (and Home/End) move between the step buttons; Enter or Space opens the focused step.
+  const onStepKey = (e: KeyboardEvent): void => {
+    const btns = [...(root.current?.querySelectorAll<HTMLButtonElement>(".setup-step-btn") ?? [])];
+    const i = btns.indexOf(document.activeElement as HTMLButtonElement);
+    if (i < 0) return;
+    const n = btns.length;
+    const next = e.key === "ArrowRight" ? (i + 1) % n : e.key === "ArrowLeft" ? (i - 1 + n) % n : e.key === "Home" ? 0 : e.key === "End" ? n - 1 : -1;
+    if (next < 0) return;
+    e.preventDefault();
+    btns[next].focus();
+  };
 
   return (
     <div ref={root} class="setup" role="dialog" aria-modal="true" aria-label="Set up Mises">
       <header class="setup-head">
         <span class="setup-title">Set up Mises</span>
-        <ol class="setup-steps" aria-label="Setup steps">
-          {STEPS.map((s, i) => (
-            <li key={s.id} aria-current={s.id === step ? "step" : undefined} class={i < current ? "dim" : s.id === step ? "" : "faint"}>{s.label}</li>
-          ))}
-        </ol>
-        <Button variant="ghost" class="setup-close" onClick={onClose}>Close — finish later</Button>
+        <nav aria-label="Setup steps">
+          <ol class="setup-steps" onKeyDown={onStepKey}>
+            {STEPS.map((s, i) => {
+              const st = status(s.id, i);
+              return (
+                <li key={s.id}>
+                  <button type="button" class="setup-step-btn" data-status={st} aria-current={st === "current" ? "step" : undefined}
+                    aria-label={st === "current" ? s.label : `${s.label} (${st === "done" ? "done" : "to do"})`}
+                    disabled={!props} onClick={() => setStep(s.id)}>
+                    <span class="setup-step-mark" aria-hidden="true">{st === "done" ? "✓" : st === "current" ? "●" : "○"}</span>
+                    <span class="setup-step-name">{s.label}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+        </nav>
+        <Button class="setup-close" onClick={onClose}>Close</Button>
       </header>
       <div class="setup-body">
         {error && (

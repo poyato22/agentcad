@@ -78,7 +78,7 @@ test("agents_and_budgets_persist", async ({ page, fake }) => {
   await panel(page).getByRole("button", { name: /^Default model/ }).click();
   await panel(page).getByRole("group", { name: "Your Claude Code" }).locator("[data-ref='claude-code/opus']").click();
   // a saved number shows as a manual choice; "Auto" is the other option
-  await expect(panel(page).getByRole("radio", { name: "Choose a number" })).toBeChecked();
+  await expect(panel(page).getByRole("radio", { name: "Manual" })).toBeChecked();
   await field(page, "Max parallel agents").fill("4");
   await field(page, "Onshape calls per run").fill("120");
   await panel(page).getByRole("button", { name: "Save", exact: true }).click();
@@ -107,7 +107,7 @@ test("api_key_add_replace_remove_with_an_in_panel_confirm_and_no_secret_in_the_p
   await panel(page).getByRole("button", { name: "Add gemini key" }).click();
   await expect(field(page, "gemini API key")).toHaveAttribute("type", "password");
   await field(page, "gemini API key").fill(API_SECRET);
-  await panel(page).getByRole("button", { name: "Save key" }).click();
+  await panel(page).getByRole("button", { name: "Save", exact: true }).click();
   await expect(table.getByRole("row", { name: /gemini.*Keychain/ })).toBeVisible();
   await noSecretsAnywhere(page, [API_SECRET]);
   // the core's listing is status only
@@ -119,7 +119,7 @@ test("api_key_add_replace_remove_with_an_in_panel_confirm_and_no_secret_in_the_p
   await panel(page).getByRole("button", { name: "Keep" }).click();
   await expect(table.getByRole("row", { name: /gemini.*Keychain/ })).toBeVisible();
   await panel(page).getByRole("button", { name: "Remove gemini key" }).click();
-  await panel(page).getByRole("button", { name: "Yes, remove" }).click();
+  await panel(page).getByRole("button", { name: "Remove", exact: true }).click();
   await expect(table.getByRole("row", { name: /gemini.*no key/ })).toBeVisible();
   const keys = (await getJson(fake, "/keys")) as { vendor: string; present: boolean }[];
   expect(keys.find((k) => k.vendor === "gemini")?.present).toBe(false);
@@ -139,7 +139,7 @@ test("local_endpoint_test_save_and_remove", async ({ page, fake }) => {
     .toEqual({ ollama: "http://localhost:11434/v1", lmstudio: "http://localhost:1234/v1" });
 
   await panel(page).getByRole("button", { name: "Remove ollama endpoint" }).click();
-  await panel(page).getByRole("button", { name: "Yes, remove" }).click();
+  await panel(page).getByRole("button", { name: "Remove", exact: true }).click();
   await expect.poll(async () => ((await getJson(fake, "/profile")) as { local_endpoints: Record<string, string> }).local_endpoints)
     .toEqual({ lmstudio: "http://localhost:1234/v1" });
 });
@@ -155,7 +155,7 @@ test("claude_code_card_signs_out_then_in_with_a_blue_waiting_light", async ({ pa
   await card.getByRole("button", { name: "Sign out" }).click();
   await expect(card).toContainText("signed out");
   await card.getByRole("button", { name: "Sign in" }).click();
-  await expect(card.getByText("finish signing in in your browser")).toBeVisible();
+  await expect(card.getByText("waiting for browser sign-in")).toBeVisible();
   await expect(page.locator(".led-blue")).toHaveCount(1); // needs the human
   await expect(card).toContainText("signed in", { timeout: 10_000 });
   await expect(page.locator(".led-blue")).toHaveCount(0);
@@ -171,7 +171,7 @@ test("onshape_keys_test_usage_and_caps", async ({ page, fake }) => {
   await expect(panel(page).getByText("connected as Hartigan Deely")).toBeVisible();
   expect((await fake.calls()).filter((c) => c.path === "/onshape/test")).toHaveLength(1);
 
-  await panel(page).getByRole("button", { name: "Replace keys" }).click();
+  await panel(page).getByRole("button", { name: "Replace" }).click();
   await field(page, "Access key").fill(ONSHAPE_ACCESS);
   await field(page, "Secret key").fill(ONSHAPE_SECRET);
   await panel(page).getByRole("button", { name: "Save keys" }).click();
@@ -180,13 +180,13 @@ test("onshape_keys_test_usage_and_caps", async ({ page, fake }) => {
   expect(JSON.stringify(await getJson(fake, "/keys"))).not.toContain(ONSHAPE_SECRET);
 
   await field(page, "Yearly call cap").fill("4000");
-  await panel(page).getByRole("button", { name: "Save caps" }).click();
+  await panel(page).getByRole("button", { name: "Save call cap" }).click();
   await expect(panel(page).getByText("340 of 4,000 calls this year")).toBeVisible();
   expect(await getJson(fake, "/profile")).toMatchObject({ onshape_calls_year_cap: 4000 });
 
-  await panel(page).getByRole("button", { name: "Remove keys" }).click();
-  await panel(page).getByRole("button", { name: "Yes, remove" }).click();
-  await expect(panel(page).getByRole("button", { name: "Add keys" })).toBeVisible();
+  await panel(page).getByRole("button", { name: "Remove" }).click();
+  await panel(page).getByRole("button", { name: "Remove" }).click();
+  await expect(panel(page).getByRole("button", { name: "Add" })).toBeVisible();
   const keys = (await getJson(fake, "/keys")) as { vendor: string; present: boolean }[];
   expect(keys.find((k) => k.vendor === "onshape")?.present).toBe(false);
 });
