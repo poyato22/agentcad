@@ -37,6 +37,14 @@ def test_corrupt_file_falls_back_to_defaults(tmp_path):
     assert load_profile(tmp_path) == Profile()
 
 
+def test_theme_defaults_to_system_and_round_trips(tmp_path):
+    assert Profile().theme == "system"
+    save_profile(tmp_path, Profile(theme="light"))
+    assert load_profile(tmp_path).theme == "light"
+    with pytest.raises(ValidationError):
+        Profile(theme="solarized")
+
+
 def test_validation():
     with pytest.raises(ValidationError):
         Profile(units="inch")

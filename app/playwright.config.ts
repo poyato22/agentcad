@@ -14,12 +14,15 @@ export default defineConfig({
     trace: "retain-on-failure",
     ...devices["Desktop Chrome"],
     viewport: { width: 1440, height: 900 },
+    // The profile theme defaults to "system"; pin the OS preference so tests are deterministic
+    // (the dark palette, as on the dev machine). Specs that exercise light mode set it explicitly.
+    colorScheme: "dark",
   },
   projects: [
-    { name: "chromium", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } } },
+    { name: "chromium", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 }, colorScheme: "dark" } },
     // The app runs in WKWebView: approval input safety is also checked on WebKit
     // (needs `npx playwright install webkit`).
-    { name: "webkit", testMatch: "**/approvals.spec.ts", use: { ...devices["Desktop Safari"], viewport: { width: 1440, height: 900 } } },
+    { name: "webkit", testMatch: "**/approvals.spec.ts", use: { ...devices["Desktop Safari"], viewport: { width: 1440, height: 900 }, colorScheme: "dark" } },
   ],
   webServer: [
     {

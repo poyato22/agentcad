@@ -46,7 +46,7 @@ export interface FakeSetup {
 export const DEFAULT_PROFILE: Profile = {
   display_name: "", units: "mm", default_material: "PLA", default_agent: "designer", default_model: null,
   onshape_calls_year_cap: 2500, onshape_calls_run_cap: 200, max_parallel_agents: 2, local_endpoints: {},
-  setup_completed_at: null,
+  theme: "system", setup_completed_at: null,
 };
 
 const EMPTY_CONTEXT = { selected_part_id: null, selected_run_id: null, picks: [] };
@@ -151,6 +151,7 @@ const PROFILE_FIELDS: Record<string, (v: unknown) => boolean> = {
   max_parallel_agents: int(1, 16),
   local_endpoints: (v) => typeof v === "object" && v !== null && !Array.isArray(v)
     && Object.values(v).every((x) => typeof x === "string" && loopback(x)),
+  theme: (v) => v === "system" || v === "light" || v === "dark",
   setup_completed_at: (v) => v === null || typeof v === "number",
 };
 

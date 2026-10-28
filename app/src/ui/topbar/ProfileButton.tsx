@@ -4,6 +4,7 @@
 import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { actions, conn } from "../../state/store";
+import { setTheme } from "../../styles/theme";
 import { Button } from "../common/Button";
 import { openProfile, profileOpen, profileVersion } from "../profile/open";
 
@@ -34,7 +35,7 @@ export function ProfileButton(): JSX.Element {
     let live = true;
     failed.current = false;
     Promise.resolve().then(() => actions.client().getProfile()).then(
-      (p) => { if (live) setName(p.display_name); },
+      (p) => { if (live) { setName(p.display_name); setTheme(p.theme); } },
       () => { failed.current = true; /* core not ready: the next connect reads it */ },
     );
     return () => { live = false; };

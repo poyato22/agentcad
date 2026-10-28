@@ -106,6 +106,9 @@ export interface CoreErrorBody { error: ErrorCode; message: string; hint: string
 
 // ---- Plan 3: profile, keys, setup, Claude Code, Onshape test, UI context (core server/profile_api.py)
 
+/** UI theme: follow the OS, or force light/dark. Applied via `data-theme` on <html>. */
+export type Theme = "system" | "light" | "dark";
+
 /** data_home()/profile.json. Never holds secrets. */
 export interface Profile {
   display_name: string; units: "mm"; default_material: string; default_agent: string;
@@ -114,6 +117,8 @@ export interface Profile {
   onshape_calls_year_cap: number; onshape_calls_run_cap: number; max_parallel_agents: number;
   /** {"ollama": "http://localhost:11434/v1", "lmstudio": ...} */
   local_endpoints: Record<string, string>;
+  /** UI theme (default "system"). */
+  theme: Theme;
   setup_completed_at: number | null;
 }
 

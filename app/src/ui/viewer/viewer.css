@@ -5,10 +5,10 @@
   overflow: hidden;
   background-color: var(--vp);
   background-image:
-    linear-gradient(rgba(255, 255, 255, .07) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, .07) 1px, transparent 1px),
-    linear-gradient(rgba(255, 255, 255, .025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, .025) 1px, transparent 1px);
+    linear-gradient(var(--grid-strong) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-strong) 1px, transparent 1px),
+    linear-gradient(var(--grid-faint) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-faint) 1px, transparent 1px);
   background-size: 100px 100px, 100px 100px, 20px 20px, 20px 20px;
 }
 .vp-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }

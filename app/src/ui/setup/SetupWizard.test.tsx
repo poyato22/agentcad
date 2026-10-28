@@ -12,7 +12,7 @@ const SECRET = "sk-ant-api03-SECRET-0123456789";
 const fresh: SetupState = { complete: false, has_model: false, has_onshape: false, missing: ["model", "onshape", "profile"] };
 const profile: Profile = {
   display_name: "", units: "mm", default_material: "PLA", default_agent: "designer", default_model: null,
-  onshape_calls_year_cap: 2500, onshape_calls_run_cap: 200, max_parallel_agents: 2, local_endpoints: {}, setup_completed_at: null,
+  onshape_calls_year_cap: 2500, onshape_calls_run_cap: 200, max_parallel_agents: 2, local_endpoints: {}, theme: "system", setup_completed_at: null,
 };
 const keys: KeyStatus[] = ["anthropic", "openai", "gemini", "openrouter", "ollama", "lmstudio", "onshape"].map((vendor) => ({ vendor, present: false, source: "none" }));
 const signedOut: ClaudeCodeStatus = { installed: true, version: "2.1.4", signed_in: false, auth_method: null };

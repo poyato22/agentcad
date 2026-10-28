@@ -19,8 +19,7 @@
     "fake-core": "tsx test/fake-core/cli.ts --port 7400 --token dev-token --scenario base"
   },
   "dependencies": {
-    "@fontsource/ibm-plex-mono": "5.3.0",
-    "@fontsource/ibm-plex-sans-condensed": "5.3.0",
+    "@fontsource/iosevka": "5.3.0",
     "@preact/signals": "2.11.3",
     "@tauri-apps/api": "2.12.4",
     "preact": "10.29.8",
@@ -31,8 +30,8 @@
     "@eslint/js": "10.0.1",
     "@playwright/test": "1.64.1",
     "@preact/preset-vite": "2.10.6",
-    "@testing-library/preact": "3.2.6",
     "@tauri-apps/cli": "2.12.4",
+    "@testing-library/preact": "3.2.6",
     "@types/node": "24.19.2",
     "@types/three": "0.186.0",
     "@types/ws": "8.18.2",
