@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+<defs>
+  <linearGradient id="p8g" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#202124"/><stop offset="1" stop-color="#0a0a0a"/>
+  </linearGradient>
+  <linearGradient id="p8rim" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#ffffff" stop-opacity=".16"/><stop offset=".5" stop-color="#ffffff" stop-opacity=".03"/><stop offset="1" stop-color="#ffffff" stop-opacity=".07"/>
+  </linearGradient>
+</defs>
+<rect x="100" y="100" width="824" height="824" rx="185" fill="url(#p8g)"/>
+<rect x="102" y="102" width="820" height="820" rx="183" fill="none" stroke="url(#p8rim)" stroke-width="4"/>
+<defs><linearGradient id="tp" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e6e6e3"/><stop offset="1" stop-color="#cfcfcc"/></linearGradient>
+<linearGradient id="lf" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#a8a8a5"/><stop offset="1" stop-color="#979794"/></linearGradient>
+<linearGradient id="rt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#727270"/><stop offset="1" stop-color="#626260"/></linearGradient></defs>
+<path d="M512.0 228.0 L761.4 372.0 L512.0 516.0 L262.6 372.0Z" fill="url(#tp)"/>
+<path d="M262.6 372.0 L512.0 516.0 L512.0 804.0 L262.6 660.0Z" fill="url(#lf)"/>
+<path d="M512.0 516.0 L761.4 372.0 L761.4 660.0 L512.0 804.0Z" fill="url(#rt)"/>
+<path d="M512.0 228.0 L761.4 372.0 L761.4 660.0 L512.0 804.0 L262.6 660.0 L262.6 372.0Z" fill="none" stroke="#f4f4f2" stroke-width="10" stroke-linejoin="round"/>
+<path d="M262.6 372.0L512 516L761.4 372.0" fill="none" stroke="#f4f4f2" stroke-width="10" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M512 516L512 804" stroke="#f4f4f2" stroke-width="10" stroke-linecap="round"/>
+</svg>
