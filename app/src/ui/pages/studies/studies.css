@@ -1,0 +1,88 @@
+/* Studies page. Plan tokens only (both themes come from tokens.css); square corners.
+   Blue: the selected history row only. Green/amber/red: pass/warn/fail only.
+   The heatmap legend carries the solver's own colormap (it is the result, not UI chrome). */
+.st { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 16px; min-height: 100%; }
+.st-side { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.st-main { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+
+.st-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.st-field select, .st-field input { width: 100%; }
+.st-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.st-setup { display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--line); padding: 10px; background: var(--paper); }
+.st-setup > .btn { align-self: flex-start; }
+.st-note { margin: 0; }
+.st-problems { margin: 0; padding: 0 0 0 14px; }
+
+.tone-green { color: var(--green); }
+.tone-amber { color: var(--amber); }
+.tone-red { color: var(--red); }
+.tone-faint { color: var(--faint); }
+
+/* progress: neutral ink (a running study is not "needs you") */
+.st-progress { display: flex; flex-direction: column; gap: 6px; }
+.st-progress-row { display: flex; justify-content: space-between; gap: 8px; }
+.st-bar { height: 4px; background: var(--line); }
+.st-bar-fill { height: 100%; background: var(--ink); transition: width .3s; }
+.st-progress .btn { align-self: flex-start; }
+
+/* bands: failed study, run error, install card, stale */
+.st-band { display: flex; gap: 8px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--line2); background: var(--paper); }
+.st-band .led { margin-top: 4px; }
+.st-band-red { border-color: var(--red); }
+.st-band-amber { border-color: var(--amber); }
+.st-band-title { font-weight: 700; }
+.st-band p { margin: 0 0 6px; }
+.st-install-item { margin-bottom: 8px; }
+.st-cmd { display: flex; align-items: center; gap: 6px; border: 1px solid var(--line2); background: var(--bg); padding: 4px 6px; }
+.st-cmd code { flex: 1; font: inherit; color: var(--ink); user-select: all; }
+
+/* history */
+.st-history h2 { margin-bottom: 6px; }
+.st-history ul { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+.st-row-btn {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 4px; text-align: left;
+  background: transparent; border: 0; border-bottom: 1px solid var(--line); color: var(--ink); cursor: pointer;
+}
+.st-row-btn:hover { background: var(--paper2); }
+.st-row-btn:focus-visible { outline: 1px solid var(--blue); outline-offset: -1px; }
+.st-row-btn[aria-current="true"] { background: var(--blue-tint); box-shadow: inset 2px 0 0 var(--blue); }
+.st-row-label { flex: 1; min-width: 0; }
+.st-row-right { flex: none; white-space: nowrap; }
+
+/* split viewer */
+.st-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 64px; gap: 0; height: clamp(260px, 46vh, 520px); border: 1px solid var(--line2); }
+.st-sheet { height: 100%; min-width: 0; }
+.st-sheet + .st-sheet { border-left: 1px solid var(--line2); }
+.st-sheet-msg { position: absolute; left: 22px; bottom: 18px; right: 22px; color: var(--red); }
+.st-legend { display: flex; flex-direction: column; gap: 6px; align-items: center; padding: 14px 8px 18px; border-left: 1px solid var(--line2); background: var(--paper); min-height: 0; }
+.st-legend-body { flex: 1; display: flex; gap: 6px; min-height: 0; }
+.st-legend-bar { width: 10px; border: 1px solid var(--line2); }
+.st-legend-ticks { display: flex; flex-direction: column; justify-content: space-between; font-size: var(--fs-small); color: var(--dim); text-align: right; }
+
+/* results */
+.st-results { display: flex; flex-direction: column; gap: 10px; }
+.st-guide { margin: 0; display: flex; align-items: center; gap: 8px; }
+.st-guide-tag { font: 700 var(--fs-label)/1 var(--font-head); letter-spacing: .14em; border: 1px solid var(--ink); padding: 3px 6px; color: var(--ink); }
+.st-head { display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--line2); padding: 10px 12px; background: var(--paper); }
+.st-sf-top { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 28px; }
+.st-sf { display: flex; flex-direction: column; gap: 4px; flex: none; }
+.st-sf-row { display: flex; align-items: baseline; gap: 8px; }
+.st-sf-row .led { align-self: center; }
+.st-sf-value { font: 700 28px/1 var(--font-head); }
+.st-verdict { font: 700 var(--fs-label)/1 var(--font-head); letter-spacing: .14em; text-transform: uppercase; }
+.st-sf-side { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1 1 260px; padding-bottom: 2px; }
+.st-num { font-weight: 700; color: var(--ink); }
+.st-num.tone-green { color: var(--green); }
+.st-num.tone-amber { color: var(--amber); }
+.st-num.tone-red { color: var(--red); }
+.st-nums { display: flex; flex-wrap: wrap; gap: 12px 28px; margin: 0; padding-top: 8px; border-top: 1px solid var(--line); }
+.st-nums div { display: flex; flex-direction: column; gap: 3px; }
+.st-nums dd { margin: 0; }
+.st-solver { margin: 0; color: var(--dim); }
+.st-warnings { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.st-warnings li { display: flex; gap: 8px; align-items: baseline; }
+.st-actions { display: flex; align-items: center; gap: 10px; }
+.st-caveats summary { cursor: pointer; }
+.st-caveats ul { margin: 6px 0; padding-left: 16px; }
+.st-caveats p { margin: 0; }
+
