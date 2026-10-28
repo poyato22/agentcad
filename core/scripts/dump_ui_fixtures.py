@@ -144,6 +144,7 @@ async def dump(out: Path) -> None:
                 r = await call(method, path, body)
                 (out / name).write_text(json.dumps(r.json(), indent=2) + "\n")
             (out / "mount_plate.glb").write_bytes((await get("/parts/mount_plate/model.glb")).content)
+            await dump_draw_print(out, call, get, rt)
         (out / "events.jsonl").write_text("".join(line + "\n" for line in events))
     finally:
         sub.close()
@@ -154,6 +155,89 @@ async def dump(out: Path) -> None:
             except Exception:
                 pass
         await rt.aclose()
+
+
+def _load_fake_prusalink():
+    """The fake PrusaLink server from the core tests (stdlib only), loaded by path."""
+    import importlib.util
+    path = Path(__file__).resolve().parents[1] / "tests" / "print" / "fake_prusalink.py"
+    spec = importlib.util.spec_from_file_location("_fake_prusalink", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+async def dump_draw_print(out: Path, call, get, rt) -> None:
+    """Plan 4: drawing, printer, slice and print shapes. PrusaSlicer is the core tests' fake
+    slicer (writes tests/print/fixtures/sample.gcode); the printer is the tests' fake PrusaLink;
+    printer keys go to an in-memory Keychain."""
+    import stat
+
+    import mises.platform
+    from mises.print import tools as print_tools
+
+    def write(name: str, data) -> None:
+        (out / name).write_text(json.dumps(data, indent=2) + "\n")
+
+    async def poll(path: str, until=("done", "failed", "cancelled")) -> dict:
+        for _ in range(400):
+            body = (await get(path)).json()
+            if body["status"] in until:
+                return body
+            await asyncio.sleep(0.05)
+        raise SystemExit(f"{path} never finished: {body}")
+
+    write("drawing.json", (await get("/parts/mount_plate/drawing.json")).json())
+    (out / "drawing.svg").write_text((await get("/parts/mount_plate/drawing.svg")).text)
+
+    keys: dict[str, str] = {}
+    mises.platform.keychain_get = lambda svc, acct: keys.get(f"{svc}/{acct}")
+    mises.platform.keychain_set = lambda svc, acct, v: keys.__setitem__(f"{svc}/{acct}", v)
+    mises.platform.keychain_delete = lambda svc, acct: keys.pop(f"{svc}/{acct}", None) is not None
+    print_tools.keychain_get = mises.platform.keychain_get
+
+    sample = Path(__file__).resolve().parents[1] / "tests" / "print" / "fixtures" / "sample.gcode"
+    slicer_bin = Path(tempfile.mkdtemp(prefix="mises-fake-slicer-")) / "PrusaSlicer"
+    slicer_bin.write_text(f"#!{sys.executable}\nimport sys\nargs=sys.argv[1:]\n"
+                          f"out=args[args.index('--output')+1]\n"
+                          f"open(out,'w').write(open({str(sample)!r}).read())\n")
+    slicer_bin.chmod(slicer_bin.stat().st_mode | stat.S_IXUSR)
+    os.environ["MISES_PRUSASLICER"] = str(slicer_bin)
+
+    fpl = _load_fake_prusalink()
+    with fpl.FakePrusaLink("IDLE") as printer:
+        caps = (await get("/print/capabilities")).json()
+        caps["slicer"]["path"] = "/opt/fixture/PrusaSlicer"  # the temp fake's path is random
+        write("print_capabilities.json", caps)
+        write("printer_add.json", (await call("POST", "/printers", {
+            "name": "Bench MK4", "host": printer.host, "api_key": fpl.API_KEY})).json())
+        write("printers.json", (await get("/printers")).json())
+        write("printer_status.json", (await get("/printers/bench_mk4/status")).json())
+        start = (await call("POST", "/slices", {"part_id": "mount_plate",
+                                                "printer_id": "bench_mk4"})).json()
+        write("slice_start.json", start)
+        write("slice.json", await poll(f"/slices/{start['slice_id']}"))
+        sent = (await call("POST", "/prints", {"slice_id": start["slice_id"],
+                                               "printer_id": "bench_mk4"})).json()
+        write("print_start.json", sent)
+        card = None
+        for _ in range(200):
+            card = next((a for a in (await get("/approvals")).json()
+                         if a["action"] == "print_send"), None)
+            if card:
+                break
+            await asyncio.sleep(0.05)
+        if card is None:
+            raise SystemExit("no print_send approval card")
+        write("print_approval.json", card)
+        write("print_running.json", (await get(f"/prints/{sent['call_id']}")).json())
+        await call("POST", f"/approvals/{card['id']}/decide",
+                   {"payload_hash": card["payload_hash"], "approve": True})
+        write("print_done.json", await poll(f"/prints/{sent['call_id']}"))
+        printer.state = "PRINTING"
+        write("printer_status_printing.json", (await get("/printers/bench_mk4/status")).json())
+    write("printer_status_unreachable.json", (await get("/printers/bench_mk4/status")).json())
+    write("printer_delete.json", (await call("DELETE", "/printers/bench_mk4")).json())
 
 
 def main() -> int:
