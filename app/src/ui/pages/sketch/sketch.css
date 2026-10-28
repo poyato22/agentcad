@@ -1,0 +1,50 @@
+/* Sketch page. Plan tokens only, square corners. Blue only marks the selected tool / stroke;
+   amber marks a warning (no image for this model); red marks a failure. */
+.sk-layout {
+  display: grid; grid-template-columns: minmax(0, 1fr) 256px; gap: 16px;
+  height: 100%; min-height: 460px;
+}
+.sk-side { display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow-y: auto; }
+.sk-bar { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; }
+.sk-group { display: flex; align-items: center; gap: 4px; }
+.sk-tool { display: inline-flex; align-items: center; gap: 6px; }
+.sk-tool[aria-pressed="true"] { border-color: var(--blue); background: var(--blue-tint); color: var(--ink); }
+.sk-key { font-size: var(--fs-label); }
+.sk-check { display: flex; align-items: center; gap: 4px; color: var(--dim); cursor: pointer; margin-left: 4px; }
+
+.sk-stage { display: flex; flex-direction: column; min-width: 0; min-height: 0; gap: 8px; }
+.sk-svg {
+  flex: 1; width: 100%; min-height: 0; display: block; background: var(--paper);
+  touch-action: none; user-select: none; -webkit-user-select: none; cursor: crosshair;
+}
+.sk-svg.tool-select { cursor: default; }
+.sk-sheet { fill: var(--vp); stroke: var(--line2); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.sk-grid-minor line { stroke: var(--grid-faint); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.sk-grid-major line { stroke: var(--grid-strong); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.sk-stroke, .sk-draft {
+  fill: none; stroke: var(--ink); stroke-width: 1.6; vector-effect: non-scaling-stroke;
+  stroke-linejoin: round; stroke-linecap: round;
+}
+.sk-stroke.selected { stroke: var(--blue); stroke-width: 2.2; }
+.sk-draft { stroke: var(--dim); stroke-dasharray: 4 3; }
+.sk-label, .sk-readout { fill: var(--ink); font: 3.4px var(--font-mono); text-anchor: middle; paint-order: stroke; stroke: var(--vp); stroke-width: .8px; }
+.sk-label.selected { fill: var(--blue2); }
+.sk-readout { fill: var(--dim); text-anchor: start; }
+.sk-snap { fill: none; stroke: var(--ink); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.sk-hint { flex: none; }
+
+.sk-sec { display: flex; flex-direction: column; gap: 6px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.sk-sec:last-child { border-bottom: 0; }
+.sk-p { margin: 0; }
+.sk-row { display: flex; gap: 6px; align-items: center; }
+.sk-row input { flex: 1; min-width: 0; }
+.sk-grow { flex: 1; min-width: 0; }
+.sk-del { align-self: flex-start; }
+.sk-notes { resize: vertical; width: 100%; }
+.sk-photo.over { outline: 1px dashed var(--dim); outline-offset: 2px; }
+.sk-photo-card { display: flex; flex-direction: column; gap: 6px; }
+.sk-photo-img { max-width: 100%; max-height: 180px; object-fit: contain; background: var(--vp); border: 1px solid var(--line); }
+.sk-photo-none { padding: 12px; border: 1px solid var(--line); }
+.sk-file { display: none; }
+.sk-note { color: var(--amber); }
+.sk-err { color: var(--red); white-space: pre-wrap; overflow-wrap: anywhere; }

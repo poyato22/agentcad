@@ -4,12 +4,12 @@ import { z } from "zod";
 import { debug } from "../lib/log";
 import {
   agentInfoSchema, agentRunSchema, approvalSchema, cancelAllSchema, claudeCodeStatusSchema, coreErrorBodySchema, coreStatusSchema,
-  keyStatusSchema, localTestSchema, modelsInfoSchema, okSchema, onshapeTestSchema, partSummarySchema, profileSchema, runIdSchema, setupStateSchema,
+  keyStatusSchema, localTestSchema, modelsInfoSchema, okSchema, onshapeTestSchema, partSummarySchema, profileSchema, runIdSchema, setupStateSchema, sketchSummarySchema,
   stepSchema,
 } from "./schemas";
 import type {
   AgentInfo, AgentRun, Approval, CancelAllResult, ClaudeCodeStatus, CoreInfo, CoreStatusInfo, DecisionBody, ErrorCode, KeyStatus, LocalTestResult,
-  ModelsInfo, NewRunBody, OnshapeTestResult, PartSummary, Profile, ProfilePatch, SetupState, Step, UiContext,
+  ModelsInfo, NewRunBody, OnshapeTestResult, PartSummary, Profile, ProfilePatch, SetupState, SketchSummary, SketchUpload, Step, UiContext,
 } from "./types";
 
 type Method = "GET" | "POST" | "PUT" | "DELETE";
@@ -133,6 +133,12 @@ export class CoreClient {
   async claudeCodeLogout(): Promise<void> { await this.json("POST", "/claude-code/logout", anyBody); }
 
   async putContext(ctx: UiContext): Promise<void> { await this.json("PUT", "/context", anyBody, { body: ctx }); }
+
+  // ---- Sketch page
+
+  /** Stores a sketch (strokes in mm, dimensions, notes, optional photo + render); start a run with its id. */
+  postSketch(body: SketchUpload): Promise<SketchSummary> { return this.json("POST", "/sketches", sketchSummarySchema, { body }); }
+  getSketch(id: string): Promise<SketchSummary> { return this.json("GET", `/sketches/${enc(id)}`, sketchSummarySchema); }
 
   // ---- internals
 

@@ -226,9 +226,12 @@ class ClaudeCodeSession:
             "claude_code": "session_started", "session_id": self.session_id,
             "resumed": self.resumed, "model": self.model_alias, "version": self.info.version})
 
-    async def prompt(self, text: str, *, context: dict | None = None) -> str:
+    async def prompt(self, text: str, *, context: dict | None = None,
+                     images: list[tuple[str, str]] | None = None) -> str:
         """Send one user message; returns the turn's assistant text when `result` arrives.
-        `context` (the Mises UI context) is prepended as a data block to the first prompt only."""
+        `context` (the Mises UI context) is prepended as a data block to the first prompt only.
+        `images` ((media_type, base64) pairs, e.g. a sketch photo) follow the text as image
+        content blocks."""
         proc = self._proc
         if proc is None or proc.returncode is not None or self._closed or self._aborted:
             raise MisesError(ErrorCode.INVALID_INPUT, "Claude Code session is not running",
@@ -243,10 +246,16 @@ class ClaudeCodeSession:
             content = context_block(context) + "\n" + text
             body["context"] = context
         self._first_sent = True
+        message_content: str | list[dict] = content
+        if images:
+            body["images"] = len(images)
+            message_content = [{"type": "text", "text": content}] + [
+                {"type": "image", "source": {"type": "base64", "media_type": m, "data": d}}
+                for m, d in images]
         self.runtime.store.append_step(self.run_id, StepKind.MESSAGE, body)
         self._turn = asyncio.get_running_loop().create_future()
         self._turn_text = []
-        line = json.dumps({"type": "user", "message": {"role": "user", "content": content},
+        line = json.dumps({"type": "user", "message": {"role": "user", "content": message_content},
                            "parent_tool_use_id": None}) + "\n"
         try:
             proc.stdin.write(line.encode())

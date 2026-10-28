@@ -58,7 +58,8 @@ export interface MisesEvent { type: string; run_id: string | null; data: Record<
 /** Built from a `question_asked` event (there is no GET /questions). */
 export interface Question { question_id: string; run_id: string; question: string; options: string[] }
 
-export interface NewRunBody { agent: string; prompt: string; model_ref?: string | null; edit_scope?: string[]; read_scope?: string[] }
+/** `sketch_id` (POST /sketches): the run gets that sketch as data (and its images for vision models). */
+export interface NewRunBody { agent: string; prompt: string; model_ref?: string | null; edit_scope?: string[]; read_scope?: string[]; sketch_id?: string }
 
 /** edited_payload is not sent in v1. */
 export interface DecisionBody { payload_hash: string; approve: boolean }
@@ -149,3 +150,22 @@ export interface ClaudeCodeStatus { installed: boolean; version: string | null; 
 
 /** PUT /context: what the user has selected, for the agent's mises_context_get tool. */
 export interface UiContext { selected_part_id: string | null; selected_run_id: string | null; picks: unknown[] }
+
+// ---- Sketch page (core server/sketch_api.py, sketch.py). Coordinates are mm, origin bottom-left, +y up.
+
+export type SketchStrokeKind = "freehand" | "line" | "rect" | "circle";
+export interface SketchStroke {
+  id: string; kind: SketchStrokeKind; points: [number, number][]; closed: boolean;
+  center?: [number, number]; radius_mm?: number; label: string;
+}
+export interface SketchDimension { stroke_id: string; text: string; value_mm: number | null; kind: "length" | "radius" | "diameter" | "angle" | "note" }
+/** POST /sketches body. The photo (PNG/JPEG/HEIC, ≤ 10 MB) is checked and converted to PNG by the core. */
+export interface SketchUpload {
+  sketch: { units: "mm"; width_mm: number; height_mm: number; strokes: SketchStroke[]; dimensions: SketchDimension[]; notes: string };
+  photo?: { data_b64: string; name?: string } | null;
+  /** The drawing rasterised by the app (PNG), for vision-capable models. */
+  render_png_b64?: string | null;
+}
+export interface SketchPhotoInfo { source_type: "png" | "jpeg" | "heic"; width: number; height: number; bytes: number }
+/** POST /sketches and GET /sketches/{id}. */
+export interface SketchSummary { sketch_id: string; strokes: number; dimensions: number; photo: SketchPhotoInfo | null; render: boolean }

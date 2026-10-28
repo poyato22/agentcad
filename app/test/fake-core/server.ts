@@ -14,6 +14,7 @@ import type {
 } from "../../src/api/types";
 import { handleControl } from "./control";
 import { setupFrom, setupRoutes, type FakeSetup, type SetupScenario } from "./setup";
+import { checkRunSketch, sketchRoutes, type FakeSketch } from "./sketch";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const SCENARIO_DIR = resolve(HERE, "scenarios");
@@ -99,6 +100,8 @@ export interface FakeState {
   on: NonNullable<Scenario["on"]>;
   calls: FakeCall[];
   setup: FakeSetup;
+  /** POST /sketches uploads, by sketch_id. */
+  sketches: Map<string, FakeSketch>;
 }
 
 export interface FakeCore {
@@ -138,6 +141,7 @@ function stateFrom(sc: Scenario, token: string): FakeState {
     parts: sc.parts, agents: sc.agents, models: sc.models, status: sc.status,
     glb: sc.glb ?? {}, script: sc.script ?? [], on: sc.on ?? {}, calls: [],
     setup: setupFrom(sc),
+    sketches: new Map(),
   };
 }
 
@@ -331,6 +335,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         if (modelRef !== undefined && modelRef !== null && typeof modelRef !== "string") throw wrongType("model_ref", "string", modelRef);
         strList(b, "edit_scope", ["*"]);
         strList(b, "read_scope", ["*"]);
+        const sketchId = checkRunSketch(b.sketch_id, state.sketches);
         const def = state.agents.find((a) => a.name === agent);
         if (!def) throw mises("not_found", `unknown agent: ${agent}`, `agents: ${state.agents.map((a) => a.name).join(", ")}`);
         const ref = (typeof modelRef === "string" && modelRef) || (def.model !== "inherit" ? def.model : state.models.default);
@@ -349,7 +354,8 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         if (claude && spec.key === "not_installed") throw mises("not_found", "Claude Code is not installed", "install it from code.claude.com, then sign in from Setup");
         if (claude && spec.key !== "signed_in") throw mises("denied", "Claude Code is not signed in", "sign in from Setup or Profile (runs `claude auth login`)");
         const run = newRun(agent, vendor, model, prompt, claude);
-        appendStep({ kind: "message", payload: { role: "user", text: prompt } }, run.id);
+        // a sketch run's user step: like the core, the words sent plus the sketch as `context`
+        appendStep({ kind: "message", payload: { role: "user", text: prompt, ...(sketchId ? { context: { sketch: { sketch_id: sketchId } } } : {}) } }, run.id);
         emit({ type: "run_started", run_id: run.id, data: { agent, provider: vendor, model, parent_id: null, ...(claude ? { external: true } : {}) } });
         play(state.on.create_run, run.id);
         return { run_id: run.id };
@@ -472,6 +478,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       },
     },
     ...setupRoutes(() => state.setup, () => state.parts),
+    ...sketchRoutes(() => state.sketches),
   ];
 
   /** /models: with a setup block, vendor key status follows the saved keys and Claude Code status. */

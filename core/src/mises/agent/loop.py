@@ -165,12 +165,15 @@ class AgentLoop:
         return [t.name for t in self.registry.list(names=list(wanted), classes=classes)]
 
     # ---- main entry
-    async def run(self, prompt: str | list[Block], history: list[Message] | None = None) -> RunResult:
+    async def run(self, prompt: str | list[Block], history: list[Message] | None = None, *,
+                  log: dict | None = None) -> RunResult:
+        """`log` overrides the user step's payload fields (e.g. the user's own words when the
+        message also carries a data block and images)."""
         self._cancelled = False
         content: list[Block] = [TextBlock(text=prompt)] if isinstance(prompt, str) else list(prompt)
         messages = list(history or []) + [Message(role="user", content=content)]
         self.store.append_step(self.run_id, StepKind.MESSAGE,
-                               {"role": "user", "text": _text_of(content)})
+                               {"role": "user", "text": _text_of(content), **(log or {})})
         policy = self.store.current_policy(self.run_id)
         offered = self._offered(set(policy.allowed_classes))
         tools = [ToolSchema(**self.registry.schema(self.registry.get(n))) for n in offered]
