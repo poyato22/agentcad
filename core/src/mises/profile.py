@@ -5,6 +5,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import tempfile
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -27,6 +28,37 @@ LocalProbeFn = Callable[[list[str]], Awaitable[bool]]
 DEFAULT_LOCAL_ENDPOINTS = ["http://localhost:11434/v1", "http://localhost:1234/v1"]
 
 
+PRINTER_ID_RE = re.compile(r"^[a-z][a-z0-9_-]{1,30}$")
+_HOST_RE = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?(:\d{1,5})?$")
+
+
+class PrinterEntry(BaseModel):
+    """A printer on the network. Its API key lives in the Keychain (service `mises`, account
+    `printer:<id>`), never in the profile."""
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    kind: Literal["prusalink"] = "prusalink"
+    host: str
+    name: str = Field(min_length=1, max_length=60)
+    model: Literal["MK4", "MINI"] = "MK4"
+
+    @field_validator("id")
+    @classmethod
+    def _id(cls, v: str) -> str:
+        if not PRINTER_ID_RE.match(v):
+            raise ValueError(f"printer id must match {PRINTER_ID_RE.pattern}")
+        return v
+
+    @field_validator("host")
+    @classmethod
+    def _host(cls, v: str) -> str:
+        if not _HOST_RE.match(v) or (":" in v and int(v.rsplit(":", 1)[1]) > 65535):
+            raise ValueError("printer host must be a hostname or IP address, optionally :port "
+                             "(no scheme or path)")
+        return v
+
+
 class Profile(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -40,6 +72,15 @@ class Profile(BaseModel):
     max_parallel_agents: int = Field(2, ge=1, le=16)
     local_endpoints: dict[str, str] = {}
     setup_completed_at: float | None = None
+    printers: list[PrinterEntry] = []
+
+    @field_validator("printers")
+    @classmethod
+    def _unique_printers(cls, v: list[PrinterEntry]) -> list[PrinterEntry]:
+        ids = [p.id for p in v]
+        if len(ids) != len(set(ids)):
+            raise ValueError("printer ids must be unique")
+        return v
 
     @field_validator("local_endpoints")
     @classmethod

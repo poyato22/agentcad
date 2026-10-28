@@ -26,6 +26,7 @@ from .onshape.client import OnshapeClient
 from .onshape.tools import register_onshape_tools
 from .orchestrator import Orchestrator, register_orchestrator_tools
 from .platform import data_home, keychain_get
+from .print.tools import register_print_tools
 from .profile import load_profile
 from .providers.registry import DEFAULT_MODEL, resolve
 from .store import Store
@@ -56,6 +57,22 @@ class _RunState:
 
 
 @dataclass
+class UiCall:
+    """A tool call the app's own UI started (see Runtime.ui_tool_call)."""
+    call_id: str
+    run_id: str
+    tool: str
+    status: str = "running"  # running | done | failed | cancelled
+    output: dict | None = None
+    error: dict | None = None
+    task: asyncio.Task | None = None
+
+    def to_dict(self) -> dict:
+        return {"call_id": self.call_id, "run_id": self.run_id, "tool": self.tool,
+                "status": self.status, "output": self.output, "error": self.error}
+
+
+@dataclass
 class _ClaudeRun:
     """A run driven by the user's Claude Code: its live session (None or dead between a cancel
     or a restart and the next message, which resumes it) and the current turn's task."""
@@ -77,6 +94,7 @@ class Runtime:
         register_mirror_tools(self.registry)
         register_onshape_tools(self.registry)
         register_ui_tools(self.registry)
+        register_print_tools(self.registry)
         register_orchestrator_tools(self.registry)
         self.orchestrator = Orchestrator(self)
         services: dict = {"approvals": self.approvals, "runtime": self,
@@ -91,6 +109,7 @@ class Runtime:
             log.warning("agent definition skipped: %s", w)
         self._runs: dict[str, _RunState] = {}
         self._external: set[str] = set()
+        self.ui_calls: dict[str, UiCall] = {}
         self._questions: dict[str, tuple[str, asyncio.Future[str]]] = {}
         # external run id -> owner's async cancel (e.g. AcpSession.cancel kills the agent)
         self._cancel_hooks: dict[str, Callable[[], Awaitable[None]]] = {}
@@ -567,6 +586,45 @@ class Runtime:
         self.events.publish(Event(type="run_finished", run_id=run_id, data={
             "status": status, "stop_reason": status, "error": None, "final_text": "",
             "external": True}))
+
+    def ui_tool_call(self, tool: str, args: dict) -> UiCall:
+        """Run a tool for the app's UI through the Gate, under its own external "ui" run, so
+        the same checks apply as for an agent: an irreversible tool raises the approval card
+        and nothing happens until the user approves it. Returns at once; poll `ui_calls`."""
+        rid = self.create_external_run("ui", provider="ui", model="ui", task=f"ui: {tool}")
+        call = UiCall(call_id="ui_" + uuid.uuid4().hex[:12], run_id=rid, tool=tool)
+        self.ui_calls[call.call_id] = call
+
+        async def go() -> None:
+            final = "done"
+            try:
+                out = await self.gate.call(rid, tool, args, call_id=call.call_id,
+                                           workdir=self.workdir(rid))
+                call.output = out.model_dump(mode="json")
+                call.status = "done" if out.ok else "failed"
+                final = call.status
+            except asyncio.CancelledError:
+                call.status = final = "cancelled"
+                call.error = MisesError(ErrorCode.CANCELLED, "cancelled").to_dict()
+            except MisesError as e:
+                call.status = final = "failed"
+                call.error = e.to_dict()
+            except Exception as e:  # noqa: BLE001
+                call.status = final = "failed"
+                call.error = MisesError(ErrorCode.TOOL_FAILED, f"{type(e).__name__}: {e}").to_dict()
+            finally:
+                if rid in self._external:
+                    self.finish_external_run(rid, final)
+                self.unregister_cancel_hook(rid)
+
+        async def stop() -> None:
+            if call.task is not None and not call.task.done():
+                call.task.cancel()
+
+        self.register_cancel_hook(rid, stop)
+        call.task = asyncio.get_running_loop().create_task(go())
+        self._track(call.task)
+        return call
 
     async def _drive(self, run_id: str, prompt: str) -> RunResult:
         st = self._runs[run_id]
