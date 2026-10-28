@@ -20,6 +20,11 @@ from . import platform
 MEM_RESERVE_GB = 5
 CLOUD_MAX = 4
 LOCAL_VENDORS = ("ollama", "lmstudio")
+# A local model needs more than its raw weights to run: KV cache and runtime headroom. We
+# budget need = size x FIT_FACTOR everywhere (admission, the "two copies" check, the
+# recommended-model fit) so a model is never admitted on raw weights alone. (For a fixed
+# context this is roughly size + the KV estimate for num_ctx 16384.)
+FIT_FACTOR = 1.2
 
 ModelKind = Literal["cloud", "free", "local"]
 
@@ -54,6 +59,11 @@ def usable_memory_gb(m: Machine | None = None) -> float:
     return max(0.0, float(m["ram_gb"] - MEM_RESERVE_GB))
 
 
+def model_need_gb(size_gb: float) -> float:
+    """Memory a local model of `size_gb` raw weights needs to run (weights + KV + headroom)."""
+    return size_gb * FIT_FACTOR
+
+
 def model_kind(model_ref: str) -> ModelKind:
     vendor, _, model = model_ref.partition("/")
     if vendor in LOCAL_VENDORS:
@@ -70,7 +80,8 @@ def auto_parallel(model_ref: str, *, machine_info: Machine | None = None,
     if kind == "free":
         return 1
     if kind == "local":
-        if model_size_gb and model_size_gb > 0 and usable_memory_gb(m) >= 2 * model_size_gb:
+        if (model_size_gb and model_size_gb > 0
+                and usable_memory_gb(m) >= 2 * model_need_gb(model_size_gb)):
             return 2
         return 1
     return min(CLOUD_MAX, max(1, m["perf_cores"] // 2))

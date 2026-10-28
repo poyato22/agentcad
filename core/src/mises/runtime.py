@@ -395,10 +395,12 @@ class Runtime:
         if kind == "local":
             size = self._local_size(ref)
             budget = hardware.usable_memory_gb()
-            # an unknown size claims the whole budget: that model runs with no other local one
+            # admission budgets what the model needs to run (weights + KV + headroom), not its
+            # raw weight size; an unknown size claims the whole budget (runs with no other local)
+            need = hardware.model_need_gb(size) if size else budget
             return Limits(total, group=ref,
                           group_cap=hardware.auto_parallel(ref, model_size_gb=size),
-                          local_gb=size if size else budget, budget_gb=budget)
+                          local_gb=need, budget_gb=budget)
         if kind == "free":
             return Limits(total, group=FREE_GROUP, group_cap=1)
         return Limits(total)

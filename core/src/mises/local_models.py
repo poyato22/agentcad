@@ -23,7 +23,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from .hardware import Machine, usable_memory_gb
+from .hardware import Machine, model_need_gb, usable_memory_gb
 from .server.model_lists import MODEL_ID_RE, OLLAMA_DOWN_HINT
 
 log = logging.getLogger(__name__)
@@ -37,8 +37,8 @@ MAX_LINE_BYTES = 64 * 1024
 MAX_MODELS = 200
 START_WAIT_S = 5.0
 MAX_PULLS = 2
-# a model needs about its size x 1.2 (KV cache, runtime headroom) of the memory left for models
-FIT_FACTOR = 1.2
+# FIT_FACTOR / model_need_gb (size x 1.2: KV cache, runtime headroom) live in hardware so the
+# admission path and the recommended-model fit use exactly one definition.
 TIGHT_MARGIN = 0.10
 
 OLLAMA_PATHS = ("/opt/homebrew/bin/ollama", "/usr/local/bin/ollama",
@@ -138,7 +138,7 @@ def recommended_local(m: Machine) -> list[dict]:
     budget = usable_memory_gb(m)
     out = []
     for n, size, note in RECOMMENDED:
-        need = size * FIT_FACTOR
+        need = model_need_gb(size)
         fits = need <= budget
         if fits and need >= budget * (1 - TIGHT_MARGIN):
             note = f"{note} (tight on this Mac)"

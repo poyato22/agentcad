@@ -92,7 +92,7 @@ async def test_queued_run_task_cancelled_before_its_first_step_leaves_the_queue(
 # ---- combined memory budget for local models (24 GB Mac: 19 GB for models)
 
 SIZES = {"qwen3-coder:30b": 19.0, "gpt-oss:20b": 14.0, "qwen3.5:9b": 6.6, "tiny:1b": 1.0,
-         "huge:70b": 40.0}
+         "huge:70b": 40.0, "a9:9b": 9.0, "b9:9b": 9.0}
 
 
 @pytest.fixture
@@ -140,6 +140,20 @@ async def test_distinct_small_models_share_the_budget(sized):
     sized.gate.set()
     for i in (a, b, c):
         await rt.wait(i)
+
+
+async def test_two_nine_gb_models_need_more_than_their_raw_weights(sized):
+    # C1: admission must budget need = size x FIT_FACTOR, not the raw weight size.
+    # Two distinct 9 GB models are 18 GB of raw weights (fits 19), but each needs ~9*1.2,
+    # so together ~21.6 GB > 19 GB and the second must queue.
+    rt = sized.rt
+    a = await rt.start_run("designer", "block a", model_ref="ollama/a9:9b")
+    await until(lambda: sized.started == [a])
+    b = await rt.start_run("designer", "block b", model_ref="ollama/b9:9b")
+    assert rt.store.get_run(b).status == "queued"
+    sized.gate.set()
+    await rt.wait(a)
+    assert (await rt.wait(b)).final_text == "block b"
 
 
 async def test_a_model_larger_than_the_budget_still_runs_alone(sized):
