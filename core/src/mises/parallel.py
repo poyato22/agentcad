@@ -21,6 +21,10 @@ class Limits:
     total: int
     group: str | None = None
     group_cap: int = 0
+    # local models: the memory this run's model needs, and what all local runs may use
+    # together (a run is admitted while the sum stays within it, or when no local run works)
+    local_gb: float | None = None
+    budget_gb: float = 0.0
 
 
 @dataclass
@@ -33,7 +37,8 @@ class _Waiter:
 class ParallelLimiter:
     def __init__(self, limits_for: Callable[[str], Limits]):
         self._limits_for = limits_for
-        self._active: dict[str, tuple[str, str | None]] = {}   # run_id -> (ref, group)
+        # run_id -> (ref, group, local_gb)
+        self._active: dict[str, tuple[str, str | None, float | None]] = {}
         self._queue: list[_Waiter] = []
         self._refs: dict[str, str] = {}   # run_id -> ref, for runs that yielded their slot
 
@@ -54,23 +59,28 @@ class ParallelLimiter:
         return None
 
     # ---- slots
-    def _fits(self, ref: str) -> tuple[bool, str | None]:
+    def _fits(self, ref: str) -> tuple[bool, tuple[str, str | None, float | None]]:
         lim = self._limits_for(ref)
+        entry = (ref, lim.group, lim.local_gb)
         if len(self._active) >= max(1, lim.total):
-            return False, lim.group
+            return False, entry
         if lim.group is not None:
-            used = sum(1 for _, g in self._active.values() if g == lim.group)
+            used = sum(1 for _, g, _ in self._active.values() if g == lim.group)
             if used >= max(1, lim.group_cap):
-                return False, lim.group
-        return True, lim.group
+                return False, entry
+        if lim.local_gb is not None:
+            local = [gb for _, _, gb in self._active.values() if gb is not None]
+            if local and sum(local) + lim.local_gb > lim.budget_gb:
+                return False, entry
+        return True, entry
 
     def try_acquire(self, run_id: str, ref: str) -> bool:
         if run_id in self._active:
             return True
         self.pump()
-        ok, group = self._fits(ref)
+        ok, entry = self._fits(ref)
         if ok:
-            self._active[run_id] = (ref, group)
+            self._active[run_id] = entry
         return ok
 
     def enqueue(self, run_id: str, ref: str, *, front: bool = False) -> asyncio.Future[bool]:
@@ -103,10 +113,10 @@ class ParallelLimiter:
             if w.fut.done():           # cancelled by its waiter
                 self._queue.remove(w)
                 continue
-            ok, group = self._fits(w.ref)
+            ok, entry = self._fits(w.ref)
             if ok:
                 self._queue.remove(w)
-                self._active[w.run_id] = (w.ref, group)
+                self._active[w.run_id] = entry
                 w.fut.set_result(True)
 
     async def acquire(self, run_id: str, ref: str, *, front: bool = False) -> bool:
@@ -115,9 +125,9 @@ class ParallelLimiter:
         if not front and self.try_acquire(run_id, ref):
             return True
         if front and run_id not in self._active:
-            ok, group = self._fits(ref)
+            ok, entry = self._fits(ref)
             if ok:
-                self._active[run_id] = (ref, group)
+                self._active[run_id] = entry
                 return True
         fut = self.enqueue(run_id, ref, front=front)
         try:

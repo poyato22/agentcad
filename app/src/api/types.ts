@@ -164,7 +164,8 @@ export interface LocalStatus {
   recommended: { name: string; size_gb: number; fits: boolean; note: string }[];
 }
 /** POST /local/start and POST /local/pull. `note`: tell the user (e.g. `ollama serve` keeps running). */
-export interface LocalActionResult { ok: boolean; running?: boolean; note?: string; error?: string; hint?: string }
+/** POST /local/pull: {ok:false, already:true} while that model downloads; error "too_many_pulls" past 2; POST /local/pull/cancel {model} -> {ok}. */
+export interface LocalActionResult { ok: boolean; running?: boolean; note?: string; error?: string; hint?: string; already?: boolean }
 /** Data of a `local_pull` event (run_id null). status "success" or "error" ends the download. */
 export interface LocalPullEvent { model: string; completed: number; total: number; status: string; error?: string }
 

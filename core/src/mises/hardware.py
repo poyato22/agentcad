@@ -94,4 +94,7 @@ def parallel_reason(model_ref: str, *, machine_info: Machine | None = None,
     else:
         what = "cloud model"
     ram = f"{m['ram_gb']} GB" if m["ram_gb"] else "unknown memory"
-    return f"{m['chip']} · {ram} · {what} → {n}"
+    line = f"{m['chip']} · {ram} · {what} → {n}"
+    if kind == "local":
+        line += f" · local models share {_gb(usable_memory_gb(m))} GB"
+    return line

@@ -130,7 +130,7 @@ export const localStatusSchema = z.object({
 });
 export const localActionSchema = z.object({
   ok: z.boolean(), running: z.boolean().optional(), note: z.string().optional(), error: z.string().optional(),
-  hint: z.string().optional(),
+  hint: z.string().optional(), already: z.boolean().optional(),
 });
 export const localPullEventSchema = z.object({
   model: z.string(), completed: z.number(), total: z.number(), status: z.string(), error: z.string().optional(),

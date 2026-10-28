@@ -92,4 +92,4 @@ def test_parallel_reason(mac):
     assert hardware.parallel_reason("openrouter/a:free") == \
         "M5 Pro · 24 GB · OpenRouter free model (20 requests/min) → 1"
     assert hardware.parallel_reason("ollama/m:27b", model_size_gb=17.0) == \
-        "M5 Pro · 24 GB · local model (17 GB) → 1"
+        "M5 Pro · 24 GB · local model (17 GB) → 1 · local models share 19 GB"

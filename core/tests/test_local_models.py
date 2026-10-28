@@ -91,18 +91,26 @@ def test_recommended_local_on_24_gb():
     m = {"cpu_cores": 15, "perf_cores": 6, "ram_gb": 24, "chip": "M5 Pro"}
     rec = lm.recommended_local(m)
     assert [r["name"] for r in rec] == ["qwen3-coder:30b", "gpt-oss:20b", "qwen3.6:27b"]
-    assert all(r["fits"] for r in rec)
+    # fits: size x 1.2 (KV cache, headroom) <= RAM - 5 GB = 19 GB
+    assert {r["name"]: r["fits"] for r in rec} == {
+        "qwen3-coder:30b": False, "gpt-oss:20b": True, "qwen3.6:27b": False}
     assert all(isinstance(r["note"], str) and r["note"] and "\n" not in r["note"] for r in rec)
     assert {r["name"]: r["size_gb"] for r in rec}["gpt-oss:20b"] == 14.0
+    assert "tight" not in {r["name"]: r["note"] for r in rec}["gpt-oss:20b"]
 
 
-def test_recommended_local_on_16_gb_nothing_fits_on_20_gb_gpt_oss_does():
+def test_recommended_local_tight_within_ten_percent():
+    # 28 GB: 23 GB budget; qwen3-coder 19 x 1.2 = 22.8 fits but is within 10% -> tight
+    m = {"cpu_cores": 14, "perf_cores": 10, "ram_gb": 28, "chip": "M5 Pro"}
+    rec = {r["name"]: r for r in lm.recommended_local(m)}
+    assert rec["qwen3-coder:30b"]["fits"] and "tight" in rec["qwen3-coder:30b"]["note"]
+    assert rec["gpt-oss:20b"]["fits"] and "tight" not in rec["gpt-oss:20b"]["note"]
+
+
+def test_recommended_local_on_16_gb_nothing_fits():
     m = {"cpu_cores": 8, "perf_cores": 4, "ram_gb": 16, "chip": "M2"}
     fits = {r["name"]: r["fits"] for r in lm.recommended_local(m)}
     assert fits == {"qwen3-coder:30b": False, "gpt-oss:20b": False, "qwen3.6:27b": False}
-    m["ram_gb"] = 20
-    fits = {r["name"]: r["fits"] for r in lm.recommended_local(m)}
-    assert fits == {"qwen3-coder:30b": False, "gpt-oss:20b": True, "qwen3.6:27b": False}
 
 
 @pytest.mark.parametrize("name,ok", [
@@ -208,10 +216,69 @@ async def test_puller_runs_one_pull_per_model(ollama):
         await gate.wait()
 
     p = lm.Puller(pull_fn=slow)
-    assert p.start("gpt-oss:20b", BASE, lambda e: None) is True
-    assert p.start("gpt-oss:20b", BASE, lambda e: None) is False
+    assert p.start("gpt-oss:20b", BASE, lambda e: None) == "started"
+    assert p.start("gpt-oss:20b", BASE, lambda e: None) == "already"
     assert p.active() == ["gpt-oss:20b"]
     gate.set()
     await asyncio.sleep(0.01)
     assert p.active() == []
     await p.aclose()
+
+
+async def test_puller_caps_concurrent_pulls_at_two():
+    gate = asyncio.Event()
+
+    async def slow(model, base, publish, **kw):
+        await gate.wait()
+
+    p = lm.Puller(pull_fn=slow)
+    assert p.start("a:1b", BASE, lambda e: None) == "started"
+    assert p.start("b:1b", BASE, lambda e: None) == "started"
+    assert p.start("c:1b", BASE, lambda e: None) == "busy"
+    gate.set()
+    await asyncio.sleep(0.01)
+    assert p.start("c:1b", BASE, lambda e: None) == "started"
+    await p.aclose()
+
+
+async def test_puller_cancel_stops_the_pull_and_says_so():
+    started = asyncio.Event()
+
+    async def slow(model, base, publish, **kw):
+        started.set()
+        await asyncio.sleep(30)
+
+    events = []
+    p = lm.Puller(pull_fn=slow)
+    p.start("gpt-oss:20b", BASE, events.append)
+    await started.wait()
+    assert await p.cancel("gpt-oss:20b") is True
+    assert p.active() == []
+    assert events[-1] == {"model": "gpt-oss:20b", "completed": 0, "total": 0,
+                          "status": "cancelled"}
+    assert await p.cancel("gpt-oss:20b") is False
+
+
+async def test_is_running_is_public(ollama):
+    assert await lm.is_running(BASE) is True
+    ollama.running = False
+    assert await lm.is_running(BASE) is False
+
+
+async def test_concurrent_starts_launch_one_server(ollama, monkeypatch, tmp_path):
+    ollama.running = False
+    calls = []
+
+    def popen(argv, **kw):
+        calls.append(argv)
+
+        async def later():
+            await asyncio.sleep(0.1)
+            ollama.running = True
+        asyncio.get_running_loop().create_task(later())
+    monkeypatch.setattr(lm, "_popen", popen)
+    lock = asyncio.Lock()
+    r1, r2 = await asyncio.gather(lm.start_ollama(BASE, tmp_path, wait_s=2, lock=lock),
+                                  lm.start_ollama(BASE, tmp_path, wait_s=2, lock=lock))
+    assert len(calls) == 1
+    assert r1["ok"] and r2["ok"]

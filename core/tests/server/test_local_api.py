@@ -137,6 +137,34 @@ def test_local_pull_rejects_bad_names_without_echo(client, ollama, body):
     assert ollama.pulls == []
 
 
+def test_local_pull_duplicate_cap_and_cancel(client, ollama, monkeypatch):
+    gate = {"open": False}
+
+    async def slow(model, base, publish, **kw):
+        import asyncio
+        while not gate["open"]:
+            await asyncio.sleep(0.01)
+    monkeypatch.setattr(client.app.state.ui_router.puller, "_pull", slow)
+    ok = client.post("/local/pull", headers=AUTH, json={"model": "gpt-oss:20b"})
+    assert ok.json() == {"ok": True}
+    dup = client.post("/local/pull", headers=AUTH, json={"model": "gpt-oss:20b"})
+    assert dup.json() == {"ok": False, "already": True}
+    assert client.post("/local/pull", headers=AUTH, json={"model": "b:1b"}).json() == {"ok": True}
+    busy = client.post("/local/pull", headers=AUTH, json={"model": "c:1b"}).json()
+    assert busy["ok"] is False and busy["error"] == "too_many_pulls"
+    r = client.post("/local/pull/cancel", headers=AUTH, json={"model": "gpt-oss:20b"})
+    assert r.status_code == 200 and r.json() == {"ok": True}
+    r = client.post("/local/pull/cancel", headers=AUTH, json={"model": "gpt-oss:20b"})
+    assert r.json() == {"ok": False}
+    bad = client.post("/local/pull/cancel", headers=AUTH, json={"model": "Bad Name"})
+    assert bad.status_code == 400 and "Bad Name" not in bad.text
+    gate["open"] = True
+
+
+def test_local_pull_cancel_needs_the_admin_token(client):
+    assert client.post("/local/pull/cancel", json={"model": "x"}).status_code == 401
+
+
 def test_local_pull_when_ollama_is_not_running(client, ollama):
     ollama.running = False
     r = client.post("/local/pull", headers=AUTH, json={"model": "gpt-oss:20b"})

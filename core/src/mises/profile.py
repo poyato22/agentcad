@@ -18,6 +18,9 @@ from pydantic import (BaseModel, ConfigDict, Field, StrictInt, ValidationError,
 log = logging.getLogger(__name__)
 
 PROFILE_FILE = "profile.json"
+# 2: max_parallel_agents gained "auto" (the new default). Files without schema_version predate
+# it; their max_parallel_agents of 2 was the old default, not a choice, and becomes "auto".
+PROFILE_SCHEMA_VERSION = 2
 _LOOPBACK = {"localhost", "127.0.0.1", "::1"}
 
 KeyStatusFn = Callable[[], dict[str, str]]          # vendor -> "env" | "keychain" | "none" | ...
@@ -30,6 +33,8 @@ DEFAULT_LOCAL_ENDPOINTS = ["http://localhost:11434/v1", "http://localhost:1234/v
 
 class Profile(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+    schema_version: int = Field(PROFILE_SCHEMA_VERSION, ge=1)
 
     display_name: str = ""
     units: Literal["mm"] = "mm"
@@ -54,9 +59,20 @@ class Profile(BaseModel):
         return v
 
 
+def _migrate(data):
+    if isinstance(data, dict) and "schema_version" not in data:
+        data = dict(data)
+        if data.get("max_parallel_agents") == 2:
+            data["max_parallel_agents"] = "auto"
+        data["schema_version"] = PROFILE_SCHEMA_VERSION
+    return data
+
+
 def load_profile(home: Path) -> Profile:
+    """The saved profile, migrated to PROFILE_SCHEMA_VERSION (the next save writes it)."""
     try:
-        return Profile.model_validate_json((Path(home) / PROFILE_FILE).read_text())
+        raw = json.loads((Path(home) / PROFILE_FILE).read_text())
+        return Profile.model_validate(_migrate(raw))
     except FileNotFoundError:
         return Profile()
     except (OSError, ValueError, ValidationError):
@@ -71,7 +87,8 @@ def save_profile(home: Path, p: Profile) -> None:
     try:
         os.fchmod(fd, 0o600)
         with os.fdopen(fd, "w") as f:
-            json.dump(p.model_dump(mode="json"), f, indent=2)
+            json.dump({**p.model_dump(mode="json"), "schema_version": PROFILE_SCHEMA_VERSION},
+                      f, indent=2)
             f.flush()
             os.fsync(f.fileno())
         os.replace(tmp, path)

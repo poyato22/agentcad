@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import functools
 import logging
 import os
 import time
@@ -349,8 +350,12 @@ class Runtime:
         total = self._total_limit()
         kind = hardware.model_kind(ref)
         if kind == "local":
-            return Limits(total, group=ref, group_cap=hardware.auto_parallel(
-                ref, model_size_gb=self._local_size(ref)))
+            size = self._local_size(ref)
+            budget = hardware.usable_memory_gb()
+            # an unknown size claims the whole budget: that model runs with no other local one
+            return Limits(total, group=ref,
+                          group_cap=hardware.auto_parallel(ref, model_size_gb=size),
+                          local_gb=size if size else budget, budget_gb=budget)
         if kind == "free":
             return Limits(total, group=FREE_GROUP, group_cap=1)
         return Limits(total)
@@ -362,10 +367,11 @@ class Runtime:
         lim = self._limits_for(ref)
         return min(lim.total, lim.group_cap) if lim.group is not None else lim.total
 
-    def parallel_status(self) -> dict:
-        """GET /status `parallel`: {limit, auto, reason} for the profile's default model."""
+    def parallel_status(self, ref: str | None = None) -> dict:
+        """GET /status `parallel`: {limit, auto, reason} for `ref` (default: the profile's
+        default model)."""
         prof = self.profile()
-        ref = prof.default_model or DEFAULT_MODEL
+        ref = ref or prof.default_model or DEFAULT_MODEL
         limit = self.parallel_limit(ref)
         auto = prof.max_parallel_agents == "auto"
         if auto:
@@ -394,7 +400,7 @@ class Runtime:
         fut = self.parallel.enqueue(run_id, ref)
         self.store.update_run(run_id, status="queued")
         lim = self._limits_for(ref)
-        st = self.parallel_status()
+        st = self.parallel_status(ref)
         self.events.publish(Event(type="run_queued", run_id=run_id, data={
             **started, "position": self.parallel.position(run_id), "limit": lim.total,
             "reason": st["reason"]}))
@@ -473,7 +479,24 @@ class Runtime:
                    "parent_id": parent_id}
         slot = self._admit(run.id, ref, started)
         st.task = asyncio.create_task(self._drive_slotted(run.id, prompt, slot, started))
+        st.task.add_done_callback(functools.partial(self._slotted_done, run.id))
         return run.id
+
+    def _slotted_done(self, run_id: str, task: asyncio.Task) -> None:
+        """Whatever ended the turn's task (even a cancel before its first step, when no code
+        in it ran): its slot or queue place is given back, and a cancelled run is finished."""
+        st = self._runs.get(run_id)
+        if st is not None and st.task is not task:
+            return                       # a newer turn owns the slot now
+        self.parallel.withdraw(run_id)
+        self.parallel.release(run_id)
+        if task.cancelled():
+            try:
+                status = self.store.get_run(run_id).status
+            except KeyError:
+                return
+            if status in ("queued", "running"):
+                self._finish_cancelled(run_id, "run task cancelled")
 
     async def _drive_slotted(self, run_id: str, prompt: str, slot: asyncio.Future[bool] | None,
                              started: dict) -> RunResult:
@@ -535,6 +558,8 @@ class Runtime:
                 self.finish_external_run(rid, "failed")
             raise
         if st.cancel_requested:          # cancelled while it started
+            self.parallel.withdraw(rid)
+            self.parallel.release(rid)
             await st.session.close()
             return rid
         st.task = asyncio.create_task(self._drive_claude(rid, prompt, first=True))
@@ -768,6 +793,7 @@ class Runtime:
         self.store.update_run(run_id, status=status)
         self._external.discard(run_id)
         self.parallel.withdraw(run_id)
+        self.parallel.release(run_id)       # idempotent; a turn's own finally releases too
         self.events.publish(Event(type="run_finished", run_id=run_id, data={
             "status": status, "stop_reason": status, "error": None, "final_text": "",
             "external": True}))
@@ -818,6 +844,7 @@ class Runtime:
         started = {"resumed": True}
         slot = self._admit(run_id, st.ref, started)
         st.task = asyncio.create_task(self._drive_slotted(run_id, text, slot, started))
+        st.task.add_done_callback(functools.partial(self._slotted_done, run_id))
 
     async def wait(self, run_id: str) -> RunResult:
         cst = self._claude.get(run_id)

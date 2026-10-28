@@ -36,6 +36,10 @@ PULL_MIN_INTERVAL_S = 0.5
 MAX_LINE_BYTES = 64 * 1024
 MAX_MODELS = 200
 START_WAIT_S = 5.0
+MAX_PULLS = 2
+# a model needs about its size x 1.2 (KV cache, runtime headroom) of the memory left for models
+FIT_FACTOR = 1.2
+TIGHT_MARGIN = 0.10
 
 OLLAMA_PATHS = ("/opt/homebrew/bin/ollama", "/usr/local/bin/ollama",
                 "/Applications/Ollama.app/Contents/Resources/ollama")
@@ -129,10 +133,17 @@ async def ollama_status(base_url: str) -> dict:
 
 
 def recommended_local(m: Machine) -> list[dict]:
-    """The researched local models with whether each fits this Mac's memory for models."""
+    """The researched local models with whether each fits this Mac's memory for models
+    (size x FIT_FACTOR <= RAM - MEM_RESERVE_GB); "tight" when within TIGHT_MARGIN of it."""
     budget = usable_memory_gb(m)
-    return [{"name": n, "size_gb": size, "fits": size <= budget, "note": note}
-            for n, size, note in RECOMMENDED]
+    out = []
+    for n, size, note in RECOMMENDED:
+        need = size * FIT_FACTOR
+        fits = need <= budget
+        if fits and need >= budget * (1 - TIGHT_MARGIN):
+            note = f"{note} (tight on this Mac)"
+        out.append({"name": n, "size_gb": size, "fits": fits, "note": note})
+    return out
 
 
 def valid_pull_name(name) -> bool:
@@ -215,19 +226,25 @@ async def pull(model: str, base_url: str, publish: Publish, *,
 
 
 class Puller:
-    """At most one pull per model at a time, as background tasks; aclose() cancels them."""
+    """Background pulls: one per model, at most MAX_PULLS at once; cancel() and aclose()."""
 
-    def __init__(self, pull_fn: Callable[..., Awaitable[None]] = pull):
+    def __init__(self, pull_fn: Callable[..., Awaitable[None]] = pull,
+                 max_pulls: int = MAX_PULLS):
         self._pull = pull_fn
+        self._max = max_pulls
         self._tasks: dict[str, asyncio.Task] = {}
+        self._publish: dict[str, Publish] = {}
 
     def active(self) -> list[str]:
         return [m for m, t in self._tasks.items() if not t.done()]
 
-    def start(self, model: str, base_url: str, publish: Publish) -> bool:
+    def start(self, model: str, base_url: str, publish: Publish) -> str:
+        """"started", "already" (this model is downloading) or "busy" (MAX_PULLS running)."""
         t = self._tasks.get(model)
         if t is not None and not t.done():
-            return False
+            return "already"
+        if len(self.active()) >= self._max:
+            return "busy"
 
         async def run() -> None:
             try:
@@ -241,9 +258,24 @@ class Puller:
             finally:
                 if self._tasks.get(model) is task:
                     del self._tasks[model]
+                    self._publish.pop(model, None)
 
         task = asyncio.get_running_loop().create_task(run())
         self._tasks[model] = task
+        self._publish[model] = publish
+        return "started"
+
+    async def cancel(self, model: str) -> bool:
+        """Stop a download (Ollama keeps the finished layers; a later pull resumes)."""
+        task = self._tasks.get(model)
+        if task is None or task.done():
+            return False
+        publish = self._publish.get(model)
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await task
+        if publish is not None:
+            publish({"model": model, "completed": 0, "total": 0, "status": "cancelled"})
         return True
 
     async def aclose(self) -> None:
@@ -256,7 +288,8 @@ class Puller:
         self._tasks.clear()
 
 
-async def _running(base_url: str) -> bool:
+async def is_running(base_url: str) -> bool:
+    """Does an Ollama server answer GET /api/version at this base URL?"""
     try:
         async with _client(STATUS_TIMEOUT_S) as c:
             await _get(c, f"{_root(base_url)}/api/version")
@@ -265,11 +298,15 @@ async def _running(base_url: str) -> bool:
         return False
 
 
-async def start_ollama(base_url: str, home: Path, *, wait_s: float = START_WAIT_S) -> dict:
+async def start_ollama(base_url: str, home: Path, *, wait_s: float = START_WAIT_S,
+                       lock: asyncio.Lock | None = None) -> dict:
     """Start `ollama serve` in the background when Ollama is installed but not running. The
     server is detached (its own session; output in <home>/logs/ollama.log) and keeps running
     after Mises quits; the returned note says so."""
-    if await _running(base_url):
+    if lock is not None:
+        async with lock:                # one start at a time: never two `ollama serve`
+            return await start_ollama(base_url, home, wait_s=wait_s)
+    if await is_running(base_url):
         return {"ok": True, "running": True, "note": "Ollama is already running"}
     binary = find_ollama()
     if binary is None:
@@ -290,7 +327,7 @@ async def start_ollama(base_url: str, home: Path, *, wait_s: float = START_WAIT_
             "(stop it with `pkill ollama`). Log: logs/ollama.log in the Mises data folder")
     deadline = time.monotonic() + wait_s
     while True:
-        if await _running(base_url):
+        if await is_running(base_url):
             return {"ok": True, "running": True, "note": note}
         if time.monotonic() >= deadline:
             return {"ok": True, "running": False, "note": note + "; still starting"}

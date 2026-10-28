@@ -109,6 +109,7 @@ class UiRouter(APIRouter):
         super().__init__()
         self.model_lists = ModelLists()
         self.puller = local_models.Puller()
+        self.start_lock = asyncio.Lock()     # POST /local/start: one `ollama serve` at a time
         self.background: set[asyncio.Task] = set()
 
     def spawn(self, coro) -> asyncio.Task:
@@ -258,12 +259,10 @@ def build_ui_router(runtime: Runtime) -> UiRouter:
     @router.post("/local/start")
     async def local_start():
         """Start `ollama serve` (detached) when Ollama is installed but not running."""
-        return await local_models.start_ollama(_ollama_base(), runtime.home)
+        return await local_models.start_ollama(_ollama_base(), runtime.home,
+                                               lock=router.start_lock)
 
-    @router.post("/local/pull")
-    async def local_pull(request: Request):
-        """Download a model with Ollama in the background; progress comes as `local_pull`
-        events {model, completed, total, status}. The name is validated before it is sent."""
+    async def _pull_name(request: Request) -> str:
         try:
             body = await request.json()
         except ValueError:
@@ -273,8 +272,23 @@ def build_ui_router(runtime: Runtime) -> UiRouter:
             # never echo the submitted name: it is untrusted text
             raise MisesError(ErrorCode.INVALID_INPUT, "invalid model name",
                              hint="lowercase Ollama names like qwen3-coder:30b")
+        return model
+
+    @router.post("/local/pull/cancel")
+    async def local_pull_cancel(request: Request):
+        model = await _pull_name(request)
+        return {"ok": await router.puller.cancel(model)}
+
+    @router.post("/local/pull")
+    async def local_pull(request: Request):
+        """Download a model with Ollama in the background; progress comes as `local_pull`
+        events {model, completed, total, status}. The name is validated before it is sent.
+        One download per model, at most local_models.MAX_PULLS at once."""
+        model = await _pull_name(request)
+        if model in router.puller.active():
+            return {"ok": False, "already": True}
         base = _ollama_base()
-        if not await local_models._running(base):
+        if not await local_models.is_running(base):
             return {"ok": False, "error": "not_running", "hint": OLLAMA_START_HINT}
 
         def publish(data: dict) -> None:
@@ -283,7 +297,12 @@ def build_ui_router(runtime: Runtime) -> UiRouter:
                 model_lists.forget_local()        # the new model shows up in /models now
                 runtime.forget_local_sizes()
 
-        router.puller.start(model, base, publish)
+        started = router.puller.start(model, base, publish)
+        if started == "already":
+            return {"ok": False, "already": True}
+        if started == "busy":
+            return {"ok": False, "error": "too_many_pulls",
+                    "hint": f"at most {local_models.MAX_PULLS} downloads at once"}
         return {"ok": True}
 
     @router.get("/parts")
