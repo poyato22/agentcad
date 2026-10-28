@@ -23,6 +23,9 @@
   --green: #4fd18b;
   --amber: #f2b134;
   --red: #ff5a4a;
+  /* text/glyph colour that sits on a solid --blue fill (filled buttons); flips per theme so it
+     stays ≥4.5:1 — dark on the light dark-mode blue, white on the darker light-mode blue. */
+  --on-blue: #111111;
 
   /* Viewer drafting grid (on top of --vp); tinted per theme so it follows the viewport. */
   --grid-strong: rgba(255,255,255,.07);
@@ -81,6 +84,7 @@
   --green: #17763f;
   --amber: #8f5e0a;
   --red: #c8321e;
+  --on-blue: #ffffff;
 
   --grid-strong: rgba(10,20,40,.09);
   --grid-faint: rgba(10,20,40,.035);
@@ -107,6 +111,7 @@
     --green: #17763f;
     --amber: #8f5e0a;
     --red: #c8321e;
+    --on-blue: #ffffff;
 
     --grid-strong: rgba(10,20,40,.09);
     --grid-faint: rgba(10,20,40,.035);

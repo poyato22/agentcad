@@ -94,6 +94,19 @@ describe("theme tokens", () => {
     expect(fails).toEqual([]);
   });
 
+  it("filled buttons keep AA text-on-fill contrast in both themes (btn-primary, btn-ink)", () => {
+    // A2: .btn-primary text (--on-blue) on --blue, and .btn-ink text (--bg) on --ink.
+    const pairs: Array<[string, string]> = [["--on-blue", "--blue"], ["--bg", "--ink"]];
+    for (const [palName, pal] of [["dark", DARK], ["light", LIGHT]] as const) {
+      for (const [text, fill] of pairs) {
+        expect(pal[text], `${text} defined (${palName})`).toBeDefined();
+        expect(ratio(pal[text], pal[fill]), `${text} on ${fill} (${palName})`).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+    // the on-blue text flips between themes (dark fill is light; light fill is dark)
+    expect(LIGHT["--on-blue"]).not.toBe(DARK["--on-blue"]);
+  });
+
   it("light-mode status colors stay distinguishable by hue (pass / warn / fail / blue)", () => {
     const hues = ["--green", "--amber", "--red", "--blue"].map((k) => hue(LIGHT[k]));
     for (let i = 0; i < hues.length; i++) for (let j = i + 1; j < hues.length; j++) {
