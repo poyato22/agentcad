@@ -351,6 +351,10 @@ def _hint(e: BaseException) -> str | None:
                 "`bd`, `build123d`, `math`); check the spelling.")
     if isinstance(e, _MissingBuild):
         return BUILD_SIGNATURE_HINT
+    if isinstance(e, TypeError) and "unexpected keyword argument" in str(e):
+        return ("build123d shapes take no position keywords (no pos=, offset=, locations=): "
+                "inside `with BuildPart() as p:` wrap them in `with Locations((x, y), ...):`, "
+                "e.g. `with Locations((-10, 0), (10, 0)): Hole(2.1)`; Hole takes a radius.")
     return None
 
 

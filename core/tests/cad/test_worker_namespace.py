@@ -58,4 +58,14 @@ async def test_create_tool_description_example_actually_builds(tmp_path):
     assert EXAMPLE_SCRIPT in mirror_part_create.description
     r = await run_build(mk(tmp_path, EXAMPLE_SCRIPT), {})
     assert r.ok, r.error
-    assert len(r.metrics["holes"]) == 1
+    assert len(r.metrics["holes"]) == 2
+
+
+async def test_position_keyword_gets_the_locations_hint(tmp_path):
+    # what a small local model wrote in real QA (Hole(..., offset=...))
+    script = ('VARS = {}\ndef build(v):\n    with BuildPart() as p:\n        Box(40, 20, 5)\n'
+              '        Hole(2.1, offset=(20, 0, 0))\n    return p.part\n')
+    r = await run_build(mk(tmp_path, script), {})
+    assert not r.ok
+    assert "unexpected keyword argument" in r.error
+    assert "with Locations((x, y)" in r.error

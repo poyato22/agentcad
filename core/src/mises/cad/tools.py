@@ -136,12 +136,14 @@ def _fail(summary: str, stdout: str = "") -> ToolOutput:
                       step_kind=StepKind.ERROR)
 
 
-EXAMPLE_SCRIPT = '''VARS = {"length": 40.0, "width": 20.0, "height": 10.0, "hole_d": 4.0}
+EXAMPLE_SCRIPT = '''VARS = {"length": 40.0, "width": 20.0, "height": 10.0, "hole_d": 4.0, "pitch": 20.0}
 
 def build(v: dict):
     with BuildPart() as p:
-        Box(v["length"], v["width"], v["height"])
-        Hole(v["hole_d"] / 2)  # Hole takes a RADIUS; drills down through the top face
+        Box(v["length"], v["width"], v["height"])  # centred on the origin
+        # place features with Locations (x, y in mm); shapes take no position arguments
+        with Locations((-v["pitch"] / 2, 0), (v["pitch"] / 2, 0)):
+            Hole(v["hole_d"] / 2)  # Hole takes a RADIUS; drills down through the part
     return p.part
 '''
 
