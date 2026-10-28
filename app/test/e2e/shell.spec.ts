@@ -17,15 +17,15 @@ test("layout_regions_exist", async ({ page }) => {
   const left = await box("left");
   const viewer = await box("viewer");
   const consoleBox = await box("console");
-  expect(top.height).toBe(32);
+  expect(top.height).toBe(44);
   expect(top.width).toBe(1440);
   expect(left.width).toBe(240);
   expect(consoleBox.width).toBe(420);
   expect(viewer.width).toBe(1440 - 240 - 420);
-  expect(consoleBox.y).toBe(32);
-  expect(consoleBox.height).toBe(900 - 32);
-  expect(left.y).toBe(32);
-  expect(viewer.y).toBe(32);
+  expect(consoleBox.y).toBe(44);
+  expect(consoleBox.height).toBe(900 - 44);
+  expect(left.y).toBe(44);
+  expect(viewer.y).toBe(44);
 });
 
 test("min_window_size_is_1280_by_800", async ({ page }) => {
@@ -98,10 +98,10 @@ test("fonts_are_local_iosevka", async ({ page }) => {
 });
 
 // ---- traffic lights: no interactive element or text may sit under the overlay window buttons.
-// The reserved zone is the top-left 78px × 28px of the window.
+// The reserved zone is the top-left 78px × 32px of the window (lights moved to y 15–29).
 async function offenders(page: Page): Promise<string[]> {
   return page.evaluate(() => {
-    const ZONE_X = 78, ZONE_Y = 28;
+    const ZONE_X = 78, ZONE_Y = 32;
     const interactive = "a,button,input,select,textarea,[role=tab],[role=button],[tabindex]";
     const seen = new Set<Element>();
     const bad: string[] = [];
@@ -372,7 +372,7 @@ test("connects_to_fake_core_without_errors", async ({ page, fake }) => {
 });
 
 // ---- title strips at the window top: text sits on the traffic lights' centre line.
-// --chrome-center-y is the lights' vertical centre measured in a built Mises.app (macOS 26: 16px).
+// --chrome-center-y is the lights' vertical centre measured in a built Mises.app (22px: trafficLightPosition centres the lights in the 44px top bar).
 async function chromeOffsets(page: Page, selectors: string[]): Promise<{ centre: number; off: [string, number][] }> {
   return page.evaluate((sels) => {
     const centre = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--chrome-center-y"));
@@ -396,7 +396,7 @@ for (const theme of ["dark", "light"] as const) {
     await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
     await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
     const top = await chromeOffsets(page, [".crumb", ".tab", ".profile-btn", ".stop-all", ".light"]);
-    expect(top.centre).toBe(16);
+    expect(top.centre).toBe(22);
     for (const [sel, d] of top.off) expect(d, `top bar ${sel}`).toBeLessThanOrEqual(2);
     // the setup wizard header
     await fake.reset("setup");

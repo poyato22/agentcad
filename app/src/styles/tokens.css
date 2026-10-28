@@ -40,10 +40,11 @@
   --fs-small: 10.5px;
   --fs-label: 9.5px;
 
-  /* macOS overlay title bar: the traffic lights' vertical centre, measured in a built Mises.app on
-     macOS 26 (lights span y 9–23 CSS px). Every strip at the window top is --chrome-h tall and
-     centres its text, so the text sits on the lights' centre line. */
-  --chrome-center-y: 16px;
+  /* macOS overlay title bar: tauri.conf.json's trafficLightPosition moves the traffic lights so
+     their vertical centre is --chrome-center-y (the middle of the 44px top bar) on every macOS
+     version. Every strip at the window top is --chrome-h tall and centres its text, so the text
+     sits on the lights' centre line. */
+  --chrome-center-y: 22px;
   --chrome-h: calc(var(--chrome-center-y) * 2);
   --topbar-h: var(--chrome-h);
   --left-w: 240px;
@@ -54,7 +55,7 @@
   /* macOS overlay traffic lights sit top-left; keep content out of this zone on every
      full-height surface that touches the top-left corner. */
   --chrome-inset-x: 78px;
-  --chrome-inset-y: 28px;
+  --chrome-inset-y: 32px; /* the lights end at y≈29 (centre 22, 14px tall) */
 }
 
 /* ---- light palette: the pages/models/UX Global Constraints values, except where the contrast

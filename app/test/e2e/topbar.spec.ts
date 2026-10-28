@@ -24,7 +24,7 @@ test("active_tab_blue_underline_and_tabs_navigate", async ({ page }) => {
 test("topbar_geometry_and_colors", async ({ page }) => {
   await page.goto("/");
   const bar = page.locator("header.topbar");
-  await expect(bar).toHaveCSS("height", "32px"); // one macOS title-bar strip (--chrome-h)
+  await expect(bar).toHaveCSS("height", "44px");
   await expect(bar).toHaveCSS("background-color", "rgb(20, 20, 20)");
   await expect(bar).toHaveCSS("border-bottom-color", "rgb(51, 51, 51)");
   await expect(bar).toHaveCSS("grid-template-columns", /px \d+(\.\d+)?px \d+(\.\d+)?px/);
