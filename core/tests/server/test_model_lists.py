@@ -177,3 +177,91 @@ def test_ollama_models_not_a_dict_is_tolerated():
     r = asyncio.run(run())
     assert r.models == [] and r.hint is None
 
+
+# ---- hardening: untrusted ids, list and body caps, refresh errors, float pricing
+
+async def test_ollama_and_lmstudio_drop_ids_that_fail_validation():
+    bad = ["", "has space", "semi;colon", "x" * 201, "new\nline", "$(rm)"]
+    net = Net({OLLAMA: (200, {"models": [{"name": n} for n in [*bad, "qwen3:8b", "a/b@c+d"]]}),
+               LMS: (200, {"data": [{"id": n} for n in [*bad, "m.1_x-2"]]})})
+    ls = lists(net)
+    assert (await ls.ollama("http://localhost:11434/v1")).models == ["ollama/qwen3:8b",
+                                                                     "ollama/a/b@c+d"]
+    assert (await ls.lmstudio("http://localhost:1234/v1")).models == ["lmstudio/m.1_x-2"]
+
+
+async def test_openrouter_drops_ids_that_fail_validation():
+    net = Net({OR: (200, {"data": [entry("ok/m:free"), entry("bad id:free"),
+                                   entry("evil<script>:free")]})})
+    assert await lists(net).openrouter() == ["openrouter/ok/m:free"]
+
+
+async def test_lists_capped_at_200():
+    net = Net({OLLAMA: (200, {"models": [{"name": f"m{i}"} for i in range(500)]}),
+               OR: (200, {"data": [entry(f"a/m{i}:free") for i in range(500)]})})
+    ls = lists(net)
+    assert len((await ls.ollama("http://localhost:11434/v1")).models) == 200
+    assert len(await ls.openrouter()) == 200
+
+
+async def test_oversized_body_is_refused(monkeypatch):
+    monkeypatch.setattr(ml, "MAX_BODY_BYTES", 1000)
+    big = {"models": [{"name": f"m{i}", "pad": "x" * 100} for i in range(50)]}
+    r = await lists(Net({OLLAMA: (200, big)})).ollama("http://localhost:11434/v1")
+    assert r.models == []
+
+
+async def test_openrouter_unexpected_error_still_backs_off(monkeypatch):
+    now = [0.0]
+    calls = []
+
+    def boom(_):
+        calls.append(1)
+        raise RuntimeError("unexpected")
+
+    monkeypatch.setattr(ml.ModelLists, "_free_tool_models", staticmethod(boom))
+    ls = lists(Net({OR: (200, {"data": []})}), monotonic=lambda: now[0])
+    assert await ls.openrouter() == []
+    await asyncio.sleep(0.05)
+    assert await ls.openrouter() == []      # backoff: no second fetch within 30 s
+    await asyncio.sleep(0.05)
+    assert len(calls) == 1
+    now[0] += 31
+    await ls.openrouter()
+    await asyncio.sleep(0.05)
+    assert len(calls) == 2
+
+
+async def test_openrouter_refresh_task_cancelled_on_close(monkeypatch):
+    monkeypatch.setattr(ml, "OPENROUTER_BLOCK_S", 0.01)
+    net = Net({OR: (200, {"data": []})})
+    net.delay = 5
+    ls = lists(net)
+    await ls.openrouter()
+    task = ls._or_task
+    assert task is not None and not task.done()
+    await ls.aclose()
+    assert task.cancelled()
+
+
+def test_models_route_closes_refresh_on_shutdown(rt, monkeypatch):
+    monkeypatch.setattr("mises.platform.keychain_get", lambda *a: None)
+    closed = []
+    orig = ml.ModelLists.aclose
+
+    async def spy(self):
+        closed.append(1)
+        await orig(self)
+
+    monkeypatch.setattr(ml.ModelLists, "aclose", spy)
+    with TestClient(create_app(rt, TOKEN)) as c:
+        c.get("/models", headers=AUTH)
+    assert closed == [1]
+
+
+async def test_openrouter_pricing_parsed_as_float():
+    data = [entry("a/zero-float", "0.0000", "0e0"), entry("b/tiny", "0.0000001", "0"),
+            entry("c/junk", "free", "0"), entry("d/num", 0, 0)]
+    r = await lists(Net({OR: (200, {"data": data})})).openrouter()
+    assert r == ["openrouter/a/zero-float", "openrouter/d/num"]
+
