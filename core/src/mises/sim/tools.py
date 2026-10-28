@@ -36,7 +36,13 @@ from .types import SimError
 SIM_ID_RE = re.compile(r"^sim_[0-9a-f]{12}$")
 MESH_TIMEOUT_S = 180.0
 SOLVE_TIMEOUT_S = 300.0
-TOOL_TIMEOUT_S = 2 * (MESH_TIMEOUT_S + SOLVE_TIMEOUT_S) + 60
+# One study is at most two meshes + two solves (+ margin for post-processing). Studies run one
+# at a time; the Gate's timeout covers the queue wait too, so the wait is bounded such that a
+# study that gets the slot always has its full time left (else: ok=false, error "busy").
+STUDY_MAX_S = 2 * (MESH_TIMEOUT_S + SOLVE_TIMEOUT_S) + 60
+TOOL_TIMEOUT_S = 2 * STUDY_MAX_S + 60
+QUEUE_TIMEOUT_S = TOOL_TIMEOUT_S - STUDY_MAX_S - 30
+DROPPED_LOAD_WARN = 0.01  # share of the load that may land on clamped nodes before we warn
 GUIDE_LABEL = "guide only, not a guarantee"
 CAVEATS = [
     "Guide only: a linear-elastic FEM estimate, not a certification or a guarantee.",
@@ -45,7 +51,7 @@ CAVEATS = [
     "Small deflections assumed; contact, creep, fatigue, temperature and vibration are not "
     "simulated.",
     "Peak stress excludes nodes on the fixed face (an ideal clamp gives a constraint "
-    "singularity there); that value is reported separately.",
+    "singularity there); that value and a safety factor including it are reported separately.",
 ]
 FaceSpec = str
 Direction = Literal["+x", "-x", "+y", "-y", "+z", "-z"]
@@ -198,8 +204,11 @@ async def _solve(ctx: ToolContext, job: Path, step: Path, metrics: dict, size: f
     fixed = mesh.nodes_of(fix_tags)
     d = direction_vector(args.load.direction)
     loads = consistent_loads(mesh, load_tags, tuple(args.load.newtons * x for x in d))
-    for n in fixed:  # a load on a clamped node goes straight into the support
-        loads.pop(n, None)
+    dropped = 0.0
+    for n in fixed:  # a load on a clamped node (shared edge) goes straight into the support
+        v = loads.pop(n, None)
+        if v is not None:
+            dropped += sum(x * x for x in v) ** 0.5
     # big meshes make these slow: keep them off the server's event loop
     await asyncio.to_thread(write_inp, job / "job.inp", mesh, fixed, loads, material)
     progress(f"solve_{stage}", nodes=len(mesh.nodes), elements=len(mesh.tets))
@@ -208,16 +217,18 @@ async def _solve(ctx: ToolContext, job: Path, step: Path, metrics: dict, size: f
     return {"mesh": mesh, "peaks": pk,
             "info": {"size_mm": round(size, 4), "nodes": len(mesh.nodes),
                      "elements": len(mesh.tets), "fixed_nodes": len(fixed),
-                     "loaded_nodes": len(loads)}}
+                     "loaded_nodes": len(loads), "dropped_load_n": dropped}}
 
 
 @tool("sim_static_run", safety=SafetyClass.LOCAL_MUTATE, scope_arg="part_id",
       timeout_s=TOOL_TIMEOUT_S,
       description="Run a static linear-elastic stress study (gmsh + CalculiX) on a local mirror "
                   "part: one face held fixed, a force spread over another face. Faces are "
-                  "presets (bottom, top, x-min, ...) or face ids from mirror_measure face_list. "
-                  "Returns max von Mises (MPa), max displacement (mm), safety factor (yield x "
-                  "FDM knock-down 0.7 / peak) and an error band from a coarse vs fine mesh. "
+                  "presets (bottom, top, x-min, ...) or face ids from mirror_measure face_list "
+                  "(largest faces) or mirror_faces (all). Returns max von Mises (MPa, excluding "
+                  "the fixed face, whose peak is reported separately), max displacement (mm), "
+                  "safety factor (yield x FDM knock-down 0.7 / peak) and an error band from a "
+                  "coarse vs fine mesh. "
                   "Results are a GUIDE ONLY: always say so when you report them.")
 async def sim_static_run(ctx: ToolContext, args: StaticArgs) -> ToolOutput:
     _check_part_id(args.part_id)
@@ -278,14 +289,21 @@ async def sim_static_run(ctx: ToolContext, args: StaticArgs) -> ToolOutput:
         version = await asyncio.to_thread(ccx_version, ccx) or "unknown"
         coarse_h, fine_h = mesh_sizes(metrics["bbox"]["size"], metrics.get("volume_mm3", 0))
         step = job_root / "model.step"
+        sem = _semaphore()
         try:
-            async with _semaphore():
-                coarse = await _solve(ctx, job_root / "coarse", step, metrics, coarse_h, args,
-                                      material, ccx, progress)
-                fine = await _solve(ctx, job_root / "fine", step, metrics, fine_h, args,
-                                    material, ccx, progress)
+            await asyncio.wait_for(sem.acquire(), QUEUE_TIMEOUT_S)
+        except asyncio.TimeoutError:
+            return fail("busy", f"another study kept the solver busy for {QUEUE_TIMEOUT_S:g}s",
+                        "retry when the running study has finished")
+        try:
+            coarse = await _solve(ctx, job_root / "coarse", step, metrics, coarse_h, args,
+                                  material, ccx, progress)
+            fine = await _solve(ctx, job_root / "fine", step, metrics, fine_h, args,
+                                material, ccx, progress)
         except SimError as e:
             return fail(e.code, e.message, e.hint)
+        finally:
+            sem.release()
         progress("post")
         pf, pc = fine["peaks"], coarse["peaks"]
         peak = pf["max_von_mises_mpa"]
@@ -298,6 +316,13 @@ async def sim_static_run(ctx: ToolContext, args: StaticArgs) -> ToolOutput:
             warnings.append(f"mesh not converged: peak stress changed {band:.0%} between the "
                             "coarse and fine mesh; treat the peak as uncertain")
         fx = pf["max_von_mises_at_fixture_mpa"]
+        worst = max(peak, fx or 0.0)
+        sf_fix = material.allowable_mpa / worst if worst > 0 else None
+        dropped = fine["info"]["dropped_load_n"]
+        if dropped > DROPPED_LOAD_WARN * args.load.newtons:
+            warnings.append(f"{dropped:.3g} N of the {args.load.newtons:g} N load sits on nodes "
+                            "shared with the fixed face and goes straight into the support; "
+                            "the result under-reports that share")
         if fx is not None and fx > 1.5 * peak:
             warnings.append(f"stress at the fixed face reaches {fx:.3g} MPa (an idealised "
                             "clamp exaggerates it); real fixtures spread load")
@@ -317,11 +342,12 @@ async def sim_static_run(ctx: ToolContext, args: StaticArgs) -> ToolOutput:
             "max_von_mises_at_fixture_mpa": fx,
             "max_displacement_mm": pf["max_displacement_mm"],
             "max_displacement_at": pf["max_displacement_at"],
-            "safety_factor": sf, "allowable_mpa": material.allowable_mpa,
+            "safety_factor": sf, "safety_factor_incl_fixture": sf_fix,
+            "allowable_mpa": material.allowable_mpa,
             "coarse_max_von_mises_mpa": pc["max_von_mises_mpa"],
             "coarse_max_displacement_mm": pc["max_displacement_mm"],
             "error_band": band, "error_band_pct": None if band is None else round(100 * band, 1),
-            "peak_excludes": "nodes on the fixed face"}
+            "peak_excludes": "nodes on the fixed face" if pf["excludes_fixture"] else None}
         await asyncio.to_thread(lambda: write_result_glb(
             job_root / "result.glb", fine["mesh"], pf["vm"], vmax=peak,
             extras={"sim_id": sim_id, "part_id": args.part_id}))
@@ -343,16 +369,40 @@ async def sim_static_run(ctx: ToolContext, args: StaticArgs) -> ToolOutput:
     finally:
         shutil.rmtree(job_root, ignore_errors=True)
 
-    band_s = "n/a" if band is None else f"±{band:.1%}"
-    sf_s = "n/a" if sf is None else f"{sf:.2f}"
-    summary = (f"GUIDE ONLY ({solver['name']} {version}, fine mesh {fine_h:.2g} mm, "
-               f"{material.name} x{FDM_KNOCKDOWN} knock-down): {args.part_id} max von Mises "
-               f"{peak:.3g} MPa (error band {band_s}), max displacement "
-               f"{pf['max_displacement_mm']:.3g} mm, safety factor {sf_s}")
-    if warnings:
-        summary += "; warnings: " + "; ".join(warnings)
-    return ToolOutput(summary=summary, data=rec, step_kind=StepKind.SIM_RUN,
+    return ToolOutput(summary=result_summary(rec), data=rec, step_kind=StepKind.SIM_RUN,
                       warnings=warnings)
+
+
+def _num(v, fmt: str) -> str:
+    return "n/a" if v is None else format(v, fmt)
+
+
+def result_summary(rec: dict) -> str:
+    """One line that always carries the labelling a reader needs: guide only, solver, mesh
+    size, material model, error band, and whether/how the fixed face was left out of the peak."""
+    if rec.get("status") != "done":
+        s = f"{rec.get('sim_id')} {rec.get('status')} ({GUIDE_LABEL})"
+        if rec.get("error"):
+            s += f": {rec['error']}" + (f" ({rec['hint']})" if rec.get("hint") else "")
+        return s
+    r, m, sv, mesh = rec["results"], rec["material"], rec["solver"], rec["mesh"]
+    band = r.get("error_band")
+    if r.get("peak_excludes"):
+        fixture = (f"peak excludes the fixed face; at fixture: "
+                   f"{_num(r.get('max_von_mises_at_fixture_mpa'), '.3g')} MPa (safety factor "
+                   f"incl. fixture {_num(r.get('safety_factor_incl_fixture'), '.2f')})")
+    else:
+        fixture = "peak includes the fixed face (every stressed node is on it)"
+    s = (f"GUIDE ONLY - {sv['name']} {sv['version']}, fine mesh {mesh['fine']['size_mm']:.2g} mm "
+         f"(coarse {mesh['coarse']['size_mm']:.2g} mm), material {m['name']} isotropic linear "
+         f"elastic, strength x{m['knockdown']} FDM knock-down: {rec['part_id']} max von Mises "
+         f"{r['max_von_mises_mpa']:.3g} MPa (error band "
+         f"{'n/a' if band is None else format(band, '.1%')}), max displacement "
+         f"{r['max_displacement_mm']:.3g} mm, safety factor {_num(r.get('safety_factor'), '.2f')}"
+         f"; {fixture}")
+    if rec.get("warnings"):
+        s += "; warnings: " + "; ".join(rec["warnings"])
+    return s
 
 
 def _in_read_scope(ctx: ToolContext, part_id: str) -> bool:
@@ -376,10 +426,7 @@ async def sim_result_get(ctx: ToolContext, args: ResultArgs) -> ToolOutput:
     if not _in_read_scope(ctx, rec.get("part_id", "")):
         raise MisesError(ErrorCode.OUT_OF_SCOPE, f"{args.sim_id} belongs to a part outside "
                          "this run's scope", hint="ask the user to widen the scope")
-    r = rec.get("results") or {}
-    summary = (f"{args.sim_id} ({rec['status']}, {GUIDE_LABEL})"
-               + (f": max von Mises {r['max_von_mises_mpa']:.3g} MPa, safety factor "
-                  f"{r['safety_factor']:.2f}" if r.get("safety_factor") else "")
+    summary = (f"{args.sim_id}: " + result_summary(rec)
                + ("; STALE: the part changed since this study" if rec["stale"] else ""))
     return ToolOutput(summary=summary, data=rec, step_kind=StepKind.SIM_RUN)
 
@@ -391,7 +438,7 @@ async def sim_result_get(ctx: ToolContext, args: ResultArgs) -> ToolOutput:
 async def sim_env_list(ctx: ToolContext, args: EnvListArgs) -> ToolOutput:
     st = solver_status()
     data = {"environments": ENVIRONMENTS, "face_presets": list(FACE_PRESETS),
-            "face_ids": "or a face id (\"f3\") from mirror_measure face_list",
+            "face_ids": "or a face id (\"f3\") from mirror_measure face_list / mirror_faces",
             "directions": list(DIRECTIONS), "knockdown": FDM_KNOCKDOWN,
             "materials": [m.to_dict() for m in MATERIALS.values()], "solvers": st}
     s = (f"{len(ENVIRONMENTS)} environments, {len(MATERIALS)} materials; CalculiX "

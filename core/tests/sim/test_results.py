@@ -74,3 +74,16 @@ def test_result_glb_has_per_vertex_colors(tmp_path):
     assert gltf["asset"]["extras"]["mises_sim"]["max"] == 10.0
     assert gltf["asset"]["extras"]["mises_sim"]["units"] == "MPa"
     assert gltf["accessors"][prim["indices"]]["count"] == 12  # 1 quadratic tri -> 4 linear
+
+
+def test_peaks_never_claim_an_exclusion_they_could_not_make():
+    from mises.sim.results import peaks
+    mesh = Mesh(nodes={1: (0, 0, 0), 2: (1, 0, 0)}, tets=[], surfaces=[])
+    frd = {"STRESS": {1: [5, 0, 0, 0, 0, 0], 2: [3, 0, 0, 0, 0, 0]},
+           "DISP": {1: [0, 0, 0], 2: [0, 0, 0.1]}}
+    p = peaks(mesh, frd, exclude={1})
+    assert p["excludes_fixture"] is True and p["max_von_mises_mpa"] == pytest.approx(3)
+    assert p["max_von_mises_at_fixture_mpa"] == pytest.approx(5)
+    every = peaks(mesh, frd, exclude={1, 2})  # every stressed node sits on the fixed face
+    assert every["excludes_fixture"] is False and every["max_von_mises_mpa"] == pytest.approx(5)
+    assert peaks(mesh, frd, exclude=set())["excludes_fixture"] is False

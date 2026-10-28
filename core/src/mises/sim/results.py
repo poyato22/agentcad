@@ -47,12 +47,15 @@ def peaks(mesh: Mesh, frd: dict, exclude: set[int]) -> dict:
     vm = {n: von_mises(s) for n, s in frd.get("STRESS", {}).items()}
     if not vm:
         raise ValueError("no stresses in the CalculiX results")
-    away = {n: v for n, v in vm.items() if n not in exclude} or vm
+    away = {n: v for n, v in vm.items() if n not in exclude}
+    excluded = bool(away) and len(away) < len(vm)
+    if not away:  # every stressed node is on the fixed face: the peak cannot exclude it
+        away = vm
     n_peak = max(away, key=away.get)
     n_fix = max((n for n in vm if n in exclude), key=vm.get, default=None)
     disp = {n: math.sqrt(sum(x * x for x in d[:3])) for n, d in frd.get("DISP", {}).items()}
     n_disp = max(disp, key=disp.get) if disp else None
-    return {"vm": vm, "max_von_mises_mpa": away[n_peak],
+    return {"vm": vm, "max_von_mises_mpa": away[n_peak], "excludes_fixture": excluded,
             "max_von_mises_at": list(mesh.nodes.get(n_peak, (0, 0, 0))),
             "max_von_mises_at_fixture_mpa": vm[n_fix] if n_fix is not None else None,
             "max_displacement_mm": disp[n_disp] if n_disp is not None else 0.0,

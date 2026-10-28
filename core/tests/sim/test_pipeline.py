@@ -77,7 +77,11 @@ async def test_cantilever_matches_beam_theory(tmp_path):
     assert d["mesh"]["fine"]["size_mm"] < d["mesh"]["coarse"]["size_mm"]
     assert d["mesh"]["fine"]["nodes"] > d["mesh"]["coarse"]["nodes"]
     assert d["material"]["knockdown"] == 0.7
-    assert "guide" in out.summary.lower()
+    fx = d["results"]["max_von_mises_at_fixture_mpa"]
+    assert d["results"]["peak_excludes"] == "nodes on the fixed face"
+    assert d["results"]["safety_factor_incl_fixture"] == pytest.approx(
+        d["material"]["allowable_mpa"] / max(peak, fx))
+    _assert_labelled(out.summary, fx)
     # error band = |fine - coarse| / fine on the peak stress
     coarse = d["results"]["coarse_max_von_mises_mpa"]
     assert d["results"]["error_band"] == pytest.approx(abs(peak - coarse) / peak)
@@ -94,6 +98,47 @@ async def test_cantilever_matches_beam_theory(tmp_path):
     assert not any((tmp_path / "sim_tmp").glob("*"))
     got = await sim_result_get.handler(ctx, ResultArgs(sim_id=d["sim_id"]))
     assert got.data["results"]["max_von_mises_mpa"] == peak and got.data["stale"] is False
+    _assert_labelled(got.summary, fx)
+    assert not any("shared with the fixed face" in w for w in d["warnings"])
+
+
+def _assert_labelled(summary: str, fixture_mpa: float) -> None:
+    for s in ("GUIDE ONLY", "CalculiX 2.", "fine mesh 2.5 mm", "coarse 5 mm",
+              "PLA isotropic linear elastic", "x0.7 FDM knock-down", "error band",
+              f"peak excludes the fixed face; at fixture: {fixture_mpa:.3g} MPa",
+              "safety factor incl. fixture"):
+        assert s in summary, (s, summary)
+
+
+@pytest.mark.timeout(180)
+@needs_ccx
+async def test_load_on_nodes_shared_with_fixture_warns(tmp_path):
+    ctx = _ctx(tmp_path)
+    await _beam(ctx)
+    # the x-max end shares its bottom edge with the clamped bottom face
+    out = await sim_static_run.handler(ctx, StaticArgs(
+        part_id="beam", fix="bottom", load={"face": "x-max", "newtons": F, "direction": "-z"}))
+    assert out.ok, out.summary
+    assert out.data["mesh"]["fine"]["dropped_load_n"] > 0.01 * F
+    assert any("shared with the fixed face" in w for w in out.data["warnings"])
+
+
+async def test_queue_wait_is_bounded(tmp_path, monkeypatch):
+    # a study that gets the slot after the longest allowed wait still has its full time
+    assert sim_tools.QUEUE_TIMEOUT_S + sim_tools.STUDY_MAX_S < sim_tools.TOOL_TIMEOUT_S
+    monkeypatch.setattr(sim_tools, "find_ccx", lambda: "/usr/bin/false")
+    monkeypatch.setattr(sim_tools, "QUEUE_TIMEOUT_S", 0.05)
+    ctx = _ctx(tmp_path)
+    await _beam(ctx)
+    sem = sim_tools._semaphore()
+    await sem.acquire()  # another study holds the solver
+    try:
+        out = await sim_static_run.handler(ctx, StaticArgs(
+            part_id="beam", fix="x-min", load={"face": "x-max", "newtons": F, "direction": "-z"}))
+    finally:
+        sem.release()
+    assert out.ok is False and out.data["error"] == "busy"
+    assert sim_static_run.timeout_s == sim_tools.TOOL_TIMEOUT_S
 
 
 @pytest.mark.timeout(180)

@@ -46,7 +46,7 @@ def _check_sim(sim_id: str) -> None:
 
 
 def build_sim_router(runtime: Runtime) -> APIRouter:
-    register_sim_tools(runtime.registry)
+    register_sim_tools(runtime.registry)  # no-op: Runtime registers them; kept for bare registries
     router = APIRouter()
     tasks: set[asyncio.Task] = set()
 
