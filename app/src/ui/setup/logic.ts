@@ -4,11 +4,12 @@ import type { KeyStatus, LocalTestResult, ModelsInfo, OnshapeTestResult, Profile
 import { splitModelRef } from "../dialogs/modelRef";
 
 export type StepId = "welcome" | "model" | "onshape" | "profile" | "done";
+/** Plan 4 order: the profile is what "signing in" to Mises sets up, so it comes first. */
 export const STEPS: readonly { id: StepId; label: string }[] = [
   { id: "welcome", label: "Welcome" },
+  { id: "profile", label: "Profile" },
   { id: "model", label: "Model" },
   { id: "onshape", label: "Onshape" },
-  { id: "profile", label: "Profile" },
   { id: "done", label: "Done" },
 ];
 
@@ -29,10 +30,10 @@ export function resumeStep(s: SetupState, o: ResumeOpts): StepId {
   if (o.reopened) return "welcome";
   const missing = new Set(s.missing);
   const modelDone = s.has_model || o.modelSkipped;
-  if (!modelDone && missing.has("onshape") && !o.profileNamed) return "welcome";
+  const started = modelDone || !missing.has("onshape") || o.onshapeSkipped;
+  if (!o.profileNamed) return started ? "profile" : "welcome";
   if (!modelDone) return "model";
   if (missing.has("onshape") && !o.onshapeSkipped) return "onshape";
-  if (!o.profileNamed) return "profile";
   return "done";
 }
 

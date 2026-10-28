@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { KeyStatus, ModelsInfo, Profile, SetupState } from "../../api/types";
-import { apiKeyVendors, availableModels, localTestText, onshapeTestText, pollUntil, resumeStep } from "./logic";
+import { apiKeyVendors, availableModels, localTestText, onshapeTestText, pollUntil, resumeStep, STEPS } from "./logic";
 
 const st = (p: Partial<SetupState>): SetupState => ({ complete: false, has_model: false, has_onshape: false, missing: ["model", "onshape", "profile"], ...p });
 const none = { modelSkipped: false, onshapeSkipped: false, reopened: false, profileNamed: false };
@@ -9,18 +9,24 @@ const named = { ...none, profileNamed: true };
 describe("resumeStep", () => {
   // the core keeps "profile" in `missing` until POST /setup/complete; the wizard's own step order
   // uses whether a display name is saved (profileNamed)
+  // Plan 4 order: Welcome → Profile → Connect a model → Onshape (optional) → Done
   it.each([
     ["nothing saved → welcome", st({}), none, "welcome"],
     ["name saved, no model → model", st({}), named, "model"],
-    ["model saved → onshape", st({ has_model: true, missing: ["onshape", "profile"] }), none, "onshape"],
-    ["onshape skipped → profile", st({ has_model: true, missing: ["onshape", "profile"] }), { ...none, onshapeSkipped: true }, "profile"],
-    ["model + onshape → profile", st({ has_model: true, has_onshape: true, missing: ["profile"] }), none, "profile"],
+    ["model saved, no name → profile first", st({ has_model: true, missing: ["onshape", "profile"] }), none, "profile"],
+    ["local-only skip, no name → profile", st({}), { ...none, modelSkipped: true }, "profile"],
+    ["name + model → onshape", st({ has_model: true, missing: ["onshape", "profile"] }), named, "onshape"],
+    ["name + local-only skip → onshape", st({}), { ...named, modelSkipped: true }, "onshape"],
+    ["model + onshape, no name → profile", st({ has_model: true, has_onshape: true, missing: ["profile"] }), none, "profile"],
     ["model + onshape + name → done", st({ has_model: true, has_onshape: true, missing: ["profile"] }), named, "done"],
     ["onshape skipped, name saved → done", st({ has_model: true, missing: ["onshape", "profile"] }), { ...named, onshapeSkipped: true }, "done"],
-    ["local-only skip, nothing else → onshape", st({ missing: ["model", "onshape", "profile"] }), { ...none, modelSkipped: true }, "onshape"],
     ["re-opened from Profile → welcome", st({ complete: true, has_model: true, missing: [] }), { ...named, reopened: true }, "welcome"],
   ] as const)("%s", (_name, state, opts, want) => {
     expect(resumeStep(state, opts)).toBe(want);
+  });
+
+  it("steps_run_profile_first", () => {
+    expect(STEPS.map((s) => s.label)).toEqual(["Welcome", "Profile", "Model", "Onshape", "Done"]);
   });
 });
 

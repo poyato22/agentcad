@@ -75,8 +75,8 @@ export function OnshapeStep({ data, update, refresh, go }: StepProps): JSX.Eleme
       <div class="setup-actions">
         <Button variant="ghost" onClick={() => go("model")}>Back</Button>
         <span class="setup-spacer" />
-        <Button variant="ghost" onClick={() => { setSkipped("onshape", true); go("profile"); }}>Skip for now</Button>
-        <Button variant="ink" disabled={!data.setup.has_onshape} onClick={() => { setSkipped("onshape", false); go("profile"); }}>Continue</Button>
+        <Button variant="ghost" onClick={() => { setSkipped("onshape", true); go("done"); }}>Skip for now</Button>
+        <Button variant="ink" disabled={!data.setup.has_onshape} onClick={() => { setSkipped("onshape", false); go("done"); }}>Continue</Button>
       </div>
     </div>
   );

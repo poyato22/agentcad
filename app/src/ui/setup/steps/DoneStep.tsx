@@ -37,7 +37,7 @@ export function DoneStep({ data, refresh, go, close }: StepProps): JSX.Element {
       </ul>
       {error && <div class="setup-error text" role="alert">{error}</div>}
       <div class="setup-actions">
-        <Button variant="ghost" onClick={() => go("profile")}>Back</Button>
+        <Button variant="ghost" onClick={() => go("onshape")}>Back</Button>
         <span class="setup-spacer" />
         <Button variant="ink" disabled={busy} onClick={() => { void finish(); }}>Start using Mises</Button>
       </div>
