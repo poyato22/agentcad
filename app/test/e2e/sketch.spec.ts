@@ -206,7 +206,8 @@ test("build_part_sends_sketch_photo_render_then_questions_arrive", async ({ page
   const sketchCall = calls.findIndex((c) => c.path === "/sketches");
   expect(calls.indexOf(run as FakeCall)).toBeGreaterThan(sketchCall);
   expect(run?.body).toMatchObject({ agent: "designer", prompt: "Build the part shown in my sketch.", sketch_id: expect.stringMatching(/^sk_[0-9a-f]{12}$/) });
-  expect((run?.body as Record<string, unknown>).model_ref).toBeUndefined();   // the profile default
+  // A6: the run carries the model shown in the build target, not a re-resolved default
+  expect((run?.body as Record<string, unknown>).model_ref).toBe("anthropic/claude-sonnet-5-5");
 
   // the new run is selected in the console and its (at most 3) questions show as cards there
   const consoleRegion = page.locator("[data-region=console]");

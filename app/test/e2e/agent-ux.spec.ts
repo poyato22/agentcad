@@ -30,7 +30,7 @@ test("console_header_stays_one_line_at_1280x800", async ({ page }) => {
   await open(page);
   const row = consoleRegion(page).locator(".cv-top-row");
   const lineH = await row.locator("[data-run-label]").evaluate((el) => parseFloat(getComputedStyle(el).lineHeight) || 16);
-  for (const name of ["+ New", "Full log"]) {
+  for (const name of ["New", "Full log"]) {
     const h = (await row.getByRole("button", { name, exact: true }).boundingBox())?.height ?? 0;
     expect(h, name).toBeLessThan(lineH * 2);
   }

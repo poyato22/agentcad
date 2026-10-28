@@ -72,9 +72,16 @@ export function SketchPage(): JSX.Element {
     return () => el.removeEventListener("keydown", onKey);
   }, []);
 
+  // clicking the canvas or empty space focuses the region so its keyboard shortcuts fire there
+  // (the svg isn't focusable on its own); a click on a field or button keeps that control's focus
+  const focusRegion = (e: JSX.TargetedPointerEvent<HTMLDivElement>): void => {
+    const t = e.target as HTMLElement;
+    if (!isTyping(t) && !t.closest("button, a, [role=button]")) root.current?.focus();
+  };
+
   return (
     <PageShell title="Sketch">
-      <div class="sk-layout" ref={root} tabIndex={-1} data-sketch-root>
+      <div class="sk-layout" ref={root} tabIndex={-1} data-sketch-root onPointerDown={focusRegion}>
         <div class="sk-stage">
           <ToolBar />
           <SketchCanvas />
