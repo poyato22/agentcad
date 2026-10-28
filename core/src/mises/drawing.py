@@ -50,6 +50,7 @@ def _cached(part_dir: Path, want: dict) -> dict | None:
         return None
     if info.get("step_mtime_ns") != step_ns or any(info.get(k) != v for k, v in want.items()):
         return None
+    info.pop("nonce", None)
     return info
 
 
