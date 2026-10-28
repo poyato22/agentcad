@@ -64,6 +64,39 @@ describe("createViewer", () => {
     v.dispose();
   });
 
+  it("mesh_colors_come_from_tokens_and_follow_a_theme_change_live", async () => {
+    const root = document.documentElement;
+    const faceColors = (p: { object: THREE.Object3D }) => {
+      const out = new Set<string>();
+      p.object.traverse((o) => { if (o instanceof THREE.Mesh && !(o instanceof THREE.LineSegments)) out.add((o.material as THREE.MeshLambertMaterial).color.getHexString()); });
+      return out;
+    };
+    try {
+      root.style.setProperty("--mesh-face", "#d6d6d2");
+      root.style.setProperty("--mesh-edge", "#4a4a4a");
+      root.style.setProperty("--blue", "#0a5bd8");
+      const v = createViewer(document.createElement("canvas"), { createRenderer: stubRenderer });
+      const p = await loadPart(fixtureBytes());
+      v.setPart(p);
+      expect(edgeColors(p)).toEqual(new Set(["4a4a4a"]));
+      expect(faceColors(p)).toEqual(new Set(["d6d6d2"]));
+      v.setHighlight(true);
+      expect(edgeColors(p)).toEqual(new Set(["0a5bd8"]));   // the theme's blue
+      v.setHighlight(false);
+      // the theme flips (profile toggle → data-theme): tokens re-read, no reload
+      root.style.setProperty("--mesh-face", "#2a2a2a");
+      root.style.setProperty("--mesh-edge", "#e6e6e6");
+      root.setAttribute("data-theme", "dark");
+      await new Promise((r) => setTimeout(r, 0));             // MutationObserver delivers
+      expect(edgeColors(p)).toEqual(new Set(["e6e6e6"]));
+      expect(faceColors(p)).toEqual(new Set(["2a2a2a"]));
+      v.dispose();
+    } finally {
+      for (const k of ["--mesh-face", "--mesh-edge", "--blue"]) root.style.removeProperty(k);
+      root.removeAttribute("data-theme");
+    }
+  });
+
   it("renders_on_demand_only", async () => {
     const r = stubRenderer();
     vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation((cb) => { queueMicrotask(() => cb(0)); return 1; });

@@ -234,3 +234,16 @@ fn core_status_command_is_allowed_for_the_webview() {
     let perms: Vec<&str> = caps["permissions"].as_array().unwrap().iter().filter_map(|p| p.as_str()).collect();
     assert!(perms.contains(&"allow-core-status"), "{perms:?}");
 }
+
+#[test]
+fn overlay_title_bar_drag_region_is_allowed() {
+    // data-tauri-drag-region calls window.start_dragging; without this grant the top bar can't move the window.
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let caps: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.join("capabilities/default.json")).unwrap()).unwrap();
+    let perms: Vec<&str> = caps["permissions"].as_array().unwrap().iter().filter_map(|p| p.as_str()).collect();
+    assert!(perms.contains(&"core:window:allow-start-dragging"), "{perms:?}");
+    // nothing broader from the window plugin than dragging
+    let other_window = perms.iter().filter(|p| p.starts_with("core:window:") && **p != "core:window:allow-start-dragging").count();
+    assert_eq!(other_window, 0, "{perms:?}");
+}

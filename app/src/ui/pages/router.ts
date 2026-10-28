@@ -7,7 +7,7 @@
 // (Tasks 6–8 replace the stubs there). To read or change the active page from anywhere, import
 // `activePage` / `setPage` / `PAGES` from here.
 import { signal, type Signal } from "@preact/signals";
-import { registerShortcut } from "../../lib/keys";
+import { isTrustedKey, registerShortcut } from "../../lib/keys";
 
 export type Page = "design" | "studies" | "sketch" | "drawing" | "print";
 
@@ -52,10 +52,28 @@ export function pageDef(id: Page): PageDef {
   return PAGES.find((p) => p.id === id) ?? PAGES[0];
 }
 
-/** Registers ⌘1–⌘5 to navigate between pages (capture phase, works inside inputs). Returns an
- *  unregister function; call it on unmount. */
-export function installPageShortcuts(): () => void {
-  const offs = PAGES.map((p) => registerShortcut(`Meta+${p.key}`, () => setPage(p.id)));
+/** True while a modal (setup wizard, Profile, new-run dialog — all `aria-modal="true"`) is open. */
+export function modalOpen(doc: Document = document): boolean {
+  return doc.querySelector('[aria-modal="true"]') !== null;
+}
+
+export interface PageShortcutDeps {
+  /** Real user key press (default: lib/keys isTrustedKey — trusted, not auto-repeat). */
+  isTrusted?: (e: KeyboardEvent) => boolean;
+  /** Whether a modal is open (default: modalOpen()). */
+  isModalOpen?: () => boolean;
+}
+
+/** Registers ⌘1–⌘5 to navigate between pages (capture phase, works inside inputs). Synthetic or
+ *  auto-repeat keys are ignored, and so is everything while a modal is open (the page must not
+ *  change under the wizard, Profile or a dialog). Returns an unregister function. */
+export function installPageShortcuts(deps: PageShortcutDeps = {}): () => void {
+  const trusted = deps.isTrusted ?? isTrustedKey;
+  const blocked = deps.isModalOpen ?? (() => modalOpen());
+  const offs = PAGES.map((p) => registerShortcut(`Meta+${p.key}`, (e) => {
+    if (!trusted(e) || blocked()) return;
+    setPage(p.id);
+  }));
   return () => offs.forEach((off) => off());
 }
 

@@ -146,6 +146,120 @@ for (const size of [{ width: 1280, height: 800 }, { width: 1600, height: 1000 }]
   }
 }
 
+// ---- every surface that can sit under the traffic lights, in light, dark and system (OS both ways)
+type Mode = "light" | "dark" | "system-light" | "system-dark";
+const BG = { light: "rgb(244, 244, 242)", dark: "rgb(10, 10, 10)" };
+
+async function useMode(page: Page, mode: Mode): Promise<void> {
+  const [attr, os] = mode.startsWith("system") ? ["system", mode.slice(7) as "light" | "dark"] : [mode, mode === "light" ? "dark" : "light"];
+  // forced themes run against the opposite OS preference, so they prove the override wins
+  await page.emulateMedia({ colorScheme: os as "light" | "dark" });
+  await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), attr);
+  const want = mode === "light" || mode === "system-light" ? BG.light : BG.dark;
+  await expect(page.locator("body")).toHaveCSS("background-color", want);
+}
+
+async function measure(page: Page, mode: Mode, what: string): Promise<void> {
+  await useMode(page, mode); // re-apply: closing Profile re-reads the saved (system) theme
+  expect(await offenders(page), `${what} / ${mode}`).toEqual([]);
+}
+
+const NOTICE_SCENARIO = async () => {
+  const sc = JSON.parse(JSON.stringify((await import("../fake-core/scenarios/setup.json", { with: { type: "json" } })).default)) as
+    Record<string, unknown> & { setup: { profile: Record<string, unknown> } };
+  sc.setup.profile.setup_completed_at = 1790000000; // finished without a model → "Connect a model" notice
+  return sc;
+};
+
+for (const size of [{ width: 1280, height: 800 }, { width: 1600, height: 1000 }]) {
+  for (const mode of ["light", "dark", "system-light", "system-dark"] as const) {
+    test(`traffic_lights_clear_on_every_surface_${size.width}x${size.height}_${mode}`, async ({ page, fake }) => {
+      await page.setViewportSize(size);
+      // Design page with an open approval card in the console
+      await page.goto("/");
+      await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
+      await expect(page.locator("[data-region=console] [data-card]").first()).toBeVisible();
+      await measure(page, mode, "design + approval card");
+      // new-run dialog (composer)
+      await page.getByRole("button", { name: "+ new run" }).click();
+      await expect(page.getByRole("dialog", { name: "New run" })).toBeVisible();
+      await measure(page, mode, "new-run dialog");
+      await page.getByRole("dialog", { name: "New run" }).getByRole("button", { name: "Close" }).click();
+      await expect(page.getByRole("dialog", { name: "New run" })).toHaveCount(0);
+      // Profile pane
+      await page.getByRole("button", { name: "Profile" }).click();
+      await expect(page.getByRole("dialog", { name: "Profile" })).toBeVisible();
+      await expect(page.getByLabel("Theme")).toBeVisible();
+      await measure(page, mode, "profile pane");
+      await page.getByRole("dialog", { name: "Profile" }).getByRole("button", { name: "Close" }).click();
+      await expect(page.getByRole("dialog", { name: "Profile" })).toHaveCount(0);
+      // setup wizard (first run)
+      await fake.reset("setup");
+      await page.goto("/");
+      await expect(page.getByRole("dialog", { name: "Set up Mises" })).toBeVisible();
+      await measure(page, mode, "setup wizard");
+      // "Connect a model" notice (setup finished, no model)
+      await fake.reset(await NOTICE_SCENARIO());
+      await page.goto("/");
+      await expect(page.getByRole("status", { name: "Connect a model" })).toBeVisible();
+      await measure(page, mode, "setup notice");
+    });
+  }
+}
+
+test("no_theme_flash_cached_theme_is_on_html_before_first_render", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.addInitScript(() => {
+    try { localStorage.setItem("mises.theme", "light"); } catch { /* ignore */ }
+    const w = window as unknown as { __firstRenderTheme?: string | null };
+    const obs = new MutationObserver(() => {
+      const app = document.getElementById("app");
+      if (app && app.firstElementChild && w.__firstRenderTheme === undefined) {
+        w.__firstRenderTheme = document.documentElement.getAttribute("data-theme");
+        obs.disconnect();
+      }
+    });
+    obs.observe(document, { childList: true, subtree: true });
+  });
+  await page.goto("/");
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __firstRenderTheme?: string | null }).__firstRenderTheme)).toBe("light");
+});
+
+test("color_scheme_follows_the_theme", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("meta[name=color-scheme]")).toHaveAttribute("content", "light dark");
+  const scheme = () => page.evaluate(() => getComputedStyle(document.documentElement).colorScheme);
+  await page.evaluate(() => document.documentElement.setAttribute("data-theme", "light"));
+  expect(await scheme()).toBe("light");
+  await page.evaluate(() => document.documentElement.setAttribute("data-theme", "dark"));
+  expect(await scheme()).toBe("dark");
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.evaluate(() => document.documentElement.setAttribute("data-theme", "system"));
+  expect(await scheme()).toBe("light");
+});
+
+test("tab_arrow_keys_navigate", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("tab", { name: "Design" }).focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByRole("tab", { name: "Studies" })).toBeFocused();
+  await expect(page.locator('[data-region="page"]')).toContainText("Studies");
+  await page.keyboard.press("End");
+  await expect(page.getByRole("tab", { name: "Print" })).toHaveAttribute("aria-selected", "true");
+});
+
+test("cmd_digits_do_nothing_while_a_modal_is_open", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Profile" }).click();
+  await expect(page.getByRole("dialog", { name: "Profile" })).toBeVisible();
+  await page.keyboard.press("Meta+2");
+  await expect(page.getByRole("tab", { name: "Design" })).toHaveAttribute("aria-selected", "true");
+  await page.getByRole("dialog", { name: "Profile" }).getByRole("button", { name: "Close" }).click();
+  await expect(page.getByRole("dialog", { name: "Profile" })).toHaveCount(0);
+  await page.keyboard.press("Meta+2");
+  await expect(page.getByRole("tab", { name: "Studies" })).toHaveAttribute("aria-selected", "true");
+});
+
 test("tabs_navigate_between_pages", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("[data-region=viewer]")).toBeVisible();

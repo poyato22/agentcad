@@ -27,6 +27,11 @@
   /* Viewer drafting grid (on top of --vp); tinted per theme so it follows the viewport. */
   --grid-strong: rgba(255,255,255,.07);
   --grid-faint: rgba(255,255,255,.025);
+  /* Viewer mesh (read by ui/viewer/loadPart.ts + scene.ts; grey only). */
+  --mesh-face: #2a2a2a;
+  --mesh-edge: #e6e6e6;
+
+  color-scheme: dark;
 
   --font-mono: "Iosevka", ui-monospace, Menlo, monospace;
   /* Headings use the same family at a heavier weight — no second typeface. */
@@ -47,8 +52,13 @@
   --chrome-inset-y: 28px;
 }
 
-/* ---- light palette: exact values from the pages/models/UX Global Constraints */
+/* ---- light palette: the pages/models/UX Global Constraints values, except where the contrast
+   ruling (text ≥ 4.5:1 on bg/paper/paper2) needed darker text tones: --faint #6a6a6a (ruled), and
+   --green/--amber/--blue2, which are also used as text, darkened in hue (constraint swatches
+   #1f8a4c / #b7790f / #2f6fe0 measured 3.3–4.3:1). The two blocks below must stay identical
+   (theme.test.ts checks parity). */
 :root[data-theme="light"] {
+  color-scheme: light;
   --bg: #f4f4f2;
   --paper: #ffffff;
   --paper2: #ececea;
@@ -58,20 +68,23 @@
   --line2: #bdbdb8;
   --ink: #111111;
   --dim: #4a4a4a;
-  --faint: #7a7a7a;
+  --faint: #6a6a6a;
   --blue: #0a5bd8;
-  --blue2: #2f6fe0;
+  --blue2: #2560c4;
   --blue-tint: rgba(10,91,216,.10);
-  --green: #1f8a4c;
-  --amber: #b7790f;
+  --green: #17763f;
+  --amber: #8f5e0a;
   --red: #c8321e;
 
   --grid-strong: rgba(10,20,40,.09);
   --grid-faint: rgba(10,20,40,.035);
+  --mesh-face: #d6d6d2;
+  --mesh-edge: #4a4a4a;
 }
 
 @media (prefers-color-scheme: light) {
   :root[data-theme="system"] {
+    color-scheme: light;
     --bg: #f4f4f2;
     --paper: #ffffff;
     --paper2: #ececea;
@@ -81,15 +94,17 @@
     --line2: #bdbdb8;
     --ink: #111111;
     --dim: #4a4a4a;
-    --faint: #7a7a7a;
+    --faint: #6a6a6a;
     --blue: #0a5bd8;
-    --blue2: #2f6fe0;
+    --blue2: #2560c4;
     --blue-tint: rgba(10,91,216,.10);
-    --green: #1f8a4c;
-    --amber: #b7790f;
+    --green: #17763f;
+    --amber: #8f5e0a;
     --red: #c8321e;
 
     --grid-strong: rgba(10,20,40,.09);
     --grid-faint: rgba(10,20,40,.035);
+    --mesh-face: #d6d6d2;
+    --mesh-edge: #4a4a4a;
   }
 }

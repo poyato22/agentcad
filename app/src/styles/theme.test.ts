@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import { applyTheme, DEFAULT_THEME, isTheme, setTheme, theme } from "./theme";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { applyTheme, DEFAULT_THEME, isTheme, readCachedTheme, setTheme, theme, THEME_STORAGE_KEY } from "./theme";
 
 const CSS = readFileSync(join(import.meta.dirname, "tokens.css"), "utf8");
 
@@ -19,6 +19,7 @@ function palette(selector: string): Record<string, string> {
 
 const DARK = palette(":root {");
 const LIGHT = palette(':root[data-theme="light"]');
+const SYSTEM_LIGHT = palette(':root[data-theme="system"]');
 
 // ---- WCAG contrast
 function channel(c: number): number {
@@ -36,58 +37,73 @@ function ratio(a: string, b: string): number {
   return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
 }
 
+
+/** Hue in degrees (0–360) of a #rrggbb color. */
+function hue(hex: string): number {
+  const n = parseInt(hex.replace("#", ""), 16);
+  const r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+  if (d === 0) return 0;
+  const h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return (h * 60 + 360) % 360;
+}
+const hueGap = (a: number, b: number) => Math.min(Math.abs(a - b), 360 - Math.abs(a - b));
+
 describe("theme tokens", () => {
   it("dark palette keeps the exact plan values (unchanged)", () => {
-    expect(DARK["--bg"]).toBe("#0a0a0a");
-    expect(DARK["--ink"]).toBe("#ececec");
-    expect(DARK["--blue"]).toBe("#3d8bff");
+    expect(DARK).toMatchObject({
+      "--bg": "#0a0a0a", "--paper": "#111111", "--paper2": "#161616", "--head": "#141414", "--vp": "#0d0d0d",
+      "--line": "#242424", "--line2": "#333333", "--ink": "#ececec", "--dim": "#9a9a9a", "--faint": "#5e5e5e",
+      "--blue": "#3d8bff", "--blue2": "#8dbaff", "--blue-tint": "rgba(61,139,255,.10)",
+      "--green": "#4fd18b", "--amber": "#f2b134", "--red": "#ff5a4a",
+      "--mesh-face": "#2a2a2a", "--mesh-edge": "#e6e6e6",
+    });
     expect(DARK["--font-mono"]).toContain("Iosevka");
     expect(DARK["--font-mono"]).not.toMatch(/ibm plex/i);
   });
 
-  it("light palette uses the exact constraint values (the switch flips every token)", () => {
+  it("light palette values (constraint surfaces + ruled text tones); the switch flips every color token", () => {
     expect(LIGHT).toMatchObject({
       "--bg": "#f4f4f2", "--paper": "#ffffff", "--paper2": "#ececea",
       "--line": "#d6d6d2", "--line2": "#bdbdb8",
-      "--ink": "#111111", "--dim": "#4a4a4a", "--faint": "#7a7a7a",
-      "--blue": "#0a5bd8", "--blue2": "#2f6fe0", "--blue-tint": "rgba(10,91,216,.10)",
-      "--green": "#1f8a4c", "--amber": "#b7790f", "--red": "#c8321e",
+      "--ink": "#111111", "--dim": "#4a4a4a", "--faint": "#6a6a6a",
+      "--blue": "#0a5bd8", "--blue-tint": "rgba(10,91,216,.10)", "--red": "#c8321e",
     });
-    // every color token present in dark is also redefined for light
-    for (const k of Object.keys(DARK)) {
-      if (k.startsWith("--font") || k.endsWith("-h") || k.endsWith("-w") || k.startsWith("--fs") || k.startsWith("--chrome") || k.endsWith("-head-h")) continue;
-      if (/^--(bg|paper|paper2|head|vp|line|line2|ink|dim|faint|blue|blue2|blue-tint|green|amber|red|grid-strong|grid-faint)$/.test(k)) {
-        expect(LIGHT[k], `${k} redefined for light`).toBeDefined();
-        expect(LIGHT[k]).not.toBe(DARK[k]);
-      }
+    const colorTokens = /^--(bg|paper|paper2|head|vp|line|line2|ink|dim|faint|blue|blue2|blue-tint|green|amber|red|grid-strong|grid-faint|mesh-face|mesh-edge)$/;
+    for (const k of Object.keys(DARK).filter((x) => colorTokens.test(x))) {
+      expect(LIGHT[k], `${k} redefined for light`).toBeDefined();
+      expect(LIGHT[k], k).not.toBe(DARK[k]);
     }
   });
 
-  it("light-mode text meets WCAG AA (primary and secondary ink ≥ 4.5:1)", () => {
-    const surfaces = [LIGHT["--bg"], LIGHT["--paper"], LIGHT["--paper2"]];
-    for (const s of surfaces) {
-      expect(ratio(LIGHT["--ink"], s)).toBeGreaterThanOrEqual(4.5);
-      expect(ratio(LIGHT["--dim"], s)).toBeGreaterThanOrEqual(4.5);
-    }
-    // links / selected (blue) as text ≥ 4.5 on the main surfaces
-    expect(ratio(LIGHT["--blue"], LIGHT["--bg"])).toBeGreaterThanOrEqual(4.5);
-    expect(ratio(LIGHT["--blue"], LIGHT["--paper"])).toBeGreaterThanOrEqual(4.5);
-    // faint is de-emphasised UI text: at least the 3:1 large-text / UI minimum
-    expect(ratio(LIGHT["--faint"], LIGHT["--paper"])).toBeGreaterThanOrEqual(3.0);
+  it("the system-light block is identical to the light block (parity)", () => {
+    expect(SYSTEM_LIGHT).toEqual(LIGHT);
+    // and both switch the UA color-scheme to light; the dark :root says dark
+    expect(CSS.match(/color-scheme:\s*light;/g)).toHaveLength(2);
+    expect(CSS).toMatch(/:root \{[^}]*color-scheme:\s*dark;/);
   });
 
-  it("light-mode status colors stay distinguishable and ≥ 3:1 on the background", () => {
-    const status = { green: LIGHT["--green"], amber: LIGHT["--amber"], red: LIGHT["--red"], blue: LIGHT["--blue"] };
-    for (const c of Object.values(status)) expect(ratio(c, LIGHT["--bg"])).toBeGreaterThanOrEqual(3.0);
-    const lums = Object.values(status).map(luminance);
-    for (let i = 0; i < lums.length; i++) for (let j = i + 1; j < lums.length; j++) {
-      expect(Math.abs(lums[i] - lums[j]), "status colors differ in luminance").toBeGreaterThan(0.01);
+  it("light-mode text meets WCAG AA: ink, dim, faint and every status color used as text ≥ 4.5:1", () => {
+    const surfaces = { bg: LIGHT["--bg"], paper: LIGHT["--paper"], paper2: LIGHT["--paper2"] };
+    const text = ["--ink", "--dim", "--faint", "--blue", "--blue2", "--green", "--amber", "--red"];
+    const fails: string[] = [];
+    for (const t of text) for (const [name, s] of Object.entries(surfaces)) {
+      const r = ratio(LIGHT[t], s);
+      if (r < 4.5) fails.push(`${t} on ${name}: ${r.toFixed(2)}`);
+    }
+    expect(fails).toEqual([]);
+  });
+
+  it("light-mode status colors stay distinguishable by hue (pass / warn / fail / blue)", () => {
+    const hues = ["--green", "--amber", "--red", "--blue"].map((k) => hue(LIGHT[k]));
+    for (let i = 0; i < hues.length; i++) for (let j = i + 1; j < hues.length; j++) {
+      expect(hueGap(hues[i], hues[j])).toBeGreaterThanOrEqual(25);
     }
   });
 });
 
-describe("applyTheme / setTheme", () => {
-  afterEach(() => { setTheme(DEFAULT_THEME); });
+describe("applyTheme / setTheme / cache", () => {
+  afterEach(() => { setTheme(DEFAULT_THEME); localStorage.removeItem(THEME_STORAGE_KEY); });
 
   it("isTheme guards the three values", () => {
     expect(isTheme("light")).toBe(true);
@@ -104,11 +120,28 @@ describe("applyTheme / setTheme", () => {
     expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
   });
 
-  it("setTheme updates the signal (and the attribute), clamping junk to the default", () => {
+  it("setTheme updates the signal, the attribute and the cache, clamping junk to the default", () => {
     setTheme("light");
     expect(theme.value).toBe("light");
     expect(document.documentElement.getAttribute("data-theme")).toBe("light");
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe("light");
     setTheme("bogus" as never);
     expect(theme.value).toBe(DEFAULT_THEME);
+  });
+
+  it("readCachedTheme survives junk and a throwing storage", () => {
+    localStorage.setItem(THEME_STORAGE_KEY, "neon");
+    expect(readCachedTheme()).toBe(DEFAULT_THEME);
+    const spy = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("blocked"); });
+    expect(readCachedTheme()).toBe(DEFAULT_THEME);
+    spy.mockRestore();
+  });
+
+  it("no flash: a fresh import applies the cached theme to <html> synchronously", async () => {
+    localStorage.setItem(THEME_STORAGE_KEY, "light");
+    document.documentElement.removeAttribute("data-theme");
+    vi.resetModules();
+    await import("./theme");                                   // what main.tsx does first
+    expect(document.documentElement.getAttribute("data-theme")).toBe("light");
   });
 });

@@ -46,6 +46,23 @@ describe("ModeTabs", () => {
     await waitFor(() => expect(screen.getByRole("tab", { name: "Studies" }).getAttribute("aria-selected")).toBe("true"));
     expect(screen.getByRole("tab", { name: "Design" }).getAttribute("aria-selected")).toBe("false");
   });
+
+  it("arrow_keys_move_between_tabs_with_wrap_and_home_end", async () => {
+    render(<ModeTabs />);
+    const tab = (n: string) => screen.getByRole("tab", { name: n });
+    tab("Design").focus();
+    fireEvent.keyDown(tab("Design"), { key: "ArrowRight" });
+    expect(activePage.value).toBe("studies");
+    await waitFor(() => expect(document.activeElement).toBe(tab("Studies")));
+    fireEvent.keyDown(tab("Studies"), { key: "ArrowLeft" });
+    fireEvent.keyDown(tab("Design"), { key: "ArrowLeft" });   // wraps to the last
+    expect(activePage.value).toBe("print");
+    fireEvent.keyDown(tab("Print"), { key: "Home" });
+    expect(activePage.value).toBe("design");
+    fireEvent.keyDown(tab("Design"), { key: "End" });
+    expect(activePage.value).toBe("print");
+    await waitFor(() => expect(tab("Print").getAttribute("tabindex")).toBe("0"));
+  });
 });
 
 describe("StatusLights", () => {
