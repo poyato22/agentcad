@@ -3,7 +3,7 @@
 // "Claude Code (your account) · sonnet" → its tool rows → the approval card (Gate) → done.
 // The run's script is core-loop.json's (shapes from the real-core fixtures); setup is setup.json's.
 import type { Page } from "@playwright/test";
-import { expect, test } from "./fixtures";
+import { expect, test, useDetailsView } from "./fixtures";
 import { CORE_URL } from "./ports";
 
 test.use({ launchOptions: { args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] } });
@@ -32,7 +32,10 @@ async function getJson(fake: { token: string }, path: string): Promise<unknown> 
   return r.json();
 }
 
-test.beforeEach(async ({ page }) => { await page.setViewportSize({ width: 1440, height: 900 }); });
+test.beforeEach(async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await useDetailsView(page);          // the roster and step-log rows below
+});
 test.afterEach(async ({ fake }) => { await fake.reset("base"); });
 
 test("first_run_sign_in_then_a_claude_code_run_through_the_gate_to_done", async ({ page, fake }) => {
@@ -42,15 +45,20 @@ test("first_run_sign_in_then_a_claude_code_run_through_the_gate_to_done", async 
   // ---- first run: the wizard covers the app; connect the user's own Claude Code
   await expect(wizard(page)).toBeVisible();
   await page.getByRole("button", { name: "Get started" }).click();
+  // the profile comes first (it's what "signing in" to Mises sets up)
+  await page.locator('input[aria-label="Display name"]').fill("Hartigan");
+  await page.getByRole("button", { name: "Save and continue" }).click();
   const claude = page.getByRole("region", { name: "Use my Claude Code" });
   await expect(claude).toContainText("Runs your Claude Code");
   await claude.getByRole("button", { name: "Sign in" }).click();
   await expect(claude).toContainText("signed in · claude.ai", { timeout: 6000 });
+  // a model works now: pick the default for new runs with the shared picker
+  const dflt = page.getByRole("region", { name: "Default model" });
+  await dflt.getByRole("button", { name: /^Default model/ }).click();
+  await dflt.getByRole("group", { name: "Your Claude Code" }).locator("[data-ref='claude-code/sonnet']").click();
+  await expect(dflt.getByRole("button", { name: /^Default model: Claude Code · sonnet/ })).toBeVisible();
   await page.getByRole("button", { name: "Continue" }).click();
   await page.getByRole("button", { name: "Skip for now" }).click();            // no Onshape
-  await page.locator('input[aria-label="Display name"]').fill("Hartigan");
-  await page.getByLabel("Default model").selectOption("claude-code/sonnet");
-  await page.getByRole("button", { name: "Save and continue" }).click();
   await expect(heading(page, "Ready")).toBeVisible();
   await page.getByRole("button", { name: "Start using Mises" }).click();
   await expect(wizard(page)).toHaveCount(0);
@@ -61,11 +69,13 @@ test("first_run_sign_in_then_a_claude_code_run_through_the_gate_to_done", async 
   await page.keyboard.press("Meta+n");
   const dialog = page.getByRole("dialog", { name: "New run" });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByLabel("Vendor")).toHaveValue("claude-code");
-  await expect(dialog.getByLabel("Vendor").locator("option:checked")).toHaveText("Claude Code (your account)");
-  const model = dialog.getByLabel("Model");
-  await expect(model).toHaveValue("sonnet");
-  expect(await model.locator("option").allTextContents()).toEqual(["sonnet", "opus", "haiku", "fable"]);
+  const chip = dialog.getByRole("button", { name: /^Model: Claude Code · sonnet/ });
+  await expect(chip).toBeVisible();
+  await chip.click();
+  const yours = dialog.getByRole("group", { name: "Your Claude Code" });
+  expect(await yours.locator("[data-ref]").evaluateAll((els) => els.map((e) => e.getAttribute("data-ref")))).toEqual(
+    ["claude-code/sonnet", "claude-code/opus", "claude-code/haiku", "claude-code/fable"]);
+  await chip.click();                                                           // close the picker
   await dialog.getByLabel("Agent").selectOption("designer");
   await dialog.getByLabel("Task").fill(TASK);
   await dialog.getByRole("button", { name: "Start" }).click();
@@ -118,10 +128,12 @@ test("signed_out_claude_code_cannot_start_and_points_to_profile", async ({ page,
 
   await page.keyboard.press("Meta+n");
   const dialog = page.getByRole("dialog", { name: "New run" });
-  await expect(dialog.getByLabel("Vendor")).toHaveValue("claude-code");
-  const opt = dialog.getByLabel("Vendor").locator('option[value="claude-code"]');
-  await expect(opt).toHaveText(/Claude Code \(your account\) · signed out — Sign in in Profile/);
+  const chip = dialog.getByRole("button", { name: /^Model: Claude Code · sonnet/ });
+  await chip.click();
+  const opt = dialog.getByRole("group", { name: "Your Claude Code" }).locator("[data-ref='claude-code/sonnet']");
+  await expect(opt).toContainText("signed out — sign in in Profile");
   await expect(opt).toBeDisabled();
+  await chip.click();
   await dialog.getByLabel("Task").fill(TASK);
   await expect(dialog.getByRole("button", { name: "Start" })).toBeDisabled();
   await dialog.getByRole("button", { name: "Sign in in Profile" }).click();

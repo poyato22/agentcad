@@ -2,7 +2,7 @@
 // it work, review the change, approve it from the card, see it finish. Plus the stream-gap,
 // token-rotation and stop-all paths, and the visual rules (§5.1) over the whole running app.
 import type { Page } from "@playwright/test";
-import { expect, test, type FakeControl } from "./fixtures";
+import { expect, test, useDetailsView, type FakeControl } from "./fixtures";
 import { isAutoNumbered } from "../../src/lib/names";
 import { CORE_TOKEN, CORE_URL } from "./ports";
 
@@ -40,6 +40,7 @@ async function startRun(page: Page, fake: FakeControl, task = TASK): Promise<str
 test.beforeEach(async ({ page, fake }) => {
   await fake.reset("core-loop");
   await page.setViewportSize({ width: 1440, height: 900 });
+  await useDetailsView(page);          // roster + step log (the conversation view: agent-ux.spec.ts)
 });
 
 // back to the shared token (token_rotation_reconnects changes it) for the next spec

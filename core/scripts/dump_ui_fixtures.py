@@ -65,6 +65,28 @@ async def dump(out: Path) -> None:
     async def _no_local(urls):          # no local model server answers
         return False
 
+    # Plan 4: a fixed Mac and fixed answers from Ollama, LM Studio and OpenRouter, so /models,
+    # /status `parallel` and /local/status are deterministic and never touch the network
+    from mises import hardware, local_models
+    from mises.server import model_lists
+    fixed_mac: hardware.Machine = {"cpu_cores": 14, "perf_cores": 10, "ram_gb": 24,
+                                   "chip": "M5 Pro"}
+    hardware.machine = lambda: fixed_mac
+    local_models.find_ollama = lambda: "/opt/fixture/ollama"
+
+    def _net(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if url == "http://localhost:11434/api/version":
+            return httpx.Response(200, json={"version": "0.12.3"})
+        if url == "http://localhost:11434/api/tags":
+            return httpx.Response(200, json={"models": [{"name": "gpt-oss:20b", "size": 13_800_000_000}]})
+        if url == model_lists.OPENROUTER_URL:
+            return httpx.Response(200, json={"data": [
+                {"id": "qwen/qwen3-coder:free", "pricing": {"prompt": "0", "completion": "0"},
+                 "supported_parameters": ["tools"]}]})
+        raise httpx.ConnectError("no server here (fixture)", request=request)   # LM Studio
+    model_lists.TRANSPORT = local_models.TRANSPORT = httpx.MockTransport(_net)
+
     home = Path(tempfile.mkdtemp(prefix="mises-fixtures-"))
     os.environ["MISES_HOME"] = str(home)
     turns = [
@@ -127,7 +149,9 @@ async def dump(out: Path) -> None:
                       "steps.json": f"/runs/{run_id}/steps", "approvals.json": "/approvals",
                       # Plan 3 (profile_api.py, context_api.py)
                       "profile.json": "/profile", "keys.json": "/keys", "setup.json": "/setup",
-                      "claude_code_status.json": "/claude-code/status"}
+                      "claude_code_status.json": "/claude-code/status",
+                      # Plan 4 (ui_api.py: Ollama on this Mac)
+                      "local_status.json": "/local/status"}
             for name, path in routes.items():
                 (out / name).write_text(json.dumps((await get(path)).json(), indent=2) + "\n")
             writes = {
@@ -139,6 +163,9 @@ async def dump(out: Path) -> None:
                 "context_put.json": ("PUT", "/context", {
                     "selected_part_id": "mount_plate", "selected_run_id": run_id, "picks": []}),
                 "setup_complete.json": ("POST", "/setup/complete", None),
+                # Ollama answers (fixture): already running; nothing downloading to cancel
+                "local_start.json": ("POST", "/local/start", None),
+                "local_pull_cancel.json": ("POST", "/local/pull/cancel", {"model": "qwen3-coder:30b"}),
             }
             for name, (method, path, body) in writes.items():
                 r = await call(method, path, body)

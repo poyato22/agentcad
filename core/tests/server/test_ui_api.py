@@ -228,12 +228,19 @@ def test_dump_ui_fixtures(tmp_path):
               # Plan 3 routes
               "profile.json", "profile_put.json", "keys.json", "setup.json", "setup_complete.json",
               "claude_code_status.json", "claude_code_login.json", "claude_code_logout.json",
-              "local_test.json", "onshape_test.json", "context_put.json"):
+              "local_test.json", "onshape_test.json", "context_put.json",
+              # Plan 4 routes (a fixed Mac and Ollama stand-in: deterministic, no network)
+              "local_status.json", "local_start.json", "local_pull_cancel.json"):
         assert (out / n).is_file(), n
     # the stand-in Claude Code is signed in; nothing secret-looking is in any answer
     models = json.loads((out / "models.json").read_text())
     cc = next(v for v in models["vendors"] if v["vendor"] == "claude-code")
     assert (cc["key"], cc["models"]) == ("signed_in", ["sonnet", "opus", "haiku", "fable"])
+    assert [e["model"] for e in models["recommended"]] == [
+        "claude-code/opus", "anthropic/claude-opus-5-5", "ollama/gpt-oss:20b",
+        "openrouter/qwen/qwen3-coder:free"]
+    local = json.loads((out / "local_status.json").read_text())
+    assert (local["running"], [m["name"] for m in local["models"]]) == (True, ["gpt-oss:20b"])
     assert json.loads((out / "context_put.json").read_text())["selected_part_id"] == "mount_plate"
     for f in out.glob("*.json"):
         assert "sk-ant" not in f.read_text() and "secret" not in f.read_text().lower(), f.name

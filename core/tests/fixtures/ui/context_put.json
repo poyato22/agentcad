@@ -1,6 +1,6 @@
 {
   "selected_part_id": "mount_plate",
-  "selected_run_id": "c880718959c0",
+  "selected_run_id": "b09ba7cc111a",
   "picks": [],
   "metrics": {
     "valid": true,
@@ -30,6 +30,120 @@
       1.7563595855833278e-17
     ],
     "faces": 8,
+    "face_list": [
+      {
+        "id": "f0",
+        "type": "plane",
+        "center": [
+          -20.0,
+          0.0,
+          0.0
+        ],
+        "normal": [
+          -1.0,
+          0.0,
+          0.0
+        ],
+        "area": 120.0
+      },
+      {
+        "id": "f1",
+        "type": "plane",
+        "center": [
+          0.0,
+          -10.0,
+          0.0
+        ],
+        "normal": [
+          0.0,
+          -1.0,
+          0.0
+        ],
+        "area": 240.0
+      },
+      {
+        "id": "f2",
+        "type": "plane",
+        "center": [
+          0.0,
+          0.0,
+          3.0
+        ],
+        "normal": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "area": 772.291
+      },
+      {
+        "id": "f3",
+        "type": "plane",
+        "center": [
+          0.0,
+          10.0,
+          0.0
+        ],
+        "normal": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "area": 240.0
+      },
+      {
+        "id": "f4",
+        "type": "plane",
+        "center": [
+          0.0,
+          0.0,
+          -3.0
+        ],
+        "normal": [
+          0.0,
+          0.0,
+          -1.0
+        ],
+        "area": 772.291
+      },
+      {
+        "id": "f5",
+        "type": "plane",
+        "center": [
+          20.0,
+          0.0,
+          0.0
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "area": 120.0
+      },
+      {
+        "id": "f6",
+        "type": "cylinder",
+        "center": [
+          -10.0,
+          0.0,
+          0.0
+        ],
+        "normal": null,
+        "area": 79.168
+      },
+      {
+        "id": "f7",
+        "type": "cylinder",
+        "center": [
+          10.0,
+          0.0,
+          0.0
+        ],
+        "normal": null,
+        "area": 79.168
+      }
+    ],
     "edges": 18,
     "holes": [
       {

@@ -43,7 +43,7 @@ describe("setup routes", () => {
 
   it("profile_get_and_partial_put", async () => {
     const p = await client.getProfile();
-    expect(p).toMatchObject({ display_name: "", units: "mm", default_material: "PLA", default_agent: "designer", default_model: null, max_parallel_agents: 2, local_endpoints: {} });
+    expect(p).toMatchObject({ display_name: "", units: "mm", default_material: "PLA", default_agent: "designer", default_model: null, max_parallel_agents: "auto", local_endpoints: {} });
     const q = await client.updateProfile({ display_name: "Hartigan", max_parallel_agents: 3 });
     expect(q.display_name).toBe("Hartigan");
     expect(q.max_parallel_agents).toBe(3);
@@ -62,7 +62,21 @@ describe("setup routes", () => {
     expect(e.message).toContain("max_parallel_agents");
     expect(e.hint).toBe("fix the listed fields");
     expect((await failure(client.updateProfile({ local_endpoints: { ollama: "http://example.com/v1" } }))).status).toBe(422);
-    expect((await failure(client.updateProfile({ nickname: "x" } as never))).message).toContain("nickname");
+    // like the core's extra="forbid" Profile: an unknown field fails the whole PUT ...
+    const raw = await fetch(core.url + "/profile", {
+      method: "PUT", headers: { Authorization: `Bearer ${core.token}`, "Content-Type": "application/json" }, body: JSON.stringify({ nickname: "x" }),
+    });
+    expect(raw.status).toBe(422);
+    expect(JSON.stringify(await raw.json())).toContain("nickname");
+    // ... so the client never sends one (nor what GET /profile adds: schema_version, printers)
+    await client.updateProfile({ nickname: "x", schema_version: 2, printers: [], display_name: "Ana" } as never);
+    expect(core.state.calls.at(-1)?.body).toEqual({ display_name: "Ana" });
+  });
+
+  it("profile_get_carries_schema_version_which_the_client_strips", async () => {
+    const r = await fetch(core.url + "/profile", { headers: { Authorization: `Bearer ${core.token}` } });
+    expect((await r.json() as { schema_version: number }).schema_version).toBe(2);
+    expect(await client.getProfile()).not.toHaveProperty("schema_version");
   });
 
   it("keys_list_status_only_and_save_never_echoes_the_secret", async () => {

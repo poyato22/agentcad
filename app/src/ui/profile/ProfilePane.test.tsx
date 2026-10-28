@@ -419,21 +419,58 @@ describe("Onshape section", () => {
 });
 
 describe("Agents & budgets section", () => {
-  it("reads_defaults_and_offers_agents_and_usable_models", async () => {
+  const autoStatus = { ...status, parallel: { limit: 3, auto: true, reason: "M5 Pro · 24 GB · cloud model → 3" } };
+
+  it("parallel_agents_default_to_auto_with_the_core's_reason", async () => {
+    client.getProfile.mockResolvedValue({ ...profile, max_parallel_agents: "auto" });
+    client.status.mockResolvedValue(autoStatus);
     await openSection("Agents & budgets");
     expect((screen.getByLabelText("Default agent") as HTMLSelectElement).value).toBe("designer");
-    const opts = Array.from((screen.getByLabelText("Default model") as HTMLSelectElement).options).map((o) => o.value);
-    expect(opts).toContain("");
-    expect(opts).toContain("claude-code/sonnet");
-    expect(opts).toContain("anthropic/claude-sonnet-5-5");
-    expect(field("Max parallel agents").value).toBe("2");
+    const auto = screen.getByRole("radio", { name: "Auto (3 on this Mac)" }) as HTMLInputElement;
+    expect(auto.checked).toBe(true);
+    expect(screen.getByRole("region", { name: "Agents & budgets" }).textContent).toContain("M5 Pro · 24 GB · cloud model → 3");
+    expect(screen.queryByLabelText("Max parallel agents")).toBeNull();    // no number to pick unless you want to
     expect(field("Onshape calls per run").value).toBe("200");
   });
 
-  it("saves_the_changed_fields", async () => {
+  it("a_saved_number_shows_as_manual_and_auto_can_be_chosen_back", async () => {
+    client.status.mockResolvedValue(autoStatus);
+    await openSection("Agents & budgets");
+    expect((screen.getByRole("radio", { name: "Choose a number" }) as HTMLInputElement).checked).toBe(true);
+    expect(field("Max parallel agents").value).toBe("2");
+    fireEvent.click(screen.getByRole("radio", { name: "Auto (3 on this Mac)" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(client.updateProfile).toHaveBeenCalledWith({ max_parallel_agents: "auto" }));
+  });
+
+  it("a_manual_limit_reads_manual_n_and_status_is_read_again_after_save", async () => {
+    client.status.mockResolvedValue({ ...status, parallel: { limit: 2, auto: false, reason: "set in Profile" } });
+    await openSection("Agents & budgets");
+    const region = screen.getByRole("region", { name: "Agents & budgets" });
+    expect(screen.getByRole("radio", { name: "Auto" })).toBeTruthy();       // no "(2 on this Mac)": that's the manual limit
+    expect(region.textContent).toContain("Manual: 2");
+    const before = client.status.mock.calls.length;
+    client.status.mockResolvedValue(autoStatus);
+    fireEvent.click(screen.getByRole("radio", { name: "Auto" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(client.status.mock.calls.length).toBe(before + 1));
+    await waitFor(() => expect(screen.getByRole("radio", { name: "Auto (3 on this Mac)" })).toBeTruthy());
+  });
+
+  it("an_older_core_without_parallel_info_still_offers_auto", async () => {
+    client.getProfile.mockResolvedValue({ ...profile, max_parallel_agents: "auto" });
+    await openSection("Agents & budgets");
+    expect((screen.getByRole("radio", { name: "Auto" }) as HTMLInputElement).checked).toBe(true);
+  });
+
+  it("saves_the_changed_fields_with_the_model_picker", async () => {
     await openSection("Agents & budgets");
     fireEvent.change(screen.getByLabelText("Default agent"), { target: { value: "verifier" } });
-    fireEvent.change(screen.getByLabelText("Default model"), { target: { value: "claude-code/opus" } });
+    const region = screen.getByRole("region", { name: "Agents & budgets" });
+    expect(within(region).getByRole("button", { name: /^Default model: App default/ })).toBeTruthy();
+    fireEvent.click(within(region).getByRole("button", { name: /^Default model/ }));
+    const claude = await within(region).findByRole("group", { name: "Your Claude Code" });
+    fireEvent.click(within(claude).getByRole("button", { name: /opus/ }));
     type("Max parallel agents", "4");
     type("Onshape calls per run", "120");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -445,7 +482,7 @@ describe("Agents & budgets section", () => {
   it("choosing_the_app_default_sends_null", async () => {
     client.getProfile.mockResolvedValue({ ...profile, default_model: "claude-code/sonnet" });
     await openSection("Agents & budgets");
-    fireEvent.change(screen.getByLabelText("Default model"), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Use the app default" }));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(client.updateProfile).toHaveBeenCalledWith({ default_model: null }));
   });

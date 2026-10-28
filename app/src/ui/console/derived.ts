@@ -6,7 +6,8 @@ import type { AgentRun } from "../../api/types";
 import { runLabel } from "../../lib/names";
 import { effectiveRunId, rosterOrder } from "../../state/selection";
 import { approvals, filter, inflight, liveText, questions, runs, steps } from "../../state/store";
-import { buildLogFrame, type BuildLogInput, type LogFrame } from "./logModel";
+import { buildLog, buildLogFrame, type BuildLogInput, type LogFrame } from "./logModel";
+import { buildThread, type ThreadItem } from "./threadModel";
 
 /** Folds the user opened, by foldKey. */
 export const expandedFolds = signal<ReadonlySet<string>>(new Set());
@@ -88,4 +89,40 @@ function start(schedule: Schedule): () => void {
     if (!cancel) cancel = schedule(flush);
   });
   return () => { dispose(); cancel?.(); cancel = null; logFrame.value = { ...EMPTY, key: "" }; };
+}
+
+// ---- the conversation view: the shown run's thread, rebuilt at most once per frame. It always
+// shows the whole run (the Details view's filter never hides anything here).
+
+export interface ThreadFrame { runId: string | null; items: ThreadItem[] }
+
+export const threadFrame = signal<ThreadFrame>({ runId: null, items: [] });
+
+let threadUsers = 0;
+let stopThread: (() => void) | null = null;
+
+/** Start (ref-counted) the once-per-frame thread rebuild. Returns a release function. */
+export function retainThreadFrames(schedule: Schedule = rafSchedule): () => void {
+  if (threadUsers++ === 0) stopThread = startThread(schedule);
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    if (--threadUsers === 0) { stopThread?.(); stopThread = null; }
+  };
+}
+
+function startThread(schedule: Schedule): () => void {
+  let cancel: (() => void) | null = null;
+  const flush = () => {
+    cancel = null;
+    const input: BuildLogInput = { ...readInput(), filter: { scope: "run", kind: "everything" } };
+    threadFrame.value = { runId: input.selectedRunId, items: buildThread(buildLog(input)) };
+  };
+  const dispose = effect(() => {
+    void runs.value; void steps.value; void approvals.value; void questions.value; void liveText.value;
+    void inflight.value; void effectiveRunId.value; void expandedFolds.value;
+    if (!cancel) cancel = schedule(flush);
+  });
+  return () => { dispose(); cancel?.(); cancel = null; threadFrame.value = { runId: null, items: [] }; };
 }

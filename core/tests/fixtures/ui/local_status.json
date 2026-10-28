@@ -1,0 +1,31 @@
+{
+  "installed": true,
+  "running": true,
+  "version": "0.12.3",
+  "models": [
+    {
+      "name": "gpt-oss:20b",
+      "size_gb": 13.8
+    }
+  ],
+  "recommended": [
+    {
+      "name": "qwen3-coder:30b",
+      "size_gb": 19.0,
+      "fits": false,
+      "note": "Best speed/quality on 24 GB: fast MoE with tools; keep context near 32K"
+    },
+    {
+      "name": "gpt-oss:20b",
+      "size_gb": 14.0,
+      "fits": true,
+      "note": "Safest memory fit: tools and thinking, leaves room for the CAD kernel"
+    },
+    {
+      "name": "qwen3.6:27b",
+      "size_gb": 19.0,
+      "fits": false,
+      "note": "Likely best raw quality, but dense (slower) and tight on 24 GB"
+    }
+  ]
+}

@@ -74,7 +74,11 @@ test("edit_name_and_material_persist_across_a_reload_and_never_send_setup_comple
 test("agents_and_budgets_persist", async ({ page, fake }) => {
   await open(page, "Agents & budgets");
   await field(page, "Default agent").selectOption("verifier");
-  await field(page, "Default model").selectOption("claude-code/opus");
+  // the default model comes from the shared model picker
+  await panel(page).getByRole("button", { name: /^Default model/ }).click();
+  await panel(page).getByRole("group", { name: "Your Claude Code" }).locator("[data-ref='claude-code/opus']").click();
+  // a saved number shows as a manual choice; "Auto" is the other option
+  await expect(panel(page).getByRole("radio", { name: "Choose a number" })).toBeChecked();
   await field(page, "Max parallel agents").fill("4");
   await field(page, "Onshape calls per run").fill("120");
   await panel(page).getByRole("button", { name: "Save", exact: true }).click();
@@ -87,7 +91,7 @@ test("agents_and_budgets_persist", async ({ page, fake }) => {
   await openPanel(page);
   await nav(page, "Agents & budgets").click();
   await expect(field(page, "Default agent")).toHaveValue("verifier");
-  await expect(field(page, "Default model")).toHaveValue("claude-code/opus");
+  await expect(panel(page).getByRole("button", { name: /^Default model: Claude Code · opus/ })).toBeVisible();
   await expect(field(page, "Max parallel agents")).toHaveValue("4");
   await expect(field(page, "Onshape calls per run")).toHaveValue("120");
 });

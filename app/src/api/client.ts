@@ -4,15 +4,22 @@ import { z } from "zod";
 import { debug } from "../lib/log";
 import {
   agentInfoSchema, agentRunSchema, approvalSchema, cancelAllSchema, claudeCodeStatusSchema, coreErrorBodySchema, coreStatusSchema,
-  keyStatusSchema, localTestSchema, modelsInfoSchema, okSchema, onshapeTestSchema, partSummarySchema, profileSchema, runIdSchema, setupStateSchema,
+  keyStatusSchema, localActionSchema, localStatusSchema, localTestSchema, modelsInfoSchema, okSchema, onshapeTestSchema, partSummarySchema, profileSchema, runIdSchema, setupStateSchema,
   stepSchema,
 } from "./schemas";
 import type {
-  AgentInfo, AgentRun, Approval, CancelAllResult, ClaudeCodeStatus, CoreInfo, CoreStatusInfo, DecisionBody, ErrorCode, KeyStatus, LocalTestResult,
+  AgentInfo, AgentRun, Approval, CancelAllResult, ClaudeCodeStatus, CoreInfo, CoreStatusInfo, DecisionBody, ErrorCode, KeyStatus, LocalActionResult, LocalStatus, LocalTestResult,
   ModelsInfo, NewRunBody, OnshapeTestResult, PartSummary, Profile, ProfilePatch, SetupState, Step, UiContext,
 } from "./types";
 
 type Method = "GET" | "POST" | "PUT" | "DELETE";
+
+/** The fields PUT /profile may carry: core profile.Profile minus units, setup_completed_at and
+ *  schema_version, which the app never writes. */
+const PROFILE_PATCH_KEYS: ReadonlySet<string> = new Set<string>([
+  "display_name", "default_material", "default_agent", "default_model", "onshape_calls_year_cap", "onshape_calls_run_cap",
+  "max_parallel_agents", "local_endpoints", "theme",
+] satisfies (keyof ProfilePatch)[]);
 
 /** For routes whose answer the UI doesn't use (it refetches status instead): any 2xx JSON body. */
 const anyBody = z.unknown();
@@ -101,8 +108,12 @@ export class CoreClient {
   // ---- Plan 3: profile, keys, setup, Claude Code, Onshape test, UI context (admin token routes)
 
   getProfile(): Promise<Profile> { return this.json("GET", "/profile", profileSchema); }
-  /** Partial merge; only the fields given are sent. */
-  updateProfile(patch: ProfilePatch): Promise<Profile> { return this.json("PUT", "/profile", profileSchema, { body: patch }); }
+  /** Partial merge; only the fields given are sent, and only fields the core's Profile has (it is
+   *  extra="forbid": an unknown key would fail the whole PUT). */
+  updateProfile(patch: ProfilePatch): Promise<Profile> {
+    const body = Object.fromEntries(Object.entries(patch).filter(([k, v]) => PROFILE_PATCH_KEYS.has(k) && v !== undefined));
+    return this.json("PUT", "/profile", profileSchema, { body });
+  }
 
   /** Status only ({vendor, present, source}); secrets are never returned. */
   listKeys(): Promise<KeyStatus[]> { return this.json("GET", "/keys", z.array(keyStatusSchema)); }
@@ -119,6 +130,20 @@ export class CoreClient {
 
   /** Does a local model server answer at this URL (loopback only)? "No answer" is {ok:false, error}, not a throw. */
   testLocal(url: string): Promise<LocalTestResult> { return this.json("POST", "/local/test", localTestSchema, { body: { url } }); }
+
+  // ---- Plan 4: Ollama on this Mac (admin routes)
+
+  /** Is Ollama installed / running, what's downloaded, which models fit this Mac. */
+  localStatus(): Promise<LocalStatus> { return this.json("GET", "/local/status", localStatusSchema); }
+  /** Starts `ollama serve` when installed but not running. A failure is {ok:false, error, hint}. */
+  localStart(): Promise<LocalActionResult> { return this.json("POST", "/local/start", localActionSchema); }
+  /** Starts a download; progress arrives as `local_pull` events. {ok:false, already:true}: that
+   *  model is already downloading; {ok:false, error:"not_running"|"too_many_pulls", hint}. */
+  localPull(model: string): Promise<LocalActionResult> { return this.json("POST", "/local/pull", localActionSchema, { body: { model } }); }
+  /** Stops a download; the core then sends a `local_pull` event with status "cancelled". */
+  async localPullCancel(model: string): Promise<boolean> {
+    return (await this.json("POST", "/local/pull/cancel", localActionSchema, { body: { model } })).ok;
+  }
 
   setupState(): Promise<SetupState> { return this.json("GET", "/setup", setupStateSchema); }
   /** Marks setup done (sets profile.setup_completed_at). Re-read setupState() for the result. */

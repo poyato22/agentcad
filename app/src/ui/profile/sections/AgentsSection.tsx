@@ -1,34 +1,38 @@
+// Agents & budgets: default agent and model (the shared model picker), how many agents may work at
+// once — "Auto" by default, sized by the core from this Mac and the model ("M5 Pro · 24 GB ·
+// cloud model → 3"), or a number you choose — and the Onshape calls a run may make.
 import type { JSX } from "preact";
 import { useState } from "preact/hooks";
 import type { ProfilePatch } from "../../../api/types";
 import { actions } from "../../../state/store";
 import { Button } from "../../common/Button";
-import { availableModels } from "../../setup/logic";
+import { ModelPicker } from "../../dialogs/ModelPicker";
 import { Card, ErrorLine, SectionBox, useTask, wholeNumber, type SectionProps } from "../common";
 
 export function AgentsSection({ data, update }: SectionProps): JSX.Element {
   const p = data.profile;
+  const savedAuto = p.max_parallel_agents === "auto";
   const [agent, setAgent] = useState(p.default_agent);
-  const [model, setModel] = useState(p.default_model ?? "");
-  const [parallel, setParallel] = useState(String(p.max_parallel_agents));
+  const [model, setModel] = useState<string | null>(p.default_model);
+  const [auto, setAuto] = useState(savedAuto);
+  const [parallel, setParallel] = useState(savedAuto ? "2" : String(p.max_parallel_agents));
   const [runCap, setRunCap] = useState(String(p.onshape_calls_run_cap));
   const task = useTask();
 
   const agentNames = data.agents.map((a) => a.name);
   if (!agentNames.includes(p.default_agent)) agentNames.unshift(p.default_agent);
-  const usable = data.models ? availableModels(data.models, p) : [];
-  const modelOptions = [...usable];
-  if (p.default_model && !usable.some((m) => m.ref === p.default_model)) {
-    modelOptions.push({ ref: p.default_model, label: `${p.default_model} (not available now)` });
-  }
+  const par = data.status?.parallel;
+  // the core's limit is "N on this Mac" only when it picked it; a manual limit reads "Manual: N"
+  const autoLabel = par?.auto ? `Auto (${par.limit} on this Mac)` : "Auto";
 
-  const nParallel = wholeNumber(parallel, 1, 16);
+  const nParallel = auto ? null : wholeNumber(parallel, 1, 16);
   const nRunCap = wholeNumber(runCap, 0);
-  const valid = nParallel !== null && nRunCap !== null;
+  const valid = (auto || nParallel !== null) && nRunCap !== null;
   const patch: ProfilePatch = {};
   if (agent !== p.default_agent) patch.default_agent = agent;
-  if (model !== (p.default_model ?? "")) patch.default_model = model === "" ? null : model;
-  if (nParallel !== null && nParallel !== p.max_parallel_agents) patch.max_parallel_agents = nParallel;
+  if (model !== p.default_model) patch.default_model = model;
+  const nextParallel = auto ? "auto" : nParallel;
+  if (nextParallel !== null && nextParallel !== p.max_parallel_agents) patch.max_parallel_agents = nextParallel;
   if (nRunCap !== null && nRunCap !== p.onshape_calls_run_cap) patch.onshape_calls_run_cap = nRunCap;
   const dirty = Object.keys(patch).length > 0;
 
@@ -37,9 +41,13 @@ export function AgentsSection({ data, update }: SectionProps): JSX.Element {
       const next = await actions.client().updateProfile(patch);
       update({ profile: next });
       setAgent(next.default_agent);
-      setModel(next.default_model ?? "");
-      setParallel(String(next.max_parallel_agents));
+      setModel(next.default_model);
+      setAuto(next.max_parallel_agents === "auto");
+      if (next.max_parallel_agents !== "auto") setParallel(String(next.max_parallel_agents));
       setRunCap(String(next.onshape_calls_run_cap));
+      // the limit the core now uses (and why) comes from /status; a failed read keeps the old one
+      const st = await actions.client().status().catch(() => null);
+      if (st) update({ status: st });
     }, "saved");
   }
   const edit = (set: (v: string) => void) => (e: { currentTarget: { value: string } }): void => { set(e.currentTarget.value); task.clear(); };
@@ -52,17 +60,23 @@ export function AgentsSection({ data, update }: SectionProps): JSX.Element {
             {agentNames.map((n) => <option key={n} value={n}>{n}</option>)}
           </select>
         </label>
-        <label class="profile-field"><span class="label">Default model</span>
-          <select aria-label="Default model" value={model} onChange={edit(setModel)}>
-            <option value="">App default</option>
-            {modelOptions.map((m) => <option key={m.ref} value={m.ref}>{m.label}</option>)}
-          </select>
-        </label>
+        <div class="profile-field">
+          <ModelPicker label="Default model" value={model} placeholder="App default" onChange={(ref) => { setModel(ref); task.clear(); }} />
+          {model !== null && <Button variant="ghost" onClick={() => { setModel(null); task.clear(); }}>Use the app default</Button>}
+        </div>
       </Card>
       <Card title="Limits">
-        <label class="profile-field"><span class="label">Max parallel agents (1–16)</span>
-          <input aria-label="Max parallel agents" type="number" min="1" max="16" step="1" value={parallel} onInput={edit(setParallel)} />
-        </label>
+        <fieldset class="profile-field" style={{ border: 0, padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "3px" }}>
+          <legend class="label">Parallel agents</legend>
+          <label><input type="radio" name="parallel" checked={auto} onChange={() => { setAuto(true); task.clear(); }} /> {autoLabel}</label>
+          {par?.auto && par.reason && <div class="profile-hint text">{par.reason}</div>}
+          {par && !par.auto && <div class="profile-hint">{`Manual: ${par.limit}`}</div>}
+          {!par && <div class="profile-hint">The core picks how many run at once from this Mac's chip, memory and the model.</div>}
+          <label><input type="radio" name="parallel" checked={!auto} onChange={() => { setAuto(false); task.clear(); }} /> Choose a number</label>
+          {!auto && (
+            <input aria-label="Max parallel agents" type="number" min="1" max="16" step="1" value={parallel} onInput={edit(setParallel)} />
+          )}
+        </fieldset>
         <label class="profile-field"><span class="label">Onshape calls per run</span>
           <input aria-label="Onshape calls per run" type="number" min="0" step="1" value={runCap} onInput={edit(setRunCap)} />
         </label>

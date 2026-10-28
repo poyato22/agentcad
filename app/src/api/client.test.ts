@@ -169,6 +169,25 @@ describe("CoreClient", () => {
     expect((await caught(aborted.client.claudeCodeStatus(ctl.signal))).code).toBe("network");
   });
 
+  it("local_model_routes", async () => {
+    const status = { installed: true, running: false, version: "0.12.3", models: [], recommended: [{ name: "qwen3-coder:30b", size_gb: 19, fits: true, note: "fast MoE" }] };
+    const { client, f } = clientWith(async (url) => json(url.endsWith("/local/status") ? status : { ok: true }));
+    expect((await client.localStatus()).recommended[0].name).toBe("qwen3-coder:30b");
+    expect(await client.localStart()).toEqual({ ok: true });
+    expect(await client.localPull("qwen3-coder:30b")).toEqual({ ok: true });
+    expect(await client.localPullCancel("qwen3-coder:30b")).toBe(true);
+    const calls = f.mock.calls.map(([u, init]) => `${init.method} ${u.replace(info.baseUrl, "")} ${init.body ?? ""}`);
+    expect(calls).toEqual([
+      "GET /local/status ", "POST /local/start ", 'POST /local/pull {"model":"qwen3-coder:30b"}', 'POST /local/pull/cancel {"model":"qwen3-coder:30b"}',
+    ]);
+  });
+
+  it("update_profile_sends_only_known_profile_fields", async () => {
+    const { client, f } = clientWith(async () => json({ display_name: "Ana" }));
+    await client.updateProfile({ display_name: "Ana", schema_version: 2, printers: [], setup_completed_at: 1 } as never);
+    expect(JSON.parse(String(f.mock.calls[0][1].body))).toEqual({ display_name: "Ana" });
+  });
+
   it("unknown_error_body_falls_back_by_status", async () => {
     const { client } = clientWith(async () => json({ detail: "Not Found" }, 404));
     const e = await caught(client.getRun("nope"));

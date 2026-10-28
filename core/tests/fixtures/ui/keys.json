@@ -20,6 +20,11 @@
     "source": "none"
   },
   {
+    "vendor": "moonshot",
+    "present": false,
+    "source": "none"
+  },
+  {
     "vendor": "ollama",
     "present": false,
     "source": "none"

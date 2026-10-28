@@ -72,18 +72,35 @@ export interface AgentInfo { name: string; description: string; model: string }
 
 /** signed_in / signed_out / not_installed: the "claude-code" vendor (Plan 3 Task 3). */
 export type KeySource = "env" | "keychain" | "none" | "not_needed" | "signed_in" | "signed_out" | "not_installed";
-/** `models`: aliases/refs the vendor offers, when the core lists them (claude-code aliases; `ollama/<name>`, `lmstudio/<id>`, `openrouter/<id>`). `free`: every listed model is free. `hint`: why the list is empty (e.g. Ollama not running). */
+/** Why the core points a model out: "best" (strongest at CAD), "local" (a researched local model
+ *  that fits this Mac), "free" (OpenRouter free). */
+export type Recommended = "best" | "local" | "free";
+/** Badges of one listed model (built from the core's per-vendor `entries`). */
+export interface ModelMeta { recommended: Recommended | null; note: string | null; free: boolean }
+
+export interface VendorInfo {
+  vendor: string; key: KeySource;
+  /** Models the vendor offers, when the core lists them: claude-code aliases (sonnet, opus, ...),
+   *  or full refs for live lists (`ollama/<name>`, `lmstudio/<id>`, `openrouter/<id>`). */
+  models?: string[];
+  /** Every listed model is free (OpenRouter's free tool-capable models). */
+  free?: boolean;
+  /** Why the list is empty (e.g. "Ollama isn't running ..."). */
+  hint?: string | null;
+  /** Vendor-level badge and one-line note: not sent by the current core (it badges each model in
+   *  `entries`); tolerated for a core that adds them. Untrusted text. */
+  recommended?: Recommended | null;
+  note?: string | null;
+  /** Per-model badges from the core's `entries`, keyed by full ref (e.g. "claude-code/opus"). */
+  model_meta?: Record<string, ModelMeta>;
+}
+/** One entry of GET /models `recommended` (`model` is a full ref, e.g. "claude-code/opus"). */
+export interface ModelEntry { model: string; recommended: Recommended | null; note: string | null }
 export interface ModelsInfo {
-  default: string;
-  vendors: { vendor: string; key: KeySource; models?: string[]; free?: boolean; hint?: string | null; entries?: ModelEntry[] }[];
+  default: string; vendors: VendorInfo[];
   /** Every entry with a `recommended` badge: best first, then local, then free. */
   recommended?: ModelEntry[];
 }
-
-/** "best": the strongest CAD model; "local": a researched local model that fits this Mac; "free": OpenRouter free. */
-export type ModelRecommendation = "best" | "local" | "free";
-/** One model of a vendor (`model` is a full ref, e.g. "claude-code/opus"); `note` is one line. */
-export interface ModelEntry { model: string; recommended: ModelRecommendation | null; note: string | null }
 
 export interface CoreStatusInfo {
   core_version: string; onshape: "connected" | "not_configured"; onshape_calls_year: number;
@@ -91,10 +108,11 @@ export interface CoreStatusInfo {
   /** Core data folder (absolute path); absent on older cores. */
   data_dir?: string | null;
   runs_queued?: number;
-  /** How many agents run at once for the default model, and why ("M5 Pro · 24 GB · cloud model → 3"). */
+  /** How many agents run at once for the default model, and why ("M5 Pro · 24 GB · cloud model -> 3"). */
   parallel?: ParallelInfo;
 }
 
+/** GET /status `parallel`: how many runs may work at once, and why. */
 export interface ParallelInfo { limit: number; auto: boolean; reason: string }
 
 export type Vec3 = [number, number, number];
@@ -171,8 +189,10 @@ export interface LocalStatus {
 /** POST /local/start and POST /local/pull. `note`: tell the user (e.g. `ollama serve` keeps running). */
 /** POST /local/pull: {ok:false, already:true} while that model downloads; error "too_many_pulls" past 2; POST /local/pull/cancel {model} -> {ok}. */
 export interface LocalActionResult { ok: boolean; running?: boolean; note?: string; error?: string; hint?: string; already?: boolean }
-/** Data of a `local_pull` event (run_id null). status "success" or "error" ends the download. */
+/** Data of a `local_pull` event (run_id null). status "success", "error" (with `error`) or "cancelled" ends the download. */
 export interface LocalPullEvent { model: string; completed: number; total: number; status: string; error?: string }
+/** Alias used by the model picker. */
+export type LocalPull = LocalPullEvent;
 
 /** GET /claude-code/status (from the user's own `claude auth status`; non-secret fields only). */
 export interface ClaudeCodeStatus { installed: boolean; version: string | null; signed_in: boolean; auth_method: string | null }

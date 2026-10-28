@@ -463,7 +463,9 @@ function isFileItem(i: LogItem): boolean {
  */
 function fold(rows: Raw[], expanded: ReadonlySet<string>): LogItem[] {
   const out: LogItem[] = [];
-  const foldable = (r: Raw | undefined) => r !== undefined && r.item.kind === "call" && r.item.ok === true;
+  // Onshape proposals change the real document: each stays a row of its own, never folded
+  const foldable = (r: Raw | undefined) => r !== undefined && r.item.kind === "call" && r.item.ok === true
+    && !r.item.name.replace(/^mcp__mises__/, "").startsWith("onshape_propose");
   let i = 0;
   while (i < rows.length) {
     if (!foldable(rows[i])) { out.push(rows[i].item); i++; continue; }

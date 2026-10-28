@@ -4,6 +4,7 @@ import { CoreError, type CoreClient } from "../../api/client";
 import type { AgentInfo, ModelsInfo, PartSummary } from "../../api/types";
 import { actions, bindClient, newRunOpen, parts, resetStore, selectedRunId } from "../../state/store";
 import { closeProfile, profileOpen, profileSection } from "../profile/open";
+import { resetCatalog } from "./catalog";
 import { NewRunDialog } from "./NewRunDialog";
 
 const agents: AgentInfo[] = [
@@ -15,9 +16,11 @@ const models: ModelsInfo = {
   vendors: [{ vendor: "anthropic", key: "env" }, { vendor: "openai", key: "none" }, { vendor: "ollama", key: "not_needed" }],
 };
 
-const client = { agents: vi.fn(), models: vi.fn(), createRun: vi.fn(), getProfile: vi.fn() };
+const client = { agents: vi.fn(), models: vi.fn(), createRun: vi.fn(), getProfile: vi.fn(), localStatus: vi.fn() };
 
 beforeEach(() => {
+  resetCatalog();
+  client.localStatus.mockReset().mockRejectedValue(new Error("404"));
   client.agents.mockReset().mockResolvedValue(agents);
   client.models.mockReset().mockResolvedValue(models);
   client.createRun.mockReset().mockResolvedValue({ run_id: "newrun" });
@@ -54,28 +57,21 @@ describe("NewRunDialog", () => {
     }
   });
 
-  it("dialog_lists_agents_and_vendors", async () => {
+  it("dialog_lists_agents_and_uses_the_shared_model_picker", async () => {
     await open();
     const agentOpts = within("Agent");
     expect(agentOpts).toEqual(["designer", "verifier"]);
     expect(screen.getByText("Main CAD agent.")).toBeTruthy();
-    expect(within("Vendor")).toEqual(["anthropic", "openai · no API key", "ollama"]);
-  });
-
-  it("vendor_without_key_disabled_with_hint", async () => {
-    await open();
-    const openai = screen.getByRole("option", { name: /openai/ }) as HTMLOptionElement;
-    expect(openai.disabled).toBe(true);
-    expect(openai.textContent).toContain("mises keys set openai");
+    fireEvent.click(await chip("anthropic · claude-sonnet-5-5"));
+    const keys = await screen.findByRole("group", { name: "API keys" });
+    expect(keys.textContent).toContain("anthropic · claude-sonnet-5-5");
   });
 
   it("prefills_agent_model_or_default", async () => {
     await open();
-    expect((screen.getByLabelText("Model") as HTMLInputElement).value).toBe("claude-sonnet-5-5");
-    expect((screen.getByLabelText("Vendor") as HTMLSelectElement).value).toBe("anthropic");
+    await chip("anthropic · claude-sonnet-5-5");
     fireEvent.change(screen.getByLabelText("Agent"), { target: { value: "verifier" } });
-    expect((screen.getByLabelText("Model") as HTMLInputElement).value).toBe("gpt-x");
-    expect((screen.getByLabelText("Vendor") as HTMLSelectElement).value).toBe("openai");
+    await chip("openai · gpt-x");
     // that vendor has no key: Start is blocked and the hint is shown
     expect((screen.getByText("Start") as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText(/mises keys set openai/, { selector: "[data-hint]" })).toBeTruthy();
@@ -153,13 +149,11 @@ describe("NewRunDialog", () => {
   it("lists_the_users_claude_code_with_its_models", async () => {
     client.models.mockResolvedValue({ ...models, vendors: [...models.vendors, { vendor: "claude-code", key: "signed_in", models: ["sonnet", "opus"] }] });
     await open();
-    expect(within("Vendor")).toEqual(["anthropic", "openai · no API key", "ollama", "Claude Code (your account)"]);
-    fireEvent.change(screen.getByLabelText("Vendor"), { target: { value: "claude-code" } });
-    const model = screen.getByLabelText("Model") as HTMLSelectElement;
-    expect(model.tagName).toBe("SELECT");
-    expect([...model.options].map((o) => o.value)).toEqual(["sonnet", "opus"]);
-    expect(model.value).toBe("sonnet");
-    fireEvent.change(model, { target: { value: "opus" } });
+    fireEvent.click(await chip("anthropic · claude-sonnet-5-5"));
+    const claude = await screen.findByRole("group", { name: "Your Claude Code" });
+    expect([...claude.querySelectorAll("[data-ref]")].map((b) => b.getAttribute("data-ref"))).toEqual(["claude-code/sonnet", "claude-code/opus"]);
+    fireEvent.click(claude.querySelector('[data-ref="claude-code/opus"]') as HTMLElement);
+    await chip("Claude Code · opus");
     fireEvent.input(screen.getByLabelText("Task"), { target: { value: "stiffen the upright" } });
     fireEvent.click(screen.getByText("Start"));
     await waitFor(() => expect(client.createRun).toHaveBeenCalledTimes(1));
@@ -173,10 +167,11 @@ describe("NewRunDialog", () => {
     client.agents.mockResolvedValue([{ name: "designer", description: "Main CAD agent.", model: "claude-code/sonnet" }]);
     client.models.mockResolvedValue({ ...models, vendors: [...models.vendors, { vendor: "claude-code", key, models: ["sonnet", "opus"] }] });
     await open();
-    const opt = screen.getByRole("option", { name: /Claude Code \(your account\)/ }) as HTMLOptionElement;
+    fireEvent.click(await chip("Claude Code · sonnet"));
+    const opt = (await screen.findByRole("group", { name: "Your Claude Code" })).querySelector('[data-ref="claude-code/opus"]') as HTMLButtonElement;
     expect(opt.disabled).toBe(true);
     expect(opt.textContent).toContain(words);
-    expect(opt.textContent).toContain("Sign in in Profile");
+    fireEvent.click(screen.getByRole("button", { name: /^Model:/ }));    // close the picker
     // prefilled from the agent: Start is blocked, the hint links to Profile
     fireEvent.input(screen.getByLabelText("Task"), { target: { value: "go" } });
     expect((screen.getByText("Start") as HTMLButtonElement).disabled).toBe(true);
@@ -193,11 +188,19 @@ describe("NewRunDialog", () => {
     client.getProfile.mockResolvedValue({ default_model: "claude-code/haiku" });
     client.models.mockResolvedValue({ ...models, vendors: [...models.vendors, { vendor: "claude-code", key: "signed_in", models: ["sonnet", "haiku"] }] });
     await open();
-    await waitFor(() => expect((screen.getByLabelText("Vendor") as HTMLSelectElement).value).toBe("claude-code"));
-    expect((screen.getByLabelText("Model") as HTMLSelectElement).value).toBe("haiku");
+    await chip("Claude Code · haiku");
     // an agent's own model still wins
     fireEvent.change(screen.getByLabelText("Agent"), { target: { value: "verifier" } });
-    expect((screen.getByLabelText("Vendor") as HTMLSelectElement).value).toBe("openai");
+    await chip("openai · gpt-x");
+  });
+
+  it("escape_in_the_picker_closes_the_picker_not_the_dialog", async () => {
+    await open();
+    fireEvent.click(await chip("anthropic · claude-sonnet-5-5"));
+    const panel = await screen.findByRole("region", { name: "Choose a model" });
+    fireEvent.keyDown(panel, { key: "Escape" });
+    expect(screen.queryByRole("region", { name: "Choose a model" })).toBeNull();
+    expect(newRunOpen.value).toBe(true);
   });
 
   it("esc_closes_from_anywhere", async () => {
@@ -214,6 +217,11 @@ describe("NewRunDialog", () => {
     await waitFor(() => expect(newRunOpen.value).toBe(true));
   });
 });
+
+/** The model chip once it names `label` ("Model: Claude Code · opus"). */
+function chip(label: string): Promise<HTMLElement> {
+  return screen.findByRole("button", { name: `Model: ${label}` });
+}
 
 function within(label: string): string[] {
   const sel = screen.getByLabelText(label) as HTMLSelectElement;

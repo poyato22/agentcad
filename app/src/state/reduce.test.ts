@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyRuns, emptyState, mergeApprovals, mergeSteps, reduce, applySteps, type AppState } from "./reduce";
+import { applyRuns, emptyState, KNOWN_EVENTS, mergeApprovals, mergeSteps, reduce, applySteps, type AppState } from "./reduce";
 import type { AgentRun, Approval, MisesEvent, Step } from "../api/types";
 
 const RID = "b7c79a57cbb4";
@@ -127,6 +127,16 @@ describe("reduce", () => {
     const { effects } = reduce(emptyState(), ev("run_started", { agent: "designer", provider: "fake", model: "m", parent_id: null }, "newrun"));
     expect(effects).toContainEqual({ kind: "fetchRuns" });
     expect(effects).toContainEqual({ kind: "fetchSteps", runId: "newrun" });
+  });
+
+  it("run_queued_marks_a_known_run_queued_and_fetches_an_unknown_one", () => {
+    const s = { ...emptyState(), runs: new Map([[RID, run({ status: "running" })]]) };
+    const data = { agent: "designer", provider: "fake", model: "m", parent_id: null, position: 1, limit: 3, reason: "M5 Pro · 24 GB · cloud model → 3" };
+    expect(reduce(s, ev("run_queued", data)).state.runs.get(RID)?.status).toBe("queued");
+    const { state, effects } = reduce(emptyState(), ev("run_queued", data, "newrun"));
+    expect(effects).toContainEqual({ kind: "fetchRuns" });
+    expect(state.runs.size).toBe(0);
+    expect(KNOWN_EVENTS.has("run_queued")).toBe(true);
   });
 
   it("run_started_resumed_sets_running", () => {

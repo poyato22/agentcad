@@ -1,0 +1,38 @@
+/* Model picker. Tokens only: blue = the selected model; red = a failure; nothing else colored. */
+.mp { display: flex; flex-direction: column; min-width: 0; }
+.mp-chip {
+  display: inline-flex; align-items: baseline; gap: 6px; max-width: 100%; padding: 3px 7px; cursor: pointer; text-align: left;
+  background: transparent; border: 1px solid var(--line2); color: var(--ink); font: inherit; font-size: var(--fs-small);
+}
+.mp-chip:hover:not(:disabled) { border-color: var(--dim); }
+.mp-chip:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
+.mp-chip-v { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mp-panel { margin-top: 4px; border: 1px solid var(--line2); background: var(--paper); max-height: 340px; overflow: auto; font-size: var(--fs-small); }
+.mp-pad { padding: 3px 8px; }
+.mp-group { border-bottom: 1px solid var(--line); padding-bottom: 3px; }
+.mp-group-h { padding: 5px 8px 2px; }
+.mp-note { font-size: 10px; }
+.mp-opt {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; width: 100%; padding: 3px 8px; text-align: left; cursor: pointer;
+  background: transparent; border: 0; color: var(--ink); font: inherit;
+}
+.mp-opt:hover:not(:disabled) { background: var(--paper2); }
+.mp-opt:focus-visible { outline: 1px solid var(--blue); outline-offset: -1px; }
+.mp-opt:disabled { color: var(--faint); cursor: default; }
+.mp-opt.sel { background: var(--blue-tint); box-shadow: inset 2px 0 var(--blue); }
+.mp-opt-l { min-width: 0; }
+.mp-opt-n { flex-basis: 100%; font-size: 10px; }
+.mp-badge { font-size: 9px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); border: 1px solid var(--line2); padding: 0 4px; }
+.mp-row { display: flex; align-items: center; gap: 6px; }
+.mp-spacer { flex: 1; }
+.mp-local { display: flex; flex-direction: column; gap: 3px; }
+.mp-code { margin: 0; padding: 2px 6px; background: var(--vp); border: 1px solid var(--line); font: inherit; }
+.mp-dl { padding: 3px 8px; }
+.mp-pull { display: flex; align-items: center; gap: 6px; margin-top: 2px; color: var(--dim); font-size: 10px; }
+.mp-pull progress { width: 120px; height: 4px; appearance: none; border: 0; background: var(--line2); }
+.mp-pull progress::-webkit-progress-bar { background: var(--line2); }
+.mp-pull progress::-webkit-progress-value { background: var(--ink); }
+.mp-pull progress::-moz-progress-bar { background: var(--ink); }
+.mp-err { color: var(--red); }
+.mp-other { display: flex; gap: 6px; padding: 5px 8px; }
+.mp-other input { flex: 1; min-width: 0; }

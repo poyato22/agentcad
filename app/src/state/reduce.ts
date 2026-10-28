@@ -30,7 +30,7 @@ const RUN_STATUSES: ReadonlySet<string> = new Set<RunStatus>(["running", "done",
 
 /** Event types the UI knows; anything else is ignored. */
 export const KNOWN_EVENTS: ReadonlySet<string> = new Set([
-  "run_started", "run_finished", "tool_call", "tool_result", "approval_requested", "question_asked",
+  "run_started", "run_queued", "run_finished", "tool_call", "tool_result", "approval_requested", "question_asked",
   "question_answered", "text_delta", "thought_delta", "note", "plan", "usage", "diff", "file_written",
   "turn_retry", "compaction",
 ]);
@@ -58,6 +58,15 @@ function reduceUnsafe(s: AppState, e: MisesEvent): Out {
       const resumed: AgentRun = { ...known, status: "running" };
       const runs = known.status === "running" ? s.runs : setIn(s.runs, rid, resumed);
       return { state: { ...s, runs }, effects: [...steps(), { kind: "fetchStatus" }] };
+    }
+    case "run_queued": {
+      // waiting for a parallel-agent slot (data: run_started's + position, limit, reason); its
+      // run_started follows when a slot frees
+      if (!rid) return { state: s, effects: [] };
+      const known = s.runs.get(rid);
+      if (!known) return { state: s, effects: [{ kind: "fetchRuns" }, { kind: "fetchStatus" }] };
+      const runs = known.status === "queued" ? s.runs : setIn(s.runs, rid, { ...known, status: "queued" as const });
+      return { state: { ...s, runs }, effects: [{ kind: "fetchStatus" }] };
     }
     case "run_finished": {
       if (!rid) return { state: s, effects: [] };

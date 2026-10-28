@@ -9,6 +9,8 @@ import { Led } from "../../common/Led";
 import { setSkipped } from "../gate";
 import { apiKeyVendors, localTestText, pollUntil } from "../logic";
 import type { StepProps } from "../SetupWizard";
+import { catalog } from "../../dialogs/catalog";
+import { LocalModels, ModelPicker } from "../../dialogs/ModelPicker";
 import { Card, describeError, KeyLine, SECRET_INPUT, StepHead } from "./common";
 
 export const LOCAL_APPS = [
@@ -21,6 +23,15 @@ export const SIGN_IN_TIMEOUT_MS = 120_000;
 
 export function ModelStep(p: StepProps): JSX.Element {
   const has = p.data.setup.has_model;
+  // Ollama started or a download finished (the shared catalog changed): has_model may have too
+  const local = catalog.value.local;
+  const localKey = local ? `${local.running}|${local.models.length}` : "";
+  const seen = useRef(localKey);
+  useEffect(() => {
+    if (seen.current === localKey) return;
+    seen.current = localKey;
+    void p.refresh().catch(() => undefined);
+  }, [localKey]);
   return (
     <div class="setup-step">
       <StepHead title="Connect a model" sub="Pick one way to run agents. You can add more later in Profile." />
@@ -28,14 +39,36 @@ export function ModelStep(p: StepProps): JSX.Element {
         <ClaudeCard {...p} />
         <ApiKeyCard {...p} />
         <LocalCard {...p} />
+        {has && <DefaultModelCard {...p} />}
       </div>
       <div class="setup-actions">
-        <Button variant="ghost" onClick={() => p.go("welcome")}>Back</Button>
+        <Button variant="ghost" onClick={() => p.go("profile")}>Back</Button>
         <span class="setup-spacer" />
         <Button variant="ghost" onClick={() => { setSkipped("model", true); p.go("onshape"); }}>Skip — local models only</Button>
         <Button variant="ink" disabled={!has} onClick={() => { setSkipped("model", false); p.go("onshape"); }}>Continue</Button>
       </div>
     </div>
+  );
+}
+
+/** Which model new runs use, from the same picker as everywhere else (saved to the profile). */
+function DefaultModelCard({ data, update }: StepProps): JSX.Element {
+  const [error, setError] = useState<string | null>(null);
+  async function pick(ref: string): Promise<void> {
+    setError(null);
+    try {
+      const profile = await actions.client().updateProfile({ default_model: ref });
+      update({ profile });
+    } catch (e) {
+      setError(describeError(e));
+    }
+  }
+  return (
+    <Card title="Default model">
+      <p class="dim">New runs start on this model. You can pick another for any run.</p>
+      <ModelPicker label="Default model" value={data.profile.default_model} placeholder="the agent's default" onChange={(ref) => { void pick(ref); }} />
+      {error && <div class="setup-error text" role="alert">{error}</div>}
+    </Card>
   );
 }
 
@@ -217,7 +250,8 @@ function LocalCard({ data, update, refresh }: StepProps): JSX.Element {
 
   return (
     <Card title="Local model">
-      <p class="dim">Run models on this Mac with Ollama or LM Studio. Nothing leaves the machine.</p>
+      <p class="dim">Run open models on this Mac with Ollama or LM Studio — free, and nothing leaves the machine.</p>
+      <LocalModels />
       <div class="setup-pair">
         <label class="setup-field"><span class="label">Local app</span>
           <select aria-label="Local app" value={vendor} onChange={(e) => { const v = e.currentTarget.value; setVendor(v); setUrl(urlFor(v)); setResult(null); }}>

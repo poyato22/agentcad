@@ -61,7 +61,6 @@ export function ToolCallRow(props: { item: Call; label?: string }): JSX.Element 
   const running = item.result === null;
   const tone = item.ok === false ? "con-g-fail" : running ? "con-g-live" : "";
   const dur = item.endedTs !== null ? `${Math.max(0, item.endedTs - item.startedTs).toFixed(1)}s` : null;
-  const output = item.result ? (item.result.payload.output ?? item.result.payload) : null;
   return (
     <div class="con-call" data-ok={item.ok === null ? "running" : String(item.ok)} data-changing={running ? "" : undefined}>
       <div class="con-row con-click" data-call-head role="button" tabIndex={0} aria-expanded={open}
@@ -87,17 +86,23 @@ export function ToolCallRow(props: { item: Call; label?: string }): JSX.Element 
           </span>
         </div>
       )}
-      {open && (
-        <div class="con-box con-details">
-          <div class="con-box-hd"><b>input</b></div>
-          <pre class="con-box-bd text">{pretty(item.input)}</pre>
-          {output !== null && <div class="con-box-hd"><b>output</b></div>}
-          {output !== null && <pre class="con-box-bd text">{pretty(output)}</pre>}
-          {item.attached.length > 0 && <div class="con-box-hd"><b>during this call</b></div>}
-          {item.attached.length > 0 && (
-            <pre class="con-box-bd text">{item.attached.map(attachedLine).join("\n")}</pre>
-          )}
-        </div>
+      {open && <CallDetails item={item} />}
+    </div>
+  );
+}
+
+/** The raw input / output of a call (and what happened during it), as text. */
+export function CallDetails({ item, class: cls = "con-details" }: { item: Call; class?: string }): JSX.Element {
+  const output = item.result ? (item.result.payload.output ?? item.result.payload) : null;
+  return (
+    <div class={`con-box ${cls}`} data-call-details>
+      <div class="con-box-hd"><b>input</b></div>
+      <pre class="con-box-bd text">{pretty(item.input)}</pre>
+      {output !== null && <div class="con-box-hd"><b>output</b></div>}
+      {output !== null && <pre class="con-box-bd text">{pretty(output)}</pre>}
+      {item.attached.length > 0 && <div class="con-box-hd"><b>during this call</b></div>}
+      {item.attached.length > 0 && (
+        <pre class="con-box-bd text">{item.attached.map(attachedLine).join("\n")}</pre>
       )}
     </div>
   );

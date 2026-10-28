@@ -3,7 +3,14 @@
   "vendors": [
     {
       "vendor": "anthropic",
-      "key": "none"
+      "key": "none",
+      "entries": [
+        {
+          "model": "anthropic/claude-opus-5-5",
+          "recommended": "best",
+          "note": "Leads CAD code benchmarks (CADGenBench 86.9% with a tool loop)"
+        }
+      ]
     },
     {
       "vendor": "openai",
@@ -15,15 +22,64 @@
     },
     {
       "vendor": "openrouter",
-      "key": "none"
+      "key": "none",
+      "models": [
+        "openrouter/qwen/qwen3-coder:free"
+      ],
+      "free": true,
+      "entries": [
+        {
+          "model": "openrouter/qwen/qwen3-coder:free",
+          "recommended": "free",
+          "note": "Free on OpenRouter: 20 requests/min, one run at a time"
+        }
+      ]
+    },
+    {
+      "vendor": "moonshot",
+      "key": "none",
+      "models": [
+        "moonshot/kimi-k3.1-pro",
+        "moonshot/kimi-k3.1-pro-highspeed",
+        "moonshot/kimi-k3"
+      ],
+      "entries": [
+        {
+          "model": "moonshot/kimi-k3.1-pro",
+          "recommended": null,
+          "note": "Strong coder, untested on CAD in Mises; thinking always on"
+        },
+        {
+          "model": "moonshot/kimi-k3.1-pro-highspeed",
+          "recommended": null,
+          "note": "Kimi K3.1 Pro, 2-3x faster, costs more"
+        },
+        {
+          "model": "moonshot/kimi-k3",
+          "recommended": null,
+          "note": "Kimi K3: 1M-token context, thinking always on"
+        }
+      ]
     },
     {
       "vendor": "ollama",
-      "key": "not_needed"
+      "key": "not_needed",
+      "models": [
+        "ollama/gpt-oss:20b"
+      ],
+      "entries": [
+        {
+          "model": "ollama/gpt-oss:20b",
+          "recommended": "local",
+          "note": "Safest memory fit: tools and thinking, leaves room for the CAD kernel"
+        }
+      ]
     },
     {
       "vendor": "lmstudio",
-      "key": "not_needed"
+      "key": "not_needed",
+      "models": [],
+      "hint": "LM Studio isn't running \u2014 start its local server (Developer tab)"
     },
     {
       "vendor": "claude-code",
@@ -33,7 +89,51 @@
         "opus",
         "haiku",
         "fable"
+      ],
+      "entries": [
+        {
+          "model": "claude-code/sonnet",
+          "recommended": null,
+          "note": null
+        },
+        {
+          "model": "claude-code/opus",
+          "recommended": "best",
+          "note": "Leads CAD code benchmarks with a build123d tool loop; uses your Claude Code plan"
+        },
+        {
+          "model": "claude-code/haiku",
+          "recommended": null,
+          "note": null
+        },
+        {
+          "model": "claude-code/fable",
+          "recommended": null,
+          "note": null
+        }
       ]
+    }
+  ],
+  "recommended": [
+    {
+      "model": "claude-code/opus",
+      "recommended": "best",
+      "note": "Leads CAD code benchmarks with a build123d tool loop; uses your Claude Code plan"
+    },
+    {
+      "model": "anthropic/claude-opus-5-5",
+      "recommended": "best",
+      "note": "Leads CAD code benchmarks (CADGenBench 86.9% with a tool loop)"
+    },
+    {
+      "model": "ollama/gpt-oss:20b",
+      "recommended": "local",
+      "note": "Safest memory fit: tools and thinking, leaves room for the CAD kernel"
+    },
+    {
+      "model": "openrouter/qwen/qwen3-coder:free",
+      "recommended": "free",
+      "note": "Free on OpenRouter: 20 requests/min, one run at a time"
     }
   ]
 }

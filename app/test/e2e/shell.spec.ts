@@ -181,7 +181,7 @@ for (const size of [{ width: 1280, height: 800 }, { width: 1600, height: 1000 }]
       await expect(page.locator("[data-region=console] [data-card]").first()).toBeVisible();
       await measure(page, mode, "design + approval card");
       // new-run dialog (composer)
-      await page.getByRole("button", { name: "+ new run" }).click();
+      await page.keyboard.press("Meta+n");   // the new-run dialog (the console's "+ New" is an inline form)
       await expect(page.getByRole("dialog", { name: "New run" })).toBeVisible();
       await measure(page, mode, "new-run dialog");
       await page.getByRole("dialog", { name: "New run" }).getByRole("button", { name: "Close" }).click();

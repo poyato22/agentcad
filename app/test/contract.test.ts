@@ -15,7 +15,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 import { z } from "zod";
 import {
-  agentInfoSchema, agentRunSchema, approvalSchema, claudeCodeStatusSchema, coreStatusSchema, eventSchema, keyStatusSchema, localTestSchema,
+  agentInfoSchema, agentRunSchema, approvalSchema, claudeCodeStatusSchema, coreStatusSchema, eventSchema, keyStatusSchema, localActionSchema, localStatusSchema, localTestSchema,
   modelsInfoSchema, onshapeTestSchema, partSummarySchema, profileSchema, setupStateSchema, stepSchema,
 } from "../src/api/schemas";
 import type { MisesEvent } from "../src/api/types";
@@ -124,6 +124,8 @@ interface Route {
   fixture: string; schema: z.ZodType<unknown>; fake: () => string; root: string;
   /** Write routes: the same call the dump script made (core/scripts/dump_ui_fixtures.py). */
   method?: "POST" | "PUT"; body?: () => unknown;
+  /** The fake-core scenario to answer from (default "base"; the /local routes need a `local` block). */
+  scenario?: string;
 }
 /** Answers the client ignores (it re-reads status instead): any JSON, but the fake's must look like the core's. */
 const anyJson = z.unknown();
@@ -148,6 +150,11 @@ const ROUTES: Route[] = [
   { fixture: "onshape_test.json", schema: onshapeTestSchema, fake: () => "/onshape/test", root: "onshape_test", method: "POST" },
   { fixture: "context_put.json", schema: anyJson, fake: () => "/context", root: "context_put", method: "PUT",
     body: () => ({ selected_part_id: "mount_plate", selected_run_id: FAKE_RUN_ID, picks: [] }) },
+  // Plan 4: Ollama on this Mac (the dump script stands in a fixed Mac and Ollama answers)
+  { fixture: "local_status.json", schema: localStatusSchema, fake: () => "/local/status", root: "local_status", scenario: "agent-ux" },
+  { fixture: "local_start.json", schema: localActionSchema, fake: () => "/local/start", root: "local_start", method: "POST", scenario: "agent-ux" },
+  { fixture: "local_pull_cancel.json", schema: localActionSchema, fake: () => "/local/pull/cancel", root: "local_pull_cancel", method: "POST",
+    body: () => ({ model: "qwen3-coder:30b" }), scenario: "agent-ux" },
 ];
 
 describe("contract: real core fixtures ↔ schemas ↔ fake core", () => {
@@ -163,7 +170,7 @@ describe("contract: real core fixtures ↔ schemas ↔ fake core", () => {
       });
 
       it("fake_core_answer_has_the_same_shape", async () => {
-        core.reset("base");            // write routes change state: every route starts from the base scenario
+        core.reset(r.scenario ?? "base");   // write routes change state: every route starts from its scenario
         const fake = await getFake(r.fake(), r.method, r.body?.());
         expect(r.schema.safeParse(fake).success).toBe(true);
         expect(shapeDiff(read(DIR, r.fixture), fake, r.root)).toEqual([]);

@@ -1,8 +1,9 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/preact";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/preact";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CoreError, type CoreClient } from "../../api/client";
 import type { ClaudeCodeStatus, KeyStatus, ModelsInfo, Profile, SetupState } from "../../api/types";
 import { bindClient, conn, resetStore } from "../../state/store";
+import { resetCatalog } from "../dialogs/catalog";
 import { closeProfile, profileOpen, profileSection } from "../profile/open";
 import { closeSetupWizard, openSetupWizard } from "./gate";
 import { SetupGate } from "./SetupGate";
@@ -27,7 +28,7 @@ const models: ModelsInfo = {
 const client = {
   setupState: vi.fn(), getProfile: vi.fn(), updateProfile: vi.fn(), listKeys: vi.fn(), setKey: vi.fn(), setOnshapeKeys: vi.fn(),
   deleteKey: vi.fn(), testOnshape: vi.fn(), completeSetup: vi.fn(), claudeCodeStatus: vi.fn(), claudeCodeLogin: vi.fn(), models: vi.fn(),
-  testLocal: vi.fn(),
+  testLocal: vi.fn(), localStatus: vi.fn(), localStart: vi.fn(), localPull: vi.fn(),
 };
 
 beforeEach(() => {
@@ -43,6 +44,10 @@ beforeEach(() => {
   client.claudeCodeLogin.mockReset().mockResolvedValue(undefined);
   client.models.mockReset().mockResolvedValue(models);
   client.testLocal.mockReset().mockResolvedValue({ ok: false, error: "unreachable" });
+  client.localStatus.mockReset().mockRejectedValue(new CoreError("not_found", "Not Found", { status: 404 }));   // an older core
+  client.localStart.mockReset().mockResolvedValue({ ok: true, running: true });
+  client.localPull.mockReset().mockResolvedValue({ ok: true });
+  resetCatalog();
   bindClient(client as unknown as CoreClient);
   try { sessionStorage.clear(); } catch { /* none */ }
 });
@@ -53,10 +58,11 @@ const wizard = () => screen.findByRole("dialog", { name: "Set up Mises" });
 const markup = () => new XMLSerializer().serializeToString(document.body);
 const input = (name: string) => screen.getByLabelText(name, { selector: "input" }) as HTMLInputElement;
 
+/** Profile done (a name is saved), no model yet: the wizard resumes at "Connect a model". */
 async function toModelStep() {
+  client.getProfile.mockResolvedValue({ ...profile, display_name: "Hartigan" });
   render(<SetupGate />);
   await wizard();
-  fireEvent.click(await screen.findByRole("button", { name: "Get started" }));
   await screen.findByRole("heading", { name: "Connect a model" });
 }
 
@@ -182,21 +188,61 @@ describe("SetupGate", () => {
   });
 });
 
+describe("order: welcome → profile → model → onshape → done", () => {
+  it("get_started_opens_the_profile_first", async () => {
+    render(<SetupGate />);
+    await wizard();
+    const steps = [...screen.getByRole("list", { name: "Setup steps" }).querySelectorAll("li")].map((li) => li.textContent);
+    expect(steps).toEqual(["Welcome", "Profile", "Model", "Onshape", "Done"]);
+    fireEvent.click(await screen.findByRole("button", { name: "Get started" }));
+    await screen.findByRole("heading", { name: "Your profile" });
+    expect(screen.getByRole("list", { name: "Setup steps" }).querySelector("[aria-current=step]")?.textContent).toBe("Profile");
+  });
+
+  it("profile_saves_name_units_material_theme_then_goes_to_connect_a_model", async () => {
+    render(<SetupGate />);
+    fireEvent.click(await screen.findByRole("button", { name: "Get started" }));
+    await screen.findByRole("heading", { name: "Your profile" });
+    expect([...(screen.getByLabelText("Units") as HTMLSelectElement).options].map((o) => o.value)).toEqual(["mm"]);
+    expect([...(screen.getByLabelText("Theme") as HTMLSelectElement).options].map((o) => o.value)).toEqual(["system", "light", "dark"]);
+    expect(screen.queryByLabelText("Parallel agents")).toBeNull();       // automatic now (Profile → Agents)
+    const save = screen.getByRole("button", { name: "Save and continue" }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    fireEvent.input(input("Display name"), { target: { value: "Hartigan" } });
+    fireEvent.input(input("Default material"), { target: { value: "PETG" } });
+    fireEvent.change(screen.getByLabelText("Theme"), { target: { value: "dark" } });
+    fireEvent.click(save);
+    await screen.findByRole("heading", { name: "Connect a model" });
+    expect(client.updateProfile).toHaveBeenCalledWith({ display_name: "Hartigan", default_material: "PETG", theme: "dark" });
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    await screen.findByRole("heading", { name: "Your profile" });
+    expect(input("Display name").value).toBe("Hartigan");
+  });
+});
+
 describe("resume", () => {
   it("resumes_at_the_first_missing_step_after_a_reload", async () => {
+    client.getProfile.mockResolvedValue({ ...profile, display_name: "Hartigan" });
     client.setupState.mockResolvedValue({ complete: false, has_model: true, has_onshape: false, missing: ["onshape", "profile"] });
     render(<SetupGate />);
     await screen.findByRole("heading", { name: "Connect Onshape" });
   });
 
+  it("a_model_saved_without_a_profile_resumes_at_the_profile", async () => {
+    client.setupState.mockResolvedValue({ complete: false, has_model: true, has_onshape: false, missing: ["onshape", "profile"] });
+    render(<SetupGate />);
+    await screen.findByRole("heading", { name: "Your profile" });
+  });
+
   it("an_onshape_skip_survives_a_reload_in_the_same_session", async () => {
+    client.getProfile.mockResolvedValue({ ...profile, display_name: "Hartigan" });
     client.setupState.mockResolvedValue({ complete: false, has_model: true, has_onshape: false, missing: ["onshape", "profile"] });
     render(<SetupGate />);
     fireEvent.click(await screen.findByRole("button", { name: "Skip for now" }));
-    await screen.findByRole("heading", { name: "Profile basics" });
+    await screen.findByRole("heading", { name: "Ready" });
     cleanup();
     render(<SetupGate />);
-    await screen.findByRole("heading", { name: "Profile basics" });
+    await screen.findByRole("heading", { name: "Ready" });
   });
 });
 
@@ -359,6 +405,30 @@ describe("model step", () => {
     expect(polls).toBe(0);
   });
 
+  it("default_model_picker_appears_once_a_model_works_and_saves_to_the_profile", async () => {
+    client.getProfile.mockResolvedValue({ ...profile, display_name: "Hartigan" });
+    client.setupState.mockResolvedValue({ complete: false, has_model: true, has_onshape: false, missing: ["onshape", "profile"] });
+    render(<SetupGate />);
+    await screen.findByRole("heading", { name: "Connect Onshape" });
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    await screen.findByRole("heading", { name: "Connect a model" });
+    const card = screen.getByRole("region", { name: "Default model" });
+    fireEvent.click(within(card).getByRole("button", { name: /^Default model/ }));
+    const claude = await within(card).findByRole("group", { name: "Your Claude Code" });
+    fireEvent.click(within(claude).getByRole("button", { name: /opus/ }));
+    await waitFor(() => expect(client.updateProfile).toHaveBeenCalledWith({ default_model: "claude-code/opus" }));
+    await waitFor(() => expect(within(card).getByRole("button", { name: /^Default model: Claude Code · opus/ })).toBeTruthy());
+  });
+
+  it("local_card_shows_ollama_on_this_mac_and_offers_to_start_it", async () => {
+    client.localStatus.mockResolvedValue({ installed: true, running: false, version: "0.12.3", models: [], recommended: [{ name: "qwen3-coder:30b", size_gb: 19, fits: true, note: null }] });
+    await toModelStep();
+    const card = screen.getByRole("region", { name: "Local model" });
+    await waitFor(() => expect(card.textContent).toContain("Ollama isn't running"));
+    fireEvent.click(within(card).getByRole("button", { name: "Start Ollama" }));
+    await waitFor(() => expect(client.localStart).toHaveBeenCalledTimes(1));
+  });
+
   it("each_status_check_has_a_deadline_so_a_hung_request_does_not_stall_sign_in", async () => {
     await toModelStep();
     vi.useFakeTimers();
@@ -377,6 +447,7 @@ describe("model step", () => {
 
 describe("onshape step", () => {
   beforeEach(() => {
+    client.getProfile.mockResolvedValue({ ...profile, display_name: "Hartigan" });
     client.setupState.mockResolvedValue({ complete: false, has_model: true, has_onshape: false, missing: ["onshape", "profile"] });
   });
 
@@ -408,10 +479,10 @@ describe("onshape step", () => {
     expect(err.textContent).toContain("Onshape refused these keys");
   });
 
-  it("skip_for_now_goes_to_profile_without_onshape_calls", async () => {
+  it("skip_for_now_goes_to_done_without_onshape_calls", async () => {
     render(<SetupGate />);
     fireEvent.click(await screen.findByRole("button", { name: "Skip for now" }));
-    await screen.findByRole("heading", { name: "Profile basics" });
+    await screen.findByRole("heading", { name: "Ready" });
     expect(client.setOnshapeKeys).not.toHaveBeenCalled();
     expect(client.testOnshape).not.toHaveBeenCalled();
   });
@@ -429,36 +500,14 @@ describe("profile and done", () => {
     await screen.findByRole("heading", { name: "Ready" });
   });
 
-  it("offers_local_models_the_core_finds_answering_at_their_default_url", async () => {
-    client.models.mockResolvedValue({ default: "ollama/qwen3", vendors: [{ vendor: "ollama", key: "not_needed" }, { vendor: "lmstudio", key: "not_needed" }] });
-    client.testLocal.mockImplementation(async (url: string) => (url === "http://localhost:11434/v1" ? { ok: true } : { ok: false, error: "unreachable" }));
+  it("an_unnamed_profile_is_asked_for_even_when_everything_else_is_saved", async () => {
     render(<SetupGate />);
-    await screen.findByRole("heading", { name: "Profile basics" });
-    await waitFor(() => {
-      const opts = [...(screen.getByLabelText("Default model") as HTMLSelectElement).options].map((o) => o.value);
-      expect(opts).toEqual(["", "ollama/qwen3"]);
-    });
-    expect(client.testLocal).toHaveBeenCalledWith("http://localhost:11434/v1");
-    expect(client.testLocal).toHaveBeenCalledWith("http://localhost:1234/v1");
-  });
-
-  it("offers_only_available_models_and_1_to_4_agents_then_saves", async () => {
-    render(<SetupGate />);
-    await screen.findByRole("heading", { name: "Profile basics" });
-    const modelOpts = [...(screen.getByLabelText("Default model") as HTMLSelectElement).options].map((o) => o.value);
-    expect(modelOpts).toEqual(["", "anthropic/claude-sonnet-5-5", "claude-code/sonnet", "claude-code/opus"]);
-    const agentOpts = [...(screen.getByLabelText("Parallel agents") as HTMLSelectElement).options].map((o) => o.value);
-    expect(agentOpts).toEqual(["auto", "1", "2", "3", "4"]);
-    const save = screen.getByRole("button", { name: "Save and continue" }) as HTMLButtonElement;
-    expect(save.disabled).toBe(true);
+    await screen.findByRole("heading", { name: "Your profile" });
     fireEvent.input(input("Display name"), { target: { value: "Hartigan" } });
-    fireEvent.input(input("Default material"), { target: { value: "PETG" } });
-    fireEvent.change(screen.getByLabelText("Default model"), { target: { value: "claude-code/sonnet" } });
-    fireEvent.change(screen.getByLabelText("Parallel agents"), { target: { value: "3" } });
-    client.setupState.mockResolvedValue({ complete: false, has_model: true, has_onshape: true, missing: [] });
-    fireEvent.click(save);
-    await screen.findByRole("heading", { name: "Ready" });
-    expect(client.updateProfile).toHaveBeenCalledWith({ display_name: "Hartigan", default_material: "PETG", default_model: "claude-code/sonnet", max_parallel_agents: 3 });
+    fireEvent.click(screen.getByRole("button", { name: "Save and continue" }));
+    // a model already works: the model step shows it, with the default model picker
+    await screen.findByRole("heading", { name: "Connect a model" });
+    expect((screen.getByRole("button", { name: "Continue" }) as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("done_marks_setup_complete_and_closes", async () => {

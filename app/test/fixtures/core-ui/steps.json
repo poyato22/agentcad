@@ -1,21 +1,21 @@
 [
   {
     "id": 1,
-    "run_id": "c880718959c0",
-    "ts": 1792895319.527473,
+    "run_id": "b09ba7cc111a",
+    "ts": 1793205257.086158,
     "kind": "message",
     "payload": {
       "role": "user",
       "text": "thicken the mount plate to 6 mm"
     },
-    "evidence_hash": "93235163443db818149ac8d1b082fa99959b13a150eb82d1ffa6658ed85981ce",
+    "evidence_hash": "0eadb5ac13f70b3a9d046f0cb0151ff66bbfad78a5c02594d6575e18662e2b28",
     "prev_hash": null,
     "collapsed": false
   },
   {
     "id": 2,
-    "run_id": "c880718959c0",
-    "ts": 1792895319.5292952,
+    "run_id": "b09ba7cc111a",
+    "ts": 1793205257.090896,
     "kind": "message",
     "payload": {
       "role": "assistant",
@@ -28,14 +28,14 @@
         }
       ]
     },
-    "evidence_hash": "a22c3649f429a4ca2480333a09268a58203ae9040588473bec96451b23b46568",
-    "prev_hash": "93235163443db818149ac8d1b082fa99959b13a150eb82d1ffa6658ed85981ce",
+    "evidence_hash": "1dc3c8ebd61e14ece893785af6d9a34ef1b2bd5c55db9abf2e3b5a39d38ebecf",
+    "prev_hash": "0eadb5ac13f70b3a9d046f0cb0151ff66bbfad78a5c02594d6575e18662e2b28",
     "collapsed": false
   },
   {
     "id": 3,
-    "run_id": "c880718959c0",
-    "ts": 1792895319.52947,
+    "run_id": "b09ba7cc111a",
+    "ts": 1793205257.09117,
     "kind": "tool_call",
     "payload": {
       "call_id": "c1",
@@ -48,14 +48,14 @@
       },
       "name": "mirror_part_create"
     },
-    "evidence_hash": "bcf1703908301c1afc94fec89bd02e18a8c35b8064124e62a5daa7907bfe4c7d",
-    "prev_hash": "a22c3649f429a4ca2480333a09268a58203ae9040588473bec96451b23b46568",
+    "evidence_hash": "b1e809161ea48eed0a077c92a0d2c59a5849da95da02355cb04d6223926801e7",
+    "prev_hash": "1dc3c8ebd61e14ece893785af6d9a34ef1b2bd5c55db9abf2e3b5a39d38ebecf",
     "collapsed": false
   },
   {
     "id": 4,
-    "run_id": "c880718959c0",
-    "ts": 1792895323.32777,
+    "run_id": "b09ba7cc111a",
+    "ts": 1793205298.339836,
     "kind": "tool_result",
     "payload": {
       "call_id": "c1",
@@ -86,6 +86,122 @@
             -1.124175016826848e-17
           ],
           "edges": 18,
+          "face_count": 8,
+          "face_list": [
+            {
+              "area": 100.0,
+              "center": [
+                -20.0,
+                0.0,
+                0.0
+              ],
+              "id": "f0",
+              "normal": [
+                -1.0,
+                0.0,
+                0.0
+              ],
+              "type": "plane"
+            },
+            {
+              "area": 200.0,
+              "center": [
+                0.0,
+                -10.0,
+                0.0
+              ],
+              "id": "f1",
+              "normal": [
+                0.0,
+                -1.0,
+                0.0
+              ],
+              "type": "plane"
+            },
+            {
+              "area": 772.291,
+              "center": [
+                0.0,
+                0.0,
+                2.5
+              ],
+              "id": "f2",
+              "normal": [
+                0.0,
+                0.0,
+                1.0
+              ],
+              "type": "plane"
+            },
+            {
+              "area": 200.0,
+              "center": [
+                0.0,
+                10.0,
+                0.0
+              ],
+              "id": "f3",
+              "normal": [
+                0.0,
+                1.0,
+                0.0
+              ],
+              "type": "plane"
+            },
+            {
+              "area": 772.291,
+              "center": [
+                0.0,
+                0.0,
+                -2.5
+              ],
+              "id": "f4",
+              "normal": [
+                0.0,
+                0.0,
+                -1.0
+              ],
+              "type": "plane"
+            },
+            {
+              "area": 100.0,
+              "center": [
+                20.0,
+                0.0,
+                0.0
+              ],
+              "id": "f5",
+              "normal": [
+                1.0,
+                0.0,
+                0.0
+              ],
+              "type": "plane"
+            },
+            {
+              "area": 65.973,
+              "center": [
+                -10.0,
+                0.0,
+                0.0
+              ],
+              "id": "f6",
+              "normal": null,
+              "type": "cylinder"
+            },
+            {
+              "area": 65.973,
+              "center": [
+                10.0,
+                0.0,
+                0.0
+              ],
+              "id": "f7",
+              "normal": null,
+              "type": "cylinder"
+            }
+          ],
+          "face_list_truncated": false,
           "faces": 8,
           "holes": [
             {
@@ -133,14 +249,14 @@
         "warnings": []
       }
     },
-    "evidence_hash": "e832627702a0674fe24c50a7208ca9e31168df6d2eb7309125c60c8fa4c44adf",
-    "prev_hash": "bcf1703908301c1afc94fec89bd02e18a8c35b8064124e62a5daa7907bfe4c7d",
+    "evidence_hash": "2c5c17f8c6a6af08b031db2c841fb7de5821a59deffb1352fd73d29d2834fc49",
+    "prev_hash": "b1e809161ea48eed0a077c92a0d2c59a5849da95da02355cb04d6223926801e7",
     "collapsed": false
   },
   {
     "id": 5,
-    "run_id": "c880718959c0",
-    "ts": 1792895323.328498,
+    "run_id": "b09ba7cc111a",
+    "ts": 1793205298.3412118,
     "kind": "message",
     "payload": {
       "role": "assistant",
@@ -153,14 +269,14 @@
         }
       ]
     },
-    "evidence_hash": "d6e6fa6d76e94ead9bcaf4e900f61cc5e0b5961627fa7f73e06c3ed1493e356e",
-    "prev_hash": "e832627702a0674fe24c50a7208ca9e31168df6d2eb7309125c60c8fa4c44adf",
+    "evidence_hash": "2a16d77feef703d357d4fc037d480b166a7653b8fe5aac831b4ed4d0fd866d3a",
+    "prev_hash": "2c5c17f8c6a6af08b031db2c841fb7de5821a59deffb1352fd73d29d2834fc49",
     "collapsed": false
   },
   {
     "id": 6,
-    "run_id": "c880718959c0",
-    "ts": 1792895323.3286269,
+    "run_id": "b09ba7cc111a",
+    "ts": 1793205298.3413508,
     "kind": "tool_call",
     "payload": {
       "call_id": "c2",
@@ -172,14 +288,14 @@
       },
       "name": "mirror_part_set_vars"
     },
-    "evidence_hash": "c0ea36c66b611fa13679d57491123ab6cf6ad64328da59058a4d8439566b4362",
-    "prev_hash": "d6e6fa6d76e94ead9bcaf4e900f61cc5e0b5961627fa7f73e06c3ed1493e356e",
+    "evidence_hash": "d0882580549c14c0701f92e3270e944cd51420a968d777d729d4ff9740f84610",
+    "prev_hash": "2a16d77feef703d357d4fc037d480b166a7653b8fe5aac831b4ed4d0fd866d3a",
     "collapsed": false
   },
   {
     "id": 7,
-    "run_id": "c880718959c0",
-    "ts": 1792895326.206549,
+    "run_id": "b09ba7cc111a",
+    "ts": 1793205302.516396,
     "kind": "diff",
     "payload": {
       "call_id": "c2",
@@ -219,6 +335,122 @@
             "volume_mm3": 772.2911527953379
           },
           "edges": 18,
+          "face_count": 8,
+          "face_list": [
+            {
+              "area": 120.0,
+              "center": [
+                -20.0,
+                0.0,
+                0.0
+              ],
+              "id": "f0",
+              "normal": [
+                -1.0,
+                0.0,
+                0.0
+              ],
+              "type": "plane"
+            },
+            {
+              "area": 240.0,
+              "center": [
+                0.0,
+                -10.0,
+                0.0
+              ],
+              "id": "f1",
+              "normal": [
+                0.0,
+                -1.0,
+                0.0
+              ],
+              "type": "plane"
+            },
+            {
+              "area": 772.291,
+              "center": [
+                0.0,
+                0.0,
+                3.0
+              ],
+              "id": "f2",
+              "normal": [
+                0.0,
+                0.0,
+                1.0
+              ],
+              "type": "plane"
+            },
+            {
+              "area": 240.0,
+              "center": [
+                0.0,
+                10.0,
+                0.0
+              ],
+              "id": "f3",
+              "normal": [
+                0.0,
+                1.0,
+                0.0
+              ],
+              "type": "plane"
+            },
+            {
+              "area": 772.291,
+              "center": [
+                0.0,
+                0.0,
+                -3.0
+              ],
+              "id": "f4",
+              "normal": [
+                0.0,
+                0.0,
+                -1.0
+              ],
+              "type": "plane"
+            },
+            {
+              "area": 120.0,
+              "center": [
+                20.0,
+                0.0,
+                0.0
+              ],
+              "id": "f5",
+              "normal": [
+                1.0,
+                0.0,
+                0.0
+              ],
+              "type": "plane"
+            },
+            {
+              "area": 79.168,
+              "center": [
+                -10.0,
+                0.0,
+                0.0
+              ],
+              "id": "f6",
+              "normal": null,
+              "type": "cylinder"
+            },
+            {
+              "area": 79.168,
+              "center": [
+                10.0,
+                0.0,
+                0.0
+              ],
+              "id": "f7",
+              "normal": null,
+              "type": "cylinder"
+            }
+          ],
+          "face_list_truncated": false,
           "faces": 8,
           "holes": [
             {
@@ -266,14 +498,14 @@
         "warnings": []
       }
     },
-    "evidence_hash": "861915b8a6f63fa44d69c72be5d3d948455ad10f4782d9d503ff84bd9370f79c",
-    "prev_hash": "c0ea36c66b611fa13679d57491123ab6cf6ad64328da59058a4d8439566b4362",
+    "evidence_hash": "53849f520aa32b4319cc4415a81cbe08736ed3226ae185f73ede092eefbacc58",
+    "prev_hash": "d0882580549c14c0701f92e3270e944cd51420a968d777d729d4ff9740f84610",
     "collapsed": false
   },
   {
     "id": 8,
-    "run_id": "c880718959c0",
-    "ts": 1792895326.206932,
+    "run_id": "b09ba7cc111a",
+    "ts": 1793205302.516942,
     "kind": "message",
     "payload": {
       "role": "assistant",
@@ -286,14 +518,14 @@
         }
       ]
     },
-    "evidence_hash": "15bf5fd64d8d71cdb5b6a5ff37bd71ff7af64b7c8ba372e1e00c0b72a8df94af",
-    "prev_hash": "861915b8a6f63fa44d69c72be5d3d948455ad10f4782d9d503ff84bd9370f79c",
+    "evidence_hash": "cbb367703fa690243bbd87ef8bc80d5f05551963de65fe1b716afc7265941e05",
+    "prev_hash": "53849f520aa32b4319cc4415a81cbe08736ed3226ae185f73ede092eefbacc58",
     "collapsed": false
   },
   {
     "id": 9,
-    "run_id": "c880718959c0",
-    "ts": 1792895326.207092,
+    "run_id": "b09ba7cc111a",
+    "ts": 1793205302.517079,
     "kind": "tool_call",
     "payload": {
       "call_id": "c3",
@@ -302,14 +534,14 @@
       },
       "name": "mirror_measure"
     },
-    "evidence_hash": "f0b6d1e95aef3042b3de1886523238c0054872381fb159c5ed46701ed1d42f65",
-    "prev_hash": "15bf5fd64d8d71cdb5b6a5ff37bd71ff7af64b7c8ba372e1e00c0b72a8df94af",
+    "evidence_hash": "529ddf1ca2e70284781bb83f6d1b30926e2fa498b0b965f41dd480703e8828a3",
+    "prev_hash": "cbb367703fa690243bbd87ef8bc80d5f05551963de65fe1b716afc7265941e05",
     "collapsed": false
   },
   {
     "id": 10,
-    "run_id": "c880718959c0",
-    "ts": 1792895326.207353,
+    "run_id": "b09ba7cc111a",
+    "ts": 1793205302.5173812,
     "kind": "measure",
     "payload": {
       "call_id": "c3",
@@ -340,6 +572,122 @@
             1.7563595855833278e-17
           ],
           "edges": 18,
+          "face_count": 8,
+          "face_list": [
+            {
+              "area": 120.0,
+              "center": [
+                -20.0,
+                0.0,
+                0.0
+              ],
+              "id": "f0",
+              "normal": [
+                -1.0,
+                0.0,
+                0.0
+              ],
+              "type": "plane"
+            },
+            {
+              "area": 240.0,
+              "center": [
+                0.0,
+                -10.0,
+                0.0
+              ],
+              "id": "f1",
+              "normal": [
+                0.0,
+                -1.0,
+                0.0
+              ],
+              "type": "plane"
+            },
+            {
+              "area": 772.291,
+              "center": [
+                0.0,
+                0.0,
+                3.0
+              ],
+              "id": "f2",
+              "normal": [
+                0.0,
+                0.0,
+                1.0
+              ],
+              "type": "plane"
+            },
+            {
+              "area": 240.0,
+              "center": [
+                0.0,
+                10.0,
+                0.0
+              ],
+              "id": "f3",
+              "normal": [
+                0.0,
+                1.0,
+                0.0
+              ],
+              "type": "plane"
+            },
+            {
+              "area": 772.291,
+              "center": [
+                0.0,
+                0.0,
+                -3.0
+              ],
+              "id": "f4",
+              "normal": [
+                0.0,
+                0.0,
+                -1.0
+              ],
+              "type": "plane"
+            },
+            {
+              "area": 120.0,
+              "center": [
+                20.0,
+                0.0,
+                0.0
+              ],
+              "id": "f5",
+              "normal": [
+                1.0,
+                0.0,
+                0.0
+              ],
+              "type": "plane"
+            },
+            {
+              "area": 79.168,
+              "center": [
+                -10.0,
+                0.0,
+                0.0
+              ],
+              "id": "f6",
+              "normal": null,
+              "type": "cylinder"
+            },
+            {
+              "area": 79.168,
+              "center": [
+                10.0,
+                0.0,
+                0.0
+              ],
+              "id": "f7",
+              "normal": null,
+              "type": "cylinder"
+            }
+          ],
+          "face_list_truncated": false,
           "faces": 8,
           "holes": [
             {
@@ -384,14 +732,14 @@
         "warnings": []
       }
     },
-    "evidence_hash": "0256e5862aeee02e6f62c48ad34dbf966f5c1a042a914a8feea03b5a586e4fb2",
-    "prev_hash": "f0b6d1e95aef3042b3de1886523238c0054872381fb159c5ed46701ed1d42f65",
+    "evidence_hash": "2d47cbdd6ad327f3e3c5c9c2acb5352ab9ab61726ae1088bfc32083a7fc532bc",
+    "prev_hash": "529ddf1ca2e70284781bb83f6d1b30926e2fa498b0b965f41dd480703e8828a3",
     "collapsed": false
   },
   {
     "id": 11,
-    "run_id": "c880718959c0",
-    "ts": 1792895326.207614,
+    "run_id": "b09ba7cc111a",
+    "ts": 1793205302.5179148,
     "kind": "message",
     "payload": {
       "role": "assistant",
@@ -404,14 +752,14 @@
         }
       ]
     },
-    "evidence_hash": "c590d056153fa857c57643d455b6376e92fbbba26f78c335a59c11e95ffac84f",
-    "prev_hash": "0256e5862aeee02e6f62c48ad34dbf966f5c1a042a914a8feea03b5a586e4fb2",
+    "evidence_hash": "fee2b35c6b25c19bb71d67b03af21fc4743ac6cd21213f30aaa09a17856aab8f",
+    "prev_hash": "2d47cbdd6ad327f3e3c5c9c2acb5352ab9ab61726ae1088bfc32083a7fc532bc",
     "collapsed": false
   },
   {
     "id": 12,
-    "run_id": "c880718959c0",
-    "ts": 1792895326.207697,
+    "run_id": "b09ba7cc111a",
+    "ts": 1793205302.5181,
     "kind": "tool_call",
     "payload": {
       "call_id": "c4",
@@ -420,8 +768,8 @@
       },
       "name": "fixture_merge"
     },
-    "evidence_hash": "034b958b8fb3c065e1cc17d2bdac1d77ff5b04688ab610373a7aecea83ffd0ae",
-    "prev_hash": "c590d056153fa857c57643d455b6376e92fbbba26f78c335a59c11e95ffac84f",
+    "evidence_hash": "73798291e834a5d6e382a18a968c796075233ec8d92f5d381c2772f9d9081716",
+    "prev_hash": "fee2b35c6b25c19bb71d67b03af21fc4743ac6cd21213f30aaa09a17856aab8f",
     "collapsed": false
   }
 ]

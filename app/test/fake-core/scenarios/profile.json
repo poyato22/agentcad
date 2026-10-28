@@ -25,7 +25,7 @@
     "runs_running": 0, "approvals_pending": 0
   },
   "setup": {
-    "profile": { "display_name": "Hartigan", "setup_completed_at": 1790000000, "local_endpoints": { "ollama": "http://localhost:11434/v1" } },
+    "profile": { "display_name": "Hartigan", "setup_completed_at": 1790000000, "max_parallel_agents": 2, "local_endpoints": { "ollama": "http://localhost:11434/v1" } },
     "keys": { "anthropic": "keychain", "openai": "env", "onshape": "keychain" },
     "claude": { "installed": true, "version": "2.1.4", "signed_in": true, "auth_method": "claude.ai" },
     "login_after_polls": 1,

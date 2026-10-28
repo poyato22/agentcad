@@ -43,6 +43,12 @@ function control(): FakeControl {
   };
 }
 
+/** Open the console in its dense "Details" view (roster · filters · step log) instead of the
+ *  conversation view, for specs about the step log itself. Call before page.goto. */
+export async function useDetailsView(page: import("@playwright/test").Page): Promise<void> {
+  await page.addInitScript(() => { try { localStorage.setItem("mises.console.view", "details"); } catch { /* none */ } });
+}
+
 export const test = base.extend<{ fake: FakeControl }>({
   // eslint-disable-next-line no-empty-pattern
   fake: async ({}, use) => { await use(control()); },

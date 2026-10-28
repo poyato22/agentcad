@@ -45,9 +45,14 @@ export interface FakeSetup {
 
 export const DEFAULT_PROFILE: Profile = {
   display_name: "", units: "mm", default_material: "PLA", default_agent: "designer", default_model: null,
-  onshape_calls_year_cap: 2500, onshape_calls_run_cap: 200, max_parallel_agents: 2, local_endpoints: {},
+  onshape_calls_year_cap: 2500, onshape_calls_run_cap: 200, max_parallel_agents: "auto", local_endpoints: {},
   theme: "system", setup_completed_at: null,
 };
+
+/** Core profile.PROFILE_SCHEMA_VERSION: GET/PUT /profile carry it, and the core's `printers`
+ *  list (the print page's; none here). The app's schema strips both and never sends them. */
+export const PROFILE_SCHEMA_VERSION = 2;
+const withVersion = (p: Profile) => ({ schema_version: PROFILE_SCHEMA_VERSION, ...p, printers: [] });
 
 const EMPTY_CONTEXT = { selected_part_id: null, selected_run_id: null, picks: [] };
 
@@ -148,11 +153,13 @@ const PROFILE_FIELDS: Record<string, (v: unknown) => boolean> = {
   default_model: (v) => v === null || typeof v === "string",
   onshape_calls_year_cap: int(0),
   onshape_calls_run_cap: int(0),
-  max_parallel_agents: int(1, 16),
+  // Plan 4: "auto" (the core sizes it from this Mac and the model) or 1–16
+  max_parallel_agents: (v) => v === "auto" || int(1, 16)(v),
+  theme: (v) => v === "system" || v === "light" || v === "dark",
   local_endpoints: (v) => typeof v === "object" && v !== null && !Array.isArray(v)
     && Object.values(v).every((x) => typeof x === "string" && loopback(x)),
-  theme: (v) => v === "system" || v === "light" || v === "dark",
   setup_completed_at: (v) => v === null || typeof v === "number",
+  schema_version: int(1),
 };
 
 const PART_ID_RE = /^[a-z][a-z0-9_]{1,40}$/;
@@ -173,7 +180,7 @@ function claudeBody(st: FakeSetup): ClaudeCodeStatus {
 
 export function setupRoutes(get: () => FakeSetup, parts: () => readonly PartSummary[] = () => []): Route[] {
   return [
-    { method: "GET", re: /^\/profile$/, h: () => get().profile },
+    { method: "GET", re: /^\/profile$/, h: () => withVersion(get().profile) },
     {
       method: "PUT", re: /^\/profile$/, h: (_m, _q, raw) => {
         if (typeof raw !== "object" || raw === null || Array.isArray(raw)) throw invalidProfile(raw === undefined ? "body must be JSON" : "body must be a JSON object");
@@ -184,6 +191,10 @@ export function setupRoutes(get: () => FakeSetup, parts: () => readonly PartSumm
         for (const [k, v] of Object.entries(b)) {
           const ok = PROFILE_FIELDS[k];
           if (!ok) { errs.push(`${k}: Extra inputs are not permitted`); continue; }
+          if (k === "schema_version") {     // a field of the core's Profile (an int >= 1); always saved as the current one
+            if (!ok(v)) errs.push(`${k}: Input should be valid`);
+            continue;
+          }
           if (k === "setup_completed_at") {
             if (v !== st.profile.setup_completed_at) throw invalidProfile("invalid profile: setup_completed_at is set by POST /setup/complete");
             continue;
@@ -193,7 +204,7 @@ export function setupRoutes(get: () => FakeSetup, parts: () => readonly PartSumm
         }
         if (errs.length) throw invalidProfile(`invalid profile: ${errs.join("; ")}`);
         st.profile = next as unknown as Profile;
-        return st.profile;
+        return withVersion(st.profile);
       },
     },
     { method: "GET", re: /^\/keys$/, h: () => KEY_VENDORS.map((v) => keyStatus(get(), v)) },

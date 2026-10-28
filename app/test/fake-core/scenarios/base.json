@@ -145,7 +145,123 @@
       "vars": {
        "thickness": 5.0
       },
-      "volume_mm3": 3861.4557639766895
+      "volume_mm3": 3861.4557639766895,
+      "face_list": [
+       {
+        "id": "f0",
+        "type": "plane",
+        "center": [
+         -20.0,
+         0.0,
+         0.0
+        ],
+        "normal": [
+         -1.0,
+         0.0,
+         0.0
+        ],
+        "area": 120.0
+       },
+       {
+        "id": "f1",
+        "type": "plane",
+        "center": [
+         0.0,
+         -10.0,
+         0.0
+        ],
+        "normal": [
+         0.0,
+         -1.0,
+         0.0
+        ],
+        "area": 240.0
+       },
+       {
+        "id": "f2",
+        "type": "plane",
+        "center": [
+         0.0,
+         0.0,
+         3.0
+        ],
+        "normal": [
+         0.0,
+         0.0,
+         1.0
+        ],
+        "area": 772.291
+       },
+       {
+        "id": "f3",
+        "type": "plane",
+        "center": [
+         0.0,
+         10.0,
+         0.0
+        ],
+        "normal": [
+         0.0,
+         1.0,
+         0.0
+        ],
+        "area": 240.0
+       },
+       {
+        "id": "f4",
+        "type": "plane",
+        "center": [
+         0.0,
+         0.0,
+         -3.0
+        ],
+        "normal": [
+         0.0,
+         0.0,
+         -1.0
+        ],
+        "area": 772.291
+       },
+       {
+        "id": "f5",
+        "type": "plane",
+        "center": [
+         20.0,
+         0.0,
+         0.0
+        ],
+        "normal": [
+         1.0,
+         0.0,
+         0.0
+        ],
+        "area": 120.0
+       },
+       {
+        "id": "f6",
+        "type": "cylinder",
+        "center": [
+         -10.0,
+         0.0,
+         0.0
+        ],
+        "normal": null,
+        "area": 79.168
+       },
+       {
+        "id": "f7",
+        "type": "cylinder",
+        "center": [
+         10.0,
+         0.0,
+         0.0
+        ],
+        "normal": null,
+        "area": 79.168
+       }
+      ],
+      "face_count": 8,
+      "face_list_truncated": false
      },
      "handles": [],
      "ok": true,
@@ -278,7 +394,123 @@
       "vars": {
        "thickness": 6.0
       },
-      "volume_mm3": 4633.746916772027
+      "volume_mm3": 4633.746916772027,
+      "face_list": [
+       {
+        "id": "f0",
+        "type": "plane",
+        "center": [
+         -20.0,
+         0.0,
+         0.0
+        ],
+        "normal": [
+         -1.0,
+         0.0,
+         0.0
+        ],
+        "area": 120.0
+       },
+       {
+        "id": "f1",
+        "type": "plane",
+        "center": [
+         0.0,
+         -10.0,
+         0.0
+        ],
+        "normal": [
+         0.0,
+         -1.0,
+         0.0
+        ],
+        "area": 240.0
+       },
+       {
+        "id": "f2",
+        "type": "plane",
+        "center": [
+         0.0,
+         0.0,
+         3.0
+        ],
+        "normal": [
+         0.0,
+         0.0,
+         1.0
+        ],
+        "area": 772.291
+       },
+       {
+        "id": "f3",
+        "type": "plane",
+        "center": [
+         0.0,
+         10.0,
+         0.0
+        ],
+        "normal": [
+         0.0,
+         1.0,
+         0.0
+        ],
+        "area": 240.0
+       },
+       {
+        "id": "f4",
+        "type": "plane",
+        "center": [
+         0.0,
+         0.0,
+         -3.0
+        ],
+        "normal": [
+         0.0,
+         0.0,
+         -1.0
+        ],
+        "area": 772.291
+       },
+       {
+        "id": "f5",
+        "type": "plane",
+        "center": [
+         20.0,
+         0.0,
+         0.0
+        ],
+        "normal": [
+         1.0,
+         0.0,
+         0.0
+        ],
+        "area": 120.0
+       },
+       {
+        "id": "f6",
+        "type": "cylinder",
+        "center": [
+         -10.0,
+         0.0,
+         0.0
+        ],
+        "normal": null,
+        "area": 79.168
+       },
+       {
+        "id": "f7",
+        "type": "cylinder",
+        "center": [
+         10.0,
+         0.0,
+         0.0
+        ],
+        "normal": null,
+        "area": 79.168
+       }
+      ],
+      "face_count": 8,
+      "face_list_truncated": false
      },
      "handles": [],
      "ok": true,
@@ -396,7 +628,123 @@
       "part_id": "mount_plate",
       "solids": 1,
       "valid": true,
-      "volume_mm3": 4633.746916772027
+      "volume_mm3": 4633.746916772027,
+      "face_list": [
+       {
+        "id": "f0",
+        "type": "plane",
+        "center": [
+         -20.0,
+         0.0,
+         0.0
+        ],
+        "normal": [
+         -1.0,
+         0.0,
+         0.0
+        ],
+        "area": 120.0
+       },
+       {
+        "id": "f1",
+        "type": "plane",
+        "center": [
+         0.0,
+         -10.0,
+         0.0
+        ],
+        "normal": [
+         0.0,
+         -1.0,
+         0.0
+        ],
+        "area": 240.0
+       },
+       {
+        "id": "f2",
+        "type": "plane",
+        "center": [
+         0.0,
+         0.0,
+         3.0
+        ],
+        "normal": [
+         0.0,
+         0.0,
+         1.0
+        ],
+        "area": 772.291
+       },
+       {
+        "id": "f3",
+        "type": "plane",
+        "center": [
+         0.0,
+         10.0,
+         0.0
+        ],
+        "normal": [
+         0.0,
+         1.0,
+         0.0
+        ],
+        "area": 240.0
+       },
+       {
+        "id": "f4",
+        "type": "plane",
+        "center": [
+         0.0,
+         0.0,
+         -3.0
+        ],
+        "normal": [
+         0.0,
+         0.0,
+         -1.0
+        ],
+        "area": 772.291
+       },
+       {
+        "id": "f5",
+        "type": "plane",
+        "center": [
+         20.0,
+         0.0,
+         0.0
+        ],
+        "normal": [
+         1.0,
+         0.0,
+         0.0
+        ],
+        "area": 120.0
+       },
+       {
+        "id": "f6",
+        "type": "cylinder",
+        "center": [
+         -10.0,
+         0.0,
+         0.0
+        ],
+        "normal": null,
+        "area": 79.168
+       },
+       {
+        "id": "f7",
+        "type": "cylinder",
+        "center": [
+         10.0,
+         0.0,
+         0.0
+        ],
+        "normal": null,
+        "area": 79.168
+       }
+      ],
+      "face_count": 8,
+      "face_list_truncated": false
      },
      "handles": [],
      "ok": true,
@@ -529,7 +877,121 @@
       "depth_mm": 6.0
      }
     ],
-    "solids": 1
+    "solids": 1,
+    "face_list": [
+     {
+      "id": "f0",
+      "type": "plane",
+      "center": [
+       -20.0,
+       0.0,
+       0.0
+      ],
+      "normal": [
+       -1.0,
+       0.0,
+       0.0
+      ],
+      "area": 120.0
+     },
+     {
+      "id": "f1",
+      "type": "plane",
+      "center": [
+       0.0,
+       -10.0,
+       0.0
+      ],
+      "normal": [
+       0.0,
+       -1.0,
+       0.0
+      ],
+      "area": 240.0
+     },
+     {
+      "id": "f2",
+      "type": "plane",
+      "center": [
+       0.0,
+       0.0,
+       3.0
+      ],
+      "normal": [
+       0.0,
+       0.0,
+       1.0
+      ],
+      "area": 772.291
+     },
+     {
+      "id": "f3",
+      "type": "plane",
+      "center": [
+       0.0,
+       10.0,
+       0.0
+      ],
+      "normal": [
+       0.0,
+       1.0,
+       0.0
+      ],
+      "area": 240.0
+     },
+     {
+      "id": "f4",
+      "type": "plane",
+      "center": [
+       0.0,
+       0.0,
+       -3.0
+      ],
+      "normal": [
+       0.0,
+       0.0,
+       -1.0
+      ],
+      "area": 772.291
+     },
+     {
+      "id": "f5",
+      "type": "plane",
+      "center": [
+       20.0,
+       0.0,
+       0.0
+      ],
+      "normal": [
+       1.0,
+       0.0,
+       0.0
+      ],
+      "area": 120.0
+     },
+     {
+      "id": "f6",
+      "type": "cylinder",
+      "center": [
+       -10.0,
+       0.0,
+       0.0
+      ],
+      "normal": null,
+      "area": 79.168
+     },
+     {
+      "id": "f7",
+      "type": "cylinder",
+      "center": [
+       10.0,
+       0.0,
+       0.0
+      ],
+      "normal": null,
+      "area": 79.168
+     }
+    ]
    },
    "mtime": 1792869420.0914402
   }
@@ -561,7 +1023,14 @@
   "vendors": [
    {
     "vendor": "anthropic",
-    "key": "env"
+    "key": "env",
+    "entries": [
+     {
+      "model": "anthropic/claude-opus-5-5",
+      "recommended": "best",
+      "note": "Leads CAD code benchmarks (CADGenBench 86.9% with a tool loop)"
+     }
+    ]
    },
    {
     "vendor": "openai",
@@ -573,15 +1042,38 @@
    },
    {
     "vendor": "openrouter",
-    "key": "none"
+    "key": "none",
+    "models": [
+     "openrouter/qwen/qwen3-coder:free"
+    ],
+    "free": true,
+    "entries": [
+     {
+      "model": "openrouter/qwen/qwen3-coder:free",
+      "recommended": "free",
+      "note": "Free on OpenRouter: 20 requests/min, one run at a time"
+     }
+    ]
    },
    {
     "vendor": "ollama",
-    "key": "not_needed"
+    "key": "not_needed",
+    "models": [
+     "ollama/gpt-oss:20b"
+    ],
+    "entries": [
+     {
+      "model": "ollama/gpt-oss:20b",
+      "recommended": "local",
+      "note": "Safest memory fit: tools and thinking, leaves room for the CAD kernel"
+     }
+    ]
    },
    {
     "vendor": "lmstudio",
-    "key": "not_needed"
+    "key": "not_needed",
+    "models": [],
+    "hint": "LM Studio isn't running \u2014 start its local server (Developer tab)"
    },
    {
     "vendor": "claude-code",
@@ -591,7 +1083,51 @@
      "opus",
      "haiku",
      "fable"
+    ],
+    "entries": [
+     {
+      "model": "claude-code/sonnet",
+      "recommended": null,
+      "note": null
+     },
+     {
+      "model": "claude-code/opus",
+      "recommended": "best",
+      "note": "Leads CAD code benchmarks with a build123d tool loop; uses your Claude Code plan"
+     },
+     {
+      "model": "claude-code/haiku",
+      "recommended": null,
+      "note": null
+     },
+     {
+      "model": "claude-code/fable",
+      "recommended": null,
+      "note": null
+     }
     ]
+   }
+  ],
+  "recommended": [
+   {
+    "model": "claude-code/opus",
+    "recommended": "best",
+    "note": "Leads CAD code benchmarks with a build123d tool loop; uses your Claude Code plan"
+   },
+   {
+    "model": "anthropic/claude-opus-5-5",
+    "recommended": "best",
+    "note": "Leads CAD code benchmarks (CADGenBench 86.9% with a tool loop)"
+   },
+   {
+    "model": "ollama/gpt-oss:20b",
+    "recommended": "local",
+    "note": "Safest memory fit: tools and thinking, leaves room for the CAD kernel"
+   },
+   {
+    "model": "openrouter/qwen/qwen3-coder:free",
+    "recommended": "free",
+    "note": "Free on OpenRouter: 20 requests/min, one run at a time"
    }
   ]
  },
@@ -602,7 +1138,13 @@
   "onshape_cap_year": 2500,
   "runs_running": 1,
   "approvals_pending": 1,
-  "data_dir": "/Users/fake/Library/Application Support/Mises"
+  "data_dir": "/Users/fake/Library/Application Support/Mises",
+  "runs_queued": 0,
+  "parallel": {
+   "limit": 4,
+   "auto": true,
+   "reason": "M5 Pro \u00b7 24 GB \u00b7 cloud model \u2192 4"
+  }
  },
  "script": []
 }
