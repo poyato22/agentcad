@@ -166,4 +166,38 @@ describe("StudiesController", () => {
     expect(body.prompt).toContain("guide only, not a guarantee");
     expect(s.asked.value).toEqual({ simId: DONE.sim_id, runId: "d1", error: null });
   });
+
+  it("a part edit re-reads the shown study, so it turns stale without reselecting", async () => {
+    let edited = false;
+    const c = client({
+      listSims: vi.fn(async () => LIST.map((x) => ({ ...x, stale: edited }))),
+      getSim: vi.fn(async (id: string) => ({ ...(id === DONE.sim_id ? DONE : FAILED), stale: edited })),
+    } as never);
+    const s = new StudiesController(() => c, { pollMs: 1 });
+    await s.loadHistory("mount_plate");
+    await until(() => s.record.value?.sim_id === DONE.sim_id);
+    expect(s.record.value?.stale).toBe(false);
+    edited = true;
+    await s.loadHistory("mount_plate"); // the page calls this when the part's mtime changes
+    await until(() => s.record.value?.stale === true);
+    expect(s.selectedSimId.value).toBe(DONE.sim_id);
+  });
+
+  it("polling pauses while the page is hidden and resumes on mount", async () => {
+    const c = client({
+      listSims: vi.fn(async (f: { runId?: string }) => (f.runId ? [{ ...summaryOf(DONE), status: "running", stage: "solve_fine", results: null }] : LIST)),
+    } as never);
+    const s = new StudiesController(() => c, { pollMs: 2 });
+    await s.start("mount_plate", DEFAULT_SETUP);
+    await until(() => s.active.value?.stage === "solve_fine");
+    s.pause();
+    await new Promise((r) => setTimeout(r, 20));
+    const n = vi.mocked(c.listSims).mock.calls.length;
+    await new Promise((r) => setTimeout(r, 40));
+    expect(vi.mocked(c.listSims).mock.calls.length).toBe(n); // nothing while hidden
+    expect(s.active.value?.runId).toBe("r1"); // still following
+    s.resume();
+    await until(() => vi.mocked(c.listSims).mock.calls.length > n);
+    s.dispose();
+  });
 });

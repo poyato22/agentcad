@@ -62,6 +62,16 @@ describe("fake core /sims", () => {
     }
   });
 
+  it("a study turns stale when its part is rebuilt after it (like the core's geometry hash check)", async () => {
+    core.reset(scenario({ records: "fixtures" }));
+    const [, done] = await client.listSims({ partId: "mount_plate" });
+    expect(done.stale).toBe(false);
+    const parts = core.state.parts.map((p) => ({ ...p, mtime: (done.finished_at ?? 0) + 10 }));
+    core.emit({ type: "note", data: { text: "rebuilt" } }, { parts });
+    expect((await client.listSims({ partId: "mount_plate" }))[1].stale).toBe(true);
+    expect((await client.getSim(done.sim_id)).stale).toBe(true);
+  });
+
   it("bad and unknown ids answer like the core", async () => {
     expect((await client.getSim("nope").catch((e: CoreError) => e) as CoreError).status).toBe(400);
     expect((await client.getSim("sim_000000000000").catch((e: CoreError) => e) as CoreError).status).toBe(404);

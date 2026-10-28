@@ -10,20 +10,23 @@ const WHY: Record<keyof SimSolvers, string> = {
   gmsh: "Studies mesh the part with gmsh, which ships with the Mises core. It is missing.",
 };
 
+/** The command to copy: the `quoted` part of a hint like "run `uv sync` in core/", else all of it. */
+export function installCommand(install: string): string {
+  const m = /`([^`]+)`/.exec(install);
+  return (m ? m[1] : install).trim();
+}
+
 function Missing({ k, info }: { k: keyof SimSolvers; info: SolverInfo }): JSX.Element {
   const [copied, setCopied] = useState(false);
-  const isCommand = k === "ccx";
   return (
     <div class="st-install-item">
       <p><span class="st-band-title">{info.name} is not installed</span></p>
       <p class="dim">{WHY[k]} Install it with:</p>
       <div class="st-cmd">
         <code class="text">{info.install}</code>
-        {isCommand && (
-          <Button variant="ghost" onClick={() => {
-            void navigator.clipboard?.writeText(info.install).then(() => setCopied(true), () => setCopied(false));
-          }}>{copied ? "copied" : "copy"}</Button>
-        )}
+        <Button variant="ghost" aria-label={`Copy the install command for ${info.name}`} onClick={() => {
+          void navigator.clipboard?.writeText(installCommand(info.install)).then(() => setCopied(true), () => setCopied(false));
+        }}>{copied ? "copied" : "copy"}</Button>
       </div>
     </div>
   );

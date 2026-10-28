@@ -65,7 +65,7 @@ for (const theme of ["dark", "light"] as const) {
     await expect(page.getByTestId("error-band")).toContainText("±5.1%");
     await expect(page.getByTestId("guide-label")).toContainText("GUIDE ONLY");
     await expect(page.getByTestId("guide-label")).toContainText("guide only, not a guarantee");
-    await expect(page.getByTestId("solver-label")).toContainText("CalculiX 2.23 · C3D10 (quadratic tetrahedra) · gmsh 4.15.2 mesh 1.5 mm (coarse 3 mm, 16,752 nodes) · PETG isotropic linear elastic, strength ×0.7 FDM knock-down");
+    await expect(page.getByTestId("solver-label")).toContainText("CalculiX 2.23 · C3D10 (quadratic tetrahedra) · gmsh 4.15.2 mesh 1.5 mm (coarse 3 mm, 16,752 nodes) · PETG isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers · fidelity fem");
     await expect(page.getByTestId("legend")).toContainText("MPa");
     await expect(page.getByTestId("legend")).toContainText("10.4");
     // design | stress split: both sheets render; the stress one is the heatmap
@@ -175,8 +175,32 @@ test("ask_agent_to_fix_starts_a_designer_run_with_the_result", async ({ page, fa
   expect(body.edit_scope).toEqual(["mount_plate"]);
   expect(body.prompt).toContain("guide only, not a guarantee");
   expect(body.prompt).toContain("including the fixed face 3.17");
+  // the result travels as a nonce-delimited untrusted-data block, instructions outside it
+  const nonce = /<study_result nonce="([0-9a-f]+)">/.exec(body.prompt)?.[1];
+  expect(nonce).toBeTruthy();
+  const inside = body.prompt.slice(body.prompt.indexOf(`<study_result nonce="${nonce}">`), body.prompt.indexOf(`</study_result nonce="${nonce}">`));
+  expect(inside).toContain("including the fixed face 3.17");
+  expect(body.prompt.slice(0, body.prompt.indexOf(`<study_result nonce="${nonce}">`))).toContain("untrusted data");
   // the console opens on the new run
   await expect(page.locator("[data-region=app]")).toHaveAttribute("data-console", "open");
+  // once sent, Ask stays off for this study; "Open run" goes back to it
+  await expect(page.getByRole("button", { name: "Ask agent to fix" })).toBeDisabled();
+  await page.getByRole("button", { name: "Collapse the agent console" }).click();
+  await page.getByRole("button", { name: "Open run" }).click();
+  await expect(page.locator("[data-region=app]")).toHaveAttribute("data-console", "open");
+  expect((await fake.calls()).filter((c) => c.method === "POST" && c.path === "/runs")).toHaveLength(1);
+});
+
+test("the_stale_banner_appears_when_the_part_changes_while_the_page_is_open", async ({ page, fake }) => {
+  await fake.reset(withSims({ records: "fixtures" }) as never);
+  await open(page);
+  await expect(page.getByTestId("sf")).toContainText("3.17");
+  await expect(page.getByTestId("stale")).toHaveCount(0);
+  // an agent edits the part: the core bumps its mtime and the app refetches /parts
+  const parts = (BASE.parts as { mtime: number }[]).map((p) => ({ ...p, mtime: Date.now() / 1000 + 60 }));
+  await fake.emit({ type: "tool_result", run_id: "b7c79a57cbb4", data: { call_id: "st1", name: "mirror_part_set_vars", ok: true, summary: "ok" } }, { parts } as never);
+  await expect(page.getByTestId("stale")).toContainText("geometry changed since this study", { timeout: 10_000 });
+  await expect(page.getByTestId("study-row").nth(1)).toHaveAttribute("aria-current", "true"); // no reselecting
 });
 
 test("visual_rules_square_corners_and_blue_only_on_the_selected_row", async ({ page, fake }) => {

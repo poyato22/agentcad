@@ -15,7 +15,7 @@ export function SolverLabel({ rec }: { rec: SimRecord }): JSX.Element {
   const parts = [
     rec.solver ? `${rec.solver.name} ${rec.solver.version} · ${rec.solver.element}` : "CalculiX",
     rec.mesh ? `${rec.mesh.mesher} ${rec.mesh.mesher_version} mesh ${sig3(rec.mesh.fine.size_mm)} mm (coarse ${sig3(rec.mesh.coarse.size_mm)} mm, ${sig3(rec.mesh.fine.nodes)} nodes)` : null,
-    `${m.name} ${m.model.split(";")[0]}, strength ×${m.knockdown} FDM knock-down`,
+    `${m.name} ${m.model}`, // in full (it wraps): the model, the knock-down and why
     `fidelity ${rec.fidelity_class}`,
   ].filter(Boolean);
   return <p class="st-solver text" data-testid="solver-label">{parts.join(" · ")}</p>;
@@ -30,8 +30,9 @@ export function GuideLabel({ rec }: { rec: SimRecord }): JSX.Element {
   );
 }
 
-export function Results({ rec, onAsk, asked }: {
-  rec: SimRecord; onAsk: () => void;
+export function Results({ rec, onAsk, onOpenRun, asked }: {
+  rec: SimRecord; onAsk: () => void; onOpenRun: (runId: string) => void;
+  /** This study's "Ask agent to fix": sending (runId and error null), sent (runId) or failed (error). */
   asked: { runId: string | null; error: string | null } | null;
 }): JSX.Element {
   const r = rec.results;
@@ -61,7 +62,7 @@ export function Results({ rec, onAsk, asked }: {
       <GuideLabel rec={rec} />
       {rec.stale && (
         <div class="st-band st-band-amber" data-testid="stale">
-          <Led tone="amber" /><span>The part changed since this study: run it again for the current geometry.</span>
+          <Led tone="amber" /><span>The part's geometry changed since this study: run it again for the current geometry.</span>
         </div>
       )}
       <div class="st-head">
@@ -103,8 +104,14 @@ export function Results({ rec, onAsk, asked }: {
         </ul>
       )}
       <div class="st-actions">
-        <Button onClick={onAsk} disabled={asked !== null && asked.runId === null && asked.error === null}>Ask agent to fix</Button>
-        {asked?.runId && <span class="dim" data-testid="asked">Sent to designer with this result: follow it in the console.</span>}
+        {/* once sent for this study it stays off (one fix run per study result); a failed send can be retried */}
+        <Button onClick={onAsk} disabled={asked !== null && asked.error === null}>Ask agent to fix</Button>
+        {asked?.runId && (
+          <>
+            <span class="dim" data-testid="asked">Sent to designer with this result.</span>
+            <Button variant="ghost" onClick={() => { if (asked.runId) onOpenRun(asked.runId); }}>Open run</Button>
+          </>
+        )}
         {asked?.error && <span class="tone-red text" data-testid="asked">Could not start the designer: {asked.error}</span>}
       </div>
       <details class="st-caveats">

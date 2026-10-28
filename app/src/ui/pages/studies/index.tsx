@@ -54,6 +54,8 @@ export function StudiesPage({ controller = studies, deps = {} }: { controller?: 
   const [checking, setChecking] = useState(false);
 
   useEffect(() => { void c.loadSolvers(); }, [c]);
+  // the controller outlives the page (it remembers a running study); it only polls while shown
+  useEffect(() => { c.resume(); return () => c.pause(); }, [c]);
   useEffect(() => { if (partId) void c.loadHistory(partId); }, [c, partId, part?.mtime]);
   useEffect(() => {
     if (setupTouched) return;
@@ -71,10 +73,11 @@ export function StudiesPage({ controller = studies, deps = {} }: { controller?: 
       : c.ccxMissing.value ? "Install CalculiX to run studies." : null;
   const canRun = why === null && solvers !== null;
 
+  const openRun = (runId: string) => { actions.selectRun(runId); setConsoleCollapsed(false); };
   const onAsk = async () => {
     if (!recShown) return;
     const runId = await c.ask(recShown);
-    if (runId) { actions.selectRun(runId); setConsoleCollapsed(false); }
+    if (runId) openRun(runId);
   };
   const asked = c.asked.value && recShown && c.asked.value.simId === recShown.sim_id ? c.asked.value : null;
 
@@ -128,7 +131,7 @@ export function StudiesPage({ controller = studies, deps = {} }: { controller?: 
           {partId && built && recShown && recShown.status === "done" && (
             <SplitViewer partId={partId} mtime={part.mtime} simId={recShown.sim_id} range={recShown.color_range_mpa ?? null} glb={deps.glb ?? coreGlb} />
           )}
-          {recShown && <Results rec={recShown} onAsk={() => { void onAsk(); }} asked={asked} />}
+          {recShown && <Results rec={recShown} onAsk={() => { void onAsk(); }} onOpenRun={openRun} asked={asked} />}
           {partId && built && !recShown && !c.recordError.value && c.history.value.length === 0 && (
             <p class="faint">Set up a study on the left and run it. Results are a guide, not a guarantee.</p>
           )}

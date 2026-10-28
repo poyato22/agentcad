@@ -121,7 +121,13 @@ export function simRoutes(d: SimDeps): Route[] {
     if (!r) throw mises("not_found", `no study ${id}`);
     return r;
   };
-  const sorted = () => [...d.sims().records.values()].sort((a, b) => b.created_at - a.created_at);
+  /** Like the core's geometry-hash check: stale once the part was rebuilt after the study (or is gone). */
+  const withStale = (r: SimRecord): SimRecord => {
+    const p = d.parts().find((x) => x.part_id === r.part_id);
+    const stale = r.stale || !p || p.mtime > (r.finished_at ?? r.created_at);
+    return { ...structuredClone(r), stale };
+  };
+  const sorted = () => [...d.sims().records.values()].sort((a, b) => b.created_at - a.created_at).map(withStale);
 
   return [
     { method: "GET", re: /^\/sims\/solvers$/, h: () => structuredClone(d.sims().ccx ? REAL.solvers : REAL.solversMissing) },
@@ -133,7 +139,7 @@ export function simRoutes(d: SimDeps): Route[] {
         return sorted().filter((r) => (part === null || r.part_id === part) && (run === null || r.run_id === run)).map(summary);
       },
     },
-    { method: "GET", re: /^\/sims\/([^/]+)$/, h: (m) => structuredClone(record(decodeURIComponent(m[1]))) },
+    { method: "GET", re: /^\/sims\/([^/]+)$/, h: (m) => withStale(record(decodeURIComponent(m[1]))) },
     {
       method: "GET", re: /^\/sims\/([^/]+)\/result\.glb$/, h: (m, _q, _b, r, res) => {
         const rec = record(decodeURIComponent(m[1]));

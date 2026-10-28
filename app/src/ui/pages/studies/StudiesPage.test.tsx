@@ -53,7 +53,9 @@ describe("StudiesPage", () => {
     expect(getByTestId("error-band").textContent).toContain("±5.1%");
     expect(getByTestId("guide-label").textContent).toContain("guide only, not a guarantee");
     const solver = getByTestId("solver-label").textContent ?? "";
-    for (const s of ["CalculiX 2.23", "C3D10", "gmsh 4.15.2", "1.5 mm", "coarse 3 mm", "PETG", "isotropic linear elastic", "×0.7"]) expect(solver).toContain(s);
+    for (const s of ["CalculiX 2.23", "C3D10", "gmsh 4.15.2", "1.5 mm", "coarse 3 mm", "PETG"]) expect(solver).toContain(s);
+    // the material model in full, not cut at the first ";"
+    expect(solver).toContain(`PETG ${DONE.material.model}`);
     expect(getByTestId("legend").textContent).toContain("MPa");
     expect(getByTestId("legend").textContent).toContain("10.4");
     expect(container.textContent).toContain("FIG. 1 — DESIGN");
@@ -80,6 +82,33 @@ describe("StudiesPage", () => {
     expect(card.textContent).toContain("CalculiX");
     expect(card.textContent).toContain("conda install -c conda-forge calculix");
     expect((getByRole("button", { name: "Run study" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("every missing tool's install command has a Copy button", async () => {
+    const both = fx<{ ccx: object; gmsh: object }>("sims_solvers_missing.json");
+    const solvers = { ...both, gmsh: { ...both.gmsh, found: false, version: null } };
+    const writeText = vi.fn(async () => {});
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    const ctl = new StudiesController(() => client({ simSolvers: vi.fn(async () => solvers) }), { pollMs: 1 });
+    const { findByTestId } = render(<StudiesPage controller={ctl} deps={deps} />);
+    const card = await findByTestId("install-card");
+    const copies = Array.from(card.querySelectorAll("button")).filter((b) => /copy/i.test(b.getAttribute("aria-label") ?? ""));
+    expect(copies).toHaveLength(2);
+    fireEvent.click(copies[0]);
+    fireEvent.click(copies[1]);
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(2));
+    expect(writeText).toHaveBeenNthCalledWith(1, "conda install -c conda-forge calculix");
+    expect(writeText).toHaveBeenNthCalledWith(2, "uv sync"); // the command inside "run `uv sync` in core/"
+  });
+
+  it("polling stops while the page is unmounted and resumes when it mounts again", async () => {
+    const ctl = new StudiesController(() => client(), { pollMs: 1 });
+    const pause = vi.spyOn(ctl, "pause");
+    const resume = vi.spyOn(ctl, "resume");
+    const { unmount } = render(<StudiesPage controller={ctl} deps={deps} />);
+    expect(resume).toHaveBeenCalledTimes(1);
+    unmount();
+    expect(pause).toHaveBeenCalledTimes(1);
   });
 
   it("run sends the setup; a preset fills it; progress shows a Cancel", async () => {
@@ -121,6 +150,36 @@ describe("StudiesPage", () => {
     expect(consoleCollapsed.value).toBe(false);
     expect((await findByTestId("asked")).textContent).toContain("designer");
     expect(vi.mocked(c.createRun).mock.calls[0][0].prompt).toContain("Safety factor 3.17");
+  });
+
+  it("after sending, Ask stays off for that study and 'open run' goes back to the run", async () => {
+    const c = client();
+    const ctl = new StudiesController(() => c, { pollMs: 1 });
+    const { findByRole, getByRole } = render(<StudiesPage controller={ctl} deps={deps} />);
+    const ask = await findByRole("button", { name: "Ask agent to fix" });
+    fireEvent.click(ask);
+    await waitFor(() => expect((ask as HTMLButtonElement).disabled).toBe(true));
+    fireEvent.click(ask);
+    expect(c.createRun).toHaveBeenCalledTimes(1);
+    act(() => { selectedRunId.value = null; setConsoleCollapsed(true); });
+    fireEvent.click(getByRole("button", { name: "Open run" }));
+    expect(selectedRunId.value).toBe("d1");
+    expect(consoleCollapsed.value).toBe(false);
+  });
+
+  it("the stale banner shows when the part changes while the page is open", async () => {
+    let edited = false;
+    const c = client({
+      listSims: vi.fn(async () => LIST.map((x) => ({ ...x, stale: edited }))),
+      getSim: vi.fn(async (id: string) => ({ ...(id === DONE.sim_id ? DONE : FAILED), stale: edited })),
+    });
+    const ctl = new StudiesController(() => c, { pollMs: 1 });
+    const { findByTestId, queryByTestId } = render(<StudiesPage controller={ctl} deps={deps} />);
+    await findByTestId("sf");
+    expect(queryByTestId("stale")).toBeNull();
+    edited = true;
+    act(() => { parts.value = PARTS.map((p) => ({ ...p, mtime: p.mtime + 5 })); }); // an agent edited the part
+    expect((await findByTestId("stale")).textContent).toContain("geometry changed since this study");
   });
 
   it("untrusted text from the core renders as text", async () => {

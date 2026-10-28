@@ -2,7 +2,10 @@
 // being run. A study runs in the core as a "studies" run (POST /sims → 202); the page follows it
 // by polling GET /sims?run_id= (the core documents both that and the sim_progress events; polling
 // needs no change to the shared event reducer) and stops it with POST /runs/{id}/cancel.
-// Kept at module level (one per app) so leaving and re-opening the page keeps following a study.
+// One controller per app (module level, see index.tsx): a study keeps running in the core when the
+// user leaves the page, and `active` remembers it. Polling only runs while the page is mounted:
+// the page calls pause() on unmount and resume() on mount, which polls at once and picks the
+// study up where it is (or shows its result if it finished meanwhile).
 import { computed, signal, type ReadonlySignal, type Signal } from "@preact/signals";
 import { CoreError, type CoreClient } from "../../../api/client";
 import type { SimRecord, SimStage, SimSolvers, SimSummary } from "../../../api/sims";
@@ -47,6 +50,7 @@ export class StudiesController {
   private historySeq = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private disposed = false;
+  private paused = false;
 
   constructor(client: () => StudiesClient, opts: { pollMs?: number } = {}) {
     this.client = client;
@@ -83,9 +87,15 @@ export class StudiesController {
     this.history.value = list;
     this.historyError.value = null;
     const sel = this.selectedSimId.peek();
-    if (sel === null || !list.some((s) => s.sim_id === sel)) {
+    const shown = sel === null ? undefined : list.find((s) => s.sim_id === sel);
+    if (!shown) {
       const pick = list.find((s) => s.status === "done") ?? list.find((s) => s.status !== "running") ?? null;
       if (pick) void this.select(pick.sim_id);
+    } else {
+      // called again when the part's mtime changes: re-read the shown study so its stale flag
+      // (geometry changed since) and status are current without the user reselecting it
+      const rec = this.record.peek();
+      if (rec && rec.sim_id === shown.sim_id && (rec.stale !== shown.stale || rec.status !== shown.status)) void this.select(shown.sim_id);
     }
     // a study of this part still running (started before the page opened): follow it
     const running = list.find((s) => s.status === "running" && s.run_id);
@@ -140,6 +150,8 @@ export class StudiesController {
 
   /** "Ask agent to fix": a designer run, allowed to edit only this part, with the result as context. */
   async ask(rec: SimRecord): Promise<string | null> {
+    const prev = this.asked.peek();
+    if (prev && prev.simId === rec.sim_id && prev.error === null) return prev.runId; // sending or sent: once per study
     this.asked.value = { simId: rec.sim_id, runId: null, error: null };
     try {
       const { run_id } = await this.client().createRun({ agent: "designer", prompt: askPrompt(rec), edit_scope: [rec.part_id] });
@@ -150,6 +162,20 @@ export class StudiesController {
       this.asked.value = { simId: rec.sim_id, runId: null, error: p.hint ? `${p.message} (${p.hint})` : p.message };
       return null;
     }
+  }
+
+  /** Stop polling (the page is hidden). The followed study stays in `active`. */
+  pause(): void {
+    this.paused = true;
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+  }
+
+  /** Poll again (the page is shown): at once, if a study is being followed. */
+  resume(): void {
+    this.paused = false;
+    const a = this.active.peek();
+    if (a) this.schedule(a.runId, 0);
   }
 
   dispose(): void {
@@ -163,14 +189,14 @@ export class StudiesController {
   private failures = 0;
 
   private schedule(runId: string, ms = this.pollMs): void {
-    if (this.disposed) return;
+    if (this.disposed || this.paused) return;
     if (this.timer) clearTimeout(this.timer);
     this.timer = setTimeout(() => { this.timer = null; void this.poll(runId); }, ms);
   }
 
   private async poll(runId: string): Promise<void> {
     const a = this.active.peek();
-    if (!a || a.runId !== runId || this.disposed) return;
+    if (!a || a.runId !== runId || this.disposed || this.paused) return;
     try {
       const [s] = await this.client().listSims({ runId });
       const cur = this.active.peek();
