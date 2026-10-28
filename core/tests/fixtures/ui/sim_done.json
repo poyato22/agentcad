@@ -1,11 +1,11 @@
 {
-  "sim_id": "sim_3abce9e38773",
+  "sim_id": "sim_f17dd532b767",
   "part_id": "mount_plate",
-  "run_id": "3a9ff2ba7882",
+  "run_id": "80d2e2e89bdd",
   "status": "done",
   "stage": "done",
-  "created_at": 1793204152.9369118,
-  "finished_at": 1793204155.709716,
+  "created_at": 1793209396.153652,
+  "finished_at": 1793209400.096739,
   "analysis": "static_linear_elastic",
   "guide": true,
   "label": "guide only, not a guarantee",
@@ -21,7 +21,7 @@
     "material": "PETG",
     "environment": "Desk"
   },
-  "geometry_hash": "cbacff4233fd1ceadeafe97a8cf7780b474a711f931e0c1c33a02d9cb1939abd",
+  "geometry_hash": "b1897377fda914c6dfe502d4853ea90fa69657a619168ee3e18b5ca2246924e8",
   "material": {
     "name": "PETG",
     "e_mpa": 1500.0,
@@ -106,7 +106,7 @@
     "error_band_pct": 5.1,
     "peak_excludes": "nodes on the fixed face"
   },
-  "inputs_hash": "3f98de7b59427a432e488a097b198d271b54161fbcae29d0698c8fe0b46a0e71",
+  "inputs_hash": "b5fe2d6f806982e364207738b072c78bc5b2cf0303c22801df1a09fddbbcfd70",
   "glb": "result.glb",
   "color_range_mpa": [
     0.0,

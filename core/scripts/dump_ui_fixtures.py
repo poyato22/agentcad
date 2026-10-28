@@ -251,6 +251,7 @@ async def dump(out: Path, only: str = "all") -> None:
                 (out / name).write_text(json.dumps(r.json(), indent=2) + "\n")
             (out / "mount_plate.glb").write_bytes((await get("/parts/mount_plate/model.glb")).content)
             await dump_draw_print(out, call, get, rt)
+            await dump_more(out, call, get, run_id)
         if only == "all":
             (out / "events.jsonl").write_text("".join(line + "\n" for line in events))
     finally:
@@ -345,6 +346,85 @@ async def dump_draw_print(out: Path, call, get, rt) -> None:
         write("printer_status_printing.json", (await get("/printers/bench_mk4/status")).json())
     write("printer_status_unreachable.json", (await get("/printers/bench_mk4/status")).json())
     write("printer_delete.json", (await call("DELETE", "/printers/bench_mk4")).json())
+
+
+def _tiny_png(w: int = 8, h: int = 6) -> str:
+    import base64
+    import io
+
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", (w, h), (240, 240, 236)).save(buf, "PNG")
+    return base64.b64encode(buf.getvalue()).decode()
+
+
+SKETCH_BODY = {
+    "sketch": {
+        "units": "mm", "width_mm": 120, "height_mm": 80, "notes": "a bracket, 3 mm wall",
+        "strokes": [
+            {"id": "s1", "kind": "rect", "points": [[10, 10], [70, 10], [70, 40], [10, 40]],
+             "closed": True, "label": "plate"},
+            {"id": "s2", "kind": "circle", "points": [[27.1, 25]], "closed": True, "center": [25, 25],
+             "radius_mm": 2.1, "label": "hole"},
+        ],
+        "dimensions": [
+            {"stroke_id": "s1", "text": "60", "value_mm": 60, "kind": "length"},
+            {"stroke_id": "s2", "text": "⌀4.2", "value_mm": 4.2, "kind": "diameter"},
+        ],
+    },
+}
+
+
+async def dump_more(out: Path, call, get, run_id: str) -> None:
+    """Task 9: the rest of the routes the app calls (contract coverage): health, one run,
+    the UI context, a key stored and removed (in-memory Keychain, set up by dump_draw_print),
+    a sketch stored, read back and started as a run, a model download refused/started, a
+    finished slice cancelled, an external run started and cancelled, the pending card decided,
+    and cancel-all. Mutating calls come last; events.jsonl is already captured."""
+    def write(name: str, data) -> None:
+        (out / name).write_text(json.dumps(data, indent=2) + "\n")
+
+    write("health.json", (await get("/health")).json())
+    write("run.json", (await get(f"/runs/{run_id}")).json())
+    write("context.json", (await get("/context")).json())
+    write("key_set.json", (await call("POST", "/keys/openai", {"secret": "sk-fixture-0000"})).json())
+    write("key_delete.json", (await call("DELETE", "/keys/openai")).json())
+    (out / "drawing.dxf").write_text((await get("/parts/mount_plate/drawing.dxf")).text)
+
+    up = (await call("POST", "/sketches", {**SKETCH_BODY, "photo": {"data_b64": _tiny_png(64, 48),
+                                                                     "name": "napkin.png"},
+                                           "render_png_b64": _tiny_png()})).json()
+    write("sketch_upload.json", up)
+    write("sketch.json", (await get(f"/sketches/{up['sketch_id']}")).json())
+    sk_run = (await call("POST", "/runs", {"agent": "designer", "prompt": "make this bracket",
+                                           "sketch_id": up["sketch_id"]})).json()
+    write("sketch_run.json", sk_run)
+    steps: list = []
+    for _ in range(200):
+        steps = (await get(f"/runs/{sk_run['run_id']}/steps?after_id=0")).json()
+        if steps:
+            break
+        await asyncio.sleep(0.05)
+    write("sketch_run_steps.json", steps[:1])          # the user step: words + sketch context
+
+    write("local_pull.json", (await call("POST", "/local/pull", {"model": "qwen3-coder:30b"})).json())
+    slice_id = json.loads((out / "slice_start.json").read_text())["slice_id"]
+    try:                                   # the slice already finished: the core's refusal
+        await call("POST", f"/slices/{slice_id}/cancel")
+        raise SystemExit("cancelling a finished slice should be refused")
+    except httpx.HTTPStatusError as e:
+        write("slice_cancel_finished.json", {"status": e.response.status_code,
+                                             "body": e.response.json()})
+
+    ext = (await call("POST", "/runs/external", {"agent": "fixture-acp", "provider": "acp",
+                                                 "model": "fixture"})).json()
+    write("run_external.json", ext)
+    write("run_cancel.json", (await call("POST", f"/runs/{ext['run_id']}/cancel")).json())
+    card = next(a for a in (await get("/approvals")).json() if a["action"] == "fixture_merge")
+    write("approval_decide.json", (await call("POST", f"/approvals/{card['id']}/decide",
+                                              {"payload_hash": card["payload_hash"],
+                                               "approve": False})).json())
+    write("cancel_all.json", (await call("POST", "/runs/cancel_all")).json())
 
 
 def main() -> int:

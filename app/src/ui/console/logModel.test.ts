@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Step } from "../../api/types";
-import { buildLog, filterCounts, itemKey, lineDelta, type LogItem } from "./logModel";
+import { buildLog, filterCounts, itemKey, lineDelta, SKETCH_PROCEDURE_START, userWords, type LogItem } from "./logModel";
 import { approval, input, message, pairs, resetIds, run, step, toolCall, toolFailure, toolResult } from "./testSteps";
 
 const FIXTURE_STEPS = JSON.parse(readFileSync(resolve(__dirname, "../../../test/fixtures/core-ui/steps.json"), "utf8")) as Step[];
@@ -372,5 +372,23 @@ describe("buildLog on real core sequences", () => {
     expect(keys).toEqual(["r1/c:c1", "r2/c:c1", "r1/n:5555"]);
     const one = buildLog(input({ stepList: s, runs, selectedRunId: "r1" }));
     expect(one.map(itemKey)).toEqual(["c:c1", "n:5555"]);
+  });
+});
+
+describe("userWords", () => {
+  const SKETCH_STEP = (JSON.parse(readFileSync(resolve(__dirname, "../../../test/fixtures/core-ui/sketch_run_steps.json"), "utf8")) as Step[])[0];
+
+  it("a sketch run's first message shows the user's words, not the procedure Mises added (real core step)", () => {
+    const p = SKETCH_STEP.payload as Record<string, unknown>;
+    expect(String(p.text)).toContain(SKETCH_PROCEDURE_START);           // pinned to the real core
+    expect(userWords(p)).toBe("make this bracket\n\n(sketch attached)");
+    const items = buildLog(input({ runs: [run(SKETCH_STEP.run_id)], stepList: [SKETCH_STEP], selectedRunId: SKETCH_STEP.run_id }));
+    const msg = items.find((i) => i.kind === "message") as Extract<LogItem, { kind: "message" }>;
+    expect(msg.text).toBe("make this bracket\n\n(sketch attached)");
+  });
+
+  it("other messages are unchanged", () => {
+    expect(userWords({ role: "user", text: "make a plate" })).toBe("make a plate");
+    expect(userWords({ role: "user", text: "x", context: { part: 1 } })).toBe("x");
   });
 });

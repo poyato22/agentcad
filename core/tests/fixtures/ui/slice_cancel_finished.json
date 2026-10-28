@@ -1,0 +1,9 @@
+{
+  "status": 404,
+  "body": {
+    "error": "not_found",
+    "message": "that slice is not running",
+    "hint": null,
+    "retryable": false
+  }
+}

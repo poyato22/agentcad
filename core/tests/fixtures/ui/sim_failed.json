@@ -1,11 +1,11 @@
 {
-  "sim_id": "sim_e43a06431dae",
+  "sim_id": "sim_385e9019d289",
   "part_id": "mount_plate",
-  "run_id": "384a673623cc",
+  "run_id": "d2279fcd653f",
   "status": "failed",
   "stage": "failed",
-  "created_at": 1793204155.719275,
-  "finished_at": 1793204155.719479,
+  "created_at": 1793209400.108948,
+  "finished_at": 1793209400.109223,
   "analysis": "static_linear_elastic",
   "guide": true,
   "label": "guide only, not a guarantee",
@@ -21,7 +21,7 @@
     "material": "PETG",
     "environment": "Desk"
   },
-  "geometry_hash": "cbacff4233fd1ceadeafe97a8cf7780b474a711f931e0c1c33a02d9cb1939abd",
+  "geometry_hash": "b1897377fda914c6dfe502d4853ea90fa69657a619168ee3e18b5ca2246924e8",
   "material": {
     "name": "PETG",
     "e_mpa": 1500.0,

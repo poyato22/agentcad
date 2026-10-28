@@ -1,12 +1,12 @@
 [
   {
-    "sim_id": "sim_e43a06431dae",
+    "sim_id": "sim_385e9019d289",
     "part_id": "mount_plate",
-    "run_id": "384a673623cc",
+    "run_id": "d2279fcd653f",
     "status": "failed",
     "stage": "failed",
-    "created_at": 1793204155.719275,
-    "finished_at": 1793204155.719479,
+    "created_at": 1793209400.108948,
+    "finished_at": 1793209400.109223,
     "error": "CalculiX (ccx) is not installed",
     "hint": "install it with: conda install -c conda-forge calculix",
     "inputs": {
@@ -26,13 +26,13 @@
     "stale": false
   },
   {
-    "sim_id": "sim_3abce9e38773",
+    "sim_id": "sim_f17dd532b767",
     "part_id": "mount_plate",
-    "run_id": "3a9ff2ba7882",
+    "run_id": "80d2e2e89bdd",
     "status": "done",
     "stage": "done",
-    "created_at": 1793204152.9369118,
-    "finished_at": 1793204155.709716,
+    "created_at": 1793209396.153652,
+    "finished_at": 1793209400.096739,
     "error": null,
     "hint": null,
     "inputs": {

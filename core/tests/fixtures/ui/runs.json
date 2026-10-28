@@ -1,6 +1,6 @@
 [
   {
-    "id": "b09ba7cc111a",
+    "id": "37dda16f1bfc",
     "parent_id": null,
     "agent": "designer",
     "provider": "fake",
@@ -12,9 +12,9 @@
     "input_tokens": 0,
     "output_tokens": 0,
     "usd": 0.0,
-    "created_at": 1793205257.083924,
-    "updated_at": 1793205257.085506,
-    "owner_pid": 2496,
+    "created_at": 1793209386.273194,
+    "updated_at": 1793209386.273889,
+    "owner_pid": 31503,
     "external": false,
     "session_ref": null
   }

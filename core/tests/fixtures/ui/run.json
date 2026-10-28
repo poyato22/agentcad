@@ -1,0 +1,19 @@
+{
+  "id": "37dda16f1bfc",
+  "parent_id": null,
+  "agent": "designer",
+  "provider": "fake",
+  "model": "fake-model",
+  "task": "thicken the mount plate to 6 mm",
+  "status": "running",
+  "branch": null,
+  "onshape_calls": 0,
+  "input_tokens": 0,
+  "output_tokens": 0,
+  "usd": 0.0,
+  "created_at": 1793209386.273194,
+  "updated_at": 1793209386.273889,
+  "owner_pid": 31503,
+  "external": false,
+  "session_ref": null
+}

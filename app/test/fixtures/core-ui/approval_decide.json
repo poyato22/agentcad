@@ -1,0 +1,16 @@
+{
+  "id": "fe6826cce2be",
+  "run_id": "37dda16f1bfc",
+  "action": "fixture_merge",
+  "payload": {
+    "part_id": "mount_plate"
+  },
+  "payload_hash": "f340f4e1fa8ae34092bf3a8c8d58a3ff866253aadd8512f337db0b56512710b9",
+  "microversion": null,
+  "deltas": {},
+  "status": "rejected",
+  "expires_at": 1793211196.086884,
+  "decided_by": "local-user",
+  "decided_at": 1793209406.298367,
+  "edited_payload": null
+}

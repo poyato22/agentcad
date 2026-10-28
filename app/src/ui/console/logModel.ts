@@ -137,6 +137,21 @@ function countsFrom(base: Raw[], expanded: ReadonlySet<string>): Record<LogFilte
   return out;
 }
 
+/** First line of the core's sketch procedure (sketch.py SKETCH_PROCEDURE), appended to a sketch
+ *  run's first message after the user's words. The contract test pins it to the real core. */
+export const SKETCH_PROCEDURE_START = "The sketch is in the <mises-context> block";
+
+/** What the user typed: a sketch run's first message also carries the staged procedure Mises
+ *  added for the model; the thread shows the user's words and a short note instead. */
+export function userWords(p: Record<string, unknown>): string {
+  const text = typeof p.text === "string" ? p.text : "";
+  const ctx = p.context;
+  if (typeof ctx !== "object" || ctx === null || !("sketch" in ctx)) return text;
+  const at = text.indexOf(`\n\n${SKETCH_PROCEDURE_START}`);
+  const words = at >= 0 ? text.slice(0, at) : text;
+  return `${words}\n\n(sketch attached)`;
+}
+
 export const FILTER_KINDS: readonly LogFilter["kind"][] = ["everything", "decisions", "tool_calls", "files", "errors"];
 
 // ---------------------------------------------------------------------------------------------
@@ -254,8 +269,8 @@ function runItems(runId: string, input: BuildLogInput, prevVars: ReadonlyMap<num
     }
     switch (s.kind) {
       case "message": {
-        const text = str(p.text) ?? "";
         const role = p.role === "user" ? "user" : "assistant";
+        const text = role === "user" ? userWords(p) : str(p.text) ?? "";
         open.length = 0;                            // a new message: earlier calls are over
         if (!text.trim()) continue;                 // tool-use-only turn: its calls are the rows
         push({ kind: "message", step: s, role, text }, s.ts);

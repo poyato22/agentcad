@@ -16,7 +16,7 @@ import { handleControl } from "./control";
 import { printingFrom, printingRoutes, stopPrinting, type FakePrinting, type PrintScenario } from "./printing";
 import { setupFrom, setupRoutes, type FakeSetup, type SetupScenario } from "./setup";
 import { cancelSimsOfRun, clearSimTimers, simRoutes, simsFrom, type FakeSims, type SimScenario } from "./sims";
-import { checkRunSketch, sketchRoutes, type FakeSketch } from "./sketch";
+import { checkRunSketch, sketchRoutes, sketchUserPayload, type FakeSketch } from "./sketch";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const SCENARIO_DIR = resolve(HERE, "scenarios");
@@ -379,7 +379,8 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         const queued = limit !== undefined && working >= limit;
         const run = newRun(agent, vendor, model, prompt, claude, queued ? "queued" : "running");
         // a sketch run's user step: like the core, the words sent plus the sketch as `context`
-        appendStep({ kind: "message", payload: { role: "user", text: prompt, ...(sketchId ? { context: { sketch: { sketch_id: sketchId } } } : {}) } }, run.id);
+        const sk = sketchId ? state.sketches.get(sketchId) : undefined;
+        appendStep({ kind: "message", payload: sk ? sketchUserPayload(prompt, sk) : { role: "user", text: prompt } }, run.id);
         if (queued) {
           emit({ type: "run_queued", run_id: run.id, data: { agent, provider: vendor, model, limit } });
           return { run_id: run.id };
