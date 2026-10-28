@@ -39,6 +39,7 @@ class Profile(BaseModel):
     onshape_calls_run_cap: int = Field(200, ge=0)
     max_parallel_agents: int = Field(2, ge=1, le=16)
     local_endpoints: dict[str, str] = {}
+    theme: Literal["system", "light", "dark"] = "system"
     setup_completed_at: float | None = None
 
     @field_validator("local_endpoints")

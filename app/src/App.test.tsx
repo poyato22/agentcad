@@ -49,7 +49,7 @@ describe("App shell", () => {
   it("mounts_the_setup_gate_and_the_profile_button_opens_profile", async () => {
     const setup = { complete: false, has_model: false, has_onshape: false, missing: ["model", "onshape", "profile"] };
     const profile = { display_name: "", units: "mm", default_material: "PLA", default_agent: "designer", default_model: null,
-      onshape_calls_year_cap: 2500, onshape_calls_run_cap: 200, max_parallel_agents: 2, local_endpoints: {}, setup_completed_at: null };
+      onshape_calls_year_cap: 2500, onshape_calls_run_cap: 200, max_parallel_agents: 2, local_endpoints: {}, theme: "system", setup_completed_at: null };
     const c = {
       setupState: vi.fn().mockResolvedValue(setup), getProfile: vi.fn().mockResolvedValue(profile), listKeys: vi.fn().mockResolvedValue([]),
       claudeCodeStatus: vi.fn().mockResolvedValue({ installed: false, version: null, signed_in: false, auth_method: null }),

@@ -65,7 +65,10 @@ test("fold_expand_collapse", async ({ fake, page }) => {
 test("filters_switch", async ({ fake, page }) => {
   await fake.reset("console");
   await page.goto("/");
-  await expect(chip(page, /^errors/)).toHaveText("errors 0");
+  // The errors chip is a global count; CHECKER has the one failed call. Wait for the designer log
+  // to load before switching, rather than racing the boot-time "errors 0" window (which closes as
+  // soon as CHECKER's steps stream in, and faster boots never show it).
+  await expect(rows(page, "message").first()).toContainText("thicken the mount plate to 6 mm");
   await page.locator(`[data-roster] [data-run="${CHECKER}"]`).click();
   await expect(chip(page, /^errors/)).toHaveText("errors 1");
   await chip(page, /^errors/).click();

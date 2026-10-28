@@ -1,7 +1,7 @@
 .topbar {
   /* breadcrumb takes what is left; the lights never run under the tabs (they clip at the far left) */
   position: relative; height: 44px; display: grid; grid-template-columns: minmax(80px, 1fr) auto minmax(0, max-content); align-items: stretch;
-  background: var(--head); border-bottom: 1px solid var(--line2); padding: 0 12px 0 72px; /* room for the macOS window buttons */
+  background: var(--head); border-bottom: 1px solid var(--line2); padding: 0 12px 0 var(--chrome-inset-x); /* room for the macOS traffic lights (78px inset) */
 }
 .topbar-left, .topbar-right { display: flex; align-items: center; min-width: 0; }
 .topbar-right { justify-content: flex-end; gap: 12px; padding-left: 16px; overflow: hidden; }
@@ -14,8 +14,8 @@
   background: transparent; border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 0 14px;
   color: var(--dim); font: inherit; cursor: pointer;
 }
+.tab:hover { color: var(--ink); }
 .tab-active { color: var(--ink); border-bottom-color: var(--blue); }
-.tab[aria-disabled="true"] { color: var(--faint); cursor: default; }
 .tab:focus-visible { outline: 1px solid var(--blue); outline-offset: -3px; }
 .lights { display: flex; gap: 14px; align-items: center; white-space: nowrap; color: var(--dim); font-size: 11px; min-width: 0; overflow: hidden; }
 .light { display: inline-flex; gap: 5px; align-items: center; }

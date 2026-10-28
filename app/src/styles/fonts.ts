@@ -1,7 +1,7 @@
-// Fonts are bundled locally (no network). Plex Mono for all UI text, Plex Sans Condensed for
-// headings and pane titles.
-import "@fontsource/ibm-plex-mono/400.css";
-import "@fontsource/ibm-plex-mono/500.css";
-import "@fontsource/ibm-plex-mono/600.css";
-import "@fontsource/ibm-plex-sans-condensed/500.css";
-import "@fontsource/ibm-plex-sans-condensed/600.css";
+// Fonts are bundled locally (no network). Iosevka (SIL OFL) is the one UI typeface: the regular
+// weights carry all body text, and headings/pane titles use the same family at a heavier weight.
+// Bloomberg's own terminal face is proprietary and is never bundled or named.
+import "@fontsource/iosevka/400.css";
+import "@fontsource/iosevka/500.css";
+import "@fontsource/iosevka/600.css";
+import "@fontsource/iosevka/700.css";

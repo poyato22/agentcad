@@ -1,25 +1,25 @@
 import type { JSX } from "preact";
+import { activePage, PAGES, setPage } from "../pages/router";
 
-const TABS = ["Design", "Studies", "Sketch", "Drawing", "Print"] as const;
-
-/** Only Design exists in v1; the others are shown disabled. */
+/** The top mode tabs. Every tab is clickable and navigates (⌘1–⌘5 do the same); the active tab is
+ *  underlined in blue. */
 export function ModeTabs(): JSX.Element {
+  const current = activePage.value;
   return (
     <div class="tabs" role="tablist" aria-label="mode">
-      {TABS.map((t) => {
-        const active = t === "Design";
+      {PAGES.map((p) => {
+        const active = p.id === current;
         return (
           <button
-            key={t}
+            key={p.id}
             type="button"
             role="tab"
             class={active ? "tab tab-active active-tab" : "tab"}
             aria-selected={active}
-            aria-disabled={active ? undefined : "true"}
-            title={active ? undefined : "later"}
+            title={`${p.label} (⌘${p.key})`}
             tabIndex={active ? 0 : -1}
-            onClick={(e) => { if (!active) e.preventDefault(); }}
-          >{t}</button>
+            onClick={() => setPage(p.id)}
+          >{p.label}</button>
         );
       })}
     </div>

@@ -8,5 +8,6 @@
   "onshape_calls_run_cap": 200,
   "max_parallel_agents": 2,
   "local_endpoints": {},
+  "theme": "system",
   "setup_completed_at": null
 }

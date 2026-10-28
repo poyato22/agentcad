@@ -15,8 +15,9 @@ export function TopBar(): JSX.Element {
   let anyRunning = false;
   for (const r of runs.value.values()) if (r.status === "running") { anyRunning = true; break; }
   return (
-    <header class="topbar">
-      <div class="topbar-left"><Breadcrumb /></div>
+    // Empty top-bar space is the macOS window drag region (overlay title bar).
+    <header class="topbar" data-tauri-drag-region>
+      <div class="topbar-left" data-tauri-drag-region><Breadcrumb /></div>
       <ModeTabs />
       <div class="topbar-right">
         <StatusLights />
