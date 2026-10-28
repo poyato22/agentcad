@@ -41,12 +41,28 @@ test("wizard_hidden_when_setup_is_complete", async ({ page, fake }) => {
   await expect(wizard(page)).toHaveCount(0);
 });
 
-test("full_path_claude_code_api_key_onshape_profile_done", async ({ page, fake }) => {
+/** The profile step (first after Welcome): name (+ material), then on to "Connect a model". */
+async function fillProfile(page: Page, name = "Hartigan", material?: string) {
+  await expect(heading(page, "Your profile")).toBeVisible();
+  await field(page, "Display name").fill(name);
+  if (material) await field(page, "Default material").fill(material);
+  await page.getByRole("button", { name: "Save and continue" }).click();
+}
+
+test("full_path_profile_claude_code_api_key_onshape_done", async ({ page, fake }) => {
   await fake.reset("setup");
   await page.goto(PAGE);
   await expect(wizard(page)).toBeVisible();
   await expect(wizard(page)).toContainText("Everything stays on this Mac");
+  await expect(page.locator(".setup-steps li")).toHaveText(["Welcome", "Profile", "Model", "Onshape", "Done"]);
   await page.getByRole("button", { name: "Get started" }).click();
+
+  // Your profile first: name, units, material, theme (no parallel-agents number: that's automatic)
+  await expect(heading(page, "Your profile")).toBeVisible();
+  await expect(page.getByLabel("Units")).toHaveValue("mm");
+  await expect(page.getByLabel("Parallel agents")).toHaveCount(0);
+  await page.getByLabel("Theme").selectOption("dark");
+  await fillProfile(page, "Hartigan", "PETG");
 
   // Connect a model: the user's own Claude Code, then an API key as well
   await expect(heading(page, "Connect a model")).toBeVisible();
@@ -67,6 +83,13 @@ test("full_path_claude_code_api_key_onshape_profile_done", async ({ page, fake }
   await expect(page.getByRole("region", { name: "API key" })).toContainText("saved ●●●● from Keychain");
   await expect(key).toHaveValue("");
   await noSecretsAnywhere(page, [API_SECRET]);
+  // the default model for new runs: the same picker as everywhere (only models that work now)
+  const dflt = page.getByRole("region", { name: "Default model" });
+  await dflt.getByRole("button", { name: /^Default model/ }).click();
+  await expect.poll(() => dflt.locator("[data-ref]:not([disabled])").evaluateAll((els) => [...new Set(els.map((e) => e.getAttribute("data-ref")))]))
+    .toEqual(["claude-code/sonnet", "claude-code/opus", "claude-code/haiku", "claude-code/fable", "anthropic/claude-sonnet-5-5"]);
+  await dflt.getByRole("group", { name: "Your Claude Code" }).locator("[data-ref='claude-code/sonnet']").click();
+  await expect(dflt.getByRole("button", { name: /^Default model: Claude Code · sonnet/ })).toBeVisible();
   await cont.click();
 
   // Onshape: save both keys (password fields), then one test call
@@ -84,16 +107,6 @@ test("full_path_claude_code_api_key_onshape_profile_done", async ({ page, fake }
   await noSecretsAnywhere(page, [API_SECRET, ONSHAPE_ACCESS, ONSHAPE_SECRET]);
   await page.getByRole("button", { name: "Continue" }).click();
 
-  // Profile basics: only models that work now; 1–4 agents
-  await expect(heading(page, "Profile basics")).toBeVisible();
-  const modelOpts = await page.getByLabel("Default model").locator("option").evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value));
-  expect(modelOpts).toEqual(["", "anthropic/claude-sonnet-5-5", "claude-code/sonnet", "claude-code/opus", "claude-code/haiku", "claude-code/fable"]);
-  await field(page, "Display name").fill("Hartigan");
-  await field(page, "Default material").fill("PETG");
-  await page.getByLabel("Default model").selectOption("claude-code/sonnet");
-  await page.getByLabel("Parallel agents").selectOption("3");
-  await page.getByRole("button", { name: "Save and continue" }).click();
-
   await expect(heading(page, "Ready")).toBeVisible();
   await page.getByRole("button", { name: "Start using Mises" }).click();
   await expect(wizard(page)).toHaveCount(0);
@@ -105,7 +118,7 @@ test("full_path_claude_code_api_key_onshape_profile_done", async ({ page, fake }
   expect(n("POST", "/setup/complete")).toBe(1);
   expect(await getJson(fake, "/setup")).toEqual({ complete: true, has_model: true, has_onshape: true, missing: [] });
   expect(await getJson(fake, "/profile")).toMatchObject({
-    display_name: "Hartigan", default_material: "PETG", default_model: "claude-code/sonnet", max_parallel_agents: 3,
+    display_name: "Hartigan", default_material: "PETG", default_model: "claude-code/sonnet", theme: "dark",
   });
 
   // a reload does not bring it back
@@ -120,6 +133,12 @@ test("reload_mid_way_resumes_at_the_first_missing_step", async ({ page, fake }) 
   await fake.reset("setup");
   await page.goto(PAGE);
   await page.getByRole("button", { name: "Get started" }).click();
+  await page.reload();
+  await expect(heading(page, "Welcome to Mises")).toBeVisible();          // nothing saved yet
+  await page.getByRole("button", { name: "Get started" }).click();
+  await fillProfile(page);
+  await page.reload();
+  await expect(heading(page, "Connect a model")).toBeVisible();           // the profile is saved
   await page.getByLabel("Vendor").selectOption("openai");
   await field(page, "API key").fill("sk-openai-E2E");
   await page.getByRole("region", { name: "API key" }).getByRole("button", { name: "Save" }).click();
@@ -128,15 +147,15 @@ test("reload_mid_way_resumes_at_the_first_missing_step", async ({ page, fake }) 
   await page.reload();
   await expect(heading(page, "Connect Onshape")).toBeVisible();
   await page.getByRole("button", { name: "Skip for now" }).click();
-  await expect(heading(page, "Profile basics")).toBeVisible();
+  await expect(heading(page, "Ready")).toBeVisible();
 
   await page.reload();
-  await expect(heading(page, "Profile basics")).toBeVisible();
+  await expect(heading(page, "Ready")).toBeVisible();
   // closing keeps what's saved; the next launch resumes at the same step
   await page.getByRole("button", { name: "Close — finish later" }).click();
   await expect(wizard(page)).toHaveCount(0);
   await page.reload();
-  await expect(heading(page, "Profile basics")).toBeVisible();
+  await expect(heading(page, "Ready")).toBeVisible();
 });
 
 test("local_only_and_skip_onshape_path", async ({ page, fake }) => {
@@ -145,9 +164,8 @@ test("local_only_and_skip_onshape_path", async ({ page, fake }) => {
   await fake.reset(sc);
   await page.goto(PAGE);
   // like the real core, an Ollama answering at its default address already counts as a model:
-  // the wizard opens at Onshape; go back to look at the local model card
-  await expect(heading(page, "Connect Onshape")).toBeVisible();
-  await page.getByRole("button", { name: "Back" }).click();
+  // the wizard opens at the profile (always first), then the model step shows it works
+  await fillProfile(page);
   await expect(heading(page, "Connect a model")).toBeVisible();
   await expect(page.getByRole("button", { name: "Continue" })).toBeEnabled();
   // Local model: the core checks the endpoint and only an answering one is saved
@@ -160,8 +178,6 @@ test("local_only_and_skip_onshape_path", async ({ page, fake }) => {
   await page.getByRole("button", { name: "Continue" }).click();
 
   await page.getByRole("button", { name: "Skip for now" }).click();
-  await field(page, "Display name").fill("Hartigan");
-  await page.getByRole("button", { name: "Save and continue" }).click();
   await expect(wizard(page)).toContainText("Onshape skipped");
   await page.getByRole("button", { name: "Start using Mises" }).click();
   await expect(wizard(page)).toHaveCount(0);
@@ -175,6 +191,7 @@ test("drafting_look_square_corners_and_blue_only_on_the_current_step", async ({ 
   await fake.reset("setup");
   await page.goto(PAGE);
   await page.getByRole("button", { name: "Get started" }).click();
+  await fillProfile(page);
   await expect(heading(page, "Connect a model")).toBeVisible();
   await expect(wizard(page)).toHaveCSS("background-color", "rgb(10, 10, 10)");
   await expect(page.locator(".setup-steps li[aria-current=step]")).toHaveText("Model");
@@ -198,6 +215,7 @@ test("claude_code_not_installed_shows_install_hint", async ({ page, fake }) => {
   await fake.reset(sc);
   await page.goto(PAGE);
   await page.getByRole("button", { name: "Get started" }).click();
+  await fillProfile(page);
   const claude = page.getByRole("region", { name: "Use my Claude Code" });
   await expect(claude).toContainText("isn't installed on this Mac");
   await expect(claude).toContainText("npm install -g @anthropic-ai/claude-code");

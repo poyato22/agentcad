@@ -11,6 +11,7 @@ import { Filters } from "./Filters";
 import { Roster } from "./Roster";
 import { renderStats, StepLog } from "./StepLog";
 import { approval, message, resetIds, run, step, toolCall, toolFailure, toolResult } from "./testSteps";
+import { consoleView, resetConsoleView } from "./view";
 
 const FAKE_TIMERS = { toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "requestAnimationFrame", "cancelAnimationFrame", "Date"] } as const;
 
@@ -23,8 +24,9 @@ function setSteps(list: Step[]) {
 /** Let the log's frame scheduler and Preact flush. */
 async function frame() { await act(async () => { await new Promise((r) => setTimeout(r, 40)); }); }
 
-beforeEach(() => resetIds());
-afterEach(() => { cleanup(); resetStore(); expandedFolds.value = new Set(); vi.useRealTimers(); });
+// These tests cover the dense log: the console's "Details" view (the conversation view has its own tests).
+beforeEach(() => { resetIds(); consoleView.value = "details"; });
+afterEach(() => { cleanup(); resetStore(); expandedFolds.value = new Set(); vi.useRealTimers(); resetConsoleView(); });
 
 describe("StepLog", () => {
   it("burst_one_render_per_frame", async () => {

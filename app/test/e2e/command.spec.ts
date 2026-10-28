@@ -1,10 +1,11 @@
-import { expect, test } from "./fixtures";
+import { expect, test, useDetailsView } from "./fixtures";
 
 const PLANNER = "c0ffee000001";
 
 test.beforeEach(async ({ fake, page }) => {
   await fake.reset("command");
   await page.setViewportSize({ width: 1440, height: 900 });
+  await useDetailsView(page);
 });
 
 test("new_run_flow", async ({ page, fake }) => {
@@ -14,7 +15,7 @@ test("new_run_flow", async ({ page, fake }) => {
   const dialog = page.getByRole("dialog", { name: "New run" });
   await expect(dialog).toBeVisible();
   await dialog.getByLabel("Agent").selectOption("designer");
-  await expect(dialog.getByLabel("Model")).toHaveValue("claude-sonnet-5-5");
+  await expect(dialog.getByRole("button", { name: /^Model: anthropic · claude-sonnet-5-5/ })).toBeVisible();
   await dialog.getByLabel("Task").fill("stiffen the upright");
   await dialog.getByRole("button", { name: "Start" }).click();
   await expect(dialog).toBeHidden();

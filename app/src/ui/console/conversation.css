@@ -1,0 +1,62 @@
+/* Conversation view. Tokens only: blue = selected / being changed by an agent / needs you;
+   red = a failed call or error. Messages are plain text (pre-wrap). */
+.cv-top { flex: none; position: relative; border-bottom: 1px solid var(--line2); background: var(--head); }
+.cv-top-row { display: flex; align-items: center; gap: 4px; padding: 4px 6px; min-width: 0; }
+.cv-switch {
+  display: inline-flex; align-items: center; gap: 6px; min-width: 0; flex: 0 1 auto; padding: 3px 6px; cursor: pointer;
+  background: transparent; border: 1px solid var(--line2); color: var(--ink); font: inherit;
+}
+.cv-switch:hover:not(:disabled) { border-color: var(--dim); }
+.cv-switch:disabled { color: var(--faint); cursor: default; }
+.cv-switch:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
+.cv-switch-l { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+.cv-needs { flex: none; padding: 3px 6px; border: 1px solid var(--blue); background: var(--blue-tint); color: var(--blue2); font: inherit; font-size: var(--fs-small); cursor: pointer; }
+.cv-spacer { flex: 1; min-width: 4px; }
+.cv-who { padding: 0 8px 4px 24px; font-size: 9.5px; letter-spacing: .04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cv-menu { position: absolute; left: 6px; right: 6px; top: 100%; z-index: 20; background: var(--paper2); border: 1px solid var(--line2); max-height: 260px; overflow: auto; }
+.cv-opt { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; gap: 6px; align-items: center; padding: 5px 8px; cursor: pointer; color: var(--dim); }
+.cv-opt:hover { background: var(--paper); }
+.cv-opt:focus-visible { outline: 1px solid var(--blue); outline-offset: -1px; }
+.cv-opt.sel { background: var(--blue-tint); color: var(--ink); box-shadow: inset 2px 0 var(--blue); }
+.cv-opt-l { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
+.cv-opt-s { font-size: 10px; }
+.cv-opt-s.needs-you { color: var(--blue2); }
+.cv-detailsbar { flex: none; display: flex; align-items: center; gap: 6px; padding: 2px 6px 2px 8px; border-bottom: 1px solid var(--line2); background: var(--head); }
+
+.cv-thread { flex: 1; min-height: 0; overflow: auto; padding: 8px 0; display: flex; flex-direction: column; gap: 2px; }
+.cv-empty { padding: 16px 12px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.cv-msg { margin: 6px 10px; padding: 6px 8px; border: 1px solid var(--line); }
+.cv-msg .label { margin-bottom: 2px; }
+.cv-user { background: var(--paper2); margin-left: 40px; }
+.cv-agent { background: transparent; border-color: transparent; padding-left: 0; padding-right: 0; }
+.cv-text { color: var(--ink); line-height: 1.45; }
+.cv-caret { color: var(--blue); }
+.cv-line { display: grid; grid-template-columns: 14px 12px minmax(0, 1fr); gap: 4px; padding: 1px 10px; font-size: 11px; align-items: baseline; }
+.cv-x { border: 0; background: transparent; color: var(--faint); padding: 0; font: inherit; font-size: 10px; cursor: pointer; text-align: left; }
+.cv-x:hover { color: var(--ink); }
+.cv-x:focus-visible { outline: 1px solid var(--blue); }
+.cv-g { text-align: center; }
+.cv-live { color: var(--blue); }
+.cv-fail { color: var(--red); }
+.cv-body { min-width: 0; }
+.cv-hint { display: block; }
+.cv-open { display: flex; flex-direction: column; gap: 4px; margin: 4px 0; }
+.cv-details { margin: 0; }
+.cv-error { margin: 2px 0; }
+.cv-note { padding: 1px 10px 1px 40px; font-size: 10.5px; }
+.cv-fold {
+  margin: 1px 10px 1px 40px; text-align: left; color: var(--faint); font: inherit; font-size: 10.5px;
+  border: 1px dashed var(--line2); padding: 1px 6px; background: transparent; cursor: pointer;
+}
+.cv-fold:hover { color: var(--ink); }
+.cv-card { margin: 4px 0; }
+
+.cv-composer { flex: none; display: flex; flex-direction: column; gap: 5px; padding: 8px; border-top: 1px solid var(--line2); background: var(--paper2); }
+.cv-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-start; }
+.cv-chip { display: inline-flex; align-items: baseline; gap: 6px; border: 1px solid var(--line2); padding: 1px 0 1px 7px; font-size: var(--fs-small); }
+.cv-chip select { border: 0; background: transparent; color: var(--ink); font: inherit; padding: 2px 4px; }
+.cv-chips .mp { flex: 1 1 200px; }
+.cv-desc { font-size: 10.5px; }
+.cv-composer textarea { width: 100%; resize: vertical; }
+.cv-err { color: var(--red); }
+.cv-actions { display: flex; justify-content: flex-end; gap: 6px; }

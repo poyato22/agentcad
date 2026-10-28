@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Page } from "@playwright/test";
-import { expect, test } from "./fixtures";
+import { expect, test, useDetailsView } from "./fixtures";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCENARIO = JSON.parse(readFileSync(resolve(HERE, "../fake-core/scenarios/console.json"), "utf8")) as Record<string, unknown>;
@@ -24,6 +24,7 @@ function assistant(text: string, ts: number) {
 
 test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
+  await useDetailsView(page);          // the dense step log (the conversation view: agent-ux.spec.ts)
 });
 
 test("live_text_streams_then_settles", async ({ fake, page }) => {
