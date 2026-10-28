@@ -2,7 +2,7 @@
 // store's reducer marks a known run queued and refetches the list for an unknown one; until that
 // list arrives the console reads the run once itself (onCoreEvent), so it shows at once. A run
 // the console just created and the store hasn't listed is read the same way.
-import { computed, signal, type ReadonlySignal } from "@preact/signals";
+import { computed, effect, signal, type ReadonlySignal } from "@preact/signals";
 import { onCoreEvent } from "../../api/events";
 import type { AgentRun } from "../../api/types";
 import { debug } from "../../lib/log";
@@ -22,11 +22,25 @@ export function noteRun(id: string): void {
 }
 
 let untap: (() => void) | null = null;
+let unprune: (() => void) | null = null;
+
+/** Drop any pending copy the store now lists, so a stale copy can never reappear as pending. */
+function pruneKnown(): void {
+  const have = runs.peek();
+  const cur = extra.peek();
+  let next: Map<string, AgentRun> | null = null;
+  for (const id of cur.keys()) {
+    if (have.has(id)) { next ??= new Map(cur); next.delete(id); }
+  }
+  if (next) extra.value = next;
+}
 
 /** Start listening for `run_queued` (idempotent). */
 export function watchQueued(): void {
   if (untap) return;
   untap = onCoreEvent((ev) => { if (ev.type === "run_queued" && ev.run_id) noteRun(ev.run_id); });
+  // whenever the store's run list changes, prune pending copies it now holds
+  unprune = effect(() => { void runs.value; pruneKnown(); });
 }
 
 /** Runs the store doesn't list yet (the store's copy always wins). */
@@ -48,4 +62,6 @@ export function resetQueued(): void {
   extra.value = new Map();
   untap?.();
   untap = null;
+  unprune?.();
+  unprune = null;
 }
