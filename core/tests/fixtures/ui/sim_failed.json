@@ -1,0 +1,61 @@
+{
+  "sim_id": "sim_e43a06431dae",
+  "part_id": "mount_plate",
+  "run_id": "384a673623cc",
+  "status": "failed",
+  "stage": "failed",
+  "created_at": 1793204155.719275,
+  "finished_at": 1793204155.719479,
+  "analysis": "static_linear_elastic",
+  "guide": true,
+  "label": "guide only, not a guarantee",
+  "fidelity_class": "fem",
+  "validated_against": null,
+  "inputs": {
+    "fix": "x-min",
+    "load": {
+      "face": "x-max",
+      "newtons": 20.0,
+      "direction": "-z"
+    },
+    "material": "PETG",
+    "environment": "Desk"
+  },
+  "geometry_hash": "cbacff4233fd1ceadeafe97a8cf7780b474a711f931e0c1c33a02d9cb1939abd",
+  "material": {
+    "name": "PETG",
+    "e_mpa": 1500.0,
+    "nu": 0.38,
+    "yield_mpa": 47.0,
+    "density_g_cm3": 1.27,
+    "hdt_c": 68.0,
+    "source": "Prusament PETG TDS v1.1 (printed, horizontal)",
+    "knockdown": 0.7,
+    "allowable_mpa": 32.9,
+    "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers"
+  },
+  "environment": {
+    "name": "Desk",
+    "temperature_c": 23,
+    "flags": [],
+    "suggested": {
+      "fix": "bottom",
+      "load": {
+        "face": "top",
+        "newtons": 20,
+        "direction": "-z"
+      }
+    },
+    "notes": "Indoor, room temperature; a hand pressing down (~2 kg)."
+  },
+  "error": "CalculiX (ccx) is not installed",
+  "hint": "install it with: conda install -c conda-forge calculix",
+  "warnings": [],
+  "caveats": [
+    "Guide only: a linear-elastic FEM estimate, not a certification or a guarantee.",
+    "Isotropic material model; printed parts are weaker across layers, so strength is multiplied by an FDM knock-down of 0.7.",
+    "Small deflections assumed; contact, creep, fatigue, temperature and vibration are not simulated.",
+    "Peak stress excludes nodes on the fixed face (an ideal clamp gives a constraint singularity there); that value and a safety factor including it are reported separately."
+  ],
+  "stale": false
+}

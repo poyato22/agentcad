@@ -1,0 +1,15 @@
+{
+  "ccx": {
+    "name": "CalculiX",
+    "found": true,
+    "path": "/Users/fixture/miniconda3/bin/ccx",
+    "version": "2.23",
+    "install": "conda install -c conda-forge calculix"
+  },
+  "gmsh": {
+    "name": "gmsh",
+    "found": true,
+    "version": "4.15.2",
+    "install": "gmsh is a core dependency: run `uv sync` in core/"
+  }
+}

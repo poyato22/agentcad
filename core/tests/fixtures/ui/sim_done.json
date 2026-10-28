@@ -1,0 +1,116 @@
+{
+  "sim_id": "sim_3abce9e38773",
+  "part_id": "mount_plate",
+  "run_id": "3a9ff2ba7882",
+  "status": "done",
+  "stage": "done",
+  "created_at": 1793204152.9369118,
+  "finished_at": 1793204155.709716,
+  "analysis": "static_linear_elastic",
+  "guide": true,
+  "label": "guide only, not a guarantee",
+  "fidelity_class": "fem",
+  "validated_against": null,
+  "inputs": {
+    "fix": "x-min",
+    "load": {
+      "face": "x-max",
+      "newtons": 20.0,
+      "direction": "-z"
+    },
+    "material": "PETG",
+    "environment": "Desk"
+  },
+  "geometry_hash": "cbacff4233fd1ceadeafe97a8cf7780b474a711f931e0c1c33a02d9cb1939abd",
+  "material": {
+    "name": "PETG",
+    "e_mpa": 1500.0,
+    "nu": 0.38,
+    "yield_mpa": 47.0,
+    "density_g_cm3": 1.27,
+    "hdt_c": 68.0,
+    "source": "Prusament PETG TDS v1.1 (printed, horizontal)",
+    "knockdown": 0.7,
+    "allowable_mpa": 32.9,
+    "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers"
+  },
+  "environment": {
+    "name": "Desk",
+    "temperature_c": 23,
+    "flags": [],
+    "suggested": {
+      "fix": "bottom",
+      "load": {
+        "face": "top",
+        "newtons": 20,
+        "direction": "-z"
+      }
+    },
+    "notes": "Indoor, room temperature; a hand pressing down (~2 kg)."
+  },
+  "error": null,
+  "hint": null,
+  "warnings": [],
+  "caveats": [
+    "Guide only: a linear-elastic FEM estimate, not a certification or a guarantee.",
+    "Isotropic material model; printed parts are weaker across layers, so strength is multiplied by an FDM knock-down of 0.7.",
+    "Small deflections assumed; contact, creep, fatigue, temperature and vibration are not simulated.",
+    "Peak stress excludes nodes on the fixed face (an ideal clamp gives a constraint singularity there); that value and a safety factor including it are reported separately."
+  ],
+  "solver": {
+    "name": "CalculiX",
+    "version": "2.23",
+    "path": "/Users/fixture/miniconda3/bin/ccx",
+    "element": "C3D10 (quadratic tetrahedra)"
+  },
+  "mesh": {
+    "mesher": "gmsh",
+    "mesher_version": "4.15.2",
+    "coarse": {
+      "size_mm": 3.0,
+      "nodes": 6732,
+      "elements": 3784,
+      "fixed_nodes": 107,
+      "loaded_nodes": 75,
+      "dropped_load_n": 0.0
+    },
+    "fine": {
+      "size_mm": 1.5,
+      "nodes": 16752,
+      "elements": 9997,
+      "fixed_nodes": 333,
+      "loaded_nodes": 240,
+      "dropped_load_n": 0.0
+    }
+  },
+  "results": {
+    "max_von_mises_mpa": 10.392413372891163,
+    "max_von_mises_at": [
+      -9.999999999999991,
+      2.1,
+      3.0
+    ],
+    "max_von_mises_at_fixture_mpa": 6.229826616468381,
+    "max_displacement_mm": 0.8316638894083745,
+    "max_displacement_at": [
+      20.0,
+      -2.4868995751603507e-14,
+      3.0
+    ],
+    "safety_factor": 3.165770915716302,
+    "safety_factor_incl_fixture": 3.165770915716302,
+    "allowable_mpa": 32.9,
+    "coarse_max_von_mises_mpa": 10.919695771690655,
+    "coarse_max_displacement_mm": 0.8276497177720116,
+    "error_band": 0.05073724262883155,
+    "error_band_pct": 5.1,
+    "peak_excludes": "nodes on the fixed face"
+  },
+  "inputs_hash": "3f98de7b59427a432e488a097b198d271b54161fbcae29d0698c8fe0b46a0e71",
+  "glb": "result.glb",
+  "color_range_mpa": [
+    0.0,
+    10.392413372891163
+  ],
+  "stale": false
+}

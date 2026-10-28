@@ -6,6 +6,11 @@ irreversible tool (so an approval is pending without Onshape), and records what 
 routes return while that approval is pending.
 
     uv run python scripts/dump_ui_fixtures.py --out tests/fixtures/ui
+
+With CalculiX installed it also runs two static stress studies on that part through
+`POST /sims` (one solved, one with the solver hidden) and records the sim routes, their
+`sim_progress` events and the heatmap GLB (sims_*.json, sim_*.json, sim_events.jsonl,
+sim_result.glb). `--only sims` writes just those files.
 """
 import argparse
 import asyncio
@@ -33,7 +38,77 @@ class _MergeArgs(BaseModel):
     part_id: str = "mount_plate"
 
 
-async def dump(out: Path) -> None:
+async def dump_sims(rt, c, auth, out: Path, required: bool) -> None:
+    """Sim routes (core server/sim_api.py) against the real solver, on the mount_plate part."""
+    import mises.sim.ccx as ccx_mod
+    import mises.sim.tools as sim_tools
+
+    if ccx_mod.find_ccx() is None:
+        msg = "CalculiX (ccx) not found: conda install -c conda-forge calculix"
+        if required:
+            raise SystemExit(msg)
+        print(f"skipping sim fixtures: {msg}", file=sys.stderr)
+        return
+    sub = rt.events.subscribe()
+    events: list[str] = []
+
+    async def get(path: str):
+        r = await c.get(path, headers=auth)
+        r.raise_for_status()
+        return r
+
+    async def study(body: dict) -> dict:
+        r = await c.post("/sims", headers=auth, json=body)
+        assert r.status_code == 202, r.text
+        started = r.json()
+        while True:     # follow the events like the page does, until the studies run finishes
+            ev = await asyncio.wait_for(sub.queue.get(), 600)
+            if ev.run_id == started["run_id"]:
+                events.append(ev.model_dump_json())
+                if ev.type == "run_finished":
+                    break
+        listed = (await get(f"/sims?run_id={started['run_id']}")).json()
+        return {"start": started, "listed": listed}
+
+    try:
+        home = str(Path.home())
+
+        def write(name: str, v) -> None:  # the solver path names this machine's user: anonymise it
+            (out / name).write_text(json.dumps(v, indent=2).replace(home, "/Users/fixture") + "\n")
+        write("sims_solvers.json", (await get("/sims/solvers")).json())
+        body = {"part_id": "mount_plate", "fix": "x-min",
+                "load": {"face": "x-max", "newtons": 20, "direction": "-z"},
+                "material": "PETG", "environment": "Desk"}
+        done = await study(body)
+        write("sims_start.json", done["start"])
+        sim_id = done["listed"][0]["sim_id"]
+        rec = (await get(f"/sims/{sim_id}")).json()
+        assert rec["status"] == "done", rec
+        write("sim_done.json", rec)
+        (out / "sim_result.glb").write_bytes((await get(f"/sims/{sim_id}/result.glb")).content)
+
+        # the same study with CalculiX hidden: a failed record with the install hint
+        real_find = sim_tools.find_ccx
+        sim_tools.find_ccx = lambda: None
+        real_status_find = ccx_mod.find_ccx
+        ccx_mod.find_ccx = lambda: None
+        try:
+            write("sims_solvers_missing.json", (await get("/sims/solvers")).json())
+            failed = await study(body)
+        finally:
+            sim_tools.find_ccx = real_find
+            ccx_mod.find_ccx = real_status_find
+        write("sim_failed.json", (await get(f"/sims/{failed['listed'][0]['sim_id']}")).json())
+        write("sims_list.json", (await get("/sims?part_id=mount_plate")).json())
+        env = await sim_tools.sim_env_list.handler(None, sim_tools.EnvListArgs())
+        write("sim_env.json", env.data)
+        (out / "sim_events.jsonl").write_text("".join(line.replace(home, "/Users/fixture") + "\n"
+                                                      for line in events))
+    finally:
+        sub.close()
+
+
+async def dump(out: Path, only: str = "all") -> None:
     import mises.platform
     import mises.runtime as runtime_mod
     from mises.providers.base import Done, TextDelta, ToolCall
@@ -122,6 +197,10 @@ async def dump(out: Path) -> None:
                 return await call("GET", path)
 
             out.mkdir(parents=True, exist_ok=True)
+            if only in ("all", "sims"):
+                await dump_sims(rt, c, auth, out, required=only == "sims")
+            if only == "sims":
+                return
             routes = {"status.json": "/status", "agents.json": "/agents",
                       "models.json": "/models", "parts.json": "/parts", "runs.json": "/runs",
                       "steps.json": f"/runs/{run_id}/steps", "approvals.json": "/approvals",
@@ -144,7 +223,8 @@ async def dump(out: Path) -> None:
                 r = await call(method, path, body)
                 (out / name).write_text(json.dumps(r.json(), indent=2) + "\n")
             (out / "mount_plate.glb").write_bytes((await get("/parts/mount_plate/model.glb")).content)
-        (out / "events.jsonl").write_text("".join(line + "\n" for line in events))
+        if only == "all":
+            (out / "events.jsonl").write_text("".join(line + "\n" for line in events))
     finally:
         sub.close()
         if run_id is not None:
@@ -159,8 +239,10 @@ async def dump(out: Path) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--out", type=Path, required=True)
+    ap.add_argument("--only", choices=["all", "sims"], default="all",
+                    help="sims: only the sim route fixtures (needs CalculiX)")
     args = ap.parse_args()
-    asyncio.run(dump(args.out))
+    asyncio.run(dump(args.out, args.only))
     print(f"wrote fixtures to {args.out}", file=sys.stderr)
     return 0
 

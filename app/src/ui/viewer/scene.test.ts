@@ -64,6 +64,26 @@ describe("createViewer", () => {
     v.dispose();
   });
 
+  it("edge_color_can_follow_the_theme", async () => {
+    let edge = "#4a4a4a";
+    const r = stubRenderer();
+    const v = createViewer(document.createElement("canvas"), { createRenderer: () => r, edgeColor: () => edge });
+    const p = await loadPart(fixtureBytes());
+    v.setPart(p);
+    expect(edgeColors(p)).toEqual(new Set(["4a4a4a"]));
+    const frame = () => new Promise((ok) => requestAnimationFrame(() => ok(null)));
+    await frame();
+    const before = r.renders;
+    edge = "#e6e6e6";
+    v.setMode("shaded"); // re-applies the style (theme change) and asks for one frame
+    expect(edgeColors(p)).toEqual(new Set(["e6e6e6"]));
+    await frame();
+    expect(r.renders).toBe(before + 1);
+    v.setHighlight(true);
+    expect(edgeColors(p)).toEqual(new Set([hex(HIGHLIGHT_COLOR)]));
+    v.dispose();
+  });
+
   it("renders_on_demand_only", async () => {
     const r = stubRenderer();
     vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation((cb) => { queueMicrotask(() => cb(0)); return 1; });

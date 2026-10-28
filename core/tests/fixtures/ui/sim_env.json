@@ -1,0 +1,164 @@
+{
+  "environments": [
+    {
+      "name": "Desk",
+      "temperature_c": 23,
+      "flags": [],
+      "suggested": {
+        "fix": "bottom",
+        "load": {
+          "face": "top",
+          "newtons": 20,
+          "direction": "-z"
+        }
+      },
+      "notes": "Indoor, room temperature; a hand pressing down (~2 kg)."
+    },
+    {
+      "name": "Outdoor",
+      "temperature_c": 45,
+      "flags": [
+        "uv"
+      ],
+      "suggested": {
+        "fix": "bottom",
+        "load": {
+          "face": "top",
+          "newtons": 30,
+          "direction": "-z"
+        }
+      },
+      "notes": "Sun-heated surface up to ~45 C. UV ageing is not simulated."
+    },
+    {
+      "name": "Bike mount",
+      "temperature_c": 35,
+      "flags": [
+        "vibration",
+        "uv"
+      ],
+      "suggested": {
+        "fix": "bottom",
+        "load": {
+          "face": "top",
+          "newtons": 50,
+          "direction": "-z"
+        }
+      },
+      "notes": "Static equivalent of a ~2 g bump on a ~2.5 kg load. Vibration and fatigue are not simulated."
+    },
+    {
+      "name": "Car dashboard 80\u00b0C",
+      "temperature_c": 80,
+      "flags": [
+        "uv"
+      ],
+      "suggested": {
+        "fix": "bottom",
+        "load": {
+          "face": "top",
+          "newtons": 10,
+          "direction": "-z"
+        }
+      },
+      "notes": "A parked car in summer reaches ~80 C; PLA and PETG soften well below that."
+    }
+  ],
+  "face_presets": [
+    "bottom",
+    "top",
+    "x-min",
+    "x-max",
+    "y-min",
+    "y-max",
+    "z-min",
+    "z-max"
+  ],
+  "face_ids": "or a face id (\"f3\") from mirror_measure face_list / mirror_faces",
+  "directions": [
+    "+x",
+    "-x",
+    "+y",
+    "-y",
+    "+z",
+    "-z"
+  ],
+  "knockdown": 0.7,
+  "materials": [
+    {
+      "name": "PLA",
+      "e_mpa": 2300.0,
+      "nu": 0.35,
+      "yield_mpa": 51.0,
+      "density_g_cm3": 1.24,
+      "hdt_c": 55.0,
+      "source": "Prusament PLA TDS v1.1 (printed, horizontal)",
+      "knockdown": 0.7,
+      "allowable_mpa": 35.699999999999996,
+      "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers"
+    },
+    {
+      "name": "PETG",
+      "e_mpa": 1500.0,
+      "nu": 0.38,
+      "yield_mpa": 47.0,
+      "density_g_cm3": 1.27,
+      "hdt_c": 68.0,
+      "source": "Prusament PETG TDS v1.1 (printed, horizontal)",
+      "knockdown": 0.7,
+      "allowable_mpa": 32.9,
+      "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers"
+    },
+    {
+      "name": "ABS",
+      "e_mpa": 1900.0,
+      "nu": 0.35,
+      "yield_mpa": 35.0,
+      "density_g_cm3": 1.04,
+      "hdt_c": 80.0,
+      "source": "generic FDM ABS, typical TDS low end (approximate)",
+      "knockdown": 0.7,
+      "allowable_mpa": 24.5,
+      "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers"
+    },
+    {
+      "name": "ASA",
+      "e_mpa": 2000.0,
+      "nu": 0.35,
+      "yield_mpa": 40.0,
+      "density_g_cm3": 1.07,
+      "hdt_c": 90.0,
+      "source": "generic FDM ASA, typical TDS low end (approximate)",
+      "knockdown": 0.7,
+      "allowable_mpa": 28.0,
+      "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers"
+    },
+    {
+      "name": "PA-CF",
+      "e_mpa": 3860.0,
+      "nu": 0.35,
+      "yield_mpa": 64.0,
+      "density_g_cm3": 1.06,
+      "hdt_c": 170.0,
+      "source": "Bambu PAHT-CF TDS v2 (X-Y modulus, Z strength)",
+      "knockdown": 0.7,
+      "allowable_mpa": 44.8,
+      "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers"
+    }
+  ],
+  "solvers": {
+    "ccx": {
+      "name": "CalculiX",
+      "found": true,
+      "path": "/Users/fixture/miniconda3/bin/ccx",
+      "version": "2.23",
+      "install": "conda install -c conda-forge calculix"
+    },
+    "gmsh": {
+      "name": "gmsh",
+      "found": true,
+      "version": "4.15.2",
+      "install": "gmsh is a core dependency: run `uv sync` in core/"
+    }
+  }
+}

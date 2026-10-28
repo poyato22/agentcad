@@ -7,6 +7,10 @@ import {
   keyStatusSchema, localTestSchema, modelsInfoSchema, okSchema, onshapeTestSchema, partSummarySchema, profileSchema, runIdSchema, setupStateSchema,
   stepSchema,
 } from "./schemas";
+import {
+  simRecordSchema, simSolversSchema, simStartedSchema, simSummarySchema,
+  type SimRecord, type SimSolvers, type SimStartBody, type SimStarted, type SimSummary,
+} from "./sims";
 import type {
   AgentInfo, AgentRun, Approval, CancelAllResult, ClaudeCodeStatus, CoreInfo, CoreStatusInfo, DecisionBody, ErrorCode, KeyStatus, LocalTestResult,
   ModelsInfo, NewRunBody, OnshapeTestResult, PartSummary, Profile, ProfilePatch, SetupState, Step, UiContext,
@@ -83,17 +87,37 @@ export class CoreClient {
   models(): Promise<ModelsInfo> { return this.json("GET", "/models", modelsInfoSchema); }
   parts(): Promise<PartSummary[]> { return this.json("GET", "/parts", z.array(partSummarySchema)); }
 
-  async partGlb(partId: string, etag?: string): Promise<{ bytes: ArrayBuffer; etag: string } | "not-modified"> {
+  partGlb(partId: string, etag?: string): Promise<{ bytes: ArrayBuffer; etag: string } | "not-modified"> {
+    return this.glb(`/parts/${enc(partId)}/model.glb`, etag);
+  }
+
+  // ---- static stress studies (core server/sim_api.py; Studies page)
+
+  simSolvers(): Promise<SimSolvers> { return this.json("GET", "/sims/solvers", simSolversSchema); }
+  /** Newest first; filter by part and/or by the run that ran them. */
+  listSims(filter: { partId?: string; runId?: string } = {}): Promise<SimSummary[]> {
+    return this.json("GET", "/sims", z.array(simSummarySchema), { query: { part_id: filter.partId, run_id: filter.runId } });
+  }
+  getSim(simId: string): Promise<SimRecord> { return this.json("GET", `/sims/${enc(simId)}`, simRecordSchema); }
+  /** 202: a "studies" run drives sim_static_run through the Gate; cancel it with cancel(run_id). */
+  startSim(body: SimStartBody): Promise<SimStarted> { return this.json("POST", "/sims", simStartedSchema, { body }); }
+  /** The von Mises heatmap (per-vertex COLOR_0, same frame as the part's model.glb). */
+  simGlb(simId: string, etag?: string): Promise<{ bytes: ArrayBuffer; etag: string } | "not-modified"> {
+    return this.glb(`/sims/${enc(simId)}/result.glb`, etag);
+  }
+
+  private async glb(path: string, etag?: string): Promise<{ bytes: ArrayBuffer; etag: string } | "not-modified"> {
     const headers: Record<string, string> = {};
     if (etag) headers["If-None-Match"] = etag;
-    const res = await this.request("GET", `/parts/${enc(partId)}/model.glb`, { headers });
+    const res = await this.request("GET", path, { headers });
     if (res.status === 304) return "not-modified";
     if (!res.ok) throw await toError(res);
     let bytes: ArrayBuffer;
     try {
       bytes = await res.arrayBuffer();
     } catch (e) {
-      throw new CoreError("network", `reading model.glb failed: ${errText(e)}`, { retryable: true });
+      const name = path.slice(path.lastIndexOf("/") + 1);
+      throw new CoreError("network", `reading ${name} failed: ${errText(e)}`, { retryable: true });
     }
     return { bytes, etag: res.headers.get("etag") ?? "" };
   }

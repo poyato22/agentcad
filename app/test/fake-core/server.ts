@@ -14,6 +14,7 @@ import type {
 } from "../../src/api/types";
 import { handleControl } from "./control";
 import { setupFrom, setupRoutes, type FakeSetup, type SetupScenario } from "./setup";
+import { cancelSimsOfRun, clearSimTimers, simRoutes, simsFrom, type FakeSims, type SimScenario } from "./sims";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const SCENARIO_DIR = resolve(HERE, "scenarios");
@@ -80,6 +81,8 @@ export interface Scenario {
   glb?: Record<string, string>;
   /** Profile / keys / Claude Code / Onshape-test state (Plan 3). Absent: setup already complete. */
   setup?: SetupScenario;
+  /** Static stress studies: solver status, stored studies, how POST /sims ends (Studies page). */
+  sims?: SimScenario;
 }
 
 export interface FakeCall { method: string; path: string; query: Record<string, string>; body: unknown; ts: number; ifNoneMatch?: string }
@@ -99,6 +102,7 @@ export interface FakeState {
   on: NonNullable<Scenario["on"]>;
   calls: FakeCall[];
   setup: FakeSetup;
+  sims: FakeSims;
 }
 
 export interface FakeCore {
@@ -138,6 +142,7 @@ function stateFrom(sc: Scenario, token: string): FakeState {
     parts: sc.parts, agents: sc.agents, models: sc.models, status: sc.status,
     glb: sc.glb ?? {}, script: sc.script ?? [], on: sc.on ?? {}, calls: [],
     setup: setupFrom(sc),
+    sims: simsFrom(sc.sims),
   };
 }
 
@@ -283,6 +288,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       }
     }
     for (const q of [...state.questions.values()]) if (q.run_id === id) state.questions.delete(q.question_id);
+    cancelSimsOfRun(state.sims, id); // like the core: the mesher/solver is killed, the study is cancelled
     emit({ type: "run_finished", run_id: id, data: { status: "cancelled", stop_reason: "cancelled", error: null, final_text: null } });
   }
 
@@ -472,6 +478,10 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       },
     },
     ...setupRoutes(() => state.setup, () => state.parts),
+    ...simRoutes({
+      sims: () => state.sims, parts: () => state.parts, defaultMaterial: () => state.setup.profile.default_material,
+      newRun, emit,
+    }),
   ];
 
   /** /models: with a setup block, vendor key status follows the saved keys and Claude Code status. */
@@ -618,6 +628,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     scriptTimers.forEach(clearTimeout);
     scriptTimers = [];
     scriptStarted = false;
+    clearSimTimers(state.sims);
     dropSockets();
     state = stateFrom(loadScenario(scenario), token ?? state.token);
   }
@@ -641,6 +652,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     },
     async stop() {
       scriptTimers.forEach(clearTimeout);
+      clearSimTimers(state.sims);
       dropSockets("terminate");
       wss.close();
       server.closeAllConnections();
@@ -650,7 +662,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
   return api;
 }
 
-const RAW = Symbol("raw-response");
+export const RAW = Symbol("raw-response");
 
 export type Handler = (m: RegExpMatchArray, q: URLSearchParams, body: unknown, r: IncomingMessage, res: ServerResponse) => unknown;
 export interface Route { method: "GET" | "POST" | "PUT" | "DELETE"; re: RegExp; h: Handler }

@@ -29,7 +29,12 @@ export interface RendererLike {
   dispose(): void;
 }
 
-export interface ViewerDeps { createRenderer?: (canvas: HTMLCanvasElement) => RendererLike }
+export interface ViewerDeps {
+  createRenderer?: (canvas: HTMLCanvasElement) => RendererLike;
+  /** Edge color when not highlighted (default EDGE_COLOR). Read on every restyle (setPart / setMode /
+   *  setHighlight), so a theme change takes effect on the next setMode(current mode). */
+  edgeColor?: () => string;
+}
 
 function defaultRenderer(canvas: HTMLCanvasElement): RendererLike {
   // preserveDrawingBuffer: frames are rare (on demand), and it lets tests and screenshots read pixels back.
@@ -67,6 +72,7 @@ export function fitOrtho(camera: THREE.OrthographicCamera, bbox: THREE.Box3, asp
 
 export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): ViewerHandle {
   const renderer = (deps.createRenderer ?? defaultRenderer)(canvas);
+  const edgeColor = deps.edgeColor ?? (() => EDGE_COLOR);
   renderer.setClearColor(0x000000, 0);
   renderer.setPixelRatio(typeof window === "undefined" ? 1 : Math.min(window.devicePixelRatio || 1, 2));
 
@@ -114,7 +120,7 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
     if (!part) return;
     part.object.traverse((o) => {
       if (o instanceof THREE.LineSegments) {
-        (o.material as THREE.LineBasicMaterial).color.set(highlight ? HIGHLIGHT_COLOR : EDGE_COLOR);
+        (o.material as THREE.LineBasicMaterial).color.set(highlight ? HIGHLIGHT_COLOR : edgeColor());
       } else if (o instanceof THREE.Mesh) {
         (o.material as THREE.Material).visible = mode === "shaded";
       }
