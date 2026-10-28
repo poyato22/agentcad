@@ -119,6 +119,9 @@ class SendArgs(BaseModel):
                                           "is bound to exactly these bytes")
     file_name: str = Field(min_length=1, max_length=80,
                            description="the file name that will be uploaded (from print_slice)")
+    host: str = Field(min_length=1, max_length=255,
+                      description="the printer's host as the core filled it from the profile at "
+                                  "card time; the send is refused if the profile's host differs")
 
 
 def upload_name(part_id: str) -> str:
@@ -199,7 +202,15 @@ def _send_target(home: Path, args: SendArgs) -> tuple[dict, PrinterEntry]:
     if rec.get("status") != "done":
         raise MisesError(ErrorCode.INVALID_INPUT, f"slice {args.slice_id} is {rec.get('status')}",
                          hint="wait for the slice to finish or slice again")
+    if rec.get("sent_at"):
+        raise MisesError(ErrorCode.INVALID_INPUT,
+                         f"slice {args.slice_id} was already sent to a printer",
+                         hint="slice again to reprint")
     printer = find_printer(home, args.printer_id)
+    if args.host != printer.host:
+        raise MisesError(ErrorCode.NEEDS_APPROVAL,
+                         "the printer's host changed since this request was made; the approval "
+                         "was bound to a different host", hint="review the printer and ask again")
     if rec.get("model") != printer.model:
         raise MisesError(ErrorCode.DENIED,
                          f"this slice is for a {rec.get('model')}, but {printer.name!r} is a "

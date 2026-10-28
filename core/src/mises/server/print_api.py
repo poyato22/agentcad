@@ -218,6 +218,8 @@ def build_print_router(runtime: Runtime) -> APIRouter:
         rec = read_slice(runtime.home, sid)
         if rec.get("status") != "done":
             raise _bad(f"slice {sid} is {rec.get('status')}", "wait for the slice to finish")
+        if rec.get("sent_at"):
+            raise _bad(f"slice {sid} was already sent to a printer", "slice again to reprint")
         printer = find_printer(runtime.home, printer_id)
         if rec.get("model") != printer.model:
             raise MisesError(ErrorCode.DENIED, f"this slice is for a {rec.get('model')}, but "
@@ -229,7 +231,7 @@ def build_print_router(runtime: Runtime) -> APIRouter:
             return JSONResponse(e.to_dict() | {"state": st.state}, status_code=409)
         call = runtime.ui_tool_call("print_send", {
             "slice_id": sid, "printer_id": printer.id, "gcode_sha256": rec.get("gcode_sha256"),
-            "file_name": rec.get("file_name")})
+            "file_name": rec.get("file_name"), "host": printer.host})
         _trim_calls()
         return {"call_id": call.call_id, "run_id": call.run_id, "status": "running"}
 

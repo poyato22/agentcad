@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from mises.profile import PrinterEntry, Profile
+from mises.profile import PrinterEntry, Profile, load_profile, save_profile
 from mises.types import MisesError
 
 from .conftest import add_printer, make_part
@@ -10,10 +10,10 @@ from .fake_prusalink import FakePrusaLink
 
 
 def send_args(rt, sid, printer_id="mk4_bench"):
-    from mises.print.tools import read_slice
+    from mises.print.tools import find_printer, read_slice
     rec = read_slice(rt.home, sid)
     return {"slice_id": sid, "printer_id": printer_id, "gcode_sha256": rec["gcode_sha256"],
-            "file_name": rec["file_name"]}
+            "file_name": rec["file_name"], "host": find_printer(rt.home, printer_id).host}
 
 
 async def wait_call(rt, call, timeout=10):
@@ -143,7 +143,7 @@ async def test_rejected_send_uploads_nothing(rt, keychain, fake_slicer):
 
 async def test_send_unknown_slice_or_printer(rt, keychain):
     add_printer(rt, "10.0.0.5")
-    extra = {"gcode_sha256": "0" * 64, "file_name": "x.gcode"}
+    extra = {"gcode_sha256": "0" * 64, "file_name": "x.gcode", "host": "10.0.0.5"}
     call = rt.ui_tool_call("print_send", {"slice_id": "slice_0123456789",
                                           "printer_id": "mk4_bench", **extra})
     await wait_call(rt, call)
@@ -165,6 +165,45 @@ async def test_card_shows_hash_name_and_slice_model(rt, keychain, fake_slicer):
         assert appr.deltas["gcode_sha256_short"] == args["gcode_sha256"][:12]
         assert appr.deltas["file_name"] == "mises_bracket.gcode"
         assert appr.deltas["slice_model"] == "MK4" and appr.deltas["printer"]["model"] == "MK4"
+
+
+async def test_already_sent_slice_refuses_reprint(rt, keychain, fake_slicer):
+    # C2: a slice that was already sent (sent_at on the record) cannot be reprinted; no card.
+    with FakePrusaLink("IDLE") as fake:
+        add_printer(rt, fake.host)
+        sid = await _slice(rt)
+        call = rt.ui_tool_call("print_send", send_args(rt, sid))
+        (appr,) = await pending(rt)
+        rt.approvals.decide(appr.id, appr.payload_hash, True, decided_by="local-user")
+        await wait_call(rt, call)
+        assert call.status == "done"
+        again = rt.ui_tool_call("print_send", send_args(rt, sid))
+        await wait_call(rt, again)
+        assert again.status == "failed" and again.error["error"] == "invalid_input"
+        assert "slice again to reprint" in again.error["hint"]
+        assert rt.store.pending_approvals() == [] and len(fake.uploads) == 1
+
+
+async def test_send_refused_when_profile_host_changed_since_card(rt, keychain, fake_slicer):
+    # C3: the approved host is bound into the request; moving the printer's host refuses the send.
+    with FakePrusaLink("IDLE") as fake:
+        add_printer(rt, fake.host)
+        sid = await _slice(rt)
+        args = send_args(rt, sid)
+        assert args["host"] == fake.host
+        call = rt.ui_tool_call("print_send", args)
+        (appr,) = await pending(rt)
+        assert appr.payload["host"] == fake.host
+        # the profile's printer host is changed after the card was shown
+        prof = load_profile(rt.home)
+        prof = prof.model_copy(update={"printers": [
+            p.model_copy(update={"host": "10.9.9.9"}) if p.id == "mk4_bench" else p
+            for p in prof.printers]})
+        save_profile(rt.home, prof)
+        rt.approvals.decide(appr.id, appr.payload_hash, True, decided_by="local-user")
+        await wait_call(rt, call)
+        assert call.status == "failed" and call.error["error"] == "needs_approval"
+        assert fake.uploads == []
 
 
 async def test_reslice_after_card_refuses_send(rt, keychain, fake_slicer):
