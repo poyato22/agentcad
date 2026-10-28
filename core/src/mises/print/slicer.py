@@ -166,7 +166,7 @@ def parse_estimate(gcode: str, usd_per_kg: float) -> Estimate:
 
 
 def extract_thumbnail(gcode: str) -> bytes | None:
-    m = re.search(r"^; thumbnail begin \d+x\d+ \d+\s*\n((?:; [A-Za-z0-9+/=]*\s*\n)+); thumbnail end",
+    m = re.search(r"^; thumbnail begin \d+x\d+ \d+[ \t]*\n((?:; [A-Za-z0-9+/=]*[ \t]*\n)+); thumbnail end",
                   gcode, re.M)
     if not m:
         return None

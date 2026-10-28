@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import secrets
 import sys
 from dataclasses import dataclass
@@ -16,7 +17,7 @@ from pathlib import Path
 
 from datetime import date as _date
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .cad.runner import WORKER, _kill_group
 from .cad.tools import _check_part_id, _lock
@@ -26,6 +27,7 @@ from .tools.registry import ToolContext, ToolRegistry, tool
 from .types import ErrorCode, MisesError, SafetyClass, ToolOutput
 
 TIMEOUT_S = 60.0
+MATERIAL_RE = re.compile(r"^[A-Za-z0-9 ._+-]{1,24}$")
 _TAIL = 2000
 
 
@@ -111,7 +113,7 @@ async def _mirror_drawing(part_dir: Path, *, label: str, material: str, date: st
 
 class DrawingArgs(BaseModel):
     part_id: str
-    material: str | None = None
+    material: str | None = Field(default=None, pattern=MATERIAL_RE.pattern)
 
 
 @tool("mirror_drawing", safety=SafetyClass.LOCAL_MUTATE, scope_arg="part_id", timeout_s=120,

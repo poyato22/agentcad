@@ -66,6 +66,8 @@ class UiCall:
     output: dict | None = None
     error: dict | None = None
     task: asyncio.Task | None = None
+    args: dict = field(default_factory=dict)
+    meta: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {"call_id": self.call_id, "run_id": self.run_id, "tool": self.tool,
@@ -110,6 +112,7 @@ class Runtime:
         self._runs: dict[str, _RunState] = {}
         self._external: set[str] = set()
         self.ui_calls: dict[str, UiCall] = {}
+        self._ui_run: str | None = None
         self._questions: dict[str, tuple[str, asyncio.Future[str]]] = {}
         # external run id -> owner's async cancel (e.g. AcpSession.cancel kills the agent)
         self._cancel_hooks: dict[str, Callable[[], Awaitable[None]]] = {}
@@ -199,6 +202,11 @@ class Runtime:
         """Shut down: every live Claude Code session is closed (no orphan `claude` process or
         MCP token file), a sign-in in progress is stopped, the Onshape client is closed."""
         await self.close_claude_sessions()
+        for c in list(self.ui_calls.values()):
+            if c.task is not None and not c.task.done():
+                c.task.cancel()
+        if self._ui_run is not None and self._ui_run in self._external:
+            self.finish_external_run(self._ui_run, "done")
         ad = self.gate.services.get("onshape")
         if ad is not None:
             await ad.client.aclose()
@@ -587,44 +595,66 @@ class Runtime:
             "status": status, "stop_reason": status, "error": None, "final_text": "",
             "external": True}))
 
-    def ui_tool_call(self, tool: str, args: dict) -> UiCall:
-        """Run a tool for the app's UI through the Gate, under its own external "ui" run, so
-        the same checks apply as for an agent: an irreversible tool raises the approval card
-        and nothing happens until the user approves it. Returns at once; poll `ui_calls`."""
-        rid = self.create_external_run("ui", provider="ui", model="ui", task=f"ui: {tool}")
-        call = UiCall(call_id="ui_" + uuid.uuid4().hex[:12], run_id=rid, tool=tool)
+    def _ui_run_id(self) -> str:
+        """The one long-lived external run every UI-started tool call goes through (created on
+        first use, recreated if it was finished or failed). Finished by aclose()."""
+        rid = self._ui_run
+        if rid is not None:
+            try:
+                if self.store.get_run(rid).status == "running" and rid in self._external:
+                    return rid
+            except KeyError:
+                pass
+        self._ui_run = self.create_external_run("you", provider="ui", model="ui",
+                                                task="actions started from the app")
+
+        async def stop_all() -> None:  # run-level cancel (cancel_all): stop every UI call
+            for c in list(self.ui_calls.values()):
+                if c.task is not None and not c.task.done():
+                    c.task.cancel()
+        self.register_cancel_hook(self._ui_run, stop_all)
+        return self._ui_run
+
+    def ui_tool_call(self, tool: str, args: dict, *, meta: dict | None = None) -> UiCall:
+        """Run a tool for the app's UI through the Gate, under the shared "ui" run, so the
+        same checks apply as for an agent: an irreversible tool raises the approval card and
+        nothing happens until the user approves it. Returns at once; poll `ui_calls`.
+        `meta` is trusted app-side data the tool may read (agents cannot set it)."""
+        rid = self._ui_run_id()
+        call = UiCall(call_id="ui_" + uuid.uuid4().hex[:12], run_id=rid, tool=tool,
+                      args=dict(args), meta=dict(meta or {}))
         self.ui_calls[call.call_id] = call
 
         async def go() -> None:
-            final = "done"
             try:
                 out = await self.gate.call(rid, tool, args, call_id=call.call_id,
                                            workdir=self.workdir(rid))
                 call.output = out.model_dump(mode="json")
                 call.status = "done" if out.ok else "failed"
-                final = call.status
             except asyncio.CancelledError:
-                call.status = final = "cancelled"
+                call.status = "cancelled"
                 call.error = MisesError(ErrorCode.CANCELLED, "cancelled").to_dict()
             except MisesError as e:
-                call.status = final = "failed"
+                call.status = "failed"
                 call.error = e.to_dict()
             except Exception as e:  # noqa: BLE001
-                call.status = final = "failed"
+                call.status = "failed"
                 call.error = MisesError(ErrorCode.TOOL_FAILED, f"{type(e).__name__}: {e}").to_dict()
-            finally:
-                if rid in self._external:
-                    self.finish_external_run(rid, final)
-                self.unregister_cancel_hook(rid)
 
-        async def stop() -> None:
-            if call.task is not None and not call.task.done():
-                call.task.cancel()
-
-        self.register_cancel_hook(rid, stop)
         call.task = asyncio.get_running_loop().create_task(go())
         self._track(call.task)
         return call
+
+    def cancel_ui_call(self, call_id: str) -> None:
+        """Cancel one UI-started call: its task, and its own pending approval card. Other calls
+        (and their cards) under the same run are untouched."""
+        call = self.ui_calls.get(call_id)
+        if call is None or call.status != "running" or call.task is None:
+            raise MisesError(ErrorCode.NOT_FOUND, f"no running UI call {call_id!r}")
+        call.task.cancel()
+        for a in self.store.pending_approvals(call.run_id):
+            if a.action == call.tool and all(a.payload.get(k) == v for k, v in call.args.items()):
+                self.approvals.decide(a.id, a.payload_hash, False, decided_by="system:cancelled")
 
     async def _drive(self, run_id: str, prompt: str) -> RunResult:
         st = self._runs[run_id]

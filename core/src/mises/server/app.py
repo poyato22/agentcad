@@ -228,8 +228,12 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
         return {"run_id": rid}
 
     @app.get("/runs")
-    async def list_runs(limit: int = 50):
-        return [r.model_dump(mode="json") for r in runtime.store.list_runs(limit)]
+    async def list_runs(limit: int = 50, include_ui: int = 0):
+        """Newest first. The app's own "ui" run (provider "ui") is left out unless include_ui=1."""
+        if include_ui:
+            return [r.model_dump(mode="json") for r in runtime.store.list_runs(limit)]
+        runs = [r for r in runtime.store.list_runs(limit + 50) if r.provider != "ui"]
+        return [r.model_dump(mode="json") for r in runs[:limit]]
 
     @app.get("/runs/{run_id}")
     async def get_run(run_id: str):

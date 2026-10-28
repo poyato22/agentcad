@@ -171,6 +171,30 @@ def test_print_flow_needs_card_and_refuses_error_state(client, rt, fake_slicer):
         assert done["status"] == "done" and fake.uploads[0]["print_after"] == "?1"
 
 
+def test_ui_run_hidden_from_runs_list_unless_asked(client, rt, fake_slicer):
+    add(client, "10.0.0.9")
+    make_part(rt)
+    sid = client.post("/slices", json={"part_id": "bracket", "printer_id": "bench_mk4"},
+                      headers=AUTH).json()["slice_id"]
+    poll(client, f"/slices/{sid}")
+    assert [r for r in client.get("/runs", headers=AUTH).json() if r["provider"] == "ui"] == []
+    ui = [r for r in client.get("/runs?include_ui=1", headers=AUTH).json() if r["provider"] == "ui"]
+    assert len(ui) == 1 and ui[0]["agent"] == "you"
+
+
+def test_print_refused_for_model_mismatch(client, rt, fake_slicer):
+    with FakePrusaLink("IDLE") as fake:
+        add(client, fake.host)
+        add(client, fake.host, name="Mini", model="MINI")
+        make_part(rt)
+        sid = client.post("/slices", json={"part_id": "bracket", "printer_id": "bench_mk4"},
+                          headers=AUTH).json()["slice_id"]
+        poll(client, f"/slices/{sid}")
+        r = client.post("/prints", json={"slice_id": sid, "printer_id": "mini"}, headers=AUTH)
+        assert r.status_code == 403 and "MK4" in r.json()["message"]
+        assert client.get("/approvals", headers=AUTH).json() == []
+
+
 def test_cancel_running_slice(client, rt, monkeypatch, tmp_path):
     import stat
     import sys

@@ -68,3 +68,11 @@ async def test_drawing_tool_via_ui_call(rt):
     assert call.status == "done", call.error
     assert call.output["data"]["views"] == ["front", "top", "right", "iso"]
     assert len(call.output["handles"]) == 2
+
+
+def test_drawing_tool_material_validated_like_the_route():
+    from mises.drawing import DrawingArgs
+    DrawingArgs(part_id="bracket", material="PETG")
+    for bad in ("a/b", "x" * 40, "<svg>"):
+        with pytest.raises(ValueError):
+            DrawingArgs(part_id="bracket", material=bad)

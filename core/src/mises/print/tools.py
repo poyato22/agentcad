@@ -7,6 +7,7 @@ Printer API keys live only in the Keychain (service `mises`, account `printer:<i
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 import re
@@ -108,13 +109,24 @@ class SliceArgs(BaseModel):
     printer_id: str
     material: str | None = Field(default=None, description="PLA, PETG, ABS, ASA or TPU; "
                                  "the profile's default material when omitted")
-    slice_id: str | None = Field(default=None, pattern=SLICE_ID_RE.pattern,
-                                 description="set by the app; leave empty")
 
 
 class SendArgs(BaseModel):
     slice_id: str = Field(pattern=SLICE_ID_RE.pattern)
     printer_id: str
+    gcode_sha256: str = Field(pattern=r"^[0-9a-f]{64}$",
+                              description="the slice's gcode_sha256 from print_slice; the approval "
+                                          "is bound to exactly these bytes")
+    file_name: str = Field(min_length=1, max_length=80,
+                           description="the file name that will be uploaded (from print_slice)")
+
+
+def upload_name(part_id: str) -> str:
+    return f"mises_{part_id}.gcode"
+
+
+def _sha256(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
 
 
 @tool("print_printers_list", safety=SafetyClass.READ,
@@ -141,7 +153,15 @@ async def print_slice(ctx: ToolContext, args: SliceArgs) -> ToolOutput:
     material = (args.material or load_profile(home).default_material).upper()
     mat = slicer.material_of(material)
     slicer.require_slicer()
-    sid = args.slice_id or new_slice_id()
+    # a fresh id every time; only the app's own calls (trusted meta) may name it, so an agent
+    # can never overwrite a slice record that an approval card already refers to
+    sid = new_slice_id()
+    rt = ctx.services["runtime"]
+    call = getattr(rt, "ui_calls", {}).get(ctx.call_id)
+    if call is not None and call.run_id == ctx.run_id and call.meta.get("slice_id"):
+        sid = call.meta["slice_id"]
+        if (slice_dir(home, sid) / "model.gcode").exists():
+            raise _bad(f"slice {sid} already exists")
     rec = {"slice_id": sid, "status": "running", "part_id": args.part_id,
            "printer_id": printer.id, "material": material, "model": printer.model,
            "created_at": time.time(), "estimate": None, "preview": False, "error": None,
@@ -160,14 +180,17 @@ async def print_slice(ctx: ToolContext, args: SliceArgs) -> ToolOutput:
         write_slice(home, sid, {**rec, "status": "failed", "error": f"{type(e).__name__}: {e}"})
         raise
     est = res.estimate.to_dict()
-    write_slice(home, sid, {**rec, "status": "done", "estimate": est,
+    digest = _sha256(res.gcode_path.read_bytes())
+    write_slice(home, sid, {**rec, "status": "done", "estimate": est, "gcode_sha256": digest,
+                            "file_name": upload_name(args.part_id),
                             "preview": res.preview_png is not None})
     return ToolOutput(
         summary=(f"{args.part_id} on {printer.name} ({material}): {est['time_text']}, "
                  f"{est['filament_g']:.1f} g, ${est['cost_usd']:.2f}"),
         data={"slice_id": sid, "part_id": args.part_id, "printer_id": printer.id,
               "material": material, "usd_per_kg": mat.usd_per_kg, "estimate": est,
-              "preview": res.preview_png is not None},
+              "preview": res.preview_png is not None, "gcode_sha256": digest,
+              "file_name": upload_name(args.part_id)},
         handles=[str(res.gcode_path)])
 
 
@@ -176,37 +199,59 @@ def _send_target(home: Path, args: SendArgs) -> tuple[dict, PrinterEntry]:
     if rec.get("status") != "done":
         raise MisesError(ErrorCode.INVALID_INPUT, f"slice {args.slice_id} is {rec.get('status')}",
                          hint="wait for the slice to finish or slice again")
-    return rec, find_printer(home, args.printer_id)
+    printer = find_printer(home, args.printer_id)
+    if rec.get("model") != printer.model:
+        raise MisesError(ErrorCode.DENIED,
+                         f"this slice is for a {rec.get('model')}, but {printer.name!r} is a "
+                         f"{printer.model}", hint="slice again for this printer")
+    if args.gcode_sha256 != rec.get("gcode_sha256") or args.file_name != rec.get("file_name"):
+        raise MisesError(ErrorCode.NEEDS_APPROVAL,
+                         "the slice changed since this request was made; the approval does not "
+                         "cover the current G-code", hint="review the new slice and ask again")
+    return rec, printer
 
 
 async def _send_preview(ctx: ToolContext, args: SendArgs) -> dict:
     home = home_of(ctx)
     rec, printer = _send_target(home, args)
+    gcode = slice_dir(home, args.slice_id) / "model.gcode"
+    if not gcode.is_file() or _sha256(gcode.read_bytes()) != args.gcode_sha256:
+        raise MisesError(ErrorCode.NEEDS_APPROVAL, "the slice's G-code file changed on disk",
+                         hint="slice again")
     st = await check_sendable(printer)  # an errored or busy printer never gets an approval card
     est = rec["estimate"]
     return {"part_id": rec["part_id"], "material": rec["material"],
             "time": est["time_text"], "time_s": est["time_s"], "filament_g": est["filament_g"],
             "cost_usd": est["cost_usd"], "preview_available": bool(rec.get("preview")),
+            "slice_model": rec["model"], "gcode_sha256_short": args.gcode_sha256[:12],
+            "file_name": args.file_name,
             "printer": {"id": printer.id, "name": printer.name, "host": printer.host,
                         "model": printer.model, "state": st.state}}
 
 
 @tool("print_send", safety=SafetyClass.IRREVERSIBLE, preview=_send_preview, timeout_s=300,
       description="Send a finished slice to a printer and START PRINTING it. Needs the user's "
-                  "approval. Refused while the printer reports an error, is busy or is printing.")
+                  "approval, which is bound to the slice's gcode_sha256 and file_name (both "
+                  "returned by print_slice). Refused while the printer reports an error, is "
+                  "busy or is printing, or when the slice is for another printer model.")
 async def print_send(ctx: ToolContext, args: SendArgs) -> ToolOutput:
     home = home_of(ctx)
     rec, printer = _send_target(home, args)
-    client = await client_for(printer)
-    refuse_unless_sendable(printer, await client.status())  # state may have changed since the card
     gcode = slice_dir(home, args.slice_id) / "model.gcode"
     if not gcode.is_file():
         raise MisesError(ErrorCode.NOT_FOUND, "the slice's G-code is missing", hint="slice again")
-    name = f"mises_{rec['part_id']}.gcode"
-    await client.upload(gcode, name, print_after=True)
+    data = gcode.read_bytes()  # the bytes that get verified are the bytes that get uploaded
+    if _sha256(data) != args.gcode_sha256:
+        raise MisesError(ErrorCode.NEEDS_APPROVAL,
+                         "the G-code changed after the approval card was shown; nothing was sent",
+                         hint="review the new slice and ask again")
+    client = await client_for(printer)
+    refuse_unless_sendable(printer, await client.status())  # state may have changed since the card
+    await client.upload_bytes(data, args.file_name, print_after=True)
     write_slice(home, args.slice_id, {**rec, "sent_to": printer.id, "sent_at": time.time()})
-    return ToolOutput(summary=f"sent {name} to {printer.name}; the printer is starting the job",
-                      data={"slice_id": args.slice_id, "printer_id": printer.id, "file": name})
+    return ToolOutput(summary=f"sent {args.file_name} to {printer.name}; the printer is starting the job",
+                      data={"slice_id": args.slice_id, "printer_id": printer.id,
+                            "file": args.file_name})
 
 
 def register_print_tools(registry: ToolRegistry) -> None:

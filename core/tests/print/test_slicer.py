@@ -31,6 +31,13 @@ def test_extract_thumbnail_png():
     assert slicer.extract_thumbnail("G28\n") is None
 
 
+def test_thumbnail_tolerates_trailing_whitespace():
+    lines = FIXTURE.read_text().split("\n")
+    lines = [ln + " \t" if ln.startswith("; thumbnail begin") or ln.startswith("; iVBOR")
+             else ln for ln in lines]
+    assert slicer.extract_thumbnail("\n".join(lines)).startswith(b"\x89PNG")
+
+
 def test_find_slicer_missing(monkeypatch, tmp_path):
     monkeypatch.delenv("MISES_PRUSASLICER", raising=False)
     monkeypatch.setattr(slicer, "APP_PATH", tmp_path / "nope")

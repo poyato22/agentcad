@@ -165,7 +165,8 @@ def build_print_router(runtime: Runtime) -> APIRouter:
             "material": material, "model": printer.model, "created_at": time.time(),
             "estimate": None, "preview": False, "error": None, "hint": None})
         call = runtime.ui_tool_call("print_slice", {"part_id": part_id, "printer_id": printer.id,
-                                                    "material": material, "slice_id": sid})
+                                                    "material": material},
+                                    meta={"slice_id": sid})
         slice_calls[sid] = call.call_id
         _trim_calls()
         return {"slice_id": sid, "status": "running", "run_id": call.run_id,
@@ -202,7 +203,7 @@ def build_print_router(runtime: Runtime) -> APIRouter:
         call = runtime.ui_calls.get(slice_calls.get(slice_id, ""))
         if call is None or call.status != "running":
             raise MisesError(ErrorCode.NOT_FOUND, "that slice is not running")
-        runtime.cancel(call.run_id)
+        runtime.cancel_ui_call(call.call_id)
         return {"ok": True}
 
     # ---- prints (irreversible: approval card)
@@ -218,12 +219,17 @@ def build_print_router(runtime: Runtime) -> APIRouter:
         if rec.get("status") != "done":
             raise _bad(f"slice {sid} is {rec.get('status')}", "wait for the slice to finish")
         printer = find_printer(runtime.home, printer_id)
+        if rec.get("model") != printer.model:
+            raise MisesError(ErrorCode.DENIED, f"this slice is for a {rec.get('model')}, but "
+                             f"{printer.name!r} is a {printer.model}", hint="slice again for this printer")
         st = await (await client_for(printer)).status()
         try:
             refuse_unless_sendable(printer, st)
         except MisesError as e:
             return JSONResponse(e.to_dict() | {"state": st.state}, status_code=409)
-        call = runtime.ui_tool_call("print_send", {"slice_id": sid, "printer_id": printer.id})
+        call = runtime.ui_tool_call("print_send", {
+            "slice_id": sid, "printer_id": printer.id, "gcode_sha256": rec.get("gcode_sha256"),
+            "file_name": rec.get("file_name")})
         _trim_calls()
         return {"call_id": call.call_id, "run_id": call.run_id, "status": "running"}
 

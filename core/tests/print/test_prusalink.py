@@ -63,3 +63,31 @@ async def test_upload_conflict(tmp_path):
         fake.upload_status = 409
         with pytest.raises(MisesError, match="409|conflict|busy"):
             await PrusaLinkClient(fake.host, API_KEY).upload(f, "a.gcode", print_after=True)
+
+
+async def test_upload_timeout_after_send_is_unknown_outcome_not_unreachable():
+    import socket
+    import threading
+    import time
+
+    import mises.print.prusalink as pl
+    srv = socket.socket()
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(1)
+
+    def accept():  # accepts the connection, reads, never answers
+        c, _ = srv.accept()
+        time.sleep(3)
+        c.close()
+    threading.Thread(target=accept, daemon=True).start()
+    assert pl.UPLOAD_READ_TIMEOUT_S == 120.0
+    old, pl.UPLOAD_READ_TIMEOUT_S = pl.UPLOAD_READ_TIMEOUT_S, 0.5
+    try:
+        with pytest.raises(MisesError) as e:
+            await PrusaLinkClient(f"127.0.0.1:{srv.getsockname()[1]}", API_KEY).upload_bytes(
+                b"G28\n", "a.gcode", print_after=True)
+    finally:
+        pl.UPLOAD_READ_TIMEOUT_S = old
+        srv.close()
+    assert e.value.code == ErrorCode.TOOL_FAILED
+    assert "unknown outcome" in e.value.message and "check the printer" in e.value.hint

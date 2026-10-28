@@ -20,6 +20,7 @@ from ..types import ErrorCode, MisesError
 # ATTENTION, BUSY, PRINTING, PAUSED, an unknown state) is refused.
 SENDABLE_STATES = frozenset({"IDLE", "READY", "FINISHED", "STOPPED"})
 STORAGE = "usb"
+UPLOAD_READ_TIMEOUT_S = 120.0
 
 
 @dataclass
@@ -48,13 +49,23 @@ class PrusaLinkClient:
         self._key = api_key
         self._timeout = timeout
 
-    async def _request(self, method: str, path: str, **kw) -> httpx.Response:
+    async def _request(self, method: str, path: str, *, timeout: httpx.Timeout | float | None = None,
+                       mutating: bool = False, **kw) -> httpx.Response:
         try:
-            async with httpx.AsyncClient(timeout=self._timeout, trust_env=False,
-                                         follow_redirects=False) as c:
+            async with httpx.AsyncClient(timeout=timeout if timeout is not None else self._timeout,
+                                         trust_env=False, follow_redirects=False) as c:
                 r = await c.request(method, self._base + path,
                                     headers={"X-Api-Key": self._key, **kw.pop("headers", {})}, **kw)
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            raise MisesError(ErrorCode.TRANSIENT, f"printer unreachable ({type(e).__name__})",
+                             hint="check that the printer is on and on the same network") from None
         except httpx.HTTPError as e:
+            if mutating:
+                # the request may have been (partly) delivered: the job could be starting
+                raise MisesError(ErrorCode.TOOL_FAILED,
+                                 f"unknown outcome: the printer did not answer the upload "
+                                 f"({type(e).__name__}); the job may or may not have started",
+                                 hint="check the printer's screen before sending again") from None
             raise MisesError(ErrorCode.TRANSIENT, f"printer unreachable ({type(e).__name__})",
                              hint="check that the printer is on and on the same network") from None
         if r.status_code in (401, 403):
@@ -80,9 +91,13 @@ class PrusaLinkClient:
                              temp_bed=_num(printer.get("temp_bed")), job=job)
 
     async def upload(self, path: Path, name: str, *, print_after: bool) -> None:
-        data = Path(path).read_bytes()
+        await self.upload_bytes(Path(path).read_bytes(), name, print_after=print_after)
+
+    async def upload_bytes(self, data: bytes, name: str, *, print_after: bool) -> None:
         r = await self._request(
             "PUT", f"/api/v1/files/{STORAGE}/{quote(name, safe='')}", content=data,
+            timeout=httpx.Timeout(self._timeout, read=UPLOAD_READ_TIMEOUT_S, write=UPLOAD_READ_TIMEOUT_S),
+            mutating=True,
             headers={"Content-Type": "application/octet-stream",
                      "Print-After-Upload": "?1" if print_after else "?0", "Overwrite": "?1"})
         if r.status_code == 409:

@@ -5,7 +5,6 @@ date changes. The SVG is a picture: it is served with a CSP that forbids scripts
 """
 from __future__ import annotations
 
-import re
 from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -13,14 +12,13 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter, Response
 
 from ..cad.tools import PART_ID_RE
-from ..drawing import DrawingError, mirror_drawing
+from ..drawing import MATERIAL_RE, DrawingError, mirror_drawing
 from ..profile import load_profile
 from ..types import ErrorCode, MisesError
 
 if TYPE_CHECKING:
     from ..runtime import Runtime
 
-_MATERIAL_RE = re.compile(r"^[A-Za-z0-9 ._+-]{1,24}$")
 
 
 def build_drawing_router(runtime: Runtime) -> APIRouter:
@@ -30,7 +28,7 @@ def build_drawing_router(runtime: Runtime) -> APIRouter:
         if not PART_ID_RE.fullmatch(part_id):
             raise MisesError(ErrorCode.INVALID_INPUT, f"bad part id: {part_id!r}",
                              hint=f"part ids match {PART_ID_RE.pattern}")
-        if material is not None and not _MATERIAL_RE.match(material):
+        if material is not None and not MATERIAL_RE.match(material):
             raise MisesError(ErrorCode.INVALID_INPUT, "bad material name")
         d = Path(runtime.home) / "parts" / part_id
         if not (d / "model.step").is_file():
