@@ -21,10 +21,14 @@ if [[ "${1:-}" == "--scripted" ]]; then SCRIPTED=1; shift; fi
 
 # Always a fresh throwaway home: an inherited MISES_HOME (maybe the real one, with real runs,
 # keys and server.json) is ignored. It must be under a system temp dir and is removed on exit.
-SMOKE_HOME="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/mises-smoke.XXXXXX")" && pwd -P)"
+# mktemp must succeed on its own: inside `cd "$(mktemp ...)"` a failure gave `cd ""` (the app
+# folder), which the refusal below then removed with rm -rf. Never rm -rf what we didn't create.
+SMOKE_TMP="$(mktemp -d "${TMPDIR:-/tmp}/mises-smoke.XXXXXX")" || { echo "could not create a temp dir under ${TMPDIR:-/tmp}" >&2; exit 1; }
+[[ -n "$SMOKE_TMP" && -d "$SMOKE_TMP" ]] || { echo "could not create a temp dir under ${TMPDIR:-/tmp}" >&2; exit 1; }
+SMOKE_HOME="$(cd "$SMOKE_TMP" && pwd -P)"
 case "$SMOKE_HOME" in
-  /tmp/*|/private/tmp/*|/var/folders/*|/private/var/folders/*) ;;
-  *) rm -rf "$SMOKE_HOME"; echo "refusing to run: $SMOKE_HOME is not under a system temp dir" >&2; exit 1 ;;
+  /tmp/*/mises-smoke.*|/tmp/mises-smoke.*|/private/tmp/*mises-smoke.*|/var/folders/*/mises-smoke.*|/private/var/folders/*/mises-smoke.*) ;;
+  *) rmdir "$SMOKE_TMP" 2>/dev/null || true; echo "refusing to run: $SMOKE_HOME is not under a system temp dir" >&2; exit 1 ;;
 esac
 export MISES_HOME="$SMOKE_HOME"
 INFO="$MISES_HOME/server.json"

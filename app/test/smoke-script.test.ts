@@ -3,7 +3,7 @@
 // fresh temp dir (ignoring an inherited MISES_HOME), refuses a non-temp path and removes the dir
 // on exit. MISES_SMOKE_DRY_RUN=1 stops right after the setup (no core, no Vite).
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -32,9 +32,29 @@ describe("smoke-real-core.sh", () => {
     }
   });
 
+  it("a_tmpdir_that_does_not_exist_fails_without_removing_anything", () => {
+    // a copy of the script in a throwaway "app" folder: the old script ran `cd ""` here and then
+    // rm -rf'd the app folder (it did, when two test runs raced on one shared TMPDIR)
+    const sandbox = mkdtempSync(join(tmpdir(), "smoke-sandbox-"));
+    try {
+      mkdirSync(join(sandbox, "app/scripts"), { recursive: true });
+      copyFileSync(SCRIPT, join(sandbox, "app/scripts/smoke-real-core.sh"));
+      writeFileSync(join(sandbox, "app/marker"), "keep me");
+      const r = spawnSync("bash", [join(sandbox, "app/scripts/smoke-real-core.sh")], {
+        env: { ...process.env, MISES_SMOKE_DRY_RUN: "1", TMPDIR: join(sandbox, "no-such-dir") }, encoding: "utf8",
+      });
+      expect(r.status).not.toBe(0);
+      expect(r.stdout).not.toMatch(/MISES_HOME=/);
+      expect(existsSync(join(sandbox, "app/marker"))).toBe(true);
+    } finally {
+      rmSync(sandbox, { recursive: true, force: true });
+    }
+  });
+
   it("refuses_a_home_outside_the_system_temp_dirs", () => {
-    const notTemp = resolve(import.meta.dirname, "../node_modules/.cache/smoke-not-temp");
-    mkdirSync(notTemp, { recursive: true });
+    // unique per run: concurrent test runs must not remove each other's TMPDIR
+    mkdirSync(resolve(import.meta.dirname, "../node_modules/.cache"), { recursive: true });
+    const notTemp = mkdtempSync(resolve(import.meta.dirname, "../node_modules/.cache/smoke-not-temp-"));
     try {
       const r = dryRun({ TMPDIR: notTemp });
       expect(r.status).not.toBe(0);
