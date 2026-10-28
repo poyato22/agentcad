@@ -221,7 +221,7 @@ describe("PrintPage: sending (irreversible)", () => {
     await waitFor(() => expect((sendBtn() as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(sendBtn());
     await waitFor(() => expect(client.startPrint).toHaveBeenCalledWith(DONE.slice_id, "bench_mk4"));
-    expect((await screen.findByRole("status", { name: "Print request" })).textContent).toMatch(/approve or reject the card in the agent console/i);
+    expect((await screen.findByRole("status", { name: "Print request" })).textContent).toMatch(/approve or reject the card in the console/i);
     expect(consoleCollapsed.value).toBe(false);
     expect(selectedRunId.value).toBe("uirun000001");
     expect((sendBtn() as HTMLButtonElement).disabled).toBe(true); // no second request while one waits

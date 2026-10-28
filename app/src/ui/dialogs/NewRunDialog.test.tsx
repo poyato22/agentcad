@@ -177,7 +177,7 @@ describe("NewRunDialog", () => {
     expect((screen.getByText("Start") as HTMLButtonElement).disabled).toBe(true);
     const hint = screen.getByText(new RegExp(`Claude Code \\(your account\\) is ${words}`), { selector: "[data-hint] *" });
     expect(hint).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Sign in in Profile" }));
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
     expect(newRunOpen.value).toBe(false);
     expect(profileOpen.value).toBe(true);
     expect(profileSection.value).toBe("models");

@@ -17,14 +17,14 @@ export function DataSection({ data }: SectionProps): JSX.Element {
       await navigator.clipboard.writeText(dir);
       setNote("copied");
     } catch {
-      setNote("could not copy: select the path and copy it");
+      setNote("copy failed: select the path and press ⌘C");
     }
   }
   // No Tauri opener command exists (and no new capabilities are added), so "Show in Finder" is "Copy path".
   return (
     <SectionBox title="Data">
       <Card title="Data folder">
-        <p class="dim">Runs, parts, the CAD mirror and your profile live here. Nothing leaves this Mac except calls you set up.</p>
+        <p class="dim">Runs, parts, the CAD mirror and the profile.</p>
         <code class="profile-code text" data-testid="data-path">{dir}</code>
         <div class="profile-row">
           <Button onClick={() => { void copy(); }}>Copy path</Button>
@@ -39,7 +39,7 @@ export function SetupSection({ onClose }: { onClose: () => void }): JSX.Element 
   return (
     <SectionBox title="Setup">
       <Card title="First-run setup">
-        <p class="dim">Walk through connecting a model, Onshape and your profile again. Nothing already saved is lost.</p>
+        <p class="dim">Profile, model and Onshape. Saved settings are kept.</p>
         <div class="profile-row">
           <Button onClick={() => { openSetupWizard(); onClose(); }}>Run setup again</Button>
         </div>

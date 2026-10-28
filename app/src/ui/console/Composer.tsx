@@ -93,10 +93,10 @@ export function Composer(): JSX.Element {
       </div>
       {current?.description && <div class="cv-desc faint text">{current.description}</div>}
       {blocked && <div class="cv-desc dim text" data-hint>{`${model} · ${blocked}`}</div>}
-      <textarea ref={taskRef} aria-label="Task" rows={3} value={task} placeholder="What should the agent change? e.g. stiffen the upright, keep mass under 40 g"
+      <textarea ref={taskRef} aria-label="Task" rows={3} value={task} placeholder="e.g. stiffen the upright, keep mass under 40 g"
         onInput={(e) => setTask(e.currentTarget.value)}
         onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); void start(); } }} />
-      {willQueue && par && <div class="cv-desc faint">{`${working} running — this one waits for a free slot (${par.auto ? "Auto" : "limit"}: ${par.limit})`}</div>}
+      {willQueue && par && <div class="cv-desc faint">{`${working} running · queues for a free slot (${par.auto ? "Auto" : "limit"}: ${par.limit})`}</div>}
       {error && <div class="cv-err text" role="alert">{error}</div>}
       <div class="cv-actions">
         <Button variant="ghost" onClick={() => { composerOpen.value = false; }}>Cancel</Button>

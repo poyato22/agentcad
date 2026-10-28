@@ -56,7 +56,7 @@ function KeysCard({ data, update }: SectionProps): JSX.Element {
 
   return (
     <Card title="Onshape API keys">
-      <p class="dim">An API key pair from Onshape's developer portal. Both keys go to the macOS Keychain and are never shown again.</p>
+      <p class="dim">From Onshape's developer portal. Stored in the macOS Keychain; never shown again.</p>
       <KeyLine status={status} />
       {saveNote && <div class="profile-hint">{saveNote}</div>}
       {mode === "replace" && (
@@ -72,15 +72,15 @@ function KeysCard({ data, update }: SectionProps): JSX.Element {
       )}
       <div class="profile-row">
         {mode === "replace" && (<>
-          <Button variant="ink" disabled={!canSave} onClick={() => { void save(); }}>Save keys</Button>
+          <Button variant="ink" aria-label="Save keys" disabled={!canSave} onClick={() => { void save(); }}>Save</Button>
           <Button variant="ghost" onClick={() => reset(null)}>Cancel</Button>
         </>)}
         {mode === "remove" && (
           <ConfirmRemove question="Remove the Onshape keys from the Keychain?" busy={task.busy} onYes={() => { void remove(); }} onKeep={() => reset(null)} />
         )}
         {mode === null && (<>
-          <Button onClick={() => reset("replace")}>{status?.present ? "Replace keys" : "Add keys"}</Button>
-          {status?.present && status.source === "keychain" && <Button variant="ghost" onClick={() => reset("remove")}>Remove keys</Button>}
+          <Button onClick={() => reset("replace")}>{status?.present ? "Replace" : "Add"}</Button>
+          {status?.present && status.source === "keychain" && <Button variant="ghost" onClick={() => reset("remove")}>Remove</Button>}
           <Button disabled={task.busy || !status?.present} onClick={() => { void test(); }}>Test</Button>
         </>)}
       </div>
@@ -126,7 +126,7 @@ function UsageCard({ data, update }: SectionProps): JSX.Element {
           onInput={(e) => { setCapText(e.currentTarget.value); task.clear(); }} />
       </label>
       <div class="profile-row">
-        <Button variant="ink" disabled={!dirty || task.busy} onClick={() => { void save(); }}>Save caps</Button>
+        <Button variant="ink" aria-label="Save call cap" disabled={!dirty || task.busy} onClick={() => { void save(); }}>Save</Button>
         {task.note && <span class="dim">{task.note}</span>}
       </div>
       <p class="dim">The per-run cap is under Agents &amp; budgets.</p>

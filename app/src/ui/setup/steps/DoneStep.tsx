@@ -26,12 +26,12 @@ export function DoneStep({ data, refresh, go, close }: StepProps): JSX.Element {
 
   return (
     <div class="setup-step">
-      <StepHead title="Ready" />
+      <StepHead title="Done" />
       <ul class="setup-summary">
         <li class="setup-status"><Led tone={s.has_model ? "green" : "faint"} />
-          <span>{s.has_model ? "a model is connected" : "local models only — connect a model any time in Profile"}</span></li>
+          <span>{s.has_model ? "model connected" : "no model connected"}</span></li>
         <li class="setup-status"><Led tone={s.has_onshape ? "green" : "faint"} />
-          <span>{s.has_onshape ? "Onshape keys saved" : "Onshape skipped — add keys any time in Profile"}</span></li>
+          <span>{s.has_onshape ? "Onshape keys saved" : "Onshape skipped"}</span></li>
         <li class="setup-status"><Led tone={data.profile.display_name ? "green" : "faint"} />
           <span class="text">{data.profile.display_name ? `profile · ${data.profile.display_name}` : "profile defaults"}</span></li>
       </ul>
@@ -39,7 +39,7 @@ export function DoneStep({ data, refresh, go, close }: StepProps): JSX.Element {
       <div class="setup-actions">
         <Button variant="ghost" onClick={() => go("onshape")}>Back</Button>
         <span class="setup-spacer" />
-        <Button variant="ink" disabled={busy} onClick={() => { void finish(); }}>Start using Mises</Button>
+        <Button variant="ink" disabled={busy} onClick={() => { void finish(); }}>Finish</Button>
       </div>
     </div>
   );

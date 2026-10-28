@@ -40,7 +40,12 @@
   --fs-small: 10.5px;
   --fs-label: 9.5px;
 
-  --topbar-h: 44px;
+  /* macOS overlay title bar: the traffic lights' vertical centre, measured in a built Mises.app on
+     macOS 26 (lights span y 9–23 CSS px). Every strip at the window top is --chrome-h tall and
+     centres its text, so the text sits on the lights' centre line. */
+  --chrome-center-y: 16px;
+  --chrome-h: calc(var(--chrome-center-y) * 2);
+  --topbar-h: var(--chrome-h);
   --left-w: 240px;
   --console-w: 420px;
   --console-rail-w: 36px;

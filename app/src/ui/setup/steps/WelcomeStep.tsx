@@ -7,11 +7,10 @@ export function WelcomeStep({ go }: StepProps): JSX.Element {
   return (
     <div class="setup-step">
       <StepHead title="Welcome to Mises" />
-      <p>Mises designs and checks mechanical parts with AI agents. You describe the change; agents edit the part, measure it and ask before anything reaches Onshape.</p>
-      <p>Everything stays on this Mac: keys go to the macOS Keychain, settings and parts to your Mises data folder. There is no Mises account.</p>
-      <p class="dim">Setup takes a minute: your profile, a model to run agents, and optionally Onshape. You can close it at any time; what you saved stays saved.</p>
+      <p>Mises designs and checks mechanical parts with AI agents. Describe a change; agents edit the part, measure it, and ask before anything reaches Onshape.</p>
+      <p>Stored on this Mac: keys in the macOS Keychain, settings and parts in the Mises data folder.</p>
       <div class="setup-actions">
-        <Button variant="ink" onClick={() => go("profile")}>Get started</Button>
+        <Button variant="ink" onClick={() => go("profile")}>Start</Button>
       </div>
     </div>
   );

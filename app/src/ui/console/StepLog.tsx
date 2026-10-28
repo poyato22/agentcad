@@ -160,7 +160,7 @@ export function StepLog(): JSX.Element {
   return (
     <div class="con-log">
       <div class="con-log-scroll" data-log-scroll ref={scroller} onScroll={onScroll} role="log" aria-live="off">
-        {start > 0 && <button type="button" class="con-earlier" onClick={showEarlier}>{`show earlier · ${start}`}</button>}
+        {start > 0 && <button type="button" class="con-earlier" onClick={showEarlier}>{`Show earlier (${start})`}</button>}
         {items.length === 0 && <div class="pane-empty">no steps yet</div>}
         {shown.map((it) => <Row key={itemKey(it)} item={it} expanded={expanded} focused={highlight === itemKey(it)} />)}
       </div>
@@ -177,7 +177,7 @@ function Row({ item, expanded, focused }: { item: LogItem; expanded: ReadonlySet
   return (
     <div data-row data-kind={item.kind} data-key={key} data-focused={focused ? "" : undefined} class={focused ? "con-focused" : undefined}>
       {item.kind === "call" && expanded.has(callFoldKey(item)) && (
-        <button type="button" class="con-fold con-fold-open" onClick={() => toggleFold(callFoldKey(item))}>▾ fold tool calls</button>
+        <button type="button" class="con-fold con-fold-open" onClick={() => toggleFold(callFoldKey(item))}>▾ Fold tool calls</button>
       )}
       <RowBody item={item} label={label} />
     </div>

@@ -63,7 +63,7 @@ async function toModelStep() {
   client.getProfile.mockResolvedValue({ ...profile, display_name: "Hartigan" });
   render(<SetupGate />);
   await wizard();
-  await screen.findByRole("heading", { name: "Connect a model" });
+  await screen.findByRole("heading", { name: "Model" });
 }
 
 describe("SetupGate", () => {
@@ -81,7 +81,7 @@ describe("SetupGate", () => {
     const dlg = await wizard();
     expect(dlg.getAttribute("aria-modal")).toBe("true");
     await screen.findByRole("heading", { name: "Welcome to Mises" });
-    expect(dlg.textContent).toContain("Everything stays on this Mac");
+    expect(dlg.textContent).toContain("Stored on this Mac");
   });
 
   it("can_be_reopened_from_profile_even_when_complete", async () => {
@@ -96,7 +96,7 @@ describe("SetupGate", () => {
   it("close_keeps_what_is_saved_and_hides", async () => {
     render(<SetupGate />);
     await wizard();
-    fireEvent.click(screen.getByRole("button", { name: "Close — finish later" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
@@ -152,8 +152,8 @@ describe("SetupGate", () => {
     render(<SetupGate />);
     const notice = await screen.findByRole("status", { name: "Connect a model" });
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(notice.textContent).toContain("No model is connected");
-    fireEvent.click(screen.getByRole("button", { name: "Open Profile" }));
+    expect(notice.textContent).toContain("No model connected");
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
     expect(profileOpen.value).toBe(true);
     expect(profileSection.value).toBe("models");
   });
@@ -178,7 +178,7 @@ describe("SetupGate", () => {
   it("wizard_traps_focus_inside_it", async () => {
     render(<SetupGate />);
     const dlg = await wizard();
-    await screen.findByRole("button", { name: "Get started" });
+    await screen.findByRole("button", { name: "Start" });
     await waitFor(() => expect(dlg.contains(document.activeElement)).toBe(true));
     const buttons = [...dlg.querySelectorAll("button:not([disabled])")] as HTMLElement[];
     const last = buttons[buttons.length - 1];
@@ -192,30 +192,30 @@ describe("order: welcome → profile → model → onshape → done", () => {
   it("get_started_opens_the_profile_first", async () => {
     render(<SetupGate />);
     await wizard();
-    const steps = [...screen.getByRole("list", { name: "Setup steps" }).querySelectorAll("li")].map((li) => li.textContent);
+    const steps = [...screen.getByRole("navigation", { name: "Setup steps" }).querySelectorAll(".setup-step-name")].map((el) => el.textContent);
     expect(steps).toEqual(["Welcome", "Profile", "Model", "Onshape", "Done"]);
-    fireEvent.click(await screen.findByRole("button", { name: "Get started" }));
-    await screen.findByRole("heading", { name: "Your profile" });
-    expect(screen.getByRole("list", { name: "Setup steps" }).querySelector("[aria-current=step]")?.textContent).toBe("Profile");
+    fireEvent.click(await screen.findByRole("button", { name: "Start" }));
+    await screen.findByRole("heading", { name: "Profile" });
+    expect(screen.getByRole("navigation", { name: "Setup steps" }).querySelector("[aria-current=step] .setup-step-name")?.textContent).toBe("Profile");
   });
 
   it("profile_saves_name_units_material_theme_then_goes_to_connect_a_model", async () => {
     render(<SetupGate />);
-    fireEvent.click(await screen.findByRole("button", { name: "Get started" }));
-    await screen.findByRole("heading", { name: "Your profile" });
+    fireEvent.click(await screen.findByRole("button", { name: "Start" }));
+    await screen.findByRole("heading", { name: "Profile" });
     expect([...(screen.getByLabelText("Units") as HTMLSelectElement).options].map((o) => o.value)).toEqual(["mm"]);
     expect([...(screen.getByLabelText("Theme") as HTMLSelectElement).options].map((o) => o.value)).toEqual(["system", "light", "dark"]);
     expect(screen.queryByLabelText("Parallel agents")).toBeNull();       // automatic now (Profile → Agents)
-    const save = screen.getByRole("button", { name: "Save and continue" }) as HTMLButtonElement;
+    const save = screen.getByRole("button", { name: "Continue" }) as HTMLButtonElement;
     expect(save.disabled).toBe(true);
     fireEvent.input(input("Display name"), { target: { value: "Hartigan" } });
     fireEvent.input(input("Default material"), { target: { value: "PETG" } });
     fireEvent.change(screen.getByLabelText("Theme"), { target: { value: "dark" } });
     fireEvent.click(save);
-    await screen.findByRole("heading", { name: "Connect a model" });
+    await screen.findByRole("heading", { name: "Model" });
     expect(client.updateProfile).toHaveBeenCalledWith({ display_name: "Hartigan", default_material: "PETG", theme: "dark" });
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
-    await screen.findByRole("heading", { name: "Your profile" });
+    await screen.findByRole("heading", { name: "Profile" });
     expect(input("Display name").value).toBe("Hartigan");
   });
 });
@@ -225,24 +225,24 @@ describe("resume", () => {
     client.getProfile.mockResolvedValue({ ...profile, display_name: "Hartigan" });
     client.setupState.mockResolvedValue({ complete: false, has_model: true, has_onshape: false, missing: ["onshape", "profile"] });
     render(<SetupGate />);
-    await screen.findByRole("heading", { name: "Connect Onshape" });
+    await screen.findByRole("heading", { name: "Onshape" });
   });
 
   it("a_model_saved_without_a_profile_resumes_at_the_profile", async () => {
     client.setupState.mockResolvedValue({ complete: false, has_model: true, has_onshape: false, missing: ["onshape", "profile"] });
     render(<SetupGate />);
-    await screen.findByRole("heading", { name: "Your profile" });
+    await screen.findByRole("heading", { name: "Profile" });
   });
 
   it("an_onshape_skip_survives_a_reload_in_the_same_session", async () => {
     client.getProfile.mockResolvedValue({ ...profile, display_name: "Hartigan" });
     client.setupState.mockResolvedValue({ complete: false, has_model: true, has_onshape: false, missing: ["onshape", "profile"] });
     render(<SetupGate />);
-    fireEvent.click(await screen.findByRole("button", { name: "Skip for now" }));
-    await screen.findByRole("heading", { name: "Ready" });
+    fireEvent.click(await screen.findByRole("button", { name: "Skip" }));
+    await screen.findByRole("heading", { name: "Done" });
     cleanup();
     render(<SetupGate />);
-    await screen.findByRole("heading", { name: "Ready" });
+    await screen.findByRole("heading", { name: "Done" });
   });
 });
 
@@ -286,15 +286,15 @@ describe("model step", () => {
 
   it("local_only_skip_moves_on_without_a_model", async () => {
     await toModelStep();
-    fireEvent.click(screen.getByRole("button", { name: "Skip — local models only" }));
-    await screen.findByRole("heading", { name: "Connect Onshape" });
+    fireEvent.click(screen.getByRole("button", { name: "Skip" }));
+    await screen.findByRole("heading", { name: "Onshape" });
   });
 
   it("not_installed_shows_how_to_install", async () => {
     client.claudeCodeStatus.mockResolvedValue({ installed: false, version: null, signed_in: false, auth_method: null });
     await toModelStep();
     const card = screen.getByRole("region", { name: "Use my Claude Code" });
-    await waitFor(() => expect(card.textContent).toContain("isn't installed on this Mac"));
+    await waitFor(() => expect(card.textContent).toContain("not installed"));
     expect(card.textContent).toContain("npm install -g @anthropic-ai/claude-code");
     expect(screen.queryByRole("button", { name: "Sign in" })).toBeNull();
   });
@@ -307,13 +307,13 @@ describe("model step", () => {
     client.setupState.mockResolvedValue({ ...fresh, has_model: true, missing: ["onshape", "profile"] });
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Sign in" })); });
     expect(client.claudeCodeLogin).toHaveBeenCalledTimes(1);
-    expect(screen.getByText(/finish signing in in your browser/)).toBeTruthy();
+    expect(screen.getByText(/waiting for browser sign-in/)).toBeTruthy();
     await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
     expect(polls).toBe(1);
     await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
     expect(polls).toBe(2);
     expect(screen.getByText("signed in · claude.ai")).toBeTruthy();
-    expect(screen.queryByText(/finish signing in/)).toBeNull();
+    expect(screen.queryByText(/waiting for browser sign-in/)).toBeNull();
     await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
     expect(polls).toBe(2);
     expect((screen.getByRole("button", { name: "Continue" }) as HTMLButtonElement).disabled).toBe(false);
@@ -339,7 +339,7 @@ describe("model step", () => {
     let polls = 0;
     client.claudeCodeStatus.mockImplementation(async () => { polls++; return signedOut; });
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Sign in" })); });
-    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Skip — local models only" })); });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Skip" })); });
     await act(async () => { await vi.advanceTimersByTimeAsync(20_000); });
     expect(polls).toBe(0);
   });
@@ -361,7 +361,7 @@ describe("model step", () => {
     await toModelStep();
     fireEvent.input(input("Endpoint"), { target: { value: "http://localhost:9999/v1" } });
     fireEvent.click(screen.getByRole("button", { name: "Test" }));
-    await screen.findByText("no answer from http://localhost:9999/v1 — is Ollama running? Nothing was saved.");
+    await screen.findByText("no answer from http://localhost:9999/v1 — is Ollama running? Not saved.");
     expect(client.updateProfile).not.toHaveBeenCalled();
   });
 
@@ -400,7 +400,7 @@ describe("model step", () => {
     let polls = 0;
     client.claudeCodeStatus.mockImplementation(async () => { polls++; return signedOut; });
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Sign in" })); });
-    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Skip — local models only" })); });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Skip" })); });
     await act(async () => { finishLogin(); await vi.advanceTimersByTimeAsync(20_000); });
     expect(polls).toBe(0);
   });
@@ -409,9 +409,9 @@ describe("model step", () => {
     client.getProfile.mockResolvedValue({ ...profile, display_name: "Hartigan" });
     client.setupState.mockResolvedValue({ complete: false, has_model: true, has_onshape: false, missing: ["onshape", "profile"] });
     render(<SetupGate />);
-    await screen.findByRole("heading", { name: "Connect Onshape" });
+    await screen.findByRole("heading", { name: "Onshape" });
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
-    await screen.findByRole("heading", { name: "Connect a model" });
+    await screen.findByRole("heading", { name: "Model" });
     const card = screen.getByRole("region", { name: "Default model" });
     fireEvent.click(within(card).getByRole("button", { name: /^Default model/ }));
     const claude = await within(card).findByRole("group", { name: "Your Claude Code" });
@@ -424,7 +424,7 @@ describe("model step", () => {
     client.localStatus.mockResolvedValue({ installed: true, running: false, version: "0.12.3", models: [], recommended: [{ name: "qwen3-coder:30b", size_gb: 19, fits: true, note: null }] });
     await toModelStep();
     const card = screen.getByRole("region", { name: "Local model" });
-    await waitFor(() => expect(card.textContent).toContain("Ollama isn't running"));
+    await waitFor(() => expect(card.textContent).toContain("Ollama not running"));
     fireEvent.click(within(card).getByRole("button", { name: "Start Ollama" }));
     await waitFor(() => expect(client.localStart).toHaveBeenCalledTimes(1));
   });
@@ -453,7 +453,7 @@ describe("onshape step", () => {
 
   it("keys_are_password_fields_cleared_after_save_then_one_test_call", async () => {
     render(<SetupGate />);
-    await screen.findByRole("heading", { name: "Connect Onshape" });
+    await screen.findByRole("heading", { name: "Onshape" });
     expect(input("Access key").type).toBe("password");
     expect(input("Secret key").type).toBe("password");
     fireEvent.input(input("Access key"), { target: { value: "AK-SECRET-1" } });
@@ -473,16 +473,16 @@ describe("onshape step", () => {
     client.listKeys.mockResolvedValue(keys.map((k) => (k.vendor === "onshape" ? { ...k, present: true, source: "keychain" } : k)));
     client.testOnshape.mockResolvedValue({ ok: false, error: "denied" });
     render(<SetupGate />);
-    await screen.findByRole("heading", { name: "Connect Onshape" });
+    await screen.findByRole("heading", { name: "Onshape" });
     fireEvent.click(screen.getByRole("button", { name: "Test" }));
     const err = await screen.findByRole("alert");
-    expect(err.textContent).toContain("Onshape refused these keys");
+    expect(err.textContent).toContain("Onshape rejected these keys");
   });
 
   it("skip_for_now_goes_to_done_without_onshape_calls", async () => {
     render(<SetupGate />);
-    fireEvent.click(await screen.findByRole("button", { name: "Skip for now" }));
-    await screen.findByRole("heading", { name: "Ready" });
+    fireEvent.click(await screen.findByRole("button", { name: "Skip" }));
+    await screen.findByRole("heading", { name: "Done" });
     expect(client.setOnshapeKeys).not.toHaveBeenCalled();
     expect(client.testOnshape).not.toHaveBeenCalled();
   });
@@ -497,16 +497,16 @@ describe("profile and done", () => {
   it("a_saved_name_resumes_at_ready_since_the_core_keeps_profile_missing_until_complete", async () => {
     named();
     render(<SetupGate />);
-    await screen.findByRole("heading", { name: "Ready" });
+    await screen.findByRole("heading", { name: "Done" });
   });
 
   it("an_unnamed_profile_is_asked_for_even_when_everything_else_is_saved", async () => {
     render(<SetupGate />);
-    await screen.findByRole("heading", { name: "Your profile" });
+    await screen.findByRole("heading", { name: "Profile" });
     fireEvent.input(input("Display name"), { target: { value: "Hartigan" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save and continue" }));
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
     // a model already works: the model step shows it, with the default model picker
-    await screen.findByRole("heading", { name: "Connect a model" });
+    await screen.findByRole("heading", { name: "Model" });
     expect((screen.getByRole("button", { name: "Continue" }) as HTMLButtonElement).disabled).toBe(false);
   });
 
@@ -514,7 +514,7 @@ describe("profile and done", () => {
     named();
     client.setupState.mockResolvedValue({ complete: false, has_model: true, has_onshape: true, missing: [] });
     render(<SetupGate />);
-    fireEvent.click(await screen.findByRole("button", { name: "Start using Mises" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Finish" }));
     client.setupState.mockResolvedValue({ complete: true, has_model: true, has_onshape: true, missing: [] });
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(client.completeSetup).toHaveBeenCalledTimes(1);
@@ -526,9 +526,81 @@ describe("profile and done", () => {
     sessionStorage.setItem("mises.setup.skip.model", "1");
     sessionStorage.setItem("mises.setup.skip.onshape", "1");
     render(<SetupGate />);
-    await screen.findByRole("heading", { name: "Ready" });
-    expect(screen.getByRole("dialog").textContent).toContain("local models only");
-    fireEvent.click(screen.getByRole("button", { name: "Start using Mises" }));
+    await screen.findByRole("heading", { name: "Done" });
+    expect(screen.getByRole("dialog").textContent).toContain("no model connected");
+    fireEvent.click(screen.getByRole("button", { name: "Finish" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+});
+
+describe("step bar: Welcome · Profile · Model · Onshape · Done", () => {
+  const stepBtn = (name: string) => screen.getByRole("button", { name: new RegExp(`^${name}( \\((done|to do)\\))?$`) });
+
+  it("every_step_is_a_button_that_jumps_to_its_step", async () => {
+    render(<SetupGate />);
+    await wizard();
+    await screen.findByRole("heading", { name: "Welcome to Mises" });
+    await waitFor(() => expect((stepBtn("Onshape") as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(stepBtn("Onshape"));
+    await screen.findByRole("heading", { name: "Onshape" });
+    expect(stepBtn("Onshape").getAttribute("aria-current")).toBe("step");
+    fireEvent.click(stepBtn("Model"));
+    await screen.findByRole("heading", { name: "Model" });
+    fireEvent.click(stepBtn("Done"));
+    await screen.findByRole("heading", { name: "Done" });
+    fireEvent.click(stepBtn("Welcome"));
+    await screen.findByRole("heading", { name: "Welcome to Mises" });
+  });
+
+  it("steps_show_done_current_and_to_do", async () => {
+    client.getProfile.mockResolvedValue({ ...profile, display_name: "Hartigan" });
+    client.setupState.mockResolvedValue({ complete: false, has_model: true, has_onshape: false, missing: ["onshape", "profile"] });
+    render(<SetupGate />);
+    await screen.findByRole("heading", { name: "Onshape" });   // resumes at the first missing piece
+    const status = (n: string) => stepBtn(n).getAttribute("data-status");
+    expect(["Welcome", "Profile", "Model", "Onshape", "Done"].map(status)).toEqual(["done", "done", "done", "current", "todo"]);
+    expect(stepBtn("Profile").textContent).toContain("✓");
+    expect(screen.getByRole("button", { name: "Profile (done)" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Done (to do)" })).toBeTruthy();
+    // only the current step carries aria-current
+    const current = screen.getByRole("navigation", { name: "Setup steps" }).querySelectorAll("[aria-current]");
+    expect([...current].map((el) => el.getAttribute("aria-current"))).toEqual(["step"]);
+  });
+
+  it("arrow_keys_move_focus_between_steps_and_enter_opens_one", async () => {
+    render(<SetupGate />);
+    await screen.findByRole("heading", { name: "Welcome to Mises" });
+    await waitFor(() => expect((stepBtn("Welcome") as HTMLButtonElement).disabled).toBe(false));
+    stepBtn("Welcome").focus();
+    fireEvent.keyDown(stepBtn("Welcome"), { key: "ArrowRight" });
+    expect(document.activeElement).toBe(stepBtn("Profile"));
+    fireEvent.keyDown(stepBtn("Profile"), { key: "ArrowLeft" });
+    fireEvent.keyDown(stepBtn("Welcome"), { key: "ArrowLeft" });           // wraps to the last
+    expect(document.activeElement).toBe(stepBtn("Done"));
+    fireEvent.keyDown(stepBtn("Done"), { key: "Home" });
+    expect(document.activeElement).toBe(stepBtn("Welcome"));
+    fireEvent.keyDown(stepBtn("Welcome"), { key: "End" });
+    expect(document.activeElement).toBe(stepBtn("Done"));
+    // a step is a native <button> in the Tab order: Enter/Space activate it (a click)
+    expect(stepBtn("Model").tagName).toBe("BUTTON");
+    expect(stepBtn("Model").getAttribute("tabindex")).toBeNull();
+    fireEvent.click(stepBtn("Model"));
+    await screen.findByRole("heading", { name: "Model" });
+  });
+
+  it("resume_logic_is_unchanged_by_the_step_bar", async () => {
+    client.getProfile.mockResolvedValue({ ...profile, display_name: "Hartigan" });
+    render(<SetupGate />);
+    await screen.findByRole("heading", { name: "Model" });
+    expect(stepBtn("Model").getAttribute("aria-current")).toBe("step");
+  });
+
+  it("close_is_a_plain_one_word_button", async () => {
+    render(<SetupGate />);
+    await wizard();
+    const close = screen.getByRole("button", { name: "Close" });
+    expect(close.className).toContain("btn");
+    expect(screen.queryByText(/finish later/)).toBeNull();
+    expect(screen.queryByText(/There's no account/)).toBeNull();
   });
 });

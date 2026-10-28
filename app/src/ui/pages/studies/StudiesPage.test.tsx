@@ -145,7 +145,7 @@ describe("StudiesPage", () => {
     const c = client();
     const ctl = new StudiesController(() => c, { pollMs: 1 });
     const { findByRole, findByTestId } = render(<StudiesPage controller={ctl} deps={deps} />);
-    fireEvent.click(await findByRole("button", { name: "Ask agent to fix" }));
+    fireEvent.click(await findByRole("button", { name: "Ask agent" }));
     await waitFor(() => expect(selectedRunId.value).toBe("d1"));
     expect(consoleCollapsed.value).toBe(false);
     expect((await findByTestId("asked")).textContent).toContain("designer");
@@ -156,7 +156,7 @@ describe("StudiesPage", () => {
     const c = client();
     const ctl = new StudiesController(() => c, { pollMs: 1 });
     const { findByRole, getByRole } = render(<StudiesPage controller={ctl} deps={deps} />);
-    const ask = await findByRole("button", { name: "Ask agent to fix" });
+    const ask = await findByRole("button", { name: "Ask agent" });
     fireEvent.click(ask);
     await waitFor(() => expect((ask as HTMLButtonElement).disabled).toBe(true));
     fireEvent.click(ask);
@@ -179,7 +179,7 @@ describe("StudiesPage", () => {
     expect(queryByTestId("stale")).toBeNull();
     edited = true;
     act(() => { parts.value = PARTS.map((p) => ({ ...p, mtime: p.mtime + 5 })); }); // an agent edited the part
-    expect((await findByTestId("stale")).textContent).toContain("geometry changed since this study");
+    expect((await findByTestId("stale")).textContent).toContain("part changed since this study");
   });
 
   it("untrusted text from the core renders as text", async () => {
@@ -197,7 +197,7 @@ describe("StudiesPage", () => {
     const ctl = new StudiesController(() => client(), { pollMs: 1 });
     const { container, getByRole } = render(<StudiesPage controller={ctl} deps={deps} />);
     await act(async () => { await Promise.resolve(); });
-    expect(container.textContent).toContain("No part yet");
+    expect(container.textContent).toContain("No built parts");
     expect((getByRole("button", { name: "Run study" }) as HTMLButtonElement).disabled).toBe(true);
   });
 });

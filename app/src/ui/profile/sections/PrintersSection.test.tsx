@@ -49,7 +49,7 @@ describe("Profile → Printers", () => {
     expect(row.textContent).toContain("●●●●");
     await waitFor(() => expect(row.textContent).toContain("idle"));
     expect(within(sec).getByText(/PrusaLink is plain HTTP/)).toBeTruthy();
-    expect(within(sec).getByText(/Bambu.*coming later/)).toBeTruthy();
+    expect(within(sec).getByText(/Bambu: not supported yet/)).toBeTruthy();
   });
 
   it("adds_a_printer_with_a_password_key_that_is_never_shown", async () => {
@@ -71,7 +71,7 @@ describe("Profile → Printers", () => {
     const row = await within(sec).findByRole("row", { name: /Bench MK4/ });
     fireEvent.click(within(row).getByRole("button", { name: "Remove" }));
     expect(client.deletePrinter).not.toHaveBeenCalled();
-    fireEvent.click(within(row).getByRole("button", { name: "Yes, remove" }));
+    fireEvent.click(within(row).getByRole("button", { name: "Remove" }));
     await waitFor(() => expect(client.deletePrinter).toHaveBeenCalledWith("bench_mk4"));
     await waitFor(() => expect(within(sec).queryByRole("row", { name: /Bench MK4/ })).toBeNull());
   });

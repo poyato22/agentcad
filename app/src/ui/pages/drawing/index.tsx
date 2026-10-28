@@ -114,11 +114,11 @@ export function DrawingPage(): JSX.Element {
           <Button disabled={!shown} title="Opens the print dialog; choose Save as PDF" onClick={() => window.print()}>Export PDF</Button>
         </div>
         {exportError && <div class="pg-error text" role="alert">{exportError}</div>}
-        {!part && <p class="faint pg-empty">No parts yet. Build one on the Design page; its drawing shows here.</p>}
+        {!part && <p class="faint pg-empty">No parts. Build one on the Design page.</p>}
         {part && failure && failure.partId === partId && (
           <div class="pg-band" role="alert">
             <span class="pg-error text">
-              {failure.notBuilt ? `${label} has no built model yet.` : `The drawing could not be made: ${failure.message}`}
+              {failure.notBuilt ? `${label} has no built model yet.` : `Drawing failed: ${failure.message}`}
             </span>
             {failure.hint && <span class="dim text"> — {failure.hint}</span>}
             <Button onClick={() => setAttempt((n) => n + 1)}>Try again</Button>

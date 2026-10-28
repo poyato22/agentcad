@@ -62,7 +62,7 @@ export function AgentsSection({ data, update }: SectionProps): JSX.Element {
         </label>
         <div class="profile-field">
           <ModelPicker label="Default model" value={model} placeholder="App default" onChange={(ref) => { setModel(ref); task.clear(); }} />
-          {model !== null && <Button variant="ghost" onClick={() => { setModel(null); task.clear(); }}>Use the app default</Button>}
+          {model !== null && <Button variant="ghost" onClick={() => { setModel(null); task.clear(); }}>Reset</Button>}
         </div>
       </Card>
       <Card title="Limits">
@@ -71,8 +71,8 @@ export function AgentsSection({ data, update }: SectionProps): JSX.Element {
           <label><input type="radio" name="parallel" checked={auto} onChange={() => { setAuto(true); task.clear(); }} /> {autoLabel}</label>
           {par?.auto && par.reason && <div class="profile-hint text">{par.reason}</div>}
           {par && !par.auto && <div class="profile-hint">{`Manual: ${par.limit}`}</div>}
-          {!par && <div class="profile-hint">The core picks how many run at once from this Mac's chip, memory and the model.</div>}
-          <label><input type="radio" name="parallel" checked={!auto} onChange={() => { setAuto(false); task.clear(); }} /> Choose a number</label>
+          {!par && <div class="profile-hint">Set from this Mac's chip, memory and the model.</div>}
+          <label><input type="radio" name="parallel" checked={!auto} onChange={() => { setAuto(false); task.clear(); }} /> Manual</label>
           {!auto && (
             <input aria-label="Max parallel agents" type="number" min="1" max="16" step="1" value={parallel} onInput={edit(setParallel)} />
           )}
@@ -80,7 +80,7 @@ export function AgentsSection({ data, update }: SectionProps): JSX.Element {
         <label class="profile-field"><span class="label">Onshape calls per run</span>
           <input aria-label="Onshape calls per run" type="number" min="0" step="1" value={runCap} onInput={edit(setRunCap)} />
         </label>
-        {!valid && <div class="profile-hint">Use whole numbers: parallel agents 1 to 16, calls per run 0 or more.</div>}
+        {!valid && <div class="profile-hint">Whole numbers: parallel agents 1–16, calls per run 0 or more.</div>}
       </Card>
       <div class="profile-row">
         <Button variant="ink" disabled={!dirty || !valid || task.busy} onClick={() => { void save(); }}>Save</Button>

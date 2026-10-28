@@ -228,10 +228,10 @@ describe("conversation view (default)", () => {
     await frame();
     const log = screen.getByRole("log", { name: "Conversation" });
     expect(log.querySelectorAll("[data-msg]")).toHaveLength(500);
-    fireEvent.click(screen.getByRole("button", { name: "show earlier · 120" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show earlier (120)" }));
     await frame();
     expect(log.querySelectorAll("[data-msg]")).toHaveLength(620);
-    expect(screen.queryByRole("button", { name: /^show earlier/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Show earlier/ })).toBeNull();
   });
 
   it("agent_text_renders_as_text_never_html", async () => {
@@ -251,7 +251,7 @@ describe("inline composer", () => {
     const c = client();
     render(<ConsolePane />);
     await frame();
-    fireEvent.click(screen.getByRole("button", { name: "+ New" }));
+    fireEvent.click(screen.getByRole("button", { name: "New" }));
     expect(composerOpen.value).toBe(true);
     const form = screen.getByRole("form", { name: "New run" });
     await waitFor(() => expect((within(form).getByLabelText("Agent") as HTMLSelectElement).value).toBe("verifier"));
@@ -272,7 +272,7 @@ describe("inline composer", () => {
       models: vi.fn().mockResolvedValue({ ...MODELS, vendors: [{ vendor: "anthropic", key: "none" }] }) });
     render(<ConsolePane />);
     await frame();
-    fireEvent.click(screen.getByRole("button", { name: "+ New" }));
+    fireEvent.click(screen.getByRole("button", { name: "New" }));
     const form = screen.getByRole("form", { name: "New run" });
     await waitFor(() => expect(form.textContent).toContain("no API key — add one in Profile"));
     fireEvent.input(within(form).getByLabelText("Task"), { target: { value: "go" } });
@@ -284,7 +284,7 @@ describe("inline composer", () => {
     const c = client();
     render(<ConsolePane />);
     await frame();
-    fireEvent.click(screen.getByRole("button", { name: "+ New" }));
+    fireEvent.click(screen.getByRole("button", { name: "New" }));
     const form = screen.getByRole("form", { name: "New run" });
     await waitFor(() => expect(within(form).getByRole("button", { name: /^Model: Claude Code · opus/ })).toBeTruthy());
     fireEvent.input(within(form).getByLabelText("Task"), { target: { value: "go" } });
@@ -301,7 +301,7 @@ describe("inline composer", () => {
     client({ createRun: vi.fn().mockRejectedValue(new Error("unknown agent")) });
     render(<ConsolePane />);
     await frame();
-    fireEvent.click(screen.getByRole("button", { name: "+ New" }));
+    fireEvent.click(screen.getByRole("button", { name: "New" }));
     const form = screen.getByRole("form", { name: "New run" });
     await waitFor(() => expect(within(form).getByRole("button", { name: /^Model: Claude Code · opus/ })).toBeTruthy());
     fireEvent.input(within(form).getByLabelText("Task"), { target: { value: "go" } });

@@ -104,10 +104,10 @@ describe("StepLog", () => {
     await frame();
     expect(container.querySelectorAll("[data-row]")).toHaveLength(500);
     expect(container.querySelector('[data-row][data-key="c:f699"]')).not.toBeNull();
-    fireEvent.click(screen.getByText(/show earlier/));
+    fireEvent.click(screen.getByText(/Show earlier/));
     await frame();
     expect(container.querySelectorAll("[data-row]")).toHaveLength(700);
-    expect(screen.queryByText(/show earlier/)).toBeNull();
+    expect(screen.queryByText(/Show earlier/)).toBeNull();
   });
 
   it("untrusted_text_not_html", async () => {
@@ -143,7 +143,7 @@ describe("StepLog", () => {
     fireEvent.click(screen.getByText(/▸ 3 more tool calls · mirror_measure/));
     await frame();
     expect(container.querySelectorAll('[data-kind="call"]')).toHaveLength(4);
-    fireEvent.click(screen.getByText(/▾ fold/));
+    fireEvent.click(screen.getByText(/▾ Fold/));
     await frame();
     expect(container.querySelectorAll('[data-kind="call"]')).toHaveLength(1);
   });
@@ -213,7 +213,7 @@ describe("StepLog rows for real core shapes (fix round 1)", () => {
     setSteps(list);
     const { container } = render(<StepLog />);
     await frame();
-    fireEvent.click(screen.getByText(/show earlier/));
+    fireEvent.click(screen.getByText(/Show earlier/));
     await frame();
     expect(container.querySelectorAll("[data-row]")).toHaveLength(600);
     selectedRunId.value = "r2";                  // a different view: back to the last 500
@@ -271,7 +271,7 @@ describe("Roster", () => {
     const { container } = render(<Roster />);
     fireEvent.click(container.querySelector('[data-run="r1"]') as Element);
     expect(selectedRunId.value).toBe("r1");
-    fireEvent.click(screen.getByText("+ new run"));
+    fireEvent.click(screen.getByText("New run"));
     expect(newRunOpen.value).toBe(true);
   });
 

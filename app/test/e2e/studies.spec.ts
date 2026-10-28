@@ -169,7 +169,7 @@ test("ask_agent_to_fix_starts_a_designer_run_with_the_result", async ({ page, fa
   await fake.reset(withSims({ records: "fixtures" }) as never);
   await open(page);
   await page.getByRole("button", { name: "Collapse the agent console" }).click();
-  await page.getByRole("button", { name: "Ask agent to fix" }).click();
+  await page.getByRole("button", { name: "Ask agent" }).click();
   await expect(page.getByTestId("asked")).toContainText("Sent to designer");
   const post = (await fake.calls()).find((c) => c.method === "POST" && c.path === "/runs");
   const body = post?.body as { agent: string; prompt: string; edit_scope: string[] };
@@ -186,7 +186,7 @@ test("ask_agent_to_fix_starts_a_designer_run_with_the_result", async ({ page, fa
   // the console opens on the new run
   await expect(page.locator("[data-region=app]")).toHaveAttribute("data-console", "open");
   // once sent, Ask stays off for this study; "Open run" goes back to it
-  await expect(page.getByRole("button", { name: "Ask agent to fix" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Ask agent" })).toBeDisabled();
   await page.getByRole("button", { name: "Collapse the agent console" }).click();
   await page.getByRole("button", { name: "Open run" }).click();
   await expect(page.locator("[data-region=app]")).toHaveAttribute("data-console", "open");
@@ -201,7 +201,7 @@ test("the_stale_banner_appears_when_the_part_changes_while_the_page_is_open", as
   // an agent edits the part: the core bumps its mtime and the app refetches /parts
   const parts = (BASE.parts as { mtime: number }[]).map((p) => ({ ...p, mtime: Date.now() / 1000 + 60 }));
   await fake.emit({ type: "tool_result", run_id: "b7c79a57cbb4", data: { call_id: "st1", name: "mirror_part_set_vars", ok: true, summary: "ok" } }, { parts } as never);
-  await expect(page.getByTestId("stale")).toContainText("geometry changed since this study", { timeout: 10_000 });
+  await expect(page.getByTestId("stale")).toContainText("part changed since this study", { timeout: 10_000 });
   await expect(page.getByTestId("study-row").nth(1)).toHaveAttribute("aria-current", "true"); // no reselecting
 });
 

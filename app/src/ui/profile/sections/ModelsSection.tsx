@@ -72,14 +72,14 @@ function ClaudeCard({ data, update }: SectionProps): JSX.Element {
         </dl>
       )}
       {!c.installed && (
-        <p class="dim">Install it first: <code>npm install -g @anthropic-ai/claude-code</code>, then reopen this panel.</p>
+        <p class="dim">Install: <code>npm install -g @anthropic-ai/claude-code</code>, then reopen Profile.</p>
       )}
       {phase === "waiting" && (
-        <div class="profile-status"><Led tone="blue" /><span>finish signing in in your browser</span>
+        <div class="profile-status"><Led tone="blue" /><span>waiting for browser sign-in</span>
           <Button variant="ghost" onClick={cancel}>Cancel</Button>
         </div>
       )}
-      {phase === "timeout" && <div class="profile-hint">Sign-in did not finish. Try again when you are ready.</div>}
+      {phase === "timeout" && <div class="profile-hint">Sign-in timed out.</div>}
       <div class="profile-row">
         {c.installed && !c.signed_in && phase !== "waiting" && <Button disabled={task.busy} onClick={() => { void signIn(); }}>Sign in</Button>}
         {c.installed && c.signed_in && <Button disabled={task.busy} onClick={() => { void signOut(); }}>Sign out</Button>}
@@ -117,7 +117,7 @@ function KeysCard({ data, update }: SectionProps): JSX.Element {
 
   return (
     <Card title="API keys">
-      <p class="dim">Keys go to the macOS Keychain and are never shown again.</p>
+      <p class="dim">Stored in the macOS Keychain; never shown again.</p>
       <table class="profile-table" aria-label="API keys">
         <thead><tr><th class="label">Vendor</th><th class="label">Status</th><th class="label">Source</th><th class="label"><span class="sr-only">Actions</span></th></tr></thead>
         <tbody>
@@ -134,7 +134,7 @@ function KeysCard({ data, update }: SectionProps): JSX.Element {
                       <input {...SECRET_INPUT} aria-label={`${k.vendor} API key`} value={secret}
                         onInput={(e) => setSecret(e.currentTarget.value)}
                         onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void save(k.vendor); } }} />
-                      <Button variant="ink" disabled={!secret.trim() || task.busy} onClick={() => { void save(k.vendor); }}>Save key</Button>
+                      <Button variant="ink" disabled={!secret.trim() || task.busy} onClick={() => { void save(k.vendor); }}>Save</Button>
                       <Button variant="ghost" onClick={() => { setSecret(""); setMode(null); }}>Cancel</Button>
                     </span>
                   )}
@@ -197,7 +197,7 @@ function LocalCard({ data, update }: SectionProps): JSX.Element {
 
   return (
     <Card title="Local models">
-      <p class="dim">Ollama or LM Studio running on this Mac. The address must be on this Mac (localhost).</p>
+      <p class="dim">Ollama or LM Studio on this Mac. Address must be localhost.</p>
       {LOCAL_VENDORS.map((v) => {
         const url = urls[v] ?? "";
         const isSaved = v in saved;

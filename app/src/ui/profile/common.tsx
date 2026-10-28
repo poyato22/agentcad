@@ -84,7 +84,7 @@ export function ConfirmRemove({ question, busy, onYes, onKeep }: { question: str
   return (
     <span class="profile-confirm" role="group" aria-label="Confirm removal">
       <span class="text">{question}</span>
-      <Button variant="danger" disabled={busy} onClick={onYes}>Yes, remove</Button>
+      <Button variant="danger" disabled={busy} onClick={onYes}>Remove</Button>
       <Button variant="ghost" disabled={busy} onClick={onKeep}>Keep</Button>
     </span>
   );
@@ -108,8 +108,8 @@ export function wholeNumber(s: string, min: number, max = Number.MAX_SAFE_INTEGE
   return n >= min && n <= max ? n : null;
 }
 
-export const ENV_TEXT = "from environment variable — it takes precedence over a saved key";
-export const ENV_SAVED_NOTE = "Saved to Keychain. The environment variable still takes precedence; the saved key is used only when it is unset.";
+export const ENV_TEXT = "environment variable (overrides Keychain)";
+export const ENV_SAVED_NOTE = "Saved to Keychain. The environment variable still overrides it.";
 
 /** Replace (or append) one vendor's status in a key list. */
 export function upsertKey(keys: KeyStatus[], next: KeyStatus): KeyStatus[] {

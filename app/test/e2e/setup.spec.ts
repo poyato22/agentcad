@@ -11,7 +11,7 @@ const ONSHAPE_ACCESS = "on-access-E2E-1111";
 const ONSHAPE_SECRET = "on-secret-E2E-2222";
 
 const wizard = (page: Page) => page.getByRole("dialog", { name: "Set up Mises" });
-const heading = (page: Page, name: string) => page.getByRole("heading", { name });
+const heading = (page: Page, name: string) => page.getByRole("heading", { name, exact: true });
 const field = (page: Page, name: string) => page.locator(`input[aria-label="${name}"]`);
 
 async function getJson(fake: { url: string; token: string }, path: string): Promise<unknown> {
@@ -43,35 +43,35 @@ test("wizard_hidden_when_setup_is_complete", async ({ page, fake }) => {
 
 /** The profile step (first after Welcome): name (+ material), then on to "Connect a model". */
 async function fillProfile(page: Page, name = "Hartigan", material?: string) {
-  await expect(heading(page, "Your profile")).toBeVisible();
+  await expect(heading(page, "Profile")).toBeVisible();
   await field(page, "Display name").fill(name);
   if (material) await field(page, "Default material").fill(material);
-  await page.getByRole("button", { name: "Save and continue" }).click();
+  await page.getByRole("button", { name: "Continue" }).click();
 }
 
 test("full_path_profile_claude_code_api_key_onshape_done", async ({ page, fake }) => {
   await fake.reset("setup");
   await page.goto(PAGE);
   await expect(wizard(page)).toBeVisible();
-  await expect(wizard(page)).toContainText("Everything stays on this Mac");
-  await expect(page.locator(".setup-steps li")).toHaveText(["Welcome", "Profile", "Model", "Onshape", "Done"]);
-  await page.getByRole("button", { name: "Get started" }).click();
+  await expect(wizard(page)).toContainText("Stored on this Mac");
+  await expect(page.locator(".setup-steps .setup-step-name")).toHaveText(["Welcome", "Profile", "Model", "Onshape", "Done"]);
+  await page.getByRole("button", { name: "Start" }).click();
 
   // Your profile first: name, units, material, theme (no parallel-agents number: that's automatic)
-  await expect(heading(page, "Your profile")).toBeVisible();
+  await expect(heading(page, "Profile")).toBeVisible();
   await expect(page.getByLabel("Units")).toHaveValue("mm");
   await expect(page.getByLabel("Parallel agents")).toHaveCount(0);
   await page.getByLabel("Theme").selectOption("dark");
   await fillProfile(page, "Hartigan", "PETG");
 
   // Connect a model: the user's own Claude Code, then an API key as well
-  await expect(heading(page, "Connect a model")).toBeVisible();
+  await expect(heading(page, "Model")).toBeVisible();
   const cont = page.getByRole("button", { name: "Continue" });
   await expect(cont).toBeDisabled();
   const claude = page.getByRole("region", { name: "Use my Claude Code" });
   await expect(claude).toContainText("Runs your Claude Code");
   await claude.getByRole("button", { name: "Sign in" }).click();
-  await expect(claude).toContainText("finish signing in in your browser");
+  await expect(claude).toContainText("waiting for browser sign-in");
   await expect(claude).toContainText("signed in · claude.ai", { timeout: 6000 });
   await expect(cont).toBeEnabled();
 
@@ -93,7 +93,7 @@ test("full_path_profile_claude_code_api_key_onshape_done", async ({ page, fake }
   await cont.click();
 
   // Onshape: save both keys (password fields), then one test call
-  await expect(heading(page, "Connect Onshape")).toBeVisible();
+  await expect(heading(page, "Onshape")).toBeVisible();
   await expect(field(page, "Access key")).toHaveAttribute("type", "password");
   await expect(field(page, "Secret key")).toHaveAttribute("type", "password");
   await field(page, "Access key").fill(ONSHAPE_ACCESS);
@@ -107,8 +107,8 @@ test("full_path_profile_claude_code_api_key_onshape_done", async ({ page, fake }
   await noSecretsAnywhere(page, [API_SECRET, ONSHAPE_ACCESS, ONSHAPE_SECRET]);
   await page.getByRole("button", { name: "Continue" }).click();
 
-  await expect(heading(page, "Ready")).toBeVisible();
-  await page.getByRole("button", { name: "Start using Mises" }).click();
+  await expect(heading(page, "Done")).toBeVisible();
+  await page.getByRole("button", { name: "Finish" }).click();
   await expect(wizard(page)).toHaveCount(0);
 
   const calls = await fake.calls();
@@ -132,30 +132,30 @@ test("full_path_profile_claude_code_api_key_onshape_done", async ({ page, fake }
 test("reload_mid_way_resumes_at_the_first_missing_step", async ({ page, fake }) => {
   await fake.reset("setup");
   await page.goto(PAGE);
-  await page.getByRole("button", { name: "Get started" }).click();
+  await page.getByRole("button", { name: "Start" }).click();
   await page.reload();
   await expect(heading(page, "Welcome to Mises")).toBeVisible();          // nothing saved yet
-  await page.getByRole("button", { name: "Get started" }).click();
+  await page.getByRole("button", { name: "Start" }).click();
   await fillProfile(page);
   await page.reload();
-  await expect(heading(page, "Connect a model")).toBeVisible();           // the profile is saved
+  await expect(heading(page, "Model")).toBeVisible();           // the profile is saved
   await page.getByLabel("Vendor").selectOption("openai");
   await field(page, "API key").fill("sk-openai-E2E");
   await page.getByRole("region", { name: "API key" }).getByRole("button", { name: "Save" }).click();
   await expect(page.getByRole("region", { name: "API key" })).toContainText("saved ●●●● from Keychain");
 
   await page.reload();
-  await expect(heading(page, "Connect Onshape")).toBeVisible();
-  await page.getByRole("button", { name: "Skip for now" }).click();
-  await expect(heading(page, "Ready")).toBeVisible();
+  await expect(heading(page, "Onshape")).toBeVisible();
+  await page.getByRole("button", { name: "Skip" }).click();
+  await expect(heading(page, "Done")).toBeVisible();
 
   await page.reload();
-  await expect(heading(page, "Ready")).toBeVisible();
+  await expect(heading(page, "Done")).toBeVisible();
   // closing keeps what's saved; the next launch resumes at the same step
-  await page.getByRole("button", { name: "Close — finish later" }).click();
+  await page.getByRole("button", { name: "Close" }).click();
   await expect(wizard(page)).toHaveCount(0);
   await page.reload();
-  await expect(heading(page, "Ready")).toBeVisible();
+  await expect(heading(page, "Done")).toBeVisible();
 });
 
 test("local_only_and_skip_onshape_path", async ({ page, fake }) => {
@@ -166,7 +166,7 @@ test("local_only_and_skip_onshape_path", async ({ page, fake }) => {
   // like the real core, an Ollama answering at its default address already counts as a model:
   // the wizard opens at the profile (always first), then the model step shows it works
   await fillProfile(page);
-  await expect(heading(page, "Connect a model")).toBeVisible();
+  await expect(heading(page, "Model")).toBeVisible();
   await expect(page.getByRole("button", { name: "Continue" })).toBeEnabled();
   // Local model: the core checks the endpoint and only an answering one is saved
   await page.getByLabel("Local app").selectOption("ollama");
@@ -177,9 +177,9 @@ test("local_only_and_skip_onshape_path", async ({ page, fake }) => {
   expect(await getJson(fake, "/profile")).toMatchObject({ local_endpoints: { ollama: "http://localhost:11434/v1" } });
   await page.getByRole("button", { name: "Continue" }).click();
 
-  await page.getByRole("button", { name: "Skip for now" }).click();
+  await page.getByRole("button", { name: "Skip" }).click();
   await expect(wizard(page)).toContainText("Onshape skipped");
-  await page.getByRole("button", { name: "Start using Mises" }).click();
+  await page.getByRole("button", { name: "Finish" }).click();
   await expect(wizard(page)).toHaveCount(0);
 
   const calls = await fake.calls();
@@ -190,12 +190,12 @@ test("local_only_and_skip_onshape_path", async ({ page, fake }) => {
 test("drafting_look_square_corners_and_blue_only_on_the_current_step", async ({ page, fake }) => {
   await fake.reset("setup");
   await page.goto(PAGE);
-  await page.getByRole("button", { name: "Get started" }).click();
+  await page.getByRole("button", { name: "Start" }).click();
   await fillProfile(page);
-  await expect(heading(page, "Connect a model")).toBeVisible();
+  await expect(heading(page, "Model")).toBeVisible();
   await expect(wizard(page)).toHaveCSS("background-color", "rgb(10, 10, 10)");
-  await expect(page.locator(".setup-steps li[aria-current=step]")).toHaveText("Model");
-  await expect(page.locator(".setup-steps li[aria-current=step]")).toHaveCSS("border-bottom-color", "rgb(61, 139, 255)");
+  await expect(page.locator(".setup-steps [aria-current=step] .setup-step-name")).toHaveText("Model");
+  await expect(page.locator(".setup-steps [aria-current=step]")).toHaveCSS("border-bottom-color", "rgb(61, 139, 255)");
   for (const sel of ["button", "input", "select", ".setup-card"]) {
     const radii = await wizard(page).locator(sel).evaluateAll((els) => els.map((e) => getComputedStyle(e).borderRadius));
     expect(radii.length, sel).toBeGreaterThan(0);
@@ -214,10 +214,66 @@ test("claude_code_not_installed_shows_install_hint", async ({ page, fake }) => {
   sc.setup.claude = { installed: false, version: null, signed_in: false, auth_method: null };
   await fake.reset(sc);
   await page.goto(PAGE);
-  await page.getByRole("button", { name: "Get started" }).click();
+  await page.getByRole("button", { name: "Start" }).click();
   await fillProfile(page);
   const claude = page.getByRole("region", { name: "Use my Claude Code" });
-  await expect(claude).toContainText("isn't installed on this Mac");
+  await expect(claude).toContainText("not installed");
   await expect(claude).toContainText("npm install -g @anthropic-ai/claude-code");
   await expect(claude.getByRole("button", { name: "Sign in" })).toHaveCount(0);
+});
+
+// ---- the step bar: every step is a button that jumps there, with done / current / to do
+test("step_bar_jumps_to_any_step_by_click_and_keyboard", async ({ page, fake }) => {
+  await fake.reset("setup");
+  await page.goto(PAGE);
+  await expect(heading(page, "Welcome to Mises")).toBeVisible();
+  const steps = page.getByRole("navigation", { name: "Setup steps" });
+  const step = (name: string) => steps.getByRole("button", { name: new RegExp(`^${name}( \\((done|to do)\\))?$`) });
+  await expect(step("Welcome")).toHaveAttribute("aria-current", "step");
+  await expect(step("Onshape")).toHaveAttribute("data-status", "todo");
+  // click
+  await step("Onshape").click();
+  await expect(heading(page, "Onshape")).toBeVisible();
+  await expect(step("Onshape")).toHaveAttribute("aria-current", "step");
+  await expect(step("Welcome")).not.toHaveAttribute("aria-current", "step");
+  // keyboard: arrows move focus along the bar, Enter opens the focused step
+  await step("Onshape").focus();
+  await page.keyboard.press("ArrowLeft");
+  await expect(step("Model")).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(heading(page, "Model")).toBeVisible();
+  await expect(step("Model")).toHaveAttribute("aria-current", "step");
+  await page.keyboard.press("Home");
+  await expect(step("Welcome")).toBeFocused();
+  await page.keyboard.press("Space");
+  await expect(heading(page, "Welcome to Mises")).toBeVisible();
+  // a saved profile marks its step done
+  await page.getByRole("button", { name: "Start", exact: true }).click();
+  await fillProfile(page);
+  await expect(heading(page, "Model")).toBeVisible();
+  await expect(step("Profile")).toHaveAttribute("data-status", "done");
+  await expect(step("Profile")).toContainText("✓");
+  // the step buttons are visibly interactive in both themes: hover changes the text colour
+  for (const theme of ["dark", "light"] as const) {
+    await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
+    await page.mouse.move(700, 600);
+    const done = step("Done");
+    const before = await done.evaluate((el) => getComputedStyle(el).color);
+    await done.hover();
+    await expect.poll(() => done.evaluate((el) => getComputedStyle(el).color)).not.toBe(before);
+    await expect(done).toHaveCSS("cursor", "pointer");
+  }
+});
+
+test("close_is_a_bordered_one_word_button", async ({ page, fake }) => {
+  await fake.reset("setup");
+  await page.goto(PAGE);
+  const close = wizard(page).getByRole("button", { name: "Close", exact: true });
+  await expect(close).toHaveText("Close");
+  await expect(close).toHaveCSS("border-top-width", "1px");
+  await expect(close).not.toHaveCSS("border-top-color", "rgba(0, 0, 0, 0)");
+  await expect(wizard(page)).not.toContainText("finish later");
+  await page.getByRole("button", { name: "Start", exact: true }).click();
+  await expect(wizard(page)).not.toContainText("There's no account");
+  await expect(wizard(page)).not.toContainText("signing in to Mises");
 });

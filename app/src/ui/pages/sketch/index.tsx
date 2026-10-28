@@ -75,7 +75,7 @@ export function SketchPage(): JSX.Element {
           <div class="sk-hint faint">
             {doc.value.strokes.length
               ? `${doc.value.strokes.length} stroke${doc.value.strokes.length === 1 ? "" : "s"} · mm, origin bottom-left`
-              : "Draw with a pen, mouse or trackpad — or add a photo of a sketch."}
+              : "Draw with a pen, mouse or trackpad, or add a photo."}
           </div>
         </div>
         <SidePanel />
@@ -135,7 +135,7 @@ function SelectedStroke(): JSX.Element {
     return (
       <section class="sk-sec">
         <div class="label">Dimension</div>
-        <p class="faint sk-p">Select a stroke (V), then type its size: 40, Ø20, R5, 2 in — or a note like “clamps here”.</p>
+        <p class="faint sk-p">Select a stroke (V) and type a size (40, Ø20, R5, 2 in) or a note.</p>
       </section>
     );
   }
@@ -146,7 +146,7 @@ function SelectedStroke(): JSX.Element {
       {/* keyed: a new stroke or a new saved label starts the field afresh (no effect racing typing) */}
       <DimensionField key={`${s.id}:${dim?.text ?? ""}`} stroke={s} saved={dim?.text ?? ""} />
       {dim && <div class="faint sk-p" data-dim-parsed>{dim.value_mm !== null ? `${dim.kind} · ${dim.value_mm} mm` : dim.kind}</div>}
-      <Button variant="ghost" class="sk-del" onClick={() => sketchActions.deleteStroke(s.id)}>Delete stroke</Button>
+      <Button variant="ghost" class="sk-del" onClick={() => sketchActions.deleteStroke(s.id)}>Delete</Button>
     </section>
   );
 }
@@ -194,11 +194,11 @@ function PhotoBox(): JSX.Element {
           </div>
         </div>
       ) : (
-        <p class="faint sk-p">PNG, JPEG or HEIC, up to 10 MB. Drop it here or choose a file.</p>
+        <p class="faint sk-p">PNG, JPEG or HEIC, max 10 MB. Drop it here.</p>
       )}
       <input ref={input} type="file" class="sk-file" accept="image/png,image/jpeg,image/heic,image/heif,.heic,.heif" aria-label="Choose photo"
         onChange={(e) => { const f = e.currentTarget.files?.[0]; e.currentTarget.value = ""; void take(f); }} />
-      <Button onClick={() => input.current?.click()}>{p ? "Replace photo" : "Choose photo"}</Button>
+      <Button onClick={() => input.current?.click()}>{p ? "Replace" : "Choose photo"}</Button>
       {photoError.value && <div class="sk-err" role="alert">{photoError.value}</div>}
     </section>
   );
@@ -251,16 +251,16 @@ function BuildBox(): JSX.Element {
         <div class="faint sk-p">{targetErr ?? "Loading the default agent…"}</div>
       )}
       {target && photo.value && !target.vision && (
-        <div class="sk-note" data-vision-note>This model can’t see images: the photo isn’t sent; it gets the strokes, dimensions and notes only.</div>
+        <div class="sk-note" data-vision-note>This model can't read images. The photo is not sent; strokes, dimensions and notes are.</div>
       )}
-      {target?.keyMissing && <div class="sk-note">{providerLabel(target.vendor)} isn’t set up yet — add its key or sign in from Profile.</div>}
-      <p class="faint sk-p">The agent reads the strokes, then the dimensions, infers constraints, and asks at most 3 questions in the console.</p>
+      {target?.keyMissing && <div class="sk-note">{providerLabel(target.vendor)} is not set up. Add its key or sign in from Profile.</div>}
+      <p class="faint sk-p">The agent asks at most 3 questions in the console.</p>
       <Button variant="ink" onClick={() => void start()} disabled={!ready}>
         {busy ? (b.step === "saving" ? "Sending sketch…" : "Starting run…") : "Build part"}
       </Button>
       {empty && <div class="faint sk-p">Draw something or add a photo first.</div>}
       {tooMany && <div class="sk-err" data-too-many>This sketch has too much detail to send (over {MAX_STROKES} strokes or {MAX_TOTAL_POINTS} points). Delete a few strokes.</div>}
-      {b.state === "started" && <div class="dim" role="status">Run started — follow it in the console.</div>}
+      {b.state === "started" && <div class="dim" role="status">Run started. See the console.</div>}
       {b.state === "error" && <div class="sk-err" role="alert">{b.message}</div>}
     </section>
   );

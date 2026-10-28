@@ -30,10 +30,10 @@ export function PrintersSection(): JSX.Element {
   return (
     <SectionBox title="Printers">
       <Card title="PrusaLink printers">
-        <p class="dim">Printers the Print page can send sliced jobs to. Each printer's API key is stored in the macOS Keychain and never shown again.</p>
+        <p class="dim">Targets for the Print page. API keys are stored in the macOS Keychain.</p>
         {list === null && <div class="faint">loading…</div>}
         <ErrorLine error={loadError} />
-        {list !== null && list.length === 0 && <div class="faint">No printers yet.</div>}
+        {list !== null && list.length === 0 && <div class="faint">No printers.</div>}
         {list !== null && list.length > 0 && (
           <table class="profile-table">
             <thead><tr><th class="label">Printer</th><th class="label">Host</th><th class="label">Key</th><th class="label">Status</th><th /></tr></thead>
@@ -49,7 +49,7 @@ export function PrintersSection(): JSX.Element {
             <div class="profile-row"><Button onClick={() => setAdding(true)}>Add printer</Button></div>
             <p class="faint">{LAN_NOTE}</p>
           </>)}
-        <p class="faint">Bambu printers: coming later.</p>
+        <p class="faint">Bambu: not supported yet.</p>
       </Card>
     </SectionBox>
   );

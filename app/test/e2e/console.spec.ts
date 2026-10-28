@@ -58,7 +58,7 @@ test("fold_expand_collapse", async ({ fake, page }) => {
   await expect(page.locator('[data-row][data-key="c:m7"]')).toContainText("✕");
   await fold.click();
   await expect(rows(page, "call")).toHaveCount(7);
-  await page.getByRole("button", { name: "▾ fold tool calls" }).click();
+  await page.getByRole("button", { name: "▾ Fold tool calls" }).click();
   await expect(rows(page, "call")).toHaveCount(2);
   await expect(fold).toBeVisible();
 });

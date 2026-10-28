@@ -1,4 +1,4 @@
-// App shell: 44px top bar across the top. Below it the active page shows:
+// App shell: top bar (one macOS title-bar strip tall, --topbar-h) across the top. Below it the active page shows:
 //   · Design keeps today's layout — left 240px · viewer · console.
 //   · Studies / Sketch / Drawing / Print render full-width under the top bar.
 // The agent console stays on every page as a right-hand panel that can collapse to a 36px rail.

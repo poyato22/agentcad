@@ -60,12 +60,15 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: 700; margin: 0; }
 .console-collapse {
   position: absolute; top: 0; right: 0; z-index: 3; height: var(--pane-head-h); width: 24px;
   display: inline-flex; align-items: center; justify-content: center;
-  background: var(--head); border: 0; border-left: 1px solid var(--line); color: var(--dim); cursor: pointer;
+  background: var(--head); border: 1px solid var(--line2); color: var(--dim); cursor: pointer;
 }
-.console-collapse:hover { color: var(--ink); }
+.console-collapse:hover { color: var(--ink); border-color: var(--dim); }
 .console-collapse:focus-visible { outline: 1px solid var(--blue); outline-offset: -2px; }
+/* keep the console's own top-row controls clear of the collapse button */
+.region-console .cv-top-row, .region-console > .pane > .pane-head { padding-right: 30px; }
 
-/* macOS overlay traffic lights occupy the top-left; keep the setup wizard header clear of them.
+/* macOS overlay traffic lights occupy the top-left; keep the setup wizard header clear of them
+   (its height, --chrome-h, centres its text on the lights).
    Adjusted here (shared styles) rather than in the component's own CSS. */
 .setup .setup-head { padding-left: var(--chrome-inset-x); }
 
@@ -103,16 +106,20 @@ button { font: inherit; color: inherit; }
   padding: 2px 9px; border: 1px solid var(--line2); background: transparent;
   color: var(--ink); font: 500 var(--fs-small)/1.5 var(--font-mono); cursor: pointer;
 }
-.btn:hover:not(:disabled) { border-color: var(--dim); }
+.btn:hover:not(:disabled) { border-color: var(--dim); background: var(--paper2); }
+.btn:active:not(:disabled) { background: var(--line); }
 .btn:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
 .btn:disabled, .btn[aria-disabled="true"] { color: var(--faint); cursor: default; }
 .btn-primary { background: var(--blue); border-color: var(--blue); color: var(--ink); font-weight: 600; }
-.btn-primary:hover:not(:disabled) { border-color: var(--blue2); }
+.btn-primary:hover:not(:disabled) { border-color: var(--blue2); background: var(--blue); }
 .btn-primary:disabled { background: transparent; border-color: var(--line2); }
 .btn-ink { background: var(--ink); border-color: var(--ink); color: var(--bg); font-weight: 600; }
+.btn-ink:hover:not(:disabled) { background: var(--dim); border-color: var(--dim); }
 .btn-ink:disabled { background: transparent; border-color: var(--line2); color: var(--faint); }
 .btn-danger { color: var(--red); }
-.btn-ghost { border-color: transparent; color: var(--dim); }
+/* secondary: still a visible 1px box (every button reads as a button), quieter border and text */
+.btn-ghost { border-color: var(--line2); color: var(--dim); }
+.btn-ghost:hover:not(:disabled) { color: var(--ink); }
 
 /* ---- inputs */
 input, textarea, select {
