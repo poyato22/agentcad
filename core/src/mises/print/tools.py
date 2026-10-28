@@ -13,6 +13,7 @@ import os
 import re
 import secrets
 import time
+import weakref
 from pathlib import Path
 
 from pydantic import BaseModel, Field
@@ -27,6 +28,11 @@ from .prusalink import PrinterStatus, PrusaLinkClient
 
 KEYCHAIN_SERVICE = "mises"
 SLICE_ID_RE = re.compile(r"^slice_[0-9a-f]{10}$")
+# print_send's upload timeout; a `sending_at` claim older than this is an unknown outcome
+SEND_TIMEOUT_S = 300
+# per-event-loop, per-slice send locks (weak on the loop so test loops don't accumulate)
+_SEND_LOCKS: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, dict[str, asyncio.Lock]]" = \
+    weakref.WeakKeyDictionary()
 
 
 def keychain_account(printer_id: str) -> str:
@@ -206,6 +212,17 @@ def _send_target(home: Path, args: SendArgs) -> tuple[dict, PrinterEntry]:
         raise MisesError(ErrorCode.INVALID_INPUT,
                          f"slice {args.slice_id} was already sent to a printer",
                          hint="slice again to reprint")
+    claimed = rec.get("sending_at")
+    if claimed:
+        if time.time() - float(claimed) > SEND_TIMEOUT_S:
+            # a send started and never finished (crash mid-upload): it may or may not have printed
+            raise MisesError(ErrorCode.INVALID_INPUT,
+                             f"an earlier send of slice {args.slice_id} did not finish; it may "
+                             "or may not have reached the printer",
+                             hint="check the printer, then slice again to reprint")
+        raise MisesError(ErrorCode.INVALID_INPUT,
+                         f"slice {args.slice_id} is being sent to a printer",
+                         hint="wait for that send to finish; slice again to reprint")
     printer = find_printer(home, args.printer_id)
     if args.host != printer.host:
         raise MisesError(ErrorCode.NEEDS_APPROVAL,
@@ -240,26 +257,44 @@ async def _send_preview(ctx: ToolContext, args: SendArgs) -> dict:
                         "model": printer.model, "state": st.state}}
 
 
-@tool("print_send", safety=SafetyClass.IRREVERSIBLE, preview=_send_preview, timeout_s=300,
+def _send_lock(home: Path, slice_id: str) -> asyncio.Lock:
+    """One lock per slice (per event loop): the sent/sending check and the upload never
+    interleave for two approved sends of the same slice."""
+    loop = asyncio.get_running_loop()
+    locks = _SEND_LOCKS.setdefault(loop, {})
+    return locks.setdefault(str(slice_dir(home, slice_id)), asyncio.Lock())
+
+
+@tool("print_send", safety=SafetyClass.IRREVERSIBLE, preview=_send_preview, timeout_s=SEND_TIMEOUT_S,
       description="Send a finished slice to a printer and START PRINTING it. Needs the user's "
                   "approval, which is bound to the slice's gcode_sha256 and file_name (both "
                   "returned by print_slice). Refused while the printer reports an error, is "
                   "busy or is printing, or when the slice is for another printer model.")
 async def print_send(ctx: ToolContext, args: SendArgs) -> ToolOutput:
     home = home_of(ctx)
-    rec, printer = _send_target(home, args)
-    gcode = slice_dir(home, args.slice_id) / "model.gcode"
-    if not gcode.is_file():
-        raise MisesError(ErrorCode.NOT_FOUND, "the slice's G-code is missing", hint="slice again")
-    data = gcode.read_bytes()  # the bytes that get verified are the bytes that get uploaded
-    if _sha256(data) != args.gcode_sha256:
-        raise MisesError(ErrorCode.NEEDS_APPROVAL,
-                         "the G-code changed after the approval card was shown; nothing was sent",
-                         hint="review the new slice and ask again")
-    client = await client_for(printer)
-    refuse_unless_sendable(printer, await client.status())  # state may have changed since the card
-    await client.upload_bytes(data, args.file_name, print_after=True)
-    write_slice(home, args.slice_id, {**rec, "sent_to": printer.id, "sent_at": time.time()})
+    # held from the sent/sending check through the upload: a second approved send of the same
+    # slice waits, then sees sent_at (or a live sending_at claim) and is refused
+    async with _send_lock(home, args.slice_id):
+        rec, printer = _send_target(home, args)
+        gcode = slice_dir(home, args.slice_id) / "model.gcode"
+        if not gcode.is_file():
+            raise MisesError(ErrorCode.NOT_FOUND, "the slice's G-code is missing", hint="slice again")
+        data = gcode.read_bytes()  # the bytes that get verified are the bytes that get uploaded
+        if _sha256(data) != args.gcode_sha256:
+            raise MisesError(ErrorCode.NEEDS_APPROVAL,
+                             "the G-code changed after the approval card was shown; nothing was sent",
+                             hint="review the new slice and ask again")
+        client = await client_for(printer)
+        refuse_unless_sendable(printer, await client.status())  # state may have changed since the card
+        # claim the slice on disk (atomic replace) before any byte goes out; a crash mid-upload
+        # leaves the claim, which turns into "check the printer" once older than SEND_TIMEOUT_S
+        write_slice(home, args.slice_id, {**rec, "sending_at": time.time()})
+        try:
+            await client.upload_bytes(data, args.file_name, print_after=True)
+        except Exception:
+            write_slice(home, args.slice_id, rec)       # the upload failed: release the claim
+            raise
+        write_slice(home, args.slice_id, {**rec, "sent_to": printer.id, "sent_at": time.time()})
     return ToolOutput(summary=f"sent {args.file_name} to {printer.name}; the printer is starting the job",
                       data={"slice_id": args.slice_id, "printer_id": printer.id,
                             "file": args.file_name})

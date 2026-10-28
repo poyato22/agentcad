@@ -1,4 +1,5 @@
 import asyncio
+import time
 
 import pytest
 
@@ -182,6 +183,55 @@ async def test_already_sent_slice_refuses_reprint(rt, keychain, fake_slicer):
         assert again.status == "failed" and again.error["error"] == "invalid_input"
         assert "slice again to reprint" in again.error["hint"]
         assert rt.store.pending_approvals() == [] and len(fake.uploads) == 1
+
+
+async def test_two_concurrent_approved_sends_upload_exactly_once(rt, keychain, fake_slicer):
+    # C2 atomicity: two cards for one slice, both approved at once → one upload, one refusal.
+    with FakePrusaLink("IDLE") as fake:
+        add_printer(rt, fake.host)
+        sid = await _slice(rt)
+        c1 = rt.ui_tool_call("print_send", send_args(rt, sid))
+        c2 = rt.ui_tool_call("print_send", send_args(rt, sid))
+        a1, a2 = await pending(rt, n=2)
+        rt.approvals.decide(a1.id, a1.payload_hash, True, decided_by="local-user")
+        rt.approvals.decide(a2.id, a2.payload_hash, True, decided_by="local-user")
+        await asyncio.gather(wait_call(rt, c1), wait_call(rt, c2))
+        assert len(fake.uploads) == 1
+        assert sorted([c1.status, c2.status]) == ["done", "failed"]
+        failed = c1 if c1.status == "failed" else c2
+        assert "slice again to reprint" in failed.error["hint"]
+        from mises.print.tools import read_slice
+        rec = read_slice(rt.home, sid)
+        assert rec.get("sent_at") and "sending_at" not in rec
+
+
+async def test_stale_sending_claim_refuses_with_check_the_printer(rt, keychain, fake_slicer):
+    # a claim older than the upload timeout (e.g. a crash mid-upload): the outcome is unknown
+    from mises.print.tools import SEND_TIMEOUT_S, read_slice, write_slice
+    with FakePrusaLink("IDLE") as fake:
+        add_printer(rt, fake.host)
+        sid = await _slice(rt)
+        rec = read_slice(rt.home, sid)
+        write_slice(rt.home, sid, {**rec, "sending_at": time.time() - SEND_TIMEOUT_S - 1})
+        call = rt.ui_tool_call("print_send", send_args(rt, sid))
+        await wait_call(rt, call)
+        assert call.status == "failed" and "check the printer" in call.error["hint"]
+        assert rt.store.pending_approvals() == [] and fake.uploads == []
+
+
+async def test_failed_upload_clears_the_sending_claim(rt, keychain, fake_slicer):
+    from mises.print.tools import read_slice
+    with FakePrusaLink("IDLE") as fake:
+        add_printer(rt, fake.host)
+        sid = await _slice(rt)
+        fake.upload_status = 500
+        call = rt.ui_tool_call("print_send", send_args(rt, sid))
+        (appr,) = await pending(rt)
+        rt.approvals.decide(appr.id, appr.payload_hash, True, decided_by="local-user")
+        await wait_call(rt, call)
+        assert call.status == "failed"
+        rec = read_slice(rt.home, sid)
+        assert "sending_at" not in rec and "sent_at" not in rec   # a retry is allowed
 
 
 async def test_send_refused_when_profile_host_changed_since_card(rt, keychain, fake_slicer):
