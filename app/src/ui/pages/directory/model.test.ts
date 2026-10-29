@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { catalogItemSchema, type CatalogItem } from "../../../api/directory";
-import { draftFrom, editDiff, fmtSpecValue, httpsLink, humanKey, massInfo, mountGeometry, onlineLink, onshapeDocUrl, parseDraft } from "./model";
+import { dimLabel, draftFrom, editDiff, fmtSpecValue, httpsLink, humanKey, massInfo, mountGeometry, onlineLink, onshapeDocUrl, parseDraft } from "./model";
 
 const FX = resolve(import.meta.dirname, "../../../../test/fixtures/core-ui");
 const read = (n: string) => JSON.parse(readFileSync(resolve(FX, n), "utf8")) as unknown;
@@ -71,6 +71,8 @@ describe("mass and specs", () => {
     expect(fmtSpecValue({ value: 34.0194, unit: "g" })).toBe("34.02 g");
     expect(fmtSpecValue({ value: "16x16", unit: "mm" })).toBe("16x16 mm");
     expect(humanKey("max_thrust")).toBe("Max thrust");
+    expect(dimLabel("bell_d_mm")).toBe("Bell d (mm)");
+    expect(dimLabel("mass_g")).toBe("Mass (g)");
   });
 });
 

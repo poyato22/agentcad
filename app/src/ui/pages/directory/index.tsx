@@ -24,11 +24,12 @@ import { setConsoleCollapsed } from "../router";
 import { AllowedSites } from "./AllowedSites";
 import { BuildPicker, useBuilds } from "./BuildPicker";
 import { ImportPanel } from "./ImportPanel";
-import { categoryLabel, fmtSpecValue, httpsLink, humanKey, keySpecs, massInfo, onlineLink } from "./model";
+import { categoryLabel, dimLabel, fmtSpecValue, httpsLink, humanKey, keySpecs, massInfo, onlineLink } from "./model";
 import { MountDiagram } from "./MountDiagram";
 import "./directory.css";
 
 export const SEARCH_DEBOUNCE_MS = 180;
+const MASS_KEY = /^(mass|weight)$/i;
 
 type Panel = { kind: "item"; id: string } | { kind: "import" } | null;
 
@@ -179,6 +180,8 @@ function ItemDetail({ id, onClose, onChanged }: { id: string; onClose: () => voi
 
   const link = onlineLink(item);
   const mass = massInfo(item);
+  // the mass spec (with its note, e.g. "typical") is folded into the Mass row
+  const massNote = item.specs.find((s) => MASS_KEY.test(s.key))?.note ?? null;
 
   async function insert(): Promise<void> {
     if (!item) return;
@@ -259,9 +262,12 @@ function ItemDetail({ id, onClose, onChanged }: { id: string; onClose: () => voi
         <tbody>
           <tr data-mass-source={mass.estimate ? "estimate" : "catalog"}>
             <th scope="row">Mass</th>
-            <td>{mass.text}{mass.estimate ? <span class="dir-estimate">estimate</span> : <span class="dir-faint-tag">catalog value</span>}</td>
+            <td>
+              {mass.text}{mass.estimate ? <span class="dir-estimate">estimate</span> : <span class="dir-faint-tag">catalog value</span>}
+              {massNote && <span class="dir-spec-note">{massNote}</span>}
+            </td>
           </tr>
-          {item.specs.map((s, i) => (
+          {item.specs.filter((s) => !MASS_KEY.test(s.key)).map((s, i) => (
             <tr key={`${s.key}-${i}`}>
               <th scope="row">{humanKey(s.key)}</th>
               <td>{fmtSpecValue(s)}{s.note && <span class="dir-spec-note">{s.note}</span>}</td>
@@ -272,7 +278,7 @@ function ItemDetail({ id, onClose, onChanged }: { id: string; onClose: () => voi
       {Object.keys(item.dims).length > 0 && (
         <table class="dir-table" aria-label="Dimensions">
           <tbody>
-            {Object.entries(item.dims).map(([k, v]) => <tr key={k}><th scope="row">{humanKey(k)}</th><td>{v}</td></tr>)}
+            {Object.entries(item.dims).map(([k, v]) => <tr key={k}><th scope="row">{dimLabel(k)}</th><td>{v}</td></tr>)}
           </tbody>
         </table>
       )}

@@ -18,8 +18,8 @@ import { asBody, HttpError, mises, RAW, type EventIn, type Route } from "./serve
 const FX = resolve(dirname(fileURLToPath(import.meta.url)), "../fixtures/core-ui");
 const fx = <T>(name: string): T => JSON.parse(readFileSync(resolve(FX, name), "utf8")) as T;
 
-/** A real 1×1 PNG (the core proxies Onshape's image bytes). */
-export const THUMB_PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4/58BAAT/Af9jgNErAAAAAElFTkSuQmCC", "base64");
+/** A real 30×17 grey PNG, a stand-in thumbnail (the core proxies Onshape's image bytes). */
+export const THUMB_PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAB4AAAARCAAAAADvDUOrAAAAGElEQVR4nGOIwgsYBod0FxwMM2lsYCClARzTwG2PGYRsAAAAAElFTkSuQmCC", "base64");
 const PAGE_MAX = 20;
 const ID_RE = /^[0-9a-f]{24}$/;
 const DIM_KEY = /^[a-z][a-z0-9_]{0,39}$/;

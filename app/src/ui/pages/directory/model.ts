@@ -18,6 +18,12 @@ export function humanKey(key: string): string {
   return s ? s[0].toUpperCase() + s.slice(1) : key;
 }
 
+/** A dimension key with its unit suffix: "bell_d_mm" → "Bell d (mm)", "mass_g" → "Mass (g)". */
+export function dimLabel(key: string): string {
+  const m = /^(.*)_(mm|g|n|deg)$/.exec(key);
+  return m ? `${humanKey(m[1])} (${m[2] === "n" ? "N" : m[2]})` : humanKey(key);
+}
+
 function fmtNum(v: number): string {
   if (!Number.isFinite(v)) return String(v);
   const r = Math.abs(v) >= 100 ? Math.round(v) : Math.round(v * 100) / 100;
