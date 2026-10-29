@@ -200,3 +200,15 @@ def test_parts_list_version_is_the_c6_meta_version(client, home, rt):
     edits.write_version(home / "parts" / "bracket", 5)     # even if the mirror lags
     row = next(p for p in client.get("/parts", headers=AUTH).json() if p["id"] == "bracket")
     assert row["version"] == 5
+
+
+def test_user_edits_ride_the_parts_build_ui_run(client, home, rt):
+    # A7's per-build ui runs: a UI edit goes through the ui run of the part's own build
+    _seed(home)
+    other = rt.store.create_project("Rover")
+    rt.store.register_part("bracket", other.id)
+    assert client.post("/parts/bracket/vars", headers=AUTH,
+                       json={"vars": {"length": 50}, "base_version": 1}).status_code == 200
+    rid = rt._ui_runs[other.id]
+    run = rt.store.get_run(rid)
+    assert run.provider == "ui" and run.project_id == other.id

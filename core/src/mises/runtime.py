@@ -1096,13 +1096,34 @@ class Runtime:
         self.register_cancel_hook(rid, stop_all)
         return rid
 
+    def ui_project_for(self, args: dict, meta: dict | None = None) -> str | None:
+        """The build a UI-started tool call belongs to, so every UI call (C6 edits, print, A6
+        imports and inserts, A7 spec apply) goes through the same per-build ui run."""
+        for pid in (args.get("project_id"), (meta or {}).get("project_id")):
+            if isinstance(pid, str) and pid:
+                try:
+                    return self.store.get_project(pid).id
+                except KeyError:
+                    pass
+        part_id = args.get("part_id")
+        if isinstance(part_id, str):
+            row = self.store.get_part(part_id)
+            if row is not None:
+                return row.project_id
+        try:
+            return self.active_project_id()
+        except Exception:  # noqa: BLE001 - no build resolvable: the legacy shared ui run
+            return None
+
     def ui_tool_call(self, tool: str, args: dict, *, meta: dict | None = None,
                      project_id: str | None = None) -> UiCall:
         """Run a tool for the app's UI through the Gate, under the shared "ui" run, so the
         same checks apply as for an agent: an irreversible tool raises the approval card and
         nothing happens until the user approves it. Returns at once; poll `ui_calls`.
-        `meta` is trusted app-side data the tool may read (agents cannot set it)."""
-        rid = self._ui_run_id(project_id)
+        `meta` is trusted app-side data the tool may read (agents cannot set it).
+        Every UI call rides its BUILD's ui run (A7's per-build helper): `project_id` when given,
+        else the one the call names, else the part's build, else the active build."""
+        rid = self._ui_run_id(project_id or self.ui_project_for(args, meta))
         call = UiCall(call_id="ui_" + uuid.uuid4().hex[:12], run_id=rid, tool=tool,
                       args=dict(args), meta=dict(meta or {}))
         self.ui_calls[call.call_id] = call
