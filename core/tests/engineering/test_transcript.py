@@ -61,7 +61,7 @@ STUDY = dict(variables=[{"name": "wall", "lo": 1.0, "hi": 9.0}], max_evals=6,
 
 TRANSCRIPT = [
     [_call("t1", "interview_plan", goal="build me a 5 inch drone"), Done(stop_reason="tool_use")],
-    [_call("t2", "ui_ask_user", questions=[
+    [_call("t2", "ui_ask_user", question="A few questions about your drone", questions=[
         {"id": "use", "prompt": "What will this drone do?", "options": ["freestyle", "racing"]},
         {"id": "size_class", "prompt": "Prop / size class?", "options": ['3"', '5"', '7"']}]),
      Done(stop_reason="tool_use")],

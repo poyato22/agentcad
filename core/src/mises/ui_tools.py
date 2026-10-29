@@ -37,7 +37,8 @@ class AskItem(BaseModel):
 
 
 class AskArgs(BaseModel):
-    question: str = Field(default="", max_length=2000)
+    question: str = Field(min_length=1, max_length=2000,
+                          description="the question; with a batch, a one-line intro")
     options: list[str] = Field(default_factory=list, max_length=12)
     questions: list[AskItem] = Field(default_factory=list, max_length=MAX_BATCH,
                                      description=f"optional batch of up to {MAX_BATCH} "
@@ -56,15 +57,13 @@ class AskArgs(BaseModel):
 
     @model_validator(mode="after")
     def _one_of(self) -> "AskArgs":
-        if not self.question.strip() and not self.questions:
-            raise ValueError("give a question, or a batch of questions")
         ids = [q.id for q in self.questions]
         if len(set(ids)) != len(ids):
             raise ValueError("question ids in a batch must be unique")
-        if not self.question.strip():
-            # an older UI shows only `question`: give it every prompt of the batch
-            self.question = "\n".join(f"{i}. {q.prompt}" for i, q in
-                                       enumerate(self.questions, 1))[:2000]
+        if self.questions:
+            # an older UI shows only `question`: give it every prompt of the batch too
+            listed = "\n".join(f"{i}. {q.prompt}" for i, q in enumerate(self.questions, 1))
+            self.question = f"{self.question.strip()}\n{listed}"[:4000]
         return self
 
 
@@ -91,7 +90,8 @@ class NoteArgs(BaseModel):
 @tool("ui_ask_user", safety=SafetyClass.READ, timeout_s=QUESTION_TIMEOUT_S,
       description="Ask the user and wait for the answer. Either one `question` (with `options` "
                   "when the choice is between known alternatives), or a batch of up to 3 "
-                  "`questions` [{id, prompt, options, multi?, rank?, allow_text?}], answered as "
+                  "`questions` [{id, prompt, options, multi?, rank?, allow_text?}] with a one-line "
+                  "`question` intro, answered as "
                   "data.answers {id: value}. The user may always answer in their own words.")
 async def ui_ask_user(ctx: ToolContext, args: AskArgs) -> ToolOutput:
     rt = (ctx.services or {}).get("runtime")

@@ -95,7 +95,7 @@ async def test_interview_plan_tool(tmp_path):
     assert sum(len(b) for b in batches) <= 6 and all(1 <= len(b) <= 3 for b in batches)
     assert {"id", "prompt", "options", "multi", "rank", "allow_text"} <= set(batches[0][0])
     assert any(q["rank"] for b in batches for q in b)
-    AskArgs(questions=batches[0])  # a batch is passed to ui_ask_user as is
+    AskArgs(question="About the drone", questions=batches[0])  # a batch is passed to ui_ask_user as is
 
 
 async def test_explicit_project_must_be_the_runs(tmp_path, monkeypatch):
@@ -128,18 +128,19 @@ async def test_batched_question_answers_by_id(tmp_path):
     rt = FakeRT(json.dumps({"use": "racing", "priorities": ["weight", "stiffness"],
                             "stray": "dropped"}))
     out = await ui_ask_user.handler(make_ctx(tmp_path, services={"runtime": rt}),
-                                    AskArgs(questions=BATCH))
+                                    AskArgs(question="About the drone", questions=BATCH))
     assert out.data["answers"] == {"use": "racing", "priorities": ["weight", "stiffness"]}
     sent = rt.calls[0]
-    assert len(sent["questions"]) == 2 and "What will it do?" in sent["question"]
+    assert len(sent["questions"]) == 2
+    assert sent["question"].startswith("About the drone") and "What will it do?" in sent["question"]
 
 
 async def test_batched_question_plain_text_fallback(tmp_path):
     rt = FakeRT("a 5 inch racer")
     ctx = make_ctx(tmp_path, services={"runtime": rt})
-    one = await ui_ask_user.handler(ctx, AskArgs(questions=BATCH[:1]))
+    one = await ui_ask_user.handler(ctx, AskArgs(question="About the drone", questions=BATCH[:1]))
     assert one.data["answers"] == {"use": "a 5 inch racer"}
-    two = await ui_ask_user.handler(ctx, AskArgs(questions=BATCH))
+    two = await ui_ask_user.handler(ctx, AskArgs(question="About the drone", questions=BATCH))
     assert two.data["answers"] == {"text": "a 5 inch racer"}
 
 
@@ -153,11 +154,11 @@ async def test_single_question_shape_unchanged(tmp_path):
 
 def test_batch_limits():
     with pytest.raises(ValidationError):
-        AskArgs(questions=BATCH * 2)  # 4 > 3
+        AskArgs(question="q", questions=BATCH * 2)  # 4 > 3
     with pytest.raises(ValidationError):
-        AskArgs()
+        AskArgs(questions=BATCH)  # the schema still requires a `question` (the intro)
     with pytest.raises(ValidationError):
-        AskArgs(questions=[BATCH[0], BATCH[0]])  # duplicate ids
+        AskArgs(question="q", questions=[BATCH[0], BATCH[0]])  # duplicate ids
 
 
 # ---- objectives and evaluation errors

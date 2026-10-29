@@ -15,8 +15,8 @@ whose loads or requirements are unknown.
 
 ## 1. Interview
 Call `interview_plan(goal)`. It returns at most 6 questions in batches of up to 3, each with
-options. Ask each batch in ONE `ui_ask_user` call by passing the batch as `questions` unchanged;
-the answers come back in `data.answers` as {id: value}. The user may always type their own
+options. Ask each batch in ONE `ui_ask_user` call: a one-line `question` intro plus the batch as
+`questions`, unchanged; the answers come back in `data.answers` as {id: value}. The user may always type their own
 answer instead of picking an option. Skip a question you can already answer from the request.
 Stop once you can write the spec; never interrogate.
 

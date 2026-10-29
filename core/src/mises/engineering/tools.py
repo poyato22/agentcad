@@ -175,8 +175,9 @@ class LoadsImpactArgs(BaseModel):
 
 @tool("interview_plan", safety=SafetyClass.READ,
       description="Suggested requirements interview for a request: at most 6 questions in "
-                  "batches of up to 3, each with options. Ask each batch with ui_ask_user "
-                  "`questions` (pass the batch as is), then write the spec from the answers.")
+                  "batches of up to 3, each with options. Ask each batch with one ui_ask_user call "
+                  "(a one-line `question` intro plus the batch as `questions`, as is), then "
+                  "write the spec from the answers.")
 async def interview_plan(ctx: ToolContext, args: InterviewArgs) -> ToolOutput:
     iv = build_interview(args.goal)
     batches = [[{"id": q.id, "prompt": q.text, "options": q.options, "multi": q.kind == "multi",
