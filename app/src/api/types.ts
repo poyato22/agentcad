@@ -1,6 +1,7 @@
 // TS types for the real core JSON (core/src/mises: store.py, events.py, types.py, server/app.py,
 // server/ui_api.py). Field names are exactly the server's. Times are unix seconds (float).
 // Runtime validation lives in schemas.ts; keep both in step.
+import type { AskItem } from "./spec";
 
 export type ErrorCode = "stale_version" | "budget_exhausted" | "needs_approval" | "transient" | "invalid_input"
   | "out_of_scope" | "denied" | "not_found" | "tool_failed" | "cancelled";
@@ -56,8 +57,9 @@ export interface Approval {
 
 export interface MisesEvent { type: string; run_id: string | null; data: Record<string, unknown>; ts: number }
 
-/** Built from a `question_asked` event (there is no GET /questions). */
-export interface Question { question_id: string; run_id: string; question: string; options: string[] }
+/** Built from a `question_asked` event (there is no GET /questions). `questions`: a ui_ask_user
+ *  batch (Plan 5 interview), answered with a JSON object string {id: value}. */
+export interface Question { question_id: string; run_id: string; question: string; options: string[]; questions?: AskItem[] }
 
 /** `sketch_id` (POST /sketches): the run gets that sketch as data (and its images for vision models). */
 export interface NewRunBody { agent: string; prompt: string; model_ref?: string | null; edit_scope?: string[]; read_scope?: string[]; sketch_id?: string }

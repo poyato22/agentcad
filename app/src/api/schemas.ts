@@ -12,6 +12,7 @@ import {
   type LocalPull, type ModelEntry, type ModelMeta, type ParallelInfo, type VendorInfo,
 } from "./types";
 import type { DrawingInfo, PrintCall, PrintCapabilities, Printer, PrinterStatus, PrintStart, Slice, SliceStart } from "./types";
+import { askItemSchema } from "./spec";
 
 const record = z.record(z.string(), z.unknown());
 const vec3 = z.tuple([z.number(), z.number(), z.number()]);
@@ -124,6 +125,8 @@ export const cancelAllSchema = z.object({
 /** Data of a `question_asked` event (the run id comes from the event itself). */
 export const questionAskedSchema = z.object({
   question_id: z.string(), question: z.string(), options: z.array(z.string()).default([]),
+  // a malformed batch falls back to the plain question (whose text lists every prompt)
+  questions: z.array(askItemSchema).max(6).optional().catch(undefined),
 });
 
 // ---- Plan 3: profile, keys, setup, Claude Code, Onshape test

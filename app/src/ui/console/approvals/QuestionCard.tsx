@@ -9,9 +9,17 @@ import type { Question } from "../../../api/types";
 import { actions } from "../../../state/store";
 import { Button } from "../../common/Button";
 import { clickArmed, isTrustedActivation } from "./approvalKeys";
+import { InterviewCard } from "../../spec/InterviewCard";
 import "./approvals.css";
 
+/** A batched question (ui_ask_user `questions`, the engineer's interview) gets the interview card. */
 export function QuestionCard(props: { question: Question; runLabel: string }): JSX.Element {
+  return props.question.questions?.length
+    ? <InterviewCard question={props.question} runLabel={props.runLabel} />
+    : <SingleQuestionCard {...props} />;
+}
+
+function SingleQuestionCard(props: { question: Question; runLabel: string }): JSX.Element {
   const q = props.question;
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);

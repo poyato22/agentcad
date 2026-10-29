@@ -10,6 +10,7 @@ import { useEffect, useState } from "preact/hooks";
 import { onCoreEvent } from "../../../api/events";
 import { partLabel } from "../../../lib/names";
 import { activePart } from "../../../state/selection";
+import { DesignStudies } from "../../spec";
 import { actions, parts } from "../../../state/store";
 import { PageShell } from "../PageShell";
 import { setConsoleCollapsed } from "../router";
@@ -140,6 +141,7 @@ export function StudiesPage({ controller = studies, deps = {} }: { controller?: 
           )}
         </section>
       </div>
+      <DesignStudies />
     </PageShell>
   );
 }

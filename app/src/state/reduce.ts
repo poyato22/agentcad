@@ -24,7 +24,7 @@ export function emptyState(): AppState {
 }
 
 /** Tools whose successful result changes the part list / GLB. */
-export const PART_MUTATING_TOOLS: ReadonlySet<string> = new Set(["mirror_part_create", "mirror_part_set_vars"]);
+export const PART_MUTATING_TOOLS: ReadonlySet<string> = new Set(["mirror_part_create", "mirror_part_set_vars", "study_apply"]);
 
 const RUN_STATUSES: ReadonlySet<string> = new Set<RunStatus>(["running", "done", "failed", "cancelled"]);
 
@@ -105,6 +105,7 @@ function reduceUnsafe(s: AppState, e: MisesEvent): Out {
       const q = questionAskedSchema.safeParse(d);
       if (!rid || !q.success) return { state: s, effects: [] };
       const question: Question = { question_id: q.data.question_id, run_id: rid, question: q.data.question, options: q.data.options };
+      if (q.data.questions?.length) question.questions = q.data.questions;
       return { state: { ...s, questions: setIn(s.questions, question.question_id, question) }, effects: [] };
     }
     case "question_answered": {
