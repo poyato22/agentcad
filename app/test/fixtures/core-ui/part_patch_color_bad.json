@@ -1,0 +1,9 @@
+{
+  "status": 400,
+  "body": {
+    "error": "invalid_input",
+    "message": "color must be #rrggbb",
+    "hint": null,
+    "retryable": false
+  }
+}

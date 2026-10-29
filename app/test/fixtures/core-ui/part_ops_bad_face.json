@@ -1,0 +1,9 @@
+{
+  "status": 400,
+  "body": {
+    "error": "invalid_input",
+    "message": "unknown face id 'f999'",
+    "hint": "list faces with mirror_faces and use an id like 'f0'",
+    "retryable": false
+  }
+}

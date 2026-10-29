@@ -1,0 +1,25 @@
+{
+  "part_id": "quad_arm",
+  "source": "from build123d import *\nVARS = {\n    \"thickness\": 4.0,  # mises: min=2 max=12 step=0.5 unit=mm doc=\"arm wall\"\n    \"length\": 60.0,\n}\ndef build(v):\n    return Box(v[\"length\"], 16, v[\"thickness\"])\n",
+  "vars": [
+    {
+      "name": "thickness",
+      "value": 4.0,
+      "min": 2.0,
+      "max": 12.0,
+      "step": 0.5,
+      "unit": "mm",
+      "doc": "arm wall",
+      "inferred": false
+    },
+    {
+      "name": "length",
+      "value": 60.0,
+      "min": 15.0,
+      "max": 240.0,
+      "inferred": true,
+      "unit": "mm"
+    }
+  ],
+  "version": 1
+}

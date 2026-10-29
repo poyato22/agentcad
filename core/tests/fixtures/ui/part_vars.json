@@ -1,0 +1,142 @@
+{
+  "part_id": "quad_arm",
+  "vars": {
+    "thickness": 5.0,
+    "length": 60.0
+  },
+  "version": 2,
+  "delta": {
+    "volume_mm3": 960.0,
+    "mass_g": 1.1904000000000003,
+    "bbox_size": [
+      0.0,
+      0.0,
+      1.0
+    ]
+  },
+  "valid": true,
+  "volume_mm3": 4800.0,
+  "area_mm2": 2680.0,
+  "mass_g": 5.952,
+  "bbox": {
+    "min": [
+      -30.0,
+      -8.0,
+      -2.5
+    ],
+    "max": [
+      30.0,
+      8.0,
+      2.5
+    ],
+    "size": [
+      60.0,
+      16.0,
+      5.0
+    ]
+  },
+  "center_of_mass": [
+    -8.0229979196088435e-16,
+    7.105427357601002e-17,
+    -4.7369515717340015e-17
+  ],
+  "faces": 6,
+  "face_list": [
+    {
+      "id": "f0",
+      "type": "plane",
+      "center": [
+        -30.0,
+        0.0,
+        0.0
+      ],
+      "normal": [
+        -1.0,
+        0.0,
+        0.0
+      ],
+      "area": 80.0
+    },
+    {
+      "id": "f1",
+      "type": "plane",
+      "center": [
+        30.0,
+        0.0,
+        0.0
+      ],
+      "normal": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "area": 80.0
+    },
+    {
+      "id": "f2",
+      "type": "plane",
+      "center": [
+        0.0,
+        -8.0,
+        0.0
+      ],
+      "normal": [
+        0.0,
+        -1.0,
+        0.0
+      ],
+      "area": 300.0
+    },
+    {
+      "id": "f3",
+      "type": "plane",
+      "center": [
+        0.0,
+        8.0,
+        0.0
+      ],
+      "normal": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "area": 300.0
+    },
+    {
+      "id": "f4",
+      "type": "plane",
+      "center": [
+        0.0,
+        0.0,
+        -2.5
+      ],
+      "normal": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "area": 960.0
+    },
+    {
+      "id": "f5",
+      "type": "plane",
+      "center": [
+        0.0,
+        0.0,
+        2.5
+      ],
+      "normal": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "area": 960.0
+    }
+  ],
+  "edges": 12,
+  "holes": [],
+  "solids": 1,
+  "face_count": 6,
+  "face_list_truncated": false,
+  "edge_count": 12
+}
