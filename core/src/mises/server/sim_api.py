@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -31,7 +32,8 @@ from ..sim.fields import FIELDS_FILE, Fields
 from ..sim.materials import (MATERIALS, custom_material, delete_custom, load_custom,
                              upsert_custom)
 from ..sim.settings import CustomMaterial
-from ..sim.tools import SIM_ID_RE, StaticArgs, find_sim, list_sims, read_record, register_sim_tools
+from ..sim.tools import (SIM_ID_RE, StaticArgs, find_sim, legacy_settings, list_sims,
+                         read_record, register_sim_tools)
 from ..sim.types import SimError
 from ..types import ErrorCode, MisesError, SafetyClass
 from .ui_api import _contained, _etag_matches
@@ -74,6 +76,15 @@ def _check_sim(sim_id: str) -> None:
     if not SIM_ID_RE.fullmatch(sim_id):
         raise MisesError(ErrorCode.INVALID_INPUT, f"bad sim id: {sim_id!r}",
                          hint=f"sim ids match {SIM_ID_RE.pattern}")
+
+
+MAX_SECTION_N = 64
+
+
+def _finite(**vals: float) -> None:
+    for k, v in vals.items():
+        if not math.isfinite(v) or abs(v) > 1e7:
+            raise MisesError(ErrorCode.INVALID_INPUT, f"{k} must be a finite number (mm)")
 
 
 def _bad(e: SimError) -> MisesError:
@@ -219,18 +230,25 @@ def build_sim_router(runtime: Runtime) -> APIRouter:
 
     @router.get("/sims/{sim_id}/probe")
     async def probe(sim_id: str, x: float, y: float, z: float):
+        _finite(x=x, y=y, z=z)
         f = await run_in_threadpool(_fields, sim_id)
         r = (await run_in_threadpool(f.probe, [[x, y, z]]))[0]
         return {"sim_id": sim_id, "point": [x, y, z], "units": f.units, **r}
 
     @router.get("/sims/{sim_id}/section")
     async def section(sim_id: str, axis: Literal["x", "y", "z"], offset: float,
-                      channel: str, n: int = 48):
+                      channel: str, n: int = 32):
+        _finite(offset=offset)
+        if not 4 <= n <= MAX_SECTION_N:
+            raise MisesError(ErrorCode.INVALID_INPUT, f"n must be 4..{MAX_SECTION_N}")
         f = await run_in_threadpool(_fields, sim_id)
         if channel not in f.ch:
             raise MisesError(ErrorCode.INVALID_INPUT, f"no channel {channel!r}",
                              hint=f"channels: {', '.join(f.channels())}")
-        return await run_in_threadpool(f.section, "xyz".index(axis), offset, channel, n)
+        try:
+            return await run_in_threadpool(f.section, "xyz".index(axis), offset, channel, n)
+        except ValueError as e:
+            raise MisesError(ErrorCode.INVALID_INPUT, str(e)) from None
 
     @router.post("/sims/{sim_id}/cancel")
     async def cancel(sim_id: str):
@@ -269,6 +287,17 @@ def build_sim_router(runtime: Runtime) -> APIRouter:
         part = parts_root() / part_id
         if not (part / "metrics.json").is_file() or not (part / "model.step").is_file():
             raise MisesError(ErrorCode.NOT_FOUND, f"no built part {part_id!r}")
+        # unknown material / environment / face ids are refused before a run exists
+        type_id = payload.get("type", "static")
+        settings = (payload["settings"] if tool == "sim_run" else
+                    legacy_settings(payload["fix"], payload["load"], payload["material"],
+                                    payload["environment"]))
+        try:
+            await run_in_threadpool(
+                studies.preflight, type_id, studies.validate_settings(type_id, settings), part,
+                runtime.home, runtime.profile().default_material)
+        except SimError as e:
+            raise _bad(e) from None
         rid = runtime.create_external_run(
             UI_AGENT, provider="ui", model="studies-page",
             edit_scope=(part_id,), read_scope=(part_id,),

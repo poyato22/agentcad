@@ -172,8 +172,13 @@ async def test_convergence_loop_stops_and_records_history(tmp_path):
                                    "direction": "-z"}]}],
         "convergence": {"enabled": True, "tol_pct": 50, "max_levels": 4}})
     assert out.ok, out.summary
-    conv = out.data["results"]["convergence"]
+    # the tool result is compact; the history is in the record (/sims/{id}, /charts)
+    assert out.data["results"]["convergence"]["converged"] is True
+    rec = json.loads((tmp_path / "parts" / "beam" / "sims" / out.data["sim_id"]
+                      / "result.json").read_text())
+    conv = rec["results"]["convergence"]
     assert conv["converged"] is True and 2 <= len(conv["history"]) < 4
+    assert out.data["results"]["convergence"]["levels"] == len(conv["history"])
     assert conv["history"][-1]["change"] < 0.5
 
 

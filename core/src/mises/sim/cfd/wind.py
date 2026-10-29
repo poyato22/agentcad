@@ -10,9 +10,10 @@ import numpy as np
 
 from .results import (CD_TABLE, EMPIRICAL_BAND, classify, friction_cd, mesh_volume_mm3,
                       slice_png, surface_cp)
-from .setup import (NU_MIN_BGK, NU_MIN_LES, U_LATTICE, estimate_seconds, fit_budget,
+from .setup import (NU_MIN_BGK, NU_MIN_LES, U_LATTICE, estimate_mb, estimate_seconds, fit_budget,
                     frontal_area_mm2, steps_needed, surface_area_mm2, voxelize, wind_frame, yawed)
-from .solver import BYTES_PER_CELL, run_lbm
+from .solver import run_lbm
+from .validation import model_error_band, validation_rows
 
 LBM_LABEL = "low fidelity"
 EMPIRICAL_LABEL = "estimate"
@@ -29,7 +30,8 @@ def empirical(tris_w: np.ndarray, s: dict, a_ref_m2: float, q: float, reason: st
     cd = CD_TABLE[shape]
     return {"method": "empirical", "fidelity": EMPIRICAL_LABEL, "shape_class": shape,
             "reason": reason, "cd": cd, "cl": 0.0, "cs": 0.0, "drag_n": cd * q * a_ref_m2,
-            "lift_n": 0.0, "side_n": 0.0, "error_band": EMPIRICAL_BAND,
+            "lift_n": 0.0, "side_n": 0.0, "model_error_band": EMPIRICAL_BAND,
+            "convergence_band": None,
             "moment_nm": [0.0, 0.0, 0.0], "converged": None, "history": []}
 
 
@@ -89,20 +91,25 @@ def solve_one(tris_part: np.ndarray, s: dict, direction, up, a_ref_m2: float | N
              "cd_lattice_total": float(_coeffs(h["fx"], a_lat)),
              "cl": float(_coeffs(h["pz"], a_lat))} for h in res.history]
     tail = [h["cd"] for h in hist[len(hist) // 2:]] or [cd]
+    band, level = model_error_band(n)
     out = {**base, "method": "lbm", "fidelity": LBM_LABEL,
            "cd": cd, "cd_pressure": float(cp_force[0]), "cd_friction_estimate": cd_f,
            "cd_lattice_total": float(tot[0]), "cl": float(cp_force[2]), "cs": float(cp_force[1]),
            "drag_n": cd * q * a_ref, "lift_n": float(cp_force[2]) * q * a_ref,
            "side_n": float(cp_force[1]) * q * a_ref,
            "moment_nm": (R.T @ moment_w).tolist(),
-           # the unsteady wake: the spread of Cd over the averaging window
-           "error_band": float(np.std(tail) / abs(cd)) if cd else None,
+           # the unsteady wake: the spread of Cd over the averaging window (NOT the accuracy)
+           "convergence_band": float(np.std(tail) / abs(cd)) if cd else None,
+           # the accuracy: the validated model error of this refinement level
+           "model_error_band": band, "refinement_level": level,
+           "validation": validation_rows(level),
            "converged": res.converged, "stopped": res.stopped, "steps": res.steps,
            "seconds": res.seconds, "history": hist,
            "lattice": {"shape": list(grid.shape), "cells": grid.cells, "cell_mm": grid.h_mm,
                        "cells_across": n, "u_lattice": U_LATTICE, "nu_lattice": nu,
                        "tau": 3 * nu + 0.5, "reynolds_effective": re_eff,
-                       "memory_mb": grid.cells * BYTES_PER_CELL / 1e6,
+                       "memory_mb_estimate": estimate_mb(grid),
+                       "memory_mb_budget": s["memory_mb"],
                        "turbulence": "Smagorinsky LES (Cs 0.16)" if les else "none (BGK)",
                        "boundaries": "inlet equilibrium, zero-gradient outlet, periodic sides",
                        "blockage_pct": 100 * float(solid.any(0).sum()) / (grid.shape[1]

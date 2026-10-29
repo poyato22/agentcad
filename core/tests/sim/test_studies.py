@@ -355,10 +355,28 @@ def test_card_and_requirement_checks():
     card = studies.card(rec)
     assert card["verdict"] == "fail" and card["metrics"][0]["key"] == "max_von_mises_mpa"
     assert card["urls"]["glb"] == "/sims/sim_0000000000dd/result.glb"
-    wind = {**_rec("sim_0000000000ee", "wind", cd=0.4, drag_n=1.0, error_band=0.01),
+    # wind values are judged against the validated model error band (30% here)
+    wind = {**_rec("sim_0000000000ee", "wind", cd=0.4, drag_n=1.0, error_band=0.3,
+                   model_error_band=0.3, convergence_band=0.01, refinement_level=2,
+                   method="lbm", cd_friction_estimate=0.02),
             "fidelity_class": "cfd_lbm"}
-    ch = studies.check_requirements(wind, [{"id": "w", "kind": "max_drag_n", "target": 5}])
-    assert ch[0]["status"] == "warn" and "low fidelity" in ch[0]["note"]
+    ch = studies.check_requirements(wind, [
+        {"id": "clear", "kind": "max_drag_n", "target": 5},
+        {"id": "inside", "kind": "max_drag_n", "target": 1.2},
+        {"id": "over", "kind": "max_drag_n", "target": 0.6},
+        {"id": "cd", "kind": "max_cd", "target": 0.35}])
+    by = {c["requirement_id"]: c for c in ch}
+    assert by["clear"]["status"] == "pass" and by["over"]["status"] == "fail"
+    assert by["inside"]["status"] == "warn" and "±30%" in by["inside"]["note"]
+    assert by["cd"]["status"] == "warn"  # 0.35 is inside 0.4 +- 30%
+    c = studies.card(wind)
+    assert c["fidelity_note"] == "low fidelity · ±30% (validated)"
+    assert "skin-friction" in c["notes"][0]
+    assert {"key": "error_band_pct", "label": "model error (validated)", "unit": "%",
+            "value": None} in c["metrics"]
+    prev = {**wind, "results": {**wind["results"], "refinement_level": 1,
+                                "model_error_band": 0.4}}
+    assert studies.fidelity_note(prev) == "low fidelity (preview) · ±40% (validated)"
 
 
 def test_plan_review_picks_the_studies_the_spec_needs():

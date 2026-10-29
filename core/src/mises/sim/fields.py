@@ -13,7 +13,8 @@ from pathlib import Path
 import numpy as np
 
 FIELDS_FILE = "fields.npz"
-MAX_SECTION = 96  # samples per side of a section plane
+MAX_SECTION = 64  # samples per side of a section plane
+MAX_SECTION_WORK = 2_000_000  # tet-sample pairs one section may test
 
 
 def principal_stresses(S: np.ndarray) -> np.ndarray:
@@ -110,6 +111,21 @@ class Fields:
                 out_t[i], out_w[i] = cand[k], w[k]
         return out_t, out_w
 
+    def _locate(self, cand: np.ndarray, p: np.ndarray):
+        """(tet index, barycentric weights) of the candidate tet containing p, or None."""
+        X = self.coords[self.tets[cand, :4]]
+        T = np.transpose(X[:, 1:] - X[:, :1], (0, 2, 1))
+        det = np.linalg.det(T)
+        good = np.abs(det) > 1e-18
+        if not good.any():
+            return None
+        lam = np.linalg.solve(T[good], (p - X[good, 0])[..., None])[..., 0]
+        w = np.concatenate([1 - lam.sum(1, keepdims=True), lam], 1)
+        inside = np.nonzero(np.all(w >= -1e-9, 1))[0]
+        if not len(inside):
+            return None
+        return int(cand[good][inside[0]]), w[inside[0]]
+
     def probe(self, pts) -> list[dict]:
         pts = np.atleast_2d(np.asarray(pts, dtype=np.float64))
         res = []
@@ -171,21 +187,37 @@ class Fields:
                     "u": "xyz"[u], "v": "xyz"[v], "u_values": _list(uu), "v_values": _list(vv),
                     "channel": channel, "units": self.units.get(channel, ""),
                     "values": _list(vals)}
-        P = np.zeros((n * n, 3))
-        U, V = np.meshgrid(us, vs, indexing="ij")
-        P[:, u], P[:, v], P[:, axis] = U.ravel(), V.ravel(), offset
-        # only tetrahedra that cross the plane can contain a sample
-        X = self.coords[self.tets[:, :4], axis]
-        keep = (X.min(1) <= offset + 1e-9) & (X.max(1) >= offset - 1e-9)
-        sub = Fields.__new__(Fields)
-        sub.kind, sub.coords, sub.tets, sub.ch, sub.units = ("fem", self.coords,
-                                                            self.tets[keep], self.ch, self.units)
-        t, w = sub._bary(P)
         out = np.full((n * n,) + data.shape[1:], np.nan)
-        hit = t >= 0
-        if hit.any():
-            nodes = sub.tets[t[hit], :4]
-            out[hit] = np.einsum("pk,pk...->p...", w[hit], data[nodes])
+        # only tetrahedra that cross the plane can contain a sample, and each sample only
+        # tests the ones whose in-plane bounding box covers it (a bucket per grid point)
+        tets = self.tets[:, :4]
+        X = self.coords[tets]                                        # (m, 4, 3)
+        keep = np.nonzero((X[..., axis].min(1) <= offset + 1e-9)
+                          & (X[..., axis].max(1) >= offset - 1e-9))[0]
+        du = (us[-1] - us[0]) / (n - 1) or 1.0
+        dv = (vs[-1] - vs[0]) / (n - 1) or 1.0
+        Xk = X[keep]
+        i0 = np.clip(np.ceil((Xk[..., u].min(1) - us[0]) / du - 1e-9), 0, n - 1).astype(int)
+        i1 = np.clip(np.floor((Xk[..., u].max(1) - us[0]) / du + 1e-9), -1, n - 1).astype(int)
+        j0 = np.clip(np.ceil((Xk[..., v].min(1) - vs[0]) / dv - 1e-9), 0, n - 1).astype(int)
+        j1 = np.clip(np.floor((Xk[..., v].max(1) - vs[0]) / dv + 1e-9), -1, n - 1).astype(int)
+        entries = int(np.maximum(0, (i1 - i0 + 1)).astype(np.int64)
+                      @ np.maximum(0, (j1 - j0 + 1)).astype(np.int64)) if len(keep) else 0
+        if entries > MAX_SECTION_WORK:
+            raise ValueError(f"section too large ({entries} tet-sample pairs); use a smaller n")
+        buckets: dict[int, list[int]] = {}
+        for k in range(len(keep)):
+            for i in range(i0[k], i1[k] + 1):
+                for j in range(j0[k], j1[k] + 1):
+                    buckets.setdefault(i * n + j, []).append(k)
+        for idx, cand in buckets.items():
+            i, j = divmod(idx, n)
+            p = np.zeros(3)
+            p[u], p[v], p[axis] = us[i], vs[j], offset
+            hit = self._locate(keep[np.array(cand)], p)
+            if hit is not None:
+                t, w = hit
+                out[idx] = np.tensordot(w, data[tets[t]], axes=(0, 0))
         return {"axis": "xyz"[axis], "offset": float(offset), "u": "xyz"[u], "v": "xyz"[v],
                 "u_values": _list(us), "v_values": _list(vs), "channel": channel,
                 "units": self.units.get(channel, ""),
@@ -203,7 +235,10 @@ def histogram(values: np.ndarray, bins: int = 20) -> dict:
 
 def _round(x):
     a = np.asarray(x, dtype=float)
-    return float(a) if a.ndim == 0 else [float(y) for y in a]
+
+    def f(y):
+        return float(y) if np.isfinite(y) else None
+    return f(a) if a.ndim == 0 else [f(y) for y in a]
 
 
 def _list(a) -> list:

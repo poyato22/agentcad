@@ -30,7 +30,11 @@ _CF = C.astype(np.float32)
 _PAIRS = [(a, b) for a in range(3) for b in range(a, 3)]
 _CC = np.stack([_CF[:, a] * _CF[:, b] for a, b in _PAIRS])            # (6, 19)
 _MULT = np.array([1.0 if a == b else 2.0 for a, b in _PAIRS], dtype=np.float32)
-BYTES_PER_CELL = 19 * 4 * 5 + 64   # f, post-collision, streamed, equilibrium, non-equilibrium
+# Peak resident memory per lattice cell, MEASURED (ru_maxrss of run_lbm on this Mac: 1075 B at
+# 0.5 M cells, 920 B at 1 M; the 19-float arrays are only ~440 B, the rest is numpy temporaries
+# in feq / the LES model and the float64 field averages), rounded up; plus the interpreter.
+BYTES_PER_CELL = 1100
+FIXED_MB = 150
 NS_PER_CELL_STEP = 110.0           # measured on an M-series Mac (numpy, float32); a guide
 
 

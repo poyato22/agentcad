@@ -247,6 +247,59 @@ def default_material(ctx) -> str:
         return "PLA"
 
 
+def _faces_in(obj) -> set[str]:
+    out: set[str] = set()
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if k in ("face", "impact_face") and isinstance(v, str):
+                out.add(v)
+            elif k == "refine_faces" and isinstance(v, list):
+                out |= {f for f in v if isinstance(f, str)}
+            else:
+                out |= _faces_in(v)
+    elif isinstance(obj, list):
+        for v in obj:
+            out |= _faces_in(v)
+    return out
+
+
+def preflight(type_id: str, settings: BaseModel, part_dir: Path, home: Path | None,
+              default_mat: str) -> tuple[Material | None, dict | None]:
+    """Everything that can be checked before a run or record exists: the material, the
+    environment, and that every face id names a face of this part. Raises SimError."""
+    material = (resolve_material(getattr(settings, "material", None), default_mat, home)
+                if type_id != "wind" else None)
+    env = (get_environment(settings.environment)
+           if getattr(settings, "environment", None) else None)
+    ids = {f for f in _faces_in(settings.model_dump(mode="json")) if re.fullmatch(r"f\d+", f)}
+    if ids:
+        try:
+            faces = json.loads((Path(part_dir) / "metrics.json").read_text()).get("face_list")
+        except (OSError, ValueError):
+            faces = None
+        known = {f.get("id") for f in faces or []}
+        missing = sorted(ids - known, key=lambda s: int(s[1:]))
+        if missing:
+            raise SimError("bad_setup", f"no face {', '.join(missing)} on this part",
+                           hint=(f"face ids run f0..f{len(known) - 1}; see mirror_faces"
+                                 if known else "rebuild the part so it lists face ids, or "
+                                               "use a preset"))
+    return material, env
+
+
+def wind_memory_cap(ctx) -> int:
+    """min(8192, RAM - 6 GB - the memory local-model runs hold now) in MB."""
+    from .. import hardware
+    from .cfd import memory_cap_mb
+    rt = (getattr(ctx, "services", None) or {}).get("runtime")
+    local = 0.0
+    try:
+        local = rt.parallel.local_gb_in_use() if rt is not None else 0.0
+    except Exception:  # noqa: BLE001
+        local = 0.0
+    return memory_cap_mb(hardware.machine()["ram_gb"], local)
+
+
 def _step_id(ctx) -> int | None:
     store, run_id, call_id = (getattr(ctx, "store", None), getattr(ctx, "run_id", None),
                               getattr(ctx, "call_id", None))
@@ -278,10 +331,7 @@ async def run_study(ctx, type_id: str, part_id: str, part_dir: Path, settings: B
     t = STUDY_TYPES[type_id]
     home = _home(ctx)
     try:
-        material = (resolve_material(getattr(settings, "material", None), default_material(ctx),
-                                     home) if type_id != "wind" else None)
-        env = (get_environment(settings.environment)
-               if getattr(settings, "environment", None) else None)
+        material, env = preflight(type_id, settings, part_dir, home, default_material(ctx))
     except SimError as e:
         raise MisesError(ErrorCode.INVALID_INPUT, e.message, hint=e.hint) from None
 
@@ -289,13 +339,17 @@ async def run_study(ctx, type_id: str, part_id: str, part_dir: Path, settings: B
     sim_id = "sim_" + secrets.token_hex(6)
     sim_dir = sims_dir(parts_root, part_id) / sim_id
     job_root = Path(ctx.workdir) / "sim_tmp" / sim_id
-    job_root.mkdir(parents=True, exist_ok=True)
     from ..cad.tools import _lock
-    async with _lock(part_dir):  # a consistent snapshot of the geometry this study solves
-        shutil.copyfile(part_dir / "model.step", job_root / "model.step")
-        if (part_dir / "model.stl").is_file():
-            shutil.copyfile(part_dir / "model.stl", job_root / "model.stl")
-        metrics = json.loads((part_dir / "metrics.json").read_text())
+    try:
+        job_root.mkdir(parents=True, exist_ok=True)
+        async with _lock(part_dir):  # a consistent snapshot of the geometry this study solves
+            shutil.copyfile(part_dir / "model.step", job_root / "model.step")
+            if (part_dir / "model.stl").is_file():
+                shutil.copyfile(part_dir / "model.stl", job_root / "model.stl")
+            metrics = json.loads((part_dir / "metrics.json").read_text())
+    except BaseException:  # never leave a half-made temp dir behind
+        shutil.rmtree(job_root, ignore_errors=True)
+        raise
     geometry_hash = file_hash(job_root / "model.step")
     sdump = settings.model_dump(mode="json")
     inputs = {"type": type_id, "settings": sdump, **(inputs_extra or {}),
@@ -362,7 +416,8 @@ async def run_study(ctx, type_id: str, part_id: str, part_dir: Path, settings: B
                                                          "finished")
         try:
             out = await _dispatch(type_id, job_root, metrics, material, ccx, settings, env,
-                                  progress, sim_id, part_id, solve_timeout_s)
+                                  progress, sim_id, part_id, solve_timeout_s,
+                                  wind_memory_cap(ctx))
         except SimError as e:
             return fail(e.code, e.message, e.hint)
         finally:
@@ -389,8 +444,8 @@ async def run_study(ctx, type_id: str, part_id: str, part_dir: Path, settings: B
         if requirements:
             rec["checks"] = check_requirements(rec, requirements)
         write_record(sim_dir, rec)
-        return ToolOutput(summary=summary(rec), data={**rec, "card": card(rec)},
-                          step_kind=StepKind.SIM_RUN, warnings=rec["warnings"])
+        return ToolOutput(summary=summary(rec), data=compact(rec),
+                          step_kind=StepKind.SIM_RUN, warnings=rec["warnings"][:12])
 
     task = asyncio.ensure_future(body())
     _active[sim_id] = task
@@ -427,9 +482,9 @@ def queue_timeout() -> float:
 
 
 async def _dispatch(type_id, job_root, metrics, material, ccx, settings, env, progress,
-                    sim_id, part_id, solve_timeout_s=None) -> dict:
+                    sim_id, part_id, solve_timeout_s=None, memory_cap=8192) -> dict:
     if type_id == "wind":
-        return await _run_wind(job_root, metrics, settings, progress)
+        return await _run_wind(job_root, metrics, settings, progress, memory_cap)
     from .fem import FemJob
     job = FemJob(root=job_root, step=job_root / "model.step", metrics=metrics,
                  material=material, ccx=ccx, mesh_settings=settings.mesh,
@@ -460,9 +515,10 @@ def wind_payload(s) -> dict:
     return d
 
 
-async def _run_wind(job_root: Path, metrics: dict, s, progress) -> dict:
+async def _run_wind(job_root: Path, metrics: dict, s, progress, memory_cap: int) -> dict:
     from .cfd import run_wind_job
     from .cfd.setup import read_stl
+    from .cfd.validation import PREVIEW_REFINEMENT
     stl = job_root / "model.stl"
     if not stl.is_file():
         raise SimError("bad_setup", "this part has no STL to voxelize",
@@ -475,14 +531,26 @@ async def _run_wind(job_root: Path, metrics: dict, s, progress) -> dict:
         ang = f" · angle {d.get('angle', 0) + 1}/{n}" if n > 1 else ""
         progress("solve", phase="solve", pct=min(95.0, 5 + 0.9 * float(d.get("pct", 0))),
                  detail=f"lattice step {d.get('step')}/{d.get('steps')}{ang}")
-    r = await run_wind_job(tris, wind_payload(s), job_root, progress=prog)
+    payload = wind_payload(s)
+    payload["memory_mb"] = min(int(payload["memory_mb"]), memory_cap)
+    r = await run_wind_job(tris, payload, job_root, progress=prog)
     progress("post", phase="post", pct=96.0, detail="post-processing")
     lbm = r.get("method") == "lbm"
+    band = r.get("model_error_band")
     warnings = []
+    if payload["memory_mb"] < s.memory_mb:
+        warnings.append(f"memory budget lowered to {payload['memory_mb']} MB (this Mac's limit "
+                        "for a wind study)")
     if lbm:
-        warnings.append(f"LOW FIDELITY: lattice of {r['lattice']['cells_across']} cells across "
-                        f"the body at an effective Reynolds number of "
+        level = r.get("refinement_level")
+        preview = "PREVIEW, " if level == PREVIEW_REFINEMENT else ""
+        warnings.append(f"LOW FIDELITY ({preview}±{100 * band:.0f}% validated model error at "
+                        f"refinement {level}): lattice of {r['lattice']['cells_across']} cells "
+                        f"across the body at an effective Reynolds number of "
                         f"{r['lattice']['reynolds_effective']:.3g} (real {r['reynolds']:.3g})")
+        warnings.append(f"drag includes a flat-plate skin-friction estimate (Cd "
+                        f"{r['cd_friction_estimate']:.3f}) added to the resolved pressure drag; "
+                        "the lattice cannot resolve the boundary layer")
         if not r.get("converged"):
             warnings.append(f"the drag did not settle within the run ({r.get('stopped')}); "
                             "raise iterations or timeout_s")
@@ -491,14 +559,18 @@ async def _run_wind(job_root: Path, metrics: dict, s, progress) -> dict:
                             "raise domain_multiplier")
     else:
         warnings.append(f"ESTIMATE: empirical Cd {r['cd']:.2f} for a {r['shape_class']} "
-                        f"({r.get('reason')}); +-{100 * r['error_band']:.0f}%")
+                        f"({r.get('reason')}); ±{100 * band:.0f}%")
     results = {k: r.get(k) for k in (
         "cd", "cl", "cs", "drag_n", "lift_n", "side_n", "moment_nm", "cd_pressure",
         "cd_friction_estimate", "cd_lattice_total", "reynolds", "ref_area_m2",
-        "frontal_area_m2", "dynamic_pressure_pa", "error_band", "converged", "stopped",
-        "steps", "method", "shape_class", "reason", "yaw_sweep", "cp_range")}
-    results["error_band_pct"] = (None if results["error_band"] is None
-                                 else round(100 * results["error_band"], 1))
+        "frontal_area_m2", "dynamic_pressure_pa", "model_error_band", "convergence_band",
+        "refinement_level", "validation", "converged", "stopped", "steps", "method",
+        "shape_class", "reason", "yaw_sweep", "cp_range")}
+    # the error band of a wind result IS the validated model error (checks and cards use it)
+    results["error_band"] = band
+    results["error_band_pct"] = None if band is None else round(100 * band, 1)
+    results["convergence_band_pct"] = (None if r.get("convergence_band") is None
+                                       else round(100 * r["convergence_band"], 1))
     results["convergence"] = {"history": r.get("history", []), "converged": r.get("converged")}
     solver = ({"name": "Mises lattice-Boltzmann", "version": "D3Q19 1.0",
                "method": "BGK + Smagorinsky LES, half-way bounce-back, momentum exchange",
@@ -541,11 +613,14 @@ def summary(rec: dict) -> str:
         lat = (rec.get("mesh") or {}).get("lattice") or {}
         mesh = (f"lattice {lat.get('cells_across')} cells across, "
                 f"Re_eff {_num(lat.get('reynolds_effective'), '.3g')}" if lat else "no lattice")
-        s = (f"GUIDE ONLY - {rec.get('fidelity_class')} ({sv.get('fidelity')}), {sv['name']}, "
-             f"{mesh}: {rec['part_id']} Cd {_num(r.get('cd'), '.3f')}, Cl "
-             f"{_num(r.get('cl'), '.3f')}, drag {_num(r.get('drag_n'), '.3g')} N, lift "
-             f"{_num(r.get('lift_n'), '.3g')} N at Re {_num(r.get('reynolds'), '.3g')} "
-             f"(unsteadiness band {bands})")
+        s = (f"GUIDE ONLY - {fidelity_note(rec)}, {sv['name']}, {mesh}: {rec['part_id']} Cd "
+             f"{_num(r.get('cd'), '.3f')}, Cl {_num(r.get('cl'), '.3f')}, drag "
+             f"{_num(r.get('drag_n'), '.3g')} N, lift {_num(r.get('lift_n'), '.3g')} N at Re "
+             f"{_num(r.get('reynolds'), '.3g')}")
+        if r.get("method") == "lbm":
+            s += ("; drag = resolved pressure drag + a flat-plate skin-friction estimate (Cd "
+                  f"{_num(r.get('cd_friction_estimate'), '.3f')}); convergence band "
+                  f"{_num(r.get('convergence_band_pct'), '.1f')}% (unsteadiness, not accuracy)")
     else:
         mesh = rec.get("mesh") or {}
         m = rec.get("material") or {}
@@ -613,8 +688,25 @@ KEY_METRICS = {
                 ("min_temp_c", "min temperature", "degC"),
                 ("error_band_pct", "error band", "%")],
     "wind": [("cd", "Cd", ""), ("cl", "Cl", ""), ("drag_n", "drag", "N"),
-             ("lift_n", "lift", "N"), ("error_band_pct", "unsteadiness", "%")],
+             ("lift_n", "lift", "N"), ("error_band_pct", "model error (validated)", "%")],
 }
+
+
+def fidelity_note(rec: dict) -> str | None:
+    """The label a card / summary shows next to the numbers, e.g. "low fidelity · ±30%
+    (validated)", "low fidelity (preview) · ±40% (validated)", "estimate · ±40%"."""
+    r = rec.get("results") or {}
+    fc = rec.get("fidelity_class")
+    band = r.get("model_error_band")
+    if fc == "cfd_lbm" and band is not None:
+        from .cfd.validation import PREVIEW_REFINEMENT
+        pre = " (preview)" if r.get("refinement_level") == PREVIEW_REFINEMENT else ""
+        return f"low fidelity{pre} · ±{100 * band:.0f}% (validated)"
+    if fc == "empirical" and band is not None:
+        return f"estimate · ±{100 * band:.0f}% (shape-class table)"
+    if fc == "fem_estimate":
+        return "estimate (equivalent static load F = m g k)"
+    return None
 
 
 def card(rec: dict) -> dict:
@@ -634,22 +726,76 @@ def card(rec: dict) -> dict:
             status = "fail"
     elif rec.get("status") in ("failed", "cancelled", "interrupted"):
         status = "fail"
+    notes = []
+    if typ == "wind" and r.get("method") == "lbm":
+        notes.append("drag includes a flat-plate skin-friction estimate added to the resolved "
+                     "pressure drag")
+    u = urls(rec.get("sim_id") or "")
     return {"sim_id": rec.get("sim_id"), "type": typ, "status": rec.get("status"),
             "verdict": status, "phase": rec.get("phase"), "pct": rec.get("pct"),
             "part_id": rec.get("part_id"), "label": GUIDE_LABEL,
-            "fidelity_class": rec.get("fidelity_class"), "metrics": metrics,
-            "checks": rec.get("checks") or [], "warnings": (rec.get("warnings") or [])[:4],
+            "fidelity_class": rec.get("fidelity_class"), "fidelity_note": fidelity_note(rec),
+            "notes": notes, "metrics": metrics,
+            "checks": [{k: c.get(k) for k in CHECK_KEYS} for c in (rec.get("checks") or [])],
+            "warnings": [w[:240] for w in (rec.get("warnings") or [])[:5]],
             "reason": rec.get("reason"), "run_id": rec.get("run_id"),
-            "step_id": rec.get("step_id"), "urls": urls(rec.get("sim_id") or "")}
+            "step_id": rec.get("step_id"), "urls": u, "charts_url": u["charts"]}
+
+
+CHECK_KEYS = ("requirement_id", "kind", "target", "measured", "unit", "status", "sim_id", "note")
+COMPACT_MAX_BYTES = 12_000   # well under the Gate's 16 KB spill limit
+
+
+def compact(rec: dict) -> dict:
+    """The tool_result `data` of a study: the card, checks, sim_id, URLs and the key results
+    without bulky series (convergence histories, per-mode / per-case detail beyond a summary).
+    The full record stays on disk: GET /sims/{id} and /sims/{id}/charts. Always fits under the
+    Gate's spill limit, so the card and checks reach the step and design_review."""
+    r = dict(rec.get("results") or {})
+    conv = r.pop("convergence", None) or {}
+    r["convergence"] = {"converged": conv.get("converged"),
+                        "levels": len(conv.get("history") or [])}
+    r.pop("validation", None)  # the validation table is in the record
+    if isinstance(r.get("cases"), list):
+        r["cases"] = [{k: c.get(k) for k in ("name", "max_von_mises_mpa", "safety_factor",
+                                             "max_displacement_mm", "error_band")}
+                      for c in r["cases"]]
+    if isinstance(r.get("modes"), list):
+        r["modes"] = [{k: m.get(k) for k in ("mode", "freq_hz", "in_band")}
+                      for m in r["modes"][:12]]
+    mesh = rec.get("mesh") or {}
+    out = {k: rec.get(k) for k in ("sim_id", "part_id", "type", "run_id", "call_id", "step_id",
+                                   "reason", "status", "guide", "label", "fidelity_class",
+                                   "error", "hint", "stale")}
+    out.update({"results": r, "warnings": [w[:300] for w in rec.get("warnings") or []][:12],
+                "checks": [{k: c.get(k) for k in CHECK_KEYS} for c in rec.get("checks") or []],
+                "solver": rec.get("solver"),
+                "mesh": {k: mesh.get(k) for k in ("mesher", "coarse", "fine", "lattice")
+                         if k in mesh},
+                "material": rec.get("material"), "urls": urls(rec.get("sim_id") or ""),
+                "charts_url": f"/sims/{rec.get('sim_id')}/charts", "card": card(rec)})
+    if len(json.dumps(out, default=float)) > COMPACT_MAX_BYTES:
+        out["results"] = {k: v for k, v in r.items()
+                          if not isinstance(v, (list, dict)) or k in ("sf_by_case", "band_hz")}
+        out["material"] = (rec.get("material") or {}).get("name") if rec.get("material") else None
+        out["mesh"] = {}
+        out["truncated"] = True
+    if len(json.dumps(out, default=float)) > COMPACT_MAX_BYTES:  # last resort: card + ids only
+        out = {k: out[k] for k in ("sim_id", "part_id", "type", "status", "fidelity_class",
+                                   "checks", "urls", "charts_url", "card")}
+        # the checks are kept once, at the top level, with every pass / warn / fail
+        out["card"] = {**out["card"], "warnings": out["card"]["warnings"][:2], "checks": [],
+                       "checks_at": "checks"}
+        out["truncated"] = True
+    return out
 
 
 # ---- requirement checks (spec requirements; see design_review)
 
 WARN_MARGIN = 0.1
 # a pass from these is reported as warn: the number is not good enough to sign off on
-LOW_FIDELITY = {"fem_estimate": "the drop load is an estimate (F = m g k)",
-                "empirical": "the drag is an empirical shape-class estimate",
-                "cfd_lbm": "the wind solver is low fidelity"}
+# (wind results are judged against their validated model error band instead: _band_verdict)
+LOW_FIDELITY = {"fem_estimate": "the drop load is an estimate (F = m g k)"}
 
 
 def _verdict(measured: float | None, target: float, kind: str, band: float | None) -> str:
@@ -664,6 +810,20 @@ def _verdict(measured: float | None, target: float, kind: str, band: float | Non
     if close or (band is not None and band > 0.1):
         return "warn"
     return "pass"
+
+
+def _band_verdict(measured: float | None, target: float, kind: str,
+                  band: float | None) -> tuple[str, str | None]:
+    """A CFD value is only known to within its validated model error band: the target inside
+    measured x (1 +- band) is warn; outside it, a clear pass or fail."""
+    if measured is None:
+        return "warn", "no value"
+    b = band if band is not None else 0.0
+    lo, hi = measured * (1 - b), measured * (1 + b)
+    if lo <= target <= hi:
+        return "warn", f"target is within the ±{100 * b:.0f}% model error of the result"
+    ok = hi < target if kind == "max" else lo > target
+    return ("pass" if ok else "fail"), f"clear of the ±{100 * b:.0f}% model error band"
 
 
 def check_requirements(rec: dict, reqs: list[dict]) -> list[dict]:
@@ -700,9 +860,12 @@ def check_requirements(rec: dict, reqs: list[dict]) -> list[dict]:
             meas, sense, unit = r.get("max_temp_c"), "max", "degC"
         if sense is None or not isinstance(target, (int, float)):
             continue
-        st = _verdict(meas, float(target), sense, band)
         note = None
-        if rec.get("fidelity_class") in LOW_FIDELITY and st == "pass":
+        if typ == "wind":
+            st, note = _band_verdict(meas, float(target), sense, band)
+        else:
+            st = _verdict(meas, float(target), sense, band)
+        if typ != "wind" and rec.get("fidelity_class") in LOW_FIDELITY and st == "pass":
             st, note = "warn", f"passes, but {LOW_FIDELITY[rec['fidelity_class']]}"
         out.append({"requirement_id": q.get("id"), "kind": kind, "target": target,
                     "measured": meas, "unit": unit, "status": st, "sim_id": rec.get("sim_id"),

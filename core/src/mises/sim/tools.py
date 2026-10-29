@@ -104,6 +104,14 @@ class SimRunArgs(BaseModel):
         return self
 
 
+def legacy_settings(fix: str, load: dict, material: str | None,
+                    environment: str | None) -> dict:
+    """sim_static_run's arguments as static study settings."""
+    return {"load_cases": [{"name": "case 1", "supports": [{"kind": "fixed", "face": fix}],
+                            "loads": [{"kind": "force", **load}]}],
+            "material": {"name": material}, "environment": environment}
+
+
 def _run_scope(a) -> list[str]:
     return [a.part_id] if a.part_id else [f"project:{a.project_id}"]
 
@@ -226,10 +234,7 @@ async def sim_static_run(ctx: ToolContext, args: StaticArgs) -> ToolOutput:
     if args.fix == args.load.face:
         raise MisesError(ErrorCode.INVALID_INPUT, "fix and load are the same face",
                          hint="hold one face and load another")
-    settings = {"load_cases": [{"name": "case 1", "supports": [{"kind": "fixed",
-                                                                "face": args.fix}],
-                                "loads": [{"kind": "force", **args.load.model_dump()}]}],
-                "material": {"name": args.material}, "environment": args.environment}
+    settings = legacy_settings(args.fix, args.load.model_dump(), args.material, args.environment)
     return await _run(ctx, "static", args.part_id, settings,
                       inputs_extra={"fix": args.fix, "load": args.load.model_dump()},
                       solve_timeout_s=SOLVE_TIMEOUT_S)
@@ -254,8 +259,7 @@ async def sim_result_get(ctx: ToolContext, args: ResultArgs) -> ToolOutput:
     rec = _load_rec(ctx, args.sim_id)
     summary = (f"{args.sim_id}: " + studies.summary(rec)
                + ("; STALE: the part changed since this study" if rec["stale"] else ""))
-    return ToolOutput(summary=summary, data={**rec, "card": studies.card(rec)},
-                      step_kind=StepKind.SIM_RUN)
+    return ToolOutput(summary=summary, data=studies.compact(rec), step_kind=StepKind.SIM_RUN)
 
 
 @tool("sim_compare", safety=SafetyClass.READ,
@@ -441,6 +445,21 @@ async def _get_spec(ctx: ToolContext, args: ReviewArgs) -> dict | None:
     return d.get("spec") if isinstance(d.get("spec"), dict) else d
 
 
+MIN_CHILD_S = 30.0
+CHILD_GRACE_S = 60.0   # post-processing after the last solve
+
+
+def _rec_by_call(parts_root: Path, part_id: str, call_id: str) -> dict | None:
+    for f in (Path(parts_root) / part_id / "sims").glob("sim_*/result.json"):
+        try:
+            rec = json.loads(f.read_text())
+        except (OSError, ValueError):
+            continue
+        if rec.get("call_id") == call_id:
+            return rec
+    return None
+
+
 def _gate(ctx: ToolContext):
     sv = getattr(ctx, "services", None) or {}
     if sv.get("gate") is not None:
@@ -493,19 +512,28 @@ async def design_review(ctx: ToolContext, args: ReviewArgs) -> ToolOutput:
                 results[i] = {"plan": p, "error": "not run: the review's time budget ran out"}
                 return
             settings = dict(p["settings"])
+            left = max(MIN_CHILD_S, deadline - time.monotonic())
             if p["type"] == "wind":
-                left = max(30.0, deadline - time.monotonic())
                 settings["timeout_s"] = min(float(settings.get("timeout_s", 600)), left)
+            else:  # each solve gets at most the time left (a study solves >= 2 meshes)
+                solver = dict(settings.get("solver") or {})
+                solver["timeout_s"] = max(5.0, min(float(solver.get("timeout_s", 300)),
+                                                   left / 2))
+                settings["solver"] = solver
+            call_id = f"{ctx.call_id}.r{i + 1}"
             payload = {"type": p["type"], "part_id": args.part_id, "settings": settings,
                        "requirements": p["requirements"],
                        "reason": f"design review: {p['type']} {p['case']}"[:200]}
-            try:
-                out = await gate.call(ctx.run_id, "sim_run", payload,
-                                      call_id=f"{ctx.call_id}.r{i + 1}",
-                                      workdir=Path(ctx.workdir))
-                results[i] = {"plan": p, "out": out}
+            try:  # the budget is a hard cap on every child study too
+                out = await asyncio.wait_for(
+                    gate.call(ctx.run_id, "sim_run", payload, call_id=call_id,
+                              workdir=Path(ctx.workdir)), left + CHILD_GRACE_S)
+                results[i] = {"plan": p, "out": out, "call_id": call_id}
+            except asyncio.TimeoutError:
+                results[i] = {"plan": p, "call_id": call_id,
+                              "error": "stopped: the review's time budget ran out"}
             except MisesError as e:
-                results[i] = {"plan": p, "error": f"{e.code}: {e.message}"}
+                results[i] = {"plan": p, "call_id": call_id, "error": f"{e.code}: {e.message}"}
 
     await asyncio.gather(*(one(i, p) for i, p in enumerate(plan)))
     table = _metric_rows(spec, metrics, material)
@@ -514,6 +542,12 @@ async def design_review(ctx: ToolContext, args: ReviewArgs) -> ToolOutput:
         p = res["plan"]
         out = res.get("out")
         data = out.data if out is not None else {}
+        if out is not None and not data.get("sim_id") and res.get("call_id"):
+            # output spilled or trimmed: the record on disk is the source of truth
+            rec = _rec_by_call(Path(ctx.workdir) / "parts", args.part_id, res["call_id"])
+            if rec is not None:
+                data = {"sim_id": rec["sim_id"], "checks": rec.get("checks"),
+                        "card": studies.card(rec)}
         sid = data.get("sim_id")
         studies_run.append({"type": p["type"], "case": p["case"], "sim_id": sid,
                             "ok": bool(out and out.ok), "error": res.get("error") or (

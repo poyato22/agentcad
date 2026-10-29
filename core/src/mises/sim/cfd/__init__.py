@@ -72,6 +72,16 @@ def cfd_solver_status() -> list[dict]:
 
 
 WORKER_MODULE = "mises.sim.cfd.worker"
+MAX_MEMORY_MB = 8192
+OS_RESERVE_MB = 6 * 1024
+
+
+def memory_cap_mb(ram_gb: float, local_models_gb: float = 0.0) -> int:
+    """The most a wind study may use: min(8192, RAM - 6 GB for macOS, Mises and the CAD
+    kernel - what running local models hold), never below the 64 MB minimum."""
+    ram_gb = ram_gb if ram_gb > 0 else 16.0  # unknown: assume a 16 GB Mac
+    free = ram_gb * 1024 - OS_RESERVE_MB - local_models_gb * 1024
+    return int(max(64, min(MAX_MEMORY_MB, free)))
 
 
 async def run_wind_job(tris_part: np.ndarray, settings: dict, job_dir: Path, *,
@@ -86,7 +96,8 @@ async def run_wind_job(tris_part: np.ndarray, settings: dict, job_dir: Path, *,
     try:
         rc, _, err = await run_sandboxed(
             [sys.executable, "-I", "-m", WORKER_MODULE, str(job_dir.resolve())], job_dir,
-            timeout_s=settings["timeout_s"] + 30, what="the wind solver")
+            timeout_s=settings["timeout_s"] + 30, what="the wind solver",
+            memory_limit_mb=float(settings["memory_mb"]))
     finally:
         poll.cancel()
     out = job_dir / "result.json"

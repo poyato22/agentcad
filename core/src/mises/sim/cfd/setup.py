@@ -9,7 +9,9 @@ from pathlib import Path
 
 import numpy as np
 
-from .solver import BYTES_PER_CELL, NS_PER_CELL_STEP
+from .solver import BYTES_PER_CELL, FIXED_MB, NS_PER_CELL_STEP
+
+MEMORY_MARGIN = 0.8      # plan the lattice to 80% of the budget; the watchdog kills at 100%
 
 CELLS_ACROSS = {1: 8, 2: 12, 3: 16, 4: 24}
 MIN_CELLS_ACROSS = 6
@@ -87,14 +89,20 @@ def plan_grid(lo: np.ndarray, hi: np.ndarray, cells_across: int, domain: float) 
 
 
 def fit_budget(lo, hi, refinement: int, domain: float, memory_mb: int) -> Grid | None:
-    """The finest grid at or below `refinement` that fits memory_mb, or None."""
+    """The finest grid at or below `refinement` whose estimated peak (estimate_mb) stays within
+    MEMORY_MARGIN of memory_mb, or None. The parent's watchdog enforces memory_mb itself."""
     n = CELLS_ACROSS[refinement]
     while n >= MIN_CELLS_ACROSS:
         g = plan_grid(lo, hi, n, domain)
-        if g.cells * BYTES_PER_CELL <= memory_mb * 1e6:
+        if estimate_mb(g) <= MEMORY_MARGIN * memory_mb:
             return g
         n = int(n * 0.8)
     return None
+
+
+def estimate_mb(grid: Grid) -> float:
+    """Estimated peak resident memory of the worker (measured per-cell peak + interpreter)."""
+    return FIXED_MB + grid.cells * BYTES_PER_CELL / 1e6
 
 
 def estimate_seconds(grid: Grid, steps: int) -> float:

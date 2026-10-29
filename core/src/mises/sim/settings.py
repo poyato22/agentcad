@@ -14,7 +14,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from .environments import DIRECTIONS, FACE_PRESETS
 from .mesh import FACE_ID_RE
 
-Vec3 = tuple[float, float, float]
+Coord = Annotated[float, Field(ge=-1e6, le=1e6, allow_inf_nan=False)]
+Vec3 = tuple[Coord, Coord, Coord]   # finite: NaN / inf never reach a deck
 DirectionName = Literal["+x", "-x", "+y", "-y", "+z", "-z"]
 
 
@@ -47,7 +48,7 @@ Direction = Annotated[Union[DirectionName, Vec3],
 
 
 class _M(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
 
 class _FaceM(_M):
@@ -307,13 +308,16 @@ class WindSettings(_M):
                                       "projected area", **_u("m2"))
     domain_multiplier: float = Field(5.0, ge=3, le=10, description="tunnel cross-section "
                                      "and length in body sizes (bigger = less blockage)")
-    refinement: int = Field(2, ge=1, le=4, description="cells across the body: 1=8, 2=12, "
-                            "3=16, 4=24 (time grows ~ cells^4)")
+    refinement: int = Field(2, ge=1, le=4, description="cells across the body and the "
+                            "validated model error: 1 = 8 (PREVIEW, ±40%), 2 = 12 (±30%), "
+                            "3 = 16 (±15%), 4 = 24 (±15%); time grows ~ cells^4")
     turbulence: Literal["smagorinsky", "none"] = Field(
         "smagorinsky", description="LES sub-grid model (built-in lattice-Boltzmann solver)")
     iterations: int = Field(4000, ge=200, le=100_000, description="lattice steps cap")
     timeout_s: float = Field(600, ge=5, le=7200, **_u("s"))
-    memory_mb: int = Field(1024, ge=64, le=8192, description="lattice memory cap", **_u("MB"))
+    memory_mb: int = Field(1024, ge=64, le=8192, description="memory budget of the wind "
+                           "solver, enforced (the run is stopped above it); also capped at "
+                           "this Mac's RAM - 6 GB - running local models", **_u("MB"))
     yaw_deg: list[float] = Field(default_factory=list, max_length=13, description="yaw sweep "
                                  "angles (each one is a separate run)", **_u("deg"))
     solver: Literal["auto", "lbm", "empirical"] = Field(
