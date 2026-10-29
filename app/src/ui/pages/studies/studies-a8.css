@@ -28,7 +28,7 @@ form.st-tpl-row { grid-template-columns: 62px minmax(0, 1fr) auto; }
 .sf-row { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 2px 8px; align-items: center; }
 .sf-row > .sf-doc, .sf-row > .sf-err { grid-column: 2; }
 .sf-label { color: var(--dim); font-size: var(--fs-small); }
-.sf-control { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.sf-control { display: flex; align-items: center; gap: 4px 6px; min-width: 0; flex-wrap: wrap; }
 .sf-control > input, .sf-control > select, .sf-control > span { min-width: 0; }
 .sf-control input[type="number"], .sf-control select { width: 100%; }
 .sf-range { font-size: var(--fs-label); white-space: nowrap; }
@@ -102,3 +102,4 @@ span.sf-item-name { cursor: default; }
 .st-best { color: var(--dim); }
 .st-mat-form { display: flex; flex-direction: column; gap: 6px; max-width: 420px; }
 .st-mat-form > .btn { align-self: flex-start; }
+.st-metrics { border: 1px solid var(--line2); padding: 10px 12px; background: var(--paper); border-top: 1px solid var(--line2); }

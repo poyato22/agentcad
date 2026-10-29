@@ -22,7 +22,7 @@ export function Compare({ data, onClose, onOpen }: { data: StudyCompare; onClose
               <th scope="col"><span class="faint">metric</span></th>
               {data.columns.map((c) => (
                 <th key={c.sim_id} scope="col">
-                  <button type="button" class="sk-link" onClick={() => onOpen(c.sim_id)}>{typeName(c.type)}</button>
+                  <button type="button" class="scard-link" onClick={() => onOpen(c.sim_id)}>{typeName(c.type)}</button>
                   <div class="faint">{c.part_id} · {c.material ?? "—"}{c.created_at ? ` · ${fmtClock(c.created_at)}` : ""}</div>
                   <div class="faint">{c.fidelity_class}{c.stale ? " · stale" : ""}</div>
                 </th>

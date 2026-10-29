@@ -345,7 +345,7 @@ function Legend({ channel, range, full, onRange }: { channel: Channel; range: [n
       <form class="sv-legend-range" onSubmit={(e) => { e.preventDefault(); apply(); }}>
         <label><span class="faint">max</span><input type="number" step="any" value={hi} data-testid="range-hi" onInput={(e) => setHi((e.target as HTMLInputElement).value)} onBlur={apply} /></label>
         <label><span class="faint">min</span><input type="number" step="any" value={lo} data-testid="range-lo" onInput={(e) => setLo((e.target as HTMLInputElement).value)} onBlur={apply} /></label>
-        {full && (range[0] !== full[0] || range[1] !== full[1]) && <button type="button" class="sk-link" onClick={() => onRange(null)}>full range</button>}
+        {full && (range[0] !== full[0] || range[1] !== full[1]) && <button type="button" class="scard-link" onClick={() => onRange(null)}>full range</button>}
       </form>
     </div>
   );

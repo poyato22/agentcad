@@ -15,30 +15,30 @@ export function ReviewCard({ view }: { view: ReviewCallView }): JSX.Element {
   const open = (simId: string) => openImmersive({ simId, ids, origin: { agent: null, runId: view.runId, reason: "design review" } });
   const verdict = r?.verdict ?? (view.failed ? "fail" : null);
   return (
-    <article class="sk sk-review" data-testid="review-card" data-verdict={verdict ?? "none"} aria-label={`Design review${view.partId ? ` of ${view.partId}` : ""}`}>
-      <header class="sk-head">
-        <span class="sk-type">Design review</span>
-        {view.partId && <span class="sk-part text">{view.partId}</span>}
-        <span class="sk-status">
+    <article class="scard scard-review" data-testid="review-card" data-verdict={verdict ?? "none"} aria-label={`Design review${view.partId ? ` of ${view.partId}` : ""}`}>
+      <header class="scard-head">
+        <span class="scard-type">Design review</span>
+        {view.partId && <span class="scard-part text">{view.partId}</span>}
+        <span class="scard-status">
           {view.running ? <Led tone="blue" title="running" /> : <Led tone={verdictTone(verdict)} />}
-          <span class={`sk-verdict${verdict ? ` tone-${verdictTone(verdict)}` : ""}`}>{view.running ? "running" : verdict ? VERDICT_TEXT[verdict] : "done"}</span>
+          <span class={`scard-verdict${verdict ? ` tone-${verdictTone(verdict)}` : ""}`}>{view.running ? "running" : verdict ? VERDICT_TEXT[verdict] : "done"}</span>
         </span>
       </header>
-      <p class="sk-fidelity"><span class="sk-guide">GUIDE ONLY</span><span class="faint text">{r?.label ?? "guide only, not a guarantee"}</span></p>
+      <p class="scard-fidelity"><span class="scard-guide">GUIDE ONLY</span><span class="faint text">{r?.label ?? "guide only, not a guarantee"}</span></p>
       {view.running && <p class="faint text">Running the studies the spec needs…</p>}
-      {view.failed && <p class="sk-fail text" role="alert">{view.summary ?? "the review failed"}{view.hint ? <span class="faint"> · {view.hint}</span> : null}</p>}
+      {view.failed && <p class="scard-fail text" role="alert">{view.summary ?? "the review failed"}{view.hint ? <span class="faint"> · {view.hint}</span> : null}</p>}
       {r && (
-        <table class="sk-table" data-testid="review-table">
+        <table class="scard-table" data-testid="review-table">
           <thead><tr><th>requirement</th><th>target</th><th>measured</th><th>result</th><th><span class="sr-only">study</span></th></tr></thead>
           <tbody>
             {r.table.map((row, i) => (
               <tr key={`${row.requirement_id ?? i}-${row.case ?? ""}`} data-testid="review-row" data-status={row.status} data-sim={row.sim_id ?? ""}>
                 <td class="text">{row.requirement_id ? <span class="faint">{row.requirement_id} </span> : null}{kindText(row.kind)}{row.study ? <span class="faint"> · {typeName(row.study)}{row.case && row.case !== row.study ? ` ${row.case}` : ""}</span> : null}
-                  {row.note && <div class="faint text sk-row-note">{row.note}</div>}
+                  {row.note && <div class="faint text scard-row-note">{row.note}</div>}
                 </td>
                 <td>{fmtValue(row.target, row.unit)}</td>
                 <td>{fmtValue(row.measured, row.unit)}</td>
-                <td><Led tone={verdictTone(row.status)} /> <span class={`sk-verdict tone-${verdictTone(row.status)}`}>{VERDICT_TEXT[row.status]}</span></td>
+                <td><Led tone={verdictTone(row.status)} /> <span class={`scard-verdict tone-${verdictTone(row.status)}`}>{VERDICT_TEXT[row.status]}</span></td>
                 <td>{row.sim_id && <Button variant="ghost" onClick={() => open(row.sim_id as string)} aria-label={`Immersive view of the study for ${row.requirement_id ?? kindText(row.kind)}`}>view</Button>}</td>
               </tr>
             ))}
@@ -46,10 +46,10 @@ export function ReviewCard({ view }: { view: ReviewCallView }): JSX.Element {
         </table>
       )}
       {r && r.studies.some((s) => s.error) && (
-        <ul class="sk-checks">{r.studies.filter((s) => s.error).map((s, i) => <li key={i}><Led tone="red" /><span class="text">{typeName(s.type)} {s.case ?? ""}: {s.error}</span></li>)}</ul>
+        <ul class="scard-checks">{r.studies.filter((s) => s.error).map((s, i) => <li key={i}><Led tone="red" /><span class="text">{typeName(s.type)} {s.case ?? ""}: {s.error}</span></li>)}</ul>
       )}
       {ids.length > 0 && (
-        <footer class="sk-actions">
+        <footer class="scard-actions">
           <Button onClick={() => open(ids[0])} data-testid="open-immersive">Immersive</Button>
           <span class="faint">{ids.length} stud{ids.length === 1 ? "y" : "ies"} · ⌘[ ⌘] to step through</span>
         </footer>

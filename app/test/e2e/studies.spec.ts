@@ -1,17 +1,23 @@
-// Studies page e2e against the fake core, whose /sims routes serve the real core's study
-// fixtures (core/tests/fixtures/ui: a CalculiX run on mount_plate) and play its event sequence.
+// Studies page, inline study cards and the immersive view (Task A8) against the fake core, whose
+// /sims routes serve the real core's study fixtures (core/scripts/dump_study_fixtures.py: every
+// study type on a beam and a cube, an agent's sim_run calls and its design_review).
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
 
+const FX = resolve(import.meta.dirname, "../../../core/tests/fixtures/ui");
+const read = (n: string): unknown => JSON.parse(readFileSync(resolve(FX, n), "utf8"));
 const BASE = JSON.parse(readFileSync(resolve(import.meta.dirname, "../fake-core/scenarios/base.json"), "utf8")) as Record<string, unknown>;
-const withSims = (sims: Record<string, unknown>) => ({ ...BASE, sims });
+const PARTS = read("study_parts.json");
+const GLB = { beam: resolve(FX, "study_part_beam.glb"), cube: resolve(FX, "study_part_cube.glb") };
+const RUN = read("study_agent_run.json") as Record<string, unknown>;
+const STEPS = read("study_agent_steps.json");
+const rec = (t: string) => read(`study_${t}.json`) as { sim_id: string; part_id: string };
 
-const THEMES = {
-  dark: { green: "rgb(79, 209, 139)", amber: "rgb(242, 177, 52)", red: "rgb(255, 90, 74)", blue: "rgb(61, 139, 255)", bg: "rgb(10, 10, 10)" },
-  light: { green: "rgb(23, 118, 63)", amber: "rgb(143, 94, 10)", red: "rgb(200, 50, 30)", blue: "rgb(10, 91, 216)", bg: "rgb(244, 244, 242)" },
-} as const;
+const scenario = (sims: Record<string, unknown> = {}, extra: Record<string, unknown> = {}) => ({
+  ...BASE, parts: PARTS, glb: GLB, runs: [], steps: [], approvals: [], sims: { studies: true, step_ms: 60, ...sims }, ...extra,
+});
 
 async function open(page: Page, theme: "dark" | "light" = "dark") {
   await page.goto("/");
@@ -21,203 +27,225 @@ async function open(page: Page, theme: "dark" | "light" = "dark") {
   await expect(page.getByTestId("studies")).toBeVisible();
 }
 
-/** Pixels of a WebGL canvas (preserveDrawingBuffer): saturated (heatmap) vs grey. */
-async function pixels(page: Page, testId: string): Promise<{ saturated: number; dark: number; light: number; total: number }> {
-  return page.evaluate((id) => {
-    const src = document.querySelector<HTMLCanvasElement>(`[data-testid=${id}]`);
-    if (!src) throw new Error("no canvas");
+async function selectPart(page: Page, id: string) {
+  await page.locator("#st-part").selectOption(id);
+}
+
+/** Saturated (colormap) pixels of the study canvas (preserveDrawingBuffer). */
+async function saturated(page: Page, sel = "[data-testid=study-canvas]"): Promise<number> {
+  return page.evaluate((s) => {
+    const src = document.querySelector<HTMLCanvasElement>(s);
+    if (!src) return -1;
     const c = document.createElement("canvas");
     c.width = src.width; c.height = src.height;
-    const ctx = c.getContext("2d");
-    if (!ctx) throw new Error("no 2d");
+    const ctx = c.getContext("2d")!;
     ctx.drawImage(src, 0, 0);
     const d = ctx.getImageData(0, 0, c.width, c.height).data;
-    let saturated = 0; let dark = 0; let light = 0; let total = 0;
-    for (let i = 0; i < d.length; i += 4) {
-      const r = d[i] ?? 0; const g = d[i + 1] ?? 0; const b = d[i + 2] ?? 0; const a = d[i + 3] ?? 0;
-      if (a < 200) continue;
-      total++;
-      if (Math.max(r, g, b) - Math.min(r, g, b) > 90) saturated++;
-      else if (Math.max(r, g, b) < 0x60) dark++;
-      else if (Math.min(r, g, b) > 0xa0) light++;
-    }
-    return { saturated, dark, light, total };
-  }, testId);
+    let n = 0;
+    for (let i = 0; i < d.length; i += 4) if ((d[i + 3] ?? 0) > 200 && Math.max(d[i]!, d[i + 1]!, d[i + 2]!) - Math.min(d[i]!, d[i + 1]!, d[i + 2]!) > 90) n++;
+    return n;
+  }, sel);
 }
 
 for (const theme of ["dark", "light"] as const) {
-  test(`shows_the_newest_study_with_every_guide_label_${theme}`, async ({ page, fake }) => {
-    await fake.reset(withSims({ records: "fixtures" }) as never);
+  test(`wind_results_render_from_the_real_fixture_${theme}`, async ({ page, fake }) => {
+    await fake.reset(scenario() as never);
     await open(page, theme);
-    const sf = page.getByTestId("sf");
-    await expect(sf).toContainText("3.17");
-    await expect(sf).toHaveAttribute("data-verdict", "pass");
-    await expect(sf.locator(".st-sf-value")).toHaveCSS("color", THEMES[theme].green);
-    // the fixture-including safety factor and the exclusion note sit right next to the headline
-    await expect(page.getByTestId("sf-incl-fixture")).toContainText("incl. fixed face 3.17");
-    await expect(page.getByTestId("sf-incl-fixture")).toContainText("6.23 MPa at the fixed face");
-    await expect(page.getByTestId("peak-excludes")).toHaveText("peak excludes the fixed face (nodes on the fixed face)");
-    const head = await page.locator(".st-head").boundingBox();
-    const side = await page.getByTestId("sf-incl-fixture").boundingBox();
-    expect(head && side && side.y < head.y + head.height).toBe(true);
-    await expect(page.getByTestId("max-vm")).toContainText("10.4 MPa");
-    await expect(page.getByTestId("max-disp")).toContainText("0.832 mm");
-    await expect(page.getByTestId("error-band")).toContainText("±5.1%");
-    await expect(page.getByTestId("guide-label")).toContainText("GUIDE ONLY");
-    await expect(page.getByTestId("guide-label")).toContainText("guide only, not a guarantee");
-    await expect(page.getByTestId("solver-label")).toContainText("CalculiX 2.23 · C3D10 (quadratic tetrahedra) · gmsh 4.15.2 mesh 1.5 mm (coarse 3 mm, 16,752 nodes) · PETG isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers · fidelity fem");
-    await expect(page.getByTestId("legend")).toContainText("MPa");
-    await expect(page.getByTestId("legend")).toContainText("10.4");
-    // design | stress split: both sheets render; the stress one is the heatmap
-    await expect(page.getByTestId("design-canvas")).toHaveAttribute("data-state", "loaded");
-    await expect(page.getByTestId("stress-canvas")).toHaveAttribute("data-state", "loaded");
-    await expect.poll(async () => (await pixels(page, "stress-canvas")).saturated, { timeout: 10_000 }).toBeGreaterThan(1000);
-    const design = await pixels(page, "design-canvas");
-    expect(design.saturated).toBe(0); // the design half stays drafting grey
-    // theme-aware edges: light edges on dark, dark edges on light
-    if (theme === "dark") expect(design.light).toBeGreaterThan(100);
-    else expect(design.dark).toBeGreaterThan(100);
-    // history: newest first, the shown one selected (blue), names without counters
-    const rows = page.getByTestId("study-row");
-    await expect(rows).toHaveCount(2);
-    await expect(rows.nth(1)).toHaveAttribute("aria-current", "true");
-    await expect(rows.nth(0)).toContainText(/Study · \d\d:\d\d(:\d\d)? · PETG · 20 N −z on x-max · fixed x-min/);
-    expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe(THEMES[theme].bg);
+    await selectPart(page, "cube");
+    const r = page.getByTestId("study-result");
+    await expect(r).toHaveAttribute("data-type", "wind");
+    await expect(r.getByTestId("fidelity-note")).toHaveText("low fidelity (preview) · ±40% (validated)");
+    await expect(r.getByTestId("guide-label")).toContainText("GUIDE ONLY");
+    await expect(r.getByTestId("result-note")).toContainText("skin-friction estimate");
+    await expect(r.locator("[data-testid=metric][data-key=cd]")).toContainText("1.15");
+    await expect(r.locator("[data-testid=metric][data-key=cl]")).toBeVisible();
+    await expect(r.getByTestId("convergence-band")).toContainText("not the accuracy");
+    // the yaw sweep: Cd and Cl over the three angles, with a legend and a table view
+    const yaw = r.locator("[data-chart=cd_vs_yaw]");
+    await expect(yaw.getByTestId("chart-legend")).toContainText("Cd");
+    await yaw.getByRole("button", { name: "Table" }).click();
+    await expect(yaw.getByTestId("chart-table")).toContainText("-15");
+    // the viewport: Cp on the surface, particles moving along the velocity slice
+    const canvas = page.getByTestId("study-canvas");
+    await expect(page.getByTestId("study-view")).toHaveAttribute("data-channel", "cp");
+    await expect(canvas).toHaveAttribute("data-particles", "900");
+    await expect(canvas).toHaveAttribute("data-animating", "true");
+    await expect.poll(() => saturated(page)).toBeGreaterThan(50);
+    await expect(page.getByTestId("legend")).toContainText("Cp");
+    await page.screenshot({ path: `test-results/a8-wind-${theme}.png` });
   });
 }
 
-test("the_failed_study_shows_its_error_and_install_hint", async ({ page, fake }) => {
-  await fake.reset(withSims({ records: "fixtures" }) as never);
+test("the_settings_form_comes_from_the_schema_and_bad_ranges_are_said_before_running", async ({ page, fake }) => {
+  await fake.reset(scenario() as never);
   await open(page);
-  await page.getByTestId("study-row").first().click();
-  const band = page.getByTestId("study-failed");
-  await expect(band).toContainText("Study failed");
-  await expect(band).toContainText("CalculiX (ccx) is not installed");
-  await expect(band).toContainText("conda install -c conda-forge calculix");
-  await expect(band.locator(".led")).toHaveCSS("background-color", THEMES.dark.red);
-});
-
-test("run_progress_result_and_history", async ({ page, fake }) => {
-  await fake.reset(withSims({ step_ms: 400 }) as never);
-  await open(page);
-  await expect(page.getByText("No studies of this part yet.")).toBeVisible();
-  await page.getByLabel("Preset").selectOption("Desk");
-  await page.getByLabel("Fixed face").selectOption("x-min");
-  await page.getByLabel("Load face").selectOption("x-max");
-  await page.getByLabel("Material").selectOption("PETG");
-  await page.getByRole("button", { name: "Run study" }).click();
-  const progress = page.getByTestId("study-progress");
-  await expect(progress).toBeVisible();
-  await expect(progress).toContainText(/meshing|solving/);
-  await expect(page.getByRole("button", { name: "Cancel study" })).toBeVisible();
-  await expect(page.getByTestId("sf")).toContainText("3.17", { timeout: 10_000 });
-  await expect(progress).toHaveCount(0);
-  await expect(page.getByTestId("study-row")).toHaveCount(1);
-  await expect(page.getByTestId("stress-canvas")).toHaveAttribute("data-state", "loaded");
-  const post = (await fake.calls()).find((c) => c.method === "POST" && c.path === "/sims");
-  expect(post?.body).toEqual({ part_id: "mount_plate", fix: "x-min", load: { face: "x-max", newtons: 20, direction: "-z" }, material: "PETG", environment: "Desk" });
-  // the studies run is a provider "ui" run: like the real core, GET /runs leaves it out of the
-  // console's run list (the page itself shows its progress and result)
-  await page.getByRole("button", { name: "Full log", exact: true }).click();
-  await expect(page.locator("[data-region=console] [data-roster]")).not.toContainText("studies");
-});
-
-test("cancel_stops_a_long_study", async ({ page, fake }) => {
-  await fake.reset(withSims({ outcome: "hang", step_ms: 100 }) as never);
-  await open(page);
-  await page.getByRole("button", { name: "Run study" }).click();
-  await expect(page.getByTestId("study-progress")).toHaveAttribute("data-stage", "solve_fine", { timeout: 10_000 });
-  await page.getByRole("button", { name: "Cancel study" }).click();
-  await expect(page.getByTestId("study-progress")).toHaveCount(0, { timeout: 10_000 });
-  await expect(page.getByTestId("study-row").first()).toContainText("cancelled");
-  await expect(page.getByTestId("study-failed")).toContainText("Study cancelled");
+  for (const t of ["static", "modal", "buckling", "thermal", "drop", "wind"]) {
+    await page.getByTestId(`type-${t}`).click();
+    await expect(page.getByTestId(`type-${t}`)).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByTestId("schema-form")).toBeVisible();
+  }
+  await page.getByTestId("type-modal").click();
+  await page.locator("#sf-n_modes").fill("500");
+  await page.getByTestId("run-study").click();
+  await expect(page.locator('[data-field="n_modes"] .sf-err')).toHaveText("at most 30");
   const calls = await fake.calls();
-  expect(calls.some((c) => c.method === "POST" && /^\/runs\/[^/]+\/cancel$/.test(c.path))).toBe(true);
-  await expect(page.getByRole("button", { name: "Run study" })).toBeEnabled();
+  expect(calls.some((c) => c.method === "POST" && c.path === "/sims")).toBe(false);
 });
 
-test("missing_calculix_shows_the_install_card_and_blocks_run", async ({ page, fake }) => {
-  await fake.reset(withSims({ ccx: false }) as never);
+test("pick_a_face_in_the_viewer_assigns_it_to_the_load_and_draws_the_arrow", async ({ page, fake }) => {
+  await fake.reset(scenario({}, { sims: { studies: false } }) as never);
   await open(page);
-  const card = page.getByTestId("install-card");
-  await expect(card).toContainText("CalculiX is not installed");
-  await expect(card.locator("code")).toHaveText("conda install -c conda-forge calculix");
-  await expect(page.getByRole("button", { name: "Run study" })).toBeDisabled();
-  const before = (await fake.calls()).filter((c) => c.path === "/sims/solvers").length;
-  await card.getByRole("button", { name: "Check again" }).click();
-  await expect.poll(async () => (await fake.calls()).filter((c) => c.path === "/sims/solvers").length).toBe(before + 1);
+  await selectPart(page, "beam");
+  await expect(page.getByTestId("study-view")).toHaveAttribute("data-mode", "setup");
+  const canvas = page.getByTestId("study-canvas");
+  await expect(canvas).not.toHaveAttribute("data-markers", "0");
+  const face = page.locator("#sf-load_cases-0-loads-0-face");
+  await expect(face).toHaveValue("top");
+  await page.locator('[data-field="load_cases.0.loads.0.face"]').getByTestId("pick-face").click();
+  await expect(page.getByTestId("study-view")).toHaveAttribute("data-picking", "true");
+  const box = (await canvas.boundingBox())!;
+  await canvas.click({ position: { x: box.width / 2, y: box.height / 2 } });
+  await expect(face).toHaveValue(/^f\d+$/);
+  await expect(page.getByTestId("study-view")).not.toHaveAttribute("data-picking", "true");
+  // Escape disarms a pick without changing anything
+  await page.locator('[data-field="load_cases.0.supports.0.face"]').getByTestId("pick-face").click();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#sf-load_cases-0-supports-0-face")).toHaveValue("bottom");
 });
 
-test("a_solver_failure_is_a_clear_error", async ({ page, fake }) => {
-  await fake.reset(withSims({ outcome: "solve_failed", step_ms: 50 }) as never);
+test("static_result_channel_switch_deform_section_and_probe", async ({ page, fake }) => {
+  await fake.reset(scenario() as never);
   await open(page);
-  await page.getByRole("button", { name: "Run study" }).click();
-  await expect(page.getByTestId("study-failed")).toContainText("CalculiX failed", { timeout: 10_000 });
-  await expect(page.getByTestId("study-failed")).toContainText("check the setup");
+  await selectPart(page, "beam");
+  await page.locator("[data-testid=study-row][data-type=static]").first().click();
+  const view = page.getByTestId("study-view");
+  await expect(view).toHaveAttribute("data-mode", "result");
+  await expect(view).toHaveAttribute("data-channel", "von_mises");
+  await page.getByTestId("channel").selectOption("s1");
+  await expect(view).toHaveAttribute("data-channel", "s1");
+  await expect(page.getByTestId("legend")).toContainText("max principal");
+  await page.getByTestId("range-hi").fill("2");
+  await page.getByTestId("range-hi").press("Enter");
+  await expect(page.getByTestId("legend")).toContainText("2");
+  await page.getByTestId("deform").fill("8");
+  await page.getByTestId("section-axis").selectOption("y");
+  await expect(page.getByTestId("study-canvas")).toHaveAttribute("data-section", "true");
+  await page.getByTestId("probe-toggle").click();
+  const box = (await page.getByTestId("study-canvas").boundingBox())!;
+  await page.getByTestId("study-canvas").click({ position: { x: box.width / 2, y: box.height / 2 } });
+  await expect(page.getByTestId("probe")).toContainText("MPa");
 });
 
-test("a_setup_the_core_rejects_in_the_tool_shows_the_reason", async ({ page, fake }) => {
-  await fake.reset(withSims({ step_ms: 50 }) as never);
+test("modal_result_plays_mode_shapes_and_static_frames_with_reduced_motion", async ({ page, fake }) => {
+  await fake.reset(scenario() as never);
   await open(page);
-  // same face for fix and load is caught before the round trip
-  await page.getByLabel("Load face").selectOption("bottom");
-  await expect(page.getByTestId("setup-problems")).toContainText("the same");
-  await expect(page.getByRole("button", { name: "Run study" })).toBeDisabled();
+  await selectPart(page, "beam");
+  await page.locator("[data-testid=study-row][data-type=modal]").first().click();
+  await page.getByTestId("animate-modes").click();
+  await expect(page.getByTestId("study-canvas")).toHaveAttribute("data-animating", "true");
+  await page.getByTestId("animate-modes").click();
+  await expect(page.getByTestId("study-canvas")).toHaveAttribute("data-animating", "false");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await selectPart(page, "cube");
+  await expect(page.getByTestId("study-canvas")).not.toHaveAttribute("data-streamlines", "0");
+  await expect(page.getByTestId("study-canvas")).toHaveAttribute("data-particles", "0");
+  await expect(page.getByTestId("study-canvas")).toHaveAttribute("data-animating", "false");
 });
 
-test("ask_agent_to_fix_starts_a_designer_run_with_the_result", async ({ page, fake }) => {
-  await fake.reset(withSims({ records: "fixtures" }) as never);
+test("run_progress_by_phase_and_cancel", async ({ page, fake }) => {
+  await fake.reset(scenario({ outcome: "hang" }) as never);
   await open(page);
-  await page.getByRole("button", { name: "Collapse the agent console" }).click();
-  await page.getByRole("button", { name: "Ask agent" }).click();
-  await expect(page.getByTestId("asked")).toContainText("Sent to designer");
-  const post = (await fake.calls()).find((c) => c.method === "POST" && c.path === "/runs");
-  const body = post?.body as { agent: string; prompt: string; edit_scope: string[] };
-  expect(body.agent).toBe("designer");
-  expect(body.edit_scope).toEqual(["mount_plate"]);
-  expect(body.prompt).toContain("guide only, not a guarantee");
-  expect(body.prompt).toContain("including the fixed face 3.17");
-  // the result travels as a nonce-delimited untrusted-data block, instructions outside it
-  const nonce = /<study_result nonce="([0-9a-f]+)">/.exec(body.prompt)?.[1];
-  expect(nonce).toBeTruthy();
-  const inside = body.prompt.slice(body.prompt.indexOf(`<study_result nonce="${nonce}">`), body.prompt.indexOf(`</study_result nonce="${nonce}">`));
-  expect(inside).toContain("including the fixed face 3.17");
-  expect(body.prompt.slice(0, body.prompt.indexOf(`<study_result nonce="${nonce}">`))).toContain("untrusted data");
-  // the console opens on the new run
-  await expect(page.locator("[data-region=app]")).toHaveAttribute("data-console", "open");
-  // once sent, Ask stays off for this study; "Open run" goes back to it
-  await expect(page.getByRole("button", { name: "Ask agent" })).toBeDisabled();
-  await page.getByRole("button", { name: "Collapse the agent console" }).click();
-  await page.getByRole("button", { name: "Open run" }).click();
-  await expect(page.locator("[data-region=app]")).toHaveAttribute("data-console", "open");
-  expect((await fake.calls()).filter((c) => c.method === "POST" && c.path === "/runs")).toHaveLength(1);
+  await selectPart(page, "cube");
+  await page.getByTestId("type-wind").click();
+  await page.getByTestId("run-study").click();
+  const prog = page.getByTestId("study-progress");
+  await expect(prog).toHaveAttribute("data-phase", "solve");
+  await expect(prog.getByTestId("phase-bar")).toHaveAttribute("aria-valuetext", /solving · lattice step/);
+  await page.getByTestId("cancel-study").click();
+  await expect(prog).toBeHidden();
+  const calls = await fake.calls();
+  const start = calls.find((c) => c.method === "POST" && c.path === "/sims")!;
+  expect(start.body).toMatchObject({ type: "wind", part_id: "cube", settings: { speed_m_s: 10, refinement: 2 } });
+  expect(calls.some((c) => c.method === "POST" && /^\/sims\/sim_[0-9a-f]{12}\/cancel$/.test(c.path))).toBe(true);
+  await expect(page.getByTestId("study-result")).toHaveAttribute("data-status", "cancelled");
 });
 
-test("the_stale_banner_appears_when_the_part_changes_while_the_page_is_open", async ({ page, fake }) => {
-  await fake.reset(withSims({ records: "fixtures" }) as never);
+test("compare_two_studies_side_by_side", async ({ page, fake }) => {
+  await fake.reset(scenario() as never);
   await open(page);
-  await expect(page.getByTestId("sf")).toContainText("3.17");
-  await expect(page.getByTestId("stale")).toHaveCount(0);
-  // an agent edits the part: the core bumps its mtime and the app refetches /parts
-  const parts = (BASE.parts as { mtime: number }[]).map((p) => ({ ...p, mtime: Date.now() / 1000 + 60 }));
-  await fake.emit({ type: "tool_result", run_id: "b7c79a57cbb4", data: { call_id: "st1", name: "mirror_part_set_vars", ok: true, summary: "ok" } }, { parts } as never);
-  await expect(page.getByTestId("stale")).toContainText("part changed since this study", { timeout: 10_000 });
-  await expect(page.getByTestId("study-row").nth(1)).toHaveAttribute("aria-current", "true"); // no reselecting
+  await selectPart(page, "beam");
+  const checks = page.getByTestId("compare-check");
+  await checks.nth(0).check();
+  await checks.nth(1).check();
+  await page.getByTestId("compare").click();
+  const v = page.getByTestId("compare-view");
+  await expect(v.getByTestId("compare-row").first()).toBeVisible();
+  await expect(v).toContainText("GUIDE ONLY");
 });
 
-test("visual_rules_square_corners_and_blue_only_on_the_selected_row", async ({ page, fake }) => {
-  await fake.reset(withSims({ records: "fixtures" }) as never);
+test("templates_save_and_load", async ({ page, fake }) => {
+  await fake.reset(scenario() as never);
   await open(page);
-  await expect(page.getByTestId("sf")).toContainText("3.17");
-  const offenders = await page.evaluate((blues) => {
-    const bad: string[] = [];
-    for (const el of Array.from(document.querySelectorAll("[data-testid=studies] *"))) {
-      const cs = getComputedStyle(el);
-      if (cs.borderTopLeftRadius !== "0px") bad.push(`radius ${el.tagName}.${el.className}`);
-      const blue = [cs.color, cs.backgroundColor, cs.borderTopColor].some((c) => blues.includes(c));
-      if (blue && !el.closest("[aria-current=true]") && !(el instanceof HTMLSelectElement && el.matches(":focus"))) bad.push(`blue ${el.tagName}.${el.className}`);
-    }
-    return bad;
-  }, [THEMES.dark.blue, "rgb(141, 186, 255)"]);
-  expect(offenders).toEqual([]);
+  await page.getByTestId("template-pick").selectOption({ label: "Breeze · Wind" });
+  await page.getByTestId("template-load").click();
+  await expect(page.getByTestId("type-wind")).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator("#sf-speed_m_s")).toHaveValue("5");
+  await page.getByTestId("template-name").fill("Gusty");
+  await page.getByTestId("template-save").click();
+  await expect(page.getByTestId("template-pick")).toContainText("Gusty · Wind");
+});
+
+test("the_agent_s_studies_show_as_cards_and_open_the_immersive_view", async ({ page, fake }) => {
+  await fake.reset(scenario({}, { runs: [RUN], steps: STEPS }) as never);
+  await page.goto("/");
+  await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
+  const cards = page.getByTestId("study-card");
+  await expect(cards).toHaveCount(8);
+  const wind = page.locator("[data-testid=study-card][data-type=wind]");
+  await expect(wind.getByTestId("fidelity-note")).toHaveText("low fidelity (preview) · ±40% (validated)");
+  await wind.scrollIntoViewIfNeeded();
+  await expect(wind.getByTestId("card-chart")).toHaveAttribute("data-chart", "cd_vs_yaw");
+  await expect(wind.getByTestId("study-thumb")).toHaveAttribute("data-state", "loaded");
+  await page.locator("[data-region=console]").screenshot({ path: "test-results/a8-cards.png" });
+  await wind.getByTestId("open-immersive").click();
+  const imm = page.getByTestId("immersive");
+  await expect(imm).toBeVisible();
+  await expect(imm).toHaveAttribute("data-sim", rec("wind").sim_id);
+  // the traffic lights keep their corner: the top strip starts after the inset
+  const pad = await imm.locator(".imm-top").evaluate((el) => getComputedStyle(el).paddingLeft);
+  expect(pad).toBe("78px");
+  await expect(imm.getByTestId("study-canvas")).toHaveAttribute("data-particles", "900");
+  await page.screenshot({ path: "test-results/a8-immersive-wind.png" });
+  await page.keyboard.press("Escape");
+  await expect(imm).toBeHidden();
+  // the review card: each row opens its study; ⌘[ / ⌘] step through the review's studies
+  const review = page.getByTestId("review-card");
+  await review.getByTestId("open-immersive").click();
+  const first = await page.getByTestId("immersive").getAttribute("data-sim");
+  await page.keyboard.press("Meta+]");
+  await expect(page.getByTestId("immersive")).not.toHaveAttribute("data-sim", first ?? "");
+  await page.keyboard.press("Meta+[");
+  await expect(page.getByTestId("immersive")).toHaveAttribute("data-sim", first ?? "");
+  await page.keyboard.press("Escape");
+  // a double-click on a card's chart opens it too
+  const stat = page.locator("[data-testid=study-card][data-type=static]").first();
+  await stat.scrollIntoViewIfNeeded();
+  await stat.getByTestId("study-chart").dblclick();
+  await expect(page.getByTestId("immersive")).toBeVisible();
+});
+
+test("the_immersive_view_follows_a_running_study_from_the_page", async ({ page, fake }) => {
+  await fake.reset(scenario({ step_ms: 250 }) as never);
+  await open(page);
+  await selectPart(page, "cube");
+  await page.getByTestId("type-wind").click();
+  await page.getByTestId("run-study").click();
+  await page.getByTestId("watch-immersive").click();
+  const imm = page.getByTestId("immersive");
+  await expect(imm.getByTestId("imm-live")).toBeVisible();
+  await expect(imm.getByTestId("live-caption")).toContainText("Wind ·");
+  await expect(imm).toHaveAttribute("data-status", "done", { timeout: 15_000 });
+  await expect(imm.getByTestId("imm-metrics")).toContainText("Cd");
+  await page.keyboard.press("Escape");
+  await expect(imm).toBeHidden();
 });

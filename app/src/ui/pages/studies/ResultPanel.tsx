@@ -71,7 +71,7 @@ export function ResultPanel({ rec, charts, onAsk, onOpenRun, asked, onImmersive 
         </div>
       )}
       {done && card && (
-        <dl class="st-nums st-head" data-testid="metrics">
+        <dl class="st-nums st-metrics" data-testid="metrics">
           {card.metrics.filter((m) => m.value !== null && m.value !== undefined).map((m) => (
             <div key={m.key} data-testid="metric" data-key={m.key}>
               <dt class="label">{m.label}</dt>

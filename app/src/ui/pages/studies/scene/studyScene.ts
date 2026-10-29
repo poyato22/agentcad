@@ -339,7 +339,9 @@ export function createStudyScene(canvas: HTMLCanvasElement, deps: StudySceneDeps
       for (const rm of result.meshes) {
         const a = rm.attrs.get(threeAttribute(ch.attribute));
         rm.values = a ? channelValues(a.array as ArrayLike<number>, ch.kind === "vector" && a.itemSize === 3 ? "vector" : "scalar") : null;
-        if (rm.values) full = finiteRange(rm.values);
+        // the core's range for the channel (the field's, which can exceed the surface vertices'),
+        // else what the vertices hold
+        if (rm.values && !(Number.isFinite(ch.min) && Number.isFinite(ch.max) && ch.max > ch.min)) full = finiteRange(rm.values);
       }
       // a normalized mode shape colors by its own magnitude 0..1
       const r: [number, number] = range ?? full;

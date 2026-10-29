@@ -14,5 +14,5 @@ type Call = Extract<LogItem, { kind: "call" }>;
 export function StudyCardSlot({ call, runId }: { call: Call; runId?: string | null }): JSX.Element | null {
   const v = studyCallView(call, runId ?? call.runId ?? null);
   if (!v) return null;
-  return <div class="sk-slot" data-study-slot>{v.kind === "review" ? <ReviewCard view={v} /> : <StudyCard view={v} />}</div>;
+  return <div class="scard-slot" data-study-slot>{v.kind === "review" ? <ReviewCard view={v} /> : <StudyCard view={v} />}</div>;
 }

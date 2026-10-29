@@ -74,8 +74,21 @@ function Immersive({ target, deps }: { target: ImmersiveTarget; deps: ImmersiveD
     return () => window.removeEventListener("keydown", k);
   }, []);
 
+  // the core sends no "done" progress: a running record is read again until it settles
+  useEffect(() => {
+    if (!simId || rec?.sim_id !== simId || rec.status !== "running") return;
+    const t = setTimeout(() => {
+      data.forget(simId);
+      void data.record(simId).then((r) => {
+        setRec(r);
+        if (r.status === "done") void data.charts(simId).then(setCharts, () => setCharts(null));
+      }, () => { /* tried again on the next tick */ setRec({ ...rec }); });
+    }, 800);
+    return () => clearTimeout(t);
+  }, [simId, rec]);
+
   const running = rec ? rec.status === "running" : true;
-  const shownRec = rec && rec.status === "done" && !(live && !isTerminal(live)) ? rec : null;
+  const shownRec = rec && rec.status === "done" ? rec : null;
   const card = rec?.card ?? null;
   const type = rec?.type ?? pend?.type ?? null;
   const partId = rec?.part_id ?? pend?.partId ?? null;
@@ -85,8 +98,8 @@ function Immersive({ target, deps }: { target: ImmersiveTarget; deps: ImmersiveD
   const reason = rec?.reason ?? target.origin?.reason ?? null;
   const verdict = card?.verdict ?? null;
   const idx = simId ? target.ids.indexOf(simId) : -1;
-  const phase = live && !isTerminal(live) ? live.phase : rec?.phase ?? null;
-  const caption = running || (live && !isTerminal(live)) ? `${typeName(type)} · ${phaseText(phase)}${live?.detail ? ` · ${live.detail}` : ""}` : null;
+  const phase = running && live ? live.phase : rec?.phase ?? null;
+  const caption = running ? `${typeName(type)} · ${phaseText(phase)}${live?.detail ? ` · ${live.detail}` : ""}` : null;
 
   return (
     <div class="imm" ref={root} role="dialog" aria-modal="true" aria-label={`Immersive view · ${typeName(type)} study${partId ? ` of ${partId}` : ""}`} data-testid="immersive" data-sim={simId ?? ""} data-status={rec?.status ?? "starting"}>
@@ -95,9 +108,9 @@ function Immersive({ target, deps }: { target: ImmersiveTarget; deps: ImmersiveD
         {partId && <span class="imm-part text">{partId}</span>}
         <span class="imm-verdict">
           {running ? <Led tone="blue" title="running" /> : <Led tone={verdictTone(verdict)} />}
-          <span class={`sk-verdict${verdict ? ` tone-${verdictTone(verdict)}` : ""}`}>{running ? "running" : verdict ? VERDICT_TEXT[verdict] : rec?.status ?? ""}</span>
+          <span class={`scard-verdict${verdict ? ` tone-${verdictTone(verdict)}` : ""}`}>{running ? "running" : verdict ? VERDICT_TEXT[verdict] : rec?.status ?? ""}</span>
         </span>
-        <span class="imm-guide"><span class="sk-guide">GUIDE ONLY</span>{card && <b class="text" data-testid="fidelity-note">{fidelityText(card)}</b>}</span>
+        <span class="imm-guide"><span class="scard-guide">GUIDE ONLY</span>{card && <b class="text" data-testid="fidelity-note">{fidelityText(card)}</b>}</span>
         <span class="imm-nav">
           {target.ids.length > 1 && (
             <>
@@ -111,7 +124,7 @@ function Immersive({ target, deps }: { target: ImmersiveTarget; deps: ImmersiveD
       </header>
       <div class="imm-body">
         <div class="imm-stage">
-          {(running || (live && !isTerminal(live))) && (
+          {running && (
             <div class="imm-live" data-testid="imm-live"><PhaseBar phase={phase ?? "queued"} pct={live?.pct ?? rec?.pct ?? null} detail={live?.detail ?? null} /></div>
           )}
           <StudyView partId={partId} mtime={part?.mtime} record={shownRec} faces={part?.metrics?.face_list ?? []} immersive liveCaption={caption} deps={deps.view} />
