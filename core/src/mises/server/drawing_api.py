@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Response
 
+from ..cad import safe_io
 from ..cad.tools import PART_ID_RE
 from ..drawing import MATERIAL_RE, DrawingError, mirror_drawing
 from ..profile import load_profile
@@ -19,6 +20,13 @@ from ..types import ErrorCode, MisesError
 if TYPE_CHECKING:
     from ..runtime import Runtime
 
+
+def _read(path: Path) -> bytes:
+    """A drawing file in the part dir, read without following a link (cad/safe_io)."""
+    data = safe_io.read_bytes(path.parent, path.name)
+    if data is None:
+        raise MisesError(ErrorCode.NOT_FOUND, f"{path.name} is missing; request it again")
+    return data
 
 
 def build_drawing_router(runtime: Runtime) -> APIRouter:
@@ -44,14 +52,14 @@ def build_drawing_router(runtime: Runtime) -> APIRouter:
     @router.get("/parts/{part_id}/drawing.svg")
     async def drawing_svg(part_id: str, material: str | None = None):
         d = await _drawing(part_id, material)
-        return Response(d.svg_path.read_bytes(), media_type="image/svg+xml", headers={
+        return Response(_read(d.svg_path), media_type="image/svg+xml", headers={
             "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'",
             "Cache-Control": "private, no-cache"})
 
     @router.get("/parts/{part_id}/drawing.dxf")
     async def drawing_dxf(part_id: str, material: str | None = None):
         d = await _drawing(part_id, material)
-        return Response(d.dxf_path.read_bytes(), media_type="image/vnd.dxf", headers={
+        return Response(_read(d.dxf_path), media_type="image/vnd.dxf", headers={
             "Content-Disposition": f'attachment; filename="{part_id}.dxf"',
             "Cache-Control": "private, no-cache"})
 

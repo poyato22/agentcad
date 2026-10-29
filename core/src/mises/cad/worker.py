@@ -95,6 +95,197 @@ def _face_list(shape) -> list[dict]:
     return out
 
 
+def _edge_adjacency(shape) -> dict:
+    """edge -> outward normals (at their centres) of the faces that share it."""
+    from build123d import CenterOf
+    adj: dict = {}
+    for f in shape.faces():
+        try:
+            n = _xyz(f.normal_at(f.center(CenterOf.MASS)))
+        except Exception:  # noqa: BLE001
+            continue
+        for e in f.edges():
+            adj.setdefault(e, []).append(n)
+    return adj
+
+
+def _edge_list(shape) -> list[dict]:
+    """Edge ids ("e0".. in shape.edges() order) with type, length, midpoint, direction and the
+    normals of the faces it joins, so a feature op (fillet/chamfer) can name an edge and later
+    re-find it. Compact; it rides along in metrics like the face list."""
+    adj = _edge_adjacency(shape)
+    out = []
+    for i, edge in enumerate(shape.edges()):
+        try:
+            mid = edge.position_at(0.5)
+            center = [round(mid.X, 3) + 0.0, round(mid.Y, 3) + 0.0, round(mid.Z, 3) + 0.0]
+            direction = [round(c, 4) + 0.0 for c in _canon(_xyz(edge.tangent_at(0.5)))]
+        except Exception:  # noqa: BLE001 - degenerate edges have no usable parameterisation
+            center = direction = None
+        out.append({"id": f"e{i}", "type": _geom(edge), "length": round(float(edge.length), 3),
+                    "center": center, "direction": direction,
+                    "adjacent": [[round(c, 4) + 0.0 for c in n] for n in adj.get(edge, [])]})
+    return out
+
+
+# ---- stable op references (called from `# mises-op` blocks in part.py)
+#
+# An op records a signature of its target (type, normal/direction, centroid, area/length, and for
+# edges the normals of the faces it joins) when it is added. At every regeneration these re-find
+# that target in the CURRENT shape. The match is strict: same surface/curve type, normal or
+# direction within 5 deg, size within a factor of 2, and a centroid within the target's own size
+# of where it was. Anything else — no candidate, or more than one — fails the build with an error
+# that names the op, so an op never silently moves to another face or edge.
+
+_COS_5DEG = math.cos(math.radians(5.0))
+_SIZE_RATIO = (0.5, 2.0)
+
+
+def _xyz(v) -> list[float]:
+    return [float(v.X), float(v.Y), float(v.Z)]
+
+
+def _canon(d: list[float]) -> list[float]:
+    for c in d:
+        if abs(c) > 1e-9:
+            return [-x for x in d] if c < 0 else list(d)
+    return list(d)
+
+
+def _geom(obj) -> str:
+    return str(obj.geom_type).split(".")[-1].lower()
+
+
+def _ratio_ok(now: float, then: float) -> bool:
+    if then <= 0:
+        return True
+    r = now / then
+    return _SIZE_RATIO[0] <= r <= _SIZE_RATIO[1]
+
+
+# op label -> the signatures its targets resolved to in this build, in call order. Returned in
+# result.json so the host can refresh the op's recorded reference (fix: small steps must not add
+# up to a failure, since each match is checked against the previous build, not the first one).
+_RESOLVED: dict[str, list] = {}
+
+
+def _r(x: float, n: int = 4) -> float:
+    return round(float(x), n) + 0.0
+
+
+def _face_sig_now(f, hint) -> dict:
+    from build123d import CenterOf
+    c = f.center(CenterOf.MASS)
+    return {"type": _geom(f), "normal": [_r(v) for v in _xyz(f.normal_at(c))],
+            "center": [_r(v, 3) for v in _xyz(c)], "area": _r(f.area, 3), "hint": hint}
+
+
+def _edge_sig_now(e, adj: dict, hint) -> dict:
+    return {"type": _geom(e), "direction": [_r(v) for v in _canon(_xyz(e.tangent_at(0.5)))],
+            "center": [_r(v, 3) for v in _xyz(e.position_at(0.5))], "length": _r(e.length, 3),
+            "adjacent": [[_r(v) for v in n] for n in adj.get(e, [])], "hint": hint}
+
+
+def _record(label: str, sig: dict) -> None:
+    _RESOLVED.setdefault(label, []).append(sig)
+
+
+def _one(cands: list, label: str, what: str):
+    if not cands:
+        raise ValueError(f"{label}: target {what} not found after regeneration (nothing with the "
+                         "same type, orientation and size near where it was) — remove or redo "
+                         "the op")
+    if len(cands) > 1:
+        raise ValueError(f"{label}: target {what} is ambiguous after regeneration "
+                         f"({len(cands)} matching candidates) — remove or redo the op")
+    return cands[0]
+
+
+def _mises_face(shape, sig: dict, label: str):
+    from build123d import CenterOf
+    n0, c0, a0 = sig["normal"], sig["center"], float(sig.get("area") or 0.0)
+    # pick tolerance: half the face's own size; accept a centroid within 2x that
+    tol = 2.0 * 0.5 * (math.sqrt(a0) if a0 > 0 else 1.0)
+    cands = []
+    for f in shape.faces():
+        if _geom(f) != sig["type"] or not _ratio_ok(float(f.area), a0):
+            continue
+        c = f.center(CenterOf.MASS)
+        try:
+            n = _xyz(f.normal_at(c))
+        except Exception:  # noqa: BLE001
+            continue
+        if sum(a * b for a, b in zip(n, n0)) < _COS_5DEG:
+            continue
+        if math.dist(_xyz(c), c0) <= tol:
+            cands.append(f)
+    found = _one(cands, label, "face")
+    _record(label, _face_sig_now(found, sig.get("hint")))
+    return found
+
+
+def _same_normals(now: list, then: list) -> bool:
+    if len(now) != len(then):
+        return False
+    left = list(now)
+    for n0 in then:
+        hit = next((n for n in left if sum(a * b for a, b in zip(n, n0)) >= _COS_5DEG), None)
+        if hit is None:
+            return False
+        left.remove(hit)
+    return True
+
+
+def _mises_edge(shape, sig: dict, label: str, adj: dict | None = None):
+    d0, m0, l0 = sig["direction"], sig["center"], float(sig.get("length") or 0.0)
+    adj0 = sig.get("adjacent")
+    adj = _edge_adjacency(shape) if adj is None and adj0 else adj
+    tol = 2.0 * 0.5 * (l0 if l0 > 0 else 1.0)
+    cands = []
+    for e in shape.edges():
+        if _geom(e) != sig["type"] or not _ratio_ok(float(e.length), l0):
+            continue
+        try:
+            mid, d = _xyz(e.position_at(0.5)), _xyz(e.tangent_at(0.5))
+        except Exception:  # noqa: BLE001
+            continue
+        if abs(sum(a * b for a, b in zip(d, d0))) < _COS_5DEG or math.dist(mid, m0) > tol:
+            continue
+        if adj0 and not _same_normals(adj.get(e, []), adj0):
+            continue
+        cands.append(e)
+    found = _one(cands, label, "edge")
+    _record(label, _edge_sig_now(found, adj if adj is not None else _edge_adjacency(shape),
+                                 sig.get("hint")))
+    return found
+
+
+def _distinct(found: list, label: str, what: str) -> list:
+    for i, a in enumerate(found):
+        if any(a.is_same(b) for b in found[:i]):
+            raise ValueError(f"{label}: two of its target {what}s resolve to the same {what} "
+                             "after regeneration — remove or redo the op")
+    return found
+
+
+def _mises_faces(shape, sigs: list, label: str) -> list:
+    return _distinct([_mises_face(shape, s, label) for s in sigs], label, "face")
+
+
+def _mises_edges(shape, sigs: list, label: str) -> list:
+    adj = _edge_adjacency(shape)
+    return _distinct([_mises_edge(shape, s, label, adj) for s in sigs], label, "edge")
+
+
+def _mises_on_face(face, point, label: str) -> None:
+    """The recorded pick point (centroid + offset) must still lie on the matched face."""
+    from build123d import Vector
+    size = max(math.sqrt(float(face.area)), 1.0)
+    if face.distance_to(Vector(*point) if isinstance(point, (list, tuple)) else point) > 1e-3 * size:
+        raise ValueError(f"{label}: the picked point is no longer on its target face after "
+                         "regeneration — remove or redo the op")
+
+
 def _metrics(shape, density: float) -> dict:
     bb = shape.bounding_box()
     vol = float(shape.volume)
@@ -110,6 +301,7 @@ def _metrics(shape, density: float) -> dict:
         "faces": len(shape.faces()),
         "face_list": _face_list(shape),
         "edges": len(shape.edges()),
+        "edge_list": _edge_list(shape),
         "holes": _hole_groups(shape),
         "solids": len(shape.solids()),
     }
@@ -460,6 +652,10 @@ def _load_part(part_file: Path):
     ns.update({"math": math, "build123d": build123d, "bd": build123d})
     exec("from build123d import *", ns)  # noqa: S102 - fixed string
     ns["math"] = math  # `from build123d import *` must not shadow the stdlib module
+    # resolvers the `# mises-op` blocks call to re-find their target in the current shape
+    ns.update({"_mises_face": _mises_face, "_mises_edge": _mises_edge,
+               "_mises_faces": _mises_faces, "_mises_edges": _mises_edges,
+               "_mises_on_face": _mises_on_face})
     code = compile(part_file.read_text(), str(part_file), "exec",
                    flags=__future__.annotations.compiler_flag, dont_inherit=True)
     exec(code, ns)  # noqa: S102 - the sandboxed part script is the whole point
@@ -562,7 +758,7 @@ def main(argv: list[str]) -> int:
         os.replace(tmp / ("new_" + name), part_dir / name)
     # Very last step: the result marker the runner trusts (carries the nonce).
     (tmp / "new_result.json").write_text(
-        json.dumps({"nonce": nonce, "metrics": metrics, "vars": merged}))
+        json.dumps({"nonce": nonce, "metrics": metrics, "vars": merged, "op_refs": _RESOLVED}))
     os.replace(tmp / "new_result.json", part_dir / "result.json")
     return 0
 

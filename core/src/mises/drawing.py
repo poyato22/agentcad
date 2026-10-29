@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
 import secrets
+import stat
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,7 +21,8 @@ from datetime import date as _date
 
 from pydantic import BaseModel, Field
 
-from .cad.runner import WORKER, _kill_group
+from .cad import safe_io
+from .cad.runner import WORKER, _kill_group, reap
 from .cad.tools import _check_part_id, _lock
 from .platform import sandboxed_command
 from .profile import load_profile
@@ -42,15 +45,27 @@ class Drawing:
     info: dict
 
 
+def _plain(part_dir: Path, name: str) -> os.stat_result | None:
+    """lstat of a plain, singly-linked file in the part dir; None for anything else."""
+    try:
+        st = os.lstat(part_dir / name)
+    except OSError:
+        return None
+    return st if stat.S_ISREG(st.st_mode) and st.st_nlink == 1 else None
+
+
 def _cached(part_dir: Path, want: dict) -> dict | None:
     try:
-        info = json.loads((part_dir / "drawing.json").read_text())
-        step_ns = (part_dir / "model.step").stat().st_mtime_ns
-    except (OSError, ValueError):
+        info = safe_io.read_json(part_dir, "drawing.json")
+    except (OSError, ValueError, MisesError):
         return None
-    if not (part_dir / "drawing.svg").exists() or not (part_dir / "drawing.dxf").exists():
+    step = _plain(part_dir, "model.step")
+    if not isinstance(info, dict) or step is None:
         return None
-    if info.get("step_mtime_ns") != step_ns or any(info.get(k) != v for k, v in want.items()):
+    if _plain(part_dir, "drawing.svg") is None or _plain(part_dir, "drawing.dxf") is None:
+        return None
+    if info.get("step_mtime_ns") != step.st_mtime_ns or any(info.get(k) != v
+                                                            for k, v in want.items()):
         return None
     info.pop("nonce", None)
     return info
@@ -58,7 +73,8 @@ def _cached(part_dir: Path, want: dict) -> dict | None:
 
 async def mirror_drawing(part_dir: Path, *, label: str, material: str, date: str,
                          timeout_s: float = TIMEOUT_S) -> Drawing:
-    part_dir = Path(part_dir).resolve()
+    # The part dir's own last component is never resolved: a link there is refused (safe_io).
+    part_dir = safe_io.real_dir(part_dir)
     async with _lock(part_dir):  # not while the part is being rebuilt
         return await _mirror_drawing(part_dir, label=label, material=material, date=date,
                                      timeout_s=timeout_s)
@@ -66,17 +82,22 @@ async def mirror_drawing(part_dir: Path, *, label: str, material: str, date: str
 
 async def _mirror_drawing(part_dir: Path, *, label: str, material: str, date: str,
                           timeout_s: float) -> Drawing:
-    if not (part_dir / "model.step").is_file() or not (part_dir / "metrics.json").is_file():
+    try:
+        os.close(safe_io.open_dir(part_dir))
+        safe_io.scrub(part_dir)              # nothing a build left may redirect the writes below
+    except MisesError as e:
+        raise DrawingError(f"drawing refused: {e.message}") from None
+    if _plain(part_dir, "model.step") is None or _plain(part_dir, "metrics.json") is None:
         raise DrawingError("part is not built (no model.step); build it with mirror_part_create")
     want = {"label": label, "material": material, "date": date}
     info = _cached(part_dir, want)
     if info is not None:
         return Drawing(part_dir / "drawing.svg", part_dir / "drawing.dxf", info)
     tmp = part_dir / "tmp"
-    tmp.mkdir(parents=True, exist_ok=True)
+    safe_io.ensure_dir(tmp)
     args_path = tmp / "drawing_args.json"
-    args_path.write_text(json.dumps(want))
-    (part_dir / "drawing.json").unlink(missing_ok=True)
+    safe_io.write_text(tmp, args_path.name, json.dumps(want))      # replaces a link, never follows
+    safe_io.unlink(part_dir, "drawing.json")
     nonce = secrets.token_hex(16)
     env = {"MISES_NONCE": nonce, "PATH": "/usr/bin:/bin", "TMPDIR": str(tmp), "HOME": str(tmp),
            "PYTHONDONTWRITEBYTECODE": "1"}
@@ -88,22 +109,25 @@ async def _mirror_drawing(part_dir: Path, *, label: str, material: str, date: st
     try:
         _, err = await asyncio.wait_for(proc.communicate(), timeout_s)
     except asyncio.TimeoutError:
-        _kill_group(proc)
+        await reap(proc)
         await proc.wait()
         raise DrawingError(f"drawing timed out after {timeout_s:g}s; the part is too complex") from None
     except BaseException:
         _kill_group(proc)
         await proc.wait()
         raise
-    _kill_group(proc)
+    await reap(proc)
+    bad = safe_io.scrub(part_dir)
+    if bad:
+        raise DrawingError(f"drawing refused: links or special files appeared ({', '.join(bad[:5])})")
     if proc.returncode != 0:
         msg = err.decode(errors="replace")[-_TAIL:].strip() or f"worker exited {proc.returncode}"
         raise DrawingError(f"drawing failed: {msg}")
     try:
-        info = json.loads((part_dir / "drawing.json").read_text())
-        if info.get("nonce") != nonce:
+        info = safe_io.read_json(part_dir, "drawing.json")
+        if not isinstance(info, dict) or info.get("nonce") != nonce:
             raise ValueError("nonce mismatch")
-    except (OSError, ValueError) as e:
+    except (OSError, ValueError, MisesError) as e:
         raise DrawingError(f"drawing did not complete: {e}") from None
     info.pop("nonce", None)
     return Drawing(part_dir / "drawing.svg", part_dir / "drawing.dxf", info)

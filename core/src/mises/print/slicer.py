@@ -21,7 +21,10 @@ from pathlib import Path
 from ..types import ErrorCode, MisesError
 
 INSTALL_COMMAND = "brew install --cask prusaslicer"
-APP_PATH = Path("/Applications/PrusaSlicer.app/Contents/MacOS/PrusaSlicer")
+_BUNDLE_BINARY = "Contents/MacOS/PrusaSlicer"
+APP_PATH = Path("/Applications/PrusaSlicer.app") / _BUNDLE_BINARY
+USER_APP_PATH = (Path("~/Applications/PrusaSlicer.app") / _BUNDLE_BINARY).expanduser()
+BUNDLE_ID = "com.prusa3d.slic3r"
 SLICE_TIMEOUT_S = 300.0
 _TAIL = 1500
 
@@ -82,11 +85,35 @@ def _missing() -> MisesError:
                       hint=f"install it with: {INSTALL_COMMAND}")
 
 
+def _mdfind_bundles() -> list[Path]:
+    """PrusaSlicer.app bundles anywhere on disk, by bundle id (Spotlight). A last resort: it
+    finds the app when the user dragged it somewhere other than /Applications."""
+    import subprocess
+    try:
+        r = subprocess.run(["/usr/bin/mdfind", f"kMDItemCFBundleIdentifier == '{BUNDLE_ID}'"],
+                           capture_output=True, text=True, timeout=8, stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    return [Path(ln) for ln in r.stdout.splitlines() if ln.strip().endswith(".app")]
+
+
+def _usable(c: Path | None) -> bool:
+    return c is not None and c.is_file() and os.access(c, os.X_OK)
+
+
 def find_slicer() -> Path | None:
+    """The PrusaSlicer CLI binary, everywhere it can live: MISES_PRUSASLICER, /Applications,
+    ~/Applications, a `prusa-slicer`/`PrusaSlicer` on PATH, then any bundle Spotlight knows of."""
     env = os.environ.get("MISES_PRUSASLICER")
-    for c in (Path(env) if env else None, APP_PATH,
-              Path(w) if (w := shutil.which("prusa-slicer")) else None):
-        if c is not None and c.is_file() and os.access(c, os.X_OK):
+    fixed = [Path(env) if env else None, APP_PATH, USER_APP_PATH,
+             Path(w) if (w := shutil.which("prusa-slicer")) else None,
+             Path(w2) if (w2 := shutil.which("PrusaSlicer")) else None]
+    for c in fixed:
+        if _usable(c):
+            return c
+    for bundle in _mdfind_bundles():
+        c = bundle / _BUNDLE_BINARY
+        if _usable(c):
             return c
     return None
 

@@ -1,6 +1,7 @@
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -74,6 +75,27 @@ def test_sandbox_exec_real(tmp_path):
         assert (w / "ok").exists() and not (other / "bad").exists()
     finally:
         shutil.rmtree(other, ignore_errors=True)
+
+
+def test_sandbox_profile_denies_new_processes():
+    assert "(deny process-fork)" in p.sandbox_profile(Path("/tmp/w"))
+
+
+@pytest.mark.skipif(not os.path.exists("/usr/bin/sandbox-exec"), reason="no sandbox-exec")
+def test_sandbox_exec_cannot_fork(tmp_path):
+    r = subprocess.run(["/usr/bin/sandbox-exec", "-p", p.sandbox_profile(tmp_path), sys.executable,
+                        "-I", "-c", "import os\ntry:\n    os.fork()\nexcept OSError as e:\n"
+                        "    print('denied', e.errno)\n"], capture_output=True, text=True)
+    assert r.stdout.startswith("denied")
+
+
+def test_kill_process_tree_kills_a_session(tmp_path):
+    proc = subprocess.Popen(["/bin/sleep", "30"], start_new_session=True)
+    try:
+        assert proc.pid in p.kill_process_tree(proc.pid)
+        assert proc.wait(timeout=5) != 0
+    finally:
+        proc.kill()
 
 
 def test_sandboxed_command(tmp_path):

@@ -64,18 +64,68 @@ def _unsafe(s: str) -> bool:
 
 
 def sandbox_profile(write_dir: Path) -> str:
+    """No network, writes only under write_dir, and no new processes: `process-fork` covers
+    fork, vfork and posix_spawn, so nothing the sandboxed program starts can outlive it (a
+    `fork(); setsid()` daemon would otherwise keep writing into its dir after the host checked
+    it). The CAD worker, the drawing worker, gmsh and CalculiX all run in one process."""
     d = str(Path(write_dir).resolve())
     if _unsafe(str(write_dir)) or _unsafe(d):
         raise ValueError("write_dir contains characters unsafe for a sandbox profile")
     return (
-        "(version 1)\n(allow default)\n(deny network*)\n(deny file-write*)\n"
+        "(version 1)\n(allow default)\n(deny network*)\n(deny process-fork)\n(deny file-write*)\n"
         f'(allow file-write* (subpath "{d}") (literal "/dev/null"))\n'
     )
 
 
 def sandboxed_command(argv: list[str], write_dir: Path) -> list[str]:
-    """Prefix argv with sandbox-exec so it can only write under write_dir and has no network."""
+    """Prefix argv with sandbox-exec so it can only write under write_dir, has no network and
+    cannot start other processes."""
     return ["/usr/bin/sandbox-exec", "-p", sandbox_profile(write_dir), *argv]
+
+
+def _process_table() -> list[tuple[int, int, int]]:
+    """(pid, ppid, pgid) of every process, from one `ps` snapshot."""
+    try:
+        r = subprocess.run(["/bin/ps", "-axo", "pid=,ppid=,pgid="], capture_output=True,
+                           text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    rows = []
+    for line in r.stdout.splitlines():
+        parts = line.split()
+        if len(parts) == 3 and all(x.isdigit() for x in parts):
+            rows.append((int(parts[0]), int(parts[1]), int(parts[2])))
+    return rows
+
+
+def kill_process_tree(pid: int) -> list[int]:
+    """Backstop after a sandboxed run: SIGKILL every process still in its process group (the
+    runner starts it with start_new_session, so pgid == pid) or descended from it. macOS does
+    not expose session ids, so a process that called setsid() AND lost its parent cannot be
+    found here — the real control is the profile's `(deny process-fork)`, under which no such
+    process can exist. Returns the pids it had to kill."""
+    import signal
+    table = _process_table()
+    found = {p for p, _pp, g in table if g == pid}
+    children: dict[int, list[int]] = {}
+    for p, pp, _g in table:
+        children.setdefault(pp, []).append(p)
+    frontier = [pid, *found]
+    while frontier:
+        cur = frontier.pop()
+        for c in children.get(cur, []):
+            if c not in found:
+                found.add(c)
+                frontier.append(c)
+    found.discard(os.getpid())
+    killed = []
+    for p in sorted(found):
+        try:
+            os.kill(p, signal.SIGKILL)
+            killed.append(p)
+        except (ProcessLookupError, PermissionError):
+            pass
+    return killed
 
 
 SANDBOX_EXEC = "/usr/bin/sandbox-exec"

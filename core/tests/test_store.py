@@ -113,3 +113,12 @@ def test_cache(store):
     assert store.cache_get("k") is None
     store.cache_put("k", {"v": 1})
     assert store.cache_get("k") == {"v": 1}
+
+
+def test_set_part_version_guarded(store):
+    # No parts table yet (C1 owns it): a no-op that does not raise.
+    assert store.set_part_version("bracket", 3) is False
+    store._db.execute("CREATE TABLE parts (id TEXT, version INTEGER)")
+    store._db.execute("INSERT INTO parts VALUES ('bracket', 1)")
+    assert store.set_part_version("bracket", 3) is True
+    assert store._db.execute("SELECT version FROM parts WHERE id=?", ("bracket",)).fetchone()[0] == 3
