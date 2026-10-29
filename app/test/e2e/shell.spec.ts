@@ -245,7 +245,7 @@ test("tab_arrow_keys_navigate", async ({ page }) => {
   await expect(page.getByRole("tab", { name: "Studies" })).toBeFocused();
   await expect(page.locator('[data-region="page"]')).toContainText("Studies");
   await page.keyboard.press("End");
-  await expect(page.getByRole("tab", { name: "Print" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tab", { name: "Parts" })).toHaveAttribute("aria-selected", "true");
 });
 
 test("cmd_digits_do_nothing_while_a_modal_is_open", async ({ page }) => {
@@ -363,8 +363,9 @@ test("connects_to_fake_core_without_errors", async ({ page, fake }) => {
   page.on("pageerror", (e) => errors.push(String(e)));
   await page.goto("/");
   await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
+  // /onshape/budget twice: the session figure, then the selected run's (the top-bar meter)
   await expect.poll(async () => (await fake.calls()).map((c) => c.path).filter((p) => p !== "/context").sort()).toEqual(
-    ["/approvals", "/parts", "/parts/mount_plate/model.glb", "/printers", "/profile", "/runs", "/runs/b7c79a57cbb4/steps", "/setup", "/status"]);
+    ["/approvals", "/onshape/budget", "/onshape/budget", "/parts", "/parts/mount_plate/model.glb", "/printers", "/profile", "/runs", "/runs/b7c79a57cbb4/steps", "/setup", "/status"]);
   const ctx = (await fake.calls()).filter((c) => c.path === "/context");
   expect(ctx.length).toBeGreaterThanOrEqual(1);
   expect(ctx.every((c) => c.method === "PUT")).toBe(true);

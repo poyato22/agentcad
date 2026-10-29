@@ -31,7 +31,7 @@ export interface DirectoryScenario {
   onshape?: boolean;
   /** Extra generated documents after the fixture's three (for paging). */
   extra_docs?: number;
-  /** Calls already used this year (default: none). */
+  /** Calls already used this year (default: the scenario status's onshape_calls_year). */
   used_year?: number;
   limit_year?: number;
   /** Builds for GET /projects (default: one "Default"). */
@@ -65,7 +65,8 @@ const DEFAULT_PAGES: Record<string, "motor" | "injection"> = {
   "https://shop.example.com/p/sketchy": "injection",
 };
 
-export function directoryFrom(sc: DirectoryScenario | undefined, connectedByStatus: boolean): FakeDirectory {
+/** `status`: the scenario's /status, so the ledger starts where its ONSHAPE light says. */
+export function directoryFrom(sc: DirectoryScenario | undefined, connectedByStatus: boolean, status?: { onshape_calls_year: number; onshape_cap_year: number }): FakeDirectory {
   const docs = structuredClone(fx<OnshapeDoc[]>("onshape_documents.json"));
   for (let i = 0; i < (sc?.extra_docs ?? 0); i++) {
     const did = (0x100 + i).toString(16).padStart(24, "0");
@@ -78,7 +79,7 @@ export function directoryFrom(sc: DirectoryScenario | undefined, connectedByStat
   return {
     connected: sc?.onshape ?? connectedByStatus,
     docs,
-    usedYear: sc?.used_year ?? 0, limitYear: sc?.limit_year ?? 2500,
+    usedYear: sc?.used_year ?? status?.onshape_calls_year ?? 0, limitYear: sc?.limit_year ?? status?.onshape_cap_year ?? 2500,
     usedRun: new Map(), thumbsCached: new Set(),
     items: new Map(all.map((i) => [i.id, structuredClone(i)])), builtin: new Set(all.map((i) => i.id)),
     builds: sc?.builds ?? [{ id: "b_default", name: "Default" }], activeBuild: sc?.active_build ?? null,

@@ -189,7 +189,7 @@ function stateFrom(sc: Scenario, token: string): FakeState {
     system: sc.system ? structuredClone(sc.system) : structuredClone(DEFAULT_SYSTEM_CHECK),
     systemInstall: sc.system_install ? structuredClone(sc.system_install) : {},
     systemInstallMs: sc.system_install_ms ?? 60,
-    directory: directoryFrom(sc.directory, sc.status.onshape === "connected"),
+    directory: directoryFrom(sc.directory, sc.status.onshape === "connected", sc.status),
   };
 }
 
