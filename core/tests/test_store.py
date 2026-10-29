@@ -115,10 +115,11 @@ def test_cache(store):
     assert store.cache_get("k") == {"v": 1}
 
 
-def test_set_part_version_guarded(store):
-    # No parts table yet (C1 owns it): a no-op that does not raise.
-    assert store.set_part_version("bracket", 3) is False
-    store._db.execute("CREATE TABLE parts (id TEXT, version INTEGER)")
-    store._db.execute("INSERT INTO parts VALUES ('bracket', 1)")
+def test_set_part_version_mirrors_into_c1_parts_rows(store):
+    # C1's parts table is merged now: the meta version is mirrored into an existing row, and a
+    # part with no tree row yet is a harmless no-op
     assert store.set_part_version("bracket", 3) is True
-    assert store._db.execute("SELECT version FROM parts WHERE id=?", ("bracket",)).fetchone()[0] == 3
+    assert store.get_part("bracket") is None
+    store.register_part("bracket", store.ensure_default_project().id)
+    assert store.set_part_version("bracket", 3) is True
+    assert store.get_part("bracket").version == 3
