@@ -25,7 +25,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
-from ..events import Event, EventBus
+from ..events import ActivityTracker, Event, EventBus, calls_label
 from ..gate import Gate
 from ..providers.base import (Done, ModelProvider, ModelRequest, ReasoningDelta, TextDelta,
                               ToolCall, ToolSchema, Usage)
@@ -112,7 +112,8 @@ def _text_of(blocks: list[Block]) -> str:
 class AgentLoop:
     def __init__(self, *, run_id: str, defn: AgentDefinition, provider: ModelProvider, model: str,
                  gate: Gate, registry: ToolRegistry, store: Store, events: EventBus,
-                 workdir: Path, config: LoopConfig = LoopConfig()):
+                 workdir: Path, config: LoopConfig = LoopConfig(),
+                 activity: ActivityTracker | None = None):
         self.run_id = run_id
         self.defn = defn
         self.provider = provider
@@ -123,6 +124,7 @@ class AgentLoop:
         self.events = events
         self.workdir = Path(workdir)
         self.config = config
+        self.activity = activity or ActivityTracker(events, run_id, store)
         self._cancelled = False
         self._inflight: asyncio.Task | None = None
         self._announced_skips = False
@@ -210,6 +212,7 @@ class AgentLoop:
                     reason = "max_tokens" if turn.stop == "max_tokens" else "end_turn"
                     return RunResult(final_text=final_text, messages=messages, stop_reason=reason)
 
+                self.activity.set("tool", calls_label([c.name for c in turn.calls]))
                 results: dict[str, ToolResultBlock] = {}
                 try:
                     await self._guard(self._execute(turn.calls, set(offered), results))
@@ -277,8 +280,11 @@ class AgentLoop:
                 text.append(ev.text)
                 if publish:
                     self._publish("text_delta", text=ev.text)
+                    self.activity.set("writing")
             elif isinstance(ev, ReasoningDelta):
                 thoughts.append(ev.text)
+                if publish:
+                    self.activity.thinking(ev.text)
             elif isinstance(ev, ToolCall):
                 out.calls.append(ev)
             elif isinstance(ev, Usage):

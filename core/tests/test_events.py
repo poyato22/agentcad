@@ -1,5 +1,78 @@
 import asyncio
-from mises.events import Event, EventBus
+from mises.events import ActivityTracker, Event, EventBus, tool_label
+from mises.store import Store
+
+
+def _drain(sub):
+    out = []
+    while not sub.queue.empty():
+        out.append(sub.queue.get_nowait())
+    sub.close()
+    return out
+
+
+def test_tool_label_strips_prefix_and_maps():
+    assert tool_label("mcp__mises__mirror_measure") == "measuring"
+    assert tool_label("sim_static_run") == "running FEM study"
+    assert tool_label("some_new_tool") == "some new tool"     # fallback: underscores to spaces
+
+
+def test_calls_label_counts_parallel_calls():
+    from mises.events import calls_label
+    assert calls_label(["mirror_measure"]) == "measuring"
+    assert calls_label(["mirror_measure", "mirror_part_list", "ui_note"]) == "measuring +2"
+    assert calls_label([]) == ""
+
+
+def test_activity_emits_once_per_transition():
+    bus = EventBus()
+    sub = bus.subscribe("r")
+    clk = [100.0]
+    a = ActivityTracker(bus, "r", None, clock=lambda: clk[0])
+    a.set("starting")
+    a.set("thinking")
+    a.set("thinking")                       # a repeat is not re-emitted
+    a.set("tool", "measuring")
+    a.set("writing")
+    a.set("done")
+    states = [e.data["state"] for e in _drain(sub) if e.type == "agent_activity"]
+    assert states == ["starting", "thinking", "tool", "writing", "done"]
+
+
+def test_writing_state_is_throttled():
+    bus = EventBus()
+    sub = bus.subscribe("r")
+    clk = [100.0]
+    a = ActivityTracker(bus, "r", None, clock=lambda: clk[0])
+    a.set("writing")                        # transition: emits
+    for _ in range(5):
+        a.set("writing")                    # same instant: throttled
+    clk[0] += 0.3                           # past the >=4/s window: emits
+    a.set("writing")
+    clk[0] += 0.05                          # within the window: throttled
+    a.set("writing")
+    writes = [e for e in _drain(sub)
+              if e.type == "agent_activity" and e.data["state"] == "writing"]
+    assert len(writes) == 2
+
+
+def test_thinking_is_throttled_and_stored_truncated(tmp_path):
+    store = Store(tmp_path / "db")
+    run = store.create_run("designer", "fake", "m", "t")
+    bus = EventBus()
+    sub = bus.subscribe(run.id)
+    clk = [100.0]
+    a = ActivityTracker(bus, run.id, store, clock=lambda: clk[0])
+    for _ in range(10):
+        a.thinking("x" * 1000)              # 10 deltas at one instant: coalesced
+    clk[0] += 0.3
+    a.thinking("y" * 10)
+    a.flush_thinking()
+    thinks = [e for e in _drain(sub) if e.type == "agent_thinking"]
+    assert 1 <= len(thinks) <= 3            # far fewer events than the 11 deltas
+    stored = [s.payload for s in store.steps(run.id) if s.payload.get("agent_thinking")]
+    assert stored and len(stored[0]["agent_thinking"]) == a.THINKING_STORE_CHARS
+    assert stored[0]["truncated"] is True
 
 
 async def test_eventbus_filters_by_run():

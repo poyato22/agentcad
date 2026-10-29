@@ -308,7 +308,9 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
 
     @app.get("/runs/{run_id}")
     async def get_run(run_id: str):
-        return _projects.run_view(_run(run_id))
+        d = _projects.run_view(_run(run_id))
+        d["activity"] = runtime.activity_of(run_id)
+        return d
 
     @app.patch("/runs/{run_id}")
     async def patch_run(run_id: str, body: PatchRun):

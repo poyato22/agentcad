@@ -7,7 +7,8 @@ from collections.abc import AsyncIterator
 import anthropic
 import httpx2 as httpx
 
-from mises.providers.base import (Done, ModelRequest, StreamEvent, TextDelta, ToolCall, Usage,
+from mises.providers.base import (Done, ModelRequest, ReasoningDelta, StreamEvent, TextDelta,
+                                  ToolCall, Usage,
                                   TRANSPORT_ERRORS, classify_status, classify_stream_error_type,
                                   retried_stream)
 from mises.types import ErrorCode, ImageBlock, Message, MisesError, TextBlock, ToolResultBlock, \
@@ -95,6 +96,9 @@ class AnthropicProvider:
                         out_tok = u.output_tokens or 0
                     elif t == "content_block_delta" and ev.delta.type == "text_delta":
                         yield TextDelta(text=ev.delta.text)
+                    elif t == "content_block_delta" and ev.delta.type == "thinking_delta":
+                        # extended thinking, when the request enables it (display-only)
+                        yield ReasoningDelta(text=ev.delta.thinking)
                     elif t == "content_block_stop" and ev.content_block.type == "tool_use":
                         cb = ev.content_block
                         inp = cb.input if isinstance(cb.input, dict) else {}

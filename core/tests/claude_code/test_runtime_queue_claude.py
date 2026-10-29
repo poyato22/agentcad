@@ -18,12 +18,14 @@ async def test_claude_run_beyond_the_limit_queues_then_runs(rt, claude_bin, sign
         await _wait_for(lambda: _sent(rt, a))
         await asyncio.sleep(0.2)
         assert _sent(rt, b) == []                  # not prompted while queued
-        types = []
+        types, activity = [], []
         while not sub.queue.empty():
             ev = sub.queue.get_nowait()
             if ev.run_id == b:
-                types.append(ev.type)
-        assert types == ["run_queued"]
+                (activity if ev.type == "agent_activity" else types).append(ev)
+        assert [e.type for e in types] == ["run_queued"]
+        # the queued run reports a "queued" activity state too
+        assert [e.data["state"] for e in activity] == ["queued"]
         rt.cancel(a)
         res = await asyncio.wait_for(rt.wait(b), 15)
         assert res.final_text == "Hello there"

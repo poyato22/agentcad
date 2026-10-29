@@ -1,8 +1,8 @@
 """ClaudeCodeSession: the user's own `claude` binary, run headless as a Mises agent.
 
 Mises spawns `claude -p` with stream-json in and out; the only built-in tool is Agent
-(`--tools "Agent"`, for the Mises designer/verifier subagents; Claude Code's own subagent
-types are denied), the only MCP server is `mises` (`--strict-mcp-config --mcp-config`, a stdio
+(`--tools "Agent"`, for the Mises agents as subagents — every definition but the internal
+planner; Claude Code's own subagent types are denied), the only MCP server is `mises` (`--strict-mcp-config --mcp-config`, a stdio
 proxy bound to this run), no user/project/local settings load (`--setting-sources ""`: no
 user hooks, plugins, CLAUDE.md or permission rules), and `--allowedTools
 "mcp__mises__*,Agent"`. So every action goes through the Gate (which records the tool_call
@@ -40,12 +40,13 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from ..events import Event
+from ..events import Event, calls_label
 from ..platform import claude_sandboxed_command
 from ..types import ErrorCode, MisesError, StepKind
 from ..server.mcp_server import INTERNAL_ONLY
+from ..orchestrator.orchestrator import DELEGATION_TOOLS
 from .detect import ClaudeInfo, claude_environment, redact
-from .prompts import SUBAGENTS, agents_json, context_block, mises_rules_md
+from .prompts import agents_json, context_block, mises_rules_md, mises_subagent_names
 
 log = logging.getLogger(__name__)
 
@@ -63,7 +64,6 @@ AGENT_TOOLS = frozenset({"Agent", "Task"})
 # claude, statusline-setup, claude-code-guide), denied with Agent(<type>) rules.
 BUILTIN_AGENT_TYPES = ("general-purpose", "Explore", "Plan", "claude", "statusline-setup",
                        "claude-code-guide")
-ALLOWED_AGENTS = frozenset(SUBAGENTS) | frozenset(BUILTIN_AGENT_TYPES)
 UNVERIFIED = "Claude Code output not recognised — confinement unverified"
 STDIO_LIMIT = 50 * 1024 * 1024
 STDERR_KEEP_BYTES = 8192
@@ -128,6 +128,16 @@ class ClaudeCodeSession:
         runtime.register_cancel_hook(run_id, self.cancel)
 
     @property
+    def activity(self):
+        """The run's live activity tracker, looked up each time: the runtime drops it when a
+        turn finishes, and the next turn gets a fresh one."""
+        return self.runtime.activity_tracker(self.run_id)
+
+    def _mises_subagents(self) -> frozenset[str]:
+        """Mises agents this run may delegate to with the Agent tool (the ones in agents.json)."""
+        return frozenset(mises_subagent_names(self.runtime.definitions))
+
+    @property
     def pid(self) -> int | None:
         return self._proc.pid if self._proc else None
 
@@ -156,8 +166,11 @@ class ClaudeCodeSession:
             defn = self.runtime.definitions.get(self.runtime.store.get_run(self.run_id).agent)
             role = defn.body if defn is not None else None
         (self.workdir / RULES_FILE).write_text(mises_rules_md(role))
-        tools = [t.name for t in self.runtime.registry.list() if t.name not in INTERNAL_ONLY]
-        (self.workdir / AGENTS_FILE).write_text(json.dumps(agents_json(tools), indent=1))
+        # subagents never get the delegating tools (they would orchestrate past the depth intent)
+        deny = INTERNAL_ONLY | DELEGATION_TOOLS
+        tools = [t.name for t in self.runtime.registry.list() if t.name not in deny]
+        (self.workdir / AGENTS_FILE).write_text(
+            json.dumps(agents_json(tools, self.runtime.definitions), indent=1))
         path = self.workdir / MCP_FILE
         path.unlink(missing_ok=True)
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -451,7 +464,8 @@ class ClaudeCodeSession:
             bad += [f"mcp server {s}" for s in servers if s != "mises"]
             agents = msg.get("agents")
             if isinstance(agents, list):
-                bad += [f"agent {a}" for a in agents if a not in ALLOWED_AGENTS]
+                allowed_agents = self._mises_subagents() | frozenset(BUILTIN_AGENT_TYPES)
+                bad += [f"agent {a}" for a in agents if a not in allowed_agents]
             if bad:
                 self._abort(f"unexpected tools in Claude Code session: {', '.join(map(str, bad))}"
                             "; only mcp__mises__* tools and the Mises agents are allowed")
@@ -476,7 +490,7 @@ class ClaudeCodeSession:
             return None
         if name in AGENT_TOOLS:
             kind = tool_input.get("subagent_type") if isinstance(tool_input, dict) else None
-            if kind in SUBAGENTS:
+            if kind in self._mises_subagents():
                 return None
             return f"the Agent tool with subagent type {kind!r}"
         return f"the tool {name!r}"
@@ -511,13 +525,17 @@ class ClaudeCodeSession:
         if delta.get("type") == "text_delta" and isinstance(delta.get("text"), str):
             self._publish("text_delta", text=delta["text"], source=SOURCE,
                           **({"parent_tool_use_id": parent} if parent else {}))
+            if parent is None:
+                self.activity.set("writing")
         elif delta.get("type") == "thinking_delta" and isinstance(delta.get("thinking"), str):
             self._publish("thought_delta", text=delta["thinking"], source=SOURCE)
+            if parent is None:
+                self.activity.thinking(delta["thinking"])
 
     def _on_assistant(self, msg: dict) -> None:
         message = msg.get("message") or {}
         parent = msg.get("parent_tool_use_id")
-        texts = []
+        texts, tools = [], []
         for block in message.get("content") or []:
             if not isinstance(block, dict):
                 continue
@@ -531,9 +549,13 @@ class ClaudeCodeSession:
                 # the Gate records mises tool calls as Steps; this is only for the live UI
                 self._publish("tool_call", call_id=block.get("id"), name=block.get("name"),
                               source=SOURCE)
+                tools.append(str(block.get("name") or ""))
+        if tools and parent is None:
+            self.activity.set("tool", calls_label(tools))
         if texts:
             text = "".join(texts)
             if parent is None:
+                self.activity.set("writing")
                 self._turn_text.append(text)
             self.runtime.store.append_step(self.run_id, StepKind.MESSAGE, {
                 "role": "assistant", "text": text, "source": SOURCE,
@@ -564,6 +586,7 @@ class ClaudeCodeSession:
             self._finish("failed")
             self._fail_turn(MisesError(ErrorCode.TOOL_FAILED, message))
             return
+        self.activity.set("done", tokens_out=_int(usage.get("output_tokens")))
         self._finish("done")
         if self._turn is not None and not self._turn.done():
             self._turn.set_result("".join(self._turn_text))

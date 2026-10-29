@@ -136,6 +136,12 @@ class Session:
               "event": {"type": "content_block_delta", "index": 0,
                         "delta": {"type": "text_delta", "text": text}}})
 
+    def thinking(self, text: str) -> None:
+        emit({"type": "stream_event", "session_id": self.session_id,
+              "parent_tool_use_id": None,
+              "event": {"type": "content_block_delta", "index": 0,
+                        "delta": {"type": "thinking_delta", "thinking": text}}})
+
     def assistant(self, content: list[dict]) -> None:
         emit({"type": "assistant", "session_id": self.session_id, "parent_tool_use_id": None,
               "message": {"id": "msg_1", "type": "message", "role": "assistant",
@@ -166,6 +172,20 @@ class Session:
                        "content": out}]}})
             self.assistant([{"type": "text", "text": f"listed ok={ok}"}])
             self.result(f"listed ok={ok}")
+        elif text.startswith("activity"):
+            # thinking -> tool -> writing -> done, without needing a live mises server
+            self.thinking("let me ")
+            self.thinking("think")
+            self.assistant([{"type": "tool_use", "id": "toolu_1",
+                             "name": "mcp__mises__mirror_part_list", "input": {}}])
+            emit({"type": "user", "session_id": self.session_id, "parent_tool_use_id": None,
+                  "message": {"role": "user", "content": [
+                      {"type": "tool_result", "tool_use_id": "toolu_1", "is_error": False,
+                       "content": "[]"}]}})
+            self.partial("writ")
+            self.partial("ing")
+            self.assistant([{"type": "text", "text": "done"}])
+            self.result("done")
         elif text.startswith("error"):
             self.result("Not logged in · Please run /login", is_error=True)
         elif text.startswith("crash"):
