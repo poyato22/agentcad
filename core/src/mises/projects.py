@@ -292,7 +292,7 @@ def reorder_parts(store: Store, home: Path, project_id: str, parent_id: str | No
 
 def run_view(run: AgentRun) -> dict:
     d = run.model_dump(mode="json")
-    d["parent_run_id"] = run.parent_run_id or run.parent_id
+    d["parent_run_id"] = run.parent_id     # the API name for the one parent_id column
     d["last_activity_at"] = run.last_activity_at or run.updated_at
     d["cost"] = {"usd": run.usd, "tokens": run.input_tokens + run.output_tokens}
     return d
@@ -355,15 +355,14 @@ def cleanup_candidates(store: Store, *, project_id: str | None = None,
 
 
 def runs_tree(store: Store, project_id: str | None = None) -> list[dict]:
-    """The orchestrator -> worker forest. Nesting follows parent_run_id, falling back to the
-    legacy parent_id so runs the orchestrator already created still nest."""
+    """The orchestrator -> worker forest, nested by parent_id (exposed as parent_run_id)."""
     runs = [r for r in store.list_runs(100_000, project_id=project_id) if r.provider != "ui"]
     by_id = {r.id: run_view(r) for r in runs}
     for node in by_id.values():
         node["children"] = []
     roots = []
     for r in runs:
-        parent = r.parent_run_id or r.parent_id
+        parent = r.parent_id
         if parent is not None and parent in by_id:
             by_id[parent]["children"].append(by_id[r.id])
         else:

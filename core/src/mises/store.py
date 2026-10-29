@@ -37,9 +37,6 @@ class AgentRun(BaseModel):
     session_ref: str | None = None  # the outside agent's own session id (Claude Code --resume)
     # ---- builds / agent-management columns (Plan 5 C1)
     project_id: str | None = None  # the build this run belongs to (NULL until migrated/assigned)
-    # the orchestrator parent for the runs/tree view; legacy runs nest by parent_id, so the API
-    # and the tree read COALESCE(parent_run_id, parent_id)
-    parent_run_id: str | None = None
     title: str | None = None       # a user-renamable label; falls back to the task in the UI
     pinned: bool = False
     archived: bool = False
@@ -151,7 +148,7 @@ CREATE INDEX IF NOT EXISTS studies_project ON studies(project_id, id);
 """
 
 _RUN_FIELDS = {"status", "branch", "agent", "provider", "model", "task", "parent_id",
-               "session_ref", "owner_pid", "project_id", "parent_run_id", "title", "pinned",
+               "session_ref", "owner_pid", "project_id", "title", "pinned",
                "archived", "last_activity_at"}
 _APPROVAL_JSON = {"payload", "deltas", "edited_payload"}
 
@@ -180,7 +177,9 @@ class Store:
         if "session_ref" not in cols:  # databases from before resumable external sessions
             self._db.execute("ALTER TABLE runs ADD COLUMN session_ref TEXT")
         # Plan 5 C1: builds and agent-management columns, added to existing databases
-        for col, decl in (("project_id", "TEXT"), ("parent_run_id", "TEXT"), ("title", "TEXT"),
+        # (the orchestrator parent is the existing parent_id column; the API exposes it as
+        # parent_run_id, so there is no second column for it)
+        for col, decl in (("project_id", "TEXT"), ("title", "TEXT"),
                           ("pinned", "INTEGER NOT NULL DEFAULT 0"),
                           ("archived", "INTEGER NOT NULL DEFAULT 0"),
                           ("last_activity_at", "REAL")):
@@ -211,19 +210,17 @@ class Store:
     # ---- runs
     def create_run(self, agent: str, provider: str, model: str, task: str,
                    parent_id: str | None = None, external: bool = False,
-                   session_ref: str | None = None, project_id: str | None = None,
-                   parent_run_id: str | None = None) -> AgentRun:
+                   session_ref: str | None = None, project_id: str | None = None) -> AgentRun:
         now = time.time()
         rid = uuid.uuid4().hex[:12]
         with self._tx() as db:
             db.execute("INSERT INTO runs (id, parent_id, agent, provider, model, task, status,"
                        " branch, onshape_calls, input_tokens, output_tokens, usd, created_at,"
-                       " updated_at, owner_pid, external, session_ref, project_id, parent_run_id,"
-                       " last_activity_at)"
-                       " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                       " updated_at, owner_pid, external, session_ref, project_id, last_activity_at)"
+                       " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                        (rid, parent_id, agent, provider, model, task, "running", None,
                         0, 0, 0, 0.0, now, now, os.getpid(), int(external), session_ref,
-                        project_id, parent_run_id, now))
+                        project_id, now))
         return self.get_run(rid)
 
     def get_run(self, run_id: str) -> AgentRun:
@@ -242,6 +239,11 @@ class Store:
                 db.execute(f"UPDATE runs SET {sets}, updated_at=? WHERE id=?",
                            (*fields.values(), time.time(), run_id))
         return self.get_run(run_id)
+
+    def touch_run_activity(self, run_id: str, ts: float) -> None:
+        """Bump last_activity_at only (not updated_at); a deleted run is a no-op."""
+        with self._tx() as db:
+            db.execute("UPDATE runs SET last_activity_at=? WHERE id=?", (ts, run_id))
 
     def list_runs(self, limit: int = 50, *, project_id: str | None = None,
                   archived: bool | None = None) -> list[AgentRun]:
@@ -363,13 +365,12 @@ class Store:
         return pid
 
     def descendants(self, run_id: str) -> list[str]:
-        """Ids of every run below this one, following parent_id and parent_run_id."""
+        """Ids of every run below this one, following parent_id."""
         out: list[str] = []
         seen, frontier = {run_id}, [run_id]
         while frontier:
             q = ",".join("?" * len(frontier))
-            rows = self._all(f"SELECT id FROM runs WHERE parent_id IN ({q})"
-                             f" OR parent_run_id IN ({q})", (*frontier, *frontier))
+            rows = self._all(f"SELECT id FROM runs WHERE parent_id IN ({q})", tuple(frontier))
             frontier = [r[0] for r in rows if r[0] not in seen]
             seen.update(frontier)
             out += frontier

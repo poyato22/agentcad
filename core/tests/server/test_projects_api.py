@@ -127,7 +127,7 @@ def test_runs_tree(client, rt):
     p = rt.store.create_project("B")
     root = rt.store.create_run("planner", "fake", "m", "orch", project_id=p.id)
     child = rt.store.create_run("designer", "fake", "m", "w", project_id=p.id,
-                                parent_run_id=root.id)
+                                parent_id=root.id)
     tree = client.get("/runs/tree", params={"project_id": p.id}, headers=AUTH).json()
     assert len(tree) == 1 and tree[0]["id"] == root.id
     assert [c["id"] for c in tree[0]["children"]] == [child.id]

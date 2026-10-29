@@ -200,7 +200,7 @@ def test_delete_refused_while_a_descendant_works(store):
     store.update_run(parent.id, status="cancelled")
     child = store.create_run("designer", "fake", "m", "w", project_id=p.id, parent_id=parent.id)
     grandchild = store.create_run("sim", "fake", "m", "g", project_id=p.id,
-                                  parent_run_id=child.id)
+                                  parent_id=child.id)
     store.update_run(child.id, status="done")
     assert projects.delete_reason(store, store.get_run(parent.id)) == ("running", [grandchild.id])
     store.update_run(grandchild.id, status="done")
@@ -237,7 +237,7 @@ def test_runs_tree_nests_by_parent(store):
     p = store.create_project("B")
     root = store.create_run("planner", "fake", "m", "orch", project_id=p.id)
     child = store.create_run("designer", "fake", "m", "worker", project_id=p.id,
-                             parent_run_id=root.id)
+                             parent_id=root.id)
     tree = projects.runs_tree(store, p.id)
     assert len(tree) == 1 and tree[0]["id"] == root.id
     assert [c["id"] for c in tree[0]["children"]] == [child.id]
