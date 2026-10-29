@@ -1,0 +1,10 @@
+{
+  "name": "rib-checker",
+  "description": "Checks rib spacing",
+  "model": "inherit",
+  "tools": [
+    "mirror_measure"
+  ],
+  "builtin": false,
+  "hidden": false
+}

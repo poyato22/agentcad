@@ -7,7 +7,8 @@ import { join, resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
-  agentDetailSchema, agentRunSchema, approvalSchema, cancelAllSchema, coreErrorBodySchema, keyStatusSchema, localActionSchema, okSchema, runIdSchema,
+  agentDetailSchema, agentInfoSchema, agentRunSchema, approvalSchema, cancelAllSchema, cleanupResultSchema, coreErrorBodySchema, keyStatusSchema,
+  localActionSchema, okSchema, runIdSchema, runNodeSchema,
   sketchSummarySchema, stepSchema,
 } from "../src/api/schemas";
 import type { Approval, Step } from "../src/api/types";
@@ -86,10 +87,19 @@ beforeAll(async () => {
   fake.set("approval_decide.json", await ok("POST", `/approvals/${card.id}/decide`, { payload_hash: card.payload_hash, approve: false }));
   fake.set("cancel_all.json", await ok("POST", "/runs/cancel_all"));
   // Plan 5 (A2): same agent as the dump script's agent_get.json
-  await ok("POST", "/agents", { name: "rib-checker", description: "Checks rib spacing", model: "inherit",
-    tools: ["mirror_measure"], body: "Measure every rib.\nReport the spacing." });
+  fake.set("agent_create.json", await ok("POST", "/agents", { name: "rib-checker", description: "Checks rib spacing", model: "inherit",
+    tools: ["mirror_measure"], body: "Measure every rib.\nReport the spacing." }));
   fake.set("agent_get.json", await ok("GET", "/agents/rib-checker"));
-  await ok("DELETE", "/agents/rib-checker");
+  fake.set("agent_put.json", await ok("PUT", "/agents/rib-checker", { name: "rib-checker", description: "Checks rib spacing and height",
+    model: "inherit", tools: ["mirror_measure"], body: "Measure every rib.\nReport spacing and height." }));
+  fake.set("agent_delete.json", await ok("DELETE", "/agents/rib-checker"));
+  // Plan 5 (C1 / A2): the agent manager's run routes, as in the dump script
+  fake.set("runs_tree.json", await ok("GET", "/runs/tree"));
+  fake.set("runs_cleanup.json", await ok("POST", "/runs/cleanup", { dry_run: true }));
+  const ext2 = (await ok("POST", "/runs/external", { agent: "fixture-acp", provider: "acp", model: "fixture" })) as { run_id: string };
+  await ok("POST", `/runs/${ext2.run_id}/cancel`);
+  fake.set("run_patch.json", await ok("PATCH", `/runs/${ext2.run_id}`, { title: "Fixture agent", pinned: true }));
+  fake.set("run_delete.json", await ok("DELETE", `/runs/${ext2.run_id}`));
 
   core.reset("agent-ux");
   await ok("POST", "/local/start");                        // like the dump: Ollama answers
@@ -115,6 +125,9 @@ const CASES: [string, z.ZodType<unknown>][] = [
   ["local_pull.json", localActionSchema], ["slice_cancel_finished.json", errorAnswer],
   ["run_external.json", runIdSchema], ["run_cancel.json", okSchema], ["approval_decide.json", approvalSchema],
   ["cancel_all.json", cancelAllSchema], ["agent_get.json", agentDetailSchema],
+  ["agent_create.json", agentInfoSchema], ["agent_put.json", agentInfoSchema], ["agent_delete.json", okSchema],
+  ["runs_tree.json", z.array(runNodeSchema)], ["runs_cleanup.json", cleanupResultSchema],
+  ["run_patch.json", agentRunSchema], ["run_delete.json", okSchema],
 ];
 
 describe("contract: remaining routes ↔ schemas ↔ fake core", () => {
@@ -187,24 +200,24 @@ const COVERAGE: Record<string, string> = {
   "POST /prints": "print_start.json", "GET /prints/{call_id}": "print_done.json",
   // Plan 5 core routes merged before their app clients (the A tasks): each gets a real-core
   // fixture when its app side lands; the core's own API tests cover them meanwhile.
-  "DELETE /agents/{name}": "EXEMPT: Plan 5 C1 builds/runs/agents core route; no app client yet (core API tests cover it)",
+  "DELETE /agents/{name}": "agent_delete.json",
   "DELETE /projects/{project_id}": "EXEMPT: Plan 5 C1 builds/runs/agents core route; no app client yet (core API tests cover it)",
-  "DELETE /runs/{run_id}": "EXEMPT: Plan 5 C1 builds/runs/agents core route; no app client yet (core API tests cover it)",
+  "DELETE /runs/{run_id}": "run_delete.json",
   "GET /projects": "projects.json",
   "PATCH /projects/{project_id}/assembly/instances/{iid}": "assembly_instance_patch.json",
   "PATCH /projects/{project_id}/assembly/joints/{jid}": "assembly_joint_patch.json",
   // PATCH routes (the scan learned @router.patch in A4 and A6); clients still to land are exempt
   "PATCH /parts/{part_id}": "EXEMPT: Plan 5 C1 part tree core route; no app client yet (core API tests cover it)",
   "PATCH /projects/{project_id}": "EXEMPT: Plan 5 C1 builds/runs/agents core route; no app client yet (core API tests cover it)",
-  "PATCH /runs/{run_id}": "EXEMPT: Plan 5 C1 builds/runs/agents core route; no app client yet (core API tests cover it)",
-  "GET /runs/tree": "EXEMPT: Plan 5 C1 builds/runs/agents core route; no app client yet (core API tests cover it)",
-  "POST /agents": "EXEMPT: Plan 5 C1 builds/runs/agents core route; no app client yet (core API tests cover it)",
+  "PATCH /runs/{run_id}": "run_patch.json",
+  "GET /runs/tree": "runs_tree.json",
+  "POST /agents": "agent_create.json",
   "POST /parts/reorder": "EXEMPT: Plan 5 C1 builds/runs/agents core route; no app client yet (core API tests cover it)",
   "POST /projects": "EXEMPT: Plan 5 C1 builds/runs/agents core route; no app client yet (core API tests cover it)",
   "POST /projects/trash/empty": "EXEMPT: Plan 5 C1 builds/runs/agents core route; no app client yet (core API tests cover it)",
   "POST /projects/{project_id}/restore": "EXEMPT: Plan 5 C1 builds/runs/agents core route; no app client yet (core API tests cover it)",
-  "POST /runs/cleanup": "EXEMPT: Plan 5 C1 builds/runs/agents core route; no app client yet (core API tests cover it)",
-  "PUT /agents/{name}": "EXEMPT: Plan 5 C1 builds/runs/agents core route; no app client yet (core API tests cover it)",
+  "POST /runs/cleanup": "runs_cleanup.json",
+  "PUT /agents/{name}": "agent_put.json",
   "DELETE /projects/{project_id}/assembly/instances/{iid}": "assembly_instance_delete.json",
   "DELETE /projects/{project_id}/assembly/joints/{jid}": "assembly_joint_delete.json",
   "GET /projects/{project_id}/assembly": "assembly.json",

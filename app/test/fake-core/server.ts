@@ -309,9 +309,13 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     }
   }
 
+  /** The latest agent_activity per run (GET /runs/{id} `activity`, like the core's tracker). */
+  const lastActivity = new Map<string, unknown>();
+
   /** Keeps fake state consistent with what an event implies in the real core. */
   function applyEvent(ev: MisesEvent) {
     const d = ev.data;
+    if (ev.type === "agent_activity" && ev.run_id) lastActivity.set(ev.run_id, d);
     if (ev.type === "question_asked" && ev.run_id && typeof d.question_id === "string") {
       state.questions.set(d.question_id, {
         question_id: d.question_id, run_id: ev.run_id, question: String(d.question ?? ""),
@@ -376,6 +380,8 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
   function runView(r: AgentRun): AgentRun {
     return {
       ...r,
+      project_id: r.project_id ?? state.assembly.projects[0]?.id ?? null,
+      title: r.title ?? null, pinned: r.pinned ?? false, archived: r.archived ?? false,
       parent_run_id: r.parent_id,
       last_activity_at: r.last_activity_at ?? r.updated_at,
       cost: { usd: r.usd, tokens: r.input_tokens + r.output_tokens },
@@ -539,7 +545,8 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         const limit = Number(q.get("limit") ?? 50);
         // like the core: the app's own "ui" run is hidden unless include_ui=1
         const withUi = Number(q.get("include_ui") ?? 0) !== 0;
-        return [...state.runs.values()].filter((r) => withUi || r.provider !== "ui").sort((a, b) => b.created_at - a.created_at).slice(0, limit);
+        return [...state.runs.values()].filter((r) => withUi || r.provider !== "ui").sort((a, b) => b.created_at - a.created_at).slice(0, limit)
+          .map(runView);
       },
     },
     // ---- Plan 5 (C1): run tree, cleanup, patch, delete. Must precede /runs/{id}.
@@ -586,9 +593,8 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         return { ok: true };
       },
     },
-    // run.json's contract fixture predates Plan 5, so GET /runs/{id} stays the plain run here
-    // (Integration re-dumps the enriched shape). The tree route carries the run_view fields.
-    { method: "GET", re: /^\/runs\/([^/]+)$/, h: (m) => getRun(m[1]) },
+    // like the core's GET /runs/{id}: run_view plus the live `activity` (C4; null when none)
+    { method: "GET", re: /^\/runs\/([^/]+)$/, h: (m) => ({ ...runView(getRun(m[1])), activity: lastActivity.get(m[1]) ?? null }) },
     {
       method: "GET", re: /^\/runs\/([^/]+)\/steps$/, h: (m, q) => {
         getRun(m[1]);
@@ -663,11 +669,10 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       // so the pre-Plan-5 contract fixture (agents.json) still matches shape.
       method: "GET", re: /^\/agents$/, h: () => {
         const hidden = new Set(state.setup.profile.hidden_agents ?? []);
+        // the Plan 5 shape for every agent (the re-dumped agents.json); scenario agents are built-ins
         return [...state.agents]
-          .map((a) => a.builtin === undefined
-            ? { name: a.name, description: a.description, model: a.model }
-            : { name: a.name, description: a.description, model: a.model,
-                tools: a.tools ?? null, builtin: a.builtin, hidden: hidden.has(a.name) })
+          .map((a) => ({ name: a.name, description: a.description, model: a.model,
+            tools: a.tools ?? null, builtin: a.builtin ?? true, hidden: hidden.has(a.name) }))
           .sort((a, b) => a.name.localeCompare(b.name));
       },
     },

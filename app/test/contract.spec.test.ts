@@ -14,7 +14,7 @@ import { specCheckSchema, specDocSchema, studyAppliedSchema, studyProgressSchema
 import { emptyState, reduce } from "../src/state/reduce";
 import type { MisesEvent } from "../src/api/types";
 import { loadScenario, startFakeCore, type FakeCore, type Scenario } from "./fake-core/server";
-import { REAL_SPEC } from "./fake-core/spec";
+import { FIXTURE_PROJECT, REAL_SPEC } from "./fake-core/spec";
 import { shapeDiff, type Json } from "./shape";
 
 const HERE = import.meta.dirname;
@@ -34,7 +34,7 @@ async function ok(method: string, path: string, body?: unknown): Promise<unknown
 
 beforeAll(async () => {
   core = await startFakeCore({ port: 0, token: "contract", scenario: "base" });
-  const pid = REAL_SPEC.spec.project_id;
+  const pid = FIXTURE_PROJECT;   // the fake core's build (its one GET /projects); shapes are compared, not ids
   fake.set("spec_empty.json", await ok("GET", `/projects/${pid}/spec`));
   fake.set("spec_put.json", await ok("PUT", `/projects/${pid}/spec`, REAL_SPEC.spec.spec));
   fake.set("spec.json", await ok("GET", `/projects/${pid}/spec`));

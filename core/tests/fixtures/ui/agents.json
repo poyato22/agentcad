@@ -2,21 +2,77 @@
   {
     "name": "designer",
     "description": "Main CAD agent. Designs and edits parts using the local mirror and Onshape.",
-    "model": "inherit"
+    "model": "inherit",
+    "tools": null,
+    "builtin": true,
+    "hidden": false
+  },
+  {
+    "name": "engineer",
+    "description": "Lead engineering agent. Turns \"build me a <system>\" into questions, a spec, several studied concepts and a chosen, verified variant.",
+    "model": "inherit",
+    "tools": null,
+    "builtin": true,
+    "hidden": false
   },
   {
     "name": "planner",
     "description": "Turns a design request into a step-by-step plan. Produces a plan only; changes nothing.",
-    "model": "inherit"
+    "model": "inherit",
+    "tools": [
+      "mirror_part_list",
+      "mirror_measure",
+      "onshape_doc_open",
+      "onshape_features_list",
+      "onshape_variables_get",
+      "onshape_budget_get",
+      "onshape_docs_search",
+      "onshape_doc_elements",
+      "catalog_search",
+      "catalog_get",
+      "orchestrator_submit_plan",
+      "ui_ask_user"
+    ],
+    "builtin": true,
+    "hidden": false
   },
   {
     "name": "sim",
-    "description": "Runs static stress studies (gmsh + CalculiX) on local parts and reports them as a guide.",
-    "model": "inherit"
+    "description": "Runs studies (static, modal, buckling, thermal, drop, wind) on local parts and design reviews against a spec, and reports them as a guide.",
+    "model": "inherit",
+    "tools": [
+      "sim_env_list",
+      "sim_types_list",
+      "sim_run",
+      "sim_static_run",
+      "sim_result_get",
+      "sim_compare",
+      "sim_cancel",
+      "design_review",
+      "mirror_measure",
+      "mirror_faces",
+      "mirror_part_list",
+      "ui_ask_user",
+      "ui_note"
+    ],
+    "builtin": true,
+    "hidden": false
   },
   {
     "name": "verifier",
     "description": "Skeptical read-only checker. Tries to prove a change wrong and reports pass/fail per requirement.",
-    "model": "inherit"
+    "model": "inherit",
+    "tools": [
+      "mirror_measure",
+      "mirror_export",
+      "mirror_part_list",
+      "onshape_features_list",
+      "onshape_variables_get",
+      "onshape_budget_get",
+      "design_review",
+      "ui_note"
+    ],
+    "builtin": true,
+    "hidden": false
   }
 ]

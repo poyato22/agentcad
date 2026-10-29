@@ -489,11 +489,17 @@ async def dump_more(out: Path, call, get, run_id: str) -> None:
     write("run.json", (await get(f"/runs/{run_id}")).json())
     write("context.json", (await get("/context")).json())
     # Plan 5 (A2): one custom agent read back with its instructions (the app's edit form)
-    await call("POST", "/agents", {"name": "rib-checker", "description": "Checks rib spacing",
-                                   "model": "inherit", "tools": ["mirror_measure"],
-                                   "body": "Measure every rib.\nReport the spacing."})
+    write("agent_create.json", (await call("POST", "/agents", {
+        "name": "rib-checker", "description": "Checks rib spacing", "model": "inherit",
+        "tools": ["mirror_measure"], "body": "Measure every rib.\nReport the spacing."})).json())
     write("agent_get.json", (await get("/agents/rib-checker")).json())
-    await call("DELETE", "/agents/rib-checker")
+    write("agent_put.json", (await call("PUT", "/agents/rib-checker", {
+        "name": "rib-checker", "description": "Checks rib spacing and height", "model": "inherit",
+        "tools": ["mirror_measure"], "body": "Measure every rib.\nReport spacing and height."})).json())
+    write("agent_delete.json", (await call("DELETE", "/agents/rib-checker")).json())
+    # Plan 5 (C1 / A2): the agent manager's run routes
+    write("runs_tree.json", (await get("/runs/tree")).json())
+    write("runs_cleanup.json", (await call("POST", "/runs/cleanup", {"dry_run": True})).json())
     write("key_set.json", (await call("POST", "/keys/openai", {"secret": "sk-fixture-0000"})).json())
     write("key_delete.json", (await call("DELETE", "/keys/openai")).json())
     (out / "drawing.dxf").write_text((await get("/parts/mount_plate/drawing.dxf")).text)
@@ -527,6 +533,9 @@ async def dump_more(out: Path, call, get, run_id: str) -> None:
                                                  "model": "fixture"})).json()
     write("run_external.json", ext)
     write("run_cancel.json", (await call("POST", f"/runs/{ext['run_id']}/cancel")).json())
+    write("run_patch.json", (await call("PATCH", f"/runs/{ext['run_id']}",
+                                        {"title": "Fixture agent", "pinned": True})).json())
+    write("run_delete.json", (await call("DELETE", f"/runs/{ext['run_id']}")).json())
     card = next(a for a in (await get("/approvals")).json() if a["action"] == "fixture_merge")
     write("approval_decide.json", (await call("POST", f"/approvals/{card['id']}/decide",
                                               {"payload_hash": card["payload_hash"],

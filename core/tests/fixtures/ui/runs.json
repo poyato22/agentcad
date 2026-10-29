@@ -12,10 +12,20 @@
     "input_tokens": 0,
     "output_tokens": 0,
     "usd": 0.0,
-    "created_at": 1793209386.273194,
-    "updated_at": 1793209386.273889,
-    "owner_pid": 31503,
+    "created_at": 1793310348.337409,
+    "updated_at": 1793310348.338253,
+    "owner_pid": 53701,
     "external": false,
-    "session_ref": null
+    "session_ref": null,
+    "project_id": "22e641958627",
+    "title": null,
+    "pinned": false,
+    "archived": false,
+    "last_activity_at": 1793310348.338342,
+    "parent_run_id": null,
+    "cost": {
+      "usd": 0.0,
+      "tokens": 0
+    }
   }
 ]

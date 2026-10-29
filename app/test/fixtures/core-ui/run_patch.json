@@ -1,0 +1,29 @@
+{
+  "id": "fa9dca1eab4c",
+  "parent_id": null,
+  "agent": "fixture-acp",
+  "provider": "acp",
+  "model": "fixture",
+  "task": "external agent: fixture-acp",
+  "status": "cancelled",
+  "branch": null,
+  "onshape_calls": 0,
+  "input_tokens": 0,
+  "output_tokens": 0,
+  "usd": 0.0,
+  "created_at": 1793310733.200056,
+  "updated_at": 1793310733.201611,
+  "owner_pid": 77519,
+  "external": true,
+  "session_ref": null,
+  "project_id": "b42c90984efd",
+  "title": "Fixture agent",
+  "pinned": true,
+  "archived": false,
+  "last_activity_at": 1793310733.200994,
+  "parent_run_id": null,
+  "cost": {
+    "usd": 0.0,
+    "tokens": 0
+  }
+}
