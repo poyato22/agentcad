@@ -5,17 +5,22 @@ is validated the same way the agent's spec_set is and emits `spec_changed`. GET
 /projects/{id}/studies lists the design studies for a build. These keep the spec and studies
 keyed by project_id (a TEXT key; Task C1 owns the projects table itself).
 
-Two app actions run engineering tools through the Gate, like an agent's call would (Plan 5 A7):
-GET /projects/{id}/spec/check?part_id= runs spec_check (read) and POST
-/projects/{id}/studies/{study_id}/apply runs study_apply (local_mutate) for "Use this variant".
-Each runs on its own short-lived "ui" run of that build, scoped to the one part, so the call is
-recorded as a Step, sees only that build's spec and studies, and cannot touch another part.
+Two more routes serve the spec panel (Plan 5 A7):
+- GET /projects/{id}/spec/check?part_id= measures a part against the spec. It is a plain admin
+  read (the same evaluation spec_check uses), so it creates no run and no Step.
+- POST /projects/{id}/studies/{study_id}/apply is "Use this variant": study_apply through the
+  Gate, on that build's one long-lived "ui" run (Runtime._ui_run_id(project_id)), recorded as a
+  Step like every UI-started change. study_apply re-checks the variant against the spec as it
+  is now, not the flag stored when the study ran.
+PUT /spec takes an optional `base_updated_at` (from GET's `updated_at`): a spec written since is
+409 stale_version, so a user's edit never silently replaces an agent's spec_set.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
-import uuid
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Request
@@ -25,9 +30,9 @@ from starlette.concurrency import run_in_threadpool
 
 from ..cad.tools import PART_ID_RE
 from ..engineering.spec import Spec
-from ..engineering.tools import STUDY_ID_PREFIX, mark_interrupted
+from ..engineering.tools import STUDY_ID_PREFIX, mark_interrupted, spec_report
 from ..events import Event
-from ..types import ErrorCode, MisesError, SafetyClass
+from ..types import ErrorCode, MisesError
 
 if TYPE_CHECKING:
     from ..runtime import Runtime
@@ -35,6 +40,9 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 _MAX_PROJECT_ID = 128
 _MAX_BODY = 256 * 1024  # a spec is small; refuse anything larger before parsing it
+
+
+_NO_BASE = object()
 
 
 def _check_project_id(project_id: str) -> None:
@@ -48,37 +56,21 @@ class ApplyBody(BaseModel):
     allow_infeasible: bool = False
 
 
-UI_AGENT = "spec"
-
-
-async def _ui_tool(runtime: Runtime, project_id: str, part_id: str, tool: str, args: dict,
-                   classes: set[SafetyClass], what: str) -> dict:
-    """Run one engineering tool as the user's own call, through the Gate, on a fresh "ui" run
-    of this build scoped to `part_id`; its ToolOutput (as JSON), or the MisesError it failed
-    with (which the app gets as the core's error body)."""
-    if not PART_ID_RE.match(part_id):
-        raise MisesError(ErrorCode.INVALID_INPUT, f"bad part id: {part_id!r}")
-    mutate = SafetyClass.LOCAL_MUTATE in classes
-    rid = runtime.create_external_run(
-        UI_AGENT, provider="ui", model="spec-panel", edit_scope=(part_id,) if mutate else (),
-        read_scope=(part_id,), allowed_classes=classes, project_id=project_id,
-        task=f"Spec panel: {what}")
-    status = "failed"
+async def _apply(runtime: Runtime, project_id: str, args: dict) -> dict:
+    """study_apply as the user's own call on the build's ui run; its ToolOutput (as JSON), or
+    the MisesError it failed with (the app gets the core's error body)."""
+    call = runtime.ui_tool_call("study_apply", args, project_id=project_id)
     try:
-        out = await runtime.gate.call(rid, tool, args, call_id=f"ui-{uuid.uuid4().hex[:12]}",
-                                      workdir=runtime.workdir(rid))
-        if not out.ok:
-            err = out.data if isinstance(out.data, dict) else {}
-            code = err.get("error")
-            raise MisesError(ErrorCode(code) if code in set(ErrorCode) else ErrorCode.TOOL_FAILED,
-                             err.get("message") or out.summary, hint=err.get("hint"))
-        status = "done"
-        return out.model_dump(mode="json")
-    finally:
-        try:
-            runtime.finish_external_run(rid, status)
-        except Exception:  # noqa: BLE001
-            log.exception("could not finish spec run %s", rid)
+        await asyncio.shield(call.task)
+    except asyncio.CancelledError:
+        pass
+    if call.status == "done" and call.output is not None:
+        return call.output
+    err = call.error or (call.output or {}).get("data") or {}
+    code = err.get("error")
+    raise MisesError(ErrorCode(code) if code in set(ErrorCode) else ErrorCode.TOOL_FAILED,
+                     err.get("message") or (call.output or {}).get("summary") or "study_apply failed",
+                     hint=err.get("hint"))
 
 
 def build_spec_router(runtime: Runtime) -> APIRouter:
@@ -89,7 +81,8 @@ def build_spec_router(runtime: Runtime) -> APIRouter:
         _check_project_id(project_id)
         data = await run_in_threadpool(runtime.store.get_spec, project_id)
         spec = Spec.model_validate(data) if data else Spec()
-        return {"project_id": project_id, "spec": spec.model_dump()}
+        at = await run_in_threadpool(runtime.store.get_spec_updated_at, project_id)
+        return {"project_id": project_id, "spec": spec.model_dump(), "updated_at": at}
 
     @router.put("/projects/{project_id}/spec")
     async def put_spec(project_id: str, request: Request):
@@ -104,6 +97,9 @@ def build_spec_router(runtime: Runtime) -> APIRouter:
         except ValueError:
             return JSONResponse(MisesError(ErrorCode.INVALID_INPUT, "body must be JSON").to_dict(),
                                 status_code=422)
+        base: object = _NO_BASE
+        if isinstance(body, dict) and "base_updated_at" in body:
+            base = body.pop("base_updated_at")
         if isinstance(body, dict) and "spec" in body and isinstance(body["spec"], dict):
             body = body["spec"]
         try:
@@ -113,9 +109,18 @@ def build_spec_router(runtime: Runtime) -> APIRouter:
             return JSONResponse(
                 MisesError(ErrorCode.INVALID_INPUT, "invalid spec: " + msgs,
                            hint="fix the listed fields").to_dict(), status_code=422)
+        if base is not _NO_BASE:
+            cur = await run_in_threadpool(runtime.store.get_spec_updated_at, project_id)
+            same = (cur is None and base is None) or (
+                isinstance(base, (int, float)) and cur is not None and abs(cur - base) < 1e-6)
+            if not same:
+                err = MisesError(ErrorCode.STALE_VERSION, "the spec changed since you opened it",
+                                 hint="reload it, or save yours anyway (without base_updated_at)")
+                return JSONResponse({**err.to_dict(), "current_updated_at": cur}, status_code=409)
         await run_in_threadpool(runtime.store.put_spec, project_id, spec.model_dump())
+        at = await run_in_threadpool(runtime.store.get_spec_updated_at, project_id)
         runtime.events.publish(Event(type="spec_changed", data={"project_id": project_id}))
-        return {"project_id": project_id, "spec": spec.model_dump()}
+        return {"project_id": project_id, "spec": spec.model_dump(), "updated_at": at}
 
     @router.get("/projects/{project_id}/studies")
     async def list_studies(project_id: str):
@@ -125,13 +130,15 @@ def build_spec_router(runtime: Runtime) -> APIRouter:
 
     @router.get("/projects/{project_id}/spec/check")
     async def check_spec(project_id: str, part_id: str):
-        """The part measured against this build's spec (spec_check): per requirement the
-        measured value and pass / warn / fail / not_checked."""
+        """The part measured against this build's spec: per requirement the measured value and
+        pass / warn / fail / not_checked (spec_check's data). A plain read: no run, no Step."""
         _check_project_id(project_id)
-        out = await _ui_tool(runtime, project_id, part_id, "spec_check",
-                             {"part_id": part_id, "project_id": project_id},
-                             {SafetyClass.READ}, f"check {part_id} against the spec")
-        return out["data"]
+        if not PART_ID_RE.match(part_id):
+            raise MisesError(ErrorCode.INVALID_INPUT, f"bad part id: {part_id!r}")
+        data = await run_in_threadpool(runtime.store.get_spec, project_id)
+        spec = Spec.model_validate(data) if data else Spec()
+        report = await run_in_threadpool(spec_report, Path(runtime.home), spec, part_id)
+        return {"project_id": project_id, "part_id": part_id, **report}
 
     @router.post("/projects/{project_id}/studies/{study_id}/apply")
     async def apply_variant(project_id: str, study_id: str, body: ApplyBody):
@@ -148,9 +155,9 @@ def build_spec_router(runtime: Runtime) -> APIRouter:
                 "allow_infeasible": body.allow_infeasible}
         if body.base_version is not None:
             args["base_version"] = body.base_version
-        out = await _ui_tool(runtime, project_id, part_id, "study_apply", args,
-                             {SafetyClass.READ, SafetyClass.LOCAL_MUTATE},
-                             f"use {study_id} #{body.iteration} on {part_id}")
+        if not PART_ID_RE.match(part_id):
+            raise MisesError(ErrorCode.INVALID_INPUT, f"bad part id: {part_id!r}")
+        out = await _apply(runtime, project_id, args)
         return {"study_id": study_id, "part_id": part_id, "iteration": body.iteration,
                 "summary": out["summary"], "warnings": out.get("warnings", []),
                 "data": out["data"]}

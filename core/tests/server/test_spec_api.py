@@ -82,7 +82,8 @@ def _part(rt, part_id="frame_x", mass=80.0):
 def _study(rt, pid=PID, status="done"):
     its = [{"n": 0, "vars": {"wall": 2.0}, "metrics": {"mass_g": 60.0}, "feasible": True,
             "pareto": True},
-           {"n": 1, "vars": {"wall": 1.0}, "metrics": {"mass_g": 40.0}, "feasible": False,
+           {"n": 1, "vars": {"wall": 1.0}, "metrics": {"mass_g": 40.0, "build_error": "wall too thin"},
+            "feasible": False,
             "pareto": False}]
     rt.store.create_study(SID, pid, {"id": SID, "project_id": pid, "part_id": "frame_x",
                                      "run_id": None, "created_at": 1.0, "status": status,
@@ -111,10 +112,29 @@ def test_apply_variant_runs_study_apply_through_the_gate(rt, client, applied):
     assert body["study_id"] == SID and body["iteration"] == 0 and body["part_id"] == "frame_x"
     assert body["summary"].startswith(f"applied {SID} #0")
     assert [c[1:] for c in applied] == [("frame_x", {"wall": 2.0})]
-    run = rt.store.get_run(applied[0][0])   # its own finished "ui" run, recorded as Steps
-    assert run.provider == "ui" and run.status == "done"
+    run = rt.store.get_run(applied[0][0])   # the build's long-lived "ui" run, recorded as Steps
+    assert run.provider == "ui" and run.status == "running" and run.project_id == PID
     names = [s.payload.get("name") for s in rt.store.steps(run.id) if s.kind == "tool_call"]
     assert names == ["study_apply"]
+    # a second apply reuses that run: no run per call
+    before = len(rt.store.list_runs(1000))
+    assert client.post(f"/projects/{PID}/studies/{SID}/apply", headers=AUTH,
+                       json={"iteration": 0}).status_code == 200
+    assert len(rt.store.list_runs(1000)) == before and applied[1][0] == run.id
+
+
+def test_apply_rechecks_feasibility_against_the_current_spec(rt, client, applied):
+    _part(rt)
+    _study(rt)
+    tight = {"goal": "", "requirements": [{"id": "mass_budget", "kind": "max_mass_g",
+                                           "target": 50}], "load_cases": []}
+    assert client.put(f"/projects/{PID}/spec", headers=AUTH, json=tight).status_code == 200
+    r = client.post(f"/projects/{PID}/studies/{SID}/apply", headers=AUTH, json={"iteration": 0})
+    assert r.status_code == 400 and "against the current spec" in r.json()["message"]
+    assert applied == []
+    r = client.post(f"/projects/{PID}/studies/{SID}/apply", headers=AUTH,
+                    json={"iteration": 0, "allow_infeasible": True})
+    assert r.status_code == 200
 
 
 def test_apply_refuses_infeasible_unknown_and_other_builds(rt, client, applied):
@@ -156,6 +176,37 @@ def test_spec_check_measures_the_part(rt, client):
     assert rows["mass_budget"]["measured"] == 130.0 and rows["mass_budget"]["status"] == "fail"
     assert rows["arm_safety"]["status"] == "not_checked"
     assert r.json()["overall"] == "fail" and r.json()["part_id"] == "frame_x"
+
+
+def test_spec_check_is_a_plain_read(rt, client):
+    _part(rt)
+    client.put(f"/projects/{PID}/spec", headers=AUTH, json=SPEC)
+    before = len(rt.store.list_runs(1000))
+    for _ in range(3):
+        r = client.get(f"/projects/{PID}/spec/check?part_id=frame_x", headers=AUTH)
+        assert r.status_code == 200
+    assert len(rt.store.list_runs(1000)) == before
+
+
+def test_put_spec_with_a_stale_base_is_409(client):
+    first = client.get(f"/projects/{PID}/spec", headers=AUTH).json()
+    assert first["updated_at"] is None
+    r = client.put(f"/projects/{PID}/spec", headers=AUTH,
+                   json={"spec": SPEC, "base_updated_at": None})
+    assert r.status_code == 200 and isinstance(r.json()["updated_at"], float)
+    seen = r.json()["updated_at"]
+    # the agent writes in between
+    assert client.put(f"/projects/{PID}/spec", headers=AUTH,
+                      json={**SPEC, "goal": "agent's"}).status_code == 200
+    r = client.put(f"/projects/{PID}/spec", headers=AUTH,
+                   json={"spec": SPEC, "base_updated_at": seen})
+    assert r.status_code == 409 and r.json()["error"] == "stale_version"
+    assert r.json()["current_updated_at"] > seen
+    assert client.get(f"/projects/{PID}/spec", headers=AUTH).json()["spec"]["goal"] == "agent's"
+    cur = r.json()["current_updated_at"]
+    r = client.put(f"/projects/{PID}/spec", headers=AUTH,
+                   json={"spec": SPEC, "base_updated_at": cur})
+    assert r.status_code == 200
 
 
 def test_spec_check_unknown_part(client):

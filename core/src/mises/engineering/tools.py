@@ -248,6 +248,21 @@ def _sims_by_case(ctx: ToolContext, part_id: str, spec: Spec) -> tuple[dict, set
     return fresh, stale - set(fresh)
 
 
+def spec_report(workdir: Path, spec: Spec, part_id: str) -> dict:
+    """The part measured against `spec` (spec_check's data without project): per requirement
+    the measured value and pass / warn / fail / not_checked. `workdir` holds `parts/`."""
+    from types import SimpleNamespace
+    ctx = SimpleNamespace(workdir=workdir)
+    d = _existing(ctx, part_id)  # type: ignore[arg-type]
+    metrics = json.loads((d / "metrics.json").read_text())
+    sim_by_case, stale = _sims_by_case(ctx, part_id, spec)  # type: ignore[arg-type]
+    report = evaluate_spec(spec, metrics, sim_by_case)
+    for r in report["requirements"]:
+        if r["status"] == "not_checked" and r["load_case_id"] in stale:
+            r["detail"] = "study is stale (the part changed since); rerun it"
+    return report
+
+
 @tool("spec_check", safety=SafetyClass.READ, scope_arg="part_id",
       description="Evaluate a part against the project's spec: one row per requirement with the "
                   "measured value and pass/warn/fail. Geometry requirements (mass, envelope) are "
@@ -258,14 +273,7 @@ def _sims_by_case(ctx: ToolContext, part_id: str, spec: Spec) -> tuple[dict, set
 async def spec_check(ctx: ToolContext, args: SpecCheckArgs) -> ToolOutput:
     _check_part(args.part_id)
     pid = _resolve_project(ctx, args.project_id)
-    d = _existing(ctx, args.part_id)
-    metrics = json.loads((d / "metrics.json").read_text())
-    spec = _load_spec(ctx, pid)
-    sim_by_case, stale = _sims_by_case(ctx, args.part_id, spec)
-    report = evaluate_spec(spec, metrics, sim_by_case)
-    for r in report["requirements"]:
-        if r["status"] == "not_checked" and r["load_case_id"] in stale:
-            r["detail"] = "study is stale (the part changed since); rerun it"
+    report = spec_report(Path(ctx.workdir), _load_spec(ctx, pid), args.part_id)
     counts: dict[str, int] = {}
     for r in report["requirements"]:
         counts[r["status"]] = counts.get(r["status"], 0) + 1
@@ -589,10 +597,14 @@ async def study_apply(ctx: ToolContext, args: StudyApplyArgs) -> ToolOutput:
     it = next((i for i in rec.get("iterations") or [] if i.get("n") == args.iteration), None)
     if it is None:
         raise MisesError(ErrorCode.NOT_FOUND, f"{args.study_id} has no iteration {args.iteration}")
-    if not it.get("feasible") and not args.allow_infeasible:
-        raise MisesError(ErrorCode.INVALID_INPUT, f"iteration {args.iteration} is infeasible",
-                         hint=f"apply the best feasible one ({rec.get('best_id')}) or set "
-                              "allow_infeasible")
+    # feasibility against the spec as it is NOW (it may have changed since the study ran)
+    spec_now = _load_spec(ctx, str(rec.get("project_id") or _resolve_project(ctx, None)))
+    feasible_now = _feasibility(spec_now, not rec.get("geometry_only"))(it.get("metrics") or {})
+    if not feasible_now and not args.allow_infeasible:
+        changed = " against the current spec" if it.get("feasible") else ""
+        raise MisesError(ErrorCode.INVALID_INPUT, f"iteration {args.iteration} is infeasible"
+                         f"{changed}", hint=f"apply a variant that meets the spec or set "
+                         "allow_infeasible")
     d = _existing(ctx, args.part_id)
     current = _part_version(d)
     if args.base_version is not None and current is not None and current != args.base_version:

@@ -1,9 +1,9 @@
-{"type":"spec_changed","run_id":null,"data":{"project_id":"d422007de860"},"ts":1793289539.301491}
-{"type":"study_progress","run_id":"fa6994c2ce19","data":{"study_id":"study_85ae5e2d5d66","n":1,"total":6},"ts":1793289547.928375}
-{"type":"study_progress","run_id":"fa6994c2ce19","data":{"study_id":"study_85ae5e2d5d66","n":2,"total":6},"ts":1793289548.79121}
-{"type":"study_progress","run_id":"fa6994c2ce19","data":{"study_id":"study_85ae5e2d5d66","n":3,"total":6},"ts":1793289549.724742}
-{"type":"study_progress","run_id":"fa6994c2ce19","data":{"study_id":"study_85ae5e2d5d66","n":4,"total":6},"ts":1793289554.3170938}
-{"type":"study_progress","run_id":"fa6994c2ce19","data":{"study_id":"study_85ae5e2d5d66","n":5,"total":6},"ts":1793289558.8464582}
-{"type":"study_progress","run_id":"fa6994c2ce19","data":{"study_id":"study_85ae5e2d5d66","n":6,"total":6},"ts":1793289563.2936802}
-{"type":"question_asked","run_id":"fa6994c2ce19","data":{"question_id":"6cc99ac99246","question":"A few questions first:\n1. What will this drone do?\n2. Prop / size class?\n3. Which motors and props? (pick a class; the catalog fills in thrust/mass)","options":[],"questions":[{"id":"use","prompt":"What will this drone do?","options":["freestyle","racing","cinematic","long-range"],"multi":false,"rank":false,"allow_text":true},{"id":"size_class","prompt":"Prop / size class?","options":["3\"","5\"","7\""],"multi":false,"rank":false,"allow_text":true},{"id":"motor_prop","prompt":"Which motors and props? (pick a class; the catalog fills in thrust/mass)","options":["1404","2207","2306","2806.5"],"multi":false,"rank":false,"allow_text":true}]},"ts":1793289571.54037}
-{"type":"question_answered","run_id":"fa6994c2ce19","data":{"question_id":"6cc99ac99246"},"ts":1793289571.541406}
+{"type":"spec_changed","run_id":null,"data":{"project_id":"4b8d50756366"},"ts":1793307575.965087}
+{"type":"study_progress","run_id":"e49a82860ab3","data":{"study_id":"study_92df921c1b92","n":1,"total":6},"ts":1793307589.571769}
+{"type":"study_progress","run_id":"e49a82860ab3","data":{"study_id":"study_92df921c1b92","n":2,"total":6},"ts":1793307590.799501}
+{"type":"study_progress","run_id":"e49a82860ab3","data":{"study_id":"study_92df921c1b92","n":3,"total":6},"ts":1793307591.900666}
+{"type":"study_progress","run_id":"e49a82860ab3","data":{"study_id":"study_92df921c1b92","n":4,"total":6},"ts":1793307599.6226718}
+{"type":"study_progress","run_id":"e49a82860ab3","data":{"study_id":"study_92df921c1b92","n":5,"total":6},"ts":1793307609.761754}
+{"type":"study_progress","run_id":"e49a82860ab3","data":{"study_id":"study_92df921c1b92","n":6,"total":6},"ts":1793307617.845699}
+{"type":"question_asked","run_id":"e49a82860ab3","data":{"question_id":"ab9b3a53656e","question":"A few questions first:\n1. What will this drone do?\n2. Prop / size class?\n3. Which motors and props? (pick a class; the catalog fills in thrust/mass)","options":[],"questions":[{"id":"use","prompt":"What will this drone do?","options":["freestyle","racing","cinematic","long-range"],"multi":false,"rank":false,"allow_text":true},{"id":"size_class","prompt":"Prop / size class?","options":["3\"","5\"","7\""],"multi":false,"rank":false,"allow_text":true},{"id":"motor_prop","prompt":"Which motors and props? (pick a class; the catalog fills in thrust/mass)","options":["1404","2207","2306","2806.5"],"multi":false,"rank":false,"allow_text":true}]},"ts":1793307633.907041}
+{"type":"question_answered","run_id":"e49a82860ab3","data":{"question_id":"ab9b3a53656e"},"ts":1793307633.909184}
