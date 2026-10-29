@@ -1,0 +1,173 @@
+/* Mises markup rendering. Uses only the shared tokens (both themes): status colours (green/amber/
+   red) for pass/warn/fail callouts, and otherwise achromatic surfaces — values and highlights are
+   tinted with neutral paper/line tokens, never a hue, so the colour rules stay intact (blue is
+   reserved for selected / agent-changing / needs-a-human). */
+
+.mk {
+  --mk-gap: 6px;
+  display: flow-root;
+  line-height: 1.5;
+}
+.mk-body > :first-child { margin-top: 0; }
+.mk-body > :last-child { margin-bottom: 0; }
+
+/* collapse a long reply: a height clamp on the body only ("Show more" is its sibling, outside
+   the clipped box). max-height, not -webkit-line-clamp, which is unreliable over tables/lists. */
+.mk-body { display: flow-root; }
+.mk-clamp {
+  max-height: calc(1.5em * 12);
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, #000 80%, transparent);
+  mask-image: linear-gradient(to bottom, #000 80%, transparent);
+}
+.mk-more {
+  display: inline-block;
+  margin-top: var(--mk-gap);
+  padding: 1px 6px;
+  background: none;
+  border: 1px solid var(--line2);
+  border-radius: 0;
+  color: var(--dim);
+  font: inherit;
+  font-size: var(--fs-small);
+  cursor: pointer;
+}
+.mk-more:hover { color: var(--ink); border-color: var(--ink); }
+
+.mk-p { margin: var(--mk-gap) 0; }
+.mk-h {
+  margin: 10px 0 4px;
+  font-family: var(--font-head);
+  font-weight: 700;
+  line-height: 1.3;
+}
+h1.mk-h { font-size: 1.3em; }
+h2.mk-h { font-size: 1.18em; }
+h3.mk-h { font-size: 1.08em; }
+h4.mk-h, h5.mk-h, h6.mk-h { font-size: 1em; }
+
+.mk-hr { border: none; border-top: 1px solid var(--line); margin: 10px 0; }
+
+.mk-list { margin: var(--mk-gap) 0; padding-left: 1.3em; }
+.mk-list li { margin: 2px 0; }
+.mk-list li > .mk-p { margin: 0; }
+
+/* inline marks */
+.mk strong { font-weight: 700; color: var(--ink); }
+.mk em { font-style: italic; }
+.mk del { opacity: .6; }
+.mk-icode,
+.mk-code code {
+  font-family: var(--font-mono);
+}
+.mk-icode {
+  padding: 0 4px;
+  background: var(--paper2);
+  border: 1px solid var(--line);
+  border-radius: 0;
+  font-size: .92em;
+}
+.mk-code {
+  margin: var(--mk-gap) 0;
+  padding: 8px 10px;
+  background: var(--paper2);
+  border: 1px solid var(--line);
+  border-radius: 0;
+  overflow-x: auto;
+  font-size: .92em;
+  line-height: 1.45;
+}
+
+/* values with units and ==highlight==: neutral tint, no hue */
+.mk-val {
+  padding: 0 3px;
+  border-radius: 0;
+  background: var(--paper2);
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.mk-mark {
+  padding: 0 3px;
+  border-radius: 0;
+  background: var(--line2);
+  color: var(--ink);
+}
+
+/* part chip: a neutral, clearly-interactive token; a click selects the part */
+.mk-chip {
+  display: inline;
+  padding: 0 5px;
+  margin: 0 1px;
+  font: inherit;
+  color: var(--ink);
+  background: var(--paper2);
+  border: 1px solid var(--line2);
+  border-radius: 0;
+  cursor: pointer;
+}
+.mk-chip::before { content: "◇ "; color: var(--dim); }
+.mk-chip:hover { border-color: var(--ink); }
+.mk-chip:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+
+/* links stay ink-coloured (blue is reserved for selected / agent-changing / needs-you); the real
+   domain always shows after the label */
+.mk-link { color: var(--ink); text-decoration: underline; text-decoration-color: var(--dim); text-underline-offset: 2px; }
+.mk-link:hover { text-decoration-color: var(--ink); }
+.mk-link:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+.mk-host { color: var(--dim); font-size: .9em; white-space: nowrap; }
+.mk-trunc { display: flex; align-items: center; gap: 8px; margin-top: var(--mk-gap); font-size: var(--fs-small); }
+.mk-raw { white-space: pre-wrap; word-break: break-word; }
+
+/* callouts — status colours only on pass/warn/fail; note is neutral */
+.mk-callout {
+  display: flex;
+  gap: 8px;
+  margin: var(--mk-gap) 0;
+  padding: 6px 10px;
+  border-radius: 0;
+  border: 1px solid var(--line2);
+  border-left-width: 3px;
+  background: var(--paper2);
+}
+.mk-callout-body { min-width: 0; flex: 1; }
+.mk-callout-body > :first-child { margin-top: 0; }
+.mk-callout-body > :last-child { margin-bottom: 0; }
+.mk-callout-flag {
+  flex: none;
+  width: 1.1em;
+  text-align: center;
+  font-weight: 700;
+  line-height: 1.5;
+}
+.mk-callout[data-callout="pass"] { border-left-color: var(--green); }
+.mk-callout[data-callout="pass"] .mk-callout-flag { color: var(--green); }
+.mk-callout[data-callout="warn"] { border-left-color: var(--amber); }
+.mk-callout[data-callout="warn"] .mk-callout-flag { color: var(--amber); }
+.mk-callout[data-callout="fail"] { border-left-color: var(--red); }
+.mk-callout[data-callout="fail"] .mk-callout-flag { color: var(--red); }
+.mk-callout[data-callout="note"] { border-left-color: var(--line2); }
+.mk-callout[data-callout="note"] .mk-callout-flag { color: var(--dim); }
+
+/* tables */
+.mk-table-wrap { overflow-x: auto; margin: var(--mk-gap) 0; }
+.mk-table {
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.mk-table th,
+.mk-table td {
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  text-align: left;
+}
+.mk-table th {
+  background: var(--paper2);
+  font-weight: 700;
+  color: var(--ink);
+}
+.mk-table tbody tr:nth-child(even) { background: color-mix(in srgb, var(--paper2) 45%, transparent); }
+
+@media (prefers-reduced-motion: reduce) {
+  .mk-more { transition: none; }
+}

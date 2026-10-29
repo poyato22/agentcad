@@ -7,6 +7,7 @@ import type { JSX } from "preact";
 import { useEffect } from "preact/hooks";
 import { conn } from "./state/store";
 import { needsYou } from "./state/selection";
+import { AgentManager } from "./ui/agents/AgentManager";
 import { BootOverlay } from "./ui/boot/BootOverlay";
 import { ConsolePane } from "./ui/console/ConsolePane";
 import { NewRunDialog } from "./ui/dialogs/NewRunDialog";
@@ -77,6 +78,7 @@ export function App(): JSX.Element {
       <PageRegion />
       <ConsoleRegion />
       <NewRunDialog />
+      <AgentManager />
       <ProfilePane open={profileOpen.value} section={profileSection.value} onClose={closeProfile} />
       <SetupGate />
       <BootOverlay />

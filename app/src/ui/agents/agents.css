@@ -1,0 +1,104 @@
+/* Agent manager slide-over. Same placement as the Profile pane (under the 44px top bar, right
+   edge), square corners, shared tokens only. Blue marks a selected row, a working run's dot and a
+   run that needs you; red is only the armed delete and errors; green/amber/red dots are status. */
+.am-scrim {
+  position: fixed; top: var(--topbar-h); left: 0; right: 0; bottom: 0; z-index: 150;
+  background: rgba(0, 0, 0, .35);
+}
+.am-panel {
+  position: absolute; top: 0; right: 0; bottom: 0; width: min(620px, 100vw);
+  display: flex; flex-direction: column; background: var(--paper); border-left: 1px solid var(--line2);
+  outline: none;
+}
+.am-head {
+  display: flex; align-items: center; gap: 12px; height: var(--pane-head-h); min-height: 34px;
+  padding: 0 12px; border-bottom: 1px solid var(--line); background: var(--head); flex: none;
+}
+.am-h { margin: 0; font: 700 12px/1 var(--font-head); color: var(--ink); }
+.am-tabs { display: flex; gap: 2px; }
+.am-tab {
+  padding: 4px 10px; background: none; border: 1px solid transparent; color: var(--dim);
+  font: inherit; cursor: pointer;
+}
+.am-tab:hover { color: var(--ink); }
+.am-tab.on { color: var(--ink); border-color: var(--line2); background: var(--paper2); }
+.am-tab:focus-visible, .am-close:focus-visible, .am-title:focus-visible, .am-fold:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
+.am-kbd { font-size: var(--fs-label); }
+.am-close { background: none; border: 1px solid transparent; color: var(--dim); font: inherit; cursor: pointer; padding: 2px 6px; }
+.am-close:hover { color: var(--ink); border-color: var(--line2); }
+.am-body { flex: 1; overflow: auto; padding: 8px 12px 16px; }
+.am-spacer { flex: 1; }
+
+.am-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.am-check { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+.am-notice { margin: 6px 0; padding: 4px 8px; border: 1px solid var(--line2); color: var(--ink); }
+.am-error { margin: 6px 0; }
+.am-empty { padding: 12px 0; }
+
+.am-group { margin-top: 10px; }
+.am-group-h { margin: 12px 0 4px; font: 600 var(--fs-label)/1.4 var(--font-head); color: var(--dim); }
+
+.am-tree, .am-list { list-style: none; margin: 0; padding: 0; }
+.am-row, .am-agent {
+  padding: 5px 6px 5px calc(6px + var(--depth, 0) * 18px);
+  border-bottom: 1px solid var(--line);
+}
+.am-row.sel { background: var(--blue-tint); }
+.am-row:focus-visible { outline: 1px solid var(--blue); outline-offset: -1px; }
+.am-cleanup-list { margin: 4px 0 0; padding-left: 1.2em; max-height: 140px; overflow: auto; font-size: var(--fs-small); }
+.am-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.am-sel { margin: 0; flex: none; }
+.am-fold {
+  flex: none; width: 16px; text-align: center; background: none; border: 0; padding: 0;
+  color: var(--dim); font: inherit; font-size: 10px; cursor: pointer;
+}
+span.am-fold { cursor: default; color: var(--faint); }
+.am-dot { display: inline-flex; flex: none; }
+.am-title {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  background: none; border: 0; padding: 0; color: var(--ink); font: inherit; text-align: left; cursor: pointer;
+}
+.am-title:hover { text-decoration: underline; text-underline-offset: 2px; }
+.am-pin { color: var(--dim); }
+.am-name { color: var(--ink); font-weight: 600; }
+.am-meta { margin-left: auto; flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-small); }
+.am-rename { flex: 1; min-width: 0; }
+.am-sub {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 2px 0 0 38px; font-size: var(--fs-small);
+}
+.am-agent .am-sub { margin-left: 0; }
+.am-desc { margin-top: 2px; font-size: var(--fs-small); }
+.am-act { color: var(--dim); }
+.am-act.needs-you { color: var(--blue2); }
+.am-actions { display: inline-flex; gap: 2px; opacity: .55; }
+.am-row:hover .am-actions, .am-row:focus-within .am-actions { opacity: 1; }
+.am-hidden .am-name { color: var(--dim); }
+.am-refused {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin: 6px 0 2px 38px; padding: 5px 8px; border: 1px solid var(--line2); border-left: 3px solid var(--amber);
+  background: var(--paper2); color: var(--ink); font-size: var(--fs-small);
+}
+
+/* live dot: animate by activity state (static under reduced motion) */
+.am-dot[data-activity=thinking] .led { animation: am-pulse .7s ease-in-out infinite; }
+.am-dot[data-activity=writing] .led,
+.am-dot[data-activity=tool] .led,
+.am-dot[data-activity=starting] .led { animation: am-pulse 1.2s ease-in-out infinite; }
+@keyframes am-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+
+.am-cleanup { margin: 4px 0 10px; padding: 8px 10px; border: 1px solid var(--line2); background: var(--paper2); }
+.am-cleanup p { margin: 0 0 6px; }
+.am-cleanup-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+
+.am-form { display: flex; flex-direction: column; gap: 8px; margin: 4px 0 12px; padding: 10px; border: 1px solid var(--line2); background: var(--paper2); }
+.am-field { display: flex; flex-direction: column; gap: 3px; border: 0; margin: 0; padding: 0; }
+.am-field input[type=text], .am-field select, .am-field textarea { width: 100%; min-width: 0; font: inherit; }
+.am-hint { font-size: var(--fs-small); }
+.am-tools { gap: 4px; }
+.am-toolgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 2px 10px; max-height: 160px; overflow: auto; padding: 4px 0; }
+.am-form-foot { display: flex; gap: 8px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .am-dot .led { animation: none !important; }
+}

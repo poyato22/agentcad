@@ -387,6 +387,12 @@ async def dump_more(out: Path, call, get, run_id: str) -> None:
     write("health.json", (await get("/health")).json())
     write("run.json", (await get(f"/runs/{run_id}")).json())
     write("context.json", (await get("/context")).json())
+    # Plan 5 (A2): one custom agent read back with its instructions (the app's edit form)
+    await call("POST", "/agents", {"name": "rib-checker", "description": "Checks rib spacing",
+                                   "model": "inherit", "tools": ["mirror_measure"],
+                                   "body": "Measure every rib.\nReport the spacing."})
+    write("agent_get.json", (await get("/agents/rib-checker")).json())
+    await call("DELETE", "/agents/rib-checker")
     write("key_set.json", (await call("POST", "/keys/openai", {"secret": "sk-fixture-0000"})).json())
     write("key_delete.json", (await call("DELETE", "/keys/openai")).json())
     (out / "drawing.dxf").write_text((await get("/parts/mount_plate/drawing.dxf")).text)

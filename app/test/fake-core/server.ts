@@ -345,6 +345,79 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     return r;
   }
 
+  /** Custom agents' instructions (the core keeps them in ~/…/Mises/agents/<name>.md). */
+  const agentBodies = new Map<string, string>();
+
+  // ---- Plan 5 (C1) run-management helpers (mirror core projects.run_view / delete_reason)
+  /** A run enriched with the API's run_view fields (parent_run_id, last_activity_at, cost). */
+  function runView(r: AgentRun): AgentRun {
+    return {
+      ...r,
+      parent_run_id: r.parent_id,
+      last_activity_at: r.last_activity_at ?? r.updated_at,
+      cost: { usd: r.usd, tokens: r.input_tokens + r.output_tokens },
+    };
+  }
+
+  function childrenOf(id: string): AgentRun[] {
+    return [...state.runs.values()].filter((r) => r.parent_id === id);
+  }
+  function descendants(id: string): AgentRun[] {
+    const out: AgentRun[] = [];
+    const stack = [...childrenOf(id)];
+    while (stack.length) {
+      const r = stack.pop() as AgentRun;
+      out.push(r);
+      stack.push(...childrenOf(r.id));
+    }
+    return out;
+  }
+  function blockedReason(r: AgentRun): "running" | "pending_approval" | null {
+    if (r.status === "running" || r.status === "queued") return "running";
+    if ([...state.approvals.values()].some((a) => a.run_id === r.id && a.status === "pending")) return "pending_approval";
+    return null;
+  }
+  /** Why a run can't be deleted yet: any busy descendant blocks it with reason "running". */
+  function deleteReason(id: string): { reason: "running" | "pending_approval"; children: string[] } | null {
+    const kids = descendants(id).filter((c) => blockedReason(c) !== null).map((c) => c.id);
+    if (kids.length) return { reason: "running", children: kids };
+    const own = blockedReason(getRun(id));
+    return own ? { reason: own, children: [] } : null;
+  }
+  function removeRun(id: string): void {
+    state.runs.delete(id);
+    state.steps = state.steps.filter((s) => s.run_id !== id);
+    for (const a of [...state.approvals.values()]) if (a.run_id === id) state.approvals.delete(a.id);
+  }
+  function cleanupCandidates(projectId: string | null, olderThanDays: number | null, statusIn: string[]): string[] {
+    const terminal = new Set(["done", "failed", "cancelled"]);
+    const statuses = statusIn.filter((s) => terminal.has(s));
+    if (!statuses.length) return [];
+    const cutoff = olderThanDays ? now() - olderThanDays * 86400 : null;
+    const out: string[] = [];
+    for (const r of state.runs.values()) {
+      if (r.provider === "ui" || !statuses.includes(r.status)) continue;
+      if (projectId && r.project_id !== projectId) continue;
+      if (cutoff !== null && (r.last_activity_at ?? r.updated_at) > cutoff) continue;
+      if (deleteReason(r.id) !== null) continue;
+      out.push(r.id);
+    }
+    return out;
+  }
+  /** The orchestrator → worker forest (ui runs excluded), each node run_view-shaped. */
+  function runsTree(projectId: string | null): (AgentRun & { children: unknown[] })[] {
+    const runs = [...state.runs.values()].filter((r) => r.provider !== "ui" && (!projectId || r.project_id === projectId));
+    const nodes = new Map(runs.map((r) => [r.id, { ...runView(r), children: [] as unknown[] }]));
+    const roots: (AgentRun & { children: unknown[] })[] = [];
+    for (const r of runs) {
+      const node = nodes.get(r.id)!;
+      const parent = r.parent_id !== null ? nodes.get(r.parent_id) : undefined;
+      if (parent) parent.children.push(node);
+      else roots.push(node);
+    }
+    return roots;
+  }
+
   function expireIfDue(a: Approval): Approval {
     if (a.status === "pending" && a.expires_at <= now()) {
       const e = { ...a, status: "expired" as const };
@@ -446,6 +519,52 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         return [...state.runs.values()].filter((r) => withUi || r.provider !== "ui").sort((a, b) => b.created_at - a.created_at).slice(0, limit);
       },
     },
+    // ---- Plan 5 (C1): run tree, cleanup, patch, delete. Must precede /runs/{id}.
+    {
+      method: "GET", re: /^\/runs\/tree$/, h: (_m, q) => {
+        const projectId = q.get("project_id");
+        return runsTree(projectId);
+      },
+    },
+    {
+      method: "POST", re: /^\/runs\/cleanup$/, h: (_m, _q, raw) => {
+        const b = asBody(raw);
+        const projectId = typeof b.project_id === "string" ? b.project_id : null;
+        const olderThanDays = typeof b.older_than_days === "number" ? b.older_than_days : null;
+        const statusIn = Array.isArray(b.status_in) ? (b.status_in as string[]) : ["done", "failed", "cancelled"];
+        const dryRun = b.dry_run !== false;
+        const ids = cleanupCandidates(projectId, olderThanDays, statusIn);
+        if (!dryRun) for (const id of ids) removeRun(id);
+        return { ids, count: ids.length };
+      },
+    },
+    {
+      method: "PATCH", re: /^\/runs\/([^/]+)$/, h: (m, _q, raw) => {
+        const r = getRun(m[1]);
+        const b = asBody(raw);
+        const next = { ...r };
+        if (typeof b.title === "string") next.title = b.title;
+        if (typeof b.pinned === "boolean") next.pinned = b.pinned;
+        if (typeof b.archived === "boolean") next.archived = b.archived;
+        next.updated_at = now();
+        state.runs.set(r.id, next);
+        return runView(next);
+      },
+    },
+    {
+      method: "DELETE", re: /^\/runs\/([^/]+)$/, h: (m, _q, _raw, _r, res) => {
+        getRun(m[1]);
+        const refused = deleteReason(m[1]);
+        if (refused) {
+          send(res, 409, refused);
+          return RAW;
+        }
+        removeRun(m[1]);
+        return { ok: true };
+      },
+    },
+    // run.json's contract fixture predates Plan 5, so GET /runs/{id} stays the plain run here
+    // (Integration re-dumps the enriched shape). The tree route carries the run_view fields.
     { method: "GET", re: /^\/runs\/([^/]+)$/, h: (m) => getRun(m[1]) },
     {
       method: "GET", re: /^\/runs\/([^/]+)\/steps$/, h: (m, q) => {
@@ -515,7 +634,78 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         approvals_pending: [...state.approvals.values()].filter((a) => a.status === "pending").length,
       }),
     },
-    { method: "GET", re: /^\/agents$/, h: () => state.agents },
+    {
+      // An agent carrying a `builtin` flag (a created custom agent, or a scenario that opts in)
+      // is returned in the Plan 5 shape; a plain scenario agent stays {name,description,model}
+      // so the pre-Plan-5 contract fixture (agents.json) still matches shape.
+      method: "GET", re: /^\/agents$/, h: () => {
+        const hidden = new Set(state.setup.profile.hidden_agents ?? []);
+        return [...state.agents]
+          .map((a) => a.builtin === undefined
+            ? { name: a.name, description: a.description, model: a.model }
+            : { name: a.name, description: a.description, model: a.model,
+                tools: a.tools ?? null, builtin: a.builtin, hidden: hidden.has(a.name) })
+          .sort((a, b) => a.name.localeCompare(b.name));
+      },
+    },
+    {
+      // custom agents only; built-ins are hidden via the profile's hidden_agents (PUT /profile)
+      method: "POST", re: /^\/agents$/, h: (_m, _q, raw) => {
+        const b = asBody(raw);
+        const name = req(b, "name", "string");
+        if (!/^[a-z][a-z0-9_-]{1,40}$/.test(name)) throw mises("invalid_input", `bad agent name: ${JSON.stringify(name)}`, "lowercase letters, digits, - and _; start with a letter");
+        if (state.agents.some((a) => a.name === name)) throw mises("invalid_input", `agent ${JSON.stringify(name)} already exists`);
+        const agent: AgentInfo = {
+          name, description: typeof b.description === "string" ? b.description : "",
+          model: typeof b.model === "string" ? b.model : "inherit",
+          tools: Array.isArray(b.tools) ? (b.tools as string[]) : null, builtin: false, hidden: false,
+        };
+        state.agents = [...state.agents, agent];
+        agentBodies.set(name, typeof b.body === "string" ? b.body.trim() : "");
+        return { ...agent };
+      },
+    },
+    {
+      // core projects_api.get_agent: the body for a custom agent, null for a built-in
+      method: "GET", re: /^\/agents\/([^/]+)$/, h: (m) => {
+        const name = decodeURIComponent(m[1]);
+        const a = state.agents.find((x) => x.name === name);
+        if (!a) throw mises("not_found", `no agent ${JSON.stringify(name)}`);
+        const builtin = a.builtin ?? true;
+        return { name: a.name, description: a.description, model: a.model, tools: a.tools ?? null, builtin,
+          hidden: (state.setup.profile.hidden_agents ?? []).includes(name), body: builtin ? null : agentBodies.get(name) ?? "" };
+      },
+    },
+    {
+      method: "PUT", re: /^\/agents\/([^/]+)$/, h: (m, _q, raw) => {
+        const name = decodeURIComponent(m[1]);
+        const existing = state.agents.find((a) => a.name === name);
+        if (existing && (existing.builtin ?? true)) throw mises("denied", `${JSON.stringify(name)} is a built-in agent; it can be hidden but not changed or deleted`, "hide it via the profile instead");
+        if (!existing) throw mises("not_found", `no custom agent ${JSON.stringify(name)}`);
+        const b = asBody(raw);
+        const agent: AgentInfo = {
+          name, description: typeof b.description === "string" ? b.description : "",
+          model: typeof b.model === "string" ? b.model : "inherit",
+          tools: Array.isArray(b.tools) ? (b.tools as string[]) : null, builtin: false,
+          hidden: (state.setup.profile.hidden_agents ?? []).includes(name),
+        };
+        // like the core: a PUT without a body keeps the current instructions
+        if (typeof b.body === "string") agentBodies.set(name, b.body.trim());
+        state.agents = state.agents.map((a) => (a.name === name ? agent : a));
+        return { ...agent };
+      },
+    },
+    {
+      method: "DELETE", re: /^\/agents\/([^/]+)$/, h: (m) => {
+        const name = decodeURIComponent(m[1]);
+        const existing = state.agents.find((a) => a.name === name);
+        if (existing && (existing.builtin ?? true)) throw mises("denied", `${JSON.stringify(name)} is a built-in agent; it can be hidden but not changed or deleted`, "hide it via the profile instead");
+        state.agents = state.agents.filter((a) => a.name !== name);
+        agentBodies.delete(name);
+        state.setup.profile.hidden_agents = (state.setup.profile.hidden_agents ?? []).filter((a) => a !== name);
+        return { ok: true };
+      },
+    },
     { method: "GET", re: /^\/models$/, h: () => models() },
     { method: "GET", re: /^\/parts$/, h: () => [...state.parts].sort((a, b) => a.part_id.localeCompare(b.part_id)) },
     {

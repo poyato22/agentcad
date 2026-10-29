@@ -7,7 +7,7 @@ import { join, resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
-  agentRunSchema, approvalSchema, cancelAllSchema, coreErrorBodySchema, keyStatusSchema, localActionSchema, okSchema, runIdSchema,
+  agentDetailSchema, agentRunSchema, approvalSchema, cancelAllSchema, coreErrorBodySchema, keyStatusSchema, localActionSchema, okSchema, runIdSchema,
   sketchSummarySchema, stepSchema,
 } from "../src/api/schemas";
 import type { Approval, Step } from "../src/api/types";
@@ -85,6 +85,11 @@ beforeAll(async () => {
   const card = ((await ok("GET", "/approvals")) as Approval[])[0];
   fake.set("approval_decide.json", await ok("POST", `/approvals/${card.id}/decide`, { payload_hash: card.payload_hash, approve: false }));
   fake.set("cancel_all.json", await ok("POST", "/runs/cancel_all"));
+  // Plan 5 (A2): same agent as the dump script's agent_get.json
+  await ok("POST", "/agents", { name: "rib-checker", description: "Checks rib spacing", model: "inherit",
+    tools: ["mirror_measure"], body: "Measure every rib.\nReport the spacing." });
+  fake.set("agent_get.json", await ok("GET", "/agents/rib-checker"));
+  await ok("DELETE", "/agents/rib-checker");
 
   core.reset("agent-ux");
   await ok("POST", "/local/start");                        // like the dump: Ollama answers
@@ -109,7 +114,7 @@ const CASES: [string, z.ZodType<unknown>][] = [
   ["sketch_run_steps.json", z.array(stepSchema)],
   ["local_pull.json", localActionSchema], ["slice_cancel_finished.json", errorAnswer],
   ["run_external.json", runIdSchema], ["run_cancel.json", okSchema], ["approval_decide.json", approvalSchema],
-  ["cancel_all.json", cancelAllSchema],
+  ["cancel_all.json", cancelAllSchema], ["agent_get.json", agentDetailSchema],
 ];
 
 describe("contract: remaining routes ↔ schemas ↔ fake core", () => {
@@ -151,6 +156,7 @@ describe("contract: remaining routes ↔ schemas ↔ fake core", () => {
 /** Route → the fixture(s) whose contract test covers it, or why it has none. */
 const COVERAGE: Record<string, string> = {
   "GET /health": "health.json", "GET /status": "status.json", "GET /agents": "agents.json", "GET /models": "models.json",
+  "GET /agents/{name}": "agent_get.json",
   "GET /parts": "parts.json", "GET /parts/{part_id}/model.glb": "mount_plate.glb",
   "GET /runs": "runs.json", "GET /runs/{run_id}": "run.json", "GET /runs/{run_id}/steps": "steps.json",
   "POST /runs": "sketch_run.json", "POST /runs/external": "run_external.json", "POST /runs/{run_id}/cancel": "run_cancel.json",

@@ -47,7 +47,7 @@ class EditAgent(BaseModel):
     description: str = ""
     model: str = "inherit"
     tools: list[str] | None = None
-    body: str = ""
+    body: str | None = None  # None (left out): keep the agent's current instructions
 
 
 def build_projects_router(runtime: Runtime) -> APIRouter:
@@ -132,11 +132,30 @@ def build_projects_router(runtime: Runtime) -> APIRouter:
         return {"name": d.name, "description": d.description, "model": d.model, "tools": d.tools,
                 "builtin": False, "hidden": False}
 
+    @router.get("/agents/{name}")
+    async def get_agent(name: str):
+        """One agent with its instructions (`body`), for the app's edit form. A custom agent's
+        body is the user's own file in the Mises home; a built-in's prompt isn't returned (null)."""
+        d = runtime.definitions.get(name)
+        if d is None:
+            raise MisesError(ErrorCode.NOT_FOUND, f"no agent {name!r}")
+        hidden = name in set(runtime.profile().hidden_agents)
+        return {"name": d.name, "description": d.description, "model": d.model, "tools": d.tools,
+                "builtin": d.source is None, "hidden": hidden,
+                # stripped like the writer (render_definition), so it round-trips exactly
+                "body": d.body.strip() if d.source is not None else None}
+
     @router.put("/agents/{name}")
     async def update_agent(name: str, body: EditAgent):
         _refuse_builtin(name)
+        text = body.body
+        if text is None:                    # a PUT without a body keeps the current instructions
+            current = runtime.definitions.get(name)
+            if current is None:
+                raise MisesError(ErrorCode.NOT_FOUND, f"no custom agent {name!r}")
+            text = current.body
         d = _defs.write_custom_agent(_home(), name=name, description=body.description,
-                                     model=body.model, tools=body.tools, body=body.body,
+                                     model=body.model, tools=body.tools, body=text,
                                      create=False)
         _reload()
         hidden = name in set(runtime.profile().hidden_agents)

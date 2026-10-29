@@ -11,12 +11,16 @@ import { coreStatus } from "../../state/store";
 import { Button } from "../common/Button";
 import { ApprovalCard } from "./approvals/ApprovalCard";
 import { QuestionCard } from "./approvals/QuestionCard";
+import { InterviewCard } from "./questions/InterviewCard";
 import { labelOf, retainThreadFrames, threadFrame, toggleFold } from "./derived";
 import { DiffView } from "./DiffView";
 import { shownPending } from "./queued";
 import { CallDetails } from "./ToolCallRow";
 import type { ThreadItem } from "./threadModel";
 import { composerOpen } from "./view";
+import { Markup } from "../markup/render";
+import { CopyButton } from "./CopyButton";
+import { RunStatus } from "./RunStatus";
 
 const AT_BOTTOM_PX = 24;
 /** Rows rendered at once (the last ones); "show earlier" adds this many more. Same as StepLog. */
@@ -102,6 +106,7 @@ export function Conversation(): JSX.Element {
           <Item item={{ kind: "user", key: "task", text: run.task, ts: run.created_at, stepIds: [] }} agent={run.agent} />
         )}
         {run && run.status === "queued" && <Queued />}
+        {run && run.status !== "queued" && <RunStatus runId={run.id} status={run.status} />}
       </div>
       {newCount > 0 && <button type="button" class="cv-chip-new" onClick={toBottom}>{`${newCount} new ↓`}</button>}
     </div>
@@ -135,8 +140,15 @@ function Item({ item, agent }: { item: ThreadItem; agent: AgentRun["agent"] }): 
     case "agent":
       return (
         <div class="cv-msg cv-agent" data-msg="agent" data-row data-kind={item.live ? "live" : "message"} data-changing={item.live ? "" : undefined}>
-          <div class="label">{agent}</div>
-          <div class="cv-text text">{item.text}{item.live && <span class="cv-caret" aria-hidden="true">▍</span>}</div>
+          <div class="cv-msg-head">
+            <span class="label">{agent}</span>
+            {!item.live && item.text.trim() !== "" && <CopyButton text={item.text} />}
+          </div>
+          {item.live
+            // streaming text is not yet a finished reply: show it plain with a caret, then render
+            // the landed message as markup once the step arrives
+            ? <div class="cv-text text" data-live-text>{item.text}<span class="cv-caret" aria-hidden="true">▍</span></div>
+            : <div class="cv-text"><Markup source={item.text} /></div>}
         </div>
       );
     case "activity":
@@ -162,7 +174,13 @@ function Item({ item, agent }: { item: ThreadItem; agent: AgentRun["agent"] }): 
     case "approval":
       return <div class="cv-card" data-row data-kind="approval"><ApprovalCard approval={item.approval} runLabel={labelOf(item.approval.run_id)} /></div>;
     case "question":
-      return <div class="cv-card" data-row data-kind="question"><QuestionCard question={item.question} runLabel={labelOf(item.question.run_id)} /></div>;
+      return (
+        <div class="cv-card" data-row data-kind="question">
+          {item.question.items && item.question.items.length > 0
+            ? <InterviewCard question={item.question} runLabel={labelOf(item.question.run_id)} />
+            : <QuestionCard question={item.question} runLabel={labelOf(item.question.run_id)} />}
+        </div>
+      );
   }
 }
 
