@@ -11,12 +11,14 @@ never installs anything on its own or at an agent's request.
 """
 from __future__ import annotations
 
+import asyncio
 import importlib.metadata
 import importlib.util
 import os
 import re
 import shutil
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Awaitable, Callable
@@ -111,8 +113,29 @@ def _keychain_ok() -> bool:
 
 
 async def _claude() -> tuple[claude_detect.ClaudeInfo, claude_detect.AuthStatus]:
-    info = claude_detect.find_claude()
+    info = await asyncio.to_thread(claude_detect.find_claude)   # runs `claude --version`
     return info, await claude_detect.auth_status(info)
+
+
+ONSHAPE_CACHE_S = 600.0   # a key check costs one ledgered Onshape call; re-check at most every 10 min
+
+
+async def _onshape_check(runtime) -> dict | None:
+    """Present / valid Onshape keys. A successful answer is cached per adapter (new keys swap the
+    adapter, so they are re-checked at once) so repeated checks don't spend the budget."""
+    ad = runtime.gate.services.get("onshape")
+    if ad is None:
+        return None
+    cached = getattr(runtime, "_system_onshape_cache", None)
+    if cached and cached[0] is ad and time.monotonic() - cached[1] < ONSHAPE_CACHE_S:
+        return cached[2]
+    try:
+        info = await ad.client.request("GET", "/api/v17/users/sessioninfo", run_id=None)
+    except Exception:  # noqa: BLE001 - not cached: a transient failure is re-checked next time
+        return {"ok": False}
+    out = {"ok": True, "user": (info.get("name") if isinstance(info, dict) else None)}
+    runtime._system_onshape_cache = (ad, time.monotonic(), out)
+    return out
 
 
 @dataclass
@@ -150,14 +173,7 @@ def default_probes(runtime) -> Probes:
                     "version": None, "models": []}
 
     async def onshape() -> dict | None:
-        ad = runtime.gate.services.get("onshape")
-        if ad is None:
-            return None
-        try:
-            info = await ad.client.request("GET", "/api/v17/users/sessioninfo", run_id=None)
-        except Exception:  # noqa: BLE001
-            return {"ok": False}
-        return {"ok": True, "user": (info.get("name") if isinstance(info, dict) else None)}
+        return await _onshape_check(runtime)
 
     async def printers() -> list[dict]:
         from .print.tools import client_for
@@ -168,7 +184,8 @@ def default_probes(runtime) -> Probes:
                 st = await (await client_for(p)).status()
                 row.update(reachable=True, detail=getattr(st, "state", None))
             except Exception as e:  # noqa: BLE001
-                row["detail"] = getattr(e, "message", str(e))
+                # never let an API key / access code in an error message reach the UI
+                row["detail"] = claude_detect.redact(str(getattr(e, "message", e)))[:200]
             out.append(row)
         return out
 
@@ -203,38 +220,54 @@ def _install_fix(dep: str) -> dict:
     return {"kind": "install", "label": INSTALLERS[dep].label, "dep": dep}
 
 
+def _sync_probes(p: Probes) -> dict:
+    """Every blocking lookup (subprocesses with timeouts of several seconds), run together in a
+    worker thread so /system/check never stalls the event loop (events, the WebSocket)."""
+    ccx = p.ccx_path()
+    sp = p.slicer_path()
+    brew = p.brew()
+    return {
+        "python": p.python_version(), "venv": p.in_venv(),
+        "b3": p.module_version("build123d"),
+        "occt": p.module_version("cadquery-ocp") or p.module_version("OCP"),
+        "gmsh": p.gmsh_version(), "ccx": ccx, "ccx_version": p.ccx_version(ccx) if ccx else None,
+        "slicer": sp, "bundles": p.bundle_mdfind("com.prusa3d.slic3r") if sp is None else [],
+        "brew": brew, "brew_version": p.brew_version(brew) if brew else None,
+        "conda": p.conda(), "disk": p.disk_free_gb(), "keychain": p.keychain_ok(),
+    }
+
+
 async def system_check(runtime, probes: Probes | None = None) -> list[dict]:
     p = probes or default_probes(runtime)
+    s = await asyncio.to_thread(_sync_probes, p)
     rows: list[dict] = []
 
     # core Python and venv
-    rows.append(_row("python", "Python & venv", "ok", version=p.python_version(),
-                     path=None,
-                     detail="in a virtualenv" if p.in_venv() else "not in a virtualenv"))
+    rows.append(_row("python", "Python & venv", "ok", version=s["python"], path=None,
+                     detail="in a virtualenv" if s["venv"] else "not in a virtualenv"))
 
     # build123d / OCCT (core dependency)
-    b3 = p.module_version("build123d")
-    occt = p.module_version("cadquery-ocp") or p.module_version("OCP")
+    b3, occt = s["b3"], s["occt"]
     rows.append(_row("build123d", "build123d / OCCT", "ok" if b3 else "error", version=b3,
                      detail=(f"OCCT {occt}" if occt else "the CAD kernel") if b3
                      else "missing; reinstall the core (uv sync)"))
 
     # gmsh (core dependency)
-    gm = p.gmsh_version()
+    gm = s["gmsh"]
     rows.append(_row("gmsh", "gmsh", "ok" if gm else "error", version=gm,
                      detail="meshing" if gm else "missing; run `uv sync` in core/"))
 
     # CalculiX
-    ccx = p.ccx_path()
+    ccx = s["ccx"]
     rows.append(_row("calculix", "CalculiX", "ok" if ccx else "missing", path=ccx,
-                     version=p.ccx_version(ccx) if ccx else None,
+                     version=s["ccx_version"],
                      detail="FEM solver" if ccx else "needed to run simulations",
                      fix=None if ccx else _install_fix("calculix")))
 
     # PrusaSlicer (every place it can live, including the bundle id)
-    sp = p.slicer_path()
+    sp = s["slicer"]
     if sp is None:
-        bundles = p.bundle_mdfind("com.prusa3d.slic3r")
+        bundles = s["bundles"]
         rows.append(_row("prusaslicer", "PrusaSlicer", "missing", path=bundles[0] if bundles else None,
                          detail=("found an app bundle but no CLI binary" if bundles
                                  else "needed to slice for printing"),
@@ -243,15 +276,15 @@ async def system_check(runtime, probes: Probes | None = None) -> list[dict]:
         rows.append(_row("prusaslicer", "PrusaSlicer", "ok", path=str(sp), detail="slicer"))
 
     # Homebrew
-    brew = p.brew()
+    brew = s["brew"]
     rows.append(_row("homebrew", "Homebrew", "ok" if brew else "optional_missing", path=brew,
-                     version=p.brew_version(brew) if brew else None,
+                     version=s["brew_version"],
                      detail="package manager" if brew else "needed to install some tools",
                      fix=None if brew else {"kind": "open_url", "label": "Get Homebrew",
                                             "url": BREW_URL}))
 
     # conda
-    conda = p.conda()
+    conda = s["conda"]
     rows.append(_row("conda", "conda", "ok" if conda else "optional_missing", path=conda,
                      detail="package manager" if conda else "needed to install CalculiX",
                      fix=None if conda else {"kind": "open_url", "label": "Get Miniconda",
@@ -307,12 +340,12 @@ async def system_check(runtime, probes: Probes | None = None) -> list[dict]:
                              "label": "Check printer", "setting": "printers"}))
 
     # free disk space
-    free = p.disk_free_gb()
+    free = s["disk"]
     rows.append(_row("disk", "Free disk space", "ok" if free >= LOW_DISK_GB else "error",
                      detail=f"{free:.0f} GB free"))
 
     # Keychain access
-    kc = p.keychain_ok()
+    kc = s["keychain"]
     rows.append(_row("keychain", "Keychain access", "ok" if kc else "error",
                      detail="reachable" if kc else "the login Keychain could not be reached"))
 

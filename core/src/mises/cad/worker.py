@@ -103,11 +103,90 @@ def _edge_list(shape) -> list[dict]:
         try:
             mid = edge.position_at(0.5)
             center = [round(mid.X, 3) + 0.0, round(mid.Y, 3) + 0.0, round(mid.Z, 3) + 0.0]
+            direction = [round(c, 4) + 0.0 for c in _canon(_xyz(edge.tangent_at(0.5)))]
         except Exception:  # noqa: BLE001 - degenerate edges have no usable parameterisation
-            center = None
-        out.append({"id": f"e{i}", "type": str(edge.geom_type).split(".")[-1].lower(),
-                    "length": round(float(edge.length), 3), "center": center})
+            center = direction = None
+        out.append({"id": f"e{i}", "type": _geom(edge), "length": round(float(edge.length), 3),
+                    "center": center, "direction": direction})
     return out
+
+
+# ---- stable op references (called from `# mises-op` blocks in part.py)
+#
+# An op records a signature of its target (type, normal/direction, centroid, area/length) when it
+# is added. At every regeneration these find the matching face/edge in the CURRENT shape, so an op
+# follows its target when a variable or the base script changes, and fails loudly (naming the op)
+# when the target is gone or ambiguous instead of silently retargeting.
+
+_COS_1DEG = math.cos(math.radians(1.0))
+_MATCH_MAX = 0.6     # best score above this (centroid distance / bbox diagonal): not found
+_AMBIGUOUS = 0.01    # top two scores closer than this: ambiguous
+
+
+def _xyz(v) -> list[float]:
+    return [float(v.X), float(v.Y), float(v.Z)]
+
+
+def _canon(d: list[float]) -> list[float]:
+    for c in d:
+        if abs(c) > 1e-9:
+            return [-x for x in d] if c < 0 else list(d)
+    return list(d)
+
+
+def _geom(obj) -> str:
+    return str(obj.geom_type).split(".")[-1].lower()
+
+
+def _pick(cands: list, label: str, what: str):
+    cands.sort(key=lambda x: x[0])
+    if not cands or cands[0][0] > _MATCH_MAX:
+        raise ValueError(f"{label}: target {what} not found after regeneration; "
+                         "the geometry it was placed on changed too much — remove or redo the op")
+    if len(cands) > 1 and cands[1][0] - cands[0][0] < _AMBIGUOUS:
+        raise ValueError(f"{label}: target {what} is ambiguous after regeneration "
+                         f"({len(cands)} similar candidates) — remove or redo the op")
+    return cands[0][1]
+
+
+def _mises_face(shape, sig: dict, label: str):
+    from build123d import CenterOf
+    diag = max(float(shape.bounding_box().diagonal), 1e-9)
+    n0, c0, a0 = sig["normal"], sig["center"], float(sig.get("area") or 0.0)
+    cands = []
+    for f in shape.faces():
+        if _geom(f) != sig["type"]:
+            continue
+        c = f.center(CenterOf.MASS)
+        try:
+            n = _xyz(f.normal_at(c))
+        except Exception:  # noqa: BLE001
+            continue
+        if sum(a * b for a, b in zip(n, n0)) < _COS_1DEG:
+            continue
+        area = float(f.area)
+        ratio = abs(area - a0) / max(area, a0, 1e-9)
+        cands.append((math.dist(_xyz(c), c0) / diag + 0.1 * ratio, f))
+    return _pick(cands, label, "face")
+
+
+def _mises_edge(shape, sig: dict, label: str):
+    diag = max(float(shape.bounding_box().diagonal), 1e-9)
+    d0, m0, l0 = sig["direction"], sig["center"], float(sig.get("length") or 0.0)
+    cands = []
+    for e in shape.edges():
+        if _geom(e) != sig["type"]:
+            continue
+        try:
+            mid, d = _xyz(e.position_at(0.5)), _xyz(e.tangent_at(0.5))
+        except Exception:  # noqa: BLE001
+            continue
+        if abs(sum(a * b for a, b in zip(d, d0))) < _COS_1DEG:
+            continue
+        length = float(e.length)
+        ratio = abs(length - l0) / max(length, l0, 1e-9)
+        cands.append((math.dist(mid, m0) / diag + 0.1 * ratio, e))
+    return _pick(cands, label, "edge")
 
 
 def _metrics(shape, density: float) -> dict:
@@ -355,6 +434,8 @@ def _load_part(part_file: Path):
     ns.update({"math": math, "build123d": build123d, "bd": build123d})
     exec("from build123d import *", ns)  # noqa: S102 - fixed string
     ns["math"] = math  # `from build123d import *` must not shadow the stdlib module
+    # resolvers the `# mises-op` blocks call to re-find their target in the current shape
+    ns["_mises_face"], ns["_mises_edge"] = _mises_face, _mises_edge
     code = compile(part_file.read_text(), str(part_file), "exec",
                    flags=__future__.annotations.compiler_flag, dont_inherit=True)
     exec(code, ns)  # noqa: S102 - the sandboxed part script is the whole point

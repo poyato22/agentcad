@@ -42,6 +42,21 @@ async def test_put_context_sets_selection(rt):
     assert ui_context(rt).selected_part_id == "mount_plate"
 
 
+def test_user_edits_are_labelled_untrusted_and_filtered_by_part(rt):
+    from mises import edits
+    from mises.cad.tools import _seen, _seen_key
+    _part(rt)
+    edits.log_user_edit(rt.home, "mount_plate", version=2, summary="set width=40", run_id="ui")
+    edits.log_user_edit(rt.home, "other_part", version=5, summary="set x=1", run_id="ui")
+    ui_context(rt).update(selected_part_id="mount_plate", selected_run_id=None, picks=[])
+    ctx = build_context(rt, "run_a")
+    assert "recent_user_edits" not in ctx
+    got = ctx["untrusted_user_data"]["recent_user_edits"]
+    assert [e["part_id"] for e in got] == ["mount_plate"]
+    # reading the context counts as having seen the selected part's version
+    assert _seen[_seen_key("run_a", rt.home / "parts" / "mount_plate")] == ctx["version"]
+
+
 async def test_context_route_needs_admin_token(rt):
     async with client(rt) as http:
         r = await http.put("/context", json={"selected_part_id": "x"},

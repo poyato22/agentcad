@@ -6,6 +6,7 @@ from starlette.testclient import TestClient
 
 import mises.cad.tools as tools_mod
 from mises.cad.runner import BuildResult
+from mises import edits
 from mises.edits import OP_MARK
 from mises.server.app import create_app
 
@@ -21,7 +22,8 @@ def _metrics(vol=8000.0):
             "center_of_mass": [0, 0, 0], "faces": 6, "edges": 12, "holes": [], "solids": 1,
             "face_list": [{"id": "f0", "type": "plane", "center": [0, 0, 5], "normal": [0, 0, 1],
                            "area": 800.0}],
-            "edge_list": [{"id": "e0", "type": "line", "center": [20, 0, 5], "length": 40.0}]}
+            "edge_list": [{"id": "e0", "type": "line", "center": [20, 0, 5], "length": 40.0,
+                           "direction": [1, 0, 0]}]}
 
 
 @pytest.fixture
@@ -45,7 +47,7 @@ def _seed(home, pid="bracket"):
     (d / "part.py").write_text(BOX)
     (d / "vars.json").write_text(json.dumps({"length": 40.0}))
     (d / "metrics.json").write_text(json.dumps(_metrics()))
-    (d / "version.json").write_text(json.dumps({"version": 1}))
+    edits.write_version(d, 1)
 
 
 def test_vars_edit_bumps_version(client, home):
@@ -113,3 +115,74 @@ def test_part_changed_event_marks_user(client, home):
                 break
         assert seen is not None
         assert seen["data"]["by"] == "user" and seen["data"]["version"] == 2
+
+
+@pytest.fixture
+def real_client(rt):
+    """The full app with the REAL sandboxed build (no fake_build)."""
+    with TestClient(create_app(rt, TOKEN), base_url="http://127.0.0.1") as c:
+        yield c
+
+
+@pytest.mark.slow
+def test_user_source_put_is_sandboxed(real_client, home):
+    _seed(home)
+    d = home / "parts" / "bracket"
+    escape = home / "escape.txt"                # outside the part dir the build may write
+    before = (d / "part.py").read_text()
+    for body in ("    import socket\n    socket.create_connection(('1.1.1.1', 80), 3)\n",
+                 f"    open({str(escape)!r}, 'w').write('x')\n"):
+        src = f"from build123d import *\nVARS={{}}\ndef build(v):\n{body}    return Box(1, 1, 1)\n"
+        r = real_client.put("/parts/bracket/source", headers=AUTH,
+                            json={"source": src, "base_version": 1})
+        assert r.status_code == 422, r.text      # the build failed: the escape was denied
+        assert (d / "part.py").read_text() == before and edits.read_version(d) == 1
+    assert not escape.exists()
+
+
+@pytest.mark.parametrize("method,path,body", [
+    ("post", "/parts/bracket/vars", {"vars": {"length": 50}}),
+    ("put", "/parts/bracket/source", {"source": BOX}),
+    ("post", "/parts/bracket/ops", {"op": "hole", "target": {"face_id": "f0"},
+                                   "params": {"diameter": 5.0}}),
+])
+def test_base_version_required(client, home, method, path, body):
+    _seed(home)
+    r = client.request(method.upper(), path, headers=AUTH, json=body)
+    assert r.status_code == 400 and "base_version" in r.json()["message"]
+    assert edits.read_version(home / "parts" / "bracket") == 1     # nothing changed
+
+
+@pytest.mark.parametrize("sketch_id", [12, "not-a-sketch", "sk_000000000000"])
+def test_bad_sketch_id_is_400(client, home, sketch_id):
+    _seed(home)
+    r = client.post("/parts/bracket/ops", headers=AUTH,
+                    json={"op": "extrude", "target": {"face_id": "f0"}, "base_version": 1,
+                          "params": {"sketch_id": sketch_id, "distance": 2.0}})
+    assert r.status_code == 400, r.text
+
+
+def test_get_source_logs_no_step(client, rt, home):
+    _seed(home)
+    before = len(rt.store.list_runs())
+    for _ in range(3):
+        assert client.get("/parts/bracket/source", headers=AUTH).status_code == 200
+    assert len(rt.store.list_runs()) == before      # no ui run was even needed
+
+
+def test_source_schema_annotations_and_inferred(client, home):
+    _seed(home)
+    d = home / "parts" / "bracket"
+    (d / "part.py").write_text(
+        'VARS = {\n'
+        '    "thickness": 4.0,  # mises: min=1 max=10 step=0.5 unit=mm doc="wall thickness"\n'
+        '    "count": 3,\n'
+        '}\ndef build(v):\n    pass\n')
+    (d / "vars.json").write_text(json.dumps({"thickness": 4.0, "count": 3}))
+    rows = {r["name"]: r for r in client.get("/parts/bracket/source", headers=AUTH).json()["vars"]}
+    assert rows["thickness"] == {"name": "thickness", "value": 4.0, "min": 1.0, "max": 10.0,
+                                 "step": 0.5, "unit": "mm", "doc": "wall thickness",
+                                 "inferred": False}
+    assert rows["count"]["inferred"] is True
+    assert rows["count"]["min"] == 0.75 and rows["count"]["max"] == 12.0
+    assert "unit" not in rows["count"]

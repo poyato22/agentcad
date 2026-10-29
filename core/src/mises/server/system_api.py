@@ -58,6 +58,8 @@ def build_system_router(runtime: Runtime, *, probes: Probes | None = None,
     router = APIRouter()
     run_cmd = runner or _subprocess_runner
     installing: set[str] = set()
+    # one install at a time: two brew (or conda) runs at once fight over the manager's own lock
+    serial = asyncio.Lock()
 
     @router.get("/system/check")
     async def check():
@@ -81,7 +83,8 @@ def build_system_router(runtime: Runtime, *, probes: Probes | None = None,
         # the request body ever reaches argv.
         argv = [mgr_path, *spec.cmd]
         installing.add(dep)
-        task = asyncio.get_running_loop().create_task(_do_install(runtime, dep, argv, run_cmd))
+        task = asyncio.get_running_loop().create_task(
+            _do_install(runtime, dep, argv, run_cmd, serial=serial))
         task.add_done_callback(lambda _t, d=dep: installing.discard(d))
         runtime._track(task)
         return {"dep": dep, "status": "running", "command": argv}
@@ -89,14 +92,19 @@ def build_system_router(runtime: Runtime, *, probes: Probes | None = None,
     return router
 
 
-async def _do_install(runtime: Runtime, dep: str, argv: list[str], run_cmd: CommandRunner) -> bool:
+async def _do_install(runtime: Runtime, dep: str, argv: list[str], run_cmd: CommandRunner, *,
+                      serial: asyncio.Lock | None = None) -> bool:
     def emit(line: str) -> None:
         runtime.events.publish(Event(type="system_install",
                                      data={"dep": dep, "line": line, "done": False, "ok": None}))
 
     ok = False
+    serial = serial or asyncio.Lock()
+    if serial.locked():
+        emit("waiting for another install to finish…")
     try:
-        code = await run_cmd(argv, emit)
+        async with serial:
+            code = await run_cmd(argv, emit)
         ok = code == 0
     except Exception as e:  # noqa: BLE001 - a crash in the installer is a failed install
         emit(f"install error: {type(e).__name__}: {e}")

@@ -7,22 +7,40 @@ from mises.types import MisesError
 METRICS = {"bbox": {"size": [40, 20, 10]},
            "face_list": [{"id": "f0", "type": "plane", "center": [0, 0, 5], "normal": [0, 0, 1]},
                          {"id": "f1", "type": "plane", "center": [0, 0, -5], "normal": [0, 0, -1]}],
-           "edge_list": [{"id": "e0", "center": [20, 0, 5]}, {"id": "e1", "center": [0, 10, 5]}]}
+           "edge_list": [{"id": "e0", "type": "line", "center": [20, 0, 5], "direction": [0, 1, 0],
+                          "length": 20.0},
+                         {"id": "e1", "type": "line", "center": [0, 10, 5], "direction": [1, 0, 0],
+                          "length": 40.0}]}
 
 SRC = "from build123d import *\ndef build(v):\n    return Box(40, 20, 10)\n"
 
 
-def test_version_round_trip(tmp_path):
-    assert edits.read_version(tmp_path) == 0
-    edits.write_version(tmp_path, 3)
-    assert edits.read_version(tmp_path) == 3
+@pytest.fixture
+def part(tmp_path):
+    d = tmp_path / "home" / "parts" / "bracket"
+    d.mkdir(parents=True)
+    return d
 
 
-def test_check_base_version(tmp_path):
-    edits.write_version(tmp_path, 5)
-    assert edits.check_base_version(tmp_path, 5) is None
-    assert edits.check_base_version(tmp_path, None) is None
-    assert edits.check_base_version(tmp_path, 4) == 5
+def test_version_round_trip(part):
+    assert edits.read_version(part) == 0
+    edits.write_version(part, 3)
+    assert edits.read_version(part) == 3
+
+
+def test_version_lives_outside_the_sandbox_write_dir(part):
+    edits.write_version(part, 2)
+    vp = edits.version_path(part)
+    assert not vp.is_relative_to(part.resolve())         # a build cannot rewrite it
+    assert vp == part.resolve().parent.parent / "part_versions" / "bracket.json"
+    assert not list(vp.parent.glob("*.tmp"))             # written atomically
+
+
+def test_check_base_version(part):
+    edits.write_version(part, 5)
+    assert edits.check_base_version(part, 5) is None
+    assert edits.check_base_version(part, None) is None
+    assert edits.check_base_version(part, 4) == 5
 
 
 def test_user_edit_log_recent(tmp_path):
@@ -38,12 +56,25 @@ def test_recent_user_edits_empty(tmp_path):
     assert edits.recent_user_edits(tmp_path) == []
 
 
-def test_hole_block_has_concrete_geometry():
+def test_recent_user_edits_filtered_by_part_and_build(tmp_path):
+    edits.log_user_edit(tmp_path, "bracket", version=1, summary="a", run_id="ui", project_id="p1")
+    edits.log_user_edit(tmp_path, "arm", version=1, summary="b", run_id="ui", project_id="p1")
+    edits.log_user_edit(tmp_path, "bracket", version=2, summary="c", run_id="ui", project_id="p2")
+    edits.log_user_edit(tmp_path, "bracket", version=3, summary="d", run_id="ui")  # pre-builds
+    assert [r["summary"] for r in edits.recent_user_edits(tmp_path, part_id="bracket")] == \
+        ["a", "c", "d"]
+    assert [r["summary"] for r in edits.recent_user_edits(tmp_path, project_id="p1")] == \
+        ["a", "b", "d"]
+
+
+def test_hole_block_resolves_its_face_at_regeneration():
     out = edits.build_op_block(SRC, "hole", {"face_id": "f0"},
                                {"diameter": 6.0, "through": True}, METRICS)
     assert out.count(edits.OP_MARK) == 1 and "mises-op hole" in out
     assert "Cylinder(radius=3.0" in out
-    assert "Plane(origin=(0, 0, 5), z_dir=(0, 0, 1))" in out
+    # no baked coordinates: the face is re-found by its signature, labelled with the op
+    assert "_mises_face(_p, {" in out and "'mises-op 0 hole'" in out
+    assert "'normal': [0, 0, 1]" in out
     # a second op nests on top of the first
     out2 = edits.build_op_block(out, "fillet", {"edge_ids": ["e0"]}, {"radius": 2.0}, METRICS)
     assert out2.count(edits.OP_MARK) == 2

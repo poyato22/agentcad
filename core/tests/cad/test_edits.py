@@ -154,3 +154,201 @@ async def test_failed_op_drops_block_and_keeps_state(ctx):
 async def _all_faces(ctx, part_id):
     from mises.cad.tools import FacesArgs, mirror_faces
     return (await mirror_faces.handler(ctx, FacesArgs(part_id=part_id))).data["faces"]
+
+
+def _top(faces):
+    return next(f for f in faces if f["normal"] and round(f["normal"][2], 3) == 1.0)
+
+
+def _runs(tmp_path):
+    """An agent run and the user's ui run editing the same part dir."""
+    return (SimpleNamespace(workdir=tmp_path, run_id="agent_run"),
+            SimpleNamespace(workdir=tmp_path, run_id="ui_run"))
+
+
+# ---- I1: an omitted base_version means "the version this run last saw", never "no check"
+
+async def test_agent_without_base_version_after_user_edit_conflicts(tmp_path):
+    agent, user = _runs(tmp_path)
+    await mk(agent)                                                  # agent saw v1
+    r = await mirror_part_set_vars.handler(
+        user, SetVarsArgs(part_id="bracket", vars={"length": 50}, base_version=1))
+    assert r.ok and r.data["version"] == 2                           # the user's live edit
+    c = await mirror_part_set_vars.handler(
+        agent, SetVarsArgs(part_id="bracket", vars={"width": 30}))   # model dropped base_version
+    assert not c.ok and c.data["conflict"] and c.data["current_version"] == 2
+    assert c.data["vars"]["length"] == 50                            # it is shown the user's edit
+    # the conflict carried the current state, so the retry lands on top of the user's edit
+    r2 = await mirror_part_set_vars.handler(
+        agent, SetVarsArgs(part_id="bracket", vars={"width": 30}))
+    assert r2.ok and r2.data["version"] == 3 and r2.data["vars"]["length"] == 50
+
+
+async def test_run_that_never_read_the_part_must_read_first(tmp_path):
+    agent, _ = _runs(tmp_path)
+    await mk(agent)
+    other = SimpleNamespace(workdir=tmp_path, run_id="other_run")
+    c = await mirror_part_set_vars.handler(other, SetVarsArgs(part_id="bracket", vars={"width": 9}))
+    assert not c.ok and c.data["conflict"] and "has not read" in c.summary
+    other2 = SimpleNamespace(workdir=tmp_path, run_id="other_run_2")
+    await mirror_measure.handler(other2, PartArgs(part_id="bracket"))   # read first
+    r = await mirror_part_set_vars.handler(other2, SetVarsArgs(part_id="bracket", vars={"width": 9}))
+    assert r.ok
+
+
+async def test_create_over_user_edited_part_conflicts_and_keeps_the_hole(tmp_path):
+    agent, user = _runs(tmp_path)
+    await mk(agent)
+    top = _top(await _all_faces(user, "bracket"))
+    r = await mirror_part_op.handler(user, OpArgs(
+        part_id="bracket", op="hole", target={"face_id": top["id"]},
+        params={"diameter": 6.0, "through": True}, base_version=1))
+    assert r.ok
+    c = await mirror_part_create.handler(agent, CreateArgs(part_id="bracket", script=BOX, vars={}))
+    assert not c.ok and c.data["conflict"]
+    assert "mises-op hole" in (tmp_path / "parts" / "bracket" / "part.py").read_text()
+
+
+async def test_create_over_existing_part_keeps_its_op_blocks(tmp_path):
+    agent, _ = _runs(tmp_path)
+    await mk(agent)
+    top = _top(await _all_faces(agent, "bracket"))
+    assert (await mirror_part_op.handler(agent, OpArgs(
+        part_id="bracket", op="hole", target={"face_id": top["id"]},
+        params={"diameter": 6.0, "through": True}))).ok
+    taller = BOX.replace('"height":10.0', '"height":12.0')
+    r = await mirror_part_create.handler(agent, CreateArgs(part_id="bracket", script=taller, vars={}))
+    assert r.ok and "kept its feature ops" in r.summary
+    assert len(r.data["holes"]) == 1
+    assert r.data["volume_mm3"] == pytest.approx(40 * 20 * 12 - math.pi * 9 * 12, rel=0.02)
+
+
+# ---- I2: a cancelled build puts everything back
+
+async def test_cancel_mid_build_restores_part_py(tmp_path, monkeypatch):
+    import mises.cad.tools as tools_mod
+    agent, _ = _runs(tmp_path)
+    await mk(agent)
+    d = tmp_path / "parts" / "bracket"
+    before, version = (d / "part.py").read_text(), edits.read_version(d)
+    started = asyncio.Event()
+
+    async def hang(part_dir, vars, **kw):
+        started.set()
+        await asyncio.sleep(30)
+    monkeypatch.setattr(tools_mod, "run_build", hang)
+    top = _top(await _all_faces(agent, "bracket"))
+    task = asyncio.create_task(mirror_part_op.handler(agent, OpArgs(
+        part_id="bracket", op="fillet", target={"edge_ids": ["e0"]}, params={"radius": 1.0})))
+    await started.wait()
+    assert "mises-op" in (d / "part.py").read_text()                # mid-build: block written
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert (d / "part.py").read_text() == before and edits.read_version(d) == version
+    assert top  # (the pick was valid)
+
+
+# ---- I3: ops follow their target when the part regenerates
+
+async def test_blind_hole_follows_the_top_face_when_height_changes(tmp_path):
+    agent, _ = _runs(tmp_path)
+    await mk(agent)
+    top = _top(await _all_faces(agent, "bracket"))
+    r = await mirror_part_op.handler(agent, OpArgs(
+        part_id="bracket", op="hole", target={"face_id": top["id"]},
+        params={"diameter": 6.0, "through": False, "depth": 5.0}))
+    assert r.ok, r.summary
+    r30 = await mirror_part_set_vars.handler(
+        agent, SetVarsArgs(part_id="bracket", vars={"height": 30}))
+    assert r30.ok, r30.summary
+    assert r30.data["volume_mm3"] == pytest.approx(40 * 20 * 30 - math.pi * 9 * 5, rel=0.02)
+    (hole,) = r30.data["holes"]
+    assert hole["center"][2] == pytest.approx(15 - 2.5, abs=0.05)   # opens at the new top face
+    assert hole["depth_mm"] == pytest.approx(5, abs=0.05)
+    r4 = await mirror_part_set_vars.handler(agent, SetVarsArgs(part_id="bracket", vars={"height": 4}))
+    assert r4.ok, r4.summary
+    # 5 mm deep from the top of a 4 mm part: all the way through, not a 2 mm stub
+    assert r4.data["volume_mm3"] == pytest.approx(40 * 20 * 4 - math.pi * 9 * 4, rel=0.02)
+
+
+async def test_through_hole_stays_through(tmp_path):
+    agent, _ = _runs(tmp_path)
+    await mk(agent)
+    top = _top(await _all_faces(agent, "bracket"))
+    assert (await mirror_part_op.handler(agent, OpArgs(
+        part_id="bracket", op="hole", target={"face_id": top["id"]},
+        params={"diameter": 6.0, "through": True}))).ok
+    r = await mirror_part_set_vars.handler(agent, SetVarsArgs(part_id="bracket", vars={"height": 30}))
+    assert r.ok
+    assert r.data["volume_mm3"] == pytest.approx(40 * 20 * 30 - math.pi * 9 * 30, rel=0.02)
+
+
+BOX_WITH_HOLE = ('from build123d import *\nVARS={"length":40.0,"width":20.0,"height":10.0}\n'
+                 'def build(v):\n'
+                 '    return Box(v["length"], v["width"], v["height"]) - Cylinder(3, 40)\n')
+
+
+async def test_fillet_stays_on_its_edge_after_the_base_script_gains_a_hole(tmp_path):
+    agent, _ = _runs(tmp_path)
+    await mk(agent)
+    edges = (await mirror_edges.handler(agent, EdgesArgs(part_id="bracket"))).data["edges"]
+    # the bottom front edge, along X at y=-10, z=-5
+    target = next(e for e in edges if e["center"] == pytest.approx([0, -10, -5], abs=1e-3))
+    r = await mirror_part_op.handler(agent, OpArgs(
+        part_id="bracket", op="fillet", target={"edge_ids": [target["id"]]},
+        params={"radius": 2.0}))
+    assert r.ok, r.summary
+    loss = 40 * 20 * 10 - r.data["volume_mm3"]
+    src = (tmp_path / "parts" / "bracket" / "part.py").read_text()
+    new_src = BOX_WITH_HOLE + src[src.index(edits.OP_MARK) - 2:]      # same op block, new base
+    s = await mirror_part_set_source.handler(agent, SetSourceArgs(part_id="bracket", source=new_src))
+    assert s.ok, s.summary
+    assert s.data["volume_mm3"] == pytest.approx(40 * 20 * 10 - math.pi * 9 * 10 - loss, rel=0.01)
+    faces = await _all_faces(agent, "bracket")
+    rounds = [f for f in faces if f["type"] == "cylinder" and f["center"][1] < -8
+              and f["center"][2] < -3]
+    assert len(rounds) == 1                                           # still the same edge
+
+
+async def test_lost_target_fails_loudly_naming_the_op(tmp_path):
+    agent, _ = _runs(tmp_path)
+    await mk(agent)
+    top = _top(await _all_faces(agent, "bracket"))
+    assert (await mirror_part_op.handler(agent, OpArgs(
+        part_id="bracket", op="hole", target={"face_id": top["id"]},
+        params={"diameter": 6.0, "through": True}))).ok
+    d = tmp_path / "parts" / "bracket"
+    before = (d / "part.py").read_text()
+    src = before.replace('return Box(v["length"], v["width"], v["height"])', "return Sphere(10)")
+    s = await mirror_part_set_source.handler(agent, SetSourceArgs(part_id="bracket", source=src))
+    assert not s.ok
+    assert "mises-op 0 hole" in s.summary and "not found" in s.summary
+    assert (d / "part.py").read_text() == before
+
+
+# ---- I4: a source edit runs in the sandbox
+
+async def test_source_edit_cannot_reach_the_network(tmp_path):
+    agent, _ = _runs(tmp_path)
+    await mk(agent)
+    d = tmp_path / "parts" / "bracket"
+    before, version = (d / "part.py").read_text(), edits.read_version(d)
+    src = ("import socket\nfrom build123d import *\nVARS={}\ndef build(v):\n"
+           "    socket.create_connection(('1.1.1.1', 80), 3)\n    return Box(1, 1, 1)\n")
+    r = await mirror_part_set_source.handler(agent, SetSourceArgs(part_id="bracket", source=src))
+    assert not r.ok
+    assert (d / "part.py").read_text() == before and edits.read_version(d) == version
+
+
+async def test_source_edit_cannot_write_outside_the_part_dir(tmp_path):
+    agent, _ = _runs(tmp_path)
+    await mk(agent)
+    d = tmp_path / "parts" / "bracket"
+    escape = tmp_path / "escape.txt"
+    before, version = (d / "part.py").read_text(), edits.read_version(d)
+    src = ("from build123d import *\nVARS={}\ndef build(v):\n"
+           f"    open({str(escape)!r}, 'w').write('x')\n    return Box(1, 1, 1)\n")
+    r = await mirror_part_set_source.handler(agent, SetSourceArgs(part_id="bracket", source=src))
+    assert not r.ok and not escape.exists()
+    assert (d / "part.py").read_text() == before and edits.read_version(d) == version

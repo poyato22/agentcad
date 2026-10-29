@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from ..cad.tools import PART_ID_RE
+from ..cad.tools import PART_ID_RE, source_view
 from ..edits import OP_KINDS
 from ..sketch import SketchIn, _sketch_dir
 from ..types import ErrorCode, MisesError
@@ -38,12 +38,12 @@ def _check_part_id(part_id: str) -> None:
                          hint=f"part ids match {PART_ID_RE.pattern}")
 
 
-def _base_version(body: dict) -> int | None:
+def _base_version(body: dict) -> int:
+    """Required on every user edit: the version the UI last read (409 if it is stale)."""
     bv = body.get("base_version")
-    if bv is None:
-        return None
-    if isinstance(bv, bool) or not isinstance(bv, int):
-        raise _bad("base_version must be an integer")
+    if isinstance(bv, bool) or not isinstance(bv, int) or bv < 0:
+        raise _bad("base_version (the part version you last read) is required",
+                   "GET /parts/{id}/source returns the current version")
     return bv
 
 
@@ -85,8 +85,13 @@ def build_edit_router(runtime: Runtime) -> APIRouter:
 
     @router.get("/parts/{part_id}/source")
     async def get_source(part_id: str):
+        # A plain read for the app (admin token): no Gate call, so a UI that re-reads the source
+        # does not add a step to the ui run on every poll. Edits still go through the Gate.
         _check_part_id(part_id)
-        return await _run("mirror_part_get_source", {"part_id": part_id})
+        d = runtime.home / "parts" / part_id
+        if not (d / "metrics.json").is_file() or not (d / "part.py").is_file():
+            raise MisesError(ErrorCode.NOT_FOUND, f"no built part {part_id!r}")
+        return source_view(d, part_id)
 
     @router.post("/parts/{part_id}/vars")
     async def set_vars(part_id: str, request: Request):
@@ -131,8 +136,14 @@ def build_edit_router(runtime: Runtime) -> APIRouter:
 
 
 def _sketch_profile(runtime: Runtime, sketch_id: str) -> list[list[float]]:
-    """Resolve a sketch's first closed stroke into an [x, y] profile (mm) for an extrude op."""
-    d = _sketch_dir(runtime.home, sketch_id)
+    """Resolve a sketch's first closed stroke into an [x, y] profile (mm) for an extrude op. A
+    bad or unknown sketch id is a bad request (400), not a server error."""
+    if not isinstance(sketch_id, str):
+        raise _bad("sketch_id must be a string")
+    try:
+        d = _sketch_dir(runtime.home, sketch_id)
+    except MisesError as e:
+        raise _bad(e.message, e.hint) from None
     s = SketchIn.model_validate_json((d / "sketch.json").read_text())
     for stroke in s.strokes:
         if stroke.closed and len(stroke.points) >= 3:

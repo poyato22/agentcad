@@ -94,6 +94,33 @@ async def test_printer_reachability():
     assert rows["printer:mini"]["status"] == "error"
 
 
+async def test_onshape_check_is_cached_per_adapter():
+    calls = []
+
+    class Client:
+        async def request(self, method, path, run_id=None):
+            calls.append(path)
+            return {"name": "Ada"}
+
+    ad = SimpleNamespace(client=Client())
+    rt = SimpleNamespace(gate=SimpleNamespace(services={"onshape": ad}))
+    for _ in range(3):
+        assert (await sc._onshape_check(rt)) == {"ok": True, "user": "Ada"}
+    assert len(calls) == 1                       # one ledgered call, not one per check
+    rt.gate.services["onshape"] = SimpleNamespace(client=Client())   # new keys: re-check
+    await sc._onshape_check(rt)
+    assert len(calls) == 2
+
+
+async def test_sync_probes_run_off_the_event_loop():
+    import threading
+    loop_thread = threading.get_ident()
+    seen = []
+    rows = await sc.system_check(SimpleNamespace(), _probes(
+        disk_free_gb=lambda: seen.append(threading.get_ident()) or 50.0))
+    assert rows and seen and seen[0] != loop_thread
+
+
 async def test_low_disk_is_error():
     rows = {r["id"]: r for r in await sc.system_check(SimpleNamespace(),
                                                       _probes(disk_free_gb=lambda: 1.0))}

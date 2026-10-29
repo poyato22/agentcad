@@ -114,6 +114,26 @@ async def test_install_failure_reports_not_ok(rt):
     assert finals[-1].data["ok"] is False
 
 
+async def test_installs_are_serialized(rt):
+    import asyncio
+    active, peak = 0, 0
+
+    async def slow_runner(argv, emit):
+        nonlocal active, peak
+        active += 1
+        peak = max(peak, active)
+        await asyncio.sleep(0.05)
+        active -= 1
+        return 0
+
+    lock = asyncio.Lock()
+    oks = await asyncio.gather(
+        _do_install(rt, "ollama", ["/b/brew", "install", "ollama"], slow_runner, serial=lock),
+        _do_install(rt, "prusaslicer", ["/b/brew", "install", "--cask", "prusaslicer"],
+                    slow_runner, serial=lock))
+    assert oks == [True, True] and peak == 1
+
+
 def _drain(sub):
     out = []
     while not sub.queue.empty():
