@@ -13,6 +13,12 @@ export const KIND_LABEL: Record<RequirementKind, string> = {
   envelope_mm: "Envelope", mount_pattern: "Mount pattern", printable: "Printable", custom: "Custom",
 };
 
+/** Short names for narrow tables. */
+export const KIND_SHORT: Record<RequirementKind, string> = {
+  max_mass_g: "Mass", min_safety_factor: "SF", max_deflection_mm: "Deflection", envelope_mm: "Envelope",
+  mount_pattern: "Mount", printable: "Printable", custom: "Custom",
+};
+
 const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 
 /** Significant-ish digits for engineering readouts: 1234 g, 48.2 g, 6.21 g, 0.436 mm. */

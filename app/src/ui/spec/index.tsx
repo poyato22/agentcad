@@ -84,25 +84,27 @@ export function DesignStudies({ c = specs }: { c?: SpecController }): JSX.Elemen
         ? <p class="faint">No design studies in this build yet. Ask the engineer agent to design something; it searches the variables against the spec.</p>
         : (
           <div class="spd-grid">
-            <table class="sp-table spd-list" aria-label="Design study history">
-              <thead><tr><th>started</th><th>part</th><th>goal</th><th>status</th><th class="sp-num">best</th></tr></thead>
-              <tbody>
-                {studies.map((s) => {
-                  const best = s.iterations.find((i) => i.n === s.best_id);
-                  const sel = shown?.id === s.id;
-                  return (
-                    <tr key={s.id} data-study-row={s.id} aria-selected={sel} class={sel ? "sp-sel" : undefined} tabIndex={0}
-                      onClick={() => c.selectStudy(s.id)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); c.selectStudy(s.id); } }}>
-                      <td class="faint">{new Date(s.created_at * 1000).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</td>
-                      <td class="text">{partLabel(s.part_id)}</td>
-                      <td class="text">{objectiveWords(s.objective)}</td>
-                      <td><StudyStatus study={s} total={c.progress.value.get(s.id)?.total} /></td>
-                      <td class="sp-num">{best?.metrics.mass_g != null ? `#${best.n} ${fmtNum(best.metrics.mass_g)} g${best.metrics.min_sf != null ? ` SF ${best.metrics.min_sf.toFixed(2)}` : ""}` : "—"}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <ul class="spd-list" aria-label="Design study history">
+              {studies.map((s) => {
+                const best = s.iterations.find((i) => i.n === s.best_id);
+                const sel = shown?.id === s.id;
+                return (
+                  <li key={s.id}>
+                    <button type="button" class="spd-row" data-study-row={s.id} aria-current={sel} onClick={() => c.selectStudy(s.id)}>
+                      <span class="spd-row-1">
+                        <span class="sp-title text">{partLabel(s.part_id)}</span>
+                        <span class="dim">{objectiveWords(s.objective)}</span>
+                        <StudyStatus study={s} total={c.progress.value.get(s.id)?.total} />
+                      </span>
+                      <span class="spd-row-2 faint">
+                        <span>{new Date(s.created_at * 1000).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                        <span class="sp-num">{best?.metrics.mass_g != null ? `best #${best.n} · ${fmtNum(best.metrics.mass_g)} g${best.metrics.min_sf != null ? ` · SF ${best.metrics.min_sf.toFixed(2)}` : ""}` : "no feasible variant"}</span>
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
             {shown && <StudyView c={c} study={shown} requirements={spec?.requirements ?? []} />}
           </div>
         )}

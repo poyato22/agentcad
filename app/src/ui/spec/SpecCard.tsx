@@ -47,8 +47,8 @@ export function SpecCard(props: SpecCardProps): JSX.Element {
     <section class={`sp-card${props.compact ? " sp-compact" : ""}`} data-spec-card aria-label="Spec">
       <header class="sp-head">
         <Led tone={STATUS_TONE[overall]} title={`overall: ${STATUS_WORD[overall]}`} />
-        <span class="sp-title">Spec</span>
-        <span class="sp-tally" data-tally>{tallyText(t)}</span>
+        {!props.compact && <span class="sp-title">Spec</span>}
+        {!props.compact && <span class="sp-tally" data-tally>{tallyText(t)}</span>}
         {check && <span class="faint">{`on ${partLabel(check.part_id)}`}</span>}
         <span class="sp-head-r">
           {draft
@@ -85,12 +85,12 @@ export function SpecCard(props: SpecCardProps): JSX.Element {
                     <td class="sp-st"><Led tone={STATUS_TONE[status]} /><span class={`sp-st-w tone-${STATUS_TONE[status]}`}>{STATUS_WORD[status]}</span></td>
                     <td>
                       <span class="text">{KIND_LABEL[req.kind]}</span>
-                      <span class="faint text sp-id">{` ${req.id}`}</span>
-                      {row?.guide && <span class="sp-tag" title="FEM is a guide, not a guarantee">guide</span>}
+                      {!props.compact && <span class="faint text sp-id">{` ${req.id}`}</span>}
+                      {row?.guide && !props.compact && <span class="sp-tag" title="FEM is a guide, not a guarantee">guide</span>}
                       {row?.estimate && <span class="sp-tag sp-tag-est" title="measured against an estimated (impact) load">estimate</span>}
                     </td>
-                    <td class="sp-num text">{fmtTarget(req.kind, req.target)}</td>
-                    <td class="sp-num text" data-current>{fmtMeasured(req.kind, row?.measured ?? null)}</td>
+                    <td class="sp-num">{fmtTarget(req.kind, req.target)}</td>
+                    <td class="sp-num" data-current>{fmtMeasured(req.kind, row?.measured ?? null)}</td>
                     {!props.compact && <td class="faint text">{req.load_case_id ?? ""}</td>}
                     <td class="sp-prio" aria-label={`priority ${req.priority} of 5`}>{priorityDots(req.priority)}</td>
                     {!props.compact && <td class="faint">{req.source === "user" ? "you" : "agent"}</td>}

@@ -11,7 +11,7 @@ import { parts } from "../../state/store";
 import { Button } from "../common/Button";
 import { Led, type LedTone } from "../common/Led";
 import type { SpecController } from "./controller";
-import { fmtMeasured, fmtNum, iterStatus, KIND_LABEL, nextSort, sortIterations, STATUS_TONE, STATUS_WORD, type SortKey, type SortState } from "./model";
+import { fmtMeasured, fmtNum, iterStatus, KIND_LABEL, KIND_SHORT, nextSort, sortIterations, STATUS_TONE, STATUS_WORD, type SortKey, type SortState } from "./model";
 import { Scatter } from "./Scatter";
 
 const STATUS: Record<Study["status"], { word: string; tone: LedTone }> = {
@@ -119,7 +119,7 @@ function Variant({ c, study, it, requirements }: { c: SpecController; study: Stu
               return (
                 <tr key={r.id} data-req={r.id} data-status={s.status}>
                   <td class="sp-st"><Led tone={STATUS_TONE[s.status]} /><span class={`sp-st-w tone-${STATUS_TONE[s.status]}`}>{STATUS_WORD[s.status]}</span></td>
-                  <td class="text">{r.load_case_id ? `${KIND_LABEL[r.kind]} · ${r.load_case_id}` : KIND_LABEL[r.kind]}</td>
+                  <td class="spv-req" title={`${KIND_LABEL[r.kind]} ${r.id}`}>{r.load_case_id ? `${KIND_SHORT[r.kind]} · ${r.load_case_id}` : KIND_SHORT[r.kind]}</td>
                   <td class="sp-num">{fmtMeasured(r.kind, s.measured)}</td>
                 </tr>
               );
