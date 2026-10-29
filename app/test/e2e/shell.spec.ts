@@ -364,7 +364,9 @@ test("connects_to_fake_core_without_errors", async ({ page, fake }) => {
   await page.goto("/");
   await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
   await expect.poll(async () => (await fake.calls()).map((c) => c.path).filter((p) => p !== "/context").sort()).toEqual(
-    ["/approvals", "/parts", "/parts/mount_plate/model.glb", "/printers", "/profile", "/runs", "/runs/b7c79a57cbb4/steps", "/setup", "/status"]);
+    // the console spec strip (A7) resolves the active build (/projects, /profile) and loads its spec and studies
+    ["/approvals", "/parts", "/parts/mount_plate/model.glb", "/printers", "/profile", "/profile", "/projects", "/projects/d422007de860/spec",
+      "/projects/d422007de860/studies", "/runs", "/runs/b7c79a57cbb4/steps", "/setup", "/status"]);
   const ctx = (await fake.calls()).filter((c) => c.path === "/context");
   expect(ctx.length).toBeGreaterThanOrEqual(1);
   expect(ctx.every((c) => c.method === "PUT")).toBe(true);
