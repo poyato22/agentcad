@@ -55,6 +55,9 @@ describe("solve (port of core assembly/solve.py)", () => {
     expect(solve({ ...asm, joints: [faceOnly] }).unresolved).toEqual([faceOnly.id]);
     const resolved = solve({ ...asm, joints: [faceOnly] }, () => [[20, 0, 0], [0, 1, 0]]);
     expect(resolved.unresolved).toEqual([]);
+    // the part that joint should place is locked (never offered a free gizmo the core would undo)
+    const lost = solve({ ...asm, joints: [faceOnly] });
+    expect(mobility(asm.instances[1], lost.placedBy, lost.blocked)).toEqual({ kind: "locked", joint: faceOnly.id });
   });
 
   it("frames_have_local_Z_on_the_axis_and_invert", () => {

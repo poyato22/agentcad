@@ -129,6 +129,9 @@ export interface SolveResult {
   placedBy: Record<string, Placement>;
   /** Joints that could not be applied here (a face frame with no geometry known, a loop). */
   unresolved: string[];
+  /** Instances a joint should place but couldn't (its frame names a face the part doesn't have):
+   *  instance id → that joint. The core would place them; here they are locked, never free. */
+  blocked: Record<string, string>;
 }
 
 /**
@@ -145,6 +148,7 @@ export function solve(input: SolveInput, resolveFace?: FaceResolver): SolveResul
     return r;
   };
   const unresolved: string[] = [];
+  const blocked: Record<string, string> = {};
   const tree: SolveInput["joints"][number][] = [];
   for (const j of input.joints) {
     const a = j.a.instance_id; const b = j.b.instance_id;
@@ -178,7 +182,7 @@ export function solve(input: SolveInput, resolveFace?: FaceResolver): SolveResul
       if (ta && tb) continue; // two fixed roots: over-constrained, never move a fixed instance
       const fa = resolveFrame((byId.get(a) as { part_id: string }).part_id, j.a.frame, resolveFace);
       const fb = resolveFrame((byId.get(b) as { part_id: string }).part_id, j.b.frame, resolveFace);
-      if (!fa || !fb) { unresolved.push(j.id); continue; }
+      if (!fa || !fb) { unresolved.push(j.id); blocked[ta ? b : a] = j.id; continue; }
       const value = clampValue(j.value, j.limits);
       applied[j.id] = value;
       const m = jointMotion(j.kind, value);
@@ -194,7 +198,7 @@ export function solve(input: SolveInput, resolveFace?: FaceResolver): SolveResul
     pending = still;
   }
   for (const i of input.instances) transforms[i.id] ??= i.transform.map((row) => [...row]);
-  return { transforms, applied, placedBy, unresolved };
+  return { transforms, applied, placedBy, unresolved, blocked };
 }
 
 /** The world frame a joint moves in: the placed side's world transform times its frame. */
@@ -210,10 +214,12 @@ export function jointWorldFrame(input: SolveInput, transforms: Record<string, Ma
 
 /** Which instances a gizmo may move freely: grounded ones never; ones a joint places only
  *  along that joint; the rest (component anchors and free bodies) anywhere. */
-export type Mobility = { kind: "grounded" } | { kind: "free" } | { kind: "joint"; joint: string; from: "a" | "b" };
+export type Mobility = { kind: "grounded" } | { kind: "free" } | { kind: "joint"; joint: string; from: "a" | "b" }
+  | { kind: "locked"; joint: string };
 
-export function mobility(inst: { id: string; fixed: boolean }, placedBy: Record<string, Placement>): Mobility {
+export function mobility(inst: { id: string; fixed: boolean }, placedBy: Record<string, Placement>, blocked: Record<string, string> = {}): Mobility {
   if (inst.fixed) return { kind: "grounded" };
+  if (blocked[inst.id]) return { kind: "locked", joint: blocked[inst.id] };
   const p = placedBy[inst.id];
   return p ? { kind: "joint", joint: p.joint, from: p.from } : { kind: "free" };
 }

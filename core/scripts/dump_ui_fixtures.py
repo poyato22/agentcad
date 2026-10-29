@@ -11,6 +11,9 @@ With CalculiX installed it also runs two static stress studies on that part thro
 `POST /sims` (one solved, one with the solver hidden) and records the sim routes, their
 `sim_progress` events and the heatmap GLB (sims_*.json, sim_*.json, sim_events.jsonl,
 sim_result.glb). `--only sims` writes just those files.
+
+Last it builds a hinge and a slide assembly in the Default build (assembly*.json, projects.json);
+`--only assembly` writes just those.
 """
 import argparse
 import asyncio
@@ -255,6 +258,7 @@ async def dump(out: Path, only: str = "all") -> None:
             (out / "mount_plate.glb").write_bytes((await get("/parts/mount_plate/model.glb")).content)
             await dump_draw_print(out, call, get, rt)
             await dump_more(out, call, get, run_id)
+            await dump_assembly(out, call, get)
         if only == "all":
             (out / "events.jsonl").write_text("".join(line + "\n" for line in events))
     finally:
@@ -464,6 +468,20 @@ async def dump_assembly(out: Path, call, get) -> None:
           (await call("POST", drive, {"joint_id": joint["id"], "value": 270})).json())
     await call("POST", drive, {"joint_id": joint["id"], "value": 0})
     write("assembly_interference_none.json", (await get(f"{base_url}/interference")).json())
+    # a slide placed from its b side (the inverse path): `cover` (a) hangs under the grounded
+    # base (b) on a slider along Z, limits [0, 10]; 25 is clamped to 10
+    cover = (await call("POST", f"{base_url}/instances",
+                        {"part_id": "mount_plate", "name": "cover"})).json()
+    slide = (await call("POST", f"{base_url}/joints", {
+        "kind": "slider",
+        "a": {"instance_id": cover["id"], "frame": {"origin": [0, 0, -3], "axis": [0, 0, 1]}},
+        "b": {"instance_id": base["id"], "frame": {"origin": [0, 0, 3], "axis": [0, 0, 1]}},
+        "value": 0, "limits": [0, 10]})).json()
+    write("assembly_slider_add.json", slide)
+    write("assembly_drive_slider.json",
+          (await call("POST", drive, {"joint_id": slide["id"], "value": 7})).json())
+    write("assembly_drive_slider_clamped.json",
+          (await call("POST", drive, {"joint_id": slide["id"], "value": 25})).json())
     write("assembly_joint_patch.json", (await call("PATCH", f"{base_url}/joints/{joint['id']}",
                                                    {"limits": [0, 120]})).json())
     moved = [[1, 0, 0, 0], [0, 1, 0, 30], [0, 0, 1, 0], [0, 0, 0, 1]]

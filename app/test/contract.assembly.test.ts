@@ -57,6 +57,17 @@ beforeAll(async () => {
   fake.set("assembly_drive_clamped.json", await ok("POST", `${base}/drive`, { joint_id: joint.id, value: 270 }));
   await ok("POST", `${base}/drive`, { joint_id: joint.id, value: 0 });
   fake.set("assembly_interference_none.json", await ok("GET", `${base}/interference`));
+  // a slide placed from its b side (the inverse path)
+  const cover = (await ok("POST", `${base}/instances`, { part_id: "mount_plate", name: "cover" })) as Instance;
+  const slide = (await ok("POST", `${base}/joints`, {
+    kind: "slider",
+    a: { instance_id: cover.id, frame: { origin: [0, 0, -3], axis: [0, 0, 1] } },
+    b: { instance_id: b.id, frame: { origin: [0, 0, 3], axis: [0, 0, 1] } },
+    value: 0, limits: [0, 10],
+  })) as Joint;
+  fake.set("assembly_slider_add.json", slide);
+  fake.set("assembly_drive_slider.json", await ok("POST", `${base}/drive`, { joint_id: slide.id, value: 7 }));
+  fake.set("assembly_drive_slider_clamped.json", await ok("POST", `${base}/drive`, { joint_id: slide.id, value: 25 }));
   fake.set("assembly_joint_patch.json", await ok("PATCH", `${base}/joints/${joint.id}`, { limits: [0, 120] }));
   fake.set("assembly_instance_patch.json", await ok("PATCH", `${base}/instances/${b.id}`, { transform: [[1, 0, 0, 0], [0, 1, 0, 30], [0, 0, 1, 0], [0, 0, 0, 1]] }));
   const loop = await req("POST", `${base}/joints`, {
@@ -84,6 +95,8 @@ const CASES: [string, z.ZodType<unknown>][] = [
   ["assembly_interference.json", z.array(interferenceSchema)], ["assembly_drive_clamped.json", driveResultSchema],
   ["assembly_interference_none.json", z.array(interferenceSchema)], ["assembly_joint_patch.json", jointSchema],
   ["assembly_instance_patch.json", instanceSchema], ["assembly_joint_loop.json", z.object({ status: z.number(), body: coreErrorBodySchema })],
+  ["assembly_slider_add.json", jointSchema], ["assembly_drive_slider.json", driveResultSchema],
+  ["assembly_drive_slider_clamped.json", driveResultSchema],
   ["assembly_joint_delete.json", jointDeletedSchema], ["assembly_instance_delete.json", instanceDeletedSchema],
 ];
 
@@ -110,7 +123,7 @@ describe("contract: assembly routes ↔ schemas ↔ fake core", () => {
   }
 
   it("drive_answers_the_real_core's_transforms_and_clamp", () => {
-    for (const name of ["assembly_drive.json", "assembly_drive_clamped.json"]) {
+    for (const name of ["assembly_drive.json", "assembly_drive_clamped.json", "assembly_drive_slider.json", "assembly_drive_slider_clamped.json"]) {
       const real = driveResultSchema.parse(read(DIR, name));
       const got = driveResultSchema.parse(fake.get(name));
       expect(got.applied).toBe(real.applied);

@@ -61,6 +61,7 @@ function mobilityText(ctl: AssemblyController, inst: Instance): string {
   const m = ctl.mobilityOf(inst.id);
   if (!m || m.kind === "grounded") return "grounded";
   if (m.kind === "free") return "free";
+  if (m.kind === "locked") return "locked";
   const j = ctl.joint(m.joint);
   return j ? KIND_LABEL[j.kind].toLowerCase() : "joined";
 }
@@ -152,8 +153,13 @@ function InstanceDetails({ ctl }: { ctl: AssemblyController }): JSX.Element | nu
         <p class="asm-note dim">Moves on its {KIND_LABEL[joint.kind].toLowerCase()}. Drag it in the view or use the joint’s scale.</p>
       )}
       {m?.kind === "grounded" && <p class="asm-note dim">Grounded. Untick to move it.</p>}
+      {m?.kind === "locked" && (
+        <p class="asm-warn asm-note" data-status="warn" role="status">
+          <span class="led led-amber" aria-hidden="true" /> Locked: its joint names a face this part no longer has. Use the joint’s scale, or rebuild the joint.
+        </p>
+      )}
       <div class="asm-row-actions">
-        <Button variant="danger" onClick={() => void ctl.removeInstance(inst.id)}>Remove from assembly</Button>
+        <Button onClick={() => void ctl.removeInstance(inst.id)}>Remove from assembly</Button>
       </div>
     </div>
   );

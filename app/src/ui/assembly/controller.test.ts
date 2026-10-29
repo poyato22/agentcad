@@ -200,3 +200,77 @@ describe("interference", () => {
     expect(core.named("interference").length).toBe(2);
   });
 });
+
+describe("fix round 1", () => {
+  async function twoJoints(): Promise<string> {
+    core.asm.instances.push({ id: "cover1", part_id: "mount_plate", name: "cover", fixed: false, transform: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]] });
+    core.asm.joints.push({
+      id: "slide1", kind: "slider", value: 0, limits: [0, 10],
+      a: { instance_id: BASE, frame: { origin: [0, 0, 3], axis: [0, 0, 1], face_id: null } },
+      b: { instance_id: "cover1", frame: { origin: [0, 0, -3], axis: [0, 0, 1], face_id: null } },
+    });
+    await ctl.open();
+    return "slide1";
+  }
+
+  it("a_queued_drive_survives_another_joint_moving_and_the_core_stays_the_truth", async () => {
+    const SLIDE = await twoJoints();
+    core.holdDrives = true;
+    ctl.setJointValue(JOINT, 80);       // in flight
+    ctl.setJointValue(JOINT, 70);       // queued
+    ctl.setJointValue(SLIDE, 5);        // queued too; must not displace 70
+    for (let i = 0; i < 3; i++) { core.release(); await flush(); }
+    expect(core.named("drive").map((c) => [c.args[1], c.args[2]])).toEqual([[JOINT, 80], [JOINT, 70], [SLIDE, 5]]);
+    expect(core.asm.joints.find((j) => j.id === JOINT)?.value).toBe(70);
+    // nothing local is left over: a refresh shows the core's values, and a local solve its pose
+    core.holdDrives = false;
+    await ctl.refresh(false);
+    expect(ctl.values.value[JOINT]).toBe(70);
+    expect(ctl.values.value[SLIDE]).toBe(5);
+    ctl.startJoint(); ctl.cancelJoint();  // forces a local predict()
+    const want = (await core.assembly(PROJECT)).instances;
+    for (const i of want) for (let r = 0; r < 3; r++) expect(ctl.currentPose()[i.id][r][3]).toBeCloseTo(i.transform[r][3], 9);
+  });
+
+  it("pause_mid_drag_ends_the_gesture_and_puts_the_core_pose_back", async () => {
+    await ctl.setFixed(BASE, false);
+    ctl.beginDrag();
+    ctl.dragInstance(BASE, [[1, 0, 0, 7], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]);
+    expect(ctl.busy.value).toBe(true);
+    ctl.pause();                        // mode switched while the gizmo is held
+    await flush();
+    expect(ctl.busy.value).toBe(false);
+    expect(ctl.currentPose()[BASE][0][3]).toBe(0);
+    expect(core.named("patchInstance").filter((c) => "transform" in (c.args[2] as object))).toHaveLength(0);
+    const n = core.named("assembly").length;
+    ctl.onEvent({ type: "assembly_changed", run_id: null, data: { project_id: PROJECT }, ts: 0 });
+    clock.tick(100);
+    await flush();
+    expect(core.named("assembly").length).toBe(n + 1);
+    // the interference check runs at most once; it doesn't keep re-arming
+    const k = core.named("interference").length;
+    clock.tick(INTERFERENCE_SETTLE_MS * 6);
+    await flush();
+    expect(core.named("interference").length - k).toBeLessThanOrEqual(1);
+  });
+
+  it("after_a_held_gesture_the_view_snaps_to_the_core's_answer", async () => {
+    ctl.beginJointGesture();
+    ctl.setJointValue(JOINT, 30);
+    await flush();                      // answered while still held
+    ctl.endJointGesture();
+    const lid = (await core.assembly(PROJECT)).instances.find((i) => i.id === LID);
+    expect(ctl.currentPose()[LID]).toEqual(lid?.transform);
+  });
+
+  it("taking_over_during_an_agent_glide_clears_the_blue_edges", async () => {
+    core.asm.joints[0].value = 0;
+    ctl.onEvent({ type: "assembly_changed", run_id: "r1", data: { project_id: PROJECT }, ts: 0 });
+    clock.tick(80);
+    await flush();
+    clock.tick(TWEEN_MS / 3);
+    expect(ctl.arriving.value).toBe(true);
+    ctl.setJointValue(JOINT, 45);
+    expect(ctl.arriving.value).toBe(false);
+  });
+});

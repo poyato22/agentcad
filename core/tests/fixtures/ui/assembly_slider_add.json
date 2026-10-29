@@ -1,0 +1,41 @@
+{
+  "id": "01b341f715c4",
+  "kind": "slider",
+  "a": {
+    "instance_id": "2acdfb48d9d2",
+    "frame": {
+      "origin": [
+        0.0,
+        0.0,
+        -3.0
+      ],
+      "axis": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "face_id": null
+    }
+  },
+  "b": {
+    "instance_id": "78a579fa4d52",
+    "frame": {
+      "origin": [
+        0.0,
+        0.0,
+        3.0
+      ],
+      "axis": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "face_id": null
+    }
+  },
+  "value": 0.0,
+  "limits": [
+    0.0,
+    10.0
+  ]
+}

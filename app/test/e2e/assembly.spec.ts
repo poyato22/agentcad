@@ -231,6 +231,39 @@ test("dragging_the_hinge_ring_turns_the_lid_in_15_degree_steps", async ({ page, 
   await expect.poll(async () => (await drives(fake)).at(-1)).toEqual({ joint_id: JOINT, value: shown });
 });
 
+test("switching_mode_while_the_gizmo_is_held_leaves_nothing_stuck", async ({ page, fake }) => {
+  await openAssembly(page);
+  await page.locator(`[data-instance-id="${LID}"]`).click();
+  const at = await findHandle(page, [20, 0, 0], "Z");
+  await page.mouse.down();
+  for (let i = 1; i <= 8; i++) await page.mouse.move(at.x + i * 4, at.y + i * 5);
+  await page.keyboard.press("Meta+Alt+KeyA");        // to Part mode, gizmo still held
+  await expect(page.getByTestId("viewer-canvas")).toBeVisible();
+  await page.mouse.up();
+  await page.keyboard.press("Meta+Alt+KeyA");        // back
+  await expect(page.getByTestId("assembly-canvas")).toHaveAttribute("data-instances", "2");
+  // the core's value is shown, and an agent's change still glides in (the controller isn't busy)
+  const core = (await (await fetch(`${fake.url}/projects/${PROJECT}/assembly`, { headers: { Authorization: `Bearer ${fake.token}` } })).json()) as { joints: { value: number }[] };
+  await expect(page.getByTestId("joint-value")).toHaveText(`${core.joints[0].value}°`);
+  await fetch(`${fake.url}/projects/${PROJECT}/assembly/drive`, {
+    method: "POST", headers: { Authorization: `Bearer ${fake.token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ joint_id: JOINT, value: 135 }),
+  });
+  await expect(page.getByTestId("joint-value")).toHaveText("135°");
+});
+
+test("escape_stops_animate_and_restores_the_joint", async ({ page, fake }) => {
+  await openAssembly(page);
+  const card = page.locator(`[data-joint-id="${JOINT}"]`);
+  await card.getByRole("button", { name: "animate" }).click();
+  await expect.poll(async () => page.getByTestId("joint-value").textContent()).not.toBe("90°");
+  await page.locator("body").click({ position: { x: 5, y: 890 } }); // focus away from the button
+  await page.keyboard.press("Escape");
+  await expect(card).not.toHaveAttribute("data-animating", "on");
+  await expect(page.getByTestId("joint-value")).toHaveText("90°");
+  expect(await drives(fake)).toEqual([]);
+});
+
 test("dragging_a_free_part_moves_it_in_whole_mm_and_saves_once", async ({ page, fake }) => {
   await openAssembly(page);
   await page.locator(`[data-instance-id="${BASE}"]`).click();

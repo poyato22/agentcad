@@ -134,7 +134,8 @@ export class AssemblyController {
   private dragging = new Map<string, Mat4>();
   private moving = new Map<string, JointValue>();
   private driveInflight = false;
-  private drivePending: { jointId: string; value: JointValue } | null = null;
+  /** The newest value waiting to be sent, per joint (insertion order = send order). */
+  private drivePending = new Map<string, JointValue>();
   private gesture = signal(0);
   private dirty = false;
   private loadSeq = 0;
@@ -176,7 +177,7 @@ export class AssemblyController {
   mobilityOf(id: string): Mobility | null {
     const inst = this.instance(id);
     const s = this.solved.value;
-    return inst && s ? mobility(inst, s.placedBy) : null;
+    return inst && s ? mobility(inst, s.placedBy, s.blocked) : null;
   }
 
   currentPose(): Readonly<Record<string, Mat4>> { return this.pose; }
@@ -318,6 +319,7 @@ export class AssemblyController {
     const r = solve({ instances, joints }, this.resolver());
     this.cancelTween?.();
     this.cancelTween = null;
+    this.arriving.value = false; // the user took over from an agent's glide
     this.setPose(r.transforms);
   }
 
@@ -328,7 +330,16 @@ export class AssemblyController {
   private begin(): void { this.gesture.value++; this.cancelSettle?.(); }
   private end(): void {
     this.gesture.value = Math.max(0, this.gesture.value - 1);
-    if (this.gesture.value === 0 && !this.driveInflight) this.settle();
+    if (this.gesture.value === 0 && !this.driveInflight) { this.showCore(); this.settle(); }
+  }
+
+  /** Show exactly the core's last answer (no local prediction left over), when nothing is moving. */
+  private showCore(): void {
+    const d = this.data.peek();
+    if (!d || this.gesture.peek() > 0 || this.dragging.size > 0 || this.moving.size > 0 || this.animating.peek() !== null || this.draft.peek()) return;
+    const p: Record<string, Mat4> = {};
+    for (const i of d.instances) p[i.id] = i.transform;
+    this.setPose(p);
   }
 
   /** The gesture is over: catch up on events that came in during it, then check interference. */
@@ -355,26 +366,30 @@ export class AssemblyController {
   endJointGesture(): void { this.end(); }
 
   private queueDrive(jointId: string, value: JointValue): void {
-    if (this.driveInflight) { this.drivePending = { jointId, value }; return; }
-    void this.sendDrive(jointId, value);
+    this.drivePending.delete(jointId); // re-queued at the back with its newest value
+    this.drivePending.set(jointId, value);
+    if (!this.driveInflight) void this.pumpDrives();
   }
 
-  private async sendDrive(jointId: string, value: JointValue): Promise<void> {
+  /** Send the queued values one call at a time (newest per joint). A joint's local value is
+   *  dropped only once the core has answered its latest one, so the core stays the truth. */
+  private async pumpDrives(): Promise<void> {
     const pid = this.projectId.peek();
-    if (!pid) return;
+    if (!pid || this.driveInflight) return;
     this.driveInflight = true;
     try {
-      const r = await this.client().drive(pid, jointId, value);
-      const next = this.drivePending;
-      this.drivePending = null;
-      if (next) { void this.sendDrive(next.jointId, next.value); return; }
+      while (this.drivePending.size > 0) {
+        const [jointId, value] = this.drivePending.entries().next().value as [string, JointValue];
+        this.drivePending.delete(jointId);
+        const r = await this.client().drive(pid, jointId, value);
+        if (!this.drivePending.has(jointId) && this.animating.peek() !== jointId) this.moving.delete(jointId);
+        this.applyDrive(jointId, r.applied, r.transforms);
+      }
       this.driveInflight = false;
-      this.moving.delete(jointId);
-      this.applyDrive(jointId, r.applied, r.transforms);
-      if (this.gesture.peek() === 0) this.settle();
+      if (this.gesture.peek() === 0) { this.showCore(); this.settle(); }
     } catch (e) {
       this.driveInflight = false;
-      this.drivePending = null;
+      this.drivePending.clear();
       this.moving.clear();
       this.error.value = messageOf(e);
       void this.refresh(false);
@@ -393,7 +408,6 @@ export class AssemblyController {
       this.data.value = asm;
       if (!this.moving.has(jointId)) this.values.value = { ...this.values.peek(), [jointId]: applied };
     });
-    if (this.gesture.peek() === 0 && this.dragging.size === 0) this.setPose({ ...this.pose, ...transforms });
   }
 
   /** Sweep a joint lo → hi → back to where it was, locally (a preview; nothing is written). */
@@ -651,7 +665,9 @@ export class AssemblyController {
 
   // ---- teardown
 
-  /** Leaving assembly mode: stop motion; the data stays for a quick return. */
+  /** Leaving assembly mode: stop motion and end any gesture left open (the gizmo is torn down
+   *  without telling us the drag ended), then put the core's pose back. The data stays for a
+   *  quick return. An uncommitted drag is dropped, not saved. */
   pause(): void {
     this.stopAnimate();
     this.cancelTween?.(); this.cancelTween = null;
@@ -659,6 +675,13 @@ export class AssemblyController {
     this.cancelRefresh?.(); this.cancelRefresh = null;
     this.arriving.value = false;
     if (this.draft.peek()) this.cancelJoint();
+    const open = this.gesture.peek() > 0 || this.dragging.size > 0 || this.moving.size > 0 || this.dirty;
+    this.gesture.value = 0;
+    this.dragging.clear();
+    this.drivePending.clear();
+    if (!this.driveInflight) this.moving.clear();
+    this.dirty = false;
+    if (open && this.data.peek()) void this.refresh(false);
   }
 
   /** Tests: forget everything. */
@@ -669,7 +692,7 @@ export class AssemblyController {
     this.dragging.clear();
     this.moving.clear();
     this.driveInflight = false;
-    this.drivePending = null;
+    this.drivePending.clear();
     this.dirty = false;
     this.gesture.value = 0;
     this.pose = {};

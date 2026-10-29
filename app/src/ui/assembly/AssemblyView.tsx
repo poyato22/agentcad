@@ -5,6 +5,7 @@ import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { AssemblyPart } from "../../api/assembly";
 import { onCoreEvent } from "../../api/events";
+import { isTrustedKey } from "../../lib/keys";
 import { actions, parts as storeParts } from "../../state/store";
 import type { PartScene } from "../viewer/loadPart";
 import { PartLoader } from "../viewer/partLoader";
@@ -12,6 +13,7 @@ import "../viewer/viewer.css";
 import { AssemblyPanel, fmtVolume, KIND_LABEL } from "./AssemblyPanel";
 import { AssemblyController, valueAt, withComponent } from "./controller";
 import { jointWorldFrame, transformPoint } from "./kinematics";
+import { modalOpen } from "../pages/router";
 import { ModeSwitch } from "./mode";
 import { faceOptions, pickOption, type FaceOption } from "./pick";
 import { createAssemblyScene, type AssemblyScene, type GizmoSpec, type OverlayLabel, type PickMarker } from "./scene";
@@ -116,6 +118,10 @@ export function AssemblyView(): JSX.Element {
   const used = [...new Set((data?.instances ?? []).map((i) => i.part_id))];
   const partsKey = used.map((id) => `${id}@${ctl.part(id)?.mtime ?? 0}`).join(",");
   useEffect(() => {
+    // parts no longer in the assembly: free their GLBs
+    for (const [id, t] of templates.current) {
+      if (!used.includes(id)) { t.scene?.dispose(); templates.current.delete(id); }
+    }
     try { actions.client(); } catch { return; } // no core bound yet
     for (const id of used) {
       const mtime = ctl.part(id)?.mtime ?? 0;
@@ -151,6 +157,19 @@ export function AssemblyView(): JSX.Element {
   }), []);
 
   useEffect(() => { sceneRef.current?.setSelected(ctl.selected.value); }, [ctl.selected.value]);
+
+  // Esc stops Animate and puts the joint back, wherever focus is (not under a modal)
+  const animating = ctl.animating.value;
+  useEffect(() => {
+    if (animating === null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || !isTrustedKey(e) || modalOpen()) return;
+      e.preventDefault();
+      ctl.stopAnimate();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [animating]);
   useEffect(() => { sceneRef.current?.setArriving(ctl.arriving.value); }, [ctl.arriving.value]);
 
   const it = ctl.interference.value;
@@ -215,7 +234,7 @@ export function AssemblyView(): JSX.Element {
     if (!id || !data) return none;
     const m = ctl.mobilityOf(id);
     const pose = ctl.currentPose();
-    if (!m || m.kind === "grounded" || !pose[id]) return none;
+    if (!m || m.kind === "grounded" || m.kind === "locked" || !pose[id]) return none;
     if (m.kind === "free") return { spec: { kind: "free", id, mode, transform: pose[id], snap: snapOn }, t: { kind: "free", id } };
     const j = ctl.joint(m.joint);
     if (!j || j.kind === "fixed" || j.kind === "ball") return none;
@@ -237,6 +256,7 @@ export function AssemblyView(): JSX.Element {
     ? (draft.a === null ? "Click a face on the first part." : draft.b === null ? "Click a face on the second part." : "Check the preview, then create the joint.")
     : selInst
       ? selMob?.kind === "grounded" ? `${selInst.name} is grounded.`
+        : selMob?.kind === "locked" ? `${selInst.name} is locked: its joint names a missing face.`
         : selMob?.kind === "joint" && selJoint ? `Drag ${selInst.name} along its ${KIND_LABEL[selJoint.kind].toLowerCase()}.`
           : `Drag ${selInst.name} to place it.`
       : (data?.instances.length ?? 0) > 0 ? "Click a part to move it." : null;
