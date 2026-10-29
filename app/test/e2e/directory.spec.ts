@@ -11,22 +11,35 @@ const meter = (page: import("@playwright/test").Page) => page.locator(".budget")
 
 test("budget_meter_updates_live_as_onshape_is_used_and_turns_amber_at_warn", async ({ page, fake }) => {
   await page.goto("/");
-  await expect(meter(page).locator("[data-budget-used]")).toHaveText("1,990");
+  await expect(meter(page).locator("[data-budget-used]")).toHaveText("1,999");
   await expect(meter(page)).toHaveAttribute("data-level", "ok");
   // hover shows the details and the reset date
   await meter(page).hover();
   await expect(page.locator("#budget-card")).toBeVisible();
   await expect(page.locator("[data-budget-reset]")).toHaveText(/^1 Jan \d{4}$/);
-  // browsing Onshape spends calls: one documents page + its 20 thumbnails; the meter follows each event
+  // browsing Onshape spends calls: one documents page + the thumbnails of the tiles near the
+  // viewport only (lazy); the meter follows each event
   await page.getByRole("tab", { name: "Onshape" }).click();
   await expect(page.getByRole("list", { name: "20 documents" })).toBeVisible();
-  await expect(meter(page).locator("[data-budget-used]")).toHaveText("2,011");
   await expect(meter(page)).toHaveAttribute("data-level", "warn");
+  await expect.poll(async () => {
+    const loaded = await page.locator('[data-thumb="loaded"]').count();
+    const used = Number((await meter(page).locator("[data-budget-used]").textContent())?.replace(",", ""));
+    return used === 1999 + 1 + loaded && loaded > 0;
+  }).toBe(true);
+  const thumbCalls = (await fake.calls()).filter((c) => c.path === "/onshape/thumbnail").length;
+  expect(thumbCalls).toBeLessThan(20);                    // the tiles below the fold weren't fetched
+  // coming back to the tab lists nothing again
+  await page.getByRole("tab", { name: "Parts" }).click();
+  await page.getByRole("tab", { name: "Onshape" }).click();
+  await expect(page.getByRole("list", { name: "20 documents" })).toBeVisible();
+  expect((await fake.calls()).filter((c) => c.path === "/onshape/documents")).toHaveLength(1);
   // an agent's call (any run) moves it too
   await fake.emit({ type: "onshape_budget", run_id: "agent-run", data: { used_year: 2500, limit_year: 2500, used_run: 4, warn_at: 2000, reset_at: 1830000000, run_id: "agent-run" } });
   await expect(meter(page).locator("[data-budget-used]")).toHaveText("2,500");
   await expect(meter(page)).toHaveAttribute("data-level", "limit");
-  await expect(page.locator("[data-light=onshape]")).toContainText("2,500/2,500");
+  await expect(page.locator("[data-light=onshape] .led")).toHaveClass(/led-red/);
+  await expect(page.locator("[data-light=onshape]")).toHaveAttribute("title", /2,500 of 2,500/);
 });
 
 test("onshape_grid_paging_open_and_import_to_build", async ({ page, fake }) => {
@@ -55,7 +68,7 @@ test("onshape_grid_paging_open_and_import_to_build", async ({ page, fake }) => {
   await page.getByRole("searchbox", { name: "Search your Onshape documents" }).fill("strap");
   expect((await fake.calls()).filter((c) => c.path === "/onshape/documents").length).toBe(before);
   await page.getByRole("searchbox", { name: "Search your Onshape documents" }).press("Enter");
-  await expect(page.getByRole("list", { name: "1 documents" })).toContainText("Battery strap");
+  await expect(page.getByRole("list", { name: "1 document" })).toContainText("Battery strap");
 });
 
 test("onshape_not_connected_shows_the_connect_card", async ({ page, fake }) => {
@@ -125,3 +138,19 @@ test("allowed_import_sites_editor", async ({ page, fake }) => {
   await expect(page.getByText("No sites yet.")).toBeVisible();
   expect((await fake.calls()).filter((c) => c.path.startsWith("/catalog/allowed_domains")).map((c) => c.method)).toEqual(["GET", "POST", "DELETE"]);
 });
+
+for (const width of [1280, 1440]) {
+  test(`every_status_light_fits_the_top_bar_with_the_meter_at_${width}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto("/");
+    await expect(page.locator(".budget")).toBeVisible();
+    await expect(page.locator("[data-light=printer]")).toBeVisible();
+    const fit = await page.evaluate(() => {
+      const lights = document.querySelector(".lights") as HTMLElement;
+      const right = lights.getBoundingClientRect().right;
+      return [...lights.querySelectorAll("[data-light]")].every((l) => l.getBoundingClientRect().right <= right + 0.5)
+        && lights.scrollWidth <= lights.clientWidth;
+    });
+    expect(fit).toBe(true);
+  });
+}

@@ -4,9 +4,15 @@
 // document lists its Part Studios and Assemblies, each with "Import to build".
 //
 // Every list, search, uncached thumbnail and import is a real Onshape request against the yearly
-// allowance (the top-bar meter moves with each one), so searching runs on Enter, not per keystroke,
-// and pages load on "Load more". Onshape is only read; an import mirrors the element's bounding box
-// as a local part (C5 ruling), so its mass is an estimate. Names are user-authored text: plain text.
+// allowance (the top-bar meter moves with each one), so the page spends as few as it can:
+//   · loaded pages are cached per search for the session (coming back to the tab is free); only
+//     "Refresh" or a new search lists again, and only while connected with the stream open;
+//   · a thumbnail is fetched only when its tile comes near the viewport (IntersectionObserver), once
+//     per session (the core caches it on disk too);
+//   · a document's elements are cached per document for the session;
+//   · searching runs on Enter, not per keystroke, and more pages load on "Load more".
+// Onshape is only read; an import mirrors the element's bounding box as a local part (C5 ruling),
+// so its mass is an estimate. Names are user-authored text: plain text.
 import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { CoreError } from "../../../api/client";
@@ -24,48 +30,80 @@ import "./onshape.css";
 
 /** Thumbnails already fetched this session (object URLs), by core thumbnail path. */
 const thumbs = new Map<string, string>();
+/** Document pages loaded this session, per search ("" = My Documents). */
+const pages = new Map<string, { docs: OnshapeDoc[]; more: boolean }>();
+/** Part Studios / Assemblies per "did:wid", this session. */
+const elementsCache = new Map<string, OnshapeElement[]>();
+/** The search shown last, so coming back to the tab shows the same list. */
+let lastQuery = "";
+
+/** Forget everything cached (tests; a different Onshape account after the keys changed). */
+export function resetOnshapeCache(): void {
+  thumbs.clear();
+  pages.clear();
+  elementsCache.clear();
+  lastQuery = "";
+}
+
+/** How far outside the viewport a tile may be and still get its thumbnail fetched. */
+export const THUMB_ROOT_MARGIN = "200px";
 
 function notConnected(e: unknown): boolean {
   return e instanceof CoreError && e.code === "denied" && /not connected/i.test(e.message);
 }
 
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
 export function OnshapePage(): JSX.Element {
-  const status = coreStatus.value;
-  const [docs, setDocs] = useState<OnshapeDoc[] | null>(null);
-  const [more, setMore] = useState(false);
+  const known = coreStatus.value?.onshape;
+  const ready = known === "connected" && conn.value === "open";
+  const [query, setQuery] = useState(lastQuery);
+  const [q, setQ] = useState(lastQuery);
+  const [view, setView] = useState<{ docs: OnshapeDoc[]; more: boolean } | null>(pages.get(lastQuery) ?? null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [disconnected, setDisconnected] = useState(false);
-  const [q, setQ] = useState("");
-  const [query, setQuery] = useState("");
   const [open, setOpen] = useState<OnshapeDoc | null>(null);
-  const stream = conn.value;
-  const known = status?.onshape;
+  /** Bumped by every new search / refresh: an answer for an older one is dropped. */
+  const gen = useRef(0);
+  const opener = useRef<string | null>(null);
 
-  async function load(offset: number, live: () => boolean = () => true): Promise<void> {
+  async function load(forQuery: string, offset: number): Promise<void> {
+    const mine = offset === 0 ? ++gen.current : gen.current;
     setLoading(true);
     setError(null);
     try {
-      const page = await actions.client().onshapeDocuments({ q: query, offset, limit: ONSHAPE_PAGE });
-      if (!live()) return;
+      const page = await actions.client().onshapeDocuments({ q: forQuery, offset, limit: ONSHAPE_PAGE });
+      if (mine !== gen.current) return;                       // a newer search or refresh won
       setDisconnected(false);
-      setDocs((cur) => (offset === 0 || !cur ? page : [...cur, ...page.filter((d) => !cur.some((c) => c.did === d.did))]));
-      setMore(page.length === ONSHAPE_PAGE);
+      const prev = offset === 0 ? [] : pages.get(forQuery)?.docs ?? [];
+      const next = { docs: [...prev, ...page.filter((d) => !prev.some((c) => c.did === d.did))], more: page.length === ONSHAPE_PAGE };
+      pages.set(forQuery, next);
+      setView(next);
     } catch (e) {
-      if (!live()) return;
-      if (notConnected(e)) setDisconnected(true);
+      if (mine !== gen.current) return;
+      if (notConnected(e)) { setDisconnected(true); resetOnshapeCache(); }
       else setError(describeError(e));
     } finally {
-      if (live()) setLoading(false);
+      if (mine === gen.current) setLoading(false);
     }
   }
 
+  // List once per search, and only when connected with the stream open (one condition, so the
+  // status/stream transitions after a core restart can't list twice). A cached search is free.
   useEffect(() => {
-    if (known === "not_configured" || stream !== "open") return;
-    let alive = true;
-    void load(0, () => alive);
-    return () => { alive = false; };
-  }, [query, known, stream]);
+    lastQuery = query;
+    const hit = pages.get(query);
+    if (hit) { gen.current++; setView(hit); setLoading(false); return; }
+    setView(null);
+    if (ready) void load(query, 0);
+  }, [ready, query]);
+
+  // Back from a document: focus the tile that opened it.
+  useEffect(() => {
+    if (open || !opener.current) return;
+    document.querySelector<HTMLButtonElement>(`[data-doc="${opener.current}"] .os-tile-open`)?.focus();
+  }, [open]);
 
   if (known === "not_configured" || disconnected) {
     return (
@@ -88,6 +126,7 @@ export function OnshapePage(): JSX.Element {
     );
   }
 
+  const docs = view?.docs ?? null;
   return (
     <PageShell title="Onshape">
       <div class="os" data-onshape="docs">
@@ -96,20 +135,24 @@ export function OnshapePage(): JSX.Element {
             onInput={(e) => setQ(e.currentTarget.value)} />
           <Button type="submit" disabled={loading}>Search</Button>
           {query && <Button variant="ghost" onClick={() => { setQ(""); setQuery(""); }}>Clear</Button>}
-          <span class="faint os-cost">Each search or page uses 1 Onshape call.</span>
+          <Button variant="ghost" disabled={loading || !ready} title="List the documents again (1 Onshape call)"
+            onClick={() => { pages.delete(query); void load(query, 0); }}>Refresh</Button>
+          <span class="faint os-cost">Each search, page or refresh uses 1 Onshape call.</span>
         </form>
         {error && <p class="dir-err" role="alert">{error}</p>}
-        {docs === null && !error && <p class="faint dir-note">Loading your documents…</p>}
+        {docs === null && !error && <p class="faint dir-note">{ready ? "Loading your documents…" : "Waiting for the core…"}</p>}
         {docs !== null && docs.length === 0 && !loading && (
           <p class="dim dir-note">{query ? `No document matches “${query}”.` : "No documents in My Documents yet."}</p>
         )}
         {docs !== null && docs.length > 0 && (
-          <ul class="os-grid" aria-label={`${docs.length} documents`}>
-            {docs.map((d) => <li key={d.did}><DocTile doc={d} onOpen={() => setOpen(d)} /></li>)}
+          <ul class="os-grid" aria-label={plural(docs.length, "document", "documents")}>
+            {docs.map((d) => <li key={d.did}><DocTile doc={d} onOpen={() => { opener.current = d.did; setOpen(d); }} /></li>)}
           </ul>
         )}
-        {more && docs && (
-          <div class="os-more"><Button disabled={loading} onClick={() => { void load(docs.length); }}>{loading ? "Loading…" : "Load more"}</Button></div>
+        {view?.more && docs && (
+          <div class="os-more">
+            <Button disabled={loading || !ready} onClick={() => { void load(query, docs.length); }}>{loading ? "Loading…" : "Load more"}</Button>
+          </div>
         )}
       </div>
     </PageShell>
@@ -122,21 +165,52 @@ function fmtModified(iso: string | null): string {
   return Number.isNaN(t) ? "" : new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 }
 
+// ---- lazy thumbnails: one shared IntersectionObserver for every tile
+
+const nearCallbacks = new Map<Element, () => void>();
+let observer: IntersectionObserver | null = null;
+
+function observeNear(el: Element, cb: () => void): () => void {
+  if (typeof IntersectionObserver === "undefined") { cb(); return () => {}; }   // no observer: load now
+  observer ??= new IntersectionObserver((entries) => {
+    for (const en of entries) {
+      if (!en.isIntersecting) continue;
+      const fn = nearCallbacks.get(en.target);
+      nearCallbacks.delete(en.target);
+      observer?.unobserve(en.target);
+      fn?.();
+    }
+  }, { rootMargin: THUMB_ROOT_MARGIN });
+  nearCallbacks.set(el, cb);
+  observer.observe(el);
+  return () => { nearCallbacks.delete(el); observer?.unobserve(el); };
+}
+
+/** Tests: drop the shared observer (a new mock IntersectionObserver takes over). */
+export function resetThumbObserver(): void {
+  observer?.disconnect();
+  observer = null;
+  nearCallbacks.clear();
+}
+
 function Thumb({ url, name }: { url: string | null; name: string }): JSX.Element {
   const [src, setSrc] = useState<string | null>(url ? thumbs.get(url) ?? null : null);
   const [failed, setFailed] = useState(false);
+  const box = useRef<HTMLSpanElement>(null);
   useEffect(() => {
-    if (!url || thumbs.has(url)) return;
+    if (!url || thumbs.has(url) || !box.current) return;
     let live = true;
-    actions.client().onshapeThumbnail(url).then((blob) => {
-      const obj = URL.createObjectURL(blob);
-      thumbs.set(url, obj);
-      if (live) setSrc(obj);
-    }, () => { if (live) setFailed(true); });
-    return () => { live = false; };
+    const stop = observeNear(box.current, () => {
+      actions.client().onshapeThumbnail(url).then((blob) => {
+        const obj = URL.createObjectURL(blob);
+        thumbs.set(url, obj);
+        if (live) setSrc(obj);
+      }, () => { if (live) setFailed(true); });
+    });
+    return () => { live = false; stop(); };
   }, [url]);
   if (src) return <img class="os-thumb" src={src} alt="" aria-hidden="true" data-thumb="loaded" />;
-  return <span class="os-thumb os-thumb-empty" aria-hidden="true" data-thumb={failed || !url ? "none" : "loading"}>{name.slice(0, 1).toUpperCase()}</span>;
+  return <span ref={box} class="os-thumb os-thumb-empty" aria-hidden="true" data-thumb={failed || !url ? "none" : "waiting"}>{name.slice(0, 1).toUpperCase()}</span>;
 }
 
 function DocTile({ doc, onOpen }: { doc: OnshapeDoc; onOpen: () => void }): JSX.Element {
@@ -156,7 +230,8 @@ function DocTile({ doc, onOpen }: { doc: OnshapeDoc; onOpen: () => void }): JSX.
 const TYPE_LABEL: Record<OnshapeElement["type"], string> = { partstudio: "Part Studio", assembly: "Assembly" };
 
 function DocView({ doc, onBack }: { doc: OnshapeDoc; onBack: () => void }): JSX.Element {
-  const [els, setEls] = useState<OnshapeElement[] | null>(null);
+  const key = `${doc.did}:${doc.default_wid ?? ""}`;
+  const [els, setEls] = useState<OnshapeElement[] | null>(elementsCache.get(key) ?? null);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<Record<string, { busy?: boolean; ok?: PartResult; err?: string }>>({});
   const { builds, buildId } = useBuilds();
@@ -166,10 +241,14 @@ function DocView({ doc, onBack }: { doc: OnshapeDoc; onBack: () => void }): JSX.
   useEffect(() => {
     back.current?.focus();
     if (!doc.default_wid) { setError("This document has no workspace Mises can read."); return; }
+    if (elementsCache.has(key)) return;                       // listed before this session: free
     let live = true;
-    actions.client().onshapeElements(doc.did, doc.default_wid).then((e) => { if (live) setEls(e); }, (e: unknown) => { if (live) setError(describeError(e)); });
+    actions.client().onshapeElements(doc.did, doc.default_wid).then((e) => {
+      elementsCache.set(key, e);
+      if (live) setEls(e);
+    }, (e: unknown) => { if (live) setError(describeError(e)); });
     return () => { live = false; };
-  }, [doc.did]);
+  }, [key]);
 
   async function importEl(el: OnshapeElement): Promise<void> {
     if (!doc.default_wid) return;
@@ -184,7 +263,8 @@ function DocView({ doc, onBack }: { doc: OnshapeDoc; onBack: () => void }): JSX.
 
   const buildName = builds?.find((b) => b.id === buildId)?.name ?? "the build";
   return (
-    <div class="os-doc" data-onshape="doc" data-doc={doc.did}>
+    <div class="os-doc" data-onshape="doc" data-doc={doc.did}
+      onKeyDown={(e) => { if (e.key === "Escape" && !(e.target instanceof HTMLSelectElement)) { e.preventDefault(); onBack(); } }}>
       <div class="os-doc-head">
         <button ref={back} type="button" class="btn btn-ghost" onClick={onBack}>Back to documents</button>
         <h2 class="os-doc-name">{doc.name || "Untitled"}</h2>

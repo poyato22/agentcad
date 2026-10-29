@@ -33,7 +33,10 @@ test("topbar_geometry_and_colors", async ({ page }) => {
 test("status_lights_reflect_core", async ({ page }) => {
   await page.goto("/");
   await expect(light(page, "core").locator(".led")).toHaveClass(/led-green/);
-  await expect(light(page, "onshape")).toContainText("connected · 214/2,500");
+  // the count lives in the budget meter; the light keeps the tone, with the count in its title
+  await expect(light(page, "onshape")).toContainText("connected");
+  await expect(light(page, "onshape")).toHaveAttribute("title", "Onshape connected: 214 of 2,500 calls used this year");
+  await expect(page.locator("[data-budget-used]")).toHaveText("214");
   await expect(light(page, "agents")).toContainText("2 agents");
   await expect(light(page, "agents")).toContainText("· 1 needs you");
 });

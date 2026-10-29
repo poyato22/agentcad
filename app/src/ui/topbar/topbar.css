@@ -83,3 +83,13 @@
 .budget-card-row > span:first-child { color: var(--dim); }
 .budget-card-row > span:last-child { font-variant-numeric: tabular-nums; }
 .budget-card-note { margin: 6px 0 0; color: var(--dim); white-space: normal; }
+
+/* Narrower windows (13"/14" laptops at default scaling and below): the meter drops its word label
+   and run delta (both stay in its aria-label and hover card) and the ONSHAPE light drops its
+   "connected" text (its tone and title stay), so every status light still fits. */
+@media (max-width: 1400px) {
+  .budget-name, .budget-delta { display: none; }
+  .light[data-light=onshape] .light-val { display: none; }
+  .topbar-right { gap: 8px; }
+  .lights { gap: 10px; }
+}

@@ -219,6 +219,13 @@ const COVERAGE: Record<string, string> = {
   "POST /catalog/import": "catalog_import.json",
   "POST /catalog/items/{item_id}/insert": "catalog_insert.json",
   "POST /onshape/import": "onshape_import.json",
+  "PATCH /catalog/items/{item_id}": "catalog_patch.json",
+  // PATCH routes (seen since A6 fix round 1 taught the scan @router.patch)
+  "PATCH /runs/{run_id}": "EXEMPT: Plan 5 C1 builds/runs/agents core route; no app client yet (core API tests cover it)",
+  "PATCH /parts/{part_id}": "EXEMPT: Plan 5 C1 builds/runs/agents core route; no app client yet (core API tests cover it)",
+  "PATCH /projects/{project_id}": "EXEMPT: Plan 5 C1 builds/runs/agents core route; no app client yet (core API tests cover it)",
+  "PATCH /projects/{project_id}/assembly/instances/{iid}": "EXEMPT: Plan 5 C2 assembly core route; no app client yet (core API tests cover it)",
+  "PATCH /projects/{project_id}/assembly/joints/{jid}": "EXEMPT: Plan 5 C2 assembly core route; no app client yet (core API tests cover it)",
   "DELETE /sims/materials/{name}": "EXEMPT: Plan 5 C7 study types core route; no app client yet (core API tests cover it)",
   "DELETE /sims/templates/{tpl_id}": "EXEMPT: Plan 5 C7 study types core route; no app client yet (core API tests cover it)",
   "GET /sims/materials": "EXEMPT: Plan 5 C7 study types core route; no app client yet (core API tests cover it)",
@@ -238,7 +245,7 @@ function coreRoutes(): string[] {
   const out = new Set<string>();
   for (const f of readdirSync(SERVER_SRC).filter((x) => x.endsWith(".py"))) {
     const src = readFileSync(join(SERVER_SRC, f), "utf8");
-    for (const m of src.matchAll(/@(?:app|router)\.(get|post|put|delete)\(\s*"([^"]+)"/g)) out.add(`${m[1].toUpperCase()} ${m[2]}`);
+    for (const m of src.matchAll(/@(?:app|router)\.(get|post|put|patch|delete)\(\s*"([^"]+)"/g)) out.add(`${m[1].toUpperCase()} ${m[2]}`);
     // router.add_api_route("/context", put_context, methods=["PUT", "POST"])
     for (const m of src.matchAll(/add_api_route\(\s*"([^"]+)"[^)]*methods=\[([^\]]+)\]/g)) {
       for (const verb of m[2].matchAll(/"([A-Z]+)"/g)) out.add(`${verb[1]} ${m[1]}`);

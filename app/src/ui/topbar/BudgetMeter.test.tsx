@@ -95,8 +95,16 @@ describe("BudgetMeter", () => {
     expect(meter()).toBeNull();
   });
 
-  it("the ONSHAPE status light follows the live figures when they exist", () => {
+  it("the ONSHAPE light keeps its tone from the live figures but leaves the count to the meter", () => {
     expect(onshapeTone(status()).text).toBe("connected · 5/2,500");
-    expect(onshapeTone(status(), { ...BUDGET, used_year: 2100 })).toEqual({ tone: "amber", text: "connected · 2,100/2,500" });
+    expect(onshapeTone(status(), { ...BUDGET, used_year: 2100 })).toEqual({
+      tone: "amber", text: "connected", title: "Onshape connected: 2,100 of 2,500 calls used this year" });
+  });
+
+  it("with no run selected and no browsing yet, the delta is 0, never another run's count", () => {
+    coreStatus.value = status();
+    applyBudget({ ...BUDGET, used_run: 9 }, "agent-run");
+    render(<BudgetMeter />);
+    expect(document.querySelector("[data-budget-delta]")?.textContent).toBe("+0");
   });
 });

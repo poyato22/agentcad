@@ -31,7 +31,8 @@ export function BudgetMeter(): JSX.Element | null {
   if (!b || coreStatus.value?.onshape === "not_configured") return null;
   const level = budgetLevel(b);
   const run = selectedRunId.value;
-  const delta = onshapeRunUsed.value.get(run ?? "") ?? (run ? null : b.used_run);
+  // no run selected: the app's own browsing ("" entry), never whichever run sent the last event
+  const delta = onshapeRunUsed.value.get(run ?? "") ?? (run ? null : 0);
   const whose = run ? "this run" : "this session";
   const pct = b.limit_year > 0 ? Math.min(100, (b.used_year / b.limit_year) * 100) : 100;
   const warnPct = b.limit_year > 0 ? Math.min(100, (b.warn_at / b.limit_year) * 100) : 100;
@@ -44,7 +45,7 @@ export function BudgetMeter(): JSX.Element | null {
 
   return (
     <div class="budget" data-level={level} onMouseEnter={show} onMouseLeave={hide}>
-      <button ref={btn} type="button" class="budget-btn" aria-label={label} aria-describedby="budget-card"
+      <button ref={btn} type="button" class="budget-btn" aria-label={label} title="Onshape API calls this year"
         onFocus={show} onBlur={hide} onKeyDown={(e) => { if (e.key === "Escape") hide(); }}
         onClick={() => setPage("onshape")}>
         <span class="budget-name">Onshape</span>
@@ -59,7 +60,8 @@ export function BudgetMeter(): JSX.Element | null {
         </span>
         {delta !== null && <span class="budget-delta" data-budget-delta>+{num(delta)}</span>}
       </button>
-      <div id="budget-card" class="budget-card" role="tooltip" hidden={card === null}
+      {/* the button's aria-label already reads every figure; the card is for sighted users */}
+      <div id="budget-card" class="budget-card" aria-hidden="true" hidden={card === null}
         style={card ? { right: `${card.right}px` } : undefined}>
         <div class="budget-card-row"><span>Used this year</span><span>{num(b.used_year)} of {num(b.limit_year)}</span></div>
         <div class="budget-card-row"><span>Left</span><span>{num(left)}</span></div>

@@ -42,6 +42,26 @@ export function DirectoryPage(): JSX.Element {
   const [items, setItems] = useState<CatalogItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [panel, setPanel] = useState<Panel>(null);
+  /** What opened the panel (a card or Import from link): focus goes back there when it closes. */
+  const opener = useRef<HTMLElement | null>(null);
+  const importBtn = useRef<HTMLDivElement>(null);
+  function openPanel(p: Panel): void {
+    const a = document.activeElement;
+    if (a instanceof HTMLElement && !a.closest(".dir-panel")) opener.current = a;
+    setPanel(p);
+  }
+  function closePanel(): void {
+    setPanel(null);
+    const back = opener.current;
+    opener.current = null;
+    // after the render: the card may have re-rendered, so find it again by its item id
+    setTimeout(() => {
+      const id = back?.getAttribute("data-item");
+      const target = (id ? document.querySelector<HTMLElement>(`[data-item="${id}"]`) : back?.isConnected ? back : null)
+        ?? importBtn.current?.querySelector<HTMLElement>("button") ?? null;
+      target?.focus();
+    }, 0);
+  }
   const [rev, setRev] = useState(0);
 
   useEffect(() => {
@@ -87,7 +107,7 @@ export function DirectoryPage(): JSX.Element {
             <input class="dir-search" type="search" aria-label="Search parts" placeholder="Search: 2207, M3, 608, 30.5…" value={q}
               onInput={(e) => setQ(e.currentTarget.value)}
               onKeyDown={(e) => { if (e.key === "Enter") setQuery(q.trim()); }} />
-            <Button onClick={() => setPanel({ kind: "import" })} aria-expanded={panel?.kind === "import"}>Import from link</Button>
+            <div ref={importBtn} class="dir-import-btn"><Button onClick={() => openPanel({ kind: "import" })} aria-expanded={panel?.kind === "import"}>Import from link</Button></div>
           </div>
           {error && <p class="dir-err" role="alert">{error}</p>}
           {items === null && !error && <p class="faint dir-note">Loading parts…</p>}
@@ -98,7 +118,7 @@ export function DirectoryPage(): JSX.Element {
             <ul class="dir-grid" aria-label={`${items.length} parts`}>
               {items.map((it) => (
                 <li key={it.id}>
-                  <ItemCard item={it} selected={panel?.kind === "item" && panel.id === it.id} onOpen={() => setPanel({ kind: "item", id: it.id })} />
+                  <ItemCard item={it} selected={panel?.kind === "item" && panel.id === it.id} onOpen={() => openPanel({ kind: "item", id: it.id })} />
                 </li>
               ))}
             </ul>
@@ -106,10 +126,11 @@ export function DirectoryPage(): JSX.Element {
         </section>
 
         {panel && (
-          <aside class="dir-panel" aria-label={panel.kind === "import" ? "Import from link" : "Part details"}>
+          <aside class="dir-panel" aria-label={panel.kind === "import" ? "Import from link" : "Part details"}
+            onKeyDown={(e) => { if (e.key === "Escape" && !(e.target instanceof HTMLSelectElement)) { e.preventDefault(); closePanel(); } }}>
             {panel.kind === "import"
-              ? <ImportPanel onClose={() => setPanel(null)} onChanged={changed} onSaved={(id) => { changed(); setPanel({ kind: "item", id }); }} />
-              : <ItemDetail key={panel.id} id={panel.id} onClose={() => setPanel(null)} onChanged={changed} />}
+              ? <ImportPanel onClose={closePanel} onChanged={changed} onSaved={(id) => { changed(); setPanel({ kind: "item", id }); }} />
+              : <ItemDetail key={panel.id} id={panel.id} onClose={closePanel} onChanged={changed} />}
           </aside>
         )}
       </div>

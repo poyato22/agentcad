@@ -107,6 +107,22 @@ describe("DirectoryPage", () => {
     expect((await screen.findByRole("status")).textContent).toContain("Inserted into Default as motor_2207_class");
   });
 
+  it("Esc closes the panel and focus returns to what opened it", async () => {
+    render(<DirectoryPage />);
+    const card = await found('[data-item="motor_2207_class"]');
+    card.focus();
+    fireEvent.click(card);
+    const detail = await found('[data-detail="motor_2207_class"]');
+    fireEvent.keyDown(detail, { key: "Escape" });
+    await waitFor(() => expect(document.querySelector("[data-detail]")).toBeNull());
+    await waitFor(() => expect(document.activeElement?.getAttribute("data-item")).toBe("motor_2207_class"));
+    const imp = screen.getByRole("button", { name: "Import from link" });
+    imp.focus();
+    fireEvent.click(imp);
+    fireEvent.click(await screen.findByRole("button", { name: "Close" }));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Import from link" })));
+  });
+
   it("Use with agent adds a context chip and opens the composer", async () => {
     render(<DirectoryPage />);
     fireEvent.click(await found('[data-item="motor_2207_class"]'));
