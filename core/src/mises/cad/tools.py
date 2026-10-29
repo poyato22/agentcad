@@ -105,6 +105,9 @@ def _finish_edit(ctx: ToolContext, part_id: str, d: Path, summary: str) -> int:
     the part lock, right after a successful build."""
     version = _edits.read_version(d) + 1
     _edits.write_version(d, version)
+    store = getattr(ctx, "store", None)
+    if store is not None:
+        store.set_part_version(part_id, version)  # guarded no-op until C1's column exists
     by = _editor(ctx)
     events = getattr(ctx, "events", None)
     run_id = getattr(ctx, "run_id", None)

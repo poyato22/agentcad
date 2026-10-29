@@ -218,6 +218,17 @@ class Store:
         rows = self._all(sql)
         return [AgentRun(**dict(r)) for r in rows]
 
+    def set_part_version(self, part_id: str, version: int) -> bool:
+        """Best-effort mirror of a part's (filesystem) version into the parts table, when that
+        table and column exist (C1 owns them). A no-op returning False before that migration
+        lands, so live editing works both before and after it, with no guessing of the schema."""
+        try:
+            with self._tx() as db:
+                db.execute("UPDATE parts SET version=? WHERE id=?", (int(version), part_id))
+            return True
+        except sqlite3.OperationalError:
+            return False
+
     def add_usage(self, run_id: str, *, input_tokens: int = 0, output_tokens: int = 0,
                   usd: float = 0.0, onshape_calls: int = 0) -> None:
         with self._tx() as db:
