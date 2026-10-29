@@ -54,4 +54,5 @@ def test_bad_frontmatter_skipped(tmp_path: Path):
     assert "good" in defs and defs["good"].tools == ["mirror_measure"]
     assert "bad" not in defs
     assert len(defs.warnings) == 3
-    assert len(defs) == 5
+    # built-ins (designer, planner, verifier, sim, engineer) plus the one good override
+    assert len(defs) == 6

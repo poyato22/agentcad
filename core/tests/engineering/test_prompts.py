@@ -18,8 +18,18 @@ def test_every_builtin_prompt_carries_response_rules():
         assert "Mises markup" in p and "[[part:" in p
 
 
-def test_engineer_is_a_builtin_with_the_loop_tools():
+def test_engineer_is_a_builtin_offered_every_tool():
+    # Like the designer, the engineer lists no tools so it is offered the whole registry (and so
+    # automatically gains catalog_* and design_review once those parallel tasks merge).
     engineer = load_definitions()["engineer"]
     assert engineer.source is None
+    assert engineer.tools is None
     for t in ("spec_set", "study_run", "loads_impact", "ui_ask_user"):
-        assert t in (engineer.tools or [])
+        assert t in engineer.body
+
+
+def test_engineer_and_verifier_use_design_review():
+    # C7 owns the design_review tool; these prompts must call it (prompt-only on this branch).
+    defs = load_definitions()
+    for name in ("engineer", "verifier"):
+        assert "design_review" in defs[name].body

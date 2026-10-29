@@ -226,7 +226,10 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
 
     @app.post("/runs")
     async def create_run(body: NewRun):
-        agent = body.agent or load_profile(runtime.home).default_agent
+        # A sketch already fixes the geometry, so a sketch run builds it with the designer rather
+        # than the default engineer, whose job is to interview and spec a system from scratch.
+        default_agent = "designer" if body.sketch_id else load_profile(runtime.home).default_agent
+        agent = body.agent or default_agent
         rid = await runtime.start_run(agent, body.prompt, model_ref=body.model_ref,
                                       edit_scope=tuple(body.edit_scope),
                                       read_scope=tuple(body.read_scope),
