@@ -201,8 +201,10 @@ async def test_drop_is_an_estimate_from_impact_equivalent(tmp_path):
 async def test_cancel_kills_the_solver_process_group(tmp_path, monkeypatch):
     fake = tmp_path / "bin" / "ccx"
     fake.parent.mkdir()
+    # C6's sandbox denies process-fork, so the fake cannot fork a child: it `exec`s instead
+    # (the solver process itself must die; the kill_process_tree backstop covers the rest)
     fake.write_text("#!/bin/sh\n[ \"$1\" = -v ] && echo Version 2.23 && exit 0\n"
-                    "sleep 60 &\necho $! > child.pid\necho $$ > job.pid\nwait\n")
+                    "echo $$ > child.pid\necho $$ > job.pid\nexec sleep 60\n")
     fake.chmod(0o755)
     monkeypatch.setattr(sim_tools, "find_ccx", lambda: str(fake))
     ctx = _ctx(tmp_path)

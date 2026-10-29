@@ -25,7 +25,7 @@ from mises.sim.settings import WindSettings
 from mises.sim.tools import ReviewArgs, design_review
 from mises.sim.types import SimError
 from mises.store import AgentPolicy
-from mises.types import Caps, SafetyClass, StepKind, ToolOutput
+from mises.types import Caps, MisesError, SafetyClass, StepKind, ToolOutput
 
 TOKEN = "test-token-123"
 AUTH = {"Authorization": f"Bearer {TOKEN}"}
@@ -263,7 +263,8 @@ async def test_setup_failure_leaves_no_temp_dir(tmp_path):
     (part / "metrics.json").write_text("{}")  # no model.step: the snapshot copy fails
     ctx = SimpleNamespace(workdir=tmp_path, run_id="r", call_id="c", services={}, events=None)
     model = studies.validate_settings("wind", {})
-    with pytest.raises(FileNotFoundError):
+    # the snapshot reads the part via safe_io (C6) and refuses a missing model.step
+    with pytest.raises(MisesError):
         await studies.run_study(ctx, "wind", "p", part, model)
     assert not list((tmp_path / "sim_tmp").glob("*"))
 
