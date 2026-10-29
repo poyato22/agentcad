@@ -2,7 +2,7 @@
 //
 // Ruling (A4): Assembly is a toggle on the Design page, not a sixth tab. It keeps the left pane
 // (the build's parts, which is where you add from) and the console beside it, and it leaves ⌘6 to
-// the agent manager (A2) with no shortcut shuffle. The switch sits at the top centre of the sheet;
+// the agent manager (A2) with no shortcut shuffle. The switch sits under the sheet's FIG label;
 // ⌥⌘A flips it from anywhere on the Design page. The choice is remembered per Mac.
 import { signal, type Signal } from "@preact/signals";
 import type { JSX } from "preact";
@@ -36,11 +36,11 @@ export function installModeShortcut(isDesign: () => boolean): () => void {
   });
 }
 
-/** The Part | Assembly switch at the top centre of the Design sheet. */
+/** The Part | Assembly switch, under the Design sheet's FIG label. */
 export function ModeSwitch(): JSX.Element {
   const mode = designMode.value;
   const btn = (m: DesignMode, text: string) => (
-    <button type="button" role="radio" class="vt-btn" aria-checked={mode === m} data-active={mode === m}
+    <button type="button" role="radio" class="vt-btn" aria-checked={mode === m} data-active={mode === m} data-selected={(mode === m) ? "" : undefined}
       tabIndex={mode === m ? 0 : -1} onClick={() => setDesignMode(m)}
       onKeyDown={(e) => {
         if (e.key === "ArrowLeft" || e.key === "ArrowRight") {

@@ -77,7 +77,7 @@ function InstanceList({ ctl }: { ctl: AssemblyController }): JSX.Element {
         const sel = ctl.selected.value === i.id;
         return (
           <li key={i.id}>
-            <button type="button" class={sel ? "left-row sel" : "left-row"} aria-pressed={sel} data-instance-id={i.id}
+            <button type="button" class={sel ? "left-row sel" : "left-row"} aria-pressed={sel} data-selected={sel ? "" : undefined} data-instance-id={i.id}
               onClick={() => ctl.select(sel ? null : i.id)}>
               <span class="asm-swatch" style={{ background: ctl.part(i.part_id)?.color ?? "var(--mesh-face)" }} aria-hidden="true" />
               <span class="row-name">{i.name}</span>
@@ -207,7 +207,7 @@ function JointCard({ ctl, joint }: { ctl: AssemblyController; joint: Joint }): J
         <span class="asm-joint-kind">{KIND_LABEL[joint.kind]}</span>
         <span class="asm-joint-pair">{names(joint.a.instance_id)} <span class="faint">to</span> {names(joint.b.instance_id)}</span>
         {axes.length > 0 && (
-          <button type="button" class="vt-btn" aria-pressed={animating} data-active={animating}
+          <button type="button" class="vt-btn" aria-pressed={animating} data-active={animating} data-selected={(animating) ? "" : undefined}
             disabled={!canAnimate} title={canAnimate ? "Sweep through its travel and back" : "Set limits to animate a slide"}
             onClick={() => ctl.animate(joint.id)}>{animating ? "stop" : "animate"}</button>
         )}
@@ -271,7 +271,7 @@ function FaceChooser({ ctl, slot, active }: { ctl: AssemblyController; slot: "a"
   }, [instance?.part_id, pick?.option, inst]);
   const title = slot === "a" ? "First face" : "Second face";
   return (
-    <fieldset class={active ? "asm-face asm-face-active" : "asm-face"} data-slot={slot}>
+    <fieldset class={active ? "asm-face asm-face-active" : "asm-face"} data-slot={slot} data-selected={active ? "" : undefined}>
       <legend class="label">{title}{active ? " · click it in the view" : ""}</legend>
       <select class="asm-input" aria-label={`${title}: part`} value={inst} onChange={(e) => setInst(e.currentTarget.value)}>
         <option value="">Part…</option>
@@ -302,7 +302,7 @@ function JointForm({ ctl }: { ctl: AssemblyController }): JSX.Element | null {
       onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); ctl.cancelJoint(); } }}>
       <div class="asm-kinds" role="radiogroup" aria-label="Joint kind">
         {JOINT_KINDS.map((k) => (
-          <button key={k} type="button" role="radio" class="vt-btn" aria-checked={d.kind === k} data-active={d.kind === k}
+          <button key={k} type="button" role="radio" class="vt-btn" aria-checked={d.kind === k} data-active={d.kind === k} data-selected={(d.kind === k) ? "" : undefined}
             onClick={() => ctl.updateDraft({ kind: k })}>{KIND_LABEL[k].toLowerCase()}</button>
         ))}
       </div>

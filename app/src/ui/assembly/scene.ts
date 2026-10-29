@@ -51,10 +51,14 @@ export interface AssemblyScene {
   /** Interfering pairs (instance ids) with their volume label. */
   setInterference(pairs: readonly { a: string[]; b: string[]; text: string }[]): void;
   setArriving(on: boolean): void;
+  /** Spheres the moving parts can sweep through (joint origin + reach); the camera frames them too. */
+  setReach(spheres: readonly { center: Vec3; radius: number }[]): void;
   setPicking(on: boolean): void;
   setMarkers(markers: readonly PickMarker[]): void;
   setGizmo(spec: GizmoSpec): void;
   fit(): void;
+  /** A world point (mm) → client pixels; the gizmo handle under the pointer. Test probes. */
+  probe(): { project(p: Vec3): { x: number; y: number }; gizmoAxis(): string | null };
   resize(w: number, h: number): void;
   dispose(): void;
 }
@@ -125,7 +129,10 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
   let picking = false;
   let markers: PickMarker[] = [];
   let hoverMarker: PickMarker | null = null;
-  let fitted = false;
+  /** The parts (with geometry) the camera was last fitted to: a part added or removed refits. */
+  let fittedKey = "";
+  let reach: { center: Vec3; radius: number }[] = [];
+  const FIT_MARGIN = 1.15;
 
   const draw = () => {
     frame = 0;
@@ -141,7 +148,7 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
 
   // ---- gizmo
   const gizmo = new TransformControls(camera, canvas);
-  gizmo.setSize(0.9);
+  gizmo.setSize(0.75);
   const helper = gizmo.getHelper();
   scene.add(helper);
   const jointFrame = new THREE.Group();
@@ -246,19 +253,50 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
     for (const p of interference) for (const id of [...p.a, ...p.b]) hot.add(id);
     for (const e of entries.values()) {
       if (!e.body) continue;
-      const face = hot.has(e.id) ? colors.red : e.color ?? colors.face;
-      const edge = hot.has(e.id) ? colors.red : e.id === selected || arriving ? colors.blue : colors.edge;
+      // the part keeps its own color; a clash shows as red edges and the red overlap block
+      const face = e.color ?? colors.face;
+      const edge = e.id === selected || arriving ? colors.blue : hot.has(e.id) ? colors.red : colors.edge;
       e.body.traverse((o) => {
         if (o instanceof THREE.LineSegments) (o.material as THREE.LineBasicMaterial).color.set(edge);
         else if (o instanceof THREE.Mesh) {
           const m = o.material as THREE.MeshLambertMaterial;
           m.color.set(face);
           m.transparent = hot.has(e.id);
-          m.opacity = hot.has(e.id) ? 0.72 : 1;
+          m.opacity = hot.has(e.id) ? 0.55 : 1;
+          m.depthWrite = !hot.has(e.id);
         }
       });
     }
+    rebuildOverlaps();
     requestRender();
+  }
+
+  // ---- interference: a red block where each clashing pair's world boxes overlap
+  const overlapRoot = new THREE.Group();
+  scene.add(overlapRoot);
+  const unitBox = new THREE.BoxGeometry(1, 1, 1);
+  const unitEdges = new THREE.EdgesGeometry(unitBox);
+  const overlapFill = new THREE.MeshBasicMaterial({ color: colors.red, transparent: true, opacity: 0.45, depthWrite: false });
+  const overlapLine = new THREE.LineBasicMaterial({ color: colors.red });
+
+  function rebuildOverlaps(): void {
+    overlapFill.color.set(colors.red);
+    overlapLine.color.set(colors.red);
+    for (const c of [...overlapRoot.children]) c.removeFromParent();
+    for (const p of interference) {
+      const a = new THREE.Box3(); const b = new THREE.Box3();
+      for (const id of p.a) { const e = entries.get(id); if (e?.body) a.expandByObject(e.group); }
+      for (const id of p.b) { const e = entries.get(id); if (e?.body) b.expandByObject(e.group); }
+      const both = a.intersect(b);
+      if (both.isEmpty()) continue;
+      const size = both.getSize(new THREE.Vector3()).max(new THREE.Vector3(0.2, 0.2, 0.2));
+      const g = new THREE.Group();
+      g.position.copy(both.getCenter(new THREE.Vector3()));
+      g.scale.copy(size);
+      g.add(new THREE.Mesh(unitBox, overlapFill), new THREE.LineSegments(unitEdges, overlapLine));
+      g.renderOrder = 5;
+      overlapRoot.add(g);
+    }
   }
 
   function cloneBody(t: PartScene): THREE.Object3D {
@@ -412,13 +450,26 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
   function worldBox(): THREE.Box3 {
     const b = new THREE.Box3();
     for (const e of entries.values()) if (e.body) b.expandByObject(e.group);
+    if (b.isEmpty()) return b;
+    for (const r of reach) {
+      const c = new THREE.Vector3(...r.center);
+      b.expandByPoint(c.clone().addScalar(r.radius)).expandByPoint(c.clone().addScalar(-r.radius));
+    }
     return b;
+  }
+
+  function refitIfNew(): void {
+    const key = [...entries.values()].filter((e) => e.body).map((e) => e.id).sort().join(",");
+    if (key === fittedKey || key === "") return;
+    fittedKey = key;
+    root.updateMatrixWorld(true);
+    fit();
   }
 
   function fit(): void {
     const b = worldBox();
     if (b.isEmpty()) return;
-    fitOrtho(camera, b, width / height, 1.3);
+    fitOrtho(camera, b, width / height, FIT_MARGIN);
     orbit.target.copy(b.getCenter(new THREE.Vector3()));
     orbit.update();
     requestRender();
@@ -449,7 +500,7 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
         e.color = inst.color;
       }
       restyle();
-      if (!fitted && worldBox().isEmpty() === false) { fitted = true; root.updateMatrixWorld(true); fit(); }
+      refitIfNew();
     },
     setPose(pose) {
       for (const [id, m] of Object.entries(pose)) {
@@ -459,14 +510,16 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
         e.group.matrixWorldNeedsUpdate = true;
       }
       root.updateMatrixWorld(true);
+      rebuildOverlaps();
       syncMarkerPoses();
       markerRoot.updateMatrixWorld(true);
-      if (!fitted && !worldBox().isEmpty()) { fitted = true; fit(); }
+      refitIfNew();
       requestRender();
     },
     setSelected(id) { selected = id; restyle(); },
     setInterference(pairs) { interference = [...pairs]; restyle(); },
     setArriving(on) { if (arriving !== on) { arriving = on; restyle(); } },
+    setReach(list) { reach = [...list]; },
     setPicking(on) {
       picking = on;
       if (!on) { hoverMarker = null; canvas.style.cursor = ""; rebuildMarkers(); }
@@ -475,11 +528,21 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
     setMarkers(list) { markers = [...list]; rebuildMarkers(); },
     setGizmo(next) { applyGizmo(next); },
     fit,
+    probe() {
+      return {
+        project(p) {
+          const v = new THREE.Vector3(...p).project(camera);
+          const r = canvas.getBoundingClientRect();
+          return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height };
+        },
+        gizmoAxis: () => gizmo.axis,
+      };
+    },
     resize(w, h) {
       width = Math.max(1, w); height = Math.max(1, h);
       renderer.setSize(width, height, false);
       const b = worldBox();
-      if (!b.isEmpty()) fitOrtho(camera, b, width / height, 1.3);
+      if (!b.isEmpty()) fitOrtho(camera, b, width / height, FIT_MARGIN);
       else {
         const halfH = (camera.top - camera.bottom) / 2;
         camera.left = -halfH * (width / height); camera.right = halfH * (width / height);
@@ -500,6 +563,7 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
       themeObserver?.disconnect();
       osScheme?.removeEventListener("change", onTheme);
       for (const e of entries.values()) disposeBody(e.body);
+      unitBox.dispose(); unitEdges.dispose(); overlapFill.dispose(); overlapLine.dispose();
       entries.clear();
       markers = []; hoverMarker = null;
       rebuildMarkers();

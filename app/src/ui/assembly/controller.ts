@@ -285,6 +285,11 @@ export class AssemblyController {
 
   private glideTo(target: Record<string, Mat4>): void {
     this.cancelTween?.();
+    if (typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      this.setPose(target); // reduced motion: the change lands without gliding
+      this.scheduleInterference();
+      return;
+    }
     const from = { ...this.pose };
     const t0 = this.clock.now();
     this.arriving.value = true;

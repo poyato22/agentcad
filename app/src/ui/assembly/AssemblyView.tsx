@@ -11,7 +11,7 @@ import { PartLoader } from "../viewer/partLoader";
 import "../viewer/viewer.css";
 import { AssemblyPanel, fmtVolume, KIND_LABEL } from "./AssemblyPanel";
 import { AssemblyController, valueAt, withComponent } from "./controller";
-import { jointWorldFrame } from "./kinematics";
+import { jointWorldFrame, transformPoint } from "./kinematics";
 import { ModeSwitch } from "./mode";
 import { faceOptions, pickOption, type FaceOption } from "./pick";
 import { createAssemblyScene, type AssemblyScene, type GizmoSpec, type OverlayLabel, type PickMarker } from "./scene";
@@ -89,6 +89,9 @@ export function AssemblyView(): JSX.Element {
       setNoGl(true);
     }
     sceneRef.current = scene;
+    if (scene && import.meta.env.MODE !== "production") {
+      (window as unknown as { __misesAssembly?: ReturnType<AssemblyScene["probe"]> }).__misesAssembly = scene.probe();
+    }
     const measure = () => {
       const r = host.getBoundingClientRect();
       if (r.width > 0 && r.height > 0) scene?.resize(r.width, r.height);
@@ -134,6 +137,7 @@ export function AssemblyView(): JSX.Element {
   useEffect(() => {
     const scene = sceneRef.current;
     if (!scene) return;
+    scene.setReach(reachOf());
     scene.setInstances((data?.instances ?? []).map((i) => ({
       id: i.id, template: templates.current.get(i.part_id)?.scene ?? null, color: ctl.part(i.part_id)?.color ?? null,
     })));
@@ -180,6 +184,32 @@ export function AssemblyView(): JSX.Element {
     scene.setGizmo(draft ? null : spec);
   }, [sel, gmode, snap, values, solved, draft, data]);
 
+  /** Where each jointed part can swing: around its joint origin, as far as its farthest corner. */
+  function reachOf(): { center: [number, number, number]; radius: number }[] {
+    const s = ctl.solved.value;
+    if (!data || !s) return [];
+    const pose = ctl.currentPose();
+    const out: { center: [number, number, number]; radius: number }[] = [];
+    for (const inst of data.instances) {
+      const p = s.placedBy[inst.id];
+      const j = p ? ctl.joint(p.joint) : null;
+      const bb = ctl.part(inst.part_id)?.metrics?.bbox;
+      const t = pose[inst.id];
+      if (!p || !j || !bb || !t) continue;
+      const f = jointWorldFrame(data, pose, j, p.from, ctl.resolver());
+      if (!f) continue;
+      const c: [number, number, number] = [f[0][3], f[1][3], f[2][3]];
+      let r = 0;
+      for (const x of [bb.min[0], bb.max[0]]) for (const y of [bb.min[1], bb.max[1]]) for (const z of [bb.min[2], bb.max[2]]) {
+        const w = transformPoint(t, [x, y, z]);
+        r = Math.max(r, Math.hypot(w[0] - c[0], w[1] - c[1], w[2] - c[2]));
+      }
+      const slide = j.kind === "slider" || j.kind === "cylindrical" ? Math.max(...(j.limits ?? [0, 0]).map(Math.abs)) : 0;
+      out.push({ center: c, radius: r + slide });
+    }
+    return out;
+  }
+
   function gizmoFor(id: string | null, mode: "move" | "turn", snapOn: boolean): { spec: GizmoSpec; t: GizmoTarget } {
     const none = { spec: null, t: null };
     if (!id || !data) return none;
@@ -221,10 +251,10 @@ export function AssemblyView(): JSX.Element {
         <span class="label vp-fig">FIG. 2 — ASSEMBLY</span>
         <ModeSwitch />
         <div class="viewer-tools" role="toolbar" aria-label="Assembly tools">
-          <button type="button" class="vt-btn" aria-pressed={gmode === "move"} data-active={gmode === "move"} onClick={() => { ctl.gizmo.value = "move"; }}>move</button>
-          <button type="button" class="vt-btn" aria-pressed={gmode === "turn"} data-active={gmode === "turn"} onClick={() => { ctl.gizmo.value = "turn"; }}>turn</button>
-          <button type="button" class="vt-btn" aria-pressed={snap} data-active={snap} title="Snap moves to 1 mm and turns to 15°"
-            onClick={() => { ctl.snap.value = !snap; }}>snap 1 mm · 15°</button>
+          <button type="button" class="vt-btn" aria-pressed={gmode === "move"} data-active={gmode === "move"} data-selected={(gmode === "move") ? "" : undefined} onClick={() => { ctl.gizmo.value = "move"; }}>move</button>
+          <button type="button" class="vt-btn" aria-pressed={gmode === "turn"} data-active={gmode === "turn"} data-selected={(gmode === "turn") ? "" : undefined} onClick={() => { ctl.gizmo.value = "turn"; }}>turn</button>
+          <button type="button" class="vt-btn" aria-pressed={snap} data-active={snap} data-selected={(snap) ? "" : undefined} title="Snap: moves to whole mm, turns to 15°"
+            onClick={() => { ctl.snap.value = !snap; }}>snap</button>
           <button type="button" class="vt-btn" onClick={() => sceneRef.current?.fit()}>fit</button>
         </div>
         {labels.map((l) => (
