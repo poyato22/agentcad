@@ -3,6 +3,7 @@
 // half-shaped data into the store. Unknown extra keys are stripped, not rejected.
 // The `Same<...>` checks at the bottom fail the type check if a schema and its type drift apart.
 import { z } from "zod";
+import { partEdgeSchema } from "./builds";
 import {
   ERROR_CODES, SETUP_PIECES, STEP_KINDS, SYSTEM_STATUSES,
   type SystemCheckRow, type SystemFix, type SystemInstallStart,
@@ -25,6 +26,7 @@ export const agentRunSchema = z.object({
   onshape_calls: z.number(), input_tokens: z.number(), output_tokens: z.number(), usd: z.number(),
   created_at: z.number(), updated_at: z.number(), owner_pid: z.number().nullish(),
   external: z.boolean().optional(), session_ref: z.string().nullish(),
+  project_id: z.string().nullish(),
 });
 
 export const stepSchema = z.object({
@@ -102,10 +104,16 @@ export const partMetricsSchema = z.object({
   bbox: z.object({ min: vec3, max: vec3, size: vec3 }),
   center_of_mass: vec3, faces: z.number(), edges: z.number(), holes: z.array(partHoleSchema), solids: z.number(),
   face_list: z.array(partFaceSchema).optional(),
+  edge_list: z.array(partEdgeSchema).optional(),
 });
 
+/** A row whose metrics don't parse keeps its tree place with metrics null (never drops the list). */
 export const partSummarySchema = z.object({
-  part_id: z.string(), vars: z.record(z.string(), z.number()), metrics: partMetricsSchema.nullable(), mtime: z.number(),
+  part_id: z.string(), vars: z.record(z.string(), z.number()), metrics: partMetricsSchema.nullable().catch(null),
+  mtime: z.number().nullable().transform((v) => v ?? 0),
+  id: z.string().optional(), label: z.string().optional(), project_id: z.string().nullish(), parent_id: z.string().nullish(),
+  order: z.number().optional(), color: z.string().nullish(), kind: z.enum(["part", "group", "catalog"]).optional(),
+  version: z.number().int().optional(),
 });
 
 export const coreErrorBodySchema = z.object({

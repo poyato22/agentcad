@@ -74,3 +74,7 @@ button.cv-x { border: 1px solid var(--line2); }
 .cv-composer textarea { width: 100%; resize: vertical; }
 .cv-err { color: var(--red); }
 .cv-actions { display: flex; justify-content: flex-end; gap: 6px; }
+
+/* your own part edits (vars, code, feature ops), woven into the thread by time */
+.cv-you .text { color: var(--ink); }
+.cv-you-who { font-weight: 600; }

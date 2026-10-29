@@ -3,6 +3,7 @@ import { useEffect, useState } from "preact/hooks";
 import type { AgentRun, Step } from "../../api/types";
 import { fmtElapsed, fmtSigned } from "../../lib/format";
 import { runLabel } from "../../lib/names";
+import { activeBuildId } from "../../state/builds";
 import { actions, runs, steps } from "../../state/store";
 import { varChangesByStep } from "./changedVars";
 import { allRuns, newestFirst, num } from "./derived";
@@ -76,8 +77,10 @@ function RunItem({ run, open, onToggle }: { run: AgentRun; open: boolean; onTogg
 
 export function History(): JSX.Element {
   const [openIds, setOpen] = useState<ReadonlySet<string>>(new Set());
-  const list = newestFirst(runs.value);
-  if (list.length === 0) return <div class="pane-empty">no runs yet</div>;
+  // the active build's runs (a run from a core without builds has no project_id: always shown)
+  const build = activeBuildId.value;
+  const list = newestFirst(runs.value).filter((r) => !build || !r.project_id || r.project_id === build);
+  if (list.length === 0) return <div class="pane-empty">No runs in this build yet.</div>;
   const toggle = (id: string) => setOpen((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   return (
     <ul class="left-list">

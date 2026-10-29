@@ -19,7 +19,13 @@
     "fake-core": "tsx test/fake-core/cli.ts --port 7400 --token dev-token --scenario base"
   },
   "dependencies": {
+    "@codemirror/commands": "6.11.1",
+    "@codemirror/lang-python": "6.2.1",
+    "@codemirror/language": "6.13.1",
+    "@codemirror/state": "6.7.6",
+    "@codemirror/view": "6.43.14",
     "@fontsource/iosevka": "5.3.0",
+    "@lezer/highlight": "1.2.5",
     "@preact/signals": "2.11.3",
     "@tauri-apps/api": "2.12.4",
     "preact": "10.29.8",

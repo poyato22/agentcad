@@ -14,6 +14,7 @@ import type {
   SystemCheckRow, SystemFix,
 } from "../../src/api/types";
 import { INSTALL_DEPS } from "../../src/api/types";
+import { agentEdit, buildRoutes, buildsFrom, type BuildsDeps, type BuildsScenario, type FakeBuilds } from "./builds";
 import { handleControl } from "./control";
 import { printingFrom, printingRoutes, stopPrinting, type FakePrinting, type PrintScenario } from "./printing";
 import { setupFrom, setupRoutes, type FakeSetup, type SetupScenario } from "./setup";
@@ -100,6 +101,8 @@ export interface Scenario {
   system_install?: Record<string, { lines?: string[]; ok?: boolean; fix?: SystemFix }>;
   /** ms between `system_install` lines (default 60). */
   system_install_ms?: number;
+  /** Plan 5 builds, part tree and live edits (A3). Absent: one "Default" build with every part. */
+  builds?: BuildsScenario;
 }
 
 /** A small healthy default when a scenario names no `system` rows. */
@@ -138,6 +141,8 @@ export interface FakeState {
   system: SystemCheckRow[];
   systemInstall: Record<string, { lines?: string[]; ok?: boolean; fix?: SystemFix }>;
   systemInstallMs: number;
+  /** Plan 5 A3: builds, part-tree rows, scripts and versions. */
+  builds: FakeBuilds;
 }
 
 export interface FakeCore {
@@ -149,6 +154,8 @@ export interface FakeCore {
   /** Closes every events socket (code 1012, or abnormal drop with `terminate`). */
   dropSockets(mode?: "close" | "terminate"): void;
   rotateToken(token: string): void;
+  /** An agent's edit of a part (Plan 5 C6): version+1, vars merged, `part_changed {by:"agent"}`. */
+  agentEdit(b: Record<string, unknown>): { ok: true; version: number };
   stop(): Promise<void>;
 }
 
@@ -176,7 +183,7 @@ function stateFrom(sc: Scenario, token: string): FakeState {
     questions: new Map((sc.questions ?? []).map((q) => [q.question_id, q])),
     parts: sc.parts, agents: sc.agents, models: sc.models, status: sc.status,
     glb: sc.glb ?? {}, script: sc.script ?? [], on: sc.on ?? {}, calls: [],
-    setup: setupFrom(sc),
+    setup: withBuildTabs(setupFrom(sc), sc.builds),
     local: sc.local ? structuredClone(sc.local) : null, localPullMs: sc.local_pull_ms ?? 120, pulling: new Map(),
     sims: simsFrom(sc.sims),
     sketches: new Map(),
@@ -184,7 +191,16 @@ function stateFrom(sc: Scenario, token: string): FakeState {
     system: sc.system ? structuredClone(sc.system) : structuredClone(DEFAULT_SYSTEM_CHECK),
     systemInstall: sc.system_install ? structuredClone(sc.system_install) : {},
     systemInstallMs: sc.system_install_ms ?? 60,
+    builds: buildsFrom(sc.builds, sc.parts.map((p) => p.part_id)),
   };
+}
+
+/** The scenario's open build tabs, on the fake profile (C1 profile.active_project_id / open_project_ids). */
+function withBuildTabs(setup: FakeSetup, b: BuildsScenario | undefined): FakeSetup {
+  if (b && (b.active !== undefined || b.open !== undefined)) {
+    Object.assign(setup.profile, { active_project_id: b.active ?? null, open_project_ids: b.open ?? [] });
+  }
+  return setup;
 }
 
 const now = () => Date.now() / 1000;
@@ -367,6 +383,12 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
 
   // -- routes
 
+  const buildsDeps: BuildsDeps = {
+    get: () => state.builds, parts: () => state.parts, setParts: (list) => { state.parts = list; },
+    profile: () => state.setup.profile as unknown as ReturnType<BuildsDeps["profile"]>,
+    emit: (ev) => { emit(ev); },
+  };
+
   const routes: Route[] = [
     { method: "GET", re: /^\/health$/, h: () => ({ ok: true }) },
     {
@@ -511,7 +533,8 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     },
     { method: "GET", re: /^\/agents$/, h: () => state.agents },
     { method: "GET", re: /^\/models$/, h: () => models() },
-    { method: "GET", re: /^\/parts$/, h: () => [...state.parts].sort((a, b) => a.part_id.localeCompare(b.part_id)) },
+    // GET /parts (?project_id) lives in buildRoutes: the part tree of a build
+    ...buildRoutes(buildsDeps),
     {
       method: "GET", re: /^\/parts\/([^/]+)\/model\.glb$/, h: (m, _q, _b, r, res) => {
         const id = decodeURIComponent(m[1]);
@@ -685,7 +708,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         return;
       }
       res.writeHead(200, {
-        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE", "Access-Control-Allow-Headers": CORS_ALLOW_HEADERS.join(", "),
+        "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE", "Access-Control-Allow-Headers": CORS_ALLOW_HEADERS.join(", "),
         "Access-Control-Max-Age": "600", "Content-Length": 0,
       });
       res.end();
@@ -700,7 +723,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     }
 
     try {
-      const body = method === "POST" || method === "PUT" ? await readBody(r) : undefined;
+      const body = method === "POST" || method === "PUT" || method === "PATCH" ? await readBody(r) : undefined;
       if (url.pathname.startsWith("/__fake/")) {
         const out = await handleControl(api, method, url.pathname, body);
         if (out === undefined) throw new HttpError(404, { detail: "Not Found" });
@@ -793,6 +816,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     emit,
     reset,
     dropSockets,
+    agentEdit: (b) => agentEdit(buildsDeps, b),
     rotateToken(token: string) {
       state.token = token;
       dropSockets();
@@ -813,4 +837,4 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
 export const RAW = Symbol("raw-response");
 
 export type Handler = (m: RegExpMatchArray, q: URLSearchParams, body: unknown, r: IncomingMessage, res: ServerResponse) => unknown;
-export interface Route { method: "GET" | "POST" | "PUT" | "DELETE"; re: RegExp; h: Handler }
+export interface Route { method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"; re: RegExp; h: Handler }

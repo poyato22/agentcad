@@ -1,6 +1,7 @@
 // TS types for the real core JSON (core/src/mises: store.py, events.py, types.py, server/app.py,
 // server/ui_api.py). Field names are exactly the server's. Times are unix seconds (float).
 // Runtime validation lives in schemas.ts; keep both in step.
+import type { PartEdge, PartKind } from "./builds";
 
 export type ErrorCode = "stale_version" | "budget_exhausted" | "needs_approval" | "transient" | "invalid_input"
   | "out_of_scope" | "denied" | "not_found" | "tool_failed" | "cancelled";
@@ -26,6 +27,8 @@ export interface AgentRun {
   external?: boolean;
   /** Claude Code runs: the session id Mises resumes with `--resume`. Not shown in the UI. */
   session_ref?: string | null;
+  /** The build the run belongs to (Plan 5 C1); absent from older cores. */
+  project_id?: string | null;
 }
 
 export type StepKind = "message" | "plan" | "tool_call" | "tool_result" | "diff" | "decision" | "error"
@@ -130,9 +133,19 @@ export interface PartMetrics {
   center_of_mass: Vec3; faces: number; edges: number; holes: PartHole[]; solids: number;
   /** Every face (parts built before Plan 4 have none). */
   face_list?: PartFace[];
+  /** Every edge (Plan 5 C6): what fillet / chamfer picks name. */
+  edge_list?: PartEdge[];
 }
 
-export interface PartSummary { part_id: string; vars: Record<string, number>; metrics: PartMetrics | null; mtime: number }
+/**
+ * GET /parts row. The Plan 5 part-tree fields (C1) are optional so a core or fixture from before
+ * builds still parses; `id` equals `part_id`. `mtime` is 0 for a group/catalog row with no build.
+ */
+export interface PartSummary {
+  part_id: string; vars: Record<string, number>; metrics: PartMetrics | null; mtime: number;
+  id?: string; label?: string; project_id?: string | null; parent_id?: string | null; order?: number;
+  color?: string | null; kind?: PartKind; version?: number;
+}
 
 /** From the Rust shell's `core_info` command (camelCase), or the dev/test env fallback. */
 export interface CoreInfo {

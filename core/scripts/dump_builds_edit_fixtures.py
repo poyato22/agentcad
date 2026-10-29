@@ -35,6 +35,16 @@ def build(v):
     return Box(v["side"], v["side"], v["wall"])
 '''
 
+MOUNT_PLATE = '''from build123d import *
+VARS = {"thickness": 5.0}
+def build(v):
+    with BuildPart() as p:
+        Box(40, 20, v["thickness"])
+        with Locations((10, 0, 0), (-10, 0, 0)):
+            Hole(2.1)
+    return p.part
+'''
+
 SPHERE = '''from build123d import *
 VARS = {"thickness": 4.0, "length": 60.0}
 def build(v):
@@ -166,6 +176,12 @@ async def dump(out: Path) -> None:
             write("projects_trash_empty.json", await call("POST", "/projects/trash/empty"))
             write("profile_builds.json", await call("PUT", "/profile", {
                 "active_project_id": default_id, "open_project_ids": [default_id]}))
+
+            # the contract tests' mount_plate (dump_ui_fixtures.py's PLATE at 6 mm), now with the
+            # C6 face and edge lists its older fixture predates
+            await create("mount_plate", MOUNT_PLATE, {"thickness": 6.0})
+            plate = next(p for p in await call("GET", "/parts") if p["id"] == "mount_plate")
+            write("mount_plate_metrics.json", plate["metrics"])
 
         events = []
         while not sub.queue.empty():

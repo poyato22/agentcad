@@ -9,7 +9,7 @@ import allParts from "../../../test/fixtures/core-ui/parts.json";
 import allRuns from "../../../test/fixtures/core-ui/runs.json";
 import { History } from "./History";
 import { LeftPane } from "./LeftPane";
-import { PartList } from "./PartList";
+import { PartTree as PartList } from "./PartTree";
 import { Variables } from "./Variables";
 
 const tokensCss = readFileSync("src/styles/tokens.css", "utf8");
@@ -37,7 +37,7 @@ describe("left pane", () => {
   it("part_label_and_mass", () => {
     load();
     render(<PartList />);
-    expect(screen.getByText("Part · mount plate")).toBeTruthy();
+    expect(screen.getByText("mount plate")).toBeTruthy();
     expect(screen.getByText("5.7 g")).toBeTruthy();
   });
 
@@ -45,7 +45,7 @@ describe("left pane", () => {
     load();
     expect(selectedPartId.value).toBeNull();
     render(<div><PartList /><Variables /></div>);
-    const row = screen.getByRole("button", { name: /mount plate/ });
+    const row = screen.getByRole("button", { name: "mount plate" });
     expect(row.getAttribute("aria-pressed")).toBe("false");
     expect(row.className).not.toContain("sel"); // no blue without a selection
     expect(screen.getByTestId("var-thickness")).toBeTruthy(); // its variables still show
@@ -58,7 +58,7 @@ describe("left pane", () => {
     parts.value = fixtureParts.map((p) => ({ ...p, vars: { ...p.vars, thickness: 7 }, mtime: 9e9 }));
     render(<Variables />);
     const v = screen.getByTestId("var-thickness");
-    expect(v.textContent).toBe("7.00 mm");
+    expect((v as HTMLInputElement).value).toBe("7");
     expect(v.getAttribute("data-changed")).toBe("true");
   });
 
@@ -68,7 +68,7 @@ describe("left pane", () => {
     // the diff step landed; the /parts refetch hasn't yet (older mtime, old value)
     parts.value = fixtureParts.map((p) => ({ ...p, vars: { ...p.vars, thickness: 5 }, mtime: 1 }));
     render(<Variables />);
-    expect(screen.getByTestId("var-thickness").textContent).toBe("6.00 mm");
+    expect((screen.getByTestId("var-thickness") as HTMLInputElement).value).toBe("6");
   });
 
   it("left_pane_follows_the_run_the_console_shows", () => {
@@ -99,9 +99,9 @@ describe("left pane", () => {
   it("selecting_part_updates_store", () => {
     load();
     render(<PartList />);
-    fireEvent.click(screen.getByText("Part · mount plate"));
+    fireEvent.click(screen.getByText("mount plate"));
     expect(selectedPartId.value).toBe("mount_plate");
-    expect(screen.getByRole("button", { name: /mount plate/ }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: "mount plate" }).getAttribute("aria-pressed")).toBe("true");
   });
 
   it("changing_tag_while_inflight", () => {
@@ -123,7 +123,7 @@ describe("left pane", () => {
     selectedRunId.value = RUN;
     render(<Variables />);
     const v = screen.getByTestId("var-thickness");
-    expect(v.textContent).toBe("6.00 mm");
+    expect((v as HTMLInputElement).value).toBe("6");
     expect(v.getAttribute("data-changed")).toBe("true");
     // jsdom cannot resolve var(); the computed rgb(141, 186, 255) is asserted in e2e/left.spec.ts
     expect(v.className).toContain("changed");

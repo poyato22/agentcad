@@ -17,7 +17,7 @@
 .tick-tr { right: 8px; top: 8px; border-right-width: 1px; border-top-width: 1px; }
 .tick-bl { left: 8px; bottom: 8px; border-left-width: 1px; border-bottom-width: 1px; }
 .tick-br { right: 8px; bottom: 8px; border-right-width: 1px; border-bottom-width: 1px; }
-.vp-fig { position: absolute; left: 22px; top: 18px; pointer-events: none; }
+.vp-fig { position: absolute; left: 22px; top: 46px; pointer-events: none; }
 .vp-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
 
 .viewer-tools { position: absolute; right: 22px; top: 14px; display: flex; gap: 0; }
@@ -39,3 +39,18 @@
 .tb-cell:first-child { border-left: 0; }
 .tb-value { color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tb-error { border: 1px solid var(--dim); border-top: 0; padding: 4px 10px; color: var(--red); }
+
+/* Model | Code: two cells in the sheet's top-left corner, the same build as the tool strip */
+.vp-tabs { position: absolute; left: 22px; top: 14px; display: flex; z-index: 5; }
+.vp-tab {
+  font: var(--fs-small)/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase;
+  color: var(--dim); background: var(--paper); border: 1px solid var(--line2); padding: 5px 10px; margin-right: -1px; cursor: pointer;
+}
+.vp-tab:hover { color: var(--ink); }
+.vp-tab[aria-selected="true"] { color: var(--ink); border-color: var(--dim); position: relative; border-bottom: 2px solid var(--blue); }
+.vp-tab:focus-visible, .vt-btn:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
+.vt-gap { width: 8px; }
+.vt-btn:disabled { color: var(--faint); cursor: default; }
+.vp[data-tab="code"] .viewer-tools, .vp[data-tab="code"] .vp-fig, .vp[data-tab="code"] .title-block { visibility: hidden; }
+.vp[data-tab="code"] .src { top: 44px; }
+.src-empty { display: flex; align-items: center; justify-content: center; }

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CoreClient } from "../../api/client";
 import type { PartSummary } from "../../api/types";
 import { bindClient, inflight, parts, resetStore, runs, selectedPartId, steps } from "../../state/store";
-import type { ViewerHandle } from "./scene";
+import type { DesignViewerHandle } from "./scene";
 import { Viewer, changingRunLabel, highlighted } from "./Viewer";
 
 import { readFileSync } from "node:fs";
@@ -14,8 +14,11 @@ import { resolve } from "node:path";
 const fixtureBytes = (): ArrayBuffer =>
   new Uint8Array(readFileSync(resolve(import.meta.dirname, "../../../../core/tests/fixtures/ui/mount_plate.glb"))).buffer as ArrayBuffer;
 
-const handle = vi.hoisted(() => ({ setPart: vi.fn(), setMode: vi.fn(), setHighlight: vi.fn(), fit: vi.fn(), resize: vi.fn(), dispose: vi.fn() }));
-vi.mock("./scene", async (orig) => ({ ...(await orig<typeof import("./scene")>()), createViewer: (): ViewerHandle => handle }));
+const handle = vi.hoisted(() => ({
+  setPart: vi.fn(), setParts: vi.fn(), setMode: vi.fn(), setHighlight: vi.fn(), fit: vi.fn(), resize: vi.fn(), dispose: vi.fn(),
+  pick: vi.fn(), toScreen: vi.fn((): [number, number] => [0, 0]), setMarker: vi.fn(),
+}));
+vi.mock("./scene", async (orig) => ({ ...(await orig<typeof import("./scene")>()), createViewer: (): DesignViewerHandle => handle }));
 
 const mk = (mtime: number): PartSummary => ({ part_id: "mount_plate", vars: {}, metrics: null, mtime });
 const bind = (partGlb: unknown) => bindClient({ partGlb } as unknown as CoreClient);
@@ -37,7 +40,7 @@ describe("Viewer", () => {
     bind(vi.fn().mockResolvedValue({ bytes: fixtureBytes(), etag: '"x"' }));
     parts.value = [mk(1)];
     render(<Viewer />);
-    await waitFor(() => expect(handle.setPart).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(handle.setParts.mock.calls.some(([list]) => (list as { id: string }[]).some((i) => i.id === "mount_plate"))).toBe(true));
     expect(handle.setHighlight).toHaveBeenLastCalledWith(false);
     act(() => { inflight.value = new Map([["c1", { run_id: "r", name: "mirror_part_set_vars", input: { part_id: "mount_plate" } }]]); });
     expect(handle.setHighlight).toHaveBeenLastCalledWith(true);

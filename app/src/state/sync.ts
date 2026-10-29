@@ -10,6 +10,7 @@ import type { CoreClient } from "../api/client";
 import type { EventStream } from "../api/events";
 import type { MisesEvent } from "../api/types";
 import { debug } from "../lib/log";
+import { activeBuildId, isActiveBuild } from "./builds";
 import { applyRuns, applySteps, mergeApprovals, reduce, type Effect } from "./reduce";
 import { approvals, commitAppState, conn, coreStatus, noteRunStarted, parts, readAppState } from "./store";
 
@@ -141,8 +142,10 @@ export function startSync(client: CoreClient, stream: Source, opts: SyncOptions 
         return () => { approvals.value = mergeApprovals(approvals.peek(), list); };
       }
       case "fetchParts": {
-        const list = await client.parts();
-        return () => { parts.value = list; };
+        // the active build's tree; an answer for a build the user has since left is dropped
+        const build = activeBuildId.peek();
+        const list = await client.parts(build);
+        return () => { if (isActiveBuild(build)) parts.value = list; };
       }
       case "fetchStatus": {
         const s = await client.status();

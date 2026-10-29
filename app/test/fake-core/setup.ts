@@ -160,6 +160,9 @@ const PROFILE_FIELDS: Record<string, (v: unknown) => boolean> = {
     && Object.values(v).every((x) => typeof x === "string" && loopback(x)),
   setup_completed_at: (v) => v === null || typeof v === "number",
   schema_version: int(1),
+  // Plan 5 C1 build tabs
+  active_project_id: (v) => v === null || typeof v === "string",
+  open_project_ids: (v) => Array.isArray(v) && v.every((x) => typeof x === "string"),
 };
 
 const PART_ID_RE = /^[a-z][a-z0-9_]{1,40}$/;
@@ -170,8 +173,15 @@ function buildContext(st: FakeSetup, parts: () => readonly PartSummary[]): Recor
   const part = c.selected_part_id ? parts().find((p) => p.part_id === c.selected_part_id) : undefined;
   return {
     selected_part_id: c.selected_part_id, selected_run_id: c.selected_run_id, picks: [...c.picks],
-    metrics: part?.metrics ?? null, vars: part?.vars ?? null, doc_url: null, recent_sim: null,
+    // the real-core context fixtures predate C6's edge_list (Task I re-dumps them with the rest of
+    // the Plan 5 context fields)
+    metrics: part?.metrics ? withoutEdges(part.metrics) : null, vars: part?.vars ?? null, doc_url: null, recent_sim: null,
   };
+}
+
+function withoutEdges(m: NonNullable<PartSummary["metrics"]>): Omit<NonNullable<PartSummary["metrics"]>, "edge_list"> {
+  const { edge_list: _edges, ...rest } = m;
+  return rest;
 }
 
 function claudeBody(st: FakeSetup): ClaudeCodeStatus {
