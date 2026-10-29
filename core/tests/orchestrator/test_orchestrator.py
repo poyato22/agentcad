@@ -265,6 +265,65 @@ async def test_agent_spawn_wraps_child_answer_as_delimited_data(tmp_path):
     assert "nonce=" in sent
 
 
+async def test_agent_spawn_wait_false_fans_out(tmp_path):
+    # C4: wait:false returns at once; agent_wait / agent_result collect the parallel children
+    prov = RoleProvider(designer=[text("alpha"), text("beta"), text("gamma")])
+    rt = make(tmp_path, prov)
+    parent = rt.store.create_run("designer", "fake", "m", "t").id
+    rt.store.create_policy(parent, ["*"], ["*"], Caps(), list(C))
+    ids = []
+    for i in range(3):
+        out = await rt.gate.call(parent, "agent_spawn",
+                                 {"agent": "designer", "prompt": f"task {i}", "wait": False},
+                                 call_id=f"c{i}", workdir=rt.workdir(parent))
+        assert out.ok and out.data["status"] == "running"
+        ids.append(out.data["run_id"])
+    assert len(set(ids)) == 3
+    assert all(rt.store.get_run(r).parent_id == parent for r in ids)
+    waited = await rt.gate.call(parent, "agent_wait", {"run_ids": ids},
+                                call_id="w", workdir=rt.workdir(parent))
+    assert waited.ok and set(waited.data["statuses"]) == set(ids)
+    assert set(waited.data["statuses"].values()) == {"done"}
+    texts = []
+    for r in ids:
+        res = await rt.gate.call(parent, "agent_result", {"run_id": r},
+                                 call_id=f"r{r}", workdir=rt.workdir(parent))
+        assert res.data["status"] == "done"
+        texts.append(res.data["final_text"])
+    joined = "\n".join(texts)
+    for t_ in ("alpha", "beta", "gamma"):          # every fanned-out child's answer came back
+        assert t_ in joined
+    # another run cannot collect a child that is not its own
+    other = rt.store.create_run("designer", "fake", "m", "t").id
+    rt.store.create_policy(other, ["*"], ["*"], Caps(), list(C))
+    with pytest.raises(MisesError) as e:
+        await rt.gate.call(other, "agent_result", {"run_id": ids[0]},
+                           call_id="x", workdir=rt.workdir(other))
+    assert e.value.code == ErrorCode.DENIED
+
+
+async def test_child_of_claude_code_run_is_narrowed_and_respects_parallel_limit(tmp_path,
+                                                                                monkeypatch):
+    # C4 / Review Focus 5: a worker spawned from a Claude Code run stays inside the parent's
+    # tools (classes) and scope, and the parent yields its one parallel slot so the child runs.
+    prov = RoleProvider(verifier=[text("child done")])
+    rt = make(tmp_path, prov)
+    monkeypatch.setattr(rt, "_total_limit", lambda prof=None: 1)
+    parent = rt.create_external_run("designer", provider="claude-code", model="sonnet",
+                                    edit_scope=("bracket",),
+                                    allowed_classes={C.READ, C.LOCAL_MUTATE},
+                                    slot_ref="claude-code/sonnet")
+    out = await rt.gate.call(parent, "agent_spawn", {"agent": "verifier", "prompt": "check"},
+                             call_id="c1", workdir=rt.workdir(parent))
+    assert out.ok
+    (child,) = [r for r in rt.store.list_runs() if r.parent_id == parent]
+    pol = rt.store.current_policy(child.id)
+    assert pol.edit_scope == ["bracket"]              # never wider than the parent's
+    # tools ∩: the read-only verifier narrows the parent's classes to READ only
+    assert set(pol.allowed_classes) == {C.READ}
+    assert rt.store.get_run(child.id).status == "done"  # ran under the limit of 1
+
+
 async def test_children_release_their_claude_session_once_collected(tmp_path, monkeypatch):
     # orchestrated children (planner, plan tasks, agent_spawn) are not left with an idle
     # Claude Code process waiting for a message: release_claude_session runs for each

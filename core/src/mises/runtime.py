@@ -23,7 +23,7 @@ from .claude_code.session import MCP_FILE as CLAUDE_MCP_FILE, SOURCE as CLAUDE_C
 from .claude_code.prompts import context_block
 from .claude_code.session import ClaudeCodeSession, model_alias
 from .context_tools import build_context, ui_context
-from .events import Event, EventBus
+from .events import ActivityTracker, Event, EventBus
 from .gate import Gate
 from .onshape.adapter import OnshapeAdapter
 from .onshape.client import OnshapeClient
@@ -47,7 +47,8 @@ log = logging.getLogger(__name__)
 #: models given them wander off into planning instead of building the part, so an agent that is
 #: offered every tool (the designer) does not get these on such a model. An agent that lists
 #: them by name (the planner) keeps them.
-STRONG_MODEL_TOOLS = frozenset({"orchestrator_run", "agent_spawn", "orchestrator_submit_plan"})
+STRONG_MODEL_TOOLS = frozenset({"orchestrator_run", "agent_spawn", "agent_wait", "agent_result",
+                                "orchestrator_submit_plan"})
 
 
 def tools_withheld_for(model_ref: str) -> frozenset[str]:
@@ -138,6 +139,8 @@ class Runtime:
             log.warning("agent definition skipped: %s", w)
         self._runs: dict[str, _RunState] = {}
         self._external: set[str] = set()
+        # the live activity tracker of each run this process drives (GET /runs/{id} `activity`)
+        self._activity: dict[str, ActivityTracker] = {}
         self.ui_calls: dict[str, UiCall] = {}
         self._ui_run: str | None = None
         self._questions: dict[str, tuple[str, asyncio.Future[str]]] = {}
@@ -438,6 +441,7 @@ class Runtime:
         if self.parallel.try_acquire(run_id, ref):
             self.store.update_run(run_id, status="running")
             self.events.publish(Event(type="run_started", run_id=run_id, data=started))
+            self.activity_tracker(run_id).set("starting")
             return None
         return self._queue(run_id, ref, started)
 
@@ -450,6 +454,7 @@ class Runtime:
             **started, "position": self.parallel.position(run_id), "limit": lim.total,
             "reason": st["reason"]}))
         log.info("run %s queued (limit %d)", run_id, lim.total)
+        self.activity_tracker(run_id).set("queued")
         return fut
 
     async def _await_slot(self, run_id: str, fut: asyncio.Future[bool] | None, started: dict,
@@ -470,6 +475,7 @@ class Runtime:
             else:
                 self.store.update_run(run_id, status="running")
                 self.events.publish(Event(type="run_started", run_id=run_id, data=started))
+            self.activity_tracker(run_id).set("starting")
         return granted
 
     @contextlib.asynccontextmanager
@@ -479,6 +485,19 @@ class Runtime:
         async with self.parallel.yielding(run_id,
                                           is_cancelling=lambda: self.is_cancelling(run_id)):
             yield
+
+    # ---- activity
+    def activity_tracker(self, run_id: str) -> ActivityTracker:
+        """The run's activity tracker (created on first use); it publishes agent_activity /
+        agent_thinking and keeps the latest state for GET /runs/{id}."""
+        t = self._activity.get(run_id)
+        if t is None:
+            t = self._activity[run_id] = ActivityTracker(self.events, run_id, self.store)
+        return t
+
+    def activity_of(self, run_id: str) -> dict | None:
+        t = self._activity.get(run_id)
+        return t.snapshot() if t is not None else None
 
     # ---- runs
     def workdir(self, run_id: str) -> Path:
@@ -526,7 +545,8 @@ class Runtime:
         loop = AgentLoop(run_id=run.id, defn=defn, provider=provider, model=model, gate=self.gate,
                          registry=self.registry, store=self.store, events=self.events,
                          workdir=self.workdir(run.id),
-                         config=LoopConfig(withheld_tools=tools_withheld_for(ref)))
+                         config=LoopConfig(withheld_tools=tools_withheld_for(ref)),
+                         activity=self.activity_tracker(run.id))
         st = self._runs[run.id] = _RunState(loop=loop, ref=ref)
         started = {"agent": agent, "provider": provider.name, "model": model,
                    "parent_id": parent_id}
@@ -584,6 +604,7 @@ class Runtime:
         self.events.publish(Event(type="run_finished", run_id=run_id, data={
             "status": "cancelled", "stop_reason": "cancelled", "error": error,
             "final_text": ""}))
+        self.activity_tracker(run_id).set("done")
 
     def _attach_sketch(self, rid: str, sketch_id: str, wd: Path) -> None:
         """Copy the sketch into the new run's workdir; on failure the run is marked failed
@@ -915,6 +936,7 @@ class Runtime:
         self.events.publish(Event(type="run_finished", run_id=run_id, data={
             "status": status, "stop_reason": status, "error": None, "final_text": "",
             "external": True}))
+        self.activity_tracker(run_id).set("done")
 
     def _ui_run_id(self) -> str:
         """The one long-lived external run every UI-started tool call goes through (created on
@@ -1001,6 +1023,7 @@ class Runtime:
         self.events.publish(Event(type="run_finished", run_id=run_id, data={
             "status": status, "stop_reason": result.stop_reason, "error": result.error,
             "final_text": result.final_text}))
+        self.activity_tracker(run_id).set("done")
         return result
 
     def _state(self, run_id: str) -> _RunState:

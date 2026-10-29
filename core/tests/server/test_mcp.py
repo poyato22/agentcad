@@ -196,17 +196,29 @@ async def test_mcp_refuses_interrupted_run(rt, home):
             assert r.status_code == 409
 
 
-async def test_mcp_hides_orchestration_tools(rt):
-    # M5: external runs cannot spawn Mises subagents or run plans
-    hidden = {"orchestrator_run", "agent_spawn", "orchestrator_submit_plan"}
+async def test_mcp_keeps_only_plan_submission_internal(rt):
+    # C4: agent_spawn / agent_wait / agent_result / orchestrator_run are exposed so a Claude
+    # Code run can delegate to Mises workers; only the planner's plan handshake stays internal.
+    from mises.server.mcp_server import INTERNAL_ONLY
+    assert INTERNAL_ONLY == {"orchestrator_submit_plan"}
     async with running(rt) as app:
         rid = rt.create_external_run("codex", provider="openai", model="gpt-x")
         http, client = mcp_client(app, rid)
         async with http, client:
             names = {t.name for t in (await client.list_tools()).tools}
-            assert not names & hidden
-            for name in hidden:
-                res = await client.call_tool(name, {"goal": "x", "agent": "designer",
-                                                    "prompt": "x"})
-                assert res.is_error and json.loads(res.content[0].text)["error"] == "not_found"
-    assert rt.store.list_runs(10)[0].id == rid      # nothing was spawned
+            assert {"agent_spawn", "agent_wait", "agent_result", "orchestrator_run"} <= names
+            assert "orchestrator_submit_plan" not in names
+            res = await client.call_tool("orchestrator_submit_plan", {"plan": {}})
+            assert res.is_error and json.loads(res.content[0].text)["error"] == "not_found"
+
+
+async def test_mcp_list_equals_registry_minus_internal(rt):
+    # C4: a guard that no newly registered tool is ever silently dropped from (or leaked into)
+    # the MCP surface. The served list is exactly the registry minus the documented internal set.
+    from mises.server.mcp_server import INTERNAL_ONLY
+    async with running(rt) as app:
+        rid = rt.create_external_run("codex", provider="openai", model="gpt-x")
+        http, client = mcp_client(app, rid)
+        async with http, client:
+            names = {t.name for t in (await client.list_tools()).tools}
+    assert names == {t.name for t in rt.registry.list()} - INTERNAL_ONLY

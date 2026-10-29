@@ -21,9 +21,11 @@ if TYPE_CHECKING:
     from ..runtime import Runtime
 
 RUN_HEADER = "x-mises-run"
-# Mises' own orchestration: only Mises agents may spawn subagents or run plans. External runs
-# never see these tools, and calling them by name is not_found.
-INTERNAL_ONLY = frozenset({"orchestrator_run", "agent_spawn", "orchestrator_submit_plan"})
+# Tools no external agent ever sees over MCP, and that calling by name is not_found. Only the
+# planner's plan-submission handshake stays internal: `agent_spawn`, `agent_wait`, `agent_result`
+# and `orchestrator_run` are now exposed so a Claude Code run can fan work out to Mises workers
+# (child policy is still enforced server-side, keyed off the caller's run id — see child_policy).
+INTERNAL_ONLY = frozenset({"orchestrator_submit_plan"})
 
 
 def run_id_of(ctx: ServerRequestContext[Any, Any]) -> str:
