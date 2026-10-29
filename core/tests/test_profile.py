@@ -11,7 +11,7 @@ def test_defaults_when_missing(tmp_path):
     p = load_profile(tmp_path)
     assert p == Profile() and p.units == "mm" and p.onshape_calls_year_cap == 2500
     assert p.onshape_calls_run_cap == 200 and p.max_parallel_agents == "auto"
-    assert p.default_agent == "designer" and p.default_material == "PLA"
+    assert p.default_agent == "engineer" and p.default_material == "PLA"
 
 
 def test_round_trip_is_0600_and_atomic(tmp_path, monkeypatch):

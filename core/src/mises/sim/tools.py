@@ -84,6 +84,9 @@ class StaticArgs(BaseModel):
     environment: str | None = Field(default=None, description="optional preset from "
                                     "sim_env_list; its temperature is checked against the "
                                     "material")
+    fine: bool = Field(default=True, description="false: coarse mesh only (a fast screening "
+                       "solve with no error band, e.g. inside a design study); confirm any "
+                       "result you rely on with the default fine+coarse run")
 
     @field_validator("fix")
     @classmethod
@@ -253,6 +256,8 @@ async def sim_static_run(ctx: ToolContext, args: StaticArgs) -> ToolOutput:
     geometry_hash = _file_hash(job_root / "model.step")
     inputs = {"fix": args.fix, "load": args.load.model_dump(), "material": material.name,
               "environment": env["name"] if env else None}
+    if not args.fine:  # only screening runs record it, so default records are unchanged
+        inputs["fine"] = False
     rec: dict = {
         "sim_id": sim_id, "part_id": args.part_id, "run_id": getattr(ctx, "run_id", None),
         "status": "running", "stage": "queued", "created_at": time.time(), "finished_at": None,
@@ -298,8 +303,8 @@ async def sim_static_run(ctx: ToolContext, args: StaticArgs) -> ToolOutput:
         try:
             coarse = await _solve(ctx, job_root / "coarse", step, metrics, coarse_h, args,
                                   material, ccx, progress)
-            fine = await _solve(ctx, job_root / "fine", step, metrics, fine_h, args,
-                                material, ccx, progress)
+            fine = (await _solve(ctx, job_root / "fine", step, metrics, fine_h, args,
+                                 material, ccx, progress) if args.fine else coarse)
         except SimError as e:
             return fail(e.code, e.message, e.hint)
         finally:
@@ -307,9 +312,12 @@ async def sim_static_run(ctx: ToolContext, args: StaticArgs) -> ToolOutput:
         progress("post")
         pf, pc = fine["peaks"], coarse["peaks"]
         peak = pf["max_von_mises_mpa"]
-        band = error_band(coarse=pc["max_von_mises_mpa"], fine=peak)
+        band = error_band(coarse=pc["max_von_mises_mpa"], fine=peak) if args.fine else None
         sf = material.allowable_mpa / peak if peak > 0 else None
         warnings = []
+        if not args.fine:
+            warnings.append("coarse mesh only (screening solve): no error band; confirm "
+                            "with a fine run before relying on it")
         if sf is not None and sf < 1:
             warnings.append(f"predicted to yield: safety factor {sf:.2f} < 1")
         if band is not None and band > 0.1:

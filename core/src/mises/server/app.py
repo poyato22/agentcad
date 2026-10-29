@@ -47,6 +47,7 @@ from .print_api import build_print_router
 from .assembly_api import build_assembly_router
 from .sim_api import build_sim_router
 from .sketch_api import build_sketch_router
+from .spec_api import build_spec_router
 from .ui_api import add_cors, build_ui_router
 
 if TYPE_CHECKING:
@@ -231,6 +232,7 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
     app.include_router(build_assembly_router(runtime))
     app.include_router(build_onshape_router(runtime))
     app.include_router(build_catalog_router(runtime))
+    app.include_router(build_spec_router(runtime))
 
     @app.exception_handler(MisesError)
     async def _mises_error(_req, e: MisesError):
@@ -252,8 +254,14 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
 
     @app.post("/runs")
     async def create_run(body: NewRun):
+        # A sketch already fixes the geometry, so a sketch run builds it with the designer rather
+        # than the default engineer, whose job is to interview and spec a system from scratch.
+        # The app sends the profile default explicitly, so that counts as "no choice" too.
         prof = load_profile(runtime.home)
-        agent = body.agent or prof.default_agent
+        profile_default = prof.default_agent
+        agent = body.agent or profile_default
+        if body.sketch_id and agent == profile_default:
+            agent = "designer"
         project_id = (_projects.check_project(runtime.store, body.project_id) if body.project_id
                       else _projects.active_project_id(runtime.store, prof.active_project_id))
         rid = await runtime.start_run(agent, body.prompt, model_ref=body.model_ref,

@@ -6,6 +6,36 @@ from mises.store import AgentPolicy
 
 SECTION_SEP = "\n\n---\n\n"
 
+# Shared by every built-in agent prompt and by the Claude Code appended system prompt (C4
+# imports this constant). It is deliberately short and placed in the stable prefix so provider
+# prompt caches keep hitting. The Mises app renders the markup described here (Task A2).
+RESPONSE_RULES = """\
+# Replies: short, and in Mises markup
+
+Reply for a working engineer who is watching the model, not reading an essay.
+
+## Length
+- At most about 6 short lines, or one small table, per reply. The user asks when they \
+want more; until then, do not expand.
+- Lead with the result or the decision. Put the number or the verdict first, reasons after, \
+and only if they change what the user would do.
+- Do not restate the request, narrate what you are about to do, or add filler, praise or \
+apologies. One line of status at most while a long tool runs.
+
+## Mises markup (the app renders it)
+Write standard Markdown (GFM tables, bold, lists, `code`) plus:
+- `> [!pass]`, `> [!warn]`, `> [!fail]`, `> [!note]` callouts for a requirement's status or a \
+caveat. Use `[!warn]` for a guide/estimate the user must not over-trust.
+- `[[part:<part_id>|Label]]` to name a part: it renders as a chip that selects it. Use it \
+whenever you mention a part the user has.
+- Numbers with their unit (`3.2 mm`, `48 g`, `SF 2.4`, `120 MPa`, `12 N`); the app tints them. \
+Always carry the unit; a bare number is not a measurement.
+- `==text==` to highlight the one thing that matters most.
+
+Raw HTML is escaped, never rendered, so do not rely on it. A short results table (one row per \
+requirement or variant, pass/warn/fail in a column) beats a paragraph.
+"""
+
 RULES = """\
 # Mises harness rules
 
@@ -95,4 +125,7 @@ def build_system_prompt(defn: AgentDefinition, policy: AgentPolicy, tool_names: 
     ]
     if project_notes.strip():
         tail += ["", "## Project notes", project_notes.strip()]
-    return SECTION_SEP.join([RULES.strip(), defn.body.strip(), "\n".join(tail)])
+    # RESPONSE_RULES sits in the stable prefix (after RULES, before the role body) so every
+    # built-in and custom agent carries the same concise-reply contract and the cache still hits.
+    return SECTION_SEP.join([RULES.strip(), RESPONSE_RULES.strip(),
+                             defn.body.strip(), "\n".join(tail)])

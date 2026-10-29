@@ -22,6 +22,7 @@ from .assembly.tools import register_assembly_tools
 from .cad.tools import register_mirror_tools
 from .catalog import Catalog
 from .catalog.tools import register_catalog_tools
+from .engineering import register_engineering_tools
 from .sim.tools import register_sim_tools
 from .claude_code import detect as claude_detect
 from .claude_code.session import MCP_FILE as CLAUDE_MCP_FILE, SOURCE as CLAUDE_CODE
@@ -132,6 +133,7 @@ class Runtime:
         register_onshape_tools(self.registry)
         register_ui_tools(self.registry)
         register_print_tools(self.registry)
+        register_engineering_tools(self.registry)
         register_orchestrator_tools(self.registry)
         register_assembly_tools(self.registry)
         register_catalog_tools(self.registry)
@@ -1197,12 +1199,17 @@ class Runtime:
         self.store.release_run_reservations(run_id)
 
     # ---- questions (ui_ask_user)
-    async def ask(self, run_id: str, question: str, options: list[str]) -> str:
+    async def ask(self, run_id: str, question: str, options: list[str], *,
+                  questions: list[dict] | None = None) -> str:
+        """`questions` (optional) is a batch of up to 3 structured questions; a UI that knows
+        them answers with a JSON object {id: value}, an older one with plain text."""
         qid = uuid.uuid4().hex[:12]
         fut: asyncio.Future[str] = asyncio.get_running_loop().create_future()
         self._questions[qid] = (run_id, fut)
-        self.events.publish(Event(type="question_asked", run_id=run_id, data={
-            "question_id": qid, "question": question, "options": list(options)}))
+        data = {"question_id": qid, "question": question, "options": list(options)}
+        if questions:
+            data["questions"] = list(questions)
+        self.events.publish(Event(type="question_asked", run_id=run_id, data=data))
         try:
             return await fut
         finally:

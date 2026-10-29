@@ -72,7 +72,7 @@ class Profile(BaseModel):
     display_name: str = ""
     units: Literal["mm"] = "mm"
     default_material: str = "PLA"
-    default_agent: str = "designer"
+    default_agent: str = "engineer"
     default_model: str | None = None
     onshape_calls_year_cap: int = Field(2500, ge=0)
     onshape_calls_run_cap: int = Field(200, ge=0)
