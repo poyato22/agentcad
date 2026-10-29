@@ -82,23 +82,22 @@ def read_version(part_dir: Path) -> int:
 
 
 def _migrate_version(part_dir: Path) -> int | None:
+    """Move a version from the host-only <home>/part_versions/<id>.json (fix round 1) into the
+    meta dir, once. The older <part dir>/version.json is NOT a source: the build sandbox can
+    write it, so a script could choose its own version. It is simply ignored (versions of such
+    parts restart at 0, which only ever makes a stale base_version conflict)."""
     from .cad import safe_io
     d = Path(part_dir)
-    old = d.parent.resolve().parent / VERSIONS_DIR          # host-only, from fix round 1
-    found = None
-    for src_dir, name in ((old, f"{d.name}.json"), (d, VERSION_NAME)):
-        try:
-            found = _parse_version(safe_io.read_bytes(src_dir, name))
-        except (OSError, safe_io.UnsafePath):
-            found = None
-        if found is not None:
-            break
+    old = d.parent.resolve().parent / VERSIONS_DIR
+    try:
+        found = _parse_version(safe_io.read_bytes(old, f"{d.name}.json"))
+    except (OSError, safe_io.UnsafePath):
+        return None
     if found is None:
         return None
     try:
         write_version(d, found)
-        for src_dir, name in ((old, f"{d.name}.json"), (d, VERSION_NAME)):
-            safe_io.unlink(src_dir, name)
+        safe_io.unlink(old, f"{d.name}.json")
     except (OSError, safe_io.UnsafePath):
         pass
     return found
@@ -250,6 +249,102 @@ def op_blocks(source: str) -> str:
         if ln.startswith(OP_MARK):
             return "\n".join(lines[i:]) + "\n"
     return ""
+
+
+_RESOLVE_LINE = re.compile(
+    r"^(?P<indent>\s*)(?P<var>_f|_edges|_faces) = (?P<fn>_mises_face|_mises_edges|_mises_faces)"
+    r"\(_p, (?P<sig>.+), '(?P<label>mises-op (?P<k>\d+) [a-z]+)'\)$")
+_TYPE_RE = re.compile(r"^[a-z_]{1,32}$")
+
+
+def _fin(v: Any) -> float | None:
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return None
+    f = float(v)
+    return f if f == f and abs(f) < 1e9 else None
+
+
+def _vec3(v: Any) -> list[float] | None:
+    if not (isinstance(v, list) and len(v) == 3):
+        return None
+    out = [_fin(c) for c in v]
+    return None if any(c is None for c in out) else out
+
+
+def _clean_sig(new: Any, old: dict, edge: bool) -> dict | None:
+    """A refreshed signature from the (untrusted) worker, rebuilt from validated numbers only,
+    or None. The old hint is kept; nothing else of the worker's data reaches the source."""
+    if not isinstance(new, dict) or not isinstance(new.get("type"), str):
+        return None
+    if not _TYPE_RE.match(new["type"]) or new["type"] != old.get("type"):
+        return None
+    c = _vec3(new.get("center"))
+    if c is None:
+        return None
+    if edge:
+        dirn, length = _vec3(new.get("direction")), _fin(new.get("length"))
+        adj = new.get("adjacent")
+        if dirn is None or length is None or length < 0 or not isinstance(adj, list) or len(adj) > 8:
+            return None
+        adj_ok = [_vec3(n) for n in adj]
+        if any(n is None for n in adj_ok):
+            return None
+        return {"type": new["type"], "direction": dirn, "center": c, "length": length,
+                "adjacent": adj_ok, "hint": old.get("hint")}
+    normal, area = _vec3(new.get("normal")), _fin(new.get("area"))
+    if normal is None or area is None or area < 0:
+        return None
+    return {"type": new["type"], "normal": normal, "center": c, "area": area,
+            "hint": old.get("hint")}
+
+
+def refresh_op_refs(source: str, refs: Any) -> str:
+    """Rewrite each op's recorded target signature(s) with what they resolved to in the last
+    successful build, so the strict match is applied per edit and small steps don't add up to a
+    failure. Only lines in the generated form are touched; anything malformed is left as is."""
+    if not isinstance(refs, dict):
+        return source
+    lines = source.splitlines()
+    headers = [i for i, ln in enumerate(lines) if ln.startswith(OP_MARK)]
+    changed = False
+    for i, ln in enumerate(lines):
+        m = _RESOLVE_LINE.match(ln)
+        if not m or m.group("label") not in refs:
+            continue
+        try:
+            old = ast.literal_eval(m.group("sig"))
+        except (ValueError, SyntaxError):
+            continue
+        new = refs[m.group("label")]
+        plural = m.group("fn") != "_mises_face"
+        olds = old if plural else [old]
+        if not (isinstance(olds, list) and isinstance(new, list) and len(new) == len(olds)
+                and all(isinstance(o, dict) for o in olds)):
+            continue
+        edge = m.group("fn") == "_mises_edges"
+        cleaned = [_clean_sig(n, o, edge) for n, o in zip(new, olds)]
+        if any(c is None for c in cleaned):
+            continue
+        sig = cleaned if plural else cleaned[0]
+        lines[i] = (f"{m.group('indent')}{m.group('var')} = {m.group('fn')}(_p, {sig!r}, "
+                    f"{m.group('label')!r})")
+        k = int(m.group("k"))
+        if k < len(headers):
+            lines[headers[k]] = _rewrite_header(lines[headers[k]], sig, plural)
+        changed = True
+    return "\n".join(lines) + ("\n" if source.endswith("\n") else "") if changed else source
+
+
+def _rewrite_header(header: str, sig: Any, plural: bool) -> str:
+    parts = header.split(" ", 3)            # "#", "mises-op", "<op>", "<json>"
+    if len(parts) != 4:
+        return header
+    try:
+        record = json.loads(parts[3])
+    except ValueError:
+        return header
+    record["targets" if plural else "target"] = sig
+    return " ".join(parts[:3]) + " " + json.dumps(record, sort_keys=True)
 
 
 def _num(v: Any, name: str, *, positive: bool = False) -> float:

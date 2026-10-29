@@ -42,10 +42,12 @@ def test_old_version_files_are_migrated_once(part):
     (old / "bracket.json").write_text('{"version": 7}')
     assert edits.read_version(part) == 7
     assert not (old / "bracket.json").exists() and edits.version_path(part).is_file()
+    assert edits.read_version(part) == 7                           # once, then from the meta dir
+    # the round-0 file in the part dir is sandbox-writable: never trusted as a version
     other = part.parent / "arm"
     other.mkdir()
-    (other / "version.json").write_text('{"version": 4}')        # layout before that
-    assert edits.read_version(other) == 4 and not (other / "version.json").exists()
+    (other / "version.json").write_text('{"version": 41}')
+    assert edits.read_version(other) == 0
 
 
 def test_version_file_link_is_not_followed(part, tmp_path):

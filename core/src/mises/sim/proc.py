@@ -11,7 +11,7 @@ import os
 import signal
 from pathlib import Path
 
-from ..platform import sandboxed_command
+from ..platform import kill_process_tree, sandboxed_command
 from .types import SimError
 
 TAIL = 4000
@@ -47,5 +47,7 @@ async def run_sandboxed(argv: list[str], job_dir: Path, *, timeout_s: float, wha
         await proc.wait()
         raise
     _kill_group(proc)
+    # backstop to the profile's (deny process-fork): nothing from the job may outlive it
+    await asyncio.to_thread(kill_process_tree, proc.pid)
     return (proc.returncode, out.decode(errors="replace")[-TAIL:],
             err.decode(errors="replace")[-TAIL:])

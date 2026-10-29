@@ -10,7 +10,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ..platform import sandboxed_command
+from ..platform import kill_process_tree, sandboxed_command
 from . import safe_io
 
 WORKER = Path(__file__).resolve().parent / "worker.py"
@@ -24,6 +24,9 @@ class BuildResult:
     vars: dict = field(default_factory=dict)
     error: str | None = None
     stdout_tail: str = ""
+    # op label -> the signatures its targets resolved to in THIS build (see cad/worker.py);
+    # untrusted (the worker ran the part script), validated by edits.refresh_op_refs
+    op_refs: dict = field(default_factory=dict)
 
 
 def _kill_group(proc: asyncio.subprocess.Process) -> None:
@@ -31,6 +34,13 @@ def _kill_group(proc: asyncio.subprocess.Process) -> None:
         os.killpg(proc.pid, signal.SIGKILL)
     except (ProcessLookupError, PermissionError):
         pass
+
+
+async def reap(proc: asyncio.subprocess.Process) -> list[int]:
+    """After a sandboxed run: kill its process group, then (backstop to the sandbox's
+    `(deny process-fork)`) anything still in its session or descended from it."""
+    _kill_group(proc)
+    return await asyncio.to_thread(kill_process_tree, proc.pid)
 
 
 async def run_build(part_dir: Path, vars: dict[str, float], *, timeout_s: float = 60,
@@ -57,15 +67,19 @@ async def run_build(part_dir: Path, vars: dict[str, float], *, timeout_s: float 
     try:
         out, err = await asyncio.wait_for(proc.communicate(), timeout_s)
     except asyncio.TimeoutError:
-        _kill_group(proc)
+        await reap(proc)
         await proc.wait()
         return BuildResult(False, error=f"timeout after {timeout_s:g}s")
     except BaseException:  # cancellation etc.
         _kill_group(proc)
+        await asyncio.shield(asyncio.to_thread(kill_process_tree, proc.pid))
         await proc.wait()
         raise
-    _kill_group(proc)  # reap stragglers the script may have spawned
+    stragglers = await reap(proc)
     tail = out.decode(errors="replace")[-_TAIL:]
+    if stragglers:
+        return BuildResult(False, error=f"the build left {len(stragglers)} process(es) running; "
+                           "they were killed and the build refused", stdout_tail=tail)
     if proc.returncode != 0:
         msg = err.decode(errors="replace")[-_TAIL:].strip() or f"worker exited {proc.returncode}"
         return BuildResult(False, error=msg, stdout_tail=tail)
@@ -76,5 +90,6 @@ async def run_build(part_dir: Path, vars: dict[str, float], *, timeout_s: float 
     except Exception as e:  # noqa: BLE001
         return BuildResult(False, error=f"build did not complete (no valid result): {e}",
                            stdout_tail=tail)
+    refs = result.get("op_refs")
     return BuildResult(True, metrics=result["metrics"], vars=result.get("vars", {}),
-                       stdout_tail=tail)
+                       stdout_tail=tail, op_refs=refs if isinstance(refs, dict) else {})

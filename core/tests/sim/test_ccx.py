@@ -44,7 +44,8 @@ def test_find_ccx_candidates_and_path(monkeypatch, tmp_path):
 
 async def test_run_ccx_timeout_kills_process(tmp_path):
     pidfile = tmp_path / "job" / "pid"
-    fake = _fake_bin(tmp_path, f"echo $$ > {pidfile}\nsleep 30\n")
+    # `exec`: the sandbox denies process-fork, so the fake must not fork `sleep` as a child
+    fake = _fake_bin(tmp_path, f"echo $$ > {pidfile}\nexec sleep 30\n")
     job = tmp_path / "job"
     job.mkdir()
     (job / "job.inp").write_text("*NODE\n")

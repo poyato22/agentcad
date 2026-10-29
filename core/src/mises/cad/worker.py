@@ -163,6 +163,33 @@ def _ratio_ok(now: float, then: float) -> bool:
     return _SIZE_RATIO[0] <= r <= _SIZE_RATIO[1]
 
 
+# op label -> the signatures its targets resolved to in this build, in call order. Returned in
+# result.json so the host can refresh the op's recorded reference (fix: small steps must not add
+# up to a failure, since each match is checked against the previous build, not the first one).
+_RESOLVED: dict[str, list] = {}
+
+
+def _r(x: float, n: int = 4) -> float:
+    return round(float(x), n) + 0.0
+
+
+def _face_sig_now(f, hint) -> dict:
+    from build123d import CenterOf
+    c = f.center(CenterOf.MASS)
+    return {"type": _geom(f), "normal": [_r(v) for v in _xyz(f.normal_at(c))],
+            "center": [_r(v, 3) for v in _xyz(c)], "area": _r(f.area, 3), "hint": hint}
+
+
+def _edge_sig_now(e, adj: dict, hint) -> dict:
+    return {"type": _geom(e), "direction": [_r(v) for v in _canon(_xyz(e.tangent_at(0.5)))],
+            "center": [_r(v, 3) for v in _xyz(e.position_at(0.5))], "length": _r(e.length, 3),
+            "adjacent": [[_r(v) for v in n] for n in adj.get(e, [])], "hint": hint}
+
+
+def _record(label: str, sig: dict) -> None:
+    _RESOLVED.setdefault(label, []).append(sig)
+
+
 def _one(cands: list, label: str, what: str):
     if not cands:
         raise ValueError(f"{label}: target {what} not found after regeneration (nothing with the "
@@ -192,7 +219,9 @@ def _mises_face(shape, sig: dict, label: str):
             continue
         if math.dist(_xyz(c), c0) <= tol:
             cands.append(f)
-    return _one(cands, label, "face")
+    found = _one(cands, label, "face")
+    _record(label, _face_sig_now(found, sig.get("hint")))
+    return found
 
 
 def _same_normals(now: list, then: list) -> bool:
@@ -225,7 +254,10 @@ def _mises_edge(shape, sig: dict, label: str, adj: dict | None = None):
         if adj0 and not _same_normals(adj.get(e, []), adj0):
             continue
         cands.append(e)
-    return _one(cands, label, "edge")
+    found = _one(cands, label, "edge")
+    _record(label, _edge_sig_now(found, adj if adj is not None else _edge_adjacency(shape),
+                                 sig.get("hint")))
+    return found
 
 
 def _distinct(found: list, label: str, what: str) -> list:
@@ -599,7 +631,7 @@ def main(argv: list[str]) -> int:
         os.replace(tmp / ("new_" + name), part_dir / name)
     # Very last step: the result marker the runner trusts (carries the nonce).
     (tmp / "new_result.json").write_text(
-        json.dumps({"nonce": nonce, "metrics": metrics, "vars": merged}))
+        json.dumps({"nonce": nonce, "metrics": metrics, "vars": merged, "op_refs": _RESOLVED}))
     os.replace(tmp / "new_result.json", part_dir / "result.json")
     return 0
 

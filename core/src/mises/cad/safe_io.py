@@ -23,7 +23,7 @@ from pathlib import Path
 
 from ..types import ErrorCode, MisesError
 
-_FLAGS_DIR = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+_FLAGS_DIR = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_NONBLOCK
 
 
 class UnsafePath(MisesError):
@@ -69,13 +69,15 @@ def read_bytes(d: Path, name: str) -> bytes | None:
     dfd = open_dir(d)
     try:
         try:
-            fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=dfd)
+            # O_NONBLOCK: opening a FIFO must not block the event loop; it is refused below
+            fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=dfd)
         except FileNotFoundError:
             return None
         except OSError as e:
             raise UnsafePath(f"{name}: refused ({e.strerror})") from None
         try:
             _check_regular(fd, name)
+            os.set_blocking(fd, True)           # a regular file: read it normally
             chunks = []
             while chunk := os.read(fd, 1 << 20):
                 chunks.append(chunk)
@@ -137,6 +139,18 @@ def write_bytes(d: Path, name: str, data: bytes) -> None:
 
 def write_text(d: Path, name: str, text: str) -> None:
     write_bytes(d, name, text.encode("utf-8"))
+
+
+def copy_out(d: Path, name: str, dest_dir: Path, dest_name: str | None = None) -> Path | None:
+    """Copy a part file (read safely, as one open) into a host-chosen dir and return the copy's
+    path — what to hand to later consumers instead of a path into the part dir, which a check
+    could not keep honest until they open it. None if the file does not exist."""
+    data = read_bytes(d, name)
+    if data is None:
+        return None
+    ensure_dir(dest_dir)
+    write_bytes(dest_dir, dest_name or name, data)
+    return real_dir(dest_dir) / (dest_name or name)
 
 
 def unlink(d: Path, name: str) -> None:

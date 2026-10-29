@@ -148,7 +148,9 @@ def test_cancel_kills_the_solver(client, rt, monkeypatch, tmp_path):
     fake = tmp_path / "bin" / "ccx"
     fake.parent.mkdir()
     # the solver's job dir is the only writable place: it writes its pid there and hangs
-    fake.write_text("#!/bin/sh\n[ \"$1\" = -v ] && echo Version 2.23 && exit 0\necho $$ > job.pid\nsleep 60\n")
+    # `exec sleep`: the sandbox denies process-fork
+    fake.write_text("#!/bin/sh\n[ \"$1\" = -v ] && echo Version 2.23 && exit 0\necho $$ > job.pid\n"
+                    "exec sleep 60\n")
     fake.chmod(0o755)
     monkeypatch.setattr(sim_tools, "find_ccx", lambda: str(fake))
     _build(client, rt)

@@ -84,10 +84,11 @@ async def test_failed_source_edit_rolls_back_part_py(ctx):
     await mk(ctx)
     d = ctx.workdir / "parts" / "bracket"
     before = (d / "part.py").read_text()
+    await mirror_part_get_source.handler(ctx, SourceArgs(part_id="bracket"))
     r = await mirror_part_set_source.handler(
         ctx, SetSourceArgs(part_id="bracket", source="def build(v):\n    raise ValueError('x')\n",
                            base_version=1))
-    assert not r.ok
+    assert not r.ok and "conflict" not in r.data      # the BUILD failed, not the version check
     assert (d / "part.py").read_text() == before  # previous source kept
     g = await mirror_part_get_source.handler(ctx, SourceArgs(part_id="bracket"))
     assert g.data["version"] == 1  # version not bumped by the failed edit
@@ -498,3 +499,216 @@ async def test_hole_on_a_removed_boss_fails_loudly(tmp_path):
     assert r.ok, r.summary
     (hole,) = r.data["holes"]
     assert hole["center"][0] == pytest.approx(10, abs=0.05)
+
+
+# ---- fix round 3 regressions (probe_r2.py, probe_iaib.py)
+
+def _hostile(body: str, d) -> str:
+    """A part script that runs `body` inside build() (cwd = the part dir), then builds a box."""
+    body = f"os.chdir({str(d)!r})\n" + body.strip("\n")
+    lines = "\n".join("    " + ln for ln in body.splitlines())
+    return ('import os, time\nfrom build123d import *\nVARS={"length":40.0}\n'
+            'def build(v):\n' + lines + '\n    return Box(v["length"], 20, 10)\n')
+
+
+async def _setsrc(ctx, src, part_id="bracket"):
+    await read_src(ctx, part_id)
+    return await mirror_part_set_source.handler(ctx, SetSourceArgs(part_id=part_id, source=src))
+
+
+async def test_a_build_cannot_leave_a_daemon_behind(tmp_path):
+    """probe_r2 A6: fork + setsid + fork, then plant tmp/drawing_args.json -> outside file after
+    the build. With (deny process-fork) the fork fails; the drawing never writes outside."""
+    from mises.drawing import mirror_drawing
+    agent, _ = _runs(tmp_path)
+    await mk(agent)
+    d = tmp_path / "parts" / "bracket"
+    target = tmp_path / "outside" / "a6.txt"
+    target.parent.mkdir()
+    target.write_text("ORIGINAL\n")
+    r = await _setsrc(agent, _hostile(f'''
+if os.fork() == 0:
+    os.setsid()
+    if os.fork() == 0:
+        here = os.path.realpath(".")
+        time.sleep(0.5)
+        open(os.path.join(here, "alive.txt"), "w").write(str(os.getpid()))
+        os.symlink({str(target)!r}, os.path.join(here, "tmp", "drawing_args.json"))
+        os._exit(0)
+    os._exit(0)
+time.sleep(0.2)''', d))
+    assert not r.ok and "Operation not permitted" in r.summary      # fork is denied
+    await asyncio.sleep(1.5)
+    assert not (d / "alive.txt").exists() and not (d / "tmp" / "drawing_args.json").is_symlink()
+    await mirror_drawing(d, label="L", material="PLA", date="2026-10-29", timeout_s=60)
+    assert target.read_text() == "ORIGINAL\n"
+
+
+async def test_drawing_never_writes_through_a_planted_link(tmp_path):
+    """Even if a link did appear later (simulated here), the drawing replaces it."""
+    from mises.drawing import mirror_drawing
+    agent, _ = _runs(tmp_path)
+    await mk(agent)
+    d = tmp_path / "parts" / "bracket"
+    target = tmp_path / "outside.txt"
+    target.write_text("ORIGINAL\n")
+    (d / "tmp").mkdir(exist_ok=True)
+    (d / "tmp" / "drawing_args.json").symlink_to(target)
+    (d / "drawing.json").symlink_to(target)
+    dr = await mirror_drawing(d, label="L", material="PLA", date="2026-10-29", timeout_s=60)
+    assert target.read_text() == "ORIGINAL\n" and dr.info["label"] == "L"
+
+
+async def test_a_fifo_in_the_part_dir_is_refused_not_blocking(tmp_path):
+    """probe_r2 A5: a FIFO planted at metrics.json must not hang the event loop."""
+    import os as _os
+    from mises.cad.safe_io import UnsafePath
+    agent, _ = _runs(tmp_path)
+    await mk(agent)
+    m = tmp_path / "parts" / "bracket" / "metrics.json"
+    m.unlink()
+    _os.mkfifo(m)
+    with pytest.raises(UnsafePath):
+        await asyncio.wait_for(mirror_measure.handler(agent, PartArgs(part_id="bracket")), 3)
+
+
+async def test_pre_planted_temp_names_are_not_followed(tmp_path):
+    """probe_r2 A2: vars.json.tmp, result.json and tmp/ as links to outside things."""
+    import os as _os
+    agent, _ = _runs(tmp_path)
+    await mk(agent)
+    d = tmp_path / "parts" / "bracket"
+    out_dir = tmp_path / "outside_dir"
+    out_dir.mkdir()
+    o1, o2 = tmp_path / "o1.txt", tmp_path / "o2.txt"
+    o1.write_text("ORIGINAL")
+    o2.write_text("ORIGINAL")
+    _os.symlink(o1, d / "vars.json.tmp")
+    (d / "result.json").unlink(missing_ok=True)
+    _os.symlink(o2, d / "result.json")
+    _os.rename(d / "tmp", tmp_path / "old_tmp")
+    _os.symlink(out_dir, d / "tmp")
+    r = await mirror_part_set_vars.handler(agent, SetVarsArgs(part_id="bracket", vars={"length": 41}))
+    assert r.ok, r.summary
+    assert o1.read_text() == "ORIGINAL" and o2.read_text() == "ORIGINAL"
+    assert list(out_dir.iterdir()) == []
+
+
+async def test_a_build_replacing_its_dir_with_a_link_is_reclaimed(tmp_path):
+    """probe_r2 A3: the build empties and removes its part dir, puts a link in its place."""
+    agent, _ = _runs(tmp_path)
+    await mk(agent)
+    d = tmp_path / "parts" / "bracket"
+    before = (d / "part.py").read_text()
+    out_dir = tmp_path / "a3dir"
+    out_dir.mkdir()
+    r = await _setsrc(agent, _hostile(f'''
+here = os.path.realpath(".")
+for root, dirs, files in os.walk(here, topdown=False):
+    for n in files: os.unlink(os.path.join(root, n))
+    for n in dirs: os.rmdir(os.path.join(root, n))
+os.rmdir(here)
+os.symlink({str(out_dir)!r}, here)
+raise RuntimeError("x")''', d))
+    assert not r.ok
+    assert list(out_dir.iterdir()) == [] and not d.is_symlink()
+    assert (d / "part.py").read_text() == before
+
+
+async def test_nested_links_in_output_dirs_are_refused(tmp_path):
+    """probe_r2 A8."""
+    agent, _ = _runs(tmp_path)
+    await mk(agent)
+    d = tmp_path / "parts" / "bracket"
+    o8 = tmp_path / "o8.txt"
+    o8.write_text("ORIGINAL")
+    r = await _setsrc(agent, _hostile(f'''
+os.makedirs("sims/s1/deep", exist_ok=True)
+os.symlink({str(o8)!r}, "sims/s1/deep/result.json")
+os.makedirs("tmp/x", exist_ok=True)
+os.symlink("/", "tmp/x/root")''', d))
+    assert not r.ok and "sims/s1/deep/result.json" in r.summary and "tmp/x/root" in r.summary
+    assert o8.read_text() == "ORIGINAL"
+    assert not any(p.is_symlink() for p in d.rglob("*"))
+
+
+async def test_a_create_script_cannot_choose_its_version(tmp_path):
+    """probe_r2 A9: version.json written into the part dir by the script is not a version."""
+    agent, _ = _runs(tmp_path)
+    d = tmp_path / "parts" / "migrate"
+    r = await mirror_part_create.handler(agent, CreateArgs(part_id="migrate", script=_hostile(
+        'open("version.json", "w").write("{\\"version\\": 41}")', d), vars={}))
+    assert r.ok and r.data["version"] == 1
+
+
+def _user(tmp_path):
+    store = SimpleNamespace(get_run=lambda rid: SimpleNamespace(provider="ui"),
+                            set_part_version=lambda *a, **k: None)
+    return SimpleNamespace(workdir=tmp_path, run_id="ui", store=store)
+
+
+async def test_explicit_version_from_a_measure_cannot_drop_the_users_ops(tmp_path):
+    """probe_iaib measure_version_plus_drop_ops."""
+    agent, user = _runs(tmp_path)[0], _user(tmp_path)
+    await mk(agent)
+    src1 = (await read_src(agent))["source"]
+    await _user_hole(user)
+    v = (await mirror_measure.handler(agent, PartArgs(part_id="bracket"))).data["version"]
+    r = await mirror_part_set_source.handler(agent, SetSourceArgs(
+        part_id="bracket", source=src1.replace("40.0", "45.0"), base_version=v, drop_ops=True))
+    assert not r.ok and r.data["conflict"] and "base_version alone is not enough" in r.summary
+    assert "mises-op hole" in (tmp_path / "parts" / "bracket" / "part.py").read_text()
+
+
+async def test_explicit_version_from_a_measure_cannot_overwrite_a_user_base_edit(tmp_path):
+    """probe_iaib measure_version_overwrites_user_base_edit."""
+    agent, user = _runs(tmp_path)[0], _user(tmp_path)
+    await mk(agent)
+    src1 = (await read_src(agent))["source"]
+    user_src = src1.replace("return Box(", "return Cylinder(5, 30) + Box(")
+    r = await mirror_part_set_source.handler(user, SetSourceArgs(
+        part_id="bracket", source=user_src, base_version=1))
+    assert r.ok, r.summary
+    v = (await mirror_measure.handler(agent, PartArgs(part_id="bracket"))).data["version"]
+    r = await mirror_part_set_source.handler(agent, SetSourceArgs(
+        part_id="bracket", source=src1.replace("40.0", "45.0"), base_version=v))
+    assert not r.ok and r.data["conflict"]
+    assert "Cylinder" in (tmp_path / "parts" / "bracket" / "part.py").read_text()
+
+
+async def test_drop_ops_after_a_fresh_read_says_so(tmp_path):
+    agent, user = _runs(tmp_path)[0], _user(tmp_path)
+    await mk(agent)
+    await _user_hole(user)
+    await read_src(agent)
+    r = await mirror_part_set_source.handler(agent, SetSourceArgs(
+        part_id="bracket", source=BOX, drop_ops=True))
+    assert r.ok and "dropped 1 feature op" in r.summary and r.data["holes"] == []
+
+
+POST = ('from build123d import *\nVARS={"h":10.0}\n'
+        'def build(v):\n    return Box(60, 40, 5, align=(Align.CENTER, Align.CENTER, Align.MIN)) + '
+        'Pos(15, 0, 5) * Box(6, 6, v["h"], align=(Align.CENTER, Align.CENTER, Align.MIN))\n')
+
+
+async def test_small_steps_do_not_add_up_to_a_failure(tmp_path):
+    """probe_iaib post_top: h 10 -> 15 -> 20 moves the post top 5 mm per step (under its
+    6 mm size) but 10 mm in total; the reference is refreshed after each build."""
+    agent, _ = _runs(tmp_path)
+    await mk(agent, script=POST)
+    faces = await _all_faces(agent, "bracket")
+    top = max((f for f in faces if f["normal"] and round(f["normal"][2], 3) == 1),
+              key=lambda f: f["center"][2])
+    assert (await mirror_part_op.handler(agent, OpArgs(
+        part_id="bracket", op="hole", target={"face_id": top["id"]},
+        params={"diameter": 2.0, "through": False, "depth": 3.0}))).ok
+    for h in (15.0, 20.0):
+        r = await mirror_part_set_vars.handler(agent, SetVarsArgs(part_id="bracket", vars={"h": h}))
+        assert r.ok, r.summary
+        (hole,) = r.data["holes"]
+        assert hole["center"][2] == pytest.approx(5 + h - 1.5, abs=0.05)
+    src = (tmp_path / "parts" / "bracket" / "part.py").read_text()
+    assert "'center': [15.0, 0.0, 25.0]" in src          # the refreshed reference
+    # a jump bigger than the post's own size still fails loudly
+    r = await mirror_part_set_vars.handler(agent, SetVarsArgs(part_id="bracket", vars={"h": 40.0}))
+    assert not r.ok and "mises-op 0 hole" in r.summary

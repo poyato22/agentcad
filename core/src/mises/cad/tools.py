@@ -183,33 +183,51 @@ def _guard(ctx: ToolContext, part_id: str, d: Path, base_version: int | None) ->
 
 def _guard_source(ctx: ToolContext, part_id: str, d: Path,
                   base_version: int | None) -> ToolOutput | None:
-    """Whole-script replacements (set_source, create over an existing part). Without an explicit
-    base_version they need a source read (mirror_part_get_source) at the current version; a
-    measure, a faces read or a conflict does not count, so a blind retry stays refused."""
+    """Whole-script replacements (set_source, create over an existing part), drop_ops included.
+    An AGENT needs a source read (mirror_part_get_source) at the current version, always: an
+    explicit base_version is checked as well but never stands in for the read (a model can echo
+    the version from a measure without ever seeing the user's ops or base edits). A measure, a
+    faces read or a conflict does not count, so a blind retry stays refused. The USER (the app's
+    code editor, which shows the source) passes base_version explicitly instead."""
     run_id = getattr(ctx, "run_id", None)
-    explicit = base_version is not None
-    if not explicit:
-        base_version = _source_seen.get(_seen_key(run_id, d))
-    if base_version is None or _edits.check_base_version(d, base_version) is not None:
-        why = ("replacing the whole script needs the current source: read it with "
-               "mirror_part_get_source (it may now hold the user's feature ops, listed in "
-               "data.ops) and apply your change to that, or pass base_version")
-        if explicit:
-            why = f"it changed since version {base_version}; " + why
+    current = _edits.read_version(d)
+    if _editor(ctx) == "user":
+        if base_version is not None and int(base_version) == current:
+            return None
+        why = (f"it changed since version {base_version}; reload the source"
+               if base_version is not None else "a user edit must carry base_version")
         return _conflict(ctx, part_id, d, reason=why, source_level=True)
-    return None
+    read_at = _source_seen.get(_seen_key(run_id, d))
+    if read_at == current and (base_version is None or int(base_version) == current):
+        return None
+    why = ("replacing the whole script needs the current source: read it with "
+           "mirror_part_get_source (it may now hold the user's edits and feature ops, listed in "
+           "data.ops) and apply your change to that; base_version alone is not enough")
+    if read_at is not None and read_at != current:
+        why = f"it changed since you read the source at version {read_at}; " + why
+    return _conflict(ctx, part_id, d, reason=why, source_level=True)
 
 
-def _keep_ops(ctx: ToolContext, d: Path, new_source: str, drop_ops: bool) -> tuple[str, bool]:
+def _keep_ops(ctx: ToolContext, d: Path, new_source: str,
+              drop_ops: bool) -> tuple[str, bool, int]:
     """An agent's whole-script replacement keeps the part's `# mises-op` feature blocks (the
     user's ops) unless the new script carries op blocks itself or drop_ops is set. A user edit
-    (the code editor shows the blocks) is taken as written."""
-    if drop_ops or _editor(ctx) == "user" or _edits.OP_MARK in new_source:
-        return new_source, False
-    ops = _edits.op_blocks(safe_io.read_text(d, "part.py") or "")
-    if not ops:
-        return new_source, False
-    return new_source.rstrip("\n") + "\n\n\n" + ops, True
+    (the code editor shows the blocks) is taken as written. Returns (source, kept, dropped):
+    `dropped` = how many op blocks the replacement removes, reported to the user."""
+    old = safe_io.read_text(d, "part.py") or ""
+    before = _edits.op_count(old)
+    if not (drop_ops or _editor(ctx) == "user" or _edits.OP_MARK in new_source):
+        ops = _edits.op_blocks(old)
+        if ops:
+            new_source = new_source.rstrip("\n") + "\n\n\n" + ops
+            return new_source, True, max(0, before - _edits.op_count(new_source))
+    return new_source, False, max(0, before - _edits.op_count(new_source))
+
+
+def _ops_note(kept: bool, dropped: int) -> str:
+    if dropped:
+        return f" (dropped {dropped} feature op{'s' if dropped != 1 else ''})"
+    return " (kept its feature ops)" if kept else ""
 
 
 async def _build_guarded(d: Path, vars_: dict, snap: dict[str, bytes]):
@@ -233,6 +251,17 @@ async def _build_guarded(d: Path, vars_: dict, snap: dict[str, bytes]):
     if not res.ok:
         _restore(d, snap)
     return res
+
+
+def _accept(d: Path, res) -> None:
+    """Promote a successful build: its vars, and the op references re-resolved in it (so each
+    op's strict match is measured against the last build, not the one it was added on)."""
+    safe_io.write_text(d, "vars.json", json.dumps(res.vars))
+    if res.op_refs:
+        src = safe_io.read_text(d, "part.py") or ""
+        new = _edits.refresh_op_refs(src, res.op_refs)
+        if new != src:
+            safe_io.write_text(d, "part.py", new)
 
 
 def _finish_edit(ctx: ToolContext, part_id: str, d: Path, summary: str) -> int:
@@ -435,7 +464,9 @@ async def mirror_part_create(ctx: ToolContext, args: CreateArgs) -> ToolOutput:
             refused = _guard_source(ctx, args.part_id, d, args.base_version)
             if refused is not None:
                 return refused
-            script, _ = _keep_ops(ctx, d, script, args.drop_ops)
+            script, kept, dropped = _keep_ops(ctx, d, script, args.drop_ops)
+        else:
+            kept, dropped = False, 0
         snap = _snapshot(d)
         safe_io.write_text(d, "part.py", script)
         try:
@@ -448,11 +479,11 @@ async def mirror_part_create(ctx: ToolContext, args: CreateArgs) -> ToolOutput:
             if not snap:
                 shutil.rmtree(d, ignore_errors=True)
             return _fail(res.error or "build failed", res.stdout_tail)
-        safe_io.write_text(d, "vars.json", json.dumps(res.vars))
-        version = _finish_edit(ctx, args.part_id, d,
-                               f"{'rebuilt' if existed else 'created'} {args.part_id} from script")
-    kept = " (kept its feature ops)" if script != args.script else ""
-    return ToolOutput(summary=_summary(args.part_id, res.metrics) + kept,
+        _accept(d, res)
+        note = _ops_note(kept, dropped)
+        version = _finish_edit(ctx, args.part_id, d, f"{'rebuilt' if existed else 'created'} "
+                               f"{args.part_id} from script{note}")
+    return ToolOutput(summary=_summary(args.part_id, res.metrics) + note,
                       data={"part_id": args.part_id, "vars": res.vars, "version": version,
                             **_inline(res.metrics)})
 
@@ -478,7 +509,7 @@ async def mirror_part_set_vars(ctx: ToolContext, args: SetVarsArgs) -> ToolOutpu
         res = await _build_guarded(d, new_vars, snap)
         if not res.ok:
             return _fail(res.error or "build failed", res.stdout_tail)
-        safe_io.write_text(d, "vars.json", json.dumps(res.vars))
+        _accept(d, res)
         new_vars = res.vars
         version = _finish_edit(ctx, args.part_id, d,
                                "set " + ", ".join(f"{k}={args.vars[k]}" for k in args.vars))
@@ -508,11 +539,12 @@ async def mirror_measure(ctx: ToolContext, args: PartArgs) -> ToolOutput:
       description="Return a file handle for the part's STEP, STL or GLB export.")
 async def mirror_export(ctx: ToolContext, args: ExportArgs) -> ToolOutput:
     d = _existing(ctx, args.part_id)
-    f = safe_io.real_dir(d) / f"model.{args.format}"
-    if not f.exists():
-        raise MisesError(ErrorCode.NOT_FOUND, f"{f.name} missing; rebuild the part")
-    if f.is_symlink() or f.stat().st_nlink != 1:   # the handle is read by sim / print later
-        raise safe_io.UnsafePath(f"{f.name}: not a plain file")
+    name = f"model.{args.format}"
+    # One safe open of the part file, copied into this run's own exports dir: the handle never
+    # points into the part dir, so nothing can swap it between a check and a later open.
+    f = safe_io.copy_out(d, name, Path(ctx.workdir) / "exports", f"{args.part_id}.{args.format}")
+    if f is None:
+        raise MisesError(ErrorCode.NOT_FOUND, f"{name} missing; rebuild the part")
     return ToolOutput(summary=f"{args.part_id}: {args.format} export", handles=[str(f)],
                       data={"part_id": args.part_id, "format": args.format})
 
@@ -597,16 +629,16 @@ async def mirror_part_set_source(ctx: ToolContext, args: SetSourceArgs) -> ToolO
         if refused is not None:
             return refused
         _prepare(d)
-        source, kept = _keep_ops(ctx, d, args.source, args.drop_ops)
+        source, kept, dropped = _keep_ops(ctx, d, args.source, args.drop_ops)
         build_vars = args.vars if args.vars is not None else _read_json(d, "vars.json")
         snap = _snapshot(d)            # includes part.py
         safe_io.write_text(d, "part.py", source)
         res = await _build_guarded(d, build_vars, snap)
         if not res.ok:
             return _fail(res.error or "build failed", res.stdout_tail)
-        safe_io.write_text(d, "vars.json", json.dumps(res.vars))
-        version = _finish_edit(ctx, args.part_id, d, f"edited {args.part_id} source")
-    note = " (kept its feature ops)" if kept else ""
+        _accept(d, res)
+        note = _ops_note(kept, dropped)
+        version = _finish_edit(ctx, args.part_id, d, f"edited {args.part_id} source{note}")
     return ToolOutput(summary=f"{_summary(args.part_id, res.metrics)}; version {version}{note}",
                       data={"part_id": args.part_id, "vars": res.vars, "version": version,
                             **_inline(res.metrics)}, step_kind=StepKind.DIFF)
@@ -633,7 +665,7 @@ async def mirror_part_op(ctx: ToolContext, args: OpArgs) -> ToolOutput:
         res = await _build_guarded(d, build_vars, snap)
         if not res.ok:
             return _fail(res.error or f"{args.op} op failed to build", res.stdout_tail)
-        safe_io.write_text(d, "vars.json", json.dumps(res.vars))
+        _accept(d, res)
         version = _finish_edit(ctx, args.part_id, d, f"{args.op} op on {args.part_id}")
     return ToolOutput(summary=f"{args.op}: {_summary(args.part_id, res.metrics)}; version {version}",
                       data={"part_id": args.part_id, "op": args.op, "version": version,
