@@ -29,14 +29,16 @@ async function openSketch(page: Page): Promise<Locator> {
   return svg;
 }
 
-/** Screen position of a sheet point (mm, origin bottom-left) — the inverse of clientToMm. */
+/** Screen position of a sheet point (mm, origin bottom-left) — the inverse of view.screenToMm, for
+ *  the view the canvas reports in data-view ("x y w h" in mm). */
 async function screenOf(svg: Locator, x: number, y: number): Promise<[number, number]> {
   const b = await svg.boundingBox();
   if (!b) throw new Error("no canvas");
-  const scale = Math.min(b.width / 200, b.height / 150);
-  const x0 = b.x + (b.width - 200 * scale) / 2;
+  const [vx, vy, vw, vh] = ((await svg.getAttribute("data-view")) ?? "0 0 200 150").split(" ").map(Number);
+  const scale = Math.min(b.width / vw, b.height / vh);
+  const x0 = b.x + (b.width - vw * scale) / 2;
   const y0 = b.y;                                   // xMidYMin: top-aligned
-  return [x0 + x * scale, y0 + (150 - y) * scale];
+  return [x0 + (x - vx) * scale, y0 + (vy + vh - y) * scale];
 }
 
 async function useTool(page: Page, name: "Pen" | "Line" | "Rectangle" | "Circle" | "Select") {
@@ -231,4 +233,121 @@ test("core_error_shows_hint_as_text", async ({ page, fake }) => {
   await drag(page, svg, [10, 10], [50, 10]);
   await page.getByRole("button", { name: "Build part" }).click();
   await expect(page.getByRole("alert")).toContainText("no API key for anthropic");
+});
+
+// ---- Sketch v2: typed dimensions, guides, constraints, templates, extrude preview
+
+type V2Body = { sketch: { strokes: { id: string; kind: string; points: number[][]; center?: number[]; radius_mm?: number }[]; constraints?: { kind: string; refs: { stroke_id: string; edge?: number }[]; value_mm?: number }[]; extrude_mm?: number } };
+
+test("typed_40x20_rectangle_then_d4_hole_then_build", async ({ page, fake }) => {
+  const svg = await openSketch(page);
+  await page.locator(".sk-hint").click();
+  await page.keyboard.press("r");
+  await expect(page.locator("[data-hint]")).toHaveText("Click the first corner");
+  await page.mouse.click(...(await screenOf(svg, 20, 20)));
+  await expect(page.locator("[data-hint]")).toHaveText("Click the opposite corner, or type 40,20");
+  await page.mouse.move(...(await screenOf(svg, 45, 35)));        // the way the rectangle goes: up and right
+  await page.keyboard.type("40,20");
+  await expect(page.locator("[data-typed]")).toContainText("40,20");
+  await page.keyboard.press("Enter");
+  await expect(svg.locator("[data-kind=rect]")).toHaveCount(1);
+  // the typed sizes became driving dimensions, shown on the geometry
+  await expect(svg.locator("[data-ckind=distance]")).toHaveCount(2);
+  await expect(svg.locator("[data-ckind=distance] text")).toHaveText(["40", "20"]);
+  await expect(page.locator("[data-profiles]")).toHaveText("1 closed profile");
+  await expect(svg.locator("[data-profile]")).toHaveCount(1);
+
+  await page.keyboard.press("c");
+  await page.mouse.click(...(await screenOf(svg, 30, 30)));
+  await page.keyboard.type("4");
+  await page.keyboard.press("Enter");
+  await expect(svg.locator("[data-kind=circle]")).toHaveCount(1);
+  await expect(svg.locator("[data-ckind=diameter] text")).toHaveText("Ø4");
+  await expect(page.locator("[data-profiles]")).toHaveText("1 closed profile · 1 hole");
+
+  await page.getByLabel("Extrude depth (mm)").fill("6");
+  await page.getByLabel("Extrude depth (mm)").press("Enter");
+  await page.getByRole("button", { name: "Build part" }).click();
+  await expect(page.getByRole("status")).toContainText("Run started");
+  const body = (await sketchPost(() => fake.calls())) as unknown as V2Body;
+  const [rect, hole] = body.sketch.strokes;
+  expect(rect).toMatchObject({ kind: "rect", points: [[20, 20], [60, 20], [60, 40], [20, 40]] });
+  expect(hole).toMatchObject({ kind: "circle", center: [30, 30], radius_mm: 2 });
+  expect(body.sketch.constraints).toEqual([
+    { id: expect.any(String), kind: "distance", refs: [{ stroke_id: rect.id, edge: 0 }], value_mm: 40 },
+    { id: expect.any(String), kind: "distance", refs: [{ stroke_id: rect.id, edge: 1 }], value_mm: 20 },
+    { id: expect.any(String), kind: "diameter", refs: [{ stroke_id: hole.id }], value_mm: 4 },
+  ]);
+  expect(body.sketch.extrude_mm).toBe(6);
+});
+
+test("inference_guides_show_while_drawing_and_lines_pick_up_constraints", async ({ page, fake }) => {
+  const svg = await openSketch(page);
+  await page.getByRole("checkbox", { name: "Grid" }).uncheck();
+  await page.locator(".sk-hint").click();
+  await page.keyboard.press("l");
+  await page.mouse.click(...(await screenOf(svg, 20, 100)));
+  await page.mouse.move(...(await screenOf(svg, 70, 100.6)), { steps: 4 });
+  await expect(svg.locator("[data-guide=horizontal]")).toHaveCount(1);
+  await expect(svg.locator(".sk-guide-label").first()).toHaveText("Horizontal");
+  await page.mouse.click(...(await screenOf(svg, 70, 100.6)));
+  // the second line starts on the first one's end (Endpoint) and goes straight up
+  await page.mouse.move(...(await screenOf(svg, 70.4, 100.3)));
+  await expect(svg.locator("[data-snap=endpoint]")).toHaveCount(1);
+  await page.mouse.click(...(await screenOf(svg, 70.4, 100.3)));
+  await page.mouse.move(...(await screenOf(svg, 70.8, 130)), { steps: 4 });
+  await expect(svg.locator("[data-guide=vertical]")).toHaveCount(1);
+  await page.mouse.click(...(await screenOf(svg, 70.8, 130)));
+  await expect(svg.locator("[data-kind=line]")).toHaveCount(2);
+  await expect(svg.locator("[data-ckind=horizontal]")).toHaveCount(1);
+  await expect(svg.locator("[data-ckind=vertical]")).toHaveCount(1);
+  await expect(svg.locator("[data-ckind=coincident]")).toHaveCount(1);
+  await page.getByRole("button", { name: "Build part" }).click();
+  await expect(page.getByRole("status")).toContainText("Run started");
+  const [a, b] = ((await sketchPost(() => fake.calls())) as unknown as V2Body).sketch.strokes;
+  expect(a.points[1][1]).toBeCloseTo(a.points[0][1], 6);
+  expect(b.points[0]).toEqual(a.points[1]);
+  expect(b.points[1][0]).toBeCloseTo(b.points[0][0], 6);
+});
+
+test("template_constraint_edit_and_vertex_drag_keep_the_rectangle", async ({ page }) => {
+  const svg = await openSketch(page);
+  await page.getByRole("button", { name: /^Plate with holes/ }).click();
+  await expect(svg.locator("[data-kind=rect]")).toHaveCount(1);
+  await expect(svg.locator("[data-kind=circle]")).toHaveCount(4);
+  await expect(page.locator("[data-profiles]")).toHaveText("1 closed profile · 4 holes");
+  await expect(page.locator("[data-extrude-preview], .sk-preview-none")).toHaveCount(1);
+  // pick the 80 mm dimension and change it to 100: the plate follows
+  await svg.locator("[data-ckind=distance] text").first().click();
+  await expect(page.locator("[data-selected-constraint]")).toContainText("Distance · 80 mm");
+  await page.getByLabel("Constraint value (mm)").fill("100");
+  await page.getByLabel("Constraint value (mm)").press("Enter");
+  await expect(svg.locator("[data-ckind=distance] text").first()).toHaveText("100");
+  await page.getByRole("button", { name: "Fit" }).click();           // the wider plate back in view
+  // select the plate by its bottom edge and drag a corner: it stays a rectangle with its sizes
+  await page.getByRole("button", { name: /^Select/ }).click();
+  const pts = async () => JSON.parse(await svg.locator("[data-kind=rect]").evaluate((el) => JSON.stringify((el.getAttribute("points") ?? "").split(" ").map((p) => p.split(",").map(Number))))) as number[][];
+  const before = await pts();
+  const edge = await svg.locator("[data-kind=rect]").evaluate((el) => {
+    const r = (el as SVGGraphicsElement).getBoundingClientRect();
+    return [r.x + r.width / 2, r.y + r.height] as [number, number];
+  });
+  await page.mouse.click(edge[0], edge[1] - 1);
+  await expect(svg.locator("[data-handle]")).toHaveCount(4);
+  const corner = await svg.locator("[data-handle]").nth(2).boundingBox();
+  if (!corner) throw new Error("no handle");
+  await page.mouse.move(corner.x + corner.width / 2, corner.y + corner.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(corner.x + 60, corner.y - 40, { steps: 6 });
+  await page.mouse.up();
+  const after = await pts();
+  const w = (p: number[][]) => Math.abs(p[1][0] - p[0][0]);
+  const h = (p: number[][]) => Math.abs(p[2][1] - p[1][1]);
+  expect(w(after)).toBeCloseTo(w(before), 1);                      // the 100 mm width is held
+  expect(h(after)).toBeCloseTo(h(before), 1);                      // and the 50 mm height
+  expect(after[0][1]).toBeCloseTo(after[1][1], 6);                 // still axis-aligned
+  expect(after).not.toEqual(before);                               // but it moved
+  // undo puts it back in one step
+  await page.keyboard.press("ControlOrMeta+z");
+  expect(await pts()).toEqual(before);
 });

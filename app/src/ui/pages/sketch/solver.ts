@@ -4,7 +4,7 @@
 // horizontal / vertical / equal / coincident / distance / diameter / radius on lines, polylines,
 // rectangles (whose sides are implicitly horizontal / vertical), circles, arcs and slots.
 import type { SketchConstraint, SketchConstraintKind, SketchRef, SketchStroke } from "../../../api/types";
-import { circumcircle, dist, mid, sub, turn, unit, type Pt } from "./geom";
+import { circumcircle, dist, mid, sub, unit, type Pt } from "./geom";
 
 export type Constraint = SketchConstraint;
 export type Ref = SketchRef;
@@ -234,14 +234,13 @@ export function solve(strokes: readonly SketchStroke[], constraints: readonly Co
   }
   const all = [...implicit(bodies.values()), ...items];
   const x: Ctx = { bodies };
-  let residual = 0;
   for (let pass = 0; pass < MAX_PASSES; pass++) {
-    residual = 0;
-    for (const c of all) residual = Math.max(residual, project(c, x));
-    if (residual < SOLVE_TOL) break;
+    let worst = 0;
+    for (const c of all) worst = Math.max(worst, project(c, x));
+    if (worst < SOLVE_TOL) break;
   }
-  // final residual (after the last pass)
-  residual = 0;
+  // what is left after the last pass
+  let residual = 0;
   for (const c of all) residual = Math.max(residual, measure(c, x));
   const out = strokes.map((s) => {
     const b = bodies.get(s.id);

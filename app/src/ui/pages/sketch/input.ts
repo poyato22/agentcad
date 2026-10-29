@@ -23,13 +23,13 @@ export function parseTyped(text: string): Typed | null {
   const t = text.trim().toLowerCase().replace(/\s+/g, " ");
   if (!t) return null;
   let m = new RegExp(String.raw`^(?:ø|⌀|d)\s*${LEN}$`).exec(t);
-  if (m) return positive({ kind: "diameter", mm: mm(m[1], m[2]) });
+  if (m) return positive({ kind: "diameter" as const, mm: mm(m[1], m[2]) });
   m = new RegExp(String.raw`^r\s*${LEN}$`).exec(t);
-  if (m) return positive({ kind: "radius", mm: mm(m[1], m[2]) });
+  if (m) return positive({ kind: "radius" as const, mm: mm(m[1], m[2]) });
   m = new RegExp(String.raw`^<\s*${ANG}$`).exec(t);
   if (m) return { kind: "angle", deg: Number(m[1]) };
   m = new RegExp(String.raw`^${LEN}\s*<\s*${ANG}$`).exec(t);
-  if (m) return positive({ kind: "polar", mm: mm(m[1], m[2]), deg: Number(m[3]) });
+  if (m) return positive({ kind: "polar" as const, mm: mm(m[1], m[2]), deg: Number(m[3]) });
   m = new RegExp(String.raw`^${LEN}\s*(?:,|x|×|\s)\s*${LEN}$`).exec(t);
   if (m) {
     const a = mm(m[1], m[2]);
@@ -37,7 +37,7 @@ export function parseTyped(text: string): Typed | null {
     return a === 0 && b === 0 ? null : { kind: "pair", a, b };
   }
   m = new RegExp(String.raw`^${LEN}$`).exec(t);
-  if (m) return positive({ kind: "length", mm: mm(m[1], m[2]) });
+  if (m) return positive({ kind: "length" as const, mm: mm(m[1], m[2]) });
   return null;
 }
 

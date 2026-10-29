@@ -1,17 +1,21 @@
-// Sketch page state: module-level signals, so a sketch survives switching pages.
+// Sketch page state: module-level signals, so a sketch survives switching pages. Every edit goes
+// through the solver (solver.ts) before it is committed, so the geometry always satisfies the
+// constraints; an edit that can't (a conflicting dimension) is refused with a message.
 import { batch, computed, signal, type Signal } from "@preact/signals";
+import type { SketchConstraint, SketchConstraintKind } from "../../../api/types";
+import { dist, round6, type Pt } from "./geom";
+import { parseTyped } from "./input";
 import { emptyDoc, History, parseDimension, type SketchDoc, type Stroke } from "./model";
 import { releasePhoto, type PickedPhoto } from "./photo";
+import type { GuideKind, Snap } from "./snap";
+import { checkConstraint, edgeCount, hasRadius, refKey, solvable, solve, type Ref } from "./solver";
+import { axisOf, mirror as mirrorStroke, moveVertex, offset as offsetStroke, setCorner, toggleConstruction, translate } from "./edit";
+import { template, type TemplateId } from "./templates";
+import { clicksFor, draftShape, isDrawTool, TOOLS, typedStep, type Drive, type DrawTool, type Tool } from "./tools";
+import { DEFAULT_VIEW, fitBox, type View } from "./view";
 
-export type Tool = "pen" | "line" | "rect" | "circle" | "select";
-export const TOOLS: readonly { id: Tool; label: string; key: string }[] = [
-  { id: "pen", label: "Pen", key: "p" },
-  { id: "line", label: "Line", key: "l" },
-  { id: "rect", label: "Rectangle", key: "r" },
-  { id: "circle", label: "Circle", key: "c" },
-  { id: "select", label: "Select", key: "v" },
-];
-export const GRID_STEPS = [1, 5, 10] as const;
+export { TOOLS, type Tool };
+export const GRID_STEPS = [0.5, 1, 2, 5, 10] as const;
 
 export type BuildState =
   | { state: "idle" }
@@ -19,8 +23,16 @@ export type BuildState =
   | { state: "started"; run_id: string; sketch_id: string }
   | { state: "error"; message: string };
 
+/** A selected thing: a stroke (lines and rectangles by an edge), or one of its vertices. */
+export type Pick = Ref;
+
+/** A stroke being drawn: the clicks so far, what each snapped to, and the typed value. */
+export interface Draft { tool: DrawTool; clicks: Pt[]; snaps: ClickSnap[] }
+export interface ClickSnap { ref?: Ref; guide?: GuideKind }
+
 let history = new History(emptyDoc());
 let nextId = 1;
+let nextConstraint = 1;
 
 export const doc: Signal<SketchDoc> = signal(history.doc);
 const version = signal(0);
@@ -29,66 +41,420 @@ export const canRedo = computed(() => (version.value, history.canRedo));
 export const tool: Signal<Tool> = signal<Tool>("pen");
 export const snapGrid: Signal<boolean> = signal(true);
 export const gridStep: Signal<number> = signal(5);
-/** Endpoint and 0/45/90° angle snapping. */
+/** Point snaps (endpoints, centres, midpoints, intersections). */
 export const snapEnds: Signal<boolean> = signal(true);
-export const selectedId: Signal<string | null> = signal<string | null>(null);
+/** Inference guides (horizontal / vertical / 45° / parallel / perpendicular / tangent / aligned). */
+export const snapGuides: Signal<boolean> = signal(true);
+export const picks: Signal<readonly Pick[]> = signal<readonly Pick[]>([]);
+export const selectedConstraint: Signal<string | null> = signal<string | null>(null);
+/** The primary selected stroke (the last pick). */
+export const selectedId = computed(() => picks.value.at(-1)?.stroke_id ?? null);
+export const selectedIds = computed(() => [...new Set(picks.value.map((p) => p.stroke_id))]);
+export const draft: Signal<Draft | null> = signal<Draft | null>(null);
+export const cursor: Signal<Pt | null> = signal<Pt | null>(null);
+export const lastSnap: Signal<Snap | null> = signal<Snap | null>(null);
+/** The measurements box: what was typed while drawing. */
+export const typed: Signal<string> = signal("");
+/** A drag in progress (vertex or move): shown instead of the committed doc until released. */
+export const preview: Signal<SketchDoc | null> = signal<SketchDoc | null>(null);
+export const view: Signal<View> = signal<View>(DEFAULT_VIEW);
+export const filletR: Signal<number> = signal(3);
+export const extrudeMm: Signal<number> = signal(5);
+/** A short status line: why an edit was refused, what a typed value did. */
+export const message: Signal<string | null> = signal<string | null>(null);
 /** Free-text notes for the agent (data). Not part of undo: the textarea has its own. */
 export const notes: Signal<string> = signal("");
 export const photo: Signal<PickedPhoto | null> = signal<PickedPhoto | null>(null);
 export const photoError: Signal<string | null> = signal<string | null>(null);
 export const build: Signal<BuildState> = signal<BuildState>({ state: "idle" });
 
+export const shown = computed(() => preview.value ?? doc.value);
 export const selectedStroke = computed(() => doc.value.strokes.find((s) => s.id === selectedId.value) ?? null);
+export const selectedStrokes = computed(() => {
+  const ids = new Set(selectedIds.value);
+  return doc.value.strokes.filter((s) => ids.has(s.id));
+});
+
+function prune(d: SketchDoc): void {
+  const ids = new Set(d.strokes.map((s) => s.id));
+  const p = picks.peek();
+  if (p.some((x) => !ids.has(x.stroke_id))) picks.value = p.filter((x) => ids.has(x.stroke_id));
+  const c = selectedConstraint.peek();
+  if (c && !d.constraints.some((x) => x.id === c)) selectedConstraint.value = null;
+}
 
 function commit(next: SketchDoc): void {
   history.push(next);
   batch(() => {
     doc.value = history.doc;
     version.value++;
-    if (selectedId.peek() && !history.doc.strokes.some((s) => s.id === selectedId.peek())) selectedId.value = null;
+    prune(history.doc);
     if (build.peek().state === "started" || build.peek().state === "error") build.value = { state: "idle" };
   });
 }
+
+/** Constraints that still point at existing geometry. */
+function live(strokes: readonly Stroke[], cs: readonly SketchConstraint[]): SketchConstraint[] {
+  return cs.filter((c) => checkConstraint(c.kind, c.refs, strokes) === null);
+}
+
+/** Solve and commit; false (and nothing changes) when the constraints can't all hold. */
+function commitSolved(d: SketchDoc, fixed: ReadonlySet<string> = new Set(), refusal = "That conflicts with the existing constraints."): boolean {
+  const cs = live(d.strokes, d.constraints);
+  const res = solve(d.strokes, cs, fixed);
+  if (!res.ok) { message.value = refusal; return false; }
+  commit({ ...d, strokes: res.strokes, constraints: cs });
+  return true;
+}
+
+function newConstraintId(): string {
+  return `k${nextConstraint++}`;
+}
+
+function driveConstraints(stroke: Stroke, drive: readonly Drive[]): SketchConstraint[] {
+  return drive.map((dv): SketchConstraint => {
+    if (dv.kind === "distance") {
+      const refs: Ref[] = "edge" in dv ? [{ stroke_id: stroke.id, edge: dv.edge }] : [{ stroke_id: stroke.id, vertex: dv.vertices[0] }, { stroke_id: stroke.id, vertex: dv.vertices[1] }];
+      return { id: newConstraintId(), kind: "distance", refs, value_mm: round6(dv.value) };
+    }
+    return { id: newConstraintId(), kind: dv.kind, refs: [{ stroke_id: stroke.id }], value_mm: round6(dv.value) };
+  });
+}
+
+/** Constraints a finished stroke picks up from how it was drawn: its ends on existing points
+ *  (coincident), its segments along a horizontal / vertical guide. */
+function drawnConstraints(s: Stroke, d: Draft): SketchConstraint[] {
+  const out: SketchConstraint[] = [];
+  const vertexOfClick = (i: number): number | null => {
+    if (s.kind === "line" || s.kind === "polyline") return i;
+    if (s.kind === "arc") return i === 0 ? 0 : i === 1 ? 2 : null;
+    if (s.kind === "slot") return i < 2 ? i : null;
+    if (s.kind === "circle") return i === 0 ? 0 : null;
+    return null;
+  };
+  d.snaps.forEach((sn, i) => {
+    const v = vertexOfClick(i);
+    if (sn.ref && v !== null && sn.ref.vertex !== undefined) {
+      out.push({ id: newConstraintId(), kind: "coincident", refs: [{ stroke_id: s.id, vertex: v }, { ...sn.ref }] });
+    }
+    if ((s.kind === "line" || s.kind === "polyline") && i > 0 && (sn.guide === "horizontal" || sn.guide === "vertical")) {
+      out.push({ id: newConstraintId(), kind: sn.guide, refs: [{ stroke_id: s.id, edge: i - 1 }] });
+    }
+  });
+  return out;
+}
+
+function finishStroke(s: Stroke, d: Draft, drive: readonly Drive[] = []): void {
+  const stroke = { ...s, id: sketchActions.newStrokeId() };
+  const cur = doc.peek();
+  const extra = [...drawnConstraints(stroke, d), ...driveConstraints(stroke, drive)];
+  const next: SketchDoc = { ...cur, strokes: [...cur.strokes, stroke], constraints: [...cur.constraints, ...extra] };
+  // the new stroke's own clicks stay put; the solver moves nothing it doesn't have to
+  if (!commitSolved(next, new Set([...extra.flatMap((c) => c.refs.filter((r) => r.stroke_id !== stroke.id).map(refKey))]))) {
+    // drawn constraints that can't hold are dropped rather than losing the stroke
+    commit({ ...cur, strokes: [...cur.strokes, stroke] });
+  }
+  batch(() => {
+    picks.value = [defaultPick(stroke)];
+    selectedConstraint.value = null;
+    draft.value = null;
+    typed.value = "";
+  });
+}
+
+function defaultPick(s: Stroke): Pick {
+  return edgeCount(s) > 0 ? { stroke_id: s.id, edge: 0 } : { stroke_id: s.id };
+}
+
+/** The dimensions a typed value sets, for the click it stands for. */
+let drivenDrive: Drive[] = [];
+/** Typed dimensions waiting for the stroke they belong to (multi-click tools). */
+let pendingDrive: Drive[] = [];
 
 export const sketchActions = {
   newStrokeId(): string { return `s${nextId++}`; },
   addStroke(s: Stroke): void {
     const d = doc.peek();
     commit({ ...d, strokes: [...d.strokes, s] });
-    selectedId.value = s.id;
+    picks.value = [defaultPick(s)];
   },
-  /** Typed dimension label on a stroke; empty text removes it. */
+
+  // ---- drawing (click by click; a drag counts as two clicks)
+
+  /** A click with the current draw tool at a snapped point. */
+  drawClick(p: Pt, snap: ClickSnap = {}): void {
+    const t = tool.peek();
+    if (!isDrawTool(t)) return;
+    const d = draft.peek();
+    if (!d || d.tool !== t) {
+      batch(() => { draft.value = { tool: t, clicks: [p], snaps: [snap] }; typed.value = ""; message.value = null; });
+      return;
+    }
+    if (t === "polyline") {
+      const first = d.clicks[0];
+      const last = d.clicks[d.clicks.length - 1];
+      if (dist(p, last) < 1e-6) { sketchActions.finishDraft(); return; }      // double click
+      if (d.clicks.length >= 3 && dist(p, first) < 1e-6) { sketchActions.finishDraft(true); return; }
+    }
+    const next: Draft = { ...d, clicks: [...d.clicks, p], snaps: [...d.snaps, snap] };
+    const drive = drivenDrive;
+    drivenDrive = [];
+    if (next.clicks.length < clicksFor(t)) {
+      batch(() => { draft.value = next; typed.value = ""; });
+      pendingDrive = [...pendingDrive, ...drive];
+      return;
+    }
+    const s = draftShape(t, next.clicks.slice(0, -1), next.clicks[next.clicks.length - 1], "draft", null);
+    const all = [...pendingDrive, ...drive];
+    pendingDrive = [];
+    if (s) finishStroke(s, next, all);
+    else batch(() => { draft.value = null; typed.value = ""; });
+  },
+  /** Ends a polyline (closing it when `close`); other tools just cancel. */
+  finishDraft(close = false): void {
+    const d = draft.peek();
+    if (!d) return;
+    if (d.tool === "polyline" && d.clicks.length >= 2) {
+      const s: Stroke = { id: "draft", kind: "polyline", points: d.clicks.map((p) => [p[0], p[1]]), closed: close && d.clicks.length >= 3, label: "" };
+      const drive = pendingDrive;
+      pendingDrive = [];
+      finishStroke(s, d, drive);
+      return;
+    }
+    sketchActions.cancelDraft();
+  },
+  cancelDraft(): void {
+    pendingDrive = [];
+    drivenDrive = [];
+    batch(() => { draft.value = null; typed.value = ""; });
+  },
+  /** The measurements box. */
+  setTyped(text: string): void { typed.value = text; },
+  /** Enter in the measurements box: the typed value as the next click (with its dimension). */
+  commitTyped(): boolean {
+    const v = parseTyped(typed.peek());
+    if (!v) { if (typed.peek()) message.value = `Can't use "${typed.peek()}" here.`; return false; }
+    if (tool.peek() === "fillet") {
+      const r = v.kind === "length" || v.kind === "radius" ? v.mm : v.kind === "diameter" ? v.mm / 2 : NaN;
+      if (!Number.isFinite(r)) { message.value = "Type a fillet radius, e.g. 3."; return false; }
+      batch(() => { filletR.value = r; typed.value = ""; message.value = `Fillet radius ${r} mm.`; });
+      return true;
+    }
+    const d = draft.peek();
+    if (!d) return false;
+    const step = typedStep(d.tool, d.clicks, cursor.peek() ?? d.clicks[d.clicks.length - 1], v);
+    if (!step) { message.value = `Can't use "${typed.peek()}" here.`; return false; }
+    drivenDrive = step.drive;
+    message.value = null;
+    sketchActions.drawClick(step.click, {});
+    return true;
+  },
+
+  // ---- selection
+
+  /** Selects a stroke (replacing the selection unless `add`); null clears it. */
+  select(id: string | null, add = false, pick?: Pick): void {
+    batch(() => {
+      selectedConstraint.value = null;
+      if (id === null) { picks.value = []; return; }
+      const s = doc.peek().strokes.find((x) => x.id === id);
+      if (!s) return;
+      const p = pick ?? defaultPick(s);
+      const cur = picks.peek();
+      if (!add) { picks.value = [p]; return; }
+      const k = refKey(p);
+      picks.value = cur.some((x) => refKey(x) === k) ? cur.filter((x) => refKey(x) !== k) : [...cur, p];
+    });
+  },
+  selectConstraint(id: string | null): void {
+    batch(() => { selectedConstraint.value = id; if (id) picks.value = []; });
+  },
+  setTool(t: Tool): void {
+    batch(() => {
+      if (draft.peek() && draft.peek()?.tool !== t) sketchActions.cancelDraft();
+      tool.value = t;
+      message.value = null;
+    });
+  },
+
+  // ---- editing
+
+  /** Typed dimension label on a stroke; empty text removes it. A length on a line, a diameter or
+   *  radius on a circle / arc / slot also drives the geometry. */
   setDimension(strokeId: string, text: string): void {
     const d = doc.peek();
     const s = d.strokes.find((x) => x.id === strokeId);
     if (!s) return;
     const current = d.dimensions.find((x) => x.stroke_id === strokeId);
-    const parsed = parseDimension(text, s.kind);
+    const parsed = parseDimension(text, s.kind === "arc" || s.kind === "slot" ? "circle" : s.kind);
     if ((current?.text ?? "") === (parsed?.text ?? "")) return;
     const rest = d.dimensions.filter((x) => x.stroke_id !== strokeId);
-    commit({ ...d, dimensions: parsed ? [...rest, { stroke_id: strokeId, ...parsed }] : rest });
+    const driveId = `dim-${strokeId}`;
+    const others = d.constraints.filter((c) => c.id !== driveId);
+    let drive: SketchConstraint | null = null;
+    if (parsed?.value_mm) {
+      if (s.kind === "line" && parsed.kind === "length") drive = { id: driveId, kind: "distance", refs: [{ stroke_id: s.id, edge: 0 }], value_mm: parsed.value_mm };
+      else if (hasRadius(s) && (parsed.kind === "diameter" || parsed.kind === "radius")) drive = { id: driveId, kind: parsed.kind, refs: [{ stroke_id: s.id }], value_mm: parsed.value_mm };
+    }
+    const next: SketchDoc = { ...d, dimensions: parsed ? [...rest, { stroke_id: strokeId, ...parsed }] : rest, constraints: drive ? [...others, drive] : others };
+    if (!commitSolved(next, new Set(), "That size conflicts with the constraints; kept as a label.")) {
+      commit({ ...next, constraints: others });
+    }
   },
-  deleteStroke(id: string): void {
+  /** A driving length on an edge (null removes it). */
+  setEdgeLength(strokeId: string, edge: number, value: number | null): void {
     const d = doc.peek();
-    if (!d.strokes.some((s) => s.id === id)) return;
-    commit({ ...d, strokes: d.strokes.filter((s) => s.id !== id), dimensions: d.dimensions.filter((x) => x.stroke_id !== id) });
+    const id = `len-${strokeId}-e${edge}`;
+    const others = d.constraints.filter((c) => c.id !== id);
+    if (value === null || !(value > 0)) { if (others.length !== d.constraints.length) commitSolved({ ...d, constraints: others }); return; }
+    const c: SketchConstraint = { id, kind: "distance", refs: [{ stroke_id: strokeId, edge }], value_mm: round6(value) };
+    commitSolved({ ...d, constraints: [...others, c] }, new Set([`${strokeId}:v${edge}`]));
+  },
+  /** Adds a constraint on the given refs (default: the picks); returns why it can't, or null. */
+  addConstraint(kind: SketchConstraintKind, refs: readonly Ref[] = picks.peek(), value?: number): string | null {
+    const d = doc.peek();
+    const why = checkConstraint(kind, refs, d.strokes);
+    if (why) { message.value = why; return why; }
+    const c: SketchConstraint = value === undefined ? { id: newConstraintId(), kind, refs: refs.map((r) => ({ ...r })) } : { id: newConstraintId(), kind, refs: refs.map((r) => ({ ...r })), value_mm: round6(value) };
+    if (!commitSolved({ ...d, constraints: [...d.constraints, c] }, new Set([refKey(refs[0])]))) return message.peek();
+    batch(() => { selectedConstraint.value = c.id; picks.value = []; message.value = null; });
+    return null;
+  },
+  /** Changes a dimension constraint's value. */
+  setConstraintValue(id: string, value: number): void {
+    const d = doc.peek();
+    const c = d.constraints.find((x) => x.id === id);
+    if (!c || c.value_mm === undefined || !(value > 0) || c.value_mm === value) return;
+    const anchor = c.refs[0].edge !== undefined ? `${c.refs[0].stroke_id}:v${c.refs[0].edge}` : refKey(c.refs[0]);
+    commitSolved({ ...d, constraints: d.constraints.map((x) => (x.id === id ? { ...x, value_mm: round6(value) } : x)) }, new Set([anchor]));
+  },
+  removeConstraint(id: string): void {
+    const d = doc.peek();
+    if (!d.constraints.some((c) => c.id === id)) return;
+    commit({ ...d, constraints: d.constraints.filter((c) => c.id !== id), dimensions: id.startsWith("dim-") ? d.dimensions.filter((x) => `dim-${x.stroke_id}` !== id) : d.dimensions });
+  },
+  deleteStroke(id: string): void { sketchActions.deleteStrokes([id]); },
+  deleteStrokes(ids: readonly string[]): void {
+    const d = doc.peek();
+    const gone = new Set(ids);
+    if (!d.strokes.some((s) => gone.has(s.id))) return;
+    const strokes = d.strokes.filter((s) => !gone.has(s.id));
+    commit({
+      ...d, strokes,
+      dimensions: d.dimensions.filter((x) => !gone.has(x.stroke_id)),
+      constraints: d.constraints.filter((c) => c.refs.every((r) => !gone.has(r.stroke_id))),
+    });
+  },
+  /** Delete key: the selected strokes, else the selected constraint. */
+  deleteSelection(): boolean {
+    const ids = selectedIds.peek();
+    if (ids.length) { sketchActions.deleteStrokes(ids); return true; }
+    const c = selectedConstraint.peek();
+    if (c) { sketchActions.removeConstraint(c); return true; }
+    return false;
   },
   clear(): void {
     const d = doc.peek();
     if (!d.strokes.length) return;
-    commit({ ...d, strokes: [], dimensions: [] });
+    commit({ ...d, strokes: [], dimensions: [], constraints: [] });
   },
   undo(): void {
     history.undo();
-    batch(() => { doc.value = history.doc; version.value++; });
-    if (selectedId.peek() && !history.doc.strokes.some((s) => s.id === selectedId.peek())) selectedId.value = null;
+    batch(() => { doc.value = history.doc; version.value++; prune(history.doc); preview.value = null; });
   },
   redo(): void {
     history.redo();
-    batch(() => { doc.value = history.doc; version.value++; });
+    batch(() => { doc.value = history.doc; version.value++; prune(history.doc); preview.value = null; });
   },
-  select(id: string | null): void { selectedId.value = id; },
-  setTool(t: Tool): void { tool.value = t; },
+
+  // ---- drags (shown as a preview; one undo step when released)
+
+  /** Drag a vertex to p, solving with it held. */
+  dragVertex(ref: Ref, p: Pt): void {
+    const d = doc.peek();
+    const s = d.strokes.find((x) => x.id === ref.stroke_id);
+    if (!s || !solvable(s) || ref.vertex === undefined) return;
+    const moved = d.strokes.map((x) => (x.id === s.id ? moveVertex(x, ref.vertex as number, p) : x));
+    const res = solve(moved, live(moved, d.constraints), new Set([refKey(ref)]));
+    preview.value = { ...d, strokes: res.strokes };
+  },
+  /** Drag the selected strokes by d (mm). */
+  dragMove(by: Pt): void {
+    const d = doc.peek();
+    const ids = new Set(selectedIds.peek());
+    if (!ids.size) return;
+    const moved = d.strokes.map((x) => (ids.has(x.id) ? translate(x, by) : x));
+    const res = solve(moved, live(moved, d.constraints), new Set(ids));
+    preview.value = { ...d, strokes: res.strokes };
+  },
+  endDrag(keep: boolean): void {
+    const p = preview.peek();
+    preview.value = null;
+    if (keep && p && p !== doc.peek()) commit(p);
+  },
+
+  /** Mirror the selection about the selected line (a construction line when there is one). */
+  mirrorSelection(): string | null {
+    const sel = selectedStrokes.peek();
+    const axisStroke = sel.find((s) => s.construction && axisOf(s)) ?? sel.find((s) => axisOf(s) && s.id === selectedId.peek()) ?? sel.find((s) => axisOf(s));
+    const axis = axisStroke ? axisOf(axisStroke) : null;
+    const rest = sel.filter((s) => s !== axisStroke);
+    if (!axis || !rest.length) { message.value = "Select the shapes and a line to mirror about."; return message.peek(); }
+    const d = doc.peek();
+    const copies = rest.map((s) => mirrorStroke(s, axis[0], axis[1], sketchActions.newStrokeId()));
+    commit({ ...d, strokes: [...d.strokes, ...copies] });
+    batch(() => { picks.value = copies.map(defaultPick); message.value = `Mirrored ${copies.length} shape${copies.length === 1 ? "" : "s"}.`; });
+    return null;
+  },
+  /** Offset copies of the selection by mm (outward; negative goes inward). */
+  offsetSelection(mm: number): string | null {
+    const sel = selectedStrokes.peek();
+    const copies = sel.map((s) => offsetStroke(s, mm, sketchActions.newStrokeId())).filter((x): x is Stroke => !!x);
+    if (!copies.length) { message.value = "Select a line, shape or circle to offset."; return message.peek(); }
+    const d = doc.peek();
+    commit({ ...d, strokes: [...d.strokes, ...copies] });
+    batch(() => { picks.value = copies.map(defaultPick); message.value = null; });
+    return null;
+  },
+  /** Fillet a polyline / rectangle corner with the current radius (0 removes the fillet). */
+  filletCorner(ref: Ref, r = filletR.peek()): boolean {
+    const d = doc.peek();
+    const s = d.strokes.find((x) => x.id === ref.stroke_id);
+    const next = s && ref.vertex !== undefined ? setCorner(s, ref.vertex, r) : null;
+    if (!next || !s) { message.value = "Click a corner of a polyline or rectangle."; return false; }
+    commit({ ...d, strokes: d.strokes.map((x) => (x.id === s.id ? next : x)) });
+    picks.value = [{ stroke_id: s.id, vertex: ref.vertex }];
+    return true;
+  },
+  toggleConstruction(): void {
+    const ids = new Set(selectedIds.peek());
+    if (!ids.size) return;
+    const d = doc.peek();
+    commit({ ...d, strokes: d.strokes.map((s) => (ids.has(s.id) ? toggleConstruction(s) : s)) });
+  },
+  insertTemplate(id: TemplateId): void {
+    const t = template(id, () => sketchActions.newStrokeId(), newConstraintId);
+    const d = doc.peek();
+    if (commitSolved({ ...d, strokes: [...d.strokes, ...t.strokes], constraints: [...d.constraints, ...t.constraints] })) {
+      batch(() => {
+        extrudeMm.value = t.extrude_mm;
+        picks.value = [];
+        sketchActions.fitView();
+      });
+    }
+  },
+
+  // ---- view
+
+  setView(v: View): void { view.value = v; },
+  fitView(): void {
+    const s = doc.peek().strokes;
+    if (!s.length) { view.value = DEFAULT_VIEW; return; }
+    const xs = s.flatMap((x) => x.points.map((p) => p[0]));
+    const ys = s.flatMap((x) => x.points.map((p) => p[1]));
+    view.value = fitBox([Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)], DEFAULT_VIEW);
+  },
+
   setPhoto(p: PickedPhoto | null): void {
     releasePhoto(photo.peek());
     batch(() => {
@@ -103,6 +469,9 @@ export function resetSketch(): void {
   releasePhoto(photo.peek());
   history = new History(emptyDoc());
   nextId = 1;
+  nextConstraint = 1;
+  pendingDrive = [];
+  drivenDrive = [];
   batch(() => {
     doc.value = history.doc;
     version.value++;
@@ -110,7 +479,18 @@ export function resetSketch(): void {
     snapGrid.value = true;
     gridStep.value = 5;
     snapEnds.value = true;
-    selectedId.value = null;
+    snapGuides.value = true;
+    picks.value = [];
+    selectedConstraint.value = null;
+    draft.value = null;
+    cursor.value = null;
+    lastSnap.value = null;
+    typed.value = "";
+    preview.value = null;
+    view.value = DEFAULT_VIEW;
+    filletR.value = 3;
+    extrudeMm.value = 5;
+    message.value = null;
     notes.value = "";
     photo.value = null;
     photoError.value = null;

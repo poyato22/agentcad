@@ -28,12 +28,12 @@ export function buildTarget(profile: Profile, agents: readonly AgentInfo[], mode
   return { agent, modelRef, vendor, vision: VISION_VENDORS.has(vendor), keyMissing };
 }
 
-export interface BuildInput { doc: SketchDoc; notes: string; photo: PickedPhoto | null; render: string | null; agent: string; modelRef: string }
+export interface BuildInput { doc: SketchDoc; notes: string; photo: PickedPhoto | null; render: string | null; agent: string; modelRef: string; extrude_mm?: number | null }
 
 export async function buildPart(client: CoreClient, input: BuildInput, onStep?: (step: "saving" | "starting") => void): Promise<{ run_id: string; sketch: SketchSummary }> {
   onStep?.("saving");
   const sketch = await client.postSketch({
-    sketch: toUpload({ ...input.doc, notes: input.notes }),
+    sketch: toUpload({ ...input.doc, notes: input.notes }, input.extrude_mm ?? null),
     photo: input.photo ? { data_b64: input.photo.data_b64, name: input.photo.name } : null,
     render_png_b64: input.doc.strokes.length ? input.render : null,
   });
