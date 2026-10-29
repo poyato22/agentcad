@@ -2,6 +2,7 @@ import type { JSX } from "preact";
 import { useEffect } from "preact/hooks";
 import { runs } from "../../state/store";
 import { Button } from "../common/Button";
+import { ActivityPill } from "./ActivityPill";
 import { Breadcrumb } from "./Breadcrumb";
 import { ModeTabs } from "./ModeTabs";
 import { ProfileButton } from "./ProfileButton";
@@ -20,6 +21,9 @@ export function TopBar(): JSX.Element {
       <div class="topbar-left" data-tauri-drag-region><Breadcrumb /></div>
       <ModeTabs />
       <div class="topbar-right">
+        <ActivityPill />
+        {/* Slot for Task A6's Onshape budget meter. */}
+        <div class="budget-slot" data-slot="budget" />
         <StatusLights />
         <ProfileButton />
         <Button variant={anyRunning ? "danger" : "default"} class="stop-all" title="Stop all runs (⌘⇧.)" aria-busy={busy || undefined}
