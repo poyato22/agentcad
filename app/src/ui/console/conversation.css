@@ -44,6 +44,18 @@
 .cv-agent { background: transparent; border-color: transparent; padding-left: 0; padding-right: 0; }
 .cv-text { color: var(--ink); line-height: 1.45; }
 .cv-caret { color: var(--blue); }
+/* agent reply header: the agent label on the left, a hover-revealed Copy on the right */
+.cv-msg-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px; }
+.cv-msg-head .label { margin-bottom: 0; }
+.cv-copy {
+  margin-left: auto; padding: 0 5px; border: 1px solid transparent; border-radius: 4px;
+  background: none; color: var(--faint); font: inherit; font-size: var(--fs-label); cursor: pointer;
+  opacity: 0; transition: opacity .1s;
+}
+.cv-agent:hover .cv-copy, .cv-copy:focus-visible { opacity: 1; }
+.cv-copy:hover { color: var(--ink); border-color: var(--line2); }
+.cv-copy:focus-visible { outline: 1px solid var(--blue); }
+@media (prefers-reduced-motion: reduce) { .cv-copy { transition: none; } }
 .cv-line { display: grid; grid-template-columns: 14px 12px minmax(0, 1fr); gap: 4px; padding: 1px 10px; font-size: 11px; align-items: baseline; }
 .cv-x { border: 0; background: transparent; color: var(--dim); padding: 0; font: inherit; font-size: 9px; line-height: 12px; cursor: pointer; text-align: center; width: 14px; }
 button.cv-x { border: 1px solid var(--line2); }

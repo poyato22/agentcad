@@ -17,6 +17,8 @@ import { shownPending } from "./queued";
 import { CallDetails } from "./ToolCallRow";
 import type { ThreadItem } from "./threadModel";
 import { composerOpen } from "./view";
+import { Markup } from "../markup/render";
+import { CopyButton } from "./CopyButton";
 
 const AT_BOTTOM_PX = 24;
 /** Rows rendered at once (the last ones); "show earlier" adds this many more. Same as StepLog. */
@@ -135,8 +137,15 @@ function Item({ item, agent }: { item: ThreadItem; agent: AgentRun["agent"] }): 
     case "agent":
       return (
         <div class="cv-msg cv-agent" data-msg="agent" data-row data-kind={item.live ? "live" : "message"} data-changing={item.live ? "" : undefined}>
-          <div class="label">{agent}</div>
-          <div class="cv-text text">{item.text}{item.live && <span class="cv-caret" aria-hidden="true">▍</span>}</div>
+          <div class="cv-msg-head">
+            <span class="label">{agent}</span>
+            {!item.live && item.text.trim() !== "" && <CopyButton text={item.text} />}
+          </div>
+          {item.live
+            // streaming text is not yet a finished reply: show it plain with a caret, then render
+            // the landed message as markup once the step arrives
+            ? <div class="cv-text text" data-live-text>{item.text}<span class="cv-caret" aria-hidden="true">▍</span></div>
+            : <div class="cv-text"><Markup source={item.text} /></div>}
         </div>
       );
     case "activity":

@@ -68,7 +68,10 @@ describe("conversation view (default)", () => {
       "measured mount plate · 4.6 cm³",
       "asking to merge mount plate",
     ]);
-    expect(within(thread).getByText("Thickened the plate to 6 mm; asking to merge.").closest("[data-msg=agent]")).toBeTruthy();
+    // the agent reply is rendered as Mises markup (so "6 mm" is tinted); match the whole message
+    const agentMsg = thread.querySelector("[data-msg=agent]") as HTMLElement;
+    expect(agentMsg.textContent).toContain("Thickened the plate to 6 mm; asking to merge.");
+    expect(agentMsg.querySelector("[data-value]")?.textContent).toBe("6 mm");
     // the running call reads as being changed by an agent
     expect(thread.querySelectorAll("[data-activity][data-tone=running]")[0].hasAttribute("data-changing")).toBe(true);
   });
@@ -260,8 +263,10 @@ describe("conversation view (default)", () => {
     render(<ConsolePane />);
     await frame();
     const thread = screen.getByRole("log", { name: "Conversation" });
+    // markup is rendered (so **bold** becomes <strong>), but raw HTML stays escaped text
     expect(thread.querySelector("img")).toBeNull();
-    expect(thread.textContent).toContain("<img src=x onerror=alert(1)> **bold**");
+    expect(thread.textContent).toContain("<img src=x onerror=alert(1)>");
+    expect(thread.querySelector("[data-msg=agent] strong")?.textContent).toBe("bold");
   });
 });
 
