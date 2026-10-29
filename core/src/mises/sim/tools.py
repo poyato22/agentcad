@@ -1,66 +1,60 @@
-"""sim_* tools: static stress studies on local mirror parts (gmsh + CalculiX).
+"""sim_* tools: studies on local mirror parts (gmsh + CalculiX, and the built-in wind solver).
 
-Every result is a guide, not a guarantee: it names the solver, mesh sizes, material model and a
-measured error band (coarse vs fine mesh), applies the FDM knock-down, and carries
-fidelity_class "fem". Records live next to the part: parts/<part_id>/sims/<sim_id>/
-{result.json, result.glb}; solving happens in <run workdir>/sim_tmp/<sim_id>/ and is removed.
+Every result is a guide, not a guarantee: it names the solver, mesh / lattice, settings and an
+error band or convergence history, and carries a fidelity_class. Records live next to the part:
+parts/<part_id>/sims/<sim_id>/{result.json, result.glb, fields.npz}; solving happens in
+<run workdir>/sim_tmp/<sim_id>/ and is removed. The lifecycle is in studies.py.
+
+- sim_run(type, part_id, settings): any study type (static, modal, buckling, thermal, drop,
+  wind) with full settings (schemas: sim_types_list / GET /sims/types).
+- sim_static_run: the original one-case static study, a thin alias of sim_run(type=static).
+- design_review: picks the studies a spec needs, runs them as child sim_run calls through the
+  Gate, and returns a requirement-by-requirement pass / warn / fail table.
 """
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import json
-import os
-import re
-import secrets
-import shutil
 import time
-import weakref
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
-from ..cad.tools import _check_part_id, _existing, _lock
-from ..events import Event
+from ..cad.tools import _check_part_id, _existing
 from ..tools.registry import ToolContext, ToolRegistry, tool
-from ..types import (ErrorCode, MisesError, SafetyClass, StepKind, ToolOutput, canonical_json,
-                     sha256_hex)
-from .ccx import INSTALL_HINT, ccx_version, find_ccx, run_ccx, solver_status, write_inp
-from .environments import DIRECTIONS, ENVIRONMENTS, FACE_PRESETS, direction_vector, get_environment
-from .materials import FDM_KNOCKDOWN, MATERIALS, get_material
-from .mesh import FACE_ID_RE, consistent_loads, mesh_sizes, mesh_step, select_faces
-from .results import error_band, parse_frd, peaks, write_result_glb
+from ..types import ErrorCode, MisesError, SafetyClass, StepKind, ToolOutput
+from . import studies
+from .ccx import INSTALL_HINT, find_ccx, solver_status  # noqa: F401  (find_ccx: patchable)
+from .environments import DIRECTIONS, ENVIRONMENTS, FACE_PRESETS
+from .materials import FDM_KNOCKDOWN, MATERIALS, load_custom
+from .settings import check_face
+from .studies import (GUIDE_LABEL, SIM_ID_RE, STUDY_TYPES, find_sim, list_sims,  # noqa: F401
+                      read_record)
 from .types import SimError
 
-SIM_ID_RE = re.compile(r"^sim_[0-9a-f]{12}$")
 MESH_TIMEOUT_S = 180.0
 SOLVE_TIMEOUT_S = 300.0
-# One study is at most two meshes + two solves (+ margin for post-processing). Studies run one
-# at a time; the Gate's timeout covers the queue wait too, so the wait is bounded such that a
-# study that gets the slot always has its full time left (else: ok=false, error "busy").
+# One static study is at most two meshes + two solves (+ margin for post-processing). Studies
+# run one at a time; the Gate's timeout covers the queue wait too, so the wait is bounded such
+# that a study that gets the slot always has its full time left (else: ok=false, "busy").
 STUDY_MAX_S = 2 * (MESH_TIMEOUT_S + SOLVE_TIMEOUT_S) + 60
 TOOL_TIMEOUT_S = 2 * STUDY_MAX_S + 60
 QUEUE_TIMEOUT_S = TOOL_TIMEOUT_S - STUDY_MAX_S - 30
-DROPPED_LOAD_WARN = 0.01  # share of the load that may land on clamped nodes before we warn
-GUIDE_LABEL = "guide only, not a guarantee"
-CAVEATS = [
-    "Guide only: a linear-elastic FEM estimate, not a certification or a guarantee.",
-    "Isotropic material model; printed parts are weaker across layers, so strength is "
-    f"multiplied by an FDM knock-down of {FDM_KNOCKDOWN}.",
-    "Small deflections assumed; contact, creep, fatigue, temperature and vibration are not "
-    "simulated.",
-    "Peak stress excludes nodes on the fixed face (an ideal clamp gives a constraint "
-    "singularity there); that value and a safety factor including it are reported separately.",
-]
+# sim_run takes user timeouts (up to an hour per solve, several levels and cases): its Gate
+# timeout is a backstop; every mesher / solver process has its own hard timeout.
+SIM_RUN_TIMEOUT_S = 4 * 3600.0
+REVIEW_TIMEOUT_S = 8 * 3600.0
+STUDY_SLOTS = 1   # studies are memory bound: one at a time (see studies.semaphore)
+CAVEATS = studies.CAVEATS_FEM + [studies.CAVEATS_STATIC_FIXTURE]
 FaceSpec = str
 Direction = Literal["+x", "-x", "+y", "-y", "+z", "-z"]
+_semaphore = studies.semaphore
+result_summary = studies.summary
 
 
 def _check_face(v: str) -> str:
-    if v not in FACE_PRESETS and not FACE_ID_RE.match(v):
-        raise ValueError(f"face must be one of {list(FACE_PRESETS)} or a face id like 'f3'")
-    return v
+    return check_face(v)
 
 
 class LoadSpec(BaseModel):
@@ -94,323 +88,81 @@ class StaticArgs(BaseModel):
         return _check_face(v)
 
 
+class SimRunArgs(BaseModel):
+    type: Literal["static", "modal", "buckling", "thermal", "drop", "wind"]
+    part_id: str | None = Field(None, description="the part to study")
+    project_id: str | None = Field(None, description="an assembly (build); not supported yet")
+    settings: dict[str, Any] = Field(default_factory=dict, description="the type's settings; "
+                                     "see sim_types_list for every field, default and range")
+    reason: str | None = Field(None, max_length=200, description="one line: why this study "
+                               "(shown on the study card)")
+    requirements: list[dict[str, Any]] = Field(default_factory=list, max_length=40,
+                                               description="spec requirements to check "
+                                               "pass / warn / fail against the result")
+
+    @model_validator(mode="after")
+    def _target(self):
+        if self.part_id is None and self.project_id is None:
+            raise ValueError("give part_id (or project_id)")
+        return self
+
+
+def legacy_settings(fix: str, load: dict, material: str | None,
+                    environment: str | None) -> dict:
+    """sim_static_run's arguments as static study settings."""
+    return {"load_cases": [{"name": "case 1", "supports": [{"kind": "fixed", "face": fix}],
+                            "loads": [{"kind": "force", **load}]}],
+            "material": {"name": material}, "environment": environment}
+
+
+def _run_scope(a) -> list[str]:
+    return [a.part_id] if a.part_id else [f"project:{a.project_id}"]
+
+
 class ResultArgs(BaseModel):
     sim_id: str = Field(pattern=SIM_ID_RE.pattern)
+
+
+class CompareArgs(BaseModel):
+    sim_ids: list[str] = Field(min_length=2, max_length=8)
+
+    @field_validator("sim_ids")
+    @classmethod
+    def _ids(cls, v: list[str]) -> list[str]:
+        for s in v:
+            if not SIM_ID_RE.fullmatch(s):
+                raise ValueError(f"bad sim id {s!r}")
+        return v
 
 
 class EnvListArgs(BaseModel):
     pass
 
 
-# ---- records
-
-def _sims_dir(parts_root: Path, part_id: str) -> Path:
-    return Path(parts_root) / part_id / "sims"
+class TypesArgs(BaseModel):
+    pass
 
 
-def _write_record(sim_dir: Path, rec: dict) -> None:
-    sim_dir.mkdir(parents=True, exist_ok=True)
-    tmp = sim_dir / "result.json.tmp"
-    tmp.write_text(json.dumps(rec))
-    os.replace(tmp, sim_dir / "result.json")
+class ReviewArgs(BaseModel):
+    part_id: str | None = None
+    project_id: str | None = Field(None, description="the build whose spec to read (spec_get)")
+    spec: dict[str, Any] | None = Field(None, description="the spec (goal, requirements, "
+                                        "load_cases); default: spec_get of project_id")
+    material: str | None = None
+    budget_minutes: float = Field(60, ge=1, le=480)
+    wind: dict[str, Any] | None = Field(None, description="wind settings overrides")
+
+    @model_validator(mode="after")
+    def _t(self):
+        if self.part_id is None:
+            raise ValueError("give part_id (assembly reviews are not supported yet)")
+        return self
 
 
-def _file_hash(p: Path) -> str | None:
-    try:
-        return hashlib.sha256(Path(p).read_bytes()).hexdigest()
-    except OSError:
-        return None
-
-
-def find_sim(parts_root: Path, sim_id: str) -> Path | None:
-    """The record dir of sim_id, or None. sim_id must already match SIM_ID_RE."""
-    if not SIM_ID_RE.fullmatch(sim_id) or not Path(parts_root).is_dir():
-        return None
-    root = Path(parts_root).resolve()
-    for d in Path(parts_root).glob(f"*/sims/{sim_id}"):
-        try:
-            real = d.resolve(strict=True)
-        except OSError:
-            continue
-        if real.is_relative_to(root) and (real / "result.json").is_file():
-            return real
-    return None
-
-
-def read_record(sim_dir: Path, parts_root: Path) -> dict:
-    rec = json.loads((sim_dir / "result.json").read_text())
-    cur = _file_hash(Path(parts_root) / rec.get("part_id", "") / "model.step")
-    rec["stale"] = cur is None or cur != rec.get("geometry_hash")
-    return rec
-
-
-SUMMARY_KEYS = ("sim_id", "part_id", "run_id", "status", "stage", "created_at", "finished_at",
-                "error", "hint", "inputs", "results", "guide", "label", "fidelity_class")
-
-
-def list_sims(parts_root: Path, part_id: str | None = None,
-              run_id: str | None = None) -> list[dict]:
-    out = []
-    pattern = f"{part_id}/sims/*/result.json" if part_id else "*/sims/*/result.json"
-    if not Path(parts_root).is_dir():
-        return out
-    for f in Path(parts_root).glob(pattern):
-        if not SIM_ID_RE.fullmatch(f.parent.name):
-            continue
-        try:
-            rec = read_record(f.parent, parts_root)
-        except (OSError, ValueError):
-            continue
-        if run_id is not None and rec.get("run_id") != run_id:
-            continue
-        out.append({k: rec.get(k) for k in SUMMARY_KEYS} | {"stale": rec["stale"]})
-    return sorted(out, key=lambda r: r.get("created_at") or 0, reverse=True)
-
-
-# ---- concurrency: one study at a time per process (meshing + solving are memory hungry)
-
-_sems: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore]" = \
-    weakref.WeakKeyDictionary()
-
-
-def _semaphore() -> asyncio.Semaphore:
-    loop = asyncio.get_running_loop()
-    s = _sems.get(loop)
-    if s is None:
-        s = _sems[loop] = asyncio.Semaphore(1)
-    return s
-
-
-def _default_material(ctx: ToolContext) -> str:
-    rt = (getattr(ctx, "services", None) or {}).get("runtime")
-    try:
-        return rt.profile().default_material if rt is not None else "PLA"
-    except Exception:  # noqa: BLE001
-        return "PLA"
-
+# ---- helpers
 
 def _bad(e: SimError) -> MisesError:
     return MisesError(ErrorCode.INVALID_INPUT, e.message, hint=e.hint)
-
-
-async def _solve(ctx: ToolContext, job: Path, step: Path, metrics: dict, size: float,
-                 args: StaticArgs, material, ccx: str, progress) -> dict:
-    stage = job.name
-    progress(f"mesh_{stage}", size_mm=size)
-    mesh = await mesh_step(step, job, size, timeout_s=MESH_TIMEOUT_S)
-    bbox, faces = metrics["bbox"], metrics.get("face_list")
-    fix_tags = select_faces(args.fix, mesh.surfaces, bbox, faces)
-    load_tags = select_faces(args.load.face, mesh.surfaces, bbox, faces)
-    if set(fix_tags) & set(load_tags):
-        raise SimError("bad_setup", "the fixed face and the load face overlap",
-                       hint="load a different face than the one held fixed")
-    fixed = mesh.nodes_of(fix_tags)
-    d = direction_vector(args.load.direction)
-    loads = consistent_loads(mesh, load_tags, tuple(args.load.newtons * x for x in d))
-    dropped = 0.0
-    for n in fixed:  # a load on a clamped node (shared edge) goes straight into the support
-        v = loads.pop(n, None)
-        if v is not None:
-            dropped += sum(x * x for x in v) ** 0.5
-    # big meshes make these slow: keep them off the server's event loop
-    await asyncio.to_thread(write_inp, job / "job.inp", mesh, fixed, loads, material)
-    progress(f"solve_{stage}", nodes=len(mesh.nodes), elements=len(mesh.tets))
-    frd = await run_ccx(ccx, job, timeout_s=SOLVE_TIMEOUT_S)
-    pk = await asyncio.to_thread(lambda: peaks(mesh, parse_frd(frd), exclude=fixed))
-    return {"mesh": mesh, "peaks": pk,
-            "info": {"size_mm": round(size, 4), "nodes": len(mesh.nodes),
-                     "elements": len(mesh.tets), "fixed_nodes": len(fixed),
-                     "loaded_nodes": len(loads), "dropped_load_n": dropped}}
-
-
-@tool("sim_static_run", safety=SafetyClass.LOCAL_MUTATE, scope_arg="part_id",
-      timeout_s=TOOL_TIMEOUT_S,
-      description="Run a static linear-elastic stress study (gmsh + CalculiX) on a local mirror "
-                  "part: one face held fixed, a force spread over another face. Faces are "
-                  "presets (bottom, top, x-min, ...) or face ids from mirror_measure face_list "
-                  "(largest faces) or mirror_faces (all). Returns max von Mises (MPa, excluding "
-                  "the fixed face, whose peak is reported separately), max displacement (mm), "
-                  "safety factor (yield x FDM knock-down 0.7 / peak) and an error band from a "
-                  "coarse vs fine mesh. "
-                  "Results are a GUIDE ONLY: always say so when you report them.")
-async def sim_static_run(ctx: ToolContext, args: StaticArgs) -> ToolOutput:
-    _check_part_id(args.part_id)
-    part = _existing(ctx, args.part_id)
-    if args.fix == args.load.face:
-        raise MisesError(ErrorCode.INVALID_INPUT, "fix and load are the same face",
-                         hint="hold one face and load another")
-    try:
-        material = get_material(args.material or _default_material(ctx))
-        env = get_environment(args.environment) if args.environment else None
-    except SimError as e:
-        raise _bad(e) from None
-
-    parts_root = Path(ctx.workdir) / "parts"
-    sim_id = "sim_" + secrets.token_hex(6)
-    sim_dir = _sims_dir(parts_root, args.part_id) / sim_id
-    job_root = Path(ctx.workdir) / "sim_tmp" / sim_id
-    job_root.mkdir(parents=True, exist_ok=True)
-    async with _lock(part):  # a consistent snapshot of the geometry this study solves
-        shutil.copyfile(part / "model.step", job_root / "model.step")
-        metrics = json.loads((part / "metrics.json").read_text())
-    geometry_hash = _file_hash(job_root / "model.step")
-    inputs = {"fix": args.fix, "load": args.load.model_dump(), "material": material.name,
-              "environment": env["name"] if env else None}
-    if not args.fine:  # only screening runs record it, so default records are unchanged
-        inputs["fine"] = False
-    rec: dict = {
-        "sim_id": sim_id, "part_id": args.part_id, "run_id": getattr(ctx, "run_id", None),
-        "status": "running", "stage": "queued", "created_at": time.time(), "finished_at": None,
-        "analysis": "static_linear_elastic", "guide": True, "label": GUIDE_LABEL,
-        "fidelity_class": "fem", "validated_against": None, "inputs": inputs,
-        "geometry_hash": geometry_hash, "material": material.to_dict(),
-        "environment": env, "error": None, "hint": None, "warnings": [], "caveats": CAVEATS}
-    _write_record(sim_dir, rec)
-
-    def progress(stage: str, **data) -> None:
-        rec["stage"] = stage
-        _write_record(sim_dir, rec)
-        events = getattr(ctx, "events", None)
-        if events is not None:
-            events.publish(Event(type="sim_progress", run_id=getattr(ctx, "run_id", None),
-                                 data={"sim_id": sim_id, "part_id": args.part_id,
-                                       "stage": stage, **data}))
-
-    def fail(code: str, message: str, hint: str | None, extra: dict | None = None) -> ToolOutput:
-        rec.update(status="failed", stage="failed", error=message, hint=hint,
-                   finished_at=time.time())
-        _write_record(sim_dir, rec)
-        summary = f"study failed: {message}" + (f" ({hint})" if hint else "")
-        return ToolOutput(ok=False, summary=summary, step_kind=StepKind.ERROR,
-                          data={"sim_id": sim_id, "error": code, "message": message,
-                                "hint": hint, **(extra or {})})
-
-    try:
-        ccx = find_ccx()
-        if ccx is None:
-            msg = "CalculiX (ccx) is not installed"
-            return fail("solver_missing", msg, f"install it with: {INSTALL_HINT}",
-                        {"missing": ["ccx"], "install": INSTALL_HINT})
-        version = await asyncio.to_thread(ccx_version, ccx) or "unknown"
-        coarse_h, fine_h = mesh_sizes(metrics["bbox"]["size"], metrics.get("volume_mm3", 0))
-        step = job_root / "model.step"
-        sem = _semaphore()
-        try:
-            await asyncio.wait_for(sem.acquire(), QUEUE_TIMEOUT_S)
-        except asyncio.TimeoutError:
-            return fail("busy", f"another study kept the solver busy for {QUEUE_TIMEOUT_S:g}s",
-                        "retry when the running study has finished")
-        try:
-            coarse = await _solve(ctx, job_root / "coarse", step, metrics, coarse_h, args,
-                                  material, ccx, progress)
-            fine = (await _solve(ctx, job_root / "fine", step, metrics, fine_h, args,
-                                 material, ccx, progress) if args.fine else coarse)
-        except SimError as e:
-            return fail(e.code, e.message, e.hint)
-        finally:
-            sem.release()
-        progress("post")
-        pf, pc = fine["peaks"], coarse["peaks"]
-        peak = pf["max_von_mises_mpa"]
-        band = error_band(coarse=pc["max_von_mises_mpa"], fine=peak) if args.fine else None
-        sf = material.allowable_mpa / peak if peak > 0 else None
-        warnings = []
-        if not args.fine:
-            warnings.append("coarse mesh only (screening solve): no error band; confirm "
-                            "with a fine run before relying on it")
-        if sf is not None and sf < 1:
-            warnings.append(f"predicted to yield: safety factor {sf:.2f} < 1")
-        if band is not None and band > 0.1:
-            warnings.append(f"mesh not converged: peak stress changed {band:.0%} between the "
-                            "coarse and fine mesh; treat the peak as uncertain")
-        fx = pf["max_von_mises_at_fixture_mpa"]
-        worst = max(peak, fx or 0.0)
-        sf_fix = material.allowable_mpa / worst if worst > 0 else None
-        dropped = fine["info"]["dropped_load_n"]
-        if dropped > DROPPED_LOAD_WARN * args.load.newtons:
-            warnings.append(f"{dropped:.3g} N of the {args.load.newtons:g} N load sits on nodes "
-                            "shared with the fixed face and goes straight into the support; "
-                            "the result under-reports that share")
-        if fx is not None and fx > 1.5 * peak:
-            warnings.append(f"stress at the fixed face reaches {fx:.3g} MPa (an idealised "
-                            "clamp exaggerates it); real fixtures spread load")
-        if env and env["temperature_c"] >= material.hdt_c - 5:
-            warnings.append(f"{env['name']}: {env['temperature_c']} C is at or above "
-                            f"{material.name}'s heat deflection temperature ({material.hdt_c:g} "
-                            "C): the part may soften or creep; this result does not cover it")
-        solver = {"name": "CalculiX", "version": version, "path": ccx,
-                  "element": "C3D10 (quadratic tetrahedra)"}
-        mesh_info = {"mesher": "gmsh", "mesher_version": fine["mesh"].gmsh_version,
-                     "coarse": coarse["info"], "fine": fine["info"]}
-        inputs_hash = sha256_hex(canonical_json({"inputs": inputs, "geometry": geometry_hash,
-                                                 "material": material.to_dict(),
-                                                 "mesh": [coarse_h, fine_h], "solver": version}))
-        results = {
-            "max_von_mises_mpa": peak, "max_von_mises_at": pf["max_von_mises_at"],
-            "max_von_mises_at_fixture_mpa": fx,
-            "max_displacement_mm": pf["max_displacement_mm"],
-            "max_displacement_at": pf["max_displacement_at"],
-            "safety_factor": sf, "safety_factor_incl_fixture": sf_fix,
-            "allowable_mpa": material.allowable_mpa,
-            "coarse_max_von_mises_mpa": pc["max_von_mises_mpa"],
-            "coarse_max_displacement_mm": pc["max_displacement_mm"],
-            "error_band": band, "error_band_pct": None if band is None else round(100 * band, 1),
-            "peak_excludes": "nodes on the fixed face" if pf["excludes_fixture"] else None}
-        await asyncio.to_thread(lambda: write_result_glb(
-            job_root / "result.glb", fine["mesh"], pf["vm"], vmax=peak,
-            extras={"sim_id": sim_id, "part_id": args.part_id}))
-        sim_dir.mkdir(parents=True, exist_ok=True)
-        os.replace(job_root / "result.glb", sim_dir / "result.glb")
-        rec.update(status="done", stage="done", finished_at=time.time(), solver=solver,
-                   mesh=mesh_info, results=results, warnings=warnings,
-                   inputs_hash=inputs_hash, glb="result.glb",
-                   color_range_mpa=[0.0, peak])
-        _write_record(sim_dir, rec)
-    except asyncio.CancelledError:
-        rec.update(status="cancelled", stage="cancelled", error="cancelled",
-                   finished_at=time.time())
-        _write_record(sim_dir, rec)
-        raise
-    except Exception as e:
-        fail("internal", f"{type(e).__name__}: {e}", None)
-        raise
-    finally:
-        shutil.rmtree(job_root, ignore_errors=True)
-
-    return ToolOutput(summary=result_summary(rec), data=rec, step_kind=StepKind.SIM_RUN,
-                      warnings=warnings)
-
-
-def _num(v, fmt: str) -> str:
-    return "n/a" if v is None else format(v, fmt)
-
-
-def result_summary(rec: dict) -> str:
-    """One line that always carries the labelling a reader needs: guide only, solver, mesh
-    size, material model, error band, and whether/how the fixed face was left out of the peak."""
-    if rec.get("status") != "done":
-        s = f"{rec.get('sim_id')} {rec.get('status')} ({GUIDE_LABEL})"
-        if rec.get("error"):
-            s += f": {rec['error']}" + (f" ({rec['hint']})" if rec.get("hint") else "")
-        return s
-    r, m, sv, mesh = rec["results"], rec["material"], rec["solver"], rec["mesh"]
-    band = r.get("error_band")
-    if r.get("peak_excludes"):
-        fixture = (f"peak excludes the fixed face; at fixture: "
-                   f"{_num(r.get('max_von_mises_at_fixture_mpa'), '.3g')} MPa (safety factor "
-                   f"incl. fixture {_num(r.get('safety_factor_incl_fixture'), '.2f')})")
-    else:
-        fixture = "peak includes the fixed face (every stressed node is on it)"
-    s = (f"GUIDE ONLY - {sv['name']} {sv['version']}, fine mesh {mesh['fine']['size_mm']:.2g} mm "
-         f"(coarse {mesh['coarse']['size_mm']:.2g} mm), material {m['name']} isotropic linear "
-         f"elastic, strength x{m['knockdown']} FDM knock-down: {rec['part_id']} max von Mises "
-         f"{r['max_von_mises_mpa']:.3g} MPa (error band "
-         f"{'n/a' if band is None else format(band, '.1%')}), max displacement "
-         f"{r['max_displacement_mm']:.3g} mm, safety factor {_num(r.get('safety_factor'), '.2f')}"
-         f"; {fixture}")
-    if rec.get("warnings"):
-        s += "; warnings: " + "; ".join(rec["warnings"])
-    return s
 
 
 def _in_read_scope(ctx: ToolContext, part_id: str) -> bool:
@@ -421,41 +173,436 @@ def _in_read_scope(ctx: ToolContext, part_id: str) -> bool:
     return "*" in allowed or part_id in allowed
 
 
-@tool("sim_result_get", safety=SafetyClass.READ,
-      description="Return a stored study result by sim_id (inputs, solver, mesh, material, "
-                  "peaks, error band, warnings; stale=true if the part changed since).")
-async def sim_result_get(ctx: ToolContext, args: ResultArgs) -> ToolOutput:
+def _load_rec(ctx: ToolContext, sim_id: str) -> dict:
     root = Path(ctx.workdir) / "parts"
-    d = find_sim(root, args.sim_id)
+    d = find_sim(root, sim_id)
     if d is None:
-        raise MisesError(ErrorCode.NOT_FOUND, f"no study {args.sim_id}",
-                         hint="run one with sim_static_run")
+        raise MisesError(ErrorCode.NOT_FOUND, f"no study {sim_id}", hint="run one with sim_run")
     rec = read_record(d, root)
     if not _in_read_scope(ctx, rec.get("part_id", "")):
-        raise MisesError(ErrorCode.OUT_OF_SCOPE, f"{args.sim_id} belongs to a part outside "
-                         "this run's scope", hint="ask the user to widen the scope")
-    summary = (f"{args.sim_id}: " + result_summary(rec)
+        raise MisesError(ErrorCode.OUT_OF_SCOPE, f"{sim_id} belongs to a part outside this "
+                         "run's scope", hint="ask the user to widen the scope")
+    return rec
+
+
+async def _run(ctx: ToolContext, type_id: str, part_id: str, settings: dict, *,
+               reason=None, requirements=None, inputs_extra=None, solve_timeout_s=None,
+               coarse_only: bool = False):
+    _check_part_id(part_id)
+    part = _existing(ctx, part_id)
+    try:
+        model = studies.validate_settings(type_id, settings)
+    except SimError as e:
+        raise _bad(e) from None
+    return await studies.run_study(ctx, type_id, part_id, part, model, reason=reason,
+                                   requirements=requirements, inputs_extra=inputs_extra,
+                                   solve_timeout_s=solve_timeout_s, coarse_only=coarse_only)
+
+
+# ---- tools
+
+@tool("sim_run", safety=SafetyClass.LOCAL_MUTATE, scope_keys=_run_scope,
+      timeout_s=SIM_RUN_TIMEOUT_S,
+      description="Run a study on a local mirror part. type: static (stress, several load "
+                  "cases: force, pressure, moment, gravity, bolt bearing, remote force; "
+                  "supports fixed / pinned / roller / symmetry), modal (natural frequencies, "
+                  "flags modes in an excitation band), buckling (load factors), thermal (steady "
+                  "state), drop (equivalent static impact load, an ESTIMATE) or wind (CFD: Cd, "
+                  "Cl, drag and lift in N, surface Cp, yaw sweep; LOW FIDELITY). settings follow "
+                  "the type's schema from sim_types_list (mesh, material incl. custom and FDM "
+                  "infill, convergence, solver timeout and threads). Faces are presets or face "
+                  "ids from mirror_measure / mirror_faces. Give a one-line `reason`; pass spec "
+                  "`requirements` to get pass / warn / fail checks. Results are a GUIDE ONLY: "
+                  "always say so, with the solver, mesh and error band.")
+async def sim_run(ctx: ToolContext, args: SimRunArgs) -> ToolOutput:
+    if args.part_id is None:
+        raise MisesError(ErrorCode.INVALID_INPUT, "assembly (project_id) studies are not "
+                         "supported yet", hint="study each part with its part_id")
+    return await _run(ctx, args.type, args.part_id, args.settings, reason=args.reason,
+                      requirements=args.requirements)
+
+
+@tool("sim_static_run", safety=SafetyClass.LOCAL_MUTATE, scope_arg="part_id",
+      timeout_s=TOOL_TIMEOUT_S,
+      description="Run a static linear-elastic stress study (gmsh + CalculiX) on a local mirror "
+                  "part: one face held fixed, a force spread over another face. Faces are "
+                  "presets (bottom, top, x-min, ...) or face ids from mirror_measure face_list "
+                  "(largest faces) or mirror_faces (all). Returns max von Mises (MPa, excluding "
+                  "the fixed face, whose peak is reported separately), max displacement (mm), "
+                  "safety factor (yield x FDM knock-down 0.7 / peak) and an error band from a "
+                  "coarse vs fine mesh. For more load cases, supports or other study types use "
+                  "sim_run. Results are a GUIDE ONLY: always say so when you report them.")
+async def sim_static_run(ctx: ToolContext, args: StaticArgs) -> ToolOutput:
+    _check_part_id(args.part_id)
+    _existing(ctx, args.part_id)
+    if args.fix == args.load.face:
+        raise MisesError(ErrorCode.INVALID_INPUT, "fix and load are the same face",
+                         hint="hold one face and load another")
+    settings = legacy_settings(args.fix, args.load.model_dump(), args.material, args.environment)
+    extra = {"fix": args.fix, "load": args.load.model_dump()}
+    if not args.fine:  # only screening runs record it, so default records are unchanged
+        extra["fine"] = False
+    return await _run(ctx, "static", args.part_id, settings, inputs_extra=extra,
+                      solve_timeout_s=SOLVE_TIMEOUT_S, coarse_only=not args.fine)
+
+
+@tool("sim_types_list", safety=SafetyClass.READ,
+      description="List the study types (static, modal, buckling, thermal, drop, wind) with "
+                  "their solver, fidelity class, availability and the JSON schema of their "
+                  "settings (defaults, ranges, units, docs).")
+async def sim_types_list(ctx: ToolContext, args: TypesArgs) -> ToolOutput:
+    ts = studies.types_list()
+    s = "; ".join(f"{t['id']} ({t['fidelity_class']}{'' if t['available'] else ', unavailable'})"
+                  for t in ts)
+    return ToolOutput(summary=f"{len(ts)} study types: {s}", data={"types": ts})
+
+
+@tool("sim_result_get", safety=SafetyClass.READ,
+      description="Return a stored study result by sim_id (inputs, solver, mesh, material, "
+                  "results, error band, warnings, checks; stale=true if the part changed "
+                  "since).")
+async def sim_result_get(ctx: ToolContext, args: ResultArgs) -> ToolOutput:
+    rec = _load_rec(ctx, args.sim_id)
+    summary = (f"{args.sim_id}: " + studies.summary(rec)
                + ("; STALE: the part changed since this study" if rec["stale"] else ""))
-    return ToolOutput(summary=summary, data=rec, step_kind=StepKind.SIM_RUN)
+    return ToolOutput(summary=summary, data=studies.compact(rec), step_kind=StepKind.SIM_RUN)
+
+
+@tool("sim_compare", safety=SafetyClass.READ,
+      description="Compare 2-8 studies side by side (mass, stress, safety factor, displacement, "
+                  "frequency, buckling factor, temperature, Cd, drag, error band).")
+async def sim_compare(ctx: ToolContext, args: CompareArgs) -> ToolOutput:
+    recs = [_load_rec(ctx, s) for s in args.sim_ids]
+    table = studies.compare(recs)
+    lines = [f"{r['label']}: " + ", ".join("n/a" if v is None else f"{v:.4g}"
+                                           if isinstance(v, (int, float)) else str(v)
+                                           for v in r["values"]) for r in table["rows"]]
+    return ToolOutput(summary=f"compare {', '.join(args.sim_ids)} ({GUIDE_LABEL}): "
+                      + "; ".join(lines), data=table)
+
+
+@tool("sim_cancel", safety=SafetyClass.LOCAL_MUTATE,
+      description="Cancel a running study by sim_id (kills its mesher / solver).")
+async def sim_cancel(ctx: ToolContext, args: ResultArgs) -> ToolOutput:
+    rec = _load_rec(ctx, args.sim_id)
+    pol = getattr(ctx, "policy", None)
+    if pol is not None and "*" not in pol.edit_scope and rec.get("part_id") not in pol.edit_scope:
+        raise MisesError(ErrorCode.OUT_OF_SCOPE, f"{args.sim_id} is outside this run's scope")
+    if not studies.cancel(args.sim_id):
+        return ToolOutput(ok=False, summary=f"{args.sim_id} is not running "
+                          f"(status {rec.get('status')})", data={"status": rec.get("status")})
+    return ToolOutput(summary=f"cancelling {args.sim_id}", data={"sim_id": args.sim_id})
 
 
 @tool("sim_env_list", safety=SafetyClass.READ,
       description="List study presets: environments, fixture/load face presets, load "
-                  "directions, materials (with FDM knock-down) and whether the solver is "
-                  "installed.")
+                  "directions, materials (with FDM knock-down), study types and whether the "
+                  "solver is installed.")
 async def sim_env_list(ctx: ToolContext, args: EnvListArgs) -> ToolOutput:
     st = solver_status()
+    home = studies._home(ctx)
     data = {"environments": ENVIRONMENTS, "face_presets": list(FACE_PRESETS),
             "face_ids": "or a face id (\"f3\") from mirror_measure face_list / mirror_faces",
             "directions": list(DIRECTIONS), "knockdown": FDM_KNOCKDOWN,
-            "materials": [m.to_dict() for m in MATERIALS.values()], "solvers": st}
-    s = (f"{len(ENVIRONMENTS)} environments, {len(MATERIALS)} materials; CalculiX "
+            "materials": [m.to_dict() for m in [*MATERIALS.values(), *load_custom(home)]],
+            "solvers": st, "study_types": list(STUDY_TYPES)}
+    s = (f"{len(ENVIRONMENTS)} environments, {len(data['materials'])} materials, study types "
+         f"{', '.join(STUDY_TYPES)}; CalculiX "
          + ("found" if st["ccx"]["found"] else f"MISSING (install: {INSTALL_HINT})"))
     return ToolOutput(summary=s, data=data)
 
 
+# ---- design review
+
+STRESS_KINDS = {"min_safety_factor", "max_deflection_mm"}
+MODAL_KINDS = {"min_natural_freq_hz", "avoid_band_hz"}
+WIND_KINDS = {"max_drag_n", "max_cd"}
+DROP_KINDS = {"survive_drop_m"}
+
+
+STUDY_KINDS = (STRESS_KINDS | MODAL_KINDS | WIND_KINDS | DROP_KINDS
+               | {"min_buckling_factor", "max_temp_c"})
+SPEC_EXTRAS = ("excitation", "excitation_band_hz", "wind", "drop")
+
+
+def normalize_spec(spec: dict) -> dict:
+    """The contract's requirement kinds stop at `custom`; a custom requirement whose target is
+    {<study kind>: value} (e.g. {"max_drag_n": 2}, {"avoid_band_hz": [380, 420]}) becomes
+    that kind, and {"excitation": {...}} / {"wind": {...}} / {"drop": {...}} targets fill the
+    spec's study inputs."""
+    spec = dict(spec)
+    reqs = []
+    for r in spec.get("requirements") or []:
+        if isinstance(r, dict) and r.get("kind") == "custom" and isinstance(r.get("target"), dict):
+            t = r["target"]
+            for k in SPEC_EXTRAS:
+                if k in t and k not in spec:
+                    spec[k] = t[k]
+            key = next((k for k in t if k in STUDY_KINDS), None)
+            if key is not None:
+                r = {**r, "kind": key, "target": t[key]}
+            elif any(k in t for k in SPEC_EXTRAS):
+                continue  # only carried study inputs
+        reqs.append(r)
+    spec["requirements"] = reqs
+    return spec
+
+
+def plan_review(spec: dict, wind_overrides: dict | None = None,
+                material: str | None = None) -> list[dict]:
+    """The studies a spec needs: [{type, case, settings, requirements}]. Static: one study per
+    load case; modal when an excitation band (or a frequency requirement) is given; wind when a
+    drag requirement or spec.wind is present; drop when spec.drop or a drop requirement is."""
+    spec = normalize_spec(spec)
+    reqs = [r for r in spec.get("requirements") or [] if isinstance(r, dict)]
+    mat = {"name": material} if material else {}
+    plan = []
+    for lc in spec.get("load_cases") or []:
+        if not isinstance(lc, dict) or not lc.get("fix") or not lc.get("load"):
+            continue
+        cid = str(lc.get("id") or lc.get("name") or f"case{len(plan) + 1}")
+        load = {"kind": "force", "face": lc["load"], "newtons": lc.get("newtons"),
+                "direction": lc.get("direction") or "-z"}
+        rq = [r for r in reqs if r.get("kind") in STRESS_KINDS
+              and r.get("load_case_id") in (None, cid)]
+        rq = [{**r, "load_case_id": cid} for r in rq]
+        plan.append({"type": "static", "case": cid, "requirements": rq,
+                     "settings": {"load_cases": [{"name": cid[:60], "supports": [
+                         {"kind": "fixed", "face": lc["fix"]}], "loads": [load],
+                         "note": str(lc.get("note") or "")[:300]}], "material": mat},
+                     "estimate": bool(lc.get("estimate"))})
+    band = spec.get("excitation_band_hz")
+    exc = spec.get("excitation")
+    mreq = [r for r in reqs if r.get("kind") in MODAL_KINDS]
+    if band or exc or mreq:
+        ms: dict = {"material": mat, "supports": []}
+        fix = next((lc.get("fix") for lc in spec.get("load_cases") or []
+                    if isinstance(lc, dict) and lc.get("fix")), None)
+        if fix:
+            ms["supports"] = [{"kind": "fixed", "face": fix}]
+        if band:
+            ms["band_hz"] = band
+        elif exc:
+            ms["excitation"] = exc
+        for r in mreq:
+            if r.get("kind") == "avoid_band_hz" and isinstance(r.get("target"), list):
+                ms["band_hz"] = r["target"]
+        plan.append({"type": "modal", "case": "modal", "settings": ms, "requirements": mreq})
+    wreq = [r for r in reqs if r.get("kind") in WIND_KINDS]
+    if wreq or spec.get("wind"):
+        ws = {**(spec.get("wind") or {}), **(wind_overrides or {})}
+        plan.append({"type": "wind", "case": "wind", "settings": ws, "requirements": wreq})
+    dreq = [r for r in reqs if r.get("kind") in DROP_KINDS]
+    if dreq or spec.get("drop"):
+        d = dict(spec.get("drop") or {})
+        if dreq and "drop_m" not in d and isinstance(dreq[0].get("target"), (int, float)):
+            d["drop_m"] = dreq[0]["target"]
+        d.setdefault("impact_face", "bottom")
+        d["material"] = mat
+        sf = [r for r in reqs if r.get("kind") == "min_safety_factor"
+              and r.get("load_case_id") in (None, "drop")]
+        plan.append({"type": "drop", "case": "drop", "settings": d,
+                     "requirements": [{**r, "load_case_id": "impact"} for r in sf]})
+    return plan
+
+
+def _metric_rows(spec: dict, metrics: dict, material) -> list[dict]:
+    rows = []
+    for r in spec.get("requirements") or []:
+        if not isinstance(r, dict):
+            continue
+        kind, target = r.get("kind"), r.get("target")
+        if kind == "max_mass_g" and isinstance(target, (int, float)):
+            mass = metrics.get("volume_mm3", 0) * material.density_g_cm3 / 1000.0
+            st = studies._verdict(mass, float(target), "max", None)
+            rows.append({"requirement_id": r.get("id"), "kind": kind, "target": target,
+                         "measured": round(mass, 2), "unit": "g", "status": st, "sim_id": None,
+                         "note": f"from the volume x {material.name} density (solid)"})
+        elif kind == "envelope_mm" and isinstance(target, list) and len(target) == 3:
+            size = sorted(metrics.get("bbox", {}).get("size", [0, 0, 0]))
+            ok = all(a <= b + 1e-6 for a, b in zip(size, sorted(float(t) for t in target)))
+            rows.append({"requirement_id": r.get("id"), "kind": kind, "target": target,
+                         "measured": metrics.get("bbox", {}).get("size"), "unit": "mm",
+                         "status": "pass" if ok else "fail", "sim_id": None,
+                         "note": "bounding box, any orientation"})
+        elif kind in ("printable", "mount_pattern", "custom"):
+            rows.append({"requirement_id": r.get("id"), "kind": kind, "target": target,
+                         "measured": None, "unit": "", "status": "warn", "sim_id": None,
+                         "note": "not checked by a study; review by hand"})
+    return rows
+
+
+async def _get_spec(ctx: ToolContext, args: ReviewArgs) -> dict | None:
+    if args.spec is not None:
+        return args.spec
+    if not args.project_id:
+        return None
+    gate = _gate(ctx)
+    try:
+        if gate is None or not gate.registry.list(["spec_get"]):
+            return None
+    except Exception:  # noqa: BLE001
+        return None
+    out = await gate.call(ctx.run_id, "spec_get", {"project_id": args.project_id},
+                          call_id=f"{ctx.call_id}.spec", workdir=Path(ctx.workdir))
+    if not out.ok:
+        return None
+    d = out.data
+    return d.get("spec") if isinstance(d.get("spec"), dict) else d
+
+
+MIN_CHILD_S = 30.0
+CHILD_GRACE_S = 60.0   # post-processing after the last solve
+
+
+def _rec_by_call(parts_root: Path, part_id: str, call_id: str) -> dict | None:
+    for f in (Path(parts_root) / part_id / "sims").glob("sim_*/result.json"):
+        try:
+            rec = json.loads(f.read_text())
+        except (OSError, ValueError):
+            continue
+        if rec.get("call_id") == call_id:
+            return rec
+    return None
+
+
+def _gate(ctx: ToolContext):
+    sv = getattr(ctx, "services", None) or {}
+    if sv.get("gate") is not None:
+        return sv["gate"]
+    rt = sv.get("runtime")
+    return getattr(rt, "gate", None)
+
+
+def _parallel(ctx: ToolContext) -> int:
+    rt = (getattr(ctx, "services", None) or {}).get("runtime")
+    try:
+        lim = int(rt.parallel_limit()) if rt is not None else 1
+    except Exception:  # noqa: BLE001
+        lim = 1
+    return max(1, min(lim, STUDY_SLOTS))
+
+
+@tool("design_review", safety=SafetyClass.READ, scope_arg="part_id", timeout_s=REVIEW_TIMEOUT_S,
+      description="Review a part against its spec: picks the studies the spec needs (static "
+                  "per load case, modal for an excitation band, wind for a drag requirement, "
+                  "drop for an impact), runs them as sim_run calls (each one a local_mutate "
+                  "tool call through the Gate), and returns a requirement-by-requirement "
+                  "pass / warn / fail table with the study ids. The spec comes from `spec` or "
+                  "spec_get of project_id. Results are a GUIDE ONLY; cite the study ids.")
+async def design_review(ctx: ToolContext, args: ReviewArgs) -> ToolOutput:
+    _check_part_id(args.part_id)
+    part = _existing(ctx, args.part_id)
+    spec = await _get_spec(ctx, args)
+    if not spec:
+        raise MisesError(ErrorCode.INVALID_INPUT, "no spec to review against",
+                         hint="pass spec, or a project_id whose spec is set (spec_set)")
+    spec = normalize_spec(spec)
+    metrics = json.loads((part / "metrics.json").read_text())
+    try:
+        material = studies.resolve_material(None, args.material or studies.default_material(ctx),
+                                             studies._home(ctx))
+    except SimError as e:
+        raise _bad(e) from None
+    plan = plan_review(spec, args.wind, args.material)
+    gate = _gate(ctx)
+    if plan and gate is None:
+        raise MisesError(ErrorCode.TOOL_FAILED, "design_review needs the Gate to run studies")
+    deadline = time.monotonic() + args.budget_minutes * 60
+    lim = asyncio.Semaphore(_parallel(ctx))
+    results: list[dict | None] = [None] * len(plan)
+
+    async def one(i: int, p: dict) -> None:
+        async with lim:
+            if time.monotonic() > deadline:
+                results[i] = {"plan": p, "error": "not run: the review's time budget ran out"}
+                return
+            settings = dict(p["settings"])
+            left = max(MIN_CHILD_S, deadline - time.monotonic())
+            if p["type"] == "wind":
+                settings["timeout_s"] = min(float(settings.get("timeout_s", 600)), left)
+            else:  # each solve gets at most the time left (a study solves >= 2 meshes)
+                solver = dict(settings.get("solver") or {})
+                solver["timeout_s"] = max(5.0, min(float(solver.get("timeout_s", 300)),
+                                                   left / 2))
+                settings["solver"] = solver
+            call_id = f"{ctx.call_id}.r{i + 1}"
+            payload = {"type": p["type"], "part_id": args.part_id, "settings": settings,
+                       "requirements": p["requirements"],
+                       "reason": f"design review: {p['type']} {p['case']}"[:200]}
+            try:  # the budget is a hard cap on every child study too
+                out = await asyncio.wait_for(
+                    gate.call(ctx.run_id, "sim_run", payload, call_id=call_id,
+                              workdir=Path(ctx.workdir)), left + CHILD_GRACE_S)
+                results[i] = {"plan": p, "out": out, "call_id": call_id}
+            except asyncio.TimeoutError:
+                results[i] = {"plan": p, "call_id": call_id,
+                              "error": "stopped: the review's time budget ran out"}
+            except MisesError as e:
+                results[i] = {"plan": p, "call_id": call_id, "error": f"{e.code}: {e.message}"}
+
+    await asyncio.gather(*(one(i, p) for i, p in enumerate(plan)))
+    table = _metric_rows(spec, metrics, material)
+    studies_run = []
+    for res in results:
+        p = res["plan"]
+        out = res.get("out")
+        data = out.data if out is not None else {}
+        if out is not None and not data.get("sim_id") and res.get("call_id"):
+            # output spilled or trimmed: the record on disk is the source of truth
+            rec = _rec_by_call(Path(ctx.workdir) / "parts", args.part_id, res["call_id"])
+            if rec is not None:
+                data = {"sim_id": rec["sim_id"], "checks": rec.get("checks"),
+                        "card": studies.card(rec)}
+        sid = data.get("sim_id")
+        studies_run.append({"type": p["type"], "case": p["case"], "sim_id": sid,
+                            "ok": bool(out and out.ok), "error": res.get("error") or (
+                                None if out is None or out.ok else out.summary),
+                            "url": f"/sims/{sid}" if sid else None,
+                            "card": data.get("card")})
+        checks = data.get("checks") if out is not None and out.ok else None
+        if checks:
+            for c in checks:
+                table.append({**c, "study": p["type"], "case": p["case"],
+                              "url": f"/sims/{sid}"})
+        else:
+            for r in p["requirements"]:
+                table.append({"requirement_id": r.get("id"), "kind": r.get("kind"),
+                              "target": r.get("target"), "measured": None, "unit": "",
+                              "status": "warn" if res.get("error") is None and out is not None
+                              and out.ok else "fail", "sim_id": sid, "study": p["type"],
+                              "case": p["case"], "url": f"/sims/{sid}" if sid else None,
+                              "note": res.get("error") or (out.summary[:200] if out else None)})
+    # requirements that no study or metric answered
+    answered = {(r.get("requirement_id"), r.get("case")) for r in table}
+    ids_answered = {a for a, _ in answered}
+    for r in spec.get("requirements") or []:
+        if isinstance(r, dict) and r.get("id") not in ids_answered:
+            table.append({"requirement_id": r.get("id"), "kind": r.get("kind"),
+                          "target": r.get("target"), "measured": None, "unit": "",
+                          "status": "warn", "sim_id": None,
+                          "note": "no study answers this requirement (missing load case?)"})
+    order = {"fail": 0, "warn": 1, "pass": 2}
+    verdict = min((r["status"] for r in table), key=lambda s: order[s], default="warn")
+    if any(not s["ok"] for s in studies_run):
+        verdict = "fail" if verdict == "fail" else "warn"
+    head = (f"design review of {args.part_id} ({GUIDE_LABEL}): {verdict.upper()}; "
+            f"{sum(r['status'] == 'pass' for r in table)} pass, "
+            f"{sum(r['status'] == 'warn' for r in table)} warn, "
+            f"{sum(r['status'] == 'fail' for r in table)} fail")
+    rows = "; ".join(f"{r.get('requirement_id')} {r['kind']}: {r['status']}"
+                     + (f" ({r['measured']:.4g}{r.get('unit') or ''} vs {r['target']})"
+                        if isinstance(r.get("measured"), (int, float)) else "")
+                     + (f" [{r['sim_id']}]" if r.get("sim_id") else "") for r in table)
+    return ToolOutput(summary=head + (": " + rows if rows else ""),
+                      data={"verdict": verdict, "table": table, "studies": studies_run,
+                            "label": GUIDE_LABEL, "part_id": args.part_id},
+                      warnings=[s["error"] for s in studies_run if s.get("error")])
+
+
 def register_sim_tools(registry: ToolRegistry) -> None:
     """Idempotent."""
-    for t in (sim_static_run, sim_result_get, sim_env_list):
+    for t in (sim_static_run, sim_run, sim_types_list, sim_result_get, sim_compare, sim_cancel,
+              sim_env_list, design_review):
         if not registry.list([t.name]):
             registry.register(t)

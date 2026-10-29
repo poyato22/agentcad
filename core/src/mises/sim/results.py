@@ -34,6 +34,51 @@ def parse_frd(path: Path) -> dict[str, dict[int, list[float]]]:
     return out
 
 
+def parse_frd_blocks(path: Path) -> list[tuple[str, dict[int, list[float]]]]:
+    """Every nodal result block in file order: [(name, {node: values})]. Modal and buckling
+    results have one DISP block per mode."""
+    out: list[tuple[str, dict[int, list[float]]]] = []
+    cur: dict[int, list[float]] | None = None
+    with open(path, errors="replace") as fh:
+        for line in fh:
+            if line.startswith(" -4"):
+                cur = {}
+                out.append((line.split()[1], cur))
+            elif line.startswith(" -3"):
+                cur = None
+            elif cur is not None and line.startswith(" -1"):
+                body = line.rstrip("\n")
+                n = (len(body) - 13) // 12
+                cur[int(body[3:13])] = [float(body[13 + 12 * k:25 + 12 * k]) for k in range(n)]
+    return out
+
+
+_NUM = r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?"
+
+
+def parse_dat_table(path: Path, header: str, cols: int) -> list[list[float]]:
+    """Rows of numbers following `header` in a CalculiX .dat (e.g. "E I G E N V A L U E   O U T
+    P U T" with mode, eigenvalue, rad/time, cycles/time, imaginary; or "B U C K L I N G   F A C T
+    O R   O U T P U T" with mode, factor). Stops at the first non-numeric line after data."""
+    import re
+    rows: list[list[float]] = []
+    on = False
+    pat = re.compile(r"^\s*(\d+)" + (r"\s+(" + _NUM + r")") * (cols - 1) + r"\s*$")
+    with open(path, errors="replace") as fh:
+        for line in fh:
+            if header in line:
+                on, rows = True, []
+                continue
+            if not on:
+                continue
+            m = pat.match(line)
+            if m:
+                rows.append([float(g) for g in m.groups()])
+            elif rows and line.strip():
+                on = False
+    return rows
+
+
 def error_band(*, coarse: float, fine: float) -> float | None:
     """|fine - coarse| / fine on the peak stress: the mesh-convergence error estimate."""
     if fine <= 0:
@@ -82,54 +127,97 @@ def write_result_glb(path: Path, mesh: Mesh, vm: dict[int, float], *, vmax: floa
                      extras: dict) -> None:
     """Boundary surface of the mesh, coloured per vertex by von Mises (0..vmax MPa, values above
     vmax are clipped). Same frame as the part's model.glb: metres, Z-up rotated to glTF Y-up."""
+    node_ids, tris = boundary_triangles(mesh)
+    pos = [c for n in node_ids for c in mesh.nodes[n]]
+    write_glb(path, pos, tris, color=[vm.get(n, 0.0) for n in node_ids], vmin=0.0, vmax=vmax,
+              field="von_mises", units="MPa", extras=extras)
+
+
+def boundary_triangles(mesh: Mesh) -> tuple[list[int], list[int]]:
+    """(node ids in vertex order, flat linear-triangle vertex indices) of the mesh boundary;
+    a quadratic triangle becomes four linear ones."""
     index: dict[int, int] = {}
-    pos: list[float] = []
-    col: list[float] = []
     idx: list[int] = []
 
     def vid(n: int) -> int:
         i = index.get(n)
         if i is None:
             i = index[n] = len(index)
-            pos.extend(c / 1000.0 for c in mesh.nodes[n])
-            col.extend(colormap(vm.get(n, 0.0) / vmax if vmax > 0 else 0.0))
         return i
 
     for s in mesh.surfaces:
-        for a, b, c, ab, bc, ca in s.tris:  # one quadratic triangle -> four linear ones
-            for tri in ((a, ab, ca), (ab, b, bc), (ca, bc, c), (ab, bc, ca)):
+        for t in s.tris:
+            if len(t) == 6:
+                a, b, c, ab, bc, ca = t
+                parts = ((a, ab, ca), (ab, b, bc), (ca, bc, c), (ab, bc, ca))
+            else:
+                parts = (tuple(t[:3]),)
+            for tri in parts:
                 idx.extend(vid(n) for n in tri)
-    nv = len(index)
-    pos_b = struct.pack(f"<{len(pos)}f", *pos)
-    col_b = struct.pack(f"<{len(col)}f", *col)
-    idx_b = struct.pack(f"<{len(idx)}I", *idx)
-    blob = pos_b + col_b + idx_b
+    return list(index), idx
+
+
+def write_glb(path: Path, pos_mm: list[float], idx: list[int], *, color: list[float],
+              vmin: float, vmax: float, field: str, units: str, extras: dict,
+              channels: list[dict] | None = None) -> None:
+    """A result GLB: POSITION (metres, Z-up rotated to glTF Y-up, the part's model.glb frame),
+    COLOR_0 (linear RGB of `color` mapped vmin..vmax, clipped) and, per extra channel, a custom
+    float attribute `_<NAME>` (SCALAR or VEC3) listed in asset.extras.mises_sim.channels so the
+    viewer can recolour (channel picker), deform (displacement x scale) or animate mode shapes
+    without another download. channels: [{name, attribute, units, values (flat), kind:
+    "scalar"|"vector", min, max}]."""
+    nv = len(pos_mm) // 3
+    span = vmax - vmin
+    col: list[float] = []
+    for v in color:
+        col.extend(colormap((v - vmin) / span if span > 0 else 0.0))
+    pos = [c / 1000.0 for c in pos_mm]
+    views: list[bytes] = [struct.pack(f"<{len(pos)}f", *pos), struct.pack(f"<{len(col)}f", *col),
+                          struct.pack(f"<{len(idx)}I", *idx)]
     xs, ys, zs = pos[0::3], pos[1::3], pos[2::3]
+    accessors = [
+        {"bufferView": 0, "componentType": 5126, "count": nv, "type": "VEC3",
+         "min": [min(xs), min(ys), min(zs)], "max": [max(xs), max(ys), max(zs)]},
+        {"bufferView": 1, "componentType": 5126, "count": nv, "type": "VEC3"},
+        {"bufferView": 2, "componentType": 5125, "count": len(idx), "type": "SCALAR"}]
+    attributes = {"POSITION": 0, "COLOR_0": 1}
+    listed = []
+    for ch in channels or []:
+        vals = [float(x) for x in ch["values"]]
+        kind = "VEC3" if ch.get("kind") == "vector" else "SCALAR"
+        if len(vals) != nv * (3 if kind == "VEC3" else 1):
+            continue
+        views.append(struct.pack(f"<{len(vals)}f", *vals))
+        accessors.append({"bufferView": len(views) - 1, "componentType": 5126, "count": nv,
+                          "type": kind})
+        attributes[ch["attribute"]] = len(accessors) - 1
+        listed.append({k: ch[k] for k in ("name", "attribute", "units", "kind", "min", "max",
+                                          "freq_hz", "factor") if k in ch})
+    offs, blob = [], b""
+    for v in views:
+        offs.append(len(blob))
+        blob += v
+    buffer_views = [{"buffer": 0, "byteOffset": o, "byteLength": len(v),
+                     "target": 34963 if i == 2 else 34962}
+                    for i, (o, v) in enumerate(zip(offs, views))]
     gltf = {
         "asset": {"version": "2.0", "generator": "mises.sim",
-                  "extras": {"mises_sim": {**extras, "field": "von_mises", "units": "MPa",
-                                           "min": 0.0, "max": vmax,
-                                           "colormap": "blue-cyan-green-yellow-red"}}},
+                  "extras": {"mises_sim": {**extras, "field": field, "units": units,
+                                           "min": vmin, "max": vmax,
+                                           "colormap": "blue-cyan-green-yellow-red",
+                                           "channels": listed}}},
         "extensionsUsed": ["KHR_materials_unlit"],
         "scene": 0, "scenes": [{"nodes": [0]}],
         "nodes": [{"mesh": 0, "rotation": [-math.sqrt(0.5), 0.0, 0.0, math.sqrt(0.5)]}],
-        "materials": [{"name": "von_mises", "doubleSided": True,
+        "materials": [{"name": field, "doubleSided": True,
                        "pbrMetallicRoughness": {"baseColorFactor": [1, 1, 1, 1],
                                                 "metallicFactor": 0, "roughnessFactor": 1},
                        "extensions": {"KHR_materials_unlit": {}}}],
-        "meshes": [{"name": "von_mises", "primitives": [{
-            "attributes": {"POSITION": 0, "COLOR_0": 1}, "indices": 2, "material": 0}]}],
+        "meshes": [{"name": field, "primitives": [{
+            "attributes": attributes, "indices": 2, "material": 0}]}],
         "buffers": [{"byteLength": len(blob)}],
-        "bufferViews": [
-            {"buffer": 0, "byteOffset": 0, "byteLength": len(pos_b), "target": 34962},
-            {"buffer": 0, "byteOffset": len(pos_b), "byteLength": len(col_b), "target": 34962},
-            {"buffer": 0, "byteOffset": len(pos_b) + len(col_b), "byteLength": len(idx_b),
-             "target": 34963}],
-        "accessors": [
-            {"bufferView": 0, "componentType": 5126, "count": nv, "type": "VEC3",
-             "min": [min(xs), min(ys), min(zs)], "max": [max(xs), max(ys), max(zs)]},
-            {"bufferView": 1, "componentType": 5126, "count": nv, "type": "VEC3"},
-            {"bufferView": 2, "componentType": 5125, "count": len(idx), "type": "SCALAR"}],
+        "bufferViews": buffer_views,
+        "accessors": accessors,
     }
     js = json.dumps(gltf, separators=(",", ":")).encode()
     js += b" " * (-len(js) % 4)

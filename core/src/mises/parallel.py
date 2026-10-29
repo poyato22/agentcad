@@ -46,6 +46,10 @@ class ParallelLimiter:
     def active(self) -> set[str]:
         return set(self._active)
 
+    def local_gb_in_use(self) -> float:
+        """Memory budgeted by the local-model runs working now (wind studies leave it free)."""
+        return float(sum(gb for _, _, gb in self._active.values() if gb is not None))
+
     def holds(self, run_id: str) -> bool:
         return run_id in self._active
 

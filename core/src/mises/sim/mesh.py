@@ -31,11 +31,12 @@ class Surface:
 @dataclass
 class Mesh:
     nodes: dict[int, tuple[float, float, float]]
-    tets: list[list[int]]      # gmsh 10-node order
+    tets: list[list[int]]      # gmsh 10-node order (4-node for a first-order mesh)
     surfaces: list[Surface]
     size_mm: float = 0.0
     gmsh_version: str = ""
     extra: dict = field(default_factory=dict)
+    order: int = 2
 
     def surface(self, tag: int) -> Surface:
         return next(s for s in self.surfaces if s.tag == tag)
@@ -55,26 +56,39 @@ def mesh_sizes(bbox_size: list[float], volume_mm3: float) -> tuple[float, float]
     return 2 * fine, fine
 
 
+def size_floor(volume_mm3: float) -> float:
+    """The smallest element size whose quadratic mesh stays within MAX_FINE_NODES."""
+    return (_NODES_PER_H3 * max(volume_mm3, 1e-9) / MAX_FINE_NODES) ** (1 / 3)
+
+
 def load_mesh(path: Path) -> Mesh:
     d = json.loads(Path(path).read_text())
     c = d["coords"]
     nodes = {t: (c[3 * i], c[3 * i + 1], c[3 * i + 2]) for i, t in enumerate(d["node_tags"])}
+    order = int(d.get("order", 2))
+    nt, nf = (10, 6) if order == 2 else (4, 3)
     tt = d["tets"]
-    tets = [tt[i:i + 10] for i in range(0, len(tt), 10)]
+    tets = [tt[i:i + nt] for i in range(0, len(tt), nt)]
     surfaces = [Surface(tag=s["tag"], center=s["center"], bbox=s["bbox"], area=s["area"],
-                        tris=[s["tris"][i:i + 6] for i in range(0, len(s["tris"]), 6)])
+                        tris=[s["tris"][i:i + nf] for i in range(0, len(s["tris"]), nf)])
                 for s in d["surfaces"]]
     return Mesh(nodes=nodes, tets=tets, surfaces=surfaces, size_mm=d["size_mm"],
-                gmsh_version=d.get("gmsh_version", ""))
+                gmsh_version=d.get("gmsh_version", ""), order=order)
 
 
-async def mesh_step(step: Path, job_dir: Path, size_mm: float, *, timeout_s: float) -> Mesh:
+async def mesh_step(step: Path, job_dir: Path, size_mm: float, *, timeout_s: float,
+                    options: dict | None = None) -> Mesh:
+    """options: {"order": 1|2, "refine": [...]} (see mesh_worker)."""
     job_dir = Path(job_dir)
     job_dir.mkdir(parents=True, exist_ok=True)
     out = job_dir / "mesh.json"
-    rc, _, err = await run_sandboxed(
-        [sys.executable, "-I", str(WORKER), str(Path(step).resolve()), str(out.resolve()),
-         repr(size_mm)], job_dir, timeout_s=timeout_s, what="gmsh meshing")
+    argv = [sys.executable, "-I", str(WORKER), str(Path(step).resolve()), str(out.resolve()),
+            repr(size_mm)]
+    if options:
+        opt = job_dir / "mesh_options.json"
+        opt.write_text(json.dumps(options))
+        argv.append(str(opt.resolve()))
+    rc, _, err = await run_sandboxed(argv, job_dir, timeout_s=timeout_s, what="gmsh meshing")
     if rc != 0 or not out.exists():
         msg = next((ln for ln in err.splitlines() if ln.startswith("MESH_ERROR")), err.strip())
         raise SimError("mesh_failed", f"meshing failed: {msg[-800:] or f'exit {rc}'}",
@@ -128,20 +142,23 @@ def _area(p0, p1, p2) -> float:
     return 0.5 * math.sqrt(c[0] ** 2 + c[1] ** 2 + c[2] ** 2)
 
 
-def consistent_loads(mesh: Mesh, tags: list[int], force: tuple[float, float, float]
-                     ) -> dict[int, tuple[float, float, float]]:
-    """Spread a total force uniformly over the surfaces as consistent nodal loads: for a
-    quadratic (6-node) triangle under uniform traction the corner nodes get 0 and each
-    midside node A/3 of the traction."""
+def consistent_loads(mesh: Mesh, tags: list[int], force: tuple[float, float, float],
+                     weight=None) -> dict[int, tuple[float, float, float]]:
+    """Spread a total force over the surfaces as consistent nodal loads: for a quadratic
+    (6-node) triangle under uniform traction the corner nodes get 0 and each midside node A/3
+    of the traction (a linear 3-node triangle: each corner A/3). `weight(tri) -> float >= 0`
+    scales each triangle's share (e.g. a cosine bearing distribution); default uniform."""
     tris = [tri for t in tags for tri in mesh.surface(t).tris]
     areas = [_area(*(mesh.nodes[n] for n in tri[:3])) for tri in tris]
+    if weight is not None:
+        areas = [a * max(0.0, weight(tri)) for tri, a in zip(tris, areas)]
     total = sum(areas)
     if total <= 0:
         raise SimError("bad_setup", "the load face has no area in the mesh")
     loads: dict[int, list[float]] = {}
     for tri, a in zip(tris, areas):
         share = a / total / 3
-        for n in tri[3:]:
+        for n in (tri[3:] if len(tri) == 6 else tri[:3]):
             acc = loads.setdefault(n, [0.0, 0.0, 0.0])
             for i in range(3):
                 acc[i] += force[i] * share
