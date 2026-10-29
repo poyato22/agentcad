@@ -15,6 +15,7 @@ import type {
 } from "../../src/api/types";
 import { INSTALL_DEPS } from "../../src/api/types";
 import { handleControl } from "./control";
+import { directoryFrom, directoryRoutes, type DirectoryScenario, type FakeDirectory } from "./directory";
 import { printingFrom, printingRoutes, stopPrinting, type FakePrinting, type PrintScenario } from "./printing";
 import { setupFrom, setupRoutes, type FakeSetup, type SetupScenario } from "./setup";
 import { cancelSimsOfRun, clearSimTimers, simRoutes, simsFrom, type FakeSims, type SimScenario } from "./sims";
@@ -100,6 +101,8 @@ export interface Scenario {
   system_install?: Record<string, { lines?: string[]; ok?: boolean; fix?: SystemFix }>;
   /** ms between `system_install` lines (default 60). */
   system_install_ms?: number;
+  /** Onshape browser / budget / parts directory (Plan 5 A6). Absent: defaults from the fixtures. */
+  directory?: DirectoryScenario;
 }
 
 /** A small healthy default when a scenario names no `system` rows. */
@@ -138,6 +141,8 @@ export interface FakeState {
   system: SystemCheckRow[];
   systemInstall: Record<string, { lines?: string[]; ok?: boolean; fix?: SystemFix }>;
   systemInstallMs: number;
+  /** Plan 5 A6: Onshape browser, budget and parts directory. */
+  directory: FakeDirectory;
 }
 
 export interface FakeCore {
@@ -184,6 +189,7 @@ function stateFrom(sc: Scenario, token: string): FakeState {
     system: sc.system ? structuredClone(sc.system) : structuredClone(DEFAULT_SYSTEM_CHECK),
     systemInstall: sc.system_install ? structuredClone(sc.system_install) : {},
     systemInstallMs: sc.system_install_ms ?? 60,
+    directory: directoryFrom(sc.directory, sc.status.onshape === "connected"),
   };
 }
 
@@ -587,6 +593,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       newRun, emit,
     }),
     ...sketchRoutes(() => state.sketches),
+    ...directoryRoutes({ get: () => state.directory, emit: (ev) => { emit(ev); } }),
     ...printingRoutes({
       get: () => state.print, parts: () => state.parts, defaultMaterial: () => state.setup.profile.default_material,
       emit: (ev, extras) => { emit(ev, extras); }, approval: (id) => state.approvals.get(id),
@@ -685,7 +692,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         return;
       }
       res.writeHead(200, {
-        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE", "Access-Control-Allow-Headers": CORS_ALLOW_HEADERS.join(", "),
+        "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE", "Access-Control-Allow-Headers": CORS_ALLOW_HEADERS.join(", "),
         "Access-Control-Max-Age": "600", "Content-Length": 0,
       });
       res.end();
@@ -700,7 +707,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     }
 
     try {
-      const body = method === "POST" || method === "PUT" ? await readBody(r) : undefined;
+      const body = method === "POST" || method === "PUT" || method === "PATCH" ? await readBody(r) : undefined;
       if (url.pathname.startsWith("/__fake/")) {
         const out = await handleControl(api, method, url.pathname, body);
         if (out === undefined) throw new HttpError(404, { detail: "Not Found" });
@@ -813,4 +820,4 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
 export const RAW = Symbol("raw-response");
 
 export type Handler = (m: RegExpMatchArray, q: URLSearchParams, body: unknown, r: IncomingMessage, res: ServerResponse) => unknown;
-export interface Route { method: "GET" | "POST" | "PUT" | "DELETE"; re: RegExp; h: Handler }
+export interface Route { method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"; re: RegExp; h: Handler }
