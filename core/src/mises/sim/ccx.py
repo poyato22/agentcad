@@ -15,8 +15,6 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from .materials import Material
-from .mesh import Mesh
 from .proc import run_sandboxed
 from .types import SimError
 
@@ -67,30 +65,7 @@ def solver_status() -> dict:
                      "install": GMSH_HINT}}
 
 
-# gmsh 10-node tetra -> CalculiX C3D10: the last two edge nodes are swapped
-_TET10 = [0, 1, 2, 3, 4, 5, 6, 7, 9, 8]
-
-
-def write_inp(path: Path, mesh: Mesh, fixed: set[int], loads: dict[int, tuple[float, float, float]],
-              material: Material) -> None:
-    """Static linear-elastic deck. Units: mm, N, MPa (so stress in MPa, displacement in mm)."""
-    lines = ["*HEADING", "Mises static study (guide only)", "*NODE"]
-    lines += [f"{n},{x:.9g},{y:.9g},{z:.9g}" for n, (x, y, z) in mesh.nodes.items()]
-    lines.append("*ELEMENT, TYPE=C3D10, ELSET=EALL")
-    for i, t in enumerate(mesh.tets, 1):
-        lines.append(f"{i}," + ",".join(str(t[k]) for k in _TET10))
-    lines.append("*NSET, NSET=NFIX")
-    fx = sorted(fixed)
-    lines += [",".join(map(str, fx[i:i + 16])) for i in range(0, len(fx), 16)]
-    lines += ["*MATERIAL, NAME=MAT", "*ELASTIC", f"{material.e_mpa:.9g},{material.nu:.9g}",
-              "*SOLID SECTION, ELSET=EALL, MATERIAL=MAT",
-              "*STEP", "*STATIC", "*BOUNDARY", "NFIX,1,3", "*CLOAD"]
-    for n, vec in sorted(loads.items()):
-        for dof, v in enumerate(vec, 1):
-            if v != 0.0:
-                lines.append(f"{n},{dof},{v:.9g}")
-    lines += ["*NODE FILE", "U", "*EL FILE", "S", "*END STEP", ""]
-    Path(path).write_text("\n".join(lines))
+# Input decks for every study type are written by deck.py.
 
 
 async def run_ccx(ccx: str, job_dir: Path, *, job: str = "job", timeout_s: float,

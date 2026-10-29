@@ -186,7 +186,3 @@ def result_glb(path: Path, mesh: Mesh, color: dict[int, float], *, vmin: float, 
                       "min": min(mags, default=0.0), "max": max(mags, default=0.0)})
     write_glb(path, pos, tris, color=[color.get(n, 0.0) for n in node_ids], vmin=vmin,
               vmax=vmax, field=field_name, units=units, extras=extras, channels=chans)
-
-
-def mesh_info(payload: dict) -> dict:
-    return payload["info"]

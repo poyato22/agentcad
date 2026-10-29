@@ -113,6 +113,11 @@ async def run_static(job: FemJob, cases: list, *, env: dict | None, sim_id: str,
     results["cases"] = per_case
     results["sf_by_case"] = {c["name"]: c["safety_factor"] for c in per_case}
     results["convergence"] = {"history": lv["history"], "converged": lv["converged"]}
+    # the viewer's default deformed-shape scale: the peak displacement drawn at 5% of the part
+    size = job.metrics["bbox"]["size"]
+    diag = sum(float(s) ** 2 for s in size) ** 0.5
+    peak_d = gov["max_displacement_mm"]
+    results["deformed_scale"] = 0.05 * diag / peak_d if peak_d > 0 else 1.0
 
     gi = next(i for i, c in enumerate(fine["cases"]) if c["case"].name == gov["name"])
     await asyncio.to_thread(_outputs, job, fine["mesh"], fine["cases"][gi], gov, sim_id, part_id)

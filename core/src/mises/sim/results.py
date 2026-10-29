@@ -79,14 +79,6 @@ def parse_dat_table(path: Path, header: str, cols: int) -> list[list[float]]:
     return rows
 
 
-def principal(s: list[float]) -> tuple[float, float, float]:
-    a, b, c, d, e, f = s[:6]
-    m = [[a, d, f], [d, b, e], [f, e, c]]
-    import numpy as np
-    w = np.linalg.eigvalsh(np.array(m, dtype=float))
-    return float(w[2]), float(w[1]), float(w[0])
-
-
 def error_band(*, coarse: float, fine: float) -> float | None:
     """|fine - coarse| / fine on the peak stress: the mesh-convergence error estimate."""
     if fine <= 0:

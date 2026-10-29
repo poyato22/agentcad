@@ -1,11 +1,7 @@
 """Pure pieces of the study types: settings schemas and validation, materials, deck helpers,
 .dat parsing, probe interpolation, the convergence loop, compare, templates, charts, cards,
 requirement checks and the design-review plan. No solver needed."""
-import asyncio
-import json
 import math
-from pathlib import Path
-from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -20,8 +16,7 @@ from mises.sim.materials import (FDM_KNOCKDOWN, custom_material, delete_custom, 
                                  get_material, load_custom, upsert_custom)
 from mises.sim.mesh import Mesh, Surface
 from mises.sim.results import parse_dat_table
-from mises.sim.settings import (ConvergenceSettings, MeshSettings, SolverSettings,
-                                StaticSettings)
+from mises.sim.settings import ConvergenceSettings, MeshSettings, SolverSettings
 from mises.sim.tools import plan_review
 from mises.sim.types import SimError
 

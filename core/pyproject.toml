@@ -9,6 +9,7 @@ dependencies = [
   "fastapi", "uvicorn", "rich", "prompt_toolkit", "pyyaml", "websockets>=17.3",
   "pillow>=11",  # sketch photos: validate, orient, downscale, re-encode as PNG
   "gmsh>=4.15",  # sim mesher (GPL): only ever imported in a child process, see mises.sim.mesh
+  "numpy>=2.0",  # study post-processing and the built-in wind (lattice-Boltzmann) solver
 ]
 
 [project.scripts]

@@ -89,9 +89,6 @@ def run_lbm(solid: np.ndarray, *, u0: float, nu: float, steps: int, smagorinsky:
         pos = np.stack(idx, 1).astype(np.float64) + 0.5 * C[i] - moment_ref
         faces.append((idx, C[i].astype(np.float64), pos))
     hist: list[dict] = []
-    acc_t = np.zeros(3)
-    acc_p = np.zeros(3)
-    acc_m = np.zeros(3)
     n_acc = 0
     rho_sum = np.zeros(shape, np.float64)
     u_sum = np.zeros((3,) + shape, np.float64)
@@ -129,11 +126,9 @@ def run_lbm(solid: np.ndarray, *, u0: float, nu: float, steps: int, smagorinsky:
                 fpres += p.sum() * n
                 mom += np.cross(pos, np.outer(p, n)).sum(0)
             hist.append({"step": step, "fx": ft[0], "fy": ft[1], "fz": ft[2],
-                         "px": fpres[0], "py": fpres[1], "pz": fpres[2]})
+                         "px": fpres[0], "py": fpres[1], "pz": fpres[2],
+                         "mx": mom[0], "my": mom[1], "mz": mom[2]})
             if step >= average_from * steps or (min_steps and step >= average_from * min_steps):
-                acc_t += ft
-                acc_p += fpres
-                acc_m += mom
                 n_acc += 1
                 rho_sum += rho
                 u_sum += u
@@ -150,10 +145,17 @@ def run_lbm(solid: np.ndarray, *, u0: float, nu: float, steps: int, smagorinsky:
             if should_stop is not None and should_stop():
                 raise Cancelled()
     if n_acc == 0:
-        acc_t, acc_p, acc_m, n_acc = ft, fpres, mom, 1
+        n_acc = 1
         rho_sum, u_sum = rho.astype(np.float64), u.astype(np.float64)
-    return LbmResult(steps=step, seconds=time.monotonic() - t0, force_total=acc_t / n_acc,
-                     force_pressure=acc_p / n_acc, moment_pressure=acc_m / n_acc,
+    # forces: the mean over the second half of the samples actually run (past the start-up
+    # transient, whose momentum-exchange spikes are large on thin walls)
+    tail = hist[len(hist) // 2:] or hist[-1:]
+
+    def mean(*keys):
+        return np.array([np.mean([h[k] for h in tail]) for k in keys])
+    return LbmResult(steps=step, seconds=time.monotonic() - t0,
+                     force_total=mean("fx", "fy", "fz"), force_pressure=mean("px", "py", "pz"),
+                     moment_pressure=mean("mx", "my", "mz"),
                      history=hist, converged=converged, stopped=stopped,
                      rho_mean=(rho_sum / n_acc).astype(np.float32),
                      u_mean=(u_sum / n_acc).astype(np.float32))
