@@ -1,0 +1,93 @@
+{
+ "category": "stepper",
+ "sources": [
+  {
+   "title": "NEMA stepper motor",
+   "url": "https://en.wikipedia.org/wiki/NEMA_stepper_motor",
+   "note": "1.7 in (43 mm) faceplate per NEMA ICS 16"
+  },
+  {
+   "title": "Typical values",
+   "url": null,
+   "note": "42.3 mm face, 31 mm M3 square, 22 mm pilot, 5 mm shaft are the usual vendor values; body length and mass vary"
+  }
+ ],
+ "items": [
+  {
+   "id": "nema17_stepper",
+   "name": "NEMA 17 stepper motor",
+   "specs": [
+    {
+     "key": "face",
+     "value": 42.3,
+     "unit": "mm",
+     "note": "typical"
+    },
+    {
+     "key": "mount_pattern",
+     "value": "31x31",
+     "unit": "mm",
+     "note": "typical"
+    },
+    {
+     "key": "mount_thread",
+     "value": "M3",
+     "unit": null
+    },
+    {
+     "key": "pilot_diameter",
+     "value": 22,
+     "unit": "mm",
+     "note": "typical"
+    },
+    {
+     "key": "shaft_diameter",
+     "value": 5,
+     "unit": "mm",
+     "note": "typical"
+    },
+    {
+     "key": "body_length",
+     "value": "34-48",
+     "unit": "mm",
+     "note": "typical"
+    },
+    {
+     "key": "mass",
+     "value": "230-400",
+     "unit": "g",
+     "note": "typical"
+    }
+   ],
+   "dims": {
+    "face_mm": 42.3,
+    "length_mm": 40,
+    "shaft_d_mm": 5,
+    "mass_g": 280
+   },
+   "mount": {
+    "pattern": "31x31",
+    "hole_d": 3,
+    "spacing_mm": [
+     31,
+     31
+    ],
+    "thread": "M3",
+    "layout": "square"
+   },
+   "geometry": "envelope",
+   "shape": {
+    "kind": "stepper",
+    "face": 42.3,
+    "length": 40,
+    "pilot_d": 22,
+    "pilot_h": 2,
+    "shaft_d": 5,
+    "shaft_len": 24,
+    "pattern": 31,
+    "hole_d": 3
+   },
+   "category": "stepper"
+  }
+ ]
+}

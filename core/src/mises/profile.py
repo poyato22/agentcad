@@ -23,6 +23,7 @@ PROFILE_FILE = "profile.json"
 # it; their max_parallel_agents of 2 was the old default, not a choice, and becomes "auto".
 PROFILE_SCHEMA_VERSION = 2
 _LOOPBACK = {"localhost", "127.0.0.1", "::1"}
+_DOMAIN_RE = re.compile(r"(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,62}")
 
 KeyStatusFn = Callable[[], dict[str, str]]          # vendor -> "env" | "keychain" | "none" | ...
 ClaudeStatusFn = Callable[[], Awaitable[bool]]      # signed in to the user's Claude Code?
@@ -85,6 +86,21 @@ class Profile(BaseModel):
     active_project_id: str | None = None
     open_project_ids: list[str] = []
     hidden_agents: list[str] = []
+    # parts-directory imports an agent may make without an approval card: only ever added by
+    # the user ("Always allow <domain>" on the card, POST /catalog/allowed_domains)
+    catalog_allowed_domains: list[str] = Field(default_factory=list, max_length=200)
+
+    @field_validator("catalog_allowed_domains")
+    @classmethod
+    def _domains(cls, v: list[str]) -> list[str]:
+        out: list[str] = []
+        for d in v:
+            d = d.strip().lower().rstrip(".")
+            if not _DOMAIN_RE.fullmatch(d):
+                raise ValueError(f"{d!r} is not a domain name")
+            if d not in out:
+                out.append(d)
+        return out
 
     @field_validator("printers")
     @classmethod

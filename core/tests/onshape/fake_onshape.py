@@ -21,6 +21,7 @@ from email.utils import parsedate_to_datetime
 import httpx
 
 API = "/api/v17"
+PNG = b"\x89PNG\r\n\x1a\n" + b"\0" * 64
 _ids = itertools.count(1)
 
 
@@ -48,6 +49,9 @@ class FakeOnshape:
         self.fail: dict[str, list[int]] = {}         # path -> statuses to return first
         self.redirects: dict[str, str] = {}          # path -> second path (302)
         self.merges: list[dict] = []
+        self.docs: list[dict] = []                   # GET /documents, newest first
+        self.thumb = PNG                             # bytes every thumbnail returns
+        self.bbox = {"lowX": 0, "lowY": 0, "lowZ": 0, "highX": 0.1, "highY": 0.05, "highZ": 0.01}
         self.transport = httpx.MockTransport(self.handler)
 
     # ---- state helpers
@@ -106,6 +110,7 @@ class FakeOnshape:
             return httpx.Response(401, json={"message": why})
         path = req.url.path
         self.requests.append((req.method, path))
+        self.last_query = req.url.query.decode()
         body = json.loads(req.content) if req.content else None
         self.bodies.append(body)
         if self.fail.get(path):
@@ -115,7 +120,9 @@ class FakeOnshape:
             loc = to if to.startswith("http") else f"https://{self.host}{to}?via=redirect"
             return httpx.Response(302, headers={"Location": loc})
         for pat, fn in self._routes():
-            m = re.fullmatch(API + pat, path)
+            # thumbnail hrefs Onshape hands out are versionless (/api/thumbnails/...)
+            m = re.fullmatch(API + pat, path) or (
+                re.fullmatch("/api" + pat, path) if pat.startswith("/thumbnails") else None)
             if m and fn.__name__.startswith(req.method.lower() + "_"):
                 return fn(req, body, *m.groups())
         return httpx.Response(404, json={"message": f"no route {req.method} {path}"})
@@ -135,7 +142,25 @@ class FakeOnshape:
             (r"/documents/(\w+)/workspaces/(\w+)/merge", self.post_merge),
             (r"/redirected/(\w+)", self.get_redirected),
             (r"/users/sessioninfo", self.get_sessioninfo),
+            (r"/documents", self.get_documents),
+            (r"/documents/d/(\w+)/w/(\w+)/elements", self.get_elements),
+            (r"/thumbnails/d/(\w+)/w/(\w+)/s/(\w+)", self.get_thumb),
+            (r"/assemblies/d/(\w+)/w/(\w+)/e/(\w+)/boundingboxes", self.get_bbox),
         ]
+
+    # ---- documents browser
+    def add_docs(self, n: int, name: str = "Bracket") -> list[dict]:
+        for i in range(n):
+            did, wid = new_id(), new_id()
+            self.docs.append({
+                "jsonType": "document-summary", "id": did, "name": f"{name} {i}",
+                "modifiedAt": f"2026-10-{1 + i % 28:02d}T10:00:00Z",
+                "owner": {"id": "u1", "name": "Ada Lovelace", "type": 0},
+                "defaultWorkspace": {"id": wid, "name": "Main"},
+                "thumbnail": {"sizes": [
+                    {"size": "70x40", "href": f"https://{self.host}/api/thumbnails/d/{did}/w/{wid}/s/70x40"},
+                    {"size": "300x170", "href": f"https://{self.host}/api/thumbnails/d/{did}/w/{wid}/s/300x170"}]}})
+        return self.docs
 
     def _ws(self, wid: str) -> dict | None:
         return self.workspaces.get(wid)
@@ -221,8 +246,7 @@ class FakeOnshape:
             "-all-": {"mass": [0.1 * depth, 0, 0], "volume": [1e-6 * depth, 0, 0]}}})
 
     def get_bbox(self, req, body, did, wid, eid):
-        return httpx.Response(200, json={"lowX": 0, "lowY": 0, "lowZ": 0,
-                                         "highX": 0.1, "highY": 0.05, "highZ": 0.01})
+        return httpx.Response(200, json=self.bbox)
 
     def get_merge_preview(self, req, body, did, wid):
         src = self._ws(req.url.params.get("sourceId", ""))
@@ -245,6 +269,31 @@ class FakeOnshape:
         mv = self.bump(wid)
         return httpx.Response(200, json={"resultDocumentMicroversionId": mv,
                                          "sourceDocumentMicroversionId": src["microversion"]})
+
+    def get_documents(self, req, body):
+        p = req.url.params
+        offset, limit = int(p.get("offset", 0)), int(p.get("limit", 20))
+        if limit > 20:
+            return httpx.Response(400, json={"message": "limit too large"})
+        q = p.get("q", "").lower()
+        docs = [d for d in self.docs if q in d["name"].lower()]
+        page = docs[offset:offset + limit]
+        nxt = (f"https://{self.host}{API}/documents?offset={offset + limit}&limit={limit}"
+               if offset + limit < len(docs) else None)
+        return httpx.Response(200, json={"items": page, "next": nxt, "previous": None,
+                                         "href": str(req.url)})
+
+    def get_elements(self, req, body, did, wid):
+        return httpx.Response(200, json=[
+            {"id": self.eid, "name": "Part Studio 1", "elementType": "PARTSTUDIO",
+             "microversionId": self.mv(), "type": "Part Studio"},
+            {"id": "a" * 24, "name": "Assembly 1", "elementType": "ASSEMBLY",
+             "microversionId": self.mv(), "type": "Assembly"},
+            {"id": "b" * 24, "name": "Drawing 1", "elementType": "DRAWING", "type": "Drawing"},
+            {"id": "c" * 24, "name": "notes.pdf", "elementType": "BLOB", "type": "Blob"}])
+
+    def get_thumb(self, req, body, did, wid, sz):
+        return httpx.Response(200, content=self.thumb, headers={"Content-Type": "image/png"})
 
     def get_sessioninfo(self, req, body):
         return httpx.Response(200, json={"name": "Ada Lovelace", "id": "u1"})

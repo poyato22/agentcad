@@ -1,0 +1,269 @@
+{
+ "category": "board",
+ "sources": [
+  {
+   "title": "Raspberry Pi 4 Model B mechanical drawing",
+   "url": "https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-mechanical-drawing.pdf"
+  },
+  {
+   "title": "Wevolver: Arduino Uno Rev3 specs",
+   "url": "https://www.wevolver.com/iframe/specs/arduino-uno-rev3",
+   "note": "68.6 x 53.4 mm; hole positions differ between published drawings"
+  },
+  {
+   "title": "Arduino forum: Uno dimensions",
+   "url": "https://forum.arduino.cc/t/uno-dimensions/378205"
+  },
+  {
+   "title": "Typical values",
+   "url": null,
+   "note": "height is with connectors and is typical; Uno/Nano holes are not listed: take them from Arduino's CAD files"
+  }
+ ],
+ "items": [
+  {
+   "id": "raspberry_pi_4_model_b",
+   "name": "Raspberry Pi 4 Model B",
+   "specs": [
+    {
+     "key": "board",
+     "value": "85 x 56",
+     "unit": "mm"
+    },
+    {
+     "key": "mass",
+     "value": 46,
+     "unit": "g",
+     "note": "typical"
+    },
+    {
+     "key": "mounting",
+     "value": "4x M2.5, 58 x 49 mm, 3.5 mm from the edges",
+     "unit": null
+    }
+   ],
+   "dims": {
+    "length_mm": 85,
+    "width_mm": 56,
+    "height_mm": 17,
+    "mass_g": 46
+   },
+   "mount": {
+    "pattern": "58x49",
+    "hole_d": 2.7,
+    "spacing_mm": [
+     58.0,
+     49.0
+    ],
+    "thread": "M2.5",
+    "layout": "rect",
+    "holes_mm": [
+     [
+      -39.0,
+      -24.5
+     ],
+     [
+      19.0,
+      -24.5
+     ],
+     [
+      -39.0,
+      24.5
+     ],
+     [
+      19.0,
+      24.5
+     ]
+    ]
+   },
+   "geometry": "envelope",
+   "shape": {
+    "kind": "board",
+    "l": 85,
+    "w": 56,
+    "t": 17,
+    "hole_d": 2.7,
+    "holes": [
+     [
+      -39.0,
+      -24.5
+     ],
+     [
+      19.0,
+      -24.5
+     ],
+     [
+      -39.0,
+      24.5
+     ],
+     [
+      19.0,
+      24.5
+     ]
+    ]
+   },
+   "category": "board"
+  },
+  {
+   "id": "raspberry_pi_zero_board",
+   "name": "Raspberry Pi Zero (2 W) board",
+   "specs": [
+    {
+     "key": "board",
+     "value": "65 x 30",
+     "unit": "mm"
+    },
+    {
+     "key": "mass",
+     "value": 11,
+     "unit": "g",
+     "note": "typical"
+    },
+    {
+     "key": "mounting",
+     "value": "4x M2.5, 58 x 23 mm (typical, same edge offsets as the Pi 4)",
+     "unit": null
+    }
+   ],
+   "dims": {
+    "length_mm": 65,
+    "width_mm": 30,
+    "height_mm": 5,
+    "mass_g": 11
+   },
+   "mount": {
+    "pattern": "58x23",
+    "hole_d": 2.7,
+    "spacing_mm": [
+     58.0,
+     23.0
+    ],
+    "thread": "M2.5",
+    "layout": "rect",
+    "holes_mm": [
+     [
+      -29.0,
+      -11.5
+     ],
+     [
+      29.0,
+      -11.5
+     ],
+     [
+      -29.0,
+      11.5
+     ],
+     [
+      29.0,
+      11.5
+     ]
+    ]
+   },
+   "geometry": "envelope",
+   "shape": {
+    "kind": "board",
+    "l": 65,
+    "w": 30,
+    "t": 5,
+    "hole_d": 2.7,
+    "holes": [
+     [
+      -29.0,
+      -11.5
+     ],
+     [
+      29.0,
+      -11.5
+     ],
+     [
+      -29.0,
+      11.5
+     ],
+     [
+      29.0,
+      11.5
+     ]
+    ]
+   },
+   "category": "board"
+  },
+  {
+   "id": "arduino_uno_rev_three",
+   "name": "Arduino Uno Rev3",
+   "specs": [
+    {
+     "key": "board",
+     "value": "68.6 x 53.4",
+     "unit": "mm"
+    },
+    {
+     "key": "mass",
+     "value": 25,
+     "unit": "g",
+     "note": "typical"
+    },
+    {
+     "key": "mounting",
+     "value": "3.2 mm holes; positions: verify against Arduino's CAD files",
+     "unit": null
+    }
+   ],
+   "dims": {
+    "length_mm": 68.6,
+    "width_mm": 53.4,
+    "height_mm": 15,
+    "mass_g": 25
+   },
+   "mount": null,
+   "geometry": "envelope",
+   "shape": {
+    "kind": "board",
+    "l": 68.6,
+    "w": 53.4,
+    "t": 15,
+    "hole_d": 3.2,
+    "holes": []
+   },
+   "category": "board"
+  },
+  {
+   "id": "arduino_nano_board",
+   "name": "Arduino Nano",
+   "specs": [
+    {
+     "key": "board",
+     "value": "45 x 18",
+     "unit": "mm"
+    },
+    {
+     "key": "mass",
+     "value": 7,
+     "unit": "g",
+     "note": "typical"
+    },
+    {
+     "key": "mounting",
+     "value": "pin-header mounted; outline typical",
+     "unit": null
+    }
+   ],
+   "dims": {
+    "length_mm": 45,
+    "width_mm": 18,
+    "height_mm": 8,
+    "mass_g": 7
+   },
+   "mount": null,
+   "geometry": "envelope",
+   "shape": {
+    "kind": "board",
+    "l": 45,
+    "w": 18,
+    "t": 8,
+    "hole_d": 1.8,
+    "holes": []
+   },
+   "category": "board"
+  }
+ ]
+}

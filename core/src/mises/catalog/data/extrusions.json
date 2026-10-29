@@ -1,0 +1,132 @@
+{
+ "category": "extrusion",
+ "sources": [
+  {
+   "title": "MISUMI 2020 aluminum frame, slot width 6",
+   "url": "https://vn.misumi-ec.com/vona2/detail/110310661949/"
+  },
+  {
+   "title": "Core Electronics 2020 aluminium extrusion",
+   "url": "https://core-electronics.com.au/2020-aluminium-extrusion-600mm.html"
+  },
+  {
+   "title": "Matara PG20 20x40 6-slot profile",
+   "url": "https://www.matara.com/product/aluminium-extrusion-profiles/aluminium-profile/pg20-aluminium-profile/pg20-20x40-6-slots-aluminium-profile/"
+  },
+  {
+   "title": "Typical values",
+   "url": null,
+   "note": "mass per length varies 0.4-0.55 kg/m for 2020; the envelope is the outer box with the bores"
+  }
+ ],
+ "items": [
+  {
+   "id": "extrusion_2020_profile",
+   "name": "2020 aluminium extrusion",
+   "specs": [
+    {
+     "key": "profile",
+     "value": "20x20",
+     "unit": "mm"
+    },
+    {
+     "key": "slot_width",
+     "value": 6,
+     "unit": "mm",
+     "note": "typical"
+    },
+    {
+     "key": "center_bore",
+     "value": 4.2,
+     "unit": "mm",
+     "note": "tap M5; some profiles 5 mm"
+    },
+    {
+     "key": "linear_mass",
+     "value": 0.5,
+     "unit": "g/mm",
+     "note": "typical"
+    }
+   ],
+   "dims": {
+    "width_mm": 20,
+    "height_mm": 20,
+    "length_mm": 200,
+    "mass_g": 100.0
+   },
+   "geometry": "envelope",
+   "shape": {
+    "kind": "extrusion",
+    "w": 20,
+    "h": 20,
+    "length": 200,
+    "bore": 4.2,
+    "bores": [
+     [
+      0,
+      0
+     ]
+    ],
+    "g_per_mm": 0.5
+   },
+   "category": "extrusion",
+   "mount": null
+  },
+  {
+   "id": "extrusion_2040_profile",
+   "name": "2040 aluminium extrusion",
+   "specs": [
+    {
+     "key": "profile",
+     "value": "20x40",
+     "unit": "mm"
+    },
+    {
+     "key": "slot_width",
+     "value": 6,
+     "unit": "mm",
+     "note": "typical"
+    },
+    {
+     "key": "center_bore",
+     "value": 4.2,
+     "unit": "mm",
+     "note": "tap M5; some profiles 5 mm"
+    },
+    {
+     "key": "linear_mass",
+     "value": 0.9,
+     "unit": "g/mm",
+     "note": "typical"
+    }
+   ],
+   "dims": {
+    "width_mm": 20,
+    "height_mm": 40,
+    "length_mm": 200,
+    "mass_g": 180.0
+   },
+   "geometry": "envelope",
+   "shape": {
+    "kind": "extrusion",
+    "w": 20,
+    "h": 40,
+    "length": 200,
+    "bore": 4.2,
+    "bores": [
+     [
+      0,
+      -10
+     ],
+     [
+      0,
+      10
+     ]
+    ],
+    "g_per_mm": 0.9
+   },
+   "category": "extrusion",
+   "mount": null
+  }
+ ]
+}

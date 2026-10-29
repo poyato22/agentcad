@@ -1,0 +1,116 @@
+{
+ "category": "battery",
+ "sources": [
+  {
+   "title": "MyFPVStore: CNHL Black Series 1300mAh 6S",
+   "url": "https://www.myfpvstore.com/batteries/cnhl-black-series-1300mah-22-2v-6s-100c-lipo-battery/"
+  },
+  {
+   "title": "CNHL: best battery for a 5 inch quad",
+   "url": "https://chinahobbyline.com/blogs/news/best-battery-for-5-inch-quad"
+  },
+  {
+   "title": "Typical values",
+   "url": null,
+   "note": "packs differ by vendor: sizes and masses are ranges, the envelope uses mid values"
+  }
+ ],
+ "items": [
+  {
+   "id": "lipo_4s_1500mah",
+   "name": "4S 1500 mAh LiPo pack",
+   "specs": [
+    {
+     "key": "cells",
+     "value": 4,
+     "unit": "S"
+    },
+    {
+     "key": "capacity",
+     "value": 1500,
+     "unit": "mAh"
+    },
+    {
+     "key": "nominal_voltage",
+     "value": 14.8,
+     "unit": "V"
+    },
+    {
+     "key": "size",
+     "value": "72-80 x 34-38 x 30-38",
+     "unit": "mm",
+     "note": "typical"
+    },
+    {
+     "key": "mass",
+     "value": "160-190",
+     "unit": "g",
+     "note": "typical"
+    }
+   ],
+   "dims": {
+    "length_mm": 75,
+    "width_mm": 36,
+    "height_mm": 34,
+    "mass_g": 175
+   },
+   "geometry": "envelope",
+   "shape": {
+    "kind": "box",
+    "l": 75,
+    "w": 36,
+    "h": 34
+   },
+   "category": "battery",
+   "mount": null
+  },
+  {
+   "id": "lipo_6s_1300mah",
+   "name": "6S 1300 mAh LiPo pack",
+   "specs": [
+    {
+     "key": "cells",
+     "value": 6,
+     "unit": "S"
+    },
+    {
+     "key": "capacity",
+     "value": 1300,
+     "unit": "mAh"
+    },
+    {
+     "key": "nominal_voltage",
+     "value": 22.2,
+     "unit": "V"
+    },
+    {
+     "key": "size",
+     "value": "74-82 x 35-39 x 34-47",
+     "unit": "mm",
+     "note": "typical"
+    },
+    {
+     "key": "mass",
+     "value": "189-230",
+     "unit": "g",
+     "note": "typical"
+    }
+   ],
+   "dims": {
+    "length_mm": 78,
+    "width_mm": 37,
+    "height_mm": 40,
+    "mass_g": 210
+   },
+   "geometry": "envelope",
+   "shape": {
+    "kind": "box",
+    "l": 78,
+    "w": 37,
+    "h": 40
+   },
+   "category": "battery",
+   "mount": null
+  }
+ ]
+}

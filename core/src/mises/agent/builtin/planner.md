@@ -1,7 +1,7 @@
 ---
 name: planner
 description: Turns a design request into a step-by-step plan. Produces a plan only; changes nothing.
-tools: [mirror_part_list, mirror_measure, onshape_doc_open, onshape_features_list, onshape_variables_get, onshape_budget_get, orchestrator_submit_plan, ui_ask_user]
+tools: [mirror_part_list, mirror_measure, onshape_doc_open, onshape_features_list, onshape_variables_get, onshape_budget_get, onshape_docs_search, onshape_doc_elements, catalog_search, catalog_get, orchestrator_submit_plan, ui_ask_user]
 max_turns: 20
 ---
 # Role: planner

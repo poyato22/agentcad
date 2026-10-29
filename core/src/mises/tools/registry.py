@@ -47,6 +47,12 @@ class ToolDef:
     # "onshape:<did>/<eid>" from a URL). The call is in scope if "*" or ANY key is allowed.
     # Takes precedence over scope_arg.
     scope_keys: Callable[[BaseModel], list[str]] | None = None
+    # Optional, per call: a reason string when THIS call needs a human's approval card although
+    # its safety class does not ask for one (e.g. a fetch from a domain the user has not
+    # allowed); None means no card. Safety class semantics are unchanged.
+    needs_approval: Callable[[ToolContext, BaseModel], str | None] | None = None
+    # reaches the open web (outside Mises and Onshape): MCP open_world_hint
+    open_world: bool = False
 
 
 def _input_model_of(fn: Callable) -> type[BaseModel]:
@@ -65,12 +71,15 @@ def _input_model_of(fn: Callable) -> type[BaseModel]:
 def tool(name: str, *, description: str, safety: SafetyClass = SafetyClass.IRREVERSIBLE,
          onshape_cost: int = 0, scope_arg: str | None = None, timeout_s: float = 120,
          preview: Callable[[ToolContext, Any], Awaitable[dict]] | None = None,
-         scope_keys: Callable[[Any], list[str]] | None = None):
+         scope_keys: Callable[[Any], list[str]] | None = None,
+         needs_approval: Callable[[ToolContext, Any], str | None] | None = None,
+         open_world: bool = False):
     def deco(fn: Callable[[ToolContext, Any], Awaitable[ToolOutput]]) -> ToolDef:
         return ToolDef(name=name, description=description, input_model=_input_model_of(fn),
                        safety=safety, handler=fn, onshape_cost=onshape_cost,
                        scope_arg=scope_arg, timeout_s=timeout_s, preview=preview,
-                       scope_keys=scope_keys)
+                       scope_keys=scope_keys, needs_approval=needs_approval,
+                       open_world=open_world)
     return deco
 
 

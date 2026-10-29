@@ -57,7 +57,7 @@ FREE_NOTE = "Free on OpenRouter: 20 requests/min, one run at a time"
 def add_cors(app: FastAPI) -> None:
     """Add CORS as the OUTERMOST middleware (call after the auth middleware is added) so an
     unauthenticated preflight never reaches the bearer check. Real requests still need the token."""
-    app.add_middleware(CORSMiddleware, allow_origins=UI_ORIGINS, allow_methods=["GET", "POST", "PUT", "DELETE"],
+    app.add_middleware(CORSMiddleware, allow_origins=UI_ORIGINS, allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
                        allow_headers=["Authorization", "Content-Type", "If-None-Match"],
                        expose_headers=["ETag"], allow_credentials=False)
 

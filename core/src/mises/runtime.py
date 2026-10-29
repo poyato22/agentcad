@@ -20,6 +20,8 @@ from .approvals import ApprovalService
 from .assembly.model import AssemblyStore
 from .assembly.tools import register_assembly_tools
 from .cad.tools import register_mirror_tools
+from .catalog import Catalog
+from .catalog.tools import register_catalog_tools
 from .sim.tools import register_sim_tools
 from .claude_code import detect as claude_detect
 from .claude_code.session import MCP_FILE as CLAUDE_MCP_FILE, SOURCE as CLAUDE_CODE
@@ -28,6 +30,7 @@ from .claude_code.session import ClaudeCodeSession, model_alias
 from .context_tools import build_context, ui_context
 from .events import Event, EventBus
 from .gate import Gate
+from .onshape import browse as onshape_browse
 from .onshape.adapter import OnshapeAdapter
 from .onshape.client import OnshapeClient
 from .onshape.tools import register_onshape_tools
@@ -131,9 +134,13 @@ class Runtime:
         register_print_tools(self.registry)
         register_orchestrator_tools(self.registry)
         register_assembly_tools(self.registry)
+        register_catalog_tools(self.registry)
         self.orchestrator = Orchestrator(self)
+        self.started_at = time.time()
+        self.catalog = Catalog(self.store)
         services: dict = {"approvals": self.approvals, "runtime": self,
-                          "orchestrator": self.orchestrator, "assembly": self.assembly_store}
+                          "orchestrator": self.orchestrator, "assembly": self.assembly_store,
+                          "catalog": self.catalog}
         adapter = self._onshape_adapter(keychain_get("mises", "onshape"))
         if adapter is not None:
             services["onshape"] = adapter
@@ -220,9 +227,21 @@ class Runtime:
     def _onshape_adapter(self, creds: str | None) -> OnshapeAdapter | None:
         if creds and ":" in creds:
             access, secret = creds.split(":", 1)
-            return OnshapeAdapter(OnshapeClient(access, secret, store=self.store, user=USER),
-                                  self.store)
+            client = OnshapeClient(access, secret, store=self.store, user=USER)
+            client.on_request = self.publish_onshape_budget
+            return OnshapeAdapter(client, self.store)
         return None
+
+    def onshape_budget(self, run_id: str | None = None) -> dict:
+        """The live budget meter (GET /onshape/budget, the `onshape_budget` event)."""
+        cap = load_profile(self.home).onshape_calls_year_cap
+        return onshape_browse.budget(self.store, USER, cap, run_id=run_id,
+                                     session_since=self.started_at)
+
+    def publish_onshape_budget(self, run_id: str | None) -> None:
+        """After every real Onshape request (OnshapeClient.on_request)."""
+        self.events.publish(Event(type="onshape_budget", run_id=run_id,
+                                  data=self.onshape_budget(run_id)))
 
     async def set_onshape_credentials(self, creds: str | None) -> None:
         """Swap the live Onshape adapter after the keys changed ("access:secret" or None)."""

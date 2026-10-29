@@ -42,7 +42,7 @@ def annotations_for(t: ToolDef) -> types.ToolAnnotations:
         # repeated non-read call really runs again
         idempotent_hint=False,
         open_world_hint=t.safety in (SafetyClass.ONSHAPE_MUTATE, SafetyClass.IRREVERSIBLE)
-        or t.onshape_cost > 0,
+        or t.onshape_cost > 0 or t.open_world,
     )
 
 

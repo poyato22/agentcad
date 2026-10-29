@@ -1,0 +1,140 @@
+{
+ "category": "servo",
+ "sources": [
+  {
+   "title": "Rapid Online SG90 sheet",
+   "url": "https://static.rapidonline.com/pdf/37-1330t.pdf"
+  },
+  {
+   "title": "Soldered SG90 datasheet (Mouser)",
+   "url": "https://mouser.com/datasheet/2/1398/Soldered_101246-3507941.pdf"
+  },
+  {
+   "title": "TowerPro MG996R datasheet (Cornell mirror)",
+   "url": "https://courses.ece.cornell.edu/ece5990/ECE5725_Spring2020_Projects/May_15_Demo/Smart Lock/W_pp445_yl656/datasheet/MG996R_Tower-Pro.pdf"
+  },
+  {
+   "title": "Typical values",
+   "url": null,
+   "note": "SG90 clones differ by up to several mm; tab spacing and tab height are typical"
+  }
+ ],
+ "items": [
+  {
+   "id": "servo_sg90_micro",
+   "name": "SG90 micro servo",
+   "specs": [
+    {
+     "key": "body",
+     "value": "23 x 12.2 x 22.7",
+     "unit": "mm",
+     "note": "23 x 12.2 x 29 incl. horn boss per sheets"
+    },
+    {
+     "key": "mass",
+     "value": 9,
+     "unit": "g"
+    },
+    {
+     "key": "stall_torque",
+     "value": 0.177,
+     "unit": "N\u00b7m",
+     "note": "datasheet kgf\u00b7cm x 0.0980665"
+    },
+    {
+     "key": "tab_hole_spacing",
+     "value": 27.5,
+     "unit": "mm",
+     "note": "typical"
+    }
+   ],
+   "dims": {
+    "length_mm": 23,
+    "width_mm": 12.2,
+    "height_mm": 22.7,
+    "tab_length_mm": 32,
+    "mass_g": 9
+   },
+   "mount": {
+    "pattern": "27.5",
+    "hole_d": 2,
+    "spacing_mm": [
+     27.5
+    ],
+    "thread": null,
+    "layout": "inline"
+   },
+   "geometry": "envelope",
+   "shape": {
+    "kind": "servo",
+    "l": 23,
+    "w": 12.2,
+    "h": 22.7,
+    "tab_l": 32,
+    "tab_t": 2.5,
+    "tab_z": 16,
+    "spacing": 27.5,
+    "hole_d": 2
+   },
+   "category": "servo"
+  },
+  {
+   "id": "servo_mg996r_standard",
+   "name": "MG996R standard servo",
+   "specs": [
+    {
+     "key": "body",
+     "value": "40.7 x 19.7 x 42.9",
+     "unit": "mm",
+     "note": "datasheet, approx."
+    },
+    {
+     "key": "mass",
+     "value": 55,
+     "unit": "g"
+    },
+    {
+     "key": "stall_torque",
+     "value": 1.079,
+     "unit": "N\u00b7m",
+     "note": "datasheet kgf\u00b7cm x 0.0980665"
+    },
+    {
+     "key": "tab_hole_spacing",
+     "value": 49.5,
+     "unit": "mm",
+     "note": "typical"
+    }
+   ],
+   "dims": {
+    "length_mm": 40.7,
+    "width_mm": 19.7,
+    "height_mm": 42.9,
+    "tab_length_mm": 54,
+    "mass_g": 55
+   },
+   "mount": {
+    "pattern": "49.5",
+    "hole_d": 4.5,
+    "spacing_mm": [
+     49.5
+    ],
+    "thread": null,
+    "layout": "inline"
+   },
+   "geometry": "envelope",
+   "shape": {
+    "kind": "servo",
+    "l": 40.7,
+    "w": 19.7,
+    "h": 42.9,
+    "tab_l": 54,
+    "tab_t": 2.5,
+    "tab_z": 29,
+    "spacing": 49.5,
+    "hole_d": 4.5
+   },
+   "category": "servo"
+  }
+ ]
+}
