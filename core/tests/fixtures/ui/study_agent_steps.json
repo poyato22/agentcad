@@ -1,21 +1,21 @@
 [
   {
     "id": 5,
-    "run_id": "6eb160bedacf",
-    "ts": 1793289429.132258,
+    "run_id": "a5d2fd1d1106",
+    "ts": 1793306246.6799731,
     "kind": "message",
     "payload": {
       "role": "user",
       "text": "study the beam and the cube, then review the beam against its spec"
     },
-    "evidence_hash": "a6686bef5d6a5f820160b4374b206d48b66fb7a7ccb9c989bee440fa0e2813cb",
+    "evidence_hash": "8aadca3365fe7fee1f7814279641de0c134d487cbb344da253f15a39887e22d2",
     "prev_hash": null,
     "collapsed": false
   },
   {
     "id": 6,
-    "run_id": "6eb160bedacf",
-    "ts": 1793289429.134185,
+    "run_id": "a5d2fd1d1106",
+    "ts": 1793306246.681942,
     "kind": "message",
     "payload": {
       "role": "assistant",
@@ -28,14 +28,14 @@
         }
       ]
     },
-    "evidence_hash": "79b058d4b9f3d4bc619b77ca46c33a87b744216e06758fc54395af5945e36a6b",
-    "prev_hash": "a6686bef5d6a5f820160b4374b206d48b66fb7a7ccb9c989bee440fa0e2813cb",
+    "evidence_hash": "fc63e3bea4a0adce75279b42db571e2df70d35ee9d0f37b29963f9fee5b53609",
+    "prev_hash": "8aadca3365fe7fee1f7814279641de0c134d487cbb344da253f15a39887e22d2",
     "collapsed": false
   },
   {
     "id": 7,
-    "run_id": "6eb160bedacf",
-    "ts": 1793289429.13442,
+    "run_id": "a5d2fd1d1106",
+    "ts": 1793306246.682094,
     "kind": "tool_call",
     "payload": {
       "call_id": "s1",
@@ -96,14 +96,14 @@
       },
       "name": "sim_run"
     },
-    "evidence_hash": "eeff5ad8ce794a408236b4f9eec5b189e65b7d95ec75abef80a4e177e06cdf04",
-    "prev_hash": "79b058d4b9f3d4bc619b77ca46c33a87b744216e06758fc54395af5945e36a6b",
+    "evidence_hash": "c9c145f0fed717838eedd168907b06d814518ba5f80c628025670b4a31838ebe",
+    "prev_hash": "fc63e3bea4a0adce75279b42db571e2df70d35ee9d0f37b29963f9fee5b53609",
     "collapsed": false
   },
   {
     "id": 8,
-    "run_id": "6eb160bedacf",
-    "ts": 1793289430.328193,
+    "run_id": "a5d2fd1d1106",
+    "ts": 1793306248.032481,
     "kind": "sim_run",
     "payload": {
       "call_id": "s1",
@@ -112,14 +112,14 @@
         "data": {
           "call_id": "s1",
           "card": {
-            "charts_url": "/sims/sim_40a5661032b6/charts",
+            "charts_url": "/sims/sim_0d8ce3bc9ae5/charts",
             "checks": [
               {
                 "kind": "min_safety_factor",
                 "measured": 5.906498504081631,
                 "note": null,
                 "requirement_id": "r1",
-                "sim_id": "sim_40a5661032b6",
+                "sim_id": "sim_0d8ce3bc9ae5",
                 "status": "pass",
                 "target": 2.0,
                 "unit": ""
@@ -129,7 +129,7 @@
                 "measured": 1.7386006851423133,
                 "note": null,
                 "requirement_id": "r2",
-                "sim_id": "sim_40a5661032b6",
+                "sim_id": "sim_0d8ce3bc9ae5",
                 "status": "fail",
                 "target": 1.0,
                 "unit": "mm"
@@ -169,29 +169,29 @@
             "pct": 100.0,
             "phase": "done",
             "reason": "tip load on the beam under both cases",
-            "run_id": "6eb160bedacf",
-            "sim_id": "sim_40a5661032b6",
+            "run_id": "a5d2fd1d1106",
+            "sim_id": "sim_0d8ce3bc9ae5",
             "status": "done",
             "step_id": 7,
             "type": "static",
             "urls": {
-              "charts": "/sims/sim_40a5661032b6/charts",
-              "glb": "/sims/sim_40a5661032b6/result.glb",
-              "probe": "/sims/sim_40a5661032b6/probe",
-              "record": "/sims/sim_40a5661032b6",
-              "section": "/sims/sim_40a5661032b6/section"
+              "charts": "/sims/sim_0d8ce3bc9ae5/charts",
+              "glb": "/sims/sim_0d8ce3bc9ae5/result.glb",
+              "probe": "/sims/sim_0d8ce3bc9ae5/probe",
+              "record": "/sims/sim_0d8ce3bc9ae5",
+              "section": "/sims/sim_0d8ce3bc9ae5/section"
             },
             "verdict": "fail",
             "warnings": []
           },
-          "charts_url": "/sims/sim_40a5661032b6/charts",
+          "charts_url": "/sims/sim_0d8ce3bc9ae5/charts",
           "checks": [
             {
               "kind": "min_safety_factor",
               "measured": 5.906498504081631,
               "note": null,
               "requirement_id": "r1",
-              "sim_id": "sim_40a5661032b6",
+              "sim_id": "sim_0d8ce3bc9ae5",
               "status": "pass",
               "target": 2.0,
               "unit": ""
@@ -201,7 +201,7 @@
               "measured": 1.7386006851423133,
               "note": null,
               "requirement_id": "r2",
-              "sim_id": "sim_40a5661032b6",
+              "sim_id": "sim_0d8ce3bc9ae5",
               "status": "fail",
               "target": 1.0,
               "unit": "mm"
@@ -301,8 +301,8 @@
               "tip": 5.906498504081631
             }
           },
-          "run_id": "6eb160bedacf",
-          "sim_id": "sim_40a5661032b6",
+          "run_id": "a5d2fd1d1106",
+          "sim_id": "sim_0d8ce3bc9ae5",
           "solver": {
             "element": "C3D10 (quadratic tetrahedra)",
             "name": "CalculiX",
@@ -315,11 +315,11 @@
           "step_id": 7,
           "type": "static",
           "urls": {
-            "charts": "/sims/sim_40a5661032b6/charts",
-            "glb": "/sims/sim_40a5661032b6/result.glb",
-            "probe": "/sims/sim_40a5661032b6/probe",
-            "record": "/sims/sim_40a5661032b6",
-            "section": "/sims/sim_40a5661032b6/section"
+            "charts": "/sims/sim_0d8ce3bc9ae5/charts",
+            "glb": "/sims/sim_0d8ce3bc9ae5/result.glb",
+            "probe": "/sims/sim_0d8ce3bc9ae5/probe",
+            "record": "/sims/sim_0d8ce3bc9ae5",
+            "section": "/sims/sim_0d8ce3bc9ae5/section"
           },
           "warnings": []
         },
@@ -330,14 +330,14 @@
         "warnings": []
       }
     },
-    "evidence_hash": "518330550c65c7153a9451bc0a2dcaa3fab24da7fc59e49ca549d89e467f2334",
-    "prev_hash": "eeff5ad8ce794a408236b4f9eec5b189e65b7d95ec75abef80a4e177e06cdf04",
+    "evidence_hash": "70d65d4e0881d8af30df48f15c0f3c4baa680b1c6d4b5a2b44af6e767faa0516",
+    "prev_hash": "c9c145f0fed717838eedd168907b06d814518ba5f80c628025670b4a31838ebe",
     "collapsed": false
   },
   {
     "id": 9,
-    "run_id": "6eb160bedacf",
-    "ts": 1793289430.328696,
+    "run_id": "a5d2fd1d1106",
+    "ts": 1793306248.033081,
     "kind": "message",
     "payload": {
       "role": "assistant",
@@ -350,14 +350,14 @@
         }
       ]
     },
-    "evidence_hash": "bbabc8caacfd986c087d294db3ad6362238fe07ee85c0cb8e02afcf0443ecb65",
-    "prev_hash": "518330550c65c7153a9451bc0a2dcaa3fab24da7fc59e49ca549d89e467f2334",
+    "evidence_hash": "1723eb36615a85c4d2a966e81f9aa735e5082116f6a84950911754f790f8e2bd",
+    "prev_hash": "70d65d4e0881d8af30df48f15c0f3c4baa680b1c6d4b5a2b44af6e767faa0516",
     "collapsed": false
   },
   {
     "id": 10,
-    "run_id": "6eb160bedacf",
-    "ts": 1793289430.3288288,
+    "run_id": "a5d2fd1d1106",
+    "ts": 1793306248.0333672,
     "kind": "tool_call",
     "payload": {
       "call_id": "s2",
@@ -392,14 +392,14 @@
       },
       "name": "sim_run"
     },
-    "evidence_hash": "5fae9c03bcf833700a28d7a12906f47b1a9400d92b5429701e017ef5d583a86a",
-    "prev_hash": "bbabc8caacfd986c087d294db3ad6362238fe07ee85c0cb8e02afcf0443ecb65",
+    "evidence_hash": "a992bde30cd42caa313ec9b5392906126d898df37e486f3771b9760818f0761b",
+    "prev_hash": "1723eb36615a85c4d2a966e81f9aa735e5082116f6a84950911754f790f8e2bd",
     "collapsed": false
   },
   {
     "id": 11,
-    "run_id": "6eb160bedacf",
-    "ts": 1793289431.220223,
+    "run_id": "a5d2fd1d1106",
+    "ts": 1793306248.998711,
     "kind": "sim_run",
     "payload": {
       "call_id": "s2",
@@ -408,14 +408,14 @@
         "data": {
           "call_id": "s2",
           "card": {
-            "charts_url": "/sims/sim_26a951c787d5/charts",
+            "charts_url": "/sims/sim_83b876823112/charts",
             "checks": [
               {
                 "kind": "avoid_band_hz",
                 "measured": 0,
                 "note": null,
                 "requirement_id": "r3",
-                "sim_id": "sim_26a951c787d5",
+                "sim_id": "sim_83b876823112",
                 "status": "pass",
                 "target": [
                   340,
@@ -452,29 +452,29 @@
             "pct": 100.0,
             "phase": "done",
             "reason": "keep the beam's modes clear of the 2-blade prop at 12k rpm",
-            "run_id": "6eb160bedacf",
-            "sim_id": "sim_26a951c787d5",
+            "run_id": "a5d2fd1d1106",
+            "sim_id": "sim_83b876823112",
             "status": "done",
             "step_id": 10,
             "type": "modal",
             "urls": {
-              "charts": "/sims/sim_26a951c787d5/charts",
-              "glb": "/sims/sim_26a951c787d5/result.glb",
-              "probe": "/sims/sim_26a951c787d5/probe",
-              "record": "/sims/sim_26a951c787d5",
-              "section": "/sims/sim_26a951c787d5/section"
+              "charts": "/sims/sim_83b876823112/charts",
+              "glb": "/sims/sim_83b876823112/result.glb",
+              "probe": "/sims/sim_83b876823112/probe",
+              "record": "/sims/sim_83b876823112",
+              "section": "/sims/sim_83b876823112/section"
             },
             "verdict": "pass",
             "warnings": []
           },
-          "charts_url": "/sims/sim_26a951c787d5/charts",
+          "charts_url": "/sims/sim_83b876823112/charts",
           "checks": [
             {
               "kind": "avoid_band_hz",
               "measured": 0,
               "note": null,
               "requirement_id": "r3",
-              "sim_id": "sim_26a951c787d5",
+              "sim_id": "sim_83b876823112",
               "status": "pass",
               "target": [
                 340,
@@ -566,8 +566,8 @@
             ],
             "modes_in_band": 0
           },
-          "run_id": "6eb160bedacf",
-          "sim_id": "sim_26a951c787d5",
+          "run_id": "a5d2fd1d1106",
+          "sim_id": "sim_83b876823112",
           "solver": {
             "element": "C3D10 (quadratic tetrahedra)",
             "name": "CalculiX",
@@ -580,11 +580,11 @@
           "step_id": 10,
           "type": "modal",
           "urls": {
-            "charts": "/sims/sim_26a951c787d5/charts",
-            "glb": "/sims/sim_26a951c787d5/result.glb",
-            "probe": "/sims/sim_26a951c787d5/probe",
-            "record": "/sims/sim_26a951c787d5",
-            "section": "/sims/sim_26a951c787d5/section"
+            "charts": "/sims/sim_83b876823112/charts",
+            "glb": "/sims/sim_83b876823112/result.glb",
+            "probe": "/sims/sim_83b876823112/probe",
+            "record": "/sims/sim_83b876823112",
+            "section": "/sims/sim_83b876823112/section"
           },
           "warnings": []
         },
@@ -595,14 +595,14 @@
         "warnings": []
       }
     },
-    "evidence_hash": "4b6a3f90bc36c040d88aeda18ab343a1f0a95b871c1de0961c7ad983b05ea0b1",
-    "prev_hash": "5fae9c03bcf833700a28d7a12906f47b1a9400d92b5429701e017ef5d583a86a",
+    "evidence_hash": "ce5b962ecc3705c8f42ba1273d772b3d9fab76ae745926ffd88392ff44d70394",
+    "prev_hash": "a992bde30cd42caa313ec9b5392906126d898df37e486f3771b9760818f0761b",
     "collapsed": false
   },
   {
     "id": 12,
-    "run_id": "6eb160bedacf",
-    "ts": 1793289431.22069,
+    "run_id": "a5d2fd1d1106",
+    "ts": 1793306248.999331,
     "kind": "message",
     "payload": {
       "role": "assistant",
@@ -615,14 +615,14 @@
         }
       ]
     },
-    "evidence_hash": "e6fd1efca50cfff685dc072369a74017bd792b9d7d3feb898c16c685cf1169e6",
-    "prev_hash": "4b6a3f90bc36c040d88aeda18ab343a1f0a95b871c1de0961c7ad983b05ea0b1",
+    "evidence_hash": "493a2bb61161935a7d3b48e3911e2513d0d57766fd7216d805141e9ef2c1c1f3",
+    "prev_hash": "ce5b962ecc3705c8f42ba1273d772b3d9fab76ae745926ffd88392ff44d70394",
     "collapsed": false
   },
   {
     "id": 13,
-    "run_id": "6eb160bedacf",
-    "ts": 1793289431.2208169,
+    "run_id": "a5d2fd1d1106",
+    "ts": 1793306248.999521,
     "kind": "tool_call",
     "payload": {
       "call_id": "s3",
@@ -660,14 +660,14 @@
       },
       "name": "sim_run"
     },
-    "evidence_hash": "7b8f9a4e19e9ce0a40f7454c0f7df17cdaae3ee76b2216816d89c5b9c35f0053",
-    "prev_hash": "e6fd1efca50cfff685dc072369a74017bd792b9d7d3feb898c16c685cf1169e6",
+    "evidence_hash": "226d1d9db43c4d017fd9af704442d0a0e4846998111b150a712fe3c097a7cc81",
+    "prev_hash": "493a2bb61161935a7d3b48e3911e2513d0d57766fd7216d805141e9ef2c1c1f3",
     "collapsed": false
   },
   {
     "id": 14,
-    "run_id": "6eb160bedacf",
-    "ts": 1793289432.302016,
+    "run_id": "a5d2fd1d1106",
+    "ts": 1793306250.2585459,
     "kind": "sim_run",
     "payload": {
       "call_id": "s3",
@@ -676,14 +676,14 @@
         "data": {
           "call_id": "s3",
           "card": {
-            "charts_url": "/sims/sim_d85b6e8647f9/charts",
+            "charts_url": "/sims/sim_1dd1802c8d9a/charts",
             "checks": [
               {
                 "kind": "min_buckling_factor",
                 "measured": 4.724615,
                 "note": null,
                 "requirement_id": "r4",
-                "sim_id": "sim_d85b6e8647f9",
+                "sim_id": "sim_1dd1802c8d9a",
                 "status": "pass",
                 "target": 3.0,
                 "unit": ""
@@ -717,29 +717,29 @@
             "pct": 100.0,
             "phase": "done",
             "reason": "axial load margin",
-            "run_id": "6eb160bedacf",
-            "sim_id": "sim_d85b6e8647f9",
+            "run_id": "a5d2fd1d1106",
+            "sim_id": "sim_1dd1802c8d9a",
             "status": "done",
             "step_id": 13,
             "type": "buckling",
             "urls": {
-              "charts": "/sims/sim_d85b6e8647f9/charts",
-              "glb": "/sims/sim_d85b6e8647f9/result.glb",
-              "probe": "/sims/sim_d85b6e8647f9/probe",
-              "record": "/sims/sim_d85b6e8647f9",
-              "section": "/sims/sim_d85b6e8647f9/section"
+              "charts": "/sims/sim_1dd1802c8d9a/charts",
+              "glb": "/sims/sim_1dd1802c8d9a/result.glb",
+              "probe": "/sims/sim_1dd1802c8d9a/probe",
+              "record": "/sims/sim_1dd1802c8d9a",
+              "section": "/sims/sim_1dd1802c8d9a/section"
             },
             "verdict": "pass",
             "warnings": []
           },
-          "charts_url": "/sims/sim_d85b6e8647f9/charts",
+          "charts_url": "/sims/sim_1dd1802c8d9a/charts",
           "checks": [
             {
               "kind": "min_buckling_factor",
               "measured": 4.724615,
               "note": null,
               "requirement_id": "r4",
-              "sim_id": "sim_d85b6e8647f9",
+              "sim_id": "sim_1dd1802c8d9a",
               "status": "pass",
               "target": 3.0,
               "unit": ""
@@ -809,8 +809,8 @@
             ],
             "first_factor": 4.724615
           },
-          "run_id": "6eb160bedacf",
-          "sim_id": "sim_d85b6e8647f9",
+          "run_id": "a5d2fd1d1106",
+          "sim_id": "sim_1dd1802c8d9a",
           "solver": {
             "element": "C3D10 (quadratic tetrahedra)",
             "name": "CalculiX",
@@ -823,11 +823,11 @@
           "step_id": 13,
           "type": "buckling",
           "urls": {
-            "charts": "/sims/sim_d85b6e8647f9/charts",
-            "glb": "/sims/sim_d85b6e8647f9/result.glb",
-            "probe": "/sims/sim_d85b6e8647f9/probe",
-            "record": "/sims/sim_d85b6e8647f9",
-            "section": "/sims/sim_d85b6e8647f9/section"
+            "charts": "/sims/sim_1dd1802c8d9a/charts",
+            "glb": "/sims/sim_1dd1802c8d9a/result.glb",
+            "probe": "/sims/sim_1dd1802c8d9a/probe",
+            "record": "/sims/sim_1dd1802c8d9a",
+            "section": "/sims/sim_1dd1802c8d9a/section"
           },
           "warnings": []
         },
@@ -838,14 +838,14 @@
         "warnings": []
       }
     },
-    "evidence_hash": "5ceb7416bc133541cf4c3e11a37b0af2655c485dd5a5e25b0bd195853993fb6d",
-    "prev_hash": "7b8f9a4e19e9ce0a40f7454c0f7df17cdaae3ee76b2216816d89c5b9c35f0053",
+    "evidence_hash": "075d77d723048dab409eaf7c8572d00593dd5a34dec69da0edb6568a66de0b10",
+    "prev_hash": "226d1d9db43c4d017fd9af704442d0a0e4846998111b150a712fe3c097a7cc81",
     "collapsed": false
   },
   {
     "id": 15,
-    "run_id": "6eb160bedacf",
-    "ts": 1793289432.302647,
+    "run_id": "a5d2fd1d1106",
+    "ts": 1793306250.259406,
     "kind": "message",
     "payload": {
       "role": "assistant",
@@ -858,14 +858,14 @@
         }
       ]
     },
-    "evidence_hash": "f90ab1dbd0c1d7400470c101d1ac40516dd35775787bbf4bd073cc4cb58529cf",
-    "prev_hash": "5ceb7416bc133541cf4c3e11a37b0af2655c485dd5a5e25b0bd195853993fb6d",
+    "evidence_hash": "2603467caa23004ae6039da2860aebd94ceb6b78d2acdaf15556768870c388c7",
+    "prev_hash": "075d77d723048dab409eaf7c8572d00593dd5a34dec69da0edb6568a66de0b10",
     "collapsed": false
   },
   {
     "id": 16,
-    "run_id": "6eb160bedacf",
-    "ts": 1793289432.302785,
+    "run_id": "a5d2fd1d1106",
+    "ts": 1793306250.259636,
     "kind": "tool_call",
     "payload": {
       "call_id": "s4",
@@ -898,14 +898,14 @@
       },
       "name": "sim_run"
     },
-    "evidence_hash": "303b1d32296243be804a9b93371fdeda5f0fb4a639c55044ee16237a35ab7e2d",
-    "prev_hash": "f90ab1dbd0c1d7400470c101d1ac40516dd35775787bbf4bd073cc4cb58529cf",
+    "evidence_hash": "94d7007f636de02d355587cd6263d17fe986a6886a4bb4baac5f8376ddc29749",
+    "prev_hash": "2603467caa23004ae6039da2860aebd94ceb6b78d2acdaf15556768870c388c7",
     "collapsed": false
   },
   {
     "id": 17,
-    "run_id": "6eb160bedacf",
-    "ts": 1793289432.837593,
+    "run_id": "a5d2fd1d1106",
+    "ts": 1793306250.834594,
     "kind": "sim_run",
     "payload": {
       "call_id": "s4",
@@ -914,14 +914,14 @@
         "data": {
           "call_id": "s4",
           "card": {
-            "charts_url": "/sims/sim_6770bfdffc8c/charts",
+            "charts_url": "/sims/sim_9f7b6a56feb9/charts",
             "checks": [
               {
                 "kind": "max_temp_c",
                 "measured": 70.0,
                 "note": null,
                 "requirement_id": "r5",
-                "sim_id": "sim_6770bfdffc8c",
+                "sim_id": "sim_9f7b6a56feb9",
                 "status": "fail",
                 "target": 60,
                 "unit": "degC"
@@ -955,31 +955,31 @@
             "pct": 100.0,
             "phase": "done",
             "reason": "motor heat at the root",
-            "run_id": "6eb160bedacf",
-            "sim_id": "sim_6770bfdffc8c",
+            "run_id": "a5d2fd1d1106",
+            "sim_id": "sim_9f7b6a56feb9",
             "status": "done",
             "step_id": 16,
             "type": "thermal",
             "urls": {
-              "charts": "/sims/sim_6770bfdffc8c/charts",
-              "glb": "/sims/sim_6770bfdffc8c/result.glb",
-              "probe": "/sims/sim_6770bfdffc8c/probe",
-              "record": "/sims/sim_6770bfdffc8c",
-              "section": "/sims/sim_6770bfdffc8c/section"
+              "charts": "/sims/sim_9f7b6a56feb9/charts",
+              "glb": "/sims/sim_9f7b6a56feb9/result.glb",
+              "probe": "/sims/sim_9f7b6a56feb9/probe",
+              "record": "/sims/sim_9f7b6a56feb9",
+              "section": "/sims/sim_9f7b6a56feb9/section"
             },
             "verdict": "fail",
             "warnings": [
               "peak 70.0 C is at or above PLA's heat deflection temperature (55 C): the part may soften or creep"
             ]
           },
-          "charts_url": "/sims/sim_6770bfdffc8c/charts",
+          "charts_url": "/sims/sim_9f7b6a56feb9/charts",
           "checks": [
             {
               "kind": "max_temp_c",
               "measured": 70.0,
               "note": null,
               "requirement_id": "r5",
-              "sim_id": "sim_6770bfdffc8c",
+              "sim_id": "sim_9f7b6a56feb9",
               "status": "fail",
               "target": 60,
               "unit": "degC"
@@ -1048,8 +1048,8 @@
             ],
             "min_temp_c": 25.3232
           },
-          "run_id": "6eb160bedacf",
-          "sim_id": "sim_6770bfdffc8c",
+          "run_id": "a5d2fd1d1106",
+          "sim_id": "sim_9f7b6a56feb9",
           "solver": {
             "element": "C3D10 (quadratic tetrahedra)",
             "name": "CalculiX",
@@ -1062,11 +1062,11 @@
           "step_id": 16,
           "type": "thermal",
           "urls": {
-            "charts": "/sims/sim_6770bfdffc8c/charts",
-            "glb": "/sims/sim_6770bfdffc8c/result.glb",
-            "probe": "/sims/sim_6770bfdffc8c/probe",
-            "record": "/sims/sim_6770bfdffc8c",
-            "section": "/sims/sim_6770bfdffc8c/section"
+            "charts": "/sims/sim_9f7b6a56feb9/charts",
+            "glb": "/sims/sim_9f7b6a56feb9/result.glb",
+            "probe": "/sims/sim_9f7b6a56feb9/probe",
+            "record": "/sims/sim_9f7b6a56feb9",
+            "section": "/sims/sim_9f7b6a56feb9/section"
           },
           "warnings": [
             "peak 70.0 C is at or above PLA's heat deflection temperature (55 C): the part may soften or creep"
@@ -1081,14 +1081,14 @@
         ]
       }
     },
-    "evidence_hash": "b8c8aaa1c4828ed7512b83537f04ac5906afdb719ca0c0cfe75d05e2ed9e01e9",
-    "prev_hash": "303b1d32296243be804a9b93371fdeda5f0fb4a639c55044ee16237a35ab7e2d",
+    "evidence_hash": "c914f38116aa237d98d098d5710742c985bc1e1666aa10f635f527ea6fc91c8f",
+    "prev_hash": "94d7007f636de02d355587cd6263d17fe986a6886a4bb4baac5f8376ddc29749",
     "collapsed": false
   },
   {
     "id": 18,
-    "run_id": "6eb160bedacf",
-    "ts": 1793289432.838109,
+    "run_id": "a5d2fd1d1106",
+    "ts": 1793306250.835155,
     "kind": "message",
     "payload": {
       "role": "assistant",
@@ -1101,14 +1101,14 @@
         }
       ]
     },
-    "evidence_hash": "ba5f841e6ce750d54ea77b8c4e9a79802091aeb266552969cf25627791fb7da3",
-    "prev_hash": "b8c8aaa1c4828ed7512b83537f04ac5906afdb719ca0c0cfe75d05e2ed9e01e9",
+    "evidence_hash": "f997b0a082f091043b081f002e663483b8c4e278018fdf85b9755c86c8ba2422",
+    "prev_hash": "c914f38116aa237d98d098d5710742c985bc1e1666aa10f635f527ea6fc91c8f",
     "collapsed": false
   },
   {
     "id": 19,
-    "run_id": "6eb160bedacf",
-    "ts": 1793289432.8382552,
+    "run_id": "a5d2fd1d1106",
+    "ts": 1793306250.835308,
     "kind": "tool_call",
     "payload": {
       "call_id": "s5",
@@ -1131,14 +1131,14 @@
       },
       "name": "sim_run"
     },
-    "evidence_hash": "67afc7e9689d4d9655b3bbb219d0299e95bd054d505cd54fd764c5dc6091eae1",
-    "prev_hash": "ba5f841e6ce750d54ea77b8c4e9a79802091aeb266552969cf25627791fb7da3",
+    "evidence_hash": "0cd4b86f140f59780e2dbf27e8d9d5690f64fe783b42f690a37f99f20291b4d1",
+    "prev_hash": "f997b0a082f091043b081f002e663483b8c4e278018fdf85b9755c86c8ba2422",
     "collapsed": false
   },
   {
     "id": 20,
-    "run_id": "6eb160bedacf",
-    "ts": 1793289433.4435468,
+    "run_id": "a5d2fd1d1106",
+    "ts": 1793306251.5558221,
     "kind": "sim_run",
     "payload": {
       "call_id": "s5",
@@ -1147,14 +1147,14 @@
         "data": {
           "call_id": "s5",
           "card": {
-            "charts_url": "/sims/sim_2de8ad10d9be/charts",
+            "charts_url": "/sims/sim_bde7d7fd47f2/charts",
             "checks": [
               {
                 "kind": "min_safety_factor",
                 "measured": 27860.09705599586,
                 "note": null,
                 "requirement_id": "r6",
-                "sim_id": "sim_2de8ad10d9be",
+                "sim_id": "sim_bde7d7fd47f2",
                 "status": "warn",
                 "target": 2.0,
                 "unit": ""
@@ -1194,17 +1194,17 @@
             "pct": 100.0,
             "phase": "done",
             "reason": "1 m drop onto the floor",
-            "run_id": "6eb160bedacf",
-            "sim_id": "sim_2de8ad10d9be",
+            "run_id": "a5d2fd1d1106",
+            "sim_id": "sim_bde7d7fd47f2",
             "status": "done",
             "step_id": 19,
             "type": "drop",
             "urls": {
-              "charts": "/sims/sim_2de8ad10d9be/charts",
-              "glb": "/sims/sim_2de8ad10d9be/result.glb",
-              "probe": "/sims/sim_2de8ad10d9be/probe",
-              "record": "/sims/sim_2de8ad10d9be",
-              "section": "/sims/sim_2de8ad10d9be/section"
+              "charts": "/sims/sim_bde7d7fd47f2/charts",
+              "glb": "/sims/sim_bde7d7fd47f2/result.glb",
+              "probe": "/sims/sim_bde7d7fd47f2/probe",
+              "record": "/sims/sim_bde7d7fd47f2",
+              "section": "/sims/sim_bde7d7fd47f2/section"
             },
             "verdict": "warn",
             "warnings": [
@@ -1212,14 +1212,14 @@
               "mesh not converged: peak stress changed 19% between the coarse and fine mesh; treat the peak as uncertain"
             ]
           },
-          "charts_url": "/sims/sim_2de8ad10d9be/charts",
+          "charts_url": "/sims/sim_bde7d7fd47f2/charts",
           "checks": [
             {
               "kind": "min_safety_factor",
               "measured": 27860.09705599586,
               "note": null,
               "requirement_id": "r6",
-              "sim_id": "sim_2de8ad10d9be",
+              "sim_id": "sim_bde7d7fd47f2",
               "status": "warn",
               "target": 2.0,
               "unit": ""
@@ -1322,8 +1322,8 @@
               "impact": 27860.09705599586
             }
           },
-          "run_id": "6eb160bedacf",
-          "sim_id": "sim_2de8ad10d9be",
+          "run_id": "a5d2fd1d1106",
+          "sim_id": "sim_bde7d7fd47f2",
           "solver": {
             "element": "C3D10 (quadratic tetrahedra)",
             "name": "CalculiX",
@@ -1336,11 +1336,11 @@
           "step_id": 19,
           "type": "drop",
           "urls": {
-            "charts": "/sims/sim_2de8ad10d9be/charts",
-            "glb": "/sims/sim_2de8ad10d9be/result.glb",
-            "probe": "/sims/sim_2de8ad10d9be/probe",
-            "record": "/sims/sim_2de8ad10d9be",
-            "section": "/sims/sim_2de8ad10d9be/section"
+            "charts": "/sims/sim_bde7d7fd47f2/charts",
+            "glb": "/sims/sim_bde7d7fd47f2/result.glb",
+            "probe": "/sims/sim_bde7d7fd47f2/probe",
+            "record": "/sims/sim_bde7d7fd47f2",
+            "section": "/sims/sim_bde7d7fd47f2/section"
           },
           "warnings": [
             "ESTIMATE: the drop is an equivalent static load of 1.22 N (k = 10); real impacts depend on the floor, the contact and the drop angle",
@@ -1357,14 +1357,14 @@
         ]
       }
     },
-    "evidence_hash": "dc470017be5c6d7839494d2ce70b485c13a6602894ea05960e37c14944e6bdf9",
-    "prev_hash": "67afc7e9689d4d9655b3bbb219d0299e95bd054d505cd54fd764c5dc6091eae1",
+    "evidence_hash": "c0e0765d118962f580cd2ed434b0e71c8c82018c721ea78f54618621ad6066d7",
+    "prev_hash": "0cd4b86f140f59780e2dbf27e8d9d5690f64fe783b42f690a37f99f20291b4d1",
     "collapsed": false
   },
   {
     "id": 21,
-    "run_id": "6eb160bedacf",
-    "ts": 1793289433.444105,
+    "run_id": "a5d2fd1d1106",
+    "ts": 1793306251.556536,
     "kind": "message",
     "payload": {
       "role": "assistant",
@@ -1377,14 +1377,14 @@
         }
       ]
     },
-    "evidence_hash": "940da50cc4bf952462f4b1b6bc1bfe5880edc06bea34b9cd4c483e3b6f154d83",
-    "prev_hash": "dc470017be5c6d7839494d2ce70b485c13a6602894ea05960e37c14944e6bdf9",
+    "evidence_hash": "feb91c5626c1af9773eeaedaa870d8c7830b575c0c0ab8a11258302b67397d0b",
+    "prev_hash": "c0e0765d118962f580cd2ed434b0e71c8c82018c721ea78f54618621ad6066d7",
     "collapsed": false
   },
   {
     "id": 22,
-    "run_id": "6eb160bedacf",
-    "ts": 1793289433.4442391,
+    "run_id": "a5d2fd1d1106",
+    "ts": 1793306251.5567,
     "kind": "tool_call",
     "payload": {
       "call_id": "s6",
@@ -1414,14 +1414,14 @@
       },
       "name": "sim_run"
     },
-    "evidence_hash": "06efa7723ef03935c6e38e6469f6a19a0d725f27a76cd6d73413ea32e1238314",
-    "prev_hash": "940da50cc4bf952462f4b1b6bc1bfe5880edc06bea34b9cd4c483e3b6f154d83",
+    "evidence_hash": "f8501535ca415bc0df179ca52204e5ebd180359fc28819d5e5739816109a3626",
+    "prev_hash": "feb91c5626c1af9773eeaedaa870d8c7830b575c0c0ab8a11258302b67397d0b",
     "collapsed": false
   },
   {
     "id": 23,
-    "run_id": "6eb160bedacf",
-    "ts": 1793289439.0363572,
+    "run_id": "a5d2fd1d1106",
+    "ts": 1793306259.586601,
     "kind": "sim_run",
     "payload": {
       "call_id": "s6",
@@ -1430,14 +1430,14 @@
         "data": {
           "call_id": "s6",
           "card": {
-            "charts_url": "/sims/sim_c1a16aac59b6/charts",
+            "charts_url": "/sims/sim_1bfdd7c7e62a/charts",
             "checks": [
               {
                 "kind": "max_drag_n",
                 "measured": 0.028096656510070196,
                 "note": "clear of the \u00b140% model error band",
                 "requirement_id": "r7",
-                "sim_id": "sim_c1a16aac59b6",
+                "sim_id": "sim_1bfdd7c7e62a",
                 "status": "pass",
                 "target": 0.5,
                 "unit": "N"
@@ -1485,17 +1485,17 @@
             "pct": 100.0,
             "phase": "done",
             "reason": "drag of the cube at 5 m/s",
-            "run_id": "6eb160bedacf",
-            "sim_id": "sim_c1a16aac59b6",
+            "run_id": "a5d2fd1d1106",
+            "sim_id": "sim_1bfdd7c7e62a",
             "status": "done",
             "step_id": 22,
             "type": "wind",
             "urls": {
-              "charts": "/sims/sim_c1a16aac59b6/charts",
-              "glb": "/sims/sim_c1a16aac59b6/result.glb",
-              "probe": "/sims/sim_c1a16aac59b6/probe",
-              "record": "/sims/sim_c1a16aac59b6",
-              "section": "/sims/sim_c1a16aac59b6/section"
+              "charts": "/sims/sim_1bfdd7c7e62a/charts",
+              "glb": "/sims/sim_1bfdd7c7e62a/result.glb",
+              "probe": "/sims/sim_1bfdd7c7e62a/probe",
+              "record": "/sims/sim_1bfdd7c7e62a",
+              "section": "/sims/sim_1bfdd7c7e62a/section"
             },
             "verdict": "warn",
             "warnings": [
@@ -1505,14 +1505,14 @@
               "tunnel blockage 11.1% inflates drag; raise domain_multiplier"
             ]
           },
-          "charts_url": "/sims/sim_c1a16aac59b6/charts",
+          "charts_url": "/sims/sim_1bfdd7c7e62a/charts",
           "checks": [
             {
               "kind": "max_drag_n",
               "measured": 0.028096656510070196,
               "note": "clear of the \u00b140% model error band",
               "requirement_id": "r7",
-              "sim_id": "sim_c1a16aac59b6",
+              "sim_id": "sim_1bfdd7c7e62a",
               "status": "pass",
               "target": 0.5,
               "unit": "N"
@@ -1619,8 +1619,8 @@
               }
             ]
           },
-          "run_id": "6eb160bedacf",
-          "sim_id": "sim_c1a16aac59b6",
+          "run_id": "a5d2fd1d1106",
+          "sim_id": "sim_1bfdd7c7e62a",
           "solver": {
             "fidelity": "low fidelity",
             "method": "BGK + Smagorinsky LES, half-way bounce-back, momentum exchange",
@@ -1632,11 +1632,11 @@
           "step_id": 22,
           "type": "wind",
           "urls": {
-            "charts": "/sims/sim_c1a16aac59b6/charts",
-            "glb": "/sims/sim_c1a16aac59b6/result.glb",
-            "probe": "/sims/sim_c1a16aac59b6/probe",
-            "record": "/sims/sim_c1a16aac59b6",
-            "section": "/sims/sim_c1a16aac59b6/section"
+            "charts": "/sims/sim_1bfdd7c7e62a/charts",
+            "glb": "/sims/sim_1bfdd7c7e62a/result.glb",
+            "probe": "/sims/sim_1bfdd7c7e62a/probe",
+            "record": "/sims/sim_1bfdd7c7e62a",
+            "section": "/sims/sim_1bfdd7c7e62a/section"
           },
           "warnings": [
             "LOW FIDELITY (PREVIEW, \u00b140% validated model error at refinement 1): lattice of 8 cells across the body at an effective Reynolds number of 8e+03 (real 1.35e+04)",
@@ -1657,14 +1657,14 @@
         ]
       }
     },
-    "evidence_hash": "2665af425b7822b8ffa29a0c75747a9571ac49466fef6cb98d902becc362c350",
-    "prev_hash": "06efa7723ef03935c6e38e6469f6a19a0d725f27a76cd6d73413ea32e1238314",
+    "evidence_hash": "be405944694710e97c19a9560b6c4138aeb2bb8d1c0e6887fac1b8aec450ef68",
+    "prev_hash": "f8501535ca415bc0df179ca52204e5ebd180359fc28819d5e5739816109a3626",
     "collapsed": false
   },
   {
     "id": 24,
-    "run_id": "6eb160bedacf",
-    "ts": 1793289439.0370429,
+    "run_id": "a5d2fd1d1106",
+    "ts": 1793306259.587618,
     "kind": "message",
     "payload": {
       "role": "assistant",
@@ -1677,14 +1677,14 @@
         }
       ]
     },
-    "evidence_hash": "b689b739b8535a03e24f0647d579646cffcc803681bbca7021a7ec95036079fb",
-    "prev_hash": "2665af425b7822b8ffa29a0c75747a9571ac49466fef6cb98d902becc362c350",
+    "evidence_hash": "188964e01c2d16e5e6f0e15db8fec0d1114c3c8a1672ff1b2792678f978b3ee3",
+    "prev_hash": "be405944694710e97c19a9560b6c4138aeb2bb8d1c0e6887fac1b8aec450ef68",
     "collapsed": false
   },
   {
     "id": 25,
-    "run_id": "6eb160bedacf",
-    "ts": 1793289439.037292,
+    "run_id": "a5d2fd1d1106",
+    "ts": 1793306259.5881028,
     "kind": "tool_call",
     "payload": {
       "call_id": "rv1",
@@ -1737,14 +1737,14 @@
       },
       "name": "design_review"
     },
-    "evidence_hash": "2fa9605387bc9cc658125c9a0c2fb9f587fd50bba55b3bf770b1e1dc45abfe79",
-    "prev_hash": "b689b739b8535a03e24f0647d579646cffcc803681bbca7021a7ec95036079fb",
+    "evidence_hash": "b9991c5986f0f46f122b2b714516046059bef14719d209466c28315eb016d181",
+    "prev_hash": "188964e01c2d16e5e6f0e15db8fec0d1114c3c8a1672ff1b2792678f978b3ee3",
     "collapsed": false
   },
   {
     "id": 26,
-    "run_id": "6eb160bedacf",
-    "ts": 1793289439.0377831,
+    "run_id": "a5d2fd1d1106",
+    "ts": 1793306259.5887392,
     "kind": "tool_call",
     "payload": {
       "call_id": "rv1.r1",
@@ -1791,14 +1791,14 @@
       },
       "name": "sim_run"
     },
-    "evidence_hash": "f9a792941eeaf4aac827c9bd0391308fc054a3097069de577227de224c0e6db5",
-    "prev_hash": "2fa9605387bc9cc658125c9a0c2fb9f587fd50bba55b3bf770b1e1dc45abfe79",
+    "evidence_hash": "9007a6fff89a7be5ab5049b89246a394cb330846b641ff91b4a561f41329f8b0",
+    "prev_hash": "b9991c5986f0f46f122b2b714516046059bef14719d209466c28315eb016d181",
     "collapsed": false
   },
   {
     "id": 27,
-    "run_id": "6eb160bedacf",
-    "ts": 1793289439.775989,
+    "run_id": "a5d2fd1d1106",
+    "ts": 1793306260.537038,
     "kind": "sim_run",
     "payload": {
       "call_id": "rv1.r1",
@@ -1807,14 +1807,14 @@
         "data": {
           "call_id": "rv1.r1",
           "card": {
-            "charts_url": "/sims/sim_7e15a54b8afb/charts",
+            "charts_url": "/sims/sim_95a2c77fedfc/charts",
             "checks": [
               {
                 "kind": "min_safety_factor",
                 "measured": 5.906498504081631,
                 "note": null,
                 "requirement_id": "q1",
-                "sim_id": "sim_7e15a54b8afb",
+                "sim_id": "sim_95a2c77fedfc",
                 "status": "pass",
                 "target": 2.0,
                 "unit": ""
@@ -1854,29 +1854,29 @@
             "pct": 100.0,
             "phase": "done",
             "reason": "design review: static lc1",
-            "run_id": "6eb160bedacf",
-            "sim_id": "sim_7e15a54b8afb",
+            "run_id": "a5d2fd1d1106",
+            "sim_id": "sim_95a2c77fedfc",
             "status": "done",
             "step_id": 26,
             "type": "static",
             "urls": {
-              "charts": "/sims/sim_7e15a54b8afb/charts",
-              "glb": "/sims/sim_7e15a54b8afb/result.glb",
-              "probe": "/sims/sim_7e15a54b8afb/probe",
-              "record": "/sims/sim_7e15a54b8afb",
-              "section": "/sims/sim_7e15a54b8afb/section"
+              "charts": "/sims/sim_95a2c77fedfc/charts",
+              "glb": "/sims/sim_95a2c77fedfc/result.glb",
+              "probe": "/sims/sim_95a2c77fedfc/probe",
+              "record": "/sims/sim_95a2c77fedfc",
+              "section": "/sims/sim_95a2c77fedfc/section"
             },
             "verdict": "pass",
             "warnings": []
           },
-          "charts_url": "/sims/sim_7e15a54b8afb/charts",
+          "charts_url": "/sims/sim_95a2c77fedfc/charts",
           "checks": [
             {
               "kind": "min_safety_factor",
               "measured": 5.906498504081631,
               "note": null,
               "requirement_id": "q1",
-              "sim_id": "sim_7e15a54b8afb",
+              "sim_id": "sim_95a2c77fedfc",
               "status": "pass",
               "target": 2.0,
               "unit": ""
@@ -1968,8 +1968,8 @@
               "lc1": 5.906498504081631
             }
           },
-          "run_id": "6eb160bedacf",
-          "sim_id": "sim_7e15a54b8afb",
+          "run_id": "a5d2fd1d1106",
+          "sim_id": "sim_95a2c77fedfc",
           "solver": {
             "element": "C3D10 (quadratic tetrahedra)",
             "name": "CalculiX",
@@ -1982,11 +1982,11 @@
           "step_id": 26,
           "type": "static",
           "urls": {
-            "charts": "/sims/sim_7e15a54b8afb/charts",
-            "glb": "/sims/sim_7e15a54b8afb/result.glb",
-            "probe": "/sims/sim_7e15a54b8afb/probe",
-            "record": "/sims/sim_7e15a54b8afb",
-            "section": "/sims/sim_7e15a54b8afb/section"
+            "charts": "/sims/sim_95a2c77fedfc/charts",
+            "glb": "/sims/sim_95a2c77fedfc/result.glb",
+            "probe": "/sims/sim_95a2c77fedfc/probe",
+            "record": "/sims/sim_95a2c77fedfc",
+            "section": "/sims/sim_95a2c77fedfc/section"
           },
           "warnings": []
         },
@@ -1997,14 +1997,14 @@
         "warnings": []
       }
     },
-    "evidence_hash": "c656adc37d942138a72e2bfbfa63a56bdc025b6a9099f03af05bcac0ddc6a780",
-    "prev_hash": "f9a792941eeaf4aac827c9bd0391308fc054a3097069de577227de224c0e6db5",
+    "evidence_hash": "e3d2d6f39c2dad1a5af0bb2086322839fa93d3db3822243de1f0c2f409e31a15",
+    "prev_hash": "9007a6fff89a7be5ab5049b89246a394cb330846b641ff91b4a561f41329f8b0",
     "collapsed": false
   },
   {
     "id": 28,
-    "run_id": "6eb160bedacf",
-    "ts": 1793289439.7763,
+    "run_id": "a5d2fd1d1106",
+    "ts": 1793306260.5375109,
     "kind": "tool_call",
     "payload": {
       "call_id": "rv1.r2",
@@ -2043,14 +2043,14 @@
       },
       "name": "sim_run"
     },
-    "evidence_hash": "023bc84527069f029b5d435ba41784cdaab492e4df3da4a5967325ebdcd99087",
-    "prev_hash": "c656adc37d942138a72e2bfbfa63a56bdc025b6a9099f03af05bcac0ddc6a780",
+    "evidence_hash": "c0c7969c51dfecf606fae743067160127d087403ce7d44af2f274fc3132d1978",
+    "prev_hash": "e3d2d6f39c2dad1a5af0bb2086322839fa93d3db3822243de1f0c2f409e31a15",
     "collapsed": false
   },
   {
     "id": 29,
-    "run_id": "6eb160bedacf",
-    "ts": 1793289440.790714,
+    "run_id": "a5d2fd1d1106",
+    "ts": 1793306261.891795,
     "kind": "sim_run",
     "payload": {
       "call_id": "rv1.r2",
@@ -2059,14 +2059,14 @@
         "data": {
           "call_id": "rv1.r2",
           "card": {
-            "charts_url": "/sims/sim_aab35b43b5c8/charts",
+            "charts_url": "/sims/sim_7d04a4f52b73/charts",
             "checks": [
               {
                 "kind": "avoid_band_hz",
                 "measured": 0,
                 "note": null,
                 "requirement_id": "q3",
-                "sim_id": "sim_aab35b43b5c8",
+                "sim_id": "sim_7d04a4f52b73",
                 "status": "pass",
                 "target": [
                   340,
@@ -2103,29 +2103,29 @@
             "pct": 100.0,
             "phase": "done",
             "reason": "design review: modal modal",
-            "run_id": "6eb160bedacf",
-            "sim_id": "sim_aab35b43b5c8",
+            "run_id": "a5d2fd1d1106",
+            "sim_id": "sim_7d04a4f52b73",
             "status": "done",
             "step_id": 28,
             "type": "modal",
             "urls": {
-              "charts": "/sims/sim_aab35b43b5c8/charts",
-              "glb": "/sims/sim_aab35b43b5c8/result.glb",
-              "probe": "/sims/sim_aab35b43b5c8/probe",
-              "record": "/sims/sim_aab35b43b5c8",
-              "section": "/sims/sim_aab35b43b5c8/section"
+              "charts": "/sims/sim_7d04a4f52b73/charts",
+              "glb": "/sims/sim_7d04a4f52b73/result.glb",
+              "probe": "/sims/sim_7d04a4f52b73/probe",
+              "record": "/sims/sim_7d04a4f52b73",
+              "section": "/sims/sim_7d04a4f52b73/section"
             },
             "verdict": "pass",
             "warnings": []
           },
-          "charts_url": "/sims/sim_aab35b43b5c8/charts",
+          "charts_url": "/sims/sim_7d04a4f52b73/charts",
           "checks": [
             {
               "kind": "avoid_band_hz",
               "measured": 0,
               "note": null,
               "requirement_id": "q3",
-              "sim_id": "sim_aab35b43b5c8",
+              "sim_id": "sim_7d04a4f52b73",
               "status": "pass",
               "target": [
                 340,
@@ -2229,8 +2229,8 @@
             ],
             "modes_in_band": 0
           },
-          "run_id": "6eb160bedacf",
-          "sim_id": "sim_aab35b43b5c8",
+          "run_id": "a5d2fd1d1106",
+          "sim_id": "sim_7d04a4f52b73",
           "solver": {
             "element": "C3D10 (quadratic tetrahedra)",
             "name": "CalculiX",
@@ -2243,11 +2243,11 @@
           "step_id": 28,
           "type": "modal",
           "urls": {
-            "charts": "/sims/sim_aab35b43b5c8/charts",
-            "glb": "/sims/sim_aab35b43b5c8/result.glb",
-            "probe": "/sims/sim_aab35b43b5c8/probe",
-            "record": "/sims/sim_aab35b43b5c8",
-            "section": "/sims/sim_aab35b43b5c8/section"
+            "charts": "/sims/sim_7d04a4f52b73/charts",
+            "glb": "/sims/sim_7d04a4f52b73/result.glb",
+            "probe": "/sims/sim_7d04a4f52b73/probe",
+            "record": "/sims/sim_7d04a4f52b73",
+            "section": "/sims/sim_7d04a4f52b73/section"
           },
           "warnings": []
         },
@@ -2258,14 +2258,14 @@
         "warnings": []
       }
     },
-    "evidence_hash": "95b135024b77b3ade580e5bcfb727d03b5b2a848727272e359783b88aedfa961",
-    "prev_hash": "023bc84527069f029b5d435ba41784cdaab492e4df3da4a5967325ebdcd99087",
+    "evidence_hash": "eaa68c4c2037df7ccaf5a600cc4f5b565bb1d7bb0497130b61d274b67518f659",
+    "prev_hash": "c0c7969c51dfecf606fae743067160127d087403ce7d44af2f274fc3132d1978",
     "collapsed": false
   },
   {
     "id": 30,
-    "run_id": "6eb160bedacf",
-    "ts": 1793289440.791091,
+    "run_id": "a5d2fd1d1106",
+    "ts": 1793306261.892524,
     "kind": "tool_result",
     "payload": {
       "call_id": "rv1",
@@ -2277,14 +2277,14 @@
           "studies": [
             {
               "card": {
-                "charts_url": "/sims/sim_7e15a54b8afb/charts",
+                "charts_url": "/sims/sim_95a2c77fedfc/charts",
                 "checks": [
                   {
                     "kind": "min_safety_factor",
                     "measured": 5.906498504081631,
                     "note": null,
                     "requirement_id": "q1",
-                    "sim_id": "sim_7e15a54b8afb",
+                    "sim_id": "sim_95a2c77fedfc",
                     "status": "pass",
                     "target": 2.0,
                     "unit": ""
@@ -2324,17 +2324,17 @@
                 "pct": 100.0,
                 "phase": "done",
                 "reason": "design review: static lc1",
-                "run_id": "6eb160bedacf",
-                "sim_id": "sim_7e15a54b8afb",
+                "run_id": "a5d2fd1d1106",
+                "sim_id": "sim_95a2c77fedfc",
                 "status": "done",
                 "step_id": 26,
                 "type": "static",
                 "urls": {
-                  "charts": "/sims/sim_7e15a54b8afb/charts",
-                  "glb": "/sims/sim_7e15a54b8afb/result.glb",
-                  "probe": "/sims/sim_7e15a54b8afb/probe",
-                  "record": "/sims/sim_7e15a54b8afb",
-                  "section": "/sims/sim_7e15a54b8afb/section"
+                  "charts": "/sims/sim_95a2c77fedfc/charts",
+                  "glb": "/sims/sim_95a2c77fedfc/result.glb",
+                  "probe": "/sims/sim_95a2c77fedfc/probe",
+                  "record": "/sims/sim_95a2c77fedfc",
+                  "section": "/sims/sim_95a2c77fedfc/section"
                 },
                 "verdict": "pass",
                 "warnings": []
@@ -2342,20 +2342,20 @@
               "case": "lc1",
               "error": null,
               "ok": true,
-              "sim_id": "sim_7e15a54b8afb",
+              "sim_id": "sim_95a2c77fedfc",
               "type": "static",
-              "url": "/sims/sim_7e15a54b8afb"
+              "url": "/sims/sim_95a2c77fedfc"
             },
             {
               "card": {
-                "charts_url": "/sims/sim_aab35b43b5c8/charts",
+                "charts_url": "/sims/sim_7d04a4f52b73/charts",
                 "checks": [
                   {
                     "kind": "avoid_band_hz",
                     "measured": 0,
                     "note": null,
                     "requirement_id": "q3",
-                    "sim_id": "sim_aab35b43b5c8",
+                    "sim_id": "sim_7d04a4f52b73",
                     "status": "pass",
                     "target": [
                       340,
@@ -2392,17 +2392,17 @@
                 "pct": 100.0,
                 "phase": "done",
                 "reason": "design review: modal modal",
-                "run_id": "6eb160bedacf",
-                "sim_id": "sim_aab35b43b5c8",
+                "run_id": "a5d2fd1d1106",
+                "sim_id": "sim_7d04a4f52b73",
                 "status": "done",
                 "step_id": 28,
                 "type": "modal",
                 "urls": {
-                  "charts": "/sims/sim_aab35b43b5c8/charts",
-                  "glb": "/sims/sim_aab35b43b5c8/result.glb",
-                  "probe": "/sims/sim_aab35b43b5c8/probe",
-                  "record": "/sims/sim_aab35b43b5c8",
-                  "section": "/sims/sim_aab35b43b5c8/section"
+                  "charts": "/sims/sim_7d04a4f52b73/charts",
+                  "glb": "/sims/sim_7d04a4f52b73/result.glb",
+                  "probe": "/sims/sim_7d04a4f52b73/probe",
+                  "record": "/sims/sim_7d04a4f52b73",
+                  "section": "/sims/sim_7d04a4f52b73/section"
                 },
                 "verdict": "pass",
                 "warnings": []
@@ -2410,9 +2410,9 @@
               "case": "modal",
               "error": null,
               "ok": true,
-              "sim_id": "sim_aab35b43b5c8",
+              "sim_id": "sim_7d04a4f52b73",
               "type": "modal",
-              "url": "/sims/sim_aab35b43b5c8"
+              "url": "/sims/sim_7d04a4f52b73"
             }
           ],
           "table": [
@@ -2432,12 +2432,12 @@
               "measured": 5.906498504081631,
               "note": null,
               "requirement_id": "q1",
-              "sim_id": "sim_7e15a54b8afb",
+              "sim_id": "sim_95a2c77fedfc",
               "status": "pass",
               "study": "static",
               "target": 2.0,
               "unit": "",
-              "url": "/sims/sim_7e15a54b8afb"
+              "url": "/sims/sim_95a2c77fedfc"
             },
             {
               "case": "modal",
@@ -2445,7 +2445,7 @@
               "measured": 0,
               "note": null,
               "requirement_id": "q3",
-              "sim_id": "sim_aab35b43b5c8",
+              "sim_id": "sim_7d04a4f52b73",
               "status": "pass",
               "study": "modal",
               "target": [
@@ -2453,7 +2453,7 @@
                 460
               ],
               "unit": "modes",
-              "url": "/sims/sim_aab35b43b5c8"
+              "url": "/sims/sim_7d04a4f52b73"
             }
           ],
           "verdict": "pass"
@@ -2461,18 +2461,18 @@
         "handles": [],
         "ok": true,
         "step_kind": "tool_result",
-        "summary": "design review of beam (guide only, not a guarantee): PASS; 3 pass, 0 warn, 0 fail: q2 max_mass_g: pass (12.4g vs 20); q1 min_safety_factor: pass (5.906 vs 2.0) [sim_7e15a54b8afb]; q3 avoid_band_hz: pass (0modes vs [340, 460]) [sim_aab35b43b5c8]",
+        "summary": "design review of beam (guide only, not a guarantee): PASS; 3 pass, 0 warn, 0 fail: q2 max_mass_g: pass (12.4g vs 20); q1 min_safety_factor: pass (5.906 vs 2.0) [sim_95a2c77fedfc]; q3 avoid_band_hz: pass (0modes vs [340, 460]) [sim_7d04a4f52b73]",
         "warnings": []
       }
     },
-    "evidence_hash": "919621de9e68ab52fc1589af9950313195355acea5412d2443906394c917244a",
-    "prev_hash": "95b135024b77b3ade580e5bcfb727d03b5b2a848727272e359783b88aedfa961",
+    "evidence_hash": "5923ff6cbb641cc389f1f723835386c7aaa55c4804606eb11d5b69b8afb6d3f2",
+    "prev_hash": "eaa68c4c2037df7ccaf5a600cc4f5b565bb1d7bb0497130b61d274b67518f659",
     "collapsed": false
   },
   {
     "id": 31,
-    "run_id": "6eb160bedacf",
-    "ts": 1793289440.7916071,
+    "run_id": "a5d2fd1d1106",
+    "ts": 1793306261.894051,
     "kind": "message",
     "payload": {
       "role": "assistant",
@@ -2480,8 +2480,8 @@
       "text": "Review done: see the table.",
       "tool_calls": []
     },
-    "evidence_hash": "2cf7f9d18305d8213c3beb70b943f5c9df6d49f48b597e72cb8dc09cfb8ec003",
-    "prev_hash": "919621de9e68ab52fc1589af9950313195355acea5412d2443906394c917244a",
+    "evidence_hash": "3822a2d75e873c39c0f2e2401ef2346696640a47f137ce879318de437aad4f92",
+    "prev_hash": "5923ff6cbb641cc389f1f723835386c7aaa55c4804606eb11d5b69b8afb6d3f2",
     "collapsed": false
   }
 ]

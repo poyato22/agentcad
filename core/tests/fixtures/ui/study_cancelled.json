@@ -1,17 +1,17 @@
 {
-  "sim_id": "sim_37216a736139",
+  "sim_id": "sim_6ec92accccf9",
   "part_id": "cube",
   "type": "wind",
-  "run_id": "65807c4b9690",
-  "call_id": "ui-205c3536a604",
+  "run_id": "7406714362e9",
+  "call_id": "ui-de3b5322e977",
   "step_id": 32,
   "reason": "cancel me",
   "status": "cancelled",
   "stage": "cancelled",
   "phase": "solve",
   "pct": 5.5,
-  "created_at": 1793289440.862835,
-  "finished_at": 1793289441.479646,
+  "created_at": 1793306261.998681,
+  "finished_at": 1793306262.6225579,
   "analysis": "wind",
   "guide": true,
   "label": "guide only, not a guarantee",
@@ -56,7 +56,7 @@
     "solver": "auto",
     "shape_class": "auto"
   },
-  "geometry_hash": "2ae298fada56e8d84cbe6fcb93040c182c1ed48883268b888f79a5fadb9c2374",
+  "geometry_hash": "52dbce2101fab6c4300922e48e105ff5717d0f6bb4018e9c6b0d910f7629a4a0",
   "material": null,
   "environment": null,
   "error": "cancelled",
@@ -68,15 +68,15 @@
     "Validated on a sphere and a flat plate (see the Mises C7 report); expect 10-30% error on other shapes, more on streamlined bodies whose drag is mostly friction."
   ],
   "urls": {
-    "record": "/sims/sim_37216a736139",
-    "glb": "/sims/sim_37216a736139/result.glb",
-    "charts": "/sims/sim_37216a736139/charts",
-    "probe": "/sims/sim_37216a736139/probe",
-    "section": "/sims/sim_37216a736139/section"
+    "record": "/sims/sim_6ec92accccf9",
+    "glb": "/sims/sim_6ec92accccf9/result.glb",
+    "charts": "/sims/sim_6ec92accccf9/charts",
+    "probe": "/sims/sim_6ec92accccf9/probe",
+    "section": "/sims/sim_6ec92accccf9/section"
   },
   "stale": false,
   "card": {
-    "sim_id": "sim_37216a736139",
+    "sim_id": "sim_6ec92accccf9",
     "type": "wind",
     "status": "cancelled",
     "verdict": "fail",
@@ -122,15 +122,15 @@
     "checks": [],
     "warnings": [],
     "reason": "cancel me",
-    "run_id": "65807c4b9690",
+    "run_id": "7406714362e9",
     "step_id": 32,
     "urls": {
-      "record": "/sims/sim_37216a736139",
-      "glb": "/sims/sim_37216a736139/result.glb",
-      "charts": "/sims/sim_37216a736139/charts",
-      "probe": "/sims/sim_37216a736139/probe",
-      "section": "/sims/sim_37216a736139/section"
+      "record": "/sims/sim_6ec92accccf9",
+      "glb": "/sims/sim_6ec92accccf9/result.glb",
+      "charts": "/sims/sim_6ec92accccf9/charts",
+      "probe": "/sims/sim_6ec92accccf9/probe",
+      "section": "/sims/sim_6ec92accccf9/section"
     },
-    "charts_url": "/sims/sim_37216a736139/charts"
+    "charts_url": "/sims/sim_6ec92accccf9/charts"
   }
 }

@@ -145,7 +145,7 @@ export function StudiesPage({ controller = studies, deps = {} }: { controller?: 
             onSave={(name) => c.saveTemplate(name, type, settings ?? {})}
             onDelete={(id) => c.deleteTemplate(id)} />
           {info && settings && (
-            <form class="st-setup" aria-label={`${TYPE_NAMES[type]} study setup`} onSubmit={(e) => { e.preventDefault(); if (canRun && partId) void c.start(partId, type, settings); }}>
+            <form class="st-setup" noValidate aria-label={`${TYPE_NAMES[type]} study setup`} onSubmit={(e) => { e.preventDefault(); if (canRun && partId) void c.start(partId, type, settings); }}>
               <SchemaForm schema={info.schema} value={settings} onChange={setSettings} errors={c.fieldErrors.value} disabled={active !== null}
                 faces={faces} materials={materialNames} onEditMaterials={() => setPanel("materials")}
                 onPickFace={(p) => { setPicking(p); viewSig.value = "setup"; }} picking={picking}

@@ -130,6 +130,10 @@ async def dump(out: Path) -> None:
             rt.finish_external_run(rid, "done")
 
             out.mkdir(parents=True, exist_ok=True)
+            write("study_parts.json", (await call("GET", "/parts")).json())
+            for pid in ("beam", "cube"):
+                (out / f"study_part_{pid}.glb").write_bytes(
+                    (await call("GET", f"/parts/{pid}/model.glb")).content)
             write("study_types.json", (await call("GET", "/sims/types")).json())
             write("study_solvers.json", (await call("GET", "/sims/solvers")).json())
             bad = await call("POST", "/sims", {"type": "modal", "part_id": "beam",

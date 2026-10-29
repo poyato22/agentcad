@@ -7,7 +7,6 @@
 import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { StudyCharts, StudyRecord } from "../../../../api/studies";
-import { isTrustedKey } from "../../../../lib/keys";
 import { parts, runs } from "../../../../state/store";
 import { Button } from "../../../common/Button";
 import { Led } from "../../../common/Led";
@@ -61,7 +60,7 @@ function Immersive({ target, deps }: { target: ImmersiveTarget; deps: ImmersiveD
     return () => { on = false; };
   }, [simId, liveDone]);
 
-  // keys: Esc closes; ⌘[ / ⌘] step (real key presses only)
+  // keys: Esc closes; ⌘[ / ⌘] step (one study per press, not on auto-repeat)
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -69,7 +68,7 @@ function Immersive({ target, deps }: { target: ImmersiveTarget; deps: ImmersiveD
         if (e.defaultPrevented) return;
         e.preventDefault(); closeImmersive(); return;
       }
-      if (e.metaKey && (e.key === "[" || e.key === "]") && isTrustedKey(e)) { e.preventDefault(); stepImmersive(e.key === "]" ? 1 : -1); }
+      if (e.metaKey && (e.key === "[" || e.key === "]") && !e.repeat) { e.preventDefault(); stepImmersive(e.key === "]" ? 1 : -1); }
     };
     window.addEventListener("keydown", k);
     return () => window.removeEventListener("keydown", k);

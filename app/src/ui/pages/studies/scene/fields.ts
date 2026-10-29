@@ -219,6 +219,8 @@ export function advect(f: FlowField, p: Particles, dt: number, scale: number, ma
     if (!vel || p.age[i] > maxAge) { respawn(f, p, i, false); continue; }
     p.pu[i] += vel[0] * scale * dt;
     p.pv[i] += vel[1] * scale * dt;
+    // never drawn inside the part or off the plane: it starts again at once
+    if (!sampleFlow(f, p.pu[i], p.pv[i])) respawn(f, p, i, false);
   }
 }
 
