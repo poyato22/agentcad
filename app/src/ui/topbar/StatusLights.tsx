@@ -90,7 +90,7 @@ export function StatusLights(): JSX.Element {
         <Led tone={tone} /> CORE
       </span>
       <span class="light" data-light="onshape" title={os.title}><Led tone={os.tone} /> ONSHAPE <span class="light-val">{os.text}</span></span>
-      <span class="light" data-light="agents">
+      <span class="light" data-light="agents" title={`${running} ${running === 1 ? "agent" : "agents"} running`}>
         <Led tone={running > 0 ? "blue" : "faint"} /> AGENTS{" "}
         <span class="light-val">{running} {running === 1 ? "agent" : "agents"}</span>
         {needs > 0 && <span class="light-need needs-you"> · {needs} needs you</span>}
@@ -125,7 +125,7 @@ function PrinterLight(): JSX.Element {
     }
   });
   if (!first) {
-    return <span class="light" data-light="printer"><Led tone="faint" /> PRINTER <span class="light-val">no printer</span></span>;
+    return <span class="light" data-light="printer" title="No printer"><Led tone="faint" /> PRINTER <span class="light-val">no printer</span></span>;
   }
   const cur = st && st.id === first.id ? st : null;
   const l = printerLight(cur?.status ?? null, cur?.stale ?? false);

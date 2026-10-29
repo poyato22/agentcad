@@ -21,6 +21,18 @@
 .light { display: inline-flex; gap: 5px; align-items: center; }
 .light-val { color: var(--ink); }
 .light-need { color: var(--blue2); }
+/* With the activity pill (A1/A2) and the budget meter (A6) in the bar, the PRINTER light was
+   clipped off the right edge at 1280 and 1440 (test/e2e/topbar-fit.spec.ts). Below 1500 px the
+   lights drop their values: the budget meter carries the Onshape count, the pill the working
+   agents, and each light's title keeps its value; the LEDs and "needs you" stay. Below 1400 px
+   the tabs and the lights also pack tighter. */
+@media (max-width: 1499px) {
+  .lights .light-val { display: none; }
+}
+@media (max-width: 1399px) {
+  .tab { padding: 0 10px; }
+  .lights { gap: 10px; }
+}
 .light-click { cursor: pointer; border: 1px solid var(--line2); padding: 2px 6px; }
 .light-click:hover { border-color: var(--dim); color: var(--ink); }
 .light-click:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
