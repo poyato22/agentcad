@@ -11,7 +11,9 @@ import { fileURLToPath } from "node:url";
 import { WebSocketServer, type WebSocket } from "ws";
 import type {
   AgentInfo, AgentRun, Approval, CoreStatusInfo, ErrorCode, LocalStatus, MisesEvent, ModelsInfo, PartSummary, Question, Step, StepKind,
+  SystemCheckRow, SystemFix,
 } from "../../src/api/types";
+import { INSTALL_DEPS } from "../../src/api/types";
 import { handleControl } from "./control";
 import { printingFrom, printingRoutes, stopPrinting, type FakePrinting, type PrintScenario } from "./printing";
 import { setupFrom, setupRoutes, type FakeSetup, type SetupScenario } from "./setup";
@@ -91,7 +93,22 @@ export interface Scenario {
   sims?: SimScenario;
   /** Printers, slicer and drawing state (Plan 4). Absent: no printers, PrusaSlicer installed. */
   print?: PrintScenario;
+  /** GET /system/check rows (Plan 5). Absent: a small healthy default set. */
+  system?: SystemCheckRow[];
+  /** POST /system/install/{dep} behaviour per dep. A `fix` refuses the install (e.g. brew missing);
+   *  otherwise `lines` stream as `system_install` events and the install ends with `ok`. */
+  system_install?: Record<string, { lines?: string[]; ok?: boolean; fix?: SystemFix }>;
+  /** ms between `system_install` lines (default 60). */
+  system_install_ms?: number;
 }
+
+/** A small healthy default when a scenario names no `system` rows. */
+export const DEFAULT_SYSTEM_CHECK: SystemCheckRow[] = [
+  { id: "python", name: "Core Python & venv", status: "ok", version: "3.13.1", path: "/opt/mises/.venv", detail: "Ready.", fix: null },
+  { id: "build123d", name: "build123d / OCCT", status: "ok", version: "0.9.1", path: null, detail: "Loaded.", fix: null },
+  { id: "prusaslicer", name: "PrusaSlicer", status: "missing", version: null, path: null,
+    detail: "Not found. Needed to slice and estimate prints.", fix: { kind: "install", label: "Install PrusaSlicer", dep: "prusaslicer" } },
+];
 
 export interface FakeCall { method: string; path: string; query: Record<string, string>; body: unknown; ts: number; ifNoneMatch?: string }
 
@@ -118,6 +135,9 @@ export interface FakeState {
   /** POST /sketches uploads, by sketch_id. */
   sketches: Map<string, FakeSketch>;
   print: FakePrinting;
+  system: SystemCheckRow[];
+  systemInstall: Record<string, { lines?: string[]; ok?: boolean; fix?: SystemFix }>;
+  systemInstallMs: number;
 }
 
 export interface FakeCore {
@@ -161,6 +181,9 @@ function stateFrom(sc: Scenario, token: string): FakeState {
     sims: simsFrom(sc.sims),
     sketches: new Map(),
     print: printingFrom(sc.print),
+    system: sc.system ? structuredClone(sc.system) : structuredClone(DEFAULT_SYSTEM_CHECK),
+    systemInstall: sc.system_install ? structuredClone(sc.system_install) : {},
+    systemInstallMs: sc.system_install_ms ?? 60,
   };
 }
 
@@ -568,6 +591,29 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       get: () => state.print, parts: () => state.parts, defaultMaterial: () => state.setup.profile.default_material,
       emit: (ev, extras) => { emit(ev, extras); }, approval: (id) => state.approvals.get(id),
     }),
+    { method: "GET", re: /^\/system\/check$/, h: () => state.system },
+    {
+      // POST /system/install/{dep}: allowlist only, no arguments from the body (Review Focus 3).
+      method: "POST", re: /^\/system\/install\/([^/]+)$/, h: (m) => {
+        const dep = m[1];
+        if (!(INSTALL_DEPS as readonly string[]).includes(dep)) {
+          throw mises("invalid_input", `unknown dependency ${dep}`, `one of ${INSTALL_DEPS.join(", ")}`);
+        }
+        const cfg = state.systemInstall[dep] ?? {};
+        if (cfg.fix) return { ok: false, fix: cfg.fix };          // e.g. brew missing → open_url
+        const lines = cfg.lines ?? [`Installing ${dep}…`, "done"];
+        const ok = cfg.ok ?? true;
+        lines.forEach((line, i) => {
+          const t = setTimeout(() => emit({ type: "system_install", run_id: null, data: { dep, line, done: false, ok: false } }),
+            state.systemInstallMs * (i + 1));
+          scriptTimers.push(t);
+        });
+        const done = setTimeout(() => emit({ type: "system_install", run_id: null, data: { dep, line: "", done: true, ok } }),
+          state.systemInstallMs * (lines.length + 1));
+        scriptTimers.push(done);
+        return { ok: true, fix: null };
+      },
+    },
   ];
 
   /** Core ui_api._pull_name: lowercase Ollama names; the submitted name is never echoed. */

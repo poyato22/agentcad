@@ -5,7 +5,7 @@ import { debug } from "../lib/log";
 import {
   agentInfoSchema, agentRunSchema, approvalSchema, cancelAllSchema, claudeCodeStatusSchema, coreErrorBodySchema, coreStatusSchema,
   keyStatusSchema, localActionSchema, localStatusSchema, localTestSchema, modelsInfoSchema, okSchema, onshapeTestSchema, partSummarySchema, profileSchema, runIdSchema, setupStateSchema, sketchSummarySchema,
-  stepSchema,
+  stepSchema, systemCheckRowSchema, systemInstallStartSchema,
 } from "./schemas";
 import {
   simRecordSchema, simSolversSchema, simStartedSchema, simSummarySchema,
@@ -13,7 +13,8 @@ import {
 } from "./sims";
 import type {
   AgentInfo, AgentRun, Approval, CancelAllResult, ClaudeCodeStatus, CoreInfo, CoreStatusInfo, DecisionBody, ErrorCode, KeyStatus, LocalActionResult, LocalStatus, LocalTestResult,
-  ModelsInfo, NewRunBody, OnshapeTestResult, PartSummary, Profile, ProfilePatch, SetupState, SketchSummary, SketchUpload, Step, UiContext,
+  ModelsInfo, NewRunBody, OnshapeTestResult, PartSummary, Profile, ProfilePatch, SetupState, SketchSummary, SketchUpload, Step,
+  SystemCheckRow, SystemInstallStart, UiContext,
 } from "./types";
 import {
   drawingInfoSchema, printCallSchema, printCapabilitiesSchema, printerSchema, printerStatusSchema, printStartSchema, sliceSchema, sliceStartSchema,
@@ -219,6 +220,16 @@ export class CoreClient {
   async claudeCodeLogout(): Promise<void> { await this.json("POST", "/claude-code/logout", anyBody); }
 
   async putContext(ctx: UiContext): Promise<void> { await this.json("PUT", "/context", anyBody, { body: ctx }); }
+
+  // ---- System check & installers (A1 shell; C6 owns the real core routes)
+
+  /** GET /system/check: one row per dependency with status, version, path and an optional fix. */
+  systemCheck(): Promise<SystemCheckRow[]> { return this.json("GET", "/system/check", z.array(systemCheckRowSchema)); }
+  /** POST /system/install/{dep}: starts a fixed, allowlisted install (no arguments). Output streams
+   *  as `system_install` events; the body says whether it started or hands back a fix (e.g. no brew). */
+  systemInstall(dep: string): Promise<SystemInstallStart> {
+    return this.json("POST", `/system/install/${enc(dep)}`, systemInstallStartSchema);
+  }
 
   // ---- Sketch page
 
