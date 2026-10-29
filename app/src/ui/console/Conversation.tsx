@@ -17,6 +17,7 @@ import { shownPending } from "./queued";
 import { CallDetails } from "./ToolCallRow";
 import type { ThreadItem } from "./threadModel";
 import { composerOpen } from "./view";
+import { StudyCardSlot } from "./studycard";
 
 const AT_BOTTOM_PX = 24;
 /** Rows rendered at once (the last ones); "show earlier" adds this many more. Same as StepLog. */
@@ -183,6 +184,7 @@ function Activity({ item }: { item: Extract<ThreadItem, { kind: "activity" }> })
       <span class="cv-body">
         <span class={`text${item.tone === "fail" ? " cv-fail" : " dim"}`} data-activity-text>{item.text}</span>
         {item.hint && <span class="cv-hint faint text">{item.hint}</span>}
+        {item.call && <StudyCardSlot call={item.call} />}
         {open && (
           <span class="cv-open">
             {item.diff && <DiffView item={item.diff} />}

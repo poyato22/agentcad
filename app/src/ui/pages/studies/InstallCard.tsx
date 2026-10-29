@@ -1,13 +1,16 @@
 // Missing solver: exactly what to install and the command, plus "Check again". Never a crash.
 import type { JSX } from "preact";
 import { useState } from "preact/hooks";
-import type { SimSolvers, SolverInfo } from "../../../api/sims";
+import type { StudySolvers } from "../../../api/studies";
 import { Button } from "../../common/Button";
 import { Led } from "../../common/Led";
 
-const WHY: Record<keyof SimSolvers, string> = {
-  ccx: "CalculiX (ccx) is not installed. Studies need it to solve.",
-  gmsh: "gmsh is missing from the Mises core. Studies need it to mesh.",
+type Solvers = Pick<StudySolvers, "ccx" | "gmsh">;
+type SolverInfo = Solvers["ccx"];
+
+const WHY: Record<keyof Solvers, string> = {
+  ccx: "CalculiX (ccx) is not installed. Stress, modal, buckling, thermal and drop studies need it to solve; wind studies do not.",
+  gmsh: "gmsh is missing from the Mises core. FEM studies need it to mesh.",
 };
 
 /** The command to copy: the `quoted` part of a hint like "run `uv sync` in core/", else all of it. */
@@ -16,7 +19,7 @@ export function installCommand(install: string): string {
   return (m ? m[1] : install).trim();
 }
 
-function Missing({ k, info }: { k: keyof SimSolvers; info: SolverInfo }): JSX.Element {
+function Missing({ k, info }: { k: keyof Solvers; info: SolverInfo }): JSX.Element {
   const [copied, setCopied] = useState(false);
   return (
     <div class="st-install-item">
@@ -32,8 +35,8 @@ function Missing({ k, info }: { k: keyof SimSolvers; info: SolverInfo }): JSX.El
   );
 }
 
-export function InstallCard({ solvers, onRecheck, checking }: { solvers: SimSolvers; onRecheck: () => void; checking: boolean }): JSX.Element | null {
-  const missing = (Object.keys(solvers) as (keyof SimSolvers)[]).filter((k) => !solvers[k].found);
+export function InstallCard({ solvers, onRecheck, checking }: { solvers: Solvers; onRecheck: () => void; checking: boolean }): JSX.Element | null {
+  const missing = (["ccx", "gmsh"] as const).filter((k) => !solvers[k].found);
   if (missing.length === 0) return null;
   return (
     <section class="st-install st-band st-band-red" data-testid="install-card" aria-label="Solver missing" role="alert">

@@ -6,6 +6,7 @@ import type { AgentRun, Approval, Question, Step } from "../../api/types";
 import { runLabel } from "../../lib/names";
 import type { InflightCall } from "../../state/reduce";
 import type { LogFilter } from "../../state/store";
+import { isStudyCallName } from "./studycard/cardModel";
 
 type CallItem = {
   kind: "call"; callId: string; name: string; input: Record<string, unknown>; result: Step | null;
@@ -482,7 +483,8 @@ function fold(rows: Raw[], expanded: ReadonlySet<string>): LogItem[] {
   const out: LogItem[] = [];
   // Onshape proposals change the real document: each stays a row of its own, never folded
   const foldable = (r: Raw | undefined) => r !== undefined && r.item.kind === "call" && r.item.ok === true
-    && !r.item.name.replace(/^mcp__mises__/, "").startsWith("onshape_propose");
+    && !r.item.name.replace(/^mcp__mises__/, "").startsWith("onshape_propose")
+    && !isStudyCallName(r.item.name); // study / review cards stay in sight (Task A8)
   let i = 0;
   while (i < rows.length) {
     if (!foldable(rows[i])) { out.push(rows[i].item); i++; continue; }

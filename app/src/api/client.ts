@@ -11,6 +11,12 @@ import {
   simRecordSchema, simSolversSchema, simStartedSchema, simSummarySchema,
   type SimRecord, type SimSolvers, type SimStartBody, type SimStarted, type SimSummary,
 } from "./sims";
+import {
+  studyCancelSchema, studyChartsSchema, studyCompareSchema, studyMaterialSchema, studyMaterialsSchema, studyProbeSchema, studyRecordSchema,
+  studySectionSchema, studySolversSchema, studySummarySchema, studyTemplateSchema, studyTypeInfoSchema,
+  type CustomMaterialBody, type StudyCharts, type StudyCompare, type StudyMaterial, type StudyMaterials, type StudyProbe, type StudyRecord,
+  type StudySection, type StudySolvers, type StudyStartBody, type StudySummary, type StudyTemplate, type StudyType, type StudyTypeInfo,
+} from "./studies";
 import type {
   AgentInfo, AgentRun, Approval, CancelAllResult, ClaudeCodeStatus, CoreInfo, CoreStatusInfo, DecisionBody, ErrorCode, KeyStatus, LocalActionResult, LocalStatus, LocalTestResult,
   ModelsInfo, NewRunBody, OnshapeTestResult, PartSummary, Profile, ProfilePatch, SetupState, SketchSummary, SketchUpload, Step,
@@ -117,6 +123,38 @@ export class CoreClient {
   simGlb(simId: string, etag?: string): Promise<{ bytes: ArrayBuffer; etag: string } | "not-modified"> {
     return this.glb(`/sims/${enc(simId)}/result.glb`, etag);
   }
+
+  // ---- every study type (Plan 5 C7: core sim/studies.py, server/sim_api.py; Task A8)
+
+  studyTypes(): Promise<StudyTypeInfo[]> { return this.json("GET", "/sims/types", z.array(studyTypeInfoSchema)); }
+  studySolvers(): Promise<StudySolvers> { return this.json("GET", "/sims/solvers", studySolversSchema); }
+  listStudies(filter: { partId?: string; runId?: string } = {}): Promise<StudySummary[]> {
+    return this.json("GET", "/sims", z.array(studySummarySchema), { query: { part_id: filter.partId, run_id: filter.runId } });
+  }
+  getStudy(simId: string): Promise<StudyRecord> { return this.json("GET", `/sims/${enc(simId)}`, studyRecordSchema); }
+  /** 202: a "studies" run drives sim_run through the Gate. Bad settings: 400 before any run. */
+  startStudy(body: StudyStartBody): Promise<SimStarted> { return this.json("POST", "/sims", simStartedSchema, { body }); }
+  cancelStudy(simId: string): Promise<{ sim_id: string; status: "cancelling" }> {
+    return this.json("POST", `/sims/${enc(simId)}/cancel`, studyCancelSchema);
+  }
+  studyCharts(simId: string): Promise<StudyCharts> { return this.json("GET", `/sims/${enc(simId)}/charts`, studyChartsSchema); }
+  studyProbe(simId: string, p: readonly [number, number, number]): Promise<StudyProbe> {
+    return this.json("GET", `/sims/${enc(simId)}/probe`, studyProbeSchema, { query: { x: p[0], y: p[1], z: p[2] } });
+  }
+  studySection(simId: string, q: { axis: "x" | "y" | "z"; offset: number; channel: string; n?: number }): Promise<StudySection> {
+    return this.json("GET", `/sims/${enc(simId)}/section`, studySectionSchema, { query: { axis: q.axis, offset: q.offset, channel: q.channel, n: q.n } });
+  }
+  /** A wind study's velocity slice image (slice_xz | slice_xy). */
+  studySlice(simId: string, name: "slice_xz" | "slice_xy"): Promise<Blob> { return this.blob(`/sims/${enc(simId)}/slices/${name}.png`, "image/png"); }
+  compareStudies(ids: readonly string[]): Promise<StudyCompare> { return this.json("POST", "/sims/compare", studyCompareSchema, { body: { ids } }); }
+  studyTemplates(): Promise<StudyTemplate[]> { return this.json("GET", "/sims/templates", z.array(studyTemplateSchema)); }
+  addStudyTemplate(body: { name: string; type: StudyType; settings: Record<string, unknown> }): Promise<StudyTemplate> {
+    return this.json("POST", "/sims/templates", studyTemplateSchema, { body });
+  }
+  deleteStudyTemplate(id: string): Promise<unknown> { return this.json("DELETE", `/sims/templates/${enc(id)}`, anyBody); }
+  studyMaterials(): Promise<StudyMaterials> { return this.json("GET", "/sims/materials", studyMaterialsSchema); }
+  addStudyMaterial(body: CustomMaterialBody): Promise<StudyMaterial> { return this.json("POST", "/sims/materials", studyMaterialSchema, { body }); }
+  deleteStudyMaterial(name: string): Promise<unknown> { return this.json("DELETE", `/sims/materials/${enc(name)}`, anyBody); }
 
   private async glb(path: string, etag?: string): Promise<{ bytes: ArrayBuffer; etag: string } | "not-modified"> {
     const headers: Record<string, string> = {};

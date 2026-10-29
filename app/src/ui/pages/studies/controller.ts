@@ -1,29 +1,34 @@
-// Studies page state: solver status, the part's study history, the shown study, and the study
-// being run. A study runs in the core as a "studies" run (POST /sims → 202); the page follows it
-// by polling GET /sims?run_id= and by its `sim_progress` events (onEvent: the stage shows at once,
-// and a terminal stage polls now instead of on the next tick); it stops it with POST /runs/{id}/cancel.
-// One controller per app (module level, see index.tsx): a study keeps running in the core when the
-// user leaves the page, and `active` remembers it. Polling only runs while the page is mounted:
-// the page calls pause() on unmount and resume() on mount, which polls at once and picks the
-// study up where it is (or shows its result if it finished meanwhile).
+// Studies page state: study types and their settings schemas, solver status, materials and
+// templates, the part's study history, the shown study (record + charts), compare, and the study
+// being run. A study runs in the core as a "studies" run (POST /sims {type, part_id, settings} →
+// 202); the page follows it by its `sim_progress {sim_id, phase, pct, detail}` events and by
+// polling GET /sims?run_id=, and stops it with POST /sims/{sim_id}/cancel (or the run's cancel
+// before the study exists). One controller per app (module level, see index.tsx): a study keeps
+// running when the user leaves the page; polling runs only while the page is mounted.
 import { computed, signal, type ReadonlySignal, type Signal } from "@preact/signals";
 import { CoreError, type CoreClient } from "../../../api/client";
-import { simProgressSchema, type SimRecord, type SimStage, type SimSolvers, type SimSummary } from "../../../api/sims";
+import {
+  studyProgressSchema, type CustomMaterialBody, type StudyCharts, type StudyCompare, type StudyMaterials, type StudyRecord,
+  type StudySolvers, type StudySummary, type StudyTemplate, type StudyType, type StudyTypeInfo,
+} from "../../../api/studies";
 import type { MisesEvent } from "../../../api/types";
-import { askPrompt, setupProblems, startBody, type Setup } from "./model";
+import { askPrompt } from "./model";
+import { validate, type FieldError } from "./formSchema";
 
-export type StudiesClient = Pick<CoreClient, "simSolvers" | "listSims" | "getSim" | "startSim" | "cancel" | "getRun" | "steps" | "createRun">;
+export type StudiesClient = Pick<CoreClient,
+  | "studyTypes" | "studySolvers" | "listStudies" | "getStudy" | "startStudy" | "cancelStudy" | "studyCharts" | "compareStudies"
+  | "studyTemplates" | "addStudyTemplate" | "deleteStudyTemplate" | "studyMaterials" | "addStudyMaterial" | "deleteStudyMaterial"
+  | "cancel" | "getRun" | "steps" | "createRun">;
 
 export interface ActiveStudy {
-  runId: string; partId: string; startedAt: number;
+  runId: string; partId: string; type: StudyType; startedAt: number;
   /** null until the core has stored the study record. */
-  stage: SimStage | null; simId: string | null; cancelling: boolean;
+  simId: string | null; phase: string | null; pct: number | null; detail: string | null; cancelling: boolean;
 }
 
 export interface Problem { message: string; hint: string | null }
 
 export const POLL_MS = 600;
-/** Network blips while following a study are retried this many times in a row before giving up. */
 const MAX_POLL_FAILURES = 20;
 
 const messageOf = (e: unknown): Problem => e instanceof CoreError
@@ -31,18 +36,28 @@ const messageOf = (e: unknown): Problem => e instanceof CoreError
   : { message: e instanceof Error ? e.message : String(e), hint: null };
 
 export class StudiesController {
-  readonly solvers: Signal<SimSolvers | null> = signal(null);
+  readonly types: Signal<readonly StudyTypeInfo[]> = signal([]);
+  readonly typesError: Signal<string | null> = signal(null);
+  readonly solvers: Signal<StudySolvers | null> = signal(null);
   readonly solversError: Signal<string | null> = signal(null);
   readonly ccxMissing: ReadonlySignal<boolean> = computed(() => this.solvers.value?.ccx.found === false);
+  readonly materials: Signal<StudyMaterials | null> = signal(null);
+  readonly templates: Signal<readonly StudyTemplate[]> = signal([]);
+  readonly libraryError: Signal<string | null> = signal(null);
   readonly historyPart: Signal<string | null> = signal(null);
-  readonly history: Signal<readonly SimSummary[]> = signal([]);
+  readonly history: Signal<readonly StudySummary[]> = signal([]);
   readonly historyError: Signal<string | null> = signal(null);
   readonly selectedSimId: Signal<string | null> = signal(null);
-  readonly record: Signal<SimRecord | null> = signal(null);
+  readonly record: Signal<StudyRecord | null> = signal(null);
+  readonly charts: Signal<StudyCharts | null> = signal(null);
   readonly recordError: Signal<string | null> = signal(null);
   readonly active: Signal<ActiveStudy | null> = signal(null);
-  /** Why the last start did not produce a study (bad setup, refused, failed before a record). */
   readonly runError: Signal<Problem | null> = signal(null);
+  /** Field problems of the last Run press (the form shows them at their fields). */
+  readonly fieldErrors: Signal<readonly FieldError[]> = signal([]);
+  readonly compareIds: Signal<readonly string[]> = signal([]);
+  readonly compare: Signal<StudyCompare | null> = signal(null);
+  readonly compareError: Signal<string | null> = signal(null);
   readonly asked: Signal<{ simId: string; runId: string | null; error: string | null } | null> = signal(null);
 
   private readonly client: () => StudiesClient;
@@ -52,19 +67,60 @@ export class StudiesController {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private disposed = false;
   private paused = false;
+  private failures = 0;
 
   constructor(client: () => StudiesClient, opts: { pollMs?: number } = {}) {
     this.client = client;
     this.pollMs = opts.pollMs ?? POLL_MS;
   }
 
+  typeInfo(t: StudyType): StudyTypeInfo | undefined { return this.types.peek().find((x) => x.id === t); }
+
+  async loadTypes(): Promise<void> {
+    try { this.types.value = await this.client().studyTypes(); this.typesError.value = null; } catch (e) { this.typesError.value = messageOf(e).message; }
+  }
+
   async loadSolvers(): Promise<void> {
+    try { this.solvers.value = await this.client().studySolvers(); this.solversError.value = null; } catch (e) { this.solversError.value = messageOf(e).message; }
+  }
+
+  async loadLibrary(): Promise<void> {
     try {
-      this.solvers.value = await this.client().simSolvers();
-      this.solversError.value = null;
-    } catch (e) {
-      this.solversError.value = messageOf(e).message;
-    }
+      const [m, t] = await Promise.all([this.client().studyMaterials(), this.client().studyTemplates()]);
+      this.materials.value = m;
+      this.templates.value = t;
+      this.libraryError.value = null;
+    } catch (e) { this.libraryError.value = messageOf(e).message; }
+  }
+
+  async saveTemplate(name: string, type: StudyType, settings: Record<string, unknown>): Promise<Problem | null> {
+    try {
+      const t = await this.client().addStudyTemplate({ name, type, settings });
+      this.templates.value = [...this.templates.peek(), t];
+      return null;
+    } catch (e) { return messageOf(e); }
+  }
+
+  async deleteTemplate(id: string): Promise<Problem | null> {
+    try { await this.client().deleteStudyTemplate(id); this.templates.value = this.templates.peek().filter((t) => t.id !== id); return null; } catch (e) { return messageOf(e); }
+  }
+
+  async saveMaterial(m: CustomMaterialBody): Promise<Problem | null> {
+    try {
+      const saved = await this.client().addStudyMaterial(m);
+      const cur = this.materials.peek() ?? { builtin: [], custom: [] };
+      this.materials.value = { ...cur, custom: [...cur.custom.filter((c) => c.name.toLowerCase() !== saved.name.toLowerCase()), saved] };
+      return null;
+    } catch (e) { return messageOf(e); }
+  }
+
+  async deleteMaterial(name: string): Promise<Problem | null> {
+    try {
+      await this.client().deleteStudyMaterial(name);
+      const cur = this.materials.peek();
+      if (cur) this.materials.value = { ...cur, custom: cur.custom.filter((c) => c.name !== name) };
+      return null;
+    } catch (e) { return messageOf(e); }
   }
 
   /** Loads the part's studies; shows the newest finished one unless one of this part is shown. */
@@ -75,12 +131,13 @@ export class StudiesController {
       this.history.value = [];
       this.selectedSimId.value = null;
       this.record.value = null;
+      this.charts.value = null;
       this.asked.value = null;
+      this.compareIds.value = [];
+      this.compare.value = null;
     }
-    let list: SimSummary[];
-    try {
-      list = await this.client().listSims({ partId });
-    } catch (e) {
+    let list: StudySummary[];
+    try { list = await this.client().listStudies({ partId }); } catch (e) {
       if (seq === this.historySeq) this.historyError.value = messageOf(e).message;
       return;
     }
@@ -93,15 +150,15 @@ export class StudiesController {
       const pick = list.find((s) => s.status === "done") ?? list.find((s) => s.status !== "running") ?? null;
       if (pick) void this.select(pick.sim_id);
     } else {
-      // called again when the part's mtime changes: re-read the shown study so its stale flag
-      // (geometry changed since) and status are current without the user reselecting it
       const rec = this.record.peek();
       if (rec && rec.sim_id === shown.sim_id && (rec.stale !== shown.stale || rec.status !== shown.status)) void this.select(shown.sim_id);
     }
-    // a study of this part still running (started before the page opened): follow it
     const running = list.find((s) => s.status === "running" && s.run_id);
     if (running?.run_id && this.active.peek() === null) {
-      this.active.value = { runId: running.run_id, partId, startedAt: running.created_at, stage: running.stage, simId: running.sim_id, cancelling: false };
+      this.active.value = {
+        runId: running.run_id, partId, type: (running.type ?? "static") as StudyType, startedAt: running.created_at,
+        simId: running.sim_id, phase: running.phase ?? null, pct: running.pct ?? null, detail: null, cancelling: false,
+      };
       this.schedule(running.run_id);
     }
   }
@@ -109,29 +166,43 @@ export class StudiesController {
   async select(simId: string): Promise<void> {
     const seq = ++this.selectSeq;
     this.selectedSimId.value = simId;
-    if (this.record.peek()?.sim_id !== simId) this.record.value = null;
+    if (this.record.peek()?.sim_id !== simId) { this.record.value = null; this.charts.value = null; }
     this.recordError.value = null;
     try {
-      const rec = await this.client().getSim(simId);
-      if (seq === this.selectSeq) this.record.value = rec;
+      const rec = await this.client().getStudy(simId);
+      if (seq !== this.selectSeq) return;
+      this.record.value = rec;
+      if (rec.status === "done") {
+        try {
+          const ch = await this.client().studyCharts(simId);
+          if (seq === this.selectSeq) this.charts.value = ch;
+        } catch { if (seq === this.selectSeq) this.charts.value = null; }
+      }
     } catch (e) {
       if (seq === this.selectSeq) this.recordError.value = messageOf(e).message;
     }
   }
 
-  async start(partId: string, setup: Setup): Promise<void> {
-    if (this.active.peek()) return; // one study at a time from the page
-    const problems = setupProblems(setup);
-    this.runError.value = problems.length ? { message: problems.join("; "), hint: null } : null;
-    if (problems.length) return;
+  /** Field problems the core would refuse, from the type's schema. */
+  problems(type: StudyType, settings: Record<string, unknown>): FieldError[] {
+    const info = this.typeInfo(type);
+    return info ? validate(settings, info.schema, info.schema) : [];
+  }
+
+  async start(partId: string, type: StudyType, settings: Record<string, unknown>): Promise<void> {
+    if (this.active.peek()) return; // one study at a time from the page (the core runs one at a time)
+    const errs = this.problems(type, settings);
+    this.fieldErrors.value = errs;
+    this.runError.value = errs.length ? { message: `${errs.length} setting${errs.length === 1 ? "" : "s"} to fix: ${errs.slice(0, 3).map((e) => `${e.path || "settings"} ${e.message}`).join("; ")}`, hint: null } : null;
+    if (errs.length) return;
     let runId: string;
     try {
-      ({ run_id: runId } = await this.client().startSim(startBody(partId, setup)));
+      ({ run_id: runId } = await this.client().startStudy({ type, part_id: partId, settings }));
     } catch (e) {
       this.runError.value = messageOf(e);
       return;
     }
-    this.active.value = { runId, partId, startedAt: Date.now() / 1000, stage: null, simId: null, cancelling: false };
+    this.active.value = { runId, partId, type, startedAt: Date.now() / 1000, simId: null, phase: "queued", pct: 0, detail: null, cancelling: false };
     this.schedule(runId);
   }
 
@@ -140,19 +211,35 @@ export class StudiesController {
     if (!a || a.cancelling) return;
     this.active.value = { ...a, cancelling: true };
     try {
-      await this.client().cancel(a.runId);
+      if (a.simId) await this.client().cancelStudy(a.simId);
+      else await this.client().cancel(a.runId);
     } catch (e) {
-      const cur = this.active.peek();
-      if (cur?.runId === a.runId) this.active.value = { ...cur, cancelling: false };
-      this.runError.value = messageOf(e);
+      // not running any more (it just finished), or the study is not stored yet: cancel the run
+      try { await this.client().cancel(a.runId); } catch {
+        const cur = this.active.peek();
+        if (cur?.runId === a.runId) this.active.value = { ...cur, cancelling: false };
+        this.runError.value = messageOf(e);
+      }
     }
     this.schedule(a.runId, 0);
   }
 
-  /** "Ask agent to fix": a designer run, allowed to edit only this part, with the result as context. */
-  async ask(rec: SimRecord): Promise<string | null> {
+  toggleCompare(simId: string): void {
+    const cur = this.compareIds.peek();
+    this.compareIds.value = cur.includes(simId) ? cur.filter((x) => x !== simId) : [...cur, simId].slice(-8);
+    if (this.compareIds.peek().length < 2) this.compare.value = null;
+  }
+
+  async runCompare(): Promise<void> {
+    const ids = this.compareIds.peek();
+    if (ids.length < 2) return;
+    try { this.compare.value = await this.client().compareStudies(ids); this.compareError.value = null; } catch (e) { this.compareError.value = messageOf(e).message; }
+  }
+
+  /** "Ask agent to fix": a designer run, allowed to edit only this part, with the full settings and result as data. */
+  async ask(rec: StudyRecord): Promise<string | null> {
     const prev = this.asked.peek();
-    if (prev && prev.simId === rec.sim_id && prev.error === null) return prev.runId; // sending or sent: once per study
+    if (prev && prev.simId === rec.sim_id && prev.error === null) return prev.runId;
     this.asked.value = { simId: rec.sim_id, runId: null, error: null };
     try {
       const { run_id } = await this.client().createRun({ agent: "designer", prompt: askPrompt(rec), edit_scope: [rec.part_id] });
@@ -165,26 +252,22 @@ export class StudiesController {
     }
   }
 
-  /** A core event: `sim_progress` of the followed study's run updates its stage now; a terminal
-   *  stage (done / failed / cancelled) polls at once for the result. Other events are ignored. */
   onEvent(ev: MisesEvent): void {
     if (ev.type !== "sim_progress" || !ev.run_id) return;
     const a = this.active.peek();
     if (!a || a.runId !== ev.run_id) return;
-    const p = simProgressSchema.safeParse(ev.data);
+    const p = studyProgressSchema.safeParse(ev.data);
     if (!p.success || p.data.part_id !== a.partId) return;
-    if (a.stage !== p.data.stage || a.simId !== p.data.sim_id) this.active.value = { ...a, stage: p.data.stage, simId: p.data.sim_id };
-    if (p.data.stage === "done" || p.data.stage === "failed" || p.data.stage === "cancelled") this.schedule(a.runId, 0);
+    this.active.value = { ...a, simId: p.data.sim_id, phase: p.data.phase ?? a.phase, pct: p.data.pct ?? a.pct, detail: p.data.detail ?? a.detail };
+    if (["done", "failed", "cancelled"].includes(p.data.stage)) this.schedule(a.runId, 0);
   }
 
-  /** Stop polling (the page is hidden). The followed study stays in `active`. */
   pause(): void {
     this.paused = true;
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
   }
 
-  /** Poll again (the page is shown): at once, if a study is being followed. */
   resume(): void {
     this.paused = false;
     const a = this.active.peek();
@@ -199,8 +282,6 @@ export class StudiesController {
 
   // ---- following a running study
 
-  private failures = 0;
-
   private schedule(runId: string, ms = this.pollMs): void {
     if (this.disposed || this.paused) return;
     if (this.timer) clearTimeout(this.timer);
@@ -211,17 +292,18 @@ export class StudiesController {
     const a = this.active.peek();
     if (!a || a.runId !== runId || this.disposed || this.paused) return;
     try {
-      const [s] = await this.client().listSims({ runId });
+      const [s] = await this.client().listStudies({ runId });
       const cur = this.active.peek();
       if (!cur || cur.runId !== runId) return;
       this.failures = 0;
       if (s && s.status === "running") {
-        if (cur.stage !== s.stage || cur.simId !== s.sim_id) this.active.value = { ...cur, stage: s.stage, simId: s.sim_id };
+        if (cur.simId !== s.sim_id || cur.phase !== (s.phase ?? cur.phase)) {
+          this.active.value = { ...cur, simId: s.sim_id, phase: s.phase ?? cur.phase, pct: s.pct ?? cur.pct };
+        }
         this.schedule(runId);
         return;
       }
       if (s) { await this.finish(cur, s); return; }
-      // no study stored: the tool refused the setup before solving, or the run is still starting
       const run = await this.client().getRun(runId);
       if (run.status === "running") { this.schedule(runId); return; }
       this.runError.value = await this.runFailure(runId, run.status);
@@ -237,7 +319,7 @@ export class StudiesController {
     }
   }
 
-  private async finish(a: ActiveStudy, s: SimSummary): Promise<void> {
+  private async finish(a: ActiveStudy, s: StudySummary): Promise<void> {
     this.active.value = null;
     if (s.status === "failed" && /ccx|calculix/i.test(`${s.error ?? ""} ${s.hint ?? ""}`)) void this.loadSolvers();
     if (this.historyPart.peek() === a.partId) {

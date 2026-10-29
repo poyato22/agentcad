@@ -1,0 +1,32 @@
+/* Immersive view: the whole window is the test cell. Tokens only, both themes. The top strip is the
+   44px chrome height with the traffic-light inset on the left, like every full-height surface. */
+.imm {
+  position: fixed; inset: 0; z-index: 900; display: flex; flex-direction: column; background: var(--bg);
+  color: var(--ink); outline: none;
+}
+.imm-top {
+  flex: none; height: var(--chrome-h); display: flex; align-items: center; gap: 12px;
+  padding: 0 12px 0 var(--chrome-inset-x); border-bottom: 1px solid var(--line); background: var(--head);
+  -webkit-app-region: drag;
+}
+.imm-top button, .imm-top select { -webkit-app-region: no-drag; }
+.imm-title { font: 700 var(--fs)/1 var(--font-head); letter-spacing: .02em; }
+.imm-part { color: var(--dim); }
+.imm-verdict { display: inline-flex; align-items: center; gap: 6px; }
+.imm-guide { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.imm-guide b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.imm-nav { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.imm-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 320px; }
+.imm-stage { position: relative; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.imm-stage .sv { flex: 1; min-height: 0; }
+.imm-live { position: absolute; z-index: 3; left: 22px; right: 22px; bottom: 22px; max-width: 520px; padding: 8px 10px; background: var(--paper); border: 1px solid var(--line2); }
+.imm-side { border-left: 1px solid var(--line); background: var(--paper); overflow: auto; padding: 12px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.imm-sec { display: flex; flex-direction: column; gap: 4px; }
+.imm-sec h2 { margin: 0; }
+.imm-sec p { margin: 0; }
+.imm-metrics { margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.imm-metrics div { display: flex; flex-direction: column; gap: 2px; }
+.imm-metrics dd { margin: 0; font: 700 16px/1.1 var(--font-head); font-variant-numeric: tabular-nums; }
+.imm-chart { border-top: 1px solid var(--line); padding-top: 8px; }
+.imm-solver, .imm-id { margin: 0; }
+@media (max-width: 900px) { .imm-body { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) 40%; } .imm-side { border-left: 0; border-top: 1px solid var(--line); } }

@@ -6,6 +6,7 @@ import { useState } from "preact/hooks";
 import type { JSX } from "preact";
 import { fmtClock } from "../../lib/format";
 import type { LogItem } from "./logModel";
+import { StudyCardSlot } from "./studycard";
 
 type Call = Extract<LogItem, { kind: "call" }>;
 
@@ -86,6 +87,7 @@ export function ToolCallRow(props: { item: Call; label?: string }): JSX.Element 
           </span>
         </div>
       )}
+      <StudyCardSlot call={item} />
       {open && <CallDetails item={item} />}
     </div>
   );

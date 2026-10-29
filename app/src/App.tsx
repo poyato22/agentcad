@@ -16,6 +16,7 @@ import { DrawingPage } from "./ui/pages/drawing";
 import { PrintPage } from "./ui/pages/print";
 import { SketchPage } from "./ui/pages/sketch";
 import { StudiesPage } from "./ui/pages/studies";
+import { ImmersiveRoot } from "./ui/pages/studies/immersive/Immersive";
 import { closeProfile, profileOpen, profileSection } from "./ui/profile/open";
 import { ProfilePane } from "./ui/profile/ProfilePane";
 import { SetupGate } from "./ui/setup/SetupGate";
@@ -72,6 +73,7 @@ export function App(): JSX.Element {
       <div class="region region-topbar" data-region="topbar"><TopBar /></div>
       <PageRegion />
       <ConsoleRegion />
+      <ImmersiveRoot />
       <NewRunDialog />
       <ProfilePane open={profileOpen.value} section={profileSection.value} onClose={closeProfile} />
       <SetupGate />
