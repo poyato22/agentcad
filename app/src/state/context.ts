@@ -5,6 +5,7 @@ import { effect } from "@preact/signals";
 import type { CoreClient } from "../api/client";
 import type { UiContext } from "../api/types";
 import { debug } from "../lib/log";
+import { agentChips, chipPicks } from "./agentChips";
 import { selectedPartId, selectedRunId } from "./store";
 
 export const CONTEXT_DEBOUNCE_MS = 150;
@@ -14,7 +15,8 @@ export function startContextSync(client: Pick<CoreClient, "putContext">, debounc
   let sentKey: string | null = null;
   let stopped = false;
   const dispose = effect(() => {
-    const ctx: UiContext = { selected_part_id: selectedPartId.value, selected_run_id: selectedRunId.value, picks: [] };
+    // picks: the parts-directory chips waiting for the next run ("Use with agent"), ids only
+    const ctx: UiContext = { selected_part_id: selectedPartId.value, selected_run_id: selectedRunId.value, picks: chipPicks(agentChips.value) };
     const key = JSON.stringify(ctx);
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => {

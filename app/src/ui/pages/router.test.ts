@@ -7,9 +7,9 @@ import {
 afterEach(() => { setPage(DEFAULT_PAGE); setConsoleCollapsed(false); });
 
 describe("page router", () => {
-  it("has the five pages in tab/shortcut order, Design first", () => {
-    expect(PAGES.map((p) => p.id)).toEqual(["design", "studies", "sketch", "drawing", "print"]);
-    expect(PAGES.map((p) => p.key)).toEqual(["1", "2", "3", "4", "5"]);
+  it("has the pages in tab/shortcut order, Design first", () => {
+    expect(PAGES.map((p) => p.id)).toEqual(["design", "studies", "sketch", "drawing", "print", "onshape", "directory"]);
+    expect(PAGES.map((p) => p.key)).toEqual(["1", "2", "3", "4", "5", "6", "7"]);
     expect(DEFAULT_PAGE).toBe("design");
   });
 

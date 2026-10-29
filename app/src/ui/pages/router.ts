@@ -9,7 +9,7 @@
 import { signal, type Signal } from "@preact/signals";
 import { isTrustedKey, registerShortcut } from "../../lib/keys";
 
-export type Page = "design" | "studies" | "sketch" | "drawing" | "print";
+export type Page = "design" | "studies" | "sketch" | "drawing" | "print" | "onshape" | "directory";
 
 export interface PageDef {
   id: Page;
@@ -18,16 +18,19 @@ export interface PageDef {
   /** Page header title (PageShell) and document-level heading. */
   title: string;
   /** ⌘<key> digit that navigates to this page. */
-  key: "1" | "2" | "3" | "4" | "5";
+  key: "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9";
 }
 
-/** Order is the tab order and the ⌘1–⌘5 order. Design is first and is the default. */
+/** Order is the tab order and the ⌘<digit> order. Design is first and is the default. */
 export const PAGES: readonly PageDef[] = [
   { id: "design", label: "Design", title: "Design", key: "1" },
   { id: "studies", label: "Studies", title: "Studies", key: "2" },
   { id: "sketch", label: "Sketch", title: "Sketch", key: "3" },
   { id: "drawing", label: "Drawing", title: "Drawing", key: "4" },
   { id: "print", label: "Print", title: "Print", key: "5" },
+  // Plan 5 A6
+  { id: "onshape", label: "Onshape", title: "Onshape", key: "6" },
+  { id: "directory", label: "Parts", title: "Parts directory", key: "7" },
 ];
 
 export const DEFAULT_PAGE: Page = "design";

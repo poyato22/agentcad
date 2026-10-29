@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CoreClient } from "../../api/client";
 import { stepSchema } from "../../api/schemas";
 import type { AgentRun, CoreStatusInfo, Step } from "../../api/types";
+import { addCatalogChip, agentChips, clearAgentChips } from "../../state/agentChips";
 import { actions, approvals, bindClient, coreStatus, focusedStepId, questions, resetStore, runs, selectedRunId, steps } from "../../state/store";
 import { resetCatalog } from "../dialogs/catalog";
 import { ConsolePane } from "./ConsolePane";
@@ -47,7 +48,7 @@ function client(over: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => { resetIds(); try { localStorage.removeItem(VIEW_KEY); } catch { /* none */ } resetConsoleView(); });
-afterEach(() => { cleanup(); resetStore(); resetCatalog(); resetConsoleView(); resetOffListRuns(); expandedFolds.value = new Set(); });
+afterEach(() => { cleanup(); resetStore(); resetCatalog(); resetConsoleView(); resetOffListRuns(); expandedFolds.value = new Set(); clearAgentChips(); });
 
 describe("conversation view (default)", () => {
   it("renders_the_real_steps_as_a_thread_with_compact_activity_lines", async () => {
@@ -284,6 +285,27 @@ describe("inline composer", () => {
     });
     await waitFor(() => expect(composerOpen.value).toBe(false));
     expect(selectedRunId.value).toBe("new1");
+  });
+
+  it("parts_directory_chips_show_and_their_ids_are_added_to_the_task", async () => {
+    const c = client();
+    addCatalogChip("motor_2207_class", "2207 brushless motor class");
+    addCatalogChip("bearing_608_deep_groove", "608 bearing");
+    render(<ConsolePane />);
+    await frame();
+    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    const form = screen.getByRole("form", { name: "New run" });
+    const chips = within(form).getByRole("list", { name: "Context for the agent" });
+    expect(chips.textContent).toContain("2207 brushless motor class");
+    fireEvent.click(within(chips).getByRole("button", { name: "Remove 608 bearing" }));
+    await waitFor(() => expect((within(form).getByLabelText("Agent") as HTMLSelectElement).value).toBe("verifier"));
+    await waitFor(() => expect(within(form).getByRole("button", { name: /^Model: Claude Code · opus/ })).toBeTruthy());
+    fireEvent.input(within(form).getByLabelText("Task"), { target: { value: "design a motor mount" } });
+    fireEvent.keyDown(within(form).getByLabelText("Task"), { key: "Enter" });
+    await waitFor(() => expect(c.createRun).toHaveBeenCalledTimes(1));
+    expect(c.createRun.mock.calls[0][0].prompt).toBe(
+      "design a motor mount\n\nParts directory items to use (read each with catalog_get): motor_2207_class");
+    await waitFor(() => expect(agentChips.value).toEqual([]));
   });
 
   it("a_model_that_cannot_run_blocks_start_and_says_why", async () => {

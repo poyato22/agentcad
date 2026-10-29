@@ -1,0 +1,31 @@
+/* Onshape page: the connect card, the documents grid (thumbnail tiles) and a document's elements. */
+.os-connect { max-width: 520px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; border: 1px solid var(--line2); padding: 16px; }
+.os-connect p { margin: 0; line-height: 1.5; }
+.os-connect-title { margin: 0; font: 700 14px/1.3 var(--font-head); }
+
+.os-toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.os-cost { font-size: var(--fs-small); }
+.os-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+.os-tile { display: flex; flex-direction: column; border: 1px solid var(--line2); background: var(--paper); height: 100%; }
+.os-tile:hover { border-color: var(--dim); }
+.os-tile-open {
+  display: flex; flex-direction: column; gap: 3px; text-align: left; background: transparent; border: 0; padding: 0 0 6px;
+  cursor: pointer; color: var(--ink); flex: 1;
+}
+.os-tile-open:focus-visible { outline: 1px solid var(--blue); outline-offset: -1px; }
+.os-thumb { display: block; width: 100%; aspect-ratio: 300 / 170; object-fit: contain; background: var(--vp); border-bottom: 1px solid var(--line); }
+.os-thumb-empty { display: flex; align-items: center; justify-content: center; color: var(--faint); font: 700 22px/1 var(--font-head); }
+.os-tile-name { padding: 0 8px; font-weight: 600; overflow-wrap: anywhere; }
+.os-tile-meta { padding: 0 8px; font-size: var(--fs-small); }
+.os-tile-link { padding: 4px 8px 6px; font-size: var(--fs-small); color: var(--dim); border-top: 1px solid var(--line); }
+.os-tile-link:hover { color: var(--ink); }
+.os-more { margin-top: 12px; }
+
+.os-doc { display: flex; flex-direction: column; gap: 10px; max-width: 760px; }
+.os-doc-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.os-doc-head .btn { text-decoration: none; }
+.os-doc-name { margin: 0; font: 700 14px/1.3 var(--font-head); flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.os-els { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+.os-el { display: grid; grid-template-columns: 100px minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.os-el-name { overflow-wrap: anywhere; }
+.os-el-result { grid-column: 1 / -1; margin: 0; }
