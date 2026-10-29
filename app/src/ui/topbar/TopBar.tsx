@@ -4,6 +4,7 @@ import { runs } from "../../state/store";
 import { Button } from "../common/Button";
 import { ActivityPill } from "./ActivityPill";
 import { Breadcrumb } from "./Breadcrumb";
+import { BudgetMeter } from "./BudgetMeter";
 import { ModeTabs } from "./ModeTabs";
 import { ProfileButton } from "./ProfileButton";
 import { StatusLights } from "./StatusLights";
@@ -22,8 +23,7 @@ export function TopBar(): JSX.Element {
       <ModeTabs />
       <div class="topbar-right">
         <ActivityPill />
-        {/* Slot for Task A6's Onshape budget meter. */}
-        <div class="budget-slot" data-slot="budget" />
+        <div class="budget-slot" data-slot="budget"><BudgetMeter /></div>
         <StatusLights />
         <ProfileButton />
         <Button variant={anyRunning ? "danger" : "default"} class="stop-all" title="Stop all runs (⌘⇧.)" aria-busy={busy || undefined}

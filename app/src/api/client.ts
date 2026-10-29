@@ -19,9 +19,13 @@ import type {
 import {
   drawingInfoSchema, printCallSchema, printCapabilitiesSchema, printerSchema, printerStatusSchema, printStartSchema, sliceSchema, sliceStartSchema,
 } from "./schemas";
+import {
+  activeBuildSchema, buildRefSchema, catalogItemSchema, onshapeBudgetSchema, onshapeDocSchema, onshapeElementSchema, partResultSchema,
+  type BuildRef, type CatalogEdit, type CatalogItem, type OnshapeBudget, type OnshapeDoc, type OnshapeElement, type PartResult,
+} from "./directory";
 import type { DrawingInfo, NewPrinterBody, PrintCall, PrintCapabilities, Printer, PrinterStatus, PrintStart, Slice, SliceStart } from "./types";
 
-type Method = "GET" | "POST" | "PUT" | "DELETE";
+type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 /** The fields PUT /profile may carry: core profile.Profile minus units, setup_completed_at and
  *  schema_version, which the app never writes. */
@@ -236,6 +240,68 @@ export class CoreClient {
   /** Stores a sketch (strokes in mm, dimensions, notes, optional photo + render); start a run with its id. */
   postSketch(body: SketchUpload): Promise<SketchSummary> { return this.json("POST", "/sketches", sketchSummarySchema, { body }); }
   getSketch(id: string): Promise<SketchSummary> { return this.json("GET", `/sketches/${enc(id)}`, sketchSummarySchema); }
+
+  // ---- Plan 5 A6: Onshape browser, live budget, parts directory (server/onshape_api.py, catalog_api.py)
+
+  /** One page (≤ 20), newest change first; a shorter page is the last. One Onshape call. */
+  onshapeDocuments(opts: { q?: string; offset?: number; limit?: number } = {}): Promise<OnshapeDoc[]> {
+    return this.json("GET", "/onshape/documents", z.array(onshapeDocSchema), { query: { q: opts.q || undefined, owner: "me", offset: opts.offset, limit: opts.limit } });
+  }
+  /** Part Studios and Assemblies of a workspace. One Onshape call. */
+  onshapeElements(did: string, wid: string): Promise<OnshapeElement[]> {
+    return this.json("GET", `/onshape/documents/${enc(did)}/elements`, z.array(onshapeElementSchema), { query: { wid } });
+  }
+  /** A document thumbnail through the core's proxy (cached there; the first fetch costs one call).
+   *  Only the core's own `/onshape/thumbnail?href=` paths from onshapeDocuments() are fetched. */
+  async onshapeThumbnail(thumbnailUrl: string): Promise<Blob> {
+    const m = /^\/onshape\/thumbnail\?href=([^&#]+)$/.exec(thumbnailUrl);
+    if (!m) throw new CoreError("invalid_input", "not a core thumbnail path");
+    const res = await this.request("GET", "/onshape/thumbnail", { query: { href: decodeURIComponent(m[1]) } });
+    if (!res.ok) throw await toError(res);
+    const type = (res.headers.get("content-type") ?? "").split(";")[0].trim();
+    if (!/^image\/(png|jpeg|gif|webp)$/.test(type)) throw new CoreError("validation", "thumbnail is not an image");
+    return new Blob([await res.arrayBuffer()], { type });
+  }
+  /** Mirrors a Part Studio or Assembly into a build as a bounding-box envelope (two Onshape calls). */
+  onshapeImport(body: { did: string; wid: string; eid: string; project_id: string | null }): Promise<PartResult> {
+    return this.json("POST", "/onshape/import", partResultSchema, { body });
+  }
+  onshapeBudget(runId?: string | null): Promise<OnshapeBudget> {
+    return this.json("GET", "/onshape/budget", onshapeBudgetSchema, { query: { run_id: runId ?? undefined } });
+  }
+
+  catalogCategories(): Promise<string[]> { return this.json("GET", "/catalog/categories", z.array(z.string())); }
+  catalogSearch(opts: { q?: string; category?: string | null; limit?: number } = {}): Promise<CatalogItem[]> {
+    return this.json("GET", "/catalog/search", z.array(catalogItemSchema), { query: { q: opts.q || undefined, category: opts.category || undefined, limit: opts.limit } });
+  }
+  catalogItem(id: string): Promise<CatalogItem> { return this.json("GET", `/catalog/items/${enc(id)}`, catalogItemSchema); }
+  /** Fetches the page in the core and SAVES the item at once (review edits go through
+   *  catalogEdit, Discard through catalogDelete). A URL already in the directory comes back
+   *  unchanged with `existing: true` unless `refresh` (only the app may ask for that). */
+  catalogImport(body: { url: string; project_id?: string | null; refresh?: boolean }): Promise<CatalogItem> {
+    return this.json("POST", "/catalog/import", catalogItemSchema, { body });
+  }
+  catalogEdit(id: string, patch: CatalogEdit): Promise<CatalogItem> {
+    return this.json("PATCH", `/catalog/items/${enc(id)}`, catalogItemSchema, { body: patch });
+  }
+  /** URL items only (built-ins are refused). */
+  async catalogDelete(id: string): Promise<void> { await this.json("DELETE", `/catalog/items/${enc(id)}`, okSchema); }
+  catalogInsert(id: string, projectId: string | null): Promise<PartResult> {
+    return this.json("POST", `/catalog/items/${enc(id)}/insert`, partResultSchema, { body: projectId ? { project_id: projectId } : {} });
+  }
+  /** Domains an agent may import from without an approval card (profile catalog_allowed_domains). */
+  allowedDomains(): Promise<string[]> { return this.json("GET", "/catalog/allowed_domains", z.array(z.string())); }
+  allowDomain(domain: string): Promise<string[]> { return this.json("POST", "/catalog/allowed_domains", z.array(z.string()), { body: { domain } }); }
+  disallowDomain(domain: string): Promise<string[]> { return this.json("DELETE", `/catalog/allowed_domains/${enc(domain)}`, z.array(z.string())); }
+
+  /** Live builds for the pickers (GET /projects without the trashed ones) and the active build. */
+  async buildChoices(): Promise<{ builds: BuildRef[]; active: string | null }> {
+    const [all, prof] = await Promise.all([
+      this.json("GET", "/projects", z.array(buildRefSchema)),
+      this.json("GET", "/profile", activeBuildSchema).catch(() => ({ active_project_id: null })),
+    ]);
+    return { builds: all.filter((b) => b.trashed_at === null), active: prof.active_project_id };
+  }
 
   // ---- internals
 

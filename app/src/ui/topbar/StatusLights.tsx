@@ -4,6 +4,8 @@ import { useEffect, useState } from "preact/hooks";
 import type { ShellCoreStatus } from "../../api/connection";
 import type { StreamState } from "../../api/events";
 import type { CoreStatusInfo, Printer, PrinterStatus } from "../../api/types";
+import type { OnshapeBudget } from "../../api/directory";
+import { budgetLevel, onshapeBudget } from "../../state/onshapeBudget";
 import { printersRev } from "../../state/printers";
 import { needsYou } from "../../state/selection";
 import { actions, conn, coreStatus, runs, shellStatus } from "../../state/store";
@@ -49,8 +51,14 @@ function coreTitle(shell: ShellCoreStatus, stream: StreamState, tone: LedTone, l
   return tone === "green" ? "core connected" : `core ${stream}`;
 }
 
-export function onshapeTone(s: CoreStatusInfo | null): { tone: LedTone; text: string } {
+/** `live`: the budget meter's figures (onshape_budget events), newer than /status's when present. */
+export function onshapeTone(s: CoreStatusInfo | null, live: OnshapeBudget | null = null): { tone: LedTone; text: string } {
   if (!s || s.onshape !== "connected") return { tone: "faint", text: "not set up" };
+  if (live) {
+    const level = budgetLevel(live);
+    return { tone: level === "limit" ? "red" : level === "warn" ? "amber" : "green",
+      text: `connected · ${live.used_year.toLocaleString("en-US")}/${live.limit_year.toLocaleString("en-US")}` };
+  }
   const n = s.onshape_calls_year;
   const cap = s.onshape_cap_year;
   const tone: LedTone = cap > 0 && n >= cap ? "red" : cap > 0 && n >= cap * 0.8 ? "amber" : "green";
@@ -67,7 +75,7 @@ export function StatusLights(): JSX.Element {
   const lost = useCoreLost(shell, stream);
   const tone = coreTone(shell, stream, lost);
   const restartable = tone === "red";
-  const os = onshapeTone(coreStatus.value);
+  const os = onshapeTone(coreStatus.value, onshapeBudget.value);
   let running = 0;
   for (const r of runs.value.values()) if (r.status === "running") running++;
   const needs = needsYou.value.count;

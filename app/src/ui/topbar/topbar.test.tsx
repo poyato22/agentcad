@@ -4,7 +4,7 @@ import type { CoreClient } from "../../api/client";
 import type { AgentRun, Approval, CancelAllResult, CoreStatusInfo } from "../../api/types";
 import { isAutoNumbered } from "../../lib/names";
 import { approvals, bindClient, conn, coreStatus, parts, questions, resetStore, retiredApprovals, runs, selectedPartId, shellStatus } from "../../state/store";
-import { activePage, setPage } from "../pages/router";
+import { activePage, PAGES, setPage } from "../pages/router";
 import { Breadcrumb } from "./Breadcrumb";
 import { ModeTabs } from "./ModeTabs";
 import { StatusLights } from "./StatusLights";
@@ -57,12 +57,12 @@ describe("ModeTabs", () => {
     await waitFor(() => expect(document.activeElement).toBe(tab("Studies")));
     fireEvent.keyDown(tab("Studies"), { key: "ArrowLeft" });
     fireEvent.keyDown(tab("Design"), { key: "ArrowLeft" });   // wraps to the last
-    expect(activePage.value).toBe("print");
-    fireEvent.keyDown(tab("Print"), { key: "Home" });
+    expect(activePage.value).toBe(PAGES[PAGES.length - 1].id);
+    fireEvent.keyDown(tab(PAGES[PAGES.length - 1].label), { key: "Home" });
     expect(activePage.value).toBe("design");
     fireEvent.keyDown(tab("Design"), { key: "End" });
-    expect(activePage.value).toBe("print");
-    await waitFor(() => expect(tab("Print").getAttribute("tabindex")).toBe("0"));
+    expect(activePage.value).toBe(PAGES[PAGES.length - 1].id);
+    await waitFor(() => expect(tab(PAGES[PAGES.length - 1].label).getAttribute("tabindex")).toBe("0"));
   });
 });
 
