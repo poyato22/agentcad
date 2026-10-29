@@ -15,6 +15,11 @@
 .imm-verdict { display: inline-flex; align-items: center; gap: 6px; }
 .imm-guide { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
 .imm-guide b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.imm-needs {
+  -webkit-app-region: no-drag; font: inherit; font-size: var(--fs-small); color: var(--blue2); background: var(--blue-tint);
+  border: 1px solid var(--blue); padding: 4px 8px; cursor: pointer; white-space: nowrap;
+}
+.imm-needs:focus-visible { outline: 1px solid var(--blue); outline-offset: 2px; }
 .imm-nav { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
 .imm-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 320px; }
 .imm-stage { position: relative; min-width: 0; min-height: 0; display: flex; flex-direction: column; }

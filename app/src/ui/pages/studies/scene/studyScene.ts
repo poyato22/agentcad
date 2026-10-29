@@ -37,8 +37,10 @@ export interface ResultInfo {
   modes: { name: string; freq_hz?: number; factor?: number }[];
 }
 
+type SceneRenderer = RendererLike & { localClippingEnabled?: boolean; forceContextLoss?: () => void };
+
 export interface StudySceneDeps {
-  createRenderer?: (canvas: HTMLCanvasElement) => RendererLike & { localClippingEnabled?: boolean };
+  createRenderer?: (canvas: HTMLCanvasElement) => SceneRenderer;
   reducedMotion?: () => boolean;
   colors?: () => SceneColors;
   now?: () => number;
@@ -74,7 +76,7 @@ export interface StudySceneHandle {
   dispose(): void;
 }
 
-function defaultRenderer(canvas: HTMLCanvasElement): RendererLike & { localClippingEnabled?: boolean } {
+function defaultRenderer(canvas: HTMLCanvasElement): SceneRenderer {
   return new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
 }
 
@@ -124,6 +126,12 @@ export function createStudyScene(canvas: HTMLCanvasElement, deps: StudySceneDeps
   camera.lookAt(0, 0, 0);
   const controls = new OrbitControls(camera, canvas);
   controls.enableDamping = false;
+  // the browser may drop the GL context (too many contexts, GPU reset): keep the canvas and
+  // redraw when it comes back instead of leaving a blank view
+  const onLost = (e: Event) => { e.preventDefault(); };
+  const onRestored = () => { requestRender(); };
+  canvas.addEventListener("webglcontextlost", onLost);
+  canvas.addEventListener("webglcontextrestored", onRestored);
 
   let width = 1; let height = 1;
   let frame = 0; let loop = 0; let frames = 0;
@@ -550,7 +558,12 @@ export function createStudyScene(canvas: HTMLCanvasElement, deps: StudySceneDeps
       result = null;
       part?.dispose();
       part = null;
+      canvas.removeEventListener("webglcontextlost", onLost);
+      canvas.removeEventListener("webglcontextrestored", onRestored);
       renderer.dispose();
+      // release the GL context now, not at GC: browsers cap live contexts (~16 in Chrome) and drop
+      // the oldest (the thumbnail renderer, the page's own view) when a new one is made
+      renderer.forceContextLoss?.();
     },
   };
 }

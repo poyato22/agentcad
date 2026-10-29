@@ -66,7 +66,10 @@ export interface FakeSims {
 export function simsFrom(s: SimScenario | undefined): FakeSims {
   const ccx = s?.ccx ?? true;
   const list = s?.records === "fixtures" ? [REAL.done, REAL.failed] : (s?.records ?? []);
-  if (s?.studies) list.push(...STUDY_TYPE_IDS.map((t) => REAL_STUDY.records[t] as unknown as SimRecord));
+  if (s?.studies) {
+    list.push(...STUDY_TYPE_IDS.map((t) => REAL_STUDY.records[t] as unknown as SimRecord));
+    list.push(...REAL_STUDY.reviewRecords.map((r) => r as unknown as SimRecord));
+  }
   return {
     ccx,
     records: new Map(list.map((r) => [r.sim_id, structuredClone(r)])),

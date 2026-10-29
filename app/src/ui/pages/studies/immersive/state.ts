@@ -8,7 +8,7 @@ export interface ImmersiveOrigin { agent: string | null; runId: string | null; r
 export interface ImmersiveTarget {
   simId: string | null;
   /** A study still starting (no sim_id yet): its run, type and part, to follow its progress. */
-  pending?: { runId: string; type: string | null; partId: string | null; sinceTs: number } | null;
+  pending?: { runId: string; callId?: string | null; type: string | null; partId: string | null; sinceTs: number } | null;
   ids: readonly string[];
   origin?: ImmersiveOrigin | null;
 }

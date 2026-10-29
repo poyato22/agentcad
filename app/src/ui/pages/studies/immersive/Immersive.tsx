@@ -5,9 +5,11 @@
 // which agent ran it and why. Esc closes; ⌘[ / ⌘] step through the other studies of the same
 // review, run or history. The top strip keeps clear of the macOS traffic lights. Text only.
 import type { JSX } from "preact";
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import type { StudyCharts, StudyRecord } from "../../../../api/studies";
+import { needsYou } from "../../../../state/selection";
 import { parts, runs } from "../../../../state/store";
+import { setConsoleCollapsed } from "../../router";
 import { Button } from "../../../common/Button";
 import { Led } from "../../../common/Led";
 import { useFocusTrap } from "../../../common/focusTrap";
@@ -15,7 +17,7 @@ import { CheckRows, PhaseBar } from "../../../console/studycard/StudyCard";
 import { StudyChart } from "../charts/StudyChart";
 import { studyData, type StudyData } from "../data";
 import { isTerminal, liveProgress, progressForCall } from "../live";
-import { fidelityText, fmtMetric, phaseText, typeName, VERDICT_TEXT, verdictTone } from "../model";
+import { fmtMetric, honesty, phaseText, typeName, VERDICT_TEXT, verdictTone } from "../model";
 import { showInStudies } from "../nav";
 import { solverText } from "../ResultPanel";
 import { StudyView, type StudyViewDeps } from "../StudyView";
@@ -38,7 +40,8 @@ function Immersive({ target, deps }: { target: ImmersiveTarget; deps: ImmersiveD
   const [charts, setCharts] = useState<StudyCharts | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // a study still starting: its sim_id arrives with its first sim_progress
+  // a study still starting: its sim_id arrives with its first sim_progress of that call (never a
+  // guess: progressForCall answers null when it cannot tell which study is this one)
   const pend = target.pending ?? null;
   const pendLive = pend ? progressForCall(liveProgress.value, pend) : null;
   useEffect(() => { if (target.simId === null && pendLive) resolvePending(pendLive.sim_id); }, [pendLive?.sim_id]);
@@ -47,47 +50,65 @@ function Immersive({ target, deps }: { target: ImmersiveTarget; deps: ImmersiveD
   const live = simId ? liveProgress.value.get(simId) ?? null : pendLive;
   const liveDone = live ? isTerminal(live) : false;
   useEffect(() => {
-    if (!simId) { setRec(null); return; }
+    setRec(null); setCharts(null); setError(null);
+    if (!simId) return;
     let on = true;
-    setError(null);
     if (liveDone) data.forget(simId);
     void data.record(simId).then((r) => {
-      if (!on) return;
+      if (!on || r.sim_id !== simId) return;
       setRec(r);
       if (r.status === "done") void data.charts(simId).then((c) => { if (on) setCharts(c); }, () => { if (on) setCharts(null); });
-      else setCharts(null);
     }, (e: unknown) => { if (on) setError(e instanceof Error ? e.message : String(e)); });
     return () => { on = false; };
   }, [simId, liveDone]);
 
-  // keys: Esc closes; ⌘[ / ⌘] step (one study per press, not on auto-repeat)
-  useEffect(() => {
+  // keys: Esc closes (and goes to a pending approval); ⌘[ / ⌘] step (one study per press). Attached
+  // before paint, and the view says data-ready once it listens.
+  const [ready, setReady] = useState(false);
+  useLayoutEffect(() => {
     const k = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         // a face pick or an open select handles its own Escape first
         if (e.defaultPrevented) return;
-        e.preventDefault(); closeImmersive(); return;
+        e.preventDefault();
+        leave(); return;
       }
       if (e.metaKey && (e.key === "[" || e.key === "]") && !e.repeat) { e.preventDefault(); stepImmersive(e.key === "]" ? 1 : -1); }
     };
     window.addEventListener("keydown", k);
+    setReady(true);
     return () => window.removeEventListener("keydown", k);
   }, []);
 
-  // the core sends no "done" progress: a running record is read again until it settles
+  // a running record is read again until it settles: at once when the core's terminal
+  // sim_progress (done / failed / cancelled) arrives (the effect above), else as a fallback poll
+  // that backs off (0.8 s doubling to 8 s) and gives up after a few errors
+  const fails = useRef(0);
+  const [pollTick, setPollTick] = useState(0);
   useEffect(() => {
-    if (!simId || rec?.sim_id !== simId || rec.status !== "running") return;
+    if (!simId || liveDone || rec?.sim_id !== simId || rec.status !== "running") return;
+    let on = true;
+    const delay = Math.min(8000, 800 * 2 ** fails.current);
     const t = setTimeout(() => {
       data.forget(simId);
       void data.record(simId).then((r) => {
+        if (!on || r.sim_id !== simId) return; // a stale answer for a study no longer shown
+        fails.current = 0;
         setRec(r);
-        if (r.status === "done") void data.charts(simId).then(setCharts, () => setCharts(null));
-      }, () => { /* tried again on the next tick */ setRec({ ...rec }); });
-    }, 800);
-    return () => clearTimeout(t);
-  }, [simId, rec]);
+        if (r.status === "done") void data.charts(simId).then((c) => { if (on) setCharts(c); }, () => { if (on) setCharts(null); });
+        else setPollTick((n) => n + 1);
+      }, (e: unknown) => {
+        if (!on) return;
+        fails.current++;
+        if (fails.current >= 5) setError(`lost track of the study: ${e instanceof Error ? e.message : String(e)}`);
+        else setPollTick((n) => n + 1);
+      });
+    }, delay);
+    return () => { on = false; clearTimeout(t); };
+  }, [simId, rec, liveDone, pollTick]);
 
-  const running = rec ? rec.status === "running" : true;
+  const failedToLoad = error !== null && rec === null;
+  const running = failedToLoad ? false : rec ? rec.status === "running" : true;
   const shownRec = rec && rec.status === "done" ? rec : null;
   const card = rec?.card ?? null;
   const type = rec?.type ?? pend?.type ?? null;
@@ -100,17 +121,35 @@ function Immersive({ target, deps }: { target: ImmersiveTarget; deps: ImmersiveD
   const idx = simId ? target.ids.indexOf(simId) : -1;
   const phase = running && live ? live.phase : rec?.phase ?? null;
   const caption = running ? `${typeName(type)} · ${phaseText(phase)}${live?.detail ? ` · ${live.detail}` : ""}` : null;
+  // the honesty labels in every state, the running one included
+  const hon = honesty(type, card, { fidelityClass: rec?.fidelity_class ?? null, settings: rec?.settings ?? null });
+  const needs = needsYou.value.count;
+  // Esc with something waiting for the human: close and take them to it in the console
+  function leave(): void {
+    if (needsYou.peek().count > 0) setConsoleCollapsed(false);
+    closeImmersive();
+  }
+  const status = failedToLoad ? "error" : rec?.status ?? "starting";
 
   return (
-    <div class="imm" ref={root} role="dialog" aria-modal="true" aria-label={`Immersive view · ${typeName(type)} study${partId ? ` of ${partId}` : ""}`} data-testid="immersive" data-sim={simId ?? ""} data-status={rec?.status ?? "starting"}>
+    <div class="imm" ref={root} role="dialog" aria-modal="true" aria-label={`Immersive view · ${typeName(type)} study${partId ? ` of ${partId}` : ""}`}
+      data-testid="immersive" data-sim={simId ?? ""} data-status={status} data-ready={ready ? "true" : "false"}>
       <header class="imm-top">
-        <span class="imm-title">{typeName(type)}</span>
+        <span class="imm-title">{type ? typeName(type) : "Study"}</span>
         {partId && <span class="imm-part text">{partId}</span>}
         <span class="imm-verdict">
-          {running ? <Led tone="blue" title="running" /> : <Led tone={verdictTone(verdict)} />}
-          <span class={`scard-verdict${verdict ? ` tone-${verdictTone(verdict)}` : ""}`}>{running ? "running" : verdict ? VERDICT_TEXT[verdict] : rec?.status ?? ""}</span>
+          {running ? <Led tone="blue" title="running" /> : <Led tone={failedToLoad ? "red" : verdictTone(verdict)} />}
+          <span class={`scard-verdict${verdict ? ` tone-${verdictTone(verdict)}` : ""}`}>{failedToLoad ? "could not load" : running ? "running" : verdict ? VERDICT_TEXT[verdict] : rec?.status ?? ""}</span>
         </span>
-        <span class="imm-guide"><span class="scard-guide">GUIDE ONLY</span>{card && <b class="text" data-testid="fidelity-note">{fidelityText(card)}</b>}</span>
+        <span class="imm-guide">
+          <span class="scard-guide">GUIDE ONLY</span>
+          <b class="text" data-testid="fidelity-note">{hon.fidelity}</b>
+          {hon.band && <span class="text" data-testid="error-band">{hon.band}</span>}
+        </span>
+        {needs > 0 && (
+          <button type="button" class="imm-needs needs-you" data-needs-you data-testid="imm-needs-you" onClick={leave}
+            aria-label={`${needs} waiting for you in the console (Esc)`}>{needs} needs you · Esc</button>
+        )}
         <span class="imm-nav">
           {target.ids.length > 1 && (
             <>
@@ -130,7 +169,7 @@ function Immersive({ target, deps }: { target: ImmersiveTarget; deps: ImmersiveD
           <StudyView partId={partId} mtime={part?.mtime} record={shownRec} faces={part?.metrics?.face_list ?? []} immersive liveCaption={caption} deps={deps.view} />
         </div>
         <aside class="imm-side" aria-label="Study details">
-          {error && <p class="tone-red text" role="alert">Could not open the study: {error}</p>}
+          {error && <p class="tone-red text" role="alert" data-testid="imm-error">Could not open the study: {error}</p>}
           {(agent || reason) && (
             <section class="imm-sec" data-testid="imm-why">
               <h2 class="label">Why</h2>

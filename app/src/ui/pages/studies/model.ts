@@ -80,6 +80,41 @@ export function fidelityText(card: Pick<StudyCard, "fidelity_note" | "fidelity_c
   }
 }
 
+/** Each type's fidelity class (core sim/studies.py STUDY_TYPES), known before any result. */
+export const FIDELITY_BY_TYPE: Record<StudyType, string> = {
+  static: "fem", modal: "fem", buckling: "fem", thermal: "fem", drop: "fem_estimate", wind: "cfd_lbm",
+};
+/** Validated model error of the built-in wind solver by refinement (core sim/cfd/validation.py). */
+export const WIND_MODEL_ERROR: Record<number, number> = { 1: 40, 2: 30, 3: 15, 4: 15 };
+
+export interface Honesty {
+  /** "low fidelity · ±30% (validated)", "estimate (equivalent static load F = m g k)", "linear FEM". */
+  fidelity: string;
+  /** The error band, always said: "error band ±0.7%", "±30% (validated)", or when it is known. */
+  band: string;
+}
+
+/** The labels every study card and view carries in every state (running, failed, done). */
+export function honesty(type: string | null | undefined, card: Pick<StudyCard, "fidelity_note" | "fidelity_class" | "metrics"> | null,
+  fallback: { fidelityClass?: string | null; settings?: unknown } = {}): Honesty {
+  const cls = card?.fidelity_class ?? fallback.fidelityClass ?? (type && type in FIDELITY_BY_TYPE ? FIDELITY_BY_TYPE[type as StudyType] : null);
+  const band = card?.metrics.find((m) => m.key === "error_band_pct");
+  const bandPct = typeof band?.value === "number" ? band.value : null;
+  const fidelity = card?.fidelity_note ? card.fidelity_note : fidelityText({ fidelity_note: null, fidelity_class: cls });
+  if (bandPct !== null) {
+    const v = `±${sig3(bandPct)}%`;
+    // the wind note already carries its validated band; every other note gets it next to it
+    return { fidelity, band: card?.fidelity_note?.includes(v) ? "" : type === "wind" ? `${v} (validated)` : `error band ${v}` };
+  }
+  if (type === "wind") {
+    const s = (typeof fallback.settings === "object" && fallback.settings !== null ? fallback.settings : {}) as Record<string, unknown>;
+    const level = typeof s.refinement === "number" ? s.refinement : 2;
+    const pct = WIND_MODEL_ERROR[level];
+    return { fidelity: level === 1 ? "low fidelity (preview)" : fidelity, band: pct ? `±${pct}% (validated)` : "model error band after the run" };
+  }
+  return { fidelity, band: "error band from coarse vs fine mesh, after the solve" };
+}
+
 // ---- phases
 
 export const PHASES = ["queued", "mesh", "solve", "post"] as const;

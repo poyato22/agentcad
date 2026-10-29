@@ -315,7 +315,8 @@ export class StudiesController {
         this.active.value = null;
         return;
       }
-      this.schedule(runId);
+      // network blips: back off (the poll interval doubling, at most 8 s)
+      this.schedule(runId, Math.min(8000, this.pollMs * 2 ** Math.min(this.failures, 4)));
     }
   }
 

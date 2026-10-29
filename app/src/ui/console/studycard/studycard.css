@@ -45,8 +45,10 @@
 
 .scard-chart { min-height: 20px; }
 .scard-chart-title { font-size: var(--fs-small); margin-bottom: 2px; }
-.scard-warn summary { cursor: pointer; color: var(--dim); display: flex; align-items: center; gap: 6px; }
-.scard-warn ul { margin: 4px 0 0; padding-left: 16px; }
+.scard-warn { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; font-size: var(--fs-small); }
+.scard-warn li { display: flex; gap: 6px; align-items: baseline; }
+.scard-band { color: var(--ink); }
+.scard-awaiting { margin: 0; color: var(--blue2); border-left: 2px solid var(--blue); padding-left: 6px; }
 .scard-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .scard-id { margin-left: auto; font-size: var(--fs-small); }
 

@@ -178,6 +178,13 @@ async def dump(out: Path) -> None:
                     by_type[s["type"]] = s["sim_id"]
             assert set(by_type) == {"static", "modal", "buckling", "thermal", "drop", "wind"}, \
                 listed
+            # the design review's own studies (its rows link to them)
+            review = next(s for s in steps if s["kind"] == "tool_result"
+                          and s["payload"].get("name") == "design_review")
+            child_ids = [x["sim_id"] for x in review["payload"]["output"]["data"]["studies"]
+                         if x.get("sim_id")]
+            write("study_review_records.json",
+                  [(await call("GET", f"/sims/{sid}")).json() for sid in child_ids])
             for typ, sid in by_type.items():
                 write(f"study_{typ}.json", (await call("GET", f"/sims/{sid}")).json())
                 write(f"study_{typ}_charts.json", (await call("GET", f"/sims/{sid}/charts")).json())

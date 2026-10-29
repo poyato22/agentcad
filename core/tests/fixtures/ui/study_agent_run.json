@@ -1,5 +1,5 @@
 {
-  "id": "a5d2fd1d1106",
+  "id": "2dc26015c93a",
   "parent_id": null,
   "agent": "sim",
   "provider": "fake",
@@ -11,16 +11,16 @@
   "input_tokens": 0,
   "output_tokens": 0,
   "usd": 0.0,
-  "created_at": 1793306246.679019,
-  "updated_at": 1793306261.894287,
-  "owner_pid": 55987,
+  "created_at": 1793308700.19411,
+  "updated_at": 1793308712.058478,
+  "owner_pid": 40963,
   "external": false,
   "session_ref": null,
-  "project_id": "c56b328e21b5",
+  "project_id": "146df0a5eae9",
   "title": null,
   "pinned": false,
   "archived": false,
-  "last_activity_at": 1793306259.587847,
+  "last_activity_at": 1793308710.244386,
   "parent_run_id": null,
   "cost": {
     "usd": 0.0,
@@ -29,6 +29,6 @@
   "activity": {
     "state": "done",
     "detail": "",
-    "since": 1793306261.894287
+    "since": 1793308712.058478
   }
 }

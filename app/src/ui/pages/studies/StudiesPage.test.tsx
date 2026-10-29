@@ -98,9 +98,18 @@ describe("Studies page", () => {
     const face = document.getElementById("sf-load_cases-1-loads-0-face") as HTMLSelectElement;
     expect([...face.options].map((o) => o.value)).toEqual(expect.arrayContaining(["top", "x-max", "f0", "f1"]));
     fireEvent.change(face, { target: { value: "f1" } });
-    fireEvent.click(within(cases()[1]).getAllByLabelText(/Move .* up/)[0]);
+    const row = cases()[1];
+    fireEvent.click(within(row).getAllByLabelText(/Move .* up/)[0]);
     await settle();
     expect((document.getElementById("sf-load_cases-0-loads-0-face") as HTMLSelectElement).value).toBe("f1");
+    // rows are keyed by identity, not position: the moved row is the same element, still selected
+    expect(cases()[0]).toBe(row);
+    expect(cases()[0].dataset.selected).toBe("true");
+    // removing the selected case moves the selection to its neighbour
+    fireEvent.click(within(cases()[0]).getAllByLabelText(/^Remove /)[0]);
+    await settle();
+    expect(cases()).toHaveLength(1);
+    expect(cases()[0].dataset.selected).toBe("true");
   });
 
   it("a bad range is said at its field and nothing is sent", async () => {

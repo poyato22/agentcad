@@ -6,7 +6,7 @@
 import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { StudyCard as Card, StudyChart as Chart, StudyCheck } from "../../../api/studies";
-import { runs } from "../../../state/store";
+import { approvals, runs } from "../../../state/store";
 import { Button } from "../../common/Button";
 import { Led } from "../../common/Led";
 import { cardChart } from "../../pages/studies/charts/chartModel";
@@ -14,10 +14,10 @@ import { StudyChart } from "../../pages/studies/charts/StudyChart";
 import { studyData } from "../../pages/studies/data";
 import { openImmersive } from "../../pages/studies/immersive/state";
 import { liveProgress, progressForCall } from "../../pages/studies/live";
-import { fidelityText, fmtMetric, fmtValue, phaseText, PHASES, progressFraction, typeName, VERDICT_TEXT, verdictTone } from "../../pages/studies/model";
+import { fmtMetric, honesty, fmtValue, phaseText, PHASES, progressFraction, typeName, VERDICT_TEXT, verdictTone } from "../../pages/studies/model";
 import { showInStudies } from "../../pages/studies/nav";
 import { cachedThumbnail, thumbnail } from "../../pages/studies/scene/thumbnails";
-import { kindText, type StudyCallView } from "./cardModel";
+import { bareToolName, kindText, type StudyCallView } from "./cardModel";
 import "./studycard.css";
 
 /** Fetch once the element is (nearly) on screen; immediately where IntersectionObserver is missing. */
@@ -109,7 +109,7 @@ export interface StudyCardProps {
 export function StudyCard({ view, siblings = [] }: StudyCardProps): JSX.Element {
   const card: Card | null = view.card;
   const live = view.running && view.runId
-    ? progressForCall(liveProgress.value, { runId: view.runId, type: view.type, partId: view.partId, sinceTs: view.startedTs })
+    ? progressForCall(liveProgress.value, { runId: view.runId, callId: view.callId, type: view.type, partId: view.partId, sinceTs: view.startedTs })
     : view.simId ? liveProgress.value.get(view.simId) ?? null : null;
   const simId = view.simId ?? live?.sim_id ?? null;
   const status = card?.status ?? (view.running ? "running" : view.failed ? "failed" : "done");
@@ -119,12 +119,15 @@ export function StudyCard({ view, siblings = [] }: StudyCardProps): JSX.Element 
   const done = status === "done";
   const open = () => openImmersive({
     simId, ids: siblings.length ? siblings : simId ? [simId] : [],
-    pending: simId ? null : view.runId ? { runId: view.runId, type: view.type, partId: view.partId, sinceTs: view.startedTs } : null,
+    pending: simId ? null : view.runId ? { runId: view.runId, callId: view.callId, type: view.type, partId: view.partId, sinceTs: view.startedTs } : null,
     origin: { agent, runId: view.runId, reason: view.reason },
   });
-  const fidelity = card ? fidelityText(card) : null;
+  // fidelity and error band in every state: from the card when done, else from the type / settings
+  const hon = honesty(view.type, card, { settings: view.settings });
   const metrics = card?.metrics.filter((m) => m.value !== null && m.value !== undefined && m.key !== "error_band_pct") ?? [];
-  const band = card?.metrics.find((m) => m.key === "error_band_pct");
+  // a call the Gate holds for the human: say so (blue = needs you), not "waiting for the solver"
+  const awaiting = view.running && view.runId !== null && [...approvals.value.values()].some((a) =>
+    a.run_id === view.runId && a.status === "pending" && bareToolName(a.action) === bareToolName(view.tool));
   return (
     <article class="scard" data-testid="study-card" data-type={view.type} data-status={status} data-verdict={verdict ?? "none"} aria-label={`${typeName(view.type)} study${view.partId ? ` of ${view.partId}` : ""}`}>
       <header class="scard-head">
@@ -138,11 +141,12 @@ export function StudyCard({ view, siblings = [] }: StudyCardProps): JSX.Element 
       {view.reason && <p class="scard-reason text">{agent ? <span class="faint">{agent}: </span> : null}{view.reason}</p>}
       <p class="scard-fidelity" data-testid="fidelity">
         <span class="scard-guide">GUIDE ONLY</span>
-        {fidelity && <span class="scard-fidelity-note text" data-testid="fidelity-note">{fidelity}</span>}
-        {!card?.fidelity_note && band && typeof band.value === "number" && <span class="faint" data-testid="error-band">error band {fmtMetric(band)}</span>}
+        <span class="scard-fidelity-note text" data-testid="fidelity-note">{hon.fidelity}</span>
+        {hon.band && <span class="scard-band text" data-testid="error-band">{hon.band}</span>}
       </p>
       {card?.notes.map((n, i) => <p key={i} class="scard-note faint text" data-testid="card-note">{n}</p>)}
-      {view.running && <PhaseBar phase={live?.phase ?? "queued"} pct={live?.pct ?? null} detail={live?.detail ?? null} />}
+      {awaiting && <p class="scard-awaiting" data-testid="awaiting-approval" data-changing="">Waiting for your approval in the console</p>}
+      {view.running && !awaiting && <PhaseBar phase={live?.phase ?? "queued"} pct={live?.pct ?? null} detail={live?.detail ?? (live ? null : "starting")} />}
       {view.failed && (
         <p class="scard-fail text" role="alert">{view.summary ?? "the study failed"}{view.hint ? <span class="faint"> · {view.hint}</span> : null}</p>
       )}
@@ -159,10 +163,9 @@ export function StudyCard({ view, siblings = [] }: StudyCardProps): JSX.Element 
       <CheckRows checks={view.checks} />
       {done && simId && <SmallChart simId={simId} type={view.type} onOpen={open} />}
       {card && card.warnings.length > 0 && (
-        <details class="scard-warn">
-          <summary><Led tone="amber" /> {card.warnings.length} warning{card.warnings.length === 1 ? "" : "s"}</summary>
-          <ul>{card.warnings.map((w, i) => <li key={i} class="text dim">{w}</li>)}</ul>
-        </details>
+        <ul class="scard-warn" data-testid="card-warnings" aria-label="Warnings">
+          {card.warnings.map((w, i) => <li key={i}><Led tone="amber" /><span class="text dim">{w}</span></li>)}
+        </ul>
       )}
       <footer class="scard-actions">
         <Button onClick={open} aria-label={`Immersive view of the ${typeName(view.type).toLowerCase()} study`} data-testid="open-immersive" disabled={!simId && !view.running}>Immersive</Button>

@@ -44,7 +44,14 @@ async function draw(simId: string, fetchGlb: GlbFetch, size: number): Promise<st
   if (!renderer) {
     try {
       const canvas = document.createElement("canvas");
-      renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
+      const r = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
+      // a lost context (the browser's context cap, a GPU reset): the next thumbnail makes a new renderer
+      canvas.addEventListener("webglcontextlost", (e) => {
+        e.preventDefault();
+        if (renderer === r) renderer = null;
+        r.dispose();
+      }, { once: true });
+      renderer = r;
     } catch { noGl = true; return null; }
   }
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));

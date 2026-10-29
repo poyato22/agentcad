@@ -4,7 +4,7 @@
 // thermal faces, yaw angles) and tagged unions (the load kind). Settings in ADVANCED fold under
 // "Advanced". Problems show at their field. Every label and doc comes from the schema as text.
 import type { JSX } from "preact";
-import { useState } from "preact/hooks";
+import { useRef, useState } from "preact/hooks";
 import type { JsonSchema } from "../../../api/studies";
 import type { PartFace } from "../../../api/types";
 import { fmtClock } from "../../../lib/format";
@@ -36,6 +36,7 @@ export interface SchemaFormProps {
 
 interface Ctx extends SchemaFormProps { root: JsonSchema; errs: Map<string, string[]>; set: (p: Path, v: unknown) => void }
 
+let nextRowKey = 0;
 const ENVIRONMENTS = ["Desk", "Outdoor", "Bike mount", "Car dashboard 80°C"];
 const fid = (p: Path) => `sf-${p.map(String).join("-").replace(/[^a-zA-Z0-9_-]/g, "_")}`;
 
@@ -286,6 +287,15 @@ function ArrayField({ ctx, path, k, n }: { ctx: Ctx; path: Path; k: string | num
   const max = typeof n.maxItems === "number" ? n.maxItems : 100;
   const min = typeof n.minItems === "number" ? n.minItems : 0;
   const unit = typeof n.unit === "string" ? n.unit : undefined;
+  // stable row keys: a moved or removed row keeps its own inputs (not its neighbour's)
+  const keys = useRef<string[]>([]);
+  const ks = keys.current;
+  while (ks.length < arr.length) ks.push(`row${nextRowKey++}`);
+  if (ks.length > arr.length) ks.length = arr.length;
+  const removeAt = (i: number) => {
+    ks.splice(i, 1);
+    ctx.set(path, arr.filter((_, j) => j !== i));
+  };
   // a list of numbers (yaw angles): one text field, comma separated
   if (items.type === "number" || items.type === "integer") {
     return (
@@ -305,9 +315,9 @@ function ArrayField({ ctx, path, k, n }: { ctx: Ctx; path: Path; k: string | num
         <legend>{label}</legend>
         <Doc schema={n} />
         {arr.map((_, i) => (
-          <div key={i} class="sf-item-row">
+          <div key={ks[i]} class="sf-item-row">
             <FaceInput ctx={ctx} path={[...path, i]} value={arr[i]} label={`${label} ${i + 1}`} />
-            <Button variant="ghost" disabled={ctx.disabled} aria-label={`Remove ${label} ${i + 1}`} onClick={() => ctx.set(path, arr.filter((__, j) => j !== i))}>Remove</Button>
+            <Button variant="ghost" disabled={ctx.disabled} aria-label={`Remove ${label} ${i + 1}`} onClick={() => removeAt(i)}>Remove</Button>
             <Errors ctx={ctx} path={[...path, i]} />
           </div>
         ))}
@@ -329,6 +339,7 @@ function ArrayField({ ctx, path, k, n }: { ctx: Ctx; path: Path; k: string | num
     const j = i + by;
     if (j < 0 || j >= arr.length) return;
     const next = [...arr]; [next[i], next[j]] = [next[j], next[i]];
+    [ks[i], ks[j]] = [ks[j], ks[i]];
     ctx.set(path, next);
     if (isCases && ctx.selectedCase === i) ctx.onSelectCase?.(j);
   };
@@ -342,7 +353,7 @@ function ArrayField({ ctx, path, k, n }: { ctx: Ctx; path: Path; k: string | num
         const opt = d ? d.options.find((o) => o.value === (x as Record<string, unknown>)?.[d.prop]) ?? d.options[0] : null;
         const schema = opt ? opt.schema : items;
         return (
-          <div key={i} class="sf-item" data-selected={selected ? "true" : undefined} data-testid={isCases ? "load-case" : "list-item"}>
+          <div key={ks[i]} class="sf-item" data-selected={selected ? "true" : undefined} data-testid={isCases ? "load-case" : "list-item"}>
             <div class="sf-item-head">
               {isCases
                 ? <button type="button" class="sf-item-name" aria-pressed={selected} onClick={() => ctx.onSelectCase?.(i)}>{itemName(x, i)}</button>
@@ -350,7 +361,12 @@ function ArrayField({ ctx, path, k, n }: { ctx: Ctx; path: Path; k: string | num
               <span class="sf-item-tools">
                 <button type="button" class="sf-tool" disabled={ctx.disabled || i === 0} aria-label={`Move ${itemName(x, i)} up`} onClick={() => move(i, -1)}>↑</button>
                 <button type="button" class="sf-tool" disabled={ctx.disabled || i === arr.length - 1} aria-label={`Move ${itemName(x, i)} down`} onClick={() => move(i, 1)}>↓</button>
-                <button type="button" class="sf-tool" disabled={ctx.disabled || arr.length <= min} aria-label={`Remove ${itemName(x, i)}`} onClick={() => ctx.set(path, arr.filter((_, j) => j !== i))}>✕</button>
+                <button type="button" class="sf-tool" disabled={ctx.disabled || arr.length <= min} aria-label={`Remove ${itemName(x, i)}`} onClick={() => {
+                  removeAt(i);
+                  // the selected case keeps pointing at the same case (or its neighbour when it was removed)
+                  const sel = ctx.selectedCase;
+                  if (isCases && typeof sel === "number" && sel >= i) ctx.onSelectCase?.(Math.max(0, sel === i ? Math.min(i, arr.length - 2) : sel - 1));
+                }}>✕</button>
               </span>
             </div>
             {d && (

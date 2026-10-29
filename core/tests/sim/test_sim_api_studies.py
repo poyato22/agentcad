@@ -267,3 +267,52 @@ def test_design_review_children_need_local_mutate(client, rt):
     row = out.data["table"][0]
     assert row["status"] == "fail" and "denied" in row["note"]
     assert out.data["studies"][0]["ok"] is False
+
+
+def _progress(sub, run_id):
+    out = []
+    while not sub.queue.empty():
+        ev = sub.queue.get_nowait()
+        if ev.type == "sim_progress" and ev.run_id == run_id:
+            out.append(ev.data)
+    return out
+
+
+@pytest.mark.slow
+@pytest.mark.timeout(120)
+def test_sim_progress_names_its_call_and_ends_with_a_terminal_phase(client, rt):
+    """Each sim_progress carries the tool call's call_id and step_id (design_review runs
+    several same-type studies of one part at once), and the last one is phase done / failed."""
+    _build(client, rt, "cube", CUBE)
+    sub = rt.events.subscribe()
+    rid = rt.create_external_run("tester", provider="x", model="y")
+    out = client.portal.call(functools.partial(
+        rt.gate.call, rid, "sim_run", {"type": "wind", "part_id": "cube",
+                                       "settings": {"solver": "empirical"}},
+        call_id="w1", workdir=rt.workdir(rid)))
+    assert out.ok, out.summary
+    prog = _progress(sub, rid)
+    call = next(s for s in rt.store.steps(rid, kinds=[StepKind.TOOL_CALL])
+                if s.payload["call_id"] == "w1")
+    assert len(prog) >= 2
+    assert all(p["call_id"] == "w1" and p["step_id"] == call.id for p in prog)
+    assert prog[-1]["phase"] == "done" and prog[-1]["stage"] == "done"
+    assert prog[-1]["pct"] == 100
+    assert all(p["phase"] != "done" for p in prog[:-1])
+    # a failure ends with phase failed (a static study without CalculiX)
+    import mises.sim.tools as sim_tools
+    real = sim_tools.find_ccx
+    sim_tools.find_ccx = lambda: None
+    try:
+        out = client.portal.call(functools.partial(
+            rt.gate.call, rid, "sim_run", {"type": "static", "part_id": "cube", "settings": {
+                "load_cases": [{"name": "c", "supports": [{"face": "bottom"}],
+                                "loads": [{"kind": "force", "face": "top", "newtons": 5,
+                                           "direction": "-z"}]}]}},
+            call_id="s1", workdir=rt.workdir(rid)))
+    finally:
+        sim_tools.find_ccx = real
+    assert not out.ok
+    prog = [p for p in _progress(sub, rid) if p["call_id"] == "s1"]
+    assert prog[-1]["phase"] == "failed" and prog[-1]["stage"] == "failed"
+    sub.close()

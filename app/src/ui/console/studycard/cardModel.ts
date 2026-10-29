@@ -25,10 +25,14 @@ const str = (v: unknown): string | null => (typeof v === "string" && v.trim() !=
 export interface StudyCallView {
   kind: "study";
   callId: string;
+  /** The tool's bare name (sim_run, sim_static_run). */
+  tool: string;
   runId: string | null;
   type: string;
   partId: string | null;
   reason: string | null;
+  /** The call's settings (a running wind card states its validated band from the refinement). */
+  settings: Record<string, unknown> | null;
   /** The core's card once the result landed (null while running, or for an old result without one). */
   card: StudyCard | null;
   /** Checks of the card (or the top-level ones when compact() trimmed the card). */
@@ -79,8 +83,9 @@ export function studyCallView(call: Call, runId: string | null = call.runId ?? n
   const top = Array.isArray(data.checks) ? data.checks.map((x) => studyCheckSchema.safeParse(x)).filter((x) => x.success).map((x) => x.data) : [];
   const checks = card && card.checks.length ? card.checks : top;
   return {
-    kind: "study", callId: call.callId, runId, type, partId,
+    kind: "study", callId: call.callId, tool: name, runId, type, partId,
     reason: str(call.input.reason) ?? card?.reason ?? null, card, checks, running, failed,
+    settings: Object.keys(rec(call.input.settings)).length ? rec(call.input.settings) : null,
     summary: call.summary, hint: call.hint, startedTs: call.startedTs,
     simId: card?.sim_id ?? str(data.sim_id),
   };

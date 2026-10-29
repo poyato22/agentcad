@@ -30,6 +30,8 @@ export const REAL_STUDY = {
   sectionWind: json<Record<string, unknown>>("study_section_wind.json"),
   sectionVelocity: json<Record<string, unknown>>("study_section_wind_velocity.json"),
   parts: json<PartSummary[]>("study_parts.json"),
+  /** The design review's own studies (its table rows link to them). */
+  reviewRecords: json<StudyRecord[]>("study_review_records.json"),
   records: Object.fromEntries(STUDY_TYPE_IDS.map((t) => [t, json<StudyRecord>(`study_${t}.json`)])) as Record<StudyType, StudyRecord>,
   charts: Object.fromEntries(STUDY_TYPE_IDS.map((t) => [t, json<Record<string, unknown>>(`study_${t}_charts.json`)])) as Record<StudyType, Record<string, unknown>>,
   events: readFileSync(resolve(DIR, "study_events.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l) as MisesEvent),
@@ -225,8 +227,11 @@ export function startStudy(d: StudyDeps, b: Record<string, unknown>): { run_id: 
   const simId = `sim_${hex(6)}`;
   const input = { type, part_id: partId, settings, reason: b.reason ?? null, requirements: b.requirements ?? [] };
   d.emit({ type: "run_started", run_id: run.id, data: { agent: "studies", provider: "ui", model: "studies-page", parent_id: null, external: true } });
-  d.emit({ type: "tool_call", run_id: run.id, data: { call_id: callId, name: "sim_run", input } },
-    { steps: [{ kind: "tool_call", payload: { call_id: callId, name: "sim_run", input } }] });
+  const emitted = d.emit({ type: "tool_call", run_id: run.id, data: { call_id: callId, name: "sim_run", input } },
+    { steps: [{ kind: "tool_call", payload: { call_id: callId, name: "sim_run", input } }] }) as { step_ids?: number[] } | undefined;
+  const stepId = emitted?.step_ids?.[0] ?? null;
+  // like the core: every sim_progress names its call, and the last one is a terminal phase
+  const progress = (p: Record<string, unknown>) => d.emit({ type: "sim_progress", run_id: run.id, data: { ...p, sim_id: simId, part_id: partId, type, call_id: callId, step_id: stepId } });
   const rec: StudyRecord = {
     ...structuredClone(real), sim_id: simId, part_id: partId, run_id: run.id, call_id: callId, status: "running", stage: "queued",
     phase: "queued", pct: 0, created_at: now(), finished_at: null, settings, inputs: { ...(real.inputs as object), settings },
@@ -242,7 +247,8 @@ export function startStudy(d: StudyDeps, b: Record<string, unknown>): { run_id: 
   const prog = REAL_STUDY.events.filter((e) => e.type === "sim_progress" && (e.data as { type?: string }).type === type)
     .map((e) => e.data as Record<string, unknown>);
   const firstSim = prog[0]?.sim_id;
-  const mine = prog.filter((p) => p.sim_id === firstSim);
+  const TERMINAL = ["done", "failed", "cancelled"];
+  const mine = prog.filter((p) => p.sim_id === firstSim && !TERMINAL.includes(String(p.phase)));
   const steps = mine.length ? mine : [{ stage: "solve", phase: "solve", pct: 50, detail: "solving" }];
   const st = d.state();
   const timers: ReturnType<typeof setTimeout>[] = [];
@@ -256,6 +262,7 @@ export function startStudy(d: StudyDeps, b: Record<string, unknown>): { run_id: 
     if (status === "cancelled") {
       const card = { ...structuredClone(real.card!), sim_id: simId, status: "cancelled", verdict: "fail" as const, run_id: run.id, phase: rec.phase, pct: rec.pct, metrics: [], checks: [], warnings: [], notes: [], fidelity_note: null };
       Object.assign(rec, { status: "cancelled", stage: "cancelled", error: "cancelled", finished_at: now(), card });
+      progress({ stage: "cancelled", phase: "cancelled", pct: rec.pct, detail: "cancelled" });
       d.emit({ type: "tool_result", run_id: run.id, data: { call_id: callId, name: "sim_run", ok: false, summary: `study ${simId} cancelled by the user` } },
         { steps: [{ kind: "error", payload: { call_id: callId, name: "sim_run", output: { ok: false, summary: `study ${simId} cancelled by the user`, data: { sim_id: simId, error: "cancelled", message: "cancelled", card } } } }] });
       d.emit({ type: "run_finished", run_id: run.id, data: { status: "cancelled", stop_reason: "cancelled", error: null, final_text: "", external: true } });
@@ -265,6 +272,7 @@ export function startStudy(d: StudyDeps, b: Record<string, unknown>): { run_id: 
     rec.card = { ...structuredClone(real.card!), sim_id: simId, run_id: run.id, reason: rec.reason, urls: { record: `/sims/${simId}`, glb: `/sims/${simId}/result.glb`, charts: `/sims/${simId}/charts`, probe: `/sims/${simId}/probe`, section: `/sims/${simId}/section` }, charts_url: `/sims/${simId}/charts` };
     const data = { sim_id: simId, part_id: partId, type, status: "done", card: rec.card, checks: rec.card.checks, results: rec.results };
     const summary = `GUIDE ONLY - ${type} study of ${partId} (fake core, real ${type} numbers)`;
+    progress({ stage: "done", phase: "done", pct: 100, detail: "done" });
     d.emit({ type: "tool_result", run_id: run.id, data: { call_id: callId, name: "sim_run", ok: true, summary } },
       { steps: [{ kind: "sim_run", payload: { call_id: callId, name: "sim_run", output: { ok: true, summary, data, handles: [], warnings: rec.warnings, step_kind: "sim_run" } } }] });
     d.emit({ type: "run_finished", run_id: run.id, data: { status: "done", stop_reason: "done", error: null, final_text: "", external: true } });
@@ -272,7 +280,7 @@ export function startStudy(d: StudyDeps, b: Record<string, unknown>): { run_id: 
   st.running.set(simId, { runId: run.id, timers, finish: () => finish("cancelled") });
   steps.forEach((p, i) => at(i + 1, () => {
     Object.assign(rec, { stage: p.stage, phase: p.phase, pct: p.pct });
-    d.emit({ type: "sim_progress", run_id: run.id, data: { ...p, sim_id: simId, part_id: partId, type } });
+    progress(p);
   }));
   if (!d.hang()) at(steps.length + 2, () => finish("done"));
   return { run_id: run.id, status: "running" };

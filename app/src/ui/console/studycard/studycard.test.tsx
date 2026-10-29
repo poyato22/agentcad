@@ -10,11 +10,13 @@ import type { CoreClient } from "../../../api/client";
 import { stepSchema } from "../../../api/schemas";
 import { studyChartsSchema, studyRecordSchema, STUDY_TYPES } from "../../../api/studies";
 import type { AgentRun, MisesEvent, Step } from "../../../api/types";
-import { bindClient, resetStore, runs, selectedRunId, steps } from "../../../state/store";
+import type { Approval } from "../../../api/types";
+import { approvals, bindClient, resetStore, runs, selectedRunId, steps } from "../../../state/store";
+import { consoleCollapsed } from "../../pages/router";
 import { studyData } from "../../pages/studies/data";
 import { ImmersiveRoot } from "../../pages/studies/immersive/Immersive";
 import { closeImmersive, immersive } from "../../pages/studies/immersive/state";
-import { applyProgressEvent, resetLiveProgress } from "../../pages/studies/live";
+import { applyProgressEvent, liveProgress, progressForCall, resetLiveProgress } from "../../pages/studies/live";
 import { resetThumbnails } from "../../pages/studies/scene/thumbnails";
 import { Conversation } from "../Conversation";
 import { resetConsoleView } from "../view";
@@ -25,18 +27,16 @@ const STEPS: Step[] = (read("study_agent_steps.json") as unknown[]).map((s) => s
 const RUN = read("study_agent_run.json") as AgentRun;
 const RID = STEPS[0].run_id;
 const RECORDS = new Map(STUDY_TYPES.map((t) => { const r = studyRecordSchema.parse(read(`study_${t}.json`)); return [r.sim_id, r]; }));
+const REVIEW = (read("study_review_records.json") as unknown[]).map((x) => studyRecordSchema.parse(x));
 const CHARTS = new Map(STUDY_TYPES.map((t) => { const c = studyChartsSchema.parse(read(`study_${t}_charts.json`)); return [c.sim_id ?? "", c]; }));
 const EVENTS = readFileSync(resolve(DIR, "study_events.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l) as MisesEvent);
 
 function client() {
   return {
     getStudy: vi.fn(async (id: string) => {
-      const r = RECORDS.get(id);
+      const r = RECORDS.get(id) ?? REVIEW.find((x) => x.sim_id === id);
       if (r) return r;
-      // the design review's own studies: same shape as the static / modal ones
-      const step = STEPS.find((s) => (s.payload.output as { data?: { sim_id?: string } } | undefined)?.data?.sim_id === id);
-      const t = (step?.payload.output as { data: { type: string } }).data.type;
-      return { ...[...RECORDS.values()].find((x) => x.type === t)!, sim_id: id };
+      throw new Error(`no study ${id}`);
     }),
     studyCharts: vi.fn(async (id: string) => CHARTS.get(id) ?? [...CHARTS.values()][0]),
     simGlb: vi.fn(async () => "not-modified"),
@@ -166,5 +166,89 @@ describe("inline study cards", () => {
     await settle();
     expect(screen.getByTestId("immersive").dataset.status).toBe("done");
     expect(screen.queryByTestId("imm-live")).toBeNull();
+  });
+
+  it("every card says its fidelity and error band: drop done, wind running, a failed call", async () => {
+    setThread(STEPS);
+    render(<Conversation />);
+    await settle();
+    const drop = screen.getAllByTestId("study-card").find((x) => x.dataset.type === "drop")!;
+    expect(within(drop).getByTestId("fidelity-note").textContent).toMatch(/^estimate/);
+    expect(within(drop).getByTestId("error-band").textContent).toBe("error band ±19.1%");
+    expect(within(drop).getByTestId("card-warnings")).toBeTruthy(); // warnings stay in sight
+    const stat = screen.getAllByTestId("study-card").find((x) => x.dataset.type === "static")!;
+    expect(within(stat).getByTestId("fidelity-note").textContent).toBe("linear FEM");
+    expect(within(stat).getByTestId("error-band").textContent).toMatch(/^error band ±/);
+    cleanup();
+    // running: before any result the band comes from the type and settings
+    const callIdx = STEPS.findIndex((s) => s.kind === "tool_call" && s.payload.call_id === "s6");
+    setThread(STEPS.slice(0, callIdx + 1), { ...RUN, status: "running" });
+    render(<Conversation />);
+    await settle();
+    const wind = screen.getAllByTestId("study-card").find((x) => x.dataset.status === "running")!;
+    expect(within(wind).getByTestId("fidelity-note").textContent).toBe("low fidelity (preview)");
+    expect(within(wind).getByTestId("error-band").textContent).toBe("±40% (validated)");
+    const sIdx = STEPS.findIndex((s) => s.kind === "tool_call" && s.payload.call_id === "s1");
+    const failed = [...STEPS.slice(0, sIdx + 1), { ...STEPS[sIdx], id: 9999, kind: "error" as const, payload: { call_id: "s1", name: "sim_run", error: "tool_failed", message: "CalculiX failed", hint: null } }];
+    cleanup();
+    setThread(failed);
+    render(<Conversation />);
+    await settle();
+    const f = screen.getAllByTestId("study-card").find((x) => x.dataset.type === "static")!;
+    expect(f.dataset.status).toBe("failed");
+    expect(within(f).getByTestId("fidelity-note").textContent).toBe("linear FEM");
+    expect(within(f).getByTestId("error-band").textContent).toMatch(/error band/);
+  });
+
+  it("design_review's concurrent same-type studies each follow their own call", async () => {
+    const rIdx = STEPS.findIndex((s) => s.kind === "tool_call" && s.payload.call_id === "rv1.r1");
+    const r2 = STEPS.find((s) => s.kind === "tool_call" && s.payload.call_id === "rv1.r2")!;
+    const call2 = { ...r2, payload: { ...r2.payload, input: { ...(r2.payload.input as object), type: "static" } } };
+    setThread([...STEPS.slice(0, rIdx + 1), call2], { ...RUN, status: "running" });
+    render(<Conversation />);
+    await settle();
+    const now = STEPS[rIdx].ts + 1;
+    await act(async () => {
+      applyProgressEvent({ type: "sim_progress", run_id: RID, ts: now, data: { sim_id: "sim_000000000001", part_id: "beam", type: "static", stage: "solve_fine", phase: "solve", pct: 60, detail: "solving fine", call_id: "rv1.r1", step_id: 1 } });
+      applyProgressEvent({ type: "sim_progress", run_id: RID, ts: now + 1, data: { sim_id: "sim_000000000002", part_id: "beam", type: "static", stage: "queued", phase: "queued", pct: 0, detail: "waiting", call_id: "rv1.r2", step_id: 2 } });
+    });
+    const bars = screen.getAllByTestId("study-card").filter((x) => x.dataset.status === "running").map((c) => within(c).getByTestId("phase-bar").dataset.phase);
+    expect(bars).toEqual(["solve", "queued"]);
+    // without call ids (an older core) two candidates are ambiguous: no guess
+    resetLiveProgress();
+    await act(async () => {
+      applyProgressEvent({ type: "sim_progress", run_id: RID, ts: now, data: { sim_id: "sim_000000000001", part_id: "beam", type: "static", stage: "solve", phase: "solve" } });
+      applyProgressEvent({ type: "sim_progress", run_id: RID, ts: now, data: { sim_id: "sim_000000000002", part_id: "beam", type: "static", stage: "mesh", phase: "mesh" } });
+    });
+    expect(progressForCall(liveProgress.value, { runId: RID, type: "static", partId: "beam", sinceTs: now - 5 })).toBeNull();
+  });
+
+  it("a study that cannot load says so, not 'running'", async () => {
+    setThread([]);
+    render(<ImmersiveRoot />);
+    immersive.value = { simId: "sim_0000000000ff", ids: ["sim_0000000000ff"] };
+    await settle();
+    const imm = screen.getByTestId("immersive");
+    expect(imm.dataset.status).toBe("error");
+    expect(imm.textContent).toMatch(/could not load/);
+    expect(within(imm).getByTestId("imm-error").textContent).toMatch(/no study sim_0000000000ff/);
+    expect(imm.dataset.ready).toBe("true");
+  });
+
+  it("an approval that arrives while the immersive view is open shows a badge; Esc takes you to it", async () => {
+    setThread(STEPS);
+    consoleCollapsed.value = true;
+    render(<ImmersiveRoot />);
+    const wind = [...RECORDS.values()].find((r) => r.type === "wind")!;
+    immersive.value = { simId: wind.sim_id, ids: [wind.sim_id] };
+    await settle();
+    expect(screen.queryByTestId("imm-needs-you")).toBeNull();
+    const a: Approval = { id: "ap1", run_id: RID, action: "onshape_merge", payload: {}, payload_hash: "h", microversion: null, deltas: {}, status: "pending", expires_at: Date.now() / 1000 + 600, decided_by: null, decided_at: null, edited_payload: null };
+    await act(async () => { approvals.value = new Map([[a.id, a]]); });
+    expect(screen.getByTestId("imm-needs-you").textContent).toMatch(/1 needs you/);
+    fireEvent.keyDown(window, { key: "Escape" });
+    await settle();
+    expect(screen.queryByTestId("immersive")).toBeNull();
+    expect(consoleCollapsed.value).toBe(false);
   });
 });

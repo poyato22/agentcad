@@ -195,43 +195,92 @@ test("templates_save_and_load", async ({ page, fake }) => {
   await expect(page.getByTestId("template-pick")).toContainText("Gusty · Wind");
 });
 
-test("the_agent_s_studies_show_as_cards_and_open_the_immersive_view", async ({ page, fake }) => {
+/** The immersive view listens for its keys (data-ready) and shows this study, loaded. */
+async function immersiveShows(page: Page, simId: string | null = null) {
+  const imm = page.getByTestId("immersive");
+  await expect(imm).toHaveAttribute("data-ready", "true");
+  if (simId) await expect(imm).toHaveAttribute("data-sim", simId);
+  await expect(imm).toHaveAttribute("data-status", "done");
+  await expect(imm.getByTestId("imm-metrics")).toBeVisible();
+  await expect(imm.getByTestId("imm-error")).toHaveCount(0);
+  return imm;
+}
+
+for (const theme of ["dark", "light"] as const) {
+  test(`the_agent_s_studies_show_as_cards_and_open_the_immersive_view_${theme}`, async ({ page, fake }) => {
+    await fake.reset(scenario({}, { runs: [RUN], steps: STEPS }) as never);
+    await page.goto("/");
+    await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
+    await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
+    const cards = page.getByTestId("study-card");
+    await expect(cards).toHaveCount(8);
+    const wind = page.locator("[data-testid=study-card][data-type=wind]");
+    await expect(wind.getByTestId("fidelity-note")).toHaveText("low fidelity (preview) · ±40% (validated)");
+    const drop = page.locator("[data-testid=study-card][data-type=drop]");
+    await expect(drop.getByTestId("error-band")).toHaveText("error band ±19.1%");
+    await wind.scrollIntoViewIfNeeded();
+    await expect(wind.getByTestId("card-chart")).toHaveAttribute("data-chart", "cd_vs_yaw");
+    await expect(wind.getByTestId("study-thumb")).toHaveAttribute("data-state", "loaded");
+    await page.locator("[data-region=console]").screenshot({ path: `test-results/a8-cards-${theme}.png` });
+    await wind.getByTestId("open-immersive").click();
+    const imm = await immersiveShows(page, rec("wind").sim_id);
+    // the traffic lights keep their corner: the top strip starts after the inset
+    const pad = await imm.locator(".imm-top").evaluate((el) => getComputedStyle(el).paddingLeft);
+    expect(pad).toBe("78px");
+    await expect(imm.getByTestId("fidelity-note")).toHaveText("low fidelity (preview) · ±40% (validated)");
+    await expect(imm.getByTestId("study-canvas")).toHaveAttribute("data-particles", "900");
+    await page.screenshot({ path: `test-results/a8-immersive-wind-${theme}.png` });
+    await page.keyboard.press("Escape");
+    await expect(imm).toBeHidden();
+    // the review card: each row opens its own study, which loads; ⌘[ / ⌘] step through the review
+    const review = page.getByTestId("review-card");
+    await review.scrollIntoViewIfNeeded();
+    const rows = review.locator("[data-testid=review-row][data-sim]:not([data-sim=''])");
+    const linked = await rows.evaluateAll((els) => [...new Set(els.map((e) => (e as HTMLElement).dataset.sim as string))]);
+    expect(linked).toHaveLength(2);
+    for (const sim of linked) {
+      await review.locator(`[data-testid=review-row][data-sim="${sim}"]`).first().getByRole("button").click();
+      await immersiveShows(page, sim);
+      await page.keyboard.press("Escape");
+      await expect(page.getByTestId("immersive")).toBeHidden();
+    }
+    await review.getByTestId("open-immersive").click();
+    await immersiveShows(page, linked[0]);
+    await page.keyboard.press("Meta+]");
+    await immersiveShows(page, linked[1]);
+    await page.keyboard.press("Meta+[");
+    await immersiveShows(page, linked[0]);
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("immersive")).toBeHidden();
+    // a double-click on a card's chart opens it too
+    const stat = page.locator("[data-testid=study-card][data-type=static]").first();
+    await stat.scrollIntoViewIfNeeded();
+    await stat.getByTestId("study-chart").dblclick();
+    await immersiveShows(page);
+  });
+}
+
+test("opening_the_immersive_view_30_times_never_exhausts_webgl_contexts", async ({ page, fake }) => {
   await fake.reset(scenario({}, { runs: [RUN], steps: STEPS }) as never);
+  const warnings: string[] = [];
+  page.on("console", (m) => { if (/WebGL context|Too many active WebGL/i.test(m.text())) warnings.push(m.text()); });
   await page.goto("/");
   await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
-  const cards = page.getByTestId("study-card");
-  await expect(cards).toHaveCount(8);
   const wind = page.locator("[data-testid=study-card][data-type=wind]");
-  await expect(wind.getByTestId("fidelity-note")).toHaveText("low fidelity (preview) · ±40% (validated)");
   await wind.scrollIntoViewIfNeeded();
-  await expect(wind.getByTestId("card-chart")).toHaveAttribute("data-chart", "cd_vs_yaw");
   await expect(wind.getByTestId("study-thumb")).toHaveAttribute("data-state", "loaded");
-  await page.locator("[data-region=console]").screenshot({ path: "test-results/a8-cards.png" });
-  await wind.getByTestId("open-immersive").click();
-  const imm = page.getByTestId("immersive");
-  await expect(imm).toBeVisible();
-  await expect(imm).toHaveAttribute("data-sim", rec("wind").sim_id);
-  // the traffic lights keep their corner: the top strip starts after the inset
-  const pad = await imm.locator(".imm-top").evaluate((el) => getComputedStyle(el).paddingLeft);
-  expect(pad).toBe("78px");
-  await expect(imm.getByTestId("study-canvas")).toHaveAttribute("data-particles", "900");
-  await page.screenshot({ path: "test-results/a8-immersive-wind.png" });
-  await page.keyboard.press("Escape");
-  await expect(imm).toBeHidden();
-  // the review card: each row opens its study; ⌘[ / ⌘] step through the review's studies
-  const review = page.getByTestId("review-card");
-  await review.getByTestId("open-immersive").click();
-  const first = await page.getByTestId("immersive").getAttribute("data-sim");
-  await page.keyboard.press("Meta+]");
-  await expect(page.getByTestId("immersive")).not.toHaveAttribute("data-sim", first ?? "");
-  await page.keyboard.press("Meta+[");
-  await expect(page.getByTestId("immersive")).toHaveAttribute("data-sim", first ?? "");
-  await page.keyboard.press("Escape");
-  // a double-click on a card's chart opens it too
+  for (let i = 0; i < 30; i++) {
+    await wind.getByTestId("open-immersive").click();
+    await expect(page.getByTestId("immersive")).toHaveAttribute("data-ready", "true");
+    await expect(page.getByTestId("study-canvas").last()).toHaveAttribute("data-particles", "900");
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("immersive")).toBeHidden();
+  }
+  expect(warnings.filter((w) => /Too many active WebGL contexts/i.test(w))).toEqual([]);
+  // the thumbnail renderer still works afterwards (its context was never evicted)
   const stat = page.locator("[data-testid=study-card][data-type=static]").first();
   await stat.scrollIntoViewIfNeeded();
-  await stat.getByTestId("study-chart").dblclick();
-  await expect(page.getByTestId("immersive")).toBeVisible();
+  await expect(stat.getByTestId("study-thumb")).toHaveAttribute("data-state", "loaded");
 });
 
 test("the_immersive_view_follows_a_running_study_from_the_page", async ({ page, fake }) => {
@@ -242,6 +291,10 @@ test("the_immersive_view_follows_a_running_study_from_the_page", async ({ page, 
   await page.getByTestId("run-study").click();
   await page.getByTestId("watch-immersive").click();
   const imm = page.getByTestId("immersive");
+  await expect(imm).toHaveAttribute("data-ready", "true");
+  // the honesty labels while it runs
+  await expect(imm.getByTestId("fidelity-note")).toHaveText("low fidelity");
+  await expect(imm.getByTestId("error-band")).toHaveText("±30% (validated)");
   await expect(imm.getByTestId("imm-live")).toBeVisible();
   await expect(imm.getByTestId("live-caption")).toContainText("Wind ·");
   await expect(imm).toHaveAttribute("data-status", "done", { timeout: 15_000 });
