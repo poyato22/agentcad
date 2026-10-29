@@ -70,6 +70,13 @@ button.cv-x { border: 1px solid var(--line2); }
 .cv-chip { display: inline-flex; align-items: baseline; gap: 6px; border: 1px solid var(--line2); padding: 1px 0 1px 7px; font-size: var(--fs-small); }
 .cv-chip select { border: 0; background: transparent; color: var(--ink); font: inherit; padding: 2px 4px; }
 .cv-chips .mp { flex: 1 1 200px; }
+/* parts-directory items the agent will read (A6 "Use with agent") */
+.cv-context { display: flex; flex-wrap: wrap; gap: 4px; }
+.cv-context-chip { display: inline-flex; align-items: center; gap: 4px; border: 1px dashed var(--line2); padding: 1px 0 1px 6px; font-size: var(--fs-small); color: var(--ink); max-width: 100%; }
+.cv-context-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-context-x { background: transparent; border: 0; color: var(--dim); font: inherit; cursor: pointer; padding: 0 5px; }
+.cv-context-x:hover { color: var(--ink); }
+.cv-context-x:focus-visible { outline: 1px solid var(--blue); outline-offset: -1px; }
 .cv-desc { font-size: 10.5px; }
 .cv-composer textarea { width: 100%; resize: vertical; }
 .cv-err { color: var(--red); }

@@ -1,0 +1,83 @@
+{
+  "id": "url_32695e237c6ca8a7",
+  "name": "Falcon 2207 1950KV",
+  "category": "motor",
+  "source": "url",
+  "url": "https://shop.example.com/p/falcon-2207",
+  "vendor": "Example Hobby",
+  "specs": [
+    {
+      "key": "stator",
+      "value": "22 x 7",
+      "unit": "mm"
+    },
+    {
+      "key": "kv",
+      "value": 1950.0,
+      "unit": null
+    },
+    {
+      "key": "weight",
+      "value": 34.0194,
+      "unit": "g"
+    },
+    {
+      "key": "mounting_pattern",
+      "value": "16x16mm M3",
+      "unit": null
+    },
+    {
+      "key": "shaft_diameter",
+      "value": 5.0038,
+      "unit": "mm"
+    },
+    {
+      "key": "max_thrust",
+      "value": 16.181,
+      "unit": "N"
+    },
+    {
+      "key": "bell_diameter",
+      "value": 27.5,
+      "unit": "mm"
+    },
+    {
+      "key": "height",
+      "value": 32.0,
+      "unit": "mm"
+    },
+    {
+      "key": "max_current",
+      "value": 45.0,
+      "unit": "A"
+    }
+  ],
+  "dims": {
+    "mass_g": 34.0194,
+    "shaft_d_mm": 5.0038,
+    "diameter_mm": 27.5,
+    "height_mm": 32.0
+  },
+  "mount": {
+    "pattern": "16x16",
+    "spacing_mm": [
+      16.0,
+      16.0
+    ],
+    "hole_d": 3.0,
+    "thread": "M3",
+    "layout": null
+  },
+  "geometry": "envelope",
+  "mass_source": "catalog",
+  "sources": [
+    {
+      "title": "Imported from shop.example.com",
+      "url": "https://shop.example.com/p/falcon-2207"
+    }
+  ],
+  "raw_text": "Falcon 2207 1950KV Brushless Motor | Example Hobby\nFalcon 2207 1950KV\nA smooth 5-inch freestyle motor.\nStator\n22 x 7 mm\nKV\n1950\nWeight\n1.2 oz\nMounting pattern\n16x16mm M3\nShaft diameter\n0.197 in\nMax thrust\n1650 g\nBell diameter\n2.75 cm\nHeight\n32 mm\nMax current: 45 A",
+  "project_id": "0097bb15772c",
+  "edited_by_user": true,
+  "edited_at": 1793289462.2905412
+}

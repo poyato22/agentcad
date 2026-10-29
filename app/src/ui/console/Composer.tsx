@@ -6,6 +6,7 @@ import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { CoreError } from "../../api/client";
 import type { AgentInfo } from "../../api/types";
+import { agentChips, chipsPromptLine, clearAgentChips, removeAgentChip } from "../../state/agentChips";
 import { actions, coreStatus, runs } from "../../state/store";
 import { Button } from "../common/Button";
 import { catalog } from "../dialogs/catalog";
@@ -68,7 +69,10 @@ export function Composer(): JSX.Element {
     setBusy(true);
     setError(null);
     try {
-      const { run_id } = await actions.client().createRun({ agent, prompt: text, model_ref: model, edit_scope: ["*"], read_scope: ["*"] });
+      const chipLine = chipsPromptLine(agentChips.peek());
+      const prompt = chipLine ? `${text}\n\n${chipLine}` : text;
+      const { run_id } = await actions.client().createRun({ agent, prompt, model_ref: model, edit_scope: ["*"], read_scope: ["*"] });
+      if (chipLine) clearAgentChips();
       actions.selectRun(run_id);
       noteRun(run_id);          // shown at once, even before the store lists it (e.g. queued)
       actions.setFollow(true);
@@ -91,6 +95,16 @@ export function Composer(): JSX.Element {
         </label>
         <ModelPicker value={model} onChange={(ref) => { pickedRef.current = true; setModel(ref); setPicked(true); }} />
       </div>
+      {agentChips.value.length > 0 && (
+        <div class="cv-context" role="list" aria-label="Context for the agent">
+          {agentChips.value.map((c) => (
+            <span key={c.id} class="cv-context-chip" role="listitem" data-chip={c.id} title={`${c.id}: the agent reads it with catalog_get`}>
+              <span class="cv-context-label">{c.label}</span>
+              <button type="button" class="cv-context-x" aria-label={`Remove ${c.label}`} onClick={() => removeAgentChip(c.id)}>×</button>
+            </span>
+          ))}
+        </div>
+      )}
       {current?.description && <div class="cv-desc faint text">{current.description}</div>}
       {blocked && <div class="cv-desc dim text" data-hint>{`${model} · ${blocked}`}</div>}
       <textarea ref={taskRef} aria-label="Task" rows={3} value={task} placeholder="e.g. stiffen the upright, keep mass under 40 g"

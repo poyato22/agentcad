@@ -9,6 +9,7 @@ import { onCoreEvent } from "../../api/events";
 import type { MisesEvent, SystemCheckRow, SystemFix, SystemInstallEvent } from "../../api/types";
 import { actions } from "../../state/store";
 import { DragStrip } from "../boot/DragStrip";
+import { ExternalLink } from "../common/ExternalLink";
 import { Led, type LedTone } from "../common/Led";
 import "./system.css";
 
@@ -178,7 +179,7 @@ function FixAction({ fix, installing, onInstall }: { fix: SystemFix; installing:
   const url = fix.kind === "open_url" ? safeUrl(fix.url) : null;
   if (url) {
     // The full URL is shown so the domain is visible before it opens in the system browser.
-    return <a class="syscheck-btn syscheck-link" href={url} target="_blank" rel="noopener noreferrer" title={url}>{fix.label}</a>;
+    return <ExternalLink class="syscheck-btn syscheck-link" href={url}>{fix.label}</ExternalLink>;
   }
   // setting: a plain label; wiring to a specific setting is left to the owning section.
   return <span class="syscheck-fixlabel">{fix.label}</span>;
@@ -189,7 +190,7 @@ function RefusedNote({ fix }: { fix: SystemFix }): JSX.Element {
   return (
     <div class="syscheck-refused" role="note">
       {url
-        ? <>Can't install automatically. <a href={url} target="_blank" rel="noopener noreferrer" title={url}>{fix.label}</a>, then re-check.</>
+        ? <>Can't install automatically. <ExternalLink href={url}>{fix.label}</ExternalLink>, then re-check.</>
         : fix.label}
     </div>
   );

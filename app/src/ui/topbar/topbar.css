@@ -48,3 +48,48 @@
 @media (prefers-reduced-motion: reduce) { .activity-pill .activity-dot { animation: none !important; } }
 .budget-slot { display: flex; align-items: center; flex: none; }
 .budget-slot:empty { display: none; }
+
+/* Task A6: Onshape budget meter. A short gauge: grey fill, amber past warn_at, red at the limit
+   (status colours only for the warn/fail states). The count flashes once when a call lands. */
+.budget { display: flex; align-items: center; flex: none; }
+.budget-btn {
+  display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px;
+  background: transparent; border: 1px solid var(--line2); border-radius: 0; color: var(--dim);
+  font: inherit; font-size: 11px; white-space: nowrap; cursor: pointer;
+}
+.budget-btn:hover { border-color: var(--dim); color: var(--ink); }
+.budget-btn:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
+.budget-val { font-variant-numeric: tabular-nums; }
+.budget-used { color: var(--ink); padding: 0 1px; }
+.budget-limit { color: var(--faint); }
+.budget-bar { position: relative; width: 44px; height: 4px; background: var(--line); overflow: hidden; }
+.budget-fill { position: absolute; top: 0; bottom: 0; left: 0; background: var(--dim); transition: width .3s ease-out; }
+.budget-warn { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--faint); }
+.budget-delta { color: var(--dim); font-variant-numeric: tabular-nums; }
+.budget[data-level=warn] .budget-fill { background: var(--amber); }
+.budget[data-level=warn] .budget-used, .budget[data-level=warn] .budget-card-state { color: var(--amber); }
+.budget[data-level=limit] .budget-fill { background: var(--red); }
+.budget[data-level=limit] .budget-used, .budget[data-level=limit] .budget-card-state { color: var(--red); }
+.budget[data-level=limit] .budget-btn { border-color: var(--red); }
+.budget-moved { animation: budget-moved .9s ease-out; }
+@keyframes budget-moved { 0% { background: var(--line2); } 100% { background: transparent; } }
+@media (prefers-reduced-motion: reduce) { .budget-moved { animation: none; } .budget-fill { transition: none; } }
+.budget-card {
+  position: fixed; top: calc(var(--topbar-h) + 4px); z-index: 30; width: 240px;
+  background: var(--paper2); border: 1px solid var(--line2); padding: 8px 10px; color: var(--ink); font-size: 11px;
+}
+.budget-card[hidden] { display: none; }
+.budget-card-row { display: flex; justify-content: space-between; gap: 12px; padding: 1px 0; }
+.budget-card-row > span:first-child { color: var(--dim); }
+.budget-card-row > span:last-child { font-variant-numeric: tabular-nums; }
+.budget-card-note { margin: 6px 0 0; color: var(--dim); white-space: normal; }
+
+/* Narrower windows (13"/14" laptops at default scaling and below): the meter drops its word label
+   and run delta (both stay in its aria-label and hover card) and the ONSHAPE light drops its
+   "connected" text (its tone and title stay), so every status light still fits. */
+@media (max-width: 1400px) {
+  .budget-name, .budget-delta { display: none; }
+  .light[data-light=onshape] .light-val { display: none; }
+  .topbar-right { gap: 8px; }
+  .lights { gap: 10px; }
+}

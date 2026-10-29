@@ -1,0 +1,103 @@
+{
+  "id": "motor_2207_class",
+  "name": "2207 brushless motor class",
+  "specs": [
+    {
+      "key": "stator",
+      "value": "2207",
+      "unit": null
+    },
+    {
+      "key": "mount_pattern",
+      "value": "16x16",
+      "unit": "mm",
+      "note": "the 5-inch standard"
+    },
+    {
+      "key": "mount_thread",
+      "value": "M3",
+      "unit": null
+    },
+    {
+      "key": "mass",
+      "value": 33,
+      "unit": "g",
+      "note": "typical"
+    },
+    {
+      "key": "max_thrust",
+      "value": "13-17",
+      "unit": "N",
+      "note": "typical range, 5\" prop on 6S"
+    },
+    {
+      "key": "bell_diameter",
+      "value": 27.5,
+      "unit": "mm",
+      "note": "typical"
+    },
+    {
+      "key": "height",
+      "value": 32,
+      "unit": "mm",
+      "note": "typical"
+    },
+    {
+      "key": "shaft_diameter",
+      "value": 5,
+      "unit": "mm",
+      "note": "typical"
+    }
+  ],
+  "dims": {
+    "bell_d_mm": 27.5,
+    "height_mm": 32,
+    "shaft_d_mm": 5,
+    "mass_g": 33
+  },
+  "mount": {
+    "pattern": "16x16",
+    "hole_d": 3.0,
+    "spacing_mm": [
+      16,
+      16
+    ],
+    "thread": "M3",
+    "layout": "opposite"
+  },
+  "geometry": "envelope",
+  "shape": {
+    "kind": "motor",
+    "bell_d": 27.5,
+    "height": 32,
+    "shaft_d": 5,
+    "shaft_len": 10,
+    "pattern": [
+      16,
+      16
+    ],
+    "hole_d": 3.0
+  },
+  "category": "motor",
+  "source": "builtin",
+  "url": null,
+  "vendor": null,
+  "mass_source": "catalog",
+  "sources": [
+    {
+      "title": "GetFPV: All about multirotor drone FPV motors",
+      "url": "https://www.getfpv.com/learn/new-to-fpv/all-about-multirotor-drone-motors/",
+      "note": "naming (stator diameter x height), mount patterns; found by search, the page refused automated reads (403), so its text was not checked"
+    },
+    {
+      "title": "Unmanned Tech: FPV drone motor mounting",
+      "url": "https://www.unmannedtechshop.co.uk/de/blogs/knowledge-base/fpv-drone-motor-mounting-how-to-install-wire-brushless-motors"
+    },
+    {
+      "title": "Typical values",
+      "url": null,
+      "note": "mass, size and thrust are typical class ranges; check the vendor's sheet for a real motor"
+    }
+  ],
+  "project_id": null
+}
