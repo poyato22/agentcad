@@ -228,3 +228,42 @@ def _ledger_no_run(store: Store, user: str, since: float) -> int:
         " WHERE user=? AND ts>=? AND run_id IS NULL"
         " AND (state='reserved' OR (state='settled' AND counted=1))", (user, since))
     return int(row[0])
+
+
+# ---- import into a build
+
+async def import_element(client: OnshapeClient, parts_root: Path, did: str, wid: str, eid: str,
+                         project_id: str | None, *, run_id: str | None = None) -> dict:
+    """Mirror a Part Studio or Assembly into a build as a local part (2 Onshape calls: the
+    element list, for its name and type, and its bounding box).
+
+    The mirror is the element's bounding-box envelope, linked to the Onshape element; Onshape
+    is only read, never changed. Importing the same element into the same build again
+    returns the existing part (`existing: true`)."""
+    from ..catalog.geometry import base_part_id, build_part, choose_part_id, read_meta, script_for
+
+    did, wid, eid = check_id(did, "did"), check_id(wid, "wid"), check_id(eid, "eid")
+    owner = {"kind": "part", "source": "onshape", "onshape_ref": f"{did}/{wid}/{eid}",
+             "project_id": project_id}
+    elements = await list_elements(client, did, wid, run_id=run_id)
+    el = next((e for e in elements if e["eid"] == eid), None)
+    if el is None:
+        raise MisesError(ErrorCode.NOT_FOUND, "no Part Studio or Assembly with that eid",
+                         hint="pick an element from GET /onshape/documents/{did}/elements")
+    base = base_part_id({"source": "onshape", "name": el["name"], "category": "onshape_part"})
+    pid, existing = choose_part_id(Path(parts_root), base, owner)
+    if existing:
+        return {"part_id": pid, "existing": True, "meta": read_meta(Path(parts_root) / pid)}
+    bb = await bounding_box_mm(client, did, wid, eid, el["type"], run_id=run_id)
+    size = [hi - lo for lo, hi in zip(bb["min"], bb["max"])]
+    if min(size) <= 0:
+        raise MisesError(ErrorCode.INVALID_INPUT, "the element has no solid extent to mirror",
+                         hint="import a Part Studio with at least one part")
+    script, vars_ = script_for({"id": "onshape_import", "source": "onshape", "dims": {
+        "length_mm": size[0], "width_mm": size[1], "height_mm": size[2]}})
+    meta = {**owner, "label": el["name"],
+            "onshape": {"did": did, "wid": wid, "eid": eid, "type": el["type"],
+                        "url": f"https://cad.onshape.com/documents/{did}/w/{wid}/e/{eid}"},
+            "bbox_mm": bb, "envelope": True}
+    out = await build_part(Path(parts_root), pid, script, vars_, meta)
+    return {**out, "existing": False}

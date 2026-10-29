@@ -38,7 +38,9 @@ from .mcp_server import RUN_HEADER, build_mcp_server
 from ..profile import ClaudeStatusFn, LocalProbeFn, load_profile, probe_local
 from .profile_api import build_profile_router
 from .context_api import build_context_router
+from .catalog_api import build_catalog_router
 from .drawing_api import build_drawing_router
+from .onshape_api import build_onshape_router
 from .print_api import build_print_router
 from .sim_api import build_sim_router
 from .sketch_api import build_sketch_router
@@ -207,6 +209,8 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
     app.include_router(build_print_router(runtime))
     app.include_router(build_sim_router(runtime))
     app.include_router(build_sketch_router(runtime))
+    app.include_router(build_onshape_router(runtime))
+    app.include_router(build_catalog_router(runtime))
 
     @app.exception_handler(MisesError)
     async def _mises_error(_req, e: MisesError):
