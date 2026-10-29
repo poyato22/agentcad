@@ -1,10 +1,16 @@
-"""In-process event bus with per-subscriber bounded queues."""
+"""In-process event bus with per-subscriber bounded queues, plus the agent-activity tracker."""
 from __future__ import annotations
 
 import asyncio
 import time
+from typing import TYPE_CHECKING, Callable
 
 from pydantic import BaseModel, Field
+
+from .types import StepKind
+
+if TYPE_CHECKING:
+    from .store import Store
 
 
 class Event(BaseModel):
@@ -72,3 +78,113 @@ class Subscription:
 
     async def __aexit__(self, *exc) -> None:
         self.close()
+
+
+# ---- agent activity (Plan 5 "Activity" contract)
+#: Coarse states an agent run moves through; emitted on every transition as `agent_activity`.
+ACTIVITY_STATES = ("queued", "starting", "thinking", "writing", "tool", "waiting_approval",
+                   "waiting_user", "idle", "done")
+
+#: tool name -> a short human label for the `detail` field (the argument-free part of it).
+TOOL_LABELS: dict[str, str] = {
+    "mirror_part_create": "building part", "mirror_part_update": "editing part",
+    "mirror_part_list": "listing parts", "mirror_measure": "measuring",
+    "mirror_regenerate": "regenerating", "sim_static_run": "running FEM study",
+    "onshape_docs_search": "searching Onshape", "onshape_doc_elements": "reading Onshape",
+    "onshape_doc_open": "opening Onshape", "catalog_search": "searching the catalog",
+    "catalog_import_url": "reading a part page", "catalog_insert": "inserting a catalog part",
+    "study_run": "running design study", "spec_set": "writing the spec",
+    "spec_check": "checking requirements", "assembly_drive": "driving the assembly",
+    "assembly_check": "checking the assembly", "ui_ask_user": "asking you",
+    "agent_spawn": "delegating", "orchestrator_run": "delegating",
+    "agent_wait": "waiting on subagents", "agent_result": "collecting a subagent",
+}
+
+
+def tool_label(name: str) -> str:
+    """A human `detail` label for a tool call. `mcp__mises__` prefixes are stripped first."""
+    bare = name.split("mcp__mises__", 1)[-1]
+    return TOOL_LABELS.get(bare, bare.replace("_", " "))
+
+
+class ActivityTracker:
+    """Tracks one run's coarse activity state and publishes `agent_activity` on each transition.
+
+    The `writing` state is re-emitted at most ~4/s (the model streams text far faster). Model
+    thinking is published as `agent_thinking` deltas (display-only, coalesced to ~4/s) and, when
+    the thinking phase ends, stored once as a truncated DECISION step.
+    """
+    WRITING_INTERVAL = 0.25          # >= 4/s while writing
+    THINKING_INTERVAL = 0.25         # >= 4/s coalesced thinking deltas
+    THINKING_STORE_CHARS = 4000      # thinking is stored truncated to this many characters
+
+    def __init__(self, bus: EventBus, run_id: str, store: "Store | None" = None, *,
+                 clock: Callable[[], float] = time.time):
+        self._bus = bus
+        self._run_id = run_id
+        self._store = store
+        self._clock = clock
+        self.state: str | None = None
+        self.detail: str = ""
+        self.since: float | None = None
+        self._tokens_out: int = 0
+        self._last_write = 0.0
+        self._think_full: list[str] = []     # accumulated for storage (capped)
+        self._think_len = 0
+        self._think_pending: list[str] = []  # not yet published (coalesced)
+        self._last_think = float("-inf")     # the first thinking delta always publishes
+
+    def snapshot(self) -> dict | None:
+        """The current state, for GET /runs/{id}'s `activity` field (None before the first)."""
+        if self.state is None:
+            return None
+        data = {"state": self.state, "detail": self.detail, "since": self.since}
+        if self._tokens_out:
+            data["tokens_out"] = self._tokens_out
+        return data
+
+    def _emit(self) -> None:
+        self._bus.publish(Event(type="agent_activity", run_id=self._run_id, data=self.snapshot()))
+
+    def set(self, state: str, detail: str = "", *, tokens_out: int | None = None) -> None:
+        now = self._clock()
+        if tokens_out is not None:
+            self._tokens_out = tokens_out
+        if state != self.state or detail != self.detail:
+            if self.state == "thinking" and state != "thinking":
+                self.flush_thinking()
+            self.state, self.detail, self.since = state, detail, now
+            self._last_write = now
+            self._emit()
+        elif state == "writing" and now - self._last_write >= self.WRITING_INTERVAL:
+            self._last_write = now
+            self._emit()
+
+    def thinking(self, text_delta: str) -> None:
+        self.set("thinking")
+        self._think_pending.append(text_delta)
+        if self._think_len < self.THINKING_STORE_CHARS:
+            self._think_full.append(text_delta)
+            self._think_len += len(text_delta)
+        now = self._clock()
+        if now - self._last_think >= self.THINKING_INTERVAL:
+            self._publish_thinking(now)
+
+    def _publish_thinking(self, now: float) -> None:
+        if not self._think_pending:
+            return
+        chunk = "".join(self._think_pending)
+        self._think_pending = []
+        self._last_think = now
+        self._bus.publish(Event(type="agent_thinking", run_id=self._run_id,
+                                data={"text_delta": chunk}))
+
+    def flush_thinking(self) -> None:
+        """Publish any pending thinking delta and store the whole phase, truncated."""
+        self._publish_thinking(self._clock())
+        if self._store is not None and self._think_full:
+            text = "".join(self._think_full)[:self.THINKING_STORE_CHARS]
+            self._store.append_step(self._run_id, StepKind.DECISION, {
+                "agent_thinking": text, "truncated": self._think_len >= self.THINKING_STORE_CHARS})
+        self._think_full = []
+        self._think_len = 0
