@@ -8,7 +8,8 @@
 //   · POST /catalog/import is https only, saves at once and returns the item (page text in
 //     raw_text); a URL already in the directory comes back unchanged with `existing: true` unless
 //     `refresh`; PATCH edits name/category/vendor/specs/dims/mount only; built-ins are read-only.
-// GET /projects (C1) answers here too, with the builds the scenario names, for the build pickers.
+// The builds the scenario names feed the ONE fake GET /projects (fake-core/assembly.ts, A4) at merge;
+// `builds` here is that same list (server.ts stateFrom), used for the import default build.
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -327,11 +328,5 @@ export function directoryRoutes({ get, emit }: DirectoryDeps): Route[] {
       },
     },
 
-    // ---- builds (C1 GET /projects; the pickers only)
-    {
-      method: "GET", re: /^\/projects$/, h: () => get().builds.map((b) => ({
-        id: b.id, name: b.name, created_at: 1790000000, updated_at: 1790000000, trashed_at: null, part_count: 0, run_count: 0, onshape: null,
-      })),
-    },
   ];
 }

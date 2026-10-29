@@ -11,6 +11,9 @@ With CalculiX installed it also runs two static stress studies on that part thro
 `POST /sims` (one solved, one with the solver hidden) and records the sim routes, their
 `sim_progress` events and the heatmap GLB (sims_*.json, sim_*.json, sim_events.jsonl,
 sim_result.glb). `--only sims` writes just those files.
+
+Last it builds a hinge and a slide assembly in the Default build (assembly*.json, projects.json);
+`--only assembly` writes just those.
 """
 import argparse
 import asyncio
@@ -223,6 +226,9 @@ async def dump(out: Path, only: str = "all") -> None:
                 await dump_sims(rt, c, auth, out, required=only == "sims")
             if only == "sims":
                 return
+            if only == "assembly":
+                await dump_assembly(out, call, get)
+                return
             routes = {"status.json": "/status", "agents.json": "/agents",
                       "models.json": "/models", "parts.json": "/parts", "runs.json": "/runs",
                       "steps.json": f"/runs/{run_id}/steps", "approvals.json": "/approvals",
@@ -252,6 +258,7 @@ async def dump(out: Path, only: str = "all") -> None:
             (out / "mount_plate.glb").write_bytes((await get("/parts/mount_plate/model.glb")).content)
             await dump_draw_print(out, call, get, rt)
             await dump_more(out, call, get, run_id)
+            await dump_assembly(out, call, get)
         if only == "all":
             (out / "events.jsonl").write_text("".join(line + "\n" for line in events))
     finally:
@@ -433,11 +440,80 @@ async def dump_more(out: Path, call, get, run_id: str) -> None:
     write("cancel_all.json", (await call("POST", "/runs/cancel_all")).json())
 
 
+async def dump_assembly(out: Path, call, get) -> None:
+    """Plan 5 A4: the assembly routes the app calls, on a hinge of two mount plates in the
+    active build. `base` is grounded; `lid` hangs off its +X edge on a revolute joint about Y
+    with limits [0, 180] deg. Driven to 90 deg the lid stands up through the base's edge (a real
+    interference); driven to 0 it lies flat beside it (touching, no interference); 270 is
+    clamped to 180. Then a joint and an instance are patched and deleted."""
+    def write(name: str, data) -> None:
+        (out / name).write_text(json.dumps(data, indent=2) + "\n")
+
+    projects = (await get("/projects")).json()
+    write("projects.json", projects)
+    project = projects[0]["id"]
+    base_url = f"/projects/{project}/assembly"
+    write("assembly_parts.json", (await get(f"/parts?project_id={project}")).json())
+    base = (await call("POST", f"{base_url}/instances",
+                       {"part_id": "mount_plate", "name": "base", "fixed": True})).json()
+    lid = (await call("POST", f"{base_url}/instances",
+                      {"part_id": "mount_plate", "name": "lid"})).json()
+    write("assembly_instance_add.json", lid)
+    joint = (await call("POST", f"{base_url}/joints", {
+        "kind": "revolute",
+        "a": {"instance_id": base["id"], "frame": {"origin": [20, 0, 0], "axis": [0, 1, 0]}},
+        "b": {"instance_id": lid["id"], "frame": {"origin": [-20, 0, 0], "axis": [0, 1, 0]}},
+        "value": 0, "limits": [0, 180]})).json()
+    write("assembly_joint_add.json", joint)
+    drive = f"{base_url}/drive"
+    write("assembly_drive.json",
+          (await call("POST", drive, {"joint_id": joint["id"], "value": 90})).json())
+    write("assembly.json", (await get(base_url)).json())
+    write("assembly_interference.json", (await get(f"{base_url}/interference")).json())
+    write("assembly_drive_clamped.json",
+          (await call("POST", drive, {"joint_id": joint["id"], "value": 270})).json())
+    await call("POST", drive, {"joint_id": joint["id"], "value": 0})
+    write("assembly_interference_none.json", (await get(f"{base_url}/interference")).json())
+    # a slide placed from its b side (the inverse path): `cover` (a) hangs under the grounded
+    # base (b) on a slider along Z, limits [0, 10]; 25 is clamped to 10
+    cover = (await call("POST", f"{base_url}/instances",
+                        {"part_id": "mount_plate", "name": "cover"})).json()
+    slide = (await call("POST", f"{base_url}/joints", {
+        "kind": "slider",
+        "a": {"instance_id": cover["id"], "frame": {"origin": [0, 0, -3], "axis": [0, 0, 1]}},
+        "b": {"instance_id": base["id"], "frame": {"origin": [0, 0, 3], "axis": [0, 0, 1]}},
+        "value": 0, "limits": [0, 10]})).json()
+    write("assembly_slider_add.json", slide)
+    write("assembly_drive_slider.json",
+          (await call("POST", drive, {"joint_id": slide["id"], "value": 7})).json())
+    write("assembly_drive_slider_clamped.json",
+          (await call("POST", drive, {"joint_id": slide["id"], "value": 25})).json())
+    write("assembly_joint_patch.json", (await call("PATCH", f"{base_url}/joints/{joint['id']}",
+                                                   {"limits": [0, 120]})).json())
+    moved = [[1, 0, 0, 0], [0, 1, 0, 30], [0, 0, 1, 0], [0, 0, 0, 1]]
+    write("assembly_instance_patch.json", (await call(
+        "PATCH", f"{base_url}/instances/{base['id']}", {"transform": moved})).json())
+    try:                                    # a joint that would close a loop is refused
+        await call("POST", f"{base_url}/joints", {
+            "kind": "fixed",
+            "a": {"instance_id": lid["id"], "frame": {"origin": [0, 0, 0], "axis": [0, 0, 1]}},
+            "b": {"instance_id": base["id"], "frame": {"origin": [0, 0, 0], "axis": [0, 0, 1]}}})
+        raise SystemExit("a loop joint should be refused")
+    except httpx.HTTPStatusError as e:
+        write("assembly_joint_loop.json", {"status": e.response.status_code,
+                                           "body": e.response.json()})
+    write("assembly_joint_delete.json",
+          (await call("DELETE", f"{base_url}/joints/{joint['id']}")).json())
+    write("assembly_instance_delete.json",
+          (await call("DELETE", f"{base_url}/instances/{lid['id']}")).json())
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--out", type=Path, required=True)
-    ap.add_argument("--only", choices=["all", "sims"], default="all",
-                    help="sims: only the sim route fixtures (needs CalculiX)")
+    ap.add_argument("--only", choices=["all", "sims", "assembly"], default="all",
+                    help="sims: only the sim route fixtures (needs CalculiX); assembly: only the "
+                         "assembly route fixtures")
     args = ap.parse_args()
     asyncio.run(dump(args.out, args.only))
     print(f"wrote fixtures to {args.out}", file=sys.stderr)

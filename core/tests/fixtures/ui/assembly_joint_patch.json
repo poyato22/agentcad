@@ -1,0 +1,41 @@
+{
+  "id": "43cabccbf215",
+  "kind": "revolute",
+  "a": {
+    "instance_id": "78a579fa4d52",
+    "frame": {
+      "origin": [
+        20.0,
+        0.0,
+        0.0
+      ],
+      "axis": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "face_id": null
+    }
+  },
+  "b": {
+    "instance_id": "743b08999e55",
+    "frame": {
+      "origin": [
+        -20.0,
+        0.0,
+        0.0
+      ],
+      "axis": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "face_id": null
+    }
+  },
+  "value": 0.0,
+  "limits": [
+    0.0,
+    120.0
+  ]
+}

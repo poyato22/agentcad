@@ -24,6 +24,12 @@ import {
   type BuildRef, type CatalogEdit, type CatalogItem, type OnshapeBudget, type OnshapeDoc, type OnshapeElement, type PartResult,
 } from "./directory";
 import type { DrawingInfo, NewPrinterBody, PrintCall, PrintCapabilities, Printer, PrinterStatus, PrintStart, Slice, SliceStart } from "./types";
+import {
+  assemblyPartSchema, assemblySchema, driveResultSchema, instanceDeletedSchema, instanceSchema, interferenceSchema, jointDeletedSchema,
+  jointSchema, projectRowSchema,
+  type Assembly, type AssemblyPart, type DriveResult, type Instance, type InstancePatch, type Interference, type Joint, type JointPatch,
+  type JointValue, type NewInstanceBody, type NewJointBody, type ProjectRow,
+} from "./assembly";
 
 type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
@@ -348,6 +354,49 @@ export class CoreClient {
     return { builds: all.filter((b) => b.trashed_at === null), active: prof.active_project_id };
   }
 
+  // ---- Plan 5 A4: assemblies (core server/assembly_api.py); every mutation emits assembly_changed
+
+  /** Live builds (Trash left out); the assembly uses it to find the active build. */
+  async projects(): Promise<ProjectRow[]> {
+    return (await this.json("GET", "/projects", z.array(projectRowSchema))).filter((p) => p.trashed_at === null);
+  }
+  /** The profile's active build id (null when unset); the rest of the profile is not read here. */
+  async activeProjectId(): Promise<string | null> {
+    return (await this.json("GET", "/profile", z.object({ active_project_id: z.string().nullish() }))).active_project_id ?? null;
+  }
+  assemblyParts(projectId: string): Promise<AssemblyPart[]> {
+    return this.json("GET", "/parts", z.array(assemblyPartSchema), { query: { project_id: projectId } });
+  }
+  assembly(projectId: string): Promise<Assembly> { return this.json("GET", asm(projectId), assemblySchema); }
+  addInstance(projectId: string, body: NewInstanceBody): Promise<Instance> {
+    return this.json("POST", `${asm(projectId)}/instances`, instanceSchema, { body });
+  }
+  patchInstance(projectId: string, iid: string, patch: InstancePatch): Promise<Instance> {
+    return this.json("PATCH", `${asm(projectId)}/instances/${enc(iid)}`, instanceSchema, { body: patch });
+  }
+  /** Also removes every joint on the instance; returns their ids. */
+  async deleteInstance(projectId: string, iid: string): Promise<string[]> {
+    return (await this.json("DELETE", `${asm(projectId)}/instances/${enc(iid)}`, instanceDeletedSchema)).removed_joints;
+  }
+  /** 400 invalid_input when the joint would close a loop (nothing is written). */
+  addJoint(projectId: string, body: NewJointBody): Promise<Joint> {
+    return this.json("POST", `${asm(projectId)}/joints`, jointSchema, { body });
+  }
+  patchJoint(projectId: string, jid: string, patch: JointPatch): Promise<Joint> {
+    return this.json("PATCH", `${asm(projectId)}/joints/${enc(jid)}`, jointSchema, { body: patch });
+  }
+  async deleteJoint(projectId: string, jid: string): Promise<void> {
+    await this.json("DELETE", `${asm(projectId)}/joints/${enc(jid)}`, jointDeletedSchema);
+  }
+  /** Stores the joint value (clamped to its limits) and returns every solved transform. */
+  drive(projectId: string, jointId: string, value: JointValue): Promise<DriveResult> {
+    return this.json("POST", `${asm(projectId)}/drive`, driveResultSchema, { body: { joint_id: jointId, value } });
+  }
+  /** OCCT common volume per instance pair over 0.01 mm³ (sandboxed worker; can take seconds). */
+  interference(projectId: string): Promise<Interference[]> {
+    return this.json("GET", `${asm(projectId)}/interference`, z.array(interferenceSchema));
+  }
+
   // ---- internals
 
   /** A binary answer as a Blob of `type` (the type is ours, not the server's). */
@@ -440,4 +489,5 @@ const lenientSteps: z.ZodType<Step[]> = z.array(z.unknown()).transform((items) =
 });
 
 const enc = encodeURIComponent;
+const asm = (projectId: string) => `/projects/${enc(projectId)}/assembly`;
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));

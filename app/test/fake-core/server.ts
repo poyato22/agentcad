@@ -14,6 +14,7 @@ import type {
   SystemCheckRow, SystemFix,
 } from "../../src/api/types";
 import { INSTALL_DEPS } from "../../src/api/types";
+import { assemblyFrom, assemblyRoutes, type AssemblyScenario, type FakeAssembly } from "./assembly";
 import { handleControl } from "./control";
 import { directoryFrom, directoryRoutes, type DirectoryScenario, type FakeDirectory } from "./directory";
 import { printingFrom, printingRoutes, stopPrinting, type FakePrinting, type PrintScenario } from "./printing";
@@ -103,6 +104,8 @@ export interface Scenario {
   system_install_ms?: number;
   /** Onshape browser / budget / parts directory (Plan 5 A6). Absent: defaults from the fixtures. */
   directory?: DirectoryScenario;
+  /** Builds and their assemblies (Plan 5 A4). Absent: one empty "Default" build. */
+  assembly?: AssemblyScenario;
 }
 
 /** A small healthy default when a scenario names no `system` rows. */
@@ -143,6 +146,7 @@ export interface FakeState {
   systemInstallMs: number;
   /** Plan 5 A6: Onshape browser, budget and parts directory. */
   directory: FakeDirectory;
+  assembly: FakeAssembly;
 }
 
 export interface FakeCore {
@@ -172,6 +176,18 @@ export function loadScenario(s: string | Scenario): Scenario {
   return JSON.parse(readFileSync(file, "utf8")) as Scenario;
 }
 
+/** One fake GET /projects (A4's, fake-core/assembly.ts): the A6 directory scenario's `builds`
+ *  seed it when the scenario names no assembly projects, and the directory shares that list. */
+function sharedBuilds(sc: Scenario): { directory: FakeDirectory; assembly: FakeAssembly } {
+  const seeded = sc.assembly?.projects ? sc.assembly
+    : sc.directory?.builds ? { ...sc.assembly, projects: sc.directory.builds.map((b) => ({ ...b, trashed_at: null })) }
+    : sc.assembly;
+  const assembly = assemblyFrom(seeded);
+  const directory = directoryFrom(sc.directory, sc.status.onshape === "connected", sc.status);
+  directory.builds = assembly.projects;
+  return { directory, assembly };
+}
+
 function stateFrom(sc: Scenario, token: string): FakeState {
   return {
     token,
@@ -189,7 +205,7 @@ function stateFrom(sc: Scenario, token: string): FakeState {
     system: sc.system ? structuredClone(sc.system) : structuredClone(DEFAULT_SYSTEM_CHECK),
     systemInstall: sc.system_install ? structuredClone(sc.system_install) : {},
     systemInstallMs: sc.system_install_ms ?? 60,
-    directory: directoryFrom(sc.directory, sc.status.onshape === "connected", sc.status),
+    ...sharedBuilds(sc),
   };
 }
 
@@ -788,6 +804,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       get: () => state.print, parts: () => state.parts, defaultMaterial: () => state.setup.profile.default_material,
       emit: (ev, extras) => { emit(ev, extras); }, approval: (id) => state.approvals.get(id),
     }),
+    ...assemblyRoutes({ get: () => state.assembly, parts: () => state.parts, emit: (ev) => { emit(ev); } }),
     { method: "GET", re: /^\/system\/check$/, h: () => state.system },
     {
       // POST /system/install/{dep}: allowlist only, no arguments from the body (Review Focus 3).
