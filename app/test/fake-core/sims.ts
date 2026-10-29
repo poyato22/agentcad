@@ -13,6 +13,9 @@ import { fileURLToPath } from "node:url";
 import { FACE_ID_RE, SIM_DIRECTIONS, SIM_FACE_PRESETS, type SimEnvironment, type SimMaterial, type SimRecord, type SimSolvers } from "../../src/api/sims";
 import type { AgentRun, PartSummary } from "../../src/api/types";
 import { asBody, HttpError, mises, RAW, type EmitExtras, type EventIn, type Route } from "./server";
+import {
+  cancelStudiesOfRun, clearStudyTimers, REAL_STUDY, startStudy, studyGlbPath, studyRoutes, studyStateFrom, STUDY_TYPE_IDS, type StudyState,
+} from "./studies";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const SIM_FIXTURES = resolve(HERE, "../../../core/tests/fixtures/ui");
@@ -43,6 +46,8 @@ export interface SimScenario {
   outcome?: SimOutcome;
   /** Delay between stages, ms. Default 150. */
   step_ms?: number;
+  /** Plan 5 C7: also store the real core's study of every type (beam / cube parts) and its templates. */
+  studies?: boolean;
 }
 
 export interface FakeSims {
@@ -52,29 +57,38 @@ export interface FakeSims {
   stepMs: number;
   /** Pending stage timers per studies run (cleared on cancel / reset). */
   timers: Map<string, ReturnType<typeof setTimeout>[]>;
+  /** Templates, custom materials and running C7 studies. */
+  study: StudyState;
+  /** The scenario stores the C7 studies (sims.studies). */
+  studiesOn: boolean;
 }
 
 export function simsFrom(s: SimScenario | undefined): FakeSims {
   const ccx = s?.ccx ?? true;
   const list = s?.records === "fixtures" ? [REAL.done, REAL.failed] : (s?.records ?? []);
+  if (s?.studies) list.push(...STUDY_TYPE_IDS.map((t) => REAL_STUDY.records[t] as unknown as SimRecord));
   return {
     ccx,
     records: new Map(list.map((r) => [r.sim_id, structuredClone(r)])),
     outcome: s?.outcome ?? (ccx ? "done" : "solver_missing"),
     stepMs: s?.step_ms ?? 150,
     timers: new Map(),
+    study: studyStateFrom(s?.studies === true),
+    studiesOn: s?.studies === true,
   };
 }
 
 export function clearSimTimers(sims: FakeSims): void {
   for (const ts of sims.timers.values()) ts.forEach(clearTimeout);
   sims.timers.clear();
+  clearStudyTimers(sims.study);
 }
 
 /** Same as the core: running → cancelled when its run is cancelled (the solver is killed). */
 export function cancelSimsOfRun(sims: FakeSims, runId: string): void {
   sims.timers.get(runId)?.forEach(clearTimeout);
   sims.timers.delete(runId);
+  cancelStudiesOfRun(sims.study, runId);
   for (const r of sims.records.values()) {
     if (r.run_id === runId && r.status === "running") {
       Object.assign(r, { status: "cancelled", stage: "cancelled", error: "cancelled", finished_at: Date.now() / 1000 });
@@ -94,7 +108,11 @@ const now = () => Date.now() / 1000;
 const hex = (n: number) => randomBytes(n).toString("hex");
 
 function summary(r: SimRecord) {
+  const extra = r as unknown as Record<string, unknown>;
+  // C7 records also carry these (core studies.SUMMARY_KEYS)
+  const c7 = Object.fromEntries(["type", "phase", "pct", "step_id", "reason"].filter((k) => k in extra).map((k) => [k, extra[k]]));
   return {
+    ...c7,
     sim_id: r.sim_id, part_id: r.part_id, run_id: r.run_id, status: r.status, stage: r.stage, created_at: r.created_at,
     finished_at: r.finished_at, error: r.error, hint: r.hint, inputs: r.inputs, results: r.results ?? null, guide: r.guide,
     label: r.label, fidelity_class: r.fidelity_class, stale: r.stale,
@@ -129,8 +147,18 @@ export function simRoutes(d: SimDeps): Route[] {
   };
   const sorted = () => [...d.sims().records.values()].sort((a, b) => b.created_at - a.created_at).map(withStale);
 
+  const studyDeps = {
+    records: () => d.sims().records as unknown as Map<string, import("../../src/api/studies").StudyRecord>,
+    state: () => d.sims().study, parts: d.parts, stepMs: () => d.sims().stepMs, hang: () => d.sims().outcome === "hang",
+    newRun: d.newRun, emit: d.emit,
+  };
   return [
-    { method: "GET", re: /^\/sims\/solvers$/, h: () => structuredClone(d.sims().ccx ? REAL.solvers : REAL.solversMissing) },
+    ...studyRoutes(studyDeps),
+    { method: "GET", re: /^\/sims\/solvers$/, h: () => {
+      // the C7 core adds the CFD rows; the older sims fixtures predate them
+      const base = structuredClone(d.sims().ccx ? REAL.solvers : REAL.solversMissing);
+      return d.sims().studiesOn ? { ...base, cfd: structuredClone(REAL_STUDY.solvers.cfd) } : base;
+    } },
     {
       method: "GET", re: /^\/sims$/, h: (_m, q) => {
         const part = q.get("part_id");
@@ -143,8 +171,9 @@ export function simRoutes(d: SimDeps): Route[] {
     {
       method: "GET", re: /^\/sims\/([^/]+)\/result\.glb$/, h: (m, _q, _b, r, res) => {
         const rec = record(decodeURIComponent(m[1]));
-        if (rec.status !== "done" || !existsSync(SIM_GLB)) throw mises("not_found", `study ${rec.sim_id} has no result model`, "only finished studies have one");
-        const size = statSync(SIM_GLB).size;
+        const glbPath = studyGlbPath((rec as unknown as { type?: string }).type && (rec as unknown as { card?: unknown }).card ? (rec as unknown as { type: string }).type : null) ?? SIM_GLB;
+        if (rec.status !== "done" || !existsSync(glbPath)) throw mises("not_found", `study ${rec.sim_id} has no result model`, "only finished studies have one");
+        const size = statSync(glbPath).size;
         const etag = `"${Math.round((rec.finished_at ?? 0) * 1e9)}-${size}"`;
         if (r.headers["if-none-match"] === etag) {
           res.writeHead(304, { ETag: etag });
@@ -152,13 +181,14 @@ export function simRoutes(d: SimDeps): Route[] {
           return RAW;
         }
         res.writeHead(200, { "Content-Type": "model/gltf-binary", "Content-Length": size, ETag: etag });
-        res.end(readFileSync(SIM_GLB));
+        res.end(readFileSync(glbPath));
         return RAW;
       },
     },
     {
       method: "POST", re: /^\/sims$/, h: (_m, _q, raw, _r, res) => {
-        const text = JSON.stringify(start(d, asBody(raw)));
+        const b = asBody(raw);
+        const text = JSON.stringify("type" in b ? startStudy(studyDeps, b) : start(d, b));
         res.writeHead(202, { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(text) });
         res.end(text);
         return RAW;

@@ -29,7 +29,7 @@ const BEAM: PartSummary = { part_id: "beam", vars: { length: 100 }, mtime: 1, me
 const CUBE: PartSummary = { ...BEAM, part_id: "cube" };
 const beamList = () => LIST.filter((s) => s.part_id === "beam");
 
-function client(over: Partial<Record<keyof StudiesClient, unknown>> = {}) {
+function client() {
   const byId = new Map([...Object.values(REC)].map((r) => [r.sim_id, r]));
   return {
     studyTypes: vi.fn().mockResolvedValue(TYPES),
@@ -50,7 +50,6 @@ function client(over: Partial<Record<keyof StudiesClient, unknown>> = {}) {
     getRun: vi.fn().mockResolvedValue({ status: "running" }),
     steps: vi.fn().mockResolvedValue([]),
     createRun: vi.fn().mockResolvedValue({ run_id: "fix1" }),
-    ...over,
   };
 }
 

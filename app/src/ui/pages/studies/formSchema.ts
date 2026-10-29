@@ -61,7 +61,11 @@ export interface Discriminated { prop: string; options: { value: string; schema:
 export function discriminated(n: JsonSchema, root: JsonSchema): Discriminated | null {
   const d = n.discriminator;
   if (!isObj(d) || typeof d.propertyName !== "string" || !isObj(d.mapping)) return null;
-  const options = Object.entries(d.mapping).map(([value, ref]) => ({ value, schema: deref({ $ref: String(ref) }, root) }));
+  // in the schema's oneOf order (the first is the default kind), not the mapping's
+  const refs = branches(n, "oneOf").map((b) => String(b.$ref ?? ""));
+  const entries = Object.entries(d.mapping).map(([value, ref]) => ({ value, ref: String(ref) }));
+  entries.sort((a, b) => (refs.indexOf(a.ref) + 1 || 999) - (refs.indexOf(b.ref) + 1 || 999));
+  const options = entries.map(({ value, ref }) => ({ value, schema: deref({ $ref: ref }, root) }));
   return { prop: d.propertyName, options };
 }
 

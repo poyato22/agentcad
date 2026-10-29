@@ -218,19 +218,19 @@ const COVERAGE: Record<string, string> = {
   "POST /catalog/import": "EXEMPT: Plan 5 C5 Onshape browser/catalog core route; no app client yet (core API tests cover it)",
   "POST /catalog/items/{item_id}/insert": "EXEMPT: Plan 5 C5 Onshape browser/catalog core route; no app client yet (core API tests cover it)",
   "POST /onshape/import": "EXEMPT: Plan 5 C5 Onshape browser/catalog core route; no app client yet (core API tests cover it)",
-  "DELETE /sims/materials/{name}": "EXEMPT: Plan 5 C7 study types core route; no app client yet (core API tests cover it)",
-  "DELETE /sims/templates/{tpl_id}": "EXEMPT: Plan 5 C7 study types core route; no app client yet (core API tests cover it)",
-  "GET /sims/materials": "EXEMPT: Plan 5 C7 study types core route; no app client yet (core API tests cover it)",
-  "GET /sims/templates": "EXEMPT: Plan 5 C7 study types core route; no app client yet (core API tests cover it)",
-  "GET /sims/types": "EXEMPT: Plan 5 C7 study types core route; no app client yet (core API tests cover it)",
-  "GET /sims/{sim_id}/charts": "EXEMPT: Plan 5 C7 study types core route; no app client yet (core API tests cover it)",
-  "GET /sims/{sim_id}/probe": "EXEMPT: Plan 5 C7 study types core route; no app client yet (core API tests cover it)",
-  "GET /sims/{sim_id}/section": "EXEMPT: Plan 5 C7 study types core route; no app client yet (core API tests cover it)",
-  "GET /sims/{sim_id}/slices/{name}.png": "EXEMPT: Plan 5 C7 study types core route; no app client yet (core API tests cover it)",
-  "POST /sims/compare": "EXEMPT: Plan 5 C7 study types core route; no app client yet (core API tests cover it)",
-  "POST /sims/materials": "EXEMPT: Plan 5 C7 study types core route; no app client yet (core API tests cover it)",
-  "POST /sims/templates": "EXEMPT: Plan 5 C7 study types core route; no app client yet (core API tests cover it)",
-  "POST /sims/{sim_id}/cancel": "EXEMPT: Plan 5 C7 study types core route; no app client yet (core API tests cover it)",
+  "DELETE /sims/materials/{name}": "study_material_delete.json", // contract.studies.test.ts (Task A8)
+  "DELETE /sims/templates/{tpl_id}": "study_template_delete.json", // contract.studies.test.ts (Task A8)
+  "GET /sims/materials": "study_materials.json", // contract.studies.test.ts (Task A8)
+  "GET /sims/templates": "study_templates.json", // contract.studies.test.ts (Task A8)
+  "GET /sims/types": "study_types.json", // contract.studies.test.ts (Task A8)
+  "GET /sims/{sim_id}/charts": "study_wind_charts.json", // contract.studies.test.ts (Task A8)
+  "GET /sims/{sim_id}/probe": "study_probe.json", // contract.studies.test.ts (Task A8)
+  "GET /sims/{sim_id}/section": "study_section.json", // contract.studies.test.ts (Task A8)
+  "GET /sims/{sim_id}/slices/{name}.png": "study_slice_xz.png", // contract.studies.test.ts (Task A8)
+  "POST /sims/compare": "study_compare.json", // contract.studies.test.ts (Task A8)
+  "POST /sims/materials": "study_material_add.json", // contract.studies.test.ts (Task A8)
+  "POST /sims/templates": "study_template_add.json", // contract.studies.test.ts (Task A8)
+  "POST /sims/{sim_id}/cancel": "study_cancel.json", // contract.studies.test.ts (Task A8)
 };
 
 function coreRoutes(): string[] {

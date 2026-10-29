@@ -140,7 +140,7 @@ describe("inline study cards", () => {
     fireEvent.click(within(wind).getByTestId("open-immersive"));
     await settle();
     const imm = screen.getByTestId("immersive");
-    expect(imm.dataset.sim).toBe(RECORDS.values().find((r) => r.type === "wind")!.sim_id);
+    expect(imm.dataset.sim).toBe([...RECORDS.values()].find((r) => r.type === "wind")!.sim_id);
     await waitFor(() => expect(within(imm).getByTestId("imm-metrics").textContent).toMatch(/Cd/));
     expect(within(imm).getByTestId("fidelity-note").textContent).toBe("low fidelity (preview) · ±40% (validated)");
     closeImmersive();
