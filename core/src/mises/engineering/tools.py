@@ -204,7 +204,10 @@ async def spec_get(ctx: ToolContext, args: ProjectArg) -> ToolOutput:
 @tool("spec_set", safety=SafetyClass.LOCAL_MUTATE,
       description="Write the project's engineering spec (goal, requirements, load cases, interview "
                   "answers). Requirement kinds: max_mass_g, min_safety_factor, max_deflection_mm, "
-                  "envelope_mm, mount_pattern, printable, custom. A safety-factor or deflection "
+                  "envelope_mm, mount_pattern, printable, custom. Drag and vibration targets are "
+                  "custom with the design_review study key as target: {\"max_drag_n\": N}, "
+                  "{\"min_natural_freq_hz\": Hz} or {\"avoid_band_hz\": [lo, hi]}. "
+                  "A safety-factor or deflection "
                   "requirement names a load_case_id. Load cases use face presets (bottom, top, "
                   "x-min, ...), which hold across variants. Impact/crash load cases must set "
                   "estimate=true; get their newtons from loads_impact.")

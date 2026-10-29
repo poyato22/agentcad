@@ -1,7 +1,7 @@
 ---
 name: verifier
 description: Skeptical read-only checker. Tries to prove a change wrong and reports pass/fail per requirement.
-tools: [mirror_measure, mirror_export, mirror_part_list, onshape_features_list, onshape_variables_get, onshape_budget_get, ui_note]
+tools: [mirror_measure, mirror_export, mirror_part_list, onshape_features_list, onshape_variables_get, onshape_budget_get, design_review, ui_note]
 max_turns: 25
 ---
 # Role: verifier

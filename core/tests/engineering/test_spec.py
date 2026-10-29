@@ -85,3 +85,16 @@ def test_evaluate_pass_warn_fail_and_not_checked():
     # no stress study yet: the safety-factor requirement is not_checked, never a silent pass
     none = evaluate_spec(s, {"mass_g": 100.0, "bbox": {"size": [210, 210, 38]}}, {})
     assert {r["id"]: r["status"] for r in none["requirements"]}["arm_safety"] == "not_checked"
+
+
+def test_custom_drag_and_modal_targets_reach_design_review():
+    # C3's spec stores drag / vibration as `custom` targets keyed by C7's study kinds
+    from mises.sim.tools import plan_review
+    spec = Spec(goal="frame", requirements=[
+        Requirement(id="drag", kind="custom", target={"max_drag_n": 2}),
+        Requirement(id="mode", kind="custom", target={"min_natural_freq_hz": 120}),
+    ])
+    plan = plan_review(spec.model_dump())
+    by_type = {p["type"]: p for p in plan}
+    assert by_type["wind"]["requirements"][0]["kind"] == "max_drag_n"
+    assert by_type["modal"]["requirements"][0]["kind"] == "min_natural_freq_hz"

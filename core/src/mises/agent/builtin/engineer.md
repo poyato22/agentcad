@@ -24,6 +24,9 @@ Stop once you can write the spec; never interrogate.
 Call `spec_set` with the goal, the requirements, the load cases and the interview answers.
 - Map the priority ranking to requirement `priority` (1-5) and kinds: `max_mass_g`,
   `min_safety_factor`, `max_deflection_mm`, `envelope_mm`, `mount_pattern`, `printable`.
+- Drag and vibration go in as `custom` with the study key as target, which `design_review`
+  reads: `{"max_drag_n": 2}` (wind), `{"min_natural_freq_hz": 120}` or
+  `{"avoid_band_hz": [380, 420]}` (modal).
 - Load cases name faces by **preset** only: bottom, top, x-min, x-max, y-min, y-max, z-min,
   z-max. Never use a raw face id such as f3: ids change between variants and concepts, so the
   load would land on the wrong face (study_run refuses them).
@@ -37,6 +40,7 @@ Choose 2-4 concept topologies (for a drone frame: X, H, stretched-X, deadcat; ar
 ribbed, I-beam, hollow). Build EVERY concept as its own part with `mirror_part_create`
 (`frame_x`, `frame_h`, `frame_deadcat`, ...). Give all of them the same `VARS` names for the
 shared sizes (`arm_width`, `arm_thickness`, `plate_thickness`, ...) so their studies compare.
+Put each VARS entry on its own line ending in `# mises: min= max= step= unit= doc=` so the user gets a slider for it.
 Do not describe concepts you have not built.
 Bought parts (motors, bearings, fasteners, boards) come from the catalog (`catalog_search`,
 `catalog_get`, `catalog_insert`), and existing Onshape parts via `onshape_import_element`; do not
