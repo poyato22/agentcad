@@ -1,7 +1,10 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Main window: core events, window dragging from the overlay title bar (data-tauri-drag-region), plus the three app commands. Nothing else.",
+  "description": "Main window: core events, window dragging from the overlay title bar (data-tauri-drag-region), the three app commands, and opening http(s) links in the system browser (opener open_url scoped to https://* and http://* only; no paths, no reveal, no other schemes). Nothing else.",
   "windows": ["main"],
-  "permissions": ["core:default", "core:event:default", "core:window:allow-start-dragging", "allow-core-info", "allow-core-restart", "allow-core-status"]
+  "permissions": [
+    "core:default", "core:event:default", "core:window:allow-start-dragging", "allow-core-info", "allow-core-restart", "allow-core-status",
+    { "identifier": "opener:allow-open-url", "allow": [{ "url": "https://*" }, { "url": "http://*" }] }
+  ]
 }

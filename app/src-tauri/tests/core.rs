@@ -247,3 +247,24 @@ fn overlay_title_bar_drag_region_is_allowed() {
     let other_window = perms.iter().filter(|p| p.starts_with("core:window:") && **p != "core:window:allow-start-dragging").count();
     assert_eq!(other_window, 0, "{perms:?}");
 }
+
+#[test]
+fn opener_is_registered_and_scoped_to_http_links_only() {
+    // External links (ui platform/openExternal.ts) open through tauri-plugin-opener's open_url, and only
+    // for http(s): no open_path, no reveal_item_in_dir, no default (unscoped) opener permission set.
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let lib = std::fs::read_to_string(dir.join("src/lib.rs")).unwrap();
+    assert!(lib.contains(".plugin(tauri_plugin_opener::init())"), "opener plugin not registered");
+    let caps: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.join("capabilities/default.json")).unwrap()).unwrap();
+    let is_opener = |p: &serde_json::Value| {
+        p.as_str().or_else(|| p["identifier"].as_str()).is_some_and(|s| s.starts_with("opener:"))
+    };
+    let opener: Vec<&serde_json::Value> = caps["permissions"].as_array().unwrap().iter().filter(|p| is_opener(p)).collect();
+    assert_eq!(opener.len(), 1, "exactly one opener grant: {opener:?}");
+    assert_eq!(opener[0]["identifier"], "opener:allow-open-url");
+    let mut urls: Vec<&str> = opener[0]["allow"].as_array().unwrap().iter().map(|a| a["url"].as_str().unwrap()).collect();
+    urls.sort();
+    assert_eq!(urls, vec!["http://*", "https://*"]);
+    assert!(opener[0].get("deny").is_none());
+}

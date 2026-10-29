@@ -17,6 +17,7 @@ import type { CatalogItem, PartResult } from "../../../api/directory";
 import { addCatalogChip } from "../../../state/agentChips";
 import { actions } from "../../../state/store";
 import { Button } from "../../common/Button";
+import { ExternalLink } from "../../common/ExternalLink";
 import { composerOpen } from "../../console/view";
 import { describeError } from "../../profile/common";
 import { PageShell } from "../PageShell";
@@ -237,7 +238,7 @@ function ItemDetail({ id, onClose, onChanged }: { id: string; onClose: () => voi
         <Button onClick={useWithAgent}>Use with agent</Button>
         {link && (
           // the host is in the label, so the domain is visible before the system browser opens it
-          <a class="btn dir-online" href={link.href} target="_blank" rel="noopener noreferrer" title={link.href}>Open online ({link.host})</a>
+          <ExternalLink class="btn dir-online" href={link.href}>Open online ({link.host})</ExternalLink>
         )}
       </div>
       {inserted && (
@@ -290,7 +291,7 @@ function ItemDetail({ id, onClose, onChanged }: { id: string; onClose: () => voi
               const l = httpsLink(s.url);
               return (
                 <li key={i}>
-                  {l ? <a href={l.href} target="_blank" rel="noopener noreferrer" title={l.href}>{s.title || l.host}</a> : s.title}
+                  {l ? <ExternalLink href={l.href}>{s.title || l.host}</ExternalLink> : s.title}
                   {l && <span class="faint"> ({l.host})</span>}
                   {s.note && <span class="dir-spec-note">{s.note}</span>}
                 </li>

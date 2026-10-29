@@ -71,7 +71,7 @@ describe("SystemCheck", () => {
     await screen.findByText("PrusaSlicer");
     fireEvent.click(screen.getByRole("button", { name: "Install PrusaSlicer" }));
     const link = await screen.findByRole("link", { name: "Install Homebrew" });
-    expect(link.getAttribute("href")).toBe("https://brew.sh");
+    expect(link.getAttribute("href")).toBe("https://brew.sh/");   // normalized by platform/openExternal
     expect(screen.queryByLabelText("prusaslicer install log")).toBeNull();
   });
 

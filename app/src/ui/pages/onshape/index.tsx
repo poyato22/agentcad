@@ -13,6 +13,7 @@ import { CoreError } from "../../../api/client";
 import { ONSHAPE_PAGE, type OnshapeDoc, type OnshapeElement, type PartResult } from "../../../api/directory";
 import { actions, conn, coreStatus } from "../../../state/store";
 import { Button } from "../../common/Button";
+import { ExternalLink } from "../../common/ExternalLink";
 import { describeError } from "../../profile/common";
 import { openProfile } from "../../profile/open";
 import { BuildPicker, useBuilds } from "../directory/BuildPicker";
@@ -147,7 +148,7 @@ function DocTile({ doc, onOpen }: { doc: OnshapeDoc; onOpen: () => void }): JSX.
         <span class="os-tile-name">{doc.name || "Untitled"}</span>
         <span class="os-tile-meta faint">{[doc.owner, fmtModified(doc.modified_at)].filter(Boolean).join(", ")}</span>
       </button>
-      {href && <a class="os-tile-link" href={href} target="_blank" rel="noopener noreferrer" title={href}>Open in Onshape (cad.onshape.com)</a>}
+      {href && <ExternalLink class="os-tile-link" href={href}>Open in Onshape (cad.onshape.com)</ExternalLink>}
     </div>
   );
 }
@@ -187,7 +188,7 @@ function DocView({ doc, onBack }: { doc: OnshapeDoc; onBack: () => void }): JSX.
       <div class="os-doc-head">
         <button ref={back} type="button" class="btn btn-ghost" onClick={onBack}>Back to documents</button>
         <h2 class="os-doc-name">{doc.name || "Untitled"}</h2>
-        {href && <a class="btn" href={href} target="_blank" rel="noopener noreferrer" title={href}>Open in Onshape (cad.onshape.com)</a>}
+        {href && <ExternalLink class="btn" href={href}>Open in Onshape (cad.onshape.com)</ExternalLink>}
       </div>
       <div class="dir-actions">
         <BuildPicker builds={builds} buildId={buildId} label="Import into build" />
