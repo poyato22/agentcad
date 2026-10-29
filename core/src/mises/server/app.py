@@ -248,7 +248,9 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
 
     @app.get("/runs/{run_id}")
     async def get_run(run_id: str):
-        return _run(run_id).model_dump(mode="json")
+        d = _run(run_id).model_dump(mode="json")
+        d["activity"] = runtime.activity_of(run_id)
+        return d
 
     @app.get("/runs/{run_id}/steps")
     async def get_steps(run_id: str, after_id: int = 0):

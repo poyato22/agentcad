@@ -8,13 +8,22 @@ from __future__ import annotations
 
 import json
 
-from ..agent.definitions import load_definitions
-from ..agent.prompts import RULES, SECTION_SEP
+from ..agent.definitions import DefinitionSet, load_definitions
+from ..agent.prompts import RESPONSE_RULES, RULES, SECTION_SEP
 
 CONTEXT_OPEN = "<mises-context>"
 CONTEXT_CLOSE = "</mises-context>"
-SUBAGENTS = ("designer", "verifier")
+# Agent definitions Claude Code never gets as a subagent: the planner is the native
+# orchestrator's own role and submits plans through an internal-only tool.
+INTERNAL_AGENTS = frozenset({"planner"})
 MISES_TOOL_PREFIX = "mcp__mises__"
+
+
+def mises_subagent_names(definitions: DefinitionSet | None = None) -> tuple[str, ...]:
+    """The Mises agents offered to Claude Code as subagents: every definition (built-in,
+    engineer and the user's custom agents) except the orchestrator-internal ones."""
+    defs = definitions if definitions is not None else load_definitions()
+    return tuple(n for n in defs if n not in INTERNAL_AGENTS)
 
 TOOL_ONLY = f"""\
 ## How you work here
@@ -36,20 +45,21 @@ def mises_rules_md(role: str | None = None) -> str:
     rules = RULES.strip().replace(
         "Stay inside the edit and read scope listed at the end of this prompt.",
         "Stay inside the run's edit and read scope; the harness enforces it.")
-    parts = [rules, TOOL_ONLY.strip()]
+    parts = [rules, TOOL_ONLY.strip(), RESPONSE_RULES.strip()]
     if role and role.strip():
         parts.append(role.strip())
     return SECTION_SEP.join(parts) + "\n"
 
 
-def agents_json(tool_names: list[str]) -> dict[str, dict]:
-    """--agents: the built-in designer and verifier. Each gets an explicit list of
-    mcp__mises__<name> tools (no wildcard): the registry's tools the MCP endpoint serves
-    (`tool_names`), narrowed to the definition's own `tools` list when it has one (the
-    verifier's read-only set)."""
-    defs = load_definitions()
+def agents_json(tool_names: list[str], definitions: DefinitionSet | None = None) -> dict[str, dict]:
+    """--agents: one subagent per Mises agent definition (built-in, engineer, custom), minus the
+    orchestrator-internal ones. Each gets the harness rules plus RESPONSE_RULES and its own body,
+    and an explicit list of mcp__mises__<name> tools (no wildcard): the registry's tools the MCP
+    endpoint serves (`tool_names`), narrowed to the definition's own `tools` list when it has
+    one (e.g. the verifier's read-only set)."""
+    defs = definitions if definitions is not None else load_definitions()
     out = {}
-    for name in SUBAGENTS:
+    for name in mises_subagent_names(defs):
         d = defs[name]
         names = [t for t in tool_names if d.tools is None or t in d.tools]
         out[name] = {"description": d.description,

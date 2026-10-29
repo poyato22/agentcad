@@ -6,6 +6,22 @@ from mises.store import AgentPolicy
 
 SECTION_SEP = "\n\n---\n\n"
 
+# Shared response rules: every built-in agent prompt and the Claude Code appended system prompt
+# carry this same text (Plan 5 "Concise agents"). Task C3 owns the canonical copy in this module;
+# C4 defines the same name here with the agreed text so the Claude Code prompt can import it even
+# before C3 merges. When C3 merges, the two definitions reconcile to one (see the C4 report).
+RESPONSE_RULES = """\
+## Replies
+
+- Lead with the result: state the answer or the measured outcome first, then only what the user
+  needs in order to act.
+- Keep it to about six short lines, or one small table, unless the user asks for detail.
+- Do not restate the request, narrate your plan, or add filler ("Sure", "Great question").
+- Use Mises markup: `> [!pass]` / `> [!warn]` / `> [!fail]` callouts for status, `[[part:<id>|Label]]`
+  for a part, numbers with units (`3.2 mm`, `48 g`, `SF 2.4`), and `==text==` to highlight.
+- Report real measured values with units, never a summary of what you intended.
+"""
+
 RULES = """\
 # Mises harness rules
 

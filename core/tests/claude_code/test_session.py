@@ -90,7 +90,9 @@ async def test_start_passes_exactly_the_documented_flags(rt, claude_bin):
     assert srv["mises"]["env"] == {"MISES_MCP_URL": "http://127.0.0.1:1/mcp",
                                    "MISES_MCP_TOKEN": "mcp-only-t", "MISES_HOME": str(rt.home)}
     agents = json.loads((wd / "claude-agents.json").read_text())
-    assert set(agents) == {"designer", "verifier"}
+    from mises.agent.definitions import load_definitions
+    assert set(agents) == set(load_definitions()) - {"planner"}
+    assert {"designer", "verifier"} <= set(agents) and "planner" not in agents
     # explicit mises tool names, no wildcard; orchestration tools are not served over MCP
     tools = agents["designer"]["tools"]
     assert "mcp__mises__mirror_part_list" in tools and "mcp__mises__orchestrator_run" not in tools
@@ -132,6 +134,31 @@ async def test_text_streams_as_message_step_and_deltas(rt, claude_bin, caplog):
     assert finished and finished[-1].data["status"] == "done"
     assert any("non-JSON" in r.getMessage() for r in caplog.records)
     assert rt.store.verify_chain(s.run_id)
+
+
+async def test_activity_transitions_thinking_tool_writing_done(rt, claude_bin):
+    # C4: the Claude Code stream drives agent_activity through thinking -> tool -> writing -> done,
+    # and the model thinking arrives as agent_thinking and is stored truncated.
+    s = _new(rt)
+    sub = rt.events.subscribe(s.run_id)
+    await s.start()
+    try:
+        await asyncio.wait_for(s.prompt("activity"), 10)
+    finally:
+        await s.close()
+    events = _drain(sub)
+    states = [e.data["state"] for e in events if e.type == "agent_activity"]
+    # the first few transitions are the contract sequence (slot "starting" may precede them)
+    assert [st for st in states if st in ("thinking", "tool", "writing", "done")] == [
+        "thinking", "tool", "writing", "done"]
+    tool_act = next(e for e in events if e.type == "agent_activity" and e.data["state"] == "tool")
+    assert tool_act.data["detail"] == "listing parts"
+    thinking = [e.data["text_delta"] for e in events if e.type == "agent_thinking"]
+    assert "".join(thinking) == "let me think"
+    stored = [st.payload for st in rt.store.steps(s.run_id, [StepKind.DECISION])
+              if st.payload.get("agent_thinking")]
+    assert stored and stored[0]["agent_thinking"] == "let me think"
+    assert rt.store.get_run(s.run_id).status == "done"
 
 
 async def test_unexpected_tool_in_init_fails_the_run(rt, claude_bin):

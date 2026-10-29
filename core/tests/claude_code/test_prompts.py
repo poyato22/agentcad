@@ -26,12 +26,16 @@ def test_agents_json_lists_mises_tools_explicitly():
     names = ["mirror_part_create", "mirror_measure", "mirror_part_list", "onshape_doc_open",
              "ui_note", "mises_context_get"]
     a = agents_json(names)
-    assert set(a) == {"designer", "verifier"}
     defs = load_definitions()
+    # one subagent per Mises agent definition, minus the orchestrator-internal planner
+    assert set(a) == set(defs) - {"planner"}
+    assert {"designer", "verifier"} <= set(a) and "planner" not in a
     for name in ("designer", "verifier"):
         assert a[name]["description"] == defs[name].description
         assert defs[name].body.strip() in a[name]["prompt"]
         assert all(t.startswith("mcp__mises__") and "*" not in t for t in a[name]["tools"])
+        # every subagent prompt carries the shared response rules
+        assert "## Replies" in a[name]["prompt"]
     assert a["designer"]["tools"] == [f"mcp__mises__{n}" for n in names]
     # the verifier keeps its own read-only list (no mirror_part_create)
     assert a["verifier"]["tools"] == ["mcp__mises__mirror_measure", "mcp__mises__mirror_part_list",
