@@ -48,7 +48,7 @@
 .cv-msg-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px; }
 .cv-msg-head .label { margin-bottom: 0; }
 .cv-copy {
-  margin-left: auto; padding: 0 5px; border: 1px solid transparent; border-radius: 4px;
+  margin-left: auto; padding: 0 5px; border: 1px solid transparent; border-radius: 0;
   background: none; color: var(--faint); font: inherit; font-size: var(--fs-label); cursor: pointer;
   opacity: 0; transition: opacity .1s;
 }
@@ -76,6 +76,29 @@ button.cv-x { border: 1px solid var(--line2); }
 }
 .cv-fold:hover { color: var(--ink); }
 .cv-card { margin: 4px 0; }
+
+/* live run status line (agent_activity): blue = an agent working; needs-you while it waits */
+.cv-status { margin: 4px 10px 8px; font-size: 11px; color: var(--dim); }
+.cv-status.needs-you { padding: 4px 8px; border: 1px solid var(--blue); background: var(--blue-tint); color: var(--blue2); }
+.cv-status-line { display: flex; align-items: baseline; gap: 6px; }
+.cv-status-mark { width: 10px; text-align: center; color: var(--blue); flex: none; }
+.cv-status-mark[data-state=thinking] { animation: cv-pulse .7s ease-in-out infinite; }
+.cv-status-mark[data-state=tool], .cv-status-mark[data-state=starting] { animation: cv-pulse 1.2s ease-in-out infinite; }
+.cv-status-mark[data-state=writing] { animation: cv-blink 1s steps(2, start) infinite; }
+.cv-status-mark[data-state=queued], .cv-status-mark[data-state=idle] { color: var(--faint); animation: none; }
+.cv-thinking-toggle { margin-left: auto; padding: 0 5px; border: 1px solid var(--line2); background: none; color: var(--dim); font: inherit; font-size: var(--fs-label); cursor: pointer; }
+.cv-thinking-toggle:hover { color: var(--ink); }
+.cv-thinking-toggle:focus-visible { outline: 1px solid var(--blue); }
+.cv-thinking { margin: 4px 0 0 16px; max-height: 180px; overflow: auto; white-space: pre-wrap; font: inherit; font-size: var(--fs-small); font-style: italic; }
+/* run switcher dots animate by activity state */
+.cv-actdot { display: inline-flex; }
+.cv-actdot[data-activity=thinking] .led { animation: cv-pulse .7s ease-in-out infinite; }
+.cv-actdot[data-activity=tool] .led, .cv-actdot[data-activity=writing] .led, .cv-actdot[data-activity=starting] .led { animation: cv-pulse 1.2s ease-in-out infinite; }
+@keyframes cv-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+@keyframes cv-blink { to { visibility: hidden; } }
+@media (prefers-reduced-motion: reduce) {
+  .cv-status-mark, .cv-actdot .led { animation: none !important; }
+}
 
 .cv-composer { flex: none; display: flex; flex-direction: column; gap: 5px; padding: 8px; border-top: 1px solid var(--line2); background: var(--paper2); }
 .cv-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-start; }

@@ -10,6 +10,8 @@ import { effectiveRun, needsYou } from "../../state/selection";
 import { actions, selectedRunId } from "../../state/store";
 import { Button } from "../common/Button";
 import { Led, type LedTone } from "../common/Led";
+import { activityByRun } from "../../state/activity";
+import { openAgentManager } from "../agents/manager";
 import { effectiveRunId, labelOf, offListRuns, rosterRuns, runLabels } from "./derived";
 import { shownPending } from "./queued";
 import { composerOpen, setConsoleView } from "./view";
@@ -64,7 +66,9 @@ export function RunSwitcher(): JSX.Element {
         <button type="button" class="cv-switch" aria-haspopup="listbox" aria-expanded={open} disabled={list.length === 0}
           aria-label={`Run: ${label}${current ? ` · ${current.status}` : ""}`} onClick={() => setOpen(!open)}
           onKeyDown={(e) => { if (e.key === "Escape") setOpen(false); }}>
-          {current ? <Led tone={tone(current, needs)} title={needs.has(current.id) ? "needs you" : current.status} /> : <Led tone="faint" />}
+          {current
+            ? <span class="cv-actdot" data-activity={activityByRun.value.get(current.id)?.state}><Led tone={tone(current, needs)} title={needs.has(current.id) ? "needs you" : current.status} /></span>
+            : <Led tone="faint" />}
           <span class="cv-switch-l text" data-run-label>{label}</span>
           <span class="faint" aria-hidden="true">▾</span>
         </button>
@@ -78,6 +82,7 @@ export function RunSwitcher(): JSX.Element {
           <Button variant="ghost" aria-label={`Stop ${label}`} title="stop this run" onClick={() => cancelRun(current.id)}>Stop</Button>
         )}
         <Button variant="ghost" onClick={() => { composerOpen.value = true; }}>New</Button>
+        <Button variant="ghost" title="Agent manager (⌘6)" onClick={() => openAgentManager("runs")}>Manage</Button>
         <Button variant="ghost" aria-pressed="false" onClick={() => setConsoleView("details")}>Full log</Button>
       </div>
       {current && (
@@ -90,7 +95,7 @@ export function RunSwitcher(): JSX.Element {
             return (
               <div key={r.id} role="option" aria-selected={sel} tabIndex={0} class={`cv-opt${sel ? " sel" : ""}`} data-run={r.id} data-selected={sel ? "" : undefined}
                 onClick={() => pick(r.id)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(r.id); } }}>
-                <Led tone={tone(r, needs)} title={needs.has(r.id) ? "needs you" : r.status} />
+                <span class="cv-actdot" data-activity={activityByRun.value.get(r.id)?.state}><Led tone={tone(r, needs)} title={needs.has(r.id) ? "needs you" : r.status} /></span>
                 <span class="cv-opt-l text" data-run-label>{labelOf(r.id)}</span>
                 <span class={needs.has(r.id) ? "cv-opt-s needs-you" : "cv-opt-s faint"}>{needs.has(r.id) ? "needs you" : r.status}</span>
               </div>

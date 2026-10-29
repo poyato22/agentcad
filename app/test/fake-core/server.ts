@@ -644,7 +644,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       method: "POST", re: /^\/agents$/, h: (_m, _q, raw) => {
         const b = asBody(raw);
         const name = req(b, "name", "string");
-        if (!/^[a-z][a-z0-9_-]{0,47}$/.test(name)) throw mises("invalid_input", `bad agent name: ${JSON.stringify(name)}`, "lowercase letters, digits, - and _; start with a letter");
+        if (!/^[a-z][a-z0-9_-]{1,40}$/.test(name)) throw mises("invalid_input", `bad agent name: ${JSON.stringify(name)}`, "lowercase letters, digits, - and _; start with a letter");
         if (state.agents.some((a) => a.name === name)) throw mises("invalid_input", `agent ${JSON.stringify(name)} already exists`);
         const agent: AgentInfo = {
           name, description: typeof b.description === "string" ? b.description : "",

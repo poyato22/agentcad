@@ -109,6 +109,13 @@ export class CoreClient {
     return this.json("POST", "/runs/cleanup", cleanupResultSchema, { body: { dry_run: true, ...body } });
   }
 
+  /** Build names for grouping runs (GET /projects, read leniently: only id and name are used, so
+   *  this stays independent of the full builds client). Trashed builds are included. */
+  async projectNames(): Promise<Map<string, string>> {
+    const rows = await this.json("GET", "/projects", z.array(z.object({ id: z.string(), name: z.string() })));
+    return new Map(rows.map((p) => [p.id, p.name]));
+  }
+
   // ---- custom agent definitions (built-ins can only be hidden, via the profile)
   createAgent(body: AgentDefBody): Promise<AgentInfo> { return this.json("POST", "/agents", agentInfoSchema, { body }); }
   updateAgent(name: string, body: AgentDefBody): Promise<AgentInfo> {

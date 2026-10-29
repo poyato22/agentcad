@@ -7,7 +7,7 @@
   display: block;
   border: 1px solid var(--blue);
   background: var(--blue-tint);
-  border-radius: 5px;
+  border-radius: 0;
 }
 .icard-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .icard-flag { color: var(--blue2); font: 600 var(--fs-label)/1.4 var(--font-head); letter-spacing: .14em; }
@@ -23,7 +23,7 @@
 .icard-opt {
   display: inline-flex; align-items: center; gap: 5px;
   padding: 2px 9px; font: inherit; cursor: pointer;
-  color: var(--ink); background: var(--paper); border: 1px solid var(--line2); border-radius: 12px;
+  color: var(--ink); background: var(--paper); border: 1px solid var(--line2); border-radius: 0;
 }
 .icard-opt:hover { border-color: var(--dim); }
 .icard-opt:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }

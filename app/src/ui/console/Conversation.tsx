@@ -20,6 +20,7 @@ import type { ThreadItem } from "./threadModel";
 import { composerOpen } from "./view";
 import { Markup } from "../markup/render";
 import { CopyButton } from "./CopyButton";
+import { RunStatus } from "./RunStatus";
 
 const AT_BOTTOM_PX = 24;
 /** Rows rendered at once (the last ones); "show earlier" adds this many more. Same as StepLog. */
@@ -105,6 +106,7 @@ export function Conversation(): JSX.Element {
           <Item item={{ kind: "user", key: "task", text: run.task, ts: run.created_at, stepIds: [] }} agent={run.agent} />
         )}
         {run && run.status === "queued" && <Queued />}
+        {run && run.status !== "queued" && <RunStatus runId={run.id} />}
       </div>
       {newCount > 0 && <button type="button" class="cv-chip-new" onClick={toBottom}>{`${newCount} new ↓`}</button>}
     </div>
