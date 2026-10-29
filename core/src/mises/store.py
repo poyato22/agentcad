@@ -106,6 +106,12 @@ CREATE TABLE IF NOT EXISTS ledger (
   id INTEGER PRIMARY KEY AUTOINCREMENT, user TEXT, run_id TEXT, endpoint TEXT, estimate INTEGER,
   idempotency_key TEXT, status_code INTEGER, counted INTEGER, state TEXT, ts REAL);
 CREATE TABLE IF NOT EXISTS tool_cache (key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE IF NOT EXISTS specs (
+  project_id TEXT PRIMARY KEY, data TEXT, updated_at REAL);
+CREATE TABLE IF NOT EXISTS studies (
+  id TEXT PRIMARY KEY, project_id TEXT, data TEXT, status TEXT, created_at REAL,
+  updated_at REAL);
+CREATE INDEX IF NOT EXISTS studies_project ON studies(project_id, id);
 """
 
 _RUN_FIELDS = {"status", "branch", "agent", "provider", "model", "task", "parent_id",
@@ -403,3 +409,34 @@ class Store:
     def cache_put(self, key: str, value: dict) -> None:
         with self._tx() as db:
             db.execute("INSERT OR REPLACE INTO tool_cache VALUES (?,?)", (key, canonical_json(value)))
+
+    # ---- engineering specs and studies (keyed by project_id TEXT; see Task C3)
+    def get_spec(self, project_id: str) -> dict | None:
+        row = self._one("SELECT data FROM specs WHERE project_id=?", (project_id,))
+        return json.loads(row[0]) if row else None
+
+    def put_spec(self, project_id: str, data: dict) -> None:
+        with self._tx() as db:
+            db.execute("INSERT OR REPLACE INTO specs (project_id, data, updated_at) VALUES (?,?,?)",
+                       (project_id, canonical_json(data), time.time()))
+
+    def create_study(self, study_id: str, project_id: str, data: dict, status: str) -> None:
+        now = time.time()
+        with self._tx() as db:
+            db.execute("INSERT INTO studies (id, project_id, data, status, created_at, updated_at)"
+                       " VALUES (?,?,?,?,?,?)",
+                       (study_id, project_id, canonical_json(data), status, now, now))
+
+    def update_study(self, study_id: str, data: dict, status: str) -> None:
+        with self._tx() as db:
+            db.execute("UPDATE studies SET data=?, status=?, updated_at=? WHERE id=?",
+                       (canonical_json(data), status, time.time(), study_id))
+
+    def get_study(self, study_id: str) -> dict | None:
+        row = self._one("SELECT data FROM studies WHERE id=?", (study_id,))
+        return json.loads(row[0]) if row else None
+
+    def list_studies(self, project_id: str) -> list[dict]:
+        rows = self._all("SELECT data FROM studies WHERE project_id=? ORDER BY created_at DESC,"
+                         " rowid DESC", (project_id,))
+        return [json.loads(r[0]) for r in rows]

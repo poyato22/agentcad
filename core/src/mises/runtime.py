@@ -17,6 +17,7 @@ from .agent.definitions import load_definitions
 from .agent.loop import AgentLoop, LoopConfig, RunResult
 from .approvals import ApprovalService
 from .cad.tools import register_mirror_tools
+from .engineering import register_engineering_tools
 from .sim.tools import register_sim_tools
 from .claude_code import detect as claude_detect
 from .claude_code.session import MCP_FILE as CLAUDE_MCP_FILE, SOURCE as CLAUDE_CODE
@@ -124,6 +125,7 @@ class Runtime:
         register_onshape_tools(self.registry)
         register_ui_tools(self.registry)
         register_print_tools(self.registry)
+        register_engineering_tools(self.registry)
         register_orchestrator_tools(self.registry)
         self.orchestrator = Orchestrator(self)
         services: dict = {"approvals": self.approvals, "runtime": self,
