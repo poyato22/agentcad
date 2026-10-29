@@ -243,7 +243,7 @@ test("typed_40x20_rectangle_then_d4_hole_then_build", async ({ page, fake }) => 
   const svg = await openSketch(page);
   await page.locator(".sk-hint").click();
   await page.keyboard.press("r");
-  await expect(page.locator("[data-hint]")).toHaveText("Click the first corner");
+  await expect(page.locator("[data-hint]")).toHaveText("Click the first corner, or type x,y");
   await page.mouse.click(...(await screenOf(svg, 20, 20)));
   await expect(page.locator("[data-hint]")).toHaveText("Click the opposite corner, or type 40,20");
   await page.mouse.move(...(await screenOf(svg, 45, 35)));        // the way the rectangle goes: up and right

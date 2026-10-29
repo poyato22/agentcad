@@ -156,6 +156,19 @@ describe("state: drawing and constraints", () => {
     expect(picks.value).toEqual([{ stroke_id: r.id, edge: 0 }]);
   });
 
+  it("draws by keyboard alone: x,y for the first point, then a size", () => {
+    sketchActions.setTool("circle");
+    sketchActions.setTyped("30,40");
+    expect(sketchActions.commitTyped()).toBe(true);
+    expect(draft.value?.clicks).toEqual([[30, 40]]);
+    sketchActions.setTyped("Ø10");
+    expect(sketchActions.commitTyped()).toBe(true);
+    expect(doc.value.strokes[0]).toMatchObject({ kind: "circle", center: [30, 40], radius_mm: 5 });
+    sketchActions.setTyped("12");
+    sketchActions.setTool("line");
+    expect(sketchActions.commitTyped()).toBe(false);          // a single number is not a point
+  });
+
   it("a polyline closes on its first point, and lines starting on an end are coincident", () => {
     sketchActions.setTool("polyline");
     for (const p of [[0, 0], [30, 0], [30, 20]] as Pt[]) sketchActions.drawClick(p);
@@ -233,6 +246,11 @@ describe("state: drawing and constraints", () => {
     expect(message.value).toMatch(/corner/);
     sketchActions.insertTemplate("flange");
     expect(extrudeMm.value).toBe(8);
+    // placed clear of what was already drawn
+    const flange = doc.value.strokes.slice(4);
+    const minX = Math.min(...flange.flatMap((s) => s.points.map((p) => p[0])));
+    const maxOld = Math.max(...doc.value.strokes.slice(0, 4).flatMap((s) => s.points.map((p) => p[0])));
+    expect(minX).toBeGreaterThan(maxOld);
     expect(doc.value.strokes.length).toBe(4 + 7);
     expect(tool.value).toBe("pen");
   });

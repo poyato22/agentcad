@@ -151,13 +151,13 @@ export function hint(t: Tool, clicks: number): string {
   switch (t) {
     case "select": return "Click to select, drag to move";
     case "pen": return "Drag to draw freehand";
-    case "line": return clicks ? "Click the end, or type a length" : "Click the start point";
-    case "polyline": return clicks ? "Click the next point · Enter finishes" : "Click the first point";
-    case "rect": return clicks ? "Click the opposite corner, or type 40,20" : "Click the first corner";
-    case "crect": return clicks ? "Click a corner, or type 40,20" : "Click the center";
-    case "circle": return clicks ? "Click the edge, or type a diameter" : "Click the center";
-    case "arc": return clicks === 0 ? "Click where the arc starts" : clicks === 1 ? "Click where the arc ends" : "Click a point on the arc";
-    case "slot": return clicks === 0 ? "Click the first end's center" : clicks === 1 ? "Click the second end's center" : "Click or type the slot width";
+    case "line": return clicks ? "Click the end, or type a length" : "Click the start point, or type x,y";
+    case "polyline": return clicks ? "Click the next point · Enter finishes" : "Click the first point, or type x,y";
+    case "rect": return clicks ? "Click the opposite corner, or type 40,20" : "Click the first corner, or type x,y";
+    case "crect": return clicks ? "Click a corner, or type 40,20" : "Click the center, or type x,y";
+    case "circle": return clicks ? "Click the edge, or type a diameter" : "Click the center, or type x,y";
+    case "arc": return clicks === 0 ? "Click the arc's start, or type x,y" : clicks === 1 ? "Click where the arc ends" : "Click a point on the arc";
+    case "slot": return clicks === 0 ? "Click first end center, or type x,y" : clicks === 1 ? "Click the second end's center" : "Click or type the slot width";
     case "fillet": return "Click a corner · type a radius";
   }
 }

@@ -96,6 +96,8 @@ describe("build target", () => {
     expect(local.vision).toBe(false);
     expect(buildTarget({ ...PROFILE, default_model: "openai/gpt-x" }, AGENTS, MODELS)).toMatchObject({ vision: true, keyMissing: true });
     expect(buildTarget({ ...PROFILE, default_model: "claude-code/opus" }, AGENTS, MODELS).vision).toBe(true);
+    // sketch builds go straight to building: the designer, even when the profile defaults to another agent
+    expect(buildTarget({ ...PROFILE, default_agent: "engineer" }, [...AGENTS, { name: "engineer", description: "", model: "inherit" }], MODELS).agent).toBe("designer");
   });
 });
 
@@ -161,6 +163,17 @@ describe("SketchPage", () => {
     expect(build.value).toEqual({ state: "started", run_id: "r42", sketch_id: "sk_0123456789ab" });
     expect(selectedRunId.value).toBe("r42");
     expect(screen.getByRole("status").textContent).toMatch(/Run started/);
+  });
+
+  it("builds with the designer even when the profile's default agent interviews first", async () => {
+    const calls = fakeClient({ profile: { default_agent: "engineer" } });
+    render(<SketchPage />);
+    await flush();
+    act(() => sketchActions.addStroke(lineStroke(sketchActions.newStrokeId(), [10, 10], [50, 10])));
+    fireEvent.click(screen.getByRole("button", { name: "Build part" }));
+    await flush();
+    await flush();
+    expect(calls.find((c) => c.path === "/runs")?.body).toMatchObject({ agent: "designer" });
   });
 
   it("opens a collapsed console when the run starts", async () => {

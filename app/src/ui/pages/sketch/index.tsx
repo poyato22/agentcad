@@ -27,7 +27,7 @@ import {
   selectedStroke, selectedStrokes, sketchActions, snapEnds, snapGrid, snapGuides, tool, TOOLS, typed, view,
 } from "./state";
 import { TEMPLATES } from "./templates";
-import { hint, takesRadius } from "./tools";
+import { hint, isDrawTool, takesRadius } from "./tools";
 import { zoomAt } from "./view";
 import "./sketch.css";
 
@@ -91,7 +91,7 @@ export function SketchPage(): JSX.Element {
       const t = tool.peek();
       const buf = typed.peek();
       // the measurements box: typed lengths while drawing (and the fillet radius)
-      if ((d && d.clicks.length) || t === "fillet") {
+      if ((d && d.clicks.length) || t === "fillet" || isDrawTool(t)) {
         if (key === "Enter") {
           e.preventDefault();
           if (buf) sketchActions.commitTyped();
@@ -196,7 +196,7 @@ function HintBar(): JSX.Element {
   const t = tool.value;
   const n = d && d.tool === t ? d.clicks.length : 0;
   const buf = typed.value;
-  const box = (d && d.clicks.length) || t === "fillet";
+  const box = (d && d.clicks.length) || t === "fillet" || isDrawTool(t);
   const s = lastSnap.value;
   return (
     <div class="sk-hint" data-hint-bar>

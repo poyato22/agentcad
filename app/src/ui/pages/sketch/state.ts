@@ -5,7 +5,7 @@ import { batch, computed, signal, type Signal } from "@preact/signals";
 import type { SketchConstraint, SketchConstraintKind } from "../../../api/types";
 import { dist, round6, type Pt } from "./geom";
 import { parseTyped } from "./input";
-import { emptyDoc, History, parseDimension, type SketchDoc, type Stroke } from "./model";
+import { emptyDoc, History, parseDimension, SHEET, type SketchDoc, type Stroke } from "./model";
 import { releasePhoto, type PickedPhoto } from "./photo";
 import type { GuideKind, Snap } from "./snap";
 import { checkConstraint, edgeCount, hasRadius, refKey, solvable, solve, type Ref } from "./solver";
@@ -241,7 +241,13 @@ export const sketchActions = {
       return true;
     }
     const d = draft.peek();
-    if (!d) return false;
+    if (!d) {
+      // no click yet: "x,y" places the first point (drawing by keyboard)
+      if (v.kind !== "pair" || !isDrawTool(tool.peek())) { message.value = "Type the first point as x,y."; return false; }
+      typed.value = "";
+      sketchActions.drawClick([v.a, v.b], {});
+      return true;
+    }
     const step = typedStep(d.tool, d.clicks, cursor.peek() ?? d.clicks[d.clicks.length - 1], v);
     if (!step) { message.value = `Can't use "${typed.peek()}" here.`; return false; }
     drivenDrive = step.drive;
@@ -435,7 +441,8 @@ export const sketchActions = {
   insertTemplate(id: TemplateId): void {
     const t = template(id, () => sketchActions.newStrokeId(), newConstraintId);
     const d = doc.peek();
-    if (commitSolved({ ...d, strokes: [...d.strokes, ...t.strokes], constraints: [...d.constraints, ...t.constraints] })) {
+    const strokes = placeBeside(d.strokes, t.strokes);
+    if (commitSolved({ ...d, strokes: [...d.strokes, ...strokes], constraints: [...d.constraints, ...t.constraints] })) {
       batch(() => {
         extrudeMm.value = t.extrude_mm;
         picks.value = [];
@@ -463,6 +470,24 @@ export const sketchActions = {
     });
   },
 };
+
+type BBox = [number, number, number, number];
+function bbox(strokes: readonly Stroke[]): BBox | null {
+  const pts = strokes.flatMap((s) => s.points);
+  if (!pts.length) return null;
+  return [Math.min(...pts.map((p) => p[0])), Math.min(...pts.map((p) => p[1])), Math.max(...pts.map((p) => p[0])), Math.max(...pts.map((p) => p[1]))];
+}
+
+/** New strokes moved clear of the existing ones (to the right, else above) when they would overlap. */
+export function placeBeside(existing: readonly Stroke[], added: readonly Stroke[], gap = 10): Stroke[] {
+  const a = bbox(existing);
+  const b = bbox(added);
+  if (!a || !b || a[2] < b[0] || b[2] < a[0] || a[3] < b[1] || b[3] < a[1]) return [...added];
+  const right = a[2] + gap - b[0];
+  const up = a[3] + gap - b[1];
+  const by: Pt = b[2] + right <= SHEET.width_mm ? [right, 0] : b[3] + up <= SHEET.height_mm ? [0, up] : [right, 0];
+  return added.map((s) => translate(s, by));
+}
 
 /** Back to an empty page (tests). */
 export function resetSketch(): void {
