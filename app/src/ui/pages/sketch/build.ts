@@ -1,6 +1,6 @@
-// "Build part": store the sketch in the core (POST /sketches), then start a run with the profile's
-// default agent and model through the same POST /runs the console's new-run dialog uses, with the
-// sketch attached by id. The core puts the sketch in the run's context block as data and adds the
+// "Build part": store the sketch in the core (POST /sketches), then start a run with the designer
+// agent and the default model through the same POST /runs the console's new-run dialog uses, with
+// the sketch attached by id. The core puts the sketch in the run's context block as data and adds the
 // photo/render as images for vision-capable models.
 import { CoreError, type CoreClient } from "../../../api/client";
 import type { AgentInfo, ModelsInfo, Profile, SketchSummary } from "../../../api/types";
@@ -17,9 +17,13 @@ export const BUILD_PROMPT = "Build the part shown in my sketch.";
 
 export interface BuildTarget { agent: string; modelRef: string; vendor: string; vision: boolean; keyMissing: boolean }
 
-/** What a sketch run will use: the profile's default agent, and the model the core will pick for it. */
+/** Sketch builds go straight to building: always the designer agent, never the profile's default
+ *  (which may be an agent that interviews the user first). */
+export const SKETCH_AGENT = "designer";
+
+/** What a sketch run will use: the designer agent, and the model the core will pick for it. */
 export function buildTarget(profile: Profile, agents: readonly AgentInfo[], models: ModelsInfo): BuildTarget {
-  const agent = profile.default_agent;
+  const agent = SKETCH_AGENT;
   const info = agents.find((a) => a.name === agent) ?? { name: agent, description: "", model: "inherit" };
   const modelRef = defaultModelRef(info, models, profile.default_model);
   const { vendor } = splitModelRef(modelRef);
@@ -28,12 +32,12 @@ export function buildTarget(profile: Profile, agents: readonly AgentInfo[], mode
   return { agent, modelRef, vendor, vision: VISION_VENDORS.has(vendor), keyMissing };
 }
 
-export interface BuildInput { doc: SketchDoc; notes: string; photo: PickedPhoto | null; render: string | null; agent: string; modelRef: string }
+export interface BuildInput { doc: SketchDoc; notes: string; photo: PickedPhoto | null; render: string | null; agent: string; modelRef: string; extrude_mm?: number | null }
 
 export async function buildPart(client: CoreClient, input: BuildInput, onStep?: (step: "saving" | "starting") => void): Promise<{ run_id: string; sketch: SketchSummary }> {
   onStep?.("saving");
   const sketch = await client.postSketch({
-    sketch: toUpload({ ...input.doc, notes: input.notes }),
+    sketch: toUpload({ ...input.doc, notes: input.notes }, input.extrude_mm ?? null),
     photo: input.photo ? { data_b64: input.photo.data_b64, name: input.photo.name } : null,
     render_png_b64: input.doc.strokes.length ? input.render : null,
   });

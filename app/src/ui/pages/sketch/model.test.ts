@@ -1,70 +1,57 @@
 import { describe, expect, it } from "vitest";
+import { hitStroke } from "./edit";
 import {
-  circleStroke, clientToMm, closeIfNear, emptyDoc, endpoints, freehandStroke, hitStroke, History, labelAnchor, lineStroke, measuredLength,
-  MAX_TOTAL_POINTS, parseDimension, rectStroke, SHEET, simplify, snapPoint, totalPoints, toUpload, withinPointBudget, type SketchDoc, type Stroke,
+  circleStroke, closeIfNear, emptyDoc, freehandStroke, History, labelAnchor, lineStroke, measuredLength,
+  MAX_TOTAL_POINTS, parseDimension, rectStroke, SHEET, simplify, totalPoints, toUpload, withinPointBudget, type SketchDoc, type Stroke,
 } from "./model";
+import { snapTargets } from "./snap";
+import { DEFAULT_VIEW, fitBox, gridLines, gridSpacing, mmToScreen, rulerTicks, screenToMm, visible, zoomAt, type View } from "./view";
 
-const RECT = { left: 100, top: 50, width: 400, height: 300 }; // exactly 2 px per mm for a 200 x 150 mm sheet
+const RECT = { left: 100, top: 50, width: 400, height: 300 }; // exactly 2 px per mm for a 200 x 150 mm view
+const SHEET_VIEW: View = { x: 0, y: 0, w: 200, h: 150 };
 
-describe("clientToMm", () => {
+describe("view", () => {
   it("converts screen px to mm with the origin bottom-left and +y up", () => {
     expect(SHEET).toEqual({ width_mm: 200, height_mm: 150 });
-    expect(clientToMm(100, 350, RECT)).toEqual([0, 0]);
-    expect(clientToMm(500, 50, RECT)).toEqual([200, 150]);
-    expect(clientToMm(300, 200, RECT)).toEqual([100, 75]);
-    expect(clientToMm(120, 330, RECT)).toEqual([10, 10]);
+    expect(screenToMm(100, 350, RECT, SHEET_VIEW)).toEqual([0, 0]);
+    expect(screenToMm(500, 50, RECT, SHEET_VIEW)).toEqual([200, 150]);
+    expect(screenToMm(300, 200, RECT, SHEET_VIEW)).toEqual([100, 75]);
+    expect(mmToScreen([10, 10], RECT, SHEET_VIEW)).toEqual([120, 330]);
   });
 
-  it("handles the letterbox of a non-matching aspect (xMidYMid meet)", () => {
-    // 600 x 300 box: scale is min(3, 2) = 2 px/mm, sheet 400 px wide, centred → 100 px bars
+  it("handles the letterbox (centred across, top-aligned: xMidYMin meet)", () => {
     const wide = { left: 0, top: 0, width: 600, height: 300 };
-    expect(clientToMm(100, 300, wide)).toEqual([0, 0]);
-    expect(clientToMm(500, 0, wide)).toEqual([200, 150]);
-  });
-
-  it("top-aligns the sheet in a tall box (xMidYMin meet)", () => {
-    // 400 x 600 box: scale 2, the sheet is 300 px tall at the top; the rest is margin below
+    expect(screenToMm(100, 300, wide, SHEET_VIEW)).toEqual([0, 0]);
     const tall = { left: 0, top: 0, width: 400, height: 600 };
-    expect(clientToMm(0, 300, tall)).toEqual([0, 0]);
-    expect(clientToMm(400, 0, tall)).toEqual([200, 150]);
+    expect(screenToMm(0, 300, tall, SHEET_VIEW)).toEqual([0, 0]);
+    // what is visible past the view's own aspect
+    expect(visible(wide, SHEET_VIEW)).toEqual({ x: -50, y: 0, w: 300, h: 150 });
   });
 
-  it("clamps to the sheet", () => {
-    expect(clientToMm(0, 0, RECT)).toEqual([0, 150]);
-    expect(clientToMm(9999, 9999, RECT)).toEqual([200, 0]);
-  });
-});
-
-describe("snapPoint", () => {
-  const ctx = { grid: 5, endpoints: [[12.2, 30.4]] as [number, number][], radius: 2 };
-
-  it("snaps to a nearby endpoint before the grid", () => {
-    expect(snapPoint([13, 31], ctx)).toEqual({ point: [12.2, 30.4], kind: "endpoint" });
+  it("the default view shows the sheet with a margin for the origin and rulers", () => {
+    expect(DEFAULT_VIEW.x).toBeLessThan(0);
+    expect(DEFAULT_VIEW.y).toBeLessThan(0);
+    expect(DEFAULT_VIEW.x + DEFAULT_VIEW.w).toBeGreaterThan(200);
+    expect(DEFAULT_VIEW.y + DEFAULT_VIEW.h).toBeGreaterThan(150);
   });
 
-  it("falls back to the grid", () => {
-    expect(snapPoint([41.2, 18.9], ctx)).toEqual({ point: [40, 20], kind: "grid" });
+  it("zooms about the pointer and fits a box", () => {
+    const z = zoomAt(SHEET_VIEW, [50, 50], 2);
+    expect(z).toEqual({ x: 25, y: 25, w: 100, h: 75 });
+    expect(screenToMm(...mmToScreen([50, 50], RECT, SHEET_VIEW), RECT, z)).toEqual([50, 50]);
+    const f = fitBox([20, 20, 100, 70], SHEET_VIEW);
+    expect(f.w / f.h).toBeCloseTo(200 / 150, 6);
+    expect(f.x).toBeLessThan(20);
+    expect(f.x + f.w).toBeGreaterThan(100);
   });
 
-  it("does nothing when snapping is off", () => {
-    expect(snapPoint([41.2, 18.9], { grid: null, endpoints: [], radius: 2 })).toEqual({ point: [41.2, 18.9], kind: null });
-  });
-
-  it("snaps a line to 0/45/90 degrees from its start", () => {
-    const s = snapPoint([50, 11.5], { ...ctx, endpoints: [], from: [10, 10], grid: null });
-    expect(s.kind).toBe("angle");
-    expect(s.point[1]).toBeCloseTo(10);
-    expect(s.point[0]).toBeCloseTo(Math.hypot(40, 1.5) + 10, 5);
-    const diag = snapPoint([30.5, 29.5], { grid: null, endpoints: [], radius: 2, from: [10, 10] });
-    expect(diag.kind).toBe("angle");
-    expect(diag.point[0] - 10).toBeCloseTo(diag.point[1] - 10, 6);
-    // far from any snap angle: free
-    expect(snapPoint([30, 20], { grid: null, endpoints: [], radius: 2, from: [10, 10] }).kind).toBe(null);
-  });
-
-  it("grid then angle: a near-horizontal line ends on the grid and stays horizontal", () => {
-    const s = snapPoint([41.2, 11.1], { grid: 5, endpoints: [], radius: 2, from: [10, 10] });
-    expect(s.point).toEqual([40, 10]);
+  it("adaptive grid: minor lines at least 8 px apart, major on a power of ten", () => {
+    expect(gridSpacing(4)).toEqual({ minor: 2, major: 10 });
+    expect(gridSpacing(1)).toEqual({ minor: 10, major: 100 });
+    expect(gridSpacing(40)).toEqual({ minor: 0.2, major: 1 });
+    expect(gridSpacing(8)).toEqual({ minor: 1, major: 10 });
+    expect(gridLines(-3, 11, 5)).toEqual([0, 5, 10]);
+    expect(rulerTicks(0, 100, 2).map((t) => t.label)).toEqual(["0", "50", "100"]);
   });
 });
 
@@ -104,12 +91,13 @@ describe("strokes", () => {
     expect(closeIfNear(open, 2).closed).toBe(false);
   });
 
-  it("endpoints exclude circles and include rect corners", () => {
-    const doc: SketchDoc = { ...emptyDoc(), strokes: [lineStroke("a", [0, 0], [1, 1]), rectStroke("b", [5, 5], [6, 6]), circleStroke("c", [9, 9], 1)] };
-    expect(endpoints(doc.strokes)).toEqual([[0, 0], [1, 1], [5, 5], [6, 5], [6, 6], [5, 6], [9, 9]]);
+  it("snap targets: line ends, rect corners, circle centres (not circle samples)", () => {
+    const t = snapTargets([lineStroke("a", [0, 0], [1, 1]), rectStroke("b", [5, 5], [6, 6]), circleStroke("c", [9, 9], 1)]);
+    expect(t.endpoints.map((e) => e.p)).toEqual([[0, 0], [1, 1], [5, 5], [6, 5], [6, 6], [5, 6]]);
+    expect(t.centers.map((e) => e.p)).toEqual([[9, 9]]);
   });
 
-  it("hit-tests a stroke by distance to its segments", () => {
+  it("hit-tests a stroke by distance to what it draws", () => {
     const strokes = [lineStroke("a", [0, 0], [100, 0]), circleStroke("c", [50, 50], 10)];
     expect(hitStroke(strokes, [50, 1], 2)?.id).toBe("a");
     expect(hitStroke(strokes, [60, 50], 2)?.id).toBe("c");

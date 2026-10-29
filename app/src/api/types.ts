@@ -208,15 +208,29 @@ export interface UiContext { selected_part_id: string | null; selected_run_id: s
 
 // ---- Sketch page (core server/sketch_api.py, sketch.py). Coordinates are mm, origin bottom-left, +y up.
 
-export type SketchStrokeKind = "freehand" | "line" | "rect" | "circle";
+export type SketchStrokeKind = "freehand" | "line" | "polyline" | "rect" | "circle" | "arc" | "slot";
+/** `points` by kind: line 2 ends; polyline / freehand a chain; rect 4 corners; circle samples (exact:
+ *  center + radius_mm); arc start, a point on the arc, end; slot the 2 end centres (radius_mm = half
+ *  width). `corner_r`: a fillet radius per vertex (polyline, rect). Construction = reference only. */
 export interface SketchStroke {
   id: string; kind: SketchStrokeKind; points: [number, number][]; closed: boolean;
   center?: [number, number]; radius_mm?: number; label: string;
+  construction?: boolean; corner_r?: number[];
 }
+/** A constraint target: a vertex (points index; a circle's 0 is its centre), an edge (i: points[i] → [i+1]) or the stroke. */
+export interface SketchRef { stroke_id: string; vertex?: number; edge?: number }
+export type SketchConstraintKind =
+  | "horizontal" | "vertical" | "equal" | "coincident" | "distance" | "diameter" | "radius"
+  /** offsets along x / y between 2 vertices; a vertex (refs[0]) on a circle or arc (refs[1]; a slot: its first end) */
+  | "distance_x" | "distance_y" | "point_on_circle";
+export interface SketchConstraint { id: string; kind: SketchConstraintKind; refs: SketchRef[]; value_mm?: number }
 export interface SketchDimension { stroke_id: string; text: string; value_mm: number | null; kind: "length" | "radius" | "diameter" | "angle" | "note" }
 /** POST /sketches body. The photo (PNG/JPEG/HEIC, ≤ 10 MB) is checked and converted to PNG by the core. */
 export interface SketchUpload {
-  sketch: { units: "mm"; width_mm: number; height_mm: number; strokes: SketchStroke[]; dimensions: SketchDimension[]; notes: string };
+  sketch: {
+    units: "mm"; width_mm: number; height_mm: number; strokes: SketchStroke[]; dimensions: SketchDimension[]; notes: string;
+    constraints?: SketchConstraint[]; extrude_mm?: number | null;
+  };
   photo?: { data_b64: string; name?: string } | null;
   /** The drawing rasterised by the app (PNG), for vision-capable models. */
   render_png_b64?: string | null;

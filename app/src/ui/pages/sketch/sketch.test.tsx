@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/preact";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/preact";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CoreClient } from "../../../api/client";
 import type { ModelsInfo, Profile } from "../../../api/types";
@@ -96,6 +96,8 @@ describe("build target", () => {
     expect(local.vision).toBe(false);
     expect(buildTarget({ ...PROFILE, default_model: "openai/gpt-x" }, AGENTS, MODELS)).toMatchObject({ vision: true, keyMissing: true });
     expect(buildTarget({ ...PROFILE, default_model: "claude-code/opus" }, AGENTS, MODELS).vision).toBe(true);
+    // sketch builds go straight to building: the designer, even when the profile defaults to another agent
+    expect(buildTarget({ ...PROFILE, default_agent: "engineer" }, [...AGENTS, { name: "engineer", description: "", model: "inherit" }], MODELS).agent).toBe("designer");
   });
 });
 
@@ -163,6 +165,17 @@ describe("SketchPage", () => {
     expect(screen.getByRole("status").textContent).toMatch(/Run started/);
   });
 
+  it("builds with the designer even when the profile's default agent interviews first", async () => {
+    const calls = fakeClient({ profile: { default_agent: "engineer" } });
+    render(<SketchPage />);
+    await flush();
+    act(() => sketchActions.addStroke(lineStroke(sketchActions.newStrokeId(), [10, 10], [50, 10])));
+    fireEvent.click(screen.getByRole("button", { name: "Build part" }));
+    await flush();
+    await flush();
+    expect(calls.find((c) => c.path === "/runs")?.body).toMatchObject({ agent: "designer" });
+  });
+
   it("opens a collapsed console when the run starts", async () => {
     fakeClient();
     consoleCollapsed.value = true;
@@ -220,6 +233,52 @@ describe("SketchPage", () => {
     expect(photo.value).toBeNull();
     expect(photoError.value).toMatch(/PNG, JPEG or HEIC/);
     expect(screen.getByRole("alert").textContent).toMatch(/PNG, JPEG or HEIC/);
+  });
+
+  it("keyboard: the Shapes list selects shapes, sides and points; arrows nudge; edits act on it", async () => {
+    fakeClient();
+    const { container } = render(<SketchPage />);
+    await flush();
+    act(() => {
+      sketchActions.addStroke(lineStroke(sketchActions.newStrokeId(), [10, 10], [50, 10]));
+      sketchActions.addStroke(rectStroke(sketchActions.newStrokeId(), [60, 20], [100, 50]));
+      sketchActions.select(null);
+    });
+    const list = screen.getByRole("listbox", { name: "Shapes" });
+    const [line, rect] = doc.value.strokes;
+    fireEvent.keyDown(list, { key: "Home" });
+    expect(selectedId.value).toBe(line.id);
+    fireEvent.keyDown(list, { key: "ArrowDown" });
+    expect(selectedId.value).toBe(rect.id);
+    expect(within(list).getByRole("option", { selected: true }).textContent).toBe("Rectangle · side 1");
+    // the canvas highlights the picked side
+    expect(container.querySelector(`[data-picked-edge="${rect.id}:e0"]`)).not.toBeNull();
+    // → steps through sides then points: side 2, 3, 4, point 1, 2, 3
+    for (let i = 0; i < 6; i++) fireEvent.keyDown(list, { key: "ArrowRight" });
+    expect(within(list).getByRole("option", { selected: true }).textContent).toBe("Rectangle · point 3");
+    // Enter on a focused button still presses it, even with a draw tool active
+    const region = container.querySelector("[data-sketch-root]") as HTMLElement;
+    fireEvent.keyDown(region, { key: "l" });
+    const fillet = screen.getByRole("button", { name: "Fillet corner" });
+    const e = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+    fillet.dispatchEvent(e);
+    expect(e.defaultPrevented).toBe(false);
+    act(() => fillet.click());
+    expect(doc.value.strokes[1].corner_r).toEqual([0, 0, 3, 0]);
+    // arrows on the region nudge the picked point: 1 mm, Shift 10 mm; the rectangle stays a rectangle
+    fireEvent.keyDown(region, { key: "v" });
+    fireEvent.keyDown(region, { key: "ArrowRight" });
+    expect(doc.value.strokes[1].points[2]).toEqual([101, 50]);
+    fireEvent.keyDown(region, { key: "ArrowUp", shiftKey: true });
+    expect(doc.value.strokes[1].points[2]).toEqual([101, 60]);
+    expect(doc.value.strokes[1].points[1][0]).toBeCloseTo(101, 6);
+    // Space adds the line, then constraints and delete act on the whole selection
+    fireEvent.keyDown(list, { key: "Home" });
+    fireEvent.keyDown(list, { key: "ArrowDown" });
+    fireEvent.keyDown(list, { key: "ArrowUp", shiftKey: true });
+    expect(within(list).getAllByRole("option", { selected: true })).toHaveLength(2);
+    fireEvent.keyDown(region, { key: "Delete" });
+    expect(doc.value.strokes).toHaveLength(0);
   });
 
   it("keyboard: tool keys, undo/redo, delete; scoped to the sketch region; ignored while typing", async () => {
