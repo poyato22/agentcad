@@ -90,7 +90,7 @@ export function BuildTabs(): JSX.Element {
             );
           }
           return (
-            <span key={b.id} class={on ? "btab btab-on" : "btab"} data-build={b.id}>
+            <span key={b.id} class={on ? "btab btab-on" : "btab"} data-build={b.id} data-selected={on ? "" : undefined}>
               <button type="button" role="tab" class="btab-name" aria-selected={on} tabIndex={on ? 0 : -1}
                 title={`${b.name} — ${b.part_count} part${b.part_count === 1 ? "" : "s"}. Double-click or F2 to rename`}
                 data-crumb="build" onClick={() => { void buildActions.switchTo(b.id); }} onDblClick={() => setRenaming(b.id)}
@@ -105,7 +105,7 @@ export function BuildTabs(): JSX.Element {
       </div>
       {creating
         ? <span class="btab"><NameField initial="" label="New build name" onDone={(v) => { setCreating(false); if (v) void buildActions.create(v); }} /></span>
-        : <button type="button" class="btab-add" aria-label="New build" title="New build" onClick={() => setCreating(true)}>+</button>}
+        : <button type="button" class="btab-add" aria-label="Add a build" title="New build" onClick={() => setCreating(true)}>+</button>}
       <span class="bmenu-wrap" ref={menuWrap}>
         <button type="button" class="btab-add" aria-haspopup="menu" aria-expanded={menuOpen} aria-label="All builds and the Trash"
           title="All builds and the Trash" onClick={() => setMenuOpen(!menuOpen)}>▾</button>

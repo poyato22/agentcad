@@ -49,7 +49,7 @@ test.afterEach(async ({ fake }) => { await fake.reset("base"); });
 test("create_run_to_merge", async ({ page, fake }) => {
   await open(page);
   const v = page.getByTestId("var-thickness");
-  await expect(v).toHaveText("5.00 mm");
+  await expect(v).toHaveValue("5");
   await expect(v).not.toHaveAttribute("data-changed", "true");
   // the viewer shows the 5 mm plate first
   await expect(page.getByTestId("viewer-canvas")).toHaveAttribute("data-bbox-size", "40.00,20.00,5.00", { timeout: 15_000 });
@@ -71,7 +71,7 @@ test("create_run_to_merge", async ({ page, fake }) => {
   await expect(rows(page, "diff")).toContainText("Part · mount plate");
 
   // Variables: thickness turns blue 5.00 → 6.00
-  await expect(v).toHaveText("6.00 mm");
+  await expect(v).toHaveValue("6");
   await expect(v).toHaveAttribute("data-changed", "true");
   await expect(v).toHaveCSS("color", "rgb(141, 186, 255)");
 

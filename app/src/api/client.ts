@@ -348,6 +348,11 @@ async function toError(res: Response): Promise<CoreError> {
     ? (body as { message: string }).message : `HTTP ${res.status}`;
   if (res.status === 401) return new CoreError("unauthorized", message, { status: 401 });
   const parsed = coreErrorBodySchema.safeParse(body);
+  // a part edit whose sandboxed rebuild failed (C6 edit_api): {error: "build_failed", message:
+  // the worker's report, ending in the op / error line}; the part is unchanged
+  if (res.status === 422 && (body as { error?: unknown })?.error === "build_failed") {
+    return new CoreError("tool_failed", message, { status: 422, body: body as Record<string, unknown> });
+  }
   // a 422 is pydantic's {"detail": [...]}, except where the core answers with its own error JSON
   // (PUT /profile: "invalid profile: max_parallel_agents: ...")
   if (res.status === 422 && !parsed.success) {

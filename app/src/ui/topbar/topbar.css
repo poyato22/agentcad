@@ -67,7 +67,7 @@
 .btab-name:focus-visible, .btab-close:focus-visible, .btab-add:focus-visible { outline: 1px solid var(--blue); outline-offset: -2px; }
 .btab-close { flex: none; width: 16px; height: 100%; padding: 0; border: 0; background: transparent; color: var(--faint); cursor: pointer; font: inherit; }
 .btab-close:hover { color: var(--ink); }
-.btab:not(.btab-on):not(:hover):not(:focus-within) .btab-close { visibility: hidden; }
+.btab:not(.btab-on):not(:hover):not(:focus-within) .btab-close { opacity: 0; }
 .btab-input { width: 14ch; height: 100%; padding: 0 6px; border: 0; background: var(--paper); font: inherit; }
 .btab-add {
   flex: none; width: 22px; height: 24px; padding: 0; border: 1px solid transparent; background: transparent; color: var(--dim);

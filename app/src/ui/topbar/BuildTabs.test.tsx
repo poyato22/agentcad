@@ -51,7 +51,7 @@ describe("build tabs", () => {
 
   it("+ makes a new build from an inline name; double-click renames", async () => {
     render(<Breadcrumb />);
-    fireEvent.click(screen.getByRole("button", { name: "New build" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add a build" }));
     const name = screen.getByRole("textbox", { name: "New build name" });
     fireEvent.input(name, { target: { value: "Drone arm v2" } });
     fireEvent.keyDown(name, { key: "Enter" });

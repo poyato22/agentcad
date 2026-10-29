@@ -364,9 +364,12 @@ test("connects_to_fake_core_without_errors", async ({ page, fake }) => {
   await page.goto("/");
   await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
   await expect.poll(async () => (await fake.calls()).map((c) => c.path).filter((p) => p !== "/context").sort()).toEqual(
-    ["/approvals", "/parts", "/parts/mount_plate/model.glb", "/printers", "/profile", "/runs", "/runs/b7c79a57cbb4/steps", "/setup", "/status"]);
+    // the builds (A3): GET /projects + the profile's tabs; the Variables panel reads the part's VARS schema
+    ["/approvals", "/parts", "/parts/mount_plate/model.glb", "/parts/mount_plate/source", "/printers", "/profile", "/profile", "/projects",
+      "/runs", "/runs/b7c79a57cbb4/steps", "/setup", "/status"]);
+  // PUT /context goes out 150 ms after the session starts (state/context.ts debounce)
+  await expect.poll(async () => (await fake.calls()).filter((c) => c.path === "/context").length).toBeGreaterThanOrEqual(1);
   const ctx = (await fake.calls()).filter((c) => c.path === "/context");
-  expect(ctx.length).toBeGreaterThanOrEqual(1);
   expect(ctx.every((c) => c.method === "PUT")).toBe(true);
   expect(errors).toEqual([]);
 });

@@ -18,7 +18,7 @@ export function ViewerTools({ mode, onMode, scope, onScope, canEdit, onEdit }: V
     <button type="button" class="vt-btn" aria-pressed={mode === m} data-active={mode === m} data-selected={mode === m ? "" : undefined} onClick={() => onMode(m)}>{text}</button>
   );
   const scopeBtn = (s: ViewScope, text: string, title: string) => (
-    <button type="button" class="vt-btn" aria-pressed={scope === s} data-active={scope === s} title={title} onClick={() => onScope?.(s)}>{text}</button>
+    <button type="button" class="vt-btn" aria-pressed={scope === s} data-active={scope === s} data-selected={scope === s ? "" : undefined} title={title} onClick={() => onScope?.(s)}>{text}</button>
   );
   const later = (text: string) => (
     <button type="button" class="vt-btn" aria-disabled="true" title="Not available yet" onClick={(e) => e.preventDefault()}>{text}</button>

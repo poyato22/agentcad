@@ -98,15 +98,17 @@ export const buildActions = {
       const c = actions.client();
       const [all, tabs] = await Promise.all([c.listBuilds(), c.buildTabs()]);
       const n = normalizeTabs(all, activeBuildId.peek() ?? tabs.active_project_id, openBuildIds.peek().length ? openBuildIds.peek() : tabs.open_project_ids);
-      const changed = n.active !== activeBuildId.peek();
-      const differs = n.active !== tabs.active_project_id || n.open.join() !== tabs.open_project_ids.join();
+      // the first load: the part list sync fetched without a build is the core's active build,
+      // which is the profile's when that is live (else Default) — reload only if we settled on another one.
+      // Nothing is written back until the user changes tabs.
+      const prev = activeBuildId.peek();
+      const reload = prev === null ? tabs.active_project_id !== null && n.active !== tabs.active_project_id : n.active !== prev;
       batch(() => {
         builds.value = all;
         activeBuildId.value = n.active;
         openBuildIds.value = n.open;
       });
-      if (differs) persist();
-      if (changed) await loadParts(n.active);
+      if (reload) await loadParts(n.active);
     } catch (e) {
       fail("Loading the builds failed", e);
     }

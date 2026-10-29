@@ -239,7 +239,7 @@ export function Viewer(): JSX.Element {
       <span class="tick tick-tl" /><span class="tick tick-tr" /><span class="tick tick-bl" /><span class="tick tick-br" />
       <div class="vp-tabs" role="tablist" aria-label="Show">
         {(["model", "code"] as const).map((t) => (
-          <button key={t} type="button" role="tab" class="vp-tab" aria-selected={tab === t} tabIndex={tab === t ? 0 : -1}
+          <button key={t} type="button" role="tab" class="vp-tab" aria-selected={tab === t} data-selected={tab === t ? "" : undefined} tabIndex={tab === t ? 0 : -1}
             onClick={() => { viewTab.value = t; }}
             onKeyDown={(e) => { if (e.key === "ArrowRight" || e.key === "ArrowLeft") { e.preventDefault(); viewTab.value = tab === "model" ? "code" : "model"; (e.currentTarget.parentElement?.querySelector(`[aria-selected=false]`) as HTMLElement | null)?.focus(); } }}>
             {t === "model" ? "Model" : "Code"}

@@ -53,9 +53,18 @@ describe("builds", () => {
     expect(activeBuildId.value).toBe("b");
     expect(openBuilds.value.map((x) => x.name)).toEqual(["Quad", "Bench"]);
     expect(trashedBuilds.value.map((x) => x.id)).toEqual(["t"]);
-    expect(c.parts).toHaveBeenCalledWith("b");
-    expect(parts.value.map((p) => p.part_id)).toEqual(["motor"]);
-    expect(c.setBuildTabs).not.toHaveBeenCalled();      // already consistent
+    // sync already loaded the core's active build (the profile's): no second /parts, no write-back
+    expect(c.parts).not.toHaveBeenCalled();
+    expect(c.setBuildTabs).not.toHaveBeenCalled();
+  });
+
+  it("refresh reloads the parts when the profile's active build is gone (trashed)", async () => {
+    const c = fakeClient([b("a", "Quad"), b("t", "Old", 9)], { active_project_id: "t", open_project_ids: ["t"] });
+    bindClient(c as unknown as CoreClient);
+    await buildActions.refresh();
+    expect(activeBuildId.value).toBe("a");
+    expect(c.parts).toHaveBeenCalledWith("a");
+    expect(parts.value.map((p) => p.part_id)).toEqual(["arm"]);
   });
 
   it("switching opens the tab, saves the tabs, shows that build's parts and keeps each build's selection", async () => {
@@ -81,7 +90,6 @@ describe("builds", () => {
   it("a parts answer for a build you already left is dropped", async () => {
     const c = fakeClient([b("a", "Quad"), b("b", "Bench"), b("c", "Cam")]);
     let release: (() => void) | null = null;
-    c.parts.mockImplementationOnce(async () => []);               // refresh: a
     c.parts.mockImplementationOnce(() => new Promise((r) => { release = () => r([part("motor", "b")]); }));
     bindClient(c as unknown as CoreClient);
     await buildActions.refresh();

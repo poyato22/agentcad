@@ -135,7 +135,9 @@ function VarRow({ spec, value, agentChanged, draft, title, onChange, onCommit }:
         aria-label={`${spec.name}${spec.unit ? ` (${spec.unit})` : ""}`} aria-valuetext={`${fmtNum(value)}${spec.unit ? ` ${spec.unit}` : ""}`}
         data-outside={outside ? "" : undefined}
         onInput={(e) => { setText(null); onChange(Number((e.target as HTMLInputElement).value)); }}
-        onChange={() => onCommit()} />
+        // letting go of the thumb rebuilds at once; arrow keys wait for the debounce (one rebuild
+        // for several presses), as `change` fires on every key press too
+        onPointerUp={() => onCommit()} />
       <span class="var-range faint" id={`${id}-range`}
         title={spec.inferred ? "Suggested range: the script doesn't set one (add `# mises: min= max=` to its VARS line)" : "Range set in the script"}>
         {`${spec.inferred ? "~" : ""}${fmtNum(lo)} – ${fmtNum(hi)}`}
