@@ -1,0 +1,192 @@
+[
+  {
+    "id": "mount_plate",
+    "project_id": "86c24e6134e7",
+    "label": "mount_plate",
+    "parent_id": null,
+    "order": 0,
+    "color": null,
+    "kind": "part",
+    "version": 1,
+    "part_id": "mount_plate",
+    "vars": {
+      "thickness": 6.0
+    },
+    "metrics": {
+      "valid": true,
+      "volume_mm3": 4633.746916772027,
+      "area_mm2": 2422.9185753316015,
+      "mass_g": 5.745846176797314,
+      "bbox": {
+        "min": [
+          -20.0,
+          -10.0,
+          -3.0
+        ],
+        "max": [
+          20.0,
+          10.0,
+          3.0
+        ],
+        "size": [
+          40.0,
+          20.0,
+          6.0
+        ]
+      },
+      "center_of_mass": [
+        3.189489881356246e-16,
+        -1.2682862350235098e-16,
+        1.7563595855833278e-17
+      ],
+      "faces": 8,
+      "face_list": [
+        {
+          "id": "f0",
+          "type": "plane",
+          "center": [
+            -20.0,
+            0.0,
+            0.0
+          ],
+          "normal": [
+            -1.0,
+            0.0,
+            0.0
+          ],
+          "area": 120.0
+        },
+        {
+          "id": "f1",
+          "type": "plane",
+          "center": [
+            0.0,
+            -10.0,
+            0.0
+          ],
+          "normal": [
+            0.0,
+            -1.0,
+            0.0
+          ],
+          "area": 240.0
+        },
+        {
+          "id": "f2",
+          "type": "plane",
+          "center": [
+            0.0,
+            0.0,
+            3.0
+          ],
+          "normal": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "area": 772.291
+        },
+        {
+          "id": "f3",
+          "type": "plane",
+          "center": [
+            0.0,
+            10.0,
+            0.0
+          ],
+          "normal": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "area": 240.0
+        },
+        {
+          "id": "f4",
+          "type": "plane",
+          "center": [
+            0.0,
+            0.0,
+            -3.0
+          ],
+          "normal": [
+            0.0,
+            0.0,
+            -1.0
+          ],
+          "area": 772.291
+        },
+        {
+          "id": "f5",
+          "type": "plane",
+          "center": [
+            20.0,
+            0.0,
+            0.0
+          ],
+          "normal": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "area": 120.0
+        },
+        {
+          "id": "f6",
+          "type": "cylinder",
+          "center": [
+            -10.0,
+            0.0,
+            0.0
+          ],
+          "normal": null,
+          "area": 79.168
+        },
+        {
+          "id": "f7",
+          "type": "cylinder",
+          "center": [
+            10.0,
+            0.0,
+            0.0
+          ],
+          "normal": null,
+          "area": 79.168
+        }
+      ],
+      "edges": 18,
+      "holes": [
+        {
+          "diameter_mm": 4.2,
+          "axis": [
+            -0.0,
+            -0.0,
+            1.0
+          ],
+          "center": [
+            -10.0,
+            0.0,
+            0.0
+          ],
+          "depth_mm": 6.0
+        },
+        {
+          "diameter_mm": 4.2,
+          "axis": [
+            -0.0,
+            -0.0,
+            1.0
+          ],
+          "center": [
+            10.0,
+            0.0,
+            0.0
+          ],
+          "depth_mm": 6.0
+        }
+      ],
+      "solids": 1
+    },
+    "mtime": 1793289441.3641639
+  }
+]

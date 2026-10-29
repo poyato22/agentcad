@@ -1,0 +1,113 @@
+{
+  "instances": [
+    {
+      "id": "a7cb44ba1c8b",
+      "part_id": "mount_plate",
+      "name": "base",
+      "transform": [
+        [
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "fixed": true
+    },
+    {
+      "id": "0008c6c15eaa",
+      "part_id": "mount_plate",
+      "name": "lid",
+      "transform": [
+        [
+          6.123233995736766e-17,
+          0.0,
+          1.0,
+          20.0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0,
+          0.0
+        ],
+        [
+          -1.0,
+          0.0,
+          6.123233995736766e-17,
+          -20.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "fixed": false
+    }
+  ],
+  "joints": [
+    {
+      "id": "a12afe0e46ea",
+      "kind": "revolute",
+      "a": {
+        "instance_id": "a7cb44ba1c8b",
+        "frame": {
+          "origin": [
+            20.0,
+            0.0,
+            0.0
+          ],
+          "axis": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "face_id": null
+        }
+      },
+      "b": {
+        "instance_id": "0008c6c15eaa",
+        "frame": {
+          "origin": [
+            -20.0,
+            0.0,
+            0.0
+          ],
+          "axis": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "face_id": null
+        }
+      },
+      "value": 90.0,
+      "limits": [
+        0.0,
+        180.0
+      ]
+    }
+  ],
+  "dof_remaining": 1,
+  "overconstrained": []
+}
