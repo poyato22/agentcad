@@ -10,7 +10,7 @@ import { Button } from "../common/Button";
 import { useFocusTrap } from "../common/focusTrap";
 import { describeError, type ProfileData, type SectionProps } from "./common";
 import { AgentsSection } from "./sections/AgentsSection";
-import { AboutSection, DataSection, SetupSection } from "./sections/MiscSections";
+import { AboutSection, DataSection, SetupSection, SystemSection } from "./sections/MiscSections";
 import { ModelsSection } from "./sections/ModelsSection";
 import { OnshapeSection } from "./sections/OnshapeSection";
 import { PrintersSection } from "./sections/PrintersSection";
@@ -24,6 +24,7 @@ export const SECTIONS = [
   { id: "printers", label: "Printers" },
   { id: "agents", label: "Agents & budgets" },
   { id: "data", label: "Data" },
+  { id: "system", label: "System" },
   { id: "setup", label: "Setup" },
   { id: "about", label: "About" },
 ] as const;
@@ -99,6 +100,7 @@ function ProfilePaneBody({ onClose, initial }: { onClose: () => void; initial: S
           {props && section === "printers" && <PrintersSection />}
           {props && section === "agents" && <AgentsSection {...props} />}
           {props && section === "data" && <DataSection {...props} />}
+          {props && section === "system" && <SystemSection />}
           {props && section === "setup" && <SetupSection onClose={onClose} />}
           {props && section === "about" && <AboutSection {...props} />}
         </div>

@@ -22,6 +22,12 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: 700; margin: 0; }
 
 ::selection { background: var(--blue-tint); }
 
+/* Copy/paste: ⌘C/⌘V/⌘A are routed by the macOS Edit menu (src-tauri/src/menu.rs — the real reason
+   copy/paste didn't work in the webview). Text in the agent console (composer, conversation, logs)
+   and the full-width pages is explicitly selectable; the top bar's window-drag region is not. */
+.region-console, .region-page { -webkit-user-select: text; user-select: text; }
+[data-tauri-drag-region] { -webkit-user-select: none; user-select: none; }
+
 /* ---- app grid */
 .app {
   display: grid;

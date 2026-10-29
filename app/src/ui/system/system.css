@@ -1,0 +1,63 @@
+/* System check: dependency rows with a status light, detail and a fix action; install logs stream
+   into an expandable pre. Square corners, Iosevka, status tokens only. */
+
+.syscheck-wrap {
+  width: min(680px, 92vw); max-height: 86vh; overflow: auto;
+  background: var(--paper); border: 1px solid var(--line); padding: 20px 22px;
+}
+.syscheck { display: flex; flex-direction: column; gap: 10px; }
+
+.syscheck-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.syscheck-title { margin: 0; font-size: 14px; font-weight: 600; color: var(--ink); }
+.syscheck-recheck {
+  appearance: none; border: 1px solid var(--line2); background: var(--paper); color: var(--ink);
+  font: inherit; font-size: var(--fs-small); padding: 3px 10px; cursor: pointer; border-radius: 0;
+}
+.syscheck-recheck:hover { background: var(--paper2); }
+
+.syscheck-error { margin: 0; color: var(--red); font-size: var(--fs); }
+.syscheck-loading { margin: 0; color: var(--dim); font-size: var(--fs); }
+
+.syscheck-rows { list-style: none; margin: 0; padding: 0; }
+.syscheck-row { border-top: 1px solid var(--line); padding: 10px 0; }
+.syscheck-row:first-child { border-top: 0; }
+
+.syscheck-main { display: grid; grid-template-columns: auto 1fr auto; align-items: start; gap: 10px; }
+.syscheck-main > .led { margin-top: 3px; }
+.syscheck-text { min-width: 0; }
+.syscheck-name { font-size: var(--fs); color: var(--ink); font-weight: 500; }
+.syscheck-ver { color: var(--dim); font-weight: 400; }
+.syscheck-detail { font-size: var(--fs-small); color: var(--dim); line-height: 1.5; }
+.syscheck-path {
+  font-size: var(--fs-label); color: var(--faint); margin-top: 1px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  user-select: text; -webkit-user-select: text;
+}
+
+.syscheck-fix { white-space: nowrap; }
+.syscheck-btn {
+  appearance: none; border: 1px solid var(--blue); background: transparent; color: var(--blue);
+  font: inherit; font-size: var(--fs-small); padding: 4px 12px; cursor: pointer; border-radius: 0;
+  text-decoration: none; display: inline-block;
+}
+.syscheck-btn:hover { background: var(--blue-tint); }
+.syscheck-btn:disabled { opacity: .5; cursor: default; }
+.syscheck-fixlabel { font-size: var(--fs-small); color: var(--dim); }
+
+.syscheck-refused { margin: 6px 0 0 24px; font-size: var(--fs-small); color: var(--amber); }
+.syscheck-refused a { color: var(--blue); }
+
+.syscheck-install { margin: 8px 0 0 24px; }
+.syscheck-log-toggle {
+  appearance: none; border: 0; background: transparent; color: var(--dim);
+  font: inherit; font-size: var(--fs-small); padding: 0; cursor: pointer;
+}
+.syscheck-log-toggle:hover { color: var(--ink); }
+.syscheck-log {
+  margin: 6px 0 0; max-height: 160px; overflow: auto;
+  background: var(--bg); border: 1px solid var(--line); padding: 6px 8px;
+  font-size: var(--fs-small); color: var(--dim); white-space: pre-wrap; word-break: break-word;
+  user-select: text; -webkit-user-select: text;
+}
+
+.syscheck-foot { margin-top: 14px; display: flex; justify-content: flex-end; }

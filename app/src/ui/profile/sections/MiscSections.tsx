@@ -3,7 +3,9 @@ import type { JSX } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { isTauri } from "@tauri-apps/api/core";
 import { Button } from "../../common/Button";
+import { replayIntro } from "../../boot/boot";
 import { openSetupWizard } from "../../setup/gate";
+import { SystemCheck } from "../../system/SystemCheck";
 import { Card, SectionBox, type SectionProps } from "../common";
 
 /** Fallback when /status has no data_dir: the core's default data home in `~` form (the webview can't read $HOME). */
@@ -31,6 +33,20 @@ export function DataSection({ data }: SectionProps): JSX.Element {
           {note && <span class="dim">{note}</span>}
         </div>
       </Card>
+    </SectionBox>
+  );
+}
+
+export function SystemSection(): JSX.Element {
+  return (
+    <SectionBox title="System">
+      <Card title="Welcome intro">
+        <p class="dim">Replay the cube-assembling welcome the next time nothing is running.</p>
+        <div class="profile-row">
+          <Button onClick={() => replayIntro()}>Replay intro</Button>
+        </div>
+      </Card>
+      <SystemCheck />
     </SectionBox>
   );
 }

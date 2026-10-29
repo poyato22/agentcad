@@ -1,0 +1,83 @@
+/* Boot gates: the loading screen and the welcome intro. Both fill the window over the shell on a
+   themed backdrop, keep square corners and Iosevka, and let the grey cube be the one loud element. */
+
+.boot, .intro {
+  position: fixed; inset: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg); color: var(--ink);
+}
+
+.boot-stack {
+  display: flex; flex-direction: column; align-items: center; gap: 18px;
+  max-width: 460px; padding: 24px; text-align: center;
+}
+
+/* ---- cube mark ------------------------------------------------------------------------------- */
+.cube-mark { display: block; }
+.cube-mark.is-muted { opacity: .5; }
+.cube-mark.is-spin { transform-origin: 50% 54%; animation: cube-breathe 3.2s ease-in-out infinite; }
+@keyframes cube-breathe {
+  0%, 100% { transform: translateY(0) scale(1); opacity: .96; }
+  50% { transform: translateY(-3px) scale(1.015); opacity: 1; }
+}
+
+/* ---- loading / error copy -------------------------------------------------------------------- */
+.boot-status {
+  font-size: var(--fs); letter-spacing: .06em; color: var(--dim);
+}
+.boot-status::after { content: ""; }
+.boot-title { margin: 0; font-size: 15px; font-weight: 600; color: var(--ink); }
+.boot-msg { margin: 0; font-size: var(--fs); color: var(--dim); line-height: 1.5; }
+
+.boot-actions { display: flex; gap: 8px; margin-top: 2px; }
+.boot-btn {
+  appearance: none; border: 1px solid var(--line2); background: var(--paper); color: var(--ink);
+  font: inherit; font-size: var(--fs); padding: 5px 14px; cursor: pointer; border-radius: 0;
+}
+.boot-btn:hover { background: var(--paper2); }
+.boot-btn:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.boot-btn-primary { background: var(--blue); border-color: var(--blue); color: var(--on-blue); }
+.boot-btn-primary:hover { background: var(--blue2); }
+
+.boot-log {
+  width: 100%; max-height: 180px; overflow: auto; margin: 0; text-align: left;
+  background: var(--paper); border: 1px solid var(--line); padding: 8px 10px;
+  font-size: var(--fs-small); color: var(--dim); white-space: pre-wrap; word-break: break-word;
+  user-select: text; -webkit-user-select: text;
+}
+
+/* ---- intro ----------------------------------------------------------------------------------- */
+.intro { flex-direction: column; cursor: pointer; transition: opacity var(--fade-ms, 0ms) ease; }
+.intro.intro-fading { opacity: 0; pointer-events: none; }
+.intro:focus-visible { outline: none; }
+
+.intro-stage { display: flex; flex-direction: column; align-items: center; gap: 22px; }
+.intro-canvas { width: min(46vmin, 340px); height: min(46vmin, 340px); display: block; }
+
+.intro-title {
+  font-family: var(--font-head);
+  font-size: clamp(18px, 3.4vmin, 26px); font-weight: 600; letter-spacing: .04em; color: var(--ink);
+  opacity: 0; white-space: nowrap; overflow: hidden;
+}
+.intro-title.is-on { opacity: 1; }
+/* Typewriter: reveal character cells with a steps() width sweep; Iosevka is monospace so cells are
+   even. "Welcome to Mises" is 16 cells. A caret rides the leading edge. */
+.intro-title.is-on:not(.is-instant) {
+  width: 16ch;
+  border-right: 2px solid var(--blue);
+  animation: intro-type 700ms steps(16, end) forwards, intro-caret 640ms step-end 3;
+}
+.intro-title.is-instant.is-on { animation: intro-fade-in 260ms ease forwards; }
+@keyframes intro-type { from { width: 0; } to { width: 16ch; } }
+@keyframes intro-caret { 50% { border-color: transparent; } }
+@keyframes intro-fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+.intro-skip {
+  position: absolute; bottom: 28px; left: 0; right: 0; text-align: center;
+  font-size: var(--fs-small); letter-spacing: .08em; color: var(--faint);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cube-mark.is-spin { animation: none; }
+  .intro-title.is-on:not(.is-instant) { animation: none; width: auto; border-right: 0; }
+}
