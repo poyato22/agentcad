@@ -260,9 +260,11 @@ def test_level_sizes_and_mesh_options(tmp_path):
 # ---- drop
 
 def test_impact_equivalent_fallback_and_direction():
+    # C3's engineering.loads.impact_equivalent is merged now (standard gravity 9.80665)
     imp = impact_newtons(0.2, 1.0, 10)
-    assert imp["newtons"] == pytest.approx(0.2 * 9.81 * 10) and imp["estimate"] is True
-    assert "m g k" in imp["formula"]
+    assert imp["newtons"] == pytest.approx(0.2 * 9.81 * 10, rel=1e-3) and imp["estimate"] is True
+    assert "m g k" in imp["formula"].replace("·", " ")
+    assert imp["source"] == "engineering.loads.impact_equivalent"
     assert impact_direction("bottom", {}) == (0.0, 0.0, -1.0)
     assert impact_direction("x-max", {}) == (1.0, 0.0, 0.0)
     assert impact_direction("f1", {"face_list": [{"id": "f1", "normal": [0, 1, 0]}]}) == (
@@ -412,3 +414,12 @@ def test_custom_requirements_carry_study_kinds():
     assert [p["type"] for p in plan] == ["modal", "wind"]
     assert plan[1]["requirements"] == [{"id": "c1", "kind": "max_drag_n", "target": 2.5}]
     assert plan[0]["settings"]["excitation"]["rpm"] == 30000
+
+
+def test_coarse_only_screening_solves_one_level(tmp_path):
+    # C3's sim_static_run fine=false (design-study loop) maps onto C7's levels as coarse only
+    job = _job(tmp_path)
+    (coarse, _fine), _ = level_sizes(job)
+    job.extra["coarse_only"] = True
+    sizes, _ = level_sizes(job)
+    assert sizes == [pytest.approx(coarse)]

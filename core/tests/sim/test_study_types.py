@@ -191,7 +191,7 @@ async def test_drop_is_an_estimate_from_impact_equivalent(tmp_path):
     imp = out.data["results"]["impact"]
     mass_kg = 100 * 10 * 10 * 1.24 / 1000 / 1000
     assert imp["newtons"] == pytest.approx(mass_kg * 9.81 * 20, rel=1e-3)
-    assert imp["estimate"] is True and "m g k" in imp["formula"]
+    assert imp["estimate"] is True and "m g k" in imp["formula"].replace("·", " ")
     assert out.data["fidelity_class"] == "fem_estimate"
     assert out.summary.startswith("ESTIMATE") and "GUIDE ONLY" in out.summary
     assert out.data["warnings"][0].startswith("ESTIMATE")
