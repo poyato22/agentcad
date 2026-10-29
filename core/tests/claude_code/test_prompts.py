@@ -1,7 +1,7 @@
 import json
 
 from mises.agent.definitions import load_definitions
-from mises.agent.prompts import RULES
+from mises.agent.prompts import RESPONSE_RULES, RULES
 from mises.claude_code.prompts import agents_json, context_block, mises_rules_md
 
 
@@ -35,7 +35,7 @@ def test_agents_json_lists_mises_tools_explicitly():
         assert defs[name].body.strip() in a[name]["prompt"]
         assert all(t.startswith("mcp__mises__") and "*" not in t for t in a[name]["tools"])
         # every subagent prompt carries the shared response rules
-        assert "## Replies" in a[name]["prompt"]
+        assert RESPONSE_RULES.strip() in a[name]["prompt"]
     assert a["designer"]["tools"] == [f"mcp__mises__{n}" for n in names]
     # the verifier keeps its own read-only list (no mirror_part_create)
     assert a["verifier"]["tools"] == ["mcp__mises__mirror_measure", "mcp__mises__mirror_part_list",
