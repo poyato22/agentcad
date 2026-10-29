@@ -18,12 +18,15 @@ import asyncio
 import hashlib
 import json
 import math
+import os
 import re
 import shutil
 from pathlib import Path
 
 from ..cad.runner import run_build
-from ..cad.tools import PART_ID_RE, _atomic_write, _lock
+from .. import edits as _edits
+from ..cad import safe_io
+from ..cad.tools import PART_ID_RE, _after_build, _lock
 from ..naming import check_name
 from ..types import ErrorCode, MisesError
 
@@ -240,10 +243,11 @@ def base_part_id(item: dict) -> str:
 
 
 def read_meta(part_dir: Path) -> dict | None:
+    """part.json, read without following links (C6 safe_io); None if absent or unsafe."""
     try:
-        meta = json.loads((part_dir / META).read_text())
+        meta = safe_io.read_json(part_dir, META)
         return meta if isinstance(meta, dict) else None
-    except (OSError, ValueError):
+    except (OSError, ValueError, safe_io.UnsafePath):
         return None
 
 
@@ -259,7 +263,7 @@ def choose_part_id(parts_root: Path, base: str, owner: dict, requested: str | No
         if not PART_ID_RE.match(requested):
             raise _bad(f"part_id {requested!r} must match {PART_ID_RE.pattern}")
         check_name(requested)
-        if (parts_root / requested).exists():
+        if os.path.lexists(parts_root / requested):
             if same(requested):
                 return requested, True
             raise MisesError(ErrorCode.STALE_VERSION, f"part {requested!r} already exists",
@@ -267,7 +271,7 @@ def choose_part_id(parts_root: Path, base: str, owner: dict, requested: str | No
         return requested, False
     seed = json.dumps(owner, sort_keys=True)
     for pid in (base, f"{base}_{_letters(seed, 4)}", f"{base}_{_letters(seed, 8)}"):
-        if not (parts_root / pid).exists():
+        if not os.path.lexists(parts_root / pid):
             return pid, False
         if same(pid):
             return pid, True
@@ -305,17 +309,23 @@ async def build_part(parts_root: Path, part_id: str, script: str, vars_: dict[st
     check_name(part_id)
     d = Path(parts_root) / part_id
     async with _lock(d):
-        if d.exists():
+        if os.path.lexists(d):
             raise MisesError(ErrorCode.STALE_VERSION, f"part {part_id!r} already exists",
                              hint="insert again: a free id is chosen")
-        d.mkdir(parents=True)
-        (d / "part.py").write_text(script)
+        safe_io.ensure_dir(d)
+        safe_io.write_text(d, "part.py", script)
         effective = density_g_cm3 * fill_factor
-        res = await run_build(d, vars_, density_g_cm3=effective)
-        if not res.ok:
+        try:
+            res = await run_build(d, vars_, density_g_cm3=effective)
+            bad = _after_build(d)       # links / special files a build left: refuse the part
+        except BaseException:
             shutil.rmtree(d, ignore_errors=True)
-            raise MisesError(ErrorCode.TOOL_FAILED, f"building {part_id} failed:"
-                             f" {(res.error or '')[-400:]}")
+            raise
+        if bad or not res.ok:
+            shutil.rmtree(d, ignore_errors=True)
+            why = (f"the build left links or special files ({', '.join(bad[:5])})" if bad
+                   else (res.error or "")[-400:])
+            raise MisesError(ErrorCode.TOOL_FAILED, f"building {part_id} failed: {why}")
         metrics = res.metrics
         vol_cm3 = (metrics.get("volume_mm3") or 0) / 1000
         if mass_g is not None and mass_g > 0 and vol_cm3 > 0:
@@ -325,19 +335,20 @@ async def build_part(parts_root: Path, part_id: str, script: str, vars_: dict[st
             note = mass_note or (f"estimate: volume x {density_g_cm3:g} g/cm3"
                                  f" x fill factor {fill_factor:g}")
             metrics = {**metrics, "mass_source": "estimate", "mass_note": note}
-        _atomic_write(d / "metrics.json", json.dumps(metrics))
+        safe_io.write_text(d, "metrics.json", json.dumps(metrics))
         meta = {**meta, "geometry": _geometry_used(res.stdout_tail),
                 "mass_g": metrics.get("mass_g"), "mass_source": metrics["mass_source"],
                 "density_g_cm3": effective, "fill_factor": fill_factor}
-        _atomic_write(d / "vars.json", json.dumps(res.vars))
-        _atomic_write(d / META, json.dumps(meta))
+        safe_io.write_text(d, "vars.json", json.dumps(res.vars))
+        safe_io.write_text(d, META, json.dumps(meta))
+        _edits.write_version(d, 1)      # C6 versions: a new part's first build is version 1
     return {"part_id": part_id, "metrics": metrics, "meta": meta}
 
 
 def _existing_part(d: Path) -> dict:
     try:
-        metrics = json.loads((d / "metrics.json").read_text())
-    except (OSError, ValueError):
+        metrics = safe_io.read_json(d, "metrics.json")
+    except (OSError, ValueError, safe_io.UnsafePath):
         metrics = None
     return {"part_id": d.name, "metrics": metrics, "meta": read_meta(d), "existing": True}
 

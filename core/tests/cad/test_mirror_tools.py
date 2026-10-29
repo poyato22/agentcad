@@ -148,5 +148,8 @@ async def test_create_registers_the_tree_row_in_the_runs_build(tmp_path):
     assert r.ok, r.summary
     assert store.get_part("bracket").project_id == drone.id
     ctx2 = SimpleNamespace(workdir=tmp_path, store=store, run_id=other.id)
+    # C6: replacing an existing part's script needs a source read by this run first
+    from mises.cad.tools import SourceArgs, mirror_part_get_source
+    assert (await mirror_part_get_source.handler(ctx2, SourceArgs(part_id="bracket"))).ok
     assert (await mirror_part_create.handler(ctx2, CreateArgs(part_id="bracket", script=BOX))).ok
     assert store.get_part("bracket").project_id == drone.id
