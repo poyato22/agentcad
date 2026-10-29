@@ -646,6 +646,20 @@ Added 2026-10-29 at the user's request: "more control over studies and add more 
 - templates CRUD
 - probe interpolation
 
+**Agents run studies and use them for review** (added 2026-10-29 at the user's request):
+- Every study type is callable by agents through `sim_run`.
+- A study started by an agent:
+  - is tagged `run_id` and `step_id`;
+  - emits `sim_progress`;
+  - attaches its result summary (key metrics, pass/fail versus the spec, and the result GLB and charts as URLs) to the tool_result step, so the thread can render it.
+- New read tool `design_review(part_id | project_id, spec?)`:
+  - chooses the studies the spec requires (static per load case, modal if an excitation band is given, wind if a drag or wind requirement is present, drop if impact is present);
+  - runs them under the parallel limit;
+  - returns a requirement-by-requirement pass / warn / fail table with links to each study.
+  - It runs the studies as child `sim_run` calls through the Gate (so their safety class is local_mutate, approved like any sim run).
+- The **verifier** agent prompt (C3 owns the text) calls `design_review` before approving a design, and cites the study ids in its verdict.
+- The engineer agent runs `design_review` on the chosen variant.
+
 ### Task A8: Studies page — full control and all study types (app)
 
 **Files:** `app/src/ui/pages/studies/**`, viewer result overlays, tests. Runs in wave 2, after C7.
@@ -670,6 +684,25 @@ Added 2026-10-29 at the user's request: "more control over studies and add more 
 - Keep "guide only" and fidelity labels always visible.
 
 **Tests:** schema form rendering and validation, face-pick to load assignment, channel switch, cancel, compare view, wind results rendering from a real fixture.
+
+**Inline study cards and immersive view** (added 2026-10-29 at the user's request):
+- When an agent runs a study, the conversation thread shows a **study card** inline in the step:
+  - type and status;
+  - a live phase progress bar;
+  - key metrics with pass / warn / fail;
+  - a small chart (e.g. the convergence curve, the stress histogram, the Cd-vs-yaw sweep, or a modal frequency bar chart against the excitation band; follow the dataviz skill);
+  - a thumbnail of the colored result.
+- Cards on the Studies page and in the A7 study scatter get the same treatment.
+- **Immersive view**: an "Immersive" button on every study card and chart point (and double-click on the chart) opens a full-window 3D view of that study:
+  - While it runs, you can watch the mesh appear, then the solve progress, then the results animate in.
+  - Once done, you can orbit, change the channel, scrub the deformed scale, play mode shapes or the airflow particle animation, move the section plane and probe values.
+  - A side strip shows the metrics, the requirement checks, and which agent ran it and why (the agent's one-line reason from the tool call).
+  - Esc exits.
+  - ⌘[ / ⌘] step through the other studies in the same review.
+  - It works in both themes, and with reduced motion it shows static frames.
+- `design_review` results render as a review card: a requirement table with each row linking to its study's immersive view.
+
+**Tests:** the card renders from a real agent step fixture with each study type; the immersive view opens from a card and from a chart point, shows live progress from `sim_progress`, and Esc and keyboard navigation work; the review card links resolve.
 
 ### Task I: Integration, real-app QA, final review
 
@@ -717,3 +750,5 @@ Added 2026-10-29 at the user's request: "more control over studies and add more 
 | Drag parts around in the top-left list | C1, A3 |
 | More control over studies | C7, A8 |
 | More studies, e.g. wind/aerodynamic | C7, A8 |
+| Agents run studies and use them for review | C7, C3 (verifier prompt) |
+| Immersive view of an agent's study from the chart | A8 (with A2 thread cards) |
