@@ -1,6 +1,18 @@
+import os
+
 import pytest
 
 from mises.claude_code import detect
+
+
+def pytest_collection_modifyitems(config, items):
+    """cfd_slow tests (CFD validation, minutes each) run only when asked for."""
+    if "cfd_slow" in (config.getoption("-m") or "") or os.environ.get("MISES_CFD_SLOW") == "1":
+        return
+    skip = pytest.mark.skip(reason="CFD validation: run with -m cfd_slow or MISES_CFD_SLOW=1")
+    for item in items:
+        if "cfd_slow" in item.keywords:
+            item.add_marker(skip)
 
 REAL_FIND_CLAUDE = detect.find_claude
 

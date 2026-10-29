@@ -93,9 +93,10 @@ def write_inp(path: Path, mesh: Mesh, fixed: set[int], loads: dict[int, tuple[fl
     Path(path).write_text("\n".join(lines))
 
 
-async def run_ccx(ccx: str, job_dir: Path, *, job: str = "job", timeout_s: float) -> Path:
+async def run_ccx(ccx: str, job_dir: Path, *, job: str = "job", timeout_s: float,
+                  threads: int | None = None) -> Path:
     """Run `ccx -i job` in job_dir; returns the .frd path."""
-    threads = str(max(1, min(4, os.cpu_count() or 1)))
+    threads = str(threads or max(1, min(4, os.cpu_count() or 1)))
     rc, out, err = await run_sandboxed(
         [ccx, "-i", job], job_dir, timeout_s=timeout_s, what="CalculiX",
         env={"OMP_NUM_THREADS": threads, "CCX_NPROC_EQUATION_SOLVER": threads})

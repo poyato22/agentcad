@@ -1,11 +1,13 @@
-"""Studies page routes: list/read static stress studies, their heatmap GLB, solver status, and
-start a study from the UI. Admin token only (like every non-MCP route).
+"""Studies page routes: study types and their settings schemas, start / cancel / list / read
+studies, the result GLB, chart data, probe and section values, compare, saved templates and
+custom materials. Admin token only (like every non-MCP route).
 
 A UI-started study is not a side door: POST /sims creates a "studies" run (scope: that part,
-classes read + local_mutate) and calls sim_static_run through the Gate, so it gets the same
-Steps, events, scope checks and timeouts as an agent's call. It runs in the background; the
-page follows `sim_progress` / `run_finished` events or polls GET /sims?run_id=. Cancel it with
-POST /runs/{run_id}/cancel (kills the mesher/solver).
+classes read + local_mutate) and calls sim_run (or, for the original body shape, sim_static_run)
+through the Gate, so it gets the same Steps, events, scope checks and timeouts as an agent's
+call. It runs in the background; the page follows `sim_progress {sim_id, phase, pct, detail}`
+/ `run_finished` events or polls GET /sims?run_id=. Cancel with POST /sims/{sim_id}/cancel or
+POST /runs/{run_id}/cancel (both kill the mesher / solver).
 """
 from __future__ import annotations
 
@@ -13,15 +15,24 @@ import asyncio
 import logging
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Literal
 
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
 from ..cad.tools import PART_ID_RE
+from ..sim import studies
 from ..sim.ccx import solver_status
+from ..sim.cfd import cfd_solver_status
+from ..sim.charts import charts
+from ..sim.fields import FIELDS_FILE, Fields
+from ..sim.materials import (MATERIALS, custom_material, delete_custom, load_custom,
+                             upsert_custom)
+from ..sim.settings import CustomMaterial
 from ..sim.tools import SIM_ID_RE, StaticArgs, find_sim, list_sims, read_record, register_sim_tools
+from ..sim.types import SimError
 from ..types import ErrorCode, MisesError, SafetyClass
 from .ui_api import _contained, _etag_matches
 
@@ -31,6 +42,26 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 UI_AGENT = "studies"
+SLICES = ("slice_xz", "slice_xy")
+
+
+class StartBody(BaseModel):
+    type: Literal["static", "modal", "buckling", "thermal", "drop", "wind"]
+    part_id: str | None = None
+    project_id: str | None = None
+    settings: dict[str, Any] = Field(default_factory=dict)
+    reason: str | None = Field(None, max_length=200)
+    requirements: list[dict[str, Any]] = Field(default_factory=list, max_length=40)
+
+
+class CompareBody(BaseModel):
+    ids: list[str] = Field(min_length=2, max_length=8)
+
+
+class TemplateBody(BaseModel):
+    name: str = Field(min_length=1, max_length=60)
+    type: Literal["static", "modal", "buckling", "thermal", "drop", "wind"]
+    settings: dict[str, Any] = Field(default_factory=dict)
 
 
 def _check_part(part_id: str) -> None:
@@ -43,6 +74,10 @@ def _check_sim(sim_id: str) -> None:
     if not SIM_ID_RE.fullmatch(sim_id):
         raise MisesError(ErrorCode.INVALID_INPUT, f"bad sim id: {sim_id!r}",
                          hint=f"sim ids match {SIM_ID_RE.pattern}")
+
+
+def _bad(e: SimError) -> MisesError:
+    return MisesError(ErrorCode.INVALID_INPUT, e.message, hint=e.hint)
 
 
 def build_sim_router(runtime: Runtime) -> APIRouter:
@@ -63,9 +98,65 @@ def build_sim_router(runtime: Runtime) -> APIRouter:
                 rec = {**rec, "status": "interrupted"}
         return rec
 
+    # ---- fixed paths first (before /sims/{sim_id})
+
     @router.get("/sims/solvers")
     async def solvers():
-        return await run_in_threadpool(solver_status)
+        st = await run_in_threadpool(solver_status)
+        return {**st, "cfd": await run_in_threadpool(cfd_solver_status)}
+
+    @router.get("/sims/types")
+    async def types():
+        return await run_in_threadpool(studies.types_list)
+
+    @router.post("/sims/compare")
+    async def compare(body: CompareBody):
+        recs = []
+        for sid in body.ids:
+            recs.append(_interrupted(read_record(_dir(sid), parts_root())))
+        return studies.compare(recs)
+
+    @router.get("/sims/templates")
+    async def templates():
+        return studies.load_templates(runtime.home)
+
+    @router.post("/sims/templates")
+    async def add_template(body: TemplateBody):
+        try:
+            t = studies.add_template(runtime.home, body.name, body.type, body.settings)
+        except SimError as e:
+            if e.code == "conflict":
+                return JSONResponse({"error": "conflict", "message": e.message,
+                                     "hint": e.hint}, status_code=409)
+            raise _bad(e) from None
+        return JSONResponse(t, status_code=201)
+
+    @router.delete("/sims/templates/{tpl_id}")
+    async def del_template(tpl_id: str):
+        if not studies.TEMPLATE_ID_RE.fullmatch(tpl_id):
+            raise MisesError(ErrorCode.INVALID_INPUT, f"bad template id: {tpl_id!r}")
+        if not studies.delete_template(runtime.home, tpl_id):
+            raise MisesError(ErrorCode.NOT_FOUND, f"no template {tpl_id}")
+        return {"deleted": tpl_id}
+
+    @router.get("/sims/materials")
+    async def materials():
+        return {"builtin": [m.to_dict() for m in MATERIALS.values()],
+                "custom": [m.to_dict() for m in load_custom(runtime.home)]}
+
+    @router.post("/sims/materials")
+    async def add_material(body: CustomMaterial):
+        try:
+            m = upsert_custom(runtime.home, custom_material(body.model_dump()))
+        except SimError as e:
+            raise _bad(e) from None
+        return JSONResponse(m.to_dict(), status_code=201)
+
+    @router.delete("/sims/materials/{name}")
+    async def del_material(name: str):
+        if not delete_custom(runtime.home, name):
+            raise MisesError(ErrorCode.NOT_FOUND, f"no custom material {name!r}")
+        return {"deleted": name}
 
     @router.get("/sims")
     async def sims(part_id: str | None = None, run_id: str | None = None):
@@ -80,44 +171,118 @@ def build_sim_router(runtime: Runtime) -> APIRouter:
             raise MisesError(ErrorCode.NOT_FOUND, f"no study {sim_id}")
         return d
 
-    @router.get("/sims/{sim_id}")
-    async def sim(sim_id: str):
-        return _interrupted(read_record(_dir(sim_id), parts_root()))
-
-    @router.get("/sims/{sim_id}/result.glb")
-    async def sim_glb(sim_id: str, request: Request):
+    def _file(sim_id: str, name: str, what: str) -> Path:
         d = _dir(sim_id)
-        real = _contained(parts_root(), d / "result.glb")
+        real = _contained(parts_root(), d / name)
         if real is None or not real.is_file():
-            raise MisesError(ErrorCode.NOT_FOUND, f"study {sim_id} has no result model",
+            raise MisesError(ErrorCode.NOT_FOUND, f"study {sim_id} has no {what}",
                              hint="only finished studies have one")
+        return real
+
+    def _fields(sim_id: str) -> Fields:
+        p = _file(sim_id, FIELDS_FILE, "result fields")
+        try:
+            return Fields(p)
+        except (OSError, ValueError, KeyError) as e:
+            raise MisesError(ErrorCode.NOT_FOUND, f"study {sim_id} fields unreadable: {e}") \
+                from None
+
+    def _send(real: Path, media: str, request: Request) -> Response:
         st = real.stat()
         etag = f'"{st.st_mtime_ns}-{st.st_size}"'
         headers = {"ETag": etag, "Cache-Control": "private, no-cache"}
         if _etag_matches(request.headers.get("if-none-match"), etag):
             return Response(status_code=304, headers=headers)
-        return Response(real.read_bytes(), media_type="model/gltf-binary", headers=headers)
+        return Response(real.read_bytes(), media_type=media, headers=headers)
+
+    @router.get("/sims/{sim_id}")
+    async def sim(sim_id: str):
+        rec = _interrupted(read_record(_dir(sim_id), parts_root()))
+        return {**rec, "card": studies.card(rec)}
+
+    @router.get("/sims/{sim_id}/result.glb")
+    async def sim_glb(sim_id: str, request: Request):
+        return _send(_file(sim_id, "result.glb", "result model"), "model/gltf-binary", request)
+
+    @router.get("/sims/{sim_id}/slices/{name}.png")
+    async def sim_slice(sim_id: str, name: str, request: Request):
+        if name not in SLICES:
+            raise MisesError(ErrorCode.NOT_FOUND, f"no slice {name!r}",
+                             hint=f"slices: {', '.join(SLICES)}")
+        return _send(_file(sim_id, f"{name}.png", "velocity slice"), "image/png", request)
+
+    @router.get("/sims/{sim_id}/charts")
+    async def sim_charts(sim_id: str):
+        d = _dir(sim_id)
+        rec = _interrupted(read_record(d, parts_root()))
+        return await run_in_threadpool(charts, rec, d)
+
+    @router.get("/sims/{sim_id}/probe")
+    async def probe(sim_id: str, x: float, y: float, z: float):
+        f = await run_in_threadpool(_fields, sim_id)
+        r = (await run_in_threadpool(f.probe, [[x, y, z]]))[0]
+        return {"sim_id": sim_id, "point": [x, y, z], "units": f.units, **r}
+
+    @router.get("/sims/{sim_id}/section")
+    async def section(sim_id: str, axis: Literal["x", "y", "z"], offset: float,
+                      channel: str, n: int = 48):
+        f = await run_in_threadpool(_fields, sim_id)
+        if channel not in f.ch:
+            raise MisesError(ErrorCode.INVALID_INPUT, f"no channel {channel!r}",
+                             hint=f"channels: {', '.join(f.channels())}")
+        return await run_in_threadpool(f.section, "xyz".index(axis), offset, channel, n)
+
+    @router.post("/sims/{sim_id}/cancel")
+    async def cancel(sim_id: str):
+        rec = read_record(_dir(sim_id), parts_root())
+        if not studies.cancel(sim_id):
+            return JSONResponse({"error": "not_running", "status": rec.get("status"),
+                                 "message": f"{sim_id} is not running"}, status_code=409)
+        return {"sim_id": sim_id, "status": "cancelling"}
 
     @router.post("/sims")
-    async def start(body: StaticArgs):
-        _check_part(body.part_id)
-        part = parts_root() / body.part_id
+    async def start(body: dict):
+        if "type" in body:
+            try:
+                sb = StartBody.model_validate(body)
+            except Exception as e:  # noqa: BLE001
+                raise MisesError(ErrorCode.INVALID_INPUT, str(e)) from None
+            if sb.part_id is None:
+                raise MisesError(ErrorCode.INVALID_INPUT, "assembly (project_id) studies are "
+                                 "not supported yet", hint="study each part by part_id")
+            try:  # bad ranges are rejected here, before a run exists
+                studies.validate_settings(sb.type, sb.settings)
+            except SimError as e:
+                return JSONResponse({"error": "invalid_input", "message": e.message,
+                                     "errors": e.data.get("errors", [])}, status_code=400)
+            part_id, tool = sb.part_id, "sim_run"
+            payload = sb.model_dump()
+            what = f"{sb.type} study"
+        else:
+            try:
+                legacy = StaticArgs.model_validate(body)
+            except Exception as e:  # noqa: BLE001
+                raise MisesError(ErrorCode.INVALID_INPUT, str(e)) from None
+            part_id, tool, payload, what = (legacy.part_id, "sim_static_run",
+                                            legacy.model_dump(), "static study")
+        _check_part(part_id)
+        part = parts_root() / part_id
         if not (part / "metrics.json").is_file() or not (part / "model.step").is_file():
-            raise MisesError(ErrorCode.NOT_FOUND, f"no built part {body.part_id!r}")
+            raise MisesError(ErrorCode.NOT_FOUND, f"no built part {part_id!r}")
         rid = runtime.create_external_run(
             UI_AGENT, provider="ui", model="studies-page",
-            edit_scope=(body.part_id,), read_scope=(body.part_id,),
+            edit_scope=(part_id,), read_scope=(part_id,),
             allowed_classes={SafetyClass.READ, SafetyClass.LOCAL_MUTATE},
-            task=f"Studies page: static study of {body.part_id}")
-        payload = body.model_dump()
+            task=f"Studies page: {what} of {part_id}")
 
         async def drive() -> None:
             status = "failed"
             try:
-                out = await runtime.gate.call(rid, "sim_static_run", payload,
+                out = await runtime.gate.call(rid, tool, payload,
                                               call_id=f"ui-{uuid.uuid4().hex[:12]}",
                                               workdir=runtime.workdir(rid))
-                status = "done" if out.ok else "failed"
+                status = ("done" if out.ok else
+                          "cancelled" if out.data.get("error") == "cancelled" else "failed")
             except asyncio.CancelledError:
                 status = "cancelled"
             except MisesError as e:  # already recorded as an error Step by the Gate
@@ -136,9 +301,9 @@ def build_sim_router(runtime: Runtime) -> APIRouter:
         tasks.add(task)
         task.add_done_callback(tasks.discard)
 
-        async def cancel() -> None:
+        async def cancel_run() -> None:
             task.cancel()
-        runtime.register_cancel_hook(rid, cancel)
+        runtime.register_cancel_hook(rid, cancel_run)
         return JSONResponse({"run_id": rid, "status": "running"}, status_code=202)
 
     return router
