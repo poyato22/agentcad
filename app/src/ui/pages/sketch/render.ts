@@ -42,7 +42,7 @@ export function sketchSvg(doc: Omit<SketchDoc, "constraints"> & { constraints?: 
   const fills = closedProfiles(doc.strokes).map((p) => `<path d="${profilePath(p, toSvg)}"/>`);
   const u = W / RENDER_PX.width;
   const dims = constraintBadges(doc.strokes, doc.constraints ?? [], u * 1.6)
-    .filter((b) => b.kind === "distance" || b.kind === "diameter" || b.kind === "radius")
+    .filter((b) => b.text && b.kind !== "horizontal" && b.kind !== "vertical" && b.kind !== "equal")
     .map((b) => {
       const [x, y] = toSvg(b.at);
       const ls = [...(b.line ? [b.line] : []), ...(b.ext ?? [])].map(([p, q]) => {

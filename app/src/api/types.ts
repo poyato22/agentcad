@@ -219,7 +219,10 @@ export interface SketchStroke {
 }
 /** A constraint target: a vertex (points index; a circle's 0 is its centre), an edge (i: points[i] → [i+1]) or the stroke. */
 export interface SketchRef { stroke_id: string; vertex?: number; edge?: number }
-export type SketchConstraintKind = "horizontal" | "vertical" | "equal" | "coincident" | "distance" | "diameter" | "radius";
+export type SketchConstraintKind =
+  | "horizontal" | "vertical" | "equal" | "coincident" | "distance" | "diameter" | "radius"
+  /** offsets along x / y between 2 vertices; a vertex (refs[0]) on a circle or arc (refs[1]; a slot: its first end) */
+  | "distance_x" | "distance_y" | "point_on_circle";
 export interface SketchConstraint { id: string; kind: SketchConstraintKind; refs: SketchRef[]; value_mm?: number }
 export interface SketchDimension { stroke_id: string; text: string; value_mm: number | null; kind: "length" | "radius" | "diameter" | "angle" | "note" }
 /** POST /sketches body. The photo (PNG/JPEG/HEIC, ≤ 10 MB) is checked and converted to PNG by the core. */

@@ -1,16 +1,25 @@
-// A lightweight iterative constraint solver (pure): position-based projection, Gauss–Seidel
-// style. Each pass nudges the points (and radii) a constraint touches until it holds, weighting
-// fixed points (the one being dragged) as immovable; passes repeat until nothing moves. Enough for
-// horizontal / vertical / equal / coincident / distance / diameter / radius on lines, polylines,
-// rectangles (whose sides are implicitly horizontal / vertical), circles, arcs and slots.
+// The constraint solver (pure): damped least squares (Levenberg–Marquardt) over the free point
+// coordinates and radii of the strokes the constraints touch, one connected group of strokes at a
+// time. Each constraint is one or two scalar residuals (0 when it holds); the Jacobian is built
+// per residual by finite differences over the few variables it touches, and each step solves the
+// small dense system (JᵀJ + λ·D) δ = −Jᵀr by Cholesky. Starting from the current geometry, the
+// damped steps move things as little as they can, so a drag or a new dimension changes only
+// what it must.
+//
+// Three outcomes: "ok" (everything holds), "not_converged" (still improving when the time budget
+// ran out; the residual says how far off) and "conflict" (no further improvement possible while
+// something is still off: the constraints contradict each other; `worst` names the one most off).
 import type { SketchConstraint, SketchConstraintKind, SketchRef, SketchStroke } from "../../../api/types";
-import { circumcircle, dist, mid, sub, unit, type Pt } from "./geom";
+import { circumcircle, dist, type Pt } from "./geom";
 
 export type Constraint = SketchConstraint;
 export type Ref = SketchRef;
 
+/** A constraint holds when it is off by less than this (mm). */
 export const SOLVE_TOL = 1e-6;
-const MAX_PASSES = 400;
+/** Default time budget for one solve (ms). */
+export const SOLVE_BUDGET_MS = 150;
+const MAX_ITERS = 200;
 const CIRCLE_SEGMENTS = 64;
 
 /** Strokes the solver can move (freehand is kept as drawn). */
@@ -18,6 +27,8 @@ export function solvable(s: SketchStroke): boolean {
   return s.kind !== "freehand";
 }
 
+/** Edges: points[i] → points[i+1]; a rectangle (always) or closed polyline also closes the loop.
+ *  Same rule as core sketch._edge_count. */
 export function edgeCount(s: SketchStroke): number {
   if (s.kind === "circle" || s.kind === "arc" || s.kind === "slot" || s.kind === "freehand") return 0;
   const n = s.points.length;
@@ -28,7 +39,7 @@ export function vertexCount(s: SketchStroke): number {
   return s.kind === "circle" ? 1 : s.points.length;
 }
 
-/** Whether the stroke has a radius a diameter / radius / equal constraint can set. */
+/** Whether the stroke has a radius a diameter / radius / equal / on-circle constraint can use. */
 export function hasRadius(s: SketchStroke): boolean {
   return s.kind === "circle" || s.kind === "arc" || s.kind === "slot";
 }
@@ -37,179 +48,264 @@ export function refKey(r: Ref): string {
   return r.vertex !== undefined ? `${r.stroke_id}:v${r.vertex}` : r.edge !== undefined ? `${r.stroke_id}:e${r.edge}` : r.stroke_id;
 }
 
-/** Why a constraint can't apply to these refs, or null when it can. */
+/** Whether two vertices of one stroke may be joined: only the two ends of an open chain (closing it). */
+function joinableEnds(s: SketchStroke, a: number, b: number): boolean {
+  if (s.kind !== "polyline" || s.closed || s.points.length < 3) return false;
+  const last = s.points.length - 1;
+  return (a === 0 && b === last) || (a === last && b === 0);
+}
+
+/** Why a constraint can't apply to these refs, or null when it can. Same rules as core sketch.py. */
 export function checkConstraint(kind: SketchConstraintKind, refs: readonly Ref[], strokes: readonly SketchStroke[]): string | null {
   const by = new Map(strokes.map((s) => [s.id, s]));
   const st = refs.map((r) => by.get(r.stroke_id));
   if (st.some((s) => !s)) return "That geometry is gone.";
   if (st.some((s) => !solvable(s as SketchStroke))) return "Freehand strokes can't be constrained.";
-  const isEdge = (i: number) => refs[i]?.edge !== undefined && (refs[i].edge as number) < edgeCount(st[i] as SketchStroke);
-  const isVertex = (i: number) => refs[i]?.vertex !== undefined && (refs[i].vertex as number) < vertexCount(st[i] as SketchStroke);
+  const isEdge = (i: number) => refs[i]?.edge !== undefined && refs[i]?.vertex === undefined && (refs[i].edge as number) < edgeCount(st[i] as SketchStroke);
+  const isVertex = (i: number) => refs[i]?.vertex !== undefined && refs[i]?.edge === undefined && (refs[i].vertex as number) < vertexCount(st[i] as SketchStroke);
   const isRadial = (i: number) => refs[i]?.vertex === undefined && refs[i]?.edge === undefined && hasRadius(st[i] as SketchStroke);
+  const twoVertices = () => refs.length === 2 && isVertex(0) && isVertex(1) && refKey(refs[0]) !== refKey(refs[1]);
   switch (kind) {
-    case "horizontal": case "vertical":
-      return (refs.length === 1 && isEdge(0)) || (refs.length === 2 && isVertex(0) && isVertex(1)) ? null : "Pick a line, or two points.";
-    case "coincident":
-      return refs.length === 2 && isVertex(0) && isVertex(1) && refKey(refs[0]) !== refKey(refs[1]) ? null : "Pick two points.";
+    case "horizontal": case "vertical": case "distance":
+      return (refs.length === 1 && isEdge(0)) || twoVertices() ? null : "Pick a line, or two different points.";
+    case "distance_x": case "distance_y":
+      return twoVertices() ? null : "Pick two different points.";
+    case "coincident": {
+      if (!twoVertices()) return "Pick two different points.";
+      if (refs[0].stroke_id === refs[1].stroke_id && !joinableEnds(st[0] as SketchStroke, refs[0].vertex as number, refs[1].vertex as number)) {
+        return "Those points are on the same shape; joining them would collapse it.";
+      }
+      return null;
+    }
     case "equal":
       if (refs.length !== 2 || refKey(refs[0]) === refKey(refs[1])) return "Pick two lines or two circles.";
       return (isEdge(0) && isEdge(1)) || (isRadial(0) && isRadial(1)) ? null : "Pick two lines or two circles.";
-    case "distance":
-      return (refs.length === 1 && isEdge(0)) || (refs.length === 2 && isVertex(0) && isVertex(1)) ? null : "Pick a line, or two points.";
     case "diameter": case "radius":
       return refs.length === 1 && isRadial(0) ? null : "Pick a circle, arc or slot.";
+    case "point_on_circle":
+      return refs.length === 2 && isVertex(0) && isRadial(1) && refs[0].stroke_id !== refs[1].stroke_id ? null : "Pick a point, then a circle.";
   }
 }
 
-// ---- working copy
+// ---- variables
 
 interface Body {
   s: SketchStroke;
-  pts: Pt[];          // movable points: a circle's [centre]; others their points
-  r: number;          // circle / slot radius (arcs derive theirs)
-  fixed: boolean[];
-  fixedR: boolean;
+  /** Variable index of each point coordinate [x, y] (−1 when fixed), and of the radius. */
+  pi: [number, number][];
+  ri: number;
+  /** Current values (for fixed coordinates and the radius when fixed). */
+  pts: Pt[];
+  r: number;
 }
 
-interface Ctx { bodies: Map<string, Body> }
-
-function bodyOf(s: SketchStroke, fixed: ReadonlySet<string>): Body {
-  const pts: Pt[] = s.kind === "circle" ? [[...(s.center ?? s.points[0])] as Pt] : s.points.map((p) => [p[0], p[1]] as Pt);
-  return {
-    s, pts, r: s.radius_mm ?? 0,
-    fixed: pts.map((_, i) => fixed.has(`${s.id}:v${i}`) || fixed.has(s.id)),
-    fixedR: fixed.has(`${s.id}:r`) || fixed.has(s.id),
-  };
+interface Sys {
+  bodies: Map<string, Body>;
+  x: Float64Array;
 }
 
-function edgePts(b: Body, e: number): [number, number] {
-  return [e, (e + 1) % b.pts.length];
+function bodyPts(s: SketchStroke): Pt[] {
+  return s.kind === "circle" ? [[...(s.center ?? s.points[0])] as Pt] : s.points.map((p) => [p[0], p[1]] as Pt);
 }
 
-/** Moves points a and b so that f(a, b) gives the correction; weights 0 for fixed points. */
-function share(b1: Body, i: number, b2: Body, j: number, dx: number, dy: number): void {
-  const w1 = b1.fixed[i] ? 0 : 1;
-  const w2 = b2.fixed[j] ? 0 : 1;
-  const w = w1 + w2;
-  if (!w) return;
-  const p = b1.pts[i];
-  const q = b2.pts[j];
-  p[0] += (dx * w1) / w; p[1] += (dy * w1) / w;
-  q[0] -= (dx * w2) / w; q[1] -= (dy * w2) / w;
+function pt(b: Body, i: number, x: Float64Array): Pt {
+  const [ix, iy] = b.pi[i];
+  return [ix >= 0 ? x[ix] : b.pts[i][0], iy >= 0 ? x[iy] : b.pts[i][1]];
 }
 
-function setLength(b1: Body, i: number, b2: Body, j: number, target: number): number {
-  const p = b1.pts[i];
-  const q = b2.pts[j];
-  const cur = dist(p, q);
-  const u = cur < 1e-12 ? ([1, 0] as Pt) : unit(sub(q, p));
-  const diff = cur - target;
-  share(b1, i, b2, j, u[0] * diff, u[1] * diff);
-  return Math.abs(diff);
+function radius(b: Body, x: Float64Array): number {
+  if (b.s.kind === "arc") {
+    const cc = b.pts.length === 3 ? circumcircle(pt(b, 0, x), pt(b, 1, x), pt(b, 2, x)) : null;
+    return cc ? cc.r : 1e6;
+  }
+  return b.ri >= 0 ? x[b.ri] : b.r;
 }
 
-function arcRadius(b: Body): number {
-  const cc = b.pts.length === 3 ? circumcircle(b.pts[0], b.pts[1], b.pts[2]) : null;
-  return cc ? cc.r : 0;
+function centre(b: Body, x: Float64Array): Pt {
+  if (b.s.kind === "arc") {
+    const cc = circumcircle(pt(b, 0, x), pt(b, 1, x), pt(b, 2, x));
+    return cc ? cc.c : pt(b, 1, x);
+  }
+  return pt(b, 0, x);
 }
 
-/** Re-places an arc's middle point so the arc through its ends has radius r (same bulge side). */
-function setArcRadius(b: Body, r: number): number {
-  const [a, m, c] = b.pts;
-  const half = dist(a, c) / 2;
-  if (half < 1e-9 || b.fixed[1]) return 0;
-  const target = Math.max(r, half);
-  const cur = arcRadius(b);
-  const md = mid(a, c);
-  const n = unit([-(c[1] - a[1]), c[0] - a[0]]);           // left of the chord a → c
-  const sideOf = (p: Pt) => Math.sign((p[0] - md[0]) * n[0] + (p[1] - md[1]) * n[1]);
-  const side = sideOf(m) || 1;
-  const cc = circumcircle(a, m, c);
-  const major = !!cc && sideOf(cc.c) === side;               // centre on the bulge's side
-  const h = Math.sqrt(Math.max(0, target * target - half * half));
-  const sag = major ? target + h : target - h;
-  b.pts[1] = [md[0] + n[0] * sag * side, md[1] + n[1] * sag * side];
-  return Math.abs(cur - target);
+/** Variables of a ref (for the Jacobian's sparsity). */
+function varsOf(b: Body, r: Ref): number[] {
+  const out: number[] = [];
+  const add = (i: number) => { for (const v of b.pi[i] ?? []) if (v >= 0) out.push(v); };
+  if (r.vertex !== undefined) add(r.vertex);
+  else if (r.edge !== undefined) { add(r.edge); add((r.edge + 1) % b.pts.length); }
+  else {
+    if (b.s.kind === "arc") b.pts.forEach((_, i) => add(i));
+    else { add(0); if (b.ri >= 0) out.push(b.ri); }
+  }
+  return out;
 }
 
-function radiusOf(b: Body): number {
-  return b.s.kind === "arc" ? arcRadius(b) : b.r;
+type Item = { id: string; kind: SketchConstraintKind; refs: Ref[]; value?: number };
+
+function ends(b: Body, r: Ref, x: Float64Array): [Pt, Pt] {
+  const e = r.edge as number;
+  return [pt(b, e, x), pt(b, (e + 1) % b.pts.length, x)];
 }
 
-function setRadius(b: Body, r: number): number {
-  if (b.s.kind === "arc") return setArcRadius(b, r);
-  if (b.fixedR) return Math.abs(b.r - r);
-  const d = Math.abs(b.r - r);
-  b.r = r;
-  return d;
-}
-
-type Item = { kind: SketchConstraintKind; refs: Ref[]; value?: number };
-
-/** One projection pass over a constraint; returns how far it was from holding. */
-function project(c: Item, x: Ctx): number {
-  const b = c.refs.map((r) => x.bodies.get(r.stroke_id) as Body);
-  if (b.some((v) => !v)) return 0;
-  const pair = (): [Body, number, Body, number] => {
-    if (c.refs.length === 1) {
-      const [i, j] = edgePts(b[0], c.refs[0].edge as number);
-      return [b[0], i, b[0], j];
-    }
-    return [b[0], c.refs[0].vertex as number, b[1], c.refs[1].vertex as number];
-  };
+/** The residuals of one constraint at x (1 or 2 numbers). */
+function residuals(c: Item, sys: Sys, x: Float64Array): number[] {
+  const b = c.refs.map((r) => sys.bodies.get(r.stroke_id) as Body);
+  const pair = (): [Pt, Pt] => (c.refs.length === 1 ? ends(b[0], c.refs[0], x) : [pt(b[0], c.refs[0].vertex as number, x), pt(b[1], c.refs[1].vertex as number, x)]);
   switch (c.kind) {
-    case "horizontal": case "vertical": {
-      const [b1, i, b2, j] = pair();
-      const axis = c.kind === "horizontal" ? 1 : 0;
-      const d = b1.pts[i][axis] - b2.pts[j][axis];
-      share(b1, i, b2, j, axis === 0 ? -d : 0, axis === 1 ? -d : 0);
-      return Math.abs(d);
-    }
-    case "coincident": {
-      const [b1, i, b2, j] = pair();
-      const dx = b2.pts[j][0] - b1.pts[i][0];
-      const dy = b2.pts[j][1] - b1.pts[i][1];
-      share(b1, i, b2, j, dx, dy);
-      return Math.hypot(dx, dy);
-    }
-    case "distance": {
-      const [b1, i, b2, j] = pair();
-      return setLength(b1, i, b2, j, c.value as number);
-    }
-    case "diameter": case "radius": {
-      const r = c.kind === "diameter" ? (c.value as number) / 2 : (c.value as number);
-      return setRadius(b[0], r);
-    }
-    case "equal": {
+    case "horizontal": { const [p, q] = pair(); return [q[1] - p[1]]; }
+    case "vertical": { const [p, q] = pair(); return [q[0] - p[0]]; }
+    case "coincident": { const [p, q] = pair(); return [q[0] - p[0], q[1] - p[1]]; }
+    case "distance": { const [p, q] = pair(); return [dist(p, q) - (c.value as number)]; }
+    case "distance_x": { const [p, q] = pair(); return [Math.abs(q[0] - p[0]) - (c.value as number)]; }
+    case "distance_y": { const [p, q] = pair(); return [Math.abs(q[1] - p[1]) - (c.value as number)]; }
+    case "diameter": return [2 * radius(b[0], x) - (c.value as number)];
+    case "radius": return [radius(b[0], x) - (c.value as number)];
+    case "point_on_circle": return [dist(pt(b[0], c.refs[0].vertex as number, x), centre(b[1], x)) - radius(b[1], x)];
+    case "equal":
       if (c.refs[0].edge !== undefined) {
-        const [i1, j1] = edgePts(b[0], c.refs[0].edge);
-        const [i2, j2] = edgePts(b[1], c.refs[1].edge as number);
-        const l1 = dist(b[0].pts[i1], b[0].pts[j1]);
-        const l2 = dist(b[1].pts[i2], b[1].pts[j2]);
-        const free1 = !(b[0].fixed[i1] && b[0].fixed[j1]);
-        const free2 = !(b[1].fixed[i2] && b[1].fixed[j2]);
-        const m = free1 && free2 ? (l1 + l2) / 2 : free1 ? l2 : l1;
-        return setLength(b[0], i1, b[0], j1, m) + setLength(b[1], i2, b[1], j2, m);
+        const [p, q] = ends(b[0], c.refs[0], x);
+        const [u, v] = ends(b[1], c.refs[1], x);
+        return [dist(p, q) - dist(u, v)];
       }
-      const r1 = radiusOf(b[0]);
-      const r2 = radiusOf(b[1]);
-      const m = b[0].fixedR ? r1 : b[1].fixedR ? r2 : (r1 + r2) / 2;
-      return setRadius(b[0], m) + setRadius(b[1], m);
-    }
+      return [radius(b[0], x) - radius(b[1], x)];
   }
 }
 
-/** Rectangles keep their sides horizontal / vertical (by how each side runs now). */
+function itemVars(c: Item, sys: Sys): number[] {
+  const out = new Set<number>();
+  c.refs.forEach((r, k) => {
+    const b = sys.bodies.get(r.stroke_id) as Body;
+    // a circle's centre matters for point-on-circle; an arc's radius depends on all its points
+    for (const v of varsOf(b, k === 1 && c.kind === "point_on_circle" && b.s.kind !== "arc" ? { stroke_id: r.stroke_id } : r)) out.add(v);
+  });
+  return [...out];
+}
+
+/** Rectangles keep their sides horizontal / vertical (by how each side runs at the start). */
 function implicit(bodies: Iterable<Body>): Item[] {
   const out: Item[] = [];
   for (const b of bodies) {
     if (b.s.kind !== "rect" || b.pts.length !== 4) continue;
     for (let e = 0; e < 4; e++) {
       const [p, q] = [b.pts[e], b.pts[(e + 1) % 4]];
-      out.push({ kind: Math.abs(q[0] - p[0]) >= Math.abs(q[1] - p[1]) ? "horizontal" : "vertical", refs: [{ stroke_id: b.s.id, edge: e }] });
+      out.push({ id: `rect:${b.s.id}:e${e}`, kind: Math.abs(q[0] - p[0]) >= Math.abs(q[1] - p[1]) ? "horizontal" : "vertical", refs: [{ stroke_id: b.s.id, edge: e }] });
     }
   }
   return out;
+}
+
+// ---- linear algebra
+
+/** Solves A y = b in place for symmetric positive definite A (n×n, row-major); false if not SPD. */
+function cholSolve(A: Float64Array, b: Float64Array, n: number): boolean {
+  for (let j = 0; j < n; j++) {
+    let d = A[j * n + j];
+    for (let k = 0; k < j; k++) d -= A[j * n + k] * A[j * n + k];
+    if (!(d > 1e-300)) return false;
+    const l = Math.sqrt(d);
+    A[j * n + j] = l;
+    for (let i = j + 1; i < n; i++) {
+      let s = A[i * n + j];
+      for (let k = 0; k < j; k++) s -= A[i * n + k] * A[j * n + k];
+      A[i * n + j] = s / l;
+    }
+  }
+  for (let i = 0; i < n; i++) {
+    let s = b[i];
+    for (let k = 0; k < i; k++) s -= A[i * n + k] * b[k];
+    b[i] = s / A[i * n + i];
+  }
+  for (let i = n - 1; i >= 0; i--) {
+    let s = b[i];
+    for (let k = i + 1; k < n; k++) s -= A[k * n + i] * b[k];
+    b[i] = s / A[i * n + i];
+  }
+  return true;
+}
+
+const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
+
+type Status = "ok" | "not_converged" | "conflict";
+
+/** LM on one group. Returns the status and the worst residual (and which constraint). */
+function lm(items: Item[], sys: Sys, deadline: number): { status: Status; residual: number; worst: string | null } {
+  const n = sys.x.length;
+  const vars = items.map((c) => itemVars(c, sys));
+  const evalAll = (x: Float64Array) => items.map((c) => residuals(c, sys, x));
+  const cost = (rs: number[][]) => rs.reduce((a, r) => a + r.reduce((s, v) => s + v * v, 0), 0);
+  const worstOf = (rs: number[][]) => {
+    let w = 0; let id: string | null = null;
+    rs.forEach((r, i) => r.forEach((v) => { if (Math.abs(v) > w) { w = Math.abs(v); id = items[i].id; } }));
+    return { w, id };
+  };
+  let rs = evalAll(sys.x);
+  let f = cost(rs);
+  let lambda = 1e-3;
+  for (let it = 0; it < MAX_ITERS; it++) {
+    const { w, id } = worstOf(rs);
+    if (w < SOLVE_TOL) return { status: "ok", residual: w, worst: null };
+    if (n === 0) return { status: "conflict", residual: w, worst: id };
+    if (now() > deadline) return { status: "not_converged", residual: w, worst: id };
+    // JᵀJ and Jᵀr, from per-residual finite differences over each constraint's own variables
+    const A = new Float64Array(n * n);
+    const g = new Float64Array(n);
+    items.forEach((c, k) => {
+      const vs = vars[k];
+      const r0 = rs[k];
+      const cols = vs.map((v) => {
+        const old = sys.x[v];
+        const h = 1e-7 * Math.max(1, Math.abs(old));
+        sys.x[v] = old + h;
+        const r1 = residuals(c, sys, sys.x);
+        sys.x[v] = old;
+        return r1.map((val, m) => (val - r0[m]) / h);
+      });
+      for (let m = 0; m < r0.length; m++) {
+        for (let a = 0; a < vs.length; a++) {
+          const ja = cols[a][m];
+          if (ja === 0) continue;
+          g[vs[a]] += ja * r0[m];
+          for (let bb = 0; bb < vs.length; bb++) A[vs[a] * n + vs[bb]] += ja * cols[bb][m];
+        }
+      }
+    });
+    let gmax = 0;
+    for (let i = 0; i < n; i++) gmax = Math.max(gmax, Math.abs(g[i]));
+    if (gmax < 1e-12) return { status: "conflict", residual: w, worst: id };
+    // try steps with growing damping until the cost drops
+    let improved = false;
+    for (let tries = 0; tries < 12 && !improved; tries++) {
+      const M = new Float64Array(A);
+      for (let i = 0; i < n; i++) M[i * n + i] += lambda * (1 + A[i * n + i]);
+      const step = new Float64Array(n);
+      for (let i = 0; i < n; i++) step[i] = -g[i];
+      if (!cholSolve(M, step, n)) { lambda *= 10; continue; }
+      const xn = new Float64Array(sys.x);
+      for (let i = 0; i < n; i++) xn[i] += step[i];
+      const rn = evalAll(xn);
+      const fn = cost(rn);
+      if (fn < f) {
+        const small = Math.sqrt(step.reduce((s, v) => s + v * v, 0)) < 1e-12;
+        sys.x = xn; rs = rn;
+        const drop = f - fn;
+        f = fn;
+        lambda = Math.max(lambda / 3, 1e-12);
+        improved = true;
+        if (small || drop <= 1e-10 * Math.max(fn + drop, 1e-300)) {
+          const ww = worstOf(rs);
+          return ww.w < SOLVE_TOL ? { status: "ok", residual: ww.w, worst: null } : { status: "conflict", residual: ww.w, worst: ww.id };
+        }
+      } else lambda *= 4;
+    }
+    if (!improved) {
+      const ww = worstOf(rs);
+      return ww.w < SOLVE_TOL ? { status: "ok", residual: ww.w, worst: null } : { status: "conflict", residual: ww.w, worst: ww.id };
+    }
+  }
+  const ww = worstOf(rs);
+  return ww.w < SOLVE_TOL ? { status: "ok", residual: ww.w, worst: null } : { status: "not_converged", residual: ww.w, worst: ww.id };
 }
 
 export interface SolveResult {
@@ -217,46 +313,67 @@ export interface SolveResult {
   /** Largest remaining violation (mm). */
   residual: number;
   ok: boolean;
+  status: Status;
+  /** The constraint most off (an id; "rect:<stroke>:e<i>" for a rectangle's own sides), when not ok. */
+  worst: string | null;
 }
 
-/** Solve: `fixed` holds refKey()s of vertices (and stroke ids) to keep where they are. */
-export function solve(strokes: readonly SketchStroke[], constraints: readonly Constraint[], fixed: ReadonlySet<string> = new Set()): SolveResult {
+export interface SolveOptions {
+  /** refKey()s of vertices (and stroke ids) to keep where they are. */
+  fixed?: ReadonlySet<string>;
+  budgetMs?: number;
+}
+
+/** Solve; `fixed` holds refKey()s of vertices (and stroke ids) to keep where they are. Strokes no
+ *  constraint touches are returned as they are. */
+export function solve(strokes: readonly SketchStroke[], constraints: readonly Constraint[], fixed: ReadonlySet<string> = new Set(), opts: { budgetMs?: number } = {}): SolveResult {
+  const deadline = now() + (opts.budgetMs ?? SOLVE_BUDGET_MS);
   const by = new Map(strokes.map((s) => [s.id, s]));
   const items: Item[] = constraints
     .filter((c) => checkConstraint(c.kind, c.refs, strokes) === null)
-    .map((c) => ({ kind: c.kind, refs: c.refs, value: c.value_mm }));
-  const touched = new Set(items.flatMap((c) => c.refs.map((r) => r.stroke_id)));
-  for (const s of strokes) if (s.kind === "rect") touched.add(s.id);
-  const bodies = new Map<string, Body>();
-  for (const id of touched) {
-    const s = by.get(id);
-    if (s && solvable(s)) bodies.set(id, bodyOf(s, fixed));
+    .map((c) => ({ id: c.id, kind: c.kind, refs: c.refs, value: c.value_mm }));
+  // groups of strokes joined by constraints (union-find)
+  const parent = new Map<string, string>();
+  const find = (a: string): string => { let p = a; while (parent.get(p) !== p) p = parent.get(p) as string; parent.set(a, p); return p; };
+  const touch = (id: string) => { if (!parent.has(id)) parent.set(id, id); };
+  for (const s of strokes) if (s.kind === "rect") touch(s.id);
+  for (const c of items) {
+    c.refs.forEach((r) => touch(r.stroke_id));
+    for (let i = 1; i < c.refs.length; i++) parent.set(find(c.refs[i].stroke_id), find(c.refs[0].stroke_id));
   }
-  const all = [...implicit(bodies.values()), ...items];
-  const x: Ctx = { bodies };
-  for (let pass = 0; pass < MAX_PASSES; pass++) {
-    let worst = 0;
-    for (const c of all) worst = Math.max(worst, project(c, x));
-    if (worst < SOLVE_TOL) break;
-  }
-  // what is left after the last pass
-  let residual = 0;
-  for (const c of all) residual = Math.max(residual, measure(c, x));
-  const out = strokes.map((s) => {
-    const b = bodies.get(s.id);
-    return b ? writeBack(b) : s;
-  });
-  return { strokes: out, residual, ok: residual < 1e-3 };
-}
+  const groups = new Map<string, string[]>();
+  for (const id of parent.keys()) { const g = find(id); groups.set(g, [...(groups.get(g) ?? []), id]); }
 
-function measure(c: Item, x: Ctx): number {
-  // a projection on a throwaway copy tells how far off it is
-  const copy: Ctx = { bodies: new Map() };
-  for (const r of c.refs) {
-    const b = x.bodies.get(r.stroke_id);
-    if (b && !copy.bodies.has(r.stroke_id)) copy.bodies.set(r.stroke_id, { ...b, pts: b.pts.map((p) => [p[0], p[1]] as Pt) });
+  const out = new Map<string, SketchStroke>();
+  let status: Status = "ok";
+  let residual = 0;
+  let worst: string | null = null;
+  const rank: Record<Status, number> = { ok: 0, not_converged: 1, conflict: 2 };
+  for (const ids of groups.values()) {
+    const members = new Set(ids);
+    const gItems = items.filter((c) => members.has(c.refs[0].stroke_id));
+    const xs: number[] = [];
+    const bodies = new Map<string, Body>();
+    for (const id of ids) {
+      const s = by.get(id);
+      if (!s || !solvable(s)) continue;
+      const pts = bodyPts(s);
+      const isFixed = (i: number) => fixed.has(`${s.id}:v${i}`) || fixed.has(s.id);
+      const pi = pts.map((p, i): [number, number] => (isFixed(i) ? [-1, -1] : [xs.push(p[0]) - 1, xs.push(p[1]) - 1]));
+      const hasR = s.kind === "circle" || s.kind === "slot";
+      const ri = hasR && !fixed.has(s.id) && !fixed.has(`${s.id}:r`) ? xs.push(s.radius_mm ?? 0) - 1 : -1;
+      bodies.set(id, { s, pi, ri, pts, r: s.radius_mm ?? 0 });
+    }
+    const sys: Sys = { bodies, x: Float64Array.from(xs) };
+    const all = [...implicit(bodies.values()), ...gItems];
+    if (!all.length) continue;
+    const res = lm(all, sys, deadline);
+    if (rank[res.status] > rank[status] || (res.status === status && res.residual > residual)) worst = res.worst ?? worst;
+    if (rank[res.status] > rank[status]) status = res.status;
+    residual = Math.max(residual, res.residual);
+    for (const b of bodies.values()) out.set(b.s.id, writeBack(b, sys.x));
   }
-  return project(c, copy);
+  return { strokes: strokes.map((s) => out.get(s.id) ?? s), residual, ok: status === "ok", status, worst };
 }
 
 function circlePoints(c: Pt, r: number): [number, number][] {
@@ -268,28 +385,16 @@ function circlePoints(c: Pt, r: number): [number, number][] {
   return pts;
 }
 
-function writeBack(b: Body): SketchStroke {
+const clean = (v: number) => Math.round(v * 1e9) / 1e9 + 0;
+
+function writeBack(b: Body, x: Float64Array): SketchStroke {
   const s = b.s;
-  if (s.kind === "circle") return { ...s, center: [b.pts[0][0], b.pts[0][1]], radius_mm: b.r, points: circlePoints(b.pts[0], b.r) };
-  if (s.kind === "slot") return { ...s, points: b.pts.map((p) => [p[0], p[1]]), radius_mm: b.r };
-  return { ...s, points: b.pts.map((p) => [p[0], p[1]]) };
+  const pts = b.pts.map((_, i) => pt(b, i, x).map(clean) as [number, number]);
+  if (s.kind === "circle") {
+    const r = clean(radius(b, x));
+    return { ...s, center: pts[0], radius_mm: r, points: circlePoints(pts[0], r) };
+  }
+  if (s.kind === "slot") return { ...s, points: pts, radius_mm: clean(radius(b, x)) };
+  return { ...s, points: pts };
 }
 
-/** The current value a dimension constraint would hold now (for the badge before it drives). */
-export function measured(kind: "distance" | "diameter" | "radius", refs: readonly Ref[], strokes: readonly SketchStroke[]): number | null {
-  const by = new Map(strokes.map((s) => [s.id, s]));
-  const b = refs.map((r) => by.get(r.stroke_id));
-  if (b.some((s) => !s)) return null;
-  const body = (s: SketchStroke) => bodyOf(s, new Set());
-  if (kind === "distance") {
-    if (refs.length === 1 && refs[0].edge !== undefined) {
-      const bb = body(b[0] as SketchStroke);
-      const [i, j] = edgePts(bb, refs[0].edge);
-      return dist(bb.pts[i], bb.pts[j]);
-    }
-    if (refs.length === 2) return dist(body(b[0] as SketchStroke).pts[refs[0].vertex ?? 0], body(b[1] as SketchStroke).pts[refs[1].vertex ?? 0]);
-    return null;
-  }
-  const r = radiusOf(body(b[0] as SketchStroke));
-  return kind === "diameter" ? r * 2 : r;
-}

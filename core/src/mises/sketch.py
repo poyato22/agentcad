@@ -132,14 +132,17 @@ class Ref(BaseModel):
         return self
 
 
-_VALUED = ("distance", "diameter", "radius")
+_VALUED = ("distance", "diameter", "radius", "distance_x", "distance_y")
 
 
 class Constraint(BaseModel):
     """A sketch constraint the user set (data for the agent; the app's solver already applied it).
-    distance: an edge's length, or between 2 vertices. diameter / radius: a circle, arc or slot."""
+    distance: an edge's length, or between 2 vertices. distance_x / distance_y: the offset along
+    x / y between 2 vertices. diameter / radius: a circle, arc or slot. point_on_circle: a vertex
+    (refs[0]) on a circle or arc (refs[1]; a slot: the circle at its first end)."""
     id: str = Field(pattern=_ID)
-    kind: Literal["horizontal", "vertical", "equal", "coincident", "distance", "diameter", "radius"]
+    kind: Literal["horizontal", "vertical", "equal", "coincident", "distance", "diameter", "radius",
+                  "distance_x", "distance_y", "point_on_circle"]
     refs: list[Ref] = Field(min_length=1, max_length=2)
     value_mm: Length | None = None
 
@@ -147,7 +150,7 @@ class Constraint(BaseModel):
     def _shape(self) -> Constraint:
         if (self.kind in _VALUED) != (self.value_mm is not None):
             raise ValueError(f"{self.kind}: value_mm is " + ("required" if self.kind in _VALUED else "not allowed"))
-        if self.kind in ("equal", "coincident") and len(self.refs) != 2:
+        if self.kind in ("equal", "coincident", "distance_x", "distance_y", "point_on_circle") and len(self.refs) != 2:
             raise ValueError(f"{self.kind} needs 2 refs")
         if self.kind == "coincident" and any(r.vertex is None for r in self.refs):
             raise ValueError("coincident joins 2 vertices")
@@ -158,10 +161,62 @@ MAX_CONSTRAINTS = 1000
 
 
 def _edge_count(s: Stroke) -> int:
-    if s.kind in ("circle", "arc", "slot"):
+    """Edges points[i] → points[i+1]; a rectangle (always) or closed chain also closes the loop.
+    Same rule as the app's solver.edgeCount."""
+    if s.kind in ("circle", "arc", "slot", "freehand"):
         return 0
     n = len(s.points)
-    return n if s.closed and n > 2 else max(0, n - 1)
+    return n if (s.kind == "rect" or s.closed) and n > 2 else max(0, n - 1)
+
+
+def _ref_key(r: Ref) -> str:
+    return f"{r.stroke_id}:v{r.vertex}" if r.vertex is not None else (
+        f"{r.stroke_id}:e{r.edge}" if r.edge is not None else r.stroke_id)
+
+
+def _constraint_problem(c: Constraint, known: dict[str, Stroke]) -> str | None:
+    """Why the constraint can't apply to its refs (degenerate or the wrong geometry), or None.
+    Same rules as the app's solver.checkConstraint."""
+    st = [known.get(r.stroke_id) for r in c.refs]
+    if any(s is None for s in st):
+        return "unknown stroke"
+    if any(s.kind == "freehand" for s in st):
+        return "freehand strokes can't be constrained"
+
+    def edge(i: int) -> bool:
+        r = c.refs[i]
+        return r.edge is not None and r.vertex is None and r.edge < _edge_count(st[i])
+
+    def vertex(i: int) -> bool:
+        r = c.refs[i]
+        return r.vertex is not None and r.edge is None and r.vertex < (1 if st[i].kind == "circle" else len(st[i].points))
+
+    def radial(i: int) -> bool:
+        r = c.refs[i]
+        return r.vertex is None and r.edge is None and st[i].kind in ("circle", "arc", "slot")
+
+    two = len(c.refs) == 2
+    two_vertices = two and vertex(0) and vertex(1) and _ref_key(c.refs[0]) != _ref_key(c.refs[1])
+    if c.kind in ("horizontal", "vertical", "distance"):
+        ok = (len(c.refs) == 1 and edge(0)) or two_vertices
+    elif c.kind in ("distance_x", "distance_y"):
+        ok = two_vertices
+    elif c.kind == "coincident":
+        ok = two_vertices
+        if ok and c.refs[0].stroke_id == c.refs[1].stroke_id:
+            s = st[0]
+            last = len(s.points) - 1
+            ends = {c.refs[0].vertex, c.refs[1].vertex} == {0, last}
+            if not (s.kind == "polyline" and not s.closed and len(s.points) >= 3 and ends):
+                return "coincident points on one shape would collapse it"
+    elif c.kind == "equal":
+        ok = two and _ref_key(c.refs[0]) != _ref_key(c.refs[1]) and (
+            (edge(0) and edge(1)) or (radial(0) and radial(1)))
+    elif c.kind in ("diameter", "radius"):
+        ok = len(c.refs) == 1 and radial(0)
+    else:  # point_on_circle
+        ok = two and vertex(0) and radial(1) and c.refs[0].stroke_id != c.refs[1].stroke_id
+    return None if ok else f"{c.kind} can't apply to these refs"
 
 
 class SketchIn(BaseModel):
@@ -195,10 +250,8 @@ class SketchIn(BaseModel):
                     raise ValueError(f"constraint {c.id}: {r.stroke_id} has no vertex {r.vertex}")
                 if r.edge is not None and r.edge >= _edge_count(s):
                     raise ValueError(f"constraint {c.id}: {r.stroke_id} has no edge {r.edge}")
-            if c.kind in ("horizontal", "vertical") and not (
-                    len(c.refs) == 1 and c.refs[0].edge is not None
-                    or len(c.refs) == 2 and all(r.vertex is not None for r in c.refs)):
-                raise ValueError(f"{c.kind} is for an edge or 2 vertices")
+            if (why := _constraint_problem(c, known)) is not None:
+                raise ValueError(f"constraint {c.id}: {why}")
         return self
 
 

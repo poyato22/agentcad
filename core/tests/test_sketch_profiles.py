@@ -137,3 +137,38 @@ def test_profile_cap():
     many = [{"id": f"c{i}", "kind": "circle", "points": [[0, 0]], "closed": True,
              "center": [5 + (i % 20) * 9, 5 + (i // 20) * 9], "radius_mm": 1} for i in range(sk.MAX_PROFILES + 5)]
     assert len(sk.closed_profiles(sketch(many))) == sk.MAX_PROFILES
+
+
+LINE = {"id": "l", "kind": "line", "points": [[0, 0], [10, 0]]}
+OPEN = {"id": "p", "kind": "polyline", "points": [[0, 0], [10, 0], [10, 10]]}
+
+
+@pytest.mark.parametrize("bad", [
+    {"id": "x", "kind": "coincident", "refs": [{"stroke_id": "r", "vertex": 0}, {"stroke_id": "r", "vertex": 2}]},  # collapses
+    {"id": "x", "kind": "coincident", "refs": [{"stroke_id": "l", "vertex": 0}, {"stroke_id": "l", "vertex": 1}]},
+    {"id": "x", "kind": "distance", "refs": [{"stroke_id": "l", "vertex": 0}, {"stroke_id": "l", "vertex": 0}], "value_mm": 5},
+    {"id": "x", "kind": "horizontal", "refs": [{"stroke_id": "l", "vertex": 1}, {"stroke_id": "l", "vertex": 1}]},
+    {"id": "x", "kind": "diameter", "refs": [{"stroke_id": "l"}], "value_mm": 4},                     # a line has no diameter
+    {"id": "x", "kind": "equal", "refs": [{"stroke_id": "l", "edge": 0}, {"stroke_id": "h"}]},        # a line and a circle
+    {"id": "x", "kind": "distance_x", "refs": [{"stroke_id": "l", "vertex": 0}], "value_mm": 4},
+    {"id": "x", "kind": "point_on_circle", "refs": [{"stroke_id": "h", "vertex": 0}, {"stroke_id": "h"}]},
+])
+def test_degenerate_constraints_rejected(bad):
+    with pytest.raises(ValidationError):
+        sketch([RECT, HOLE, LINE, OPEN], constraints=[bad])
+
+
+def test_offsets_on_circle_and_closing_a_chain_are_fine():
+    s = sketch([RECT, HOLE, LINE, OPEN], constraints=[
+        {"id": "a", "kind": "distance_x", "refs": [{"stroke_id": "r", "vertex": 0}, {"stroke_id": "h", "vertex": 0}], "value_mm": 10},
+        {"id": "b", "kind": "distance_y", "refs": [{"stroke_id": "r", "vertex": 0}, {"stroke_id": "h", "vertex": 0}], "value_mm": 10},
+        {"id": "c", "kind": "point_on_circle", "refs": [{"stroke_id": "l", "vertex": 0}, {"stroke_id": "h"}]},
+        {"id": "d", "kind": "coincident", "refs": [{"stroke_id": "p", "vertex": 0}, {"stroke_id": "p", "vertex": 2}]},
+    ])
+    assert len(s.constraints) == 4
+
+
+def test_a_rect_always_has_four_edges():
+    s = sketch([{**RECT, "closed": False}], constraints=[
+        {"id": "e", "kind": "distance", "refs": [{"stroke_id": "r", "edge": 3}], "value_mm": 20}])
+    assert s.constraints[0].refs[0].edge == 3

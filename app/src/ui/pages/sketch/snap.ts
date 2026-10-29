@@ -28,6 +28,7 @@ export interface Targets {
 
 const MAX_INTERSECT_EDGES = 300;
 const MAX_ALIGN_POINTS = 200;
+const NEAR_PARALLEL = Math.sin((2 * Math.PI) / 180);
 const FROM_ANGLE_TOL = Math.sin((3 * Math.PI) / 180);
 
 export const POINT_LABEL: Record<"endpoint" | "center" | "intersection" | "midpoint" | "on", string> = {
@@ -99,6 +100,8 @@ export interface SnapOptions {
   /** Point snaps and inference guides (default on). */
   points?: boolean;
   guides?: boolean;
+  /** The guide shown last time: it stays a little stickier (hysteresis), so it doesn't flicker. */
+  prev?: Guide | null;
 }
 
 interface Line { o: Pt; u: Pt; kind: GuideKind; label: string; fromLine: boolean }
@@ -111,7 +114,8 @@ function fromLines(from: Pt, t: Targets): Line[] {
     { o: from, u: [Math.SQRT1_2, -Math.SQRT1_2], kind: "angle", label: "45°", fromLine: true },
   ];
   const taken = out.map((l) => l.u);
-  const fresh = (u: Pt) => !taken.some((v) => Math.abs(cross(u, v)) < 1e-6);
+  // directions within ~2° of one already offered add nothing but flicker (horizontal wins over a near-horizontal edge)
+  const fresh = (u: Pt) => !taken.some((v) => Math.abs(cross(u, v)) < NEAR_PARALLEL);
   for (const [a, b] of t.edges) {
     if (dist(a, b) < 1e-6) continue;
     const d = unit(sub(b, a));
@@ -170,11 +174,16 @@ export function snap(p: Pt, o: SnapOptions): Snap {
   if (o.guides !== false) {
     const lines = [...(o.from ? fromLines(o.from, t) : []), ...alignLines(p, t, r)];
     const tol = (l: Line) => (l.fromLine && o.from ? Math.max(r, dist(p, o.from) * FROM_ANGLE_TOL) : r);
+    const pv = o.prev;
+    const pu = pv && dist(pv.a, pv.b) > 1e-9 ? unit(sub(pv.b, pv.a)) : null;
+    const isPrev = (l: Line) => !!pv && !!pu && l.kind === pv.kind && Math.abs(cross(l.u, pu)) < 1e-6 && (!l.fromLine || dist(l.o, pv.a) < 1e-9);
     let best: Line | null = null;
     let bestD = Infinity;
     for (const l of lines) {
       const d = lineDist(p, l);
-      if (d <= tol(l) && d < bestD - 1e-9) { best = l; bestD = d; }
+      const sticky = isPrev(l);
+      const score = sticky ? d * 0.5 : d;
+      if (d <= tol(l) * (sticky ? 1.5 : 1) && score < bestD - 1e-9) { best = l; bestD = score; }
     }
     if (best) {
       let q = project(p, best);

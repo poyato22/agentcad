@@ -102,7 +102,7 @@ export function SketchCanvas(): JSX.Element {
     if (d && d.clicks.length) tg = { ...tg, endpoints: [...tg.endpoints, ...d.clicks.map((q) => ({ p: q }))] };
     if (t === "pen") return snap(p, { targets: tg, radius: SNAP_PX * u, grid: null, points: snapEnds.peek(), guides: false });
     const from = d && drawsFrom(d.tool, d.clicks.length) ? d.clicks[d.clicks.length - 1] : undefined;
-    const s = snap(p, { targets: tg, radius: SNAP_PX * u, grid: snapGrid.peek() ? gridStep.peek() : null, from, points: snapEnds.peek(), guides: snapGuides.peek() });
+    const s = snap(p, { targets: tg, radius: SNAP_PX * u, grid: snapGrid.peek() ? gridStep.peek() : null, from, points: snapEnds.peek(), guides: snapGuides.peek(), prev: lastSnap.peek()?.guides[0] ?? null });
     // a circle's radius from the grid is a whole grid step
     if (d?.tool === "circle" && d.clicks.length === 1 && s.kind === "grid" && snapGrid.peek()) {
       const c = d.clicks[0];
@@ -428,7 +428,7 @@ function BadgeView({ b, u, selected, hover, onPick, onHover }: { b: Badge; u: nu
   return (
     <g class={cls} data-constraint={b.id} data-ckind={b.kind} onPointerDown={down} onPointerEnter={() => onHover(b.id)} onPointerLeave={() => onHover(null)}>
       {lines.map(([p, q], i) => { const [x1, y1] = toSvg(p); const [x2, y2] = toSvg(q); return <line key={i} class="sk-dimline" x1={x1} y1={y1} x2={x2} y2={y2} />; })}
-      {b.text && <text class="sk-badge-text" x={x} y={y} style={{ fontSize: `${(b.kind === "distance" || b.kind === "diameter" || b.kind === "radius" ? 11 : 9) * u}px` }}>{b.text}</text>}
+      {b.text && <text class="sk-badge-text" x={x} y={y} style={{ fontSize: `${(b.kind === "distance" || b.kind === "distance_x" || b.kind === "distance_y" || b.kind === "diameter" || b.kind === "radius" ? 11 : 9) * u}px` }}>{b.text}</text>}
     </g>
   );
 }

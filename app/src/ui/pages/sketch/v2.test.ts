@@ -2,7 +2,7 @@
 // solver and closed-profile detection.
 import { describe, expect, it } from "vitest";
 import type { SketchStroke } from "../../../api/types";
-import { circumcircle, fillet, outline, signedArea, strokeSegments, type Pt } from "./geom";
+import { circumcircle, dist, fillet, outline, signedArea, strokeSegments, type Pt } from "./geom";
 import { parseTyped, isTypedChar } from "./input";
 import { circleStroke, lineStroke, rectStroke } from "./model";
 import { closedProfiles, exportProfiles } from "./profiles";
@@ -95,6 +95,22 @@ describe("snapping: inference guides", () => {
     expect(s.label).toBe("Horizontal · Aligned");
     expect(s.guides).toHaveLength(2);
   });
+  it("near-parallel edges add no extra guide, and the last guide is sticky (no flicker)", () => {
+    // an edge 1° off horizontal: only "Horizontal" is offered from the start point
+    const tilted = [lineStroke("t", [0, 50], [Math.cos(Math.PI / 180) * 40, 50 + Math.sin(Math.PI / 180) * 40])];
+    expect(snap([60, 10.3], opts(tilted, { from: [0, 10] })).label).toBe("Horizontal");
+    // a point that would pick the 45° guide by a hair keeps showing Horizontal when that was shown last
+    const prev = snap([40, 10.5], opts([], { from: [0, 10] })).guides[0];
+    expect(prev.kind).toBe("horizontal");
+    const r = 1.5;
+    const near = snap([2, 3.1], { targets: snapTargets([]), radius: r, grid: null, from: [0, 0] });
+    expect(near.label).toBe("45°");
+    const held = snap([3.4, 1.7], { targets: snapTargets([]), radius: r, grid: null, from: [0, 0], prev: { kind: "horizontal", a: [0, 0], b: [3, 0], label: "Horizontal" } });
+    const fresh = snap([3.4, 1.7], { targets: snapTargets([]), radius: r, grid: null, from: [0, 0] });
+    expect(fresh.label).toBe("45°");
+    expect(held.label).toBe("Horizontal");
+  });
+
   it("points win over guides, guides off skips them", () => {
     const strokes = [lineStroke("a", [30, 20.5], [30, 40])];
     expect(snap([30.4, 20.9], opts(strokes, { from: [0, 20] })).kind).toBe("endpoint");
@@ -118,6 +134,7 @@ describe("typed values", () => {
     ["R2.5", { kind: "radius", mm: 2.5 }],
   ])("%s", (text, want) => expect(parseTyped(text)).toEqual(want));
   it.each(["", "abc", "0", "-5", "40,,20", "R", "1e5"])("rejects %j", (t) => expect(parseTyped(t)).toBeNull());
+  it("0,0 is a point (the origin)", () => expect(parseTyped("0,0")).toEqual({ kind: "pair", a: 0, b: 0 }));
   it("which keys go to the box", () => {
     expect(isTypedChar("4", "")).toBe(true);
     expect(isTypedChar("<", "")).toBe(true);
@@ -174,7 +191,7 @@ describe("constraint solver", () => {
       { id: "1", kind: "diameter", refs: [{ stroke_id: "c1" }], value_mm: 8 },
       { id: "2", kind: "equal", refs: [{ stroke_id: "c1" }, { stroke_id: "c2" }] },
       { id: "3", kind: "radius", refs: [{ stroke_id: "a" }], value_mm: 6 },
-    ]);
+    ], new Set(["a:v0", "a:v2"]));
     expect(res.ok).toBe(true);
     expect(res.strokes[0].radius_mm).toBeCloseTo(4, 5);
     expect(res.strokes[1].radius_mm).toBeCloseTo(4, 5);
@@ -191,6 +208,76 @@ describe("constraint solver", () => {
       { id: "2", kind: "distance", refs: [{ stroke_id: "a", edge: 0 }], value_mm: 20 },
     ]);
     expect(res.ok).toBe(false);
+    expect(res.status).toBe("conflict");
+    expect(["1", "2"]).toContain(res.worst);
+    // a square that must also be 40 × 20: names a constraint, not just "no"
+    const sq = solve([rectStroke("r", [0, 0], [40, 20])], [
+      { id: "eq", kind: "equal", refs: [{ stroke_id: "r", edge: 0 }, { stroke_id: "r", edge: 1 }] },
+      { id: "w", kind: "distance", refs: [{ stroke_id: "r", edge: 0 }], value_mm: 40 },
+      { id: "h", kind: "distance", refs: [{ stroke_id: "r", edge: 1 }], value_mm: 20 },
+    ]);
+    expect(sq.status).toBe("conflict");
+    expect(sq.worst).not.toBeNull();
+  });
+
+  // reviewer regressions: long solvable chains converge (the old projection solver called them conflicts)
+  function chain(n: number) {
+    const strokes: SketchStroke[] = [];
+    const cs: Constraint[] = [];
+    for (let i = 0; i < n; i++) {
+      strokes.push(lineStroke(`l${i}`, [i * 10, 0], [(i + 1) * 10, 0]));
+      cs.push({ id: `d${i}`, kind: "distance", refs: [{ stroke_id: `l${i}`, edge: 0 }], value_mm: i ? 10 : 15 });
+      cs.push({ id: `h${i}`, kind: "horizontal", refs: [{ stroke_id: `l${i}`, edge: 0 }] });
+      if (i) cs.push({ id: `c${i}`, kind: "coincident", refs: [{ stroke_id: `l${i}`, vertex: 0 }, { stroke_id: `l${i - 1}`, vertex: 1 }] });
+    }
+    return { strokes, cs };
+  }
+
+  it("8 chained lines with lengths, horizontals and coincident ends: one length changes, the rest shift", () => {
+    const { strokes, cs } = chain(8);
+    const res = solve(strokes, cs, new Set(["l0:v0"]));
+    expect(res.status).toBe("ok");
+    expect(res.strokes[0].points[1][0]).toBeCloseTo(15, 6);
+    expect(res.strokes[7].points[1][0]).toBeCloseTo(85, 6);
+    for (const s of res.strokes) expect(s.points[1][1]).toBeCloseTo(0, 6);
+  });
+
+  it("a 30-edge staircase polyline with H/V and a length on every edge", () => {
+    const pts: Pt[] = [[0, 0]];
+    const cs: Constraint[] = [];
+    for (let i = 0; i < 30; i++) {
+      const [x, y] = pts[i];
+      pts.push(i % 2 ? [x, y + 5] : [x + 10, y]);
+      cs.push({ id: `d${i}`, kind: "distance", refs: [{ stroke_id: "p", edge: i }], value_mm: i === 0 ? 14 : i % 2 ? 5 : 10 });
+      cs.push({ id: `o${i}`, kind: i % 2 ? "vertical" : "horizontal", refs: [{ stroke_id: "p", edge: i }] });
+    }
+    const res = solve([polyline("p", pts)], cs, new Set(["p:v0"]));
+    expect(res.status).toBe("ok");
+    expect(res.residual).toBeLessThan(1e-6);
+    expect(res.strokes[0].points[30][0]).toBeCloseTo(154, 5);
+  });
+
+  it("an arc keeps its radius when its middle handle is the pinned point (the ends move instead)", () => {
+    const res = solve([arc("a", [0, 0], [5, 3], [10, 0])], [{ id: "r", kind: "radius", refs: [{ stroke_id: "a" }], value_mm: 20 }], new Set(["a:v1"]));
+    expect(res.status).toBe("ok");
+    const p = res.strokes[0].points as Pt[];
+    expect(p[1]).toEqual([5, 3]);
+    expect(circumcircle(p[0], p[1], p[2])?.r).toBeCloseTo(20, 5);
+    // and when nothing can move, it is reported, not hidden
+    const stuck = solve([arc("a", [0, 0], [5, 3], [10, 0])], [{ id: "r", kind: "radius", refs: [{ stroke_id: "a" }], value_mm: 20 }], new Set(["a"]));
+    expect(stuck.ok).toBe(false);
+  });
+
+  it("offsets along x / y and a point on a circle", () => {
+    const res = solve([rectStroke("r", [0, 0], [40, 20]), circleStroke("h", [9, 7], 2), circleStroke("pcd", [100, 100], 30), circleStroke("b", [125, 110], 3)], [
+      { id: "x", kind: "distance_x", refs: [{ stroke_id: "r", vertex: 0 }, { stroke_id: "h", vertex: 0 }], value_mm: 8 },
+      { id: "y", kind: "distance_y", refs: [{ stroke_id: "r", vertex: 0 }, { stroke_id: "h", vertex: 0 }], value_mm: 8 },
+      { id: "o", kind: "point_on_circle", refs: [{ stroke_id: "b", vertex: 0 }, { stroke_id: "pcd" }] },
+    ], new Set(["r", "pcd"]));
+    expect(res.status).toBe("ok");
+    expect(res.strokes[1].center?.[0]).toBeCloseTo(8, 6);
+    expect(res.strokes[1].center?.[1]).toBeCloseTo(8, 6);
+    expect(dist(res.strokes[3].center as Pt, [100, 100])).toBeCloseTo(30, 5);
   });
 
   it("checks what a constraint can apply to", () => {
@@ -200,6 +287,15 @@ describe("constraint solver", () => {
     expect(checkConstraint("equal", [{ stroke_id: "a", edge: 0 }, { stroke_id: "c" }], st)).not.toBeNull();
     expect(checkConstraint("diameter", [{ stroke_id: "c" }], st)).toBeNull();
     expect(checkConstraint("coincident", [{ stroke_id: "a", vertex: 0 }, { stroke_id: "f", vertex: 0 }], st)).toMatch(/Freehand/);
+    // degenerate: the same point twice, or two corners of one shape (it would collapse)
+    const r = rectStroke("r", [0, 0], [10, 10]);
+    expect(checkConstraint("distance", [{ stroke_id: "a", vertex: 0 }, { stroke_id: "a", vertex: 0 }], st)).not.toBeNull();
+    expect(checkConstraint("horizontal", [{ stroke_id: "a", vertex: 1 }, { stroke_id: "a", vertex: 1 }], st)).not.toBeNull();
+    expect(checkConstraint("coincident", [{ stroke_id: "r", vertex: 0 }, { stroke_id: "r", vertex: 2 }], [r])).toMatch(/collapse/);
+    expect(checkConstraint("coincident", [{ stroke_id: "a", vertex: 0 }, { stroke_id: "a", vertex: 1 }], st)).toMatch(/collapse/);
+    const open = polyline("p", [[0, 0], [10, 0], [10, 10]]);
+    expect(checkConstraint("coincident", [{ stroke_id: "p", vertex: 0 }, { stroke_id: "p", vertex: 2 }], [open])).toBeNull();   // closing a chain is fine
+    expect(checkConstraint("diameter", [{ stroke_id: "a" }], st)).not.toBeNull();
   });
 });
 

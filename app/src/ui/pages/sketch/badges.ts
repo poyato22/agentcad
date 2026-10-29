@@ -107,6 +107,17 @@ export function constraintBadges(strokes: readonly SketchStroke[], constraints: 
         out.push({ id: c.id, kind: c.kind, at: add(mid(la, lb), mul(n, gap * 0.45)), text: fmt(c.value_mm ?? 0), line: [la, lb], ext: [[a, add(la, mul(n, gap * 0.3))], [b, add(lb, mul(n, gap * 0.3))]] });
         break;
       }
+      case "distance_x": case "distance_y": {
+        const a = handle(s0, r0.vertex ?? 0);
+        const b = c.refs[1] ? handle(ss[1] as SketchStroke, c.refs[1].vertex ?? 0) : null;
+        if (!a || !b) break;
+        // a straight run along x (or y) at the level of the second point, with an extension from the first
+        const along = c.kind === "distance_x";
+        const la: Pt = along ? [a[0], b[1]] : [b[0], a[1]];
+        out.push({ id: c.id, kind: c.kind, at: add(mid(la, b), along ? [0, gap * 0.45] : [gap * 0.45, 0]), text: fmt(c.value_mm ?? 0), line: [la, b], ext: [[a, la]] });
+        break;
+      }
+      case "point_on_circle": break;               // shown by the point sitting on the circle
       case "diameter": case "radius": {
         const rr = radial(s0);
         if (!rr) break;

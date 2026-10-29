@@ -51,6 +51,12 @@ export function ExtrudePreview({ profiles, depth }: { profiles: readonly Profile
     const request = () => { if (!frame) frame = requestAnimationFrame(draw); };
     controls.addEventListener("change", request);
     let group: THREE.Group | null = null;
+    const clear = () => {
+      if (!group) return;
+      group.traverse((o) => { if (o instanceof THREE.Mesh || o instanceof THREE.LineSegments) { o.geometry.dispose(); (o.material as THREE.Material).dispose(); } });
+      scene.remove(group);
+      group = null;
+    };
     const size = () => {
       const w = el.clientWidth || 240;
       const h = el.clientHeight || 160;
@@ -59,10 +65,7 @@ export function ExtrudePreview({ profiles, depth }: { profiles: readonly Profile
     };
     api.current = {
       set(p, d) {
-        if (group) {
-          group.traverse((o) => { if (o instanceof THREE.Mesh || o instanceof THREE.LineSegments) { o.geometry.dispose(); (o.material as THREE.Material).dispose(); } });
-          scene.remove(group);
-        }
+        clear();
         group = new THREE.Group();
         const colors = meshColors();
         for (const shape of profileShapes(p)) {
@@ -82,6 +85,7 @@ export function ExtrudePreview({ profiles, depth }: { profiles: readonly Profile
       },
       dispose() {
         cancelAnimationFrame(frame);
+        clear();
         controls.dispose();
         renderer.dispose();
       },

@@ -310,6 +310,36 @@ test("inference_guides_show_while_drawing_and_lines_pick_up_constraints", async 
   expect(b.points[1][0]).toBeCloseTo(b.points[0][0], 6);
 });
 
+test("keyboard_only_line_tool_enter_on_a_button_then_draw_and_dimension", async ({ page, fake }) => {
+  const svg = await openSketch(page);
+  await page.locator(".sk-hint").click();
+  await page.keyboard.press("l");
+  // Enter on a focused template button presses it, even with the Line tool active
+  await page.getByRole("button", { name: /^Plate with holes/ }).focus();
+  await page.keyboard.press("Enter");
+  await expect(svg.locator("[data-kind=rect]")).toHaveCount(1);
+  // draw a line by keyboard alone: first point, then a length
+  await page.locator(".sk-hint").click();
+  await page.keyboard.type("0,0");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("30");
+  await page.keyboard.press("Enter");
+  await expect(svg.locator("[data-kind=line]")).toHaveCount(1);
+  // pick it in the Shapes list and give it a 45 mm length with the keyboard
+  const list = page.getByRole("listbox", { name: "Shapes" });
+  await list.focus();
+  await page.keyboard.press("End");
+  await expect(list.getByRole("option", { selected: true })).toHaveText(/^Line/);
+  await page.getByLabel("Dimension label").fill("45");
+  await page.getByLabel("Dimension label").press("Enter");
+  await page.getByRole("button", { name: "Build part" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("status")).toContainText("Run started");
+  const body = (await sketchPost(() => fake.calls())) as unknown as V2Body;
+  const line = body.sketch.strokes.find((s) => s.kind === "line");
+  expect(line?.points).toEqual([[0, 0], [45, 0]]);
+});
+
 test("template_constraint_edit_and_vertex_drag_keep_the_rectangle", async ({ page }) => {
   const svg = await openSketch(page);
   await page.getByRole("button", { name: /^Plate with holes/ }).click();

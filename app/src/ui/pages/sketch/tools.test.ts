@@ -10,7 +10,7 @@ import { circleStroke, lineStroke, rectStroke } from "./model";
 import { closedProfiles } from "./profiles";
 import { solve } from "./solver";
 import {
-  doc, draft, extrudeMm, filletR, message, picks, resetSketch, selectedConstraint, sketchActions, tool,
+  doc, draft, extrudeMm, filletR, message, picks, preview, resetSketch, selectedConstraint, sketchActions, tool,
 } from "./state";
 import { template, TEMPLATES } from "./templates";
 import { clicksFor, draftShape, hint, TOOLS, typedStep, type Tool } from "./tools";
@@ -65,7 +65,9 @@ describe("editing", () => {
   it("mirror about a vertical line keeps a rectangle; a slanted line turns it into a polyline", () => {
     const r = rectStroke("r", [10, 10], [20, 30]);
     const m = mirror(r, [50, 0], [50, 100], "m");
-    expect(m).toMatchObject({ id: "m", kind: "rect", points: [[80, 10], [90, 10], [90, 30], [80, 30]] });
+    expect(m).toMatchObject({ id: "m", kind: "rect", points: [[90, 10], [80, 10], [80, 30], [90, 30]] });
+    // fillets stay on the same corners
+    expect(mirror({ ...r, corner_r: [0, 2, 0, 0] }, [50, 0], [50, 100], "f").corner_r).toEqual([0, 2, 0, 0]);
     const d = mirror(r, [0, 0], [1, 1], "d");
     expect(d.kind).toBe("polyline");
     expect(d.points[1][0]).toBeCloseTo(10, 9);                   // (20,10) → (10,20)
@@ -107,12 +109,29 @@ describe("templates", () => {
     expect(t.extrude_mm).toBeGreaterThan(0);
   });
 
+  it("templates are fully dimensioned: holes follow the plate's size and the bolt circle's diameter", () => {
+    let n = 0;
+    let k = 0;
+    const plate = template("plate", () => `s${++n}`, () => `k${++k}`);
+    const wide = plate.constraints.map((c) => (c.kind === "distance" && c.value_mm === 80 ? { ...c, value_mm: 120 } : c));
+    const p = solve(plate.strokes, wide, new Set([`${plate.strokes[0].id}:v0`]));
+    expect(p.status).toBe("ok");
+    expect(p.strokes[0].points[1][0]).toBeCloseTo(140, 5);
+    expect(p.strokes[2].center?.[0]).toBeCloseTo(132, 5);             // still 8 mm in from the moved corner
+    const fl = template("flange", () => `s${++n}`, () => `k${++k}`);
+    const pcdId = fl.strokes[2].id;
+    const big = fl.constraints.map((c) => (c.kind === "diameter" && c.refs[0].stroke_id === pcdId ? { ...c, value_mm: 70 } : c));
+    const f = solve(fl.strokes, big, new Set([`${fl.strokes[0].id}:v0`]));
+    expect(f.status).toBe("ok");
+    for (const h of f.strokes.slice(3, 7)) expect(dist(h.center as Pt, [100, 75])).toBeCloseTo(35, 4);
+  });
+
   it("plate has 4 holes, flange has a bore and 4 bolt holes (the bolt circle is construction)", () => {
     let n = 0;
     const plate = closedProfiles(template("plate", () => `s${++n}`, () => "k").strokes)[0];
     expect(plate.holes).toHaveLength(4);
     const fl = template("flange", () => `s${++n}`, () => "k");
-    expect(fl.strokes.filter((s) => s.construction)).toHaveLength(1);
+    expect(fl.strokes.filter((s) => s.construction)).toHaveLength(2);          // the bolt circle and the square through the bolts
     expect(closedProfiles(fl.strokes)[0].holes).toHaveLength(5);
   });
 });
@@ -213,6 +232,55 @@ describe("state: drawing and constraints", () => {
     expect(doc.value.constraints.map((c) => c.kind)).toEqual(["distance"]);
   });
 
+  it("a drag whose solve fails keeps the last good shape, says why, and commits nothing", () => {
+    sketchActions.addStroke(lineStroke(sketchActions.newStrokeId(), [0, 0], [10, 0]));
+    const id = doc.value.strokes[0].id;
+    // a good drag first: the preview holds the solved shape
+    expect(sketchActions.dragVertex({ stroke_id: id, vertex: 1 }, [20, 0])).toBe(true);
+    const good = preview.value;
+    // now the sketch holds two lengths that can't both be true (as if loaded so): the next move fails
+    doc.value = { ...doc.value, constraints: [
+      { id: "a", kind: "distance", refs: [{ stroke_id: id, edge: 0 }], value_mm: 10 },
+      { id: "b", kind: "distance", refs: [{ stroke_id: id, edge: 0 }], value_mm: 20 },
+    ] };
+    expect(sketchActions.dragVertex({ stroke_id: id, vertex: 1 }, [30, 0])).toBe(false);
+    expect(preview.value).toBe(good);                                  // the last good shape stays shown
+    expect(message.value).toMatch(/conflicts with the (10|20) mm length constraint/);
+    sketchActions.endDrag(false);
+    const before = JSON.stringify(doc.value.strokes);
+    expect(sketchActions.dragVertex({ stroke_id: id, vertex: 1 }, [30, 0])).toBe(false);
+    sketchActions.endDrag(true);                                       // nothing good to commit
+    expect(JSON.stringify(doc.value.strokes)).toBe(before);
+  });
+
+  it("Backspace drops the last click; typed points out of range are refused; arrows nudge", () => {
+    sketchActions.setTool("polyline");
+    for (const p of [[0, 0], [10, 0], [10, 10]] as Pt[]) sketchActions.drawClick(p);
+    sketchActions.undoClick();
+    expect(draft.value?.clicks).toEqual([[0, 0], [10, 0]]);
+    sketchActions.undoClick();
+    sketchActions.undoClick();
+    expect(draft.value).toBeNull();
+    sketchActions.setTool("line");
+    sketchActions.setTyped("999999,0");
+    expect(sketchActions.commitTyped()).toBe(false);
+    expect(message.value).toMatch(/outside the drawing range/);
+    sketchActions.setTyped("0,0");
+    expect(sketchActions.commitTyped()).toBe(true);                     // the origin is a fine first point
+    sketchActions.setTyped("4000m");
+    expect(sketchActions.commitTyped()).toBe(false);
+    sketchActions.cancelDraft();
+    sketchActions.addStroke(rectStroke(sketchActions.newStrokeId(), [0, 0], [40, 20]));
+    const id = doc.value.strokes[0].id;
+    sketchActions.select(id, false, { stroke_id: id, vertex: 2 });
+    expect(sketchActions.nudge(10, 0)).toBe(true);
+    expect(doc.value.strokes[0].points[2]).toEqual([50, 20]);
+    expect(doc.value.strokes[0].points[1][0]).toBeCloseTo(50, 6);      // still a rectangle
+    sketchActions.select(id);
+    expect(sketchActions.nudge(0, 1)).toBe(true);
+    expect(doc.value.strokes[0].points[0]).toEqual([0, 1]);
+  });
+
   it("vertex drags preview, then commit as one undo step", () => {
     sketchActions.addStroke(rectStroke(sketchActions.newStrokeId(), [0, 0], [40, 20]));
     const id = doc.value.strokes[0].id;
@@ -235,7 +303,7 @@ describe("state: drawing and constraints", () => {
     sketchActions.select(r.id, true);
     expect(sketchActions.mirrorSelection()).toBeNull();
     expect(doc.value.strokes).toHaveLength(3);
-    expect(doc.value.strokes[2].points[0]).toEqual([80, 10]);
+    expect(doc.value.strokes[2].points[1]).toEqual([80, 10]);
     sketchActions.select(r.id);
     expect(sketchActions.offsetSelection(1)).toBeNull();
     expect(doc.value.strokes[3].points[0]).toEqual([9, 9]);
@@ -251,7 +319,7 @@ describe("state: drawing and constraints", () => {
     const minX = Math.min(...flange.flatMap((s) => s.points.map((p) => p[0])));
     const maxOld = Math.max(...doc.value.strokes.slice(0, 4).flatMap((s) => s.points.map((p) => p[0])));
     expect(minX).toBeGreaterThan(maxOld);
-    expect(doc.value.strokes.length).toBe(4 + 7);
+    expect(doc.value.strokes.length).toBe(4 + 8);
     expect(tool.value).toBe("pen");
   });
 });

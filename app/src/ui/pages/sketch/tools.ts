@@ -102,7 +102,7 @@ export function typedStep(t: DrawTool, clicks: readonly Pt[], cursor: Pt, v: Typ
       case "length": return { click: add(last, mul(dirTo(last, cursor), v.mm)), drive: drive(v.mm) };
       case "polar": return { click: polar(last, v.mm, v.deg), drive: drive(v.mm) };
       case "angle": return { click: polar(last, cur, v.deg), drive: [] };
-      case "pair": return { click: add(last, [v.a, v.b]), drive: [] };
+      case "pair": return v.a === 0 && v.b === 0 ? null : { click: add(last, [v.a, v.b]), drive: [] };
       default: return null;
     }
   }

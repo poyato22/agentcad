@@ -34,7 +34,7 @@ export function parseTyped(text: string): Typed | null {
   if (m) {
     const a = mm(m[1], m[2]);
     const b = mm(m[3], m[4] ?? m[2]);
-    return a === 0 && b === 0 ? null : { kind: "pair", a, b };
+    return { kind: "pair", a, b };                 // 0,0 is the origin (a first point); as a step it is refused
   }
   m = new RegExp(String.raw`^${LEN}$`).exec(t);
   if (m) return positive({ kind: "length" as const, mm: mm(m[1], m[2]) });

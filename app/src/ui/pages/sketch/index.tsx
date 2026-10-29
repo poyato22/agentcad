@@ -21,9 +21,9 @@ import { formatBytes, readPhoto } from "./photo";
 import { closedProfiles } from "./profiles";
 import { renderPng } from "./render";
 import { SketchCanvas } from "./SketchCanvas";
-import { checkConstraint } from "./solver";
+import { checkConstraint, edgeCount, refKey, vertexCount } from "./solver";
 import {
-  build, canRedo, canUndo, doc, draft, extrudeMm, filletR, GRID_STEPS, gridStep, lastSnap, message, notes, photo, photoError, picks, selectedConstraint,
+  build, canRedo, canUndo, doc, draft, extrudeMm, filletR, GRID_STEPS, type Pick, gridStep, lastSnap, message, notes, photo, photoError, picks, selectedConstraint,
   selectedStroke, selectedStrokes, sketchActions, snapEnds, snapGrid, snapGuides, tool, TOOLS, typed, view,
 } from "./state";
 import { TEMPLATES } from "./templates";
@@ -36,7 +36,14 @@ const KIND_LABEL: Record<Stroke["kind"], string> = {
 };
 const CONSTRAINT_LABEL: Record<SketchConstraintKind, string> = {
   horizontal: "Horizontal", vertical: "Vertical", equal: "Equal", coincident: "Coincident", distance: "Distance", diameter: "Diameter", radius: "Radius",
+  distance_x: "X offset", distance_y: "Y offset", point_on_circle: "On circle",
 };
+
+/** A focused control whose own keys (Enter, arrows) must keep working: buttons, links, the shapes list. */
+function isControl(t: EventTarget | null): boolean {
+  const el = t as HTMLElement | null;
+  return !!el?.closest?.("button, a, select, input, textarea, [role=button], [role=option], [role=listbox]");
+}
 /** Constraint buttons and their keys (with Shift). */
 const CONSTRAIN: readonly { kind: SketchConstraintKind; key: string }[] = [
   { kind: "horizontal", key: "H" }, { kind: "vertical", key: "V" }, { kind: "equal", key: "E" }, { kind: "coincident", key: "I" },
@@ -91,14 +98,18 @@ export function SketchPage(): JSX.Element {
       const t = tool.peek();
       const buf = typed.peek();
       // the measurements box: typed lengths while drawing (and the fillet radius)
+      const control = isControl(e.target);
       if ((d && d.clicks.length) || t === "fillet" || isDrawTool(t)) {
         if (key === "Enter") {
+          if (control && !buf) return;                 // Enter on a button presses the button
           e.preventDefault();
           if (buf) sketchActions.commitTyped();
+          else if (t === "fillet") sketchActions.filletPicked();
           else if (d) sketchActions.finishDraft();
           return;
         }
         if (key === "Backspace" && buf) { e.preventDefault(); sketchActions.setTyped(buf.slice(0, -1)); return; }
+        if (key === "Backspace" && d?.clicks.length) { e.preventDefault(); sketchActions.undoClick(); return; }
         if (isTypedChar(key, buf, takesRadius(t, d?.clicks.length ?? 0))) { e.preventDefault(); sketchActions.setTyped(buf + key); return; }
       }
       if (key === "Escape") {
@@ -109,6 +120,13 @@ export function SketchPage(): JSX.Element {
       }
       if (key === "Delete" || key === "Backspace") {
         if (sketchActions.deleteSelection()) e.preventDefault();
+        return;
+      }
+      if (key.startsWith("Arrow") && !control && picks.peek().length) {
+        const step = e.shiftKey ? 10 : 1;
+        const [dx, dy] = key === "ArrowLeft" ? [-step, 0] : key === "ArrowRight" ? [step, 0] : key === "ArrowUp" ? [0, step] : [0, -step];
+        e.preventDefault();
+        sketchActions.nudge(dx, dy);
         return;
       }
       if (e.shiftKey) {
@@ -218,6 +236,7 @@ function HintBar(): JSX.Element {
 function SidePanel(): JSX.Element {
   return (
     <aside class="sk-side" aria-label="Sketch details">
+      <ShapeList />
       <SelectedStroke />
       <SelectedConstraint />
       <TemplatesBox />
@@ -267,13 +286,99 @@ function SelectedStroke(): JSX.Element {
           );
         })}
       </div>
+      <DistanceField />
       <StrokeConstraints strokeId={s.id} />
+      {pick?.vertex !== undefined && (s.kind === "rect" || s.kind === "polyline") && (
+        <div class="sk-row">
+          <Button variant="ghost" onClick={() => sketchActions.filletPicked()} title="Round the picked corner (Fillet tool: Enter)">Fillet corner</Button>
+          <span class="faint">R {filletR.value} mm</span>
+        </div>
+      )}
       <div class="sk-row sk-wrap">
         <button type="button" class="btn btn-ghost" aria-pressed={!!s.construction} title="Construction line (X)" onClick={() => sketchActions.toggleConstruction()}>Construction</button>
         <Button variant="ghost" title="Mirror about the selected line (M)" onClick={() => sketchActions.mirrorSelection()}>Mirror</Button>
         <OffsetField />
         <Button variant="ghost" class="sk-del" onClick={() => sketchActions.deleteSelection()}>Delete</Button>
       </div>
+    </section>
+  );
+}
+
+/** A driving distance on the picks: a side's length, or between two points (also by x or y). */
+function DistanceField(): JSX.Element | null {
+  const ps = picks.value;
+  const strokes = doc.value.strokes;
+  const [text, setText] = useState("");
+  const kinds = (["distance", "distance_x", "distance_y"] as const).filter((k) => checkConstraint(k, ps, strokes) === null);
+  if (!kinds.length) return null;
+  const add = (k: SketchConstraintKind) => { const v = Number(text); if (v > 0) sketchActions.addConstraint(k, ps, v); };
+  return (
+    <div class="sk-row sk-wrap" data-distance-field>
+      <input type="text" inputMode="decimal" class="sk-num" value={text} aria-label="Distance (mm)" placeholder="mm"
+        onInput={(e) => setText(e.currentTarget.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(kinds[0]); } }} />
+      {kinds.map((k) => <Button key={k} variant="ghost" onClick={() => add(k)}>{CONSTRAINT_LABEL[k]}</Button>)}
+    </div>
+  );
+}
+
+/** Ways to pick within a stroke, in order: the stroke (or its sides), then its points. */
+export function subPicks(s: Stroke): Pick[] {
+  const sides = Array.from({ length: edgeCount(s) }, (_, edge) => ({ stroke_id: s.id, edge }));
+  const pts = s.kind === "freehand" ? [] : Array.from({ length: vertexCount(s) }, (_, vertex) => ({ stroke_id: s.id, vertex }));
+  return [...(sides.length ? sides : [{ stroke_id: s.id }]), ...pts];
+}
+
+function pickText(p: Pick | undefined): string {
+  if (!p) return "";
+  return p.edge !== undefined ? ` · side ${p.edge + 1}` : p.vertex !== undefined ? ` · point ${p.vertex + 1}` : "";
+}
+
+/** The shapes as a listbox: ↑ ↓ choose a shape, ← → step through its sides and points, Space adds
+ *  to the selection (Shift+↑ ↓ too). What is picked here is what the canvas highlights and every
+ *  edit acts on. */
+function ShapeList(): JSX.Element {
+  const strokes = doc.value.strokes;
+  const ps = picks.value;
+  const selected = new Set(ps.map((p) => p.stroke_id));
+  const [active, setActive] = useState<string | null>(null);
+  const cur = strokes.find((s) => s.id === active) ?? strokes.find((s) => s.id === ps.at(-1)?.stroke_id) ?? strokes[0];
+  const pickOf = (s: Stroke) => [...ps].reverse().find((p) => p.stroke_id === s.id);
+  const choose = (s: Stroke, add: boolean, p?: Pick) => { setActive(s.id); sketchActions.select(s.id, add, p ?? pickOf(s) ?? subPicks(s)[0]); };
+  const onKey = (e: JSX.TargetedKeyboardEvent<HTMLUListElement>) => {
+    if (!cur) return;
+    const i = strokes.indexOf(cur);
+    const k = e.key;
+    if (k === "ArrowDown" || k === "ArrowUp" || k === "Home" || k === "End") {
+      const j = k === "Home" ? 0 : k === "End" ? strokes.length - 1 : Math.max(0, Math.min(strokes.length - 1, i + (k === "ArrowDown" ? 1 : -1)));
+      choose(strokes[j], e.shiftKey);
+    } else if (k === "ArrowLeft" || k === "ArrowRight") {
+      const subs = subPicks(cur);
+      const at = Math.max(0, subs.findIndex((p) => refKey(p) === refKey(pickOf(cur) ?? subs[0])));
+      const next = subs[(at + (k === "ArrowRight" ? 1 : subs.length - 1)) % subs.length];
+      const others = ps.filter((p) => p.stroke_id !== cur.id);
+      setActive(cur.id);
+      picks.value = [...others, next];
+      selectedConstraint.value = null;
+    } else if (k === " " || k === "Enter") {
+      choose(cur, k === " ");                          // Space toggles it in the selection; Enter selects only it
+    } else return;
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  return (
+    <section class="sk-sec">
+      <div class="label" id="sk-shapes-label">Shapes</div>
+      {strokes.length ? (
+        <ul class="sk-shapes" role="listbox" tabIndex={0} aria-labelledby="sk-shapes-label" aria-multiselectable="true"
+          aria-activedescendant={cur ? `sk-opt-${cur.id}` : undefined} onKeyDown={onKey}>
+          {strokes.map((s) => (
+            <li key={s.id} id={`sk-opt-${s.id}`} role="option" aria-selected={selected.has(s.id)} class={`sk-shape${s === cur ? " active" : ""}`}
+              data-shape={s.id} onClick={(e) => choose(s, e.shiftKey)}>
+              {KIND_LABEL[s.kind]}{s.construction ? " (construction)" : ""}{selected.has(s.id) ? pickText(pickOf(s)) : ""}
+            </li>
+          ))}
+        </ul>
+      ) : <p class="faint sk-p">Nothing drawn yet.</p>}
     </section>
   );
 }

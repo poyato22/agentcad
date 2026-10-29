@@ -93,15 +93,9 @@ export function mirror(s: Stroke, a: Pt, b: Pt, id: string): Stroke {
   // reflection reverses the winding; keep each kind's point order meaningful
   const out: Stroke = { ...s, id, points: pts, construction: s.construction };
   if (s.center) out.center = reflect(s.center, a, b);
-  if (s.kind === "rect" && !axisAligned(a, b)) out.kind = "polyline";
-  if (s.kind === "rect" && axisAligned(a, b)) {
-    // keep the rectangle's corners counter-clockwise from the bottom-left
-    const xs = pts.map((p) => p[0]);
-    const ys = pts.map((p) => p[1]);
-    const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
-    out.points = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
-    if (s.corner_r) out.corner_r = undefined;
-  }
+  // the corners keep their order (and fillets); only the winding flips, which nothing depends on
+  if (s.kind === "rect" && !axisAligned(a, b)) { out.kind = "polyline"; out.closed = true; }
+  if (s.corner_r) out.corner_r = [...s.corner_r];
   if (!out.construction) delete out.construction;
   if (!out.corner_r) delete out.corner_r;
   return out;

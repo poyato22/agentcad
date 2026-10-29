@@ -8,7 +8,7 @@ import { parseTyped } from "./input";
 import { emptyDoc, History, parseDimension, SHEET, type SketchDoc, type Stroke } from "./model";
 import { releasePhoto, type PickedPhoto } from "./photo";
 import type { GuideKind, Snap } from "./snap";
-import { checkConstraint, edgeCount, hasRadius, refKey, solvable, solve, type Ref } from "./solver";
+import { checkConstraint, edgeCount, hasRadius, refKey, solvable, solve, type Ref, type SolveResult } from "./solver";
 import { axisOf, mirror as mirrorStroke, moveVertex, offset as offsetStroke, setCorner, toggleConstruction, translate } from "./edit";
 import { template, type TemplateId } from "./templates";
 import { clicksFor, draftShape, isDrawTool, TOOLS, typedStep, type Drive, type DrawTool, type Tool } from "./tools";
@@ -98,14 +98,44 @@ function live(strokes: readonly Stroke[], cs: readonly SketchConstraint[]): Sket
   return cs.filter((c) => checkConstraint(c.kind, c.refs, strokes) === null);
 }
 
-/** Solve and commit; false (and nothing changes) when the constraints can't all hold. */
-function commitSolved(d: SketchDoc, fixed: ReadonlySet<string> = new Set(), refusal = "That conflicts with the existing constraints."): boolean {
+/** Commits and drags get this long to solve (ms); drags warm-start from the last good preview. */
+const COMMIT_BUDGET_MS = 400;
+const DRAG_BUDGET_MS = 60;
+
+const KIND_WORDS: Record<SketchConstraintKind, string> = {
+  horizontal: "horizontal", vertical: "vertical", equal: "equal", coincident: "coincident", distance: "length",
+  diameter: "diameter", radius: "radius", distance_x: "x offset", distance_y: "y offset", point_on_circle: "point on circle",
+};
+
+/** "the 40 mm length" / "a rectangle's own sides" — the constraint a failed solve names. */
+export function describeConstraint(id: string | null, cs: readonly SketchConstraint[]): string {
+  if (!id) return "a constraint";
+  if (id.startsWith("rect:")) return "a rectangle's square corners";
+  const c = cs.find((x) => x.id === id);
+  if (!c) return "a constraint";
+  return `the ${c.value_mm !== undefined ? `${c.value_mm} mm ` : ""}${KIND_WORDS[c.kind]} constraint`;
+}
+
+/** Why a solve isn't ok, in words (null when it is). */
+export function solveMessage(res: SolveResult, cs: readonly SketchConstraint[]): string | null {
+  if (res.status === "ok") return null;
+  const off = `${res.residual < 0.01 ? res.residual.toExponential(1) : res.residual.toFixed(2)} mm`;
+  if (res.status === "conflict") return `That conflicts with ${describeConstraint(res.worst, cs)} (off by ${off}).`;
+  return `Couldn't solve that in time (still off by ${off}); try fewer constraints at once.`;
+}
+
+/** Solve and commit; false (and nothing changes, with the reason shown) unless the solve is ok. */
+function commitSolved(d: SketchDoc, fixed: ReadonlySet<string> = new Set(), refusal?: string): boolean {
   const cs = live(d.strokes, d.constraints);
-  const res = solve(d.strokes, cs, fixed);
-  if (!res.ok) { message.value = refusal; return false; }
+  const res = solve(d.strokes, cs, fixed, { budgetMs: COMMIT_BUDGET_MS });
+  if (!res.ok) { message.value = refusal ?? solveMessage(res, cs); return false; }
   commit({ ...d, strokes: res.strokes, constraints: cs });
   return true;
 }
+
+/** Keeps a typed point inside the core's coordinate range (core sketch.COORD_LIMIT). */
+export const COORD_LIMIT = 100_000;
+const inRange = (p: Pt) => Math.abs(p[0]) <= COORD_LIMIT && Math.abs(p[1]) <= COORD_LIMIT;
 
 function newConstraintId(): string {
   return `k${nextConstraint++}`;
@@ -244,12 +274,15 @@ export const sketchActions = {
     if (!d) {
       // no click yet: "x,y" places the first point (drawing by keyboard)
       if (v.kind !== "pair" || !isDrawTool(tool.peek())) { message.value = "Type the first point as x,y."; return false; }
+      if (!inRange([v.a, v.b])) { message.value = OUT_OF_RANGE; return false; }
       typed.value = "";
+      message.value = null;
       sketchActions.drawClick([v.a, v.b], {});
       return true;
     }
     const step = typedStep(d.tool, d.clicks, cursor.peek() ?? d.clicks[d.clicks.length - 1], v);
     if (!step) { message.value = `Can't use "${typed.peek()}" here.`; return false; }
+    if (!inRange(step.click) || step.drive.some((x) => x.value > COORD_LIMIT)) { message.value = OUT_OF_RANGE; return false; }
     drivenDrive = step.drive;
     message.value = null;
     sketchActions.drawClick(step.click, {});
@@ -302,8 +335,13 @@ export const sketchActions = {
       if (s.kind === "line" && parsed.kind === "length") drive = { id: driveId, kind: "distance", refs: [{ stroke_id: s.id, edge: 0 }], value_mm: parsed.value_mm };
       else if (hasRadius(s) && (parsed.kind === "diameter" || parsed.kind === "radius")) drive = { id: driveId, kind: parsed.kind, refs: [{ stroke_id: s.id }], value_mm: parsed.value_mm };
     }
-    const next: SketchDoc = { ...d, dimensions: parsed ? [...rest, { stroke_id: strokeId, ...parsed }] : rest, constraints: drive ? [...others, drive] : others };
-    if (!commitSolved(next, new Set(), "That size conflicts with the constraints; kept as a label.")) {
+    // a new size replaces the one already driving the same thing (e.g. the length typed while drawing)
+    const sameTarget = (c: SketchConstraint) => !!drive && c.refs.length === 1 && c.refs[0].stroke_id === s.id
+      && (drive.kind === "distance" ? c.kind === "distance" && c.refs[0].edge === 0 : c.kind === "diameter" || c.kind === "radius");
+    const kept = others.filter((c) => !sameTarget(c));
+    const next: SketchDoc = { ...d, dimensions: parsed ? [...rest, { stroke_id: strokeId, ...parsed }] : rest, constraints: drive ? [...kept, drive] : others };
+    // a line grows from its start; a circle about its centre
+    if (!commitSolved(next, new Set([`${s.id}:v0`]), "That size conflicts with the constraints; kept as a label.")) {
       commit({ ...next, constraints: others });
     }
   },
@@ -375,28 +413,59 @@ export const sketchActions = {
 
   // ---- drags (shown as a preview; one undo step when released)
 
-  /** Drag a vertex to p, solving with it held. */
-  dragVertex(ref: Ref, p: Pt): void {
+  /** Drag a vertex to p, solving with it held. Only a solve that holds is shown; otherwise the last
+   *  good shape stays and the hint bar says why. Warm-starts from the last good preview. */
+  dragVertex(ref: Ref, p: Pt): boolean {
     const d = doc.peek();
-    const s = d.strokes.find((x) => x.id === ref.stroke_id);
-    if (!s || !solvable(s) || ref.vertex === undefined) return;
-    const moved = d.strokes.map((x) => (x.id === s.id ? moveVertex(x, ref.vertex as number, p) : x));
-    const res = solve(moved, live(moved, d.constraints), new Set([refKey(ref)]));
-    preview.value = { ...d, strokes: res.strokes };
+    const start = preview.peek() ?? d;
+    const s = start.strokes.find((x) => x.id === ref.stroke_id);
+    if (!s || !solvable(s) || ref.vertex === undefined) return false;
+    const moved = start.strokes.map((x) => (x.id === s.id ? moveVertex(x, ref.vertex as number, p) : x));
+    return showDrag(d, moved, new Set([refKey(ref)]));
   },
-  /** Drag the selected strokes by d (mm). */
-  dragMove(by: Pt): void {
+  /** Drag the selected strokes by d (mm, from where they were when the drag began). */
+  dragMove(by: Pt): boolean {
     const d = doc.peek();
     const ids = new Set(selectedIds.peek());
-    if (!ids.size) return;
-    const moved = d.strokes.map((x) => (ids.has(x.id) ? translate(x, by) : x));
-    const res = solve(moved, live(moved, d.constraints), new Set(ids));
-    preview.value = { ...d, strokes: res.strokes };
+    if (!ids.size) return false;
+    const base = preview.peek() ?? d;
+    // other strokes warm-start from the last good preview; the moved ones go where the pointer says
+    const moved = base.strokes.map((x) => (ids.has(x.id) ? translate(d.strokes.find((o) => o.id === x.id) ?? x, by) : x));
+    return showDrag(d, moved, ids);
   },
+  /** Release: commits the last good preview (one undo step); a drag that never solved commits nothing. */
   endDrag(keep: boolean): void {
     const p = preview.peek();
     preview.value = null;
     if (keep && p && p !== doc.peek()) commit(p);
+  },
+  /** Arrow keys: nudge the picked vertex (else the selected shapes) by (dx, dy) mm. */
+  nudge(dx: number, dy: number): boolean {
+    const v = picks.peek().at(-1);
+    const d = doc.peek();
+    let ok = false;
+    if (v?.vertex !== undefined) {
+      const s = d.strokes.find((x) => x.id === v.stroke_id);
+      const q = s ? (s.kind === "circle" ? s.center : s.points[v.vertex]) : undefined;
+      if (q) ok = sketchActions.dragVertex(v, [q[0] + dx, q[1] + dy]);
+    } else ok = sketchActions.dragMove([dx, dy]);
+    sketchActions.endDrag(ok);
+    return ok;
+  },
+  /** Backspace while drawing: drop the last click (the whole draft when it was the first). */
+  undoClick(): void {
+    const d = draft.peek();
+    if (!d) return;
+    if (d.clicks.length <= 1) { sketchActions.cancelDraft(); return; }
+    const clicks = d.clicks.slice(0, -1);
+    pendingDrive = pendingDrive.filter((x) => !("edge" in x) || x.edge < clicks.length - 1);
+    draft.value = { ...d, clicks, snaps: d.snaps.slice(0, -1) };
+  },
+  /** Fillet the picked corner with the current radius (keyboard path of the fillet tool). */
+  filletPicked(): boolean {
+    const v = picks.peek().at(-1);
+    if (v?.vertex === undefined) { message.value = "Pick a corner first."; return false; }
+    return sketchActions.filletCorner(v);
   },
 
   /** Mirror the selection about the selected line (a construction line when there is one). */
@@ -470,6 +539,17 @@ export const sketchActions = {
     });
   },
 };
+
+const OUT_OF_RANGE = `That's outside the drawing range (±${COORD_LIMIT.toLocaleString("en-US")} mm).`;
+
+/** Shows a drag's solve when it holds; keeps the last good preview (and says why) when not. */
+function showDrag(d: SketchDoc, moved: Stroke[], fixed: ReadonlySet<string>): boolean {
+  const cs = live(moved, d.constraints);
+  const res = solve(moved, cs, fixed, { budgetMs: DRAG_BUDGET_MS });
+  if (!res.ok) { message.value = solveMessage(res, cs); return false; }
+  batch(() => { preview.value = { ...d, strokes: res.strokes }; if (message.peek()) message.value = null; });
+  return true;
+}
 
 type BBox = [number, number, number, number];
 function bbox(strokes: readonly Stroke[]): BBox | null {
