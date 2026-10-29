@@ -1,4 +1,4 @@
-// Plan 5 Task A2 against the fake core ("agent-ux" scenario): the agent manager by keyboard (⌘6)
+// Plan 5 Task A2 against the fake core ("agent-ux" scenario): the agent manager by keyboard (⇧⌘A)
 // and from the activity pill, the orchestrator → worker tree, a delete refused in plain words and
 // then done with Cancel and delete, and the live activity indicators in the thread.
 import type { Page } from "@playwright/test";
@@ -27,13 +27,13 @@ test.beforeEach(async ({ page, fake }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
 });
 
-test("cmd6_opens_the_manager_with_the_orchestrator_worker_tree_and_esc_closes", async ({ page, fake }) => {
+test("cmd_shift_a_opens_the_manager_with_the_orchestrator_worker_tree_and_esc_closes", async ({ page, fake }) => {
   await open(page);
   await fake.emit({ type: "run_finished", run_id: "orch01", data: { status: "done" } },
     { run: run("orch01", { agent: "orchestrator", task: "design drone frame" }) });
   await fake.emit({ type: "run_finished", run_id: "work01", data: { status: "done" } },
     { run: run("work01", { parent_id: "orch01", agent: "verifier", task: "check arm stiffness" }) });
-  await page.keyboard.press("Meta+6");
+  await page.keyboard.press("Meta+Shift+KeyA");
   await expect(manager(page)).toBeVisible();
   await expect(row(page, "orch01")).toHaveAttribute("aria-level", "1");
   await expect(row(page, "work01")).toHaveAttribute("aria-level", "2");

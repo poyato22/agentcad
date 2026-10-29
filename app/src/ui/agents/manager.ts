@@ -1,5 +1,5 @@
 // Agent manager state and pure helpers. The manager is a slide-over reachable from every page:
-// the top-bar activity pill, the run switcher's "Manage", and ⌘6. It lists runs as the
+// the top-bar activity pill, the run switcher's "Manage", and ⇧⌘A (⌘6/⌘7 are the Onshape and Parts pages). It lists runs as the
 // orchestrator → worker tree (GET /runs/tree), grouped by build, and custom agent definitions.
 // Everything here is pure or a signal, so the view stays thin and the rules are unit-tested.
 import { signal, type Signal } from "@preact/signals";
@@ -19,11 +19,11 @@ export function openAgentManager(tab: ManagerTab = "runs"): void {
 }
 export function closeAgentManager(): void { agentManagerOpen.value = false; }
 
-/** ⌘6 toggles the manager (a real, non-repeat key; ignored while another modal is open). */
+/** ⇧⌘A toggles the manager (a real, non-repeat key; ignored while another modal is open). */
 export function installManagerShortcut(deps: { isTrusted?: (e: KeyboardEvent) => boolean; isModalOpen?: () => boolean } = {}): () => void {
   const trusted = deps.isTrusted ?? isTrustedKey;
   const blocked = deps.isModalOpen ?? (() => modalOpen());
-  return registerShortcut("Meta+6", (e) => {
+  return registerShortcut("Meta+Shift+A", (e) => {
     if (!trusted(e)) return;
     if (agentManagerOpen.peek()) { closeAgentManager(); return; }
     if (blocked()) return;

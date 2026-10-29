@@ -1,6 +1,6 @@
 // The agent manager slide-over (every page): a Runs tab (the run tree, delete and clean up) and an
 // Agents tab (custom agent definitions). Opened by the activity pill, the run switcher's
-// "Manage" and ⌘6; Esc or the close button closes it and focus returns to where it was.
+// "Manage" and ⇧⌘A; Esc or the close button closes it and focus returns to where it was.
 import type { JSX } from "preact";
 import { useEffect, useRef } from "preact/hooks";
 import { AgentsTab } from "./AgentsTab";
@@ -74,7 +74,7 @@ function Panel(): JSX.Element {
             ))}
           </div>
           <span class="am-spacer" />
-          <span class="faint am-kbd" aria-hidden="true">⌘6</span>
+          <span class="faint am-kbd" aria-hidden="true">⇧⌘A</span>
           <button type="button" class="am-close" aria-label="Close the agent manager" onClick={closeAgentManager}>✕</button>
         </div>
         <div class="am-body" role="tabpanel" id={`am-pane-${tab}`} aria-labelledby={`am-tab-${tab}`}>

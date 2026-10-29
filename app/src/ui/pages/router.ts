@@ -2,7 +2,7 @@
 // Design keeps today's layout (left pane + viewer); the others render full-width under the top bar.
 // The agent console stays available on every page and can collapse to a rail.
 //
-// Navigation: the top tabs (ui/topbar/ModeTabs) and ⌘1–⌘5 both call setPage(). A page component
+// Navigation: the top tabs (ui/topbar/ModeTabs) and ⌘1–⌘7 both call setPage(). A page component
 // is just the default/exported component of ui/pages/<id>/index.tsx, rendered by App when active
 // (Tasks 6–8 replace the stubs there). To read or change the active page from anywhere, import
 // `activePage` / `setPage` / `PAGES` from here.
@@ -67,7 +67,7 @@ export interface PageShortcutDeps {
   isModalOpen?: () => boolean;
 }
 
-/** Registers ⌘1–⌘5 to navigate between pages (capture phase, works inside inputs). Synthetic or
+/** Registers ⌘1–⌘7 to navigate between pages (capture phase, works inside inputs). Synthetic or
  *  auto-repeat keys are ignored, and so is everything while a modal is open (the page must not
  *  change under the wizard, Profile or a dialog). Returns an unregister function. */
 export function installPageShortcuts(deps: PageShortcutDeps = {}): () => void {

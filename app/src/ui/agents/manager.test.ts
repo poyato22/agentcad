@@ -96,9 +96,9 @@ describe("labels", () => {
   });
 });
 
-describe("⌘6", () => {
+describe("⇧⌘A", () => {
   afterEach(() => { closeAgentManager(); });
-  const press = () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "6", metaKey: true }));
+  const press = () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "A", code: "KeyA", metaKey: true, shiftKey: true }));
 
   it("toggles the manager", () => {
     const off = installManagerShortcut({ isTrusted: () => true, isModalOpen: () => false });
