@@ -116,6 +116,12 @@ export interface CancelAllResult { cancelled: string[]; failed: { run_id: string
  *  (the profile's hidden_agents). Optional so older cores/fixtures still parse. */
 export interface AgentInfo { name: string; description: string; model: string; tools?: string[] | null; builtin?: boolean; hidden?: boolean }
 
+/** GET /agents/{name}: one agent with its instructions. `body` is null for a built-in (its
+ *  prompt isn't exposed). PUT /agents/{name} without `body` keeps the current instructions. */
+export interface AgentDetail {
+  name: string; description: string; model: string; tools: string[] | null; builtin: boolean; hidden: boolean; body: string | null;
+}
+
 /** signed_in / signed_out / not_installed: the "claude-code" vendor (Plan 3 Task 3). */
 export type KeySource = "env" | "keychain" | "none" | "not_needed" | "signed_in" | "signed_out" | "not_installed";
 /** Why the core points a model out: "best" (strongest at CAD), "local" (a researched local model

@@ -339,6 +339,9 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     return r;
   }
 
+  /** Custom agents' instructions (the core keeps them in ~/…/Mises/agents/<name>.md). */
+  const agentBodies = new Map<string, string>();
+
   // ---- Plan 5 (C1) run-management helpers (mirror core projects.run_view / delete_reason)
   /** A run enriched with the API's run_view fields (parent_run_id, last_activity_at, cost). */
   function runView(r: AgentRun): AgentRun {
@@ -652,7 +655,19 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
           tools: Array.isArray(b.tools) ? (b.tools as string[]) : null, builtin: false, hidden: false,
         };
         state.agents = [...state.agents, agent];
+        agentBodies.set(name, typeof b.body === "string" ? b.body.trim() : "");
         return { ...agent };
+      },
+    },
+    {
+      // core projects_api.get_agent: the body for a custom agent, null for a built-in
+      method: "GET", re: /^\/agents\/([^/]+)$/, h: (m) => {
+        const name = decodeURIComponent(m[1]);
+        const a = state.agents.find((x) => x.name === name);
+        if (!a) throw mises("not_found", `no agent ${JSON.stringify(name)}`);
+        const builtin = a.builtin ?? true;
+        return { name: a.name, description: a.description, model: a.model, tools: a.tools ?? null, builtin,
+          hidden: (state.setup.profile.hidden_agents ?? []).includes(name), body: builtin ? null : agentBodies.get(name) ?? "" };
       },
     },
     {
@@ -660,6 +675,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         const name = decodeURIComponent(m[1]);
         const existing = state.agents.find((a) => a.name === name);
         if (existing && (existing.builtin ?? true)) throw mises("denied", `${JSON.stringify(name)} is a built-in agent; it can be hidden but not changed or deleted`, "hide it via the profile instead");
+        if (!existing) throw mises("not_found", `no custom agent ${JSON.stringify(name)}`);
         const b = asBody(raw);
         const agent: AgentInfo = {
           name, description: typeof b.description === "string" ? b.description : "",
@@ -667,7 +683,9 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
           tools: Array.isArray(b.tools) ? (b.tools as string[]) : null, builtin: false,
           hidden: (state.setup.profile.hidden_agents ?? []).includes(name),
         };
-        state.agents = existing ? state.agents.map((a) => (a.name === name ? agent : a)) : [...state.agents, agent];
+        // like the core: a PUT without a body keeps the current instructions
+        if (typeof b.body === "string") agentBodies.set(name, b.body.trim());
+        state.agents = state.agents.map((a) => (a.name === name ? agent : a));
         return { ...agent };
       },
     },
@@ -677,6 +695,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         const existing = state.agents.find((a) => a.name === name);
         if (existing && (existing.builtin ?? true)) throw mises("denied", `${JSON.stringify(name)} is a built-in agent; it can be hidden but not changed or deleted`, "hide it via the profile instead");
         state.agents = state.agents.filter((a) => a.name !== name);
+        agentBodies.delete(name);
         state.setup.profile.hidden_agents = (state.setup.profile.hidden_agents ?? []).filter((a) => a !== name);
         return { ok: true };
       },

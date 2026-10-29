@@ -127,6 +127,18 @@ function AgentForm({ existing, knownTools, taken, onCancel, onSaved }: {
     : EMPTY);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Editing: the agent's current instructions are loaded (GET /agents/{name}) before saving. */
+  const [loaded, setLoaded] = useState(existing === null);
+  useEffect(() => {
+    if (!existing) return;
+    let live = true;
+    actions.client().getAgent(existing.name).then((a) => {
+      if (!live) return;
+      setD((cur) => ({ ...cur, description: a.description, model: a.model, useDefaults: a.tools == null, tools: a.tools ?? [], body: a.body ?? "" }));
+      setLoaded(true);
+    }, (e: unknown) => { if (live) setError(`Couldn't load this agent's instructions: ${message(e)}`); });
+    return () => { live = false; };
+  }, [existing?.name]);
   const models = modelRefs(catalog.value.models);
   if (!models.includes(d.model)) models.push(d.model);
 
@@ -134,9 +146,9 @@ function AgentForm({ existing, knownTools, taken, onCancel, onSaved }: {
     : !d.name ? null
     : !AGENT_NAME_RE.test(d.name) ? "Use 2–41 lowercase letters, digits, - or _, starting with a letter."
     : taken.includes(d.name) ? "An agent with this name already exists." : null;
-  // PUT /agents/{name} replaces the whole definition and no route reads the instructions back,
-  // so they are always required (an edit re-enters them) — never silently blanked.
-  const canSave = !busy && (existing !== null || (d.name !== "" && nameError === null))
+  // an edit saves only once the current instructions are loaded into the form, and never sends an
+  // empty body (instructions are required), so a save can't blank an agent's prompt
+  const canSave = !busy && loaded && (existing !== null || (d.name !== "" && nameError === null))
     && (d.useDefaults || d.tools.length > 0) && d.body.trim() !== "";
 
   const set = (p: Partial<Draft>) => setD((cur) => ({ ...cur, ...p }));
@@ -189,9 +201,8 @@ function AgentForm({ existing, knownTools, taken, onCancel, onSaved }: {
       </fieldset>
       <label class="am-field">
         <span class="label">Instructions</span>
-        <textarea rows={5} value={d.body} onInput={(e) => set({ body: (e.currentTarget as HTMLTextAreaElement).value })}
-          placeholder="How this agent should work" />
-        {existing && <span class="faint am-hint">Saving replaces this agent's instructions. Enter them in full.</span>}
+        <textarea rows={5} value={d.body} disabled={!loaded} onInput={(e) => set({ body: (e.currentTarget as HTMLTextAreaElement).value })}
+          placeholder={loaded ? "How this agent should work" : "Loading the current instructions…"} />
       </label>
       {error && <div class="am-error tone-red text" role="alert">{error}</div>}
       <div class="am-form-foot">

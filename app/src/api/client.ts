@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { debug } from "../lib/log";
 import {
-  agentInfoSchema, agentRunSchema, approvalSchema, cancelAllSchema, claudeCodeStatusSchema, cleanupResultSchema, coreErrorBodySchema, coreStatusSchema, deleteRefusedSchema,
+  agentDetailSchema, agentInfoSchema, agentRunSchema, approvalSchema, cancelAllSchema, claudeCodeStatusSchema, cleanupResultSchema, coreErrorBodySchema, coreStatusSchema, deleteRefusedSchema,
   keyStatusSchema, localActionSchema, localStatusSchema, localTestSchema, modelsInfoSchema, okSchema, onshapeTestSchema, partSummarySchema, profileSchema, runIdSchema, runNodeSchema, setupStateSchema, sketchSummarySchema,
   stepSchema, systemCheckRowSchema, systemInstallStartSchema,
 } from "./schemas";
@@ -12,7 +12,7 @@ import {
   type SimRecord, type SimSolvers, type SimStartBody, type SimStarted, type SimSummary,
 } from "./sims";
 import type {
-  AgentDefBody, AgentInfo, AgentRun, Approval, CancelAllResult, ClaudeCodeStatus, CleanupBody, CleanupResult, CoreInfo, CoreStatusInfo, DecisionBody, DeleteRefused, ErrorCode, KeyStatus, LocalActionResult, LocalStatus, LocalTestResult,
+  AgentDefBody, AgentDetail, AgentInfo, AgentRun, Approval, CancelAllResult, ClaudeCodeStatus, CleanupBody, CleanupResult, CoreInfo, CoreStatusInfo, DecisionBody, DeleteRefused, ErrorCode, KeyStatus, LocalActionResult, LocalStatus, LocalTestResult,
   ModelsInfo, NewRunBody, OnshapeTestResult, PartSummary, Profile, ProfilePatch, RunNode, RunPatch, SetupState, SketchSummary, SketchUpload, Step,
   SystemCheckRow, SystemInstallStart, UiContext,
 } from "./types";
@@ -117,6 +117,10 @@ export class CoreClient {
   }
 
   // ---- custom agent definitions (built-ins can only be hidden, via the profile)
+  /** One agent with its instructions (body null for a built-in), for the edit form. */
+  getAgent(name: string): Promise<AgentDetail> {
+    return this.json("GET", `/agents/${enc(name)}`, agentDetailSchema);
+  }
   createAgent(body: AgentDefBody): Promise<AgentInfo> { return this.json("POST", "/agents", agentInfoSchema, { body }); }
   updateAgent(name: string, body: AgentDefBody): Promise<AgentInfo> {
     return this.json("PUT", `/agents/${enc(name)}`, agentInfoSchema, { body });

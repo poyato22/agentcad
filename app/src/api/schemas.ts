@@ -38,6 +38,11 @@ export const agentRunSchema = z.object({
 export const runNodeSchema: z.ZodType<RunNode> = z.lazy(() =>
   agentRunSchema.extend({ children: z.array(runNodeSchema) }) as unknown as z.ZodType<RunNode>);
 
+export const agentDetailSchema = z.object({
+  name: z.string(), description: z.string(), model: z.string(), tools: z.array(z.string()).nullable(),
+  builtin: z.boolean(), hidden: z.boolean(), body: z.string().nullable(),
+});
+
 export const cleanupResultSchema = z.object({ ids: z.array(z.string()), count: z.number().int() });
 export const deleteRefusedSchema = z.object({ reason: z.enum(["running", "pending_approval"]), children: z.array(z.string()).default([]) });
 
@@ -239,6 +244,7 @@ export type SchemaChecks = [
   Assert<Same<z.infer<typeof modelEntrySchema>, ModelEntry>>,
   Assert<Same<z.infer<typeof sketchSummarySchema>, SketchSummary>>,
   Assert<Same<z.infer<typeof runCostSchema>, import("./types").RunCost>>,
+  Assert<Same<z.infer<typeof agentDetailSchema>, import("./types").AgentDetail>>,
   Assert<Same<z.infer<typeof cleanupResultSchema>, import("./types").CleanupResult>>,
   Assert<Same<z.infer<typeof deleteRefusedSchema>, import("./types").DeleteRefused>>,
 ];

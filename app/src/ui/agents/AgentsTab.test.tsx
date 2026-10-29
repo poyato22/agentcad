@@ -61,17 +61,27 @@ describe("AgentsTab", () => {
     expect(post.body).toEqual({ name: "rib-checker", description: "Checks rib spacing", model: "inherit", tools: ["mirror_measure"], body: "Measure every rib." });
   });
 
-  it("edits and deletes a custom agent (delete needs a confirm)", async () => {
-    core.state.agents.push({ name: "ribber", description: "adds ribs", model: "inherit", tools: null, builtin: false });
+  it("edit pre-fills the current instructions; changing only the description keeps them", async () => {
+    await new CoreClient({ baseUrl: core.url, wsUrl: "", token: "t", owned: false })
+      .createAgent({ name: "ribber", description: "adds ribs", model: "inherit", tools: null, body: "Add a rib every 10 mm." });
     render(<AgentsTab />);
     await waitFor(() => expect(agentRow("ribber")).toBeTruthy());
     fireEvent.click(within(agentRow("ribber")).getByRole("button", { name: "Edit" }));
     const form = screen.getByRole("form", { name: "Edit ribber" });
-    expect(within(form).getByText(/Saving replaces this agent's instructions/)).toBeTruthy();
-    fireEvent.input(within(form).getByPlaceholderText("How this agent should work"), { target: { value: "Add ribs every 10 mm." } });
+    const body = within(form).getByRole("textbox", { name: "Instructions" }) as HTMLTextAreaElement;
+    await waitFor(() => expect(body.value).toBe("Add a rib every 10 mm."));
+    fireEvent.input(within(form).getByPlaceholderText("One line, shown in New run"), { target: { value: "adds ribs fast" } });
     fireEvent.click(within(form).getByRole("button", { name: "Save agent" }));
     await waitFor(() => expect(core.state.calls.some((c) => c.method === "PUT" && c.path === "/agents/ribber")).toBe(true));
+    const put = core.state.calls.find((c) => c.method === "PUT" && c.path === "/agents/ribber") as { body: Record<string, unknown> };
+    expect(put.body).toMatchObject({ description: "adds ribs fast", body: "Add a rib every 10 mm." });
+    const after = await (await fetch(`${core.url}/agents/ribber`, { headers: { Authorization: "Bearer t" } })).json() as { body: string };
+    expect(after.body).toBe("Add a rib every 10 mm.");
+  });
 
+  it("deletes a custom agent after a confirm", async () => {
+    core.state.agents.push({ name: "ribber", description: "adds ribs", model: "inherit", tools: null, builtin: false });
+    render(<AgentsTab />);
     await waitFor(() => expect(agentRow("ribber")).toBeTruthy());
     fireEvent.click(within(agentRow("ribber")).getByRole("button", { name: "Delete ribber" }));
     expect(core.state.agents.some((a) => a.name === "ribber")).toBe(true);

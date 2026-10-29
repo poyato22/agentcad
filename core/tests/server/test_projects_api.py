@@ -156,6 +156,41 @@ def test_custom_agent_crud_and_builtins(client, rt):
     assert not (rt.home / "agents" / "framer.md").exists()
 
 
+def test_get_agent_returns_a_custom_agents_body(client, rt):
+    client.post("/agents", json={"name": "framer", "description": "frames", "model": "inherit",
+                                 "tools": ["mirror_measure"], "body": "Build frames.\nCheck walls."},
+                headers=AUTH)
+    r = client.get("/agents/framer", headers=AUTH)
+    assert r.status_code == 200
+    assert r.json() == {"name": "framer", "description": "frames", "model": "inherit",
+                        "tools": ["mirror_measure"], "builtin": False, "hidden": False,
+                        "body": "Build frames.\nCheck walls."}
+
+
+def test_get_agent_builtin_has_no_body_and_unknown_is_404(client, rt):
+    r = client.get("/agents/designer", headers=AUTH)
+    assert r.status_code == 200
+    assert r.json()["builtin"] is True and r.json()["body"] is None
+    assert client.get("/agents/nobody-here", headers=AUTH).status_code == 404
+    from urllib.parse import quote
+    assert client.get(f"/agents/{quote('../evil', safe='')}", headers=AUTH).status_code == 404
+
+
+def test_put_agent_without_body_keeps_the_instructions(client, rt):
+    client.post("/agents", json={"name": "framer", "description": "frames", "body": "Keep me."},
+                headers=AUTH)
+    r = client.put("/agents/framer", json={"description": "d2", "model": "inherit"}, headers=AUTH)
+    assert r.status_code == 200
+    got = client.get("/agents/framer", headers=AUTH).json()
+    assert got["description"] == "d2" and got["body"] == "Keep me."
+    # an explicit body still replaces it
+    client.put("/agents/framer", json={"description": "d2", "body": "New text."}, headers=AUTH)
+    assert client.get("/agents/framer", headers=AUTH).json()["body"] == "New text."
+    # no body for an agent that doesn't exist is a 404, not a blank file
+    assert client.put("/agents/ghost", json={"description": "x"}, headers=AUTH).status_code == 404
+    assert not (rt.home / "agents" / "ghost.md").exists()
+
+
 def test_custom_agent_bad_name_rejected(client, rt):
     r = client.post("/agents", json={"name": "../evil", "description": "", "body": "x"},
                     headers=AUTH)
