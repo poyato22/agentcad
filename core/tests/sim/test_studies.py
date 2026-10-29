@@ -382,3 +382,15 @@ def test_plan_review_picks_the_studies_the_spec_needs():
     for p in plan:  # every planned study validates
         studies.validate_settings(p["type"], p["settings"])
     assert plan_review({"requirements": [{"id": "x", "kind": "max_mass_g", "target": 1}]}) == []
+
+
+def test_custom_requirements_carry_study_kinds():
+    # C3's spec model stops at kind "custom": its target names the study kind
+    spec = {"requirements": [
+        {"id": "c1", "kind": "custom", "target": {"max_drag_n": 2.5}},
+        {"id": "c2", "kind": "custom", "target": {"excitation": {"rpm": 30000, "blades": 2}}},
+        {"id": "c3", "kind": "custom", "target": "looks nice"}]}
+    plan = plan_review(spec)
+    assert [p["type"] for p in plan] == ["modal", "wind"]
+    assert plan[1]["requirements"] == [{"id": "c1", "kind": "max_drag_n", "target": 2.5}]
+    assert plan[0]["settings"]["excitation"]["rpm"] == 30000

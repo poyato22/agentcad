@@ -310,11 +310,40 @@ WIND_KINDS = {"max_drag_n", "max_cd"}
 DROP_KINDS = {"survive_drop_m"}
 
 
+STUDY_KINDS = (STRESS_KINDS | MODAL_KINDS | WIND_KINDS | DROP_KINDS
+               | {"min_buckling_factor", "max_temp_c"})
+SPEC_EXTRAS = ("excitation", "excitation_band_hz", "wind", "drop")
+
+
+def normalize_spec(spec: dict) -> dict:
+    """The contract's requirement kinds stop at `custom`; a custom requirement whose target is
+    {<study kind>: value} (e.g. {"max_drag_n": 2}, {"avoid_band_hz": [380, 420]}) becomes
+    that kind, and {"excitation": {...}} / {"wind": {...}} / {"drop": {...}} targets fill the
+    spec's study inputs."""
+    spec = dict(spec)
+    reqs = []
+    for r in spec.get("requirements") or []:
+        if isinstance(r, dict) and r.get("kind") == "custom" and isinstance(r.get("target"), dict):
+            t = r["target"]
+            for k in SPEC_EXTRAS:
+                if k in t and k not in spec:
+                    spec[k] = t[k]
+            key = next((k for k in t if k in STUDY_KINDS), None)
+            if key is not None:
+                r = {**r, "kind": key, "target": t[key]}
+            elif any(k in t for k in SPEC_EXTRAS):
+                continue  # only carried study inputs
+        reqs.append(r)
+    spec["requirements"] = reqs
+    return spec
+
+
 def plan_review(spec: dict, wind_overrides: dict | None = None,
                 material: str | None = None) -> list[dict]:
     """The studies a spec needs: [{type, case, settings, requirements}]. Static: one study per
     load case; modal when an excitation band (or a frequency requirement) is given; wind when a
     drag requirement or spec.wind is present; drop when spec.drop or a drop requirement is."""
+    spec = normalize_spec(spec)
     reqs = [r for r in spec.get("requirements") or [] if isinstance(r, dict)]
     mat = {"name": material} if material else {}
     plan = []
@@ -443,6 +472,7 @@ async def design_review(ctx: ToolContext, args: ReviewArgs) -> ToolOutput:
     if not spec:
         raise MisesError(ErrorCode.INVALID_INPUT, "no spec to review against",
                          hint="pass spec, or a project_id whose spec is set (spec_set)")
+    spec = normalize_spec(spec)
     metrics = json.loads((part / "metrics.json").read_text())
     try:
         material = studies.resolve_material(None, args.material or studies.default_material(ctx),
