@@ -1,0 +1,334 @@
+[
+  {
+    "best_id": 5,
+    "confirmation": {
+      "confirmed": true,
+      "metrics": {
+        "bbox": {
+          "max": [
+            20.0,
+            10.0,
+            3.2398741181467328
+          ],
+          "min": [
+            -20.0,
+            -10.0,
+            -3.2398741181467328
+          ],
+          "size": [
+            40.0,
+            20.0,
+            6.4797482362934655
+          ]
+        },
+        "disp_by_case": {
+          "desk_load": 0.4360107555079802,
+          "drop_hit": 0.3270073190893457
+        },
+        "mass_g": 6.205272771685992,
+        "max_disp_mm": 0.4360107555079802,
+        "min_sf": 3.9329282532577268,
+        "sf_by_case": {
+          "desk_load": 3.9329282532577268,
+          "drop_hit": 5.243907270154837
+        },
+        "sim_failed_by_case": {},
+        "sim_ids_by_case": {
+          "desk_load": "sim_2bfbe7271d8a",
+          "drop_hit": "sim_f9eff9a13d37"
+        },
+        "variant": "e5"
+      },
+      "n": 5
+    },
+    "created_at": 1793307575.97288,
+    "geometry_only": false,
+    "id": "study_92df921c1b92",
+    "iterations": [
+      {
+        "feasible": false,
+        "metrics": {
+          "bbox": {
+            "max": [
+              20.0,
+              10.0,
+              1.8195467008553834
+            ],
+            "min": [
+              -20.0,
+              -10.0,
+              -1.8195467008553834
+            ],
+            "size": [
+              40.0,
+              20.0,
+              3.639093401710767
+            ]
+          },
+          "disp_by_case": {
+            "desk_load": 2.3826476058974304,
+            "drop_hit": 1.786993152178521
+          },
+          "mass_g": 3.484945151538018,
+          "max_disp_mm": 2.3826476058974304,
+          "min_sf": 1.3448974618625709,
+          "sf_by_case": {
+            "desk_load": 1.3448974618625709,
+            "drop_hit": 1.7931905266370785
+          },
+          "sim_failed_by_case": {},
+          "sim_ids_by_case": {
+            "desk_load": "sim_478fda0bdd52",
+            "drop_hit": "sim_a86712ff85fa"
+          },
+          "variant": "e1"
+        },
+        "n": 0,
+        "pareto": false,
+        "vars": {
+          "thickness": 3.6390934017107606
+        }
+      },
+      {
+        "feasible": false,
+        "metrics": {
+          "bbox": {
+            "max": [
+              20.0,
+              10.0,
+              2.378083835906509
+            ],
+            "min": [
+              -20.0,
+              -10.0,
+              -2.378083835906509
+            ],
+            "size": [
+              40.0,
+              20.0,
+              4.756167671813018
+            ]
+          },
+          "disp_by_case": {
+            "desk_load": 1.0790843548672822,
+            "drop_hit": 0.8093157538702787
+          },
+          "mass_g": 4.554701305548969,
+          "max_disp_mm": 1.0790843548672822,
+          "min_sf": 2.224695271074188,
+          "sf_by_case": {
+            "desk_load": 2.224695271074188,
+            "drop_hit": 2.9662544395202337
+          },
+          "sim_failed_by_case": {},
+          "sim_ids_by_case": {
+            "desk_load": "sim_da2fd49083b7",
+            "drop_hit": "sim_a1e2a4ef8909"
+          },
+          "variant": "e2"
+        },
+        "n": 1,
+        "pareto": false,
+        "vars": {
+          "thickness": 4.756167671813018
+        }
+      },
+      {
+        "feasible": false,
+        "metrics": {
+          "bbox": {
+            "max": [
+              20.0,
+              10.0,
+              2.911822968933102
+            ],
+            "min": [
+              -20.0,
+              -10.0,
+              -2.911822968933102
+            ],
+            "size": [
+              40.0,
+              20.0,
+              5.823645937866204
+            ]
+          },
+          "disp_by_case": {
+            "desk_load": 0.5933300627358932,
+            "drop_hit": 0.44499679606954545
+          },
+          "mass_g": 5.576962291184958,
+          "max_disp_mm": 0.5933300627358932,
+          "min_sf": 3.2586603227486366,
+          "sf_by_case": {
+            "desk_load": 3.2586603227486366,
+            "drop_hit": 4.344896410978877
+          },
+          "sim_failed_by_case": {},
+          "sim_ids_by_case": {
+            "desk_load": "sim_e9a780388ddf",
+            "drop_hit": "sim_d3192b2e4a0f"
+          },
+          "variant": "e0"
+        },
+        "n": 2,
+        "pareto": false,
+        "vars": {
+          "thickness": 5.823645937866204
+        }
+      },
+      {
+        "feasible": true,
+        "metrics": {
+          "bbox": {
+            "max": [
+              20.0,
+              10.0,
+              3.8648741181467328
+            ],
+            "min": [
+              -20.0,
+              -10.0,
+              -3.8648741181467328
+            ],
+            "size": [
+              40.0,
+              20.0,
+              7.7297482362934655
+            ]
+          },
+          "disp_by_case": {
+            "desk_load": 0.2597670047589739,
+            "drop_hit": 0.19482474798416455
+          },
+          "mass_g": 7.402324058518767,
+          "max_disp_mm": 0.2597670047589739,
+          "min_sf": 5.62597772473804,
+          "sf_by_case": {
+            "desk_load": 5.62597772473804,
+            "drop_hit": 7.501314496671723
+          },
+          "sim_failed_by_case": {},
+          "sim_ids_by_case": {
+            "desk_load": "sim_18232608d453",
+            "drop_hit": "sim_761e29ca5a7d"
+          },
+          "variant": "e3"
+        },
+        "n": 3,
+        "pareto": true,
+        "vars": {
+          "thickness": 7.7297482362934655
+        }
+      },
+      {
+        "feasible": true,
+        "metrics": {
+          "bbox": {
+            "max": [
+              20.0,
+              10.0,
+              4.0
+            ],
+            "min": [
+              -20.0,
+              -10.0,
+              -4.0
+            ],
+            "size": [
+              40.0,
+              20.0,
+              8.0
+            ]
+          },
+          "disp_by_case": {
+            "desk_load": 0.2350985289544542,
+            "drop_hit": 0.1763236457586466
+          },
+          "mass_g": 7.661128235729752,
+          "max_disp_mm": 0.2350985289544542,
+          "min_sf": 6.009733934035754,
+          "sf_by_case": {
+            "desk_load": 6.009733934035754,
+            "drop_hit": 8.01297481272594
+          },
+          "sim_failed_by_case": {},
+          "sim_ids_by_case": {
+            "desk_load": "sim_2654b922ae82",
+            "drop_hit": "sim_f5e32f938ba8"
+          },
+          "variant": "e4"
+        },
+        "n": 4,
+        "pareto": true,
+        "vars": {
+          "thickness": 8.0
+        }
+      },
+      {
+        "feasible": true,
+        "metrics": {
+          "bbox": {
+            "max": [
+              20.0,
+              10.0,
+              3.2398741181467328
+            ],
+            "min": [
+              -20.0,
+              -10.0,
+              -3.2398741181467328
+            ],
+            "size": [
+              40.0,
+              20.0,
+              6.4797482362934655
+            ]
+          },
+          "disp_by_case": {
+            "desk_load": 0.4344523806893681,
+            "drop_hit": 0.3258395306727188
+          },
+          "mass_g": 6.205272771685992,
+          "max_disp_mm": 0.4344523806893681,
+          "min_sf": 4.028000698969374,
+          "sf_by_case": {
+            "desk_load": 4.028000698969374,
+            "drop_hit": 5.370671753686925
+          },
+          "sim_failed_by_case": {},
+          "sim_ids_by_case": {
+            "desk_load": "sim_2c79cf97ecf2",
+            "drop_hit": "sim_da72ffdf9b73"
+          },
+          "variant": "e5"
+        },
+        "n": 5,
+        "pareto": true,
+        "vars": {
+          "thickness": 6.4797482362934655
+        }
+      }
+    ],
+    "kept_variants": [
+      "e3",
+      "e4",
+      "e5"
+    ],
+    "max_parallel": 3,
+    "objective": "min_mass",
+    "part_id": "mount_plate",
+    "project_id": "4b8d50756366",
+    "run_id": "e49a82860ab3",
+    "solver": "CalculiX",
+    "status": "done",
+    "variables": [
+      {
+        "hi": 8.0,
+        "lo": 3.0,
+        "name": "thickness"
+      }
+    ],
+    "weights": []
+  }
+]

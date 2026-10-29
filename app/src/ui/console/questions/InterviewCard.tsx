@@ -10,7 +10,7 @@ import { actions } from "../../../state/store";
 import { Button } from "../../common/Button";
 import { clickArmed, isTrustedActivation } from "../approvals/approvalKeys";
 import {
-  batchAnswer, emptyAnswers, isComplete, type ItemAnswer, togglePick,
+  batchAnswer, emptyAnswers, introOf, isComplete, type ItemAnswer, togglePick,
 } from "./interview";
 import "./interview.css";
 
@@ -57,7 +57,7 @@ export function InterviewCard({ question, runLabel }: { question: Question; runL
         <span class="icard-flag">? INTERVIEW</span>
         <span class="faint text icard-run">{runLabel}</span>
       </div>
-      {question.question.trim() !== "" && <div class="icard-intro text">{question.question}</div>}
+      {introOf(question.question) !== "" && <div class="icard-intro text">{introOf(question.question)}</div>}
       <ol class="icard-list">
         {items.map((item) => {
           const a = answers[item.id] ?? { picks: [], text: "" };

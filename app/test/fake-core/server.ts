@@ -21,6 +21,7 @@ import { printingFrom, printingRoutes, stopPrinting, type FakePrinting, type Pri
 import { setupFrom, setupRoutes, type FakeSetup, type SetupScenario } from "./setup";
 import { cancelSimsOfRun, clearSimTimers, simRoutes, simsFrom, type FakeSims, type SimScenario } from "./sims";
 import { checkRunSketch, sketchRoutes, sketchUserPayload, type FakeSketch } from "./sketch";
+import { specFrom, specRoutes, type FakeSpec, type SpecScenario } from "./spec";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const SCENARIO_DIR = resolve(HERE, "scenarios");
@@ -106,6 +107,8 @@ export interface Scenario {
   directory?: DirectoryScenario;
   /** Builds and their assemblies (Plan 5 A4). Absent: one empty "Default" build. */
   assembly?: AssemblyScenario;
+  /** Plan 5 engineering loop: the build's spec and design studies (spec panel, A7). */
+  spec?: SpecScenario;
 }
 
 /** A small healthy default when a scenario names no `system` rows. */
@@ -147,6 +150,7 @@ export interface FakeState {
   /** Plan 5 A6: Onshape browser, budget and parts directory. */
   directory: FakeDirectory;
   assembly: FakeAssembly;
+  spec: FakeSpec;
 }
 
 export interface FakeCore {
@@ -206,6 +210,7 @@ function stateFrom(sc: Scenario, token: string): FakeState {
     systemInstall: sc.system_install ? structuredClone(sc.system_install) : {},
     systemInstallMs: sc.system_install_ms ?? 60,
     ...sharedBuilds(sc),
+    spec: specFrom(sc.spec),
   };
 }
 
@@ -311,6 +316,8 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       state.questions.set(d.question_id, {
         question_id: d.question_id, run_id: ev.run_id, question: String(d.question ?? ""),
         options: Array.isArray(d.options) ? d.options.map(String) : [],
+        // the app's Question carries a batch as `items` (A2; the event field is `questions`)
+        ...(Array.isArray(d.questions) && d.questions.length ? { items: d.questions as Question["items"] & object } : {}),
       });
     } else if (ev.type === "question_answered" && typeof d.question_id === "string") {
       state.questions.delete(d.question_id);
@@ -800,6 +807,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     }),
     ...sketchRoutes(() => state.sketches),
     ...directoryRoutes({ get: () => state.directory, emit: (ev) => { emit(ev); } }),
+    ...specRoutes({ get: () => state.spec, parts: () => state.parts, setParts: (p) => { state.parts = p; }, emit: (ev) => emit(ev) }),
     ...printingRoutes({
       get: () => state.print, parts: () => state.parts, defaultMaterial: () => state.setup.profile.default_material,
       emit: (ev, extras) => { emit(ev, extras); }, approval: (id) => state.approvals.get(id),

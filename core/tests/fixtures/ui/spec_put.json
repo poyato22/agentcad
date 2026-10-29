@@ -1,0 +1,91 @@
+{
+  "project_id": "4b8d50756366",
+  "spec": {
+    "goal": "Mount plate for a 5 inch drone stack",
+    "requirements": [
+      {
+        "id": "mass_budget",
+        "kind": "max_mass_g",
+        "target": 8,
+        "load_case_id": null,
+        "priority": 5,
+        "source": "user"
+      },
+      {
+        "id": "desk_safety",
+        "kind": "min_safety_factor",
+        "target": 2.0,
+        "load_case_id": "desk_load",
+        "priority": 4,
+        "source": "agent"
+      },
+      {
+        "id": "drop_safety",
+        "kind": "min_safety_factor",
+        "target": 1.5,
+        "load_case_id": "drop_hit",
+        "priority": 4,
+        "source": "agent"
+      },
+      {
+        "id": "stiffness",
+        "kind": "max_deflection_mm",
+        "target": 0.5,
+        "load_case_id": "desk_load",
+        "priority": 3,
+        "source": "agent"
+      },
+      {
+        "id": "fits_frame",
+        "kind": "envelope_mm",
+        "target": [
+          50.0,
+          30.0,
+          12.0
+        ],
+        "load_case_id": null,
+        "priority": 2,
+        "source": "agent"
+      },
+      {
+        "id": "fc_mount",
+        "kind": "mount_pattern",
+        "target": "20x20 M3",
+        "load_case_id": null,
+        "priority": 3,
+        "source": "user"
+      }
+    ],
+    "load_cases": [
+      {
+        "id": "desk_load",
+        "name": "stack weight",
+        "fix": "x-min",
+        "load": "x-max",
+        "newtons": 20.0,
+        "direction": "-z",
+        "note": "stack and wiring pressing down",
+        "estimate": false
+      },
+      {
+        "id": "drop_hit",
+        "name": "drop from 1 m",
+        "fix": "x-min",
+        "load": "x-max",
+        "newtons": 15.0,
+        "direction": "-z",
+        "note": "F = m\u00b7g\u00b7k with k = 30 (equivalent static, estimate)",
+        "estimate": true
+      }
+    ],
+    "answers": {
+      "use": "freestyle",
+      "size_class": "5\"",
+      "priorities": [
+        "weight",
+        "stiffness"
+      ]
+    }
+  },
+  "updated_at": 1793307575.964417
+}

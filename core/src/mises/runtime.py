@@ -161,6 +161,8 @@ class Runtime:
         self._activity: dict[str, ActivityTracker] = {}
         self.ui_calls: dict[str, UiCall] = {}
         self._ui_run: str | None = None
+        # build id -> that build's long-lived ui run (spec panel apply; Plan 5 A7)
+        self._ui_runs: dict[str, str] = {}
         self._questions: dict[str, tuple[str, asyncio.Future[str]]] = {}
         # external run id -> owner's async cancel (e.g. AcpSession.cancel kills the agent)
         self._cancel_hooks: dict[str, Callable[[], Awaitable[None]]] = {}
@@ -337,8 +339,9 @@ class Runtime:
         for c in list(self.ui_calls.values()):
             if c.task is not None and not c.task.done():
                 c.task.cancel()
-        if self._ui_run is not None and self._ui_run in self._external:
-            self.finish_external_run(self._ui_run, "done")
+        for rid in [self._ui_run, *self._ui_runs.values()]:
+            if rid is not None and rid in self._external:
+                self.finish_external_run(rid, "done")
         ad = self.gate.services.get("onshape")
         if ad is not None:
             await ad.client.aclose()
@@ -1067,32 +1070,39 @@ class Runtime:
             "external": True}))
         self._end_activity(run_id)
 
-    def _ui_run_id(self) -> str:
+    def _ui_run_id(self, project_id: str | None = None) -> str:
         """The one long-lived external run every UI-started tool call goes through (created on
-        first use, recreated if it was finished or failed). Finished by aclose()."""
-        rid = self._ui_run
+        first use, recreated if it was finished or failed). Finished by aclose(). With
+        `project_id`: that build's own ui run (tools that check the run's build, e.g. spec and
+        study tools, see the right one)."""
+        rid = self._ui_runs.get(project_id) if project_id else self._ui_run
         if rid is not None:
             try:
                 if self.store.get_run(rid).status == "running" and rid in self._external:
                     return rid
             except KeyError:
                 pass
-        self._ui_run = self.create_external_run("you", provider="ui", model="ui",
-                                                task="actions started from the app")
+        rid = self.create_external_run("you", provider="ui", model="ui",
+                                       task="actions started from the app", project_id=project_id)
+        if project_id:
+            self._ui_runs[project_id] = rid
+        else:
+            self._ui_run = rid
 
         async def stop_all() -> None:  # run-level cancel (cancel_all): stop every UI call
             for c in list(self.ui_calls.values()):
                 if c.task is not None and not c.task.done():
                     c.task.cancel()
-        self.register_cancel_hook(self._ui_run, stop_all)
-        return self._ui_run
+        self.register_cancel_hook(rid, stop_all)
+        return rid
 
-    def ui_tool_call(self, tool: str, args: dict, *, meta: dict | None = None) -> UiCall:
+    def ui_tool_call(self, tool: str, args: dict, *, meta: dict | None = None,
+                     project_id: str | None = None) -> UiCall:
         """Run a tool for the app's UI through the Gate, under the shared "ui" run, so the
         same checks apply as for an agent: an irreversible tool raises the approval card and
         nothing happens until the user approves it. Returns at once; poll `ui_calls`.
         `meta` is trusted app-side data the tool may read (agents cannot set it)."""
-        rid = self._ui_run_id()
+        rid = self._ui_run_id(project_id)
         call = UiCall(call_id="ui_" + uuid.uuid4().hex[:12], run_id=rid, tool=tool,
                       args=dict(args), meta=dict(meta or {}))
         self.ui_calls[call.call_id] = call

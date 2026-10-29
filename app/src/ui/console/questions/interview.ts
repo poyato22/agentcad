@@ -4,6 +4,13 @@
 // the chosen options in order; a free-text answer overrides when the user typed something.
 import type { AskItem } from "../../../api/types";
 
+/** The intro line: the core appends every prompt to `question` for older UIs ("…\n1. …");
+ *  the card lists them itself, so the appended listing is dropped (from A7's card). */
+export function introOf(question: string): string {
+  const listed = question.search(/\n1\. /);
+  return (listed >= 0 ? question.slice(0, listed) : question).trim();
+}
+
 /** What the user has entered for one sub-question. */
 export interface ItemAnswer {
   /** Picked options, in click order (rank uses the order; single keeps the last one only). */

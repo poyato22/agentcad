@@ -24,7 +24,7 @@ export function emptyState(): AppState {
 }
 
 /** Tools whose successful result changes the part list / GLB. */
-export const PART_MUTATING_TOOLS: ReadonlySet<string> = new Set(["mirror_part_create", "mirror_part_set_vars"]);
+export const PART_MUTATING_TOOLS: ReadonlySet<string> = new Set(["mirror_part_create", "mirror_part_set_vars", "study_apply"]);
 
 const RUN_STATUSES: ReadonlySet<string> = new Set<RunStatus>(["running", "done", "failed", "cancelled"]);
 

@@ -693,6 +693,11 @@ class Store:
         row = self._one("SELECT data FROM specs WHERE project_id=?", (project_id,))
         return json.loads(row[0]) if row else None
 
+    def get_spec_updated_at(self, project_id: str) -> float | None:
+        """When the spec was last written (None: never). PUT /spec's optimistic check."""
+        row = self._one("SELECT updated_at FROM specs WHERE project_id=?", (project_id,))
+        return float(row[0]) if row and row[0] is not None else None
+
     def put_spec(self, project_id: str, data: dict) -> None:
         with self._tx() as db:
             db.execute("INSERT OR REPLACE INTO specs (project_id, data, updated_at) VALUES (?,?,?)",

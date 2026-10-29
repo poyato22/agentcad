@@ -153,7 +153,8 @@ export const askItemSchema = z.object({
  *  batched shape (C3); absent for a single question. */
 export const questionAskedSchema = z.object({
   question_id: z.string(), question: z.string(), options: z.array(z.string()).default([]),
-  questions: z.array(askItemSchema).default([]),
+  // a malformed batch falls back to the plain question (whose text lists every prompt)
+  questions: z.array(askItemSchema).max(6).catch([]),
 });
 
 // ---- Plan 3: profile, keys, setup, Claude Code, Onshape test

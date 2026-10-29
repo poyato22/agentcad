@@ -11,6 +11,10 @@ import {
   simRecordSchema, simSolversSchema, simStartedSchema, simSummarySchema,
   type SimRecord, type SimSolvers, type SimStartBody, type SimStarted, type SimSummary,
 } from "./sims";
+import {
+  profileActiveSchema, projectsLiteSchema, specCheckSchema, specDocSchema, studyAppliedSchema, studySchema,
+  type Spec, type SpecCheck, type SpecDoc, type Study, type StudyApplied, type StudyApplyBody,
+} from "./spec";
 import type {
   AgentDefBody, AgentDetail, AgentInfo, AgentRun, Approval, CancelAllResult, ClaudeCodeStatus, CleanupBody, CleanupResult, CoreInfo, CoreStatusInfo, DecisionBody, DeleteRefused, ErrorCode, KeyStatus, LocalActionResult, LocalStatus, LocalTestResult,
   ModelsInfo, NewRunBody, OnshapeTestResult, PartSummary, Profile, ProfilePatch, RunNode, RunPatch, SetupState, SketchSummary, SketchUpload, Step,
@@ -360,10 +364,6 @@ export class CoreClient {
   async projects(): Promise<ProjectRow[]> {
     return (await this.json("GET", "/projects", z.array(projectRowSchema))).filter((p) => p.trashed_at === null);
   }
-  /** The profile's active build id (null when unset); the rest of the profile is not read here. */
-  async activeProjectId(): Promise<string | null> {
-    return (await this.json("GET", "/profile", z.object({ active_project_id: z.string().nullish() }))).active_project_id ?? null;
-  }
   assemblyParts(projectId: string): Promise<AssemblyPart[]> {
     return this.json("GET", "/parts", z.array(assemblyPartSchema), { query: { project_id: projectId } });
   }
@@ -395,6 +395,36 @@ export class CoreClient {
   /** OCCT common volume per instance pair over 0.01 mm³ (sandboxed worker; can take seconds). */
   interference(projectId: string): Promise<Interference[]> {
     return this.json("GET", `${asm(projectId)}/interference`, z.array(interferenceSchema));
+  }
+
+  // ---- Plan 5 engineering loop: spec, design studies (core server/spec_api.py)
+
+  /** The build a project-less request belongs to, like core projects.active_project_id: the
+   *  profile's active build when it is live, else the oldest live build. */
+  async activeProjectId(): Promise<string | null> {
+    const [list, prof] = await Promise.all([
+      this.json("GET", "/projects", projectsLiteSchema), this.json("GET", "/profile", profileActiveSchema),
+    ]);
+    const live = list.filter((p) => p.trashed_at === null);
+    return live.find((p) => p.id === prof.active_project_id)?.id ?? live[0]?.id ?? null;
+  }
+  getSpec(projectId: string): Promise<SpecDoc> { return this.json("GET", `/projects/${enc(projectId)}/spec`, specDocSchema); }
+  /** The user's own edit; validated like the agent's spec_set (422 names the bad fields). With
+   *  `baseUpdatedAt` (the `updated_at` the edit started from; null = no spec yet) a spec written
+   *  since is refused: 409 stale_version. `undefined` saves regardless ("Save mine anyway"). */
+  putSpec(projectId: string, spec: Spec, baseUpdatedAt?: number | null): Promise<SpecDoc> {
+    const body = baseUpdatedAt === undefined ? { spec } : { spec, base_updated_at: baseUpdatedAt };
+    return this.json("PUT", `/projects/${enc(projectId)}/spec`, specDocSchema, { body });
+  }
+  /** spec_check through the Gate: the part measured against the spec, per requirement. */
+  specCheck(projectId: string, partId: string): Promise<SpecCheck> {
+    return this.json("GET", `/projects/${enc(projectId)}/spec/check`, specCheckSchema, { query: { part_id: partId } });
+  }
+  /** Design studies of a build (iterations persist live while one runs). */
+  listStudies(projectId: string): Promise<Study[]> { return this.json("GET", `/projects/${enc(projectId)}/studies`, z.array(studySchema)); }
+  /** "Use this variant": study_apply through the Gate. 409 stale_version when the part moved on. */
+  applyStudy(projectId: string, studyId: string, body: StudyApplyBody): Promise<StudyApplied> {
+    return this.json("POST", `/projects/${enc(projectId)}/studies/${enc(studyId)}/apply`, studyAppliedSchema, { body });
   }
 
   // ---- internals

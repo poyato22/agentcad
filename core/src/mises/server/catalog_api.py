@@ -46,10 +46,11 @@ class DomainBody(BaseModel):
     domain: str = Field(max_length=253)
 
 
-async def ui_call(runtime: Runtime, tool: str, args: dict, meta: dict | None = None) -> dict:
+async def ui_call(runtime: Runtime, tool: str, args: dict, meta: dict | None = None,
+                  project_id: str | None = None) -> dict:
     """Run a tool as the app's own call through the Gate and wait for it: its ToolOutput data,
-    or the MisesError it failed with."""
-    call = runtime.ui_tool_call(tool, args, meta=meta)
+    or the MisesError it failed with. `project_id`: on that build's ui run."""
+    call = runtime.ui_tool_call(tool, args, meta=meta, project_id=project_id)
     try:
         await asyncio.shield(call.task)
     except asyncio.CancelledError:

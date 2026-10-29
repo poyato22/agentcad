@@ -13,6 +13,7 @@ import { Roster } from "./Roster";
 import { DetailsBar, RunSwitcher } from "./RunSwitcher";
 import { watchQueued } from "./queued";
 import { StepLog } from "./StepLog";
+import { SpecPanel } from "../spec";
 import { composerOpen, consoleView, setConsoleView } from "./view";
 import "./console.css";
 import "./conversation.css";
@@ -39,6 +40,7 @@ export function ConsolePane(): JSX.Element {
   return (
     <div class="con" data-console data-view="chat">
       <RunSwitcher />
+      <SpecPanel />
       <Conversation />
       {composerOpen.value ? <Composer /> : <CommandLine />}
     </div>

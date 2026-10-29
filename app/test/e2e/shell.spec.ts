@@ -363,9 +363,11 @@ test("connects_to_fake_core_without_errors", async ({ page, fake }) => {
   page.on("pageerror", (e) => errors.push(String(e)));
   await page.goto("/");
   await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
-  // /onshape/budget twice: the session figure, then the selected run's (the top-bar meter)
-  await expect.poll(async () => (await fake.calls()).map((c) => c.path).filter((p) => p !== "/context").sort()).toEqual(
-    ["/approvals", "/onshape/budget", "/onshape/budget", "/parts", "/parts/mount_plate/model.glb", "/printers", "/profile", "/runs", "/runs/b7c79a57cbb4/steps", "/setup", "/status"]);
+  // /onshape/budget twice: the session figure, then the selected run's (the top-bar meter, A6);
+  // the console spec strip (A7) resolves the active build (/projects, /profile) and loads its spec and studies
+  await expect.poll(async () => (await fake.calls()).map((c) => c.path.replace(/^\/projects\/[^/]+\//, "/projects/{id}/")).filter((p) => p !== "/context").sort()).toEqual(
+    ["/approvals", "/onshape/budget", "/onshape/budget", "/parts", "/parts/mount_plate/model.glb", "/printers", "/profile", "/profile", "/projects",
+      "/projects/{id}/spec", "/projects/{id}/studies", "/runs", "/runs/b7c79a57cbb4/steps", "/setup", "/status"]);
   const ctx = (await fake.calls()).filter((c) => c.path === "/context");
   expect(ctx.length).toBeGreaterThanOrEqual(1);
   expect(ctx.every((c) => c.method === "PUT")).toBe(true);

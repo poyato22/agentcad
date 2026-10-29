@@ -11,7 +11,6 @@ import { coreStatus } from "../../state/store";
 import { Button } from "../common/Button";
 import { ApprovalCard } from "./approvals/ApprovalCard";
 import { QuestionCard } from "./approvals/QuestionCard";
-import { InterviewCard } from "./questions/InterviewCard";
 import { labelOf, retainThreadFrames, threadFrame, toggleFold } from "./derived";
 import { DiffView } from "./DiffView";
 import { shownPending } from "./queued";
@@ -176,9 +175,7 @@ function Item({ item, agent }: { item: ThreadItem; agent: AgentRun["agent"] }): 
     case "question":
       return (
         <div class="cv-card" data-row data-kind="question">
-          {item.question.items && item.question.items.length > 0
-            ? <InterviewCard question={item.question} runLabel={labelOf(item.question.run_id)} />
-            : <QuestionCard question={item.question} runLabel={labelOf(item.question.run_id)} />}
+          <QuestionCard question={item.question} runLabel={labelOf(item.question.run_id)} />
         </div>
       );
   }
