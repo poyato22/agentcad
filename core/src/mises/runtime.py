@@ -6,6 +6,7 @@ import contextlib
 import functools
 import logging
 import os
+import shutil
 import time
 import uuid
 from collections.abc import Awaitable, Callable
@@ -36,6 +37,7 @@ from .profile import load_profile
 from .providers.registry import DEFAULT_MODEL, VENDORS, resolve
 from .store import Store
 from .tools.registry import ToolRegistry
+from . import projects as projects_mod
 from . import sketch as sketch_mod
 from .types import (Block, Caps, ErrorCode, ImageBlock, Message, MisesError, SafetyClass,
                     StepKind, TextBlock)
@@ -137,6 +139,8 @@ class Runtime:
         for w in self.definitions.warnings:
             log.warning("agent definition skipped: %s", w)
         self._runs: dict[str, _RunState] = {}
+        self._sending: set[str] = set()      # send() in progress (the turn has not begun yet)
+        self._deleting: set[str] = set()     # delete_run() in progress
         self._external: set[str] = set()
         self.ui_calls: dict[str, UiCall] = {}
         self._ui_run: str | None = None
@@ -159,6 +163,7 @@ class Runtime:
         hardware.machine()          # sysctl once now, not later on the event loop
         self._local_sizes: tuple[float, dict[str, float]] | None = None
         self.interrupted = self._fail_orphaned_runs()
+        projects_mod.register_legacy_parts(self.store, self.home)   # once per database
         self._remove_stale_mcp_files()
 
     # ---- crash recovery
@@ -229,6 +234,71 @@ class Runtime:
 
     def profile(self):
         return load_profile(self.home)
+
+    # ---- builds (Plan 5 C1)
+    def active_project_id(self) -> str:
+        return projects_mod.active_project_id(self.store, self.profile().active_project_id)
+
+    def project_for(self, project_id: str | None, parent_id: str | None) -> str:
+        """Every run gets a build at creation: the one asked for, else its parent run's (an
+        orchestrator's workers stay in its build), else the active build."""
+        if project_id:
+            return project_id
+        if parent_id:
+            try:
+                inherited = self.store.get_run(parent_id).project_id
+            except KeyError:
+                inherited = None
+            if inherited:
+                return inherited
+        return self.active_project_id()
+
+    def run_busy(self, run_id: str) -> bool:
+        """Live work the status column may not show yet: a message still being sent (the turn
+        has not begun), or a turn task still running."""
+        if run_id in self._sending:
+            return True
+        cst = self._claude.get(run_id)
+        if cst is not None and cst.task is not None and not cst.task.done():
+            return True
+        st = self._runs.get(run_id)
+        return st is not None and st.task is not None and not st.task.done()
+
+    async def delete_run(self, run_id: str) -> tuple[str, list[str]] | None:
+        """Delete a finished run: its rows, then its workdir. Refused (returns (reason,
+        children)) while it or any descendant is running, busy or awaiting approval. The
+        check and the deleting mark happen with no await between them, and send() refuses a
+        run being deleted, so a follow-up message cannot slip in. A Claude Code run's idle
+        session is closed first. Parts (shared) and Onshape are never touched."""
+        run = self.store.get_run(run_id)
+        if run_id in self._deleting:
+            return "running", []
+        blocked = projects_mod.delete_reason(self.store, run, self.run_busy)
+        if blocked is not None:
+            return blocked
+        self._deleting.add(run_id)
+        try:
+            await self.release_claude_session(run_id)
+            if run_id in self._claude:        # a turn started after all: leave it alone
+                return "running", []
+            self._runs.pop(run_id, None)
+            self._external.discard(run_id)
+            self.store.delete_run(run_id)
+            wd = self.home / "runs" / run_id
+            try:
+                if wd.resolve().parent == (self.home / "runs").resolve() and wd.is_dir():
+                    shutil.rmtree(wd, ignore_errors=True)
+            except (OSError, RuntimeError):
+                log.warning("could not remove workdir for run %s", run_id)
+        finally:
+            self._deleting.discard(run_id)
+        return None
+
+    def reload_agents(self) -> None:
+        """Re-read the agent definitions after a custom agent was created, edited or deleted."""
+        self.definitions = load_definitions([self.home / "agents"])
+        for w in self.definitions.warnings:
+            log.warning("agent definition skipped: %s", w)
 
     async def aclose(self) -> None:
         """Shut down: every live Claude Code session is closed (no orphan `claude` process or
@@ -495,13 +565,14 @@ class Runtime:
                         edit_scope=("*",), read_scope=("*",), caps: Caps | None = None,
                         parent_id: str | None = None,
                         allowed_classes: set[SafetyClass] | None = None,
-                        sketch_id: str | None = None) -> str:
+                        sketch_id: str | None = None, project_id: str | None = None) -> str:
         """`sketch_id` (from POST /sketches): copy that sketch into the run's workdir and give
         it to the agent as data (plus its images for vision-capable providers)."""
         defn = self.definitions.get(agent)
         if defn is None:
             raise MisesError(ErrorCode.NOT_FOUND, f"unknown agent: {agent}",
                              hint=f"agents: {', '.join(sorted(self.definitions))}")
+        project_id = self.project_for(project_id, parent_id)
         if sketch_id is not None:
             sketch_mod.load_summary(self.home, sketch_id)    # unknown → 404 before any run exists
         prof = self.profile()
@@ -515,11 +586,12 @@ class Runtime:
                                                 read_scope=read_scope, caps=caps,
                                                 parent_id=parent_id,
                                                 allowed_classes=allowed_classes,
-                                                sketch_id=sketch_id)
+                                                sketch_id=sketch_id, project_id=project_id)
         provider, model = self._resolve_provider(ref, prof)
         if hardware.model_kind(ref) == "local":
             await self.refresh_local_sizes()
-        run = self.store.create_run(agent, provider.name, model, prompt, parent_id=parent_id)
+        run = self.store.create_run(agent, provider.name, model, prompt, parent_id=parent_id,
+                                    project_id=project_id)
         classes = set(SafetyClass) if allowed_classes is None else set(allowed_classes)
         self.store.create_policy(run.id, list(edit_scope), list(read_scope), caps,
                                  [c for c in SafetyClass if c in classes])
@@ -649,14 +721,15 @@ class Runtime:
     async def _start_claude_run(self, agent: str, prompt: str, alias: str, *, edit_scope,
                                 read_scope, caps: Caps, parent_id: str | None,
                                 allowed_classes: set[SafetyClass] | None,
-                                sketch_id: str | None = None) -> str:
+                                sketch_id: str | None = None,
+                                project_id: str | None = None) -> str:
         url, token = await self._mcp()
         info, auth = await self._claude_ready()
         ref = f"{CLAUDE_CODE}/{alias}"
         rid = self.create_external_run(agent, provider=CLAUDE_CODE, model=alias,
                                        edit_scope=edit_scope, read_scope=read_scope, caps=caps,
                                        allowed_classes=allowed_classes, parent_id=parent_id,
-                                       task=prompt, slot_ref=ref)
+                                       task=prompt, slot_ref=ref, project_id=project_id)
         st = self._claude[rid] = _ClaudeRun(ref=ref)
         st.slot, st.started_data = self._external_slots.pop(rid, (None, {}))
         text, images = prompt, None
@@ -829,14 +902,15 @@ class Runtime:
                             read_scope=("*",), caps: Caps = Caps(),
                             allowed_classes: set[SafetyClass] | None = None,
                             parent_id: str | None = None, task: str | None = None,
-                            slot_ref: str | None = None) -> str:
+                            slot_ref: str | None = None, project_id: str | None = None) -> str:
         """`slot_ref`: the run's first turn takes a parallel-agents slot for that model (the
         user's Claude Code); queued if none is free. ACP runs pass none: their agent is
         already running."""
         if not agent:
             raise MisesError(ErrorCode.INVALID_INPUT, "external run needs an agent name")
         run = self.store.create_run(agent, provider, model, task or f"external agent: {agent}",
-                                    parent_id=parent_id, external=True)
+                                    parent_id=parent_id, external=True,
+                                    project_id=self.project_for(project_id, parent_id))
         classes = set(SafetyClass) if allowed_classes is None else set(allowed_classes)
         self.store.create_policy(run.id, list(edit_scope), list(read_scope), caps,
                                  [c for c in SafetyClass if c in classes])
@@ -1010,6 +1084,18 @@ class Runtime:
         return st
 
     async def send(self, run_id: str, text: str) -> None:
+        if run_id in self._deleting:
+            raise MisesError(ErrorCode.NOT_FOUND, f"run {run_id} is being deleted")
+        if run_id in self._sending:
+            raise MisesError(ErrorCode.INVALID_INPUT, "run is still working",
+                             hint="wait for it to finish or cancel it")
+        self._sending.add(run_id)
+        try:
+            await self._send(run_id, text)
+        finally:
+            self._sending.discard(run_id)
+
+    async def _send(self, run_id: str, text: str) -> None:
         if self._is_claude_run(run_id):
             await self._send_claude(run_id, text)
             return

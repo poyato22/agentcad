@@ -37,6 +37,8 @@ def write_part(rt, part_id="mount_plate", *, vars=True, glb=b"glTF-bytes"):
     if vars:
         (d / "vars.json").write_text(json.dumps({"thickness": 5.0}))
         (d / "metrics.json").write_text(json.dumps(METRICS))
+        # a successful build also makes the part's tree row (Plan 5 C1), in the active build
+        rt.store.register_part(part_id, rt.active_project_id())
     if glb is not None:
         (d / "model.glb").write_bytes(glb)
     return d
@@ -86,7 +88,10 @@ def test_status_shape(client, rt):
 def test_agents_lists_builtins(client):
     items = client.get("/agents", headers=AUTH).json()
     assert {"designer", "planner", "verifier", "sim"} <= {a["name"] for a in items}
-    assert all(set(a) == {"name", "description", "model"} for a in items)
+    # Plan 5 C1 enriched the shape with tools, builtin and hidden flags
+    assert all(set(a) == {"name", "description", "model", "tools", "builtin", "hidden"}
+               for a in items)
+    assert all(a["builtin"] is True and a["hidden"] is False for a in items)
 
 
 def test_models_never_leaks_keys(client, monkeypatch):

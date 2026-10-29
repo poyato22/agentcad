@@ -34,9 +34,11 @@ from starlette.routing import Route
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from ..types import ErrorCode, MisesError
+from .. import projects as _projects
 from .mcp_server import RUN_HEADER, build_mcp_server
 from ..profile import ClaudeStatusFn, LocalProbeFn, load_profile, probe_local
 from .profile_api import build_profile_router
+from .projects_api import build_projects_router
 from .context_api import build_context_router
 from .drawing_api import build_drawing_router
 from .print_api import build_print_router
@@ -138,6 +140,20 @@ class NewRun(BaseModel):
     edit_scope: list[str] = ["*"]
     read_scope: list[str] = ["*"]
     sketch_id: str | None = Field(default=None, pattern=r"^sk_[0-9a-f]{12}$")  # POST /sketches
+    project_id: str | None = None  # the build; the active build is used when omitted
+
+
+class PatchRun(BaseModel):
+    title: str | None = None
+    pinned: bool | None = None
+    archived: bool | None = None
+
+
+class Cleanup(BaseModel):
+    project_id: str | None = None
+    older_than_days: float | None = None
+    status_in: list[str] = ["done", "failed", "cancelled"]
+    dry_run: bool = True
 
 
 class NewExternalRun(BaseModel):
@@ -146,6 +162,7 @@ class NewExternalRun(BaseModel):
     model: str
     edit_scope: list[str] = ["*"]
     read_scope: list[str] = ["*"]
+    project_id: str | None = None  # the build; the active build is used when omitted
 
 
 class Text(BaseModel):
@@ -201,6 +218,7 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
     app.add_middleware(_BearerAuth, token=token, mcp_token=mcp_token)
     add_cors(app)  # added last = outermost: preflights are answered before the bearer check
     app.include_router(ui_router)
+    app.include_router(build_projects_router(runtime))
     app.include_router(build_profile_router(runtime, claude_status, local_probe))
     app.include_router(build_context_router(runtime))
     app.include_router(build_drawing_router(runtime))
@@ -218,37 +236,82 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
         except KeyError:
             raise MisesError(ErrorCode.NOT_FOUND, f"unknown run: {run_id}") from None
 
+    def _refused(blocked: tuple[str, list[str]]) -> JSONResponse:
+        reason, children = blocked
+        return JSONResponse({"reason": reason, "children": children}, status_code=409)
+
     @app.get("/health")
     async def health():
         return {"ok": True}
 
     @app.post("/runs")
     async def create_run(body: NewRun):
-        agent = body.agent or load_profile(runtime.home).default_agent
+        prof = load_profile(runtime.home)
+        agent = body.agent or prof.default_agent
+        project_id = (_projects.check_project(runtime.store, body.project_id) if body.project_id
+                      else _projects.active_project_id(runtime.store, prof.active_project_id))
         rid = await runtime.start_run(agent, body.prompt, model_ref=body.model_ref,
                                       edit_scope=tuple(body.edit_scope),
                                       read_scope=tuple(body.read_scope),
-                                      sketch_id=body.sketch_id)
+                                      sketch_id=body.sketch_id, project_id=project_id)
         return {"run_id": rid}
 
     @app.post("/runs/external")
     async def create_external_run(body: NewExternalRun):
+        project_id = (_projects.check_project(runtime.store, body.project_id) if body.project_id
+                      else None)
         rid = runtime.create_external_run(body.agent, provider=body.provider, model=body.model,
                                           edit_scope=tuple(body.edit_scope),
-                                          read_scope=tuple(body.read_scope))
+                                          read_scope=tuple(body.read_scope),
+                                          project_id=project_id)
         return {"run_id": rid}
 
     @app.get("/runs")
-    async def list_runs(limit: int = 50, include_ui: int = 0):
-        """Newest first. The app's own "ui" run (provider "ui") is left out unless include_ui=1."""
-        if include_ui:
-            return [r.model_dump(mode="json") for r in runtime.store.list_runs(limit)]
-        runs = [r for r in runtime.store.list_runs(limit + 50) if r.provider != "ui"]
-        return [r.model_dump(mode="json") for r in runs[:limit]]
+    async def list_runs(limit: int = 50, include_ui: int = 0, project_id: str | None = None,
+                        archived: int | None = None):
+        """Newest first, enriched with the Plan 5 fields (title, cost, parent_run_id, …). The
+        app's own "ui" run (provider "ui") is left out unless include_ui=1. Filters: project_id
+        and archived=0|1."""
+        arch = None if archived is None else bool(archived)
+        runs = runtime.store.list_runs(limit + 50, project_id=project_id, archived=arch)
+        if not include_ui:
+            runs = [r for r in runs if r.provider != "ui"]
+        return [_projects.run_view(r) for r in runs[:limit]]
+
+    @app.get("/runs/tree")
+    async def runs_tree(project_id: str | None = None):
+        return _projects.runs_tree(runtime.store, project_id)
+
+    @app.post("/runs/cleanup")
+    async def cleanup_runs(body: Cleanup):
+        ids = _projects.cleanup_candidates(runtime.store, project_id=body.project_id,
+                                           older_than_days=body.older_than_days,
+                                           status_in=body.status_in, busy=runtime.run_busy)
+        if not body.dry_run:
+            # each delete re-checks: a run that became busy since the scan is kept
+            ids = [rid for rid in ids if await runtime.delete_run(rid) is None]
+        return {"ids": ids, "count": len(ids)}
 
     @app.get("/runs/{run_id}")
     async def get_run(run_id: str):
-        return _run(run_id).model_dump(mode="json")
+        return _projects.run_view(_run(run_id))
+
+    @app.patch("/runs/{run_id}")
+    async def patch_run(run_id: str, body: PatchRun):
+        _run(run_id)
+        fields = {k: v for k, v in (("title", body.title), ("pinned", body.pinned),
+                                    ("archived", body.archived)) if v is not None}
+        if fields:
+            runtime.store.update_run(run_id, **fields)
+        return _projects.run_view(runtime.store.get_run(run_id))
+
+    @app.delete("/runs/{run_id}")
+    async def delete_run(run_id: str):
+        _run(run_id)
+        blocked = await runtime.delete_run(run_id)
+        if blocked is not None:
+            return _refused(blocked)
+        return {"ok": True}
 
     @app.get("/runs/{run_id}/steps")
     async def get_steps(run_id: str, after_id: int = 0):

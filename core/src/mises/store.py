@@ -35,6 +35,15 @@ class AgentRun(BaseModel):
     owner_pid: int | None = None  # process that created (drives) the run
     external: bool = False  # driven by an outside agent (Runtime.create_external_run), not a loop
     session_ref: str | None = None  # the outside agent's own session id (Claude Code --resume)
+    # ---- builds / agent-management columns (Plan 5 C1)
+    project_id: str | None = None  # the build this run belongs to (NULL until migrated/assigned)
+    # the orchestrator parent for the runs/tree view; legacy runs nest by parent_id, so the API
+    # and the tree read COALESCE(parent_run_id, parent_id)
+    parent_run_id: str | None = None
+    title: str | None = None       # a user-renamable label; falls back to the task in the UI
+    pinned: bool = False
+    archived: bool = False
+    last_activity_at: float | None = None  # bumped as the run works; falls back to updated_at
 
 
 class AgentPolicy(BaseModel):
@@ -86,11 +95,38 @@ class LedgerEntry(BaseModel):
     ts: float
 
 
+class Project(BaseModel):
+    id: str
+    name: str
+    created_at: float
+    updated_at: float
+    trashed_at: float | None = None
+
+
+class Part(BaseModel):
+    """Part-tree metadata. Geometry, vars and metrics stay on disk under home/parts/<id>/;
+    this row carries only the tree placement the user and agents edit."""
+    id: str
+    project_id: str | None = None
+    label: str
+    parent_id: str | None = None
+    order: int = 0
+    color: str | None = None  # "#rrggbb"
+    kind: Literal["part", "group", "catalog"] = "part"
+    version: int = 1
+
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS runs (
   id TEXT PRIMARY KEY, parent_id TEXT, agent TEXT, provider TEXT, model TEXT, task TEXT,
   status TEXT, branch TEXT, onshape_calls INTEGER, input_tokens INTEGER, output_tokens INTEGER,
   usd REAL, created_at REAL, updated_at REAL);
+CREATE TABLE IF NOT EXISTS projects (
+  id TEXT PRIMARY KEY, name TEXT, created_at REAL, updated_at REAL, trashed_at REAL);
+CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE IF NOT EXISTS parts (
+  id TEXT PRIMARY KEY, project_id TEXT, label TEXT, parent_id TEXT, ord INTEGER,
+  color TEXT, kind TEXT, version INTEGER);
 CREATE TABLE IF NOT EXISTS policies (
   run_id TEXT, version INTEGER, edit_scope TEXT, read_scope TEXT, caps TEXT,
   allowed_classes TEXT, created_at REAL, PRIMARY KEY (run_id, version));
@@ -109,7 +145,8 @@ CREATE TABLE IF NOT EXISTS tool_cache (key TEXT PRIMARY KEY, value TEXT);
 """
 
 _RUN_FIELDS = {"status", "branch", "agent", "provider", "model", "task", "parent_id",
-               "session_ref", "owner_pid"}
+               "session_ref", "owner_pid", "project_id", "parent_run_id", "title", "pinned",
+               "archived", "last_activity_at"}
 _APPROVAL_JSON = {"payload", "deltas", "edited_payload"}
 
 
@@ -136,6 +173,14 @@ class Store:
             self._db.execute("ALTER TABLE runs ADD COLUMN external INTEGER NOT NULL DEFAULT 0")
         if "session_ref" not in cols:  # databases from before resumable external sessions
             self._db.execute("ALTER TABLE runs ADD COLUMN session_ref TEXT")
+        # Plan 5 C1: builds and agent-management columns, added to existing databases
+        for col, decl in (("project_id", "TEXT"), ("parent_run_id", "TEXT"), ("title", "TEXT"),
+                          ("pinned", "INTEGER NOT NULL DEFAULT 0"),
+                          ("archived", "INTEGER NOT NULL DEFAULT 0"),
+                          ("last_activity_at", "REAL")):
+            if col not in cols:
+                self._db.execute(f"ALTER TABLE runs ADD COLUMN {col} {decl}")
+        self._migrate_default_project()
 
     @contextmanager
     def _tx(self):
@@ -160,16 +205,19 @@ class Store:
     # ---- runs
     def create_run(self, agent: str, provider: str, model: str, task: str,
                    parent_id: str | None = None, external: bool = False,
-                   session_ref: str | None = None) -> AgentRun:
+                   session_ref: str | None = None, project_id: str | None = None,
+                   parent_run_id: str | None = None) -> AgentRun:
         now = time.time()
         rid = uuid.uuid4().hex[:12]
         with self._tx() as db:
             db.execute("INSERT INTO runs (id, parent_id, agent, provider, model, task, status,"
                        " branch, onshape_calls, input_tokens, output_tokens, usd, created_at,"
-                       " updated_at, owner_pid, external, session_ref)"
-                       " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                       " updated_at, owner_pid, external, session_ref, project_id, parent_run_id,"
+                       " last_activity_at)"
+                       " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                        (rid, parent_id, agent, provider, model, task, "running", None,
-                        0, 0, 0, 0.0, now, now, os.getpid(), int(external), session_ref))
+                        0, 0, 0, 0.0, now, now, os.getpid(), int(external), session_ref,
+                        project_id, parent_run_id, now))
         return self.get_run(rid)
 
     def get_run(self, run_id: str) -> AgentRun:
@@ -189,9 +237,21 @@ class Store:
                            (*fields.values(), time.time(), run_id))
         return self.get_run(run_id)
 
-    def list_runs(self, limit: int = 50) -> list[AgentRun]:
-        rows = self._all("SELECT * FROM runs ORDER BY created_at DESC, rowid DESC LIMIT ?", (limit,))
-        return [AgentRun(**dict(r)) for r in rows]
+    def list_runs(self, limit: int = 50, *, project_id: str | None = None,
+                  archived: bool | None = None) -> list[AgentRun]:
+        sql = "SELECT * FROM runs"
+        clauses, args = [], []
+        if project_id is not None:
+            clauses.append("project_id=?")
+            args.append(project_id)
+        if archived is not None:
+            clauses.append("archived=?")
+            args.append(int(archived))
+        if clauses:
+            sql += " WHERE " + " AND ".join(clauses)
+        sql += " ORDER BY created_at DESC, rowid DESC LIMIT ?"
+        args.append(limit)
+        return [AgentRun(**dict(r)) for r in self._all(sql, tuple(args))]
 
     def run_family(self, run_id: str) -> tuple[str, list[str]]:
         """(root run id, ids of the root and all its descendants) for a run's parent_id tree."""
@@ -224,6 +284,212 @@ class Store:
             db.execute("UPDATE runs SET input_tokens=input_tokens+?, output_tokens=output_tokens+?,"
                        " usd=usd+?, onshape_calls=onshape_calls+?, updated_at=? WHERE id=?",
                        (input_tokens, output_tokens, usd, onshape_calls, time.time(), run_id))
+
+    def delete_run(self, run_id: str) -> None:
+        """Remove a run and everything the Mises home holds for it (steps, approvals, policies).
+        The caller removes the workdir; ledger rows stay as budget history. Parts are never
+        touched (they are shared across runs)."""
+        with self._tx() as db:
+            db.execute("DELETE FROM steps WHERE run_id=?", (run_id,))
+            db.execute("DELETE FROM approvals WHERE run_id=?", (run_id,))
+            db.execute("DELETE FROM policies WHERE run_id=?", (run_id,))
+            db.execute("DELETE FROM runs WHERE id=?", (run_id,))
+
+    def runs_in_project(self, project_id: str) -> list[AgentRun]:
+        rows = self._all("SELECT * FROM runs WHERE project_id=? ORDER BY created_at DESC, rowid DESC",
+                         (project_id,))
+        return [AgentRun(**dict(r)) for r in rows]
+
+    # ---- projects (builds)
+    @staticmethod
+    def _project(row: sqlite3.Row) -> Project:
+        return Project(**dict(row))
+
+    # ---- meta (one-shot migration flags, the Default build's id)
+    def meta_get(self, key: str) -> str | None:
+        row = self._one("SELECT value FROM meta WHERE key=?", (key,))
+        return row[0] if row else None
+
+    def meta_set(self, key: str, value: str) -> None:
+        with self._tx() as db:
+            db.execute("INSERT OR REPLACE INTO meta VALUES (?,?)", (key, value))
+
+    def _ensure_default_in(self, db) -> str:
+        """The Default build, found by the id recorded in meta (never by name: the user may
+        rename it, or name another build "Default"). Recreated if it was purged."""
+        row = db.execute("SELECT value FROM meta WHERE key='default_project_id'").fetchone()
+        if row is not None and db.execute("SELECT 1 FROM projects WHERE id=?",
+                                          (row[0],)).fetchone() is not None:
+            return row[0]
+        pid = uuid.uuid4().hex[:12]
+        now = time.time()
+        db.execute("INSERT INTO projects VALUES (?,?,?,?,?)", (pid, "Default", now, now, None))
+        db.execute("INSERT OR REPLACE INTO meta VALUES ('default_project_id', ?)", (pid,))
+        return pid
+
+    def _migrate_default_project(self) -> None:
+        """Once per database (meta flag): assign every pre-existing run and part (project_id
+        NULL) to the Default build. A fresh database has nothing to assign; later runs always
+        get a build at creation (Runtime), so this never sweeps them."""
+        with self._tx() as db:
+            if db.execute("SELECT 1 FROM meta WHERE key='builds_migrated'").fetchone():
+                return
+            orphan_runs = db.execute(
+                "SELECT COUNT(*) FROM runs WHERE project_id IS NULL").fetchone()[0]
+            orphan_parts = db.execute(
+                "SELECT COUNT(*) FROM parts WHERE project_id IS NULL").fetchone()[0]
+            if orphan_runs or orphan_parts:
+                pid = self._ensure_default_in(db)
+                db.execute("UPDATE runs SET project_id=? WHERE project_id IS NULL", (pid,))
+                db.execute("UPDATE parts SET project_id=? WHERE project_id IS NULL", (pid,))
+            db.execute("INSERT OR REPLACE INTO meta VALUES ('builds_migrated', '1')")
+
+    def ensure_default_project(self) -> Project:
+        with self._tx() as db:
+            pid = self._ensure_default_in(db)
+        return self.get_project(pid)
+
+    def default_project_id(self) -> str | None:
+        """The recorded Default build's id, if it still exists (no creation)."""
+        pid = self.meta_get("default_project_id")
+        if pid is None or self._one("SELECT 1 FROM projects WHERE id=?", (pid,)) is None:
+            return None
+        return pid
+
+    def descendants(self, run_id: str) -> list[str]:
+        """Ids of every run below this one, following parent_id and parent_run_id."""
+        out: list[str] = []
+        seen, frontier = {run_id}, [run_id]
+        while frontier:
+            q = ",".join("?" * len(frontier))
+            rows = self._all(f"SELECT id FROM runs WHERE parent_id IN ({q})"
+                             f" OR parent_run_id IN ({q})", (*frontier, *frontier))
+            frontier = [r[0] for r in rows if r[0] not in seen]
+            seen.update(frontier)
+            out += frontier
+        return out
+
+    def create_project(self, name: str) -> Project:
+        pid = uuid.uuid4().hex[:12]
+        now = time.time()
+        with self._tx() as db:
+            db.execute("INSERT INTO projects VALUES (?,?,?,?,?)", (pid, name, now, now, None))
+        return self.get_project(pid)
+
+    def get_project(self, project_id: str) -> Project:
+        row = self._one("SELECT * FROM projects WHERE id=?", (project_id,))
+        if row is None:
+            raise KeyError(project_id)
+        return self._project(row)
+
+    def list_projects(self, *, include_trashed: bool = True) -> list[Project]:
+        sql = "SELECT * FROM projects"
+        if not include_trashed:
+            sql += " WHERE trashed_at IS NULL"
+        sql += " ORDER BY created_at, rowid"
+        return [self._project(r) for r in self._all(sql)]
+
+    def update_project(self, project_id: str, **fields: Any) -> Project:
+        allowed = {"name", "trashed_at"}
+        bad = set(fields) - allowed
+        if bad:
+            raise ValueError(f"cannot update project fields: {sorted(bad)}")
+        if fields:
+            sets = ", ".join(f"{k}=?" for k in fields)
+            with self._tx() as db:
+                db.execute(f"UPDATE projects SET {sets}, updated_at=? WHERE id=?",
+                           (*fields.values(), time.time(), project_id))
+        return self.get_project(project_id)
+
+    def purge_project(self, project_id: str) -> None:
+        """Delete the build and its part-tree rows (the on-disk part files stay; runs keep
+        their now-dangling project_id as history until cleaned up)."""
+        with self._tx() as db:
+            db.execute("DELETE FROM parts WHERE project_id=?", (project_id,))
+            db.execute("DELETE FROM projects WHERE id=?", (project_id,))
+
+    def project_part_count(self, project_id: str) -> int:
+        return int(self._one("SELECT COUNT(*) FROM parts WHERE project_id=?", (project_id,))[0])
+
+    def project_run_count(self, project_id: str) -> int:
+        return int(self._one("SELECT COUNT(*) FROM runs WHERE project_id=?", (project_id,))[0])
+
+    # ---- parts (tree metadata; geometry/vars live on disk)
+    @staticmethod
+    def _part(row: sqlite3.Row) -> Part:
+        d = dict(row)
+        return Part(id=d["id"], project_id=d["project_id"], label=d["label"],
+                    parent_id=d["parent_id"], order=d["ord"] or 0, color=d["color"],
+                    kind=d["kind"] or "part", version=d["version"] or 1)
+
+    def get_part(self, part_id: str) -> Part | None:
+        row = self._one("SELECT * FROM parts WHERE id=?", (part_id,))
+        return self._part(row) if row is not None else None
+
+    def list_part_rows(self, project_id: str | None = None) -> list[Part]:
+        if project_id is None:
+            rows = self._all("SELECT * FROM parts ORDER BY ord, rowid")
+        else:
+            rows = self._all("SELECT * FROM parts WHERE project_id=? ORDER BY ord, rowid",
+                             (project_id,))
+        return [self._part(r) for r in rows]
+
+    def register_part(self, part_id: str, project_id: str, *, label: str | None = None,
+                      kind: str = "part") -> Part:
+        """Insert a tree row for a part that does not have one yet (disk reconcile, or a new
+        catalog/group part). Existing rows are left untouched."""
+        with self._tx() as db:
+            row = db.execute("SELECT id FROM parts WHERE id=?", (part_id,)).fetchone()
+            if row is None:
+                nxt = db.execute("SELECT COALESCE(MAX(ord),-1)+1 FROM parts WHERE project_id=?"
+                                 " AND parent_id IS NULL", (project_id,)).fetchone()[0]
+                db.execute("INSERT INTO parts (id, project_id, label, parent_id, ord, color, kind,"
+                           " version) VALUES (?,?,?,?,?,?,?,?)",
+                           (part_id, project_id, label or part_id, None, nxt, None, kind, 1))
+        return self.get_part(part_id)
+
+    def update_part(self, part_id: str, **fields: Any) -> Part:
+        allowed = {"label", "color", "parent_id", "project_id", "kind", "version", "ord"}
+        bad = set(fields) - allowed
+        if bad:
+            raise ValueError(f"cannot update part fields: {sorted(bad)}")
+        with self._tx() as db:
+            if db.execute("SELECT 1 FROM parts WHERE id=?", (part_id,)).fetchone() is None:
+                raise KeyError(part_id)
+            if fields:
+                sets = ", ".join(f"{k}=?" for k in fields)
+                db.execute(f"UPDATE parts SET {sets} WHERE id=?", (*fields.values(), part_id))
+        return self.get_part(part_id)
+
+    def bump_part_version(self, part_id: str) -> int:
+        """Increment and return the part's version (used by C6's regenerate). An unknown part
+        raises KeyError: a version bump must never silently do nothing."""
+        with self._tx() as db:
+            cur = db.execute("UPDATE parts SET version=COALESCE(version,1)+1 WHERE id=?",
+                             (part_id,))
+            if cur.rowcount != 1:
+                raise KeyError(part_id)
+            row = db.execute("SELECT version FROM parts WHERE id=?", (part_id,)).fetchone()
+        return int(row[0])
+
+    def reorder_parts(self, project_id: str, parent_id: str | None, ids: list[str]) -> None:
+        """The listed siblings take ord 0..n-1 under parent_id; siblings left out keep their
+        relative order after them, so ords never collide. Callers validate the ids belong to
+        project_id (projects.reorder_parts)."""
+        with self._tx() as db:
+            for i, pid in enumerate(ids):
+                db.execute("UPDATE parts SET ord=?, parent_id=? WHERE id=?", (i, parent_id, pid))
+            if ids:
+                q = ",".join("?" * len(ids))
+                rest = db.execute(
+                    f"SELECT id FROM parts WHERE project_id=? AND parent_id IS ? AND id NOT IN ({q})"
+                    " ORDER BY ord, rowid", (project_id, parent_id, *ids)).fetchall()
+                for j, r in enumerate(rest):
+                    db.execute("UPDATE parts SET ord=? WHERE id=?", (len(ids) + j, r[0]))
+
+    def delete_part_row(self, part_id: str) -> None:
+        with self._tx() as db:
+            db.execute("DELETE FROM parts WHERE id=?", (part_id,))
 
     # ---- policies
     def create_policy(self, run_id: str, edit_scope: list[str], read_scope: list[str],
