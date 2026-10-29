@@ -1,0 +1,89 @@
+{
+  "project_id": "d422007de860",
+  "part_id": "mount_plate",
+  "requirements": [
+    {
+      "id": "mass_budget",
+      "kind": "max_mass_g",
+      "target": 8,
+      "load_case_id": null,
+      "priority": 5,
+      "measured": 5.745846176797314,
+      "status": "pass",
+      "detail": "",
+      "guide": false,
+      "estimate": false
+    },
+    {
+      "id": "desk_safety",
+      "kind": "min_safety_factor",
+      "target": 2.0,
+      "load_case_id": "desk_load",
+      "priority": 4,
+      "measured": null,
+      "status": "not_checked",
+      "detail": "no stress study for this load case yet",
+      "guide": true,
+      "estimate": false
+    },
+    {
+      "id": "drop_safety",
+      "kind": "min_safety_factor",
+      "target": 1.5,
+      "load_case_id": "drop_hit",
+      "priority": 4,
+      "measured": null,
+      "status": "not_checked",
+      "detail": "no stress study for this load case yet",
+      "guide": true,
+      "estimate": true
+    },
+    {
+      "id": "stiffness",
+      "kind": "max_deflection_mm",
+      "target": 0.5,
+      "load_case_id": "desk_load",
+      "priority": 3,
+      "measured": null,
+      "status": "not_checked",
+      "detail": "no stress study for this load case yet",
+      "guide": true,
+      "estimate": false
+    },
+    {
+      "id": "fits_frame",
+      "kind": "envelope_mm",
+      "target": [
+        50.0,
+        30.0,
+        12.0
+      ],
+      "load_case_id": null,
+      "priority": 2,
+      "measured": [
+        40.0,
+        20.0,
+        6.0
+      ],
+      "status": "pass",
+      "detail": "",
+      "guide": false,
+      "estimate": false
+    },
+    {
+      "id": "fc_mount",
+      "kind": "mount_pattern",
+      "target": "20x20 M3",
+      "load_case_id": null,
+      "priority": 3,
+      "measured": null,
+      "status": "not_checked",
+      "detail": "needs a human or a dedicated check; not evaluated from metrics",
+      "guide": false,
+      "estimate": false
+    }
+  ],
+  "overall": "pass",
+  "checked": 2,
+  "total": 6
+}

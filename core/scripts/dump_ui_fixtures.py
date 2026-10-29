@@ -11,6 +11,10 @@ With CalculiX installed it also runs two static stress studies on that part thro
 `POST /sims` (one solved, one with the solver hidden) and records the sim routes, their
 `sim_progress` events and the heatmap GLB (sims_*.json, sim_*.json, sim_events.jsonl,
 sim_result.glb). `--only sims` writes just those files.
+
+Plan 5 A7: the spec panel's routes, a small design study, a study variant applied and a batched
+interview question (spec*.json, studies.json, study_apply.json, question_answer.json,
+interview_answer.json, spec_events.jsonl). `--only spec` writes just those files.
 """
 import argparse
 import asyncio
@@ -223,6 +227,9 @@ async def dump(out: Path, only: str = "all") -> None:
                 await dump_sims(rt, c, auth, out, required=only == "sims")
             if only == "sims":
                 return
+            if only == "spec":
+                await dump_spec(out, call, get, rt)
+                return
             routes = {"status.json": "/status", "agents.json": "/agents",
                       "models.json": "/models", "parts.json": "/parts", "runs.json": "/runs",
                       "steps.json": f"/runs/{run_id}/steps", "approvals.json": "/approvals",
@@ -251,6 +258,7 @@ async def dump(out: Path, only: str = "all") -> None:
                 (out / name).write_text(json.dumps(r.json(), indent=2) + "\n")
             (out / "mount_plate.glb").write_bytes((await get("/parts/mount_plate/model.glb")).content)
             await dump_draw_print(out, call, get, rt)
+            await dump_spec(out, call, get, rt)
             await dump_more(out, call, get, run_id)
         if only == "all":
             (out / "events.jsonl").write_text("".join(line + "\n" for line in events))
@@ -375,6 +383,92 @@ SKETCH_BODY = {
 }
 
 
+SPEC_BODY = {
+    "goal": "Mount plate for a 5 inch drone stack",
+    "requirements": [
+        {"id": "mass_budget", "kind": "max_mass_g", "target": 8, "priority": 5, "source": "user"},
+        {"id": "desk_safety", "kind": "min_safety_factor", "target": 2.0,
+         "load_case_id": "desk_load", "priority": 4},
+        {"id": "drop_safety", "kind": "min_safety_factor", "target": 1.5,
+         "load_case_id": "drop_hit", "priority": 4},
+        {"id": "stiffness", "kind": "max_deflection_mm", "target": 0.5,
+         "load_case_id": "desk_load", "priority": 3},
+        {"id": "fits_frame", "kind": "envelope_mm", "target": [50, 30, 12], "priority": 2},
+        {"id": "fc_mount", "kind": "mount_pattern", "target": "20x20 M3", "priority": 3,
+         "source": "user"},
+    ],
+    "load_cases": [
+        {"id": "desk_load", "name": "stack weight", "fix": "x-min", "load": "x-max",
+         "newtons": 20, "direction": "-z", "note": "stack and wiring pressing down"},
+        {"id": "drop_hit", "name": "drop from 1 m", "fix": "x-min", "load": "x-max",
+         "newtons": 15, "direction": "-z", "estimate": True,
+         "note": "F = m·g·k with k = 30 (equivalent static, estimate)"},
+    ],
+    "answers": {"use": "freestyle", "size_class": '5"', "priorities": ["weight", "stiffness"]},
+}
+
+
+async def dump_spec(out: Path, call, get, rt) -> None:
+    """Plan 5 A7: the spec panel's routes and the engineering loop's events, on the default
+    build's mount_plate. A spec is written, a 6-evaluation design study runs on the plate's
+    thickness (a real stress study per load case when CalculiX is installed), the plate is
+    checked against the spec, the best variant is applied, and a batched interview question
+    (interview_plan's first batch, as the engineer asks it) is asked and answered as JSON."""
+    from mises.server.catalog_api import ui_call
+
+    def write(name: str, data) -> None:
+        (out / name).write_text(json.dumps(data, indent=2) + "\n")
+
+    pid = rt.active_project_id()
+    sub = rt.events.subscribe()
+    events: list[str] = []
+
+    def drain() -> None:
+        while not sub.queue.empty():
+            ev = sub.queue.get_nowait()
+            if ev.type in ("study_progress", "spec_changed", "question_asked",
+                           "question_answered"):
+                events.append(ev.model_dump_json())
+    try:
+        write("spec_empty.json", (await get(f"/projects/{pid}/spec")).json())
+        write("spec_put.json", (await call("PUT", f"/projects/{pid}/spec", SPEC_BODY)).json())
+        write("spec.json", (await get(f"/projects/{pid}/spec")).json())
+        rec = await ui_call(rt, "study_run", {
+            "part_id": "mount_plate", "variables": [{"name": "thickness", "lo": 3.0, "hi": 8.0}],
+            "objective": "min_mass", "max_evals": 6, "max_minutes": 15})
+        drain()
+        studies = (await get(f"/projects/{pid}/studies")).json()
+        assert studies and studies[0]["id"] == rec["id"], studies
+        write("studies.json", studies)
+        write("spec_check.json", (await get(f"/projects/{pid}/spec/check?part_id=mount_plate")).json())
+        best = rec["best_id"] if rec["best_id"] is not None else rec["iterations"][0]["n"]
+        write("study_apply.json", (await call("POST", f"/projects/{pid}/studies/{rec['id']}/apply",
+                                              {"iteration": best,
+                                               "allow_infeasible": rec["best_id"] is None})).json())
+
+        plan = await ui_call(rt, "interview_plan", {"goal": "build me a 5 inch drone"})
+        batch = plan["batches"][0]
+        asked = rt.ui_tool_call("ui_ask_user", {"question": "A few questions first:",
+                                                "questions": batch})
+        q = None
+        while q is None:
+            ev = await asyncio.wait_for(sub.queue.get(), 30)
+            if ev.type in ("question_asked", "question_answered"):
+                events.append(ev.model_dump_json())
+            if ev.type == "question_asked":
+                q = ev.data
+        answers = {batch[0]["id"]: batch[0]["options"][0], batch[1]["id"]: "my own words"}
+        write("question_answer.json", (await call(
+            "POST", f"/questions/{q['question_id']}/answer",
+            {"text": json.dumps({**answers, batch[2]["id"]: batch[2]["options"][:2]})})).json())
+        await asyncio.wait_for(asyncio.shield(asked.task), 30)
+        write("interview_answer.json", asked.output)
+        drain()
+        (out / "spec_events.jsonl").write_text("".join(line + "\n" for line in events))
+    finally:
+        sub.close()
+
+
 async def dump_more(out: Path, call, get, run_id: str) -> None:
     """Task 9: the rest of the routes the app calls (contract coverage): health, one run,
     the UI context, a key stored and removed (in-memory Keychain, set up by dump_draw_print),
@@ -430,8 +524,11 @@ async def dump_more(out: Path, call, get, run_id: str) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--out", type=Path, required=True)
-    ap.add_argument("--only", choices=["all", "sims"], default="all",
-                    help="sims: only the sim route fixtures (needs CalculiX)")
+    ap.add_argument("--only", choices=["all", "sims", "spec"], default="all",
+                    help="sims: only the sim route fixtures (needs CalculiX); spec: only the "
+                         "spec / design-study / interview fixtures (spec*.json, studies.json, "
+                         "study_apply.json, question_answer.json, interview_answer.json, "
+                         "spec_events.jsonl)")
     args = ap.parse_args()
     asyncio.run(dump(args.out, args.only))
     print(f"wrote fixtures to {args.out}", file=sys.stderr)

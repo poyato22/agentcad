@@ -1,0 +1,58 @@
+{
+  "ok": true,
+  "summary": "The user answered the batch; answers by id are in data.answers.",
+  "data": {
+    "questions": [
+      {
+        "id": "use",
+        "prompt": "What will this drone do?",
+        "options": [
+          "freestyle",
+          "racing",
+          "cinematic",
+          "long-range"
+        ],
+        "multi": false,
+        "rank": false,
+        "allow_text": true
+      },
+      {
+        "id": "size_class",
+        "prompt": "Prop / size class?",
+        "options": [
+          "3\"",
+          "5\"",
+          "7\""
+        ],
+        "multi": false,
+        "rank": false,
+        "allow_text": true
+      },
+      {
+        "id": "motor_prop",
+        "prompt": "Which motors and props? (pick a class; the catalog fills in thrust/mass)",
+        "options": [
+          "1404",
+          "2207",
+          "2306",
+          "2806.5"
+        ],
+        "multi": false,
+        "rank": false,
+        "allow_text": true
+      }
+    ],
+    "answers": {
+      "use": "freestyle",
+      "size_class": "my own words",
+      "motor_prop": [
+        "1404",
+        "2207"
+      ]
+    },
+    "answer": "{\"use\": \"freestyle\", \"size_class\": \"my own words\", \"motor_prop\": [\"1404\", \"2207\"]}"
+  },
+  "handles": [],
+  "warnings": [],
+  "step_kind": "tool_result"
+}
