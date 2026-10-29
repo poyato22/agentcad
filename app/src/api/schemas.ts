@@ -121,9 +121,17 @@ export const cancelAllSchema = z.object({
   failed: z.array(z.object({ run_id: z.string(), error: z.string() })).default([]),
 });
 
-/** Data of a `question_asked` event (the run id comes from the event itself). */
+/** One structured question of a batched ui_ask_user (core ui_tools.AskItem). */
+export const askItemSchema = z.object({
+  id: z.string(), prompt: z.string(), options: z.array(z.string()).default([]),
+  multi: z.boolean().default(false), rank: z.boolean().default(false), allow_text: z.boolean().default(true),
+});
+
+/** Data of a `question_asked` event (the run id comes from the event itself). `questions` is the
+ *  batched shape (C3); absent for a single question. */
 export const questionAskedSchema = z.object({
   question_id: z.string(), question: z.string(), options: z.array(z.string()).default([]),
+  questions: z.array(askItemSchema).default([]),
 });
 
 // ---- Plan 3: profile, keys, setup, Claude Code, Onshape test

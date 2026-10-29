@@ -56,8 +56,15 @@ export interface Approval {
 
 export interface MisesEvent { type: string; run_id: string | null; data: Record<string, unknown>; ts: number }
 
-/** Built from a `question_asked` event (there is no GET /questions). */
-export interface Question { question_id: string; run_id: string; question: string; options: string[] }
+/** One structured question of a batched `ui_ask_user` (C3): an id for the answer, the prompt,
+ *  options and how to pick them. `multi`: several options; `rank`: order them (first = most
+ *  important); `allow_text`: the user may answer in their own words. */
+export interface AskItem { id: string; prompt: string; options: string[]; multi: boolean; rank: boolean; allow_text: boolean }
+
+/** Built from a `question_asked` event (there is no GET /questions). `items` is the batched shape
+ *  (up to 3 structured questions); when present the thread shows a single interview card and the
+ *  answer is a JSON object `{id: value}`. A single question has no `items`. */
+export interface Question { question_id: string; run_id: string; question: string; options: string[]; items?: AskItem[] }
 
 /** `sketch_id` (POST /sketches): the run gets that sketch as data (and its images for vision models). */
 export interface NewRunBody { agent: string; prompt: string; model_ref?: string | null; edit_scope?: string[]; read_scope?: string[]; sketch_id?: string }

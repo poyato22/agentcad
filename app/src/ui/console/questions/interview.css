@@ -1,0 +1,41 @@
+/* Interview card: one card for a batched ui_ask_user. It needs the human, so the card uses the
+   blue "needs-you" treatment (the same as the question card). Option chips are neutral until
+   picked, then blue (a selected choice). No other colour. */
+[data-card].icard {
+  margin: 6px 8px;
+  padding: 8px 10px;
+  display: block;
+  border: 1px solid var(--blue);
+  background: var(--blue-tint);
+  border-radius: 5px;
+}
+.icard-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.icard-flag { color: var(--blue2); font: 600 var(--fs-label)/1.4 var(--font-head); letter-spacing: .14em; }
+.icard-run { margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.icard-intro { margin: 6px 0 2px; color: var(--ink); }
+
+.icard-list { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.icard-q { display: flex; flex-direction: column; gap: 4px; }
+.icard-prompt { color: var(--ink); font-weight: 600; }
+.icard-hint { font-weight: 400; }
+
+.icard-opts { display: flex; flex-wrap: wrap; gap: 6px; }
+.icard-opt {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 9px; font: inherit; cursor: pointer;
+  color: var(--ink); background: var(--paper); border: 1px solid var(--line2); border-radius: 12px;
+}
+.icard-opt:hover { border-color: var(--dim); }
+.icard-opt:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.icard-opt.on { border-color: var(--blue); background: var(--blue); color: var(--on-blue); }
+.icard-opt[disabled] { opacity: .5; cursor: default; }
+.icard-rank {
+  display: inline-grid; place-items: center; min-width: 15px; height: 15px; padding: 0 3px;
+  border-radius: 8px; background: var(--on-blue); color: var(--blue);
+  font-size: var(--fs-label); font-weight: 700;
+}
+
+.icard-text { width: 100%; min-width: 0; margin-top: 2px; }
+
+.icard-foot { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.icard-error { margin-top: 4px; }
