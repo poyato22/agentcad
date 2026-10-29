@@ -566,9 +566,114 @@
 
 **Tests:** interview answers posted, spec edit round-trip, scatter Pareto highlighting, variant select.
 
+### Task C7: More study types and full study control (core)
+
+Added 2026-10-29 at the user's request: "more control over studies and add more studies like a wind aerodynamic study".
+
+**Files:**
+- `core/src/mises/sim/**`: new `studies.py` (study-type registry), `modal.py`, `buckling.py`, `thermal.py`, and `cfd/{__init__,solver,setup,results}.py`
+- `core/src/mises/server/sim_api.py`
+- `agent/builtin/sim.md`
+- tests
+
+**Study types**, every one reporting solver, mesh, settings, error band or convergence, "guide only", and `fidelity_class`:
+
+| Type | Solver | Result |
+|---|---|---|
+| static (existing) | CalculiX | stress, displacement, safety factor |
+| modal | CalculiX `*FREQUENCY` | first N natural frequencies and mode shapes; flags modes inside a user-given excitation band, e.g. motor RPM/60 × blade count for drones |
+| buckling | CalculiX `*BUCKLE` | load multipliers |
+| thermal (steady-state) | CalculiX `*HEAT TRANSFER` | temperature field from fixed temperatures, heat flux or convection film coefficients |
+| drop/impact | static equivalent from `loads.impact_equivalent` (C3), plus an optional explicit-dynamics ccx `*DYNAMIC` run if feasible within timeout | labeled "estimate" |
+| wind/aero (CFD) | see below | drag force and coefficient Cd, lift force and coefficient Cl, moments, pressure on the surface (GLB colored by Cp), velocity slices (PNG or GLB plane), and a convergence history |
+
+**Wind/aero (CFD) inputs:**
+- wind speed (m/s), direction vector, air density and viscosity (defaults: sea level at 15 °C)
+- reference area (auto-computed from the frontal projection, or set by the user)
+- domain size multiplier
+- mesh refinement level
+- turbulence model where the solver supports it
+- iteration cap and timeout
+- yaw sweep option: a list of angles, giving a Cd-vs-angle table
+
+**Wind/aero solver choice:**
+1. Research and verify what actually runs on macOS arm64 (WebFetch the docs and cite them in the report). Candidates:
+   - SU2 (LGPL; check conda-forge `su2` for osx-arm64)
+   - OpenFOAM (only via a container; detect Docker or OrbStack, and don't require it)
+   - a built-in fallback
+2. Run the chosen external solver as a separate process (same GPL/LGPL rule as CalculiX).
+3. Detect it through C6's system check (add a row and an install allowlist entry if installable via conda).
+4. **The built-in fallback must always work:**
+   - A numpy D3Q19 or D3Q27 lattice-Boltzmann solver on a voxelized part (a coarse grid sized from the bbox, capped by a memory and time budget). It computes drag and lift by the momentum-exchange method and is labeled "low fidelity".
+   - If that's infeasible in the time budget, an empirical estimate from the frontal area and a shape-class Cd table, labeled "estimate".
+5. Validate against a sphere (Cd ≈ 0.47 at Re ~1e4–1e5, within 25% for the built-in solver) and a flat plate normal to the flow (Cd ≈ 1.17–1.28). Record the measured error in the report.
+
+**Control over every study (contract additions):**
+- `POST /sims` takes `{type, part_id | project_id (assembly), settings}`.
+- `GET /sims/types` returns each type with a JSON schema of its settings (defaults, ranges, units, docs), so the UI renders forms generically.
+- Settings include:
+  - **mesh:** element size or auto, local refinement on picked faces, second-order elements on/off
+  - **materials:** a custom material editor (E, ν, density, yield, thermal conductivity, expansion) saved to the profile; FDM settings (infill %, wall count, layer orientation → knock-down factors, documented as approximate)
+  - **multiple load cases per study:** force, pressure, moment, gravity or acceleration, bolt-hole bearing, remote force at a point
+  - **boundary conditions:** fixed, pinned (cylindrical), roller or slider, symmetry plane
+  - **face picks by face_id**
+  - **convergence study:** auto-refine until the peak changes by < X% or the max level is reached
+  - **solver timeout and threads**
+- `POST /sims/{id}/cancel`, with live `sim_progress {sim_id, phase: "mesh"|"solve"|"post", pct, detail}` events.
+- `POST /sims/compare {ids}` returns a side-by-side metrics table.
+- Saved study templates: `GET/POST/DELETE /sims/templates`.
+- Result channels for the viewer:
+  - von Mises, displacement magnitude and per-axis, principal stresses, safety-factor field, temperature, Cp, velocity
+  - a deformed-shape scale factor
+  - a probe value at a point (`GET /sims/{id}/probe?x&y&z`)
+  - section plane data
+- Agent tools:
+  - `sim_types_list` (read)
+  - `sim_run(type, target, settings)` (local_mutate). `sim_static_run` stays as a thin alias.
+  - `sim_compare` (read)
+  - `sim_cancel` (local_mutate)
+- C3's design studies may call any study type as an evaluator, e.g. "minimize drag subject to SF ≥ 2".
+
+**Tests:**
+- modal frequencies of a cantilever against the analytic value (within 10%)
+- the buckling multiplier of an Euler column (within 15%)
+- thermal 1-D conduction against the analytic result
+- sphere and plate drag on the built-in CFD (marked slow; run a coarse version in the default suite)
+- the settings schema drives validation (bad ranges are rejected)
+- cancel kills the process group
+- convergence loop stops
+- compare table
+- templates CRUD
+- probe interpolation
+
+### Task A8: Studies page — full control and all study types (app)
+
+**Files:** `app/src/ui/pages/studies/**`, viewer result overlays, tests. Runs in wave 2, after C7.
+
+**Scope:**
+- Study type picker: Static, Modal, Buckling, Thermal, Drop, Wind.
+- A settings form generated from `/sims/types` schemas, with an advanced section.
+- Pick faces in the viewer for loads and boundary conditions, with colored markers and arrows showing load direction and magnitude.
+- A load case list.
+- A material editor.
+- Mesh preview and refinement.
+- Run, progress by phase, and cancel.
+- **Results:**
+  - a channel picker
+  - a legend with an adjustable range
+  - a deformed-scale slider and mode-shape animation for modal results
+  - a section plane and a probe on click
+  - for wind: animated streamlines or particles on the velocity slices, a surface Cp map, a Cd/Cl readout, and a yaw sweep chart
+- Compare two or more studies side by side.
+- Save and load templates.
+- "Ask agent to fix" includes the full settings and results as data.
+- Keep "guide only" and fidelity labels always visible.
+
+**Tests:** schema form rendering and validation, face-pick to load assignment, channel switch, cancel, compare view, wind results rendering from a real fixture.
+
 ### Task I: Integration, real-app QA, final review
 
-- Merge order: C1 → C6 → C2 → C5 → C3 → C4 → A1 … A7.
+- Merge order: C1 → C6 → C2 → C5 → C7 → C3 → C4 → A1 … A8.
 - Update the fake core with real fixtures dumped from the merged core.
 - Contract tests cover every new route.
 - Run all suites.
@@ -610,3 +715,5 @@
 | Work alongside Claude making my own edits | C6, A3 |
 | Harness integrated with Claude Code underneath | C4 |
 | Drag parts around in the top-left list | C1, A3 |
+| More control over studies | C7, A8 |
+| More studies, e.g. wind/aerodynamic | C7, A8 |
