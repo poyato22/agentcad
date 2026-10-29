@@ -2,6 +2,9 @@
 // checked part, load case, priority, who set it) and its load cases (faces, force, "estimate"
 // on impact cases). "Edit" turns the rows into inputs; "Save" PUTs the spec, which the core
 // validates exactly like the agent's spec_set. Rows the user edits become the user's.
+// An edit is saved against the spec version it started from: if the agent's spec_set lands while
+// the editor is open, the card says so and offers Reload or "Save mine anyway" (never a silent
+// overwrite; the core also refuses a stale base with 409).
 import type { JSX } from "preact";
 import { useState } from "preact/hooks";
 import { REQUIREMENT_KINDS, SPEC_DIRECTIONS, type RequirementKind, type Spec, type SpecCheck } from "../../api/spec";
@@ -9,8 +12,9 @@ import { SIM_FACE_PRESETS } from "../../api/sims";
 import { partLabel } from "../../lib/names";
 import { Button } from "../common/Button";
 import { Led } from "../common/Led";
+import type { SaveResult } from "./controller";
 import {
-  draftFromSpec, fmtMeasured, fmtTarget, KIND_LABEL, newReqId, priorityDots, reqViews, specFromDraft, STATUS_TONE, STATUS_WORD,
+  draftFromSpec, fmtMeasured, fmtTarget, KIND_LABEL, newReqId, overallTone, priorityDots, reqViews, specFromDraft, STATUS_TONE, STATUS_WORD,
   tally, tallyText, type CaseDraft, type ReqDraft, type SpecDraft,
 } from "./model";
 
@@ -18,7 +22,10 @@ export interface SpecCardProps {
   spec: Spec;
   check: SpecCheck | null;
   checkError?: string | null;
-  onSave: (spec: Spec) => Promise<string | null>;
+  /** The spec's `updated_at` (the version an edit starts from). */
+  updatedAt?: number | null;
+  /** `base` undefined: save regardless of what changed meanwhile. */
+  onSave: (spec: Spec, base?: number | null) => Promise<SaveResult>;
   /** Fewer columns (the console is narrow). */
   compact?: boolean;
 }
@@ -27,26 +34,35 @@ export function SpecCard(props: SpecCardProps): JSX.Element {
   const [draft, setDraft] = useState<SpecDraft | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  /** The updated_at the open edit started from. */
+  const [base, setBase] = useState<number | null>(null);
+  const [refused, setRefused] = useState(false);
   const { spec, check } = props;
   const views = reqViews(spec, check?.requirements ?? null);
   const t = tally(views);
   const overall = check?.overall ?? "not_checked";
+  const now = props.updatedAt ?? null;
+  const conflict = draft !== null && (refused || base !== now);
 
-  const save = async () => {
+  const startEdit = () => { setDraft(draftFromSpec(spec)); setBase(now); setRefused(false); setErrors([]); };
+  const save = async (force: boolean) => {
     if (!draft) return;
     const r = specFromDraft(draft);
     if (!r.ok) { setErrors(r.errors); return; }
     setSaving(true);
-    const err = await props.onSave(r.spec);
+    const res = await props.onSave(r.spec, force ? undefined : base);
     setSaving(false);
-    if (err) setErrors([err]);
-    else { setDraft(null); setErrors([]); }
+    if (res.ok) { setDraft(null); setErrors([]); setRefused(false); return; }
+    if (res.conflict) setRefused(true);
+    else setErrors([res.error]);
   };
 
   return (
     <section class={`sp-card${props.compact ? " sp-compact" : ""}`} data-spec-card aria-label="Spec">
       <header class="sp-head">
-        <Led tone={STATUS_TONE[overall]} title={`overall: ${STATUS_WORD[overall]}`} />
+        <Led tone={overallTone(overall, t)} title={overall === "pass" && t.not_checked > 0
+          ? `pass on ${t.pass + t.warn} of ${views.length} checked; ${t.not_checked} not checked`
+          : `overall: ${STATUS_WORD[overall]}`} />
         {!props.compact && <span class="sp-title">Spec</span>}
         {!props.compact && <span class="sp-tally" data-tally>{tallyText(t)}</span>}
         {check && <span class="faint">{`on ${partLabel(check.part_id)}`}</span>}
@@ -54,16 +70,23 @@ export function SpecCard(props: SpecCardProps): JSX.Element {
           {draft
             ? (
               <>
-                <Button variant="ink" disabled={saving} onClick={() => { void save(); }}>{saving ? "Saving…" : "Save"}</Button>
+                <Button variant="ink" disabled={saving || conflict} onClick={() => { void save(false); }}>{saving ? "Saving…" : "Save"}</Button>
                 <Button variant="ghost" disabled={saving} onClick={() => { setDraft(null); setErrors([]); }}>Cancel</Button>
               </>
             )
-            : <Button variant="ghost" onClick={() => { setDraft(draftFromSpec(spec)); setErrors([]); }}>Edit</Button>}
+            : <Button variant="ghost" onClick={startEdit}>Edit</Button>}
         </span>
       </header>
       {draft
         ? <input class="sp-goal-in" aria-label="Goal" value={draft.goal} onInput={(e) => setDraft({ ...draft, goal: (e.currentTarget as HTMLInputElement).value })} />
         : spec.goal && <p class="sp-goal text">{spec.goal}</p>}
+      {conflict && (
+        <div class="sp-conflict" role="alert" data-spec-conflict>
+          <span class="text">The spec changed while you were editing (the agent updated it).</span>
+          <Button variant="ghost" disabled={saving} onClick={startEdit}>Reload</Button>
+          <Button variant="danger" disabled={saving} onClick={() => { void save(true); }}>Save mine anyway</Button>
+        </div>
+      )}
       {props.checkError && <p class="tone-red text sp-err">{`Could not check the part: ${props.checkError}`}</p>}
       {errors.length > 0 && (
         <ul class="sp-errors tone-red" role="alert" data-spec-errors>{errors.map((e) => <li key={e} class="text">{e}</li>)}</ul>

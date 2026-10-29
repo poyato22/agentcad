@@ -3,6 +3,9 @@
 // "Use this variant" (study_apply, after a confirm that shows what changes on the live part),
 // and the sortable iterations table. Results are coarse-mesh screening; the winner's fine-mesh
 // confirmation is shown when the core ran one. Every stress number is a guide only.
+// "Meets the spec" is always judged against the spec as it is NOW (meetsSpec, the core's rule):
+// the study's stored flag was against the spec when it ran, so a variant whose verdict changed
+// says "spec changed since this study".
 import type { JSX } from "preact";
 import { useState } from "preact/hooks";
 import type { Requirement, Study, StudyIteration } from "../../api/spec";
@@ -11,7 +14,7 @@ import { parts } from "../../state/store";
 import { Button } from "../common/Button";
 import { Led, type LedTone } from "../common/Led";
 import type { SpecController } from "./controller";
-import { fmtMeasured, fmtNum, iterStatus, KIND_LABEL, KIND_SHORT, nextSort, sortIterations, STATUS_TONE, STATUS_WORD, type SortKey, type SortState } from "./model";
+import { fmtMeasured, fmtNum, iterStatus, meetsSpec, KIND_LABEL, KIND_SHORT, nextSort, sortIterations, STATUS_TONE, STATUS_WORD, type SortKey, type SortState } from "./model";
 import { Scatter } from "./Scatter";
 
 const STATUS: Record<Study["status"], { word: string; tone: LedTone }> = {
@@ -48,7 +51,10 @@ export function StudyView({ c, study, requirements, compact = false }: { c: Spec
   const pct = total ? Math.min(100, Math.round((Math.max(live?.n ?? 0, n) / total) * 100)) : 0;
   const sel = c.selectedN.value ?? study.best_id;
   const it = study.iterations.find((i) => i.n === sel) ?? null;
-  const feasible = study.iterations.filter((i) => i.feasible).length;
+  const meets = new Map(study.iterations.map((i) => [i.n, meetsSpec(requirements, i, study.geometry_only)]));
+  const meetsOf = (i: StudyIteration) => meets.get(i.n) ?? false;
+  const feasible = study.iterations.filter(meetsOf).length;
+  const changed = study.status !== "running" && study.iterations.some((i) => meetsOf(i) !== i.feasible);
 
   return (
     <section class={`spv${compact ? " spv-compact" : ""}`} data-study={study.id} aria-label={`Design study of ${partLabel(study.part_id)}`}>
@@ -64,6 +70,7 @@ export function StudyView({ c, study, requirements, compact = false }: { c: Spec
       )}
       <div class="spv-facts faint">
         <span>{`${feasible}/${n} meet the spec`}</span>
+        {changed && <span class="sp-tag sp-tag-est" data-spec-changed title="the spec was edited after this study ran; verdicts are against the current spec">spec changed since this study</span>}
         <span>{study.geometry_only ? "mass/geometry only (no stress solver)" : `${study.solver ?? "solver"} · coarse mesh in the loop`}</span>
         {study.confirmation && (
           <span class={study.confirmation.confirmed ? "tone-green" : "tone-red"}>
@@ -73,15 +80,15 @@ export function StudyView({ c, study, requirements, compact = false }: { c: Spec
         <span class="sp-guide">guide only</span>
       </div>
       <div class="spv-grid">
-        <Scatter iterations={study.iterations} requirements={requirements} bestId={study.best_id} selected={sel} onSelect={(x) => c.selectIteration(x)} />
-        {it ? <Variant c={c} study={study} it={it} requirements={requirements} /> : <p class="faint spv-none">Pick a variant on the chart or in the table.</p>}
+        <Scatter iterations={study.iterations} requirements={requirements} bestId={study.best_id} selected={sel} onSelect={(x) => c.selectIteration(x)} meets={meetsOf} />
+        {it ? <Variant key={`${study.id}:${it.n}`} c={c} study={study} it={it} requirements={requirements} meets={meetsOf(it)} /> : <p class="faint spv-none">Pick a variant on the chart or in the table.</p>}
       </div>
-      <IterTable study={study} selected={sel} onSelect={(x) => c.selectIteration(x)} />
+      <IterTable study={study} selected={sel} onSelect={(x) => c.selectIteration(x)} meets={meetsOf} />
     </section>
   );
 }
 
-function Variant({ c, study, it, requirements }: { c: SpecController; study: Study; it: StudyIteration; requirements: readonly Requirement[] }): JSX.Element {
+function Variant({ c, study, it, requirements, meets }: { c: SpecController; study: Study; it: StudyIteration; requirements: readonly Requirement[]; meets: boolean }): JSX.Element {
   const [confirm, setConfirm] = useState(false);
   const live = parts.value.find((p) => p.part_id === study.part_id) ?? null;
   const busy = c.applying.value;
@@ -92,7 +99,7 @@ function Variant({ c, study, it, requirements }: { c: SpecController; study: Stu
   const m = it.metrics;
 
   const doApply = async () => {
-    const ok = await c.apply(study, it.n, { allowInfeasible: !it.feasible });
+    const ok = await c.apply(study, it.n, { allowInfeasible: !meets });
     if (ok) setConfirm(false);
   };
 
@@ -100,7 +107,8 @@ function Variant({ c, study, it, requirements }: { c: SpecController; study: Stu
     <div class="spv-var" data-variant={it.n}>
       <div class="spv-var-head">
         <span class="spv-title">{`Variant #${it.n}`}</span>
-        <span class={it.feasible ? "tone-green" : "tone-red"}>{it.feasible ? "meets the spec" : "fails the spec"}</span>
+        <span class={meets ? "tone-green" : "tone-red"} data-meets={meets ? "" : undefined}>{meets ? "meets the spec" : "fails the spec"}</span>
+        {meets !== it.feasible && <span class="sp-tag sp-tag-est" data-spec-changed title={`when the study ran it ${it.feasible ? "met" : "failed"} the spec`}>spec changed since this study</span>}
         {it.pareto && <span class="sp-tag">Pareto</span>}
         {it.n === study.best_id && <span class="sp-tag">best</span>}
       </div>
@@ -130,9 +138,9 @@ function Variant({ c, study, it, requirements }: { c: SpecController; study: Stu
       {!confirm
         ? (
           <div class="spv-actions">
-            <Button variant={it.feasible ? "ink" : "danger"} disabled={running || busy !== null} onClick={() => setConfirm(true)}
+            <Button variant={meets ? "ink" : "danger"} disabled={running || busy !== null} onClick={() => setConfirm(true)}
               title={running ? "Wait for the study to finish" : undefined}>
-              {it.feasible ? "Use this variant" : "Use anyway"}
+              {meets ? "Use this variant" : "Use anyway"}
             </Button>
             {isApplied && <span class="tone-green" data-applied>Applied.</span>}
           </div>
@@ -143,7 +151,7 @@ function Variant({ c, study, it, requirements }: { c: SpecController; study: Stu
             <ul class="spv-diff">
               {changes.map((x) => <li key={x.k}><span>{x.k}</span><span class="faint">{x.from !== undefined ? fmtNum(x.from) : "?"}</span><span aria-hidden="true">→</span><span>{fmtNum(x.to)}</span></li>)}
             </ul>
-            {!it.feasible && <p class="tone-red text">This variant fails the spec.</p>}
+            {!meets && <p class="tone-red text">This variant fails the spec.</p>}
             <div class="spv-actions">
               <Button variant="primary" disabled={busy !== null} onClick={() => { void doApply(); }}>{busy ? "Applying…" : "Apply and rebuild"}</Button>
               <Button variant="ghost" disabled={busy !== null} onClick={() => setConfirm(false)}>Cancel</Button>
@@ -155,7 +163,7 @@ function Variant({ c, study, it, requirements }: { c: SpecController; study: Stu
   );
 }
 
-function IterTable({ study, selected, onSelect }: { study: Study; selected: number | null; onSelect: (n: number) => void }): JSX.Element {
+function IterTable({ study, selected, onSelect, meets }: { study: Study; selected: number | null; onSelect: (n: number) => void; meets: (it: StudyIteration) => boolean }): JSX.Element {
   const [sort, setSort] = useState<SortState>({ key: "n", dir: "asc" });
   const rows = sortIterations(study.iterations, sort);
   const cols: { key: SortKey; label: string; num: boolean }[] = [
@@ -193,7 +201,8 @@ function IterTable({ study, selected, onSelect }: { study: Study; selected: numb
                 col.key === "feasible"
                   ? (
                     <td key={col.key}>
-                      <span class={it.feasible ? "tone-green" : "tone-red"}>{it.feasible ? "pass" : "fail"}</span>
+                      <span class={meets(it) ? "tone-green" : "tone-red"}>{meets(it) ? "pass" : "fail"}</span>
+                      {meets(it) !== it.feasible && <span class="sp-tag" title="the verdict changed with the spec since this study">Δ</span>}
                       {it.pareto && <span class="sp-tag">P</span>}
                       {it.n === study.best_id && <span class="sp-tag">best</span>}
                     </td>

@@ -9,6 +9,11 @@ import { specChangedSchema, studyProgressSchema, type Spec, type SpecCheck, type
 import type { MisesEvent } from "../../api/types";
 
 export const STUDY_REFRESH_MS = 400;
+/** spec checks wait this long, so a burst of changes (and both mounted views) check once. */
+export const CHECK_DEBOUNCE_MS = 150;
+
+/** What a save did: saved, refused because the spec changed under the edit, or failed. */
+export type SaveResult = { ok: true } | { ok: false; conflict: boolean; error: string };
 
 export interface Progress { n: number; total: number }
 
@@ -25,6 +30,8 @@ export function errorWords(e: unknown): string {
 export class SpecController {
   readonly projectId = signal<string | null>(null);
   readonly spec = signal<Spec | null>(null);
+  /** The spec's `updated_at` (null: never written): the base an edit is saved against. */
+  readonly updatedAt = signal<number | null>(null);
   readonly check = signal<SpecCheck | null>(null);
   readonly studies = signal<readonly Study[]>([]);
   /** Live study_progress by study id (ahead of the next GET). */
@@ -41,6 +48,9 @@ export class SpecController {
   private readonly client: () => CoreClient;
   private studyTimer: ReturnType<typeof setTimeout> | null = null;
   private checkedPart: string | null = null;
+  private checkedMtime: number | null = null;
+  private checkKey: string | null = null;
+  private checkTimer: ReturnType<typeof setTimeout> | null = null;
   private loads = 0;
 
   constructor(client: () => CoreClient) {
@@ -57,18 +67,21 @@ export class SpecController {
         batch(() => {
           this.projectId.value = pid;
           this.spec.value = null;
+          this.updatedAt.value = null;
           this.check.value = null;
           this.studies.value = [];
           this.selectedStudyId.value = null;
           this.selectedN.value = null;
         });
         this.checkedPart = null;
+        this.checkKey = null;
       }
       if (!pid) return;
       const [doc, studies] = await Promise.all([this.client().getSpec(pid), this.client().listStudies(pid)]);
       if (seq !== this.loads) return;
       batch(() => {
         this.spec.value = doc.spec;
+        this.updatedAt.value = doc.updated_at;
         this.setStudies(studies);
         this.loadError.value = null;
       });
@@ -87,7 +100,22 @@ export class SpecController {
     }
   }
 
-  /** spec_check of `partId` (through the Gate). Skipped without a spec or requirements. */
+  /** Check `partId` once per (build, part, part mtime, spec version), debounced: the console
+   *  strip and the Studies page both ask, and a save or a rebuild asks again. */
+  requestCheck(partId: string | null, mtime: number | null = null): void {
+    this.checkedPart = partId;
+    this.checkedMtime = mtime;
+    const key = `${this.projectId.peek()}|${partId}|${mtime}|${this.updatedAt.peek()}|${this.spec.peek() ? "s" : "-"}`;
+    if (key === this.checkKey) return;
+    this.checkKey = key;
+    if (this.checkTimer !== null) clearTimeout(this.checkTimer);
+    this.checkTimer = setTimeout(() => {
+      this.checkTimer = null;
+      void this.runCheck(partId);
+    }, CHECK_DEBOUNCE_MS);
+  }
+
+  /** The part measured against the spec (a plain read). Skipped without a spec or requirements. */
   async runCheck(partId: string | null): Promise<void> {
     const pid = this.projectId.peek();
     const spec = this.spec.peek();
@@ -109,17 +137,22 @@ export class SpecController {
     }
   }
 
-  /** The user's edit (PUT spec). Returns the error words, or null when saved. */
-  async save(spec: Spec): Promise<string | null> {
+  /** The user's edit (PUT spec). `base`: the `updated_at` the edit started from; a spec written
+   *  since (the agent's spec_set) is refused as a conflict. `undefined` saves regardless. */
+  async save(spec: Spec, base?: number | null): Promise<SaveResult> {
     const pid = this.projectId.peek();
-    if (!pid) return "No build is open.";
+    if (!pid) return { ok: false, conflict: false, error: "No build is open." };
     try {
-      const doc = await this.client().putSpec(pid, spec);
-      this.spec.value = doc.spec;
-      void this.runCheck(this.checkedPart);
-      return null;
+      const doc = await this.client().putSpec(pid, spec, base);
+      batch(() => { this.spec.value = doc.spec; this.updatedAt.value = doc.updated_at; });
+      this.requestCheck(this.checkedPart, this.checkedMtime);
+      return { ok: true };
     } catch (e) {
-      return errorWords(e);
+      if (e instanceof CoreError && e.code === "stale_version") {
+        void this.load();
+        return { ok: false, conflict: true, error: "The spec changed while you were editing (the agent updated it)." };
+      }
+      return { ok: false, conflict: false, error: errorWords(e) };
     }
   }
 
@@ -147,7 +180,6 @@ export class SpecController {
         ...(opts.baseVersion !== undefined ? { base_version: opts.baseVersion } : {}),
       });
       this.applied.value = { studyId: study.id, n, summary: out.summary };
-      void this.runCheck(out.part_id);
       return true;
     } catch (e) {
       this.applyError.value = errorWords(e);
@@ -160,7 +192,7 @@ export class SpecController {
   onEvent(ev: MisesEvent): void {
     if (ev.type === "spec_changed") {
       const d = specChangedSchema.safeParse(ev.data);
-      if (d.success && d.data.project_id === this.projectId.peek()) void this.load().then(() => this.runCheck(this.checkedPart));
+      if (d.success && d.data.project_id === this.projectId.peek()) void this.load().then(() => this.requestCheck(this.checkedPart, this.checkedMtime));
     } else if (ev.type === "study_progress") {
       const d = studyProgressSchema.safeParse(ev.data);
       if (!d.success) return;
@@ -177,7 +209,9 @@ export class SpecController {
   /** Tests and page teardown. */
   dispose(): void {
     if (this.studyTimer !== null) clearTimeout(this.studyTimer);
+    if (this.checkTimer !== null) clearTimeout(this.checkTimer);
     this.studyTimer = null;
+    this.checkTimer = null;
   }
 
   private scheduleStudies(): void {

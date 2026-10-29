@@ -134,6 +134,29 @@ export function iterStatus(req: Requirement, it: StudyIteration): { status: ReqS
   }
 }
 
+/** Does this variant meet the spec as it is NOW? Same rule as core engineering/tools._feasibility
+ *  (and study_apply's re-check): it built, it has a mass, with a solver every SF/deflection
+ *  requirement's load case produced its number, and no requirement is warn or fail. The study's
+ *  stored `feasible` flag is against the spec at study time. */
+export function meetsSpec(reqs: readonly Requirement[], it: StudyIteration, geometryOnly: boolean): boolean {
+  const m = it.metrics;
+  if (m.build_error || !isNum(m.mass_g)) return false;
+  if (!geometryOnly) {
+    for (const r of reqs) {
+      if (!r.load_case_id) continue;
+      if (r.kind === "min_safety_factor" && !isNum(m.sf_by_case[r.load_case_id])) return false;
+      if (r.kind === "max_deflection_mm" && !isNum(m.disp_by_case[r.load_case_id])) return false;
+    }
+  }
+  return reqs.every((r) => { const s = iterStatus(r, it).status; return s === "pass" || s === "not_checked"; });
+}
+
+/** The overall light: a pass with unchecked requirements is not a clean pass (warn). */
+export function overallTone(overall: ReqStatus, t: StatusTally): "green" | "amber" | "red" | "faint" {
+  if (overall === "pass" && t.not_checked > 0) return "amber";
+  return STATUS_TONE[overall];
+}
+
 // ---- the interview (a ui_ask_user batch)
 
 /** What the user has picked or typed for one question. `order` is the rank order (rank kind). */

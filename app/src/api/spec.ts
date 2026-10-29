@@ -26,7 +26,9 @@ export interface LoadCase {
 }
 export interface Spec { goal: string; requirements: Requirement[]; load_cases: LoadCase[]; answers: Record<string, unknown> }
 /** GET/PUT /projects/{id}/spec answer. */
-export interface SpecDoc { project_id: string; spec: Spec }
+/** GET/PUT answer; `updated_at`: when the spec was last written (null: never). Send it back as
+ *  `base_updated_at` and a spec written since is 409 stale_version. */
+export interface SpecDoc { project_id: string; spec: Spec; updated_at: number | null }
 
 export type ReqStatus = "pass" | "warn" | "fail" | "not_checked";
 
@@ -84,7 +86,7 @@ export const specSchema = z.object({
   goal: z.string().default(""), requirements: z.array(requirementSchema).default([]),
   load_cases: z.array(loadCaseSchema).default([]), answers: z.record(z.string(), z.unknown()).default({}),
 });
-export const specDocSchema = z.object({ project_id: z.string(), spec: specSchema });
+export const specDocSchema = z.object({ project_id: z.string(), spec: specSchema, updated_at: z.number().nullable().default(null) });
 
 const reqStatus = z.enum(["pass", "warn", "fail", "not_checked"]);
 export const checkRowSchema = z.object({

@@ -1,5 +1,7 @@
 // The spec panel in the console and the design-study section of the Studies page. Both read
-// one SpecController (module state), so a study started by the agent shows live in both.
+// one SpecController (module state), so a study started by the agent shows live in both. The
+// console strip stays small (spec card plus a one-line study summary, at most ~35% of the
+// console); the scatter, variants and table live on the Studies page.
 import { signal } from "@preact/signals";
 import type { JSX } from "preact";
 import { useEffect } from "preact/hooks";
@@ -7,8 +9,11 @@ import { onCoreEvent } from "../../api/events";
 import { partLabel } from "../../lib/names";
 import { activePart } from "../../state/selection";
 import { actions, conn } from "../../state/store";
+import { Button } from "../common/Button";
+import { setPage } from "../pages/router";
+import type { Spec, Study } from "../../api/spec";
 import { SpecController } from "./controller";
-import { fmtNum, reqViews, tally, tallyText } from "./model";
+import { fmtNum, meetsSpec, reqViews, tally, tallyText } from "./model";
 import { SpecCard } from "./SpecCard";
 import { objectiveWords, StudyStatus, StudyView } from "./StudyView";
 import "./spec.css";
@@ -28,8 +33,10 @@ function useSpecData(c: SpecController): void {
   const open = conn.value === "open";
   const part = activePart.value;
   const spec = c.spec.value;
+  const at = c.updatedAt.value;
   useEffect(() => { if (open) void c.load(); }, [c, open]);
-  useEffect(() => { if (open && spec) void c.runCheck(part?.part_id ?? null); }, [c, open, spec, part?.part_id, part?.mtime]);
+  // requestCheck debounces and dedupes: both views mounted still check once per change
+  useEffect(() => { if (open && spec) c.requestCheck(part?.part_id ?? null, part?.mtime ?? null); }, [c, open, spec, at, part?.part_id, part?.mtime]);
 }
 
 export function SpecPanel({ c = specs }: { c?: SpecController }): JSX.Element | null {
@@ -51,22 +58,27 @@ export function SpecPanel({ c = specs }: { c?: SpecController }): JSX.Element | 
       </button>
       {open && (
         <div class="spp-body">
-          <SpecCard spec={spec} check={c.check.value} checkError={c.checkError.value} onSave={(s) => c.save(s)} compact />
-          {studies.length > 1 && (
-            <select class="spp-pick" aria-label="Design study" value={shown?.id ?? ""} onChange={(e) => c.selectStudy((e.currentTarget as HTMLSelectElement).value)}>
-              {studies.map((s) => <option key={s.id} value={s.id}>{studyOption(s)}</option>)}
-            </select>
-          )}
-          {shown && <StudyView c={c} study={shown} requirements={spec.requirements} compact />}
+          {shown && <StudyLine study={shown} requirements={spec.requirements} onOpen={() => { c.selectStudy(shown.id); setPage("studies"); }} />}
+          <SpecCard spec={spec} check={c.check.value} checkError={c.checkError.value} updatedAt={c.updatedAt.value} onSave={(s, b) => c.save(s, b)} compact />
         </div>
       )}
     </div>
   );
 }
 
-function studyOption(s: { part_id: string; objective: string; iterations: unknown[]; created_at: number }): string {
-  const when = new Date(s.created_at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  return `${when} · ${partLabel(s.part_id)} · ${objectiveWords(s.objective)} · ${s.iterations.length} evals`;
+/** The console's one-line study summary: the best variant still meeting the spec now. */
+function StudyLine({ study, requirements, onOpen }: { study: Study; requirements: Spec["requirements"]; onOpen: () => void }): JSX.Element {
+  const ok = study.iterations.filter((i) => meetsSpec(requirements, i, study.geometry_only));
+  const best = ok.find((i) => i.n === study.best_id) ?? [...ok].sort((a, b) => (a.metrics.mass_g ?? Infinity) - (b.metrics.mass_g ?? Infinity))[0];
+  return (
+    <div class="spp-line" data-study-line={study.id}>
+      <span class="sp-title text">{partLabel(study.part_id)}</span>
+      <span class="dim">{objectiveWords(study.objective)}</span>
+      <span class="faint">{`${ok.length}/${study.iterations.length} meet`}</span>
+      <span>{best?.metrics.mass_g != null ? `#${best.n} ${fmtNum(best.metrics.mass_g)} g${best.metrics.min_sf != null ? ` · SF ${best.metrics.min_sf.toFixed(2)}` : ""}` : "no variant meets the spec"}</span>
+      <Button variant="ghost" onClick={onOpen}>Open in Studies</Button>
+    </div>
+  );
 }
 
 /** Studies page section: the build's spec, its design-study history, and the shown study. */
@@ -79,7 +91,7 @@ export function DesignStudies({ c = specs }: { c?: SpecController }): JSX.Elemen
     <section class="spd" data-design-studies aria-label="Design studies">
       <h2 class="spd-h">Design studies</h2>
       {c.loadError.value && <p class="tone-red text">{`Could not load the spec: ${c.loadError.value}`}</p>}
-      {spec && <SpecCard spec={spec} check={c.check.value} checkError={c.checkError.value} onSave={(s) => c.save(s)} />}
+      {spec && <SpecCard spec={spec} check={c.check.value} checkError={c.checkError.value} updatedAt={c.updatedAt.value} onSave={(s, b) => c.save(s, b)} />}
       {studies.length === 0
         ? <p class="faint">No design studies in this build yet. Ask the engineer agent to design something; it searches the variables against the spec.</p>
         : (

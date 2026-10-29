@@ -11,6 +11,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Spec, SpecCheck, SpecDoc, Study } from "../../src/api/spec";
 import type { PartSummary } from "../../src/api/types";
+import { meetsSpec } from "../../src/ui/spec/model";
 import { asBody, HttpError, mises, type EventIn, type Route } from "./server";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -40,13 +41,15 @@ export interface SpecScenario {
   versions?: Record<string, number>;
 }
 
-export interface FakeSpec { projectId: string; spec: Spec; studies: Map<string, Study>; versions: Record<string, number> }
+/** `updatedAt`: when the spec was last written (null: never), like the core's specs.updated_at. */
+export interface FakeSpec { projectId: string; spec: Spec; updatedAt: number | null; studies: Map<string, Study>; versions: Record<string, number> }
 
 export function specFrom(s: SpecScenario | undefined): FakeSpec {
   const projectId = s?.project_id ?? FIXTURE_PROJECT;
   const spec = s?.spec === "fixture" ? REAL_SPEC.spec.spec : (s?.spec ?? REAL_SPEC.empty.spec);
   const list = s?.studies === "fixture" ? REAL_SPEC.studies.map((x) => ({ ...x, project_id: projectId })) : (s?.studies ?? []);
-  return { projectId, spec: structuredClone(spec), studies: new Map(list.map((x) => [x.id, structuredClone(x)])), versions: { ...(s?.versions ?? {}) } };
+  const updatedAt = s?.spec === undefined ? null : REAL_SPEC.spec.updated_at ?? 1793289539.3;
+  return { projectId, spec: structuredClone(spec), updatedAt, studies: new Map(list.map((x) => [x.id, structuredClone(x)])), versions: { ...(s?.versions ?? {}) } };
 }
 
 export interface SpecDeps {
@@ -131,17 +134,24 @@ export function specRoutes(d: SpecDeps): Route[] {
       method: "GET", re: /^\/projects\/([^/]+)\/spec$/, h: (m) => {
         const id = decodeURIComponent(m[1]);
         const s = project(id);
-        return { project_id: id, spec: own(id) ? structuredClone(s.spec) : structuredClone(REAL_SPEC.empty.spec) };
+        return { project_id: id, spec: own(id) ? structuredClone(s.spec) : structuredClone(REAL_SPEC.empty.spec), updated_at: own(id) ? s.updatedAt : null };
       },
     },
     {
       method: "PUT", re: /^\/projects\/([^/]+)\/spec$/, h: (m, _q, body) => {
         const id = decodeURIComponent(m[1]);
         const s = project(id);
+        const raw = asBody(body);
+        const cur = own(id) ? s.updatedAt : null;
+        if ("base_updated_at" in raw && raw.base_updated_at !== cur) {
+          throw new HttpError(409, { error: "stale_version", message: "the spec changed since you opened it",
+            hint: "reload it, or save yours anyway (without base_updated_at)", retryable: false, current_updated_at: cur });
+        }
         const spec = validate(body);
-        if (own(id)) s.spec = spec;
+        const at = Math.max(Date.now() / 1000, (cur ?? 0) + 0.001);
+        if (own(id)) { s.spec = spec; s.updatedAt = at; }
         d.emit({ type: "spec_changed", run_id: null, data: { project_id: id } });
-        return { project_id: id, spec };
+        return { project_id: id, spec, updated_at: at };
       },
     },
     {
@@ -177,7 +187,8 @@ export function specRoutes(d: SpecDeps): Route[] {
         if (st.status === "running") throw mises("invalid_input", `${sid} is still running`, "wait for it to finish, or cancel it");
         const it = st.iterations.find((x) => x.n === b.iteration);
         if (!it) throw mises("not_found", `${sid} has no iteration ${b.iteration}`);
-        if (!it.feasible && b.allow_infeasible !== true) {
+        // like the core's study_apply: against the spec as it is now, not the stored flag
+        if (!meetsSpec(s.spec.requirements, it, st.geometry_only) && b.allow_infeasible !== true) {
           throw mises("invalid_input", `iteration ${b.iteration} is infeasible`, `apply the best feasible one (${st.best_id}) or set allow_infeasible`);
         }
         const cur = s.versions[st.part_id];

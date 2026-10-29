@@ -363,10 +363,10 @@ test("connects_to_fake_core_without_errors", async ({ page, fake }) => {
   page.on("pageerror", (e) => errors.push(String(e)));
   await page.goto("/");
   await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
-  await expect.poll(async () => (await fake.calls()).map((c) => c.path).filter((p) => p !== "/context").sort()).toEqual(
+  await expect.poll(async () => (await fake.calls()).map((c) => c.path.replace(/^\/projects\/[^/]+\//, "/projects/{id}/")).filter((p) => p !== "/context").sort()).toEqual(
     // the console spec strip (A7) resolves the active build (/projects, /profile) and loads its spec and studies
-    ["/approvals", "/parts", "/parts/mount_plate/model.glb", "/printers", "/profile", "/profile", "/projects", "/projects/d422007de860/spec",
-      "/projects/d422007de860/studies", "/runs", "/runs/b7c79a57cbb4/steps", "/setup", "/status"]);
+    ["/approvals", "/parts", "/parts/mount_plate/model.glb", "/printers", "/profile", "/profile", "/projects", "/projects/{id}/spec",
+      "/projects/{id}/studies", "/runs", "/runs/b7c79a57cbb4/steps", "/setup", "/status"]);
   const ctx = (await fake.calls()).filter((c) => c.path === "/context");
   expect(ctx.length).toBeGreaterThanOrEqual(1);
   expect(ctx.every((c) => c.method === "PUT")).toBe(true);

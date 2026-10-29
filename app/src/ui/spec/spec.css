@@ -111,7 +111,7 @@
 .sps-tick { font: var(--fs-label) var(--font-mono); fill: var(--faint); font-variant-numeric: tabular-nums; }
 .sps-axis { font: var(--fs-label) var(--font-mono); fill: var(--faint); }
 .sps-thr { font: var(--fs-label) var(--font-mono); fill: var(--dim); }
-.sps-best { font: 600 var(--fs-label) var(--font-mono); fill: var(--ink); pointer-events: none; }
+.sps-best { font: 600 var(--fs-label) var(--font-mono); fill: var(--ink); pointer-events: none; stroke: var(--paper); stroke-width: 3px; paint-order: stroke; }
 .sps-pt { cursor: pointer; outline: none; }
 .sps-pt:focus-visible circle:first-child { stroke: var(--blue); stroke-width: 1; }
 .sps-tip {
@@ -128,7 +128,10 @@
 .spp-bar:hover { background: var(--paper2); }
 .spp-bar:focus-visible { outline: 1px solid var(--blue); outline-offset: -1px; }
 .spp-study { margin-left: auto; display: inline-flex; gap: 6px; align-items: center; }
-.spp-body { display: flex; flex-direction: column; gap: 8px; padding: 0 8px 8px; max-height: 55vh; overflow: auto; }
+.spp-body { display: flex; flex-direction: column; gap: 8px; padding: 0 8px 8px; max-height: 35vh; overflow: auto; }
+.spp-line { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: var(--fs-small); }
+.spp-line .btn { margin-left: auto; }
+.sp-conflict { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 8px; border: 1px solid var(--amber); }
 .spp-pick { width: 100%; }
 
 /* ---- Studies page section */

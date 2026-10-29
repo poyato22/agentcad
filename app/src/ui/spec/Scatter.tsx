@@ -20,6 +20,8 @@ export interface ScatterProps {
   bestId: number | null;
   selected: number | null;
   onSelect: (n: number) => void;
+  /** Meets the spec as it is now (default: the study's stored flag). */
+  meets?: (it: StudyIteration) => boolean;
   /** Width when the container can't be measured (tests). */
   width?: number;
 }
@@ -31,8 +33,8 @@ function thresholds(reqs: readonly Requirement[]): { sf: number | null; mass: nu
   return { sf: sfs.length ? Math.max(...sfs) : null, mass: ms.length ? Math.min(...ms) : null };
 }
 
-export function pointLabel(p: Point, best: number | null): string {
-  const tags = [p.it.feasible ? "meets the spec" : "fails the spec"];
+export function pointLabel(p: Point, best: number | null, meets: boolean = p.it.feasible): string {
+  const tags = [meets ? "meets the spec" : "fails the spec"];
   if (p.it.pareto) tags.push("on the Pareto front");
   if (p.it.n === best) tags.push("best");
   const vars = Object.entries(p.it.vars).map(([k, v]) => `${k} ${fmtNum(v)}`).join(", ");
@@ -56,7 +58,9 @@ export function Scatter(props: ScatterProps): JSX.Element {
 
   const pts = useMemo(() => plotPoints(props.iterations), [props.iterations]);
   const byMass = useMemo(() => [...pts].sort((a, b) => a.mass - b.mass || a.it.n - b.it.n), [pts]);
-  const front = useMemo(() => paretoLine(pts), [pts]);
+  const meets = props.meets ?? ((it: StudyIteration) => it.feasible);
+  // the front is the core's flagged points that still meet the spec
+  const front = paretoLine(pts.filter((p) => meets(p.it)));
   const lim = thresholds(props.requirements);
   const missing = props.iterations.length - pts.length;
 
@@ -147,11 +151,12 @@ export function Scatter(props: ScatterProps): JSX.Element {
           const n = p.it.n;
           const cx = sx(p.mass);
           const cy = sy(p.sf);
-          const kind = p.it.pareto ? "pareto" : p.it.feasible ? "feasible" : "infeasible";
+          const ok = meets(p.it);
+          const kind = !ok ? "infeasible" : p.it.pareto ? "pareto" : "feasible";
           const sel = props.selected === n;
           return (
             <g key={n} class="sps-pt" data-point={n} data-kind={kind} data-selected={sel ? "" : undefined}
-              tabindex={n === tabTarget ? 0 : -1} role="button" aria-pressed={sel} aria-label={pointLabel(p, props.bestId)}
+              tabindex={n === tabTarget ? 0 : -1} role="button" aria-pressed={sel} aria-label={pointLabel(p, props.bestId, ok)}
               onMouseEnter={() => setHover(n)} onMouseLeave={() => setHover((h) => (h === n ? null : h))}
               onFocus={() => setFocusN(n)} onBlur={() => setFocusN((f) => (f === n ? null : f))}
               onClick={() => props.onSelect(n)}>
@@ -160,7 +165,7 @@ export function Scatter(props: ScatterProps): JSX.Element {
               {kind === "infeasible"
                 ? <circle cx={cx} cy={cy} r={4} fill="var(--paper)" stroke="var(--dim)" stroke-width="1.5" />
                 : <circle cx={cx} cy={cy} r={kind === "pareto" ? 4.5 : 4} fill={kind === "pareto" ? ink : "var(--dim)"} stroke="var(--paper)" stroke-width="2" paint-order="stroke" />}
-              {n === props.bestId && <text x={cx + 8} y={cy - 8} class="sps-best">{`best #${n}`}</text>}
+              {n === props.bestId && <text x={cx + 9} y={cy + 15} class="sps-best">{`best #${n}`}</text>}
             </g>
           );
         })}
@@ -171,7 +176,7 @@ export function Scatter(props: ScatterProps): JSX.Element {
           <div class="sps-tip-h">{`#${tipPt.it.n} ${tipPt.it.pareto ? "· Pareto" : ""}${tipPt.it.n === props.bestId ? " · best" : ""}`}</div>
           <div>{`${fmtNum(tipPt.mass)} g · SF ${tipPt.sf.toFixed(2)}`}{tipPt.it.metrics.max_disp_mm !== null ? ` · ${fmtNum(tipPt.it.metrics.max_disp_mm)} mm` : ""}</div>
           <div class="dim">{Object.entries(tipPt.it.vars).map(([k, v]) => `${k} ${fmtNum(v)}`).join(" · ")}</div>
-          <div class={tipPt.it.feasible ? "tone-green" : "tone-red"}>{tipPt.it.feasible ? "meets the spec" : "fails the spec"}</div>
+          <div class={meets(tipPt.it) ? "tone-green" : "tone-red"}>{meets(tipPt.it) ? "meets the spec" : "fails the spec"}</div>
         </div>
       )}
       {missing > 0 && <p class="sps-note faint">{`${missing} variant${missing === 1 ? "" : "s"} not plotted (build or solve failed, or no SF).`}</p>}

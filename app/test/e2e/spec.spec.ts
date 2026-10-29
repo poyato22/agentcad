@@ -63,7 +63,8 @@ for (const theme of ["dark", "light"] as const) {
     await strip.getByRole("button", { expanded: false }).click();
     await expect(strip.locator("[data-spec-card]")).toBeVisible();
     await expect(strip.locator('[data-spec-card] [data-req="mass_budget"]')).toHaveAttribute("data-status", "pass");
-    await expect(strip.locator("[data-scatter] [data-front]")).toBeVisible();
+    await expect(strip.locator("[data-study-line]")).toContainText("meet");
+    await expect(strip.locator("[data-scatter]")).toHaveCount(0); // the chart lives on the Studies page
     if (SHOTS) await page.locator(".region-console").screenshot({ path: `${SHOTS}/console-spec-${theme}.png` });
   });
 

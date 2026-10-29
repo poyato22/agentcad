@@ -127,7 +127,7 @@ describe("spec card", () => {
     await c.load();
     expect(c.projectId.value).toBe(FIXTURE_PROJECT);
     await c.runCheck("mount_plate");
-    const { container } = render(<SpecCard spec={c.spec.value!} check={c.check.value} onSave={(s) => c.save(s)} />);
+    const { container } = render(<SpecCard spec={c.spec.value!} check={c.check.value} updatedAt={c.updatedAt.value} onSave={(s, b) => c.save(s, b)} />);
     const mass = container.querySelector('[data-req="mass_budget"]') as HTMLElement;
     expect(mass.dataset.status).toBe("pass");
     expect(mass.textContent).toContain("≤ 8 g");
@@ -143,19 +143,21 @@ describe("spec card", () => {
     const c = new SpecController(() => client);
     await c.load();
     await c.runCheck("mount_plate");
-    const r = render(<SpecCard spec={c.spec.value!} check={c.check.value} onSave={(s) => c.save(s)} />);
+    const r = render(<SpecCard spec={c.spec.value!} check={c.check.value} updatedAt={c.updatedAt.value} onSave={(s, b) => c.save(s, b)} />);
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     fireEvent.input(screen.getByLabelText("mass_budget target"), { target: { value: "5" } });
     fireEvent.input(screen.getByLabelText("drop_hit force in newtons"), { target: { value: "30" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(calls("/spec").filter((x) => x.method === "PUT")).toHaveLength(1));
-    const put = calls("/spec").find((x) => x.method === "PUT")!.body as typeof SPEC;
+    const sent = calls("/spec").find((x) => x.method === "PUT")!.body as { spec: typeof SPEC; base_updated_at: number | null };
+    expect(typeof sent.base_updated_at).toBe("number"); // saved against the version it was opened at
+    const put = sent.spec;
     expect(put.requirements.find((x) => x.id === "mass_budget")).toMatchObject({ target: 5, source: "user" });
     expect(put.requirements.find((x) => x.id === "desk_safety")).toMatchObject({ source: "agent" });
     expect(put.load_cases.find((x) => x.id === "drop_hit")).toMatchObject({ newtons: 30, estimate: true });
     expect((await client.getSpec(FIXTURE_PROJECT)).spec.requirements[0].target).toBe(5);
     await waitFor(() => expect(c.check.value?.requirements.find((x) => x.id === "mass_budget")?.status).toBe("fail"));
-    r.rerender(<SpecCard spec={c.spec.value!} check={c.check.value} onSave={(s) => c.save(s)} />);
+    r.rerender(<SpecCard spec={c.spec.value!} check={c.check.value} updatedAt={c.updatedAt.value} onSave={(s, b) => c.save(s, b)} />);
     expect(r.container.querySelector('[data-req="mass_budget"]')!.textContent).toContain("≤ 5 g");
     expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
   });
@@ -164,14 +166,15 @@ describe("spec card", () => {
     await start({ spec: "fixture" });
     const c = new SpecController(() => client);
     await c.load();
-    render(<SpecCard spec={c.spec.value!} check={null} onSave={(s) => c.save(s)} />);
+    render(<SpecCard spec={c.spec.value!} check={null} updatedAt={c.updatedAt.value} onSave={(s, b) => c.save(s, b)} />);
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     fireEvent.input(screen.getByLabelText("stiffness target"), { target: { value: "abc" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(screen.getByRole("alert").textContent).toContain("stiffness: needs a positive number");
     expect(calls("/spec").filter((x) => x.method === "PUT")).toHaveLength(0);
     // the core's own validation (a load case referenced by a requirement can't go): its words show
-    expect(await c.save({ ...SPEC, load_cases: [] })).toMatch(/unknown load case/);
+    const res = await c.save({ ...SPEC, load_cases: [] });
+    expect(!res.ok && res.error).toMatch(/unknown load case/);
   });
 });
 
@@ -300,7 +303,9 @@ describe("console panel", () => {
     expect(bar.textContent).toContain("done");
     fireEvent.click(bar);
     expect(container.querySelector("[data-spec-card]")).toBeTruthy();
-    expect(container.querySelector(`[data-study="${STUDY.id}"]`)).toBeTruthy();
+    // the console keeps it small: a one-line study summary, the chart lives on the Studies page
+    expect(container.querySelector(`[data-study-line="${STUDY.id}"]`)!.textContent).toContain(`#${STUDY.best_id}`);
+    expect(container.querySelector("[data-scatter]")).toBeNull();
   });
 
   it("live: study_progress refreshes the studies", async () => {
@@ -324,5 +329,102 @@ describe("console panel", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("fix round 1", () => {
+  it("an agent's spec_set during an edit is never silently overwritten", async () => {
+    await start({ spec: "fixture" });
+    const c = new SpecController(() => client);
+    await c.load();
+    const view = () => <SpecCard spec={c.spec.value!} check={null} updatedAt={c.updatedAt.value} onSave={(s, b) => c.save(s, b)} />;
+    const r = render(view());
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.input(screen.getByLabelText("mass_budget target"), { target: { value: "7" } });
+    // the agent writes the spec meanwhile
+    await client.putSpec(FIXTURE_PROJECT, { ...SPEC, goal: "agent's goal" });
+    await c.load();
+    r.rerender(view());
+    expect(screen.getByRole("alert").textContent).toContain("The spec changed while you were editing");
+    expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+    // Reload: a fresh draft of the agent's spec
+    fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect((screen.getByLabelText("Goal") as HTMLInputElement).value).toBe("agent's goal");
+    expect((screen.getByLabelText("mass_budget target") as HTMLInputElement).value).toBe("8");
+  });
+
+  it("the core's 409 also shows the choice; Save mine anyway sends no base", async () => {
+    await start({ spec: "fixture" });
+    const c = new SpecController(() => client);
+    await c.load();
+    render(<SpecCard spec={c.spec.value!} check={null} updatedAt={c.updatedAt.value} onSave={(s, b) => c.save(s, b)} />);
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    core.state.spec.updatedAt = (core.state.spec.updatedAt ?? 0) + 5; // written behind the app's back
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("changed while you were editing"));
+    fireEvent.click(screen.getByRole("button", { name: "Save mine anyway" }));
+    await waitFor(() => expect(calls("/spec").filter((x) => x.method === "PUT")).toHaveLength(2));
+    const last = calls("/spec").filter((x) => x.method === "PUT")[1].body as Record<string, unknown>;
+    expect("base_updated_at" in last).toBe(false);
+  });
+
+  it("variants are judged against the current spec, with a 'spec changed' tag", async () => {
+    await start({ spec: "fixture", studies: "fixture" });
+    const c = new SpecController(() => client);
+    await c.load();
+    const best = STUDY.iterations.find((i) => i.n === STUDY.best_id)!;
+    // tighten the mass budget below the best variant
+    const tight = { ...SPEC, requirements: SPEC.requirements.map((r) => (r.id === "mass_budget" ? { ...r, target: best.metrics.mass_g! - 0.5 } : r)) };
+    expect((await c.save(tight)).ok).toBe(true);
+    const { container } = render(<StudyView c={c} study={c.studies.value[0]} requirements={c.spec.value!.requirements} />);
+    const v = container.querySelector("[data-variant]") as HTMLElement;
+    expect(v.textContent).toContain("fails the spec");
+    expect(v.querySelector("[data-spec-changed]")).toBeTruthy();
+    expect(container.querySelector(".spv-facts [data-spec-changed]")).toBeTruthy();
+    expect((container.querySelector(`[data-point="${best.n}"]`) as SVGGElement).dataset.kind).toBe("infeasible");
+    expect(screen.queryByRole("button", { name: "Use this variant" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Use anyway" }));
+    fireEvent.click(screen.getByRole("button", { name: "Apply and rebuild" }));
+    await waitFor(() => expect(calls("/apply")).toHaveLength(1));
+    expect(calls("/apply")[0].body).toEqual({ iteration: best.n, allow_infeasible: true });
+  });
+
+  it("the confirm panel closes when another variant is picked", async () => {
+    await start({ spec: "fixture", studies: "fixture" });
+    const c = new SpecController(() => client);
+    await c.load();
+    const r = render(<StudyView c={c} study={c.studies.value[0]} requirements={SPEC.requirements} />);
+    fireEvent.click(screen.getByRole("button", { name: "Use this variant" }));
+    expect(screen.getByRole("group", { name: "Confirm variant" })).toBeTruthy();
+    fireEvent.click(r.container.querySelector('[data-point="0"]')!);
+    expect(screen.queryByRole("group", { name: "Confirm variant" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Apply and rebuild" })).toBeNull();
+  });
+
+  it("the overall light is amber, not green, while requirements are unchecked", async () => {
+    await start({ spec: "fixture" });
+    const c = new SpecController(() => client);
+    await c.load();
+    await c.runCheck("mount_plate");
+    expect(c.check.value!.overall).toBe("pass");
+    const { container } = render(<SpecCard spec={c.spec.value!} check={c.check.value} onSave={(s, b) => c.save(s, b)} />);
+    const led = container.querySelector(".sp-head .led") as HTMLElement;
+    expect(led.dataset.tone).toBe("amber");
+    expect(led.getAttribute("title")).toContain("4 not checked");
+  });
+
+  it("checks are debounced and deduped across views", async () => {
+    await start({ spec: "fixture" });
+    const c = new SpecController(() => client);
+    await c.load();
+    c.requestCheck("mount_plate", 1);
+    c.requestCheck("mount_plate", 1);   // the other mounted view
+    c.requestCheck("mount_plate", 1);
+    await waitFor(() => expect(c.check.value).not.toBeNull());
+    await new Promise((r) => setTimeout(r, 200));
+    expect(calls("/spec/check")).toHaveLength(1);
+    c.requestCheck("mount_plate", 2);   // the part was rebuilt
+    await waitFor(() => expect(calls("/spec/check")).toHaveLength(2));
   });
 });

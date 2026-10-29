@@ -253,9 +253,12 @@ export class CoreClient {
     return live.find((p) => p.id === prof.active_project_id)?.id ?? live[0]?.id ?? null;
   }
   getSpec(projectId: string): Promise<SpecDoc> { return this.json("GET", `/projects/${enc(projectId)}/spec`, specDocSchema); }
-  /** The user's own edit; validated like the agent's spec_set (422 names the bad fields). */
-  putSpec(projectId: string, spec: Spec): Promise<SpecDoc> {
-    return this.json("PUT", `/projects/${enc(projectId)}/spec`, specDocSchema, { body: spec });
+  /** The user's own edit; validated like the agent's spec_set (422 names the bad fields). With
+   *  `baseUpdatedAt` (the `updated_at` the edit started from; null = no spec yet) a spec written
+   *  since is refused: 409 stale_version. `undefined` saves regardless ("Save mine anyway"). */
+  putSpec(projectId: string, spec: Spec, baseUpdatedAt?: number | null): Promise<SpecDoc> {
+    const body = baseUpdatedAt === undefined ? { spec } : { spec, base_updated_at: baseUpdatedAt };
+    return this.json("PUT", `/projects/${enc(projectId)}/spec`, specDocSchema, { body });
   }
   /** spec_check through the Gate: the part measured against the spec, per requirement. */
   specCheck(projectId: string, partId: string): Promise<SpecCheck> {
