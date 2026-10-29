@@ -58,6 +58,7 @@ def test_install_uses_fixed_command_no_body_args(client, fake_runner_calls):
                     json={"args": ["; rm -rf /"], "cmd": "evil", "dep": "../../x"})
     assert r.status_code == 200, r.text
     assert r.json()["command"] == ["/opt/homebrew/bin/brew", "install", "--cask", "prusaslicer"]
+    assert r.json()["ok"] is True and r.json()["fix"] is None
 
 
 def test_calculix_uses_conda(client):
@@ -74,7 +75,7 @@ def test_brew_missing_returns_open_url_fix(rt, monkeypatch):
 
     with TestClient(_mount(rt, fake_runner), base_url="http://127.0.0.1") as c:
         r = c.post("/system/install/ollama")
-    assert r.status_code == 424
+    assert r.status_code == 200 and r.json()["ok"] is False     # A1's SystemInstallStart
     assert r.json()["fix"] == {"kind": "open_url", "label": "Get brew", "url": sysapi.BREW_URL}
 
 

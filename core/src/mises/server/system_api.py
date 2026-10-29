@@ -12,7 +12,6 @@ import os
 from typing import TYPE_CHECKING, Awaitable, Callable
 
 from fastapi import APIRouter
-from fastapi.responses import JSONResponse
 
 from ..events import Event
 from ..system_check import (BREW_URL, CONDA_URL, INSTALLERS, Probes, find_brew, find_conda,
@@ -73,10 +72,12 @@ def build_system_router(runtime: Runtime, *, probes: Probes | None = None,
         spec = INSTALLERS[dep]
         mgr_path = _find_mgr(spec.needs)
         if mgr_path is None:
-            return JSONResponse(
-                {"dep": dep, "started": False, "error": f"{spec.needs} is not installed",
-                 "fix": {"kind": "open_url", "label": f"Get {spec.needs}",
-                         "url": _MGR_URL[spec.needs]}}, status_code=424)
+            # the app's contract (A1 SystemInstallStart): {ok:false, fix} is an answer, not an
+            # error, so the UI can offer the fix button
+            return {"ok": False, "dep": dep, "started": False,
+                    "error": f"{spec.needs} is not installed",
+                    "fix": {"kind": "open_url", "label": f"Get {spec.needs}",
+                            "url": _MGR_URL[spec.needs]}}
         if dep in installing:
             raise MisesError(ErrorCode.DENIED, f"{dep} is already installing")
         # The command is fixed: the manager's absolute path + the allowlisted args. Nothing from
@@ -87,7 +88,7 @@ def build_system_router(runtime: Runtime, *, probes: Probes | None = None,
             _do_install(runtime, dep, argv, run_cmd, serial=serial))
         task.add_done_callback(lambda _t, d=dep: installing.discard(d))
         runtime._track(task)
-        return {"dep": dep, "status": "running", "command": argv}
+        return {"ok": True, "fix": None, "dep": dep, "status": "running", "command": argv}
 
     return router
 
