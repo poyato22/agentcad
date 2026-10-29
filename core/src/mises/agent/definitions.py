@@ -1,11 +1,19 @@
 """Agent definitions: markdown files with a YAML frontmatter block."""
 from __future__ import annotations
 
+import os
+import re
 from importlib import resources
 from pathlib import Path
 
 import yaml
 from pydantic import BaseModel, ValidationError
+
+from ..types import ErrorCode, MisesError
+
+# custom-agent names double as filenames, so they are tightly constrained: lowercase, no
+# path separators, no dots — a name can never escape the agents directory.
+AGENT_NAME_RE = re.compile(r"^[a-z][a-z0-9_-]{1,40}$")
 
 
 class AgentDefinition(BaseModel):
@@ -74,3 +82,74 @@ def load_definitions(dirs: list[Path] | None = None) -> DefinitionSet:
                 out.warnings.append(f"{p}: unreadable: {e}")
         _load_dir(files, out)
     return out
+
+
+# ---- custom agent CRUD (Plan 5 C1): the user's own agents live as markdown files under
+# home/agents/. Built-in agents (source is None) can only be hidden, via the profile.
+
+def agents_dir(home: Path) -> Path:
+    return Path(home) / "agents"
+
+
+def _check_agent_name(name: str) -> None:
+    if not AGENT_NAME_RE.match(name):
+        raise MisesError(ErrorCode.INVALID_INPUT,
+                         f"agent name {name!r} must match {AGENT_NAME_RE.pattern}",
+                         hint="lowercase letters, digits, '-' or '_'; start with a letter")
+
+
+def custom_agent_path(home: Path, name: str) -> Path:
+    """The <name>.md path, verified to stay inside the agents directory (no traversal)."""
+    _check_agent_name(name)
+    base = agents_dir(home)
+    path = base / f"{name}.md"
+    # a belt-and-braces check on top of the name regex: the resolved path must be a direct
+    # child of the agents directory
+    if path.resolve().parent != base.resolve():
+        raise MisesError(ErrorCode.INVALID_INPUT, "agent name escapes the agents directory")
+    return path
+
+
+def render_definition(*, name: str, description: str, model: str = "inherit",
+                      tools: list[str] | None = None, body: str) -> str:
+    """Serialize an agent definition to the markdown-with-frontmatter form load_definitions
+    reads. Validates by round-tripping through parse_definition."""
+    meta: dict = {"name": name, "description": description, "model": model}
+    if tools is not None:
+        meta["tools"] = tools
+    text = "---\n" + yaml.safe_dump(meta, sort_keys=False).strip() + "\n---\n" + body.strip() + "\n"
+    parse_definition(text)  # raises ValueError on anything load_definitions would skip
+    return text
+
+
+def _atomic_write(path: Path, text: str) -> None:
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def write_custom_agent(home: Path, *, name: str, description: str, model: str = "inherit",
+                       tools: list[str] | None = None, body: str, create: bool) -> AgentDefinition:
+    """Create (create=True) or update (create=False) a custom agent file. A create that would
+    overwrite an existing file, or an update of a missing one, is refused."""
+    path = custom_agent_path(home, name)
+    if create and path.exists():
+        raise MisesError(ErrorCode.INVALID_INPUT, f"agent {name!r} already exists",
+                         hint="use PUT to update it")
+    if not create and not path.exists():
+        raise MisesError(ErrorCode.NOT_FOUND, f"no custom agent {name!r}")
+    try:
+        text = render_definition(name=name, description=description, model=model, tools=tools,
+                                 body=body)
+    except ValueError as e:
+        raise MisesError(ErrorCode.INVALID_INPUT, f"invalid agent definition: {e}") from e
+    agents_dir(home).mkdir(parents=True, exist_ok=True)
+    _atomic_write(path, text)
+    return parse_definition(text, source=path)
+
+
+def delete_custom_agent(home: Path, name: str) -> None:
+    path = custom_agent_path(home, name)
+    if not path.exists():
+        raise MisesError(ErrorCode.NOT_FOUND, f"no custom agent {name!r}")
+    path.unlink()

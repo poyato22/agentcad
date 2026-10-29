@@ -86,7 +86,10 @@ def test_status_shape(client, rt):
 def test_agents_lists_builtins(client):
     items = client.get("/agents", headers=AUTH).json()
     assert {"designer", "planner", "verifier", "sim"} <= {a["name"] for a in items}
-    assert all(set(a) == {"name", "description", "model"} for a in items)
+    # Plan 5 C1 enriched the shape with tools, builtin and hidden flags
+    assert all(set(a) == {"name", "description", "model", "tools", "builtin", "hidden"}
+               for a in items)
+    assert all(a["builtin"] is True and a["hidden"] is False for a in items)
 
 
 def test_models_never_leaks_keys(client, monkeypatch):

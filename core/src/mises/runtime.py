@@ -230,6 +230,12 @@ class Runtime:
     def profile(self):
         return load_profile(self.home)
 
+    def reload_agents(self) -> None:
+        """Re-read the agent definitions after a custom agent was created, edited or deleted."""
+        self.definitions = load_definitions([self.home / "agents"])
+        for w in self.definitions.warnings:
+            log.warning("agent definition skipped: %s", w)
+
     async def aclose(self) -> None:
         """Shut down: every live Claude Code session is closed (no orphan `claude` process or
         MCP token file), a sign-in in progress is stopped, the Onshape client is closed."""
@@ -495,7 +501,7 @@ class Runtime:
                         edit_scope=("*",), read_scope=("*",), caps: Caps | None = None,
                         parent_id: str | None = None,
                         allowed_classes: set[SafetyClass] | None = None,
-                        sketch_id: str | None = None) -> str:
+                        sketch_id: str | None = None, project_id: str | None = None) -> str:
         """`sketch_id` (from POST /sketches): copy that sketch into the run's workdir and give
         it to the agent as data (plus its images for vision-capable providers)."""
         defn = self.definitions.get(agent)
@@ -515,11 +521,12 @@ class Runtime:
                                                 read_scope=read_scope, caps=caps,
                                                 parent_id=parent_id,
                                                 allowed_classes=allowed_classes,
-                                                sketch_id=sketch_id)
+                                                sketch_id=sketch_id, project_id=project_id)
         provider, model = self._resolve_provider(ref, prof)
         if hardware.model_kind(ref) == "local":
             await self.refresh_local_sizes()
-        run = self.store.create_run(agent, provider.name, model, prompt, parent_id=parent_id)
+        run = self.store.create_run(agent, provider.name, model, prompt, parent_id=parent_id,
+                                    project_id=project_id)
         classes = set(SafetyClass) if allowed_classes is None else set(allowed_classes)
         self.store.create_policy(run.id, list(edit_scope), list(read_scope), caps,
                                  [c for c in SafetyClass if c in classes])
@@ -649,14 +656,15 @@ class Runtime:
     async def _start_claude_run(self, agent: str, prompt: str, alias: str, *, edit_scope,
                                 read_scope, caps: Caps, parent_id: str | None,
                                 allowed_classes: set[SafetyClass] | None,
-                                sketch_id: str | None = None) -> str:
+                                sketch_id: str | None = None,
+                                project_id: str | None = None) -> str:
         url, token = await self._mcp()
         info, auth = await self._claude_ready()
         ref = f"{CLAUDE_CODE}/{alias}"
         rid = self.create_external_run(agent, provider=CLAUDE_CODE, model=alias,
                                        edit_scope=edit_scope, read_scope=read_scope, caps=caps,
                                        allowed_classes=allowed_classes, parent_id=parent_id,
-                                       task=prompt, slot_ref=ref)
+                                       task=prompt, slot_ref=ref, project_id=project_id)
         st = self._claude[rid] = _ClaudeRun(ref=ref)
         st.slot, st.started_data = self._external_slots.pop(rid, (None, {}))
         text, images = prompt, None
@@ -829,14 +837,14 @@ class Runtime:
                             read_scope=("*",), caps: Caps = Caps(),
                             allowed_classes: set[SafetyClass] | None = None,
                             parent_id: str | None = None, task: str | None = None,
-                            slot_ref: str | None = None) -> str:
+                            slot_ref: str | None = None, project_id: str | None = None) -> str:
         """`slot_ref`: the run's first turn takes a parallel-agents slot for that model (the
         user's Claude Code); queued if none is free. ACP runs pass none: their agent is
         already running."""
         if not agent:
             raise MisesError(ErrorCode.INVALID_INPUT, "external run needs an agent name")
         run = self.store.create_run(agent, provider, model, task or f"external agent: {agent}",
-                                    parent_id=parent_id, external=True)
+                                    parent_id=parent_id, external=True, project_id=project_id)
         classes = set(SafetyClass) if allowed_classes is None else set(allowed_classes)
         self.store.create_policy(run.id, list(edit_scope), list(read_scope), caps,
                                  [c for c in SafetyClass if c in classes])

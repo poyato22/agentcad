@@ -81,6 +81,10 @@ class Profile(BaseModel):
     theme: Literal["system", "light", "dark"] = "system"
     setup_completed_at: float | None = None
     printers: list[PrinterEntry] = []
+    # builds (Plan 5 C1): the active build and the open build tabs, plus hidden built-in agents
+    active_project_id: str | None = None
+    open_project_ids: list[str] = []
+    hidden_agents: list[str] = []
 
     @field_validator("printers")
     @classmethod

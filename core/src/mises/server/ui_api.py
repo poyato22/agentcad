@@ -22,6 +22,7 @@ from starlette.middleware.cors import CORSMiddleware
 
 from .. import hardware, local_models
 from .. import platform as _platform
+from .. import projects as _projects
 from ..cad.tools import PART_ID_RE
 from ..claude_code.session import MODEL_ALIASES, SOURCE as CLAUDE_CODE
 from ..events import Event
@@ -149,7 +150,9 @@ def build_ui_router(runtime: Runtime) -> UiRouter:
 
     @router.get("/agents")
     async def agents():
-        return [{"name": d.name, "description": d.description, "model": d.model}
+        hidden = set(runtime.profile().hidden_agents)
+        return [{"name": d.name, "description": d.description, "model": d.model,
+                 "tools": d.tools, "builtin": d.source is None, "hidden": d.name in hidden}
                 for d in sorted(runtime.definitions.values(), key=lambda d: d.name)]
 
     def _vendor_keys() -> list[dict]:
@@ -306,26 +309,13 @@ def build_ui_router(runtime: Runtime) -> UiRouter:
         return {"ok": True}
 
     @router.get("/parts")
-    async def parts():
-        root = _parts_root(runtime)
-        if not root.is_dir():
-            return []
-        out = []
-        for d in sorted(root.iterdir(), key=lambda p: p.name):
-            if not PART_ID_RE.fullmatch(d.name):
-                continue
-            real = _contained(root, d)
-            if real is None or not real.is_dir():
-                continue
-            vars_ = _read_json(real / "vars.json")
-            if not isinstance(vars_, dict):
-                continue
-            metrics = _read_json(real / "metrics.json")
-            mtimes = [p.stat().st_mtime for p in real.iterdir() if p.is_file()]
-            out.append({"part_id": d.name, "vars": vars_,
-                        "metrics": metrics if isinstance(metrics, dict) else None,
-                        "mtime": float(max(mtimes, default=real.stat().st_mtime))})
-        return out
+    async def parts(project_id: str | None = None):
+        """The part tree of a build (Plan 5 C1). Without project_id the active build is used.
+        Each row carries the tree metadata (id, label, parent_id, order, color, kind, version)
+        plus the on-disk vars, metrics and mtime. `part_id` mirrors `id` for older callers."""
+        pid = project_id or _projects.active_project_id(runtime.store,
+                                                        runtime.profile().active_project_id)
+        return _projects.list_parts(runtime.store, Path(runtime.home), pid)
 
     @router.get("/parts/{part_id}/model.glb")
     async def part_glb(part_id: str, request: Request):
