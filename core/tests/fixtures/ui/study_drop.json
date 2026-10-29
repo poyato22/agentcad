@@ -1,0 +1,335 @@
+{
+  "sim_id": "sim_2de8ad10d9be",
+  "part_id": "beam",
+  "type": "drop",
+  "run_id": "6eb160bedacf",
+  "call_id": "s5",
+  "step_id": 19,
+  "reason": "1 m drop onto the floor",
+  "status": "done",
+  "stage": "done",
+  "phase": "done",
+  "pct": 100.0,
+  "created_at": 1793289432.8391502,
+  "finished_at": 1793289433.440268,
+  "analysis": "drop",
+  "guide": true,
+  "label": "guide only, not a guarantee",
+  "fidelity_class": "fem_estimate",
+  "validated_against": null,
+  "inputs": {
+    "type": "drop",
+    "settings": {
+      "material": {
+        "name": null,
+        "custom": null,
+        "fdm": null
+      },
+      "mesh": {
+        "size_mm": null,
+        "refine_faces": [],
+        "refine_factor": 0.4,
+        "second_order": true
+      },
+      "solver": {
+        "timeout_s": 300.0,
+        "threads": null
+      },
+      "impact_face": "bottom",
+      "drop_m": 1.0,
+      "k": 10.0,
+      "mass_g": null,
+      "convergence": {
+        "enabled": false,
+        "tol_pct": 5.0,
+        "max_levels": 4
+      }
+    },
+    "material": "PLA",
+    "environment": null
+  },
+  "settings": {
+    "material": {
+      "name": null,
+      "custom": null,
+      "fdm": null
+    },
+    "mesh": {
+      "size_mm": null,
+      "refine_faces": [],
+      "refine_factor": 0.4,
+      "second_order": true
+    },
+    "solver": {
+      "timeout_s": 300.0,
+      "threads": null
+    },
+    "impact_face": "bottom",
+    "drop_m": 1.0,
+    "k": 10.0,
+    "mass_g": null,
+    "convergence": {
+      "enabled": false,
+      "tol_pct": 5.0,
+      "max_levels": 4
+    }
+  },
+  "geometry_hash": "a2de3028d09e285dc97f2fccc089f906341ce08ab048e294655fbbac0405c095",
+  "material": {
+    "name": "PLA",
+    "e_mpa": 2300.0,
+    "nu": 0.35,
+    "yield_mpa": 51.0,
+    "density_g_cm3": 1.24,
+    "hdt_c": 55.0,
+    "source": "Prusament PLA TDS v1.1 (printed, horizontal)",
+    "k_w_mk": 0.13,
+    "alpha_per_k": 6.8e-05,
+    "knockdown": 0.7,
+    "stiffness_factor": 1.0,
+    "custom": false,
+    "allowable_mpa": 35.699999999999996,
+    "e_eff_mpa": 2300.0,
+    "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers"
+  },
+  "environment": null,
+  "error": null,
+  "hint": null,
+  "warnings": [
+    "ESTIMATE: the drop is an equivalent static load of 1.22 N (k = 10); real impacts depend on the floor, the contact and the drop angle",
+    "mesh not converged: peak stress changed 19% between the coarse and fine mesh; treat the peak as uncertain"
+  ],
+  "caveats": [
+    "Guide only: a linear-elastic FEM estimate, not a certification or a guarantee.",
+    "Isotropic material model; printed parts are weaker across layers, so strength is multiplied by an FDM knock-down.",
+    "Small deflections assumed; contact, creep, fatigue, temperature and vibration are not simulated unless this study type says so.",
+    "Peak stress excludes nodes on the fixed face (an ideal clamp gives a constraint singularity there); that value and a safety factor including it are reported separately."
+  ],
+  "urls": {
+    "record": "/sims/sim_2de8ad10d9be",
+    "glb": "/sims/sim_2de8ad10d9be/result.glb",
+    "charts": "/sims/sim_2de8ad10d9be/charts",
+    "probe": "/sims/sim_2de8ad10d9be/probe",
+    "section": "/sims/sim_2de8ad10d9be/section"
+  },
+  "solver": {
+    "name": "CalculiX",
+    "version": "2.23",
+    "path": "/Users/fixture/miniconda3/bin/ccx",
+    "element": "C3D10 (quadratic tetrahedra)",
+    "procedure": "CalculiX *STATIC (equivalent load)"
+  },
+  "mesh": {
+    "mesher": "gmsh",
+    "mesher_version": "4.15.2",
+    "coarse": {
+      "size_mm": 5.0,
+      "nodes": 998,
+      "elements": 433,
+      "order": 2,
+      "fixed_nodes": 217,
+      "loaded_nodes": 0,
+      "dropped_load_n": 0.0
+    },
+    "fine": {
+      "size_mm": 2.5,
+      "nodes": 6598,
+      "elements": 3582,
+      "order": 2,
+      "fixed_nodes": 917,
+      "loaded_nodes": 0,
+      "dropped_load_n": 0.0
+    },
+    "levels": [
+      {
+        "level": 0,
+        "label": "coarse",
+        "size_mm": 5.0,
+        "nodes": 998,
+        "elements": 433,
+        "metric": 0.0010362400003305606
+      },
+      {
+        "level": 1,
+        "label": "fine",
+        "size_mm": 2.5,
+        "nodes": 6598,
+        "elements": 3582,
+        "metric": 0.0012814025711485053
+      }
+    ]
+  },
+  "results": {
+    "max_von_mises_mpa": 0.0012814025711485053,
+    "max_von_mises_at": [
+      100.0,
+      0.9150635094610967,
+      0.9150635094610967
+    ],
+    "max_von_mises_at_fixture_mpa": 0.0015064259055974575,
+    "max_displacement_mm": 2.603087180173447e-06,
+    "max_displacement_at": [
+      97.86952911447675,
+      4.850705840537988,
+      10.0
+    ],
+    "safety_factor": 27860.09705599586,
+    "safety_factor_incl_fixture": 23698.477215074952,
+    "coarse_max_von_mises_mpa": 0.0010362400003305606,
+    "coarse_max_displacement_mm": 2.5778973483859434e-06,
+    "error_band": 0.19132361393516523,
+    "peak_excludes": "nodes on the fixed face",
+    "allowable_mpa": 35.699999999999996,
+    "error_band_pct": 19.1,
+    "governing_case": "impact",
+    "cases": [
+      {
+        "name": "impact",
+        "max_von_mises_mpa": 0.0012814025711485053,
+        "max_von_mises_at": [
+          100.0,
+          0.9150635094610967,
+          0.9150635094610967
+        ],
+        "max_von_mises_at_fixture_mpa": 0.0015064259055974575,
+        "max_displacement_mm": 2.603087180173447e-06,
+        "max_displacement_at": [
+          97.86952911447675,
+          4.850705840537988,
+          10.0
+        ],
+        "safety_factor": 27860.09705599586,
+        "safety_factor_incl_fixture": 23698.477215074952,
+        "coarse_max_von_mises_mpa": 0.0010362400003305606,
+        "coarse_max_displacement_mm": 2.5778973483859434e-06,
+        "error_band": 0.19132361393516523,
+        "peak_excludes": "nodes on the fixed face"
+      }
+    ],
+    "sf_by_case": {
+      "impact": 27860.09705599586
+    },
+    "convergence": {
+      "history": [
+        {
+          "level": 0,
+          "label": "coarse",
+          "size_mm": 5.0,
+          "nodes": 998,
+          "elements": 433,
+          "metric": 0.0010362400003305606
+        },
+        {
+          "level": 1,
+          "label": "fine",
+          "size_mm": 2.5,
+          "nodes": 6598,
+          "elements": 3582,
+          "metric": 0.0012814025711485053
+        }
+      ],
+      "converged": null
+    },
+    "deformed_scale": 1939909.0847370576,
+    "impact": {
+      "newtons": 1.216,
+      "estimate": true,
+      "formula": "F = m\u00b7g\u00b7k (equivalent static load)",
+      "source": "engineering.loads.impact_equivalent",
+      "mass_g": 12.399999999999999,
+      "drop_m": 1.0,
+      "k": 10.0,
+      "g_equivalent": 9.996382887770872,
+      "impact_velocity_m_s": 4.4294469180700204
+    }
+  },
+  "inputs_hash": "c0ccf7f6ac3974693bf2864e8cca6238b4171ba66e8803fb695e746db16ea284",
+  "glb": "result.glb",
+  "outputs": [
+    "result.glb",
+    "fields.npz"
+  ],
+  "color_range_mpa": [
+    0.0,
+    0.0012814025711485053
+  ],
+  "checks": [
+    {
+      "requirement_id": "r6",
+      "kind": "min_safety_factor",
+      "target": 2.0,
+      "measured": 27860.09705599586,
+      "unit": "",
+      "status": "warn",
+      "sim_id": "sim_2de8ad10d9be",
+      "note": null
+    }
+  ],
+  "stale": false,
+  "card": {
+    "sim_id": "sim_2de8ad10d9be",
+    "type": "drop",
+    "status": "done",
+    "verdict": "warn",
+    "phase": "done",
+    "pct": 100.0,
+    "part_id": "beam",
+    "label": "guide only, not a guarantee",
+    "fidelity_class": "fem_estimate",
+    "fidelity_note": "estimate (equivalent static load F = m g k)",
+    "notes": [],
+    "metrics": [
+      {
+        "key": "max_von_mises_mpa",
+        "label": "max von Mises",
+        "unit": "MPa",
+        "value": 0.0012814025711485053
+      },
+      {
+        "key": "safety_factor",
+        "label": "safety factor",
+        "unit": "",
+        "value": 27860.09705599586
+      },
+      {
+        "key": "max_displacement_mm",
+        "label": "max displacement",
+        "unit": "mm",
+        "value": 2.603087180173447e-06
+      },
+      {
+        "key": "error_band_pct",
+        "label": "error band",
+        "unit": "%",
+        "value": 19.1
+      }
+    ],
+    "checks": [
+      {
+        "requirement_id": "r6",
+        "kind": "min_safety_factor",
+        "target": 2.0,
+        "measured": 27860.09705599586,
+        "unit": "",
+        "status": "warn",
+        "sim_id": "sim_2de8ad10d9be",
+        "note": null
+      }
+    ],
+    "warnings": [
+      "ESTIMATE: the drop is an equivalent static load of 1.22 N (k = 10); real impacts depend on the floor, the contact and the drop angle",
+      "mesh not converged: peak stress changed 19% between the coarse and fine mesh; treat the peak as uncertain"
+    ],
+    "reason": "1 m drop onto the floor",
+    "run_id": "6eb160bedacf",
+    "step_id": 19,
+    "urls": {
+      "record": "/sims/sim_2de8ad10d9be",
+      "glb": "/sims/sim_2de8ad10d9be/result.glb",
+      "charts": "/sims/sim_2de8ad10d9be/charts",
+      "probe": "/sims/sim_2de8ad10d9be/probe",
+      "section": "/sims/sim_2de8ad10d9be/section"
+    },
+    "charts_url": "/sims/sim_2de8ad10d9be/charts"
+  }
+}

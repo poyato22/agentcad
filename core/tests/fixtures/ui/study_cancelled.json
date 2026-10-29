@@ -1,0 +1,136 @@
+{
+  "sim_id": "sim_37216a736139",
+  "part_id": "cube",
+  "type": "wind",
+  "run_id": "65807c4b9690",
+  "call_id": "ui-205c3536a604",
+  "step_id": 32,
+  "reason": "cancel me",
+  "status": "cancelled",
+  "stage": "cancelled",
+  "phase": "solve",
+  "pct": 5.5,
+  "created_at": 1793289440.862835,
+  "finished_at": 1793289441.479646,
+  "analysis": "wind",
+  "guide": true,
+  "label": "guide only, not a guarantee",
+  "fidelity_class": "cfd_lbm",
+  "validated_against": null,
+  "inputs": {
+    "type": "wind",
+    "settings": {
+      "speed_m_s": 5.0,
+      "direction": "+x",
+      "up": "+z",
+      "air_density": 1.225,
+      "air_viscosity": 1.81e-05,
+      "ref_area_m2": null,
+      "domain_multiplier": 3.0,
+      "refinement": 1,
+      "turbulence": "smagorinsky",
+      "iterations": 100000,
+      "timeout_s": 600.0,
+      "memory_mb": 1024,
+      "yaw_deg": [],
+      "solver": "auto",
+      "shape_class": "auto"
+    },
+    "material": null,
+    "environment": null
+  },
+  "settings": {
+    "speed_m_s": 5.0,
+    "direction": "+x",
+    "up": "+z",
+    "air_density": 1.225,
+    "air_viscosity": 1.81e-05,
+    "ref_area_m2": null,
+    "domain_multiplier": 3.0,
+    "refinement": 1,
+    "turbulence": "smagorinsky",
+    "iterations": 100000,
+    "timeout_s": 600.0,
+    "memory_mb": 1024,
+    "yaw_deg": [],
+    "solver": "auto",
+    "shape_class": "auto"
+  },
+  "geometry_hash": "2ae298fada56e8d84cbe6fcb93040c182c1ed48883268b888f79a5fadb9c2374",
+  "material": null,
+  "environment": null,
+  "error": "cancelled",
+  "hint": null,
+  "warnings": [],
+  "caveats": [
+    "Guide only, LOW FIDELITY: a coarse lattice-Boltzmann (LES) solution on a voxelized part in a periodic tunnel, at a reduced effective Reynolds number.",
+    "The boundary layer is not resolved: drag is the resolved pressure drag plus a flat-plate skin-friction estimate; the raw lattice total is reported as cd_lattice_total.",
+    "Validated on a sphere and a flat plate (see the Mises C7 report); expect 10-30% error on other shapes, more on streamlined bodies whose drag is mostly friction."
+  ],
+  "urls": {
+    "record": "/sims/sim_37216a736139",
+    "glb": "/sims/sim_37216a736139/result.glb",
+    "charts": "/sims/sim_37216a736139/charts",
+    "probe": "/sims/sim_37216a736139/probe",
+    "section": "/sims/sim_37216a736139/section"
+  },
+  "stale": false,
+  "card": {
+    "sim_id": "sim_37216a736139",
+    "type": "wind",
+    "status": "cancelled",
+    "verdict": "fail",
+    "phase": "solve",
+    "pct": 5.5,
+    "part_id": "cube",
+    "label": "guide only, not a guarantee",
+    "fidelity_class": "cfd_lbm",
+    "fidelity_note": null,
+    "notes": [],
+    "metrics": [
+      {
+        "key": "cd",
+        "label": "Cd",
+        "unit": "",
+        "value": null
+      },
+      {
+        "key": "cl",
+        "label": "Cl",
+        "unit": "",
+        "value": null
+      },
+      {
+        "key": "drag_n",
+        "label": "drag",
+        "unit": "N",
+        "value": null
+      },
+      {
+        "key": "lift_n",
+        "label": "lift",
+        "unit": "N",
+        "value": null
+      },
+      {
+        "key": "error_band_pct",
+        "label": "model error (validated)",
+        "unit": "%",
+        "value": null
+      }
+    ],
+    "checks": [],
+    "warnings": [],
+    "reason": "cancel me",
+    "run_id": "65807c4b9690",
+    "step_id": 32,
+    "urls": {
+      "record": "/sims/sim_37216a736139",
+      "glb": "/sims/sim_37216a736139/result.glb",
+      "charts": "/sims/sim_37216a736139/charts",
+      "probe": "/sims/sim_37216a736139/probe",
+      "section": "/sims/sim_37216a736139/section"
+    },
+    "charts_url": "/sims/sim_37216a736139/charts"
+  }
+}

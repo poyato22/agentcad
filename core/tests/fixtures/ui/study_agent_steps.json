@@ -1,0 +1,2487 @@
+[
+  {
+    "id": 5,
+    "run_id": "6eb160bedacf",
+    "ts": 1793289429.132258,
+    "kind": "message",
+    "payload": {
+      "role": "user",
+      "text": "study the beam and the cube, then review the beam against its spec"
+    },
+    "evidence_hash": "a6686bef5d6a5f820160b4374b206d48b66fb7a7ccb9c989bee440fa0e2813cb",
+    "prev_hash": null,
+    "collapsed": false
+  },
+  {
+    "id": 6,
+    "run_id": "6eb160bedacf",
+    "ts": 1793289429.134185,
+    "kind": "message",
+    "payload": {
+      "role": "assistant",
+      "stop_reason": "tool_use",
+      "text": "Running the static study.",
+      "tool_calls": [
+        {
+          "id": "s1",
+          "name": "sim_run"
+        }
+      ]
+    },
+    "evidence_hash": "79b058d4b9f3d4bc619b77ca46c33a87b744216e06758fc54395af5945e36a6b",
+    "prev_hash": "a6686bef5d6a5f820160b4374b206d48b66fb7a7ccb9c989bee440fa0e2813cb",
+    "collapsed": false
+  },
+  {
+    "id": 7,
+    "run_id": "6eb160bedacf",
+    "ts": 1793289429.13442,
+    "kind": "tool_call",
+    "payload": {
+      "call_id": "s1",
+      "input": {
+        "part_id": "beam",
+        "reason": "tip load on the beam under both cases",
+        "requirements": [
+          {
+            "id": "r1",
+            "kind": "min_safety_factor",
+            "target": 2.0
+          },
+          {
+            "id": "r2",
+            "kind": "max_deflection_mm",
+            "target": 1.0
+          }
+        ],
+        "settings": {
+          "load_cases": [
+            {
+              "loads": [
+                {
+                  "direction": "-z",
+                  "face": "x-max",
+                  "kind": "force",
+                  "newtons": 10
+                }
+              ],
+              "name": "tip",
+              "supports": [
+                {
+                  "face": "x-min",
+                  "kind": "fixed"
+                }
+              ]
+            },
+            {
+              "loads": [
+                {
+                  "direction": "+y",
+                  "face": "x-max",
+                  "kind": "force",
+                  "newtons": 6
+                }
+              ],
+              "name": "side",
+              "supports": [
+                {
+                  "face": "x-min",
+                  "kind": "fixed"
+                }
+              ]
+            }
+          ]
+        },
+        "type": "static"
+      },
+      "name": "sim_run"
+    },
+    "evidence_hash": "eeff5ad8ce794a408236b4f9eec5b189e65b7d95ec75abef80a4e177e06cdf04",
+    "prev_hash": "79b058d4b9f3d4bc619b77ca46c33a87b744216e06758fc54395af5945e36a6b",
+    "collapsed": false
+  },
+  {
+    "id": 8,
+    "run_id": "6eb160bedacf",
+    "ts": 1793289430.328193,
+    "kind": "sim_run",
+    "payload": {
+      "call_id": "s1",
+      "name": "sim_run",
+      "output": {
+        "data": {
+          "call_id": "s1",
+          "card": {
+            "charts_url": "/sims/sim_40a5661032b6/charts",
+            "checks": [
+              {
+                "kind": "min_safety_factor",
+                "measured": 5.906498504081631,
+                "note": null,
+                "requirement_id": "r1",
+                "sim_id": "sim_40a5661032b6",
+                "status": "pass",
+                "target": 2.0,
+                "unit": ""
+              },
+              {
+                "kind": "max_deflection_mm",
+                "measured": 1.7386006851423133,
+                "note": null,
+                "requirement_id": "r2",
+                "sim_id": "sim_40a5661032b6",
+                "status": "fail",
+                "target": 1.0,
+                "unit": "mm"
+              }
+            ],
+            "fidelity_class": "fem",
+            "fidelity_note": null,
+            "label": "guide only, not a guarantee",
+            "metrics": [
+              {
+                "key": "max_von_mises_mpa",
+                "label": "max von Mises",
+                "unit": "MPa",
+                "value": 6.044190136563963
+              },
+              {
+                "key": "safety_factor",
+                "label": "safety factor",
+                "unit": "",
+                "value": 5.906498504081631
+              },
+              {
+                "key": "max_displacement_mm",
+                "label": "max displacement",
+                "unit": "mm",
+                "value": 1.7386006851423133
+              },
+              {
+                "key": "error_band_pct",
+                "label": "error band",
+                "unit": "%",
+                "value": 0.7
+              }
+            ],
+            "notes": [],
+            "part_id": "beam",
+            "pct": 100.0,
+            "phase": "done",
+            "reason": "tip load on the beam under both cases",
+            "run_id": "6eb160bedacf",
+            "sim_id": "sim_40a5661032b6",
+            "status": "done",
+            "step_id": 7,
+            "type": "static",
+            "urls": {
+              "charts": "/sims/sim_40a5661032b6/charts",
+              "glb": "/sims/sim_40a5661032b6/result.glb",
+              "probe": "/sims/sim_40a5661032b6/probe",
+              "record": "/sims/sim_40a5661032b6",
+              "section": "/sims/sim_40a5661032b6/section"
+            },
+            "verdict": "fail",
+            "warnings": []
+          },
+          "charts_url": "/sims/sim_40a5661032b6/charts",
+          "checks": [
+            {
+              "kind": "min_safety_factor",
+              "measured": 5.906498504081631,
+              "note": null,
+              "requirement_id": "r1",
+              "sim_id": "sim_40a5661032b6",
+              "status": "pass",
+              "target": 2.0,
+              "unit": ""
+            },
+            {
+              "kind": "max_deflection_mm",
+              "measured": 1.7386006851423133,
+              "note": null,
+              "requirement_id": "r2",
+              "sim_id": "sim_40a5661032b6",
+              "status": "fail",
+              "target": 1.0,
+              "unit": "mm"
+            }
+          ],
+          "error": null,
+          "fidelity_class": "fem",
+          "guide": true,
+          "hint": null,
+          "label": "guide only, not a guarantee",
+          "material": {
+            "allowable_mpa": 35.699999999999996,
+            "alpha_per_k": 6.8e-05,
+            "custom": false,
+            "density_g_cm3": 1.24,
+            "e_eff_mpa": 2300.0,
+            "e_mpa": 2300.0,
+            "hdt_c": 55.0,
+            "k_w_mk": 0.13,
+            "knockdown": 0.7,
+            "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers",
+            "name": "PLA",
+            "nu": 0.35,
+            "source": "Prusament PLA TDS v1.1 (printed, horizontal)",
+            "stiffness_factor": 1.0,
+            "yield_mpa": 51.0
+          },
+          "mesh": {
+            "coarse": {
+              "dropped_load_n": 0.0,
+              "elements": 433,
+              "fixed_nodes": 37,
+              "loaded_nodes": 25,
+              "nodes": 998,
+              "order": 2,
+              "size_mm": 5.0
+            },
+            "fine": {
+              "dropped_load_n": 0.0,
+              "elements": 3582,
+              "fixed_nodes": 105,
+              "loaded_nodes": 71,
+              "nodes": 6598,
+              "order": 2,
+              "size_mm": 2.5
+            },
+            "mesher": "gmsh"
+          },
+          "part_id": "beam",
+          "reason": "tip load on the beam under both cases",
+          "results": {
+            "allowable_mpa": 35.699999999999996,
+            "cases": [
+              {
+                "error_band": 0.006708471369454942,
+                "max_displacement_mm": 1.7386006851423133,
+                "max_von_mises_mpa": 6.044190136563963,
+                "name": "tip",
+                "safety_factor": 5.906498504081631
+              },
+              {
+                "error_band": 0.00708921585784856,
+                "max_displacement_mm": 1.0431744243422987,
+                "max_von_mises_mpa": 3.6334285421476284,
+                "name": "side",
+                "safety_factor": 9.825430605248293
+              }
+            ],
+            "coarse_max_displacement_mm": 1.7348891617849151,
+            "coarse_max_von_mises_mpa": 6.0847374130466445,
+            "convergence": {
+              "converged": null,
+              "levels": 2
+            },
+            "deformed_scale": 2.9044923957151734,
+            "error_band": 0.006708471369454942,
+            "error_band_pct": 0.7,
+            "governing_case": "tip",
+            "max_displacement_at": [
+              100.0,
+              3.75,
+              0.0
+            ],
+            "max_displacement_mm": 1.7386006851423133,
+            "max_von_mises_at": [
+              1.8301270189221936,
+              8.169872981077807,
+              10.0
+            ],
+            "max_von_mises_at_fixture_mpa": 5.582107209390285,
+            "max_von_mises_mpa": 6.044190136563963,
+            "peak_excludes": "nodes on the fixed face",
+            "safety_factor": 5.906498504081631,
+            "safety_factor_incl_fixture": 5.906498504081631,
+            "sf_by_case": {
+              "side": 9.825430605248293,
+              "tip": 5.906498504081631
+            }
+          },
+          "run_id": "6eb160bedacf",
+          "sim_id": "sim_40a5661032b6",
+          "solver": {
+            "element": "C3D10 (quadratic tetrahedra)",
+            "name": "CalculiX",
+            "path": "/Users/fixture/miniconda3/bin/ccx",
+            "procedure": "CalculiX *STATIC",
+            "version": "2.23"
+          },
+          "stale": null,
+          "status": "done",
+          "step_id": 7,
+          "type": "static",
+          "urls": {
+            "charts": "/sims/sim_40a5661032b6/charts",
+            "glb": "/sims/sim_40a5661032b6/result.glb",
+            "probe": "/sims/sim_40a5661032b6/probe",
+            "record": "/sims/sim_40a5661032b6",
+            "section": "/sims/sim_40a5661032b6/section"
+          },
+          "warnings": []
+        },
+        "handles": [],
+        "ok": true,
+        "step_kind": "sim_run",
+        "summary": "GUIDE ONLY - CalculiX 2.23, fine mesh 2.5 mm (coarse 5 mm), material PLA isotropic linear elastic, strength x0.7 FDM knock-down: beam max von Mises 6.04 MPa (error band 0.7%), max displacement 1.74 mm, safety factor 5.91; peak excludes the fixed face; at fixture: 5.58 MPa (safety factor incl. fixture 5.91); governing case tip of 2",
+        "warnings": []
+      }
+    },
+    "evidence_hash": "518330550c65c7153a9451bc0a2dcaa3fab24da7fc59e49ca549d89e467f2334",
+    "prev_hash": "eeff5ad8ce794a408236b4f9eec5b189e65b7d95ec75abef80a4e177e06cdf04",
+    "collapsed": false
+  },
+  {
+    "id": 9,
+    "run_id": "6eb160bedacf",
+    "ts": 1793289430.328696,
+    "kind": "message",
+    "payload": {
+      "role": "assistant",
+      "stop_reason": "tool_use",
+      "text": "Running the modal study.",
+      "tool_calls": [
+        {
+          "id": "s2",
+          "name": "sim_run"
+        }
+      ]
+    },
+    "evidence_hash": "bbabc8caacfd986c087d294db3ad6362238fe07ee85c0cb8e02afcf0443ecb65",
+    "prev_hash": "518330550c65c7153a9451bc0a2dcaa3fab24da7fc59e49ca549d89e467f2334",
+    "collapsed": false
+  },
+  {
+    "id": 10,
+    "run_id": "6eb160bedacf",
+    "ts": 1793289430.3288288,
+    "kind": "tool_call",
+    "payload": {
+      "call_id": "s2",
+      "input": {
+        "part_id": "beam",
+        "reason": "keep the beam's modes clear of the 2-blade prop at 12k rpm",
+        "requirements": [
+          {
+            "id": "r3",
+            "kind": "avoid_band_hz",
+            "target": [
+              340,
+              460
+            ]
+          }
+        ],
+        "settings": {
+          "excitation": {
+            "blades": 2,
+            "margin_pct": 15,
+            "rpm": 12000
+          },
+          "n_modes": 4,
+          "supports": [
+            {
+              "face": "x-min",
+              "kind": "fixed"
+            }
+          ]
+        },
+        "type": "modal"
+      },
+      "name": "sim_run"
+    },
+    "evidence_hash": "5fae9c03bcf833700a28d7a12906f47b1a9400d92b5429701e017ef5d583a86a",
+    "prev_hash": "bbabc8caacfd986c087d294db3ad6362238fe07ee85c0cb8e02afcf0443ecb65",
+    "collapsed": false
+  },
+  {
+    "id": 11,
+    "run_id": "6eb160bedacf",
+    "ts": 1793289431.220223,
+    "kind": "sim_run",
+    "payload": {
+      "call_id": "s2",
+      "name": "sim_run",
+      "output": {
+        "data": {
+          "call_id": "s2",
+          "card": {
+            "charts_url": "/sims/sim_26a951c787d5/charts",
+            "checks": [
+              {
+                "kind": "avoid_band_hz",
+                "measured": 0,
+                "note": null,
+                "requirement_id": "r3",
+                "sim_id": "sim_26a951c787d5",
+                "status": "pass",
+                "target": [
+                  340,
+                  460
+                ],
+                "unit": "modes"
+              }
+            ],
+            "fidelity_class": "fem",
+            "fidelity_note": null,
+            "label": "guide only, not a guarantee",
+            "metrics": [
+              {
+                "key": "first_freq_hz",
+                "label": "first frequency",
+                "unit": "Hz",
+                "value": 219.8506
+              },
+              {
+                "key": "modes_in_band",
+                "label": "modes in band",
+                "unit": "",
+                "value": 0
+              },
+              {
+                "key": "error_band_pct",
+                "label": "error band",
+                "unit": "%",
+                "value": 0.1
+              }
+            ],
+            "notes": [],
+            "part_id": "beam",
+            "pct": 100.0,
+            "phase": "done",
+            "reason": "keep the beam's modes clear of the 2-blade prop at 12k rpm",
+            "run_id": "6eb160bedacf",
+            "sim_id": "sim_26a951c787d5",
+            "status": "done",
+            "step_id": 10,
+            "type": "modal",
+            "urls": {
+              "charts": "/sims/sim_26a951c787d5/charts",
+              "glb": "/sims/sim_26a951c787d5/result.glb",
+              "probe": "/sims/sim_26a951c787d5/probe",
+              "record": "/sims/sim_26a951c787d5",
+              "section": "/sims/sim_26a951c787d5/section"
+            },
+            "verdict": "pass",
+            "warnings": []
+          },
+          "charts_url": "/sims/sim_26a951c787d5/charts",
+          "checks": [
+            {
+              "kind": "avoid_band_hz",
+              "measured": 0,
+              "note": null,
+              "requirement_id": "r3",
+              "sim_id": "sim_26a951c787d5",
+              "status": "pass",
+              "target": [
+                340,
+                460
+              ],
+              "unit": "modes"
+            }
+          ],
+          "error": null,
+          "fidelity_class": "fem",
+          "guide": true,
+          "hint": null,
+          "label": "guide only, not a guarantee",
+          "material": {
+            "allowable_mpa": 35.699999999999996,
+            "alpha_per_k": 6.8e-05,
+            "custom": false,
+            "density_g_cm3": 1.24,
+            "e_eff_mpa": 2300.0,
+            "e_mpa": 2300.0,
+            "hdt_c": 55.0,
+            "k_w_mk": 0.13,
+            "knockdown": 0.7,
+            "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers",
+            "name": "PLA",
+            "nu": 0.35,
+            "source": "Prusament PLA TDS v1.1 (printed, horizontal)",
+            "stiffness_factor": 1.0,
+            "yield_mpa": 51.0
+          },
+          "mesh": {
+            "coarse": {
+              "elements": 433,
+              "fixed_nodes": 37,
+              "nodes": 998,
+              "order": 2,
+              "size_mm": 5.0
+            },
+            "fine": {
+              "elements": 3582,
+              "fixed_nodes": 105,
+              "nodes": 6598,
+              "order": 2,
+              "size_mm": 2.5
+            },
+            "mesher": "gmsh"
+          },
+          "part_id": "beam",
+          "reason": "keep the beam's modes clear of the 2-blade prop at 12k rpm",
+          "results": {
+            "band_hz": [
+              340.0,
+              459.99999999999994
+            ],
+            "convergence": {
+              "converged": null,
+              "levels": 2
+            },
+            "error_band": 0.001292241185605241,
+            "error_band_pct": 0.1,
+            "first_freq_hz": 219.8506,
+            "frequencies_hz": [
+              219.8506,
+              219.8542,
+              1316.892,
+              1316.908
+            ],
+            "modes": [
+              {
+                "freq_hz": 219.8506,
+                "in_band": false,
+                "mode": 1
+              },
+              {
+                "freq_hz": 219.8542,
+                "in_band": false,
+                "mode": 2
+              },
+              {
+                "freq_hz": 1316.892,
+                "in_band": false,
+                "mode": 3
+              },
+              {
+                "freq_hz": 1316.908,
+                "in_band": false,
+                "mode": 4
+              }
+            ],
+            "modes_in_band": 0
+          },
+          "run_id": "6eb160bedacf",
+          "sim_id": "sim_26a951c787d5",
+          "solver": {
+            "element": "C3D10 (quadratic tetrahedra)",
+            "name": "CalculiX",
+            "path": "/Users/fixture/miniconda3/bin/ccx",
+            "procedure": "CalculiX *FREQUENCY",
+            "version": "2.23"
+          },
+          "stale": null,
+          "status": "done",
+          "step_id": 10,
+          "type": "modal",
+          "urls": {
+            "charts": "/sims/sim_26a951c787d5/charts",
+            "glb": "/sims/sim_26a951c787d5/result.glb",
+            "probe": "/sims/sim_26a951c787d5/probe",
+            "record": "/sims/sim_26a951c787d5",
+            "section": "/sims/sim_26a951c787d5/section"
+          },
+          "warnings": []
+        },
+        "handles": [],
+        "ok": true,
+        "step_kind": "sim_run",
+        "summary": "GUIDE ONLY - CalculiX 2.23 CalculiX *FREQUENCY, fine mesh 2.5 mm, material PLA: beam first natural frequency 219.9 Hz (modes: 219.9, 219.9, 1317, 1317 Hz), error band 0.1%; 0 mode(s) inside 340-460 Hz",
+        "warnings": []
+      }
+    },
+    "evidence_hash": "4b6a3f90bc36c040d88aeda18ab343a1f0a95b871c1de0961c7ad983b05ea0b1",
+    "prev_hash": "5fae9c03bcf833700a28d7a12906f47b1a9400d92b5429701e017ef5d583a86a",
+    "collapsed": false
+  },
+  {
+    "id": 12,
+    "run_id": "6eb160bedacf",
+    "ts": 1793289431.22069,
+    "kind": "message",
+    "payload": {
+      "role": "assistant",
+      "stop_reason": "tool_use",
+      "text": "Running the buckling study.",
+      "tool_calls": [
+        {
+          "id": "s3",
+          "name": "sim_run"
+        }
+      ]
+    },
+    "evidence_hash": "e6fd1efca50cfff685dc072369a74017bd792b9d7d3feb898c16c685cf1169e6",
+    "prev_hash": "4b6a3f90bc36c040d88aeda18ab343a1f0a95b871c1de0961c7ad983b05ea0b1",
+    "collapsed": false
+  },
+  {
+    "id": 13,
+    "run_id": "6eb160bedacf",
+    "ts": 1793289431.2208169,
+    "kind": "tool_call",
+    "payload": {
+      "call_id": "s3",
+      "input": {
+        "part_id": "beam",
+        "reason": "axial load margin",
+        "requirements": [
+          {
+            "id": "r4",
+            "kind": "min_buckling_factor",
+            "target": 3.0
+          }
+        ],
+        "settings": {
+          "load_case": {
+            "loads": [
+              {
+                "direction": "-x",
+                "face": "x-max",
+                "kind": "force",
+                "newtons": 100
+              }
+            ],
+            "name": "axial",
+            "supports": [
+              {
+                "face": "x-min",
+                "kind": "fixed"
+              }
+            ]
+          },
+          "n_modes": 3
+        },
+        "type": "buckling"
+      },
+      "name": "sim_run"
+    },
+    "evidence_hash": "7b8f9a4e19e9ce0a40f7454c0f7df17cdaae3ee76b2216816d89c5b9c35f0053",
+    "prev_hash": "e6fd1efca50cfff685dc072369a74017bd792b9d7d3feb898c16c685cf1169e6",
+    "collapsed": false
+  },
+  {
+    "id": 14,
+    "run_id": "6eb160bedacf",
+    "ts": 1793289432.302016,
+    "kind": "sim_run",
+    "payload": {
+      "call_id": "s3",
+      "name": "sim_run",
+      "output": {
+        "data": {
+          "call_id": "s3",
+          "card": {
+            "charts_url": "/sims/sim_d85b6e8647f9/charts",
+            "checks": [
+              {
+                "kind": "min_buckling_factor",
+                "measured": 4.724615,
+                "note": null,
+                "requirement_id": "r4",
+                "sim_id": "sim_d85b6e8647f9",
+                "status": "pass",
+                "target": 3.0,
+                "unit": ""
+              }
+            ],
+            "fidelity_class": "fem",
+            "fidelity_note": null,
+            "label": "guide only, not a guarantee",
+            "metrics": [
+              {
+                "key": "first_factor",
+                "label": "buckling factor",
+                "unit": "",
+                "value": 4.724615
+              },
+              {
+                "key": "critical_load_n",
+                "label": "critical load",
+                "unit": "N",
+                "value": 472.4615
+              },
+              {
+                "key": "error_band_pct",
+                "label": "error band",
+                "unit": "%",
+                "value": 0.1
+              }
+            ],
+            "notes": [],
+            "part_id": "beam",
+            "pct": 100.0,
+            "phase": "done",
+            "reason": "axial load margin",
+            "run_id": "6eb160bedacf",
+            "sim_id": "sim_d85b6e8647f9",
+            "status": "done",
+            "step_id": 13,
+            "type": "buckling",
+            "urls": {
+              "charts": "/sims/sim_d85b6e8647f9/charts",
+              "glb": "/sims/sim_d85b6e8647f9/result.glb",
+              "probe": "/sims/sim_d85b6e8647f9/probe",
+              "record": "/sims/sim_d85b6e8647f9",
+              "section": "/sims/sim_d85b6e8647f9/section"
+            },
+            "verdict": "pass",
+            "warnings": []
+          },
+          "charts_url": "/sims/sim_d85b6e8647f9/charts",
+          "checks": [
+            {
+              "kind": "min_buckling_factor",
+              "measured": 4.724615,
+              "note": null,
+              "requirement_id": "r4",
+              "sim_id": "sim_d85b6e8647f9",
+              "status": "pass",
+              "target": 3.0,
+              "unit": ""
+            }
+          ],
+          "error": null,
+          "fidelity_class": "fem",
+          "guide": true,
+          "hint": null,
+          "label": "guide only, not a guarantee",
+          "material": {
+            "allowable_mpa": 35.699999999999996,
+            "alpha_per_k": 6.8e-05,
+            "custom": false,
+            "density_g_cm3": 1.24,
+            "e_eff_mpa": 2300.0,
+            "e_mpa": 2300.0,
+            "hdt_c": 55.0,
+            "k_w_mk": 0.13,
+            "knockdown": 0.7,
+            "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers",
+            "name": "PLA",
+            "nu": 0.35,
+            "source": "Prusament PLA TDS v1.1 (printed, horizontal)",
+            "stiffness_factor": 1.0,
+            "yield_mpa": 51.0
+          },
+          "mesh": {
+            "coarse": {
+              "applied_n": 100.0,
+              "elements": 433,
+              "fixed_nodes": 37,
+              "nodes": 998,
+              "order": 2,
+              "size_mm": 5.0
+            },
+            "fine": {
+              "applied_n": 100.0,
+              "elements": 3582,
+              "fixed_nodes": 105,
+              "nodes": 6598,
+              "order": 2,
+              "size_mm": 2.5
+            },
+            "mesher": "gmsh"
+          },
+          "part_id": "beam",
+          "reason": "axial load margin",
+          "results": {
+            "applied_load_n": 100.0,
+            "coarse_factors": [
+              4.7309,
+              4.731711,
+              39.98299
+            ],
+            "convergence": {
+              "converged": null,
+              "levels": 2
+            },
+            "critical_load_n": 472.4615,
+            "error_band": 0.0013302671222946412,
+            "error_band_pct": 0.1,
+            "factors": [
+              4.724615,
+              4.7247,
+              39.88282
+            ],
+            "first_factor": 4.724615
+          },
+          "run_id": "6eb160bedacf",
+          "sim_id": "sim_d85b6e8647f9",
+          "solver": {
+            "element": "C3D10 (quadratic tetrahedra)",
+            "name": "CalculiX",
+            "path": "/Users/fixture/miniconda3/bin/ccx",
+            "procedure": "CalculiX *BUCKLE",
+            "version": "2.23"
+          },
+          "stale": null,
+          "status": "done",
+          "step_id": 13,
+          "type": "buckling",
+          "urls": {
+            "charts": "/sims/sim_d85b6e8647f9/charts",
+            "glb": "/sims/sim_d85b6e8647f9/result.glb",
+            "probe": "/sims/sim_d85b6e8647f9/probe",
+            "record": "/sims/sim_d85b6e8647f9",
+            "section": "/sims/sim_d85b6e8647f9/section"
+          },
+          "warnings": []
+        },
+        "handles": [],
+        "ok": true,
+        "step_kind": "sim_run",
+        "summary": "GUIDE ONLY - CalculiX 2.23 CalculiX *BUCKLE, fine mesh 2.5 mm, material PLA: beam first buckling factor 4.72 (critical load 472 N), error band 0.1%",
+        "warnings": []
+      }
+    },
+    "evidence_hash": "5ceb7416bc133541cf4c3e11a37b0af2655c485dd5a5e25b0bd195853993fb6d",
+    "prev_hash": "7b8f9a4e19e9ce0a40f7454c0f7df17cdaae3ee76b2216816d89c5b9c35f0053",
+    "collapsed": false
+  },
+  {
+    "id": 15,
+    "run_id": "6eb160bedacf",
+    "ts": 1793289432.302647,
+    "kind": "message",
+    "payload": {
+      "role": "assistant",
+      "stop_reason": "tool_use",
+      "text": "Running the thermal study.",
+      "tool_calls": [
+        {
+          "id": "s4",
+          "name": "sim_run"
+        }
+      ]
+    },
+    "evidence_hash": "f90ab1dbd0c1d7400470c101d1ac40516dd35775787bbf4bd073cc4cb58529cf",
+    "prev_hash": "5ceb7416bc133541cf4c3e11a37b0af2655c485dd5a5e25b0bd195853993fb6d",
+    "collapsed": false
+  },
+  {
+    "id": 16,
+    "run_id": "6eb160bedacf",
+    "ts": 1793289432.302785,
+    "kind": "tool_call",
+    "payload": {
+      "call_id": "s4",
+      "input": {
+        "part_id": "beam",
+        "reason": "motor heat at the root",
+        "requirements": [
+          {
+            "id": "r5",
+            "kind": "max_temp_c",
+            "target": 60
+          }
+        ],
+        "settings": {
+          "convection": [
+            {
+              "ambient_c": 23,
+              "face": "x-max",
+              "h_w_m2k": 25
+            }
+          ],
+          "temperatures": [
+            {
+              "face": "x-min",
+              "temp_c": 70
+            }
+          ]
+        },
+        "type": "thermal"
+      },
+      "name": "sim_run"
+    },
+    "evidence_hash": "303b1d32296243be804a9b93371fdeda5f0fb4a639c55044ee16237a35ab7e2d",
+    "prev_hash": "f90ab1dbd0c1d7400470c101d1ac40516dd35775787bbf4bd073cc4cb58529cf",
+    "collapsed": false
+  },
+  {
+    "id": 17,
+    "run_id": "6eb160bedacf",
+    "ts": 1793289432.837593,
+    "kind": "sim_run",
+    "payload": {
+      "call_id": "s4",
+      "name": "sim_run",
+      "output": {
+        "data": {
+          "call_id": "s4",
+          "card": {
+            "charts_url": "/sims/sim_6770bfdffc8c/charts",
+            "checks": [
+              {
+                "kind": "max_temp_c",
+                "measured": 70.0,
+                "note": null,
+                "requirement_id": "r5",
+                "sim_id": "sim_6770bfdffc8c",
+                "status": "fail",
+                "target": 60,
+                "unit": "degC"
+              }
+            ],
+            "fidelity_class": "fem",
+            "fidelity_note": null,
+            "label": "guide only, not a guarantee",
+            "metrics": [
+              {
+                "key": "max_temp_c",
+                "label": "max temperature",
+                "unit": "degC",
+                "value": 70.0
+              },
+              {
+                "key": "min_temp_c",
+                "label": "min temperature",
+                "unit": "degC",
+                "value": 25.3232
+              },
+              {
+                "key": "error_band_pct",
+                "label": "error band",
+                "unit": "%",
+                "value": null
+              }
+            ],
+            "notes": [],
+            "part_id": "beam",
+            "pct": 100.0,
+            "phase": "done",
+            "reason": "motor heat at the root",
+            "run_id": "6eb160bedacf",
+            "sim_id": "sim_6770bfdffc8c",
+            "status": "done",
+            "step_id": 16,
+            "type": "thermal",
+            "urls": {
+              "charts": "/sims/sim_6770bfdffc8c/charts",
+              "glb": "/sims/sim_6770bfdffc8c/result.glb",
+              "probe": "/sims/sim_6770bfdffc8c/probe",
+              "record": "/sims/sim_6770bfdffc8c",
+              "section": "/sims/sim_6770bfdffc8c/section"
+            },
+            "verdict": "fail",
+            "warnings": [
+              "peak 70.0 C is at or above PLA's heat deflection temperature (55 C): the part may soften or creep"
+            ]
+          },
+          "charts_url": "/sims/sim_6770bfdffc8c/charts",
+          "checks": [
+            {
+              "kind": "max_temp_c",
+              "measured": 70.0,
+              "note": null,
+              "requirement_id": "r5",
+              "sim_id": "sim_6770bfdffc8c",
+              "status": "fail",
+              "target": 60,
+              "unit": "degC"
+            }
+          ],
+          "error": null,
+          "fidelity_class": "fem",
+          "guide": true,
+          "hint": null,
+          "label": "guide only, not a guarantee",
+          "material": {
+            "allowable_mpa": 35.699999999999996,
+            "alpha_per_k": 6.8e-05,
+            "custom": false,
+            "density_g_cm3": 1.24,
+            "e_eff_mpa": 2300.0,
+            "e_mpa": 2300.0,
+            "hdt_c": 55.0,
+            "k_w_mk": 0.13,
+            "knockdown": 0.7,
+            "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers",
+            "name": "PLA",
+            "nu": 0.35,
+            "source": "Prusament PLA TDS v1.1 (printed, horizontal)",
+            "stiffness_factor": 1.0,
+            "yield_mpa": 51.0
+          },
+          "mesh": {
+            "coarse": {
+              "elements": 433,
+              "fixed_temp_nodes": 37,
+              "nodes": 998,
+              "order": 2,
+              "size_mm": 5.0
+            },
+            "fine": {
+              "elements": 3582,
+              "fixed_temp_nodes": 105,
+              "nodes": 6598,
+              "order": 2,
+              "size_mm": 2.5
+            },
+            "mesher": "gmsh"
+          },
+          "part_id": "beam",
+          "reason": "motor heat at the root",
+          "results": {
+            "coarse_max_temp_c": 70.0,
+            "convergence": {
+              "converged": null,
+              "levels": 2
+            },
+            "error_band": null,
+            "error_band_pct": null,
+            "hdt_c": 55.0,
+            "max_temp_at": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "max_temp_c": 70.0,
+            "min_temp_at": [
+              100.0,
+              0.0,
+              0.0
+            ],
+            "min_temp_c": 25.3232
+          },
+          "run_id": "6eb160bedacf",
+          "sim_id": "sim_6770bfdffc8c",
+          "solver": {
+            "element": "C3D10 (quadratic tetrahedra)",
+            "name": "CalculiX",
+            "path": "/Users/fixture/miniconda3/bin/ccx",
+            "procedure": "CalculiX *HEAT TRANSFER",
+            "version": "2.23"
+          },
+          "stale": null,
+          "status": "done",
+          "step_id": 16,
+          "type": "thermal",
+          "urls": {
+            "charts": "/sims/sim_6770bfdffc8c/charts",
+            "glb": "/sims/sim_6770bfdffc8c/result.glb",
+            "probe": "/sims/sim_6770bfdffc8c/probe",
+            "record": "/sims/sim_6770bfdffc8c",
+            "section": "/sims/sim_6770bfdffc8c/section"
+          },
+          "warnings": [
+            "peak 70.0 C is at or above PLA's heat deflection temperature (55 C): the part may soften or creep"
+          ]
+        },
+        "handles": [],
+        "ok": true,
+        "step_kind": "sim_run",
+        "summary": "GUIDE ONLY - CalculiX 2.23 CalculiX *HEAT TRANSFER, fine mesh 2.5 mm, material PLA: beam max temperature 70 C, min 25.32 C, error band n/a; warnings: peak 70.0 C is at or above PLA's heat deflection temperature (55 C): the part may soften or creep",
+        "warnings": [
+          "peak 70.0 C is at or above PLA's heat deflection temperature (55 C): the part may soften or creep"
+        ]
+      }
+    },
+    "evidence_hash": "b8c8aaa1c4828ed7512b83537f04ac5906afdb719ca0c0cfe75d05e2ed9e01e9",
+    "prev_hash": "303b1d32296243be804a9b93371fdeda5f0fb4a639c55044ee16237a35ab7e2d",
+    "collapsed": false
+  },
+  {
+    "id": 18,
+    "run_id": "6eb160bedacf",
+    "ts": 1793289432.838109,
+    "kind": "message",
+    "payload": {
+      "role": "assistant",
+      "stop_reason": "tool_use",
+      "text": "Running the drop study.",
+      "tool_calls": [
+        {
+          "id": "s5",
+          "name": "sim_run"
+        }
+      ]
+    },
+    "evidence_hash": "ba5f841e6ce750d54ea77b8c4e9a79802091aeb266552969cf25627791fb7da3",
+    "prev_hash": "b8c8aaa1c4828ed7512b83537f04ac5906afdb719ca0c0cfe75d05e2ed9e01e9",
+    "collapsed": false
+  },
+  {
+    "id": 19,
+    "run_id": "6eb160bedacf",
+    "ts": 1793289432.8382552,
+    "kind": "tool_call",
+    "payload": {
+      "call_id": "s5",
+      "input": {
+        "part_id": "beam",
+        "reason": "1 m drop onto the floor",
+        "requirements": [
+          {
+            "id": "r6",
+            "kind": "min_safety_factor",
+            "target": 2.0
+          }
+        ],
+        "settings": {
+          "drop_m": 1.0,
+          "impact_face": "bottom",
+          "k": 10
+        },
+        "type": "drop"
+      },
+      "name": "sim_run"
+    },
+    "evidence_hash": "67afc7e9689d4d9655b3bbb219d0299e95bd054d505cd54fd764c5dc6091eae1",
+    "prev_hash": "ba5f841e6ce750d54ea77b8c4e9a79802091aeb266552969cf25627791fb7da3",
+    "collapsed": false
+  },
+  {
+    "id": 20,
+    "run_id": "6eb160bedacf",
+    "ts": 1793289433.4435468,
+    "kind": "sim_run",
+    "payload": {
+      "call_id": "s5",
+      "name": "sim_run",
+      "output": {
+        "data": {
+          "call_id": "s5",
+          "card": {
+            "charts_url": "/sims/sim_2de8ad10d9be/charts",
+            "checks": [
+              {
+                "kind": "min_safety_factor",
+                "measured": 27860.09705599586,
+                "note": null,
+                "requirement_id": "r6",
+                "sim_id": "sim_2de8ad10d9be",
+                "status": "warn",
+                "target": 2.0,
+                "unit": ""
+              }
+            ],
+            "fidelity_class": "fem_estimate",
+            "fidelity_note": "estimate (equivalent static load F = m g k)",
+            "label": "guide only, not a guarantee",
+            "metrics": [
+              {
+                "key": "max_von_mises_mpa",
+                "label": "max von Mises",
+                "unit": "MPa",
+                "value": 0.0012814025711485053
+              },
+              {
+                "key": "safety_factor",
+                "label": "safety factor",
+                "unit": "",
+                "value": 27860.09705599586
+              },
+              {
+                "key": "max_displacement_mm",
+                "label": "max displacement",
+                "unit": "mm",
+                "value": 2.603087180173447e-06
+              },
+              {
+                "key": "error_band_pct",
+                "label": "error band",
+                "unit": "%",
+                "value": 19.1
+              }
+            ],
+            "notes": [],
+            "part_id": "beam",
+            "pct": 100.0,
+            "phase": "done",
+            "reason": "1 m drop onto the floor",
+            "run_id": "6eb160bedacf",
+            "sim_id": "sim_2de8ad10d9be",
+            "status": "done",
+            "step_id": 19,
+            "type": "drop",
+            "urls": {
+              "charts": "/sims/sim_2de8ad10d9be/charts",
+              "glb": "/sims/sim_2de8ad10d9be/result.glb",
+              "probe": "/sims/sim_2de8ad10d9be/probe",
+              "record": "/sims/sim_2de8ad10d9be",
+              "section": "/sims/sim_2de8ad10d9be/section"
+            },
+            "verdict": "warn",
+            "warnings": [
+              "ESTIMATE: the drop is an equivalent static load of 1.22 N (k = 10); real impacts depend on the floor, the contact and the drop angle",
+              "mesh not converged: peak stress changed 19% between the coarse and fine mesh; treat the peak as uncertain"
+            ]
+          },
+          "charts_url": "/sims/sim_2de8ad10d9be/charts",
+          "checks": [
+            {
+              "kind": "min_safety_factor",
+              "measured": 27860.09705599586,
+              "note": null,
+              "requirement_id": "r6",
+              "sim_id": "sim_2de8ad10d9be",
+              "status": "warn",
+              "target": 2.0,
+              "unit": ""
+            }
+          ],
+          "error": null,
+          "fidelity_class": "fem_estimate",
+          "guide": true,
+          "hint": null,
+          "label": "guide only, not a guarantee",
+          "material": {
+            "allowable_mpa": 35.699999999999996,
+            "alpha_per_k": 6.8e-05,
+            "custom": false,
+            "density_g_cm3": 1.24,
+            "e_eff_mpa": 2300.0,
+            "e_mpa": 2300.0,
+            "hdt_c": 55.0,
+            "k_w_mk": 0.13,
+            "knockdown": 0.7,
+            "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers",
+            "name": "PLA",
+            "nu": 0.35,
+            "source": "Prusament PLA TDS v1.1 (printed, horizontal)",
+            "stiffness_factor": 1.0,
+            "yield_mpa": 51.0
+          },
+          "mesh": {
+            "coarse": {
+              "dropped_load_n": 0.0,
+              "elements": 433,
+              "fixed_nodes": 217,
+              "loaded_nodes": 0,
+              "nodes": 998,
+              "order": 2,
+              "size_mm": 5.0
+            },
+            "fine": {
+              "dropped_load_n": 0.0,
+              "elements": 3582,
+              "fixed_nodes": 917,
+              "loaded_nodes": 0,
+              "nodes": 6598,
+              "order": 2,
+              "size_mm": 2.5
+            },
+            "mesher": "gmsh"
+          },
+          "part_id": "beam",
+          "reason": "1 m drop onto the floor",
+          "results": {
+            "allowable_mpa": 35.699999999999996,
+            "cases": [
+              {
+                "error_band": 0.19132361393516523,
+                "max_displacement_mm": 2.603087180173447e-06,
+                "max_von_mises_mpa": 0.0012814025711485053,
+                "name": "impact",
+                "safety_factor": 27860.09705599586
+              }
+            ],
+            "coarse_max_displacement_mm": 2.5778973483859434e-06,
+            "coarse_max_von_mises_mpa": 0.0010362400003305606,
+            "convergence": {
+              "converged": null,
+              "levels": 2
+            },
+            "deformed_scale": 1939909.0847370576,
+            "error_band": 0.19132361393516523,
+            "error_band_pct": 19.1,
+            "governing_case": "impact",
+            "impact": {
+              "drop_m": 1.0,
+              "estimate": true,
+              "formula": "F = m\u00b7g\u00b7k (equivalent static load)",
+              "g_equivalent": 9.996382887770872,
+              "impact_velocity_m_s": 4.4294469180700204,
+              "k": 10.0,
+              "mass_g": 12.399999999999999,
+              "newtons": 1.216,
+              "source": "engineering.loads.impact_equivalent"
+            },
+            "max_displacement_at": [
+              97.86952911447675,
+              4.850705840537988,
+              10.0
+            ],
+            "max_displacement_mm": 2.603087180173447e-06,
+            "max_von_mises_at": [
+              100.0,
+              0.9150635094610967,
+              0.9150635094610967
+            ],
+            "max_von_mises_at_fixture_mpa": 0.0015064259055974575,
+            "max_von_mises_mpa": 0.0012814025711485053,
+            "peak_excludes": "nodes on the fixed face",
+            "safety_factor": 27860.09705599586,
+            "safety_factor_incl_fixture": 23698.477215074952,
+            "sf_by_case": {
+              "impact": 27860.09705599586
+            }
+          },
+          "run_id": "6eb160bedacf",
+          "sim_id": "sim_2de8ad10d9be",
+          "solver": {
+            "element": "C3D10 (quadratic tetrahedra)",
+            "name": "CalculiX",
+            "path": "/Users/fixture/miniconda3/bin/ccx",
+            "procedure": "CalculiX *STATIC (equivalent load)",
+            "version": "2.23"
+          },
+          "stale": null,
+          "status": "done",
+          "step_id": 19,
+          "type": "drop",
+          "urls": {
+            "charts": "/sims/sim_2de8ad10d9be/charts",
+            "glb": "/sims/sim_2de8ad10d9be/result.glb",
+            "probe": "/sims/sim_2de8ad10d9be/probe",
+            "record": "/sims/sim_2de8ad10d9be",
+            "section": "/sims/sim_2de8ad10d9be/section"
+          },
+          "warnings": [
+            "ESTIMATE: the drop is an equivalent static load of 1.22 N (k = 10); real impacts depend on the floor, the contact and the drop angle",
+            "mesh not converged: peak stress changed 19% between the coarse and fine mesh; treat the peak as uncertain"
+          ]
+        },
+        "handles": [],
+        "ok": true,
+        "step_kind": "sim_run",
+        "summary": "ESTIMATE (drop 1.0 m, F = m g k, k = 10.0: 1.22 N) - GUIDE ONLY - CalculiX 2.23, fine mesh 2.5 mm (coarse 5 mm), material PLA isotropic linear elastic, strength x0.7 FDM knock-down: beam max von Mises 0.00128 MPa (error band 19.1%), max displacement 2.6e-06 mm, safety factor 27860.10; peak excludes the fixed face; at fixture: 0.00151 MPa (safety factor incl. fixture 23698.48); warnings: ESTIMATE: the drop is an equivalent static load of 1.22 N (k = 10); real impacts depend on the floor, the contact and the drop angle; mesh not converged: peak stress changed 19% between the coarse and fine mesh; treat the peak as uncertain",
+        "warnings": [
+          "ESTIMATE: the drop is an equivalent static load of 1.22 N (k = 10); real impacts depend on the floor, the contact and the drop angle",
+          "mesh not converged: peak stress changed 19% between the coarse and fine mesh; treat the peak as uncertain"
+        ]
+      }
+    },
+    "evidence_hash": "dc470017be5c6d7839494d2ce70b485c13a6602894ea05960e37c14944e6bdf9",
+    "prev_hash": "67afc7e9689d4d9655b3bbb219d0299e95bd054d505cd54fd764c5dc6091eae1",
+    "collapsed": false
+  },
+  {
+    "id": 21,
+    "run_id": "6eb160bedacf",
+    "ts": 1793289433.444105,
+    "kind": "message",
+    "payload": {
+      "role": "assistant",
+      "stop_reason": "tool_use",
+      "text": "Running the wind study.",
+      "tool_calls": [
+        {
+          "id": "s6",
+          "name": "sim_run"
+        }
+      ]
+    },
+    "evidence_hash": "940da50cc4bf952462f4b1b6bc1bfe5880edc06bea34b9cd4c483e3b6f154d83",
+    "prev_hash": "dc470017be5c6d7839494d2ce70b485c13a6602894ea05960e37c14944e6bdf9",
+    "collapsed": false
+  },
+  {
+    "id": 22,
+    "run_id": "6eb160bedacf",
+    "ts": 1793289433.4442391,
+    "kind": "tool_call",
+    "payload": {
+      "call_id": "s6",
+      "input": {
+        "part_id": "cube",
+        "reason": "drag of the cube at 5 m/s",
+        "requirements": [
+          {
+            "id": "r7",
+            "kind": "max_drag_n",
+            "target": 0.5
+          }
+        ],
+        "settings": {
+          "domain_multiplier": 3,
+          "iterations": 600,
+          "refinement": 1,
+          "speed_m_s": 5,
+          "timeout_s": 240,
+          "yaw_deg": [
+            -15,
+            0,
+            15
+          ]
+        },
+        "type": "wind"
+      },
+      "name": "sim_run"
+    },
+    "evidence_hash": "06efa7723ef03935c6e38e6469f6a19a0d725f27a76cd6d73413ea32e1238314",
+    "prev_hash": "940da50cc4bf952462f4b1b6bc1bfe5880edc06bea34b9cd4c483e3b6f154d83",
+    "collapsed": false
+  },
+  {
+    "id": 23,
+    "run_id": "6eb160bedacf",
+    "ts": 1793289439.0363572,
+    "kind": "sim_run",
+    "payload": {
+      "call_id": "s6",
+      "name": "sim_run",
+      "output": {
+        "data": {
+          "call_id": "s6",
+          "card": {
+            "charts_url": "/sims/sim_c1a16aac59b6/charts",
+            "checks": [
+              {
+                "kind": "max_drag_n",
+                "measured": 0.028096656510070196,
+                "note": "clear of the \u00b140% model error band",
+                "requirement_id": "r7",
+                "sim_id": "sim_c1a16aac59b6",
+                "status": "pass",
+                "target": 0.5,
+                "unit": "N"
+              }
+            ],
+            "fidelity_class": "cfd_lbm",
+            "fidelity_note": "low fidelity (preview) \u00b7 \u00b140% (validated)",
+            "label": "guide only, not a guarantee",
+            "metrics": [
+              {
+                "key": "cd",
+                "label": "Cd",
+                "unit": "",
+                "value": 1.1468023065334776
+              },
+              {
+                "key": "cl",
+                "label": "Cl",
+                "unit": "",
+                "value": -5.480315949935033e-06
+              },
+              {
+                "key": "drag_n",
+                "label": "drag",
+                "unit": "N",
+                "value": 0.028096656510070196
+              },
+              {
+                "key": "lift_n",
+                "label": "lift",
+                "unit": "N",
+                "value": -1.342677407734083e-07
+              },
+              {
+                "key": "error_band_pct",
+                "label": "model error (validated)",
+                "unit": "%",
+                "value": 40.0
+              }
+            ],
+            "notes": [
+              "drag includes a flat-plate skin-friction estimate added to the resolved pressure drag"
+            ],
+            "part_id": "cube",
+            "pct": 100.0,
+            "phase": "done",
+            "reason": "drag of the cube at 5 m/s",
+            "run_id": "6eb160bedacf",
+            "sim_id": "sim_c1a16aac59b6",
+            "status": "done",
+            "step_id": 22,
+            "type": "wind",
+            "urls": {
+              "charts": "/sims/sim_c1a16aac59b6/charts",
+              "glb": "/sims/sim_c1a16aac59b6/result.glb",
+              "probe": "/sims/sim_c1a16aac59b6/probe",
+              "record": "/sims/sim_c1a16aac59b6",
+              "section": "/sims/sim_c1a16aac59b6/section"
+            },
+            "verdict": "warn",
+            "warnings": [
+              "LOW FIDELITY (PREVIEW, \u00b140% validated model error at refinement 1): lattice of 8 cells across the body at an effective Reynolds number of 8e+03 (real 1.35e+04)",
+              "drag includes a flat-plate skin-friction estimate (Cd 0.034) added to the resolved pressure drag; the lattice cannot resolve the boundary layer",
+              "the drag did not settle within the run (iterations); raise iterations or timeout_s",
+              "tunnel blockage 11.1% inflates drag; raise domain_multiplier"
+            ]
+          },
+          "charts_url": "/sims/sim_c1a16aac59b6/charts",
+          "checks": [
+            {
+              "kind": "max_drag_n",
+              "measured": 0.028096656510070196,
+              "note": "clear of the \u00b140% model error band",
+              "requirement_id": "r7",
+              "sim_id": "sim_c1a16aac59b6",
+              "status": "pass",
+              "target": 0.5,
+              "unit": "N"
+            }
+          ],
+          "error": null,
+          "fidelity_class": "cfd_lbm",
+          "guide": true,
+          "hint": null,
+          "label": "guide only, not a guarantee",
+          "material": null,
+          "mesh": {
+            "lattice": {
+              "blockage_pct": 11.11111111111111,
+              "boundaries": "inlet equilibrium, zero-gradient outlet, periodic sides",
+              "cell_mm": 5.0,
+              "cells": 34560,
+              "cells_across": 8,
+              "memory_mb_budget": 1024,
+              "memory_mb_estimate": 188.016,
+              "nu_lattice": 0.0001,
+              "reynolds_effective": 8000.0,
+              "shape": [
+                60,
+                24,
+                24
+              ],
+              "tau": 0.5003,
+              "turbulence": "Smagorinsky LES (Cs 0.16)",
+              "u_lattice": 0.1
+            }
+          },
+          "part_id": "cube",
+          "reason": "drag of the cube at 5 m/s",
+          "results": {
+            "cd": 1.1468023065334776,
+            "cd_friction_estimate": 0.034243297190092246,
+            "cd_lattice_total": -1.7692197921375434,
+            "cd_pressure": 1.1125590093433853,
+            "cl": -5.480315949935033e-06,
+            "converged": false,
+            "convergence": {
+              "converged": false,
+              "levels": 60
+            },
+            "convergence_band": 0.06376380516256162,
+            "convergence_band_pct": 6.4,
+            "cp_range": [
+              -1.2957632541656494,
+              1.149129867553711
+            ],
+            "cs": -6.560650108363337e-07,
+            "drag_n": 0.028096656510070196,
+            "dynamic_pressure_pa": 15.3125,
+            "error_band": 0.4,
+            "error_band_pct": 40.0,
+            "frontal_area_m2": 0.0015999999999999999,
+            "lift_n": -1.342677407734083e-07,
+            "method": "lbm",
+            "model_error_band": 0.4,
+            "moment_nm": [
+              1.044149717235876e-09,
+              8.933013297389551e-10,
+              -1.0392059460476166e-09
+            ],
+            "reason": null,
+            "ref_area_m2": 0.0015999999999999999,
+            "refinement_level": 1,
+            "reynolds": 13535.911602209944,
+            "shape_class": null,
+            "side_n": -1.6073592765490175e-08,
+            "steps": 600,
+            "stopped": "iterations",
+            "yaw_sweep": [
+              {
+                "cd": 1.1468023065334776,
+                "cl": -5.480315949935033e-06,
+                "cs": -6.560650108363337e-07,
+                "drag_n": 0.028096656510070196,
+                "lift_n": -1.342677407734083e-07,
+                "method": "lbm",
+                "side_n": -1.6073592765490175e-08,
+                "yaw_deg": 0.0
+              },
+              {
+                "cd": 1.0739105391687718,
+                "cl": -3.290673089573204e-07,
+                "cs": -0.10585976764559803,
+                "drag_n": 0.026310808209634908,
+                "lift_n": -8.062149069454348e-09,
+                "method": "lbm",
+                "side_n": -0.0025935643073171514,
+                "yaw_deg": -15.0
+              },
+              {
+                "cd": 1.07391333934531,
+                "cl": 1.7477820313249739e-06,
+                "cs": 0.10586257713536246,
+                "drag_n": 0.026310876813960094,
+                "lift_n": 4.2820659767461856e-08,
+                "method": "lbm",
+                "side_n": 0.00259363313981638,
+                "yaw_deg": 15.0
+              }
+            ]
+          },
+          "run_id": "6eb160bedacf",
+          "sim_id": "sim_c1a16aac59b6",
+          "solver": {
+            "fidelity": "low fidelity",
+            "method": "BGK + Smagorinsky LES, half-way bounce-back, momentum exchange",
+            "name": "Mises lattice-Boltzmann",
+            "version": "D3Q19 1.0"
+          },
+          "stale": null,
+          "status": "done",
+          "step_id": 22,
+          "type": "wind",
+          "urls": {
+            "charts": "/sims/sim_c1a16aac59b6/charts",
+            "glb": "/sims/sim_c1a16aac59b6/result.glb",
+            "probe": "/sims/sim_c1a16aac59b6/probe",
+            "record": "/sims/sim_c1a16aac59b6",
+            "section": "/sims/sim_c1a16aac59b6/section"
+          },
+          "warnings": [
+            "LOW FIDELITY (PREVIEW, \u00b140% validated model error at refinement 1): lattice of 8 cells across the body at an effective Reynolds number of 8e+03 (real 1.35e+04)",
+            "drag includes a flat-plate skin-friction estimate (Cd 0.034) added to the resolved pressure drag; the lattice cannot resolve the boundary layer",
+            "the drag did not settle within the run (iterations); raise iterations or timeout_s",
+            "tunnel blockage 11.1% inflates drag; raise domain_multiplier"
+          ]
+        },
+        "handles": [],
+        "ok": true,
+        "step_kind": "sim_run",
+        "summary": "GUIDE ONLY - low fidelity (preview) \u00b7 \u00b140% (validated), Mises lattice-Boltzmann, lattice 8 cells across, Re_eff 8e+03: cube Cd 1.147, Cl -0.000, drag 0.0281 N, lift -1.34e-07 N at Re 1.35e+04; drag = resolved pressure drag + a flat-plate skin-friction estimate (Cd 0.034); convergence band 6.4% (unsteadiness, not accuracy); warnings: LOW FIDELITY (PREVIEW, \u00b140% validated model error at refinement 1): lattice of 8 cells across the body at an effective Reynolds number of 8e+03 (real 1.35e+04); drag includes a flat-plate skin-friction estimate (Cd 0.034) added to the resolved pressure drag; the lattice cannot resolve the boundary layer; the drag did not settle within the run (iterations); raise iterations or timeout_s; tunnel blockage 11.1% inflates drag; raise domain_multiplier",
+        "warnings": [
+          "LOW FIDELITY (PREVIEW, \u00b140% validated model error at refinement 1): lattice of 8 cells across the body at an effective Reynolds number of 8e+03 (real 1.35e+04)",
+          "drag includes a flat-plate skin-friction estimate (Cd 0.034) added to the resolved pressure drag; the lattice cannot resolve the boundary layer",
+          "the drag did not settle within the run (iterations); raise iterations or timeout_s",
+          "tunnel blockage 11.1% inflates drag; raise domain_multiplier"
+        ]
+      }
+    },
+    "evidence_hash": "2665af425b7822b8ffa29a0c75747a9571ac49466fef6cb98d902becc362c350",
+    "prev_hash": "06efa7723ef03935c6e38e6469f6a19a0d725f27a76cd6d73413ea32e1238314",
+    "collapsed": false
+  },
+  {
+    "id": 24,
+    "run_id": "6eb160bedacf",
+    "ts": 1793289439.0370429,
+    "kind": "message",
+    "payload": {
+      "role": "assistant",
+      "stop_reason": "tool_use",
+      "text": "",
+      "tool_calls": [
+        {
+          "id": "rv1",
+          "name": "design_review"
+        }
+      ]
+    },
+    "evidence_hash": "b689b739b8535a03e24f0647d579646cffcc803681bbca7021a7ec95036079fb",
+    "prev_hash": "2665af425b7822b8ffa29a0c75747a9571ac49466fef6cb98d902becc362c350",
+    "collapsed": false
+  },
+  {
+    "id": 25,
+    "run_id": "6eb160bedacf",
+    "ts": 1793289439.037292,
+    "kind": "tool_call",
+    "payload": {
+      "call_id": "rv1",
+      "input": {
+        "part_id": "beam",
+        "spec": {
+          "goal": "a stiff 100 mm beam",
+          "load_cases": [
+            {
+              "direction": "-z",
+              "estimate": false,
+              "fix": "x-min",
+              "id": "lc1",
+              "load": "x-max",
+              "name": "tip",
+              "newtons": 10,
+              "note": ""
+            }
+          ],
+          "requirements": [
+            {
+              "id": "q1",
+              "kind": "min_safety_factor",
+              "load_case_id": "lc1",
+              "priority": 5,
+              "source": "user",
+              "target": 2.0
+            },
+            {
+              "id": "q2",
+              "kind": "max_mass_g",
+              "priority": 3,
+              "source": "user",
+              "target": 20
+            },
+            {
+              "id": "q3",
+              "kind": "custom",
+              "priority": 4,
+              "source": "agent",
+              "target": {
+                "avoid_band_hz": [
+                  340,
+                  460
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "name": "design_review"
+    },
+    "evidence_hash": "2fa9605387bc9cc658125c9a0c2fb9f587fd50bba55b3bf770b1e1dc45abfe79",
+    "prev_hash": "b689b739b8535a03e24f0647d579646cffcc803681bbca7021a7ec95036079fb",
+    "collapsed": false
+  },
+  {
+    "id": 26,
+    "run_id": "6eb160bedacf",
+    "ts": 1793289439.0377831,
+    "kind": "tool_call",
+    "payload": {
+      "call_id": "rv1.r1",
+      "input": {
+        "part_id": "beam",
+        "reason": "design review: static lc1",
+        "requirements": [
+          {
+            "id": "q1",
+            "kind": "min_safety_factor",
+            "load_case_id": "lc1",
+            "priority": 5,
+            "source": "user",
+            "target": 2.0
+          }
+        ],
+        "settings": {
+          "load_cases": [
+            {
+              "loads": [
+                {
+                  "direction": "-z",
+                  "face": "x-max",
+                  "kind": "force",
+                  "newtons": 10
+                }
+              ],
+              "name": "lc1",
+              "note": "",
+              "supports": [
+                {
+                  "face": "x-min",
+                  "kind": "fixed"
+                }
+              ]
+            }
+          ],
+          "material": {},
+          "solver": {
+            "timeout_s": 300.0
+          }
+        },
+        "type": "static"
+      },
+      "name": "sim_run"
+    },
+    "evidence_hash": "f9a792941eeaf4aac827c9bd0391308fc054a3097069de577227de224c0e6db5",
+    "prev_hash": "2fa9605387bc9cc658125c9a0c2fb9f587fd50bba55b3bf770b1e1dc45abfe79",
+    "collapsed": false
+  },
+  {
+    "id": 27,
+    "run_id": "6eb160bedacf",
+    "ts": 1793289439.775989,
+    "kind": "sim_run",
+    "payload": {
+      "call_id": "rv1.r1",
+      "name": "sim_run",
+      "output": {
+        "data": {
+          "call_id": "rv1.r1",
+          "card": {
+            "charts_url": "/sims/sim_7e15a54b8afb/charts",
+            "checks": [
+              {
+                "kind": "min_safety_factor",
+                "measured": 5.906498504081631,
+                "note": null,
+                "requirement_id": "q1",
+                "sim_id": "sim_7e15a54b8afb",
+                "status": "pass",
+                "target": 2.0,
+                "unit": ""
+              }
+            ],
+            "fidelity_class": "fem",
+            "fidelity_note": null,
+            "label": "guide only, not a guarantee",
+            "metrics": [
+              {
+                "key": "max_von_mises_mpa",
+                "label": "max von Mises",
+                "unit": "MPa",
+                "value": 6.044190136563963
+              },
+              {
+                "key": "safety_factor",
+                "label": "safety factor",
+                "unit": "",
+                "value": 5.906498504081631
+              },
+              {
+                "key": "max_displacement_mm",
+                "label": "max displacement",
+                "unit": "mm",
+                "value": 1.7386006851423133
+              },
+              {
+                "key": "error_band_pct",
+                "label": "error band",
+                "unit": "%",
+                "value": 0.7
+              }
+            ],
+            "notes": [],
+            "part_id": "beam",
+            "pct": 100.0,
+            "phase": "done",
+            "reason": "design review: static lc1",
+            "run_id": "6eb160bedacf",
+            "sim_id": "sim_7e15a54b8afb",
+            "status": "done",
+            "step_id": 26,
+            "type": "static",
+            "urls": {
+              "charts": "/sims/sim_7e15a54b8afb/charts",
+              "glb": "/sims/sim_7e15a54b8afb/result.glb",
+              "probe": "/sims/sim_7e15a54b8afb/probe",
+              "record": "/sims/sim_7e15a54b8afb",
+              "section": "/sims/sim_7e15a54b8afb/section"
+            },
+            "verdict": "pass",
+            "warnings": []
+          },
+          "charts_url": "/sims/sim_7e15a54b8afb/charts",
+          "checks": [
+            {
+              "kind": "min_safety_factor",
+              "measured": 5.906498504081631,
+              "note": null,
+              "requirement_id": "q1",
+              "sim_id": "sim_7e15a54b8afb",
+              "status": "pass",
+              "target": 2.0,
+              "unit": ""
+            }
+          ],
+          "error": null,
+          "fidelity_class": "fem",
+          "guide": true,
+          "hint": null,
+          "label": "guide only, not a guarantee",
+          "material": {
+            "allowable_mpa": 35.699999999999996,
+            "alpha_per_k": 6.8e-05,
+            "custom": false,
+            "density_g_cm3": 1.24,
+            "e_eff_mpa": 2300.0,
+            "e_mpa": 2300.0,
+            "hdt_c": 55.0,
+            "k_w_mk": 0.13,
+            "knockdown": 0.7,
+            "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers",
+            "name": "PLA",
+            "nu": 0.35,
+            "source": "Prusament PLA TDS v1.1 (printed, horizontal)",
+            "stiffness_factor": 1.0,
+            "yield_mpa": 51.0
+          },
+          "mesh": {
+            "coarse": {
+              "dropped_load_n": 0.0,
+              "elements": 433,
+              "fixed_nodes": 37,
+              "loaded_nodes": 25,
+              "nodes": 998,
+              "order": 2,
+              "size_mm": 5.0
+            },
+            "fine": {
+              "dropped_load_n": 0.0,
+              "elements": 3582,
+              "fixed_nodes": 105,
+              "loaded_nodes": 71,
+              "nodes": 6598,
+              "order": 2,
+              "size_mm": 2.5
+            },
+            "mesher": "gmsh"
+          },
+          "part_id": "beam",
+          "reason": "design review: static lc1",
+          "results": {
+            "allowable_mpa": 35.699999999999996,
+            "cases": [
+              {
+                "error_band": 0.006708471369454942,
+                "max_displacement_mm": 1.7386006851423133,
+                "max_von_mises_mpa": 6.044190136563963,
+                "name": "lc1",
+                "safety_factor": 5.906498504081631
+              }
+            ],
+            "coarse_max_displacement_mm": 1.7348891617849151,
+            "coarse_max_von_mises_mpa": 6.0847374130466445,
+            "convergence": {
+              "converged": null,
+              "levels": 2
+            },
+            "deformed_scale": 2.9044923957151734,
+            "error_band": 0.006708471369454942,
+            "error_band_pct": 0.7,
+            "governing_case": "lc1",
+            "max_displacement_at": [
+              100.0,
+              3.75,
+              0.0
+            ],
+            "max_displacement_mm": 1.7386006851423133,
+            "max_von_mises_at": [
+              1.8301270189221936,
+              8.169872981077807,
+              10.0
+            ],
+            "max_von_mises_at_fixture_mpa": 5.582107209390285,
+            "max_von_mises_mpa": 6.044190136563963,
+            "peak_excludes": "nodes on the fixed face",
+            "safety_factor": 5.906498504081631,
+            "safety_factor_incl_fixture": 5.906498504081631,
+            "sf_by_case": {
+              "lc1": 5.906498504081631
+            }
+          },
+          "run_id": "6eb160bedacf",
+          "sim_id": "sim_7e15a54b8afb",
+          "solver": {
+            "element": "C3D10 (quadratic tetrahedra)",
+            "name": "CalculiX",
+            "path": "/Users/fixture/miniconda3/bin/ccx",
+            "procedure": "CalculiX *STATIC",
+            "version": "2.23"
+          },
+          "stale": null,
+          "status": "done",
+          "step_id": 26,
+          "type": "static",
+          "urls": {
+            "charts": "/sims/sim_7e15a54b8afb/charts",
+            "glb": "/sims/sim_7e15a54b8afb/result.glb",
+            "probe": "/sims/sim_7e15a54b8afb/probe",
+            "record": "/sims/sim_7e15a54b8afb",
+            "section": "/sims/sim_7e15a54b8afb/section"
+          },
+          "warnings": []
+        },
+        "handles": [],
+        "ok": true,
+        "step_kind": "sim_run",
+        "summary": "GUIDE ONLY - CalculiX 2.23, fine mesh 2.5 mm (coarse 5 mm), material PLA isotropic linear elastic, strength x0.7 FDM knock-down: beam max von Mises 6.04 MPa (error band 0.7%), max displacement 1.74 mm, safety factor 5.91; peak excludes the fixed face; at fixture: 5.58 MPa (safety factor incl. fixture 5.91)",
+        "warnings": []
+      }
+    },
+    "evidence_hash": "c656adc37d942138a72e2bfbfa63a56bdc025b6a9099f03af05bcac0ddc6a780",
+    "prev_hash": "f9a792941eeaf4aac827c9bd0391308fc054a3097069de577227de224c0e6db5",
+    "collapsed": false
+  },
+  {
+    "id": 28,
+    "run_id": "6eb160bedacf",
+    "ts": 1793289439.7763,
+    "kind": "tool_call",
+    "payload": {
+      "call_id": "rv1.r2",
+      "input": {
+        "part_id": "beam",
+        "reason": "design review: modal modal",
+        "requirements": [
+          {
+            "id": "q3",
+            "kind": "avoid_band_hz",
+            "priority": 4,
+            "source": "agent",
+            "target": [
+              340,
+              460
+            ]
+          }
+        ],
+        "settings": {
+          "band_hz": [
+            340,
+            460
+          ],
+          "material": {},
+          "solver": {
+            "timeout_s": 300.0
+          },
+          "supports": [
+            {
+              "face": "x-min",
+              "kind": "fixed"
+            }
+          ]
+        },
+        "type": "modal"
+      },
+      "name": "sim_run"
+    },
+    "evidence_hash": "023bc84527069f029b5d435ba41784cdaab492e4df3da4a5967325ebdcd99087",
+    "prev_hash": "c656adc37d942138a72e2bfbfa63a56bdc025b6a9099f03af05bcac0ddc6a780",
+    "collapsed": false
+  },
+  {
+    "id": 29,
+    "run_id": "6eb160bedacf",
+    "ts": 1793289440.790714,
+    "kind": "sim_run",
+    "payload": {
+      "call_id": "rv1.r2",
+      "name": "sim_run",
+      "output": {
+        "data": {
+          "call_id": "rv1.r2",
+          "card": {
+            "charts_url": "/sims/sim_aab35b43b5c8/charts",
+            "checks": [
+              {
+                "kind": "avoid_band_hz",
+                "measured": 0,
+                "note": null,
+                "requirement_id": "q3",
+                "sim_id": "sim_aab35b43b5c8",
+                "status": "pass",
+                "target": [
+                  340,
+                  460
+                ],
+                "unit": "modes"
+              }
+            ],
+            "fidelity_class": "fem",
+            "fidelity_note": null,
+            "label": "guide only, not a guarantee",
+            "metrics": [
+              {
+                "key": "first_freq_hz",
+                "label": "first frequency",
+                "unit": "Hz",
+                "value": 219.8506
+              },
+              {
+                "key": "modes_in_band",
+                "label": "modes in band",
+                "unit": "",
+                "value": 0
+              },
+              {
+                "key": "error_band_pct",
+                "label": "error band",
+                "unit": "%",
+                "value": 0.1
+              }
+            ],
+            "notes": [],
+            "part_id": "beam",
+            "pct": 100.0,
+            "phase": "done",
+            "reason": "design review: modal modal",
+            "run_id": "6eb160bedacf",
+            "sim_id": "sim_aab35b43b5c8",
+            "status": "done",
+            "step_id": 28,
+            "type": "modal",
+            "urls": {
+              "charts": "/sims/sim_aab35b43b5c8/charts",
+              "glb": "/sims/sim_aab35b43b5c8/result.glb",
+              "probe": "/sims/sim_aab35b43b5c8/probe",
+              "record": "/sims/sim_aab35b43b5c8",
+              "section": "/sims/sim_aab35b43b5c8/section"
+            },
+            "verdict": "pass",
+            "warnings": []
+          },
+          "charts_url": "/sims/sim_aab35b43b5c8/charts",
+          "checks": [
+            {
+              "kind": "avoid_band_hz",
+              "measured": 0,
+              "note": null,
+              "requirement_id": "q3",
+              "sim_id": "sim_aab35b43b5c8",
+              "status": "pass",
+              "target": [
+                340,
+                460
+              ],
+              "unit": "modes"
+            }
+          ],
+          "error": null,
+          "fidelity_class": "fem",
+          "guide": true,
+          "hint": null,
+          "label": "guide only, not a guarantee",
+          "material": {
+            "allowable_mpa": 35.699999999999996,
+            "alpha_per_k": 6.8e-05,
+            "custom": false,
+            "density_g_cm3": 1.24,
+            "e_eff_mpa": 2300.0,
+            "e_mpa": 2300.0,
+            "hdt_c": 55.0,
+            "k_w_mk": 0.13,
+            "knockdown": 0.7,
+            "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers",
+            "name": "PLA",
+            "nu": 0.35,
+            "source": "Prusament PLA TDS v1.1 (printed, horizontal)",
+            "stiffness_factor": 1.0,
+            "yield_mpa": 51.0
+          },
+          "mesh": {
+            "coarse": {
+              "elements": 433,
+              "fixed_nodes": 37,
+              "nodes": 998,
+              "order": 2,
+              "size_mm": 5.0
+            },
+            "fine": {
+              "elements": 3582,
+              "fixed_nodes": 105,
+              "nodes": 6598,
+              "order": 2,
+              "size_mm": 2.5
+            },
+            "mesher": "gmsh"
+          },
+          "part_id": "beam",
+          "reason": "design review: modal modal",
+          "results": {
+            "band_hz": [
+              340.0,
+              460.0
+            ],
+            "convergence": {
+              "converged": null,
+              "levels": 2
+            },
+            "error_band": 0.001292241185605241,
+            "error_band_pct": 0.1,
+            "first_freq_hz": 219.8506,
+            "frequencies_hz": [
+              219.8506,
+              219.8542,
+              1316.892,
+              1316.908,
+              1911.015,
+              3419.775
+            ],
+            "modes": [
+              {
+                "freq_hz": 219.8506,
+                "in_band": false,
+                "mode": 1
+              },
+              {
+                "freq_hz": 219.8542,
+                "in_band": false,
+                "mode": 2
+              },
+              {
+                "freq_hz": 1316.892,
+                "in_band": false,
+                "mode": 3
+              },
+              {
+                "freq_hz": 1316.908,
+                "in_band": false,
+                "mode": 4
+              },
+              {
+                "freq_hz": 1911.015,
+                "in_band": false,
+                "mode": 5
+              },
+              {
+                "freq_hz": 3419.775,
+                "in_band": false,
+                "mode": 6
+              }
+            ],
+            "modes_in_band": 0
+          },
+          "run_id": "6eb160bedacf",
+          "sim_id": "sim_aab35b43b5c8",
+          "solver": {
+            "element": "C3D10 (quadratic tetrahedra)",
+            "name": "CalculiX",
+            "path": "/Users/fixture/miniconda3/bin/ccx",
+            "procedure": "CalculiX *FREQUENCY",
+            "version": "2.23"
+          },
+          "stale": null,
+          "status": "done",
+          "step_id": 28,
+          "type": "modal",
+          "urls": {
+            "charts": "/sims/sim_aab35b43b5c8/charts",
+            "glb": "/sims/sim_aab35b43b5c8/result.glb",
+            "probe": "/sims/sim_aab35b43b5c8/probe",
+            "record": "/sims/sim_aab35b43b5c8",
+            "section": "/sims/sim_aab35b43b5c8/section"
+          },
+          "warnings": []
+        },
+        "handles": [],
+        "ok": true,
+        "step_kind": "sim_run",
+        "summary": "GUIDE ONLY - CalculiX 2.23 CalculiX *FREQUENCY, fine mesh 2.5 mm, material PLA: beam first natural frequency 219.9 Hz (modes: 219.9, 219.9, 1317, 1317, 1911, 3420 Hz), error band 0.1%; 0 mode(s) inside 340-460 Hz",
+        "warnings": []
+      }
+    },
+    "evidence_hash": "95b135024b77b3ade580e5bcfb727d03b5b2a848727272e359783b88aedfa961",
+    "prev_hash": "023bc84527069f029b5d435ba41784cdaab492e4df3da4a5967325ebdcd99087",
+    "collapsed": false
+  },
+  {
+    "id": 30,
+    "run_id": "6eb160bedacf",
+    "ts": 1793289440.791091,
+    "kind": "tool_result",
+    "payload": {
+      "call_id": "rv1",
+      "name": "design_review",
+      "output": {
+        "data": {
+          "label": "guide only, not a guarantee",
+          "part_id": "beam",
+          "studies": [
+            {
+              "card": {
+                "charts_url": "/sims/sim_7e15a54b8afb/charts",
+                "checks": [
+                  {
+                    "kind": "min_safety_factor",
+                    "measured": 5.906498504081631,
+                    "note": null,
+                    "requirement_id": "q1",
+                    "sim_id": "sim_7e15a54b8afb",
+                    "status": "pass",
+                    "target": 2.0,
+                    "unit": ""
+                  }
+                ],
+                "fidelity_class": "fem",
+                "fidelity_note": null,
+                "label": "guide only, not a guarantee",
+                "metrics": [
+                  {
+                    "key": "max_von_mises_mpa",
+                    "label": "max von Mises",
+                    "unit": "MPa",
+                    "value": 6.044190136563963
+                  },
+                  {
+                    "key": "safety_factor",
+                    "label": "safety factor",
+                    "unit": "",
+                    "value": 5.906498504081631
+                  },
+                  {
+                    "key": "max_displacement_mm",
+                    "label": "max displacement",
+                    "unit": "mm",
+                    "value": 1.7386006851423133
+                  },
+                  {
+                    "key": "error_band_pct",
+                    "label": "error band",
+                    "unit": "%",
+                    "value": 0.7
+                  }
+                ],
+                "notes": [],
+                "part_id": "beam",
+                "pct": 100.0,
+                "phase": "done",
+                "reason": "design review: static lc1",
+                "run_id": "6eb160bedacf",
+                "sim_id": "sim_7e15a54b8afb",
+                "status": "done",
+                "step_id": 26,
+                "type": "static",
+                "urls": {
+                  "charts": "/sims/sim_7e15a54b8afb/charts",
+                  "glb": "/sims/sim_7e15a54b8afb/result.glb",
+                  "probe": "/sims/sim_7e15a54b8afb/probe",
+                  "record": "/sims/sim_7e15a54b8afb",
+                  "section": "/sims/sim_7e15a54b8afb/section"
+                },
+                "verdict": "pass",
+                "warnings": []
+              },
+              "case": "lc1",
+              "error": null,
+              "ok": true,
+              "sim_id": "sim_7e15a54b8afb",
+              "type": "static",
+              "url": "/sims/sim_7e15a54b8afb"
+            },
+            {
+              "card": {
+                "charts_url": "/sims/sim_aab35b43b5c8/charts",
+                "checks": [
+                  {
+                    "kind": "avoid_band_hz",
+                    "measured": 0,
+                    "note": null,
+                    "requirement_id": "q3",
+                    "sim_id": "sim_aab35b43b5c8",
+                    "status": "pass",
+                    "target": [
+                      340,
+                      460
+                    ],
+                    "unit": "modes"
+                  }
+                ],
+                "fidelity_class": "fem",
+                "fidelity_note": null,
+                "label": "guide only, not a guarantee",
+                "metrics": [
+                  {
+                    "key": "first_freq_hz",
+                    "label": "first frequency",
+                    "unit": "Hz",
+                    "value": 219.8506
+                  },
+                  {
+                    "key": "modes_in_band",
+                    "label": "modes in band",
+                    "unit": "",
+                    "value": 0
+                  },
+                  {
+                    "key": "error_band_pct",
+                    "label": "error band",
+                    "unit": "%",
+                    "value": 0.1
+                  }
+                ],
+                "notes": [],
+                "part_id": "beam",
+                "pct": 100.0,
+                "phase": "done",
+                "reason": "design review: modal modal",
+                "run_id": "6eb160bedacf",
+                "sim_id": "sim_aab35b43b5c8",
+                "status": "done",
+                "step_id": 28,
+                "type": "modal",
+                "urls": {
+                  "charts": "/sims/sim_aab35b43b5c8/charts",
+                  "glb": "/sims/sim_aab35b43b5c8/result.glb",
+                  "probe": "/sims/sim_aab35b43b5c8/probe",
+                  "record": "/sims/sim_aab35b43b5c8",
+                  "section": "/sims/sim_aab35b43b5c8/section"
+                },
+                "verdict": "pass",
+                "warnings": []
+              },
+              "case": "modal",
+              "error": null,
+              "ok": true,
+              "sim_id": "sim_aab35b43b5c8",
+              "type": "modal",
+              "url": "/sims/sim_aab35b43b5c8"
+            }
+          ],
+          "table": [
+            {
+              "kind": "max_mass_g",
+              "measured": 12.4,
+              "note": "from the volume x PLA density (solid)",
+              "requirement_id": "q2",
+              "sim_id": null,
+              "status": "pass",
+              "target": 20,
+              "unit": "g"
+            },
+            {
+              "case": "lc1",
+              "kind": "min_safety_factor",
+              "measured": 5.906498504081631,
+              "note": null,
+              "requirement_id": "q1",
+              "sim_id": "sim_7e15a54b8afb",
+              "status": "pass",
+              "study": "static",
+              "target": 2.0,
+              "unit": "",
+              "url": "/sims/sim_7e15a54b8afb"
+            },
+            {
+              "case": "modal",
+              "kind": "avoid_band_hz",
+              "measured": 0,
+              "note": null,
+              "requirement_id": "q3",
+              "sim_id": "sim_aab35b43b5c8",
+              "status": "pass",
+              "study": "modal",
+              "target": [
+                340,
+                460
+              ],
+              "unit": "modes",
+              "url": "/sims/sim_aab35b43b5c8"
+            }
+          ],
+          "verdict": "pass"
+        },
+        "handles": [],
+        "ok": true,
+        "step_kind": "tool_result",
+        "summary": "design review of beam (guide only, not a guarantee): PASS; 3 pass, 0 warn, 0 fail: q2 max_mass_g: pass (12.4g vs 20); q1 min_safety_factor: pass (5.906 vs 2.0) [sim_7e15a54b8afb]; q3 avoid_band_hz: pass (0modes vs [340, 460]) [sim_aab35b43b5c8]",
+        "warnings": []
+      }
+    },
+    "evidence_hash": "919621de9e68ab52fc1589af9950313195355acea5412d2443906394c917244a",
+    "prev_hash": "95b135024b77b3ade580e5bcfb727d03b5b2a848727272e359783b88aedfa961",
+    "collapsed": false
+  },
+  {
+    "id": 31,
+    "run_id": "6eb160bedacf",
+    "ts": 1793289440.7916071,
+    "kind": "message",
+    "payload": {
+      "role": "assistant",
+      "stop_reason": "end_turn",
+      "text": "Review done: see the table.",
+      "tool_calls": []
+    },
+    "evidence_hash": "2cf7f9d18305d8213c3beb70b943f5c9df6d49f48b597e72cb8dc09cfb8ec003",
+    "prev_hash": "919621de9e68ab52fc1589af9950313195355acea5412d2443906394c917244a",
+    "collapsed": false
+  }
+]

@@ -1,0 +1,77 @@
+{
+  "sim_id": "sim_d85b6e8647f9",
+  "type": "buckling",
+  "status": "done",
+  "label": "guide only, not a guarantee",
+  "fidelity_class": "fem",
+  "charts": [
+    {
+      "id": "convergence",
+      "kind": "line",
+      "title": "Mesh convergence",
+      "x": {
+        "label": "nodes",
+        "unit": ""
+      },
+      "y": {
+        "label": "buckling factor",
+        "unit": ""
+      },
+      "series": [
+        {
+          "name": "buckling factor",
+          "points": [
+            [
+              998,
+              4.7309
+            ],
+            [
+              6598,
+              4.724615
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "buckling_factors",
+      "kind": "bar",
+      "title": "Buckling factors",
+      "x": {
+        "label": "mode",
+        "unit": ""
+      },
+      "y": {
+        "label": "load factor",
+        "unit": ""
+      },
+      "series": [
+        {
+          "name": "factor",
+          "points": [
+            [
+              1,
+              4.724615
+            ],
+            [
+              2,
+              4.7247
+            ],
+            [
+              3,
+              39.88282
+            ]
+          ]
+        }
+      ],
+      "bands": [
+        {
+          "label": "buckles",
+          "axis": "y",
+          "from": 0,
+          "to": 1
+        }
+      ]
+    }
+  ]
+}

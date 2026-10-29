@@ -1,0 +1,50 @@
+{
+  "id": "tpl_372fc75e2a",
+  "name": "Tip load",
+  "type": "static",
+  "settings": {
+    "material": {
+      "name": null,
+      "custom": null,
+      "fdm": null
+    },
+    "mesh": {
+      "size_mm": null,
+      "refine_faces": [],
+      "refine_factor": 0.4,
+      "second_order": true
+    },
+    "solver": {
+      "timeout_s": 300.0,
+      "threads": null
+    },
+    "load_cases": [
+      {
+        "name": "tip",
+        "supports": [
+          {
+            "kind": "fixed",
+            "face": "x-min",
+            "axis": null
+          }
+        ],
+        "loads": [
+          {
+            "kind": "force",
+            "face": "x-max",
+            "newtons": 10.0,
+            "direction": "-z"
+          }
+        ],
+        "note": ""
+      }
+    ],
+    "convergence": {
+      "enabled": false,
+      "tol_pct": 5.0,
+      "max_levels": 4
+    },
+    "environment": null
+  },
+  "created_at": 1793289429.12895
+}

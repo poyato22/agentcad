@@ -1,0 +1,287 @@
+{
+  "sim_id": "sim_6770bfdffc8c",
+  "part_id": "beam",
+  "type": "thermal",
+  "run_id": "6eb160bedacf",
+  "call_id": "s4",
+  "step_id": 16,
+  "reason": "motor heat at the root",
+  "status": "done",
+  "stage": "done",
+  "phase": "done",
+  "pct": 100.0,
+  "created_at": 1793289432.303872,
+  "finished_at": 1793289432.8345358,
+  "analysis": "thermal",
+  "guide": true,
+  "label": "guide only, not a guarantee",
+  "fidelity_class": "fem",
+  "validated_against": null,
+  "inputs": {
+    "type": "thermal",
+    "settings": {
+      "material": {
+        "name": null,
+        "custom": null,
+        "fdm": null
+      },
+      "mesh": {
+        "size_mm": null,
+        "refine_faces": [],
+        "refine_factor": 0.4,
+        "second_order": true
+      },
+      "solver": {
+        "timeout_s": 300.0,
+        "threads": null
+      },
+      "temperatures": [
+        {
+          "face": "x-min",
+          "temp_c": 70.0
+        }
+      ],
+      "heat": [],
+      "convection": [
+        {
+          "face": "x-max",
+          "h_w_m2k": 25.0,
+          "ambient_c": 23.0
+        }
+      ]
+    },
+    "material": "PLA",
+    "environment": null
+  },
+  "settings": {
+    "material": {
+      "name": null,
+      "custom": null,
+      "fdm": null
+    },
+    "mesh": {
+      "size_mm": null,
+      "refine_faces": [],
+      "refine_factor": 0.4,
+      "second_order": true
+    },
+    "solver": {
+      "timeout_s": 300.0,
+      "threads": null
+    },
+    "temperatures": [
+      {
+        "face": "x-min",
+        "temp_c": 70.0
+      }
+    ],
+    "heat": [],
+    "convection": [
+      {
+        "face": "x-max",
+        "h_w_m2k": 25.0,
+        "ambient_c": 23.0
+      }
+    ]
+  },
+  "geometry_hash": "a2de3028d09e285dc97f2fccc089f906341ce08ab048e294655fbbac0405c095",
+  "material": {
+    "name": "PLA",
+    "e_mpa": 2300.0,
+    "nu": 0.35,
+    "yield_mpa": 51.0,
+    "density_g_cm3": 1.24,
+    "hdt_c": 55.0,
+    "source": "Prusament PLA TDS v1.1 (printed, horizontal)",
+    "k_w_mk": 0.13,
+    "alpha_per_k": 6.8e-05,
+    "knockdown": 0.7,
+    "stiffness_factor": 1.0,
+    "custom": false,
+    "allowable_mpa": 35.699999999999996,
+    "e_eff_mpa": 2300.0,
+    "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers"
+  },
+  "environment": null,
+  "error": null,
+  "hint": null,
+  "warnings": [
+    "peak 70.0 C is at or above PLA's heat deflection temperature (55 C): the part may soften or creep"
+  ],
+  "caveats": [
+    "Guide only: a linear-elastic FEM estimate, not a certification or a guarantee.",
+    "Isotropic material model; printed parts are weaker across layers, so strength is multiplied by an FDM knock-down.",
+    "Small deflections assumed; contact, creep, fatigue, temperature and vibration are not simulated unless this study type says so."
+  ],
+  "urls": {
+    "record": "/sims/sim_6770bfdffc8c",
+    "glb": "/sims/sim_6770bfdffc8c/result.glb",
+    "charts": "/sims/sim_6770bfdffc8c/charts",
+    "probe": "/sims/sim_6770bfdffc8c/probe",
+    "section": "/sims/sim_6770bfdffc8c/section"
+  },
+  "solver": {
+    "name": "CalculiX",
+    "version": "2.23",
+    "path": "/Users/fixture/miniconda3/bin/ccx",
+    "element": "C3D10 (quadratic tetrahedra)",
+    "procedure": "CalculiX *HEAT TRANSFER"
+  },
+  "mesh": {
+    "mesher": "gmsh",
+    "mesher_version": "4.15.2",
+    "coarse": {
+      "size_mm": 5.0,
+      "nodes": 998,
+      "elements": 433,
+      "order": 2,
+      "fixed_temp_nodes": 37
+    },
+    "fine": {
+      "size_mm": 2.5,
+      "nodes": 6598,
+      "elements": 3582,
+      "order": 2,
+      "fixed_temp_nodes": 105
+    },
+    "levels": [
+      {
+        "level": 0,
+        "label": "coarse",
+        "size_mm": 5.0,
+        "nodes": 998,
+        "elements": 433,
+        "metric": 70.0
+      },
+      {
+        "level": 1,
+        "label": "fine",
+        "size_mm": 2.5,
+        "nodes": 6598,
+        "elements": 3582,
+        "metric": 70.0
+      }
+    ]
+  },
+  "results": {
+    "max_temp_c": 70.0,
+    "max_temp_at": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "min_temp_c": 25.3232,
+    "min_temp_at": [
+      100.0,
+      0.0,
+      0.0
+    ],
+    "coarse_max_temp_c": 70.0,
+    "hdt_c": 55.0,
+    "error_band": null,
+    "error_band_pct": null,
+    "convergence": {
+      "history": [
+        {
+          "level": 0,
+          "label": "coarse",
+          "size_mm": 5.0,
+          "nodes": 998,
+          "elements": 433,
+          "metric": 70.0
+        },
+        {
+          "level": 1,
+          "label": "fine",
+          "size_mm": 2.5,
+          "nodes": 6598,
+          "elements": 3582,
+          "metric": 70.0
+        }
+      ],
+      "converged": null
+    }
+  },
+  "inputs_hash": "adadb6ffaa796546417ca55d91048ce913cc66fcf80a3b0955ee79be9f454be1",
+  "glb": "result.glb",
+  "outputs": [
+    "result.glb",
+    "fields.npz"
+  ],
+  "color_range_c": [
+    25.3232,
+    70.0
+  ],
+  "checks": [
+    {
+      "requirement_id": "r5",
+      "kind": "max_temp_c",
+      "target": 60,
+      "measured": 70.0,
+      "unit": "degC",
+      "status": "fail",
+      "sim_id": "sim_6770bfdffc8c",
+      "note": null
+    }
+  ],
+  "stale": false,
+  "card": {
+    "sim_id": "sim_6770bfdffc8c",
+    "type": "thermal",
+    "status": "done",
+    "verdict": "fail",
+    "phase": "done",
+    "pct": 100.0,
+    "part_id": "beam",
+    "label": "guide only, not a guarantee",
+    "fidelity_class": "fem",
+    "fidelity_note": null,
+    "notes": [],
+    "metrics": [
+      {
+        "key": "max_temp_c",
+        "label": "max temperature",
+        "unit": "degC",
+        "value": 70.0
+      },
+      {
+        "key": "min_temp_c",
+        "label": "min temperature",
+        "unit": "degC",
+        "value": 25.3232
+      },
+      {
+        "key": "error_band_pct",
+        "label": "error band",
+        "unit": "%",
+        "value": null
+      }
+    ],
+    "checks": [
+      {
+        "requirement_id": "r5",
+        "kind": "max_temp_c",
+        "target": 60,
+        "measured": 70.0,
+        "unit": "degC",
+        "status": "fail",
+        "sim_id": "sim_6770bfdffc8c",
+        "note": null
+      }
+    ],
+    "warnings": [
+      "peak 70.0 C is at or above PLA's heat deflection temperature (55 C): the part may soften or creep"
+    ],
+    "reason": "motor heat at the root",
+    "run_id": "6eb160bedacf",
+    "step_id": 16,
+    "urls": {
+      "record": "/sims/sim_6770bfdffc8c",
+      "glb": "/sims/sim_6770bfdffc8c/result.glb",
+      "charts": "/sims/sim_6770bfdffc8c/charts",
+      "probe": "/sims/sim_6770bfdffc8c/probe",
+      "section": "/sims/sim_6770bfdffc8c/section"
+    },
+    "charts_url": "/sims/sim_6770bfdffc8c/charts"
+  }
+}

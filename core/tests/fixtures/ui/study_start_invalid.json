@@ -1,0 +1,18 @@
+{
+  "error": "invalid_input",
+  "message": "invalid modal settings: n_modes: Input should be less than or equal to 30",
+  "errors": [
+    {
+      "type": "less_than_equal",
+      "loc": [
+        "n_modes"
+      ],
+      "msg": "Input should be less than or equal to 30",
+      "input": 500,
+      "ctx": {
+        "le": 30
+      },
+      "url": "https://errors.pydantic.dev/2.14/v/less_than_equal"
+    }
+  ]
+}

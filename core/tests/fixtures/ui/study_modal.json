@@ -1,0 +1,312 @@
+{
+  "sim_id": "sim_26a951c787d5",
+  "part_id": "beam",
+  "type": "modal",
+  "run_id": "6eb160bedacf",
+  "call_id": "s2",
+  "step_id": 10,
+  "reason": "keep the beam's modes clear of the 2-blade prop at 12k rpm",
+  "status": "done",
+  "stage": "done",
+  "phase": "done",
+  "pct": 100.0,
+  "created_at": 1793289430.329775,
+  "finished_at": 1793289431.216927,
+  "analysis": "modal",
+  "guide": true,
+  "label": "guide only, not a guarantee",
+  "fidelity_class": "fem",
+  "validated_against": null,
+  "inputs": {
+    "type": "modal",
+    "settings": {
+      "material": {
+        "name": null,
+        "custom": null,
+        "fdm": null
+      },
+      "mesh": {
+        "size_mm": null,
+        "refine_faces": [],
+        "refine_factor": 0.4,
+        "second_order": true
+      },
+      "solver": {
+        "timeout_s": 300.0,
+        "threads": null
+      },
+      "supports": [
+        {
+          "kind": "fixed",
+          "face": "x-min",
+          "axis": null
+        }
+      ],
+      "n_modes": 4,
+      "band_hz": null,
+      "excitation": {
+        "rpm": 12000.0,
+        "blades": 2,
+        "margin_pct": 15.0
+      }
+    },
+    "material": "PLA",
+    "environment": null
+  },
+  "settings": {
+    "material": {
+      "name": null,
+      "custom": null,
+      "fdm": null
+    },
+    "mesh": {
+      "size_mm": null,
+      "refine_faces": [],
+      "refine_factor": 0.4,
+      "second_order": true
+    },
+    "solver": {
+      "timeout_s": 300.0,
+      "threads": null
+    },
+    "supports": [
+      {
+        "kind": "fixed",
+        "face": "x-min",
+        "axis": null
+      }
+    ],
+    "n_modes": 4,
+    "band_hz": null,
+    "excitation": {
+      "rpm": 12000.0,
+      "blades": 2,
+      "margin_pct": 15.0
+    }
+  },
+  "geometry_hash": "a2de3028d09e285dc97f2fccc089f906341ce08ab048e294655fbbac0405c095",
+  "material": {
+    "name": "PLA",
+    "e_mpa": 2300.0,
+    "nu": 0.35,
+    "yield_mpa": 51.0,
+    "density_g_cm3": 1.24,
+    "hdt_c": 55.0,
+    "source": "Prusament PLA TDS v1.1 (printed, horizontal)",
+    "k_w_mk": 0.13,
+    "alpha_per_k": 6.8e-05,
+    "knockdown": 0.7,
+    "stiffness_factor": 1.0,
+    "custom": false,
+    "allowable_mpa": 35.699999999999996,
+    "e_eff_mpa": 2300.0,
+    "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers"
+  },
+  "environment": null,
+  "error": null,
+  "hint": null,
+  "warnings": [],
+  "caveats": [
+    "Guide only: a linear-elastic FEM estimate, not a certification or a guarantee.",
+    "Isotropic material model; printed parts are weaker across layers, so strength is multiplied by an FDM knock-down.",
+    "Small deflections assumed; contact, creep, fatigue, temperature and vibration are not simulated unless this study type says so."
+  ],
+  "urls": {
+    "record": "/sims/sim_26a951c787d5",
+    "glb": "/sims/sim_26a951c787d5/result.glb",
+    "charts": "/sims/sim_26a951c787d5/charts",
+    "probe": "/sims/sim_26a951c787d5/probe",
+    "section": "/sims/sim_26a951c787d5/section"
+  },
+  "solver": {
+    "name": "CalculiX",
+    "version": "2.23",
+    "path": "/Users/fixture/miniconda3/bin/ccx",
+    "element": "C3D10 (quadratic tetrahedra)",
+    "procedure": "CalculiX *FREQUENCY"
+  },
+  "mesh": {
+    "mesher": "gmsh",
+    "mesher_version": "4.15.2",
+    "coarse": {
+      "size_mm": 5.0,
+      "nodes": 998,
+      "elements": 433,
+      "order": 2,
+      "fixed_nodes": 37
+    },
+    "fine": {
+      "size_mm": 2.5,
+      "nodes": 6598,
+      "elements": 3582,
+      "order": 2,
+      "fixed_nodes": 105
+    },
+    "levels": [
+      {
+        "level": 0,
+        "label": "coarse",
+        "size_mm": 5.0,
+        "nodes": 998,
+        "elements": 433,
+        "metric": 220.1347
+      },
+      {
+        "level": 1,
+        "label": "fine",
+        "size_mm": 2.5,
+        "nodes": 6598,
+        "elements": 3582,
+        "metric": 219.8506
+      }
+    ]
+  },
+  "results": {
+    "frequencies_hz": [
+      219.8506,
+      219.8542,
+      1316.892,
+      1316.908
+    ],
+    "modes": [
+      {
+        "mode": 1,
+        "freq_hz": 219.8506,
+        "coarse_freq_hz": 220.1347,
+        "rigid": false,
+        "in_band": false
+      },
+      {
+        "mode": 2,
+        "freq_hz": 219.8542,
+        "coarse_freq_hz": 220.1775,
+        "rigid": false,
+        "in_band": false
+      },
+      {
+        "mode": 3,
+        "freq_hz": 1316.892,
+        "coarse_freq_hz": 1319.65,
+        "rigid": false,
+        "in_band": false
+      },
+      {
+        "mode": 4,
+        "freq_hz": 1316.908,
+        "coarse_freq_hz": 1320.853,
+        "rigid": false,
+        "in_band": false
+      }
+    ],
+    "first_freq_hz": 219.8506,
+    "band_hz": [
+      340.0,
+      459.99999999999994
+    ],
+    "modes_in_band": 0,
+    "error_band": 0.001292241185605241,
+    "error_band_pct": 0.1,
+    "convergence": {
+      "history": [
+        {
+          "level": 0,
+          "label": "coarse",
+          "size_mm": 5.0,
+          "nodes": 998,
+          "elements": 433,
+          "metric": 220.1347
+        },
+        {
+          "level": 1,
+          "label": "fine",
+          "size_mm": 2.5,
+          "nodes": 6598,
+          "elements": 3582,
+          "metric": 219.8506
+        }
+      ],
+      "converged": null
+    }
+  },
+  "inputs_hash": "e6b5191938edc998c8e9c0ad04744b4a759320d0ad7e866a601c6775ed83b587",
+  "glb": "result.glb",
+  "outputs": [
+    "result.glb",
+    "fields.npz"
+  ],
+  "checks": [
+    {
+      "requirement_id": "r3",
+      "kind": "avoid_band_hz",
+      "target": [
+        340,
+        460
+      ],
+      "measured": 0,
+      "unit": "modes",
+      "status": "pass",
+      "sim_id": "sim_26a951c787d5"
+    }
+  ],
+  "stale": false,
+  "card": {
+    "sim_id": "sim_26a951c787d5",
+    "type": "modal",
+    "status": "done",
+    "verdict": "pass",
+    "phase": "done",
+    "pct": 100.0,
+    "part_id": "beam",
+    "label": "guide only, not a guarantee",
+    "fidelity_class": "fem",
+    "fidelity_note": null,
+    "notes": [],
+    "metrics": [
+      {
+        "key": "first_freq_hz",
+        "label": "first frequency",
+        "unit": "Hz",
+        "value": 219.8506
+      },
+      {
+        "key": "modes_in_band",
+        "label": "modes in band",
+        "unit": "",
+        "value": 0
+      },
+      {
+        "key": "error_band_pct",
+        "label": "error band",
+        "unit": "%",
+        "value": 0.1
+      }
+    ],
+    "checks": [
+      {
+        "requirement_id": "r3",
+        "kind": "avoid_band_hz",
+        "target": [
+          340,
+          460
+        ],
+        "measured": 0,
+        "unit": "modes",
+        "status": "pass",
+        "sim_id": "sim_26a951c787d5",
+        "note": null
+      }
+    ],
+    "warnings": [],
+    "reason": "keep the beam's modes clear of the 2-blade prop at 12k rpm",
+    "run_id": "6eb160bedacf",
+    "step_id": 10,
+    "urls": {
+      "record": "/sims/sim_26a951c787d5",
+      "glb": "/sims/sim_26a951c787d5/result.glb",
+      "charts": "/sims/sim_26a951c787d5/charts",
+      "probe": "/sims/sim_26a951c787d5/probe",
+      "section": "/sims/sim_26a951c787d5/section"
+    },
+    "charts_url": "/sims/sim_26a951c787d5/charts"
+  }
+}

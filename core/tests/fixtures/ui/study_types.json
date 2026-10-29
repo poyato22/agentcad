@@ -1,0 +1,3075 @@
+[
+  {
+    "id": "static",
+    "name": "Static stress",
+    "solver": "CalculiX *STATIC",
+    "fidelity_class": "fem",
+    "doc": "stress, displacement and safety factor under one or more load cases",
+    "channels": [
+      "von_mises",
+      "displacement",
+      "displacement_magnitude",
+      "s1",
+      "s3",
+      "safety_factor"
+    ],
+    "available": true,
+    "detail": null,
+    "schema": {
+      "$defs": {
+        "BearingLoad": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "bearing",
+              "title": "Kind",
+              "type": "string"
+            },
+            "face": {
+              "description": "the bolt hole's cylindrical face",
+              "title": "Face",
+              "type": "string"
+            },
+            "newtons": {
+              "description": "bolt force on the hole (cosine distributed over the half it presses on)",
+              "exclusiveMinimum": 0,
+              "maximum": 1000000.0,
+              "title": "Newtons",
+              "type": "number",
+              "unit": "N"
+            },
+            "direction": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "+x",
+                    "-x",
+                    "+y",
+                    "-y",
+                    "+z",
+                    "-z"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "maxItems": 3,
+                  "minItems": 3,
+                  "prefixItems": [
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    },
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    },
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    }
+                  ],
+                  "type": "array"
+                }
+              ],
+              "description": "'+x' ... '-z' or a vector [x, y, z] (normalized)",
+              "title": "Direction"
+            }
+          },
+          "required": [
+            "kind",
+            "face",
+            "newtons",
+            "direction"
+          ],
+          "title": "BearingLoad",
+          "type": "object"
+        },
+        "ConvergenceSettings": {
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "default": false,
+              "description": "refine until the peak changes less than tol_pct",
+              "title": "Enabled",
+              "type": "boolean"
+            },
+            "tol_pct": {
+              "default": 5,
+              "maximum": 50,
+              "minimum": 0.5,
+              "title": "Tol Pct",
+              "type": "number",
+              "unit": "%"
+            },
+            "max_levels": {
+              "default": 4,
+              "description": "meshes solved at most",
+              "maximum": 6,
+              "minimum": 2,
+              "title": "Max Levels",
+              "type": "integer"
+            }
+          },
+          "title": "ConvergenceSettings",
+          "type": "object"
+        },
+        "CustomMaterial": {
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "maxLength": 40,
+              "minLength": 1,
+              "title": "Name",
+              "type": "string"
+            },
+            "e_mpa": {
+              "description": "Young's modulus",
+              "exclusiveMinimum": 1,
+              "maximum": 500000.0,
+              "title": "E Mpa",
+              "type": "number",
+              "unit": "MPa"
+            },
+            "nu": {
+              "description": "Poisson's ratio",
+              "exclusiveMaximum": 0.5,
+              "minimum": 0.0,
+              "title": "Nu",
+              "type": "number"
+            },
+            "yield_mpa": {
+              "description": "tensile yield or strength",
+              "exclusiveMinimum": 0,
+              "maximum": 10000.0,
+              "title": "Yield Mpa",
+              "type": "number",
+              "unit": "MPa"
+            },
+            "density_g_cm3": {
+              "description": "density",
+              "exclusiveMinimum": 0.01,
+              "maximum": 25,
+              "title": "Density G Cm3",
+              "type": "number",
+              "unit": "g/cm3"
+            },
+            "k_w_mk": {
+              "default": 0.2,
+              "description": "thermal conductivity",
+              "exclusiveMinimum": 0,
+              "maximum": 500,
+              "title": "K W Mk",
+              "type": "number",
+              "unit": "W/(m K)"
+            },
+            "alpha_per_k": {
+              "default": 7e-05,
+              "description": "thermal expansion",
+              "maximum": 0.001,
+              "minimum": 0,
+              "title": "Alpha Per K",
+              "type": "number",
+              "unit": "1/K"
+            },
+            "hdt_c": {
+              "default": 60,
+              "description": "heat deflection temperature",
+              "maximum": 1000,
+              "minimum": -50,
+              "title": "Hdt C",
+              "type": "number",
+              "unit": "degC"
+            },
+            "source": {
+              "default": "",
+              "maxLength": 200,
+              "title": "Source",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "e_mpa",
+            "nu",
+            "yield_mpa",
+            "density_g_cm3"
+          ],
+          "title": "CustomMaterial",
+          "type": "object"
+        },
+        "FdmSettings": {
+          "additionalProperties": false,
+          "properties": {
+            "infill_pct": {
+              "default": 100,
+              "description": "infill density",
+              "maximum": 100,
+              "minimum": 5,
+              "title": "Infill Pct",
+              "type": "number",
+              "unit": "%"
+            },
+            "walls": {
+              "default": 3,
+              "description": "perimeter count",
+              "maximum": 20,
+              "minimum": 1,
+              "title": "Walls",
+              "type": "integer"
+            },
+            "layer_orientation": {
+              "default": "xy",
+              "description": "'z' when the load runs across the layers (weakest direction)",
+              "enum": [
+                "xy",
+                "z"
+              ],
+              "title": "Layer Orientation",
+              "type": "string"
+            }
+          },
+          "title": "FdmSettings",
+          "type": "object"
+        },
+        "ForceLoad": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "force",
+              "default": "force",
+              "title": "Kind",
+              "type": "string"
+            },
+            "face": {
+              "description": "a preset (bottom, top, x-min, x-max, y-min, y-max, z-min, z-max) or a face id like 'f3' (mirror_faces)",
+              "title": "Face",
+              "type": "string"
+            },
+            "newtons": {
+              "description": "total force spread over the face",
+              "exclusiveMinimum": 0,
+              "maximum": 1000000.0,
+              "title": "Newtons",
+              "type": "number",
+              "unit": "N"
+            },
+            "direction": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "+x",
+                    "-x",
+                    "+y",
+                    "-y",
+                    "+z",
+                    "-z"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "maxItems": 3,
+                  "minItems": 3,
+                  "prefixItems": [
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    },
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    },
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    }
+                  ],
+                  "type": "array"
+                }
+              ],
+              "description": "'+x' ... '-z' or a vector [x, y, z] (normalized)",
+              "title": "Direction"
+            }
+          },
+          "required": [
+            "face",
+            "newtons",
+            "direction"
+          ],
+          "title": "ForceLoad",
+          "type": "object"
+        },
+        "GravityLoad": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "gravity",
+              "title": "Kind",
+              "type": "string"
+            },
+            "g": {
+              "default": 1.0,
+              "description": "acceleration in multiples of g (9.81 m/s2)",
+              "exclusiveMinimum": 0,
+              "maximum": 1000,
+              "title": "G",
+              "type": "number",
+              "unit": "g"
+            },
+            "direction": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "+x",
+                    "-x",
+                    "+y",
+                    "-y",
+                    "+z",
+                    "-z"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "maxItems": 3,
+                  "minItems": 3,
+                  "prefixItems": [
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    },
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    },
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    }
+                  ],
+                  "type": "array"
+                }
+              ],
+              "default": "-z",
+              "description": "'+x' ... '-z' or a vector [x, y, z] (normalized)",
+              "title": "Direction"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "title": "GravityLoad",
+          "type": "object"
+        },
+        "LoadCase": {
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "default": "case 1",
+              "maxLength": 60,
+              "minLength": 1,
+              "title": "Name",
+              "type": "string"
+            },
+            "supports": {
+              "items": {
+                "$ref": "#/$defs/Support"
+              },
+              "maxItems": 12,
+              "minItems": 1,
+              "title": "Supports",
+              "type": "array"
+            },
+            "loads": {
+              "items": {
+                "discriminator": {
+                  "mapping": {
+                    "bearing": "#/$defs/BearingLoad",
+                    "force": "#/$defs/ForceLoad",
+                    "gravity": "#/$defs/GravityLoad",
+                    "moment": "#/$defs/MomentLoad",
+                    "pressure": "#/$defs/PressureLoad",
+                    "remote_force": "#/$defs/RemoteForce"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/ForceLoad"
+                  },
+                  {
+                    "$ref": "#/$defs/PressureLoad"
+                  },
+                  {
+                    "$ref": "#/$defs/MomentLoad"
+                  },
+                  {
+                    "$ref": "#/$defs/GravityLoad"
+                  },
+                  {
+                    "$ref": "#/$defs/BearingLoad"
+                  },
+                  {
+                    "$ref": "#/$defs/RemoteForce"
+                  }
+                ]
+              },
+              "maxItems": 12,
+              "minItems": 1,
+              "title": "Loads",
+              "type": "array"
+            },
+            "note": {
+              "default": "",
+              "maxLength": 300,
+              "title": "Note",
+              "type": "string"
+            }
+          },
+          "required": [
+            "supports",
+            "loads"
+          ],
+          "title": "LoadCase",
+          "type": "object"
+        },
+        "MaterialSettings": {
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "a built-in or saved material; null = the profile's default material",
+              "title": "Name"
+            },
+            "custom": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/CustomMaterial"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "an inline material (overrides name)"
+            },
+            "fdm": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/FdmSettings"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "print settings -> approximate knock-downs"
+            }
+          },
+          "title": "MaterialSettings",
+          "type": "object"
+        },
+        "MeshSettings": {
+          "additionalProperties": false,
+          "properties": {
+            "size_mm": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0,
+                  "maximum": 1000,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "element size; null = auto (from the part's size, within the node budget)",
+              "title": "Size Mm",
+              "unit": "mm"
+            },
+            "refine_faces": {
+              "description": "faces to mesh finer (local refinement)",
+              "items": {
+                "description": "a preset (bottom, top, x-min, x-max, y-min, y-max, z-min, z-max) or a face id like 'f3' (mirror_faces)",
+                "type": "string"
+              },
+              "maxItems": 20,
+              "title": "Refine Faces",
+              "type": "array"
+            },
+            "refine_factor": {
+              "default": 0.4,
+              "description": "local element size on the refined faces, as a fraction of the element size",
+              "maximum": 1.0,
+              "minimum": 0.05,
+              "title": "Refine Factor",
+              "type": "number"
+            },
+            "second_order": {
+              "default": true,
+              "description": "quadratic (10-node) tetrahedra; first-order tetrahedra are much too stiff in bending: use only to preview",
+              "title": "Second Order",
+              "type": "boolean"
+            }
+          },
+          "title": "MeshSettings",
+          "type": "object"
+        },
+        "MomentLoad": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "moment",
+              "title": "Kind",
+              "type": "string"
+            },
+            "face": {
+              "description": "a preset (bottom, top, x-min, x-max, y-min, y-max, z-min, z-max) or a face id like 'f3' (mirror_faces)",
+              "title": "Face",
+              "type": "string"
+            },
+            "n_mm": {
+              "description": "moment magnitude",
+              "exclusiveMinimum": 0,
+              "maximum": 1000000000.0,
+              "title": "N Mm",
+              "type": "number",
+              "unit": "N mm"
+            },
+            "axis": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "+x",
+                    "-x",
+                    "+y",
+                    "-y",
+                    "+z",
+                    "-z"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "maxItems": 3,
+                  "minItems": 3,
+                  "prefixItems": [
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    },
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    },
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    }
+                  ],
+                  "type": "array"
+                }
+              ],
+              "description": "moment axis (right-hand rule)",
+              "title": "Axis"
+            }
+          },
+          "required": [
+            "kind",
+            "face",
+            "n_mm",
+            "axis"
+          ],
+          "title": "MomentLoad",
+          "type": "object"
+        },
+        "PressureLoad": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "pressure",
+              "title": "Kind",
+              "type": "string"
+            },
+            "face": {
+              "description": "a preset (bottom, top, x-min, x-max, y-min, y-max, z-min, z-max) or a face id like 'f3' (mirror_faces)",
+              "title": "Face",
+              "type": "string"
+            },
+            "mpa": {
+              "description": "positive pushes into the face",
+              "maximum": 1000.0,
+              "minimum": -1000.0,
+              "title": "Mpa",
+              "type": "number",
+              "unit": "MPa"
+            }
+          },
+          "required": [
+            "kind",
+            "face",
+            "mpa"
+          ],
+          "title": "PressureLoad",
+          "type": "object"
+        },
+        "RemoteForce": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "remote_force",
+              "title": "Kind",
+              "type": "string"
+            },
+            "face": {
+              "description": "a preset (bottom, top, x-min, x-max, y-min, y-max, z-min, z-max) or a face id like 'f3' (mirror_faces)",
+              "title": "Face",
+              "type": "string"
+            },
+            "newtons": {
+              "exclusiveMinimum": 0,
+              "maximum": 1000000.0,
+              "title": "Newtons",
+              "type": "number",
+              "unit": "N"
+            },
+            "direction": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "+x",
+                    "-x",
+                    "+y",
+                    "-y",
+                    "+z",
+                    "-z"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "maxItems": 3,
+                  "minItems": 3,
+                  "prefixItems": [
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    },
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    },
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    }
+                  ],
+                  "type": "array"
+                }
+              ],
+              "description": "'+x' ... '-z' or a vector [x, y, z] (normalized)",
+              "title": "Direction"
+            },
+            "point": {
+              "description": "where the force acts (part coordinates)",
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "maximum": 1000000.0,
+                  "minimum": -1000000.0,
+                  "type": "number"
+                },
+                {
+                  "maximum": 1000000.0,
+                  "minimum": -1000000.0,
+                  "type": "number"
+                },
+                {
+                  "maximum": 1000000.0,
+                  "minimum": -1000000.0,
+                  "type": "number"
+                }
+              ],
+              "title": "Point",
+              "type": "array",
+              "unit": "mm"
+            }
+          },
+          "required": [
+            "kind",
+            "face",
+            "newtons",
+            "direction",
+            "point"
+          ],
+          "title": "RemoteForce",
+          "type": "object"
+        },
+        "SolverSettings": {
+          "additionalProperties": false,
+          "properties": {
+            "timeout_s": {
+              "default": 300,
+              "description": "per solve",
+              "maximum": 3600,
+              "minimum": 5,
+              "title": "Timeout S",
+              "type": "number",
+              "unit": "s"
+            },
+            "threads": {
+              "anyOf": [
+                {
+                  "maximum": 64,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "null = up to 4 cores",
+              "title": "Threads"
+            }
+          },
+          "title": "SolverSettings",
+          "type": "object"
+        },
+        "Support": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "default": "fixed",
+              "description": "fixed: all translations; pinned: radial + axial held, free to turn about the hole axis; roller / symmetry: normal displacement held (flat faces)",
+              "enum": [
+                "fixed",
+                "pinned",
+                "roller",
+                "symmetry"
+              ],
+              "title": "Kind",
+              "type": "string"
+            },
+            "face": {
+              "description": "a preset (bottom, top, x-min, x-max, y-min, y-max, z-min, z-max) or a face id like 'f3' (mirror_faces)",
+              "title": "Face",
+              "type": "string"
+            },
+            "axis": {
+              "anyOf": [
+                {
+                  "maxItems": 3,
+                  "minItems": 3,
+                  "prefixItems": [
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    },
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    },
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    }
+                  ],
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "pinned: hole axis direction; null = fitted",
+              "title": "Axis"
+            }
+          },
+          "required": [
+            "face"
+          ],
+          "title": "Support",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "material": {
+          "$ref": "#/$defs/MaterialSettings"
+        },
+        "mesh": {
+          "$ref": "#/$defs/MeshSettings"
+        },
+        "solver": {
+          "$ref": "#/$defs/SolverSettings"
+        },
+        "load_cases": {
+          "items": {
+            "$ref": "#/$defs/LoadCase"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "title": "Load Cases",
+          "type": "array"
+        },
+        "convergence": {
+          "$ref": "#/$defs/ConvergenceSettings"
+        },
+        "environment": {
+          "anyOf": [
+            {
+              "maxLength": 40,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Desk, Outdoor, ... (temperature checked against the material)",
+          "title": "Environment"
+        }
+      },
+      "required": [
+        "load_cases"
+      ],
+      "title": "StaticSettings",
+      "type": "object"
+    }
+  },
+  {
+    "id": "modal",
+    "name": "Modal (vibration)",
+    "solver": "CalculiX *FREQUENCY",
+    "fidelity_class": "fem",
+    "doc": "natural frequencies and mode shapes; flags modes inside an excitation band",
+    "channels": [
+      "mode_1",
+      "mode_2",
+      "mode_3"
+    ],
+    "available": true,
+    "detail": null,
+    "schema": {
+      "$defs": {
+        "CustomMaterial": {
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "maxLength": 40,
+              "minLength": 1,
+              "title": "Name",
+              "type": "string"
+            },
+            "e_mpa": {
+              "description": "Young's modulus",
+              "exclusiveMinimum": 1,
+              "maximum": 500000.0,
+              "title": "E Mpa",
+              "type": "number",
+              "unit": "MPa"
+            },
+            "nu": {
+              "description": "Poisson's ratio",
+              "exclusiveMaximum": 0.5,
+              "minimum": 0.0,
+              "title": "Nu",
+              "type": "number"
+            },
+            "yield_mpa": {
+              "description": "tensile yield or strength",
+              "exclusiveMinimum": 0,
+              "maximum": 10000.0,
+              "title": "Yield Mpa",
+              "type": "number",
+              "unit": "MPa"
+            },
+            "density_g_cm3": {
+              "description": "density",
+              "exclusiveMinimum": 0.01,
+              "maximum": 25,
+              "title": "Density G Cm3",
+              "type": "number",
+              "unit": "g/cm3"
+            },
+            "k_w_mk": {
+              "default": 0.2,
+              "description": "thermal conductivity",
+              "exclusiveMinimum": 0,
+              "maximum": 500,
+              "title": "K W Mk",
+              "type": "number",
+              "unit": "W/(m K)"
+            },
+            "alpha_per_k": {
+              "default": 7e-05,
+              "description": "thermal expansion",
+              "maximum": 0.001,
+              "minimum": 0,
+              "title": "Alpha Per K",
+              "type": "number",
+              "unit": "1/K"
+            },
+            "hdt_c": {
+              "default": 60,
+              "description": "heat deflection temperature",
+              "maximum": 1000,
+              "minimum": -50,
+              "title": "Hdt C",
+              "type": "number",
+              "unit": "degC"
+            },
+            "source": {
+              "default": "",
+              "maxLength": 200,
+              "title": "Source",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "e_mpa",
+            "nu",
+            "yield_mpa",
+            "density_g_cm3"
+          ],
+          "title": "CustomMaterial",
+          "type": "object"
+        },
+        "Excitation": {
+          "additionalProperties": false,
+          "properties": {
+            "rpm": {
+              "description": "motor speed",
+              "exclusiveMinimum": 0,
+              "maximum": 1000000.0,
+              "title": "Rpm",
+              "type": "number",
+              "unit": "rpm"
+            },
+            "blades": {
+              "default": 1,
+              "description": "excitation per revolution (blade count)",
+              "maximum": 12,
+              "minimum": 1,
+              "title": "Blades",
+              "type": "integer"
+            },
+            "margin_pct": {
+              "default": 15,
+              "description": "band half-width around rpm/60 x blades",
+              "maximum": 100,
+              "minimum": 0,
+              "title": "Margin Pct",
+              "type": "number",
+              "unit": "%"
+            }
+          },
+          "required": [
+            "rpm"
+          ],
+          "title": "Excitation",
+          "type": "object"
+        },
+        "FdmSettings": {
+          "additionalProperties": false,
+          "properties": {
+            "infill_pct": {
+              "default": 100,
+              "description": "infill density",
+              "maximum": 100,
+              "minimum": 5,
+              "title": "Infill Pct",
+              "type": "number",
+              "unit": "%"
+            },
+            "walls": {
+              "default": 3,
+              "description": "perimeter count",
+              "maximum": 20,
+              "minimum": 1,
+              "title": "Walls",
+              "type": "integer"
+            },
+            "layer_orientation": {
+              "default": "xy",
+              "description": "'z' when the load runs across the layers (weakest direction)",
+              "enum": [
+                "xy",
+                "z"
+              ],
+              "title": "Layer Orientation",
+              "type": "string"
+            }
+          },
+          "title": "FdmSettings",
+          "type": "object"
+        },
+        "MaterialSettings": {
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "a built-in or saved material; null = the profile's default material",
+              "title": "Name"
+            },
+            "custom": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/CustomMaterial"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "an inline material (overrides name)"
+            },
+            "fdm": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/FdmSettings"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "print settings -> approximate knock-downs"
+            }
+          },
+          "title": "MaterialSettings",
+          "type": "object"
+        },
+        "MeshSettings": {
+          "additionalProperties": false,
+          "properties": {
+            "size_mm": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0,
+                  "maximum": 1000,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "element size; null = auto (from the part's size, within the node budget)",
+              "title": "Size Mm",
+              "unit": "mm"
+            },
+            "refine_faces": {
+              "description": "faces to mesh finer (local refinement)",
+              "items": {
+                "description": "a preset (bottom, top, x-min, x-max, y-min, y-max, z-min, z-max) or a face id like 'f3' (mirror_faces)",
+                "type": "string"
+              },
+              "maxItems": 20,
+              "title": "Refine Faces",
+              "type": "array"
+            },
+            "refine_factor": {
+              "default": 0.4,
+              "description": "local element size on the refined faces, as a fraction of the element size",
+              "maximum": 1.0,
+              "minimum": 0.05,
+              "title": "Refine Factor",
+              "type": "number"
+            },
+            "second_order": {
+              "default": true,
+              "description": "quadratic (10-node) tetrahedra; first-order tetrahedra are much too stiff in bending: use only to preview",
+              "title": "Second Order",
+              "type": "boolean"
+            }
+          },
+          "title": "MeshSettings",
+          "type": "object"
+        },
+        "SolverSettings": {
+          "additionalProperties": false,
+          "properties": {
+            "timeout_s": {
+              "default": 300,
+              "description": "per solve",
+              "maximum": 3600,
+              "minimum": 5,
+              "title": "Timeout S",
+              "type": "number",
+              "unit": "s"
+            },
+            "threads": {
+              "anyOf": [
+                {
+                  "maximum": 64,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "null = up to 4 cores",
+              "title": "Threads"
+            }
+          },
+          "title": "SolverSettings",
+          "type": "object"
+        },
+        "Support": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "default": "fixed",
+              "description": "fixed: all translations; pinned: radial + axial held, free to turn about the hole axis; roller / symmetry: normal displacement held (flat faces)",
+              "enum": [
+                "fixed",
+                "pinned",
+                "roller",
+                "symmetry"
+              ],
+              "title": "Kind",
+              "type": "string"
+            },
+            "face": {
+              "description": "a preset (bottom, top, x-min, x-max, y-min, y-max, z-min, z-max) or a face id like 'f3' (mirror_faces)",
+              "title": "Face",
+              "type": "string"
+            },
+            "axis": {
+              "anyOf": [
+                {
+                  "maxItems": 3,
+                  "minItems": 3,
+                  "prefixItems": [
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    },
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    },
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    }
+                  ],
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "pinned: hole axis direction; null = fitted",
+              "title": "Axis"
+            }
+          },
+          "required": [
+            "face"
+          ],
+          "title": "Support",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "material": {
+          "$ref": "#/$defs/MaterialSettings"
+        },
+        "mesh": {
+          "$ref": "#/$defs/MeshSettings"
+        },
+        "solver": {
+          "$ref": "#/$defs/SolverSettings"
+        },
+        "supports": {
+          "description": "empty = free-free (the first six modes are rigid-body)",
+          "items": {
+            "$ref": "#/$defs/Support"
+          },
+          "maxItems": 12,
+          "title": "Supports",
+          "type": "array"
+        },
+        "n_modes": {
+          "default": 6,
+          "maximum": 30,
+          "minimum": 1,
+          "title": "N Modes",
+          "type": "integer"
+        },
+        "band_hz": {
+          "anyOf": [
+            {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "excitation band [lo, hi]",
+          "title": "Band Hz",
+          "unit": "Hz"
+        },
+        "excitation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Excitation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "ModalSettings",
+      "type": "object"
+    }
+  },
+  {
+    "id": "buckling",
+    "name": "Buckling",
+    "solver": "CalculiX *BUCKLE",
+    "fidelity_class": "fem",
+    "doc": "load multipliers at which the part buckles (linear eigenvalue buckling)",
+    "channels": [
+      "mode_1",
+      "mode_2",
+      "mode_3"
+    ],
+    "available": true,
+    "detail": null,
+    "schema": {
+      "$defs": {
+        "BearingLoad": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "bearing",
+              "title": "Kind",
+              "type": "string"
+            },
+            "face": {
+              "description": "the bolt hole's cylindrical face",
+              "title": "Face",
+              "type": "string"
+            },
+            "newtons": {
+              "description": "bolt force on the hole (cosine distributed over the half it presses on)",
+              "exclusiveMinimum": 0,
+              "maximum": 1000000.0,
+              "title": "Newtons",
+              "type": "number",
+              "unit": "N"
+            },
+            "direction": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "+x",
+                    "-x",
+                    "+y",
+                    "-y",
+                    "+z",
+                    "-z"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "maxItems": 3,
+                  "minItems": 3,
+                  "prefixItems": [
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    },
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    },
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    }
+                  ],
+                  "type": "array"
+                }
+              ],
+              "description": "'+x' ... '-z' or a vector [x, y, z] (normalized)",
+              "title": "Direction"
+            }
+          },
+          "required": [
+            "kind",
+            "face",
+            "newtons",
+            "direction"
+          ],
+          "title": "BearingLoad",
+          "type": "object"
+        },
+        "CustomMaterial": {
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "maxLength": 40,
+              "minLength": 1,
+              "title": "Name",
+              "type": "string"
+            },
+            "e_mpa": {
+              "description": "Young's modulus",
+              "exclusiveMinimum": 1,
+              "maximum": 500000.0,
+              "title": "E Mpa",
+              "type": "number",
+              "unit": "MPa"
+            },
+            "nu": {
+              "description": "Poisson's ratio",
+              "exclusiveMaximum": 0.5,
+              "minimum": 0.0,
+              "title": "Nu",
+              "type": "number"
+            },
+            "yield_mpa": {
+              "description": "tensile yield or strength",
+              "exclusiveMinimum": 0,
+              "maximum": 10000.0,
+              "title": "Yield Mpa",
+              "type": "number",
+              "unit": "MPa"
+            },
+            "density_g_cm3": {
+              "description": "density",
+              "exclusiveMinimum": 0.01,
+              "maximum": 25,
+              "title": "Density G Cm3",
+              "type": "number",
+              "unit": "g/cm3"
+            },
+            "k_w_mk": {
+              "default": 0.2,
+              "description": "thermal conductivity",
+              "exclusiveMinimum": 0,
+              "maximum": 500,
+              "title": "K W Mk",
+              "type": "number",
+              "unit": "W/(m K)"
+            },
+            "alpha_per_k": {
+              "default": 7e-05,
+              "description": "thermal expansion",
+              "maximum": 0.001,
+              "minimum": 0,
+              "title": "Alpha Per K",
+              "type": "number",
+              "unit": "1/K"
+            },
+            "hdt_c": {
+              "default": 60,
+              "description": "heat deflection temperature",
+              "maximum": 1000,
+              "minimum": -50,
+              "title": "Hdt C",
+              "type": "number",
+              "unit": "degC"
+            },
+            "source": {
+              "default": "",
+              "maxLength": 200,
+              "title": "Source",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "e_mpa",
+            "nu",
+            "yield_mpa",
+            "density_g_cm3"
+          ],
+          "title": "CustomMaterial",
+          "type": "object"
+        },
+        "FdmSettings": {
+          "additionalProperties": false,
+          "properties": {
+            "infill_pct": {
+              "default": 100,
+              "description": "infill density",
+              "maximum": 100,
+              "minimum": 5,
+              "title": "Infill Pct",
+              "type": "number",
+              "unit": "%"
+            },
+            "walls": {
+              "default": 3,
+              "description": "perimeter count",
+              "maximum": 20,
+              "minimum": 1,
+              "title": "Walls",
+              "type": "integer"
+            },
+            "layer_orientation": {
+              "default": "xy",
+              "description": "'z' when the load runs across the layers (weakest direction)",
+              "enum": [
+                "xy",
+                "z"
+              ],
+              "title": "Layer Orientation",
+              "type": "string"
+            }
+          },
+          "title": "FdmSettings",
+          "type": "object"
+        },
+        "ForceLoad": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "force",
+              "default": "force",
+              "title": "Kind",
+              "type": "string"
+            },
+            "face": {
+              "description": "a preset (bottom, top, x-min, x-max, y-min, y-max, z-min, z-max) or a face id like 'f3' (mirror_faces)",
+              "title": "Face",
+              "type": "string"
+            },
+            "newtons": {
+              "description": "total force spread over the face",
+              "exclusiveMinimum": 0,
+              "maximum": 1000000.0,
+              "title": "Newtons",
+              "type": "number",
+              "unit": "N"
+            },
+            "direction": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "+x",
+                    "-x",
+                    "+y",
+                    "-y",
+                    "+z",
+                    "-z"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "maxItems": 3,
+                  "minItems": 3,
+                  "prefixItems": [
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    },
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    },
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    }
+                  ],
+                  "type": "array"
+                }
+              ],
+              "description": "'+x' ... '-z' or a vector [x, y, z] (normalized)",
+              "title": "Direction"
+            }
+          },
+          "required": [
+            "face",
+            "newtons",
+            "direction"
+          ],
+          "title": "ForceLoad",
+          "type": "object"
+        },
+        "GravityLoad": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "gravity",
+              "title": "Kind",
+              "type": "string"
+            },
+            "g": {
+              "default": 1.0,
+              "description": "acceleration in multiples of g (9.81 m/s2)",
+              "exclusiveMinimum": 0,
+              "maximum": 1000,
+              "title": "G",
+              "type": "number",
+              "unit": "g"
+            },
+            "direction": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "+x",
+                    "-x",
+                    "+y",
+                    "-y",
+                    "+z",
+                    "-z"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "maxItems": 3,
+                  "minItems": 3,
+                  "prefixItems": [
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    },
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    },
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    }
+                  ],
+                  "type": "array"
+                }
+              ],
+              "default": "-z",
+              "description": "'+x' ... '-z' or a vector [x, y, z] (normalized)",
+              "title": "Direction"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "title": "GravityLoad",
+          "type": "object"
+        },
+        "LoadCase": {
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "default": "case 1",
+              "maxLength": 60,
+              "minLength": 1,
+              "title": "Name",
+              "type": "string"
+            },
+            "supports": {
+              "items": {
+                "$ref": "#/$defs/Support"
+              },
+              "maxItems": 12,
+              "minItems": 1,
+              "title": "Supports",
+              "type": "array"
+            },
+            "loads": {
+              "items": {
+                "discriminator": {
+                  "mapping": {
+                    "bearing": "#/$defs/BearingLoad",
+                    "force": "#/$defs/ForceLoad",
+                    "gravity": "#/$defs/GravityLoad",
+                    "moment": "#/$defs/MomentLoad",
+                    "pressure": "#/$defs/PressureLoad",
+                    "remote_force": "#/$defs/RemoteForce"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/ForceLoad"
+                  },
+                  {
+                    "$ref": "#/$defs/PressureLoad"
+                  },
+                  {
+                    "$ref": "#/$defs/MomentLoad"
+                  },
+                  {
+                    "$ref": "#/$defs/GravityLoad"
+                  },
+                  {
+                    "$ref": "#/$defs/BearingLoad"
+                  },
+                  {
+                    "$ref": "#/$defs/RemoteForce"
+                  }
+                ]
+              },
+              "maxItems": 12,
+              "minItems": 1,
+              "title": "Loads",
+              "type": "array"
+            },
+            "note": {
+              "default": "",
+              "maxLength": 300,
+              "title": "Note",
+              "type": "string"
+            }
+          },
+          "required": [
+            "supports",
+            "loads"
+          ],
+          "title": "LoadCase",
+          "type": "object"
+        },
+        "MaterialSettings": {
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "a built-in or saved material; null = the profile's default material",
+              "title": "Name"
+            },
+            "custom": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/CustomMaterial"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "an inline material (overrides name)"
+            },
+            "fdm": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/FdmSettings"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "print settings -> approximate knock-downs"
+            }
+          },
+          "title": "MaterialSettings",
+          "type": "object"
+        },
+        "MeshSettings": {
+          "additionalProperties": false,
+          "properties": {
+            "size_mm": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0,
+                  "maximum": 1000,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "element size; null = auto (from the part's size, within the node budget)",
+              "title": "Size Mm",
+              "unit": "mm"
+            },
+            "refine_faces": {
+              "description": "faces to mesh finer (local refinement)",
+              "items": {
+                "description": "a preset (bottom, top, x-min, x-max, y-min, y-max, z-min, z-max) or a face id like 'f3' (mirror_faces)",
+                "type": "string"
+              },
+              "maxItems": 20,
+              "title": "Refine Faces",
+              "type": "array"
+            },
+            "refine_factor": {
+              "default": 0.4,
+              "description": "local element size on the refined faces, as a fraction of the element size",
+              "maximum": 1.0,
+              "minimum": 0.05,
+              "title": "Refine Factor",
+              "type": "number"
+            },
+            "second_order": {
+              "default": true,
+              "description": "quadratic (10-node) tetrahedra; first-order tetrahedra are much too stiff in bending: use only to preview",
+              "title": "Second Order",
+              "type": "boolean"
+            }
+          },
+          "title": "MeshSettings",
+          "type": "object"
+        },
+        "MomentLoad": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "moment",
+              "title": "Kind",
+              "type": "string"
+            },
+            "face": {
+              "description": "a preset (bottom, top, x-min, x-max, y-min, y-max, z-min, z-max) or a face id like 'f3' (mirror_faces)",
+              "title": "Face",
+              "type": "string"
+            },
+            "n_mm": {
+              "description": "moment magnitude",
+              "exclusiveMinimum": 0,
+              "maximum": 1000000000.0,
+              "title": "N Mm",
+              "type": "number",
+              "unit": "N mm"
+            },
+            "axis": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "+x",
+                    "-x",
+                    "+y",
+                    "-y",
+                    "+z",
+                    "-z"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "maxItems": 3,
+                  "minItems": 3,
+                  "prefixItems": [
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    },
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    },
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    }
+                  ],
+                  "type": "array"
+                }
+              ],
+              "description": "moment axis (right-hand rule)",
+              "title": "Axis"
+            }
+          },
+          "required": [
+            "kind",
+            "face",
+            "n_mm",
+            "axis"
+          ],
+          "title": "MomentLoad",
+          "type": "object"
+        },
+        "PressureLoad": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "pressure",
+              "title": "Kind",
+              "type": "string"
+            },
+            "face": {
+              "description": "a preset (bottom, top, x-min, x-max, y-min, y-max, z-min, z-max) or a face id like 'f3' (mirror_faces)",
+              "title": "Face",
+              "type": "string"
+            },
+            "mpa": {
+              "description": "positive pushes into the face",
+              "maximum": 1000.0,
+              "minimum": -1000.0,
+              "title": "Mpa",
+              "type": "number",
+              "unit": "MPa"
+            }
+          },
+          "required": [
+            "kind",
+            "face",
+            "mpa"
+          ],
+          "title": "PressureLoad",
+          "type": "object"
+        },
+        "RemoteForce": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "remote_force",
+              "title": "Kind",
+              "type": "string"
+            },
+            "face": {
+              "description": "a preset (bottom, top, x-min, x-max, y-min, y-max, z-min, z-max) or a face id like 'f3' (mirror_faces)",
+              "title": "Face",
+              "type": "string"
+            },
+            "newtons": {
+              "exclusiveMinimum": 0,
+              "maximum": 1000000.0,
+              "title": "Newtons",
+              "type": "number",
+              "unit": "N"
+            },
+            "direction": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "+x",
+                    "-x",
+                    "+y",
+                    "-y",
+                    "+z",
+                    "-z"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "maxItems": 3,
+                  "minItems": 3,
+                  "prefixItems": [
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    },
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    },
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    }
+                  ],
+                  "type": "array"
+                }
+              ],
+              "description": "'+x' ... '-z' or a vector [x, y, z] (normalized)",
+              "title": "Direction"
+            },
+            "point": {
+              "description": "where the force acts (part coordinates)",
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "maximum": 1000000.0,
+                  "minimum": -1000000.0,
+                  "type": "number"
+                },
+                {
+                  "maximum": 1000000.0,
+                  "minimum": -1000000.0,
+                  "type": "number"
+                },
+                {
+                  "maximum": 1000000.0,
+                  "minimum": -1000000.0,
+                  "type": "number"
+                }
+              ],
+              "title": "Point",
+              "type": "array",
+              "unit": "mm"
+            }
+          },
+          "required": [
+            "kind",
+            "face",
+            "newtons",
+            "direction",
+            "point"
+          ],
+          "title": "RemoteForce",
+          "type": "object"
+        },
+        "SolverSettings": {
+          "additionalProperties": false,
+          "properties": {
+            "timeout_s": {
+              "default": 300,
+              "description": "per solve",
+              "maximum": 3600,
+              "minimum": 5,
+              "title": "Timeout S",
+              "type": "number",
+              "unit": "s"
+            },
+            "threads": {
+              "anyOf": [
+                {
+                  "maximum": 64,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "null = up to 4 cores",
+              "title": "Threads"
+            }
+          },
+          "title": "SolverSettings",
+          "type": "object"
+        },
+        "Support": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "default": "fixed",
+              "description": "fixed: all translations; pinned: radial + axial held, free to turn about the hole axis; roller / symmetry: normal displacement held (flat faces)",
+              "enum": [
+                "fixed",
+                "pinned",
+                "roller",
+                "symmetry"
+              ],
+              "title": "Kind",
+              "type": "string"
+            },
+            "face": {
+              "description": "a preset (bottom, top, x-min, x-max, y-min, y-max, z-min, z-max) or a face id like 'f3' (mirror_faces)",
+              "title": "Face",
+              "type": "string"
+            },
+            "axis": {
+              "anyOf": [
+                {
+                  "maxItems": 3,
+                  "minItems": 3,
+                  "prefixItems": [
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    },
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    },
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    }
+                  ],
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "pinned: hole axis direction; null = fitted",
+              "title": "Axis"
+            }
+          },
+          "required": [
+            "face"
+          ],
+          "title": "Support",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "material": {
+          "$ref": "#/$defs/MaterialSettings"
+        },
+        "mesh": {
+          "$ref": "#/$defs/MeshSettings"
+        },
+        "solver": {
+          "$ref": "#/$defs/SolverSettings"
+        },
+        "load_case": {
+          "$ref": "#/$defs/LoadCase"
+        },
+        "n_modes": {
+          "default": 3,
+          "maximum": 10,
+          "minimum": 1,
+          "title": "N Modes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "load_case"
+      ],
+      "title": "BucklingSettings",
+      "type": "object"
+    }
+  },
+  {
+    "id": "thermal",
+    "name": "Thermal (steady state)",
+    "solver": "CalculiX *HEAT TRANSFER",
+    "fidelity_class": "fem",
+    "doc": "temperature field from fixed temperatures, heat input and convection",
+    "channels": [
+      "temperature"
+    ],
+    "available": true,
+    "detail": null,
+    "schema": {
+      "$defs": {
+        "Convection": {
+          "additionalProperties": false,
+          "properties": {
+            "face": {
+              "description": "a preset (bottom, top, x-min, x-max, y-min, y-max, z-min, z-max) or a face id like 'f3' (mirror_faces)",
+              "title": "Face",
+              "type": "string"
+            },
+            "h_w_m2k": {
+              "description": "film coefficient (still air ~5-10, forced air ~25-100)",
+              "exclusiveMinimum": 0,
+              "maximum": 100000.0,
+              "title": "H W M2K",
+              "type": "number",
+              "unit": "W/(m2 K)"
+            },
+            "ambient_c": {
+              "default": 23,
+              "maximum": 2000,
+              "minimum": -100,
+              "title": "Ambient C",
+              "type": "number",
+              "unit": "degC"
+            }
+          },
+          "required": [
+            "face",
+            "h_w_m2k"
+          ],
+          "title": "Convection",
+          "type": "object"
+        },
+        "CustomMaterial": {
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "maxLength": 40,
+              "minLength": 1,
+              "title": "Name",
+              "type": "string"
+            },
+            "e_mpa": {
+              "description": "Young's modulus",
+              "exclusiveMinimum": 1,
+              "maximum": 500000.0,
+              "title": "E Mpa",
+              "type": "number",
+              "unit": "MPa"
+            },
+            "nu": {
+              "description": "Poisson's ratio",
+              "exclusiveMaximum": 0.5,
+              "minimum": 0.0,
+              "title": "Nu",
+              "type": "number"
+            },
+            "yield_mpa": {
+              "description": "tensile yield or strength",
+              "exclusiveMinimum": 0,
+              "maximum": 10000.0,
+              "title": "Yield Mpa",
+              "type": "number",
+              "unit": "MPa"
+            },
+            "density_g_cm3": {
+              "description": "density",
+              "exclusiveMinimum": 0.01,
+              "maximum": 25,
+              "title": "Density G Cm3",
+              "type": "number",
+              "unit": "g/cm3"
+            },
+            "k_w_mk": {
+              "default": 0.2,
+              "description": "thermal conductivity",
+              "exclusiveMinimum": 0,
+              "maximum": 500,
+              "title": "K W Mk",
+              "type": "number",
+              "unit": "W/(m K)"
+            },
+            "alpha_per_k": {
+              "default": 7e-05,
+              "description": "thermal expansion",
+              "maximum": 0.001,
+              "minimum": 0,
+              "title": "Alpha Per K",
+              "type": "number",
+              "unit": "1/K"
+            },
+            "hdt_c": {
+              "default": 60,
+              "description": "heat deflection temperature",
+              "maximum": 1000,
+              "minimum": -50,
+              "title": "Hdt C",
+              "type": "number",
+              "unit": "degC"
+            },
+            "source": {
+              "default": "",
+              "maxLength": 200,
+              "title": "Source",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "e_mpa",
+            "nu",
+            "yield_mpa",
+            "density_g_cm3"
+          ],
+          "title": "CustomMaterial",
+          "type": "object"
+        },
+        "FdmSettings": {
+          "additionalProperties": false,
+          "properties": {
+            "infill_pct": {
+              "default": 100,
+              "description": "infill density",
+              "maximum": 100,
+              "minimum": 5,
+              "title": "Infill Pct",
+              "type": "number",
+              "unit": "%"
+            },
+            "walls": {
+              "default": 3,
+              "description": "perimeter count",
+              "maximum": 20,
+              "minimum": 1,
+              "title": "Walls",
+              "type": "integer"
+            },
+            "layer_orientation": {
+              "default": "xy",
+              "description": "'z' when the load runs across the layers (weakest direction)",
+              "enum": [
+                "xy",
+                "z"
+              ],
+              "title": "Layer Orientation",
+              "type": "string"
+            }
+          },
+          "title": "FdmSettings",
+          "type": "object"
+        },
+        "FixedTemperature": {
+          "additionalProperties": false,
+          "properties": {
+            "face": {
+              "description": "a preset (bottom, top, x-min, x-max, y-min, y-max, z-min, z-max) or a face id like 'f3' (mirror_faces)",
+              "title": "Face",
+              "type": "string"
+            },
+            "temp_c": {
+              "maximum": 2000,
+              "minimum": -270,
+              "title": "Temp C",
+              "type": "number",
+              "unit": "degC"
+            }
+          },
+          "required": [
+            "face",
+            "temp_c"
+          ],
+          "title": "FixedTemperature",
+          "type": "object"
+        },
+        "HeatInput": {
+          "additionalProperties": false,
+          "properties": {
+            "face": {
+              "description": "a preset (bottom, top, x-min, x-max, y-min, y-max, z-min, z-max) or a face id like 'f3' (mirror_faces)",
+              "title": "Face",
+              "type": "string"
+            },
+            "watts": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0,
+                  "maximum": 100000.0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "total power into the face",
+              "title": "Watts",
+              "unit": "W"
+            },
+            "w_m2": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0,
+                  "maximum": 100000000.0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "or a heat flux",
+              "title": "W M2",
+              "unit": "W/m2"
+            }
+          },
+          "required": [
+            "face"
+          ],
+          "title": "HeatInput",
+          "type": "object"
+        },
+        "MaterialSettings": {
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "a built-in or saved material; null = the profile's default material",
+              "title": "Name"
+            },
+            "custom": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/CustomMaterial"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "an inline material (overrides name)"
+            },
+            "fdm": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/FdmSettings"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "print settings -> approximate knock-downs"
+            }
+          },
+          "title": "MaterialSettings",
+          "type": "object"
+        },
+        "MeshSettings": {
+          "additionalProperties": false,
+          "properties": {
+            "size_mm": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0,
+                  "maximum": 1000,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "element size; null = auto (from the part's size, within the node budget)",
+              "title": "Size Mm",
+              "unit": "mm"
+            },
+            "refine_faces": {
+              "description": "faces to mesh finer (local refinement)",
+              "items": {
+                "description": "a preset (bottom, top, x-min, x-max, y-min, y-max, z-min, z-max) or a face id like 'f3' (mirror_faces)",
+                "type": "string"
+              },
+              "maxItems": 20,
+              "title": "Refine Faces",
+              "type": "array"
+            },
+            "refine_factor": {
+              "default": 0.4,
+              "description": "local element size on the refined faces, as a fraction of the element size",
+              "maximum": 1.0,
+              "minimum": 0.05,
+              "title": "Refine Factor",
+              "type": "number"
+            },
+            "second_order": {
+              "default": true,
+              "description": "quadratic (10-node) tetrahedra; first-order tetrahedra are much too stiff in bending: use only to preview",
+              "title": "Second Order",
+              "type": "boolean"
+            }
+          },
+          "title": "MeshSettings",
+          "type": "object"
+        },
+        "SolverSettings": {
+          "additionalProperties": false,
+          "properties": {
+            "timeout_s": {
+              "default": 300,
+              "description": "per solve",
+              "maximum": 3600,
+              "minimum": 5,
+              "title": "Timeout S",
+              "type": "number",
+              "unit": "s"
+            },
+            "threads": {
+              "anyOf": [
+                {
+                  "maximum": 64,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "null = up to 4 cores",
+              "title": "Threads"
+            }
+          },
+          "title": "SolverSettings",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "material": {
+          "$ref": "#/$defs/MaterialSettings"
+        },
+        "mesh": {
+          "$ref": "#/$defs/MeshSettings"
+        },
+        "solver": {
+          "$ref": "#/$defs/SolverSettings"
+        },
+        "temperatures": {
+          "items": {
+            "$ref": "#/$defs/FixedTemperature"
+          },
+          "maxItems": 12,
+          "title": "Temperatures",
+          "type": "array"
+        },
+        "heat": {
+          "items": {
+            "$ref": "#/$defs/HeatInput"
+          },
+          "maxItems": 12,
+          "title": "Heat",
+          "type": "array"
+        },
+        "convection": {
+          "items": {
+            "$ref": "#/$defs/Convection"
+          },
+          "maxItems": 12,
+          "title": "Convection",
+          "type": "array"
+        }
+      },
+      "title": "ThermalSettings",
+      "type": "object"
+    }
+  },
+  {
+    "id": "drop",
+    "name": "Drop / impact (estimate)",
+    "solver": "CalculiX *STATIC (equivalent load)",
+    "fidelity_class": "fem_estimate",
+    "doc": "an equivalent static load F = m g k toward the impact face",
+    "channels": [
+      "von_mises",
+      "displacement",
+      "displacement_magnitude",
+      "safety_factor"
+    ],
+    "available": true,
+    "detail": null,
+    "schema": {
+      "$defs": {
+        "ConvergenceSettings": {
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "default": false,
+              "description": "refine until the peak changes less than tol_pct",
+              "title": "Enabled",
+              "type": "boolean"
+            },
+            "tol_pct": {
+              "default": 5,
+              "maximum": 50,
+              "minimum": 0.5,
+              "title": "Tol Pct",
+              "type": "number",
+              "unit": "%"
+            },
+            "max_levels": {
+              "default": 4,
+              "description": "meshes solved at most",
+              "maximum": 6,
+              "minimum": 2,
+              "title": "Max Levels",
+              "type": "integer"
+            }
+          },
+          "title": "ConvergenceSettings",
+          "type": "object"
+        },
+        "CustomMaterial": {
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "maxLength": 40,
+              "minLength": 1,
+              "title": "Name",
+              "type": "string"
+            },
+            "e_mpa": {
+              "description": "Young's modulus",
+              "exclusiveMinimum": 1,
+              "maximum": 500000.0,
+              "title": "E Mpa",
+              "type": "number",
+              "unit": "MPa"
+            },
+            "nu": {
+              "description": "Poisson's ratio",
+              "exclusiveMaximum": 0.5,
+              "minimum": 0.0,
+              "title": "Nu",
+              "type": "number"
+            },
+            "yield_mpa": {
+              "description": "tensile yield or strength",
+              "exclusiveMinimum": 0,
+              "maximum": 10000.0,
+              "title": "Yield Mpa",
+              "type": "number",
+              "unit": "MPa"
+            },
+            "density_g_cm3": {
+              "description": "density",
+              "exclusiveMinimum": 0.01,
+              "maximum": 25,
+              "title": "Density G Cm3",
+              "type": "number",
+              "unit": "g/cm3"
+            },
+            "k_w_mk": {
+              "default": 0.2,
+              "description": "thermal conductivity",
+              "exclusiveMinimum": 0,
+              "maximum": 500,
+              "title": "K W Mk",
+              "type": "number",
+              "unit": "W/(m K)"
+            },
+            "alpha_per_k": {
+              "default": 7e-05,
+              "description": "thermal expansion",
+              "maximum": 0.001,
+              "minimum": 0,
+              "title": "Alpha Per K",
+              "type": "number",
+              "unit": "1/K"
+            },
+            "hdt_c": {
+              "default": 60,
+              "description": "heat deflection temperature",
+              "maximum": 1000,
+              "minimum": -50,
+              "title": "Hdt C",
+              "type": "number",
+              "unit": "degC"
+            },
+            "source": {
+              "default": "",
+              "maxLength": 200,
+              "title": "Source",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "e_mpa",
+            "nu",
+            "yield_mpa",
+            "density_g_cm3"
+          ],
+          "title": "CustomMaterial",
+          "type": "object"
+        },
+        "FdmSettings": {
+          "additionalProperties": false,
+          "properties": {
+            "infill_pct": {
+              "default": 100,
+              "description": "infill density",
+              "maximum": 100,
+              "minimum": 5,
+              "title": "Infill Pct",
+              "type": "number",
+              "unit": "%"
+            },
+            "walls": {
+              "default": 3,
+              "description": "perimeter count",
+              "maximum": 20,
+              "minimum": 1,
+              "title": "Walls",
+              "type": "integer"
+            },
+            "layer_orientation": {
+              "default": "xy",
+              "description": "'z' when the load runs across the layers (weakest direction)",
+              "enum": [
+                "xy",
+                "z"
+              ],
+              "title": "Layer Orientation",
+              "type": "string"
+            }
+          },
+          "title": "FdmSettings",
+          "type": "object"
+        },
+        "MaterialSettings": {
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "a built-in or saved material; null = the profile's default material",
+              "title": "Name"
+            },
+            "custom": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/CustomMaterial"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "an inline material (overrides name)"
+            },
+            "fdm": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/FdmSettings"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "print settings -> approximate knock-downs"
+            }
+          },
+          "title": "MaterialSettings",
+          "type": "object"
+        },
+        "MeshSettings": {
+          "additionalProperties": false,
+          "properties": {
+            "size_mm": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0,
+                  "maximum": 1000,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "element size; null = auto (from the part's size, within the node budget)",
+              "title": "Size Mm",
+              "unit": "mm"
+            },
+            "refine_faces": {
+              "description": "faces to mesh finer (local refinement)",
+              "items": {
+                "description": "a preset (bottom, top, x-min, x-max, y-min, y-max, z-min, z-max) or a face id like 'f3' (mirror_faces)",
+                "type": "string"
+              },
+              "maxItems": 20,
+              "title": "Refine Faces",
+              "type": "array"
+            },
+            "refine_factor": {
+              "default": 0.4,
+              "description": "local element size on the refined faces, as a fraction of the element size",
+              "maximum": 1.0,
+              "minimum": 0.05,
+              "title": "Refine Factor",
+              "type": "number"
+            },
+            "second_order": {
+              "default": true,
+              "description": "quadratic (10-node) tetrahedra; first-order tetrahedra are much too stiff in bending: use only to preview",
+              "title": "Second Order",
+              "type": "boolean"
+            }
+          },
+          "title": "MeshSettings",
+          "type": "object"
+        },
+        "SolverSettings": {
+          "additionalProperties": false,
+          "properties": {
+            "timeout_s": {
+              "default": 300,
+              "description": "per solve",
+              "maximum": 3600,
+              "minimum": 5,
+              "title": "Timeout S",
+              "type": "number",
+              "unit": "s"
+            },
+            "threads": {
+              "anyOf": [
+                {
+                  "maximum": 64,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "null = up to 4 cores",
+              "title": "Threads"
+            }
+          },
+          "title": "SolverSettings",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "material": {
+          "$ref": "#/$defs/MaterialSettings"
+        },
+        "mesh": {
+          "$ref": "#/$defs/MeshSettings"
+        },
+        "solver": {
+          "$ref": "#/$defs/SolverSettings"
+        },
+        "impact_face": {
+          "description": "the face that hits the ground",
+          "title": "Impact Face",
+          "type": "string"
+        },
+        "drop_m": {
+          "default": 1.0,
+          "description": "drop height",
+          "exclusiveMinimum": 0,
+          "maximum": 50,
+          "title": "Drop M",
+          "type": "number",
+          "unit": "m"
+        },
+        "k": {
+          "default": 10.0,
+          "description": "dynamic factor: equivalent static load = m g k (estimate; ~5-20 for rigid floors and stiff plastic)",
+          "maximum": 500,
+          "minimum": 1,
+          "title": "K",
+          "type": "number"
+        },
+        "mass_g": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 1000000.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "null = from the volume and density",
+          "title": "Mass G",
+          "unit": "g"
+        },
+        "convergence": {
+          "$ref": "#/$defs/ConvergenceSettings"
+        }
+      },
+      "required": [
+        "impact_face"
+      ],
+      "title": "DropSettings",
+      "type": "object"
+    }
+  },
+  {
+    "id": "wind",
+    "name": "Wind / aero (CFD)",
+    "solver": "built-in lattice-Boltzmann D3Q19 (numpy)",
+    "fidelity_class": "cfd_lbm",
+    "doc": "drag and lift (Cd, Cl), moments, surface Cp, velocity slices and a yaw sweep",
+    "channels": [
+      "cp",
+      "velocity",
+      "speed"
+    ],
+    "available": true,
+    "detail": null,
+    "schema": {
+      "additionalProperties": false,
+      "properties": {
+        "speed_m_s": {
+          "default": 10.0,
+          "description": "wind speed",
+          "exclusiveMinimum": 0,
+          "maximum": 150,
+          "title": "Speed M S",
+          "type": "number",
+          "unit": "m/s"
+        },
+        "direction": {
+          "anyOf": [
+            {
+              "enum": [
+                "+x",
+                "-x",
+                "+y",
+                "-y",
+                "+z",
+                "-z"
+              ],
+              "type": "string"
+            },
+            {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "maximum": 1000000.0,
+                  "minimum": -1000000.0,
+                  "type": "number"
+                },
+                {
+                  "maximum": 1000000.0,
+                  "minimum": -1000000.0,
+                  "type": "number"
+                },
+                {
+                  "maximum": 1000000.0,
+                  "minimum": -1000000.0,
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            }
+          ],
+          "default": "+x",
+          "description": "flow direction in part coordinates",
+          "title": "Direction"
+        },
+        "up": {
+          "anyOf": [
+            {
+              "enum": [
+                "+x",
+                "-x",
+                "+y",
+                "-y",
+                "+z",
+                "-z"
+              ],
+              "type": "string"
+            },
+            {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "maximum": 1000000.0,
+                  "minimum": -1000000.0,
+                  "type": "number"
+                },
+                {
+                  "maximum": 1000000.0,
+                  "minimum": -1000000.0,
+                  "type": "number"
+                },
+                {
+                  "maximum": 1000000.0,
+                  "minimum": -1000000.0,
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            }
+          ],
+          "default": "+z",
+          "description": "lift is reported along this axis (projected normal to the flow); yaw turns about it",
+          "title": "Up"
+        },
+        "air_density": {
+          "default": 1.225,
+          "description": "sea level, 15 degC",
+          "exclusiveMinimum": 0.01,
+          "maximum": 20,
+          "title": "Air Density",
+          "type": "number",
+          "unit": "kg/m3"
+        },
+        "air_viscosity": {
+          "default": 1.81e-05,
+          "description": "dynamic viscosity (sea level, 15 degC)",
+          "exclusiveMinimum": 1e-07,
+          "maximum": 0.01,
+          "title": "Air Viscosity",
+          "type": "number",
+          "unit": "Pa s"
+        },
+        "ref_area_m2": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 10000.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "null = the frontal projected area",
+          "title": "Ref Area M2",
+          "unit": "m2"
+        },
+        "domain_multiplier": {
+          "default": 5.0,
+          "description": "tunnel cross-section and length in body sizes (bigger = less blockage)",
+          "maximum": 10,
+          "minimum": 3,
+          "title": "Domain Multiplier",
+          "type": "number"
+        },
+        "refinement": {
+          "default": 2,
+          "description": "cells across the body and the validated model error: 1 = 8 (PREVIEW, \u00b140%), 2 = 12 (\u00b130%), 3 = 16 (\u00b115%), 4 = 24 (\u00b115%); time grows ~ cells^4",
+          "maximum": 4,
+          "minimum": 1,
+          "title": "Refinement",
+          "type": "integer"
+        },
+        "turbulence": {
+          "default": "smagorinsky",
+          "description": "LES sub-grid model (built-in lattice-Boltzmann solver)",
+          "enum": [
+            "smagorinsky",
+            "none"
+          ],
+          "title": "Turbulence",
+          "type": "string"
+        },
+        "iterations": {
+          "default": 4000,
+          "description": "lattice steps cap",
+          "maximum": 100000,
+          "minimum": 200,
+          "title": "Iterations",
+          "type": "integer"
+        },
+        "timeout_s": {
+          "default": 600,
+          "maximum": 7200,
+          "minimum": 5,
+          "title": "Timeout S",
+          "type": "number",
+          "unit": "s"
+        },
+        "memory_mb": {
+          "default": 1024,
+          "description": "memory budget of the wind solver, enforced (the run is stopped above it); also capped at this Mac's RAM - 6 GB - running local models",
+          "maximum": 8192,
+          "minimum": 64,
+          "title": "Memory Mb",
+          "type": "integer",
+          "unit": "MB"
+        },
+        "yaw_deg": {
+          "description": "yaw sweep angles (each one is a separate run)",
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 13,
+          "title": "Yaw Deg",
+          "type": "array",
+          "unit": "deg"
+        },
+        "solver": {
+          "default": "auto",
+          "description": "auto: lattice-Boltzmann, falling back to the empirical estimate when it cannot fit the time or memory budget",
+          "enum": [
+            "auto",
+            "lbm",
+            "empirical"
+          ],
+          "title": "Solver",
+          "type": "string"
+        },
+        "shape_class": {
+          "default": "auto",
+          "description": "for the empirical estimate",
+          "enum": [
+            "auto",
+            "sphere",
+            "cube",
+            "cylinder",
+            "flat_plate",
+            "streamlined",
+            "bluff"
+          ],
+          "title": "Shape Class",
+          "type": "string"
+        }
+      },
+      "title": "WindSettings",
+      "type": "object"
+    }
+  }
+]
