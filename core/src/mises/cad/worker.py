@@ -325,6 +325,127 @@ def _drawing(part_dir: Path, args: dict, nonce: str) -> None:
     os.replace(tmp / "new_drawing.json", part_dir / "drawing.json")
 
 
+# ---- assembly geometry (python -I worker.py --assembly <job.json>)
+#
+# The job file lists instances, each a STEP path plus a 4x4 row-major world transform. We return
+# pairwise interference volumes (OCCT common over a threshold) and/or write a combined GLB with
+# exactly one node per instance (the transform rides as the glTF node matrix, not baked into the
+# geometry, so the app can still address instances individually).
+
+
+def _trsf(matrix):
+    from OCP.gp import gp_Trsf
+    t = gp_Trsf()
+    m = matrix
+    t.SetValues(m[0][0], m[0][1], m[0][2], m[0][3],
+                m[1][0], m[1][1], m[1][2], m[1][3],
+                m[2][0], m[2][1], m[2][2], m[2][3])
+    return t
+
+
+def _assembly_interference(placed, threshold: float) -> list:
+    """placed: list of (name, moved_shape). Pairwise OCCT common volume over the threshold."""
+    out = []
+    for i in range(len(placed)):
+        for j in range(i + 1, len(placed)):
+            (na, sa), (nb, sb) = placed[i], placed[j]
+            try:
+                vol = float((sa & sb).volume)
+            except Exception:  # noqa: BLE001 - non-overlapping solids can raise instead of empty
+                vol = 0.0
+            if vol > threshold:
+                out.append({"a": na, "b": nb, "volume_mm3": round(vol, 4)})
+    return out
+
+
+def _col_major(matrix) -> list:
+    return [float(matrix[r][c]) for c in range(4) for r in range(4)]
+
+
+def _assembly_glb(path: Path, items) -> None:
+    """items: list of (name, vertices, triangles, matrix). One node + mesh per instance."""
+    import struct
+
+    buf = bytearray()
+    views: list[dict] = []
+    accessors: list[dict] = []
+    meshes: list[dict] = []
+    nodes: list[dict] = []
+
+    def _pad():
+        while len(buf) % 4:
+            buf.append(0)
+
+    for name, verts, tris, matrix in items:
+        idx = [i for tri in tris for i in tri]
+        idx_off = len(buf)
+        buf += struct.pack(f"<{len(idx)}I", *idx)
+        views.append({"buffer": 0, "byteOffset": idx_off, "byteLength": len(idx) * 4,
+                      "target": 34963})
+        accessors.append({"bufferView": len(views) - 1, "componentType": 5125, "count": len(idx),
+                          "type": "SCALAR"})
+        idx_acc = len(accessors) - 1
+        _pad()
+        pos = [float(c) for v in verts for c in (v[0], v[1], v[2])]
+        pos_off = len(buf)
+        buf += struct.pack(f"<{len(pos)}f", *pos)
+        views.append({"buffer": 0, "byteOffset": pos_off, "byteLength": len(pos) * 4,
+                      "target": 34962})
+        xs, ys, zs = [p[0] for p in verts], [p[1] for p in verts], [p[2] for p in verts]
+        accessors.append({"bufferView": len(views) - 1, "componentType": 5126, "count": len(verts),
+                          "type": "VEC3", "min": [min(xs), min(ys), min(zs)],
+                          "max": [max(xs), max(ys), max(zs)]})
+        pos_acc = len(accessors) - 1
+        _pad()
+        meshes.append({"primitives": [{"attributes": {"POSITION": pos_acc}, "indices": idx_acc}]})
+        nodes.append({"name": name, "mesh": len(meshes) - 1, "matrix": _col_major(matrix)})
+
+    gltf = {"asset": {"version": "2.0", "generator": "Mises assembly"},
+            "scene": 0, "scenes": [{"nodes": list(range(len(nodes)))}],
+            "nodes": nodes, "meshes": meshes, "accessors": accessors, "bufferViews": views,
+            "buffers": [{"byteLength": len(buf)}]}
+    jsonb = json.dumps(gltf, separators=(",", ":")).encode()
+    jsonb += b" " * ((4 - len(jsonb) % 4) % 4)
+    while len(buf) % 4:
+        buf.append(0)
+    total = 12 + 8 + len(jsonb) + 8 + len(buf)
+    out = bytearray()
+    out += struct.pack("<4sII", b"glTF", 2, total)
+    out += struct.pack("<I4s", len(jsonb), b"JSON") + jsonb
+    out += struct.pack("<I4s", len(buf), b"BIN\x00") + buf
+    path.write_bytes(out)
+
+
+def _assembly(job_path: Path, nonce: str) -> None:
+    import build123d as b3
+    from build123d import Location
+
+    job = json.loads(job_path.read_text())
+    out_dir = Path(job["out_dir"]).resolve()
+    want = job.get("want", "both")
+    threshold = float(job.get("threshold", 0.01))
+    tol = float(job.get("tolerance", 0.2))
+
+    loaded = [(it["name"], b3.import_step(it["step"]), it["transform"]) for it in job["instances"]]
+    result: dict = {"nonce": nonce}
+
+    if want in ("both", "interference"):
+        placed = [(name, shape.moved(Location(_trsf(m)))) for name, shape, m in loaded]
+        result["interferences"] = _assembly_interference(placed, threshold)
+
+    if want in ("both", "glb"):
+        items = []
+        for name, shape, m in loaded:
+            verts, tris = shape.tessellate(tol)
+            items.append((name, [(v.X, v.Y, v.Z) for v in verts], tris, m))
+        _assembly_glb(out_dir / "new_assembly.glb", items)
+        os.replace(out_dir / "new_assembly.glb", out_dir / "assembly.glb")
+        result["glb"] = "assembly.glb"
+
+    (out_dir / "new_result.json").write_text(json.dumps(result))
+    os.replace(out_dir / "new_result.json", out_dir / "result.json")
+
+
 def _load_part(part_file: Path):
     """Execute part.py in a namespace that already has build123d in scope.
 
@@ -380,6 +501,12 @@ def _report(e: BaseException, part_file: Path) -> str:
 
 
 def main(argv: list[str]) -> int:
+    if argv[1] == "--assembly":
+        nonce = os.environ.pop("MISES_NONCE", "")
+        if not nonce:
+            raise RuntimeError("missing build nonce")
+        _assembly(Path(argv[2]), nonce)
+        return 0
     part_dir = Path(argv[1]).resolve()
     if len(argv) > 3 and argv[3] == "--drawing":
         nonce = os.environ.pop("MISES_NONCE", "")
