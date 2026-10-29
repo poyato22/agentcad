@@ -320,7 +320,10 @@ async def agent_result(ctx: ToolContext, args: ResultArgs) -> ToolOutput:
     rt, _ = _services(ctx)
     _require_child(rt, ctx.run_id, args.run_id)
     try:
-        res = await rt.wait(args.run_id)
+        # like agent_wait: give the parent's slot up while it waits, or a queued child behind it
+        # (parallel limit 1) never starts
+        async with rt.waiting_on_subagents(ctx.run_id):
+            res = await rt.wait(args.run_id)
     except asyncio.CancelledError:
         rt.cancel(args.run_id)
         raise

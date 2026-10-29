@@ -107,6 +107,14 @@ def tool_label(name: str) -> str:
     return TOOL_LABELS.get(bare, bare.replace("_", " "))
 
 
+def calls_label(names: list[str]) -> str:
+    """The `detail` for one turn's tool calls: the first call's label, "+N" for the rest."""
+    if not names:
+        return ""
+    more = len(names) - 1
+    return tool_label(names[0]) + (f" +{more}" if more else "")
+
+
 class ActivityTracker:
     """Tracks one run's coarse activity state and publishes `agent_activity` on each transition.
 

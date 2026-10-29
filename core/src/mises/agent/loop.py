@@ -25,7 +25,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
-from ..events import ActivityTracker, Event, EventBus, tool_label
+from ..events import ActivityTracker, Event, EventBus, calls_label
 from ..gate import Gate
 from ..providers.base import (Done, ModelProvider, ModelRequest, ReasoningDelta, TextDelta,
                               ToolCall, ToolSchema, Usage)
@@ -212,7 +212,7 @@ class AgentLoop:
                     reason = "max_tokens" if turn.stop == "max_tokens" else "end_turn"
                     return RunResult(final_text=final_text, messages=messages, stop_reason=reason)
 
-                self.activity.set("tool", tool_label(turn.calls[0].name))
+                self.activity.set("tool", calls_label([c.name for c in turn.calls]))
                 results: dict[str, ToolResultBlock] = {}
                 try:
                     await self._guard(self._execute(turn.calls, set(offered), results))

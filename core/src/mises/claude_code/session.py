@@ -1,8 +1,8 @@
 """ClaudeCodeSession: the user's own `claude` binary, run headless as a Mises agent.
 
 Mises spawns `claude -p` with stream-json in and out; the only built-in tool is Agent
-(`--tools "Agent"`, for the Mises designer/verifier subagents; Claude Code's own subagent
-types are denied), the only MCP server is `mises` (`--strict-mcp-config --mcp-config`, a stdio
+(`--tools "Agent"`, for the Mises agents as subagents — every definition but the internal
+planner; Claude Code's own subagent types are denied), the only MCP server is `mises` (`--strict-mcp-config --mcp-config`, a stdio
 proxy bound to this run), no user/project/local settings load (`--setting-sources ""`: no
 user hooks, plugins, CLAUDE.md or permission rules), and `--allowedTools
 "mcp__mises__*,Agent"`. So every action goes through the Gate (which records the tool_call
@@ -40,7 +40,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from ..events import Event, tool_label
+from ..events import Event, calls_label
 from ..platform import claude_sandboxed_command
 from ..types import ErrorCode, MisesError, StepKind
 from ..server.mcp_server import INTERNAL_ONLY
@@ -125,8 +125,13 @@ class ClaudeCodeSession:
         self._cancelling = False
         self._failed = False
         self._closed = False
-        self.activity = runtime.activity_tracker(run_id)
         runtime.register_cancel_hook(run_id, self.cancel)
+
+    @property
+    def activity(self):
+        """The run's live activity tracker, looked up each time: the runtime drops it when a
+        turn finishes, and the next turn gets a fresh one."""
+        return self.runtime.activity_tracker(self.run_id)
 
     def _mises_subagents(self) -> frozenset[str]:
         """Mises agents this run may delegate to with the Agent tool (the ones in agents.json)."""
@@ -530,7 +535,7 @@ class ClaudeCodeSession:
     def _on_assistant(self, msg: dict) -> None:
         message = msg.get("message") or {}
         parent = msg.get("parent_tool_use_id")
-        texts = []
+        texts, tools = [], []
         for block in message.get("content") or []:
             if not isinstance(block, dict):
                 continue
@@ -544,8 +549,9 @@ class ClaudeCodeSession:
                 # the Gate records mises tool calls as Steps; this is only for the live UI
                 self._publish("tool_call", call_id=block.get("id"), name=block.get("name"),
                               source=SOURCE)
-                if parent is None:
-                    self.activity.set("tool", tool_label(str(block.get("name") or "")))
+                tools.append(str(block.get("name") or ""))
+        if tools and parent is None:
+            self.activity.set("tool", calls_label(tools))
         if texts:
             text = "".join(texts)
             if parent is None:

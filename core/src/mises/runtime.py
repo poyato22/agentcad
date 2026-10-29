@@ -29,6 +29,7 @@ from .onshape.adapter import OnshapeAdapter
 from .onshape.client import OnshapeClient
 from .onshape.tools import register_onshape_tools
 from .orchestrator import Orchestrator, register_orchestrator_tools
+from .orchestrator.orchestrator import DELEGATION_TOOLS, MAX_DEPTH, run_depth
 from .parallel import Limits, ParallelLimiter
 from .platform import data_home, keychain_get
 from .print.tools import register_print_tools
@@ -496,8 +497,28 @@ class Runtime:
         return t
 
     def activity_of(self, run_id: str) -> dict | None:
+        """The live state while this process drives the run; "done" (since its last update)
+        once it has finished, the tracker having been dropped; None otherwise."""
         t = self._activity.get(run_id)
-        return t.snapshot() if t is not None else None
+        if t is not None:
+            return t.snapshot()
+        try:
+            run = self.store.get_run(run_id)
+        except KeyError:
+            return None
+        if run.status in ("done", "failed", "cancelled"):
+            return {"state": "done", "detail": "", "since": run.updated_at}
+        return None
+
+    def _end_activity(self, run_id: str) -> None:
+        """A run (or a Claude Code turn) finished: emit "done", then drop its tracker so the
+        dict does not grow with every run this process ever drove."""
+        self.activity_tracker(run_id).set("done")
+        self._activity.pop(run_id, None)
+
+    def forget_activity(self, run_id: str) -> None:
+        """Drop a run's tracker without emitting (a deleted run; C1's delete calls this)."""
+        self._activity.pop(run_id, None)
 
     # ---- runs
     def workdir(self, run_id: str) -> Path:
@@ -545,7 +566,7 @@ class Runtime:
         loop = AgentLoop(run_id=run.id, defn=defn, provider=provider, model=model, gate=self.gate,
                          registry=self.registry, store=self.store, events=self.events,
                          workdir=self.workdir(run.id),
-                         config=LoopConfig(withheld_tools=tools_withheld_for(ref)),
+                         config=LoopConfig(withheld_tools=self._withheld_tools(ref, parent_id)),
                          activity=self.activity_tracker(run.id))
         st = self._runs[run.id] = _RunState(loop=loop, ref=ref)
         started = {"agent": agent, "provider": provider.name, "model": model,
@@ -564,6 +585,14 @@ class Runtime:
                                                           user_log=user_log))
         st.task.add_done_callback(functools.partial(self._slotted_done, run.id))
         return run.id
+
+    def _withheld_tools(self, ref: str, parent_id: str | None) -> frozenset[str]:
+        """Tools not offered to a new native run: the model-policy set, plus the delegation
+        tools for a worker at the depth limit (check_depth would refuse every call to them)."""
+        out = tools_withheld_for(ref)
+        if parent_id is not None and run_depth(self, parent_id) + 1 >= MAX_DEPTH:
+            out = out | DELEGATION_TOOLS
+        return out
 
     def _slotted_done(self, run_id: str, task: asyncio.Task) -> None:
         """Whatever ended the turn's task (even a cancel before its first step, when no code
@@ -604,7 +633,7 @@ class Runtime:
         self.events.publish(Event(type="run_finished", run_id=run_id, data={
             "status": "cancelled", "stop_reason": "cancelled", "error": error,
             "final_text": ""}))
-        self.activity_tracker(run_id).set("done")
+        self._end_activity(run_id)
 
     def _attach_sketch(self, rid: str, sketch_id: str, wd: Path) -> None:
         """Copy the sketch into the new run's workdir; on failure the run is marked failed
@@ -936,7 +965,7 @@ class Runtime:
         self.events.publish(Event(type="run_finished", run_id=run_id, data={
             "status": status, "stop_reason": status, "error": None, "final_text": "",
             "external": True}))
-        self.activity_tracker(run_id).set("done")
+        self._end_activity(run_id)
 
     def _ui_run_id(self) -> str:
         """The one long-lived external run every UI-started tool call goes through (created on
@@ -1023,7 +1052,7 @@ class Runtime:
         self.events.publish(Event(type="run_finished", run_id=run_id, data={
             "status": status, "stop_reason": result.stop_reason, "error": result.error,
             "final_text": result.final_text}))
-        self.activity_tracker(run_id).set("done")
+        self._end_activity(run_id)
         return result
 
     def _state(self, run_id: str) -> _RunState:
@@ -1044,6 +1073,7 @@ class Runtime:
             raise MisesError(ErrorCode.INVALID_INPUT, "run is still working",
                              hint="wait for it to finish or cancel it")
         st.cancel_requested = False
+        st.loop.activity = self.activity_tracker(run_id)   # the last turn's tracker was dropped
         if hardware.model_kind(st.ref) == "local":
             await self.refresh_local_sizes()
         started = {"resumed": True}

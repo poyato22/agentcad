@@ -17,6 +17,13 @@ def test_tool_label_strips_prefix_and_maps():
     assert tool_label("some_new_tool") == "some new tool"     # fallback: underscores to spaces
 
 
+def test_calls_label_counts_parallel_calls():
+    from mises.events import calls_label
+    assert calls_label(["mirror_measure"]) == "measuring"
+    assert calls_label(["mirror_measure", "mirror_part_list", "ui_note"]) == "measuring +2"
+    assert calls_label([]) == ""
+
+
 def test_activity_emits_once_per_transition():
     bus = EventBus()
     sub = bus.subscribe("r")
