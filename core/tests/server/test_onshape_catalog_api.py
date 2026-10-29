@@ -166,8 +166,7 @@ def test_catalog_import_http_refused(client, web):
 @pytest.mark.slow
 def test_catalog_insert_route(client, rt):
     sub = rt.events.subscribe()
-    r = client.post("/catalog/items/prop_5in_class/insert", headers=AUTH,
-                    json={"project_id": "prj"})
+    r = client.post("/catalog/items/prop_5in_class/insert", headers=AUTH, json={})
     assert r.status_code == 200, r.text
     out = r.json()
     assert out["part_id"] == "prop_5in_class"
@@ -176,6 +175,7 @@ def test_catalog_insert_route(client, rt):
     # the parts list the app reads shows it
     parts = client.get("/parts", headers=AUTH).json()
     assert [p["part_id"] for p in parts] == ["prop_5in_class"]
+    assert parts[0]["kind"] == "catalog"
 
 
 def test_thumbnail_url_is_relative_and_encoded(client, onshape):

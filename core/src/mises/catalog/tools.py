@@ -16,7 +16,8 @@ an item already in the directory. Anything else re-importing a known URL gets th
 back unchanged, without fetching: the user's review edits and the item's build are kept.
 
 Builds: when the run belongs to a build (`run.project_id`, Task C1), catalog_insert only adds
-parts to that build. Runs without one (before C1 lands) may name any build: Task I closes that.
+parts to that build; with none named or owned it uses the active build. The part's kind and
+build (recorded in its part.json) also become its C1 part-tree row.
 """
 from __future__ import annotations
 
@@ -72,6 +73,26 @@ def resolve_project(ctx: ToolContext, requested: str | None) -> str | None:
         raise MisesError(ErrorCode.OUT_OF_SCOPE, "this run can only add parts to its own build",
                          hint=f"leave project_id out (this run's build is {own})")
     return own
+
+
+def _default_project(ctx: ToolContext) -> str | None:
+    """No build named and the run has none: the active build (Task C1), when there is one."""
+    rt = (ctx.services or {}).get("runtime")
+    if rt is None or not hasattr(rt, "active_project_id"):
+        return None
+    return rt.active_project_id()
+
+
+def _register_tree_row(ctx: ToolContext, out: dict, project: str | None) -> None:
+    """Give the inserted part its C1 part-tree row: the part.json kind ("catalog") and build
+    become the row's kind and project_id. An existing row keeps its build and label."""
+    if project is None or not hasattr(ctx.store, "register_part"):
+        return
+    meta = out.get("meta") or {}
+    row = ctx.store.register_part(out["part_id"], project, label=meta.get("label") or None,
+                                  kind=meta.get("kind") or "catalog")
+    if row is not None and row.kind != (meta.get("kind") or "catalog"):
+        ctx.store.update_part(out["part_id"], kind=meta.get("kind") or "catalog")
 
 
 def allowed_domains(ctx: ToolContext) -> set[str]:
@@ -226,8 +247,9 @@ async def catalog_import_url(ctx: ToolContext, args: ImportArgs) -> ToolOutput:
 async def catalog_insert(ctx: ToolContext, args: InsertArgs) -> ToolOutput:
     cat = _catalog(ctx)
     item = cat.get(args.item_id)
-    project = resolve_project(ctx, args.project_id)
+    project = resolve_project(ctx, args.project_id) or _default_project(ctx)
     out = await insert_item(Path(ctx.workdir) / "parts", item, project, part_id=args.part_id)
+    _register_tree_row(ctx, out, project)
     by = "user" if ui_call_meta(ctx) is not None else "agent"
     if not out["existing"]:
         ctx.events.publish(Event(type="part_changed", run_id=ctx.run_id, data={

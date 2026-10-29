@@ -177,8 +177,8 @@ async def test_insert_into_another_build_refused(env, monkeypatch):
     # a run that belongs to a build (C1 adds run.project_id)
     run = env.store.get_run(env.run.id)
     monkeypatch.setattr(type(env.store), "get_run",
-                        lambda self, rid: SimpleNamespace(**run.model_dump(),
-                                                          project_id="prj_mine"))
+                        lambda self, rid: SimpleNamespace(**{**run.model_dump(),
+                                                             "project_id": "prj_mine"}))
     with pytest.raises(MisesError) as e:
         await env.call("catalog_insert", {"item_id": "m3_hex_nut", "project_id": "prj_other"})
     assert e.value.code == ErrorCode.OUT_OF_SCOPE
