@@ -1,0 +1,26 @@
+[
+  {
+    "did": "000000000000000000000001",
+    "name": "Quad frame 5in",
+    "modified_at": "2026-10-01T10:00:00Z",
+    "owner": "Ada Lovelace",
+    "thumbnail_url": "/onshape/thumbnail?href=https%3A%2F%2Fcad.onshape.com%2Fapi%2Fthumbnails%2Fd%2F000000000000000000000001%2Fw%2F000000000000000000000002%2Fs%2F300x170",
+    "default_wid": "000000000000000000000002"
+  },
+  {
+    "did": "000000000000000000000007",
+    "name": "Motor mount",
+    "modified_at": "2026-10-02T10:00:00Z",
+    "owner": "Ada Lovelace",
+    "thumbnail_url": "/onshape/thumbnail?href=https%3A%2F%2Fcad.onshape.com%2Fapi%2Fthumbnails%2Fd%2F000000000000000000000007%2Fw%2F000000000000000000000008%2Fs%2F300x170",
+    "default_wid": "000000000000000000000008"
+  },
+  {
+    "did": "000000000000000000000009",
+    "name": "Battery strap",
+    "modified_at": "2026-10-03T10:00:00Z",
+    "owner": "Ada Lovelace",
+    "thumbnail_url": "/onshape/thumbnail?href=https%3A%2F%2Fcad.onshape.com%2Fapi%2Fthumbnails%2Fd%2F000000000000000000000009%2Fw%2F00000000000000000000000a%2Fs%2F300x170",
+    "default_wid": "00000000000000000000000a"
+  }
+]

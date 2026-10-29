@@ -1,0 +1,162 @@
+{
+  "part_id": "part_studio",
+  "existing": false,
+  "metrics": {
+    "valid": true,
+    "volume_mm3": 49999.999999999985,
+    "area_mm2": 13000.0,
+    "mass_g": 61.99999999999998,
+    "bbox": {
+      "min": [
+        -50.0,
+        -25.0,
+        0.0
+      ],
+      "max": [
+        50.0,
+        25.0,
+        10.0
+      ],
+      "size": [
+        100.0,
+        50.0,
+        10.0
+      ]
+    },
+    "center_of_mass": [
+      -5.399717774437583e-16,
+      -3.1263880373444416e-16,
+      5.0
+    ],
+    "faces": 6,
+    "face_list": [
+      {
+        "id": "f0",
+        "type": "plane",
+        "center": [
+          -50.0,
+          0.0,
+          5.0
+        ],
+        "normal": [
+          -1.0,
+          0.0,
+          0.0
+        ],
+        "area": 500.0
+      },
+      {
+        "id": "f1",
+        "type": "plane",
+        "center": [
+          50.0,
+          0.0,
+          5.0
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "area": 500.0
+      },
+      {
+        "id": "f2",
+        "type": "plane",
+        "center": [
+          0.0,
+          -25.0,
+          5.0
+        ],
+        "normal": [
+          0.0,
+          -1.0,
+          0.0
+        ],
+        "area": 1000.0
+      },
+      {
+        "id": "f3",
+        "type": "plane",
+        "center": [
+          0.0,
+          25.0,
+          5.0
+        ],
+        "normal": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "area": 1000.0
+      },
+      {
+        "id": "f4",
+        "type": "plane",
+        "center": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "normal": [
+          0.0,
+          0.0,
+          -1.0
+        ],
+        "area": 5000.0
+      },
+      {
+        "id": "f5",
+        "type": "plane",
+        "center": [
+          0.0,
+          0.0,
+          10.0
+        ],
+        "normal": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "area": 5000.0
+      }
+    ],
+    "edges": 12,
+    "holes": [],
+    "solids": 1,
+    "mass_source": "estimate",
+    "mass_note": "estimate: bounding-box envelope of the Onshape element, not its real mass; read the mass from Onshape"
+  },
+  "meta": {
+    "kind": "part",
+    "source": "onshape",
+    "onshape_ref": "000000000000000000000001/000000000000000000000002/000000000000000000000003",
+    "project_id": "0097bb15772c",
+    "label": "Part Studio 1",
+    "onshape": {
+      "did": "000000000000000000000001",
+      "wid": "000000000000000000000002",
+      "eid": "000000000000000000000003",
+      "type": "partstudio",
+      "url": "https://cad.onshape.com/documents/000000000000000000000001/w/000000000000000000000002/e/000000000000000000000003"
+    },
+    "bbox_mm": {
+      "min": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "max": [
+        100.0,
+        50.0,
+        10.0
+      ]
+    },
+    "envelope": true,
+    "geometry": "envelope",
+    "mass_g": 61.99999999999998,
+    "mass_source": "estimate",
+    "density_g_cm3": 1.24,
+    "fill_factor": 1.0
+  }
+}

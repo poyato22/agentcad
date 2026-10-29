@@ -1,0 +1,13 @@
+[
+  "fastener",
+  "bearing",
+  "motor",
+  "prop",
+  "battery",
+  "flight_controller",
+  "servo",
+  "stepper",
+  "extrusion",
+  "board",
+  "other"
+]

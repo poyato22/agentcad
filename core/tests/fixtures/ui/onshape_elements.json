@@ -1,0 +1,14 @@
+[
+  {
+    "eid": "000000000000000000000003",
+    "name": "Part Studio 1",
+    "type": "partstudio",
+    "microversion": "000000000000000000000004"
+  },
+  {
+    "eid": "aaaaaaaaaaaaaaaaaaaaaaaa",
+    "name": "Assembly 1",
+    "type": "assembly",
+    "microversion": "000000000000000000000004"
+  }
+]
