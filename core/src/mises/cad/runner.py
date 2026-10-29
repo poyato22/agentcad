@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..platform import sandboxed_command
+from . import safe_io
 
 WORKER = Path(__file__).resolve().parent / "worker.py"
 _TAIL = 4000
@@ -36,13 +37,16 @@ async def run_build(part_dir: Path, vars: dict[str, float], *, timeout_s: float 
                     density_g_cm3: float = 1.24, vars_path: Path | None = None) -> BuildResult:
     """Build part_dir/part.py with `vars`. `vars` is written to a temp file (or `vars_path`)
     inside part_dir/tmp; the caller owns promoting it to vars.json."""
-    part_dir = Path(part_dir).resolve()
+    part_dir = safe_io.real_dir(part_dir)
+    os.close(safe_io.open_dir(part_dir))     # the part dir must be a plain dir, not a link
     tmp = part_dir / "tmp"
+    if tmp.is_symlink() or (tmp.exists() and not tmp.is_dir()):
+        tmp.unlink()                          # a link left by an earlier build: never followed
     tmp.mkdir(parents=True, exist_ok=True)
     vp = vars_path or (tmp / "build_vars.json")
-    vp.write_text(json.dumps(vars))
+    safe_io.write_text(vp.parent, vp.name, json.dumps(vars))
     result_path = part_dir / "result.json"
-    result_path.unlink(missing_ok=True)  # no stale marker may survive into this build
+    safe_io.unlink(part_dir, "result.json")   # no stale marker may survive into this build
     nonce = secrets.token_hex(16)
     env = {"MISES_NONCE": nonce, "PATH": "/usr/bin:/bin", "TMPDIR": str(tmp), "HOME": str(tmp),
            "MISES_DENSITY": repr(density_g_cm3), "PYTHONDONTWRITEBYTECODE": "1"}
@@ -66,7 +70,7 @@ async def run_build(part_dir: Path, vars: dict[str, float], *, timeout_s: float 
         msg = err.decode(errors="replace")[-_TAIL:].strip() or f"worker exited {proc.returncode}"
         return BuildResult(False, error=msg, stdout_tail=tail)
     try:
-        result = json.loads(result_path.read_text())
+        result = json.loads(safe_io.read_bytes(part_dir, result_path.name) or b"null")
         if not isinstance(result, dict) or result.get("nonce") != nonce:
             raise ValueError("result marker missing or nonce mismatch")
     except Exception as e:  # noqa: BLE001

@@ -15,6 +15,7 @@ from pydantic import BaseModel
 
 from . import edits as edits_mod
 from . import sketch as sketch_mod
+from .cad import safe_io
 from .cad.tools import PART_ID_RE, note_seen
 from .tools.registry import ToolContext, ToolRegistry, tool
 from .types import ErrorCode, MisesError, SafetyClass, StepKind, ToolOutput
@@ -52,6 +53,14 @@ def _read_json(path: Path) -> Any:
         return None
 
 
+def _part_json(d: Path, name: str) -> Any:
+    """A part file, read without following links (a build may leave a link to any file)."""
+    try:
+        return safe_io.read_json(d, name)
+    except (OSError, ValueError, MisesError):
+        return None
+
+
 def _latest(runtime, run_id: str, pred) -> dict | None:
     try:
         steps = runtime.store.steps(run_id)
@@ -72,9 +81,9 @@ def build_context(runtime, run_id: str | None = None) -> dict:
     pid = ui.selected_part_id
     if pid and PART_ID_RE.match(pid):
         d = Path(runtime.home) / "parts" / pid
-        metrics, vars_ = _read_json(d / "metrics.json"), _read_json(d / "vars.json")
+        metrics, vars_ = _part_json(d, "metrics.json"), _part_json(d, "vars.json")
         version = edits_mod.read_version(d)
-        if run_id and (d / "metrics.json").exists():
+        if run_id and metrics is not None:
             note_seen(run_id, d, version)   # the run has now seen this version of the part
     source_run = ui.selected_run_id or run_id
     doc_url = recent_sim = None

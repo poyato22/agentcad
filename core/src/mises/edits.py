@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import ast
 import json
-import os
 import re
 import shlex
 import time
@@ -43,32 +42,75 @@ def _bad(msg: str, hint: str | None = None) -> MisesError:
     return MisesError(ErrorCode.INVALID_INPUT, msg, hint=hint)
 
 
-# ---- version (per part, outside the sandbox-writable part dir)
+# ---- version (per part, in a host-only meta dir the build sandbox cannot write)
+
+META_DIR = ".mises-meta"     # <home>/parts/.mises-meta/<part_id>/ — never a valid part id
+VERSION_NAME = "version.json"
+
+
+def meta_dir(part_dir: Path) -> Path:
+    """<home>/parts/.mises-meta/<id>: a sibling of the part dir, outside the sandbox's only
+    writable path (the part dir itself), so a build script can neither write nor link it."""
+    d = Path(part_dir)
+    return d.parent.resolve() / META_DIR / d.name
+
 
 def version_path(part_dir: Path) -> Path:
-    d = Path(part_dir).resolve()        # <home>/parts/<id> (through a run's parts symlink)
-    return d.parent.parent / VERSIONS_DIR / f"{d.name}.json"
+    return meta_dir(part_dir) / VERSION_NAME
+
+
+def _parse_version(raw: bytes | None) -> int | None:
+    try:
+        v = json.loads(raw).get("version") if raw is not None else None
+    except (ValueError, AttributeError):
+        return None
+    return v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else None
 
 
 def read_version(part_dir: Path) -> int:
     """The part's stored version, or 0 when it has none yet (a brand-new part, or one built
-    before versioning). The first successful edit bumps it to 1."""
+    before versioning). The first successful edit bumps it to 1. Files from earlier layouts
+    (<home>/part_versions/<id>.json, <part dir>/version.json) are migrated once."""
+    from .cad import safe_io
     try:
-        v = json.loads(version_path(part_dir).read_text()).get("version")
-    except (OSError, ValueError, AttributeError):
+        v = _parse_version(safe_io.read_bytes(meta_dir(part_dir), VERSION_NAME))
+    except (OSError, safe_io.UnsafePath):
         v = None
-    if isinstance(v, int) and not isinstance(v, bool) and v >= 0:
+    if v is not None:
         return v
-    return 0
+    return _migrate_version(part_dir) or 0
+
+
+def _migrate_version(part_dir: Path) -> int | None:
+    from .cad import safe_io
+    d = Path(part_dir)
+    old = d.parent.resolve().parent / VERSIONS_DIR          # host-only, from fix round 1
+    found = None
+    for src_dir, name in ((old, f"{d.name}.json"), (d, VERSION_NAME)):
+        try:
+            found = _parse_version(safe_io.read_bytes(src_dir, name))
+        except (OSError, safe_io.UnsafePath):
+            found = None
+        if found is not None:
+            break
+    if found is None:
+        return None
+    try:
+        write_version(d, found)
+        for src_dir, name in ((old, f"{d.name}.json"), (d, VERSION_NAME)):
+            safe_io.unlink(src_dir, name)
+    except (OSError, safe_io.UnsafePath):
+        pass
+    return found
 
 
 def write_version(part_dir: Path, version: int) -> None:
-    """Atomic (temp file + rename): a torn write must never read back as an older version."""
-    path = version_path(part_dir)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps({"version": int(version)}))
-    os.replace(tmp, path)
+    """Atomic (exclusive temp file + rename, links never followed): a torn write must never
+    read back as an older version."""
+    from .cad import safe_io
+    md = meta_dir(part_dir)
+    safe_io.ensure_dir(md)
+    safe_io.write_text(md, VERSION_NAME, json.dumps({"version": int(version)}))
 
 
 def check_base_version(part_dir: Path, base_version: int | None) -> int | None:
@@ -247,7 +289,7 @@ def _edge_sig(e: dict) -> dict:
         raise _bad(f"edge {e.get('id')!r} has no usable direction",
                    "rebuild the part so its edges carry directions, then pick again")
     return {"type": e.get("type"), "direction": e["direction"], "center": e["center"],
-            "length": e.get("length"), "hint": e.get("id")}
+            "length": e.get("length"), "adjacent": e.get("adjacent") or [], "hint": e.get("id")}
 
 
 def _edges(metrics: dict, edge_ids: Any) -> list[dict]:
@@ -267,8 +309,10 @@ def _faces(metrics: dict, face_ids: Any) -> list[dict]:
 
 
 def _offset(params: dict, face: dict) -> list[float]:
-    """The pick point as an offset from the face centroid, in the face plane (the normal
-    component is dropped). Defaults to the centroid."""
+    """The pick point as a WORLD-space vector from the face centroid, with its component along
+    the face normal dropped. It is applied to the re-found face's centroid as the same world
+    vector: exact while the face only moves or resizes; a face that rotates fails the 5 deg normal
+    check instead. Defaults to the centroid."""
     if params.get("point") is None:
         return [0.0, 0.0, 0.0]
     p = _vec(params["point"], "point")
@@ -313,12 +357,14 @@ def _op_body(op: str, target: dict, params: dict, metrics: dict,
 
 
 def _face_plane(sig: dict, offset: list[float], label: str) -> list[str]:
-    """Code that finds the target face now and builds `_pl` on it at the recorded offset, with
-    the face's own frame (defined x direction) and its outward normal as z."""
+    """Code that finds the target face now and builds `_pl` on it at the recorded offset (a
+    world vector from the centroid), with the x direction of the face's Plane and its outward
+    normal as z. The pick point must still lie on that face."""
     return [f"_f = _mises_face(_p, {sig!r}, {label!r})",
             "_c = _f.center(_m.CenterOf.MASS)",
-            f"_pl = _m.Plane(origin=_c + _m.Vector{tuple(offset)!r}, "
-            "x_dir=_m.Plane(_f).x_dir, z_dir=_f.normal_at(_c))"]
+            f"_o = _c + _m.Vector{tuple(offset)!r}",
+            f"_mises_on_face(_f, _o, {label!r})",
+            "_pl = _m.Plane(origin=_o, x_dir=_m.Plane(_f).x_dir, z_dir=_f.normal_at(_c))"]
 
 
 def _hole(target: dict, params: dict, metrics: dict, label: str) -> tuple[list[str], dict]:
@@ -355,7 +401,7 @@ def _round(op: str, target: dict, params: dict, metrics: dict,
     sigs = _edges(metrics, target.get("edge_ids"))
     kw = "radius" if op == "fillet" else "length"
     amount = _num(params.get(kw), kw, positive=True)
-    body = [f"_edges = [_mises_edge(_p, s, {label!r}) for s in {sigs!r}]",
+    body = [f"_edges = _mises_edges(_p, {sigs!r}, {label!r})",
             f"_p = _m.{op}(_edges, {kw}={amount!r})"]
     return body, {"targets": sigs, kw: amount}
 
@@ -363,7 +409,7 @@ def _round(op: str, target: dict, params: dict, metrics: dict,
 def _shell(target: dict, params: dict, metrics: dict, label: str) -> tuple[list[str], dict]:
     sigs = _faces(metrics, target.get("face_ids"))
     t = _num(params.get("thickness"), "thickness", positive=True)
-    body = [f"_faces = [_mises_face(_p, s, {label!r}) for s in {sigs!r}]",
+    body = [f"_faces = _mises_faces(_p, {sigs!r}, {label!r})",
             f"_p = _m.offset(_p, amount={-t!r}, openings=_faces)"]
     return body, {"targets": sigs, "thickness": t}
 

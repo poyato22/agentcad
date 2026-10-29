@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
+from ..cad import safe_io
 from ..cad.tools import PART_ID_RE, source_view
 from ..edits import OP_KINDS
 from ..sketch import SketchIn, _sketch_dir
@@ -89,9 +90,9 @@ def build_edit_router(runtime: Runtime) -> APIRouter:
         # does not add a step to the ui run on every poll. Edits still go through the Gate.
         _check_part_id(part_id)
         d = runtime.home / "parts" / part_id
-        if not (d / "metrics.json").is_file() or not (d / "part.py").is_file():
+        if not safe_io.exists(d, "metrics.json") or not safe_io.exists(d, "part.py"):
             raise MisesError(ErrorCode.NOT_FOUND, f"no built part {part_id!r}")
-        return source_view(d, part_id)
+        return source_view(d, part_id)       # reads refuse links (cad/safe_io.py)
 
     @router.post("/parts/{part_id}/vars")
     async def set_vars(part_id: str, request: Request):

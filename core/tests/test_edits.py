@@ -32,8 +32,31 @@ def test_version_lives_outside_the_sandbox_write_dir(part):
     edits.write_version(part, 2)
     vp = edits.version_path(part)
     assert not vp.is_relative_to(part.resolve())         # a build cannot rewrite it
-    assert vp == part.resolve().parent.parent / "part_versions" / "bracket.json"
-    assert not list(vp.parent.glob("*.tmp"))             # written atomically
+    assert vp == part.resolve().parent / ".mises-meta" / "bracket" / "version.json"
+    assert not [p for p in vp.parent.iterdir() if p.name.startswith(".mises-tmp")]
+
+
+def test_old_version_files_are_migrated_once(part):
+    old = part.resolve().parent.parent / "part_versions"
+    old.mkdir()
+    (old / "bracket.json").write_text('{"version": 7}')
+    assert edits.read_version(part) == 7
+    assert not (old / "bracket.json").exists() and edits.version_path(part).is_file()
+    other = part.parent / "arm"
+    other.mkdir()
+    (other / "version.json").write_text('{"version": 4}')        # layout before that
+    assert edits.read_version(other) == 4 and not (other / "version.json").exists()
+
+
+def test_version_file_link_is_not_followed(part, tmp_path):
+    outside = tmp_path / "outside.txt"
+    outside.write_text("keep me")
+    md = edits.meta_dir(part)
+    md.mkdir(parents=True)
+    (md / "version.json").symlink_to(outside)
+    assert edits.read_version(part) == 0                  # a link is never read through
+    edits.write_version(part, 3)
+    assert outside.read_text() == "keep me" and edits.read_version(part) == 3
 
 
 def test_check_base_version(part):
