@@ -223,7 +223,6 @@ async def run_study(variables: list[Variable], evaluate: Evaluate, *,
                 break
 
     compute_pareto(iterations)
-    best = best_iter() if not cancelled or iterations else best
     best_feasible = min((it for it in iterations if it["feasible"]),
                         key=lambda it: _objective_value(objective, it["metrics"]), default=None)
     return {
