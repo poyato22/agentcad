@@ -20,7 +20,7 @@ import string
 import uuid
 from datetime import datetime
 from email.utils import formatdate
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import urlsplit
 
 import httpx
@@ -106,6 +106,9 @@ class OnshapeClient:
         self.base_url = base_url.rstrip("/")
         self._host = urlsplit(self.base_url).hostname or ""
         self._http = httpx.AsyncClient(transport=transport, follow_redirects=False, timeout=60)
+        # called with the run id after every real (sent) request, e.g. to publish the live
+        # budget; a failing hook never fails the request
+        self.on_request: Callable[[str | None], None] | None = None
 
     async def aclose(self) -> None:
         await self._http.aclose()
@@ -151,7 +154,8 @@ class OnshapeClient:
 
     # ---- one ledgered HTTP request
     async def _send(self, method: str, url: httpx.URL, body: bytes | None, *,
-                    run_id: str | None, estimate: int) -> httpx.Response:
+                    run_id: str | None, estimate: int,
+                    max_bytes: int | None = None, accept: str = ACCEPT) -> httpx.Response:
         self._check_budget(run_id, estimate)
         key = sha256_hex("\n".join([method, url.path, url.query.decode("ascii"),
                                     (body or b"").decode("utf-8"), run_id or "",
@@ -160,12 +164,28 @@ class OnshapeClient:
         try:
             date, nonce = formatdate(usegmt=True), _nonce()
             headers = {"Date": date, "On-Nonce": nonce, "Content-Type": CONTENT_TYPE,
-                       "Accept": ACCEPT,
+                       "Accept": accept,
                        "Authorization": sign(method, url, access_key=self._ak,
                                              secret_key=self._sk, date=date, nonce=nonce)}
             req = self._http.build_request(method, url, content=body, headers=headers)
-            resp = await self._http.send(req)
-            await resp.aread()
+            resp = await self._http.send(req, stream=True)
+            too_big = False
+            try:
+                chunks, size = [], 0
+                async for chunk in resp.aiter_bytes():
+                    size += len(chunk)
+                    if max_bytes is not None and size > max_bytes:
+                        too_big = True
+                        break
+                    chunks.append(chunk)
+            finally:
+                await resp.aclose()
+            # aiter_bytes already decoded the body: drop the headers that describe the wire form
+            headers = [(k, v) for k, v in resp.headers.items()
+                       if k.lower() not in ("content-encoding", "content-length",
+                                            "transfer-encoding")]
+            resp = httpx.Response(resp.status_code, headers=headers,
+                                  content=b"" if too_big else b"".join(chunks), request=req)
         except BaseException as e:
             self.store.ledger_release(entry.id)
             if isinstance(e, httpx.HTTPError):
@@ -180,6 +200,15 @@ class OnshapeClient:
                                    {"method": method, "path": url.path,
                                     "status": resp.status_code, "counted": settled.counted,
                                     "ledger_id": entry.id})
+        if self.on_request is not None:
+            try:
+                self.on_request(run_id)
+            except Exception:  # noqa: BLE001 - the budget display must not fail a request
+                pass
+        if too_big:
+            raise MisesError(ErrorCode.INVALID_INPUT,
+                             f"Onshape response larger than {max_bytes} bytes; not read",
+                             hint="request a smaller size")
         return resp
 
     async def request(self, method: str, path: str, *, run_id: str | None,
@@ -192,9 +221,41 @@ class OnshapeClient:
         method = method.upper()
         url = httpx.URL(self.base_url + path, params=query or None)
         body = jsonlib.dumps(json, separators=(",", ":")).encode() if json is not None else None
+        resp = await self._follow(method, url, body, run_id=run_id, estimate=estimate)
+        if not resp.is_success:
+            raise error_for(resp.status_code, _onshape_message(resp))
+        if not resp.content:
+            return {}
+        try:
+            data: Any = resp.json()
+        except ValueError:
+            raise MisesError(ErrorCode.TOOL_FAILED, "Onshape returned non-JSON") from None
+        return data if isinstance(data, dict) else {"items": data}
+
+    async def request_bytes(self, url: str, *, run_id: str | None, max_bytes: int,
+                            accept: str = "image/*") -> tuple[bytes, str]:
+        """GET an absolute Onshape URL (e.g. a thumbnail `href`) and return (body, content type).
+
+        The URL must be https on the configured host or *.onshape.com (credentials are only
+        ever signed for Onshape). A body over `max_bytes` is not read: INVALID_INPUT."""
+        u = httpx.URL(url)
+        if not self._host_allowed(u):
+            raise MisesError(ErrorCode.DENIED, f"refusing to send credentials to {u.host!r}",
+                             hint="only https *.onshape.com URLs are fetched")
+        resp = await self._follow("GET", u, None, run_id=run_id, estimate=1,
+                                  max_bytes=max_bytes, accept=accept)
+        if not resp.is_success:
+            raise error_for(resp.status_code, "")
+        return resp.content, resp.headers.get("Content-Type", "")
+
+    async def _follow(self, method: str, url: httpx.URL, body: bytes | None, *,
+                      run_id: str | None, estimate: int, max_bytes: int | None = None,
+                      accept: str = ACCEPT) -> httpx.Response:
+        """Send, following Onshape redirects by hand (each hop re-signed and ledgered)."""
         hops = 0
         while True:
-            resp = await self._send(method, url, body, run_id=run_id, estimate=estimate)
+            resp = await self._send(method, url, body, run_id=run_id, estimate=estimate,
+                                    max_bytes=max_bytes, accept=accept)
             if resp.status_code not in _REDIRECTS:
                 break
             loc = resp.headers.get("Location")
@@ -211,12 +272,4 @@ class OnshapeClient:
             if resp.status_code == 303 and method not in ("GET", "HEAD"):
                 method, body = "GET", None
             url, hops, estimate = nxt, hops + 1, 1
-        if not resp.is_success:
-            raise error_for(resp.status_code, _onshape_message(resp))
-        if not resp.content:
-            return {}
-        try:
-            data: Any = resp.json()
-        except ValueError:
-            raise MisesError(ErrorCode.TOOL_FAILED, "Onshape returned non-JSON") from None
-        return data if isinstance(data, dict) else {"items": data}
+        return resp
