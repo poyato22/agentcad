@@ -11,6 +11,7 @@ import { PartLoader } from "./partLoader";
 import { createViewer, type ViewerHandle } from "./scene";
 import { TitleBlock } from "./TitleBlock";
 import { ViewerTools, type ViewMode } from "./ViewerTools";
+import { ModeSwitch } from "../assembly/mode";
 import "./viewer.css";
 
 /** The part on the sheet: the selected one, else the first part (state/selection.ts). */
@@ -137,6 +138,7 @@ export function Viewer(): JSX.Element {
       />
       <span class="tick tick-tl" /><span class="tick tick-tr" /><span class="tick tick-bl" /><span class="tick tick-br" />
       <span class="label vp-fig">FIG. 1 — DESIGN</span>
+      <ModeSwitch />
       <ViewerTools mode={mode} onMode={setMode} />
       {part === null && <div class="vp-empty label">NO PART · ask an agent to create one</div>}
       <TitleBlock part={part} runLabel={byLabel} error={error} />

@@ -1,5 +1,6 @@
 // App shell: 44px top bar (--topbar-h; the macOS traffic lights sit on its centre line) across the top. Below it the active page shows:
-//   · Design keeps today's layout — left 240px · viewer · console.
+//   · Design keeps today's layout — left 240px · viewer · console. Its viewer is either one part
+//     or the build's assembly (ui/assembly/mode: the Part | Assembly switch, ⌥⌘A).
 //   · Studies / Sketch / Drawing / Print render full-width under the top bar.
 // The agent console stays on every page as a right-hand panel that can collapse to a 36px rail.
 // The new-run dialog, the Profile panel and the setup gate mount at the root.
@@ -7,6 +8,8 @@ import type { JSX } from "preact";
 import { useEffect } from "preact/hooks";
 import { conn } from "./state/store";
 import { needsYou } from "./state/selection";
+import { AssemblyView } from "./ui/assembly/AssemblyView";
+import { designMode, installModeShortcut } from "./ui/assembly/mode";
 import { BootOverlay } from "./ui/boot/BootOverlay";
 import { ConsolePane } from "./ui/console/ConsolePane";
 import { NewRunDialog } from "./ui/dialogs/NewRunDialog";
@@ -32,7 +35,9 @@ function PageRegion(): JSX.Element {
     default: return (
       <>
         <div class="region region-left" data-region="left"><LeftPane /></div>
-        <main class="region region-viewer" data-region="viewer"><Viewer /></main>
+        <main class="region region-viewer" data-region="viewer" data-mode={designMode.value}>
+          {designMode.value === "assembly" ? <AssemblyView /> : <Viewer />}
+        </main>
       </>
     );
   }
@@ -66,6 +71,7 @@ function ConsoleRegion(): JSX.Element {
 
 export function App(): JSX.Element {
   useEffect(() => installPageShortcuts(), []);
+  useEffect(() => installModeShortcut(() => activePage.peek() === "design"), []);
   return (
     <div class="app" data-region="app" data-conn={conn.value}
       data-page={activePage.value} data-console={consoleCollapsed.value ? "rail" : "open"}>

@@ -18,6 +18,7 @@ import type {
 } from "../../api/assembly";
 import { CoreError, type CoreClient } from "../../api/client";
 import type { MisesEvent } from "../../api/types";
+import { isAutoNumbered } from "../../lib/names";
 import { mobility, samePose, solve, type FaceResolver, type Mobility, type SolveResult, type Vec3 } from "./kinematics";
 import { draftProblem, emptyDraft, defaultLimits, jointBody, type FaceOption, type JointDraft } from "./pick";
 
@@ -472,7 +473,8 @@ export class AssemblyController {
     const pid = this.projectId.peek();
     const clean = name.trim();
     if (!pid) return "No build is open.";
-    if (!clean) return "Give the part a name.";
+    const bad = nameProblem(clean);
+    if (bad) return bad;
     if (this.nameTaken(clean)) return `“${clean}” is already in this assembly. Pick another name.`;
     const d = this.data.peek();
     // the first part is grounded so joints have something to hang from; later ones drop in beside
@@ -518,7 +520,8 @@ export class AssemblyController {
     const clean = name.trim();
     const cur = this.instance(id);
     if (!pid || !cur) return null;
-    if (!clean) return "Give the part a name.";
+    const bad = nameProblem(clean);
+    if (bad) return bad;
     if (clean.toLowerCase() !== cur.name.trim().toLowerCase() && this.nameTaken(clean)) return `“${clean}” is already in this assembly.`;
     try { await this.client().patchInstance(pid, id, { name: clean }); await this.refresh(false); return null; } catch (e) { return messageOf(e); }
   }
@@ -671,6 +674,18 @@ export class AssemblyController {
       this.interference.value = IDLE_INTERFERENCE; this.animating.value = null; this.snap.value = true; this.gizmo.value = "move";
     });
   }
+}
+
+/** Instance names say what the part is for (design §5.1: never a trailing number). */
+export function nameProblem(name: string): string | null {
+  if (!name) return "Give the part a name.";
+  if (isAutoNumbered(name)) return "Name it by what it does (like “left lid”), not with a number.";
+  return null;
+}
+
+/** The name a part gets when added: its label, else its id in words. */
+export function defaultInstanceName(part: Pick<AssemblyPart, "part_id" | "label">): string {
+  return (part.label ?? part.part_id).replace(/[_-]+/g, " ").trim();
 }
 
 function clampJoint(v: JointValue, limits: readonly number[] | null): JointValue {

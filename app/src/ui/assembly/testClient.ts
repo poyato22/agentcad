@@ -2,12 +2,13 @@
 // real-core fixtures (test/fixtures/core-ui/assembly*.json) and a hand-cranked clock.
 import asmJson from "../../../test/fixtures/core-ui/assembly.json";
 import partsJson from "../../../test/fixtures/core-ui/assembly_parts.json";
+import projectsJson from "../../../test/fixtures/core-ui/projects.json";
 import { assemblyPartSchema, assemblySchema, type Assembly, type AssemblyPart, type Joint, type JointValue } from "../../api/assembly";
 import { CoreError } from "../../api/client";
 import type { AssemblyClient, Clock } from "./controller";
 import { clampValue, solve } from "./kinematics";
 
-export const PROJECT = "86c24e6134e7";
+export const PROJECT = projectsJson[0].id;
 export const hingeFixture = (): Assembly => assemblySchema.parse(asmJson);
 export const partsFixture = (): AssemblyPart[] => (partsJson as unknown[]).map((p) => assemblyPartSchema.parse(p));
 
@@ -46,7 +47,7 @@ export class MemoryAssemblyClient implements AssemblyClient {
     return { ...this.asm, instances: this.asm.instances.map((i) => ({ ...i, transform: r.transforms[i.id] })) };
   }
 
-  projects = async () => { this.log("projects"); return [{ id: PROJECT, name: "Default", created_at: 1, trashed_at: null }]; };
+  projects = async () => { this.log("projects"); return projectsJson.map((p) => ({ id: p.id, name: p.name, created_at: p.created_at, trashed_at: p.trashed_at })); };
   activeProjectId = async () => { this.log("activeProjectId"); return null; };
   assemblyParts = async (pid: string) => { this.log("assemblyParts", pid); return this.parts; };
   assembly = async (pid: string) => { this.log("assembly", pid); return structuredClone(this.resolved()); };

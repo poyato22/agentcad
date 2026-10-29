@@ -14,6 +14,7 @@ import type {
   SystemCheckRow, SystemFix,
 } from "../../src/api/types";
 import { INSTALL_DEPS } from "../../src/api/types";
+import { assemblyFrom, assemblyRoutes, type AssemblyScenario, type FakeAssembly } from "./assembly";
 import { handleControl } from "./control";
 import { printingFrom, printingRoutes, stopPrinting, type FakePrinting, type PrintScenario } from "./printing";
 import { setupFrom, setupRoutes, type FakeSetup, type SetupScenario } from "./setup";
@@ -100,6 +101,8 @@ export interface Scenario {
   system_install?: Record<string, { lines?: string[]; ok?: boolean; fix?: SystemFix }>;
   /** ms between `system_install` lines (default 60). */
   system_install_ms?: number;
+  /** Builds and their assemblies (Plan 5 A4). Absent: one empty "Default" build. */
+  assembly?: AssemblyScenario;
 }
 
 /** A small healthy default when a scenario names no `system` rows. */
@@ -138,6 +141,7 @@ export interface FakeState {
   system: SystemCheckRow[];
   systemInstall: Record<string, { lines?: string[]; ok?: boolean; fix?: SystemFix }>;
   systemInstallMs: number;
+  assembly: FakeAssembly;
 }
 
 export interface FakeCore {
@@ -184,6 +188,7 @@ function stateFrom(sc: Scenario, token: string): FakeState {
     system: sc.system ? structuredClone(sc.system) : structuredClone(DEFAULT_SYSTEM_CHECK),
     systemInstall: sc.system_install ? structuredClone(sc.system_install) : {},
     systemInstallMs: sc.system_install_ms ?? 60,
+    assembly: assemblyFrom(sc.assembly),
   };
 }
 
@@ -591,6 +596,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       get: () => state.print, parts: () => state.parts, defaultMaterial: () => state.setup.profile.default_material,
       emit: (ev, extras) => { emit(ev, extras); }, approval: (id) => state.approvals.get(id),
     }),
+    ...assemblyRoutes({ get: () => state.assembly, parts: () => state.parts, emit: (ev) => { emit(ev); } }),
     { method: "GET", re: /^\/system\/check$/, h: () => state.system },
     {
       // POST /system/install/{dep}: allowlist only, no arguments from the body (Review Focus 3).
@@ -685,7 +691,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         return;
       }
       res.writeHead(200, {
-        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE", "Access-Control-Allow-Headers": CORS_ALLOW_HEADERS.join(", "),
+        "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE", "Access-Control-Allow-Headers": CORS_ALLOW_HEADERS.join(", "),
         "Access-Control-Max-Age": "600", "Content-Length": 0,
       });
       res.end();
@@ -700,7 +706,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     }
 
     try {
-      const body = method === "POST" || method === "PUT" ? await readBody(r) : undefined;
+      const body = method === "POST" || method === "PUT" || method === "PATCH" ? await readBody(r) : undefined;
       if (url.pathname.startsWith("/__fake/")) {
         const out = await handleControl(api, method, url.pathname, body);
         if (out === undefined) throw new HttpError(404, { detail: "Not Found" });
@@ -813,4 +819,4 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
 export const RAW = Symbol("raw-response");
 
 export type Handler = (m: RegExpMatchArray, q: URLSearchParams, body: unknown, r: IncomingMessage, res: ServerResponse) => unknown;
-export interface Route { method: "GET" | "POST" | "PUT" | "DELETE"; re: RegExp; h: Handler }
+export interface Route { method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"; re: RegExp; h: Handler }

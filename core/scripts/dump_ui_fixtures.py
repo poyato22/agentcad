@@ -439,7 +439,9 @@ async def dump_assembly(out: Path, call, get) -> None:
     def write(name: str, data) -> None:
         (out / name).write_text(json.dumps(data, indent=2) + "\n")
 
-    project = (await get("/projects")).json()[0]["id"]
+    projects = (await get("/projects")).json()
+    write("projects.json", projects)
+    project = projects[0]["id"]
     base_url = f"/projects/{project}/assembly"
     write("assembly_parts.json", (await get(f"/parts?project_id={project}")).json())
     base = (await call("POST", f"{base_url}/instances",

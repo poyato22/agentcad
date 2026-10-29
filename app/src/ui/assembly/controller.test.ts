@@ -1,15 +1,15 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { AssemblyController, SWEEP_MS, TWEEN_MS, INTERFERENCE_SETTLE_MS } from "./controller";
 import { faceOptions } from "./pick";
-import { flush, ManualClock, MemoryAssemblyClient, PROJECT, partsFixture } from "./testClient";
+import { flush, hingeFixture, ManualClock, MemoryAssemblyClient, PROJECT, partsFixture } from "./testClient";
 
 let core: MemoryAssemblyClient;
 let clock: ManualClock;
 let ctl: AssemblyController;
 
-const JOINT = "a12afe0e46ea";
-const BASE = "a7cb44ba1c8b";
-const LID = "0008c6c15eaa";
+const HINGE = hingeFixture();
+const JOINT = HINGE.joints[0].id;
+const [BASE, LID] = HINGE.instances.map((i) => i.id);
 
 beforeEach(async () => {
   core = new MemoryAssemblyClient();
