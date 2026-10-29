@@ -120,15 +120,28 @@ export function describeConstraint(id: string | null, cs: readonly SketchConstra
 export function solveMessage(res: SolveResult, cs: readonly SketchConstraint[]): string | null {
   if (res.status === "ok") return null;
   const off = `${res.residual < 0.01 ? res.residual.toExponential(1) : res.residual.toFixed(2)} mm`;
+  if (res.status === "invalid") return `Can't solve that: ${res.reason ?? "something isn't a number"}.`;
   if (res.status === "conflict") return `That conflicts with ${describeConstraint(res.worst, cs)} (off by ${off}).`;
   return `Couldn't solve that in time (still off by ${off}); try fewer constraints at once.`;
+}
+
+/** Strokes an edit touched: changed or new ones, and those any new or changed constraint refers
+ *  to. Only their connected groups are solved (the rest of the sketch already holds). */
+export function touchedBy(prev: SketchDoc, strokes: readonly Stroke[], cs: readonly SketchConstraint[], also: Iterable<string> = []): Set<string> {
+  const before = new Map(prev.strokes.map((s) => [s.id, s]));
+  const out = new Set(strokes.filter((s) => before.get(s.id) !== s).map((s) => s.id));
+  const old = new Set(prev.constraints);
+  for (const c of cs) if (!old.has(c)) for (const r of c.refs) out.add(r.stroke_id);
+  for (const id of also) out.add(id);
+  return out;
 }
 
 /** Solve and commit; false (and nothing changes, with the reason shown) unless the solve is ok. */
 function commitSolved(d: SketchDoc, fixed: ReadonlySet<string> = new Set(), refusal?: string): boolean {
   const cs = live(d.strokes, d.constraints);
-  const res = solve(d.strokes, cs, fixed, { budgetMs: COMMIT_BUDGET_MS });
-  if (!res.ok) { message.value = refusal ?? solveMessage(res, cs); return false; }
+  const held = [...fixed].map((k) => k.split(":")[0]);
+  const res = solve(d.strokes, cs, fixed, { budgetMs: COMMIT_BUDGET_MS, touched: touchedBy(doc.peek(), d.strokes, cs, held) });
+  if (!res.ok) { message.value = res.status === "invalid" ? solveMessage(res, cs) : refusal ?? solveMessage(res, cs); return false; }
   commit({ ...d, strokes: res.strokes, constraints: cs });
   return true;
 }
@@ -545,7 +558,8 @@ const OUT_OF_RANGE = `That's outside the drawing range (±${COORD_LIMIT.toLocale
 /** Shows a drag's solve when it holds; keeps the last good preview (and says why) when not. */
 function showDrag(d: SketchDoc, moved: Stroke[], fixed: ReadonlySet<string>): boolean {
   const cs = live(moved, d.constraints);
-  const res = solve(moved, cs, fixed, { budgetMs: DRAG_BUDGET_MS });
+  // only the dragged strokes' group is solved; everything else already holds
+  const res = solve(moved, cs, fixed, { budgetMs: DRAG_BUDGET_MS, touched: touchedBy(d, moved, cs) });
   if (!res.ok) { message.value = solveMessage(res, cs); return false; }
   batch(() => { preview.value = { ...d, strokes: res.strokes }; if (message.peek()) message.value = null; });
   return true;

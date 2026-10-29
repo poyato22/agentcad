@@ -314,15 +314,21 @@ test("keyboard_only_line_tool_enter_on_a_button_then_draw_and_dimension", async 
   const svg = await openSketch(page);
   await page.locator(".sk-hint").click();
   await page.keyboard.press("l");
+  await expect(page.getByRole("button", { name: /^Line/ })).toHaveAttribute("aria-pressed", "true");
   // Enter on a focused template button presses it, even with the Line tool active
   await page.getByRole("button", { name: /^Plate with holes/ }).focus();
   await page.keyboard.press("Enter");
   await expect(svg.locator("[data-kind=rect]")).toHaveCount(1);
   // draw a line by keyboard alone: first point, then a length
+  // (each step waits on the page state it causes, not on timing)
   await page.locator(".sk-hint").click();
   await page.keyboard.type("0,0");
+  await expect(page.locator("[data-typed]")).toContainText("0,0");
   await page.keyboard.press("Enter");
+  await expect(page.locator("[data-hint]")).toHaveText("Click the end, or type a length");
+  await expect(svg.locator(".sk-click")).toHaveCount(1);
   await page.keyboard.type("30");
+  await expect(page.locator("[data-typed]")).toContainText("30");
   await page.keyboard.press("Enter");
   await expect(svg.locator("[data-kind=line]")).toHaveCount(1);
   // pick it in the Shapes list and give it a 45 mm length with the keyboard
@@ -332,7 +338,12 @@ test("keyboard_only_line_tool_enter_on_a_button_then_draw_and_dimension", async 
   await expect(list.getByRole("option", { selected: true })).toHaveText(/^Line/);
   await page.getByLabel("Dimension label").fill("45");
   await page.getByLabel("Dimension label").press("Enter");
-  await page.getByRole("button", { name: "Build part" }).focus();
+  await expect(page.locator("[data-dim-parsed]")).toHaveText("length · 45 mm");
+  await expect(svg.locator("[data-ckind=distance] text").last()).toHaveText("45");
+  const buildBtn = page.getByRole("button", { name: "Build part" });
+  await expect(buildBtn).toBeEnabled();                              // the build target has loaded
+  await buildBtn.focus();
+  await expect(buildBtn).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("status")).toContainText("Run started");
   const body = (await sketchPost(() => fake.calls())) as unknown as V2Body;

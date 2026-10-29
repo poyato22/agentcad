@@ -257,6 +257,55 @@ describe("constraint solver", () => {
     expect(res.strokes[0].points[30][0]).toBeCloseTo(154, 5);
   });
 
+  // re-review regressions: the time budget holds on big connected groups
+  function rectChain(n: number) {
+    const strokes: SketchStroke[] = [];
+    const cs: Constraint[] = [];
+    for (let i = 0; i < n; i++) {
+      strokes.push(rectStroke(`r${i}`, [i * 10, 0], [i * 10 + 10, 8]));
+      if (i) cs.push({ id: `c${i}`, kind: "coincident", refs: [{ stroke_id: `r${i - 1}`, vertex: 1 }, { stroke_id: `r${i}`, vertex: 0 }] });
+      cs.push({ id: `d${i}`, kind: "distance", refs: [{ stroke_id: `r${i}`, edge: 0 }], value_mm: i ? 10 : 12 });
+    }
+    return { strokes, cs };
+  }
+
+  it("a drag on a 500-rectangle chain returns within 1.5× its 60 ms budget", () => {
+    const { strokes, cs } = rectChain(500);
+    solve(strokes.slice(0, 5), cs.slice(0, 5));                         // warm the JIT
+    const t0 = performance.now();
+    const res = solve(strokes, cs, new Set(["r0:v0"]), { budgetMs: 60 });
+    const ms = performance.now() - t0;
+    expect(ms).toBeLessThan(90);
+    expect(["ok", "not_converged"]).toContain(res.status);
+  });
+
+  it("a commit on a 100-rectangle chain solves (iterative step above the dense size)", () => {
+    const { strokes, cs } = rectChain(100);
+    const res = solve(strokes, cs, new Set(["r0:v0"]), { budgetMs: 400 });
+    expect(res.status).toBe("ok");
+    expect(res.strokes[99].points[1][0]).toBeCloseTo(1002, 4);         // every rect after the first shifted by 2 mm
+  });
+
+  it("solves only the groups an edit touched", () => {
+    const res = solve([lineStroke("a", [0, 0], [10, 0]), lineStroke("b", [0, 5], [10, 5])], [
+      { id: "1", kind: "distance", refs: [{ stroke_id: "a", edge: 0 }], value_mm: 20 },
+      { id: "2", kind: "distance", refs: [{ stroke_id: "b", edge: 0 }], value_mm: 20 },
+    ], new Set(), { touched: new Set(["a"]) });
+    expect(dist(res.strokes[0].points[0] as Pt, res.strokes[0].points[1] as Pt)).toBeCloseTo(20, 6);
+    expect(res.strokes[1].points).toEqual([[0, 5], [10, 5]]);            // untouched group left alone
+  });
+
+  it("non-finite input is invalid, never ok; a straight arc given a radius says so", () => {
+    const nanValue = solve([lineStroke("a", [0, 0], [10, 0])], [{ id: "1", kind: "distance", refs: [{ stroke_id: "a", edge: 0 }], value_mm: NaN }]);
+    expect(nanValue.status).toBe("invalid");
+    expect(nanValue.ok).toBe(false);
+    const nanPoint = solve([lineStroke("a", [0, 0], [NaN, 0])], [{ id: "1", kind: "horizontal", refs: [{ stroke_id: "a", edge: 0 }] }]);
+    expect(nanPoint.status).toBe("invalid");
+    const straight = solve([arc("a", [0, 0], [5, 0], [10, 0])], [{ id: "r", kind: "radius", refs: [{ stroke_id: "a" }], value_mm: 20 }]);
+    expect(straight.status).toBe("invalid");
+    expect(straight.reason).toMatch(/collinear/);
+  });
+
   it("an arc keeps its radius when its middle handle is the pinned point (the ends move instead)", () => {
     const res = solve([arc("a", [0, 0], [5, 3], [10, 0])], [{ id: "r", kind: "radius", refs: [{ stroke_id: "a" }], value_mm: 20 }], new Set(["a:v1"]));
     expect(res.status).toBe("ok");

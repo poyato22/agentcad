@@ -2,13 +2,18 @@
 // coordinates and radii of the strokes the constraints touch, one connected group of strokes at a
 // time. Each constraint is one or two scalar residuals (0 when it holds); the Jacobian is built
 // per residual by finite differences over the few variables it touches, and each step solves the
-// small dense system (JᵀJ + λ·D) δ = −Jᵀr by Cholesky. Starting from the current geometry, the
+// system (JᵀJ + λ·D) δ = −Jᵀr: by a dense Cholesky factorisation for small groups, by conjugate
+// gradient on the sparse rows above DENSE_MAX free coordinates. Every factorisation or iterative
+// solve checks the time budget first. Starting from the current geometry, the
 // damped steps move things as little as they can, so a drag or a new dimension changes only
 // what it must.
 //
-// Three outcomes: "ok" (everything holds), "not_converged" (still improving when the time budget
-// ran out; the residual says how far off) and "conflict" (no further improvement possible while
-// something is still off: the constraints contradict each other; `worst` names the one most off).
+// Four outcomes: "ok" (everything holds), "not_converged" (still improving when the time budget
+// ran out; the residual says how far off), "conflict" (no further improvement possible while
+// something is still off: the constraints contradict each other; `worst` names the one most off)
+// and "invalid" (the input can't be solved at all: a non-finite number, a straight arc given a
+// radius; `reason` says which). Large groups report "not_converged" rather than "conflict": an
+// iterative step can't prove a contradiction.
 import type { SketchConstraint, SketchConstraintKind, SketchRef, SketchStroke } from "../../../api/types";
 import { circumcircle, dist, type Pt } from "./geom";
 
@@ -55,9 +60,17 @@ function joinableEnds(s: SketchStroke, a: number, b: number): boolean {
   return (a === 0 && b === last) || (a === last && b === 0);
 }
 
+const indexes = new WeakMap<readonly SketchStroke[], Map<string, SketchStroke>>();
+/** id → stroke for a strokes array, built once per array (checks run once per constraint). */
+function strokeIndex(strokes: readonly SketchStroke[]): Map<string, SketchStroke> {
+  let m = indexes.get(strokes);
+  if (!m) { m = new Map(strokes.map((s) => [s.id, s])); indexes.set(strokes, m); }
+  return m;
+}
+
 /** Why a constraint can't apply to these refs, or null when it can. Same rules as core sketch.py. */
 export function checkConstraint(kind: SketchConstraintKind, refs: readonly Ref[], strokes: readonly SketchStroke[]): string | null {
-  const by = new Map(strokes.map((s) => [s.id, s]));
+  const by = strokeIndex(strokes);
   const st = refs.map((r) => by.get(r.stroke_id));
   if (st.some((s) => !s)) return "That geometry is gone.";
   if (st.some((s) => !solvable(s as SketchStroke))) return "Freehand strokes can't be constrained.";
@@ -225,22 +238,83 @@ function cholSolve(A: Float64Array, b: Float64Array, n: number): boolean {
   return true;
 }
 
+
 const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
 
-type Status = "ok" | "not_converged" | "conflict";
+type Status = "ok" | "not_converged" | "conflict" | "invalid";
 
-/** LM on one group. Returns the status and the worst residual (and which constraint). */
+/** Above this many free coordinates a step is solved iteratively (conjugate gradient on the sparse
+ *  normal equations) instead of by a dense Cholesky factorisation (O(n³) time, O(n²) memory). */
+export const DENSE_MAX = 120;
+
+/** The Jacobian as sparse rows (one per scalar residual): which variables, and their partials. */
+interface Jac { vars: number[][]; vals: number[][] }
+
+/** Preconditioned conjugate gradient on (JᵀJ + λ·D) δ = −g, matrix-free; stops at the deadline. */
+function cgSolve(J: Jac, diag: Float64Array, lambda: number, g: Float64Array, n: number, deadline: number): Float64Array | null {
+  const mulA = (v: Float64Array, out: Float64Array) => {
+    for (let i = 0; i < n; i++) out[i] = lambda * (1 + diag[i]) * v[i];
+    for (let k = 0; k < J.vars.length; k++) {
+      const vs = J.vars[k]; const js = J.vals[k];
+      let t = 0;
+      for (let a = 0; a < vs.length; a++) t += js[a] * v[vs[a]];
+      if (t !== 0) for (let a = 0; a < vs.length; a++) out[vs[a]] += js[a] * t;
+    }
+  };
+  const pre = new Float64Array(n);
+  for (let i = 0; i < n; i++) pre[i] = 1 / (diag[i] + lambda * (1 + diag[i]) || 1);
+  const x = new Float64Array(n);
+  const r = new Float64Array(n);
+  for (let i = 0; i < n; i++) r[i] = -g[i];
+  const z = new Float64Array(n);
+  for (let i = 0; i < n; i++) z[i] = pre[i] * r[i];
+  const p = new Float64Array(z);
+  const Ap = new Float64Array(n);
+  let rz = 0;
+  for (let i = 0; i < n; i++) rz += r[i] * z[i];
+  const r0 = Math.sqrt(r.reduce((s, v) => s + v * v, 0));
+  const maxIt = Math.max(50, 4 * n);
+  for (let it = 0; it < maxIt; it++) {
+    if (it % 16 === 0 && now() > deadline) return it ? x : null;
+    mulA(p, Ap);
+    let pAp = 0;
+    for (let i = 0; i < n; i++) pAp += p[i] * Ap[i];
+    if (!(pAp > 0)) break;
+    const alpha = rz / pAp;
+    let rr = 0;
+    for (let i = 0; i < n; i++) { x[i] += alpha * p[i]; r[i] -= alpha * Ap[i]; rr += r[i] * r[i]; }
+    if (Math.sqrt(rr) <= 1e-12 * Math.max(r0, 1e-300)) break;
+    let rzn = 0;
+    for (let i = 0; i < n; i++) { z[i] = pre[i] * r[i]; rzn += r[i] * z[i]; }
+    const beta = rzn / rz;
+    rz = rzn;
+    for (let i = 0; i < n; i++) p[i] = z[i] + beta * p[i];
+  }
+  return x;
+}
+
+/** LM on one group, inside the deadline. Returns the status and the worst residual (and which
+ *  constraint). Every factorisation / iterative solve checks the deadline first. */
 function lm(items: Item[], sys: Sys, deadline: number): { status: Status; residual: number; worst: string | null } {
   const n = sys.x.length;
   const vars = items.map((c) => itemVars(c, sys));
   const evalAll = (x: Float64Array) => items.map((c) => residuals(c, sys, x));
   const cost = (rs: number[][]) => rs.reduce((a, r) => a + r.reduce((s, v) => s + v * v, 0), 0);
+  /** The worst residual; a non-finite one is worst of all (and never "satisfied"). */
   const worstOf = (rs: number[][]) => {
     let w = 0; let id: string | null = null;
-    rs.forEach((r, i) => r.forEach((v) => { if (Math.abs(v) > w) { w = Math.abs(v); id = items[i].id; } }));
+    rs.forEach((r, i) => r.forEach((v) => { const a = Number.isFinite(v) ? Math.abs(v) : Infinity; if (a > w) { w = a; id = items[i].id; } }));
     return { w, id };
   };
+  const done = (rs: number[][], fail: Status) => {
+    const ww = worstOf(rs);
+    return ww.w < SOLVE_TOL ? { status: "ok" as Status, residual: ww.w, worst: null } : { status: fail, residual: ww.w, worst: ww.id };
+  };
   let rs = evalAll(sys.x);
+  {
+    const { w, id } = worstOf(rs);
+    if (!Number.isFinite(w)) return { status: "invalid", residual: w, worst: id };
+  }
   let f = cost(rs);
   let lambda = 1e-3;
   for (let it = 0; it < MAX_ITERS; it++) {
@@ -248,9 +322,10 @@ function lm(items: Item[], sys: Sys, deadline: number): { status: Status; residu
     if (w < SOLVE_TOL) return { status: "ok", residual: w, worst: null };
     if (n === 0) return { status: "conflict", residual: w, worst: id };
     if (now() > deadline) return { status: "not_converged", residual: w, worst: id };
-    // JᵀJ and Jᵀr, from per-residual finite differences over each constraint's own variables
-    const A = new Float64Array(n * n);
+    // the sparse Jacobian, from per-residual finite differences over each constraint's own variables
+    const J: Jac = { vars: [], vals: [] };
     const g = new Float64Array(n);
+    const diag = new Float64Array(n);
     items.forEach((c, k) => {
       const vs = vars[k];
       const r0 = rs[k];
@@ -263,25 +338,42 @@ function lm(items: Item[], sys: Sys, deadline: number): { status: Status; residu
         return r1.map((val, m) => (val - r0[m]) / h);
       });
       for (let m = 0; m < r0.length; m++) {
-        for (let a = 0; a < vs.length; a++) {
-          const ja = cols[a][m];
-          if (ja === 0) continue;
-          g[vs[a]] += ja * r0[m];
-          for (let bb = 0; bb < vs.length; bb++) A[vs[a] * n + vs[bb]] += ja * cols[bb][m];
-        }
+        J.vars.push(vs);
+        const row = vs.map((_, a) => (Number.isFinite(cols[a][m]) ? cols[a][m] : 0));
+        J.vals.push(row);
+        for (let a = 0; a < vs.length; a++) { g[vs[a]] += row[a] * r0[m]; diag[vs[a]] += row[a] * row[a]; }
       }
     });
     let gmax = 0;
     for (let i = 0; i < n; i++) gmax = Math.max(gmax, Math.abs(g[i]));
     if (gmax < 1e-12) return { status: "conflict", residual: w, worst: id };
+    const dense = n <= DENSE_MAX;
+    let A: Float64Array | null = null;
+    if (dense) {
+      A = new Float64Array(n * n);
+      for (let k = 0; k < J.vars.length; k++) {
+        const vs = J.vars[k]; const js = J.vals[k];
+        for (let a = 0; a < vs.length; a++) {
+          if (js[a] === 0) continue;
+          for (let bb = 0; bb < vs.length; bb++) A[vs[a] * n + vs[bb]] += js[a] * js[bb];
+        }
+      }
+    }
     // try steps with growing damping until the cost drops
     let improved = false;
     for (let tries = 0; tries < 12 && !improved; tries++) {
-      const M = new Float64Array(A);
-      for (let i = 0; i < n; i++) M[i * n + i] += lambda * (1 + A[i * n + i]);
-      const step = new Float64Array(n);
-      for (let i = 0; i < n; i++) step[i] = -g[i];
-      if (!cholSolve(M, step, n)) { lambda *= 10; continue; }
+      if (now() > deadline) return done(rs, "not_converged");
+      let step: Float64Array | null;
+      if (A) {
+        const M = new Float64Array(A);
+        for (let i = 0; i < n; i++) M[i * n + i] += lambda * (1 + A[i * n + i]);
+        step = new Float64Array(n);
+        for (let i = 0; i < n; i++) step[i] = -g[i];
+        if (!cholSolve(M, step, n)) { lambda *= 10; continue; }
+      } else {
+        step = cgSolve(J, diag, lambda, g, n, deadline);
+        if (!step) return done(rs, "not_converged");
+      }
       const xn = new Float64Array(sys.x);
       for (let i = 0; i < n; i++) xn[i] += step[i];
       const rn = evalAll(xn);
@@ -293,20 +385,14 @@ function lm(items: Item[], sys: Sys, deadline: number): { status: Status; residu
         f = fn;
         lambda = Math.max(lambda / 3, 1e-12);
         improved = true;
-        if (small || drop <= 1e-10 * Math.max(fn + drop, 1e-300)) {
-          const ww = worstOf(rs);
-          return ww.w < SOLVE_TOL ? { status: "ok", residual: ww.w, worst: null } : { status: "conflict", residual: ww.w, worst: ww.id };
-        }
+        if (small || drop <= 1e-10 * Math.max(fn + drop, 1e-300)) return done(rs, dense ? "conflict" : "not_converged");
       } else lambda *= 4;
     }
-    if (!improved) {
-      const ww = worstOf(rs);
-      return ww.w < SOLVE_TOL ? { status: "ok", residual: ww.w, worst: null } : { status: "conflict", residual: ww.w, worst: ww.id };
-    }
+    if (!improved) return done(rs, "conflict");
   }
-  const ww = worstOf(rs);
-  return ww.w < SOLVE_TOL ? { status: "ok", residual: ww.w, worst: null } : { status: "not_converged", residual: ww.w, worst: ww.id };
+  return done(rs, "not_converged");
 }
+
 
 export interface SolveResult {
   strokes: SketchStroke[];
@@ -316,17 +402,41 @@ export interface SolveResult {
   status: Status;
   /** The constraint most off (an id; "rect:<stroke>:e<i>" for a rectangle's own sides), when not ok. */
   worst: string | null;
+  /** Why the input can't be solved at all ("invalid"): a non-finite number, a straight arc. */
+  reason: string | null;
 }
 
 export interface SolveOptions {
-  /** refKey()s of vertices (and stroke ids) to keep where they are. */
-  fixed?: ReadonlySet<string>;
   budgetMs?: number;
+  /** Only solve the groups of strokes joined to these (the ones an edit or drag touched); the rest
+   *  are returned as they are. Default: every group. */
+  touched?: ReadonlySet<string>;
+}
+
+const finite = (p: readonly number[]) => p.every((v) => Number.isFinite(v));
+
+/** Why a group can't be solved at all, or null. */
+function invalidReason(bodies: Map<string, Body>, items: readonly Item[]): string | null {
+  for (const b of bodies.values()) {
+    if (!b.pts.every(finite) || !Number.isFinite(b.r)) return "a shape has a point that isn't a number";
+  }
+  for (const c of items) {
+    if (c.value !== undefined && !Number.isFinite(c.value)) return "a dimension isn't a number";
+    const radial = c.kind === "radius" || c.kind === "diameter" || c.kind === "equal" || c.kind === "point_on_circle";
+    if (!radial) continue;
+    for (const r of c.refs) {
+      const b = bodies.get(r.stroke_id);
+      if (b?.s.kind === "arc" && r.vertex === undefined && r.edge === undefined && b.pts.length === 3 && !circumcircle(b.pts[0], b.pts[1], b.pts[2])) {
+        return "the arc's points are collinear (it is straight), so it has no radius";
+      }
+    }
+  }
+  return null;
 }
 
 /** Solve; `fixed` holds refKey()s of vertices (and stroke ids) to keep where they are. Strokes no
  *  constraint touches are returned as they are. */
-export function solve(strokes: readonly SketchStroke[], constraints: readonly Constraint[], fixed: ReadonlySet<string> = new Set(), opts: { budgetMs?: number } = {}): SolveResult {
+export function solve(strokes: readonly SketchStroke[], constraints: readonly Constraint[], fixed: ReadonlySet<string> = new Set(), opts: SolveOptions = {}): SolveResult {
   const deadline = now() + (opts.budgetMs ?? SOLVE_BUDGET_MS);
   const by = new Map(strokes.map((s) => [s.id, s]));
   const items: Item[] = constraints
@@ -342,14 +452,20 @@ export function solve(strokes: readonly SketchStroke[], constraints: readonly Co
     for (let i = 1; i < c.refs.length; i++) parent.set(find(c.refs[i].stroke_id), find(c.refs[0].stroke_id));
   }
   const groups = new Map<string, string[]>();
-  for (const id of parent.keys()) { const g = find(id); groups.set(g, [...(groups.get(g) ?? []), id]); }
+  for (const id of parent.keys()) {
+    const g = find(id);
+    const list = groups.get(g);
+    if (list) list.push(id); else groups.set(g, [id]);
+  }
 
   const out = new Map<string, SketchStroke>();
   let status: Status = "ok";
   let residual = 0;
   let worst: string | null = null;
-  const rank: Record<Status, number> = { ok: 0, not_converged: 1, conflict: 2 };
+  let reason: string | null = null;
+  const rank: Record<Status, number> = { ok: 0, not_converged: 1, conflict: 2, invalid: 3 };
   for (const ids of groups.values()) {
+    if (opts.touched && !ids.some((id) => opts.touched?.has(id))) continue;
     const members = new Set(ids);
     const gItems = items.filter((c) => members.has(c.refs[0].stroke_id));
     const xs: number[] = [];
@@ -367,13 +483,18 @@ export function solve(strokes: readonly SketchStroke[], constraints: readonly Co
     const sys: Sys = { bodies, x: Float64Array.from(xs) };
     const all = [...implicit(bodies.values()), ...gItems];
     if (!all.length) continue;
+    const why = invalidReason(bodies, all);
+    if (why) {
+      if (rank.invalid > rank[status]) { status = "invalid"; reason = why; worst = null; residual = Infinity; }
+      continue;                                   // its strokes stay as they were
+    }
     const res = lm(all, sys, deadline);
     if (rank[res.status] > rank[status] || (res.status === status && res.residual > residual)) worst = res.worst ?? worst;
     if (rank[res.status] > rank[status]) status = res.status;
     residual = Math.max(residual, res.residual);
     for (const b of bodies.values()) out.set(b.s.id, writeBack(b, sys.x));
   }
-  return { strokes: strokes.map((s) => out.get(s.id) ?? s), residual, ok: status === "ok", status, worst };
+  return { strokes: strokes.map((s) => out.get(s.id) ?? s), residual, ok: status === "ok", status, worst, reason };
 }
 
 function circlePoints(c: Pt, r: number): [number, number][] {

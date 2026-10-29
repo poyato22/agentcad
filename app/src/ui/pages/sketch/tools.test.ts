@@ -253,6 +253,18 @@ describe("state: drawing and constraints", () => {
     expect(JSON.stringify(doc.value.strokes)).toBe(before);
   });
 
+  it("a vertex drag on a 500-rectangle chain stays near its 60 ms budget", () => {
+    const strokes = Array.from({ length: 500 }, (_, i) => rectStroke(`r${i}`, [i * 10, 0], [i * 10 + 10, 8]));
+    const constraints = strokes.slice(1).map((s, i) => ({ id: `c${i}`, kind: "coincident" as const, refs: [{ stroke_id: strokes[i].id, vertex: 1 }, { stroke_id: s.id, vertex: 0 }] }));
+    doc.value = { ...doc.value, strokes, constraints };
+    sketchActions.dragVertex({ stroke_id: "r0", vertex: 1 }, [11, 0]);     // warm up
+    sketchActions.endDrag(false);
+    const t0 = performance.now();
+    sketchActions.dragVertex({ stroke_id: "r0", vertex: 1 }, [12, 0]);
+    expect(performance.now() - t0).toBeLessThan(90);
+    sketchActions.endDrag(false);
+  });
+
   it("Backspace drops the last click; typed points out of range are refused; arrows nudge", () => {
     sketchActions.setTool("polyline");
     for (const p of [[0, 0], [10, 0], [10, 10]] as Pt[]) sketchActions.drawClick(p);
