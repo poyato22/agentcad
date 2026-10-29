@@ -80,6 +80,19 @@ async def test_get_and_set_source(ctx):
     assert not c.ok and c.data["conflict"]
 
 
+async def test_failed_source_edit_rolls_back_part_py(ctx):
+    await mk(ctx)
+    d = ctx.workdir / "parts" / "bracket"
+    before = (d / "part.py").read_text()
+    r = await mirror_part_set_source.handler(
+        ctx, SetSourceArgs(part_id="bracket", source="def build(v):\n    raise ValueError('x')\n",
+                           base_version=1))
+    assert not r.ok
+    assert (d / "part.py").read_text() == before  # previous source kept
+    g = await mirror_part_get_source.handler(ctx, SourceArgs(part_id="bracket"))
+    assert g.data["version"] == 1  # version not bumped by the failed edit
+
+
 async def test_hole_op_appends_block_and_removes_cylinder(ctx):
     await mk(ctx)
     m = await mirror_measure.handler(ctx, PartArgs(part_id="bracket"))

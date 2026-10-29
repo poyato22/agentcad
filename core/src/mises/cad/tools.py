@@ -394,11 +394,13 @@ async def mirror_part_set_source(ctx: ToolContext, args: SetSourceArgs) -> ToolO
         if _edits.check_base_version(d, args.base_version) is not None:
             return _conflict(args.part_id, d)
         build_vars = args.vars if args.vars is not None else _read_json(d / "vars.json")
+        prev_source = (d / "part.py").read_text()
         snap = _snapshot(d)
         (d / "part.py").write_text(args.source)
         res = await run_build(d, build_vars)
         if not res.ok:
             _restore(d, snap)
+            (d / "part.py").write_text(prev_source)  # part.py is not in the snapshot; roll it back
             return _fail(res.error or "build failed", res.stdout_tail)
         _atomic_write(d / "vars.json", json.dumps(res.vars))
         version = _finish_edit(ctx, args.part_id, d, f"edited {args.part_id} source")

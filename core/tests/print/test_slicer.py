@@ -41,6 +41,8 @@ def test_thumbnail_tolerates_trailing_whitespace():
 def test_find_slicer_missing(monkeypatch, tmp_path):
     monkeypatch.delenv("MISES_PRUSASLICER", raising=False)
     monkeypatch.setattr(slicer, "APP_PATH", tmp_path / "nope")
+    monkeypatch.setattr(slicer, "USER_APP_PATH", tmp_path / "nope2")
+    monkeypatch.setattr(slicer, "_mdfind_bundles", lambda: [])
     monkeypatch.setattr("shutil.which", lambda *_: None)
     assert slicer.find_slicer() is None
     with pytest.raises(MisesError) as e:

@@ -13,6 +13,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from . import edits as edits_mod
 from . import sketch as sketch_mod
 from .cad.tools import PART_ID_RE
 from .tools.registry import ToolContext, ToolRegistry, tool
@@ -67,10 +68,12 @@ def build_context(runtime, run_id: str | None = None) -> dict:
     selected run (else `run_id`) opened last, and that run's most recent simulation."""
     ui = ui_context(runtime)
     metrics = vars_ = None
+    version = None
     pid = ui.selected_part_id
     if pid and PART_ID_RE.match(pid):
         d = Path(runtime.home) / "parts" / pid
         metrics, vars_ = _read_json(d / "metrics.json"), _read_json(d / "vars.json")
+        version = edits_mod.read_version(d)
     source_run = ui.selected_run_id or run_id
     doc_url = recent_sim = None
     if source_run:
@@ -80,8 +83,10 @@ def build_context(runtime, run_id: str | None = None) -> dict:
             doc_url = call["input"].get("url")
         recent_sim = _latest(runtime, source_run, lambda s: s.kind == StepKind.SIM_RUN)
     out = {"selected_part_id": pid, "selected_run_id": ui.selected_run_id,
-           "picks": list(ui.picks), "metrics": metrics, "vars": vars_, "doc_url": doc_url,
-           "recent_sim": recent_sim}
+           "picks": list(ui.picks), "metrics": metrics, "vars": vars_, "version": version,
+           "doc_url": doc_url, "recent_sim": recent_sim,
+           # the user's last few live edits, as data, so the agent sees what changed under it
+           "recent_user_edits": edits_mod.recent_user_edits(Path(runtime.home))}
     sk = _run_sketch(runtime, run_id)
     if sk is not None:
         out["sketch"] = sk
