@@ -74,7 +74,15 @@ def build_projects_router(runtime: Runtime) -> APIRouter:
 
     @router.delete("/projects/{project_id}")
     async def trash_project(project_id: str):
-        return _projects.trash_project(store, project_id)
+        out = _projects.trash_project(store, project_id)
+        # a trashed build is neither active nor an open tab any more
+        prof = load_profile(_home())
+        if prof.active_project_id == project_id or project_id in prof.open_project_ids:
+            prof.open_project_ids = [p for p in prof.open_project_ids if p != project_id]
+            if prof.active_project_id == project_id:
+                prof.active_project_id = _projects.active_project_id(store, None)
+            save_profile(_home(), prof)
+        return out
 
     @router.post("/projects/{project_id}/restore")
     async def restore_project(project_id: str):

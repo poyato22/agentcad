@@ -4,6 +4,7 @@ import json
 import pytest
 from starlette.testclient import TestClient
 
+from mises import projects
 from mises.server.app import create_app
 from mises.store import Approval
 
@@ -16,11 +17,16 @@ def client(rt):
         yield c
 
 
-def _mk_part(rt, part_id, vars_=None):
+def _mk_part(rt, part_id, vars_=None, project_id=None):
+    """A part built by a run in `project_id` (default: the active build), as the cad tool
+    registers it."""
     d = rt.home / "parts" / part_id
     d.mkdir(parents=True)
     (d / "vars.json").write_text(json.dumps(vars_ or {"length": 40.0}))
     (d / "metrics.json").write_text(json.dumps({"mass_g": 7.0}))
+    run = rt.store.create_run("designer", "fake", "m", "build",
+                              project_id=project_id or rt.active_project_id())
+    projects.register_built_part(rt.store, run.id, part_id)
 
 
 # ---- builds
@@ -68,7 +74,6 @@ def test_parts_list_patch_reorder(client, rt):
 def test_part_reparent_cycle_rejected(client, rt):
     _mk_part(rt, "arm_outer")
     _mk_part(rt, "arm_inner")
-    client.get("/parts", headers=AUTH)
     client.patch("/parts/arm_inner", json={"parent_id": "arm_outer"}, headers=AUTH)
     r = client.patch("/parts/arm_outer", json={"parent_id": "arm_inner"}, headers=AUTH)
     assert r.status_code == 400 and r.json()["error"] == "invalid_input"
@@ -81,7 +86,7 @@ def test_run_patch_and_delete_rules(client, rt):
     running = rt.store.create_run("designer", "fake", "m", "x", project_id=p.id)
     # a running run cannot be deleted
     r = client.delete(f"/runs/{running.id}", headers=AUTH)
-    assert r.status_code == 409 and r.json() == {"reason": "running"}
+    assert r.status_code == 409 and r.json() == {"reason": "running", "children": []}
     # a finished run can be renamed, pinned and deleted
     done = rt.store.create_run("designer", "fake", "m", "y", project_id=p.id)
     rt.store.update_run(done.id, status="done")
@@ -100,7 +105,7 @@ def test_delete_refused_with_pending_approval(client, rt):
     rt.store.insert_approval(Approval(id="ap", run_id=run.id, action="x", payload={},
                                       payload_hash="h", status="pending", expires_at=1e12))
     r = client.delete(f"/runs/{run.id}", headers=AUTH)
-    assert r.status_code == 409 and r.json() == {"reason": "pending_approval"}
+    assert r.status_code == 409 and r.json() == {"reason": "pending_approval", "children": []}
 
 
 def test_cleanup_dry_run_then_delete(client, rt):
@@ -162,3 +167,68 @@ def test_hide_builtin_via_profile(client, rt):
     client.put("/profile", json={"hidden_agents": ["sim"]}, headers=AUTH)
     agents = {a["name"]: a for a in client.get("/agents", headers=AUTH).json()}
     assert agents["sim"]["hidden"] is True and agents["designer"]["hidden"] is False
+
+
+def test_delete_parent_refused_while_child_runs(client, rt):
+    p = rt.store.create_project("B")
+    parent = rt.store.create_run("planner", "fake", "m", "orch", project_id=p.id)
+    rt.store.update_run(parent.id, status="cancelled")
+    child = rt.store.create_run("designer", "fake", "m", "w", project_id=p.id,
+                                parent_id=parent.id)
+    r = client.delete(f"/runs/{parent.id}", headers=AUTH)
+    assert r.status_code == 409 and r.json() == {"reason": "running", "children": [child.id]}
+    assert rt.store.get_run(parent.id)   # still there
+
+
+def test_delete_keeps_shared_parts_and_removes_workdir(client, rt):
+    _mk_part(rt, "shared_plate")
+    run = rt.store.create_run("designer", "fake", "m", "x", project_id=rt.active_project_id())
+    rt.store.update_run(run.id, status="done")
+    wd = rt.workdir(run.id)                    # holds the parts symlink
+    (wd / "notes.txt").write_text("x")
+    assert client.delete(f"/runs/{run.id}", headers=AUTH).json() == {"ok": True}
+    assert not wd.exists()
+    assert (rt.home / "parts" / "shared_plate" / "vars.json").exists()
+
+
+def test_build_ids_are_validated(client, rt):
+    p = rt.store.create_project("Drone")
+    rt.store.update_project(p.id, trashed_at=1.0)
+    assert client.get("/parts", params={"project_id": p.id}, headers=AUTH).status_code == 400
+    assert client.get("/parts", params={"project_id": "nope"}, headers=AUTH).status_code == 404
+    r = client.post("/runs", json={"prompt": "x", "project_id": "nope"}, headers=AUTH)
+    assert r.status_code == 404
+    r = client.post("/runs/external", json={"agent": "a", "provider": "acp", "model": "m",
+                                            "project_id": p.id}, headers=AUTH)
+    assert r.status_code == 400
+
+
+def test_trashing_the_active_build_switches_away(client, rt):
+    default = rt.active_project_id()
+    p = client.post("/projects", json={"name": "Drone"}, headers=AUTH).json()["id"]
+    client.put("/profile", json={"active_project_id": p, "open_project_ids": [default, p]},
+               headers=AUTH)
+    client.delete(f"/projects/{p}", headers=AUTH)
+    prof = client.get("/profile", headers=AUTH).json()
+    assert prof["active_project_id"] == default and prof["open_project_ids"] == [default]
+
+
+def test_cleanup_empty_status_in_selects_nothing(client, rt):
+    run = rt.store.create_run("designer", "fake", "m", "y", project_id=rt.active_project_id())
+    rt.store.update_run(run.id, status="done")
+    r = client.post("/runs/cleanup", json={"status_in": [], "dry_run": False}, headers=AUTH)
+    assert r.json() == {"ids": [], "count": 0}
+    assert rt.store.get_run(run.id)
+
+
+@pytest.mark.parametrize("name", ["../evil", "Evil", "a/b", "x.md"])
+def test_agent_traversal_names_rejected_on_every_verb(client, rt, name):
+    from urllib.parse import quote
+    assert client.post("/agents", json={"name": name, "body": "x"}, headers=AUTH).status_code \
+        in (400, 404)
+    assert client.put(f"/agents/{quote(name, safe='')}", json={"body": "x"},
+                      headers=AUTH).status_code in (400, 404)
+    assert client.delete(f"/agents/{quote(name, safe='')}", headers=AUTH).status_code in (400, 404)
+    agents = rt.home / "agents"
+    assert not agents.exists() or list(agents.iterdir()) == []
+    assert not (rt.home / "evil.md").exists()

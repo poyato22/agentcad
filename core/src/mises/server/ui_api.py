@@ -313,8 +313,8 @@ def build_ui_router(runtime: Runtime) -> UiRouter:
         """The part tree of a build (Plan 5 C1). Without project_id the active build is used.
         Each row carries the tree metadata (id, label, parent_id, order, color, kind, version)
         plus the on-disk vars, metrics and mtime. `part_id` mirrors `id` for older callers."""
-        pid = project_id or _projects.active_project_id(runtime.store,
-                                                        runtime.profile().active_project_id)
+        pid = (_projects.check_project(runtime.store, project_id) if project_id
+               else _projects.active_project_id(runtime.store, runtime.profile().active_project_id))
         return _projects.list_parts(runtime.store, Path(runtime.home), pid)
 
     @router.get("/parts/{part_id}/model.glb")

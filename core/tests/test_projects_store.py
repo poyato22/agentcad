@@ -16,20 +16,80 @@ def _approval(run_id):
                     decided_by=None, decided_at=None, edited_payload=None)
 
 
-def test_migration_assigns_existing_runs_to_default(tmp_path):
-    """A DB with runs from before builds existed reopens with every run in one Default build."""
-    path = tmp_path / "m.db"
-    s1 = Store(path)
-    s1.create_run("designer", "fake", "m", "task one")
-    s1.create_run("designer", "fake", "m", "task two")
+# The schema at the Plan 5 base commit (980d0be), as a Plan 4 Mises home has it on disk: the
+# CREATE statements plus the three run columns that version added by ALTER TABLE.
+BASE_COMMIT_DDL = """
+CREATE TABLE runs (
+  id TEXT PRIMARY KEY, parent_id TEXT, agent TEXT, provider TEXT, model TEXT, task TEXT,
+  status TEXT, branch TEXT, onshape_calls INTEGER, input_tokens INTEGER, output_tokens INTEGER,
+  usd REAL, created_at REAL, updated_at REAL);
+CREATE TABLE policies (
+  run_id TEXT, version INTEGER, edit_scope TEXT, read_scope TEXT, caps TEXT,
+  allowed_classes TEXT, created_at REAL, PRIMARY KEY (run_id, version));
+CREATE TABLE steps (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT, ts REAL, kind TEXT, payload TEXT,
+  evidence_hash TEXT, prev_hash TEXT, collapsed INTEGER);
+CREATE INDEX steps_run ON steps(run_id, id);
+CREATE TABLE approvals (
+  id TEXT PRIMARY KEY, run_id TEXT, action TEXT, payload TEXT, payload_hash TEXT,
+  microversion TEXT, deltas TEXT, status TEXT, expires_at REAL, decided_by TEXT,
+  decided_at REAL, edited_payload TEXT);
+CREATE TABLE ledger (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, user TEXT, run_id TEXT, endpoint TEXT, estimate INTEGER,
+  idempotency_key TEXT, status_code INTEGER, counted INTEGER, state TEXT, ts REAL);
+CREATE TABLE tool_cache (key TEXT PRIMARY KEY, value TEXT);
+ALTER TABLE runs ADD COLUMN owner_pid INTEGER;
+ALTER TABLE runs ADD COLUMN external INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE runs ADD COLUMN session_ref TEXT;
+"""
+
+
+@pytest.fixture
+def base_commit_db(tmp_path):
+    """A database written by the base-commit Store: an orchestrator, its worker, and steps."""
+    import sqlite3
+    path = tmp_path / "mises.db"
+    db = sqlite3.connect(path)
+    db.executescript(BASE_COMMIT_DDL)
+    db.executescript(
+        "INSERT INTO runs VALUES ('orch1', NULL, 'planner', 'fake', 'm', 'plan', 'done', NULL,"
+        " 0, 10, 5, 0.1, 1.0, 2.0, NULL, 0, NULL);"
+        "INSERT INTO runs VALUES ('work1', 'orch1', 'designer', 'fake', 'm', 'arm', 'done', NULL,"
+        " 0, 3, 2, 0.0, 1.5, 2.5, NULL, 0, NULL);"
+        "INSERT INTO steps (run_id, ts, kind, payload, evidence_hash, prev_hash, collapsed)"
+        " VALUES ('work1', 1.6, 'message', '{}', 'h1', NULL, 0);")
+    db.commit()
+    db.close()
+    return path
+
+
+def test_migration_from_base_commit_schema(base_commit_db):
+    """Every ALTER applies; both runs are kept, keep their parent and steps, and land in one
+    Default build."""
+    s = Store(base_commit_db)
+    assert [p.name for p in s.list_projects()] == ["Default"]
+    default = s.default_project_id()
+    runs = {r.id: r for r in s.list_runs()}
+    assert set(runs) == {"orch1", "work1"}
+    assert {r.project_id for r in runs.values()} == {default}
+    assert runs["work1"].parent_id == "orch1"
+    assert (runs["orch1"].title, runs["orch1"].pinned, runs["orch1"].archived) == (None, False,
+                                                                                  False)
+    assert len(s.steps("work1")) == 1
+
+
+def test_migration_runs_once(base_commit_db):
+    """Reopening never sweeps again: a later run without a build is not moved, and a renamed
+    Default is not duplicated (Default is found by id, not name)."""
+    s1 = Store(base_commit_db)
+    default = s1.default_project_id()
+    s1.update_project(default, name="Robot arm")
+    stray = s1.create_run("designer", "fake", "m", "no build")   # direct store call, no build
     s1._db.close()
-    s2 = Store(path)  # reopen: migration runs
-    projects = s2.list_projects()
-    assert [p.name for p in projects] == ["Default"]
-    default = projects[0]
-    runs = s2.list_runs()
-    assert len(runs) == 2
-    assert {r.project_id for r in runs} == {default.id}
+    s2 = Store(base_commit_db)
+    assert [p.name for p in s2.list_projects()] == ["Robot arm"]
+    assert s2.get_run(stray.id).project_id is None
+    assert s2.ensure_default_project().id == default
 
 
 def test_fresh_db_has_no_build_until_asked(store):

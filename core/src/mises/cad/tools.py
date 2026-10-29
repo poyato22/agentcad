@@ -172,6 +172,11 @@ async def mirror_part_create(ctx: ToolContext, args: CreateArgs) -> ToolOutput:
                 _restore(d, snap)
             return _fail(res.error or "build failed", res.stdout_tail)
         _atomic_write(d / "vars.json", json.dumps(res.vars))
+        # the part-tree row is made when the part is first built, in the creating run's build
+        # (every Gate context has a store; bare test contexts may not)
+        if getattr(ctx, "store", None) is not None:
+            from ..projects import register_built_part  # lazy: projects imports this module
+            register_built_part(ctx.store, ctx.run_id, args.part_id)
     return ToolOutput(summary=_summary(args.part_id, res.metrics),
                       data={"part_id": args.part_id, "vars": res.vars, **_inline(res.metrics)})
 

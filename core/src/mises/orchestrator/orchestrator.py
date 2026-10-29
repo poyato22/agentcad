@@ -66,7 +66,9 @@ def child_policy(runtime: Runtime, parent_run_id: str, agent: str,
                                                                    remaining)})
     return {"edit_scope": tuple(_intersect(parent.edit_scope, edit_scope)),
             "read_scope": tuple(parent.read_scope), "caps": caps,
-            "allowed_classes": classes, "parent_id": parent_run_id}
+            "allowed_classes": classes, "parent_id": parent_run_id,
+            # workers stay in their orchestrator's build
+            "project_id": runtime.store.get_run(parent_run_id).project_id}
 
 
 def _result_status(stop_reason: str) -> str:

@@ -15,7 +15,6 @@ import json
 import logging
 import os
 import secrets
-import shutil
 import socket
 import tempfile
 import threading
@@ -163,6 +162,7 @@ class NewExternalRun(BaseModel):
     model: str
     edit_scope: list[str] = ["*"]
     read_scope: list[str] = ["*"]
+    project_id: str | None = None  # the build; the active build is used when omitted
 
 
 class Text(BaseModel):
@@ -236,17 +236,9 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
         except KeyError:
             raise MisesError(ErrorCode.NOT_FOUND, f"unknown run: {run_id}") from None
 
-    def _delete_run_and_workdir(run_id: str) -> None:
-        """Remove the run's rows, then its workdir under the Mises home. Parts (shared) and
-        Onshape are never touched."""
-        runtime.store.delete_run(run_id)
-        wd = Path(runtime.home) / "runs" / run_id
-        runs_root = (Path(runtime.home) / "runs").resolve()
-        try:
-            if wd.resolve().parent == runs_root and wd.is_dir():
-                shutil.rmtree(wd, ignore_errors=True)
-        except (OSError, RuntimeError):
-            log.warning("could not remove workdir for run %s", run_id)
+    def _refused(blocked: tuple[str, list[str]]) -> JSONResponse:
+        reason, children = blocked
+        return JSONResponse({"reason": reason, "children": children}, status_code=409)
 
     @app.get("/health")
     async def health():
@@ -256,8 +248,8 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
     async def create_run(body: NewRun):
         prof = load_profile(runtime.home)
         agent = body.agent or prof.default_agent
-        project_id = body.project_id or _projects.active_project_id(runtime.store,
-                                                                    prof.active_project_id)
+        project_id = (_projects.check_project(runtime.store, body.project_id) if body.project_id
+                      else _projects.active_project_id(runtime.store, prof.active_project_id))
         rid = await runtime.start_run(agent, body.prompt, model_ref=body.model_ref,
                                       edit_scope=tuple(body.edit_scope),
                                       read_scope=tuple(body.read_scope),
@@ -266,9 +258,12 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
 
     @app.post("/runs/external")
     async def create_external_run(body: NewExternalRun):
+        project_id = (_projects.check_project(runtime.store, body.project_id) if body.project_id
+                      else None)
         rid = runtime.create_external_run(body.agent, provider=body.provider, model=body.model,
                                           edit_scope=tuple(body.edit_scope),
-                                          read_scope=tuple(body.read_scope))
+                                          read_scope=tuple(body.read_scope),
+                                          project_id=project_id)
         return {"run_id": rid}
 
     @app.get("/runs")
@@ -291,10 +286,10 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
     async def cleanup_runs(body: Cleanup):
         ids = _projects.cleanup_candidates(runtime.store, project_id=body.project_id,
                                            older_than_days=body.older_than_days,
-                                           status_in=body.status_in)
+                                           status_in=body.status_in, busy=runtime.run_busy)
         if not body.dry_run:
-            for rid in ids:
-                _delete_run_and_workdir(rid)
+            # each delete re-checks: a run that became busy since the scan is kept
+            ids = [rid for rid in ids if await runtime.delete_run(rid) is None]
         return {"ids": ids, "count": len(ids)}
 
     @app.get("/runs/{run_id}")
@@ -312,11 +307,10 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
 
     @app.delete("/runs/{run_id}")
     async def delete_run(run_id: str):
-        run = _run(run_id)
-        reason = _projects.delete_reason(runtime.store, run)
-        if reason is not None:
-            return JSONResponse({"reason": reason}, status_code=409)
-        _delete_run_and_workdir(run_id)
+        _run(run_id)
+        blocked = await runtime.delete_run(run_id)
+        if blocked is not None:
+            return _refused(blocked)
         return {"ok": True}
 
     @app.get("/runs/{run_id}/steps")

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import re
+import tempfile
 from importlib import resources
 from pathlib import Path
 
@@ -123,9 +124,20 @@ def render_definition(*, name: str, description: str, model: str = "inherit",
 
 
 def _atomic_write(path: Path, text: str) -> None:
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(text, encoding="utf-8")
-    os.replace(tmp, path)
+    """A fresh temp file in the same directory (mkstemp: O_CREAT|O_EXCL, so a planted symlink
+    at the temp name is never followed), then os.replace, which swaps the directory entry
+    itself rather than writing through a link at the target."""
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def write_custom_agent(home: Path, *, name: str, description: str, model: str = "inherit",

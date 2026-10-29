@@ -123,6 +123,7 @@ CREATE TABLE IF NOT EXISTS runs (
   usd REAL, created_at REAL, updated_at REAL);
 CREATE TABLE IF NOT EXISTS projects (
   id TEXT PRIMARY KEY, name TEXT, created_at REAL, updated_at REAL, trashed_at REAL);
+CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE IF NOT EXISTS parts (
   id TEXT PRIMARY KEY, project_id TEXT, label TEXT, parent_id TEXT, ord INTEGER,
   color TEXT, kind TEXT, version INTEGER);
@@ -304,21 +305,35 @@ class Store:
     def _project(row: sqlite3.Row) -> Project:
         return Project(**dict(row))
 
+    # ---- meta (one-shot migration flags, the Default build's id)
+    def meta_get(self, key: str) -> str | None:
+        row = self._one("SELECT value FROM meta WHERE key=?", (key,))
+        return row[0] if row else None
+
+    def meta_set(self, key: str, value: str) -> None:
+        with self._tx() as db:
+            db.execute("INSERT OR REPLACE INTO meta VALUES (?,?)", (key, value))
+
     def _ensure_default_in(self, db) -> str:
-        row = db.execute("SELECT id FROM projects WHERE name='Default' ORDER BY created_at, rowid"
-                         " LIMIT 1").fetchone()
-        if row is not None:
+        """The Default build, found by the id recorded in meta (never by name: the user may
+        rename it, or name another build "Default"). Recreated if it was purged."""
+        row = db.execute("SELECT value FROM meta WHERE key='default_project_id'").fetchone()
+        if row is not None and db.execute("SELECT 1 FROM projects WHERE id=?",
+                                          (row[0],)).fetchone() is not None:
             return row[0]
         pid = uuid.uuid4().hex[:12]
         now = time.time()
         db.execute("INSERT INTO projects VALUES (?,?,?,?,?)", (pid, "Default", now, now, None))
+        db.execute("INSERT OR REPLACE INTO meta VALUES ('default_project_id', ?)", (pid,))
         return pid
 
     def _migrate_default_project(self) -> None:
-        """Assign every pre-existing run and part (project_id NULL) to a single Default build,
-        created once. A fresh database has nothing to assign; ensure_default_project makes the
-        first build on demand."""
+        """Once per database (meta flag): assign every pre-existing run and part (project_id
+        NULL) to the Default build. A fresh database has nothing to assign; later runs always
+        get a build at creation (Runtime), so this never sweeps them."""
         with self._tx() as db:
+            if db.execute("SELECT 1 FROM meta WHERE key='builds_migrated'").fetchone():
+                return
             orphan_runs = db.execute(
                 "SELECT COUNT(*) FROM runs WHERE project_id IS NULL").fetchone()[0]
             orphan_parts = db.execute(
@@ -327,11 +342,32 @@ class Store:
                 pid = self._ensure_default_in(db)
                 db.execute("UPDATE runs SET project_id=? WHERE project_id IS NULL", (pid,))
                 db.execute("UPDATE parts SET project_id=? WHERE project_id IS NULL", (pid,))
+            db.execute("INSERT OR REPLACE INTO meta VALUES ('builds_migrated', '1')")
 
     def ensure_default_project(self) -> Project:
         with self._tx() as db:
             pid = self._ensure_default_in(db)
         return self.get_project(pid)
+
+    def default_project_id(self) -> str | None:
+        """The recorded Default build's id, if it still exists (no creation)."""
+        pid = self.meta_get("default_project_id")
+        if pid is None or self._one("SELECT 1 FROM projects WHERE id=?", (pid,)) is None:
+            return None
+        return pid
+
+    def descendants(self, run_id: str) -> list[str]:
+        """Ids of every run below this one, following parent_id and parent_run_id."""
+        out: list[str] = []
+        seen, frontier = {run_id}, [run_id]
+        while frontier:
+            q = ",".join("?" * len(frontier))
+            rows = self._all(f"SELECT id FROM runs WHERE parent_id IN ({q})"
+                             f" OR parent_run_id IN ({q})", (*frontier, *frontier))
+            frontier = [r[0] for r in rows if r[0] not in seen]
+            seen.update(frontier)
+            out += frontier
+        return out
 
     def create_project(self, name: str) -> Project:
         pid = uuid.uuid4().hex[:12]
@@ -366,7 +402,10 @@ class Store:
         return self.get_project(project_id)
 
     def purge_project(self, project_id: str) -> None:
+        """Delete the build and its part-tree rows (the on-disk part files stay; runs keep
+        their now-dangling project_id as history until cleaned up)."""
         with self._tx() as db:
+            db.execute("DELETE FROM parts WHERE project_id=?", (project_id,))
             db.execute("DELETE FROM projects WHERE id=?", (project_id,))
 
     def project_part_count(self, project_id: str) -> int:
@@ -414,24 +453,39 @@ class Store:
         bad = set(fields) - allowed
         if bad:
             raise ValueError(f"cannot update part fields: {sorted(bad)}")
-        if fields:
-            sets = ", ".join(f"{k}=?" for k in fields)
-            with self._tx() as db:
+        with self._tx() as db:
+            if db.execute("SELECT 1 FROM parts WHERE id=?", (part_id,)).fetchone() is None:
+                raise KeyError(part_id)
+            if fields:
+                sets = ", ".join(f"{k}=?" for k in fields)
                 db.execute(f"UPDATE parts SET {sets} WHERE id=?", (*fields.values(), part_id))
         return self.get_part(part_id)
 
     def bump_part_version(self, part_id: str) -> int:
-        """Increment and return the part's version (used by C6's regenerate)."""
+        """Increment and return the part's version (used by C6's regenerate). An unknown part
+        raises KeyError: a version bump must never silently do nothing."""
         with self._tx() as db:
-            db.execute("UPDATE parts SET version=COALESCE(version,1)+1 WHERE id=?", (part_id,))
+            cur = db.execute("UPDATE parts SET version=COALESCE(version,1)+1 WHERE id=?",
+                             (part_id,))
+            if cur.rowcount != 1:
+                raise KeyError(part_id)
             row = db.execute("SELECT version FROM parts WHERE id=?", (part_id,)).fetchone()
-        return int(row[0]) if row else 1
+        return int(row[0])
 
     def reorder_parts(self, project_id: str, parent_id: str | None, ids: list[str]) -> None:
+        """The listed siblings take ord 0..n-1 under parent_id; siblings left out keep their
+        relative order after them, so ords never collide. Callers validate the ids belong to
+        project_id (projects.reorder_parts)."""
         with self._tx() as db:
             for i, pid in enumerate(ids):
-                db.execute("UPDATE parts SET ord=?, parent_id=?, project_id=? WHERE id=?",
-                           (i, parent_id, project_id, pid))
+                db.execute("UPDATE parts SET ord=?, parent_id=? WHERE id=?", (i, parent_id, pid))
+            if ids:
+                q = ",".join("?" * len(ids))
+                rest = db.execute(
+                    f"SELECT id FROM parts WHERE project_id=? AND parent_id IS ? AND id NOT IN ({q})"
+                    " ORDER BY ord, rowid", (project_id, parent_id, *ids)).fetchall()
+                for j, r in enumerate(rest):
+                    db.execute("UPDATE parts SET ord=? WHERE id=?", (len(ids) + j, r[0]))
 
     def delete_part_row(self, part_id: str) -> None:
         with self._tx() as db:

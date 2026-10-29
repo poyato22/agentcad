@@ -131,3 +131,20 @@ async def test_part_lock_shared_across_runs(tmp_path, monkeypatch):
     await asyncio.gather(*(mirror_part_create.handler(c, CreateArgs(part_id="shared_box", script="x"))
                            for c in ctxs))
     assert peak == 1
+
+
+async def test_create_registers_the_tree_row_in_the_runs_build(tmp_path):
+    """Plan 5 C1: a part's tree row is made when it is first built, in the creating run's build;
+    a rebuild from another build keeps it where it is."""
+    from mises.store import Store
+    store = Store(":memory:")
+    drone, rover = store.create_project("Drone"), store.create_project("Rover")
+    run = store.create_run("designer", "fake", "m", "x", project_id=drone.id)
+    other = store.create_run("designer", "fake", "m", "y", project_id=rover.id)
+    ctx = SimpleNamespace(workdir=tmp_path, store=store, run_id=run.id)
+    r = await mirror_part_create.handler(ctx, CreateArgs(part_id="bracket", script=BOX))
+    assert r.ok, r.summary
+    assert store.get_part("bracket").project_id == drone.id
+    ctx2 = SimpleNamespace(workdir=tmp_path, store=store, run_id=other.id)
+    assert (await mirror_part_create.handler(ctx2, CreateArgs(part_id="bracket", script=BOX))).ok
+    assert store.get_part("bracket").project_id == drone.id
