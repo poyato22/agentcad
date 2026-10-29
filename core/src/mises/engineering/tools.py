@@ -29,8 +29,10 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, ValidationError
 
 from .. import hardware
+from .. import edits as _edits
+from ..cad import safe_io
 from ..cad.runner import run_build
-from ..cad.tools import PART_ID_RE, SetVarsArgs, _existing, mirror_part_set_vars
+from ..cad.tools import PART_ID_RE, SetVarsArgs, _after_build, _existing, mirror_part_set_vars
 from ..events import Event
 from ..sim.mesh import FACE_ID_RE
 from ..tools.registry import ToolContext, ToolRegistry, tool
@@ -259,7 +261,7 @@ async def spec_check(ctx: ToolContext, args: SpecCheckArgs) -> ToolOutput:
     _check_part(args.part_id)
     pid = _resolve_project(ctx, args.project_id)
     d = _existing(ctx, args.part_id)
-    metrics = json.loads((d / "metrics.json").read_text())
+    metrics = _read_part_json(d, "metrics.json")
     spec = _load_spec(ctx, pid)
     sim_by_case, stale = _sims_by_case(ctx, args.part_id, spec)
     report = evaluate_spec(spec, metrics, sim_by_case)
@@ -354,20 +356,30 @@ def _static_evaluator(ctx: ToolContext, part_id: str, part_dir: Path, base_vars:
     candidate's vars, measured, then a coarse-mesh stress study per load case on that copy.
     The live part is only read (its part.py), never written."""
     counter = itertools.count()
-    source = (part_dir / "part.py").read_text()
+    source = safe_io.read_text(part_dir, "part.py")   # live part: read, links never followed
+    if source is None:
+        raise MisesError(ErrorCode.NOT_FOUND, f"{part_id} has no part.py", hint="rebuild it")
 
     async def evaluate(vars: dict) -> dict:
         variant = f"e{next(counter)}"
         vroot = root / variant
         vpart = vroot / "parts" / part_id
-        vpart.mkdir(parents=True, exist_ok=True)
-        (vpart / "part.py").write_text(source)
+        # the scratch variant is a part dir like any other: built by run_build (the same
+        # sandbox, deny process-fork) and handled only through safe_io, then scrubbed
+        vpart.parent.mkdir(parents=True, exist_ok=True)
+        safe_io.ensure_dir(vpart)
+        safe_io.write_text(vpart, "part.py", source)
         out = _empty_metrics(variant)
         res = await run_build(vpart, {**base_vars, **vars})
+        bad = _after_build(vpart)
+        if bad:
+            out["build_error"] = ("the build left links or special files "
+                                  f"({', '.join(bad[:5])}); refused")
+            return out
         if not res.ok:
             out["build_error"] = res.error or "build failed"
             return out
-        (vpart / "vars.json").write_text(json.dumps(res.vars))
+        safe_io.write_text(vpart, "vars.json", json.dumps(res.vars))
         m = res.metrics
         out["mass_g"], out["bbox"] = m.get("mass_g"), m.get("bbox")
         if have_solver:
@@ -446,7 +458,7 @@ async def study_run(ctx: ToolContext, args: StudyRunArgs) -> ToolOutput:
     _check_part(args.part_id)
     pid = _resolve_project(ctx, args.project_id)
     d = _existing(ctx, args.part_id)
-    base_vars = json.loads((d / "vars.json").read_text())
+    base_vars = _read_part_json(d, "vars.json")
     unknown = sorted({v.name for v in args.variables} - set(base_vars))
     if unknown:
         raise MisesError(ErrorCode.INVALID_INPUT, f"unknown variables {unknown}",
@@ -560,16 +572,22 @@ async def study_get(ctx: ToolContext, args: StudyGetArgs) -> ToolOutput:
     return ToolOutput(summary=_study_summary(rec), data=rec)
 
 
-def _part_version(part_dir: Path) -> int | None:
-    """The live part's version if this build records one (Task C6 adds versions); else None."""
-    for f, key in ((part_dir / "version.json", "version"), (part_dir / "metrics.json", "version")):
-        try:
-            v = json.loads(f.read_text()).get(key)
-        except (OSError, ValueError, AttributeError):
-            continue
-        if isinstance(v, int) and not isinstance(v, bool):
-            return v
-    return None
+def _read_part_json(d: Path, name: str) -> dict:
+    """A JSON file of a live part, read via safe_io (never through a link the sandbox left)."""
+    try:
+        v = safe_io.read_json(d, name)
+    except (OSError, ValueError):
+        v = None
+    if not isinstance(v, dict):
+        raise MisesError(ErrorCode.NOT_FOUND, f"{Path(d).name}: {name} is missing",
+                         hint="rebuild the part")
+    return v
+
+
+def _part_version(part_dir: Path) -> int:
+    """The live part's version: C6's host-only meta (parts/.mises-meta/<id>/version.json),
+    which the build sandbox cannot write."""
+    return _edits.read_version(part_dir)
 
 
 @tool("study_apply", safety=SafetyClass.LOCAL_MUTATE, scope_arg="part_id",
@@ -595,11 +613,13 @@ async def study_apply(ctx: ToolContext, args: StudyApplyArgs) -> ToolOutput:
                               "allow_infeasible")
     d = _existing(ctx, args.part_id)
     current = _part_version(d)
-    if args.base_version is not None and current is not None and current != args.base_version:
+    if args.base_version is not None and current != args.base_version:
         raise MisesError(ErrorCode.STALE_VERSION, f"{args.part_id} is at version {current}, "
                          f"not {args.base_version}", hint="re-read the part, then decide again")
-    out = await mirror_part_set_vars.handler(ctx, SetVarsArgs(part_id=args.part_id,
-                                                              vars=it["vars"]))
+    # C6 re-checks the version under the part lock: no edit can slip in between
+    out = await mirror_part_set_vars.handler(ctx, SetVarsArgs(
+        part_id=args.part_id, vars=it["vars"],
+        base_version=args.base_version if args.base_version is not None else current))
     if out.ok:
         out.summary = f"applied {args.study_id} #{args.iteration}: {out.summary}"
         out.data = {**out.data, "study_id": args.study_id, "iteration": args.iteration}

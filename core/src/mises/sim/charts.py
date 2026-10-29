@@ -31,12 +31,13 @@ def _convergence(rec: dict) -> dict | None:
 
 
 def _hist(sim_dir: Path, channel: str, title: str, unit: str) -> dict | None:
-    p = sim_dir / FIELDS_FILE
-    if not p.is_file():
-        return None
+    from ..cad import safe_io
     try:
-        f = Fields(p)
-    except (OSError, ValueError, KeyError):
+        data = safe_io.read_bytes(sim_dir, FIELDS_FILE)   # never follows a link (C6)
+        if data is None:
+            return None
+        f = Fields(data)
+    except (OSError, ValueError, KeyError, safe_io.UnsafePath):
         return None
     if channel not in f.ch:
         return None

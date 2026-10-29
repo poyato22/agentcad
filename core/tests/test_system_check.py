@@ -125,3 +125,15 @@ async def test_low_disk_is_error():
     rows = {r["id"]: r for r in await sc.system_check(SimpleNamespace(),
                                                       _probes(disk_free_gb=lambda: 1.0))}
     assert rows["disk"]["status"] == "error"
+
+
+async def test_check_includes_c7_cfd_solver_rows():
+    fake = [{"id": "cfd_builtin", "name": "Wind solver", "status": "ok", "version": "D3Q19",
+             "path": None, "detail": "always available", "fix": None},
+            {"id": "su2", "name": "SU2", "status": "optional_missing", "version": None,
+             "path": None, "detail": "not installed",
+             "fix": {"kind": "open_url", "label": "SU2 downloads", "url": "https://su2code.github.io"}}]
+    rows = {r["id"]: r for r in await sc.system_check(SimpleNamespace(), _probes(cfd_status=lambda: fake))}
+    assert rows["cfd_builtin"]["status"] == "ok"
+    assert rows["su2"]["status"] == "optional_missing" and rows["su2"]["fix"]["kind"] == "open_url"
+    assert "su2" not in sc.INSTALLERS and "cfd_builtin" not in sc.INSTALLERS

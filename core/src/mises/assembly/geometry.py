@@ -12,8 +12,9 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ..cad import safe_io
 from ..cad.runner import WORKER
-from ..platform import sandboxed_command
+from ..platform import kill_process_tree, sandboxed_command
 from ..types import ErrorCode, MisesError
 from .model import check_part_id
 from .solve import SolveResult
@@ -31,11 +32,15 @@ def part_dir(parts_root: Path, part_id: str) -> Path:
 
 def resolve_face(parts_root: Path, part_id: str, face_id: str) -> tuple[list[float], list[float]]:
     """A face id -> (centre, outward normal) from the part's stored metrics."""
-    metrics = part_dir(parts_root, part_id) / "metrics.json"
-    if not metrics.is_file():
+    # read without following links (C6 safe_io): the build sandbox can write the part dir
+    try:
+        metrics = safe_io.read_json(part_dir(parts_root, part_id), "metrics.json")
+    except (OSError, ValueError, safe_io.UnsafePath):
+        metrics = None
+    if not isinstance(metrics, dict):
         raise MisesError(ErrorCode.NOT_FOUND, f"part {part_id!r} is not built",
                          hint="build the part before using a face frame")
-    for f in json.loads(metrics.read_text()).get("face_list", []):
+    for f in metrics.get("face_list", []):
         if f.get("id") == face_id:
             normal = f.get("normal")
             if not normal:
@@ -72,19 +77,31 @@ async def run_geometry(parts_root: Path, assembly, result: SolveResult, *, want:
     GLB; when omitted a temp dir is used (its GLB is read into memory by the caller if needed).
     """
     parts_root = Path(parts_root)
+    owned = out_dir is None
+    out = Path(out_dir) if out_dir is not None else Path(tempfile.mkdtemp(prefix="mises-asm-"))
+    out.mkdir(parents=True, exist_ok=True)
+    # each built part's model.step is copied (read via safe_io, links never followed) into the
+    # job dir: the worker only ever opens host-made copies, never a path into a part dir
+    inputs = out / "inputs"
     instances = []
+    copied: dict[str, Path] = {}
     for inst in assembly.instances:
-        step = part_dir(parts_root, inst.part_id) / "model.step"
-        if step.is_file():
-            instances.append({"name": inst.name or inst.id, "step": str(step.resolve()),
+        step = copied.get(inst.part_id)
+        if step is None:
+            try:
+                step = safe_io.copy_out(part_dir(parts_root, inst.part_id), "model.step", inputs,
+                                        f"{inst.part_id}.step")
+            except (OSError, safe_io.UnsafePath):
+                step = None
+            if step is not None:
+                copied[inst.part_id] = step
+        if step is not None:
+            instances.append({"name": inst.name or inst.id, "step": str(step),
                               "transform": result.transforms[inst.id]})
     if not instances:
         raise MisesError(ErrorCode.NOT_FOUND, "no built parts in this assembly",
                          hint="build the referenced parts first")
 
-    owned = out_dir is None
-    out = Path(out_dir) if out_dir is not None else Path(tempfile.mkdtemp(prefix="mises-asm-"))
-    out.mkdir(parents=True, exist_ok=True)
     tmp = out / "tmp"
     tmp.mkdir(exist_ok=True)
     job = out / "job.json"
@@ -109,6 +126,8 @@ async def run_geometry(parts_root: Path, assembly, result: SolveResult, *, want:
         await proc.wait()
         raise
     _kill_group(proc)
+    # backstop to the profile's (deny process-fork), as in sim/proc.py: nothing outlives the job
+    await asyncio.to_thread(kill_process_tree, proc.pid)
     stderr = err.decode(errors="replace")[-4000:]
     if proc.returncode != 0:
         raise MisesError(ErrorCode.TOOL_FAILED, f"assembly geometry failed: {stderr.strip()}")

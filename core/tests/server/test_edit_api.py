@@ -186,3 +186,17 @@ def test_source_schema_annotations_and_inferred(client, home):
     assert rows["count"]["inferred"] is True
     assert rows["count"]["min"] == 0.75 and rows["count"]["max"] == 12.0
     assert "unit" not in rows["count"]
+
+
+def test_parts_list_version_is_the_c6_meta_version(client, home, rt):
+    # one source of truth: the host-only meta version; the parts.version column mirrors it
+    _seed(home)
+    rt.store.register_part("bracket", rt.active_project_id())
+    assert client.post("/parts/bracket/vars", headers=AUTH,
+                       json={"vars": {"length": 50}, "base_version": 1}).status_code == 200
+    row = next(p for p in client.get("/parts", headers=AUTH).json() if p["id"] == "bracket")
+    assert row["version"] == 2
+    assert rt.store.get_part("bracket").version == 2       # mirrored on the bump
+    edits.write_version(home / "parts" / "bracket", 5)     # even if the mirror lags
+    row = next(p for p in client.get("/parts", headers=AUTH).json() if p["id"] == "bracket")
+    assert row["version"] == 5

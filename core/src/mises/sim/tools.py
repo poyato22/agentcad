@@ -21,6 +21,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from ..cad import safe_io
 from ..cad.tools import _check_part_id, _existing
 from ..tools.registry import ToolContext, ToolRegistry, tool
 from ..types import ErrorCode, MisesError, SafetyClass, StepKind, ToolOutput
@@ -458,8 +459,10 @@ CHILD_GRACE_S = 60.0   # post-processing after the last solve
 def _rec_by_call(parts_root: Path, part_id: str, call_id: str) -> dict | None:
     for f in (Path(parts_root) / part_id / "sims").glob("sim_*/result.json"):
         try:
-            rec = json.loads(f.read_text())
-        except (OSError, ValueError):
+            rec = safe_io.read_json(f.parent, f.name)    # never follows a link (C6)
+        except (OSError, ValueError, safe_io.UnsafePath):
+            continue
+        if not isinstance(rec, dict):
             continue
         if rec.get("call_id") == call_id:
             return rec
@@ -498,7 +501,7 @@ async def design_review(ctx: ToolContext, args: ReviewArgs) -> ToolOutput:
         raise MisesError(ErrorCode.INVALID_INPUT, "no spec to review against",
                          hint="pass spec, or a project_id whose spec is set (spec_set)")
     spec = normalize_spec(spec)
-    metrics = json.loads((part / "metrics.json").read_text())
+    metrics = safe_io.read_json(part, "metrics.json") or {}
     try:
         material = studies.resolve_material(None, args.material or studies.default_material(ctx),
                                              studies._home(ctx))

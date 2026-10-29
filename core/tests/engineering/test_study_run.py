@@ -147,7 +147,8 @@ async def test_study_apply_sets_live_vars_and_checks_version(tmp_path, monkeypat
         await study_apply.handler(ctx, StudyApplyArgs(study_id=rec["id"], part_id="frame_x",
                                                       iteration=bad["n"]))
 
-    (live / "version.json").write_text(json.dumps({"version": 3}))
+    from mises import edits
+    edits.write_version(live, 3)      # C6: versions live in the host-only meta dir
     with pytest.raises(MisesError) as e:
         await study_apply.handler(ctx, StudyApplyArgs(study_id=rec["id"], part_id="frame_x",
                                                       iteration=best["n"], base_version=2))

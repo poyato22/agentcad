@@ -12,6 +12,7 @@ POST /runs/{run_id}/cancel (both kill the mesher / solver).
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import math
 import uuid
@@ -23,6 +24,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
+from ..cad import safe_io
 from ..cad.tools import PART_ID_RE
 from ..sim import studies
 from ..sim.ccx import solver_status
@@ -36,7 +38,7 @@ from ..sim.tools import (SIM_ID_RE, StaticArgs, find_sim, legacy_settings, list_
                          read_record, register_sim_tools)
 from ..sim.types import SimError
 from ..types import ErrorCode, MisesError, SafetyClass
-from .ui_api import _contained, _etag_matches
+from .ui_api import _etag_matches
 
 if TYPE_CHECKING:
     from ..runtime import Runtime
@@ -182,29 +184,33 @@ def build_sim_router(runtime: Runtime) -> APIRouter:
             raise MisesError(ErrorCode.NOT_FOUND, f"no study {sim_id}")
         return d
 
-    def _file(sim_id: str, name: str, what: str) -> Path:
+    def _file(sim_id: str, name: str, what: str) -> bytes:
+        """The study file's bytes, read without following links (C6 safe_io): the sims dir
+        lives in the part dir, which the build sandbox can write."""
         d = _dir(sim_id)
-        real = _contained(parts_root(), d / name)
-        if real is None or not real.is_file():
+        try:
+            data = safe_io.read_bytes(d, name)
+        except safe_io.UnsafePath:
+            data = None
+        if data is None:
             raise MisesError(ErrorCode.NOT_FOUND, f"study {sim_id} has no {what}",
                              hint="only finished studies have one")
-        return real
+        return data
 
     def _fields(sim_id: str) -> Fields:
-        p = _file(sim_id, FIELDS_FILE, "result fields")
+        data = _file(sim_id, FIELDS_FILE, "result fields")
         try:
-            return Fields(p)
+            return Fields(data)
         except (OSError, ValueError, KeyError) as e:
             raise MisesError(ErrorCode.NOT_FOUND, f"study {sim_id} fields unreadable: {e}") \
                 from None
 
-    def _send(real: Path, media: str, request: Request) -> Response:
-        st = real.stat()
-        etag = f'"{st.st_mtime_ns}-{st.st_size}"'
+    def _send(data: bytes, media: str, request: Request) -> Response:
+        etag = f'"{hashlib.sha256(data).hexdigest()[:24]}-{len(data)}"'
         headers = {"ETag": etag, "Cache-Control": "private, no-cache"}
         if _etag_matches(request.headers.get("if-none-match"), etag):
             return Response(status_code=304, headers=headers)
-        return Response(real.read_bytes(), media_type=media, headers=headers)
+        return Response(data, media_type=media, headers=headers)
 
     @router.get("/sims/{sim_id}")
     async def sim(sim_id: str):
@@ -285,7 +291,7 @@ def build_sim_router(runtime: Runtime) -> APIRouter:
                                             legacy.model_dump(), "static study")
         _check_part(part_id)
         part = parts_root() / part_id
-        if not (part / "metrics.json").is_file() or not (part / "model.step").is_file():
+        if not (safe_io.exists(part, "metrics.json") and safe_io.exists(part, "model.step")):
             raise MisesError(ErrorCode.NOT_FOUND, f"no built part {part_id!r}")
         # unknown material / environment / face ids are refused before a run exists
         type_id = payload.get("type", "static")

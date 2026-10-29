@@ -27,6 +27,7 @@ from typing import Any, Callable
 
 from pydantic import BaseModel, ValidationError
 
+from ..cad import safe_io
 from ..events import Event
 from ..types import (ErrorCode, MisesError, StepKind, ToolOutput, canonical_json, sha256_hex)
 from .ccx import INSTALL_HINT, ccx_version, find_ccx
@@ -140,18 +141,27 @@ def sims_dir(parts_root: Path, part_id: str) -> Path:
     return Path(parts_root) / part_id / "sims"
 
 
+def ensure_sim_dir(sim_dir: Path) -> None:
+    """parts/<id>/sims/<sim_id>, created level by level without following a link the build
+    sandbox may have left at `sims` or `<sim_id>` (C6 safe_io)."""
+    sim_dir = Path(sim_dir)
+    safe_io.ensure_dir(sim_dir.parent)
+    safe_io.ensure_dir(sim_dir)
+
+
 def write_record(sim_dir: Path, rec: dict) -> None:
-    sim_dir.mkdir(parents=True, exist_ok=True)
-    tmp = sim_dir / "result.json.tmp"
-    tmp.write_text(json.dumps(rec, default=float))
-    os.replace(tmp, sim_dir / "result.json")
+    ensure_sim_dir(sim_dir)
+    safe_io.write_text(sim_dir, "result.json", json.dumps(rec, default=float))
 
 
 def file_hash(p: Path) -> str | None:
+    """sha256 of a part-dir file, read without following links; None if missing or unsafe."""
+    p = Path(p)
     try:
-        return hashlib.sha256(Path(p).read_bytes()).hexdigest()
-    except OSError:
+        data = safe_io.read_bytes(p.parent, p.name)
+    except (OSError, safe_io.UnsafePath):
         return None
+    return None if data is None else hashlib.sha256(data).hexdigest()
 
 
 def find_sim(parts_root: Path, sim_id: str) -> Path | None:
@@ -164,13 +174,16 @@ def find_sim(parts_root: Path, sim_id: str) -> Path | None:
             real = d.resolve(strict=True)
         except OSError:
             continue
-        if real.is_relative_to(root) and (real / "result.json").is_file():
+        if (real.is_relative_to(root) and not d.is_symlink() and not d.parent.is_symlink()
+                and safe_io.exists(d, "result.json")):
             return real
     return None
 
 
 def read_record(sim_dir: Path, parts_root: Path) -> dict:
-    rec = json.loads((sim_dir / "result.json").read_text())
+    rec = safe_io.read_json(sim_dir, "result.json")
+    if not isinstance(rec, dict):
+        raise ValueError(f"{Path(sim_dir).name}: no study record")
     cur = file_hash(Path(parts_root) / rec.get("part_id", "") / "model.step")
     rec["stale"] = cur is None or cur != rec.get("geometry_hash")
     rec.setdefault("type", "static")
@@ -274,8 +287,8 @@ def preflight(type_id: str, settings: BaseModel, part_dir: Path, home: Path | No
     ids = {f for f in _faces_in(settings.model_dump(mode="json")) if re.fullmatch(r"f\d+", f)}
     if ids:
         try:
-            faces = json.loads((Path(part_dir) / "metrics.json").read_text()).get("face_list")
-        except (OSError, ValueError):
+            faces = (safe_io.read_json(part_dir, "metrics.json") or {}).get("face_list")
+        except (OSError, ValueError, safe_io.UnsafePath):
             faces = None
         known = {f.get("id") for f in faces or []}
         missing = sorted(ids - known, key=lambda s: int(s[1:]))
@@ -344,10 +357,12 @@ async def run_study(ctx, type_id: str, part_id: str, part_dir: Path, settings: B
     try:
         job_root.mkdir(parents=True, exist_ok=True)
         async with _lock(part_dir):  # a consistent snapshot of the geometry this study solves
-            shutil.copyfile(part_dir / "model.step", job_root / "model.step")
-            if (part_dir / "model.stl").is_file():
-                shutil.copyfile(part_dir / "model.stl", job_root / "model.stl")
-            metrics = json.loads((part_dir / "metrics.json").read_text())
+            # read without following links (C6 safe_io): the build sandbox can write the part dir
+            if safe_io.copy_out(part_dir, "model.step", job_root) is None:
+                raise MisesError(ErrorCode.NOT_FOUND, f"{part_id} has no model.step",
+                                 hint="rebuild the part")
+            safe_io.copy_out(part_dir, "model.stl", job_root)
+            metrics = safe_io.read_json(part_dir, "metrics.json")
     except BaseException:  # never leave a half-made temp dir behind
         shutil.rmtree(job_root, ignore_errors=True)
         raise
@@ -427,7 +442,7 @@ async def run_study(ctx, type_id: str, part_id: str, part_dir: Path, settings: B
                    "element": "C3D10 (quadratic tetrahedra)" if getattr(
                        settings.mesh, "second_order", True) else "C3D4 (linear tetrahedra)",
                    "procedure": t.solver} if t.needs_ccx else out.pop("solver"))
-        sim_dir.mkdir(parents=True, exist_ok=True)
+        ensure_sim_dir(sim_dir)
         outputs = []
         for name in ("result.glb", "fields.npz", "slice_xz.png", "slice_xy.png"):
             if (job_root / name).is_file():

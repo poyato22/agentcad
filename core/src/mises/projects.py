@@ -194,8 +194,19 @@ def _part_disk(home: Path, part_id: str) -> dict | None:
 _NO_DISK = {"vars": {}, "metrics": None, "mtime": None}
 
 
+def part_version(home: Path, row: Part) -> int:
+    """The part's version. Source of truth: C6's host-only meta file
+    (parts/.mises-meta/<id>/version.json), bumped by every successful edit. The parts.version
+    column is only a mirror of it (Store.set_part_version); it answers for a part that has no
+    meta version yet (built before versioning: read_version gives 0)."""
+    from . import edits
+    v = edits.read_version(_parts_root(home) / row.id)
+    return v if v > 0 else row.version
+
+
 def part_view(store: Store, home: Path, row: Part) -> dict:
     d = row.model_dump()
+    d["version"] = part_version(home, row)
     # `part_id` is kept beside the contract's `id` so older UI code keeps working
     return {**d, "part_id": row.id, **(_part_disk(home, row.id) or _NO_DISK)}
 
@@ -208,7 +219,8 @@ def list_parts(store: Store, home: Path, project_id: str) -> list[dict]:
         disk = _part_disk(home, r.id)
         if disk is None and r.kind == "part":
             continue
-        out.append({**r.model_dump(), "part_id": r.id, **(disk or _NO_DISK)})
+        out.append({**r.model_dump(), "version": part_version(home, r), "part_id": r.id,
+                    **(disk or _NO_DISK)})
     return out
 
 

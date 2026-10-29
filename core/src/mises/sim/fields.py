@@ -61,9 +61,12 @@ def _save(path: Path, arrays: dict) -> None:
 
 
 class Fields:
-    def __init__(self, path: Path):
+    def __init__(self, path: Path | bytes):
+        """`path`: a host-made file, or the npz bytes (read from a part dir via safe_io)."""
         import ast
-        with np.load(path, allow_pickle=False) as z:
+        import io
+        src = io.BytesIO(path) if isinstance(path, (bytes, bytearray)) else path
+        with np.load(src, allow_pickle=False) as z:
             self.kind = str(z["kind"])
             self.units: dict = ast.literal_eval(str(z["units"]))
             self.ch = {k[3:]: z[k] for k in z.files if k.startswith("ch_")}

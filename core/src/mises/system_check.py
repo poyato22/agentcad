@@ -19,7 +19,7 @@ import re
 import shutil
 import subprocess
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Awaitable, Callable
 
@@ -159,6 +159,8 @@ class Probes:
     ollama: Callable[[], Awaitable[dict]]
     onshape: Callable[[], Awaitable[dict | None]]
     printers: Callable[[], Awaitable[list[dict]]]
+    # C7's wind/CFD solvers (built-in LBM, optional SU2 / OpenFOAM container): detect only
+    cfd_status: Callable[[], list[dict]] = field(default_factory=lambda: _cfd_solver_status)
 
 
 def default_probes(runtime) -> Probes:
@@ -210,6 +212,11 @@ def default_probes(runtime) -> Probes:
     )
 
 
+def _cfd_solver_status() -> list[dict]:
+    from .sim.cfd import cfd_solver_status    # lazy: keeps numpy out of the check's import
+    return cfd_solver_status()
+
+
 def _row(id_: str, name: str, status: str, *, version=None, path=None, detail="",
          fix: dict | None = None) -> dict:
     return {"id": id_, "name": name, "status": status, "version": version, "path": path,
@@ -234,6 +241,7 @@ def _sync_probes(p: Probes) -> dict:
         "slicer": sp, "bundles": p.bundle_mdfind("com.prusa3d.slic3r") if sp is None else [],
         "brew": brew, "brew_version": p.brew_version(brew) if brew else None,
         "conda": p.conda(), "disk": p.disk_free_gb(), "keychain": p.keychain_ok(),
+        "cfd": p.cfd_status(),
     }
 
 
@@ -263,6 +271,12 @@ async def system_check(runtime, probes: Probes | None = None) -> list[dict]:
                      version=s["ccx_version"],
                      detail="FEM solver" if ccx else "needed to run simulations",
                      fix=None if ccx else _install_fix("calculix")))
+
+    # wind / CFD solvers (C7): the built-in one always works; SU2 and an OpenFOAM container are
+    # optional and only detected. No installer: C7's rows carry their own fix (a link) or none.
+    for r in s["cfd"]:
+        rows.append(_row(r["id"], r["name"], r["status"], version=r.get("version"),
+                         path=r.get("path"), detail=r.get("detail") or "", fix=r.get("fix")))
 
     # PrusaSlicer (every place it can live, including the bundle id)
     sp = s["slicer"]
