@@ -9,6 +9,8 @@ import { RunsTab } from "./RunsTab";
 import "./agents.css";
 
 const TABS: { id: ManagerTab; label: string }[] = [{ id: "runs", label: "Runs" }, { id: "agents", label: "Agents" }];
+/** Tab stops the focus trap cycles through (tree rows hold a roving tabindex 0 / -1). */
+const FOCUSABLE = 'a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
 export function AgentManager(): JSX.Element | null {
   useEffect(() => installManagerShortcut(), []);
@@ -32,6 +34,21 @@ function Panel(): JSX.Element {
     return () => { document.removeEventListener("keydown", onKey); back?.focus?.(); };
   }, []);
 
+  /** Focus trap: Tab and Shift+Tab cycle inside the slide-over (it is aria-modal). */
+  const onPanelKey = (e: KeyboardEvent) => {
+    if (e.key !== "Tab" || !panel.current) return;
+    // closed sections aren't rendered at all, so every match is visible; skip disabled controls
+    // and the in-row controls taken out of the tab order (tabindex -1)
+    const items = [...panel.current.querySelectorAll<HTMLElement>(FOCUSABLE)]
+      .filter((el) => !el.hasAttribute("disabled") && el.getAttribute("tabindex") !== "-1");
+    if (items.length === 0) { e.preventDefault(); panel.current.focus(); return; }
+    const first = items[0];
+    const last = items[items.length - 1];
+    const active = document.activeElement;
+    if (e.shiftKey && (active === first || active === panel.current || !panel.current.contains(active))) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && (active === last || !panel.current.contains(active))) { e.preventDefault(); first.focus(); }
+  };
+
   const onTabKey = (e: KeyboardEvent) => {
     if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
     e.preventDefault();
@@ -43,7 +60,8 @@ function Panel(): JSX.Element {
 
   return (
     <div class="am-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) closeAgentManager(); }}>
-      <div ref={panel} class="am-panel" role="dialog" aria-modal="true" aria-label="Agent manager" tabIndex={-1} data-agent-manager>
+      <div ref={panel} class="am-panel" role="dialog" aria-modal="true" aria-label="Agent manager" tabIndex={-1} data-agent-manager
+        onKeyDown={onPanelKey}>
         <div class="am-head">
           <h2 class="am-h">Agents</h2>
           <div class="am-tabs" role="tablist" aria-label="Agent manager sections" onKeyDown={onTabKey}>

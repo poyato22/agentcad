@@ -77,6 +77,15 @@ describe("labels", () => {
     expect(refusalText({ reason: "pending_approval", children: [] }, label)).toContain("never applied");
   });
 
+  it("a blocking worker that waits for approval is described as waiting, not working", () => {
+    const label = (id: string) => `worker ${id}`;
+    const waits = (id: string) => id === "w";
+    expect(refusalText({ reason: "running", children: ["w"] }, label, waits))
+      .toBe("A worker of this run is waiting for your approval (worker w). Stop or decide it first, or use Cancel and delete — the pending change is then rejected, never applied.");
+    expect(refusalText({ reason: "running", children: ["a", "w"] }, label, waits))
+      .toContain("A worker of this run is still working (worker a), and one is waiting for your approval (worker w).");
+  });
+
   it("model refs: inherit first, claude-code aliases prefixed", () => {
     const models = { default: "anthropic/claude-sonnet-5-5", vendors: [
       { vendor: "claude-code", key: "signed_in", models: ["sonnet", "opus"] },

@@ -6,7 +6,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/preact
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CoreClient } from "../../api/client";
 import type { AgentRun, MisesEvent, Step } from "../../api/types";
-import { recordActivity, resetActivity } from "../../state/activity";
+import { activityByRun, recordActivity, resetActivity } from "../../state/activity";
 import { approvals, bindClient, resetStore, runs, selectedRunId, steps } from "../../state/store";
 import { recordThinking, resetThinking, THINKING_MAX, thinkingByRun } from "../../state/thinking";
 import { resetCatalog } from "../dialogs/catalog";
@@ -91,6 +91,25 @@ describe("thread status line from agent_activity transitions", () => {
     expect(status()?.querySelector("[data-status-text]")?.textContent).toBe("meshing · 0 s");
     await act(async () => { vi.setSystemTime(104_000); vi.advanceTimersByTime(1000); });   // the tick moves the clock to 105 s
     expect(status()?.querySelector("[data-status-text]")?.textContent).toBe("meshing · 5 s");
+  });
+});
+
+describe("a finished run shows no stale activity", () => {
+  it("the line hides when the run's status is terminal, even without a final idle/done", async () => {
+    mount();
+    recordActivity(act_("tool", "meshing", Date.now() / 1000));
+    await frame();
+    expect(status()).toBeTruthy();
+    runs.value = new Map([["r1", { ...runs.value.get("r1")!, status: "failed" }]]);
+    await frame();
+    expect(status()).toBeNull();
+  });
+
+  it("run_finished drops the run's activity entry", () => {
+    recordActivity(act_("thinking"));
+    expect(activityByRun.value.has("r1")).toBe(true);
+    recordActivity({ type: "run_finished", run_id: "r1", ts: 0, data: { status: "failed" } });
+    expect(activityByRun.value.has("r1")).toBe(false);
   });
 });
 

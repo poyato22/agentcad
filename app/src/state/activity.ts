@@ -27,6 +27,14 @@ export function parseActivity(ev: MisesEvent): AgentActivity | null {
 }
 
 export function recordActivity(ev: MisesEvent): void {
+  // a finished run is no longer active, even when no final idle/done activity came (a crash, or
+  // a delete whose tracker is forgotten without one): drop it so no stale state lingers (A2)
+  if (ev.type === "run_finished" && ev.run_id && activityByRun.value.has(ev.run_id)) {
+    const m = new Map(activityByRun.value);
+    m.delete(ev.run_id);
+    activityByRun.value = m;
+    return;
+  }
   const a = parseActivity(ev);
   if (!a) return;
   const m = new Map(activityByRun.value);

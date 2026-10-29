@@ -109,18 +109,35 @@ export function agoText(ts: number, nowS: number = Date.now() / 1000): string {
   return `${Math.round(s / 86400)} d ago`;
 }
 
-/** Why a delete was refused, in plain words. `label` names a run id for the message. */
-export function refusalText(refused: DeleteRefused, label: (id: string) => string): string {
+/** The approval wording, shared by every refusal that involves a pending approval. */
+export const REJECTED_NOT_APPLIED = "the pending change is then rejected, never applied";
+
+function names(ids: readonly string[], label: (id: string) => string): string {
+  const shown = ids.slice(0, 3).map(label).join(", ");
+  return ids.length > 3 ? `${shown} and ${ids.length - 3} more` : shown;
+}
+
+/** Why a delete was refused, in plain words. `label` names a run id; `awaitingApproval` tells a
+ *  blocking worker that waits for your approval (the core reports those as "running" too) from
+ *  one that is still working. */
+export function refusalText(refused: DeleteRefused, label: (id: string) => string,
+  awaitingApproval: (id: string) => boolean = () => false): string {
   if (refused.reason === "pending_approval") {
-    return "This run is waiting for your approval. Decide its card first, or use Cancel and delete — the pending change is then rejected, never applied.";
+    return `This run is waiting for your approval. Decide its card first, or use Cancel and delete — ${REJECTED_NOT_APPLIED}.`;
   }
-  if (refused.children.length > 0) {
-    const n = refused.children.length;
-    const names = refused.children.slice(0, 3).map(label).join(", ");
-    const more = n > 3 ? ` and ${n - 3} more` : "";
-    return `${n === 1 ? "A worker of this run is" : `${n} workers of this run are`} still working (${names}${more}). Stop ${n === 1 ? "it" : "them"} first, or use Cancel and delete.`;
-  }
-  return "This run is still working. Stop it first, or use Cancel and delete.";
+  const kids = refused.children;
+  if (kids.length === 0) return "This run is still working. Stop it first, or use Cancel and delete.";
+  const waiting = kids.filter(awaitingApproval);
+  const working = kids.filter((k) => !awaitingApproval(k));
+  const parts: string[] = [];
+  if (working.length) parts.push(`${working.length === 1 ? "is" : "are"} still working (${names(working, label)})`);
+  if (waiting.length) parts.push(`${waiting.length === 1 ? "is" : "are"} waiting for your approval (${names(waiting, label)})`);
+  const subject = (n: number) => (n === 1 ? "A worker of this run" : `${n} workers of this run`);
+  const sentence = working.length && waiting.length
+    ? `${subject(working.length)} ${parts[0]}, and ${waiting.length === 1 ? "one" : waiting.length} ${parts[1]}.`
+    : `${subject(kids.length)} ${parts[0]}.`;
+  if (waiting.length) return `${sentence} Stop or decide ${kids.length === 1 ? "it" : "them"} first, or use Cancel and delete — ${REJECTED_NOT_APPLIED}.`;
+  return `${sentence} Stop ${kids.length === 1 ? "it" : "them"} first, or use Cancel and delete.`;
 }
 
 /** Every model ref the pickers offer ("inherit" first), from GET /models. */

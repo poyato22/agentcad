@@ -1,27 +1,43 @@
 // Runs tab of the agent manager: every run as the orchestrator → worker tree, grouped by build.
 // Rows show status, live activity, model, cost, last activity and title; rename, pin, archive and
 // delete per row; multi-select bulk delete; and a "Clean up" panel that always shows a dry-run
-// count before anything is removed. Deleting never touches a running run or one awaiting approval:
-// the core refuses (409) and the row says why in plain words, offering "Cancel and delete".
+// list before anything is removed, then deletes exactly those runs. Deleting never touches a
+// running run or one awaiting approval: the core refuses (409) and the row says why in plain
+// words, offering "Cancel and delete" (cancelling only ever rejects a pending change).
+// Keyboard: the tree uses a roving tabindex — ↑/↓ move between rows, → opens / goes to the first
+// worker, ← closes / goes to the parent, Home/End, Enter shows the run; Tab reaches the row's
+// buttons.
 import type { JSX } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { onCoreEvent } from "../../api/events";
 import type { AgentRun, CleanupResult, DeleteRefused, RunNode } from "../../api/types";
 import { activityByRun } from "../../state/activity";
-import { actions } from "../../state/store";
+import { actions, approvals } from "../../state/store";
 import { Button } from "../common/Button";
 import { Led, type LedTone } from "../common/Led";
-import {
-  agoText, closeAgentManager, costText, flattenTree, groupByBuild, lastActive, refusalText, runTitle, subtreeIds, visibleRoots,
-} from "./manager";
 import { activityLabel } from "./activityLabel";
+import {
+  agoText, closeAgentManager, costText, flattenTree, groupByBuild, lastActive, refusalText, REJECTED_NOT_APPLIED, runTitle,
+  subtreeIds, type TreeRow, visibleRoots,
+} from "./manager";
 
 const TONE: Record<AgentRun["status"], LedTone> = { queued: "faint", running: "blue", done: "green", failed: "red", cancelled: "faint" };
-const FINISHED = new Set<AgentRun["status"]>(["done", "failed", "cancelled"]);
 /** Refetch the tree at most this often while runs start and finish. */
 const RELOAD_MS = 300;
+/** Cancel and delete: retries while a cancelled run stops (250 ms apart, ~5 s in all). */
+const STOP_TRIES = 20;
+/** …but a blocker that is only an approval stops the retries after this many (cancel didn't clear it). */
+const APPROVAL_TRIES = 4;
 
 function message(e: unknown): string { return e instanceof Error ? e.message : String(e); }
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/** Does this run wait for the human's approval (a pending card in the store, or its activity)? */
+function awaitingApproval(id: string): boolean {
+  if (activityByRun.value.get(id)?.state === "waiting_approval") return true;
+  for (const a of approvals.value.values()) if (a.run_id === id && a.status === "pending") return true;
+  return false;
+}
 
 export function RunsTab(): JSX.Element {
   const [tree, setTree] = useState<RunNode[] | null>(null);
@@ -33,7 +49,10 @@ export function RunsTab(): JSX.Element {
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [refusals, setRefusals] = useState<ReadonlyMap<string, DeleteRefused>>(new Map());
   const [cleanupOpen, setCleanupOpen] = useState(false);
+  /** The tree row that holds the roving tab stop. */
+  const [focusId, setFocusId] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const root = useRef<HTMLDivElement>(null);
 
   const load = async () => {
     try {
@@ -64,12 +83,47 @@ export function RunsTab(): JSX.Element {
     return m;
   }, [tree]);
   const labelOf = (id: string) => { const r = byId.get(id); return r ? `${r.agent} · ${runTitle(r)}` : id; };
+  const refusalOf = (r: DeleteRefused) => refusalText(r, labelOf, awaitingApproval);
 
   const groups = groupByBuild(visibleRoots(tree ?? [], showArchived), names);
+  const rowsByGroup = groups.map((g) => flattenTree(g.roots, collapsed));
+  const allRows = rowsByGroup.flat();
+  const tabStop = allRows.some((r) => r.run.id === focusId) ? focusId : allRows[0]?.run.id ?? null;
 
   const toggleSel = (id: string) => setSelected((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
-  const toggleFold = (id: string) => setCollapsed((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const setFold = (id: string, closed: boolean) => setCollapsed((s) => { const n = new Set(s); if (closed) n.add(id); else n.delete(id); return n; });
   const setRefusal = (id: string, r: DeleteRefused | null) => setRefusals((m) => { const n = new Map(m); if (r) n.set(id, r); else n.delete(id); return n; });
+  const focusRow = (id: string) => {
+    setFocusId(id);
+    // after the re-render that moves the tab stop
+    queueMicrotask(() => root.current?.querySelector<HTMLElement>(`[data-run-row="${CSS.escape(id)}"]`)?.focus());
+  };
+
+  const onTreeKey = (e: KeyboardEvent, row: TreeRow) => {
+    if (e.target !== e.currentTarget) return;           // keys inside the row's own controls
+    const i = allRows.findIndex((r) => r.run.id === row.run.id);
+    const parentId = row.run.parent_run_id ?? row.run.parent_id;
+    let to: string | null = null;
+    switch (e.key) {
+      case "ArrowDown": to = allRows[i + 1]?.run.id ?? null; break;
+      case "ArrowUp": to = allRows[i - 1]?.run.id ?? null; break;
+      case "Home": to = allRows[0]?.run.id ?? null; break;
+      case "End": to = allRows[allRows.length - 1]?.run.id ?? null; break;
+      case "ArrowRight":
+        if (row.hasChildren && !row.expanded) setFold(row.run.id, false);
+        else if (row.expanded) to = allRows[i + 1]?.run.id ?? null;
+        break;
+      case "ArrowLeft":
+        if (row.expanded) setFold(row.run.id, true);
+        else if (parentId && byId.has(parentId)) to = parentId;
+        break;
+      case "Enter": actions.selectRun(row.run.id); closeAgentManager(); break;
+      case " ": toggleSel(row.run.id); break;
+      default: return;
+    }
+    e.preventDefault();
+    if (to) focusRow(to);
+  };
 
   /** Deletes one run; a refusal is kept on its row. Returns true when it was deleted. */
   const deleteOne = async (id: string): Promise<boolean> => {
@@ -87,21 +141,27 @@ export function RunsTab(): JSX.Element {
     } catch (e) { setError(message(e)); }
   };
 
-  /** Cancel the run and its blocking workers (pending changes are rejected, never applied), then
-   *  delete once the core no longer sees them as busy. */
+  /** Cancel the run and every run blocking it (cancel is idempotent and only ever rejects a
+   *  pending change, never applies it), then delete once the core no longer sees them busy. A
+   *  blocker that cancelling didn't clear — an approval still pending — stops the retries at once
+   *  with the approval wording instead of spinning. */
   const onCancelAndDelete = async (id: string, refused: DeleteRefused) => {
     setNotice(null);
+    setError(null);
     const client = actions.client();
     try {
-      for (const rid of [...refused.children, id]) {
-        const r = byId.get(rid);
-        if (!r || !FINISHED.has(r.status) || refused.reason === "pending_approval") await client.cancel(rid).catch(() => undefined);
-      }
-      for (let i = 0; i < 20; i++) {
+      for (const rid of [...refused.children, id]) await client.cancel(rid).catch(() => undefined);
+      for (let i = 0; i < STOP_TRIES; i++) {
         const again = await client.deleteRun(id);
         if (!again) { setRefusal(id, null); setNotice(`Cancelled and deleted ${labelOf(id)}.`); await load(); return; }
         setRefusal(id, again);
-        await new Promise((r) => setTimeout(r, 250));
+        const onlyApprovals = again.reason === "pending_approval"
+          || (again.children.length > 0 && again.children.every(awaitingApproval) && i + 1 >= APPROVAL_TRIES);
+        if (onlyApprovals) {
+          setError(`Stopped, but a change is still waiting for your approval. Decide its card first (Reject keeps nothing), then delete — ${REJECTED_NOT_APPLIED}.`);
+          return;
+        }
+        await sleep(250);
       }
       setError("The run is still stopping. Try Delete again in a moment.");
     } catch (e) { setError(message(e)); }
@@ -111,12 +171,15 @@ export function RunsTab(): JSX.Element {
     setNotice(null);
     let done = 0;
     let refused = 0;
-    try {
-      for (const id of selected) { if (await deleteOne(id)) done++; else refused++; }
-    } catch (e) { setError(message(e)); }
-    setNotice(refused
-      ? `Deleted ${done}. ${refused} couldn't be deleted yet — the reason is shown on ${refused === 1 ? "its row" : "each row"}.`
-      : `Deleted ${done} run${done === 1 ? "" : "s"}.`);
+    const failed: string[] = [];
+    // each id on its own: a 404 (deleted elsewhere) or a network error never stops the rest
+    for (const id of [...selected]) {
+      try { if (await deleteOne(id)) done++; else refused++; } catch (e) { failed.push(`${labelOf(id)}: ${message(e)}`); }
+    }
+    const bits = [`Deleted ${done} run${done === 1 ? "" : "s"}.`];
+    if (refused) bits.push(`${refused} couldn't be deleted yet — the reason is shown on ${refused === 1 ? "its row" : "each row"}.`);
+    if (failed.length) bits.push(`${failed.length} failed: ${failed.join("; ")}.`);
+    setNotice(bits.join(" "));
     await load();
   };
 
@@ -125,7 +188,7 @@ export function RunsTab(): JSX.Element {
   };
 
   return (
-    <div class="am-runs" data-runs-tab>
+    <div class="am-runs" data-runs-tab ref={root}>
       <div class="am-toolbar">
         <label class="am-check faint">
           <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived((e.currentTarget as HTMLInputElement).checked)} />
@@ -138,19 +201,23 @@ export function RunsTab(): JSX.Element {
         )}
         <Button onClick={() => setCleanupOpen(!cleanupOpen)} aria-expanded={cleanupOpen}>Clean up…</Button>
       </div>
-      {cleanupOpen && <CleanupPanel onDone={(r) => { setNotice(`Deleted ${r.count} finished run${r.count === 1 ? "" : "s"}.`); setCleanupOpen(false); void load(); }} />}
+      {cleanupOpen && (
+        <CleanupPanel labelOf={labelOf} refusalOf={refusalOf}
+          onDeleted={(summary) => { setNotice(summary); void load(); }} />
+      )}
       {notice && <div class="am-notice text" role="status">{notice}</div>}
       {error && <div class="am-error tone-red text" role="alert">{error}</div>}
       {tree === null && !error && <div class="am-empty faint">Loading runs…</div>}
       {tree !== null && groups.length === 0 && <div class="am-empty faint">No runs yet. Start one with New run (⌘N).</div>}
-      {groups.map((g) => (
+      {groups.map((g, gi) => (
         <section key={g.projectId ?? "none"} class="am-group" aria-label={`Build ${g.name}`}>
           <h3 class="am-group-h">{g.name}</h3>
-          <ul class="am-tree" role="tree" aria-label={`Runs in ${g.name}`}>
-            {flattenTree(g.roots, collapsed).map((row) => (
+          <ul class="am-tree" role="tree" aria-label={`Runs in ${g.name}`} aria-multiselectable="true">
+            {rowsByGroup[gi].map((row) => (
               <RunRow key={row.run.id} row={row} selected={selected.has(row.run.id)} refusal={refusals.get(row.run.id) ?? null}
-                labelOf={labelOf}
-                onSelect={() => toggleSel(row.run.id)} onFold={() => toggleFold(row.run.id)}
+                tabStop={tabStop === row.run.id} refusalOf={refusalOf}
+                onKey={(e) => onTreeKey(e, row)} onFocus={() => setFocusId(row.run.id)}
+                onSelect={() => toggleSel(row.run.id)} onFold={() => setFold(row.run.id, row.expanded)}
                 onOpen={() => { actions.selectRun(row.run.id); closeAgentManager(); }}
                 onRename={(t) => { void patch(row.run.id, { title: t }); }}
                 onPin={() => { void patch(row.run.id, { pinned: !row.run.pinned }); }}
@@ -167,11 +234,13 @@ export function RunsTab(): JSX.Element {
 }
 
 interface RowProps {
-  row: ReturnType<typeof flattenTree>[number];
+  row: TreeRow;
   selected: boolean;
   refusal: DeleteRefused | null;
   workers: number;
-  labelOf: (id: string) => string;
+  tabStop: boolean;
+  refusalOf: (r: DeleteRefused) => string;
+  onKey: (e: KeyboardEvent) => void; onFocus: () => void;
   onSelect: () => void; onFold: () => void; onOpen: () => void;
   onRename: (title: string) => void; onPin: () => void; onArchive: () => void;
   onDelete: () => void; onCancelAndDelete: (r: DeleteRefused) => void;
@@ -181,25 +250,32 @@ function RunRow(p: RowProps): JSX.Element {
   const r = p.row.run;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
+  /** Esc means "discard": the blur that follows the input's removal must not save. */
+  const cancelled = useRef(false);
   const act = activityByRun.value.get(r.id) ?? null;
   const waiting = act?.state === "waiting_approval" || act?.state === "waiting_user";
   const tone: LedTone = waiting ? "blue" : TONE[r.status];
   const title = runTitle(r);
 
+  const startRename = () => { cancelled.current = false; setDraft(title); setEditing(true); };
   const commit = () => {
+    if (cancelled.current) return;
     setEditing(false);
     const t = draft.trim();
     if (t && t !== title) p.onRename(t);
   };
+  const cancel = () => { cancelled.current = true; setEditing(false); };
 
   return (
     <li role="treeitem" aria-level={p.row.depth + 1} aria-expanded={p.row.hasChildren ? p.row.expanded : undefined}
-      aria-selected={p.selected} class={`am-row${p.selected ? " sel" : ""}`} data-run-row={r.id}
+      aria-selected={p.selected} aria-label={`${title}, ${r.agent}, ${act ? activityLabel(act.state) : r.status}`}
+      tabIndex={p.tabStop ? 0 : -1} onKeyDown={p.onKey} onFocus={(e) => { if (e.target === e.currentTarget) p.onFocus(); }}
+      class={`am-row${p.selected ? " sel" : ""}`} data-run-row={r.id}
       style={{ "--depth": String(p.row.depth) } as JSX.CSSProperties}>
       <div class="am-line">
-        <input type="checkbox" class="am-sel" checked={p.selected} aria-label={`Select ${title}`} onChange={p.onSelect} />
+        <input type="checkbox" class="am-sel" checked={p.selected} aria-label={`Select ${title}`} onChange={p.onSelect} tabIndex={-1} />
         {p.row.hasChildren
-          ? <button type="button" class="am-fold" aria-label={`${p.row.expanded ? "Hide" : "Show"} ${p.workers} worker${p.workers === 1 ? "" : "s"}`} onClick={p.onFold}>{p.row.expanded ? "▾" : "▸"}</button>
+          ? <button type="button" class="am-fold" tabIndex={-1} aria-label={`${p.row.expanded ? "Hide" : "Show"} ${p.workers} worker${p.workers === 1 ? "" : "s"}`} onClick={p.onFold}>{p.row.expanded ? "▾" : "▸"}</button>
           : <span class="am-fold" aria-hidden="true">{p.row.depth > 0 ? "└" : ""}</span>}
         <span class="am-dot" data-activity={act?.state ?? undefined}><Led tone={tone} title={act ? activityLabel(act.state) : r.status} /></span>
         {editing
@@ -207,7 +283,11 @@ function RunRow(p: RowProps): JSX.Element {
             <input type="text" class="am-rename" aria-label="Run title" value={draft} ref={(el) => el?.focus()}
               onInput={(e) => setDraft((e.currentTarget as HTMLInputElement).value)}
               onBlur={commit}
-              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commit(); } else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setEditing(false); } }} />
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                if (e.key === "Enter") { e.preventDefault(); commit(); }
+                else if (e.key === "Escape") { e.preventDefault(); cancel(); }
+              }} />
           )
           : <button type="button" class="am-title text" title="Show this run" onClick={p.onOpen}>{r.pinned && <span class="am-pin" aria-label="pinned">⚲ </span>}{title}</button>}
         <span class="am-meta faint text">{`${r.agent} · ${r.model}`}</span>
@@ -221,7 +301,7 @@ function RunRow(p: RowProps): JSX.Element {
         {r.archived && <span class="faint">archived</span>}
         <span class="am-spacer" />
         <span class="am-actions">
-          <Button variant="ghost" onClick={() => { setDraft(title); setEditing(true); }}>Rename</Button>
+          <Button variant="ghost" onClick={startRename}>Rename</Button>
           <Button variant="ghost" aria-pressed={!!r.pinned} onClick={p.onPin}>{r.pinned ? "Unpin" : "Pin"}</Button>
           <Button variant="ghost" onClick={p.onArchive}>{r.archived ? "Unarchive" : "Archive"}</Button>
           <ConfirmButton label="Delete" confirm="Confirm delete" variant="danger" onConfirm={p.onDelete} />
@@ -229,7 +309,7 @@ function RunRow(p: RowProps): JSX.Element {
       </div>
       {p.refusal && (
         <div class="am-refused" role="alert" data-refusal={p.refusal.reason}>
-          <span class="text">{refusalText(p.refusal, p.labelOf)}</span>
+          <span class="text">{p.refusalOf(p.refusal)}</span>
           <ConfirmButton label="Cancel and delete" confirm="Stop it and delete?" variant="danger" onConfirm={() => p.onCancelAndDelete(p.refusal as DeleteRefused)} />
         </div>
       )}
@@ -247,7 +327,7 @@ function ConfirmButton({ label, confirm, onConfirm, variant = "default" }: {
     <Button variant={armed ? "danger" : variant === "danger" ? "ghost" : "default"} class={armed ? "am-armed" : undefined}
       onClick={() => { if (armed) { setArmed(false); onConfirm(); } else setArmed(true); }}
       onBlur={() => setArmed(false)}
-      onKeyDown={(e: KeyboardEvent) => { if (e.key === "Escape" && armed) { e.stopPropagation(); setArmed(false); } }}>
+      onKeyDown={(e: KeyboardEvent) => { if (e.key === "Escape" && armed) { e.stopPropagation(); e.preventDefault(); setArmed(false); } }}>
       {armed ? confirm : label}
     </Button>
   );
@@ -258,28 +338,47 @@ const AGES: { label: string; days: number | null }[] = [
 ];
 const STATUSES = ["done", "failed", "cancelled"] as const;
 
-/** Clean up: pick age and statuses, see the dry-run count, then delete with the same filters (the
- *  core re-checks each run, so one that became busy since the check is kept). */
-function CleanupPanel({ onDone }: { onDone: (r: CleanupResult) => void }): JSX.Element {
+interface CleanupOutcome { deleted: number; total: number; kept: { id: string; why: string }[] }
+
+/** Clean up: pick age and statuses, see the dry-run list, then delete exactly those runs, one by
+ *  one (DELETE /runs/{id} re-checks each). A run that finished after the check is never included;
+ *  one that became busy is kept and its reason shown. */
+function CleanupPanel({ labelOf, refusalOf, onDeleted }: {
+  labelOf: (id: string) => string; refusalOf: (r: DeleteRefused) => string; onDeleted: (summary: string) => void;
+}): JSX.Element {
   const [days, setDays] = useState<number | null>(7);
   const [statuses, setStatuses] = useState<ReadonlySet<string>>(new Set(STATUSES));
   const [preview, setPreview] = useState<CleanupResult | null>(null);
+  const [outcome, setOutcome] = useState<CleanupOutcome | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const body = { older_than_days: days, status_in: [...statuses] };
 
   const check = async () => {
-    setBusy(true); setError(null);
-    try { setPreview(await actions.client().cleanupRuns({ ...body, dry_run: true })); } catch (e) { setError(message(e)); }
+    setBusy(true); setError(null); setOutcome(null);
+    try { setPreview(await actions.client().cleanupRuns({ older_than_days: days, status_in: [...statuses], dry_run: true })); } catch (e) { setError(message(e)); }
     setBusy(false);
   };
-  // any change to the filters invalidates the count: it must be checked again before deleting
+  // any change to the filters invalidates the list: it must be checked again before deleting
   useEffect(() => { setPreview(null); }, [days, [...statuses].sort().join(",")]);
 
   const run = async () => {
+    if (!preview) return;
     setBusy(true); setError(null);
-    try { onDone(await actions.client().cleanupRuns({ ...body, dry_run: false })); } catch (e) { setError(message(e)); }
+    const client = actions.client();
+    const kept: { id: string; why: string }[] = [];
+    let deleted = 0;
+    for (const id of preview.ids) {
+      try {
+        const refused = await client.deleteRun(id);
+        if (refused) kept.push({ id, why: refusalOf(refused) });
+        else deleted++;
+      } catch (e) { kept.push({ id, why: message(e) }); }
+    }
+    const total = preview.ids.length;
+    setOutcome({ deleted, total, kept });
+    setPreview(null);
     setBusy(false);
+    onDeleted(deleted === total ? `Deleted ${deleted} finished run${deleted === 1 ? "" : "s"}.` : `Deleted ${deleted} of ${total} runs; ${total - deleted} kept (see Clean up).`);
   };
 
   return (
@@ -302,11 +401,29 @@ function CleanupPanel({ onDone }: { onDone: (r: CleanupResult) => void }): JSX.E
         <Button disabled={busy || statuses.size === 0} onClick={() => { void check(); }}>Check</Button>
       </div>
       {preview && (
-        <div class="am-cleanup-row" data-cleanup-preview={preview.count}>
-          <span class="text">{preview.count === 0 ? "Nothing to clean up." : `${preview.count} run${preview.count === 1 ? "" : "s"} would be deleted.`}</span>
+        <div data-cleanup-preview={preview.count}>
+          <div class="am-cleanup-row">
+            <span class="text">{preview.count === 0 ? "Nothing to clean up." : `${preview.count} run${preview.count === 1 ? "" : "s"} would be deleted:`}</span>
+            {preview.count > 0 && (
+              <ConfirmButton label={`Delete ${preview.count} run${preview.count === 1 ? "" : "s"}`} confirm={`Really delete ${preview.count}?`} variant="danger"
+                onConfirm={() => { void run(); }} />
+            )}
+          </div>
           {preview.count > 0 && (
-            <ConfirmButton label={`Delete ${preview.count} run${preview.count === 1 ? "" : "s"}`} confirm={`Really delete ${preview.count}?`} variant="danger"
-              onConfirm={() => { void run(); }} />
+            <ul class="am-cleanup-list faint text" aria-label="Runs that would be deleted">
+              {preview.ids.slice(0, 50).map((id) => <li key={id}>{labelOf(id)}</li>)}
+              {preview.ids.length > 50 && <li>{`and ${preview.ids.length - 50} more`}</li>}
+            </ul>
+          )}
+        </div>
+      )}
+      {outcome && (
+        <div class="am-cleanup-row" data-cleanup-outcome role="status">
+          <span class="text">{`Deleted ${outcome.deleted} of ${outcome.total}.`}</span>
+          {outcome.kept.length > 0 && (
+            <ul class="am-cleanup-list text" aria-label="Runs kept">
+              {outcome.kept.map((k) => <li key={k.id} data-kept={k.id}>{`${labelOf(k.id)} — ${k.why}`}</li>)}
+            </ul>
           )}
         </div>
       )}

@@ -39,6 +39,22 @@ describe("AgentManager", () => {
     opener.remove();
   });
 
+  it("traps Tab and Shift+Tab inside the slide-over", async () => {
+    render(<><button type="button">behind</button><AgentManager /></>);
+    await act(() => { openAgentManager("runs"); });
+    const dlg = screen.getByRole("dialog", { name: "Agent manager" });
+    const stops = [...dlg.querySelectorAll<HTMLElement>('button, input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+      .filter((el) => !el.hasAttribute("disabled") && el.getAttribute("tabindex") !== "-1");
+    const first = stops[0];
+    const last = stops[stops.length - 1];
+    last.focus();
+    fireEvent.keyDown(last, { key: "Tab" });
+    expect(document.activeElement).toBe(first);
+    fireEvent.keyDown(first, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(last);
+    expect(dlg.contains(document.activeElement)).toBe(true);
+  });
+
   it("the close button closes it", async () => {
     render(<AgentManager />);
     await act(() => { openAgentManager("agents"); });

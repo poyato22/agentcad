@@ -4,7 +4,7 @@
 // (`agent_thinking`, display-only) in faint type. Nothing shows once the run is idle or done.
 import type { JSX } from "preact";
 import { useEffect, useState } from "preact/hooks";
-import type { AgentActivity } from "../../api/types";
+import type { AgentActivity, RunStatus as RunState } from "../../api/types";
 import { activityByRun } from "../../state/activity";
 import { thinkingByRun } from "../../state/thinking";
 import { activityLabel, isWaiting } from "../agents/activityLabel";
@@ -26,8 +26,13 @@ export function statusText(a: AgentActivity, nowMs: number = Date.now()): string
   }
 }
 
-export function RunStatus({ runId }: { runId: string }): JSX.Element | null {
-  const a = activityByRun.value.get(runId) ?? null;
+const TERMINAL: ReadonlySet<RunState> = new Set<RunState>(["done", "failed", "cancelled"]);
+
+/** `status`: the run's status — a finished run never shows a (stale) activity line, even if its
+ *  last activity event never said idle/done (a crash, or a delete that forgets the tracker). */
+export function RunStatus({ runId, status }: { runId: string; status?: RunState }): JSX.Element | null {
+  const live = !(status && TERMINAL.has(status));
+  const a = live ? activityByRun.value.get(runId) ?? null : null;
   const thinking = thinkingByRun.value.get(runId) ?? "";
   const [open, setOpen] = useState(false);
   const [, tick] = useState(0);

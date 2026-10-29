@@ -106,7 +106,7 @@ export function Conversation(): JSX.Element {
           <Item item={{ kind: "user", key: "task", text: run.task, ts: run.created_at, stepIds: [] }} agent={run.agent} />
         )}
         {run && run.status === "queued" && <Queued />}
-        {run && run.status !== "queued" && <RunStatus runId={run.id} />}
+        {run && run.status !== "queued" && <RunStatus runId={run.id} status={run.status} />}
       </div>
       {newCount > 0 && <button type="button" class="cv-chip-new" onClick={toBottom}>{`${newCount} new ↓`}</button>}
     </div>
