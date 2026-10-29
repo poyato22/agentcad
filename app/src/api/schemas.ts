@@ -4,7 +4,8 @@
 // The `Same<...>` checks at the bottom fail the type check if a schema and its type drift apart.
 import { z } from "zod";
 import {
-  ERROR_CODES, SETUP_PIECES, STEP_KINDS,
+  ERROR_CODES, SETUP_PIECES, STEP_KINDS, SYSTEM_STATUSES,
+  type SystemCheckRow, type SystemFix, type SystemInstallStart,
   type AgentInfo, type AgentRun, type Approval, type CancelAllResult, type ClaudeCodeStatus, type CoreErrorBody, type CoreStatusInfo,
   type KeyStatus, type MisesEvent, type ModelsInfo, type LocalTestResult, type LocalStatus, type LocalActionResult, type LocalPullEvent, type OnshapeTestResult, type PartFace, type PartHole, type PartMetrics, type PartSummary,
   type Profile, type SetupState, type SketchSummary, type Step, type ToolOutput,
@@ -256,6 +257,28 @@ export const printCallSchema = z.object({
   call_id: z.string(), run_id: z.string(), tool: z.string(), status: z.enum(["running", "done", "failed", "cancelled"]),
   output: record.nullable(), error: record.nullable(),
 });
+
+export const systemFixSchema = z.object({
+  kind: z.enum(["install", "open_url", "setting"]),
+  label: z.string(),
+  dep: z.string().optional(),
+  url: z.string().optional(),
+  setting: z.string().optional(),
+});
+
+export const systemCheckRowSchema = z.object({
+  id: z.string(), name: z.string(), status: z.enum(SYSTEM_STATUSES),
+  version: z.string().nullable(), path: z.string().nullable(),
+  detail: z.string(), fix: systemFixSchema.nullable(),
+});
+
+export const systemInstallStartSchema = z.object({ ok: z.boolean(), fix: systemFixSchema.nullable() });
+
+export type SystemSchemaChecks = [
+  Assert<Same<z.infer<typeof systemFixSchema>, SystemFix>>,
+  Assert<Same<z.infer<typeof systemCheckRowSchema>, SystemCheckRow>>,
+  Assert<Same<z.infer<typeof systemInstallStartSchema>, SystemInstallStart>>,
+];
 
 export type DrawPrintSchemaChecks = [
   Assert<Same<z.infer<typeof drawingInfoSchema>, DrawingInfo>>,

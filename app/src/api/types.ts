@@ -274,3 +274,31 @@ export interface PrintCall {
   call_id: string; run_id: string; tool: string; status: "running" | "done" | "failed" | "cancelled";
   output: Record<string, unknown> | null; error: Record<string, unknown> | null;
 }
+
+// ---- System check (GET /system/check) and installers (POST /system/install/{dep}) --------------
+// A1 owns the client-side shape; C6 owns the real core routes. The fields mirror the plan's
+// System check contract; `url` (for open_url) and `setting` (for setting) ride on the fix object
+// alongside the contract's {kind, label, dep?}.
+export const SYSTEM_STATUSES = ["ok", "missing", "outdated", "error", "optional_missing"] as const;
+export type SystemCheckStatus = (typeof SYSTEM_STATUSES)[number];
+export type SystemFixKind = "install" | "open_url" | "setting";
+export interface SystemFix { kind: SystemFixKind; label: string; dep?: string; url?: string; setting?: string }
+export interface SystemCheckRow {
+  id: string; name: string; status: SystemCheckStatus; version: string | null; path: string | null;
+  detail: string; fix: SystemFix | null;
+}
+/** Deps POST /system/install/{dep} accepts; the body carries no arguments (Review Focus 3). */
+export const INSTALL_DEPS = ["prusaslicer", "calculix", "ollama"] as const;
+export type InstallDep = (typeof INSTALL_DEPS)[number];
+/** POST /system/install/{dep} answer: install started, or refused with a fix (e.g. brew missing). */
+export interface SystemInstallStart { ok: boolean; fix: SystemFix | null }
+/** `system_install` event: one output line, then a terminal frame (done:true, ok set). */
+export interface SystemInstallEvent { dep: string; line: string; done: boolean; ok: boolean | null }
+
+// ---- Agent activity (agent_activity event; GET /runs/{id}.activity) -----------------------------
+export const ACTIVITY_STATES = [
+  "queued", "starting", "thinking", "writing", "tool", "waiting_approval", "waiting_user", "idle", "done",
+] as const;
+export type ActivityState = (typeof ACTIVITY_STATES)[number];
+/** Emitted on every transition, throttled to >=4/s while writing. `detail` is a short human label. */
+export interface AgentActivity { run_id: string; state: ActivityState; detail: string; since: number; tokens_out?: number }

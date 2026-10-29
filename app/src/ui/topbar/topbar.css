@@ -30,3 +30,21 @@
   padding: 3px 8px; color: var(--ink); pointer-events: none;
 }
 .toast:empty { display: none; }
+
+/* activity pill (count of working agents) + Task A6 budget slot */
+.activity-pill {
+  display: inline-flex; align-items: center; gap: 6px; flex: none;
+  background: transparent; border: 1px solid var(--line2); border-radius: 0;
+  padding: 2px 8px; color: var(--ink); font: inherit; font-size: 11px; cursor: pointer; white-space: nowrap;
+}
+.activity-pill:hover { border-color: var(--blue); }
+.activity-pill:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
+.activity-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--blue); flex: none; }
+.activity-pill[data-mode=waiting] .activity-dot { background: var(--amber); animation: none; }
+.activity-pill[data-mode=working] .activity-dot { animation: activity-pulse 1.2s ease-in-out infinite; }
+.activity-pill[data-mode=thinking] .activity-dot { animation: activity-pulse 0.7s ease-in-out infinite; }
+.activity-label { color: var(--dim); }
+@keyframes activity-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .4; transform: scale(.8); } }
+@media (prefers-reduced-motion: reduce) { .activity-pill .activity-dot { animation: none !important; } }
+.budget-slot { display: flex; align-items: center; flex: none; }
+.budget-slot:empty { display: none; }

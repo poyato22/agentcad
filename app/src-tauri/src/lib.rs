@@ -1,4 +1,5 @@
 pub mod core;
+pub mod menu;
 pub mod platform;
 pub mod server_info;
 
@@ -8,6 +9,8 @@ use tauri::{Manager, RunEvent};
 
 pub fn run() {
     let app = tauri::Builder::default()
+        // The macOS app/Edit menu: without the Edit submenu the webview can't route ⌘C/⌘V/⌘A.
+        .menu(menu::build_menu)
         .invoke_handler(tauri::generate_handler![core_info, core_restart, core_status])
         .setup(|app| {
             let sup: SharedSupervisor = Arc::new(Supervisor::start(app.handle().clone()));
