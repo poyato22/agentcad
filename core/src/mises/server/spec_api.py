@@ -7,6 +7,7 @@ keyed by project_id (a TEXT key; Task C1 owns the projects table itself).
 """
 from __future__ import annotations
 
+import json
 import logging
 from typing import TYPE_CHECKING
 
@@ -16,6 +17,7 @@ from pydantic import ValidationError
 from starlette.concurrency import run_in_threadpool
 
 from ..engineering.spec import Spec
+from ..engineering.tools import mark_interrupted
 from ..events import Event
 from ..types import ErrorCode, MisesError
 
@@ -24,6 +26,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 _MAX_PROJECT_ID = 128
+_MAX_BODY = 256 * 1024  # a spec is small; refuse anything larger before parsing it
 
 
 def _check_project_id(project_id: str) -> None:
@@ -44,8 +47,13 @@ def build_spec_router(runtime: Runtime) -> APIRouter:
     @router.put("/projects/{project_id}/spec")
     async def put_spec(project_id: str, request: Request):
         _check_project_id(project_id)
+        raw = await request.body()
+        if len(raw) > _MAX_BODY:
+            return JSONResponse(MisesError(ErrorCode.INVALID_INPUT, "spec body too large",
+                                           hint=f"at most {_MAX_BODY} bytes").to_dict(),
+                                status_code=413)
         try:
-            body = await request.json()
+            body = json.loads(raw)
         except ValueError:
             return JSONResponse(MisesError(ErrorCode.INVALID_INPUT, "body must be JSON").to_dict(),
                                 status_code=422)
@@ -65,6 +73,7 @@ def build_spec_router(runtime: Runtime) -> APIRouter:
     @router.get("/projects/{project_id}/studies")
     async def list_studies(project_id: str):
         _check_project_id(project_id)
-        return await run_in_threadpool(runtime.store.list_studies, project_id)
+        rows = await run_in_threadpool(runtime.store.list_studies, project_id)
+        return [mark_interrupted(runtime.store, r) for r in rows]
 
     return router

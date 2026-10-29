@@ -6,20 +6,22 @@ and `printable` are judged from geometry or left "not checked" rather than faked
 """
 from __future__ import annotations
 
+import json
+import re
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
 from ..naming import check_name
+from ..sim.environments import FACE_PRESETS
+from ..sim.mesh import FACE_ID_RE
 from ..types import MisesError
 
-
-def _check_id(name: str) -> None:
-    """check_name, but raised as ValueError so pydantic folds it into a ValidationError."""
-    try:
-        check_name(name)
-    except MisesError as e:
-        raise ValueError(str(e)) from None
+MAX_REQUIREMENTS = 64
+MAX_LOAD_CASES = 32
+MAX_ANSWERS = 32
+MAX_ANSWER_CHARS = 2000
+MAX_TARGET_CHARS = 2000
 
 RequirementKind = Literal[
     "max_mass_g", "min_safety_factor", "max_deflection_mm", "envelope_mm",
@@ -29,16 +31,39 @@ RequirementKind = Literal[
 _NUMERIC_KINDS = {"max_mass_g", "min_safety_factor", "max_deflection_mm"}
 # Kinds evaluated against a load-case result rather than plain geometry.
 LOAD_CASE_KINDS = {"min_safety_factor", "max_deflection_mm"}
+# A load case that sounds like an impact must be labelled as an estimate (F = m·g·k).
+_IMPACT_WORDS = re.compile(r"\b(crash|impact|drop|fall|collision|hit)\w*", re.I)
 
 Status = Literal["pass", "warn", "fail", "not_checked"]
 Direction = Literal["+x", "-x", "+y", "-y", "+z", "-z"]
+
+
+def _check_id(name: str) -> None:
+    """check_name, but raised as ValueError so pydantic folds it into a ValidationError."""
+    try:
+        check_name(name)
+    except MisesError as e:
+        raise ValueError(str(e)) from None
+
+
+def _check_face(face: str, what: str) -> None:
+    if face not in FACE_PRESETS and not FACE_ID_RE.match(face):
+        raise ValueError(f"{what} face {face!r} must be a preset ({', '.join(FACE_PRESETS)}) "
+                         "or a face id like 'f3'; prefer presets, which hold across variants")
+
+
+def _json_len(v: Any) -> int:
+    try:
+        return len(json.dumps(v))
+    except (TypeError, ValueError):
+        return MAX_TARGET_CHARS + 1
 
 
 class Requirement(BaseModel):
     id: str = Field(min_length=1, max_length=48)
     kind: RequirementKind
     target: Any = None
-    load_case_id: str | None = None
+    load_case_id: str | None = Field(default=None, max_length=48)
     priority: int = Field(default=3, ge=1, le=5)
     source: Literal["user", "agent"] = "agent"
 
@@ -46,6 +71,8 @@ class Requirement(BaseModel):
     def _check_target(self) -> "Requirement":
         _check_id(self.id)
         k, t = self.kind, self.target
+        if _json_len(t) > MAX_TARGET_CHARS:
+            raise ValueError(f"target is too large (max {MAX_TARGET_CHARS} characters)")
         if k in _NUMERIC_KINDS:
             if not isinstance(t, (int, float)) or isinstance(t, bool) or t <= 0:
                 raise ValueError(f"{k} target must be a positive number")
@@ -69,29 +96,43 @@ class Requirement(BaseModel):
 class LoadCase(BaseModel):
     id: str = Field(min_length=1, max_length=48)
     name: str = Field(min_length=1, max_length=120)
-    fix: str = Field(description="face held fixed: a preset or a face id")
+    fix: str = Field(description="face held fixed: a preset (bottom, top, x-min, ...) or a "
+                                 "face id; presets hold across variants, ids do not")
     load: str = Field(description="face the load is applied to: a preset or a face id")
     newtons: float = Field(gt=0, le=1e6)
     direction: Direction
-    note: str = ""
+    note: str = Field(default="", max_length=1000)
     estimate: bool = False
 
     @model_validator(mode="after")
     def _check(self) -> "LoadCase":
         _check_id(self.id)
+        _check_face(self.fix, "fix")
+        _check_face(self.load, "load")
         if self.fix == self.load:
             raise ValueError("fix and load must be different faces")
+        if not self.estimate and (_IMPACT_WORDS.search(self.name)
+                                  or _IMPACT_WORDS.search(self.note)):
+            raise ValueError(f"load case {self.id!r} looks like an impact/crash case: set "
+                             "estimate=true (its newtons are an equivalent-static estimate "
+                             "from loads_impact)")
         return self
 
 
 class Spec(BaseModel):
-    goal: str = ""
-    requirements: list[Requirement] = Field(default_factory=list)
-    load_cases: list[LoadCase] = Field(default_factory=list)
+    goal: str = Field(default="", max_length=2000)
+    requirements: list[Requirement] = Field(default_factory=list, max_length=MAX_REQUIREMENTS)
+    load_cases: list[LoadCase] = Field(default_factory=list, max_length=MAX_LOAD_CASES)
     answers: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _cross_check(self) -> "Spec":
+        if len(self.answers) > MAX_ANSWERS:
+            raise ValueError(f"at most {MAX_ANSWERS} interview answers")
+        for k, v in self.answers.items():
+            if len(str(k)) > 64 or _json_len(v) > MAX_ANSWER_CHARS:
+                raise ValueError(f"answer {str(k)[:64]!r} is too large "
+                                 f"(max {MAX_ANSWER_CHARS} characters)")
         req_ids = [r.id for r in self.requirements]
         if len(set(req_ids)) != len(req_ids):
             raise ValueError("requirement ids must be unique")
@@ -107,27 +148,23 @@ class Spec(BaseModel):
 
 # ---- evaluation
 
-def _min_sf(sim_by_case: dict, case_id: str | None) -> float | None:
+def _case_value(sim_by_case: dict, case_id: str | None, key: str) -> float | None:
     rec = sim_by_case.get(case_id) if case_id else None
     if not isinstance(rec, dict):
         return None
-    sf = rec.get("safety_factor")
-    return sf if isinstance(sf, (int, float)) else None
+    v = rec.get(key)
+    return v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
 
 
-def _max_disp(sim_by_case: dict, case_id: str | None) -> float | None:
-    rec = sim_by_case.get(case_id) if case_id else None
-    if not isinstance(rec, dict):
-        return None
-    d = rec.get("max_displacement_mm")
-    return d if isinstance(d, (int, float)) else None
-
-
-def evaluate_requirement(req: Requirement, metrics: dict, sim_by_case: dict) -> dict:
+def evaluate_requirement(req: Requirement, metrics: dict, sim_by_case: dict,
+                         case: LoadCase | None = None) -> dict:
     """One requirement against a part's metrics and its per-load-case sim results.
 
-    Returns {id, kind, target, load_case_id, measured, status, detail}. `warn` is a near-miss
-    (within a small margin); a requirement with no evidence is `not_checked`, never `pass`.
+    Returns {id, kind, target, load_case_id, priority, measured, status, detail, guide,
+    estimate}. `warn` is a near-miss (within a small margin); a requirement with no evidence is
+    `not_checked`, never `pass`. Stress rows are `guide: true` (FEM is a guide, not a guarantee)
+    and carry the load case's `estimate` flag, so an SF measured against an estimated crash load
+    is never shown as a plain pass.
     """
     kind, target = req.kind, req.target
     measured: Any = None
@@ -140,14 +177,14 @@ def evaluate_requirement(req: Requirement, metrics: dict, sim_by_case: dict) -> 
             status = ("pass" if measured <= target
                       else "warn" if measured <= target * 1.05 else "fail")
     elif kind == "min_safety_factor":
-        measured = _min_sf(sim_by_case, req.load_case_id)
+        measured = _case_value(sim_by_case, req.load_case_id, "safety_factor")
         if measured is not None:
             status = ("pass" if measured >= target
                       else "warn" if measured >= target * 0.9 else "fail")
         else:
             detail = "no stress study for this load case yet"
     elif kind == "max_deflection_mm":
-        measured = _max_disp(sim_by_case, req.load_case_id)
+        measured = _case_value(sim_by_case, req.load_case_id, "max_displacement_mm")
         if measured is not None:
             status = ("pass" if measured <= target
                       else "warn" if measured <= target * 1.1 else "fail")
@@ -163,21 +200,22 @@ def evaluate_requirement(req: Requirement, metrics: dict, sim_by_case: dict) -> 
     elif kind in ("printable", "mount_pattern", "custom"):
         detail = "needs a human or a dedicated check; not evaluated from metrics"
 
+    stress = kind in LOAD_CASE_KINDS
     return {"id": req.id, "kind": kind, "target": target, "load_case_id": req.load_case_id,
-            "priority": req.priority, "measured": measured, "status": status, "detail": detail}
+            "priority": req.priority, "measured": measured, "status": status, "detail": detail,
+            "guide": stress, "estimate": bool(case.estimate) if (stress and case) else False}
 
 
 def evaluate_spec(spec: Spec, metrics: dict, sim_by_case: dict | None = None) -> dict:
     """Every requirement evaluated. `overall` is the worst status among the hard (checked)
     requirements: fail > warn > pass; not_checked does not make it pass."""
     sim_by_case = sim_by_case or {}
-    rows = [evaluate_requirement(r, metrics, sim_by_case) for r in spec.requirements]
+    cases = {c.id: c for c in spec.load_cases}
+    rows = [evaluate_requirement(r, metrics, sim_by_case, cases.get(r.load_case_id or ""))
+            for r in spec.requirements]
     order = {"fail": 3, "warn": 2, "pass": 1, "not_checked": 0}
     checked = [r for r in rows if r["status"] != "not_checked"]
-    if not checked:
-        overall: Status = "not_checked"
-    else:
-        worst = max(checked, key=lambda r: order[r["status"]])["status"]
-        overall = worst
+    overall: Status = (max(checked, key=lambda r: order[r["status"]])["status"]
+                       if checked else "not_checked")
     return {"requirements": rows, "overall": overall,
             "checked": len(checked), "total": len(rows)}
