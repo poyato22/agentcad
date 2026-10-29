@@ -156,6 +156,7 @@ const PROFILE_FIELDS: Record<string, (v: unknown) => boolean> = {
   // Plan 4: "auto" (the core sizes it from this Mac and the model) or 1–16
   max_parallel_agents: (v) => v === "auto" || int(1, 16)(v),
   theme: (v) => v === "system" || v === "light" || v === "dark",
+  hidden_agents: (v) => Array.isArray(v) && v.every((x) => typeof x === "string"),
   local_endpoints: (v) => typeof v === "object" && v !== null && !Array.isArray(v)
     && Object.values(v).every((x) => typeof x === "string" && loopback(x)),
   setup_completed_at: (v) => v === null || typeof v === "number",

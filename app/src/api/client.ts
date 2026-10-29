@@ -3,8 +3,8 @@
 import { z } from "zod";
 import { debug } from "../lib/log";
 import {
-  agentInfoSchema, agentRunSchema, approvalSchema, cancelAllSchema, claudeCodeStatusSchema, coreErrorBodySchema, coreStatusSchema,
-  keyStatusSchema, localActionSchema, localStatusSchema, localTestSchema, modelsInfoSchema, okSchema, onshapeTestSchema, partSummarySchema, profileSchema, runIdSchema, setupStateSchema, sketchSummarySchema,
+  agentInfoSchema, agentRunSchema, approvalSchema, cancelAllSchema, claudeCodeStatusSchema, cleanupResultSchema, coreErrorBodySchema, coreStatusSchema, deleteRefusedSchema,
+  keyStatusSchema, localActionSchema, localStatusSchema, localTestSchema, modelsInfoSchema, okSchema, onshapeTestSchema, partSummarySchema, profileSchema, runIdSchema, runNodeSchema, setupStateSchema, sketchSummarySchema,
   stepSchema, systemCheckRowSchema, systemInstallStartSchema,
 } from "./schemas";
 import {
@@ -12,8 +12,8 @@ import {
   type SimRecord, type SimSolvers, type SimStartBody, type SimStarted, type SimSummary,
 } from "./sims";
 import type {
-  AgentInfo, AgentRun, Approval, CancelAllResult, ClaudeCodeStatus, CoreInfo, CoreStatusInfo, DecisionBody, ErrorCode, KeyStatus, LocalActionResult, LocalStatus, LocalTestResult,
-  ModelsInfo, NewRunBody, OnshapeTestResult, PartSummary, Profile, ProfilePatch, SetupState, SketchSummary, SketchUpload, Step,
+  AgentDefBody, AgentInfo, AgentRun, Approval, CancelAllResult, ClaudeCodeStatus, CleanupBody, CleanupResult, CoreInfo, CoreStatusInfo, DecisionBody, DeleteRefused, ErrorCode, KeyStatus, LocalActionResult, LocalStatus, LocalTestResult,
+  ModelsInfo, NewRunBody, OnshapeTestResult, PartSummary, Profile, ProfilePatch, RunNode, RunPatch, SetupState, SketchSummary, SketchUpload, Step,
   SystemCheckRow, SystemInstallStart, UiContext,
 } from "./types";
 import {
@@ -21,13 +21,13 @@ import {
 } from "./schemas";
 import type { DrawingInfo, NewPrinterBody, PrintCall, PrintCapabilities, Printer, PrinterStatus, PrintStart, Slice, SliceStart } from "./types";
 
-type Method = "GET" | "POST" | "PUT" | "DELETE";
+type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 /** The fields PUT /profile may carry: core profile.Profile minus units, setup_completed_at and
  *  schema_version, which the app never writes. */
 const PROFILE_PATCH_KEYS: ReadonlySet<string> = new Set<string>([
   "display_name", "default_material", "default_agent", "default_model", "onshape_calls_year_cap", "onshape_calls_run_cap",
-  "max_parallel_agents", "local_endpoints", "theme",
+  "max_parallel_agents", "local_endpoints", "theme", "hidden_agents",
 ] satisfies (keyof ProfilePatch)[]);
 
 /** For routes whose answer the UI doesn't use (it refetches status instead): any 2xx JSON body. */
@@ -81,6 +81,40 @@ export class CoreClient {
   }
   cancel(runId: string): Promise<{ ok: true }> { return this.json("POST", `/runs/${enc(runId)}/cancel`, okSchema); }
   cancelAll(): Promise<CancelAllResult> { return this.json("POST", "/runs/cancel_all", cancelAllSchema); }
+
+  // ---- Plan 5 (C1): agent management — the run tree, rename/pin/archive, delete, cleanup
+  /** The orchestrator → worker forest (roots are runs with no parent). */
+  runsTree(projectId?: string | null): Promise<RunNode[]> {
+    return this.json("GET", "/runs/tree", z.array(runNodeSchema), { query: { project_id: projectId } });
+  }
+  /** Rename, pin or archive a run. */
+  patchRun(id: string, patch: RunPatch): Promise<AgentRun> {
+    return this.json("PATCH", `/runs/${enc(id)}`, agentRunSchema, { body: patch });
+  }
+  /** Delete a run and its steps/workdir. Returns null on success, or the refusal (409) when the
+   *  run is still running (with blocking worker ids) or awaiting your approval. */
+  async deleteRun(id: string): Promise<DeleteRefused | null> {
+    const res = await this.request("DELETE", `/runs/${enc(id)}`, {});
+    if (res.ok) return null;
+    if (res.status === 409) {
+      let body: unknown = null;
+      try { body = await res.json(); } catch { /* fall through to the generic error */ }
+      const refused = deleteRefusedSchema.safeParse(body);
+      if (refused.success) return refused.data;
+    }
+    throw await toError(res);
+  }
+  /** Dry-run (default) or really remove finished runs; returns the ids (that would be) removed. */
+  cleanupRuns(body: CleanupBody = {}): Promise<CleanupResult> {
+    return this.json("POST", "/runs/cleanup", cleanupResultSchema, { body: { dry_run: true, ...body } });
+  }
+
+  // ---- custom agent definitions (built-ins can only be hidden, via the profile)
+  createAgent(body: AgentDefBody): Promise<AgentInfo> { return this.json("POST", "/agents", agentInfoSchema, { body }); }
+  updateAgent(name: string, body: AgentDefBody): Promise<AgentInfo> {
+    return this.json("PUT", `/agents/${enc(name)}`, agentInfoSchema, { body });
+  }
+  async deleteAgent(name: string): Promise<void> { await this.json("DELETE", `/agents/${enc(name)}`, okSchema); }
 
   pendingApprovals(runId?: string): Promise<Approval[]> {
     return this.json("GET", "/approvals", z.array(approvalSchema), { query: { status: "pending", run_id: runId } });

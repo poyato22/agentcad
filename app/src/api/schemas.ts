@@ -5,6 +5,7 @@
 import { z } from "zod";
 import {
   ERROR_CODES, SETUP_PIECES, STEP_KINDS, SYSTEM_STATUSES,
+  type RunNode,
   type SystemCheckRow, type SystemFix, type SystemInstallStart,
   type AgentInfo, type AgentRun, type Approval, type CancelAllResult, type ClaudeCodeStatus, type CoreErrorBody, type CoreStatusInfo,
   type KeyStatus, type MisesEvent, type ModelsInfo, type LocalTestResult, type LocalStatus, type LocalActionResult, type LocalPullEvent, type OnshapeTestResult, type PartFace, type PartHole, type PartMetrics, type PartSummary,
@@ -19,13 +20,26 @@ const vec3 = z.tuple([z.number(), z.number(), z.number()]);
 export const errorCodeSchema = z.enum(ERROR_CODES);
 export const stepKindSchema = z.enum(STEP_KINDS);
 
+export const runCostSchema = z.object({ usd: z.number().nullable(), tokens: z.number() });
+
 export const agentRunSchema = z.object({
   id: z.string(), parent_id: z.string().nullable(), agent: z.string(), provider: z.string(), model: z.string(),
   task: z.string(), status: z.enum(["queued", "running", "done", "failed", "cancelled"]), branch: z.string().nullable(),
   onshape_calls: z.number(), input_tokens: z.number(), output_tokens: z.number(), usd: z.number(),
   created_at: z.number(), updated_at: z.number(), owner_pid: z.number().nullish(),
   external: z.boolean().optional(), session_ref: z.string().nullish(),
+  // Plan 5 (C1) agent-management fields (enriched by run_view)
+  project_id: z.string().nullish(), title: z.string().nullish(), pinned: z.boolean().optional(), archived: z.boolean().optional(),
+  last_activity_at: z.number().nullish(), parent_run_id: z.string().nullish(),
+  cost: runCostSchema.optional(),
 });
+
+/** GET /runs/tree node: a run plus its worker children. */
+export const runNodeSchema: z.ZodType<RunNode> = z.lazy(() =>
+  agentRunSchema.extend({ children: z.array(runNodeSchema) }) as unknown as z.ZodType<RunNode>);
+
+export const cleanupResultSchema = z.object({ ids: z.array(z.string()), count: z.number().int() });
+export const deleteRefusedSchema = z.object({ reason: z.enum(["running", "pending_approval"]), children: z.array(z.string()).default([]) });
 
 export const stepSchema = z.object({
   id: z.number().int(), run_id: z.string(), ts: z.number(), kind: stepKindSchema, payload: record,
@@ -49,7 +63,10 @@ export const eventSchema = z.object({
   type: z.string(), run_id: z.string().nullable(), data: record, ts: z.number(),
 });
 
-export const agentInfoSchema = z.object({ name: z.string(), description: z.string(), model: z.string() });
+export const agentInfoSchema = z.object({
+  name: z.string(), description: z.string(), model: z.string(),
+  tools: z.array(z.string()).nullish(), builtin: z.boolean().optional(), hidden: z.boolean().optional(),
+});
 
 /** An unknown badge from a newer core is dropped (null), never fatal. */
 const recommendedSchema = z.enum(["best", "local", "free"]).nullable().catch(null);
@@ -143,6 +160,7 @@ export const profileSchema = z.object({
   onshape_calls_year_cap: z.number().default(2500), onshape_calls_run_cap: z.number().default(200),
   max_parallel_agents: z.union([z.number().int(), z.literal("auto")]).default("auto"), local_endpoints: z.record(z.string(), z.string()).default({}),
   theme: z.enum(["system", "light", "dark"]).default("system"),
+  hidden_agents: z.array(z.string()).optional(),
   setup_completed_at: z.number().nullable().default(null),
   // the core's Profile carries `schema_version` and `printers`; both are stripped here and never sent
   // back in PUT /profile (the core merges the patch, so they are kept; printers go through /printers)
@@ -220,6 +238,9 @@ export type SchemaChecks = [
   Assert<Same<z.infer<typeof localPullSchema>, LocalPull>>,
   Assert<Same<z.infer<typeof modelEntrySchema>, ModelEntry>>,
   Assert<Same<z.infer<typeof sketchSummarySchema>, SketchSummary>>,
+  Assert<Same<z.infer<typeof runCostSchema>, import("./types").RunCost>>,
+  Assert<Same<z.infer<typeof cleanupResultSchema>, import("./types").CleanupResult>>,
+  Assert<Same<z.infer<typeof deleteRefusedSchema>, import("./types").DeleteRefused>>,
 ];
 
 // ---- Plan 4: drawings and printing

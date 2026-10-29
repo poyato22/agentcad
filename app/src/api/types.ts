@@ -26,7 +26,43 @@ export interface AgentRun {
   external?: boolean;
   /** Claude Code runs: the session id Mises resumes with `--resume`. Not shown in the UI. */
   session_ref?: string | null;
+  // ---- Plan 5 (C1) agent-management fields; enriched by the core's run_view. Optional so an
+  //      older core / fixture that predates them still parses (the UI falls back).
+  /** The build this run belongs to. */
+  project_id?: string | null;
+  /** A user-renamable label; falls back to the task in the UI. */
+  title?: string | null;
+  pinned?: boolean;
+  archived?: boolean;
+  /** Bumped as the run works; the manager sorts by it (falls back to updated_at). */
+  last_activity_at?: number | null;
+  /** The API name of the one parent column (an orchestrator's worker points at its parent). */
+  parent_run_id?: string | null;
+  /** Rolled-up cost: dollars (null when unpriced) and total tokens. */
+  cost?: RunCost;
 }
+
+/** Rolled-up run cost (run_view `cost`). */
+export interface RunCost { usd: number | null; tokens: number }
+
+/** GET /runs/tree node: a run_view plus its worker children (the orchestrator → worker forest). */
+export interface RunNode extends AgentRun { children: RunNode[] }
+
+/** POST /runs/cleanup answer (dry-run or real): the ids removed (or that would be) and the count. */
+export interface CleanupResult { ids: string[]; count: number }
+
+/** Why DELETE /runs/{id} was refused (409): a run that is still running (with its blocking worker
+ *  ids) or awaiting your approval. */
+export interface DeleteRefused { reason: "running" | "pending_approval"; children: string[] }
+
+/** PATCH /runs/{id} body: a partial rename / pin / archive. */
+export interface RunPatch { title?: string; pinned?: boolean; archived?: boolean }
+
+/** POST /runs/cleanup body. */
+export interface CleanupBody { project_id?: string | null; older_than_days?: number | null; status_in?: string[]; dry_run?: boolean }
+
+/** POST /agents and PUT /agents/{name} body. `tools` null means "inherit the defaults". */
+export interface AgentDefBody { name?: string; description?: string; model?: string; tools?: string[] | null; body?: string }
 
 export type StepKind = "message" | "plan" | "tool_call" | "tool_result" | "diff" | "decision" | "error"
   | "onshape_call" | "sim_run" | "measure" | "verify" | "compaction";
@@ -75,8 +111,10 @@ export interface DecisionBody { payload_hash: string; approve: boolean }
 /** POST /runs/cancel_all. `failed` lists runs the core could not cancel. */
 export interface CancelAllResult { cancelled: string[]; failed: { run_id: string; error: string }[] }
 
-/** GET /agents item. `model` may be "inherit". */
-export interface AgentInfo { name: string; description: string; model: string }
+/** GET /agents item. `model` may be "inherit". Plan 5 (C1) adds `tools` (null = inherit the
+ *  defaults), `builtin` (a built-in agent can be hidden but not edited or deleted) and `hidden`
+ *  (the profile's hidden_agents). Optional so older cores/fixtures still parse. */
+export interface AgentInfo { name: string; description: string; model: string; tools?: string[] | null; builtin?: boolean; hidden?: boolean }
 
 /** signed_in / signed_out / not_installed: the "claude-code" vendor (Plan 3 Task 3). */
 export type KeySource = "env" | "keychain" | "none" | "not_needed" | "signed_in" | "signed_out" | "not_installed";
@@ -168,6 +206,9 @@ export interface Profile {
   local_endpoints: Record<string, string>;
   /** UI theme (default "system"). */
   theme: Theme;
+  /** Built-in agents the user has hidden (custom agents are deleted outright, not hidden).
+   *  Optional: a core/fixture that predates it reads as "none hidden". */
+  hidden_agents?: string[];
   setup_completed_at: number | null;
 }
 
