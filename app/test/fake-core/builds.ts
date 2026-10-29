@@ -182,7 +182,9 @@ export function buildRoutes(d: BuildsDeps): Route[] {
     const next: PartSummary = { ...p, vars: change.vars ?? p.vars, metrics: change.metrics ?? p.metrics, mtime: now() };
     d.setParts(d.parts().map((x) => (x.part_id === p.part_id ? next : x)));
     d.emit({ type: "part_changed", run_id: by === "user" ? B().uiRun : runId, data: { part_id: p.part_id, version: r.version, by, run_id: by === "agent" ? runId : null, summary } });
-    return { part_id: p.part_id, vars: next.vars, version: r.version, ...(next.metrics ?? {}), face_count: next.metrics?.face_list?.length ?? next.metrics?.faces ?? 0, face_list_truncated: false, edge_count: next.metrics?.edges ?? 0 };
+    // like cad/tools._inline: the edge list stays in metrics.json (GET /parts), not in the answer
+    const { edge_list: _edges, ...inline } = next.metrics ?? ({} as NonNullable<PartSummary["metrics"]>);
+    return { part_id: p.part_id, vars: next.vars, version: r.version, ...inline, face_count: next.metrics?.face_list?.length ?? next.metrics?.faces ?? 0, face_list_truncated: false, edge_count: next.metrics?.edges ?? 0 };
   };
   const stale = (p: PartSummary, mergeLevel: boolean) => {
     const r = B().rows.get(p.part_id) as Row;

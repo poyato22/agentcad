@@ -179,18 +179,25 @@ const COVERAGE: Record<string, string> = {
   "POST /slices/{slice_id}/cancel": "slice_cancel_finished.json",
   "GET /slices/{slice_id}/preview.png": "EXEMPT: the core tests' fake PrusaSlicer embeds no thumbnail; the 404 answer is a core error body",
   "POST /prints": "print_start.json", "GET /prints/{call_id}": "print_done.json",
+  // Plan 5 A3 builds, part tree and live edits: contract.builds.test.ts
+  "PATCH /projects/{project_id}": "project_rename.json", "PATCH /parts/{part_id}": "part_patch.json",
+  // PATCH routes (the coverage scan reads them since A3); their app clients are other tasks'
+  "PATCH /runs/{run_id}": "EXEMPT: Plan 5 C1 runs route; the agent manager (A2) is its app client (core API tests cover it)",
+  "PATCH /catalog/items/{item_id}": "EXEMPT: Plan 5 C5 catalog route; the parts directory (A6) is its app client (core API tests cover it)",
+  "PATCH /projects/{project_id}/assembly/instances/{iid}": "EXEMPT: Plan 5 C2 assembly core route; no app client yet (core API tests cover it)",
+  "PATCH /projects/{project_id}/assembly/joints/{jid}": "EXEMPT: Plan 5 C2 assembly core route; no app client yet (core API tests cover it)",
   // Plan 5 core routes merged before their app clients (the A tasks): each gets a real-core
   // fixture when its app side lands; the core's own API tests cover them meanwhile.
   "DELETE /agents/{name}": "EXEMPT: Plan 5 C1 builds/runs/agents core route; no app client yet (core API tests cover it)",
-  "DELETE /projects/{project_id}": "EXEMPT: Plan 5 C1 builds/runs/agents core route; no app client yet (core API tests cover it)",
+  "DELETE /projects/{project_id}": "project_trash.json",
   "DELETE /runs/{run_id}": "EXEMPT: Plan 5 C1 builds/runs/agents core route; no app client yet (core API tests cover it)",
-  "GET /projects": "EXEMPT: Plan 5 C1 builds/runs/agents core route; no app client yet (core API tests cover it)",
+  "GET /projects": "projects_with_trash.json",
   "GET /runs/tree": "EXEMPT: Plan 5 C1 builds/runs/agents core route; no app client yet (core API tests cover it)",
   "POST /agents": "EXEMPT: Plan 5 C1 builds/runs/agents core route; no app client yet (core API tests cover it)",
-  "POST /parts/reorder": "EXEMPT: Plan 5 C1 builds/runs/agents core route; no app client yet (core API tests cover it)",
-  "POST /projects": "EXEMPT: Plan 5 C1 builds/runs/agents core route; no app client yet (core API tests cover it)",
-  "POST /projects/trash/empty": "EXEMPT: Plan 5 C1 builds/runs/agents core route; no app client yet (core API tests cover it)",
-  "POST /projects/{project_id}/restore": "EXEMPT: Plan 5 C1 builds/runs/agents core route; no app client yet (core API tests cover it)",
+  "POST /parts/reorder": "parts_reorder.json",
+  "POST /projects": "project_create.json",
+  "POST /projects/trash/empty": "projects_trash_empty.json",
+  "POST /projects/{project_id}/restore": "project_restore.json",
   "POST /runs/cleanup": "EXEMPT: Plan 5 C1 builds/runs/agents core route; no app client yet (core API tests cover it)",
   "PUT /agents/{name}": "EXEMPT: Plan 5 C1 builds/runs/agents core route; no app client yet (core API tests cover it)",
   "DELETE /projects/{project_id}/assembly/instances/{iid}": "EXEMPT: Plan 5 C2 assembly core route; no app client yet (core API tests cover it)",
@@ -204,10 +211,10 @@ const COVERAGE: Record<string, string> = {
   "GET /projects/{project_id}/spec": "EXEMPT: Plan 5 C3 spec/studies core route; no app client yet (core API tests cover it)",
   "GET /projects/{project_id}/studies": "EXEMPT: Plan 5 C3 spec/studies core route; no app client yet (core API tests cover it)",
   "PUT /projects/{project_id}/spec": "EXEMPT: Plan 5 C3 spec/studies core route; no app client yet (core API tests cover it)",
-  "GET /parts/{part_id}/source": "EXEMPT: Plan 5 C6 live edits core route; no app client yet (core API tests cover it)",
-  "PUT /parts/{part_id}/source": "EXEMPT: Plan 5 C6 live edits core route; no app client yet (core API tests cover it)",
-  "POST /parts/{part_id}/vars": "EXEMPT: Plan 5 C6 live edits core route; no app client yet (core API tests cover it)",
-  "POST /parts/{part_id}/ops": "EXEMPT: Plan 5 C6 live edits core route; no app client yet (core API tests cover it)",
+  "GET /parts/{part_id}/source": "part_source.json",
+  "PUT /parts/{part_id}/source": "part_source_put.json",
+  "POST /parts/{part_id}/vars": "part_vars.json",
+  "POST /parts/{part_id}/ops": "part_ops.json",
   "GET /system/check": "EXEMPT: Plan 5 C6 system check core route; A1's system check UI runs against the fake core's systemRoutes; real-core fixture to follow (core test_system_api covers it)",
   "POST /system/install/{dep}": "EXEMPT: Plan 5 C6 system check core route; A1's UI runs against the fake core's systemRoutes; real-core fixture to follow (core test_system_api covers it)",
   "DELETE /catalog/allowed_domains/{domain}": "EXEMPT: Plan 5 C5 Onshape browser/catalog core route; no app client yet (core API tests cover it)",
@@ -243,7 +250,7 @@ function coreRoutes(): string[] {
   const out = new Set<string>();
   for (const f of readdirSync(SERVER_SRC).filter((x) => x.endsWith(".py"))) {
     const src = readFileSync(join(SERVER_SRC, f), "utf8");
-    for (const m of src.matchAll(/@(?:app|router)\.(get|post|put|delete)\(\s*"([^"]+)"/g)) out.add(`${m[1].toUpperCase()} ${m[2]}`);
+    for (const m of src.matchAll(/@(?:app|router)\.(get|post|put|patch|delete)\(\s*"([^"]+)"/g)) out.add(`${m[1].toUpperCase()} ${m[2]}`);
     // router.add_api_route("/context", put_context, methods=["PUT", "POST"])
     for (const m of src.matchAll(/add_api_route\(\s*"([^"]+)"[^)]*methods=\[([^\]]+)\]/g)) {
       for (const verb of m[2].matchAll(/"([A-Z]+)"/g)) out.add(`${verb[1]} ${m[1]}`);
