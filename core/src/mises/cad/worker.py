@@ -95,6 +95,21 @@ def _face_list(shape) -> list[dict]:
     return out
 
 
+def _edge_list(shape) -> list[dict]:
+    """Edge ids ("e0".. in shape.edges() order) with type, length and midpoint, so a feature op
+    (fillet/chamfer) can name an edge. Compact; it rides along in metrics like the face list."""
+    out = []
+    for i, edge in enumerate(shape.edges()):
+        try:
+            mid = edge.position_at(0.5)
+            center = [round(mid.X, 3) + 0.0, round(mid.Y, 3) + 0.0, round(mid.Z, 3) + 0.0]
+        except Exception:  # noqa: BLE001 - degenerate edges have no usable parameterisation
+            center = None
+        out.append({"id": f"e{i}", "type": str(edge.geom_type).split(".")[-1].lower(),
+                    "length": round(float(edge.length), 3), "center": center})
+    return out
+
+
 def _metrics(shape, density: float) -> dict:
     bb = shape.bounding_box()
     vol = float(shape.volume)
@@ -110,6 +125,7 @@ def _metrics(shape, density: float) -> dict:
         "faces": len(shape.faces()),
         "face_list": _face_list(shape),
         "edges": len(shape.edges()),
+        "edge_list": _edge_list(shape),
         "holes": _hole_groups(shape),
         "solids": len(shape.solids()),
     }

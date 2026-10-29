@@ -78,7 +78,9 @@ def test_registration():
     register_mirror_tools(reg)
     assert {t.name for t in reg.list()} == {"mirror_part_create", "mirror_part_set_vars",
                                             "mirror_measure", "mirror_export", "mirror_part_list",
-                                            "mirror_faces"}
+                                            "mirror_faces", "mirror_edges",
+                                            "mirror_part_get_source", "mirror_part_set_source",
+                                            "mirror_part_op"}
 
 
 async def test_forged_metrics_then_raise_keeps_state(ctx, tmp_path):

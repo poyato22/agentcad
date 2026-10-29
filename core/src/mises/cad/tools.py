@@ -11,6 +11,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from .. import edits as _edits
+from ..events import Event
 from ..naming import check_name
 from ..tools.registry import ToolContext, ToolRegistry, tool
 from ..types import ErrorCode, MisesError, SafetyClass, StepKind, ToolOutput
@@ -83,6 +85,54 @@ def _read_json(path: Path) -> dict:
     return json.loads(path.read_text())
 
 
+def _editor(ctx: ToolContext) -> str:
+    """Who is editing: "user" when the call rides the shared UI run, else "agent"."""
+    try:
+        return "user" if ctx.store.get_run(ctx.run_id).provider == "ui" else "agent"
+    except Exception:  # noqa: BLE001 - no store/run in a bare unit test
+        return "agent"
+
+
+def _home(ctx: ToolContext, d: Path) -> Path:
+    rt = (getattr(ctx, "services", None) or {}).get("runtime")
+    home = getattr(rt, "home", None)
+    # Parts resolve through each run's <workdir>/parts symlink to <home>/parts/<id>.
+    return Path(home) if home is not None else d.resolve().parent.parent
+
+
+def _finish_edit(ctx: ToolContext, part_id: str, d: Path, summary: str) -> int:
+    """Bump the version, emit part_changed, and log the edit when the user made it. Call under
+    the part lock, right after a successful build."""
+    version = _edits.read_version(d) + 1
+    _edits.write_version(d, version)
+    by = _editor(ctx)
+    events = getattr(ctx, "events", None)
+    run_id = getattr(ctx, "run_id", None)
+    if events is not None:
+        events.publish(Event(type="part_changed", run_id=run_id, data={
+            "part_id": part_id, "version": version, "by": by,
+            "run_id": run_id if by == "agent" else None, "summary": summary}))
+    if by == "user":
+        try:
+            _edits.log_user_edit(_home(ctx, d), part_id, version=version, summary=summary,
+                                 run_id=run_id)
+        except OSError:
+            pass
+    return version
+
+
+def _conflict(part_id: str, d: Path) -> ToolOutput:
+    """A structured stale-version result: the agent (or UI) must re-read, never overwrite."""
+    current = _edits.read_version(d)
+    src = (d / "part.py").read_text() if (d / "part.py").exists() else ""
+    vars_ = _read_json(d / "vars.json") if (d / "vars.json").exists() else {}
+    return ToolOutput(
+        ok=False, step_kind=StepKind.ERROR,
+        summary=f"{part_id}: version conflict (current {current}); re-read before editing again",
+        data={"conflict": True, "part_id": part_id, "current_version": current,
+              "vars": vars_, "source": src})
+
+
 class CreateArgs(BaseModel):
     part_id: str
     script: str = Field(description="Python source defining VARS: dict[str, float] and "
@@ -93,6 +143,37 @@ class CreateArgs(BaseModel):
 class SetVarsArgs(BaseModel):
     part_id: str
     vars: dict[str, float]
+    base_version: int | None = Field(
+        default=None, description="The part version you last saw. If it no longer matches, the "
+                                  "edit is refused with a conflict so the user's and your edits "
+                                  "never clobber each other; re-read and retry.")
+
+
+class SourceArgs(BaseModel):
+    part_id: str
+
+
+class SetSourceArgs(BaseModel):
+    part_id: str
+    source: str = Field(description="The full build123d script (defines VARS and build(v)).")
+    vars: dict[str, float] | None = Field(
+        default=None, description="Override VARS values; omit to keep the current ones.")
+    base_version: int | None = None
+
+
+class OpArgs(BaseModel):
+    part_id: str
+    op: Literal["hole", "fillet", "chamfer", "shell", "extrude"]
+    target: dict = Field(default_factory=dict,
+                         description="Geometry the op acts on: {face_id} for hole/extrude, "
+                                     "{edge_ids:[...]} for fillet/chamfer, {face_ids:[...]} for "
+                                     "shell.")
+    params: dict = Field(default_factory=dict,
+                        description="hole: diameter, through|depth, optional counterbore_d + "
+                                    "counterbore_depth. fillet: radius. chamfer: length. shell: "
+                                    "thickness. extrude: profile [[x,y],...], distance, "
+                                    "mode add|cut.")
+    base_version: int | None = None
 
 
 class PartArgs(BaseModel):
@@ -121,13 +202,25 @@ class FacesArgs(BaseModel):
     limit: int = Field(FACES_PAGE_MAX, ge=1, le=FACES_PAGE_MAX)
 
 
+class EdgesArgs(BaseModel):
+    part_id: str
+    offset: int = Field(0, ge=0)
+    limit: int = Field(FACES_PAGE_MAX, ge=1, le=FACES_PAGE_MAX)
+
+
 def _inline(m: dict) -> dict:
+    out = dict(m)
     faces = m.get("face_list")
-    if faces is None:
-        return m
-    out = {**m, "face_count": len(faces), "face_list_truncated": len(faces) > FACES_INLINE}
-    if len(faces) > FACES_INLINE:
-        out["face_list"] = sorted(faces, key=lambda f: -(f.get("area") or 0))[:FACES_INLINE]
+    if faces is not None:
+        out["face_count"] = len(faces)
+        out["face_list_truncated"] = len(faces) > FACES_INLINE
+        if len(faces) > FACES_INLINE:
+            out["face_list"] = sorted(faces, key=lambda f: -(f.get("area") or 0))[:FACES_INLINE]
+    # The edge list is for mirror_edges / feature ops; keep it out of the measure result.
+    edges = m.get("edge_list")
+    if edges is not None:
+        out["edge_count"] = len(edges)
+        out.pop("edge_list", None)
     return out
 
 
@@ -161,6 +254,7 @@ async def mirror_part_create(ctx: ToolContext, args: CreateArgs) -> ToolOutput:
     _check_vars(args.vars)
     d = _part_dir(ctx, args.part_id)
     async with _lock(d):
+        existed = (d / "metrics.json").exists()
         d.mkdir(parents=True, exist_ok=True)
         snap = _snapshot(d)
         (d / "part.py").write_text(args.script)
@@ -172,8 +266,11 @@ async def mirror_part_create(ctx: ToolContext, args: CreateArgs) -> ToolOutput:
                 _restore(d, snap)
             return _fail(res.error or "build failed", res.stdout_tail)
         _atomic_write(d / "vars.json", json.dumps(res.vars))
+        version = _finish_edit(ctx, args.part_id, d,
+                               f"{'rebuilt' if existed else 'created'} {args.part_id} from script")
     return ToolOutput(summary=_summary(args.part_id, res.metrics),
-                      data={"part_id": args.part_id, "vars": res.vars, **_inline(res.metrics)})
+                      data={"part_id": args.part_id, "vars": res.vars, "version": version,
+                            **_inline(res.metrics)})
 
 
 @tool("mirror_part_set_vars", safety=SafetyClass.LOCAL_MUTATE, scope_arg="part_id",
@@ -183,6 +280,8 @@ async def mirror_part_set_vars(ctx: ToolContext, args: SetVarsArgs) -> ToolOutpu
     d = _existing(ctx, args.part_id)
     _check_vars(args.vars)
     async with _lock(d):
+        if _edits.check_base_version(d, args.base_version) is not None:
+            return _conflict(args.part_id, d)
         current = _read_json(d / "vars.json")
         unknown = sorted(set(args.vars) - set(current))
         if unknown:
@@ -196,12 +295,15 @@ async def mirror_part_set_vars(ctx: ToolContext, args: SetVarsArgs) -> ToolOutpu
             return _fail(res.error or "build failed", res.stdout_tail)
         _atomic_write(d / "vars.json", json.dumps(res.vars))
         new_vars = res.vars
+        version = _finish_edit(ctx, args.part_id, d,
+                               "set " + ", ".join(f"{k}={args.vars[k]}" for k in args.vars))
     m = res.metrics
     delta = {"volume_mm3": m["volume_mm3"] - prev["volume_mm3"],
              "mass_g": m["mass_g"] - prev["mass_g"],
              "bbox_size": [a - b for a, b in zip(m["bbox"]["size"], prev["bbox"]["size"])]}
     return ToolOutput(summary=f"{_summary(args.part_id, m)}; volume delta {delta['volume_mm3']:+.1f} mm3",
-                      data={"part_id": args.part_id, "vars": new_vars, "delta": delta, **_inline(m)},
+                      data={"part_id": args.part_id, "vars": new_vars, "version": version,
+                            "delta": delta, **_inline(m)},
                       step_kind=StepKind.DIFF)
 
 
@@ -210,7 +312,8 @@ async def mirror_part_set_vars(ctx: ToolContext, args: SetVarsArgs) -> ToolOutpu
 async def mirror_measure(ctx: ToolContext, args: PartArgs) -> ToolOutput:
     d = _existing(ctx, args.part_id)
     m = _read_json(d / "metrics.json")
-    return ToolOutput(summary=_summary(args.part_id, m), data={"part_id": args.part_id, **_inline(m)},
+    return ToolOutput(summary=_summary(args.part_id, m),
+                      data={"part_id": args.part_id, "version": _edits.read_version(d), **_inline(m)},
                       step_kind=StepKind.MEASURE)
 
 
@@ -257,6 +360,100 @@ async def mirror_faces(ctx: ToolContext, args: FacesArgs) -> ToolOutput:
                       step_kind=StepKind.MEASURE)
 
 
+def _vars_schema(d: Path) -> list[dict]:
+    """The part's vars as a schema [{name, value}]. Plain scripts carry no min/max/unit/doc, so
+    those are left out; a structured VARS editor can add them later."""
+    try:
+        vars_ = _read_json(d / "vars.json")
+    except (OSError, ValueError):
+        vars_ = {}
+    return [{"name": k, "value": v} for k, v in vars_.items()]
+
+
+@tool("mirror_part_get_source", safety=SafetyClass.READ, scope_arg="part_id",
+      description="Return a part's build123d script and its variable schema, with the current "
+                  "version. Read this (or mirror_measure) before editing: the version guards "
+                  "against clobbering the user's live edits.")
+async def mirror_part_get_source(ctx: ToolContext, args: SourceArgs) -> ToolOutput:
+    d = _existing(ctx, args.part_id)
+    source = (d / "part.py").read_text()
+    return ToolOutput(summary=f"{args.part_id}: {len(source)} chars, version {_edits.read_version(d)}",
+                      data={"part_id": args.part_id, "source": source,
+                            "vars": _vars_schema(d), "version": _edits.read_version(d)})
+
+
+@tool("mirror_part_set_source", safety=SafetyClass.LOCAL_MUTATE, scope_arg="part_id",
+      description="Replace a part's whole script and rebuild (sandboxed). Pass base_version (the "
+                  "version you last read); a mismatch returns a conflict so a concurrent edit is "
+                  "never overwritten. A failed build keeps the previous state.")
+async def mirror_part_set_source(ctx: ToolContext, args: SetSourceArgs) -> ToolOutput:
+    d = _existing(ctx, args.part_id)
+    if args.vars is not None:
+        _check_vars(args.vars)
+    async with _lock(d):
+        if _edits.check_base_version(d, args.base_version) is not None:
+            return _conflict(args.part_id, d)
+        build_vars = args.vars if args.vars is not None else _read_json(d / "vars.json")
+        snap = _snapshot(d)
+        (d / "part.py").write_text(args.source)
+        res = await run_build(d, build_vars)
+        if not res.ok:
+            _restore(d, snap)
+            return _fail(res.error or "build failed", res.stdout_tail)
+        _atomic_write(d / "vars.json", json.dumps(res.vars))
+        version = _finish_edit(ctx, args.part_id, d, f"edited {args.part_id} source")
+    return ToolOutput(summary=f"{_summary(args.part_id, res.metrics)}; version {version}",
+                      data={"part_id": args.part_id, "vars": res.vars, "version": version,
+                            **_inline(res.metrics)}, step_kind=StepKind.DIFF)
+
+
+@tool("mirror_part_op", safety=SafetyClass.LOCAL_MUTATE, scope_arg="part_id",
+      description="Apply a quick feature op (hole, fillet, chamfer, shell, extrude) from a face "
+                  "or edge pick. The op is recorded as a `# mises-op` block appended to the "
+                  "script and the part is rebuilt, so your ops and the user's edits share one "
+                  "source of truth. Pass base_version; a mismatch returns a conflict.")
+async def mirror_part_op(ctx: ToolContext, args: OpArgs) -> ToolOutput:
+    d = _existing(ctx, args.part_id)
+    async with _lock(d):
+        if _edits.check_base_version(d, args.base_version) is not None:
+            return _conflict(args.part_id, d)
+        metrics = _read_json(d / "metrics.json")
+        source = (d / "part.py").read_text()
+        new_source = _edits.build_op_block(source, args.op, args.target, args.params, metrics)
+        build_vars = _read_json(d / "vars.json")
+        snap = _snapshot(d)
+        (d / "part.py").write_text(new_source)
+        res = await run_build(d, build_vars)
+        if not res.ok:
+            _restore(d, snap)
+            (d / "part.py").write_text(source)  # the op block did not build; drop it
+            return _fail(res.error or f"{args.op} op failed to build", res.stdout_tail)
+        _atomic_write(d / "vars.json", json.dumps(res.vars))
+        version = _finish_edit(ctx, args.part_id, d, f"{args.op} op on {args.part_id}")
+    return ToolOutput(summary=f"{args.op}: {_summary(args.part_id, res.metrics)}; version {version}",
+                      data={"part_id": args.part_id, "op": args.op, "version": version,
+                            "vars": res.vars, **_inline(res.metrics)}, step_kind=StepKind.DIFF)
+
+
+@tool("mirror_edges", safety=SafetyClass.READ, scope_arg="part_id",
+      description="Page through all edges of a built local part (id, type, length, midpoint), in "
+                  "edge-id order. Use the ids as fillet/chamfer targets in mirror_part_op.")
+async def mirror_edges(ctx: ToolContext, args: EdgesArgs) -> ToolOutput:
+    d = _existing(ctx, args.part_id)
+    edges = _read_json(d / "metrics.json").get("edge_list")
+    if edges is None:
+        raise MisesError(ErrorCode.NOT_FOUND, f"{args.part_id} has no edge ids yet",
+                         hint="rebuild it (mirror_part_set_vars with its current vars)")
+    page = edges[args.offset:args.offset + args.limit]
+    nxt = args.offset + len(page)
+    summary = (f"{args.part_id}: edges {args.offset}..{nxt - 1} of {len(edges)}" if page
+               else f"{args.part_id}: no edges at offset {args.offset} ({len(edges)} total)")
+    return ToolOutput(summary=summary,
+                      data={"part_id": args.part_id, "total": len(edges), "offset": args.offset,
+                            "edges": page, "next_offset": nxt if nxt < len(edges) else None},
+                      step_kind=StepKind.MEASURE)
+
+
 def _summary(part_id: str, m: dict) -> str:
     s = m["bbox"]["size"]
     return (f"{part_id}: volume {m['volume_mm3']:.1f} mm3, mass {m['mass_g']:.2f} g, "
@@ -266,5 +463,6 @@ def _summary(part_id: str, m: dict) -> str:
 
 def register_mirror_tools(registry: ToolRegistry) -> None:
     for t in (mirror_part_create, mirror_part_set_vars, mirror_measure, mirror_export,
-              mirror_part_list, mirror_faces):
+              mirror_part_list, mirror_faces, mirror_edges, mirror_part_get_source,
+              mirror_part_set_source, mirror_part_op):
         registry.register(t)
