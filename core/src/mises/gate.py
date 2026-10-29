@@ -76,8 +76,12 @@ class Gate:
         payload = args.model_dump()
         ctx = ToolContext(run_id=run_id, user=self.user, store=self.store, events=self.events,
                           workdir=workdir, policy=policy, call_id=call_id, services=self.services)
-        if t.safety == SafetyClass.IRREVERSIBLE:                                 # 6
+        # irreversible tools always ask; any other tool may ask for one call (needs_approval)
+        reason = t.needs_approval(ctx, args) if t.needs_approval else None
+        if t.safety == SafetyClass.IRREVERSIBLE or reason:                       # 6
             deltas = await self._preview(t, ctx, args) if t.preview else {}
+            if reason:
+                deltas = {**deltas, "approval_reason": reason}
             appr = await self.approvals.request(run_id, name, payload, deltas=deltas)
             appr = await self.approvals.wait(appr.id)
             if appr.status != "approved":

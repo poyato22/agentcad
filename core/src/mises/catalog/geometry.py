@@ -5,13 +5,16 @@ when it imports and has the size; otherwise, and for everything else, the part i
 envelope: the space the real part takes, with its mounting holes. The script prints which one
 it built (`MISES_GEOMETRY=...`), so the part records what it really is.
 
-The part's mass is the catalog mass when the item has one (an envelope's volume says nothing
-about a motor's mass), else its volume times the material density. `part.json` in the part
-directory records {kind: "catalog", project_id, label, catalog_item_id, geometry, mass_g,
-density_g_cm3, ...}; the density reproduces the mass when the part is regenerated.
+The part's mass is the catalog mass when the item has one (mass_source "catalog"; an
+envelope's volume says nothing about a motor's mass). Otherwise it is an estimate (mass_source
+"estimate"): volume x material density x a stated fill factor, the factors written to
+metrics.mass_note. `part.json` in the part directory records {kind: "catalog", project_id,
+label, catalog_item_id, geometry, mass_g, mass_source, density_g_cm3, fill_factor, ...}; the
+effective density reproduces the mass when the part is regenerated.
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import math
@@ -20,13 +23,17 @@ import shutil
 from pathlib import Path
 
 from ..cad.runner import run_build
-from ..cad.tools import PART_ID_RE, _atomic_write, _lock, _restore, _snapshot
+from ..cad.tools import PART_ID_RE, _atomic_write, _lock
 from ..naming import check_name
 from ..types import ErrorCode, MisesError
 
 STEEL_G_CM3 = 7.85
 DEFAULT_G_CM3 = 1.24          # the mirror default (PLA)
 _DENSITY = {"fastener": STEEL_G_CM3, "bearing": STEEL_G_CM3}
+# A ball bearing is not a solid ring: races, balls and cage fill about 70% of the d x D x B
+# envelope (SKF 6204: 110 g real vs 156 g as a solid steel ring = 0.70). Used only when an
+# envelope bearing has no catalog mass.
+_FILL = {"bearing": 0.7}
 META = "part.json"
 
 _HEADER = '''# Mises catalog part from item {item_id}
@@ -275,39 +282,64 @@ def _geometry_used(stdout: str) -> str:
     return m[-1] if m else "envelope"
 
 
+
+
+def choose_lock(parts_root: Path, base: str) -> asyncio.Lock:
+    """Held while a part id is chosen AND its part is built, so two inserts whose names slug to
+    the same base cannot pick the same free id."""
+    return _lock(Path(parts_root) / f".choose-{base}")
+
+
 async def build_part(parts_root: Path, part_id: str, script: str, vars_: dict[str, float],
                      meta: dict, *, mass_g: float | None = None,
-                     density_g_cm3: float = DEFAULT_G_CM3) -> dict:
-    """Write and build a new part dir (`parts_root/part_id`); on failure nothing is left.
-    Returns {"part_id", "metrics", "meta"}. `mass_g` overrides the volume-based mass."""
+                     density_g_cm3: float = DEFAULT_G_CM3, fill_factor: float = 1.0,
+                     mass_note: str | None = None) -> dict:
+    """Write and build a NEW part dir (`parts_root/part_id`); on failure nothing is left, and
+    an existing dir is never touched. Returns {"part_id", "metrics", "meta"}.
+
+    Mass: `mass_g` (a stated catalog mass) wins and is recorded as mass_source "catalog";
+    otherwise it is volume x density x fill_factor, recorded as mass_source "estimate" with
+    the factors in mass_note."""
     if not PART_ID_RE.match(part_id):
         raise _bad(f"bad part id {part_id!r}")
     check_name(part_id)
     d = Path(parts_root) / part_id
     async with _lock(d):
-        existed = d.exists()
-        d.mkdir(parents=True, exist_ok=True)
-        snap = _snapshot(d)
+        if d.exists():
+            raise MisesError(ErrorCode.STALE_VERSION, f"part {part_id!r} already exists",
+                             hint="insert again: a free id is chosen")
+        d.mkdir(parents=True)
         (d / "part.py").write_text(script)
-        res = await run_build(d, vars_, density_g_cm3=density_g_cm3)
+        effective = density_g_cm3 * fill_factor
+        res = await run_build(d, vars_, density_g_cm3=effective)
         if not res.ok:
-            if existed:
-                _restore(d, snap)
-            else:
-                shutil.rmtree(d, ignore_errors=True)
+            shutil.rmtree(d, ignore_errors=True)
             raise MisesError(ErrorCode.TOOL_FAILED, f"building {part_id} failed:"
                              f" {(res.error or '')[-400:]}")
         metrics = res.metrics
         vol_cm3 = (metrics.get("volume_mm3") or 0) / 1000
         if mass_g is not None and mass_g > 0 and vol_cm3 > 0:
-            density_g_cm3 = mass_g / vol_cm3
+            effective = mass_g / vol_cm3
             metrics = {**metrics, "mass_g": mass_g, "mass_source": "catalog"}
-            _atomic_write(d / "metrics.json", json.dumps(metrics))
+        else:
+            note = mass_note or (f"estimate: volume x {density_g_cm3:g} g/cm3"
+                                 f" x fill factor {fill_factor:g}")
+            metrics = {**metrics, "mass_source": "estimate", "mass_note": note}
+        _atomic_write(d / "metrics.json", json.dumps(metrics))
         meta = {**meta, "geometry": _geometry_used(res.stdout_tail),
-                "mass_g": metrics.get("mass_g"), "density_g_cm3": density_g_cm3}
+                "mass_g": metrics.get("mass_g"), "mass_source": metrics["mass_source"],
+                "density_g_cm3": effective, "fill_factor": fill_factor}
         _atomic_write(d / "vars.json", json.dumps(res.vars))
         _atomic_write(d / META, json.dumps(meta))
     return {"part_id": part_id, "metrics": metrics, "meta": meta}
+
+
+def _existing_part(d: Path) -> dict:
+    try:
+        metrics = json.loads((d / "metrics.json").read_text())
+    except (OSError, ValueError):
+        metrics = None
+    return {"part_id": d.name, "metrics": metrics, "meta": read_meta(d), "existing": True}
 
 
 async def insert_item(parts_root: Path, item: dict, project_id: str | None, *,
@@ -318,19 +350,23 @@ async def insert_item(parts_root: Path, item: dict, project_id: str | None, *,
     parts_root = Path(parts_root)
     script, vars_ = script_for(item)
     owner = {"kind": "catalog", "catalog_item_id": item["id"], "project_id": project_id}
-    pid, existing = choose_part_id(parts_root, base_part_id(item), owner, part_id)
-    if existing:
-        d = parts_root / pid
-        try:
-            metrics = json.loads((d / "metrics.json").read_text())
-        except (OSError, ValueError):
-            metrics = None
-        return {"part_id": pid, "metrics": metrics, "meta": read_meta(d), "existing": True}
+    base = base_part_id(item)
     dims = item.get("dims") or {}
     mass = dims.get("mass_g")
     mass = float(mass) if isinstance(mass, (int, float)) and not isinstance(mass, bool) else None
-    meta = {**owner, "label": item.get("name", "")[:200], "category": item.get("category"),
+    category = item.get("category")
+    density = _DENSITY.get(category, DEFAULT_G_CM3)
+    fill = _FILL.get(category, 1.0)
+    note = None
+    if mass is None and category not in _DENSITY:
+        note = (f"estimate: material unknown; volume x {density:g} g/cm3 (PLA) x fill factor"
+                f" {fill:g}. Add the real mass to the item")
+    meta = {**owner, "label": item.get("name", "")[:200], "category": category,
             "source": item.get("source"), "url": item.get("url"), "mount": item.get("mount")}
-    out = await build_part(parts_root, pid, script, vars_, meta, mass_g=mass,
-                           density_g_cm3=_DENSITY.get(item.get("category"), DEFAULT_G_CM3))
+    async with choose_lock(parts_root, base):
+        pid, existing = choose_part_id(parts_root, base, owner, part_id)
+        if existing:
+            return _existing_part(parts_root / pid)
+        out = await build_part(parts_root, pid, script, vars_, meta, mass_g=mass,
+                               density_g_cm3=density, fill_factor=fill, mass_note=note)
     return {**out, "existing": False}

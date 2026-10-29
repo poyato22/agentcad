@@ -9,7 +9,12 @@
   {
    "title": "SKF deep groove ball bearings (product pages, e.g. 6204)",
    "url": "https://www.skf.com/group/products/rolling-bearings/ball-bearings/deep-groove-ball-bearings/productid-6204",
-   "note": "boundary dimensions d x D x B of 6001-6204 follow ISO 15; no mass/load listed here"
+   "note": "boundary dimensions d x D x B of 6001-6204 follow ISO 15"
+  },
+  {
+   "title": "Simply Bearings: SKF 6001-6204 product pages (weight in the specifications)",
+   "url": "https://www.simplybearings.co.uk/products/6204-skf",
+   "note": "same page per size (6001-skf ... 6204-skf); masses of 6001-6004 and 6201-6204"
   }
  ],
  "items": [
@@ -630,12 +635,19 @@
      "key": "width",
      "value": 8,
      "unit": "mm"
+    },
+    {
+     "key": "mass",
+     "value": 22.0,
+     "unit": "g",
+     "note": "SKF, via Simply Bearings"
     }
    ],
    "dims": {
     "bore_mm": 12,
     "od_mm": 28,
-    "width_mm": 8
+    "width_mm": 8,
+    "mass_g": 22.0
    },
    "geometry": "envelope",
    "shape": {
@@ -671,12 +683,19 @@
      "key": "width",
      "value": 9,
      "unit": "mm"
+    },
+    {
+     "key": "mass",
+     "value": 30.0,
+     "unit": "g",
+     "note": "SKF, via Simply Bearings"
     }
    ],
    "dims": {
     "bore_mm": 15,
     "od_mm": 32,
-    "width_mm": 9
+    "width_mm": 9,
+    "mass_g": 30.0
    },
    "geometry": "envelope",
    "shape": {
@@ -712,12 +731,19 @@
      "key": "width",
      "value": 10,
      "unit": "mm"
+    },
+    {
+     "key": "mass",
+     "value": 39.0,
+     "unit": "g",
+     "note": "SKF, via Simply Bearings"
     }
    ],
    "dims": {
     "bore_mm": 17,
     "od_mm": 35,
-    "width_mm": 10
+    "width_mm": 10,
+    "mass_g": 39.0
    },
    "geometry": "envelope",
    "shape": {
@@ -753,12 +779,19 @@
      "key": "width",
      "value": 12,
      "unit": "mm"
+    },
+    {
+     "key": "mass",
+     "value": 69.0,
+     "unit": "g",
+     "note": "SKF, via Simply Bearings"
     }
    ],
    "dims": {
     "bore_mm": 20,
     "od_mm": 42,
-    "width_mm": 12
+    "width_mm": 12,
+    "mass_g": 69.0
    },
    "geometry": "envelope",
    "shape": {
@@ -794,12 +827,19 @@
      "key": "width",
      "value": 10,
      "unit": "mm"
+    },
+    {
+     "key": "mass",
+     "value": 37.0,
+     "unit": "g",
+     "note": "SKF, via Simply Bearings"
     }
    ],
    "dims": {
     "bore_mm": 12,
     "od_mm": 32,
-    "width_mm": 10
+    "width_mm": 10,
+    "mass_g": 37.0
    },
    "geometry": "envelope",
    "shape": {
@@ -835,12 +875,19 @@
      "key": "width",
      "value": 11,
      "unit": "mm"
+    },
+    {
+     "key": "mass",
+     "value": 45.0,
+     "unit": "g",
+     "note": "SKF, via Simply Bearings"
     }
    ],
    "dims": {
     "bore_mm": 15,
     "od_mm": 35,
-    "width_mm": 11
+    "width_mm": 11,
+    "mass_g": 45.0
    },
    "geometry": "envelope",
    "shape": {
@@ -876,12 +923,19 @@
      "key": "width",
      "value": 12,
      "unit": "mm"
+    },
+    {
+     "key": "mass",
+     "value": 65.0,
+     "unit": "g",
+     "note": "SKF, via Simply Bearings"
     }
    ],
    "dims": {
     "bore_mm": 17,
     "od_mm": 40,
-    "width_mm": 12
+    "width_mm": 12,
+    "mass_g": 65.0
    },
    "geometry": "envelope",
    "shape": {
@@ -917,12 +971,19 @@
      "key": "width",
      "value": 14,
      "unit": "mm"
+    },
+    {
+     "key": "mass",
+     "value": 110.0,
+     "unit": "g",
+     "note": "SKF, via Simply Bearings"
     }
    ],
    "dims": {
     "bore_mm": 20,
     "od_mm": 47,
-    "width_mm": 14
+    "width_mm": 14,
+    "mass_g": 110.0
    },
    "geometry": "envelope",
    "shape": {

@@ -47,7 +47,8 @@ def test_registered_classes_and_costs():
         "onshape_doc_open": (C.READ, 3), "onshape_features_list": (C.READ, 1),
         "onshape_variables_get": (C.READ, 1), "onshape_propose": (C.ONSHAPE_MUTATE, 4),
         "onshape_merge_request": (C.IRREVERSIBLE, 3), "onshape_budget_get": (C.READ, 0),
-        "onshape_docs_search": (C.READ, 1), "onshape_doc_elements": (C.READ, 1)}
+        "onshape_docs_search": (C.READ, 1), "onshape_doc_elements": (C.READ, 1),
+        "onshape_import_element": (C.LOCAL_MUTATE, 2)}
     assert reg.get("onshape_merge_request").preview is not None
 
 

@@ -131,17 +131,36 @@ class Catalog:
         return json.loads(row[0])
 
     # ---- URL items
-    def save(self, item: dict, project_id: str | None = None) -> dict:
-        """Store (or replace) an imported item; re-importing the same URL keeps its id."""
+    def existing(self, item_id: str) -> dict | None:
+        row = self.store._one("SELECT data FROM catalog_items WHERE id=?", (item_id,))
+        return json.loads(row[0]) if row else None
+
+    def add(self, item: dict, project_id: str | None = None, *, refresh: bool = False) -> dict:
+        """Store a freshly imported item. If the URL is already in the directory, the stored
+        item is kept as it is (with the user's review edits and its build) and returned with
+        `existing: true`; only `refresh` (the app's explicit re-read) replaces the extracted
+        data, and even then it keeps the item's build and drops earlier edits on purpose."""
+        old = self.existing(item.get("id", ""))
+        if old is not None and not refresh:
+            return {**old, "existing": True}
+        if old is not None:
+            project_id = old.get("project_id")
+        return {**self._write(item, project_id), "existing": False}
+
+    def _write(self, item: dict, project_id: str | None = None) -> dict:
         if item.get("source") != "url" or not ID_RE.match(item.get("id", "")):
             raise MisesError(ErrorCode.INVALID_INPUT, "only URL items with a valid id are saved")
         if item["id"] in builtin_by_id():
             raise MisesError(ErrorCode.INVALID_INPUT, "id collides with a built-in item")
-        item = {**item, "project_id": project_id}
+        item = {k: v for k, v in item.items() if k != "existing"}
+        item["project_id"] = project_id
         with self.store._tx() as db:
             db.execute("INSERT OR REPLACE INTO catalog_items VALUES (?,?,?,?,?)",
                        (item["id"], project_id, item.get("url"), json.dumps(item), time.time()))
         return item
+
+    # kept for callers that store an item they built themselves
+    save = _write
 
     def update(self, item_id: str, patch: dict) -> dict:
         """The user's review edits of an imported item (name, category, vendor, specs, dims,
@@ -154,7 +173,10 @@ class Catalog:
         except ValueError as e:
             raise MisesError(ErrorCode.INVALID_INPUT, f"bad item edit: {e}",
                              hint="editable: name, category, vendor, specs, dims, mount") from None
-        return self.save({**it, **edit}, it.get("project_id"))
+        if "dims" in edit:
+            edit["mass_source"] = "catalog" if "mass_g" in (edit["dims"] or {}) else "estimate"
+        return self._write({**it, **edit, "edited_by_user": True, "edited_at": time.time()},
+                           it.get("project_id"))
 
     def delete(self, item_id: str) -> None:
         if item_id in builtin_by_id():

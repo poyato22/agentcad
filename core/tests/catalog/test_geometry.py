@@ -106,3 +106,41 @@ async def test_failed_build_leaves_nothing(tmp_path):
         await geometry.build_part(tmp_path, "broken_part", "def build(v):\n    raise ValueError\n",
                                   {}, {"kind": "catalog"})
     assert not (tmp_path / "broken_part").exists()
+
+
+async def test_build_part_never_touches_an_existing_dir(tmp_path):
+    (tmp_path / "taken_part").mkdir()
+    (tmp_path / "taken_part" / "part.py").write_text("mine")
+    with pytest.raises(MisesError):
+        await geometry.build_part(tmp_path, "taken_part", "x", {}, {"kind": "catalog"})
+    assert (tmp_path / "taken_part" / "part.py").read_text() == "mine"
+
+
+def test_every_bearing_has_a_cited_catalog_mass():
+    for it in builtin_items():
+        assert it["mass_source"] in ("catalog", "estimate")
+        if it["category"] == "bearing":
+            assert it["mass_source"] == "catalog", it["id"]
+            mass = next(s for s in it["specs"] if s["key"] == "mass")
+            assert mass["note"].startswith("SKF")
+    assert builtin_by_id()["bearing_6204_deep_groove"]["dims"]["mass_g"] == 110
+
+
+@pytest.mark.slow
+async def test_envelope_bearing_without_mass_is_a_stated_estimate(tmp_path):
+    item = {"id": "url_" + "c" * 16, "source": "url", "name": "Bearing 6204",
+            "category": "bearing", "dims": {"od_mm": 47, "width_mm": 14, "bore_mm": 20}}
+    out = await geometry.insert_item(tmp_path, item, None)
+    m = out["metrics"]
+    assert m["mass_source"] == "estimate" and "fill factor 0.7" in m["mass_note"]
+    assert m["mass_g"] == pytest.approx(156.1 * 0.7, rel=0.01)          # ~109 g; SKF: 110 g
+    assert out["meta"]["mass_source"] == "estimate" and out["meta"]["fill_factor"] == 0.7
+
+
+@pytest.mark.slow
+async def test_unknown_material_estimate_says_so(tmp_path):
+    item = {"id": "url_" + "d" * 16, "source": "url", "name": "Widget", "category": "other",
+            "dims": {"length_mm": 10, "width_mm": 10, "height_mm": 10}}
+    out = await geometry.insert_item(tmp_path, item, None)
+    assert out["metrics"]["mass_source"] == "estimate"
+    assert "material unknown" in out["metrics"]["mass_note"]

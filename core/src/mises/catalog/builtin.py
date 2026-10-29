@@ -18,6 +18,9 @@ def builtin_items() -> tuple[dict, ...]:
         for it in doc["items"]:
             out.append({**it, "category": it.get("category") or doc["category"],
                         "source": "builtin", "url": None, "vendor": None,
+                        # catalog: a stated mass; estimate: volume x density x fill factor
+                        "mass_source": "catalog" if "mass_g" in it.get("dims", {})
+                        else "estimate",
                         "sources": doc.get("sources", []), "project_id": None})
     ids = [i["id"] for i in out]
     if len(ids) != len(set(ids)):

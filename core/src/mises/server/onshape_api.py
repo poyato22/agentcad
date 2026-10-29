@@ -15,10 +15,10 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter, Response
 from pydantic import BaseModel, Field
 
-from ..events import Event
 from ..onshape import browse
 from ..onshape.adapter import OnshapeAdapter
 from ..types import ErrorCode, MisesError
+from .catalog_api import _part_result, ui_call
 
 if TYPE_CHECKING:
     from ..runtime import Runtime
@@ -67,13 +67,10 @@ def build_onshape_router(runtime: Runtime) -> APIRouter:
 
     @router.post("/onshape/import")
     async def import_element(body: ImportBody):
-        out = await browse.import_element(adapter().client, Path(runtime.home) / "parts",
-                                          body.did, body.wid, body.eid, body.project_id)
-        if not out["existing"]:
-            runtime.events.publish(Event(type="part_changed", data={
-                "part_id": out["part_id"], "version": 1, "by": "user", "run_id": None,
-                "summary": "imported from Onshape"}))
-        return out
+        """Through the Gate as the app's own call (onshape_import_element on the ui run)."""
+        adapter()                                       # 403 before a call when not connected
+        data = await ui_call(runtime, "onshape_import_element", body.model_dump())
+        return _part_result(runtime, data)
 
     @router.get("/onshape/budget")
     async def budget(run_id: str | None = None):

@@ -317,8 +317,43 @@ async def onshape_doc_elements(ctx: ToolContext, args: DocElementsArgs) -> ToolO
                       data={"did": did, "wid": wid, "untrusted_user_data": {"elements": rows}})
 
 
-ONSHAPE_TOOLS = [onshape_docs_search, onshape_doc_elements, onshape_doc_open, onshape_features_list, onshape_variables_get, onshape_propose,
-                 onshape_merge_request, onshape_budget_get]
+class ImportElementArgs(BaseModel):
+    did: str = Field(pattern=r"^[0-9a-fA-F]{24}$")
+    wid: str = Field(pattern=r"^[0-9a-fA-F]{24}$")
+    eid: str = Field(pattern=r"^[0-9a-fA-F]{24}$")
+    project_id: str | None = Field(None, max_length=64,
+                                   description="The build; defaults to this run's build")
+
+
+@tool("onshape_import_element", description="Mirror an Onshape Part Studio or Assembly into the"
+      " build as a local bounding-box envelope part linked to it (2 Onshape calls; Onshape is"
+      " only read). Importing it again returns the existing part.",
+      safety=SafetyClass.LOCAL_MUTATE, onshape_cost=2, scope_keys=_doc_scope, timeout_s=120)
+async def onshape_import_element(ctx: ToolContext, args: ImportElementArgs) -> ToolOutput:
+    from pathlib import Path
+
+    from ..catalog.tools import resolve_project, ui_call_meta
+    from ..events import Event
+
+    ad = _adapter(ctx)
+    project = resolve_project(ctx, args.project_id)
+    out = await browse.import_element(ad.client, Path(ctx.workdir) / "parts", args.did, args.wid,
+                                      args.eid, project, run_id=ctx.run_id)
+    by = "user" if ui_call_meta(ctx) is not None else "agent"
+    if not out["existing"]:
+        ctx.events.publish(Event(type="part_changed", run_id=ctx.run_id, data={
+            "part_id": out["part_id"], "version": 1, "by": by,
+            "run_id": None if by == "user" else ctx.run_id,
+            "summary": "imported from Onshape"}))
+    return ToolOutput(summary=f"{'Already mirrored' if out['existing'] else 'Mirrored'} as part"
+                              f" {out['part_id']} (bounding-box envelope). {UNTRUSTED}",
+                      data={"part_id": out["part_id"], "existing": out["existing"],
+                            "untrusted_user_data": {"meta": out["meta"]}})
+
+
+ONSHAPE_TOOLS = [onshape_docs_search, onshape_doc_elements, onshape_doc_open,
+                 onshape_features_list, onshape_variables_get, onshape_propose,
+                 onshape_merge_request, onshape_budget_get, onshape_import_element]
 
 
 def register_onshape_tools(registry: ToolRegistry) -> None:

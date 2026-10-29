@@ -12,6 +12,8 @@ class FakeWeb:
     def __init__(self) -> None:
         self.pages: dict[str, httpx.Response | callable] = {}
         self.requests: list[httpx.Request] = []
+        self.connected_to: list[str] = []
+        self.sni: list[str | None] = []
         self.transport = httpx.MockTransport(self.handler)
 
     def page(self, url: str, body: str | bytes, ctype: str = "text/html; charset=utf-8",
@@ -28,8 +30,11 @@ class FakeWeb:
                                                                       **(headers or {})})
 
     def handler(self, req: httpx.Request) -> httpx.Response:
+        # the importer connects to the vetted IP and names the site in Host (and TLS SNI)
         self.requests.append(req)
-        key = str(req.url.copy_with(query=None))
+        self.connected_to.append(req.url.host)
+        self.sni.append(req.extensions.get("sni_hostname"))
+        key = str(req.url.copy_with(query=None, host=req.headers["host"]))
         fn = self.pages.get(key)
         return fn(req) if fn else httpx.Response(404)
 

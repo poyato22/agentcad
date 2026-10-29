@@ -1,12 +1,18 @@
 """Turn a product page URL into a catalog item. The page is untrusted data, never instructions.
 
-Fetching: https only, the host must not resolve to a loopback/private/link-local address,
-redirects are followed by hand (at most MAX_REDIRECTS) and every target is checked again, the
-body is capped at MAX_BYTES (streamed: a bigger page is not read), the whole fetch at
-TIMEOUT_S, and no cookies are sent or kept. Extraction reads JSON-LD Product data, two-column
-tables, <dl> lists and "key: value" lines, and normalizes lengths to mm, masses to g and forces
-to N. The page's visible text is kept as `raw_text` (truncated) for review; agents only ever see
-it inside nonce delimiters (`wrap_untrusted`).
+Fetching: https only, port 443, the host must resolve only to public addresses (loopback,
+private, link-local, NAT64/6to4/Teredo/IPv4-compatible wrappers of those are refused), and the
+connection goes to the vetted address itself (the host name rides along as Host and TLS SNI, so
+the certificate is still checked against it): a DNS answer that changes between the check and
+the connect (rebinding) is never used. Redirects are followed by hand (at most MAX_REDIRECTS)
+and every target is checked again, the body is capped at MAX_BYTES (streamed: a bigger page is
+not read), the whole fetch at TIMEOUT_S, and no cookies are sent or kept. Connection failures
+come back as one generic message (no probing of what is behind an address).
+
+Extraction reads JSON-LD Product data, two-column tables, <dl> lists and "key: value" lines,
+and normalizes lengths to mm, masses to g and forces to N. The page's visible text is kept as
+`raw_text` (truncated) for review; agents only ever see it inside nonce delimiters
+(`wrap_untrusted`).
 """
 from __future__ import annotations
 
@@ -34,6 +40,10 @@ USER_AGENT = "Mises-parts-directory/0.1"
 _REDIRECTS = {301, 302, 303, 307, 308}
 _TYPES = ("text/html", "application/xhtml+xml", "application/json", "application/ld+json",
           "text/plain")
+_NUMERIC_HOST_RE = re.compile(r"(0x[0-9a-f]*|\d+)(\.(0x[0-9a-f]*|\d+))*\.?")
+_NAT64 = ipaddress.ip_network("64:ff9b::/96")
+_NAT64_LOCAL = ipaddress.ip_network("64:ff9b:1::/48")
+_V4COMPAT = ipaddress.ip_network("::/96")
 
 Resolver = Callable[[str], Awaitable[list[str]]]
 
@@ -48,23 +58,44 @@ async def _system_resolve(host: str) -> list[str]:
 
 
 def _ip_blocked(ip: str) -> bool:
+    """True unless `ip` is a plain public unicast address. IPv6 forms that carry an IPv4
+    address (mapped, IPv4-compatible, NAT64 64:ff9b::/96, 6to4, Teredo) are judged by that
+    IPv4 address; the local-use NAT64 prefix is refused outright."""
     try:
         a = ipaddress.ip_address(ip.split("%")[0])
     except ValueError:
         return True
-    if isinstance(a, ipaddress.IPv6Address) and a.ipv4_mapped is not None:
-        a = a.ipv4_mapped
+    if isinstance(a, ipaddress.IPv6Address):
+        if a in _NAT64_LOCAL:
+            return True
+        inner = None
+        if a.ipv4_mapped is not None:
+            inner = a.ipv4_mapped
+        elif a in _NAT64:
+            inner = ipaddress.IPv4Address(int(a) & 0xFFFFFFFF)
+        elif a.sixtofour is not None:
+            inner = a.sixtofour
+        elif a.teredo is not None:
+            return True                          # tunnels to an address we cannot vet
+        elif a in _V4COMPAT:
+            if int(a) <= 1:                      # :: and ::1
+                return True
+            inner = ipaddress.IPv4Address(int(a) & 0xFFFFFFFF)
+        if inner is not None:
+            a = inner
     return not a.is_global or a.is_multicast
 
 
-def check_url(url: str) -> str:
-    """The URL, normalized, if it may be fetched at all (https, a real host name)."""
+def check_url(url: str, *, strip_query: bool = False) -> str:
+    """The URL, normalized, if it may be fetched at all (https, port 443, a real host name).
+    `strip_query` drops the query string (agent imports); the fragment is always dropped."""
     if not isinstance(url, str) or not url.strip() or len(url) > 2048:
         raise _bad("url is required (at most 2048 characters)")
     try:
         u = urlsplit(url.strip())
+        port = u.port
     except ValueError:
-        raise _bad("not a URL") from None
+        raise _bad("not a valid URL") from None
     if u.scheme.lower() != "https":
         raise _bad("only https links can be imported", "use the https:// address of the page")
     host = (u.hostname or "").lower().rstrip(".")
@@ -73,23 +104,35 @@ def check_url(url: str) -> str:
     if host == "localhost" or host.endswith((".localhost", ".local", ".internal")):
         raise _bad("local addresses cannot be imported")
     try:
-        if _ip_blocked(str(ipaddress.ip_address(host.strip("[]")))):
-            raise _bad("private or local IP addresses cannot be imported")
+        ip = ipaddress.ip_address(host)
     except ValueError:
-        pass                                    # a name: checked again once resolved
-    if u.port not in (None, 443):
+        ip = None
+        if _NUMERIC_HOST_RE.fullmatch(host):    # 0177.0.0.1, 0x7f.1, 2130706433 ...
+            raise _bad("numeric host names that are not plain IP addresses are not allowed")
+    if ip is not None and _ip_blocked(str(ip)):
+        raise _bad("private or local IP addresses cannot be imported")
+    if port not in (None, 443):
         raise _bad("only the standard https port is allowed")
-    return urlunsplit(("https", host, u.path or "/", u.query, ""))
+    netloc = f"[{host}]" if ":" in host else host
+    return urlunsplit(("https", netloc, u.path or "/", "" if strip_query else u.query, ""))
 
 
-async def _check_resolves_public(host: str, resolve: Resolver) -> None:
+async def _vetted_ip(host: str, resolve: Resolver) -> str:
+    """The address to connect to: every address the name resolves to must be public."""
+    try:
+        ipaddress.ip_address(host)
+        return host                              # a literal, already checked by check_url
+    except ValueError:
+        pass
     try:
         ips = await resolve(host)
     except OSError:
-        raise MisesError(ErrorCode.TRANSIENT, f"could not resolve {host}",
+        raise MisesError(ErrorCode.TRANSIENT, "could not resolve the page's host",
                          hint="check the link and the network") from None
     if not ips or any(_ip_blocked(ip) for ip in ips):
         raise _bad(f"{host} resolves to a private or local address; not fetched")
+    v4 = [ip for ip in ips if ":" not in ip]
+    return (v4 or ips)[0]
 
 
 class Page:
@@ -102,14 +145,32 @@ class Page:
 
 
 async def fetch(url: str, *, transport: httpx.AsyncBaseTransport | None = None,
-                resolve: Resolver = _system_resolve) -> Page:
-    start = check_url(url)
+                resolve: Resolver = _system_resolve, strip_query: bool = False) -> Page:
+    start = check_url(url, strip_query=strip_query)
     try:
         async with asyncio.timeout(TIMEOUT_S):
             return await _fetch(start, transport, resolve)
     except TimeoutError:
         raise MisesError(ErrorCode.TRANSIENT, f"the page took longer than {TIMEOUT_S:g} s",
                          hint="try again, or another page") from None
+    except httpx.InvalidURL:
+        raise _bad("not a valid URL") from None
+
+
+def _peer_ok(resp: httpx.Response, ip: str) -> bool:
+    stream = resp.extensions.get("network_stream")
+    if stream is None:                           # e.g. a test transport: nothing to compare
+        return True
+    try:
+        addr = stream.get_extra_info("server_addr")
+    except Exception:  # noqa: BLE001
+        return True
+    if not addr:
+        return True
+    try:
+        return ipaddress.ip_address(addr[0]) == ipaddress.ip_address(ip)
+    except ValueError:
+        return False
 
 
 async def _fetch(start: str, transport, resolve: Resolver) -> Page:
@@ -118,11 +179,18 @@ async def _fetch(start: str, transport, resolve: Resolver) -> Page:
                                  timeout=TIMEOUT_S, trust_env=False) as http:
         url = start
         for hop in range(MAX_REDIRECTS + 1):
-            await _check_resolves_public(urlsplit(url).hostname or "", resolve)
+            logical = httpx.URL(url)
+            host = logical.host
+            ip = await _vetted_ip(host, resolve)
+            pinned = logical.copy_with(host=ip)
             http.cookies.clear()                 # never send what a previous hop set
             try:
-                async with http.stream("GET", url, headers=headers) as resp:
+                async with http.stream("GET", pinned, headers={**headers, "Host": logical.netloc
+                                                                .decode("ascii")},
+                                       extensions={"sni_hostname": host}) as resp:
                     http.cookies.clear()
+                    if not _peer_ok(resp, ip):
+                        raise MisesError(ErrorCode.TRANSIENT, "could not connect to the page")
                     if resp.status_code in _REDIRECTS:
                         loc = resp.headers.get("Location")
                         if not loc:
@@ -131,9 +199,10 @@ async def _fetch(start: str, transport, resolve: Resolver) -> Page:
                             raise MisesError(ErrorCode.TOOL_FAILED,
                                              f"more than {MAX_REDIRECTS} redirects")
                         try:
-                            url = check_url(str(resp.url.join(loc)))
-                        except MisesError as e:
-                            raise _bad(f"the page redirects somewhere not allowed: {e.message}",
+                            url = check_url(str(logical.join(loc)))
+                        except (MisesError, httpx.InvalidURL) as e:
+                            why = e.message if isinstance(e, MisesError) else "not a valid URL"
+                            raise _bad(f"the page redirects somewhere not allowed: {why}",
                                        "only https pages on public hosts are fetched") from None
                         continue
                     if not resp.is_success:
@@ -152,10 +221,11 @@ async def _fetch(start: str, transport, resolve: Resolver) -> Page:
                             raise _bad(f"page larger than {MAX_BYTES // (1024 * 1024)} MB;"
                                        " not read")
                     text = bytes(body).decode(resp.encoding or "utf-8", errors="replace")
-                    return Page(start, str(resp.url), ctype, text)
-            except httpx.HTTPError as e:
-                raise MisesError(ErrorCode.TRANSIENT, f"could not fetch the page:"
-                                 f" {type(e).__name__}", hint="check the link") from None
+                    return Page(start, url, ctype, text)
+            except httpx.HTTPError:
+                # one message for refused, unreachable, TLS and protocol failures alike
+                raise MisesError(ErrorCode.TRANSIENT, "could not connect to the page",
+                                 hint="check the link") from None
     raise MisesError(ErrorCode.TOOL_FAILED, "redirect loop")
 
 
@@ -504,18 +574,24 @@ def extract(page: Page) -> dict:
     category = next((cat for cat, pat in _CATEGORY_WORDS if re.search(pat, hay)), "other")
     has_box = all(k in dims for k in ("length_mm", "width_mm", "height_mm"))
     has_round = "diameter_mm" in dims or "od_mm" in dims
-    return {"id": "url_" + hashlib.sha256(page.url.encode()).hexdigest()[:16], "name": name,
+    return {"id": item_id_for(page.url), "name": name,
             "category": category, "source": "url", "url": page.url,
             "vendor": _squash(vendor)[:200] if isinstance(vendor, str) else None,
             "specs": specs, "dims": dims, "mount": mount,
             "geometry": "envelope" if has_box or has_round else None,
+            "mass_source": "catalog" if "mass_g" in dims else "estimate",
             "sources": [{"title": f"Imported from {page.domain}", "url": page.url}],
             "raw_text": raw[:RAW_TEXT_MAX]}
 
 
+def item_id_for(url: str) -> str:
+    return "url_" + hashlib.sha256(url.encode()).hexdigest()[:16]
+
+
 async def import_url(url: str, *, transport: httpx.AsyncBaseTransport | None = None,
-                     resolve: Resolver = _system_resolve) -> dict:
-    return extract(await fetch(url, transport=transport, resolve=resolve))
+                     resolve: Resolver = _system_resolve, strip_query: bool = False) -> dict:
+    return extract(await fetch(url, transport=transport, resolve=resolve,
+                               strip_query=strip_query))
 
 
 # ---- untrusted data for agents

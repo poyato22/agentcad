@@ -112,7 +112,60 @@ async def test_redirect_to_http_refused(web, public_dns):
     with pytest.raises(MisesError) as e:
         await import_url(URL, transport=web.transport, resolve=public_dns)
     assert e.value.code == ErrorCode.INVALID_INPUT and "redirect" in e.value.message
-    assert [str(r.url) for r in web.requests] == [URL]
+    assert [r.headers["host"] for r in web.requests] == ["shop.example.com"]
+
+
+async def test_connects_to_the_vetted_ip_with_host_and_sni(web):
+    answers = iter([["93.184.216.34"], ["127.0.0.1"]])
+
+    async def rebinding(host):                   # public at the check, loopback afterwards
+        return next(answers)
+    web.fixture(URL, "table_motor.html")
+    await import_url(URL, transport=web.transport, resolve=rebinding)
+    # one resolve, and the connection went to that address, not to a fresh lookup
+    assert web.connected_to == ["93.184.216.34"] and web.sni == ["shop.example.com"]
+    assert web.requests[0].headers["host"] == "shop.example.com"
+
+
+@pytest.mark.parametrize("ip", ["64:ff9b::7f00:1", "64:ff9b::a9fe:a9fe", "::127.0.0.1",
+                                "::ffff:10.0.0.1", "2002:7f00:1::", "64:ff9b:1::1",
+                                "2001:0:4136:e378:8000:63bf:3fff:fdd2", "::", "::1"])
+def test_ipv6_wrappers_of_private_addresses_blocked(ip):
+    assert importer._ip_blocked(ip)
+
+
+def test_public_ipv6_allowed():
+    assert not importer._ip_blocked("2606:4700::6810:84e5")
+    assert not importer._ip_blocked("64:ff9b::5db8:d822")      # NAT64 of 93.184.216.34
+
+
+def test_ipv6_literal_keeps_brackets():
+    assert importer.check_url("https://[2606:4700::6810:84e5]/p") == \
+        "https://[2606:4700::6810:84e5]/p"
+    with pytest.raises(MisesError):
+        importer.check_url("https://[64:ff9b::7f00:1]/p")
+
+
+@pytest.mark.parametrize("url", ["https://0177.0.0.1/", "https://0x7f000001/",
+                                 "https://2130706433/", "https://127.1/"])
+async def test_numeric_hosts_refused(web, public_dns, url):
+    with pytest.raises(MisesError) as e:
+        await import_url(url, transport=web.transport, resolve=public_dns)
+    assert e.value.code == ErrorCode.INVALID_INPUT and web.requests == []
+
+
+def test_strip_query_and_fragment():
+    assert importer.check_url("https://s.example.com/p?d=secret#x", strip_query=True) == \
+        "https://s.example.com/p"
+    assert importer.check_url("https://s.example.com/p?v=1#x") == "https://s.example.com/p?v=1"
+
+
+async def test_connection_errors_are_generic(public_dns):
+    def refuse(req):
+        raise httpx.ConnectError("connection refused to 10.0.0.1:443")
+    with pytest.raises(MisesError) as e:
+        await import_url(URL, transport=httpx.MockTransport(refuse), resolve=public_dns)
+    assert e.value.message == "could not connect to the page"
 
 
 async def test_redirect_to_private_host_refused(web):

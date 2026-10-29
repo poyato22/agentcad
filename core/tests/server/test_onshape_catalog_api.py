@@ -1,12 +1,13 @@
 import json
 from urllib.parse import unquote
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from mises.onshape.adapter import OnshapeAdapter
-from mises.onshape.client import OnshapeClient
+from mises.profile import load_profile
 from mises.server.app import create_app
+from mises.server.mcp_server import annotations_for
 from onshape.fake_onshape import PNG, FakeOnshape
 from catalog.conftest import FakeWeb
 
@@ -24,11 +25,19 @@ def client(rt):
 
 @pytest.fixture
 def onshape(rt):
+    """The adapter exactly as the Runtime builds it from stored keys, with the fake server
+    behind its HTTP client (the budget hook is the Runtime's own wiring)."""
     fake = FakeOnshape("AK", "SK")
-    c = OnshapeClient("AK", "SK", store=rt.store, user="local", transport=fake.transport)
-    c.on_request = rt.publish_onshape_budget        # what Runtime._onshape_adapter wires
-    rt.gate.services["onshape"] = OnshapeAdapter(c, rt.store)
+    ad = rt._onshape_adapter("AK:SK")
+    ad.client._http = httpx.AsyncClient(transport=fake.transport, follow_redirects=False)
+    rt.gate.services["onshape"] = ad
     return fake
+
+
+async def test_runtime_wires_the_budget_hook_on_new_keys(rt):
+    await rt.set_onshape_credentials("AK:SK")
+    assert rt.gate.services["onshape"].client.on_request == rt.publish_onshape_budget
+    await rt.set_onshape_credentials(None)
 
 
 @pytest.fixture
@@ -174,3 +183,44 @@ def test_thumbnail_url_is_relative_and_encoded(client, onshape):
     row = client.get("/onshape/documents", headers=AUTH).json()[0]
     href = unquote(row["thumbnail_url"].split("href=", 1)[1])
     assert href.startswith("https://cad.onshape.com/api/thumbnails/")
+
+
+def test_ui_import_card_free_reimport_keeps_edits_refresh_rereads(client, web, rt):
+    url = "https://shop.example.com/p/falcon"
+    web.fixture(url, "table_motor.html")
+    first = client.post("/catalog/import", headers=AUTH, json={"url": url, "project_id": "a"})
+    assert first.status_code == 200 and first.json()["existing"] is False
+    assert rt.store.pending_approvals() == []                  # the user pasted it: no card
+    iid = first.json()["id"]
+    client.patch(f"/catalog/items/{iid}", headers=AUTH, json={"name": "Corrected"})
+    again = client.post("/catalog/import", headers=AUTH, json={"url": url, "project_id": "b"})
+    assert again.json()["existing"] is True and again.json()["name"] == "Corrected"
+    assert again.json()["project_id"] == "a" and len(web.requests) == 1
+    fresh = client.post("/catalog/import", headers=AUTH, json={"url": url, "refresh": True})
+    assert fresh.json()["existing"] is False and fresh.json()["name"] != "Corrected"
+    assert fresh.json()["project_id"] == "a" and len(web.requests) == 2
+    # it went through the Gate on the app's ui run
+    ui_runs = [r for r in rt.store.list_runs(50) if r.provider == "ui"]
+    assert ui_runs and any(s.payload.get("name") == "catalog_import_url"
+                           for s in rt.store.steps(ui_runs[0].id))
+
+
+def test_allowed_domains(client, rt):
+    assert client.get("/catalog/allowed_domains", headers=AUTH).json() == []
+    r = client.post("/catalog/allowed_domains", headers=AUTH, json={"domain": "Shop.Example.com"})
+    assert r.json() == ["shop.example.com"]
+    assert load_profile(rt.home).catalog_allowed_domains == ["shop.example.com"]
+    assert client.post("/catalog/allowed_domains", headers=AUTH,
+                       json={"domain": "not a domain"}).status_code == 400
+    assert client.delete("/catalog/allowed_domains/shop.example.com", headers=AUTH).json() == []
+    assert client.post("/catalog/allowed_domains", headers=MCP_AUTH,
+                       json={"domain": "evil.example.com"}).status_code == 403
+
+
+def test_mcp_open_world_hint(rt):
+    assert annotations_for(rt.registry.get("catalog_import_url")).open_world_hint is True
+    assert annotations_for(rt.registry.get("catalog_search")).open_world_hint is False
+
+
+def test_insert_unknown_item_404(client):
+    assert client.post("/catalog/items/nope/insert", headers=AUTH, json={}).status_code == 404
