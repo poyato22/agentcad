@@ -8,6 +8,7 @@ import type { CoreClient } from "../../api/client";
 import { onCoreEvent } from "../../api/events";
 import type { MisesEvent, SystemCheckRow, SystemFix, SystemInstallEvent } from "../../api/types";
 import { actions } from "../../state/store";
+import { DragStrip } from "../boot/DragStrip";
 import { Led, type LedTone } from "../common/Led";
 import "./system.css";
 
@@ -28,6 +29,17 @@ export function statusLabel(status: SystemCheckRow["status"]): string {
     case "missing": return "Missing";
     case "optional_missing": return "Optional";
     case "error": return "Error";
+  }
+}
+
+/** The URL when it is http(s), else null — a fix link never gets a javascript:/data:/file: href. */
+export function safeUrl(url: string | undefined): string | null {
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    return u.protocol === "https:" || u.protocol === "http:" ? url : null;
+  } catch {
+    return null;
   }
 }
 
@@ -154,7 +166,7 @@ export function SystemCheck({ standalone = false, onDone, client, subscribe = on
   );
 
   if (standalone) {
-    return <div class="boot" data-boot="systemcheck"><div class="syscheck-wrap">{body}</div></div>;
+    return <div class="boot" data-boot="systemcheck"><DragStrip /><div class="syscheck-wrap">{body}</div></div>;
   }
   return body;
 }
@@ -163,19 +175,21 @@ function FixAction({ fix, installing, onInstall }: { fix: SystemFix; installing:
   if (fix.kind === "install") {
     return <button type="button" class="syscheck-btn" disabled={installing} onClick={onInstall}>{fix.label}</button>;
   }
-  if (fix.kind === "open_url" && fix.url) {
+  const url = fix.kind === "open_url" ? safeUrl(fix.url) : null;
+  if (url) {
     // The full URL is shown so the domain is visible before it opens in the system browser.
-    return <a class="syscheck-btn syscheck-link" href={fix.url} target="_blank" rel="noopener noreferrer" title={fix.url}>{fix.label}</a>;
+    return <a class="syscheck-btn syscheck-link" href={url} target="_blank" rel="noopener noreferrer" title={url}>{fix.label}</a>;
   }
   // setting: a plain label; wiring to a specific setting is left to the owning section.
   return <span class="syscheck-fixlabel">{fix.label}</span>;
 }
 
 function RefusedNote({ fix }: { fix: SystemFix }): JSX.Element {
+  const url = fix.kind === "open_url" ? safeUrl(fix.url) : null;
   return (
     <div class="syscheck-refused" role="note">
-      {fix.kind === "open_url" && fix.url
-        ? <>Can't install automatically. <a href={fix.url} target="_blank" rel="noopener noreferrer" title={fix.url}>{fix.label}</a>, then re-check.</>
+      {url
+        ? <>Can't install automatically. <a href={url} target="_blank" rel="noopener noreferrer" title={url}>{fix.label}</a>, then re-check.</>
         : fix.label}
     </div>
   );

@@ -81,3 +81,9 @@
   .cube-mark.is-spin { animation: none; }
   .intro-title.is-on:not(.is-instant) { animation: none; width: auto; border-right: 0; }
 }
+
+/* window-drag strip over the boot overlays; clear of the traffic lights (--chrome-inset-x) */
+.boot-drag {
+  position: absolute; top: 0; left: var(--chrome-inset-x); right: 0; height: var(--chrome-h); z-index: 1;
+  -webkit-user-select: none; user-select: none;
+}

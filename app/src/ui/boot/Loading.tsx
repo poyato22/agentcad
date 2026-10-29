@@ -8,6 +8,7 @@ import type { ShellCoreStatus } from "../../api/connection";
 import type { StreamState } from "../../api/events";
 import { conn, shellStatus } from "../../state/store";
 import { CubeMark } from "./CubeMark";
+import { DragStrip } from "./DragStrip";
 import "./boot.css";
 
 /** How long the core may take to connect before Loading shows the timeout error. */
@@ -53,15 +54,19 @@ export function Loading({ timeoutMs = LOADING_TIMEOUT_MS, onRetry = restartCore 
   const [timedOut, setTimedOut] = useState(false);
   const [showLog, setShowLog] = useState(false);
 
+  // Each Retry bumps the attempt, which restarts the timer from a fresh baseline so the status
+  // line comes back and a new timeout window opens.
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     const t0 = Date.now();
+    setElapsed(0);
     const id = setInterval(() => {
       const ms = Date.now() - t0;
       setElapsed(ms);
       if (ms >= timeoutMs) setTimedOut(true);
     }, 250);
     return () => clearInterval(id);
-  }, [timeoutMs]);
+  }, [timeoutMs, attempt]);
 
   const failed = isFatal(shell) || timedOut;
 
@@ -69,12 +74,13 @@ export function Loading({ timeoutMs = LOADING_TIMEOUT_MS, onRetry = restartCore 
     const { message, log } = failureDetail(shell, timedOut);
     return (
       <div class="boot" data-boot="loading" data-state="error">
+        <DragStrip />
         <div class="boot-stack" role="alertdialog" aria-label="Core didn't start">
           <CubeMark size={72} muted />
           <h1 class="boot-title">Mises couldn't start the core</h1>
           <p class="boot-msg">{message}</p>
           <div class="boot-actions">
-            <button type="button" class="boot-btn boot-btn-primary" onClick={() => { setTimedOut(false); onRetry(); }}>Retry</button>
+            <button type="button" class="boot-btn boot-btn-primary" onClick={() => { setTimedOut(false); setShowLog(false); setAttempt((n) => n + 1); onRetry(); }}>Retry</button>
             <button type="button" class="boot-btn" aria-expanded={showLog} onClick={() => setShowLog((v) => !v)}>
               {showLog ? "Hide log" : "Show log"}
             </button>
@@ -87,6 +93,7 @@ export function Loading({ timeoutMs = LOADING_TIMEOUT_MS, onRetry = restartCore 
 
   return (
     <div class="boot" data-boot="loading" data-state="starting">
+      <DragStrip />
       <div class="boot-stack">
         <CubeMark size={72} spin />
         <div class="boot-status" role="status" aria-live="polite">{statusLine(shell, stream, elapsed)}</div>

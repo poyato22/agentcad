@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/preact";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MisesEvent, SystemCheckRow, SystemInstallStart } from "../../api/types";
-import { statusLabel, statusTone, SystemCheck } from "./SystemCheck";
+import { safeUrl, statusLabel, statusTone, SystemCheck } from "./SystemCheck";
 
 const rows: SystemCheckRow[] = [
   { id: "python", name: "Core Python & venv", status: "ok", version: "3.13.1", path: "/opt/.venv", detail: "Ready.", fix: null },
@@ -73,6 +73,22 @@ describe("SystemCheck", () => {
     const link = await screen.findByRole("link", { name: "Install Homebrew" });
     expect(link.getAttribute("href")).toBe("https://brew.sh");
     expect(screen.queryByLabelText("prusaslicer install log")).toBeNull();
+  });
+
+  it("only http(s) fix URLs become links", async () => {
+    expect(safeUrl("https://brew.sh")).toBe("https://brew.sh");
+    expect(safeUrl("http://example.com/x")).toBe("http://example.com/x");
+    expect(safeUrl("javascript:alert(1)")).toBeNull();
+    expect(safeUrl("data:text/html,hi")).toBeNull();
+    expect(safeUrl("file:///etc/passwd")).toBeNull();
+    expect(safeUrl("not a url")).toBeNull();
+    const bad = { kind: "open_url" as const, label: "Fix it", url: "javascript:alert(1)" };
+    const { client, subscribe } = mountDeps(async () => ({ ok: false, fix: bad }));
+    render(<SystemCheck client={client} subscribe={subscribe} />);
+    await screen.findByText("PrusaSlicer");
+    fireEvent.click(screen.getByRole("button", { name: "Install PrusaSlicer" }));
+    expect(await screen.findByText("Fix it")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Fix it" })).toBeNull();
   });
 
   it("standalone mode shows a Continue button", async () => {

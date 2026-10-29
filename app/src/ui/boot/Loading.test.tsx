@@ -48,6 +48,20 @@ describe("Loading screen", () => {
     expect(onRetry).toHaveBeenCalledOnce();
   });
 
+  it("Retry restarts the timeout window and shows the starting status again", async () => {
+    vi.useFakeTimers();
+    render(<Loading timeoutMs={1000} onRetry={vi.fn()} />);
+    await vi.advanceTimersByTimeAsync(1300);
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    // past the old timeout (measured from mount), but within the new window
+    await vi.advanceTimersByTimeAsync(600);
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(screen.getByRole("status").textContent).toBe("Starting core");
+    // and the new window still times out
+    await vi.advanceTimersByTimeAsync(800);
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+  });
+
   it("shows the crash output in the log when the shell crashed", () => {
     vi.useFakeTimers();
     shellStatus.value = { state: "crashed", code: 2, stderrTail: "could not find `uv`", restarts: 1 };

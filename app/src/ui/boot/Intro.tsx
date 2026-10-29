@@ -5,6 +5,7 @@
 import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { ASSEMBLE_MS, createIntro as realCreateIntro, type IntroHandle } from "./introScene";
+import { DragStrip } from "./DragStrip";
 import "./boot.css";
 
 export const TITLE_MS = 700;
@@ -32,13 +33,16 @@ export function Intro({ onDone, createIntro = realCreateIntro, reducedMotion }: 
   const finished = useRef(false);
   const [showTitle, setShowTitle] = useState(reduce);
   const [fading, setFading] = useState(false);
+  /** The running fade's duration: the CSS transition and the unmount wait always match. */
+  const [fadeMs, setFadeMs] = useState(0);
 
   // A single, idempotent end: fade, then hand control back to the app exactly once.
-  function finish(fadeMs: number): void {
+  function finish(ms: number): void {
     if (finished.current) return;
     finished.current = true;
+    setFadeMs(ms);
     setFading(true);
-    const t = setTimeout(() => onDone(), fadeMs);
+    const t = setTimeout(() => onDone(), ms);
     timers.current.push(t);
   }
 
@@ -89,8 +93,9 @@ export function Intro({ onDone, createIntro = realCreateIntro, reducedMotion }: 
   return (
     <div class={`intro${fading ? " intro-fading" : ""}`} data-boot="intro" role="button" tabIndex={0}
       aria-label="Welcome — click or press any key to skip"
-      style={{ ["--fade-ms" as string]: `${fading ? FADE_MS : 0}ms` }}
+      style={{ ["--fade-ms" as string]: `${fading ? fadeMs : 0}ms` }}
       onClick={skip} onKeyDown={() => skip()}>
+      <DragStrip />
       <div class="intro-stage">
         <canvas ref={canvasRef} class="intro-canvas" aria-hidden="true" />
         <div class={`intro-title${showTitle ? " is-on" : ""}${reduce ? " is-instant" : ""}`} aria-hidden={!showTitle}>
