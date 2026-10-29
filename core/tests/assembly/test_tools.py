@@ -87,3 +87,38 @@ def test_tool_safety_classes():
     assert names["assembly_check"] == SafetyClass.READ
     assert names["assembly_add_instance"] == SafetyClass.LOCAL_MUTATE
     assert names["assembly_drive"] == SafetyClass.LOCAL_MUTATE
+
+
+async def test_traversing_part_id_rejected_by_tool(ctx):
+    from pydantic import ValidationError
+
+    from mises.assembly.model import Instance
+    with pytest.raises(ValidationError, match="part_id"):
+        AddInstanceArgs(project_id="p", part_id="../x", name="evil")
+    # the stored model refuses it too, whatever the entry point
+    with pytest.raises(ValidationError):
+        Instance(part_id="../x", name="evil")
+    assert ctx.services["assembly"].get("p").instances == []
+
+
+async def test_remove_missing_instance_is_not_found(ctx):
+    from mises.types import ErrorCode
+    with pytest.raises(MisesError) as e:
+        await assembly_remove.handler(ctx, RemoveArgs(project_id="p", instance_id="ghost"))
+    assert e.value.code == ErrorCode.NOT_FOUND
+
+
+async def test_check_reports_overconstraint(ctx):
+    from mises.assembly.tools import assembly_check
+    a = await assembly_add_instance.handler(
+        ctx, AddInstanceArgs(project_id="p", part_id="plate", name="a", fixed=True))
+    b = await assembly_add_instance.handler(
+        ctx, AddInstanceArgs(project_id="p", part_id="plate", name="b", fixed=True))
+    r = await assembly_check.handler(ctx, ProjectArgs(project_id="p"))
+    assert r.data["overconstrained"] == []  # two fixed, no joint path: independent
+    aid, bid = a.data["instance"]["id"], b.data["instance"]["id"]
+    await assembly_add_joint.handler(ctx, AddJointArgs(
+        project_id="p", kind="revolute", a=_frame(aid), b=_frame(bid)))
+    r = await assembly_check.handler(ctx, ProjectArgs(project_id="p"))
+    assert r.data["overconstrained"] == [sorted([aid, bid])]
+    assert "over-constrained" in r.summary

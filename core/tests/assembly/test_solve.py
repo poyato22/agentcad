@@ -67,7 +67,7 @@ def test_clamp_value_scalar_and_vector():
 
 
 def test_loop_is_rejected():
-    inst = [_plate("a", "p", fixed=True), _plate("b", "p"), _plate("c", "p")]
+    inst = [_plate("a", "plate", fixed=True), _plate("b", "plate"), _plate("c", "plate")]
 
     def j(jid, x, y):
         return Joint(id=jid, kind="revolute",
@@ -79,7 +79,7 @@ def test_loop_is_rejected():
 
 
 def test_unknown_instance_rejected():
-    inst = [_plate("a", "p", fixed=True)]
+    inst = [_plate("a", "plate", fixed=True)]
     j = Joint(id="j", kind="fixed",
               a=JointRef(instance_id="a", frame=Frame(origin=[0, 0, 0], axis=[0, 0, 1])),
               b=JointRef(instance_id="ghost", frame=Frame(origin=[0, 0, 0], axis=[0, 0, 1])))
@@ -110,7 +110,19 @@ def test_face_id_frame_uses_resolver():
 
 
 def test_free_body_keeps_its_transform():
-    inst = [Instance(id="loose", part_id="p", name="loose",
+    inst = [Instance(id="loose", part_id="plate", name="loose",
                      transform=[[1, 0, 0, 7], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]])]
     res = solve(Assembly(instances=inst, joints=[]))
     assert transform_point(res.transforms["loose"], [0, 0, 0]) == pytest.approx([7, 0, 0])
+
+
+def test_fixed_instance_is_never_moved_when_overconstrained():
+    shifted = [[1, 0, 0, 50], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+    inst = [_plate("a", "plate", fixed=True),
+            Instance(id="b", part_id="plate2", name="b", fixed=True, transform=shifted)]
+    j = Joint(id="j", kind="fixed",
+              a=JointRef(instance_id="a", frame=Frame(origin=[0, 0, 0], axis=[0, 0, 1])),
+              b=JointRef(instance_id="b", frame=Frame(origin=[0, 0, 0], axis=[0, 0, 1])))
+    res = solve(Assembly(instances=inst, joints=[j]))
+    assert res.overconstrained == [["a", "b"]]
+    assert transform_point(res.transforms["b"], [0, 0, 0]) == pytest.approx([50, 0, 0])

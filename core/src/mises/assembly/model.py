@@ -13,7 +13,9 @@ import uuid
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+from ..cad.tools import PART_ID_RE
 
 JointKind = Literal["fixed", "revolute", "slider", "cylindrical", "ball"]
 
@@ -21,6 +23,13 @@ JointKind = Literal["fixed", "revolute", "slider", "cylindrical", "ball"]
 def _identity() -> list[list[float]]:
     return [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0],
             [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]]
+
+
+def check_part_id(v: str) -> str:
+    """The shared part-id rule: also keeps every parts_root/<part_id> path inside the tree."""
+    if not isinstance(v, str) or not PART_ID_RE.fullmatch(v):
+        raise ValueError(f"part_id {v!r} must match {PART_ID_RE.pattern}")
+    return v
 
 
 def _new_id() -> str:
@@ -55,6 +64,11 @@ class Instance(BaseModel):
     name: str
     transform: list[list[float]] = Field(default_factory=_identity)
     fixed: bool = False
+
+    @field_validator("part_id")
+    @classmethod
+    def _part_id(cls, v: str) -> str:
+        return check_part_id(v)
 
 
 class Joint(BaseModel):
@@ -164,7 +178,7 @@ class AssemblyStore:
         if bad:
             raise ValueError(f"cannot update instance fields: {sorted(bad)}")
         cur = self.get_instance(project_id, iid)
-        merged = cur.model_copy(update=fields)
+        merged = Instance.model_validate({**cur.model_dump(), **fields})  # re-run validators
         with self._lock:
             self._db.execute(
                 "UPDATE assembly_instances SET part_id=?, name=?, transform=?, fixed=?"
@@ -177,6 +191,9 @@ class AssemblyStore:
         """Delete the instance and every joint that referenced it; returns the removed joint ids."""
         removed: list[str] = []
         with self._lock:
+            if self._db.execute("SELECT 1 FROM assembly_instances WHERE project_id=? AND id=?",
+                                (project_id, iid)).fetchone() is None:
+                raise KeyError(iid)
             for r in self._db.execute(
                     "SELECT id, a, b FROM assembly_joints WHERE project_id=?", (project_id,)):
                 if json.loads(r["a"])["instance_id"] == iid or \

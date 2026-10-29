@@ -141,6 +141,11 @@ class SolveResult:
     dof_remaining: int
     # the joint value actually applied after clamping, per joint id
     applied: dict[str, object] = field(default_factory=dict)
+    # joint-connected groups holding more than one fixed instance. Rule: a fixed instance keeps
+    # its stored transform, so two fixed instances linked by any joint path over-constrain that
+    # path; the solve never moves a fixed instance, and the joint closing the path is not
+    # applied. Fixed instances with NO joint path between them are independent and fine.
+    overconstrained: list[list[str]] = field(default_factory=list)
 
 
 class _UnionFind:
@@ -213,6 +218,9 @@ def solve(assembly, *, resolve_face: FaceResolver | None = None) -> SolveResult:
     for inst in assembly.instances:
         if inst.fixed:
             transforms[inst.id] = [row[:] for row in inst.transform]
+    overconstrained = [sorted(m for m in members if instances[m].fixed)
+                       for members in comp_members.values()
+                       if sum(1 for m in members if instances[m].fixed) > 1]
     for root, members in comp_members.items():
         if not any(instances[m].fixed for m in members):
             anchor = members[0]
@@ -229,6 +237,10 @@ def solve(assembly, *, resolve_face: FaceResolver | None = None) -> SolveResult:
             ta, tb = transforms.get(a), transforms.get(b)
             if ta is None and tb is None:
                 still.append(j)
+                continue
+            if ta is not None and tb is not None:
+                # both ends already placed: only possible between two fixed roots (the joint graph
+                # is a tree), i.e. over-constrained. Never move a fixed instance.
                 continue
             value = clamp_value(j.value, j.limits)
             applied[j.id] = value
@@ -248,4 +260,5 @@ def solve(assembly, *, resolve_face: FaceResolver | None = None) -> SolveResult:
 
     movable = sum(1 for inst in assembly.instances if not inst.fixed)
     dof = 6 * movable - sum(CONSTRAINTS.get(j.kind, 0) for j in joints)
-    return SolveResult(transforms=transforms, dof_remaining=max(dof, 0), applied=applied)
+    return SolveResult(transforms=transforms, dof_remaining=max(dof, 0), applied=applied,
+                       overconstrained=overconstrained)

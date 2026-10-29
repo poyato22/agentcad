@@ -127,3 +127,39 @@ async def test_interference_and_glb(rt):
         jlen = struct.unpack("<I", data[12:16])[0]
         gltf = json.loads(data[20:20 + jlen])
         assert len(gltf["nodes"]) == 2
+
+
+def test_traversing_part_id_rejected_by_route(client):
+    r = client.post("/projects/p/assembly/instances", headers=AUTH,
+                    json={"part_id": "../x", "name": "evil"})
+    assert r.status_code in (400, 422), r.text
+    ok = client.post("/projects/p/assembly/instances", headers=AUTH,
+                     json={"part_id": "plate", "name": "a"}).json()
+    r = client.patch(f"/projects/p/assembly/instances/{ok['id']}", headers=AUTH,
+                     json={"part_id": "../../etc"})
+    assert r.status_code in (400, 422), r.text
+    asm = client.get("/projects/p/assembly", headers=AUTH).json()
+    assert [i["part_id"] for i in asm["instances"]] == ["plate"]
+
+
+def test_delete_missing_is_404(client):
+    assert client.delete("/projects/p/assembly/instances/ghost", headers=AUTH).status_code == 404
+    assert client.delete("/projects/p/assembly/joints/ghost", headers=AUTH).status_code == 404
+
+
+@pytest.mark.slow
+async def test_glb_cache_keyed_on_inputs(rt):
+    await mirror_part_create.handler(SimpleNamespace(workdir=rt.home),
+                                     CreateArgs(part_id="cube", script=BOX))
+    with TestClient(create_app(rt, TOKEN), base_url="http://127.0.0.1") as client:
+        inst = client.post("/projects/p/assembly/instances", headers=AUTH,
+                           json={"part_id": "cube", "name": "a", "fixed": True}).json()
+        first = client.get("/projects/p/assembly.glb", headers=AUTH)
+        etag = first.headers["etag"]
+        again = client.get("/projects/p/assembly.glb", headers={**AUTH, "If-None-Match": etag})
+        assert again.status_code == 304
+        client.patch(f"/projects/p/assembly/instances/{inst['id']}", headers=AUTH, json={
+            "transform": [[1, 0, 0, 9], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]})
+        moved = client.get("/projects/p/assembly.glb", headers={**AUTH, "If-None-Match": etag})
+        assert moved.status_code == 200 and moved.headers["etag"] != etag
+        assert len(list((rt.home / "assembly_cache").iterdir())) == 2

@@ -13,8 +13,8 @@ def _ref(iid):
 
 
 def test_add_and_get_scoped_by_project(store):
-    a = store.add_instance("proj1", Instance(part_id="p", name="A", fixed=True))
-    store.add_instance("proj2", Instance(part_id="p", name="other"))
+    a = store.add_instance("proj1", Instance(part_id="plate", name="A", fixed=True))
+    store.add_instance("proj2", Instance(part_id="plate", name="other"))
     asm = store.get("proj1")
     assert [i.name for i in asm.instances] == ["A"]
     assert asm.instances[0].id == a.id and asm.instances[0].fixed is True
@@ -22,21 +22,21 @@ def test_add_and_get_scoped_by_project(store):
 
 
 def test_update_instance(store):
-    inst = store.add_instance("p", Instance(part_id="p", name="A"))
+    inst = store.add_instance("p", Instance(part_id="plate", name="A"))
     store.update_instance("p", inst.id, name="renamed", fixed=True)
     got = store.get_instance("p", inst.id)
     assert got.name == "renamed" and got.fixed is True
 
 
 def test_update_instance_rejects_unknown_field(store):
-    inst = store.add_instance("p", Instance(part_id="p", name="A"))
+    inst = store.add_instance("p", Instance(part_id="plate", name="A"))
     with pytest.raises(ValueError, match="cannot update"):
         store.update_instance("p", inst.id, bogus=1)
 
 
 def test_delete_instance_cascades_to_joints(store):
-    a = store.add_instance("p", Instance(part_id="p", name="A"))
-    b = store.add_instance("p", Instance(part_id="p", name="B"))
+    a = store.add_instance("p", Instance(part_id="plate", name="A"))
+    b = store.add_instance("p", Instance(part_id="plate", name="B"))
     j = store.add_joint("p", Joint(kind="revolute", a=_ref(a.id), b=_ref(b.id)))
     removed = store.delete_instance("p", a.id)
     assert removed == [j.id]
@@ -45,14 +45,14 @@ def test_delete_instance_cascades_to_joints(store):
 
 
 def test_add_joint_requires_known_instances(store):
-    a = store.add_instance("p", Instance(part_id="p", name="A"))
+    a = store.add_instance("p", Instance(part_id="plate", name="A"))
     with pytest.raises(KeyError):
         store.add_joint("p", Joint(kind="fixed", a=_ref(a.id), b=_ref("nope")))
 
 
 def test_update_joint_value_and_limits(store):
-    a = store.add_instance("p", Instance(part_id="p", name="A"))
-    b = store.add_instance("p", Instance(part_id="p", name="B"))
+    a = store.add_instance("p", Instance(part_id="plate", name="A"))
+    b = store.add_instance("p", Instance(part_id="plate", name="B"))
     j = store.add_joint("p", Joint(kind="slider", a=_ref(a.id), b=_ref(b.id), value=0.0))
     store.update_joint("p", j.id, value=12.0, limits=[0.0, 20.0])
     got = store.get_joint("p", j.id)
@@ -65,5 +65,5 @@ def test_delete_joint_missing_raises(store):
 
 
 def test_order_is_stable(store):
-    ids = [store.add_instance("p", Instance(part_id="p", name=f"n{i}")).id for i in range(5)]
+    ids = [store.add_instance("p", Instance(part_id="plate", name=f"n{i}")).id for i in range(5)]
     assert [i.id for i in store.get("p").instances] == ids

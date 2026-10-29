@@ -15,10 +15,17 @@ from pathlib import Path
 from ..cad.runner import WORKER
 from ..platform import sandboxed_command
 from ..types import ErrorCode, MisesError
+from .model import check_part_id
 from .solve import SolveResult
 
 
 def part_dir(parts_root: Path, part_id: str) -> Path:
+    # stored instances are validated already; re-check here because this builds a path in the
+    # core process (face resolution is not sandboxed)
+    try:
+        check_part_id(part_id)
+    except ValueError as e:
+        raise MisesError(ErrorCode.INVALID_INPUT, str(e)) from None
     return Path(parts_root) / part_id
 
 

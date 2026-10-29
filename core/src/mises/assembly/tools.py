@@ -5,13 +5,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from ..events import Event
 from ..tools.registry import ToolContext, ToolRegistry, tool
 from ..types import ErrorCode, MisesError, SafetyClass, StepKind, ToolOutput
 from .geometry import face_resolver, run_geometry
-from .model import AssemblyStore, Frame, Instance, Joint, JointRef, JointKind
+from .model import AssemblyStore, Instance, Joint, JointKind, JointRef, check_part_id
 from .solve import SolveResult, solve
 
 
@@ -42,6 +42,7 @@ def _asm_data(asm, res: SolveResult) -> dict:
                       for i in asm.instances],
         "joints": [j.model_dump() for j in asm.joints],
         "dof_remaining": res.dof_remaining,
+        "overconstrained": res.overconstrained,
     }
 
 
@@ -55,6 +56,11 @@ class AddInstanceArgs(BaseModel):
     name: str
     transform: list[list[float]] | None = None
     fixed: bool = False
+
+    @field_validator("part_id")
+    @classmethod
+    def _part_id(cls, v: str) -> str:
+        return check_part_id(v)
 
 
 class AddJointArgs(BaseModel):
@@ -159,8 +165,11 @@ async def assembly_remove(ctx: ToolContext, args: RemoveArgs) -> ToolOutput:
 
 
 @tool("assembly_check", safety=SafetyClass.READ, scope_arg="project_id",
-      description="Check the assembly: interfering instance pairs (OCCT common volume) and the "
-                  "degrees of freedom left. Uses the built parts' geometry.")
+      description="Check the assembly: interfering instance pairs (OCCT common volume), the "
+                  "degrees of freedom left, and over-constraint: groups of 2+ fixed instances "
+                  "linked by a joint path (a fixed instance never moves, so the joint closing "
+                  "that path cannot be satisfied; unfix one or drop a joint). Fixed instances "
+                  "with no joint path between them are independent and fine.")
 async def assembly_check(ctx: ToolContext, args: ProjectArgs) -> ToolOutput:
     asm, res = _solve(ctx, args.project_id)
     interferences: list[dict] = []
@@ -171,8 +180,13 @@ async def assembly_check(ctx: ToolContext, args: ProjectArgs) -> ToolOutput:
         if e.code != ErrorCode.NOT_FOUND:  # NOT_FOUND = no built parts yet; report dof only
             raise
     n = len(interferences)
-    return ToolOutput(summary=f"{n} interference(s), {res.dof_remaining} dof left",
-                      data={"interferences": interferences, "dof_remaining": res.dof_remaining},
+    summary = f"{n} interference(s), {res.dof_remaining} dof left"
+    if res.overconstrained:
+        groups = "; ".join(", ".join(g) for g in res.overconstrained)
+        summary += f"; over-constrained (fixed instances joined by joints): {groups}"
+    return ToolOutput(summary=summary,
+                      data={"interferences": interferences, "dof_remaining": res.dof_remaining,
+                            "overconstrained": res.overconstrained},
                       step_kind=StepKind.MEASURE)
 
 
