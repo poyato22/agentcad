@@ -1,0 +1,912 @@
+{
+ "category": "fastener",
+ "sources": [
+  {
+   "title": "bd_warehouse fastener and bearing tables (data/*.csv, ISO and SKF values)",
+   "url": "https://github.com/gumyr/bd_warehouse",
+   "note": "also the geometry source"
+  },
+  {
+   "title": "ISO metric screw thread (coarse pitches)",
+   "url": "https://en.wikipedia.org/wiki/ISO_metric_screw_thread"
+  }
+ ],
+ "items": [
+  {
+   "id": "m2_socket_head_screw",
+   "name": "M2 socket head cap screw (ISO 4762)",
+   "specs": [
+    {
+     "key": "thread",
+     "value": "M2-0.4",
+     "unit": null
+    },
+    {
+     "key": "head_diameter",
+     "value": 3.98,
+     "unit": "mm",
+     "note": "max"
+    },
+    {
+     "key": "head_height",
+     "value": 2,
+     "unit": "mm"
+    },
+    {
+     "key": "hex_key",
+     "value": 1.5,
+     "unit": "mm"
+    },
+    {
+     "key": "clearance_hole",
+     "value": 2.4,
+     "unit": "mm",
+     "note": "ISO 273 normal fit"
+    },
+    {
+     "key": "tap_drill",
+     "value": 1.6,
+     "unit": "mm"
+    }
+   ],
+   "dims": {
+    "d_mm": 2.0,
+    "length_mm": 8,
+    "head_d_mm": 3.98,
+    "head_h_mm": 2
+   },
+   "geometry": "builtin",
+   "shape": {
+    "kind": "screw",
+    "size": "M2-0.4",
+    "d": 2.0,
+    "length": 8,
+    "head_d": 3.98,
+    "head_h": 2
+   },
+   "category": "fastener",
+   "mount": null
+  },
+  {
+   "id": "m2_hex_nut",
+   "name": "M2 hex nut (ISO 4032)",
+   "specs": [
+    {
+     "key": "thread",
+     "value": "M2-0.4",
+     "unit": null
+    },
+    {
+     "key": "width_across_flats",
+     "value": 4,
+     "unit": "mm"
+    },
+    {
+     "key": "height",
+     "value": 1.6,
+     "unit": "mm"
+    }
+   ],
+   "dims": {
+    "d_mm": 2.0,
+    "s_mm": 4,
+    "height_mm": 1.6
+   },
+   "geometry": "builtin",
+   "shape": {
+    "kind": "nut",
+    "size": "M2-0.4",
+    "d": 2.0,
+    "s": 4,
+    "m": 1.6
+   },
+   "category": "fastener",
+   "mount": null
+  },
+  {
+   "id": "m2_plain_washer",
+   "name": "M2 plain washer (ISO 7089)",
+   "specs": [
+    {
+     "key": "inner_diameter",
+     "value": 2.2,
+     "unit": "mm"
+    },
+    {
+     "key": "outer_diameter",
+     "value": 5,
+     "unit": "mm"
+    },
+    {
+     "key": "thickness",
+     "value": 0.35,
+     "unit": "mm",
+     "note": "max, per the bd_warehouse table"
+    }
+   ],
+   "dims": {
+    "d1_mm": 2.2,
+    "d2_mm": 5,
+    "thickness_mm": 0.35
+   },
+   "geometry": "builtin",
+   "shape": {
+    "kind": "washer",
+    "size": "M2",
+    "d1": 2.2,
+    "d2": 5,
+    "h": 0.35
+   },
+   "category": "fastener",
+   "mount": null
+  },
+  {
+   "id": "m2_5_socket_head_screw",
+   "name": "M2.5 socket head cap screw (ISO 4762)",
+   "specs": [
+    {
+     "key": "thread",
+     "value": "M2.5-0.45",
+     "unit": null
+    },
+    {
+     "key": "head_diameter",
+     "value": 4.68,
+     "unit": "mm",
+     "note": "max"
+    },
+    {
+     "key": "head_height",
+     "value": 2.5,
+     "unit": "mm"
+    },
+    {
+     "key": "hex_key",
+     "value": 2,
+     "unit": "mm"
+    },
+    {
+     "key": "clearance_hole",
+     "value": 2.9,
+     "unit": "mm",
+     "note": "ISO 273 normal fit"
+    },
+    {
+     "key": "tap_drill",
+     "value": 2.05,
+     "unit": "mm"
+    }
+   ],
+   "dims": {
+    "d_mm": 2.5,
+    "length_mm": 8,
+    "head_d_mm": 4.68,
+    "head_h_mm": 2.5
+   },
+   "geometry": "builtin",
+   "shape": {
+    "kind": "screw",
+    "size": "M2.5-0.45",
+    "d": 2.5,
+    "length": 8,
+    "head_d": 4.68,
+    "head_h": 2.5
+   },
+   "category": "fastener",
+   "mount": null
+  },
+  {
+   "id": "m2_5_hex_nut",
+   "name": "M2.5 hex nut (ISO 4032)",
+   "specs": [
+    {
+     "key": "thread",
+     "value": "M2.5-0.45",
+     "unit": null
+    },
+    {
+     "key": "width_across_flats",
+     "value": 5,
+     "unit": "mm"
+    },
+    {
+     "key": "height",
+     "value": 2,
+     "unit": "mm"
+    }
+   ],
+   "dims": {
+    "d_mm": 2.5,
+    "s_mm": 5,
+    "height_mm": 2
+   },
+   "geometry": "builtin",
+   "shape": {
+    "kind": "nut",
+    "size": "M2.5-0.45",
+    "d": 2.5,
+    "s": 5,
+    "m": 2
+   },
+   "category": "fastener",
+   "mount": null
+  },
+  {
+   "id": "m2_5_plain_washer",
+   "name": "M2.5 plain washer (ISO 7089)",
+   "specs": [
+    {
+     "key": "inner_diameter",
+     "value": 2.7,
+     "unit": "mm"
+    },
+    {
+     "key": "outer_diameter",
+     "value": 6,
+     "unit": "mm"
+    },
+    {
+     "key": "thickness",
+     "value": 0.55,
+     "unit": "mm",
+     "note": "max, per the bd_warehouse table"
+    }
+   ],
+   "dims": {
+    "d1_mm": 2.7,
+    "d2_mm": 6,
+    "thickness_mm": 0.55
+   },
+   "geometry": "builtin",
+   "shape": {
+    "kind": "washer",
+    "size": "M2.5",
+    "d1": 2.7,
+    "d2": 6,
+    "h": 0.55
+   },
+   "category": "fastener",
+   "mount": null
+  },
+  {
+   "id": "m3_socket_head_screw",
+   "name": "M3 socket head cap screw (ISO 4762)",
+   "specs": [
+    {
+     "key": "thread",
+     "value": "M3-0.5",
+     "unit": null
+    },
+    {
+     "key": "head_diameter",
+     "value": 5.68,
+     "unit": "mm",
+     "note": "max"
+    },
+    {
+     "key": "head_height",
+     "value": 3,
+     "unit": "mm"
+    },
+    {
+     "key": "hex_key",
+     "value": 2.5,
+     "unit": "mm"
+    },
+    {
+     "key": "clearance_hole",
+     "value": 3.4,
+     "unit": "mm",
+     "note": "ISO 273 normal fit"
+    },
+    {
+     "key": "tap_drill",
+     "value": 2.5,
+     "unit": "mm"
+    }
+   ],
+   "dims": {
+    "d_mm": 3.0,
+    "length_mm": 10,
+    "head_d_mm": 5.68,
+    "head_h_mm": 3
+   },
+   "geometry": "builtin",
+   "shape": {
+    "kind": "screw",
+    "size": "M3-0.5",
+    "d": 3.0,
+    "length": 10,
+    "head_d": 5.68,
+    "head_h": 3
+   },
+   "category": "fastener",
+   "mount": null
+  },
+  {
+   "id": "m3_hex_nut",
+   "name": "M3 hex nut (ISO 4032)",
+   "specs": [
+    {
+     "key": "thread",
+     "value": "M3-0.5",
+     "unit": null
+    },
+    {
+     "key": "width_across_flats",
+     "value": 5.5,
+     "unit": "mm"
+    },
+    {
+     "key": "height",
+     "value": 2.4,
+     "unit": "mm"
+    }
+   ],
+   "dims": {
+    "d_mm": 3.0,
+    "s_mm": 5.5,
+    "height_mm": 2.4
+   },
+   "geometry": "builtin",
+   "shape": {
+    "kind": "nut",
+    "size": "M3-0.5",
+    "d": 3.0,
+    "s": 5.5,
+    "m": 2.4
+   },
+   "category": "fastener",
+   "mount": null
+  },
+  {
+   "id": "m3_plain_washer",
+   "name": "M3 plain washer (ISO 7089)",
+   "specs": [
+    {
+     "key": "inner_diameter",
+     "value": 3.2,
+     "unit": "mm"
+    },
+    {
+     "key": "outer_diameter",
+     "value": 7,
+     "unit": "mm"
+    },
+    {
+     "key": "thickness",
+     "value": 0.55,
+     "unit": "mm",
+     "note": "max, per the bd_warehouse table"
+    }
+   ],
+   "dims": {
+    "d1_mm": 3.2,
+    "d2_mm": 7,
+    "thickness_mm": 0.55
+   },
+   "geometry": "builtin",
+   "shape": {
+    "kind": "washer",
+    "size": "M3",
+    "d1": 3.2,
+    "d2": 7,
+    "h": 0.55
+   },
+   "category": "fastener",
+   "mount": null
+  },
+  {
+   "id": "m4_socket_head_screw",
+   "name": "M4 socket head cap screw (ISO 4762)",
+   "specs": [
+    {
+     "key": "thread",
+     "value": "M4-0.7",
+     "unit": null
+    },
+    {
+     "key": "head_diameter",
+     "value": 7.22,
+     "unit": "mm",
+     "note": "max"
+    },
+    {
+     "key": "head_height",
+     "value": 4,
+     "unit": "mm"
+    },
+    {
+     "key": "hex_key",
+     "value": 3,
+     "unit": "mm"
+    },
+    {
+     "key": "clearance_hole",
+     "value": 4.5,
+     "unit": "mm",
+     "note": "ISO 273 normal fit"
+    },
+    {
+     "key": "tap_drill",
+     "value": 3.3,
+     "unit": "mm"
+    }
+   ],
+   "dims": {
+    "d_mm": 4.0,
+    "length_mm": 12,
+    "head_d_mm": 7.22,
+    "head_h_mm": 4
+   },
+   "geometry": "builtin",
+   "shape": {
+    "kind": "screw",
+    "size": "M4-0.7",
+    "d": 4.0,
+    "length": 12,
+    "head_d": 7.22,
+    "head_h": 4
+   },
+   "category": "fastener",
+   "mount": null
+  },
+  {
+   "id": "m4_hex_nut",
+   "name": "M4 hex nut (ISO 4032)",
+   "specs": [
+    {
+     "key": "thread",
+     "value": "M4-0.7",
+     "unit": null
+    },
+    {
+     "key": "width_across_flats",
+     "value": 7,
+     "unit": "mm"
+    },
+    {
+     "key": "height",
+     "value": 3.2,
+     "unit": "mm"
+    }
+   ],
+   "dims": {
+    "d_mm": 4.0,
+    "s_mm": 7,
+    "height_mm": 3.2
+   },
+   "geometry": "builtin",
+   "shape": {
+    "kind": "nut",
+    "size": "M4-0.7",
+    "d": 4.0,
+    "s": 7,
+    "m": 3.2
+   },
+   "category": "fastener",
+   "mount": null
+  },
+  {
+   "id": "m4_plain_washer",
+   "name": "M4 plain washer (ISO 7089)",
+   "specs": [
+    {
+     "key": "inner_diameter",
+     "value": 4.3,
+     "unit": "mm"
+    },
+    {
+     "key": "outer_diameter",
+     "value": 9,
+     "unit": "mm"
+    },
+    {
+     "key": "thickness",
+     "value": 0.9,
+     "unit": "mm",
+     "note": "max, per the bd_warehouse table"
+    }
+   ],
+   "dims": {
+    "d1_mm": 4.3,
+    "d2_mm": 9,
+    "thickness_mm": 0.9
+   },
+   "geometry": "builtin",
+   "shape": {
+    "kind": "washer",
+    "size": "M4",
+    "d1": 4.3,
+    "d2": 9,
+    "h": 0.9
+   },
+   "category": "fastener",
+   "mount": null
+  },
+  {
+   "id": "m5_socket_head_screw",
+   "name": "M5 socket head cap screw (ISO 4762)",
+   "specs": [
+    {
+     "key": "thread",
+     "value": "M5-0.8",
+     "unit": null
+    },
+    {
+     "key": "head_diameter",
+     "value": 8.72,
+     "unit": "mm",
+     "note": "max"
+    },
+    {
+     "key": "head_height",
+     "value": 5,
+     "unit": "mm"
+    },
+    {
+     "key": "hex_key",
+     "value": 4,
+     "unit": "mm"
+    },
+    {
+     "key": "clearance_hole",
+     "value": 5.5,
+     "unit": "mm",
+     "note": "ISO 273 normal fit"
+    },
+    {
+     "key": "tap_drill",
+     "value": 4.2,
+     "unit": "mm"
+    }
+   ],
+   "dims": {
+    "d_mm": 5.0,
+    "length_mm": 16,
+    "head_d_mm": 8.72,
+    "head_h_mm": 5
+   },
+   "geometry": "builtin",
+   "shape": {
+    "kind": "screw",
+    "size": "M5-0.8",
+    "d": 5.0,
+    "length": 16,
+    "head_d": 8.72,
+    "head_h": 5
+   },
+   "category": "fastener",
+   "mount": null
+  },
+  {
+   "id": "m5_hex_nut",
+   "name": "M5 hex nut (ISO 4032)",
+   "specs": [
+    {
+     "key": "thread",
+     "value": "M5-0.8",
+     "unit": null
+    },
+    {
+     "key": "width_across_flats",
+     "value": 8,
+     "unit": "mm"
+    },
+    {
+     "key": "height",
+     "value": 4.7,
+     "unit": "mm"
+    }
+   ],
+   "dims": {
+    "d_mm": 5.0,
+    "s_mm": 8,
+    "height_mm": 4.7
+   },
+   "geometry": "builtin",
+   "shape": {
+    "kind": "nut",
+    "size": "M5-0.8",
+    "d": 5.0,
+    "s": 8,
+    "m": 4.7
+   },
+   "category": "fastener",
+   "mount": null
+  },
+  {
+   "id": "m5_plain_washer",
+   "name": "M5 plain washer (ISO 7089)",
+   "specs": [
+    {
+     "key": "inner_diameter",
+     "value": 5.3,
+     "unit": "mm"
+    },
+    {
+     "key": "outer_diameter",
+     "value": 10,
+     "unit": "mm"
+    },
+    {
+     "key": "thickness",
+     "value": 1.1,
+     "unit": "mm",
+     "note": "max, per the bd_warehouse table"
+    }
+   ],
+   "dims": {
+    "d1_mm": 5.3,
+    "d2_mm": 10,
+    "thickness_mm": 1.1
+   },
+   "geometry": "builtin",
+   "shape": {
+    "kind": "washer",
+    "size": "M5",
+    "d1": 5.3,
+    "d2": 10,
+    "h": 1.1
+   },
+   "category": "fastener",
+   "mount": null
+  },
+  {
+   "id": "m6_socket_head_screw",
+   "name": "M6 socket head cap screw (ISO 4762)",
+   "specs": [
+    {
+     "key": "thread",
+     "value": "M6-1",
+     "unit": null
+    },
+    {
+     "key": "head_diameter",
+     "value": 10.22,
+     "unit": "mm",
+     "note": "max"
+    },
+    {
+     "key": "head_height",
+     "value": 6,
+     "unit": "mm"
+    },
+    {
+     "key": "hex_key",
+     "value": 5,
+     "unit": "mm"
+    },
+    {
+     "key": "clearance_hole",
+     "value": 6.6,
+     "unit": "mm",
+     "note": "ISO 273 normal fit"
+    },
+    {
+     "key": "tap_drill",
+     "value": 5,
+     "unit": "mm"
+    }
+   ],
+   "dims": {
+    "d_mm": 6.0,
+    "length_mm": 20,
+    "head_d_mm": 10.22,
+    "head_h_mm": 6
+   },
+   "geometry": "builtin",
+   "shape": {
+    "kind": "screw",
+    "size": "M6-1",
+    "d": 6.0,
+    "length": 20,
+    "head_d": 10.22,
+    "head_h": 6
+   },
+   "category": "fastener",
+   "mount": null
+  },
+  {
+   "id": "m6_hex_nut",
+   "name": "M6 hex nut (ISO 4032)",
+   "specs": [
+    {
+     "key": "thread",
+     "value": "M6-1",
+     "unit": null
+    },
+    {
+     "key": "width_across_flats",
+     "value": 10,
+     "unit": "mm"
+    },
+    {
+     "key": "height",
+     "value": 5.2,
+     "unit": "mm"
+    }
+   ],
+   "dims": {
+    "d_mm": 6.0,
+    "s_mm": 10,
+    "height_mm": 5.2
+   },
+   "geometry": "builtin",
+   "shape": {
+    "kind": "nut",
+    "size": "M6-1",
+    "d": 6.0,
+    "s": 10,
+    "m": 5.2
+   },
+   "category": "fastener",
+   "mount": null
+  },
+  {
+   "id": "m6_plain_washer",
+   "name": "M6 plain washer (ISO 7089)",
+   "specs": [
+    {
+     "key": "inner_diameter",
+     "value": 6.4,
+     "unit": "mm"
+    },
+    {
+     "key": "outer_diameter",
+     "value": 12,
+     "unit": "mm"
+    },
+    {
+     "key": "thickness",
+     "value": 1.8,
+     "unit": "mm",
+     "note": "max, per the bd_warehouse table"
+    }
+   ],
+   "dims": {
+    "d1_mm": 6.4,
+    "d2_mm": 12,
+    "thickness_mm": 1.8
+   },
+   "geometry": "builtin",
+   "shape": {
+    "kind": "washer",
+    "size": "M6",
+    "d1": 6.4,
+    "d2": 12,
+    "h": 1.8
+   },
+   "category": "fastener",
+   "mount": null
+  },
+  {
+   "id": "m8_socket_head_screw",
+   "name": "M8 socket head cap screw (ISO 4762)",
+   "specs": [
+    {
+     "key": "thread",
+     "value": "M8-1.25",
+     "unit": null
+    },
+    {
+     "key": "head_diameter",
+     "value": 13.27,
+     "unit": "mm",
+     "note": "max"
+    },
+    {
+     "key": "head_height",
+     "value": 8,
+     "unit": "mm"
+    },
+    {
+     "key": "hex_key",
+     "value": 6,
+     "unit": "mm"
+    },
+    {
+     "key": "clearance_hole",
+     "value": 9,
+     "unit": "mm",
+     "note": "ISO 273 normal fit"
+    },
+    {
+     "key": "tap_drill",
+     "value": 6.8,
+     "unit": "mm"
+    }
+   ],
+   "dims": {
+    "d_mm": 8.0,
+    "length_mm": 25,
+    "head_d_mm": 13.27,
+    "head_h_mm": 8
+   },
+   "geometry": "builtin",
+   "shape": {
+    "kind": "screw",
+    "size": "M8-1.25",
+    "d": 8.0,
+    "length": 25,
+    "head_d": 13.27,
+    "head_h": 8
+   },
+   "category": "fastener",
+   "mount": null
+  },
+  {
+   "id": "m8_hex_nut",
+   "name": "M8 hex nut (ISO 4032)",
+   "specs": [
+    {
+     "key": "thread",
+     "value": "M8-1.25",
+     "unit": null
+    },
+    {
+     "key": "width_across_flats",
+     "value": 13,
+     "unit": "mm"
+    },
+    {
+     "key": "height",
+     "value": 6.8,
+     "unit": "mm"
+    }
+   ],
+   "dims": {
+    "d_mm": 8.0,
+    "s_mm": 13,
+    "height_mm": 6.8
+   },
+   "geometry": "builtin",
+   "shape": {
+    "kind": "nut",
+    "size": "M8-1.25",
+    "d": 8.0,
+    "s": 13,
+    "m": 6.8
+   },
+   "category": "fastener",
+   "mount": null
+  },
+  {
+   "id": "m8_plain_washer",
+   "name": "M8 plain washer (ISO 7089)",
+   "specs": [
+    {
+     "key": "inner_diameter",
+     "value": 8.4,
+     "unit": "mm"
+    },
+    {
+     "key": "outer_diameter",
+     "value": 16,
+     "unit": "mm"
+    },
+    {
+     "key": "thickness",
+     "value": 1.8,
+     "unit": "mm",
+     "note": "max, per the bd_warehouse table"
+    }
+   ],
+   "dims": {
+    "d1_mm": 8.4,
+    "d2_mm": 16,
+    "thickness_mm": 1.8
+   },
+   "geometry": "builtin",
+   "shape": {
+    "kind": "washer",
+    "size": "M8",
+    "d1": 8.4,
+    "d2": 16,
+    "h": 1.8
+   },
+   "category": "fastener",
+   "mount": null
+  }
+ ]
+}

@@ -1,0 +1,148 @@
+{
+ "category": "prop",
+ "sources": [
+  {
+   "title": "Inch to mm (exact, 25.4 mm/in)",
+   "url": "https://en.wikipedia.org/wiki/Inch"
+  },
+  {
+   "title": "Typical values",
+   "url": null,
+   "note": "mass and hub height are typical; the envelope is the swept disc"
+  }
+ ],
+ "items": [
+  {
+   "id": "prop_3in_class",
+   "name": "3\" propeller class",
+   "specs": [
+    {
+     "key": "diameter",
+     "value": 76.2,
+     "unit": "mm"
+    },
+    {
+     "key": "bore",
+     "value": 1.5,
+     "unit": "mm",
+     "note": "1.5 mm or T-mount typical"
+    },
+    {
+     "key": "mass",
+     "value": 2.5,
+     "unit": "g",
+     "note": "typical"
+    },
+    {
+     "key": "hub_height",
+     "value": 6,
+     "unit": "mm",
+     "note": "typical"
+    }
+   ],
+   "dims": {
+    "diameter_mm": 76.2,
+    "hub_h_mm": 6,
+    "bore_mm": 1.5,
+    "mass_g": 2.5
+   },
+   "geometry": "envelope",
+   "shape": {
+    "kind": "prop",
+    "diameter": 76.2,
+    "hub_h": 6,
+    "bore": 1.5
+   },
+   "category": "prop",
+   "mount": null
+  },
+  {
+   "id": "prop_5in_class",
+   "name": "5\" propeller class",
+   "specs": [
+    {
+     "key": "diameter",
+     "value": 127.0,
+     "unit": "mm"
+    },
+    {
+     "key": "bore",
+     "value": 5,
+     "unit": "mm",
+     "note": "M5 shaft typical"
+    },
+    {
+     "key": "mass",
+     "value": 4.5,
+     "unit": "g",
+     "note": "typical"
+    },
+    {
+     "key": "hub_height",
+     "value": 7,
+     "unit": "mm",
+     "note": "typical"
+    }
+   ],
+   "dims": {
+    "diameter_mm": 127.0,
+    "hub_h_mm": 7,
+    "bore_mm": 5,
+    "mass_g": 4.5
+   },
+   "geometry": "envelope",
+   "shape": {
+    "kind": "prop",
+    "diameter": 127.0,
+    "hub_h": 7,
+    "bore": 5
+   },
+   "category": "prop",
+   "mount": null
+  },
+  {
+   "id": "prop_7in_class",
+   "name": "7\" propeller class",
+   "specs": [
+    {
+     "key": "diameter",
+     "value": 177.8,
+     "unit": "mm"
+    },
+    {
+     "key": "bore",
+     "value": 5,
+     "unit": "mm",
+     "note": "M5 shaft typical"
+    },
+    {
+     "key": "mass",
+     "value": 8,
+     "unit": "g",
+     "note": "typical"
+    },
+    {
+     "key": "hub_height",
+     "value": 8,
+     "unit": "mm",
+     "note": "typical"
+    }
+   ],
+   "dims": {
+    "diameter_mm": 177.8,
+    "hub_h_mm": 8,
+    "bore_mm": 5,
+    "mass_g": 8
+   },
+   "geometry": "envelope",
+   "shape": {
+    "kind": "prop",
+    "diameter": 177.8,
+    "hub_h": 8,
+    "bore": 5
+   },
+   "category": "prop",
+   "mount": null
+  }
+ ]
+}

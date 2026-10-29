@@ -1,0 +1,939 @@
+{
+ "category": "bearing",
+ "sources": [
+  {
+   "title": "bd_warehouse fastener and bearing tables (data/*.csv, ISO and SKF values)",
+   "url": "https://github.com/gumyr/bd_warehouse",
+   "note": "also the geometry source"
+  },
+  {
+   "title": "SKF deep groove ball bearings (product pages, e.g. 6204)",
+   "url": "https://www.skf.com/group/products/rolling-bearings/ball-bearings/deep-groove-ball-bearings/productid-6204",
+   "note": "boundary dimensions d x D x B of 6001-6204 follow ISO 15; no mass/load listed here"
+  }
+ ],
+ "items": [
+  {
+   "id": "bearing_623_deep_groove",
+   "name": "623 deep groove ball bearing",
+   "specs": [
+    {
+     "key": "designation",
+     "value": "623",
+     "unit": null
+    },
+    {
+     "key": "bore",
+     "value": 3,
+     "unit": "mm"
+    },
+    {
+     "key": "outer_diameter",
+     "value": 10,
+     "unit": "mm"
+    },
+    {
+     "key": "width",
+     "value": 4,
+     "unit": "mm"
+    },
+    {
+     "key": "dynamic_load_rating",
+     "value": 540,
+     "unit": "N",
+     "note": "SKF"
+    },
+    {
+     "key": "mass",
+     "value": 1.5,
+     "unit": "g",
+     "note": "SKF"
+    }
+   ],
+   "dims": {
+    "bore_mm": 3,
+    "od_mm": 10,
+    "width_mm": 4,
+    "mass_g": 1.5
+   },
+   "geometry": "builtin",
+   "shape": {
+    "kind": "bearing",
+    "size": "M3-10-4",
+    "d": 3,
+    "D": 10,
+    "B": 4
+   },
+   "category": "bearing",
+   "mount": null
+  },
+  {
+   "id": "bearing_624_deep_groove",
+   "name": "624 deep groove ball bearing",
+   "specs": [
+    {
+     "key": "designation",
+     "value": "624",
+     "unit": null
+    },
+    {
+     "key": "bore",
+     "value": 4,
+     "unit": "mm"
+    },
+    {
+     "key": "outer_diameter",
+     "value": 13,
+     "unit": "mm"
+    },
+    {
+     "key": "width",
+     "value": 5,
+     "unit": "mm"
+    },
+    {
+     "key": "dynamic_load_rating",
+     "value": 936,
+     "unit": "N",
+     "note": "SKF"
+    },
+    {
+     "key": "mass",
+     "value": 3.1,
+     "unit": "g",
+     "note": "SKF"
+    }
+   ],
+   "dims": {
+    "bore_mm": 4,
+    "od_mm": 13,
+    "width_mm": 5,
+    "mass_g": 3.1
+   },
+   "geometry": "builtin",
+   "shape": {
+    "kind": "bearing",
+    "size": "M4-13-5",
+    "d": 4,
+    "D": 13,
+    "B": 5
+   },
+   "category": "bearing",
+   "mount": null
+  },
+  {
+   "id": "bearing_625_deep_groove",
+   "name": "625 deep groove ball bearing",
+   "specs": [
+    {
+     "key": "designation",
+     "value": "625",
+     "unit": null
+    },
+    {
+     "key": "bore",
+     "value": 5,
+     "unit": "mm"
+    },
+    {
+     "key": "outer_diameter",
+     "value": 16,
+     "unit": "mm"
+    },
+    {
+     "key": "width",
+     "value": 5,
+     "unit": "mm"
+    },
+    {
+     "key": "dynamic_load_rating",
+     "value": 1140,
+     "unit": "N",
+     "note": "SKF"
+    },
+    {
+     "key": "mass",
+     "value": 5.0,
+     "unit": "g",
+     "note": "SKF"
+    }
+   ],
+   "dims": {
+    "bore_mm": 5,
+    "od_mm": 16,
+    "width_mm": 5,
+    "mass_g": 5.0
+   },
+   "geometry": "builtin",
+   "shape": {
+    "kind": "bearing",
+    "size": "M5-16-5",
+    "d": 5,
+    "D": 16,
+    "B": 5
+   },
+   "category": "bearing",
+   "mount": null
+  },
+  {
+   "id": "bearing_626_deep_groove",
+   "name": "626 deep groove ball bearing",
+   "specs": [
+    {
+     "key": "designation",
+     "value": "626",
+     "unit": null
+    },
+    {
+     "key": "bore",
+     "value": 6,
+     "unit": "mm"
+    },
+    {
+     "key": "outer_diameter",
+     "value": 19,
+     "unit": "mm"
+    },
+    {
+     "key": "width",
+     "value": 6,
+     "unit": "mm"
+    },
+    {
+     "key": "dynamic_load_rating",
+     "value": 2340,
+     "unit": "N",
+     "note": "SKF"
+    },
+    {
+     "key": "mass",
+     "value": 8.1,
+     "unit": "g",
+     "note": "SKF"
+    }
+   ],
+   "dims": {
+    "bore_mm": 6,
+    "od_mm": 19,
+    "width_mm": 6,
+    "mass_g": 8.1
+   },
+   "geometry": "builtin",
+   "shape": {
+    "kind": "bearing",
+    "size": "M6-19-6",
+    "d": 6,
+    "D": 19,
+    "B": 6
+   },
+   "category": "bearing",
+   "mount": null
+  },
+  {
+   "id": "bearing_627_deep_groove",
+   "name": "627 deep groove ball bearing",
+   "specs": [
+    {
+     "key": "designation",
+     "value": "627",
+     "unit": null
+    },
+    {
+     "key": "bore",
+     "value": 7,
+     "unit": "mm"
+    },
+    {
+     "key": "outer_diameter",
+     "value": 22,
+     "unit": "mm"
+    },
+    {
+     "key": "width",
+     "value": 7,
+     "unit": "mm"
+    },
+    {
+     "key": "dynamic_load_rating",
+     "value": 3450,
+     "unit": "N",
+     "note": "SKF"
+    },
+    {
+     "key": "mass",
+     "value": 12.0,
+     "unit": "g",
+     "note": "SKF"
+    }
+   ],
+   "dims": {
+    "bore_mm": 7,
+    "od_mm": 22,
+    "width_mm": 7,
+    "mass_g": 12.0
+   },
+   "geometry": "builtin",
+   "shape": {
+    "kind": "bearing",
+    "size": "M7-22-7",
+    "d": 7,
+    "D": 22,
+    "B": 7
+   },
+   "category": "bearing",
+   "mount": null
+  },
+  {
+   "id": "bearing_608_deep_groove",
+   "name": "608 deep groove ball bearing",
+   "specs": [
+    {
+     "key": "designation",
+     "value": "608",
+     "unit": null
+    },
+    {
+     "key": "bore",
+     "value": 8,
+     "unit": "mm"
+    },
+    {
+     "key": "outer_diameter",
+     "value": 22,
+     "unit": "mm"
+    },
+    {
+     "key": "width",
+     "value": 7,
+     "unit": "mm"
+    },
+    {
+     "key": "dynamic_load_rating",
+     "value": 3450,
+     "unit": "N",
+     "note": "SKF"
+    },
+    {
+     "key": "mass",
+     "value": 12.0,
+     "unit": "g",
+     "note": "SKF"
+    }
+   ],
+   "dims": {
+    "bore_mm": 8,
+    "od_mm": 22,
+    "width_mm": 7,
+    "mass_g": 12.0
+   },
+   "geometry": "builtin",
+   "shape": {
+    "kind": "bearing",
+    "size": "M8-22-7",
+    "d": 8,
+    "D": 22,
+    "B": 7
+   },
+   "category": "bearing",
+   "mount": null
+  },
+  {
+   "id": "bearing_609_deep_groove",
+   "name": "609 deep groove ball bearing",
+   "specs": [
+    {
+     "key": "designation",
+     "value": "609",
+     "unit": null
+    },
+    {
+     "key": "bore",
+     "value": 9,
+     "unit": "mm"
+    },
+    {
+     "key": "outer_diameter",
+     "value": 24,
+     "unit": "mm"
+    },
+    {
+     "key": "width",
+     "value": 7,
+     "unit": "mm"
+    },
+    {
+     "key": "dynamic_load_rating",
+     "value": 3900,
+     "unit": "N",
+     "note": "SKF"
+    },
+    {
+     "key": "mass",
+     "value": 14.0,
+     "unit": "g",
+     "note": "SKF"
+    }
+   ],
+   "dims": {
+    "bore_mm": 9,
+    "od_mm": 24,
+    "width_mm": 7,
+    "mass_g": 14.0
+   },
+   "geometry": "builtin",
+   "shape": {
+    "kind": "bearing",
+    "size": "M9-24-7",
+    "d": 9,
+    "D": 24,
+    "B": 7
+   },
+   "category": "bearing",
+   "mount": null
+  },
+  {
+   "id": "bearing_6000_deep_groove",
+   "name": "6000 deep groove ball bearing",
+   "specs": [
+    {
+     "key": "designation",
+     "value": "6000",
+     "unit": null
+    },
+    {
+     "key": "bore",
+     "value": 10,
+     "unit": "mm"
+    },
+    {
+     "key": "outer_diameter",
+     "value": 26,
+     "unit": "mm"
+    },
+    {
+     "key": "width",
+     "value": 8,
+     "unit": "mm"
+    },
+    {
+     "key": "dynamic_load_rating",
+     "value": 4750,
+     "unit": "N",
+     "note": "SKF"
+    },
+    {
+     "key": "mass",
+     "value": 19.0,
+     "unit": "g",
+     "note": "SKF"
+    }
+   ],
+   "dims": {
+    "bore_mm": 10,
+    "od_mm": 26,
+    "width_mm": 8,
+    "mass_g": 19.0
+   },
+   "geometry": "builtin",
+   "shape": {
+    "kind": "bearing",
+    "size": "M10-26-8",
+    "d": 10,
+    "D": 26,
+    "B": 8
+   },
+   "category": "bearing",
+   "mount": null
+  },
+  {
+   "id": "bearing_6200_deep_groove",
+   "name": "6200 deep groove ball bearing",
+   "specs": [
+    {
+     "key": "designation",
+     "value": "6200",
+     "unit": null
+    },
+    {
+     "key": "bore",
+     "value": 10,
+     "unit": "mm"
+    },
+    {
+     "key": "outer_diameter",
+     "value": 30,
+     "unit": "mm"
+    },
+    {
+     "key": "width",
+     "value": 9,
+     "unit": "mm"
+    },
+    {
+     "key": "dynamic_load_rating",
+     "value": 5400,
+     "unit": "N",
+     "note": "SKF"
+    },
+    {
+     "key": "mass",
+     "value": 31.0,
+     "unit": "g",
+     "note": "SKF"
+    }
+   ],
+   "dims": {
+    "bore_mm": 10,
+    "od_mm": 30,
+    "width_mm": 9,
+    "mass_g": 31.0
+   },
+   "geometry": "builtin",
+   "shape": {
+    "kind": "bearing",
+    "size": "M10-30-9",
+    "d": 10,
+    "D": 30,
+    "B": 9
+   },
+   "category": "bearing",
+   "mount": null
+  },
+  {
+   "id": "bearing_6800_deep_groove",
+   "name": "6800 deep groove ball bearing",
+   "specs": [
+    {
+     "key": "designation",
+     "value": "6800",
+     "unit": null
+    },
+    {
+     "key": "bore",
+     "value": 10,
+     "unit": "mm"
+    },
+    {
+     "key": "outer_diameter",
+     "value": 19,
+     "unit": "mm"
+    },
+    {
+     "key": "width",
+     "value": 5,
+     "unit": "mm"
+    },
+    {
+     "key": "dynamic_load_rating",
+     "value": 1720,
+     "unit": "N",
+     "note": "SKF"
+    },
+    {
+     "key": "mass",
+     "value": 5.3,
+     "unit": "g",
+     "note": "SKF"
+    }
+   ],
+   "dims": {
+    "bore_mm": 10,
+    "od_mm": 19,
+    "width_mm": 5,
+    "mass_g": 5.3
+   },
+   "geometry": "builtin",
+   "shape": {
+    "kind": "bearing",
+    "size": "M10-19-5",
+    "d": 10,
+    "D": 19,
+    "B": 5
+   },
+   "category": "bearing",
+   "mount": null
+  },
+  {
+   "id": "bearing_6900_deep_groove",
+   "name": "6900 deep groove ball bearing",
+   "specs": [
+    {
+     "key": "designation",
+     "value": "6900",
+     "unit": null
+    },
+    {
+     "key": "bore",
+     "value": 10,
+     "unit": "mm"
+    },
+    {
+     "key": "outer_diameter",
+     "value": 22,
+     "unit": "mm"
+    },
+    {
+     "key": "width",
+     "value": 6,
+     "unit": "mm"
+    },
+    {
+     "key": "dynamic_load_rating",
+     "value": 2700,
+     "unit": "N",
+     "note": "SKF"
+    },
+    {
+     "key": "mass",
+     "value": 10.0,
+     "unit": "g",
+     "note": "SKF"
+    }
+   ],
+   "dims": {
+    "bore_mm": 10,
+    "od_mm": 22,
+    "width_mm": 6,
+    "mass_g": 10.0
+   },
+   "geometry": "builtin",
+   "shape": {
+    "kind": "bearing",
+    "size": "M10-22-6",
+    "d": 10,
+    "D": 22,
+    "B": 6
+   },
+   "category": "bearing",
+   "mount": null
+  },
+  {
+   "id": "bearing_6001_deep_groove",
+   "name": "6001 deep groove ball bearing",
+   "specs": [
+    {
+     "key": "designation",
+     "value": "6001",
+     "unit": null
+    },
+    {
+     "key": "bore",
+     "value": 12,
+     "unit": "mm"
+    },
+    {
+     "key": "outer_diameter",
+     "value": 28,
+     "unit": "mm"
+    },
+    {
+     "key": "width",
+     "value": 8,
+     "unit": "mm"
+    }
+   ],
+   "dims": {
+    "bore_mm": 12,
+    "od_mm": 28,
+    "width_mm": 8
+   },
+   "geometry": "envelope",
+   "shape": {
+    "kind": "bearing",
+    "size": null,
+    "d": 12,
+    "D": 28,
+    "B": 8
+   },
+   "category": "bearing",
+   "mount": null
+  },
+  {
+   "id": "bearing_6002_deep_groove",
+   "name": "6002 deep groove ball bearing",
+   "specs": [
+    {
+     "key": "designation",
+     "value": "6002",
+     "unit": null
+    },
+    {
+     "key": "bore",
+     "value": 15,
+     "unit": "mm"
+    },
+    {
+     "key": "outer_diameter",
+     "value": 32,
+     "unit": "mm"
+    },
+    {
+     "key": "width",
+     "value": 9,
+     "unit": "mm"
+    }
+   ],
+   "dims": {
+    "bore_mm": 15,
+    "od_mm": 32,
+    "width_mm": 9
+   },
+   "geometry": "envelope",
+   "shape": {
+    "kind": "bearing",
+    "size": null,
+    "d": 15,
+    "D": 32,
+    "B": 9
+   },
+   "category": "bearing",
+   "mount": null
+  },
+  {
+   "id": "bearing_6003_deep_groove",
+   "name": "6003 deep groove ball bearing",
+   "specs": [
+    {
+     "key": "designation",
+     "value": "6003",
+     "unit": null
+    },
+    {
+     "key": "bore",
+     "value": 17,
+     "unit": "mm"
+    },
+    {
+     "key": "outer_diameter",
+     "value": 35,
+     "unit": "mm"
+    },
+    {
+     "key": "width",
+     "value": 10,
+     "unit": "mm"
+    }
+   ],
+   "dims": {
+    "bore_mm": 17,
+    "od_mm": 35,
+    "width_mm": 10
+   },
+   "geometry": "envelope",
+   "shape": {
+    "kind": "bearing",
+    "size": null,
+    "d": 17,
+    "D": 35,
+    "B": 10
+   },
+   "category": "bearing",
+   "mount": null
+  },
+  {
+   "id": "bearing_6004_deep_groove",
+   "name": "6004 deep groove ball bearing",
+   "specs": [
+    {
+     "key": "designation",
+     "value": "6004",
+     "unit": null
+    },
+    {
+     "key": "bore",
+     "value": 20,
+     "unit": "mm"
+    },
+    {
+     "key": "outer_diameter",
+     "value": 42,
+     "unit": "mm"
+    },
+    {
+     "key": "width",
+     "value": 12,
+     "unit": "mm"
+    }
+   ],
+   "dims": {
+    "bore_mm": 20,
+    "od_mm": 42,
+    "width_mm": 12
+   },
+   "geometry": "envelope",
+   "shape": {
+    "kind": "bearing",
+    "size": null,
+    "d": 20,
+    "D": 42,
+    "B": 12
+   },
+   "category": "bearing",
+   "mount": null
+  },
+  {
+   "id": "bearing_6201_deep_groove",
+   "name": "6201 deep groove ball bearing",
+   "specs": [
+    {
+     "key": "designation",
+     "value": "6201",
+     "unit": null
+    },
+    {
+     "key": "bore",
+     "value": 12,
+     "unit": "mm"
+    },
+    {
+     "key": "outer_diameter",
+     "value": 32,
+     "unit": "mm"
+    },
+    {
+     "key": "width",
+     "value": 10,
+     "unit": "mm"
+    }
+   ],
+   "dims": {
+    "bore_mm": 12,
+    "od_mm": 32,
+    "width_mm": 10
+   },
+   "geometry": "envelope",
+   "shape": {
+    "kind": "bearing",
+    "size": null,
+    "d": 12,
+    "D": 32,
+    "B": 10
+   },
+   "category": "bearing",
+   "mount": null
+  },
+  {
+   "id": "bearing_6202_deep_groove",
+   "name": "6202 deep groove ball bearing",
+   "specs": [
+    {
+     "key": "designation",
+     "value": "6202",
+     "unit": null
+    },
+    {
+     "key": "bore",
+     "value": 15,
+     "unit": "mm"
+    },
+    {
+     "key": "outer_diameter",
+     "value": 35,
+     "unit": "mm"
+    },
+    {
+     "key": "width",
+     "value": 11,
+     "unit": "mm"
+    }
+   ],
+   "dims": {
+    "bore_mm": 15,
+    "od_mm": 35,
+    "width_mm": 11
+   },
+   "geometry": "envelope",
+   "shape": {
+    "kind": "bearing",
+    "size": null,
+    "d": 15,
+    "D": 35,
+    "B": 11
+   },
+   "category": "bearing",
+   "mount": null
+  },
+  {
+   "id": "bearing_6203_deep_groove",
+   "name": "6203 deep groove ball bearing",
+   "specs": [
+    {
+     "key": "designation",
+     "value": "6203",
+     "unit": null
+    },
+    {
+     "key": "bore",
+     "value": 17,
+     "unit": "mm"
+    },
+    {
+     "key": "outer_diameter",
+     "value": 40,
+     "unit": "mm"
+    },
+    {
+     "key": "width",
+     "value": 12,
+     "unit": "mm"
+    }
+   ],
+   "dims": {
+    "bore_mm": 17,
+    "od_mm": 40,
+    "width_mm": 12
+   },
+   "geometry": "envelope",
+   "shape": {
+    "kind": "bearing",
+    "size": null,
+    "d": 17,
+    "D": 40,
+    "B": 12
+   },
+   "category": "bearing",
+   "mount": null
+  },
+  {
+   "id": "bearing_6204_deep_groove",
+   "name": "6204 deep groove ball bearing",
+   "specs": [
+    {
+     "key": "designation",
+     "value": "6204",
+     "unit": null
+    },
+    {
+     "key": "bore",
+     "value": 20,
+     "unit": "mm"
+    },
+    {
+     "key": "outer_diameter",
+     "value": 47,
+     "unit": "mm"
+    },
+    {
+     "key": "width",
+     "value": 14,
+     "unit": "mm"
+    }
+   ],
+   "dims": {
+    "bore_mm": 20,
+    "od_mm": 47,
+    "width_mm": 14
+   },
+   "geometry": "envelope",
+   "shape": {
+    "kind": "bearing",
+    "size": null,
+    "d": 20,
+    "D": 47,
+    "B": 14
+   },
+   "category": "bearing",
+   "mount": null
+  }
+ ]
+}
