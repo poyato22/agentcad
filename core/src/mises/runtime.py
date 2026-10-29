@@ -16,6 +16,8 @@ from . import hardware, local_models
 from .agent.definitions import load_definitions
 from .agent.loop import AgentLoop, LoopConfig, RunResult
 from .approvals import ApprovalService
+from .assembly.model import AssemblyStore
+from .assembly.tools import register_assembly_tools
 from .cad.tools import register_mirror_tools
 from .sim.tools import register_sim_tools
 from .claude_code import detect as claude_detect
@@ -116,6 +118,7 @@ class Runtime:
         self.home.mkdir(parents=True, exist_ok=True)
         self.provider_resolver = provider_resolver
         self.store = Store(self.home / "mises.db")
+        self.assembly_store = AssemblyStore(self.home / "assembly.db")
         self.events = EventBus()
         self.approvals = ApprovalService(self.store, self.events)
         self.registry = ToolRegistry()
@@ -125,9 +128,10 @@ class Runtime:
         register_ui_tools(self.registry)
         register_print_tools(self.registry)
         register_orchestrator_tools(self.registry)
+        register_assembly_tools(self.registry)
         self.orchestrator = Orchestrator(self)
         services: dict = {"approvals": self.approvals, "runtime": self,
-                          "orchestrator": self.orchestrator}
+                          "orchestrator": self.orchestrator, "assembly": self.assembly_store}
         adapter = self._onshape_adapter(keychain_get("mises", "onshape"))
         if adapter is not None:
             services["onshape"] = adapter

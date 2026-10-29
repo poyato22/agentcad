@@ -40,6 +40,7 @@ from .profile_api import build_profile_router
 from .context_api import build_context_router
 from .drawing_api import build_drawing_router
 from .print_api import build_print_router
+from .assembly_api import build_assembly_router
 from .sim_api import build_sim_router
 from .sketch_api import build_sketch_router
 from .ui_api import add_cors, build_ui_router
@@ -207,6 +208,7 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
     app.include_router(build_print_router(runtime))
     app.include_router(build_sim_router(runtime))
     app.include_router(build_sketch_router(runtime))
+    app.include_router(build_assembly_router(runtime))
 
     @app.exception_handler(MisesError)
     async def _mises_error(_req, e: MisesError):
