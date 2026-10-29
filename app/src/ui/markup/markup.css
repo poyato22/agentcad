@@ -8,17 +8,17 @@
   display: flow-root;
   line-height: 1.5;
 }
-.mk > :first-child { margin-top: 0; }
-.mk > :last-child { margin-bottom: 0; }
+.mk-body > :first-child { margin-top: 0; }
+.mk-body > :last-child { margin-bottom: 0; }
 
-/* collapse a long reply; "Show more" reveals it */
+/* collapse a long reply: a height clamp on the body only ("Show more" is its sibling, outside
+   the clipped box). max-height, not -webkit-line-clamp, which is unreliable over tables/lists. */
+.mk-body { display: flow-root; }
 .mk-clamp {
-  display: -webkit-box;
-  -webkit-line-clamp: 12;
-  line-clamp: 12;
-  -webkit-box-orient: vertical;
+  max-height: calc(1.5em * 12);
   overflow: hidden;
-  position: relative;
+  -webkit-mask-image: linear-gradient(to bottom, #000 80%, transparent);
+  mask-image: linear-gradient(to bottom, #000 80%, transparent);
 }
 .mk-more {
   display: inline-block;
@@ -108,10 +108,16 @@ h4.mk-h, h5.mk-h, h6.mk-h { font-size: 1em; }
 }
 .mk-chip::before { content: "◇ "; color: var(--dim); }
 .mk-chip:hover { border-color: var(--ink); }
-.mk-chip:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.mk-chip:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 
-.mk-link { color: var(--blue2); text-decoration: underline; text-underline-offset: 2px; }
-.mk-link:hover { color: var(--blue); }
+/* links stay ink-coloured (blue is reserved for selected / agent-changing / needs-you); the real
+   domain always shows after the label */
+.mk-link { color: var(--ink); text-decoration: underline; text-decoration-color: var(--dim); text-underline-offset: 2px; }
+.mk-link:hover { text-decoration-color: var(--ink); }
+.mk-link:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+.mk-host { color: var(--dim); font-size: .9em; white-space: nowrap; }
+.mk-trunc { display: flex; align-items: center; gap: 8px; margin-top: var(--mk-gap); font-size: var(--fs-small); }
+.mk-raw { white-space: pre-wrap; word-break: break-word; }
 
 /* callouts — status colours only on pass/warn/fail; note is neutral */
 .mk-callout {

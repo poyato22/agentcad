@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type Block, type Inline, parseBlocks, parseInline, safeHref } from "./parse";
+import { type Block, type Inline, MAX_DEPTH, parseBlocks, parseInline, safeHref } from "./parse";
 
 /** Flatten inline nodes to a tagged string so assertions read clearly. */
 function show(nodes: Inline[]): string {
@@ -147,4 +147,60 @@ describe("parse — XSS corpus stays plain text", () => {
       }
     });
   }
+});
+
+describe("parse — link safety", () => {
+  it("rejects bidi, zero-width, control and whitespace characters in hrefs", () => {
+    expect(safeHref("https://a.test/‮gnp.exe")).toBe(null);   // right-to-left override
+    expect(safeHref("https://a.test/​x")).toBe(null);          // zero-width space
+    expect(safeHref("https://a.test/\u0000x")).toBe(null);
+    expect(safeHref("https://a.test/a b")).toBe(null);
+    expect(safeHref("https://")).toBe(null);                        // no host
+    expect(safeHref("https://example.test/spec?x=1")).toBe("https://example.test/spec?x=1");
+  });
+  it("a bidi href in markup stays text", () => {
+    expect(parseInline("[x](https://a.test/‮gnp.exe)").some((n) => n.type === "link")).toBe(false);
+  });
+  it("a link node carries its real host (punycode for look-alikes)", () => {
+    const [l] = parseInline("[spec](https://exаmple.test/x)") as [Extract<Inline, { type: "link" }>];  // Cyrillic а
+    expect(l.type).toBe("link");
+    expect(l.host).toMatch(/^xn--/);
+  });
+});
+
+// ---- hostile input: never a stack overflow, never quadratic (each case well under its budget)
+describe("parse — hostile input stays cheap", () => {
+  const timed = (src: string, budgetMs: number) => {
+    const t0 = performance.now();
+    const blocks = parseBlocks(src);
+    const ms = performance.now() - t0;
+    expect(ms, `took ${ms.toFixed(0)} ms`).toBeLessThan(budgetMs);
+    return blocks;
+  };
+  const depthOf = (b: Block[]): number => Math.max(0, ...b.map((x) =>
+    x.type === "callout" ? 1 + depthOf(x.blocks) : x.type === "list" ? 1 + Math.max(0, ...x.items.map(depthOf)) : 0));
+
+  it("4,000 nested quotes: capped depth, no overflow", () => {
+    const b = timed(">".repeat(4000) + " deep", 500);
+    expect(depthOf(b)).toBeLessThanOrEqual(MAX_DEPTH);
+  });
+  it("2,100 nested list markers: capped depth, no overflow", () => {
+    const b = timed("- ".repeat(2100) + "x", 500);
+    expect(depthOf(b)).toBeLessThanOrEqual(MAX_DEPTH);
+  });
+  it("30,000 unclosed part chips (210 KB)", () => { timed("[[part:".repeat(30_000), 500); });
+  it("20,000 unclosed links, emphasis, strong, strike, highlight, code", () => {
+    for (const unit of ["[a ", "*a ", "_a ", "**a ", "~~a ", "==a ", "`a ", "[[part:ab|"]) timed(unit.repeat(20_000), 500);
+  });
+  it("deeply nested emphasis and links are capped", () => {
+    timed("*".repeat(20_000) + "x" + "*".repeat(20_000), 500);
+    timed("_".repeat(20_000) + "x" + "_".repeat(20_000), 500);
+    timed("[".repeat(20_000) + "x" + "](https://a.test)".repeat(100), 500);
+  });
+  it("a 60 KB digit run (value scan) stays linear", () => { timed("1".repeat(60_000) + " mm", 500); });
+  it("a 60 KB table row", () => { timed(`| ${"a | ".repeat(15_000)}\n|--|--|\n| x | y |`, 500); });
+  it("a mix of everything, 64 KB", () => {
+    const unit = "> [!warn] **SF 1.2** at [[part:arm_a|arm]] ==check== `x` [l](https://a.test) - 3.2 mm\n";
+    timed(unit.repeat(Math.ceil(65_536 / unit.length)), 500);
+  });
 });
