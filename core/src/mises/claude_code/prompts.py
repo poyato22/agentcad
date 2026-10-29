@@ -19,11 +19,13 @@ INTERNAL_AGENTS = frozenset({"planner"})
 MISES_TOOL_PREFIX = "mcp__mises__"
 
 
-def mises_subagent_names(definitions: DefinitionSet | None = None) -> tuple[str, ...]:
+def mises_subagent_names(definitions: DefinitionSet | None = None,
+                         hidden: frozenset[str] | set[str] = frozenset()) -> tuple[str, ...]:
     """The Mises agents offered to Claude Code as subagents: every definition (built-in,
-    engineer and the user's custom agents) except the orchestrator-internal ones."""
+    engineer and the user's custom agents) except the orchestrator-internal ones and the ones
+    the user hid (profile `hidden_agents`)."""
     defs = definitions if definitions is not None else load_definitions()
-    return tuple(n for n in defs if n not in INTERNAL_AGENTS)
+    return tuple(n for n in defs if n not in INTERNAL_AGENTS and n not in hidden)
 
 TOOL_ONLY = f"""\
 ## How you work here
@@ -51,7 +53,8 @@ def mises_rules_md(role: str | None = None) -> str:
     return SECTION_SEP.join(parts) + "\n"
 
 
-def agents_json(tool_names: list[str], definitions: DefinitionSet | None = None) -> dict[str, dict]:
+def agents_json(tool_names: list[str], definitions: DefinitionSet | None = None,
+                hidden: frozenset[str] | set[str] = frozenset()) -> dict[str, dict]:
     """--agents: one subagent per Mises agent definition (built-in, engineer, custom), minus the
     orchestrator-internal ones. Each gets the harness rules plus RESPONSE_RULES and its own body,
     and an explicit list of mcp__mises__<name> tools (no wildcard): the registry's tools the MCP
@@ -59,7 +62,7 @@ def agents_json(tool_names: list[str], definitions: DefinitionSet | None = None)
     one (e.g. the verifier's read-only set)."""
     defs = definitions if definitions is not None else load_definitions()
     out = {}
-    for name in mises_subagent_names(defs):
+    for name in mises_subagent_names(defs, hidden):
         d = defs[name]
         names = [t for t in tool_names if d.tools is None or t in d.tools]
         out[name] = {"description": d.description,

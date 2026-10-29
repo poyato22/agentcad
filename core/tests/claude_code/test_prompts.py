@@ -59,3 +59,9 @@ def test_rules_text_is_the_shared_rules():
     # guards against the tool-only copy drifting from agent/prompts.py
     first = RULES.split("## Names")[0]
     assert first.split("\n", 1)[1].strip()[:200] in mises_rules_md()
+
+
+def test_hidden_agents_are_not_offered_as_subagents():
+    names = ["mirror_measure"]
+    a = agents_json(names, hidden={"verifier"})
+    assert "verifier" not in a and "designer" in a

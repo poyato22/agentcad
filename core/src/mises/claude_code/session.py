@@ -135,7 +135,14 @@ class ClaudeCodeSession:
 
     def _mises_subagents(self) -> frozenset[str]:
         """Mises agents this run may delegate to with the Agent tool (the ones in agents.json)."""
-        return frozenset(mises_subagent_names(self.runtime.definitions))
+        return frozenset(mises_subagent_names(self.runtime.definitions, self._hidden_agents()))
+
+    def _hidden_agents(self) -> frozenset[str]:
+        """Agents the user hid (profile `hidden_agents`): never offered as subagents."""
+        try:
+            return frozenset(self.runtime.profile().hidden_agents)
+        except Exception:
+            return frozenset()
 
     @property
     def pid(self) -> int | None:
@@ -170,7 +177,8 @@ class ClaudeCodeSession:
         deny = INTERNAL_ONLY | DELEGATION_TOOLS
         tools = [t.name for t in self.runtime.registry.list() if t.name not in deny]
         (self.workdir / AGENTS_FILE).write_text(
-            json.dumps(agents_json(tools, self.runtime.definitions), indent=1))
+            json.dumps(agents_json(tools, self.runtime.definitions, self._hidden_agents()),
+                       indent=1))
         path = self.workdir / MCP_FILE
         path.unlink(missing_ok=True)
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)

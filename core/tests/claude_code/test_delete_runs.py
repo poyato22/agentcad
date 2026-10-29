@@ -105,3 +105,11 @@ async def test_cleanup_releases_sessions(rt):
         r = await c.post("/runs/cleanup", json={"dry_run": False})
     assert rid in r.json()["ids"]
     assert s.closed == 1 and rid not in rt._claude
+
+
+async def test_delete_forgets_the_runs_activity_tracker(rt):
+    rid = _finished_claude_run(rt)
+    rt.activity_tracker(rid).set("starting")
+    assert rid in rt._activity
+    assert await rt.delete_run(rid) is None
+    assert rid not in rt._activity

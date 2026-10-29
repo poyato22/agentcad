@@ -38,6 +38,9 @@ ribbed, I-beam, hollow). Build EVERY concept as its own part with `mirror_part_c
 (`frame_x`, `frame_h`, `frame_deadcat`, ...). Give all of them the same `VARS` names for the
 shared sizes (`arm_width`, `arm_thickness`, `plate_thickness`, ...) so their studies compare.
 Do not describe concepts you have not built.
+Bought parts (motors, bearings, fasteners, boards) come from the catalog (`catalog_search`,
+`catalog_get`, `catalog_insert`), and existing Onshape parts via `onshape_import_element`; do not
+model them from scratch.
 
 ## 4. Study every concept
 Run `study_run` on each concept part with the same variables (name, lo, hi) and the same

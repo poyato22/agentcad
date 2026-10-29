@@ -117,3 +117,21 @@ async def test_subscribe_context_manager_unregisters():
         bus.publish(Event(type="e", run_id=None, data={}))
         assert (await sub.__anext__()).type == "e"
     assert bus._subs == []
+
+
+def test_activity_bumps_last_activity_at_at_most_every_5s(tmp_path):
+    store = Store(tmp_path / "db")
+    run = store.create_run("designer", "fake", "m", "t")
+    clk = [1000.0]
+    a = ActivityTracker(EventBus(), run.id, store, clock=lambda: clk[0])
+    a.set("starting")
+    assert store.get_run(run.id).last_activity_at == 1000.0
+    clk[0] = 1003.0
+    a.set("tool", "measuring")                 # an event, but within 5 s: no DB write
+    assert store.get_run(run.id).last_activity_at == 1000.0
+    clk[0] = 1006.0
+    a.set("writing")
+    assert store.get_run(run.id).last_activity_at == 1006.0
+    store.delete_run(run.id)
+    clk[0] = 1020.0
+    a.set("done")                              # a deleted run: silently skipped

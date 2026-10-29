@@ -313,6 +313,7 @@ class Runtime:
             self._runs.pop(run_id, None)
             self._external.discard(run_id)
             self.store.delete_run(run_id)
+            self.forget_activity(run_id)      # C4's tracker, dropped without a "done" event
             wd = self.home / "runs" / run_id
             try:
                 if wd.resolve().parent == (self.home / "runs").resolve() and wd.is_dir():

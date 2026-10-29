@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from typing import TYPE_CHECKING, Callable
 
@@ -11,6 +12,8 @@ from .types import StepKind
 
 if TYPE_CHECKING:
     from .store import Store
+
+log = logging.getLogger(__name__)
 
 
 class Event(BaseModel):
@@ -125,6 +128,7 @@ class ActivityTracker:
     WRITING_INTERVAL = 0.25          # >= 4/s while writing
     THINKING_INTERVAL = 0.25         # >= 4/s coalesced thinking deltas
     THINKING_STORE_CHARS = 4000      # thinking is stored truncated to this many characters
+    ACTIVITY_DB_INTERVAL = 5.0       # runs.last_activity_at is written at most once per 5 s
 
     def __init__(self, bus: EventBus, run_id: str, store: "Store | None" = None, *,
                  clock: Callable[[], float] = time.time):
@@ -141,6 +145,7 @@ class ActivityTracker:
         self._think_len = 0
         self._think_pending: list[str] = []  # not yet published (coalesced)
         self._last_think = float("-inf")     # the first thinking delta always publishes
+        self._last_db = float("-inf")        # last runs.last_activity_at write (throttled)
 
     def snapshot(self) -> dict | None:
         """The current state, for GET /runs/{id}'s `activity` field (None before the first)."""
@@ -153,6 +158,22 @@ class ActivityTracker:
 
     def _emit(self) -> None:
         self._bus.publish(Event(type="agent_activity", run_id=self._run_id, data=self.snapshot()))
+        self._touch_db()
+
+    def _touch_db(self) -> None:
+        """Keep runs.last_activity_at (C1's "last active" sort and cleanup age) current from
+        the activity stream, writing at most once per ACTIVITY_DB_INTERVAL per run."""
+        touch = getattr(self._store, "touch_run_activity", None)
+        if touch is None:
+            return
+        now = self._clock()
+        if now - self._last_db < self.ACTIVITY_DB_INTERVAL:
+            return
+        self._last_db = now
+        try:
+            touch(self._run_id, now)
+        except Exception:                      # never let bookkeeping break a run
+            log.debug("last_activity_at update failed for %s", self._run_id, exc_info=True)
 
     def set(self, state: str, detail: str = "", *, tokens_out: int | None = None) -> None:
         now = self._clock()
