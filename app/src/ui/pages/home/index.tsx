@@ -3,14 +3,15 @@
 // lead-agent status dot. Search and sort sit in the toolbar; a New-build tile starts a build;
 // the Trash filter shows trashed builds with Restore. Opening a tile opens that build as a tab.
 import type { JSX } from "preact";
-import { useRef, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { lastEditedAt, type Build } from "../../../api/builds";
 import { buildActions, builds, buildsError } from "../../../state/builds";
 import { atHome, openBuild } from "../../../state/home";
-import { actions, runs } from "../../../state/store";
+import { actions, conn, runs } from "../../../state/store";
 import { Led } from "../../common/Led";
 import { Thumb } from "../../common/Thumb";
 import { DrawingDrop } from "../../imports";
+import { openAgentManager } from "../../agents/manager";
 import { buildStatus, DEFAULT_VIEW, fmtLastEdited, partsLabel, SORTS, type HomeSort, viewBuilds } from "./model";
 import "./home.css";
 
@@ -19,9 +20,13 @@ export function HomePage(): JSX.Element {
   const [sort, setSort] = useState<HomeSort>(DEFAULT_VIEW.sort);
   const [trash, setTrash] = useState(DEFAULT_VIEW.trash);
   const [creating, setCreating] = useState(false);
+  // m1: the tiles (part count, last edited) are refetched every time Home shows, so returning with
+  // ⌘0 never shows a stale count. The first launch is covered by the connect-time refresh.
+  useEffect(() => { if (conn.peek() === "open") void buildActions.reloadList(); }, []);
 
   const shown = viewBuilds(builds.value, { query, sort, trash });
   const trashCount = builds.value.filter((b) => b.trashed_at !== null).length;
+  const working = [...runs.value.values()].filter((r) => !r.archived && r.status === "running").length;
 
   return (
     <section class="home" data-testid="home" aria-label="Builds">
@@ -36,6 +41,9 @@ export function HomePage(): JSX.Element {
               {SORTS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
             </select>
           </label>
+          {/* I7: the one easy view of every build's agents, reachable from Home (also ⇧⌘A) */}
+          <button type="button" class="home-trash home-agents" title="Every build's lead and sub-agents (⇧⌘A)"
+            onClick={() => openAgentManager()}>{`Agents${working ? ` · ${working} working` : ""}`}</button>
           <button type="button" class={trash ? "home-trash on" : "home-trash"} aria-pressed={trash}
             title="Show trashed builds" onClick={() => setTrash((t) => !t)}>
             {`Trash${trashCount ? ` · ${trashCount}` : ""}`}

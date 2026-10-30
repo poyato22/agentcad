@@ -2,7 +2,7 @@
    previews carries the page; everything else stays quiet. Tokens only (tokens.css). */
 .home {
   position: absolute;
-  inset: var(--topbar-h) 0 0 0;
+  inset: 0;   /* the page region already sits under the top bar */
   overflow-y: auto;
   background: var(--bg);
   color: var(--ink);

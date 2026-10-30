@@ -159,6 +159,13 @@ export const buildActions = {
     }
   },
 
+  /** Re-reads only the builds list (part counts, last edited) — Home refetches it whenever it
+   *  shows, so its tiles never lag the core (m1). Tabs are left alone. */
+  async reloadList(): Promise<void> {
+    try { builds.value = await actions.client().listBuilds(); }
+    catch (e) { fail("Loading the builds failed", e); }
+  },
+
   /** Make a build the active tab (opening it if it isn't). */
   async switchTo(id: string): Promise<void> {
     buildsError.value = null;
