@@ -213,10 +213,13 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
+        # warm 2D drawings in the background as parts change (U6)
+        runtime.drawing_pregen.start()
         try:
             async with manager.run():
                 yield
         finally:
+            await runtime.drawing_pregen.aclose()
             # background work of the UI routes (OpenRouter refresh, model downloads) stops here
             await ui_router.aclose()
             # Claude Code sessions reach Mises only through this server: close them with it
