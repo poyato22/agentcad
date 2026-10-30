@@ -8,8 +8,8 @@ afterEach(() => { setPage(DEFAULT_PAGE); setConsoleCollapsed(false); });
 
 describe("page router", () => {
   it("has the pages in tab/shortcut order, Design first", () => {
-    expect(PAGES.map((p) => p.id)).toEqual(["design", "studies", "sketch", "drawing", "print", "onshape", "directory"]);
-    expect(PAGES.map((p) => p.key)).toEqual(["1", "2", "3", "4", "5", "6", "7"]);
+    expect(PAGES.map((p) => p.id)).toEqual(["design", "studies", "sketch", "drawing", "print", "onshape", "directory", "bom"]);
+    expect(PAGES.map((p) => p.key)).toEqual(["1", "2", "3", "4", "5", "6", "7", "8"]);
     expect(DEFAULT_PAGE).toBe("design");
   });
 

@@ -15,5 +15,8 @@
   "active_project_id": null,
   "open_project_ids": [],
   "hidden_agents": [],
-  "catalog_allowed_domains": []
+  "catalog_allowed_domains": [],
+  "suggested_sites": [
+    { "name": "McMaster-Carr", "domain": "mcmaster.com", "search_url": "https://www.mcmaster.com/{q}", "categories": ["fasteners", "hardware"], "suggested": true }
+  ]
 }
