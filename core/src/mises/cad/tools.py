@@ -17,6 +17,7 @@ from ..naming import check_name
 from ..tools.registry import ToolContext, ToolRegistry, tool
 from ..types import ErrorCode, MisesError, SafetyClass, StepKind, ToolOutput
 from . import safe_io
+from . import skeleton as _skeleton
 from .runner import BuildResult, run_build
 
 PART_ID_RE = re.compile(r"^[a-z][a-z0-9_]{1,40}$")
@@ -37,6 +38,9 @@ def _check_part_id(part_id: str) -> None:
     if not PART_ID_RE.match(part_id):
         raise _bad(f"part_id {part_id!r} must match {PART_ID_RE.pattern}",
                    "lowercase letters, digits, underscores; start with a letter")
+    if part_id.startswith("skeleton_"):  # Plan 8 G3: the build skeletons' reserved ids
+        raise _bad(f"part_id {part_id!r}: the skeleton_ prefix is reserved for build skeletons",
+                   "edit the skeleton with skeleton_set; name parts by what they are")
     check_name(part_id)
 
 
@@ -257,11 +261,36 @@ def _accept(d: Path, res) -> None:
     """Promote a successful build: its vars, and the op references re-resolved in it (so each
     op's strict match is measured against the last build, not the one it was added on)."""
     safe_io.write_text(d, "vars.json", json.dumps(res.vars))
+    # Plan 8 G3: the skeleton names this build read (host-only meta), for regeneration
+    _skeleton.record_refs(d, getattr(res, "skeleton_refs", None))
     if res.op_refs:
         src = safe_io.read_text(d, "part.py") or ""
         new = _edits.refresh_op_refs(src, res.op_refs)
         if new != src:
             safe_io.write_text(d, "part.py", new)
+
+
+def _part_project(ctx: ToolContext, part_id: str) -> str | None:
+    """The build a part belongs to: its tree row's, else (a part not built yet) the run's."""
+    store = getattr(ctx, "store", None)
+    if store is None:
+        return None
+    try:
+        row = store.get_part(part_id)
+        if row is not None:
+            return row.project_id
+        return store.get_run(ctx.run_id).project_id
+    except Exception:  # noqa: BLE001 - no run row (a bare test context)
+        return None
+
+
+def _stage_skeleton(ctx: ToolContext, part_id: str, d: Path) -> None:
+    """Plan 8 G3: hand the part's next build its build's layout skeleton (a snapshot in the
+    host-only meta dir; the sandbox reads it, never writes it). A bare context without a store
+    leaves whatever was staged before."""
+    if getattr(ctx, "store", None) is None:
+        return
+    _skeleton.stage(Path(d).parent, d, _part_project(ctx, part_id))
 
 
 def _finish_edit(ctx: ToolContext, part_id: str, d: Path, summary: str) -> int:
@@ -468,6 +497,7 @@ async def mirror_part_create(ctx: ToolContext, args: CreateArgs) -> ToolOutput:
         else:
             kept, dropped = False, 0
         snap = _snapshot(d)
+        _stage_skeleton(ctx, args.part_id, d)
         safe_io.write_text(d, "part.py", script)
         try:
             res = await _build_guarded(d, args.vars, snap)
@@ -512,6 +542,7 @@ async def mirror_part_set_vars(ctx: ToolContext, args: SetVarsArgs) -> ToolOutpu
         new_vars = {**current, **args.vars}
         prev = _read_json(d, "metrics.json")
         snap = _snapshot(d)
+        _stage_skeleton(ctx, args.part_id, d)
         res = await _build_guarded(d, new_vars, snap)
         if not res.ok:
             return _fail(res.error or "build failed", res.stdout_tail)
@@ -638,6 +669,7 @@ async def mirror_part_set_source(ctx: ToolContext, args: SetSourceArgs) -> ToolO
         source, kept, dropped = _keep_ops(ctx, d, args.source, args.drop_ops)
         build_vars = args.vars if args.vars is not None else _read_json(d, "vars.json")
         snap = _snapshot(d)            # includes part.py
+        _stage_skeleton(ctx, args.part_id, d)
         safe_io.write_text(d, "part.py", source)
         res = await _build_guarded(d, build_vars, snap)
         if not res.ok:
@@ -667,6 +699,7 @@ async def mirror_part_op(ctx: ToolContext, args: OpArgs) -> ToolOutput:
         new_source = _edits.build_op_block(source, args.op, args.target, args.params, metrics)
         build_vars = _read_json(d, "vars.json")
         snap = _snapshot(d)            # includes part.py: a failed op drops its block
+        _stage_skeleton(ctx, args.part_id, d)
         safe_io.write_text(d, "part.py", new_source)
         res = await _build_guarded(d, build_vars, snap)
         if not res.ok:

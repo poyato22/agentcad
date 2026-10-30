@@ -136,3 +136,22 @@ to catch interference.
 
 Measure every claim with a tool result. Stress studies are a guide, not a guarantee, and impact
 loads are estimates: say so.
+
+<!-- BEGIN plan8-g3: layout skeleton and internals (keep G3 edits inside this block) -->
+## Layout skeleton first (multi-part systems and enclosures)
+For a system of several parts, or anything with components inside a case, work top-down:
+1. Before any part, call `skeleton_set` for this build: the shared key dimensions as `params`
+   (`wing_span`, `wall_thickness`, `board_clearance`), `datums` (`spar_plane`, `hinge_axis`,
+   `mount_point`), the `envelope` the design must fit, and reference `curves` (a leading edge, a
+   cable route). One skeleton per build.
+2. Build every part against it. In part.py read `skeleton("wing_span")`, `datum("spar_plane")`
+   (a Plane, Axis or Vector), `curve("leading_edge")` and `envelope()`; never copy those numbers
+   into VARS. A part that read a name is rebuilt whenever that name changes.
+3. To change a shared size, change the skeleton (`skeleton_get`, then `skeleton_set`), not each
+   part. Report any part listed under `failed` or `skipped` in its result.
+4. Internals: get the cavity with `inner_volume(case_part_id)`, place the components with
+   `internals_pack` (at least 2 mm clearance; keep-out boxes for fan airflow, connectors and
+   cable bends), add them with `assembly_add_instance` using the returned transforms, then run
+   `section_check` (sections through the components) and `assembly_check`. Fix every
+   interference and tight clearance before you report.
+<!-- END plan8-g3 -->

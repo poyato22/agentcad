@@ -48,7 +48,7 @@ export const buildTabsProfileSchema = z.object({
 
 // ---- part tree
 
-export type PartKind = "part" | "group" | "catalog";
+export type PartKind = "part" | "group" | "catalog" | "skeleton";
 
 /** An edge of metrics.edge_list (cad/worker._edge_list): what a fillet/chamfer pick names. */
 export interface PartEdge {

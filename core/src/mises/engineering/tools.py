@@ -30,7 +30,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from .. import hardware
 from .. import edits as _edits
-from ..cad import safe_io
+from ..cad import safe_io, skeleton
 from ..cad.runner import run_build
 from ..cad.tools import PART_ID_RE, SetVarsArgs, _after_build, _existing, mirror_part_set_vars
 from ..events import Event
@@ -440,7 +440,9 @@ def _static_evaluator(ctx: ToolContext, part_id: str, part_dir: Path, base_vars:
         safe_io.ensure_dir(vpart)
         safe_io.write_text(vpart, "part.py", source)
         out = _empty_metrics(variant)
-        res = await run_build(vpart, {**base_vars, **vars})
+        # the live part's staged layout skeleton (Plan 8 G3), so skeleton() works in variants
+        res = await run_build(vpart, {**base_vars, **vars},
+                              skeleton_file=skeleton.staged_file(part_dir))
         bad = _after_build(vpart)
         if bad:
             out["build_error"] = ("the build left links or special files "
