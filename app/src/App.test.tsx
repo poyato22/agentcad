@@ -1,7 +1,8 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/preact";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import type { CoreClient } from "./api/client";
+import { atHome, resetHome } from "./state/home";
 import { actions, approvals, bindClient, conn, resetStore } from "./state/store";
 import { setConsoleCollapsed } from "./ui/pages/router";
 import { closeProfile } from "./ui/profile/open";
@@ -17,9 +18,20 @@ vi.mock("./ui/viewer/scene", () => ({
   }),
 }));
 
-afterEach(() => { cleanup(); resetStore(); setConsoleCollapsed(false); });
+afterEach(() => { cleanup(); resetStore(); setConsoleCollapsed(false); resetHome(); });
+// Launch lands on the Home grid (R1); the shell tests below open a build first.
+beforeEach(() => { atHome.value = false; });
 
 describe("App shell", () => {
+  it("shows_the_home_grid_on_launch", () => {
+    atHome.value = true;
+    const { container } = render(<App />);
+    expect(container.querySelector('[data-testid="home"]')).not.toBeNull();
+    expect(container.querySelector('[data-region="viewer"]')).toBeNull();
+    // the Home button in the top bar reads as active
+    expect(screen.getByRole("button", { name: "Home" }).getAttribute("aria-pressed")).toBe("true");
+  });
+
   it("renders_every_real_pane_in_its_region", () => {
     const { container } = render(<App />);
     const inRegion = (region: string, sel: string) => container.querySelector(`[data-region="${region}"] ${sel}`);

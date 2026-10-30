@@ -7,7 +7,10 @@
 import type { JSX } from "preact";
 import { useEffect } from "preact/hooks";
 import { conn } from "./state/store";
+import { atHome, goHome, overviewOpen, toggleOverview } from "./state/home";
+import { isTrustedKey, registerShortcut } from "./lib/keys";
 import { needsYou } from "./state/selection";
+import { HomePage } from "./ui/pages/home";
 import { AgentManager } from "./ui/agents/AgentManager";
 import { AssemblyView } from "./ui/assembly/AssemblyView";
 import { designMode, installModeShortcut } from "./ui/assembly/mode";
@@ -15,7 +18,8 @@ import { BootOverlay } from "./ui/boot/BootOverlay";
 import { ConsolePane } from "./ui/console/ConsolePane";
 import { NewRunDialog } from "./ui/dialogs/NewRunDialog";
 import { LeftPane } from "./ui/left/LeftPane";
-import { activePage, consoleCollapsed, installPageShortcuts, toggleConsole } from "./ui/pages/router";
+import { Overview } from "./ui/viewer/Overview";
+import { activePage, consoleCollapsed, installPageShortcuts, modalOpen, toggleConsole } from "./ui/pages/router";
 import { DirectoryPage } from "./ui/pages/directory";
 import { DrawingPage } from "./ui/pages/drawing";
 import { OnshapePage } from "./ui/pages/onshape";
@@ -43,6 +47,10 @@ function PageRegion(): JSX.Element {
         <div class="region region-left" data-region="left"><LeftPane /></div>
         <main class="region region-viewer" data-region="viewer" data-mode={designMode.value}>
           {designMode.value === "assembly" ? <AssemblyView /> : <Viewer />}
+          <button type="button" class={overviewOpen.value ? "overview-toggle on" : "overview-toggle"}
+            aria-pressed={overviewOpen.value} title="See every part of this build"
+            onClick={() => toggleOverview()}>All parts</button>
+          {overviewOpen.value && <Overview />}
         </main>
       </>
     );
@@ -78,12 +86,18 @@ function ConsoleRegion(): JSX.Element {
 export function App(): JSX.Element {
   useEffect(() => installPageShortcuts(), []);
   useEffect(() => installModeShortcut(() => activePage.peek() === "design"), []);
+  // ⌘0 returns to the Home grid (not while a modal is open, and only on a real key press).
+  useEffect(() => registerShortcut("Meta+0", (e) => {
+    if (isTrustedKey(e) && !modalOpen()) goHome();
+  }), []);
+  const home = atHome.value;
   return (
-    <div class="app" data-region="app" data-conn={conn.value}
+    <div class="app" data-region="app" data-conn={conn.value} data-home={home ? "" : undefined}
       data-page={activePage.value} data-console={consoleCollapsed.value ? "rail" : "open"}>
       <div class="region region-topbar" data-region="topbar"><TopBar /></div>
-      <PageRegion />
-      <ConsoleRegion />
+      {home
+        ? <div class="region region-page" data-region="page"><HomePage /></div>
+        : <><PageRegion /><ConsoleRegion /></>}
       <ImmersiveRoot />
       <NewRunDialog />
       <AgentManager />

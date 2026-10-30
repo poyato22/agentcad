@@ -1,5 +1,6 @@
 import type { JSX } from "preact";
 import { useEffect } from "preact/hooks";
+import { atHome, goHome } from "../../state/home";
 import { runs } from "../../state/store";
 import { Button } from "../common/Button";
 import { ActivityPill } from "./ActivityPill";
@@ -19,7 +20,11 @@ export function TopBar(): JSX.Element {
   return (
     // Empty top-bar space is the macOS window drag region (overlay title bar).
     <header class="topbar" data-tauri-drag-region>
-      <div class="topbar-left" data-tauri-drag-region><Breadcrumb /></div>
+      <div class="topbar-left" data-tauri-drag-region>
+        <button type="button" class={atHome.value ? "home-btn on" : "home-btn"} aria-pressed={atHome.value}
+          title="Home — all builds (⌘0)" aria-label="Home" onClick={() => goHome()}>⌂</button>
+        <Breadcrumb />
+      </div>
       <ModeTabs />
       <div class="topbar-right">
         <ActivityPill />
