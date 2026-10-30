@@ -52,6 +52,29 @@ Bought parts (motors, bearings, fasteners, boards) come from the catalog (`catal
 `catalog_get`, `catalog_insert`), and existing Onshape parts via `onshape_import_element`; do not
 model them from scratch.
 
+<!-- mises-shapes:begin (generated: recipes.prompt_section) -->
+## Curved and organic shapes: use the recipes
+Never approximate organic or aero shapes (wings, fuselages, flying wings, hulls, ducts, handles, ergonomic shells) with ellipsoids, spheres, boxes or cylinders. Build them from lofts, sweeps and spline surfaces with the `mises_shapes` recipes, pre-imported in every part script as `ms` (e.g. `return ms.blended_wing_body(span=524)`). Read `recipe_doc(name)` before first use; `recipes_list` lists them. A recipe checks its result and raises ValueError with the reason: fix the arguments, do not fall back to primitives.
+- `ms.naca4`: NACA 4-digit airfoil as unit-chord (x, y) points (TE -> upper -> LE -> lower -> TE).
+- `ms.naca5`: NACA 5-digit airfoil (standard, non-reflexed mean line), e.g. "23012", as unit-chord points.
+- `ms.airfoil_from_points`: Clean a custom airfoil (e.g. pasted Selig/.dat coordinates) into unit-chord points.
+- `ms.airfoil_wire`: Place an airfoil as a closed 3D wire in the XZ plane: chord along +X from `le`, up = +Z.
+- `ms.wing`: Lofted wing from a planform: tapered, swept (leading edge), dihedral, washout twist.
+- `ms.blended_wing_body`: B-2 style flying wing: swept straight LE, thick blended center body, sawtooth TE.
+- `ms.fuselage`: Smooth fuselage/nacelle/pod: a loft through (x, width, height[, z]) cross-sections.
+- `ms.sweep_profile`: Sweep a profile along a smooth path (spline through points), optionally twisting.
+- `ms.smooth_loft`: Loft a solid through ordered sections: Wires/Faces/Sketches, or closed 3D point lists.
+- `ms.spline_surface`: Smooth B-spline surface (a Face) through a rows x cols grid of (x, y, z) points.
+- `ms.thicken`: Turn a surface (Face/Shell, e.g. from spline_surface) into a solid of `thickness`.
+- `ms.blend_edges`: Fillet edges (all by default) and, if OCCT refuses, retry with smaller radii.
+- `ms.variable_fillet`: Fillet whose radius varies linearly from `r_start` to `r_end` along each edge.
+- `ms.enclosure`: Two-piece shelled enclosure: base + lid with a locating lip, screw bosses, ribs, snaps.
+- `ms.standoffs`: PCB standoffs/bosses: tubes of `od` x `height` at (x, y) points from z, with `hole_d` bores.
+- `ms.vent_slots`: Cutting tool for a row of rounded vent slots; subtract it: `part - ms.vent_slots(...)`.
+- `ms.cable_path`: A cable/hose/wire harness: a round tube swept along a smooth spline through 3D points.
+- `ms.check_solid`: Validate a solid (is_valid, closed, volume > 0) and return it; raises ValueError otherwise.
+<!-- mises-shapes:end -->
+
 ## 4. Study every concept
 Run `study_run` on each concept part with the same variables (name, lo, hi) and the same
 objective. Pick the objective from the user's top priority: weight → `min_mass`; impact strength

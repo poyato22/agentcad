@@ -710,3 +710,5 @@ def register_mirror_tools(registry: ToolRegistry) -> None:
               mirror_part_list, mirror_faces, mirror_edges, mirror_part_get_source,
               mirror_part_set_source, mirror_part_op):
         registry.register(t)
+    from .recipes import register_recipe_tools   # mises_shapes docs (Plan 8 G2)
+    register_recipe_tools(registry)
