@@ -50,6 +50,15 @@ CAVEATS_FEM = [
     "Small deflections assumed; contact, creep, fatigue, temperature and vibration are not "
     "simulated unless this study type says so.",
 ]
+CAVEATS_NONLINEAR = [
+    "Guide only: a nonlinear FEM estimate (CalculiX, load controlled), not a certification or "
+    "a guarantee; its validated model error band is shown with the result.",
+    "Isotropic material model; plasticity is bilinear (yield at the knocked-down allowable, "
+    "then the tangent modulus): printed parts are weaker across layers and often crack before "
+    "they flow.",
+    "Contact is penalty contact (a little penetration stands for the contact stiffness); "
+    "creep, fatigue, temperature and vibration are not simulated.",
+]
 CAVEATS_STATIC_FIXTURE = (
     "Peak stress excludes nodes on the fixed face (an ideal clamp gives a constraint "
     "singularity there); that value and a safety factor including it are reported separately.")
@@ -97,6 +106,10 @@ STUDY_TYPES: dict[str, StudyType] = {t.id: t for t in [
 ]}
 
 
+# the channels a static study with `nonlinear` settings adds (when it has plasticity / contact)
+NONLINEAR_CHANNELS = ("plastic_strain", "contact_pressure")
+
+
 def types_list() -> list[dict]:
     st = find_ccx()
     out = []
@@ -106,7 +119,9 @@ def types_list() -> list[dict]:
                     "fidelity_class": t.fidelity_class, "doc": t.doc, "channels": list(t.channels),
                     "available": available,
                     "detail": None if available else f"CalculiX missing: {INSTALL_HINT}",
-                    "schema": SETTINGS_MODELS[t.id].model_json_schema()})
+                    "schema": SETTINGS_MODELS[t.id].model_json_schema(),
+                    **({"nonlinear_channels": list(NONLINEAR_CHANNELS),
+                        "targets": ["part_id", "project_id"]} if t.id == "static" else {})})
     return out
 
 
@@ -383,8 +398,9 @@ async def run_study(ctx, type_id: str, part_id: str, part_dir: Path, settings: B
         "material": material.to_dict() if material else None, "environment": env,
         "error": None, "hint": None, "warnings": [],
         "caveats": (CAVEATS_WIND if type_id == "wind" else
-                    CAVEATS_FEM + ([CAVEATS_STATIC_FIXTURE] if type_id in ("static", "drop")
-                                   else [])),
+                    (CAVEATS_NONLINEAR if getattr(settings, "nonlinear", None) is not None
+                     else CAVEATS_FEM)
+                    + ([CAVEATS_STATIC_FIXTURE] if type_id in ("static", "drop") else [])),
         "urls": urls(sim_id)}
     write_record(sim_dir, rec)
 
@@ -528,7 +544,7 @@ async def _dispatch(type_id, job_root, metrics, material, ccx, settings, env, pr
     if type_id == "static":
         from .static import run_static
         return await run_static(job, settings.load_cases, env=env, sim_id=sim_id,
-                                part_id=part_id)
+                                part_id=part_id, nonlinear=settings.nonlinear)
     if type_id == "modal":
         from .modal import run_modal
         return await run_modal(job, settings, sim_id=sim_id, part_id=part_id)
@@ -685,6 +701,13 @@ def summary(rec: dict) -> str:
     return s
 
 
+def target_name(rec: dict) -> str:
+    """What a study ran on: the part id, or "assembly <project id>"."""
+    if rec.get("part_id"):
+        return rec["part_id"]
+    return f"assembly {rec.get('project_id')}" if rec.get("project_id") else "?"
+
+
 def static_summary(rec: dict) -> str:
     r, m, sv, mesh = rec["results"], rec["material"], rec["solver"], rec["mesh"]
     band = r.get("error_band")
@@ -694,13 +717,22 @@ def static_summary(rec: dict) -> str:
                    f"incl. fixture {_num(r.get('safety_factor_incl_fixture'), '.2f')})")
     else:
         fixture = "peak includes the fixed face (every stressed node is on it)"
+    nl = r.get("nonlinear")
+    model = (f"isotropic, NONLINEAR ({nl['description']}; {fidelity_note(rec)})" if nl
+             else "isotropic linear elastic")
     s = (f"GUIDE ONLY - {sv['name']} {sv['version']}, fine mesh {mesh['fine']['size_mm']:.2g} mm "
-         f"(coarse {mesh['coarse']['size_mm']:.2g} mm), material {m['name']} isotropic linear "
-         f"elastic, strength x{m['knockdown']:.3g} FDM knock-down: {rec['part_id']} max von "
+         f"(coarse {mesh['coarse']['size_mm']:.2g} mm), material {m['name']} {model}, "
+         f"strength x{m['knockdown']:.3g} FDM knock-down: {target_name(rec)} max von "
          f"Mises {r['max_von_mises_mpa']:.3g} MPa (error band "
          f"{'n/a' if band is None else format(band, '.1%')}), max displacement "
          f"{r['max_displacement_mm']:.3g} mm, safety factor {_num(r.get('safety_factor'), '.2f')}"
          f"; {fixture}")
+    if nl:
+        s += f"; load reached {_num(r.get('load_fraction'), '.0%')}"
+        if r.get("max_plastic_strain") is not None:
+            s += f", max plastic strain {100 * r['max_plastic_strain']:.3g}%"
+        if r.get("max_contact_pressure_mpa") is not None:
+            s += f", max contact pressure {r['max_contact_pressure_mpa']:.3g} MPa"
     cases = r.get("cases") or []
     if len(cases) > 1:
         s += f"; governing case {r.get('governing_case')} of {len(cases)}"
@@ -731,6 +763,12 @@ KEY_METRICS = {
 }
 
 
+NONLINEAR_METRICS = [("load_fraction", "load reached", ""),
+                     ("max_plastic_strain", "max plastic strain", ""),
+                     ("max_contact_pressure_mpa", "max contact pressure", "MPa")]
+OPTIONAL_METRICS = {"max_plastic_strain", "max_contact_pressure_mpa"}
+
+
 def fidelity_note(rec: dict) -> str | None:
     """The label a card / summary shows next to the numbers, e.g. "low fidelity · ±30%
     (validated)", "low fidelity (preview) · ±40% (validated)", "estimate · ±40%"."""
@@ -745,6 +783,9 @@ def fidelity_note(rec: dict) -> str | None:
         return f"estimate · ±{100 * band:.0f}% (shape-class table)"
     if fc == "fem_estimate":
         return "estimate (equivalent static load F = m g k)"
+    if fc == "fem_nonlinear" and band is not None:
+        desc = (r.get("nonlinear") or {}).get("description") or "nonlinear"
+        return f"nonlinear ({desc}) · ±{100 * band:.0f}% (validated)"
     return None
 
 
@@ -754,7 +795,9 @@ def card(rec: dict) -> dict:
     typ = rec.get("type", "static")
     r = rec.get("results") or {}
     metrics = [{"key": k, "label": lab, "unit": u, "value": r.get(k)}
-               for k, lab, u in KEY_METRICS.get(typ, [])]
+               for k, lab, u in KEY_METRICS.get(typ, [])
+               + (NONLINEAR_METRICS if rec.get("fidelity_class") == "fem_nonlinear" else [])
+               if not (k in OPTIONAL_METRICS and r.get(k) is None)]
     status = None
     if rec.get("status") == "done":
         status = "warn" if rec.get("warnings") else "pass"
@@ -873,6 +916,8 @@ def check_requirements(rec: dict, reqs: list[dict]) -> list[dict]:
     r = rec.get("results") or {}
     typ = rec.get("type")
     band = r.get("error_band")
+    if rec.get("fidelity_class") == "fem_nonlinear" and r.get("model_error_band") is not None:
+        band = max(band or 0.0, r["model_error_band"])  # mesh and validated model error
     out = []
     for q in reqs:
         kind, target = q.get("kind"), q.get("target")

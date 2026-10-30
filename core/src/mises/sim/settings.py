@@ -61,6 +61,13 @@ class _FaceM(_M):
 
 # ---- shared blocks
 
+class RefinePoint(_M):
+    point: Vec3 = Field(description="centre of the refined ball (part / assembly coordinates)",
+                        **_u("mm"))
+    radius_mm: float = Field(gt=0, le=1e4, description="ball radius", **_u("mm"))
+    size_mm: float = Field(gt=0, le=1000, description="element size inside the ball", **_u("mm"))
+
+
 class MeshSettings(_M):
     size_mm: float | None = Field(None, gt=0, le=1000, description="element size; null = auto "
                                   "(from the part's size, within the node budget)", **_u("mm"))
@@ -68,6 +75,8 @@ class MeshSettings(_M):
                                      description="faces to mesh finer (local refinement)")
     refine_factor: float = Field(0.4, ge=0.05, le=1.0, description="local element size on the "
                                  "refined faces, as a fraction of the element size")
+    refine_points: list[RefinePoint] = Field(default_factory=list, max_length=10, description=(
+        "balls to mesh finer (e.g. around a contact point, where the stress is local)"))
     second_order: bool = Field(True, description="quadratic (10-node) tetrahedra; first-order "
                                "tetrahedra are much too stiff in bending: use only to preview")
 
@@ -96,6 +105,9 @@ class CustomMaterial(_M):
     hdt_c: float = Field(60, ge=-50, le=1000, description="heat deflection temperature",
                          **_u("degC"))
     source: str = Field("", max_length=200)
+    tangent_modulus_mpa: float | None = Field(None, ge=0, le=5e5, description="post-yield "
+                                              "slope for plastic (nonlinear) studies; null = "
+                                              "an estimate (1% of E)", **_u("MPa"))
 
 
 class MaterialSettings(_M):
@@ -194,6 +206,92 @@ class LoadCase(_M):
     note: str = Field("", max_length=300)
 
 
+# ---- nonlinear static: large deflection, plasticity, contact (CalculiX *STATIC, NLGEOM,
+# *PLASTIC, *CONTACT PAIR / *TIE)
+
+INSTANCE_ID_PATTERN = r"^[A-Za-z0-9_-]{1,40}$"
+
+
+class ContactSide(_M):
+    face: Face | None = Field(None, description="the face that touches: a preset, a face id "
+                              "('f3'), or in an assembly an instance face 'f3@<instance id>'; "
+                              "null with an instance = its faces near the other side, found "
+                              "automatically")
+    instance: str | None = Field(None, pattern=INSTANCE_ID_PATTERN, description="assembly "
+                                 "studies: the instance (assembly_get ids)")
+
+    @field_validator("face")
+    @classmethod
+    def _face(cls, v):
+        return None if v is None else check_face(v)
+
+    @model_validator(mode="after")
+    def _some(self):
+        if self.face is None and self.instance is None:
+            raise ValueError("a contact side needs a face or an instance")
+        return self
+
+
+class ContactPair(_M):
+    kind: Literal["contact", "bonded"] = Field(
+        "contact", description="contact: the faces may touch, slide (friction) and separate "
+        "(surface-to-surface penalty contact); bonded: glued / tied (*TIE), they move together")
+    a: ContactSide = Field(description="the dependent (slave) side: usually the finer or "
+                           "softer face, or the smaller one")
+    b: ContactSide = Field(description="the independent (master) side")
+    friction: float = Field(0.0, ge=0, le=2, description="Coulomb friction coefficient μ "
+                            "(0 = frictionless; printed plastics ~0.2-0.5)")
+    search_mm: float = Field(0.1, gt=0, le=10, description="automatic faces: how close two "
+                             "instances' faces must be to count as touching", **_u("mm"))
+
+    @model_validator(mode="after")
+    def _distinct(self):
+        if self.a == self.b:
+            raise ValueError("a contact pair needs two different sides")
+        return self
+
+
+class RigidSupport(_FaceM):
+    face: Face = Field(description="the face of the part that rests on the support")
+    normal: Direction = Field("+z", description="the support's surface normal, pointing from "
+                              "the support into the part ('+z' = a floor under the part)")
+    friction: float = Field(0.0, ge=0, le=2, description="Coulomb friction coefficient μ")
+    gap_mm: float = Field(0.0, ge=0, le=100, description="clearance between the face's "
+                          "lowest point and the support at the start", **_u("mm"))
+
+
+class NonlinearSettings(_M):
+    large_deflection: bool = Field(False, description="geometric nonlinearity (NLGEOM): large "
+                                   "deflections and rotations, stress stiffening")
+    plasticity: bool = Field(False, description="bilinear elastic-plastic material: yield "
+                             "stress plus a tangent modulus after yield")
+    tangent_modulus_mpa: float | None = Field(None, ge=0, le=5e5, description="slope of the "
+                                              "stress-strain curve after yield; null = the "
+                                              "material's (or an estimate)", **_u("MPa"))
+    contacts: list[ContactPair] = Field(default_factory=list, max_length=12, description=(
+        "contact or bonded pairs: between faces of the part, or between assembly instances"))
+    rigid_supports: list[RigidSupport] = Field(default_factory=list, max_length=6, description=(
+        "rigid flat supports the part can press on (contact; never pulls)"))
+    increments: int = Field(10, ge=1, le=1000, description="load steps: the first increment "
+                            "is 1/increments of the load (CalculiX adapts it)")
+    max_increments: int = Field(200, ge=1, le=10_000, description="the solve stops after this "
+                                "many increments")
+    min_increment: float = Field(1e-5, gt=0, le=0.5, description="smallest load increment "
+                                 "(fraction of the load) before the solve gives up: the load "
+                                 "reached then is reported (collapse or no convergence)")
+    penalty: float = Field(50.0, ge=1, le=1000, description="contact stiffness in multiples "
+                           "of the material's Young's modulus per mm (higher: less "
+                           "penetration, harder convergence)")
+
+    @model_validator(mode="after")
+    def _something(self):
+        if not (self.large_deflection or self.plasticity or self.contacts
+                or self.rigid_supports):
+            raise ValueError("nonlinear needs large_deflection, plasticity, a contact pair or "
+                             "a rigid support (else leave it out: the study is linear)")
+        return self
+
+
 # ---- per-type settings
 
 class _Common(_M):
@@ -207,6 +305,9 @@ class StaticSettings(_Common):
     convergence: ConvergenceSettings = Field(default_factory=ConvergenceSettings)
     environment: str | None = Field(None, max_length=40, description="Desk, Outdoor, ... "
                                     "(temperature checked against the material)")
+    nonlinear: NonlinearSettings | None = Field(None, description="null = linear elastic; "
+                                                "else large deflection, plasticity and / or "
+                                                "contact (slower: an incremental solve)")
 
     @model_validator(mode="after")
     def _names(self):

@@ -30,8 +30,9 @@ def _lines16(ids) -> list[str]:
     return [",".join(map(str, ids[i:i + 16])) for i in range(0, len(ids), 16)]
 
 
-def model_cards(mesh: Mesh, material: Material) -> list[str]:
-    """*NODE, *ELEMENT and *MATERIAL for both mechanical and heat-transfer steps."""
+def model_cards(mesh: Mesh, material: Material, plastic: list[str] | None = None) -> list[str]:
+    """*NODE, *ELEMENT and *MATERIAL for both mechanical and heat-transfer steps; `plastic`:
+    the *PLASTIC card of a nonlinear study (it follows *ELASTIC)."""
     out = ["*NODE"]
     out += [f"{n},{x:.9g},{y:.9g},{z:.9g}" for n, (x, y, z) in mesh.nodes.items()]
     if mesh.order == 2:
@@ -41,7 +42,7 @@ def model_cards(mesh: Mesh, material: Material) -> list[str]:
         out.append("*ELEMENT, TYPE=C3D4, ELSET=EALL")
         out += [f"{i}," + ",".join(map(str, t[:4])) for i, t in enumerate(mesh.tets, 1)]
     out += ["*MATERIAL, NAME=MAT", "*ELASTIC", f"{material.e_eff_mpa:.9g},{material.nu:.9g}",
-            "*DENSITY", f"{material.density_t_mm3:.9g}",
+            *(plastic or []), "*DENSITY", f"{material.density_t_mm3:.9g}",
             "*CONDUCTIVITY", f"{material.k_w_mk:.9g}",
             "*EXPANSION", f"{material.alpha_per_k:.9g}",
             "*SOLID SECTION, ELSET=EALL, MATERIAL=MAT"]
@@ -269,9 +270,9 @@ def cload_lines(cload: dict[int, list[float]]) -> list[str]:
 
 
 def write_deck(path: Path, mesh: Mesh, material: Material, setup_cards: list[str],
-               step: list[str], heading: str) -> None:
-    lines = ["*HEADING", f"{heading} (guide only)", *model_cards(mesh, material), *setup_cards,
-             *step, ""]
+               step: list[str], heading: str, plastic: list[str] | None = None) -> None:
+    lines = ["*HEADING", f"{heading} (guide only)", *model_cards(mesh, material, plastic),
+             *setup_cards, *step, ""]
     Path(path).write_text("\n".join(lines))
 
 

@@ -14,7 +14,7 @@ from .ccx import run_ccx
 from .environments import FACE_PRESETS
 from .fields import save_fem
 from .materials import Material
-from .mesh import (FACE_ID_RE, FACE_TAG_RE, Mesh, mesh_sizes, mesh_step, size_floor,
+from .mesh import (FACE_TAG_RE, Mesh, is_face_id, mesh_sizes, mesh_step, size_floor,
                    tag_face_ids)
 from .results import boundary_triangles, error_band, write_glb
 from .types import SimError
@@ -80,7 +80,7 @@ def mesh_options(job: FemJob, size: float) -> dict | None:
             refine.append({"size": local, "axis": axis, "value": bbox[side][axis]})
         else:
             ids = (tag_face_ids(f, job.metrics.get("face_tags")) if FACE_TAG_RE.match(f)
-                   else [f] if FACE_ID_RE.match(f) else [])
+                   else [f] if is_face_id(f) else [])
             for fid in ids:
                 face = next((x for x in job.metrics.get("face_list") or []
                              if x.get("id") == fid), None)
@@ -88,8 +88,12 @@ def mesh_options(job: FemJob, size: float) -> dict | None:
                     raise SimError("bad_setup", f"no face {fid} on this part to refine",
                                    hint="pick a face id from mirror_measure face_list")
                 refine.append({"size": local, "center": face["center"]})
+    for rp in getattr(ms, "refine_points", []) or []:
+        refine.append({"size": rp.size_mm, "point": list(rp.point), "radius": rp.radius_mm})
     if refine:
         opts["refine"] = refine
+    if job.extra.get("instances"):  # an assembly study: each instance's STEP and transform
+        opts["instances"] = job.extra["instances"]
     return opts or None
 
 
@@ -101,11 +105,12 @@ async def mesh_level(job: FemJob, d: Path, size: float, label: str, pct: float) 
 
 
 async def solve_deck(job: FemJob, d: Path, write: Callable[[Path], None], label: str,
-                     pct: float, **data) -> tuple[Path, Path]:
+                     pct: float, allow_partial: bool = False, **data) -> tuple[Path, Path]:
     """Write the deck (off the event loop) and run ccx in d; returns (.frd, .dat)."""
     await asyncio.to_thread(write, d / "job.inp")
     job.progress(f"solve_{label}", phase="solve", pct=pct, detail=f"solving {label}", **data)
-    frd = await run_ccx(job.ccx, d, timeout_s=job.solve_timeout, threads=job.threads)
+    frd = await run_ccx(job.ccx, d, timeout_s=job.solve_timeout, threads=job.threads,
+                        allow_partial=allow_partial)
     return frd, d / "job.dat"
 
 

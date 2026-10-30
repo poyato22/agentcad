@@ -40,6 +40,10 @@ from pathlib import Path
 from .types import SimError
 
 FDM_KNOCKDOWN = 0.7  # applied to strength (not stiffness) for every FDM material
+# Nonlinear studies with plasticity use a bilinear curve: yield (the allowable, i.e. with the
+# knock-down) then the tangent modulus. Without a measured tangent the estimate is 1% of E:
+# nearly perfectly plastic (printed polymers hardly harden between yield and break).
+TANGENT_ESTIMATE_RATIO = 0.01
 
 
 @dataclass(frozen=True)
@@ -56,6 +60,7 @@ class Material:
     knockdown: float = FDM_KNOCKDOWN  # strength factor (FDM settings may lower it)
     stiffness_factor: float = 1.0     # E factor from FDM infill/walls; 1 = solid
     custom: bool = False
+    tangent_modulus_mpa: float | None = None  # post-yield slope (plasticity); None = estimate
 
     @property
     def allowable_mpa(self) -> float:
@@ -64,6 +69,18 @@ class Material:
     @property
     def e_eff_mpa(self) -> float:
         return self.e_mpa * self.stiffness_factor
+
+    @property
+    def tangent_eff_mpa(self) -> float:
+        """The post-yield slope a plastic study uses (scaled like E by infill / walls)."""
+        t = (self.tangent_modulus_mpa if self.tangent_modulus_mpa is not None
+             else TANGENT_ESTIMATE_RATIO * self.e_mpa)
+        return min(t * self.stiffness_factor, 0.5 * self.e_eff_mpa)
+
+    @property
+    def tangent_source(self) -> str:
+        return ("material data" if self.tangent_modulus_mpa is not None
+                else f"estimate ({TANGENT_ESTIMATE_RATIO:.0%} of E)")
 
     @property
     def density_t_mm3(self) -> float:  # CalculiX units (mm, N, s): tonne/mm^3
@@ -75,6 +92,7 @@ class Material:
         if self.stiffness_factor != 1.0:
             model += f"; stiffness x{self.stiffness_factor:.3g} for infill/walls (approximate)"
         return {**asdict(self), "allowable_mpa": self.allowable_mpa, "e_eff_mpa": self.e_eff_mpa,
+                "tangent_eff_mpa": self.tangent_eff_mpa, "tangent_source": self.tangent_source,
                 "model": model}
 
 
@@ -95,7 +113,7 @@ MATERIALS_FILE = "sim_materials.json"
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._+()-]{0,39}$")
 MAX_CUSTOM = 100
 _KEEP = ("name", "e_mpa", "nu", "yield_mpa", "density_g_cm3", "hdt_c", "source", "k_w_mk",
-         "alpha_per_k")
+         "alpha_per_k", "tangent_modulus_mpa")
 
 
 def get_material(name: str, home: Path | None = None) -> Material:
@@ -141,7 +159,9 @@ def custom_material(d: dict) -> Material:
                     hdt_c=float(d.get("hdt_c") or 60.0),
                     source=str(d.get("source") or "user-defined (Studies page)")[:200],
                     k_w_mk=float(d.get("k_w_mk") or 0.2),
-                    alpha_per_k=float(d.get("alpha_per_k") or 7e-5), custom=True)
+                    alpha_per_k=float(d.get("alpha_per_k") or 7e-5), custom=True,
+                    tangent_modulus_mpa=(None if d.get("tangent_modulus_mpa") is None
+                                         else float(d["tangent_modulus_mpa"])))
 
 
 def load_custom(home: Path | None) -> list[Material]:

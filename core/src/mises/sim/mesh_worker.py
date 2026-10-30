@@ -6,8 +6,13 @@ Writes a tetra mesh (second order, 10-node, by default; 4-node with "order": 1) 
 boundary surface's triangles (6- or 3-node), centre of mass, bounding box and area.
 
 options.json (optional): {"order": 1|2, "refine": [{"size": mm, "center": [x,y,z]} |
-{"size": mm, "axis": 0..2, "value": v}]}: local refinement on the surfaces whose centre of
-mass is nearest `center`, or that lie flat on the plane axis=value (a bounding-box preset).
+{"size": mm, "axis": 0..2, "value": v} | {"size": mm, "point": [x,y,z], "radius": mm}],
+"instances": [{"id": str, "step": path, "transform": 4x4 row-major}]}: local refinement on the
+surfaces whose centre of mass is nearest `center`, that lie flat on the plane axis=value (a
+bounding-box preset), or inside a ball. With instances (an assembly study) each instance's STEP
+is placed by its transform and meshed as its own solid (no shared nodes between instances: they
+interact only through contact or tie constraints); the output adds "tet_instances" ([id, count]
+runs in tet order) and each surface's "instance".
 """
 from __future__ import annotations
 
@@ -19,6 +24,8 @@ import sys
 
 def _refine_surfaces(gmsh, spec: dict, tol: float) -> list[int]:
     surfs = [s for _, s in gmsh.model.getEntities(2)]
+    if "point" in spec:
+        return []  # a ball field, not surfaces (see _ball)
     if "center" in spec:
         c = spec["center"]
         best = min(surfs, key=lambda s: math.dist(gmsh.model.occ.getCenterOfMass(2, s), c))
@@ -30,6 +37,38 @@ def _refine_surfaces(gmsh, spec: dict, tol: float) -> list[int]:
         if abs(bb[ax + 3] - bb[ax]) <= tol and abs(bb[ax] - val) <= tol:
             out.append(s)
     return out
+
+
+def _ball(gmsh, spec: dict, size: float) -> int:
+    p = spec["point"]
+    b = gmsh.model.mesh.field.add("Ball")
+    gmsh.model.mesh.field.setNumber(b, "Radius", float(spec["radius"]))
+    gmsh.model.mesh.field.setNumber(b, "VIn", float(spec["size"]))
+    gmsh.model.mesh.field.setNumber(b, "VOut", size)
+    gmsh.model.mesh.field.setNumber(b, "Thickness", float(spec["radius"]))
+    for k, v in zip(("XCenter", "YCenter", "ZCenter"), p):
+        gmsh.model.mesh.field.setNumber(b, k, float(v))
+    return b
+
+
+def _import(gmsh, step: str, instances: list) -> dict:
+    """Import the part (or each assembly instance, placed by its transform); returns
+    volume tag -> instance id (empty for a single part)."""
+    if not instances:
+        gmsh.model.occ.importShapes(step)
+        gmsh.model.occ.synchronize()
+        return {}
+    owner = {}
+    for inst in instances:
+        dim_tags = gmsh.model.occ.importShapes(inst["step"])
+        m = inst["transform"]
+        gmsh.model.occ.affineTransform(dim_tags, [float(m[r][c]) for r in range(3)
+                                                  for c in range(4)])
+        for d, t in dim_tags:
+            if d == 3:
+                owner[t] = str(inst["id"])
+    gmsh.model.occ.synchronize()
+    return owner
 
 
 def main(argv: list[str]) -> int:
@@ -45,8 +84,7 @@ def main(argv: list[str]) -> int:
     try:
         gmsh.option.setNumber("General.Terminal", 0)
         gmsh.option.setNumber("General.NumThreads", 1)
-        gmsh.model.occ.importShapes(step)
-        gmsh.model.occ.synchronize()
+        owner = _import(gmsh, step, opts.get("instances") or [])
         if not gmsh.model.getEntities(3):
             raise ValueError("the STEP file has no solid to mesh")
         refine = opts.get("refine") or []
@@ -59,6 +97,9 @@ def main(argv: list[str]) -> int:
             tol = 1e-4 * math.dist(bb[:3], bb[3:]) + 1e-6
             fields = []
             for r in refine:
+                if "point" in r:
+                    fields.append(_ball(gmsh, r, size))
+                    continue
                 tags = _refine_surfaces(gmsh, r, tol)
                 if not tags:
                     continue
@@ -84,7 +125,15 @@ def main(argv: list[str]) -> int:
 
         tags, coords, _ = gmsh.model.mesh.getNodes()
         tet_type, tri_type = (11, 9) if order == 2 else (4, 2)
-        _, tet_nodes = gmsh.model.mesh.getElementsByType(tet_type)
+        runs = []
+        if owner:  # per instance, in a known order, so each tet's instance is known
+            tet_nodes = []
+            for _, v in gmsh.model.getEntities(3):
+                _, nodes = gmsh.model.mesh.getElementsByType(tet_type, v)
+                tet_nodes.extend(int(x) for x in nodes)
+                runs.append([owner.get(v, ""), len(nodes) // (10 if order == 2 else 4)])
+        else:
+            _, tet_nodes = gmsh.model.mesh.getElementsByType(tet_type)
         if len(tet_nodes) == 0:
             raise ValueError("gmsh produced no tetrahedra")
         surfaces = []
@@ -94,12 +143,18 @@ def main(argv: list[str]) -> int:
             for t, n in zip(types, nodes):
                 if t == tri_type:
                     tris.extend(int(x) for x in n)
-            surfaces.append({"tag": int(s), "center": list(gmsh.model.occ.getCenterOfMass(2, s)),
-                             "bbox": list(gmsh.model.getBoundingBox(2, s)),
-                             "area": float(gmsh.model.occ.getMass(2, s)), "tris": tris})
+            surf = {"tag": int(s), "center": list(gmsh.model.occ.getCenterOfMass(2, s)),
+                    "bbox": list(gmsh.model.getBoundingBox(2, s)),
+                    "area": float(gmsh.model.occ.getMass(2, s)), "tris": tris}
+            if owner:
+                up, _ = gmsh.model.getAdjacencies(2, s)
+                surf["instance"] = next((owner[v] for v in up if v in owner), None)
+            surfaces.append(surf)
         data = {"gmsh_version": gmsh.__version__, "size_mm": size, "order": order,
                 "node_tags": [int(t) for t in tags], "coords": [float(c) for c in coords],
                 "tets": [int(t) for t in tet_nodes], "surfaces": surfaces}
+        if runs:
+            data["tet_instances"] = runs
     finally:
         gmsh.finalize()
     tmp = out + ".tmp"
