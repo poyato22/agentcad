@@ -28,6 +28,9 @@ Every item has an owner task, and the integration step checks each one.
 | R16 | **Agents tell you more.** The thread shows a clear card when an agent creates a part, spawns an agent, adds to the assembly, or adds to the BOM. | U3c, U3a |
 | R18 | **Study results in the thread are clear, not a wall of text.** Each study is a compact clickable card (type, status, key numbers, pass/fail, thumbnail) that **expands inline** to show its chart, checks and an Immersive button. Raw tool output is hidden by default. The agent's own reply after studies stays short and refers to the cards instead of restating numbers. | U3a (cards), U3c (prompt and result shape) |
 | R19 | **Agents can use the assembly fully:** add parts, place them, move them, drive joints and **animate** motion that the user sees in the viewer. | U3c (tools), U2a/U3a (viewer playback) |
+| R20 | **Rebuild the parts manager (the part list on the left) to be intuitive and fast, Onshape-style.**<br>- **Color in one click:** a swatch on each row opens the color/appearance popover directly, not three clicks.<br>- **A useful right-click menu**, also on the ⋯ button: Rename, Show/Hide, Isolate, Appearance…, Measure, Add to assembly, Duplicate, Export STEP/STL, Properties (mass, volume, bbox, material), Delete. Every item is useful.<br>- **Simple rows:** eye toggle, swatch, name, small mass/material hint on hover. Multi-select with Shift/⌘-click.<br>- **Speed:** no lag. Profile it, then memoize rows, virtualize long lists, and avoid re-render storms on events. | U8 |
+| R21 | **Changeable viewer background:** theme default, solid colors, and an Onshape-style soft gradient, stored in the profile. | U8 |
+| R22 | **Shiny materials:** appearance presets per part (Matte plastic, Glossy plastic, Brushed aluminum, Polished metal/chrome, Anodized, Rubber, Clear) with physically based metalness and roughness, plus an environment-light reflection, so metals look metallic. Stored per part, shown in thumbnails and the viewer, and agents can set it. | U8 |
 | R17 | **In a build, view all its parts at once** in a zoomed-out grid, like Onshape's overview. | U1 |
 
 ## Global Constraints
@@ -161,6 +164,16 @@ Every item has an owner task, and the integration step checks each one.
   - background pre-generation on `part_changed`
   - stream views as they finish
 - **Target:** ≥3× faster on the 50-face part, or document why not. Output stays identical, checked against fixture SVG structure.
+
+### U8: Parts manager, appearance, background (app + small core)
+Implements R20, R21 and R22.
+- **Core:**
+  - `PATCH /parts/{id}` gains `appearance: {preset, color, metalness, roughness, opacity}`.
+  - The profile gains `viewer_background: {mode: "theme"|"solid"|"gradient", colors}`.
+  - Agent tool `part_set_appearance` (local_mutate).
+  - Thumbnails (U1) use the appearance when it is present.
+- **App:** a rebuilt part list (it owns app/src/ui/left/PartList*, together with its menus), an appearance popover, a background setting in the viewer corner menu and in Profile, and PBR materials with a small built-in environment map (RoomEnvironment/PMREM) in the viewer.
+- **Performance:** measured before and after (React/Preact profiler, interaction latency), with a target under 50 ms per click on a 100-part build.
 
 ### U7: Integration, real-core QA, final review
 - Merge with Plan 6.
