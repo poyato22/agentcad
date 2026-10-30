@@ -48,6 +48,23 @@ def test_project_lifecycle(client):
     assert client.get("/projects", headers=AUTH).json() == []
 
 
+def test_empty_trash_refuses_live_runs_then_purges_and_drops_ui_run(client, rt):
+    pid = client.post("/projects", json={"name": "Drone"}, headers=AUTH).json()["id"]
+    _mk_part(rt, "frame_plate", project_id=pid)
+    (run,) = rt.store.runs_in_project(pid)
+    ui = rt._ui_run_id(pid)                       # the build's long-lived ui run (idle)
+    client.delete(f"/projects/{pid}", headers=AUTH)
+    r = client.post("/projects/trash/empty", headers=AUTH)
+    assert r.status_code == 409
+    assert r.json()["reason"] == "running" and r.json()["run_ids"] == [run.id]
+    assert (rt.home / "parts" / "frame_plate").exists()
+    rt.store.update_run(run.id, status="done")
+    r = client.post("/projects/trash/empty", headers=AUTH)
+    assert r.status_code == 200 and r.json()["purged"] == [pid]
+    assert not (rt.home / "parts" / "frame_plate").exists()
+    assert pid not in rt._ui_runs and rt.store.get_run(ui).status == "done"
+
+
 # ---- part tree
 
 def test_parts_list_patch_reorder(client, rt):

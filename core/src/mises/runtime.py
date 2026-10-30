@@ -328,6 +328,24 @@ class Runtime:
             self._deleting.discard(run_id)
         return None
 
+    def _busy_for_trash(self, run_id: str) -> bool:
+        """run_busy, plus a UI call still in flight on that (ui) run."""
+        if self.run_busy(run_id):
+            return True
+        return any(c.run_id == run_id and c.status == "running" for c in self.ui_calls.values())
+
+    def empty_trash(self) -> dict:
+        """Purge every trashed build (projects.empty_trash; TrashBusy while one has live work).
+        The check and the purge run with no await between them. A purged build's ui run is
+        finished and forgotten, so no later UI call lands in a build that no longer exists."""
+        out = projects_mod.empty_trash(self.store, self.home, assembly=self.assembly_store,
+                                       busy=self._busy_for_trash)
+        for pid in out["purged"]:
+            rid = self._ui_runs.pop(pid, None)
+            if rid is not None and rid in self._external:
+                self.finish_external_run(rid, "done")
+        return out
+
     def reload_agents(self) -> None:
         """Re-read the agent definitions after a custom agent was created, edited or deleted."""
         self.definitions = load_definitions([self.home / "agents"])

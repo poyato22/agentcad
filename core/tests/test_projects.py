@@ -157,7 +157,8 @@ def test_reorder_is_stable_and_validates(store, tmp_path):
 
 def test_trash_restore_empty_removes_part_rows(store, tmp_path):
     p = projects.create_project(store, "Drone")
-    _built(store, tmp_path, p["id"], "frame_plate")
+    run = _built(store, tmp_path, p["id"], "frame_plate")
+    store.update_run(run.id, status="done")
     projects.trash_project(store, p["id"])
     assert projects.list_projects(store)[0]["trashed_at"] is not None
     projects.restore_project(store, p["id"])
@@ -166,7 +167,7 @@ def test_trash_restore_empty_removes_part_rows(store, tmp_path):
     assert projects.empty_trash(store) == {"purged": [p["id"]], "count": 1}
     assert projects.list_projects(store) == []
     assert store.get_part("frame_plate") is None
-    assert (tmp_path / "parts" / "frame_plate" / "vars.json").exists()   # files stay
+    assert (tmp_path / "parts" / "frame_plate" / "vars.json").exists()   # no home: files stay
 
 
 def test_active_build_skips_trashed_and_checks_ids(store):
