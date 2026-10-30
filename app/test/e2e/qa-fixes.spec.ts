@@ -115,7 +115,11 @@ test("C7_the_only_these_tools_picker_lists_every_registered_tool", async ({ page
   await manager(page).getByRole("button", { name: "New agent" }).click();
   await manager(page).getByRole("radio", { name: "Only these" }).check();
   const grid = manager(page).getByRole("group", { name: "Allowed tools" });
-  await expect(grid.getByRole("checkbox")).toHaveCount(57);   // the real registry (tools.json, less the dump's fixture_merge)
+  // the real registry (tools.json, less the dump's fixture_merge): every plan's tools
+  const real = (JSON.parse(readFileSync(resolve(import.meta.dirname, "../../../core/tests/fixtures/ui/tools.json"), "utf8")) as { name: string }[])
+    .filter((t) => t.name !== "fixture_merge");
+  expect(real.length).toBeGreaterThan(57);
+  await expect(grid.getByRole("checkbox")).toHaveCount(real.length);
   for (const t of ["mirror_part_create", "spec_set", "study_run", "assembly_add_joint", "catalog_insert", "print_slice", "agent_spawn"]) {
     await expect(grid.getByRole("checkbox", { name: t, exact: true })).toBeVisible();
   }

@@ -34,7 +34,7 @@ import { closeProfile, profileOpen, profileSection } from "./ui/profile/open";
 import { ProfilePane } from "./ui/profile/ProfilePane";
 import { SetupGate } from "./ui/setup/SetupGate";
 import { TopBar } from "./ui/topbar/TopBar";
-import { Viewer } from "./ui/viewer/Viewer";
+import { Viewer, viewTab } from "./ui/viewer/Viewer";
 
 function PageRegion(): JSX.Element {
   // Design keeps the left pane + viewer; every other page renders full-width.
@@ -50,9 +50,12 @@ function PageRegion(): JSX.Element {
         <div class="region region-left" data-region="left"><LeftPane /></div>
         <main class="region region-viewer" data-region="viewer" data-mode={designMode.value}>
           {designMode.value === "assembly" ? <AssemblyView /> : <Viewer />}
-          <button type="button" class={overviewOpen.value ? "overview-toggle on" : "overview-toggle"}
-            aria-pressed={overviewOpen.value} title="See every part of this build"
-            onClick={() => toggleOverview()}>All parts</button>
+          {/* not over the part script's own Save / Revert bar (View ▸ Part script) */}
+          {(designMode.value === "assembly" || viewTab.value !== "code") && (
+            <button type="button" class={overviewOpen.value ? "overview-toggle on" : "overview-toggle"}
+              aria-pressed={overviewOpen.value} title="See every part of this build"
+              onClick={() => toggleOverview()}>All parts</button>
+          )}
           {overviewOpen.value && <Overview />}
           <DrawingDrop variant="overlay" projectId={activeBuildId.value} />
         </main>
