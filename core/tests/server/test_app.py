@@ -129,6 +129,34 @@ def test_answer_unknown_question(client):
     assert r.status_code == 404 and r.json()["error"] == "not_found"
 
 
+def test_pending_question_survives_a_reload(rt, client, fake):
+    """QA C-2: a reloaded app had no way to get an open ui_ask_user question back."""
+    from mises.providers.base import Done, ToolCall
+    fake._turns[:] = [[ToolCall(id="c1", name="ui_ask_user",
+                                input={"question": "Which phone?", "options": ["a", "b"]}),
+                       Done(stop_reason="tool_use")],
+                      [TextDelta(text="ok"), Done(stop_reason="end_turn")]]
+    rid = client.post("/runs", headers=AUTH,
+                      json={"agent": "designer", "prompt": "ask me"}).json()["run_id"]
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        pend = client.get(f"/runs/{rid}/pending", headers=AUTH).json()
+        if pend["questions"]:
+            break
+        time.sleep(0.02)
+    (q,) = pend["questions"]
+    assert q["question"] == "Which phone?" and q["options"] == ["a", "b"]
+    assert q["run_id"] == rid and q["question_id"] and pend["approvals"] == []
+    run = client.get(f"/runs/{rid}", headers=AUTH).json()
+    assert run["pending"]["questions"][0]["question_id"] == q["question_id"]
+    assert run["activity"]["state"] == "waiting_user"
+    assert client.post(f"/questions/{q['question_id']}/answer", headers=AUTH,
+                       json={"text": "a"}).status_code == 200
+    done = wait_status(client, rid)
+    assert done["pending"] == {"questions": [], "approvals": []}
+    assert client.get("/runs/nope/pending", headers=AUTH).status_code == 404
+
+
 def test_events_ws_streams_run_events(client):
     with client.websocket_connect(f"/events?token={TOKEN}") as ws:
         rid = client.post("/runs", headers=AUTH,

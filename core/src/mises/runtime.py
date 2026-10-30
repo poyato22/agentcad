@@ -167,6 +167,9 @@ class Runtime:
         # build id -> that build's long-lived ui run (spec panel apply; Plan 5 A7)
         self._ui_runs: dict[str, str] = {}
         self._questions: dict[str, tuple[str, asyncio.Future[str]]] = {}
+        # question id -> its question_asked payload (+ run_id, asked_at), so a reloaded app can
+        # recover the open question cards (GET /runs/{id}/pending; QA C-2)
+        self._question_data: dict[str, dict] = {}
         # external run id -> owner's async cancel (e.g. AcpSession.cancel kills the agent)
         self._cancel_hooks: dict[str, Callable[[], Awaitable[None]]] = {}
         self._hook_tasks: set[asyncio.Task] = set()
@@ -1326,6 +1329,7 @@ class Runtime:
         data = {"question_id": qid, "question": question, "options": list(options)}
         if questions:
             data["questions"] = list(questions)
+        self._question_data[qid] = {**data, "run_id": run_id, "asked_at": time.time()}
         self.events.publish(Event(type="question_asked", run_id=run_id, data=data))
         tracker = self.activity_tracker(run_id)
         prev_state, prev_detail = tracker.state, tracker.detail
@@ -1334,8 +1338,17 @@ class Runtime:
             return await fut
         finally:
             self._questions.pop(qid, None)
+            self._question_data.pop(qid, None)
             if prev_state is not None:          # restore the state the run was in before asking
                 tracker.set(prev_state, prev_detail)
+
+    def pending_questions(self, run_id: str | None = None) -> list[dict]:
+        """The open ui_ask_user questions (of one run), oldest first, each the question_asked
+        payload plus run_id and asked_at."""
+        return sorted((dict(d) for qid, d in self._question_data.items()
+                       if (run_id is None or d["run_id"] == run_id)
+                       and qid in self._questions and not self._questions[qid][1].done()),
+                      key=lambda d: d["asked_at"])
 
     def answer(self, question_id: str, text: str) -> None:
         entry = self._questions.get(question_id)

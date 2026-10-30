@@ -319,7 +319,20 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
     async def get_run(run_id: str):
         d = _projects.run_view(_run(run_id))
         d["activity"] = runtime.activity_of(run_id)
+        d["pending"] = _pending(run_id)
         return d
+
+    def _pending(run_id: str) -> dict:
+        return {"questions": runtime.pending_questions(run_id),
+                "approvals": [a.model_dump(mode="json")
+                              for a in runtime.store.pending_approvals(run_id)]}
+
+    @app.get("/runs/{run_id}/pending")
+    async def get_pending(run_id: str):
+        """What the run is blocked on: its open ui_ask_user questions (the question_asked
+        payloads) and pending approvals, so a reloaded app recovers the cards (QA C-2)."""
+        _run(run_id)
+        return _pending(run_id)
 
     @app.patch("/runs/{run_id}")
     async def patch_run(run_id: str, body: PatchRun):
