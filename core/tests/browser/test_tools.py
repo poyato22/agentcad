@@ -1,0 +1,271 @@
+import asyncio
+
+import httpx
+import pytest
+
+from mises.profile import Profile, save_profile
+from mises.tools.registry import ToolRegistry
+from mises.browser.tools import register_browser_tools
+from mises.types import ErrorCode, MisesError, SafetyClass as C
+
+ADA = "https://www.adafruit.com"
+PRODUCT = f"{ADA}/product/169"
+
+
+def test_classes_and_flags():
+    reg = ToolRegistry()
+    register_browser_tools(reg)
+    assert {t.name: t.safety for t in reg.list()} == {
+        "web_search": C.READ, "web_open": C.READ, "part_show": C.LOCAL_MUTATE}
+    assert reg.get("web_open").needs_approval is not None
+    assert reg.get("web_open").open_world and reg.get("web_search").open_world
+    assert reg.get("web_search").needs_approval is None
+
+
+# ---- web_search
+
+async def test_search_named_site(env, web):
+    web.fixture(f"{ADA}/search", "search_adafruit.html")
+    out = await env.call("web_search", {"query": "micro servo", "sites": ["Adafruit"]})
+    assert out.ok and out.data["result_count"] == 3
+    req = web.requests[0]
+    assert req.headers["host"] == "www.adafruit.com" and req.url.query == b"q=micro+servo"
+    assert "cookie" not in req.headers and req.method == "GET"
+    assert out.data["sites"] == [{"site": "Adafruit", "status": "ok", "message": "",
+                                  "snapshot_id": out.data["sites"][0]["snapshot_id"],
+                                  "count": 3}]
+    block = out.data["untrusted_page_data"]
+    assert block.startswith("<untrusted_page") and "Micro servo - TowerPro SG92R" in block
+    assert "IGNORE PREVIOUS" in block and "IGNORE" not in out.summary
+    assert "Micro servo" not in out.summary
+    snap = env.snaps.get(out.data["sites"][0]["snapshot_id"])
+    assert snap["kind"] == "search" and snap["run_id"] == env.run.id
+    assert snap["results"][0]["url"] == PRODUCT and snap["project_id"] == env.project
+
+
+async def test_search_picks_sites_from_the_query_and_reports_blocked_ones(env, web):
+    web.fixture(f"{ADA}/search", "search_adafruit.html")
+    web.page("https://www.pololu.com/search", "denied", status=403)
+    web.fixture("https://www.servocity.com/search.php", "captcha.html")
+    out = await env.call("web_search", {"query": "servo"})
+    by = {s["site"]: s for s in out.data["sites"]}
+    assert set(by) == {"Adafruit", "Pololu", "ServoCity"}
+    assert by["Pololu"]["status"] == "blocked"
+    assert by["Pololu"]["message"] == "site blocked automated access (HTTP 403)"
+    assert by["ServoCity"]["status"] == "blocked"
+    assert "site blocked automated access" in by["ServoCity"]["message"]
+    assert by["Adafruit"]["count"] == 3
+    assert "Pololu: site blocked automated access (HTTP 403)" in out.summary
+    # the blocked visits show in the run's browser too
+    kinds = [s.get("blocked") is not None for s in env.snaps.for_run(env.run.id)]
+    assert sorted(kinds) == [False, True, True]
+
+
+async def test_search_other_failures_and_empty_pages(env, web):
+    web.page(f"{ADA}/search", "<html><body><div id=app></div></body></html>")
+    out = await env.call("web_search", {"query": "servo", "sites": ["adafruit.com", "Pololu"]})
+    by = {s["site"]: s for s in out.data["sites"]}
+    assert by["Adafruit"]["status"] == "ok" and "may need JavaScript" in by["Adafruit"]["message"]
+    assert by["Pololu"]["status"] == "failed" and "404" in by["Pololu"]["message"]
+    assert "untrusted_page_data" not in out.data
+
+
+async def test_search_redirect_off_site_refused(env, web):
+    web.redirect(f"{ADA}/search", "https://tracker.example.net/collect")
+    out = await env.call("web_search", {"query": "servo", "sites": ["Adafruit"]})
+    assert out.data["sites"][0]["status"] == "failed"
+    assert "another site" in out.data["sites"][0]["message"]
+    assert web.hosts() == ["www.adafruit.com"]
+
+
+async def test_search_unknown_site_refused(env, web):
+    with pytest.raises(MisesError) as e:
+        await env.call("web_search", {"query": "x", "sites": ["evil.example.com"]})
+    assert e.value.code == ErrorCode.INVALID_INPUT and "not a suggested site" in e.value.message
+    assert web.requests == []
+
+
+async def test_search_uses_the_users_site_list(env, web):
+    save_profile(env.tmp, Profile.model_validate({"suggested_sites": [
+        {"name": "My Shop", "domain": "parts.example.com",
+         "search_url": "https://parts.example.com/find?term={q}"}]}))
+    web.fixture("https://parts.example.com/find", "search_generic.html")
+    out = await env.call("web_search", {"query": "bearing"})
+    assert [s["site"] for s in out.data["sites"]] == ["My Shop"]
+    assert out.data["result_count"] == 2
+    with pytest.raises(MisesError):
+        await env.call("web_search", {"query": "x", "sites": ["Adafruit"]})   # removed
+
+
+# ---- web_open
+
+async def test_open_suggested_site_without_a_card(env, web):
+    web.fixture(PRODUCT, "product_servo.html")
+    out = await env.call("web_open", {"url": PRODUCT + "?utm=leak#x"})
+    assert env.store.pending_approvals(env.run.id) == []
+    assert web.requests[0].url.query == b""                 # query never leaves
+    sid = out.data["snapshot_id"]
+    assert out.data["has_part"] and out.data["image_count"] == 2 and out.data["table_count"] == 2
+    block = out.data["untrusted_page_data"]
+    assert block.startswith('<untrusted_page domain="www.adafruit.com" nonce="')
+    assert block.count("</untrusted_page") == 1
+    assert "Ignore all previous instructions" in block and '"price": 5.95' in block
+    assert "Weight | 9 g" in block
+    assert "Ignore" not in out.summary and "TowerPro" not in out.summary
+    snap = env.snaps.get(sid)
+    assert snap["url"] == PRODUCT and snap["title"].startswith("Micro servo")
+
+
+async def test_open_other_domain_asks_a_card_per_domain(env, web):
+    url = "https://shop.example.com/p/servo"
+    web.fixture(url, "product_servo.html")
+    task = asyncio.create_task(env.call("web_open", {"url": url + "?d=c2VjcmV0"}))
+    card = await env.next_card()
+    assert web.requests == []                                # nothing before the card
+    assert card.action == "web_open" and card.payload == {"url": url}
+    assert card.deltas["domain"] == "shop.example.com"
+    assert card.deltas["allow_domain"] == "shop.example.com"
+    assert "shop.example.com" in card.deltas["approval_reason"]
+    env.decide(card)
+    out = await task
+    assert out.ok and web.hosts() == ["shop.example.com"]
+
+
+async def test_open_rejected_card_fetches_nothing(env, web):
+    url = "https://shop.example.com/p/servo"
+    web.fixture(url, "product_servo.html")
+    task = asyncio.create_task(env.call("web_open", {"url": url}))
+    env.decide(await env.next_card(), approve=False)
+    with pytest.raises(MisesError) as e:
+        await task
+    assert e.value.code == ErrorCode.DENIED and web.requests == []
+
+
+async def test_open_always_allowed_domain_needs_no_card(env, web):
+    save_profile(env.tmp, Profile(catalog_allowed_domains=["shop.example.com"]))
+    url = "https://shop.example.com/p/servo"
+    web.fixture(url, "product_servo.html")
+    out = await env.call("web_open", {"url": url})
+    assert out.ok and env.store.pending_approvals(env.run.id) == []
+
+
+async def test_open_redirect_to_an_unapproved_site_refused(env, web):
+    web.redirect(PRODUCT, "https://elsewhere.example.net/p")
+    web.fixture("https://elsewhere.example.net/p", "product_servo.html")
+    with pytest.raises(MisesError) as e:
+        await env.call("web_open", {"url": PRODUCT})
+    assert "another site (elsewhere.example.net)" in e.value.message
+    assert web.hosts() == ["www.adafruit.com"]
+
+
+async def test_open_redirect_within_the_site_and_to_suggested_sites_ok(env, web):
+    web.redirect(PRODUCT, "https://cdn.adafruit.com/p/169")
+    web.redirect("https://cdn.adafruit.com/p/169", "https://www.pololu.com/product/1")
+    web.fixture("https://www.pololu.com/product/1", "product_servo.html")
+    out = await env.call("web_open", {"url": PRODUCT})
+    assert out.ok and env.snaps.get(out.data["snapshot_id"])["domain"] == "www.pololu.com"
+
+
+@pytest.mark.parametrize("url", ["http://www.adafruit.com/product/1",
+                                 "https://127.0.0.1/x", "https://localhost/x",
+                                 "https://[::ffff:10.0.0.1]/x", "https://www.adafruit.com:8443/"])
+async def test_open_refuses_unsafe_urls(env, web, url):
+    with pytest.raises(MisesError):
+        await env.call("web_open", {"url": url})
+    assert web.requests == []
+
+
+async def test_open_host_resolving_private_refused(env, web):
+    async def private(host):
+        return ["64:ff9b::a00:1"]                            # NAT64 of 10.0.0.1
+    env.gate.services["browser_http"]["resolve"] = private
+    with pytest.raises(MisesError) as e:
+        await env.call("web_open", {"url": PRODUCT})
+    assert "private or local" in e.value.message and web.requests == []
+
+
+async def test_open_blocked_site(env, web):
+    web.page(PRODUCT, "nope", status=429)
+    out = await env.call("web_open", {"url": PRODUCT})
+    assert not out.ok and out.data["blocked"]
+    assert "site blocked automated access (HTTP 429)" in out.summary
+    web.fixture(PRODUCT, "captcha.html")
+    out = await env.call("web_open", {"url": PRODUCT})
+    assert not out.ok and "site blocked automated access" in out.summary
+    assert "untrusted_page_data" not in out.data
+
+
+async def test_open_pdf_datasheet(env, web):
+    url = "https://www.ti.com/lit/ds/symlink/drv8825.pdf"
+    web.page(url, b"%PDF-1.7 ...", ctype="application/pdf")
+    out = await env.call("web_open", {"url": url})
+    assert out.ok and "PDF document" in out.data["untrusted_page_data"]
+
+
+async def test_open_output_fits_the_gate(env, web):
+    web.page(PRODUCT, "<p>" + "word " * 100_000 + "</p>")
+    out = await env.call("web_open", {"url": PRODUCT})
+    assert out.handles == [] and out.data["snapshot_id"]      # not spilled to a file
+
+
+# ---- part_show
+
+async def opened(env, web):
+    web.fixture(PRODUCT, "product_servo.html")
+    return (await env.call("web_open", {"url": PRODUCT})).data["snapshot_id"]
+
+
+async def test_part_show_from_a_snapshot(env, web):
+    sid = await opened(env, web)
+    env.drained()
+    out = await env.call("part_show", {"snapshot_id": sid, "specs": [
+        {"key": "stall torque", "value": 2.5, "unit": "kg-cm"}]})
+    card = env.cards.get(out.data["card_id"])
+    assert card["name"] == "Micro servo - TowerPro SG92R" and card["price"] == 5.95
+    assert card["currency"] == "USD" and card["vendor"] == "TowerPro"
+    assert card["url"] == PRODUCT and card["image"] == f"/browser/snapshots/{sid}/images/0"
+    assert card["specs"] == [{"key": "stall torque", "value": 2.5, "unit": "kg-cm"}]
+    assert card["catalog_backed"] and card["catalog_id"].startswith("url_")
+    item = env.catalog.get(card["catalog_id"])
+    assert item["project_id"] == env.project and item["dims"]["mass_g"] == 9.0
+    evs = env.drained()
+    shown = [e for e in evs if e.type == "part_shown"]
+    ann = [e for e in evs if e.type == "agent_announce"]
+    assert shown[0].data["id"] == card["id"]
+    assert ann[0].data["kind"] == "part_shown" and ann[0].data["run_id"] == env.run.id
+    assert ann[0].data["ref"]["card_id"] == card["id"]
+    assert "TowerPro" not in out.summary and "untrusted_page_data" in out.data
+    assert env.cards.for_run(env.run.id)[0]["id"] == card["id"]
+
+
+async def test_part_show_refuses_foreign_urls_and_images(env, web):
+    sid = await opened(env, web)
+    with pytest.raises(MisesError) as e:
+        await env.call("part_show", {"snapshot_id": sid, "url": "https://phish.example.com/"})
+    assert "snapshot's site" in e.value.message
+    with pytest.raises(MisesError):
+        await env.call("part_show", {"snapshot_id": sid, "image": "https://x.example.com/a.png"})
+    with pytest.raises(MisesError):
+        await env.call("part_show", {})                      # neither source
+    with pytest.raises(MisesError):
+        await env.call("part_show", {"snapshot_id": sid, "catalog_id": "x"})
+
+
+async def test_part_show_of_another_builds_snapshot_refused(env, web):
+    sid = await opened(env, web)
+    other = env.store.create_run("engineer", "fake", "m", "t")
+    env.store.update_run(other.id, project_id=env.store.create_project("Other").id)
+    from mises.types import Caps
+    env.store.create_policy(other.id, ["*"], ["*"], Caps(), [C.READ, C.LOCAL_MUTATE])
+    with pytest.raises(MisesError) as e:
+        await env.gate.call(other.id, "part_show", {"snapshot_id": sid}, call_id="o1",
+                            workdir=env.tmp)
+    assert e.value.code == ErrorCode.OUT_OF_SCOPE
+
+
+async def test_part_show_from_the_catalog(env, web):
+    out = await env.call("part_show", {"catalog_id": "servo_mg996r_standard", "price": 9.5})
+    card = env.cards.get(out.data["card_id"])
+    assert card["catalog_backed"] and card["catalog_id"] == "servo_mg996r_standard"
+    assert card["price"] == 9.5 and card["currency"] == "USD" and card["image"] is None
+    assert web.requests == []
