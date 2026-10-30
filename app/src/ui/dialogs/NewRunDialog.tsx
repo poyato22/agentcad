@@ -2,7 +2,6 @@
 // task and edit scope. The conversation view's "+ New" uses the inline composer instead.
 import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { CoreError } from "../../api/client";
 import type { AgentInfo, ModelsInfo } from "../../api/types";
 import { startableAgents } from "../../lib/agents";
 import { registerShortcut } from "../../lib/keys";
@@ -10,6 +9,8 @@ import { partLabel, providerLabel } from "../../lib/names";
 import { runBuild } from "../../state/builds";
 import { actions, newRunOpen, parts } from "../../state/store";
 import { Button } from "../common/Button";
+import { OverflowMenu } from "../common/OverflowMenu";
+import { startErrorText } from "../console/startError";
 import { openProfile } from "../profile/open";
 import { catalog, refreshCatalog } from "./catalog";
 import { ModelPicker } from "./ModelPicker";
@@ -26,10 +27,7 @@ function unavailable(v: VendorInfo | undefined): "no_key" | "signed_out" | "not_
   return null;
 }
 
-function describeError(e: unknown): string {
-  if (e instanceof CoreError) return e.hint ? `${e.message} — ${e.hint}` : e.message;
-  return e instanceof Error ? e.message : String(e);
-}
+const describeError = startErrorText;
 
 /** Mounted once at the app root; open/close state is the store's `newRunOpen`. */
 export function NewRunDialog(): JSX.Element | null {
@@ -158,16 +156,17 @@ function DialogBody(): JSX.Element {
           )
           : (
             <>
-              <div class="dlg-auto dim text" data-auto>Mises picks the right agent from your prompt.</div>
-              {showPicker
-                ? (
-                  <select class="dlg-override" aria-label="Agent" disabled={!agents} value=""
-                    onChange={(e) => { const v = e.currentTarget.value; if (v) { setOverride(v); const a = agents?.find((x) => x.name === v); if (a) prefill(a); } }}>
-                    <option value="" disabled>Choose an agent</option>
-                    {(agents ?? []).map((a) => <option key={a.name} value={a.name}>{a.name}</option>)}
-                  </select>
-                )
-                : <Button variant="ghost" onClick={() => setShowPicker(true)}>Use a specific agent…</Button>}
+              <div class="dlg-auto-row">
+                <span class="dlg-auto dim text" data-auto>Mises picks the right agent from your prompt.</span>
+                {!showPicker && <OverflowMenu label="More options" items={[{ label: "Use a specific agent…", onSelect: () => setShowPicker(true) }]} />}
+              </div>
+              {showPicker && (
+                <select class="dlg-override" aria-label="Choose an agent" disabled={!agents} value=""
+                  onChange={(e) => { const v = e.currentTarget.value; if (v) { setOverride(v); const a = agents?.find((x) => x.name === v); if (a) prefill(a); } }}>
+                  <option value="" disabled>Choose an agent</option>
+                  {(agents ?? []).map((a) => <option key={a.name} value={a.name}>{a.name}</option>)}
+                </select>
+              )}
             </>
           )}
         <div class="dlg-desc dim text">{current?.description ?? ""}</div>

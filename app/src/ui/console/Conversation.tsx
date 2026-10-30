@@ -23,9 +23,8 @@ import { RunStatus } from "./RunStatus";
 import { StudyCardSlot } from "./studycard";
 import { buildUserEdits } from "../../state/partEdits";
 import { editsForRun, weave } from "./userEditLines";
-import { announcementsForRun } from "../../state/announcements";
-import { weaveAnnouncements } from "./announceLines";
 import { AnnouncementCard } from "./AnnouncementCard";
+import { StudyGrid } from "./studycard/StudyGrid";
 import { AssemblyAnimationChip } from "./AssemblyAnimationChip";
 
 const AT_BOTTOM_PX = 24;
@@ -107,12 +106,9 @@ export function Conversation(): JSX.Element {
       <div class="cv-thread" ref={scroller} onScroll={onScroll} role="log" aria-label="Conversation" aria-live="off" data-conversation>
         {start > 0 && <button type="button" class="cv-earlier" onClick={showEarlier}>{`Show earlier (${start})`}</button>}
         {!run && items.length === 0 && <Empty />}
-        {weaveAnnouncements(weave(shown, editsForRun(buildUserEdits.value, run ?? null)), announcementsForRun(run?.id ?? null)).map((r) => (
-          r.kind === "you"
-            ? <div key={r.line.key} class="cv-item" data-key={r.line.key}><YouLine text={r.line.text} /></div>
-            : r.kind === "announce"
-              ? <div key={r.announcement.id} class="cv-item" data-key={r.announcement.id}><AnnouncementCard announcement={r.announcement} /></div>
-              : <div key={r.item.key} class="cv-item" data-key={r.item.key}><Item item={r.item} agent={run?.agent ?? "agent"} /></div>))}
+        {weave(shown, editsForRun(buildUserEdits.value, run ?? null)).map((r) => (r.kind === "you"
+          ? <div key={r.line.key} class="cv-item" data-key={r.line.key}><YouLine text={r.line.text} /></div>
+          : <div key={r.item.key} class="cv-item" data-key={r.item.key}><Item item={r.item} agent={run?.agent ?? "agent"} /></div>))}
         {run && items.length === 0 && run.task && (
           <Item item={{ kind: "user", key: "task", text: run.task, ts: run.created_at, stepIds: [] }} agent={run.agent} />
         )}
@@ -202,7 +198,31 @@ function Item({ item, agent }: { item: ThreadItem; agent: AgentRun["agent"] }): 
           <QuestionCard question={item.question} runLabel={labelOf(item.question.run_id)} />
         </div>
       );
+    case "announce":
+      return <AnnouncementCard announcement={item.announcement} />;
+    case "queued":
+      return <QueuedLine item={item} />;
+    case "studies":
+      return <StudyGrid calls={item.calls} />;
   }
+}
+
+/** A message sent while the lead was busy (I2): your words at once, with a chip that reads
+ *  "queued" until the lead reads them, then "delivered" (or "not delivered" and why). */
+function QueuedLine({ item }: { item: Extract<ThreadItem, { kind: "queued" }> }): JSX.Element {
+  const chip = item.status === "delivered" ? "delivered"
+    : item.status === "dropped" ? `not delivered · ${item.reason ?? "dropped"}`
+    : `queued${item.position && item.position > 1 ? ` · ${item.position} in line` : ""} · delivered when the agent finishes this step`;
+  return (
+    <div class={`cv-msg cv-user cv-queued is-${item.status}`} data-msg="user" data-row data-kind="queued" data-queued-message={item.messageId}
+      data-queued-status={item.status}>
+      <div class="cv-msg-head">
+        <span class="label">you</span>
+        <span class={`cv-queued-chip is-${item.status}`} data-queued-chip role="status">{chip}</span>
+      </div>
+      <div class="cv-text text">{item.text}</div>
+    </div>
+  );
 }
 
 function Activity({ item }: { item: Extract<ThreadItem, { kind: "activity" }> }): JSX.Element {

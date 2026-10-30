@@ -3,8 +3,10 @@
 // ("measured mount plate · 8.0 cm³"). Nothing safety-relevant is dropped: every approval and
 // question stays a card, every failed call and error stays its own (red) line with its hint;
 // only successful calls fold (logModel's rule). Text stays plain strings (rendered as text).
-import type { Approval, Question, Step } from "../../api/types";
+import type { Announcement, Approval, Question, Step } from "../../api/types";
+import { announcementOf, deliveredOf, droppedOf, queuedOf } from "./announceModel";
 import { foldKey, itemKey, type LogItem } from "./logModel";
+import { isStudyCallName } from "./studycard/cardModel";
 
 type Call = Extract<LogItem, { kind: "call" }>;
 type Diff = Extract<LogItem, { kind: "diff" }>;
@@ -28,7 +30,14 @@ export type ThreadItem =
   | { kind: "error"; key: string; code: string; message: string; hint: string | null; ts: number; stepIds: number[] }
   | { kind: "note"; key: string; text: string; stepIds: number[] }
   | { kind: "approval"; key: string; approval: Approval }
-  | { kind: "question"; key: string; question: Question };
+  | { kind: "question"; key: string; question: Question }
+  /** What an agent did (R16), rebuilt from its stored DECISION step. */
+  | { kind: "announce"; key: string; announcement: Announcement & { actor: string | null; projectId: string | null; jointId: string | null }; ts: number; stepIds: number[] }
+  /** A message sent while the lead was busy: "queued" until the lead reads it, then "delivered"
+   *  (in place: the user step the delivery appends is not shown twice), or "dropped" with why. */
+  | { kind: "queued"; key: string; messageId: string; text: string; position: number | null; status: "queued" | "delivered" | "dropped"; reason: string | null; ts: number; stepIds: number[] }
+  /** Several studies of one agent turn (R18), shown as one grid of compact cards. */
+  | { kind: "studies"; key: string; calls: Call[]; ts: number; stepIds: number[] };
 
 const PREFIXES = ["mcp__mises__"];
 
@@ -127,11 +136,16 @@ export function buildThread(items: readonly LogItem[]): ThreadItem[] {
   const out: ThreadItem[] = [];
   let last: Extract<ThreadItem, { kind: "activity" }> | null = null;
   const lastCallResult = (): number | null => last?.call?.result?.id ?? null;
+  /** Queued messages by id, and the delivered texts whose user step is not shown again. */
+  const queuedById = new Map<string, Extract<ThreadItem, { kind: "queued" }>>();
+  const echo: string[] = [];
 
   for (const it of items) {
     const key = itemKey(it);
     switch (it.kind) {
       case "message":
+        // the user step a queued message's delivery appends: already shown, as the queued line
+        if (it.role === "user" && echo.length && echo[0] === it.text) { echo.shift(); break; }
         out.push(it.role === "user"
           ? { kind: "user", key, text: it.text, ts: it.step.ts, stepIds: [it.step.id] }
           : { kind: "agent", key, text: it.text, ts: it.step.ts, live: false, stepIds: [it.step.id] });
@@ -168,14 +182,39 @@ export function buildThread(items: readonly LogItem[]): ThreadItem[] {
         last = a;
         break;
       }
-      case "decision":
+      case "decision": {
         if (last && last.call && lastCallResult() === it.step.id) { last.extra.push(it); break; }
+        // U3c's stored announcements and the lead's message queue: cards and chips, not "decided"
+        const ann = announcementOf(it.step);
+        if (ann) { out.push({ kind: "announce", key, announcement: ann, ts: it.step.ts, stepIds: [it.step.id] }); last = null; break; }
+        const q = queuedOf(it.step);
+        if (q) {
+          const item: Extract<ThreadItem, { kind: "queued" }> = { kind: "queued", key, messageId: q.messageId, text: q.text, position: q.position,
+            status: "queued", reason: null, ts: it.step.ts, stepIds: [it.step.id] };
+          queuedById.set(q.messageId, item);
+          out.push(item);
+          last = null;
+          break;
+        }
+        const delivered = deliveredOf(it.step);
+        if (delivered) {
+          const item = queuedById.get(delivered);
+          if (item) { item.status = "delivered"; item.stepIds.push(it.step.id); echo.push(item.text); }
+          break;
+        }
+        const dropped = droppedOf(it.step);
+        if (dropped) {
+          const item = queuedById.get(dropped.messageId);
+          if (item) { item.status = "dropped"; item.reason = dropped.reason; item.stepIds.push(it.step.id); }
+          break;
+        }
         // Claude Code's bookkeeping (session start, init, stored thinking) is not a decision the
         // reader needs; it stays in the step log (C-10)
         if (isBookkeeping(it.step)) break;
         out.push({ kind: "note", key, text: decisionText(it.step), stepIds: [it.step.id] });
         last = null;
         break;
+      }
       case "file": {
         const a: Extract<ThreadItem, { kind: "activity" }> = {
           kind: "activity", key, text: `edited ${it.path} · +${it.added} −${it.removed}`, tone: "ok", ts: it.step.ts, call: null, diff: null,
@@ -209,6 +248,26 @@ export function buildThread(items: readonly LogItem[]): ThreadItem[] {
         last = null;
         break;
     }
+  }
+  return groupStudies(out);
+}
+
+const isStudyLine = (t: ThreadItem): t is Extract<ThreadItem, { kind: "activity" }> =>
+  t.kind === "activity" && t.call !== null && isStudyCallName(t.call.name);
+
+/** R18: two or more study / review calls in a row (no message or other line between them, so one
+ *  agent turn) become one `studies` item, shown as a grid of compact cards. */
+export function groupStudies(items: readonly ThreadItem[]): ThreadItem[] {
+  const out: ThreadItem[] = [];
+  for (let i = 0; i < items.length; i++) {
+    const t = items[i];
+    if (!isStudyLine(t)) { out.push(t); continue; }
+    let j = i;
+    while (j + 1 < items.length && isStudyLine(items[j + 1])) j++;
+    if (j === i) { out.push(t); continue; }
+    const run = items.slice(i, j + 1) as Extract<ThreadItem, { kind: "activity" }>[];
+    out.push({ kind: "studies", key: `studies:${t.key}`, calls: run.map((a) => a.call as Call), ts: t.ts, stepIds: run.flatMap((a) => a.stepIds) });
+    i = j;
   }
   return out;
 }

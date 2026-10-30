@@ -7,7 +7,6 @@ import type { ShellCoreStatus } from "../api/connection";
 import type { StreamState } from "../api/events";
 import type { AgentRun, Approval, CoreStatusInfo, PartSummary, Question, Step } from "../api/types";
 import { forgetActivity } from "./activity";
-import { forgetAnnouncements } from "./announcements";
 import { forgetRuns, type AppState, type InflightCall } from "./reduce";
 
 export type LogFilter = { scope: "run" | "all"; kind: "everything" | "decisions" | "tool_calls" | "files" | "errors" };
@@ -120,7 +119,6 @@ export function dropRunRefs(ids: readonly string[]): void {
     if (sel !== null && gone.has(sel)) selectedRunId.value = null;
     if (ids.some((id) => sessionRuns.peek().has(id))) sessionRuns.value = new Set([...sessionRuns.peek()].filter((id) => !gone.has(id)));
     forgetActivity(ids);
-    forgetAnnouncements(ids);
   });
 }
 

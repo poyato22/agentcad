@@ -1,6 +1,13 @@
 /* Inline study / review cards. Tokens only; square corners like the rest of the console.
    Blue: running (an agent is changing something). Green / amber / red: pass / warn / fail. */
 .scard-slot { margin: 6px 0 4px 22px; }
+/* R18: one turn's studies as a grid of compact cards; an open card or a review table spans the row */
+.scard-group { margin: 6px 10px 6px 32px; }
+.scard-group-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+.scard-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px; align-items: start; }
+.scard-grid > .scard-slot { margin: 0; min-width: 0; }
+.scard-grid > .scard-slot:has(.scard[data-expanded]), .scard-grid > .scard-slot:has(.scard-review) { grid-column: 1 / -1; }
+.scard-group-details { margin-top: 6px; }
 .scard { border: 1px solid var(--line2); background: var(--paper); padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .scard-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 /* R18: the header is the expand toggle; it reads like a header, not a button */

@@ -83,7 +83,7 @@ export function RunSwitcher(): JSX.Element {
           <Button variant="ghost" aria-label={`Stop ${label}`} title="stop this run" onClick={() => cancelRun(current.id)}>Stop</Button>
         )}
         <Button variant="ghost" onClick={() => { composerOpen.value = true; }}>New</Button>
-        <Button variant="ghost" title="Agent manager (⇧⌘A)" onClick={() => openAgentManager("runs")}>Manage</Button>
+        <Button variant="ghost" title="Agent manager (⇧⌘A)" onClick={() => openAgentManager("agents")}>Manage</Button>
         <Button variant="ghost" aria-pressed="false" onClick={() => setConsoleView("details")}>Full log</Button>
       </div>
       {current && (

@@ -26,8 +26,16 @@ const brief = (t: ThreadItem[]) => t.map((x) => {
     case "approval": return `card ${x.approval.id}`;
     case "question": return `question ${x.question.question_id}`;
     case "note": return `note ${x.text}`;
+    case "announce": return `announce ${x.announcement.kind}: ${x.announcement.title}`;
+    case "queued": return `queued(${x.status}) ${x.text}`;
+    case "studies": return `studies ×${x.calls.length}`;
   }
 });
+
+// The real U3c lead's steps (core scripts/dump_agents_fixtures.py): a spawn with its stored
+// announcement, then a message queued while the lead worked and delivered at its turn's end.
+const LEAD: Step[] = (JSON.parse(readFileSync(resolve(__dirname, "../../../../core/tests/fixtures/ui/plan7/lead_steps.json"), "utf8")) as unknown[]).map((s) => stepSchema.parse(s));
+const LID = LEAD[0].run_id;
 
 describe("buildThread on the real core's steps", () => {
   it("reads_as_a_conversation_with_compact_activity_lines", () => {
@@ -137,5 +145,49 @@ describe("activityText", () => {
     expect(ok("mirror_export", { part_id: "mount_plate" })).toBe("exported mount plate");
     expect(ok("some_new_tool", {}, {}, "did a thing\nsecond line")).toBe("some new tool · did a thing");
     expect(ok("mcp__mises__mirror_measure", { part_id: "bracket" })).toBe("measured bracket");
+  });
+});
+
+describe("Plan 7: the lead's stored announcements and message queue (real U3c steps)", () => {
+  it("a stored agent_announce step is a card, never a bare 'decided' row — it survives a reload", () => {
+    const t = brief(thread({ runs: [run(LID)], stepList: LEAD, selectedRunId: LID }));
+    expect(t).toContain("announce agent_spawned: Spawned designer: Design motor mount");
+    expect(t.some((x) => x?.startsWith("note decided"))).toBe(false);
+  });
+
+  it("a queued message shows once, at the place it was typed, and reads delivered", () => {
+    const t = brief(thread({ runs: [run(LID)], stepList: LEAD, selectedRunId: LID }));
+    expect(t.filter((x) => x?.includes("and paint it red"))).toEqual(["queued(delivered) and paint it red"]);
+    expect(t.indexOf("queued(delivered) and paint it red")).toBeLessThan(t.indexOf("agent: working on it"));
+  });
+
+  it("still queued until the delivery step lands; a dropped one says why", () => {
+    const upTo = LEAD.findIndex((s) => "queued_message_delivered" in s.payload);
+    const pending = brief(thread({ runs: [run(LID)], stepList: LEAD.slice(0, upTo), selectedRunId: LID }));
+    expect(pending).toContain("queued(queued) and paint it red");
+    const q = LEAD.find((s) => "queued_message" in s.payload) as Step;
+    const id = (q.payload.queued_message as { message_id: string }).message_id;
+    const dropped = step(LID, "decision", { queued_message_dropped: { message_id: id, reason: "the lead was cancelled" } }, LEAD[upTo].ts);
+    const t = thread({ runs: [run(LID)], stepList: [...LEAD.slice(0, upTo), dropped], selectedRunId: LID });
+    const item = t.find((x) => x.kind === "queued") as Extract<ThreadItem, { kind: "queued" }>;
+    expect([item.status, item.reason]).toEqual(["dropped", "the lead was cancelled"]);
+  });
+});
+
+describe("R18: one turn's studies group into one item", () => {
+  let t0 = 10;
+  const study = (id: string) => { t0 += 2; return [toolCall("r1", id, "sim_run", { type: "static", part_id: "arm" }, t0), toolResult("r1", id, "sim_run", t0 + 1)]; };
+  it("two or more study calls in a row become a studies item; a single one stays a line", () => {
+    const stepList = [message("r1", "user", "test it", 1), ...study("a"), ...study("b"), ...study("c"), message("r1", "assistant", "all pass", 90)];
+    const t = brief(thread({ runs: [run("r1")], stepList, selectedRunId: "r1" }));
+    expect(t).toEqual(["user: test it", "studies ×3", "agent: all pass"]);
+    const one = brief(thread({ runs: [run("r1")], stepList: [message("r1", "user", "x", 1), ...study("a")], selectedRunId: "r1" }));
+    expect(one[1]?.startsWith("·")).toBe(true);
+  });
+  it("an agent message between studies splits the group", () => {
+    const first = [...study("a"), ...study("b")];
+    const mid = message("r1", "assistant", "next", (t0 += 2));
+    const stepList = [...first, mid, ...study("c"), ...study("d")];
+    expect(brief(thread({ runs: [run("r1")], stepList, selectedRunId: "r1" }))).toEqual(["studies ×2", "agent: next", "studies ×2"]);
   });
 });

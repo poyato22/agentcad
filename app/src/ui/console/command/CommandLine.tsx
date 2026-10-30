@@ -78,7 +78,11 @@ export function CommandLine(): JSX.Element {
     try {
       // "Use with agent" chips ride along to the run you message too, not only a new run (M-6)
       const chipLine = chipsPromptLine(agentChips.peek());
-      await actions.client().message(run.id, chipLine ? `${cmd.text}\n\n${chipLine}` : cmd.text);
+      const text = chipLine ? `${cmd.text}\n\n${chipLine}` : cmd.text;
+      // the build's lead takes a prompt even while it works: through POST /runs the core routes
+      // it to that lead and queues it behind the current step (U3c); other runs get /message
+      if (run.role === "lead" && !run.archived && run.project_id) await actions.client().createRun({ prompt: text, project_id: run.project_id });
+      else await actions.client().message(run.id, text);
       if (chipLine) clearAgentChips();
       return true;
     } catch (e) {

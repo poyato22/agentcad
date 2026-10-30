@@ -40,8 +40,9 @@ async function open() {
 
 /** R8: reveal the "Use a specific agent…" override, then pick `name`. */
 async function openOverride(name: string) {
-  fireEvent.click(await screen.findByText("Use a specific agent…"));
-  fireEvent.change(screen.getByLabelText("Agent"), { target: { value: name } });
+  fireEvent.click(await screen.findByRole("button", { name: "More options" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Use a specific agent…" }));
+  fireEvent.change(screen.getByLabelText("Choose an agent"), { target: { value: name } });
 }
 
 describe("NewRunDialog", () => {

@@ -138,6 +138,12 @@ button.cv-x { border: 1px solid var(--line2); }
 @keyframes cv-animating-pulse { 0%, 100% { opacity: .4; } 50% { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .cv-animating-dot { animation: none; } }
 
+/* I2: a message sent while the lead works — queued, then delivered in place */
+.cv-queued-chip { font-size: var(--fs-small); padding: 0 5px; border: 1px dashed var(--blue); border-radius: 2px; color: var(--blue2); }
+.cv-queued-chip.is-delivered { border-style: solid; border-color: var(--line2); color: var(--dim); }
+.cv-queued-chip.is-dropped { border-color: var(--amber); color: var(--ink); }
+.cv-queued.is-queued .cv-text { color: var(--dim); }
+
 /* R16: a clear card for each thing an agent did, woven into the thread by time */
 .cv-announce { display: flex; align-items: flex-start; gap: 8px; margin: 6px 10px; padding: 6px 8px; border: 1px solid var(--line2); border-left: 3px solid var(--blue); background: var(--paper2); }
 .cv-announce-glyph { flex: none; color: var(--blue2); line-height: 1.4; }

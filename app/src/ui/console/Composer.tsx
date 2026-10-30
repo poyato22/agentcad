@@ -1,27 +1,25 @@
 // Inline composer for a new run ("+ New" in the conversation view). No agent picker: the core
 // routes to the right agent from the prompt (R8), and the thread shows the choice as a chip once
-// the run exists. "Use a specific agent…" in the overflow reveals a picker for the rare override.
+// the run exists. "Use a specific agent…" in the ⋯ menu reveals a picker for the rare override.
 // The model chip is prefilled from the profile (or the overridden agent's own model, as in the
 // core). Enter starts, Shift+Enter is a new line, Esc closes. Edit scope is every part ("*").
+// The composer stays usable while the build's lead works: the core queues the message (U3c) and
+// the thread shows it with a "queued" chip until the lead reads it; a full queue (429) says so.
 import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { CoreError } from "../../api/client";
 import type { AgentInfo } from "../../api/types";
 import { startableAgents } from "../../lib/agents";
 import { agentChips, chipsPromptLine, clearAgentChips, removeAgentChip } from "../../state/agentChips";
 import { runBuild } from "../../state/builds";
 import { actions, coreStatus, runs } from "../../state/store";
 import { Button } from "../common/Button";
+import { OverflowMenu } from "../common/OverflowMenu";
 import { catalog } from "../dialogs/catalog";
 import { buildModelGroups, choiceFor, pickDefault } from "../dialogs/modelGroups";
 import { ModelPicker } from "../dialogs/ModelPicker";
 import { noteRun } from "./queued";
+import { startErrorText as describeError } from "./startError";
 import { composerOpen } from "./view";
-
-function describeError(e: unknown): string {
-  if (e instanceof CoreError) return e.hint ? `${e.message} — ${e.hint}` : e.message;
-  return e instanceof Error ? e.message : String(e);
-}
 
 export function Composer(): JSX.Element {
   const [agents, setAgents] = useState<AgentInfo[] | null>(null);
@@ -107,12 +105,12 @@ export function Composer(): JSX.Element {
           ? <Button variant="ghost" onClick={() => { setOverride(null); setShowPicker(false); }}>Auto</Button>
           : showPicker
             ? (
-              <select class="cv-override-sel" aria-label="Agent" disabled={!agents} value="" onChange={(e) => { if (e.currentTarget.value) setOverride(e.currentTarget.value); }}>
+              <select class="cv-override-sel" aria-label="Choose an agent" disabled={!agents} value="" onChange={(e) => { if (e.currentTarget.value) setOverride(e.currentTarget.value); }}>
                 <option value="" disabled>Choose an agent</option>
                 {(agents ?? []).map((a) => <option key={a.name} value={a.name}>{a.name}</option>)}
               </select>
             )
-            : <Button variant="ghost" class="cv-override-sum" onClick={() => setShowPicker(true)}>Use a specific agent…</Button>}
+            : <OverflowMenu label="More options" items={[{ label: "Use a specific agent…", onSelect: () => setShowPicker(true) }]} />}
       </div>
       {agentChips.value.length > 0 && (
         <div class="cv-context" role="list" aria-label="Context for the agent">
