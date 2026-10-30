@@ -11,6 +11,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import type { Bom, BomLine, BomPatch, NewBomLine } from "../../../api/browser";
 import { activeBuild } from "../../../state/builds";
 import { actions } from "../../../state/store";
+import { setPage } from "../router";
 import { Button } from "../../common/Button";
 import { ExternalLink } from "../../common/ExternalLink";
 import { describeError } from "../../profile/common";
@@ -43,6 +44,7 @@ export function BomPage(): JSX.Element {
   if (!build) {
     return (
       <PageShell title="Parts list">
+        <div class="bom-bar"><Button variant="ghost" aria-label="Back to design" onClick={() => setPage("design")}>← Design</Button></div>
         <p class="bom-empty dim">Open a build to see its parts list. Made parts appear here automatically; add the bought ones as the design settles.</p>
       </PageShell>
     );
@@ -73,6 +75,7 @@ export function BomPage(): JSX.Element {
     <PageShell title="Parts list">
       <div class="bom" data-bom-page data-build={build.id}>
         <div class="bom-bar">
+          <Button variant="ghost" aria-label="Back to design" onClick={() => setPage("design")}>← Design</Button>
           <div class="bom-buildname text">{build.name || "Untitled build"}</div>
           <span class="bom-spacer" />
           <Button variant="default" onClick={() => setAdding(true)}>Add bought part</Button>

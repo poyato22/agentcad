@@ -19,6 +19,9 @@ export interface PageDef {
   title: string;
   /** ⌘<key> digit that navigates to this page. */
   key: "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9";
+  /** A reachable page that is NOT a top-bar mode tab (its own build-scoped entry opens it).
+   *  Keeps the mode-tab strip within its width budget. */
+  hidden?: boolean;
 }
 
 /** Order is the tab order and the ⌘<digit> order. Design is first and is the default. */
@@ -31,9 +34,13 @@ export const PAGES: readonly PageDef[] = [
   // Plan 5 A6
   { id: "onshape", label: "Onshape", title: "Onshape", key: "6" },
   { id: "directory", label: "Parts", title: "Parts directory", key: "7" },
-  // Plan 7 R5 — appended; U2b renumbers after Sketch is removed
-  { id: "bom", label: "Parts list", title: "Parts list", key: "8" },
+  // Plan 7 R5 — a build-scoped page reached from the left pane, not a mode tab (the top-bar tab
+  // strip is full until U2b removes Sketch; U7 can promote it to a tab then). ⌘8 still opens it.
+  { id: "bom", label: "Parts list", title: "Parts list", key: "8", hidden: true },
 ];
+
+/** The mode tabs shown in the top bar (hidden pages have their own entry points). */
+export const TAB_PAGES: readonly PageDef[] = PAGES.filter((p) => !p.hidden);
 
 export const DEFAULT_PAGE: Page = "design";
 

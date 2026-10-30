@@ -119,6 +119,10 @@
 .tree-menu-item[disabled] { color: var(--faint); cursor: default; }
 .tree-error { padding: 4px 8px; color: var(--red); font-size: var(--fs-small); }
 .left-build { color: var(--dim); max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: bottom; }
+.left-parts-right { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.left-bom-link { flex: none; background: none; border: 0; padding: 0; font: inherit; color: var(--dim); text-decoration: underline; cursor: pointer; }
+.left-bom-link:hover { color: var(--ink); }
+.left-bom-link:focus-visible { outline: 1px solid var(--blue); }
 
 /* color picker: a legend panel under the row */
 .cpick { margin: 2px 8px 6px 22px; padding: 6px; border: 1px solid var(--line2); background: var(--paper); display: flex; flex-direction: column; gap: 6px; }
