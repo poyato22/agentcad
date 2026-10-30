@@ -41,6 +41,28 @@ test("the skeleton row shows its parameters and datums, never a GLB error (I4b)"
   expect(glb).toHaveLength(0);
 });
 
+test("the console header stays on one line with a long model id and routing reason (m5)", async ({ page, fake }) => {
+  await page.goto("/");
+  await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
+  const now = Date.now() / 1000;
+  await fake.emit({ type: "run_started", run_id: "long01", data: {} }, { run: {
+    id: "long01", parent_id: null, agent: "engineer", provider: "ollama", model: "huihui_ai/qwen3.5-abliterated:9b-instruct-q8_0", task: "model a B-2 bomber",
+    status: "running", branch: null, onshape_calls: 0, input_tokens: 0, output_tokens: 0, usd: 0, created_at: now, updated_at: now,
+    routed: { agent: "engineer", reason: "a build request with no clear subject", confidence: 0.5 }, shape_complexity: { level: "high", score: 0.9 },
+  } as never });
+  await page.getByRole("button", { name: /^Run: / }).click();
+  await page.getByRole("listbox", { name: "Runs" }).locator('[data-run="long01"]').click();
+  const who = page.locator(".cv-who");
+  await expect(who).toContainText("engineer");
+  const h = (await who.boundingBox())!.height;
+  expect(h).toBeLessThan(22);                                          // one line, not two or three
+  for (const sel of [".cv-routed", "span", ".mwarn"]) {
+    const box = await who.locator(sel).first().boundingBox();
+    expect(box!.height, sel).toBeLessThan(22);
+    expect(box!.width, sel).toBeGreaterThan(30);                         // squeezed, never gone
+  }
+});
+
 test("All parts sits in the viewer's tool row, not over a panel, and Assembly view doesn't offer it (I3)", async ({ page }) => {
   await page.goto("/");
   const toggle = page.getByRole("button", { name: "All parts" });
