@@ -295,7 +295,8 @@ const COVERAGE: Record<string, string> = {
   "POST /sims/{sim_id}/cancel": "study_cancel.json", // contract.studies.test.ts (Task A8)
   // Plan 7 U2a measure and feedback pins: contract.measure.test.ts
   "POST /parts/{part_id}/measure": "part_measure_edge.json",
-  "POST /projects/{project_id}/feedback": "project_feedback.json",
+  // POST /projects/{project_id}/feedback (U3c's agents_api.py, declared `@r.post`, which this scan
+  // does not read) is covered by project_feedback*.json in contract.measure.test.ts
 };
 
 function coreRoutes(): string[] {

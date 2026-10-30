@@ -1,7 +1,7 @@
 // Typed HTTP client for the local core. Every request carries the bearer token; every response
 // is validated with zod. Failures always surface as CoreError (never a raw fetch/zod error).
 import { z } from "zod";
-import { feedbackResultSchema, measureResultSchema, type FeedbackBody, type FeedbackResult, type MeasureRef, type MeasureResult } from "./measure";
+import { feedbackResultSchema, measureResultSchema, measureWarmSchema, type FeedbackBody, type FeedbackResult, type MeasureRef, type MeasureResult } from "./measure";
 import { debug } from "../lib/log";
 import {
   agentDetailSchema, agentInfoSchema, agentRunSchema, approvalSchema, cancelAllSchema, claudeCodeStatusSchema, cleanupResultSchema, coreErrorBodySchema, coreStatusSchema, deleteRefusedSchema,
@@ -572,6 +572,10 @@ export class CoreClient {
   /** Exact B-rep values for the picks; 409 (stale_version) when the part changed since `baseVersion`. */
   measurePart(id: string, refs: MeasureRef[], baseVersion?: number): Promise<MeasureResult> {
     return this.json("POST", `/parts/${enc(id)}/measure`, measureResultSchema, { body: { refs, ...(baseVersion === undefined ? {} : { base_version: baseVersion }) } });
+  }
+  /** Measure mode opened on a part: warm the core's measure worker (best effort). */
+  warmMeasure(id: string): Promise<{ part_id: string; warm: boolean }> {
+    return this.json("POST", `/parts/${enc(id)}/measure`, measureWarmSchema, { body: { warm: true } });
   }
   /** A comment pinned on the model: a message to the build's agent with the location as data. */
   sendFeedback(projectId: string, body: FeedbackBody): Promise<FeedbackResult> {

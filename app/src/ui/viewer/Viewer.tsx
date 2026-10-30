@@ -279,6 +279,13 @@ export function Viewer(): JSX.Element {
     if (v.setMarkers) v.setMarkers(markers); else v.setMarker(markers[0] ?? null);
   }, [ops, picks, chip, tool, partId]);
 
+  // Measure opened on a part: the core loads its shape in a warm worker before the first pick
+  // (a cold measure pays ~1.5 s of imports, a warm one milliseconds); best effort
+  useEffect(() => {
+    if (tool !== "measure" || !partId || part?.metrics === null) return;
+    try { void actions.client().warmMeasure?.(partId).catch(() => undefined); } catch { /* no core bound */ }
+  }, [tool, partId, part?.mtime]);
+
   // measure: the core's exact values for the picks (one pick shows its metrics values meanwhile)
   useEffect(() => {
     const seq = ++measureSeq.current;
@@ -321,8 +328,9 @@ export function Viewer(): JSX.Element {
     setCommentError(null);
     try {
       const r = await actions.client().sendFeedback(build, { part_id: c.partId, point: c.point, ...(c.faceId ? { face_id: c.faceId } : {}), text });
-      addLocalPin({ buildId: build, runId: r.run_id, partId: c.partId, point: c.point, faceId: c.faceId, text, ts: Date.now() / 1000 });
-      if (r.started) actions.selectRun(r.run_id);
+      addLocalPin({ buildId: build, runId: r.run_id, stepId: r.step_id, partId: c.partId, point: c.point, faceId: c.faceId, text, ts: Date.now() / 1000 });
+      // the lead's thread shows the comment (queued there while the lead works)
+      actions.selectRun(r.run_id);
       setComment(null);
       viewerTool.value = "select";
     } catch (e) {

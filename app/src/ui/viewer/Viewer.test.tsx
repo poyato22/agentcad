@@ -214,7 +214,8 @@ describe("Viewer", () => {
       .mockResolvedValueOnce({ part_id: "top_plate", version: 1, items: [], values: [
         { key: "normal_distance", label: "Normal distance", value: 3, unit: "mm" }, { key: "distance", label: "Distance", value: 3, unit: "mm" },
         { key: "angle", label: "Angle", value: 0, unit: "°" }] });
-    bindClient({ partGlb: vi.fn().mockResolvedValue({ bytes: fixtureBytes(), etag: '"x"' }), measurePart } as unknown as CoreClient);
+    const warmMeasure = vi.fn().mockResolvedValue({ part_id: "top_plate", warm: true });
+    bindClient({ partGlb: vi.fn().mockResolvedValue({ bytes: fixtureBytes(), etag: '"x"' }), measurePart, warmMeasure } as unknown as CoreClient);
     parts.value = [plate];
     selectedPartId.value = "top_plate";
     handle.toScreen.mockImplementation((p: [number, number, number]): [number, number] => [p[0] * 10, p[1] * 10]);
@@ -223,6 +224,7 @@ describe("Viewer", () => {
     expect(getByRole("button", { name: "measure" }).getAttribute("aria-pressed")).toBe("true");
     const panel = await findByTestId("measure-panel");
     expect(panel.textContent).toContain("Click an edge, a face or a corner");
+    await waitFor(() => expect(warmMeasure).toHaveBeenCalledWith("top_plate"));   // the core loads the shape ahead
     handle.pick.mockReturnValue({ partId: "top_plate", point: [0, 0, 1.5], normal: [0, 0, 1] });
     fireEvent.pointerDown(getByTestId("viewer-canvas"), { button: 0, clientX: 100, clientY: 5 });
     fireEvent.pointerUp(getByTestId("viewer-canvas"), { button: 0, clientX: 100, clientY: 5 });

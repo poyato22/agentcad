@@ -31,8 +31,32 @@ export const measureResultSchema = z.object({
   part_id: z.string(), version: z.number(), items: z.array(measureItemSchema), values: z.array(measureValueSchema),
 });
 
+/** Measure mode opened: the core loads the part in its warm measure worker ahead of the first pick. */
+export const measureWarmSchema = z.object({ part_id: z.string(), warm: z.boolean() });
+
 /** A comment pinned on the model. */
 export interface FeedbackBody { part_id: string; point: Vec3; face_id?: string; text: string }
-/** The run the pin went to (`started`: a new run was made for it). */
-export interface FeedbackResult { run_id: string; step_id: number | null; started?: boolean }
-export const feedbackResultSchema = z.object({ run_id: z.string(), step_id: z.number().nullable(), started: z.boolean().optional() });
+/** The build's lead the pin went to (core orchestrator/lead.submit_feedback, U3c): `step_id` is
+ *  the stored pin (a decision step {feedback}); `queued` when the lead was busy. */
+export interface FeedbackResult { run_id: string; step_id: number | null; queued?: boolean; position?: number | null }
+export const feedbackResultSchema = z.object({
+  run_id: z.string(), step_id: z.number().nullable(), queued: z.boolean().optional(), position: z.number().nullish(),
+});
+
+/** A pin as the core stores it: `feedback` on the decision step the route returns, on the user's
+ *  message step once the lead takes it, and on a queued message meanwhile. `part` (the tree label)
+ *  and `nearby_hole` ("Ø4.2 hole, 1.9 mm away") are there from U2a's merge on. */
+export interface FeedbackPin {
+  part_id: string; point: Vec3; text: string; face_id?: string | null; part?: string | null; nearby_hole?: string | null;
+  nearby_feature?: { face_id?: string | null; type?: string | null; area_mm2?: number | null; center?: Vec3 | null } | null;
+}
+export const feedbackPinSchema = z.object({
+  part_id: z.string(), point: vec3, text: z.string(), face_id: z.string().nullish(), part: z.string().nullish(), nearby_hole: z.string().nullish(),
+  nearby_feature: z.object({ face_id: z.string().nullish(), type: z.string().nullish(), area_mm2: z.number().nullish(), center: vec3.nullish() }).nullish(),
+});
+
+/** The pin on a step's payload, if it carries a well-formed one. */
+export function pinOf(payload: Record<string, unknown>): FeedbackPin | null {
+  const p = feedbackPinSchema.safeParse(payload["feedback"]);
+  return p.success ? p.data : null;
+}

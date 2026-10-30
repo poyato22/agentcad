@@ -77,4 +77,20 @@ test("comment_pins_feedback_for_the_agent_and_it_stays_on_the_model", async ({ p
   const thread = page.locator("[data-conversation]");
   await expect(thread.locator("[data-feedback-pin]")).toContainText("on top plate", { timeout: 15_000 });
   await expect(thread).not.toContainText("untrusted_user_data");
+  await expect(thread).not.toContainText("decided");                 // the stored pin is no extra line
+});
+
+test("pins_survive_a_reload_read_back_from_the_core", async ({ page }) => {
+  const { cx, cy } = await openPlate(page);
+  await tools(page).getByRole("button", { name: "comment", exact: true }).click();
+  await page.mouse.click(cx, cy);
+  await page.getByTestId("comment-box").getByRole("textbox", { name: "Your comment" }).fill("thinner here");
+  await page.getByRole("button", { name: "Send to agent" }).click();
+  await expect(page.getByTestId("pin")).toHaveText("1");
+  // a fresh window: nothing sent from it, the pin comes from the core's stored step
+  await openPlate(page);
+  await expect(page.getByTestId("pin")).toHaveText("1", { timeout: 15_000 });
+  await page.getByTestId("pin").click();
+  await expect(page.getByTestId("pin-note")).toContainText("thinner here");
+  await expect(page.locator("[data-conversation] [data-feedback-pin]")).toContainText("Comment 1 · on top plate");
 });

@@ -6,10 +6,9 @@ import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { z } from "zod";
-import { feedbackResultSchema, measureResultSchema } from "../src/api/measure";
+import { feedbackResultSchema, measureResultSchema, measureWarmSchema, pinOf } from "../src/api/measure";
 import { coreErrorBodySchema, partSummarySchema } from "../src/api/schemas";
 import type { PartSummary, Step } from "../src/api/types";
-import { parseFeedback } from "../src/ui/viewer/pins";
 import { startFakeCore, type FakeCore } from "./fake-core/server";
 import { shapeDiff, type Json } from "./shape";
 
@@ -32,7 +31,8 @@ async function ok(method: string, path: string, body?: unknown): Promise<unknown
   return r.body;
 }
 
-let feedbackRun = "";
+let feedbackStepId = 0;
+const feedbackStep = () => ((fake.get("project_feedback_steps.json") as Step[]).find((s) => s.kind === "decision")?.id ?? -1) === feedbackStepId ? feedbackStepId : -1;
 beforeAll(async () => {
   core = await startFakeCore({ port: 0, token: "contract", scenario: "base" });
   const parts = (await ok("GET", "/parts")) as PartSummary[];
@@ -54,8 +54,10 @@ beforeAll(async () => {
   const pid = ((await ok("GET", "/projects")) as { id: string }[])[0].id;
   const fb = (await ok("POST", `/projects/${pid}/feedback`, { part_id: "mount_plate", point: [7, 0, 2.5], face_id: top.id, text: "make these holes M3 clearance" })) as { run_id: string };
   fake.set("project_feedback.json", fb);
-  feedbackRun = fb.run_id;
-  fake.set("project_feedback_empty.json", await req("POST", `/projects/${pid}/feedback`, { part_id: "mount_plate", point: [7, 0, 2.5], text: " " }));
+  feedbackStepId = (fb as unknown as { step_id: number }).step_id;
+  fake.set("project_feedback_steps.json", await ok("GET", `/runs/${fb.run_id}/steps`));
+  fake.set("project_feedback_ghost.json", await req("POST", `/projects/${pid}/feedback`, { part_id: "ghost", point: [7, 0, 2.5], text: "x" }));
+  fake.set("part_measure_warm.json", await req("POST", url, { warm: true }));
 });
 afterAll(async () => { await core.stop(); });
 
@@ -63,7 +65,7 @@ const CASES: [string, z.ZodType][] = [
   ["part_measure_edge.json", measureResultSchema], ["part_measure_line.json", measureResultSchema], ["part_measure_face.json", measureResultSchema],
   ["part_measure_two_faces.json", measureResultSchema], ["part_measure_points.json", measureResultSchema], ["project_feedback.json", feedbackResultSchema],
 ];
-const REFUSALS = ["part_measure_stale.json", "part_measure_bad_face.json", "project_feedback_empty.json"];
+const REFUSALS = ["part_measure_stale.json", "part_measure_bad_face.json", "project_feedback_ghost.json"];
 const keys = (v: unknown) => ((v as { values: { key: string }[] }).values ?? []).map((x) => x.key);
 
 describe("contract: measure and feedback ↔ schemas ↔ fake core", () => {
@@ -107,10 +109,24 @@ describe("contract: measure and feedback ↔ schemas ↔ fake core", () => {
     expect(m.face_list!.filter((f) => f.type === "cylinder").every((f) => f.radius === 2.1)).toBe(true);
   });
 
-  it("the fake's feedback message reads back as a pin, like the core's", async () => {
-    const steps = (await ok("GET", `/runs/${feedbackRun}/steps`)) as Step[];
-    const msg = steps.find((s) => s.payload["role"] === "user")!;
-    const f = parseFeedback(String(msg.payload["text"]));
-    expect(f).toMatchObject({ text: "make these holes M3 clearance", location: { partId: "mount_plate", point: [7, 0, 2.5] } });
+  it("the pin is structured `feedback` on a decision step (the answer's step_id) and the user's message, in both", () => {
+    for (const steps of [read("project_feedback_steps.json"), fake.get("project_feedback_steps.json")] as Step[][]) {
+      const withPin = steps.filter((s) => pinOf(s.payload) !== null);
+      expect(withPin.map((s) => [s.kind, s.payload["role"] ?? null])).toEqual([["decision", null], ["message", "user"]]);
+      expect(pinOf(withPin[0].payload)).toMatchObject({ part_id: "mount_plate", point: [7, 0, 2.5], text: "make these holes M3 clearance" });
+      expect(withPin[1].payload["text"]).toBe("make these holes M3 clearance");          // never the wrapped block
+    }
+    const real = read("project_feedback_steps.json") as Step[];
+    expect((read("project_feedback.json") as { step_id: number }).step_id).toBe(real.find((s) => s.kind === "decision")!.id);
+    expect((fake.get("project_feedback.json") as { step_id: number }).step_id).toBe(feedbackStep());
+    const [r, f] = [read("project_feedback_steps.json"), fake.get("project_feedback_steps.json")].map((l) => pinOf((l as Step[]).find((s) => s.kind === "decision")!.payload));
+    expect(shapeDiff(r as unknown as Json, f as unknown as Json, "feedback")).toEqual([]);
+  });
+
+  it("warm: Measure mode's preload answers {part_id, warm} in both", () => {
+    for (const v of [read("part_measure_warm.json"), fake.get("part_measure_warm.json")] as { status: number; body: unknown }[]) {
+      expect(v.status).toBe(200);
+      expect(measureWarmSchema.parse(v.body)).toEqual({ part_id: "mount_plate", warm: true });
+    }
   });
 });
