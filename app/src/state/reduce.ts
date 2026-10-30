@@ -120,7 +120,10 @@ function reduceUnsafe(s: AppState, e: MisesEvent): Out {
       if (!rid || typeof d.text !== "string" || d.text === "") return { state: s, effects: [] };
       return { state: { ...s, liveText: setIn(s.liveText, rid, (s.liveText.get(rid) ?? "") + d.text) }, effects: [] };
     }
+    // Plan 7 (U3c): agent_announce and the lead's message_* events are also stored DECISION
+    // steps the thread renders (an announcement card, a queued message and its delivery)
     case "note": case "compaction": case "plan": case "diff": case "file_written":
+    case "agent_announce": case "message_queued": case "message_delivered": case "message_dropped":
       return { state: s, effects: steps() };
     case "agent_announce":
       // U3c / Plan 8: the announcement is also stored as a decision step; the thread draws its card

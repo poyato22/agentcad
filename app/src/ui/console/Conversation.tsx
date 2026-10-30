@@ -26,6 +26,9 @@ import { G4Card } from "./cards/critique";
 import { buildUserEdits } from "../../state/partEdits";
 import { editsForRun, weave } from "./userEditLines";
 import { FeedbackNote } from "../viewer/FeedbackNote";
+import { AnnouncementCard } from "./AnnouncementCard";
+import { StudyGrid } from "./studycard/StudyGrid";
+import { AssemblyAnimationChip } from "./AssemblyAnimationChip";
 
 const AT_BOTTOM_PX = 24;
 /** Rows rendered at once (the last ones); "show earlier" adds this many more. Same as StepLog. */
@@ -116,6 +119,7 @@ export function Conversation(): JSX.Element {
         {run && run.status !== "queued" && <RunStatus runId={run.id} status={run.status} />}
       </div>
       {newCount > 0 && <button type="button" class="cv-chip-new" onClick={toBottom}>{`${newCount} new ↓`}</button>}
+      <AssemblyAnimationChip />
     </div>
   );
 }
@@ -202,7 +206,31 @@ function Item({ item, agent, runId = null }: { item: ThreadItem; agent: AgentRun
       );
     case "critique": case "view":
       return <G4Card item={item} />;
+    case "announce":
+      return <AnnouncementCard announcement={item.announcement} />;
+    case "queued":
+      return <QueuedLine item={item} />;
+    case "studies":
+      return <StudyGrid calls={item.calls} />;
   }
+}
+
+/** A message sent while the lead was busy (I2): your words at once, with a chip that reads
+ *  "queued" until the lead reads them, then "delivered" (or "not delivered" and why). */
+function QueuedLine({ item }: { item: Extract<ThreadItem, { kind: "queued" }> }): JSX.Element {
+  const chip = item.status === "delivered" ? "delivered"
+    : item.status === "dropped" ? `not delivered · ${item.reason ?? "dropped"}`
+    : `queued${item.position && item.position > 1 ? ` · ${item.position} in line` : ""} · delivered when the agent finishes this step`;
+  return (
+    <div class={`cv-msg cv-user cv-queued is-${item.status}`} data-msg="user" data-row data-kind="queued" data-queued-message={item.messageId}
+      data-queued-status={item.status}>
+      <div class="cv-msg-head">
+        <span class="label">you</span>
+        <span class={`cv-queued-chip is-${item.status}`} data-queued-chip role="status">{chip}</span>
+      </div>
+      <div class="cv-text text">{item.text}</div>
+    </div>
+  );
 }
 
 function Activity({ item }: { item: Extract<ThreadItem, { kind: "activity" }> }): JSX.Element {

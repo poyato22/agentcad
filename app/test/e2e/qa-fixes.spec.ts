@@ -55,6 +55,8 @@ test("C5_a_rename_in_the_manager_shows_in_history_and_the_switcher", async ({ pa
   await open(page);
   await expect(historyRow(page, "r_crash")).toContainText("designer · crash now please");
   await page.keyboard.press("Meta+Shift+KeyA");
+  await manager(page).getByRole("button", { name: "Advanced ▸" }).click();
+  await manager(page).getByRole("tab", { name: "All runs" }).click();   // the dense run tree (R10: the simple Agents view is the default)
   const row = manager(page).locator('[data-run-row="r_crash"]');
   await row.getByRole("button", { name: "Rename" }).click();
   await row.getByRole("textbox", { name: "Run title" }).fill("QA renamed run");
@@ -72,6 +74,8 @@ test("C6_a_deleted_run_leaves_history_and_cannot_be_opened", async ({ page, fake
   await historyRow(page, "r_zulu").click();
   await expect(historyRow(page, "r_zulu")).toBeVisible();
   await page.keyboard.press("Meta+Shift+KeyA");
+  await manager(page).getByRole("button", { name: "Advanced ▸" }).click();
+  await manager(page).getByRole("tab", { name: "All runs" }).click();   // the dense run tree
   const row = manager(page).locator('[data-run-row="r_zulu"]');
   await row.getByRole("button", { name: "Delete", exact: true }).click();
   await row.getByRole("button", { name: "Confirm delete" }).click();
@@ -94,16 +98,21 @@ test("C4_a_hidden_built_in_agent_is_not_offered_in_new_run", async ({ page, fake
   await fake.reset("base");
   await open(page);
   await page.keyboard.press("Meta+Shift+KeyA");
-  await manager(page).getByRole("tab", { name: "Agents" }).click();
+  await manager(page).getByRole("button", { name: "Advanced ▸" }).click();
+  await manager(page).getByRole("tab", { name: "Definitions" }).click();
   await manager(page).locator('[data-agent="designer"]').getByRole("button", { name: "Hide" }).click();
   await expect(manager(page).locator('[data-agent="designer"]')).toContainText("hidden from New run");
   await page.keyboard.press("Escape");
   await page.keyboard.press("Meta+KeyN");
-  const select = page.getByRole("combobox", { name: "Agent" }).first();
+  // R8: the agent list lives behind the "specific agent" override
+  const dlg = page.getByRole("dialog", { name: "New run" });
+  await dlg.getByRole("button", { name: "More options" }).click();
+  await dlg.getByRole("menuitem", { name: "Use a specific agent…" }).click();
+  const select = dlg.getByRole("combobox", { name: "Choose an agent" });
   await expect(select).toBeVisible();
-  // the list loads from GET /agents: wait for it, then check it
+  // the list loads from GET /agents: wait for it, then check it (the override's placeholder aside)
   await expect(select.locator("option")).not.toHaveCount(0);
-  await expect.poll(() => select.locator("option").allTextContents()).toEqual(["planner", "sim", "verifier"]);
+  await expect.poll(() => select.locator("option").allTextContents().then((a) => a.filter((t) => t !== "Choose an agent"))).toEqual(["planner", "sim", "verifier"]);
   await page.keyboard.press("Escape");
 });
 
@@ -111,7 +120,8 @@ test("C7_the_only_these_tools_picker_lists_every_registered_tool", async ({ page
   await fake.reset("base");
   await open(page);
   await page.keyboard.press("Meta+Shift+KeyA");
-  await manager(page).getByRole("tab", { name: "Agents" }).click();
+  await manager(page).getByRole("button", { name: "Advanced ▸" }).click();
+  await manager(page).getByRole("tab", { name: "Definitions" }).click();
   await manager(page).getByRole("button", { name: "New agent" }).click();
   await manager(page).getByRole("radio", { name: "Only these" }).check();
   const grid = manager(page).getByRole("group", { name: "Allowed tools" });
@@ -129,7 +139,8 @@ test("C7_without_GET_tools_the_picker_falls_back_to_the_agents_tools", async ({ 
   await fake.reset({ ...BASE, tools: null, agents: [{ name: "planner", description: "", model: "inherit", tools: ["mirror_measure", "spec_get"] }] });
   await open(page);
   await page.keyboard.press("Meta+Shift+KeyA");
-  await manager(page).getByRole("tab", { name: "Agents" }).click();
+  await manager(page).getByRole("button", { name: "Advanced ▸" }).click();
+  await manager(page).getByRole("tab", { name: "Definitions" }).click();
   await manager(page).getByRole("button", { name: "New agent" }).click();
   await manager(page).getByRole("radio", { name: "Only these" }).check();
   await expect(manager(page).getByRole("group", { name: "Allowed tools" }).getByRole("checkbox")).toHaveCount(2);
@@ -140,6 +151,8 @@ test("C8_cancel_and_delete_waits_for_a_slow_stop", async ({ page, fake }) => {
   await fake.reset({ ...BASE, stop_delay_ms: 6500 });
   await open(page);
   await page.keyboard.press("Meta+Shift+KeyA");
+  await manager(page).getByRole("button", { name: "Advanced ▸" }).click();
+  await manager(page).getByRole("tab", { name: "All runs" }).click();   // the dense run tree
   const row = manager(page).locator(`[data-run-row="${RUN}"]`);
   await row.getByRole("button", { name: "Delete", exact: true }).click();
   await row.getByRole("button", { name: "Confirm delete" }).click();

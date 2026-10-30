@@ -1,0 +1,14 @@
+{
+  "message_id": "msg_dbacc7c6b998",
+  "new_lead": false,
+  "notes": [],
+  "position": 1,
+  "queued": true,
+  "role": "lead",
+  "routed": {
+    "agent": "engineer",
+    "confidence": 0.3,
+    "reason": "no clear signal: the default agent"
+  },
+  "run_id": "7a1aaf8f5569"
+}

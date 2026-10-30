@@ -34,7 +34,15 @@ async function open() {
   render(<NewRunDialog />);
   actions.openNewRun();
   await screen.findByRole("dialog");
-  await screen.findByRole("option", { name: "designer" });
+  // wait until the catalog has loaded and a model is actually prefilled (not the placeholder)
+  await waitFor(() => expect(screen.getByRole("button", { name: /^Model:/ }).getAttribute("aria-label")).not.toBe("Model: choose a model"));
+}
+
+/** R8: reveal the "Use a specific agent…" override, then pick `name`. */
+async function openOverride(name: string) {
+  fireEvent.click(await screen.findByRole("button", { name: "More options" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Use a specific agent…" }));
+  fireEvent.change(screen.getByLabelText("Choose an agent"), { target: { value: name } });
 }
 
 describe("NewRunDialog", () => {
@@ -59,6 +67,7 @@ describe("NewRunDialog", () => {
 
   it("dialog_lists_agents_and_uses_the_shared_model_picker", async () => {
     await open();
+    await openOverride("designer");
     const agentOpts = within("Agent");
     expect(agentOpts).toEqual(["designer", "verifier"]);
     expect(screen.getByText("Main CAD agent.")).toBeTruthy();
@@ -69,8 +78,7 @@ describe("NewRunDialog", () => {
 
   it("prefills_agent_model_or_default", async () => {
     await open();
-    await chip("anthropic · claude-sonnet-5-5");
-    fireEvent.change(screen.getByLabelText("Agent"), { target: { value: "verifier" } });
+    await openOverride("verifier");   // verifier's own model is openai/gpt-x
     await chip("openai · gpt-x");
     // that vendor has no key: Start is blocked and the hint is shown
     expect((screen.getByText("Start") as HTMLButtonElement).disabled).toBe(true);
@@ -108,8 +116,9 @@ describe("NewRunDialog", () => {
     fireEvent.input(screen.getByLabelText("Task"), { target: { value: "stiffen the upright" } });
     fireEvent.click(screen.getByText("Start"));
     await waitFor(() => expect(client.createRun).toHaveBeenCalledTimes(1));
+    // R8: no agent in the body by default — the core routes from the prompt
     expect(client.createRun).toHaveBeenCalledWith({
-      agent: "designer", prompt: "stiffen the upright", model_ref: "anthropic/claude-sonnet-5-5", edit_scope: ["*"], read_scope: ["*"],
+      prompt: "stiffen the upright", model_ref: "anthropic/claude-sonnet-5-5", edit_scope: ["*"], read_scope: ["*"],
     });
     await waitFor(() => expect(newRunOpen.value).toBe(false));
     expect(selectedRunId.value).toBe("newrun");
@@ -167,6 +176,7 @@ describe("NewRunDialog", () => {
     client.agents.mockResolvedValue([{ name: "designer", description: "Main CAD agent.", model: "claude-code/sonnet" }]);
     client.models.mockResolvedValue({ ...models, vendors: [...models.vendors, { vendor: "claude-code", key, models: ["sonnet", "opus"] }] });
     await open();
+    await openOverride("designer");   // the agent's own model (claude-code/sonnet) prefills
     fireEvent.click(await chip("Claude Code · sonnet"));
     const opt = (await screen.findByRole("group", { name: "Your Claude Code" })).querySelector('[data-ref="claude-code/opus"]') as HTMLButtonElement;
     expect(opt.disabled).toBe(true);
@@ -189,8 +199,8 @@ describe("NewRunDialog", () => {
     client.models.mockResolvedValue({ ...models, vendors: [...models.vendors, { vendor: "claude-code", key: "signed_in", models: ["sonnet", "haiku"] }] });
     await open();
     await chip("Claude Code · haiku");
-    // an agent's own model still wins
-    fireEvent.change(screen.getByLabelText("Agent"), { target: { value: "verifier" } });
+    // an agent's own model still wins once a specific agent is chosen
+    await openOverride("verifier");
     await chip("openai · gpt-x");
   });
 

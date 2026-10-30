@@ -1,0 +1,7 @@
+.ovm { position: relative; flex: none; display: inline-flex; }
+.ovm-btn { border: 1px solid transparent; background: transparent; color: var(--dim); font: inherit; padding: 0 6px; cursor: pointer; line-height: 1.4; }
+.ovm-btn:hover, .ovm-btn[aria-expanded="true"] { border-color: var(--line2); color: var(--ink); }
+.ovm-btn:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
+.ovm-menu { position: absolute; right: 0; top: 100%; z-index: 30; display: flex; flex-direction: column; min-width: 160px; padding: 3px 0; background: var(--paper2); border: 1px solid var(--line2); }
+.ovm-item { border: 0; background: transparent; color: var(--ink); font: inherit; text-align: left; padding: 4px 10px; cursor: pointer; white-space: nowrap; }
+.ovm-item:hover, .ovm-item:focus-visible { background: var(--blue-tint); outline: none; }

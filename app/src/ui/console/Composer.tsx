@@ -1,30 +1,31 @@
-// Inline composer for a new run ("+ New" in the conversation view): agent and model chips
-// prefilled from the profile (an agent's own model wins, as in the core), the task, Start.
-// Enter starts, Shift+Enter is a new line, Esc closes. Edit scope is every part ("*"), as the
-// dialog's default; the dialog (⌘N) still offers a narrower scope.
+// Inline composer for a new run ("+ New" in the conversation view). No agent picker: the core
+// routes to the right agent from the prompt (R8), and the thread shows the choice as a chip once
+// the run exists. "Use a specific agent…" in the ⋯ menu reveals a picker for the rare override.
+// The model chip is prefilled from the profile (or the overridden agent's own model, as in the
+// core). Enter starts, Shift+Enter is a new line, Esc closes. Edit scope is every part ("*").
+// The composer stays usable while the build's lead works: the core queues the message (U3c) and
+// the thread shows it with a "queued" chip until the lead reads it; a full queue (429) says so.
 import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { CoreError } from "../../api/client";
 import type { AgentInfo } from "../../api/types";
 import { startableAgents } from "../../lib/agents";
 import { agentChips, chipsPromptLine, clearAgentChips, removeAgentChip } from "../../state/agentChips";
 import { runBuild } from "../../state/builds";
 import { actions, coreStatus, runs } from "../../state/store";
 import { Button } from "../common/Button";
+import { OverflowMenu } from "../common/OverflowMenu";
 import { catalog } from "../dialogs/catalog";
 import { buildModelGroups, choiceFor, pickDefault } from "../dialogs/modelGroups";
 import { ModelPicker } from "../dialogs/ModelPicker";
 import { noteRun } from "./queued";
+import { startErrorText as describeError } from "./startError";
 import { composerOpen } from "./view";
-
-function describeError(e: unknown): string {
-  if (e instanceof CoreError) return e.hint ? `${e.message} — ${e.hint}` : e.message;
-  return e instanceof Error ? e.message : String(e);
-}
 
 export function Composer(): JSX.Element {
   const [agents, setAgents] = useState<AgentInfo[] | null>(null);
-  const [agent, setAgent] = useState("");
+  /** The explicit agent override, or null to let the core route from the prompt (R8). */
+  const [override, setOverride] = useState<string | null>(null);
+  const [showPicker, setShowPicker] = useState(false);
   const [model, setModel] = useState<string | null>(null);
   const [picked, setPicked] = useState(false);
   const pickedRef = useRef(false);
@@ -36,25 +37,21 @@ export function Composer(): JSX.Element {
 
   useEffect(() => {
     let live = true;
-    const profile = Promise.resolve().then(() => actions.client().getProfile()).catch(() => null);
-    Promise.resolve().then(() => Promise.all([actions.client().agents(), profile])).then(([all, p]) => {
-      if (!live) return;
-      const as = startableAgents(all);   // hidden agents are not offered (C-4)
-      setAgents(as);
-      const dflt = p && as.some((a) => a.name === p.default_agent) ? p.default_agent : as[0]?.name ?? "";
-      setAgent(dflt);
+    // agents are loaded only for the "specific agent" override; routing needs none
+    Promise.resolve().then(() => actions.client().agents()).then((all) => {
+      if (live) setAgents(startableAgents(all));   // hidden agents are not offered (C-4)
     }, (e: unknown) => { if (live) setError(describeError(e)); });
     taskRef.current?.focus();
     return () => { live = false; };
   }, []);
 
   const groups = cat.models ? buildModelGroups(cat.models, { local: cat.local, profile: { default_model: cat.profileDefault } }) : [];
-  const current = agents?.find((a) => a.name === agent);
-  // prefill: the agent's own model, else the profile default, else the best one that can run now
+  const current = override ? agents?.find((a) => a.name === override) ?? null : null;
+  // prefill: the overridden agent's own model, else the profile default, else the best one usable now
   useEffect(() => {
     // a ref, not the state: an effect queued before the pick may run after it with a stale closure
-    if (pickedRef.current || !cat.models || !current) return;
-    const own = current.model && current.model !== "inherit" ? current.model : null;
+    if (pickedRef.current || !cat.models) return;
+    const own = current?.model && current.model !== "inherit" ? current.model : null;
     const preferred = cat.profileDefault ?? cat.models.default;
     setModel(own ?? pickDefault(groups, preferred) ?? preferred);
   }, [cat.models, cat.local, cat.profileDefault, current?.name, picked]);
@@ -62,7 +59,7 @@ export function Composer(): JSX.Element {
   const choice = model ? choiceFor(groups, model) : null;
   const blocked = choice && !choice.usable ? choice.why : null;
   const text = task.trim();
-  const ready = !!current && !!model && !!text && !blocked && !busy;
+  const ready = !!model && !!text && !blocked && !busy;
   const par = coreStatus.value?.parallel;
   const working = [...runs.value.values()].filter((r) => r.status === "running").length;
   const willQueue = par ? working >= par.limit : false;
@@ -74,7 +71,9 @@ export function Composer(): JSX.Element {
     try {
       const chipLine = chipsPromptLine(agentChips.peek());
       const prompt = chipLine ? `${text}\n\n${chipLine}` : text;
-      const { run_id } = await actions.client().createRun({ agent, prompt, model_ref: model, edit_scope: ["*"], read_scope: ["*"], ...runBuild() });
+      const { run_id } = await actions.client().createRun({
+        ...(override ? { agent: override } : {}), prompt, model_ref: model, edit_scope: ["*"], read_scope: ["*"], ...runBuild(),
+      });
       if (chipLine) clearAgentChips();
       actions.selectRun(run_id);
       noteRun(run_id);          // shown at once, even before the store lists it (e.g. queued)
@@ -90,13 +89,28 @@ export function Composer(): JSX.Element {
     <form class="cv-composer" aria-label="New run" onSubmit={(e) => { e.preventDefault(); void start(); }}
       onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); composerOpen.value = false; } }}>
       <div class="cv-chips">
-        <label class="cv-chip">
-          <span class="label">Agent</span>
-          <select aria-label="Agent" value={agent} disabled={!agents} onChange={(e) => setAgent(e.currentTarget.value)}>
-            {(agents ?? []).map((a) => <option key={a.name} value={a.name}>{a.name}</option>)}
-          </select>
-        </label>
+        {override
+          ? (
+            <label class="cv-chip">
+              <span class="label">Agent</span>
+              <select aria-label="Agent" value={override} disabled={!agents} onChange={(e) => setOverride(e.currentTarget.value)}>
+                {(agents ?? []).map((a) => <option key={a.name} value={a.name}>{a.name}</option>)}
+              </select>
+            </label>
+          )
+          : <span class="cv-auto faint text" data-auto>Mises picks the right agent from your prompt.</span>}
         <ModelPicker value={model} onChange={(ref) => { pickedRef.current = true; setModel(ref); setPicked(true); }} />
+        <span class="cv-spacer" />
+        {override
+          ? <Button variant="ghost" onClick={() => { setOverride(null); setShowPicker(false); }}>Auto</Button>
+          : showPicker
+            ? (
+              <select class="cv-override-sel" aria-label="Choose an agent" disabled={!agents} value="" onChange={(e) => { if (e.currentTarget.value) setOverride(e.currentTarget.value); }}>
+                <option value="" disabled>Choose an agent</option>
+                {(agents ?? []).map((a) => <option key={a.name} value={a.name}>{a.name}</option>)}
+              </select>
+            )
+            : <OverflowMenu label="More options" items={[{ label: "Use a specific agent…", onSelect: () => setShowPicker(true) }]} />}
       </div>
       {agentChips.value.length > 0 && (
         <div class="cv-context" role="list" aria-label="Context for the agent">

@@ -4,9 +4,11 @@
 // question stays a card, every failed call and error stays its own (red) line with its hint;
 // only successful calls fold (logModel's rule). Text stays plain strings (rendered as text).
 import { pinOf, type FeedbackPin } from "../../api/measure";
-import type { Approval, Question, Step } from "../../api/types";
+import type { Announcement, Approval, Question, Step } from "../../api/types";
+import { announcementOf, deliveredOf, droppedOf, queuedOf } from "./announceModel";
 import { foldKey, itemKey, type LogItem } from "./logModel";
 import { g4Announcement, type CritiqueRound, type PresentedView } from "./cards/critique/announce";
+import { isStudyCallName } from "./studycard/cardModel";
 
 type Call = Extract<LogItem, { kind: "call" }>;
 type Diff = Extract<LogItem, { kind: "diff" }>;
@@ -38,7 +40,14 @@ export type ThreadItem =
   // Plan 8 (G4): a render-and-critique round, and a view an agent presents (with the other views of
   // the same reply, which ⌘[ / ⌘] step through in the immersive view)
   | { kind: "critique"; key: string; round: CritiqueRound; stepIds: number[] }
-  | { kind: "view"; key: string; view: PresentedView; group: PresentedView[]; stepIds: number[] };
+  | { kind: "view"; key: string; view: PresentedView; group: PresentedView[]; stepIds: number[] }
+  /** What an agent did (R16), rebuilt from its stored DECISION step. */
+  | { kind: "announce"; key: string; announcement: Announcement & { actor: string | null; projectId: string | null; jointId: string | null }; ts: number; stepIds: number[] }
+  /** A message sent while the lead was busy: "queued" until the lead reads it, then "delivered"
+   *  (in place: the user step the delivery appends is not shown twice), or "dropped" with why. */
+  | { kind: "queued"; key: string; messageId: string; text: string; position: number | null; status: "queued" | "delivered" | "dropped"; reason: string | null; ts: number; stepIds: number[] }
+  /** Several studies of one agent turn (R18), shown as one grid of compact cards. */
+  | { kind: "studies"; key: string; calls: Call[]; ts: number; stepIds: number[] };
 
 const PREFIXES = ["mcp__mises__"];
 
@@ -139,12 +148,17 @@ export function buildThread(items: readonly LogItem[]): ThreadItem[] {
   let last: Extract<ThreadItem, { kind: "activity" }> | null = null;
   const lastCallResult = (): number | null => last?.call?.result?.id ?? null;
   let views: PresentedView[] | null = null;
+  /** Queued messages by id, and the delivered texts whose user step is not shown again. */
+  const queuedById = new Map<string, Extract<ThreadItem, { kind: "queued" }>>();
+  const echo: string[] = [];
 
   for (const it of items) {
     const key = itemKey(it);
     switch (it.kind) {
       case "message":
         if (it.role === "user") views = null;   // the reply to it gets its own set of presented views
+        // the user step a queued message's delivery appends: already shown, as the queued line
+        if (it.role === "user" && echo.length && echo[0] === it.text) { echo.shift(); break; }
         out.push(it.role === "user"
           ? { kind: "user", key, text: it.text, ts: it.step.ts, stepIds: [it.step.id], feedback: pinOf(it.step.payload) }
           : { kind: "agent", key, text: it.text, ts: it.step.ts, live: false, stepIds: [it.step.id] });
@@ -182,6 +196,7 @@ export function buildThread(items: readonly LogItem[]): ThreadItem[] {
         break;
       }
       case "decision": {
+        // G1's cards (G4 renders them): a critique round, a presented view
         const g4 = g4Announcement(it.step);
         if (g4?.kind === "critique_round") { out.push({ kind: "critique", key, round: g4.round, stepIds: [it.step.id] }); last = null; break; }
         if (g4?.kind === "view_presented") {
@@ -192,19 +207,35 @@ export function buildThread(items: readonly LogItem[]): ThreadItem[] {
           last = null;
           break;
         }
-        // U3c's other announcements (part created, agent spawned, added to the assembly or the
-        // BOM, part shown, drawing imported): the acting run's own thread already shows the call
-        // (and U4a's part card for part_shown), so only a copy on the lead from a sub-agent is a
-        // line here; its title is core text (ids and counts), shown as text
-        const ann = rec(it.step.payload.agent_announce);
-        if (typeof ann.kind === "string") {
-          if ((str(ann.run_id) ?? it.step.run_id) !== it.step.run_id && str(ann.title)) {
-            out.push({ kind: "note", key, text: firstLine(str(ann.title) as string), stepIds: [it.step.id] });
-            last = null;
-          }
+        if (last && last.call && lastCallResult() === it.step.id) { last.extra.push(it); break; }
+        // U3c's stored announcements and the lead's message queue: cards and chips, not "decided"
+        const ann = announcementOf(it.step);
+        if (ann) {
+          // part_show on the acting run: U4a's rich part card is the one card (int-final)
+          if (ann.kind === "part_shown" && (ann.actor ?? it.step.run_id) === it.step.run_id) break;
+          out.push({ kind: "announce", key, announcement: ann, ts: it.step.ts, stepIds: [it.step.id] }); last = null; break;
+        }
+        const q = queuedOf(it.step);
+        if (q) {
+          const item: Extract<ThreadItem, { kind: "queued" }> = { kind: "queued", key, messageId: q.messageId, text: q.text, position: q.position,
+            status: "queued", reason: null, ts: it.step.ts, stepIds: [it.step.id] };
+          queuedById.set(q.messageId, item);
+          out.push(item);
+          last = null;
           break;
         }
-        if (last && last.call && lastCallResult() === it.step.id) { last.extra.push(it); break; }
+        const delivered = deliveredOf(it.step);
+        if (delivered) {
+          const item = queuedById.get(delivered);
+          if (item) { item.status = "delivered"; item.stepIds.push(it.step.id); echo.push(item.text); }
+          break;
+        }
+        const dropped = droppedOf(it.step);
+        if (dropped) {
+          const item = queuedById.get(dropped.messageId);
+          if (item) { item.status = "dropped"; item.reason = dropped.reason; item.stepIds.push(it.step.id); }
+          break;
+        }
         // Claude Code's bookkeeping (session start, init, stored thinking) is not a decision the
         // reader needs; it stays in the step log (C-10)
         if (isBookkeeping(it.step)) break;
@@ -245,6 +276,26 @@ export function buildThread(items: readonly LogItem[]): ThreadItem[] {
         last = null;
         break;
     }
+  }
+  return groupStudies(out);
+}
+
+const isStudyLine = (t: ThreadItem): t is Extract<ThreadItem, { kind: "activity" }> =>
+  t.kind === "activity" && t.call !== null && isStudyCallName(t.call.name);
+
+/** R18: two or more study / review calls in a row (no message or other line between them, so one
+ *  agent turn) become one `studies` item, shown as a grid of compact cards. */
+export function groupStudies(items: readonly ThreadItem[]): ThreadItem[] {
+  const out: ThreadItem[] = [];
+  for (let i = 0; i < items.length; i++) {
+    const t = items[i];
+    if (!isStudyLine(t)) { out.push(t); continue; }
+    let j = i;
+    while (j + 1 < items.length && isStudyLine(items[j + 1])) j++;
+    if (j === i) { out.push(t); continue; }
+    const run = items.slice(i, j + 1) as Extract<ThreadItem, { kind: "activity" }>[];
+    out.push({ kind: "studies", key: `studies:${t.key}`, calls: run.map((a) => a.call as Call), ts: t.ts, stepIds: run.flatMap((a) => a.stepIds) });
+    i = j;
   }
   return out;
 }

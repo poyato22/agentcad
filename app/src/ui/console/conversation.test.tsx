@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { CoreClient } from "../../api/client";
+import { CoreError, type CoreClient } from "../../api/client";
 import { stepSchema } from "../../api/schemas";
 import type { AgentRun, CoreStatusInfo, Step } from "../../api/types";
 import { addCatalogChip, agentChips, clearAgentChips } from "../../state/agentChips";
@@ -257,6 +257,38 @@ describe("conversation view (default)", () => {
     expect(screen.queryByRole("button", { name: /^Show earlier/ })).toBeNull();
   });
 
+  it("agent_announcements_show_as_cards_woven_into_the_thread", async () => {
+    client();
+    setRuns([run("r1", { created_at: 0 })]);
+    // the core stores every announcement as a DECISION step, so the card rebuilds from steps
+    setSteps([step("r1", "decision", { agent_announce: { run_id: "r1", kind: "part_created", title: "quad_arm", detail: "", ref: { part_id: "quad_arm" } } }, 3),
+      message("r1", "assistant", "done", 5)]);
+    render(<ConsolePane />);
+    await frame();
+    const card = document.querySelector('[data-announce="part_created"]') as HTMLElement;
+    expect(card).toBeTruthy();
+    expect(card.textContent).toContain("Created a part");
+    expect(card.textContent).toContain("quad_arm");
+    expect(document.querySelector("[data-kind=note]")).toBeNull();      // never a bare "decided" row
+  });
+
+  it("a_message_sent_while_the_lead_works_shows_queued_then_delivered", async () => {
+    client();
+    setRuns([run("r1", { created_at: 0, status: "running", role: "lead" })]);
+    const queued = step("r1", "decision", { queued_message: { message_id: "msg_1", text: "paint it red", position: 1 } }, 3);
+    setSteps([message("r1", "user", "build a drone", 1), queued]);
+    render(<ConsolePane />);
+    await frame();
+    const line = () => document.querySelector('[data-queued-message="msg_1"]') as HTMLElement;
+    expect(line().querySelector("[data-queued-chip]")?.textContent).toMatch(/^queued · delivered when the agent finishes this step/);
+    setSteps([message("r1", "user", "build a drone", 1), queued, message("r1", "assistant", "on it", 4),
+      step("r1", "decision", { queued_message_delivered: { message_id: "msg_1" } }, 5), message("r1", "user", "paint it red", 6)]);
+    await frame();
+    expect(line().getAttribute("data-queued-status")).toBe("delivered");
+    expect(line().querySelector("[data-queued-chip]")?.textContent).toBe("delivered");
+    expect([...document.querySelectorAll("[data-msg=user]")].filter((m) => m.textContent?.includes("paint it red"))).toHaveLength(1);
+  });
+
   it("agent_text_renders_as_text_never_html", async () => {
     client();
     setRuns([run("r1")]);
@@ -300,17 +332,36 @@ describe("inline composer", () => {
     fireEvent.click(screen.getByRole("button", { name: "New" }));
     expect(composerOpen.value).toBe(true);
     const form = screen.getByRole("form", { name: "New run" });
-    await waitFor(() => expect((within(form).getByLabelText("Agent") as HTMLSelectElement).value).toBe("verifier"));
+    // R8: no agent picker by default — the core routes from the prompt
+    expect(within(form).queryByLabelText("Agent")).toBeNull();
+    expect(form.textContent).toContain("Mises picks the right agent from your prompt.");
     await waitFor(() => expect(within(form).getByRole("button", { name: /^Model: Claude Code · opus/ })).toBeTruthy());
     expect(screen.queryByRole("dialog")).toBeNull();             // inline, not the dialog
     fireEvent.input(within(form).getByLabelText("Task"), { target: { value: "stiffen the upright" } });
     fireEvent.keyDown(within(form).getByLabelText("Task"), { key: "Enter" });
     await waitFor(() => expect(c.createRun).toHaveBeenCalledTimes(1));
     expect(c.createRun.mock.calls[0][0]).toEqual({
-      agent: "verifier", prompt: "stiffen the upright", model_ref: "claude-code/opus", edit_scope: ["*"], read_scope: ["*"],
+      prompt: "stiffen the upright", model_ref: "claude-code/opus", edit_scope: ["*"], read_scope: ["*"],
     });
     await waitFor(() => expect(composerOpen.value).toBe(false));
     expect(selectedRunId.value).toBe("new1");
+  });
+
+  it("use_a_specific_agent_override_sends_that_agent", async () => {
+    const c = client();
+    render(<ConsolePane />);
+    await frame();
+    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    const form = screen.getByRole("form", { name: "New run" });
+    await waitFor(() => expect(within(form).getByRole("button", { name: /^Model: Claude Code · opus/ })).toBeTruthy());
+    fireEvent.click(within(form).getByRole("button", { name: "More options" }));
+    fireEvent.click(within(form).getByRole("menuitem", { name: "Use a specific agent…" }));
+    fireEvent.change(within(form).getByLabelText("Choose an agent"), { target: { value: "designer" } });
+    expect((within(form).getByLabelText("Agent") as HTMLSelectElement).value).toBe("designer");
+    fireEvent.input(within(form).getByLabelText("Task"), { target: { value: "make a bracket" } });
+    fireEvent.click(within(form).getByRole("button", { name: "Start" }));
+    await waitFor(() => expect(c.createRun).toHaveBeenCalledTimes(1));
+    expect(c.createRun.mock.calls[0][0].agent).toBe("designer");
   });
 
   it("parts_directory_chips_show_and_their_ids_are_added_to_the_task", async () => {
@@ -324,7 +375,6 @@ describe("inline composer", () => {
     const chips = within(form).getByRole("list", { name: "Context for the agent" });
     expect(chips.textContent).toContain("2207 brushless motor class");
     fireEvent.click(within(chips).getByRole("button", { name: "Remove 608 bearing" }));
-    await waitFor(() => expect((within(form).getByLabelText("Agent") as HTMLSelectElement).value).toBe("verifier"));
     await waitFor(() => expect(within(form).getByRole("button", { name: /^Model: Claude Code · opus/ })).toBeTruthy());
     fireEvent.input(within(form).getByLabelText("Task"), { target: { value: "design a motor mount" } });
     fireEvent.keyDown(within(form).getByLabelText("Task"), { key: "Enter" });
@@ -362,6 +412,37 @@ describe("inline composer", () => {
     await frame();
     expect(within(form).getByRole("button", { name: /^Model: gemini · gemini-3-pro/ })).toBeTruthy();
     expect(c.createRun).not.toHaveBeenCalled();
+  });
+
+  it("a_prompt_to_a_busy_lead_is_queued_and_shows_that_lead", async () => {
+    const c = client({ createRun: vi.fn().mockResolvedValue({ run_id: "lead1", role: "lead", new_lead: false, queued: true, message_id: "msg_1", position: 1,
+      routed: { agent: "engineer", reason: "system build", confidence: 0.85 }, notes: [] }) });
+    setRuns([run("lead1", { status: "running", role: "lead" })]);
+    render(<ConsolePane />);
+    await frame();
+    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    const form = screen.getByRole("form", { name: "New run" });
+    await waitFor(() => expect(within(form).getByRole("button", { name: /^Model: Claude Code · opus/ })).toBeTruthy());
+    // usable while the lead works: Start is enabled, nothing says "still working"
+    fireEvent.input(within(form).getByLabelText("Task"), { target: { value: "paint it red" } });
+    expect((within(form).getByRole("button", { name: "Start" }) as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(within(form).getByRole("button", { name: "Start" }));
+    await waitFor(() => expect(c.createRun).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(selectedRunId.value).toBe("lead1"));
+    expect(composerOpen.value).toBe(false);
+  });
+
+  it("a_full_lead_queue_429_says_so_plainly_and_keeps_the_text", async () => {
+    client({ createRun: vi.fn().mockRejectedValue(new CoreError("invalid_input", "the lead agent already has 20 messages waiting", { status: 429, hint: "wait for it to work through them, or cancel it" })) });
+    render(<ConsolePane />);
+    await frame();
+    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    const form = screen.getByRole("form", { name: "New run" });
+    await waitFor(() => expect(within(form).getByRole("button", { name: /^Model: Claude Code · opus/ })).toBeTruthy());
+    fireEvent.input(within(form).getByLabelText("Task"), { target: { value: "one more" } });
+    fireEvent.click(within(form).getByRole("button", { name: "Start" }));
+    await waitFor(() => expect(within(form).getByRole("alert").textContent).toMatch(/full queue of messages waiting/));
+    expect((within(form).getByLabelText("Task") as HTMLTextAreaElement).value).toBe("one more");
   });
 
   it("a_core_error_shows_inline_and_keeps_the_task", async () => {

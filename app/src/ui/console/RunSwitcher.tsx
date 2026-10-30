@@ -14,6 +14,7 @@ import { activityByRun } from "../../state/activity";
 import { openAgentManager } from "../agents/manager";
 import { buildRuns, effectiveRunId, labelOf, offListRuns, runLabels } from "./derived";
 import { shownPending } from "./queued";
+import { RoutingChip } from "./RoutingChip";
 import { composerOpen, setConsoleView } from "./view";
 import { ModelWarning } from "./cards/critique/ModelWarning";
 
@@ -83,7 +84,7 @@ export function RunSwitcher(): JSX.Element {
           <Button variant="ghost" aria-label={`Stop ${label}`} title="stop this run" onClick={() => cancelRun(current.id)}>Stop</Button>
         )}
         <Button variant="ghost" onClick={() => { composerOpen.value = true; }}>New</Button>
-        <Button variant="ghost" title="Agent manager (⇧⌘A)" onClick={() => openAgentManager("runs")}>Manage</Button>
+        <Button variant="ghost" title="Agent manager (⇧⌘A)" onClick={() => openAgentManager("agents")}>Manage</Button>
         <Button variant="ghost" title="Pages this agent opened" disabled={!current} onClick={() => setConsoleView("browser", false)}>Browser</Button>
         <Button variant="ghost" aria-pressed="false" onClick={() => setConsoleView("details")}>Full log</Button>
       </div>
@@ -91,6 +92,7 @@ export function RunSwitcher(): JSX.Element {
         <div class="cv-who faint text">
           <span>{`${providerLabel(current.provider)} · ${current.model}`}</span>
           <ModelWarning run={current} />
+          {current.routed && <RoutingChip routed={current.routed} />}
         </div>
       )}
       {open && (

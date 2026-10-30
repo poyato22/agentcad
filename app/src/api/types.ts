@@ -48,7 +48,26 @@ export interface AgentRun {
   /** Plan 8 G1: how shape-heavy the prompt looks (the router prefers strong vision models for it).
    *  Kept raw: ui/console/cards/critique/shapeWarning.ts reads a score, a level or {level, score, keywords}. */
   shape_complexity?: unknown;
+  /** How the router chose this run's agent (POST /runs with no `agent`). A sub-agent's task
+   *  title is its `title` (core lead.task_title). */
+  routed?: Routed | null;
 }
+
+/** A message waiting for a busy lead (core lead.queued_messages), oldest first. */
+export interface QueuedMessage { message_id: string; text: string; position: number }
+
+/** GET /projects/{id}/agents node (core lead._node): a run_view whose `task` is the run's task
+ *  title (its title, else its prompt's first line), plus its waiting messages, live activity
+ *  (the agent_activity shape, untrusted; null when none) and its sub-agents, oldest first. */
+export interface AgentNode extends AgentRun { queued: QueuedMessage[]; activity: unknown; children: AgentNode[] }
+
+/** GET /projects/{id}/agents (core lead.agents_view): the build's lead with its sub-tree, and its
+ *  other top-level runs (started with an explicit agent, earlier leads). */
+export interface AgentsView { project_id: string; lead: AgentNode | null; others: AgentNode[] }
+
+/** The router's choice when POST /runs is sent with no `agent` (U3c): the agent it picked, a short
+ *  reason ("system build"), and a 0–1 confidence. Shown in the UI as a small chip. */
+export interface Routed { agent: string; reason: string; confidence: number }
 
 /** Rolled-up run cost (run_view `cost`). */
 export interface RunCost { usd: number | null; tokens: number }
@@ -113,7 +132,46 @@ export interface Question { question_id: string; run_id: string; question: strin
 /** `sketch_id` (POST /sketches): the run gets that sketch as data (and its images for vision models).
  *  `project_id` (C1): the build the run belongs to. The app always sends the active build, so a
  *  run never lands under the profile's build while a tab switch is still being saved. */
-export interface NewRunBody { agent: string; prompt: string; model_ref?: string | null; edit_scope?: string[]; read_scope?: string[]; sketch_id?: string; project_id?: string }
+export interface NewRunBody { agent?: string; prompt: string; model_ref?: string | null; edit_scope?: string[]; read_scope?: string[]; sketch_id?: string; project_id?: string }
+
+/** POST /runs answer. With no `agent` (U3c lead.submit) it also carries the routing, `new_lead`,
+ *  `queued` (the lead was busy: the message waits, delivered at its turn boundary — then
+ *  `message_id` and `position`), and `notes` (what the existing lead ignored, e.g. a model). */
+export interface CreateRunResult {
+  run_id: string; routed?: Routed | null; role?: "lead" | null; new_lead?: boolean; queued?: boolean;
+  message_id?: string | null; position?: number | null; notes?: string[];
+}
+
+/** `agent_announce` event kinds (U3c announce.KINDS): the clear things an agent did, shown as a
+ *  card in the thread (R16) whatever the model says. view_presented / critique_round are Plan 8
+ *  G1's (geometry quality) cards, their fields in `ref`. */
+export const ANNOUNCE_KINDS = ["part_created", "agent_spawned", "assembly_added", "bom_added", "part_shown", "drawing_imported", "view_presented", "critique_round"] as const;
+export type AnnounceKind = (typeof ANNOUNCE_KINDS)[number];
+
+/** Where an announcement points: a part, a child run, an assembly instance, a BOM row, a part-card
+ *  snapshot, a drawing import. All optional; the card jumps to whichever it carries. */
+export interface AnnounceRef {
+  part_id?: string | null; run_id?: string | null; instance_id?: string | null;
+  bom_id?: string | null; snapshot_id?: string | null; catalog_id?: string | null; import_id?: string | null;
+}
+
+/** Parsed `agent_announce` event (U3c). `title` is a short line; `detail` an optional second line.
+ *  Both are untrusted model/tool text and render as text. */
+export interface Announcement {
+  id: string; run_id: string;
+  /** One of ANNOUNCE_KINDS; a kind from a newer core still shows (with a generic icon). */
+  kind: AnnounceKind | (string & {});
+  title: string; detail: string | null; ref: AnnounceRef; ts: number;
+}
+
+/** One move of an agent's animation: a joint from → to (joint values: revolute deg, slider mm,
+ *  cylindrical [deg, mm], ball [rx, ry, rz]) over duration_s. */
+export interface AnimateStep { joint_id: string; from: number | number[]; to: number | number[]; duration_s: number }
+
+/** `assembly_animate` event (U3c assembly_animate, R19), normalised: the single-joint form
+ *  {joint_id, from, to, duration_s} and the `sequence` form both become `steps`, played one after
+ *  another, `loops` times (1 = once). */
+export interface AnimateSpec { project_id: string | null; steps: AnimateStep[]; loops: number }
 
 /** edited_payload is not sent in v1. */
 export interface DecisionBody { payload_hash: string; approve: boolean }

@@ -447,17 +447,82 @@ export class AssemblyController {
   }
 
   private sweepRestore: { jointId: string; value: JointValue } | null = null;
+  /** play(): every joint it touched and the value to put back, and who hears a natural end. */
+  private playRestore: Map<string, JointValue> | null = null;
+  private playEnd: (() => void) | null = null;
+
+  /**
+   * An agent's animation (Plan 7 R19, `assembly_animate`): each step moves its joint from → to
+   * over duration_s, one after another, the whole sequence `loops` times; then every joint it
+   * touched goes back to where it was (as on stopAnimate). A preview: nothing is written. Steps
+   * naming a joint this assembly doesn't have are skipped; false when none is left. A new play
+   * replaces the one running (never toggles it off).
+   */
+  play(steps: readonly { joint_id: string; from: JointValue; to: JointValue; duration_s: number }[],
+    opts: { loops?: number; onEnd?: () => void } = {}): boolean {
+    const usable = steps.filter((s) => this.joint(s.joint_id) !== null);
+    if (usable.length === 0) return false;
+    this.stopAnimate();
+    const loops = Math.max(1, Math.floor(opts.loops ?? 1));
+    const restore = new Map<string, JointValue>();
+    for (const s of usable) {
+      if (!restore.has(s.joint_id)) restore.set(s.joint_id, this.values.peek()[s.joint_id] ?? (this.joint(s.joint_id) as Joint).value);
+    }
+    this.playRestore = restore;
+    this.playEnd = opts.onEnd ?? null;
+    const durs = usable.map((s) => Math.max(0.05, s.duration_s) * 1000);
+    const cycle = durs.reduce((a, b) => a + b, 0);
+    const t0 = this.clock.now();
+    this.animating.value = usable[0].joint_id;
+    const frame = () => {
+      const el = this.clock.now() - t0;
+      if (el >= cycle * loops) { this.finishPlay(); return; }
+      let u = el % cycle;
+      let i = 0;
+      while (i < usable.length - 1 && u >= durs[i]) { u -= durs[i]; i++; }
+      // this cycle's pose: steps before i at their end, step i on its way, later ones at their start
+      const pose = new Map<string, JointValue>();
+      usable.forEach((s, k) => {
+        const j = this.joint(s.joint_id) as Joint;
+        if (k < i) pose.set(s.joint_id, clampJoint(s.to, j.limits));
+        else if (k === i) pose.set(s.joint_id, clampJoint(lerpValue(s.from, s.to, ease(Math.min(1, u / durs[i]))), j.limits));
+        else if (!pose.has(s.joint_id)) pose.set(s.joint_id, clampJoint(s.from, j.limits));
+      });
+      const next = { ...this.values.peek() };
+      for (const [id, v] of pose) { this.moving.set(id, v); next[id] = v; }
+      batch(() => {
+        if (this.animating.peek() !== usable[i].joint_id) this.animating.value = usable[i].joint_id;
+        this.values.value = next;
+      });
+      this.predict();
+      this.cancelSweep = this.clock.frame(frame);
+    };
+    frame();
+    return true;
+  }
+
+  private finishPlay(): void {
+    const end = this.playEnd;
+    this.playEnd = null;
+    this.stopAnimate();
+    end?.();
+  }
 
   stopAnimate(): void {
     this.cancelSweep?.();
     this.cancelSweep = null;
     const r = this.sweepRestore;
     this.sweepRestore = null;
+    const pr = this.playRestore;
+    this.playRestore = null;
+    this.playEnd = null;
     if (this.animating.peek() === null) return;
     this.animating.value = null;
-    if (r) {
-      this.moving.delete(r.jointId);
-      this.values.value = { ...this.values.peek(), [r.jointId]: r.value };
+    if (r || pr) {
+      const next = { ...this.values.peek() };
+      if (r) { this.moving.delete(r.jointId); next[r.jointId] = r.value; }
+      for (const [id, v] of pr ?? []) { this.moving.delete(id); next[id] = v; }
+      this.values.value = next;
       this.predict();
     }
     this.settle();
@@ -716,6 +781,18 @@ export function nameProblem(name: string): string | null {
 /** The name a part gets when added: its label, else its id in words. */
 export function defaultInstanceName(part: Pick<AssemblyPart, "part_id" | "label">): string {
   return (part.label ?? part.part_id).replace(/[_-]+/g, " ").trim();
+}
+
+/** from + (to − from)·f, per component (a scalar meets a list as its first component). */
+export function lerpValue(from: JointValue, to: JointValue, f: number): JointValue {
+  if (!Array.isArray(from) && !Array.isArray(to)) return from + (to - from) * f;
+  const a = Array.isArray(from) ? from : [from];
+  const b = Array.isArray(to) ? to : [to];
+  return Array.from({ length: Math.max(a.length, b.length) }, (_, i) => {
+    const x = a[i] ?? a[a.length - 1] ?? 0;
+    const y = b[i] ?? b[b.length - 1] ?? 0;
+    return x + (y - x) * f;
+  });
 }
 
 function clampJoint(v: JointValue, limits: readonly number[] | null): JointValue {

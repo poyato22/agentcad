@@ -23,6 +23,6 @@ describe("ActivityPill", () => {
     expect(pill.getAttribute("data-mode")).toBe("thinking");
     fireEvent.click(pill);
     expect(agentManagerOpen.value).toBe(true);
-    expect(agentManagerTab.value).toBe("runs");
+    expect(agentManagerTab.value).toBe("agents");
   });
 });

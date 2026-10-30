@@ -264,6 +264,21 @@ function withBuildTabs(setup: FakeSetup, b: BuildsScenario | undefined): FakeSet
 const now = () => Date.now() / 1000;
 const hex = (bytes: number) => randomBytes(bytes).toString("hex");
 
+/** The core's cheap prompt classifier (U3c), as a rules-only stand-in. Falls back to the first
+ *  available agent when its first choice isn't registered, so a thin scenario still routes. */
+export function routeAgent(prompt: string, available: readonly string[]): { agent: string; reason: string; confidence: number } {
+  const p = prompt.toLowerCase();
+  const pick = (names: string[], reason: string, confidence: number) => {
+    const agent = names.find((n) => available.includes(n)) ?? available[0] ?? names[0];
+    return { agent, reason, confidence };
+  };
+  if (/\b(drawing|dxf|blueprint|\.pdf)\b/.test(p)) return pick(["drawing-import", "engineer"], "drawing import", 0.9);
+  if (/\b(test|analy[sz]e|simulat|stress|fea|load)\b/.test(p)) return pick(["sim", "engineer"], "test / analyze", 0.8);
+  if (/\b(check|review|verify|validate)\b/.test(p)) return pick(["verifier", "engineer"], "check / review", 0.8);
+  if (/\b(system|assembly|robot|mechanism|arm|gearbox|drivetrain|chassis)\b/.test(p)) return pick(["engineer", "designer"], "system build", 0.85);
+  return pick(["designer", "engineer"], "single part", 0.6);
+}
+
 // ---- HTTP helpers
 
 export class HttpError extends Error {
@@ -388,6 +403,8 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       const st = d.status;
       if (r && (st === "done" || st === "failed" || st === "cancelled" || st === "running")) {
         state.runs.set(r.id, { ...r, status: st, updated_at: now() });
+        // U3c: a lead's waiting messages are delivered at its turn boundary
+        if (st !== "running" && leadQueues.has(r.id)) { const id = r.id; setTimeout(() => drainLead(id, st), 0); }
       }
     } else if (ev.type === "run_started" && ev.run_id && d.resumed === true) {
       const r = state.runs.get(ev.run_id);
@@ -399,6 +416,11 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     const ev: MisesEvent = { type: evIn.type, run_id: evIn.run_id ?? null, data: evIn.data ?? {}, ts: evIn.ts ?? now() };
     if (extras.run) state.runs.set(extras.run.id, { external: false, session_ref: null, ...extras.run });
     const ids = (extras.steps ?? []).map((s) => appendStep(s, ev.run_id).id);
+    // like core announce.announce: every announcement is also a DECISION step on its run, so a
+    // reloaded thread rebuilds the cards
+    if (ev.type === "agent_announce" && ev.run_id && !(extras.steps ?? []).some((s) => s.payload && "agent_announce" in s.payload)) {
+      ids.push(appendStep({ kind: "decision", payload: { agent_announce: ev.data } }, ev.run_id).id);
+    }
     if (extras.approval) state.approvals.set(extras.approval.id, extras.approval);
     if (extras.parts) state.parts = extras.parts;
     if (extras.glb) state.glb = { ...state.glb, ...extras.glb };
@@ -475,12 +497,12 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       ...r,
       project_id: r.project_id ?? state.assembly.projects[0]?.id ?? null,
       title: r.title ?? null, pinned: r.pinned ?? false, archived: r.archived ?? false,
+      // U3c store.AgentRun: lead/sub role and the router's choice, null on an ordinary run (a
+      // sub-agent's task title is its `title`)
+      role: r.role ?? null, routed: r.routed ?? null,
       parent_run_id: r.parent_id,
       last_activity_at: r.last_activity_at ?? r.updated_at,
-      // Plan 7 U3c (lead / sub and how the router chose) and Plan 8 G1 (the shape hint): null
-      // on a plain run, as the core's AgentRun has them
-      role: r.role ?? null,
-      ...{ routed: (r as { routed?: unknown }).routed ?? null },
+      // Plan 8 G1 (the shape hint): null on a plain run, as the core's AgentRun has it
       shape_complexity: (r as { shape_complexity?: unknown }).shape_complexity ?? null,
       cost: {
         usd: r.usd, tokens: r.input_tokens + r.output_tokens,
@@ -550,7 +572,10 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
   }
   /** The orchestrator → worker forest (ui runs excluded), each node run_view-shaped. */
   function runsTree(projectId: string | null): (AgentRun & { children: unknown[] })[] {
-    const runs = [...state.runs.values()].filter((r) => r.provider !== "ui" && (!projectId || r.project_id === projectId));
+    // like run_view, a run with no stored build belongs to the default build; filter on that same
+    // effective id so a project-scoped tree (GET /projects/{id}/agents) finds it
+    const defPid = state.assembly.projects[0]?.id ?? null;
+    const runs = [...state.runs.values()].filter((r) => r.provider !== "ui" && (!projectId || (r.project_id ?? defPid) === projectId));
     const nodes = new Map(runs.map((r) => [r.id, { ...runView(r), children: [] as unknown[] }]));
     const roots: (AgentRun & { children: unknown[] })[] = [];
     for (const r of runs) {
@@ -560,6 +585,84 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       else roots.push(node);
     }
     return roots;
+  }
+
+  // ---- Plan 7 (U3c lead.py): one lead per build, its message queue, the agents view
+  /** U3c lead.QUEUE_MAX: waiting messages a lead holds before POST /runs answers 429. */
+  const QUEUE_MAX = 20;
+  /** Waiting messages per lead, oldest first. */
+  const leadQueues = new Map<string, { message_id: string; text: string }[]>();
+  const effPid = (r: AgentRun): string | null => r.project_id ?? state.assembly.projects[0]?.id ?? null;
+  /** The build's newest non-archived lead (lead.find_lead). */
+  function findLead(projectId: string | null): AgentRun | null {
+    const leads = [...state.runs.values()].filter((r) => r.role === "lead" && !r.archived && effPid(r) === projectId);
+    return leads.sort((a, b) => b.created_at - a.created_at)[0] ?? null;
+  }
+  /** lead.task_title: the run's title, else its prompt's first line, clipped to 60 at a word. */
+  function taskTitle(r: AgentRun): string {
+    const t = (r.title ?? "").split(/\s+/).join(" ").trim();
+    if (t) return t;
+    const line = (r.task.trim().split("\n")[0] ?? "").split(/\s+/).join(" ").trim();
+    if (line.length <= 60) return line;
+    const cut = line.slice(0, 60);
+    return (cut.lastIndexOf(" ") > 20 ? cut.slice(0, cut.lastIndexOf(" ")) : cut).trimEnd() + "…";
+  }
+  function agentNode(r: AgentRun, kids: Map<string, AgentRun[]>): Record<string, unknown> {
+    return {
+      ...runView(r), task: taskTitle(r),
+      queued: (leadQueues.get(r.id) ?? []).map((m, i) => ({ message_id: m.message_id, text: m.text, position: i + 1 })),
+      activity: lastActivity.get(r.id) ?? null,
+      children: (kids.get(r.id) ?? []).map((c) => agentNode(c, kids)),
+    };
+  }
+  function agentsView(projectId: string): { project_id: string; lead: unknown; others: unknown[] } {
+    const runs = [...state.runs.values()].filter((r) => r.provider !== "ui" && effPid(r) === projectId)
+      .sort((a, b) => a.created_at - b.created_at);
+    const ids = new Set(runs.map((r) => r.id));
+    const kids = new Map<string, AgentRun[]>();
+    for (const r of runs) if (r.parent_id !== null && ids.has(r.parent_id)) kids.set(r.parent_id, [...(kids.get(r.parent_id) ?? []), r]);
+    const lead = findLead(projectId);
+    const roots = runs.filter((r) => r.parent_id === null || !ids.has(r.parent_id)).reverse();   // newest first, like list_runs
+    return {
+      project_id: projectId,
+      lead: lead ? agentNode(lead, kids) : null,
+      others: roots.filter((r) => !lead || r.id !== lead.id).map((r) => agentNode(r, kids)),
+    };
+  }
+  const leadBusy = (r: AgentRun) => r.status === "running" || r.status === "queued";
+  /** lead._enqueue: the message waits; a DECISION {queued_message} step and message_queued. */
+  function enqueue(lead: AgentRun, text: string, routed: { agent: string; reason: string; confidence: number }) {
+    const q = leadQueues.get(lead.id) ?? [];
+    if (q.length >= QUEUE_MAX) throw mises("invalid_input", `the lead agent already has ${q.length} messages waiting`, "wait for it to work through them, or cancel it", 429);
+    const mid = `msg_${hex(6)}`;
+    q.push({ message_id: mid, text });
+    leadQueues.set(lead.id, q);
+    appendStep({ kind: "decision", payload: { queued_message: { message_id: mid, text, position: q.length, routed } } }, lead.id);
+    emit({ type: "message_queued", run_id: lead.id, data: { run_id: lead.id, message_id: mid, text, position: q.length } });
+    return { message_id: mid, position: q.length };
+  }
+  /** The lead's turn ended: deliver its next queued message (lead._drain), or drop them all on a cancel. */
+  function drainLead(id: string, status: string) {
+    const q = leadQueues.get(id);
+    if (!q?.length) return;
+    if (status === "cancelled") {
+      for (const m of q) {
+        appendStep({ kind: "decision", payload: { queued_message_dropped: { message_id: m.message_id, reason: "the lead was cancelled" } } }, id);
+        emit({ type: "message_dropped", run_id: id, data: { run_id: id, message_id: m.message_id, reason: "cancelled" } });
+      }
+      leadQueues.delete(id);
+      return;
+    }
+    const m = q.shift() as { message_id: string; text: string };
+    if (!q.length) leadQueues.delete(id);
+    const r = state.runs.get(id);
+    if (!r) return;
+    // core order: the queued step is settled, then the message is sent (its user step)
+    appendStep({ kind: "decision", payload: { queued_message_delivered: { message_id: m.message_id } } }, id);
+    appendStep({ kind: "message", payload: { role: "user", text: m.text } }, id);
+    state.runs.set(id, { ...r, status: "running", updated_at: now() });
+    emit({ type: "message_delivered", run_id: id, data: { run_id: id, message_id: m.message_id } });
+    emit({ type: "run_started", run_id: id, data: { resumed: true } });
   }
 
   function expireIfDue(a: Approval): Approval {
@@ -608,8 +711,13 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     {
       method: "POST", re: /^\/runs$/, h: (_m, _q, raw) => {
         const b = asBody(raw);
-        const agent = req(b, "agent", "string");
         const prompt = req(b, "prompt", "string");
+        // U3c: with no `agent` the core routes to one from the prompt; the answer carries `routed`.
+        if (b.agent !== undefined && b.agent !== null && typeof b.agent !== "string") throw wrongType("agent", "string", b.agent);
+        // like the core: a sketch run with no agent builds with the designer, not the router
+        const named = typeof b.agent === "string" && b.agent ? b.agent : b.sketch_id ? "designer" : null;
+        const routed = named ? null : routeAgent(prompt, state.agents.map((a) => a.name));
+        const agent = routed ? routed.agent : (named as string);
         const modelRef = b.model_ref;
         if (modelRef !== undefined && modelRef !== null && typeof modelRef !== "string") throw wrongType("model_ref", "string", modelRef);
         strList(b, "edit_scope", ["*"]);
@@ -619,6 +727,17 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         if (projectId !== undefined && projectId !== null && typeof projectId !== "string") throw wrongType("project_id", "string", projectId);
         if (typeof projectId === "string" && !state.builds.builds.some((x) => x.id === projectId && x.trashed_at === null)) {
           throw mises("not_found", `unknown build: ${projectId}`);
+        }
+        // U3c lead.submit: a routed prompt goes to the build's lead — sent now when it is idle,
+        // queued behind its turn when busy (429 past QUEUE_MAX), else a new lead is started
+        const lead = routed ? findLead(typeof projectId === "string" ? projectId : state.assembly.projects[0]?.id ?? null) : null;
+        if (routed && lead) {
+          const base = { run_id: lead.id, routed, role: "lead", new_lead: false, notes: [] as string[] };
+          if (leadBusy(lead) || leadQueues.get(lead.id)?.length) return { ...base, queued: true, ...enqueue(lead, prompt, routed) };
+          appendStep({ kind: "message", payload: { role: "user", text: prompt } }, lead.id);
+          state.runs.set(lead.id, { ...lead, status: "running", updated_at: now() });
+          emit({ type: "run_started", run_id: lead.id, data: { resumed: true } });
+          return { ...base, queued: false };
         }
         const def = state.agents.find((a) => a.name === agent);
         if (!def) throw mises("not_found", `unknown agent: ${agent}`, `agents: ${state.agents.map((a) => a.name).join(", ")}`);
@@ -643,15 +762,18 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         const queued = limit !== undefined && working >= limit;
         const run = newRun(agent, vendor, model, prompt, claude, queued ? "queued" : "running");
         if (typeof projectId === "string") run.project_id = projectId;
+        // U3c: a routed run (no agent named) becomes the build's long-lived lead
+        if (routed) { run.role = "lead"; run.routed = routed; }
+        const answer = routed ? { run_id: run.id, routed, role: "lead", new_lead: true, queued: false, notes: [] as string[] } : { run_id: run.id };
         appendStep({ kind: "message", payload: { role: "user", text: prompt } }, run.id);
         if (queued) {
           emit({ type: "run_queued", run_id: run.id, data: { agent, provider: vendor, model, limit } });
-          return { run_id: run.id };
+          return answer;
         }
         // Plan 8 G1: the core estimates the prompt's shape complexity on start (null: unknown here)
         emit({ type: "run_started", run_id: run.id, data: { agent, provider: vendor, model, parent_id: null, shape_complexity: { score: 0, level: "low", signals: [], vision_recommended: false }, ...(claude ? { external: true } : {}) } });
         play(state.on.create_run, run.id);
-        return { run_id: run.id };
+        return answer;
       },
     },
     {
@@ -693,6 +815,16 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       method: "GET", re: /^\/runs\/tree$/, h: (_m, q) => {
         const projectId = q.get("project_id");
         return runsTree(projectId);
+      },
+    },
+    {
+      // U3c lead.agents_view: {project_id, lead: node|null, others: [node]}. A node is a run_view
+      // plus `task` (its task title), `queued` (waiting messages), `activity` and `children`
+      // (oldest first); `others` are the build's other top-level runs.
+      method: "GET", re: /^\/projects\/([^/]+)\/agents$/, h: (m) => {
+        const projectId = decodeURIComponent(m[1]);
+        if (!state.builds.builds.some((x) => x.id === projectId)) throw mises("not_found", `unknown build: ${projectId}`);
+        return agentsView(projectId);
       },
     },
     {
@@ -1195,7 +1327,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     dropSockets();
     stopPrinting(state.print);
     // the live activity belongs to the old scenario's runs (GET /runs/{id} serves it, C-3)
-    lastActivity.clear(); beforeWaiting.clear(); askedAt.clear();
+    lastActivity.clear(); beforeWaiting.clear(); askedAt.clear(); leadQueues.clear();
     stopping.clear();
     state = stateFrom(loadScenario(scenario), token ?? state.token);
   }

@@ -4,6 +4,7 @@
 import type { Page } from "@playwright/test";
 import type { AgentRun } from "../../src/api/types";
 import { expect, test } from "./fixtures";
+import { CORE_URL } from "./ports";
 
 const DES = "b7c79a57cbb4";       // the scenario's running designer run
 
@@ -20,7 +21,7 @@ async function open(page: Page) {
   await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
 }
 const manager = (page: Page) => page.getByRole("dialog", { name: "Agent manager" });
-const row = (page: Page, id: string) => manager(page).locator(`[data-run-row="${id}"]`);
+const row = (page: Page, id: string) => manager(page).locator(`[data-agent-row="${id}"]`);
 
 test.beforeEach(async ({ page, fake }) => {
   await fake.reset("agent-ux");
@@ -35,27 +36,62 @@ test("cmd_shift_a_opens_the_manager_with_the_orchestrator_worker_tree_and_esc_cl
     { run: run("work01", { parent_id: "orch01", agent: "verifier", task: "check arm stiffness" }) });
   await page.keyboard.press("Meta+Shift+KeyA");
   await expect(manager(page)).toBeVisible();
-  await expect(row(page, "orch01")).toHaveAttribute("aria-level", "1");
-  await expect(row(page, "work01")).toHaveAttribute("aria-level", "2");
-  await expect(row(page, "work01")).toContainText("verifier · fake-model");
+  // R10: one view — every build's agents, a worker indented under the run that spawned it
+  await expect(manager(page).getByRole("tablist")).toHaveCount(0);
+  await expect(row(page, "orch01")).toBeVisible();
+  await expect(row(page, "work01")).toBeVisible();
+  await expect(row(page, "work01")).toHaveAttribute("style", /--depth:\s*1/);
+  await expect(row(page, "work01")).toContainText("verifier");
   await expect(row(page, "orch01")).toContainText("$0.03 · 1.5k tokens");
-  // tabs by keyboard
-  await manager(page).getByRole("tab", { name: "Runs" }).focus();
+  // I7: the dense tree and the definitions sit behind Advanced; tabs by keyboard there
+  await manager(page).getByRole("button", { name: "Advanced ▸" }).click();
+  await manager(page).getByRole("tab", { name: "Agents" }).focus();
   await page.keyboard.press("ArrowRight");
-  await expect(manager(page).getByRole("tab", { name: "Agents" })).toHaveAttribute("aria-selected", "true");
+  await expect(manager(page).getByRole("tab", { name: "All runs" })).toHaveAttribute("aria-selected", "true");
   await page.keyboard.press("Escape");
   await expect(manager(page)).toHaveCount(0);
+});
+
+test("the_build_lead_with_its_titled_sub_agent_and_a_message_queued_while_it_works", async ({ page, fake }) => {
+  await open(page);
+  // a routed prompt starts the build's lead; it spawns a titled sub-agent and keeps working
+  await page.getByRole("button", { name: "New", exact: true }).click();
+  const form = page.getByRole("form", { name: "New run" });
+  await form.getByLabel("Task").fill("Build me a drone");
+  await form.getByRole("button", { name: "Start" }).click();     // waits for the model to prefill
+  await expect(form).toHaveCount(0);
+  const runs = await (await fetch(`${CORE_URL}/runs?limit=50`, { headers: { Authorization: `Bearer ${fake.token}` } })).json() as AgentRun[];
+  const leadRun = runs.find((r) => r.role === "lead") as AgentRun;
+  await fake.emit({ type: "agent_announce", run_id: leadRun.id, data: { run_id: leadRun.id, kind: "agent_spawned", title: "Spawned designer: Design motor mount", detail: "", ref: { agent: "designer", parent_id: leadRun.id, run_id: "sub01" } } },
+    { run: run("sub01", { parent_id: leadRun.id, role: "sub", title: "Design motor mount", project_id: leadRun.project_id, status: "running" }) });
+  // R16: the card shows in the lead's thread
+  await expect(page.locator("[data-announce=agent_spawned]")).toContainText("Started an agent");
+  // I2: the lead is still working — the composer stays usable and the message queues
+  await page.getByRole("button", { name: "New", exact: true }).click();
+  await form.getByLabel("Task").fill("paint it red");
+  await form.getByRole("button", { name: "Start" }).click();
+  const queued = page.locator("[data-kind=queued]", { hasText: "paint it red" });
+  await expect(queued.locator("[data-queued-chip]")).toContainText("queued · delivered when the agent finishes this step");
+  // the lead finishes its step: the message is delivered, in place
+  await fake.emit({ type: "run_finished", run_id: leadRun.id, data: { status: "done" } });
+  await expect(queued).toHaveAttribute("data-queued-status", "delivered");
+  await expect(page.locator("[data-msg=user]", { hasText: "paint it red" })).toHaveCount(1);
+  // R10: the manager shows the lead on top, its sub-agent by task title beneath
+  await page.keyboard.press("Meta+Shift+KeyA");
+  await expect(row(page, leadRun.id).locator("[data-lead]")).toBeVisible();
+  await expect(row(page, "sub01")).toContainText("Design motor mount");
+  await expect(row(page, "sub01")).toHaveAttribute("style", /--depth:\s*1/);
 });
 
 test("a_working_run_is_refused_in_plain_words_then_cancel_and_delete_removes_it", async ({ page, fake }) => {
   await open(page);
   await page.getByRole("button", { name: "Manage", exact: true }).click();
   const r = row(page, DES);
-  await r.getByRole("button", { name: "Delete", exact: true }).click();
-  await r.getByRole("button", { name: "Confirm delete" }).click();
+  await r.getByRole("button", { name: /^More for / }).click();
+  await r.getByRole("menuitem", { name: "Delete…" }).click();
+  await r.locator("[data-delete-confirm]").getByRole("button", { name: /^Delete / }).click();
   await expect(r.locator("[data-refusal=running]")).toContainText("This run is still working. Stop it first, or use Cancel and delete.");
   await r.getByRole("button", { name: "Cancel and delete" }).click();
-  await r.getByRole("button", { name: "Stop it and delete?" }).click();
   await expect(row(page, DES)).toHaveCount(0);
   const calls = await fake.calls();
   expect(calls.some((c) => c.method === "POST" && c.path === `/runs/${DES}/cancel`)).toBe(true);

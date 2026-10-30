@@ -2,6 +2,7 @@
 // requirement table (target, measured, pass / warn / fail, note); a row answered by a study links
 // to that study's immersive view, and ⌘[ / ⌘] there step through the review's other studies.
 import type { JSX } from "preact";
+import { useState } from "preact/hooks";
 import { Button } from "../../common/Button";
 import { Led } from "../../common/Led";
 import { Markup } from "../../markup/render";
@@ -12,6 +13,9 @@ import "./studycard.css";
 
 export function ReviewCard({ view }: { view: ReviewCallView }): JSX.Element {
   const r = view.review;
+  // R18: a requirement row with a note is collapsed to one line; clicking it reveals the note.
+  const [openRows, setOpenRows] = useState<ReadonlySet<number>>(new Set());
+  const toggle = (i: number) => setOpenRows((s) => { const n = new Set(s); if (n.has(i)) n.delete(i); else n.add(i); return n; });
   const ids = r ? [...new Set(r.studies.map((s) => s.sim_id).filter((x): x is string => typeof x === "string"))] : [];
   const open = (simId: string) => openImmersive({ simId, ids, origin: { agent: null, runId: view.runId, reason: "design review" } });
   const verdict = r?.verdict ?? (view.failed ? "fail" : null);
@@ -33,9 +37,18 @@ export function ReviewCard({ view }: { view: ReviewCallView }): JSX.Element {
           <thead><tr><th>requirement</th><th>target</th><th>measured</th><th>result</th><th><span class="sr-only">study</span></th></tr></thead>
           <tbody>
             {r.table.map((row, i) => (
-              <tr key={`${row.requirement_id ?? i}-${row.case ?? ""}`} data-testid="review-row" data-status={row.status} data-sim={row.sim_id ?? ""}>
-                <td class="text">{row.requirement_id ? <span class="faint">{row.requirement_id} </span> : null}{kindText(row.kind)}{row.study ? <span class="faint"> · {typeName(row.study)}{row.case && row.case !== row.study ? ` ${row.case}` : ""}</span> : null}
-                  {row.note && <div class="faint text scard-row-note" data-agent-text><Markup source={row.note} collapsible={false} /></div>}
+              <tr key={`${row.requirement_id ?? i}-${row.case ?? ""}`} data-testid="review-row" data-status={row.status} data-sim={row.sim_id ?? ""} data-expanded={openRows.has(i) ? "" : undefined}>
+                <td class="text">
+                  {row.note
+                    ? (
+                      <button type="button" class="scard-row-toggle" data-testid="review-row-toggle" aria-expanded={openRows.has(i)}
+                        aria-label={openRows.has(i) ? "Hide the note" : "Show the note"} onClick={() => toggle(i)}>
+                        <span class="scard-caret" aria-hidden="true">{openRows.has(i) ? "▾" : "▸"}</span>
+                        {row.requirement_id ? <span class="faint">{row.requirement_id} </span> : null}{kindText(row.kind)}{row.study ? <span class="faint"> · {typeName(row.study)}{row.case && row.case !== row.study ? ` ${row.case}` : ""}</span> : null}
+                      </button>
+                    )
+                    : <>{row.requirement_id ? <span class="faint">{row.requirement_id} </span> : null}{kindText(row.kind)}{row.study ? <span class="faint"> · {typeName(row.study)}{row.case && row.case !== row.study ? ` ${row.case}` : ""}</span> : null}</>}
+                  {row.note && openRows.has(i) && <div class="faint text scard-row-note" data-agent-text><Markup source={row.note} collapsible={false} /></div>}
                 </td>
                 <td>{fmtValue(row.target, row.unit)}</td>
                 <td>{fmtValue(row.measured, row.unit)}</td>

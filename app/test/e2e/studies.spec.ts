@@ -221,7 +221,13 @@ for (const theme of ["dark", "light"] as const) {
     await expect(wind.getByTestId("fidelity-note")).toHaveText("low fidelity (preview) · ±40% (validated)");
     const drop = page.locator("[data-testid=study-card][data-type=drop]");
     await expect(drop.getByTestId("error-band")).toHaveText("error band ±19.1%");
+    // R18: one turn's studies share one grid of compact cards; the chart opens on the card's expand
+    await expect(page.getByTestId("study-grid").first()).toBeVisible();
+    await expect(wind.getByTestId("card-chart")).toHaveCount(0);
+    await expect(wind.getByTestId("check")).toHaveCount(0);
     await wind.scrollIntoViewIfNeeded();
+    await wind.getByTestId("card-expand").click();
+    await expect(wind).toHaveAttribute("data-expanded", "");
     await expect(wind.getByTestId("card-chart")).toHaveAttribute("data-chart", "cd_vs_yaw");
     await expect(wind.getByTestId("study-thumb")).toHaveAttribute("data-state", "loaded");
     await page.locator("[data-region=console]").screenshot({ path: `test-results/a8-cards-${theme}.png` });
@@ -242,7 +248,7 @@ for (const theme of ["dark", "light"] as const) {
     const linked = await rows.evaluateAll((els) => [...new Set(els.map((e) => (e as HTMLElement).dataset.sim as string))]);
     expect(linked).toHaveLength(2);
     for (const sim of linked) {
-      await review.locator(`[data-testid=review-row][data-sim="${sim}"]`).first().getByRole("button").click();
+      await review.locator(`[data-testid=review-row][data-sim="${sim}"]`).first().getByRole("button", { name: /^Immersive view of the study for / }).click();
       await immersiveShows(page, sim);
       await page.keyboard.press("Escape");
       await expect(page.getByTestId("immersive")).toBeHidden();
@@ -258,6 +264,7 @@ for (const theme of ["dark", "light"] as const) {
     // a double-click on a card's chart opens it too
     const stat = page.locator("[data-testid=study-card][data-type=static]").first();
     await stat.scrollIntoViewIfNeeded();
+    await stat.getByTestId("card-expand").click();
     await stat.getByTestId("study-chart").dblclick();
     await immersiveShows(page);
   });

@@ -74,14 +74,51 @@ describe("inline study cards", () => {
     expect(within(wind).getByTestId("card-note").textContent).toMatch(/skin-friction estimate/);
     expect(wind.textContent).toContain("drag of the cube at 5 m/s");
     expect(wind.textContent).toContain("sim:"); // which agent ran it
-    expect(within(wind).getAllByTestId("check")[0].dataset.status).toBe("pass");
     expect(wind.textContent).toContain("GUIDE ONLY");
+    // R18: checks and the chart live behind the card's expand
+    fireEvent.click(within(wind).getByTestId("card-expand"));
+    expect(within(wind).getAllByTestId("check")[0].dataset.status).toBe("pass");
     const stat = cards.find((x) => x.dataset.type === "static")!;
     expect(within(stat).getAllByTestId("metric").map((m) => m.dataset.key)).toContain("safety_factor");
+    fireEvent.click(within(stat).getByTestId("card-expand"));
     await waitFor(() => expect(within(stat).getByTestId("card-chart").dataset.chart).toBe("von_mises_histogram"));
     await waitFor(() => expect(within(wind).getByTestId("card-chart").dataset.chart).toBe("cd_vs_yaw"));
     const modal = cards.find((x) => x.dataset.type === "modal" && x.textContent?.includes("12k rpm"))!;
+    fireEvent.click(within(modal).getByTestId("card-expand"));
     await waitFor(() => expect(within(modal).getByTestId("card-chart").dataset.chart).toBe("modal_frequencies"));
+  });
+
+  it("R18: a study card is compact by default and the chart opens inline on click", async () => {
+    setThread(STEPS);
+    render(<Conversation />);
+    await settle();
+    const stat = screen.getAllByTestId("study-card").find((x) => x.dataset.type === "static")!;
+    // compact: honesty + a key metric are in sight, but no chart and no checks yet
+    expect(within(stat).getByTestId("fidelity-note")).toBeTruthy();
+    expect(within(stat).queryByTestId("card-chart")).toBeNull();
+    expect(within(stat).queryByTestId("check")).toBeNull();
+    expect(stat.dataset.expanded).toBeUndefined();
+    fireEvent.click(within(stat).getByTestId("card-expand"));
+    expect(stat.dataset.expanded).toBe("");
+    await waitFor(() => expect(within(stat).getByTestId("card-chart")).toBeTruthy());
+    expect(within(stat).getAllByTestId("check").length).toBeGreaterThan(0);
+    fireEvent.click(within(stat).getByTestId("card-expand"));   // collapses again
+    expect(within(stat).queryByTestId("card-chart")).toBeNull();
+  });
+
+  it("R18: a design_review row reveals its note on click", async () => {
+    setThread(STEPS);
+    render(<Conversation />);
+    await settle();
+    const review = screen.getByTestId("review-card");
+    const toggles = within(review).getAllByTestId("review-row-toggle");
+    expect(toggles.length).toBeGreaterThan(0);
+    const row = toggles[0].closest("[data-testid=review-row]") as HTMLElement;
+    expect(row.dataset.expanded).toBeUndefined();
+    expect(within(row).queryByText((_t, n) => n?.getAttribute("data-agent-text") !== null)).toBeNull();
+    fireEvent.click(toggles[0]);
+    expect(row.dataset.expanded).toBe("");
+    expect(row.querySelector("[data-agent-text]")).toBeTruthy();
   });
 
   it("a running call shows a live phase bar from sim_progress", async () => {
@@ -145,6 +182,7 @@ describe("inline study cards", () => {
     expect(within(imm).getByTestId("fidelity-note").textContent).toBe("low fidelity (preview) · ±40% (validated)");
     closeImmersive();
     await settle();
+    fireEvent.click(within(wind).getByTestId("card-expand"));   // R18: chart is behind the expand
     await waitFor(() => within(wind).getByTestId("study-chart"));
     fireEvent.dblClick(within(wind).getByTestId("study-chart"));
     await settle();
