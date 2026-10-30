@@ -45,6 +45,7 @@ from .drawing_api import build_drawing_router
 from .onshape_api import build_onshape_router
 from .edit_api import build_edit_router
 from .measure_api import build_measure_router
+from .feedback_api import build_feedback_router  # U2a stand-in; U3c's route replaces it
 from .system_api import build_system_router
 from .print_api import build_print_router
 from .assembly_api import build_assembly_router
@@ -244,6 +245,7 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
     app.include_router(build_spec_router(runtime))
     app.include_router(build_edit_router(runtime))
     app.include_router(build_measure_router(runtime))
+    app.include_router(build_feedback_router(runtime))
     app.include_router(build_system_router(runtime))
 
     @app.exception_handler(MisesError)
