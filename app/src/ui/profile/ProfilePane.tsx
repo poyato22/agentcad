@@ -15,6 +15,7 @@ import { ModelsSection } from "./sections/ModelsSection";
 import { OnshapeSection } from "./sections/OnshapeSection";
 import { PrintersSection } from "./sections/PrintersSection";
 import { ProfileSection } from "./sections/ProfileSection";
+import { SitesSection } from "./sections/SitesSection";
 import "./profile.css";
 
 export const SECTIONS = [
@@ -23,6 +24,7 @@ export const SECTIONS = [
   { id: "onshape", label: "Onshape" },
   { id: "printers", label: "Printers" },
   { id: "agents", label: "Agents & budgets" },
+  { id: "sites", label: "Browsing" },
   { id: "data", label: "Data" },
   { id: "system", label: "System" },
   { id: "setup", label: "Setup" },
@@ -99,6 +101,7 @@ function ProfilePaneBody({ onClose, initial }: { onClose: () => void; initial: S
           {props && section === "onshape" && <OnshapeSection {...props} />}
           {props && section === "printers" && <PrintersSection />}
           {props && section === "agents" && <AgentsSection {...props} />}
+          {props && section === "sites" && <SitesSection {...props} />}
           {props && section === "data" && <DataSection {...props} />}
           {props && section === "system" && <SystemSection />}
           {props && section === "setup" && <SetupSection onClose={onClose} />}
