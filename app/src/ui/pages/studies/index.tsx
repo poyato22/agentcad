@@ -112,7 +112,7 @@ export function StudiesPage({ controller = studies, deps = {} }: { controller?: 
         : needsCcx && c.ccxMissing.value ? "Install CalculiX to run FEM studies (wind studies still run)." : null;
   const canRun = why === null && info !== null && settings !== null && active === null;
   const showResult = viewSig.value === "result" && recShown !== null;
-  const pickType = (t: typeof type) => { typeSig.value = t; c.fieldErrors.value = []; setPicking(null); viewSig.value = "setup"; caseSig.value = 0; };
+  const pickType = (t: typeof type) => { typeSig.value = t; c.fieldErrors.value = []; setPicking(null); viewSig.value = "setup"; caseSig.value = 0; c.showType(t); };
 
   const openRun = (runId: string) => { actions.selectRun(runId); setConsoleCollapsed(false); };
   const onAsk = async () => { if (!recShown) return; const runId = await c.ask(recShown); if (runId) openRun(runId); };

@@ -15,7 +15,7 @@ import { studyData } from "../../pages/studies/data";
 import { Markup } from "../../markup/render";
 import { openImmersive } from "../../pages/studies/immersive/state";
 import { liveProgress, progressForCall } from "../../pages/studies/live";
-import { fmtMetric, honesty, fmtValue, phaseText, PHASES, progressFraction, typeName, VERDICT_TEXT, verdictTone } from "../../pages/studies/model";
+import { fmtStudyMetric, honesty, metricLabel, fmtValue, phaseText, PHASES, progressFraction, typeName, VERDICT_TEXT, verdictTone } from "../../pages/studies/model";
 import { showInStudies } from "../../pages/studies/nav";
 import { cachedThumbnail, thumbnail } from "../../pages/studies/scene/thumbnails";
 import { bareToolName, kindText, type StudyCallView } from "./cardModel";
@@ -167,7 +167,7 @@ export function StudyCard({ view, siblings = [] }: StudyCardProps): JSX.Element 
           {simId && <Thumb simId={simId} type={view.type} />}
           <dl class="scard-metrics">
             {metrics.map((m) => (
-              <div key={m.key} data-testid="metric" data-key={m.key}><dt class="label">{m.label}</dt><dd>{fmtMetric(m)}</dd></div>
+              <div key={m.key} data-testid="metric" data-key={m.key}><dt class="label">{metricLabel(m, view.type)}</dt><dd>{fmtStudyMetric(m, card?.warnings ?? [])}</dd></div>
             ))}
           </dl>
         </div>

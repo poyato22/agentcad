@@ -69,6 +69,14 @@ export function fmtMetric(m: StudyMetric): string {
   return fmtValue(m.value, m.unit);
 }
 
+/** A card metric in its study's context. m13: a free-free modal study whose modes are all rigid
+ *  body (the core warns so) has no real first frequency — "0.00143 Hz" beside that warning read as
+ *  a result; it shows as "—" instead. */
+export function fmtStudyMetric(m: StudyMetric, warnings: readonly string[] = []): string {
+  if (m.key === "first_freq_hz" && typeof m.value === "number" && m.value < 1 && warnings.some((w) => /rigid[- ]body|free-free/i.test(w))) return "— (rigid-body modes only)";
+  return fmtMetric(m);
+}
+
 /** The metric's label. m7: a solid study's error band is the coarse-vs-fine mesh difference —
  *  said so, so it never reads against the validated model band in the fidelity note. */
 export function metricLabel(m: Pick<StudyMetric, "key" | "label">, type: string | null | undefined): string {

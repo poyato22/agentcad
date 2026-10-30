@@ -40,6 +40,20 @@ describe("StudiesController", () => {
     ctl.dispose();
   });
 
+  it("switching the type shows that type's newest result, or none — never the other type's (m9)", async () => {
+    const c = client(() => []);
+    const ctl = new StudiesController(() => c as unknown as StudiesClient, { pollMs: 1000 });
+    ctl.history.value = [SUM({ sim_id: "sim_wind00000001", type: "wind", status: "done" }), SUM({ sim_id: "sim_static000001", type: "static", status: "done", created_at: 2 })] as never;
+    ctl.record.value = { ...SUM({ sim_id: "sim_wind00000001", type: "wind", status: "done" }), warnings: [], caveats: [] } as never;
+    ctl.showType("static");
+    expect(ctl.selectedSimId.value).toBe("sim_static000001");
+    ctl.record.value = { ...SUM({ sim_id: "sim_wind00000001", type: "wind", status: "done" }), warnings: [], caveats: [] } as never;
+    ctl.showType("modal");
+    expect(ctl.record.value).toBeNull();
+    expect(ctl.selectedSimId.value).toBeNull();
+    ctl.dispose();
+  });
+
   it("cancel stops the study by its id; one the core says is not running falls back to the run", async () => {
     const c = client(() => [SUM({})]);
     const ctl = new StudiesController(() => c as unknown as StudiesClient, { pollMs: 1000 });

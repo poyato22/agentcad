@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { calWarningText } from "./accuracy/model";
 import { nullMeaning, SHOWN_WHEN } from "./formSchema";
-import { fmtMetric, metricLabel, summaryMetrics } from "./model";
+import { fmtMetric, fmtStudyMetric, metricLabel, summaryMetrics } from "./model";
 
 describe("Studies wording (m7)", () => {
   it("fractions read as percents: load reached 1 → 100%", () => {
@@ -30,6 +30,14 @@ describe("Studies wording (m7)", () => {
     expect(nullMeaning("slope after yield; null = the material's (or an estimate)")).toBe("the material's (or an estimate)");
     expect(nullMeaning("size (null = auto)")).toBe("auto");
     expect(nullMeaning("no null here")).toBeNull();
+  });
+
+  it("a free-free modal study's rigid-body 'first frequency' reads as none (m13)", () => {
+    const f = { key: "first_freq_hz", label: "first frequency", unit: "Hz", value: 0.00143 };
+    const warn = ["free-free: no supports, so the first six modes are rigid-body modes (~0 Hz) and are left out of first_freq_hz"];
+    expect(fmtStudyMetric(f, warn)).toBe("— (rigid-body modes only)");
+    expect(fmtStudyMetric({ ...f, value: 412 }, warn)).toBe("412 Hz");
+    expect(fmtStudyMetric(f, [])).not.toMatch(/—/);
   });
 
   it("calibration warnings in words", () => {

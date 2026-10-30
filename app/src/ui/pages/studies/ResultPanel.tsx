@@ -12,7 +12,7 @@ import { Button } from "../../common/Button";
 import { Led } from "../../common/Led";
 import { CheckRows } from "../../console/studycard/StudyCard";
 import { StudyChart } from "./charts/StudyChart";
-import { fidelityText, fmtMetric, loadCases, metricLabel, sig3, summaryMetrics, typeName, VERDICT_TEXT, verdictTone } from "./model";
+import { fidelityText, fmtStudyMetric, loadCases, metricLabel, sig3, summaryMetrics, typeName, VERDICT_TEXT, verdictTone } from "./model";
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
@@ -119,7 +119,7 @@ export function ResultPanel({ rec, charts, onAsk, onOpenRun, asked, onImmersive 
           {summaryMetrics(card.metrics, rec.results).map((m) => (
             <div key={m.key} data-testid="metric" data-key={m.key}>
               <dt class="label">{metricLabel(m, type)}</dt>
-              <dd class={`st-num${m.key === "cd" || m.key === "safety_factor" || m.key === "first_freq_hz" || m.key === "first_factor" || m.key === "max_temp_c" ? " st-num-big" : ""}`}>{fmtMetric(m)}</dd>
+              <dd class={`st-num${m.key === "cd" || m.key === "safety_factor" || m.key === "first_freq_hz" || m.key === "first_factor" || m.key === "max_temp_c" ? " st-num-big" : ""}`}>{fmtStudyMetric(m, rec.warnings)}</dd>
             </div>
           ))}
           {type === "wind" && typeof r.convergence_band_pct === "number" && (
