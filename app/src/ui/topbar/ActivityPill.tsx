@@ -12,7 +12,7 @@ export function ActivityPill(): JSX.Element | null {
   return (
     <button type="button" class="activity-pill" data-mode={mode}
       title="Open the agent manager" aria-label={`${s.label}. Open the agent manager.`}
-      onClick={() => openAgentManager("runs")}>
+      onClick={() => openAgentManager("agents")}>
       <span class="activity-dot" aria-hidden="true" />
       <span class="activity-label">{s.label}</span>
     </button>

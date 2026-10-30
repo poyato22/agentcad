@@ -1,15 +1,16 @@
-import { cleanup, fireEvent, render, waitFor, within } from "@testing-library/preact";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/preact";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { startFakeCore, type FakeCore } from "../../../test/fake-core/server";
 import { CoreClient } from "../../api/client";
 import type { AgentRun } from "../../api/types";
 import { recordActivity, resetActivity } from "../../state/activity";
 import { bindClient, resetStore, selectedRunId } from "../../state/store";
-import { agentManagerOpen } from "./manager";
 import { AgentsPanel } from "./AgentsPanel";
+import { agentManagerOpen } from "./manager";
 
 let core: FakeCore;
 let projectId: string;
+let client: CoreClient;
 
 function seed(over: Partial<AgentRun> & { id: string }): void {
   const run: AgentRun = {
@@ -22,33 +23,50 @@ function seed(over: Partial<AgentRun> & { id: string }): void {
 }
 
 const rowEl = (id: string) => document.querySelector(`[data-agent-row="${id}"]`) as HTMLElement;
+const menu = (id: string, item: string) => {
+  fireEvent.click(within(rowEl(id)).getByRole("button", { name: /^More for / }));
+  fireEvent.click(within(rowEl(id)).getByRole("menuitem", { name: item }));
+};
 
 beforeEach(async () => {
   core = await startFakeCore({ port: 0, token: "t", scenario: "base" });
   projectId = core.state.builds.builds[0].id;
   core.state.runs.clear();
-  bindClient(new CoreClient({ baseUrl: core.url, wsUrl: "", token: "t", owned: false }));
+  client = new CoreClient({ baseUrl: core.url, wsUrl: "", token: "t", owned: false });
+  bindClient(client);
   agentManagerOpen.value = true;
 });
 afterEach(async () => { cleanup(); resetStore(); resetActivity(); agentManagerOpen.value = false; await core.stop(); });
 
-describe("AgentsPanel", () => {
-  it("shows the lead on top and its sub-agents indented, each with its task title", async () => {
-    seed({ id: "lead", role: "lead", status: "running", task: "build the robotic arm" });
-    seed({ id: "sub1", parent_id: "lead", role: "sub", agent: "designer", task_title: "design the gripper" });
+describe("AgentsPanel (GET /projects/{id}/agents)", () => {
+  it("shows the lead on top, its sub-agents indented by task title, then the build's other runs", async () => {
+    seed({ id: "lead", role: "lead", task: "Build me a drone", created_at: 1_000_001 });
+    seed({ id: "sub1", parent_id: "lead", role: "sub", agent: "designer", title: "Design motor mount", created_at: 1_000_002 });
+    seed({ id: "other", agent: "verifier", task: "check the frame", status: "done" });
     render(<AgentsPanel />);
     await waitFor(() => expect(rowEl("lead")).toBeTruthy());
     expect(within(rowEl("lead")).getByText("lead")).toBeTruthy();
-    expect(rowEl("lead").style.getPropertyValue("--depth")).toBe("0");
-    await waitFor(() => expect(rowEl("sub1")).toBeTruthy());
+    expect(rowEl("lead").textContent).toContain("Build me a drone");
     expect(rowEl("sub1").style.getPropertyValue("--depth")).toBe("1");
-    expect(within(rowEl("sub1")).getByText("design the gripper")).toBeTruthy();
+    expect(within(rowEl("sub1")).getByText("Design motor mount")).toBeTruthy();
+    const others = screen.getByRole("list", { name: /^Other agents in / });
+    expect(within(others).getByText("check the frame")).toBeTruthy();
   });
 
-  it("shows live activity on a row", async () => {
-    seed({ id: "lead", role: "lead", status: "running" });
+  it("a build whose agents can't be read says so instead of looking empty", async () => {
+    seed({ id: "lead", role: "lead" });
+    vi.spyOn(client, "projectAgents").mockRejectedValue(new Error("unexpected shape"));
+    render(<AgentsPanel />);
+    await waitFor(() => expect(document.querySelector("[data-build-error]")?.textContent).toMatch(/Couldn't read this build's agents: unexpected shape/));
+    expect(screen.queryByText(/No agents yet/)).toBeNull();
+  });
+
+  it("shows live activity and the lead's waiting messages", async () => {
+    seed({ id: "lead", role: "lead", routed: { agent: "engineer", reason: "system build", confidence: 0.85 } });
+    await client.createRun({ prompt: "add landing gear", project_id: projectId });     // the lead is busy: queued
     render(<AgentsPanel />);
     await waitFor(() => expect(rowEl("lead")).toBeTruthy());
+    expect(within(rowEl("lead")).getByText("1 message waiting")).toBeTruthy();
     recordActivity({ type: "agent_activity", run_id: "lead", ts: 0, data: { state: "tool", detail: "placing a bearing", since: 1 } });
     await waitFor(() => expect(rowEl("lead").querySelector("[data-row-activity]")?.textContent).toBe("working · placing a bearing"));
   });
@@ -62,37 +80,54 @@ describe("AgentsPanel", () => {
     expect(agentManagerOpen.value).toBe(false);
   });
 
-  it("deletes a finished sub with a two-step confirm", async () => {
+  it("the ⋯ menu renames, pins and archives", async () => {
     seed({ id: "lead", role: "lead", status: "done" });
-    seed({ id: "sub1", parent_id: "lead", role: "sub", agent: "designer", status: "done", task_title: "mount plate" });
+    seed({ id: "o1", agent: "verifier", status: "done", task: "old check" });
+    render(<AgentsPanel />);
+    await waitFor(() => expect(rowEl("lead")).toBeTruthy());
+    menu("lead", "Rename…");
+    const box = within(rowEl("lead")).getByRole("textbox", { name: "Run title" });
+    fireEvent.input(box, { target: { value: "Drone build" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    await waitFor(() => expect(core.state.runs.get("lead")?.title).toBe("Drone build"));
+    await waitFor(() => expect(rowEl("lead").textContent).toContain("Drone build"));
+    menu("lead", "Pin");
+    await waitFor(() => expect(core.state.runs.get("lead")?.pinned).toBe(true));
+    menu("o1", "Archive");
+    await waitFor(() => expect(core.state.runs.get("o1")?.archived).toBe(true));
+    await waitFor(() => expect(rowEl("o1")).toBeNull());                 // archived others leave the simple view
+  });
+
+  it("Delete… asks once, then removes a finished sub-agent", async () => {
+    seed({ id: "lead", role: "lead", status: "done" });
+    seed({ id: "sub1", parent_id: "lead", role: "sub", agent: "designer", status: "done", title: "mount plate" });
     render(<AgentsPanel />);
     await waitFor(() => expect(rowEl("sub1")).toBeTruthy());
-    fireEvent.click(within(rowEl("sub1")).getByRole("button", { name: "Delete designer" }));
-    fireEvent.click(within(rowEl("sub1")).getByRole("button", { name: "Confirm delete designer" }));
+    menu("sub1", "Delete…");
+    fireEvent.click(within(rowEl("sub1")).getByRole("button", { name: "Delete mount plate" }));
     await waitFor(() => expect(rowEl("sub1")).toBeNull());
     expect(core.state.runs.has("sub1")).toBe(false);
+    expect(screen.getByRole("status").textContent).toMatch(/Deleted designer · mount plate/);
   });
 
-  it("a delete refused because the run is working says so", async () => {
-    seed({ id: "lead", role: "lead", status: "running" });
+  it("a working run says so in plain words, then Cancel and delete removes it", async () => {
+    seed({ id: "lead", role: "lead", status: "running", title: "Drone build" });
     render(<AgentsPanel />);
     await waitFor(() => expect(rowEl("lead")).toBeTruthy());
-    fireEvent.click(within(rowEl("lead")).getByRole("button", { name: "Delete engineer" }));
-    fireEvent.click(within(rowEl("lead")).getByRole("button", { name: "Confirm delete engineer" }));
-    await waitFor(() => expect(within(rowEl("lead")).getByRole("alert").textContent).toMatch(/still working/i));
+    menu("lead", "Delete…");
+    fireEvent.click(within(rowEl("lead")).getByRole("button", { name: "Delete Drone build" }));
+    await waitFor(() => expect(rowEl("lead").querySelector("[data-refusal=running]")?.textContent).toMatch(/still working/i));
     expect(core.state.runs.has("lead")).toBe(true);
-  });
-
-  it("cancel and delete stops a working run then removes it", async () => {
-    seed({ id: "lead", role: "lead", status: "running" });
-    render(<AgentsPanel />);
-    await waitFor(() => expect(rowEl("lead")).toBeTruthy());
-    fireEvent.click(within(rowEl("lead")).getByRole("button", { name: "Delete engineer" }));
-    fireEvent.click(within(rowEl("lead")).getByRole("button", { name: "Confirm delete engineer" }));
-    await waitFor(() => expect(within(rowEl("lead")).getByRole("button", { name: "Cancel and delete" })).toBeTruthy());
     fireEvent.click(within(rowEl("lead")).getByRole("button", { name: "Cancel and delete" }));
-    fireEvent.click(within(rowEl("lead")).getByRole("button", { name: "Stop it and delete?" }));
     await waitFor(() => expect(rowEl("lead")).toBeNull());
     expect(core.state.runs.has("lead")).toBe(false);
+  });
+
+  it("Clean up finished… lists what would go before deleting", async () => {
+    seed({ id: "lead", role: "lead", status: "done", updated_at: 1 });
+    render(<AgentsPanel />);
+    await waitFor(() => expect(rowEl("lead")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Clean up finished…" }));
+    expect(screen.getByRole("group", { name: "Clean up finished runs" })).toBeTruthy();
   });
 });

@@ -1,6 +1,7 @@
 // Agent manager state and pure helpers. The manager is a slide-over reachable from every page:
-// the top-bar activity pill, the run switcher's "Manage", and ⇧⌘A (⌘6/⌘7 are the Onshape and Parts pages). It lists runs as the
-// orchestrator → worker tree (GET /runs/tree), grouped by build, and custom agent definitions.
+// the top-bar activity pill, the run switcher's "Manage", and ⇧⌘A (⌘6/⌘7 are the Onshape and Parts pages). It shows each
+// build's lead and sub-agents (GET /projects/{id}/agents); behind "Advanced", every run as the
+// orchestrator → worker tree (GET /runs/tree) and the custom agent definitions.
 // Everything here is pure or a signal, so the view stays thin and the rules are unit-tested.
 import { signal, type Signal } from "@preact/signals";
 import type { AgentRun, DeleteRefused, ModelsInfo, RunNode } from "../../api/types";
@@ -8,15 +9,28 @@ import { isTrustedKey, registerShortcut } from "../../lib/keys";
 import { taskWords } from "../../lib/names";
 import { modalOpen } from "../pages/router";
 
-// "runs" is the simple per-build Agents panel (R10, the default); "tree" is the dense run tree
-// (rename, pin, archive, clean up — power controls); "agents" edits custom agent definitions.
-export type ManagerTab = "runs" | "tree" | "agents";
+// "agents" is the simple per-build Agents panel (R10) and the only view by default; behind
+// "Advanced" are "runs" (the dense run tree) and "definitions" (custom agent definitions).
+export type ManagerTab = "agents" | "runs" | "definitions";
 
 export const agentManagerOpen: Signal<boolean> = signal<boolean>(false);
-export const agentManagerTab: Signal<ManagerTab> = signal<ManagerTab>("runs");
+export const agentManagerTab: Signal<ManagerTab> = signal<ManagerTab>("agents");
 
-export function openAgentManager(tab: ManagerTab = "runs"): void {
+/** Remembered per Mac: the manager shows its Runs and Definitions tabs (I7). */
+export const ADVANCED_KEY = "mises.agentManager.advanced";
+function readAdvanced(): boolean {
+  try { return localStorage.getItem(ADVANCED_KEY) === "1"; } catch { return false; }
+}
+export const managerAdvanced: Signal<boolean> = signal<boolean>(readAdvanced());
+export function setManagerAdvanced(on: boolean): void {
+  managerAdvanced.value = on;
+  try { localStorage.setItem(ADVANCED_KEY, on ? "1" : "0"); } catch { /* storage unavailable: this session only */ }
+  if (!on) agentManagerTab.value = "agents";
+}
+
+export function openAgentManager(tab: ManagerTab = "agents"): void {
   agentManagerTab.value = tab;
+  if (tab !== "agents" && !managerAdvanced.peek()) setManagerAdvanced(true);
   agentManagerOpen.value = true;
 }
 export function closeAgentManager(): void { agentManagerOpen.value = false; }

@@ -1,17 +1,16 @@
-// The agent manager slide-over (every page): a Runs tab (the run tree, delete and clean up) and an
-// Agents tab (custom agent definitions). Opened by the activity pill, the run switcher's
-// "Manage" and ⇧⌘A; Esc or the close button closes it and focus returns to where it was.
+// The agent manager slide-over (every page). By default it is one view: every build's lead and
+// sub-agents (R10). "Advanced" (remembered) adds two tabs: Runs (every run as the dense
+// orchestrator → worker tree) and Definitions (custom agents). Opened by the activity pill, the
+// run switcher's "Manage" and ⇧⌘A; Esc or the close button closes it and focus returns.
 import type { JSX } from "preact";
 import { useEffect, useRef } from "preact/hooks";
 import { AgentsPanel } from "./AgentsPanel";
 import { AgentsTab } from "./AgentsTab";
-import { agentManagerOpen, agentManagerTab, closeAgentManager, installManagerShortcut, type ManagerTab } from "./manager";
+import { agentManagerOpen, agentManagerTab, closeAgentManager, installManagerShortcut, managerAdvanced, setManagerAdvanced, type ManagerTab } from "./manager";
 import { RunsTab } from "./RunsTab";
 import "./agents.css";
 
-// R10: "Agents" is the simple lead/sub view of every build (the default); "Runs" is the dense run
-// tree with the power controls; "Definitions" edits custom agents.
-const TABS: { id: ManagerTab; label: string }[] = [{ id: "runs", label: "Agents" }, { id: "tree", label: "Runs" }, { id: "agents", label: "Definitions" }];
+const TABS: { id: ManagerTab; label: string }[] = [{ id: "agents", label: "Agents" }, { id: "runs", label: "All runs" }, { id: "definitions", label: "Definitions" }];
 /** Tab stops the focus trap cycles through (tree rows hold a roving tabindex 0 / -1). */
 const FOCUSABLE = 'a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
@@ -23,7 +22,8 @@ export function AgentManager(): JSX.Element | null {
 
 function Panel(): JSX.Element {
   const panel = useRef<HTMLDivElement>(null);
-  const tab = agentManagerTab.value;
+  const advanced = managerAdvanced.value;
+  const tab: ManagerTab = advanced ? agentManagerTab.value : "agents";
 
   useEffect(() => {
     const back = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -67,21 +67,28 @@ function Panel(): JSX.Element {
         onKeyDown={onPanelKey}>
         <div class="am-head">
           <h2 class="am-h">Agents</h2>
-          <div class="am-tabs" role="tablist" aria-label="Agent manager sections" onKeyDown={onTabKey}>
-            {TABS.map((t) => (
-              <button key={t.id} type="button" role="tab" id={`am-tab-${t.id}`} data-tab={t.id} aria-selected={tab === t.id}
-                aria-controls={`am-pane-${t.id}`} tabIndex={tab === t.id ? 0 : -1} class={`am-tab${tab === t.id ? " on" : ""}`}
-                onClick={() => { agentManagerTab.value = t.id; }}>
-                {t.label}
-              </button>
-            ))}
-          </div>
+          {advanced && (
+            <div class="am-tabs" role="tablist" aria-label="Agent manager sections" onKeyDown={onTabKey}>
+              {TABS.map((t) => (
+                <button key={t.id} type="button" role="tab" id={`am-tab-${t.id}`} data-tab={t.id} aria-selected={tab === t.id}
+                  aria-controls={`am-pane-${t.id}`} tabIndex={tab === t.id ? 0 : -1} class={`am-tab${tab === t.id ? " on" : ""}`}
+                  onClick={() => { agentManagerTab.value = t.id; }}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          )}
           <span class="am-spacer" />
+          <button type="button" class="am-advanced" aria-pressed={advanced} data-advanced
+            title={advanced ? "Back to the simple view" : "Every run as a tree, and your custom agent definitions"}
+            onClick={() => setManagerAdvanced(!advanced)}>
+            {advanced ? "Advanced ▾" : "Advanced ▸"}
+          </button>
           <span class="faint am-kbd" aria-hidden="true">⇧⌘A</span>
           <button type="button" class="am-close" aria-label="Close the agent manager" onClick={closeAgentManager}>✕</button>
         </div>
-        <div class="am-body" role="tabpanel" id={`am-pane-${tab}`} aria-labelledby={`am-tab-${tab}`}>
-          {tab === "runs" ? <AgentsPanel /> : tab === "tree" ? <RunsTab /> : <AgentsTab />}
+        <div class="am-body" {...(advanced ? { role: "tabpanel", id: `am-pane-${tab}`, "aria-labelledby": `am-tab-${tab}` } : {})}>
+          {tab === "agents" ? <AgentsPanel /> : tab === "runs" ? <RunsTab /> : <AgentsTab />}
         </div>
       </div>
     </div>

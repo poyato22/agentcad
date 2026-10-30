@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CoreClient } from "../../api/client";
 import { bindClient, resetStore } from "../../state/store";
 import { AgentManager } from "./AgentManager";
-import { agentManagerOpen, agentManagerTab, closeAgentManager, openAgentManager } from "./manager";
+import { ADVANCED_KEY, agentManagerOpen, agentManagerTab, closeAgentManager, openAgentManager, setManagerAdvanced } from "./manager";
 
 beforeEach(() => {
   bindClient({
@@ -12,10 +12,10 @@ beforeEach(() => {
     models: vi.fn().mockResolvedValue({ default: "x/y", vendors: [] }), localStatus: vi.fn().mockRejectedValue(new Error("404")),
   } as unknown as CoreClient);
 });
-afterEach(() => { cleanup(); closeAgentManager(); resetStore(); });
+afterEach(() => { cleanup(); closeAgentManager(); resetStore(); setManagerAdvanced(false); });
 
 describe("AgentManager", () => {
-  it("is a modal slide-over with Runs and Agents tabs; Esc closes and returns focus", async () => {
+  it("is a modal slide-over: the Agents view, Advanced adds All runs and Definitions; Esc closes and returns focus", async () => {
     const opener = document.createElement("button");
     document.body.appendChild(opener);
     opener.focus();
@@ -25,13 +25,20 @@ describe("AgentManager", () => {
     const dlg = screen.getByRole("dialog", { name: "Agent manager" });
     expect(dlg.getAttribute("aria-modal")).toBe("true");
     expect(document.activeElement).toBe(dlg);
+    // I7: one view by default — no tabs; Runs and Definitions sit behind "Advanced"
+    expect(screen.queryByRole("tablist")).toBeNull();
+    expect(dlg.querySelector("[data-agents-view]")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Advanced ▸" }));
+    expect(localStorage.getItem(ADVANCED_KEY)).toBe("1");                 // remembered
     expect(screen.getByRole("tab", { name: "Agents" }).getAttribute("aria-selected")).toBe("true");
-
     fireEvent.keyDown(screen.getByRole("tab", { name: "Agents" }), { key: "ArrowRight" });
-    expect(agentManagerTab.value).toBe("tree");
+    expect(agentManagerTab.value).toBe("runs");
     fireEvent.click(screen.getByRole("tab", { name: "Definitions" }));
-    expect(agentManagerTab.value).toBe("agents");
+    expect(agentManagerTab.value).toBe("definitions");
     expect(await screen.findByText("Runs start from one of these agents.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Advanced ▾" }));
+    expect(screen.queryByRole("tablist")).toBeNull();
+    expect(agentManagerTab.value).toBe("agents");
 
     fireEvent.keyDown(document, { key: "Escape" });
     expect(agentManagerOpen.value).toBe(false);
@@ -59,7 +66,7 @@ describe("AgentManager", () => {
 
   it("the close button closes it", async () => {
     render(<AgentManager />);
-    await act(() => { openAgentManager("agents"); });
+    await act(() => { openAgentManager("definitions"); });
     fireEvent.click(screen.getByRole("button", { name: "Close the agent manager" }));
     expect(agentManagerOpen.value).toBe(false);
   });

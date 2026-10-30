@@ -370,7 +370,7 @@ function RunRow(p: RowProps): JSX.Element {
 
 /** A two-step button: the first press arms it (label changes), the second confirms. Blur or
  *  Escape disarms. Works the same by keyboard. */
-function ConfirmButton({ label, confirm, onConfirm, variant = "default" }: {
+export function ConfirmButton({ label, confirm, onConfirm, variant = "default" }: {
   label: string; confirm: string; onConfirm: () => void; variant?: "default" | "danger";
 }): JSX.Element {
   const [armed, setArmed] = useState(false);
@@ -394,7 +394,7 @@ interface CleanupOutcome { deleted: number; total: number; kept: { id: string; w
 /** Clean up: pick age and statuses, see the dry-run list, then delete exactly those runs, one by
  *  one (DELETE /runs/{id} re-checks each). A run that finished after the check is never included;
  *  one that became busy is kept and its reason shown. */
-function CleanupPanel({ labelOf, refusalOf, onDeleted }: {
+export function CleanupPanel({ labelOf, refusalOf, onDeleted }: {
   labelOf: (id: string) => string; refusalOf: (r: DeleteRefused) => string; onDeleted: (summary: string) => void;
 }): JSX.Element {
   const [days, setDays] = useState<number | null>(7);
