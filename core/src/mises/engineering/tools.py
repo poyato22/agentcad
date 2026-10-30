@@ -47,8 +47,15 @@ DEFAULT_PROJECT = "default"
 STUDY_ID_PREFIX = "study_"
 # The winner's fine-mesh confirmation runs after the loop's own budget, capped here.
 CONFIRM_MAX_S = 600.0
-# The Gate's timeout covers the loop budget, the confirmation and some margin.
-STUDY_TOOL_TIMEOUT_S = MAX_MINUTES * 60 + CONFIRM_MAX_S + 120
+# Modal / wind targets are not searched per evaluation (too costly): they are checked on the
+# study's winners only, at most DYNAMIC_MAX_VARIANTS of them, each study capped at DYNAMIC_MAX_S.
+DYNAMIC_MAX_VARIANTS = 3
+DYNAMIC_MAX_S = 300.0
+DYNAMIC_TYPES = ("modal", "wind")
+# The Gate's timeout covers the loop budget, the confirmation, the winners' modal/wind checks
+# and some margin.
+STUDY_TOOL_TIMEOUT_S = (MAX_MINUTES * 60 + CONFIRM_MAX_S
+                        + DYNAMIC_MAX_VARIANTS * len(DYNAMIC_TYPES) * DYNAMIC_MAX_S + 120)
 # Rough peak memory of one mesh + solve, for how many evaluations may overlap.
 SOLVE_GB = 4
 MAX_PARALLEL_EVALS = 3
@@ -92,6 +99,12 @@ def _find_ccx() -> str | None:
 async def _run_sim(ctx: ToolContext, args) -> ToolOutput:
     from ..sim.tools import sim_static_run
     return await sim_static_run.handler(ctx, args)
+
+
+async def _run_dyn_sim(ctx: ToolContext, args) -> ToolOutput:
+    """A modal / wind study of a kept variant (the pluggable evaluator; tests replace it)."""
+    from ..sim.tools import sim_run
+    return await sim_run.handler(ctx, args)
 
 
 def _static_args(part_id: str, case: LoadCase, *, fine: bool):
@@ -454,6 +467,64 @@ async def _confirm(ctx: ToolContext, root: Path, part_id: str, spec: Spec, best:
     return {"n": best["n"], "confirmed": bool(feasible(out)), "metrics": out}
 
 
+def _dynamic_plan(spec: Spec, have_solver: bool) -> list[dict]:
+    """The modal / wind studies the spec's targets need (design_review's plan_review), minus
+    modal when CalculiX is missing."""
+    from ..sim.tools import plan_review
+    plan = [p for p in plan_review(spec.model_dump()) if p["type"] in DYNAMIC_TYPES]
+    return [p for p in plan if p["type"] != "modal" or have_solver]
+
+
+async def _dynamic_checks(ctx: ToolContext, root: Path, part_id: str, iterations: list[dict],
+                          plan: list[dict], best_id: int) -> dict:
+    """Run the spec's modal / wind studies on the winners only: the best variant first, then the
+    other feasible Pareto variants by mass, at most DYNAMIC_MAX_VARIANTS. A failed check makes
+    that variant infeasible (the caller re-picks the best); a study that could not run is "not
+    checked" and never a fail. Rows land in the iteration's metrics.dynamic_checks."""
+    from ..sim.tools import SimRunArgs
+    by_n = {it["n"]: it for it in iterations}
+    others = sorted((it for it in iterations if it.get("pareto") and it.get("feasible")
+                     and it["n"] != best_id),
+                    key=lambda it: (it.get("metrics") or {}).get("mass_g") or float("inf"))
+    cands = [by_n[best_id], *others][:DYNAMIC_MAX_VARIANTS]
+    checked: list[int] = []
+    failed: list[int] = []
+    for it in cands:
+        variant = (it.get("metrics") or {}).get("variant")
+        if not variant:
+            continue
+        sctx = dataclasses.replace(ctx, workdir=root / variant)
+        rows: list[dict] = []
+        for p in plan:
+            try:
+                out = await asyncio.wait_for(_run_dyn_sim(sctx, SimRunArgs(
+                    type=p["type"], part_id=part_id, settings=p["settings"],
+                    requirements=p["requirements"],
+                    reason=f"design study winner #{it['n']}: {p['type']}")), DYNAMIC_MAX_S)
+                checks = (out.data or {}).get("checks") if out.ok else None
+                note = None if out.ok else (out.summary or "")[:200]
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:  # noqa: BLE001  - recorded as not checked
+                checks, note = None, f"{type(e).__name__}: {e}"[:200]
+            if checks:
+                rows += [{k: c.get(k) for k in ("requirement_id", "kind", "target", "measured",
+                                                "unit", "status")} | {"study": p["type"]}
+                         for c in checks]
+            else:
+                rows += [{"requirement_id": r.get("id"), "kind": r.get("kind"),
+                          "target": r.get("target"), "measured": None, "status": "warn",
+                          "checked": False, "study": p["type"],
+                          "note": note or "not checked: the study produced no result"}
+                         for r in p["requirements"]]
+        it.setdefault("metrics", {})["dynamic_checks"] = rows
+        checked.append(it["n"])
+        if any(r["status"] == "fail" for r in rows):
+            it["feasible"] = False
+            failed.append(it["n"])
+    return {"types": [p["type"] for p in plan], "checked": checked, "failed": failed}
+
+
 def _cleanup(root: Path, iterations: list[dict], keep_ns: set[int]) -> list[str]:
     keep = {it["metrics"].get("variant") for it in iterations if it["n"] in keep_ns}
     if root.is_dir():
@@ -498,7 +569,11 @@ def _objective(args: StudyRunArgs) -> Objective:
                   "variant that meets the project spec (Latin-hypercube sampling, then "
                   "coordinate refinement). Each variant is built as a scratch copy and, if "
                   "CalculiX is installed, gets a coarse-mesh stress study per load case; the "
-                  "winner is confirmed on the fine mesh. The live part is NOT changed: apply a "
+                  "winner is confirmed on the fine mesh. Modal and wind targets (custom "
+                  "avoid_band_hz / min_natural_freq_hz / max_drag_n) are too costly per variant: "
+                  f"they are checked on the winners only (best first, at most "
+                  f"{DYNAMIC_MAX_VARIANTS}), and a winner that fails one is dropped for the next. "
+                  "The live part is NOT changed: apply a "
                   "variant with study_apply. Objective: min_mass (default), max:min_sf, "
                   "min:max_disp_mm, or weights / the user's priorities. Budget capped at "
                   f"{MAX_EVALS} evaluations / {MAX_MINUTES:g} minutes; a variant whose build or "
@@ -566,6 +641,11 @@ async def study_run(ctx: ToolContext, args: StudyRunArgs) -> ToolOutput:
                                  on_iteration=on_iteration, iterations=iterations,
                                  max_parallel=max_parallel, seed=0)
         best_id = result["best_id"]
+        dyn_plan = _dynamic_plan(spec, have_solver) if best_id is not None else []
+        if dyn_plan:
+            record["dynamic"] = await _dynamic_checks(ctx, root, args.part_id, iterations,
+                                                      dyn_plan, best_id)
+            best_id = finalize(iterations, obj)   # a winner that failed modal/wind is out
         if best_id is not None and have_solver and spec.load_cases:
             best = next(it for it in iterations if it["n"] == best_id)
             record["confirmation"] = await _confirm(ctx, root, args.part_id, spec, best,
@@ -588,6 +668,11 @@ async def study_run(ctx: ToolContext, args: StudyRunArgs) -> ToolOutput:
                         "and check it with sim_static_run")
     if result["status"] == "budget_exhausted":
         warnings.append("the study hit its time budget; results are partial")
+    dyn = record.get("dynamic")
+    if dyn and best_id is not None and best_id not in dyn["checked"]:
+        warnings.append(f"winner(s) {dyn['failed']} failed the {'/'.join(dyn['types'])} "
+                        f"target; the new best #{best_id} was NOT checked for it — run "
+                        "design_review on it before applying")
     return ToolOutput(summary=_study_summary(record), data=compact_study(record),
                       warnings=warnings, step_kind=StepKind.SIM_RUN)
 
@@ -685,7 +770,7 @@ async def study_apply(ctx: ToolContext, args: StudyApplyArgs) -> ToolOutput:
     return out
 
 
-_ITER_METRIC_KEYS = ("mass_g", "min_sf", "max_disp_mm", "sf_by_case")
+_ITER_METRIC_KEYS = ("mass_g", "min_sf", "max_disp_mm", "sf_by_case", "dynamic_checks")
 _ITER_KEYS = ("n", "vars", "feasible", "pareto", "metrics")
 STUDY_PAGE_SIZE = 50
 _TOP_FEASIBLE = 8
@@ -712,7 +797,7 @@ def compact_study(rec: dict, *, page: int | None = None,
     iters = rec.get("iterations") or []
     out = {k: rec.get(k) for k in ("id", "project_id", "part_id", "run_id", "status", "objective",
                                    "weights", "variables", "best_id", "geometry_only", "solver",
-                                   "max_parallel", "created_at", "kept_variants")}
+                                   "max_parallel", "created_at", "kept_variants", "dynamic")}
     conf = rec.get("confirmation")
     if isinstance(conf, dict):
         cm = conf.get("metrics") or {}

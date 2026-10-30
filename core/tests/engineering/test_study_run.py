@@ -1,11 +1,13 @@
 """study_run / study_apply handlers against a fake build and a fake stress study."""
 import asyncio
 import json
+from pathlib import Path
 
 import pytest
 
 from mises.engineering.tools import (StudyApplyArgs, StudyRunArgs, study_apply, study_get,
                                      study_run, StudyGetArgs)
+from mises.engineering.spec import Spec
 from mises.types import ErrorCode, MisesError, ToolOutput
 
 from .fakes import (BUILD_FAILS_ABOVE, DRONE_SPEC, THIN_FAILS_BELOW, install, make_ctx,
@@ -208,6 +210,61 @@ async def test_study_apply_passes_base_version_through_as_is(tmp_path, monkeypat
     await study_apply.handler(ctx, StudyApplyArgs(study_id=rec["id"], part_id="frame_x",
                                                   iteration=best["n"]))
     assert seen["base_version"] is None                 # not forced to the current version
+
+
+MODAL_SPEC = DRONE_SPEC.model_copy(update={"requirements": [
+    *DRONE_SPEC.requirements,
+    *Spec.model_validate({"requirements": [{"id": "prop_band", "kind": "custom",
+                                            "target": {"avoid_band_hz": [380, 420]}}]}
+                         ).requirements]})
+
+
+def _fake_modal(calls, fail_below_wall):
+    """First mode = 100 Hz per mm of wall: a variant under `fail_below_wall` resonates."""
+    import mises.engineering.tools as et
+
+    async def dyn(sctx, args):
+        v = json.loads((Path(sctx.workdir) / "parts" / args.part_id / "vars.json").read_text())
+        calls.append((args.type, v["wall"]))
+        status = "fail" if v["wall"] < fail_below_wall else "pass"
+        return ToolOutput(summary=args.type, data={"checks": [
+            {"requirement_id": r["id"], "kind": r["kind"], "target": r["target"],
+             "measured": 100 * v["wall"], "unit": "Hz", "status": status}
+            for r in args.requirements]})
+    return et, dyn
+
+
+async def test_modal_targets_are_checked_on_the_winners_only(tmp_path, monkeypatch):
+    """I-3: an avoid_band_hz target is checked by a modal study on the winners (best first, at
+    most DYNAMIC_MAX_VARIANTS), never on every evaluation; a winner that resonates is dropped
+    and the best is re-picked."""
+    import mises.engineering.tools as et
+    ctx, _ = _setup(tmp_path, MODAL_SPEC)
+    install(monkeypatch)
+    calls: list = []
+    _, dyn = _fake_modal(calls, fail_below_wall=0.0)              # first: everything passes
+    monkeypatch.setattr(et, "_run_dyn_sim", dyn)
+    out = await study_run.handler(ctx, _args())
+    rec = ctx.store.get_study(out.data["id"])
+    assert calls and {t for t, _ in calls} == {"modal"}
+    assert len(calls) <= et.DYNAMIC_MAX_VARIANTS < len(rec["iterations"])
+    assert rec["dynamic"]["failed"] == [] and rec["best_id"] in rec["dynamic"]["checked"]
+    first_best = rec["best_id"]
+    best_wall = next(i for i in rec["iterations"] if i["n"] == first_best)["vars"]["wall"]
+
+    # now the lightest winner resonates: it is made infeasible and a heavier one wins
+    ctx2, _ = _setup(tmp_path / "b", MODAL_SPEC)
+    calls.clear()
+    _, dyn = _fake_modal(calls, fail_below_wall=best_wall + 1e-6)
+    monkeypatch.setattr(et, "_run_dyn_sim", dyn)
+    out = await study_run.handler(ctx2, _args())
+    rec = ctx2.store.get_study(out.data["id"])
+    assert rec["dynamic"]["failed"]
+    bad = next(i for i in rec["iterations"] if i["n"] == rec["dynamic"]["failed"][0])
+    assert not bad["feasible"] and bad["metrics"]["dynamic_checks"][0]["status"] == "fail"
+    if rec["best_id"] is not None:
+        best = next(i for i in rec["iterations"] if i["n"] == rec["best_id"])
+        assert best["vars"]["wall"] > best_wall and best["feasible"]
 
 
 async def test_interrupted_study_is_reported(tmp_path, monkeypatch):

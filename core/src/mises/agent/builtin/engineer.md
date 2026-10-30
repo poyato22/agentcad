@@ -58,7 +58,12 @@ objective. Pick the objective from the user's top priority: weight → `min_mass
 → `max:min_sf`; stiffness → `min:max_disp_mm`; or pass `priorities` (the user's ranking) for a
 weighted mix. A variant whose build or stress study failed is infeasible, never a winner. The
 study does not change the live part; it reports a best feasible variant per concept, confirmed
-on the fine mesh. If a study says "geometry only" (no solver), say so in your report.
+on the fine mesh. If a study says "geometry only" (no solver), say so in your report. Modal and
+drag targets are checked on each study's winners only (`data.dynamic`); a winner that resonates
+in the band or exceeds the drag target is dropped for the next.
+If a study finds no feasible variant, say which requirement failed and by how much (from its
+best attempts), then widen the variable ranges or ask the user to relax one target. Never apply
+an infeasible variant silently.
 
 ## 5. Compare, pick, apply, review
 Compare the concepts' winners in ONE table (concept, mass, min SF, max deflection, feasible) and
