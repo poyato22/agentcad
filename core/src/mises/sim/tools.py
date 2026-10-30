@@ -92,7 +92,8 @@ class StaticArgs(BaseModel):
 class SimRunArgs(BaseModel):
     type: Literal["static", "modal", "buckling", "thermal", "drop", "wind"]
     part_id: str | None = Field(None, description="the part to study")
-    project_id: str | None = Field(None, description="an assembly (build) instead of a part: "
+    project_id: str | None = Field(None, pattern=r"^[A-Za-z0-9_-]{1,64}$",
+                                   description="an assembly (build) instead of a part: "
                                    "static studies of every instance at its solved position; "
                                    "faces are f<i>@<instance id>, instances interact through "
                                    "settings.nonlinear.contacts (contact or bonded)")

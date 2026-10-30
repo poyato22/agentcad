@@ -55,12 +55,26 @@ CAVEATS_FEM = [
 CAVEATS_NONLINEAR = [
     "Guide only: a nonlinear FEM estimate (CalculiX, load controlled), not a certification or "
     "a guarantee; its validated model error band is shown with the result.",
-    "Isotropic material model; plasticity is bilinear (yield at the knocked-down allowable, "
-    "then the tangent modulus): printed parts are weaker across layers and often crack before "
+    "Isotropic material model; printed parts are weaker across layers and often crack before "
     "they flow.",
+    "Plasticity is bilinear (yield at the knocked-down allowable, then the tangent modulus); "
+    "its validated band covers the collapse load, not the plastic strain.",
     "Contact is penalty contact (a little penetration stands for the contact stiffness); "
     "creep, fatigue, temperature and vibration are not simulated.",
 ]
+CAVEAT_ORTHOTROPIC = ("Orthotropic FDM material model (layer direction from the print "
+                      "direction); the between-layer values are typical or estimated.")
+
+
+def material_caveats(caveats: list[str], material) -> list[str]:
+    """The caveat list with the isotropic-material line swapped for an orthotropic one when the
+    material is orthotropic (S3's print-direction materials)."""
+    if not getattr(material, "orthotropic", False):
+        return list(caveats)
+    return [CAVEAT_ORTHOTROPIC if c.startswith("Isotropic material model") else c
+            for c in caveats]
+
+
 CAVEATS_STATIC_FIXTURE = (
     "Peak stress excludes nodes on the fixed face (an ideal clamp gives a constraint "
     "singularity there); that value and a safety factor including it are reported separately.")
@@ -476,8 +490,9 @@ async def run_study(ctx, type_id: str, part_id: str | None, part_dir: Path | Non
         "material": material.to_dict() if material else None, "environment": env,
         "error": None, "hint": None, "warnings": [],
         "caveats": (CAVEATS_WIND if type_id == "wind" else
-                    (CAVEATS_NONLINEAR if getattr(settings, "nonlinear", None) is not None
-                     else CAVEATS_FEM)
+                    material_caveats(CAVEATS_NONLINEAR
+                                     if getattr(settings, "nonlinear", None) is not None
+                                     else CAVEATS_FEM, material)
                     + ([CAVEATS_STATIC_FIXTURE] if type_id in ("static", "drop") else [])),
         "urls": urls(sim_id)}
     write_record(sim_dir, rec)
@@ -800,8 +815,11 @@ def static_summary(rec: dict) -> str:
     else:
         fixture = "peak includes the fixed face (every stressed node is on it)"
     nl = r.get("nonlinear")
-    model = (f"isotropic, NONLINEAR ({nl['description']}; {fidelity_note(rec)})" if nl
-             else "isotropic linear elastic")
+    iso = "orthotropic" if (m.get("orthotropic") or "orthotropic" in str(m.get("model"))) \
+        else "isotropic"
+    tangent = " (tangent estimated)" if nl and nl.get("tangent_estimated") else ""
+    model = (f"{iso}, NONLINEAR ({nl['description']}{tangent}; {fidelity_note(rec)})" if nl
+             else f"{iso} linear elastic")
     s = (f"GUIDE ONLY - {sv['name']} {sv['version']}, fine mesh {mesh['fine']['size_mm']:.2g} mm "
          f"(coarse {mesh['coarse']['size_mm']:.2g} mm), material {m['name']} {model}, "
          f"strength x{m['knockdown']:.3g} FDM knock-down: {target_name(rec)} max von "
@@ -811,6 +829,9 @@ def static_summary(rec: dict) -> str:
          f"; {fixture}")
     if nl:
         s += f"; load reached {_num(r.get('load_fraction'), '.0%')}"
+        if r.get("converged") is False:
+            s += (f" (did NOT reach full load; fields at "
+                  f"{_num(r.get('fields_at_fraction'), '.0%')})")
         if r.get("max_plastic_strain") is not None:
             s += f", max plastic strain {100 * r['max_plastic_strain']:.3g}%"
         if r.get("max_contact_pressure_mpa") is not None:
@@ -866,7 +887,11 @@ def fidelity_note(rec: dict) -> str | None:
     if fc == "fem_estimate":
         return "estimate (equivalent static load F = m g k)"
     if fc == "fem_nonlinear" and band is not None:
-        desc = (r.get("nonlinear") or {}).get("description") or "nonlinear"
+        nl = r.get("nonlinear") or {}
+        desc = nl.get("description") or "nonlinear"
+        if nl.get("unvalidated"):
+            return (f"nonlinear ({desc}) · ±{100 * band:.0f}% validated for the benchmarked "
+                    f"setups; UNVALIDATED configuration: {'; '.join(nl['unvalidated'])}")
         return f"nonlinear ({desc}) · ±{100 * band:.0f}% (validated)"
     return None
 
@@ -1001,16 +1026,24 @@ def check_requirements(rec: dict, reqs: list[dict]) -> list[dict]:
     if rec.get("fidelity_class") == "fem_nonlinear" and r.get("model_error_band") is not None:
         band = max(band or 0.0, r["model_error_band"])  # mesh and validated model error
     out = []
+    cases = {c.get("name"): c for c in r.get("cases") or [] if isinstance(c, dict)}
     for q in reqs:
         kind, target = q.get("kind"), q.get("target")
         meas, sense, unit = None, None, ""
-        if typ in ("static", "drop") and kind == "min_safety_factor":
+        scope = None   # the cases a static requirement is judged on
+        if typ in ("static", "drop") and kind in ("min_safety_factor", "max_deflection_mm"):
             case = q.get("load_case_id")
-            sfs = r.get("sf_by_case") or {}
-            meas = sfs.get(case) if case in sfs else r.get("safety_factor")
+            scope = [cases[case]] if case in cases else list(cases.values())
+        if typ in ("static", "drop") and kind == "min_safety_factor":
+            sfs = [c.get("safety_factor") for c in scope or []
+                   if c.get("safety_factor") is not None]
+            # no case named: every case must hold (the worst one is the measure)
+            meas = min(sfs) if sfs else r.get("safety_factor")
             sense = "min"
         elif typ in ("static", "drop") and kind == "max_deflection_mm":
-            meas, sense, unit = r.get("max_displacement_mm"), "max", "mm"
+            ds = [c.get("max_displacement_mm") for c in scope or []
+                  if c.get("max_displacement_mm") is not None]
+            meas, sense, unit = (max(ds) if ds else r.get("max_displacement_mm")), "max", "mm"
         elif typ == "modal" and kind == "min_natural_freq_hz":
             meas, sense, unit = r.get("first_freq_hz"), "min", "Hz"
         elif typ == "modal" and kind == "avoid_band_hz":
@@ -1036,6 +1069,10 @@ def check_requirements(rec: dict, reqs: list[dict]) -> list[dict]:
             st = _verdict(meas, float(target), sense, band)
         if typ != "wind" and rec.get("fidelity_class") in LOW_FIDELITY and st == "pass":
             st, note = "warn", f"passes, but {LOW_FIDELITY[rec['fidelity_class']]}"
+        stopped = [c for c in scope or [] if c.get("converged") is False]
+        if stopped:   # a partial solve never signs off a requirement
+            frac = min(c.get("load_fraction") or 0.0 for c in stopped)
+            st, note = "fail", f"did not reach full load ({frac:.0%})"
         out.append({"requirement_id": q.get("id"), "kind": kind, "target": target,
                     "measured": meas, "unit": unit, "status": st, "sim_id": rec.get("sim_id"),
                     "note": note})

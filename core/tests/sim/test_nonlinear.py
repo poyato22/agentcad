@@ -140,7 +140,7 @@ def test_step_card_increments_and_nlgeom():
     step = nlm.nonlinear_step(Setup(boundary=["N,1,3"]), nl, nlm.NlModel())
     assert step[:3] == ["*STEP, NLGEOM, INC=50", "*STATIC", "0.05,1.0,1e-05,0.05"]
     assert "S,PEEQ" in step and "*CONTACT FILE" not in step
-    assert any(ln.startswith("*NODE FILE, FREQUENCY=2") for ln in step)
+    assert "*NODE FILE, FREQUENCY=1" in step   # every increment: the last converged one is kept
 
 
 def test_bonded_pair_is_a_tie_and_unknown_instances_are_refused():
@@ -388,6 +388,10 @@ async def test_fast_large_deflection_cantilever_follows_the_elastica(tmp_path):
     assert r["nonlinear"]["validation"][0]["effect"] == "large_deflection"
     assert r["nonlinear"]["converged"] is True and r["nonlinear"]["load_reached_pct"] == 100
     assert r["nonlinear"]["large_deflection"] and r["nonlinear"]["contact_pairs"] == 0
+    # S1 review I3: without plasticity the overload is still called out
+    assert r["safety_factor"] < 1
+    assert any("predicted to yield" in w for w in out.data["warnings"])
+    assert r["nonlinear"]["unvalidated"] == [] and "(validated)" in out.data["card"]["fidelity_note"]
 
 
 @needs_ccx

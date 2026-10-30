@@ -42,10 +42,12 @@ VALIDATION = [
     ("large_deflection", "same at PL^2/EI = 2 (default-run coarse check)",
      "C3D10, 5 mm on 100x10x10", 0.4938, 0.4935, +0.001),
     ("plasticity", "cantilever collapse at the plastic hinge load P = sy b h^2 / (4 L), "
-     "root free to contract (beam theory's assumption)", "C3D10, 2 mm on 100x10x10",
+     "root free to contract (beam theory's assumption); the band covers the collapse load, "
+     "NOT the plastic strain (which follows the tangent modulus)", "C3D10, 2 mm on 100x10x10",
      106.8, 100.0, +0.068),
-    ("plasticity", "same with a full clamp (the clamp's plane-strain constraint raises the "
-     "collapse load; physical, not solver error)", "C3D10, 2 mm (5 mm: 119.7 N)", 114.2, 100.0,
+    ("plasticity", "same with a full clamp: +14%, outside the band (the clamp's plane-strain "
+     "constraint raises the collapse load over beam theory; clamped roots are not covered by "
+     "the band)", "C3D10, 2 mm (5 mm: 119.7 N)", 114.2, 100.0,
      +0.142),
     ("contact", "Hertz sphere (R 10 mm, a = 1 mm) on a rigid flat: peak contact pressure "
      "(face-to-face)", "C3D10, 0.2 mm at the contact (quarter model)", 169.1, 166.9, +0.013),
@@ -57,7 +59,6 @@ VALIDATION = [
     ("bonded", "two bonded 50 mm bars as one cantilever: tip deflection vs PL^3 / 3EI",
      "C3D10, 5 mm", 1.736, 1.739, -0.002),
 ]
-OUTPUT_BLOCKS = 10          # field output stored about this many times per step
 SLAB_DIV = 4                # rigid support slab: elements per side
 # A rigid support with no gap starts this far into the face (x the face's span): face-to-face
 # penalty contact only acts where it penetrates, so a part that just touches the support would
@@ -137,6 +138,8 @@ class NlModel:
     moved: dict[int, tuple[float, float, float]] = field(default_factory=dict)  # deck-only
     contact_type: str = ""
     slave_normals: dict[int, np.ndarray] = field(default_factory=dict)  # node-to-face pairs
+    slave_tags: list[int] = field(default_factory=list)                 # (for deformed normals)
+    unvalidated: list[str] = field(default_factory=list)  # setups outside the benchmarks
 
 
 def _node_normals(mesh: Mesh, tags: list[int]) -> dict[int, np.ndarray]:
@@ -148,6 +151,23 @@ def _node_normals(mesh: Mesh, tags: list[int]) -> dict[int, np.ndarray]:
             n, a, _ = tri_geometry(mesh, tri)
             for k in tri:
                 acc[k] = acc.get(k, np.zeros(3)) + a * n
+    return {k: v / np.linalg.norm(v) for k, v in acc.items() if np.linalg.norm(v) > 0}
+
+
+def deformed_normals(mesh: Mesh, tags: list[int], disp: dict) -> dict[int, np.ndarray]:
+    """Node normals of the deformed face (nodes + U), oriented like the reference ones: with
+    large rotations (NLGEOM) the reference normal is not the contact normal any more."""
+    from .deck import tri_geometry
+    acc: dict[int, np.ndarray] = {}
+    for t in tags:
+        for tri in mesh.surface(t).tris:
+            n0, _, _ = tri_geometry(mesh, tri)
+            p = np.array([np.add(mesh.nodes[k], disp.get(k, (0, 0, 0))[:3]) for k in tri[:3]])
+            n = np.cross(p[1] - p[0], p[2] - p[0])
+            if n @ n0 < 0:
+                n = -n
+            for k in tri:
+                acc[k] = acc.get(k, np.zeros(3)) + n
     return {k: v / np.linalg.norm(v) for k, v in acc.items() if np.linalg.norm(v) > 0}
 
 
@@ -314,6 +334,8 @@ def resolve_nonlinear(mesh: Mesh, metrics: dict, nl, material: Material,
                            hint="name the faces, or raise search_mm")
         if set(ta) & set(tb):
             raise SimError("bad_setup", f"contact {i}: both sides name the same face")
+        if c.kind == "bonded":
+            ta, tb = _tie_sides(mesh, setup, ta, tb, i)
         out.cards += _surface(mesh, f"SA{i}", ta) + _surface(mesh, f"SB{i}", tb)
         out.slave_nodes |= mesh.nodes_of(ta)
         if c.kind == "bonded":
@@ -321,13 +343,17 @@ def resolve_nonlinear(mesh: Mesh, metrics: dict, nl, material: Material,
                           f"SA{i},SB{i}"]
         else:
             out.contact = True
-            out.cards += _interaction(f"SI{i}", k_pen, c.friction, ctype)
+            out.cards += _interaction(f"SI{i}", k_pen, c.friction, ctype, material.e_eff_mpa)
             out.cards += [f"*CONTACT PAIR, INTERACTION=SI{i}, TYPE={ctype}",
                           f"SA{i},SB{i}"]
             if ctype == FACE_TO_FACE:
                 _nudge(mesh, ta, INITIAL_OVERLAP * _span(mesh, ta + tb), out.moved)
             else:
                 out.slave_normals.update(_node_normals(mesh, ta))
+                out.slave_tags += ta
+            if curved(mesh, ta) or curved(mesh, tb):
+                _note(out, "curved contact faces (e.g. a pin in a hole): only flat-on-flat "
+                           "contact pairs are validated")
         out.pairs.append({"pair": i, "kind": c.kind, "friction": c.friction,
                           "a_surfaces": len(ta), "b_surfaces": len(tb)})
     for i, rs in enumerate(nl.rigid_supports, 1):
@@ -345,20 +371,61 @@ def resolve_nonlinear(mesh: Mesh, metrics: dict, nl, material: Material,
         out.cards += _surface(mesh, f"SP{i}", tags)
         if ctype == NODE_TO_FACE:
             out.slave_normals.update(_node_normals(mesh, tags))
-        out.cards += _interaction(f"SIR{i}", k_pen, rs.friction, ctype)
+            out.slave_tags += tags
+            _note(out, "a rigid support in a study that also has a contact pair (node-to-surface "
+                       "contact: the Hertz validation is face-to-face)")
+        out.cards += _interaction(f"SIR{i}", k_pen, rs.friction, ctype, material.e_eff_mpa)
         out.cards += [f"*CONTACT PAIR, INTERACTION=SIR{i}, TYPE={ctype}",
                       f"SP{i},SR{i}"]
         setup.boundary.append(f"NRIGID{i},1,3")
         out.slave_nodes |= mesh.nodes_of(tags)
         out.contact = True
         out.pairs.append({"rigid_support": i, "face": rs.face, "friction": rs.friction})
+    if nl.plasticity and getattr(material, "orthotropic", False):
+        _note(out, "plasticity with an orthotropic material (CalculiX: small-strain model, "
+                   "linear hardening only)")
     return out
 
 
-def _interaction(name: str, k_pen: float, mu: float, ctype: str) -> list[str]:
-    # node-to-face also takes the small tension at large clearance (manual: ~E / 70000)
+CURVED_DEG = 10.0   # a contact face whose normals spread more than this is curved
+
+
+def curved(mesh: Mesh, tags: list[int]) -> bool:
+    ns = list(_node_normals(mesh, tags).values())
+    if len(ns) < 2:
+        return False
+    m = np.mean(ns, axis=0)
+    norm = np.linalg.norm(m)
+    if norm < 1e-9:
+        return True
+    cos = np.array(ns) @ (m / norm)
+    return float(np.degrees(np.arccos(np.clip(cos.min(), -1, 1)))) > CURVED_DEG
+
+
+def _note(out: NlModel, text: str) -> None:
+    if text not in out.unvalidated:
+        out.unvalidated.append(text)
+
+
+def _tie_sides(mesh: Mesh, setup: Setup, ta: list[int], tb: list[int], i: int):
+    """*TIE slave nodes may not also be held by a support (manual 7.133): the side that shares
+    no node with a support becomes the slave; if both do, the pair is refused."""
+    held = setup.supported
+    if not mesh.nodes_of(ta) & held:
+        return ta, tb
+    if not mesh.nodes_of(tb) & held:
+        return tb, ta
+    raise SimError("bad_setup", f"bonded pair {i}: both faces share nodes with a support, and "
+                   "CalculiX cannot tie a node that a support also holds",
+                   hint="move the support off the bonded faces' edges, or support the other "
+                        "instance")
+
+
+def _interaction(name: str, k_pen: float, mu: float, ctype: str, e_mpa: float) -> list[str]:
+    # node-to-face also takes sigma_inf, the small tension at large clearance: the manual's
+    # default, E / 70000 of the first material (7.130), whatever the penalty
     line = (f"{k_pen:.9g}" if ctype == FACE_TO_FACE
-            else f"{k_pen:.9g},{k_pen / 50 / 70000:.9g}")
+            else f"{k_pen:.9g},{sigma_inf(e_mpa):.9g}")
     out = [f"*SURFACE INTERACTION, NAME={name}", "*SURFACE BEHAVIOR, PRESSURE-OVERCLOSURE=LINEAR",
            line]
     if mu > 0:  # stick slope ~100x below the contact stiffness (manual, *FRICTION)
@@ -366,11 +433,17 @@ def _interaction(name: str, k_pen: float, mu: float, ctype: str) -> list[str]:
     return out
 
 
+def sigma_inf(e_mpa: float) -> float:
+    return e_mpa / 70000.0
+
+
 def nonlinear_step(setup: Setup, nl, model: NlModel) -> list[str]:
     from .deck import cload_lines
     dt = 1.0 / nl.increments
     head = "*STEP, NLGEOM" if nl.large_deflection else "*STEP"
-    freq = max(1, math.ceil(nl.increments / OUTPUT_BLOCKS))
+    # every increment: an aborted step has no "final" results (manual 7.97), so only output at
+    # each increment guarantees the fields of the last converged one
+    freq = 1
     out = [f"{head}, INC={max(nl.max_increments, nl.increments)}", "*STATIC",
            f"{dt:.9g},1.0,{min(nl.min_increment, dt):.9g},{dt:.9g}",
            "*BOUNDARY", *setup.boundary]
@@ -390,8 +463,9 @@ _STA_ROW = re.compile(r"^\s*(\d+)\s+(\d+)\s+(\d+)(U?)\s+(\d+)\s+(\S+)\s+(\S+)\s+
 
 
 def parse_sta(path: Path) -> list[dict]:
-    """Increments of a CalculiX .sta: [{step, inc, attempt, converged, iterations, step_time,
-    total_time, inc_size}]; an attempt marked U did not converge (the increment was cut)."""
+    """Increments of a CalculiX .sta (columns STEP INC ATT ITRS TOT-TIME STEP-TIME INC-TIME):
+    [{step, inc, attempt, converged, iterations, total_time, step_time, inc_size}]; an attempt
+    marked U did not converge (the increment was cut)."""
     rows = []
     try:
         text = Path(path).read_text(errors="replace")
@@ -404,7 +478,7 @@ def parse_sta(path: Path) -> list[dict]:
         try:
             rows.append({"step": int(m[1]), "inc": int(m[2]), "attempt": int(m[3]),
                          "converged": not m[4], "iterations": int(m[5]),
-                         "step_time": float(m[6]), "total_time": float(m[7]),
+                         "total_time": float(m[6]), "step_time": float(m[7]),
                          "inc_size": float(m[8])})
         except ValueError:
             continue

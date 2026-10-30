@@ -98,9 +98,12 @@ async def solve_cases(job: FemJob, size: float, d: Path, label: str, lo: float, 
                                     "not), use more increments, or a lower contact penalty")
             res = _only_mesh(res, mesh)
             if model.slave_normals:  # node-to-face: the pressure from the stress at the face
-                cp = nlm.traction_pressure(res.get("STRESS", {}), model.slave_normals)
+                normals = (nlm.deformed_normals(mesh, model.slave_tags, res.get("DISP", {}))
+                           if nonlinear.large_deflection else model.slave_normals)
+                cp = nlm.traction_pressure(res.get("STRESS", {}), normals)
                 res["CONTACT"] = {k: [0.0, 0.0, 0.0, p, 0.0, 0.0] for k, p in cp.items()}
             extras = _nl_extras(res, mesh, sta, t, path, model, nlm.ccx_errors(cd))
+            extras["unvalidated"] = list(model.unvalidated)
         pk = await asyncio.to_thread(lambda r=res, s=setup: peaks(mesh, r, exclude=s.supported))
         out.append({"case": case, "setup": setup, "peaks": pk, "frd": res, "nl": extras,
                     "notes": notes})
@@ -131,6 +134,13 @@ async def run_static(job: FemJob, cases: list, *, env: dict | None, sim_id: str,
         worst = max(peak, fx or 0.0)
         band = (abs(peak - pc["max_von_mises_mpa"]) / peak) if peak > 0 and not single else None
         name = fc["case"].name
+        pre = f"{name}: " if len(fine["cases"]) > 1 else ""
+        nf, nc = fc.get("nl"), cc.get("nl")
+        if (band is not None and nf is not None and nc is not None
+                and abs(nf["load_fraction"] - nc["load_fraction"]) > 1e-6):
+            band = None   # the two meshes stopped at different loads: no like-for-like band
+            warnings.append(f"{pre}no mesh error band: the coarse and fine meshes stopped at "
+                            f"{nc['load_fraction']:.0%} and {nf['load_fraction']:.0%} of the load")
         per_case.append({"name": name, "max_von_mises_mpa": peak,
                          "max_von_mises_at": pf["max_von_mises_at"],
                          "max_von_mises_at_fixture_mpa": fx,
@@ -143,12 +153,14 @@ async def run_static(job: FemJob, cases: list, *, env: dict | None, sim_id: str,
                          "error_band": band,
                          "peak_excludes": "nodes on the fixed face" if pf["excludes_fixture"]
                          else None})
-        pre = f"{name}: " if len(fine["cases"]) > 1 else ""
         if fc.get("nl") is not None:
             _nl_case(per_case[-1], fc["nl"], pre, warnings)
         warnings += [pre + n for n in fc.get("notes") or []]
         sf = per_case[-1]["safety_factor"]
-        if sf is not None and sf < 1 and fc.get("nl") is None:
+        plastic_study = nonlinear is not None and nonlinear.plasticity
+        if sf is not None and sf < 1 and not plastic_study and (
+                fc.get("nl") is None or fc["nl"]["converged"]):
+            # (a plastic study reports yielding itself; a stopped solve says so instead)
             warnings.append(f"{pre}predicted to yield: safety factor {sf:.2f} < 1")
         if band is not None and band > 0.1:
             warnings.append(f"{pre}mesh not converged: peak stress changed {band:.0%} between "
@@ -168,7 +180,11 @@ async def run_static(job: FemJob, cases: list, *, env: dict | None, sim_id: str,
     if lv["converged"] is False:
         warnings.append("convergence study stopped at the last allowed mesh level before the "
                         "peak settled")
-    gov = max(per_case, key=lambda c: c["max_von_mises_mpa"])
+    if nonlinear is None:
+        gov = max(per_case, key=lambda c: c["max_von_mises_mpa"])
+    else:  # plasticity caps stress and a collapsed case stops early: the lowest margin governs
+        gov = min(per_case, key=lambda c: (c["safety_factor"] if c["safety_factor"] is not None
+                                           else float("inf"), c.get("load_fraction", 1.0)))
     results = {k: gov[k] for k in gov if k != "name"}
     results["allowable_mpa"] = m.allowable_mpa
     results["error_band_pct"] = None if gov["error_band"] is None else round(
@@ -191,8 +207,13 @@ async def run_static(job: FemJob, cases: list, *, env: dict | None, sim_id: str,
     results["deformed_scale"] = 0.05 * diag / peak_d if peak_d > 0 else 1.0
     if nonlinear is not None:
         band, effects = nlm.model_error_band(nonlinear)
+        unvalidated = list(dict.fromkeys(u for c in fine["cases"] if c.get("nl")
+                                         for u in c["nl"].get("unvalidated") or []))
+        tangent_estimated = (nonlinear.plasticity and nonlinear.tangent_modulus_mpa is None
+                             and m.tangent_modulus_mpa is None)
         results["nonlinear"] = {
             "effects": effects, "description": nlm.describe(nonlinear),
+            "unvalidated": unvalidated, "tangent_estimated": tangent_estimated,
             "increments": nonlinear.increments,
             "tangent_modulus_mpa": (nlm.tangent_used(m, nonlinear.tangent_modulus_mpa)
                                     if nonlinear.plasticity else None),
@@ -202,19 +223,31 @@ async def run_static(job: FemJob, cases: list, *, env: dict | None, sim_id: str,
         results["model_error_band"] = band
         if nonlinear.large_deflection:
             results["deformed_scale"] = 1.0  # large deflection: the true shape
-        for k in ("load_fraction", "converged", "max_plastic_strain",
-                  "max_contact_pressure_mpa", "load_path"):
+        for k in ("max_plastic_strain", "max_contact_pressure_mpa", "load_path",
+                  "fields_at_fraction"):
             results[k] = gov.get(k)
-        # the governing case's outcome, also inside the block (the Studies page reads it here)
-        frac = gov.get("load_fraction")
+        # worst over every case: a study converged only if every case did
+        frac = min(c.get("load_fraction", 1.0) for c in per_case)
+        conv = all(c.get("converged", True) for c in per_case)
+        results["load_fraction"], results["converged"] = frac, conv
+        results["safety_factor"] = min((c["safety_factor"] for c in per_case
+                                        if c["safety_factor"] is not None), default=None)
         results["nonlinear"].update({
-            "converged": gov.get("converged"),
-            "load_reached_pct": None if frac is None else round(100 * frac, 2),
+            "converged": conv,
+            "load_reached_pct": round(100 * frac, 2),
+            "fields_at_fraction": gov.get("fields_at_fraction"),
             "increments_done": gov.get("increments"), "cutbacks": gov.get("cutbacks"),
             "large_deflection": nonlinear.large_deflection, "plasticity": nonlinear.plasticity,
             "contact_pairs": len(nonlinear.contacts) + len(nonlinear.rigid_supports),
             "max_plastic_strain": gov.get("max_plastic_strain"),
             "max_contact_pressure_mpa": gov.get("max_contact_pressure_mpa")})
+        if tangent_estimated:
+            warnings.append(f"post-yield slope estimated ({m.tangent_source}): plastic strain is "
+                            "indicative only; the validated plasticity band covers the collapse "
+                            "load, not plastic strain")
+        for u in unvalidated:
+            warnings.append(f"UNVALIDATED configuration: {u}; the ±{100 * band:.0f}% band "
+                            "does not cover it")
     results.update(extras or {})
 
     gi = next(i for i, c in enumerate(fine["cases"]) if c["case"].name == gov["name"])
@@ -235,7 +268,7 @@ def _nl_case(c: dict, nl: dict, pre: str, warnings: list[str]) -> None:
     c.update({k: nl[k] for k in ("load_fraction", "converged", "max_plastic_strain",
                                  "max_plastic_strain_at", "max_contact_pressure_mpa",
                                  "max_contact_pressure_at", "increments", "cutbacks",
-                                 "load_path", "pairs")})
+                                 "load_path", "pairs", "fields_at_fraction")})
     frac = nl["load_fraction"]
     if not nl["converged"]:
         c["safety_factor"] = min(c["safety_factor"] or frac, frac)
@@ -244,14 +277,16 @@ def _nl_case(c: dict, nl: dict, pre: str, warnings: list[str]) -> None:
         warnings.append(f"{pre}the solve stopped at {frac:.0%} of the load{why}: past that the "
                         "part found no equilibrium (plastic collapse, buckling, a contact "
                         "letting go) or the solver gave up; it cannot be shown to carry the "
-                        "full load. Results are at the last stored converged increment")
+                        f"full load. Results are at {nl['fields_at_fraction'] or 0:.0%} of the "
+                        "load (the last converged increment)")
     pe = nl.get("max_plastic_strain")
     if pe:
         warnings.append(f"{pre}yields: equivalent plastic strain up to {100 * pe:.2g}% (a "
                         "printed part may crack well before large plastic strain)")
-        sf = c.get("safety_factor")
-        if sf is not None and sf >= 1:  # plasticity caps the stress near the allowable
-            c["safety_factor"] = 0.999
+        for k in ("safety_factor", "safety_factor_incl_fixture"):
+            sf = c.get(k)
+            if sf is not None and sf >= 1:  # plasticity caps the stress near the allowable
+                c[k] = 0.999
 
 
 def _nl_channels(frd: dict) -> tuple[dict, dict]:
