@@ -103,6 +103,8 @@ export function PrintDirectionField(p: CustomFieldProps): JSX.Element {
                   <g key={a} data-axis={a} role="radio" aria-checked={sel} aria-label={`layers stack along ${a}`}
                     tabIndex={sel || (!axis && a === "+z") ? 0 : -1} class={`acc-axis${sel ? " is-sel" : ""}${neg ? " is-neg" : ""}`}
                     onClick={() => pick(a)}>
+                    {/* the whole arm is the hit target, not only its tip */}
+                    <line class="acc-axis-hit" x1={x * 0.25} y1={y * 0.25} x2={x} y2={y} />
                     <line x1={0} y1={0} x2={x} y2={y} />
                     <circle cx={x} cy={y} r={sel ? 7.5 : 6} />
                     <text x={x} y={y + 3} text-anchor="middle">{a.replace("-", "−")}</text>
@@ -226,23 +228,25 @@ const CYCLES: { mode: string; text: string }[] = [
 /** Two load cycles as a trace between the cycle's min and max (fractions of the case's load). */
 export function CycleTrace({ mode, minRatio }: { mode: string; minRatio: number | null }): JSX.Element {
   const [lo, hi] = cycleRange(mode, minRatio);
-  const W = 200; const H = 64; const pad = 6;
+  // the trace on the left, its two levels named in a gutter on the right
+  const W = 260; const H = 60; const pad = 8; const TW = 190;
   const y = (f: number) => pad + ((1 - f) / 2) * (H - 2 * pad); // +1 top, −1 bottom
   const pts: string[] = [];
   for (let i = 0; i <= 80; i++) {
     const t = i / 80;
     const f = lo + (hi - lo) * (0.5 - 0.5 * Math.cos(t * 4 * Math.PI));
-    pts.push(`${(t * W).toFixed(1)},${y(f).toFixed(1)}`);
+    pts.push(`${(6 + t * (TW - 12)).toFixed(1)},${y(f).toFixed(1)}`);
   }
+  const loText = lo === -1 ? "− load" : lo === 0 ? "zero" : `${sig3(lo)} × load`;
   return (
-    <svg class="acc-trace" viewBox={`0 0 ${W} ${H}`} width="100%" height={H} role="img"
+    <svg class="acc-trace" viewBox={`0 0 ${W} ${H}`} width="100%" height={H} role="img" preserveAspectRatio="xMinYMid meet"
       aria-label={`Load cycle from ${sig3(lo)} to ${sig3(hi)} times the case's load`} data-testid="cycle-trace">
-      <line class="acc-trace-zero" x1={0} x2={W} y1={y(0)} y2={y(0)} />
-      <line class="acc-trace-ref" x1={0} x2={W} y1={y(hi)} y2={y(hi)} />
-      <line class="acc-trace-ref" x1={0} x2={W} y1={y(lo)} y2={y(lo)} />
+      <line class="acc-trace-zero" x1={0} x2={TW} y1={y(0)} y2={y(0)} />
+      <line class="acc-trace-ref" x1={0} x2={TW + 4} y1={y(hi)} y2={y(hi)} />
+      <line class="acc-trace-ref" x1={0} x2={TW + 4} y1={y(lo)} y2={y(lo)} />
       <polyline class="acc-trace-line" points={pts.join(" ")} />
-      <text x={W - 2} y={y(hi) - 2} text-anchor="end">{hi === 1 ? "+ case load" : sig3(hi)}</text>
-      <text x={W - 2} y={Math.min(H - 1, y(lo) + 9)} text-anchor="end">{lo === -1 ? "− case load" : lo === 0 ? "0" : `${sig3(lo)} × load`}</text>
+      <text x={TW + 8} y={y(hi) + 3}>+ load</text>
+      {lo !== hi && <text x={TW + 8} y={y(lo) + 3}>{loText}</text>}
     </svg>
   );
 }

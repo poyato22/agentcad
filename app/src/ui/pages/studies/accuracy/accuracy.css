@@ -11,6 +11,7 @@
 .acc-layers path { fill: none; stroke: var(--line2); stroke-width: 1; }
 .acc-axis { cursor: pointer; outline: none; }
 .acc-axis line { stroke: var(--line2); stroke-width: 1; }
+.acc-axis line.acc-axis-hit { stroke: transparent; stroke-width: 12; pointer-events: stroke; }
 .acc-axis.is-neg line { stroke-dasharray: 2 2; }
 .acc-axis circle { fill: var(--paper); stroke: var(--line2); stroke-width: 1; }
 .acc-axis:hover circle { stroke: var(--ink); }
@@ -32,7 +33,7 @@
 .acc-pair-faces > input { grid-column: 1 / -1; }
 .acc-pair-link { grid-column: 1 / -1; color: var(--faint); line-height: 1; padding-left: 2px; }
 .acc-pair-tag {
-  min-width: 18px; text-align: center; font-size: var(--fs-label); font-weight: 700; color: var(--dim);
+  align-self: start; margin-top: 4px; min-width: 18px; text-align: center; font-size: var(--fs-label); font-weight: 700; color: var(--dim);
   border: 1px solid var(--line2); padding: 1px 3px;
 }
 .acc-pair-tag[data-on] { color: var(--on-blue); background: var(--blue); border-color: var(--blue); }
@@ -50,7 +51,7 @@
 .acc-seg button[aria-checked="true"] { color: var(--ink); background: var(--paper2); box-shadow: inset 0 -2px 0 var(--ink); }
 .acc-seg button:focus-visible { outline: 1px solid var(--blue); outline-offset: -1px; }
 .acc-trace { display: block; border: 1px solid var(--line); background: var(--vp); }
-.acc-trace text { font: 8.5px var(--font-mono); fill: var(--faint); }
+.acc-trace text { font: 9px var(--font-mono); fill: var(--dim); }
 .acc-trace-zero { stroke: var(--line2); stroke-width: 1; stroke-dasharray: 2 3; }
 .acc-trace-ref { stroke: var(--line); stroke-width: 1; }
 .acc-trace-line { fill: none; stroke: var(--ink); stroke-width: 1.5; stroke-linejoin: round; }
@@ -92,7 +93,9 @@
 .acc-in input { width: 70px; }
 .acc-cal-add { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .acc-fitbox { border: 1px solid var(--line); background: var(--paper); padding: 10px; display: flex; flex-direction: column; gap: 10px; }
-.acc-cal-charts { display: flex; flex-wrap: wrap; gap: 16px; }
+.acc-cal-charts { display: flex; flex-wrap: wrap; gap: 16px 24px; }
+.acc-cal-charts > .sc { flex: 0 1 270px; min-width: 0; }
+.acc-tests td[data-testid="cal-implied"] { white-space: nowrap; }
 .acc-band { fill: var(--paper2); }
 .acc-ref { stroke: var(--dim); stroke-width: 1; stroke-dasharray: 4 3; }
 .acc-fit { stroke: var(--ink); stroke-width: 2; }

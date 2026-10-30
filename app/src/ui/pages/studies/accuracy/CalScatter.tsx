@@ -10,7 +10,7 @@ import { sig3 } from "../model";
 
 export interface CalPoint { index: number; label: string; value: number }
 
-export function CalScatter({ title, unit, points, fit, scatterPct, datasheet, width = 300, height = 150 }: {
+export function CalScatter({ title, unit, points, fit, scatterPct, datasheet, width = 270, height = 150 }: {
   title: string; unit: string; points: readonly CalPoint[]; fit: number | null; scatterPct: number | null; datasheet: number | null;
   width?: number; height?: number;
 }): JSX.Element | null {
@@ -65,7 +65,7 @@ export function CalScatter({ title, unit, points, fit, scatterPct, datasheet, wi
           {fit !== null && (
             <g data-testid="cal-fit">
               <line class="acc-fit" x1={m.l} x2={m.l + iw} y1={sy(fit)} y2={sy(fit)} />
-              <text class="acc-fit-label" x={m.l + iw + 4} y={sy(fit) + 3}>fit {tickText(fit)}</text>
+              <text class="acc-fit-label" x={m.l + iw + 4} y={sy(fit) + 3}>fit {sig3(fit)}</text>
             </g>
           )}
           {points.map((p, i) => (

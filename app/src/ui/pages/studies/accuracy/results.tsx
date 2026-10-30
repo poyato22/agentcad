@@ -8,7 +8,7 @@ import { useState } from "preact/hooks";
 import { fatigueOf, nonlinearOf, type FatigueResult } from "../../../../api/accuracy";
 import type { StudyRecord } from "../../../../api/studies";
 import { Led } from "../../../common/Led";
-import { niceTicks, tickText } from "../charts/chartModel";
+import { tickText } from "../charts/chartModel";
 import { sig3 } from "../model";
 import { cyclesShort, cyclesText, snStress } from "./model";
 
@@ -41,6 +41,16 @@ export function NonlinearSection({ rec }: { rec: StudyRecord }): JSX.Element | n
   );
 }
 
+/** 1-2-5 ticks on a log axis between lo and hi (at most ~5). */
+export function logTicks(lo: number, hi: number): number[] {
+  if (!(lo > 0) || !(hi > lo)) return [];
+  const out: number[] = [];
+  for (let e = Math.floor(Math.log10(lo)); e <= Math.ceil(Math.log10(hi)); e++) {
+    for (const m of [1, 2, 5]) { const v = m * 10 ** e; if (v >= lo && v <= hi) out.push(Number(v.toPrecision(6))); }
+  }
+  return out.length > 5 ? out.filter((v) => /^1/.test(String(v)) || /^5/.test(String(v))) : out;
+}
+
 /** Log-log S-N chart: the curve, the required life, and the hotspot's amplitude with its life. */
 export function SnChart({ f, width = 420, height = 180 }: { f: FatigueResult; width?: number; height?: number }): JSX.Element | null {
   const [hover, setHover] = useState<null | "point" | "req">(null);
@@ -58,7 +68,7 @@ export function SnChart({ f, width = 420, height = 180 }: { f: FatigueResult; wi
   const curve: string[] = [];
   for (let e = 2; e <= 10.001; e += 0.25) curve.push(`${lx(10 ** e).toFixed(1)},${ly(snStress(sn, 10 ** e)).toFixed(1)}`);
   const decades = [2, 4, 6, 8, 10];
-  const yTicks = niceTicks(sLo, yHi, 3).filter((t) => t > 0 && t >= sLo && t <= yHi);
+  const yTicks = logTicks(sLo, yHi);
   const req = f.required_cycles;
   const px = nf === null ? lx(hi) : lx(Math.min(hi, Math.max(lo, nf)));
   const py = ly(amp);

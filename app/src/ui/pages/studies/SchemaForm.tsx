@@ -54,8 +54,10 @@ export function SchemaForm(props: SchemaFormProps): JSX.Element {
   const ctx: Ctx = { ...props, root, errs, set: (p, v) => props.onChange(setAt(props.value, p, v)) };
   const n = deref(root, root);
   const props_ = properties(n);
-  const basic = props_.filter((p) => !ADVANCED.has(p.key));
-  const advanced = props_.filter((p) => ADVANCED.has(p.key));
+  // a solver *choice* (wind: built-in or OpenFOAM, Plan 6) stays in sight; FEM solver settings fold
+  const isAdv = (p: { key: string; schema: JsonSchema }) => ADVANCED.has(p.key) && !(p.key === "solver" && Array.isArray(deref(p.schema, root).enum));
+  const basic = props_.filter((p) => !isAdv(p));
+  const advanced = props_.filter(isAdv);
   const advErrors = advanced.some((p) => [...errs.keys()].some((k) => k === p.key || k.startsWith(`${p.key}.`)));
   return (
     <div class="sf" data-testid="schema-form">

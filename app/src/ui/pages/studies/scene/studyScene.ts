@@ -630,8 +630,9 @@ function layerStack(b: { min: V3; max: V3 }, dir: THREE.Vector3, color: string, 
   }
   const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
   g.add(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.55 })));
-  const len = ed * 1.6 + Math.max(eu, ev) * 0.2;
-  g.add(new THREE.ArrowHelper(dir, c.clone().addScaledVector(dir, -len / 2), len, new THREE.Color(arrowColor).getHex(), len * 0.12, len * 0.07));
+  // the arrow leaves the box at its top layer, so the part never hides it
+  const len = Math.max(ed, eu, ev) * 0.6;
+  g.add(new THREE.ArrowHelper(dir, c.clone().addScaledVector(dir, ed * 1.04), len, new THREE.Color(arrowColor).getHex(), len * 0.25, len * 0.14));
   return g;
 }
 
