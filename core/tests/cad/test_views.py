@@ -178,7 +178,13 @@ async def test_critique_emits_round_card(tmp_path):
         seen.append(sub.queue.get_nowait())
     cards = [e for e in seen if e.type == "agent_announce" and e.data["kind"] == "critique_round"]
     assert len(cards) == 1
-    assert cards[0].data["round"] == 1 and cards[0].data["done"] is False
+    card = cards[0].data
+    assert set(card) == {"run_id", "kind", "title", "detail", "ref"}     # U3c's format
+    assert card["ref"]["round"] == 1 and card["ref"]["done"] is False
+    assert card["ref"]["threshold"] == pytest.approx(0.8)
+    assert card["ref"]["issues_open"][0]["severity"] == "high" and card["ref"]["issues_fixed"] == []
+    assert card["ref"]["after_image_id"] == card["ref"]["after"]["iso"]
+    assert "/" not in card["ref"]["after_image_id"]                       # an id, not a path
 
 
 # ---- present_view (G-R7)
@@ -203,10 +209,18 @@ async def test_present_view_emits_spec_and_thumbnail(tmp_path):
         seen.append(sub.queue.get_nowait())
     cards = [e for e in seen if e.type == "agent_announce" and e.data["kind"] == "view_presented"]
     assert len(cards) == 1
-    spec = cards[0].data["view_spec"]
+    spec = cards[0].data["ref"]["view_spec"]
     assert spec["kind"] == "orbit" and spec["parts"] == ["cube"]
+    assert spec["target"] == {"kind": "part", "id": "cube", "part_id": "cube",
+                              "parts": ["cube"], "ghost": []}
+    assert spec["thumbnail_id"] == cards[0].data["ref"]["thumbnail_id"]
+    assert cards[0].data["detail"] == "overall shape"
     from pathlib import Path
     assert Path(out.data["thumbnail"]).exists()
+    # stored as a thread step, so a reloaded thread rebuilds the card
+    stored = [s.payload["agent_announce"] for s in store.steps(ctx.run_id)
+              if "agent_announce" in s.payload]
+    assert stored == [cards[0].data]
 
 
 async def test_present_view_refuses_part_from_another_build(tmp_path):
@@ -338,3 +352,75 @@ async def test_self_critique_attaches_reference_images(tmp_path):
     assert len(r.images) == 5 and r.images[-1].label == f"reference {rid}"
     assert max(_decoded_png_size(r.images[-1])) <= 512
     assert r.data["iou"] is not None
+
+
+# ---- the shared card contract (G1 <-> G4): stored steps, ids, fixed/open, structured targets
+
+def _two_part_build(tmp_path):
+    _make_part(tmp_path, "body")
+    _make_part(tmp_path, "lid")
+    store, ctx = _store_ctx(tmp_path, "pA", "pA")
+    store.register_part("body", "pA")
+    store.register_part("lid", "pA")
+    return store, ctx
+
+
+def _cards(store, run_id, kind):
+    return [s.payload["agent_announce"] for s in store.steps(run_id)
+            if s.payload.get("agent_announce", {}).get("kind") == kind]
+
+
+async def test_subset_view_ghosts_the_rest_of_the_build(tmp_path):
+    store, ctx = _two_part_build(tmp_path)
+    out = await views.present_view.handler(ctx, views.PresentViewArgs(
+        target={"kind": "project", "id": "pA", "parts": ["lid"]}, kind="subset"))
+    spec = out.data["view_spec"]
+    assert spec["parts"] == ["lid"] and spec["ghost"] == ["body"]
+    assert spec["target"] == {"kind": "project", "id": "pA", "project_id": "pA",
+                              "parts": ["lid"], "ghost": ["body"]}
+    assert _cards(store, ctx.run_id, "view_presented")[0]["ref"]["project_id"] == "pA"
+
+
+async def test_present_view_refuses_another_builds_project(tmp_path):
+    store, ctx = _two_part_build(tmp_path)
+    with pytest.raises(MisesError) as e:
+        await views.present_view.handler(ctx, views.PresentViewArgs(
+            target={"kind": "project", "id": "pB"}, kind="orbit"))
+    assert e.value.code == ErrorCode.OUT_OF_SCOPE
+    store.register_part("alien", "pB")
+    _make_part(tmp_path, "alien")
+    with pytest.raises(MisesError) as e:            # a ghost from another build is refused too
+        await views.present_view.handler(ctx, views.PresentViewArgs(
+            target={"kind": "project", "id": "pA", "parts": ["lid"], "ghost": ["alien"]},
+            kind="subset"))
+    assert e.value.code == ErrorCode.OUT_OF_SCOPE
+
+
+async def test_critique_cards_split_fixed_and_open_and_are_stored(tmp_path):
+    store, ctx = _two_part_build(tmp_path)
+    ctx.services = {"runtime": _seeing_rt(tmp_path)}
+    two = views.CritiqueReport(score=0.4, issues=[
+        views.CritiqueIssue(view="front", issue="Wing is flat", severity="high"),
+        views.CritiqueIssue(view="top", issue="no sawtooth trailing edge", severity="medium")])
+    one = views.CritiqueReport(score=0.6, issues=[
+        views.CritiqueIssue(view="top", issue="No sawtooth trailing edge!", severity="high")])
+    args = dict(part_id="body", request="a B-2", score_threshold=0.75)
+    for rep in (two, one):
+        await views.critique_model.handler(ctx, views.CritiqueArgs(**args))
+        await views.critique_model.handler(ctx, views.CritiqueArgs(**args, report=rep))
+    first, second = (c["ref"] for c in _cards(store, ctx.run_id, "critique_round"))
+    assert len(first["issues_open"]) == 2 and first["issues_fixed"] == []
+    assert [i["issue"] for i in second["issues_fixed"]] == ["Wing is flat"]
+    assert [i["view"] for i in second["issues_open"]] == ["top"]   # same issue, still open
+    assert second["threshold"] == pytest.approx(0.75) and second["part_id"] == "body"
+    assert second["before"] == first["after"] and second["before_image_id"].endswith("_iso")
+
+
+async def test_cards_are_copied_to_the_lead(tmp_path):
+    store, ctx = _two_part_build(tmp_path)
+    lead = ctx.run_id
+    child = store.create_run("designer", "fake", "m", "sub", parent_id=lead, project_id="pA").id
+    ctx.run_id = child
+    await views.present_view.handler(ctx, views.PresentViewArgs(target="lid", kind="orbit"))
+    assert _cards(store, child, "view_presented") and _cards(store, lead, "view_presented")
+    assert _cards(store, lead, "view_presented")[0]["run_id"] == child     # the acting run
