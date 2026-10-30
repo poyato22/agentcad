@@ -41,6 +41,7 @@ from .profile_api import build_profile_router
 from .projects_api import build_projects_router
 from .context_api import build_context_router
 from .catalog_api import build_catalog_router
+from .browser_api import build_browser_router
 from .drawing_api import build_drawing_router
 from .onshape_api import build_onshape_router
 from .edit_api import build_edit_router
@@ -246,6 +247,7 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
     app.include_router(build_assembly_router(runtime))
     app.include_router(build_onshape_router(runtime))
     app.include_router(build_catalog_router(runtime))
+    app.include_router(build_browser_router(runtime))
     app.include_router(build_spec_router(runtime))
     app.include_router(build_edit_router(runtime))
     app.include_router(build_system_router(runtime))

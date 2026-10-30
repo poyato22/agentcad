@@ -12,11 +12,17 @@ from pathlib import Path
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
+import copy
+
 import httpx
 from pydantic import (BaseModel, ConfigDict, Field, StrictInt, ValidationError,
                       field_validator)
 
+from .browser.sites import DEFAULT_SITES, on_domain
+
 log = logging.getLogger(__name__)
+
+DEFAULT_BROWSER_FETCHES = 60
 
 PROFILE_FILE = "profile.json"
 # 2: max_parallel_agents gained "auto" (the new default). Files without schema_version predate
@@ -67,6 +73,46 @@ class PrinterEntry(BaseModel):
         return v
 
 
+class SuggestedSite(BaseModel):
+    """A site agents read without an approval card (see mises.browser.sites). `search_url` is
+    an https template on the site's own domain with one `{q}` for the query."""
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=60)
+    domain: str = Field(max_length=253)
+    search_url: str | None = Field(None, max_length=500)
+    categories: list[Annotated[str, Field(max_length=30)]] = Field(default_factory=list,
+                                                                   max_length=12)
+    suggested: bool = False      # one of Mises's defaults (the UI marks it "suggested")
+
+    @field_validator("domain")
+    @classmethod
+    def _domain(cls, v: str) -> str:
+        d = v.strip().lower().rstrip(".")
+        if not _DOMAIN_RE.fullmatch(d):
+            raise ValueError(f"{v!r} is not a domain name")
+        return d
+
+    @field_validator("search_url")
+    @classmethod
+    def _search(cls, v: str | None, info) -> str | None:
+        if v is None or not v.strip():
+            return None
+        v = v.strip()
+        u = urlsplit(v.replace("{q}", "q"))
+        if u.scheme != "https" or v.count("{q}") != 1 or u.port not in (None, 443) \
+                or u.username or u.password:
+            raise ValueError("search_url must be an https URL with exactly one {q}")
+        dom = info.data.get("domain")
+        if dom and not on_domain(u.hostname or "", dom):
+            raise ValueError(f"search_url must be on {dom}")
+        return v
+
+
+def default_sites() -> list[SuggestedSite]:
+    return [SuggestedSite.model_validate(copy.deepcopy(s)) for s in DEFAULT_SITES]
+
+
 class Profile(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -92,6 +138,10 @@ class Profile(BaseModel):
     # parts-directory imports an agent may make without an approval card: only ever added by
     # the user ("Always allow <domain>" on the card, POST /catalog/allowed_domains)
     catalog_allowed_domains: list[str] = Field(default_factory=list, max_length=200)
+    # the agent browser's suggested sites (U4c): read without a card; user-editable
+    suggested_sites: list[SuggestedSite] = Field(default_factory=default_sites, max_length=100)
+    # web fetches (sites searched + pages opened) one agent run may make
+    browser_fetches_per_run: int = Field(DEFAULT_BROWSER_FETCHES, ge=1, le=1000)
 
     @field_validator("catalog_allowed_domains")
     @classmethod
@@ -104,6 +154,14 @@ class Profile(BaseModel):
             if d not in out:
                 out.append(d)
         return out
+
+    @field_validator("suggested_sites")
+    @classmethod
+    def _unique_sites(cls, v: list[SuggestedSite]) -> list[SuggestedSite]:
+        doms = [s.domain for s in v]
+        if len(doms) != len(set(doms)):
+            raise ValueError("suggested site domains must be unique")
+        return v
 
     @field_validator("printers")
     @classmethod

@@ -108,6 +108,9 @@ TOOL_LABELS: dict[str, str] = {
     "onshape_import_element": "importing from Onshape",
     "assembly_add_part": "adding to the assembly", "assembly_move": "moving a part",
     "assembly_animate": "animating the assembly",
+    "web_search": "searching parts sites", "web_open": "reading a web page",
+    "part_show": "showing a part", "bom_add": "adding to the parts list",
+    "bom_list": "reading the parts list",
 }
 
 

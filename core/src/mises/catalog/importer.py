@@ -9,6 +9,11 @@ and every target is checked again, the body is capped at MAX_BYTES (streamed: a 
 not read), the whole fetch at TIMEOUT_S, and no cookies are sent or kept. Connection failures
 come back as one generic message (no probing of what is behind an address).
 
+The agent browser (mises.browser) reuses this fetcher with its own content types, size cap,
+User-Agent and a `redirect_ok(host)` check that keeps a redirect on sites the user allowed. An
+HTTP error status is raised with the status on the error (`upstream_status`) so a caller can
+tell "the site blocked us" from other failures.
+
 Extraction reads JSON-LD Product data, two-column tables, <dl> lists and "key: value" lines,
 and normalizes lengths to mm, masses to g and forces to N. The page's visible text is kept as
 `raw_text` (truncated) for review; agents only ever see it inside nonce delimiters
@@ -46,6 +51,7 @@ _NAT64_LOCAL = ipaddress.ip_network("64:ff9b:1::/48")
 _V4COMPAT = ipaddress.ip_network("::/96")
 
 Resolver = Callable[[str], Awaitable[list[str]]]
+RedirectCheck = Callable[[str], bool]
 
 
 def _bad(msg: str, hint: str | None = None) -> MisesError:
@@ -136,8 +142,10 @@ async def _vetted_ip(host: str, resolve: Resolver) -> str:
 
 
 class Page:
-    def __init__(self, url: str, final_url: str, content_type: str, text: str):
+    def __init__(self, url: str, final_url: str, content_type: str, text: str,
+                 body: bytes | None = None):
         self.url, self.final_url, self.content_type, self.text = url, final_url, content_type, text
+        self.body = body
 
     @property
     def domain(self) -> str:
@@ -145,16 +153,36 @@ class Page:
 
 
 async def fetch(url: str, *, transport: httpx.AsyncBaseTransport | None = None,
-                resolve: Resolver = _system_resolve, strip_query: bool = False) -> Page:
+                resolve: Resolver = _system_resolve, strip_query: bool = False,
+                types: tuple[str, ...] = _TYPES, max_bytes: int = MAX_BYTES,
+                user_agent: str = USER_AGENT, accept: str | None = None,
+                redirect_ok: RedirectCheck | None = None) -> Page:
+    """GET one page with every check in the module docstring. `types`, `max_bytes`,
+    `user_agent` and `accept` tune it for other callers (the agent browser, its image proxy);
+    `redirect_ok(host)` may refuse a redirect to another site (it is asked after the target
+    passed check_url, before anything is sent there)."""
     start = check_url(url, strip_query=strip_query)
+    opts = _Opts(types, max_bytes, user_agent, accept, redirect_ok)
     try:
         async with asyncio.timeout(TIMEOUT_S):
-            return await _fetch(start, transport, resolve)
+            return await _fetch(start, transport, resolve, opts)
     except TimeoutError:
         raise MisesError(ErrorCode.TRANSIENT, f"the page took longer than {TIMEOUT_S:g} s",
                          hint="try again, or another page") from None
     except httpx.InvalidURL:
         raise _bad("not a valid URL") from None
+
+
+class _Opts:
+    def __init__(self, types=_TYPES, max_bytes=MAX_BYTES, user_agent=USER_AGENT, accept=None,
+                 redirect_ok=None):
+        self.types, self.max_bytes, self.user_agent = types, max_bytes, user_agent
+        self.accept = accept or "text/html,application/json;q=0.9,*/*;q=0.1"
+        self.redirect_ok = redirect_ok
+
+
+def _cap_text(n: int) -> str:
+    return f"{n // (1024 * 1024)} MB" if n >= 1024 * 1024 else f"{n // 1024} KB"
 
 
 def _peer_ok(resp: httpx.Response, ip: str) -> bool:
@@ -173,8 +201,9 @@ def _peer_ok(resp: httpx.Response, ip: str) -> bool:
         return False
 
 
-async def _fetch(start: str, transport, resolve: Resolver) -> Page:
-    headers = {"User-Agent": USER_AGENT, "Accept": "text/html,application/json;q=0.9,*/*;q=0.1"}
+async def _fetch(start: str, transport, resolve: Resolver, opts: _Opts | None = None) -> Page:
+    opts = opts or _Opts()
+    headers = {"User-Agent": opts.user_agent, "Accept": opts.accept}
     async with httpx.AsyncClient(transport=transport, follow_redirects=False,
                                  timeout=TIMEOUT_S, trust_env=False) as http:
         url = start
@@ -204,24 +233,33 @@ async def _fetch(start: str, transport, resolve: Resolver) -> Page:
                             why = e.message if isinstance(e, MisesError) else "not a valid URL"
                             raise _bad(f"the page redirects somewhere not allowed: {why}",
                                        "only https pages on public hosts are fetched") from None
+                        if opts.redirect_ok is not None:
+                            to = (urlsplit(url).hostname or "").lower()
+                            if not opts.redirect_ok(to):
+                                raise _bad(f"the page redirects to another site ({to})",
+                                           "open that link directly so the user can approve"
+                                           " the site")
                         continue
                     if not resp.is_success:
-                        raise MisesError(ErrorCode.TOOL_FAILED,
+                        err = MisesError(ErrorCode.TOOL_FAILED,
                                          f"the page answered HTTP {resp.status_code}")
+                        err.upstream_status = resp.status_code
+                        raise err
                     ctype = resp.headers.get("Content-Type", "").split(";")[0].strip().lower()
-                    if ctype and ctype not in _TYPES:
+                    if ctype and ctype not in opts.types:
                         raise _bad(f"not a web page ({ctype})", "link to the product page")
+                    cap = opts.max_bytes
                     declared = resp.headers.get("Content-Length")
-                    if declared and declared.isdigit() and int(declared) > MAX_BYTES:
-                        raise _bad(f"page larger than {MAX_BYTES // (1024 * 1024)} MB; not read")
+                    if declared and declared.isdigit() and int(declared) > cap:
+                        raise _bad(f"page larger than {_cap_text(cap)}; not read")
                     body = bytearray()
                     async for chunk in resp.aiter_bytes():
                         body += chunk
-                        if len(body) > MAX_BYTES:
-                            raise _bad(f"page larger than {MAX_BYTES // (1024 * 1024)} MB;"
-                                       " not read")
-                    text = bytes(body).decode(resp.encoding or "utf-8", errors="replace")
-                    return Page(start, url, ctype, text)
+                        if len(body) > cap:
+                            raise _bad(f"page larger than {_cap_text(cap)}; not read")
+                    raw = bytes(body)
+                    text = raw.decode(resp.encoding or "utf-8", errors="replace")
+                    return Page(start, url, ctype, text, raw)
             except httpx.HTTPError:
                 # one message for refused, unreachable, TLS and protocol failures alike
                 raise MisesError(ErrorCode.TRANSIENT, "could not connect to the page",
@@ -265,7 +303,7 @@ class _Collector(HTMLParser):
         elif tag == "title":
             self._in_title = True
         elif tag == "meta":
-            key = (a.get("property") or a.get("name") or "").lower()
+            key = (a.get("property") or a.get("name") or a.get("itemprop") or "").lower()
             if key and "content" in a:
                 self.meta.setdefault(key, a["content"][:500])
         elif tag == "tr":
@@ -460,6 +498,98 @@ def _qv(v) -> tuple[object, str | None] | None:
     return None
 
 
+_PRICE_RE = re.compile(r"^\s*([$€£¥])?\s*(\d[\d.,]{0,15})\s*([$€£¥])?\s*$")
+_CURRENCY_RE = re.compile(r"^[A-Z]{3}$")
+
+
+def _grouped(head: str, groups: list[str]) -> bool:
+    return 1 <= len(head) <= 3 and all(len(g) == 3 for g in groups)
+
+
+def _price(v, *, schema: bool = False) -> float | None:
+    """A price value as a float, or None. Separators are read as follows:
+    - "." and "," both present: the last one is the decimal point ("1.299,50", "$1,299.00").
+    - One kind used twice or more: thousands grouping ("1,299,000").
+    - A single separator is a decimal point when the integer part is 0 ("0.452"), when it is
+      not followed by exactly 3 digits ("12.9950", "12,5"), or when it is a "." next to a
+      currency symbol or from schema.org data (`schema`, which requires "." as the decimal
+      point: "1.299" there is 1.299). Otherwise ("1,299") it groups thousands.
+    Anything else (two decimal points, bad grouping) is not a price."""
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, (int, float)):
+        return round(float(v), 6) if 0 <= v < 1e7 else None
+    if not isinstance(v, str):
+        return None
+    m = _PRICE_RE.match(v)
+    if not m or (m.group(1) and m.group(3)):
+        return None
+    symbol, n = bool(m.group(1) or m.group(3)), m.group(2)
+    if n[-1] in ".,":
+        return None
+    dots, commas = n.count("."), n.count(",")
+    if dots and commas:
+        dec = "." if n.rfind(".") > n.rfind(",") else ","
+        thou = "," if dec == "." else "."
+        if n.count(dec) != 1:
+            return None
+        whole, frac = n.split(dec)
+        parts = whole.split(thou)
+        if not _grouped(parts[0], parts[1:]):
+            return None
+        num = "".join(parts) + "." + frac
+    elif dots + commas == 0:
+        num = n
+    else:
+        sep = "." if dots else ","
+        parts = n.split(sep)
+        if len(parts) > 2:
+            if not _grouped(parts[0], parts[1:]):
+                return None
+            num = "".join(parts)
+        else:
+            whole, frac = parts
+            decimal = (whole == "0" or len(frac) != 3
+                       or (sep == "." and (schema or symbol)))
+            num = f"{whole}.{frac}" if decimal else whole + frac
+    try:
+        f = float(num)
+    except ValueError:
+        return None
+    return round(f, 6) if f < 1e7 else None
+
+
+def _currency(v) -> str | None:
+    return v.upper() if isinstance(v, str) and _CURRENCY_RE.match(v.upper()) else None
+
+
+def _offer_price(offers) -> tuple[float, str | None] | None:
+    """The first price in a schema.org offers value (Offer, AggregateOffer or a list)."""
+    for o in (offers if isinstance(offers, list) else [offers])[:10]:
+        if not isinstance(o, dict):
+            continue
+        for k in ("price", "lowPrice"):
+            p = _price(o.get(k), schema=True)
+            if p is not None:
+                return p, _currency(o.get("priceCurrency"))
+        spec = o.get("priceSpecification")
+        if isinstance(spec, dict):
+            p = _price(spec.get("price"), schema=True)
+            if p is not None:
+                return p, _currency(spec.get("priceCurrency"))
+    return None
+
+
+def _meta_price(meta: dict[str, str]) -> tuple[float, str | None] | None:
+    for amount, cur in (("product:price:amount", "product:price:currency"),
+                        ("og:price:amount", "og:price:currency"),
+                        ("price", "pricecurrency")):
+        p = _price(meta.get(amount), schema=True)
+        if p is not None:
+            return p, _currency(meta.get(cur))
+    return None
+
+
 def _jsonld_specs(blobs: list[str]) -> tuple[dict, list[tuple[str, object, str | None]]]:
     info: dict = {}
     specs: list[tuple[str, object, str | None]] = []
@@ -476,6 +606,10 @@ def _jsonld_specs(blobs: list[str]) -> tuple[dict, list[tuple[str, object, str |
                 brand = brand.get("name")
             if isinstance(brand, str):
                 info.setdefault("vendor", brand)
+            if "price" not in info:
+                offer = _offer_price(p.get("offers"))
+                if offer:
+                    info["price"], info["currency"] = offer
             for k in ("weight", "width", "height", "depth", "length"):
                 q = _qv(p.get(k))
                 if q:
@@ -572,6 +706,7 @@ def extract(page: Page) -> dict:
     vendor = info.get("vendor") or c.meta.get("og:site_name") or None
     hay = " ".join([name, *(s["key"] for s in specs)]).lower()
     category = next((cat for cat, pat in _CATEGORY_WORDS if re.search(pat, hay)), "other")
+    price = (info["price"], info.get("currency")) if "price" in info else _meta_price(c.meta)
     has_box = all(k in dims for k in ("length_mm", "width_mm", "height_mm"))
     has_round = "diameter_mm" in dims or "od_mm" in dims
     return {"id": item_id_for(page.url), "name": name,
@@ -580,6 +715,8 @@ def extract(page: Page) -> dict:
             "specs": specs, "dims": dims, "mount": mount,
             "geometry": "envelope" if has_box or has_round else None,
             "mass_source": "catalog" if "mass_g" in dims else "estimate",
+            "price": price[0] if price else None,
+            "currency": (price[1] or None) if price else None,
             "sources": [{"title": f"Imported from {page.domain}", "url": page.url}],
             "raw_text": raw[:RAW_TEXT_MAX]}
 
