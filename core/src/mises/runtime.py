@@ -1024,6 +1024,8 @@ class Runtime:
                                  [c for c in SafetyClass if c in classes])
         self.workdir(run.id)
         self._external.add(run.id)
+        if provider == "ui":    # I5: the gate scrubs these ids from every agent's results
+            self.gate.services.setdefault("ui_run_ids", set()).add(run.id)
         started = {"agent": agent, "provider": provider, "model": model,
                    "parent_id": parent_id, "external": True}
         if slot_ref is None:

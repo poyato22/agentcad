@@ -129,7 +129,11 @@ class _McpEndpoint:
             except KeyError:
                 resp = _error_response(MisesError(ErrorCode.NOT_FOUND, f"unknown run: {run_id}"))
             else:
-                if run.status != "running":
+                if run.provider == "ui":    # I5: the user's own identity is never an MCP client
+                    resp = _error_response(MisesError(
+                        ErrorCode.DENIED, "the app's own run cannot be used over MCP",
+                        hint="bind the MCP connection to your own run id"))
+                elif run.status != "running":
                     resp = _error_response(MisesError(
                         ErrorCode.INVALID_INPUT, f"run {run_id} is {run.status}",
                         hint="create a new run"), status=409)
