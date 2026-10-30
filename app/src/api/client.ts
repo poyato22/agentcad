@@ -1,6 +1,7 @@
 // Typed HTTP client for the local core. Every request carries the bearer token; every response
 // is validated with zod. Failures always surface as CoreError (never a raw fetch/zod error).
 import { z } from "zod";
+import { feedbackResultSchema, measureResultSchema, type FeedbackBody, type FeedbackResult, type MeasureRef, type MeasureResult } from "./measure";
 import { debug } from "../lib/log";
 import {
   agentDetailSchema, agentInfoSchema, agentRunSchema, approvalSchema, cancelAllSchema, claudeCodeStatusSchema, cleanupResultSchema, coreErrorBodySchema, coreStatusSchema, deleteRefusedSchema,
@@ -564,6 +565,17 @@ export class CoreClient {
   }
   partOp(id: string, op: OpRequest, baseVersion: number): Promise<PartEditResult> {
     return this.json("POST", `/parts/${enc(id)}/ops`, partEditResultSchema, { body: { ...op, base_version: baseVersion } });
+  }
+
+  // ---- Plan 7 U2a: measure and feedback pins (server/measure_api.py, server/feedback_api.py)
+
+  /** Exact B-rep values for the picks; 409 (stale_version) when the part changed since `baseVersion`. */
+  measurePart(id: string, refs: MeasureRef[], baseVersion?: number): Promise<MeasureResult> {
+    return this.json("POST", `/parts/${enc(id)}/measure`, measureResultSchema, { body: { refs, ...(baseVersion === undefined ? {} : { base_version: baseVersion }) } });
+  }
+  /** A comment pinned on the model: a message to the build's agent with the location as data. */
+  sendFeedback(projectId: string, body: FeedbackBody): Promise<FeedbackResult> {
+    return this.json("POST", `/projects/${enc(projectId)}/feedback`, feedbackResultSchema, { body });
   }
 
   // ---- internals

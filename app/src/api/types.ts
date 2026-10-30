@@ -176,7 +176,8 @@ export type Vec3 = [number, number, number];
 export interface PartHole { diameter_mm: number; axis: Vec3; center: Vec3; depth_mm: number }
 
 /** One face of a part (core cad/worker.py _face_list): ids "f0".. name faces for study fixtures/loads. */
-export interface PartFace { id: string; type: string; center: Vec3; normal: Vec3 | null; area: number }
+/** `radius`: a cylinder's (U2a; parts built before it have none). */
+export interface PartFace { id: string; type: string; center: Vec3; normal: Vec3 | null; area: number; radius?: number }
 
 export interface PartMetrics {
   valid: boolean; volume_mm3: number; area_mm2: number; mass_g: number;
