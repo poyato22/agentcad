@@ -12,7 +12,7 @@ import { Button } from "../../common/Button";
 import { Led } from "../../common/Led";
 import { CheckRows } from "../../console/studycard/StudyCard";
 import { StudyChart } from "./charts/StudyChart";
-import { fidelityText, fmtMetric, loadCases, sig3, typeName, VERDICT_TEXT, verdictTone } from "./model";
+import { fidelityText, fmtMetric, loadCases, metricLabel, sig3, summaryMetrics, typeName, VERDICT_TEXT, verdictTone } from "./model";
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
@@ -116,9 +116,9 @@ export function ResultPanel({ rec, charts, onAsk, onOpenRun, asked, onImmersive 
       )}
       {done && card && (
         <dl class="st-nums st-metrics" data-testid="metrics">
-          {card.metrics.filter((m) => m.value !== null && m.value !== undefined).map((m) => (
+          {summaryMetrics(card.metrics, rec.results).map((m) => (
             <div key={m.key} data-testid="metric" data-key={m.key}>
-              <dt class="label">{m.label}</dt>
+              <dt class="label">{metricLabel(m, type)}</dt>
               <dd class={`st-num${m.key === "cd" || m.key === "safety_factor" || m.key === "first_freq_hz" || m.key === "first_factor" || m.key === "max_temp_c" ? " st-num-big" : ""}`}>{fmtMetric(m)}</dd>
             </div>
           ))}

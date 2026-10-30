@@ -14,7 +14,7 @@ import { ContactPairsField, FatigueField, PrintDirectionField, type CustomFieldP
 import { unitText } from "./model";
 import {
   ADVANCED, defaultFor, deref, directionNames, discriminated, enumText, FACE_PRESETS, getAt, isDirection, isFaceKey, labelFor, nullableInner,
-  pathKey, properties, setAt, type FieldError, type Path,
+  nullMeaning, pathKey, properties, setAt, SHOWN_WHEN, type FieldError, type Path,
 } from "./formSchema";
 
 export interface SchemaFormProps {
@@ -55,7 +55,7 @@ export function SchemaForm(props: SchemaFormProps): JSX.Element {
   for (const e of props.errors ?? []) errs.set(e.path, [...(errs.get(e.path) ?? []), e.message]);
   const ctx: Ctx = { ...props, root, errs, set: (p, v) => props.onChange(setAt(props.value, p, v)) };
   const n = deref(root, root);
-  const props_ = properties(n);
+  const props_ = properties(n).filter((p) => SHOWN_WHEN[p.key]?.(props.value) ?? true);
   // a solver *choice* (wind: built-in or OpenFOAM, Plan 6) stays in sight; FEM solver settings fold
   const isAdv = (p: { key: string; schema: JsonSchema }) => ADVANCED.has(p.key) && !(p.key === "solver" && Array.isArray(deref(p.schema, root).enum));
   const basic = props_.filter((p) => !isAdv(p));
@@ -249,7 +249,7 @@ function Field({ ctx, path, k, schema, required }: { ctx: Ctx; path: Path; k: st
   if (inner) {
     const on = value !== null && value !== undefined;
     const simple = inner.type === "number" || inner.type === "integer" || inner.type === "string";
-    const autoText = /null = ([^;,)]+)/.exec(String(n.description ?? ""))?.[1] ?? "off";
+    const autoText = nullMeaning(n.description) ?? "off";
     if (simple) {
       return (
         <Row ctx={ctx} path={path} label={label} unit={unit ?? (typeof inner.unit === "string" ? inner.unit : undefined)} n={inner}>

@@ -267,6 +267,25 @@ const LABELS: Record<string, string> = {
   contacts: "Contact pairs", rigid_supports: "Rigid supports", increments: "Load increments", max_increments: "Max increments",
   min_increment: "Smallest increment", penalty: "Contact stiffness", search_mm: "Search distance", gap_mm: "Gap", normal: "Support normal",
   friction: "Friction μ", fatigue: "Fatigue", print_direction: "Print direction", cycles: "Required life", min_pct: "Min load",
+  openfoam_iterations: "OpenFOAM iterations", cpus: "CPU cores",
+};
+
+/** What "null" means in a field's description ("…; null = the material's (or an estimate)"), with
+ *  its brackets kept whole (m7: the placeholder read "the material's (or an estimate"). */
+export function nullMeaning(description: unknown): string | null {
+  const m = /null = ([^;,]+)/.exec(String(description ?? ""));
+  if (!m) return null;
+  let t = m[1].trim();
+  // a closing bracket that belongs to the sentence around it ("(null = auto)") goes
+  while (t.endsWith(")") && (t.match(/\)/g) ?? []).length > (t.match(/\(/g) ?? []).length) t = t.slice(0, -1).trim();
+  return t || null;
+}
+
+/** Top-level settings that only mean something for one choice of another (m7: OpenFOAM's
+ *  iterations and cores showed with the solver on auto). A field not listed always shows. */
+export const SHOWN_WHEN: Readonly<Record<string, (v: Record<string, unknown>) => boolean>> = {
+  openfoam_iterations: (v) => v.solver === "openfoam",
+  cpus: (v) => v.solver === "openfoam",
 };
 
 /** Choice values as words (the core's enum values stay the option values). */
