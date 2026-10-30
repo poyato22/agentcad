@@ -3,10 +3,12 @@ cost, vendor, specs, totals and a CSV export.
 
 Rows:
 - **Made parts come in automatically**: every part in the build's tree (`kind: "part"`) is a
-  row (`id: "auto_<part_id>"`, `source: "auto"`). Its cost is an estimate: the part's volume
-  times the profile's default material density gives the mass, times that material's $/kg
-  (the slicer's filament prices). It is labelled `estimate: true` with the basis in
-  `estimate_note`.
+  row (`id: "auto_<part_id>"`, `source: "auto"`); its quantity is the number of times the
+  build's assembly places it (1 when it is not in the assembly). Its cost is an estimate: the
+  part's solid volume (100% infill; a print with less infill uses less) times the profile's
+  default material density gives the mass, times that material's $/kg (the slicer's filament
+  prices). It is labelled `estimate: true` with the basis in `estimate_note`.
+- A currency that is not known is null ("unknown" in totals and the CSV), never assumed.
 - Catalog parts inserted into the build (`kind: "catalog"`) come in the same way as bought
   rows, priced from their parts-directory item when the item has a price.
 - Stored rows: what the user adds (POST, `source: "user"`) or an agent adds (`bom_add`,
@@ -40,6 +42,7 @@ from ..types import ErrorCode, MisesError
 PART_RE = re.compile(r"^[a-z][a-z0-9_]{1,40}$")
 ITEM_RE = re.compile(r"^(?:bom_[0-9a-f]{12}|auto_[a-z][a-z0-9_]{1,40})$")
 ROWS_MAX = 2000
+UNKNOWN = "unknown"          # the totals' and CSV's name for a currency nobody knows
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS bom_items (
@@ -72,7 +75,7 @@ class BomItemIn(BaseModel):
     name: Annotated[str, StringConstraints(min_length=1, max_length=200)]
     qty: int = Field(1, ge=1, le=100_000)
     unit_cost: float | None = Field(None, ge=0, lt=1e7)
-    currency: Currency = "USD"
+    currency: Currency | None = None     # null: unknown, never assumed
     vendor: Short | None = None
     url: str | None = Field(None, max_length=2048)
     specs: list[SpecRow] = Field(default_factory=list, max_length=40)
@@ -208,8 +211,8 @@ def made_estimate(home: Path, part_id: str, material: str) -> dict:
     mass_g = vol / 1000.0 * density
     cost = round(mass_g / 1000.0 * usd_kg, 2)
     return {"unit_cost": cost, "mass_g": round(mass_g, 2), "bbox": (m.get("bbox") or {}).get("size"),
-            "note": f"estimate: {mass_g:.1f} g of {material.upper()} x ${usd_kg:g}/kg"
-                    " (material only)"}
+            "note": f"estimate: {mass_g:.1f} g of {material.upper()} solid (100% infill)"
+                    f" x ${usd_kg:.2f}/kg (material only)"}
 
 
 # ---- the view
@@ -241,15 +244,16 @@ def _short_specs(specs: list | None, n: int = 12) -> list[dict]:
     return out
 
 
-def _auto_row(part, home: Path, catalog, material: str) -> dict:
+def _auto_row(part, home: Path, catalog, material: str, counts: dict | None = None) -> dict:
+    qty = max(1, int((counts or {}).get(part.id, 0)))
     row = {"id": f"auto_{part.id}", "part_id": part.id, "catalog_id": None, "name": part.label,
-           "qty": 1, "unit_cost": None, "currency": "USD", "vendor": None, "url": None,
+           "qty": qty, "unit_cost": None, "currency": None, "vendor": None, "url": None,
            "specs": [], "notes": "", "source": "auto"}
     if part.kind == "catalog":
         it = _catalog_part_item(home, part.id, catalog) or {}
         row.update(kind="bought", catalog_id=it.get("id"), vendor=it.get("vendor"),
                    url=it.get("url"), specs=_short_specs(it.get("specs")),
-                   unit_cost=it.get("price"), currency=it.get("currency") or "USD")
+                   unit_cost=it.get("price"), currency=it.get("currency") or None)
     else:
         row["kind"] = "made"
     return row
@@ -298,7 +302,7 @@ def totals(items: list[dict]) -> dict:
         if lt is None:
             unpriced += 1
             continue
-        cur = it["currency"] or "USD"
+        cur = it["currency"] or UNKNOWN
         _add(by_currency, cur, lt)
         _add(made if it["kind"] == "made" else bought, cur, lt)
         if it["estimate"]:
@@ -315,16 +319,31 @@ def totals(items: list[dict]) -> dict:
             "unpriced": unpriced, "rows": len(items), "qty": sum(i["qty"] for i in items)}
 
 
+def instance_counts(assembly, project_id: str) -> dict[str, int]:
+    """part_id -> how many times the build's assembly places it (U3c's agents place parts)."""
+    if assembly is None:
+        return {}
+    try:
+        insts = assembly.get(project_id).instances
+    except Exception:  # noqa: BLE001 - no assembly yet means no counts
+        return {}
+    out: dict[str, int] = {}
+    for i in insts:
+        out[i.part_id] = out.get(i.part_id, 0) + 1
+    return out
+
+
 def view(store: Store, bom: BomStore, home: Path, project_id: str, *, catalog=None,
-         material: str = "PLA") -> dict:
-    """GET /projects/{id}/bom: {project_id, material, items, totals}. Made rows first."""
+         material: str = "PLA", counts: dict | None = None) -> dict:
+    """GET /projects/{id}/bom: {project_id, material, items, totals}. Made rows first.
+    `counts` (instance_counts) sets the automatic rows' quantities."""
     stored = bom.rows(project_id)
     covered = {r["part_id"] for r in stored if r.get("part_id")}
     tree = {p.id: p for p in store.list_part_rows(project_id)}
     rows = []
     for p in tree.values():
         if p.kind in ("part", "catalog") and p.id not in covered:
-            rows.append(_auto_row(p, home, catalog, material))
+            rows.append(_auto_row(p, home, catalog, material, counts))
     for r in stored:
         if r.get("hidden"):
             continue
@@ -336,8 +355,8 @@ def view(store: Store, bom: BomStore, home: Path, project_id: str, *, catalog=No
 
 
 def auto_rows(store: Store, home: Path, project_id: str, catalog=None,
-              material: str = "PLA") -> dict[str, dict]:
-    return {f"auto_{p.id}": _auto_row(p, home, catalog, material)
+              material: str = "PLA", counts: dict | None = None) -> dict[str, dict]:
+    return {f"auto_{p.id}": _auto_row(p, home, catalog, material, counts)
             for p in store.list_part_rows(project_id) if p.kind in ("part", "catalog")}
 
 
@@ -349,12 +368,13 @@ def add_row(bom: BomStore, project_id: str, data: dict, source: str) -> dict:
 
 
 def patch_row(store: Store, bom: BomStore, home: Path, project_id: str, item_id: str,
-              patch: dict, *, catalog=None, material: str = "PLA") -> dict:
+              patch: dict, *, catalog=None, material: str = "PLA",
+              counts: dict | None = None) -> dict:
     if not ITEM_RE.match(item_id or ""):
         raise MisesError(ErrorCode.NOT_FOUND, f"no parts list row {item_id!r}")
     row = bom.get(project_id, item_id)
     if row is None or row.get("hidden"):
-        auto = auto_rows(store, home, project_id, catalog, material).get(item_id)
+        auto = auto_rows(store, home, project_id, catalog, material, counts).get(item_id)
         if auto is None:
             raise MisesError(ErrorCode.NOT_FOUND, f"no parts list row {item_id!r}")
         row = {**auto, "source": "user"}
@@ -387,19 +407,32 @@ def delete_row(store: Store, bom: BomStore, project_id: str, item_id: str) -> No
 
 CSV_COLUMNS = ["kind", "name", "qty", "unit_cost", "currency", "line_total", "estimate",
                "vendor", "url", "part_id", "catalog_id", "specs", "notes", "source"]
-_FORMULA = ("=", "+", "-", "@", "\t", "\r")
+_MONEY = {"unit_cost", "line_total"}
+_FORMULA = ("=", "+", "-", "@", "\t", "\r", "＝", "＋", "－", "＠")
 
 
-def _cell(v) -> str:
+def money_text(v: float) -> str:
+    """Money as fixed decimals: 2, or up to 4 when a unit price carries them (0.452 stays
+    0.452, never 0.45 or 452). Never scientific notation."""
+    s = f"{v:.4f}".rstrip("0")
+    whole, _, frac = s.partition(".")
+    return f"{whole}.{frac.ljust(2, '0')}"
+
+
+def _cell(v, money: bool = False) -> str:
     if v is None:
         return ""
     if isinstance(v, bool):
         return "yes" if v else ""
     if isinstance(v, (int, float)):
-        return f"{v:g}" if isinstance(v, float) else str(v)
+        if money:
+            return money_text(float(v))
+        return str(v) if isinstance(v, int) else repr(round(v, 6))
     s = str(v)
+    if s.lstrip().startswith(_FORMULA):
+        return "'" + s
     # a spreadsheet must never run a formula a web page put in a name or note
-    return "'" + s if s.startswith(_FORMULA) else s
+    return s
 
 
 def _specs_text(specs: list[dict]) -> str:
@@ -413,10 +446,11 @@ def to_csv(v: dict) -> str:
     w.writerow(CSV_COLUMNS)
     for it in v["items"]:
         notes = " | ".join(x for x in (it["notes"], it.get("estimate_note")) if x)
-        row = {**it, "specs": _specs_text(it["specs"]), "notes": notes}
-        w.writerow([_cell(row.get(c)) for c in CSV_COLUMNS])
+        row = {**it, "specs": _specs_text(it["specs"]), "notes": notes,
+               "currency": it["currency"] or UNKNOWN}
+        w.writerow([_cell(row.get(c), c in _MONEY) for c in CSV_COLUMNS])
     for cur, total in v["totals"]["by_currency"].items():
-        w.writerow([_cell(x) for x in ("total", "", "", "", cur, total,
-                                       "yes" if v["totals"]["estimated"].get(cur) else "",
-                                       "", "", "", "", "", "", "")])
+        w.writerow(["total", "", "", "", _cell(cur), money_text(total),
+                    "yes" if v["totals"]["estimated"].get(cur) else "",
+                    "", "", "", "", "", "", ""])
     return buf.getvalue()

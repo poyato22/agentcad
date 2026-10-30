@@ -101,9 +101,9 @@ async def test_search_uses_the_users_site_list(env, web):
 
 async def test_open_suggested_site_without_a_card(env, web):
     web.fixture(PRODUCT, "product_servo.html")
-    out = await env.call("web_open", {"url": PRODUCT + "?utm=leak#x"})
+    out = await env.call("web_open", {"url": PRODUCT + "?utm_source=leak&gclid=x#x"})
     assert env.store.pending_approvals(env.run.id) == []
-    assert web.requests[0].url.query == b""                 # query never leaves
+    assert web.requests[0].url.query == b""                 # trackers never leave
     sid = out.data["snapshot_id"]
     assert out.data["has_part"] and out.data["image_count"] == 2 and out.data["table_count"] == 2
     block = out.data["untrusted_page_data"]
@@ -119,7 +119,11 @@ async def test_open_suggested_site_without_a_card(env, web):
 async def test_open_other_domain_asks_a_card_per_domain(env, web):
     url = "https://shop.example.com/p/servo"
     web.fixture(url, "product_servo.html")
-    task = asyncio.create_task(env.call("web_open", {"url": url + "?d=c2VjcmV0"}))
+    with pytest.raises(MisesError) as e:                     # a card domain gets no query
+        await env.call("web_open", {"url": url + "?d=c2VjcmV0"})
+    assert e.value.code == ErrorCode.INVALID_INPUT and url in e.value.hint
+    assert web.requests == [] and env.store.pending_approvals(env.run.id) == []
+    task = asyncio.create_task(env.call("web_open", {"url": url}))
     card = await env.next_card()
     assert web.requests == []                                # nothing before the card
     assert card.action == "web_open" and card.payload == {"url": url}
@@ -208,6 +212,76 @@ async def test_open_output_fits_the_gate(env, web):
     assert out.handles == [] and out.data["snapshot_id"]      # not spilled to a file
 
 
+async def test_open_suggested_site_keeps_a_product_query(env, web):
+    url = "https://us.misumi-ec.com/vona2/detail/110300465870/"
+    web.fixture(url, "product_servo.html")
+    out = await env.call("web_open", {"url": url + "?HissuCode=SFJ6-100&utm_medium=x&ref=a"})
+    assert out.ok and env.store.pending_approvals(env.run.id) == []
+    assert web.requests[0].url.query == b"HissuCode=SFJ6-100"
+    assert env.snaps.get(out.data["snapshot_id"])["url"] == url + "?HissuCode=SFJ6-100"
+
+
+async def test_open_allowed_domain_drops_the_query(env, web):
+    save_profile(env.tmp, Profile(catalog_allowed_domains=["shop.example.com"]))
+    url = "https://shop.example.com/p/servo"
+    web.fixture(url, "product_servo.html")
+    out = await env.call("web_open", {"url": url + "?color=red"})
+    assert out.ok and web.requests[0].url.query == b""
+
+
+@pytest.mark.parametrize("bad", [
+    "/product/169?d=" + "QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo0NTY3ODk",     # base64 blob value
+    "/product/169?x=" + "deadbeefcafebabe0123",                             # hex blob value
+    "/" + "a" * 70 + "/169",                                                # blob-like segment
+    "/" + "/".join(["seg"] * 90),                                           # path too long
+])
+async def test_odd_suggested_links_ask_a_card(env, web, bad):
+    url = ADA + bad
+    base = url.split("?")[0]
+    web.fixture(base, "product_servo.html")
+    if "?" in bad:
+        # the query is dropped (it does not look like a product query) and the path is fine
+        out = await env.call("web_open", {"url": url})
+        assert out.ok and web.requests[0].url.query == b""
+        return
+    task = asyncio.create_task(env.call("web_open", {"url": url}))
+    card = await env.next_card()
+    assert web.requests == [] and "unusual shape" in card.deltas["approval_reason"]
+    env.decide(card, approve=False)
+    with pytest.raises(MisesError):
+        await task
+
+
+async def test_fetch_budget_per_run(env, web):
+    save_profile(env.tmp, Profile(browser_fetches_per_run=3))
+    web.fixture(PRODUCT, "product_servo.html")
+    web.fixture(f"{ADA}/search", "search_adafruit.html")
+    await env.call("web_open", {"url": PRODUCT})
+    await env.call("web_search", {"query": "servo", "sites": ["Adafruit", "Pololu"]})
+    n = len(web.requests)
+    with pytest.raises(MisesError) as e:
+        await env.call("web_open", {"url": PRODUCT})
+    assert e.value.code == ErrorCode.BUDGET_EXHAUSTED and "3 web fetches" in e.value.message
+    with pytest.raises(MisesError):
+        await env.call("web_search", {"query": "servo", "sites": ["Adafruit"]})
+    assert len(web.requests) == n                            # nothing went out
+
+
+@pytest.mark.parametrize("q", ["x" * 121, "servo QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo0NTY3",
+                               "motor deadbeefcafebabe12"])
+async def test_search_query_shape(env, web, q):
+    with pytest.raises(MisesError) as e:
+        await env.call("web_search", {"query": q, "sites": ["Adafruit"]})
+    assert e.value.code == ErrorCode.INVALID_INPUT and web.requests == []
+
+
+@pytest.mark.parametrize("q", ["MG996R servo", "M3x8 socket head", "STM32F103C8T6",
+                               "SN74LVC1G125DBVR", "608-2RS bearing 8x22x7"])
+async def test_real_part_queries_pass(env, web, q):
+    out = await env.call("web_search", {"query": q, "sites": ["Adafruit"]})
+    assert out.data["sites"][0]["site"] == "Adafruit"
+
+
 # ---- part_show
 
 async def opened(env, web):
@@ -230,10 +304,12 @@ async def test_part_show_from_a_snapshot(env, web):
     assert item["project_id"] == env.project and item["dims"]["mass_g"] == 9.0
     evs = env.drained()
     shown = [e for e in evs if e.type == "part_shown"]
-    ann = [e for e in evs if e.type == "agent_announce"]
     assert shown[0].data["id"] == card["id"]
-    assert ann[0].data["kind"] == "part_shown" and ann[0].data["run_id"] == env.run.id
-    assert ann[0].data["ref"]["card_id"] == card["id"]
+    # the announcement is the Gate mapper's (U3c): data["card"] carries ids only
+    assert [e for e in evs if e.type == "agent_announce"] == []
+    assert out.data["card"] == {"card_id": card["id"], "catalog_id": card["catalog_id"],
+                                "snapshot_id": sid}
+    assert "5.95 USD" in out.summary
     assert "TowerPro" not in out.summary and "untrusted_page_data" in out.data
     assert env.cards.for_run(env.run.id)[0]["id"] == card["id"]
 
@@ -267,5 +343,7 @@ async def test_part_show_from_the_catalog(env, web):
     out = await env.call("part_show", {"catalog_id": "servo_mg996r_standard", "price": 9.5})
     card = env.cards.get(out.data["card_id"])
     assert card["catalog_backed"] and card["catalog_id"] == "servo_mg996r_standard"
-    assert card["price"] == 9.5 and card["currency"] == "USD" and card["image"] is None
+    assert card["price"] == 9.5 and card["image"] is None
+    assert card["currency"] is None                          # never assumed
+    assert "(currency unknown)" in out.summary
     assert web.requests == []

@@ -24,6 +24,7 @@ from .catalog import Catalog
 from .catalog.tools import register_catalog_tools
 from .bom import BomStore
 from .bom.tools import register_bom_tools
+from .browser import images as browser_images
 from .browser.snapshot import SnapshotStore
 from .browser.tools import CardStore, register_browser_tools
 from .engineering import register_engineering_tools
@@ -332,6 +333,7 @@ class Runtime:
                 return "running", []
             self._runs.pop(run_id, None)
             self._external.discard(run_id)
+            browser_images.forget(self.home, self.snapshots.ids_for_run(run_id))
             self.store.delete_run(run_id)
             self.forget_activity(run_id)      # C4's tracker, dropped without a "done" event
             wd = self.home / "runs" / run_id

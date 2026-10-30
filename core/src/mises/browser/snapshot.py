@@ -29,6 +29,7 @@ _SCHEMA = """
 CREATE TABLE IF NOT EXISTS browser_snapshots (
   id TEXT PRIMARY KEY, run_id TEXT, project_id TEXT, data TEXT, created_at REAL);
 CREATE INDEX IF NOT EXISTS browser_snapshots_run ON browser_snapshots(run_id, created_at);
+CREATE TABLE IF NOT EXISTS browser_budget (run_id TEXT PRIMARY KEY, used INTEGER);
 """
 
 # what a page that refuses robots says instead of its content
@@ -240,6 +241,23 @@ class SnapshotStore:
                                " ORDER BY created_at, rowid", (run_id,))
         return [json.loads(r[0]) for r in rows]
 
+    def charge(self, run_id: str, n: int, cap: int) -> int | None:
+        """Spend `n` web fetches of run `run_id`'s budget `cap`: the new total, or None (and
+        nothing spent) when it would go over."""
+        with self.store._tx() as db:
+            row = db.execute("SELECT used FROM browser_budget WHERE run_id=?",
+                             (run_id,)).fetchone()
+            used = (row[0] if row else 0) + n
+            if used > cap:
+                return None
+            db.execute("INSERT OR REPLACE INTO browser_budget VALUES (?,?)", (run_id, used))
+        return used
+
+    def ids_for_run(self, run_id: str) -> list[str]:
+        return [r[0] for r in self.store._all("SELECT id FROM browser_snapshots WHERE run_id=?",
+                                              (run_id,))]
+
     def delete_run(self, run_id: str) -> None:
         with self.store._tx() as db:
             db.execute("DELETE FROM browser_snapshots WHERE run_id=?", (run_id,))
+            db.execute("DELETE FROM browser_budget WHERE run_id=?", (run_id,))

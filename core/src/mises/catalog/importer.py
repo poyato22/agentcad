@@ -498,31 +498,65 @@ def _qv(v) -> tuple[object, str | None] | None:
     return None
 
 
-_PRICE_RE = re.compile(r"^\s*[$€£¥]?\s*(\d{1,7}(?:[.,]\d{3})*(?:[.,]\d{1,4})?)\s*$")
+_PRICE_RE = re.compile(r"^\s*([$€£¥])?\s*(\d[\d.,]{0,15})\s*([$€£¥])?\s*$")
 _CURRENCY_RE = re.compile(r"^[A-Z]{3}$")
 
 
-def _price(v) -> float | None:
-    """A price value ("12.95", 12.95, "$1,299.00") as a float, or None."""
+def _grouped(head: str, groups: list[str]) -> bool:
+    return 1 <= len(head) <= 3 and all(len(g) == 3 for g in groups)
+
+
+def _price(v, *, schema: bool = False) -> float | None:
+    """A price value as a float, or None. Separators are read as follows:
+    - "." and "," both present: the last one is the decimal point ("1.299,50", "$1,299.00").
+    - One kind used twice or more: thousands grouping ("1,299,000").
+    - A single separator is a decimal point when the integer part is 0 ("0.452"), when it is
+      not followed by exactly 3 digits ("12.9950", "12,5"), or when it is a "." next to a
+      currency symbol or from schema.org data (`schema`, which requires "." as the decimal
+      point: "1.299" there is 1.299). Otherwise ("1,299") it groups thousands.
+    Anything else (two decimal points, bad grouping) is not a price."""
     if isinstance(v, bool):
         return None
     if isinstance(v, (int, float)):
-        return float(v) if 0 <= v < 1e7 else None
+        return round(float(v), 6) if 0 <= v < 1e7 else None
     if not isinstance(v, str):
         return None
     m = _PRICE_RE.match(v)
-    if not m:
+    if not m or (m.group(1) and m.group(3)):
         return None
-    n = m.group(1)
-    if re.search(r"[.,]\d{1,2}$", n):           # last separator is the decimal point
-        n = re.sub(r"[.,]", "", n[:-3] if n[-3] in ".," else n[:-2]) + "." + (
-            n[-2:] if n[-3] in ".," else n[-1:])
+    symbol, n = bool(m.group(1) or m.group(3)), m.group(2)
+    if n[-1] in ".,":
+        return None
+    dots, commas = n.count("."), n.count(",")
+    if dots and commas:
+        dec = "." if n.rfind(".") > n.rfind(",") else ","
+        thou = "," if dec == "." else "."
+        if n.count(dec) != 1:
+            return None
+        whole, frac = n.split(dec)
+        parts = whole.split(thou)
+        if not _grouped(parts[0], parts[1:]):
+            return None
+        num = "".join(parts) + "." + frac
+    elif dots + commas == 0:
+        num = n
     else:
-        n = re.sub(r"[.,]", "", n)
+        sep = "." if dots else ","
+        parts = n.split(sep)
+        if len(parts) > 2:
+            if not _grouped(parts[0], parts[1:]):
+                return None
+            num = "".join(parts)
+        else:
+            whole, frac = parts
+            decimal = (whole == "0" or len(frac) != 3
+                       or (sep == "." and (schema or symbol)))
+            num = f"{whole}.{frac}" if decimal else whole + frac
     try:
-        return round(float(n), 4)
+        f = float(num)
     except ValueError:
         return None
+    return round(f, 6) if f < 1e7 else None
 
 
 def _currency(v) -> str | None:
@@ -535,12 +569,12 @@ def _offer_price(offers) -> tuple[float, str | None] | None:
         if not isinstance(o, dict):
             continue
         for k in ("price", "lowPrice"):
-            p = _price(o.get(k))
+            p = _price(o.get(k), schema=True)
             if p is not None:
                 return p, _currency(o.get("priceCurrency"))
         spec = o.get("priceSpecification")
         if isinstance(spec, dict):
-            p = _price(spec.get("price"))
+            p = _price(spec.get("price"), schema=True)
             if p is not None:
                 return p, _currency(spec.get("priceCurrency"))
     return None
@@ -550,7 +584,7 @@ def _meta_price(meta: dict[str, str]) -> tuple[float, str | None] | None:
     for amount, cur in (("product:price:amount", "product:price:currency"),
                         ("og:price:amount", "og:price:currency"),
                         ("price", "pricecurrency")):
-        p = _price(meta.get(amount))
+        p = _price(meta.get(amount), schema=True)
         if p is not None:
             return p, _currency(meta.get(cur))
     return None

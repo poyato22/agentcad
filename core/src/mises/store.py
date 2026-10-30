@@ -321,7 +321,7 @@ class Store:
             db.execute("DELETE FROM steps WHERE run_id=?", (run_id,))
             db.execute("DELETE FROM approvals WHERE run_id=?", (run_id,))
             db.execute("DELETE FROM policies WHERE run_id=?", (run_id,))
-            for table in ("browser_snapshots", "part_cards"):     # U4c, when present
+            for table in ("browser_snapshots", "browser_budget", "part_cards"):  # U4c
                 if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
                               (table,)).fetchone() is not None:
                     db.execute(f"DELETE FROM {table} WHERE run_id=?", (run_id,))

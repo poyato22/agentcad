@@ -27,7 +27,7 @@ from ..browser import images as images_mod
 from ..browser.sites import DEFAULT_SITES
 from ..browser.snapshot import public, summary
 from ..events import Event
-from ..profile import load_profile
+from ..profile import default_sites, load_profile, save_profile
 from ..types import ErrorCode, MisesError
 
 if TYPE_CHECKING:
@@ -75,8 +75,17 @@ def build_browser_router(runtime: Runtime) -> APIRouter:
         return runtime.part_cards.get(card_id)
 
     @router.get("/browser/sites/defaults")
-    async def default_sites():
+    async def get_default_sites():
         return DEFAULT_SITES
+
+    @router.post("/browser/sites/restore_defaults")
+    async def restore_default_sites():
+        """The Profile editor's "Restore defaults": the user's suggested sites become Mises's
+        current defaults again (a saved profile otherwise keeps the list it was saved with)."""
+        p = load_profile(runtime.home)
+        p2 = p.model_copy(update={"suggested_sites": default_sites()})
+        save_profile(runtime.home, p2)
+        return p2.model_dump(mode="json")["suggested_sites"]
 
     # ---- parts list
     def _material() -> str:
@@ -85,7 +94,11 @@ def build_browser_router(runtime: Runtime) -> APIRouter:
     def _view(project_id: str) -> dict:
         _projects._project_or_404(store, project_id)
         return bom_mod.view(store, runtime.bom, runtime.home, project_id,
-                            catalog=runtime.catalog, material=_material())
+                            catalog=runtime.catalog, material=_material(),
+                            counts=_counts(project_id))
+
+    def _counts(project_id: str) -> dict:
+        return bom_mod.instance_counts(runtime.assembly_store, project_id)
 
     def _changed(project_id: str, item_id: str) -> None:
         runtime.events.publish(Event(type="bom_changed", data={"project_id": project_id,
@@ -143,7 +156,8 @@ def build_browser_router(runtime: Runtime) -> APIRouter:
             if k in patch and patch[k] is None:
                 patch.pop(k)
         bom_mod.patch_row(store, runtime.bom, runtime.home, project_id, item_id, patch,
-                          catalog=runtime.catalog, material=_material())
+                          catalog=runtime.catalog, material=_material(),
+                          counts=_counts(project_id))
         _changed(project_id, item_id)
         return _row(project_id, item_id)
 

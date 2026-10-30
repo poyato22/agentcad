@@ -120,6 +120,37 @@ async def test_part_cards_routes(rt, web, client):
     assert client.get("/browser/cards/card_0000000000000000", headers=AUTH).status_code == 404
 
 
+def test_restore_default_sites(client):
+    prof = client.get("/profile", headers=AUTH).json()
+    mine = [{"name": "My Shop", "domain": "parts.example.com"}]
+    client.put("/profile", headers=AUTH, json={**prof, "suggested_sites": mine})
+    r = client.post("/browser/sites/restore_defaults", headers=AUTH)
+    assert r.status_code == 200 and r.json()[0]["name"] == "McMaster-Carr"
+    assert client.get("/profile", headers=AUTH).json()["suggested_sites"] == r.json()
+
+
+def test_bom_quantity_follows_the_assembly(rt, client, home):
+    from mises.assembly.model import Instance
+    pid = rt.store.ensure_default_project().id
+    rt.store.register_part("leg", pid, label="Leg")
+    for n in ("leg_front", "leg_back"):
+        rt.assembly_store.add_instance(pid, Instance(part_id="leg", name=n))
+    items = client.get(f"/projects/{pid}/bom", headers=AUTH).json()["items"]
+    assert items[0]["qty"] == 2
+
+
+async def test_image_cache_goes_with_the_run(rt, web, client):
+    run, _ = agent_run(rt)
+    sid = await open_page(rt, run, web)
+    web.page("https://cdn-shop.adafruit.com/1200x900/169-00.jpg", png(), ctype="image/png")
+    assert client.get(f"/browser/snapshots/{sid}/images/0", headers=AUTH).status_code == 200
+    cached = rt.home / "browser" / "images" / f"{sid}_0.png"
+    assert cached.is_file()
+    rt.store.update_run(run.id, status="done")
+    assert await rt.delete_run(run.id) is None
+    assert not cached.exists()
+
+
 def test_default_sites_route_and_profile(client):
     d = client.get("/browser/sites/defaults", headers=AUTH).json()
     assert d[0]["name"] == "McMaster-Carr" and all(s["suggested"] for s in d)
@@ -145,7 +176,8 @@ def test_bom_routes(rt, client, home):
     assert got["project_id"] == pid and got["material"] == "PLA"
     assert got["items"][0]["id"] == "auto_bracket" and got["items"][0]["estimate"]
     r = client.post(f"/projects/{pid}/bom", headers=AUTH, json={
-        "name": "MG996R", "qty": 4, "unit_cost": 9.5, "vendor": "Adafruit", "url": PRODUCT})
+        "name": "MG996R", "qty": 4, "unit_cost": 9.5, "currency": "USD", "vendor": "Adafruit",
+        "url": PRODUCT})
     assert r.status_code == 200
     row = r.json()
     assert row["source"] == "user" and row["line_total"] == 38.0

@@ -31,7 +31,7 @@ def _reencode(data: bytes) -> bytes:
     from PIL import Image
 
     try:
-        with Image.open(io.BytesIO(data)) as im:
+        with Image.open(io.BytesIO(data), formats=["PNG", "JPEG", "GIF", "WEBP"]) as im:
             if im.format not in _FORMATS:
                 raise MisesError(ErrorCode.INVALID_INPUT, "not a supported image")
             w, h = im.size
@@ -51,6 +51,22 @@ def _reencode(data: bytes) -> bytes:
 
 def cache_dir(home: Path) -> Path:
     return Path(home) / "browser" / "images"
+
+
+def forget(home: Path, snapshot_ids: list[str]) -> None:
+    """Remove the cached images of these snapshots (their run is being deleted)."""
+    d = cache_dir(home)
+    if not d.is_dir():
+        return
+    for sid in snapshot_ids:
+        if not re.fullmatch(r"snap_[0-9a-f]{16}", sid):
+            continue
+        for p in d.glob(f"{sid}_*.png"):
+            try:
+                if p.is_file() or p.is_symlink():
+                    p.unlink()
+            except OSError:
+                pass
 
 
 async def proxied(home: Path, rec: dict, n: int, http: dict | None = None) -> bytes:
