@@ -1,0 +1,614 @@
+{
+  "sim_id": "sim_d4bf1e6c82ee",
+  "part_id": "beam",
+  "type": "static",
+  "run_id": "7a209d054009",
+  "call_id": "ui-70ebcff7eed5",
+  "step_id": 7,
+  "reason": null,
+  "status": "done",
+  "stage": "done",
+  "phase": "done",
+  "pct": 100.0,
+  "created_at": 1793354239.686889,
+  "finished_at": 1793354241.32002,
+  "analysis": "static",
+  "guide": true,
+  "label": "guide only, not a guarantee",
+  "fidelity_class": "fem_nonlinear",
+  "validated_against": null,
+  "inputs": {
+    "type": "static",
+    "settings": {
+      "material": {
+        "name": "PLA",
+        "custom": null,
+        "fdm": null,
+        "anisotropy": null,
+        "printer": null,
+        "calibrated": true
+      },
+      "mesh": {
+        "size_mm": 5.0,
+        "refine_faces": [],
+        "refine_factor": 0.4,
+        "refine_points": [],
+        "second_order": true
+      },
+      "solver": {
+        "timeout_s": 300.0,
+        "threads": null
+      },
+      "load_cases": [
+        {
+          "name": "tip",
+          "supports": [
+            {
+              "kind": "fixed",
+              "face": "x-min",
+              "axis": null
+            }
+          ],
+          "loads": [
+            {
+              "kind": "force",
+              "face": "x-max",
+              "newtons": 120.0,
+              "direction": "-z"
+            }
+          ],
+          "note": ""
+        }
+      ],
+      "convergence": {
+        "enabled": false,
+        "tol_pct": 5.0,
+        "max_levels": 4
+      },
+      "environment": null,
+      "nonlinear": {
+        "large_deflection": true,
+        "plasticity": true,
+        "tangent_modulus_mpa": null,
+        "contacts": [],
+        "rigid_supports": [],
+        "increments": 10,
+        "max_increments": 200,
+        "min_increment": 0.0001,
+        "penalty": 50.0
+      },
+      "fatigue": null
+    },
+    "material": "PLA",
+    "environment": null
+  },
+  "settings": {
+    "material": {
+      "name": "PLA",
+      "custom": null,
+      "fdm": null,
+      "anisotropy": null,
+      "printer": null,
+      "calibrated": true
+    },
+    "mesh": {
+      "size_mm": 5.0,
+      "refine_faces": [],
+      "refine_factor": 0.4,
+      "refine_points": [],
+      "second_order": true
+    },
+    "solver": {
+      "timeout_s": 300.0,
+      "threads": null
+    },
+    "load_cases": [
+      {
+        "name": "tip",
+        "supports": [
+          {
+            "kind": "fixed",
+            "face": "x-min",
+            "axis": null
+          }
+        ],
+        "loads": [
+          {
+            "kind": "force",
+            "face": "x-max",
+            "newtons": 120.0,
+            "direction": "-z"
+          }
+        ],
+        "note": ""
+      }
+    ],
+    "convergence": {
+      "enabled": false,
+      "tol_pct": 5.0,
+      "max_levels": 4
+    },
+    "environment": null,
+    "nonlinear": {
+      "large_deflection": true,
+      "plasticity": true,
+      "tangent_modulus_mpa": null,
+      "contacts": [],
+      "rigid_supports": [],
+      "increments": 10,
+      "max_increments": 200,
+      "min_increment": 0.0001,
+      "penalty": 50.0
+    },
+    "fatigue": null
+  },
+  "geometry_hash": "ef22478aa482fe45fd2f212b56c1fee9f8d3e39cab1442a44f38edc4a0592691",
+  "material": {
+    "name": "PLA",
+    "e_mpa": 2300.0,
+    "nu": 0.35,
+    "yield_mpa": 51.0,
+    "density_g_cm3": 1.24,
+    "hdt_c": 55.0,
+    "source": "Prusament PLA TDS v1.1 (printed, horizontal)",
+    "k_w_mk": 0.13,
+    "alpha_per_k": 6.8e-05,
+    "knockdown": 0.7,
+    "stiffness_factor": 1.0,
+    "custom": false,
+    "tangent_modulus_mpa": null,
+    "e_z_mpa": null,
+    "z_strength_mpa": null,
+    "build_dir": null,
+    "sn_a_mpa": null,
+    "sn_b": null,
+    "basis": "datasheet / estimate",
+    "calibration": null,
+    "basis_by_property": null,
+    "fdm_strength_factor": 1.0,
+    "allowable_mpa": 35.699999999999996,
+    "e_eff_mpa": 2300.0,
+    "tangent_eff_mpa": 23.0,
+    "tangent_source": "estimate (1% of E)",
+    "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers"
+  },
+  "environment": null,
+  "error": null,
+  "hint": null,
+  "warnings": [
+    "yields: equivalent plastic strain up to 16% (a printed part may crack well before large plastic strain)",
+    "mesh not converged: peak stress changed 14% between the coarse and fine mesh; treat the peak as uncertain",
+    "post-yield slope estimated (estimate (1% of E)): plastic strain is indicative only; the validated plasticity band covers the collapse load, not plastic strain"
+  ],
+  "caveats": [
+    "Guide only: a nonlinear FEM estimate (CalculiX, load controlled), not a certification or a guarantee; its validated model error band is shown with the result.",
+    "Isotropic material model; printed parts are weaker across layers and often crack before they flow.",
+    "Plasticity is bilinear (yield at the knocked-down allowable, then the tangent modulus); its validated band covers the collapse load, not the plastic strain.",
+    "Contact is penalty contact (a little penetration stands for the contact stiffness); creep, fatigue, temperature and vibration are not simulated.",
+    "Peak stress excludes nodes on the fixed face (an ideal clamp gives a constraint singularity there); that value and a safety factor including it are reported separately."
+  ],
+  "urls": {
+    "record": "/sims/sim_d4bf1e6c82ee",
+    "glb": "/sims/sim_d4bf1e6c82ee/result.glb",
+    "charts": "/sims/sim_d4bf1e6c82ee/charts",
+    "probe": "/sims/sim_d4bf1e6c82ee/probe",
+    "section": "/sims/sim_d4bf1e6c82ee/section"
+  },
+  "solver": {
+    "name": "CalculiX",
+    "version": "2.23",
+    "path": "/Users/fixture/miniconda3/bin/ccx",
+    "element": "C3D10 (quadratic tetrahedra)",
+    "procedure": "CalculiX *STATIC"
+  },
+  "mesh": {
+    "mesher": "gmsh",
+    "mesher_version": "4.15.2",
+    "coarse": {
+      "size_mm": 10.0,
+      "nodes": 453,
+      "elements": 198,
+      "order": 2,
+      "fixed_nodes": 13,
+      "loaded_nodes": 8,
+      "dropped_load_n": 0.0
+    },
+    "fine": {
+      "size_mm": 5.0,
+      "nodes": 998,
+      "elements": 433,
+      "order": 2,
+      "fixed_nodes": 37,
+      "loaded_nodes": 25,
+      "dropped_load_n": 0.0
+    },
+    "levels": [
+      {
+        "level": 0,
+        "label": "coarse",
+        "size_mm": 10.0,
+        "nodes": 453,
+        "elements": 198,
+        "metric": 65.58836131586294
+      },
+      {
+        "level": 1,
+        "label": "fine",
+        "size_mm": 5.0,
+        "nodes": 998,
+        "elements": 433,
+        "metric": 57.57927727363716
+      }
+    ]
+  },
+  "results": {
+    "max_von_mises_mpa": 57.57927727363716,
+    "max_von_mises_at": [
+      17.5,
+      4.930414223256358,
+      10.0
+    ],
+    "max_von_mises_at_fixture_mpa": 49.5955263982197,
+    "max_displacement_mm": 47.71925561928554,
+    "max_displacement_at": [
+      100.0,
+      2.5,
+      10.0
+    ],
+    "safety_factor": 0.6200147290897892,
+    "safety_factor_incl_fixture": 0.6200147290897892,
+    "coarse_max_von_mises_mpa": 65.58836131586294,
+    "coarse_max_displacement_mm": 43.17747919332271,
+    "error_band": 0.1390966406918199,
+    "peak_excludes": "nodes on the fixed face",
+    "load_fraction": 1.0,
+    "converged": true,
+    "max_plastic_strain": 0.161526,
+    "max_plastic_strain_at": [
+      5.0,
+      10.0,
+      10.0
+    ],
+    "max_contact_pressure_mpa": null,
+    "max_contact_pressure_at": null,
+    "increments": 13,
+    "cutbacks": 1,
+    "load_path": [
+      [
+        0.1,
+        2.081612882462548
+      ],
+      [
+        0.2,
+        4.1597559028616224
+      ],
+      [
+        0.3,
+        6.23002303093053
+      ],
+      [
+        0.4,
+        8.2881539656418
+      ],
+      [
+        0.5,
+        10.330014754342786
+      ],
+      [
+        0.6,
+        12.36930850248796
+      ],
+      [
+        0.7,
+        15.058459706645246
+      ],
+      [
+        0.8,
+        20.44484602925713
+      ],
+      [
+        0.9,
+        32.780454502339595
+      ],
+      [
+        0.925,
+        36.701675593010606
+      ],
+      [
+        0.95,
+        40.619785786868434
+      ],
+      [
+        0.9875,
+        46.035246965979745
+      ],
+      [
+        1.0,
+        47.71925561928554
+      ]
+    ],
+    "pairs": [],
+    "fields_at_fraction": 1.0,
+    "allowable_mpa": 35.699999999999996,
+    "error_band_pct": 13.9,
+    "governing_case": "tip",
+    "cases": [
+      {
+        "name": "tip",
+        "max_von_mises_mpa": 57.57927727363716,
+        "max_von_mises_at": [
+          17.5,
+          4.930414223256358,
+          10.0
+        ],
+        "max_von_mises_at_fixture_mpa": 49.5955263982197,
+        "max_displacement_mm": 47.71925561928554,
+        "max_displacement_at": [
+          100.0,
+          2.5,
+          10.0
+        ],
+        "safety_factor": 0.6200147290897892,
+        "safety_factor_incl_fixture": 0.6200147290897892,
+        "coarse_max_von_mises_mpa": 65.58836131586294,
+        "coarse_max_displacement_mm": 43.17747919332271,
+        "error_band": 0.1390966406918199,
+        "peak_excludes": "nodes on the fixed face",
+        "load_fraction": 1.0,
+        "converged": true,
+        "max_plastic_strain": 0.161526,
+        "max_plastic_strain_at": [
+          5.0,
+          10.0,
+          10.0
+        ],
+        "max_contact_pressure_mpa": null,
+        "max_contact_pressure_at": null,
+        "increments": 13,
+        "cutbacks": 1,
+        "load_path": [
+          [
+            0.1,
+            2.081612882462548
+          ],
+          [
+            0.2,
+            4.1597559028616224
+          ],
+          [
+            0.3,
+            6.23002303093053
+          ],
+          [
+            0.4,
+            8.2881539656418
+          ],
+          [
+            0.5,
+            10.330014754342786
+          ],
+          [
+            0.6,
+            12.36930850248796
+          ],
+          [
+            0.7,
+            15.058459706645246
+          ],
+          [
+            0.8,
+            20.44484602925713
+          ],
+          [
+            0.9,
+            32.780454502339595
+          ],
+          [
+            0.925,
+            36.701675593010606
+          ],
+          [
+            0.95,
+            40.619785786868434
+          ],
+          [
+            0.9875,
+            46.035246965979745
+          ],
+          [
+            1.0,
+            47.71925561928554
+          ]
+        ],
+        "pairs": [],
+        "fields_at_fraction": 1.0
+      }
+    ],
+    "sf_by_case": {
+      "tip": 0.6200147290897892
+    },
+    "governing_case_id": "tip",
+    "per_case": [
+      {
+        "case_id": "tip",
+        "name": "tip",
+        "max_vm_mpa": 57.57927727363716,
+        "max_disp_mm": 47.71925561928554,
+        "sf": 0.6200147290897892
+      }
+    ],
+    "convergence": {
+      "history": [
+        {
+          "level": 0,
+          "label": "coarse",
+          "size_mm": 10.0,
+          "nodes": 453,
+          "elements": 198,
+          "metric": 65.58836131586294
+        },
+        {
+          "level": 1,
+          "label": "fine",
+          "size_mm": 5.0,
+          "nodes": 998,
+          "elements": 433,
+          "metric": 57.57927727363716
+        }
+      ],
+      "converged": null
+    },
+    "deformed_scale": 1.0,
+    "nonlinear": {
+      "effects": [
+        "large_deflection",
+        "plasticity"
+      ],
+      "description": "large deflection + plasticity",
+      "unvalidated": [],
+      "tangent_estimated": true,
+      "increments": 10,
+      "tangent_modulus_mpa": 23.0,
+      "tangent_source": "estimate (1% of E)",
+      "validation": [
+        {
+          "effect": "large_deflection",
+          "benchmark": "cantilever tip load PL^2/EI = 3, tip deflection / L vs the elastica",
+          "mesh": "C3D10, 2.5 mm on 100x10x10",
+          "measured": 0.6061,
+          "reference": 0.6033,
+          "error": 0.005,
+          "band": 0.05
+        },
+        {
+          "effect": "large_deflection",
+          "benchmark": "same at PL^2/EI = 2 (default-run coarse check)",
+          "mesh": "C3D10, 5 mm on 100x10x10",
+          "measured": 0.4938,
+          "reference": 0.4935,
+          "error": 0.001,
+          "band": 0.05
+        },
+        {
+          "effect": "plasticity",
+          "benchmark": "cantilever collapse at the plastic hinge load P = sy b h^2 / (4 L), root free to contract (beam theory's assumption); the band covers the collapse load, NOT the plastic strain (which follows the tangent modulus)",
+          "mesh": "C3D10, 2 mm on 100x10x10",
+          "measured": 106.8,
+          "reference": 100.0,
+          "error": 0.068,
+          "band": 0.1
+        },
+        {
+          "effect": "plasticity",
+          "benchmark": "same with a full clamp: +14%, outside the band (the clamp's plane-strain constraint raises the collapse load over beam theory; clamped roots are not covered by the band)",
+          "mesh": "C3D10, 2 mm (5 mm: 119.7 N)",
+          "measured": 114.2,
+          "reference": 100.0,
+          "error": 0.142,
+          "band": 0.1
+        }
+      ],
+      "converged": true,
+      "load_reached_pct": 100.0,
+      "fields_at_fraction": 1.0,
+      "increments_done": 13,
+      "cutbacks": 1,
+      "large_deflection": true,
+      "plasticity": true,
+      "contact_pairs": 0,
+      "max_plastic_strain": 0.161526,
+      "max_contact_pressure_mpa": null
+    },
+    "model_error_band": 0.1
+  },
+  "inputs_hash": "275382f30b5df87ebead0b4dc2f73cec09b2ac1efcc7d9979584e08341b58ba0",
+  "glb": "result.glb",
+  "outputs": [
+    "result.glb",
+    "fields.npz"
+  ],
+  "color_range_mpa": [
+    0.0,
+    57.57927727363716
+  ],
+  "stale": false,
+  "card": {
+    "per_case": [
+      {
+        "case_id": "tip",
+        "name": "tip",
+        "max_vm_mpa": 57.57927727363716,
+        "max_disp_mm": 47.71925561928554,
+        "sf": 0.6200147290897892
+      }
+    ],
+    "governing_case_id": "tip",
+    "material_basis": "datasheet / estimate",
+    "sim_id": "sim_d4bf1e6c82ee",
+    "type": "static",
+    "status": "done",
+    "verdict": "fail",
+    "phase": "done",
+    "pct": 100.0,
+    "part_id": "beam",
+    "label": "guide only, not a guarantee",
+    "fidelity_class": "fem_nonlinear",
+    "fidelity_note": "nonlinear (large deflection + plasticity) \u00b7 \u00b110% (validated)",
+    "notes": [],
+    "metrics": [
+      {
+        "key": "max_von_mises_mpa",
+        "label": "max von Mises",
+        "unit": "MPa",
+        "value": 57.57927727363716
+      },
+      {
+        "key": "safety_factor",
+        "label": "safety factor",
+        "unit": "",
+        "value": 0.6200147290897892
+      },
+      {
+        "key": "max_displacement_mm",
+        "label": "max displacement",
+        "unit": "mm",
+        "value": 47.71925561928554
+      },
+      {
+        "key": "error_band_pct",
+        "label": "error band",
+        "unit": "%",
+        "value": 13.9
+      },
+      {
+        "key": "load_fraction",
+        "label": "load reached",
+        "unit": "",
+        "value": 1.0
+      },
+      {
+        "key": "max_plastic_strain",
+        "label": "max plastic strain",
+        "unit": "",
+        "value": 0.161526
+      }
+    ],
+    "checks": [],
+    "warnings": [
+      "yields: equivalent plastic strain up to 16% (a printed part may crack well before large plastic strain)",
+      "mesh not converged: peak stress changed 14% between the coarse and fine mesh; treat the peak as uncertain",
+      "post-yield slope estimated (estimate (1% of E)): plastic strain is indicative only; the validated plasticity band covers the collapse load, not plastic strain"
+    ],
+    "reason": null,
+    "run_id": "7a209d054009",
+    "step_id": 7,
+    "urls": {
+      "record": "/sims/sim_d4bf1e6c82ee",
+      "glb": "/sims/sim_d4bf1e6c82ee/result.glb",
+      "charts": "/sims/sim_d4bf1e6c82ee/charts",
+      "probe": "/sims/sim_d4bf1e6c82ee/probe",
+      "section": "/sims/sim_d4bf1e6c82ee/section"
+    },
+    "charts_url": "/sims/sim_d4bf1e6c82ee/charts"
+  }
+}

@@ -1,0 +1,90 @@
+{
+  "ok": [
+    {
+      "id": "openfoam_container",
+      "name": "Docker / OrbStack (for OpenFOAM, optional)",
+      "status": "ok",
+      "version": null,
+      "path": "/usr/local/bin/docker",
+      "detail": "container runtime found",
+      "fix": null
+    },
+    {
+      "id": "openfoam",
+      "name": "OpenFOAM v2512 image (optional CFD solver)",
+      "status": "ok",
+      "version": "v2512",
+      "path": "opencfd/openfoam-run@sha256:707421ab7d1e5201d86723945a6649490e292a0c46ed03d36982449e6b3b7243",
+      "fix": null,
+      "detail": "k-omega SST (simpleFoam + snappyHexMesh), runs with no network"
+    }
+  ],
+  "image_missing": [
+    {
+      "id": "openfoam_container",
+      "name": "Docker / OrbStack (for OpenFOAM, optional)",
+      "status": "ok",
+      "version": null,
+      "path": "/usr/local/bin/docker",
+      "detail": "container runtime found",
+      "fix": null
+    },
+    {
+      "id": "openfoam",
+      "name": "OpenFOAM v2512 image (optional CFD solver)",
+      "status": "optional_missing",
+      "version": null,
+      "path": null,
+      "fix": {
+        "kind": "install",
+        "label": "Pull the OpenFOAM image",
+        "dep": "openfoam"
+      },
+      "detail": "image not pulled (~180 MB, native arm64); the built-in solver is used"
+    }
+  ],
+  "daemon_down": [
+    {
+      "id": "openfoam_container",
+      "name": "Docker / OrbStack (for OpenFOAM, optional)",
+      "status": "ok",
+      "version": null,
+      "path": "/usr/local/bin/docker",
+      "detail": "container runtime found",
+      "fix": null
+    },
+    {
+      "id": "openfoam",
+      "name": "OpenFOAM v2512 image (optional CFD solver)",
+      "status": "optional_missing",
+      "version": null,
+      "path": null,
+      "fix": null,
+      "detail": "Docker / OrbStack is installed but not running; start it to check for the OpenFOAM image"
+    }
+  ],
+  "no_runtime": [
+    {
+      "id": "openfoam_container",
+      "name": "Docker / OrbStack (for OpenFOAM, optional)",
+      "status": "optional_missing",
+      "version": null,
+      "path": null,
+      "detail": "no Docker or OrbStack; not needed (the built-in solver is used)",
+      "fix": {
+        "kind": "open_url",
+        "label": "Get OrbStack",
+        "url": "https://orbstack.dev"
+      }
+    },
+    {
+      "id": "openfoam",
+      "name": "OpenFOAM v2512 image (optional CFD solver)",
+      "status": "optional_missing",
+      "version": null,
+      "path": null,
+      "fix": null,
+      "detail": "needs Docker or OrbStack; the built-in solver is used"
+    }
+  ]
+}

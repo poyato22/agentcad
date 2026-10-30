@@ -1,0 +1,31 @@
+{
+  "sim_id": "sim_d7b559079636",
+  "point": [
+    10.0,
+    10.0,
+    0.0
+  ],
+  "units": {
+    "von_mises": "MPa",
+    "displacement": "mm",
+    "displacement_magnitude": "mm",
+    "s1": "MPa",
+    "s3": "MPa",
+    "safety_factor": "",
+    "contact_pressure": "MPa"
+  },
+  "inside": true,
+  "values": {
+    "von_mises": 0.2623476651166434,
+    "displacement": [
+      4.836037522637703e-05,
+      4.834073614342339e-05,
+      0.001996148822610519
+    ],
+    "displacement_magnitude": 0.00199733921201922,
+    "s1": -0.18699130107791329,
+    "s3": -0.4614990950610611,
+    "safety_factor": 10.0,
+    "contact_pressure": 0.43611416702043937
+  }
+}

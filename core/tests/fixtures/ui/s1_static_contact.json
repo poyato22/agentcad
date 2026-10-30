@@ -1,0 +1,551 @@
+{
+  "sim_id": "sim_d7b559079636",
+  "part_id": "block",
+  "type": "static",
+  "run_id": "0ed2d6de4e49",
+  "call_id": "ui-b0880b7b4be2",
+  "step_id": 9,
+  "reason": null,
+  "status": "done",
+  "stage": "done",
+  "phase": "done",
+  "pct": 100.0,
+  "created_at": 1793354241.5251899,
+  "finished_at": 1793354247.4166021,
+  "analysis": "static",
+  "guide": true,
+  "label": "guide only, not a guarantee",
+  "fidelity_class": "fem_nonlinear",
+  "validated_against": null,
+  "inputs": {
+    "type": "static",
+    "settings": {
+      "material": {
+        "name": "PLA",
+        "custom": null,
+        "fdm": null,
+        "anisotropy": null,
+        "printer": null,
+        "calibrated": true
+      },
+      "mesh": {
+        "size_mm": 4.0,
+        "refine_faces": [],
+        "refine_factor": 0.4,
+        "refine_points": [],
+        "second_order": true
+      },
+      "solver": {
+        "timeout_s": 300.0,
+        "threads": null
+      },
+      "load_cases": [
+        {
+          "name": "press",
+          "supports": [
+            {
+              "kind": "symmetry",
+              "face": "x-min",
+              "axis": null
+            },
+            {
+              "kind": "symmetry",
+              "face": "y-min",
+              "axis": null
+            }
+          ],
+          "loads": [
+            {
+              "kind": "force",
+              "face": "top",
+              "newtons": 200.0,
+              "direction": "-z"
+            }
+          ],
+          "note": ""
+        }
+      ],
+      "convergence": {
+        "enabled": false,
+        "tol_pct": 5.0,
+        "max_levels": 4
+      },
+      "environment": null,
+      "nonlinear": {
+        "large_deflection": false,
+        "plasticity": false,
+        "tangent_modulus_mpa": null,
+        "contacts": [],
+        "rigid_supports": [
+          {
+            "face": "bottom",
+            "normal": "+z",
+            "friction": 0.3,
+            "gap_mm": 0.0
+          }
+        ],
+        "increments": 4,
+        "max_increments": 200,
+        "min_increment": 1e-05,
+        "penalty": 50.0
+      },
+      "fatigue": null
+    },
+    "material": "PLA",
+    "environment": null
+  },
+  "settings": {
+    "material": {
+      "name": "PLA",
+      "custom": null,
+      "fdm": null,
+      "anisotropy": null,
+      "printer": null,
+      "calibrated": true
+    },
+    "mesh": {
+      "size_mm": 4.0,
+      "refine_faces": [],
+      "refine_factor": 0.4,
+      "refine_points": [],
+      "second_order": true
+    },
+    "solver": {
+      "timeout_s": 300.0,
+      "threads": null
+    },
+    "load_cases": [
+      {
+        "name": "press",
+        "supports": [
+          {
+            "kind": "symmetry",
+            "face": "x-min",
+            "axis": null
+          },
+          {
+            "kind": "symmetry",
+            "face": "y-min",
+            "axis": null
+          }
+        ],
+        "loads": [
+          {
+            "kind": "force",
+            "face": "top",
+            "newtons": 200.0,
+            "direction": "-z"
+          }
+        ],
+        "note": ""
+      }
+    ],
+    "convergence": {
+      "enabled": false,
+      "tol_pct": 5.0,
+      "max_levels": 4
+    },
+    "environment": null,
+    "nonlinear": {
+      "large_deflection": false,
+      "plasticity": false,
+      "tangent_modulus_mpa": null,
+      "contacts": [],
+      "rigid_supports": [
+        {
+          "face": "bottom",
+          "normal": "+z",
+          "friction": 0.3,
+          "gap_mm": 0.0
+        }
+      ],
+      "increments": 4,
+      "max_increments": 200,
+      "min_increment": 1e-05,
+      "penalty": 50.0
+    },
+    "fatigue": null
+  },
+  "geometry_hash": "eaf443e0c27bc23cac9610bc9b86f7ec6ef783a22ebcc109a8c7f08f54cb1f48",
+  "material": {
+    "name": "PLA",
+    "e_mpa": 2300.0,
+    "nu": 0.35,
+    "yield_mpa": 51.0,
+    "density_g_cm3": 1.24,
+    "hdt_c": 55.0,
+    "source": "Prusament PLA TDS v1.1 (printed, horizontal)",
+    "k_w_mk": 0.13,
+    "alpha_per_k": 6.8e-05,
+    "knockdown": 0.7,
+    "stiffness_factor": 1.0,
+    "custom": false,
+    "tangent_modulus_mpa": null,
+    "e_z_mpa": null,
+    "z_strength_mpa": null,
+    "build_dir": null,
+    "sn_a_mpa": null,
+    "sn_b": null,
+    "basis": "datasheet / estimate",
+    "calibration": null,
+    "basis_by_property": null,
+    "fdm_strength_factor": 1.0,
+    "allowable_mpa": 35.699999999999996,
+    "e_eff_mpa": 2300.0,
+    "tangent_eff_mpa": 23.0,
+    "tangent_source": "estimate (1% of E)",
+    "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers"
+  },
+  "environment": null,
+  "error": null,
+  "hint": null,
+  "warnings": [],
+  "caveats": [
+    "Guide only: a nonlinear FEM estimate (CalculiX, load controlled), not a certification or a guarantee; its validated model error band is shown with the result.",
+    "Isotropic material model; printed parts are weaker across layers and often crack before they flow.",
+    "Plasticity is bilinear (yield at the knocked-down allowable, then the tangent modulus); its validated band covers the collapse load, not the plastic strain.",
+    "Contact is penalty contact (a little penetration stands for the contact stiffness); creep, fatigue, temperature and vibration are not simulated.",
+    "Peak stress excludes nodes on the fixed face (an ideal clamp gives a constraint singularity there); that value and a safety factor including it are reported separately."
+  ],
+  "urls": {
+    "record": "/sims/sim_d7b559079636",
+    "glb": "/sims/sim_d7b559079636/result.glb",
+    "charts": "/sims/sim_d7b559079636/charts",
+    "probe": "/sims/sim_d7b559079636/probe",
+    "section": "/sims/sim_d7b559079636/section"
+  },
+  "solver": {
+    "name": "CalculiX",
+    "version": "2.23",
+    "path": "/Users/fixture/miniconda3/bin/ccx",
+    "element": "C3D10 (quadratic tetrahedra)",
+    "procedure": "CalculiX *STATIC"
+  },
+  "mesh": {
+    "mesher": "gmsh",
+    "mesher_version": "4.15.2",
+    "coarse": {
+      "size_mm": 8.0,
+      "nodes": 1800,
+      "elements": 943,
+      "order": 2,
+      "fixed_nodes": 0,
+      "loaded_nodes": 191,
+      "dropped_load_n": 0.0
+    },
+    "fine": {
+      "size_mm": 4.0,
+      "nodes": 1800,
+      "elements": 943,
+      "order": 2,
+      "fixed_nodes": 0,
+      "loaded_nodes": 191,
+      "dropped_load_n": 0.0
+    },
+    "levels": [
+      {
+        "level": 0,
+        "label": "coarse",
+        "size_mm": 8.0,
+        "nodes": 1800,
+        "elements": 943,
+        "metric": 1.0582201159790294
+      },
+      {
+        "level": 1,
+        "label": "fine",
+        "size_mm": 4.0,
+        "nodes": 1800,
+        "elements": 943,
+        "metric": 1.0582201159790294
+      }
+    ]
+  },
+  "results": {
+    "max_von_mises_mpa": 1.0582201159790294,
+    "max_von_mises_at": [
+      20.0,
+      20.0,
+      0.0
+    ],
+    "max_von_mises_at_fixture_mpa": 0.7172353505786485,
+    "max_displacement_mm": 0.00204059303532086,
+    "max_displacement_at": [
+      20.0,
+      20.0,
+      0.0
+    ],
+    "safety_factor": 33.73589243006552,
+    "safety_factor_incl_fixture": 33.73589243006552,
+    "coarse_max_von_mises_mpa": 1.0582201159790294,
+    "coarse_max_displacement_mm": 0.00204059303532086,
+    "error_band": 0.0,
+    "peak_excludes": "nodes on the fixed face",
+    "load_fraction": 1.0,
+    "converged": true,
+    "max_plastic_strain": null,
+    "max_plastic_strain_at": null,
+    "max_contact_pressure_mpa": 1.28269,
+    "max_contact_pressure_at": [
+      20.0,
+      20.0,
+      0.0
+    ],
+    "increments": 4,
+    "cutbacks": 0,
+    "load_path": [
+      [
+        0.25,
+        0.0005101467828894935
+      ],
+      [
+        0.5,
+        0.0010178689601721825
+      ],
+      [
+        0.75,
+        0.001525611328636819
+      ],
+      [
+        1.0,
+        0.00204059303532086
+      ]
+    ],
+    "pairs": [
+      {
+        "rigid_support": 1,
+        "face": "bottom",
+        "friction": 0.3
+      }
+    ],
+    "fields_at_fraction": 1.0,
+    "allowable_mpa": 35.699999999999996,
+    "error_band_pct": 0.0,
+    "governing_case": "press",
+    "cases": [
+      {
+        "name": "press",
+        "max_von_mises_mpa": 1.0582201159790294,
+        "max_von_mises_at": [
+          20.0,
+          20.0,
+          0.0
+        ],
+        "max_von_mises_at_fixture_mpa": 0.7172353505786485,
+        "max_displacement_mm": 0.00204059303532086,
+        "max_displacement_at": [
+          20.0,
+          20.0,
+          0.0
+        ],
+        "safety_factor": 33.73589243006552,
+        "safety_factor_incl_fixture": 33.73589243006552,
+        "coarse_max_von_mises_mpa": 1.0582201159790294,
+        "coarse_max_displacement_mm": 0.00204059303532086,
+        "error_band": 0.0,
+        "peak_excludes": "nodes on the fixed face",
+        "load_fraction": 1.0,
+        "converged": true,
+        "max_plastic_strain": null,
+        "max_plastic_strain_at": null,
+        "max_contact_pressure_mpa": 1.28269,
+        "max_contact_pressure_at": [
+          20.0,
+          20.0,
+          0.0
+        ],
+        "increments": 4,
+        "cutbacks": 0,
+        "load_path": [
+          [
+            0.25,
+            0.0005101467828894935
+          ],
+          [
+            0.5,
+            0.0010178689601721825
+          ],
+          [
+            0.75,
+            0.001525611328636819
+          ],
+          [
+            1.0,
+            0.00204059303532086
+          ]
+        ],
+        "pairs": [
+          {
+            "rigid_support": 1,
+            "face": "bottom",
+            "friction": 0.3
+          }
+        ],
+        "fields_at_fraction": 1.0
+      }
+    ],
+    "sf_by_case": {
+      "press": 33.73589243006552
+    },
+    "governing_case_id": "press",
+    "per_case": [
+      {
+        "case_id": "press",
+        "name": "press",
+        "max_vm_mpa": 1.0582201159790294,
+        "max_disp_mm": 0.00204059303532086,
+        "sf": 33.73589243006552
+      }
+    ],
+    "convergence": {
+      "history": [
+        {
+          "level": 0,
+          "label": "coarse",
+          "size_mm": 8.0,
+          "nodes": 1800,
+          "elements": 943,
+          "metric": 1.0582201159790294
+        },
+        {
+          "level": 1,
+          "label": "fine",
+          "size_mm": 4.0,
+          "nodes": 1800,
+          "elements": 943,
+          "metric": 1.0582201159790294
+        }
+      ],
+      "converged": null
+    },
+    "deformed_scale": 735.0804271289411,
+    "nonlinear": {
+      "effects": [
+        "contact"
+      ],
+      "description": "contact",
+      "unvalidated": [],
+      "tangent_estimated": false,
+      "increments": 4,
+      "tangent_modulus_mpa": null,
+      "tangent_source": null,
+      "validation": [
+        {
+          "effect": "contact",
+          "benchmark": "Hertz sphere (R 10 mm, a = 1 mm) on a rigid flat: peak contact pressure (face-to-face)",
+          "mesh": "C3D10, 0.2 mm at the contact (quarter model)",
+          "measured": 169.1,
+          "reference": 166.9,
+          "error": 0.013,
+          "band": 0.15
+        },
+        {
+          "effect": "contact",
+          "benchmark": "same, coarse (default-run check)",
+          "mesh": "C3D10, 0.35 mm at the contact",
+          "measured": 167.2,
+          "reference": 166.9,
+          "error": 0.002,
+          "band": 0.15
+        }
+      ],
+      "converged": true,
+      "load_reached_pct": 100.0,
+      "fields_at_fraction": 1.0,
+      "increments_done": 4,
+      "cutbacks": 0,
+      "large_deflection": false,
+      "plasticity": false,
+      "contact_pairs": 1,
+      "max_plastic_strain": null,
+      "max_contact_pressure_mpa": 1.28269
+    },
+    "model_error_band": 0.15
+  },
+  "inputs_hash": "792de04f207bd03a227a30ee10215cf3e064a6bd378e92c6219b8dc51c636a9a",
+  "glb": "result.glb",
+  "outputs": [
+    "result.glb",
+    "fields.npz"
+  ],
+  "color_range_mpa": [
+    0.0,
+    1.0582201159790294
+  ],
+  "stale": false,
+  "card": {
+    "per_case": [
+      {
+        "case_id": "press",
+        "name": "press",
+        "max_vm_mpa": 1.0582201159790294,
+        "max_disp_mm": 0.00204059303532086,
+        "sf": 33.73589243006552
+      }
+    ],
+    "governing_case_id": "press",
+    "material_basis": "datasheet / estimate",
+    "sim_id": "sim_d7b559079636",
+    "type": "static",
+    "status": "done",
+    "verdict": "pass",
+    "phase": "done",
+    "pct": 100.0,
+    "part_id": "block",
+    "label": "guide only, not a guarantee",
+    "fidelity_class": "fem_nonlinear",
+    "fidelity_note": "nonlinear (contact) \u00b7 \u00b115% (validated)",
+    "notes": [],
+    "metrics": [
+      {
+        "key": "max_von_mises_mpa",
+        "label": "max von Mises",
+        "unit": "MPa",
+        "value": 1.0582201159790294
+      },
+      {
+        "key": "safety_factor",
+        "label": "safety factor",
+        "unit": "",
+        "value": 33.73589243006552
+      },
+      {
+        "key": "max_displacement_mm",
+        "label": "max displacement",
+        "unit": "mm",
+        "value": 0.00204059303532086
+      },
+      {
+        "key": "error_band_pct",
+        "label": "error band",
+        "unit": "%",
+        "value": 0.0
+      },
+      {
+        "key": "load_fraction",
+        "label": "load reached",
+        "unit": "",
+        "value": 1.0
+      },
+      {
+        "key": "max_contact_pressure_mpa",
+        "label": "max contact pressure",
+        "unit": "MPa",
+        "value": 1.28269
+      }
+    ],
+    "checks": [],
+    "warnings": [],
+    "reason": null,
+    "run_id": "0ed2d6de4e49",
+    "step_id": 9,
+    "urls": {
+      "record": "/sims/sim_d7b559079636",
+      "glb": "/sims/sim_d7b559079636/result.glb",
+      "charts": "/sims/sim_d7b559079636/charts",
+      "probe": "/sims/sim_d7b559079636/probe",
+      "section": "/sims/sim_d7b559079636/section"
+    },
+    "charts_url": "/sims/sim_d7b559079636/charts"
+  }
+}

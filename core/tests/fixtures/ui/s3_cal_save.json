@@ -1,11 +1,14 @@
 {
-  "id": "cal_77ade4a0d0",
+  "id": "cal_7d672f0692",
   "material": "PLA",
   "printer": "MK4",
-  "created_at": 1793349014.070202,
-  "updated_at": 1793349014.070202,
+  "created_at": 1793353504.752691,
+  "updated_at": 1793353504.752691,
   "note": "",
-  "basis": "calibrated (7 tests)",
+  "basis": "calibrated E (3), strength (3), Z strength (1), low confidence",
+  "status": "ok",
+  "status_label": "ok",
+  "reasons": [],
   "tests": {
     "tensile": [
       {
@@ -69,7 +72,7 @@
     ],
     "part": [
       {
-        "sim_id": "sim_5c5af1cac4dc",
+        "sim_id": "sim_c6f8b11368b0",
         "point": [
           100.0,
           5.0,
@@ -84,7 +87,11 @@
     ]
   },
   "fit": {
-    "n_tests": 7,
+    "material_class": "unfilled",
+    "outliers": [],
+    "warnings": [
+      "z_strength: only 1 test(s): low confidence"
+    ],
     "e": {
       "n": 3,
       "mean": 2034.36596374348,
@@ -94,12 +101,13 @@
       "max": 2104.62170075425,
       "value_mpa": 2036.3582715522537,
       "residuals": [
-        0.005684437718626145,
-        -0.04403134039544265,
-        0.03243501156408879
+        0.005716935281173452,
+        -0.042174347351263575,
+        0.03352230801211675
       ],
       "confidence": "medium",
-      "method": "least squares: three-point bend / part load tests"
+      "method": "least squares: three-point bend / part load tests",
+      "datasheet_ratio": 0.8853731615444581
     },
     "strength": {
       "n": 3,
@@ -111,7 +119,8 @@
       "value_mpa": 31.0,
       "knockdown": 0.9032258064516129,
       "knockdown_rule": "(mean - 2 sd) / mean",
-      "confidence": "medium"
+      "confidence": "medium",
+      "datasheet_ratio": 0.6078431372549019
     },
     "datasheet_ratio": 0.6078431372549019,
     "z_strength": {
@@ -124,13 +133,24 @@
       "value_mpa": 18.0,
       "knockdown": 0.85,
       "knockdown_rule": "0.85 x weakest / mean (n < 3)",
-      "confidence": "low"
+      "confidence": "low",
+      "datasheet_ratio": 0.35294117647058826
     },
     "knockdown": 0.85,
     "confidence": "low",
+    "n_tests": 7,
+    "n_tests_given": 7,
+    "calibrated": [
+      "e",
+      "strength",
+      "z_strength"
+    ],
+    "status": "ok",
+    "status_label": "ok",
+    "reasons": [],
     "part_tests": [
       {
-        "sim_id": "sim_5c5af1cac4dc",
+        "sim_id": "sim_c6f8b11368b0",
         "e_mpa": 2104.62170075425,
         "e_study_mpa": 2300.0,
         "predicted_deflection_mm": 1.7386005354056846,
@@ -146,27 +166,43 @@
     "yield_mpa": 31.0,
     "density_g_cm3": 1.24,
     "hdt_c": 55.0,
-    "source": "Prusament PLA TDS v1.1 (printed, horizontal); calibrated (7 tests) on MK4",
+    "source": "Prusament PLA TDS v1.1 (printed, horizontal); calibrated E (3), strength (3), Z strength (1), low confidence on MK4",
     "k_w_mk": 0.13,
     "alpha_per_k": 6.8e-05,
     "knockdown": 0.85,
     "stiffness_factor": 1.0,
     "custom": false,
+    "tangent_modulus_mpa": null,
     "e_z_mpa": null,
     "z_strength_mpa": 18.0,
     "build_dir": null,
     "sn_a_mpa": null,
     "sn_b": null,
-    "basis": "calibrated (7 tests)",
+    "basis": "calibrated E (3), strength (3), Z strength (1), low confidence",
     "calibration": {
       "id": "cal_preview",
       "printer": "MK4",
       "n_tests": 7,
       "confidence": "low",
+      "calibrated": [
+        "e",
+        "strength",
+        "z_strength"
+      ],
+      "notes": [],
       "updated_at": null
     },
+    "basis_by_property": {
+      "e": "calibrated (3 tests)",
+      "e_z": "datasheet / estimate",
+      "strength": "calibrated (3 tests)",
+      "z_strength": "calibrated (1 test)"
+    },
+    "fdm_strength_factor": 1.0,
     "allowable_mpa": 26.349999999999998,
     "e_eff_mpa": 2036.3582715522537,
+    "tangent_eff_mpa": 20.363582715522536,
+    "tangent_source": "estimate (1% of E)",
     "model": "isotropic linear elastic; strength x FDM knock-down 0.85; printed parts are weaker across layers"
   }
 }

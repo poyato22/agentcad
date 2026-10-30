@@ -398,6 +398,8 @@ def part_estimate(rec: dict, fields, t: PartTest) -> dict:
 
 def _nonlinear(rec: dict) -> bool:
     """A study run with any nonlinear option on (S1: large deflection, plasticity, contact)."""
+    if rec.get("fidelity_class") == "fem_nonlinear":  # S1's record marks every nonlinear study
+        return True
     nl = (rec.get("settings") or {}).get("nonlinear")
     if nl is True:
         return True

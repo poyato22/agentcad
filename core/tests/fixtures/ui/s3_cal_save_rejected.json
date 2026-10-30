@@ -1,0 +1,168 @@
+{
+  "id": "cal_37cf77c675",
+  "material": "PLA",
+  "printer": "MK4",
+  "created_at": 1793354248.453936,
+  "updated_at": 1793354248.453936,
+  "note": "",
+  "basis": "rejected \u2014 implausible",
+  "status": "rejected",
+  "status_label": "rejected \u2014 implausible",
+  "reasons": [
+    "every strength test was rejected as an outlier (see outliers)"
+  ],
+  "tests": {
+    "tensile": [
+      {
+        "force_n": 13000.0,
+        "width_mm": 10.0,
+        "thickness_mm": 4.0,
+        "area_mm2": null,
+        "elongation_pct": null,
+        "orientation": "xy",
+        "note": ""
+      },
+      {
+        "force_n": 11800.0,
+        "width_mm": 10.0,
+        "thickness_mm": 4.0,
+        "area_mm2": null,
+        "elongation_pct": null,
+        "orientation": "xy",
+        "note": ""
+      },
+      {
+        "force_n": 12400.0,
+        "width_mm": 10.0,
+        "thickness_mm": 4.0,
+        "area_mm2": null,
+        "elongation_pct": null,
+        "orientation": "xy",
+        "note": ""
+      }
+    ],
+    "bend": [
+      {
+        "span_mm": 64.0,
+        "width_mm": 10.0,
+        "thickness_mm": 4.0,
+        "load_n": 40.0,
+        "deflection_mm": 2.0,
+        "break_load_n": null,
+        "orientation": "xy",
+        "note": ""
+      },
+      {
+        "span_mm": 64.0,
+        "width_mm": 10.0,
+        "thickness_mm": 4.0,
+        "load_n": 40.0,
+        "deflection_mm": 2.1,
+        "break_load_n": null,
+        "orientation": "xy",
+        "note": ""
+      }
+    ],
+    "part": []
+  },
+  "fit": {
+    "material_class": "unfilled",
+    "outliers": [
+      {
+        "test": "tensile",
+        "index": 0,
+        "property": "strength",
+        "value_mpa": 325.0,
+        "reason": "325 MPa is 6.37x the data sheet (51 MPa): outside 0.1-3x, likely a typo"
+      },
+      {
+        "test": "tensile",
+        "index": 1,
+        "property": "strength",
+        "value_mpa": 295.0,
+        "reason": "295 MPa is 5.78x the data sheet (51 MPa): outside 0.1-3x, likely a typo"
+      },
+      {
+        "test": "tensile",
+        "index": 2,
+        "property": "strength",
+        "value_mpa": 310.0,
+        "reason": "310 MPa is 6.08x the data sheet (51 MPa): outside 0.1-3x, likely a typo"
+      }
+    ],
+    "warnings": [
+      "e: only 2 test(s): low confidence"
+    ],
+    "e": {
+      "n": 2,
+      "mean": 1999.238095238095,
+      "sd": 68.95974704143116,
+      "cv": 0.034493013716417074,
+      "min": 1950.4761904761901,
+      "max": 2048.0,
+      "value_mpa": 2000.4274099883858,
+      "residuals": [
+        0.02378121284185486,
+        -0.02497027348394798
+      ],
+      "confidence": "low",
+      "method": "least squares: three-point bend / part load tests",
+      "datasheet_ratio": 0.8697510478210373
+    },
+    "confidence": "low",
+    "n_tests": 2,
+    "n_tests_given": 5,
+    "calibrated": [
+      "e"
+    ],
+    "status": "rejected",
+    "status_label": "rejected \u2014 implausible",
+    "reasons": [
+      "every strength test was rejected as an outlier (see outliers)"
+    ]
+  },
+  "material_preview": {
+    "name": "PLA",
+    "e_mpa": 2000.4274099883858,
+    "nu": 0.35,
+    "yield_mpa": 51.0,
+    "density_g_cm3": 1.24,
+    "hdt_c": 55.0,
+    "source": "Prusament PLA TDS v1.1 (printed, horizontal); calibrated E (2), low confidence on MK4",
+    "k_w_mk": 0.13,
+    "alpha_per_k": 6.8e-05,
+    "knockdown": 0.7,
+    "stiffness_factor": 1.0,
+    "custom": false,
+    "tangent_modulus_mpa": null,
+    "e_z_mpa": null,
+    "z_strength_mpa": null,
+    "build_dir": null,
+    "sn_a_mpa": null,
+    "sn_b": null,
+    "basis": "calibrated E (2), low confidence",
+    "calibration": {
+      "id": "cal_preview",
+      "printer": "MK4",
+      "n_tests": 2,
+      "confidence": "low",
+      "calibrated": [
+        "e"
+      ],
+      "notes": [],
+      "updated_at": null
+    },
+    "basis_by_property": {
+      "e": "calibrated (2 tests)",
+      "e_z": "datasheet / estimate",
+      "strength": "datasheet / estimate",
+      "z_strength": "datasheet / estimate"
+    },
+    "fdm_strength_factor": 1.0,
+    "allowable_mpa": 35.699999999999996,
+    "e_eff_mpa": 2000.4274099883858,
+    "tangent_eff_mpa": 20.004274099883858,
+    "tangent_source": "estimate (1% of E)",
+    "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers"
+  }
+}

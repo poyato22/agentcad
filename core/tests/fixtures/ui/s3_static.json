@@ -1,17 +1,17 @@
 {
-  "sim_id": "sim_b43ab5c07362",
+  "sim_id": "sim_45be17f3507a",
   "part_id": "beam",
   "type": "static",
-  "run_id": "8a946c812352",
-  "call_id": "ui-85abbe382160",
+  "run_id": "bbcb3d51aa79",
+  "call_id": "ui-a57686afaa1b",
   "step_id": 3,
   "reason": null,
   "status": "done",
   "stage": "done",
   "phase": "done",
   "pct": 100.0,
-  "created_at": 1793349006.7396219,
-  "finished_at": 1793349011.524631,
+  "created_at": 1793353502.8876438,
+  "finished_at": 1793353503.7096782,
   "analysis": "static",
   "guide": true,
   "label": "guide only, not a guarantee",
@@ -36,6 +36,7 @@
         "size_mm": null,
         "refine_faces": [],
         "refine_factor": 0.4,
+        "refine_points": [],
         "second_order": true
       },
       "solver": {
@@ -69,6 +70,7 @@
         "max_levels": 4
       },
       "environment": null,
+      "nonlinear": null,
       "fatigue": {
         "cycles": 1000000.0,
         "cycle": "zero_to_max",
@@ -96,6 +98,7 @@
       "size_mm": null,
       "refine_faces": [],
       "refine_factor": 0.4,
+      "refine_points": [],
       "second_order": true
     },
     "solver": {
@@ -129,6 +132,7 @@
       "max_levels": 4
     },
     "environment": null,
+    "nonlinear": null,
     "fatigue": {
       "cycles": 1000000.0,
       "cycle": "zero_to_max",
@@ -136,7 +140,7 @@
       "sn": null
     }
   },
-  "geometry_hash": "630eecc974cedc223dc5fba12c3a70246d64c35c1c04276beec65ab9c6713cf2",
+  "geometry_hash": "e3ed2cd213387ec293f49774078c2bd386e4bc8ca577a4df1aaddba722410e65",
   "material": {
     "name": "PLA",
     "e_mpa": 2300.0,
@@ -150,6 +154,7 @@
     "knockdown": 0.7,
     "stiffness_factor": 1.0,
     "custom": false,
+    "tangent_modulus_mpa": null,
     "e_z_mpa": 2070.0,
     "z_strength_mpa": 30.599999999999998,
     "build_dir": [
@@ -161,8 +166,12 @@
     "sn_b": null,
     "basis": "datasheet / estimate",
     "calibration": null,
+    "basis_by_property": null,
+    "fdm_strength_factor": 1.0,
     "allowable_mpa": 35.699999999999996,
     "e_eff_mpa": 2300.0,
+    "tangent_eff_mpa": 23.0,
+    "tangent_source": "estimate (1% of E)",
     "model": "orthotropic linear elastic (FDM layers normal to [1, 0, 0]): E 2300 MPa in-plane, E_z 2070 MPa across layers; strength x FDM knock-down 0.7; tension across layers checked against 21.4 MPa",
     "e_z_eff_mpa": 2070.0,
     "allowable_z_mpa": 21.419999999999998
@@ -175,18 +184,17 @@
   ],
   "caveats": [
     "Guide only: a linear-elastic FEM estimate, not a certification or a guarantee.",
-    "Isotropic material model; printed parts are weaker across layers, so strength is multiplied by an FDM knock-down.",
+    "Orthotropic FDM model: in-plane and between-layer (Z) stiffness and strength from typical ratios (estimates) unless calibrated or given; tension across the layers is checked against the Z strength. Layer bonding varies with print settings; the model does not see seams, voids or infill patterns.",
     "Small deflections assumed; contact, creep, fatigue, temperature and vibration are not simulated unless this study type says so.",
     "Peak stress excludes nodes on the fixed face (an ideal clamp gives a constraint singularity there); that value and a safety factor including it are reported separately.",
-    "Orthotropic FDM model: in-plane and between-layer (Z) stiffness and strength from typical ratios (estimates) unless calibrated or given; tension across the layers is checked against the Z strength. Layer bonding varies with print settings; the model does not see seams, voids or infill patterns.",
     "Fatigue is an ESTIMATE: a Basquin S-N curve (data sheet, or the AM PLA design curve of Ezeh & Susmel 2019, 10% of UTS at 2e6 cycles) with a Goodman mean-stress correction at the hotspot; real printed parts scatter widely in fatigue, and notches, temperature, frequency and UV are not modelled."
   ],
   "urls": {
-    "record": "/sims/sim_b43ab5c07362",
-    "glb": "/sims/sim_b43ab5c07362/result.glb",
-    "charts": "/sims/sim_b43ab5c07362/charts",
-    "probe": "/sims/sim_b43ab5c07362/probe",
-    "section": "/sims/sim_b43ab5c07362/section"
+    "record": "/sims/sim_45be17f3507a",
+    "glb": "/sims/sim_45be17f3507a/result.glb",
+    "charts": "/sims/sim_45be17f3507a/charts",
+    "probe": "/sims/sim_45be17f3507a/probe",
+    "section": "/sims/sim_45be17f3507a/section"
   },
   "solver": {
     "name": "CalculiX",
@@ -397,7 +405,7 @@
     },
     "deformed_scale": 2.61008099578702
   },
-  "inputs_hash": "2c3615ec7f3b6f8885f009e5beb218e3290da4c337bd8d94a23bd6c86f85b531",
+  "inputs_hash": "8093aa2823453388892d34f17e67d0d7994b81dc1d2c57bdf22dcd4400647577",
   "glb": "result.glb",
   "outputs": [
     "result.glb",
@@ -421,7 +429,7 @@
     "governing_case_id": "tip",
     "material_basis": "datasheet / estimate",
     "fatigue_note": "fatigue estimate \u00b7 estimate S-N, Goodman",
-    "sim_id": "sim_b43ab5c07362",
+    "sim_id": "sim_45be17f3507a",
     "type": "static",
     "status": "done",
     "verdict": "warn",
@@ -483,15 +491,15 @@
       "FATIGUE ESTIMATE: predicted to fail after about 8.74e+05 cycles, before the 1e+06 required (fatigue safety factor 0.98, across layers (Z), estimate S-N curve)"
     ],
     "reason": null,
-    "run_id": "8a946c812352",
+    "run_id": "bbcb3d51aa79",
     "step_id": 3,
     "urls": {
-      "record": "/sims/sim_b43ab5c07362",
-      "glb": "/sims/sim_b43ab5c07362/result.glb",
-      "charts": "/sims/sim_b43ab5c07362/charts",
-      "probe": "/sims/sim_b43ab5c07362/probe",
-      "section": "/sims/sim_b43ab5c07362/section"
+      "record": "/sims/sim_45be17f3507a",
+      "glb": "/sims/sim_45be17f3507a/result.glb",
+      "charts": "/sims/sim_45be17f3507a/charts",
+      "probe": "/sims/sim_45be17f3507a/probe",
+      "section": "/sims/sim_45be17f3507a/section"
     },
-    "charts_url": "/sims/sim_b43ab5c07362/charts"
+    "charts_url": "/sims/sim_45be17f3507a/charts"
   }
 }
