@@ -25,7 +25,7 @@ from mises.sim.settings import WindSettings
 from mises.sim.tools import ReviewArgs, design_review
 from mises.sim.types import SimError
 from mises.store import AgentPolicy
-from mises.types import Caps, MisesError, SafetyClass, StepKind, ToolOutput
+from mises.types import Caps, ErrorCode, MisesError, SafetyClass, StepKind, ToolOutput
 
 TOKEN = "test-token-123"
 AUTH = {"Authorization": f"Bearer {TOKEN}"}
@@ -163,6 +163,33 @@ async def test_review_recovers_spilled_children_and_caps_every_child(tmp_path):
     static, wind = gate.payloads
     assert static["settings"]["solver"]["timeout_s"] <= 31   # half of the 1-minute budget
     assert wind["settings"]["timeout_s"] <= 61
+
+
+class _DenyingGate:
+    """A child sim_run the run's policy forbids, as a spawned verifier used to hit before the
+    implied-classes fix. design_review must report the row as not checked, never fail."""
+
+    async def call(self, run_id, name, payload, *, call_id, workdir):
+        raise MisesError(ErrorCode.DENIED, "tool class local_mutate is not allowed for this run")
+
+
+async def test_denied_child_study_is_not_checked_not_fail(tmp_path):
+    parts = tmp_path / "parts"
+    (parts / "pt").mkdir(parents=True)
+    (parts / "pt" / "metrics.json").write_text(json.dumps(
+        {"bbox": {"size": [10, 10, 10]}, "volume_mm3": 1000}))
+    pol = AgentPolicy(run_id="r", version=1, edit_scope=["*"], read_scope=["*"], caps=Caps(),
+                      allowed_classes=list(SafetyClass), created_at=0.0)
+    ctx = SimpleNamespace(workdir=tmp_path, run_id="r", call_id="c",
+                          services={"gate": _DenyingGate()}, policy=pol, events=None, store=None)
+    spec = {"requirements": [{"id": "sf", "kind": "min_safety_factor", "target": 2,
+                              "load_case_id": "a"}],
+            "load_cases": [{"id": "a", "fix": "bottom", "load": "top", "newtons": 5}]}
+    out = await design_review.handler(ctx, ReviewArgs(part_id="pt", spec=spec, budget_minutes=1))
+    by = {r["requirement_id"]: r for r in out.data["table"]}
+    assert by["sf"]["status"] == "warn" and by["sf"].get("checked") is False
+    assert "denied" in (by["sf"].get("note") or "")
+    assert out.data["verdict"] != "fail"       # no evidence is "not checked", never a fail
 
 
 def test_model_error_band_table_covers_every_level():

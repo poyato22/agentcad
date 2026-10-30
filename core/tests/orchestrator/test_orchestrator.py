@@ -154,8 +154,9 @@ def test_child_policy_narrowing(tmp_path):
     kw = child_policy(rt, parent, "verifier", ["b", "zzz"])
     assert kw["edit_scope"] == ("b",)
     assert kw["caps"].onshape_calls_run == 6
-    # verifier lists only read tools; parent's classes intersect
-    assert kw["allowed_classes"] == {C.READ}
+    # the verifier's tools are READ, but design_review runs child studies (implied LOCAL_MUTATE);
+    # the child gets both, intersected with the parent's classes, so its design_review can run
+    assert kw["allowed_classes"] == {C.READ, C.LOCAL_MUTATE}
     kw = child_policy(rt, parent, "designer")  # no tool list: parent's classes
     assert kw["edit_scope"] == ("a", "b") and kw["allowed_classes"] == {C.READ, C.LOCAL_MUTATE}
     # requested wider than parent can't widen
@@ -319,8 +320,9 @@ async def test_child_of_claude_code_run_is_narrowed_and_respects_parallel_limit(
     (child,) = [r for r in rt.store.list_runs() if r.parent_id == parent]
     pol = rt.store.current_policy(child.id)
     assert pol.edit_scope == ["bracket"]              # never wider than the parent's
-    # tools ∩: the read-only verifier narrows the parent's classes to READ only
-    assert set(pol.allowed_classes) == {C.READ}
+    # tools ∩: the verifier is READ, plus design_review's implied LOCAL_MUTATE (its child
+    # studies), both still intersected with the parent's classes
+    assert set(pol.allowed_classes) == {C.READ, C.LOCAL_MUTATE}
     assert rt.store.get_run(child.id).status == "done"  # ran under the limit of 1
 
 

@@ -487,6 +487,7 @@ def _parallel(ctx: ToolContext) -> int:
 
 
 @tool("design_review", safety=SafetyClass.READ, scope_arg="part_id", timeout_s=REVIEW_TIMEOUT_S,
+      implied_classes={SafetyClass.LOCAL_MUTATE},  # runs its child studies as sim_run calls
       description="Review a part against its spec: picks the studies the spec needs (static "
                   "per load case, modal for an excitation band, wind for a drag requirement, "
                   "drop for an impact), runs them as sim_run calls (each one a local_mutate "
@@ -569,13 +570,17 @@ async def design_review(ctx: ToolContext, args: ReviewArgs) -> ToolOutput:
                 table.append({**c, "study": p["type"], "case": p["case"],
                               "url": f"/sims/{sid}"})
         else:
+            # the study produced no checks: it was denied, errored or timed out, or ran but gave
+            # no requirement verdict. Either way we have no evidence, so the row is "not checked"
+            # (warn), never "fail" — a fail must mean a study ran and a requirement failed.
+            note = (res.get("error") or (out.summary[:200] if out else None)
+                    or "not checked: the study produced no result")
             for r in p["requirements"]:
                 table.append({"requirement_id": r.get("id"), "kind": r.get("kind"),
                               "target": r.get("target"), "measured": None, "unit": "",
-                              "status": "warn" if res.get("error") is None and out is not None
-                              and out.ok else "fail", "sim_id": sid, "study": p["type"],
-                              "case": p["case"], "url": f"/sims/{sid}" if sid else None,
-                              "note": res.get("error") or (out.summary[:200] if out else None)})
+                              "status": "warn", "checked": False, "sim_id": sid,
+                              "study": p["type"], "case": p["case"],
+                              "url": f"/sims/{sid}" if sid else None, "note": note})
     # requirements that no study or metric answered
     answered = {(r.get("requirement_id"), r.get("case")) for r in table}
     ids_answered = {a for a, _ in answered}

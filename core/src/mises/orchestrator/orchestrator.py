@@ -62,7 +62,10 @@ def child_policy(runtime: Runtime, parent_run_id: str, agent: str,
         raise MisesError(ErrorCode.NOT_FOUND, f"unknown agent: {agent}")
     classes = set(parent.allowed_classes)
     if defn.tools is not None:
-        needed = {t.safety for t in runtime.registry.list(defn.tools)}
+        tools = runtime.registry.list(defn.tools)
+        # a tool's own class, plus the classes it calls internally (e.g. design_review and
+        # study_run run child studies as LOCAL_MUTATE); still intersected with the parent's
+        needed = {t.safety for t in tools}.union(*(t.implied_classes for t in tools), set())
         classes &= needed
     used = runtime.store.get_run(parent_run_id).onshape_calls
     remaining = max(0, parent.caps.onshape_calls_run - used)
