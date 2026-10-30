@@ -346,14 +346,18 @@ def build_ui_router(runtime: Runtime) -> UiRouter:
         row = runtime.store.get_part(part_id)
         version = _projects.part_version(home, row) if row is not None else 0
         sz = thumbs.clamp_size(size)
-        etag = f'"{part_id}-{sz}-v{version}"'
+        key = thumbs.part_key(home, part_id, version, sz)   # version + model.stl identity
+        if key is None:
+            raise MisesError(ErrorCode.NOT_FOUND, f"no thumbnail for part {part_id!r}",
+                             hint="build it first")
+        etag = f'"{part_id}-{key}"'
         headers = {"ETag": etag, "Cache-Control": "private, no-cache"}
         if _etag_matches(request.headers.get("if-none-match"), etag):
             return Response(status_code=304, headers=headers)
         png = await thumbs.part_thumb(home, part_id, version, sz)
         if png is None:
             raise MisesError(ErrorCode.NOT_FOUND, f"no thumbnail for part {part_id!r}",
-                             hint="build it first")
+                             hint="its preview could not be rendered")
         return Response(png, media_type="image/png", headers=headers)
 
     def _cancel_orphan(run_id: str) -> None:

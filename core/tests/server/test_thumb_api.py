@@ -52,7 +52,7 @@ def cache_part(rt: Runtime, part_id: str, version: int, size: int) -> bytes:
     png = _png(size)
     cdir = rt.home / "parts" / thumbs.THUMBS_DIR / part_id
     cdir.mkdir(parents=True, exist_ok=True)
-    (cdir / f"{size}-v{version}.png").write_bytes(png)
+    (cdir / f"{thumbs.part_key(rt.home, part_id, version, size)}.png").write_bytes(png)
     return png
 
 
@@ -91,6 +91,19 @@ def test_part_thumb_etag_and_304(client, rt):
     assert r2.status_code == 304
 
 
+def test_part_thumb_etag_follows_the_mesh_not_only_the_version(client, rt):
+    # same id, same version, different model.stl (a reused id after Empty Trash, or a failed
+    # edit restored at the same version): the ETag must change so no stale image is revalidated
+    v = make_part(rt, "mount_plate")
+    cache_part(rt, "mount_plate", v, 256)
+    etag = client.get("/parts/mount_plate/thumb.png", headers=AUTH).headers["etag"]
+    (rt.home / "parts" / "mount_plate" / "model.stl").write_bytes(b"\x00" * 134)
+    cache_part(rt, "mount_plate", v, 256)
+    r = client.get("/parts/mount_plate/thumb.png", headers={**AUTH, "If-None-Match": etag})
+    assert r.status_code == 200
+    assert r.headers["etag"] != etag
+
+
 def test_part_thumb_404_without_mesh(client, rt):
     make_part(rt, "mount_plate", mesh=False)
     assert client.get("/parts/mount_plate/thumb.png", headers=AUTH).status_code == 404
@@ -104,7 +117,7 @@ def test_project_thumb_composites_cached_parts(client, rt):
     pid = rt.active_project_id()
     for name in ("alpha", "beta", "gamma"):
         v = make_part(rt, name)
-        cache_part(rt, name, v, 256)
+        cache_part(rt, name, v, 128)          # composite tiles render at half size
     r = client.get(f"/projects/{pid}/thumb.png", headers=AUTH)
     assert r.status_code == 200
     assert r.headers["content-type"] == "image/png"
@@ -120,3 +133,34 @@ def test_project_thumb_404_when_no_previews(client, rt):
 
 def test_project_thumb_404_unknown_build(client):
     assert client.get("/projects/nope123/thumb.png", headers=AUTH).status_code == 404
+
+
+def test_projects_last_edited_follows_part_and_run_activity(client, rt):
+    import os
+    pid = rt.active_project_id()
+    row = next(p for p in client.get("/projects", headers=AUTH).json() if p["id"] == pid)
+    base = row["last_edited_at"]
+    assert base >= row["updated_at"]
+    make_part(rt, "alpha")
+    later = base + 5000
+    os.utime(rt.home / "parts" / "alpha" / "model.stl", (later, later))
+    row = next(p for p in client.get("/projects", headers=AUTH).json() if p["id"] == pid)
+    assert row["last_edited_at"] == pytest.approx(later)
+    assert row["updated_at"] < later            # the row's own meaning is unchanged
+
+
+def test_empty_trash_purges_thumbnail_caches(rt):
+    from mises import projects
+    pid = rt.store.create_project("Scrap").id
+    d = rt.home / "parts" / "scrap_part"
+    d.mkdir(parents=True)
+    (d / "vars.json").write_text("{}")
+    rt.store.register_part("scrap_part", pid)
+    for key in ("scrap_part", f"project-{pid}"):
+        c = rt.home / "parts" / thumbs.THUMBS_DIR / key
+        c.mkdir(parents=True)
+        (c / "256-v1-1-1.png").write_bytes(b"x")
+    projects.trash_project(rt.store, pid)
+    projects.empty_trash(rt.store, rt.home)
+    assert not (rt.home / "parts" / thumbs.THUMBS_DIR / "scrap_part").exists()
+    assert not (rt.home / "parts" / thumbs.THUMBS_DIR / f"project-{pid}").exists()

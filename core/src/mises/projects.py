@@ -26,6 +26,7 @@ from .store import AgentRun, Part, Project, Store
 from .types import ErrorCode, MisesError
 
 _HEX_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+THUMBS_DIR = ".mises-thumbs"   # mirrors cad.thumbs.THUMBS_DIR (kept here: no cad import cycle)
 # runs whose cleanup is allowed: only ones that have finished one way or another
 TERMINAL = ("done", "failed", "cancelled")
 
@@ -36,15 +37,53 @@ def _bad(msg: str, hint: str | None = None) -> MisesError:
 
 # ---- builds (projects)
 
-def project_view(store: Store, p: Project) -> dict:
-    """The GET /projects shape. onshape stays null until C5's import links a document."""
+_EDIT_FILES = ("model.stl", "model.glb", "vars.json", "part.py")
+
+
+def _part_edit_mtime(home: Path, part_id: str) -> float | None:
+    """When the part's build output last changed (newest of its model/vars/script files),
+    stat'ed without following links; None when it has no build on disk."""
+    root = _parts_root(home)
+    real = _contained(root, root / part_id) if root.is_dir() else None
+    if real is None or not real.is_dir():
+        return None
+    best = None
+    for name in _EDIT_FILES:
+        try:
+            st = os.lstat(real / name)
+        except OSError:
+            continue
+        if stat.S_ISREG(st.st_mode):
+            best = st.st_mtime if best is None else max(best, st.st_mtime)
+    return best
+
+
+def last_edited_at(store: Store, p: Project, home: Path | None = None) -> float:
+    """When the build was really last worked on: the newest of its own row change (rename,
+    trash/restore), any of its parts' build output and any of its runs' activity."""
+    ts = [p.updated_at, p.created_at]
+    run = store.project_last_run_activity(p.id)
+    if run is not None:
+        ts.append(run)
+    if home is not None:
+        for row in store.list_part_rows(p.id):
+            m = _part_edit_mtime(home, row.id)
+            if m is not None:
+                ts.append(m)
+    return float(max(t for t in ts if t is not None))
+
+
+def project_view(store: Store, p: Project, home: Path | None = None) -> dict:
+    """The GET /projects shape. onshape stays null until C5's import links a document.
+    `last_edited_at` is derived (see last_edited_at); `updated_at` keeps its row meaning."""
     return {"id": p.id, "name": p.name, "created_at": p.created_at, "updated_at": p.updated_at,
+            "last_edited_at": last_edited_at(store, p, home),
             "trashed_at": p.trashed_at, "part_count": store.project_part_count(p.id),
             "run_count": store.project_run_count(p.id), "onshape": None}
 
 
-def list_projects(store: Store) -> list[dict]:
-    return [project_view(store, p) for p in store.list_projects()]
+def list_projects(store: Store, home: Path | None = None) -> list[dict]:
+    return [project_view(store, p, home) for p in store.list_projects()]
 
 
 def _live(store: Store, project_id: str | None) -> bool:
@@ -191,8 +230,10 @@ def _purge_files(store: Store, home: Path, project_id: str, part_ids: list[str],
             continue
         _rm_tree(root, pid)
         _rm_tree(root / edits.META_DIR, pid)
+        _rm_tree(root / THUMBS_DIR, pid)            # a reused id must never get these back
         _rm_tree(Path(home) / edits.VERSIONS_DIR, f"{pid}.json")
         removed.append(pid)
+    _rm_tree(root / THUMBS_DIR, f"project-{project_id}")
     for sid in study_ids:
         if re.fullmatch(r"study_[0-9a-f]{1,32}", sid):
             _rm_tree(Path(home) / "studies", sid)

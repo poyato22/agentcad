@@ -5,6 +5,7 @@ import type { JSX } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import type { PartSummary } from "../../api/types";
 import { fmtGrams } from "../../lib/format";
+import { registerShortcut } from "../../lib/keys";
 import { partName } from "../../lib/names";
 import { closeOverview } from "../../state/home";
 import { actions, parts, selectedPartId } from "../../state/store";
@@ -23,9 +24,10 @@ export function Overview(): JSX.Element {
     let live = true;
     // one cheap read for the build's material (parts don't carry their own yet — see the report)
     actions.client().getProfile().then((p) => { if (live) setMaterial(p.default_material); }).catch(() => {});
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); closeOverview(); } };
-    window.addEventListener("keydown", onKey);
-    return () => { live = false; window.removeEventListener("keydown", onKey); };
+    // Esc through the shared key layer (capture phase); stopPropagation keeps it from also
+    // clearing the viewer's selection underneath
+    const off = registerShortcut("Escape", (e) => { e.stopPropagation(); closeOverview(); });
+    return () => { live = false; off(); };
   }, []);
 
   const shown = meshParts(parts.value);
@@ -38,10 +40,11 @@ export function Overview(): JSX.Element {
       </header>
       {shown.length === 0
         ? <p class="overview-empty dim">No parts yet. Ask an agent to make one, or import a drawing.</p>
-        : <div class="overview-grid" role="list">
+        : <ul class="overview-grid" role="list" aria-label="Parts">
             {shown.map((p) => (
-              <button key={p.part_id} type="button" class={selectedPartId.value === p.part_id ? "pcard on" : "pcard"}
-                role="listitem" data-part={p.part_id} title={`Focus ${partName(p)}`}
+              <li key={p.part_id} class="overview-cell">
+              <button type="button" class={selectedPartId.value === p.part_id ? "pcard on" : "pcard"}
+                data-part={p.part_id} title={`Focus ${partName(p)}`}
                 onClick={() => { actions.selectPart(p.part_id); closeOverview(); }}>
                 <div class="pcard-thumb">
                   <Thumb class="pcard-img" alt={`${partName(p)} preview`} cacheKey={`${p.part_id}:${p.version ?? 0}:${p.mtime}`}
@@ -54,8 +57,9 @@ export function Overview(): JSX.Element {
                   </span>
                 </div>
               </button>
+              </li>
             ))}
-          </div>}
+          </ul>}
     </div>
   );
 }

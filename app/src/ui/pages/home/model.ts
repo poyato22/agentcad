@@ -1,7 +1,7 @@
 // Home (the launcher): the pure logic behind the build-tile grid — searching, sorting, the
 // lead-agent status dot and the "last edited" label. Kept apart from the component so it is
 // tested without a DOM. Build names are user text, matched as plain strings, never as markup.
-import type { Build } from "../../../api/builds";
+import { lastEditedAt, type Build } from "../../../api/builds";
 import type { LedTone } from "../../common/Led";
 
 export type HomeSort = "edited" | "name" | "created";
@@ -29,7 +29,7 @@ export function viewBuilds(builds: readonly Build[], view: HomeView): Build[] {
   const sorted = [...hit];
   if (view.sort === "name") sorted.sort((a, b) => a.name.localeCompare(b.name));
   else if (view.sort === "created") sorted.sort((a, b) => b.created_at - a.created_at);
-  else sorted.sort((a, b) => b.updated_at - a.updated_at);
+  else sorted.sort((a, b) => lastEditedAt(b) - lastEditedAt(a));
   return sorted;
 }
 

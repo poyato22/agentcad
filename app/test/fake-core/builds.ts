@@ -110,7 +110,7 @@ export function buildRoutes(d: BuildsDeps): Route[] {
   const B = () => d.get();
   const view = (b: FakeBuild) => {
     const parts = [...B().rows.values()].filter((r) => r.project_id === b.id).length;
-    return { id: b.id, name: b.name, created_at: b.created_at, updated_at: b.updated_at, trashed_at: b.trashed_at, part_count: parts, run_count: 0, onshape: null };
+    return { id: b.id, name: b.name, created_at: b.created_at, updated_at: b.updated_at, last_edited_at: b.updated_at, trashed_at: b.trashed_at, part_count: parts, run_count: 0, onshape: null };
   };
   const project = (id: string): FakeBuild => {
     const b = B().builds.find((x) => x.id === id);

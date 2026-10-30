@@ -4,9 +4,8 @@
 // the Trash filter shows trashed builds with Restore. Opening a tile opens that build as a tab.
 import type { JSX } from "preact";
 import { useRef, useState } from "preact/hooks";
-import type { Build } from "../../../api/builds";
-import { builds } from "../../../state/builds";
-import { buildActions } from "../../../state/builds";
+import { lastEditedAt, type Build } from "../../../api/builds";
+import { buildActions, builds, buildsError } from "../../../state/builds";
 import { atHome, openBuild } from "../../../state/home";
 import { actions, runs } from "../../../state/store";
 import { Led } from "../../common/Led";
@@ -42,25 +41,37 @@ export function HomePage(): JSX.Element {
           </button>
         </div>
       </header>
+      {buildsError.value && (
+        <p class="home-error" role="alert">
+          {buildsError.value}
+          <button type="button" class="home-error-x" aria-label="Dismiss" onClick={() => { buildsError.value = null; }}>×</button>
+        </p>
+      )}
 
-      <div class="home-grid" role="list">
-        {!trash && (creating
-          ? <NewTile onDone={(name) => { setCreating(false); if (name) void create(name); }} />
-          : <button type="button" class="tile tile-new" role="listitem" onClick={() => setCreating(true)}>
-              <span class="tile-plus" aria-hidden="true">+</span>
-              <span class="tile-new-label">New build</span>
-            </button>)}
+      <ul class="home-grid" role="list" aria-label={trash ? "Trashed builds" : "Builds"}>
+        {!trash && (
+          <li class="home-cell">
+            {creating
+              ? <NewTile onDone={(name) => { setCreating(false); if (name) void create(name); }} />
+              : <button type="button" class="tile tile-new" onClick={() => setCreating(true)}>
+                  <span class="tile-plus" aria-hidden="true">+</span>
+                  <span class="tile-new-label">New build</span>
+                </button>}
+          </li>
+        )}
 
-        {shown.map((b) => trash
-          ? <TrashTile key={b.id} build={b} />
-          : <BuildTile key={b.id} build={b} />)}
+        {shown.map((b) => (
+          <li key={b.id} class="home-cell">
+            {trash ? <TrashTile build={b} /> : <BuildTile build={b} />}
+          </li>
+        ))}
 
         {shown.length === 0 && (
-          <p class="home-empty dim">
+          <li class="home-empty dim">
             {trash ? "The Trash is empty." : query ? `No builds match “${query}”.` : "No builds yet. Start one with New build."}
-          </p>
+          </li>
         )}
-      </div>
+      </ul>
     </section>
   );
 
@@ -72,18 +83,19 @@ export function HomePage(): JSX.Element {
 
 function BuildTile({ build: b }: { build: Build }): JSX.Element {
   const status = buildStatus(b.id, runs.value.values());
+  const edited = lastEditedAt(b);
   return (
-    <button type="button" class="tile" role="listitem" data-build={b.id}
+    <button type="button" class="tile" data-build={b.id}
       title={`Open ${b.name}`} onClick={() => { void openBuild(b.id); }}>
       <div class="tile-thumb">
-        <Thumb class="tile-img" alt={`${b.name} preview`} cacheKey={`${b.id}:${b.updated_at}:${b.part_count}`}
+        <Thumb class="tile-img" alt={`${b.name} preview`} cacheKey={`${b.id}:${edited}:${b.part_count}`}
           load={() => actions.client().projectThumb(b.id)} />
       </div>
       <div class="tile-body">
         <span class="tile-name">{b.name}</span>
         <span class="tile-meta dim">
           <Led tone={status.tone} title={status.label} />
-          {`${partsLabel(b.part_count)} · ${fmtLastEdited(b.updated_at)}`}
+          {`${partsLabel(b.part_count)} · ${fmtLastEdited(edited)}`}
         </span>
       </div>
     </button>
@@ -92,9 +104,9 @@ function BuildTile({ build: b }: { build: Build }): JSX.Element {
 
 function TrashTile({ build: b }: { build: Build }): JSX.Element {
   return (
-    <div class="tile tile-trashed" role="listitem" data-build={b.id}>
+    <div class="tile tile-trashed" data-build={b.id}>
       <div class="tile-thumb">
-        <Thumb class="tile-img" alt={`${b.name} preview`} cacheKey={`${b.id}:${b.updated_at}`}
+        <Thumb class="tile-img" alt={`${b.name} preview`} cacheKey={`${b.id}:${lastEditedAt(b)}`}
           load={() => actions.client().projectThumb(b.id)} />
       </div>
       <div class="tile-body">
@@ -112,7 +124,7 @@ function NewTile({ onDone }: { onDone(name: string | null): void }): JSX.Element
   const done = useRef(false);
   const finish = (name: string | null) => { if (done.current) return; done.current = true; onDone(name); };
   return (
-    <div class="tile tile-new" role="listitem">
+    <div class="tile tile-new">
       <span class="tile-plus" aria-hidden="true">+</span>
       <input class="tile-new-input" aria-label="New build name" placeholder="Build name" maxLength={80} value={v}
         ref={(el) => { if (el && !done.current && document.activeElement !== el) el.focus(); }}

@@ -31,6 +31,14 @@ describe("viewBuilds", () => {
     expect(viewBuilds(B, { ...DEFAULT_VIEW, query: "zzz" })).toEqual([]);
   });
 
+  it("sorts 'last edited' by real activity (last_edited_at), not the row's updated_at", () => {
+    const bs = [
+      build({ id: "renamed", name: "Renamed", updated_at: 900 }),                         // only renamed
+      build({ id: "busy", name: "Busy", updated_at: 100, last_edited_at: 5000 }),         // rebuilt today
+    ];
+    expect(viewBuilds(bs, DEFAULT_VIEW).map((b) => b.id)).toEqual(["busy", "renamed"]);
+  });
+
   it("sorts by name and by creation date", () => {
     expect(viewBuilds(B, { ...DEFAULT_VIEW, sort: "name" }).map((b) => b.id)).toEqual(["gear", "arm"]);
     expect(viewBuilds(B, { ...DEFAULT_VIEW, sort: "created" }).map((b) => b.id)).toEqual(["gear", "arm"]);

@@ -46,7 +46,8 @@ async def test_part_thumb_is_cached_by_version(tmp_path):
     await _build_part(home, "box_b", BOX)
 
     await thumbs.part_thumb(home, "box_b", 1, size=64)
-    cache = home / "parts" / thumbs.THUMBS_DIR / "box_b" / "64-v1.png"
+    cache = (home / "parts" / thumbs.THUMBS_DIR / "box_b"
+             / f"{thumbs.part_key(home, 'box_b', 1, 64)}.png")
     assert cache.is_file()
     # a second call serves the cache (no leftover temp render dirs)
     again = await thumbs.part_thumb(home, "box_b", 1, size=64)
@@ -62,8 +63,7 @@ async def test_part_thumb_new_version_prunes_old(tmp_path):
     await thumbs.part_thumb(home, "box_c", 1, size=64)
     await thumbs.part_thumb(home, "box_c", 2, size=64)
     cdir = home / "parts" / thumbs.THUMBS_DIR / "box_c"
-    assert (cdir / "64-v2.png").is_file()
-    assert not (cdir / "64-v1.png").exists()
+    assert [p.name for p in cdir.glob("64-v*.png")] == [f"{thumbs.part_key(home, 'box_c', 2, 64)}.png"]
 
 
 async def test_part_thumb_none_without_mesh(tmp_path):
@@ -90,3 +90,43 @@ async def test_project_thumb_none_when_no_meshes(tmp_path):
     home = tmp_path / "home"
     platform.register_sandbox_home(home)
     assert await thumbs.project_thumb(home, "empty", [("ghost", 1)]) is None
+
+
+async def test_reused_id_after_purge_gets_a_fresh_thumbnail(tmp_path):
+    # Empty Trash removes the part, its meta and its thumbnail cache; the same id rebuilt with
+    # different geometry restarts at version 1 and must not be served the old picture
+    import shutil
+
+    from mises import projects
+    from mises.store import Store
+    home = tmp_path / "home"
+    platform.register_sandbox_home(home)
+    home.mkdir(parents=True, exist_ok=True)
+    store = Store(home / "mises.db")
+    pid = store.create_project("Scrap").id
+    await _build_part(home, "base_plate", BOX)
+    store.register_part("base_plate", pid)
+    first = await thumbs.part_thumb(home, "base_plate", 1, size=64)
+    projects.trash_project(store, pid)
+    projects.empty_trash(store, home)
+    assert not (home / "parts" / thumbs.THUMBS_DIR / "base_plate").exists()
+    if (home / "parts" / "base_plate").exists():
+        shutil.rmtree(home / "parts" / "base_plate")
+    await _build_part(home, "base_plate", PLATE)
+    second = await thumbs.part_thumb(home, "base_plate", 1, size=64)
+    assert first is not None and second is not None and first != second
+
+
+async def test_cancelled_render_leaves_no_temp_dir(tmp_path):
+    import asyncio
+    home = tmp_path / "home"
+    platform.register_sandbox_home(home)
+    await _build_part(home, "box_e", BOX)
+    task = asyncio.ensure_future(thumbs.part_thumb(home, "box_e", 1, size=64))
+    await asyncio.sleep(0.05)
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+    assert not list((home / "parts" / thumbs.THUMBS_DIR / "box_e").glob("tmp-*"))

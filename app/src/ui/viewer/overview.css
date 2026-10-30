@@ -38,8 +38,12 @@
   grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
   gap: 14px;
   padding: 16px;
+  margin: 0;
+  list-style: none;
   align-content: start;
 }
+.overview-cell { display: flex; flex-direction: column; }
+.overview-cell > .pcard { flex: 1; }
 .overview-empty { padding: 24px 16px; }
 
 .pcard {

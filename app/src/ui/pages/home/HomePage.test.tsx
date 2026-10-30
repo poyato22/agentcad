@@ -81,6 +81,26 @@ describe("HomePage", () => {
     expect(client.restoreBuild).toHaveBeenCalledWith("old");
   });
 
+  it("labels 'last edited' from real activity and keeps tiles announced as buttons", () => {
+    const now = Date.now() / 1000;
+    builds.value = [build({ id: "busy", name: "Busy", updated_at: now - 30 * 86400, last_edited_at: now - 120 })];
+    render(<HomePage />);
+    const tile = screen.getByRole("button", { name: /Busy/ });
+    expect(tile.textContent).toContain("2 min ago");
+    expect(tile.closest("li")).not.toBeNull();
+  });
+
+  it("says why a New build failed", async () => {
+    client.createBuild.mockRejectedValueOnce(new Error("disk full"));
+    render(<HomePage />);
+    fireEvent.click(screen.getByText("New build"));
+    const input = await screen.findByLabelText("New build name");
+    fireEvent.input(input, { target: { value: "X" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect((await screen.findByRole("alert")).textContent).toContain("disk full");
+    expect(atHome.value).toBe(true);
+  });
+
   it("falls back to a placeholder when a build has no preview", async () => {
     render(<HomePage />);
     // the thumb fetch rejects -> a role=img placeholder, never a broken <img>

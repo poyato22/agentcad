@@ -75,8 +75,24 @@
   grid-template-columns: repeat(auto-fill, minmax(196px, 1fr));
   gap: 16px;
   padding: 20px 24px 32px;
+  margin: 0;
+  list-style: none;
   align-content: start;
 }
+.home-cell { display: flex; flex-direction: column; }
+.home-cell > .tile { flex: 1; }
+
+.home-error {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 24px 0;
+  padding: 7px 10px;
+  border: 1px solid var(--red);
+  border-radius: 5px;
+  color: var(--ink);
+}
+.home-error-x { margin-left: auto; background: none; border: none; color: var(--dim); font: inherit; cursor: pointer; }
 
 /* --- a tile --- */
 .tile {

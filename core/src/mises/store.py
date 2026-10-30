@@ -447,6 +447,13 @@ class Store:
     def project_run_count(self, project_id: str) -> int:
         return int(self._one("SELECT COUNT(*) FROM runs WHERE project_id=?", (project_id,))[0])
 
+    def project_last_run_activity(self, project_id: str) -> float | None:
+        """The newest run activity in the build (last_activity_at, else updated_at); None if
+        it has no runs."""
+        row = self._one("SELECT MAX(COALESCE(last_activity_at, updated_at)) FROM runs"
+                        " WHERE project_id=?", (project_id,))
+        return float(row[0]) if row is not None and row[0] is not None else None
+
     # ---- parts (tree metadata; geometry/vars live on disk)
     @staticmethod
     def _part(row: sqlite3.Row) -> Part:

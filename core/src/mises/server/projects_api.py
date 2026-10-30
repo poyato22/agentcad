@@ -6,7 +6,6 @@ owned by Task C6; this router covers the rest of the Builds and Part-tree contra
 """
 from __future__ import annotations
 
-import hashlib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -68,7 +67,7 @@ def build_projects_router(runtime: Runtime) -> APIRouter:
         # Otherwise the app's first GET /projects raced its GET /parts and saw no build at all
         # (no tabs until the next reconnect).
         runtime.active_project_id()
-        return _projects.list_projects(store)
+        return _projects.list_projects(store, _home())
 
     @router.post("/projects")
     async def create_project(body: NewProject):
@@ -77,7 +76,8 @@ def build_projects_router(runtime: Runtime) -> APIRouter:
     @router.patch("/projects/{project_id}")
     async def patch_project(project_id: str, body: PatchProject):
         if body.name is None:
-            return _projects.project_view(store, _projects._project_or_404(store, project_id))
+            return _projects.project_view(store, _projects._project_or_404(store, project_id),
+                                          _home())
         return _projects.rename_project(store, project_id, body.name)
 
     @router.delete("/projects/{project_id}")
@@ -102,9 +102,7 @@ def build_projects_router(runtime: Runtime) -> APIRouter:
                   for p in _projects.list_parts(store, home, project_id)
                   if p.get("kind") == "part"][:4]
         sz = thumbs.clamp_size(size)
-        key = ",".join(f"{pid}:{v}" for pid, v in chosen)
-        digest = hashlib.sha256(key.encode()).hexdigest()[:12]
-        etag = f'"proj-{project_id}-{sz}-{len(chosen)}-{digest}"'
+        etag = f'"proj-{project_id}-{thumbs.project_key(home, chosen, sz)}"'   # = the cache key
         headers = {"ETag": etag, "Cache-Control": "private, no-cache"}
         inm = request.headers.get("if-none-match")
         if inm and any(t.strip().removeprefix("W/") == etag for t in inm.split(",")):
