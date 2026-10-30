@@ -1,7 +1,7 @@
 import type { JSX } from "preact";
-import { useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import type { ProfilePatch, ViewerBackground } from "../../../api/types";
-import { applyBackground, BACKGROUNDS, choiceOf, THEME_BACKGROUND } from "../../viewer/background";
+import { applyBackground, BACKGROUNDS, choiceOf, previewBackground, THEME_BACKGROUND } from "../../viewer/background";
 import { actions } from "../../../state/store";
 import { setTheme, THEMES, type Theme } from "../../../styles/theme";
 import { Button } from "../../common/Button";
@@ -16,6 +16,9 @@ export function ProfileSection({ data, update }: SectionProps): JSX.Element {
   const [theme, setThemeState] = useState<Theme>(p.theme);
   const savedBg = p.viewer_background ?? THEME_BACKGROUND;
   const [bg, setBg] = useState<ViewerBackground>(savedBg);
+  // the background last saved: an unsaved preview is put back when the Profile closes
+  const savedRef = useRef(savedBg);
+  useEffect(() => () => { applyBackground(savedRef.current); }, []);
   const task = useTask();
 
   const patch: ProfilePatch = {};
@@ -30,7 +33,7 @@ export function ProfileSection({ data, update }: SectionProps): JSX.Element {
     const c = BACKGROUNDS.find((x) => x.id === id);
     if (!c) return;
     setBg(c.bg);
-    applyBackground(c.bg);
+    previewBackground(c.bg);
     task.clear();
   }
   const dirty = Object.keys(patch).length > 0;
@@ -51,7 +54,8 @@ export function ProfileSection({ data, update }: SectionProps): JSX.Element {
       setThemeState(next.theme);
       setTheme(next.theme);
       setBg(next.viewer_background ?? THEME_BACKGROUND);
-      applyBackground(next.viewer_background ?? THEME_BACKGROUND);
+      savedRef.current = next.viewer_background ?? THEME_BACKGROUND;
+      applyBackground(savedRef.current);
     }, "saved");
   }
 

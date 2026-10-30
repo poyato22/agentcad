@@ -49,6 +49,11 @@ export function applyBackground(bg: ViewerBackground | null | undefined): void {
   try { globalThis.localStorage?.setItem(BG_STORAGE_KEY, JSON.stringify(v)); } catch { /* storage unavailable */ }
 }
 
+/** Shows it without caching it: a preview the Profile puts back unless it is saved. */
+export function previewBackground(bg: ViewerBackground): void {
+  if (isBackground(bg)) viewerBackground.value = bg;
+}
+
 /** Shows it at once and saves it to the profile; resolves false (and puts the old one back) when
  *  the core refused it. */
 export async function saveBackground(bg: ViewerBackground): Promise<boolean> {
@@ -76,10 +81,23 @@ export function choiceOf(bg: ViewerBackground): BackgroundChoice | undefined {
   return BACKGROUNDS.find((c) => c.bg.mode === bg.mode && c.bg.colors.join() === bg.colors.map((x) => x.toLowerCase()).join());
 }
 
-/** Is it light (overlays switch to dark ink on it)? Relative luminance of its top color. */
+function luminance(c: string): number {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16) / 255);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/** Is it light (edges and overlays switch to dark ink on it)? Not the theme's sheet: null. A
+ *  gradient is judged by its average, the solid by its color. */
 export function isLight(bg: ViewerBackground): boolean | null {
   if (bg.mode === "theme") return null;
-  const c = bg.colors[0];
-  const [r, g, b] = [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16) / 255);
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.55;
+  const l = bg.colors.reduce((a, c) => a + luminance(c), 0) / bg.colors.length;
+  return l > 0.5;
+}
+
+/** The model's edge color on this background (null: the theme's --mesh-edge). */
+export const EDGE_ON_LIGHT = "#33373d";
+export const EDGE_ON_DARK = "#e2e5e9";
+export function edgeInk(bg: ViewerBackground): string | null {
+  const light = isLight(bg);
+  return light === null ? null : light ? EDGE_ON_LIGHT : EDGE_ON_DARK;
 }

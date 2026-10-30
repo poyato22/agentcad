@@ -48,6 +48,45 @@ async function take(page: Page): Promise<number> {
   });
 }
 
+/** Click a row's name and time it until the viewer has drawn that part (Viewer.tsx marks
+ *  "mises:viewer-settled" after the frame that draws the focused part), from the pointerdown. */
+async function selectAndSettle(page: Page, id: string): Promise<number> {
+  await page.evaluate(() => {
+    const w = window as unknown as { __down: number; __hooked?: boolean };
+    w.__down = -1;
+    if (!w.__hooked) { w.__hooked = true; document.addEventListener("pointerdown", (e) => { w.__down = e.timeStamp; }, true); }
+  });
+  await page.getByTestId("part-tree").getByRole("button", { name: id, exact: true }).click();
+  return page.evaluate((pid) => new Promise<number>((done) => {
+    const w = window as unknown as { __down: number };
+    const look = () => {
+      const m = performance.getEntriesByName("mises:viewer-settled", "mark")
+        .find((e) => (e as PerformanceMark).detail === pid && e.startTime >= w.__down);
+      if (m) done(Math.round(m.startTime - w.__down)); else setTimeout(look, 5);
+    };
+    look();
+  }), id);
+}
+
+test("selecting_a_part_shows_it_in_the_viewer_quickly", async ({ page, fake, browserName }) => {
+  await fake.reset(bigScenario());
+  await page.goto("/");
+  await expect(page.getByTestId("part-tree").locator("[data-part]")).toHaveCount(N);
+  if (browserName === "chromium" && THROTTLE !== 1) {
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("Emulation.setCPUThrottlingRate", { rate: THROTTLE });
+  }
+  await selectAndSettle(page, "p001");                       // the first model compiles the shaders
+  const ids = ["p010", "p020", "p030", "p040", "p050", "p060"];
+  const cold: number[] = []; const warm: number[] = [];
+  for (const id of ids) cold.push(await selectAndSettle(page, id));
+  for (const id of ids) warm.push(await selectAndSettle(page, id));
+  const median = (v: number[]) => [...v].sort((a, b) => a - b)[Math.floor(v.length / 2)];
+  console.log(`VIEWER_SETTLE ${JSON.stringify({ browser: browserName, throttle: THROTTLE, cold, warm, cold_median: median(cold), warm_median: median(warm) })}`);
+  // a part seen before is on screen again within a frame or two, never a refetch
+  expect(median(warm)).toBeLessThan(100);
+});
+
 test("parts_list_clicks_stay_under_50ms_with_100_parts", async ({ page, fake }) => {
   await fake.reset(bigScenario());
   await page.goto("/");

@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { describe, expect, it, vi } from "vitest";
 import { loadPart } from "./loadPart";
-import { createViewer, EDGE_COLOR, HIGHLIGHT_COLOR, fitOrtho, type RendererLike } from "./scene";
+import { AMBIENT, createViewer, EDGE_COLOR, HIGHLIGHT_COLOR, fitOrtho, SHINY_AMBIENT, type RendererLike } from "./scene";
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -213,6 +213,26 @@ describe("design viewer: part colors, picks and the build view", () => {
     v.setParts([{ id: "top_plate", scene: p, color: null, focus: true }], false);
     expect(mats().every((x) => x instanceof THREE.MeshLambertMaterial)).toBe(true);
     expect(faceColors(p)).toEqual(new Set(["2a2a2a"]));
+    v.dispose();
+  });
+
+  it("next to a shiny part a plain part keeps its look: the lowered ambient comes back as emissive; edges follow edgeColor, else the theme", async () => {
+    let ink: string | null = null;
+    const v = createViewer(document.createElement("canvas"), { createRenderer: stubRenderer, environment: () => null, edgeColor: () => ink });
+    const plain = await loadPart(plateBytes());
+    const metal = await loadPart(plateBytes());
+    const lam = () => { let m: THREE.MeshLambertMaterial | null = null; plain.object.traverse((o) => { if (o instanceof THREE.Mesh) m = o.material as THREE.MeshLambertMaterial; }); return m as unknown as THREE.MeshLambertMaterial; };
+    v.setParts([{ id: "a", scene: plain, color: null, focus: true }], true);
+    expect(lam().emissiveIntensity).toBeCloseTo(0);
+    expect(lam().toneMapped).toBe(false);
+    const chrome = { color: "#e6e8eb", metalness: 1, roughness: 0.06, opacity: 1, shiny: true };
+    v.setParts([{ id: "a", scene: plain, color: null, focus: true }, { id: "b", scene: metal, color: null, focus: false, material: chrome }], false);
+    expect(lam().emissiveIntensity).toBeCloseTo(AMBIENT - SHINY_AMBIENT);
+    expect(lam().emissive.getHexString()).toBe(lam().color.getHexString());
+    expect(edgeColors(plain)).toEqual(new Set([hex(EDGE_COLOR)]));
+    ink = "#33373d";
+    v.restyle?.();
+    expect(edgeColors(plain)).toEqual(new Set(["33373d"]));
     v.dispose();
   });
 

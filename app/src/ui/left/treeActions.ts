@@ -58,39 +58,38 @@ function takeLook(row: PartSummary): void {
 /** Recolor parts; each keeps its finish (the core recolors the appearance with the color). */
 export async function setColor(id: string | readonly string[], color: string | null): Promise<boolean> {
   const ids = typeof id === "string" ? [id] : id;
-  treeError.value = null;
-  const before = parts.peek();
-  parts.value = before.map((p) => (ids.includes(p.part_id) ? { ...p, color, appearance: withColor(p.appearance, color) } : p));
-  try {
-    const rows = await Promise.all(ids.map((x) => actions.client().patchPart(x, { color })));
-    rows.forEach(takeLook);
-    return true;
-  } catch (e) {
-    parts.value = before;
-    treeError.value = `Couldn't set the color: ${reason(e)}`;
-    return false;
-  }
+  return patchLooks(ids, () => ({ color }), (p) => ({ color, appearance: withColor(p.appearance, color) }), "set the color");
 }
 
 /** Give parts a material: a preset (an untinted one keeps each part's color), or null for the
  *  plain drafting look. */
 export async function setFinish(ids: readonly string[], preset: PresetId | null): Promise<boolean> {
-  treeError.value = null;
-  const before = parts.peek();
   const next = (p: PartSummary): Appearance | null => (preset === null ? null : fromPreset(preset, p.color ?? null));
-  parts.value = before.map((p) => (ids.includes(p.part_id) ? { ...p, appearance: next(p), color: next(p)?.color ?? p.color ?? null } : p));
-  try {
-    const rows = await Promise.all(ids.map((x) => {
-      const p = before.find((b) => b.part_id === x);
-      return actions.client().patchPart(x, { appearance: p ? next(p) : null });
-    }));
-    rows.forEach(takeLook);
-    return true;
-  } catch (e) {
-    parts.value = before;
-    treeError.value = `Couldn't set the appearance: ${reason(e)}`;
-    return false;
-  }
+  return patchLooks(ids, (p) => ({ appearance: next(p) }), (p) => ({ appearance: next(p), color: next(p)?.color ?? p.color ?? null }), "set the appearance");
+}
+
+/** One PATCH per part, shown at once. Each part keeps its own outcome: one the core refused goes
+ *  back to how it was (named in the error), the ones it accepted keep the core's answer. */
+async function patchLooks(ids: readonly string[], body: (p: PartSummary) => { color?: string | null; appearance?: Appearance | null },
+  local: (p: PartSummary) => Partial<PartSummary>, what: string): Promise<boolean> {
+  treeError.value = null;
+  const before = new Map(parts.peek().filter((p) => ids.includes(p.part_id)).map((p) => [p.part_id, p]));
+  parts.value = parts.peek().map((p) => (before.has(p.part_id) ? { ...p, ...local(p) } : p));
+  const results = await Promise.allSettled([...before.values()].map((p) => actions.client().patchPart(p.part_id, body(p))));
+  const failed: string[] = [];
+  let firstError: unknown = null;
+  results.forEach((r, i) => {
+    const id = [...before.keys()][i];
+    if (r.status === "fulfilled") { takeLook(r.value); return; }
+    failed.push(id);
+    firstError ??= r.reason;
+    const old = before.get(id) as PartSummary;
+    parts.value = parts.peek().map((p) => (p.part_id === id ? { ...p, color: old.color ?? null, appearance: old.appearance ?? null } : p));
+  });
+  if (!failed.length) return true;
+  const who = failed.length === ids.length ? "" : ` for ${failed.map(nameOf).join(", ")}`;
+  treeError.value = `Couldn't ${what}${who}: ${reason(firstError)}`;
+  return false;
 }
 
 /** A plain-words note after a menu action ("Exported Arm.step to Downloads"); cleared by the next one. */

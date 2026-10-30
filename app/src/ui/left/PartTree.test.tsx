@@ -247,6 +247,71 @@ describe("part tree", () => {
     expect(client.patchPart.mock.calls.map((c) => c[0]).sort()).toEqual(["arm_b", "frame"]);
   });
 
+  it("a recolor the core refuses for one of several parts puts back only that one, and names it", async () => {
+    client.patchPart.mockImplementation(async (id: string, patch: Record<string, unknown>) => {
+      if (id === "arm_b") throw new CoreError("invalid_input", "nope", { status: 400 });
+      return { ...parts.peek().find((p) => p.part_id === id), ...patch };
+    });
+    render(<PartTree />);
+    const name = (id: string) => rowEl(id).querySelector(".tree-name") as HTMLElement;
+    fireEvent.click(name("frame"));
+    fireEvent.click(name("arm_b"), { metaKey: true });
+    fireEvent.click(screen.getByRole("button", { name: /Appearance of frame/ }));
+    fireEvent.click(screen.getByRole("radio", { name: "Red" }));
+    await screen.findByText("Couldn't set the color for arm b: nope");
+    expect(parts.value.find((p) => p.part_id === "frame")?.color).toBe("#c2463d");
+    expect(parts.value.find((p) => p.part_id === "arm_b")?.color).toBeNull();
+  });
+
+  it("the eye acts on its own row, even in a selection", () => {
+    render(<PartTree />);
+    const name = (id: string) => rowEl(id).querySelector(".tree-name") as HTMLElement;
+    fireEvent.click(name("frame"));
+    fireEvent.click(name("plate"), { metaKey: true });
+    fireEvent.click(screen.getByRole("button", { name: "Hide plate in the viewer" }));
+    expect(hiddenParts.value).toEqual(new Set(["plate"]));
+  });
+
+  it("a selection with an unbuilt part can't be duplicated or added to the assembly, and says why", () => {
+    parts.value = LIST().map((p) => (p.part_id === "plate" ? { ...p, metrics: METRICS } : p));
+    render(<PartTree />);
+    const name = (id: string) => rowEl(id).querySelector(".tree-name") as HTMLElement;
+    fireEvent.click(name("plate"));
+    fireEvent.click(name("frame"), { metaKey: true });
+    fireEvent.contextMenu(rowEl("plate"), { clientX: 10, clientY: 10 });
+    const dup = screen.getByRole("menuitem", { name: /^Duplicate 2 parts/ }) as HTMLButtonElement;
+    expect(dup.disabled).toBe(true);
+    expect(dup.title).toBe("frame isn't built yet");
+    expect((screen.getByRole("menuitem", { name: "Add to assembly 2 parts" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("the menu works from the keyboard: Shift+F10 opens it on the row, arrows move, Enter picks, Esc returns to the row", async () => {
+    parts.value = LIST().map((p) => ({ ...p, metrics: METRICS }));
+    render(<PartTree />);
+    const name = rowEl("plate").querySelector(".tree-name") as HTMLElement;
+    name.focus();
+    fireEvent.keyDown(name, { key: "F10", shiftKey: true });
+    const menu = screen.getByRole("menu", { name: "plate actions" });
+    expect(document.activeElement?.textContent).toBe("RenameF2");
+    fireEvent.keyDown(menu, { key: "ArrowDown" });
+    fireEvent.keyDown(menu, { key: "ArrowDown" });
+    expect(document.activeElement?.textContent).toBe("HideH");
+    fireEvent.keyDown(menu, { key: "End" });
+    expect(document.activeElement?.textContent).toBe("Delete");
+    fireEvent.keyDown(menu, { key: "Home" });
+    fireEvent.keyDown(menu, { key: "ArrowUp" });               // wraps to the last
+    expect(document.activeElement?.textContent).toBe("Delete");
+    fireEvent.keyDown(menu, { key: "Escape" });
+    expect(screen.queryByRole("menu")).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(rowEl("plate").querySelector(".tree-name")));
+    // the ContextMenu key too, then Enter on an item runs it
+    fireEvent.keyDown(rowEl("plate").querySelector(".tree-name") as HTMLElement, { key: "ContextMenu" });
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "ArrowDown" });
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "ArrowDown" });
+    fireEvent.click(document.activeElement as HTMLElement);     // Enter on a button is its click
+    expect(hiddenParts.value.has("plate")).toBe(true);
+  });
+
   it("Isolate shows only the part in the build view; Show all brings the rest back", () => {
     render(<PartTree />);
     fireEvent.contextMenu(rowEl("plate"), { clientX: 10, clientY: 10 });

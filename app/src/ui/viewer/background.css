@@ -22,6 +22,9 @@
 .vp-bg-custom input { width: 14px; height: 14px; padding: 0; border: 1px solid var(--line2); background: transparent; }
 .vp-bg-err { padding: 3px 10px; color: var(--red); font-size: var(--fs-small); }
 .vp[data-tab="code"] .vp-bg { visibility: hidden; }
-/* a light background: the sheet's own marks in dark ink */
+/* the sheet's own marks follow the background's lightness, not the theme: dark ink on a light
+   background, light ink on a dark one (the model's edges do the same, scene.ts edgeColor) */
 .vp[data-bg="light"] .tick { border-color: #5a5f66; }
-.vp[data-bg="light"] .vp-fig { color: #4a4f56; }
+.vp[data-bg="light"] .vp-fig, .vp[data-bg="light"] .vp-empty { color: #3f444b; }
+.vp[data-bg="dark"] .tick { border-color: #9aa0a8; }
+.vp[data-bg="dark"] .vp-fig, .vp[data-bg="dark"] .vp-empty { color: #c4c8ce; }

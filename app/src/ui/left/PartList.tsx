@@ -224,8 +224,13 @@ export function PartList(): JSX.Element {
     const single = targets.length === 1;
     const many = single ? "" : ` ${targets.length} parts`;
     const anyShown = targets.some((t) => !hidden.has(t));
-    const p = byId(id);
-    const built = p?.metrics !== null && p?.metrics !== undefined;
+    const isBuilt = (x: string) => { const q = byId(x); return q?.metrics !== null && q?.metrics !== undefined; };
+    const built = isBuilt(id);
+    // a selection acts as a whole: an action some part can't take is off for all, with the reason
+    const unbuilt = targets.filter((t) => !isBuilt(t));
+    const allBuilt = unbuilt.length === 0;
+    const whyNot = allBuilt ? undefined : `${unbuilt.map((t) => partName(byId(t) ?? { part_id: t })).join(", ")} ${unbuilt.length === 1 ? "isn't" : "aren't"} built yet`;
+    const busy = targets.filter((t) => changing.has(t));
     const buildIds = all.map((x) => x.part_id);
     const extras = extraPartMenuItems.value.filter((x) => single || !x.single);
     const items: MenuEntry[] = [];
@@ -241,8 +246,8 @@ export function PartList(): JSX.Element {
       run: () => { const h = measureHook.peek(); if (h) h(targets); else openProps(id); },
     });
     items.push("sep",
-      { label: `Add to assembly${many}`, disabled: !built, run: () => { void addToAssembly(targets); } },
-      { label: `Duplicate${many}`, keys: "⌘D", disabled: !built, run: () => { void duplicateParts(targets); } });
+      { label: `Add to assembly${many}`, disabled: !allBuilt, title: whyNot, run: () => { void addToAssembly(targets); } },
+      { label: `Duplicate${many}`, keys: "⌘D", disabled: !allBuilt, title: whyNot, run: () => { void duplicateParts(targets); } });
     if (single) {
       items.push(
         { label: "Export STEP", disabled: !built, run: () => { void exportPart(id, "step"); } },
@@ -253,7 +258,9 @@ export function PartList(): JSX.Element {
     for (const x of extras) items.push({ label: x.label, run: () => x.run(targets) });
     items.push("sep", {
       label: `Delete${many}`, danger: true, confirm: single ? "Click again to delete" : `Click again to delete${many}`,
-      title: "Moves its files to the trash", run: () => { void deleteParts(targets); },
+      // an agent changing it now would rebuild it half-deleted (the core refuses too: 409)
+      disabled: busy.length > 0,
+      title: busy.length ? "An agent is changing it: wait for it to finish" : "Moves its files to the trash", run: () => { void deleteParts(targets); },
     });
     return items;
   }
@@ -393,10 +400,8 @@ export function PartList(): JSX.Element {
       }
     },
     toggle,
-    eye(id) {
-      const t = targetsFor(id);
-      setHidden(t, !hiddenParts.peek().has(id));
-    },
+    // the eye is its own row's (Onshape); the menu and H act on the selection
+    eye(id) { setHidden(id, !hiddenParts.peek().has(id)); },
     swatch(e, id) {
       e.stopPropagation();
       if (pop?.kind === "look" && pop.id === id) { setPop(null); return; }

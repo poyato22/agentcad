@@ -2,6 +2,8 @@
 // grid shows through), rendered on demand only.
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { RectAreaLightUniformsLib } from "three/addons/lights/RectAreaLightUniformsLib.js";
 import type { MaterialParams } from "../../lib/appearance";
 import { EDGE_COLOR, meshColors, type MeshColors, type PartScene } from "./loadPart";
 
@@ -58,6 +60,8 @@ export interface DesignViewerHandle extends ViewerHandle {
   /** A world point → canvas pixels. */
   toScreen(p: [number, number, number]): [number, number];
   setMarker(m: PickMarker): void;
+  /** Re-reads the edge color (deps.edgeColor) and repaints: the background changed. */
+  restyle?(): void;
 }
 
 /** The slice of WebGLRenderer the viewer uses (lets tests stub it). */
@@ -74,8 +78,8 @@ export interface ViewerDeps {
   createRenderer?: (canvas: HTMLCanvasElement) => RendererLike;
   /** Edge color when not highlighted (default: the --mesh-edge token). Read on every restyle (setPart /
    *  setMode / setHighlight / theme change). */
-  edgeColor?: () => string;
-  /** The environment map shiny parts reflect (default: studioEnvironment through PMREM on a real
+  edgeColor?: () => string | null | undefined;
+  /** The environment map shiny parts reflect (default: RoomEnvironment through PMREM, turned Z-up on a real
    *  WebGLRenderer, none on a stub). Built once, on the first shiny part. */
   environment?: () => THREE.Texture | null;
 }
@@ -114,47 +118,22 @@ export function fitOrtho(camera: THREE.OrthographicCamera, bbox: THREE.Box3, asp
   camera.updateProjectionMatrix();
 }
 
-/**
- * The environment shiny parts reflect: a small photo-studio dome, Z-up like the CAD frame — a
- * bright sky over a dark floor with a crisp horizon, a large softbox overhead and two strip lights.
- * Three.js's RoomEnvironment is Y-up and even; under the orthographic iso camera a flat face
- * reflects one direction, so this one is built for contrast: top faces catch the sky and the
- * softbox, side faces the horizon and the floor, which is what makes a metal read as metal.
- */
-export function studioEnvironment(): { scene: THREE.Scene; dispose(): void } {
-  const scene = new THREE.Scene();
-  const geo: THREE.BufferGeometry[] = [];
-  const mats: THREE.Material[] = [];
-  const dome = new THREE.SphereGeometry(50, 48, 24);
-  dome.rotateX(Math.PI / 2);                                       // poles on ±Z
-  const pos = dome.getAttribute("position");
-  const col: number[] = [];
-  const sky = new THREE.Color("#c9d2dc"); const zenith = new THREE.Color("#ffffff");
-  const floor = new THREE.Color("#50545b"); const nadir = new THREE.Color("#24262a");
-  const c = new THREE.Color();
-  for (let i = 0; i < pos.count; i++) {
-    const z = pos.getZ(i) / 50;
-    if (z >= 0) c.copy(sky).lerp(zenith, Math.pow(z, 0.6));
-    else c.copy(floor).lerp(nadir, Math.pow(-z, 0.5));
-    col.push(c.r, c.g, c.b);
-  }
-  dome.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
-  const domeMat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, toneMapped: false });
-  scene.add(new THREE.Mesh(dome, domeMat));
-  geo.push(dome); mats.push(domeMat);
-  const panel = (w: number, h: number, intensity: number, at: [number, number, number]) => {
-    const g = new THREE.PlaneGeometry(w, h);
-    const m = new THREE.MeshBasicMaterial({ color: new THREE.Color(intensity, intensity, intensity), side: THREE.DoubleSide, toneMapped: false });
-    const mesh = new THREE.Mesh(g, m);
-    mesh.position.set(...at);
-    mesh.lookAt(0, 0, 0);
-    scene.add(mesh);
-    geo.push(g); mats.push(m);
-  };
-  panel(40, 28, 3.2, [-8, 10, 40]);                              // the overhead softbox
-  panel(6, 40, 2.4, [38, -10, 12]);                              // strip lights either side
-  panel(6, 40, 1.6, [-30, -30, 10]);
-  return { scene, dispose() { for (const g of geo) g.dispose(); for (const m of mats) m.dispose(); } };
+/** Ambient light for plain (drafting) parts; with a shiny part on the sheet it drops to
+ *  SHINY_AMBIENT (a flat ambient washes PBR finishes out) and plain Lambert faces get the
+ *  difference back as emissive, so they look exactly as before. */
+export const AMBIENT = 1.1;
+export const SHINY_AMBIENT = 0.5;
+/** The highlight light (shiny parts only): a small softbox above and across from the iso camera,
+ *  sized and placed from the framed box, so flat faces under the orthographic camera show a
+ *  highlight that moves across them instead of one flat reflected color. */
+export const SOFTBOX = { intensity: 10, width: 0.5, height: 0.2, distance: 0.8, dir: [-0.3, 0.7, 0.6] as const };
+
+let rectLib = false;
+/** RectAreaLight needs its lookup tables once per page. */
+function initRectLights(): void {
+  if (rectLib) return;
+  rectLib = true;
+  try { RectAreaLightUniformsLib.init(); } catch { /* no WebGL tables: the softbox is just dark */ }
 }
 
 export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): DesignViewerHandle {
@@ -164,10 +143,18 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
   renderer.setPixelRatio(typeof window === "undefined" ? 1 : Math.min(window.devicePixelRatio || 1, 2));
 
   const scene = new THREE.Scene();
-  scene.add(new THREE.AmbientLight(0xffffff, 1.1));
+  const ambient = new THREE.AmbientLight(0xffffff, AMBIENT);
+  scene.add(ambient);
   const key = new THREE.DirectionalLight(0xffffff, 0.9);
   key.position.set(-1, -2, 3);
   scene.add(key);
+  // Filmic tone mapping for the PBR finishes; every plain material opts out (toneMapped: false),
+  // so the drafting look is unchanged.
+  if (renderer instanceof THREE.WebGLRenderer) {
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1;
+  }
+  let softbox: THREE.RectAreaLight | null = null;
 
   const camera = new THREE.OrthographicCamera(-50, 50, 50, -50, 0.1, 1000);
   camera.up.set(0, 0, 1);
@@ -209,7 +196,8 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
   let colors = viewerColors();
 
   // ---- materials (Plan 7 U8, R22): a part with an appearance gets a physically based material lit
-  // by a small built-in studio environment (studioEnvironment through PMREM), so metals reflect; a plain part
+  // by Three's RoomEnvironment (turned Z-up, through PMREM) and the softbox, so metals reflect and
+  // flat faces carry a highlight; a plain part keeps loadPart's matte drafting material.
 
   let envTex: THREE.Texture | null | undefined;
   function environment(): THREE.Texture | null {
@@ -219,13 +207,14 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
       if (deps.environment) envTex = deps.environment();
       else if (renderer instanceof THREE.WebGLRenderer) {
         const pmrem = new THREE.PMREMGenerator(renderer);
-        const studio = studioEnvironment();
-        envTex = pmrem.fromScene(studio.scene, 0.02).texture;
-        studio.dispose();
+        const room = new RoomEnvironment();
+        envTex = pmrem.fromScene(room, 0.04).texture;
+        room.dispose();
         pmrem.dispose();
       }
     } catch { envTex = null; /* no env map: shiny parts still get the lights */ }
     scene.environment = envTex;
+    scene.environmentRotation.x = Math.PI / 2;                    // RoomEnvironment is Y-up; the CAD frame is Z-up
     return envTex;
   }
 
@@ -253,16 +242,57 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
       m.transparent = see;
       m.opacity = look.opacity;
       m.depthWrite = !see;
-      m.envMapIntensity = 1;
+      // metals live on their reflections: a little more of the environment
+      m.envMapIntensity = look.metalness > 0.5 ? 1.3 : 1;
     }
     return m;
   }
 
+  /** Lights for what is on the sheet: with a shiny part, the softbox on and the ambient down
+   *  (plain faces get the difference back as emissive). */
+  function applyLights(): void {
+    const shiny = items.some((i) => i.material?.shiny);
+    ambient.intensity = shiny ? SHINY_AMBIENT : AMBIENT;
+    if (shiny && !softbox) {
+      initRectLights();
+      softbox = new THREE.RectAreaLight(0xffffff, SOFTBOX.intensity, 1, 1);
+      scene.add(softbox);
+      placeSoftbox();
+    } else if (!shiny && softbox) {
+      scene.remove(softbox);
+      softbox.dispose();
+      softbox = null;
+    }
+  }
+
+  function placeSoftbox(): void {
+    if (!softbox) return;
+    const box = fitBox();
+    if (!box) return;
+    const c = box.getCenter(new THREE.Vector3());
+    const r = Math.max(box.getSize(new THREE.Vector3()).length(), 1e-3);
+    softbox.width = r * SOFTBOX.width;
+    softbox.height = r * SOFTBOX.height;
+    softbox.position.copy(c).addScaledVector(new THREE.Vector3(...SOFTBOX.dir).normalize(), r * SOFTBOX.distance);
+    softbox.lookAt(c);
+  }
+
+  /** Plain materials (Lambert faces, edges, markers) skip tone mapping. */
+  function untoned(m: THREE.Material): void {
+    if (!m.toneMapped) return;
+    m.toneMapped = false;
+    m.needsUpdate = true;
+  }
+
   function applyStyle(): void {
+    applyLights();
+    const lift = AMBIENT - ambient.intensity;
     for (const it of items) {
       it.scene.object.traverse((o) => {
         if (o instanceof THREE.LineSegments) {
-          (o.material as THREE.LineBasicMaterial).color.set(highlight && it.focus ? colors.highlight : (edgeColor?.() ?? colors.edge));
+          const lm = o.material as THREE.LineBasicMaterial;
+          untoned(lm);
+          lm.color.set(highlight && it.focus ? colors.highlight : (edgeColor?.() ?? colors.edge));
         } else if (o instanceof THREE.Mesh) {
           o.userData["partId"] = it.id;
           const m = materialFor(o, it.material);
@@ -270,6 +300,10 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
           // per-vertex colored meshes (the stress heatmap) keep their colors; plain faces take the
           // part's own color, else follow the theme
           if (!m.vertexColors) m.color?.set(it.material?.color ?? it.color ?? colors.face);
+          if (m instanceof THREE.MeshLambertMaterial) {
+            untoned(m);
+            if (!m.vertexColors) { m.emissive.copy(m.color); m.emissiveIntensity = lift; }
+          }
         }
       });
     }
@@ -301,6 +335,7 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
     fitOrtho(camera, box, width / height);
     controls.target.copy(box.getCenter(new THREE.Vector3()));
     controls.update();
+    placeSoftbox();
     requestRender();
   }
 
@@ -389,7 +424,7 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
     const blue = new THREE.Color(colors.highlight);
     if (m.kind === "edge") {
       const g = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(...m.a), new THREE.Vector3(...m.b)]);
-      const line = new THREE.Line(g, new THREE.LineBasicMaterial({ color: blue, depthTest: false }));
+      const line = new THREE.Line(g, new THREE.LineBasicMaterial({ color: blue, depthTest: false, toneMapped: false }));
       line.renderOrder = 10;
       marker = line;
     } else {
@@ -397,7 +432,7 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
       if (!tris.length) { requestRender(); return; }
       const g = new THREE.BufferGeometry();
       g.setAttribute("position", new THREE.Float32BufferAttribute(tris, 3));
-      const mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: blue, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false }));
+      const mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: blue, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false, toneMapped: false }));
       mesh.renderOrder = 10;
       marker = mesh;
     }
@@ -413,6 +448,7 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
     pick,
     toScreen,
     setMarker: setMarkerObj,
+    restyle() { applyStyle(); requestRender(); },
     fit,
     resize(w, h) {
       width = Math.max(1, w); height = Math.max(1, h);
@@ -431,6 +467,7 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
       if (frame) cancelAnimationFrame(frame);
       clearMarker();
       envTex?.dispose();
+      softbox?.dispose();
       controls.dispose();
       themeObserver?.disconnect();
       osScheme?.removeEventListener("change", onTheme);
