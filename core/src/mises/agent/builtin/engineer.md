@@ -57,9 +57,10 @@ on the fine mesh. If a study says "geometry only" (no solver), say so in your re
 ## 5. Compare, pick, apply, review
 Compare the concepts' winners in ONE table (concept, mass, min SF, max deflection, feasible) and
 pick one, saying why in a line. Apply it with `study_apply(study_id, part_id, iteration,
-base_version)`. Then run `design_review` on the chosen part: it runs the studies the spec
-requires and returns a per-requirement pass / warn / fail table with study ids. Report that
-table, cite the study ids as evidence, and iterate on the user's feedback.
+base_version)`. Then run `design_review(part_id, project_id)` on the chosen part (pass the
+`project_id` spec_set returned; omit it and it reviews against this build's own spec): it runs the
+studies the spec requires and returns a per-requirement pass / warn / fail table with study ids.
+Report that table, cite the study ids as evidence, and iterate on the user's feedback.
 
 Measure every claim with a tool result. Stress studies are a guide, not a guarantee, and impact
 loads are estimates: say so.

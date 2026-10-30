@@ -100,6 +100,8 @@ class SimRunArgs(BaseModel):
     requirements: list[dict[str, Any]] = Field(default_factory=list, max_length=40,
                                                description="spec requirements to check "
                                                "pass / warn / fail against the result")
+    estimate: bool = Field(False, description="the load is an estimate (e.g. F = m*g*k); the "
+                           "card is labelled and a pass is reported as warn")
 
     @model_validator(mode="after")
     def _target(self):
@@ -220,7 +222,8 @@ async def sim_run(ctx: ToolContext, args: SimRunArgs) -> ToolOutput:
         raise MisesError(ErrorCode.INVALID_INPUT, "assembly (project_id) studies are not "
                          "supported yet", hint="study each part with its part_id")
     return await _run(ctx, args.type, args.part_id, args.settings, reason=args.reason,
-                      requirements=args.requirements)
+                      requirements=args.requirements,
+                      inputs_extra={"estimate": True} if args.estimate else None)
 
 
 @tool("sim_static_run", safety=SafetyClass.LOCAL_MUTATE, scope_arg="part_id",
@@ -436,15 +439,17 @@ def _metric_rows(spec: dict, metrics: dict, material) -> list[dict]:
 async def _get_spec(ctx: ToolContext, args: ReviewArgs) -> dict | None:
     if args.spec is not None:
         return args.spec
-    if not args.project_id:
-        return None
     gate = _gate(ctx)
     try:
         if gate is None or not gate.registry.list(["spec_get"]):
             return None
     except Exception:  # noqa: BLE001
         return None
-    out = await gate.call(ctx.run_id, "spec_get", {"project_id": args.project_id},
+    # no project_id: spec_get({}) resolves to the run's own build, so the verifier (which has no
+    # spec_get of its own, and may not know the id) still finds its spec. An out-of-scope id is
+    # surfaced as itself, not swallowed into "no spec to review against".
+    payload = {"project_id": args.project_id} if args.project_id else {}
+    out = await gate.call(ctx.run_id, "spec_get", payload,
                           call_id=f"{ctx.call_id}.spec", workdir=Path(ctx.workdir))
     if not out.ok:
         return None
@@ -532,7 +537,7 @@ async def design_review(ctx: ToolContext, args: ReviewArgs) -> ToolOutput:
                 settings["solver"] = solver
             call_id = f"{ctx.call_id}.r{i + 1}"
             payload = {"type": p["type"], "part_id": args.part_id, "settings": settings,
-                       "requirements": p["requirements"],
+                       "requirements": p["requirements"], "estimate": bool(p.get("estimate")),
                        "reason": f"design review: {p['type']} {p['case']}"[:200]}
             try:  # the budget is a hard cap on every child study too
                 out = await asyncio.wait_for(
@@ -567,8 +572,15 @@ async def design_review(ctx: ToolContext, args: ReviewArgs) -> ToolOutput:
         checks = data.get("checks") if out is not None and out.ok else None
         if checks:
             for c in checks:
-                table.append({**c, "study": p["type"], "case": p["case"],
-                              "url": f"/sims/{sid}"})
+                row = {**c, "study": p["type"], "case": p["case"], "url": f"/sims/{sid}"}
+                if p.get("estimate") and row.get("status") == "pass":
+                    # physics honesty: an estimated load (F = m*g*k) never comes back as a clean
+                    # pass; it passes the estimate only
+                    row["status"] = "warn"
+                    row["estimate"] = True
+                    row["note"] = ((row.get("note") + "; ") if row.get("note") else "") + \
+                        "passes, but the load is an estimate (F = m*g*k)"
+                table.append(row)
         else:
             # the study produced no checks: it was denied, errored or timed out, or ran but gave
             # no requirement verdict. Either way we have no evidence, so the row is "not checked"

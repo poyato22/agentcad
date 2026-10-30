@@ -192,6 +192,42 @@ async def test_denied_child_study_is_not_checked_not_fail(tmp_path):
     assert out.data["verdict"] != "fail"       # no evidence is "not checked", never a fail
 
 
+class _PassGate:
+    """A child study that passes its checks; records the payload it was called with."""
+
+    def __init__(self):
+        self.payloads = []
+
+    async def call(self, run_id, name, payload, *, call_id, workdir):
+        self.payloads.append(payload)
+        sid = "sim_pass0000001"
+        checks = [{"requirement_id": r["id"], "kind": r["kind"], "target": r["target"],
+                   "measured": 99.0, "unit": "", "status": "pass", "sim_id": sid}
+                  for r in payload["requirements"]]
+        return ToolOutput(summary="ok", data={"sim_id": sid, "checks": checks, "card": {}})
+
+
+async def test_estimate_load_case_pass_becomes_warn(tmp_path):
+    parts = tmp_path / "parts"
+    (parts / "pt").mkdir(parents=True)
+    (parts / "pt" / "metrics.json").write_text(json.dumps(
+        {"bbox": {"size": [10, 10, 10]}, "volume_mm3": 1000}))
+    gate = _PassGate()
+    pol = AgentPolicy(run_id="r", version=1, edit_scope=["*"], read_scope=["*"], caps=Caps(),
+                      allowed_classes=list(SafetyClass), created_at=0.0)
+    ctx = SimpleNamespace(workdir=tmp_path, run_id="r", call_id="c",
+                          services={"gate": gate}, policy=pol, events=None, store=None)
+    spec = {"requirements": [{"id": "sf", "kind": "min_safety_factor", "target": 1.5,
+                              "load_case_id": "impact"}],
+            "load_cases": [{"id": "impact", "fix": "bottom", "load": "top", "newtons": 50,
+                            "estimate": True}]}
+    out = await design_review.handler(ctx, ReviewArgs(part_id="pt", spec=spec, budget_minutes=1))
+    assert gate.payloads[0]["estimate"] is True            # estimate flag reaches sim_run
+    row = next(r for r in out.data["table"] if r["requirement_id"] == "sf")
+    assert row["status"] == "warn" and row.get("estimate") is True
+    assert "estimate" in row["note"] and out.data["verdict"] != "pass"
+
+
 def test_model_error_band_table_covers_every_level():
     assert set(MODEL_ERROR_BAND) == {1, 2, 3, 4}
     for level, rows in VALIDATION.items():  # the band is never tighter than what was measured
