@@ -85,7 +85,8 @@ async def run_internals(job: dict, steps: dict[str, Path], *, timeout_s: float =
         except asyncio.TimeoutError:
             _kill_group(proc)
             await proc.wait()
-            raise MisesError(ErrorCode.TOOL_FAILED, f"internals check timed out after {timeout_s:g}s")
+            raise MisesError(ErrorCode.TOOL_FAILED,
+                             f"internals check timed out after {timeout_s:g}s")
         except BaseException:
             _kill_group(proc)
             await proc.wait()

@@ -371,7 +371,8 @@ def _sections(job: dict) -> list[dict]:
     span = 1000.0
     for _n, s in from_job:
         bb = s.bounding_box()
-        span = max(span, 4 * math.dist((bb.min.X, bb.min.Y, bb.min.Z), (bb.max.X, bb.max.Y, bb.max.Z)))
+        diag = math.dist((bb.min.X, bb.min.Y, bb.min.Z), (bb.max.X, bb.max.Y, bb.max.Z))
+        span = max(span, 4 * diag)
     out = []
     for pl in job["planes"]:
         plane = bd.Plane(origin=tuple(pl["origin"]), z_dir=tuple(pl["normal"]))

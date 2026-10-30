@@ -8,7 +8,8 @@ sandbox can write it.
 
 Before every build of a part the host stages a snapshot of that part's build's skeleton in the
 part's own meta dir (`skeleton_in.json`); the sandboxed worker reads it (read-only to the sandbox)
-and exposes `skeleton()`, `datum()`, `curve()` and `envelope()` to the script (cad/layout_worker.py).
+and exposes `skeleton()`, `datum()`, `curve()` and `envelope()` to the script
+(cad/layout_worker.py).
 The names a successful build actually read are recorded per part build (`skeleton_refs.json`), and
 a skeleton change regenerates exactly the parts whose recorded names changed
 (cad/skeleton_tools.py).
@@ -236,9 +237,9 @@ def record_refs(part_dir: Path, raw, *, part_version: int | None = None) -> dict
     (from the snapshot staged for it). Written to the part's host-only meta dir."""
     refs = clean_refs(raw)
     snap = staged(part_dir) or {}
+    sv = snap.get("version")
     rec = {**refs, "skeleton_id": snap.get("skeleton_id"),
-           "skeleton_version": snap.get("version") if isinstance(snap.get("version"), int) else None,
-           "part_version": part_version}
+           "skeleton_version": sv if isinstance(sv, int) else None, "part_version": part_version}
     md = edits.meta_dir(part_dir)
     safe_io.ensure_dir(md)
     safe_io.write_text(md, REFS_NAME, json.dumps(rec))
