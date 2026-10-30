@@ -25,7 +25,8 @@ export function tickText(v: number): string {
   if (v === 0) return "0";
   if (a >= 1e6) return `${Number((v / 1e6).toPrecision(3))}M`;
   if (a >= 1e3) return `${Number((v / 1e3).toPrecision(3))}K`;
-  if (a < 1e-3) return v.toExponential(0);
+  // two significant digits: 2.5e-5 must not round to "3e-5" next to its neighbours
+  if (a < 1e-3) return Number(v.toPrecision(2)).toExponential();
   return String(Number(v.toPrecision(3)));
 }
 
@@ -39,8 +40,18 @@ export interface Prepared {
   x: Extent; y: Extent;
   /** Shaded ranges (the excitation band, "buckles" below 1). */
   bands: { label: string; axis: "x" | "y"; from: number; to: number }[];
-  /** Vertical reference lines (the allowable stress, the HDT). */
+  /** Vertical reference lines (the allowable stress, the HDT) that fall on the axis. */
   markers: { label: string; x: number }[];
+  /** Reference lines too far from the data to draw without squashing it: named at that edge. */
+  offscale: { label: string; x: number; side: "left" | "right" }[];
+}
+
+/** A marker within this share of the data span past either end still extends the axis to it. */
+export const MARKER_REACH = 0.5;
+
+/** Bar height in px: a non-zero count is never thinner than 2px, so one node is still visible. */
+export function minBarPx(count: number, px: number): number {
+  return count > 0 ? Math.max(2, px) : Math.max(0, px);
 }
 
 const finite = (v: number | null | undefined): v is number => typeof v === "number" && Number.isFinite(v);
@@ -54,8 +65,20 @@ export function prepare(c: StudyChart): Prepared {
     const bars: Bar[] = counts.slice(0, Math.max(0, edges.length - 1)).map((n, i) => ({
       x0: edges[i], x1: edges[i + 1], y: n, index: i, flag: false, label: `${tickText(edges[i])}–${tickText(edges[i + 1])}`,
     }));
-    const xs = [...edges, ...markers.map((m) => m.x)];
-    return { kind: c.kind, lines: [], bars, bands, markers, x: { lo: Math.min(...xs), hi: Math.max(...xs) }, y: { lo: 0, hi: Math.max(1, ...counts) } };
+    // the axis follows the data (the bin edges); a reference line far outside it (a 35 MPa
+    // allowable over 0.01 MPa of stress) is named at the edge instead of squashing the bars
+    let lo = edges.length ? Math.min(...edges) : 0;
+    let hi = edges.length ? Math.max(...edges) : 1;
+    if (hi === lo) { const d = Math.abs(lo) * 0.5 || 1; lo -= d; hi += d; }
+    const reach = (hi - lo) * MARKER_REACH;
+    const onAxis = markers.filter((m) => m.x >= lo - reach && m.x <= hi + reach);
+    const offscale = markers.filter((m) => !onAxis.includes(m))
+      .map((m) => ({ ...m, side: m.x < lo ? "left" as const : "right" as const }));
+    const xs = [lo, hi, ...onAxis.map((m) => m.x)];
+    return {
+      kind: c.kind, lines: [], bars, bands, markers: onAxis, offscale,
+      x: { lo: Math.min(...xs), hi: Math.max(...xs) }, y: { lo: 0, hi: Math.max(1, ...counts) },
+    };
   }
   const series = c.series ?? [];
   if (c.kind === "bar") {
@@ -64,7 +87,7 @@ export function prepare(c: StudyChart): Prepared {
     const bars = pts.map(([x, y], i) => ({ x0: x - 0.5, x1: x + 0.5, y, index: i, flag: s?.flags?.[i] ?? false, label: `${c.x.label} ${tickText(x)}` }));
     const ys = [...bars.map((b) => b.y), ...bands.filter((b) => b.axis === "y").flatMap((b) => [b.from, b.to])];
     return {
-      kind: c.kind, lines: [], bars, bands, markers,
+      kind: c.kind, lines: [], bars, bands, markers, offscale: [],
       x: { lo: Math.min(...bars.map((b) => b.x0), 0.5), hi: Math.max(...bars.map((b) => b.x1), 1.5) },
       y: { lo: 0, hi: Math.max(...ys, 1e-9) },
     };
@@ -79,7 +102,7 @@ export function prepare(c: StudyChart): Prepared {
   const yLo = Math.min(...ys); const yHi = Math.max(...ys);
   const pad = (yHi - yLo) * 0.08 || Math.abs(yHi) * 0.1 || 1;
   return {
-    kind: c.kind, lines, bars: [], bands, markers,
+    kind: c.kind, lines, bars: [], bands, markers, offscale: [],
     x: { lo: Math.min(...xs), hi: Math.max(...xs) }, y: { lo: yLo - pad, hi: yHi + pad },
   };
 }

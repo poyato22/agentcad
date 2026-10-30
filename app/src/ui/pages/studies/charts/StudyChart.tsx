@@ -10,7 +10,7 @@ import type { JSX } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { StudyChart as Chart } from "../../../../api/studies";
 import { unitText } from "../model";
-import { chartSummary, nearestIndex, niceTicks, prepare, tickText } from "./chartModel";
+import { chartSummary, minBarPx, nearestIndex, niceTicks, prepare, tickText } from "./chartModel";
 import "./charts.css";
 
 export interface StudyChartProps {
@@ -126,7 +126,7 @@ export function StudyChart({ chart, width, height, compact = false, onOpen }: St
               const slot = Math.max(1, sx(b.x1) - sx(b.x0));
               const w = Math.max(1, Math.min(chart.kind === "histogram" ? slot - 2 : 24, slot - 2));
               const cx = (sx(b.x0) + sx(b.x1)) / 2;
-              const top = sy(b.y); const base = sy(Math.max(0, yLo));
+              const base = sy(Math.max(0, yLo)); const top = base - minBarPx(b.y, base - sy(b.y));
               const r = Math.min(4, w / 2, Math.max(0, base - top));
               const x0 = cx - w / 2;
               const d = `M${x0},${base}V${top + r}Q${x0},${top} ${x0 + r},${top}H${x0 + w - r}Q${x0 + w},${top} ${x0 + w},${top + r}V${base}Z`;
@@ -138,6 +138,13 @@ export function StudyChart({ chart, width, height, compact = false, onOpen }: St
                 <line class="sc-marker" x1={sx(mk.x)} x2={sx(mk.x)} y1={m.t} y2={m.t + ih} />
                 {!compact && <text class="sc-marker-label" x={sx(mk.x) - 3} y={m.t + 10} text-anchor="end">{mk.label}</text>}
               </g>
+            ))}
+            {/* a reference line far off the data's scale: named at that edge, with its value */}
+            {p.offscale.map((mk) => (
+              <text key={`off${mk.label}`} class="sc-marker-label" data-offscale={mk.side}
+                x={mk.side === "right" ? m.l + iw - 3 : m.l + 3} y={m.t + 10} text-anchor={mk.side === "right" ? "end" : "start"}>
+                {mk.side === "right" ? `${mk.label} ${tickText(mk.x)} →` : `← ${mk.label} ${tickText(mk.x)}`}
+              </text>
             ))}
             {/* lines: 2px, round joins; the end dot carries the series */}
             {p.lines.map((l, i) => (
