@@ -52,7 +52,21 @@ export async function useDetailsView(page: import("@playwright/test").Page): Pro
   await page.addInitScript(() => { try { localStorage.setItem("mises.console.view", "details"); } catch { /* none */ } });
 }
 
+/** Launch straight into the build shell (not the Home grid) — the default for shell specs. Home
+ *  specs call `openHome` instead. */
+export async function openBuildShell(page: import("@playwright/test").Page): Promise<void> {
+  await page.addInitScript(() => { try { localStorage.setItem("mises.home.open", "0"); } catch { /* none */ } });
+}
+
+/** Launch into the Home grid explicitly. */
+export async function openHome(page: import("@playwright/test").Page): Promise<void> {
+  await page.addInitScript(() => { try { localStorage.setItem("mises.home.open", "1"); } catch { /* none */ } });
+}
+
 export const test = base.extend<{ fake: FakeControl }>({
+  // Existing specs drive the build shell; land there by default so launch-on-Home (R1) doesn't
+  // hide the panes they assert. A Home spec opts back in with openHome().
+  page: async ({ page }, use) => { await openBuildShell(page); await use(page); },
   // eslint-disable-next-line no-empty-pattern
   fake: async ({}, use) => { await use(control()); },
 });

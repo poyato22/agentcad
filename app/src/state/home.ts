@@ -4,8 +4,19 @@
 import { signal, type Signal } from "@preact/signals";
 import { buildActions } from "./builds";
 
+/** Launch shows the grid. A localStorage override ("mises.home.open": "0"/"1") is a test seam
+ *  only — real users never set it, so every launch lands on Home (R1). */
+function initialHome(): boolean {
+  try {
+    const v = localStorage.getItem("mises.home.open");
+    if (v === "0") return false;
+    if (v === "1") return true;
+  } catch { /* storage may be unavailable */ }
+  return true;
+}
+
 /** True while the full-screen build grid is shown instead of a build. Starts true (launch). */
-export const atHome: Signal<boolean> = signal<boolean>(true);
+export const atHome: Signal<boolean> = signal<boolean>(initialHome());
 
 export function goHome(): void { atHome.value = true; }
 
