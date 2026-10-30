@@ -1,0 +1,25 @@
+{
+  "part_id": "quad_arm",
+  "source": "from build123d import *\nVARS = {\n    \"thickness\": 4.0,  # mises: min=2 max=12 step=0.5 unit=mm doc=\"arm wall\"\n    \"length\": 60.0,\n}\ndef build(v):\n    return Box(v[\"length\"], 16, v[\"thickness\"])\n\n\n# mises-op hole {\"depth\": null, \"diameter\": 3.0, \"offset\": [0.0, 0.0, 0.0], \"target\": {\"area\": 960.0, \"center\": [0.0, 0.0, 2.5], \"hint\": \"f5\", \"normal\": [0.0, 0.0, 1.0], \"type\": \"plane\"}, \"through\": true}\n_mises_prev_0 = build\ndef build(v, __prev=_mises_prev_0):\n    import build123d as _m\n    _p = __prev(v)\n    _p = _p.part if hasattr(_p, 'part') else _p\n    _f = _mises_face(_p, {'type': 'plane', 'normal': [0.0, 0.0, 1.0], 'center': [0.0, 0.0, 2.5], 'area': 960.0, 'hint': 'f5'}, 'mises-op 0 hole')\n    _c = _f.center(_m.CenterOf.MASS)\n    _o = _c + _m.Vector(0.0, 0.0, 0.0)\n    _mises_on_face(_f, _o, 'mises-op 0 hole')\n    _pl = _m.Plane(origin=_o, x_dir=_m.Plane(_f).x_dir, z_dir=_f.normal_at(_c))\n    _p = _p - _pl * _m.Cylinder(radius=1.5, height=2.0 * _p.bounding_box().diagonal, align=(_m.Align.CENTER, _m.Align.CENTER, _m.Align.CENTER))\n    return _p\n\n\n# mises-op fillet {\"radius\": 1.0, \"targets\": [{\"adjacent\": [[-1.0, 0.0, 0.0], [0.0, -1.0, 0.0]], \"center\": [-30.0, -8.0, 0.0], \"direction\": [0.0, 0.0, 1.0], \"hint\": \"e0\", \"length\": 5.0, \"type\": \"line\"}]}\n_mises_prev_1 = build\ndef build(v, __prev=_mises_prev_1):\n    import build123d as _m\n    _p = __prev(v)\n    _p = _p.part if hasattr(_p, 'part') else _p\n    _edges = _mises_edges(_p, [{'type': 'line', 'direction': [0.0, 0.0, 1.0], 'center': [-30.0, -8.0, 0.0], 'length': 5.0, 'adjacent': [[-1.0, 0.0, 0.0], [0.0, -1.0, 0.0]], 'hint': 'e0'}], 'mises-op 1 fillet')\n    _p = _m.fillet(_edges, radius=1.0)\n    return _p\n",
+  "vars": [
+    {
+      "name": "thickness",
+      "value": 5.0,
+      "min": 2.0,
+      "max": 12.0,
+      "step": 0.5,
+      "unit": "mm",
+      "doc": "arm wall",
+      "inferred": false
+    },
+    {
+      "name": "length",
+      "value": 60.0,
+      "min": 15.0,
+      "max": 240.0,
+      "inferred": true,
+      "unit": "mm"
+    }
+  ],
+  "version": 4
+}

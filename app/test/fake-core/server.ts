@@ -14,7 +14,8 @@ import type {
   SystemCheckRow, SystemFix,
 } from "../../src/api/types";
 import { INSTALL_DEPS } from "../../src/api/types";
-import { assemblyFrom, assemblyRoutes, type AssemblyScenario, type FakeAssembly } from "./assembly";
+import { assemblyFrom, assemblyRoutes, DEFAULT_PROJECT, DEFAULT_PROJECT_ROW, type AssemblyScenario, type FakeAssembly } from "./assembly";
+import { agentEdit, buildRoutes, buildsFrom, type BuildsDeps, type BuildsScenario, type FakeBuilds } from "./builds";
 import { handleControl } from "./control";
 import { directoryFrom, directoryRoutes, type DirectoryScenario, type FakeDirectory } from "./directory";
 import { printingFrom, printingRoutes, stopPrinting, type FakePrinting, type PrintScenario } from "./printing";
@@ -109,6 +110,8 @@ export interface Scenario {
   assembly?: AssemblyScenario;
   /** Plan 5 engineering loop: the build's spec and design studies (spec panel, A7). */
   spec?: SpecScenario;
+  /** Plan 5 builds, part tree and live edits (A3). Absent: one "Default" build with every part. */
+  builds?: BuildsScenario;
 }
 
 /** A small healthy default when a scenario names no `system` rows. */
@@ -151,6 +154,8 @@ export interface FakeState {
   directory: FakeDirectory;
   assembly: FakeAssembly;
   spec: FakeSpec;
+  /** Plan 5 A3: builds, part-tree rows, scripts and versions. */
+  builds: FakeBuilds;
 }
 
 export interface FakeCore {
@@ -162,6 +167,8 @@ export interface FakeCore {
   /** Closes every events socket (code 1012, or abnormal drop with `terminate`). */
   dropSockets(mode?: "close" | "terminate"): void;
   rotateToken(token: string): void;
+  /** An agent's edit of a part (Plan 5 C6): version+1, vars merged, `part_changed {by:"agent"}`. */
+  agentEdit(b: Record<string, unknown>): { ok: true; version: number };
   stop(): Promise<void>;
 }
 
@@ -180,16 +187,22 @@ export function loadScenario(s: string | Scenario): Scenario {
   return JSON.parse(readFileSync(file, "utf8")) as Scenario;
 }
 
-/** One fake GET /projects (A4's, fake-core/assembly.ts): the A6 directory scenario's `builds`
- *  seed it when the scenario names no assembly projects, and the directory shares that list. */
-function sharedBuilds(sc: Scenario): { directory: FakeDirectory; assembly: FakeAssembly } {
-  const seeded = sc.assembly?.projects ? sc.assembly
-    : sc.directory?.builds ? { ...sc.assembly, projects: sc.directory.builds.map((b) => ({ ...b, trashed_at: null })) }
-    : sc.assembly;
-  const assembly = assemblyFrom(seeded);
+/** ONE list of builds behind the ONE fake GET /projects (A3's builds routes): A6's directory and
+ *  A4's assembly share it. A scenario names builds through A3's `builds`, else A4's
+ *  `assembly.projects` or A6's `directory.builds`; the default is the real core's Default build
+ *  (projects.json), so A4's and A7's fixture ids line up. */
+function sharedBuilds(sc: Scenario): { builds: FakeBuilds; directory: FakeDirectory; assembly: FakeAssembly } {
+  const named = sc.builds?.builds?.length ? sc.builds.builds
+    : sc.assembly?.projects?.length ? sc.assembly.projects.map((p) => ({ id: p.id, name: p.name, created_at: p.created_at, trashed_at: p.trashed_at ?? null }))
+    : sc.directory?.builds?.length ? sc.directory.builds.map((b) => ({ id: b.id, name: b.name }))
+    : [{ id: DEFAULT_PROJECT, name: "Default", created_at: DEFAULT_PROJECT_ROW.created_at }];
+  const builds = buildsFrom({ ...sc.builds, builds: named }, sc.parts.map((p) => p.part_id));
+  const assembly = assemblyFrom(sc.assembly);
+  assembly.projects = builds.builds;
   const directory = directoryFrom(sc.directory, sc.status.onshape === "connected", sc.status);
-  directory.builds = assembly.projects;
-  return { directory, assembly };
+  directory.builds = builds.builds;
+  if (sc.directory?.active_build === undefined && sc.builds?.active) directory.activeBuild = sc.builds.active;
+  return { builds, directory, assembly };
 }
 
 function stateFrom(sc: Scenario, token: string): FakeState {
@@ -201,7 +214,7 @@ function stateFrom(sc: Scenario, token: string): FakeState {
     questions: new Map((sc.questions ?? []).map((q) => [q.question_id, q])),
     parts: sc.parts, agents: sc.agents, models: sc.models, status: sc.status,
     glb: sc.glb ?? {}, script: sc.script ?? [], on: sc.on ?? {}, calls: [],
-    setup: setupFrom(sc),
+    setup: withBuildTabs(setupFrom(sc), sc.builds),
     local: sc.local ? structuredClone(sc.local) : null, localPullMs: sc.local_pull_ms ?? 120, pulling: new Map(),
     sims: simsFrom(sc.sims),
     sketches: new Map(),
@@ -212,6 +225,14 @@ function stateFrom(sc: Scenario, token: string): FakeState {
     ...sharedBuilds(sc),
     spec: specFrom(sc.spec),
   };
+}
+
+/** The scenario's open build tabs, on the fake profile (C1 profile.active_project_id / open_project_ids). */
+function withBuildTabs(setup: FakeSetup, b: BuildsScenario | undefined): FakeSetup {
+  if (b && (b.active !== undefined || b.open !== undefined)) {
+    Object.assign(setup.profile, { active_project_id: b.active ?? null, open_project_ids: b.open ?? [] });
+  }
+  return setup;
 }
 
 const now = () => Date.now() / 1000;
@@ -475,6 +496,12 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
 
   // -- routes
 
+  const buildsDeps: BuildsDeps = {
+    get: () => state.builds, parts: () => state.parts, setParts: (list) => { state.parts = list; },
+    profile: () => state.setup.profile as unknown as ReturnType<BuildsDeps["profile"]>,
+    emit: (ev) => { emit(ev); },
+  };
+
   const routes: Route[] = [
     { method: "GET", re: /^\/health$/, h: () => ({ ok: true }) },
     {
@@ -735,7 +762,8 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       },
     },
     { method: "GET", re: /^\/models$/, h: () => models() },
-    { method: "GET", re: /^\/parts$/, h: () => [...state.parts].sort((a, b) => a.part_id.localeCompare(b.part_id)) },
+    // GET /parts (?project_id) lives in buildRoutes: the part tree of a build
+    ...buildRoutes(buildsDeps),
     {
       method: "GET", re: /^\/parts\/([^/]+)\/model\.glb$/, h: (m, _q, _b, r, res) => {
         const id = decodeURIComponent(m[1]);
@@ -1020,6 +1048,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     emit,
     reset,
     dropSockets,
+    agentEdit: (b) => agentEdit(buildsDeps, b),
     rotateToken(token: string) {
       state.token = token;
       dropSockets();

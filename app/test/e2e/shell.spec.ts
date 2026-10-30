@@ -363,13 +363,15 @@ test("connects_to_fake_core_without_errors", async ({ page, fake }) => {
   page.on("pageerror", (e) => errors.push(String(e)));
   await page.goto("/");
   await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
-  // /onshape/budget twice: the session figure, then the selected run's (the top-bar meter, A6);
-  // the console spec strip (A7) resolves the active build (/projects, /profile) and loads its spec and studies
+  // A6: /onshape/budget twice (the session figure, then the selected run's top-bar meter); A3: the
+  // builds (GET /projects + the profile's tabs) and the Variables panel's VARS schema; A7: the
+  // console spec strip loads the active build's spec and studies
   await expect.poll(async () => (await fake.calls()).map((c) => c.path.replace(/^\/projects\/[^/]+\//, "/projects/{id}/")).filter((p) => p !== "/context").sort()).toEqual(
-    ["/approvals", "/onshape/budget", "/onshape/budget", "/parts", "/parts/mount_plate/model.glb", "/printers", "/profile", "/profile", "/projects",
-      "/projects/{id}/spec", "/projects/{id}/studies", "/runs", "/runs/b7c79a57cbb4/steps", "/setup", "/status"]);
+    ["/approvals", "/onshape/budget", "/onshape/budget", "/parts", "/parts/mount_plate/model.glb", "/parts/mount_plate/source", "/printers", "/profile", "/profile",
+      "/projects", "/projects/{id}/spec", "/projects/{id}/studies", "/runs", "/runs/b7c79a57cbb4/steps", "/setup", "/status"]);
+  // PUT /context goes out 150 ms after the session starts (state/context.ts debounce)
+  await expect.poll(async () => (await fake.calls()).filter((c) => c.path === "/context").length).toBeGreaterThanOrEqual(1);
   const ctx = (await fake.calls()).filter((c) => c.path === "/context");
-  expect(ctx.length).toBeGreaterThanOrEqual(1);
   expect(ctx.every((c) => c.method === "PUT")).toBe(true);
   expect(errors).toEqual([]);
 });

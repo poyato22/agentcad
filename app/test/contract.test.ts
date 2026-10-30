@@ -77,7 +77,8 @@ const ROUTES: Route[] = [
   { fixture: "runs.json", schema: z.array(agentRunSchema), fake: () => "/runs?limit=50", root: "runs" },
   { fixture: "steps.json", schema: z.array(stepSchema), fake: () => `/runs/${FAKE_RUN_ID}/steps?after_id=0`, root: "steps" },
   { fixture: "approvals.json", schema: z.array(approvalSchema), fake: () => "/approvals?status=pending", root: "approvals" },
-  { fixture: "parts.json", schema: z.array(partSummarySchema), fake: () => "/parts", root: "parts" },
+  // the Plan 5 part tree (C1 rows + C6 metrics with edge_list): dump_builds_edit_fixtures.py
+  { fixture: "parts_tree.json", schema: z.array(partSummarySchema), fake: () => "/parts", root: "parts" },
   { fixture: "agents.json", schema: z.array(agentInfoSchema), fake: () => "/agents", root: "agents" },
   { fixture: "models.json", schema: modelsInfoSchema, fake: () => "/models", root: "models" },
   { fixture: "status.json", schema: coreStatusSchema, fake: () => "/status", root: "status" },

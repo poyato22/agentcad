@@ -20,6 +20,19 @@ function viewerColors(): ViewerColors {
 export const ISO_AZIMUTH_DEG = 45;
 export const ISO_ELEVATION_DEG = 35;
 
+/** One part on the sheet: its model, its color (null: the theme's face grey) and whether it is
+ *  the focused part (the one the camera fits and the highlight applies to). */
+export interface ShownPart { id: string; scene: PartScene; color: string | null; focus: boolean }
+
+/** A click on a shown part: where (world = the part's CAD frame, mm) and the surface normal. */
+export interface ViewerHit { partId: string; point: [number, number, number]; normal: [number, number, number] }
+
+/** The blue pick marker: a face (drawn on the triangles in that plane) or an edge segment. */
+export type PickMarker =
+  | { kind: "face"; partId: string; normal: [number, number, number]; point: [number, number, number]; tol: number }
+  | { kind: "edge"; a: [number, number, number]; b: [number, number, number] }
+  | null;
+
 export interface ViewerHandle {
   setPart(p: PartScene | null): void;
   setMode(m: "shaded" | "wire"): void;
@@ -28,6 +41,18 @@ export interface ViewerHandle {
   fit(): void;
   resize(w: number, h: number): void;
   dispose(): void;
+}
+
+/** The Design viewer's extras: several parts, picking and the pick marker. */
+export interface DesignViewerHandle extends ViewerHandle {
+  /** Several parts at once (the build view). `fit` refits the camera: to the focused part, or with
+   *  `frameAll` (and whenever none is focused) to all of them; resizes keep that framing. */
+  setParts(list: ShownPart[], fit: boolean, frameAll?: boolean): void;
+  /** The part under canvas pixel (x, y), or null. */
+  pick(x: number, y: number): ViewerHit | null;
+  /** A world point → canvas pixels. */
+  toScreen(p: [number, number, number]): [number, number];
+  setMarker(m: PickMarker): void;
 }
 
 /** The slice of WebGLRenderer the viewer uses (lets tests stub it). */
@@ -81,7 +106,7 @@ export function fitOrtho(camera: THREE.OrthographicCamera, bbox: THREE.Box3, asp
   camera.updateProjectionMatrix();
 }
 
-export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): ViewerHandle {
+export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): DesignViewerHandle {
   const renderer = (deps.createRenderer ?? defaultRenderer)(canvas);
   const edgeColor = deps.edgeColor;
   renderer.setClearColor(0x000000, 0);
@@ -101,12 +126,15 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
   camera.position.copy(isoDir).multiplyScalar(200);
   camera.lookAt(0, 0, 0);
 
+
   let width = 1; let height = 1;
-  let part: PartScene | null = null;
+  let items: ShownPart[] = [];
   let mode: "shaded" | "wire" = "shaded";
   let highlight = false;
   let frame = 0;
   let disposed = false;
+  let marker: THREE.Object3D | null = null;
+  let frameAll = false;
 
   const draw = () => {
     frame = 0;
@@ -130,22 +158,25 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
   let colors = viewerColors();
 
   function applyStyle(): void {
-    if (!part) return;
-    part.object.traverse((o) => {
-      if (o instanceof THREE.LineSegments) {
-        (o.material as THREE.LineBasicMaterial).color.set(highlight ? colors.highlight : (edgeColor?.() ?? colors.edge));
-      } else if (o instanceof THREE.Mesh) {
-        const m = o.material as THREE.MeshLambertMaterial;
-        m.visible = mode === "shaded";
-        // per-vertex colored meshes (the stress heatmap) keep their colors; plain faces follow the theme
-        if (!m.vertexColors) m.color?.set(colors.face);
-      }
-    });
+    for (const it of items) {
+      it.scene.object.traverse((o) => {
+        if (o instanceof THREE.LineSegments) {
+          (o.material as THREE.LineBasicMaterial).color.set(highlight && it.focus ? colors.highlight : (edgeColor?.() ?? colors.edge));
+        } else if (o instanceof THREE.Mesh) {
+          o.userData["partId"] = it.id;
+          const m = o.material as THREE.MeshLambertMaterial;
+          m.visible = mode === "shaded";
+          // per-vertex colored meshes (the stress heatmap) keep their colors; plain faces take the
+          // part's own color, else follow the theme
+          if (!m.vertexColors) m.color?.set(it.color ?? colors.face);
+        }
+      });
+    }
   }
 
   // Follow the theme live: <html data-theme> changes (profile toggle) and OS light/dark changes
   // (theme "system") re-read the tokens and repaint.
-  const onTheme = () => { colors = viewerColors(); applyStyle(); requestRender(); };
+  const onTheme = () => { colors = viewerColors(); applyStyle(); setMarkerObj(lastMarker); requestRender(); };
   const themeObserver = typeof MutationObserver === "function" && typeof document !== "undefined"
     ? new MutationObserver(onTheme) : null;
   themeObserver?.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
@@ -153,32 +184,140 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
     ? window.matchMedia("(prefers-color-scheme: light)") : null;
   osScheme?.addEventListener("change", onTheme);
 
+  /** The box the camera frames: the focused part, else every shown part. */
+  function fitBox(): THREE.Box3 | null {
+    const f = frameAll ? undefined : items.find((i) => i.focus);
+    if (f) return f.scene.bbox;
+    if (!items.length) return null;
+    const b = new THREE.Box3();
+    for (const i of items) b.union(i.scene.bbox);
+    return b;
+  }
+
   function fit(): void {
-    if (!part) return;
-    fitOrtho(camera, part.bbox, width / height);
-    controls.target.copy(part.bbox.getCenter(new THREE.Vector3()));
+    const box = fitBox();
+    if (!box) return;
+    fitOrtho(camera, box, width / height);
+    controls.target.copy(box.getCenter(new THREE.Vector3()));
     controls.update();
     requestRender();
   }
 
-  return {
-    setPart(p) {
-      if (part) scene.remove(part.object);
-      part = p;
-      if (p) {
-        scene.add(p.object);
-        applyStyle();
-        fit();
+  function setParts(list: ShownPart[], refit: boolean, all = false): void {
+    frameAll = all;
+    const keep = new Set(list.map((i) => i.scene.object));
+    for (const it of items) if (!keep.has(it.scene.object)) scene.remove(it.scene.object);
+    items = list;
+    for (const it of items) if (it.scene.object.parent !== scene) scene.add(it.scene.object);
+    applyStyle();
+    if (refit) fit();
+    requestRender();
+  }
+
+  // ---- picking
+
+  const raycaster = new THREE.Raycaster();
+  function pick(x: number, y: number): ViewerHit | null {
+    const ndc = new THREE.Vector2((x / width) * 2 - 1, -(y / height) * 2 + 1);
+    camera.updateMatrixWorld(true);
+    raycaster.setFromCamera(ndc, camera);
+    const meshes: THREE.Object3D[] = [];
+    for (const it of items) it.scene.object.traverse((o) => { if (o instanceof THREE.Mesh) meshes.push(o); });
+    const hit = raycaster.intersectObjects(meshes, false)[0];
+    if (!hit || !hit.face) return null;
+    const n = hit.face.normal.clone().transformDirection(hit.object.matrixWorld).normalize();
+    // the side facing the camera (a hit from inside a thin wall reports the far side)
+    if (n.dot(raycaster.ray.direction) > 0) n.negate();
+    const r = (v: number) => Number(v.toFixed(4)) + 0;
+    return { partId: String(hit.object.userData["partId"] ?? ""), point: [r(hit.point.x), r(hit.point.y), r(hit.point.z)], normal: [r(n.x), r(n.y), r(n.z)] };
+  }
+
+  function toScreen(p: [number, number, number]): [number, number] {
+    camera.updateMatrixWorld(true);
+    const v = new THREE.Vector3(...p).project(camera);
+    return [((v.x + 1) / 2) * width, ((1 - v.y) / 2) * height];
+  }
+
+  // ---- pick marker (blue: the selected face / edge)
+
+  let lastMarker: PickMarker = null;
+  function clearMarker(): void {
+    if (!marker) return;
+    scene.remove(marker);
+    marker.traverse((o) => {
+      if (o instanceof THREE.Mesh || o instanceof THREE.Line) { o.geometry.dispose(); (o.material as THREE.Material).dispose(); }
+    });
+    marker = null;
+  }
+
+  /** The triangles of a part that lie in the picked face's plane, in world coordinates. */
+  function planeTriangles(partId: string, normal: THREE.Vector3, point: THREE.Vector3, tol: number): number[] {
+    const out: number[] = [];
+    const it = items.find((i) => i.id === partId);
+    if (!it) return out;
+    const a = new THREE.Vector3(); const b = new THREE.Vector3(); const c = new THREE.Vector3();
+    const n = new THREE.Vector3(); const e1 = new THREE.Vector3(); const e2 = new THREE.Vector3();
+    it.scene.object.updateMatrixWorld(true);
+    it.scene.object.traverse((o) => {
+      if (!(o instanceof THREE.Mesh)) return;
+      const pos = o.geometry.getAttribute("position");
+      if (!pos) return;
+      const idx = o.geometry.getIndex();
+      const count = idx ? idx.count : pos.count;
+      for (let i = 0; i + 2 < count; i += 3) {
+        const ia = idx ? idx.getX(i) : i; const ib = idx ? idx.getX(i + 1) : i + 1; const ic = idx ? idx.getX(i + 2) : i + 2;
+        a.fromBufferAttribute(pos, ia).applyMatrix4(o.matrixWorld);
+        b.fromBufferAttribute(pos, ib).applyMatrix4(o.matrixWorld);
+        c.fromBufferAttribute(pos, ic).applyMatrix4(o.matrixWorld);
+        n.crossVectors(e1.subVectors(b, a), e2.subVectors(c, a));
+        if (n.lengthSq() < 1e-12) continue;
+        n.normalize();
+        if (Math.abs(n.dot(normal)) < 0.999) continue;
+        if (Math.abs(e1.subVectors(a, point).dot(normal)) > tol) continue;
+        // lift it a hair off the surface toward the viewer side of the face
+        for (const v of [a, b, c]) { v.addScaledVector(normal, tol * 0.5); out.push(v.x, v.y, v.z); }
       }
-      requestRender();
-    },
+    });
+    return out;
+  }
+
+  function setMarkerObj(m: PickMarker): void {
+    clearMarker();
+    lastMarker = m;
+    if (!m) { requestRender(); return; }
+    const blue = new THREE.Color(colors.highlight);
+    if (m.kind === "edge") {
+      const g = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(...m.a), new THREE.Vector3(...m.b)]);
+      const line = new THREE.Line(g, new THREE.LineBasicMaterial({ color: blue, depthTest: false }));
+      line.renderOrder = 10;
+      marker = line;
+    } else {
+      const tris = planeTriangles(m.partId, new THREE.Vector3(...m.normal), new THREE.Vector3(...m.point), m.tol);
+      if (!tris.length) { requestRender(); return; }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.Float32BufferAttribute(tris, 3));
+      const mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: blue, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false }));
+      mesh.renderOrder = 10;
+      marker = mesh;
+    }
+    scene.add(marker);
+    requestRender();
+  }
+
+  return {
+    setPart(p) { setParts(p ? [{ id: "", scene: p, color: null, focus: true }] : [], true); },
+    setParts,
     setMode(m) { mode = m; applyStyle(); requestRender(); },
     setHighlight(on) { highlight = on; applyStyle(); requestRender(); },
+    pick,
+    toScreen,
+    setMarker: setMarkerObj,
     fit,
     resize(w, h) {
       width = Math.max(1, w); height = Math.max(1, h);
       renderer.setSize(width, height, false);
-      if (part) fitOrtho(camera, part.bbox, width / height);
+      const box = fitBox();
+      if (box) fitOrtho(camera, box, width / height);
       else {
         const halfH = (camera.top - camera.bottom) / 2;
         camera.left = -halfH * (width / height); camera.right = halfH * (width / height);
@@ -189,6 +328,7 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
     dispose() {
       disposed = true;
       if (frame) cancelAnimationFrame(frame);
+      clearMarker();
       controls.dispose();
       themeObserver?.disconnect();
       osScheme?.removeEventListener("change", onTheme);

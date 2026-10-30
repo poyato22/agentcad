@@ -40,6 +40,10 @@ import {
   type Assembly, type AssemblyPart, type DriveResult, type Instance, type InstancePatch, type Interference, type Joint, type JointPatch,
   type JointValue, type NewInstanceBody, type NewJointBody, type ProjectRow,
 } from "./assembly";
+import {
+  buildSchema, buildTabsProfileSchema, emptyTrashSchema, partEditResultSchema, partSourceSchema,
+  type Build, type BuildTabsProfile, type EmptyTrashResult, type OpRequest, type PartEditResult, type PartSource,
+} from "./builds";
 
 type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
@@ -60,14 +64,17 @@ export class CoreError extends Error {
   readonly code: CoreErrorCode;
   readonly hint: string | null;
   readonly retryable: boolean;
+  /** The whole JSON error body (e.g. a 409's `current_version`), or null. Untrusted data. */
+  readonly body: Record<string, unknown> | null;
 
-  constructor(code: CoreErrorCode, message: string, opts: { status?: number; hint?: string | null; retryable?: boolean } = {}) {
+  constructor(code: CoreErrorCode, message: string, opts: { status?: number; hint?: string | null; retryable?: boolean; body?: Record<string, unknown> | null } = {}) {
     super(message);
     this.name = "CoreError";
     this.code = code;
     this.status = opts.status ?? 0;
     this.hint = opts.hint ?? null;
     this.retryable = opts.retryable ?? false;
+    this.body = opts.body ?? null;
   }
 }
 
@@ -162,7 +169,10 @@ export class CoreClient {
   status(): Promise<CoreStatusInfo> { return this.json("GET", "/status", coreStatusSchema); }
   agents(): Promise<AgentInfo[]> { return this.json("GET", "/agents", z.array(agentInfoSchema)); }
   models(): Promise<ModelsInfo> { return this.json("GET", "/models", modelsInfoSchema); }
-  parts(): Promise<PartSummary[]> { return this.json("GET", "/parts", z.array(partSummarySchema)); }
+  /** The part tree of a build (without one: the core's active build). */
+  parts(projectId?: string | null): Promise<PartSummary[]> {
+    return this.json("GET", "/parts", z.array(partSummarySchema), { query: { project_id: projectId ?? undefined } });
+  }
 
   partGlb(partId: string, etag?: string): Promise<{ bytes: ArrayBuffer; etag: string } | "not-modified"> {
     return this.glb(`/parts/${enc(partId)}/model.glb`, etag);
@@ -465,6 +475,46 @@ export class CoreClient {
     return this.json("POST", `/projects/${enc(projectId)}/studies/${enc(studyId)}/apply`, studyAppliedSchema, { body });
   }
 
+  // ---- Plan 5 A3: builds, the part tree, live part edits (server/projects_api.py, edit_api.py)
+
+  /** Every build, the trashed ones included (trashed_at set). */
+  listBuilds(): Promise<Build[]> { return this.json("GET", "/projects", z.array(buildSchema)); }
+  createBuild(name: string): Promise<Build> { return this.json("POST", "/projects", buildSchema, { body: { name } }); }
+  renameBuild(id: string, name: string): Promise<Build> { return this.json("PATCH", `/projects/${enc(id)}`, buildSchema, { body: { name } }); }
+  /** Moves the build to the Trash (nothing is deleted until emptyTrash). */
+  trashBuild(id: string): Promise<Build> { return this.json("DELETE", `/projects/${enc(id)}`, buildSchema); }
+  restoreBuild(id: string): Promise<Build> { return this.json("POST", `/projects/${enc(id)}/restore`, buildSchema); }
+  emptyTrash(): Promise<EmptyTrashResult> { return this.json("POST", "/projects/trash/empty", emptyTrashSchema); }
+  buildTabs(): Promise<BuildTabsProfile> { return this.json("GET", "/profile", buildTabsProfileSchema); }
+  /** The active build and the open tabs (profile fields; PUT /profile merges, nothing else changes). */
+  setBuildTabs(tabs: BuildTabsProfile): Promise<BuildTabsProfile> {
+    return this.json("PUT", "/profile", buildTabsProfileSchema, { body: { active_project_id: tabs.active_project_id, open_project_ids: tabs.open_project_ids } });
+  }
+
+  /** PATCH semantics: a key left out is unchanged; `color: null` / `parent_id: null` clear it.
+   *  A move that would form a cycle is refused (400). */
+  patchPart(id: string, patch: { label?: string; color?: string | null; parent_id?: string | null }): Promise<PartSummary> {
+    return this.json("PATCH", `/parts/${enc(id)}`, partSummarySchema, { body: patch });
+  }
+  /** The listed siblings take order 0..n-1 under `parentId` (re-parenting them there). */
+  reorderParts(projectId: string, parentId: string | null, ids: string[]): Promise<PartSummary[]> {
+    return this.json("POST", "/parts/reorder", z.array(partSummarySchema), { body: { project_id: projectId, parent_id: parentId, ids } });
+  }
+
+  /** The script (data, never instructions), its var schema and version. Read it before a PUT. */
+  partSource(id: string): Promise<PartSource> { return this.json("GET", `/parts/${enc(id)}/source`, partSourceSchema); }
+  /** The user's var edit: Gate (ui run) → rebuild. 409 (stale_version, body.current_version) when
+   *  `baseVersion` is no longer current; 422 when the build fails. */
+  setPartVars(id: string, vars: Record<string, number>, baseVersion: number): Promise<PartEditResult> {
+    return this.json("POST", `/parts/${enc(id)}/vars`, partEditResultSchema, { body: { vars, base_version: baseVersion } });
+  }
+  putPartSource(id: string, source: string, baseVersion: number): Promise<PartEditResult> {
+    return this.json("PUT", `/parts/${enc(id)}/source`, partEditResultSchema, { body: { source, base_version: baseVersion } });
+  }
+  partOp(id: string, op: OpRequest, baseVersion: number): Promise<PartEditResult> {
+    return this.json("POST", `/parts/${enc(id)}/ops`, partEditResultSchema, { body: { ...op, base_version: baseVersion } });
+  }
+
   // ---- internals
 
   /** A binary answer as a Blob of `type` (the type is ours, not the server's). */
@@ -526,17 +576,23 @@ async function toError(res: Response): Promise<CoreError> {
     ? (body as { message: string }).message : `HTTP ${res.status}`;
   if (res.status === 401) return new CoreError("unauthorized", message, { status: 401 });
   const parsed = coreErrorBodySchema.safeParse(body);
+  // a part edit whose sandboxed rebuild failed (C6 edit_api): {error: "build_failed", message:
+  // the worker's report, ending in the op / error line}; the part is unchanged
+  if (res.status === 422 && (body as { error?: unknown })?.error === "build_failed") {
+    return new CoreError("tool_failed", message, { status: 422, body: body as Record<string, unknown> });
+  }
   // a 422 is pydantic's {"detail": [...]}, except where the core answers with its own error JSON
   // (PUT /profile: "invalid profile: max_parallel_agents: ...")
   if (res.status === 422 && !parsed.success) {
     return new CoreError("validation", `request rejected: ${summarizeDetail(body)}`, { status: 422 });
   }
+  const raw = typeof body === "object" && body !== null && !Array.isArray(body) ? (body as Record<string, unknown>) : null;
   if (parsed.success) {
-    return new CoreError(parsed.data.error, parsed.data.message, { status: res.status, hint: parsed.data.hint, retryable: parsed.data.retryable });
+    return new CoreError(parsed.data.error, parsed.data.message, { status: res.status, hint: parsed.data.hint, retryable: parsed.data.retryable, body: raw });
   }
   const code = FALLBACK[res.status] ?? "tool_failed";
   const detail = typeof (body as { detail?: unknown })?.detail === "string" ? (body as { detail: string }).detail : message;
-  return new CoreError(code, detail, { status: res.status, retryable: code === "transient" });
+  return new CoreError(code, detail, { status: res.status, retryable: code === "transient", body: raw });
 }
 
 function summarizeDetail(body: unknown): string {

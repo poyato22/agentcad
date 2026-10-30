@@ -171,3 +171,58 @@ describe("createViewer", () => {
     v.dispose();
   });
 });
+
+describe("design viewer: part colors, picks and the build view", () => {
+  const plateBytes = (): ArrayBuffer =>
+    new Uint8Array(readFileSync(resolve(import.meta.dirname, "../../../test/fake-core/scenarios/glb/top_plate.glb"))).buffer as ArrayBuffer;
+  const faceColors = (p: { object: THREE.Object3D }): Set<string> => {
+    const out = new Set<string>();
+    p.object.traverse((o) => { if (o instanceof THREE.Mesh) out.add((o.material as THREE.MeshLambertMaterial).color.getHexString()); });
+    return out;
+  };
+
+  it("applies the part's color to its mesh material, and the theme grey without one", async () => {
+    const v = createViewer(document.createElement("canvas"), { createRenderer: stubRenderer });
+    const p = await loadPart(plateBytes());
+    v.setParts([{ id: "top_plate", scene: p, color: "#2f9a9c", focus: true }], true);
+    expect(faceColors(p)).toEqual(new Set(["2f9a9c"]));
+    v.setParts([{ id: "top_plate", scene: p, color: null, focus: true }], false);
+    expect(faceColors(p)).toEqual(new Set(["2a2a2a"]));
+    v.dispose();
+  });
+
+  it("a click on the model reports the part, a point on it (CAD mm) and the facing normal", async () => {
+    const v = createViewer(document.createElement("canvas"), { createRenderer: stubRenderer });
+    const p = await loadPart(plateBytes());
+    v.resize(400, 300);
+    v.setParts([{ id: "top_plate", scene: p, color: null, focus: true }], true);
+    const hit = v.pick(200, 150);
+    expect(hit?.partId).toBe("top_plate");
+    const [x, y, z] = hit!.point;
+    expect(Math.abs(x)).toBeLessThanOrEqual(20.01);
+    expect(Math.abs(y)).toBeLessThanOrEqual(20.01);
+    expect(Math.abs(z)).toBeLessThanOrEqual(1.51);
+    expect(hit!.normal).toEqual([0, 0, 1]);          // the iso camera looks down on the top face
+    const [sx, sy] = v.toScreen(hit!.point);
+    expect(sx).toBeCloseTo(200, 0);
+    expect(sy).toBeCloseTo(150, 0);
+    expect(v.pick(2, 2)).toBeNull();                  // the empty sheet corner
+    expect(() => { v.setMarker({ kind: "face", partId: "top_plate", normal: [0, 0, 1], point: [0, 0, 1.5], tol: 0.05 }); v.setMarker(null); }).not.toThrow();
+    v.dispose();
+  });
+
+  it("the build view frames every part, and a click names the part under it", async () => {
+    const v = createViewer(document.createElement("canvas"), { createRenderer: stubRenderer });
+    const a = await loadPart(plateBytes());
+    const b = await loadPart(plateBytes());
+    b.object.position.x += 100;
+    b.object.updateMatrixWorld(true);
+    b.bbox.translate(new THREE.Vector3(100, 0, 0));
+    v.resize(400, 300);
+    v.setParts([{ id: "a", scene: a, color: null, focus: true }, { id: "b", scene: b, color: "#c2463d", focus: false }], true, true);
+    const [bx, by] = v.toScreen([100, 0, 1.5]);
+    expect(bx).toBeGreaterThan(0); expect(bx).toBeLessThan(400);
+    expect(v.pick(bx, by)?.partId).toBe("b");
+    v.dispose();
+  });
+});

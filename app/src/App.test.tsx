@@ -11,7 +11,10 @@ import type { Approval } from "./api/types";
 
 // jsdom has no WebGL: the real viewer scene is replaced by an inert handle (Task 6 tests cover it).
 vi.mock("./ui/viewer/scene", () => ({
-  createViewer: () => ({ setPart: vi.fn(), setMode: vi.fn(), setHighlight: vi.fn(), fit: vi.fn(), resize: vi.fn(), dispose: vi.fn() }),
+  createViewer: () => ({
+    setPart: vi.fn(), setParts: vi.fn(), setMode: vi.fn(), setHighlight: vi.fn(), fit: vi.fn(), resize: vi.fn(), dispose: vi.fn(),
+    pick: vi.fn(), toScreen: vi.fn(() => [0, 0]), setMarker: vi.fn(),
+  }),
 }));
 
 afterEach(() => { cleanup(); resetStore(); setConsoleCollapsed(false); });

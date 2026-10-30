@@ -1,7 +1,7 @@
 import type { JSX } from "preact";
 import type { PartSummary } from "../../api/types";
 import { fmtGrams, fmtSize } from "../../lib/format";
-import { partLabel } from "../../lib/names";
+import { partName } from "../../lib/names";
 
 export interface TitleBlockProps {
   part: PartSummary | null;
@@ -17,7 +17,7 @@ const DASH = "—";
 export function TitleBlock({ part, runLabel, error = null }: TitleBlockProps): JSX.Element {
   const m = part?.metrics ?? null;
   const cells: [string, string][] = [
-    ["PART", part ? partLabel(part.part_id) : DASH],
+    ["PART", part ? `Part · ${partName(part)}` : DASH],
     ["SIZE mm", m ? fmtSize(m.bbox.size) : DASH],
     ["MASS", m ? fmtGrams(m.mass_g) : DASH],
     ["BY", part ? (runLabel ?? "you") : DASH],

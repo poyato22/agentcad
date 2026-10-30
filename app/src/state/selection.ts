@@ -3,6 +3,7 @@
 // (selectedRunId / selectedPartId) renders as selected; a fallback is shown but never blue.
 import { computed, type ReadonlySignal } from "@preact/signals";
 import type { AgentRun, PartSummary } from "../api/types";
+import { activeBuildId } from "./builds";
 import { approvals, parts, questions, retiredApprovals, runs, selectedPartId, selectedRunId } from "./store";
 
 /** Roster order: running first, then newest first. */
@@ -17,7 +18,11 @@ export function rosterOrder(list: Iterable<AgentRun>): AgentRun[] {
 export const effectiveRunId: ReadonlySignal<string | null> = computed(() => {
   const sel = selectedRunId.value;
   if (sel) return sel;
-  return rosterOrder(runs.value.values())[0]?.id ?? null;
+  // the fallback is a run of the active build (Plan 5: each build has its own runs); a run from a
+  // core without builds (no project_id) belongs to every build
+  const build = activeBuildId.value;
+  const list = [...runs.value.values()].filter((r) => !build || !r.project_id || r.project_id === build);
+  return rosterOrder(list)[0]?.id ?? null;
 });
 
 export const effectiveRun: ReadonlySignal<AgentRun | null> = computed(() => {

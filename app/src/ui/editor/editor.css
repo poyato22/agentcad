@@ -1,0 +1,47 @@
+/* Code tab + feature-op callout. Greys only; blue only for the pick marker / "needs you" notes. */
+.src { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--paper); z-index: 4; }
+.src-bar {
+  display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px 0 22px; flex: none;
+  border-bottom: 1px solid var(--line2); background: var(--head);
+}
+.src-name { color: var(--ink); font-weight: 600; }
+.src-state { color: var(--dim); font-size: var(--fs-small); }
+.src-state [data-changing] { color: var(--blue2); }
+.src-actions { margin-left: auto; display: flex; gap: 6px; }
+.src-note { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 22px; border-bottom: 1px solid var(--line2); color: var(--ink); }
+.src-note.needs-you { background: var(--blue-tint); border-bottom-color: var(--blue); }
+.src-note-actions { display: flex; gap: 6px; margin-left: auto; }
+.src-error { color: var(--red); white-space: pre-wrap; }
+.src-cm { flex: 1; min-height: 0; overflow: hidden; user-select: text; }
+.src-cm .cm-editor { height: 100%; }
+
+/* the callout: a leader from the pick to a small form, like a note on a drawing */
+.ops-leader { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 3; overflow: visible; }
+.ops-leader line { stroke: var(--blue); stroke-width: 1; }
+.ops-leader circle { fill: var(--blue); }
+.ops {
+  position: absolute; z-index: 3; width: 248px; display: flex; flex-direction: column; gap: 6px; padding: 8px 10px 10px;
+  background: var(--paper); border: 1px solid var(--line2); border-top: 2px solid var(--blue);
+}
+.ops-head { display: flex; align-items: center; gap: 6px; }
+.ops-title { flex: 1; min-width: 0; color: var(--ink); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ops-x { border: 0; background: transparent; color: var(--faint); cursor: pointer; font: inherit; padding: 0 2px; }
+.ops-x:hover { color: var(--ink); }
+.ops-kinds { display: flex; gap: 0; }
+.ops-kind {
+  flex: 1; display: flex; align-items: center; justify-content: center; padding: 3px 4px; margin-left: -1px; cursor: pointer;
+  border: 1px solid var(--line2); color: var(--dim); font-size: var(--fs-small);
+}
+.ops-kind input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.ops-kind.on { color: var(--ink); border-color: var(--dim); background: var(--paper2); position: relative; }
+.ops-kind:focus-within { outline: 1px solid var(--blue); outline-offset: -1px; }
+.ops-target { font-size: var(--fs-small); }
+.ops-field { display: flex; align-items: center; gap: 6px; color: var(--dim); font-size: var(--fs-small); }
+.ops-field > span:first-child { width: 7ch; }
+.ops-field select { flex: 1; min-width: 0; font: inherit; }
+.ops-num { width: 8ch; padding: 2px 4px; text-align: right; font: inherit; font-variant-numeric: tabular-nums; }
+.ops-check { display: inline-flex; align-items: center; gap: 4px; color: var(--ink); }
+.ops-error { margin: 0; color: var(--red); font-size: var(--fs-small); }
+.ops-note { margin: 0; font-size: var(--fs-small); }
+.ops-actions { display: flex; gap: 6px; }
+.ops-check input { accent-color: var(--dim); }

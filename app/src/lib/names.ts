@@ -63,3 +63,11 @@ export function runLabel(run: AgentRun, all: readonly AgentRun[]): string {
 export function providerLabel(provider: string): string {
   return provider === "claude-code" ? "Claude Code (your account)" : provider;
 }
+
+/** A part row's own name: the user's label when it has one (Plan 5 part tree), else its id
+ *  with spaces ("quad_arm" → "quad arm"). No "Part ·" prefix: the tree and edit lines name parts. */
+export function partName(p: { part_id: string; label?: string | null }): string {
+  const label = p.label?.trim();
+  if (label && label !== p.part_id) return label;
+  return p.part_id.replace(/[_-]+/g, " ").trim();
+}

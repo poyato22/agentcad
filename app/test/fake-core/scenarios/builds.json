@@ -1,0 +1,1968 @@
+{
+  "_comment": "Plan 5 A3: two builds (Quad frame: quad_arm + top_plate from the real core's dump; Bench rig: bench_plate), build tabs on the profile, an annotated VARS script for quad_arm. GLBs match the metrics.",
+  "runs": [
+    {
+      "id": "a3quadrun001",
+      "parent_id": null,
+      "agent": "designer",
+      "provider": "fake",
+      "model": "fake-model",
+      "task": "design a 5 inch quad arm",
+      "status": "done",
+      "branch": null,
+      "onshape_calls": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "usd": 0.0,
+      "created_at": 1792869413.016629,
+      "updated_at": 1792869413.016629,
+      "owner_pid": 37495,
+      "project_id": "q0quadframe0"
+    },
+    {
+      "id": "a3benchrun01",
+      "parent_id": null,
+      "agent": "designer",
+      "provider": "fake",
+      "model": "fake-model",
+      "task": "make a bench test plate",
+      "status": "done",
+      "branch": null,
+      "onshape_calls": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "usd": 0.0,
+      "created_at": 1792869473.016629,
+      "updated_at": 1792869533.016629,
+      "owner_pid": 37495,
+      "project_id": "b0benchrig00"
+    }
+  ],
+  "steps": [],
+  "approvals": [],
+  "parts": [
+    {
+      "part_id": "top_plate",
+      "vars": {
+        "side": 40.0,
+        "wall": 3.0
+      },
+      "metrics": {
+        "valid": true,
+        "volume_mm3": 4799.999999999999,
+        "area_mm2": 3680.0,
+        "mass_g": 5.951999999999999,
+        "bbox": {
+          "min": [
+            -20.0,
+            -20.0,
+            -1.5
+          ],
+          "max": [
+            20.0,
+            20.0,
+            1.5
+          ],
+          "size": [
+            40.0,
+            40.0,
+            3.0
+          ]
+        },
+        "center_of_mass": [
+          -3.8431270592894153e-16,
+          -4.973799150320702e-16,
+          2.368475785867001e-17
+        ],
+        "faces": 6,
+        "face_list": [
+          {
+            "id": "f0",
+            "type": "plane",
+            "center": [
+              -20.0,
+              0.0,
+              0.0
+            ],
+            "normal": [
+              -1.0,
+              0.0,
+              0.0
+            ],
+            "area": 120.0
+          },
+          {
+            "id": "f1",
+            "type": "plane",
+            "center": [
+              20.0,
+              0.0,
+              0.0
+            ],
+            "normal": [
+              1.0,
+              0.0,
+              0.0
+            ],
+            "area": 120.0
+          },
+          {
+            "id": "f2",
+            "type": "plane",
+            "center": [
+              0.0,
+              -20.0,
+              0.0
+            ],
+            "normal": [
+              0.0,
+              -1.0,
+              0.0
+            ],
+            "area": 120.0
+          },
+          {
+            "id": "f3",
+            "type": "plane",
+            "center": [
+              0.0,
+              20.0,
+              0.0
+            ],
+            "normal": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "area": 120.0
+          },
+          {
+            "id": "f4",
+            "type": "plane",
+            "center": [
+              0.0,
+              0.0,
+              -1.5
+            ],
+            "normal": [
+              0.0,
+              0.0,
+              -1.0
+            ],
+            "area": 1600.0
+          },
+          {
+            "id": "f5",
+            "type": "plane",
+            "center": [
+              0.0,
+              0.0,
+              1.5
+            ],
+            "normal": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "area": 1600.0
+          }
+        ],
+        "edges": 12,
+        "edge_list": [
+          {
+            "id": "e0",
+            "type": "line",
+            "length": 3.0,
+            "center": [
+              -20.0,
+              -20.0,
+              0.0
+            ],
+            "direction": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "adjacent": [
+              [
+                -1.0,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                -1.0,
+                0.0
+              ]
+            ]
+          },
+          {
+            "id": "e1",
+            "type": "line",
+            "length": 40.0,
+            "center": [
+              -20.0,
+              0.0,
+              1.5
+            ],
+            "direction": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "adjacent": [
+              [
+                -1.0,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ]
+          },
+          {
+            "id": "e2",
+            "type": "line",
+            "length": 3.0,
+            "center": [
+              -20.0,
+              20.0,
+              0.0
+            ],
+            "direction": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "adjacent": [
+              [
+                -1.0,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                1.0,
+                0.0
+              ]
+            ]
+          },
+          {
+            "id": "e3",
+            "type": "line",
+            "length": 40.0,
+            "center": [
+              -20.0,
+              0.0,
+              -1.5
+            ],
+            "direction": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "adjacent": [
+              [
+                -1.0,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                -1.0
+              ]
+            ]
+          },
+          {
+            "id": "e4",
+            "type": "line",
+            "length": 3.0,
+            "center": [
+              20.0,
+              -20.0,
+              0.0
+            ],
+            "direction": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "adjacent": [
+              [
+                1.0,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                -1.0,
+                0.0
+              ]
+            ]
+          },
+          {
+            "id": "e5",
+            "type": "line",
+            "length": 40.0,
+            "center": [
+              20.0,
+              0.0,
+              1.5
+            ],
+            "direction": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "adjacent": [
+              [
+                1.0,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ]
+          },
+          {
+            "id": "e6",
+            "type": "line",
+            "length": 3.0,
+            "center": [
+              20.0,
+              20.0,
+              0.0
+            ],
+            "direction": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "adjacent": [
+              [
+                1.0,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                1.0,
+                0.0
+              ]
+            ]
+          },
+          {
+            "id": "e7",
+            "type": "line",
+            "length": 40.0,
+            "center": [
+              20.0,
+              0.0,
+              -1.5
+            ],
+            "direction": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "adjacent": [
+              [
+                1.0,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                -1.0
+              ]
+            ]
+          },
+          {
+            "id": "e8",
+            "type": "line",
+            "length": 40.0,
+            "center": [
+              0.0,
+              -20.0,
+              -1.5
+            ],
+            "direction": [
+              1.0,
+              0.0,
+              0.0
+            ],
+            "adjacent": [
+              [
+                0.0,
+                -1.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                -1.0
+              ]
+            ]
+          },
+          {
+            "id": "e9",
+            "type": "line",
+            "length": 40.0,
+            "center": [
+              0.0,
+              -20.0,
+              1.5
+            ],
+            "direction": [
+              1.0,
+              0.0,
+              0.0
+            ],
+            "adjacent": [
+              [
+                0.0,
+                -1.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ]
+          },
+          {
+            "id": "e10",
+            "type": "line",
+            "length": 40.0,
+            "center": [
+              0.0,
+              20.0,
+              -1.5
+            ],
+            "direction": [
+              1.0,
+              0.0,
+              0.0
+            ],
+            "adjacent": [
+              [
+                0.0,
+                1.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                -1.0
+              ]
+            ]
+          },
+          {
+            "id": "e11",
+            "type": "line",
+            "length": 40.0,
+            "center": [
+              0.0,
+              20.0,
+              1.5
+            ],
+            "direction": [
+              1.0,
+              0.0,
+              0.0
+            ],
+            "adjacent": [
+              [
+                0.0,
+                1.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ]
+          }
+        ],
+        "holes": [],
+        "solids": 1
+      },
+      "mtime": 1793308709.2909997
+    },
+    {
+      "part_id": "quad_arm",
+      "vars": {
+        "thickness": 5.0,
+        "length": 60.0
+      },
+      "metrics": {
+        "valid": true,
+        "volume_mm3": 5363.584073464102,
+        "area_mm2": 2970.411500823462,
+        "mass_g": 6.650844251095488,
+        "bbox": {
+          "min": [
+            -30.0,
+            -9.0,
+            -2.5
+          ],
+          "max": [
+            30.0,
+            9.0,
+            2.5
+          ],
+          "size": [
+            60.0,
+            18.0,
+            5.0
+          ]
+        },
+        "center_of_mass": [
+          0.005956949532827014,
+          0.0017558048253646403,
+          -1.6153718934478315e-17
+        ],
+        "faces": 8,
+        "face_list": [
+          {
+            "id": "f0",
+            "type": "plane",
+            "center": [
+              -30.0,
+              0.5,
+              0.0
+            ],
+            "normal": [
+              -1.0,
+              0.0,
+              0.0
+            ],
+            "area": 85.0
+          },
+          {
+            "id": "f1",
+            "type": "plane",
+            "center": [
+              0.006,
+              0.002,
+              2.5
+            ],
+            "normal": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "area": 1072.717
+          },
+          {
+            "id": "f2",
+            "type": "cylinder",
+            "center": [
+              -29.637,
+              -8.637,
+              0.0
+            ],
+            "normal": [
+              -0.7071,
+              -0.7071,
+              0.0
+            ],
+            "area": 7.854
+          },
+          {
+            "id": "f3",
+            "type": "plane",
+            "center": [
+              0.0,
+              9.0,
+              0.0
+            ],
+            "normal": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "area": 300.0
+          },
+          {
+            "id": "f4",
+            "type": "plane",
+            "center": [
+              0.006,
+              0.002,
+              -2.5
+            ],
+            "normal": [
+              0.0,
+              0.0,
+              -1.0
+            ],
+            "area": 1072.717
+          },
+          {
+            "id": "f5",
+            "type": "plane",
+            "center": [
+              0.5,
+              -9.0,
+              0.0
+            ],
+            "normal": [
+              0.0,
+              -1.0,
+              0.0
+            ],
+            "area": 295.0
+          },
+          {
+            "id": "f6",
+            "type": "plane",
+            "center": [
+              30.0,
+              0.0,
+              0.0
+            ],
+            "normal": [
+              1.0,
+              0.0,
+              0.0
+            ],
+            "area": 90.0
+          },
+          {
+            "id": "f7",
+            "type": "cylinder",
+            "center": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "normal": null,
+            "area": 47.124
+          }
+        ],
+        "edges": 18,
+        "edge_list": [
+          {
+            "id": "e0",
+            "type": "line",
+            "length": 17.0,
+            "center": [
+              -30.0,
+              0.5,
+              2.5
+            ],
+            "direction": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "adjacent": [
+              [
+                -1.0,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ]
+          },
+          {
+            "id": "e1",
+            "type": "line",
+            "length": 5.0,
+            "center": [
+              -30.0,
+              -8.0,
+              0.0
+            ],
+            "direction": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "adjacent": [
+              [
+                -1.0,
+                0.0,
+                0.0
+              ],
+              [
+                -0.7071,
+                -0.7071,
+                0.0
+              ]
+            ]
+          },
+          {
+            "id": "e2",
+            "type": "line",
+            "length": 5.0,
+            "center": [
+              -30.0,
+              9.0,
+              0.0
+            ],
+            "direction": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "adjacent": [
+              [
+                -1.0,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                1.0,
+                0.0
+              ]
+            ]
+          },
+          {
+            "id": "e3",
+            "type": "line",
+            "length": 17.0,
+            "center": [
+              -30.0,
+              0.5,
+              -2.5
+            ],
+            "direction": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "adjacent": [
+              [
+                -1.0,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                -1.0
+              ]
+            ]
+          },
+          {
+            "id": "e4",
+            "type": "circle",
+            "length": 1.571,
+            "center": [
+              -29.707,
+              -8.707,
+              2.5
+            ],
+            "direction": [
+              0.7071,
+              -0.7071,
+              0.0
+            ],
+            "adjacent": [
+              [
+                0.0,
+                0.0,
+                1.0
+              ],
+              [
+                -0.7071,
+                -0.7071,
+                0.0
+              ]
+            ]
+          },
+          {
+            "id": "e5",
+            "type": "line",
+            "length": 60.0,
+            "center": [
+              0.0,
+              9.0,
+              2.5
+            ],
+            "direction": [
+              1.0,
+              0.0,
+              0.0
+            ],
+            "adjacent": [
+              [
+                0.0,
+                0.0,
+                1.0
+              ],
+              [
+                0.0,
+                1.0,
+                0.0
+              ]
+            ]
+          },
+          {
+            "id": "e6",
+            "type": "line",
+            "length": 59.0,
+            "center": [
+              0.5,
+              -9.0,
+              2.5
+            ],
+            "direction": [
+              1.0,
+              0.0,
+              0.0
+            ],
+            "adjacent": [
+              [
+                0.0,
+                0.0,
+                1.0
+              ],
+              [
+                0.0,
+                -1.0,
+                0.0
+              ]
+            ]
+          },
+          {
+            "id": "e7",
+            "type": "line",
+            "length": 18.0,
+            "center": [
+              30.0,
+              0.0,
+              2.5
+            ],
+            "direction": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "adjacent": [
+              [
+                0.0,
+                0.0,
+                1.0
+              ],
+              [
+                1.0,
+                0.0,
+                0.0
+              ]
+            ]
+          },
+          {
+            "id": "e8",
+            "type": "circle",
+            "length": 9.425,
+            "center": [
+              -1.5,
+              0.0,
+              2.5
+            ],
+            "direction": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "adjacent": [
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ]
+          },
+          {
+            "id": "e9",
+            "type": "circle",
+            "length": 1.571,
+            "center": [
+              -29.707,
+              -8.707,
+              -2.5
+            ],
+            "direction": [
+              0.7071,
+              -0.7071,
+              0.0
+            ],
+            "adjacent": [
+              [
+                -0.7071,
+                -0.7071,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                -1.0
+              ]
+            ]
+          },
+          {
+            "id": "e10",
+            "type": "line",
+            "length": 5.0,
+            "center": [
+              -29.0,
+              -9.0,
+              0.0
+            ],
+            "direction": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "adjacent": [
+              [
+                -0.7071,
+                -0.7071,
+                0.0
+              ],
+              [
+                0.0,
+                -1.0,
+                0.0
+              ]
+            ]
+          },
+          {
+            "id": "e11",
+            "type": "line",
+            "length": 60.0,
+            "center": [
+              0.0,
+              9.0,
+              -2.5
+            ],
+            "direction": [
+              1.0,
+              0.0,
+              0.0
+            ],
+            "adjacent": [
+              [
+                0.0,
+                1.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                -1.0
+              ]
+            ]
+          },
+          {
+            "id": "e12",
+            "type": "line",
+            "length": 5.0,
+            "center": [
+              30.0,
+              9.0,
+              0.0
+            ],
+            "direction": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "adjacent": [
+              [
+                0.0,
+                1.0,
+                0.0
+              ],
+              [
+                1.0,
+                0.0,
+                0.0
+              ]
+            ]
+          },
+          {
+            "id": "e13",
+            "type": "line",
+            "length": 59.0,
+            "center": [
+              0.5,
+              -9.0,
+              -2.5
+            ],
+            "direction": [
+              1.0,
+              0.0,
+              0.0
+            ],
+            "adjacent": [
+              [
+                0.0,
+                0.0,
+                -1.0
+              ],
+              [
+                0.0,
+                -1.0,
+                0.0
+              ]
+            ]
+          },
+          {
+            "id": "e14",
+            "type": "line",
+            "length": 18.0,
+            "center": [
+              30.0,
+              0.0,
+              -2.5
+            ],
+            "direction": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "adjacent": [
+              [
+                0.0,
+                0.0,
+                -1.0
+              ],
+              [
+                1.0,
+                0.0,
+                0.0
+              ]
+            ]
+          },
+          {
+            "id": "e15",
+            "type": "circle",
+            "length": 9.425,
+            "center": [
+              -1.5,
+              0.0,
+              -2.5
+            ],
+            "direction": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "adjacent": [
+              [
+                0.0,
+                0.0,
+                -1.0
+              ]
+            ]
+          },
+          {
+            "id": "e16",
+            "type": "line",
+            "length": 5.0,
+            "center": [
+              30.0,
+              -9.0,
+              0.0
+            ],
+            "direction": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "adjacent": [
+              [
+                0.0,
+                -1.0,
+                0.0
+              ],
+              [
+                1.0,
+                0.0,
+                0.0
+              ]
+            ]
+          },
+          {
+            "id": "e17",
+            "type": "line",
+            "length": 5.0,
+            "center": [
+              1.5,
+              0.0,
+              0.0
+            ],
+            "direction": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "adjacent": []
+          }
+        ],
+        "holes": [
+          {
+            "diameter_mm": 3.0,
+            "axis": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "center": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "depth_mm": 5.0
+          }
+        ],
+        "solids": 1
+      },
+      "mtime": 1793308724.5216644
+    },
+    {
+      "part_id": "bench_plate",
+      "vars": {
+        "thickness": 6.0
+      },
+      "metrics": {
+        "valid": true,
+        "volume_mm3": 4633.746916772027,
+        "area_mm2": 2422.9185753316015,
+        "mass_g": 5.745846176797314,
+        "bbox": {
+          "min": [
+            -20.0,
+            -10.0,
+            -3.0
+          ],
+          "max": [
+            20.0,
+            10.0,
+            3.0
+          ],
+          "size": [
+            40.0,
+            20.0,
+            6.0
+          ]
+        },
+        "center_of_mass": [
+          3.189489881356246e-16,
+          -1.2682862350235098e-16,
+          1.7563595855833278e-17
+        ],
+        "faces": 8,
+        "edges": 18,
+        "holes": [
+          {
+            "diameter_mm": 4.2,
+            "axis": [
+              -0.0,
+              -0.0,
+              1.0
+            ],
+            "center": [
+              -10.0,
+              0.0,
+              0.0
+            ],
+            "depth_mm": 6.0
+          },
+          {
+            "diameter_mm": 4.2,
+            "axis": [
+              -0.0,
+              -0.0,
+              1.0
+            ],
+            "center": [
+              10.0,
+              0.0,
+              0.0
+            ],
+            "depth_mm": 6.0
+          }
+        ],
+        "solids": 1,
+        "face_list": [
+          {
+            "id": "f0",
+            "type": "plane",
+            "center": [
+              -20.0,
+              0.0,
+              0.0
+            ],
+            "normal": [
+              -1.0,
+              0.0,
+              0.0
+            ],
+            "area": 120.0
+          },
+          {
+            "id": "f1",
+            "type": "plane",
+            "center": [
+              0.0,
+              -10.0,
+              0.0
+            ],
+            "normal": [
+              0.0,
+              -1.0,
+              0.0
+            ],
+            "area": 240.0
+          },
+          {
+            "id": "f2",
+            "type": "plane",
+            "center": [
+              0.0,
+              0.0,
+              3.0
+            ],
+            "normal": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "area": 772.291
+          },
+          {
+            "id": "f3",
+            "type": "plane",
+            "center": [
+              0.0,
+              10.0,
+              0.0
+            ],
+            "normal": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "area": 240.0
+          },
+          {
+            "id": "f4",
+            "type": "plane",
+            "center": [
+              0.0,
+              0.0,
+              -3.0
+            ],
+            "normal": [
+              0.0,
+              0.0,
+              -1.0
+            ],
+            "area": 772.291
+          },
+          {
+            "id": "f5",
+            "type": "plane",
+            "center": [
+              20.0,
+              0.0,
+              0.0
+            ],
+            "normal": [
+              1.0,
+              0.0,
+              0.0
+            ],
+            "area": 120.0
+          },
+          {
+            "id": "f6",
+            "type": "cylinder",
+            "center": [
+              -10.0,
+              0.0,
+              0.0
+            ],
+            "normal": null,
+            "area": 79.168
+          },
+          {
+            "id": "f7",
+            "type": "cylinder",
+            "center": [
+              10.0,
+              0.0,
+              0.0
+            ],
+            "normal": null,
+            "area": 79.168
+          }
+        ],
+        "edge_list": [
+          {
+            "id": "e0",
+            "type": "line",
+            "length": 6.0,
+            "center": [
+              -20.0,
+              -10.0,
+              0.0
+            ],
+            "direction": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "adjacent": [
+              [
+                -1.0,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                -1.0,
+                0.0
+              ]
+            ]
+          },
+          {
+            "id": "e1",
+            "type": "line",
+            "length": 20.0,
+            "center": [
+              -20.0,
+              0.0,
+              3.0
+            ],
+            "direction": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "adjacent": [
+              [
+                -1.0,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ]
+          },
+          {
+            "id": "e2",
+            "type": "line",
+            "length": 6.0,
+            "center": [
+              -20.0,
+              10.0,
+              0.0
+            ],
+            "direction": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "adjacent": [
+              [
+                -1.0,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                1.0,
+                0.0
+              ]
+            ]
+          },
+          {
+            "id": "e3",
+            "type": "line",
+            "length": 20.0,
+            "center": [
+              -20.0,
+              0.0,
+              -3.0
+            ],
+            "direction": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "adjacent": [
+              [
+                -1.0,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                -1.0
+              ]
+            ]
+          },
+          {
+            "id": "e4",
+            "type": "line",
+            "length": 40.0,
+            "center": [
+              0.0,
+              -10.0,
+              -3.0
+            ],
+            "direction": [
+              1.0,
+              0.0,
+              0.0
+            ],
+            "adjacent": [
+              [
+                0.0,
+                -1.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                -1.0
+              ]
+            ]
+          },
+          {
+            "id": "e5",
+            "type": "line",
+            "length": 6.0,
+            "center": [
+              20.0,
+              -10.0,
+              0.0
+            ],
+            "direction": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "adjacent": [
+              [
+                0.0,
+                -1.0,
+                0.0
+              ],
+              [
+                1.0,
+                0.0,
+                0.0
+              ]
+            ]
+          },
+          {
+            "id": "e6",
+            "type": "line",
+            "length": 40.0,
+            "center": [
+              0.0,
+              -10.0,
+              3.0
+            ],
+            "direction": [
+              1.0,
+              0.0,
+              0.0
+            ],
+            "adjacent": [
+              [
+                0.0,
+                -1.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ]
+          },
+          {
+            "id": "e7",
+            "type": "line",
+            "length": 40.0,
+            "center": [
+              0.0,
+              10.0,
+              3.0
+            ],
+            "direction": [
+              1.0,
+              0.0,
+              0.0
+            ],
+            "adjacent": [
+              [
+                0.0,
+                0.0,
+                1.0
+              ],
+              [
+                0.0,
+                1.0,
+                0.0
+              ]
+            ]
+          },
+          {
+            "id": "e8",
+            "type": "line",
+            "length": 20.0,
+            "center": [
+              20.0,
+              0.0,
+              3.0
+            ],
+            "direction": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "adjacent": [
+              [
+                0.0,
+                0.0,
+                1.0
+              ],
+              [
+                1.0,
+                0.0,
+                0.0
+              ]
+            ]
+          },
+          {
+            "id": "e9",
+            "type": "circle",
+            "length": 13.195,
+            "center": [
+              -7.9,
+              0.0,
+              3.0
+            ],
+            "direction": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "adjacent": [
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ]
+          },
+          {
+            "id": "e10",
+            "type": "circle",
+            "length": 13.195,
+            "center": [
+              12.1,
+              0.0,
+              3.0
+            ],
+            "direction": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "adjacent": [
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ]
+          },
+          {
+            "id": "e11",
+            "type": "line",
+            "length": 40.0,
+            "center": [
+              0.0,
+              10.0,
+              -3.0
+            ],
+            "direction": [
+              1.0,
+              0.0,
+              0.0
+            ],
+            "adjacent": [
+              [
+                0.0,
+                1.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                -1.0
+              ]
+            ]
+          },
+          {
+            "id": "e12",
+            "type": "line",
+            "length": 6.0,
+            "center": [
+              20.0,
+              10.0,
+              0.0
+            ],
+            "direction": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "adjacent": [
+              [
+                0.0,
+                1.0,
+                0.0
+              ],
+              [
+                1.0,
+                0.0,
+                0.0
+              ]
+            ]
+          },
+          {
+            "id": "e13",
+            "type": "line",
+            "length": 20.0,
+            "center": [
+              20.0,
+              0.0,
+              -3.0
+            ],
+            "direction": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "adjacent": [
+              [
+                0.0,
+                0.0,
+                -1.0
+              ],
+              [
+                1.0,
+                0.0,
+                0.0
+              ]
+            ]
+          },
+          {
+            "id": "e14",
+            "type": "circle",
+            "length": 13.195,
+            "center": [
+              -7.9,
+              0.0,
+              -3.0
+            ],
+            "direction": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "adjacent": [
+              [
+                0.0,
+                0.0,
+                -1.0
+              ]
+            ]
+          },
+          {
+            "id": "e15",
+            "type": "circle",
+            "length": 13.195,
+            "center": [
+              12.1,
+              0.0,
+              -3.0
+            ],
+            "direction": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "adjacent": [
+              [
+                0.0,
+                0.0,
+                -1.0
+              ]
+            ]
+          },
+          {
+            "id": "e16",
+            "type": "line",
+            "length": 6.0,
+            "center": [
+              -12.1,
+              0.0,
+              0.0
+            ],
+            "direction": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "adjacent": []
+          },
+          {
+            "id": "e17",
+            "type": "line",
+            "length": 6.0,
+            "center": [
+              7.9,
+              0.0,
+              0.0
+            ],
+            "direction": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "adjacent": []
+          }
+        ]
+      },
+      "mtime": 1792869420.0914402
+    }
+  ],
+  "agents": [
+    {
+      "name": "designer",
+      "description": "Main CAD agent. Designs and edits parts using the local mirror and Onshape.",
+      "model": "inherit"
+    },
+    {
+      "name": "planner",
+      "description": "Turns a design request into a step-by-step plan. Produces a plan only; changes nothing.",
+      "model": "inherit"
+    },
+    {
+      "name": "sim",
+      "description": "Placeholder for simulation work (milestone 4). Simulation is not available yet.",
+      "model": "inherit"
+    },
+    {
+      "name": "verifier",
+      "description": "Skeptical read-only checker. Tries to prove a change wrong and reports pass/fail per requirement.",
+      "model": "inherit"
+    }
+  ],
+  "models": {
+    "default": "anthropic/claude-sonnet-5-5",
+    "vendors": [
+      {
+        "vendor": "anthropic",
+        "key": "env",
+        "entries": [
+          {
+            "model": "anthropic/claude-opus-5-5",
+            "recommended": "best",
+            "note": "Leads CAD code benchmarks (CADGenBench 86.9% with a tool loop)"
+          }
+        ]
+      },
+      {
+        "vendor": "openai",
+        "key": "none"
+      },
+      {
+        "vendor": "gemini",
+        "key": "none"
+      },
+      {
+        "vendor": "openrouter",
+        "key": "none",
+        "models": [
+          "openrouter/qwen/qwen3-coder:free"
+        ],
+        "free": true,
+        "entries": [
+          {
+            "model": "openrouter/qwen/qwen3-coder:free",
+            "recommended": "free",
+            "note": "Free on OpenRouter: 20 requests/min, one run at a time"
+          }
+        ]
+      },
+      {
+        "vendor": "ollama",
+        "key": "not_needed",
+        "models": [
+          "ollama/gpt-oss:20b"
+        ],
+        "entries": [
+          {
+            "model": "ollama/gpt-oss:20b",
+            "recommended": "local",
+            "note": "Safest memory fit: tools and thinking, leaves room for the CAD kernel"
+          }
+        ]
+      },
+      {
+        "vendor": "lmstudio",
+        "key": "not_needed",
+        "models": [],
+        "hint": "LM Studio isn't running — start its local server (Developer tab)"
+      },
+      {
+        "vendor": "claude-code",
+        "key": "signed_in",
+        "models": [
+          "sonnet",
+          "opus",
+          "haiku",
+          "fable"
+        ],
+        "entries": [
+          {
+            "model": "claude-code/sonnet",
+            "recommended": null,
+            "note": null
+          },
+          {
+            "model": "claude-code/opus",
+            "recommended": "best",
+            "note": "Leads CAD code benchmarks with a build123d tool loop; uses your Claude Code plan"
+          },
+          {
+            "model": "claude-code/haiku",
+            "recommended": null,
+            "note": null
+          },
+          {
+            "model": "claude-code/fable",
+            "recommended": null,
+            "note": null
+          }
+        ]
+      }
+    ],
+    "recommended": [
+      {
+        "model": "claude-code/opus",
+        "recommended": "best",
+        "note": "Leads CAD code benchmarks with a build123d tool loop; uses your Claude Code plan"
+      },
+      {
+        "model": "anthropic/claude-opus-5-5",
+        "recommended": "best",
+        "note": "Leads CAD code benchmarks (CADGenBench 86.9% with a tool loop)"
+      },
+      {
+        "model": "ollama/gpt-oss:20b",
+        "recommended": "local",
+        "note": "Safest memory fit: tools and thinking, leaves room for the CAD kernel"
+      },
+      {
+        "model": "openrouter/qwen/qwen3-coder:free",
+        "recommended": "free",
+        "note": "Free on OpenRouter: 20 requests/min, one run at a time"
+      }
+    ]
+  },
+  "status": {
+    "core_version": "0.1.0",
+    "onshape": "not_configured",
+    "onshape_calls_year": 0,
+    "onshape_cap_year": 2500,
+    "runs_running": 0,
+    "approvals_pending": 0,
+    "data_dir": "/Users/fake/Library/Application Support/Mises",
+    "runs_queued": 0,
+    "parallel": {
+      "limit": 4,
+      "auto": true,
+      "reason": "M5 Pro · 24 GB · cloud model → 4"
+    }
+  },
+  "glb": {
+    "quad_arm": "glb/quad_arm.glb",
+    "top_plate": "glb/top_plate.glb"
+  },
+  "builds": {
+    "builds": [
+      {
+        "id": "q0quadframe0",
+        "name": "Quad frame"
+      },
+      {
+        "id": "b0benchrig00",
+        "name": "Bench rig"
+      },
+      {
+        "id": "t0oldmount00",
+        "name": "Old mount",
+        "trashed_at": 1790000500
+      }
+    ],
+    "active": "q0quadframe0",
+    "open": [
+      "q0quadframe0"
+    ],
+    "tree": {
+      "quad_arm": {
+        "project_id": "q0quadframe0",
+        "label": "Quad arm",
+        "order": 0,
+        "color": "#d9822b",
+        "version": 5
+      },
+      "top_plate": {
+        "project_id": "q0quadframe0",
+        "order": 1,
+        "version": 1
+      },
+      "bench_plate": {
+        "project_id": "b0benchrig00",
+        "order": 0,
+        "version": 1
+      }
+    },
+    "sources": {
+      "quad_arm": "from build123d import *\nVARS = {\n    \"thickness\": 4.0,  # mises: min=2 max=12 step=0.5 unit=mm doc=\"arm wall\"\n    \"length\": 60.0,\n}\ndef build(v):\n    return Box(v[\"length\"], 16, v[\"thickness\"])\n"
+    }
+  }
+}

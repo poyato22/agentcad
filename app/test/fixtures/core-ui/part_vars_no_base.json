@@ -1,0 +1,9 @@
+{
+  "status": 400,
+  "body": {
+    "error": "invalid_input",
+    "message": "base_version (the part version you last read) is required",
+    "hint": "GET /parts/{id}/source returns the current version",
+    "retryable": false
+  }
+}

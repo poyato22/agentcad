@@ -6,7 +6,7 @@
 //   · Interference is the overlap of the instances' world-axis-aligned part boxes (the real core
 //     intersects the solids with OCCT; for the boxy fixture plates the numbers agree).
 //   · Every mutation emits `assembly_changed {project_id}`.
-// Also a minimal GET /projects (Plan 5 C1's shape) so the app can find the active build.
+// Builds come from the ONE fake GET /projects (A3, fake-core/builds.ts); `projects` is that list.
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -135,12 +135,7 @@ export function assemblyRoutes(d: Deps): Route[] {
   const base = /^\/projects\/([^/]+)\/assembly/;
 
   return [
-    {
-      method: "GET", re: /^\/projects$/, h: () => d.get().projects.filter((p) => !p.trashed_at).map((p) => ({
-        id: p.id, name: p.name, created_at: p.created_at ?? 1793289000, updated_at: p.created_at ?? 1793289000,
-        trashed_at: p.trashed_at ?? null, part_count: d.parts().length, run_count: 0, onshape: null,
-      })),
-    },
+    // GET /projects: the ONE fake route is A3's (fake-core/builds.ts); this list is shared with it
     { method: "GET", re: new RegExp(`${base.source}$`), h: (m) => solved(m[1]) },
     {
       method: "POST", re: new RegExp(`${base.source}/instances$`), h: (m, _q, raw) => {

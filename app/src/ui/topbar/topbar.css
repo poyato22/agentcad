@@ -105,3 +105,56 @@
   .topbar-right { gap: 8px; }
   .lights { gap: 10px; }
 }
+
+/* ---- build tabs (Breadcrumb): drafting title-block cells; the active one is underlined in blue
+   like the mode tabs. Names shrink with an ellipsis before the part crumb does. */
+.btabs { display: inline-flex; align-items: center; gap: 2px; min-width: 0; flex: 0 1 auto; position: relative; }
+/* tabs keep a readable width (TAB_MIN..TAB_MAX in Breadcrumb.tsx); the ones that don't fit go behind "+N" */
+.btab-list { display: inline-flex; align-items: center; gap: 2px; min-width: 0; }
+.btab {
+  display: inline-flex; align-items: center; flex: none; min-width: 84px; max-width: 168px; height: 24px;
+  border: 1px solid var(--line2); border-bottom-width: 2px; border-bottom-color: transparent; background: transparent;
+}
+.btab-on { border-color: var(--line2); border-bottom-color: var(--blue); background: var(--paper2); }
+.btab-name {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 8px; height: 100%;
+  border: 0; background: transparent; color: var(--dim); font: inherit; cursor: pointer;
+}
+.btab-on .btab-name { color: var(--ink); }
+.btab-name:hover { color: var(--ink); }
+.btab-name:focus-visible, .btab-close:focus-visible, .btab-add:focus-visible { outline: 1px solid var(--blue); outline-offset: -2px; }
+.btab-close { flex: none; width: 16px; height: 100%; padding: 0; border: 0; background: transparent; color: var(--faint); cursor: pointer; font: inherit; }
+.btab-close:hover { color: var(--ink); }
+.btab:not(.btab-on):not(:hover):not(:focus-within) .btab-close { opacity: 0; }
+.btab-input { width: 14ch; height: 100%; padding: 0 6px; border: 0; background: var(--paper); font: inherit; }
+.btab-add {
+  flex: none; width: 22px; height: 24px; padding: 0; border: 1px solid transparent; background: transparent; color: var(--dim);
+  font: inherit; cursor: pointer;
+}
+.btab-add:hover, .btab-add[aria-expanded="true"] { color: var(--ink); border-color: var(--line2); }
+.btab-more { width: auto; padding: 0 6px; color: var(--ink); border-color: var(--line2); }
+.bmenu-wrap { position: relative; display: inline-flex; }
+/* the part crumb keeps its place next to the tabs */
+.crumb > [data-crumb="part"] { flex: 0 1 auto; min-width: 9ch; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.bmenu {
+  position: fixed; z-index: 20; min-width: 240px; max-width: 320px; white-space: normal;
+  background: var(--paper); border: 1px solid var(--line2); display: flex; flex-direction: column; padding: 4px 0;
+}
+.bmenu-head { padding: 4px 10px 2px; }
+.bmenu-item {
+  display: flex; justify-content: space-between; gap: 12px; padding: 4px 10px; border: 0; background: transparent; color: var(--ink);
+  text-align: left; font: inherit; cursor: pointer;
+}
+.bmenu-item > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bmenu-item:hover, .bmenu-item:focus-visible { background: var(--paper2); outline: none; }
+.bmenu-item[aria-checked="true"] { box-shadow: inset 2px 0 0 var(--blue); }
+.bmenu-sep { height: 1px; background: var(--line); margin: 4px 0; }
+.bmenu-empty { padding: 3px 10px; }
+.bmenu-confirm { display: flex; flex-direction: column; gap: 6px; padding: 6px 10px; color: var(--ink); }
+.bmenu-actions { display: flex; gap: 6px; }
+.btab-error {
+  position: fixed; left: var(--chrome-inset-x); top: calc(var(--topbar-h) + 4px); z-index: 19; display: inline-flex; gap: 6px; align-items: center; white-space: normal;
+  max-width: 360px; padding: 3px 4px 3px 8px; background: var(--paper2); border: 1px solid var(--red); color: var(--red);
+}
+/* a gap between the breadcrumb (build tabs, part) and the mode tabs */
+.topbar-left { padding-right: 12px; }

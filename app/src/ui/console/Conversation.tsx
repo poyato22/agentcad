@@ -21,6 +21,8 @@ import { Markup } from "../markup/render";
 import { CopyButton } from "./CopyButton";
 import { RunStatus } from "./RunStatus";
 import { StudyCardSlot } from "./studycard";
+import { buildUserEdits } from "../../state/partEdits";
+import { editsForRun, weave } from "./userEditLines";
 
 const AT_BOTTOM_PX = 24;
 /** Rows rendered at once (the last ones); "show earlier" adds this many more. Same as StepLog. */
@@ -101,7 +103,9 @@ export function Conversation(): JSX.Element {
       <div class="cv-thread" ref={scroller} onScroll={onScroll} role="log" aria-label="Conversation" aria-live="off" data-conversation>
         {start > 0 && <button type="button" class="cv-earlier" onClick={showEarlier}>{`Show earlier (${start})`}</button>}
         {!run && items.length === 0 && <Empty />}
-        {shown.map((it) => <div key={it.key} class="cv-item" data-key={it.key}><Item item={it} agent={run?.agent ?? "agent"} /></div>)}
+        {weave(shown, editsForRun(buildUserEdits.value, run ?? null)).map((r) => (r.kind === "you"
+          ? <div key={r.line.key} class="cv-item" data-key={r.line.key}><YouLine text={r.line.text} /></div>
+          : <div key={r.item.key} class="cv-item" data-key={r.item.key}><Item item={r.item} agent={run?.agent ?? "agent"} /></div>))}
         {run && items.length === 0 && run.task && (
           <Item item={{ kind: "user", key: "task", text: run.task, ts: run.created_at, stepIds: [] }} agent={run.agent} />
         )}
@@ -109,6 +113,17 @@ export function Conversation(): JSX.Element {
         {run && run.status !== "queued" && <RunStatus runId={run.id} status={run.status} />}
       </div>
       {newCount > 0 && <button type="button" class="cv-chip-new" onClick={toBottom}>{`${newCount} new ↓`}</button>}
+    </div>
+  );
+}
+
+/** One of your own edits to a part (vars, code, a feature op). */
+function YouLine({ text }: { text: string }): JSX.Element {
+  return (
+    <div class="cv-line cv-you" data-row data-kind="you" data-you-edit>
+      <span class="cv-x" aria-hidden="true" />
+      <span class="cv-g faint" aria-hidden="true">·</span>
+      <span class="cv-body"><span class="text"><span class="cv-you-who">You</span>{` · ${text}`}</span></span>
     </div>
   );
 }
