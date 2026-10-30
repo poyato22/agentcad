@@ -307,6 +307,42 @@ def apply(m: Material, rec: dict) -> Material:
                                 "updated_at": rec.get("updated_at")})
 
 
+def fit_input(home: Path | None, parts_root: Path, inp: CalibrationInput,
+              check_record=None) -> tuple[dict, Material, Material]:
+    """(fit, base material, calibrated material) of an input: every part test is compared
+    with its study (read from the parts dir without following links). check_record(rec) may
+    raise to refuse a study outside the caller's scope."""
+    from ..cad import safe_io
+    from .fields import FIELDS_FILE, Fields
+    from .materials import get_material
+    from .studies import find_sim, read_record
+    base = get_material(inp.material, home)
+    ests = []
+    for t in inp.part:
+        d = find_sim(parts_root, t.sim_id)
+        if d is None:
+            raise SimError("bad_setup", f"no study {t.sim_id}", hint="run a static study of "
+                           "the tested part first")
+        rec = read_record(d, d.parent.parent.parent)
+        if check_record is not None:
+            check_record(rec)
+        if (rec.get("material") or {}).get("name", "").lower() != base.name.lower():
+            raise SimError("bad_setup", f"{t.sim_id} studied {rec.get('material', {}).get('name')}"
+                           f", not {base.name}", hint="compare a part with a study of the same "
+                                                      "material")
+        try:
+            data = safe_io.read_bytes(d, FIELDS_FILE)
+            fields = Fields(data) if data is not None else None
+        except (OSError, ValueError, KeyError, safe_io.UnsafePath):
+            fields = None
+        if fields is None:
+            raise SimError("bad_setup", f"{t.sim_id} has no readable result fields")
+        ests.append(part_estimate(rec, fields, t))
+    fitted = fit(inp, base, ests)
+    preview = apply(base, {"id": "cal_preview", "printer": inp.printer, "fit": fitted})
+    return fitted, base, preview
+
+
 # ---- store
 
 def _path(home: Path) -> Path:

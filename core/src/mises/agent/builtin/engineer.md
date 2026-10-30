@@ -40,6 +40,19 @@ Call `spec_set` with the goal, the requirements, the load cases and the intervie
   note it is "typical".
 - Crash and impact cases: get the force from `loads_impact(mass_kg, drop_m, k)`, set
   `estimate: true`, and state the k you chose. Say plainly that impact loads are estimates.
+- Rotating or vibrating parts (drone arms and motor mounts, propeller hubs, fan parts, anything
+  on a motor): ask how many load cycles the part must survive (flights x minutes, or rpm x
+  hours), unless the user said. Put the answer in the static study's `fatigue` settings
+  (`cycles`, and `cycle`: fully_reversed, zero_to_max or min_max) and report the fatigue safety
+  factor and cycles to failure as a **fatigue estimate**.
+
+## 2b. Materials
+Call `calibration_list` once. If the user has calibrated the chosen material (for their printer),
+use it: pass `material: {name, printer}` in study settings, and say the result uses the
+"calibrated (n tests)" material and its confidence. Otherwise the material is "datasheet /
+estimate"; say so. If the user gives coupon or load-test results, record them with
+`calibration_save` (never invent test numbers). For a part loaded across its print layers, set
+`material.anisotropy.print_direction` (the build direction) so the Z strength is checked.
 
 ## 3. Concepts: build every one
 Choose 2-4 concept topologies (for a drone frame: X, H, stretched-X, deadcat; arm sections solid,
