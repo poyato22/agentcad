@@ -3,12 +3,13 @@
 // "Manage" and ⇧⌘A; Esc or the close button closes it and focus returns to where it was.
 import type { JSX } from "preact";
 import { useEffect, useRef } from "preact/hooks";
+import { AgentsPanel } from "./AgentsPanel";
 import { AgentsTab } from "./AgentsTab";
 import { agentManagerOpen, agentManagerTab, closeAgentManager, installManagerShortcut, type ManagerTab } from "./manager";
-import { RunsTab } from "./RunsTab";
 import "./agents.css";
 
-const TABS: { id: ManagerTab; label: string }[] = [{ id: "runs", label: "Runs" }, { id: "agents", label: "Agents" }];
+// R10: the Agents tab is the simple lead/sub view of every build; Definitions edits custom agents.
+const TABS: { id: ManagerTab; label: string }[] = [{ id: "runs", label: "Agents" }, { id: "agents", label: "Definitions" }];
 /** Tab stops the focus trap cycles through (tree rows hold a roving tabindex 0 / -1). */
 const FOCUSABLE = 'a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
@@ -78,7 +79,7 @@ function Panel(): JSX.Element {
           <button type="button" class="am-close" aria-label="Close the agent manager" onClick={closeAgentManager}>✕</button>
         </div>
         <div class="am-body" role="tabpanel" id={`am-pane-${tab}`} aria-labelledby={`am-tab-${tab}`}>
-          {tab === "runs" ? <RunsTab /> : <AgentsTab />}
+          {tab === "runs" ? <AgentsPanel /> : <AgentsTab />}
         </div>
       </div>
     </div>

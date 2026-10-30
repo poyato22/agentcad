@@ -102,3 +102,22 @@ span.am-fold { cursor: default; color: var(--faint); }
 @media (prefers-reduced-motion: reduce) {
   .am-dot .led { animation: none !important; }
 }
+
+/* R10: the Agents panel — lead on top, sub-agents indented beneath */
+.ap-list { list-style: none; margin: 0; padding: 0; }
+.ap-row { padding: 5px 6px 5px calc(6px + var(--depth, 0) * 18px); border-top: 1px solid var(--line); }
+.ap-row:first-child { border-top: 0; }
+.ap-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.ap-fold { flex: none; width: 14px; border: 0; background: transparent; color: var(--dim); font: inherit; cursor: pointer; text-align: center; }
+.ap-dot { display: inline-flex; flex: none; }
+.ap-title { flex: 0 1 auto; min-width: 0; display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent; color: var(--ink); font: inherit; text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ap-title:hover { text-decoration: underline; }
+.ap-title:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
+.ap-lead .ap-title { font-weight: 600; }
+.ap-badge { flex: none; padding: 0 4px; border: 1px solid var(--line2); border-radius: 2px; font-size: var(--fs-small); color: var(--blue2); }
+.ap-agent { flex: none; }
+.ap-sub { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 2px 0 0 34px; font-size: var(--fs-small); }
+.ap-act { color: var(--dim); }
+.ap-act.needs-you { color: var(--blue2); }
+.ap-del { display: inline-flex; align-items: center; gap: 8px; }
+.ap-refused { color: var(--red); }

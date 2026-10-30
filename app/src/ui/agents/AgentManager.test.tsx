@@ -25,9 +25,9 @@ describe("AgentManager", () => {
     const dlg = screen.getByRole("dialog", { name: "Agent manager" });
     expect(dlg.getAttribute("aria-modal")).toBe("true");
     expect(document.activeElement).toBe(dlg);
-    expect(screen.getByRole("tab", { name: "Runs" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("tab", { name: "Agents" }).getAttribute("aria-selected")).toBe("true");
 
-    fireEvent.keyDown(screen.getByRole("tab", { name: "Runs" }), { key: "ArrowRight" });
+    fireEvent.keyDown(screen.getByRole("tab", { name: "Agents" }), { key: "ArrowRight" });
     expect(agentManagerTab.value).toBe("agents");
     expect(await screen.findByText("Runs start from one of these agents.")).toBeTruthy();
 
