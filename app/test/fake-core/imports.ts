@@ -60,7 +60,7 @@ function sniff(b: Buffer): "pdf" | "png" | "jpeg" | "dxf" | "heic" | null {
   if (b.length >= 12 && b.toString("latin1", 4, 8) === "ftyp") return "heic";
   if (b.toString("latin1", 0, 5) === "%PDF-") return "pdf";
   if (b.toString("latin1", 0, 22) === "AutoCAD Binary DXF\r\n\x1a\x00") return "dxf";
-  const lines = b.toString("latin1", 0, 4096).replace(/^﻿|^\xef\xbb\xbf/, "").split(/\r?\n/).map((l) => l.trim());
+  const lines = b.toString("latin1", 0, 4096).replace(/^\xef\xbb\xbf/, "").split(/\r?\n/).map((l) => l.trim());
   let i = 0;
   while (i + 1 < lines.length && lines[i] === "999") i += 2;
   return lines[i] === "0" && lines[i + 1] === "SECTION" ? "dxf" : null;

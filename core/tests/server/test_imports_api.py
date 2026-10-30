@@ -272,3 +272,17 @@ def test_only_the_imports_own_run_may_submit(client, rt):
                                   call_id="x1", workdir=rt.workdir(other))
     with pytest.raises(MisesError, match="another run"):
         client.portal.call(call)
+
+
+def test_an_import_left_unfinished_by_a_restart_is_settled(client, rt):
+    from mises.imports import drawing_import as di
+
+    out = post(client, "plate.dxf", (FIX / "plate_holes.dxf").read_bytes()).json()
+    wait_import(client, out["import_id"])
+    d = rt.home / "imports" / out["import_id"]
+    rec = json.loads((d / "import.json").read_text())
+    rec.update(status="reading", attempts=[])          # as a crash would have left it
+    (d / "import.json").write_text(json.dumps(rec))
+    assert out["import_id"] not in di._active
+    got = client.get(f"/imports/{out['import_id']}", headers=AUTH).json()
+    assert got["status"] == "failed" and "restarted" in got["error"]

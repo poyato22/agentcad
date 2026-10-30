@@ -64,6 +64,7 @@ _MEDIA = {"png": "image/png", "jpeg": "image/jpeg"}
 _BINARY_DXF = b"AutoCAD Binary DXF\r\n\x1a\x00"
 _locks: dict[str, asyncio.Lock] = {}
 _tasks: set[asyncio.Task] = set()
+_active: set[str] = set()       # imports this process is driving (not final yet)
 
 VISION_MODELS_HINT = ("Choose a model that can read images in Profile → Model: Claude (through "
                       "Claude Code or an Anthropic API key), an OpenAI GPT model or Google "
@@ -235,6 +236,7 @@ def _finish(runtime: Runtime, d: Path, rec: dict, status: str, error: str | None
             "detail": f"{t.get('matches', 0)} of {checked} dimensions match",
             "ref": {"import_id": rec["import_id"], "part_id": pub["part_id"]}}))
     _locks.pop(rec["import_id"], None)
+    _active.discard(rec["import_id"])
 
 
 def _track(task: asyncio.Task) -> None:
@@ -326,15 +328,28 @@ async def start_import(runtime: Runtime, raw: bytes, *, file_name: str,
            "run_id": None, "owner_run": None, "attempts": [],
            "max_attempts": 1 if kind == "dxf" else MAX_ATTEMPTS, "notes": [], "pages": 0,
            "thickness_mm": thickness_mm, "created_at": time.time()}
+    _active.add(iid)
     try:
         if kind == "dxf":
             return await _start_dxf(runtime, d, rec, raw)
         return await _start_raster(runtime, d, rec, raw, model_ref)
     except BaseException as e:
+        _active.discard(iid)
         msg = e.message if isinstance(e, MisesError) else f"{type(e).__name__}"
         rec.update(status="failed", stage="", error=msg)
         _save(d, rec)
         raise
+
+
+async def current(runtime: Runtime, import_id: str) -> dict:
+    """GET /imports/{id}: the public record. An unfinished import no task in this process drives
+    (Mises restarted while it ran) is settled first, so the app never waits on it forever."""
+    rec = load_record(runtime.home, import_id)
+    if rec["status"] not in FINAL and import_id not in _active:
+        await _settle(runtime, import_id, error="Mises restarted before this import finished; "
+                                                "drop the drawing again")
+        rec = load_record(runtime.home, import_id)
+    return public(rec)
 
 
 async def _start_dxf(runtime: Runtime, d: Path, rec: dict, raw: bytes) -> dict:

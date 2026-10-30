@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter, File, Form, Response, UploadFile
 
 from .. import projects as _projects
-from ..imports.drawing_import import MAX_UPLOAD_BYTES, import_dir, load_record, public, start_import
+from ..imports.drawing_import import MAX_UPLOAD_BYTES, current, import_dir, start_import
 from ..profile import load_profile
 from ..types import ErrorCode, MisesError
 
@@ -40,7 +40,7 @@ def build_imports_router(runtime: Runtime) -> APIRouter:
 
     @router.get("/imports/{import_id}")
     async def get_import(import_id: str):
-        return public(load_record(runtime.home, import_id))
+        return await current(runtime, import_id)
 
     @router.get("/imports/{import_id}/original")
     async def get_original(import_id: str):
