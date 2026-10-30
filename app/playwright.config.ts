@@ -22,7 +22,7 @@ export default defineConfig({
     { name: "chromium", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 }, colorScheme: "dark" } },
     // The app runs in WKWebView: approval input safety, the markup layout (the "Show more" clamp)
     // and the part-tree drag are also checked on WebKit (needs `npx playwright install webkit`).
-    { name: "webkit", testMatch: ["**/approvals.spec.ts", "**/markup.spec.ts", "**/builds-drag.spec.ts"], use: { ...devices["Desktop Safari"], viewport: { width: 1440, height: 900 }, colorScheme: "dark" } },
+    { name: "webkit", testMatch: ["**/approvals.spec.ts", "**/approval-keys-ra.spec.ts", "**/markup.spec.ts", "**/builds-drag.spec.ts"], use: { ...devices["Desktop Safari"], viewport: { width: 1440, height: 900 }, colorScheme: "dark" } },
   ],
   webServer: [
     {
