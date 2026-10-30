@@ -105,7 +105,20 @@ def build_context(runtime, run_id: str | None = None) -> dict:
     sk = _run_sketch(runtime, run_id)
     if sk is not None:
         out["sketch"] = sk
+    refs = _references(runtime, run_id)
+    if refs:
+        out["references"] = refs
     return out
+
+
+def _references(runtime, run_id: str | None) -> list:
+    """Reference images attached to this run's build (G-R4). Agents match renders against them
+    with `critique_model`; the ids come from here."""
+    from . import references as references_mod
+    try:
+        return references_mod.list_references(Path(runtime.home), _run_project(runtime, run_id))
+    except Exception:  # noqa: BLE001 - context must never fail to build
+        return []
 
 
 def _is_ui_run(runtime, run_id: str | None) -> bool:

@@ -23,6 +23,21 @@ class Event(BaseModel):
     ts: float = Field(default_factory=time.time)
 
 
+# Plan 7 U3c "agent_announce": compact cards an agent emits into the thread. Plan 8 (G1/G-R7)
+# adds the kinds below; `announce()` is additive, so if U3c defines more elsewhere these simply
+# join them. "critique_round": one render -> critique -> fix round (before/after + fixed issues).
+# "view_presented": a live view card (G-R7) carrying a `view_spec` the app renders.
+ANNOUNCE_KINDS = ("critique_round", "view_presented")
+
+
+def announce(bus: "EventBus", run_id: str | None, kind: str, **data) -> "Event":
+    """Publish an `agent_announce` card. `kind` is one of ANNOUNCE_KINDS; `data` is the card
+    body. Untrusted model text in the body stays data, never instructions."""
+    ev = Event(type="agent_announce", run_id=run_id, data={"kind": kind, **data})
+    bus.publish(ev)
+    return ev
+
+
 class EventBus:
     QUEUE_MAX = 1000
 

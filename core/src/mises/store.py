@@ -11,7 +11,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from .types import Caps, SafetyClass, StepKind, canonical_json, sha256_hex
 
@@ -41,6 +41,13 @@ class AgentRun(BaseModel):
     pinned: bool = False
     archived: bool = False
     last_activity_at: float | None = None  # bumped as the run works; falls back to updated_at
+    # Plan 8 G-R6 routing hint: {score, level, signals, vision_recommended}; NULL until estimated
+    shape_complexity: dict | None = None
+
+    @field_validator("shape_complexity", mode="before")
+    @classmethod
+    def _load_shape_complexity(cls, v: Any) -> Any:
+        return json.loads(v) if isinstance(v, str) else v
 
 
 class AgentPolicy(BaseModel):
@@ -149,7 +156,7 @@ CREATE INDEX IF NOT EXISTS studies_project ON studies(project_id, id);
 
 _RUN_FIELDS = {"status", "branch", "agent", "provider", "model", "task", "parent_id",
                "session_ref", "owner_pid", "project_id", "title", "pinned",
-               "archived", "last_activity_at"}
+               "archived", "last_activity_at", "shape_complexity"}
 _APPROVAL_JSON = {"payload", "deltas", "edited_payload"}
 
 
@@ -182,7 +189,8 @@ class Store:
         for col, decl in (("project_id", "TEXT"), ("title", "TEXT"),
                           ("pinned", "INTEGER NOT NULL DEFAULT 0"),
                           ("archived", "INTEGER NOT NULL DEFAULT 0"),
-                          ("last_activity_at", "REAL")):
+                          ("last_activity_at", "REAL"),
+                          ("shape_complexity", "TEXT")):
             if col not in cols:
                 self._db.execute(f"ALTER TABLE runs ADD COLUMN {col} {decl}")
         self._migrate_default_project()
@@ -239,6 +247,12 @@ class Store:
                 db.execute(f"UPDATE runs SET {sets}, updated_at=? WHERE id=?",
                            (*fields.values(), time.time(), run_id))
         return self.get_run(run_id)
+
+    def set_shape_complexity(self, run_id: str, data: dict) -> None:
+        """Store the G-R6 routing hint on the run row (JSON); a deleted run is a no-op."""
+        with self._tx() as db:
+            db.execute("UPDATE runs SET shape_complexity=? WHERE id=?",
+                       (canonical_json(data), run_id))
 
     def touch_run_activity(self, run_id: str, ts: float) -> None:
         """Bump last_activity_at only (not updated_at); a deleted run is a no-op."""
