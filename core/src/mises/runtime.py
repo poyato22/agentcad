@@ -384,6 +384,7 @@ class Runtime:
             self._external.discard(run_id)
             self.lead_queues.pop(run_id, None)
             browser_images.forget(self.home, self.snapshots.ids_for_run(run_id))
+            projects_mod.delete_run_renders(self.home, run_id)
             self.store.delete_run(run_id)
             self.forget_activity(run_id)      # C4's tracker, dropped without a "done" event
             wd = self.home / "runs" / run_id

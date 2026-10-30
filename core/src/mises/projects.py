@@ -237,7 +237,56 @@ def _purge_files(store: Store, home: Path, project_id: str, part_ids: list[str],
     for sid in study_ids:
         if re.fullmatch(r"study_[0-9a-f]{1,32}", sid):
             _rm_tree(Path(home) / "studies", sid)
+    # the build's reference images and drawing imports (the user's original files)
+    for sub, record in (("references", "meta.json"), ("imports", "import.json")):
+        for name in _owned_by(Path(home) / sub, record, project_id):
+            _rm_tree(Path(home) / sub, name)
     return removed
+
+
+def delete_run_renders(home: Path, run_id: str) -> int:
+    """Remove a deleted run's renders (`<home>/renders/<prefix>_<run8>_<hex10>_<view>.png`,
+    tagged by cad.views._tag): GET /renders/{id} stops serving them. Links are unlinked, never
+    followed. Returns how many went."""
+    run8 = re.sub(r"[^A-Za-z0-9]", "", run_id)[:8]
+    if not run8:
+        return 0
+    pat = re.compile(rf"^[A-Za-z0-9]+_{re.escape(run8)}_[0-9a-f]{{10}}(_[A-Za-z0-9_-]*)?\.png$")
+    d = Path(home) / "renders"
+    try:
+        names = os.listdir(d)
+    except OSError:
+        return 0
+    n = 0
+    for name in names:
+        if pat.match(name):
+            try:
+                os.unlink(d / name)
+                n += 1
+            except OSError:
+                pass
+    return n
+
+
+def _owned_by(parent: Path, record: str, project_id: str) -> list[str]:
+    """Names of parent's entries whose JSON `record` says they belong to `project_id` (read
+    without following links)."""
+    from .cad import safe_io
+    try:
+        names = sorted(os.listdir(parent))
+    except OSError:
+        return []
+    out = []
+    for name in names:
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", name) or os.path.islink(parent / name):
+            continue
+        try:
+            meta = safe_io.read_json(parent / name, record)
+        except (OSError, ValueError, safe_io.UnsafePath):
+            continue
+        if isinstance(meta, dict) and meta.get("project_id") == project_id:
+            out.append(name)
+    return out
 
 
 def empty_trash(store: Store, home: Path | None = None, *, assembly: Any = None,
@@ -530,6 +579,19 @@ def duplicate_part(store: Store, home: Path, part_id: str) -> dict:
         data = safe_io.read_bytes(src, f.name)
         if data is not None:
             safe_io.write_bytes(dst, f.name, data)
+    # the skeleton dependency (host-only meta): the copy was built against the same skeleton
+    # version, so a later skeleton_set regenerates it or marks it stale like the original
+    from . import edits
+    from .cad import skeleton as skeleton_mod
+    try:
+        refs = safe_io.read_bytes(edits.meta_dir(src), skeleton_mod.REFS_NAME)
+    except (OSError, safe_io.UnsafePath):
+        refs = None
+    if refs is not None:
+        md = edits.meta_dir(dst)
+        safe_io.ensure_dir(md.parent)
+        safe_io.ensure_dir(md)
+        safe_io.write_bytes(md, skeleton_mod.REFS_NAME, refs)
     store.register_part(new_id, row.project_id or store.ensure_default_project().id,
                         label=f"{display_name(row)} copy", kind=row.kind)
     store.update_part(new_id, color=row.color, appearance=row.appearance, parent_id=row.parent_id)
@@ -596,14 +658,19 @@ def delete_part(store: Store, home: Path, part_id: str, *, assembly: Any = None,
         if used:
             raise _bad(f"{part_id} is in the assembly ({', '.join(used[:3])})",
                        hint="remove it from the assembly first")
+    # another build's assembly may place this part too (a "*"-scoped run can): the same
+    # guard as Empty Trash, so that build never loses a placed part
+    if assembly is not None and part_id in assembly.part_refs_outside(row.project_id or ""):
+        raise _bad(f"{part_id} is in another build's assembly",
+                   hint="remove it from that build's assembly first")
     root = _parts_root(home)
     stamp = f"{part_id}.{time.time_ns()}"
     trash = Path(home) / "trash" / "parts"
-    for src in (root / part_id, root / ".mises-meta" / part_id):
+    for src in (root / part_id, root / ".mises-meta" / part_id, root / THUMBS_DIR / part_id):
         real = _contained(root, src) if root.is_dir() else None
         if real is None or not os.path.isdir(real) or os.path.islink(src):
             continue
-        dest = trash / stamp if src.parent == root else trash / ".mises-meta" / stamp
+        dest = trash / stamp if src.parent == root else trash / src.parent.name / stamp
         # each level made (or checked) top-down through safe_io: a link planted at home/trash
         # or below is refused, never followed
         for level in (Path(home) / "trash", trash, dest.parent):

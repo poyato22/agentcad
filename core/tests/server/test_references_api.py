@@ -25,10 +25,14 @@ def _png_b64() -> str:
     return base64.b64encode(buf.getvalue()).decode()
 
 
-def test_post_and_get_reference(client):
+def test_post_and_get_reference(client, rt):
     r = client.post("/references", headers=AUTH, json={
         "image": {"data_b64": _png_b64(), "name": "ref.png"},
         "project_id": "pA", "kind": "three_view", "note": "front/top/side"})
+    assert r.status_code == 404                     # final review M7: a real build only
+    r = client.post("/references", headers=AUTH, json={
+        "image": {"data_b64": _png_b64(), "name": "ref.png"},
+        "project_id": rt.active_project_id(), "kind": "three_view", "note": "front/top/side"})
     assert r.status_code == 200, r.text
     rid = r.json()["reference_id"]
     assert rid.startswith("ref_") and r.json()["kind"] == "three_view"

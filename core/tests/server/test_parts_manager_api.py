@@ -91,6 +91,43 @@ def test_delete_moves_the_part_to_the_trash_and_lifts_its_children(client, rt):
     assert client.delete("/parts/arm", headers=AUTH).status_code == 404
 
 
+def test_duplicate_keeps_the_skeleton_dependency(client, rt):
+    """Final review I4: the copy was built against the same skeleton, so skeleton_set treats
+    it like the original (regenerate or mark stale), never as an independent part."""
+    from mises import edits
+    from mises.cad import skeleton
+    _mk_part(rt, "arm")
+    md = edits.meta_dir(rt.home / "parts" / "arm")
+    md.mkdir(parents=True)
+    refs = {"params": ["wing_span"], "skeleton_id": "sk1", "skeleton_version": 3}
+    (md / skeleton.REFS_NAME).write_text(json.dumps(refs))
+    assert client.post("/parts/arm/duplicate", headers=AUTH).status_code == 200
+    copied = skeleton.read_refs(rt.home / "parts" / "arm_copy")
+    assert copied == refs and skeleton.uses_skeleton(copied)
+
+
+def test_delete_refused_while_another_builds_assembly_places_the_part(client, rt):
+    """Final review I5: the Empty Trash guard, for a single part."""
+    from mises.assembly.model import Instance
+    _mk_part(rt, "arm")
+    other = rt.store.create_project("Other")
+    rt.assembly_store.add_instance(other.id, Instance(part_id="arm", name="borrowed"))
+    r = client.delete("/parts/arm", headers=AUTH)
+    assert r.status_code == 400 and "another build's assembly" in r.json()["message"]
+    assert (rt.home / "parts" / "arm").exists()
+
+
+def test_delete_moves_the_thumbnails_with_the_part(client, rt):
+    """Final review M6: no thumbnails left behind for a deleted part."""
+    _mk_part(rt, "arm")
+    thumbs = rt.home / "parts" / ".mises-thumbs" / "arm"
+    thumbs.mkdir(parents=True)
+    (thumbs / "t.png").write_bytes(b"x")
+    assert client.delete("/parts/arm", headers=AUTH).status_code == 200
+    assert not thumbs.exists()
+    assert list((rt.home / "trash" / "parts" / ".mises-thumbs").iterdir())
+
+
 def test_delete_refused_while_in_the_assembly(client, rt):
     _mk_part(rt, "arm")
     pid = rt.active_project_id()
