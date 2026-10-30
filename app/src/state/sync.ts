@@ -144,13 +144,14 @@ export function startSync(client: CoreClient, stream: Source, opts: SyncOptions 
           } catch (e) { debug("activity seed failed", id, e); }
         }));
         return () => {
-          seedActivity(snaps, eff.finished);
+          seedActivity(snaps, eff.finished, eff.asOf);
           // the core's open questions: a card lost on reload comes back (C-2), one answered
           // elsewhere goes; nothing that changed while the fetch was in flight is undone
           if (asked.size) commitAppState(applyPendingQuestions(readAppState(), asked, knownBefore));
         };
       }
       case "fetchRuns": {
+        const listedAt = Date.now() / 1000;   // activity after this is newer than the list
         const list = await client.listRuns();
         return () => {
           runsWindowFull = list.length >= RUNS_WINDOW;
@@ -168,7 +169,7 @@ export function startSync(client: CoreClient, stream: Source, opts: SyncOptions 
             seedPending = false;
             const working = list.filter((r) => r.status === "running" || r.status === "queued").map((r) => r.id);
             const finished = list.filter((r) => r.status !== "running" && r.status !== "queued").map((r) => r.id);
-            enqueue({ kind: "fetchActivity", runIds: working, finished });
+            enqueue({ kind: "fetchActivity", runIds: working, finished, asOf: listedAt });
           }
           // runs we have never loaded steps for (new, or first boot); started later in this frame
           for (const id of next.runs.keys()) if (!next.steps.has(id)) enqueue({ kind: "fetchSteps", runId: id });

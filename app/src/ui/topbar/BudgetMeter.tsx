@@ -41,7 +41,7 @@ export function BudgetMeter(): JSX.Element | null {
   const warnPct = b.limit_year > 0 ? Math.min(100, (b.warn_at / b.limit_year) * 100) : 100;
   const reset = fmtResetDate(b.reset_at);
   const left = Math.max(0, b.limit_year - b.used_year);
-  const note = idle ? "Onshape is not connected yet. Add your keys in Profile → Onshape."
+  const note = idle ? "Onshape is not connected yet: add your Onshape keys to connect it."
     : level === "limit" ? "Limit reached. Onshape requests are refused until the reset."
       : level === "warn" ? `Past the warning line of ${num(b.warn_at)} calls.` : null;
   const label = `Onshape budget${idle ? " (not connected)" : ""}: ${num(b.used_year)} of ${num(b.limit_year)} calls used this year`

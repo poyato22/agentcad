@@ -99,18 +99,23 @@ export function parseSnapshot(runId: string, raw: unknown): AgentActivity | null
  * `snapshots` holds each run the core still runs (by id → its `activity`, null when none yet);
  * `finished` are runs the core reports as no longer running. Runs not named keep their entry.
  */
-export function seedActivity(snapshots: ReadonlyMap<string, unknown>, finished: readonly string[] = []): void {
+export function seedActivity(snapshots: ReadonlyMap<string, unknown>, finished: readonly string[] = [], asOf = Infinity): void {
   const m = new Map(activityByRun.peek());
   let changed = false;
   // a finished run's working state is stale (its done came before this socket); an idle Claude
   // Code session between turns stays, as recordActivity keeps it
-  for (const id of finished) if (m.has(id) && m.get(id)?.state !== "idle") { m.delete(id); changed = true; }
+  for (const id of finished) {
+    const cur = m.get(id);
+    if (cur && cur.state !== "idle" && cur.since < asOf) { m.delete(id); changed = true; }
+  }
   for (const [id, raw] of snapshots) {
     const a = parseSnapshot(id, raw);
-    if (!a || a.state === "done") { if (m.delete(id)) changed = true; continue; }
+    // no snapshot (nothing yet when the core answered): what came live since stays
+    if (!a) continue;
     const cur = m.get(id);
-    // a live event newer than the snapshot wins
+    // a live event newer than the snapshot wins (the fetch may predate it)
     if (cur && cur.since > a.since) continue;
+    if (a.state === "done") { if (m.delete(id)) changed = true; continue; }
     m.set(id, a);
     changed = true;
   }

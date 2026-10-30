@@ -1,12 +1,35 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { MisesEvent } from "../api/types";
-import { activityByRun, activitySummary, parseActivity, recordActivity, resetActivity, startActivity } from "./activity";
+import { activityByRun, activitySummary, parseActivity, recordActivity, resetActivity, seedActivity, startActivity } from "./activity";
 
 function act(run: string, state: string, detail = ""): MisesEvent {
   return { type: "agent_activity", run_id: run, ts: 0, data: { state, detail, since: 1 } };
 }
 
 afterEach(() => resetActivity());
+
+describe("seedActivity (C-3)", () => {
+  const live = (run: string, state: string, since: number): MisesEvent => ({ type: "agent_activity", run_id: run, ts: 0, data: { state, detail: "", since } });
+
+  it("a snapshot seeds; a newer live event wins; a missing snapshot never erases one", () => {
+    seedActivity(new Map([["a", { state: "tool", detail: "x", since: 10 }]]));
+    expect(activityByRun.value.get("a")?.state).toBe("tool");
+    recordActivity(live("b", "thinking", 20));
+    seedActivity(new Map<string, unknown>([["b", null], ["a", { state: "done", detail: "", since: 5 }]]));
+    expect(activityByRun.value.get("b")?.state).toBe("thinking");   // null: the fetch predates it
+    expect(activityByRun.value.get("a")?.state).toBe("tool");       // an older "done" than what we have
+    seedActivity(new Map([["a", { state: "done", detail: "", since: 11 }]]));
+    expect(activityByRun.value.has("a")).toBe(false);
+  });
+
+  it("drops a finished run's stale working state, not one newer than the list or an idle session", () => {
+    recordActivity(live("old", "tool", 1));
+    recordActivity(live("new", "tool", 50));
+    recordActivity(live("cc", "idle", 1));
+    seedActivity(new Map(), ["old", "new", "cc"], 40);
+    expect([...activityByRun.value.keys()].sort()).toEqual(["cc", "new"]);
+  });
+});
 
 describe("parseActivity", () => {
   it("reads the contract fields", () => {

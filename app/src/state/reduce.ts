@@ -8,7 +8,7 @@ import { debug } from "../lib/log";
 export type Effect = { kind: "fetchSteps"; runId: string } | { kind: "fetchRuns" } | { kind: "fetchApprovals" }
   | { kind: "fetchParts" } | { kind: "fetchStatus" }
   /** Seed live activity from GET /runs/{id} for runs still working (on load and reconnect, C-3). */
-  | { kind: "fetchActivity"; runIds: string[]; finished: string[] };
+  | { kind: "fetchActivity"; runIds: string[]; finished: string[]; asOf: number };
 
 export interface InflightCall { run_id: string; name: string; input: Record<string, unknown> }
 

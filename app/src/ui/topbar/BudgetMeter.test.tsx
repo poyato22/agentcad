@@ -90,8 +90,8 @@ describe("BudgetMeter", () => {
     expect(meter().dataset.state).toBe("idle");
     expect(meter().querySelector("[data-budget-delta]")).toBeNull();
     expect(screen.getByRole("button").getAttribute("aria-label")).toContain("Onshape budget (not connected): 0 of 2,500 calls used this year");
-    expect(screen.getByRole("button").getAttribute("aria-label")).toContain("Add your keys in Profile → Onshape.");
-    expect(onshapeTone(status("not_configured")).title).toBe("Onshape not set up. Add your keys in Profile → Onshape.");
+    expect(screen.getByRole("button").getAttribute("aria-label")).toContain("add your Onshape keys to connect it.");
+    expect(onshapeTone(status("not_configured")).title).toBe("Onshape not set up: add your Onshape keys to connect it.");
     cleanup();
     resetOnshapeBudget();
     coreStatus.value = status();
