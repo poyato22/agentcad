@@ -1,197 +1,202 @@
-// Agent browser snapshots, part cards and the build parts list (BOM): types + zod schemas for the
-// Plan 7 (R3/R4/R5) routes the core (U4c) serves on top of the C5 hardened fetcher.
-//   · GET /runs/{id}/browser          → the run's page snapshots, in visit order
-//   · GET /browser/snapshots/{sid}    → one snapshot
-//   · GET /projects/{id}/bom          → the build's parts list plus totals
-//   · POST/PATCH/DELETE /projects/{id}/bom[/{lid}]
-//   · GET /projects/{id}/bom.csv
-//   · the `part_show` tool's input (R4) → a part card in the thread
+// Agent browser snapshots, part cards, the build parts list (BOM) and suggested sites: types +
+// zod schemas for the Plan 7 (R3/R4/R5) routes of the core (U4c: server/browser_api.py,
+// browser/{snapshot,tools,sites}.py, bom/__init__.py, profile.py). Field names are the core's;
+// the shapes are checked against real-core dumps (core/scripts/dump_browser_bom_fixtures.py →
+// core/tests/fixtures/ui/browser, test/contract.browser.test.ts).
+//   · GET /runs/{id}/browser?full=1           → the run's snapshots, oldest first
+//   · GET /browser/snapshots/{sid}            → one snapshot
+//   · GET /browser/cards/{card_id}            → one part card (part_show's result has ids only)
+//   · GET /projects/{id}/bom                  → {project_id, material, items, totals}
+//   · POST/PATCH/DELETE /projects/{id}/bom[/{item_id}], GET /projects/{id}/bom.csv
+//   · GET /browser/sites/defaults, POST /browser/sites/restore_defaults
 //
-// Kept apart from types.ts/schemas.ts so the browser/BOM additions stay in one place.
+// The schemas are STRICT about the contract: a missing or mistyped field fails the parse, which
+// the client turns into a visible CoreError ("unexpected response shape"), never silent zeros or
+// a dropped row. Only safety filtering is lenient: an image whose proxy_url isn't a core path is
+// dropped, so the app can never fetch a page's image host.
 //
-// Untrusted text: a snapshot's title, URL and text, a table's cells, a part card's name/vendor/
-// specs, and every BOM field typed by an agent are page- or model-authored. The UI renders them as
-// plain escaped text only, and images load ONLY through the core's proxy path (never a raw URL).
+// Untrusted text: everything a snapshot, card or BOM row carries may come from a web page via an
+// agent. The UI renders it as plain escaped text only.
 import { z } from "zod";
 
 // ---- helpers
 
-/** A core-relative proxy path: same-origin, starts with a single "/", no scheme. Images and CSV
- *  are fetched only through these (never a page-supplied absolute URL). */
+/** A core-relative proxy path: same-origin, one leading "/", no scheme, no backslash, no ".."
+ *  segment. Images are fetched only through these (never a page-supplied absolute URL). */
 export function isProxyPath(u: unknown): u is string {
-  return typeof u === "string" && u.startsWith("/") && !u.startsWith("//") && !/^\/\/|:\/\//.test(u);
+  if (typeof u !== "string" || !u.startsWith("/") || u.startsWith("//")) return false;
+  if (u.includes("\\") || u.includes("://")) return false;
+  return !u.split(/[?#]/)[0].split("/").some((seg) => seg === ".." || seg === ".");
 }
-const proxyPath = z.string().refine(isProxyPath, "must be a core-relative proxy path");
+
+const nstr = z.string().nullable();
+/** Keeps the images whose proxy_url is a core path; drops (never fetches) anything else. */
+const proxiedImages = z.array(z.object({ proxy_url: z.string(), alt: z.string().nullable().default(null) }))
+  .transform((xs) => xs.filter((x) => isProxyPath(x.proxy_url)));
 
 // ---- agent browser (R3)
 
-/** A proxied image on a snapshot. `proxy_url` is a core path (GET through the client); a raw URL is
- *  dropped at parse time so the app can never fetch a page's image host directly. */
-export interface SnapshotImage { proxy_url: string; alt: string | null; width: number | null; height: number | null }
-export const snapshotImageSchema = z.object({
-  proxy_url: proxyPath,
-  alt: z.string().nullish().transform((v) => v ?? null),
-  width: z.number().nullish().transform((v) => v ?? null),
-  height: z.number().nullish().transform((v) => v ?? null),
-});
-// a bad/absent proxy_url drops just that image, never the whole snapshot
-const imageList = z.array(z.unknown()).default([]).transform((xs) =>
-  xs.map((x) => snapshotImageSchema.safeParse(x)).filter((r) => r.success).map((r) => r.data));
+export type SnapshotKind = "page" | "search";
 
-/** An extracted table. Headers may be empty (an unlabelled grid). Cells are untrusted text. */
-export interface SnapshotTable { headers: string[]; rows: string[][] }
-export const snapshotTableSchema = z.object({
-  headers: z.array(z.string()).default([]),
-  rows: z.array(z.array(z.string())).default([]),
-}).or(z.array(z.array(z.string())).transform((rows) => ({ headers: [], rows })));
-const tableList = z.array(z.unknown()).default([]).transform((xs) =>
-  xs.map((x) => snapshotTableSchema.safeParse(x)).filter((r) => r.success).map((r) => r.data));
+export interface SnapshotImage { proxy_url: string; alt: string | null }
+/** A table is rows of cells (the core keeps no separate header row). */
+export interface SnapshotTable { rows: string[][] }
+/** One result of a site search page (kind "search"). */
+export interface SearchResult { title: string; url: string; snippet: string; site: string }
 
-/** One stored page snapshot (web_open). Everything here is untrusted data. */
+/** One stored page snapshot (web_open, or a web_search results page). Untrusted data. */
 export interface BrowserSnapshot {
-  id: string; url: string; title: string; text: string;
-  tables: SnapshotTable[]; images: SnapshotImage[]; fetched_at: number;
+  id: string; run_id: string; kind: SnapshotKind; url: string; final_url: string; domain: string;
+  title: string; text: string; fetched_at: number;
+  tables: SnapshotTable[]; images: SnapshotImage[];
+  /** The suggested site a search page came from (search snapshots only). */
+  site: string | null;
+  /** "site blocked automated access (...)" when the page was a bot wall. */
+  blocked: string | null;
+  results: SearchResult[];
 }
-export const browserSnapshotSchema = z.object({
-  id: z.string(),
-  url: z.string().default(""),
-  title: z.string().default(""),
-  text: z.string().default(""),
-  tables: tableList,
-  images: imageList,
-  fetched_at: z.number().default(0),
+const searchResultSchema = z.object({ title: z.string(), url: z.string(), snippet: z.string(), site: z.string() });
+export const browserSnapshotSchema: z.ZodType<BrowserSnapshot> = z.object({
+  id: z.string(), run_id: z.string(), kind: z.enum(["page", "search"]),
+  url: z.string(), final_url: z.string(), domain: z.string(),
+  title: z.string(), text: z.string(), fetched_at: z.number(),
+  tables: z.array(z.object({ rows: z.array(z.array(z.string())) })),
+  images: proxiedImages,
+  site: nstr.default(null),
+  blocked: nstr.default(null),
+  results: z.array(searchResultSchema).default([]),
 });
+/** GET /runs/{id}/browser?full=1. */
+export const browserListSchema = z.array(browserSnapshotSchema);
 
-/** GET /runs/{id}/browser: the visit list. Accepts a bare array or `{snapshots: [...]}`; a
- *  malformed snapshot is dropped, not the page. */
-export const browserListSchema: z.ZodType<BrowserSnapshot[]> = z.union([
-  z.array(z.unknown()),
-  z.looseObject({ snapshots: z.array(z.unknown()) }).transform((o) => o.snapshots),
-]).transform((xs) => xs.map((x) => browserSnapshotSchema.safeParse(x)).filter((r) => r.success).map((r) => r.data));
+// ---- part card (R4)
 
-// ---- part card (R4): the `part_show` tool input
-
-/** One spec row on a part card or BOM line. */
+/** One spec row on a part card or BOM row. */
 export interface PartSpec { key: string; value: string | number; unit: string | null }
-export const partSpecSchema = z.object({
-  key: z.string(),
-  value: z.union([z.string(), z.number()]),
-  unit: z.string().nullish().transform((v) => v ?? null),
-});
-const specList = z.array(z.unknown()).default([]).transform((xs) =>
-  xs.map((x) => partSpecSchema.safeParse(x)).filter((r) => r.success).map((r) => r.data));
+export const partSpecSchema = z.object({ key: z.string(), value: z.union([z.string(), z.number()]), unit: nstr.default(null) });
 
-/** A part the agent put in front of the user (`part_show`). `image` is a core proxy path or null
- *  (a raw URL is dropped). `catalog_id` present ⇒ the part is catalog-backed and can be inserted. */
-export interface PartShown {
+/** A part an agent put in front of the user (GET /browser/cards/{id}). `currency` null means the
+ *  page didn't say (never assumed); `image` is a core proxy path or null; `project_id` is the
+ *  build the card belongs to (its actions target that build). */
+export interface PartCard {
+  id: string; run_id: string; project_id: string | null;
   name: string; price: number | null; currency: string | null; vendor: string | null;
-  url: string | null; specs: PartSpec[]; image: string | null;
-  snapshot_id: string | null; catalog_id: string | null;
+  url: string | null; domain: string | null; specs: PartSpec[]; image: string | null;
+  snapshot_id: string | null; catalog_id: string | null; catalog_backed: boolean; created_at: number;
 }
-export const partShownSchema = z.object({
-  name: z.string().default(""),
-  price: z.number().nullish().transform((v) => v ?? null),
-  currency: z.string().nullish().transform((v) => v ?? null),
-  vendor: z.string().nullish().transform((v) => v ?? null),
-  url: z.string().nullish().transform((v) => v ?? null),
-  specs: specList,
+export const partCardSchema: z.ZodType<PartCard> = z.object({
+  id: z.string(), run_id: z.string(), project_id: nstr,
+  name: z.string(), price: z.number().nullable(), currency: nstr, vendor: nstr,
+  url: nstr, domain: nstr.default(null), specs: z.array(partSpecSchema),
   // only a core proxy path is kept, so the card can never pull an image from a page's host
-  image: z.unknown().optional().transform((v) => (isProxyPath(v) ? v : null)),
-  snapshot_id: z.string().nullish().transform((v) => v ?? null),
-  catalog_id: z.string().nullish().transform((v) => v ?? null),
+  image: nstr.transform((v) => (isProxyPath(v) ? v : null)),
+  snapshot_id: nstr, catalog_id: nstr, catalog_backed: z.boolean(), created_at: z.number(),
+});
+
+/** `part_show`'s result data: ids only (the card's text is page data, fetched by id). */
+export const partShowResultSchema = z.object({
+  card_id: z.string(), catalog_id: nstr.default(null), snapshot_id: nstr.default(null),
 });
 
 // ---- parts list / BOM (R5)
 
 export type BomKind = "made" | "bought";
-export type BomSource = "user" | "agent";
+/** "auto": a made part (or inserted catalog part) the build lists by itself. */
+export type BomSource = "user" | "agent" | "auto";
 
-export interface BomLine {
+export interface BomRow {
   id: string; kind: BomKind; part_id: string | null; catalog_id: string | null;
-  name: string; qty: number; unit_cost: number | null; currency: string;
+  name: string; qty: number; unit_cost: number | null;
+  /** ISO 4217 code, or null: unknown (never assumed). */
+  currency: string | null;
   vendor: string | null; url: string | null; specs: PartSpec[]; notes: string;
   source: BomSource;
-  /** A made part's cost is estimated from mass × material $/kg (shown with an "estimate" label).
-   *  Defaults from `kind` when the core doesn't send it. */
-  estimated: boolean;
+  /** The cost is a live estimate (a made part: mass × material $/kg); `estimate_note` says how. */
+  estimate: boolean; estimate_note: string | null;
+  line_total: number | null;
 }
-export const bomLineSchema = z.object({
-  id: z.string(),
-  kind: z.enum(["made", "bought"]).catch("bought"),
-  part_id: z.string().nullish().transform((v) => v ?? null),
-  catalog_id: z.string().nullish().transform((v) => v ?? null),
-  name: z.string().default(""),
-  qty: z.number().default(1),
-  unit_cost: z.number().nullish().transform((v) => v ?? null),
-  currency: z.string().default("USD"),
-  vendor: z.string().nullish().transform((v) => v ?? null),
-  url: z.string().nullish().transform((v) => v ?? null),
-  specs: specList,
-  notes: z.string().default(""),
-  source: z.enum(["user", "agent"]).catch("agent"),
-  estimated: z.boolean().optional(),
-}).transform((l) => ({ ...l, estimated: l.estimated ?? l.kind === "made" }));
-
-/** A per-vendor subtotal. `null` vendor groups the parts without one. */
-export interface VendorTotal { vendor: string | null; amount: number; currency: string }
-const vendorTotalSchema = z.object({
-  vendor: z.string().nullish().transform((v) => v ?? null),
-  amount: z.number().default(0),
-  currency: z.string().default("USD"),
+export const bomRowSchema: z.ZodType<BomRow> = z.object({
+  id: z.string(), kind: z.enum(["made", "bought"]), part_id: nstr, catalog_id: nstr,
+  name: z.string(), qty: z.number().int(), unit_cost: z.number().nullable(), currency: nstr,
+  vendor: nstr, url: nstr, specs: z.array(partSpecSchema), notes: z.string(),
+  source: z.enum(["user", "agent", "auto"]),
+  estimate: z.boolean(), estimate_note: nstr, line_total: z.number().nullable(),
 });
 
-/** GET /projects/{id}/bom totals: the grand total, per-vendor subtotals and the made/bought split.
- *  `estimated` flags that at least one line's cost is an estimate (made parts). */
+/** Per-currency amounts ("USD", "EUR", …, and "unknown" for rows nobody gave a currency).
+ *  Amounts in different currencies are never added together. */
+export type ByCurrency = Record<string, number>;
+const byCurrency = z.record(z.string(), z.number());
+
+export interface VendorTotal { vendor: string | null; kind: BomKind; currency: string; total: number; count: number }
 export interface BomTotals {
-  amount: number; currency: string;
-  by_vendor: VendorTotal[]; made: number; bought: number; estimated: boolean;
+  by_currency: ByCurrency; made: ByCurrency; bought: ByCurrency; estimated: ByCurrency;
+  has_estimates: boolean; by_vendor: VendorTotal[];
+  /** Rows with no price (not in any total). */
+  unpriced: number; rows: number; qty: number;
 }
-const bomTotalsSchema = z.object({
-  amount: z.number().default(0),
-  currency: z.string().default("USD"),
-  by_vendor: z.array(z.unknown()).default([]).transform((xs) =>
-    xs.map((x) => vendorTotalSchema.safeParse(x)).filter((r) => r.success).map((r) => r.data)),
-  made: z.number().default(0),
-  bought: z.number().default(0),
-  estimated: z.boolean().default(false),
+export const bomTotalsSchema: z.ZodType<BomTotals> = z.object({
+  by_currency: byCurrency, made: byCurrency, bought: byCurrency, estimated: byCurrency,
+  has_estimates: z.boolean(),
+  by_vendor: z.array(z.object({ vendor: nstr, kind: z.enum(["made", "bought"]), currency: z.string(), total: z.number(), count: z.number().int() })),
+  unpriced: z.number().int(), rows: z.number().int(), qty: z.number(),
 });
 
-export interface Bom { lines: BomLine[]; totals: BomTotals }
-/** GET /projects/{id}/bom. Accepts `{lines|items, totals}`; a malformed line is dropped. */
-export const bomSchema: z.ZodType<Bom> = z.looseObject({
-  lines: z.array(z.unknown()).optional(),
-  items: z.array(z.unknown()).optional(),
-  totals: z.unknown().optional(),
-}).transform((o) => {
-  const raw = o.lines ?? o.items ?? [];
-  const lines = raw.map((x) => bomLineSchema.safeParse(x)).filter((r) => r.success).map((r) => r.data);
-  const totals = bomTotalsSchema.safeParse(o.totals ?? {});
-  return { lines, totals: totals.success ? totals.data : bomTotalsSchema.parse({}) };
+export interface Bom { project_id: string; material: string; items: BomRow[]; totals: BomTotals }
+export const bomSchema: z.ZodType<Bom> = z.object({
+  project_id: z.string(), material: z.string(), items: z.array(bomRowSchema), totals: bomTotalsSchema,
 });
 
-/** POST /projects/{id}/bom body: add a bought line by hand, or a catalog/shown part. */
-export interface NewBomLine {
-  kind: BomKind; name: string; qty?: number; unit_cost?: number | null; currency?: string;
-  vendor?: string | null; url?: string | null; specs?: PartSpec[]; notes?: string;
-  catalog_id?: string | null; part_id?: string | null; snapshot_id?: string | null; source?: BomSource;
+/** The name the core's totals and CSV use for an unknown currency. */
+export const UNKNOWN_CURRENCY = "unknown";
+const CURRENCY_RE = /^[A-Z]{3}$/;
+export const isCurrency = (c: unknown): c is string => typeof c === "string" && CURRENCY_RE.test(c);
+
+/** POST /projects/{id}/bom body (core BomItemIn, extra="forbid"). */
+export interface NewBomRow {
+  kind?: BomKind; part_id?: string | null; catalog_id?: string | null; name: string;
+  qty?: number; unit_cost?: number | null; currency?: string | null; vendor?: string | null;
+  url?: string | null; specs?: PartSpec[]; notes?: string;
 }
-/** PATCH /projects/{id}/bom/{lid} body: the user's edits (qty, cost, notes, …). */
+/** PATCH /projects/{id}/bom/{item_id} body (core BomPatch, extra="forbid"). */
 export interface BomPatch {
-  qty?: number; unit_cost?: number | null; notes?: string; name?: string;
-  vendor?: string | null; currency?: string;
+  name?: string; qty?: number; unit_cost?: number | null; currency?: string | null;
+  vendor?: string | null; url?: string | null; specs?: PartSpec[]; notes?: string;
+}
+const NEW_ROW_KEYS = ["kind", "part_id", "catalog_id", "name", "qty", "unit_cost", "currency", "vendor", "url", "specs", "notes"] as const;
+const PATCH_KEYS = ["name", "qty", "unit_cost", "currency", "vendor", "url", "specs", "notes"] as const;
+
+/** Exactly the fields the core accepts (it refuses any other key), with the currency only when
+ *  it is a 3-letter code (null otherwise: "unknown"). */
+export function bomBody(src: NewBomRow | BomPatch, kind: "new" | "patch"): Record<string, unknown> {
+  const keys: readonly string[] = kind === "new" ? NEW_ROW_KEYS : PATCH_KEYS;
+  const out: Record<string, unknown> = {};
+  for (const k of keys) {
+    const v = (src as Record<string, unknown>)[k];
+    if (v !== undefined) out[k] = v;
+  }
+  if ("currency" in out && out.currency !== null && !isCurrency(out.currency)) out.currency = null;
+  return out;
 }
 
 // ---- suggested sites (profile; R3 preset list)
 
-/** A curated, user-editable site the agent browses without an approval card. `search_url` is a
- *  template with `{q}` where the query goes. `suggested` marks a built-in default. */
-export interface SuggestedSite { name: string; domain: string; search_url: string; categories: string[]; suggested: boolean }
-export const suggestedSiteSchema = z.object({
-  name: z.string().default(""),
-  domain: z.string().default(""),
-  search_url: z.string().default(""),
-  categories: z.array(z.string()).default([]),
-  suggested: z.boolean().default(false),
+/** A curated, user-editable site agents read without an approval card. `search_url` is an https
+ *  template on the site's own domain with one `{q}`; null: the site is opened (web_open) but
+ *  never searched (e.g. a datasheet host). `suggested` marks one of Mises's defaults. */
+export interface SuggestedSite { name: string; domain: string; search_url: string | null; categories: string[]; suggested: boolean }
+export const suggestedSiteSchema: z.ZodType<SuggestedSite> = z.object({
+  name: z.string(), domain: z.string(), search_url: nstr, categories: z.array(z.string()), suggested: z.boolean(),
 });
-export const suggestedSitesSchema = z.array(z.unknown()).default([]).transform((xs) =>
-  xs.map((x) => suggestedSiteSchema.safeParse(x)).filter((r) => r.success).map((r) => r.data));
+export const suggestedSitesSchema = z.array(suggestedSiteSchema);
+
+/** Core sites.on_domain: the host is the domain or one of its subdomains. */
+export function onDomain(host: string, domain: string): boolean {
+  const h = host.toLowerCase().replace(/\.$/, "");
+  const d = domain.toLowerCase().replace(/\.$/, "");
+  return h === d || h.endsWith(`.${d}`);
+}
+
+/** The "browser fetches per run" limit's range (core profile.Profile). */
+export const FETCHES_MIN = 1;
+export const FETCHES_MAX = 1000;

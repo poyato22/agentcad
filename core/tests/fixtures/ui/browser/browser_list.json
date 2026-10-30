@@ -1,0 +1,47 @@
+[
+  {
+    "id": "snap_df580635a6688ccb",
+    "run_id": "5965068bfe6c",
+    "kind": "search",
+    "url": "https://www.adafruit.com/search?q=micro+servo",
+    "final_url": "https://www.adafruit.com/search?q=micro+servo",
+    "domain": "www.adafruit.com",
+    "title": "Search results for servo - Adafruit",
+    "fetched_at": 1793352873.151828,
+    "site": "Adafruit",
+    "blocked": null,
+    "image_count": 2,
+    "result_count": 3,
+    "has_part": false
+  },
+  {
+    "id": "snap_a275417c1444ba54",
+    "run_id": "5965068bfe6c",
+    "kind": "page",
+    "url": "https://www.adafruit.com/product/169",
+    "final_url": "https://www.adafruit.com/product/169",
+    "domain": "www.adafruit.com",
+    "title": "Micro servo - TowerPro SG92R : ID 169 : Adafruit",
+    "fetched_at": 1793352873.153503,
+    "site": null,
+    "blocked": null,
+    "image_count": 2,
+    "result_count": 0,
+    "has_part": true
+  },
+  {
+    "id": "snap_af7b45338701d1d5",
+    "run_id": "5965068bfe6c",
+    "kind": "page",
+    "url": "https://www.servocity.com/wall",
+    "final_url": "https://www.servocity.com/wall",
+    "domain": "www.servocity.com",
+    "title": "Robot Check",
+    "fetched_at": 1793352873.155046,
+    "site": null,
+    "blocked": "site blocked automated access (the page asks for a human)",
+    "image_count": 0,
+    "result_count": 0,
+    "has_part": false
+  }
+]

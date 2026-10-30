@@ -1,0 +1,170 @@
+{
+  "project_id": "11d0cd40174a",
+  "material": "PLA",
+  "items": [
+    {
+      "id": "auto_arm_bracket",
+      "kind": "made",
+      "part_id": "arm_bracket",
+      "catalog_id": null,
+      "name": "Arm bracket",
+      "qty": 1,
+      "unit_cost": 0.27,
+      "currency": "USD",
+      "vendor": null,
+      "url": null,
+      "specs": [
+        {
+          "key": "mass",
+          "value": 12.4,
+          "unit": "g"
+        },
+        {
+          "key": "material",
+          "value": "PLA",
+          "unit": null
+        },
+        {
+          "key": "size",
+          "value": "40.0 x 20.0 x 12.5",
+          "unit": "mm"
+        }
+      ],
+      "notes": "",
+      "source": "auto",
+      "estimate": true,
+      "estimate_note": "estimate: 12.4 g of PLA solid (100% infill) x $22.00/kg (material only)",
+      "line_total": 0.27
+    },
+    {
+      "id": "bom_9567f0b57c40",
+      "kind": "bought",
+      "part_id": null,
+      "catalog_id": null,
+      "name": "Micro servo SG92R",
+      "qty": 6,
+      "unit_cost": 5.95,
+      "currency": "USD",
+      "vendor": "Adafruit",
+      "url": "https://www.adafruit.com/product/169",
+      "specs": [
+        {
+          "key": "mass",
+          "value": 9.0,
+          "unit": "g"
+        }
+      ],
+      "notes": "two spares",
+      "source": "user",
+      "estimate": false,
+      "estimate_note": null,
+      "line_total": 35.7
+    },
+    {
+      "id": "bom_812770e7c40e",
+      "kind": "bought",
+      "part_id": null,
+      "catalog_id": null,
+      "name": "Bearing 608ZZ",
+      "qty": 2,
+      "unit_cost": 1.2,
+      "currency": "EUR",
+      "vendor": "Misumi",
+      "url": null,
+      "specs": [],
+      "notes": "",
+      "source": "user",
+      "estimate": false,
+      "estimate_note": null,
+      "line_total": 2.4
+    },
+    {
+      "id": "bom_50db26af465d",
+      "kind": "bought",
+      "part_id": null,
+      "catalog_id": null,
+      "name": "=HYPERLINK(\"https://evil.example\")",
+      "qty": 1,
+      "unit_cost": 3.0,
+      "currency": null,
+      "vendor": "Shop",
+      "url": null,
+      "specs": [],
+      "notes": "",
+      "source": "user",
+      "estimate": false,
+      "estimate_note": null,
+      "line_total": 3.0
+    },
+    {
+      "id": "bom_93c23cd24d0a",
+      "kind": "bought",
+      "part_id": null,
+      "catalog_id": null,
+      "name": "M3 screws",
+      "qty": 20,
+      "unit_cost": null,
+      "currency": null,
+      "vendor": null,
+      "url": null,
+      "specs": [],
+      "notes": "",
+      "source": "user",
+      "estimate": false,
+      "estimate_note": null,
+      "line_total": null
+    }
+  ],
+  "totals": {
+    "by_currency": {
+      "USD": 35.97,
+      "EUR": 2.4,
+      "unknown": 3.0
+    },
+    "made": {
+      "USD": 0.27
+    },
+    "bought": {
+      "USD": 35.7,
+      "EUR": 2.4,
+      "unknown": 3.0
+    },
+    "estimated": {
+      "USD": 0.27
+    },
+    "has_estimates": true,
+    "by_vendor": [
+      {
+        "vendor": "Adafruit",
+        "kind": "bought",
+        "currency": "USD",
+        "total": 35.7,
+        "count": 1
+      },
+      {
+        "vendor": "Shop",
+        "kind": "bought",
+        "currency": "unknown",
+        "total": 3.0,
+        "count": 1
+      },
+      {
+        "vendor": "Misumi",
+        "kind": "bought",
+        "currency": "EUR",
+        "total": 2.4,
+        "count": 1
+      },
+      {
+        "vendor": null,
+        "kind": "made",
+        "currency": "USD",
+        "total": 0.27,
+        "count": 1
+      }
+    ],
+    "unpriced": 1,
+    "rows": 5,
+    "qty": 30
+  }
+}

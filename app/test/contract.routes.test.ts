@@ -2,7 +2,7 @@
 // Contract test, Task 9: the rest of the core's routes (core/scripts/dump_ui_fixtures.py
 // dump_more), and a coverage check: every route the core serves (its FastAPI decorators) has a
 // real-core fixture checked by a contract test, or a written reason it has none.
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -293,6 +293,20 @@ const COVERAGE: Record<string, string> = {
   "POST /sims/materials": "study_material_add.json", // contract.studies.test.ts (Task A8)
   "POST /sims/templates": "study_template_add.json", // contract.studies.test.ts (Task A8)
   "POST /sims/{sim_id}/cancel": "study_cancel.json", // contract.studies.test.ts (Task A8)
+  // Plan 7 U4c agent browser / part cards / parts list / sites: contract.browser.test.ts (U4a),
+  // fixtures from core/scripts/dump_browser_bom_fixtures.py
+  "GET /runs/{run_id}/browser": "browser/browser_list_full.json",
+  "GET /runs/{run_id}/part_cards": "browser/browser_cards.json",
+  "GET /browser/snapshots/{sid}": "browser/browser_snapshot.json",
+  "GET /browser/snapshots/{sid}/images/{n}": "EXEMPT: re-encoded PNG bytes from the core's image proxy (core test_browser_bom_api covers caps, types and caching); the app only checks the image content type",
+  "GET /browser/cards/{card_id}": "browser/browser_card.json",
+  "GET /browser/sites/defaults": "browser/sites_defaults.json",
+  "POST /browser/sites/restore_defaults": "browser/sites_restore.json",
+  "GET /projects/{project_id}/bom": "browser/bom.json",
+  "GET /projects/{project_id}/bom.csv": "browser/bom.csv",
+  "POST /projects/{project_id}/bom": "browser/bom_add.json",
+  "PATCH /projects/{project_id}/bom/{item_id}": "browser/bom_patch.json",
+  "DELETE /projects/{project_id}/bom/{item_id}": "EXEMPT: answers {ok: true} (the generic ok shape); contract.browser.test.ts and the fake-core tests drive it",
 };
 
 function coreRoutes(): string[] {
@@ -320,8 +334,8 @@ describe("contract coverage", () => {
   });
 
   it("every listed fixture exists in the real core's dump", () => {
-    const have = new Set(readdirSync(DIR));
-    const missing = Object.entries(COVERAGE).filter(([, v]) => !v.startsWith("EXEMPT") && !have.has(v)).map(([k, v]) => `${k}: ${v}`);
+    // a fixture may sit in a subfolder of the dump (browser/…: dump_browser_bom_fixtures.py)
+    const missing = Object.entries(COVERAGE).filter(([, v]) => !v.startsWith("EXEMPT") && !existsSync(join(DIR, v))).map(([k, v]) => `${k}: ${v}`);
     expect(missing).toEqual([]);
   });
 

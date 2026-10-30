@@ -1,0 +1,24 @@
+{
+  "id": "bom_9567f0b57c40",
+  "kind": "bought",
+  "part_id": null,
+  "catalog_id": null,
+  "name": "Micro servo SG92R",
+  "qty": 4,
+  "unit_cost": 5.95,
+  "currency": "USD",
+  "vendor": "Adafruit",
+  "url": "https://www.adafruit.com/product/169",
+  "specs": [
+    {
+      "key": "mass",
+      "value": 9.0,
+      "unit": "g"
+    }
+  ],
+  "notes": "",
+  "source": "user",
+  "estimate": false,
+  "estimate_note": null,
+  "line_total": 23.8
+}

@@ -1,11 +1,9 @@
-// Which tool calls in the thread are part cards, and what each card shows (pure, no DOM). The
-// `part_show` tool (R4) puts a part in front of the user: image, name, price, vendor, key specs,
-// and — for a catalog-backed part — an "Insert into build" action. The card is built from the
-// call's input merged under the result's data (the core resolves snapshot_id → a proxied image
-// path; partShownSchema then drops any non-proxy image so the card never pulls a page's host).
-//
-// Everything here is untrusted, page- or model-authored text, rendered as plain text by the card.
-import { partShownSchema, type PartShown } from "../../../../api/browser";
+// Which tool calls in the thread are part cards, and which card they show (pure, no DOM). The
+// `part_show` tool (R4) puts a part in front of the user. Its result carries ids only
+// ({card_id, catalog_id, snapshot_id, card, untrusted_page_data}): the card's name, price,
+// vendor, specs and image are page data the core resolved, fetched by id from
+// GET /browser/cards/{card_id} (PartCard.tsx). A running call has no card yet.
+import { partShowResultSchema } from "../../../../api/browser";
 import type { LogItem } from "../../logModel";
 
 type Call = Extract<LogItem, { kind: "call" }>;
@@ -20,7 +18,7 @@ export function isPartShowName(name: string): boolean {
 
 const rec = (v: unknown): Record<string, unknown> => (typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 
-/** The data a result step carries: output.data (a ToolOutput) or the payload itself. */
+/** The data a result step carries: output.data (a ToolOutput) or the payload's data. */
 function resultData(call: Call): Record<string, unknown> {
   const p = call.result?.payload ?? {};
   const out = rec(p.output);
@@ -31,33 +29,26 @@ function resultData(call: Call): Record<string, unknown> {
 export interface PartCardView {
   callId: string;
   runId: string | null;
-  card: PartShown;
+  /** The card to fetch; null while the call runs (or when the result has no card). */
+  cardId: string | null;
   running: boolean;
   failed: boolean;
-  summary: string | null;
-  hint: string | null;
 }
 
 export function partCardView(call: Call, runId: string | null = call.runId ?? null): PartCardView | null {
   if (!isPartShowName(call.name)) return null;
   const running = call.result === null;
   const failed = call.ok === false;
-  // input first, then the core's result data on top (proxied image, resolved vendor/url, …)
-  const merged = { ...call.input, ...(running ? {} : resultData(call)) };
-  const card = partShownSchema.parse(merged);
-  return { callId: call.callId, runId, card, running, failed, summary: call.summary, hint: call.hint };
+  let cardId: string | null = null;
+  if (!running && !failed) {
+    const d = resultData(call);
+    const r = partShowResultSchema.safeParse(d);
+    cardId = r.success ? r.data.card_id : partShowResultSchema.safeParse(rec(d.card)).data?.card_id ?? null;
+  }
+  return { callId: call.callId, runId, cardId, running, failed };
 }
 
-/** "$24.50", "€24.50", or the plain number with its currency when the symbol is unknown. */
-export function priceText(price: number | null, currency: string | null): string | null {
-  if (price === null) return null;
-  const sym: Record<string, string> = { USD: "$", EUR: "€", GBP: "£", JPY: "¥", CAD: "$", AUD: "$" };
-  const code = (currency ?? "USD").toUpperCase();
-  const n = price.toLocaleString(undefined, { minimumFractionDigits: code === "JPY" ? 0 : 2, maximumFractionDigits: code === "JPY" ? 0 : 2 });
-  return sym[code] ? `${sym[code]}${n}` : `${n} ${code}`;
-}
-
-/** "KV 1750", "mass 27.5 g" — the first few specs, as one line each. */
+/** "KV 1750", "mass 27.5 g": one spec as a line. */
 export function specText(spec: { key: string; value: string | number; unit: string | null }): string {
   return `${spec.key} ${spec.value}${spec.unit ? ` ${spec.unit}` : ""}`;
 }

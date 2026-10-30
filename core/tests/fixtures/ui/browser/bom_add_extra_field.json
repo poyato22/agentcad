@@ -1,0 +1,9 @@
+{
+  "status": 400,
+  "body": {
+    "error": "invalid_input",
+    "message": "invalid parts list row: snapshot_id: Extra inputs are not permitted",
+    "hint": null,
+    "retryable": false
+  }
+}

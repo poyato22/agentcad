@@ -5,6 +5,10 @@
 // returned), Claude Code "signs in" after N status polls once login started, and the Onshape and
 // local-model tests answer from the scenario.
 import type { ClaudeCodeStatus, KeyStatus, PartSummary, Profile, SetupPiece, SetupState } from "../../src/api/types";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import type { SuggestedSite } from "../../src/api/browser";
 import { asBody, HttpError, mises, type Body, type Route, type Scenario } from "./server";
 
 /** Same list as core VENDORS ∪ {"onshape"} (GET /keys order). */
@@ -54,13 +58,17 @@ export const DEFAULT_PROFILE: Profile = {
 export const PROFILE_SCHEMA_VERSION = 2;
 /** The Plan 5 profile fields the app's Profile schema leaves out (core profile.Profile defaults):
  *  the build tabs, hidden built-in agents and the catalog's allowed domains. */
-/** Plan 7 R3: a few curated default browse sites (marked "suggested"); the real core ships more. */
-export const DEFAULT_SUGGESTED_SITES = [
-  { name: "McMaster-Carr", domain: "mcmaster.com", search_url: "https://www.mcmaster.com/{q}", categories: ["fasteners", "hardware"], suggested: true },
-  { name: "ServoCity", domain: "servocity.com", search_url: "https://www.servocity.com/?s={q}", categories: ["motors", "actuators"], suggested: true },
-  { name: "Digi-Key", domain: "digikey.com", search_url: "https://www.digikey.com/en/products/result?keywords={q}", categories: ["electronics"], suggested: true },
-];
-const PLAN5_PROFILE_DEFAULTS = { active_project_id: null, open_project_ids: [], hidden_agents: [], catalog_allowed_domains: [], suggested_sites: DEFAULT_SUGGESTED_SITES };
+/** Plan 7 R3 (core profile.default_sites / browser/sites.DEFAULT_SITES): the real defaults,
+ *  dumped from the core (core/tests/fixtures/ui/browser/sites_defaults.json). Read here rather
+ *  than imported from ./browser so module init order never matters. */
+export const DEFAULT_SUGGESTED_SITES: SuggestedSite[] = JSON.parse(readFileSync(resolve(dirname(fileURLToPath(import.meta.url)),
+  "../../../core/tests/fixtures/ui/browser/sites_defaults.json"), "utf8")) as SuggestedSite[];
+/** Core DEFAULT_BROWSER_FETCHES. */
+export const DEFAULT_BROWSER_FETCHES = 60;
+const PLAN5_PROFILE_DEFAULTS = {
+  active_project_id: null, open_project_ids: [], hidden_agents: [], catalog_allowed_domains: [],
+  suggested_sites: DEFAULT_SUGGESTED_SITES, browser_fetches_per_run: DEFAULT_BROWSER_FETCHES,
+};
 const withVersion = (p: Profile) => ({ schema_version: PROFILE_SCHEMA_VERSION, ...PLAN5_PROFILE_DEFAULTS, ...p, printers: [] });
 
 const EMPTY_CONTEXT = { selected_part_id: null, selected_run_id: null, picks: [] };
@@ -153,6 +161,32 @@ const invalidProfile = (msg: string): HttpError =>
 
 const int = (min: number, max = Number.MAX_SAFE_INTEGER) => (v: unknown): boolean => Number.isInteger(v) && (v as number) >= min && (v as number) <= max;
 
+const SITE_KEYS = new Set(["name", "domain", "search_url", "categories", "suggested"]);
+const SITE_DOMAIN_RE = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
+const onDomain = (host: string, dom: string) => host === dom || host.endsWith(`.${dom}`);
+/** Core profile.SuggestedSite (extra="forbid") and Profile._unique_sites. */
+function validSites(v: unknown): boolean {
+  if (!Array.isArray(v) || v.length > 100) return false;
+  const doms = new Set<string>();
+  for (const x of v) {
+    if (typeof x !== "object" || x === null || Array.isArray(x)) return false;
+    const s = x as Record<string, unknown>;
+    if (Object.keys(s).some((k) => !SITE_KEYS.has(k))) return false;
+    if (typeof s.name !== "string" || s.name.length < 1 || s.name.length > 60) return false;
+    if (typeof s.domain !== "string" || !SITE_DOMAIN_RE.test(s.domain) || doms.has(s.domain)) return false;
+    doms.add(s.domain);
+    if (s.categories !== undefined && !(Array.isArray(s.categories) && s.categories.length <= 12 && s.categories.every((c) => typeof c === "string" && c.length <= 30))) return false;
+    if (s.suggested !== undefined && typeof s.suggested !== "boolean") return false;
+    if (s.search_url !== undefined && s.search_url !== null) {
+      if (typeof s.search_url !== "string" || s.search_url.split("{q}").length !== 2) return false;
+      let u: URL;
+      try { u = new URL(s.search_url.replace("{q}", "q")); } catch { return false; }
+      if (u.protocol !== "https:" || !onDomain(u.hostname, s.domain)) return false;
+    }
+  }
+  return true;
+}
+
 /** PUT /profile field checks (core profile.Profile: extra="forbid", ranges, loopback endpoints). */
 const PROFILE_FIELDS: Record<string, (v: unknown) => boolean> = {
   display_name: (v) => typeof v === "string",
@@ -167,8 +201,8 @@ const PROFILE_FIELDS: Record<string, (v: unknown) => boolean> = {
   theme: (v) => v === "system" || v === "light" || v === "dark",
   hidden_agents: (v) => Array.isArray(v) && v.every((x) => typeof x === "string"),
   // Plan 7 R3: the curated browse list; each entry needs name/domain/search_url strings
-  suggested_sites: (v) => Array.isArray(v) && v.every((x) => typeof x === "object" && x !== null && !Array.isArray(x)
-    && ["name", "domain", "search_url"].every((k) => typeof (x as Record<string, unknown>)[k] === "string")),
+  suggested_sites: validSites,
+  browser_fetches_per_run: int(1, 1000),
   local_endpoints: (v) => typeof v === "object" && v !== null && !Array.isArray(v)
     && Object.values(v).every((x) => typeof x === "string" && loopback(x)),
   setup_completed_at: (v) => v === null || typeof v === "number",

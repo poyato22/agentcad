@@ -978,7 +978,10 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     }),
     ...sketchRoutes(() => state.sketches),
     ...directoryRoutes({ get: () => state.directory, emit: (ev) => { emit(ev); } }),
-    ...browserRoutes(() => state.browserBom),
+    ...browserRoutes({
+      get: () => state.browserBom, hasRun: (id) => state.runs.has(id),
+      setSites: (sites) => { state.setup.profile = { ...state.setup.profile, suggested_sites: sites }; },
+    }),
     ...bomRoutes(() => state.browserBom),
     ...specRoutes({
       get: () => state.spec, parts: () => state.parts, setParts: (p) => { state.parts = p; }, emit: (ev) => emit(ev),

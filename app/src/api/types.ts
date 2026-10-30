@@ -232,6 +232,8 @@ export interface Profile {
   /** Curated, user-editable sites the agent browses without an approval card (Plan 7 R3).
    *  Optional: a core/fixture that predates it reads as the empty list in the UI. */
   suggested_sites?: SuggestedSite[];
+  /** Web fetches (sites searched + pages opened) one agent run may make (1-1000; core default 60). */
+  browser_fetches_per_run?: number;
   setup_completed_at: number | null;
 }
 

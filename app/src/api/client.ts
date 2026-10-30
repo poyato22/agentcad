@@ -45,8 +45,8 @@ import {
   type Build, type BuildTabsProfile, type EmptyTrashRefused, type EmptyTrashResult, type OpRequest, type PartEditResult, type PartSource,
 } from "./builds";
 import {
-  bomLineSchema, bomSchema, browserListSchema, browserSnapshotSchema, isProxyPath,
-  type Bom, type BomLine, type BomPatch, type BrowserSnapshot, type NewBomLine,
+  bomBody, bomRowSchema, bomSchema, browserListSchema, browserSnapshotSchema, isProxyPath, partCardSchema, suggestedSitesSchema,
+  type Bom, type BomPatch, type BomRow, type BrowserSnapshot, type NewBomRow, type PartCard, type SuggestedSite,
 } from "./browser";
 
 type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -55,7 +55,7 @@ type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
  *  schema_version, which the app never writes. */
 const PROFILE_PATCH_KEYS: ReadonlySet<string> = new Set<string>([
   "display_name", "default_material", "default_agent", "default_model", "onshape_calls_year_cap", "onshape_calls_run_cap",
-  "max_parallel_agents", "local_endpoints", "theme", "hidden_agents", "suggested_sites",
+  "max_parallel_agents", "local_endpoints", "theme", "hidden_agents", "suggested_sites", "browser_fetches_per_run",
 ] satisfies (keyof ProfilePatch)[]);
 
 /** For routes whose answer the UI doesn't use (it refetches status instead): any 2xx JSON body. */
@@ -570,41 +570,54 @@ export class CoreClient {
     return this.json("POST", `/parts/${enc(id)}/ops`, partEditResultSchema, { body: { ...op, base_version: baseVersion } });
   }
 
-  // ---- Plan 7 (R3/R4/R5): agent browser snapshots and the build parts list (BOM); core U4c
+  // ---- Plan 7 (R3/R4/R5): agent browser, part cards, the build parts list (BOM); core U4c
+  //      (server/browser_api.py). Everything these return is untrusted page/agent data.
 
-  /** The pages this run visited (web_open), in order. Snapshots are untrusted data. */
+  /** The pages this run read (web_open and web_search pages), oldest first, as whole snapshots
+   *  (`?full=1`: text, tables, results, proxied images). */
   runBrowser(runId: string): Promise<BrowserSnapshot[]> {
-    return this.json("GET", `/runs/${enc(runId)}/browser`, browserListSchema);
+    return this.json("GET", `/runs/${enc(runId)}/browser`, browserListSchema, { query: { full: 1 } });
   }
-  /** One stored snapshot. Untrusted data. */
+  /** One stored snapshot. */
   browserSnapshot(sid: string): Promise<BrowserSnapshot> {
     return this.json("GET", `/browser/snapshots/${enc(sid)}`, browserSnapshotSchema);
   }
+  /** A part card an agent showed (`part_show`'s result carries only its id). */
+  partCard(cardId: string): Promise<PartCard> {
+    return this.json("GET", `/browser/cards/${enc(cardId)}`, partCardSchema);
+  }
   /** A snapshot or part-card image through the core's proxy. Only a core-relative path from a
-   *  parsed snapshot/card is fetched — never a page's own image host (R3 safety). */
+   *  parsed snapshot/card is fetched, never a page's own image host (R3 safety). */
   async snapshotImage(proxyUrl: string): Promise<Blob> {
     if (!isProxyPath(proxyUrl)) throw new CoreError("invalid_input", "not a core proxy path");
     const res = await this.request("GET", proxyUrl, {});
     if (!res.ok) throw await toError(res);
     const type = (res.headers.get("content-type") ?? "").split(";")[0].trim();
-    if (!/^image\/(png|jpeg|gif|webp|svg\+xml)$/.test(type)) throw new CoreError("validation", "proxied file is not an image");
+    if (!/^image\/(png|jpeg|gif|webp)$/.test(type)) throw new CoreError("validation", "proxied file is not an image");
     return new Blob([await res.arrayBuffer()], { type });
   }
+  /** Mises's own suggested sites (what "Restore defaults" restores). */
+  defaultSites(): Promise<SuggestedSite[]> { return this.json("GET", "/browser/sites/defaults", suggestedSitesSchema); }
+  /** The profile's suggested sites become Mises's current defaults again; returns the new list. */
+  restoreDefaultSites(): Promise<SuggestedSite[]> {
+    return this.json("POST", "/browser/sites/restore_defaults", suggestedSitesSchema);
+  }
 
-  /** The build's parts list: made and bought lines plus totals (by vendor, made/bought, grand). */
+  /** The build's parts list: made rows first, then bought, plus per-currency totals. */
   bom(projectId: string): Promise<Bom> { return this.json("GET", bomPath(projectId), bomSchema); }
-  /** Add a line (a hand-entered bought part, or a catalog/shown part). */
-  bomAdd(projectId: string, body: NewBomLine): Promise<BomLine> {
-    return this.json("POST", bomPath(projectId), bomLineSchema, { body });
+  /** Add a row (source "user"). Only the fields the core accepts are sent. */
+  bomAdd(projectId: string, row: NewBomRow): Promise<BomRow> {
+    return this.json("POST", bomPath(projectId), bomRowSchema, { body: bomBody(row, "new") });
   }
-  /** Edit a line's qty, cost, notes, name, vendor or currency. */
-  bomPatch(projectId: string, lineId: string, patch: BomPatch): Promise<BomLine> {
-    return this.json("PATCH", `${bomPath(projectId)}/${enc(lineId)}`, bomLineSchema, { body: patch });
+  /** Edit a row (an automatic row is stored with the edit). Only the fields the core accepts. */
+  bomPatch(projectId: string, itemId: string, patch: BomPatch): Promise<BomRow> {
+    return this.json("PATCH", `${bomPath(projectId)}/${enc(itemId)}`, bomRowSchema, { body: bomBody(patch, "patch") });
   }
-  async bomDelete(projectId: string, lineId: string): Promise<void> {
-    await this.json("DELETE", `${bomPath(projectId)}/${enc(lineId)}`, okSchema);
+  /** Remove a row (a part still in the build is hidden, not deleted). */
+  async bomDelete(projectId: string, itemId: string): Promise<void> {
+    await this.json("DELETE", `${bomPath(projectId)}/${enc(itemId)}`, okSchema);
   }
-  /** The parts list as CSV (a typed Blob; saved/exported by the app). */
+  /** The parts list as CSV (formulas neutralized by the core); saved by the app. */
   bomCsv(projectId: string): Promise<Blob> { return this.blob(`/projects/${enc(projectId)}/bom.csv`, "text/csv"); }
 
   // ---- internals

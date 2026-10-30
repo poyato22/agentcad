@@ -11,6 +11,12 @@
 .brz-open { margin-left: auto; text-decoration: none; }
 .brz-url { font-size: var(--fs-small); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 
+.brz-kind { font-size: var(--fs-small); }
+.brz-blocked { margin: 0; color: var(--amber); border-left: 2px solid var(--amber); padding-left: 8px; }
+.brz-results { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+.brz-result-title { color: var(--ink); overflow-wrap: anywhere; }
+.brz-snippet { font-size: var(--fs-small); overflow-wrap: anywhere; }
+
 .brz-imgs { display: flex; gap: 8px; flex-wrap: wrap; }
 .brz-img { width: 96px; height: 96px; border: 1px solid var(--line); background: var(--vp); object-fit: contain; display: block; }
 

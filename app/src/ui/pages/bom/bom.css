@@ -25,7 +25,12 @@
 
 .bom-num { width: 72px; text-align: right; font: inherit; font-variant-numeric: tabular-nums; background: var(--vp); color: var(--ink); border: 1px solid var(--line); padding: 2px 4px; }
 .bom-notes-in { width: 100%; min-width: 120px; font: inherit; background: var(--vp); color: var(--ink); border: 1px solid var(--line); padding: 2px 4px; }
-.bom-num:focus-visible, .bom-notes-in:focus-visible, .bom-add input:focus-visible { outline: 1px solid var(--blue); border-color: var(--blue); }
+.bom-cur { width: 52px; font: inherit; text-transform: uppercase; background: var(--vp); color: var(--ink); border: 1px solid var(--line); padding: 2px 4px; }
+.bom-cur::placeholder { text-transform: none; }
+.bom-host { font-size: var(--fs-small); }
+.bom-note { font-size: var(--fs-small); max-width: 22ch; text-align: right; margin-top: 2px; }
+.bom-add-err { flex-basis: 100%; margin: 0; }
+.bom-num:focus-visible, .bom-cur:focus-visible, .bom-notes-in:focus-visible, .bom-add input:focus-visible { outline: 1px solid var(--blue); border-color: var(--blue); }
 
 .bom-est { display: inline-block; margin-left: 6px; font-size: var(--fs-label); letter-spacing: .06em; color: var(--amber); border: 1px solid var(--amber); padding: 0 4px; vertical-align: middle; }
 
@@ -39,8 +44,13 @@
 .bom-add input[type="text"] { font: inherit; background: var(--vp); color: var(--ink); border: 1px solid var(--line); padding: 3px 6px; }
 
 .bom-totals { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--line2); padding-top: 12px; max-width: 420px; }
-.bom-grand { display: flex; align-items: baseline; justify-content: space-between; }
-.bom-grand-amt { font: 700 16px/1 var(--font-head); color: var(--ink); font-variant-numeric: tabular-nums; }
+.bom-grand { border-collapse: collapse; width: 100%; }
+.bom-grand caption { text-align: left; color: var(--dim); margin-bottom: 4px; }
+.bom-grand th { text-align: left; font-weight: 400; padding: 3px 12px 3px 0; white-space: nowrap; }
+.bom-grand td { padding: 3px 0 3px 12px; }
+.bom-grand-amt { font: 700 16px/1.2 var(--font-head); color: var(--ink); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.bom-grand-est { font-size: var(--fs-small); white-space: nowrap; }
+.bom-cur-note, .bom-unpriced { margin: 0; max-width: 56ch; }
 .bom-split { display: flex; gap: 24px; margin: 0; }
 .bom-split div { display: flex; gap: 8px; align-items: baseline; }
 .bom-split dt { margin: 0; } .bom-split dd { margin: 0; font-variant-numeric: tabular-nums; }
