@@ -637,7 +637,8 @@ def summary(rec: dict) -> str:
         s = static_summary(rec)
         if typ == "drop":
             imp = rec["results"].get("impact") or {}
-            s = (f"ESTIMATE (drop {imp.get('drop_m')} m, F = m g k, k = {imp.get('k')}: "
+            k = imp.get("k_effective", imp.get("k"))
+            s = (f"ESTIMATE (drop {imp.get('drop_m')} m, F = m g k, k = {_num(k, '.3g')}: "
                  f"{_num(imp.get('newtons'), '.3g')} N) - " + s)
         return s
     r, sv = rec["results"], rec["solver"]

@@ -284,8 +284,9 @@ class ThermalSettings(_Common):
 class DropSettings(_Common):
     impact_face: Face = Field(description="the face that hits the ground")
     drop_m: float = Field(1.0, gt=0, le=50, description="drop height", **_u("m"))
-    k: float = Field(10.0, ge=1, le=500, description="dynamic factor: equivalent static "
-                     "load = m g k (estimate; ~5-20 for rigid floors and stiff plastic)")
+    k: float = Field(10.0, ge=1, le=500, description="dynamic factor for a 1 m drop: "
+                     "equivalent static load = m g k √(h / 1 m) (estimate; ~5-20 for rigid "
+                     "floors and stiff plastic)")
     mass_g: float | None = Field(None, gt=0, le=1e6, description="null = from the volume and "
                                  "density", **_u("g"))
     convergence: ConvergenceSettings = Field(default_factory=ConvergenceSettings)
