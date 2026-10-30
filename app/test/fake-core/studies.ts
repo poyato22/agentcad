@@ -269,6 +269,24 @@ export function startStudy(d: StudyDeps, b: Record<string, unknown>): { run_id: 
       return;
     }
     Object.assign(rec, { ...structuredClone(real), sim_id: simId, part_id: partId, run_id: run.id, call_id: callId, settings, reason: rec.reason, created_at: rec.created_at, finished_at: now(), stale: false });
+    // several load cases: the QA-fix core's per_case + governing_case_id (B1-3; assumed shape),
+    // each case's figures scaled from the real result by its load, the largest governing
+    const cases = type === "static" && Array.isArray(settings.load_cases) ? settings.load_cases as { name?: string; loads?: { newtons?: number }[] }[] : [];
+    if (cases.length > 1) {
+      const res = (rec.results ?? {}) as Record<string, unknown>;
+      const vm = typeof res.max_von_mises_mpa === "number" ? res.max_von_mises_mpa : 10;
+      const disp = typeof res.max_displacement_mm === "number" ? res.max_displacement_mm : 1;
+      const allow = typeof res.allowable_mpa === "number" ? res.allowable_mpa : 35;
+      const force = (c: (typeof cases)[number]) => (c.loads ?? []).reduce((s, l) => s + Math.abs(l.newtons ?? 0), 0) || 1;
+      const top = Math.max(...cases.map(force));
+      const perCase = cases.map((c, i) => {
+        const k = force(c) / top;
+        return { case_id: `lc${i + 1}`, name: c.name ?? `case ${i + 1}`, max_vm: vm * k, sf: allow / (vm * k), max_disp_mm: disp * k, error_band_pct: 4.2 };
+      });
+      const gov = perCase.reduce((a, x) => (x.max_vm > a.max_vm ? x : a));
+      Object.assign(rec, { per_case: perCase, governing_case_id: gov.case_id });
+      rec.results = { ...res, governing_case: gov.name, cases: perCase.map((x) => ({ name: x.name, max_von_mises_mpa: x.max_vm, safety_factor: x.sf, max_displacement_mm: x.max_disp_mm, error_band: 0.042 })) };
+    }
     rec.card = { ...structuredClone(real.card!), sim_id: simId, run_id: run.id, reason: rec.reason, urls: { record: `/sims/${simId}`, glb: `/sims/${simId}/result.glb`, charts: `/sims/${simId}/charts`, probe: `/sims/${simId}/probe`, section: `/sims/${simId}/section` }, charts_url: `/sims/${simId}/charts` };
     const data = { sim_id: simId, part_id: partId, type, status: "done", card: rec.card, checks: rec.card.checks, results: rec.results };
     const summary = `GUIDE ONLY - ${type} study of ${partId} (fake core, real ${type} numbers)`;

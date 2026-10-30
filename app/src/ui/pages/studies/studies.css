@@ -76,6 +76,14 @@
 .st-nums div { display: flex; flex-direction: column; gap: 3px; }
 .st-nums dd { margin: 0; }
 .st-solver { margin: 0; color: var(--dim); }
+/* several load cases: the governing one and each case's figures (B1-3) */
+.st-cases { display: flex; flex-direction: column; gap: 4px; }
+.st-cases-table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.st-cases-table th { text-align: left; font-weight: normal; color: var(--dim); padding: 2px 10px 2px 0; }
+.st-cases-table td { padding: 2px 10px 2px 0; border-top: 1px solid var(--line); }
+.st-cases-table tr[data-selected] td { background: var(--paper2); }
+.st-case-pick { border: 0; background: transparent; color: var(--ink); font: inherit; padding: 0; cursor: pointer; text-align: left; }
+.st-case-pick[aria-pressed="true"] { text-decoration: underline; }
 .st-warnings { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .st-warnings li { display: flex; gap: 8px; align-items: baseline; }
 .st-actions { display: flex; align-items: center; gap: 10px; }

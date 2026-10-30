@@ -214,11 +214,16 @@ describe("study scatter", () => {
     immersive.value = null;
     const { container } = render(<Scatter iterations={STUDY.iterations} requirements={SPEC.requirements} bestId={STUDY.best_id} selected={null}
       onSelect={() => {}} onOpen={(n) => openVariant(STUDY, STUDY.iterations.find((i) => i.n === n)!)} width={480} />);
+    // #0 is neither best nor Pareto: the core deleted its sims (kept_variants), so nothing opens (B2-2)
+    expect(STUDY.kept_variants).not.toContain(STUDY.iterations[0].metrics.variant);
     fireEvent.dblClick(container.querySelector('[data-point="0"]') as SVGGElement);
-    const want = Object.values(STUDY.iterations[0].metrics.sim_ids_by_case);
+    expect(cur()).toBe(null);
+    const kept = STUDY.iterations.find((i) => i.n === 3)!;
+    fireEvent.dblClick(container.querySelector('[data-point="3"]') as SVGGElement);
+    const want = Object.values(kept.metrics.sim_ids_by_case);
     expect(cur()?.simId).toBe(want[0]);
     expect(cur()?.ids).toEqual(want);
-    expect(cur()?.origin?.reason).toContain("variant #0");
+    expect(cur()?.origin?.reason).toContain("variant #3");
     immersive.value = null;
     const tab = container.querySelector('[data-point][tabindex="0"]') as SVGGElement;
     fireEvent.keyDown(tab, { key: "Enter", shiftKey: true });

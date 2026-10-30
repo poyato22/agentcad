@@ -59,6 +59,9 @@ export interface Study {
   variables: { name: string; lo: number; hi: number }[]; objective: string; status: StudyStatus;
   iterations: StudyIteration[]; best_id: number | null; solver: string | null; geometry_only: boolean;
   confirmation: { confirmed: boolean; n: number; metrics: Partial<StudyMetrics> } | null;
+  /** The variants whose results the core kept (best and Pareto), by `metrics.variant`; null from a
+   *  core that does not say. The others' sims are deleted once the study is final. */
+  kept_variants: string[] | null;
 }
 
 export interface StudyApplyBody { iteration: number; base_version?: number; allow_infeasible?: boolean }
@@ -118,6 +121,7 @@ export const studySchema = z.object({
   iterations: z.array(iterationSchema).default([]), best_id: z.number().int().nullable().default(null),
   solver: z.string().nullable().default(null), geometry_only: z.boolean().default(false),
   confirmation: z.object({ confirmed: z.boolean(), n: z.number(), metrics: metricsSchema.partial() }).nullable().catch(null).default(null),
+  kept_variants: z.array(z.string()).nullable().catch(null).default(null),
 });
 export const studyAppliedSchema = z.object({
   study_id: z.string(), part_id: z.string(), iteration: z.number(), summary: z.string(), warnings: z.array(z.string()).default([]),
@@ -130,5 +134,10 @@ export const projectsLiteSchema = z.array(z.object({ id: z.string(), trashed_at:
 export const profileActiveSchema = z.object({ active_project_id: z.string().nullable().default(null) });
 
 /** `study_progress {study_id, n, total}` and `spec_changed {project_id}` event data. */
-export const studyProgressSchema = z.object({ study_id: z.string(), n: z.number(), total: z.number() });
+/** `phase` (or `status`): the QA-fix core's terminal study_progress — "done" / "failed" /
+ *  "cancelled" once the record is final (fine-mesh confirmation included). Older cores send none. */
+export const studyProgressSchema = z.object({
+  study_id: z.string(), n: z.number(), total: z.number(),
+  phase: z.string().nullish(), status: z.string().nullish(),
+});
 export const specChangedSchema = z.object({ project_id: z.string() });

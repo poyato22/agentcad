@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { studyChartsSchema, studyRecordSchema, studySectionSchema, studySummarySchema, type StudySummary } from "../../../api/studies";
 import { cardChart, niceTicks, prepare, tickText } from "./charts/chartModel";
 import {
-  askPrompt, colormap, fidelityText, fmtMetric, progressFraction, settingsMarkers, STARTERS, studyLabel, summaryHeadline, summaryTone,
+  askPrompt, colormap, fidelityText, fmtMetric, loadCases, progressFraction, settingsMarkers, STARTERS, studyLabel, summaryHeadline, summaryTone,
 } from "./model";
 import { advect, channelValues, colorize, dirVec, faceAnchor, flowField, matchFace, readChannels, sampleFlow, seedParticles, streamlines } from "./scene/fields";
 
@@ -74,6 +74,29 @@ describe("model", () => {
   it("colormap matches the core's stops", () => {
     expect(colormap(0)).toEqual([0.05, 0.25, 0.95]);
     expect(colormap(2)).toEqual([0.9, 0.12, 0.1]);
+  });
+});
+
+describe("loadCases (B1-3)", () => {
+  it("reads per_case + governing_case_id (the QA-fix core)", () => {
+    const rows = loadCases({ results: {}, governing_case_id: "lc2", per_case: [
+      { case_id: "lc1", name: "tip down", max_vm: 23.1, sf: 1.55, max_disp_mm: 4.8 },
+      { case_id: "lc2", name: "tip side", max_vm: 30, sf: 1.2, max_disp_mm: 2 },
+    ] });
+    expect(rows?.map((r) => [r.id, r.governing, r.sf])).toEqual([["lc1", false, 1.55], ["lc2", true, 1.2]]);
+  });
+  it("falls back to results.cases + governing_case by name, and skips a single case", () => {
+    const rows = loadCases({ results: { governing_case: "tip down", cases: [
+      { name: "tip down", max_von_mises_mpa: 23.1, safety_factor: 1.55, max_displacement_mm: 4.8, error_band: 0.05 },
+      { name: "tip side", max_von_mises_mpa: 9, safety_factor: 4, max_displacement_mm: 1, error_band: null },
+    ] } });
+    expect(rows?.[0]).toMatchObject({ id: "tip down", governing: true, maxVm: 23.1, bandPct: 5 });
+    expect(rows?.[1].governing).toBe(false);
+    expect(loadCases({ results: { cases: [{ name: "one", max_von_mises_mpa: 1 }] } })).toBeNull();
+  });
+  it("with no governing case named, the highest peak governs", () => {
+    const rows = loadCases({ results: {}, per_case: [{ case_id: "a", max_vm: 1 }, { case_id: "b", max_vm: 5 }] });
+    expect(rows?.find((r) => r.governing)?.id).toBe("b");
   });
 });
 

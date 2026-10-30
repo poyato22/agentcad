@@ -357,3 +357,43 @@ export function askPrompt(rec: StudyRecord, nonce: string = newNonce()): string 
       `Re-run the study with sim_run (type ${type}, the same settings) to check, cite the new study id, and say the result is a guide only.`,
   ].join("\n");
 }
+
+/** One load case of a static result (B1-3). */
+export interface CaseRow { id: string; name: string; maxVm: number | null; sf: number | null; dispMm: number | null; bandPct: number | null; governing: boolean }
+
+const numOr = (...vs: unknown[]): number | null => {
+  for (const v of vs) if (typeof v === "number" && Number.isFinite(v)) return v;
+  return null;
+};
+
+/**
+ * A static result's load cases with the governing one marked, or null for a single case. Reads
+ * the QA-fix core's `per_case: [{case_id, name, max_vm, sf, …}]` + `governing_case_id` (on the
+ * record or in its results), else the current core's `results.cases[]` (by name) +
+ * `results.governing_case` (a name). Every value is data.
+ */
+export function loadCases(rec: Pick<StudyRecord, "results"> & Record<string, unknown>): CaseRow[] | null {
+  const r = (rec.results ?? {}) as Record<string, unknown>;
+  const raw = Array.isArray(rec.per_case) ? rec.per_case : Array.isArray(r.per_case) ? r.per_case : Array.isArray(r.cases) ? r.cases : null;
+  if (!raw || raw.length < 2) return null;
+  const govId = typeof rec.governing_case_id === "string" ? rec.governing_case_id : typeof r.governing_case_id === "string" ? r.governing_case_id : null;
+  const govName = typeof r.governing_case === "string" ? r.governing_case : null;
+  const rows: CaseRow[] = [];
+  raw.forEach((item: unknown, i: number) => {
+    if (typeof item !== "object" || item === null) return;
+    const c = item as Record<string, unknown>;
+    const name = typeof c.name === "string" && c.name ? c.name : typeof c.case_id === "string" ? c.case_id : `case ${i + 1}`;
+    const id = typeof c.case_id === "string" && c.case_id ? c.case_id : name;
+    const band = numOr(c.error_band_pct, typeof c.error_band === "number" ? c.error_band * 100 : null);
+    rows.push({
+      id, name, maxVm: numOr(c.max_vm, c.max_von_mises_mpa), sf: numOr(c.sf, c.safety_factor), dispMm: numOr(c.max_disp_mm, c.max_displacement_mm),
+      bandPct: band, governing: govId !== null ? id === govId : govName !== null && name === govName,
+    });
+  });
+  // no governing case named: the one with the highest peak stress (the core's own rule)
+  if (rows.length && !rows.some((x) => x.governing)) {
+    const top = rows.reduce((a, b) => ((b.maxVm ?? -Infinity) > (a.maxVm ?? -Infinity) ? b : a));
+    if (top.maxVm !== null) top.governing = true;
+  }
+  return rows.length >= 2 ? rows : null;
+}

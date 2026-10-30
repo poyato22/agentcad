@@ -64,6 +64,9 @@ export function StudiesPage({ controller = studies, deps = {} }: { controller?: 
   useEffect(() => { void c.loadTypes(); void c.loadSolvers(); void c.loadLibrary(); }, [c]);
   useEffect(() => { c.resume(); return () => c.pause(); }, [c]);
   useEffect(() => { if (partId) void c.loadHistory(partId); }, [c, partId, part?.mtime]);
+  // the user's own study finished: show its result, not the setup wireframe (B1-2)
+  const fin = c.finished.value;
+  useEffect(() => { if (fin) { setPicking(null); viewSig.value = "result"; } }, [fin]);
   // "Open in Studies" from a card or the immersive view
   const req = showStudyRequest.value;
   useEffect(() => {

@@ -28,23 +28,27 @@ export function BudgetMeter(): JSX.Element | null {
 
   const b = onshapeBudget.value;
   const tick = onshapeBudgetTick.value;
-  if (!b || coreStatus.value?.onshape === "not_configured") return null;
+  if (!b) return null;
+  // not connected yet: the meter still shows (idle, dimmed) — the Onshape page's connect card
+  // points at it (A-7) — with what the year allows, and no per-run count
+  const idle = coreStatus.value?.onshape === "not_configured";
   const level = budgetLevel(b);
   const run = selectedRunId.value;
   // no run selected: the app's own browsing ("" entry), never whichever run sent the last event
-  const delta = onshapeRunUsed.value.get(run ?? "") ?? (run ? null : 0);
+  const delta = idle ? null : onshapeRunUsed.value.get(run ?? "") ?? (run ? null : 0);
   const whose = run ? "this run" : "this session";
   const pct = b.limit_year > 0 ? Math.min(100, (b.used_year / b.limit_year) * 100) : 100;
   const warnPct = b.limit_year > 0 ? Math.min(100, (b.warn_at / b.limit_year) * 100) : 100;
   const reset = fmtResetDate(b.reset_at);
   const left = Math.max(0, b.limit_year - b.used_year);
-  const note = level === "limit" ? "Limit reached. Onshape requests are refused until the reset."
-    : level === "warn" ? `Past the warning line of ${num(b.warn_at)} calls.` : null;
-  const label = `Onshape budget: ${num(b.used_year)} of ${num(b.limit_year)} calls used this year`
+  const note = idle ? "Onshape is not connected yet. Add your keys in Profile → Onshape."
+    : level === "limit" ? "Limit reached. Onshape requests are refused until the reset."
+      : level === "warn" ? `Past the warning line of ${num(b.warn_at)} calls.` : null;
+  const label = `Onshape budget${idle ? " (not connected)" : ""}: ${num(b.used_year)} of ${num(b.limit_year)} calls used this year`
     + (delta !== null ? `, ${num(delta)} ${whose}` : "") + `. Resets ${reset}.${note ? ` ${note}` : ""} Opens the Onshape page.`;
 
   return (
-    <div class="budget" data-level={level} onMouseEnter={show} onMouseLeave={hide}>
+    <div class="budget" data-level={level} data-state={idle ? "idle" : undefined} onMouseEnter={show} onMouseLeave={hide}>
       <button ref={btn} type="button" class="budget-btn" aria-label={label} title="Onshape API calls this year"
         onFocus={show} onBlur={hide} onKeyDown={(e) => { if (e.key === "Escape") hide(); }}
         onClick={() => setPage("onshape")}>

@@ -4,12 +4,13 @@
 // the excitation band, the stress histogram …), the solver / mesh / material label, warnings,
 // caveats, and "Immersive" / "Ask agent to fix". Failed studies show a red band. Text only.
 import type { JSX } from "preact";
+import { useMemo, useState } from "preact/hooks";
 import type { StudyCharts, StudyRecord } from "../../../api/studies";
 import { Button } from "../../common/Button";
 import { Led } from "../../common/Led";
 import { CheckRows } from "../../console/studycard/StudyCard";
 import { StudyChart } from "./charts/StudyChart";
-import { fidelityText, fmtMetric, sig3, typeName, VERDICT_TEXT, verdictTone } from "./model";
+import { fidelityText, fmtMetric, loadCases, sig3, typeName, VERDICT_TEXT, verdictTone } from "./model";
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
@@ -29,6 +30,45 @@ export function solverText(rec: StudyRecord): string {
   if (m) bits.push(`${m.name}${typeof m.model === "string" ? ` ${m.model}` : ""}`);
   bits.push(`fidelity ${rec.fidelity_class ?? "?"}`);
   return bits.join(" · ");
+}
+
+/** Several load cases (B1-3): which one governs the metrics above, and each case's own peak
+ *  stress, safety factor and displacement. Picking a case shows its figures; the contour in the
+ *  viewer is the governing case's (the core stores the field for that case only). */
+export function LoadCases({ rec }: { rec: StudyRecord }): JSX.Element | null {
+  const rows = useMemo(() => loadCases(rec as StudyRecord & Record<string, unknown>), [rec]);
+  const [picked, setPicked] = useState<string | null>(null);
+  if (!rows) return null;
+  const gov = rows.find((x) => x.governing) ?? null;
+  const sel = rows.find((x) => x.id === picked) ?? gov ?? rows[0];
+  return (
+    <div class="st-cases" data-testid="load-cases" data-governing={gov?.id}>
+      <p class="text" data-testid="governing-case">
+        {gov ? <>Governing case: <b>{gov.name}</b> <span class="faint">· the figures above and the contour are this case</span></> : "No governing case reported."}
+      </p>
+      <table class="st-cases-table" aria-label="Load cases">
+        <thead><tr><th>case</th><th>peak von Mises</th><th>SF</th><th>max disp</th><th>mesh band</th></tr></thead>
+        <tbody>
+          {rows.map((c) => (
+            <tr key={c.id} data-case={c.id} data-selected={c.id === sel.id ? "" : undefined} data-governing={c.governing ? "" : undefined}>
+              <td>
+                <button type="button" class="st-case-pick" aria-pressed={c.id === sel.id} onClick={() => setPicked(c.id)}>
+                  {c.name}{c.governing && <span class="faint"> · governs</span>}
+                </button>
+              </td>
+              <td class="st-num">{c.maxVm !== null ? `${sig3(c.maxVm)} MPa` : "n/a"}</td>
+              <td class="st-num">{c.sf !== null ? sig3(c.sf) : "n/a"}</td>
+              <td class="st-num">{c.dispMm !== null ? `${sig3(c.dispMm)} mm` : "n/a"}</td>
+              <td class="st-num">{c.bandPct !== null ? `±${sig3(c.bandPct)}%` : "n/a"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {!sel.governing && (
+        <p class="faint text" data-testid="case-note">{`${sel.name}: SF ${sel.sf !== null ? sig3(sel.sf) : "n/a"}, peak ${sel.maxVm !== null ? `${sig3(sel.maxVm)} MPa` : "n/a"}. The viewer shows the governing case's contour.`}</p>
+      )}
+    </div>
+  );
 }
 
 export function ResultPanel({ rec, charts, onAsk, onOpenRun, asked, onImmersive }: {
@@ -84,6 +124,7 @@ export function ResultPanel({ rec, charts, onAsk, onOpenRun, asked, onImmersive 
           {type === "wind" && typeof r.reynolds === "number" && <div><dt class="label">Reynolds</dt><dd class="st-num">{sig3(r.reynolds)}</dd></div>}
         </dl>
       )}
+      {done && type === "static" && <LoadCases rec={rec} />}
       <CheckRows checks={card?.checks ?? []} />
       {done && charts && charts.charts.length > 0 && (
         <div class="st-charts" data-testid="charts">

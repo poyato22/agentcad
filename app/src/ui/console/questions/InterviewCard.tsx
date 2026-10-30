@@ -6,11 +6,11 @@
 // "Answer 1, 3 to send." list, Move up/down and Alt+↑/↓ ranking, multi chips plus text, and
 // single-choice chip/text exclusivity. Option and prompt text render as text only.
 import type { JSX } from "preact";
-import { useRef, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import type { AskItem, Question } from "../../../api/types";
 import { actions } from "../../../state/store";
 import { Button } from "../../common/Button";
-import { clickArmed, isTrustedActivation } from "../approvals/approvalKeys";
+import { ARM_MS, clickArmed, isTrustedActivation } from "../approvals/approvalKeys";
 import { answerOf, buildAnswers, emptyDraft, introOf, move, pick, setText, unanswered, type InterviewDraft } from "./interview";
 import "./interview.css";
 
@@ -27,6 +27,13 @@ export function InterviewCard(props: {
   const shownKey = `${question.question_id}\n${JSON.stringify(items)}`;
   const arm = useRef({ key: shownKey, at: performance.now() });
   if (arm.current.key !== shownKey) arm.current = { key: shownKey, at: performance.now() };
+  // `data-armed` on the card once Send can count (observable state for tests and styling; the
+  // rule itself is clickArmed at click time)
+  const [armedKey, setArmedKey] = useState<string | null>(null);
+  useEffect(() => {
+    const t = setTimeout(() => setArmedKey(shownKey), Math.max(0, ARM_MS + 1 - (performance.now() - arm.current.at)));
+    return () => clearTimeout(t);
+  }, [shownKey]);
 
   const open = unanswered(items, draft);
   const done = items.length - open.length;
@@ -49,7 +56,7 @@ export function InterviewCard(props: {
   };
 
   return (
-    <div data-card data-interview={question.question_id} class="icard" role="group" aria-label={`Questions from ${runLabel}`}>
+    <div data-card data-interview={question.question_id} data-armed={armedKey === shownKey ? "" : undefined} class="icard" role="group" aria-label={`Questions from ${runLabel}`}>
       <div class="icard-head">
         <span class="icard-flag">? INTERVIEW</span>
         <span class="faint text icard-run">{runLabel}</span>
@@ -107,15 +114,27 @@ export function InterviewCard(props: {
  *  (focus stays on the moved row). */
 function RankList(props: { item: AskItem; order: string[]; disabled: boolean; onMove: (option: string, delta: -1 | 1) => void }): JSX.Element {
   const { order } = props;
+  const list = useRef<HTMLOListElement>(null);
+  /** The row a keyboard move just moved: re-focused as soon as the new order is in the DOM (a
+   *  keyed move can drop focus). Done in the commit, not a later frame, so it can never steal
+   *  focus from a row the user has moved to since. */
+  const refocus = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    const o = refocus.current;
+    refocus.current = null;
+    if (o) list.current?.querySelector<HTMLElement>(`[data-rank="${CSS.escape(o)}"]`)?.focus();
+  }, [order.join("\n")]);
   const onKey = (o: string) => (e: KeyboardEvent) => {
     if (!e.altKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown") || props.disabled) return;
     e.preventDefault();
+    const i = order.indexOf(o);
+    const j = i + (e.key === "ArrowUp" ? -1 : 1);
+    if (j < 0 || j >= order.length) return;
+    refocus.current = o;
     props.onMove(o, e.key === "ArrowUp" ? -1 : 1);
-    const list = (e.currentTarget as HTMLElement).parentElement;
-    requestAnimationFrame(() => list?.querySelector<HTMLElement>(`[data-rank="${CSS.escape(o)}"]`)?.focus());
   };
   return (
-    <ol class="icard-rankl" aria-label={`${props.item.prompt} (Alt+↑/↓ to reorder)`}>
+    <ol class="icard-rankl" ref={list} aria-label={`${props.item.prompt} (Alt+↑/↓ to reorder)`}>
       {order.map((o, i) => (
         <li key={o} class="icard-rank-row" tabIndex={0} data-rank={o} onKeyDown={onKey(o)}>
           <span class="icard-rank-n">{i + 1}</span>

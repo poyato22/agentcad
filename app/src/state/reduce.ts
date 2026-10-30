@@ -237,10 +237,17 @@ export function forgetRuns(s: AppState, ids: Iterable<string>): AppState {
   return { ...next, runs, steps, approvals: approvals.size === next.approvals.size ? next.approvals : approvals };
 }
 
-/** The core's open questions per run (GET /runs/{id} on connect, C-2) replace that run's own. */
-export function applyPendingQuestions(s: AppState, byRun: ReadonlyMap<string, readonly Question[]>): AppState {
-  const questions = new Map([...s.questions].filter(([, q]) => !byRun.has(q.run_id)));
-  for (const list of byRun.values()) for (const q of list) questions.set(q.question_id, q);
+/**
+ * The core's open questions per run (GET /runs/{id} on connect, C-2): its questions are added,
+ * and a question we had before the fetch began that it no longer lists is dropped (answered
+ * elsewhere). One that arrived (question_asked) while the fetch was in flight is kept: the
+ * answer may predate it.
+ */
+export function applyPendingQuestions(s: AppState, byRun: ReadonlyMap<string, readonly Question[]>, knownBefore: ReadonlySet<string>): AppState {
+  const listed = new Set([...byRun.values()].flatMap((l) => l.map((q) => q.question_id)));
+  const questions = new Map([...s.questions].filter(([id, q]) => !(byRun.has(q.run_id) && knownBefore.has(id) && !listed.has(id))));
+  // a question we had before the fetch and no longer have was answered meanwhile: not re-added
+  for (const list of byRun.values()) for (const q of list) if (!questions.has(q.question_id) && !knownBefore.has(q.question_id)) questions.set(q.question_id, q);
   return { ...s, questions };
 }
 

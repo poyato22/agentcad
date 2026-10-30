@@ -135,6 +135,7 @@ export function startSync(client: CoreClient, stream: Source, opts: SyncOptions 
         // one GET per working run (a handful); a run that fails to answer keeps what it had
         const snaps = new Map<string, unknown>();
         const asked = new Map<string, Question[]>();
+        const knownBefore = new Set(readAppState().questions.keys());
         await Promise.all(eff.runIds.map(async (id) => {
           try {
             const live = await client.runLive(id);
@@ -144,9 +145,9 @@ export function startSync(client: CoreClient, stream: Source, opts: SyncOptions 
         }));
         return () => {
           seedActivity(snaps, eff.finished);
-          // the open questions of a run the core answered for replace ours: a card lost on reload
-          // comes back (C-2), one answered elsewhere goes
-          if (asked.size) commitAppState(applyPendingQuestions(readAppState(), asked));
+          // the core's open questions: a card lost on reload comes back (C-2), one answered
+          // elsewhere goes; nothing that changed while the fetch was in flight is undone
+          if (asked.size) commitAppState(applyPendingQuestions(readAppState(), asked, knownBefore));
         };
       }
       case "fetchRuns": {

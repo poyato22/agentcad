@@ -83,6 +83,8 @@
 /* Task A6: Onshape budget meter. A short gauge: grey fill, amber past warn_at, red at the limit
    (status colours only for the warn/fail states). The count flashes once when a call lands. */
 .budget { display: flex; align-items: center; flex: none; }
+/* not connected yet: the yearly allowance, dimmed */
+.budget[data-state="idle"] { opacity: 0.6; }
 .budget-btn {
   display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px;
   background: transparent; border: 1px solid var(--line2); border-radius: 0; color: var(--dim);
