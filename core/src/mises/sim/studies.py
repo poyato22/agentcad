@@ -243,7 +243,7 @@ def list_sims(parts_root: Path, part_id: str | None = None,
         if not SIM_ID_RE.fullmatch(f.parent.name):
             continue
         try:
-            rec = read_record(f.parent, f.parent.parent.parent)
+            rec = read_record(f.parent, f.parent.parent.parent.parent)  # parts / assemblies
         except (OSError, ValueError):
             continue
         if run_id is not None and rec.get("run_id") != run_id:

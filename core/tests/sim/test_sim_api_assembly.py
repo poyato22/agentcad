@@ -93,3 +93,22 @@ def test_assembly_records_are_listed_and_read(client, rt):
     assert got["card"]["part_id"] is None
     assert any(s["sim_id"] == "sim_0000000000a1"
                for s in client.get("/sims", headers=AUTH).json())
+
+
+def test_list_sims_judges_staleness_against_the_right_root(tmp_path):
+    import hashlib
+
+    from mises.sim.studies import list_sims
+    part = tmp_path / "parts" / "blk"
+    part.mkdir(parents=True)
+    (part / "model.step").write_text("x")
+    asm = tmp_path / "assemblies" / "p1" / "sims"
+    h = hashlib.sha256(b"x").hexdigest()
+    for d, rec in ((part / "sims" / "sim_0000000000b1", {"part_id": "blk", "geometry_hash": h}),
+                   (asm / "sim_0000000000b2", {"part_id": None, "project_id": "p1",
+                                               "part_hashes": {"blk": h}})):
+        d.mkdir(parents=True)
+        (d / "result.json").write_text(json.dumps({"sim_id": d.name, "status": "done",
+                                                   "created_at": time.time(), **rec}))
+    got = {s["sim_id"]: s["stale"] for s in list_sims(tmp_path / "parts")}
+    assert got == {"sim_0000000000b1": False, "sim_0000000000b2": False}
