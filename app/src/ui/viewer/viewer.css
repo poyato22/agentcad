@@ -72,7 +72,8 @@
 .vx-link:focus-visible, .vx-x:focus-visible, .vx-pin:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
 
 .vx-panel {
-  position: absolute; left: 22px; bottom: 22px; z-index: 3; width: 248px; max-width: calc(100% - 44px);
+  /* top-left, under the FIG label: the title block owns the bottom edge */
+  position: absolute; left: 22px; top: 112px; z-index: 3; width: 248px; max-width: calc(100% - 44px);
   display: flex; flex-direction: column; gap: 6px; padding: 7px 10px 9px;
   background: var(--paper); border: 1px solid var(--line2); border-top: 2px solid var(--blue); font-size: var(--fs-small);
 }

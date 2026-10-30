@@ -4,7 +4,7 @@
 // part's menu) adds a feature on it (hole / shell on a face, fillet / chamfer on an edge). Measure
 // (M) shows exact values from the core; Comment pins feedback on the model for the build's agent.
 // In the build view a click on another part selects it. Each part shows in its color.
-import { computed, signal, type Signal } from "@preact/signals";
+import { computed, effect, signal, type Signal } from "@preact/signals";
 import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { Vector3 } from "three";
@@ -243,8 +243,17 @@ export function Viewer(): JSX.Element {
   // made on an older version still gets the core's 409 and a "pick again").
   useEffect(() => { setPicks([]); }, [partId, part?.mtime]);
 
-  // a new tool starts clean
-  useEffect(() => { setChip(null); setPicks([]); setComment(null); setCommentError(null); setOps(null); }, [tool]);
+  // a new tool starts clean, at once: a click right after the switch (before an after-paint
+  // effect would run) must not be wiped
+  useEffect(() => {
+    let last = viewerTool.peek();
+    return effect(() => {
+      const t = viewerTool.value;
+      if (t === last) return;
+      last = t;
+      setChip(null); setPicks([]); setComment(null); setCommentError(null); setOps(null);
+    });
+  }, []);
 
   // "Modify…" from the part's menu: the ops form for that part (choose the face / edge in it)
   const modify = modifyRequest.value;
