@@ -54,7 +54,13 @@ export const DEFAULT_PROFILE: Profile = {
 export const PROFILE_SCHEMA_VERSION = 2;
 /** The Plan 5 profile fields the app's Profile schema leaves out (core profile.Profile defaults):
  *  the build tabs, hidden built-in agents and the catalog's allowed domains. */
-const PLAN5_PROFILE_DEFAULTS = { active_project_id: null, open_project_ids: [], hidden_agents: [], catalog_allowed_domains: [] };
+/** Plan 7 R3: a few curated default browse sites (marked "suggested"); the real core ships more. */
+export const DEFAULT_SUGGESTED_SITES = [
+  { name: "McMaster-Carr", domain: "mcmaster.com", search_url: "https://www.mcmaster.com/{q}", categories: ["fasteners", "hardware"], suggested: true },
+  { name: "ServoCity", domain: "servocity.com", search_url: "https://www.servocity.com/?s={q}", categories: ["motors", "actuators"], suggested: true },
+  { name: "Digi-Key", domain: "digikey.com", search_url: "https://www.digikey.com/en/products/result?keywords={q}", categories: ["electronics"], suggested: true },
+];
+const PLAN5_PROFILE_DEFAULTS = { active_project_id: null, open_project_ids: [], hidden_agents: [], catalog_allowed_domains: [], suggested_sites: DEFAULT_SUGGESTED_SITES };
 const withVersion = (p: Profile) => ({ schema_version: PROFILE_SCHEMA_VERSION, ...PLAN5_PROFILE_DEFAULTS, ...p, printers: [] });
 
 const EMPTY_CONTEXT = { selected_part_id: null, selected_run_id: null, picks: [] };
@@ -160,6 +166,9 @@ const PROFILE_FIELDS: Record<string, (v: unknown) => boolean> = {
   max_parallel_agents: (v) => v === "auto" || int(1, 16)(v),
   theme: (v) => v === "system" || v === "light" || v === "dark",
   hidden_agents: (v) => Array.isArray(v) && v.every((x) => typeof x === "string"),
+  // Plan 7 R3: the curated browse list; each entry needs name/domain/search_url strings
+  suggested_sites: (v) => Array.isArray(v) && v.every((x) => typeof x === "object" && x !== null && !Array.isArray(x)
+    && ["name", "domain", "search_url"].every((k) => typeof (x as Record<string, unknown>)[k] === "string")),
   local_endpoints: (v) => typeof v === "object" && v !== null && !Array.isArray(v)
     && Object.values(v).every((x) => typeof x === "string" && loopback(x)),
   setup_completed_at: (v) => v === null || typeof v === "number",

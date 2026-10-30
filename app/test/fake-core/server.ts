@@ -18,6 +18,7 @@ import { assemblyFrom, assemblyRoutes, DEFAULT_PROJECT, DEFAULT_PROJECT_ROW, typ
 import { agentEdit, buildRoutes, buildsFrom, type BuildsDeps, type BuildsScenario, type FakeBuilds } from "./builds";
 import { handleControl } from "./control";
 import { directoryFrom, directoryRoutes, type DirectoryScenario, type FakeDirectory } from "./directory";
+import { bomRoutes, browserBomFrom, browserRoutes, type BrowserBomScenario, type FakeBrowserBom } from "./browser";
 import { printingFrom, printingRoutes, stopPrinting, type FakePrinting, type PrintScenario } from "./printing";
 import { setupFrom, setupRoutes, type FakeSetup, type SetupScenario } from "./setup";
 import { cancelSimsOfRun, clearSimTimers, simRoutes, simsFrom, type FakeSims, type SimScenario } from "./sims";
@@ -112,6 +113,8 @@ export interface Scenario {
   assembly?: AssemblyScenario;
   /** Plan 5 engineering loop: the build's spec and design studies (spec panel, A7). */
   spec?: SpecScenario;
+  /** Plan 7 R3/R4/R5: agent browser snapshots and the build parts list (BOM). Absent: a small demo set. */
+  browser?: BrowserBomScenario;
   /** Plan 5 builds, part tree and live edits (A3). Absent: one "Default" build with every part. */
   builds?: BuildsScenario;
   /** GET /tools (the QA-fix core's registry list). Absent: every real core tool; null: no route
@@ -188,6 +191,8 @@ export interface FakeState {
   systemInstallMs: number;
   /** Plan 5 A6: Onshape browser, budget and parts directory. */
   directory: FakeDirectory;
+  /** Plan 7 R3/R4/R5: agent browser snapshots and the build parts list (BOM). */
+  browserBom: FakeBrowserBom;
   assembly: FakeAssembly;
   spec: FakeSpec;
   /** Plan 5 A3: builds, part-tree rows, scripts and versions. */
@@ -263,6 +268,7 @@ function stateFrom(sc: Scenario, token: string): FakeState {
     systemInstallMs: sc.system_install_ms ?? 60,
     ...sharedBuilds(sc),
     spec: specFrom(sc.spec),
+    browserBom: browserBomFrom(sc.browser),
   };
 }
 
@@ -972,6 +978,8 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     }),
     ...sketchRoutes(() => state.sketches),
     ...directoryRoutes({ get: () => state.directory, emit: (ev) => { emit(ev); } }),
+    ...browserRoutes(() => state.browserBom),
+    ...bomRoutes(() => state.browserBom),
     ...specRoutes({
       get: () => state.spec, parts: () => state.parts, setParts: (p) => { state.parts = p; }, emit: (ev) => emit(ev),
       partVersion: (id) => state.builds.rows.get(id)?.version,
