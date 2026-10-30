@@ -27,12 +27,36 @@ const settle = (page: Page) => page.waitForTimeout(250);
 const NEW_HASH = "77aa55cc".padEnd(64, "0");
 
 /** The proposal changes in the core and the UI hears about it (approval_requested, same id). */
-async function changeProposal(fake: FakeControl): Promise<void> {
+async function changeProposal(fake: FakeControl, hash = NEW_HASH): Promise<void> {
   const res = await fetch(`${fake.url}/approvals?status=pending&run_id=${RID}`, { headers: { Authorization: `Bearer ${fake.token}` } });
   const shown = ((await res.json()) as Approval[])[0];
-  const changed = { ...shown, payload_hash: NEW_HASH, deltas: { ...shown.deltas, summary: "merge: 3 ribs now" } };
+  const changed = { ...shown, payload_hash: hash, deltas: { ...shown.deltas, summary: "merge: 3 ribs now" } };
   await fake.emit({ type: "approval_requested", run_id: RID, data: changed as unknown as Record<string, unknown> });
 }
+
+// Deterministic arming (M7). A test that needs a press to land BEFORE the card arms must not race
+// ARM_MS against a loaded machine: it installs Playwright's clock before the page loads, freezes it
+// (performance.now, Date and the page's timers stop), re-arms the card by changing the proposal,
+// and only then presses. Fake time moves only when the test says so (runFor), so "not armed yet"
+// and "armed" are states the test sets, not timings it hopes for.
+const HASH_3 = "99bb66dd".padEnd(64, "0");
+
+async function freezeClock(page: Page): Promise<void> {
+  await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 1000);
+  // the card's arming reads performance.now: it must stand still now (a busy loop, no timers)
+  const moved = await page.evaluate(() => { const a = performance.now(); let x = 0; for (let i = 0; i < 2e7; i++) x += i; return performance.now() - a + x * 0; });
+  expect(moved).toBe(0);
+}
+
+/** Changes the proposal under a frozen clock and waits for the card to show it: it is armed `now`, so the next press is not armed. */
+async function rearmFrozen(page: Page, fake: FakeControl, hash = NEW_HASH): Promise<void> {
+  await changeProposal(fake, hash);
+  // a few fake milliseconds at a time (far below ARM_MS) until the card shows the new hash
+  await expect.poll(async () => { await page.clock.runFor(5); return (await card(page).textContent())?.includes(`hash ${hash.slice(0, 8)}`) ?? false; }).toBe(true);
+}
+
+/** Moves the frozen clock past ARM_MS: the card is armed. */
+const passArm = (page: Page) => page.clock.runFor(ARM_WAIT_MS);
 
 test.beforeEach(async ({ fake, page }) => {
   await fake.reset("approvals");
@@ -132,12 +156,15 @@ test("click_on_card_text_then_typed_letter_never_decides", async ({ page, fake }
 });
 
 test("tab_into_card_then_wait_then_m_decides_once", async ({ page, fake }) => {
+  await page.clock.install();
   await mountCard(page);
   await page.waitForTimeout(ARM_WAIT_MS);
   // pointer on the card first (letters off), then a click into the command line below the card
-  // and Shift+Tab back up until focus enters the card by keyboard
+  // and Shift+Tab back up until focus enters the card by keyboard; the clock is frozen first, so
+  // focus enters at a fixed time and the first m is surely inside ARM_MS of it
   await card(page).locator(".acard-what").click();
   await outsideInput(page).click();
+  await freezeClock(page);
   for (let i = 0; i < 20 && !(await card(page).evaluate((el) => el === document.activeElement)); i++) {
     await page.keyboard.press("Shift+Tab");
   }
@@ -146,7 +173,7 @@ test("tab_into_card_then_wait_then_m_decides_once", async ({ page, fake }) => {
   await page.keyboard.press("m");
   await settle(page);
   expect(await decideCalls(fake)).toEqual([]);
-  await page.waitForTimeout(ARM_WAIT_MS);
+  await passArm(page);
   await page.keyboard.press("m");
   await page.keyboard.press("m");
   await expect(card(page)).toHaveAttribute("data-status", "approved");
@@ -190,39 +217,46 @@ test("untrusted_click_never_approves", async ({ page, fake }) => {
 });
 
 test("key_ignored_on_repeat", async ({ page, fake }) => {
+  await page.clock.install();
   await mountCard(page);
-  // a key already held when the card appears: the first press is not armed, the rest are repeats
+  // a key already held when the card (re)arms: the first press is not armed, the rest are repeats
   await card(page).focus();
+  await freezeClock(page);
+  await rearmFrozen(page, fake);
   await page.keyboard.down("m");
-  await page.waitForTimeout(ARM_WAIT_MS);
+  await passArm(page);
   await page.keyboard.down("m");
   await page.keyboard.down("m");
   await page.keyboard.up("m");
   await settle(page);
   expect(await decideCalls(fake)).toEqual([]);
   // same for a held Enter on the focused Merge button: its repeats must not auto-click it
-  await mountCard(page);
   await page.getByRole("button", { name: /^Merge/ }).focus();
+  await rearmFrozen(page, fake, HASH_3);
   await page.keyboard.down("Enter");
-  await page.waitForTimeout(ARM_WAIT_MS);
+  await passArm(page);
   await page.keyboard.down("Enter");
   await page.keyboard.down("Enter");
   await page.keyboard.up("Enter");
   await settle(page);
   expect(await decideCalls(fake)).toEqual([]);
+  await expect(card(page)).toHaveAttribute("data-status", "pending");
 });
 
-test("key_ignored_within_400ms_of_mount", async ({ page, fake }) => {
+test("key_ignored_within_400ms_of_arming", async ({ page, fake }) => {
+  await page.clock.install();
   await mountCard(page);
   await card(page).focus();
+  await freezeClock(page);
+  await rearmFrozen(page, fake);
   await page.keyboard.press("m");
   await settle(page);
   expect(await decideCalls(fake)).toEqual([]);
   // the same key once armed works, so the guard above was the arm delay
-  await page.waitForTimeout(ARM_WAIT_MS);
+  await passArm(page);
   await page.keyboard.press("m");
   await expect(card(page)).toHaveAttribute("data-status", "approved");
-  expect(await decideCalls(fake)).toHaveLength(1);
+  expect((await decideCalls(fake)).map((c) => c.body)).toEqual([{ payload_hash: NEW_HASH, approve: true }]);
 });
 
 test("key_ignored_within_1s_after_paste", async ({ page, fake }) => {
@@ -372,12 +406,15 @@ test("modified_enter_on_focused_merge_is_ignored", async ({ page, fake }) => {
 });
 
 test("held_space_across_hash_change_never_decides", async ({ page, fake }) => {
+  await page.clock.install();
   await mountCard(page);
   await page.getByRole("button", { name: /^Merge/ }).focus();
-  await page.keyboard.down(" ");
-  await changeProposal(fake);
-  await expect(card(page)).toContainText("hash 77aa55cc");
-  await page.waitForTimeout(ARM_WAIT_MS + 100);
+  await freezeClock(page);
+  await rearmFrozen(page, fake);
+  await page.keyboard.down(" "); // not armed: ignored
+  // the proposal changes again while Space is held
+  await rearmFrozen(page, fake, HASH_3);
+  await passArm(page);
   await page.keyboard.down(" "); // auto-repeat while held
   await page.keyboard.up(" ");
   await settle(page);

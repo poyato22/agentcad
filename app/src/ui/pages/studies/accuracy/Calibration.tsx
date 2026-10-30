@@ -230,7 +230,7 @@ export function CalibrationPanel({ client, materials, studies, initialMaterial, 
                   {imp.strength_mpa !== null && <div>{sig3(imp.strength_mpa)} MPa strength</div>}
                   {imp.e_mpa !== null && <div>E {sig3(imp.e_mpa)} MPa</div>}
                   {imp.e_mpa === null && imp.strength_mpa === null && <span class="faint">{r.kind === "part" ? "after the fit" : "—"}</span>}
-                  {typeof resid === "number" && <div class="faint">{`${resid >= 0 ? "+" : ""}${sig3(resid * 100)}% deflection vs the fit`}</div>}
+                  {typeof resid === "number" && <div class="faint">{`${resid >= 0 ? "+" : ""}${sig3(resid * 100)}% vs the fit`}</div>}
                 </td>
                 <td><button type="button" class="sf-tool" aria-label={`Remove test ${i + 1}`} onClick={() => edit(rows.filter((_, j) => j !== i))}>✕</button></td>
               </tr>
