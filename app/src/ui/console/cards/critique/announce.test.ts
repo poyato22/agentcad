@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Step } from "../../../../api/types";
 import { buildThread } from "../../threadModel";
@@ -96,7 +98,26 @@ describe("g4 announcements", () => {
     expect(view.view.thumbnail).toEqual({ id: "pv_c3_iso" });
   });
 
-  // G1's first cut, as its views.py publishes it today (flat body, one issues list, absolute PNG
+  // The real core's cards (G1's tests/fixtures/g1_cards.json, captured from tool output; a copy
+  // lives in app/test/fixtures/core-ui/ until G5 merges): every field the cards use is there.
+  it("reads G1's captured cards", () => {
+    const cards = JSON.parse(readFileSync(resolve(import.meta.dirname, "../../../../../test/fixtures/core-ui/g1_cards.json"), "utf8")) as Record<string, Record<string, unknown>>;
+    const crit = g4Announcement(step({ agent_announce: cards["critique_round"] }));
+    if (crit?.kind !== "critique_round") throw new Error("no critique card");
+    expect(crit.round).toMatchObject({ round: 2, maxRounds: 3, score: 0.9, threshold: 0.8, done: true, stopReason: "score_threshold",
+      before: { id: "crit_k1_iso" }, after: { id: "crit_k3_iso" }, parts: ["body"] });
+    expect(crit.round.fixed.map((i) => i.issue)).toEqual(["flat wing"]);
+    const view = g4Announcement(step({ agent_announce: cards["view_presented"] }));
+    if (view?.kind !== "view_presented") throw new Error("no view card");
+    const s = view.view.spec;
+    expect(s).toMatchObject({ kind: "subset", target: { part_id: null, project_id: "e902d34049f0" }, parts: ["lid"], ghost: ["body"],
+      camera: { azimuth: 45, elevation: 30, distance: null }, orbit: { duration_s: 12, turns: 1 }, caption: "the lid" });
+    expect(view.view.thumbnail).toEqual({ id: "pv_v1_iso" });
+    expect(partsForSpec(s, [])).toEqual(["lid", "body"]);
+    expect(modesForSpec(s).isolate).toEqual(["lid"]);
+  });
+
+  // G1's first cut, as its views.py published it before the shared contract (flat body, one issues list, absolute PNG
   // paths, a string target with is_project): still a full card, never a blank one.
   it("reads G1's first-cut payloads", () => {
     const crit = g4Announcement(step({ agent_announce: {
