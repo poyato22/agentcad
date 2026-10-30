@@ -26,6 +26,8 @@ Every item has an owner task, and the integration step checks each one.
 | R14 | **Remove the Variables panel** from the main UI. | U2b |
 | R15 | **Onshape-style measure:** click an edge for its length, two points for the distance, a circle for its diameter and radius, a face for its area, two faces for distance and angle. | U2a |
 | R16 | **Agents tell you more.** The thread shows a clear card when an agent creates a part, spawns an agent, adds to the assembly, or adds to the BOM. | U3c, U3a |
+| R18 | **Study results in the thread are clear, not a wall of text.** Each study is a compact clickable card (type, status, key numbers, pass/fail, thumbnail) that **expands inline** to show its chart, checks and an Immersive button. Raw tool output is hidden by default. The agent's own reply after studies stays short and refers to the cards instead of restating numbers. | U3a (cards), U3c (prompt and result shape) |
+| R19 | **Agents can use the assembly fully:** add parts, place them, move them, drive joints and **animate** motion that the user sees in the viewer. | U3c (tools), U2a/U3a (viewer playback) |
 | R17 | **In a build, view all its parts at once** in a zoomed-out grid, like Onshape's overview. | U1 |
 
 ## Global Constraints
