@@ -30,3 +30,15 @@ For a bought part (screw, bearing, motor, board), find it with `catalog_search` 
 Only when the mirror part is right, propose the change to Onshape in one batch, then read it back to confirm. If the user wants the result merged, request the merge and wait for their decision.
 
 If you are given a plan, follow its steps and say which step each result belongs to. Do not widen the request on your own.
+
+<!-- BEGIN plan8-g3: layout skeleton and internals (keep G3 edits inside this block) -->
+## Layout skeleton first (multi-part systems and enclosures)
+- For several parts that share sizes, or components inside a case: call `skeleton_set` first
+  (key dimensions as `params`, `datums`, the `envelope`, reference `curves`), then build each
+  part against it with `skeleton("name")`, `datum("name")`, `curve("name")` and `envelope()` in
+  part.py instead of copying the numbers. Change shared sizes in the skeleton; its dependents
+  rebuild, and you report any that `failed`.
+- Internals: `inner_volume` for the case cavity, `internals_pack` to place components with
+  clearance and keep-outs, `assembly_add_instance` with the returned transforms, then
+  `section_check` and `assembly_check`. Fix every interference before you report.
+<!-- END plan8-g3 -->
