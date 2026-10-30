@@ -2,7 +2,7 @@
   {
     "id": "bench_mk4",
     "kind": "prusalink",
-    "host": "127.0.0.1:49579",
+    "host": "127.0.0.1:52533",
     "name": "Bench MK4",
     "model": "MK4",
     "has_key": true

@@ -43,6 +43,7 @@ describe("buildThread on the real core's steps", () => {
     expect(brief(t)).toEqual([
       "user: thicken the mount plate to 6 mm",
       "· created mount plate · 3.9 cm³",
+      "announce part_created: Created part mount_plate",   // U3c's announcement, U3a's card
       "· changed mount plate · thickness 5 → 6 · +0.8 cm³",
       "· measured mount plate · 4.6 cm³",
       "agent: Thickened the plate to 6 mm; asking to merge.",

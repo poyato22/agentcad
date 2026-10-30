@@ -5,6 +5,7 @@
 // core). Enter starts, Shift+Enter is a new line, Esc closes. Edit scope is every part ("*").
 // The composer stays usable while the build's lead works: the core queues the message (U3c) and
 // the thread shows it with a "queued" chip until the lead reads it; a full queue (429) says so.
+import { showRoutedNotes } from "./routedNotes";
 import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { AgentInfo } from "../../api/types";
@@ -71,9 +72,11 @@ export function Composer(): JSX.Element {
     try {
       const chipLine = chipsPromptLine(agentChips.peek());
       const prompt = chipLine ? `${text}\n\n${chipLine}` : text;
-      const { run_id } = await actions.client().createRun({
+      const res = await actions.client().createRun({
         ...(override ? { agent: override } : {}), prompt, model_ref: model, edit_scope: ["*"], read_scope: ["*"], ...runBuild(),
       });
+      const { run_id } = res;
+      showRoutedNotes(res);
       if (chipLine) clearAgentChips();
       actions.selectRun(run_id);
       noteRun(run_id);          // shown at once, even before the store lists it (e.g. queued)

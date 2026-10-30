@@ -9,10 +9,10 @@ export const stopBusy = signal(false);
 export const toast = signal<string | null>(null);
 
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
-function showToast(msg: string): void {
+export function showToast(msg: string, ms = 3000): void {
   toast.value = msg;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { toast.value = null; }, 3000);
+  toastTimer = setTimeout(() => { toast.value = null; }, ms);
 }
 
 /** Cancels every running run. Resolves with the cancelled run ids; a call while busy is a no-op. */

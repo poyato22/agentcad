@@ -246,8 +246,8 @@
       "install": "gmsh is a core dependency: run `uv sync` in core/"
     },
     "openfoam": {
-      "available": false,
-      "why_not": "Docker / OrbStack is not running"
+      "available": true,
+      "why_not": null
     }
   },
   "study_types": [

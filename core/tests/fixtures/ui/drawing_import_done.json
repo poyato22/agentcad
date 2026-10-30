@@ -1,11 +1,11 @@
 {
-  "import_id": "imp_7934d9cac31a",
+  "import_id": "imp_35ebddd3c888",
   "kind": "dxf",
   "file_name": "Mounting Plate.dxf",
   "status": "done",
   "stage": "",
   "error": null,
-  "project_id": "bc4afb69102e",
+  "project_id": "94a906a4f08c",
   "part_id": "mounting_plate",
   "run_id": null,
   "attempts": 1,
@@ -119,8 +119,8 @@
   },
   "notes": [],
   "pages": 1,
-  "original_url": "/imports/imp_7934d9cac31a/original",
+  "original_url": "/imports/imp_35ebddd3c888/original",
   "drawing_url": "/parts/mounting_plate/drawing.svg",
-  "created_at": 1793359808.5064828,
-  "updated_at": 1793359812.106482
+  "created_at": 1793371613.577133,
+  "updated_at": 1793371620.6596842
 }

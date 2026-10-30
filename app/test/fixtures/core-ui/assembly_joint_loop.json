@@ -2,7 +2,7 @@
   "status": 400,
   "body": {
     "error": "invalid_input",
-    "message": "joint 2042d38b5778 closes a loop; this solve needs an open joint tree",
+    "message": "joint 13328d198b1c closes a loop; this solve needs an open joint tree",
     "hint": "remove the redundant joint or ground one side",
     "retryable": false
   }

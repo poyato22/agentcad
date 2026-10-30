@@ -37,6 +37,8 @@ export const KNOWN_EVENTS: ReadonlySet<string> = new Set([
   "turn_retry", "compaction", "part_changed", "run_deleted", "agent_activity", "agent_thinking",
   // Plan 7 U3c announcements (and Plan 8 G1's critique / view cards in the same format)
   "agent_announce",
+  // the busy lead's message queue (U3c lead._publish): a queued message, its delivery or drop
+  "message_queued", "message_delivered", "message_dropped",
 ]);
 
 type Out = { state: AppState; effects: Effect[] };
@@ -124,9 +126,6 @@ function reduceUnsafe(s: AppState, e: MisesEvent): Out {
     // steps the thread renders (an announcement card, a queued message and its delivery)
     case "note": case "compaction": case "plan": case "diff": case "file_written":
     case "agent_announce": case "message_queued": case "message_delivered": case "message_dropped":
-      return { state: s, effects: steps() };
-    case "agent_announce":
-      // U3c / Plan 8: the announcement is also stored as a decision step; the thread draws its card
       return { state: s, effects: steps() };
     case "part_changed":
       // a user or agent edit (C6): new version, vars, metrics and GLB

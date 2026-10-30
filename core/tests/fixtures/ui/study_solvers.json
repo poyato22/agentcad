@@ -47,11 +47,11 @@
     {
       "id": "openfoam",
       "name": "OpenFOAM v2512 image (optional CFD solver)",
-      "status": "optional_missing",
-      "version": null,
-      "path": null,
+      "status": "ok",
+      "version": "v2512",
+      "path": "opencfd/openfoam-run@sha256:707421ab7d1e5201d86723945a6649490e292a0c46ed03d36982449e6b3b7243",
       "fix": null,
-      "detail": "Docker / OrbStack is installed but not running; start it to check for the OpenFOAM image"
+      "detail": "k-omega SST (simpleFoam + snappyHexMesh), runs with no network"
     }
   ]
 }

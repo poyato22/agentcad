@@ -4,19 +4,19 @@
     "kind": "critique_round",
     "ref": {
       "after": {
-        "front": "crit_78442033_9b7b5944d6_front",
-        "iso": "crit_78442033_9b7b5944d6_iso",
-        "side": "crit_78442033_9b7b5944d6_side",
-        "top": "crit_78442033_9b7b5944d6_top"
+        "front": "crit_36095de5_3ee656a441_front",
+        "iso": "crit_36095de5_3ee656a441_iso",
+        "side": "crit_36095de5_3ee656a441_side",
+        "top": "crit_36095de5_3ee656a441_top"
       },
-      "after_image_id": "crit_78442033_9b7b5944d6_iso",
+      "after_image_id": "crit_36095de5_3ee656a441_iso",
       "before": {
-        "front": "crit_78442033_147940dfab_front",
-        "iso": "crit_78442033_147940dfab_iso",
-        "side": "crit_78442033_147940dfab_side",
-        "top": "crit_78442033_147940dfab_top"
+        "front": "crit_36095de5_1d2adbc648_front",
+        "iso": "crit_36095de5_1d2adbc648_iso",
+        "side": "crit_36095de5_1d2adbc648_side",
+        "top": "crit_36095de5_1d2adbc648_top"
       },
-      "before_image_id": "crit_78442033_147940dfab_iso",
+      "before_image_id": "crit_36095de5_1d2adbc648_iso",
       "done": true,
       "image_tokens": 2792,
       "iou": null,
@@ -35,22 +35,22 @@
       "parts": [
         "body"
       ],
-      "project_id": "de79c4c44299",
+      "project_id": "62539b9e170c",
       "reference_scores": [],
       "round": 2,
       "score": 0.9,
       "stop_reason": "score_threshold",
       "threshold": 0.8
     },
-    "run_id": "78442033a4fd",
+    "run_id": "36095de5c9ea",
     "title": "Critique round 2/3: score 0.90 \u2014 matches"
   },
   "view_presented": {
     "detail": "the lid",
     "kind": "view_presented",
     "ref": {
-      "project_id": "de79c4c44299",
-      "thumbnail_id": "pv_78442033_a419904153_iso",
+      "project_id": "62539b9e170c",
+      "thumbnail_id": "pv_36095de5_d69cff0431_iso",
       "view_spec": {
         "camera": {
           "azimuth": 45.0,
@@ -76,18 +76,18 @@
           "ghost": [
             "body"
           ],
-          "id": "de79c4c44299",
+          "id": "62539b9e170c",
           "kind": "project",
           "parts": [
             "lid"
           ],
-          "project_id": "de79c4c44299"
+          "project_id": "62539b9e170c"
         },
-        "thumbnail_id": "pv_78442033_a419904153_iso",
+        "thumbnail_id": "pv_36095de5_d69cff0431_iso",
         "xray_parts": []
       }
     },
-    "run_id": "78442033a4fd",
+    "run_id": "36095de5c9ea",
     "title": "Subset view of 1 part(s) of the build"
   }
 }

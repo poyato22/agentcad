@@ -1,5 +1,5 @@
 {
-  "project_id": "92c838641ba3",
+  "project_id": "a9013eca9666",
   "material": "PLA",
   "items": [
     {
@@ -37,7 +37,7 @@
       "line_total": 0.27
     },
     {
-      "id": "bom_c5facfd14731",
+      "id": "bom_4206a8481a2c",
       "kind": "bought",
       "part_id": null,
       "catalog_id": null,
@@ -61,7 +61,7 @@
       "line_total": 35.7
     },
     {
-      "id": "bom_dd0370e143d2",
+      "id": "bom_5c193092e7ea",
       "kind": "bought",
       "part_id": null,
       "catalog_id": null,
@@ -79,7 +79,7 @@
       "line_total": 2.4
     },
     {
-      "id": "bom_243121853cfe",
+      "id": "bom_2f83c58f5b84",
       "kind": "bought",
       "part_id": null,
       "catalog_id": null,
@@ -97,7 +97,7 @@
       "line_total": 3.0
     },
     {
-      "id": "bom_cb596660ddfd",
+      "id": "bom_cad1a26ce446",
       "kind": "bought",
       "part_id": null,
       "catalog_id": null,

@@ -1,8 +1,8 @@
 {
-  "sim_id": "sim_a281305b04ae",
+  "sim_id": "sim_812a4bfd8db0",
   "part_id": "beam",
   "type": "static",
-  "run_id": "96374179f1f7",
+  "run_id": "871f32d58d88",
   "call_id": "s1",
   "step_id": 9,
   "reason": "tip load on the beam under both cases",
@@ -10,8 +10,8 @@
   "stage": "done",
   "phase": "done",
   "pct": 100.0,
-  "created_at": 1793359777.636117,
-  "finished_at": 1793359778.830325,
+  "created_at": 1793371590.8786602,
+  "finished_at": 1793371592.222178,
   "analysis": "static",
   "guide": true,
   "label": "guide only, not a guarantee",
@@ -160,7 +160,7 @@
     "nonlinear": null,
     "fatigue": null
   },
-  "geometry_hash": "a9afc15b45552cc4874699b40d9965ddd435fdef908cddc96c3ecf358ae670e1",
+  "geometry_hash": "d9a47cac8b7ace23a6edec380624bfb06e05abf4abec7c2bbcb1e1a2538f13a8",
   "material": {
     "name": "PLA",
     "e_mpa": 2300.0,
@@ -201,11 +201,11 @@
     "Peak stress excludes nodes on the fixed face (an ideal clamp gives a constraint singularity there); that value and a safety factor including it are reported separately."
   ],
   "urls": {
-    "record": "/sims/sim_a281305b04ae",
-    "glb": "/sims/sim_a281305b04ae/result.glb",
-    "charts": "/sims/sim_a281305b04ae/charts",
-    "probe": "/sims/sim_a281305b04ae/probe",
-    "section": "/sims/sim_a281305b04ae/section"
+    "record": "/sims/sim_812a4bfd8db0",
+    "glb": "/sims/sim_812a4bfd8db0/result.glb",
+    "charts": "/sims/sim_812a4bfd8db0/charts",
+    "probe": "/sims/sim_812a4bfd8db0/probe",
+    "section": "/sims/sim_812a4bfd8db0/section"
   },
   "solver": {
     "name": "CalculiX",
@@ -367,7 +367,7 @@
     },
     "deformed_scale": 2.9044923957151734
   },
-  "inputs_hash": "a24fcd0b70f0e9e5d1ab4582dfd9e40451dd1bddf9a6df6412456b0d55db6d75",
+  "inputs_hash": "520ffaee29170b27411096754e66b0c4686e6fb4be32ba5f64f5f20916467820",
   "glb": "result.glb",
   "outputs": [
     "result.glb",
@@ -385,7 +385,7 @@
       "measured": 5.906498504081631,
       "unit": "",
       "status": "pass",
-      "sim_id": "sim_a281305b04ae",
+      "sim_id": "sim_812a4bfd8db0",
       "note": null
     },
     {
@@ -395,7 +395,7 @@
       "measured": 1.7386006851423133,
       "unit": "mm",
       "status": "fail",
-      "sim_id": "sim_a281305b04ae",
+      "sim_id": "sim_812a4bfd8db0",
       "note": null
     }
   ],
@@ -419,7 +419,7 @@
     ],
     "governing_case_id": "tip",
     "material_basis": "datasheet / estimate",
-    "sim_id": "sim_a281305b04ae",
+    "sim_id": "sim_812a4bfd8db0",
     "type": "static",
     "status": "done",
     "verdict": "fail",
@@ -464,7 +464,7 @@
         "measured": 5.906498504081631,
         "unit": "",
         "status": "pass",
-        "sim_id": "sim_a281305b04ae",
+        "sim_id": "sim_812a4bfd8db0",
         "note": null
       },
       {
@@ -474,21 +474,21 @@
         "measured": 1.7386006851423133,
         "unit": "mm",
         "status": "fail",
-        "sim_id": "sim_a281305b04ae",
+        "sim_id": "sim_812a4bfd8db0",
         "note": null
       }
     ],
     "warnings": [],
     "reason": "tip load on the beam under both cases",
-    "run_id": "96374179f1f7",
+    "run_id": "871f32d58d88",
     "step_id": 9,
     "urls": {
-      "record": "/sims/sim_a281305b04ae",
-      "glb": "/sims/sim_a281305b04ae/result.glb",
-      "charts": "/sims/sim_a281305b04ae/charts",
-      "probe": "/sims/sim_a281305b04ae/probe",
-      "section": "/sims/sim_a281305b04ae/section"
+      "record": "/sims/sim_812a4bfd8db0",
+      "glb": "/sims/sim_812a4bfd8db0/result.glb",
+      "charts": "/sims/sim_812a4bfd8db0/charts",
+      "probe": "/sims/sim_812a4bfd8db0/probe",
+      "section": "/sims/sim_812a4bfd8db0/section"
     },
-    "charts_url": "/sims/sim_a281305b04ae/charts"
+    "charts_url": "/sims/sim_812a4bfd8db0/charts"
   }
 }

@@ -1,3 +1,4 @@
+import { showRoutedNotes } from "../routedNotes";
 import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { CoreError } from "../../../api/client";
@@ -81,7 +82,7 @@ export function CommandLine(): JSX.Element {
       const text = chipLine ? `${cmd.text}\n\n${chipLine}` : cmd.text;
       // the build's lead takes a prompt even while it works: through POST /runs the core routes
       // it to that lead and queues it behind the current step (U3c); other runs get /message
-      if (run.role === "lead" && !run.archived && run.project_id) await actions.client().createRun({ prompt: text, project_id: run.project_id });
+      if (run.role === "lead" && !run.archived && run.project_id) showRoutedNotes(await actions.client().createRun({ prompt: text, project_id: run.project_id }));
       else await actions.client().message(run.id, text);
       if (chipLine) clearAgentChips();
       return true;

@@ -1,8 +1,8 @@
 {
-  "id": "724b8a710da2",
+  "id": "88de70dab234",
   "kind": "revolute",
   "a": {
-    "instance_id": "3e9eca3703d8",
+    "instance_id": "c9346c1dcddb",
     "frame": {
       "origin": [
         20.0,
@@ -18,7 +18,7 @@
     }
   },
   "b": {
-    "instance_id": "c8ca4b607625",
+    "instance_id": "a781549c4f82",
     "frame": {
       "origin": [
         -20.0,

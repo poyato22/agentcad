@@ -1,17 +1,17 @@
 {
-  "sim_id": "sim_3aac19941b77",
+  "sim_id": "sim_73997419b74e",
   "part_id": "ball",
   "type": "wind",
-  "run_id": "6a9a1e18a6d0",
-  "call_id": "ui-e40d0829bab6",
+  "run_id": "6971ed0bda1b",
+  "call_id": "ui-fee3993ddea1",
   "step_id": 14,
   "reason": null,
   "status": "done",
   "stage": "done",
   "phase": "done",
   "pct": 100.0,
-  "created_at": 1793359834.499211,
-  "finished_at": 1793359835.257202,
+  "created_at": 1793371657.3172889,
+  "finished_at": 1793371658.27692,
   "analysis": "wind",
   "guide": true,
   "label": "guide only, not a guarantee",
@@ -60,7 +60,7 @@
     "cpus": 4,
     "shape_class": "auto"
   },
-  "geometry_hash": "598c9747912cdc63494cba1de7cecfd09ca20a28e9be5686887481146c5462d3",
+  "geometry_hash": "16660bbfa74208a0b041c9b770ec5df38baaddb03d69d98b3062a7ccbe0137be",
   "material": null,
   "environment": null,
   "error": null,
@@ -74,11 +74,11 @@
     "The model error band is the recorded real-solver benchmark (sphere, flat plate) when one exists; until then it is the acceptance target and the result says 'validation pending'."
   ],
   "urls": {
-    "record": "/sims/sim_3aac19941b77",
-    "glb": "/sims/sim_3aac19941b77/result.glb",
-    "charts": "/sims/sim_3aac19941b77/charts",
-    "probe": "/sims/sim_3aac19941b77/probe",
-    "section": "/sims/sim_3aac19941b77/section"
+    "record": "/sims/sim_73997419b74e",
+    "glb": "/sims/sim_73997419b74e/result.glb",
+    "charts": "/sims/sim_73997419b74e/charts",
+    "probe": "/sims/sim_73997419b74e/probe",
+    "section": "/sims/sim_73997419b74e/section"
   },
   "solver": {
     "name": "OpenFOAM",
@@ -1374,7 +1374,7 @@
       6.0710782125e-06
     ]
   },
-  "inputs_hash": "eb8eb507ca4a923a8fc71b0ff405934b3a3a6a3c85fc67d9f7a2f1f92268972a",
+  "inputs_hash": "e5bd4af8cc11fb4b880c92547165c9bf8b2a534c3b61aa67acca54a52c8b4584",
   "glb": "result.glb",
   "outputs": [
     "result.glb",
@@ -1387,7 +1387,7 @@
   ],
   "stale": false,
   "card": {
-    "sim_id": "sim_3aac19941b77",
+    "sim_id": "sim_73997419b74e",
     "type": "wind",
     "status": "done",
     "verdict": "warn",
@@ -1435,15 +1435,15 @@
       "OpenFOAM k-\u03c9 SST RANS: \u00b110% model error (the acceptance target; validation pending: no real-solver benchmark recorded yet); mesh ~0.11 M cells, 1.67 mm at the surface"
     ],
     "reason": null,
-    "run_id": "6a9a1e18a6d0",
+    "run_id": "6971ed0bda1b",
     "step_id": 14,
     "urls": {
-      "record": "/sims/sim_3aac19941b77",
-      "glb": "/sims/sim_3aac19941b77/result.glb",
-      "charts": "/sims/sim_3aac19941b77/charts",
-      "probe": "/sims/sim_3aac19941b77/probe",
-      "section": "/sims/sim_3aac19941b77/section"
+      "record": "/sims/sim_73997419b74e",
+      "glb": "/sims/sim_73997419b74e/result.glb",
+      "charts": "/sims/sim_73997419b74e/charts",
+      "probe": "/sims/sim_73997419b74e/probe",
+      "section": "/sims/sim_73997419b74e/section"
     },
-    "charts_url": "/sims/sim_3aac19941b77/charts"
+    "charts_url": "/sims/sim_73997419b74e/charts"
   }
 }

@@ -17,7 +17,7 @@
    "created_at": 1793340500.0,
    "updated_at": 1793340530.0,
    "owner_pid": null,
-   "project_id": "068b8b99ce32",
+   "project_id": "eaf3c91cc2d0",
    "shape_complexity": {
     "score": 0.82,
     "level": "high",
@@ -63,7 +63,7 @@
        "pi_lid"
       ],
       "part_id": null,
-      "project_id": "068b8b99ce32",
+      "project_id": "eaf3c91cc2d0",
       "round": 1,
       "max_rounds": 3,
       "mode": "vision_model",
@@ -130,7 +130,7 @@
        "pi_lid"
       ],
       "part_id": null,
-      "project_id": "068b8b99ce32",
+      "project_id": "eaf3c91cc2d0",
       "round": 2,
       "max_rounds": 3,
       "mode": "vision_model",
@@ -197,8 +197,8 @@
        "kind": "orbit",
        "target": {
         "kind": "project",
-        "id": "068b8b99ce32",
-        "project_id": "068b8b99ce32",
+        "id": "eaf3c91cc2d0",
+        "project_id": "eaf3c91cc2d0",
         "parts": [
          "pi_case",
          "pi_board",
@@ -229,7 +229,7 @@
        "thumbnail_id": "view_case_iso"
       },
       "thumbnail_id": "view_case_iso",
-      "project_id": "068b8b99ce32"
+      "project_id": "eaf3c91cc2d0"
      }
     }
    },
@@ -253,8 +253,8 @@
        "kind": "internal",
        "target": {
         "kind": "project",
-        "id": "068b8b99ce32",
-        "project_id": "068b8b99ce32",
+        "id": "eaf3c91cc2d0",
+        "project_id": "eaf3c91cc2d0",
         "parts": [
          "pi_case",
          "pi_board",
@@ -289,7 +289,7 @@
        "thumbnail_id": null
       },
       "thumbnail_id": null,
-      "project_id": "068b8b99ce32"
+      "project_id": "eaf3c91cc2d0"
      }
     }
    },
@@ -313,8 +313,8 @@
        "kind": "section",
        "target": {
         "kind": "project",
-        "id": "068b8b99ce32",
-        "project_id": "068b8b99ce32",
+        "id": "eaf3c91cc2d0",
+        "project_id": "eaf3c91cc2d0",
         "parts": [
          "pi_case",
          "pi_board",
@@ -357,7 +357,7 @@
        "thumbnail_id": null
       },
       "thumbnail_id": null,
-      "project_id": "068b8b99ce32"
+      "project_id": "eaf3c91cc2d0"
      }
     }
    },
@@ -381,8 +381,8 @@
        "kind": "exploded",
        "target": {
         "kind": "project",
-        "id": "068b8b99ce32",
-        "project_id": "068b8b99ce32",
+        "id": "eaf3c91cc2d0",
+        "project_id": "eaf3c91cc2d0",
         "parts": [
          "pi_case",
          "pi_board",
@@ -410,7 +410,7 @@
        "thumbnail_id": null
       },
       "thumbnail_id": null,
-      "project_id": "068b8b99ce32"
+      "project_id": "eaf3c91cc2d0"
      }
     }
    },
@@ -434,8 +434,8 @@
        "kind": "subset",
        "target": {
         "kind": "project",
-        "id": "068b8b99ce32",
-        "project_id": "068b8b99ce32",
+        "id": "eaf3c91cc2d0",
+        "project_id": "eaf3c91cc2d0",
         "parts": [
          "pi_fan",
          "pi_battery"
@@ -465,7 +465,7 @@
        "thumbnail_id": null
       },
       "thumbnail_id": null,
-      "project_id": "068b8b99ce32"
+      "project_id": "eaf3c91cc2d0"
      }
     }
    },
@@ -527,7 +527,7 @@
     "mass_g": 35.861
    },
    "mtime": 1793340500.0,
-   "project_id": "068b8b99ce32",
+   "project_id": "eaf3c91cc2d0",
    "label": "pi_case",
    "order": 0,
    "color": null,
@@ -570,7 +570,7 @@
     "mass_g": 5.555
    },
    "mtime": 1793340501.0,
-   "project_id": "068b8b99ce32",
+   "project_id": "eaf3c91cc2d0",
    "label": "pi_board",
    "order": 1,
    "color": null,
@@ -613,7 +613,7 @@
     "mass_g": 15.475
    },
    "mtime": 1793340502.0,
-   "project_id": "068b8b99ce32",
+   "project_id": "eaf3c91cc2d0",
    "label": "pi_battery",
    "order": 2,
    "color": "#c9a227",
@@ -656,7 +656,7 @@
     "mass_g": 2.867
    },
    "mtime": 1793340503.0,
-   "project_id": "068b8b99ce32",
+   "project_id": "eaf3c91cc2d0",
    "label": "pi_fan",
    "order": 3,
    "color": null,
@@ -699,7 +699,7 @@
     "mass_g": 13.838
    },
    "mtime": 1793340504.0,
-   "project_id": "068b8b99ce32",
+   "project_id": "eaf3c91cc2d0",
    "label": "pi_lid",
    "order": 4,
    "color": null,

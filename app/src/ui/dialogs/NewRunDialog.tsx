@@ -1,5 +1,6 @@
 // New run (⌘N, /new, "+ new run" in the Details roster): agent, model (the shared model picker),
 // task and edit scope. The conversation view's "+ New" uses the inline composer instead.
+import { showRoutedNotes } from "../console/routedNotes";
 import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { AgentInfo, ModelsInfo } from "../../api/types";
@@ -108,9 +109,11 @@ function DialogBody(): JSX.Element {
     setBusy(true);
     setError(null);
     try {
-      const { run_id } = await actions.client().createRun({
+      const res = await actions.client().createRun({
         ...(override ? { agent: override } : {}), prompt: taskText, model_ref: model, edit_scope: scope, read_scope: ["*"], ...runBuild(),
       });
+      const { run_id } = res;
+      showRoutedNotes(res);
       actions.selectRun(run_id);
       actions.closeNewRun();
     } catch (e) {
