@@ -4,6 +4,7 @@ import { CoreError } from "../../../api/client";
 import type { AgentRun } from "../../../api/types";
 import { registerShortcut } from "../../../lib/keys";
 import { runLabel } from "../../../lib/names";
+import { agentChips, chipsPromptLine, clearAgentChips } from "../../../state/agentChips";
 import { effectiveRun } from "../../../state/selection";
 import { actions, corePid, filter, follow, runs, sessionRuns, type LogFilter } from "../../../state/store";
 import { stopAll } from "../../topbar/stopAll";
@@ -75,7 +76,10 @@ export function CommandLine(): JSX.Element {
       if (!run) { setError(`no run matches @${label}`); return false; }
     }
     try {
-      await actions.client().message(run.id, cmd.text);
+      // "Use with agent" chips ride along to the run you message too, not only a new run (M-6)
+      const chipLine = chipsPromptLine(agentChips.peek());
+      await actions.client().message(run.id, chipLine ? `${cmd.text}\n\n${chipLine}` : cmd.text);
+      if (chipLine) clearAgentChips();
       return true;
     } catch (e) {
       setError(describeError(e));
@@ -165,6 +169,11 @@ export function CommandLine(): JSX.Element {
   return (
     <div class="cmd" data-command-line>
       {chip && <div class="cmd-chip dim" data-testid="target-chip">{chip}</div>}
+      {agentChips.value.length > 0 && (
+        <div class="cmd-chip dim text" data-testid="cmd-agent-chips">
+          {`with ${agentChips.value.length} parts-directory item${agentChips.value.length === 1 ? "" : "s"}: ${agentChips.value.map((c) => c.label).join(", ")} (sent with your next message to one run)`}
+        </div>
+      )}
       <div class="cmd-row">
         <span class="cmd-prompt" aria-hidden="true">❯</span>
         <textarea

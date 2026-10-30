@@ -90,6 +90,25 @@ describe("parseBlocks — structure", () => {
     expect(show((c.blocks[0] as Extract<Block, { type: "paragraph" }>).inline)).toContain("all good");
   });
 
+  it("back-to-back callouts start a new callout at each > [!kind] line (M-7)", () => {
+    const b = parseBlocks("> [!pass] holds at 120 N\n> [!warn] tip deflects 0.4 mm\n> more on the tip");
+    expect(b.map((x) => (x as Extract<Block, { type: "callout" }>).kind)).toEqual(["pass", "warn"]);
+    const warn = b[1] as Extract<Block, { type: "callout" }>;
+    expect(show((warn.blocks[0] as Extract<Block, { type: "paragraph" }>).inline)).not.toContain("[!warn]");
+    expect(show((warn.blocks[0] as Extract<Block, { type: "paragraph" }>).inline)).toContain("more on the tip");
+  });
+
+  it("values on a callout's first line are tinted, SF included (M-7)", () => {
+    const c = parseBlocks("> [!pass] **Holds** — SF 2.4 at 120 N")[0] as Extract<Block, { type: "callout" }>;
+    const line = show((c.blocks[0] as Extract<Block, { type: "paragraph" }>).inline);
+    expect(line).toContain("V(SF 2.4)");
+    expect(line).toContain("V(120 N)");
+    // the final review's reply, verbatim
+    const [pass, warn] = parseBlocks("> [!pass] SF 2.4 under the 120 N load case\n> [!warn] Deflection 0.9 mm, near the 1 mm limit") as Extract<Block, { type: "callout" }>[];
+    expect(show((pass.blocks[0] as Extract<Block, { type: "paragraph" }>).inline)).toBe("V(SF 2.4) under the V(120 N) load case");
+    expect(warn.kind).toBe("warn");
+  });
+
   it("a plain blockquote is a note callout", () => {
     expect((parseBlocks("> just a note") as [Block])[0]).toMatchObject({ type: "callout", kind: "note" });
   });

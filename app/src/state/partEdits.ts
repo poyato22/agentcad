@@ -57,8 +57,13 @@ export function noteVersion(partId: string, version: number): void {
   knownVersions.value = m;
 }
 
+/** The line is filed under the part's own build: a part the active build lists is in it (its
+ *  row's project_id); one it doesn't list (an import into another build) gets no build yet and
+ *  shows wherever that part is listed (M-4). */
 function pushLine(partId: string, text: string, ts: number): void {
-  const line: UserEditLine = { key: `you-${++seq}`, ts, partId, buildId: activeBuildId.peek(), text };
+  const row = parts.peek().find((p) => p.part_id === partId);
+  const buildId = row ? (row.project_id ?? activeBuildId.peek()) : null;
+  const line: UserEditLine = { key: `you-${++seq}`, ts, partId, buildId, text };
   const next = [...userEdits.peek(), line];
   userEdits.value = next.length > MAX_LINES ? next.slice(next.length - MAX_LINES) : next;
 }

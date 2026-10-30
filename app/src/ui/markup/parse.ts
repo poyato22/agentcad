@@ -139,7 +139,13 @@ function parseLines(lines: string[], depth: number): Block[] {
     // blockquote / callout
     if (/^\s*>/.test(line)) {
       const quoted: string[] = [];
-      while (i < lines.length && /^\s*>/.test(lines[i])) { quoted.push(lines[i].replace(/^\s*>\s?/, "")); i++; }
+      // each `> [!kind]` line starts its own callout, even with no blank line between them
+      while (i < lines.length && /^\s*>/.test(lines[i])) {
+        const q = lines[i].replace(/^\s*>\s?/, "");
+        if (quoted.length > 0 && CALLOUT_RE.test(q)) break;
+        quoted.push(q);
+        i++;
+      }
       const head = CALLOUT_RE.exec(quoted[0] ?? "");
       const kind = (head ? head[1].toLowerCase() : "note") as CalloutKind;
       if (head) quoted[0] = quoted[0].replace(CALLOUT_RE, "");

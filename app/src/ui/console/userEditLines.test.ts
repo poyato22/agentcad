@@ -73,6 +73,17 @@ describe("your edits in the thread", () => {
     expect(userEdits.value.map((l) => l.text)).toEqual(["changed thickness 5 → 5.5 mm on p", "set wall=4"]);
   });
 
+  it("an import into another build is not filed under the build on screen (M-4)", () => {
+    activeBuildId.value = "a";
+    parts.value = [{ part_id: "arm", vars: {}, metrics: null, mtime: 1, project_id: "a" }];
+    onPartChanged({ type: "part_changed", run_id: null, ts: 1, data: { part_id: "ps1", version: 1, by: "user", run_id: null, summary: "imported from Onshape" } });
+    expect(userEdits.value[0].buildId).toBeNull();
+    expect(buildUserEdits.value).toEqual([]);                      // not in build a's thread
+    activeBuildId.value = "q";                                     // the build it went into lists it
+    parts.value = [{ part_id: "ps1", vars: {}, metrics: null, mtime: 1, project_id: "q" }];
+    expect(buildUserEdits.value.map((l) => l.text)).toEqual(["imported from Onshape"]);
+  });
+
   it("another window's edit held during a failed request is still shown", async () => {
     const req = trackEdit("p", Promise.reject(new Error("409")));
     onPartChanged({ type: "part_changed", run_id: null, ts: 1, data: { part_id: "p", version: 3, by: "user", run_id: null, summary: "set wall=4" } });
