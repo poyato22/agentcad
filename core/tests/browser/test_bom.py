@@ -187,7 +187,10 @@ async def test_bom_add_from_a_part_card(env, web):
     assert "TowerPro" not in out.summary
     evs = env.drained()
     # announcements come from the Gate's mapper (U3c), which reads data["row"]: ids only
-    assert [e for e in evs if e.type == "agent_announce"] == []
+    # merged with U3c: exactly one, from the Gate's mapper, and no page text in its title
+    ann = [e.data for e in evs if e.type == "agent_announce"]
+    assert [a["kind"] for a in ann] == ["bom_added"]
+    assert "TowerPro" not in ann[0]["title"] and ann[0]["ref"]["bom_id"] == row["id"]
     assert out.data["row"] == {"id": row["id"], "project_id": env.project, "qty": 4,
                                "kind": "bought"}
     assert [e.data for e in evs if e.type == "bom_changed"] == [

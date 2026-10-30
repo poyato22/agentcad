@@ -306,7 +306,10 @@ async def test_part_show_from_a_snapshot(env, web):
     shown = [e for e in evs if e.type == "part_shown"]
     assert shown[0].data["id"] == card["id"]
     # the announcement is the Gate mapper's (U3c): data["card"] carries ids only
-    assert [e for e in evs if e.type == "agent_announce"] == []
+    # merged with U3c: exactly one, from the Gate's mapper, and no page text in its title
+    ann = [e.data for e in evs if e.type == "agent_announce"]
+    assert [a["kind"] for a in ann] == ["part_shown"]
+    assert "TowerPro" not in ann[0]["title"] and ann[0]["ref"]["card_id"] == card["id"]
     assert out.data["card"] == {"card_id": card["id"], "catalog_id": card["catalog_id"],
                                 "snapshot_id": sid}
     assert "5.95 USD" in out.summary
