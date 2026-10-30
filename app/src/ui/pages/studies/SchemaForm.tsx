@@ -5,13 +5,15 @@
 // "Advanced". Problems show at their field. Every label and doc comes from the schema as text.
 import type { JSX } from "preact";
 import { useRef, useState } from "preact/hooks";
-import type { JsonSchema } from "../../../api/studies";
+import { provenance } from "../../../api/accuracy";
+import type { JsonSchema, StudyMaterial } from "../../../api/studies";
 import type { PartFace } from "../../../api/types";
 import { fmtClock } from "../../../lib/format";
 import { Button } from "../../common/Button";
+import { ContactPairsField, FatigueField, PrintDirectionField, type CustomFieldProps } from "./accuracy/fields";
 import { unitText } from "./model";
 import {
-  ADVANCED, defaultFor, deref, directionNames, discriminated, FACE_PRESETS, getAt, isDirection, isFaceKey, labelFor, nullableInner,
+  ADVANCED, defaultFor, deref, directionNames, discriminated, enumText, FACE_PRESETS, getAt, isDirection, isFaceKey, labelFor, nullableInner,
   pathKey, properties, setAt, type FieldError, type Path,
 } from "./formSchema";
 
@@ -25,9 +27,13 @@ export interface SchemaFormProps {
   faces?: readonly PartFace[];
   /** Material names the material field offers (built-in + saved). */
   materials?: readonly string[];
+  /** The material rows (Plan 6: calibration badge in the picker, orthotropic data by the print direction). */
+  materialRows?: readonly StudyMaterial[];
   onEditMaterials?: () => void;
-  /** Arms the viewer to pick a face for this field; null disarms. */
-  onPickFace?: (path: Path | null) => void;
+  /** Opens the calibration panel for the chosen material (null: the profile default). */
+  onCalibrate?: (material: string | null) => void;
+  /** Arms the viewer to pick a face for this field, then (a contact pair) for `then`; null disarms. */
+  onPickFace?: (path: Path | null, then?: Path) => void;
   picking?: Path | null;
   /** The load case shown selected in the viewer (static: index into load_cases). */
   selectedCase?: number | null;
@@ -64,6 +70,18 @@ export function SchemaForm(props: SchemaFormProps): JSX.Element {
       )}
     </div>
   );
+}
+
+/** What a Plan 6 custom field needs from the form. */
+function customProps(ctx: Ctx, path: Path): CustomFieldProps {
+  const matName = getAt(ctx.value, ["material", "name"]);
+  return {
+    path, value: getAt(ctx.value, path), set: ctx.set, disabled: ctx.disabled,
+    face: (p, label) => <FaceInput ctx={ctx} path={p} value={getAt(ctx.value, p)} label={label} />,
+    onPickFace: ctx.onPickFace, picking: ctx.picking,
+    material: typeof matName === "string" ? ctx.materialRows?.find((m) => m.name === matName) ?? null : null,
+    errors: (p) => ctx.errs.get(pathKey(p)) ?? [],
+  };
 }
 
 function Errors({ ctx, path }: { ctx: Ctx; path: Path }): JSX.Element | null {
@@ -159,18 +177,31 @@ function Field({ ctx, path, k, schema, required }: { ctx: Ctx; path: Path; k: st
   const unit = typeof n.unit === "string" ? n.unit : undefined;
   if ("const" in n) return null; // a union's tag: the kind picker shows it
 
-  // material name: the saved and built-in materials
+  // Plan 6: the print-direction gizmo, contact pairs picked in the viewer, the fatigue cycle
+  if (k === "print_direction" && path.length === 1) return <PrintDirectionField {...customProps(ctx, path)} />;
+  if (k === "fatigue" && path.length === 1) return <FatigueField {...customProps(ctx, path)} />;
+  if (k === "contact" && path[0] === "nonlinear") return <ContactPairsField {...customProps(ctx, path)} />;
+
+  // material name: the saved and built-in materials (with their calibration badge)
   if (k === "name" && path.length === 2 && path[0] === "material") {
     const names = ctx.materials ?? [];
+    const badge = (m: string) => {
+      const row = ctx.materialRows?.find((r) => r.name === m);
+      return row ? ` · ${provenance(row).label}` : "";
+    };
     return (
       <Row ctx={ctx} path={path} label="Material" n={{}}>
         <span class="sf-face">
           <select id={fid(path)} disabled={ctx.disabled} value={typeof value === "string" ? value : ""} onChange={(e) => { const t = (e.target as HTMLSelectElement).value; ctx.set(path, t || null); }}>
             <option value="">profile default</option>
-            {names.map((m) => <option key={m} value={m}>{m}</option>)}
+            {names.map((m) => <option key={m} value={m}>{m}{badge(m)}</option>)}
             {typeof value === "string" && value && !names.includes(value) && <option value={value}>{value}</option>}
           </select>
           {ctx.onEditMaterials && <Button variant="ghost" onClick={ctx.onEditMaterials} disabled={ctx.disabled}>Edit materials</Button>}
+          {ctx.onCalibrate && (
+            <Button variant="ghost" disabled={ctx.disabled} data-testid="open-calibration"
+              onClick={() => ctx.onCalibrate?.(typeof value === "string" && value ? value : null)}>Calibrate</Button>
+          )}
         </span>
       </Row>
     );
@@ -231,7 +262,7 @@ function Inner({ ctx, path, k, n, required = true }: { ctx: Ctx; path: Path; k: 
     return (
       <Row ctx={ctx} path={path} label={label} n={n}>
         <select id={fid(path)} disabled={ctx.disabled} value={String(value ?? "")} onChange={(e) => ctx.set(path, (e.target as HTMLSelectElement).value)}>
-          {(n.enum as unknown[]).map((x) => <option key={String(x)} value={String(x)}>{String(x).replace(/_/g, " ")}</option>)}
+          {(n.enum as unknown[]).map((x) => <option key={String(x)} value={String(x)}>{enumText(x)}</option>)}
         </select>
       </Row>
     );

@@ -69,7 +69,9 @@ export function discriminated(n: JsonSchema, root: JsonSchema): Discriminated | 
   return { prop: d.propertyName, options };
 }
 
-export const isFaceKey = (key: string | number | undefined): boolean => key === "face" || key === "impact_face";
+/** Keys whose value is a face: loads and supports, the drop's impact face, contact pairs' two faces (Plan 6). */
+export const isFaceKey = (key: string | number | undefined): boolean =>
+  key === "face" || key === "impact_face" || key === "master" || key === "slave";
 
 /** The object's properties in schema order, with whether each is required. */
 export function properties(n: JsonSchema): { key: string; schema: JsonSchema; required: boolean }[] {
@@ -90,7 +92,7 @@ export function defaultFor(node: JsonSchema, root: JsonSchema, key?: string | nu
   const d = discriminated(n, root);
   if (d && d.options[0]) return defaultFor(d.options[0].schema, root);
   if (Array.isArray(n.enum) && n.enum.length) return n.enum[0];
-  if (isFaceKey(key)) return key === "impact_face" ? "bottom" : "top";
+  if (isFaceKey(key)) return key === "impact_face" || key === "slave" ? "bottom" : "top";
   switch (n.type) {
     case "object": {
       const out: Record<string, unknown> = {};
@@ -258,7 +260,18 @@ const LABELS: Record<string, string> = {
   air_density: "Air density", air_viscosity: "Air viscosity", domain_multiplier: "Domain size", shape_class: "Shape class",
   fdm: "Print settings", custom: "Custom material", layer_orientation: "Layer orientation", rpm: "Motor speed",
   blades: "Blades", margin_pct: "Band margin", up: "Up (lift axis)", point: "Point",
+  // Plan 6
+  nonlinear: "Nonlinear", large_deflection: "Large deflection", plasticity: "Plasticity", steps: "Load steps",
+  contact: "Contact", master: "Face A", slave: "Face B", friction: "Friction μ", fatigue: "Fatigue",
+  print_direction: "Print direction", cycles: "Required life", min_ratio: "Min ÷ max (R)", mean_correction: "Mean stress",
 };
+
+/** Choice values as words (the core's enum values stay the option values). */
+const ENUM_TEXT: Record<string, string> = {
+  auto: "auto", lbm: "built-in lattice-Boltzmann", empirical: "empirical estimate", openfoam: "OpenFOAM k-ω SST (Docker, optional)",
+  fully_reversed: "fully reversed", zero_to_max: "zero to max", min_max: "min to max", goodman: "Goodman", none: "none",
+};
+export const enumText = (v: unknown): string => ENUM_TEXT[String(v)] ?? String(v).replace(/_/g, " ");
 
 export function labelFor(key: string | number, n: JsonSchema): string {
   if (typeof key === "number") return `#${key + 1}`;

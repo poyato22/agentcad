@@ -5,7 +5,9 @@
 // caveats, and "Immersive" / "Ask agent to fix". Failed studies show a red band. Text only.
 import type { JSX } from "preact";
 import { useMemo, useState } from "preact/hooks";
+import { provenance } from "../../../api/accuracy";
 import type { StudyCharts, StudyRecord } from "../../../api/studies";
+import { FatigueSection, NonlinearSection } from "./accuracy/results";
 import { Button } from "../../common/Button";
 import { Led } from "../../common/Led";
 import { CheckRows } from "../../console/studycard/StudyCard";
@@ -27,7 +29,7 @@ export function solverText(rec: StudyRecord): string {
   const lat = isObj(mesh.lattice) ? mesh.lattice : null;
   if (lat) bits.push(`lattice ${String(lat.cells_across ?? "?")} cells across, Re_eff ${sig3(Number(lat.reynolds_effective))}, blockage ${sig3(Number(lat.blockage_pct))}%`);
   const m = rec.material;
-  if (m) bits.push(`${m.name}${typeof m.model === "string" ? ` ${m.model}` : ""}`);
+  if (m) bits.push(`${m.name} (${provenance(m).label})${typeof m.model === "string" ? ` ${m.model}` : ""}`);
   bits.push(`fidelity ${rec.fidelity_class ?? "?"}`);
   return bits.join(" · ");
 }
@@ -127,6 +129,8 @@ export function ResultPanel({ rec, charts, onAsk, onOpenRun, asked, onImmersive 
         </dl>
       )}
       {done && type === "static" && <LoadCases rec={rec} />}
+      {done && <NonlinearSection rec={rec} />}
+      {done && <FatigueSection rec={rec} />}
       <CheckRows checks={card?.checks ?? []} />
       {done && charts && charts.charts.length > 0 && (
         <div class="st-charts" data-testid="charts">
