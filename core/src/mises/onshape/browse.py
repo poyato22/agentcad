@@ -24,7 +24,7 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
-from .. import budget
+from .. import budget as budget_mod
 from ..store import Store
 from ..types import ErrorCode, MisesError
 from .client import OnshapeClient
@@ -216,7 +216,7 @@ def budget(store: Store, user: str, limit_year: int, *, run_id: str | None = Non
     used_year = store.ledger_used(user, since=year_start())
     if run_id is not None:
         # a build's lead: this user message's calls (its cap window, budget.turn_since)
-        used_run = store.ledger_used(user, since=budget.turn_since(store, run_id),
+        used_run = store.ledger_used(user, since=budget_mod.turn_since(store, run_id),
                                      run_id=run_id)
     else:
         used_run = _ledger_no_run(store, user, session_since)
