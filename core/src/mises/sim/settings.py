@@ -113,7 +113,7 @@ class AnisotropySettings(_M):
     print_direction: Direction = Field("+z", description="build direction of the print in "
                                        "part coordinates (the layer normal): '+z' = printed as "
                                        "modelled, flat on the bed")
-    e_z_ratio: float | None = Field(None, gt=0.05, le=1.5, description="E across the layers / "
+    e_z_ratio: float | None = Field(None, gt=0.05, le=1.2, description="E across the layers / "
                                     "E in-plane; null = the material's typical ratio "
                                     "(estimate) or its calibrated Z data")
     strength_z_ratio: float | None = Field(None, gt=0.05, le=1.0, description="tensile "

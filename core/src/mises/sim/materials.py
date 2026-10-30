@@ -39,11 +39,20 @@ across the layers (z_strength). FDM_Z_RATIOS are TYPICAL ratios, every one an ES
   Mechanical-and-FEA-comparison-of-FDM/99258311232901671. 0.6 sits inside that spread and is
   the ratio fdm_factors() already uses. Stiffness varies far less with build direction than
   strength does.
-- PETG: Prusament PETG TDS v1.1 printed specimens (ISO 527-1): tensile yield 47 MPa horizontal
-  vs 30 MPa vertical (Z), modulus 1.5 vs 1.4 GPa -> strength 0.64, E 0.93.
-- PA-CF: yield_mpa is ALREADY the Z strength (Bambu PAHT-CF TDS v2: 88 MPa X-Y, 64 MPa Z), so
-  its strength ratio is 1.0 (in-plane strength is not credited). E_z / E 0.7 is an estimate
-  (the fibres lie in-plane).
+- PETG: Z / XY strength 0.38, from Prusament PETG TDS v1.1 (last update 16-02-2022; copy at
+  https://www.3dprintergear.com.au/assets/files/technical-data-sheet%20(1).pdf): tensile yield
+  47 +- 2 MPa horizontal, 50 +- 1 MPa "vertical xz" (an on-edge print loaded ALONG its layers,
+  not a Z build), modulus 1.5 / 1.6 GPa, and "interlayer adhesion" 18 +- 4 MPa, the only
+  between-layer figure: 18 / 47 = 0.38 is the figure used. Singh's thesis (above) gives 0.44
+  for PETG, so 0.38 is the conservative end. E_z / E 0.9 is the generic estimate (the TDS gives
+  no between-layer modulus).
+- PA-CF: E_z / E 0.565 from Bambu PAHT-CF TDS V2.0 (the Bambu-hosted copy above): Young's
+  modulus 3860 +- 230 MPa X-Y and 2180 +- 130 MPa Z (a data-sheet value, not an estimate).
+  yield_mpa is that copy's Z strength (64 MPa; 88 MPa X-Y), so the in-plane strength is not
+  credited. COPIES DISAGREE: another copy also labelled v2 (https://uwaterloo.ca/
+  rapid-prototyping-centre/sites/default/files/uploads/documents/bambu_paht-cf_technical_data_
+  sheet_v2.pdf) lists Z 47 +- 5 MPa and X-Y 92, so the Z / yield ratio is 47 / 64 = 0.73, the
+  conservative reading.
 Shear moduli are on no FDM data sheet: G = E / (2 (1 + nu)) in-plane and E_z / (2 (1 + nu)) in
 the between-layer planes (estimate).
 
@@ -66,8 +75,9 @@ FDM_KNOCKDOWN = 0.7  # applied to strength (not stiffness) for every FDM materia
 BASIS_ESTIMATE = "datasheet / estimate"
 # (E_z / E, Z tensile strength / yield_mpa): typical values, ESTIMATES (sources: module doc)
 FDM_Z_RATIOS: dict[str, tuple[float, float]] = {
-    "PLA": (0.9, 0.6), "PETG": (0.93, 0.64), "ABS": (0.9, 0.6), "ASA": (0.9, 0.6),
-    "PA-CF": (0.7, 1.0)}
+    "PLA": (0.9, 0.6), "PETG": (0.9, 0.38), "ABS": (0.9, 0.6), "ASA": (0.9, 0.6),
+    "PA-CF": (0.565, 0.73)}
+E_Z_MAX_RATIO = 1.2  # E_z / E: printed parts are not stiffer across their layers
 DEFAULT_Z_RATIOS = (0.9, 0.6)  # custom materials without their own Z data (estimate)
 
 
@@ -94,6 +104,8 @@ class Material:
     sn_b: float | None = None
     basis: str = BASIS_ESTIMATE       # or "calibrated (n tests)"
     calibration: dict | None = None   # summary of the applied calibration record
+    basis_by_property: dict | None = None  # {e, e_z, strength, z_strength}: calibrated or not
+    fdm_strength_factor: float = 1.0  # infill / walls / orientation share of the strength
 
     @property
     def allowable_mpa(self) -> float:
@@ -200,8 +212,13 @@ def with_fdm(m: Material, infill_pct: float, walls: int, layer_orientation: str)
     """The FDM factors on top of the material's own knock-down (FDM_KNOCKDOWN, or the fitted
     one of a calibrated material)."""
     stiff, strength = fdm_factors(infill_pct, walls, layer_orientation)
+    if layer_orientation == "z" and m.z_strength_mpa is not None and m.yield_mpa > 0:
+        # a measured (calibrated / custom) Z strength replaces the typical 0.6
+        strength *= (m.z_strength_mpa / m.yield_mpa) / 0.6
+    factor = strength / FDM_KNOCKDOWN
     strength *= m.knockdown / FDM_KNOCKDOWN
     return replace(m, knockdown=strength, stiffness_factor=stiff,
+                   fdm_strength_factor=m.fdm_strength_factor * factor,
                    source=m.source + f"; FDM {infill_pct:g}% infill, {walls} walls, layers "
                                      f"{layer_orientation} (approximate)")
 
@@ -231,8 +248,30 @@ def with_anisotropy(m: Material, build_dir, e_z_ratio: float | None = None,
         estimated.append(f"Z/XY strength {typ[1]:g}")
     note = "; orthotropic FDM" + (f" ({', '.join(estimated)}: typical, estimate)"
                                   if estimated else "")
-    return replace(m, e_z_mpa=e_z, z_strength_mpa=z_s, build_dir=unit_dir(build_dir),
-                   source=m.source + note)
+    out = replace(m, e_z_mpa=e_z, z_strength_mpa=z_s, build_dir=unit_dir(build_dir),
+                  source=m.source + note)
+    check_orthotropic(out)
+    return out
+
+
+def check_orthotropic(m: Material) -> None:
+    """Refuse engineering constants whose stiffness is not positive definite (CalculiX runs
+    them anyway and returns garbage) or that are implausible for a print: E_z / E above
+    E_Z_MAX_RATIO, nu13^2 >= E1 / E3."""
+    e1, e2, e3, n12, n13, n23, g12, g13, g23 = m.engineering_constants()
+    if e3 / e1 > E_Z_MAX_RATIO:
+        raise SimError("bad_setup", f"{m.name}: E across the layers ({e3:.4g} MPa) is "
+                       f"{e3 / e1:.3g}x the in-plane E; at most {E_Z_MAX_RATIO:g}x is plausible",
+                       hint="check e_z_mpa / e_z_ratio")
+    if n13 ** 2 >= e1 / e3:
+        raise SimError("bad_setup", f"{m.name}: nu13^2 >= E1 / E3, not a stable material")
+    S = [[1 / e1, -n12 / e1, -n13 / e1], [-n12 / e1, 1 / e2, -n23 / e2],
+         [-n13 / e1, -n23 / e2, 1 / e3]]
+    import numpy as np
+    if min(np.linalg.eigvalsh(np.array(S))) <= 0 or min(g12, g13, g23) <= 0:
+        raise SimError("bad_setup", f"{m.name}: these orthotropic constants (Poisson's ratio "
+                       f"{m.nu:g}, E_z / E {e3 / e1:.3g}) are not positive definite",
+                       hint="lower the Poisson's ratio or E_z / E")
 
 
 def custom_material(d: dict) -> Material:

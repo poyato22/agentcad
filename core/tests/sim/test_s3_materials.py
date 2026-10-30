@@ -68,10 +68,21 @@ def test_small_samples_get_a_conservative_knockdown_and_low_confidence():
     assert f["confidence"] == "low" and "e" not in f
 
 
-def test_elongation_gives_a_secant_modulus_only_without_better_E_data():
+def test_elongation_secant_modulus_is_reported_but_never_replaces_E():
     bar = _tensile(45.0, elongation_pct=3.0)
     f = cal.fit(cal.CalibrationInput(material="PLA", tensile=[bar]), get_material("PLA"))
-    assert f["e"]["value_mpa"] == pytest.approx(45.0 / 0.03) and "secant" in f["e"]["method"]
+    assert "e" not in f and f["e_secant"]["mean"] == pytest.approx(45.0 / 0.03)
+    assert "lower bound" in f["e_secant"]["method"] and f["calibrated"] == ["strength"]
+    m = cal.apply(get_material("PLA"), {"id": "cal_x", "printer": "p", "fit": f})
+    assert m.e_mpa == 2300.0 and m.basis == "calibrated strength (1), low confidence"
+    assert m.basis_by_property["e"] == BASIS_ESTIMATE
+    assert "lower bound" in m.calibration["notes"][0]
+    assert "lower bound" in cal.summary({"material": "PLA", "printer": "p",
+                                         "basis": cal.fit_label(f), "fit": f})
+    # review probe: ductile PETG at 25% elongation would have given E = 188 MPa
+    f3 = cal.fit(cal.CalibrationInput(material="PETG", tensile=[
+        cal.TensileTest(force_n=1880, area_mm2=40, elongation_pct=25)]), get_material("PETG"))
+    assert cal.apply(get_material("PETG"), {"id": "c", "printer": "p", "fit": f3}).e_mpa == 1500
     f2 = cal.fit(cal.CalibrationInput(material="PLA", tensile=[bar], bend=[_bend(2000.0)]),
                  get_material("PLA"))
     assert f2["e"]["value_mpa"] == pytest.approx(2000.0) and "bend" in f2["e"]["method"]
@@ -160,7 +171,7 @@ def test_store_apply_and_labels(tmp_path):
                                tensile=[_tensile(44.0), _tensile(46.0), _tensile(45.0)],
                                bend=[_bend(2000.0)])
     rec = cal.save(tmp_path, inp, cal.fit(inp, get_material("PLA")))
-    assert cal.CAL_ID_RE.fullmatch(rec["id"]) and rec["basis"] == "calibrated (4 tests)"
+    assert cal.CAL_ID_RE.fullmatch(rec["id"]) and rec["basis"] == "calibrated E (1), strength (3), low confidence"
     assert cal.find(tmp_path, "pla", "mk4")["id"] == rec["id"]
     assert cal.find(tmp_path, "PLA") is None  # the default printer has no calibration
     # replacing keeps the id
@@ -172,7 +183,7 @@ def test_store_apply_and_labels(tmp_path):
     assert len(more.tensile) == 3 and len(more.bend) == 2
 
     m = cal.apply(get_material("PLA"), rec)
-    assert m.basis == "calibrated (4 tests)" and m.e_mpa == pytest.approx(2000.0)
+    assert m.basis == "calibrated E (1), strength (3), low confidence" and m.e_mpa == pytest.approx(2000.0)
     assert m.yield_mpa == pytest.approx(45.0) and m.knockdown == rec["fit"]["knockdown"]
     assert m.calibration["printer"] == "MK4" and m.to_dict()["basis"] == m.basis
     assert get_material("PLA").basis == BASIS_ESTIMATE
@@ -185,8 +196,8 @@ def test_store_apply_and_labels(tmp_path):
     assert studies.resolve_material(off, "PLA", tmp_path).basis == BASIS_ESTIMATE
     other = s.material.model_copy(update={"printer": None})
     assert studies.resolve_material(other, "PLA", tmp_path).basis == BASIS_ESTIMATE
-    assert "calibrated (4 tests)" in " ".join(studies.s3_caveats(m, s))
-    assert cal.summary(rec).startswith("PLA on MK4: calibrated (4 tests)")
+    assert "calibrated E (1), strength (3), low confidence" in " ".join(studies.s3_caveats(m, s))
+    assert cal.summary(rec).startswith("PLA on MK4: calibrated E (1), strength (3), low confidence")
     assert cal.delete(tmp_path, rec["id"]) and not cal.delete(tmp_path, rec["id"])
 
 
@@ -204,9 +215,12 @@ def test_fdm_factors_build_on_a_calibrated_knockdown():
 
 def test_orthotropic_material_uses_typical_ratios_marked_estimate():
     m = with_anisotropy(get_material("PETG"), (0, 0, 1))
-    assert m.orthotropic and m.e_z_mpa == pytest.approx(1500 * 0.93)
-    assert m.z_strength_mpa == pytest.approx(47 * 0.64)
-    assert "estimate" in m.source and m.allowable_z_mpa == pytest.approx(47 * 0.64 * 0.7)
+    assert m.orthotropic and m.e_z_mpa == pytest.approx(1500 * 0.9)
+    assert m.z_strength_mpa == pytest.approx(47 * 0.38)  # TDS interlayer adhesion 18 / 47
+    assert "estimate" in m.source and m.allowable_z_mpa == pytest.approx(47 * 0.38 * 0.7)
+    pa = with_anisotropy(get_material("PA-CF"), (0, 0, 1))  # TDS V2.0: E_z 2180 / 3860
+    assert pa.e_z_mpa == pytest.approx(3860 * 0.565) and pa.z_strength_mpa == pytest.approx(
+        64 * 0.73)
     d = m.to_dict()
     assert d["build_dir"] == [0.0, 0.0, 1.0] and "orthotropic" in d["model"]
     # explicit ratios win; a material's own Z data wins over the typical ones

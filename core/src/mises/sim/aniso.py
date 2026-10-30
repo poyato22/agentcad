@@ -15,6 +15,7 @@ from __future__ import annotations
 import numpy as np
 
 from .materials import Material
+from .types import SimError
 
 ORIENTATION = "ORFDM"
 
@@ -34,6 +35,13 @@ def orthotropic_cards(cards: list[str], m: Material) -> list[str]:
     """The model cards with the isotropic `*ELASTIC` data line swapped for engineering
     constants, an `*ORIENTATION` in front of `*MATERIAL`, and the solid section pointing at it.
     Every other material card (density, expansion, plasticity, ...) is kept as written."""
+    plastic_lines = _plastic_data_lines(cards)
+    if plastic_lines > 2:
+        # CalculiX *PLASTIC: "for an elastically orthotropic material the hardening can be at
+        # most linear" (infinitesimal-strain model, manual section 6.7.9)
+        raise SimError("bad_setup", f"plasticity with an orthotropic FDM material allows only a "
+                       f"bilinear curve (2 points); got {plastic_lines}",
+                       hint="use yield + tangent modulus, or drop the print direction")
     e1, e2, _ = local_axes(m.build_dir)
     c = m.engineering_constants()
     out: list[str] = []
@@ -55,6 +63,16 @@ def orthotropic_cards(cards: list[str], m: Material) -> list[str]:
         else:
             out.append(line)
     return out
+
+
+def _plastic_data_lines(cards: list[str]) -> int:
+    n, inside = 0, False
+    for line in cards:
+        if line.startswith("*"):
+            inside = line.split(",")[0].strip().upper() == "*PLASTIC"
+        elif inside and line.strip():
+            n += 1
+    return n
 
 
 def layer_normal_stress(S: np.ndarray, d) -> np.ndarray:

@@ -226,13 +226,19 @@ def build_sim_router(runtime: Runtime) -> APIRouter:
     async def calibration_fit(body: cal.CalibrationInput):
         fitted, base, m = await run_in_threadpool(_cal_fit, body)
         return {"fit": fitted, "material": m.to_dict(), "datasheet": base.to_dict(),
-                "basis": cal.basis_label(fitted["n_tests"]), "saved": False}
+                "basis": cal.fit_label(fitted), "status": fitted["status"],
+                "status_label": fitted["status_label"], "reasons": fitted["reasons"],
+                "outliers": fitted["outliers"], "applicable": fitted["status"] == "ok",
+                "saved": False}
 
     @router.post("/sims/calibrations")
     async def calibration_save(body: CalibrationBody):
         inp = cal.CalibrationInput(**body.model_dump(exclude={"append"}))
         if body.append:
-            inp = cal.merged(cal.find(runtime.home, inp.material, inp.printer), inp)
+            try:
+                inp = cal.merged(cal.find(runtime.home, inp.material, inp.printer), inp)
+            except SimError as e:
+                raise _bad(e) from None
         fitted, _, m = await run_in_threadpool(_cal_fit, inp)
         try:
             rec = cal.save(runtime.home, inp, fitted)

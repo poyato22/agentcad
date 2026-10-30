@@ -89,10 +89,12 @@ async def calibration_get(ctx: ToolContext, args: IdArgs) -> ToolOutput:
 async def calibration_fit(ctx: ToolContext, args: cal.CalibrationInput) -> ToolOutput:
     fitted, base, m = _fit(ctx, args)
     rec = {"material": args.material, "printer": args.printer,
-           "basis": cal.basis_label(fitted["n_tests"]), "fit": fitted}
+           "basis": cal.fit_label(fitted), "fit": fitted}
     return ToolOutput(summary="preview (not saved): " + cal.summary(rec),
                       data={"fit": fitted, "material": m.to_dict(),
-                            "datasheet": base.to_dict(), "saved": False})
+                            "datasheet": base.to_dict(), "status": fitted["status"],
+                            "reasons": fitted["reasons"], "outliers": fitted["outliers"],
+                            "applicable": fitted["status"] == "ok", "saved": False})
 
 
 @tool("calibration_save", safety=SafetyClass.LOCAL_MUTATE,
@@ -103,14 +105,17 @@ async def calibration_fit(ctx: ToolContext, args: cal.CalibrationInput) -> ToolO
 async def calibration_save(ctx: ToolContext, args: SaveArgs) -> ToolOutput:
     home = _need_home(ctx)
     inp = cal.CalibrationInput(**args.model_dump(exclude={"append"}))
-    if args.append:
-        inp = cal.merged(cal.find(home, inp.material, inp.printer), inp)
-    fitted, _, m = _fit(ctx, inp)
     try:
+        if args.append:
+            inp = cal.merged(cal.find(home, inp.material, inp.printer), inp)
+        fitted, _, m = _fit(ctx, inp)
         rec = cal.save(home, inp, fitted)
     except SimError as e:
         raise MisesError(ErrorCode.INVALID_INPUT, e.message, hint=e.hint) from None
-    return ToolOutput(summary="saved " + cal.summary(rec),
+    rejected = rec["status"] == cal.REJECTED
+    return ToolOutput(ok=not rejected,
+                      summary=("saved but REJECTED (studies will not use it): " if rejected
+                               else "saved ") + cal.summary(rec),
                       data={**rec, "material_preview": m.to_dict()})
 
 

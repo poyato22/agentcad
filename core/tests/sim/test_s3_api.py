@@ -76,10 +76,10 @@ def test_calibration_routes_fit_save_list_get_delete(client, rt):
     r = client.post("/sims/calibrations/fit", headers=AUTH, json=TESTS)
     assert r.status_code == 200, r.text
     p = r.json()
-    assert p["saved"] is False and p["basis"] == "calibrated (5 tests)"
+    assert p["saved"] is False and p["basis"] == "calibrated E (2), strength (3), low confidence"
     assert p["fit"]["e"]["value_mpa"] == pytest.approx(2100.0)
     assert p["fit"]["strength"]["value_mpa"] == pytest.approx(45.0)
-    assert p["material"]["basis"] == "calibrated (5 tests)"
+    assert p["material"]["basis"] == p["basis"]
     assert p["datasheet"]["basis"] == "datasheet / estimate"
     assert client.get("/sims/calibrations", headers=AUTH).json() == []  # not saved
 
@@ -103,7 +103,7 @@ def test_calibration_routes_fit_save_list_get_delete(client, rt):
     s = studies.validate_settings("static", {"load_cases": [CASE],
                                              "material": {"name": "PLA", "printer": "MK4"}})
     m, _ = studies.preflight("static", s, rt.home / "parts" / "x", rt.home, "PLA")
-    assert m.basis == "calibrated (6 tests)" and m.calibration["id"] == rec["id"]
+    assert m.basis == "calibrated E (3), strength (3)" and m.calibration["id"] == rec["id"]
     assert client.delete(f"/sims/calibrations/{rec['id']}", headers=AUTH).status_code == 200
     assert client.delete(f"/sims/calibrations/{rec['id']}", headers=AUTH).status_code == 404
 
@@ -140,7 +140,7 @@ async def test_calibration_tools(tmp_path):
     ctx = _ctx(tmp_path)
     out = await ct.calibration_fit.handler(ctx, ct.cal.CalibrationInput(**TESTS))
     assert out.ok and out.summary.startswith("preview (not saved)")
-    assert "calibrated (5 tests)" in out.summary and out.data["saved"] is False
+    assert "calibrated E (2), strength (3)" in out.summary and out.data["saved"] is False
     saved = await ct.calibration_save.handler(ctx, ct.SaveArgs(**TESTS))
     cid = saved.data["id"]
     assert saved.summary.startswith("saved PLA on MK4")

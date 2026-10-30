@@ -81,9 +81,31 @@ def s3_caveats(material, settings) -> list[str]:
         out.append(CAVEAT_FATIGUE)
     if material is not None and material.calibration:
         c = material.calibration
+        by = material.basis_by_property or {}
+        rest = [k for k, v in by.items() if not v.startswith("calibrated")]
         out.append(f"Material {material.basis} on printer {c['printer']} (confidence "
-                   f"{c.get('confidence')}): fitted to the user's own tests.")
+                   f"{c.get('confidence')}): fitted to the user's own tests"
+                   + (f"; {', '.join(rest)}: datasheet / estimate" if rest else "") + ".")
+        out += list(c.get("notes") or [])
+    if (material is not None and material.orthotropic
+            and _plastic(getattr(settings, "nonlinear", None))):
+        out.append(CAVEAT_ORTHO_PLASTIC)
     return out
+
+
+CAVEAT_ORTHO_PLASTIC = ("Plasticity with the orthotropic FDM model: yield uses the in-plane "
+                        "strength (isotropic von Mises, small strain); the Z check across the "
+                        "layers is elastic only and does not hold after yield.")
+
+
+def _plastic(nl) -> bool:
+    """Whether S1's nonlinear settings turn plasticity on (shape-tolerant)."""
+    if nl is None or nl is False:
+        return False
+    if nl is True:
+        return True
+    d = nl.model_dump() if hasattr(nl, "model_dump") else nl
+    return bool(isinstance(d, dict) and (d.get("plasticity") or d.get("plastic")))
 
 
 @dataclass(frozen=True)
@@ -153,10 +175,12 @@ def resolve_material(ms, default: str, home: Path | None) -> Material:
         m = custom_material(ms.custom.model_dump())
     else:
         m = get_material(ms.name or default, home)
-    # S3: the user's calibration of this material and printer, when there is one
-    if home is not None and (ms is None or ms.calibrated):
+    # S3: the user's calibration of this material and printer, when there is a plausible one
+    # (a rejected / implausible fit is never applied; an inline custom material is never
+    # calibrated by a built-in's name)
+    if home is not None and (ms is None or (ms.calibrated and ms.custom is None)):
         from . import calibration
-        rec = calibration.find(home, m.name, getattr(ms, "printer", None))
+        rec = calibration.applicable(home, m, getattr(ms, "printer", None))
         if rec is not None:
             m = calibration.apply(m, rec)
     aniso = getattr(ms, "anisotropy", None)
@@ -733,7 +757,13 @@ def static_summary(rec: dict) -> str:
         fixture = "peak includes the fixed face (every stressed node is on it)"
     model = ("orthotropic FDM (layers across the print direction)" if m.get("build_dir")
              else "isotropic linear elastic")
-    basis = f" [{m['basis']}]" if m.get("calibration") else ""
+    basis = ""
+    if m.get("calibration"):  # S3: say which properties are calibrated, and any lower bound
+        rest = [k for k, v in (m.get("basis_by_property") or {}).items()
+                if not str(v).startswith("calibrated")]
+        notes = m["calibration"].get("notes") or []
+        basis = (f" [{m['basis']}" + (f"; {', '.join(rest)}: datasheet / estimate" if rest
+                                      else "") + "".join(f"; {n}" for n in notes) + "]")
     s = (f"GUIDE ONLY - {sv['name']} {sv['version']}, fine mesh {mesh['fine']['size_mm']:.2g} mm "
          f"(coarse {mesh['coarse']['size_mm']:.2g} mm), material {m['name']}{basis} {model}, "
          f"strength x{m['knockdown']:.3g} FDM knock-down: {rec['part_id']} max von "
@@ -833,8 +863,14 @@ def card(rec: dict) -> dict:
     mat = rec.get("material") or {}
     if mat.get("basis"):  # S3: "calibrated (n tests)" or "datasheet / estimate"
         extra["material_basis"] = mat["basis"]
+        if mat.get("basis_by_property"):
+            extra["material_basis_by_property"] = mat["basis_by_property"]
+        notes += list((mat.get("calibration") or {}).get("notes") or [])
     if isinstance(r.get("fatigue"), dict):
-        extra["fatigue_note"] = (f"fatigue estimate · {r['fatigue']['sn_curve']['basis']} "
+        extrap = ("; extrapolated" if "extrapolated" in r["fatigue"]["sn_curve"].get(
+            "source", "") else "")
+        extra["fatigue_note"] = (f"fatigue estimate{extrap} · "
+                                 f"{r['fatigue']['sn_curve']['basis']} "
                                  "S-N, Goodman")
         notes.append("fatigue is an estimate (Basquin S-N + Goodman mean-stress correction)")
     return {**extra, "sim_id": rec.get("sim_id"), "type": typ, "status": rec.get("status"),

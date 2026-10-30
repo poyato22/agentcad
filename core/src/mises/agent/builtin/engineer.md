@@ -49,9 +49,10 @@ Call `spec_set` with the goal, the requirements, the load cases and the intervie
 ## 2b. Materials
 Call `calibration_list` once. If the user has calibrated the chosen material (for their printer),
 use it: pass `material: {name, printer}` in study settings, and say the result uses the
-"calibrated (n tests)" material and its confidence. Otherwise the material is "datasheet /
+calibrated material, quoting its label (e.g. "calibrated E (3), strength (5)") and confidence. Otherwise the material is "datasheet /
 estimate"; say so. If the user gives coupon or load-test results, record them with
-`calibration_save` (never invent test numbers). For a part loaded across its print layers, set
+`calibration_save` (never invent test numbers). A calibration with status "rejected" (implausible
+numbers or outliers) is never used: read its reasons to the user so they can re-measure. For a part loaded across its print layers, set
 `material.anisotropy.print_direction` (the build direction) so the Z strength is checked.
 
 ## 3. Concepts: build every one

@@ -30,7 +30,7 @@ import math
 import numpy as np
 
 from .fields import principal_stresses, von_mises_np
-from .materials import FDM_KNOCKDOWN, Material
+from .materials import Material
 
 LABEL = "fatigue estimate"
 EST_K = 5.5                 # Ezeh & Susmel 2019: negative inverse slope
@@ -42,26 +42,39 @@ N_CAP = 1e12                # cycles beyond this are reported as the cap ("no fa
 
 
 def fatigue_uts(m: Material) -> float:
-    """The ultimate strength the S-N curve and Goodman use: the material's strength with its
-    infill / orientation factors but not the generic 0.7 FDM knock-down (the design curve is
-    already a 90%-survival curve)."""
-    return m.yield_mpa * min(1.0, m.knockdown / FDM_KNOCKDOWN)
+    """The ultimate strength the S-N curve and Goodman use: the material's strength times its
+    infill / walls / orientation factor (Material.fdm_strength_factor), but neither the generic
+    0.7 FDM knock-down nor a calibrated scatter knock-down (the design curve is already a
+    90%-survival curve)."""
+    return m.yield_mpa * m.fdm_strength_factor
 
 
 def sn_curve(m: Material, override=None) -> dict:
     """{a_mpa, b, uts_mpa, basis, source}: sigma_a = a N^b."""
     su = fatigue_uts(m)
     if override is not None:
+        src = override.source or "user"
         return {"a_mpa": float(override.a_mpa), "b": float(override.b), "uts_mpa": su,
-                "basis": "datasheet", "source": override.source or "user"}
+                "basis": "user-supplied" if src.strip().lower() == "user" else "datasheet",
+                "source": src}
     if m.sn_a_mpa is not None and m.sn_b is not None:
-        f = min(1.0, m.knockdown / FDM_KNOCKDOWN)
-        return {"a_mpa": m.sn_a_mpa * f, "b": m.sn_b, "uts_mpa": su, "basis": "datasheet",
-                "source": f"{m.name} S-N data"}
+        return {"a_mpa": m.sn_a_mpa * m.fdm_strength_factor, "b": m.sn_b, "uts_mpa": su,
+                "basis": "datasheet", "source": f"{m.name} S-N data"}
     a = EST_FRACTION * su * EST_N_REF ** (1 / EST_K)
     note = "" if m.name == "PLA" else f" applied to {m.name} (extrapolated)"
     return {"a_mpa": a, "b": -1 / EST_K, "uts_mpa": su, "basis": "estimate",
             "source": EST_SOURCE + note}
+
+
+HCF_RANGE = (1e3, EST_N_REF)  # where a high-cycle Basquin curve is measured
+
+
+def extrapolation_note(cycles: float) -> str:
+    if cycles > HCF_RANGE[1]:
+        return f"; extrapolated beyond {HCF_RANGE[1]:.0e} cycles"
+    if cycles < HCF_RANGE[0]:
+        return f"; below {HCF_RANGE[0]:.0e} cycles (low-cycle regime, extrapolated)"
+    return ""
 
 
 def strength_at(curve: dict, cycles: float) -> float:
@@ -105,6 +118,7 @@ def evaluate(ids: list[int], S: np.ndarray, coords: dict, m: Material, settings,
     curve = sn_curve(m, getattr(settings, "sn", None))
     r = settings.load_ratio()
     need = float(settings.cycles)
+    curve = {**curve, "source": curve["source"] + extrapolation_note(need)}
     keep = np.array([n not in (exclude or set()) for n in ids], dtype=bool)
     if not keep.any():
         keep[:] = True
