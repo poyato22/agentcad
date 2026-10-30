@@ -172,4 +172,13 @@ describe("left pane", () => {
     }
     expect(actions).toBeDefined();
   });
+
+  it("has_parts_and_history_only_no_variables_panel", () => {
+    // Plan 7 U2b (R14): the Variables panel left the main UI
+    load();
+    const { container } = render(<LeftPane />);
+    const titles = Array.from(container.querySelectorAll(".pane-title")).map((e) => e.textContent);
+    expect(titles).toEqual(["Parts", "History"]);
+    expect(container.querySelector(".left-vars, .vars")).toBeNull();
+  });
 });
