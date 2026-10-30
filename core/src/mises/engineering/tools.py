@@ -637,10 +637,10 @@ async def study_apply(ctx: ToolContext, args: StudyApplyArgs) -> ToolOutput:
     if args.base_version is not None and current != args.base_version:
         raise MisesError(ErrorCode.STALE_VERSION, f"{args.part_id} is at version {current}, "
                          f"not {args.base_version}", hint="re-read the part, then decide again")
-    # C6 re-checks the version under the part lock: no edit can slip in between
+    # pass base_version through as-is (C6): None means the run's last-read version (never read =
+    # conflict); forcing `current` here would let an apply overwrite an edit the run never saw.
     out = await mirror_part_set_vars.handler(ctx, SetVarsArgs(
-        part_id=args.part_id, vars=it["vars"],
-        base_version=args.base_version if args.base_version is not None else current))
+        part_id=args.part_id, vars=it["vars"], base_version=args.base_version))
     if out.ok:
         out.summary = f"applied {args.study_id} #{args.iteration}: {out.summary}"
         out.data = {**out.data, "study_id": args.study_id, "iteration": args.iteration}

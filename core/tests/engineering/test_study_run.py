@@ -6,7 +6,7 @@ import pytest
 
 from mises.engineering.tools import (StudyApplyArgs, StudyRunArgs, study_apply, study_get,
                                      study_run, StudyGetArgs)
-from mises.types import ErrorCode, MisesError
+from mises.types import ErrorCode, MisesError, ToolOutput
 
 from .fakes import (BUILD_FAILS_ABOVE, DRONE_SPEC, THIN_FAILS_BELOW, install, make_ctx,
                     make_part)
@@ -185,6 +185,29 @@ async def test_study_results_fit_under_the_gate_cap_at_24_evals(tmp_path, monkey
     assert len(_j.dumps(page.data, default=float).encode()) <= MAX_OUTPUT_BYTES
     assert page.data["iterations"] and set(page.data["iterations"][0]) == {"n", "metrics"}
     assert len(page.data["iterations"]) == page.data["iterations_total"]  # all 24 fit one page
+
+
+async def test_study_apply_passes_base_version_through_as_is(tmp_path, monkeypatch):
+    """C6/I1: an omitted base_version is passed to set_vars as None (the run's last read), not
+    forced to the current version, so an apply cannot overwrite an edit the run never saw."""
+    import mises.engineering.tools as et
+    ctx, _ = _setup(tmp_path)
+    install(monkeypatch)
+    out = await study_run.handler(ctx, _args())
+    rec = ctx.store.get_study(out.data["id"])
+    best = next(it for it in rec["iterations"] if it["n"] == rec["best_id"])
+
+    seen = {}
+
+    async def fake_set_vars(c, a):
+        seen["base_version"] = a.base_version
+        return ToolOutput(summary="ok", data={"part_id": a.part_id})
+    from types import SimpleNamespace
+    monkeypatch.setattr(et, "mirror_part_set_vars", SimpleNamespace(handler=fake_set_vars))
+
+    await study_apply.handler(ctx, StudyApplyArgs(study_id=rec["id"], part_id="frame_x",
+                                                  iteration=best["n"]))
+    assert seen["base_version"] is None                 # not forced to the current version
 
 
 async def test_interrupted_study_is_reported(tmp_path, monkeypatch):
