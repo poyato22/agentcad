@@ -3,6 +3,7 @@
 // (module state), shared by the console panel and the Studies page. Events drive refreshes:
 // spec_changed reloads the spec, study_progress the studies (throttled), a part change the check.
 import { batch, signal } from "@preact/signals";
+import { activeBuildId } from "../../state/builds";
 import type { CoreClient } from "../../api/client";
 import { CoreError } from "../../api/client";
 import { specChangedSchema, studyProgressSchema, type Spec, type SpecCheck, type Study } from "../../api/spec";
@@ -61,7 +62,9 @@ export class SpecController {
   async load(projectId?: string | null): Promise<void> {
     const seq = ++this.loads;
     try {
-      const pid = projectId ?? this.projectId.peek() ?? await this.client().activeProjectId();
+      // A3's build signal is the active build (the spec follows the build tabs); the core's own
+      // resolution only before the builds have loaded
+      const pid = projectId ?? activeBuildId.peek() ?? this.projectId.peek() ?? await this.client().activeProjectId();
       if (seq !== this.loads) return;
       if (pid !== this.projectId.peek()) {
         batch(() => {

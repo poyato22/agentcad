@@ -12,7 +12,7 @@ import { Button } from "../common/Button";
 import { Led, type LedTone } from "../common/Led";
 import { activityByRun } from "../../state/activity";
 import { openAgentManager } from "../agents/manager";
-import { effectiveRunId, labelOf, offListRuns, rosterRuns, runLabels } from "./derived";
+import { buildRuns, effectiveRunId, labelOf, offListRuns, runLabels } from "./derived";
 import { shownPending } from "./queued";
 import { composerOpen, setConsoleView } from "./view";
 
@@ -31,7 +31,7 @@ function cancelRun(id: string): void {
 }
 
 export function RunSwitcher(): JSX.Element {
-  const list = rosterRuns.value;
+  const list = buildRuns.value;   // the active build's runs (A3)
   const offList = offListRuns.value;
   const shownId = effectiveRunId.value;
   // the shown run may be off-list (the app's own "ui" run, whose print / slice cards sit here)

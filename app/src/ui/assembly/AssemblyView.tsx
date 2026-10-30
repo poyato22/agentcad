@@ -17,11 +17,14 @@ import { modalOpen } from "../pages/router";
 import { ModeSwitch } from "./mode";
 import { faceOptions, pickOption, type FaceOption } from "./pick";
 import { createAssemblyScene, type AssemblyScene, type GizmoSpec, type OverlayLabel, type PickMarker } from "./scene";
+import { onBuildSwitch } from "../../state/builds";
 import "./assembly.css";
 
 /** One per app: leaving assembly mode and coming back keeps the build loaded. */
 export const assembly = new AssemblyController(() => actions.client());
 onCoreEvent((ev) => assembly.onEvent(ev));
+// A3's build tabs: switching builds re-opens the assembly on the new build (once it was opened)
+onBuildSwitch((id) => { if (assembly.projectId.peek() !== null && assembly.projectId.peek() !== id) void assembly.open(id); });
 
 /** What the gizmo is moving right now (read by the scene callbacks). */
 type GizmoTarget = { kind: "free"; id: string } | { kind: "joint"; jointId: string; component: number } | null;

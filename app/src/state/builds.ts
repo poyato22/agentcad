@@ -83,6 +83,19 @@ function persist(): void {
 }
 
 /** Show the newest run of the build when the selected run belongs to another one. */
+/** Called after the active build changes (a tab switch): A4's assembly and A7's spec panel
+ *  re-open on the new build. Returns unregister. */
+const switchHooks = new Set<(id: string) => void>();
+export function onBuildSwitch(cb: (id: string) => void): () => void {
+  switchHooks.add(cb);
+  return () => { switchHooks.delete(cb); };
+}
+function announceSwitch(id: string): void {
+  for (const cb of [...switchHooks]) {
+    try { cb(id); } catch { /* a listener's failure never blocks the switch */ }
+  }
+}
+
 function followRuns(buildId: string): void {
   const sel = selectedRunId.peek();
   const run = sel ? runs.peek().get(sel) : undefined;
@@ -134,6 +147,7 @@ export const buildActions = {
     persist();
     if (prev !== id) {
       followRuns(id);
+      announceSwitch(id);
       await loadParts(id);
     }
   },

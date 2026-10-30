@@ -137,3 +137,25 @@ describe("builds", () => {
     expect(builds.value.map((x) => x.id)).toEqual(["a", "n"]);
   });
 });
+
+describe("integration: a build switch reaches the other build-scoped views", () => {
+  it("onBuildSwitch listeners (A4's assembly, A7's spec) get the new build; the run switcher lists its runs", async () => {
+    const { onBuildSwitch } = await import("./builds");
+    const { buildRuns } = await import("../ui/console/derived");
+    const c = fakeClient([b("a", "Quad"), b("b", "Bench")]);
+    bindClient(c as unknown as CoreClient);
+    const run = (id: string, project: string | null, t: number): AgentRun => ({ id, parent_id: null, agent: "designer", provider: "fake", model: "m", task: id,
+      status: "done", branch: null, onshape_calls: 0, input_tokens: 0, output_tokens: 0, usd: 0, created_at: t, updated_at: t, project_id: project });
+    runs.value = new Map([["r1", run("r1", "a", 1)], ["r2", run("r2", "b", 2)], ["r0", run("r0", null, 0)]]);
+    await buildActions.refresh();
+    const seen: string[] = [];
+    const off = onBuildSwitch((id) => seen.push(id));
+    expect(buildRuns.value.map((r) => r.id).sort()).toEqual(["r0", "r1"]);   // build a, plus a build-less run
+    await buildActions.switchTo("b");
+    expect(seen).toEqual(["b"]);
+    expect(buildRuns.value.map((r) => r.id).sort()).toEqual(["r0", "r2"]);
+    await buildActions.switchTo("b");                                          // no change: no event
+    expect(seen).toEqual(["b"]);
+    off();
+  });
+});

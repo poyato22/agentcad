@@ -11,6 +11,7 @@
 // part from where it is to the new pose (blue edges while it moves). An event that lands during a
 // gesture waits until the gesture ends. Our own mutations also emit the event; the re-read then
 // finds nothing changed and nothing moves.
+import { activeBuildId } from "../../state/builds";
 import { batch, computed, signal, type ReadonlySignal, type Signal } from "@preact/signals";
 import { Matrix4, Quaternion, Vector3 } from "three";
 import type {
@@ -197,7 +198,8 @@ export class AssemblyController {
     this.loading.value = true;
     this.error.value = null;
     try {
-      const id = projectId ?? this.projectId.peek() ?? await this.findProject();
+      // A3's build signal is the active build; findProject only before the builds have loaded
+      const id = projectId ?? this.projectId.peek() ?? activeBuildId.peek() ?? await this.findProject();
       if (seq !== this.loadSeq) return;
       if (id === null) { this.error.value = "No build to assemble. Create a build first."; return; }
       if (id !== this.projectId.peek()) {

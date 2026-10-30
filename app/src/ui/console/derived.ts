@@ -1,6 +1,7 @@
 // Console-local derived state (computed from the store; the store itself is not changed here).
 // The log is rebuilt at most once per animation frame: one effect watches the store inputs and
 // schedules a single rebuild into `logFrame`, which StepLog and Filters render from.
+import { activeBuildId } from "../../state/builds";
 import { computed, effect, signal, type ReadonlySignal } from "@preact/signals";
 import type { AgentRun } from "../../api/types";
 import { runLabel } from "../../lib/names";
@@ -22,6 +23,13 @@ export const runList: ReadonlySignal<readonly AgentRun[]> = computed(() => [...r
 
 /** Roster order: running first, then newest first. */
 export const rosterRuns: ReadonlySignal<readonly AgentRun[]> = computed(() => rosterOrder(runList.value));
+
+/** The run switcher's list: the active build's runs (A3's build tabs). Runs with no build (an
+ *  older core) stay listed; a run elsewhere that needs you is still offered by the switcher. */
+export const buildRuns: ReadonlySignal<readonly AgentRun[]> = computed(() => {
+  const id = activeBuildId.value;
+  return id === null ? rosterRuns.value : rosterRuns.value.filter((r) => (r.project_id ?? null) === null || r.project_id === id);
+});
 
 /** The run the console shows (shared with the command line and the left pane; state/selection.ts). */
 export { effectiveRunId };
