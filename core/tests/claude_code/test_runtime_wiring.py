@@ -107,6 +107,35 @@ async def test_send_continues_the_same_session(rt, claude_bin, signed_in):
 
 
 @needs_sandbox
+async def test_activity_goes_idle_between_turns_and_back_on_send(rt, claude_bin, signed_in):
+    """A Claude Code session outlives its turn: after the turn the run reads 'idle' (QA C,
+    fix-core 47b7137), over the event stream and GET /runs/{id}, and leaves it on the next
+    message."""
+    async with served(rt) as (port, token, _):
+        sub = rt.events.subscribe()
+        rid = await rt.start_run("designer", "activity", model_ref="claude-code/sonnet")
+        await asyncio.wait_for(rt.wait(rid), 20)
+        await _wait_for(lambda: (rt.activity_of(rid) or {}).get("state") == "idle")
+        async with httpx.AsyncClient(base_url=f"http://127.0.0.1:{port}",
+                                     headers={"Authorization": f"Bearer {token}"}) as c:
+            act = (await c.get(f"/runs/{rid}")).json()["activity"]
+        assert act["state"] == "idle" and act["detail"] == "waiting for your next message"
+        states = []
+        while True:
+            try:
+                ev = sub.queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+            if ev.type == "agent_activity" and ev.run_id == rid:
+                states.append(ev.data["state"])
+        assert "tool" in states and states[-1] == "idle"
+        await rt.send(rid, "hello again")
+        await asyncio.wait_for(rt.wait(rid), 15)
+        await _wait_for(lambda: (rt.activity_of(rid) or {}).get("state") == "idle")
+        assert rt.store.get_run(rid).status == "done"
+
+
+@needs_sandbox
 async def test_cancel_mid_turn_kills_claude(rt, claude_bin, signed_in):
     async with served(rt):
         rid = await rt.start_run("designer", "hang", model_ref="claude-code/sonnet")

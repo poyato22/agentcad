@@ -147,9 +147,13 @@ async def test_irreversible_tool_blocks_until_decided(tmp_path):
     ev = await next_event(sub, "approval_requested")
     await asyncio.sleep(0.05)
     assert ran == [] and rt.store.get_run(rid).status == "running"
+    # I-5 / QA C-1: the run reads as blocked on the user, not as a running tool
+    act = rt.activity_of(rid)
+    assert act["state"] == "waiting_approval" and "danger_merge" in act["detail"]
     rt.approvals.decide(ev.data["id"], ev.data["payload_hash"], True, "human")
     r = await rt.wait(rid)
     assert r.stop_reason == "end_turn" and ran == [1]
+    assert (rt.activity_of(rid) or {}).get("state") != "waiting_approval"
 
 
 async def test_cancel_run_rejects_approval_and_marks_cancelled(tmp_path):
