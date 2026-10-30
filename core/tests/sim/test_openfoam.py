@@ -481,7 +481,7 @@ echo "$*" >> "$here/calls.log"
 case "$1" in
   run) exec /bin/sleep 30 ;;
   kill|rm) [ -f "$here/slow" ] && /bin/sleep 5; exit 0 ;;
-  ps) printf 'abc123\\ndef456\\n' ;;
+  ps) printf 'abc123\\texited\\t\\ndef456\\tcreated\\t\\nlive1\\trunning\\t9999999999\\n' ;;
   info) echo 3 ;;
 esac
 """
@@ -513,7 +513,8 @@ async def test_real_docker_runner_kills_then_removes_on_timeout(tmp_path):
     assert await runner.ncpu() == 3
     await runner.cleanup()
     assert (docker.parent / "calls.log").read_text().splitlines()[-2:] == [
-        "ps -aq --filter label=mises.study=wind", "rm -f abc123 def456"]
+        'ps -a --filter label=mises.study=wind --format {{.Names}}\t{{.State}}\t{{.Label "mises.deadline"}}',
+        "rm -f abc123 def456"]
 
 
 @pytest.mark.timeout(60)
@@ -601,3 +602,71 @@ async def test_real_flat_plate_within_10_percent(tmp_path):
                                    timeout_s=7000), tmp_path, docker)
     print("plate", r["cd"], r["steps"], r["converged"], r["mesh"]["cells_estimate"])
     assert abs(r["cd"] - 1.17) / 1.17 < 0.10, r["cd"]
+
+
+# ---- release merge (a): cleanup never removes another study's live container
+
+STATEFUL_DOCKER = """#!/bin/bash
+here="$(cd "$(dirname "$0")" && pwd)"
+st="$here/state"; mkdir -p "$st"
+echo "$*" >> "$here/calls.log"
+case "$1" in
+  run)
+    name=""; dl=""; prev=""
+    for a in "$@"; do
+      [ "$prev" = "--name" ] && name="$a"
+      case "$a" in mises.deadline=*) dl="${a#mises.deadline=}" ;; esac
+      prev="$a"
+    done
+    printf 'running\\t%s\\n' "$dl" > "$st/$name"
+    for i in $(seq 1 25); do
+      [ -f "$st/$name.killed" ] && { rm -f "$st/$name"; exit 137; }
+      /bin/sleep 0.1
+    done
+    rm -f "$st/$name"; exit 0 ;;
+  ps)
+    for f in "$st"/*; do
+      [ -f "$f" ] || continue
+      n="$(basename "$f")"; case "$n" in *.killed) continue ;; esac
+      IFS=$'\\t' read -r state dl < "$f"
+      printf '%s\\t%s\\t%s\\n' "$n" "$state" "$dl"
+    done
+    printf 'crashed_old\\texited\\t\\n' ;;
+  rm) shift; [ "$1" = "-f" ] && shift; for n in "$@"; do touch "$st/$n.killed"; done ;;
+  kill) touch "$st/$2.killed" ;;
+  info) echo 4 ;;
+esac
+"""
+
+
+@pytest.mark.timeout(60)
+async def test_two_concurrent_studies_both_finish_despite_the_start_cleanup(tmp_path):
+    d = tmp_path / "bin"
+    d.mkdir()
+    docker = d / "docker"
+    docker.write_text(STATEFUL_DOCKER)
+    docker.chmod(0o755)
+    runner = openfoam.DockerRunner(str(docker))
+    cases = []
+    for i in (0, 1):
+        c = tmp_path / f"job{i}" / "openfoam_0"
+        c.mkdir(parents=True)
+        cases.append(c)
+
+    async def study(i):
+        await runner.cleanup()          # what run_openfoam_study does at start
+        await openfoam.run_case(cases[i], runner, str(docker), cpus=1, iterations=10,
+                                memory_mb=512, timeout_s=20, job_root=cases[i].parent)
+    a = asyncio.ensure_future(study(0))
+    await asyncio.sleep(0.8)            # A's container is running when B starts and cleans up
+    await asyncio.gather(a, study(1))   # both finish: neither was killed (rc 137 would raise)
+    calls = (d / "calls.log").read_text().splitlines()
+    removed = [c for c in calls if c.startswith("rm -f")]
+    assert removed and all(c == "rm -f crashed_old" for c in removed)   # only the stopped leftover
+    assert openfoam.live_jobs() == frozenset()
+
+
+def test_stale_containers_spares_live_and_unexpired_ones():
+    rows = [("live", "running", "100"), ("mine_old", "running", "50"), ("other_new", "running", "200"),
+            ("dead", "exited", ""), ("made", "created", ""), ("nolabel", "running", "")]
+    assert openfoam.stale_containers(rows, frozenset({"live"}), now=150.0) == ["mine_old", "dead", "made"]

@@ -12,7 +12,8 @@ Container isolation (hard rules):
 - `--pull never`: a run never fetches anything (the image is pulled only by the user's click);
 - a timeout, and cancel: both `docker kill` then `docker rm -f` the named container (the CLI
   process is killed too); a daemon that does not answer is retried and reported, and leftover
-  labelled containers are removed before the next run;
+  labelled containers are removed before the next run (never a live job's: each container is
+  labelled with its job and deadline, see stale_containers);
 - `cpus` is clamped to the CPUs the Docker VM reports;
 - every file read back from the case is opened no-follow, must be regular and is size-capped.
 The docker CLI itself is not wrapped in sandbox-exec: it must reach the daemon's socket, and the
@@ -28,6 +29,7 @@ import logging
 import math
 import os
 import re
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -55,6 +57,39 @@ AVERAGE_TAIL_LAMINAR = 0.5
 
 
 LABEL_FILTER = "label=mises.study=wind"
+# Every container carries its job (its --name) and the wall-clock time after which it can only
+# be a leftover (its timeout plus a margin). The live job registry is this process's running
+# cases; cleanup never touches a container whose job is live, and removes a running one only
+# once its deadline has passed (another study, or another Mises core, may own it until then).
+DEADLINE_MARGIN_S = 300.0
+_live: set[str] = set()
+_live_lock = threading.Lock()
+
+
+def live_jobs() -> frozenset[str]:
+    """Container names of the cases running in this process."""
+    with _live_lock:
+        return frozenset(_live)
+
+
+def stale_containers(rows: list[tuple[str, str, str]], live: frozenset[str],
+                     now: float) -> list[str]:
+    """Which labelled wind containers (name, state, deadline label) are leftovers: never a
+    live job's; a stopped one (exited / created / dead) always; a running one only past its
+    deadline (an unlabelled running one is never assumed dead)."""
+    out = []
+    for name, state, deadline in rows:
+        if not name or name in live:
+            continue
+        if state in ("exited", "created", "dead"):
+            out.append(name)
+            continue
+        try:
+            if float(deadline) < now:
+                out.append(name)
+        except ValueError:
+            pass
+    return out
 TMP_MB = 256
 TMPFS = f"/tmp:rw,nosuid,nodev,size={TMP_MB}m"   # in-memory: not a host mount
 
@@ -121,10 +156,15 @@ class DockerRunner:
                 f"`docker rm -f {name}`")
 
     async def cleanup(self) -> None:
-        """Remove Mises wind containers left behind (a crashed or quit core, a failed rm).
-        Wind studies run one at a time (studies.semaphore), so none of them is live."""
-        rc, out = await self._cli("ps", "-aq", "--filter", LABEL_FILTER)
-        ids = out.split() if rc == 0 else []
+        """Remove Mises wind containers left behind (a crashed or quit core, a failed rm),
+        never another study's live one (stale_containers)."""
+        rc, out = await self._cli("ps", "-a", "--filter", LABEL_FILTER, "--format",
+                                  '{{.Names}}\t{{.State}}\t{{.Label "mises.deadline"}}')
+        rows = []
+        for line in out.splitlines() if rc == 0 else []:
+            parts = (line.split("\t") + ["", "", ""])[:3]
+            rows.append((parts[0].strip(), parts[1].strip().lower(), parts[2].strip()))
+        ids = stale_containers(rows, live_jobs(), time.time())
         if ids:
             log.warning("removing %d leftover OpenFOAM container(s)", len(ids))
             await self._cli("rm", "-f", *ids)
@@ -165,7 +205,7 @@ def mount_path(case: Path, job_root: Path | None = None) -> Path:
 
 
 def docker_argv(docker: str, case: Path, name: str, *, cpus: int, memory_mb: int,
-                job_root: Path | None = None) -> list[str]:
+                job_root: Path | None = None, deadline: float | None = None) -> list[str]:
     """The one `docker run` Mises issues. Nothing from the part or the user's text reaches it
     except numbers (cpus, memory) and the case path Mises created. The root filesystem is
     read-only; the only writable places are the case mount and an in-memory /tmp (not a host
@@ -181,7 +221,8 @@ def docker_argv(docker: str, case: Path, name: str, *, cpus: int, memory_mb: int
             "--user", f"{os.getuid()}:{os.getgid()}",
             "-e", "HOME=/case", "-e", "TMPDIR=/tmp",
             "-e", "OMPI_MCA_btl_vader_single_copy_mechanism=none",
-            "--label", "mises.study=wind",
+            "--label", "mises.study=wind", "--label", f"mises.job={name}",
+            *(["--label", f"mises.deadline={deadline:.0f}"] if deadline is not None else []),
             OPENFOAM_IMAGE, "/bin/bash", "/case/Allrun"]
 
 
@@ -288,10 +329,15 @@ async def run_case(case: Path, runner: ContainerRunner, docker: str, *, cpus: in
                    iterations: int, memory_mb: int, timeout_s: float, progress=None,
                    job_root: Path | None = None) -> None:
     name = f"mises-of-{uuid.uuid4().hex[:12]}"
-    argv = docker_argv(docker, case, name, cpus=cpus, memory_mb=memory_mb, job_root=job_root)
+    argv = docker_argv(docker, case, name, cpus=cpus, memory_mb=memory_mb, job_root=job_root,
+                       deadline=time.time() + timeout_s + DEADLINE_MARGIN_S)
     watch = asyncio.create_task(_watch(case, iterations, progress))
+    with _live_lock:
+        _live.add(name)
     try:
-        rc, out = await runner.run(argv, timeout_s=timeout_s)
+        from ...heavy import heavy_slot
+        async with heavy_slot("OpenFOAM"):        # one of the global heavy-worker slots (M9)
+            rc, out = await runner.run(argv, timeout_s=timeout_s)
     except asyncio.TimeoutError:
         problem = await _stop(runner, name)
         raise SimError("timeout", f"OpenFOAM timed out after {timeout_s:g}s"
@@ -303,6 +349,8 @@ async def run_case(case: Path, runner: ContainerRunner, docker: str, *, cpus: in
         raise
     finally:
         watch.cancel()
+        with _live_lock:
+            _live.discard(name)
     if rc == 137:
         raise SimError("memory", f"OpenFOAM went over its {memory_mb} MB memory limit and "
                        "was stopped", hint="lower refinement or raise memory_mb")
@@ -337,7 +385,7 @@ async def run_openfoam_study(tris_part_mm: np.ndarray, s: dict, job_dir: Path, d
     job_dir = Path(job_dir)
     runner = runner or make_runner(docker)
     t0 = time.monotonic()
-    await runner.cleanup()             # leftovers of a crashed / quit core (studies run 1 at a time)
+    await runner.cleanup()             # leftovers only: never a concurrent study's live container
     ncpu = await runner.ncpu()
     s = {**s, "cpus": max(1, min(int(s.get("cpus", 1)), ncpu or os.cpu_count() or 1))}
     d0, up = np.array(s["direction"], float), np.array(s["up"], float)
