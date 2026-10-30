@@ -119,5 +119,5 @@ span.am-fold { cursor: default; color: var(--faint); }
 .ap-sub { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 2px 0 0 34px; font-size: var(--fs-small); }
 .ap-act { color: var(--dim); }
 .ap-act.needs-you { color: var(--blue2); }
-.ap-del { display: inline-flex; align-items: center; gap: 8px; }
-.ap-refused { color: var(--red); }
+.ap-del { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.ap-refused { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--red); }

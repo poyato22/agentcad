@@ -103,13 +103,15 @@ test("inline_composer_starts_a_run_with_profile_defaults", async ({ page, fake }
   const form = page.getByRole("form", { name: "New run" });
   await expect(form).toBeVisible();
   await expect(page.getByRole("dialog", { name: "New run" })).toHaveCount(0);
-  await expect(form.getByLabel("Agent")).toHaveValue("designer");
+  // R8: no agent picker — the core routes from the prompt
+  await expect(form.getByLabel("Agent")).toHaveCount(0);
+  await expect(form).toContainText("Mises picks the right agent from your prompt.");
   await expect(form.getByRole("button", { name: /^Model: Claude Code · opus/ })).toBeVisible();
   await form.getByLabel("Task").fill("stiffen the upright");
   await form.getByLabel("Task").press("Enter");
   await expect(form).toHaveCount(0);
   const posts = (await fake.calls()).filter((c) => c.method === "POST" && c.path === "/runs");
-  expect(posts.map((c) => c.body)).toEqual([{ agent: "designer", prompt: "stiffen the upright", model_ref: "claude-code/opus", edit_scope: ["*"], read_scope: ["*"], project_id: expect.any(String) }]);
+  expect(posts.map((c) => c.body)).toEqual([{ prompt: "stiffen the upright", model_ref: "claude-code/opus", edit_scope: ["*"], read_scope: ["*"], project_id: expect.any(String) }]);
   await expect(switcher(page)).toContainText("designer · stiffen upright");
   await expect(acts(page)).toHaveText(["measured mount plate · 8.0 cm³"]);
   await expect(thread(page).locator("[data-msg=agent]")).toContainText("Measuring the plate first.");

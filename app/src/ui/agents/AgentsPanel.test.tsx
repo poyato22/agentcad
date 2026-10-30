@@ -82,4 +82,17 @@ describe("AgentsPanel", () => {
     await waitFor(() => expect(within(rowEl("lead")).getByRole("alert").textContent).toMatch(/still working/i));
     expect(core.state.runs.has("lead")).toBe(true);
   });
+
+  it("cancel and delete stops a working run then removes it", async () => {
+    seed({ id: "lead", role: "lead", status: "running" });
+    render(<AgentsPanel />);
+    await waitFor(() => expect(rowEl("lead")).toBeTruthy());
+    fireEvent.click(within(rowEl("lead")).getByRole("button", { name: "Delete engineer" }));
+    fireEvent.click(within(rowEl("lead")).getByRole("button", { name: "Confirm delete engineer" }));
+    await waitFor(() => expect(within(rowEl("lead")).getByRole("button", { name: "Cancel and delete" })).toBeTruthy());
+    fireEvent.click(within(rowEl("lead")).getByRole("button", { name: "Cancel and delete" }));
+    fireEvent.click(within(rowEl("lead")).getByRole("button", { name: "Stop it and delete?" }));
+    await waitFor(() => expect(rowEl("lead")).toBeNull());
+    expect(core.state.runs.has("lead")).toBe(false);
+  });
 });

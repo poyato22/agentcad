@@ -14,6 +14,7 @@ test("new_run_flow", async ({ page, fake }) => {
   await page.keyboard.press("Meta+n");
   const dialog = page.getByRole("dialog", { name: "New run" });
   await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Use a specific agent…" }).click();   // R8: override the router
   await dialog.getByLabel("Agent").selectOption("designer");
   await expect(dialog.getByRole("button", { name: /^Model: anthropic · claude-sonnet-5-5/ })).toBeVisible();
   await dialog.getByLabel("Task").fill("stiffen the upright");

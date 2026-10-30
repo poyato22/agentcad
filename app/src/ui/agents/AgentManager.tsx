@@ -6,10 +6,12 @@ import { useEffect, useRef } from "preact/hooks";
 import { AgentsPanel } from "./AgentsPanel";
 import { AgentsTab } from "./AgentsTab";
 import { agentManagerOpen, agentManagerTab, closeAgentManager, installManagerShortcut, type ManagerTab } from "./manager";
+import { RunsTab } from "./RunsTab";
 import "./agents.css";
 
-// R10: the Agents tab is the simple lead/sub view of every build; Definitions edits custom agents.
-const TABS: { id: ManagerTab; label: string }[] = [{ id: "runs", label: "Agents" }, { id: "agents", label: "Definitions" }];
+// R10: "Agents" is the simple lead/sub view of every build (the default); "Runs" is the dense run
+// tree with the power controls; "Definitions" edits custom agents.
+const TABS: { id: ManagerTab; label: string }[] = [{ id: "runs", label: "Agents" }, { id: "tree", label: "Runs" }, { id: "agents", label: "Definitions" }];
 /** Tab stops the focus trap cycles through (tree rows hold a roving tabindex 0 / -1). */
 const FOCUSABLE = 'a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
@@ -79,7 +81,7 @@ function Panel(): JSX.Element {
           <button type="button" class="am-close" aria-label="Close the agent manager" onClick={closeAgentManager}>✕</button>
         </div>
         <div class="am-body" role="tabpanel" id={`am-pane-${tab}`} aria-labelledby={`am-tab-${tab}`}>
-          {tab === "runs" ? <AgentsPanel /> : <AgentsTab />}
+          {tab === "runs" ? <AgentsPanel /> : tab === "tree" ? <RunsTab /> : <AgentsTab />}
         </div>
       </div>
     </div>

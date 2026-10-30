@@ -28,6 +28,8 @@ describe("AgentManager", () => {
     expect(screen.getByRole("tab", { name: "Agents" }).getAttribute("aria-selected")).toBe("true");
 
     fireEvent.keyDown(screen.getByRole("tab", { name: "Agents" }), { key: "ArrowRight" });
+    expect(agentManagerTab.value).toBe("tree");
+    fireEvent.click(screen.getByRole("tab", { name: "Definitions" }));
     expect(agentManagerTab.value).toBe("agents");
     expect(await screen.findByText("Runs start from one of these agents.")).toBeTruthy();
 

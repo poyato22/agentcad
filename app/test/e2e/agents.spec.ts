@@ -20,7 +20,7 @@ async function open(page: Page) {
   await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
 }
 const manager = (page: Page) => page.getByRole("dialog", { name: "Agent manager" });
-const row = (page: Page, id: string) => manager(page).locator(`[data-run-row="${id}"]`);
+const row = (page: Page, id: string) => manager(page).locator(`[data-agent-row="${id}"]`);
 
 test.beforeEach(async ({ page, fake }) => {
   await fake.reset("agent-ux");
@@ -35,14 +35,16 @@ test("cmd_shift_a_opens_the_manager_with_the_orchestrator_worker_tree_and_esc_cl
     { run: run("work01", { parent_id: "orch01", agent: "verifier", task: "check arm stiffness" }) });
   await page.keyboard.press("Meta+Shift+KeyA");
   await expect(manager(page)).toBeVisible();
-  await expect(row(page, "orch01")).toHaveAttribute("aria-level", "1");
-  await expect(row(page, "work01")).toHaveAttribute("aria-level", "2");
-  await expect(row(page, "work01")).toContainText("verifier · fake-model");
+  // the lead on top with its sub-agent indented beneath (R10)
+  await expect(row(page, "orch01")).toBeVisible();
+  await expect(row(page, "work01")).toBeVisible();
+  await expect(row(page, "work01")).toHaveAttribute("style", /--depth:\s*1/);
+  await expect(row(page, "work01")).toContainText("verifier");
   await expect(row(page, "orch01")).toContainText("$0.03 · 1.5k tokens");
-  // tabs by keyboard
-  await manager(page).getByRole("tab", { name: "Runs" }).focus();
+  // tabs by keyboard: Agents (the lead/sub view) → Runs (the dense tree)
+  await manager(page).getByRole("tab", { name: "Agents" }).focus();
   await page.keyboard.press("ArrowRight");
-  await expect(manager(page).getByRole("tab", { name: "Agents" })).toHaveAttribute("aria-selected", "true");
+  await expect(manager(page).getByRole("tab", { name: "Runs" })).toHaveAttribute("aria-selected", "true");
   await page.keyboard.press("Escape");
   await expect(manager(page)).toHaveCount(0);
 });
@@ -51,8 +53,8 @@ test("a_working_run_is_refused_in_plain_words_then_cancel_and_delete_removes_it"
   await open(page);
   await page.getByRole("button", { name: "Manage", exact: true }).click();
   const r = row(page, DES);
-  await r.getByRole("button", { name: "Delete", exact: true }).click();
-  await r.getByRole("button", { name: "Confirm delete" }).click();
+  await r.getByRole("button", { name: "Delete designer", exact: true }).click();
+  await r.getByRole("button", { name: "Confirm delete designer" }).click();
   await expect(r.locator("[data-refusal=running]")).toContainText("This run is still working. Stop it first, or use Cancel and delete.");
   await r.getByRole("button", { name: "Cancel and delete" }).click();
   await r.getByRole("button", { name: "Stop it and delete?" }).click();

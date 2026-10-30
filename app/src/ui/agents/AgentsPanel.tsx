@@ -122,10 +122,18 @@ function AgentRowView({ run, depth, hasChildren, expanded, workers, labelOf, onO
   );
 }
 
-/** Two-step delete. A run that is still working (or awaiting approval) is kept and says why,
- *  in plain words — no forced stop here (the full Runs view still offers Cancel and delete). */
+/** How long to wait for a cancelled run (and its workers) to reach a final state before retrying
+ *  the delete; the core's worst-case stop is ~7 s (C-8). */
+const STOP_TRIES = 24;
+const STOP_POLL_MS = 300;
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/** Two-step delete. A run that is still working (or awaiting approval) is kept and says why; a
+ *  second "Cancel and delete" stops it (cancelling only ever rejects a pending change) and removes
+ *  it once the core no longer sees it busy. */
 function DeleteButton({ run, labelOf, onDeleted }: { run: RunNode; labelOf: (id: string) => string; onDeleted: () => void }): JSX.Element {
   const [armed, setArmed] = useState(false);
+  const [confirmStop, setConfirmStop] = useState(false);
   const [refusal, setRefusal] = useState<DeleteRefused | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -141,13 +149,39 @@ function DeleteButton({ run, labelOf, onDeleted }: { run: RunNode; labelOf: (id:
     } catch (e) { setError(message(e)); }
   };
 
+  const cancelAndDelete = async (r: DeleteRefused) => {
+    setConfirmStop(false);
+    setError(null);
+    const client = actions.client();
+    try {
+      const targets = [...r.children, run.id];
+      for (const id of targets) await client.cancel(id).catch(() => undefined);
+      for (let i = 0; i < STOP_TRIES; i++) {
+        const again = await client.deleteRun(run.id);
+        if (!again) { setRefusal(null); actions.forgetRuns([run.id]); onDeleted(); return; }
+        setRefusal(again);
+        if (again.reason === "pending_approval") { setError("A change is still waiting for your approval — decide its card first, then delete."); return; }
+        await sleep(STOP_POLL_MS);
+      }
+      setError("The run is still stopping. Try Delete again in a moment.");
+    } catch (e) { setError(message(e)); }
+  };
+
   return (
     <span class="ap-del">
       <Button variant={armed ? "danger" : "ghost"} aria-label={armed ? `Confirm delete ${run.agent}` : `Delete ${run.agent}`}
         onClick={() => { if (armed) { void remove(); } else setArmed(true); }} onBlur={() => setArmed(false)}>
         {armed ? "Confirm delete" : "Delete"}
       </Button>
-      {refusal && <span class="ap-refused tone-red text" role="alert">{refusalText(refusal, labelOf)}</span>}
+      {refusal && (
+        <span class="ap-refused tone-red text" role="alert" data-refusal={refusal.reason}>
+          <span>{refusalText(refusal, labelOf)}</span>
+          <Button variant={confirmStop ? "danger" : "ghost"}
+            onClick={() => { if (confirmStop) { void cancelAndDelete(refusal); } else setConfirmStop(true); }} onBlur={() => setConfirmStop(false)}>
+            {confirmStop ? "Stop it and delete?" : "Cancel and delete"}
+          </Button>
+        </span>
+      )}
       {error && <span class="ap-refused tone-red text" role="alert">{error}</span>}
     </span>
   );

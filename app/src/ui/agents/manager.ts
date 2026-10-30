@@ -8,7 +8,9 @@ import { isTrustedKey, registerShortcut } from "../../lib/keys";
 import { taskWords } from "../../lib/names";
 import { modalOpen } from "../pages/router";
 
-export type ManagerTab = "runs" | "agents";
+// "runs" is the simple per-build Agents panel (R10, the default); "tree" is the dense run tree
+// (rename, pin, archive, clean up — power controls); "agents" edits custom agent definitions.
+export type ManagerTab = "runs" | "tree" | "agents";
 
 export const agentManagerOpen: Signal<boolean> = signal<boolean>(false);
 export const agentManagerTab: Signal<ManagerTab> = signal<ManagerTab>("runs");

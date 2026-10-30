@@ -27,6 +27,8 @@ async function startRun(page: Page, fake: FakeControl, task = TASK): Promise<str
   await page.keyboard.press("Meta+n");
   const dialog = page.getByRole("dialog", { name: "New run" });
   await expect(dialog).toBeVisible();
+  // R8: no agent picker by default — reveal the override to pin the designer for a deterministic run
+  await dialog.getByRole("button", { name: "Use a specific agent…" }).click();
   await dialog.getByLabel("Agent").selectOption("designer");
   await dialog.getByLabel("Task").fill(task);
   await dialog.getByRole("button", { name: "Start" }).click();
