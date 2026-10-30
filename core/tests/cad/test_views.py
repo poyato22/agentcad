@@ -6,6 +6,7 @@ import io
 import struct
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
 from mises.cad import views
@@ -188,7 +189,7 @@ async def test_critique_emits_round_card(tmp_path):
     card = cards[0].data
     assert set(card) == {"run_id", "kind", "title", "detail", "ref"}     # U3c's format
     assert card["ref"]["round"] == 1 and card["ref"]["done"] is False
-    assert card["ref"]["threshold"] == pytest.approx(0.8)
+    assert card["ref"]["threshold"] == pytest.approx(0.85)            # the default
     assert card["ref"]["issues_open"][0]["severity"] == "high" and card["ref"]["issues_fixed"] == []
     assert card["ref"]["after_image_id"] == card["ref"]["after"]["iso"]
     assert "/" not in card["ref"]["after_image_id"]                       # an id, not a path
@@ -589,6 +590,246 @@ async def test_same_renders_are_not_sent_twice_in_a_round(tmp_path):
     third = await views.critique_model.handler(ctx, views.CritiqueArgs(part_id="cube",
                                                                        request="x"))
     assert len(third.images) == 4
+
+
+async def test_rounds_report_the_limit_the_opening_call_asked_for(tmp_path):
+    # benchmark: the agent asked for 2 rounds; the report call omitted it and the card said 3
+    _make_part(tmp_path, "cube")
+    ctx = _bare_ctx(tmp_path, run_id="k1", services={"runtime": _limited_rt(tmp_path)})
+    opened = await views.critique_model.handler(ctx, views.CritiqueArgs(
+        part_id="cube", request="x", max_rounds=2))
+    assert opened.data["max_rounds"] == 2
+    closed = await views.critique_model.handler(ctx, views.CritiqueArgs(
+        part_id="cube", request="x", report=_BAD_REPORT))
+    assert closed.data["max_rounds"] == 2 and "round 1/2" in closed.summary
+    r = await _round(ctx)                                 # no max_rounds passed at all
+    assert r.data["done"] and r.data["stop_reason"] == "max_rounds" and r.data["round"] == 2
+    r = await views.critique_model.handler(ctx, views.CritiqueArgs(   # nor raise it again
+        part_id="cube", request="x", max_rounds=6))
+    assert r.data["done"] and r.data["max_rounds"] == 2 and r.images == []
+
+
+_MEDIUM_OPEN = views.CritiqueReport(score=0.9, issues=[views.CritiqueIssue(
+    view="top", issue="wingtips 24 mm aft of the tail", severity="medium")])
+_LOW_ONLY = views.CritiqueReport(score=0.9, issues=[views.CritiqueIssue(
+    view="iso", issue="no cockpit windows", severity="low")])
+
+
+async def test_critique_keeps_going_while_a_medium_issue_is_open(tmp_path):
+    # benchmark: it stopped at 0.82 (over the old 0.8 threshold) with a medium issue open
+    _make_part(tmp_path, "cube")
+    ctx = _bare_ctx(tmp_path, run_id="k2", services={"runtime": _limited_rt(tmp_path)})
+    r = await _round(ctx, report=_MEDIUM_OPEN)
+    assert r.data["done"] is False and r.data["stop_reason"] is None
+    assert "medium" in r.summary and r.data["threshold"] == pytest.approx(0.85)
+    r = await _round(ctx, report=_LOW_ONLY)              # only a low issue left: done
+    assert r.data["done"] and r.data["stop_reason"] == "score_threshold"
+
+
+async def test_medium_issue_still_open_at_the_round_limit_is_reported(tmp_path):
+    _make_part(tmp_path, "cube")
+    ctx = _bare_ctx(tmp_path, run_id="k3", services={"runtime": _limited_rt(tmp_path)})
+    r = await _round(ctx, report=_MEDIUM_OPEN, max_rounds=1)
+    assert r.data["done"] and r.data["stop_reason"] == "max_rounds"
+    assert "still open" in r.summary
+
+
+async def test_low_score_with_only_low_issues_stops_without_passing(tmp_path):
+    _make_part(tmp_path, "cube")
+    ctx = _bare_ctx(tmp_path, run_id="k4", services={"runtime": _limited_rt(tmp_path)})
+    r = await _round(ctx, report=views.CritiqueReport(score=0.5, issues=_LOW_ONLY.issues))
+    assert r.data["done"] and r.data["stop_reason"] == "no_high_severity"
+
+
+# ---- view naming: aircraft names, and every render says where its cameras sit
+
+async def test_render_views_label_views_by_axis(tmp_path):
+    _make_part(tmp_path, "cube")
+    out = await views.render_views.handler(_bare_ctx(tmp_path), views.RenderViewsArgs(
+        part_id="cube", size=128))
+    assert out.data["view_axes"]["front"].startswith("camera on -Y")
+    assert out.data["view_axes"]["side"].startswith("camera on +X")
+    assert "front = camera on -Y" in out.summary
+
+
+async def test_aircraft_view_naming(tmp_path):
+    _make_part(tmp_path, "cube")
+    ctx = _bare_ctx(tmp_path, run_id="a1", services={"runtime": _seeing_rt(tmp_path)})
+    out = await views.render_views.handler(ctx, views.RenderViewsArgs(
+        part_id="cube", size=128, naming="aircraft", nose="-x"))
+    assert list(out.data["views"]) == ["nose", "top", "left", "iso"]
+    assert [i.label for i in out.images] == ["nose", "top", "left", "iso"]
+    assert "head-on" in out.data["view_axes"]["nose"] and "-X" in out.data["view_axes"]["nose"]
+    picked = await views.render_views.handler(ctx, views.RenderViewsArgs(
+        part_id="cube", size=128, naming="aircraft", views=["tail", "bogus", "right"]))
+    assert list(picked.data["views"]) == ["tail", "right"]
+    crit = await views.critique_model.handler(ctx, views.CritiqueArgs(
+        part_id="cube", request="a B-2", naming="aircraft"))
+    assert crit.data["views"] == ["nose", "top", "left", "iso"]
+    assert "nose = head-on" in crit.summary
+
+
+def test_aircraft_cameras_follow_the_nose():
+    cams, where = views.aircraft_cameras("-x")
+    assert cams["nose"][0] == (1.0, 0.0, 0.0)          # camera ahead of a -X nose looks +X
+    assert cams["left"][0] == (0.0, 1.0, 0.0)          # port is -Y: it looks toward +Y
+    cams, _ = views.aircraft_cameras("+y")
+    assert cams["nose"][0] == (0.0, -1.0, 0.0)
+
+
+# ---- whole-build renders draw the assembly: instances at their solved transforms
+
+def _stl_box(lo, hi) -> bytes:
+    (x0, y0, z0), (x1, y1, z1) = lo, hi
+    v = {0: (x0, y0, z0), 1: (x1, y0, z0), 2: (x1, y1, z0), 3: (x0, y1, z0),
+         4: (x0, y0, z1), 5: (x1, y0, z1), 6: (x1, y1, z1), 7: (x0, y1, z1)}
+    quads = [(0, 1, 2, 3), (4, 5, 6, 7), (0, 1, 5, 4), (2, 3, 7, 6), (1, 2, 6, 5), (0, 3, 7, 4)]
+    out = bytearray(b"\0" * 80) + struct.pack("<I", 12)
+    for a, b, c, d in quads:
+        for tri in ((v[a], v[b], v[c]), (v[a], v[c], v[d])):
+            out += struct.pack("<3f", 0, 0, 0)
+            for vert in tri:
+                out += struct.pack("<3f", *vert)
+            out += struct.pack("<H", 0)
+    return bytes(out)
+
+
+def _tf(x, y, z):
+    return [[1.0, 0, 0, x], [0, 1.0, 0, y], [0, 0, 1.0, z], [0, 0, 0, 1.0]]
+
+
+def _pi_case(tmp_path):
+    """The Pi-case benchmark's layout (harness/pi_check.py): every part is modelled at its own
+    origin and placed only by its assembly transform; one built part is in no instance."""
+    from mises.assembly.model import AssemblyStore, Instance
+    parts = {"case_base": ((-58, -52, 0), (58, 52, 28)),
+             "lipo_battery": ((-51, -17, 0), (51, 17, 17)),
+             "cooling_fan": ((-15, -15, 0), (15, 15, 10)),
+             "raspberry_pi_detail": ((-42.5, -28, 0), (42.5, 28, 2)),
+             "raspberry_pi_board": ((-42.5, -28, 0), (42.5, 28, 1.6))}     # unused
+    store, ctx = _store_ctx(tmp_path, "pA", "pA")
+    for pid, (lo, hi) in parts.items():
+        d = tmp_path / "parts" / pid
+        d.mkdir(parents=True)
+        (d / "model.stl").write_bytes(_stl_box(lo, hi))
+        (d / "metrics.json").write_text("{}")
+        store.register_part(pid, "pA")
+    asm = AssemblyStore(tmp_path / "assembly.db")
+    for pid, tf in (("case_base", _tf(0, 0, 0)), ("lipo_battery", _tf(2.5, 32, 2)),
+                    ("cooling_fan", _tf(-3, -16.5, 18)),
+                    ("raspberry_pi_detail", _tf(10.5, -20.5, 7))):
+        asm.add_instance("pA", Instance(part_id=pid, name=pid, transform=tf, fixed=True))
+    ctx.services = {"assembly": asm}
+    return store, ctx
+
+
+def _world_z(meshes) -> dict[str, tuple[float, float]]:
+    """Each mesh's world z range, from its STL and the transform the worker is handed."""
+    from mises.cad import render
+    out = {}
+    for m in meshes:
+        tris = render.load_stl((m.part_dir / "model.stl").read_bytes())
+        if m.transform is not None:
+            T = np.asarray(m.transform)
+            tris = tris @ T[:3, :3].T + T[:3, 3]
+        out[m.name] = (float(tris[..., 2].min()), float(tris[..., 2].max()))
+    return out
+
+
+@pytest.fixture
+def captured(monkeypatch):
+    seen: list = []
+    real = views._render
+
+    async def spy(ctx, meshes, **kw):
+        seen.append(list(meshes))
+        return await real(ctx, meshes, **kw)
+    monkeypatch.setattr(views, "_render", spy)
+    return seen
+
+
+async def test_pi_case_renders_with_the_fan_above_the_chip(tmp_path, captured):
+    store, ctx = _pi_case(tmp_path)
+    out = await views.render_views.handler(ctx, views.RenderViewsArgs(views=["front"],
+                                                                      size=128))
+    assert out.data["parts"] == ["case_base", "lipo_battery", "cooling_fan",
+                                 "raspberry_pi_detail"]           # the unused board is not drawn
+    z = _world_z(captured[-1])
+    assert set(z) == set(out.data["parts"])
+    assert z["cooling_fan"][0] >= z["raspberry_pi_detail"][1] + 5   # above the chip...
+    assert z["cooling_fan"][0] > z["case_base"][0] + 10             # ...not on the floor
+    assert z["lipo_battery"][0] == pytest.approx(2.0)
+
+
+async def test_named_parts_are_placed_but_a_single_part_keeps_its_frame(tmp_path, captured):
+    store, ctx = _pi_case(tmp_path)
+    await views.render_views.handler(ctx, views.RenderViewsArgs(
+        parts=["cooling_fan", "raspberry_pi_board"], views=["iso"], size=128))
+    z = _world_z(captured[-1])
+    assert z["cooling_fan"][0] == pytest.approx(18.0)                # its instance
+    assert z["raspberry_pi_board"][0] == pytest.approx(0.0)          # in no instance: own frame
+    await views.render_views.handler(ctx, views.RenderViewsArgs(part_id="cooling_fan",
+                                                                views=["iso"], size=128))
+    assert _world_z(captured[-1])["cooling_fan"][0] == pytest.approx(0.0)
+
+
+async def test_build_views_and_critique_draw_the_assembly(tmp_path, captured):
+    store, ctx = _pi_case(tmp_path)
+    pv = await views.present_view.handler(ctx, views.PresentViewArgs(
+        target={"kind": "project", "id": "pA"}, kind="orbit"))
+    assert "raspberry_pi_board" not in pv.data["parts"]
+    assert _world_z(captured[-1])["cooling_fan"][0] == pytest.approx(18.0)
+    sub = await views.present_view.handler(ctx, views.PresentViewArgs(
+        target={"kind": "project", "id": "pA", "parts": ["cooling_fan"]}, kind="subset"))
+    assert "raspberry_pi_board" not in sub.data["ghost"]
+    assert _world_z(captured[-1])["raspberry_pi_detail"][0] == pytest.approx(7.0)  # a ghost
+    ctx.services["runtime"] = _seeing_rt(tmp_path)
+    await views.critique_model.handler(ctx, views.CritiqueArgs(request="a Pi case"))
+    assert _world_z(captured[-1])["cooling_fan"][0] == pytest.approx(18.0)
+
+
+async def test_joints_place_instances_through_the_solve(tmp_path, captured):
+    from mises.assembly.model import Frame, Joint, JointRef
+    store, ctx = _pi_case(tmp_path)
+    asm = ctx.services["assembly"]
+    fan = next(i for i in asm.get("pA").instances if i.part_id == "cooling_fan")
+    base = next(i for i in asm.get("pA").instances if i.part_id == "case_base")
+    asm.update_instance("pA", fan.id, fixed=False, transform=_tf(0, 0, 0))
+    asm.add_joint("pA", Joint(kind="fixed",
+                              a=JointRef(instance_id=base.id,
+                                         frame=Frame(origin=[0, 0, 28], axis=[0, 0, 1])),
+                              b=JointRef(instance_id=fan.id,
+                                         frame=Frame(origin=[0, 0, 0], axis=[0, 0, 1]))))
+    await views.render_views.handler(ctx, views.RenderViewsArgs(views=["iso"], size=128))
+    assert _world_z(captured[-1])["cooling_fan"][0] == pytest.approx(28.0)
+
+
+async def test_each_user_turn_on_a_lead_gets_a_fresh_critique_loop(tmp_path, monkeypatch):
+    # final review I2: the loop's clock, rounds and image budget were per run, so a build's
+    # long-lived lead got "stopped (time_budget)" on a follow-up request 10 minutes later
+    import mises.runtime as runtime_mod
+    from mises.runtime import Runtime
+    monkeypatch.setenv("MISES_HOME", str(tmp_path / "home"))
+    monkeypatch.setattr(runtime_mod, "keychain_get", lambda *a: None)
+    rt = Runtime(tmp_path / "home", provider_resolver=lambda ref: (FakeProvider([]), "m"))
+    lead = rt.store.create_run("engineer", "fake", "fake/model", "a Pi case").id
+    _make_part(tmp_path, "cube")
+    ctx = _bare_ctx(tmp_path, run_id=lead, services={"runtime": _limited_rt(
+        tmp_path, critique_max_rounds=2)})
+    clock = [1000.0]
+    monkeypatch.setattr(views, "_now", lambda: clock[0])
+    rounds: list = []
+
+    async def turn(run_id, text):              # the lead critiques the same part each turn
+        for _ in range(2):
+            rounds.append((await _round(ctx)).data)
+    monkeypatch.setattr(rt, "_send", turn)
+    await rt.send(lead, "make the case")
+    assert [r["round"] for r in rounds] == [1, 2] and rounds[-1]["stop_reason"] == "max_rounds"
+    clock[0] += 600                                # the next request, 10 minutes later
+    await rt.send(lead, "now add vents to the lid")
+    assert [r["round"] for r in rounds[2:]] == [1, 2]
+    assert rounds[2]["done"] is False and rounds[2]["image_tokens"] < rounds[1]["image_tokens"]
 
 
 def test_section_thumbnail_faces_the_cut():
