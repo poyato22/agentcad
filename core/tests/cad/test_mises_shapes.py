@@ -104,13 +104,76 @@ def test_airfoil_from_points_normalizes_and_rejoins_lednicer():
     sel = ms.naca4("2412", n=30)
     scaled = [(10 + 3 * x, 5 + 3 * y) for x, y in sel]
     out = ms.airfoil_from_points(scaled)
-    assert min(x for x, _ in out) == 0 and max(x for x, _ in out) == pytest.approx(1)
-    assert out[0] == pytest.approx(sel[0], abs=2e-4)      # cambered TE pokes past x = 1
+    assert min(x for x, _ in out) == pytest.approx(0, abs=1e-3)
+    assert max(x for x, _ in out) == pytest.approx(1, abs=1e-3)
+    assert out[0] == pytest.approx(sel[0], abs=2e-3)      # cambered TE pokes past x = 1
     n = 30
     led = list(reversed(sel[:n + 1])) + sel[n + 1:]     # upper LE->TE, then lower LE->TE
     assert ms.airfoil_from_points(led, normalize=False) == pytest.approx(sel)
     with pytest.raises(ValueError):
         ms.airfoil_from_points([(0, 0), (1, 0)])
+
+
+def test_inclined_dat_chord_is_derotated():
+    """A .dat whose chord line is tilted 5 deg resolves to the same section as a level one."""
+    a = math.radians(5)
+    level = ms.naca4("0012", n=40)
+    tilted = [(x * math.cos(a) - y * math.sin(a), x * math.sin(a) + y * math.cos(a))
+              for x, y in level]
+    got, want = ms._resolve_airfoil(tilted), ms._resolve_airfoil(level)
+    assert [c for p in got for c in p] == pytest.approx([c for p in want for c in p], abs=1e-6)
+
+
+def _uniform_dat(code="0012", n=21):
+    """A pasted-.dat style airfoil: uniformly x-spaced, Selig order, its own point count."""
+    t = int(code[2:]) / 100
+    xs = [i / (n - 1) for i in range(n)]
+    yt = [5 * t * (0.2969 * math.sqrt(x) - 0.1260 * x - 0.3516 * x**2 + 0.2843 * x**3
+                   - 0.1015 * x**4) for x in xs]
+    return [(x, y) for x, y in zip(reversed(xs), reversed(yt))] + \
+        [(x, -y) for x, y in zip(xs[1:], yt[1:])]
+
+
+@pytest.mark.parametrize("src", [ms.naca4("2412"), ms.naca4("2412", n=20), ms.naca5("23012", n=35),
+                                 _uniform_dat(), _uniform_dat("0009", 13)])
+def test_every_section_is_resampled_to_one_grid(src):
+    pts = ms._resolve_airfoil(src)
+    assert len(pts) == 2 * ms.N_SECTION + 1
+    xs = [x for x, _ in pts[ms.N_SECTION:]]
+    assert xs == pytest.approx([0.5 * (1 - math.cos(math.pi * i / ms.N_SECTION))
+                                for i in range(ms.N_SECTION + 1)])
+    assert pts[1][1] > pts[-2][1]                          # upper surface first
+
+
+@pytest.mark.parametrize("tip", [ms.naca4("2412", n=20), ms.naca4("0012", n=20),
+                                 ms.naca4("2412", n=30), _uniform_dat()],
+                         ids=["2412-n20", "0012-n20", "2412-n30", "uniform-dat"])
+def test_mixed_dat_and_naca_wing_is_self_intersection_free(tip):
+    """Review G2 I1: root and tip from different sources used to loft into a solid that
+    passed validation but intersected itself."""
+    w = ms.wing(airfoil="2412", tip_airfoil=tip)
+    ms.check_solid(w, self_intersection=True)
+
+
+def test_smooth_loft_through_different_airfoil_wires_is_clean():
+    s = ms.smooth_loft([ms.airfoil_wire("2412", 120, (0, 0, 0)),
+                        ms.airfoil_wire(_uniform_dat(), 70, (20, 150, 5), -3)])
+    ms.check_solid(s, self_intersection=True)
+
+
+def test_wing_blends_root_to_tip_section():
+    w = ms.wing(span=600, root_chord=100, tip_chord=100, sweep_deg=0, dihedral_deg=0,
+                twist_deg=0, airfoil="0016", tip_airfoil="0008", symmetric=False,
+                n_sections=7)
+
+    def thickness(y):
+        slab = bd.Solid.make_box(200, 1, 100, bd.Plane.XY.move(bd.Location((-50, y - .5, -50))))
+        return (w & slab).bounding_box().size.Z
+
+    # (slabs within ~1 mm of a loft's end cap trip an OCCT boolean quirk, so stay 3 mm in)
+    assert thickness(3) == pytest.approx(16 - 8 * 3 / 600, abs=0.3)
+    assert thickness(300) == pytest.approx(12, abs=0.4)    # linear blend, not a jump
+    assert thickness(597) == pytest.approx(8 + 8 * 3 / 600, abs=0.3)
 
 
 # ---------------------------------------------------------------- wing
@@ -189,7 +252,9 @@ def test_bwb_sawtooth_trailing_edge(bwb):
 
 
 def test_bwb_smooth_te_option_and_bad_notches():
-    ms.check_solid(ms.blended_wing_body(sawtooth=False))
+    ms.check_solid(ms.blended_wing_body(sawtooth=False), self_intersection=True)
+    steep = ms.blended_wing_body(sweep_deg=45)       # default length grows to keep a tip chord
+    assert steep.bounding_box().size.Y == pytest.approx(524, rel=1e-3)
     with pytest.raises(ValueError, match="notches"):
         ms.blended_wing_body(notches=(0.5, 0.4, 0.6))
 
@@ -233,6 +298,31 @@ def test_enclosure_bosses_lip_and_organic_outer():
     assert _overlap(org.base, org.lid) < 1e-6
     with pytest.raises(ValueError):
         ms.enclosure((10, 10, 10), wall=3)
+
+
+def test_enclosure_lid_bosses_reach_the_base_bosses():
+    """Review G2 M3: the screw clamps lid boss to base boss, no unsupported air gap."""
+    e = ms.enclosure()                                 # 80 x 60 x 30, corner bosses
+    top = e.lid.bounding_box().max.Z
+    assert len(e.bosses) == 4
+    for x, y in e.bosses:
+        # a probe column in the boss wall, from just above the base boss to the lid ceiling
+        z0 = e.boss_top + 0.2 + 0.05
+        col = bd.Solid.make_box(0.4, 0.4, top - 2.0 - z0 - 0.05,
+                                bd.Plane.XY.move(bd.Location((x + 2.0, y - 0.2, z0))))
+        assert _overlap(col, e.lid) == pytest.approx(col.volume, rel=1e-6), (x, y)
+        bore = bd.Solid.make_cylinder(0.5, top - e.boss_top + 2, bd.Plane.XY.move(
+            bd.Location((x, y, e.boss_top - 1))))
+        assert _overlap(bore, e.lid) < 1e-6                  # the clearance bore is open
+    assert _overlap(e.base, e.lid) < 1e-6
+
+
+def test_twisted_sweep_keeps_its_profile_area():
+    path = [(0, 0, 0), (30, 10, 20), (60, 0, 40)]
+    straight = ms.sweep_profile(path, [(-5, -2), (5, -2), (5, 2), (-5, 2)])
+    for tw in (90, 180):
+        s = ms.sweep_profile(path, [(-5, -2), (5, -2), (5, 2), (-5, 2)], twist_deg=tw)
+        assert s.volume == pytest.approx(straight.volume, rel=0.03), tw
 
 
 def test_check_solid_rejects_open_and_empty_shapes():

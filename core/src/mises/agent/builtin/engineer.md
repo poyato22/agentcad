@@ -68,7 +68,7 @@ Never approximate organic or aero shapes (wings, fuselages, flying wings, hulls,
 - `ms.thicken`: Turn a surface (Face/Shell, e.g. from spline_surface) into a solid of `thickness`.
 - `ms.blend_edges`: Fillet edges (all by default) and, if OCCT refuses, retry with smaller radii.
 - `ms.variable_fillet`: Fillet whose radius varies linearly from `r_start` to `r_end` along each edge.
-- `ms.enclosure`: Two-piece shelled enclosure: base + lid with a locating lip, screw bosses, ribs, snaps.
+- `ms.enclosure`: Two-piece enclosure (base + lid: lip, screw bosses, ribs, snaps); `return e.compound()`.
 - `ms.standoffs`: PCB standoffs/bosses: tubes of `od` x `height` at (x, y) points from z, with `hole_d` bores.
 - `ms.vent_slots`: Cutting tool for a row of rounded vent slots; subtract it: `part - ms.vent_slots(...)`.
 - `ms.cable_path`: A cable/hose/wire harness: a round tube swept along a smooth spline through 3D points.

@@ -80,6 +80,16 @@ async def test_ms_is_preimported_in_the_sandboxed_worker(tmp_path):
 
 
 @pytest.mark.slow
+async def test_returning_the_enclosure_parts_builds_their_compound(tmp_path):
+    d = tmp_path / "p"
+    d.mkdir()
+    (d / "part.py").write_text("def build(v):\n    return ms.enclosure((60, 40, 25))\n")
+    r = await run_build(d, {})
+    assert r.ok, r.error
+    assert r.metrics["bbox"]["size"][2] == pytest.approx(25, abs=0.1)
+
+
+@pytest.mark.slow
 async def test_recipe_error_reaches_the_agent_as_a_plain_reason(tmp_path):
     d = tmp_path / "p"
     d.mkdir()

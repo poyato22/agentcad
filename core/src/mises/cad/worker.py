@@ -801,6 +801,8 @@ def main(argv: list[str]) -> int:
         raise RuntimeError(f"build() raised {type(e).__name__}: {e}") from None
 
     import build123d as b3
+    if not hasattr(shape, "volume") and callable(getattr(shape, "compound", None)):
+        shape = shape.compound()        # e.g. ms.enclosure(...) returned as-is
     if not hasattr(shape, "volume"):
         raise TypeError("build() must return a build123d Part or Compound")
     shape = shape.part if hasattr(shape, "part") else shape

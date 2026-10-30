@@ -31,11 +31,13 @@ Pt3 = tuple[float, float, float]
 
 # ---------------------------------------------------------------- validation
 
-def check_solid(shape, what: str = "shape", *, self_intersection: bool = False):
+def check_solid(shape, what: str = "shape", *, self_intersection: bool = False,
+                hint: str = ""):
     """Validate a solid (is_valid, closed, volume > 0) and return it; raises ValueError otherwise.
 
-    `self_intersection=True` also runs OCCT's argument analyzer (slower; use on final shapes).
-    Every recipe calls this on its result, so a recipe never hands back broken geometry."""
+    `self_intersection=True` also runs OCCT's self-intersection check (~0.3 s on a wing; the
+    loft and sweep recipes always run it). Every recipe calls this on its result, so a recipe
+    never hands back broken geometry. `hint` is appended to a self-intersection error."""
     from OCP.ShapeAnalysis import ShapeAnalysis_FreeBounds
 
     shape = shape.part if hasattr(shape, "part") else shape
@@ -58,7 +60,8 @@ def check_solid(shape, what: str = "shape", *, self_intersection: bool = False):
         from OCP.BRepAlgoAPI import BRepAlgoAPI_Check
 
         if not BRepAlgoAPI_Check(shape.wrapped, True, True).IsValid():
-            raise ValueError(f"{what}: the shape intersects itself")
+            raise ValueError(f"{what}: the shape intersects itself"
+                             + (f" ({hint})" if hint else ""))
     return shape
 
 
@@ -166,8 +169,11 @@ def airfoil_from_points(points: Sequence[Sequence[float]], normalize: bool = Tru
     """Clean a custom airfoil (e.g. pasted Selig/.dat coordinates) into unit-chord points.
 
     Accepts TE -> upper -> LE -> lower -> TE order (Lednicer two-block order is re-joined when
-    it starts at the LE). Drops duplicate points; with `normalize` scales/shifts so the leading
-    edge is at x=0 and chord is 1. Raises ValueError for fewer than 8 points."""
+    it starts at the LE). Drops duplicate points; with `normalize` moves the leading edge (the
+    point furthest from the TE) to the origin and rotates/scales so the trailing-edge midpoint
+    is at (1, 0): an inclined chord line in a .dat file adds no hidden incidence. Raises
+    ValueError for fewer than 8 points. Wings and airfoil_wire also resample every section to
+    one common cosine spacing, so mixed sources loft cleanly."""
     pts = [(float(p[0]), float(p[1])) for p in points]
     if len(pts) < 8:
         raise ValueError("airfoil_from_points: need at least 8 (x, y) points")
@@ -181,22 +187,87 @@ def airfoil_from_points(points: Sequence[Sequence[float]], normalize: bool = Tru
         if math.dist(p, clean[-1]) > 1e-9:
             clean.append(p)
     if normalize:
-        x0 = min(p[0] for p in clean)
-        x1 = max(p[0] for p in clean)
-        if x1 - x0 <= 0:
+        te = ((clean[0][0] + clean[-1][0]) / 2, (clean[0][1] + clean[-1][1]) / 2)
+        le = max(clean, key=lambda p: math.dist(p, te))
+        c = math.dist(le, te)
+        if c <= 0:
             raise ValueError("airfoil_from_points: zero chord")
-        i_le = min(range(len(clean)), key=lambda i: clean[i][0])
-        y0 = clean[i_le][1]
-        c = x1 - x0
-        clean = [((x - x0) / c, (y - y0) / c) for x, y in clean]
+        ux, uy = (te[0] - le[0]) / c, (te[1] - le[1]) / c
+        clean = [(((x - le[0]) * ux + (y - le[1]) * uy) / c,
+                  (-(x - le[0]) * uy + (y - le[1]) * ux) / c) for x, y in clean]
     return clean
 
 
+N_SECTION = 60   # points per surface after resampling: every lofted airfoil shares this grid
+
+
+def _pchip(xs: list[float], ys: list[float], xq: float) -> float:
+    """Monotone cubic (Fritsch-Carlson) interpolation; clamps outside [xs[0], xs[-1]]."""
+    n = len(xs)
+    if xq <= xs[0]:
+        return ys[0]
+    if xq >= xs[-1]:
+        return ys[-1]
+    h = [xs[i + 1] - xs[i] for i in range(n - 1)]
+    dl = [(ys[i + 1] - ys[i]) / h[i] for i in range(n - 1)]
+    d = [0.0] * n
+    d[0], d[-1] = dl[0], dl[-1]
+    for i in range(1, n - 1):
+        if dl[i - 1] * dl[i] > 0:
+            w1, w2 = 2 * h[i] + h[i - 1], h[i] + 2 * h[i - 1]
+            d[i] = (w1 + w2) / (w1 / dl[i - 1] + w2 / dl[i])
+    lo, hi = 0, n - 1
+    while hi - lo > 1:
+        mid = (lo + hi) // 2
+        if xs[mid] <= xq:
+            lo = mid
+        else:
+            hi = mid
+    hk = h[lo]
+    t = (xq - xs[lo]) / hk
+    h00, h10 = (1 + 2 * t) * (1 - t) ** 2, t * (1 - t) ** 2
+    h01, h11 = t * t * (3 - 2 * t), t * t * (t - 1)
+    return h00 * ys[lo] + h10 * hk * d[lo] + h01 * ys[hi] + h11 * hk * d[hi]
+
+
+def _canonical(pts: list[Pt2], n: int = N_SECTION) -> list[Pt2]:
+    """Resample a normalised airfoil onto the common grid: both surfaces at the same cosine
+    stations (interpolated monotonically in sqrt(x), which keeps the round LE), upper first.
+    Sections from any source (NACA, .dat, other point counts or spacing) then share one point
+    count and parametrisation, which keeps a loft through them free of self-intersection."""
+    i_le = min(range(len(pts)), key=lambda i: pts[i][0])
+    a = list(reversed(pts[:i_le + 1]))          # LE -> TE
+    b = pts[i_le:]                              # LE -> TE
+    if len(a) < 3 or len(b) < 3:
+        raise ValueError("airfoil: need points on both surfaces "
+                         "(TE -> upper -> LE -> lower -> TE)")
+    if sum(y for _, y in a) / len(a) < sum(y for _, y in b) / len(b):
+        a, b = b, a                              # a is the upper surface
+
+    def side(seq):
+        xs, ys = [], []
+        for x, y in seq:
+            x = max(x, 0.0)
+            if not xs or x > xs[-1] + 1e-12:
+                xs.append(x)
+                ys.append(y)
+        return [math.sqrt(x) for x in xs], ys
+
+    (su, yu), (sl, yl) = side(a), side(b)
+    xc = _cosine_x(n)
+    up = [(x, _pchip(su, yu, math.sqrt(x))) for x in xc]
+    lo = [(x, _pchip(sl, yl, math.sqrt(x))) for x in xc]
+    y_le = (up[0][1] + lo[0][1]) / 2
+    up[0] = lo[0] = (0.0, y_le)
+    return list(reversed(up)) + lo[1:]
+
+
 def _resolve_airfoil(airfoil) -> list[Pt2]:
+    """NACA code or point list -> normalised points on the common cosine grid."""
     if isinstance(airfoil, str):
         a = airfoil.upper().replace("NACA", "").strip()
-        return naca5(a) if len(a) == 5 else naca4(a)
-    return airfoil_from_points(airfoil)
+        airfoil = naca5(a) if len(a) == 5 else naca4(a)
+    return _canonical(airfoil_from_points(airfoil))
 
 
 def _wire_through(pts3: list[Pt3]) -> bd.Wire:
@@ -242,9 +313,10 @@ def wing(span: float = 1000.0, root_chord: float = 250.0, tip_chord: float = 100
     """Lofted wing from a planform: tapered, swept (leading edge), dihedral, washout twist.
 
     Root leading edge at the origin, chord along +X, span along Y (+-span/2 when `symmetric`,
-    else 0..span). `sections` overrides the planform with explicit stations, each a dict
-    {"y", "chord", "x_le"?, "z"?, "twist"?, "airfoil"?} (missing keys come from the planform).
-    Returns a validated Solid."""
+    else 0..span). The section blends linearly from `airfoil` (root) to `tip_airfoil` (NACA
+    codes or point lists, e.g. a pasted .dat). `sections` overrides the planform with explicit
+    stations, each a dict {"y", "chord", "x_le"?, "z"?, "twist"?, "airfoil"?} (missing keys
+    come from the planform). Returns a validated, self-intersection-free Solid."""
     semi = span / 2.0 if symmetric else span
     if span <= 0 or root_chord <= 0 or tip_chord <= 0:
         raise ValueError("wing: span and chords must be > 0")
@@ -254,8 +326,7 @@ def wing(span: float = 1000.0, root_chord: float = 250.0, tip_chord: float = 100
         f = y / semi
         return {"y": y, "chord": root_chord + (tip_chord - root_chord) * f,
                 "x_le": y * math.tan(math.radians(sweep_deg)),
-                "z": y * math.tan(math.radians(dihedral_deg)), "twist": twist_deg * f,
-                "airfoil": airfoil if f < 0.5 else tip_airfoil}
+                "z": y * math.tan(math.radians(dihedral_deg)), "twist": twist_deg * f}
 
     if sections:
         stations = []
@@ -270,23 +341,32 @@ def wing(span: float = 1000.0, root_chord: float = 250.0, tip_chord: float = 100
         raise ValueError("wing: every section chord must be > 0")
     root_pts, tip_pts = _resolve_airfoil(airfoil), _resolve_airfoil(tip_airfoil)
 
+    def section(st) -> list[Pt2]:
+        if "airfoil" in st:
+            return _resolve_airfoil(st["airfoil"])
+        f = min(1.0, max(0.0, abs(st["y"]) / semi))
+        return [((1 - f) * r[0] + f * t[0], (1 - f) * r[1] + f * t[1])
+                for r, t in zip(root_pts, tip_pts)]
+
     def wires(sign: float):
         out = []
         for st in stations:
-            pts = st["airfoil"]
-            pts = (root_pts if pts is airfoil else tip_pts if pts is tip_airfoil
-                   else _resolve_airfoil(pts))
+            pts = section(st)
             out.append(_wire_through(_place(pts, st["chord"], (st["x_le"], sign * st["y"],
                                                                st["z"]), st["twist"], 0.25)))
         return out
 
     half = bd.Solid.make_loft(wires(1.0), ruled=False)
     if not symmetric:
-        return check_solid(half, "wing")
+        return check_solid(half, "wing", self_intersection=True, hint=_LOFT_HINT)
     other = bd.Solid.make_loft(wires(-1.0), ruled=False)
     whole = half.fuse(other).clean()
     whole = whole.solids()[0] if len(whole.solids()) == 1 else whole
-    return check_solid(whole, "wing")
+    return check_solid(whole, "wing", self_intersection=True, hint=_LOFT_HINT)
+
+
+_LOFT_HINT = ("neighbouring sections differ too much in shape, twist or point spacing; add "
+              "intermediate sections or give point-list sections equal counts")
 
 
 def _smoothstep(e0: float, e1: float, x: float) -> float:
@@ -294,12 +374,14 @@ def _smoothstep(e0: float, e1: float, x: float) -> float:
     return t * t * (3 - 2 * t)
 
 
-def _bwb_section(n: int, thick: float, upper_share: float) -> list[Pt2]:
+def _bwb_section(n: int, thick: float, upper_share: float, sharp: bool = True) -> list[Pt2]:
     """Unit-chord flying-wing section: NACA-like thickness, fuller forward and thin aft (so a
-    planform cut near the TE stays thin), with an asymmetric upper/lower split."""
+    planform cut near the TE stays thin), with an asymmetric upper/lower split. `sharp` closes
+    the TE (the sawtooth cut removes it); an uncut skin keeps a thin open TE, because a skin
+    whose upper and lower surfaces meet tangentially fails the self-intersection check."""
     pts_u, pts_l = [], []
     for x in _cosine_x(n):
-        yt = _naca_thickness(x, thick, True) * (1.0 - 0.55 * x * x) * 2.0
+        yt = _naca_thickness(x, thick, sharp) * (1.0 - 0.55 * x * x) * 2.0
         pts_u.append((x, yt * upper_share))
         pts_l.append((x, -yt * (1.0 - upper_share)))
     return list(reversed(pts_u)) + pts_l[1:]
@@ -315,15 +397,16 @@ def blended_wing_body(span: float = 524.0, length: float | None = None,
     Defaults are a ~1:100 B-2 (52.4 m span -> 524 mm). Nose at the origin, X aft, span on Y,
     Z up. `length` (nose to tail, default 0.4 x span) sets the center chord. Thickness ratios
     blend smoothly from `body_thickness` at the center to `wing_thickness` outboard of
-    `body_width` (fraction of the semispan). With `sawtooth` the trailing edge is the double-W:
+    `body_width` (fraction of the semispan); the default length grows with `sweep_deg` so the
+    tip keeps a chord. With `sawtooth` the trailing edge is the double-W:
     segments parallel to the leading edges that break at `notches` (inner notch, aft point,
     outer notch, as semispan fractions); without it the TE is one smooth curve. The skin is one
     smooth loft through `n_stations` stations per side. Returns a validated Solid."""
     if span <= 0:
         raise ValueError("blended_wing_body: span must be > 0")
     s = span / 2.0
-    L = 0.4 * span if length is None else float(length)
     k = math.tan(math.radians(sweep_deg))
+    L = 0.4 * span if length is None else float(length)
     if not 0 < body_width < 1 or not 0 < wing_thickness <= body_thickness < 0.4:
         raise ValueError("blended_wing_body: need 0 < body_width < 1 and "
                          "0 < wing_thickness <= body_thickness < 0.4")
@@ -348,6 +431,11 @@ def blended_wing_body(span: float = 524.0, length: float | None = None,
             return c
         return c + k * (y - y3)
 
+    def min_chord():
+        return min(x_te_saw(y) - x_le(y) for y in (y1, y3, s))
+
+    if length is None and min_chord() < 0.12 * s:
+        L += 0.12 * s - min_chord()     # e.g. sweep_deg=45: lengthen until the tip keeps a chord
     tip_chord = x_te_saw(s) - x_le(s)
     if tip_chord <= 0.02 * s or x_te_saw(y1) - x_le(y1) <= 0:
         raise ValueError("blended_wing_body: the planform closes before the tip; "
@@ -373,11 +461,12 @@ def blended_wing_body(span: float = 524.0, length: float | None = None,
         up = 0.52 + 0.16 * blend          # humped top over the body, flatter belly
         le = x_le(y)
         chord = (x_te_env(y) if sawtooth else _bwb_smooth_te(y, L, s, x_le)) - le
-        pts = _bwb_section(48, thick, up)
+        pts = _bwb_section(48, thick, up, sharp=sawtooth)
         wires_.append(_wire_through(_place(pts, chord, (le, y, 0.0), 0.0, 0.25)))
     skin = bd.Solid.make_loft(wires_, ruled=False)
     if not sawtooth:
-        return check_solid(skin, "blended_wing_body")
+        return check_solid(skin, "blended_wing_body", self_intersection=True,
+                           hint=_LOFT_HINT)
     # planform cutter: everything forward of the sawtooth TE, wider than the span
     far = -L
     ext = s * 1.2
@@ -392,7 +481,8 @@ def blended_wing_body(span: float = 524.0, length: float | None = None,
     solids = body.solids()
     if len(solids) != 1:
         raise ValueError(f"blended_wing_body: the trailing-edge cut gave {len(solids)} pieces")
-    return check_solid(solids[0], "blended_wing_body")
+    return check_solid(solids[0], "blended_wing_body", self_intersection=True,
+                       hint=_LOFT_HINT)
 
 
 def _bwb_smooth_te(y, L, s, x_le):
@@ -430,8 +520,14 @@ def fuselage(stations: Sequence[Sequence[float]] | None = None, exponent: float 
             c, s_ = math.cos(t), math.sin(t)
             pts.append(bd.Vector(x, w / 2 * math.copysign(abs(c) ** (2 / exponent), c),
                                  z + h / 2 * math.copysign(abs(s_) ** (2 / exponent), s_)))
-        objs.append(bd.Wire([bd.Edge.make_spline(pts, periodic=True)]))
-    return check_solid(bd.Solid.make_loft(objs, ruled=False), "fuselage")
+        objs.append(bd.Wire([bd.Edge.make_spline(pts, periodic=True,
+                                                 parameters=_periodic_params(n))]))
+    return check_solid(bd.Solid.make_loft(objs, ruled=False), "fuselage",
+                       self_intersection=True, hint=_LOFT_HINT)
+
+
+def _periodic_params(n: int) -> list[float]:
+    return [i / n for i in range(n + 1)]
 
 
 # ---------------------------------------------------------------- sweeps, lofts, surfaces
@@ -456,15 +552,37 @@ def _profile_wire(profile, plane: bd.Plane, smooth: bool = False) -> bd.Wire:
     if len(pts) < 3:
         raise ValueError("profile needs at least 3 points")
     if smooth:
-        params = [i / len(pts) for i in range(len(pts) + 1)]
-        return bd.Wire([bd.Edge.make_spline(pts, periodic=True, parameters=params)])
+        return bd.Wire([bd.Edge.make_spline(pts, periodic=True,
+                                            parameters=_periodic_params(len(pts)))])
     return bd.Wire.make_polygon(pts, close=True)
 
 
+def _frames(wire: bd.Wire, ts: list[float]) -> list[bd.Plane]:
+    """Planes normal to the path at each t, with a twist-free x direction carried along by
+    parallel transport (each x is the previous one projected onto the new normal plane)."""
+    out: list[bd.Plane] = []
+    x = None
+    for t in ts:
+        z = wire.tangent_at(t).normalized()
+        if x is None:
+            seed = bd.Vector(0, 0, 1) if abs(z.Z) < 0.9 else bd.Vector(1, 0, 0)
+            x = seed - z * seed.dot(z)
+        else:
+            x = x - z * x.dot(z)
+        x = x.normalized()
+        out.append(bd.Plane(origin=wire.position_at(t), x_dir=x, z_dir=z))
+    return out
+
+
 def _frame(wire: bd.Wire, t: float) -> bd.Plane:
-    """Plane normal to the path at t, with a twist-free (corrected) x direction."""
-    loc_plane = bd.Plane(wire.location_at(t))
-    return bd.Plane(origin=wire.position_at(t), x_dir=loc_plane.x_dir, z_dir=wire.tangent_at(t))
+    return _frames(wire, [t])[0]
+
+
+def _spun(pl: bd.Plane, deg: float) -> bd.Plane:
+    """The plane turned by `deg` about its own normal (same origin and normal)."""
+    a = math.radians(deg)
+    x = pl.x_dir * math.cos(a) + pl.y_dir * math.sin(a)
+    return bd.Plane(origin=pl.origin, x_dir=x, z_dir=pl.z_dir)
 
 
 def sweep_profile(path, profile=5.0, twist_deg: float = 0.0, smooth: bool = False,
@@ -481,12 +599,18 @@ def sweep_profile(path, profile=5.0, twist_deg: float = 0.0, smooth: bool = Fals
         prof = _profile_wire(profile, _frame(wire, 0.0), smooth)
         solid = bd.Solid.sweep(bd.Face(prof), wire, is_frenet=frenet,
                                transition=bd.Transition.RIGHT)
-        return check_solid(solid, "sweep_profile")
-    steps = max(3, int(abs(twist_deg) // 30) + 2)
-    profiles = [_profile_wire(profile, _frame(wire, i / (steps - 1)).rotated(
-        (0, 0, twist_deg * i / (steps - 1))), smooth) for i in range(steps)]
-    solid = bd.Solid.sweep_multi(profiles, wire, make_solid=True, is_frenet=frenet)
-    return check_solid(solid, "sweep_profile")
+        return check_solid(solid, "sweep_profile", self_intersection=True, hint=_SWEEP_HINT)
+    # twisted: a smooth loft through rotated profiles placed along the path (a multi-section
+    # pipe shell self-intersects or refuses periodic profiles once the twist passes ~90 deg)
+    steps = max(8, int(abs(twist_deg) // 10) + 2)
+    ts = [i / (steps - 1) for i in range(steps)]
+    profiles = [_profile_wire(profile, _spun(pl, twist_deg * t), smooth)
+                for t, pl in zip(ts, _frames(wire, ts))]
+    solid = bd.Solid.make_loft(profiles, ruled=False)
+    return check_solid(solid, "sweep_profile", self_intersection=True, hint=_SWEEP_HINT)
+
+
+_SWEEP_HINT = "a profile wider than the path's tightest bend radius; smooth the path"
 
 
 def smooth_loft(sections: Sequence, ruled: bool = False):
@@ -494,8 +618,9 @@ def smooth_loft(sections: Sequence, ruled: bool = False):
 
     A point list becomes a smooth closed (periodic) spline. The first/last item may be a single
     (x, y, z) point or a Vertex for a pointed end. Keep every section the same kind of outline
-    (same edge count) for a clean skin; `ruled=True` gives straight panels between sections.
-    Returns a validated Solid."""
+    (same edge count; point lists with equal counts starting at matching points) for a clean
+    skin; airfoil_wire sections are already resampled to match. `ruled=True` gives straight
+    panels between sections. Returns a validated, self-intersection-free Solid."""
     objs = []
     for sec in sections:
         if isinstance(sec, bd.Vertex):
@@ -512,11 +637,13 @@ def smooth_loft(sections: Sequence, ruled: bool = False):
             if seq and isinstance(seq[0], (int, float)):
                 objs.append(bd.Vertex(*seq))
             else:
-                objs.append(bd.Wire([bd.Edge.make_spline([bd.Vector(*p) for p in seq],
-                                                         periodic=True)]))
+                objs.append(bd.Wire([bd.Edge.make_spline(
+                    [bd.Vector(*p) for p in seq], periodic=True,
+                    parameters=_periodic_params(len(seq)))]))
     if sum(isinstance(o, bd.Wire) for o in objs) < 1 or len(objs) < 2:
         raise ValueError("smooth_loft: need at least 2 sections (one may be a point)")
-    return check_solid(bd.Solid.make_loft(objs, ruled=ruled), "smooth_loft")
+    return check_solid(bd.Solid.make_loft(objs, ruled=ruled), "smooth_loft",
+                       self_intersection=True, hint=_LOFT_HINT)
 
 
 def spline_surface(points_grid: Sequence[Sequence[Sequence[float]]], tol: float = 0.01):
@@ -599,11 +726,13 @@ def variable_fillet(shape, edges, r_start: float, r_end: float):
 
 class EnclosureParts:
     """Result of enclosure(): `.base`, `.lid` (or None), `.cavity` (the inner volume), all in
-    the closed position. `.compound(explode=0)` returns one shape for build(); a positive
-    `explode` lifts the lid by that many mm."""
+    the closed position, plus `.split_z`, `.bosses` [(x, y)] and `.boss_top` (top of the base
+    bosses). `.compound(explode=0)` returns one shape for build(); a positive `explode` lifts
+    the lid by that many mm. Returning the EnclosureParts itself from build() also works."""
 
-    def __init__(self, base, lid, cavity, split_z: float):
+    def __init__(self, base, lid, cavity, split_z: float, bosses=(), boss_top: float = 0.0):
         self.base, self.lid, self.cavity, self.split_z = base, lid, cavity, split_z
+        self.bosses, self.boss_top = list(bosses), boss_top
 
     def compound(self, explode: float = 0.0):
         parts = [self.base]
@@ -628,12 +757,13 @@ def enclosure(outer=(80.0, 60.0, 30.0), wall: float = 2.0, split_z: float | None
               corner_radius: float = 4.0, bosses="corners", boss_od: float = 6.0,
               boss_hole: float = 2.5, lid_hole: float = 2.9, ribs: int = 0, lid: bool = True,
               lip: float = 3.0, clearance: float = 0.2, snap_fits: int = 0):
-    """Two-piece shelled enclosure: base + lid with a locating lip, screw bosses, ribs, snaps.
+    """Two-piece enclosure (base + lid: lip, screw bosses, ribs, snaps); `return e.compound()`.
 
     `outer`: (length, width, height) for a rounded box sitting on z=0 centred on XY, or any
     closed Solid (organic shells work too). `split_z` is the base/lid parting height (default
-    75% of the height). `bosses`: "corners", [] or [(x, y), ...]; each gets a `boss_hole`
-    pilot and the lid a `lid_hole` clearance hole. `ribs`: floor ribs across X. `snap_fits`:
+    75% of the height). `bosses`: "corners", [] or [(x, y), ...]; each gets a base boss with
+    a `boss_hole` pilot and a matching lid boss (down to `clearance` above it) with a
+    `lid_hole` clearance bore, so the screw clamps boss to boss. `ribs`: floor ribs across X. `snap_fits`:
     bumps per long side on the lip with matching wall windows (box outer only). Returns an
     EnclosureParts (.base, .lid, .cavity, .compound())."""
     if isinstance(outer, (tuple, list)):
@@ -692,7 +822,14 @@ def enclosure(outer=(80.0, 60.0, 30.0), wall: float = 2.0, split_z: float | None
         ring = (lip_outer + lip_root) - lip_inner
         top = top + ring
         if bosses:
-            top = top - standoffs(bosses, bb.max.Z - split + 2, lid_hole, 0, z=split - lip - 1)
+            # lid bosses hang from the lid ceiling to just above the base bosses
+            lid_boss_z = boss_top + clearance
+            ceiling = bb.max.Z - wall + 0.01
+            if ceiling - lid_boss_z > 0.5:
+                hang = standoffs(bosses, ceiling - lid_boss_z, boss_od, 0, z=lid_boss_z)
+                top = top + (hang & shell_outer)
+            bore_z = min(lid_boss_z, split - lip) - 1
+            top = top - standoffs(bosses, bb.max.Z + 1 - bore_z, lid_hole, 0, z=bore_z)
         if snap_fits and is_box:
             bump_w, depth = 6.0, 0.6
             zc = split - lip / 2
@@ -707,7 +844,7 @@ def enclosure(outer=(80.0, 60.0, 30.0), wall: float = 2.0, split_z: float | None
                     base = base - window
     base_solid = _one_solid(base, "enclosure base")
     lid_solid = _one_solid(top, "enclosure lid") if top is not None else None
-    return EnclosureParts(base_solid, lid_solid, cavity, split)
+    return EnclosureParts(base_solid, lid_solid, cavity, split, bosses, boss_top)
 
 
 def _one_solid(shape, what):
