@@ -84,7 +84,15 @@ class Gate:
             if reason:
                 deltas = {**deltas, "approval_reason": reason}
             appr = await self.approvals.request(run_id, name, payload, deltas=deltas)
-            appr = await self.approvals.wait(appr.id)
+            tracker = self._tracker(run_id)
+            prev = (tracker.state, tracker.detail) if tracker is not None else None
+            if tracker is not None:
+                tracker.set("waiting_approval", f"waiting for approval: {name}")
+            try:
+                appr = await self.approvals.wait(appr.id)
+            finally:
+                if tracker is not None and prev is not None and prev[0] is not None:
+                    tracker.set(prev[0], prev[1])
             if appr.status != "approved":
                 raise MisesError(ErrorCode.DENIED, f"approval {appr.status} for {name}")
             payload = self.approvals.consume(appr.id, hash_payload(
@@ -173,6 +181,17 @@ class Gate:
             raise MisesError(ErrorCode.BUDGET_EXHAUSTED,
                              f"{t.name} needs {t.onshape_cost} Onshape calls; allowance exhausted",
                              hint="ask the user to raise the cap")
+
+    def _tracker(self, run_id: str):
+        """The run's ActivityTracker, via the runtime service; None in bare unit tests."""
+        rt = self.services.get("runtime")
+        getter = getattr(rt, "activity_tracker", None)
+        if getter is None:
+            return None
+        try:
+            return getter(run_id)
+        except Exception:  # noqa: BLE001
+            return None
 
     def _redact(self, out: ToolOutput) -> ToolOutput:
         """Scrub the admin and MCP tokens from a result (summary, data, warnings). The sandbox

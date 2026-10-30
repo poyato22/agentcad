@@ -891,6 +891,9 @@ class Runtime:
         finally:
             self.parallel.release(rid)
         st.result = result
+        if result.stop_reason == "end_turn" and not st.cancel_requested:
+            # a Claude Code turn ended but the session stays open for the next message
+            self.activity_tracker(rid).set("idle", "waiting for your next message")
         return result
 
     def _is_claude_run(self, run_id: str) -> bool:
@@ -1303,10 +1306,15 @@ class Runtime:
         if questions:
             data["questions"] = list(questions)
         self.events.publish(Event(type="question_asked", run_id=run_id, data=data))
+        tracker = self.activity_tracker(run_id)
+        prev_state, prev_detail = tracker.state, tracker.detail
+        tracker.set("waiting_user", "waiting for your answer")
         try:
             return await fut
         finally:
             self._questions.pop(qid, None)
+            if prev_state is not None:          # restore the state the run was in before asking
+                tracker.set(prev_state, prev_detail)
 
     def answer(self, question_id: str, text: str) -> None:
         entry = self._questions.get(question_id)

@@ -212,6 +212,8 @@ async def test_ui_ask_user_roundtrip(tmp_path):
     q = await next_event(sub, "question_asked")
     assert q.run_id == rid and q.data["question"] == "Which colour?"
     assert q.data["options"] == ["red", "blue"]
+    wa = await next_event(sub, "agent_activity")
+    assert wa.data["state"] == "waiting_user"       # I-5: the run shows it is blocked on the user
     rt.answer(q.data["question_id"], "blue")
     r = await rt.wait(rid)
     assert r.final_text == "blue it is"
