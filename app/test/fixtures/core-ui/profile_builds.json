@@ -10,6 +10,10 @@
   "max_parallel_agents": "auto",
   "local_endpoints": {},
   "theme": "system",
+  "viewer_background": {
+    "mode": "theme",
+    "colors": []
+  },
   "setup_completed_at": null,
   "printers": [],
   "active_project_id": "1f53b1bfcb90",

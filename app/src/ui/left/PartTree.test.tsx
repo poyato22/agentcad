@@ -6,24 +6,43 @@ import type { PartSummary } from "../../api/types";
 import { activeBuildId, resetBuilds } from "../../state/builds";
 import { agentFlash, onPartChanged, resetPartEdits } from "../../state/partEdits";
 import { bindClient, parts, resetStore, selectedPartId } from "../../state/store";
+import { viewScope } from "../viewer/Viewer";
+import { measureHook } from "./partMenuHooks";
+import { resetSelection, selectedIds } from "./partSelection";
 import { PartTree } from "./PartTree";
+import { treeError, treeNote } from "./treeActions";
 import { hiddenParts, resetVisibility } from "./visibility";
 
 const row = (id: string, order: number, parent: string | null = null, color: string | null = null): PartSummary =>
   ({ part_id: id, id, label: id, vars: {}, metrics: null, mtime: 1, parent_id: parent, order, kind: "part", version: 1, project_id: "b1", color });
+
+const METRICS: NonNullable<PartSummary["metrics"]> = {
+  valid: true, volume_mm3: 4000, area_mm2: 2200, mass_g: 12.5, bbox: { min: [0, 0, 0], max: [40, 20, 5], size: [40, 20, 5] },
+  center_of_mass: [20, 10, 2.5], faces: 6, edges: 12, holes: [], solids: 1,
+};
 
 // frame ─┬ arm_a
 //        └ arm_b
 // plate
 const LIST = () => [row("frame", 0), row("arm_a", 0, "frame"), row("arm_b", 1, "frame"), row("plate", 1)];
 
-let client: { reorderParts: ReturnType<typeof vi.fn>; patchPart: ReturnType<typeof vi.fn>; parts: ReturnType<typeof vi.fn> };
+type Fn = ReturnType<typeof vi.fn>;
+let client: {
+  reorderParts: Fn; patchPart: Fn; parts: Fn; deletePart: Fn; duplicatePart: Fn; exportPart: Fn; assembly: Fn; addInstance: Fn; getProfile: Fn;
+};
 
 beforeEach(() => {
-  resetStore(); resetBuilds(); resetPartEdits(); resetVisibility();
+  resetStore(); resetBuilds(); resetPartEdits(); resetVisibility(); resetSelection();
+  treeError.value = null; treeNote.value = null; viewScope.value = "part";
   activeBuildId.value = "b1";
   parts.value = LIST();
   client = {
+    deletePart: vi.fn(async (id: string) => ({ deleted: id })),
+    duplicatePart: vi.fn(async (id: string) => row(`${id}_copy`, 9)),
+    exportPart: vi.fn(async (id: string, f: string) => ({ path: `/Users/me/Downloads/${id}.${f}`, name: `${id}.${f}`, format: f })),
+    assembly: vi.fn(async () => ({ instances: [], joints: [], dof_remaining: 0, overconstrained: [] })),
+    addInstance: vi.fn(async () => ({})),
+    getProfile: vi.fn(async () => ({ default_material: "PETG" })),
     reorderParts: vi.fn(async (_b: string, parent: string | null, ids: string[]) => parts.peek().map((p) => {
       const i = ids.indexOf(p.part_id);
       return i < 0 ? p : { ...p, parent_id: parent, order: i };
@@ -127,14 +146,21 @@ describe("part tree", () => {
     await waitFor(() => expect(client.reorderParts).toHaveBeenLastCalledWith("b1", null, expect.arrayContaining(["arm_a"])));
   });
 
-  it("the Move menu does the same, and disables a move that isn't possible", async () => {
+  it("the ⋯ button and a right-click open the same useful menu, focused, closed by Esc or a press outside", () => {
     render(<PartTree />);
-    fireEvent.click(screen.getByRole("button", { name: "Move or edit plate" }));
+    fireEvent.click(screen.getByRole("button", { name: "Actions for plate" }));
     const menu = screen.getByRole("menu", { name: "plate actions" });
-    expect((screen.getByRole("menuitem", { name: /Move down/ }) as HTMLButtonElement).disabled).toBe(true);
     expect(menu.contains(document.activeElement)).toBe(true);
-    fireEvent.click(screen.getByRole("menuitem", { name: /Move into the part above/ }));
-    await waitFor(() => expect(client.reorderParts).toHaveBeenCalledWith("b1", "frame", ["arm_a", "arm_b", "plate"]));
+    const labels = screen.getAllByRole("menuitem").map((b) => b.textContent);
+    expect(labels).toEqual(["RenameF2", "Appearance…", "HideH", "Isolate", "Measure", "Add to assembly", "Duplicate⌘D",
+      "Export STEP", "Export STL", "Properties⌘I", "Delete"]);
+    fireEvent.keyDown(menu, { key: "Escape" });
+    expect(screen.queryByRole("menu")).toBeNull();
+    fireEvent.contextMenu(rowEl("frame"), { clientX: 30, clientY: 40 });
+    expect(screen.getByRole("menu", { name: "frame actions" })).toBeTruthy();
+    expect(selectedPartId.value).toBe("frame");                      // a right-click selects the row first
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole("menu")).toBeNull();
   });
 
   it("a refused move is put back with the core's reason", async () => {
@@ -162,26 +188,155 @@ describe("part tree", () => {
     await waitFor(() => expect(names()).toEqual(["0frame", "1arm_a", "1arm_b", "0plate"]));
   });
 
-  it("an outside press closes the color picker; opening the Move menu closes it too", () => {
+  it("one click on the swatch opens the appearance popover; an outside press or Esc closes it", () => {
     render(<PartTree />);
-    fireEvent.click(screen.getByRole("button", { name: /Color of plate/ }));
-    expect(screen.getByTestId("color-picker")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Move or edit plate" }));
-    expect(screen.queryByTestId("color-picker")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Appearance of plate/ }));
+    const pop = screen.getByTestId("appearance-popover");
+    expect(pop.contains(document.activeElement)).toBe(true);
     fireEvent.pointerDown(document.body);
-    expect(screen.queryByRole("menu")).toBeNull();
+    expect(screen.queryByTestId("appearance-popover")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Appearance of plate/ }));
+    fireEvent.keyDown(screen.getByTestId("appearance-popover"), { key: "Escape" });
+    expect(screen.queryByTestId("appearance-popover")).toBeNull();
   });
 
-  it("picks a color from the palette or a custom hex (PATCH color)", async () => {
+  it("picks a color (2 clicks) or a custom hex, and the popover stays open to try more (PATCH color)", async () => {
     render(<PartTree />);
-    fireEvent.click(screen.getByRole("button", { name: /Color of plate/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Appearance of plate/ }));
     fireEvent.click(screen.getByRole("radio", { name: "Teal" }));
     await waitFor(() => expect(client.patchPart).toHaveBeenCalledWith("plate", { color: "#2f9a9c" }));
     expect(parts.value.find((p) => p.part_id === "plate")?.color).toBe("#2f9a9c");
-    fireEvent.click(screen.getByRole("button", { name: /Color of frame/ }));
+    expect(screen.getByTestId("appearance-popover")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Appearance of frame/ }));
     fireEvent.input(screen.getByRole("textbox", { name: "Hex color" }), { target: { value: "#ABC" } });
     fireEvent.click(screen.getByRole("button", { name: "Apply" }));
     await waitFor(() => expect(client.patchPart).toHaveBeenCalledWith("frame", { color: "#aabbcc" }));
+  });
+
+  it("a finish preset sets the appearance (an untinted one keeps the color); Plain clears it", async () => {
+    parts.value = LIST().map((p) => (p.part_id === "plate" ? { ...p, color: "#c2463d" } : p));
+    render(<PartTree />);
+    fireEvent.click(screen.getByRole("button", { name: /Appearance of plate/ }));
+    fireEvent.click(screen.getByRole("radio", { name: "Glossy plastic" }));
+    await waitFor(() => expect(client.patchPart).toHaveBeenCalledWith("plate", {
+      appearance: { preset: "glossy_plastic", color: "#c2463d", metalness: 0, roughness: 0.22, opacity: 1 },
+    }));
+    expect(screen.getByRole("button", { name: "Appearance of plate: Glossy plastic" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("radio", { name: "Polished metal" }));
+    await waitFor(() => expect(client.patchPart).toHaveBeenLastCalledWith("plate", { appearance: expect.objectContaining({ preset: "polished_metal", metalness: 1 }) }));
+    fireEvent.click(screen.getByRole("radio", { name: "Plain" }));
+    await waitFor(() => expect(client.patchPart).toHaveBeenLastCalledWith("plate", { appearance: null }));
+  });
+
+  it("⌘-click and Shift-click select several parts; the menu then acts on all of them", async () => {
+    render(<PartTree />);
+    const name = (id: string) => rowEl(id).querySelector(".tree-name") as HTMLElement;
+    fireEvent.click(name("frame"));
+    fireEvent.click(name("arm_b"), { shiftKey: true });
+    expect(selectedIds.value).toEqual(new Set(["frame", "arm_a", "arm_b"]));
+    fireEvent.click(name("arm_a"), { metaKey: true });
+    expect(selectedIds.value).toEqual(new Set(["frame", "arm_b"]));
+    expect(rowEl("arm_a").classList.contains("sel")).toBe(false);
+    fireEvent.contextMenu(rowEl("arm_b"), { clientX: 10, clientY: 10 });
+    fireEvent.click(screen.getByRole("menuitem", { name: /Hide 2 parts/ }));
+    expect(hiddenParts.value).toEqual(new Set(["frame", "arm_b"]));
+    // a palette pick recolors the whole selection
+    fireEvent.click(screen.getByRole("button", { name: /Appearance of frame/ }));
+    fireEvent.click(screen.getByRole("radio", { name: "Red" }));
+    await waitFor(() => expect(client.patchPart).toHaveBeenCalledTimes(2));
+    expect(client.patchPart.mock.calls.map((c) => c[0]).sort()).toEqual(["arm_b", "frame"]);
+  });
+
+  it("Isolate shows only the part in the build view; Show all brings the rest back", () => {
+    render(<PartTree />);
+    fireEvent.contextMenu(rowEl("plate"), { clientX: 10, clientY: 10 });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Isolate" }));
+    expect(hiddenParts.value).toEqual(new Set(["frame", "arm_a", "arm_b"]));
+    expect(viewScope.value).toBe("build");
+    fireEvent.contextMenu(rowEl("plate"), { clientX: 10, clientY: 10 });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Show all parts" }));
+    expect(hiddenParts.value.size).toBe(0);
+  });
+
+  it("Delete asks once more in place, then deletes and reloads; Duplicate selects the copy", async () => {
+    parts.value = LIST().map((p) => ({ ...p, metrics: METRICS }));
+    client.parts.mockImplementation(async () => parts.peek().filter((p) => p.part_id !== "plate"));
+    render(<PartTree />);
+    fireEvent.contextMenu(rowEl("plate"), { clientX: 10, clientY: 10 });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
+    expect(client.deletePart).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Click again to delete" }));
+    await waitFor(() => expect(client.deletePart).toHaveBeenCalledWith("plate"));
+    await screen.findByText("Deleted plate");
+    expect(names()).not.toContain("0plate");
+
+    client.parts.mockImplementation(async () => [...LIST().map((p) => ({ ...p, metrics: METRICS })), row("frame_copy", 2)]);
+    fireEvent.contextMenu(rowEl("frame"), { clientX: 10, clientY: 10 });
+    fireEvent.click(screen.getByRole("menuitem", { name: /^Duplicate/ }));
+    await waitFor(() => expect(selectedPartId.value).toBe("frame_copy"));
+  });
+
+  it("Export saves STEP / STL and says where; Properties shows mass, volume, size and material", async () => {
+    parts.value = LIST().map((p) => ({ ...p, metrics: METRICS }));
+    render(<PartTree />);
+    fireEvent.contextMenu(rowEl("plate"), { clientX: 10, clientY: 10 });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Export STEP" }));
+    await screen.findByText("Exported plate.step to Downloads");
+    expect(client.exportPart).toHaveBeenCalledWith("plate", "step");
+    fireEvent.contextMenu(rowEl("plate"), { clientX: 10, clientY: 10 });
+    fireEvent.click(screen.getByRole("menuitem", { name: /Properties/ }));
+    const props = screen.getByRole("dialog", { name: "Properties of plate" });
+    expect(props.textContent).toContain("12.5 g");
+    expect(props.textContent).toContain("40.0 × 20.0 × 5.0 mm");
+    expect(props.textContent).toContain("4000 mm³");
+    await waitFor(() => expect(props.textContent).toContain("PETG (build default)"));
+  });
+
+  it("Add to assembly grounds the first instance of an empty assembly", async () => {
+    parts.value = LIST().map((p) => ({ ...p, metrics: METRICS }));
+    render(<PartTree />);
+    fireEvent.contextMenu(rowEl("plate"), { clientX: 10, clientY: 10 });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Add to assembly" }));
+    await waitFor(() => expect(client.addInstance).toHaveBeenCalledWith("b1", { part_id: "plate", name: "plate", fixed: true }));
+    await screen.findByText("Added plate to the assembly");
+  });
+
+  it("Measure hands the parts to the measure tool when one is registered, else shows Properties", () => {
+    parts.value = LIST().map((p) => ({ ...p, metrics: METRICS }));
+    render(<PartTree />);
+    fireEvent.contextMenu(rowEl("plate"), { clientX: 10, clientY: 10 });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Measure" }));
+    expect(screen.getByRole("dialog", { name: "Properties of plate" })).toBeTruthy();
+    const seen: string[][] = [];
+    measureHook.value = (ids) => seen.push(ids);
+    fireEvent.contextMenu(rowEl("frame"), { clientX: 10, clientY: 10 });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Measure" }));
+    expect(seen).toEqual([["frame"]]);
+    measureHook.value = null;
+  });
+
+  it("a click re-renders only the rows it changed, and a refetch with the same rows re-renders none", () => {
+    const many = Array.from({ length: 40 }, (_, i) => row(`p${String(i).padStart(2, "0")}`, i));
+    parts.value = many;
+    render(<PartTree />);
+    const before = new Map([...document.querySelectorAll("[data-part]")].map((el) => [el.getAttribute("data-part"), el.firstElementChild]));
+    const spy = vi.spyOn(Element.prototype, "setAttribute");
+    fireEvent.click(rowEl("p10").querySelector(".tree-name") as HTMLElement);
+    const touched = new Set(spy.mock.contexts.map((el) => (el as Element).closest("[data-part]")?.getAttribute("data-part")).filter(Boolean));
+    expect([...touched].sort()).toEqual(["p10"]);
+    spy.mockClear();
+    act(() => { parts.value = many.map((p) => ({ ...p })); });       // a part_changed refetch: new objects, same values
+    expect(spy.mock.calls.length).toBe(0);
+    for (const [id, el] of before) expect(document.querySelector(`[data-part="${id}"]`)?.firstElementChild).toBe(el);
+  });
+
+  it("a long list renders only the rows in view (virtualized)", () => {
+    parts.value = Array.from({ length: 600 }, (_, i) => row(`p${String(i).padStart(3, "0")}`, i));
+    render(<div class="pane-body" style="height: 300px; overflow: auto"><PartTree /></div>);
+    const shown = document.querySelectorAll("[data-part]").length;
+    expect(shown).toBeGreaterThan(10);
+    expect(shown).toBeLessThan(100);
+    expect(screen.getByTestId("part-tree").hasAttribute("data-virtual")).toBe(true);
   });
 
   it("renames with F2 (PATCH label) and toggles visibility", async () => {

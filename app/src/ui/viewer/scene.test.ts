@@ -191,6 +191,31 @@ describe("design viewer: part colors, picks and the build view", () => {
     v.dispose();
   });
 
+  it("a part with an appearance gets a PBR material lit by the environment; back to plain restores the matte one (U8)", async () => {
+    const env = new THREE.Texture();
+    const environment = vi.fn(() => env);
+    const v = createViewer(document.createElement("canvas"), { createRenderer: stubRenderer, environment });
+    const p = await loadPart(plateBytes());
+    const mats = () => { const out: THREE.Material[] = []; p.object.traverse((o) => { if (o instanceof THREE.Mesh) out.push(o.material as THREE.Material); }); return out; };
+    v.setParts([{ id: "top_plate", scene: p, color: null, focus: true }], true);
+    expect(mats().every((m) => m instanceof THREE.MeshLambertMaterial)).toBe(true);
+    expect(environment).not.toHaveBeenCalled();                   // built lazily, on the first shiny part
+    const chrome = { color: "#e6e8eb", metalness: 1, roughness: 0.06, opacity: 1, shiny: true };
+    v.setParts([{ id: "top_plate", scene: p, color: "#e6e8eb", focus: true, material: chrome }], false);
+    const m = mats()[0] as THREE.MeshStandardMaterial;
+    expect(m).toBeInstanceOf(THREE.MeshStandardMaterial);
+    expect([m.metalness, m.roughness, m.transparent, m.color.getHexString()]).toEqual([1, 0.06, false, "e6e8eb"]);
+    expect(environment).toHaveBeenCalledTimes(1);
+    const clear = { color: "#dde8f0", metalness: 0, roughness: 0.05, opacity: 0.35, shiny: true };
+    v.setParts([{ id: "top_plate", scene: p, color: null, focus: true, material: clear }], false);
+    const c = mats()[0] as THREE.MeshStandardMaterial;
+    expect([c.transparent, c.opacity, c.depthWrite]).toEqual([true, 0.35, false]);
+    v.setParts([{ id: "top_plate", scene: p, color: null, focus: true }], false);
+    expect(mats().every((x) => x instanceof THREE.MeshLambertMaterial)).toBe(true);
+    expect(faceColors(p)).toEqual(new Set(["2a2a2a"]));
+    v.dispose();
+  });
+
   it("a click on the model reports the part, a point on it (CAD mm) and the facing normal", async () => {
     const v = createViewer(document.createElement("canvas"), { createRenderer: stubRenderer });
     const p = await loadPart(plateBytes());

@@ -1,0 +1,27 @@
+/* Viewer background menu (bottom-left of the sheet) and the light-background overlay tweaks. */
+.vp-bg { position: absolute; left: 22px; bottom: 22px; z-index: 6; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.vp-bg-btn { display: inline-flex; align-items: center; gap: 6px; }
+.vp-bg-chip {
+  display: inline-block; width: 12px; height: 12px; flex: none; border: 1px solid var(--line2);
+  background-color: var(--vp);
+}
+.vp-bg-chip[data-mode="theme"] {
+  background-image: linear-gradient(var(--grid-strong) 1px, transparent 1px), linear-gradient(90deg, var(--grid-strong) 1px, transparent 1px);
+  background-size: 4px 4px;
+}
+.vp-bg-pop {
+  display: flex; flex-direction: column; min-width: 170px; padding: 3px 0; background: var(--paper);
+  border: 1px solid var(--line2); box-shadow: 0 6px 20px rgb(0 0 0 / 28%);
+}
+.vp-bg-opt {
+  display: flex; align-items: center; gap: 8px; height: 24px; padding: 0 10px; border: 0; background: transparent;
+  color: var(--ink); font: inherit; text-align: left; cursor: default;
+}
+.vp-bg-opt:hover, .vp-bg-opt:focus-visible, .vp-bg-opt:focus-within { background: var(--blue-tint); outline: none; }
+.vp-bg-opt[aria-checked="true"] { color: var(--blue2); }
+.vp-bg-custom input { width: 14px; height: 14px; padding: 0; border: 1px solid var(--line2); background: transparent; }
+.vp-bg-err { padding: 3px 10px; color: var(--red); font-size: var(--fs-small); }
+.vp[data-tab="code"] .vp-bg { visibility: hidden; }
+/* a light background: the sheet's own marks in dark ink */
+.vp[data-bg="light"] .tick { border-color: #5a5f66; }
+.vp[data-bg="light"] .vp-fig { color: #4a4f56; }

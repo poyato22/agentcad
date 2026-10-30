@@ -73,9 +73,9 @@ test("new_build_rename_trash_restore", async ({ page, fake }) => {
 test("color_a_part_from_the_palette_and_the_viewer_paints_it", async ({ page, fake }) => {
   await open(page);
   await tree(page).getByRole("button", { name: "top plate", exact: true }).click();
-  await page.getByRole("button", { name: /Color of top plate/ }).click();
+  await page.getByRole("button", { name: /Appearance of top plate/ }).click();
   await page.getByRole("radio", { name: "Teal" }).click();
-  await expect(page.getByRole("button", { name: /Color of top plate: Teal/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Appearance of top plate: Teal/ })).toBeVisible();
   expect((await callsTo(fake, "PATCH", "/parts/top_plate")).at(-1)?.body).toEqual({ color: "#2f9a9c" });
   await expect(page.getByTestId("viewer-canvas")).toHaveAttribute("data-shown", "top_plate:#2f9a9c");
   // the whole build: both parts, each in its color

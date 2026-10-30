@@ -8,6 +8,7 @@
     "color": null,
     "kind": "part",
     "version": 4,
+    "appearance": null,
     "part_id": "mount_plate",
     "vars": {
       "thickness": 6.0

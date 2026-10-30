@@ -4,6 +4,7 @@
 // The `Same<...>` checks at the bottom fail the type check if a schema and its type drift apart.
 import { z } from "zod";
 import { partEdgeSchema } from "./builds";
+import { PRESET_IDS } from "../lib/appearance";
 import {
   ERROR_CODES, SETUP_PIECES, STEP_KINDS, SYSTEM_STATUSES,
   type RunNode,
@@ -128,6 +129,12 @@ export const partMetricsSchema = z.object({
   edge_list: z.array(partEdgeSchema).optional(),
 });
 
+/** Plan 7 U8: core appearance.normalize's shape. */
+export const appearanceSchema = z.object({
+  preset: z.enum(PRESET_IDS).nullable(), color: z.string().nullable(),
+  metalness: z.number(), roughness: z.number(), opacity: z.number(),
+});
+
 /** A row whose metrics don't parse keeps its tree place with metrics null (never drops the list). */
 export const partSummarySchema = z.object({
   part_id: z.string(), vars: z.record(z.string(), z.number()), metrics: partMetricsSchema.nullable().catch(null),
@@ -135,6 +142,8 @@ export const partSummarySchema = z.object({
   id: z.string().optional(), label: z.string().optional(), project_id: z.string().nullish(), parent_id: z.string().nullish(),
   order: z.number().optional(), color: z.string().nullish(), kind: z.enum(["part", "group", "catalog"]).optional(),
   version: z.number().int().optional(),
+  // a malformed appearance falls back to the drafting look (the row is never dropped)
+  appearance: appearanceSchema.nullish().catch(null),
 });
 
 export const coreErrorBodySchema = z.object({
@@ -174,6 +183,7 @@ export const profileSchema = z.object({
   max_parallel_agents: z.union([z.number().int(), z.literal("auto")]).default("auto"), local_endpoints: z.record(z.string(), z.string()).default({}),
   theme: z.enum(["system", "light", "dark"]).default("system"),
   hidden_agents: z.array(z.string()).optional(),
+  viewer_background: z.object({ mode: z.enum(["theme", "solid", "gradient"]), colors: z.array(z.string()) }).optional().catch(undefined),
   setup_completed_at: z.number().nullable().default(null),
   // the core's Profile carries `schema_version` and `printers`; both are stripped here and never sent
   // back in PUT /profile (the core merges the patch, so they are kept; printers go through /printers)

@@ -1,0 +1,126 @@
+/* Parts manager (Plan 7 U8). Compact 24 px rows: eye · material swatch · name, the mass and the
+   ⋯ button only on hover. Blue only for: selected, being changed by an agent. The swatches are the
+   one rounded thing here: each is the part's material as a tiny lit sphere. */
+.left-build { color: var(--dim); max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: bottom; }
+
+.tree-wrap { display: flex; flex-direction: column; }
+.tree { list-style: none; margin: 0; padding: 2px 0; }
+.tree-spacer { list-style: none; pointer-events: none; }
+.tree-row {
+  position: relative; display: flex; align-items: center; gap: 5px; height: 24px; padding: 0 4px;
+  border-left: 2px solid transparent; box-sizing: border-box;
+  /* the drag is pointer events: no text selection or scrolling gestures from a press on a row */
+  touch-action: none; user-select: none; -webkit-user-select: none;
+}
+.tree-row:hover { background: var(--paper2); }
+.tree-row.sel { border-left-color: var(--blue); background: var(--blue-tint); }
+.tree-row.changing .tree-name { color: var(--blue2); }
+.tree-row.dragging { opacity: .45; }
+.tree.is-dragging, .tree.is-dragging * { cursor: grabbing; }
+.tree-ghost {
+  position: fixed; z-index: 30; pointer-events: none; padding: 2px 8px; max-width: 200px; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; background: var(--paper); color: var(--ink); border: 1px solid var(--blue); font-size: var(--fs-small);
+}
+.tree-row.is-hidden .row-name, .tree-row.is-hidden .tree-swatch { opacity: .4; }
+/* an agent just changed this part: one blue sweep along the row */
+.tree-row.flash { animation: tree-flash 1.6s ease-out 1; }
+@keyframes tree-flash { 0% { background: var(--blue-tint); box-shadow: inset 2px 0 0 var(--blue); } 100% { background: transparent; box-shadow: inset 2px 0 0 transparent; } }
+@media (prefers-reduced-motion: reduce) { .tree-row.flash { animation: none; background: var(--blue-tint); } }
+
+/* drop indicators: a dimension line (hairline with end ticks) between rows, a frame for "inside" */
+.tree-row.drop-before::before, .tree-row.drop-after::after {
+  content: ""; position: absolute; left: 4px; right: 4px; height: 7px; pointer-events: none;
+  border-left: 1px solid var(--blue); border-right: 1px solid var(--blue);
+  background: linear-gradient(var(--blue), var(--blue)) center / 100% 1px no-repeat;
+}
+.tree-row.drop-before::before { top: -4px; }
+.tree-row.drop-after::after { bottom: -4px; }
+.tree-row.drop-inside { outline: 1px dashed var(--blue); outline-offset: -1px; background: var(--blue-tint); }
+
+.tree-twisty { width: 10px; flex: none; padding: 0; border: 0; background: transparent; color: var(--faint); cursor: pointer; font-size: var(--fs-small); text-align: center; }
+.tree-twisty:hover { color: var(--ink); }
+.tree-eye {
+  flex: none; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; padding: 0;
+  border: 0; background: transparent; color: var(--faint); cursor: pointer;
+}
+.tree-eye:hover { color: var(--ink); }
+.tree-eye[aria-pressed="false"] { color: var(--dim); }
+/* round by clip-path: base.css squares every border-radius, and a sphere is the one round thing */
+.tree-swatch {
+  flex: none; width: 13px; height: 13px; padding: 0; cursor: pointer; border: 0; clip-path: circle(50%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 25%, transparent); background: var(--mesh-face);
+}
+.tree-swatch:hover, .tree-swatch[aria-expanded="true"] { box-shadow: inset 0 0 0 1.5px var(--ink); }
+.tree-name {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; height: 22px; padding: 0 2px; border: 0; background: transparent;
+  color: var(--ink); text-align: left; cursor: default; font: inherit;
+}
+.tree-kind { font-size: var(--fs-label); flex: none; }
+.tree-rename { flex: 1; min-width: 0; padding: 1px 3px; font: inherit; }
+.row-hint { flex: none; font-size: var(--fs-small); font-variant-numeric: tabular-nums; opacity: 0; }
+.tree-row:hover .row-hint, .tree-row.sel .row-hint { opacity: 1; }
+.tree-more {
+  flex: none; width: 16px; padding: 0; border: 0; background: transparent; color: var(--faint); cursor: pointer;
+  font-size: var(--fs-small); line-height: 1; opacity: 0;
+}
+.tree-more:hover { color: var(--ink); }
+.tree-row:hover .tree-more, .tree-row:focus-within .tree-more, .tree-more[aria-expanded="true"] { opacity: 1; }
+.tree-swatch:focus-visible, .tree-eye:focus-visible, .tree-more:focus-visible, .tree-name:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
+.tree-error, .tree-note { padding: 4px 8px; font-size: var(--fs-small); }
+.tree-error { color: var(--red); }
+.tree-note { color: var(--dim); }
+
+/* ---- floating layers: the part menu, the appearance popover, properties */
+.pmenu, .apop, .pprops {
+  position: fixed; z-index: 40; background: var(--paper); color: var(--ink); border: 1px solid var(--line2);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 28%); font-size: var(--fs);
+}
+.pmenu { min-width: 188px; padding: 3px 0; display: flex; flex-direction: column; }
+.pmenu-item {
+  display: flex; justify-content: space-between; align-items: center; gap: 16px; height: 24px; padding: 0 10px;
+  border: 0; background: transparent; color: var(--ink); text-align: left; font: inherit; cursor: default;
+}
+.pmenu-item:hover:not([disabled]), .pmenu-item:focus-visible { background: var(--blue-tint); outline: none; }
+.pmenu-item[disabled] { color: var(--faint); }
+.pmenu-item[data-danger] { color: var(--red); }
+.pmenu-item[data-armed] { background: var(--red); color: var(--on-blue); }
+.pmenu-keys { font: inherit; font-size: var(--fs-small); color: var(--faint); }
+.pmenu-item[data-armed] .pmenu-keys { color: inherit; }
+.pmenu-sep { height: 1px; margin: 3px 0; background: var(--line); }
+
+.apop { padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 6px; }
+.apop-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.apop-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.apop-label { font-size: var(--fs-label); color: var(--dim); margin-top: 2px; }
+.apop-finishes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.apop-finish {
+  display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 5px 2px 4px; border: 1px solid transparent;
+  background: transparent; color: var(--dim); font: inherit; font-size: var(--fs-label); line-height: 1.15; cursor: pointer;
+}
+.apop-finish:hover { background: var(--paper2); color: var(--ink); }
+.apop-finish[aria-checked="true"] { border-color: var(--blue); color: var(--ink); background: var(--blue-tint); }
+.apop-finish:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
+.apop-ball { width: 26px; height: 26px; clip-path: circle(50%); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 18%, transparent); }
+.apop-fname { text-align: center; }
+.apop-colors { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+.apop-sw { aspect-ratio: 1; width: 100%; padding: 0; border: 1px solid var(--line2); cursor: pointer; }
+.apop-sw:hover { border-color: var(--ink); }
+.apop-sw[aria-checked="true"] { outline: 2px solid var(--blue); outline-offset: 1px; }
+.apop-sw:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.apop-sw-none { background: linear-gradient(135deg, var(--mesh-face) 46%, var(--dim) 47% 53%, var(--mesh-face) 54%); }
+.apop-custom { display: flex; align-items: center; gap: 6px; }
+.apop-native { width: 24px; height: 22px; padding: 0; border: 1px solid var(--line2); background: transparent; }
+.apop-hex { width: 9ch; padding: 2px 4px; font: inherit; }
+.apop-hex[aria-invalid="true"] { border-color: var(--red); }
+.apop-now { font-size: var(--fs-small); }
+
+.pprops { width: 236px; padding: 8px 10px; outline: none; }
+.pprops-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.pprops-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pprops-x { border: 0; background: transparent; color: var(--dim); font: inherit; font-size: 15px; cursor: pointer; padding: 0 2px; }
+.pprops-x:hover { color: var(--ink); }
+.pprops-note { margin: 0 0 4px; font-size: var(--fs-small); }
+.pprops-list { margin: 0; display: flex; flex-direction: column; }
+.pprops-row { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; border-top: 1px solid var(--line); }
+.pprops-row dt { color: var(--dim); }
+.pprops-row dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }

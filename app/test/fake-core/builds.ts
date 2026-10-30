@@ -14,18 +14,20 @@
 // registration of a newly built part).
 import { HttpError, mises, type Body, type EventIn, type Route } from "./server";
 import type { PartSummary } from "../../src/api/types";
+import { PRESETS, type Appearance } from "../../src/lib/appearance";
+import { partName } from "../../src/lib/names";
 
 export interface BuildsScenario {
   builds?: { id: string; name: string; trashed_at?: number | null; created_at?: number }[];
   active?: string | null;
   open?: string[];
   /** Tree fields per part id. */
-  tree?: Record<string, { project_id?: string; label?: string; parent_id?: string | null; order?: number; color?: string | null; kind?: "part" | "group" | "catalog"; version?: number }>;
+  tree?: Record<string, { project_id?: string; label?: string; parent_id?: string | null; order?: number; color?: string | null; kind?: "part" | "group" | "catalog"; version?: number; appearance?: Appearance | null }>;
   /** Scripts per part id (default: generated from its vars). */
   sources?: Record<string, string>;
 }
 
-interface Row { project_id: string; label: string; parent_id: string | null; order: number; color: string | null; kind: "part" | "group" | "catalog"; version: number }
+interface Row { project_id: string; label: string; parent_id: string | null; order: number; color: string | null; kind: "part" | "group" | "catalog"; version: number; appearance?: Appearance | null }
 interface FakeBuild { id: string; name: string; created_at: number; updated_at: number; trashed_at: number | null }
 
 export interface FakeBuilds {
@@ -53,10 +55,28 @@ export function buildsFrom(sc: BuildsScenario | undefined, partIds: string[]): F
     const r = sc?.tree?.[id];
     rows.set(id, {
       project_id: r?.project_id ?? defaultId, label: r?.label ?? id, parent_id: r?.parent_id ?? null, order: r?.order ?? i,
-      color: r?.color ?? null, kind: r?.kind ?? "part", version: r?.version ?? 1,
+      color: r?.color ?? null, kind: r?.kind ?? "part", version: r?.version ?? 1, appearance: r?.appearance ?? null,
     });
   });
   return { builds, defaultId, rows, sources, uiRun: "f0ui0run0000" };
+}
+
+/** Core appearance.normalize (values left out come from the preset; an untinted preset keeps the
+ *  part's color). Throws the core's 400 for a bad field. */
+function normalizeAppearance(raw: unknown, partColor: string | null): Appearance {
+  if (typeof raw !== "object" || raw === null) throw mises("invalid_input", "appearance must be an object or null");
+  const a = raw as Record<string, unknown>;
+  const preset = (a.preset ?? null) as string | null;
+  const base = preset === null ? { metalness: 0, roughness: 0.9, opacity: 1, color: null } : PRESETS.find((x) => x.id === preset);
+  if (!base) throw mises("invalid_input", `unknown appearance preset '${String(preset)}'`);
+  const color = "color" in a ? (a.color as string | null) : base.color ?? partColor;
+  if (color !== null && !HEX_RE.test(String(color).toLowerCase())) throw mises("invalid_input", "appearance color must be #rrggbb");
+  const unit = (k: "metalness" | "roughness" | "opacity", lo: number) => {
+    const v = a[k] ?? base[k];
+    if (typeof v !== "number" || v < lo || v > 1) throw mises("invalid_input", `appearance ${k} must be a number from ${lo} to 1`);
+    return v;
+  };
+  return { preset: preset as Appearance["preset"], color: color === null ? null : String(color).toLowerCase(), metalness: unit("metalness", 0), roughness: unit("roughness", 0), opacity: unit("opacity", 0.05) };
 }
 
 /** The script the fake shows for a part with none given: its vars in a VARS literal. */
@@ -140,7 +160,7 @@ export function buildRoutes(d: BuildsDeps): Route[] {
   };
   const rowView = (p: PartSummary) => {
     const r = B().rows.get(p.part_id) as Row;
-    return { id: p.part_id, project_id: r.project_id, label: r.label, parent_id: r.parent_id, order: r.order, color: r.color, kind: r.kind, version: r.version, part_id: p.part_id, vars: p.vars, metrics: p.metrics, mtime: p.mtime };
+    return { id: p.part_id, project_id: r.project_id, label: r.label, parent_id: r.parent_id, order: r.order, color: r.color, kind: r.kind, version: r.version, appearance: r.appearance ?? null, part_id: p.part_id, vars: p.vars, metrics: p.metrics, mtime: p.mtime };
   };
   const listParts = (pid: string) => {
     register();
@@ -312,7 +332,51 @@ export function buildRoutes(d: BuildsDeps): Route[] {
         if (typeof b.label === "string") r.label = b.label.trim();
         if ("color" in b) r.color = (b.color ?? null) as string | null;
         if ("parent_id" in b) r.parent_id = (b.parent_id ?? null) as string | null;
+        if ("color" in b && r.appearance && !("appearance" in b)) r.appearance = { ...r.appearance, color: r.color };
+        if ("appearance" in b) {
+          const a = b.appearance === null ? null : normalizeAppearance(b.appearance, r.color);
+          r.appearance = a;
+          if (a?.color) r.color = a.color;
+        }
         return rowView(p);
+      },
+    },
+
+    // ---- Plan 7 U8: the parts manager's menu (core projects.duplicate_part / delete_part / export_part)
+    {
+      method: "POST", re: /^\/parts\/([^/]+)\/duplicate$/, h: (m) => {
+        const p = part(decodeURIComponent(m[1]));
+        const r = B().rows.get(p.part_id) as Row;
+        let n = 1;
+        const idFor = (k: number) => `${p.part_id.slice(0, 36)}_copy${k === 1 ? "" : k}`;
+        while (B().rows.has(idFor(n))) n++;
+        const id = idFor(n);
+        d.setParts([...d.parts(), { ...structuredClone(p), part_id: id, id, label: `${partName({ part_id: p.part_id, label: r.label })} copy` }]);
+        const sibs = [...B().rows.entries()].filter(([, x]) => x.project_id === r.project_id && x.parent_id === r.parent_id)
+          .sort((a, c) => a[1].order - c[1].order).map(([k]) => k);
+        sibs.splice(sibs.indexOf(p.part_id) + 1, 0, id);
+        B().rows.set(id, { ...r, label: `${partName({ part_id: p.part_id, label: r.label })} copy`, version: 1, appearance: r.appearance ? { ...r.appearance } : null });
+        sibs.forEach((k, i) => { (B().rows.get(k) as Row).order = i; });
+        return rowView(part(id));
+      },
+    },
+    {
+      method: "DELETE", re: /^\/parts\/([^/]+)$/, h: (m) => {
+        const p = part(decodeURIComponent(m[1]));
+        const r = B().rows.get(p.part_id) as Row;
+        for (const x of B().rows.values()) if (x.parent_id === p.part_id) x.parent_id = r.parent_id;
+        B().rows.delete(p.part_id);
+        d.setParts(d.parts().filter((x) => x.part_id !== p.part_id));
+        return { deleted: p.part_id };
+      },
+    },
+    {
+      method: "POST", re: /^\/parts\/([^/]+)\/export$/, h: (m, _q, raw) => {
+        const p = part(decodeURIComponent(m[1]));
+        const fmt = body(raw).format;
+        if (fmt !== "step" && fmt !== "stl") throw bad("export format must be one of step, stl");
+        const name = `${partName({ part_id: p.part_id, label: (B().rows.get(p.part_id) as Row).label })}.${fmt}`;
+        return { path: `/Users/fake/Downloads/${name}`, name, format: fmt };
       },
     },
 

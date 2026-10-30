@@ -2,6 +2,7 @@
 // server/ui_api.py). Field names are exactly the server's. Times are unix seconds (float).
 // Runtime validation lives in schemas.ts; keep both in step.
 import type { PartEdge, PartKind } from "./builds";
+import type { Appearance } from "../lib/appearance";
 
 export type ErrorCode = "stale_version" | "budget_exhausted" | "needs_approval" | "transient" | "invalid_input"
   | "out_of_scope" | "denied" | "not_found" | "tool_failed" | "cancelled";
@@ -196,6 +197,8 @@ export interface PartSummary {
   part_id: string; vars: Record<string, number>; metrics: PartMetrics | null; mtime: number;
   id?: string; label?: string; project_id?: string | null; parent_id?: string | null; order?: number;
   color?: string | null; kind?: PartKind; version?: number;
+  /** Plan 7 U8: the part's material (lib/appearance.ts); absent or null = the drafting look. */
+  appearance?: Appearance | null;
 }
 
 /** From the Rust shell's `core_info` command (camelCase), or the dev/test env fallback. */
@@ -228,8 +231,14 @@ export interface Profile {
   /** Built-in agents the user has hidden (custom agents are deleted outright, not hidden).
    *  Optional: a core/fixture that predates it reads as "none hidden". */
   hidden_agents?: string[];
+  /** Plan 7 U8: the viewer's background. Optional: a core/fixture that predates it reads as "theme". */
+  viewer_background?: ViewerBackground;
   setup_completed_at: number | null;
 }
+
+/** The viewer's background: the theme's drafting sheet, one solid color, or a two-stop
+ *  (top, bottom) gradient. */
+export interface ViewerBackground { mode: "theme" | "solid" | "gradient"; colors: string[] }
 
 /** PUT /profile body: a partial merge. setup_completed_at is set only by POST /setup/complete. */
 export type ProfilePatch = Partial<Omit<Profile, "setup_completed_at" | "units">>;

@@ -5,6 +5,7 @@ import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { actions, conn } from "../../state/store";
 import { isTheme, setTheme } from "../../styles/theme";
+import { applyBackground } from "../viewer/background";
 import { Button } from "../common/Button";
 import { openProfile, profileOpen, profileVersion } from "../profile/open";
 
@@ -36,7 +37,7 @@ export function ProfileButton(): JSX.Element {
     failed.current = false;
     Promise.resolve().then(() => actions.client().getProfile()).then(
       // an older core without `theme` leaves the cached choice alone
-      (p) => { if (live) { setName(p.display_name); if (isTheme(p.theme)) setTheme(p.theme); } },
+      (p) => { if (live) { setName(p.display_name); if (isTheme(p.theme)) setTheme(p.theme); if (p.viewer_background) applyBackground(p.viewer_background); } },
       () => { failed.current = true; /* core not ready: the next connect reads it */ },
     );
     return () => { live = false; };

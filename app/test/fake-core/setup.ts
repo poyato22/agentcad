@@ -54,7 +54,8 @@ export const DEFAULT_PROFILE: Profile = {
 export const PROFILE_SCHEMA_VERSION = 2;
 /** The Plan 5 profile fields the app's Profile schema leaves out (core profile.Profile defaults):
  *  the build tabs, hidden built-in agents and the catalog's allowed domains. */
-const PLAN5_PROFILE_DEFAULTS = { active_project_id: null, open_project_ids: [], hidden_agents: [], catalog_allowed_domains: [] };
+const PLAN5_PROFILE_DEFAULTS = { active_project_id: null, open_project_ids: [], hidden_agents: [], catalog_allowed_domains: [],
+  viewer_background: { mode: "theme", colors: [] } };
 const withVersion = (p: Profile) => ({ schema_version: PROFILE_SCHEMA_VERSION, ...PLAN5_PROFILE_DEFAULTS, ...p, printers: [] });
 
 const EMPTY_CONTEXT = { selected_part_id: null, selected_run_id: null, picks: [] };
@@ -167,6 +168,13 @@ const PROFILE_FIELDS: Record<string, (v: unknown) => boolean> = {
   // Plan 5 C1 build tabs
   active_project_id: (v) => v === null || typeof v === "string",
   open_project_ids: (v) => Array.isArray(v) && v.every((x) => typeof x === "string"),
+  // Plan 7 U8 (core profile.ViewerBackground): theme, 1 solid color or 2 gradient stops
+  viewer_background: (v) => {
+    if (typeof v !== "object" || v === null) return false;
+    const { mode, colors } = v as { mode?: unknown; colors?: unknown };
+    if (!Array.isArray(colors) || !colors.every((c) => typeof c === "string" && /^#[0-9a-fA-F]{6}$/.test(c))) return false;
+    return mode === "theme" || (mode === "solid" && colors.length === 1) || (mode === "gradient" && colors.length === 2);
+  },
 };
 
 const PART_ID_RE = /^[a-z][a-z0-9_]{1,40}$/;

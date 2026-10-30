@@ -2,6 +2,7 @@
 // grid shows through), rendered on demand only.
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import type { MaterialParams } from "../../lib/appearance";
 import { EDGE_COLOR, meshColors, type MeshColors, type PartScene } from "./loadPart";
 
 export { EDGE_COLOR };
@@ -22,7 +23,11 @@ export const ISO_ELEVATION_DEG = 35;
 
 /** One part on the sheet: its model, its color (null: the theme's face grey) and whether it is
  *  the focused part (the one the camera fits and the highlight applies to). */
-export interface ShownPart { id: string; scene: PartScene; color: string | null; focus: boolean }
+export interface ShownPart {
+  id: string; scene: PartScene; color: string | null; focus: boolean;
+  /** Plan 7 U8: the part's look (lib/appearance materialOf); absent = the plain drafting material. */
+  material?: MaterialParams;
+}
 
 /** A click on a shown part: where (world = the part's CAD frame, mm) and the surface normal. */
 export interface ViewerHit { partId: string; point: [number, number, number]; normal: [number, number, number] }
@@ -70,6 +75,9 @@ export interface ViewerDeps {
   /** Edge color when not highlighted (default: the --mesh-edge token). Read on every restyle (setPart /
    *  setMode / setHighlight / theme change). */
   edgeColor?: () => string;
+  /** The environment map shiny parts reflect (default: studioEnvironment through PMREM on a real
+   *  WebGLRenderer, none on a stub). Built once, on the first shiny part. */
+  environment?: () => THREE.Texture | null;
 }
 
 function defaultRenderer(canvas: HTMLCanvasElement): RendererLike {
@@ -104,6 +112,49 @@ export function fitOrtho(camera: THREE.OrthographicCamera, bbox: THREE.Box3, asp
   camera.top = halfH; camera.bottom = -halfH;
   camera.near = radius * 0.5; camera.far = radius * 8;
   camera.updateProjectionMatrix();
+}
+
+/**
+ * The environment shiny parts reflect: a small photo-studio dome, Z-up like the CAD frame — a
+ * bright sky over a dark floor with a crisp horizon, a large softbox overhead and two strip lights.
+ * Three.js's RoomEnvironment is Y-up and even; under the orthographic iso camera a flat face
+ * reflects one direction, so this one is built for contrast: top faces catch the sky and the
+ * softbox, side faces the horizon and the floor, which is what makes a metal read as metal.
+ */
+export function studioEnvironment(): { scene: THREE.Scene; dispose(): void } {
+  const scene = new THREE.Scene();
+  const geo: THREE.BufferGeometry[] = [];
+  const mats: THREE.Material[] = [];
+  const dome = new THREE.SphereGeometry(50, 48, 24);
+  dome.rotateX(Math.PI / 2);                                       // poles on ±Z
+  const pos = dome.getAttribute("position");
+  const col: number[] = [];
+  const sky = new THREE.Color("#c9d2dc"); const zenith = new THREE.Color("#ffffff");
+  const floor = new THREE.Color("#50545b"); const nadir = new THREE.Color("#24262a");
+  const c = new THREE.Color();
+  for (let i = 0; i < pos.count; i++) {
+    const z = pos.getZ(i) / 50;
+    if (z >= 0) c.copy(sky).lerp(zenith, Math.pow(z, 0.6));
+    else c.copy(floor).lerp(nadir, Math.pow(-z, 0.5));
+    col.push(c.r, c.g, c.b);
+  }
+  dome.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+  const domeMat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, toneMapped: false });
+  scene.add(new THREE.Mesh(dome, domeMat));
+  geo.push(dome); mats.push(domeMat);
+  const panel = (w: number, h: number, intensity: number, at: [number, number, number]) => {
+    const g = new THREE.PlaneGeometry(w, h);
+    const m = new THREE.MeshBasicMaterial({ color: new THREE.Color(intensity, intensity, intensity), side: THREE.DoubleSide, toneMapped: false });
+    const mesh = new THREE.Mesh(g, m);
+    mesh.position.set(...at);
+    mesh.lookAt(0, 0, 0);
+    scene.add(mesh);
+    geo.push(g); mats.push(m);
+  };
+  panel(40, 28, 3.2, [-8, 10, 40]);                              // the overhead softbox
+  panel(6, 40, 2.4, [38, -10, 12]);                              // strip lights either side
+  panel(6, 40, 1.6, [-30, -30, 10]);
+  return { scene, dispose() { for (const g of geo) g.dispose(); for (const m of mats) m.dispose(); } };
 }
 
 export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): DesignViewerHandle {
@@ -157,6 +208,56 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
 
   let colors = viewerColors();
 
+  // ---- materials (Plan 7 U8, R22): a part with an appearance gets a physically based material lit
+  // by a small built-in studio environment (studioEnvironment through PMREM), so metals reflect; a plain part
+
+  let envTex: THREE.Texture | null | undefined;
+  function environment(): THREE.Texture | null {
+    if (envTex !== undefined) return envTex;
+    envTex = null;
+    try {
+      if (deps.environment) envTex = deps.environment();
+      else if (renderer instanceof THREE.WebGLRenderer) {
+        const pmrem = new THREE.PMREMGenerator(renderer);
+        const studio = studioEnvironment();
+        envTex = pmrem.fromScene(studio.scene, 0.02).texture;
+        studio.dispose();
+        pmrem.dispose();
+      }
+    } catch { envTex = null; /* no env map: shiny parts still get the lights */ }
+    scene.environment = envTex;
+    return envTex;
+  }
+
+  /** The mesh's material for this look: swapped between matte Lambert and PBR Standard only when
+   *  the kind has to change, then tuned in place. */
+  function materialFor(o: THREE.Mesh, look: MaterialParams | undefined): THREE.MeshLambertMaterial | THREE.MeshStandardMaterial {
+    const cur = o.material as THREE.MeshLambertMaterial | THREE.MeshStandardMaterial;
+    const shiny = !!look?.shiny && !cur.vertexColors;
+    if (shiny && !(cur instanceof THREE.MeshStandardMaterial)) {
+      environment();
+      const next = new THREE.MeshStandardMaterial({ polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+      cur.dispose();
+      o.material = next;
+    } else if (!shiny && cur instanceof THREE.MeshStandardMaterial) {
+      const next = new THREE.MeshLambertMaterial({ polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+      cur.dispose();
+      o.material = next;
+    }
+    const m = o.material as THREE.MeshLambertMaterial | THREE.MeshStandardMaterial;
+    if (m instanceof THREE.MeshStandardMaterial && look) {
+      m.metalness = look.metalness;
+      m.roughness = look.roughness;
+      const see = look.opacity < 1;
+      if (m.transparent !== see) m.needsUpdate = true;
+      m.transparent = see;
+      m.opacity = look.opacity;
+      m.depthWrite = !see;
+      m.envMapIntensity = 1;
+    }
+    return m;
+  }
+
   function applyStyle(): void {
     for (const it of items) {
       it.scene.object.traverse((o) => {
@@ -164,11 +265,11 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
           (o.material as THREE.LineBasicMaterial).color.set(highlight && it.focus ? colors.highlight : (edgeColor?.() ?? colors.edge));
         } else if (o instanceof THREE.Mesh) {
           o.userData["partId"] = it.id;
-          const m = o.material as THREE.MeshLambertMaterial;
+          const m = materialFor(o, it.material);
           m.visible = mode === "shaded";
           // per-vertex colored meshes (the stress heatmap) keep their colors; plain faces take the
           // part's own color, else follow the theme
-          if (!m.vertexColors) m.color?.set(it.color ?? colors.face);
+          if (!m.vertexColors) m.color?.set(it.material?.color ?? it.color ?? colors.face);
         }
       });
     }
@@ -329,6 +430,7 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
       disposed = true;
       if (frame) cancelAnimationFrame(frame);
       clearMarker();
+      envTex?.dispose();
       controls.dispose();
       themeObserver?.disconnect();
       osScheme?.removeEventListener("change", onTheme);

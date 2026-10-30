@@ -22,13 +22,26 @@ export const hiddenParts: ReadonlySignal<ReadonlySet<string>> = computed(
   () => new Set(hiddenByBuild.value[activeBuildId.value ?? ""] ?? []),
 );
 
-export function setHidden(partId: string, hidden: boolean): void {
+function save(ids: Iterable<string>): void {
   const b = activeBuildId.peek() ?? "";
-  const cur = new Set(hiddenByBuild.peek()[b] ?? []);
-  if (hidden) cur.add(partId); else cur.delete(partId);
-  const next = { ...hiddenByBuild.peek(), [b]: [...cur] };
+  const next = { ...hiddenByBuild.peek(), [b]: [...ids] };
   hiddenByBuild.value = next;
   try { globalThis.localStorage?.setItem(KEY, JSON.stringify(next)); } catch { /* storage unavailable: in memory only */ }
 }
+
+export function setHidden(partId: string | readonly string[], hidden: boolean): void {
+  const cur = new Set(hiddenByBuild.peek()[activeBuildId.peek() ?? ""] ?? []);
+  for (const id of typeof partId === "string" ? [partId] : partId) { if (hidden) cur.add(id); else cur.delete(id); }
+  save(cur);
+}
+
+/** Only these parts stay shown (of `all`, the build's part ids). */
+export function isolate(keep: readonly string[], all: readonly string[]): void {
+  const k = new Set(keep);
+  save(all.filter((id) => !k.has(id)));
+}
+
+/** Every part of the build shown again. */
+export function showAll(): void { save([]); }
 
 export function resetVisibility(): void { hiddenByBuild.value = {}; }

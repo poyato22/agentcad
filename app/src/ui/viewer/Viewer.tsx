@@ -21,6 +21,9 @@ import { createViewer, type DesignViewerHandle, type PickMarker } from "./scene"
 import { TitleBlock } from "./TitleBlock";
 import { ViewerTools, type ViewMode, type ViewScope } from "./ViewerTools";
 import { ModeSwitch } from "../assembly/mode";
+import { materialOf } from "../../lib/appearance";
+import { backgroundStyle, isLight, viewerBackground } from "./background";
+import { BackgroundMenu } from "./BackgroundMenu";
 import "./viewer.css";
 
 /** The part on the sheet: the selected one, else the first part (state/selection.ts). */
@@ -112,7 +115,8 @@ export function Viewer(): JSX.Element {
   const byLabel = changingRunLabel.value;
   const shown = shownParts(parts.value, part, scope, hiddenParts.value);
   const loadSig = shown.map((p) => `${p.part_id}@${p.mtime}`).join("|");
-  const colorSig = shown.map((p) => `${p.part_id}:${p.color ?? ""}`).join("|");
+  const colorSig = shown.map((p) => `${p.part_id}:${p.color ?? ""}:${JSON.stringify(p.appearance ?? null)}`).join("|");
+  const bg = viewerBackground.value;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -151,7 +155,7 @@ export function Viewer(): JSX.Element {
     const focus = activePart.peek()?.part_id ?? null;
     const items = list.flatMap((p) => {
       const sc = scenes.current.get(p.part_id);
-      return sc ? [{ id: p.part_id, scene: sc, color: p.color ?? null, focus: p.part_id === focus }] : [];
+      return sc ? [{ id: p.part_id, scene: sc, color: p.color ?? null, focus: p.part_id === focus, material: materialOf(p) }] : [];
     });
     viewerRef.current?.setParts(items, refit, viewScope.peek() === "build");
     const f = focus ? scenes.current.get(focus) : undefined;
@@ -227,7 +231,8 @@ export function Viewer(): JSX.Element {
   const canEdit = part !== null && part.metrics !== null && (part.kind ?? "part") === "part";
 
   return (
-    <div class="vp" ref={hostRef} data-testid="viewer" data-tab={tab}>
+    <div class="vp" ref={hostRef} data-testid="viewer" data-tab={tab} style={backgroundStyle(bg)} data-bg-mode={bg.mode}
+      data-bg={isLight(bg) === null ? undefined : isLight(bg) ? "light" : "dark"}>
       <canvas
         ref={canvasRef}
         class="vp-canvas"
@@ -267,6 +272,7 @@ export function Viewer(): JSX.Element {
       {tab === "code" && (part
         ? <SourceEditor key={part.part_id} part={part} />
         : <div class="src src-empty"><p class="faint">Select a part to see its script.</p></div>)}
+      <BackgroundMenu />
       <TitleBlock part={part} runLabel={byLabel} error={error} />
     </div>
   );
