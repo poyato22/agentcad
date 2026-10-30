@@ -43,6 +43,9 @@ export interface AgentRun {
   parent_run_id?: string | null;
   /** Rolled-up cost: dollars (null when unpriced) and total tokens. */
   cost?: RunCost;
+  /** Plan 8 G1: how shape-heavy the prompt looks (the router prefers strong vision models for it).
+   *  Kept raw: ui/console/cards/critique/shapeWarning.ts reads a score, a level or {level, score, keywords}. */
+  shape_complexity?: unknown;
 }
 
 /** Rolled-up run cost (run_view `cost`). */

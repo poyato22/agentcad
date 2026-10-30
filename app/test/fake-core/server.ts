@@ -921,6 +921,16 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         return RAW;
       },
     },
+    // Plan 8 G1 render_views images (critique rounds, presented-view thumbnails): scenarios/renders/<id>.png
+    {
+      method: "GET", re: /^\/renders\/([A-Za-z0-9_-]{1,64})\.png$/, h: (m, _q, _b, _r, res) => {
+        const file = resolve(SCENARIO_DIR, "renders", `${m[1]}.png`);
+        if (!existsSync(file)) throw mises("not_found", `no render ${m[1]}`, null);
+        res.writeHead(200, { "Content-Type": "image/png", "Content-Length": statSync(file).size });
+        res.end(readFileSync(file));
+        return RAW;
+      },
+    },
     ...setupRoutes(() => state.setup, () => state.parts),
     // ---- Plan 4: Ollama on this Mac (core local_models.py); 404 without a `local` block (older core)
     { method: "GET", re: /^\/local\/status$/, h: () => localState() },

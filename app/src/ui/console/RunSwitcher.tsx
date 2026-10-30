@@ -15,6 +15,7 @@ import { openAgentManager } from "../agents/manager";
 import { buildRuns, effectiveRunId, labelOf, offListRuns, runLabels } from "./derived";
 import { shownPending } from "./queued";
 import { composerOpen, setConsoleView } from "./view";
+import { ModelWarning } from "./cards/critique/ModelWarning";
 
 const TONE: Record<AgentRun["status"], LedTone> = { queued: "faint", running: "blue", done: "green", failed: "red", cancelled: "faint" };
 
@@ -87,7 +88,10 @@ export function RunSwitcher(): JSX.Element {
         <Button variant="ghost" aria-pressed="false" onClick={() => setConsoleView("details")}>Full log</Button>
       </div>
       {current && (
-        <div class="cv-who faint text">{`${providerLabel(current.provider)} · ${current.model}`}</div>
+        <div class="cv-who faint text">
+          <span>{`${providerLabel(current.provider)} · ${current.model}`}</span>
+          <ModelWarning run={current} />
+        </div>
       )}
       {open && (
         <div class="cv-menu" role="listbox" aria-label="Runs" onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); setOpen(false); } }}>

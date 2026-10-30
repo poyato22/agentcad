@@ -1,0 +1,56 @@
+/* View modes (X-ray, section, explode, reference). Tokens only, square corners, the tool strip's
+   build. The section handle is a drafting cutting-plane mark: a lettered bubble and a heavy arrow
+   pointing the way you look at the cut. */
+/* under the figure label in the sheet's top-left, opening downward: clear of the title block and of
+   the tool strip on the right; the strip first, the rows of the modes that are on below it */
+.vm { position: absolute; left: 22px; top: 68px; z-index: 4; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; max-width: calc(100% - 44px); pointer-events: none; }
+.vm > * { pointer-events: auto; }
+.vm-strip { display: flex; order: -1; }
+.vm-strip .vt-btn:first-child { margin-left: 0; }
+.vm-rows { display: flex; flex-direction: column; border: 1px solid var(--line2); background: var(--paper); }
+.vm-row { display: flex; align-items: center; gap: 8px; padding: 5px 8px; min-width: 0; flex-wrap: wrap; }
+.vm-row + .vm-row { border-top: 1px solid var(--line); }
+.vm-name { font: 700 var(--fs-label)/1 var(--font-head); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); width: 64px; flex: none; }
+.vm-val { color: var(--ink); font-size: var(--fs-small); font-variant-numeric: tabular-nums; min-width: 52px; }
+.vm-row input[type="range"] { width: 120px; accent-color: var(--dim); }
+.vm-row input[type="range"]:focus-visible { outline: 1px solid var(--blue); outline-offset: 2px; }
+.vm-chips { display: inline-flex; flex-wrap: wrap; }
+.vm-chip {
+  font: var(--fs-small)/1 var(--font-mono); color: var(--dim); background: var(--paper2); border: 1px solid var(--line2);
+  padding: 3px 7px; margin-left: -1px; cursor: pointer; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.vm-chip:hover { color: var(--ink); }
+.vm-chip[aria-pressed="true"] { color: var(--ink); border-color: var(--dim); position: relative; }
+.vm-chip:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; position: relative; }
+.vm-error { color: var(--red); font-size: var(--fs-small); background: var(--paper); border: 1px solid var(--line2); padding: 4px 8px; }
+
+.vm-handle {
+  position: absolute; z-index: 3; width: 22px; height: 22px; margin: -11px 0 0 -11px; cursor: grab; touch-action: none; outline: none;
+}
+.vm-handle:active { cursor: grabbing; }
+.vm-handle-mark {
+  position: absolute; left: 0; top: 0; width: 22px; height: 22px; box-sizing: border-box; border-radius: 50%;
+  border: 1.5px solid var(--ink); background: var(--paper); color: var(--ink);
+  font: 700 var(--fs-small)/19px var(--font-head); text-align: center; user-select: none;
+}
+.vm-handle:focus-visible .vm-handle-mark { outline: 1px solid var(--blue); outline-offset: 2px; }
+/* the arrow: a heavy stub from the bubble with a solid head, rotated to the normal on screen */
+.vm-handle-arrow { position: absolute; left: 11px; top: 9.5px; width: 44px; height: 3px; background: var(--ink); transform-origin: 0 50%; }
+.vm-handle-arrow::after {
+  content: ""; position: absolute; right: -2px; top: -4.5px; border-left: 9px solid var(--ink);
+  border-top: 6px solid transparent; border-bottom: 6px solid transparent;
+}
+
+.vm-ref { position: absolute; left: 50%; top: 50%; z-index: 2; pointer-events: none; transform-origin: 50% 50%; }
+.vm-ref img { display: block; max-width: 70vw; max-height: 70vh; width: auto; height: auto; user-select: none; }
+.vm-ref-grip {
+  position: absolute; right: -6px; bottom: -6px; width: 12px; height: 12px; pointer-events: auto; cursor: move;
+  border: 1px solid var(--dim); background: var(--paper); touch-action: none;
+}
+.vm-ref-grip:hover { border-color: var(--ink); }
+.vm-ref-grip:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; border-color: var(--blue); }
+/* the frame the grip moves, shown while it has focus */
+.vm-ref:has(.vm-ref-grip:focus-visible) { outline: 1px dashed var(--blue); outline-offset: 2px; }
+.vm-ref-away { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); z-index: 4; }
+
+.vp[data-tab="code"] .vm, .vp[data-tab="code"] .vm-handle, .vp[data-tab="code"] .vm-ref, .vp[data-tab="code"] .vm-ref-away { visibility: hidden; }

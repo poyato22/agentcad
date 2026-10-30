@@ -29,6 +29,7 @@ import { OnshapePage } from "./ui/pages/onshape";
 import { PrintPage } from "./ui/pages/print";
 import { StudiesPage } from "./ui/pages/studies";
 import { ImmersiveRoot } from "./ui/pages/studies/immersive/Immersive";
+import { ViewImmersiveRoot } from "./ui/console/cards/critique";
 import { closeProfile, profileOpen, profileSection } from "./ui/profile/open";
 import { ProfilePane } from "./ui/profile/ProfilePane";
 import { SetupGate } from "./ui/setup/SetupGate";
@@ -102,6 +103,7 @@ export function App(): JSX.Element {
         ? <div class="region region-page" data-region="page"><HomePage /></div>
         : <><PageRegion /><ConsoleRegion /></>}
       <ImmersiveRoot />
+      <ViewImmersiveRoot />
       <NewRunDialog />
       <AgentManager />
       <ProfilePane open={profileOpen.value} section={profileSection.value} onClose={closeProfile} />

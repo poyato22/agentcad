@@ -34,6 +34,8 @@ import { ModeSwitch } from "../assembly/mode";
 import { materialOf } from "../../lib/appearance";
 import { backgroundStyle, edgeInk, isLight, viewerBackground } from "./background";
 import { BackgroundMenu } from "./BackgroundMenu";
+import { DesignViewModes, designModeItems } from "./modes";
+import type { ModeHost } from "./scene";
 import "./viewer.css";
 import { addPartMenuItem, measureHook } from "../left/partMenuHooks";
 import { setDesignMode } from "../assembly/mode";
@@ -164,6 +166,7 @@ export function Viewer(): JSX.Element {
   const [, setFrame] = useState(0);
   const tool = viewerTool.value;
   const pins = buildPins.value;
+  const [modeHost, setModeHost] = useState<ModeHost | null>(null);
 
   const part = activePart.value;
   const partId = part?.part_id ?? null;
@@ -190,6 +193,7 @@ export function Viewer(): JSX.Element {
     viewerRef.current = handle;
     // HTML overlays (pins, measure dots) re-place after each frame; at most one render per frame
     const offView = handle?.onView?.(() => setFrame((n) => n + 1));
+    setModeHost(handle?.modeHost?.() ?? null);
     const measure = () => {
       const r = host.getBoundingClientRect();
       if (r.width > 0 && r.height > 0) { handle?.resize(r.width, r.height); setBounds({ w: r.width, h: r.height }); }
@@ -205,6 +209,7 @@ export function Viewer(): JSX.Element {
       scenes.current.clear();
       for (const p of parked.current.values()) p.scene.dispose();
       parked.current.clear();
+      setModeHost(null);
       handle?.dispose();
       viewerRef.current = null;
     };
@@ -492,10 +497,13 @@ export function Viewer(): JSX.Element {
           // U2a's click tools, in U2b's View menu: pressed again, back to Select
           { id: "measure", label: "Measure", hint: "M", checked: tool === "measure", disabled: !(part !== null && tab === "model"),
             onSelect: () => { viewerTool.value = viewerTool.peek() === "measure" ? "select" : "measure"; } },
-          { id: "background", label: "Background…", onSelect: () => setBgOpen(true) },
           { id: "comment", label: "Comment on the model", checked: tool === "comment", disabled: !(part !== null && tab === "model"),
             onSelect: () => { viewerTool.value = viewerTool.peek() === "comment" ? "select" : "comment"; } },
+          // G4's view modes (X-ray, section, explode, reference overlay) live in the same menu
+          ...(part !== null && tab === "model" ? designModeItems() : []),
+          { id: "background", label: "Background…", onSelect: () => setBgOpen(true) },
         ]} />
+      {part !== null && <DesignViewModes host={modeHost} focusId={partId} partIds={shown.map((p) => p.part_id)} />}
       {part === null && <div class="vp-empty label">NO PART · ask an agent to create one</div>}
       {tab === "model" && tool === "comment" && !comment && <div class="vx-mode-hint label" role="status">Click the model where something should change</div>}
       {tab === "model" && v && (shownPins.length > 0 || dots.length > 0) && (

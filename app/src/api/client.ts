@@ -272,6 +272,8 @@ export class CoreClient {
   }
   /** A wind study's velocity slice image (slice_xz | slice_xy). */
   studySlice(simId: string, name: "slice_xz" | "slice_xy"): Promise<Blob> { return this.blob(`/sims/${enc(simId)}/slices/${name}.png`, "image/png"); }
+  /** A render_views image (Plan 8 G1: critique-round before/after, a presented view's thumbnail). */
+  renderImage(imageId: string): Promise<Blob> { return this.blob(`/renders/${enc(imageId)}.png`, "image/png"); }
   compareStudies(ids: readonly string[]): Promise<StudyCompare> { return this.json("POST", "/sims/compare", studyCompareSchema, { body: { ids } }); }
   studyTemplates(): Promise<StudyTemplate[]> { return this.json("GET", "/sims/templates", z.array(studyTemplateSchema)); }
   addStudyTemplate(body: { name: string; type: StudyType; settings: Record<string, unknown> }): Promise<StudyTemplate> {

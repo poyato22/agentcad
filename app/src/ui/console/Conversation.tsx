@@ -22,6 +22,7 @@ import { CopyButton } from "./CopyButton";
 import { RunStatus } from "./RunStatus";
 import { StudyCardSlot } from "./studycard";
 import { PartCardSlot } from "./cards/partcard";
+import { G4Card } from "./cards/critique";
 import { buildUserEdits } from "../../state/partEdits";
 import { editsForRun, weave } from "./userEditLines";
 import { FeedbackNote } from "../viewer/FeedbackNote";
@@ -199,6 +200,8 @@ function Item({ item, agent, runId = null }: { item: ThreadItem; agent: AgentRun
           <QuestionCard question={item.question} runLabel={labelOf(item.question.run_id)} />
         </div>
       );
+    case "critique": case "view":
+      return <G4Card item={item} />;
   }
 }
 

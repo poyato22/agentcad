@@ -69,11 +69,31 @@ export interface DesignViewerHandle extends ViewerHandle {
   onView(cb: () => void): () => void;
   /** Re-reads the edge color (deps.edgeColor) and repaints: the background changed. */
   restyle?(): void;
+  /** The scene internals the view modes (modes/: X-ray, section, explode, views) drive. Optional:
+   *  test doubles of the handle leave it out and the modes stay off. */
+  modeHost?(): ModeHost;
+}
+
+/** What the view modes (ui/viewer/modes) need from a viewer: its scene, camera and parts, a way to
+ *  repaint, and a call after every restyle (parts set, shaded / wire, highlight, theme) so the modes
+ *  re-apply onto fresh materials. */
+export interface ModeHost {
+  scene: THREE.Scene;
+  camera: THREE.OrthographicCamera;
+  controls: OrbitControls;
+  canvas: HTMLCanvasElement;
+  parts(): readonly ShownPart[];
+  requestRender(): void;
+  onRestyle(cb: () => void): () => void;
+  /** Section planes clip per material (needs the renderer's local clipping). */
+  enableLocalClipping(): void;
 }
 
 /** The slice of WebGLRenderer the viewer uses (lets tests stub it). */
 export interface RendererLike {
   info: { memory: { geometries: number; textures: number } };
+  /** WebGLRenderer's per-material clipping switch (section planes); stubs may leave it out. */
+  localClippingEnabled?: boolean;
   render(scene: THREE.Scene, camera: THREE.Camera): void;
   setSize(w: number, h: number, updateStyle?: boolean): void;
   setPixelRatio(r: number): void;
@@ -93,7 +113,8 @@ export interface ViewerDeps {
 
 function defaultRenderer(canvas: HTMLCanvasElement): RendererLike {
   // preserveDrawingBuffer: frames are rare (on demand), and it lets tests and screenshots read pixels back.
-  return new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
+  // stencil: the section caps (modes/section.ts) fill the cut by stencil parity
+  return new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true, stencil: true });
 }
 
 /**
@@ -203,6 +224,7 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
   canvas.addEventListener("webglcontextrestored", onRestored);
 
   let colors = viewerColors();
+  const restyled = new Set<() => void>();
 
   // ---- materials (Plan 7 U8, R22): a part with an appearance gets a physically based material lit
   // by Three's RoomEnvironment (turned Z-up, through PMREM) and the softbox, so metals reflect and
@@ -316,6 +338,7 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
         }
       });
     }
+    for (const cb of [...restyled]) cb();
   }
 
   // Follow the theme live: <html data-theme> changes (profile toggle) and OS light/dark changes
@@ -478,6 +501,11 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
     onView(cb) { viewListeners.add(cb); return () => { viewListeners.delete(cb); }; },
     restyle() { applyStyle(); requestRender(); },
     fit,
+    modeHost: () => ({
+      scene, camera, controls, canvas, parts: () => items, requestRender,
+      onRestyle(cb) { restyled.add(cb); return () => { restyled.delete(cb); }; },
+      enableLocalClipping() { renderer.localClippingEnabled = true; },
+    }),
     resize(w, h) {
       width = Math.max(1, w); height = Math.max(1, h);
       renderer.setSize(width, height, false);
@@ -492,6 +520,7 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
     },
     dispose() {
       disposed = true;
+      restyled.clear();
       if (frame) cancelAnimationFrame(frame);
       clearMarker();
       viewListeners.clear();
