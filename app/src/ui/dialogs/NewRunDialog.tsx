@@ -14,6 +14,7 @@ import { OverflowMenu } from "../common/OverflowMenu";
 import { startErrorText } from "../console/startError";
 import { openProfile } from "../profile/open";
 import { catalog, refreshCatalog } from "./catalog";
+import { newRunModel } from "./modelGroups";
 import { ModelPicker } from "./ModelPicker";
 import { defaultModelRef, splitModelRef } from "./modelRef";
 import "./dialog.css";
@@ -71,7 +72,8 @@ function DialogBody(): JSX.Element {
       // the model the router would land on: the first agent's own model, else the profile default,
       // else the core default. Set once, so a later user pick is never overridden (catalog is ready).
       const c = catalog.peek();
-      if (c.models) setModel((cur) => cur ?? (as[0] ? defaultModelRef(as[0], c.models!, c.profileDefault) : (c.profileDefault ?? c.models!.default)));
+      // (the same default as the console's inline composer: newRunModel — I6)
+      if (c.models) setModel((cur) => cur ?? newRunModel(c));
       if (c.error && !c.models) setError(c.error);
     }, (e: unknown) => { if (live) setError(describeError(e)); });
     return () => { live = false; };
@@ -176,7 +178,13 @@ function DialogBody(): JSX.Element {
 
         <div class="dlg-field"><span class="label">Model</span></div>
         <ModelPicker value={model} onChange={setModel} disabled={!models} />
-        {blocked === "no_key" && ref && <div class="dlg-hint dim" data-hint>no API key for {ref.vendor} — run `mises keys set {ref.vendor}`</div>}
+        {blocked === "no_key" && ref && (
+          <div class="dlg-hint dim" data-hint>
+            <span>{`No API key for ${providerLabel(ref.vendor)} on this Mac.`}</span>
+            {" "}
+            <Button variant="ghost" onClick={signInInProfile}>Add a key</Button>
+          </div>
+        )}
         {(blocked === "signed_out" || blocked === "not_installed") && ref && (
           <div class="dlg-hint dim" data-hint>
             <span>{`${providerLabel(ref.vendor)} is ${blocked === "signed_out" ? "signed out" : "not installed"} on this Mac.`}</span>
