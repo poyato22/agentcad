@@ -12,7 +12,6 @@ import { actions, newRunOpen, parts } from "../../state/store";
 import { Button } from "../common/Button";
 import { openProfile } from "../profile/open";
 import { catalog, refreshCatalog } from "./catalog";
-import { buildModelGroups, pickDefault } from "./modelGroups";
 import { ModelPicker } from "./ModelPicker";
 import { defaultModelRef, splitModelRef } from "./modelRef";
 import "./dialog.css";
@@ -41,7 +40,9 @@ export function NewRunDialog(): JSX.Element | null {
 
 function DialogBody(): JSX.Element {
   const [agents, setAgents] = useState<AgentInfo[] | null>(null);
-  const [agent, setAgent] = useState("");
+  /** The explicit agent override, or null to let the core route from the prompt (R8). */
+  const [override, setOverride] = useState<string | null>(null);
+  const [showPicker, setShowPicker] = useState(false);
   const [model, setModel] = useState<string | null>(null);
   const [task, setTask] = useState("");
   const [allParts, setAllParts] = useState(true);
@@ -49,7 +50,7 @@ function DialogBody(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const panel = useRef<HTMLDivElement>(null);
-  const agentSelect = useRef<HTMLSelectElement>(null);
+  const taskRef = useRef<HTMLTextAreaElement>(null);
   const cat = catalog.value;
   const models = cat.models;
 
@@ -57,25 +58,22 @@ function DialogBody(): JSX.Element {
   function prefill(a: AgentInfo): void {
     const m = catalog.peek().models;
     if (!m) return;
-    const ref = defaultModelRef(a, m, catalog.peek().profileDefault);
-    setModel(ref);
+    setModel(defaultModelRef(a, m, catalog.peek().profileDefault));
   }
 
   useEffect(() => {
     let live = true;
-    // via a promise so "core client not ready" (⌘N before the core is up) shows as an error
+    // via a promise so "core client not ready" (⌘N before the core is up) shows as an error.
+    // agents are loaded only for the "specific agent" override; routing needs none.
     Promise.resolve().then(() => Promise.all([actions.client().agents(), refreshCatalog()])).then(([all]) => {
-      const as = startableAgents(all);   // hidden agents are not offered (C-4)
       if (!live) return;
-      setAgents(as);
+      setAgents(startableAgents(all));   // hidden agents are not offered (C-4)
       if (catalog.peek().error && !catalog.peek().models) setError(catalog.peek().error);
-      const first = as[0];
-      if (first) { setAgent(first.name); prefill(first); }
     }, (e: unknown) => { if (live) setError(describeError(e)); });
     return () => { live = false; };
   }, []);
 
-  useEffect(() => { agentSelect.current?.focus(); }, [agents]);
+  useEffect(() => { taskRef.current?.focus(); }, []);
 
   // Esc closes from anywhere while open; focus goes back to the command line.
   useEffect(() => {
@@ -89,13 +87,13 @@ function DialogBody(): JSX.Element {
     };
   }, []);
 
-  const current = agents?.find((a) => a.name === agent);
+  const current = override ? agents?.find((a) => a.name === override) ?? null : null;
   const ref = model ? splitModelRef(model) : null;
   const vendorInfo = ref ? models?.vendors.find((v) => v.vendor === ref.vendor) : undefined;
   const blocked = unavailable(vendorInfo);
   const scope = allParts ? ["*"] : [...picked];
   const taskText = task.trim();
-  const ready = !!current && !!models && !!taskText && !!model && !!ref?.vendor && !!ref.model && !blocked && scope.length > 0 && !busy;
+  const ready = !!models && !!taskText && !!model && !!ref?.vendor && !!ref.model && !blocked && scope.length > 0 && !busy;
 
   function signInInProfile(): void {
     actions.closeNewRun();
@@ -107,7 +105,9 @@ function DialogBody(): JSX.Element {
     setBusy(true);
     setError(null);
     try {
-      const { run_id } = await actions.client().createRun({ agent, prompt: taskText, model_ref: model, edit_scope: scope, read_scope: ["*"], ...runBuild() });
+      const { run_id } = await actions.client().createRun({
+        ...(override ? { agent: override } : {}), prompt: taskText, model_ref: model, edit_scope: scope, read_scope: ["*"], ...runBuild(),
+      });
       actions.selectRun(run_id);
       actions.closeNewRun();
     } catch (e) {
@@ -131,11 +131,12 @@ function DialogBody(): JSX.Element {
     setPicked(on ? [...picked, id] : picked.filter((p) => p !== id));
   }
 
-  // nothing prefilled yet (no agent default): start on the best model that can run now
+  // in auto mode (no override), or before any override is chosen: the profile default, else the
+  // core default — the same ref the core would route to (matching defaultModelRef for an inherit agent)
   useEffect(() => {
-    if (model !== null || !models || !current) return;
-    const groups = buildModelGroups(models, { local: cat.local, profile: { default_model: cat.profileDefault } });
-    setModel(pickDefault(groups, null));
+    if (model !== null || !models) return;
+    if (current) { prefill(current); return; }
+    setModel(cat.profileDefault ?? models.default);
   }, [models, current?.name]);
 
   return (
@@ -143,15 +144,35 @@ function DialogBody(): JSX.Element {
       <div ref={panel} class="dlg" role="dialog" aria-modal="true" aria-label="New run" onKeyDown={onKeyDown}>
         <h2 class="pane-title">New run</h2>
 
-        <label class="dlg-field" for="nr-agent"><span class="label">Agent</span></label>
-        <select id="nr-agent" ref={agentSelect} value={agent} disabled={!agents} aria-label="Agent"
-          onChange={(e) => {
-            const a = agents?.find((x) => x.name === e.currentTarget.value);
-            setAgent(e.currentTarget.value);
-            if (a) prefill(a);
-          }}>
-          {(agents ?? []).map((a) => <option key={a.name} value={a.name}>{a.name}</option>)}
-        </select>
+        <div class="dlg-field"><span class="label">Agent</span></div>
+        {override
+          ? (
+            <div class="dlg-agent-override">
+              <select value={override} disabled={!agents} aria-label="Agent"
+                onChange={(e) => {
+                  const a = agents?.find((x) => x.name === e.currentTarget.value);
+                  setOverride(e.currentTarget.value);
+                  if (a) prefill(a);
+                }}>
+                {(agents ?? []).map((a) => <option key={a.name} value={a.name}>{a.name}</option>)}
+              </select>
+              <Button variant="ghost" onClick={() => { setOverride(null); setShowPicker(false); }}>Auto</Button>
+            </div>
+          )
+          : (
+            <>
+              <div class="dlg-auto dim text" data-auto>Mises picks the right agent from your prompt.</div>
+              {showPicker
+                ? (
+                  <select class="dlg-override" aria-label="Agent" disabled={!agents} value=""
+                    onChange={(e) => { const v = e.currentTarget.value; if (v) { setOverride(v); const a = agents?.find((x) => x.name === v); if (a) prefill(a); } }}>
+                    <option value="" disabled>Choose an agent</option>
+                    {(agents ?? []).map((a) => <option key={a.name} value={a.name}>{a.name}</option>)}
+                  </select>
+                )
+                : <Button variant="ghost" onClick={() => setShowPicker(true)}>Use a specific agent…</Button>}
+            </>
+          )}
         <div class="dlg-desc dim text">{current?.description ?? ""}</div>
 
         <div class="dlg-field"><span class="label">Model</span></div>

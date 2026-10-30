@@ -117,6 +117,18 @@ button.cv-x { border: 1px solid var(--line2); }
 .cv-err { color: var(--red); }
 .cv-actions { display: flex; justify-content: flex-end; gap: 6px; }
 
+/* R8: no agent picker — the core routes, the choice shows as a chip */
+.cv-auto { align-self: center; }
+.cv-override { font-size: var(--fs-small); }
+.cv-override-sum, .cv-override summary { cursor: pointer; color: var(--faint); }
+.cv-override-sum:hover, .cv-override summary:hover { color: var(--ink); }
+.cv-override-body { padding-top: 5px; }
+.cv-override select, .cv-override-body select { font: inherit; }
+.cv-routed { display: inline-flex; align-items: baseline; gap: 2px; margin-left: 6px; padding: 0 5px; border: 1px solid var(--line2); border-radius: 2px; letter-spacing: 0; }
+.cv-routed-arrow { color: var(--blue2); }
+.cv-routed-agent { color: var(--ink); }
+.cv-who { display: flex; align-items: center; }
+
 /* your own part edits (vars, code, feature ops), woven into the thread by time */
 .cv-you .text { color: var(--ink); }
 .cv-you-who { font-weight: 600; }

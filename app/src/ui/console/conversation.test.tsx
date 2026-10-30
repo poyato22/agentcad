@@ -279,17 +279,34 @@ describe("inline composer", () => {
     fireEvent.click(screen.getByRole("button", { name: "New" }));
     expect(composerOpen.value).toBe(true);
     const form = screen.getByRole("form", { name: "New run" });
-    await waitFor(() => expect((within(form).getByLabelText("Agent") as HTMLSelectElement).value).toBe("verifier"));
+    // R8: no agent picker by default — the core routes from the prompt
+    expect(within(form).queryByLabelText("Agent")).toBeNull();
+    expect(form.textContent).toContain("Mises picks the right agent from your prompt.");
     await waitFor(() => expect(within(form).getByRole("button", { name: /^Model: Claude Code · opus/ })).toBeTruthy());
     expect(screen.queryByRole("dialog")).toBeNull();             // inline, not the dialog
     fireEvent.input(within(form).getByLabelText("Task"), { target: { value: "stiffen the upright" } });
     fireEvent.keyDown(within(form).getByLabelText("Task"), { key: "Enter" });
     await waitFor(() => expect(c.createRun).toHaveBeenCalledTimes(1));
     expect(c.createRun.mock.calls[0][0]).toEqual({
-      agent: "verifier", prompt: "stiffen the upright", model_ref: "claude-code/opus", edit_scope: ["*"], read_scope: ["*"],
+      prompt: "stiffen the upright", model_ref: "claude-code/opus", edit_scope: ["*"], read_scope: ["*"],
     });
     await waitFor(() => expect(composerOpen.value).toBe(false));
     expect(selectedRunId.value).toBe("new1");
+  });
+
+  it("use_a_specific_agent_override_sends_that_agent", async () => {
+    const c = client();
+    render(<ConsolePane />);
+    await frame();
+    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    const form = screen.getByRole("form", { name: "New run" });
+    await waitFor(() => expect(within(form).getByRole("button", { name: /^Model: Claude Code · opus/ })).toBeTruthy());
+    fireEvent.click(within(form).getByText("Use a specific agent…"));
+    fireEvent.change(within(form).getByLabelText("Agent"), { target: { value: "designer" } });
+    fireEvent.input(within(form).getByLabelText("Task"), { target: { value: "make a bracket" } });
+    fireEvent.click(within(form).getByRole("button", { name: "Start" }));
+    await waitFor(() => expect(c.createRun).toHaveBeenCalledTimes(1));
+    expect(c.createRun.mock.calls[0][0].agent).toBe("designer");
   });
 
   it("parts_directory_chips_show_and_their_ids_are_added_to_the_task", async () => {
@@ -303,7 +320,6 @@ describe("inline composer", () => {
     const chips = within(form).getByRole("list", { name: "Context for the agent" });
     expect(chips.textContent).toContain("2207 brushless motor class");
     fireEvent.click(within(chips).getByRole("button", { name: "Remove 608 bearing" }));
-    await waitFor(() => expect((within(form).getByLabelText("Agent") as HTMLSelectElement).value).toBe("verifier"));
     await waitFor(() => expect(within(form).getByRole("button", { name: /^Model: Claude Code · opus/ })).toBeTruthy());
     fireEvent.input(within(form).getByLabelText("Task"), { target: { value: "design a motor mount" } });
     fireEvent.keyDown(within(form).getByLabelText("Task"), { key: "Enter" });
