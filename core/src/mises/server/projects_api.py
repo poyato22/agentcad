@@ -133,8 +133,13 @@ def build_projects_router(runtime: Runtime) -> APIRouter:
 
     @router.delete("/parts/{part_id}")
     async def delete_part(part_id: str):
-        return await run_in_threadpool(lambda: _projects.delete_part(
-            store, _home(), part_id, assembly=getattr(runtime, "assembly_store", None)))
+        # the same live-work rule as the build's Empty Trash (409 while an agent may edit it)
+        try:
+            return _projects.delete_part(store, _home(), part_id,
+                                         assembly=getattr(runtime, "assembly_store", None),
+                                         busy=getattr(runtime, "_busy_for_trash", None))
+        except _projects.PartBusy as e:
+            return JSONResponse(e.body(), status_code=409)
 
     @router.post("/parts/{part_id}/export")
     async def export_part(part_id: str, body: ExportBody):

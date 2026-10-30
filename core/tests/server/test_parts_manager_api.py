@@ -28,6 +28,7 @@ def _mk_part(rt, part_id, project_id=None):
     run = rt.store.create_run("designer", "fake", "m", "build",
                               project_id=project_id or rt.active_project_id())
     projects.register_built_part(rt.store, run.id, part_id)
+    rt.store.update_run(run.id, status="done")          # the build that made it has finished
 
 
 def test_patch_appearance_and_listing(client, rt):
@@ -98,6 +99,43 @@ def test_delete_refused_while_in_the_assembly(client, rt):
     r = client.delete("/parts/arm", headers=AUTH)
     assert r.status_code == 400 and "assembly" in r.json()["message"]
     assert (rt.home / "parts" / "arm").exists()
+
+
+def test_delete_refused_while_an_agent_may_be_editing_the_part(client, rt):
+    from mises.types import Caps
+    _mk_part(rt, "arm")
+    _mk_part(rt, "pin")
+    pid = rt.active_project_id()
+    # a live run scoped to another part does not block; one scoped to this part (or "*") does
+    other = rt.store.create_run("designer", "fake", "m", "edit pin", project_id=pid)
+    rt.store.update_run(other.id, status="running")
+    rt.store.create_policy(other.id, ["pin"], ["*"], Caps(), [])
+    mine = rt.store.create_run("designer", "fake", "m", "edit arm", project_id=pid)
+    rt.store.update_run(mine.id, status="running")
+    rt.store.create_policy(mine.id, ["arm"], ["*"], Caps(), [])
+    r = client.delete("/parts/arm", headers=AUTH)
+    assert r.status_code == 409, r.text
+    assert r.json()["run_ids"] == [mine.id] and r.json()["reason"] == "running"
+    assert (rt.home / "parts" / "arm").exists()
+    rt.store.update_run(mine.id, status="done")
+    assert client.delete("/parts/arm", headers=AUTH).status_code == 200
+
+
+def test_delete_refuses_a_link_planted_at_the_trash(client, rt, tmp_path):
+    _mk_part(rt, "arm")
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (rt.home / "trash").symlink_to(elsewhere)
+    r = client.delete("/parts/arm", headers=AUTH)
+    assert r.status_code >= 400
+    assert list(elsewhere.iterdir()) == []
+    assert (rt.home / "parts" / "arm").exists()
+
+
+def test_agents_get_the_appearance_tool_but_not_the_menus_file_actions(client):
+    names = {t["name"] for t in client.get("/tools", headers=AUTH).json()}
+    assert "part_set_appearance" in names
+    assert not [n for n in names if "duplicate" in n or "delete_part" in n or n.startswith("part_export")]
 
 
 def test_export_writes_to_the_export_folder(client, rt, tmp_path, monkeypatch):

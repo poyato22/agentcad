@@ -500,10 +500,53 @@ def duplicate_part(store: Store, home: Path, part_id: str) -> dict:
     return part_view(store, home, _part_or_404(store, new_id))
 
 
-def delete_part(store: Store, home: Path, part_id: str, *, assembly: Any = None) -> dict:
+class PartBusy(MisesError):
+    """Delete refused: an agent run may be building or editing the part (409 {reason, run_ids})."""
+
+    def __init__(self, part_id: str, run_ids: list[str]):
+        super().__init__(ErrorCode.INVALID_INPUT,
+                         f"an agent is working on {part_id}",
+                         hint="wait for it to finish, or stop it, then delete the part")
+        self.reason, self.run_ids = "running", run_ids
+
+    def body(self) -> dict:
+        return {"error": "invalid_input", "reason": self.reason, "run_ids": self.run_ids,
+                "message": self.message, "hint": self.hint, "retryable": False}
+
+
+def part_blockers(store: Store, row: Part, busy: BusyFn | None = None) -> list[str]:
+    """Runs of the part's build that are live (running, queued or busy, the build-delete rule)
+    and may edit it: their edit scope is "*" or names the part. A run without a policy counts.
+    The app's own `ui` run blocks only while one of its calls is in flight."""
+    out: list[str] = []
+    if not row.project_id:
+        return out
+    for r in store.runs_in_project(row.project_id):
+        if r.provider == "ui":
+            if busy is not None and busy(r.id):
+                out.append(r.id)
+            continue
+        if _blocked(store, r, busy) != "running":
+            continue
+        try:
+            scope = set(store.current_policy(r.id).edit_scope)
+        except KeyError:
+            scope = {"*"}
+        if "*" in scope or row.id in scope:
+            out.append(r.id)
+    return out
+
+
+def delete_part(store: Store, home: Path, part_id: str, *, assembly: Any = None,
+                busy: BusyFn | None = None) -> dict:
     """Remove a part from its build. Its files move to home/trash/parts/<id>.<time> (nothing is
-    destroyed); its children move up to its parent. Refused while the build's assembly uses it."""
+    destroyed); its children move up to its parent. Refused while the build's assembly uses it,
+    and (PartBusy, 409) while an agent run that may edit it is live."""
+    from .cad import safe_io
     row = _part_or_404(store, part_id)
+    blockers = part_blockers(store, row, busy)
+    if blockers:
+        raise PartBusy(part_id, blockers)
     if assembly is not None and row.project_id:
         try:
             used = [i.name for i in assembly.get(row.project_id).instances if i.part_id == part_id]
@@ -520,8 +563,11 @@ def delete_part(store: Store, home: Path, part_id: str, *, assembly: Any = None)
         if real is None or not os.path.isdir(real) or os.path.islink(src):
             continue
         dest = trash / stamp if src.parent == root else trash / ".mises-meta" / stamp
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        os.rename(real, dest)
+        # each level made (or checked) top-down through safe_io: a link planted at home/trash
+        # or below is refused, never followed
+        for level in (Path(home) / "trash", trash, dest.parent):
+            safe_io.ensure_dir(level)
+        os.rename(real, safe_io.real_dir(dest.parent) / dest.name)
     for child in store.list_part_rows(row.project_id):
         if child.parent_id == part_id:
             store.update_part(child.id, parent_id=row.parent_id)
