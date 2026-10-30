@@ -30,11 +30,15 @@ def _lines16(ids) -> list[str]:
     return [",".join(map(str, ids[i:i + 16])) for i in range(0, len(ids), 16)]
 
 
-def model_cards(mesh: Mesh, material: Material, plastic: list[str] | None = None) -> list[str]:
+def model_cards(mesh: Mesh, material: Material, plastic: list[str] | None = None,
+                moved: dict | None = None) -> list[str]:
     """*NODE, *ELEMENT and *MATERIAL for both mechanical and heat-transfer steps; `plastic`:
-    the *PLASTIC card of a nonlinear study (it follows *ELASTIC)."""
+    the *PLASTIC card of a nonlinear study (it follows *ELASTIC); `moved`: node positions that
+    differ from the mesh in this deck only (contact faces nudged into touch)."""
+    moved = moved or {}
     out = ["*NODE"]
-    out += [f"{n},{x:.9g},{y:.9g},{z:.9g}" for n, (x, y, z) in mesh.nodes.items()]
+    out += [f"{n},{x:.9g},{y:.9g},{z:.9g}" for n, (x, y, z) in
+            ((n, moved.get(n, p)) for n, p in mesh.nodes.items())]
     if mesh.order == 2:
         out.append("*ELEMENT, TYPE=C3D10, ELSET=EALL")
         out += [f"{i}," + ",".join(str(t[k]) for k in _TET10) for i, t in enumerate(mesh.tets, 1)]
@@ -270,9 +274,10 @@ def cload_lines(cload: dict[int, list[float]]) -> list[str]:
 
 
 def write_deck(path: Path, mesh: Mesh, material: Material, setup_cards: list[str],
-               step: list[str], heading: str, plastic: list[str] | None = None) -> None:
-    lines = ["*HEADING", f"{heading} (guide only)", *model_cards(mesh, material, plastic),
-             *setup_cards, *step, ""]
+               step: list[str], heading: str, plastic: list[str] | None = None,
+               moved: dict | None = None) -> None:
+    lines = ["*HEADING", f"{heading} (guide only)",
+             *model_cards(mesh, material, plastic, moved), *setup_cards, *step, ""]
     Path(path).write_text("\n".join(lines))
 
 

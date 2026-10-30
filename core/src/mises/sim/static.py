@@ -67,14 +67,19 @@ async def solve_cases(job: FemJob, size: float, d: Path, label: str, lo: float, 
                            hint="load a different face than the one held fixed")
         model = (nlm.resolve_nonlinear(mesh, job.metrics, nonlinear, job.material, setup)
                  if nonlinear is not None else None)
+        notes: list[str] = []
+        if job.extra.get("instances"):  # an assembly: every instance must be held
+            from .assembly_study import check_connected
+            notes = check_connected(mesh, setup, nonlinear, job.extra["target_instances"])
         cd = _case_dir(d, i)
         if model is None:
             cards, step = setup.cards, static_step(setup)
         else:
             cards, step = setup.cards + model.cards, nlm.nonlinear_step(setup, nonlinear, model)
         frd, _ = await solve_deck(
-            job, cd, lambda p, c=cards, st=step: write_deck(p, mesh, job.material, c, st,
-                                                            "Mises static study", plastic),
+            job, cd, lambda p, c=cards, st=step: write_deck(
+                p, mesh, job.material, c, st, "Mises static study", plastic,
+                model.moved if model is not None else None),
             label, lo + span * (i + 0.5), allow_partial=model is not None,
             nodes=len(mesh.nodes), elements=len(mesh.tets), case=case.name)
         extras = None
@@ -92,9 +97,13 @@ async def solve_cases(job: FemJob, size: float, d: Path, label: str, lo: float, 
                                hint="check the supports hold the part (a contact alone may "
                                     "not), use more increments, or a lower contact penalty")
             res = _only_mesh(res, mesh)
+            if model.slave_normals:  # node-to-face: the pressure from the stress at the face
+                cp = nlm.traction_pressure(res.get("STRESS", {}), model.slave_normals)
+                res["CONTACT"] = {k: [0.0, 0.0, 0.0, p, 0.0, 0.0] for k, p in cp.items()}
             extras = _nl_extras(res, mesh, sta, t, path, model, nlm.ccx_errors(cd))
         pk = await asyncio.to_thread(lambda r=res, s=setup: peaks(mesh, r, exclude=s.supported))
-        out.append({"case": case, "setup": setup, "peaks": pk, "frd": res, "nl": extras})
+        out.append({"case": case, "setup": setup, "peaks": pk, "frd": res, "nl": extras,
+                    "notes": notes})
     worst = max(out, key=lambda c: c["peaks"]["max_von_mises_mpa"])
     info = {"size_mm": round(size, 4), "nodes": len(mesh.nodes), "elements": len(mesh.tets),
             "order": mesh.order, "fixed_nodes": len(worst["setup"].held),
@@ -137,6 +146,7 @@ async def run_static(job: FemJob, cases: list, *, env: dict | None, sim_id: str,
         pre = f"{name}: " if len(fine["cases"]) > 1 else ""
         if fc.get("nl") is not None:
             _nl_case(per_case[-1], fc["nl"], pre, warnings)
+        warnings += [pre + n for n in fc.get("notes") or []]
         sf = per_case[-1]["safety_factor"]
         if sf is not None and sf < 1 and fc.get("nl") is None:
             warnings.append(f"{pre}predicted to yield: safety factor {sf:.2f} < 1")
@@ -273,7 +283,10 @@ def _outputs(job: FemJob, mesh, case: dict, gov: dict, sim_id: str, part_id: str
     peak = gov["max_von_mises_mpa"]
     result_glb(job.root / "result.glb", mesh, vm, vmin=0.0, vmax=peak, field_name="von_mises",
                units="MPa", extras={"sim_id": sim_id, "part_id": part_id, "type": "static",
-                                    "case": gov["name"]},
+                                    "case": gov["name"],
+                                    **({"project_id": job.extra["project_id"],
+                                        "frame": "assembly (world)"}
+                                       if job.extra.get("project_id") else {})},
                channels=[{"name": "von_mises", "attribute": "_VON_MISES", "units": "MPa",
                           "kind": "scalar", "values": vm},
                          {"name": "displacement", "attribute": "_DISPLACEMENT", "units": "mm",
@@ -283,4 +296,6 @@ def _outputs(job: FemJob, mesh, case: dict, gov: dict, sim_id: str, part_id: str
                          {"name": "s3", "attribute": "_S3", "units": "MPa", "kind": "scalar",
                           "values": channels["s3"]},
                          {"name": "safety_factor", "attribute": "_SAFETY_FACTOR", "units": "",
-                          "kind": "scalar", "values": sf}])
+                          "kind": "scalar", "values": sf},
+                         *({"name": k, "attribute": "_" + k.upper(), "units": nl_units[k],
+                            "kind": "scalar", "values": v} for k, v in nl_ch.items())])

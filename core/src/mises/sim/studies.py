@@ -30,9 +30,11 @@ from pydantic import BaseModel, ValidationError
 from ..cad import safe_io
 from ..events import Event
 from ..types import (ErrorCode, MisesError, StepKind, ToolOutput, canonical_json, sha256_hex)
+from .assembly_study import ASSEMBLIES_DIR, assemblies_root
 from .ccx import INSTALL_HINT, ccx_version, find_ccx
 from .environments import get_environment
 from .materials import Material, custom_material, get_material, with_fdm
+from .mesh import INSTANCE_FACE_RE
 from .settings import SETTINGS_MODELS, unit_vec
 from .types import SimError
 
@@ -180,47 +182,68 @@ def file_hash(p: Path) -> str | None:
 
 
 def find_sim(parts_root: Path, sim_id: str) -> Path | None:
-    """The record dir of sim_id, or None. sim_id must already match SIM_ID_RE."""
-    if not SIM_ID_RE.fullmatch(sim_id) or not Path(parts_root).is_dir():
+    """The record dir of sim_id (a part's, or an assembly study's in the sibling assemblies
+    dir), or None. sim_id must already match SIM_ID_RE."""
+    if not SIM_ID_RE.fullmatch(sim_id):
         return None
-    root = Path(parts_root).resolve()
-    for d in Path(parts_root).glob(f"*/sims/{sim_id}"):
-        try:
-            real = d.resolve(strict=True)
-        except OSError:
+    for top in (Path(parts_root), assemblies_root(parts_root)):
+        if not top.is_dir():
             continue
-        if (real.is_relative_to(root) and not d.is_symlink() and not d.parent.is_symlink()
-                and safe_io.exists(d, "result.json")):
-            return real
+        root = top.resolve()
+        for d in top.glob(f"*/sims/{sim_id}"):
+            try:
+                real = d.resolve(strict=True)
+            except OSError:
+                continue
+            if (real.is_relative_to(root) and not d.is_symlink() and not d.parent.is_symlink()
+                    and safe_io.exists(d, "result.json")):
+                return real
     return None
 
 
 def read_record(sim_dir: Path, parts_root: Path) -> dict:
+    """A record and whether it is stale. parts_root: the parts dir (or, for an assembly
+    study's record, the assemblies dir beside it)."""
     rec = safe_io.read_json(sim_dir, "result.json")
     if not isinstance(rec, dict):
         raise ValueError(f"{Path(sim_dir).name}: no study record")
+    if Path(parts_root).name == ASSEMBLIES_DIR:
+        parts_root = Path(parts_root).parent / "parts"
+    if rec.get("project_id") and not rec.get("part_id"):   # an assembly study
+        hashes = rec.get("part_hashes") or {}
+        rec["stale"] = not hashes or any(
+            file_hash(Path(parts_root) / p / "model.step") != h for p, h in hashes.items())
+        rec.setdefault("type", "static")
+        return rec
     cur = file_hash(Path(parts_root) / rec.get("part_id", "") / "model.step")
     rec["stale"] = cur is None or cur != rec.get("geometry_hash")
     rec.setdefault("type", "static")
     return rec
 
 
-SUMMARY_KEYS = ("sim_id", "part_id", "run_id", "step_id", "type", "status", "stage", "phase",
+SUMMARY_KEYS = ("sim_id", "part_id", "project_id", "run_id", "step_id", "type", "status",
+                "stage", "phase",
                 "pct", "created_at", "finished_at", "error", "hint", "inputs", "results",
                 "guide", "label", "fidelity_class", "reason")
 
 
 def list_sims(parts_root: Path, part_id: str | None = None,
-              run_id: str | None = None) -> list[dict]:
+              run_id: str | None = None, project_id: str | None = None) -> list[dict]:
+    """Study summaries, newest first: a part's (part_id), an assembly's (project_id), or all."""
     out = []
-    pattern = f"{part_id}/sims/*/result.json" if part_id else "*/sims/*/result.json"
-    if not Path(parts_root).is_dir():
-        return out
-    for f in Path(parts_root).glob(pattern):
+    files: list[Path] = []
+    if project_id is None and Path(parts_root).is_dir():
+        files += Path(parts_root).glob(f"{part_id}/sims/*/result.json" if part_id
+                                       else "*/sims/*/result.json")
+    asm = assemblies_root(parts_root)
+    if part_id is None and asm.is_dir():
+        files += asm.glob(f"{project_id}/sims/*/result.json" if project_id
+                          else "*/sims/*/result.json")
+    for f in files:
         if not SIM_ID_RE.fullmatch(f.parent.name):
             continue
         try:
-            rec = read_record(f.parent, parts_root)
+            rec = read_record(f.parent, f.parent.parent.parent)
         except (OSError, ValueError):
             continue
         if run_id is not None and rec.get("run_id") != run_id:
@@ -291,15 +314,21 @@ def _faces_in(obj) -> set[str]:
     return out
 
 
-def preflight(type_id: str, settings: BaseModel, part_dir: Path, home: Path | None,
-              default_mat: str) -> tuple[Material | None, dict | None]:
+def preflight(type_id: str, settings: BaseModel, part_dir: Path | None, home: Path | None,
+              default_mat: str, assembly: dict | None = None) -> tuple[Material | None,
+                                                                    dict | None]:
     """Everything that can be checked before a run or record exists: the material, the
-    environment, and that every face id names a face of this part. Raises SimError."""
+    environment, and that every face id names a face of this part (or, for an assembly
+    target, an instance face "f3@<instance>"). Raises SimError."""
     material = (resolve_material(getattr(settings, "material", None), default_mat, home)
                 if type_id != "wind" else None)
     env = (get_environment(settings.environment)
            if getattr(settings, "environment", None) else None)
-    ids = {f for f in _faces_in(settings.model_dump(mode="json")) if re.fullmatch(r"f\d+", f)}
+    dump = settings.model_dump(mode="json")
+    if assembly is not None:
+        _preflight_assembly(type_id, dump, assembly)
+        return material, env
+    ids = {f for f in _faces_in(dump) if re.fullmatch(r"f\d+", f)}
     if ids:
         try:
             faces = (safe_io.read_json(part_dir, "metrics.json") or {}).get("face_list")
@@ -313,6 +342,34 @@ def preflight(type_id: str, settings: BaseModel, part_dir: Path, home: Path | No
                                  if known else "rebuild the part so it lists face ids, or "
                                                "use a preset"))
     return material, env
+
+
+def _preflight_assembly(type_id: str, dump: dict, assembly: dict) -> None:
+    if type_id != "static":
+        raise SimError("bad_setup", f"assembly studies are static only (not {type_id})",
+                       hint="study each part by part_id for the other study types")
+    insts = {i["id"] for i in assembly["instances"]}
+    known = {f.get("id") for f in assembly["metrics"].get("face_list") or []}
+    bad, plain = [], []
+    for f in _faces_in(dump):
+        if re.fullmatch(r"f\d+", f):
+            plain.append(f)
+        elif INSTANCE_FACE_RE.match(f) and f not in known:
+            bad.append(f)
+    sides = [side for c in ((dump.get("nonlinear") or {}).get("contacts") or [])
+             for side in (c.get("a") or {}, c.get("b") or {})]
+    plain = [f for f in plain if not any(sd.get("face") == f and sd.get("instance")
+                                         for sd in sides)]
+    unknown = sorted({sd["instance"] for sd in sides if sd.get("instance")} - insts)
+    if plain:
+        raise SimError("bad_setup", f"face {', '.join(sorted(set(plain)))} is ambiguous in an "
+                       "assembly", hint="name the instance: f3@<instance id> (assembly_get)")
+    if bad:
+        raise SimError("bad_setup", f"no face {', '.join(sorted(set(bad)))} in this assembly",
+                       hint="faces are f<i>@<instance id> with the part's face ids")
+    if unknown:
+        raise SimError("bad_setup", f"no instance {', '.join(unknown)} in this assembly",
+                       hint=f"instances: {', '.join(sorted(insts))}")
 
 
 def wind_memory_cap(ctx) -> int:
@@ -352,42 +409,63 @@ def urls(sim_id: str) -> dict:
 Runner = Callable[..., Any]
 
 
-async def run_study(ctx, type_id: str, part_id: str, part_dir: Path, settings: BaseModel, *,
+async def run_study(ctx, type_id: str, part_id: str | None, part_dir: Path | None,
+                    settings: BaseModel, *,
                     reason: str | None = None, requirements: list[dict] | None = None,
                     inputs_extra: dict | None = None,
                     solve_timeout_s: float | None = None,
-                    coarse_only: bool = False) -> ToolOutput:
+                    coarse_only: bool = False, assembly: dict | None = None) -> ToolOutput:
+    """assembly: a resolved build target (assembly_study.resolve) instead of a part."""
     t = STUDY_TYPES[type_id]
     home = _home(ctx)
     try:
-        material, env = preflight(type_id, settings, part_dir, home, default_material(ctx))
+        material, env = preflight(type_id, settings, part_dir, home, default_material(ctx),
+                                  assembly)
     except SimError as e:
         raise MisesError(ErrorCode.INVALID_INPUT, e.message, hint=e.hint) from None
 
     parts_root = Path(ctx.workdir) / "parts"
     sim_id = "sim_" + secrets.token_hex(6)
-    sim_dir = sims_dir(parts_root, part_id) / sim_id
+    if assembly is not None:
+        sim_dir = assemblies_root(parts_root) / assembly["project_id"] / "sims" / sim_id
+    else:
+        sim_dir = sims_dir(parts_root, part_id) / sim_id
     job_root = Path(ctx.workdir) / "sim_tmp" / sim_id
     from ..cad.tools import _lock
+    snap: dict = {}
     try:
         job_root.mkdir(parents=True, exist_ok=True)
-        async with _lock(part_dir):  # a consistent snapshot of the geometry this study solves
-            # read without following links (C6 safe_io): the build sandbox can write the part dir
-            if safe_io.copy_out(part_dir, "model.step", job_root) is None:
-                raise MisesError(ErrorCode.NOT_FOUND, f"{part_id} has no model.step",
-                                 hint="rebuild the part")
-            safe_io.copy_out(part_dir, "model.stl", job_root)
-            metrics = safe_io.read_json(part_dir, "metrics.json")
+        if assembly is not None:
+            from . import assembly_study
+            async with assembly_study.locked(parts_root, [i["part_id"] for i in
+                                                          assembly["instances"]]):
+                snap = assembly_study.snapshot(parts_root, assembly, job_root)
+            metrics = assembly["metrics"]
+            safe_io.ensure_dir(sim_dir.parent.parent.parent)
+            safe_io.ensure_dir(sim_dir.parent.parent)
+        else:
+            async with _lock(part_dir):  # a consistent snapshot of the geometry it solves
+                # read without following links (C6 safe_io): the build sandbox can write the
+                # part dir
+                if safe_io.copy_out(part_dir, "model.step", job_root) is None:
+                    raise MisesError(ErrorCode.NOT_FOUND, f"{part_id} has no model.step",
+                                     hint="rebuild the part")
+                safe_io.copy_out(part_dir, "model.stl", job_root)
+                metrics = safe_io.read_json(part_dir, "metrics.json")
     except BaseException:  # never leave a half-made temp dir behind
         shutil.rmtree(job_root, ignore_errors=True)
         raise
-    geometry_hash = file_hash(job_root / "model.step")
+    geometry_hash = snap.get("geometry_hash") or file_hash(job_root / "model.step")
     sdump = settings.model_dump(mode="json")
     inputs = {"type": type_id, "settings": sdump, **(inputs_extra or {}),
               "material": material.name if material else None,
               "environment": env["name"] if env else None}
     rec: dict = {
         "sim_id": sim_id, "part_id": part_id, "type": type_id,
+        **({"project_id": assembly["project_id"],
+            "instances": [{k: i[k] for k in ("id", "part_id", "name", "transform")}
+                          for i in assembly["instances"]],
+            "part_hashes": snap["part_hashes"]} if assembly is not None else {}),
         "run_id": getattr(ctx, "run_id", None), "call_id": getattr(ctx, "call_id", None),
         "step_id": _step_id(ctx), "reason": (reason or None),
         "status": "running", "stage": "queued", "phase": "queued", "pct": 0.0,
@@ -463,7 +541,8 @@ async def run_study(ctx, type_id: str, part_id: str, part_dir: Path, settings: B
         try:
             out = await _dispatch(type_id, job_root, metrics, material, ccx, settings, env,
                                   progress, sim_id, part_id, solve_timeout_s,
-                                  wind_memory_cap(ctx), coarse_only=coarse_only)
+                                  wind_memory_cap(ctx), coarse_only=coarse_only,
+                                  assembly=(assembly, snap) if assembly is not None else None)
         except SimError as e:
             return fail(e.code, e.message, e.hint)
         finally:
@@ -531,7 +610,7 @@ def queue_timeout() -> float:
 
 async def _dispatch(type_id, job_root, metrics, material, ccx, settings, env, progress,
                     sim_id, part_id, solve_timeout_s=None, memory_cap=8192,
-                    coarse_only: bool = False) -> dict:
+                    coarse_only: bool = False, assembly=None) -> dict:
     if type_id == "wind":
         return await _run_wind(job_root, metrics, settings, progress, memory_cap)
     from .fem import FemJob
@@ -540,7 +619,10 @@ async def _dispatch(type_id, job_root, metrics, material, ccx, settings, env, pr
                  solver_settings=settings.solver, progress=progress,
                  convergence=getattr(settings, "convergence", None),
                  extra={**({"solve_timeout_s": solve_timeout_s} if solve_timeout_s else {}),
-                        **({"coarse_only": True} if coarse_only else {})})
+                        **({"coarse_only": True} if coarse_only else {}),
+                        **({"instances": assembly[1]["instances"],
+                            "target_instances": assembly[0]["instances"],
+                            "project_id": assembly[0]["project_id"]} if assembly else {})})
     if type_id == "static":
         from .static import run_static
         return await run_static(job, settings.load_cases, env=env, sim_id=sim_id,

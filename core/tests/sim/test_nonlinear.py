@@ -10,16 +10,16 @@ import pytest
 from mises.cad.tools import CreateArgs, mirror_part_create
 from mises.sim import nonlinear as nlm
 from mises.sim.ccx import find_ccx
-from mises.sim.fields import Fields
-from mises.sim.tools import SimRunArgs, sim_run
-from mises.store import AgentPolicy
-from mises.types import Caps, SafetyClass
 from mises.sim.deck import Setup, model_cards
+from mises.sim.fields import Fields
 from mises.sim.materials import MATERIALS, TANGENT_ESTIMATE_RATIO, custom_material
 from mises.sim.mesh import Mesh, Surface, is_face_spec, select_faces
 from mises.sim.settings import NonlinearSettings, StaticSettings
-from mises.sim.studies import card, check_requirements, fidelity_note, validate_settings
+from mises.sim.studies import card, check_requirements, fidelity_note
+from mises.sim.tools import SimRunArgs, sim_run
 from mises.sim.types import SimError
+from mises.store import AgentPolicy
+from mises.types import Caps, SafetyClass
 
 CASE = {"name": "tip", "supports": [{"kind": "fixed", "face": "x-min"}],
         "loads": [{"kind": "force", "face": "x-max", "newtons": 10, "direction": "-z"}]}
@@ -174,8 +174,10 @@ def test_touching_finds_the_faces_two_instances_share():
         for i in range(2):
             for j in range(2):
                 g = lambda a, b: grid[(inst, a, b)]  # noqa: E731
-                tris += [[g(i, j), g(i + 1, j), g(i + 1, j + 1)],
-                         [g(i, j), g(i + 1, j + 1), g(i, j + 1)]]
+                t1 = [g(i, j), g(i + 1, j), g(i + 1, j + 1)]
+                t2 = [g(i, j), g(i + 1, j + 1), g(i, j + 1)]
+                # a's top faces up, b's bottom faces down (no tets here to orient them)
+                tris += [t1, t2] if inst == "a" else [t1[::-1], t2[::-1]]
     far = {k + 1: (0.0, 0.0, 0.0), k + 2: (10.0, 0.0, 0.0), k + 3: (0.0, 10.0, 0.0)}
     nodes.update(far)
     surfs = [Surface(tag=1, center=[5, 5, 10], bbox=[0, 0, 10, 10, 10, 10], area=100,
@@ -260,6 +262,30 @@ def test_card_shows_validated_band_and_nonlinear_metrics():
     # a pass inside the validated model error is only a warn
     ch = check_requirements(rec, [{"id": "r1", "kind": "min_safety_factor", "target": 1.2}])
     assert ch[0]["status"] == "warn"
+
+
+def test_load_path_chart_marks_where_equilibrium_was_lost(tmp_path):
+    from mises.sim.charts import charts
+    rec = _rec(load_path=[[0.25, 1.0], [0.5, 2.5], [0.7, 9.0]], converged=False,
+               load_fraction=0.7)
+    c = next(x for x in charts(rec, tmp_path)["charts"] if x["id"] == "load_path")
+    assert c["series"][0]["points"][-1] == [0.7, 9.0]
+    assert c["bands"][0]["from"] == 0.7
+
+
+def test_effects_and_bands_per_kind_of_contact():
+    nl = NonlinearSettings.model_validate({"rigid_supports": [{"face": "bottom"}]})
+    assert nlm.effects(nl) == ["contact"] and nlm.contact_type(nl) == nlm.FACE_TO_FACE
+    nl = NonlinearSettings.model_validate({"large_deflection": True, "contacts": [
+        {"a": {"instance": "a"}, "b": {"instance": "b"}},
+        {"kind": "bonded", "a": {"instance": "a"}, "b": {"instance": "c"}}],
+        "rigid_supports": [{"face": "bottom"}]})
+    assert nlm.contact_type(nl) == nlm.NODE_TO_FACE   # one type per deck
+    assert nlm.effects(nl) == ["large_deflection", "contact_pairs", "bonded"]
+    assert nlm.describe(nl) == "large deflection + contact + bonded faces"
+    assert nlm.model_error_band(nl)[0] == nlm.MODEL_ERROR_BAND["contact_pairs"]
+    assert {r["effect"] for r in nlm.validation_rows(["bonded"])} == {"bonded"}
+    assert all(row[3] is not None for row in nlm.VALIDATION)   # every band has a measurement
 
 
 # ---- fast, coarse runs through sim_run (real CalculiX)
@@ -390,3 +416,60 @@ async def test_fast_plastic_cantilever_stops_near_the_hinge_load(tmp_path):
     near_root = f.probe([[1.0, 5.0, 9.5]])[0]["values"]["plastic_strain"]
     tip = f.probe([[99.0, 5.0, 9.5]])[0]["values"]["plastic_strain"]
     assert near_root > 0 and tip == pytest.approx(0, abs=1e-6)
+
+
+QUARTER_SPHERE = ('from build123d import *\nVARS={"r":10.0}\ndef build(v):\n'
+                  '    r = v["r"]\n'
+                  '    return Sphere(r) & Box(r,r,r,align=(Align.MIN,Align.MIN,Align.MAX))\n')
+
+
+def hertz(F: float, R: float, m=PLA) -> tuple[float, float]:
+    """(contact radius a, peak pressure p0) of an elastic sphere on a rigid flat."""
+    es = m.e_mpa / (1 - m.nu ** 2)
+    a = (3 * F * R / (4 * es)) ** (1 / 3)
+    return a, 3 * F / (2 * math.pi * a * a)
+
+
+async def hertz_study(tmp_path, *, size: float, fine: float, a_target: float = 1.0,
+                      timeout_s: float = 300.0):
+    """A quarter of a hemisphere (R 10 mm, symmetry on x = 0 and y = 0) pressed on a rigid
+    floor through its flat top: returns (sim_run output, F, a, p0)."""
+    import json
+    ctx = _ctx(tmp_path)
+    await _part(ctx, "ball", QUARTER_SPHERE)
+    faces = json.loads((tmp_path / "parts" / "ball" / "metrics.json").read_text())["face_list"]
+    curved = next(f["id"] for f in faces if f["type"] == "sphere")
+    R = 10.0
+    es = PLA.e_mpa / (1 - PLA.nu ** 2)
+    F = 4 * es * a_target ** 3 / (3 * R)
+    a, p0 = hertz(F, R)
+    out = await _run(ctx, "ball", {
+        "load_cases": [{"name": "press", "supports": [{"kind": "symmetry", "face": "x-min"},
+                                                      {"kind": "symmetry", "face": "y-min"}],
+                        "loads": [{"kind": "force", "face": "top", "newtons": F / 4,
+                                   "direction": "-z"}]}],
+        "material": {"name": "PLA"}, "solver": {"timeout_s": timeout_s},
+        "mesh": {"size_mm": size, "refine_points": [{"point": [0, 0, -R], "radius_mm": 3 * a,
+                                                     "size_mm": fine}]},
+        "nonlinear": {"rigid_supports": [{"face": curved, "normal": "+z"}], "increments": 4}})
+    return out, F, a, p0
+
+
+@needs_ccx
+@pytest.mark.slow
+@pytest.mark.timeout(400)
+async def test_fast_hertz_sphere_on_rigid_flat_peak_pressure(tmp_path):
+    out, F, a, p0 = await hertz_study(tmp_path, size=4.0, fine=0.35)
+    assert out.ok, out.summary
+    r = out.data["results"]
+    assert r["converged"] and r["model_error_band"] == nlm.MODEL_ERROR_BAND["contact"]
+    print(f"\nHertz coarse: FE peak {r['max_contact_pressure_mpa']:.1f} MPa vs p0 {p0:.1f}")
+    assert r["max_contact_pressure_mpa"] == pytest.approx(p0, rel=0.15), (
+        r["max_contact_pressure_mpa"], p0)
+    at = r["max_contact_pressure_at"]
+    assert math.hypot(at[0], at[1]) < 0.5 * a and at[2] == pytest.approx(-10, abs=0.05)
+    f = _fields(tmp_path, "ball", out)
+    assert f.units["contact_pressure"] == "MPa"
+    sec = f.section(2, -9.999, "contact_pressure", 8)
+    assert sec["channel"] == "contact_pressure"
+    assert r["pairs"][0]["rigid_support"] == 1 and r["pairs"][0]["friction"] == 0

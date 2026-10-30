@@ -15,7 +15,9 @@ import asyncio
 import hashlib
 import logging
 import math
+import re
 import uuid
+from types import SimpleNamespace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -46,6 +48,7 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 UI_AGENT = "studies"
+PROJECT_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 SLICES = ("slice_xz", "slice_xy")
 
 
@@ -204,14 +207,18 @@ def build_sim_router(runtime: Runtime) -> APIRouter:
         return {"deleted": name}
 
     @router.get("/sims")
-    async def sims(part_id: str | None = None, run_id: str | None = None):
+    async def sims(part_id: str | None = None, run_id: str | None = None,
+                   project_id: str | None = None):
         if part_id is not None:
             _check_part(part_id)
-        return [_interrupted(r) for r in list_sims(parts_root(), part_id, run_id)]
+        if project_id is not None and not PROJECT_ID_RE.fullmatch(project_id):
+            raise MisesError(ErrorCode.INVALID_INPUT, f"bad project id: {project_id!r}")
+        return [_interrupted(r) for r in list_sims(parts_root(), part_id, run_id, project_id)]
 
     def _record(d: Path) -> dict:
         """A study record; staleness against the parts dir the study lives in (the user's
-        parts, or a design-study variant's own)."""
+        parts, a design-study variant's own, or for an assembly study the parts beside its
+        assemblies dir)."""
         return read_record(d, d.parent.parent.parent)
 
     def _dir(sim_id: str) -> Path:
@@ -320,14 +327,20 @@ def build_sim_router(runtime: Runtime) -> APIRouter:
                 sb = StartBody.model_validate(body)
             except Exception as e:  # noqa: BLE001
                 raise MisesError(ErrorCode.INVALID_INPUT, str(e)) from None
-            if sb.part_id is None:
-                raise MisesError(ErrorCode.INVALID_INPUT, "assembly (project_id) studies are "
-                                 "not supported yet", hint="study each part by part_id")
+            if (sb.part_id is None) == (sb.project_id is None):
+                raise MisesError(ErrorCode.INVALID_INPUT, "give exactly one of part_id or "
+                                 "project_id")
+            if sb.project_id is not None and sb.type != "static":
+                raise MisesError(ErrorCode.INVALID_INPUT, f"{sb.type} studies of an assembly "
+                                 "(project_id) are not supported: assembly studies are static",
+                                 hint="study each part by part_id")
             try:  # bad ranges are rejected here, before a run exists
                 studies.validate_settings(sb.type, sb.settings)
             except SimError as e:
                 return JSONResponse({"error": "invalid_input", "message": e.message,
                                      "errors": e.data.get("errors", [])}, status_code=400)
+            if sb.project_id is not None:
+                return await _start_assembly(sb)
             part_id, tool = sb.part_id, "sim_run"
             payload = sb.model_dump()
             what = f"{sb.type} study"
@@ -358,7 +371,41 @@ def build_sim_router(runtime: Runtime) -> APIRouter:
             edit_scope=(part_id,), read_scope=(part_id,),
             allowed_classes={SafetyClass.READ, SafetyClass.LOCAL_MUTATE},
             task=f"Studies page: {what} of {part_id}")
+        return _launch(rid, tool, payload)
 
+    async def _start_assembly(sb: StartBody) -> JSONResponse:
+        """A static study of a build's assembly: refused before a run exists when the build,
+        its instances, faces or settings are wrong."""
+        from ..sim import assembly_study
+        pid = sb.project_id
+        if not PROJECT_ID_RE.fullmatch(pid):
+            raise MisesError(ErrorCode.INVALID_INPUT, f"bad project id: {pid!r}")
+        try:
+            proj = runtime.store.get_project(pid)
+        except KeyError:
+            raise MisesError(ErrorCode.NOT_FOUND, f"no build {pid!r}") from None
+        if getattr(proj, "trashed_at", None) is not None:
+            raise MisesError(ErrorCode.INVALID_INPUT, f"build {pid!r} is in the trash",
+                             hint="restore it first")
+        bare = SimpleNamespace(workdir=runtime.home, services={"assembly":
+                                                                runtime.assembly_store},
+                               store=None, run_id=None)
+        target = await run_in_threadpool(assembly_study.resolve, bare, pid)
+        try:
+            await run_in_threadpool(
+                studies.preflight, "static", studies.validate_settings("static", sb.settings),
+                None, runtime.home, runtime.profile().default_material, target)
+        except SimError as e:
+            raise _bad(e) from None
+        part_ids = sorted({i["part_id"] for i in target["instances"]})
+        rid = runtime.create_external_run(
+            UI_AGENT, provider="ui", model="studies-page",
+            edit_scope=(pid, f"project:{pid}", *part_ids), read_scope=(pid, *part_ids),
+            allowed_classes={SafetyClass.READ, SafetyClass.LOCAL_MUTATE},
+            task=f"Studies page: static study of build {pid} (assembly)")
+        return _launch(rid, "sim_run", sb.model_dump())
+
+    def _launch(rid: str, tool: str, payload: dict) -> JSONResponse:
         async def drive() -> None:
             status = "failed"
             try:
