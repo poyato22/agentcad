@@ -1,0 +1,194 @@
+/* Home (the launcher). Monochrome, one Iosevka family, hairline borders — the grid of model
+   previews carries the page; everything else stays quiet. Tokens only (tokens.css). */
+.home {
+  position: absolute;
+  inset: var(--topbar-h) 0 0 0;
+  overflow-y: auto;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--fs);
+}
+
+.home-bar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  padding: 20px 24px 14px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+}
+.home-title {
+  margin: 0;
+  font-family: var(--font-head);
+  font-weight: 600;
+  font-size: 20px;
+  letter-spacing: 0.01em;
+}
+.home-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+.home-search {
+  width: 220px;
+  max-width: 44vw;
+  height: 26px;
+  padding: 0 9px;
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--line2);
+  border-radius: 5px;
+  font: inherit;
+}
+.home-search:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.home-sort { display: flex; align-items: center; gap: 6px; color: var(--dim); }
+.home-sort .label { font-size: var(--fs-label); text-transform: none; }
+.home-sort select {
+  height: 26px;
+  padding: 0 6px;
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--line2);
+  border-radius: 5px;
+  font: inherit;
+}
+.home-trash {
+  height: 26px;
+  padding: 0 11px;
+  background: var(--paper);
+  color: var(--dim);
+  border: 1px solid var(--line2);
+  border-radius: 5px;
+  font: inherit;
+  cursor: pointer;
+}
+.home-trash.on { color: var(--ink); border-color: var(--blue); background: var(--blue-tint); }
+.home-trash:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+
+.home-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(196px, 1fr));
+  gap: 16px;
+  padding: 20px 24px 32px;
+  margin: 0;
+  list-style: none;
+  align-content: start;
+}
+.home-cell { display: flex; flex-direction: column; }
+.home-cell > .tile { flex: 1; }
+
+.home-error {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 24px 0;
+  padding: 7px 10px;
+  border: 1px solid var(--red);
+  border-radius: 5px;
+  color: var(--ink);
+}
+.home-error-x { margin-left: auto; background: none; border: none; color: var(--dim); font: inherit; cursor: pointer; }
+
+/* --- a tile --- */
+.tile {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  text-align: left;
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 120ms ease;
+}
+button.tile:hover { border-color: var(--line2); }
+button.tile:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+
+.tile-thumb {
+  aspect-ratio: 4 / 3;
+  display: grid;
+  place-items: center;
+  background: var(--vp);
+  background-image: linear-gradient(var(--grid-faint) 1px, transparent 1px),
+                    linear-gradient(90deg, var(--grid-faint) 1px, transparent 1px);
+  background-size: 18px 18px;
+  border-bottom: 1px solid var(--line);
+}
+.tile-img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.thumb-blank {
+  width: 100%; height: 100%;
+  display: grid; place-items: center;
+  color: var(--faint);
+  font-size: 30px;
+}
+
+.tile-body { display: flex; flex-direction: column; gap: 3px; padding: 9px 11px 11px; }
+.tile-name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tile-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-small);
+}
+
+.tile-restore {
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--blue);
+  font: inherit;
+  font-size: var(--fs-small);
+  cursor: pointer;
+}
+.tile-restore:hover { text-decoration: underline; }
+.tile-trashed { cursor: default; opacity: 0.85; }
+.tile-trashed .tile-img, .tile-trashed .thumb-blank { filter: grayscale(1); }
+
+/* --- the New-build tile --- */
+.tile-new {
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  aspect-ratio: auto;
+  min-height: 180px;
+  background: transparent;
+  border-style: dashed;
+  border-color: var(--line2);
+  color: var(--dim);
+}
+button.tile-new:hover { color: var(--ink); border-color: var(--blue); }
+.tile-plus { font-size: 28px; line-height: 1; }
+.tile-new-label { font-size: var(--fs-small); }
+.tile-new-input {
+  width: 78%;
+  height: 26px;
+  padding: 0 8px;
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--blue);
+  border-radius: 5px;
+  font: inherit;
+  text-align: center;
+}
+
+.home-empty { grid-column: 1 / -1; padding: 24px 2px; }
+
+@media (max-width: 560px) {
+  .home-bar { flex-wrap: wrap; padding: 16px 16px 12px; }
+  .home-tools { margin-left: 0; width: 100%; }
+  .home-search { flex: 1; max-width: none; }
+  .home-grid { padding: 16px; gap: 12px; }
+}

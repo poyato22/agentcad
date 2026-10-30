@@ -8,17 +8,24 @@ import { z } from "zod";
 
 // ---- builds
 
-/** GET /projects row (C1 project_view). `trashed_at` is epoch seconds, null while live. */
+/** GET /projects row (C1 project_view). `trashed_at` is epoch seconds, null while live.
+ *  `last_edited_at`: when the build was really last worked on (newest part change or run
+ *  activity; U1). Older cores leave it out: use `lastEditedAt(b)`. */
 export interface Build {
   id: string; name: string; created_at: number; updated_at: number; trashed_at: number | null;
+  last_edited_at?: number;
   part_count: number; run_count: number; onshape: { did: string; wid: string } | null;
 }
 export const buildSchema = z.object({
   id: z.string(), name: z.string(), created_at: z.number(), updated_at: z.number(),
+  last_edited_at: z.number().optional().catch(undefined),
   trashed_at: z.number().nullable().default(null),
   part_count: z.number().default(0), run_count: z.number().default(0),
   onshape: z.object({ did: z.string(), wid: z.string() }).nullable().catch(null).default(null),
 });
+
+/** The build's "last edited" time: the core's derived activity time, else its row time. */
+export function lastEditedAt(b: Build): number { return b.last_edited_at ?? b.updated_at; }
 
 /** POST /projects/trash/empty. */
 export interface EmptyTrashResult { purged: string[]; count: number }

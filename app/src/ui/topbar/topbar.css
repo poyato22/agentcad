@@ -188,3 +188,24 @@
 }
 /* a gap between the breadcrumb (build tabs, part) and the mode tabs */
 .topbar-left { padding-right: 12px; }
+
+/* Home button (⌘0): returns to the build grid. Lives at the left of the top bar. */
+.home-btn {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin-right: 8px;
+  display: grid;
+  place-items: center;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: var(--dim);
+  font: inherit;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+.home-btn:hover { color: var(--ink); }
+.home-btn.on { color: var(--ink); border-color: var(--line2); background: var(--paper2); }
+.home-btn:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }

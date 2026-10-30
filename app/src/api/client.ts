@@ -216,6 +216,18 @@ export class CoreClient {
     return this.glb(`/parts/${enc(partId)}/model.glb`, etag);
   }
 
+  /** A part's shaded thumbnail as a PNG Blob (rendered in the sandboxed worker, cached by
+   *  version). CoreError not_found until the part has a built mesh. */
+  partThumb(partId: string, size = 256): Promise<Blob> {
+    return this.blob(`/parts/${enc(partId)}/thumb.png`, "image/png", { size });
+  }
+
+  /** A build's composite tile (up to four part previews) as a PNG Blob. CoreError not_found
+   *  until at least one part has a built mesh. */
+  projectThumb(projectId: string, size = 256): Promise<Blob> {
+    return this.blob(`/projects/${enc(projectId)}/thumb.png`, "image/png", { size });
+  }
+
   // ---- static stress studies (core server/sim_api.py; Studies page)
 
   simSolvers(): Promise<SimSolvers> { return this.json("GET", "/sims/solvers", simSolversSchema); }

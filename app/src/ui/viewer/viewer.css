@@ -57,3 +57,23 @@
 .vp[data-tab="code"] .viewer-tools, .vp[data-tab="code"] .vp-fig, .vp[data-tab="code"] .title-block { visibility: hidden; }
 .vp[data-tab="code"] .src { top: 44px; }
 .src-empty { display: flex; align-items: center; justify-content: center; }
+
+/* "All parts" overview toggle: a quiet chip in the viewer's top-right corner (R17). */
+.overview-toggle {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 4;
+  height: 24px;
+  padding: 0 11px;
+  background: var(--paper);
+  color: var(--dim);
+  border: 1px solid var(--line2);
+  border-radius: 5px;
+  font: inherit;
+  font-size: var(--fs-small);
+  cursor: pointer;
+}
+.overview-toggle:hover { color: var(--ink); }
+.overview-toggle.on { color: var(--ink); border-color: var(--blue); background: var(--blue-tint); }
+.overview-toggle:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
