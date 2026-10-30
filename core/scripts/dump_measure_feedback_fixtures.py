@@ -7,7 +7,8 @@ build123d), and records what the measure and feedback routes return:
 
     uv run python scripts/dump_measure_feedback_fixtures.py --out tests/fixtures/ui
 
-measure_parts.json (metrics with hole radii), part_measure_*.json and project_feedback*.json.
+measure_parts.json (metrics with hole radii), part_measure_*.json and project_feedback*.json
+(the feedback route is U3c's; its steps carry the pin as structured `feedback`).
 """
 import argparse
 import asyncio
@@ -95,11 +96,20 @@ async def dump(out: Path) -> None:
             await refused("part_measure_bad_face.json", "POST", url, {"refs": [{"face_id": "f999"}]})
 
             pid = plate["project_id"]
-            write("project_feedback.json", await call("POST", f"/projects/{pid}/feedback", {
+            # U3c's route (orchestrator/lead.submit_feedback): the pin rides as structured
+            # `feedback` on a DECISION step and on the user's message step
+            fb = await call("POST", f"/projects/{pid}/feedback", {
                 "part_id": "mount_plate", "point": [7.0, 0.0, 2.5], "face_id": top["id"],
-                "text": "make these holes M3 clearance"}))
-            await refused("project_feedback_empty.json", "POST", f"/projects/{pid}/feedback", {
-                "part_id": "mount_plate", "point": [7.0, 0.0, 2.5], "text": " "})
+                "text": "make these holes M3 clearance"})
+            write("project_feedback.json", fb)
+            for _ in range(300):
+                if (await call("GET", f"/runs/{fb['run_id']}"))["status"] not in ("running", "queued"):
+                    break
+                await asyncio.sleep(0.05)
+            write("project_feedback_steps.json", await call("GET", f"/runs/{fb['run_id']}/steps"))
+            await refused("project_feedback_ghost.json", "POST", f"/projects/{pid}/feedback", {
+                "part_id": "ghost", "point": [7.0, 0.0, 2.5], "text": "x"})
+            await refused("part_measure_warm.json", "POST", url, {"warm": True})
     finally:
         await rt.aclose()
 

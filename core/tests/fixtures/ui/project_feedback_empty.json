@@ -1,9 +1,0 @@
-{
-  "status": 400,
-  "body": {
-    "error": "invalid_input",
-    "message": "text (your comment) is required",
-    "hint": null,
-    "retryable": false
-  }
-}
