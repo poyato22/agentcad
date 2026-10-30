@@ -152,8 +152,8 @@ describe("pickDefault / labels", () => {
   });
 
   it("new_run_model_is_one_rule_for_the_dialog_and_the_composer (I6)", () => {
-    // an unusable profile default (no key) falls to the best usable model, as the composer did
-    expect(newRunModel({ models: PLAN4, local: LOCAL, profileDefault: "openai/gpt-5.5" })).toBe("claude-code/opus");
+    // the user's own profile default is kept even when it can't run now (the form says why)
+    expect(newRunModel({ models: PLAN4, local: LOCAL, profileDefault: "openai/gpt-5.5" })).toBe("openai/gpt-5.5");
     expect(newRunModel({ models: PLAN4, local: LOCAL, profileDefault: "claude-code/haiku" })).toBe("claude-code/haiku");
     expect(newRunModel({ models: PLAN4, local: LOCAL, profileDefault: null }, "openai/gpt-5.5")).toBe("openai/gpt-5.5");   // the agent's own
     expect(newRunModel({ models: PLAN4, local: LOCAL, profileDefault: null }, "inherit")).toBe(newRunModel({ models: PLAN4, local: LOCAL, profileDefault: null }));
