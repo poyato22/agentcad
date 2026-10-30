@@ -27,9 +27,15 @@ Call `spec_set` with the goal, the requirements, the load cases and the intervie
 - Drag and vibration go in as `custom` with the study key as target, which `design_review`
   reads: `{"max_drag_n": 2}` (wind), `{"min_natural_freq_hz": 120}` or
   `{"avoid_band_hz": [380, 420]}` (modal).
-- Load cases name faces by **preset** only: bottom, top, x-min, x-max, y-min, y-max, z-min,
-  z-max. Never use a raw face id such as f3: ids change between variants and concepts, so the
-  load would land on the wrong face (study_run refuses them).
+- Load cases name faces by **tag** (`tag:<name>`) or **preset** (bottom, top, x-min, x-max,
+  y-min, y-max, z-min, z-max). Never use a raw face id such as f3: ids change between variants
+  and concepts, so the load would land on the wrong face (study_run refuses them).
+- Tag the real load path in every concept's part.py with a module-level `FACES` dict of
+  selectors, re-run on each build so the tag follows the geometry. For a drone frame tag the
+  motor mounts and the flight-stack mount, then fix `tag:stack` and load `tag:motor_mount`:
+  `FACES = {"motor_mount": lambda p: [f for f in p.faces().filter_by(GeomType.CYLINDER) if f.center().X**2 + f.center().Y**2 > 60**2], "stack": lambda p: [f for f in p.faces().filter_by(GeomType.CYLINDER) if f.center().X**2 + f.center().Y**2 < 25**2]}`
+  (the mount holes far from / near the centre; give every concept the same tag names). A preset like `fix x-min, load x-max` spans the whole
+  frame and overstates the arm moment; use it only for a part with no better faces.
 - Motor-thrust cases: take the max thrust from the catalog (`catalog_get`, when available) and
   note it is "typical".
 - Crash and impact cases: get the force from `loads_impact(mass_kg, drop_m, k)`, set
@@ -52,14 +58,20 @@ objective. Pick the objective from the user's top priority: weight → `min_mass
 → `max:min_sf`; stiffness → `min:max_disp_mm`; or pass `priorities` (the user's ranking) for a
 weighted mix. A variant whose build or stress study failed is infeasible, never a winner. The
 study does not change the live part; it reports a best feasible variant per concept, confirmed
-on the fine mesh. If a study says "geometry only" (no solver), say so in your report.
+on the fine mesh. If a study says "geometry only" (no solver), say so in your report. Modal and
+drag targets are checked on each study's winners only (`data.dynamic`); a winner that resonates
+in the band or exceeds the drag target is dropped for the next.
+If a study finds no feasible variant, say which requirement failed and by how much (from its
+best attempts), then widen the variable ranges or ask the user to relax one target. Never apply
+an infeasible variant silently.
 
 ## 5. Compare, pick, apply, review
 Compare the concepts' winners in ONE table (concept, mass, min SF, max deflection, feasible) and
 pick one, saying why in a line. Apply it with `study_apply(study_id, part_id, iteration,
-base_version)`. Then run `design_review` on the chosen part: it runs the studies the spec
-requires and returns a per-requirement pass / warn / fail table with study ids. Report that
-table, cite the study ids as evidence, and iterate on the user's feedback.
+base_version)`. Then run `design_review(part_id, project_id)` on the chosen part (pass the
+`project_id` spec_set returned; omit it and it reviews against this build's own spec): it runs the
+studies the spec requires and returns a per-requirement pass / warn / fail table with study ids.
+Report that table, cite the study ids as evidence, and iterate on the user's feedback.
 
 Measure every claim with a tool result. Stress studies are a guide, not a guarantee, and impact
 loads are estimates: say so.

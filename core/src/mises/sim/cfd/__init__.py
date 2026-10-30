@@ -104,8 +104,17 @@ async def run_wind_job(tris_part: np.ndarray, settings: dict, job_dir: Path, *,
     if rc != 0 or not out.exists():
         msg = next((ln for ln in err.splitlines() if ln.startswith("CFD_ERROR")), err.strip())
         raise SimError("solve_failed", f"wind solver failed: {msg[-800:] or f'exit {rc}'}",
-                       hint="try a coarser refinement, a longer timeout or solver 'empirical'")
+                       hint=failure_hint(msg))
     return json.loads(out.read_text())
+
+
+def failure_hint(msg: str) -> str:
+    """The fix for a failed wind run. An under-resolved body needs a FINER lattice (QA B1-5:
+    the old one-size hint said 'coarser', which makes a thin part worse); a lattice over the
+    memory or time budget needs a coarser one."""
+    if "too thin" in msg or "smaller than one lattice cell" in msg:
+        return "use a finer refinement, or solver 'empirical' for a shape-class estimate"
+    return "try a coarser refinement, a longer timeout or solver 'empirical'"
 
 
 async def _poll(path: Path, progress) -> None:

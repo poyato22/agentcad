@@ -99,6 +99,32 @@ async def test_buckling_euler_column(tmp_path):
     assert r["critical_load_n"] == pytest.approx(r["first_factor"] * F)
 
 
+SLENDER = ('from build123d import *\nVARS={"h":200.0}\ndef build(v):\n'
+           '    return Box(5,5,v["h"],align=(Align.MIN,Align.MIN,Align.MIN))\n')
+
+
+@pytest.mark.timeout(400)
+@pytest.mark.parametrize("F", [100.0, 2.0])
+async def test_buckling_slender_column_matches_euler_above_and_below_critical(tmp_path, F):
+    """QA B1-1: at 13x the Euler load CalculiX reported the second mode (66 N, not 7.4 N)."""
+    ctx = _ctx(tmp_path)
+    await _part(ctx, "col", SLENDER)
+    out = await _run(ctx, "buckling", "col", {
+        "load_case": {"name": "axial", "supports": [{"kind": "fixed", "face": "bottom"}],
+                      "loads": [{"kind": "force", "face": "top", "newtons": F,
+                                 "direction": "-z"}]},
+        "n_modes": 3, "material": {"name": "PLA"}})
+    assert out.ok, out.summary
+    r = out.data["results"]
+    p_cr = math.pi ** 2 * PLA_E * (5.0 ** 4 / 12) / (4 * 200.0 ** 2)   # 7.39 N
+    assert r["critical_load_n"] == pytest.approx(p_cr, rel=0.15), (r["critical_load_n"], p_cr)
+    assert r["first_factor"] == pytest.approx(p_cr / F, rel=0.15)
+    # the square section's two first modes are equal; the next is the second Euler mode (9x)
+    assert r["factors"][1] == pytest.approx(r["factors"][0], rel=0.05)
+    assert r["factors"][2] / r["factors"][0] == pytest.approx(9.0, rel=0.2)
+    assert (F > p_cr) == any("buckles under this load" in w for w in out.data["warnings"])
+
+
 @pytest.mark.timeout(240)
 async def test_thermal_one_dimensional_conduction(tmp_path):
     ctx = _ctx(tmp_path)
@@ -148,6 +174,16 @@ async def test_static_two_cases_supports_and_load_kinds(tmp_path):
     assert by["moment"]["max_von_mises_mpa"] == pytest.approx(6.0, rel=0.15)
     assert by["tip"]["max_von_mises_mpa"] == pytest.approx(6.0, rel=0.15)
     assert r["governing_case"] in by and set(r["sf_by_case"]) == set(by)
+    # QA B1-3: the per-case table, in the record, the compact result and its card
+    assert r["governing_case_id"] == r["governing_case"]
+    assert [c["case_id"] for c in r["per_case"]] == ["tip", "moment", "gravity"]
+    for row in r["per_case"]:
+        assert set(row) == {"case_id", "name", "max_vm_mpa", "max_disp_mm", "sf"}
+        assert row["max_vm_mpa"] == by[row["name"]]["max_von_mises_mpa"]
+        assert row["max_disp_mm"] == by[row["name"]]["max_displacement_mm"]
+        assert row["sf"] == by[row["name"]]["safety_factor"]
+    assert out.data["card"]["per_case"] == r["per_case"]
+    assert out.data["card"]["governing_case_id"] == r["governing_case"]
     m = out.data["material"]
     assert m["stiffness_factor"] < 1 and m["knockdown"] < 0.7 and "approximate" in m["source"]
     # a softer (infill) model deflects more than the solid beam's F L^3 / 3 E I
@@ -195,6 +231,21 @@ async def test_drop_is_an_estimate_from_impact_equivalent(tmp_path):
     assert out.data["fidelity_class"] == "fem_estimate"
     assert out.summary.startswith("ESTIMATE") and "GUIDE ONLY" in out.summary
     assert out.data["warnings"][0].startswith("ESTIMATE")
+
+
+@pytest.mark.timeout(300)
+async def test_drop_height_changes_the_impact_load(tmp_path):
+    """QA B1-6: 1 m and 20 m gave the same load, stress and SF."""
+    ctx = _ctx(tmp_path)
+    await _part(ctx, "beam", BEAM)
+    lo = await _run(ctx, "drop", "beam", {"impact_face": "bottom", "drop_m": 1.0, "k": 10})
+    hi = await _run(ctx, "drop", "beam", {"impact_face": "bottom", "drop_m": 20.0, "k": 10})
+    assert lo.ok and hi.ok, (lo.summary, hi.summary)
+    a, b = lo.data["results"], hi.data["results"]
+    assert b["impact"]["newtons"] == pytest.approx(a["impact"]["newtons"] * 20 ** 0.5, rel=1e-3)
+    assert b["impact"]["k_effective"] == pytest.approx(10 * 20 ** 0.5)
+    assert b["max_von_mises_mpa"] == pytest.approx(a["max_von_mises_mpa"] * 20 ** 0.5, rel=0.02)
+    assert "k = 44.7" in hi.summary
 
 
 @pytest.mark.timeout(120)

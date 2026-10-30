@@ -38,7 +38,7 @@ from .onshape.tools import register_onshape_tools
 from .orchestrator import Orchestrator, register_orchestrator_tools
 from .orchestrator.orchestrator import DELEGATION_TOOLS, MAX_DEPTH, run_depth
 from .parallel import Limits, ParallelLimiter
-from .platform import data_home, keychain_get
+from .platform import data_home, keychain_get, register_sandbox_home
 from .print.tools import register_print_tools
 from .profile import load_profile
 from .providers.registry import DEFAULT_MODEL, VENDORS, resolve
@@ -75,7 +75,8 @@ LOCAL_SIZES_TTL_S = 60.0
 FREE_GROUP = "openrouter:free"
 
 _STATUS = {"end_turn": "done", "max_tokens": "done", "cancelled": "cancelled",
-           "error": "failed", "circuit_open": "failed", "max_turns": "failed"}
+           "error": "failed", "circuit_open": "failed", "max_turns": "failed",
+           "budget": "failed"}
 
 
 @dataclass
@@ -123,6 +124,8 @@ class _ClaudeRun:
 class Runtime:
     def __init__(self, home: Path | None = None, *, provider_resolver=resolve):
         self.home = Path(home) if home is not None else data_home()
+        # every sandboxed worker denies reads of this home (server.json, mises.db, runs/)
+        register_sandbox_home(self.home)
         self.home.mkdir(parents=True, exist_ok=True)
         self.provider_resolver = provider_resolver
         self.store = Store(self.home / "mises.db")
@@ -144,7 +147,7 @@ class Runtime:
         self.catalog = Catalog(self.store)
         services: dict = {"approvals": self.approvals, "runtime": self,
                           "orchestrator": self.orchestrator, "assembly": self.assembly_store,
-                          "catalog": self.catalog}
+                          "catalog": self.catalog, "secrets": set()}
         adapter = self._onshape_adapter(keychain_get("mises", "onshape"))
         if adapter is not None:
             services["onshape"] = adapter
@@ -164,6 +167,9 @@ class Runtime:
         # build id -> that build's long-lived ui run (spec panel apply; Plan 5 A7)
         self._ui_runs: dict[str, str] = {}
         self._questions: dict[str, tuple[str, asyncio.Future[str]]] = {}
+        # question id -> its question_asked payload (+ run_id, asked_at), so a reloaded app can
+        # recover the open question cards (GET /runs/{id}/pending; QA C-2)
+        self._question_data: dict[str, dict] = {}
         # external run id -> owner's async cancel (e.g. AcpSession.cancel kills the agent)
         self._cancel_hooks: dict[str, Callable[[], Awaitable[None]]] = {}
         self._hook_tasks: set[asyncio.Task] = set()
@@ -322,9 +328,31 @@ class Runtime:
                     shutil.rmtree(wd, ignore_errors=True)
             except (OSError, RuntimeError):
                 log.warning("could not remove workdir for run %s", run_id)
+            # QA C-6: other windows (History, the run switcher) drop the run on this
+            self.events.publish(Event(type="run_deleted", run_id=run_id,
+                                      data={"run_id": run_id,
+                                            "project_id": run.project_id}))
         finally:
             self._deleting.discard(run_id)
         return None
+
+    def _busy_for_trash(self, run_id: str) -> bool:
+        """run_busy, plus a UI call still in flight on that (ui) run."""
+        if self.run_busy(run_id):
+            return True
+        return any(c.run_id == run_id and c.status == "running" for c in self.ui_calls.values())
+
+    def empty_trash(self) -> dict:
+        """Purge every trashed build (projects.empty_trash; TrashBusy while one has live work).
+        The check and the purge run with no await between them. A purged build's ui run is
+        finished and forgotten, so no later UI call lands in a build that no longer exists."""
+        out = projects_mod.empty_trash(self.store, self.home, assembly=self.assembly_store,
+                                       busy=self._busy_for_trash)
+        for pid in out["purged"]:
+            rid = self._ui_runs.pop(pid, None)
+            if rid is not None and rid in self._external:
+                self.finish_external_run(rid, "done")
+        return out
 
     def reload_agents(self) -> None:
         """Re-read the agent definitions after a custom agent was created, edited or deleted."""
@@ -345,6 +373,12 @@ class Runtime:
         ad = self.gate.services.get("onshape")
         if ad is not None:
             await ad.client.aclose()
+
+    def register_secrets(self, *tokens: str) -> None:
+        """Defense in depth: the gate scrubs these strings (the admin and MCP tokens) from every
+        tool result and error, so a build or worker that somehow read one cannot carry it back."""
+        secrets_ = self.gate.services.setdefault("secrets", set())
+        secrets_.update(t for t in tokens if t)
 
     # ---- the MCP endpoint Claude Code runs reach Mises through
     def attach_mcp(self, url: str, mcp_token: str) -> None:
@@ -883,6 +917,9 @@ class Runtime:
         finally:
             self.parallel.release(rid)
         st.result = result
+        if result.stop_reason == "end_turn" and not st.cancel_requested:
+            # a Claude Code turn ended but the session stays open for the next message
+            self.activity_tracker(rid).set("idle", "waiting for your next message")
         return result
 
     def _is_claude_run(self, run_id: str) -> bool:
@@ -995,6 +1032,8 @@ class Runtime:
                                  [c for c in SafetyClass if c in classes])
         self.workdir(run.id)
         self._external.add(run.id)
+        if provider == "ui":    # I5: the gate scrubs these ids from every agent's results
+            self.gate.services.setdefault("ui_run_ids", set()).add(run.id)
         started = {"agent": agent, "provider": provider, "model": model,
                    "parent_id": parent_id, "external": True}
         if slot_ref is None:
@@ -1294,11 +1333,26 @@ class Runtime:
         data = {"question_id": qid, "question": question, "options": list(options)}
         if questions:
             data["questions"] = list(questions)
+        self._question_data[qid] = {**data, "run_id": run_id, "asked_at": time.time()}
         self.events.publish(Event(type="question_asked", run_id=run_id, data=data))
+        tracker = self.activity_tracker(run_id)
+        prev_state, prev_detail = tracker.state, tracker.detail
+        tracker.set("waiting_user", "waiting for your answer")
         try:
             return await fut
         finally:
             self._questions.pop(qid, None)
+            self._question_data.pop(qid, None)
+            if prev_state is not None:          # restore the state the run was in before asking
+                tracker.set(prev_state, prev_detail)
+
+    def pending_questions(self, run_id: str | None = None) -> list[dict]:
+        """The open ui_ask_user questions (of one run), oldest first, each the question_asked
+        payload plus run_id and asked_at."""
+        return sorted((dict(d) for qid, d in self._question_data.items()
+                       if (run_id is None or d["run_id"] == run_id)
+                       and qid in self._questions and not self._questions[qid][1].done()),
+                      key=lambda d: d["asked_at"])
 
     def answer(self, question_id: str, text: str) -> None:
         entry = self._questions.get(question_id)

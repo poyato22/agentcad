@@ -11,11 +11,16 @@ placement (label, parent, order, color, kind, version) the user and agents edit.
 from __future__ import annotations
 
 import json
+import os
 import re
+import shutil
+import stat
 import time
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
+from . import budget
 from .cad.tools import PART_ID_RE
 from .store import AgentRun, Part, Project, Store
 from .types import ErrorCode, MisesError
@@ -111,11 +116,107 @@ def restore_project(store: Store, project_id: str) -> dict:
     return project_view(store, store.update_project(project_id, trashed_at=None))
 
 
-def empty_trash(store: Store) -> dict:
-    """Purge every trashed build and its part-tree rows. Part files on disk and the builds'
-    runs stay (runs as history until cleaned up)."""
+class TrashBusy(MisesError):
+    """Empty Trash refused: a trashed build still has live work (409 {reason, run_ids})."""
+
+    def __init__(self, reason: str, run_ids: list[str], project_ids: list[str]):
+        super().__init__(ErrorCode.INVALID_INPUT,
+                         f"a build in the Trash still has {reason.replace('_', ' ')} runs",
+                         hint="wait for them to finish, or cancel them, then empty the Trash")
+        self.reason, self.run_ids, self.project_ids = reason, run_ids, project_ids
+
+    def body(self) -> dict:
+        return {"reason": self.reason, "run_ids": self.run_ids,
+                "project_ids": self.project_ids, "message": self.message, "hint": self.hint}
+
+
+def trash_blockers(store: Store, project_ids: list[str],
+                   busy: BusyFn | None = None) -> tuple[str, list[str]] | None:
+    """Why these builds cannot be purged yet, as (reason, run ids), or None. The same rule as
+    run delete: a run that is running, queued, busy or awaiting approval blocks. The app's own
+    per-build `ui` run is always "running" (long-lived), so it blocks only while one of its UI
+    calls is in flight (`busy`) or it has a pending approval (e.g. a catalog-import card)."""
+    running: list[str] = []
+    pending: list[str] = []
+    for pid in project_ids:
+        for r in store.runs_in_project(pid):
+            if r.provider == "ui":
+                if store.pending_approvals(r.id):
+                    pending.append(r.id)
+                elif busy is not None and busy(r.id):
+                    running.append(r.id)
+                continue
+            why = _blocked(store, r, busy)
+            if why == "running":
+                running.append(r.id)
+            elif why is not None:
+                pending.append(r.id)
+    if running:
+        return "running", running + pending
+    if pending:
+        return "pending_approval", pending
+    return None
+
+
+def _rm_tree(parent: Path, name: str) -> None:
+    """Remove parent/name without following links: a link in its place is unlinked itself,
+    a directory goes through rmtree (fd-based on macOS: never follows a link inside)."""
+    from .cad import safe_io
+    try:
+        root = safe_io.real_dir(parent / name)
+        st = os.lstat(root)
+    except OSError:
+        return
+    try:
+        if stat.S_ISDIR(st.st_mode):
+            shutil.rmtree(root, ignore_errors=True)
+        else:
+            os.unlink(root)
+    except OSError:
+        pass
+
+
+def _purge_files(store: Store, home: Path, project_id: str, part_ids: list[str],
+                 study_ids: list[str], assembly: Any) -> list[str]:
+    """Delete what the purged build owned on disk: its parts' dirs and host-only meta (unless
+    another build still references the part from its assembly), and its studies' scratch."""
+    from . import edits
+    root = _parts_root(home)
+    shared: set[str] = set()
+    if assembly is not None:
+        shared = assembly.part_refs_outside(project_id)
+    removed = []
+    for pid in part_ids:
+        if not PART_ID_RE.fullmatch(pid) or pid in shared:
+            continue
+        _rm_tree(root, pid)
+        _rm_tree(root / edits.META_DIR, pid)
+        _rm_tree(Path(home) / edits.VERSIONS_DIR, f"{pid}.json")
+        removed.append(pid)
+    for sid in study_ids:
+        if re.fullmatch(r"study_[0-9a-f]{1,32}", sid):
+            _rm_tree(Path(home) / "studies", sid)
+    return removed
+
+
+def empty_trash(store: Store, home: Path | None = None, *, assembly: Any = None,
+                busy: BusyFn | None = None) -> dict:
+    """Purge every trashed build and everything it owns: part-tree rows, spec, studies,
+    build-scoped catalog items, assembly rows and (with `home`) its parts' files, meta and
+    study scratch. Refused as a whole (TrashBusy -> 409) while any trashed build has a run
+    that is running, queued, busy or awaiting approval. Runs stay as history until cleaned up."""
     purged = [p.id for p in store.list_projects() if p.trashed_at is not None]
+    blocked = trash_blockers(store, purged, busy)
+    if blocked is not None:
+        raise TrashBusy(blocked[0], blocked[1], purged)
+    removed: list[str] = []
     for pid in purged:
+        part_ids = [r.id for r in store.list_part_rows(pid)]
+        study_ids = [s.get("id") for s in store.list_studies(pid) if isinstance(s.get("id"), str)]
+        if home is not None:
+            removed += _purge_files(store, home, pid, part_ids, study_ids, assembly)
+        if assembly is not None:
+            assembly.purge(pid)
         store.purge_project(pid)
     return {"purged": purged, "count": len(purged)}
 
@@ -134,6 +235,14 @@ def _contained(root: Path, p: Path) -> Path | None:
     except (OSError, RuntimeError):
         pass
     return None
+
+
+def _safe_json(d: Path, name: str):
+    from .cad import safe_io
+    try:
+        return safe_io.read_json(d, name)
+    except (OSError, ValueError, safe_io.UnsafePath):
+        return None
 
 
 def _read_json(path: Path):
@@ -183,9 +292,18 @@ def _part_disk(home: Path, part_id: str) -> dict | None:
     real = _contained(root, root / part_id) if root.is_dir() else None
     if real is None or not real.is_dir():
         return None
-    vars_ = _read_json(real / "vars.json")
-    metrics = _read_json(real / "metrics.json")
-    mtimes = [p.stat().st_mtime for p in real.iterdir() if p.is_file()]
+    # the build sandbox can write the part dir: read through safe_io (a link left there by a
+    # racing build is refused, never followed to e.g. server.json), and stat without following
+    vars_ = _safe_json(real, "vars.json")
+    metrics = _safe_json(real, "metrics.json")
+    mtimes = []
+    for p in real.iterdir():
+        try:
+            st = p.lstat()
+        except OSError:
+            continue
+        if stat.S_ISREG(st.st_mode):
+            mtimes.append(st.st_mtime)
     return {"vars": vars_ if isinstance(vars_, dict) else {},
             "metrics": metrics if isinstance(metrics, dict) else None,
             "mtime": float(max(mtimes)) if mtimes else real.stat().st_mtime}
@@ -196,12 +314,23 @@ _NO_DISK = {"vars": {}, "metrics": None, "mtime": None}
 
 def part_version(home: Path, row: Part) -> int:
     """The part's version. Source of truth: C6's host-only meta file
-    (parts/.mises-meta/<id>/version.json), bumped by every successful edit. The parts.version
-    column is only a mirror of it (Store.set_part_version); it answers for a part that has no
-    meta version yet (built before versioning: read_version gives 0)."""
+    (parts/.mises-meta/<id>/version.json), bumped by every successful edit. A part built before
+    versioning has no meta version (read_version gives 0) while the parts.version column (and the
+    UI) show row.version (>= 1): migrate the column value into the meta once, so the edit guard
+    checks the same number the UI listed and the first user edit is not a spurious 409."""
     from . import edits
-    v = edits.read_version(_parts_root(home) / row.id)
-    return v if v > 0 else row.version
+    root = _parts_root(home)
+    v = edits.read_version(root / row.id)
+    if v == 0 and row.version > 0:
+        real = _contained(root, root / row.id)
+        if real is not None and real.is_dir():
+            try:
+                edits.write_version(real, row.version)
+                return row.version
+            except OSError:
+                pass
+        return row.version
+    return v
 
 
 def part_view(store: Store, home: Path, row: Part) -> dict:
@@ -307,6 +436,8 @@ def run_view(run: AgentRun) -> dict:
     d["parent_run_id"] = run.parent_id     # the API name for the one parent_id column
     d["last_activity_at"] = run.last_activity_at or run.updated_at
     d["cost"] = {"usd": run.usd, "tokens": run.input_tokens + run.output_tokens}
+    if run.provider not in budget.COST_REPORTING and run.provider != "ui":
+        d["cost"]["usd_note"] = budget.UNKNOWN_NOTE
     return d
 
 

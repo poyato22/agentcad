@@ -121,6 +121,26 @@ class AssemblyStore:
                                (project_id,)).fetchone()
         return int(row[0])
 
+    def purge(self, project_id: str) -> None:
+        """Drop a purged build's instances and joints (Empty Trash)."""
+        with self._lock:
+            self._db.execute("BEGIN IMMEDIATE")
+            try:
+                self._db.execute("DELETE FROM assembly_joints WHERE project_id=?", (project_id,))
+                self._db.execute("DELETE FROM assembly_instances WHERE project_id=?",
+                                 (project_id,))
+                self._db.execute("COMMIT")
+            except BaseException:
+                self._db.execute("ROLLBACK")
+                raise
+
+    def part_refs_outside(self, project_id: str) -> set[str]:
+        """Part ids that some OTHER build's assembly places (their files must stay)."""
+        with self._lock:
+            rows = self._db.execute("SELECT DISTINCT part_id FROM assembly_instances"
+                                    " WHERE project_id<>?", (project_id,)).fetchall()
+        return {r[0] for r in rows}
+
     # ---- reads
     def get(self, project_id: str) -> Assembly:
         with self._lock:
@@ -230,6 +250,11 @@ class AssemblyStore:
         cur = self.get_joint(project_id, jid)
         merged = cur.model_copy(update=fields)
         merged = Joint.model_validate(merged.model_dump())  # re-run validators
+        if merged.limits is not None and isinstance(merged.value, (int, float)):
+            # QA A-1: tightening a limit below the current value kept the old value (45 with
+            # limits [-90, 30]); the stored value now follows the pose the solver draws
+            lo, hi = merged.limits
+            merged = merged.model_copy(update={"value": min(max(float(merged.value), lo), hi)})
         with self._lock:
             self._db.execute(
                 "UPDATE assembly_joints SET kind=?, a=?, b=?, value=?, limits=?"

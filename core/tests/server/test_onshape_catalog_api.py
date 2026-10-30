@@ -124,6 +124,10 @@ def test_import_mirrors_bbox_envelope_and_never_writes_onshape(client, onshape, 
                                               pytest.approx(10)]
     meta = json.loads((rt.home / "parts" / "part_studio" / "part.json").read_text())
     assert meta["onshape"]["eid"] == onshape.eid and meta["project_id"] == "prj"
+    # I7: the imported part now gets a C1 part-tree row (kind "part") in its build, so it is no
+    # longer invisible to GET /parts / the part tree
+    row = rt.store.get_part("part_studio")
+    assert row is not None and row.project_id == "prj" and row.kind == "part"
     assert all(m == "GET" for m, _ in onshape.requests) and len(onshape.requests) == 2
     types = [e.type for e in drain(sub)]
     assert types.count("onshape_budget") == 2 and "part_changed" in types

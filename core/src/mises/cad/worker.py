@@ -10,6 +10,7 @@ import __future__
 import json
 import math
 import os
+import re
 import sys
 import types
 from pathlib import Path
@@ -93,6 +94,47 @@ def _face_list(shape) -> list[dict]:
                     "center": [round(c.X, 3) + 0.0, round(c.Y, 3) + 0.0, round(c.Z, 3) + 0.0],
                     "normal": normal, "area": round(float(face.area), 3)})
     return out
+
+
+_TAG_NAME_RE = re.compile(r"^[a-z][a-z0-9_]{0,30}$")
+MAX_FACE_TAGS = 16
+
+
+def _face_tags(mod, shape, face_list: list[dict]) -> tuple[dict, list[str]]:
+    """Named faces a part script declares: module-level FACES = {"motor_mount": fn, ...}, each fn
+    taking the built shape and returning a Face or a list of faces. Re-run on every build, so a
+    tag follows the geometry across variants (unlike a face id). Returns ({name: [face ids]},
+    errors). Untrusted output: the host only ever looks the ids up in face_list."""
+    faces_decl = getattr(mod, "FACES", None)
+    if not isinstance(faces_decl, dict):
+        return {}, []
+    from build123d import CenterOf
+    all_faces = list(shape.faces())
+    tags: dict[str, list[str]] = {}
+    errors: list[str] = []
+    for name, fn in list(faces_decl.items())[:MAX_FACE_TAGS]:
+        if not (isinstance(name, str) and _TAG_NAME_RE.match(name)) or not callable(fn):
+            errors.append(f"FACES[{name!r}]: name must match [a-z][a-z0-9_]* and map to a function")
+            continue
+        try:
+            sel = fn(shape)
+            sel = [sel] if hasattr(sel, "geom_type") else list(sel or [])
+            ids = []
+            for f in sel:
+                idx = next((i for i, g in enumerate(all_faces) if g.is_same(f)), None)
+                if idx is None:  # a copy, not the same TopoDS face: match by centre
+                    c = f.center(CenterOf.MASS)
+                    idx = min(range(len(face_list)), default=None, key=lambda i: math.dist(
+                        face_list[i]["center"], [c.X, c.Y, c.Z]))
+                if idx is not None and f"f{idx}" not in ids:
+                    ids.append(f"f{idx}")
+            if not ids:
+                errors.append(f"FACES[{name!r}] selected no face")
+                continue
+            tags[name] = ids
+        except Exception as e:  # noqa: BLE001 - a bad selector must not fail the build
+            errors.append(f"FACES[{name!r}]: {type(e).__name__}: {str(e)[:200]}")
+    return tags, errors
 
 
 def _edge_adjacency(shape) -> dict:
@@ -745,6 +787,11 @@ def main(argv: list[str]) -> int:
     metrics = _metrics(shape, density)
     if not (math.isfinite(metrics["volume_mm3"]) and metrics["volume_mm3"] > 0):
         raise ValueError("build() produced an empty or zero-volume shape")
+    tags, tag_errors = _face_tags(mod, shape, metrics["face_list"])
+    if tags:
+        metrics["face_tags"] = tags
+    if tag_errors:
+        metrics["face_tag_errors"] = tag_errors[:MAX_FACE_TAGS]
 
     tmp = part_dir / "tmp"
     tmp.mkdir(exist_ok=True)

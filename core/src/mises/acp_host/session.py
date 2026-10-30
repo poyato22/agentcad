@@ -52,6 +52,17 @@ from acp.transports import default_environment
 
 from ..events import Event
 from ..platform import agent_sandboxed_command
+
+
+def acp_rules_block() -> str:
+    """The Mises harness rules plus the response rules, for an external (ACP) agent's first
+    prompt. The agent acts on Mises only through its `mises` MCP tools."""
+    from ..agent.prompts import RESPONSE_RULES, RULES, SECTION_SEP
+    rules = RULES.strip().replace(
+        "Stay inside the edit and read scope listed at the end of this prompt.",
+        "Stay inside the run's edit and read scope; the harness enforces it.")
+    return ("<mises-rules>\nRules from Mises for this session (they apply to every turn):\n\n"
+            + SECTION_SEP.join([rules, RESPONSE_RULES.strip()]) + "\n</mises-rules>")
 from ..types import ErrorCode, MisesError, StepKind
 
 log = logging.getLogger(__name__)
@@ -265,8 +276,14 @@ class AcpSession:
                              hint="wait for it to finish or cancel it")
         self._turn_text = []
         self.runtime.store.append_step(self.run_id, StepKind.MESSAGE, {"role": "user", "text": text})
+        blocks = [text_block(text)]
+        if not getattr(self, "_rules_sent", False):
+            # every path gets the harness rules (M-5): an ACP agent has no Mises system prompt,
+            # so they ride as a leading block of its first prompt
+            blocks.insert(0, text_block(acp_rules_block()))
+            self._rules_sent = True
         self._inflight = asyncio.ensure_future(
-            self._conn.prompt(session_id=self.session_id, prompt=[text_block(text)]))
+            self._conn.prompt(session_id=self.session_id, prompt=blocks))
         try:
             resp = await asyncio.shield(self._inflight)
             self.stop_reason = resp.stop_reason

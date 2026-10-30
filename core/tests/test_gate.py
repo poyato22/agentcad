@@ -49,6 +49,31 @@ def env(tmp_path):
     return Env(tmp_path)
 
 
+async def test_secrets_redacted_from_results_and_errors(env):
+    """C1 defense in depth: registered tokens never reach the step log or the model, whether a
+    tool returns one (summary/data) or raises it in an error message."""
+    env.gate.services["secrets"] = {"SUPER-SECRET-ADMIN", "MCP-TOKEN-XYZ"}
+
+    @tool("leak_ok", description="d", safety=C.READ)
+    async def leak_ok(ctx, args: In) -> ToolOutput:
+        return ToolOutput(summary="token is SUPER-SECRET-ADMIN",
+                          data={"body": "MCP-TOKEN-XYZ here"}, warnings=["SUPER-SECRET-ADMIN"])
+    env.reg.register(leak_ok)
+
+    out = await env.call("leak_ok", {})
+    blob = out.model_dump_json()
+    assert "SUPER-SECRET-ADMIN" not in blob and "MCP-TOKEN-XYZ" not in blob
+    assert "[redacted]" in out.summary
+
+    @tool("leak_err", description="d", safety=C.READ)
+    async def leak_err(ctx, args: In) -> ToolOutput:
+        raise MisesError(ErrorCode.TOOL_FAILED, "boom: SUPER-SECRET-ADMIN", hint="MCP-TOKEN-XYZ")
+    env.reg.register(leak_err)
+
+    e = await err(env.call("leak_err", {}, cid="c2"))
+    assert "SUPER-SECRET-ADMIN" not in e.message and "MCP-TOKEN-XYZ" not in (e.hint or "")
+
+
 async def err(coro) -> MisesError:
     with pytest.raises(MisesError) as e:
         await coro

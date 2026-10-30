@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from .. import projects as _projects
@@ -90,7 +91,10 @@ def build_projects_router(runtime: Runtime) -> APIRouter:
 
     @router.post("/projects/trash/empty")
     async def empty_trash():
-        return _projects.empty_trash(store)
+        try:
+            return runtime.empty_trash()
+        except _projects.TrashBusy as e:
+            return JSONResponse(e.body(), status_code=409)
 
     # ---- part tree (metadata only; GET /parts lives in ui_api; /source, /vars, /ops are C6)
     @router.patch("/parts/{part_id}")

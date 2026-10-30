@@ -8,6 +8,8 @@ solver's own "guide only" wording.
 """
 from __future__ import annotations
 
+import math
+
 GRAVITY = 9.80665  # m/s^2, standard gravity
 
 # Typical dynamic amplification factors for a dropped/crashed part, as a starting point only.
@@ -44,3 +46,18 @@ def impact_equivalent(mass_kg: float, drop_m: float, k: float = DEFAULT_IMPACT_K
         "g": GRAVITY,
         "note": note,
     }
+
+
+REF_DROP_M = 1.0
+
+
+def height_scaled_k(k_ref: float, drop_m: float, ref_drop_m: float = REF_DROP_M) -> float:
+    """The dynamic factor at `drop_m` from `k_ref`, the factor stated for a `ref_drop_m` drop.
+
+    A falling mass stopped by an elastic contact peaks at F = m·g·(1 + √(1 + 2h/δ)), δ the
+    static deflection of the contact; for any real drop h ≫ δ, so F grows with √h (the impact
+    velocity). k therefore scales by √(h / h_ref), and never drops below 1 (the part's weight).
+    """
+    if drop_m < 0 or ref_drop_m <= 0:
+        raise ValueError("drop heights must be positive")
+    return max(1.0, k_ref * math.sqrt(drop_m / ref_drop_m))

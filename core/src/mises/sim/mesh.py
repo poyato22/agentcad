@@ -15,6 +15,26 @@ from .types import SimError
 
 WORKER = Path(__file__).resolve().parent / "mesh_worker.py"
 FACE_ID_RE = re.compile(r"^f(\d{1,5})$")
+# a named face the part script tags (FACES = {"motor_mount": fn} in part.py): re-resolved on every
+# build, so unlike a face id it holds across a study's variants
+FACE_TAG_RE = re.compile(r"^tag:([a-z][a-z0-9_]{0,30})$")
+
+
+def is_face_spec(v: str) -> bool:
+    """A preset ("bottom", "x-max", ...), a face id ("f3") or a tag ("tag:motor_mount")."""
+    return v in FACE_PRESETS or bool(FACE_ID_RE.match(v)) or bool(FACE_TAG_RE.match(v))
+
+
+def tag_face_ids(spec: str, face_tags: dict | None) -> list[str]:
+    """The face ids a "tag:<name>" spec names in this build's metrics (validated: only ids)."""
+    name = FACE_TAG_RE.match(spec).group(1)
+    ids = (face_tags or {}).get(name)
+    if not isinstance(ids, list) or not ids:
+        known = ", ".join(sorted(k for k in (face_tags or {}) if isinstance(k, str))) or "none"
+        raise SimError("bad_setup", f"this part has no face tagged {name!r}",
+                       hint=f"tag it in part.py: FACES = {{\"{name}\": lambda p: ...}}; "
+                            f"tags now: {known}")
+    return [i for i in ids if isinstance(i, str) and FACE_ID_RE.match(i)]
 MAX_FINE_NODES = 200_000      # memory/time budget for the fine mesh on a laptop
 _NODES_PER_H3 = 10.5          # measured: quadratic tets give ~10.5 nodes per h^3 of volume
 
@@ -88,7 +108,9 @@ async def mesh_step(step: Path, job_dir: Path, size_mm: float, *, timeout_s: flo
         opt = job_dir / "mesh_options.json"
         opt.write_text(json.dumps(options))
         argv.append(str(opt.resolve()))
-    rc, _, err = await run_sandboxed(argv, job_dir, timeout_s=timeout_s, what="gmsh meshing")
+    # the model.step the mesher reads sits in the sim job root, a level above job_dir
+    rc, _, err = await run_sandboxed(argv, job_dir, timeout_s=timeout_s, what="gmsh meshing",
+                                     read_dirs=[Path(step).resolve().parent])
     if rc != 0 or not out.exists():
         msg = next((ln for ln in err.splitlines() if ln.startswith("MESH_ERROR")), err.strip())
         raise SimError("mesh_failed", f"meshing failed: {msg[-800:] or f'exit {rc}'}",
@@ -101,9 +123,17 @@ def _tol(part_bbox: dict) -> float:
 
 
 def select_faces(spec: str, surfaces: list[Surface], part_bbox: dict,
-                 face_list: list[dict] | None) -> list[int]:
-    """Surface tags for a preset ("bottom", "x-max", ...) or a face id ("f3") from the part's
-    metrics face_list (matched by centre of mass)."""
+                 face_list: list[dict] | None, face_tags: dict | None = None) -> list[int]:
+    """Surface tags for a preset ("bottom", "x-max", ...), a face id ("f3") from the part's
+    metrics face_list (matched by centre of mass), or a named face ("tag:motor_mount") the part
+    script tagged, resolved through its face ids."""
+    if FACE_TAG_RE.match(spec):
+        out: list[int] = []
+        for fid in tag_face_ids(spec, face_tags):
+            for t in select_faces(fid, surfaces, part_bbox, face_list):
+                if t not in out:
+                    out.append(t)
+        return out
     tol = _tol(part_bbox)
     if spec in FACE_PRESETS:
         axis, side = FACE_PRESETS[spec]

@@ -85,7 +85,8 @@ def build_context(runtime, run_id: str | None = None) -> dict:
         version = edits_mod.read_version(d)
         if run_id and metrics is not None:
             note_seen(run_id, d, version)   # the run has now seen this version of the part
-    source_run = ui.selected_run_id or run_id
+    selected = ui.selected_run_id if not _is_ui_run(runtime, ui.selected_run_id) else None
+    source_run = selected or run_id
     doc_url = recent_sim = None
     if source_run:
         call = _latest(runtime, source_run, lambda s: s.kind == StepKind.TOOL_CALL
@@ -93,7 +94,7 @@ def build_context(runtime, run_id: str | None = None) -> dict:
         if call and isinstance(call.get("input"), dict):
             doc_url = call["input"].get("url")
         recent_sim = _latest(runtime, source_run, lambda s: s.kind == StepKind.SIM_RUN)
-    out = {"selected_part_id": pid, "selected_run_id": ui.selected_run_id,
+    out = {"selected_part_id": pid, "selected_run_id": selected,
            "picks": list(ui.picks), "metrics": metrics, "vars": vars_, "version": version,
            "doc_url": doc_url, "recent_sim": recent_sim,
            # the user's last few live edits on this part / build: text the user (or a script
@@ -105,6 +106,16 @@ def build_context(runtime, run_id: str | None = None) -> dict:
     if sk is not None:
         out["sketch"] = sk
     return out
+
+
+def _is_ui_run(runtime, run_id: str | None) -> bool:
+    """The app's own ui run (or an unknown id): never named to an agent (I5)."""
+    if not run_id:
+        return False
+    try:
+        return runtime.store.get_run(run_id).provider == "ui"
+    except KeyError:
+        return True
 
 
 def _run_project(runtime, run_id: str | None) -> str | None:

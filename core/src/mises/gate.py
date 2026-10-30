@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from . import budget
 from .approvals import ApprovalService, hash_payload
 from .events import Event, EventBus
 from .store import Store
@@ -39,6 +40,7 @@ class Gate:
         try:
             out = await self._run(run_id, tool_name, raw_input, call_id, Path(workdir))
         except MisesError as e:
+            e = self._redact_error(e, run_id)
             self._error(run_id, tool_name, call_id, e)
             raise
         except asyncio.CancelledError:
@@ -47,8 +49,8 @@ class Gate:
                         MisesError(ErrorCode.CANCELLED, "call cancelled before it finished"))
             raise
         except Exception as e:
-            self._error(run_id, tool_name, call_id,
-                        MisesError(ErrorCode.TOOL_FAILED, f"{type(e).__name__}: {e}"))
+            self._error(run_id, tool_name, call_id, self._redact_error(
+                MisesError(ErrorCode.TOOL_FAILED, f"{type(e).__name__}: {e}"), run_id))
             raise
         return out
 
@@ -83,7 +85,15 @@ class Gate:
             if reason:
                 deltas = {**deltas, "approval_reason": reason}
             appr = await self.approvals.request(run_id, name, payload, deltas=deltas)
-            appr = await self.approvals.wait(appr.id)
+            tracker = self._tracker(run_id)
+            prev = (tracker.state, tracker.detail) if tracker is not None else None
+            if tracker is not None:
+                tracker.set("waiting_approval", f"waiting for approval: {name}")
+            try:
+                appr = await self.approvals.wait(appr.id)
+            finally:
+                if tracker is not None and prev is not None and prev[0] is not None:
+                    tracker.set(prev[0], prev[1])
             if appr.status != "approved":
                 raise MisesError(ErrorCode.DENIED, f"approval {appr.status} for {name}")
             payload = self.approvals.consume(appr.id, hash_payload(
@@ -116,7 +126,8 @@ class Gate:
         except Exception as e:
             raise MisesError(ErrorCode.TOOL_FAILED, f"{type(e).__name__}: {e}") from None
 
-        out = self._spill(out, workdir, call_id)                                 # 9
+        out = self._redact(out, run_id)                                          # 9
+        out = self._spill(out, workdir, call_id)
         if cacheable and out.ok:                                                 # 10
             # ok=False is never cached: a retry of a failed call must really run again
             self.store.cache_put(key, out.model_dump(mode="json"))
@@ -162,6 +173,7 @@ class Gate:
                          hint="ask the user to widen the scope")
 
     def _check_budget(self, t: ToolDef, run_id: str, policy) -> None:
+        budget.check_usd(self.store, run_id)     # the run's / its family's dollar cap (I-8)
         if t.onshape_cost <= 0:
             return
         used_year = self.store.ledger_used(self.user, since=_year_start())
@@ -171,6 +183,54 @@ class Gate:
             raise MisesError(ErrorCode.BUDGET_EXHAUSTED,
                              f"{t.name} needs {t.onshape_cost} Onshape calls; allowance exhausted",
                              hint="ask the user to raise the cap")
+
+    def _tracker(self, run_id: str):
+        """The run's ActivityTracker, via the runtime service; None in bare unit tests."""
+        rt = self.services.get("runtime")
+        getter = getattr(rt, "activity_tracker", None)
+        if getter is None:
+            return None
+        try:
+            return getter(run_id)
+        except Exception:  # noqa: BLE001
+            return None
+
+    def _scrub_terms(self, run_id: str | None) -> list[tuple[str, str]]:
+        """(text, replacement) pairs scrubbed from a result: the admin and MCP tokens, and for
+        any caller but the app's own ui runs, the live ui run ids (I5: an agent never learns
+        the id the user's edits go through, so it cannot present it as its identity)."""
+        terms = [(s, "[redacted]") for s in (self.services.get("secrets") or ()) if s]
+        ui_ids = self.services.get("ui_run_ids") or ()
+        if ui_ids and run_id not in ui_ids:
+            terms += [(r, "user") for r in ui_ids if r]
+        return terms
+
+    def _redact(self, out: ToolOutput, run_id: str | None = None) -> ToolOutput:
+        """Scrub the admin and MCP tokens from a result (summary, data, warnings). The sandbox
+        already blocks a build from reading server.json; this is the second line, so a token
+        that reached a result some other way never reaches the model or the step log."""
+        terms = self._scrub_terms(run_id)
+        if not terms:
+            return out
+        blob = out.model_dump_json()
+        red = blob
+        for s, rep in terms:
+            red = red.replace(s, rep)
+        return out if red == blob else ToolOutput.model_validate_json(red)
+
+    def _redact_error(self, e: MisesError, run_id: str | None = None) -> MisesError:
+        terms = self._scrub_terms(run_id)
+        if not terms:
+            return e
+        def scrub(v):
+            for s, rep in terms:
+                if isinstance(v, str):
+                    v = v.replace(s, rep)
+            return v
+        e.message = scrub(e.message)
+        if e.hint is not None:
+            e.hint = scrub(e.hint)
+        return e
 
     @staticmethod
     def _spill(out: ToolOutput, workdir: Path, call_id: str) -> ToolOutput:

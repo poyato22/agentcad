@@ -582,6 +582,10 @@ async def _run_wind(job_root: Path, metrics: dict, s, progress, memory_cap: int)
                         f"refinement {level}): lattice of {r['lattice']['cells_across']} cells "
                         f"across the body at an effective Reynolds number of "
                         f"{r['lattice']['reynolds_effective']:.3g} (real {r['reynolds']:.3g})")
+        if r["lattice"].get("refined_from_cells"):
+            warnings.append(f"the lattice was refined from {r['lattice']['refined_from_cells']} "
+                            f"to {r['lattice']['cells_across']} cells across so the part's "
+                            "thinnest side facing the flow spans at least 2 cells")
         warnings.append(f"drag includes a flat-plate skin-friction estimate (Cd "
                         f"{r['cd_friction_estimate']:.3f}) added to the resolved pressure drag; "
                         "the lattice cannot resolve the boundary layer")
@@ -637,7 +641,8 @@ def summary(rec: dict) -> str:
         s = static_summary(rec)
         if typ == "drop":
             imp = rec["results"].get("impact") or {}
-            s = (f"ESTIMATE (drop {imp.get('drop_m')} m, F = m g k, k = {imp.get('k')}: "
+            k = imp.get("k_effective", imp.get("k"))
+            s = (f"ESTIMATE (drop {imp.get('drop_m')} m, F = m g k, k = {_num(k, '.3g')}: "
                  f"{_num(imp.get('newtons'), '.3g')} N) - " + s)
         return s
     r, sv = rec["results"], rec["solver"]
@@ -765,7 +770,9 @@ def card(rec: dict) -> dict:
         notes.append("drag includes a flat-plate skin-friction estimate added to the resolved "
                      "pressure drag")
     u = urls(rec.get("sim_id") or "")
-    return {"sim_id": rec.get("sim_id"), "type": typ, "status": rec.get("status"),
+    extra = ({"per_case": r["per_case"], "governing_case_id": r.get("governing_case_id")}
+             if isinstance(r.get("per_case"), list) else {})
+    return {**extra, "sim_id": rec.get("sim_id"), "type": typ, "status": rec.get("status"),
             "verdict": status, "phase": rec.get("phase"), "pct": rec.get("pct"),
             "part_id": rec.get("part_id"), "label": GUIDE_LABEL,
             "fidelity_class": rec.get("fidelity_class"), "fidelity_note": fidelity_note(rec),
@@ -810,7 +817,8 @@ def compact(rec: dict) -> dict:
                 "charts_url": f"/sims/{rec.get('sim_id')}/charts", "card": card(rec)})
     if len(json.dumps(out, default=float)) > COMPACT_MAX_BYTES:
         out["results"] = {k: v for k, v in r.items()
-                          if not isinstance(v, (list, dict)) or k in ("sf_by_case", "band_hz")}
+                          if not isinstance(v, (list, dict))
+                          or k in ("sf_by_case", "band_hz", "per_case")}
         out["material"] = (rec.get("material") or {}).get("name") if rec.get("material") else None
         out["mesh"] = {}
         out["truncated"] = True

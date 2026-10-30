@@ -69,7 +69,8 @@ _HTTP_STATUS = {
 
 
 def _error_response(e: MisesError, status: int | None = None) -> JSONResponse:
-    return JSONResponse(e.to_dict(), status_code=status or _HTTP_STATUS.get(e.code, 400))
+    return JSONResponse(e.to_dict(), status_code=status or getattr(e, "http_status", None)
+                        or _HTTP_STATUS.get(e.code, 400))
 
 
 def _token_ok(given: str | None, token: str) -> bool:
@@ -129,7 +130,11 @@ class _McpEndpoint:
             except KeyError:
                 resp = _error_response(MisesError(ErrorCode.NOT_FOUND, f"unknown run: {run_id}"))
             else:
-                if run.status != "running":
+                if run.provider == "ui":    # I5: the user's own identity is never an MCP client
+                    resp = _error_response(MisesError(
+                        ErrorCode.DENIED, "the app's own run cannot be used over MCP",
+                        hint="bind the MCP connection to your own run id"))
+                elif run.status != "running":
                     resp = _error_response(MisesError(
                         ErrorCode.INVALID_INPUT, f"run {run_id} is {run.status}",
                         hint="create a new run"), status=409)
@@ -194,6 +199,7 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
     mcp_token = mcp_token or secrets.token_urlsafe(32)
     if hmac.compare_digest(mcp_token.encode(), token.encode()):
         raise ValueError("the MCP-only token must differ from the admin token")
+    runtime.register_secrets(token, mcp_token)  # defense in depth: scrub them from tool results
     mcp_server = build_mcp_server(runtime)
     manager = StreamableHTTPSessionManager(
         app=mcp_server, json_response=True, stateless=True,
@@ -314,7 +320,29 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
     async def get_run(run_id: str):
         d = _projects.run_view(_run(run_id))
         d["activity"] = runtime.activity_of(run_id)
+        d["pending"] = _pending(run_id)
         return d
+
+    def _pending(run_id: str) -> dict:
+        return {"questions": runtime.pending_questions(run_id),
+                "approvals": [a.model_dump(mode="json")
+                              for a in runtime.store.pending_approvals(run_id)]}
+
+    @app.get("/tools")
+    async def list_tools():
+        """Every registered tool, for the custom-agent "Only these" picker (QA C-7): the
+        built-in agents' tool lists cover only some of them. App token only (not MCP)."""
+        return [{"name": t.name, "description": t.description, "safety": str(t.safety),
+                 "implied_classes": sorted(str(c) for c in t.implied_classes),
+                 "open_world": t.open_world}
+                for t in sorted(runtime.registry.list(), key=lambda t: t.name)]
+
+    @app.get("/runs/{run_id}/pending")
+    async def get_pending(run_id: str):
+        """What the run is blocked on: its open ui_ask_user questions (the question_asked
+        payloads) and pending approvals, so a reloaded app recovers the cards (QA C-2)."""
+        _run(run_id)
+        return _pending(run_id)
 
     @app.patch("/runs/{run_id}")
     async def patch_run(run_id: str, body: PatchRun):

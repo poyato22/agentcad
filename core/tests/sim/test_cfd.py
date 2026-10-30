@@ -124,6 +124,54 @@ def test_budget_fallbacks_to_the_empirical_estimate(tmp_path):
         run_study(tris, settings(refinement=4, timeout_s=5, solver="lbm"), tmp_path)
 
 
+def test_a_side_thinner_than_a_cell_is_refused_or_estimated_not_solved(tmp_path):
+    """QA B1-4: broadside on an 80x30x5 plate the 5 mm side was voxelised 2 cells (20 mm)
+    thick at refinement 1, the lattice body blocked 4x the frontal area and Cd read 4.96."""
+    plate = box(80, 30, 5)
+    with pytest.raises(ValueError, match="too thin for this refinement") as e:
+        run_study(plate, settings(refinement=1, direction="+y", solver="lbm"), tmp_path)
+    assert "4.0x the part's frontal area" in str(e.value)
+    assert "solver 'empirical'" in str(e.value)       # no refinement level resolves 5 of 80
+    r = run_study(plate, settings(refinement=1, direction="+y"), tmp_path)
+    assert r["method"] == "empirical" and "too thin" in r["reason"]
+    assert r["cd"] == CD_TABLE[r["shape_class"]] < 2.5
+
+
+def test_a_slender_part_lost_between_cells_names_the_right_fix(tmp_path):
+    """QA B1-5: a 5 mm column 200 mm long fell through the 25 mm lattice, and the hint said
+    'coarser refinement' (which makes it worse)."""
+    from mises.sim.cfd import failure_hint
+    col = box(5, 5, 200)
+    with pytest.raises(ValueError, match="too thin") as e:
+        run_study(col, settings(refinement=1, solver="lbm"), tmp_path)
+    assert "lost between cells" in str(e.value)
+    assert "finer refinement" in failure_hint(f"CFD_ERROR: ValueError: {e.value}")
+    assert "coarser" not in failure_hint("CFD_ERROR: ValueError: too thin for this refinement")
+    assert "coarser" in failure_hint("CFD_ERROR: ValueError: the lattice does not fit 64 MB")
+    r = run_study(col, settings(refinement=1), tmp_path)
+    assert r["method"] == "empirical" and "too thin" in r["reason"]
+
+
+def test_a_thin_side_refines_the_lattice_when_a_finer_one_fits():
+    from mises.sim.cfd.wind import _finer_grid, _too_thin
+    tris = box(80, 30, 5)                    # edge-on: 30 x 5 facing the flow
+    lo, hi = tris.reshape(-1, 3).min(0), tris.reshape(-1, 3).max(0)
+    ext = hi - lo
+    frontal = frontal_area_mm2(tris) * 1e-6
+    g = plan_grid(lo, hi, 8, 5)
+    msg = _too_thin(voxelize(tris, g), g, frontal, ext, 1)
+    assert msg is not None and "use refinement 2" in msg
+    s = settings(refinement=1)
+    finer, steps = _finer_grid(lo, hi, ext, s, s["iterations"], 600.0)
+    assert finer.cells_across == 12 and steps > 0
+    assert _too_thin(voxelize(tris, finer), finer, frontal, ext, 1) is None
+    assert _finer_grid(lo, hi, ext, s, s["iterations"], 0.01) is None   # over the time budget
+    sph = sphere()
+    gs = plan_grid(sph.reshape(-1, 3).min(0), sph.reshape(-1, 3).max(0), 8, 5)
+    assert _too_thin(voxelize(sph, gs), gs, frontal_area_mm2(sph) * 1e-6,
+                     sph.reshape(-1, 3).max(0) - sph.reshape(-1, 3).min(0), 1) is None
+
+
 @pytest.mark.timeout(120)
 def test_coarse_sphere_drag_and_outputs(tmp_path):
     r = run_study(sphere(), settings(speed_m_s=3, refinement=1, domain_multiplier=3,

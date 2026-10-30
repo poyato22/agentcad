@@ -100,6 +100,8 @@ class SimRunArgs(BaseModel):
     requirements: list[dict[str, Any]] = Field(default_factory=list, max_length=40,
                                                description="spec requirements to check "
                                                "pass / warn / fail against the result")
+    estimate: bool = Field(False, description="the load is an estimate (e.g. F = m*g*k); the "
+                           "card is labelled and a pass is reported as warn")
 
     @model_validator(mode="after")
     def _target(self):
@@ -220,7 +222,8 @@ async def sim_run(ctx: ToolContext, args: SimRunArgs) -> ToolOutput:
         raise MisesError(ErrorCode.INVALID_INPUT, "assembly (project_id) studies are not "
                          "supported yet", hint="study each part with its part_id")
     return await _run(ctx, args.type, args.part_id, args.settings, reason=args.reason,
-                      requirements=args.requirements)
+                      requirements=args.requirements,
+                      inputs_extra={"estimate": True} if args.estimate else None)
 
 
 @tool("sim_static_run", safety=SafetyClass.LOCAL_MUTATE, scope_arg="part_id",
@@ -436,15 +439,17 @@ def _metric_rows(spec: dict, metrics: dict, material) -> list[dict]:
 async def _get_spec(ctx: ToolContext, args: ReviewArgs) -> dict | None:
     if args.spec is not None:
         return args.spec
-    if not args.project_id:
-        return None
     gate = _gate(ctx)
     try:
         if gate is None or not gate.registry.list(["spec_get"]):
             return None
     except Exception:  # noqa: BLE001
         return None
-    out = await gate.call(ctx.run_id, "spec_get", {"project_id": args.project_id},
+    # no project_id: spec_get({}) resolves to the run's own build, so the verifier (which has no
+    # spec_get of its own, and may not know the id) still finds its spec. An out-of-scope id is
+    # surfaced as itself, not swallowed into "no spec to review against".
+    payload = {"project_id": args.project_id} if args.project_id else {}
+    out = await gate.call(ctx.run_id, "spec_get", payload,
                           call_id=f"{ctx.call_id}.spec", workdir=Path(ctx.workdir))
     if not out.ok:
         return None
@@ -487,6 +492,7 @@ def _parallel(ctx: ToolContext) -> int:
 
 
 @tool("design_review", safety=SafetyClass.READ, scope_arg="part_id", timeout_s=REVIEW_TIMEOUT_S,
+      implied_classes={SafetyClass.LOCAL_MUTATE},  # runs its child studies as sim_run calls
       description="Review a part against its spec: picks the studies the spec needs (static "
                   "per load case, modal for an excitation band, wind for a drag requirement, "
                   "drop for an impact), runs them as sim_run calls (each one a local_mutate "
@@ -531,7 +537,7 @@ async def design_review(ctx: ToolContext, args: ReviewArgs) -> ToolOutput:
                 settings["solver"] = solver
             call_id = f"{ctx.call_id}.r{i + 1}"
             payload = {"type": p["type"], "part_id": args.part_id, "settings": settings,
-                       "requirements": p["requirements"],
+                       "requirements": p["requirements"], "estimate": bool(p.get("estimate")),
                        "reason": f"design review: {p['type']} {p['case']}"[:200]}
             try:  # the budget is a hard cap on every child study too
                 out = await asyncio.wait_for(
@@ -566,16 +572,27 @@ async def design_review(ctx: ToolContext, args: ReviewArgs) -> ToolOutput:
         checks = data.get("checks") if out is not None and out.ok else None
         if checks:
             for c in checks:
-                table.append({**c, "study": p["type"], "case": p["case"],
-                              "url": f"/sims/{sid}"})
+                row = {**c, "study": p["type"], "case": p["case"], "url": f"/sims/{sid}"}
+                if p.get("estimate") and row.get("status") == "pass":
+                    # physics honesty: an estimated load (F = m*g*k) never comes back as a clean
+                    # pass; it passes the estimate only
+                    row["status"] = "warn"
+                    row["estimate"] = True
+                    row["note"] = ((row.get("note") + "; ") if row.get("note") else "") + \
+                        "passes, but the load is an estimate (F = m*g*k)"
+                table.append(row)
         else:
+            # the study produced no checks: it was denied, errored or timed out, or ran but gave
+            # no requirement verdict. Either way we have no evidence, so the row is "not checked"
+            # (warn), never "fail" — a fail must mean a study ran and a requirement failed.
+            note = (res.get("error") or (out.summary[:200] if out else None)
+                    or "not checked: the study produced no result")
             for r in p["requirements"]:
                 table.append({"requirement_id": r.get("id"), "kind": r.get("kind"),
                               "target": r.get("target"), "measured": None, "unit": "",
-                              "status": "warn" if res.get("error") is None and out is not None
-                              and out.ok else "fail", "sim_id": sid, "study": p["type"],
-                              "case": p["case"], "url": f"/sims/{sid}" if sid else None,
-                              "note": res.get("error") or (out.summary[:200] if out else None)})
+                              "status": "warn", "checked": False, "sim_id": sid,
+                              "study": p["type"], "case": p["case"],
+                              "url": f"/sims/{sid}" if sid else None, "note": note})
     # requirements that no study or metric answered
     answered = {(r.get("requirement_id"), r.get("case")) for r in table}
     ids_answered = {a for a, _ in answered}
@@ -597,10 +614,38 @@ async def design_review(ctx: ToolContext, args: ReviewArgs) -> ToolOutput:
                      + (f" ({r['measured']:.4g}{r.get('unit') or ''} vs {r['target']})"
                         if isinstance(r.get("measured"), (int, float)) else "")
                      + (f" [{r['sim_id']}]" if r.get("sim_id") else "") for r in table)
-    return ToolOutput(summary=head + (": " + rows if rows else ""),
-                      data={"verdict": verdict, "table": table, "studies": studies_run,
-                            "label": GUIDE_LABEL, "part_id": args.part_id},
+    data = {"verdict": verdict, "table": table, "studies": studies_run,
+            "label": GUIDE_LABEL, "part_id": args.part_id}
+    _fit_review(data)
+    return ToolOutput(summary=head + (": " + rows if rows else ""), data=data,
                       warnings=[s["error"] for s in studies_run if s.get("error")])
+
+
+REVIEW_SOFT_MAX_BYTES = 14 * 1024
+
+
+def _fit_review(data: dict) -> None:
+    """Keep design_review under the Gate's 16 KB spill limit (many load cases + modal + a wind
+    sweep can approach it): drop the cards' charts first, then trim their warnings. The verdict,
+    the table and every study id always stay; the full cards are at each study's url."""
+    import json
+
+    def size() -> int:
+        return len(json.dumps(data, default=float).encode())
+    if size() <= REVIEW_SOFT_MAX_BYTES:
+        return
+    for s in data["studies"]:
+        if isinstance(s.get("card"), dict):
+            s["card"] = {k: v for k, v in s["card"].items() if k != "charts"}
+    if size() > REVIEW_SOFT_MAX_BYTES:
+        for s in data["studies"]:
+            if isinstance(s.get("card"), dict):
+                s["card"]["warnings"] = (s["card"].get("warnings") or [])[:1]
+                s["card"]["checks"] = []
+    if size() > REVIEW_SOFT_MAX_BYTES:
+        for s in data["studies"]:
+            s["card"] = None
+    data["trimmed"] = True
 
 
 def register_sim_tools(registry: ToolRegistry) -> None:

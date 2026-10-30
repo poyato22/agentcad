@@ -59,6 +59,17 @@ def test_update_joint_value_and_limits(store):
     assert got.value == 12.0 and got.limits == [0.0, 20.0]
 
 
+def test_tightening_a_limit_clamps_the_value(store):
+    """QA A-1: limits [-90, 30] under a value of 45 kept 45 while the pose was drawn at 30."""
+    a = store.add_instance("p", Instance(part_id="plate", name="A"))
+    b = store.add_instance("p", Instance(part_id="plate", name="B"))
+    j = store.add_joint("p", Joint(kind="revolute", a=_ref(a.id), b=_ref(b.id), value=45.0,
+                                   limits=[-90.0, 90.0]))
+    assert store.update_joint("p", j.id, limits=[-90.0, 30.0]).value == 30.0
+    assert store.get_joint("p", j.id).value == 30.0
+    assert store.update_joint("p", j.id, value=-120.0).value == -90.0
+
+
 def test_delete_joint_missing_raises(store):
     with pytest.raises(KeyError):
         store.delete_joint("p", "ghost")

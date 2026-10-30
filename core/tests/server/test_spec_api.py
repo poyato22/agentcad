@@ -123,6 +123,26 @@ def test_apply_variant_runs_study_apply_through_the_gate(rt, client, applied):
     assert len(rt.store.list_runs(1000)) == before and applied[1][0] == run.id
 
 
+def test_apply_without_base_targets_the_live_version_and_conflict_is_409(rt, client,
+                                                                         monkeypatch):
+    """The user's apply with no base_version applies on top of the live part (its current
+    version is sent); a version conflict from set_vars is a 409 stale_version, never a 500."""
+    from mises import edits
+    d = _part(rt)
+    edits.write_version(d, 4)
+    _study(rt)
+    seen = []
+
+    async def conflicting(ctx, args):
+        seen.append(args.base_version)
+        return ToolOutput(ok=False, summary="conflict", data={
+            "conflict": True, "part_id": args.part_id, "current_version": 5})
+    monkeypatch.setattr(eng_tools, "mirror_part_set_vars", SimpleNamespace(handler=conflicting))
+    r = client.post(f"/projects/{PID}/studies/{SID}/apply", headers=AUTH, json={"iteration": 0})
+    assert seen == [4]                                   # the live version, not None
+    assert r.status_code == 409 and r.json()["error"] == "stale_version"
+
+
 def test_apply_rechecks_feasibility_against_the_current_spec(rt, client, applied):
     _part(rt)
     _study(rt)

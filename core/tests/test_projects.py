@@ -5,7 +5,7 @@ import time
 
 import pytest
 
-from mises import projects
+from mises import budget, projects
 from mises.store import Approval, Store
 from mises.types import ErrorCode, MisesError
 
@@ -72,6 +72,20 @@ def test_legacy_parts_go_to_default_once(store, tmp_path):
     _write_part(tmp_path, "later_plate")   # built after: never claimed by the one-shot
     assert projects.register_legacy_parts(store, tmp_path) == 0
     assert store.get_part("later_plate") is None
+
+
+def test_legacy_part_version_migrates_into_the_meta(store, tmp_path):
+    """I2: a part built before versioning (no meta version) listed as version 1 migrates that 1
+    into the meta, so the edit guard checks the same number and the first user edit is not a 409."""
+    from mises import edits
+    _write_part(tmp_path, "old_plate")
+    store.register_part("old_plate", store.ensure_default_project().id)
+    row = store.get_part("old_plate")
+    assert edits.read_version(tmp_path / "parts" / "old_plate") == 0   # legacy: no meta version
+    assert projects.part_version(tmp_path, row) == 1
+    # now stored in the meta, so read_version (what check_base_version uses) agrees with the list
+    assert edits.read_version(tmp_path / "parts" / "old_plate") == 1
+    assert edits.check_base_version(tmp_path / "parts" / "old_plate", 1) is None
 
 
 def test_ghost_part_rows_are_hidden(store, tmp_path):
@@ -143,7 +157,8 @@ def test_reorder_is_stable_and_validates(store, tmp_path):
 
 def test_trash_restore_empty_removes_part_rows(store, tmp_path):
     p = projects.create_project(store, "Drone")
-    _built(store, tmp_path, p["id"], "frame_plate")
+    run = _built(store, tmp_path, p["id"], "frame_plate")
+    store.update_run(run.id, status="done")
     projects.trash_project(store, p["id"])
     assert projects.list_projects(store)[0]["trashed_at"] is not None
     projects.restore_project(store, p["id"])
@@ -152,7 +167,7 @@ def test_trash_restore_empty_removes_part_rows(store, tmp_path):
     assert projects.empty_trash(store) == {"purged": [p["id"]], "count": 1}
     assert projects.list_projects(store) == []
     assert store.get_part("frame_plate") is None
-    assert (tmp_path / "parts" / "frame_plate" / "vars.json").exists()   # files stay
+    assert (tmp_path / "parts" / "frame_plate" / "vars.json").exists()   # no home: files stay
 
 
 def test_active_build_skips_trashed_and_checks_ids(store):
@@ -241,4 +256,4 @@ def test_runs_tree_nests_by_parent(store):
     tree = projects.runs_tree(store, p.id)
     assert len(tree) == 1 and tree[0]["id"] == root.id
     assert [c["id"] for c in tree[0]["children"]] == [child.id]
-    assert tree[0]["cost"] == {"usd": 0.0, "tokens": 0}
+    assert tree[0]["cost"] == {"usd": 0.0, "tokens": 0, "usd_note": budget.UNKNOWN_NOTE}

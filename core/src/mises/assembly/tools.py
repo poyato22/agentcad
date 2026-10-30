@@ -26,6 +26,44 @@ def _parts_root(ctx: ToolContext) -> Path:
     return Path(ctx.workdir) / "parts"
 
 
+def _resolve_build(ctx: ToolContext, requested: str) -> str:
+    """The build this call may touch. Like catalog/engineering, an agent run can only reach its
+    own build (requesting another is OUT_OF_SCOPE); the UI (admin) may name any build. The build
+    must exist and not be trashed. A bare context (a unit test with no store) resolves to the
+    requested id unchanged."""
+    store = getattr(ctx, "store", None)
+    if store is None or getattr(ctx, "run_id", None) is None:
+        return requested
+    from ..catalog.tools import resolve_project
+    pid = resolve_project(ctx, requested) or requested
+    if hasattr(store, "get_project"):
+        try:
+            proj = store.get_project(pid)
+        except KeyError:
+            raise MisesError(ErrorCode.NOT_FOUND, f"no build {pid!r}",
+                             hint="create or open the build first") from None
+        if getattr(proj, "trashed_at", None) is not None:
+            raise MisesError(ErrorCode.INVALID_INPUT, f"build {pid!r} is in the trash",
+                             hint="restore it first")
+    return pid
+
+
+def _check_part_in_build(ctx: ToolContext, pid: str, part_id: str) -> None:
+    """A part added to an assembly must belong to that build (or be in this run's scope)."""
+    store = getattr(ctx, "store", None)
+    if store is None or not hasattr(store, "get_part"):
+        return
+    row = store.get_part(part_id)
+    if row is None:
+        raise MisesError(ErrorCode.NOT_FOUND, f"no part {part_id!r}",
+                         hint="build or import it into this build first")
+    pol = getattr(ctx, "policy", None)
+    scope = set(pol.edit_scope) if pol is not None else {"*"}
+    if row.project_id != pid and "*" not in scope and part_id not in scope:
+        raise MisesError(ErrorCode.OUT_OF_SCOPE, f"part {part_id!r} is not in build {pid!r}",
+                         hint="add a part that belongs to this build")
+
+
 def _solve(ctx: ToolContext, project_id: str) -> tuple:
     asm = _store(ctx).get(project_id)
     res = solve(asm, resolve_face=face_resolver(_parts_root(ctx)))
@@ -88,7 +126,7 @@ class RemoveArgs(BaseModel):
       description="Read a build's assembly: its instances (with solved world transforms), its "
                   "joints and the degrees of freedom left.")
 async def assembly_get(ctx: ToolContext, args: ProjectArgs) -> ToolOutput:
-    asm, res = _solve(ctx, args.project_id)
+    asm, res = _solve(ctx, _resolve_build(ctx, args.project_id))
     return ToolOutput(summary=f"{len(asm.instances)} instance(s), {len(asm.joints)} joint(s), "
                               f"{res.dof_remaining} dof left",
                       data=_asm_data(asm, res), step_kind=StepKind.MEASURE)
@@ -98,11 +136,13 @@ async def assembly_get(ctx: ToolContext, args: ProjectArgs) -> ToolOutput:
       description="Place a part in the build's assembly as a new instance. The first instance "
                   "is usually `fixed: true` to ground the assembly.")
 async def assembly_add_instance(ctx: ToolContext, args: AddInstanceArgs) -> ToolOutput:
+    pid = _resolve_build(ctx, args.project_id)
+    _check_part_in_build(ctx, pid, args.part_id)
     kw = {"part_id": args.part_id, "name": args.name, "fixed": args.fixed}
     if args.transform is not None:
         kw["transform"] = args.transform
-    inst = _store(ctx).add_instance(args.project_id, Instance(**kw))
-    _changed(ctx, args.project_id)
+    inst = _store(ctx).add_instance(pid, Instance(**kw))
+    _changed(ctx, pid)
     return ToolOutput(summary=f"added instance {inst.name} ({inst.id}) of {inst.part_id}",
                       data={"instance": inst.model_dump()}, step_kind=StepKind.DIFF)
 
@@ -113,14 +153,15 @@ async def assembly_add_instance(ctx: ToolContext, args: AddInstanceArgs) -> Tool
                   "loop. revolute value is degrees, slider mm, cylindrical [deg, mm], ball "
                   "[rx, ry, rz] deg. limits [lo, hi] clamp the value.")
 async def assembly_add_joint(ctx: ToolContext, args: AddJointArgs) -> ToolOutput:
+    pid = _resolve_build(ctx, args.project_id)
     store = _store(ctx)
     joint = Joint(kind=args.kind, a=args.a, b=args.b, value=args.value, limits=args.limits)
     # validate against the would-be assembly before writing: solve rejects loops / unknown refs
-    asm = store.get(args.project_id)
+    asm = store.get(pid)
     trial = asm.model_copy(update={"joints": [*asm.joints, joint]})
     solve(trial, resolve_face=face_resolver(_parts_root(ctx)))
-    store.add_joint(args.project_id, joint)
-    _changed(ctx, args.project_id)
+    store.add_joint(pid, joint)
+    _changed(ctx, pid)
     return ToolOutput(summary=f"added {joint.kind} joint {joint.id}",
                       data={"joint": joint.model_dump()}, step_kind=StepKind.DIFF)
 
@@ -129,14 +170,15 @@ async def assembly_add_joint(ctx: ToolContext, args: AddJointArgs) -> ToolOutput
       description="Set a joint's value and return the solved world transforms. The value is "
                   "clamped to the joint's limits.")
 async def assembly_drive(ctx: ToolContext, args: DriveArgs) -> ToolOutput:
+    pid = _resolve_build(ctx, args.project_id)
     store = _store(ctx)
     try:
-        store.get_joint(args.project_id, args.joint_id)
+        store.get_joint(pid, args.joint_id)
     except KeyError:
         raise MisesError(ErrorCode.NOT_FOUND, f"no joint {args.joint_id!r}")
-    store.update_joint(args.project_id, args.joint_id, value=args.value)
-    asm, res = _solve(ctx, args.project_id)
-    _changed(ctx, args.project_id)
+    store.update_joint(pid, args.joint_id, value=args.value)
+    asm, res = _solve(ctx, pid)
+    _changed(ctx, pid)
     applied = res.applied.get(args.joint_id, args.value)
     return ToolOutput(summary=f"drove joint {args.joint_id} to {applied}",
                       data={"applied": applied,
@@ -147,20 +189,21 @@ async def assembly_drive(ctx: ToolContext, args: DriveArgs) -> ToolOutput:
 @tool("assembly_remove", safety=SafetyClass.LOCAL_MUTATE, scope_arg="project_id",
       description="Remove one instance (and any joints that used it) or one joint.")
 async def assembly_remove(ctx: ToolContext, args: RemoveArgs) -> ToolOutput:
+    pid = _resolve_build(ctx, args.project_id)
     store = _store(ctx)
     if (args.instance_id is None) == (args.joint_id is None):
         raise MisesError(ErrorCode.INVALID_INPUT, "give exactly one of instance_id or joint_id")
     try:
         if args.instance_id is not None:
-            dropped = store.delete_instance(args.project_id, args.instance_id)
+            dropped = store.delete_instance(pid, args.instance_id)
             summary = (f"removed instance {args.instance_id}"
                        + (f" and {len(dropped)} joint(s)" if dropped else ""))
         else:
-            store.delete_joint(args.project_id, args.joint_id)
+            store.delete_joint(pid, args.joint_id)
             summary = f"removed joint {args.joint_id}"
     except KeyError as e:
         raise MisesError(ErrorCode.NOT_FOUND, f"nothing to remove: {e}")
-    _changed(ctx, args.project_id)
+    _changed(ctx, pid)
     return ToolOutput(summary=summary, step_kind=StepKind.DIFF)
 
 
@@ -171,7 +214,7 @@ async def assembly_remove(ctx: ToolContext, args: RemoveArgs) -> ToolOutput:
                   "that path cannot be satisfied; unfix one or drop a joint). Fixed instances "
                   "with no joint path between them are independent and fine.")
 async def assembly_check(ctx: ToolContext, args: ProjectArgs) -> ToolOutput:
-    asm, res = _solve(ctx, args.project_id)
+    asm, res = _solve(ctx, _resolve_build(ctx, args.project_id))
     interferences: list[dict] = []
     try:
         geo = await run_geometry(_parts_root(ctx), asm, res, want="interference")

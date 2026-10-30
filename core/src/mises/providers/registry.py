@@ -75,7 +75,8 @@ def resolve(model_ref: str,
         key = os.environ.get(spec.env_key) or keychain_get("mises", vendor)
         if not key:
             raise MisesError(ErrorCode.DENIED, f"no API key for {vendor}",
-                             hint=f"set {spec.env_key} or run `mises keys set {vendor}`")
+                             hint=f"add a key in Profile → Model (or set {spec.env_key}, or "
+                                  f"run `mises keys set {vendor}`)")
     if spec.kind == "anthropic":
         return AnthropicProvider(key or "", base_url), model
     if vendor == "ollama":

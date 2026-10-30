@@ -12,7 +12,7 @@ from typing import Annotated, Literal, Union
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .environments import DIRECTIONS, FACE_PRESETS
-from .mesh import FACE_ID_RE
+from .mesh import FACE_ID_RE, is_face_spec
 
 Coord = Annotated[float, Field(ge=-1e6, le=1e6, allow_inf_nan=False)]
 Vec3 = tuple[Coord, Coord, Coord]   # finite: NaN / inf never reach a deck
@@ -24,8 +24,9 @@ def _u(unit: str, **kw) -> dict:
 
 
 def check_face(v: str) -> str:
-    if v not in FACE_PRESETS and not FACE_ID_RE.match(v):
-        raise ValueError(f"face must be one of {list(FACE_PRESETS)} or a face id like 'f3'")
+    if not is_face_spec(v):
+        raise ValueError(f"face must be one of {list(FACE_PRESETS)}, a face id like 'f3' or a "
+                         "tagged face like 'tag:motor_mount'")
     return v
 
 
@@ -283,8 +284,9 @@ class ThermalSettings(_Common):
 class DropSettings(_Common):
     impact_face: Face = Field(description="the face that hits the ground")
     drop_m: float = Field(1.0, gt=0, le=50, description="drop height", **_u("m"))
-    k: float = Field(10.0, ge=1, le=500, description="dynamic factor: equivalent static "
-                     "load = m g k (estimate; ~5-20 for rigid floors and stiff plastic)")
+    k: float = Field(10.0, ge=1, le=500, description="dynamic factor for a 1 m drop: "
+                     "equivalent static load = m g k √(h / 1 m) (estimate; ~5-20 for rigid "
+                     "floors and stiff plastic)")
     mass_g: float | None = Field(None, gt=0, le=1e6, description="null = from the volume and "
                                  "density", **_u("g"))
     convergence: ConvergenceSettings = Field(default_factory=ConvergenceSettings)

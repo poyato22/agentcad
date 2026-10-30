@@ -40,6 +40,10 @@ _TOKENISH = re.compile(
 )
 
 
+# >= sim.tools.REVIEW_TIMEOUT_S (8 h) plus margin, in ms (Claude Code's MCP_TOOL_TIMEOUT unit)
+MCP_TOOL_TIMEOUT_MS = int((8 * 3600 + 600) * 1000)
+
+
 def claude_environment() -> dict[str, str]:
     """The environment every `claude` Mises starts gets (status, login and runs alike, so the
     status shown matches what a run sees): the acp agent allowlist (HOME, PATH, locale,
@@ -48,6 +52,9 @@ def claude_environment() -> dict[str, str]:
     env = agent_environment()
     if os.environ.get("CLAUDE_CONFIG_DIR"):
         env["CLAUDE_CONFIG_DIR"] = os.environ["CLAUDE_CONFIG_DIR"]
+    # Claude Code's own MCP client must not time a Mises tool out before the Gate does: a design
+    # study runs up to ~32 min and design_review up to sim.tools.REVIEW_TIMEOUT_S (8 h)
+    env["MCP_TOOL_TIMEOUT"] = os.environ.get("MCP_TOOL_TIMEOUT") or str(MCP_TOOL_TIMEOUT_MS)
     return env
 
 

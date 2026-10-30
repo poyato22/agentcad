@@ -53,6 +53,11 @@ class ToolDef:
     needs_approval: Callable[[ToolContext, BaseModel], str | None] | None = None
     # reaches the open web (outside Mises and Onshape): MCP open_world_hint
     open_world: bool = False
+    # Safety classes this tool calls internally through the gate (e.g. design_review and
+    # study_run run their child studies as LOCAL_MUTATE sim_run calls). A spawned worker that is
+    # given this tool needs these classes too, so child_policy grants them transitively, still
+    # intersected with the parent's classes. Does not widen what the tool itself is gated as.
+    implied_classes: frozenset[SafetyClass] = field(default_factory=frozenset)
 
 
 def _input_model_of(fn: Callable) -> type[BaseModel]:
@@ -73,13 +78,15 @@ def tool(name: str, *, description: str, safety: SafetyClass = SafetyClass.IRREV
          preview: Callable[[ToolContext, Any], Awaitable[dict]] | None = None,
          scope_keys: Callable[[Any], list[str]] | None = None,
          needs_approval: Callable[[ToolContext, Any], str | None] | None = None,
-         open_world: bool = False):
+         open_world: bool = False,
+         implied_classes: "frozenset[SafetyClass] | set[SafetyClass] | None" = None):
     def deco(fn: Callable[[ToolContext, Any], Awaitable[ToolOutput]]) -> ToolDef:
         return ToolDef(name=name, description=description, input_model=_input_model_of(fn),
                        safety=safety, handler=fn, onshape_cost=onshape_cost,
                        scope_arg=scope_arg, timeout_s=timeout_s, preview=preview,
                        scope_keys=scope_keys, needs_approval=needs_approval,
-                       open_world=open_world)
+                       open_world=open_world,
+                       implied_classes=frozenset(implied_classes or ()))
     return deco
 
 
