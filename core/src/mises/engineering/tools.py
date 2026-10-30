@@ -156,6 +156,12 @@ class StudyRunArgs(BaseModel):
 
 class StudyGetArgs(BaseModel):
     study_id: str = Field(max_length=64)
+    page: int | None = Field(default=None, ge=0, description="page through every evaluation "
+                             "(50 per page) instead of the default best + Pareto + lightest "
+                             "feasible summary")
+    fields: list[str] | None = Field(default=None, max_length=8, description="keep only these "
+                                     "keys of each evaluation (n, vars, metrics, feasible, "
+                                     "pareto)")
 
 
 class StudyApplyArgs(BaseModel):
@@ -544,8 +550,8 @@ async def study_run(ctx: ToolContext, args: StudyRunArgs) -> ToolOutput:
                         "and check it with sim_static_run")
     if result["status"] == "budget_exhausted":
         warnings.append("the study hit its time budget; results are partial")
-    return ToolOutput(summary=_study_summary(record), data=record, warnings=warnings,
-                      step_kind=StepKind.SIM_RUN)
+    return ToolOutput(summary=_study_summary(record), data=compact_study(record),
+                      warnings=warnings, step_kind=StepKind.SIM_RUN)
 
 
 def mark_interrupted(store, rec: dict) -> dict:
@@ -572,12 +578,15 @@ def _get_study(ctx: ToolContext, study_id: str) -> dict:
 
 
 @tool("study_get", safety=SafetyClass.READ,
-      description="Return a stored design study by id: its variables, objective, status, every "
-                  "evaluation (vars, metrics, feasible, pareto), the best feasible variant and "
-                  "its fine-mesh confirmation.")
+      description="Return a stored design study by id. The default shows the best feasible "
+                  "variant, the Pareto set and the lightest feasible variants, each with its "
+                  "vars and key metrics, plus the fine-mesh confirmation and iterations_total. "
+                  "Pass page=0,1,... to read every evaluation 50 at a time, and fields to keep "
+                  "only some keys.")
 async def study_get(ctx: ToolContext, args: StudyGetArgs) -> ToolOutput:
     rec = _get_study(ctx, args.study_id)
-    return ToolOutput(summary=_study_summary(rec), data=rec)
+    return ToolOutput(summary=_study_summary(rec),
+                      data=compact_study(rec, page=args.page, fields=args.fields))
 
 
 def _read_part_json(d: Path, name: str) -> dict:
@@ -635,6 +644,65 @@ async def study_apply(ctx: ToolContext, args: StudyApplyArgs) -> ToolOutput:
     if out.ok:
         out.summary = f"applied {args.study_id} #{args.iteration}: {out.summary}"
         out.data = {**out.data, "study_id": args.study_id, "iteration": args.iteration}
+    return out
+
+
+_ITER_METRIC_KEYS = ("mass_g", "min_sf", "max_disp_mm", "sf_by_case")
+_ITER_KEYS = ("n", "vars", "feasible", "pareto", "metrics")
+STUDY_PAGE_SIZE = 50
+_TOP_FEASIBLE = 8
+
+
+def _trim_iteration(it: dict, fields: list[str] | None = None) -> dict:
+    m = it.get("metrics") or {}
+    row = {"n": it.get("n"), "vars": it.get("vars"), "feasible": it.get("feasible"),
+           "pareto": it.get("pareto"),
+           "metrics": {k: m.get(k) for k in _ITER_METRIC_KEYS if k in m}}
+    if it.get("build_error") or (m.get("build_error")):
+        row["build_error"] = (it.get("build_error") or m.get("build_error"))
+    if fields:
+        return {k: row[k] for k in fields if k in row}
+    return row
+
+
+def compact_study(rec: dict, *, page: int | None = None,
+                  fields: list[str] | None = None) -> dict:
+    """The agent-facing `data` of a study: always under the Gate's 16 KB cap. The default view is
+    the best variant, the Pareto set and the lightest feasible iterations, each with trimmed
+    metrics, plus iterations_total. The full record stays on disk (GET /projects/<id>/studies);
+    study_get(study_id, page=n) pages every evaluation, and `fields` narrows each row."""
+    iters = rec.get("iterations") or []
+    out = {k: rec.get(k) for k in ("id", "project_id", "part_id", "run_id", "status", "objective",
+                                   "weights", "variables", "best_id", "geometry_only", "solver",
+                                   "max_parallel", "created_at", "kept_variants")}
+    conf = rec.get("confirmation")
+    if isinstance(conf, dict):
+        cm = conf.get("metrics") or {}
+        out["confirmation"] = {"n": conf.get("n"), "confirmed": conf.get("confirmed"),
+                               "error": conf.get("error"),
+                               "metrics": {k: cm.get(k) for k in ("mass_g", "min_sf",
+                                                                  "max_disp_mm")}}
+    else:
+        out["confirmation"] = conf
+    out["iterations_total"] = len(iters)
+    out["study_url"] = f"/projects/{rec.get('project_id')}/studies"
+    if page is not None:
+        start = page * STUDY_PAGE_SIZE
+        chunk = iters[start:start + STUDY_PAGE_SIZE]
+        out.update(page=page, page_size=STUDY_PAGE_SIZE,
+                   iterations=[_trim_iteration(it, fields) for it in chunk])
+        return out
+    best = rec.get("best_id")
+    chosen: dict = {it["n"]: it for it in iters if it.get("n") == best or it.get("pareto")}
+    feas = sorted((it for it in iters if it.get("feasible")),
+                  key=lambda it: (it.get("metrics") or {}).get("mass_g") or float("inf"))
+    for it in feas[:_TOP_FEASIBLE]:
+        chosen.setdefault(it["n"], it)
+    sel = [chosen[n] for n in sorted(chosen)]
+    out["iterations"] = [_trim_iteration(it, fields) for it in sel]
+    out["iterations_shown"] = len(sel)
+    out["note"] = ("best, Pareto set and lightest feasible variants; "
+                   f"study_get(study_id, page=0..) pages all {len(iters)} evaluations")
     return out
 
 

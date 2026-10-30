@@ -31,7 +31,7 @@ async def test_failed_sims_and_builds_are_infeasible_and_never_best(tmp_path, mo
     ctx, live = _setup(tmp_path)
     build, sim = install(monkeypatch)
     out = await study_run.handler(ctx, _args())
-    rec = out.data
+    rec = ctx.store.get_study(out.data["id"])   # full record on disk (the tool result is compact)
     its = rec["iterations"]
     thin = [it for it in its if it["vars"]["wall"] < THIN_FAILS_BELOW]
     thick = [it for it in its if it["vars"]["wall"] > BUILD_FAILS_ABOVE]
@@ -76,11 +76,11 @@ async def test_iterations_persist_and_scratch_is_pruned(tmp_path, monkeypatch):
     install(monkeypatch)
     out = await study_run.handler(ctx, _args())
     stored = ctx.store.get_study(out.data["id"])
-    assert len(stored["iterations"]) == len(out.data["iterations"]) and stored["status"] == "done"
+    assert len(stored["iterations"]) == out.data["iterations_total"] and stored["status"] == "done"
     root = tmp_path / "studies" / out.data["id"]
     left = sorted(p.name for p in root.iterdir())
     assert left == out.data["kept_variants"]
-    keep_ns = {it["n"] for it in out.data["iterations"] if it["pareto"]} | {out.data["best_id"]}
+    keep_ns = {it["n"] for it in stored["iterations"] if it["pareto"]} | {out.data["best_id"]}
     assert len(left) == len(keep_ns)
 
 
@@ -105,7 +105,7 @@ async def test_time_budget_keeps_partial_results(tmp_path, monkeypatch):
     install(monkeypatch, sim_delay=0.2)
     out = await study_run.handler(ctx, _args(max_evals=24, max_minutes=0.01))
     assert out.data["status"] == "budget_exhausted"
-    assert 0 < len(out.data["iterations"]) < 24
+    assert 0 < out.data["iterations_total"] < 24
     assert any("time budget" in w for w in out.warnings)
 
 
@@ -131,15 +131,17 @@ async def test_strength_first_objective(tmp_path, monkeypatch):
     ctx, _ = _setup(tmp_path)
     install(monkeypatch)
     out = await study_run.handler(ctx, _args(objective="max:min_sf"))
-    best = next(it for it in out.data["iterations"] if it["n"] == out.data["best_id"])
-    feas = [it for it in out.data["iterations"] if it["feasible"]]
+    rec = ctx.store.get_study(out.data["id"])
+    best = next(it for it in rec["iterations"] if it["n"] == rec["best_id"])
+    feas = [it for it in rec["iterations"] if it["feasible"]]
     assert best["metrics"]["min_sf"] == max(it["metrics"]["min_sf"] for it in feas)
 
 
 async def test_study_apply_sets_live_vars_and_checks_version(tmp_path, monkeypatch):
     ctx, live = _setup(tmp_path)
     install(monkeypatch)
-    rec = (await study_run.handler(ctx, _args())).data
+    out = await study_run.handler(ctx, _args())
+    rec = ctx.store.get_study(out.data["id"])
     best = next(it for it in rec["iterations"] if it["n"] == rec["best_id"])
 
     bad = next(it for it in rec["iterations"] if not it["feasible"])
@@ -159,6 +161,30 @@ async def test_study_apply_sets_live_vars_and_checks_version(tmp_path, monkeypat
     assert out.ok
     assert json.loads((live / "vars.json").read_text())["wall"] == pytest.approx(
         best["vars"]["wall"])
+
+
+async def test_study_results_fit_under_the_gate_cap_at_24_evals(tmp_path, monkeypatch):
+    """I-2: study_run and study_get stay under the 16 KB Gate cap at the default 24-eval budget,
+    with the best + Pareto + lightest-feasible summary; study_get(page) pages the rest."""
+    import json as _j
+
+    from mises.gate import MAX_OUTPUT_BYTES
+    ctx, _ = _setup(tmp_path)
+    install(monkeypatch)
+    out = await study_run.handler(ctx, _args(max_evals=24))
+    assert len(_j.dumps(out.data, default=float).encode()) <= MAX_OUTPUT_BYTES
+    assert out.data["iterations_total"] >= len(out.data["iterations"])
+    assert out.data["best_id"] in {it["n"] for it in out.data["iterations"]}
+
+    got = await study_get.handler(ctx, StudyGetArgs(study_id=out.data["id"]))
+    assert len(_j.dumps(got.data, default=float).encode()) <= MAX_OUTPUT_BYTES
+
+    # a page reads every evaluation; fields narrows each row
+    page = await study_get.handler(ctx, StudyGetArgs(study_id=out.data["id"], page=0,
+                                                     fields=["n", "metrics"]))
+    assert len(_j.dumps(page.data, default=float).encode()) <= MAX_OUTPUT_BYTES
+    assert page.data["iterations"] and set(page.data["iterations"][0]) == {"n", "metrics"}
+    assert len(page.data["iterations"]) == page.data["iterations_total"]  # all 24 fit one page
 
 
 async def test_interrupted_study_is_reported(tmp_path, monkeypatch):

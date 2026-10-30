@@ -258,6 +258,7 @@ def test_design_review_children_need_local_mutate(client, rt):
     spec = {"requirements": [{"id": "r1", "kind": "min_safety_factor", "target": 2}],
             "load_cases": [{"id": "tip", "fix": "x-min", "load": "x-max", "newtons": 10,
                             "direction": "-z"}]}
+    # a run without local_mutate: the child sim_run is denied, so the study cannot run
     rid = rt.create_external_run("verifier", provider="x", model="y",
                                  allowed_classes={SafetyClass.READ})
     out = client.portal.call(functools.partial(
@@ -265,8 +266,10 @@ def test_design_review_children_need_local_mutate(client, rt):
         call_id="rev2", workdir=rt.workdir(rid)))
     assert out.ok
     row = out.data["table"][0]
-    assert row["status"] == "fail" and "denied" in row["note"]
+    # a denied child study is "not checked" (warn), never a fail (H2/K3): no evidence is not a fail
+    assert row["status"] == "warn" and row.get("checked") is False and "denied" in row["note"]
     assert out.data["studies"][0]["ok"] is False
+    assert out.data["verdict"] != "fail"
 
 
 def _progress(sub, run_id):
