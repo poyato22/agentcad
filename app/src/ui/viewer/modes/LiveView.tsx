@@ -6,6 +6,7 @@ import { signal, type Signal } from "@preact/signals";
 import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import * as THREE from "three";
+import { materialOf } from "../../../lib/appearance";
 import { actions, parts } from "../../../state/store";
 import type { PartScene } from "../loadPart";
 import { PartLoader } from "../partLoader";
@@ -99,7 +100,10 @@ export function LiveView(p: LiveViewProps): JSX.Element {
       const byId = new Map(parts.peek().map((x) => [x.part_id, x]));
       handle.setParts(want.flatMap((id) => {
         const sc = scenes.get(id);
-        return sc ? [{ id, scene: sc, color: byId.get(id)?.color ?? null, focus: false }] : [];
+        // the part's finish (U8 appearance) too, so a polished part is shiny in view cards and the
+        // immersive view as on the sheet (I5)
+        const p = byId.get(id);
+        return sc ? [{ id, scene: sc, color: p?.color ?? null, focus: false, material: materialOf(p ?? {}) }] : [];
       }), false, true);
     };
     let left = want.length;

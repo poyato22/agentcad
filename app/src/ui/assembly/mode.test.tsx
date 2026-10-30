@@ -42,8 +42,8 @@ describe("ModeSwitch", () => {
     expect(corner?.children).toHaveLength(1);
     expect(corner?.firstElementChild?.getAttribute("data-testid")).toBe("mode-switch");
     expect(container.querySelector(".vp-tabs")).toBeNull();
-    // the sheet's buttons: Part, Assembly and View — nothing else until a menu opens
+    // the sheet's buttons: Part, Assembly, All parts (I3: in the tool row) and View — nothing else until a menu opens
     expect(Array.from(container.querySelectorAll("button")).map((b) => b.textContent?.replace("▾", "").trim()))
-      .toEqual(["Part", "Assembly", "View"]);
+      .toEqual(["Part", "Assembly", "All parts", "View"]);
   });
 });
