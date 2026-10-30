@@ -194,6 +194,14 @@ export function Viewer(): JSX.Element {
       handle = null; // no WebGL: the sheet, title block and metrics still work
     }
     viewerRef.current = handle;
+    if (handle && import.meta.env.MODE !== "production") {
+      // e2e probe (like assembly's __misesAssembly): a model point (mm) → client pixels, so a
+      // test can click a known corner (two-point measure)
+      const h = handle;
+      (window as unknown as { __misesViewer?: { project(p: Vec3): { x: number; y: number } } }).__misesViewer = {
+        project: (p) => { const r = host.getBoundingClientRect(); const [x, y] = h.toScreen(p); return { x: r.left + x, y: r.top + y }; },
+      };
+    }
     // HTML overlays (pins, measure dots) re-place after each frame; at most one render per frame
     const offView = handle?.onView?.(() => setFrame((n) => n + 1));
     setModeHost(handle?.modeHost?.() ?? null);

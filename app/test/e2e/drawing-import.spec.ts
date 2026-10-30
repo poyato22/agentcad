@@ -50,7 +50,7 @@ for (const theme of ["dark", "light"] as const) {
     await expect(card(page).getByText("Mounting Plate.dxf")).toBeVisible();
     // progress first (the fake moves one stage per poll), then the result
     await expect(card(page)).toHaveAttribute("data-import-state", "done", { timeout: 10_000 });
-    await expect(card(page).locator("[data-result]")).toHaveText(/Made mounting_plate · All \d+ dimensions match the drawing/);
+    await expect(card(page).locator("[data-result]")).toHaveText(/Made mounting_plate in Default · All \d+ dimensions match the drawing/);
     const rows = card(page).locator("[data-match-table] tbody tr");
     await expect(rows.first()).toBeVisible();
     expect(await rows.count()).toBeGreaterThanOrEqual(6);
@@ -71,7 +71,7 @@ for (const theme of ["dark", "light"] as const) {
 
     await card(page).getByRole("button", { name: "Open part" }).click();
     await expect.poll(async () => (await fake.calls()).some((c) => c.path === "/parts/mounting_plate/model.glb")).toBe(true);
-    await card(page).getByRole("button", { name: "Dismiss Mounting Plate.dxf" }).click();
+    // m2: opening the part puts the card away (it no longer floats over the viewer)
     await expect(page.locator("[data-import-cards]")).toHaveCount(0);
   });
 }
