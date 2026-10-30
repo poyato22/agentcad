@@ -20,6 +20,8 @@ import { NewRunDialog } from "./ui/dialogs/NewRunDialog";
 import { LeftPane } from "./ui/left/LeftPane";
 import { Overview } from "./ui/viewer/Overview";
 import { activePage, consoleCollapsed, installPageShortcuts, modalOpen, toggleConsole } from "./ui/pages/router";
+import { activeBuildId } from "./state/builds";
+import { DrawingDrop } from "./ui/imports";
 import { DirectoryPage } from "./ui/pages/directory";
 import { DrawingPage } from "./ui/pages/drawing";
 import { OnshapePage } from "./ui/pages/onshape";
@@ -51,6 +53,7 @@ function PageRegion(): JSX.Element {
             aria-pressed={overviewOpen.value} title="See every part of this build"
             onClick={() => toggleOverview()}>All parts</button>
           {overviewOpen.value && <Overview />}
+          <DrawingDrop variant="overlay" projectId={activeBuildId.value} />
         </main>
       </>
     );

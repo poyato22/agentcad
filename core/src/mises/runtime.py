@@ -27,6 +27,7 @@ from .bom.tools import register_bom_tools
 from .browser import images as browser_images
 from .browser.snapshot import SnapshotStore
 from .browser.tools import CardStore, register_browser_tools
+from .imports.drawing_import import register_import_tools
 from .engineering import register_engineering_tools
 from .sim.tools import register_sim_tools
 from .claude_code import detect as claude_detect
@@ -125,6 +126,7 @@ class _ClaudeRun:
     slot: asyncio.Future[bool] | None = None   # set while the next turn waits for a slot
     started_data: dict = field(default_factory=dict)
     restore: str | None = None    # follow-up turns: the status to go back to once a slot frees
+    first_context: dict | None = None   # start_run(first_context=...): data for the first prompt
 
 
 class Runtime:
@@ -150,6 +152,7 @@ class Runtime:
         register_catalog_tools(self.registry)
         register_browser_tools(self.registry)
         register_bom_tools(self.registry)
+        register_import_tools(self.registry)
         self.orchestrator = Orchestrator(self)
         self.started_at = time.time()
         self.catalog = Catalog(self.store)
@@ -700,12 +703,16 @@ class Runtime:
                         allowed_classes: set[SafetyClass] | None = None,
                         sketch_id: str | None = None, project_id: str | None = None,
                         role: str | None = None, title: str | None = None,
-                        routed: dict | None = None, log: dict | None = None) -> str:
+                        routed: dict | None = None, log: dict | None = None,
+                        first_context: dict | None = None,
+                        images: list[tuple[str, str]] | None = None) -> str:
         """`sketch_id` (from POST /sketches): copy that sketch into the run's workdir and give
         it to the agent as data (plus its images for vision-capable providers).
         Plan 7 U3c: `role` "lead" (the build's main agent: its definition gets the lead prompt
         and tools) or "sub" (a spawned sub-agent, `title` its task), `routed` the router's
-        choice; all three are stored on the run."""
+        choice; all three are stored on the run.
+        `first_context` / `images` (e.g. a drawing import): a data block and (media_type,
+        base64) images for the first prompt; images reach vision-capable providers only."""
         defn = self.definitions.get(agent)
         if defn is None:
             raise MisesError(ErrorCode.NOT_FOUND, f"unknown agent: {agent}",
@@ -727,7 +734,8 @@ class Runtime:
                                                 parent_id=parent_id,
                                                 allowed_classes=allowed_classes,
                                                 sketch_id=sketch_id, project_id=project_id,
-                                                meta=meta, log=log)
+                                                meta=meta, log=log,
+                                                first_context=first_context, images=images)
         provider, model = self._resolve_provider(ref, prof)
         if hardware.model_kind(ref) == "local":
             await self.refresh_local_sizes()
@@ -759,6 +767,9 @@ class Runtime:
                 self.parallel.withdraw(run.id)       # the failed run gives its slot / place back
                 self.parallel.release(run.id)
                 raise
+        elif first_context is not None or images:
+            first, user_log = self._attached_first_prompt(prompt, first_context, images or [],
+                                                          provider.name)
         st.task = asyncio.create_task(self._drive_slotted(run.id, first, slot, started,
                                                           user_log=user_log))
         st.task.add_done_callback(functools.partial(self._slotted_done, run.id))
@@ -851,6 +862,17 @@ class Runtime:
         log = {"text": words, "context": ctx, "images": len(blocks) - 1}
         return blocks, log
 
+    @staticmethod
+    def _attached_first_prompt(prompt: str, ctx: dict | None, images: list[tuple[str, str]],
+                               provider: str) -> tuple[list[Block], dict]:
+        """A native run's first message with a data block and images (start_run first_context /
+        images), and the user step's payload (the words, the context as its own field)."""
+        text = f"{context_block(ctx)}\n{prompt}" if ctx is not None else prompt
+        blocks: list[Block] = [TextBlock(text=text)]
+        if provider in sketch_mod.VISION_PROVIDERS:
+            blocks += [ImageBlock(media_type=m, data_b64=d) for m, d in images]
+        return blocks, {"text": prompt, "context": ctx, "images": len(blocks) - 1}
+
     def model_ref_for(self, defn, model_ref: str | None = None, prof=None) -> str:
         """model_ref, else the definition's model (unless "inherit"), else the profile's
         default model, else DEFAULT_MODEL."""
@@ -879,7 +901,9 @@ class Runtime:
                                 allowed_classes: set[SafetyClass] | None,
                                 sketch_id: str | None = None,
                                 project_id: str | None = None,
-                                meta: dict | None = None, log: dict | None = None) -> str:
+                                meta: dict | None = None, log: dict | None = None,
+                                first_context: dict | None = None,
+                                images: list[tuple[str, str]] | None = None) -> str:
         url, token = await self._mcp()
         info, auth = await self._claude_ready()
         ref = f"{CLAUDE_CODE}/{alias}"
@@ -889,9 +913,9 @@ class Runtime:
                                        task=prompt, slot_ref=ref, project_id=project_id)
         if meta:     # before the session starts: its rules file reads the run's role
             self.store.update_run(rid, **meta)
-        st = self._claude[rid] = _ClaudeRun(ref=ref)
+        st = self._claude[rid] = _ClaudeRun(ref=ref, first_context=first_context)
         st.slot, st.started_data = self._external_slots.pop(rid, (None, {}))
-        text, images = prompt, None
+        text = prompt
         try:
             if sketch_id is not None:
                 wd = self.workdir(rid)
@@ -956,8 +980,10 @@ class Runtime:
             st.result = result
             return result
         try:
-            final = await st.session.prompt(text, context=self._claude_context(rid) if first
-                                            else None, images=images, log=log)
+            context = self._claude_context(rid) if first else None
+            if first and st.first_context is not None:
+                context = {**(context or {}), **st.first_context}
+            final = await st.session.prompt(text, context=context, images=images, log=log)
             result = RunResult(final_text=final, messages=[], stop_reason="end_turn")
         except MisesError as e:
             stop = "cancelled" if e.code == ErrorCode.CANCELLED else "error"

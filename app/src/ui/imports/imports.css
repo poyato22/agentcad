@@ -1,0 +1,83 @@
+/* Drawing import: drop targets and the import cards. Tokens only (both themes). */
+
+.imp-drop {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  border: 1px dashed var(--line2); background: var(--paper); color: var(--ink); text-align: center;
+}
+.imp-drop-title { margin: 0; font: 600 var(--fs)/1.4 var(--font-head); letter-spacing: .02em; }
+.imp-drop-sub { margin: 0 0 4px; font-size: var(--fs-small); color: var(--dim); }
+.imp-drop[data-over], .imp-drop-overlay { border-color: var(--blue); background: var(--blue-tint); }
+
+.imp-tile-wrap { display: flex; flex-direction: column; gap: 10px; }
+.imp-drop-tile { min-height: 132px; padding: 16px; }
+
+.imp-overlay-anchor { position: absolute; inset: 0; pointer-events: none; z-index: 30; }
+.imp-drop-overlay { position: absolute; inset: 12px; border-width: 2px; pointer-events: none; }
+.imp-file { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.imp-empty-hint {
+  position: absolute; left: 50%; top: calc(50% + 22px); transform: translateX(-50%);
+  display: flex; align-items: center; gap: 10px; font-size: var(--fs-small); pointer-events: auto;
+  white-space: nowrap;
+}
+
+.imp-stack { display: flex; flex-direction: column; gap: 8px; }
+.imp-stack-float {
+  position: absolute; left: 12px; bottom: 12px; width: min(560px, calc(100% - 24px));
+  max-height: calc(100% - 24px); overflow: auto; pointer-events: auto;
+}
+
+.imp-card { border: 1px solid var(--line2); background: var(--paper); padding: 8px 10px 10px; font-size: var(--fs-small); }
+.imp-card[data-import-state="failed"] { border-color: var(--red); }
+.imp-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.imp-kind {
+  flex: none; padding: 0 4px; border: 1px solid var(--line2); color: var(--dim);
+  font: 600 var(--fs-label)/1.6 var(--font-head); letter-spacing: .1em;
+}
+.imp-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
+.imp-x { flex: none; border: 0; background: transparent; color: var(--dim); cursor: pointer; padding: 0 4px; font-size: 14px; line-height: 1; }
+.imp-x:hover { color: var(--ink); }
+.imp-x:focus-visible { outline: 1px solid var(--blue); }
+
+.imp-progress { margin-top: 8px; }
+.imp-stage { margin: 0 0 6px; color: var(--ink); }
+.imp-sub { margin: 6px 0 0; }
+.imp-bar { position: relative; height: 3px; background: var(--line); overflow: hidden; }
+.imp-bar > span { position: absolute; top: 0; bottom: 0; width: 30%; background: var(--blue); animation: imp-slide 1.4s ease-in-out infinite; }
+@keyframes imp-slide { from { left: -30%; } to { left: 100%; } }
+@media (prefers-reduced-motion: reduce) { .imp-bar > span { animation: none; left: 0; width: 100%; opacity: .5; } }
+
+.imp-failed { margin-top: 8px; }
+.imp-error { margin: 0; color: var(--red); }
+.imp-hint { margin: 4px 0 0; color: var(--dim); }
+
+.imp-done { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
+.imp-result { margin: 0; display: flex; align-items: center; gap: 8px; color: var(--ink); }
+
+.imp-side { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.imp-fig { margin: 0; display: flex; flex-direction: column; gap: 4px; }
+.imp-fig-box {
+  display: flex; align-items: center; justify-content: center; aspect-ratio: 297 / 210;
+  border: 1px solid var(--line); background: #ffffff; overflow: hidden;
+}
+.imp-fig-box img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+.imp-fig-box .faint { color: #6a6a6a; }
+
+.imp-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.imp-table th, .imp-table td { padding: 3px 6px; border-bottom: 1px solid var(--line); text-align: left; font-weight: 400; }
+.imp-table thead th { color: var(--faint); font: 600 var(--fs-label)/1.4 var(--font-head); letter-spacing: .1em; text-transform: uppercase; }
+.imp-table tbody th { color: var(--ink); }
+.imp-dimtext { color: var(--dim); }
+.imp-table td:nth-child(2), .imp-table td:nth-child(3) { white-space: nowrap; }
+.imp-res-ok { color: var(--green); }
+.imp-res-bad { color: var(--red); }
+.imp-res-faint { color: var(--faint); }
+.imp-notes { margin: 0; padding-left: 16px; color: var(--dim); }
+.imp-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.imp-caption { caption-side: top; text-align: left; padding: 0 0 4px; color: var(--ink); font-size: var(--fs-small); }
+.imp-caption-note { color: var(--dim); }
+.imp-res-warn { color: var(--amber); }
+.imp-ev { white-space: nowrap; }
+.imp-checks { display: flex; flex-direction: column; gap: 6px; }
+.imp-check { margin: 0; }
+.imp-look { border-left: 2px solid var(--line2); padding-left: 8px; }
+.imp-look-head { margin: 0; color: var(--ink); }

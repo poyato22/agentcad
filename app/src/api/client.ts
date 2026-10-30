@@ -36,6 +36,7 @@ import {
   activeBuildSchema, buildRefSchema, catalogItemSchema, onshapeBudgetSchema, onshapeDocSchema, onshapeElementSchema, partResultSchema,
   type BuildRef, type CatalogEdit, type CatalogItem, type OnshapeBudget, type OnshapeDoc, type OnshapeElement, type PartResult,
 } from "./directory";
+import { drawingImportSchema, type DrawingImport } from "./imports";
 import type { DrawingInfo, NewPrinterBody, PrintCall, PrintCapabilities, Printer, PrinterStatus, PrintStart, Slice, SliceStart } from "./types";
 import {
   assemblyPartSchema, assemblySchema, driveResultSchema, instanceDeletedSchema, instanceSchema, interferenceSchema, jointDeletedSchema,
@@ -593,6 +594,17 @@ export class CoreClient {
     return this.json("POST", `/parts/${enc(id)}/ops`, partEditResultSchema, { body: { ...op, base_version: baseVersion } });
   }
 
+  // ---- drawing import (core imports_api.py): a drawing file → a part, with a dimension match table
+  importDrawing(file: Blob, name: string, opts: { projectId?: string | null } = {}): Promise<DrawingImport> {
+    const form = new FormData();
+    form.append("file", file, name);
+    if (opts.projectId) form.append("project_id", opts.projectId);
+    return this.json("POST", "/imports/drawing", drawingImportSchema, { body: form });
+  }
+  drawingImport(id: string): Promise<DrawingImport> { return this.json("GET", `/imports/${enc(id)}`, drawingImportSchema); }
+  /** The original drawing as a picture (page 1, or an SVG of a DXF): shown via a blob: URL in an <img>. */
+  drawingImportOriginal(id: string, type: string): Promise<Blob> { return this.blob(`/imports/${enc(id)}/original`, type); }
+
   // ---- internals
 
   /** A binary answer as a Blob of `type` (the type is ours, not the server's). */
@@ -635,7 +647,9 @@ export class CoreClient {
     const headers: Record<string, string> = { Authorization: `Bearer ${this.token}`, ...opts.headers };
     const init: RequestInit = { method, headers };
     if (opts.signal) init.signal = opts.signal;
-    if (opts.body !== undefined) {
+    if (opts.body instanceof FormData) {
+      init.body = opts.body;            // multipart: fetch sets the boundary header itself
+    } else if (opts.body !== undefined) {
       headers["Content-Type"] = "application/json";
       init.body = JSON.stringify(opts.body);
     }

@@ -11,6 +11,8 @@ dependencies = [
   "gmsh>=4.15",  # sim mesher (GPL): only ever imported in a child process, see mises.sim.mesh
   "bd-warehouse>=0.4.0",  # catalog fastener and bearing geometry (Apache-2.0), see mises.catalog.geometry
   "numpy>=2.0",  # study post-processing and the built-in wind (lattice-Boltzmann) solver
+  "ezdxf==1.4.5",  # drawing import: DXF geometry + DIMENSION entities, parsed in a sandboxed child
+  "pypdfium2==5.14.0",  # drawing import: PDF pages rasterized in a sandboxed child
 ]
 
 [project.scripts]
