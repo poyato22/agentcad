@@ -14,8 +14,8 @@ from typing import TYPE_CHECKING, Awaitable, Callable
 from fastapi import APIRouter
 
 from ..events import Event
-from ..system_check import (BREW_URL, CONDA_URL, INSTALLERS, Probes, find_brew, find_conda,
-                            system_check)
+from ..system_check import (BREW_URL, CONDA_URL, INSTALLERS, ORBSTACK_URL, Probes, find_brew,
+                            find_conda, find_docker, system_check)
 from ..types import ErrorCode, MisesError
 
 if TYPE_CHECKING:
@@ -24,13 +24,13 @@ if TYPE_CHECKING:
 # A command runner: run argv, call emit(line) per output line, return the exit code. Injected so
 # tests never spawn a real brew/conda.
 CommandRunner = Callable[[list[str], Callable[[str], None]], Awaitable[int]]
-_MGR_URL = {"brew": BREW_URL, "conda": CONDA_URL}
+_MGR_URL = {"brew": BREW_URL, "conda": CONDA_URL, "docker": ORBSTACK_URL}
 _OUTPUT_CAP = 20000  # lines; a runaway installer cannot flood events forever
 
 
 def _find_mgr(name: str) -> str | None:
-    # Looked up through the module each call so tests can monkeypatch find_brew/find_conda.
-    return {"brew": find_brew, "conda": find_conda}[name]()
+    # Looked up through the module each call so tests can monkeypatch find_brew/conda/docker.
+    return {"brew": find_brew, "conda": find_conda, "docker": find_docker}[name]()
 
 
 async def _subprocess_runner(argv: list[str], emit: Callable[[str], None]) -> int:

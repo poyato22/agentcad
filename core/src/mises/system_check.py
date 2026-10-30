@@ -27,6 +27,7 @@ from .claude_code import detect as claude_detect
 from .print import slicer
 from .profile import load_profile
 from .sim import ccx as ccx_mod
+from .sim.foam_image import OPENFOAM_IMAGE, ORBSTACK_URL, find_container_runtime
 
 # dep -> (fixed command, the tool it needs). The command takes NO arguments from any request.
 BREW_URL = "https://brew.sh"
@@ -38,7 +39,7 @@ OLLAMA_URL = "https://ollama.com/download"
 @dataclass(frozen=True)
 class Installer:
     cmd: tuple[str, ...]
-    needs: str          # "brew" | "conda": the manager that must be present
+    needs: str          # "brew" | "conda" | "docker": the manager that must be present
     label: str
 
 
@@ -47,6 +48,8 @@ INSTALLERS: dict[str, Installer] = {
     "calculix": Installer(("install", "-y", "-c", "conda-forge", "calculix"), "conda",
                           "Install CalculiX"),
     "ollama": Installer(("install", "ollama"), "brew", "Install Ollama"),
+    # S2: the pinned (by digest) OpenFOAM image; Docker / OrbStack itself is never installed
+    "openfoam": Installer(("pull", OPENFOAM_IMAGE), "docker", "Pull the OpenFOAM image"),
 }
 
 LOW_DISK_GB = 5.0
@@ -69,6 +72,10 @@ def find_brew() -> str | None:
 
 def find_conda() -> str | None:
     return _which_mgr("conda", _CONDA_DIRS)
+
+
+def find_docker() -> str | None:
+    return find_container_runtime()
 
 
 def _cmd_version(argv: list[str]) -> str | None:
@@ -366,5 +373,5 @@ async def system_check(runtime, probes: Probes | None = None) -> list[dict]:
     return rows
 
 
-__all__ = ["Probes", "Installer", "INSTALLERS", "default_probes", "system_check",
-           "find_brew", "find_conda"]
+__all__ = ["Probes", "Installer", "INSTALLERS", "default_probes", "system_check", "find_docker",
+           "find_brew", "find_conda", "ORBSTACK_URL"]
