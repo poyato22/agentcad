@@ -88,6 +88,14 @@ function printFacts(a: Approval): string[] | null {
   return out.filter(Boolean);
 }
 
+/** The core's before → after lines (deltas.changes, e.g. a calibration save) and its note. */
+function changeFacts(a: Approval): { lines: string[]; note: string | null } | null {
+  const raw = a.deltas.changes;
+  if (!Array.isArray(raw)) return null;
+  const lines = raw.filter((x): x is string => typeof x === "string").slice(0, MAX_FIELDS).map(clip);
+  return lines.length ? { lines, note: str(a.deltas.note) } : null;
+}
+
 /** "elements: 1 · conflicts: 0" — counts of the list fields of Onshape's merge preview. */
 function mergePreviewSummary(mp: unknown): string | null {
   const o = rec(mp);
@@ -214,6 +222,7 @@ export function ApprovalCard(props: { approval: Approval; runLabel: string }): J
   const fields = payloadFields(a);
   const preview = mergePreviewSummary(a.deltas.merge_preview);
   const print = printFacts(a);
+  const changes = changeFacts(a);
 
   return (
     <div ref={ref} data-card data-approval={a.id} data-status={expired ? "expired" : a.status}
@@ -239,6 +248,12 @@ export function ApprovalCard(props: { approval: Approval; runLabel: string }): J
         <div class="acard-what acard-fields text" data-print-facts>
           <span class="tone-amber">Approving starts printing on this printer:</span>
           {print.map((f, i) => <span key={i}>{f}</span>)}
+        </div>
+      )}
+      {changes && (
+        <div class="acard-what acard-fields text" data-change-facts>
+          {changes.note && <span class="tone-amber">{changes.note}</span>}
+          {changes.lines.map((f, i) => <span key={i} data-change>{f}</span>)}
         </div>
       )}
       {says && <div class="acard-says faint text" data-agent-says>agent says: {says}</div>}

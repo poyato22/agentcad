@@ -153,6 +153,28 @@ async def test_calibration_tools(tmp_path):
         await ct.calibration_get.handler(ctx, ct.IdArgs(id=cid))
 
 
+async def test_agent_save_and_delete_need_approval_with_before_after(tmp_path):
+    """Final review I1: an agent's calibration_save / _delete is the user's click on a card
+    showing what changes (before -> after); the app's own routes keep their confirm."""
+    ctx = _ctx(tmp_path)
+    save, delete = ct.calibration_save, ct.calibration_delete
+    args = ct.SaveArgs(**TESTS)
+    assert save.needs_approval(ctx, args) and delete.needs_approval(ctx, ct.IdArgs(id="cal_0a1b2c3d4e"))
+    pv = await save.preview(ctx, args)
+    assert pv["before"]["n_tests"] is None and pv["after"]["n_tests"] == 5
+    assert any(c.startswith("E: ") and "→" in c for c in pv["changes"])
+    assert any(c.startswith("tests: — → 5") for c in pv["changes"])
+    cid = (await save.handler(ctx, args)).data["id"]
+    again = await save.preview(ctx, args)
+    assert again["before"]["n_tests"] == 5 and not any(c.startswith("tests") for c in again["changes"])
+    gone = await delete.preview(ctx, ct.IdArgs(id=cid))
+    assert gone["after"]["n_tests"] is None and "data sheet" in gone["note"]
+    # the app's own UI call (Runtime.ui_tool_call) asks no card
+    ui = SimpleNamespace(**{**vars(ctx), "services": {"runtime": SimpleNamespace(
+        home=tmp_path, ui_calls={"c": SimpleNamespace(run_id="r", meta={})})}})
+    assert save.needs_approval(ui, args) is None
+
+
 async def test_part_test_outside_the_run_scope_is_refused(tmp_path):
     _study(tmp_path, part="secret")
     ctx = _ctx(tmp_path, scope=("beam",))

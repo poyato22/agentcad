@@ -97,7 +97,82 @@ async def calibration_fit(ctx: ToolContext, args: cal.CalibrationInput) -> ToolO
                             "applicable": fitted["status"] == "ok", "saved": False})
 
 
+APPROVAL_REASON = ("a saved calibration changes the material every later study of it on "
+                   "this printer uses, in every build")
+
+
+def _agent_call(ctx: ToolContext, args) -> str | None:
+    """Saving is applying (S4 C-cal-5): an agent's save or delete is the user's trusted click
+    on a card. The app's own Studies page calls the core routes, with their own confirm."""
+    from ..catalog.tools import ui_call_meta
+    return None if ui_call_meta(ctx) is not None else APPROVAL_REASON
+
+
+def _props(rec: dict | None) -> dict:
+    """The applied values of a record (or the data sheet's when there is none)."""
+    f = (rec or {}).get("fit") or {}
+    e = f.get("e") or {}
+    return {"e_mpa": None if str(e.get("method", "")).startswith("secant") else e.get("value_mpa"),
+            "strength_mpa": (f.get("strength") or {}).get("value_mpa"),
+            "z_strength_mpa": (f.get("z_strength") or {}).get("value_mpa"),
+            "knockdown": f.get("knockdown"), "n_tests": f.get("n_tests"),
+            "confidence": f.get("confidence"), "status": f.get("status")}
+
+
+_LABELS = (("e_mpa", "E", " MPa"), ("strength_mpa", "strength", " MPa"),
+           ("z_strength_mpa", "Z strength", " MPa"), ("knockdown", "knock-down", ""),
+           ("n_tests", "tests", ""), ("confidence", "confidence", ""), ("status", "status", ""))
+
+
+def _fmt(v, unit: str) -> str:
+    if v is None:
+        return "data sheet" if unit else "—"
+    return f"{v:.4g}{unit}" if isinstance(v, float) else f"{v}{unit}"
+
+
+def _changes(before: dict, after: dict) -> list[str]:
+    """"E 2300 MPa → 3220 MPa" lines for the card (only what changes)."""
+    out = []
+    for k, label, unit in _LABELS:
+        if before.get(k) != after.get(k):
+            out.append(f"{label}: {_fmt(before.get(k), unit)} → {_fmt(after.get(k), unit)}")
+    return out
+
+
+async def _save_preview(ctx: ToolContext, args: SaveArgs) -> dict:
+    home = _need_home(ctx)
+    inp = cal.CalibrationInput(**args.model_dump(exclude={"append"}))
+    old = cal.find(home, inp.material, inp.printer)
+    if args.append:
+        try:
+            inp = cal.merged(old, inp)
+        except SimError as e:
+            raise MisesError(ErrorCode.INVALID_INPUT, e.message, hint=e.hint) from None
+    fitted, base, _m = _fit(ctx, inp)
+    before, after = _props(old), _props({"fit": fitted})
+    if old is None:
+        before = {**before, "e_mpa": base.e_mpa, "strength_mpa": base.yield_mpa,
+                  "knockdown": base.knockdown}
+    return {"material": inp.material, "printer": inp.printer, "before": before, "after": after,
+            "changes": _changes(before, after),
+            "note": "Approving saves this calibration: every later study of this material on "
+                    "this printer uses it." + (" It is REJECTED, so studies will not use it."
+                                               if fitted.get("status") == cal.REJECTED else "")}
+
+
+async def _delete_preview(ctx: ToolContext, args: IdArgs) -> dict:
+    rec = cal.get(_home(ctx), args.id)
+    if rec is None:
+        raise MisesError(ErrorCode.NOT_FOUND, f"no calibration {args.id}")
+    before = _props(rec)
+    after = {k: None for k in before}
+    return {"material": rec["material"], "printer": rec["printer"], "before": before,
+            "after": after, "changes": _changes(before, after),
+            "note": "Approving deletes this calibration: studies go back to the data sheet."}
+
+
 @tool("calibration_save", safety=SafetyClass.LOCAL_MUTATE,
+      needs_approval=_agent_call, preview=_save_preview,
       description="Fit and SAVE the calibration of a material on a printer profile from the "
                   "user's test results (same inputs as calibration_fit; append=true adds to the "
                   "saved tests). Studies of that material and printer then use it. Only record "
@@ -120,6 +195,7 @@ async def calibration_save(ctx: ToolContext, args: SaveArgs) -> ToolOutput:
 
 
 @tool("calibration_delete", safety=SafetyClass.LOCAL_MUTATE,
+      needs_approval=_agent_call, preview=_delete_preview,
       description="Delete a material calibration by id (studies go back to the data sheet).")
 async def calibration_delete(ctx: ToolContext, args: IdArgs) -> ToolOutput:
     if not cal.delete(_need_home(ctx), args.id):
