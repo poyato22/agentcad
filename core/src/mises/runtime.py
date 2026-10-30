@@ -38,7 +38,7 @@ from .onshape.tools import register_onshape_tools
 from .orchestrator import Orchestrator, register_orchestrator_tools
 from .orchestrator.orchestrator import DELEGATION_TOOLS, MAX_DEPTH, run_depth
 from .parallel import Limits, ParallelLimiter
-from .platform import data_home, keychain_get
+from .platform import data_home, keychain_get, register_sandbox_home
 from .print.tools import register_print_tools
 from .profile import load_profile
 from .providers.registry import DEFAULT_MODEL, VENDORS, resolve
@@ -123,6 +123,8 @@ class _ClaudeRun:
 class Runtime:
     def __init__(self, home: Path | None = None, *, provider_resolver=resolve):
         self.home = Path(home) if home is not None else data_home()
+        # every sandboxed worker denies reads of this home (server.json, mises.db, runs/)
+        register_sandbox_home(self.home)
         self.home.mkdir(parents=True, exist_ok=True)
         self.provider_resolver = provider_resolver
         self.store = Store(self.home / "mises.db")
@@ -144,7 +146,7 @@ class Runtime:
         self.catalog = Catalog(self.store)
         services: dict = {"approvals": self.approvals, "runtime": self,
                           "orchestrator": self.orchestrator, "assembly": self.assembly_store,
-                          "catalog": self.catalog}
+                          "catalog": self.catalog, "secrets": set()}
         adapter = self._onshape_adapter(keychain_get("mises", "onshape"))
         if adapter is not None:
             services["onshape"] = adapter
@@ -345,6 +347,12 @@ class Runtime:
         ad = self.gate.services.get("onshape")
         if ad is not None:
             await ad.client.aclose()
+
+    def register_secrets(self, *tokens: str) -> None:
+        """Defense in depth: the gate scrubs these strings (the admin and MCP tokens) from every
+        tool result and error, so a build or worker that somehow read one cannot carry it back."""
+        secrets_ = self.gate.services.setdefault("secrets", set())
+        secrets_.update(t for t in tokens if t)
 
     # ---- the MCP endpoint Claude Code runs reach Mises through
     def attach_mcp(self, url: str, mcp_token: str) -> None:

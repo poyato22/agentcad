@@ -194,6 +194,7 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
     mcp_token = mcp_token or secrets.token_urlsafe(32)
     if hmac.compare_digest(mcp_token.encode(), token.encode()):
         raise ValueError("the MCP-only token must differ from the admin token")
+    runtime.register_secrets(token, mcp_token)  # defense in depth: scrub them from tool results
     mcp_server = build_mcp_server(runtime)
     manager = StreamableHTTPSessionManager(
         app=mcp_server, json_response=True, stateless=True,

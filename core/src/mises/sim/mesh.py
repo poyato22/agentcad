@@ -88,7 +88,9 @@ async def mesh_step(step: Path, job_dir: Path, size_mm: float, *, timeout_s: flo
         opt = job_dir / "mesh_options.json"
         opt.write_text(json.dumps(options))
         argv.append(str(opt.resolve()))
-    rc, _, err = await run_sandboxed(argv, job_dir, timeout_s=timeout_s, what="gmsh meshing")
+    # the model.step the mesher reads sits in the sim job root, a level above job_dir
+    rc, _, err = await run_sandboxed(argv, job_dir, timeout_s=timeout_s, what="gmsh meshing",
+                                     read_dirs=[Path(step).resolve().parent])
     if rc != 0 or not out.exists():
         msg = next((ln for ln in err.splitlines() if ln.startswith("MESH_ERROR")), err.strip())
         raise SimError("mesh_failed", f"meshing failed: {msg[-800:] or f'exit {rc}'}",

@@ -59,14 +59,17 @@ async def _watch_memory(proc: asyncio.subprocess.Process, limit_mb: float,
 
 async def run_sandboxed(argv: list[str], job_dir: Path, *, timeout_s: float, what: str,
                         env: dict[str, str] | None = None,
-                        memory_limit_mb: float | None = None) -> tuple[int, str, str]:
+                        memory_limit_mb: float | None = None,
+                        read_dirs: "tuple[Path, ...] | list[Path]" = ()) -> tuple[int, str, str]:
     """Returns (returncode, stdout tail, stderr tail). Raises SimError("timeout") on timeout,
-    and SimError("memory") when memory_limit_mb is given and the process group exceeds it."""
+    and SimError("memory") when memory_limit_mb is given and the process group exceeds it.
+    `read_dirs` are extra dirs the process may read (e.g. the job root holding model.step when
+    the mesher writes into a level subdir)."""
     job_dir = Path(job_dir).resolve()
     base = {"PATH": "/usr/bin:/bin", "HOME": str(job_dir), "TMPDIR": str(job_dir),
             "PYTHONDONTWRITEBYTECODE": "1"}
     proc = await asyncio.create_subprocess_exec(
-        *sandboxed_command(argv, job_dir), cwd=str(job_dir),
+        *sandboxed_command(argv, job_dir, read_dirs=read_dirs), cwd=str(job_dir),
         stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE, env={**base, **(env or {})}, start_new_session=True)
     hit: list[float] = []

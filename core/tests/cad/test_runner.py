@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from mises import platform
 from mises.cad.runner import run_build
 
 pytestmark = pytest.mark.slow
@@ -97,3 +98,25 @@ async def test_nonce_not_in_environment(tmp_path):
               "    assert 'MISES_NONCE' not in os.environ\n    raise RuntimeError('probe ok')\n")
     r = await run_build(mk(tmp_path, script), {})
     assert not r.ok and "probe ok" in r.error
+
+
+async def test_build_cannot_read_home_secrets(tmp_path, monkeypatch):
+    """C1: a part script that reads server.json (the admin token) must fail with a permission
+    error, and the secret must not appear in the result. The home is unreadable except the
+    part's own dir and the parts tree; nothing outside the home is affected (test_network_denied,
+    test_write_outside_denied still cover those)."""
+    home = tmp_path / "home"
+    (home / "parts").mkdir(parents=True)
+    (home / "server.json").write_text('{"token": "SUPER-SECRET-ADMIN"}')
+    (home / "mises.db").write_text("DB-SECRET")
+    monkeypatch.setattr(platform, "_SANDBOX_HOME", home.resolve())
+    pd = home / "parts" / "leak"
+    pd.mkdir()
+    for rel in ("../../server.json", "../../mises.db"):
+        (pd / "part.py").write_text(
+            "from pathlib import Path\nVARS = {}\n"
+            f"def build(v):\n    raise RuntimeError((Path(__file__).parent / {rel!r}).read_text())\n")
+        r = await run_build(pd, {})
+        assert not r.ok
+        assert "SECRET" not in (r.error or "") and "SECRET" not in (r.stdout_tail or "")
+        assert "Operation not permitted" in r.error or "Permission" in r.error

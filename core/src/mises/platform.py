@@ -63,24 +63,75 @@ def _unsafe(s: str) -> bool:
     return any(c in s for c in '"\\') or any(ord(c) < 32 or ord(c) == 127 for c in s)
 
 
-def sandbox_profile(write_dir: Path) -> str:
+_SANDBOX_HOME: Path | None = None
+
+
+def register_sandbox_home(home: Path | None) -> None:
+    """The Runtime registers its home here so every sandboxed worker (`sandboxed_command`) denies
+    reads of it. Left unset — no Runtime, as in a bare unit test of run_build — the profile adds
+    no home restriction and nothing ever touches the real `data_home()`."""
+    global _SANDBOX_HOME
+    _SANDBOX_HOME = Path(home).resolve() if home is not None else None
+
+
+def sandbox_profile(write_dir: Path, *, home: Path | None = None,
+                    read_dirs: "tuple[Path, ...] | list[Path]" = ()) -> str:
     """No network, writes only under write_dir, and no new processes: `process-fork` covers
     fork, vfork and posix_spawn, so nothing the sandboxed program starts can outlive it (a
     `fork(); setsid()` daemon would otherwise keep writing into its dir after the host checked
-    it). The CAD worker, the drawing worker, gmsh and CalculiX all run in one process."""
+    it). The CAD worker, the drawing worker, gmsh and CalculiX all run in one process.
+
+    When `home` is given the Mises home is also unreadable: server.json holds the admin token,
+    mises.db* the approvals and ledger, and runs/ the other runs' policies and workdirs, so a
+    part script that read them could carry a secret back in its error text. Only the job's own
+    write_dir and the parts tree (geometry scripts and metrics, never secrets) are re-opened; the
+    home's and the write_dir's own ancestor dirs keep metadata so the program can still reach its
+    write_dir. The stdlib/venv and everything outside the home stay readable."""
     d = str(Path(write_dir).resolve())
     if _unsafe(str(write_dir)) or _unsafe(d):
         raise ValueError("write_dir contains characters unsafe for a sandbox profile")
+    extra = []
+    for rd in read_dirs:
+        rp = str(Path(rd).resolve())
+        if _unsafe(str(rd)) or _unsafe(rp):
+            raise ValueError("read_dir contains characters unsafe for a sandbox profile")
+        extra.append(rp)
+    reads = ""
+    if home is not None:
+        h = Path(home).resolve()
+        if _unsafe(str(h)):
+            raise ValueError("home contains characters unsafe for a sandbox profile")
+        meta_of = [h, *Path(d).parents]
+        for rp in extra:
+            meta_of += list(Path(rp).parents)
+        lookups = " ".join(f'(literal "{p}")' for p in dict.fromkeys(meta_of)
+                           if p.is_relative_to(h))
+        reads = (
+            f'(deny file-read* (subpath "{h}"))\n'
+            f'(allow file-read* (subpath "{h / "parts"}"))\n'
+            f'(allow file-read* (subpath "{d}"))\n'
+        )
+        for rp in extra:
+            reads += f'(allow file-read* (subpath "{rp}"))\n'
+        if lookups:
+            reads += f"(allow file-read-metadata {lookups})\n"
     return (
         "(version 1)\n(allow default)\n(deny network*)\n(deny process-fork)\n(deny file-write*)\n"
         f'(allow file-write* (subpath "{d}") (literal "/dev/null"))\n'
+        + reads
     )
 
 
-def sandboxed_command(argv: list[str], write_dir: Path) -> list[str]:
-    """Prefix argv with sandbox-exec so it can only write under write_dir, has no network and
-    cannot start other processes."""
-    return ["/usr/bin/sandbox-exec", "-p", sandbox_profile(write_dir), *argv]
+def sandboxed_command(argv: list[str], write_dir: Path, *, home: Path | None = None,
+                      read_dirs: "tuple[Path, ...] | list[Path]" = ()) -> list[str]:
+    """Prefix argv with sandbox-exec so it can only write under write_dir, read the Mises home
+    only through write_dir, the parts tree and any explicit read_dirs (e.g. a sim's job root,
+    which holds the model.step the mesher reads while writing into a level subdir), has no
+    network and cannot start other processes. `home` defaults to the Runtime-registered home
+    (see register_sandbox_home)."""
+    home = home if home is not None else _SANDBOX_HOME
+    return ["/usr/bin/sandbox-exec", "-p",
+            sandbox_profile(write_dir, home=home, read_dirs=read_dirs), *argv]
 
 
 def _process_table() -> list[tuple[int, int, int]]:

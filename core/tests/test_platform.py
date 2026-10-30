@@ -51,6 +51,28 @@ def test_sandbox_profile_rejects_unsafe(bad):
         p.sandbox_profile(Path(bad))
 
 
+def test_sandbox_profile_denies_home_except_write_and_parts(tmp_path):
+    home = tmp_path / "h"
+    wd = home / "parts" / "x"
+    wd.mkdir(parents=True)
+    s = p.sandbox_profile(wd, home=home)
+    assert f'(deny file-read* (subpath "{home.resolve()}"))' in s
+    assert f'(allow file-read* (subpath "{(home / "parts").resolve()}"))' in s
+    assert f'(allow file-read* (subpath "{wd.resolve()}"))' in s
+    assert f'(literal "{home.resolve()}")' in s  # metadata so the worker can reach its write_dir
+    # no home given: no read restriction, and nothing touches the real data_home()
+    assert "deny file-read*" not in p.sandbox_profile(wd)
+
+
+def test_sandbox_profile_read_dirs(tmp_path):
+    home = tmp_path / "h"
+    job = home / "runs" / "r" / "sim_tmp" / "s"
+    wd = job / "coarse"
+    wd.mkdir(parents=True)
+    s = p.sandbox_profile(wd, home=home, read_dirs=[job])
+    assert f'(allow file-read* (subpath "{job.resolve()}"))' in s
+
+
 def test_keychain_set_secret_not_in_argv_or_error(monkeypatch):
     seen = {}
 
