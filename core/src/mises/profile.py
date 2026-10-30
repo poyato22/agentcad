@@ -20,8 +20,11 @@ log = logging.getLogger(__name__)
 
 PROFILE_FILE = "profile.json"
 # 2: max_parallel_agents gained "auto" (the new default). Files without schema_version predate
-# it; their max_parallel_agents of 2 was the old default, not a choice, and becomes "auto".
-PROFILE_SCHEMA_VERSION = 2
+#    it; their max_parallel_agents of 2 was the old default, not a choice, and becomes "auto".
+# 3: the default agent became "engineer" (was "designer"). save_profile writes the whole model,
+#    so every pre-v3 profile has "designer" on disk because that was the old default, not a
+#    choice; it becomes "engineer". A user who picks the designer now (saved at v3+) keeps it.
+PROFILE_SCHEMA_VERSION = 3
 _LOOPBACK = {"localhost", "127.0.0.1", "::1"}
 _DOMAIN_RE = re.compile(r"(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,62}")
 
@@ -122,10 +125,19 @@ class Profile(BaseModel):
 
 
 def _migrate(data):
-    if isinstance(data, dict) and "schema_version" not in data:
-        data = dict(data)
+    if not isinstance(data, dict):
+        return data
+    data = dict(data)
+    ver = data.get("schema_version")
+    if ver is None:
+        # predates v2: max_parallel_agents of 2 was the old default, not a choice
         if data.get("max_parallel_agents") == 2:
             data["max_parallel_agents"] = "auto"
+        ver = 1
+    if ver < 3 and data.get("default_agent") == "designer":
+        # the whole model was saved, so "designer" here is the old default, not a choice
+        data["default_agent"] = "engineer"
+    if ver < PROFILE_SCHEMA_VERSION:
         data["schema_version"] = PROFILE_SCHEMA_VERSION
     return data
 

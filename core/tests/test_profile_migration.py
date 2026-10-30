@@ -44,3 +44,41 @@ def test_put_profile_migrated_legacy_file(tmp_path):
     merged = Profile.model_validate({**p.model_dump(), "display_name": "Bo"})
     save_profile(tmp_path, merged)
     assert load_profile(tmp_path).max_parallel_agents == "auto"
+
+
+# A Plan-4 (schema_version 2) profile shaped like the real one. NOT the user's real profile.
+PLAN4_PROFILE = {
+    "schema_version": 2, "display_name": "Ada", "units": "mm", "default_material": "PLA",
+    "default_agent": "designer", "default_model": "anthropic/claude-sonnet-4",
+    "onshape_calls_year_cap": 2500, "onshape_calls_run_cap": 200,
+    "max_parallel_agents": "auto", "local_endpoints": {}, "theme": "system",
+    "setup_completed_at": 1750000000.0, "printers": [], "active_project_id": "default",
+    "open_project_ids": ["default"], "hidden_agents": [], "catalog_allowed_domains": [],
+}
+
+
+def test_plan4_designer_default_becomes_engineer(tmp_path):
+    """H1/C-1: a pre-v3 profile saved 'designer' because that was the old default, not a choice,
+    so it migrates to 'engineer' once. Everything else is preserved."""
+    write(tmp_path, PLAN4_PROFILE)
+    p = load_profile(tmp_path)
+    assert p.default_agent == "engineer"
+    assert p.display_name == "Ada" and p.default_model == "anthropic/claude-sonnet-4"
+    assert p.schema_version == PROFILE_SCHEMA_VERSION
+
+
+def test_legacy_unversioned_designer_becomes_engineer(tmp_path):
+    write(tmp_path, {"default_agent": "designer"})
+    assert load_profile(tmp_path).default_agent == "engineer"
+
+
+def test_v3_designer_choice_is_kept(tmp_path):
+    """After the bump, choosing the designer on purpose (saved at v3) stays."""
+    write(tmp_path, {**PLAN4_PROFILE, "schema_version": PROFILE_SCHEMA_VERSION,
+                     "default_agent": "designer"})
+    assert load_profile(tmp_path).default_agent == "designer"
+
+
+def test_migration_leaves_other_agents_alone(tmp_path):
+    write(tmp_path, {**PLAN4_PROFILE, "default_agent": "my_custom"})
+    assert load_profile(tmp_path).default_agent == "my_custom"
