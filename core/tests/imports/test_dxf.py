@@ -39,7 +39,7 @@ def test_fixture_dxf_reads_exactly(tmp_path):
         (15, 15, 6), (15, 45, 6), (50, 30, 10), (85, 15, 6), (85, 45, 6)]
     kinds = {d.kind: d for d in spec.dimensions}
     assert kinds["length"].value == 100 and kinds["width"].value == 60
-    assert kinds["diameter"].value == pytest.approx(6) and kinds["diameter"].text == "4X <>"
+    assert kinds["diameter"].value == pytest.approx(6) and kinds["diameter"].text == "4X 6"
     assert kinds["position_x"].value == pytest.approx(15)
     assert kinds["hole_spacing_x"].value == pytest.approx(70)
     assert any(seg.arc is not None for seg in spec.outline)            # the R5 bulge corner

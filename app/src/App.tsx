@@ -16,6 +16,8 @@ import { ConsolePane } from "./ui/console/ConsolePane";
 import { NewRunDialog } from "./ui/dialogs/NewRunDialog";
 import { LeftPane } from "./ui/left/LeftPane";
 import { activePage, consoleCollapsed, installPageShortcuts, toggleConsole } from "./ui/pages/router";
+import { activeBuildId } from "./state/builds";
+import { DrawingDrop } from "./ui/imports";
 import { DirectoryPage } from "./ui/pages/directory";
 import { DrawingPage } from "./ui/pages/drawing";
 import { OnshapePage } from "./ui/pages/onshape";
@@ -43,6 +45,7 @@ function PageRegion(): JSX.Element {
         <div class="region region-left" data-region="left"><LeftPane /></div>
         <main class="region region-viewer" data-region="viewer" data-mode={designMode.value}>
           {designMode.value === "assembly" ? <AssemblyView /> : <Viewer />}
+          <DrawingDrop variant="overlay" projectId={activeBuildId.value} />
         </main>
       </>
     );

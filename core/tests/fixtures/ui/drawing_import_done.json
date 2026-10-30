@@ -1,0 +1,121 @@
+{
+  "import_id": "imp_b5d15cb90bb5",
+  "kind": "dxf",
+  "file_name": "Mounting Plate.dxf",
+  "status": "done",
+  "stage": "",
+  "error": null,
+  "project_id": "13ef25015327",
+  "part_id": "mounting_plate",
+  "run_id": null,
+  "attempts": 1,
+  "max_attempts": 1,
+  "table": {
+    "rows": [
+      {
+        "id": "d1",
+        "kind": "length",
+        "text": "100",
+        "expected": 100.0,
+        "measured": 100.0,
+        "tol_plus": 0.05,
+        "tol_minus": 0.05,
+        "status": "match",
+        "source": "drawing"
+      },
+      {
+        "id": "d2",
+        "kind": "width",
+        "text": "60",
+        "expected": 60.0,
+        "measured": 60.0,
+        "tol_plus": 0.05,
+        "tol_minus": 0.05,
+        "status": "match",
+        "source": "drawing"
+      },
+      {
+        "id": "d3",
+        "kind": "diameter",
+        "text": "4X 6",
+        "expected": 6.0,
+        "measured": 6.0,
+        "tol_plus": 0.05,
+        "tol_minus": 0.05,
+        "status": "match",
+        "source": "model"
+      },
+      {
+        "id": "d4",
+        "kind": "position_x",
+        "text": "15",
+        "expected": 15.0,
+        "measured": 15.0,
+        "tol_plus": 0.05,
+        "tol_minus": 0.05,
+        "status": "match",
+        "source": "model"
+      },
+      {
+        "id": "d5",
+        "kind": "hole_spacing_x",
+        "text": "70",
+        "expected": 70.0,
+        "measured": 70.0,
+        "tol_plus": 0.05,
+        "tol_minus": 0.05,
+        "status": "match",
+        "source": "model"
+      },
+      {
+        "id": "T",
+        "kind": "thickness",
+        "text": "(note)",
+        "expected": 6.0,
+        "measured": 6.0,
+        "tol_plus": 0.05,
+        "tol_minus": 0.05,
+        "status": "match",
+        "source": "drawing"
+      },
+      {
+        "id": "callout:4x Ø6 THRU",
+        "kind": "callout",
+        "text": "4x Ø6 THRU",
+        "expected": null,
+        "measured": null,
+        "tol_plus": null,
+        "tol_minus": null,
+        "status": "match",
+        "source": "drawing"
+      },
+      {
+        "id": "callout:1x Ø10 THRU",
+        "kind": "callout",
+        "text": "1x Ø10 THRU",
+        "expected": null,
+        "measured": null,
+        "tol_plus": null,
+        "tol_minus": null,
+        "status": "match",
+        "source": "drawing"
+      }
+    ],
+    "matches": 8,
+    "mismatches": 0,
+    "missing": 0,
+    "unchecked": 0,
+    "printed_callouts": [
+      "4x Ø6 THRU",
+      "1x Ø10 THRU"
+    ],
+    "ok": true
+  },
+  "result": "match",
+  "notes": [],
+  "pages": 1,
+  "original_url": "/imports/imp_b5d15cb90bb5/original",
+  "drawing_url": "/parts/mounting_plate/drawing.svg",
+  "created_at": 1793347088.455515,
+  "updated_at": 1793347100.919012
+}

@@ -219,6 +219,9 @@ const COVERAGE: Record<string, string> = {
   "GET /sims": "sims_list.json", "POST /sims": "sims_start.json", "GET /sims/solvers": "sims_solvers.json",
   "GET /sims/{sim_id}": "sim_done.json", "GET /sims/{sim_id}/result.glb": "sim_result.glb",
   "POST /sketches": "sketch_upload.json", "GET /sketches/{sketch_id}": "sketch.json",
+  // Plan 7 U5 drawing import (contract.imports.test.ts)
+  "POST /imports/drawing": "drawing_import_upload.json", "GET /imports/{import_id}": "drawing_import_done.json",
+  "GET /imports/{import_id}/original": "drawing_import_original.svg",
   "GET /parts/{part_id}/drawing.json": "drawing.json", "GET /parts/{part_id}/drawing.svg": "drawing.svg",
   "GET /parts/{part_id}/drawing.dxf": "drawing.dxf",
   "GET /print/capabilities": "print_capabilities.json", "GET /printers": "printers.json", "POST /printers": "printer_add.json",

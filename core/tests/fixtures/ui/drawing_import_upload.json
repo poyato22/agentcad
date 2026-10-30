@@ -1,0 +1,21 @@
+{
+  "import_id": "imp_b5d15cb90bb5",
+  "kind": "dxf",
+  "file_name": "Mounting Plate.dxf",
+  "status": "reading",
+  "stage": "building the part",
+  "error": null,
+  "project_id": "13ef25015327",
+  "part_id": null,
+  "run_id": null,
+  "attempts": 0,
+  "max_attempts": 1,
+  "table": null,
+  "result": null,
+  "notes": [],
+  "pages": 1,
+  "original_url": "/imports/imp_b5d15cb90bb5/original",
+  "drawing_url": null,
+  "created_at": 1793347088.455515,
+  "updated_at": 1793347089.6204429
+}

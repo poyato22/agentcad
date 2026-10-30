@@ -222,6 +222,9 @@ def _stated(d: dict, k: float, kind_is_angle: bool) -> tuple[float | None, float
     if value is None:
         return None, None, text
     value = round(value, 6)                   # float noise from the definition points
+    # "<>" (or no text) prints the measurement: show the number the drawing shows
+    shown = f"{round(value, 4):g}"
+    text = (text.replace("<>", shown) if "<>" in text else text or shown)[:64]
     if kind_is_angle:
         return value, tol, text
     return round(value * k, 6), None if tol is None else tol * k, text
@@ -400,9 +403,18 @@ def preview_svg(raw: dict) -> str:
     except (TypeError, ValueError):
         k = 1.0
     geom = _geometry(raw, k)
-    pts = [p for g in geom for p in _points(g)]
+    # framed on the part and its dimensions (a sheet frame or title block would shrink it)
+    part = [g for g in geom if not IGNORE_LAYER_RE.search(g["layer"])] or geom
+    pts = [p for g in part for p in _points(g)]
     if not pts:
         return ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"></svg>')
+    for d in raw.get("entities") or []:
+        if isinstance(d, dict) and d.get("t") == "dim":
+            for v in (d.get("pts") or {}).values():
+                try:
+                    pts.append(_sc(_pt(v), k))
+                except (TypeError, ValueError, IndexError):
+                    continue
     x0, y0 = min(p[0] for p in pts), min(p[1] for p in pts)
     x1, y1 = max(p[0] for p in pts), max(p[1] for p in pts)
     w, h = max(x1 - x0, 1e-3), max(y1 - y0, 1e-3)
@@ -426,8 +438,19 @@ def preview_svg(raw: dict) -> str:
             s, e = (cx + r * math.cos(a0), cy + r * math.sin(a0)), (cx + r * math.cos(a1), cy + r * math.sin(a1))
             body.append(f'<path d="M{P(s)} A{r:.3f},{r:.3f} 0 {int(sweep > math.pi)} 0 {P(e)}"/>')
         else:
-            d = " L".join(P(p) for p in g["pts"])
-            body.append(f'<path d="M{d}{" Z" if g["closed"] else ""}"/>')
+            pts_ = g["pts"]
+            n = len(pts_)
+            d = [f"M{P(pts_[0])}"]
+            for i in range(n if g["closed"] else n - 1):
+                a, b = pts_[i], pts_[(i + 1) % n]
+                chord = math.dist(a[:2], b[:2])
+                if abs(a[2]) > 1e-12 and chord > 1e-9:    # a bulge: the arc to the next vertex
+                    r = chord * (1 + a[2] ** 2) / (4 * abs(a[2]))
+                    # y is flipped, so a counter-clockwise bulge has sweep-flag 0 (as arcs above)
+                    d.append(f"A{r:.3f},{r:.3f} 0 {int(abs(a[2]) > 1)} {int(a[2] < 0)} {P(b)}")
+                else:
+                    d.append(f"L{P(b)}")
+            body.append(f'<path d="{" ".join(d)}"/>')
     labels = []
     for d in raw.get("entities") or []:
         if isinstance(d, dict) and d.get("t") == "dim":

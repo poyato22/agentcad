@@ -1,0 +1,6 @@
+{
+  "error": "invalid_input",
+  "message": "the model in use (anthropic/claude-sonnet-5-5) cannot read images, so it cannot read this drawing",
+  "hint": "Choose a model that can read images in Profile → Model: Claude (through Claude Code or an Anthropic API key), an OpenAI GPT model or Google Gemini. DXF drawings need no model.",
+  "retryable": false
+}
