@@ -76,8 +76,9 @@ test("first_run_sign_in_then_a_claude_code_run_through_the_gate_to_done", async 
   expect(await yours.locator("[data-ref]").evaluateAll((els) => els.map((e) => e.getAttribute("data-ref")))).toEqual(
     ["claude-code/sonnet", "claude-code/opus", "claude-code/haiku", "claude-code/fable"]);
   await chip.click();                                                           // close the picker
-  await dialog.getByRole("button", { name: "Use a specific agent…" }).click();  // R8: override the router
-  await dialog.getByLabel("Agent").selectOption("designer");
+  await dialog.getByRole("button", { name: "More options" }).click();   // R8: override the router
+  await dialog.getByRole("menuitem", { name: "Use a specific agent…" }).click();
+  await dialog.getByLabel("Choose an agent").selectOption("designer");
   await dialog.getByLabel("Task").fill(TASK);
   await dialog.getByRole("button", { name: "Start" }).click();
   await expect(dialog).toBeHidden();

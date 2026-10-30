@@ -28,8 +28,9 @@ async function startRun(page: Page, fake: FakeControl, task = TASK): Promise<str
   const dialog = page.getByRole("dialog", { name: "New run" });
   await expect(dialog).toBeVisible();
   // R8: no agent picker by default — reveal the override to pin the designer for a deterministic run
-  await dialog.getByRole("button", { name: "Use a specific agent…" }).click();
-  await dialog.getByLabel("Agent").selectOption("designer");
+  await dialog.getByRole("button", { name: "More options" }).click();   // R8: override the router
+  await dialog.getByRole("menuitem", { name: "Use a specific agent…" }).click();
+  await dialog.getByLabel("Choose an agent").selectOption("designer");
   await dialog.getByLabel("Task").fill(task);
   await dialog.getByRole("button", { name: "Start" }).click();
   await expect(dialog).toBeHidden();
