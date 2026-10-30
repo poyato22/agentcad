@@ -2,7 +2,6 @@
 (deck cards, stress across the layers) and the fatigue estimate (S-N, Goodman, hand
 calculation)."""
 import math
-from types import SimpleNamespace
 
 import numpy as np
 import pytest
