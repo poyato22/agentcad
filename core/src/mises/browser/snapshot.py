@@ -77,7 +77,8 @@ class PageParser(_Collector):
         elif tag == "a" and not self._skip and a.get("href"):
             self._finish_link()
             self._link = {"href": a["href"], "text": [], "start": len(self.text),
-                          "title": _squash(a.get("title") or a.get("aria-label") or "")}
+                          "title": _squash(a.get("title") or a.get("aria-label") or ""),
+                          "cls": a.get("class", "")[:200]}
         super().handle_starttag(tag, attrs)
 
     def handle_endtag(self, tag):

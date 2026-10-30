@@ -201,7 +201,7 @@ async def _search_site(ctx: ToolContext, site: dict, query: str, limit: int) -> 
     p = parse(page.text)
     rec = build(page, run_id=ctx.run_id, project_id=run_project(ctx), kind="search")
     why = blocked_reason(200, rec["title"], rec["text"])
-    results = [] if why else results_from(p, page.final_url, site, limit)
+    results = [] if why else results_from(p, page.final_url, site, limit, query)
     rec.update(site=name, results=results, part=None, _item=None)
     if why:
         rec["blocked"] = why

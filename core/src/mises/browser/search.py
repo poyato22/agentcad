@@ -6,8 +6,11 @@ off-site links are dropped), https, deduplicated by canonical URL, query strings
 (web_open drops them too). All of it is untrusted page data.
 
 Sources tried in order: schema.org ItemList JSON-LD (many shops embed one), then the page's
-links matched by the site's product-path pattern. The title is the link's text (or its title
-attribute or image alt), the snippet the page text that follows it up to the next result.
+links matched by the site's product-path pattern (on shops that mark their result links with a
+class, Magento's `product-item-link` for example, only those links). The title is the link's
+text (or its title attribute or image alt), the snippet the page text that follows it up to the
+next result. Results that mention more of the query's words come first (a search page often
+lists "new products" before the real results); the page's own order breaks ties.
 """
 from __future__ import annotations
 
@@ -28,6 +31,7 @@ RESULTS_MAX = 10
 class Adapter:
     product: re.Pattern            # matches the path of a product page
     canonical: re.Pattern | None = None   # group(0) of a match is the canonical path
+    link_class: re.Pattern | None = None  # result links carry this class (when any do)
 
 
 _A = Adapter
@@ -37,10 +41,12 @@ ADAPTERS: dict[str, Adapter] = {
     "digikey.com": _A(re.compile(r"^/[a-z]{2}/products/detail/[^/]+/[^/]+/\d+")),
     "mouser.com": _A(re.compile(r"^/ProductDetail/[^?#]+")),
     "adafruit.com": _A(re.compile(r"^/product/\d+"), re.compile(r"^/product/\d+")),
-    "sparkfun.com": _A(re.compile(r"^/[a-z0-9][a-z0-9-]{3,}\.html$")),
+    "sparkfun.com": _A(re.compile(r"^/[a-z0-9][a-z0-9-]{3,}\.html$"),
+                       link_class=re.compile(r"\bproduct-item-(?:link|photo)\b")),
     "pololu.com": _A(re.compile(r"^/product/\d+"), re.compile(r"^/product/\d+")),
     "servocity.com": _A(re.compile(r"^/[a-z0-9]+(?:-[a-z0-9]+){2,}/?$")),
-    "getfpv.com": _A(re.compile(r"^/[a-z0-9][a-z0-9-]{3,}\.html$")),
+    "getfpv.com": _A(re.compile(r"^/[a-z0-9][a-z0-9-]{3,}\.html$"),
+                     link_class=re.compile(r"\bproduct-item-(?:link|photo)\b")),
     "robotshop.com": _A(re.compile(r"^/(?:[a-z]{2}/)?products/[a-z0-9-]+"),
                         re.compile(r"^/(?:[a-z]{2}/)?products/[a-z0-9-]+")),
     "aliexpress.com": _A(re.compile(r"^/item/\d+\.html"), re.compile(r"^/item/\d+\.html")),
@@ -112,14 +118,19 @@ def _ok_url(href: str, base: str, domain: str) -> str | None:
     return url
 
 
-def extract_results(html: str, base_url: str, site: dict,
-                    limit: int = RESULTS_MAX) -> list[dict]:
+def extract_results(html: str, base_url: str, site: dict, limit: int = RESULTS_MAX,
+                    query: str = "") -> list[dict]:
     """The product results on a site's search page (see the module docstring)."""
     p = parse(html)
-    return results_from(p, base_url, site, limit)
+    return results_from(p, base_url, site, limit, query)
 
 
-def results_from(p: PageParser, base_url: str, site: dict, limit: int = RESULTS_MAX) -> list[dict]:
+def _words(s: str) -> set[str]:
+    return {w for w in re.findall(r"[a-z0-9]+", s.lower()) if len(w) >= 2}
+
+
+def results_from(p: PageParser, base_url: str, site: dict, limit: int = RESULTS_MAX,
+                 query: str = "") -> list[dict]:
     domain, name = site["domain"], site["name"]
     adapter = adapter_for(domain)
     found: dict[str, dict] = {}
@@ -142,8 +153,13 @@ def results_from(p: PageParser, base_url: str, site: dict, limit: int = RESULTS_
         ok = _ok_url(url, base_url, domain)
         if ok and _is_product(urlsplit(ok).path, adapter):
             add(ok, title)
+    candidates = p.links
+    if adapter is not None and adapter.link_class is not None:
+        marked = [lk for lk in p.links if adapter.link_class.search(lk.get("cls") or "")]
+        if marked:
+            candidates = marked
     links = []
-    for link in p.links:
+    for link in candidates:
         ok = _ok_url(link["href"], base_url, domain)
         if ok and _is_product(urlsplit(ok).path, adapter):
             links.append((ok, link))
@@ -153,4 +169,8 @@ def results_from(p: PageParser, base_url: str, site: dict, limit: int = RESULTS_
         title = link["text"] or link.get("title") or link.get("alt") or ""
         add(ok, title, snippet)
     out = [found[k] for k in order if found[k]["title"]]
+    want = _words(query)
+    if want:
+        out.sort(key=lambda r: -(2 * len(want & _words(r["title"]))
+                                 + len(want & _words(r["snippet"]))))
     return out[:limit]

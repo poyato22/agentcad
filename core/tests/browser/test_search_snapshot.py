@@ -131,6 +131,24 @@ def test_generic_adapter_for_unknown_site():
     assert r[0]["snippet"].startswith("8 mm bore")
 
 
+def test_magento_result_links_only_and_query_ranking():
+    base = "https://www.sparkfun.com/catalogsearch/result/?q=micro+servo"
+    r = results("search_magento.html", base, "sparkfun.com")
+    # nav and "new products" links are .html too; only the marked result links count
+    assert [x["title"] for x in r] == ["Stepper Motor - Small", "Servo - Generic (Sub-Micro Size)"]
+    assert "$14.95" in r[0]["snippet"]
+    ranked = results("search_magento.html", base, "sparkfun.com", query="micro servo")
+    assert ranked[0]["title"] == "Servo - Generic (Sub-Micro Size)"
+
+
+def test_query_ranking_puts_matches_before_a_new_products_strip():
+    html = ('<a href="https://www.pololu.com/product/5000">New: USB cable</a>'
+            '<a href="/product/2818">FEETECH FS90 Micro Servo</a> 9 g')
+    r = search.extract_results(html, "https://www.pololu.com/search?query=micro+servo",
+                               site("pololu.com"), query="micro servo")
+    assert [x["title"] for x in r] == ["FEETECH FS90 Micro Servo", "New: USB cable"]
+
+
 def test_limit_and_garbage():
     r = results("search_adafruit.html", "https://www.adafruit.com/search", "adafruit.com",
                 limit=1)
