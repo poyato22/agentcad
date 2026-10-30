@@ -7,10 +7,13 @@
 // of every test against the fit and the datasheet. "Apply…" opens a confirmation that lists what
 // changes (before → after, n, confidence, which studies); only "Confirm" saves the record (POST
 // /sims/calibrations), and from then on every study of that material on that printer uses it.
+// The core screens every fit: outlier tests are listed and dropped, and an implausible fit is
+// "rejected — implausible" with its reasons; a rejected fit is never applied (it can be saved
+// so the user sees why, and studies keep the datasheet values).
 import type { JSX } from "preact";
 import { useEffect, useMemo, useState } from "preact/hooks";
 import {
-  CAL_KEY_RE, CAL_MAX_TESTS, calibrationFor, DEFAULT_PRINTER, provenance, type Calibration, type CalibrationFit, type CalibrationPreview,
+  CAL_KEY_RE, CAL_MAX_TESTS, calibrationFor, DEFAULT_PRINTER, isRejected, provenance, type Calibration, type CalibrationFit, type CalibrationPreview,
   type CalibrationTestKind, type Orientation, type PartTest,
 } from "../../../../api/accuracy";
 import { CoreError, type CoreClient } from "../../../../api/client";
@@ -20,7 +23,7 @@ import { Led } from "../../../common/Led";
 import { isTrustedActivation } from "../../../console/approvals/approvalKeys";
 import { sig3 } from "../model";
 import { CalScatter, type CalPoint } from "./CalScatter";
-import { bodyKey, bodyOf, CONFIDENCE_TEXT, eFromResidual, eRows, implied, rowProblems, rowsOf, TEST_TEXT, type SheetRow } from "./model";
+import { bodyKey, bodyOf, CONFIDENCE_TEXT, eFromResidual, eRows, implied, outlierRow, rowProblems, rowsOf, TEST_TEXT, type SheetRow } from "./model";
 
 export type CalibrationClient = Pick<CoreClient, "calibrations" | "fitCalibration" | "saveCalibration" | "deleteCalibration" | "printers">;
 
@@ -128,8 +131,13 @@ export function CalibrationPanel({ client, materials, studies, initialMaterial, 
       const c = await client().saveCalibration(body);
       setAll((cur) => [...cur.filter((x) => x.id !== c.id), c]);
       setEdited(false); setConfirm(null);
-      setNote(`${c.material} on ${c.printer} is now ${c.basis}: new studies of it on this printer use the fitted values.`);
-      onApplied(c.material, c.printer, c);
+      if (isRejected(c)) {
+        // saved so the user sees why, never applied (core calibration.applicable)
+        setNote(`${c.material} on ${c.printer}: saved as ${c.status_label ?? "rejected"}. Studies keep the datasheet values.`);
+      } else {
+        setNote(`${c.material} on ${c.printer} is now ${c.basis}: new studies of it on this printer use the fitted values.`);
+        onApplied(c.material, c.printer, c);
+      }
     } catch (err) { setProblem(messageOf(err)); } finally { setBusy(null); }
   };
   const remove = async (e: MouseEvent) => {
@@ -143,6 +151,18 @@ export function CalibrationPanel({ client, materials, studies, initialMaterial, 
     } catch (err) { setProblem(messageOf(err)); } finally { setBusy(null); }
   };
 
+  // the tests the core's screen dropped, by sheet row
+  const outliers = useMemo(() => {
+    const m = new Map<number, string[]>();
+    for (const o of fit?.outliers ?? []) {
+      const ri = outlierRow(rows, o);
+      if (ri >= 0) m.set(ri, [...(m.get(ri) ?? []), o.reason]);
+    }
+    return m;
+  }, [fit, rows]);
+  const rejected = isRejected(fit) || isRejected(shown);
+  const reasons = shown?.reasons.length ? shown.reasons : fit?.reasons ?? [];
+
   const points = useMemo(() => {
     if (!fit) return { e: [] as CalPoint[], s: [] as CalPoint[] };
     const e: CalPoint[] = [];
@@ -154,12 +174,12 @@ export function CalibrationPanel({ client, materials, studies, initialMaterial, 
     }
     const s: CalPoint[] = [];
     rows.forEach((r, i) => {
-      if (r.kind !== "tensile" || (r.t.orientation ?? "xy") !== "xy") return;
+      if (r.kind !== "tensile" || (r.t.orientation ?? "xy") !== "xy" || outliers.has(i)) return;
       const v = implied(r).strength_mpa;
       if (v !== null) s.push({ index: i, label: TEST_TEXT.tensile, value: v });
     });
     return { e, s };
-  }, [fit, rows]);
+  }, [fit, rows, outliers]);
 
   const before = saved?.material_preview ?? (row ? { e_mpa: row.e_mpa, yield_mpa: row.yield_mpa, knockdown: row.knockdown ?? 0.7, z_strength_mpa: (row as Record<string, unknown>).z_strength_mpa as number | null } : null);
 
@@ -196,7 +216,7 @@ export function CalibrationPanel({ client, materials, studies, initialMaterial, 
             const ek = fit?.e ? eRows(rows, fit).indexOf(i) : -1;
             const resid = ek >= 0 ? fit?.e?.residuals[ek] : undefined;
             return (
-              <tr key={i} data-testid="cal-test" data-kind={r.kind}>
+              <tr key={i} data-testid="cal-test" data-kind={r.kind} data-outlier={outliers.has(i) ? "true" : undefined}>
                 <td class="st-num">{i + 1}</td>
                 <td class="text">
                   {TEST_TEXT[r.kind]}
@@ -228,9 +248,12 @@ export function CalibrationPanel({ client, materials, studies, initialMaterial, 
                 </td>
                 <td class="st-num" data-testid="cal-implied">
                   {imp.strength_mpa !== null && <div>{sig3(imp.strength_mpa)} MPa strength</div>}
-                  {imp.e_mpa !== null && <div>E {sig3(imp.e_mpa)} MPa</div>}
+                  {imp.e_mpa !== null && (r.kind === "tensile"
+                    ? <div class="faint">secant {sig3(imp.e_mpa)} MPa (lower bound, not applied)</div>
+                    : <div>E {sig3(imp.e_mpa)} MPa</div>)}
                   {imp.e_mpa === null && imp.strength_mpa === null && <span class="faint">{r.kind === "part" ? "after the fit" : "—"}</span>}
                   {typeof resid === "number" && <div class="faint">{`${resid >= 0 ? "+" : ""}${sig3(resid * 100)}% vs the fit`}</div>}
+                  {outliers.has(i) && <div class="tone-amber" data-testid="cal-outlier">{`outlier, not fitted: ${outliers.get(i)!.join("; ")}`}</div>}
                 </td>
                 <td><button type="button" class="sf-tool" aria-label={`Remove test ${i + 1}`} onClick={() => edit(rows.filter((_, j) => j !== i))}>✕</button></td>
               </tr>
@@ -251,13 +274,20 @@ export function CalibrationPanel({ client, materials, studies, initialMaterial, 
       {problem && <p class="tone-red text" role="alert">{problem}</p>}
 
       {fit && datasheet && (
-        <div class="acc-fitbox" data-testid="cal-result" data-state={isSaved && !shown ? "saved" : "preview"}>
+        <div class="acc-fitbox" data-testid="cal-result" data-state={isSaved && !shown ? "saved" : "preview"} data-status={rejected ? "rejected" : "ok"}>
+          {rejected && (
+            <div class="acc-rejected" role="alert" data-testid="cal-rejected">
+              <p class="tone-red text"><Led tone="red" /> <b>{shown?.status_label ?? fit.status_label ?? "rejected — implausible"}</b>: studies will not use this fit. Check the tests and measure again.</p>
+              {reasons.length > 0 && <ul class="text">{reasons.map((x) => <li key={x}>{x}</li>)}</ul>}
+            </div>
+          )}
           <dl class="st-nums">
             <div><dt class="label">Young's modulus</dt><dd class="st-num st-num-big" data-testid="cal-e">{fit.e ? `${sig3(fit.e.value_mpa)} MPa` : "not fitted"}</dd>
               {fit.e && <dd class="faint">{`datasheet ${sig3(datasheet.e_mpa)} · ${diffPct(datasheet.e_mpa, fit.e.value_mpa)} · n ${fit.e.n}`}</dd>}</div>
             <div><dt class="label">strength</dt><dd class="st-num st-num-big" data-testid="cal-strength">{fit.strength ? `${sig3(fit.strength.value_mpa)} MPa` : "not fitted"}</dd>
               {fit.strength && <dd class="faint">{`datasheet ${sig3(datasheet.yield_mpa)}`}{typeof fit.knockdown === "number" ? ` · knock-down ${sig3(fit.knockdown)}` : ""}</dd>}</div>
-            <div><dt class="label">tests · scatter</dt><dd class="st-num">{fit.n_tests} · {fmtPct(fit.e?.cv ?? fit.strength?.cv)}</dd>
+            <div><dt class="label">tests · scatter</dt>
+              <dd class="st-num" data-testid="cal-n">{typeof fit.n_tests_given === "number" && fit.n_tests_given !== fit.n_tests ? `${fit.n_tests} of ${fit.n_tests_given}` : fit.n_tests} · {fmtPct(fit.e?.cv ?? fit.strength?.cv)}</dd>
               <dd class={fit.confidence === "low" ? "tone-amber" : "faint"} data-testid="cal-confidence">{CONFIDENCE_TEXT[fit.confidence]}</dd></div>
             {(fit.z_strength || fit.e_z) && (
               <div><dt class="label">across layers</dt>
@@ -268,6 +298,10 @@ export function CalibrationPanel({ client, materials, studies, initialMaterial, 
             <CalScatter title="Stiffness E" unit="MPa" points={points.e} fit={fit.e?.value_mpa ?? null} scatterPct={typeof fit.e?.cv === "number" ? fit.e.cv * 100 : null} datasheet={datasheet.e_mpa} />
             <CalScatter title="Strength" unit="MPa" points={points.s} fit={fit.strength?.value_mpa ?? null} scatterPct={typeof fit.strength?.cv === "number" ? fit.strength.cv * 100 : null} datasheet={datasheet.yield_mpa} />
           </div>
+          {fit.e_secant && (
+            <p class="faint text" data-testid="cal-secant">{`Tensile secant modulus ${sig3(fit.e_secant.mean)} MPa (n ${fit.e_secant.n}): a lower bound of E, reported only and never applied${fit.e ? "" : "; E stays the datasheet value"}.`}</p>
+          )}
+          {fit.warnings.length > 0 && <ul class="st-warnings" data-testid="cal-warnings">{fit.warnings.map((w) => <li key={w}><Led tone="amber" /><span class="text">{w}</span></li>)}</ul>}
           {fit.part_tests && fit.part_tests.length > 0 && (
             <p class="faint text">{fit.part_tests.map((p) => `${p.sim_id}: E ${sig3(p.e_mpa)} MPa (measured ${sig3(p.measured_deflection_mm)} vs predicted ${sig3(p.predicted_deflection_mm)} mm)`).join(" · ")}</p>
           )}
@@ -275,13 +309,17 @@ export function CalibrationPanel({ client, materials, studies, initialMaterial, 
 
           {isSaved ? (
             <div class="st-actions">
-              <span class="text" data-testid="cal-applied">{`Applied: ${saved?.basis} on ${saved?.printer}.`}</span>
+              <span class="text" data-testid="cal-applied">{isRejected(saved) ? `Saved but ${saved?.status_label ?? "rejected"} on ${saved?.printer}: not applied, studies keep the datasheet values.` : `Applied: ${saved?.basis} on ${saved?.printer}.`}</span>
               {confirm === "remove" ? (
                 <>
                   <Button variant="danger" disabled={busy !== null} onClick={(e) => { void remove(e as unknown as MouseEvent); }} data-testid="cal-remove-confirm">Remove the calibration</Button>
                   <Button variant="ghost" onClick={() => setConfirm(null)}>Keep it</Button>
                 </>
               ) : <Button variant="ghost" onClick={() => setConfirm("remove")} data-testid="cal-remove">Remove…</Button>}
+            </div>
+          ) : shown && rejected ? (
+            <div class="st-actions">
+              <span class="faint" data-testid="cal-not-applicable">A rejected fit cannot be applied.</span>
             </div>
           ) : shown && (confirm === "apply" && before ? (
             <div class="acc-confirm" role="group" aria-label="Confirm the calibration" data-testid="cal-confirm">
@@ -290,7 +328,7 @@ export function CalibrationPanel({ client, materials, studies, initialMaterial, 
                 <thead><tr><th /><th>now</th><th>after</th></tr></thead>
                 <tbody>{changes(shown.fit, before, shown.material).map((c) => <tr key={c.what}><td>{c.what}</td><td>{c.before}</td><td><b>{c.after}</b></td></tr>)}</tbody>
               </table>
-              <p class={shown.fit.confidence === "low" ? "tone-amber text" : "text"} data-testid="cal-confirm-basis">{`${shown.basis} · ${CONFIDENCE_TEXT[shown.fit.confidence]}`}</p>
+              <p class={shown.fit.confidence === "low" ? "tone-amber text" : "text"} data-testid="cal-confirm-basis">{shown.basis.includes("low confidence") ? `${shown.basis}: add tests` : `${shown.basis} · ${CONFIDENCE_TEXT[shown.fit.confidence]}`}</p>
               <div class="st-actions">
                 <Button variant="ink" disabled={busy !== null} onClick={(e) => { void apply(e as unknown as MouseEvent); }} data-testid="cal-confirm-apply">{busy === "apply" ? "Applying…" : "Confirm"}</Button>
                 <Button variant="ghost" onClick={() => setConfirm(null)} data-testid="cal-confirm-cancel">Cancel</Button>

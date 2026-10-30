@@ -1,5 +1,5 @@
-// Plan 6 (S4) on the Studies page against the fake core's assumed S1-S3 shapes
-// (test/fake-core/accuracy.ts): nonlinear stress with a contact pair picked in the viewer, the
+// Plan 6 (S4) on the Studies page against the fake core, whose S1-S3 shapes are the real merged
+// core's (test/fake-core/accuracy.ts, core/tests/fixtures/ui s1_* / s2_* / s3_*): nonlinear stress with a contact pair picked in the viewer, the
 // print direction, fatigue inputs and results, the OpenFOAM solver with its user-click install,
 // and material calibration from the user's own tests with the scatter plot and the badge.
 import { readFileSync } from "node:fs";
@@ -69,7 +69,7 @@ test("nonlinear_contact_pair_picked_in_the_viewer_print_direction_and_fatigue_ru
   await page.getByTestId("run-study").click();
   const r = page.getByTestId("study-result");
   await expect(r.getByTestId("nonlinear-result")).toContainText("converged at the full load");
-  await expect(r.getByTestId("fidelity-note")).toHaveText("nonlinear FEM (large deflection, plasticity, contact) · ±8% (validated)");
+  await expect(r.getByTestId("fidelity-note")).toHaveText("nonlinear (large deflection + plasticity + contact) · ±15% (validated)");
   await expect(r.getByTestId("fatigue-label")).toHaveText("fatigue estimate");
   await expect(r.getByTestId("fatigue-result")).toContainText("10 million cycles required");
   await expect(r.getByTestId("sn-chart")).toBeVisible();
@@ -78,7 +78,10 @@ test("nonlinear_contact_pair_picked_in_the_viewer_print_direction_and_fatigue_ru
   const start = (await fake.calls()).find((c) => c.method === "POST" && c.path === "/sims")!;
   expect(start.body).toMatchObject({
     type: "static", part_id: "beam", settings: {
-      nonlinear: { large_deflection: true, plasticity: true, steps: 10, contact: [{ kind: "faces", master: expect.stringMatching(/^f\d+$/), slave: expect.stringMatching(/^f\d+$/), friction: 0.2 }] },
+      nonlinear: {
+        large_deflection: true, plasticity: true, increments: 10, rigid_supports: [],
+        contacts: [{ kind: "contact", a: { face: expect.stringMatching(/^f\d+$/), instance: null }, b: { face: expect.stringMatching(/^f\d+$/), instance: null }, friction: 0.2 }],
+      },
       material: { name: null, anisotropy: { print_direction: "+x" }, printer: null, calibrated: true },
       fatigue: { cycles: 1e7, cycle: "zero_to_max", min_pct: 0 },
     },
@@ -98,7 +101,7 @@ test("openfoam_is_a_wind_solver_installed_by_a_click_and_labelled_on_the_result"
   await open(page);
   await page.locator("#st-part").selectOption("cube");
   await page.getByTestId("type-wind").click();
-  await expect(page.getByTestId("openfoam-card")).toHaveAttribute("data-status", "missing");
+  await expect(page.getByTestId("openfoam-card")).toHaveAttribute("data-status", "optional_missing");
   await page.locator("#sf-solver").selectOption("openfoam");
   const card = page.getByTestId("openfoam-card");
   await expect(card).toContainText("runs on the built-in solver");
@@ -110,8 +113,9 @@ test("openfoam_is_a_wind_solver_installed_by_a_click_and_labelled_on_the_result"
   expect((await fake.calls()).filter((c) => c.method === "POST" && c.path === "/system/install/openfoam")).toHaveLength(1);
   await page.getByTestId("run-study").click();
   const r = page.getByTestId("study-result");
-  await expect(r.getByTestId("fidelity-note")).toHaveText("OpenFOAM k-ω SST · ±10% (validated)");
-  await expect(r.getByTestId("solver-label")).toContainText("OpenFOAM v2406");
+  // the real core's label: no recorded real-solver benchmark yet, so the band is the target
+  await expect(r.getByTestId("fidelity-note")).toHaveText("OpenFOAM k-ω SST · ±10% (target; validation pending)");
+  await expect(r.getByTestId("solver-label")).toContainText("OpenFOAM v2512");
 });
 
 for (const theme of ["dark", "light"] as const) {
@@ -164,17 +168,19 @@ for (const theme of ["dark", "light"] as const) {
     const box = cal.getByTestId("cal-confirm");
     await expect(box).toContainText("Apply to PLA on MK4?");
     await expect(box).toContainText("Young's modulus");
-    await expect(box.getByTestId("cal-confirm-basis")).toContainText("calibrated (6 tests)");
+    // the core's label names what was calibrated, on how many tests
+    const basis = /^calibrated E \(3\), strength \(3\)/;
+    await expect(box.getByTestId("cal-confirm-basis")).toHaveText(basis);
     expect(await saves()).toHaveLength(0);
     await cal.scrollIntoViewIfNeeded();
     await page.screenshot({ path: `test-results/p6-calibration-${theme}.png`, fullPage: true });
     await box.getByTestId("cal-confirm-apply").click();
-    await expect(cal.getByTestId("cal-note")).toHaveText("PLA on MK4 is now calibrated (6 tests): new studies of it on this printer use the fitted values.");
-    await expect(cal.getByTestId("cal-badge")).toHaveText("calibrated (6 tests)");
-    await expect(cal.getByTestId("cal-applied")).toHaveText("Applied: calibrated (6 tests) on MK4.");
+    await expect(cal.getByTestId("cal-note")).toHaveText(/^PLA on MK4 is now calibrated E \(3\), strength \(3\).*: new studies of it on this printer use the fitted values\.$/);
+    await expect(cal.getByTestId("cal-badge")).toHaveText(basis);
+    await expect(cal.getByTestId("cal-applied")).toHaveText(/^Applied: calibrated E \(3\), strength \(3\).* on MK4\.$/);
     // the study now runs on that printer, so the calibration applies to it
     await expect(page.getByTestId("material-printer")).toHaveValue("MK4");
-    await expect(page.locator("#sf-material-name option:checked")).toHaveText("PLA · calibrated (6 tests)");
+    await expect(page.locator("#sf-material-name option:checked")).toHaveText(/^PLA · calibrated E \(3\), strength \(3\)/);
     const body = (await saves())[0].body as { printer: string; tensile: unknown[]; bend: unknown[]; part: { point: number[] }[] };
     expect(body.printer).toBe("MK4");
     expect([body.tensile.length, body.bend.length, body.part.length]).toEqual([3, 2, 1]);

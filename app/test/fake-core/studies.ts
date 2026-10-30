@@ -11,7 +11,7 @@ import { resolve } from "node:path";
 import type { StudyMaterial, StudyRecord, StudyTemplate, StudyType } from "../../src/api/studies";
 import type { AgentRun, MisesEvent, PartSummary } from "../../src/api/types";
 import { defaultFor, deref, discriminated, nullableInner, properties, withDefaults } from "../../src/ui/pages/studies/formSchema";
-import { calibrationRoutes, calStateFrom, p6Base, p6Finish, p6Probe, p6Types, REAL_S3, type CalState } from "./accuracy";
+import { calibrationRoutes, calStateFrom, p6Base, p6Finish, p6Probe, p6Types, REAL_S3, type CalState, type OpenFoamState } from "./accuracy";
 import { asBody, HttpError, mises, RAW, type EmitExtras, type EventIn, type Route } from "./server";
 
 const DIR = resolve(import.meta.dirname, "../../../core/tests/fixtures/ui");
@@ -68,6 +68,8 @@ export interface StudyDeps {
   hang(): boolean;
   newRun(agent: string, provider: string, model: string, task: string, external: boolean): AgentRun;
   emit(ev: EventIn, extras?: EmitExtras): unknown;
+  /** Plan 6 S2: the OpenFOAM install state (a wind study on "openfoam" falls back when not "ok"). */
+  openfoam?(): OpenFoamState;
 }
 
 const SIM_ID_RE = /^sim_[0-9a-f]{12}$/;
@@ -260,7 +262,8 @@ export function startStudy(d: StudyDeps, b: Record<string, unknown>): { run_id: 
   if (type === "modal" && typeof settings.n_modes === "number" && settings.n_modes > 30) {
     throw invalid("invalid modal settings: n_modes: Input should be less than or equal to 30", [{ type: "less_than_equal", loc: ["n_modes"], msg: "Input should be less than or equal to 30", input: settings.n_modes, ctx: { le: 30 }, url: "https://errors.pydantic.dev/2.14/v/less_than_equal" }]);
   }
-  const real = p6Base(type, settings) ?? REAL_STUDY.records[type];
+  const ofState = d.openfoam?.() ?? "ok";
+  const real = p6Base(type, settings, ofState) ?? REAL_STUDY.records[type];
   const run = d.newRun("studies", "ui", "studies-page", `Studies page: ${type} study of ${partId}`, true);
   const callId = `ui-${hex(6)}`;
   const simId = `sim_${hex(6)}`;
@@ -335,7 +338,7 @@ export function startStudy(d: StudyDeps, b: Record<string, unknown>): { run_id: 
     // core studies.card: a static result's per-case table rides on the card too
     const caseCard = Array.isArray(resNow.per_case) ? { per_case: resNow.per_case, governing_case_id: resNow.governing_case_id ?? null } : {};
     rec.card = { ...structuredClone(real.card!), ...caseCard, sim_id: simId, run_id: run.id, reason: rec.reason, urls: { record: `/sims/${simId}`, glb: `/sims/${simId}/result.glb`, charts: `/sims/${simId}/charts`, probe: `/sims/${simId}/probe`, section: `/sims/${simId}/section` }, charts_url: `/sims/${simId}/charts` };
-    p6Finish(rec, type, settings, st.cal); // Plan 6: S3 fatigue / anisotropy / calibration (real), S1 / S2 (assumed)
+    p6Finish(rec, type, settings, st.cal, ofState); // Plan 6: S1 nonlinear, S2 OpenFOAM, S3 fatigue / anisotropy / calibration (real shapes)
     const data = { sim_id: simId, part_id: partId, type, status: "done", card: rec.card, checks: rec.card.checks, results: rec.results };
     const summary = `GUIDE ONLY - ${type} study of ${partId} (fake core, real ${type} numbers)`;
     progress({ stage: "done", phase: "done", pct: 100, detail: "done" });

@@ -81,19 +81,31 @@ export const bodyKey = (b: CalibrationBody): string => JSON.stringify(b);
 
 /**
  * The sheet rows behind each fitted E residual (core calibration.fit: E tests are the "xy" bends,
- * then the part tests; with neither, the "xy" tensile bars with an elongation, secant moduli).
+ * then the part tests, less the outliers the screen dropped; a tensile secant modulus is never an
+ * E test, it is reported as fit.e_secant only).
  */
 export function eRows(rows: readonly SheetRow[], fit: CalibrationFit): number[] {
-  const idx = rows.map((r, i) => ({ r, i }));
-  const bends = idx.filter(({ r }) => r.kind === "bend" && (r.t.orientation ?? "xy") === "xy").map(({ i }) => i);
-  const parts = idx.filter(({ r }) => r.kind === "part").map(({ i }) => i);
-  if (bends.length + parts.length > 0) return [...bends, ...parts].slice(0, fit.e?.residuals.length ?? 0);
-  return idx.filter(({ r }) => r.kind === "tensile" && (r.t.orientation ?? "xy") === "xy" && pos(r.t.elongation_pct)).map(({ i }) => i);
+  const dropped = new Set((fit.outliers ?? []).filter((o) => o.property === "e").map((o) => `${o.test}:${o.index}`));
+  const out: number[] = [];
+  let bend = 0; let part = 0;
+  const bends: number[] = []; const parts: number[] = [];
+  rows.forEach((r, i) => {
+    if (r.kind === "bend") { const k = bend++; if ((r.t.orientation ?? "xy") === "xy" && !dropped.has(`bend:${k}`)) bends.push(i); }
+    if (r.kind === "part") { const k = part++; if (!dropped.has(`part:${k}`)) parts.push(i); }
+  });
+  out.push(...bends, ...parts);
+  return out.slice(0, fit.e?.residuals.length ?? 0);
 }
 
-/** Each E test's own value from the fit: residual r_i = 1 − E / E_i, so E_i = E / (1 − r_i). */
+/** Each E test's own value from the fit: residual r_i = E_i / E − 1, so E_i = E (1 + r_i). */
 export function eFromResidual(e: number, r: number): number | null {
-  return 1 - r !== 0 ? e / (1 - r) : null;
+  return Number.isFinite(r) ? e * (1 + r) : null;
+}
+
+/** The sheet row of an outlier (its kind and index within that kind), or −1. */
+export function outlierRow(rows: readonly SheetRow[], o: { test: string; index: number }): number {
+  let k = -1;
+  return rows.findIndex((r) => r.kind === o.test && ++k === o.index);
 }
 
 /** Problems with one row before it is sent (the core checks again). */

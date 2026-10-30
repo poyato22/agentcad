@@ -1,10 +1,12 @@
-// The OpenFOAM row of the system check, on a wind study: ready, a user-click download of the
-// pinned image (POST /system/install/openfoam, its output streamed as `system_install`), or how
-// to get a container runtime. OpenFOAM is optional: without it the built-in solver runs and the
+// The OpenFOAM rows of the system check (core sim/cfd openfoam_rows: the container runtime
+// "openfoam_container", then the pinned image "openfoam"), on a wind study: ready, a user-click
+// pull of the pinned image (POST /system/install/openfoam, its output streamed as
+// `system_install`), Docker / OrbStack not running, or how to get a container runtime (the
+// runtime row's link). OpenFOAM is optional: without it the built-in solver runs and the
 // result says so. Nothing is downloaded until the button is pressed.
 import type { JSX } from "preact";
 import { useEffect, useState } from "preact/hooks";
-import { OPENFOAM_ID_RE } from "../../../../api/accuracy";
+import { OPENFOAM_ROW_ID, OPENFOAM_RUNTIME_ID } from "../../../../api/accuracy";
 import type { CoreClient } from "../../../../api/client";
 import { onCoreEvent } from "../../../../api/events";
 import type { StudySolvers } from "../../../../api/studies";
@@ -17,8 +19,14 @@ import { safeUrl } from "../../../system/SystemCheck";
 type Row = NonNullable<StudySolvers["cfd"]>[number];
 interface Fix { kind?: string; label?: string; dep?: string; url?: string }
 
+/** The image row (the one that says whether a run can start). */
 export function openFoamRow(s: StudySolvers | null): Row | null {
-  return s?.cfd?.find((r) => OPENFOAM_ID_RE.test(r.id)) ?? null;
+  return s?.cfd?.find((r) => r.id === OPENFOAM_ROW_ID) ?? null;
+}
+
+/** The container runtime row (its fix links to OrbStack when there is none). */
+export function openFoamRuntimeRow(s: StudySolvers | null): Row | null {
+  return s?.cfd?.find((r) => r.id === OPENFOAM_RUNTIME_ID) ?? null;
 }
 
 export function OpenFoamCard({ solvers, chosen, client, onInstalled, subscribe = onCoreEvent }: {
@@ -30,9 +38,11 @@ export function OpenFoamCard({ solvers, chosen, client, onInstalled, subscribe =
   subscribe?: (cb: (e: MisesEvent) => void) => () => void;
 }): JSX.Element | null {
   const row = openFoamRow(solvers);
+  const runtime = openFoamRuntimeRow(solvers);
   const [lines, setLines] = useState<string[]>([]);
   const [state, setState] = useState<"idle" | "running" | "failed">("idle");
-  const fix = (row?.fix ?? null) as Fix | null;
+  // the image row's fix (pull it); without a runtime the image row has none and the runtime row links to one
+  const fix = (row?.fix ?? (runtime && runtime.status !== "ok" ? runtime.fix : null) ?? null) as Fix | null;
   const dep = fix?.dep ?? "openfoam";
   // only a dependency the app knows is ever sent (the core's INSTALLERS allowlist is the other guard)
   const knownDep = isInstallDep(dep);

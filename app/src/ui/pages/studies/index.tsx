@@ -235,7 +235,7 @@ export function StudiesPage({ controller = studies, deps = {} }: { controller?: 
                 selectedCase={caseSig.value} picking={showResult ? null : picking}
                 onPicked={(face) => { if (picking && settings) setSettings(setAt(settings, picking, face)); setPicking(pickNext); setPickNext(null); }}
                 onCancelPick={() => pickFace(null)}
-                pickHint={picking && pickNext ? "Click face A of the contact pair · Esc to stop" : picking && picking[picking.length - 1] === "slave" ? "Now click face B · Esc to stop" : null}
+                pickHint={picking && pickNext ? "Click face A of the contact pair · Esc to stop" : picking && picking[0] === "nonlinear" && picking[1] === "contacts" && picking[picking.length - 2] === "b" ? "Now click face B · Esc to stop" : null}
                 liveCaption={activeHere ? `${TYPE_NAMES[activeHere.type]} · ${phaseText(activeHere.phase)}${activeHere.detail ? ` · ${activeHere.detail}` : ""}` : null}
                 deps={deps.view} />
             </>

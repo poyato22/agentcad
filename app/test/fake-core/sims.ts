@@ -159,14 +159,14 @@ export function simRoutes(d: SimDeps): Route[] {
   const studyDeps = {
     records: () => d.sims().records as unknown as Map<string, import("../../src/api/studies").StudyRecord>,
     state: () => d.sims().study, parts: d.parts, stepMs: () => d.sims().stepMs, hang: () => d.sims().outcome === "hang",
-    newRun: d.newRun, emit: d.emit,
+    newRun: d.newRun, emit: d.emit, openfoam: () => d.sims().openfoam,
   };
   return [
     ...studyRoutes(studyDeps),
     { method: "GET", re: /^\/sims\/solvers$/, h: () => {
       // the C7 core adds the CFD rows; the older sims fixtures predate them
       const base = structuredClone(d.sims().ccx ? REAL.solvers : REAL.solversMissing);
-      // Plan 6 S2 (assumed): the OpenFOAM row replaces the C7 placeholder
+      // Plan 6 S2: the real OpenFOAM rows (runtime + image) replace the C7 placeholder
       return d.sims().studiesOn ? { ...base, cfd: withOpenFoam(structuredClone(REAL_STUDY.solvers.cfd) as Record<string, unknown>[], d.sims().openfoam) } : base;
     } },
     {

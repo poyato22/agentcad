@@ -1,5 +1,5 @@
-// Plan 6 controls against the real S3 core's schemas and records (core/tests/fixtures/ui/s3_*)
-// plus the fake core's assumed S1 / S2 additions: the generic form still renders every new
+// Plan 6 controls against the real merged core's schemas and records (core/tests/fixtures/ui:
+// s3_* for S3, s1_* / s2_* for S1 / S2): the generic form still renders every new
 // setting, and the custom pieces write the shapes the core validates (anisotropy with the print
 // direction, contact pairs with a two-face pick, the fatigue cycle, the printer), the result
 // sections, the OpenFOAM card, and the calibration panel (fit preview, confirm before saving).
@@ -26,6 +26,9 @@ const STATIC = TYPES.find((t) => t.id === "static")!;
 const PLA = (read("s3_materials.json") as { builtin: StudyMaterial[] }).builtin.find((m) => m.name === "PLA")!;
 const SAVED = calibrationSchema.parse(read("s3_cal_save.json"));
 const PREVIEW = calibrationPreviewSchema.parse(read("s3_cal_fit.json"));
+const REJECTED = calibrationPreviewSchema.parse(read("s3_cal_fit_rejected.json"));
+const REJECTED_SAVED = calibrationSchema.parse(read("s3_cal_save_rejected.json"));
+const BASIS = "calibrated E (3), strength (3), Z strength (1), low confidence";
 
 afterEach(cleanup);
 
@@ -61,19 +64,24 @@ describe("Plan 6 settings in the generated form", () => {
     expect(mat(v).anisotropy).toBeNull();
   });
 
-  it("nonlinear (assumed S1): the generic switch and fields, then contact pairs with face A / face B", () => {
+  it("nonlinear (S1): the generic switch and fields, then contact pairs (core ContactPair: sides a / b)", () => {
     let v: Record<string, unknown> = {};
     render(<Harness onValue={(x) => { v = x; }} />);
     const group = screen.getByText("Nonlinear").closest("fieldset")!;
     fireEvent.click(within(group).getByRole("checkbox"));
-    expect(v.nonlinear).toEqual({ large_deflection: true, plasticity: false, steps: 10, contact: [] });
+    // switched on with one effect (the core refuses a nonlinear block with none)
+    expect(v.nonlinear).toEqual({ large_deflection: true, plasticity: false, tangent_modulus_mpa: null, contacts: [], rigid_supports: [], increments: 10, max_increments: 200, min_increment: 1e-5, penalty: 50 });
     fireEvent.click(screen.getByTestId("add-contact-pair"));
-    expect((v.nonlinear as { contact: unknown[] }).contact).toEqual([{ kind: "faces", master: "top", slave: "bottom", friction: 0.2 }]);
+    const nl = () => v.nonlinear as { contacts: unknown[] };
+    expect(nl().contacts).toEqual([{ kind: "contact", a: { face: "top", instance: null }, b: { face: "bottom", instance: null }, friction: 0.2 }]);
     fireEvent.change(screen.getByLabelText("Contact 1 face A"), { target: { value: "x-min" } });
     fireEvent.input(screen.getByLabelText("Contact 1 friction"), { target: { value: "0.35" } });
-    expect((v.nonlinear as { contact: unknown[] }).contact[0]).toEqual({ kind: "faces", master: "x-min", slave: "bottom", friction: 0.35 });
-    fireEvent.change(screen.getByLabelText("Contact 1 kind"), { target: { value: "rigid" } });
-    expect((v.nonlinear as { contact: unknown[] }).contact[0]).toEqual({ kind: "rigid", face: "bottom", friction: 0.35 });
+    expect(nl().contacts[0]).toEqual({ kind: "contact", a: { face: "x-min", instance: null }, b: { face: "bottom", instance: null }, friction: 0.35 });
+    fireEvent.change(screen.getByLabelText("Contact 1 kind"), { target: { value: "bonded" } });
+    expect(nl().contacts[0]).toMatchObject({ kind: "bonded", a: { face: "x-min" }, b: { face: "bottom" } });
+    expect(screen.queryByLabelText("Contact 1 friction")).toBeNull();
+    fireEvent.input(screen.getByLabelText("Contact 1 instance A"), { target: { value: "lid" } });
+    expect(nl().contacts[0]).toMatchObject({ a: { face: "x-min", instance: "lid" } });
     expect(validate(v, STATIC.schema, STATIC.schema)).toEqual([]);
   });
 
@@ -83,8 +91,8 @@ describe("Plan 6 settings in the generated form", () => {
     fireEvent.click(within(screen.getByText("Nonlinear").closest("fieldset")!).getByRole("checkbox"));
     fireEvent.click(screen.getByTestId("add-contact-pair"));
     fireEvent.click(screen.getByTestId("pick-pair"));
-    expect(onPick).toHaveBeenCalledWith(["nonlinear", "contact", 0, "master"], ["nonlinear", "contact", 0, "slave"]);
-    rerender(<Harness onValue={() => {}} onPick={onPick} picking={["nonlinear", "contact", 0, "slave"]} />);
+    expect(onPick).toHaveBeenCalledWith(["nonlinear", "contacts", 0, "a", "face"], ["nonlinear", "contacts", 0, "b", "face"]);
+    rerender(<Harness onValue={() => {}} onPick={onPick} picking={["nonlinear", "contacts", 0, "b", "face"]} />);
     expect(screen.getByTestId("pick-pair").textContent).toBe("Now click face B…");
     expect(screen.getByTestId("contact-pair").getAttribute("data-armed")).toBe("b");
   });
@@ -112,11 +120,23 @@ describe("Plan 6 settings in the generated form", () => {
     expect(screen.getByRole("option", { name: "PLA · datasheet / estimate" })).toBeTruthy();
     fireEvent.input(screen.getByTestId("material-printer"), { target: { value: "MK4" } });
     expect(mat(v).printer).toBe("MK4");
-    expect(screen.getByRole("option", { name: "PLA · calibrated (7 tests)" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: `PLA · ${BASIS}` })).toBeTruthy();
     expect(validate(v, STATIC.schema, STATIC.schema)).toEqual([]);
   });
 
-  it("the wind solver offers OpenFOAM by name (assumed S2)", () => {
+  it("the badge never says calibrated for a rejected record", () => {
+    render(<Harness onValue={() => {}} calibrations={[REJECTED_SAVED]} />);
+    fireEvent.input(screen.getByTestId("material-printer"), { target: { value: "MK4" } });
+    expect(screen.getByRole("option", { name: "PLA · datasheet / estimate · calibration rejected" })).toBeTruthy();
+  });
+
+  it("the anisotropy ratio inputs stop at the core's bounds (E_z / E at most 1.2)", () => {
+    render(<Harness onValue={() => {}} />);
+    fireEvent.click(screen.getByTestId("print-direction-on"));
+    expect(screen.getByLabelText("E across ÷ in-plane (empty: typical)").getAttribute("max")).toBe("1.2");
+  });
+
+  it("the wind solver offers OpenFOAM by name (S2)", () => {
     const wind = TYPES.find((t) => t.id === "wind")!;
     render(<SchemaForm schema={wind.schema} value={withDefaults(wind.schema, {})} onChange={() => {}} />);
     const opt = screen.getByRole("option", { name: "OpenFOAM k-ω SST (Docker, optional)" }) as HTMLOptionElement;
@@ -144,7 +164,7 @@ describe("Plan 6 results", () => {
 
   it("the calibrated study names its basis on the result", () => {
     panel(studyRecordSchema.parse(read("s3_static_calibrated.json")));
-    expect(screen.getByTestId("solver-label").textContent).toContain("PLA (calibrated (7 tests))");
+    expect(screen.getByTestId("solver-label").textContent).toContain(`PLA (${BASIS})`);
   });
 
   it("a run-out says so", () => {
@@ -154,18 +174,60 @@ describe("Plan 6 results", () => {
     expect(screen.getByTestId("fatigue-result").textContent).toContain("lasts the required life");
   });
 
-  it("nonlinear (assumed S1): converged at the full load, peak plastic strain and contact pressure", () => {
-    panel({ ...S3, results: { ...S3.results, nonlinear: { converged: true, increments: 12, load_reached_pct: 100, plasticity: true, large_deflection: true, contact_pairs: 1, max_plastic_strain: 0.0042, max_contact_pressure_mpa: 18.4 } } });
+  it("nonlinear (S1, the real records): converged at the full load, peak plastic strain; contact pressure", () => {
+    panel(studyRecordSchema.parse(read("s1_static_nonlinear.json")));
     const s = screen.getByTestId("nonlinear-result");
-    expect(s.textContent).toContain("converged at the full load in 12 increments");
-    expect(s.textContent).toContain("0.42%");
+    expect(s.textContent).toContain("converged at the full load in 13 increments (1 cutback)");
+    expect(s.textContent).toContain("large deflection + plasticity");
+    expect(s.textContent).toContain("16.2%");
+    expect(s.textContent).toContain("post-yield slope estimated");
+    expect(screen.getByTestId("fidelity-note").textContent).toBe("nonlinear (large deflection + plasticity) · ±10% (validated)");
+    cleanup();
+    panel(studyRecordSchema.parse(read("s1_static_contact.json")));
+    expect(screen.getByTestId("nonlinear-result").textContent).toContain("1.28 MPa");
+    expect(screen.getByTestId("nonlinear-result").textContent).toContain("1 contact pair / support");
+  });
+
+  it("a nonlinear solve that stopped short says how far it got", () => {
+    const r = studyRecordSchema.parse(read("s1_static_nonlinear.json"));
+    const res = r.results as Record<string, unknown>;
+    panel({ ...r, results: { ...res, nonlinear: { ...(res.nonlinear as object), converged: false, load_reached_pct: 70, fields_at_fraction: 0.7 } } });
+    expect(screen.getByTestId("nonlinear-result").textContent).toContain("stopped at 70% of the load");
+    expect(screen.getByTestId("nonlinear-result").textContent).toContain("results are at 70% of the load");
+  });
+
+  it("OpenFOAM (S2, the real record): the validation-pending band, never 'validated'", () => {
+    panel(studyRecordSchema.parse(read("s2_wind_openfoam.json")));
+    expect(screen.getByTestId("fidelity-note").textContent).toBe("OpenFOAM k-ω SST · ±10% (target; validation pending)");
+    expect(screen.getByTestId("solver-label").textContent).toContain("OpenFOAM v2512");
   });
 });
 
 describe("OpenFOAM card", () => {
+  // the real core's two rows (container runtime, pinned image) per install state
+  const ROWS = read("s2_openfoam_rows.json") as Record<string, NonNullable<StudySolvers["cfd"]>>;
+  const base = { ccx: { name: "CalculiX", found: true, version: "2.23", install: "x" }, gmsh: { name: "gmsh", found: true, version: "4", install: "x" } };
+  const real = (state: string): StudySolvers => ({ ...base, cfd: structuredClone(ROWS[state]) });
   const solvers = (status: string, fix: unknown): StudySolvers => ({
-    ccx: { name: "CalculiX", found: true, version: "2.23", install: "x" }, gmsh: { name: "gmsh", found: true, version: "4", install: "x" },
-    cfd: [{ id: "openfoam", name: "OpenFOAM", status, detail: "the pinned image is not downloaded yet", fix }],
+    ...base, cfd: [ROWS.image_missing[0], { ...ROWS.image_missing[1], status, fix } as NonNullable<StudySolvers["cfd"]>[number]],
+  });
+
+  it("the real rows: image not pulled → the pull button; no runtime → the runtime row's OrbStack link; daemon down → start it", () => {
+    const props = { chosen: true, client: () => ({ systemInstall: vi.fn() }), onInstalled: () => {}, subscribe: () => () => {} };
+    const { unmount } = render(<OpenFoamCard solvers={real("image_missing")} {...props} />);
+    expect(screen.getByTestId("openfoam-card").getAttribute("data-status")).toBe("optional_missing");
+    expect(screen.getByTestId("openfoam-install").textContent).toBe("Pull the OpenFOAM image");
+    unmount();
+    const r2 = render(<OpenFoamCard solvers={real("no_runtime")} {...props} />);
+    expect(screen.queryByTestId("openfoam-install")).toBeNull();
+    expect(screen.getByRole("link", { name: "Get OrbStack" })).toBeTruthy();
+    r2.unmount();
+    render(<OpenFoamCard solvers={real("daemon_down")} {...props} />);
+    expect(screen.getByTestId("openfoam-card").textContent).toContain("not running");
+    expect(screen.queryByTestId("openfoam-install")).toBeNull();
+    cleanup();
+    const { container } = render(<OpenFoamCard solvers={real("ok")} {...props} chosen={false} />);
+    expect(container.textContent).toBe("");
   });
 
   it("downloads the image on a click and streams its log", async () => {
@@ -241,7 +303,7 @@ describe("calibration panel", () => {
     const rows = within(box).getAllByRole("row").map((r) => r.textContent);
     expect(rows).toContain("Young's modulus2,300 MPa2,036 MPa");
     expect(rows).toContain("strength51 MPa31 MPa");
-    expect(screen.getByTestId("cal-confirm-basis").textContent).toBe("calibrated (7 tests) · low confidence: add tests");
+    expect(screen.getByTestId("cal-confirm-basis").textContent).toBe(`${BASIS}: add tests`);
     fireEvent.click(screen.getByTestId("cal-confirm-apply")); // synthetic: not a user's click
     await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
     expect(f.saveCalibration).not.toHaveBeenCalled();
@@ -257,12 +319,40 @@ describe("calibration panel", () => {
     render(<CalibrationPanel client={() => f} materials={[PLA]} studies={[]} initialMaterial="PLA" initialPrinter="MK4" onApplied={() => {}} onClose={() => {}} />);
     await waitFor(() => expect(screen.getByTestId("cal-result").getAttribute("data-state")).toBe("saved"));
     expect(screen.getAllByTestId("cal-test")).toHaveLength(7);
-    expect(screen.getByTestId("cal-applied").textContent).toBe("Applied: calibrated (7 tests) on MK4.");
-    expect(screen.getByTestId("cal-badge").textContent).toBe("calibrated (7 tests)");
+    expect(screen.getByTestId("cal-applied").textContent).toBe(`Applied: ${BASIS} on MK4.`);
+    expect(screen.getByTestId("cal-badge").textContent).toBe(BASIS);
     expect(screen.queryByTestId("cal-apply")).toBeNull();
     // the same material on another printer is not calibrated
     fireEvent.input(screen.getByTestId("cal-printer"), { target: { value: "default" } });
     expect(screen.getByTestId("cal-badge").textContent).toBe("datasheet / estimate");
+  });
+
+  it("a rejected fit (the real core's screen): its reasons and outliers show, and it cannot be applied", async () => {
+    const f = fake();
+    f.fitCalibration = vi.fn(async () => REJECTED);
+    render(<CalibrationPanel client={() => f} materials={[PLA]} studies={[]} initialMaterial="PLA" initialPrinter="MK4" onApplied={() => {}} onClose={() => {}} />);
+    await waitFor(() => expect(f.calibrations).toHaveBeenCalled());
+    for (let i = 0; i < 3; i++) {
+      fireEvent.click(screen.getByTestId("cal-add-tensile"));
+      fireEvent.input(screen.getByLabelText(`Test ${i + 1} break force (N)`), { target: { value: String([13000, 11800, 12400][i]) } });
+    }
+    await act(async () => { fireEvent.click(screen.getByTestId("cal-fit")); });
+    expect(screen.getByTestId("cal-result").getAttribute("data-status")).toBe("rejected");
+    expect(screen.getByTestId("cal-rejected").textContent).toContain("rejected — implausible");
+    expect(screen.getByTestId("cal-rejected").textContent).toContain("every strength test was rejected as an outlier (see outliers)");
+    expect(screen.getAllByTestId("cal-outlier")).toHaveLength(3);
+    expect(screen.getAllByTestId("cal-outlier")[0].textContent).toContain("325 MPa is 6.37x the data sheet");
+    expect(screen.getByTestId("cal-n").textContent).toContain("2 of 5");
+    expect(screen.queryByTestId("cal-apply")).toBeNull();
+    expect(screen.getByTestId("cal-not-applicable")).toBeTruthy();
+  });
+
+  it("a saved rejected record says it is not applied", async () => {
+    const f = fake([REJECTED_SAVED]);
+    render(<CalibrationPanel client={() => f} materials={[PLA]} studies={[]} initialMaterial="PLA" initialPrinter="MK4" onApplied={() => {}} onClose={() => {}} />);
+    await waitFor(() => expect(screen.getByTestId("cal-result").getAttribute("data-state")).toBe("saved"));
+    expect(screen.getByTestId("cal-applied").textContent).toBe("Saved but rejected — implausible on MK4: not applied, studies keep the datasheet values.");
+    expect(screen.getByTestId("cal-badge").textContent).toBe("datasheet / estimate · calibration rejected");
   });
 
   it("a printer key the core refuses is said at the field", async () => {

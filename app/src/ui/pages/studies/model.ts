@@ -76,7 +76,7 @@ export function fidelityText(card: Pick<StudyCard, "fidelity_note" | "fidelity_c
     case "fem_estimate": return "estimate";
     case "cfd_lbm": return "low fidelity";
     case "empirical": return "estimate";
-    // Plan 6 (assumed classes; the core's fidelity_note, with its validated band, wins)
+    // Plan 6 S1 / S2 (the core's fidelity_note, with its band and whether it is validated, wins)
     case "fem_nonlinear": return "nonlinear FEM";
     case "cfd_openfoam": return "OpenFOAM k-ω SST";
     default: return card.fidelity_class ?? "";
@@ -275,15 +275,22 @@ export function settingsMarkers(type: StudyType, settings: Record<string, unknow
   if (type === "drop" && typeof s.impact_face === "string") out.push({ role: "impact", face: s.impact_face, kind: "impact", direction: null, magnitude: typeof s.drop_m === "number" ? s.drop_m : null, unit: "m", caseIndex: null, path: ["impact_face"] });
   const mesh = isObj(s.mesh) ? s.mesh : null;
   if (mesh && Array.isArray(mesh.refine_faces)) mesh.refine_faces.forEach((f, i) => { if (typeof f === "string") out.push({ role: "refine", face: f, kind: "refine", direction: null, magnitude: null, unit: "", caseIndex: null, path: ["mesh", "refine_faces", i] }); });
-  // Plan 6: contact pairs (both faces of a pair share its kind "contact <n>", the scene links them)
+  // Plan 6 S1: contact pairs (both faces of a pair share its kind "contact <n>", the scene links
+  // them; core ContactPair sides a / b) and rigid supports (one face each, "support <n>")
   const nl = isObj(s.nonlinear) ? s.nonlinear : null;
-  if (nl && Array.isArray(nl.contact)) {
-    nl.contact.forEach((c, i) => {
+  if (nl && Array.isArray(nl.contacts)) {
+    nl.contacts.forEach((c, i) => {
       if (!isObj(c)) return;
       const pair = `contact ${i + 1}`;
-      for (const k of ["master", "slave", "face"]) {
-        if (typeof c[k] === "string") out.push({ role: "contact", face: c[k] as string, kind: pair, direction: null, magnitude: null, unit: "", caseIndex: null, path: ["nonlinear", "contact", i, k] });
+      for (const k of ["a", "b"]) {
+        const sd = c[k];
+        if (isObj(sd) && typeof sd.face === "string") out.push({ role: "contact", face: sd.face, kind: pair, direction: null, magnitude: null, unit: "", caseIndex: null, path: ["nonlinear", "contacts", i, k, "face"] });
       }
+    });
+  }
+  if (nl && Array.isArray(nl.rigid_supports)) {
+    nl.rigid_supports.forEach((r, i) => {
+      if (isObj(r) && typeof r.face === "string") out.push({ role: "contact", face: r.face, kind: `rigid support ${i + 1}`, direction: null, magnitude: null, unit: "", caseIndex: null, path: ["nonlinear", "rigid_supports", i, "face"] });
     });
   }
   // the build direction (S3: settings.material.anisotropy.print_direction): layer planes across the part

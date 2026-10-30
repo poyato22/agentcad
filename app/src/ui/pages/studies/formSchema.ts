@@ -69,9 +69,8 @@ export function discriminated(n: JsonSchema, root: JsonSchema): Discriminated | 
   return { prop: d.propertyName, options };
 }
 
-/** Keys whose value is a face: loads and supports, the drop's impact face, contact pairs' two faces (Plan 6). */
-export const isFaceKey = (key: string | number | undefined): boolean =>
-  key === "face" || key === "impact_face" || key === "master" || key === "slave";
+/** Keys whose value is a face: loads, supports, rigid supports and contact sides (Plan 6), the drop's impact face. */
+export const isFaceKey = (key: string | number | undefined): boolean => key === "face" || key === "impact_face";
 
 /** The object's properties in schema order, with whether each is required. */
 export function properties(n: JsonSchema): { key: string; schema: JsonSchema; required: boolean }[] {
@@ -92,7 +91,7 @@ export function defaultFor(node: JsonSchema, root: JsonSchema, key?: string | nu
   const d = discriminated(n, root);
   if (d && d.options[0]) return defaultFor(d.options[0].schema, root);
   if (Array.isArray(n.enum) && n.enum.length) return n.enum[0];
-  if (isFaceKey(key)) return key === "impact_face" || key === "slave" ? "bottom" : "top";
+  if (isFaceKey(key)) return key === "impact_face" ? "bottom" : "top";
   switch (n.type) {
     case "object": {
       const out: Record<string, unknown> = {};
@@ -100,6 +99,9 @@ export function defaultFor(node: JsonSchema, root: JsonSchema, key?: string | nu
         const v = defaultFor(p.schema, root, p.key);
         if (v !== undefined) out[p.key] = v;
       }
+      // core NonlinearSettings needs one effect on (else the study is linear and the core refuses
+      // it): switched on, it starts with large deflection
+      if (n.title === "NonlinearSettings" && out.large_deflection === false && out.plasticity === false) out.large_deflection = true;
       return out;
     }
     case "array": {
@@ -261,9 +263,10 @@ const LABELS: Record<string, string> = {
   fdm: "Print settings", custom: "Custom material", layer_orientation: "Layer orientation", rpm: "Motor speed",
   blades: "Blades", margin_pct: "Band margin", up: "Up (lift axis)", point: "Point",
   // Plan 6
-  nonlinear: "Nonlinear", large_deflection: "Large deflection", plasticity: "Plasticity", steps: "Load steps",
-  contact: "Contact", master: "Face A", slave: "Face B", friction: "Friction μ", fatigue: "Fatigue",
-  print_direction: "Print direction", cycles: "Required life", min_ratio: "Min ÷ max (R)", mean_correction: "Mean stress",
+  nonlinear: "Nonlinear", large_deflection: "Large deflection", plasticity: "Plasticity", tangent_modulus_mpa: "Tangent modulus",
+  contacts: "Contact pairs", rigid_supports: "Rigid supports", increments: "Load increments", max_increments: "Max increments",
+  min_increment: "Smallest increment", penalty: "Contact stiffness", search_mm: "Search distance", gap_mm: "Gap", normal: "Support normal",
+  friction: "Friction μ", fatigue: "Fatigue", print_direction: "Print direction", cycles: "Required life", min_pct: "Min load",
 };
 
 /** Choice values as words (the core's enum values stay the option values). */

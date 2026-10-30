@@ -16,28 +16,33 @@ import { cyclesShort, cyclesText, snStress } from "./model";
 export function NonlinearSection({ rec }: { rec: StudyRecord }): JSX.Element | null {
   const nl = nonlinearOf(rec.results);
   if (!nl) return null;
-  const what = [nl.large_deflection && "large deflection", nl.plasticity && "plasticity", nl.contact_pairs ? `${nl.contact_pairs} contact pair${nl.contact_pairs === 1 ? "" : "s"}` : null].filter(Boolean).join(" · ");
+  const what = nl.description
+    ?? [nl.large_deflection && "large deflection", nl.plasticity && "plasticity", nl.contact_pairs ? "contact" : null].filter(Boolean).join(" + ");
+  const pairs = nl.contact_pairs ? `${nl.contact_pairs} contact pair${nl.contact_pairs === 1 ? "" : "s"} / support${nl.contact_pairs === 1 ? "" : "s"}` : null;
   const reached = typeof nl.load_reached_pct === "number" ? nl.load_reached_pct : null;
   const partial = !nl.converged || (reached !== null && reached < 99.5);
+  const done = typeof nl.increments_done === "number" ? nl.increments_done : null;
+  const at = typeof nl.fields_at_fraction === "number" ? nl.fields_at_fraction : null;
   return (
     <section class="acc-res" data-testid="nonlinear-result" aria-label="Nonlinear solve">
       <h3 class="label">Nonlinear solve</h3>
       <p class="text">
         <Led tone={partial ? "amber" : "green"} />{" "}
         {partial
-          ? `stopped at ${reached !== null ? `${sig3(reached)}%` : "part"} of the load: the part may buckle, yield through or lose contact before the full load`
-          : `converged at the full load${typeof nl.increments === "number" ? ` in ${nl.increments} increments` : ""}`}
+          ? `stopped at ${reached !== null ? `${sig3(reached)}%` : "part"} of the load: the part may buckle, yield through or lose contact before the full load${at !== null ? `; results are at ${sig3(at * 100)}% of the load` : ""}`
+          : `converged at the full load${done !== null ? ` in ${done} increment${done === 1 ? "" : "s"}` : ""}${typeof nl.cutbacks === "number" && nl.cutbacks > 0 ? ` (${nl.cutbacks} cutback${nl.cutbacks === 1 ? "" : "s"})` : ""}`}
       </p>
-      {what && <p class="faint text">{what}</p>}
+      {(what || pairs) && <p class="faint text">{[what, pairs].filter(Boolean).join(" · ")}</p>}
       <dl class="st-nums">
         {nl.plasticity && (
           <div><dt class="label">peak plastic strain</dt><dd class="st-num">{typeof nl.max_plastic_strain === "number" ? `${sig3(nl.max_plastic_strain * 100)}%` : "n/a"}</dd>
-            <dd class="faint">{nl.max_plastic_strain ? "it yields: permanent set" : "no yielding"}</dd></div>
+            <dd class="faint">{nl.max_plastic_strain ? "it yields: permanent set" : "no yielding"}{nl.tangent_estimated ? " · post-yield slope estimated" : ""}</dd></div>
         )}
         {typeof nl.max_contact_pressure_mpa === "number" && (
           <div><dt class="label">peak contact pressure</dt><dd class="st-num">{sig3(nl.max_contact_pressure_mpa)} MPa</dd></div>
         )}
       </dl>
+      {nl.unvalidated.length > 0 && <p class="tone-amber text" data-testid="nonlinear-unvalidated">{`Unvalidated configuration: ${nl.unvalidated.join("; ")}`}</p>}
     </section>
   );
 }

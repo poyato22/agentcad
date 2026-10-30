@@ -1,9 +1,10 @@
-// Plan 6 (simulation accuracy) shapes the app reads.
-// - S3 (material calibration, anisotropy, fatigue): the REAL core's shapes (core sim/calibration.py,
-//   sim/fatigue.py, sim/materials.py, sim/settings.py, server/sim_api.py; fixtures dumped by
-//   core/scripts/dump_s3_fixtures.py → core/tests/fixtures/ui/s3_*).
-// - S1 (nonlinear / contact) and S2 (OpenFOAM): still ASSUMED (those branches were not available
-//   to S4); listed in the S4 report for S5 to check.
+// Plan 6 (simulation accuracy) shapes the app reads, all from the REAL merged core (int-678):
+// - S3 (material calibration, anisotropy, fatigue): core sim/calibration.py, sim/fatigue.py,
+//   sim/materials.py, sim/settings.py, server/sim_api.py (core/scripts/dump_s3_fixtures.py →
+//   core/tests/fixtures/ui/s3_*).
+// - S1 (nonlinear / contact: core sim/static.py results.nonlinear, sim/nonlinear.py) and S2
+//   (OpenFOAM: core sim/cfd/__init__.py openfoam_rows, studies.fidelity_note)
+//   (core/scripts/dump_p6_fixtures.py → s1_*, s2_*).
 // The schemas are loose (unknown fields pass through) and every field the UI reads that the core
 // may leave out is optional or nullable, so a differing core degrades to "not shown". Everything
 // here is core data: render it as text.
@@ -69,11 +70,28 @@ export const partEstimateSchema = z.looseObject({
   sim_id: z.string(), e_mpa: z.number(), e_study_mpa: z.number().optional(), predicted_deflection_mm: z.number().optional(),
   measured_deflection_mm: z.number().optional(), study_load_n: z.number().optional(),
 });
+/** A test the screen dropped (bad bend geometry, a gross typo, far from the median): never fitted. */
+export const calibrationOutlierSchema = z.looseObject({
+  test: z.string(), index: z.number(), property: z.string(), value_mpa: z.number(), reason: z.string(),
+});
+export type CalibrationOutlier = z.infer<typeof calibrationOutlierSchema>;
+/** "ok", or "rejected" (implausible against the data sheet, or every test of a property an outlier): a
+ *  rejected fit is saved for the user to see and fix but never applied to a study. */
+export const CAL_STATUS = ["ok", "rejected"] as const;
+export type CalibrationStatus = (typeof CAL_STATUS)[number];
+export const isRejected = (x: { status?: string | null } | null | undefined): boolean => x?.status === "rejected";
+
 export const calibrationFitSchema = z.looseObject({
-  n_tests: z.number(),
+  /** The tests the applied values rest on (outliers excluded); n_tests_given: every test entered. */
+  n_tests: z.number(), n_tests_given: z.number().optional(),
   e: modulusFitSchema.optional(), e_z: modulusFitSchema.optional(),
   strength: strengthFitSchema.optional(), z_strength: strengthFitSchema.optional(),
   flexural_strength: z.looseObject(statsShape).optional(),
+  /** The tensile secant modulus at break: a lower bound of E, reported only, never applied. */
+  e_secant: z.looseObject({ ...statsShape, method: z.string().optional() }).optional(),
+  material_class: z.string().optional(), calibrated: z.array(z.string()).optional(),
+  outliers: z.array(calibrationOutlierSchema).default([]), warnings: z.array(z.string()).default([]),
+  status: z.enum(CAL_STATUS).default("ok"), status_label: z.string().optional(), reasons: z.array(z.string()).default([]),
   knockdown: z.number().optional(), confidence: z.enum(CONFIDENCE), datasheet_ratio: z.number().optional(),
   part_tests: z.array(partEstimateSchema).optional(),
 });
@@ -83,20 +101,27 @@ export type CalibrationFit = z.infer<typeof calibrationFitSchema>;
 const materialDict = z.looseObject({
   name: z.string(), e_mpa: z.number(), yield_mpa: z.number(), knockdown: z.number(),
   allowable_mpa: z.number().optional(), e_z_mpa: num.optional(), z_strength_mpa: num.optional(), basis: z.string().optional(),
+  /** {e, e_z, strength, z_strength}: "calibrated (n tests)" or "datasheet / estimate". */
+  basis_by_property: z.record(z.string(), z.string()).nullish(),
 });
 export type MaterialDict = z.infer<typeof materialDict>;
 
 /** POST /sims/calibrations/fit: a preview, nothing saved. */
 export const calibrationPreviewSchema = z.looseObject({
   fit: calibrationFitSchema, material: materialDict, datasheet: materialDict, basis: z.string(), saved: z.boolean(),
+  status: z.enum(CAL_STATUS).default("ok"), status_label: z.string().optional(), reasons: z.array(z.string()).default([]),
+  outliers: z.array(calibrationOutlierSchema).default([]), applicable: z.boolean().optional(),
 });
 export type CalibrationPreview = z.infer<typeof calibrationPreviewSchema>;
 
-/** A saved calibration record (GET /sims/calibrations items; POST adds material_preview). Saving IS applying:
- *  a study uses the record of its material and printer (settings.material.printer, null = "default"). */
+/** A saved calibration record (GET /sims/calibrations items; POST adds material_preview). Saving IS applying
+ *  unless the fit is rejected: a study uses the record of its material and printer (settings.material.printer,
+ *  null = "default") only when its status is "ok" (POST still answers 201 for a rejected one; the
+ *  calibration_save tool answers ok=false). */
 export const calibrationSchema = z.looseObject({
   id: z.string(), material: z.string(), printer: z.string(), created_at: z.number(), updated_at: z.number(),
   note: z.string().optional(), basis: z.string(),
+  status: z.enum(CAL_STATUS).default("ok"), status_label: z.string().optional(), reasons: z.array(z.string()).default([]),
   tests: z.looseObject({
     tensile: z.array(tensileTestSchema).default([]), bend: z.array(bendTestSchema).default([]), part: z.array(partTestSchema).default([]),
   }),
@@ -108,13 +133,18 @@ export type Calibration = z.infer<typeof calibrationSchema>;
 
 export interface Provenance {
   calibrated: boolean;
-  /** "calibrated (3 tests)" or "datasheet / estimate": shown next to the material everywhere. */
+  /** The core's label, e.g. "calibrated E (3), strength (5)" or "datasheet / estimate": shown next to the material everywhere. */
   label: string;
   n: number;
   confidence: Confidence | null;
+  /** A saved calibration exists but was rejected (implausible): studies keep the datasheet values. */
+  rejected?: boolean;
+  /** {e, e_z, strength, z_strength}: which properties are calibrated (the rest stay datasheet / estimate). */
+  byProperty?: Record<string, string> | null;
 }
 
-const ESTIMATE: Provenance = { calibrated: false, label: "datasheet / estimate", n: 0, confidence: null };
+export const BASIS_ESTIMATE = "datasheet / estimate";
+const ESTIMATE: Provenance = { calibrated: false, label: BASIS_ESTIMATE, n: 0, confidence: null };
 
 /** The calibration record that applies to a material on a printer (null printer = "default"), as the core picks it. */
 export function calibrationFor(cals: readonly Calibration[], material: string | null | undefined, printer: string | null | undefined): Calibration | null {
@@ -130,11 +160,14 @@ export function calibrationFor(cals: readonly Calibration[], material: string | 
  */
 export function provenance(m: Pick<StudyMaterial, "name"> & Record<string, unknown>, cal?: Calibration | null): Provenance {
   const c = m.calibration;
+  const by = typeof m.basis_by_property === "object" && m.basis_by_property !== null ? m.basis_by_property as Record<string, string> : null;
   if (typeof c === "object" && c !== null && typeof (c as { n_tests?: unknown }).n_tests === "number") {
     const n = (c as { n_tests: number }).n_tests;
     const conf = (c as { confidence?: unknown }).confidence;
-    return { calibrated: true, label: typeof m.basis === "string" ? m.basis : `calibrated (${n} test${n === 1 ? "" : "s"})`, n, confidence: CONFIDENCE.includes(conf as Confidence) ? conf as Confidence : null };
+    return { calibrated: true, label: typeof m.basis === "string" ? m.basis : "calibrated", n, confidence: CONFIDENCE.includes(conf as Confidence) ? conf as Confidence : null, byProperty: by };
   }
+  // a rejected record is never applied (core calibration.applicable): the material stays the datasheet's
+  if (cal && isRejected(cal)) return { ...ESTIMATE, label: `${BASIS_ESTIMATE} · calibration rejected`, rejected: true };
   if (cal) return { calibrated: true, label: cal.basis, n: cal.fit.n_tests, confidence: cal.fit.confidence };
   return ESTIMATE;
 }
@@ -190,12 +223,18 @@ export function layersOf(results: unknown): LayerResult | null {
   return r.success ? r.data : null;
 }
 
-// ---- S1 (ASSUMED until S5): nonlinear results (results.nonlinear)
+// ---- S1: nonlinear results (results.nonlinear, core sim/static.py)
 
 export const nonlinearResultSchema = z.looseObject({
-  converged: z.boolean(), increments: z.number().optional(), load_reached_pct: num.optional(),
+  converged: z.boolean(),
+  /** The study's setting (first increment = 1/increments of the load); increments_done: what the solve took. */
+  increments: z.number().optional(), increments_done: num.optional(), cutbacks: num.optional(),
+  load_reached_pct: num.optional(), fields_at_fraction: num.optional(),
   large_deflection: z.boolean().optional(), plasticity: z.boolean().optional(), contact_pairs: z.number().optional(),
   max_plastic_strain: num.optional(), max_contact_pressure_mpa: num.optional(),
+  /** "large deflection + plasticity + contact"; effects: the validated-band keys; unvalidated: setups outside the band. */
+  description: z.string().optional(), effects: z.array(z.string()).optional(), unvalidated: z.array(z.string()).default([]),
+  tangent_estimated: z.boolean().optional(), tangent_modulus_mpa: num.optional(), tangent_source: z.string().nullish(),
 });
 export type NonlinearResult = z.infer<typeof nonlinearResultSchema>;
 
@@ -205,7 +244,7 @@ export function nonlinearOf(results: unknown): NonlinearResult | null {
   return n.success ? n.data : null;
 }
 
-/** The new result channels (GLB extras, probe values) and their words. S3: real; S1: assumed. */
+/** The new result channels (GLB extras, probe values) and their words (S1 and S3, real core names). */
 export const NEW_CHANNELS: Record<string, string> = {
   layer_tension: "tension across layers",
   fatigue_safety_factor: "fatigue safety factor",
@@ -213,6 +252,9 @@ export const NEW_CHANNELS: Record<string, string> = {
   contact_pressure: "contact pressure",
 };
 
-// ---- S2 (ASSUMED until S5): the OpenFOAM row of GET /sims/solvers cfd (system-check row shape)
+// ---- S2: the OpenFOAM rows of GET /sims/solvers cfd (system-check row shape, core
+// sim/cfd/__init__.py openfoam_rows): the container runtime ("openfoam_container") and the pinned
+// image ("openfoam", whose fix pulls it). Optional: "optional_missing" until both are there.
 
-export const OPENFOAM_ID_RE = /^openfoam/;
+export const OPENFOAM_ROW_ID = "openfoam";
+export const OPENFOAM_RUNTIME_ID = "openfoam_container";

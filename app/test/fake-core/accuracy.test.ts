@@ -1,6 +1,6 @@
 // @vitest-environment node
-// Fake core, Plan 6: S3 (real shapes) and the assumed S1 / S2 additions parse with the app's own
-// schemas (api/accuracy.ts); the S3 routes behave like core server/sim_api.py.
+// Fake core, Plan 6: the real merged core's S1 / S2 / S3 shapes parse with the app's own schemas
+// (api/accuracy.ts); the calibration routes behave like core server/sim_api.py.
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -37,13 +37,15 @@ beforeEach(async () => {
 afterEach(async () => { await core.stop(); });
 
 describe("fake core Plan 6", () => {
-  it("the schemas: S3 anisotropy, printer and fatigue (real); nonlinear and openfoam (assumed)", async () => {
+  it("the schemas: S3 anisotropy, printer and fatigue; S1 nonlinear; S2 openfoam (all real)", async () => {
     const types = await client.studyTypes();
     const st = types.find((t) => t.id === "static")!;
     const props = st.schema.properties as Record<string, unknown>;
     expect(Object.keys(props)).toEqual(expect.arrayContaining(["nonlinear", "fatigue"]));
     const ms = (st.schema.$defs as Record<string, { properties: Record<string, unknown> }>).MaterialSettings.properties;
     expect(Object.keys(ms)).toEqual(expect.arrayContaining(["anisotropy", "printer", "calibrated"]));
+    const nl = (st.schema.$defs as Record<string, { properties: Record<string, unknown> }>).NonlinearSettings.properties;
+    expect(Object.keys(nl)).toEqual(expect.arrayContaining(["contacts", "rigid_supports", "increments"]));
     const wind = types.find((t) => t.id === "wind")!;
     expect((wind.schema.properties as Record<string, { enum?: string[] }>).solver.enum).toContain("openfoam");
   });
@@ -58,7 +60,9 @@ describe("fake core Plan 6", () => {
     expect(p.saved).toBe(false);
     expect(p.fit.strength?.value_mpa).toBeCloseTo(31, 6);
     expect(p.fit.e?.value_mpa).toBeCloseTo(2048, 6);
-    expect(p.basis).toBe("calibrated (4 tests)");
+    expect(p.basis).toBe("calibrated E (1), strength (3), low confidence");
+    expect(p.status).toBe("ok");
+    expect(p.fit).toMatchObject({ n_tests: 4, n_tests_given: 4, outliers: [], reasons: [] });
     expect(p.material.yield_mpa).toBeCloseTo(31, 6);
     expect(await client.calibrations()).toEqual([]);
     const c = await client.saveCalibration(body);
@@ -68,10 +72,11 @@ describe("fake core Plan 6", () => {
     // the raw material list stays "datasheet / estimate"; the badge comes from the calibration that applies
     const pla = (await client.studyMaterials()).builtin.find((m) => m.name === "PLA")!;
     expect(provenance(pla).label).toBe("datasheet / estimate");
-    expect(provenance(pla, calibrationFor(cals, "PLA", "MK4")).label).toBe("calibrated (4 tests)");
+    expect(provenance(pla, calibrationFor(cals, "PLA", "MK4")).label).toBe("calibrated E (1), strength (3), low confidence");
     expect(calibrationFor(cals, "PLA", null)).toBeNull();
     const rec = await runStatic({ load_cases: [CASE], material: { name: "PLA", printer: "MK4" } });
-    expect(provenance(rec.material as never).label).toBe("calibrated (4 tests)");
+    expect(provenance(rec.material as never).label).toBe("calibrated E (1), strength (3), low confidence");
+    expect(provenance(rec.material as never).byProperty).toMatchObject({ e: "calibrated (1 test)", strength: "calibrated (3 tests)", e_z: "datasheet / estimate" });
     const other = await runStatic({ load_cases: [CASE], material: { name: "PLA" } });
     expect(provenance(other.material as never).label).toBe("datasheet / estimate");
   });
@@ -87,23 +92,38 @@ describe("fake core Plan 6", () => {
     }
   });
 
-  it("OpenFOAM: missing until its image is installed", async () => {
+  it("an implausible fit is rejected: saved so the user sees why, never applied", async () => {
+    const body = { material: "PLA", printer: "MK4", tensile: [130, 118, 124].map((f) => ({ force_n: f * 100, width_mm: 10, thickness_mm: 4 })), bend: [], part: [] };
+    const p = await client.fitCalibration(body);
+    expect(p).toMatchObject({ status: "rejected", applicable: false, basis: "rejected — implausible" });
+    expect(p.outliers.map((o) => o.property)).toEqual(["strength", "strength", "strength"]);
+    const c = await client.saveCalibration(body);
+    expect(c.status).toBe("rejected");
+    const pla = (await client.studyMaterials()).builtin.find((m) => m.name === "PLA")!;
+    expect(provenance(pla, calibrationFor(await client.calibrations(), "PLA", "MK4"))).toMatchObject({ calibrated: false, rejected: true });
+    const rec = await runStatic({ load_cases: [CASE], material: { name: "PLA", printer: "MK4" } });
+    expect(provenance(rec.material as never).calibrated).toBe(false);
+  });
+
+  it("OpenFOAM: the image row is optional_missing until it is pulled", async () => {
     const row = () => client.studySolvers().then((s) => s.cfd?.find((r) => r.id === "openfoam"));
-    expect((await row())?.status).toBe("missing");
+    expect((await row())?.status).toBe("optional_missing");
+    expect((await client.studySolvers()).cfd?.find((r) => r.id === "openfoam_container")?.status).toBe("ok");
     expect((await client.systemInstall("openfoam")).ok).toBe(true);
     await until(async () => (await row())?.status === "ok");
   });
 
-  it("an orthotropic study with fatigue reports S3's results; nonlinear adds the assumed block", async () => {
+  it("an orthotropic study with fatigue reports S3's results; nonlinear adds S1's block", async () => {
     const rec = await runStatic({
       load_cases: [CASE], material: { name: "PLA", anisotropy: { print_direction: "+x" } },
       fatigue: { cycles: 2e6, cycle: "zero_to_max" },
-      nonlinear: { large_deflection: true, plasticity: true, steps: 10, contact: [{ kind: "rigid", face: "bottom", friction: 0.3 }] },
+      nonlinear: { large_deflection: true, plasticity: true, increments: 10, rigid_supports: [{ face: "bottom", friction: 0.3 }] },
     });
     expect(fatigueOf(rec.results)?.cycles_required).toBe(2e6);
     expect(fatigueOf(rec.results)?.sn_curve?.basis).toBe("estimate");
     expect(layersOf(rec.results)?.governing_failure).toBe("across layers (Z tension)");
-    expect(nonlinearOf(rec.results)?.contact_pairs).toBe(1);
+    expect(nonlinearOf(rec.results)).toMatchObject({ contact_pairs: 1, description: "large deflection + plasticity + contact", converged: true });
+    expect(rec.card?.fidelity_note).toBe("nonlinear (large deflection + plasticity + contact) · ±15% (validated)");
     const probe = await client.studyProbe(rec.sim_id, [1, 1, 1]);
     expect(Object.keys(probe.values)).toEqual(expect.arrayContaining(["layer_tension", "fatigue_safety_factor", "plastic_strain", "contact_pressure"]));
     // without them, no S3 blocks

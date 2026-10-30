@@ -184,7 +184,7 @@ function Field({ ctx, path, k, schema, required }: { ctx: Ctx; path: Path; k: st
   // Plan 6: the print-direction gizmo, contact pairs picked in the viewer, the fatigue cycle
   if (k === "anisotropy" && path.length === 2 && path[0] === "material") return <PrintDirectionField {...customProps(ctx, path)} />;
   if (k === "fatigue" && path.length === 1) return <FatigueField {...customProps(ctx, path)} />;
-  if (k === "contact" && path[0] === "nonlinear") return <ContactPairsField {...customProps(ctx, path)} />;
+  if (k === "contacts" && path.length === 2 && path[0] === "nonlinear") return <ContactPairsField {...customProps(ctx, path)} />;
 
   // the printer profile whose calibration the study uses (null = "default")
   if (k === "printer" && path.length === 2 && path[0] === "material") {

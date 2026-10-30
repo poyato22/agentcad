@@ -1,11 +1,11 @@
 // The Plan 6 settings that get their own controls instead of the generic schema form:
 // - print direction: an isometric axis gizmo (six arrow tips) beside the part's layer stack, so
 //   "layers along +x" reads as a picture of the print, not a word;
-// - contact pairs: face A ⟷ face B with one "Pick pair" that arms the viewer twice in a row,
-//   a part resting on a rigid support, or two assembly instances; friction μ on each;
+// - contact pairs (nonlinear.contacts): face A ⟷ face B with one "Pick pair" that arms the viewer
+//   twice in a row, contact or bonded, optional assembly instances, friction μ;
 // - fatigue: the load cycle as a trace (zero to max / fully reversed / min–max), the required
 //   life with everyday presets, and an optional data-sheet S-N curve (Goodman is always applied).
-// Every other field of these settings (steps, large deflection …) stays generic. Values are
+// Every other field of these settings (increments, large deflection, rigid supports …) stays generic. Values are
 // written back through the form's own `set`, so validation and the core's checks are unchanged.
 import type { JSX } from "preact";
 import { useRef } from "preact/hooks";
@@ -133,7 +133,7 @@ export function PrintDirectionField(p: CustomFieldProps): JSX.Element {
       )}
       {on && (
         <div class="acc-ratios">
-          {([["e_z_ratio", "E across ÷ in-plane", 0.05, 1.5], ["strength_z_ratio", "Z ÷ in-plane strength", 0.05, 1]] as const).map(([k, label, lo, hi]) => {
+          {([["e_z_ratio", "E across ÷ in-plane", 0.05, 1.2], ["strength_z_ratio", "Z ÷ in-plane strength", 0.05, 1]] as const).map(([k, label, lo, hi]) => {
             const v = aniso?.[k];
             return (
               <label key={k} class="acc-in">
@@ -152,32 +152,35 @@ export function PrintDirectionField(p: CustomFieldProps): JSX.Element {
   );
 }
 
-// ---- contact pairs
+// ---- contact pairs (core settings.ContactPair: kind contact | bonded, sides a / b each a face
+// and / or an assembly instance, friction μ, search_mm; rigid supports are their own list,
+// nonlinear.rigid_supports, rendered by the generic form)
 
-const PAIR_KINDS: { kind: string; text: string; fresh: () => Record<string, unknown> }[] = [
-  { kind: "faces", text: "Face pair", fresh: () => ({ kind: "faces", master: "top", slave: "bottom", friction: 0.2 }) },
-  { kind: "rigid", text: "On a rigid support", fresh: () => ({ kind: "rigid", face: "bottom", friction: 0.2 }) },
-  { kind: "instances", text: "Two assembly parts", fresh: () => ({ kind: "instances", a: "", b: "", friction: 0.2 }) },
+const PAIR_KINDS: { kind: "contact" | "bonded"; text: string }[] = [
+  { kind: "contact", text: "Contact (may slide, separate)" },
+  { kind: "bonded", text: "Bonded (glued, tied)" },
 ];
+const freshPair = (): Record<string, unknown> => ({ kind: "contact", a: { face: "top", instance: null }, b: { face: "bottom", instance: null }, friction: 0.2 });
+const side = (x: Record<string, unknown>, k: "a" | "b") => (isObj(x[k]) ? x[k] as Record<string, unknown> : {});
 
 export function ContactPairsField(p: CustomFieldProps): JSX.Element {
   const list = Array.isArray(p.value) ? (p.value as unknown[]) : [];
   const armedAt = (q: Path) => !!p.picking && key(p.picking) === key(q);
   return (
     <fieldset class="sf-group acc-contact" data-field={key(p.path)} data-testid="contact-pairs">
-      <legend>Contact<span class="faint"> · {list.length ? `${list.length} pair${list.length === 1 ? "" : "s"}` : "none"}</span></legend>
-      {list.length === 0 && <span class="sf-doc faint text">Without contact, touching faces pass through each other. Add a pair where parts press together.</span>}
+      <legend>Contact pairs<span class="faint"> · {list.length ? `${list.length} pair${list.length === 1 ? "" : "s"}` : "none"}</span></legend>
+      {list.length === 0 && <span class="sf-doc faint text">Without contact, touching faces pass through each other. Add a pair where faces press together (a part resting on a rigid floor: Rigid supports).</span>}
       {list.map((raw, i) => {
         const x = isObj(raw) ? raw : {};
         const ip = [...p.path, i];
-        const kind = typeof x.kind === "string" ? x.kind : "faces";
-        const a = [...ip, "master"]; const b = [...ip, "slave"];
+        const kind = x.kind === "bonded" ? "bonded" : "contact";
+        const a = [...ip, "a", "face"]; const b = [...ip, "b", "face"];
         const armedA = armedAt(a); const armedB = armedAt(b);
         return (
           <div key={i} class="acc-pair" data-testid="contact-pair" data-kind={kind} data-armed={armedA ? "a" : armedB ? "b" : undefined}>
             <div class="sf-item-head">
               <select aria-label={`Contact ${i + 1} kind`} value={kind} disabled={p.disabled}
-                onChange={(e) => { const k = PAIR_KINDS.find((o) => o.kind === (e.target as HTMLSelectElement).value); if (k) p.set(ip, { ...k.fresh(), friction: x.friction ?? 0.2 }); }}>
+                onChange={(e) => p.set([...ip, "kind"], (e.target as HTMLSelectElement).value)}>
                 {PAIR_KINDS.map((o) => <option key={o.kind} value={o.kind}>{o.text}</option>)}
               </select>
               <span class="sf-item-tools">
@@ -185,53 +188,44 @@ export function ContactPairsField(p: CustomFieldProps): JSX.Element {
                   onClick={() => { p.onPickFace?.(null); p.set(p.path, list.filter((_, j) => j !== i)); }}>✕</button>
               </span>
             </div>
-            {kind === "faces" && (
-              <>
-                <div class="acc-pair-faces">
-                  <span class="acc-pair-tag" data-on={armedA ? "" : undefined}>A</span>{p.face(a, `Contact ${i + 1} face A`)}
-                  <span class="acc-pair-link" aria-hidden="true">⟷</span>
-                  <span class="acc-pair-tag" data-on={armedB ? "" : undefined}>B</span>{p.face(b, `Contact ${i + 1} face B`)}
-                </div>
-                {p.onPickFace && (
-                  <Button variant={armedA || armedB ? "primary" : "default"} disabled={p.disabled} aria-pressed={armedA || armedB} data-testid="pick-pair"
-                    onClick={() => (armedA || armedB ? p.onPickFace?.(null) : p.onPickFace?.(a, b))}>
-                    {armedA ? "Click face A…" : armedB ? "Now click face B…" : "Pick pair in the viewer"}
-                  </Button>
-                )}
-                <Err msgs={[...p.errors(a), ...p.errors(b)]} />
-              </>
+            <div class="acc-pair-faces">
+              <span class="acc-pair-tag" data-on={armedA ? "" : undefined}>A</span>{p.face(a, `Contact ${i + 1} face A`)}
+              <span class="acc-pair-link" aria-hidden="true">⟷</span>
+              <span class="acc-pair-tag" data-on={armedB ? "" : undefined}>B</span>{p.face(b, `Contact ${i + 1} face B`)}
+            </div>
+            {p.onPickFace && (
+              <Button variant={armedA || armedB ? "primary" : "default"} disabled={p.disabled} aria-pressed={armedA || armedB} data-testid="pick-pair"
+                onClick={() => (armedA || armedB ? p.onPickFace?.(null) : p.onPickFace?.(a, b))}>
+                {armedA ? "Click face A…" : armedB ? "Now click face B…" : "Pick pair in the viewer"}
+              </Button>
             )}
-            {kind === "rigid" && (
-              <div class="acc-pair-faces">
-                <span class="acc-pair-tag">on</span>{p.face([...ip, "face"], `Contact ${i + 1} face on the support`)}
-                <span class="faint">rests on a rigid, fixed surface</span>
-                <Err msgs={p.errors([...ip, "face"])} />
-              </div>
+            <Err msgs={[...p.errors(a), ...p.errors(b), ...p.errors([...ip, "a"]), ...p.errors([...ip, "b"]), ...p.errors(ip)]} />
+            <div class="acc-pair-faces">
+              {(["a", "b"] as const).map((k) => {
+                const v = side(x, k).instance;
+                return (
+                  <input key={k} aria-label={`Contact ${i + 1} instance ${k.toUpperCase()}`} placeholder={`instance ${k.toUpperCase()} (assembly)`} disabled={p.disabled}
+                    value={typeof v === "string" ? v : ""} onInput={(e) => { const t = (e.target as HTMLInputElement).value.trim(); p.set([...ip, k, "instance"], t ? t : null); }} />
+                );
+              })}
+              <span class="faint">assembly studies only: the instance ids; a side with an instance and no face finds its touching faces itself</span>
+              <Err msgs={[...p.errors([...ip, "a", "instance"]), ...p.errors([...ip, "b", "instance"])]} />
+            </div>
+            {kind === "contact" && (
+              <label class="acc-friction">
+                <span class="sf-label">Friction μ</span>
+                <input type="number" step="0.05" min={0} max={2} disabled={p.disabled} aria-label={`Contact ${i + 1} friction`}
+                  value={typeof x.friction === "number" ? String(x.friction) : ""}
+                  onInput={(e) => p.set([...ip, "friction"], Number.parseFloat((e.target as HTMLInputElement).value))} />
+                <span class="faint">{typeof x.friction === "number" && x.friction === 0 ? "frictionless" : "PLA on PLA ≈ 0.3"}</span>
+              </label>
             )}
-            {kind === "instances" && (
-              <div class="acc-pair-faces">
-                {(["a", "b"] as const).map((k) => (
-                  <input key={k} aria-label={`Contact ${i + 1} instance ${k.toUpperCase()}`} placeholder={`instance ${k.toUpperCase()}`} disabled={p.disabled}
-                    value={typeof x[k] === "string" ? x[k] as string : ""} onInput={(e) => p.set([...ip, k], (e.target as HTMLInputElement).value)} />
-                ))}
-                <span class="faint">assembly studies only (the build's instance ids)</span>
-                <Err msgs={[...p.errors([...ip, "a"]), ...p.errors([...ip, "b"])]} />
-              </div>
-            )}
-            <label class="acc-friction">
-              <span class="sf-label">Friction μ</span>
-              <input type="number" step="0.05" min={0} max={2} disabled={p.disabled} aria-label={`Contact ${i + 1} friction`}
-                value={typeof x.friction === "number" ? String(x.friction) : ""}
-                onInput={(e) => p.set([...ip, "friction"], Number.parseFloat((e.target as HTMLInputElement).value))} />
-              <span class="faint">{typeof x.friction === "number" && x.friction === 0 ? "frictionless" : "PLA on PLA ≈ 0.3"}</span>
-            </label>
             <Err msgs={p.errors([...ip, "friction"])} />
           </div>
         );
       })}
       <div class="acc-pair-add">
-        <Button disabled={p.disabled || list.length >= 12} data-testid="add-contact-pair" onClick={() => p.set(p.path, [...list, PAIR_KINDS[0].fresh()])}>Add face pair</Button>
-        <Button variant="ghost" disabled={p.disabled || list.length >= 12} onClick={() => p.set(p.path, [...list, PAIR_KINDS[1].fresh()])}>Add rigid support</Button>
+        <Button disabled={p.disabled || list.length >= 12} data-testid="add-contact-pair" onClick={() => p.set(p.path, [...list, freshPair()])}>Add contact pair</Button>
       </div>
       <Err msgs={p.errors(p.path)} />
     </fieldset>

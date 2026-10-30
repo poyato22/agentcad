@@ -37,6 +37,13 @@ describe("calibration tests on their own", () => {
     expect(bodyOf("PLA", "MK4", sheet).tensile[0]).toEqual({ force_n: 1300, width_mm: 10, thickness_mm: 4, orientation: "xy" });
   });
 
+  it("an outlier E test has no residual: the residuals skip it", () => {
+    const rows = rowsOf(SAVED);
+    const fit = { ...SAVED.fit, outliers: [{ test: "bend", index: 0, property: "e", value_mpa: 1, reason: "typo" }], e: { ...SAVED.fit.e!, residuals: SAVED.fit.e!.residuals.slice(1) } };
+    expect(eRows(rows, fit).map((i) => [rows[i].kind])).toEqual([["bend"], ["part"]]);
+    expect(eRows(rows, fit)[0]).toBe(rows.findIndex((r) => r.kind === "bend") + 1);
+  });
+
   it("the fitted E residuals belong to the xy bends, then the part tests", () => {
     const rows = rowsOf(SAVED);
     const idx = eRows(rows, SAVED.fit);
@@ -51,11 +58,17 @@ describe("calibration tests on their own", () => {
     expect(rowProblems({ kind: "tensile", t: { force_n: 1, orientation: "xy" } })).toEqual(["width and thickness (or the area)"]);
     const pla = { name: "PLA" };
     expect(provenance(pla).label).toBe("datasheet / estimate");
-    expect(provenance(pla, calibrationFor([SAVED], "PLA", "mk4")).label).toBe("calibrated (7 tests)");
+    const label = "calibrated E (3), strength (3), Z strength (1), low confidence";
+    expect(SAVED.basis).toBe(label);
+    expect(provenance(pla, calibrationFor([SAVED], "PLA", "mk4")).label).toBe(label);
+    // a rejected record (implausible) is never applied: the badge stays the datasheet's
+    const rejected = { ...SAVED, status: "rejected" as const, basis: "rejected — implausible" };
+    expect(provenance(pla, calibrationFor([rejected], "PLA", "mk4"))).toMatchObject({ calibrated: false, rejected: true, label: "datasheet / estimate · calibration rejected" });
     expect(calibrationFor([SAVED], "PLA", null)).toBeNull();
     // a study's resolved material carries the core's own word
     const calibrated = (read("s3_static_calibrated.json") as { material: Record<string, unknown> & { name: string } }).material;
-    expect(provenance(calibrated).label).toBe("calibrated (7 tests)");
+    expect(provenance(calibrated).label).toBe(label);
+    expect(provenance(calibrated).byProperty).toMatchObject({ e: "calibrated (3 tests)", e_z: "datasheet / estimate" });
   });
 });
 
@@ -87,11 +100,11 @@ describe("fatigue arithmetic (core sim/fatigue.py)", () => {
   it("contact faces and the print direction (material.anisotropy) become viewer markers", () => {
     const m = settingsMarkers("static", {
       load_cases: [],
-      nonlinear: { contact: [{ kind: "faces", master: "f1", slave: "f2" }, { kind: "rigid", face: "bottom" }] },
+      nonlinear: { contacts: [{ kind: "contact", a: { face: "f1" }, b: { face: "f2", instance: null } }], rigid_supports: [{ face: "bottom", normal: "+z" }] },
       material: { name: "PLA", anisotropy: { print_direction: "+x" } },
     });
     expect(m.filter((x) => x.role === "contact").map((x) => [x.kind, x.face, x.path.join(".")])).toEqual([
-      ["contact 1", "f1", "nonlinear.contact.0.master"], ["contact 1", "f2", "nonlinear.contact.0.slave"], ["contact 2", "bottom", "nonlinear.contact.1.face"],
+      ["contact 1", "f1", "nonlinear.contacts.0.a.face"], ["contact 1", "f2", "nonlinear.contacts.0.b.face"], ["rigid support 1", "bottom", "nonlinear.rigid_supports.0.face"],
     ]);
     expect(m.find((x) => x.role === "print")?.direction).toBe("+x");
     expect(settingsMarkers("static", { load_cases: [], material: { anisotropy: null } }).some((x) => x.role === "print")).toBe(false);
