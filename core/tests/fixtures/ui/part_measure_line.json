@@ -1,0 +1,35 @@
+{
+  "part_id": "mount_plate",
+  "version": 1,
+  "items": [
+    {
+      "kind": "edge",
+      "id": "e0",
+      "type": "line",
+      "length": 5.0,
+      "start": [
+        -20.0,
+        -10.0,
+        2.5
+      ],
+      "end": [
+        -20.0,
+        -10.0,
+        -2.5
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  ],
+  "values": [
+    {
+      "key": "length",
+      "label": "Length",
+      "value": 5.0,
+      "unit": "mm"
+    }
+  ]
+}

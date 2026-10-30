@@ -1,0 +1,50 @@
+{
+  "part_id": "mount_plate",
+  "version": 1,
+  "items": [
+    {
+      "kind": "vertex",
+      "id": "v1",
+      "point": [
+        -20.0,
+        -10.0,
+        2.5
+      ]
+    },
+    {
+      "kind": "vertex",
+      "id": "v6",
+      "point": [
+        20.0,
+        10.0,
+        2.5
+      ]
+    }
+  ],
+  "values": [
+    {
+      "key": "distance",
+      "label": "Distance",
+      "value": 44.72136,
+      "unit": "mm"
+    },
+    {
+      "key": "dx",
+      "label": "ΔX",
+      "value": 40.0,
+      "unit": "mm"
+    },
+    {
+      "key": "dy",
+      "label": "ΔY",
+      "value": 20.0,
+      "unit": "mm"
+    },
+    {
+      "key": "dz",
+      "label": "ΔZ",
+      "value": 0.0,
+      "unit": "mm"
+    }
+  ]
+}

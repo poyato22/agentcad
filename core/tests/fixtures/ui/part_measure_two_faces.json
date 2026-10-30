@@ -1,0 +1,76 @@
+{
+  "part_id": "mount_plate",
+  "version": 1,
+  "items": [
+    {
+      "kind": "face",
+      "id": "f2",
+      "type": "plane",
+      "area": 772.291153,
+      "center": [
+        0.0,
+        0.0,
+        2.5
+      ],
+      "normal": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "kind": "face",
+      "id": "f4",
+      "type": "plane",
+      "area": 772.291153,
+      "center": [
+        0.0,
+        0.0,
+        -2.5
+      ],
+      "normal": [
+        0.0,
+        0.0,
+        -1.0
+      ]
+    }
+  ],
+  "values": [
+    {
+      "key": "normal_distance",
+      "label": "Normal distance",
+      "value": 5.0,
+      "unit": "mm"
+    },
+    {
+      "key": "distance",
+      "label": "Distance",
+      "value": 5.0,
+      "unit": "mm"
+    },
+    {
+      "key": "dx",
+      "label": "ΔX",
+      "value": 0.0,
+      "unit": "mm"
+    },
+    {
+      "key": "dy",
+      "label": "ΔY",
+      "value": 0.0,
+      "unit": "mm"
+    },
+    {
+      "key": "dz",
+      "label": "ΔZ",
+      "value": 5.0,
+      "unit": "mm"
+    },
+    {
+      "key": "angle",
+      "label": "Angle",
+      "value": 0.0,
+      "unit": "°"
+    }
+  ]
+}
