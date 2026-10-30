@@ -57,6 +57,25 @@ PART_NOUNS = ("bracket", "plate", "part", "hole", "mount", "spacer", "washer", "
               "enclosure", "case", "lid", "cover", "hook", "handle", "block", "tube", "ring",
               "pulley", "bearing holder", "adapter", "coupler", "nut", "bolt", "hinge", "panel",
               "beam", "rod", "tab", "slot", "fillet", "chamfer", "boss", "rib", "pocket")
+# components that make a request a multi-part system when something holds or carries them
+# ("a Raspberry Pi in a case with a fan", "a box with a battery and a board")
+COMPONENT_NOUNS = ("battery", "batteries", "lipo", "li-ion", "18650", "fan", "pcb", "board",
+                   "raspberry pi", "arduino", "esp32", "microcontroller", "motor", "servo",
+                   "display", "screen", "lcd", "oled", "speaker", "sensor", "camera module",
+                   "power supply", "psu", "heatsink", "heat sink", "electronics", "charger",
+                   "switch", "usb port", "antenna", "pump")
+ENCLOSURE_NOUNS = ("case", "enclosure", "housing", "box", "shell", "chassis", "cabinet")
+# "with a battery", "with two 18650s", "with a 30 mm fan and a 2S LiPo battery"
+WITH_COMPONENT_RE = re.compile(
+    r"\bwith\b(?:\s+(?:a|an|the|one|two|three|four|\d+|[\w.-]*\d[\w.-]*|mm|small|large|"
+    r"tiny|big|cooling|rechargeable|lithium|single|dual|and|,))*\s+(?:"
+    + "|".join(re.escape(c) for c in COMPONENT_NOUNS) + r")(?:e?s)?(?![a-z0-9])", re.IGNORECASE)
+# shapes that are one complex body to sculpt (G-R6: shape-heavy), not a single prismatic part
+SHAPE_NOUNS = ("bomber", "aircraft", "airplane", "aeroplane", "airliner", "jet", "glider",
+               "fighter", "spaceship", "spacecraft", "rocket", "fuselage", "airfoil", "aerofoil",
+               "wing", "boat hull", "hull", "car body", "figurine", "statue", "sculpture",
+               "helmet", "vase", "b-2", "b-52", "f-16", "f-22", "f-35", "sr-71", "cessna",
+               "boeing", "airbus")
 # analysis nouns: strong evidence for the sim agent even next to "check"
 SIM_NOUNS = ("stress", "fea", "fem", "finite element", "deflection", "displacement", "modal",
              "natural frequenc", "resonan", "vibration", "buckl", "thermal", "temperature",
@@ -88,6 +107,20 @@ def _pat(stem: str) -> re.Pattern[str]:
 
 def _hits(text: str, words: Iterable[str]) -> list[str]:
     return [w for w in words if _pat(w).search(text)]
+
+
+def _word_hits(text: str, words: Iterable[str]) -> list[str]:
+    """Whole-word hits (an optional plural ending): "fan" must not hit "fancy"."""
+    out = []
+    for w in words:
+        key = "\0" + w
+        p = _WORD_RE_CACHE.get(key)
+        if p is None:
+            p = _WORD_RE_CACHE[key] = re.compile(
+                r"(?<![a-z0-9])" + re.escape(w) + r"(?:e?s)?(?![a-z0-9])", re.IGNORECASE)
+        if p.search(text):
+            out.append(w)
+    return out
 
 
 def is_drawing(att: Attachment) -> bool:
@@ -127,6 +160,18 @@ def route_rules(prompt: str, *, attachments: Iterable[Attachment | dict] = (),
     # "test / analyze / simulate … under 50 N": a test request, even next to "want" or "need"
     if not (set(build) - WEAK_BUILD) and (sim_v or sim_n) and (sim_v or FORCE_RE.search(text)):
         return pick("sim", "test / analyze", 0.8)
+    # multi-part systems and enclosures go to the lead (engineer), not the single-part designer:
+    # "X in a case with Y and Z", "with a battery / fan / board", "an assembly of ..."
+    comps = _word_hits(text, COMPONENT_NOUNS)
+    encl = _word_hits(text, ENCLOSURE_NOUNS)
+    if not sim_v and not check and (WITH_COMPONENT_RE.search(text)
+                                    or (comps and encl) or len(set(comps)) >= 2):
+        return pick("engineer", "multi-part system (parts in an enclosure)", 0.85)
+    shape = _word_hits(text, SHAPE_NOUNS)
+    if shape and not system and (build or not (sim_n or check)):
+        # one complex sculpted body (an aircraft, a hull): the designer, with the shape
+        # complexity estimate flagging it for a strong vision model
+        return pick("designer", "complex shape", 0.8)
     if build or (dims and (part or system)):
         if system:
             return pick("engineer", "system build", 0.85 if build else 0.7)
