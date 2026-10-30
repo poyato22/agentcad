@@ -16,6 +16,7 @@ from starlette.concurrency import run_in_threadpool
 
 from .. import projects as _projects
 from ..agent import definitions as _defs
+from ..appearance import render_params
 from ..cad import thumbs
 from ..profile import load_profile, save_profile
 from ..types import ErrorCode, MisesError
@@ -107,12 +108,14 @@ def build_projects_router(runtime: Runtime) -> APIRouter:
                   for p in _projects.list_parts(store, home, project_id)
                   if p.get("kind") == "part"][:4]
         sz = thumbs.clamp_size(size)
-        etag = f'"proj-{project_id}-{thumbs.project_key(home, chosen, sz)}"'   # = the cache key
+        looks = {pid: render_params(r) for pid, _v in chosen
+                 if (r := store.get_part(pid)) is not None}            # U8 appearance
+        etag = f'"proj-{project_id}-{thumbs.project_key(home, chosen, sz, looks)}"'   # = the cache key
         headers = {"ETag": etag, "Cache-Control": "private, no-cache"}
         inm = request.headers.get("if-none-match")
         if inm and any(t.strip().removeprefix("W/") == etag for t in inm.split(",")):
             return Response(status_code=304, headers=headers)
-        png = await thumbs.project_thumb(home, project_id, chosen, sz)
+        png = await thumbs.project_thumb(home, project_id, chosen, sz, looks)
         if png is None:
             raise MisesError(ErrorCode.NOT_FOUND, f"no preview for build {project_id!r} yet",
                              hint="it has no parts with a built mesh")

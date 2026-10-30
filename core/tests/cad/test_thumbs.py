@@ -130,3 +130,33 @@ async def test_cancelled_render_leaves_no_temp_dir(tmp_path):
     except asyncio.CancelledError:
         pass
     assert not list((home / "parts" / thumbs.THUMBS_DIR / "box_e").glob("tmp-*"))
+
+
+async def test_thumb_uses_g1_render_job_and_the_u8_appearance(tmp_path, monkeypatch):
+    """int-678: thumbnails go through G1's bounded render job (render_worker under sandbox-exec,
+    capped STL, timeout, RSS watchdog) and draw the part in its appearance; a new look is a new
+    cache key, and the background is transparent."""
+    from mises.cad import render_job
+    home = tmp_path / "home"
+    platform.register_sandbox_home(home)
+    await _build_part(home, "box_f", BOX)
+    calls = []
+    real = render_job.run_render_job
+
+    async def spy(*a, **kw):
+        calls.append(a[1][0].color)
+        return await real(*a, **kw)
+
+    monkeypatch.setattr(thumbs, "run_render_job", spy)
+    red = {"preset": "matte", "color": "#ff0000", "metalness": 0, "roughness": 0.8, "opacity": 1}
+    plain = await thumbs.part_thumb(home, "box_f", 1, size=64)
+    reddish = await thumbs.part_thumb(home, "box_f", 1, size=64, look=red)
+    assert calls[0] != calls[1] and calls[1] == (1.0, 0.0, 0.0)
+    assert thumbs.part_key(home, "box_f", 1, 64) != thumbs.part_key(home, "box_f", 1, 64, red)
+    _, _, a = thumb_render.decode_png(plain)
+    _, _, b = thumb_render.decode_png(reddish)
+    assert a[3] == 0 and b[3] == 0                                  # a corner: keyed out
+    reds = sum(1 for i in range(0, len(b), 4) if b[i + 3] and b[i] > 2 * max(b[i + 1], b[i + 2]))
+    assert reds > 64 * 64 * 0.05
+    await thumbs.part_thumb(home, "box_f", 1, size=64, look=red)    # cached: no new render
+    assert len(calls) == 2

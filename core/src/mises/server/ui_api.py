@@ -23,6 +23,7 @@ from starlette.middleware.cors import CORSMiddleware
 from .. import hardware, local_models
 from .. import platform as _platform
 from .. import projects as _projects
+from ..appearance import render_params
 from ..cad import thumbs
 from ..cad.tools import PART_ID_RE
 from ..claude_code.session import MODEL_ALIASES, SOURCE as CLAUDE_CODE
@@ -346,7 +347,8 @@ def build_ui_router(runtime: Runtime) -> UiRouter:
         row = runtime.store.get_part(part_id)
         version = _projects.part_version(home, row) if row is not None else 0
         sz = thumbs.clamp_size(size)
-        key = thumbs.part_key(home, part_id, version, sz)   # version + model.stl identity
+        look = render_params(row) if row is not None else None   # U8 appearance
+        key = thumbs.part_key(home, part_id, version, sz, look)   # version + model.stl + look
         if key is None:
             raise MisesError(ErrorCode.NOT_FOUND, f"no thumbnail for part {part_id!r}",
                              hint="build it first")
@@ -354,7 +356,7 @@ def build_ui_router(runtime: Runtime) -> UiRouter:
         headers = {"ETag": etag, "Cache-Control": "private, no-cache"}
         if _etag_matches(request.headers.get("if-none-match"), etag):
             return Response(status_code=304, headers=headers)
-        png = await thumbs.part_thumb(home, part_id, version, sz)
+        png = await thumbs.part_thumb(home, part_id, version, sz, look)
         if png is None:
             raise MisesError(ErrorCode.NOT_FOUND, f"no thumbnail for part {part_id!r}",
                              hint="its preview could not be rendered")

@@ -34,7 +34,9 @@ from pydantic import BaseModel, Field
 from .. import budget as budget_mod
 from .. import edits as _edits
 from .. import references as refs_mod
-from ..events import announce_card
+# G1 cards (critique_round, view_presented) go through U3c's announcements: one wire format,
+# stored as DECISION steps on the acting run and its lead
+from ..announce import announce as announce_card
 from ..providers.base import ModelRequest, TextDelta, Usage
 from ..tools.registry import ToolContext, ToolRegistry, tool
 from ..types import (ErrorCode, ImageBlock, Message, MisesError, SafetyClass, StepKind, TextBlock,

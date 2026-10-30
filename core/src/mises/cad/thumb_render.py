@@ -1,6 +1,7 @@
 """Pure-Python thumbnail rendering: binary STL -> shaded orthographic PNG (stdlib only).
 
-Imported by the sandboxed thumbnail worker (cad/thumb_worker.py) and reused by the host to
+Its rasterizer was U1's thumbnail renderer (thumbnails now use Plan 8 G1's bounded render job,
+cad/thumbs.py); the host still uses this module's PNG codec and compositor to
 compose a project tile. No OCCT, no GL and no third-party deps: it reads the mesh the build worker
 already wrote (model.stl) and software-rasterizes it, so it runs under the same sandbox profile as
 the build (network denied, writes only its out dir, the Mises home unreadable). Nothing here
