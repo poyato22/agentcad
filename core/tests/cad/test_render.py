@@ -217,3 +217,64 @@ def test_transparent_render_is_valid_png():
     imgs = render.render_views(render.Mesh(tris, opacity=0.4), views=("iso",),
                                size=128, transparent=True)
     assert _png_size(imgs["iso"]) == (128, 128)
+
+
+# ---- lighting and view naming (benchmark fix: the B-2's head-on view rendered nearly black)
+
+def _fg_stats(png: bytes) -> tuple[float, float]:
+    """(mean luminance 0..255 of the shaded, un-inked foreground; the fraction of the
+    foreground that is edge ink)."""
+    from PIL import Image
+    a = np.asarray(Image.open(io.BytesIO(png)).convert("RGB")).astype(float)
+    fg = np.abs(a - np.array(render._BG)).sum(axis=2) > 6
+    ink = np.abs(a - np.array(render._EDGE)).sum(axis=2) < 6
+    return float(a.mean(axis=2)[fg & ~ink].mean()), float(ink[fg].mean())
+
+
+def _wing() -> np.ndarray:
+    """A thin swept wing: lens-shaped section (smooth, curved top and bottom), 300 mm span."""
+    span = np.linspace(-150, 150, 61)
+    chord = np.linspace(0, 60, 41)
+    thick = 4.0 * np.sin(np.pi * chord / 60)                   # 0 at both edges
+    tris = []
+    for sgn in (1, -1):
+        for i in range(len(span) - 1):
+            for j in range(len(chord) - 1):
+                def p(a, b):
+                    y = span[a]
+                    return (chord[b] + 0.4 * abs(y), y, sgn * thick[b] / 2)
+                tris += [[p(i, j), p(i + 1, j), p(i + 1, j + 1)],
+                         [p(i, j), p(i + 1, j + 1), p(i, j + 1)]]
+    return np.array(tris, dtype=np.float64)
+
+
+def test_every_standard_view_of_a_thin_wing_is_lit_not_inked():
+    # a thin curved wing seen edge-on: its smooth grazing surfaces must be shaded by a light
+    # from the camera's side, not drawn solid with depth-edge ink
+    for view, png in render.render_views(render.Mesh(_wing()), size=512).items():
+        lum, ink = _fg_stats(png)
+        assert lum > 110, (view, lum)
+        assert ink < 0.5, (view, ink)
+
+
+@pytest.mark.parametrize("view", ["front", "top", "side"])
+def test_key_light_comes_from_the_camera_side(view):
+    # the face a standard view looks straight at is brightly lit, whichever axis it is on
+    img = render.render_views(render.Mesh(_box_tris(20, 20, 20)), views=(view,), size=128)[view]
+    from PIL import Image
+    px = np.asarray(Image.open(io.BytesIO(img)).convert("RGB")).astype(float)[64, 64]
+    assert px.mean() / 255.0 > 0.8 * np.mean(render._DEFAULT_COLOR), (view, px)
+
+
+def test_custom_cameras_render_named_views_and_bad_ones_are_refused():
+    tris = _box_tris(40, 10, 10)
+    cams = {"nose": ((1.0, 0.0, 0.0), (0.0, 0.0, 1.0))}
+    assert set(render.render_views(render.Mesh(tris), views=("nose",), size=64,
+                                   cameras=cams)) == {"nose"}
+    ys, xs = np.where(render.render_mask(render.Mesh(tris), "nose", size=64, cameras=cams))
+    assert abs((xs.max() - xs.min()) - (ys.max() - ys.min())) <= 2   # head-on: a square
+    with pytest.raises(ValueError):
+        render.render_views(render.Mesh(tris), views=("nose",),
+                            cameras={"nose": ((float("nan"), 0, 0), (0, 0, 1))})
+    with pytest.raises(ValueError):
+        render.render_views(render.Mesh(tris), views=("nowhere",))

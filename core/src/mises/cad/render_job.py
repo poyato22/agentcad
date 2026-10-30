@@ -5,7 +5,9 @@ rasterizer is treated like the build itself: it runs as a separate process under
 (writes only in its job dir, no network, no fork), with a wall-clock timeout and an RSS
 watchdog, and awaiting it never blocks the event loop. Inputs are capped before they are
 copied in (MAX_STL_BYTES per part), and the worker caps triangles, drops non-finite and outlier
-vertices, and refuses views over its layer budget.
+vertices, and refuses views over its layer budget. An assembly instance's solved world
+transform travels to the worker as data (a 4x4 number matrix, validated on both sides) and is
+applied there, so the core never rasterises or transforms a mesh itself.
 """
 from __future__ import annotations
 
@@ -35,6 +37,8 @@ MAX_PNG_BYTES = 16 * 1024 * 1024
 _ONE_THREAD = {"OPENBLAS_NUM_THREADS": "1", "OMP_NUM_THREADS": "1",
                "VECLIB_MAXIMUM_THREADS": "1", "MKL_NUM_THREADS": "1"}
 _PNG = b"\x89PNG\r\n\x1a\n"
+MAX_MESHES = 256                       # meshes (instances) per job; a part's STL is copied once
+MAX_TRANSFORM_ABS = 1e6                # mm: any matrix entry beyond this is refused
 
 
 @dataclass
@@ -43,6 +47,25 @@ class MeshIn:
     name: str
     color: tuple[float, float, float]
     opacity: float = 1.0
+    # the instance's world transform (4x4, row-major, mm), or None for the part's own frame
+    transform: list[list[float]] | None = None
+
+
+def check_transform(m) -> list[list[float]] | None:
+    """A 4x4 affine matrix of finite, bounded numbers (bottom row 0 0 0 1), as plain floats;
+    None stays None. Anything else is refused: it is data, never evaluated."""
+    if m is None:
+        return None
+    try:
+        a = np.asarray(m, dtype=np.float64)
+    except (TypeError, ValueError):
+        raise MisesError(ErrorCode.INVALID_INPUT, "an instance transform is not numeric") from None
+    if a.shape != (4, 4) or not np.isfinite(a).all() or (np.abs(a) > MAX_TRANSFORM_ABS).any():
+        raise MisesError(ErrorCode.INVALID_INPUT, "an instance transform is not a finite 4x4 "
+                         "matrix", hint="fix the assembly instance's transform")
+    if not np.allclose(a[3], [0.0, 0.0, 0.0, 1.0], atol=1e-6):
+        raise MisesError(ErrorCode.INVALID_INPUT, "an instance transform is not affine")
+    return a.tolist()
 
 
 @dataclass
@@ -81,6 +104,9 @@ async def run_render_job(jobs_root: Path, meshes: list[MeshIn], *, renders: list
     """Render `renders` ({key, views, size, section?, explode?, transparent?}) and compute
     `masks` ({key, view, size, section?}) of `meshes` in the sandboxed worker. `max_layers`
     overrides the worker's complexity budget (tests only; tools never pass it)."""
+    if len(meshes) > MAX_MESHES:
+        raise MisesError(ErrorCode.INVALID_INPUT, f"{len(meshes)} meshes to render, over the "
+                         f"{MAX_MESHES} limit", hint="render fewer parts or a subset")
     jobs_root = Path(jobs_root)
     jobs_root.mkdir(parents=True, exist_ok=True)
     job_dir = jobs_root / f"job_{secrets.token_hex(8)}"
@@ -88,11 +114,16 @@ async def run_render_job(jobs_root: Path, meshes: list[MeshIn], *, renders: list
     try:
         spec = {"meshes": [], "renders": list(renders), "masks": list(masks),
                 "max_layers": max_layers}
-        for i, m in enumerate(meshes):
-            fname = f"m{i}.stl"
-            safe_io.write_bytes(job_dir, fname, _read_stl(m.part_dir, m.name))
+        files: dict[str, str] = {}             # part dir -> its one copy in the job dir
+        for m in meshes:
+            key = str(Path(m.part_dir))
+            fname = files.get(key)
+            if fname is None:
+                fname = files[key] = f"m{len(files)}.stl"
+                safe_io.write_bytes(job_dir, fname, _read_stl(m.part_dir, m.name))
             spec["meshes"].append({"file": fname, "name": m.name, "color": list(m.color),
-                                   "opacity": m.opacity})
+                                   "opacity": m.opacity,
+                                   "transform": check_transform(m.transform)})
         safe_io.write_text(job_dir, "job.json", json.dumps(spec))
         nonce = secrets.token_hex(16)
         try:

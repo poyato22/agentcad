@@ -43,7 +43,14 @@ def validation_rows(level: int) -> list[dict]:
 # signed error). Reproduce with `MISES_OPENFOAM_QA=1 pytest -m openfoam_real
 # tests/sim/test_openfoam.py`. Until a row exists the band below is the plan's ACCEPTANCE TARGET
 # (sphere at Re 1e4-1e5 within 10%), and results say "validation pending", never "validated".
-OPENFOAM_VALIDATION: list[tuple[str, float, int, float, float, float]] = []
+# Recorded 2026-10-30 (fix-bench, real opencfd/openfoam-run v2512 runs on an M-series Mac, 4
+# CPUs, refinement 3, laminar below Re 1e5, bluff bodies meshed at surface level 4 all over):
+# sphere D 100 mm at 3 m/s (1.13 M cells), square plate 100 mm x 4 mm at 1.5 m/s (0.95 M
+# cells est.), 1500 iterations each, Cd the mean of the last half.
+OPENFOAM_VALIDATION: list[tuple[str, float, int, float, float, float]] = [
+    ("sphere", 2.03e4, 3, 0.445, 0.47, -0.053),
+    ("flat plate", 1.02e4, 3, 1.276, 1.17, +0.091),
+]
 OPENFOAM_TARGET_BAND = 0.10
 
 

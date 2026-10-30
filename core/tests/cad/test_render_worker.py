@@ -116,6 +116,44 @@ async def test_render_does_not_block_the_event_loop(tmp_path):
     assert ticks >= 10                    # the loop kept running during the render
 
 
+def _moved(m: MeshIn, dz: float) -> MeshIn:
+    tf = [[1.0, 0, 0, 0], [0, 1.0, 0, 0], [0, 0, 1.0, dz], [0, 0, 0, 1.0]]
+    return MeshIn(m.part_dir, m.name, m.color, m.opacity, tf)
+
+
+async def test_instance_transforms_are_applied_in_the_worker(tmp_path):
+    # two instances of ONE part: stacked by their transforms the front silhouette is three cubes
+    # tall; in the part's own frame they would overlap into one square
+    cube = _part(tmp_path, "cube", _box_tris(20, 20, 20))
+    out = await run_render_job(tmp_path / "jobs", [cube, _moved(cube, 40.0)], masks=[
+        {"key": "m", "view": "front", "size": 128}])
+    ys, xs = np.where(out.masks["m"])
+    assert (ys.max() - ys.min()) / (xs.max() - xs.min()) == pytest.approx(3.0, rel=0.05)
+    assert out.triangles == 24                   # the triangle cap counts every instance
+
+
+async def test_bad_instance_transforms_are_refused(tmp_path):
+    cube = _part(tmp_path, "cube", _box_tris(20, 20, 20))
+    for bad in ([[1, 0, 0]], [[float("nan")] * 4] * 4, [[1, 0, 0, 1e9], [0, 1, 0, 0],
+                                                         [0, 0, 1, 0], [0, 0, 0, 1]],
+                [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [1, 0, 0, 1]]):
+        with pytest.raises(MisesError) as e:
+            await run_render_job(tmp_path / "jobs", [MeshIn(cube.part_dir, "cube", cube.color,
+                                                            1.0, bad)],
+                                 renders=[{"key": "k", "views": ["iso"], "size": 64}])
+        assert e.value.code == ErrorCode.INVALID_INPUT
+
+
+async def test_mesh_count_is_capped(tmp_path, monkeypatch):
+    from mises.cad import render_job
+    monkeypatch.setattr(render_job, "MAX_MESHES", 3)
+    cube = _part(tmp_path, "cube", _box_tris(20, 20, 20))
+    with pytest.raises(MisesError) as e:
+        await run_render_job(tmp_path / "jobs", [cube] * 4,
+                             renders=[{"key": "k", "views": ["iso"], "size": 64}])
+    assert e.value.code == ErrorCode.INVALID_INPUT and "limit" in e.value.message
+
+
 async def test_job_dir_is_cleaned_up(tmp_path):
     m = _part(tmp_path, "cube", _box_tris(10, 10, 10))
     await run_render_job(tmp_path / "jobs", [m], renders=[{"key": "k", "views": ["iso"],

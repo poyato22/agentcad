@@ -43,11 +43,15 @@ from .setup import frontal_area_mm2, wind_frame, yawed
 from .validation import openfoam_error_band, openfoam_validation_rows
 
 LABEL = "OpenFOAM k-ω SST"
+LABEL_LAMINAR = "OpenFOAM laminar"
 PIDS_LIMIT = 1024
 SHM_MB = 512
 KILL_TIMEOUT_S = 20.0
 TAIL = 4000
 AVERAGE_TAIL = 0.1          # coefficients: the mean over the last 10% of the iterations run
+# a laminar steady solve of a separated wake does not settle: its pseudo-time oscillation is
+# averaged over the last half of the iterations instead
+AVERAGE_TAIL_LAMINAR = 0.5
 
 
 LABEL_FILTER = "label=mises.study=wind"
@@ -188,9 +192,9 @@ def _coeff_mean(tab: dict, key: str, n_tail: int) -> float:
     return float(np.mean(v[-n_tail:]))
 
 
-def read_results(case: Path) -> dict:
+def read_results(case: Path, tail_frac: float = AVERAGE_TAIL) -> dict:
     """Cd / Cl / Cs and the moments (wind frame) from postProcessing, averaged over the last
-    AVERAGE_TAIL of the iterations, with the history and the log state."""
+    `tail_frac` of the iterations, with the history and the log state."""
     try:
         coef = foam_parse.function_object_table(case, "forceCoeffs", "coefficient.dat")
         forces = foam_parse.function_object_table(case, "forces", "force.dat")
@@ -201,7 +205,7 @@ def read_results(case: Path) -> dict:
         raise SimError("solve_failed", "OpenFOAM wrote no force coefficients",
                        hint="see log.simpleFoam in the study folder")
     n = len(coef["Time"])
-    tail = max(1, int(math.ceil(AVERAGE_TAIL * n)))
+    tail = max(1, int(math.ceil(tail_frac * n)))
     out = {k: _coeff_mean(coef, k, tail) for k in ("Cd", "Cl", "Cs", "CmRoll", "CmPitch",
                                                     "CmYaw")}
     cd_tail = coef["Cd"][-tail:]
@@ -387,7 +391,7 @@ async def _solve_angle(tris_part_mm, s, case: Path, direction, up, a_ref_m2, doc
     await run_case(case, runner, docker, cpus=int(s.get("cpus", 1)),
                    iterations=plan.end_iterations, memory_mb=int(s["memory_mb"]),
                    timeout_s=timeout_s, progress=progress, job_root=case.parent)
-    r = read_results(case)
+    r = read_results(case, AVERAGE_TAIL_LAMINAR if plan.laminar else AVERAGE_TAIL)
     m_w = r["moment_nm"]
     if m_w is None:      # from the coefficients: Cm q A lRef (roll x, pitch y, yaw z)
         m_w = [c * q * a_ref * plan.d_ref_m for c in (r["CmRoll"], r["CmPitch"], r["CmYaw"])]
@@ -395,7 +399,8 @@ async def _solve_angle(tris_part_mm, s, case: Path, direction, up, a_ref_m2, doc
     return {"frontal_area_m2": frontal, "ref_area_m2": a_ref, "reynolds": re_,
             "reynolds_length_m": plan.d_ref_m, "l_ref_m": plan.d_ref_m,
             "dynamic_pressure_pa": q, "frame": R.tolist(), "method": "openfoam",
-            "fidelity": LABEL, "cd": r["Cd"], "cl": r["Cl"], "cs": r["Cs"],
+            "fidelity": LABEL_LAMINAR if plan.laminar else LABEL,
+            "cd": r["Cd"], "cl": r["Cl"], "cs": r["Cs"],
             "drag_n": r["Cd"] * q * a_ref, "lift_n": r["Cl"] * q * a_ref,
             "side_n": r["Cs"] * q * a_ref, "moment_nm": (R.T @ np.array(m_w)).tolist(),
             "force_n_wind": r["force_n"], "force_pressure_n_wind": r["force_pressure_n"],
@@ -404,9 +409,9 @@ async def _solve_angle(tris_part_mm, s, case: Path, direction, up, a_ref_m2, doc
             "validation": openfoam_validation_rows(), "converged": r["converged"],
             "stopped": r["stopped"], "steps": r["iterations"], "history": r["history"],
             "mesh": {**plan.to_dict(), "solver": f"OpenFOAM {OPENFOAM_VERSION}",
-                     "image": OPENFOAM_IMAGE, "turbulence": "k-omega SST (RANS, wall "
-                     "functions)", "boundaries": "fixed-velocity inlet, fixed-pressure outlet, "
-                     "symmetry sides"},
+                     "image": OPENFOAM_IMAGE, "turbulence": plan.turbulence,
+                     "boundaries": "fixed-velocity inlet, fixed-pressure outlet, "
+                                   "symmetry sides"},
             "_case": str(case)}
 
 

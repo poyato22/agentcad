@@ -211,9 +211,14 @@ async def test_worker_process_runs_sandboxed(tmp_path):
 @pytest.mark.timeout(1500)
 def test_validation_sphere_cd_within_25_percent(tmp_path):
     # D = 0.1 m at 3 m/s: Re 2e4, measured Cd ~0.47 (subcritical plateau)
+    # memory_mb: refinement 3 at domain_multiplier 5 needs ~1.4 GB; the 1024 MB default makes
+    # fit_budget coarsen it to refinement 2, and the test would validate the wrong level
     r = run_study(sphere(n=48), settings(speed_m_s=3, refinement=3, domain_multiplier=5,
-                                         iterations=6000, timeout_s=1400), tmp_path)
-    print("sphere", {k: r[k] for k in ("cd", "cd_pressure", "cd_lattice_total", "steps")})
+                                         iterations=6000, timeout_s=1400, memory_mb=4096),
+                  tmp_path)
+    print("sphere", {k: r[k] for k in ("cd", "cd_pressure", "cd_lattice_total", "steps",
+                                       "refinement_level")})
+    assert r["refinement_level"] == 3, r["lattice"]
     assert abs(r["cd"] - 0.47) / 0.47 < 0.25, r["cd"]
 
 
@@ -222,6 +227,9 @@ def test_validation_sphere_cd_within_25_percent(tmp_path):
 def test_validation_flat_plate_cd(tmp_path):
     # a square plate normal to the flow: Cd ~1.17 (Hoerner); t/D = 0.04
     r = run_study(box(4, 100, 100), settings(speed_m_s=1.5, refinement=3, domain_multiplier=5,
-                                             iterations=6000, timeout_s=1400), tmp_path)
-    print("plate", {k: r[k] for k in ("cd", "cd_pressure", "cd_lattice_total", "steps")})
+                                             iterations=6000, timeout_s=1400, memory_mb=4096),
+                  tmp_path)
+    print("plate", {k: r[k] for k in ("cd", "cd_pressure", "cd_lattice_total", "steps",
+                                      "refinement_level")})
+    assert r["refinement_level"] == 3, r["lattice"]
     assert abs(r["cd"] - 1.17) / 1.17 < 0.25, r["cd"]

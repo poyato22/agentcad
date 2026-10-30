@@ -1391,6 +1391,10 @@ class Runtime:
             raise MisesError(ErrorCode.INVALID_INPUT, "run is still working",
                              hint="wait for it to finish or cancel it")
         self._sending.add(run_id)
+        # a new user turn: the render-critique loop's budgets (clock, rounds, image tokens)
+        # start afresh, so a long-lived lead's follow-up request gets its own loop (I2)
+        from .cad.views import reset_loop
+        reset_loop(run_id)
         try:
             # the plain two-argument call when there is no log (tests patch _send that way)
             await (self._send(run_id, text) if log is None else self._send(run_id, text, log))

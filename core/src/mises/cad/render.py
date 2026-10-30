@@ -37,10 +37,22 @@ VIEWS: dict[str, tuple[tuple[float, float, float], tuple[float, float, float]]] 
     "iso": ((-1.0, 1.0, -1.0), (0.0, 0.0, 1.0)),    # three-quarter
 }
 DEFAULT_VIEWS = ("front", "top", "side", "iso")
+# Where each standard view's camera sits, by axis (Z up): "front" looks along +Y from the -Y
+# side, "side" looks along -X from the +X side. Shown next to the view names so a model whose
+# nose points along X is not misread ("front" is then a side-on view).
+VIEW_AXES = {"front": "camera on -Y, looking +Y", "top": "camera on +Z, looking down -Z",
+             "side": "camera on +X, looking -X",
+             "iso": "camera at (+X, -Y, +Z), looking at the centre"}
 
-_LIGHT = np.array([0.3, -0.5, 0.8])      # from the camera's upper area, world space
-_LIGHT = _LIGHT / np.linalg.norm(_LIGHT)
-_AMBIENT = 0.35
+# Lighting: a key light from the camera's side (slightly above and to the right of the eye, in
+# camera space) so whatever a view looks at is lit, whichever way the model faces; plus a fixed
+# world fill from above-front so form still reads, and an ambient floor. Double-sided Lambert.
+_KEY_DIR = (-1.0, 0.30, 0.45)            # (along forward, along right, along up)
+_KEY = 0.55
+_FILL_DIR = np.array([0.3, -0.5, 0.8])
+_FILL_DIR = _FILL_DIR / np.linalg.norm(_FILL_DIR)
+_FILL = 0.25
+_AMBIENT = 0.30
 _BG = (238, 238, 240)
 _EDGE = (40, 40, 45)
 _DEFAULT_COLOR = (0.62, 0.66, 0.72)
@@ -159,8 +171,31 @@ def bbox(meshes: list[Mesh]) -> tuple[np.ndarray, np.ndarray]:
     return allpts.min(axis=0), allpts.max(axis=0)
 
 
-def _camera_basis(view: str) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    fwd_raw, up_raw = VIEWS[view]
+def _camera(view: str, cameras: dict | None = None):
+    """(forward, up) of a named view: a standard view, or one from `cameras` (name -> (forward,
+    up), finite 3-vectors; e.g. aircraft-named views computed by the caller)."""
+    if cameras and view in cameras:
+        fwd, up = cameras[view]
+        f, u = np.asarray(fwd, dtype=np.float64), np.asarray(up, dtype=np.float64)
+        if (f.shape != (3,) or u.shape != (3,) or not np.isfinite(f).all()
+                or not np.isfinite(u).all() or np.linalg.norm(f) < 1e-9):
+            raise ValueError(f"camera {view!r} needs finite 3-vectors forward and up")
+        return tuple(f), tuple(u)
+    if view not in VIEWS:
+        raise ValueError(f"unknown view {view!r}; known: {', '.join(VIEWS)}")
+    return VIEWS[view]
+
+
+def key_light(f: np.ndarray, right: np.ndarray, up: np.ndarray) -> np.ndarray:
+    """The key light direction (unit, toward the light) for a camera basis."""
+    a, b, c = _KEY_DIR
+    v = a * f + b * right + c * up
+    return v / np.linalg.norm(v)
+
+
+def _camera_basis(view: str, cameras: dict | None = None
+                  ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    fwd_raw, up_raw = _camera(view, cameras)
     f = np.array(fwd_raw, dtype=np.float64)
     f = f / np.linalg.norm(f)
     up = np.array(up_raw, dtype=np.float64)
@@ -265,8 +300,9 @@ class _Frame:
     alpha: np.ndarray                         # (N,) opacity per triangle
 
 
-def _project(meshes: list[Mesh], view: str, size: int, framing) -> _Frame:
-    f, right, up = _camera_basis(view)
+def _project(meshes: list[Mesh], view: str, size: int, framing,
+             cameras: dict | None = None) -> _Frame:
+    f, right, up = _camera_basis(view, cameras)
     lo, hi = framing if framing is not None else bbox(meshes)
     center = (lo + hi) / 2.0
     corners = np.array([[x, y, z] for x in (lo[0], hi[0]) for y in (lo[1], hi[1])
@@ -289,8 +325,10 @@ def _project(meshes: list[Mesh], view: str, size: int, framing) -> _Frame:
     pz = v @ f
     nrm = np.cross(tris[:, 1] - tris[:, 0], tris[:, 2] - tris[:, 0])
     ln = np.linalg.norm(nrm, axis=1)
-    lam = np.where(ln > 1e-12, np.abs(nrm @ _LIGHT) / np.maximum(ln, 1e-12), 0.0)
-    intensity = _AMBIENT + (1.0 - _AMBIENT) * lam    # double-sided Lambert
+    unit = nrm / np.maximum(ln, 1e-12)[:, None]
+    key = np.abs(unit @ key_light(f, right, up))       # double-sided Lambert
+    fill = np.abs(unit @ _FILL_DIR)
+    intensity = np.where(ln > 1e-12, _AMBIENT + _KEY * key + _FILL * fill, _AMBIENT)
     shade = np.clip(color * intensity[:, None], 0.0, 1.0)
     return _Frame(px, py, pz, shade, alpha)
 
@@ -475,23 +513,36 @@ def _silhouette_edges(mask: np.ndarray) -> np.ndarray:
 
 def _depth_edges(zbuf: np.ndarray, mask: np.ndarray, thresh: float) -> np.ndarray:
     """Interior creases and hidden-feature contours: foreground pixels whose camera depth jumps
-    by more than `thresh` from a foreground neighbour. This is what makes an internal feature
-    (e.g. a cavity revealed by a section) show up under flat shading."""
+    by more than `thresh` from a foreground neighbour AND by more than `thresh` beyond the
+    surface's own slope on either side. This is what makes an internal feature (e.g. a cavity
+    revealed by a section) show up under flat shading, while a smooth surface seen at a grazing
+    angle (a thin wing head-on: its depth changes fast but steadily) is not inked solid."""
     z = np.where(mask, zbuf, np.nan)
     edge = np.zeros_like(mask)
     with np.errstate(invalid="ignore"):
-        for dy, dx in ((1, 0), (0, 1)):
-            a = z[dy:, dx:]
-            b = z[:z.shape[0] - dy, :z.shape[1] - dx]
-            diff = np.abs(a - b) > thresh            # NaN compares False
-            edge[dy:, dx:] |= diff
-            edge[:z.shape[0] - dy, :z.shape[1] - dx] |= diff
+        for axis in (0, 1):
+            d = np.diff(z, axis=axis)                 # the step between neighbouring pixels
+            pad = np.full_like(np.take(d, [0], axis=axis), np.nan)
+            n = d.shape[axis]
+            prev = np.concatenate([pad, np.take(d, range(n - 1), axis=axis)], axis=axis)
+            nxt = np.concatenate([np.take(d, range(1, n), axis=axis), pad], axis=axis)
+            dev = np.fmin(np.abs(d - prev), np.abs(d - nxt))     # NaN only if neither exists
+            dev = np.where(np.isnan(prev) & np.isnan(nxt), np.inf, dev)
+            jump = (np.abs(d) > thresh) & (dev > thresh)          # NaN compares False
+            if axis == 0:
+                edge[1:, :] |= jump
+                edge[:-1, :] |= jump
+            else:
+                edge[:, 1:] |= jump
+                edge[:, :-1] |= jump
     return edge & mask
 
 
 def _render_one(meshes: list[Mesh], view: str, size: int,
-                framing, transparent: bool) -> tuple[np.ndarray, np.ndarray]:
-    img, mask, zbuf = _raster(_project(meshes, view, size, framing), size, transparent)
+                framing, transparent: bool,
+                cameras: dict | None = None) -> tuple[np.ndarray, np.ndarray]:
+    img, mask, zbuf = _raster(_project(meshes, view, size, framing, cameras), size,
+                              transparent)
     edge = _silhouette_edges(mask)
     if not transparent:
         lo, hi = framing
@@ -533,12 +584,12 @@ def _coerce(meshes) -> list[Mesh]:
 
 def render_views(meshes, *, views=DEFAULT_VIEWS, size: int = 512,
                  section: tuple | None = None, explode: float = 0.0,
-                 transparent: bool = False) -> dict[str, bytes]:
+                 transparent: bool = False, cameras: dict | None = None) -> dict[str, bytes]:
     """Render `meshes` (a Mesh, a triangles array, or a list of them) from each named view.
 
     Returns {view_name: PNG bytes}. `section` is (origin, normal): the +normal half is cut away.
     `explode` > 0 separates multiple meshes. `transparent` composites with each mesh's opacity
-    (x-ray)."""
+    (x-ray). `cameras` adds named views: {name: (forward, up)}."""
     ms = _coerce(meshes)
     if explode > 0:
         ms = explode_meshes(ms, explode)
@@ -549,21 +600,20 @@ def render_views(meshes, *, views=DEFAULT_VIEWS, size: int = 512,
     framing = bbox(ms)
     out: dict[str, bytes] = {}
     for view in views:
-        if view not in VIEWS:
-            raise ValueError(f"unknown view {view!r}; known: {', '.join(VIEWS)}")
-        rgb, _mask = _render_one(ms, view, size, framing, transparent)
+        _camera(view, cameras)                        # unknown or malformed: ValueError
+        rgb, _mask = _render_one(ms, view, size, framing, transparent, cameras)
         out[view] = _to_png(rgb)
     return out
 
 
 def render_mask(meshes, view: str, *, size: int = 512,
-                section: tuple | None = None) -> np.ndarray:
+                section: tuple | None = None, cameras: dict | None = None) -> np.ndarray:
     """The view's silhouette (bool HxW): the pixels the model covers. Used for IoU matching."""
     ms = _coerce(meshes)
     if section is not None:
         o, n = section
         ms = [Mesh(section_mesh(m.tris, o, n)) for m in ms]
-    fr = _project(ms, view, size, bbox(ms))
+    fr = _project(ms, view, size, bbox(ms), cameras)
     _img, mask, _z = _raster(fr, size, transparent=False)
     return mask
 

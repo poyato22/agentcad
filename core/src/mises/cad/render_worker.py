@@ -37,6 +37,25 @@ def _section(spec):
     return (tuple(spec[0]), tuple(spec[1])) if spec else None
 
 
+def _cameras(spec) -> dict | None:
+    """Extra named views from the host: {name: [forward, up]} (render.py checks the vectors)."""
+    if not spec:
+        return None
+    return {str(k): (tuple(v[0]), tuple(v[1])) for k, v in dict(spec).items()}
+
+
+def _transform(m) -> np.ndarray | None:
+    """The mesh's 4x4 world transform (data from the host), re-checked here: finite, bounded,
+    affine. None means the part's own frame."""
+    if m is None:
+        return None
+    a = np.asarray(m, dtype=np.float64)
+    if (a.shape != (4, 4) or not np.isfinite(a).all() or (np.abs(a) > 1e6).any()
+            or not np.allclose(a[3], [0.0, 0.0, 0.0, 1.0], atol=1e-6)):
+        raise render.RenderError("an instance transform is not a finite 4x4 affine matrix")
+    return a
+
+
 def run(job_dir: Path, nonce: str) -> dict:
     job = json.loads((job_dir / "job.json").read_text())
     if job.get("max_layers"):                  # host-set (tests); never from the agent
@@ -44,12 +63,19 @@ def run(job_dir: Path, nonce: str) -> dict:
     out_dir = job_dir / "out"
     out_dir.mkdir(exist_ok=True)
     meshes, dropped, total = [], 0, 0
+    loaded: dict[str, np.ndarray] = {}         # one parse per STL, shared by its instances
     for m in job["meshes"]:
-        tris = render.load_stl((job_dir / m["file"]).read_bytes())
+        if m["file"] not in loaded:
+            loaded[m["file"]] = render.load_stl((job_dir / m["file"]).read_bytes())
+        tris = loaded[m["file"]]
         total += len(tris)
         if total > render.MAX_TRIANGLES:
             raise render.RenderError(f"the meshes have over {render.MAX_TRIANGLES} triangles, "
                                      "over the render limit")
+        T = _transform(m.get("transform"))
+        if T is not None:
+            with np.errstate(invalid="ignore", over="ignore"):
+                tris = tris @ T[:3, :3].T + T[:3, 3]
         tris, n_bad = render.clean_triangles(tris)
         dropped += n_bad
         meshes.append(render.Mesh(tris, color=tuple(m.get("color") or render._DEFAULT_COLOR),
@@ -61,6 +87,7 @@ def run(job_dir: Path, nonce: str) -> dict:
         imgs = render.render_views(meshes, views=tuple(r["views"]), size=int(r["size"]),
                                    section=_section(r.get("section")),
                                    explode=float(r.get("explode", 0.0)),
+                                   cameras=_cameras(r.get("cameras")),
                                    transparent=bool(r.get("transparent")))
         pngs[r["key"]] = {}
         for view, data in imgs.items():
@@ -70,6 +97,7 @@ def run(job_dir: Path, nonce: str) -> dict:
     masks = {}
     for m in job.get("masks", []):
         mask = render.render_mask(meshes, m["view"], size=int(m.get("size", 512)),
+                                  cameras=_cameras(m.get("cameras")),
                                   section=_section(m.get("section")))
         masks[m["key"]] = np.packbits(mask.astype(np.uint8))
     shapes = {k: [int(m.get("size", 512))] * 2 for m in job.get("masks", []) for k in [m["key"]]}

@@ -23,6 +23,16 @@ import numpy as np
 
 # refinement -> (background cells across D, snappy surface levels (min, max), boundary layers)
 LEVELS = {1: (2, (3, 3), 0), 2: (3, (3, 3), 0), 3: (4, (3, 4), 3), 4: (4, (4, 5), 3)}
+# Flow regime (benchmark fix, 2026-10-30): fully turbulent k-omega SST puts a sphere's
+# separation far too late below the drag crisis (real run: Cd 0.34 vs 0.47 at Re 2e4, -28%).
+# Below LAMINAR_RE_MAX (on the frontal size D) the boundary layer is laminar, so the case runs
+# laminar (no turbulence model). k-omega SST-LM (kOmegaSSTLM, in v2512) was tried on the same
+# mesh and gave Cd 0.37 (-21%): it needs y+ ~ 1, which wall-function meshes do not give.
+LAMINAR_RE_MAX = 1e5
+# a bluff body (streamwise length < BLUFF_ASPECT x D) separates from its curved surface, so at
+# refinement >= 3 its whole surface is meshed at the finest level (min level = max level), not
+# only where the facet angle trips resolveFeatureAngle
+BLUFF_ASPECT = 3.0
 TURBULENCE_INTENSITY = 0.01      # inlet: 1% free-stream turbulence
 VISCOSITY_RATIO = 10.0           # inlet nut / nu
 BYTES_PER_CELL = 3000            # snappyHexMesh peak per cell (simpleFoam needs ~1 KB); a guide
@@ -43,6 +53,14 @@ class CasePlan:
     cells_estimate: int
     end_iterations: int
     cpus: int
+    reynolds: float = 0.0          # on D
+    laminar: bool = False          # no turbulence model (Re < LAMINAR_RE_MAX)
+    bluff: bool = False
+
+    @property
+    def turbulence(self) -> str:
+        return ("laminar (no turbulence model; Re < 1e5)" if self.laminar
+                else "k-omega SST (RANS, wall functions)")
 
     @property
     def surface_cell_m(self) -> float:
@@ -60,7 +78,9 @@ class CasePlan:
                 "memory_mb_estimate": round(self.memory_mb_estimate),
                 "cells_across": round(self.d_ref_m / self.surface_cell_m),
                 "domain_m": [self.dom_lo.tolist(), self.dom_hi.tolist()],
-                "iterations_cap": self.end_iterations, "cpus": self.cpus}
+                "iterations_cap": self.end_iterations, "cpus": self.cpus,
+                "reynolds": self.reynolds, "regime": "laminar" if self.laminar else "turbulent",
+                "bluff_body": self.bluff}
 
 
 def plan_case(tris_w_m: np.ndarray, s: dict) -> CasePlan:
@@ -72,6 +92,10 @@ def plan_case(tris_w_m: np.ndarray, s: dict) -> CasePlan:
     dom_lo = np.array([lo[0] - m * d, c[1] - m * d, c[2] - m * d])
     dom_hi = np.array([hi[0] + 2 * m * d, c[1] + m * d, c[2] + m * d])
     base, levels, layers = LEVELS[int(s["refinement"])]
+    bluff = float(ext[0]) < BLUFF_ASPECT * d
+    if bluff and int(s["refinement"]) >= 3:
+        levels = (levels[1], levels[1])
+    re_d = float(s["speed_m_s"]) * d * float(s["air_density"]) / float(s["air_viscosity"])
     h0 = d / base
     cells = tuple(int(math.ceil((dom_hi[i] - dom_lo[i]) / h0)) for i in range(3))
     # estimate: background + a few cells deep at each surface level + the wake box
@@ -85,7 +109,8 @@ def plan_case(tris_w_m: np.ndarray, s: dict) -> CasePlan:
     n += int(wake / hw ** 3)
     n += int(layers * area / (h0 / 2 ** levels[1]) ** 2)
     return CasePlan(lo, hi, d, dom_lo, dom_hi, cells, h0, levels, layers, n,
-                    int(s.get("openfoam_iterations", 1500)), int(s.get("cpus", 1)))
+                    int(s.get("openfoam_iterations", 1500)), int(s.get("cpus", 1)),
+                    reynolds=re_d, laminar=re_d < LAMINAR_RE_MAX, bluff=bluff)
 
 
 def surface_area_m2(tris: np.ndarray) -> float:
@@ -150,9 +175,10 @@ def write_case(case: Path, tris_w_m: np.ndarray, s: dict, a_ref_m2: float,
                                            f"{nu:.9g};\n"),
         "constant/turbulenceProperties": (_header("dictionary", "turbulenceProperties",
                                                   "constant")
-                                          + "simulationType  RAS;\n\nRAS\n{\n    RASModel    "
-                                            "    kOmegaSST;\n    turbulence      on;\n    "
-                                            "printCoeffs     on;\n}\n"),
+                                          + ("simulationType  laminar;\n" if plan.laminar else
+                                             "simulationType  RAS;\n\nRAS\n{\n    RASModel    "
+                                             "    kOmegaSST;\n    turbulence      on;\n    "
+                                             "printCoeffs     on;\n}\n")),
         "0/U": _field("volVectorField", "U", "[0 1 -1 0 0 0 0]", f"uniform ({U:.9g} 0 0)",
                       inlet=f"type fixedValue; value uniform ({U:.9g} 0 0);",
                       outlet="type inletOutlet; inletValue uniform (0 0 0); "

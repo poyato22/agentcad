@@ -18,6 +18,18 @@ CORPUS = [
     ("build a hexapod walker", [], "engineer"),
     ("make an assembly of a hinge mechanism with a lid", [], "engineer"),
     ("Design a lightweight bracket that holds 50 N with a safety factor of 2", [], "engineer"),
+    # multi-part systems and enclosures -> engineer (the lead), never the single-part designer
+    ("Raspberry Pi 4 in a vented case with a 30 mm fan and a 2S LiPo battery", [], "engineer"),
+    ("an ESP32 in a case with a battery and an OLED display", [], "engineer"),
+    ("design an assembly for a camera slider", [], "engineer"),
+    ("make a box with a battery", [], "engineer"),
+    ("an enclosure with a cooling fan", [], "engineer"),
+    ("a handheld controller housing with a PCB and two buttons", [], "engineer"),
+    ("build a weather station with a solar panel, a board and a sensor", [], "engineer"),
+    # one complex sculpted body -> designer, confidently (shape-heavy)
+    ("model a B-2 bomber", [], "designer"),
+    ("model a B-2 bomber, ~1:100 scale", [], "designer"),
+    ("make a model airplane fuselage", [], "designer"),
     # single parts -> designer
     ("Make a 40x20x5 mm plate with four M3 holes", [], "designer"),
     ("Create a bracket", [], "designer"),
@@ -103,6 +115,30 @@ def test_non_drawing_attachment_is_ignored():
 def test_routing_to_an_undefined_agent_falls_back():
     r = route_rules("run a stress analysis", known={"engineer", "designer"})
     assert r.agent == "engineer"
+
+
+def test_pi_case_benchmark_prompt_goes_to_the_lead_confidently():
+    r = route_rules("Raspberry Pi 4 in a vented case with a 30 mm fan and a 2S LiPo battery",
+                    known=ALL)
+    assert r.agent == "engineer" and r.confidence >= ROUTER_ASK_BELOW
+    assert "multi-part" in r.reason
+
+
+@pytest.mark.parametrize("prompt", ["model a B-2 bomber", "model a B-2 bomber, ~1:100 scale"])
+def test_b2_routes_confidently_with_high_shape_complexity(prompt):
+    from mises.shape_complexity import estimate
+    r = route_rules(prompt, known=ALL)
+    assert r.agent in ("engineer", "designer") and r.confidence >= ROUTER_ASK_BELOW
+    assert estimate(prompt)["level"] == "high"
+
+
+@pytest.mark.parametrize("prompt", ["Make a 40x20x5 mm plate with four M3 holes",
+                                    "I want a motor mount plate for a NEMA 17",
+                                    "give me a simple enclosure lid with a snap clip",
+                                    "a phone case", "make a fancy box with rounded corners",
+                                    "a cable clip for a skateboard"])
+def test_single_parts_with_component_words_stay_with_the_designer(prompt):
+    assert route_rules(prompt, known=ALL).agent == "designer"
 
 
 def test_reasons_are_short_labels():
