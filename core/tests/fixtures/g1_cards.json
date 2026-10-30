@@ -1,0 +1,93 @@
+{
+  "critique_round": {
+    "detail": "1 fixed \u00b7 0 open (0 high)",
+    "kind": "critique_round",
+    "ref": {
+      "after": {
+        "front": "crit_75a32870_8313a10950_front",
+        "iso": "crit_75a32870_8313a10950_iso",
+        "side": "crit_75a32870_8313a10950_side",
+        "top": "crit_75a32870_8313a10950_top"
+      },
+      "after_image_id": "crit_75a32870_8313a10950_iso",
+      "before": {
+        "front": "crit_75a32870_98c7c97f91_front",
+        "iso": "crit_75a32870_98c7c97f91_iso",
+        "side": "crit_75a32870_98c7c97f91_side",
+        "top": "crit_75a32870_98c7c97f91_top"
+      },
+      "before_image_id": "crit_75a32870_98c7c97f91_iso",
+      "done": true,
+      "image_tokens": 2792,
+      "iou": null,
+      "issues_fixed": [
+        {
+          "issue": "flat wing",
+          "severity": "high",
+          "suggested_fix": "loft NACA sections",
+          "view": "front"
+        }
+      ],
+      "issues_open": [],
+      "max_rounds": 3,
+      "mode": "self",
+      "part_id": "body",
+      "parts": [
+        "body"
+      ],
+      "project_id": "b12f5223f235",
+      "reference_scores": [],
+      "round": 2,
+      "score": 0.9,
+      "stop_reason": "score_threshold",
+      "threshold": 0.8
+    },
+    "run_id": "75a32870392a",
+    "title": "Critique round 2/3: score 0.90 \u2014 matches"
+  },
+  "view_presented": {
+    "detail": "the lid",
+    "kind": "view_presented",
+    "ref": {
+      "project_id": "b12f5223f235",
+      "thumbnail_id": "pv_75a32870_b40a2e4602_iso",
+      "view_spec": {
+        "camera": {
+          "azimuth": 45.0,
+          "distance": null,
+          "elevation": 30.0
+        },
+        "caption": "the lid",
+        "explode": 0.0,
+        "ghost": [
+          "body"
+        ],
+        "is_project": true,
+        "kind": "subset",
+        "orbit": {
+          "duration_s": 12.0,
+          "turns": 1.0
+        },
+        "parts": [
+          "lid"
+        ],
+        "section": null,
+        "target": {
+          "ghost": [
+            "body"
+          ],
+          "id": "b12f5223f235",
+          "kind": "project",
+          "parts": [
+            "lid"
+          ],
+          "project_id": "b12f5223f235"
+        },
+        "thumbnail_id": "pv_75a32870_b40a2e4602_iso",
+        "xray_parts": []
+      }
+    },
+    "run_id": "75a32870392a",
+    "title": "Subset view of 1 part(s) of the build"
+  }
+}

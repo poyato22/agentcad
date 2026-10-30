@@ -44,10 +44,12 @@ class AgentRun(BaseModel):
     # ---- Plan 7 U3c: the build's lead and its sub-agents, and how the router chose the agent
     role: Literal["lead", "sub"] | None = None
     routed: dict | None = None     # {agent, reason, confidence}; stored as JSON text
+    # Plan 8 G-R6 routing hint: {score, level, signals, vision_recommended}; NULL until estimated
+    shape_complexity: dict | None = None
 
-    @field_validator("routed", mode="before")
+    @field_validator("routed", "shape_complexity", mode="before")
     @classmethod
-    def _routed_json(cls, v: Any) -> Any:
+    def _json_fields(cls, v: Any) -> Any:
         return json.loads(v) if isinstance(v, str) else v
 
 
@@ -159,7 +161,7 @@ CREATE INDEX IF NOT EXISTS studies_project ON studies(project_id, id);
 
 _RUN_FIELDS = {"status", "branch", "agent", "provider", "model", "task", "parent_id",
                "session_ref", "owner_pid", "project_id", "title", "pinned",
-               "archived", "last_activity_at", "role", "routed"}
+               "archived", "last_activity_at", "role", "routed", "shape_complexity"}
 _APPROVAL_JSON = {"payload", "deltas", "edited_payload"}
 
 
@@ -203,7 +205,8 @@ class Store:
                           ("pinned", "INTEGER NOT NULL DEFAULT 0"),
                           ("archived", "INTEGER NOT NULL DEFAULT 0"),
                           ("last_activity_at", "REAL"),
-                          ("role", "TEXT"), ("routed", "TEXT")):   # Plan 7 U3c
+                          ("role", "TEXT"), ("routed", "TEXT"),   # Plan 7 U3c
+                          ("shape_complexity", "TEXT")):          # Plan 8 G1
             if col not in cols:
                 self._db.execute(f"ALTER TABLE runs ADD COLUMN {col} {decl}")
         # Plan 7 U8: the part's material (JSON), added to existing databases
@@ -266,6 +269,12 @@ class Store:
                 db.execute(f"UPDATE runs SET {sets}, updated_at=? WHERE id=?",
                            (*fields.values(), time.time(), run_id))
         return self.get_run(run_id)
+
+    def set_shape_complexity(self, run_id: str, data: dict) -> None:
+        """Store the G-R6 routing hint on the run row (JSON); a deleted run is a no-op."""
+        with self._tx() as db:
+            db.execute("UPDATE runs SET shape_complexity=? WHERE id=?",
+                       (canonical_json(data), run_id))
 
     def touch_run_activity(self, run_id: str, ts: float) -> None:
         """Bump last_activity_at only (not updated_at); a deleted run is a no-op."""

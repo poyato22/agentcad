@@ -81,10 +81,13 @@ def build_mcp_server(runtime: Runtime) -> Server:
             return types.CallToolResult(
                 content=[types.TextContent(type="text", text=canonical_json(e.to_dict()))],
                 is_error=True)
-        return types.CallToolResult(
-            content=[types.TextContent(type="text",
-                                       text=canonical_json(out.model_dump(mode="json")))],
-            is_error=not out.ok)
+        # images (e.g. renders the caller should look at) go back as MCP image content beside
+        # the JSON text, so a vision model such as Claude Code's sees the pixels directly
+        content: list = [types.TextContent(
+            type="text", text=canonical_json(out.model_dump(mode="json", exclude={"images"})))]
+        content += [types.ImageContent(type="image", data=i.data_b64, mime_type=i.media_type)
+                    for i in out.images]
+        return types.CallToolResult(content=content, is_error=not out.ok)
 
     return Server("mises", version="0.1.0",
                   instructions="Mises CAD tools. Every call passes the Mises gate; "

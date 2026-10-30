@@ -23,6 +23,63 @@ class Event(BaseModel):
     ts: float = Field(default_factory=time.time)
 
 
+# Thread cards for Plan 8 (G1 / G-R7), in Plan 7 U3c's announcement wire format:
+#     {run_id, kind, title, detail, ref}
+# published as an `agent_announce` event on the acting run and its lead, and stored as a
+# DECISION step {"agent_announce": {...}} so a reloaded thread rebuilds the cards. The kinds:
+# "critique_round" (one render -> critique -> fix round) and "view_presented" (a live view card
+# whose `ref.view_spec` the app renders). The card's fields live under `ref`.
+# MERGE NOTE (G5): U3c (branch p7-u3c) has `mises.announce.announce(events, store, run_id, kind,
+# title, detail, ref)` with the same format; add these kinds to its KINDS and make
+# `announce_card` a call to it. Named differently so the two never clash before then.
+CARD_KINDS = ("critique_round", "view_presented")
+_TITLE_CHARS = 120
+_DETAIL_CHARS = 300
+
+
+def _clip(s, n: int) -> str:
+    s = "" if s is None else " ".join(str(s).split())
+    return s if len(s) <= n else s[: n - 1] + "…"
+
+
+def announce_card(bus: "EventBus | None", store: "Store | None", run_id: str | None, kind: str,
+                  title: str, detail: str = "", ref: dict | None = None) -> dict:
+    """Publish and store one thread card (U3c format) on the acting run and on its lead.
+    Untrusted model text in it (critique issues, captions) stays data, never instructions."""
+    if kind not in CARD_KINDS:
+        raise ValueError(f"unknown card kind {kind!r}")
+    data = {"run_id": run_id, "kind": kind, "title": _clip(title, _TITLE_CHARS),
+            "detail": _clip(detail, _DETAIL_CHARS), "ref": dict(ref or {})}
+    targets = [run_id]
+    if store is not None and run_id is not None:
+        root = _root_run(store, run_id)
+        if root != run_id:
+            targets.append(root)
+    for target in targets:
+        if store is not None and target is not None:
+            try:
+                store.append_step(target, StepKind.DECISION, {"agent_announce": data})
+            except Exception:  # noqa: BLE001 - bookkeeping never breaks the tool call
+                log.debug("could not store the card on %s", target, exc_info=True)
+        if bus is not None:
+            bus.publish(Event(type="agent_announce", run_id=target, data=dict(data)))
+    return data
+
+
+def _root_run(store: "Store", run_id: str) -> str:
+    """The top of the run's tree (its lead, for a sub-agent); the run itself if it has none."""
+    seen, rid = {run_id}, run_id
+    while True:
+        try:
+            parent = store.get_run(rid).parent_id
+        except KeyError:
+            return rid
+        if parent is None or parent in seen:
+            return rid
+        seen.add(parent)
+        rid = parent
+
+
 class EventBus:
     QUEUE_MAX = 1000
 

@@ -15,6 +15,11 @@ from .types import (ErrorCode, MisesError, SafetyClass, StepKind, ToolOutput,
                     canonical_json, sha256_hex)
 
 MAX_OUTPUT_BYTES = 16 * 1024
+# Images ride beside the JSON result (ToolOutput.images), so the 16 KB text cap never drops
+# them; they have their own caps instead: at most MAX_IMAGES per result and MAX_IMAGE_B64_BYTES
+# of base64 in total. Beyond that, images are dropped with a warning (the PNG handles remain).
+MAX_IMAGES = 6
+MAX_IMAGE_B64_BYTES = 4 * 1024 * 1024
 
 
 def _year_start() -> float:
@@ -127,6 +132,7 @@ class Gate:
             raise MisesError(ErrorCode.TOOL_FAILED, f"{type(e).__name__}: {e}") from None
 
         out = self._redact(out, run_id)                                          # 9
+        out = self._cap_images(out)
         out = self._spill(out, workdir, call_id)
         if cacheable and out.ok:                                                 # 10
             # ok=False is never cached: a retry of a failed call must really run again
@@ -216,11 +222,31 @@ class Gate:
         terms = self._scrub_terms(run_id)
         if not terms:
             return out
-        blob = out.model_dump_json()
+        # images are base64 pixels, not text: scrub the text part only, then reattach them
+        blob = out.model_dump_json(exclude={"images"})
         red = blob
         for s, rep in terms:
             red = red.replace(s, rep)
-        return out if red == blob else ToolOutput.model_validate_json(red)
+        if red == blob:
+            return out
+        return ToolOutput.model_validate_json(red).model_copy(update={"images": out.images})
+
+    @staticmethod
+    def _cap_images(out: ToolOutput) -> ToolOutput:
+        if not out.images:
+            return out
+        kept, total = [], 0
+        for img in out.images:
+            if len(kept) >= MAX_IMAGES or total + len(img.data_b64) > MAX_IMAGE_B64_BYTES:
+                break
+            kept.append(img)
+            total += len(img.data_b64)
+        if len(kept) == len(out.images):
+            return out
+        note = (f"{len(out.images) - len(kept)} image(s) dropped by the image cap "
+                f"({MAX_IMAGES} images / {MAX_IMAGE_B64_BYTES // (1024 * 1024)} MB); the PNG "
+                "handles still have them")
+        return out.model_copy(update={"images": kept, "warnings": [*out.warnings, note]})
 
     def _redact_error(self, e: MisesError, run_id: str | None = None) -> MisesError:
         terms = self._scrub_terms(run_id)
@@ -238,17 +264,23 @@ class Gate:
 
     @staticmethod
     def _spill(out: ToolOutput, workdir: Path, call_id: str) -> ToolOutput:
-        blob = out.model_dump_json()
+        """The 16 KB cap applies to the JSON text only; images ride through untouched."""
+        blob = out.model_dump_json(exclude={"images"})
         if len(blob.encode("utf-8")) <= MAX_OUTPUT_BYTES:
             return out
         path = workdir / "outputs" / f"{call_id}.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(blob)
         return ToolOutput(ok=out.ok, summary=out.summary, handles=[str(path)], data={},
-                          warnings=out.warnings, step_kind=out.step_kind)
+                          warnings=out.warnings, step_kind=out.step_kind, images=out.images)
 
     def _finish(self, run_id: str, name: str, call_id: str, out: ToolOutput) -> None:
-        body = {"call_id": call_id, "name": name, "output": out.model_dump(mode="json")}
+        # the step log keeps what was shown, never the pixels (they are in the PNG handles)
+        body = {"call_id": call_id, "name": name,
+                "output": out.model_dump(mode="json", exclude={"images"})}
+        if out.images:
+            body["images"] = [{"media_type": i.media_type, "label": i.label,
+                               "b64_bytes": len(i.data_b64)} for i in out.images]
         self.store.append_step(run_id, out.step_kind, body)
         self.events.publish(Event(type="tool_result", run_id=run_id,
                                   data={"call_id": call_id, "name": name, "ok": out.ok,

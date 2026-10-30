@@ -169,6 +169,11 @@ class Profile(BaseModel):
     suggested_sites: list[SuggestedSite] = Field(default_factory=default_sites, max_length=100)
     # web fetches (sites searched + pages opened) one agent run may make
     browser_fetches_per_run: int = Field(DEFAULT_BROWSER_FETCHES, ge=1, le=1000)
+    # Plan 8 G1: the user's ceilings for the render-critique loop. A critique_model call can
+    # lower them for itself, never raise them.
+    critique_max_rounds: int = Field(3, ge=1, le=6)
+    critique_time_budget_s: float = Field(300.0, ge=30, le=3600)
+    critique_max_image_tokens: int = Field(12_000, ge=1000, le=100_000)
 
     @field_validator("catalog_allowed_domains")
     @classmethod

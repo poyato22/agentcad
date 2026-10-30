@@ -6,6 +6,7 @@ import contextlib
 import functools
 import logging
 import os
+import re
 import shutil
 import time
 import uuid
@@ -13,7 +14,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import hardware, local_models
+from . import hardware, local_models, shape_complexity as shape_complexity_mod
 from .agent.definitions import load_definitions
 from .agent.loop import AgentLoop, LoopConfig, RunResult
 from .approvals import ApprovalService
@@ -22,6 +23,7 @@ from .assembly.internals import register_layout_tools
 from .assembly.tools import register_assembly_tools
 from .cad.recipes import register_recipe_tools
 from .cad.tools import register_mirror_tools
+from .cad.views import register_view_tools
 from .catalog import Catalog
 from .catalog.tools import register_catalog_tools
 from .bom import BomStore
@@ -73,6 +75,29 @@ STRONG_MODEL_TOOLS = frozenset({"orchestrator_run", "agent_spawn", "agent_wait",
 def tools_withheld_for(model_ref: str) -> frozenset[str]:
     """Tools not offered to a run on this model (local Ollama / LM Studio, OpenRouter free)."""
     return STRONG_MODEL_TOOLS if hardware.model_kind(model_ref) in ("local", "free") else frozenset()
+
+
+#: Vendors whose models can see images, by provider name / the vendor part of a model ref. Used
+#: for the critique loop (which model to call) and the G-R6 model warning. Conservative: an
+#: OpenRouter or local model is treated as non-vision unless we know otherwise.
+VISION_VENDORS = frozenset({"anthropic", "openai", "gemini", CLAUDE_CODE})
+
+
+#: Text-only models of otherwise vision-capable vendors: sent an image, they reject the request
+#: (and every later turn that still carries it), so they must never be treated as seeing.
+_TEXT_ONLY = re.compile(r"^(o1-mini|o1-preview|o3-mini|gpt-3\.5|text-|davinci|babbage|tts-|"
+                        r"whisper|omni-moderation|gemini-1\.0-pro|gemini-pro$)|embedding|"
+                        r"-instruct\b")
+
+
+def is_vision_model(model_ref: str) -> bool:
+    vendor, _, model = model_ref.partition("/")
+    if model_ref.startswith("claude-") or vendor == CLAUDE_CODE:
+        return True
+    if vendor not in VISION_VENDORS:
+        return False
+    return _TEXT_ONLY.search(model.lower()) is None
+
 
 USER = "local"
 
@@ -159,6 +184,7 @@ class Runtime:
         register_bom_tools(self.registry)
         register_import_tools(self.registry)
         register_appearance_tools(self.registry)
+        register_view_tools(self.registry)
         self.orchestrator = Orchestrator(self)
         self.started_at = time.time()
         self.catalog = Catalog(self.store)
@@ -752,6 +778,7 @@ class Runtime:
         if role == "lead":
             from .orchestrator.lead import lead_definition
             defn = lead_definition(defn)
+        shape = self._note_shape_complexity(run.id, prompt)
         classes = set(SafetyClass) if allowed_classes is None else set(allowed_classes)
         self.store.create_policy(run.id, list(edit_scope), list(read_scope), caps,
                                  [c for c in SafetyClass if c in classes])
@@ -762,7 +789,7 @@ class Runtime:
                          activity=self.activity_tracker(run.id))
         st = self._runs[run.id] = _RunState(loop=loop, ref=ref)
         started = {"agent": agent, "provider": provider.name, "model": model,
-                   "parent_id": parent_id, **meta}
+                   "parent_id": parent_id, "shape_complexity": shape, **meta}
         slot = self._admit(run.id, ref, started)
         first: str | list[Block] = prompt
         user_log = log      # e.g. a feedback pin's note instead of the wrapped message
@@ -889,6 +916,49 @@ class Runtime:
         prof = prof if prof is not None else self.profile()
         return prof.default_model or DEFAULT_MODEL
 
+    def _note_shape_complexity(self, run_id: str, prompt: str) -> dict:
+        """Estimate how shape-heavy the request is (G-R6), store it on the run and announce it,
+        so routing can prefer a vision-capable strong model and the UI can warn. Never fatal."""
+        est = shape_complexity_mod.estimate(prompt)
+        try:
+            self.store.set_shape_complexity(run_id, est)
+        except Exception:  # noqa: BLE001 - a routing hint must never break a run
+            log.debug("could not store shape_complexity for %s", run_id, exc_info=True)
+        return est
+
+    def run_sees_images(self, run_id: str | None) -> bool:
+        """Whether the model driving `run_id` can look at images itself: a Claude Code run, an
+        external MCP agent on a vision vendor, or a native run on a vision-capable model. Tools
+        then hand renders straight back to it (MCP image content / provider image blocks)."""
+        if not run_id:
+            return False
+        try:
+            run = self.store.get_run(run_id)
+        except KeyError:
+            return False
+        if run.provider == "ui":
+            return False
+        st = self._runs.get(run_id)
+        return is_vision_model(st.ref if st is not None else f"{run.provider}/{run.model}")
+
+    def vision_model_for(self, run_id: str):
+        """(provider, model, reason) for a critique of `run_id`: the run's own model when it can
+        see images, else a configured vision-capable model, else (None, None, reason)."""
+        st = self._runs.get(run_id)
+        if st is not None and is_vision_model(st.ref):
+            return st.loop.provider, st.loop.model, None
+        prof = self.profile()
+        fallback = prof.default_model or DEFAULT_MODEL
+        if is_vision_model(fallback) and model_alias(fallback) is None:
+            try:
+                provider, model = self._resolve_provider(fallback, prof)
+                return provider, model, None
+            except MisesError as e:
+                return None, None, f"no vision model available: {e.message}"
+        own = st.ref if st is not None else "this run's model"
+        return (None, None, f"{own} cannot see images and no vision-capable model is configured "
+                "(set a vision model such as an Anthropic or OpenAI model in Profile → Model)")
+
     def _resolve_provider(self, ref: str, prof):
         """Resolve a provider, letting the real registry honour the profile's local endpoints
         (Ollama/LM Studio base URLs). Test doubles keep the simple `(ref)` signature."""
@@ -919,6 +989,7 @@ class Runtime:
                                        task=prompt, slot_ref=ref, project_id=project_id)
         if meta:     # before the session starts: its rules file reads the run's role
             self.store.update_run(rid, **meta)
+        self._note_shape_complexity(rid, prompt)
         st = self._claude[rid] = _ClaudeRun(ref=ref, first_context=first_context)
         st.slot, st.started_data = self._external_slots.pop(rid, (None, {}))
         text = prompt

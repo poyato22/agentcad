@@ -97,6 +97,15 @@ class Message(BaseModel):
     reasoning: str | None = None
 
 
+class ToolImage(BaseModel):
+    """An image a tool hands back to the calling model (e.g. a render it should look at). It
+    rides beside the JSON result, never inside it: the agent loop sends it as an image block,
+    the MCP server as image content. The Gate caps images on their own byte budget."""
+    media_type: str
+    data_b64: str
+    label: str = ""
+
+
 class ToolOutput(BaseModel):
     ok: bool = True
     summary: str
@@ -104,6 +113,7 @@ class ToolOutput(BaseModel):
     handles: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     step_kind: StepKind = StepKind.TOOL_RESULT
+    images: list[ToolImage] = Field(default_factory=list)
 
 
 class Caps(BaseModel):
