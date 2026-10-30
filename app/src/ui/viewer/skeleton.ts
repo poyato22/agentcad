@@ -1,8 +1,9 @@
 // Plan 8 G3's layout skeleton as the app sees it (I4b). The skeleton is a part-tree row of kind
 // "skeleton" with no model, so the viewer never loads a GLB for it; it shows its parameters, datums
-// and envelope instead. The core has no read route for it, so its data comes from the latest
-// skeleton_set / skeleton_get result in the steps the app has loaded (output.data is
-// skeleton_tools._view: {project_id, skeleton_id, version, skeleton: {params, datums, envelope, curves}}).
+// and envelope instead. Its data comes from GET /projects/{id}/skeleton (core
+// skeleton_tools.skeleton_view) when the panel opens, and from the latest skeleton_set /
+// skeleton_get result in the loaded steps (the same shape: {project_id, skeleton_id, version,
+// skeleton: {params, datums, envelope, curves}}); the higher version wins.
 import type { Step } from "../../api/types";
 
 export interface SkeletonDatum { kind: "plane" | "axis" | "point"; origin: number[]; normal?: number[] | null; direction?: number[] | null }
@@ -60,6 +61,13 @@ export function skeletonFromSteps(all: Iterable<readonly Step[]>, skeletonId: st
     }
   }
   return best;
+}
+
+/** The newer of two readings (higher version; the route's on a tie: it is read fresh). */
+export function newerSkeleton(route: SkeletonView | null, fromSteps: SkeletonView | null): SkeletonView | null {
+  if (!route) return fromSteps;
+  if (!fromSteps) return route;
+  return fromSteps.version > route.version ? fromSteps : route;
 }
 
 const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/0+$/, "").replace(/\.$/, ""));

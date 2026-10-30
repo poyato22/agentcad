@@ -238,6 +238,9 @@ export class CoreClient {
 
   /** A build's composite tile (up to four part previews) as a PNG Blob. CoreError not_found
    *  until at least one part has a built mesh. */
+  /** The build's layout skeleton (G3; core skeleton_tools.skeleton_view): what skeleton_get
+   *  answers, read by viewer/skeleton.ts parseSkeleton (loose: an older core lacks the route). */
+  projectSkeleton(projectId: string): Promise<unknown> { return this.json("GET", `/projects/${enc(projectId)}/skeleton`, anyBody); }
   projectThumb(projectId: string, size = 256): Promise<Blob> {
     return this.blob(`/projects/${enc(projectId)}/thumb.png`, "image/png", { size });
   }

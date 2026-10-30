@@ -620,6 +620,17 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       children: (kids.get(r.id) ?? []).map((c) => agentNode(c, kids)),
     };
   }
+  function skeletonView(projectId: string): Record<string, unknown> {
+    const skeletonId = `skeleton_${projectId.toLowerCase().replace(/[^a-z0-9_]/g, "_").slice(0, 30) || "build"}`;
+    for (const st of [...state.steps].reverse()) {
+      const p = st.payload as Record<string, unknown>;
+      if (st.kind !== "tool_result" || (p.name !== "skeleton_set" && p.name !== "skeleton_get")) continue;
+      const out = p.output as { data?: Record<string, unknown> } | undefined;
+      const d = out?.data;
+      if (d && d.project_id === projectId) return { ...d, dependents: Array.isArray(d.dependents) ? d.dependents : [] };
+    }
+    return { project_id: projectId, skeleton_id: skeletonId, version: 0, skeleton: null, dependents: [] };
+  }
   function agentsView(projectId: string): { project_id: string; lead: unknown; others: unknown[] } {
     const runs = [...state.runs.values()].filter((r) => r.provider !== "ui" && effPid(r) === projectId)
       .sort((a, b) => a.created_at - b.created_at);
@@ -834,6 +845,15 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         const projectId = decodeURIComponent(m[1]);
         if (!state.builds.builds.some((x) => x.id === projectId)) throw mises("not_found", `unknown build: ${projectId}`);
         return agentsView(projectId);
+      },
+    },
+    {
+      // Plan 8 G3's GET /projects/{id}/skeleton (core skeleton_tools.skeleton_view): the newest
+      // skeleton_set / skeleton_get result in the steps for that build, else none yet
+      method: "GET", re: /^\/projects\/([^/]+)\/skeleton$/, h: (m) => {
+        const projectId = decodeURIComponent(m[1]);
+        if (!state.builds.builds.some((x) => x.id === projectId)) throw mises("not_found", `unknown build: ${projectId}`);
+        return skeletonView(projectId);
       },
     },
     {

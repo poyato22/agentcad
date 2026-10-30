@@ -190,3 +190,27 @@ def test_export_writes_to_the_export_folder(client, rt, tmp_path, monkeypatch):
     assert client.post("/parts/arm/export", json={"format": "exe"}, headers=AUTH).status_code == 400
     (rt.home / "parts" / "arm" / "model.stl").unlink()
     assert client.post("/parts/arm/export", json={"format": "stl"}, headers=AUTH).status_code == 404
+
+
+def test_project_skeleton_route_answers_like_skeleton_get(client, rt):
+    """Release merge (d): GET /projects/{id}/skeleton fills the app's skeleton panel without
+    waiting for run steps: the skeleton, its version and the parts that read it."""
+    from mises import edits
+    from mises.cad import skeleton
+    pid = rt.active_project_id()
+    empty = client.get(f"/projects/{pid}/skeleton", headers=AUTH)
+    assert empty.status_code == 200, empty.text
+    assert empty.json() == {"project_id": pid, "skeleton_id": skeleton.skeleton_id(pid), "version": 0,
+                            "skeleton": None, "dependents": []}
+    skeleton.save(rt.home / "parts", pid, skeleton.SkeletonData(params={"wing_span": 520.0}), 2)
+    _mk_part(rt, "wing")
+    md = edits.meta_dir(rt.home / "parts" / "wing")
+    md.mkdir(parents=True)
+    (md / skeleton.REFS_NAME).write_text(json.dumps(
+        {"params": ["wing_span"], "skeleton_id": skeleton.skeleton_id(pid), "skeleton_version": 2}))
+    got = client.get(f"/projects/{pid}/skeleton", headers=AUTH).json()
+    assert got["version"] == 2 and got["skeleton"]["params"] == {"wing_span": 520.0}
+    assert [d["part_id"] for d in got["dependents"]] == ["wing"]
+    assert got["dependents"][0]["params"] == ["wing_span"]
+    assert client.get("/projects/nope00000000/skeleton", headers=AUTH).status_code == 404
+    assert client.get(f"/projects/{pid}/skeleton").status_code == 401

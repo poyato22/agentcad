@@ -81,6 +81,15 @@ def _view(project_id: str, data: SkeletonData | None, version: int) -> dict:
             "skeleton": data.model_dump(mode="json") if data is not None else None}
 
 
+def skeleton_view(home: Path, store, project_id: str) -> dict:
+    """GET /projects/{id}/skeleton: what skeleton_get answers (the skeleton, its version and
+    the parts that read it), for the app's skeleton panel without waiting for run steps."""
+    from types import SimpleNamespace
+    ctx = SimpleNamespace(workdir=Path(home), store=store)
+    data, version = sk.load(_parts_root(ctx), project_id)        # type: ignore[arg-type]
+    return {**_view(project_id, data, version), "dependents": _dependents(ctx, project_id)}  # type: ignore[arg-type]
+
+
 class SkeletonGetArgs(BaseModel):
     project_id: str
 

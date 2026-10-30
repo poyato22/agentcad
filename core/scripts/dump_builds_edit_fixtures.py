@@ -7,7 +7,7 @@ the Builds, Part-tree and live-edit routes return:
 
     uv run python scripts/dump_builds_edit_fixtures.py --out tests/fixtures/ui
 
-projects_*.json, part_patch*.json, part_duplicate.json, part_delete.json, parts_reorder.json, parts_tree.json (+ quad_arm.glb, top_plate.glb), part_source*.json,
+projects_*.json, part_patch*.json, part_duplicate.json, part_delete.json, project_skeleton*.json, parts_reorder.json, parts_tree.json (+ quad_arm.glb, top_plate.glb), part_source*.json,
 part_vars*.json, part_ops*.json and builds_events.jsonl (the `part_changed` events).
 """
 import argparse
@@ -187,6 +187,15 @@ async def dump(out: Path) -> None:
             dup = await call("POST", "/parts/mount_plate/duplicate")
             write("part_duplicate.json", dup)
             write("part_delete.json", await call("DELETE", f"/parts/{dup['id']}"))
+
+            # the skeleton panel's GET /projects/{id}/skeleton: none yet, then one saved
+            from mises.cad import skeleton as sk
+            write("project_skeleton_empty.json", await call("GET", f"/projects/{default_id}/skeleton"))
+            sk.save(home / "parts", default_id, sk.SkeletonData(
+                params={"arm_len": 120.0, "motor_d": 28.0},
+                datums={"deck": {"kind": "plane", "origin": [0, 0, 10], "normal": [0, 0, 1]}},
+                envelope={"min": [-150, -150, 0], "max": [150, 150, 60]}), 1)
+            write("project_skeleton.json", await call("GET", f"/projects/{default_id}/skeleton"))
 
         events = []
         while not sub.queue.empty():

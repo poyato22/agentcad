@@ -1,12 +1,31 @@
 // The layout skeleton's panel on the Design sheet (I4b): what the build's parts are built against —
 // its parameters, datums, envelope and curves — instead of a model (a skeleton has none).
 import type { JSX } from "preact";
+import { useEffect, useState } from "preact/hooks";
 import type { PartSummary } from "../../api/types";
-import { steps } from "../../state/store";
-import { num, skeletonFromSteps, vec } from "./skeleton";
+import { activeBuildId } from "../../state/builds";
+import { actions, steps } from "../../state/store";
+import { newerSkeleton, num, parseSkeleton, skeletonFromSteps, vec, type SkeletonView } from "./skeleton";
 
 export function SkeletonPanel({ part }: { part: PartSummary }): JSX.Element {
-  const sk = skeletonFromSteps(steps.value.values(), part.part_id);
+  const projectId = (part as { project_id?: string | null }).project_id ?? activeBuildId.value;
+  const [fetched, setFetched] = useState<SkeletonView | null>(null);
+  // the build's skeleton from the core at once (GET /projects/{id}/skeleton), not only once a run's
+  // steps are loaded; re-read when the row's version changes (a skeleton_set bumped it)
+  useEffect(() => {
+    let live = true;
+    setFetched(null);
+    if (!projectId) return;
+    actions.client().projectSkeleton(projectId)
+      .then((d) => {
+        // skeleton: null is "none saved yet": keep the empty state rather than empty lists
+        const saved = typeof d === "object" && d !== null && (d as { skeleton?: unknown }).skeleton != null;
+        if (live) setFetched(saved ? parseSkeleton(d, part.part_id) : null);
+      })
+      .catch(() => { /* an older core: the steps still fill it */ });
+    return () => { live = false; };
+  }, [projectId, part.part_id, part.version]);
+  const sk = newerSkeleton(fetched, skeletonFromSteps(steps.value.values(), part.part_id));
   return (
     <section class="skel" data-testid="skeleton-panel" aria-label="Layout skeleton">
       <header class="skel-head">
@@ -14,7 +33,7 @@ export function SkeletonPanel({ part }: { part: PartSummary }): JSX.Element {
         <span class="faint">{`v${sk?.version ?? part.version ?? 1}`}</span>
       </header>
       <p class="skel-note dim">Shared dimensions and datums this build's parts are built against. It has no model of its own.</p>
-      {!sk && <p class="skel-note faint" data-skeleton-empty>Its values show here once an agent sets or reads the skeleton in a run you have open.</p>}
+      {!sk && <p class="skel-note faint" data-skeleton-empty>No skeleton saved yet. An agent sets one when this build's parts share dimensions.</p>}
       {sk && (
         <>
           <h3 class="skel-h label">Parameters</h3>

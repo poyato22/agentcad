@@ -98,6 +98,15 @@ def build_projects_router(runtime: Runtime) -> APIRouter:
             save_profile(_home(), prof)
         return out
 
+    @router.get("/projects/{project_id}/skeleton")
+    async def project_skeleton(project_id: str):
+        """The build's layout skeleton (G3) and the parts that read it: skeleton_get's answer,
+        so the app's skeleton panel fills without waiting for an agent's run steps. A build
+        with no skeleton answers {skeleton: null, version: 0}."""
+        _projects._project_or_404(store, project_id)
+        from ..cad.skeleton_tools import skeleton_view
+        return await run_in_threadpool(skeleton_view, _home(), store, project_id)
+
     @router.get("/projects/{project_id}/thumb.png")
     async def project_thumb(project_id: str, request: Request, size: int = thumbs.DEFAULT_SIZE):
         """A composite tile of up to four of the build's parts (each rendered in the sandboxed

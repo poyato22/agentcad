@@ -15,6 +15,7 @@ import { parsePendingQuestions, toolListSchema } from "../src/api/client";
 import type { Approval } from "../src/api/types";
 import { loadScenario, startFakeCore, type FakeCore, type Scenario } from "./fake-core/server";
 import { shapeDiff, type Json } from "./shape";
+import { parseSkeleton } from "../src/ui/viewer/skeleton";
 
 const HERE = import.meta.dirname;
 const DIR = process.env.MISES_CONTRACT_FIXTURES ? resolve(process.env.MISES_CONTRACT_FIXTURES) : resolve(HERE, "../../core/tests/fixtures/ui");
@@ -62,6 +63,9 @@ beforeAll(async () => {
   const dup = (await ok("POST", "/parts/mount_plate/duplicate")) as { part_id: string };
   fake.set("part_duplicate.json", dup);
   fake.set("part_delete.json", await ok("DELETE", `/parts/${dup.part_id}`));
+  // Plan 8 G3's skeleton panel route (dump_builds_edit_fixtures.py: the Default build, none yet)
+  const builds = (await ok("GET", "/projects")) as { id: string }[];
+  fake.set("project_skeleton_empty.json", await ok("GET", `/projects/${builds[0].id}/skeleton`));
   // POST /runs: the real core's dump started its run from a sketch (sketch_run.json); the answer is
   // the same {run_id} without one, and the app no longer sends sketches (Plan 7 U2b)
   fake.set("sketch_run.json", await ok("POST", "/runs", { agent: "designer", prompt: "make this bracket" }));
@@ -104,6 +108,11 @@ const errorAnswer = z.object({ status: z.number(), body: coreErrorBodySchema });
 /** GET /runs/{id}/pending (and GET /runs/{id}'s `pending`): open questions and pending cards. */
 const runPendingSchema = z.object({ questions: z.array(z.unknown()), approvals: z.array(approvalSchema) });
 const anyJson = z.unknown();
+/** GET /projects/{id}/skeleton (core skeleton_tools.skeleton_view). */
+const projectSkeletonSchema = z.object({
+  project_id: z.string(), skeleton_id: z.string(), version: z.number(),
+  skeleton: z.record(z.string(), z.unknown()).nullable(), dependents: z.array(z.unknown()),
+});
 const CASES: [string, z.ZodType<unknown>][] = [
   ["health.json", okSchema], ["run.json", agentRunSchema], ["context.json", anyJson],
   ["key_set.json", keyStatusSchema], ["key_delete.json", keyStatusSchema],
@@ -116,6 +125,7 @@ const CASES: [string, z.ZodType<unknown>][] = [
   ["run_patch.json", agentRunSchema], ["run_delete.json", okSchema],
   ["tools.json", toolListSchema], ["run_pending.json", runPendingSchema],
   ["part_duplicate.json", partSummarySchema], ["part_delete.json", z.object({ deleted: z.string() })],
+  ["project_skeleton_empty.json", projectSkeletonSchema],
 ];
 
 describe("contract: remaining routes ↔ schemas ↔ fake core", () => {
@@ -162,6 +172,16 @@ describe("contract: remaining routes ↔ schemas ↔ fake core", () => {
     expect(qs).toHaveLength(1);
     expect(qs[0].items?.map((x) => x.id)).toEqual(["use", "size_class", "motor_prop"]);
     expect(qs[0].run_id).toBe(runId);
+  });
+
+  it("project_skeleton.json: the panel reads a saved skeleton's params, datums and envelope", () => {
+    const real = projectSkeletonSchema.parse(read(DIR, "project_skeleton.json"));
+    const v = parseSkeleton(real, real.skeleton_id);
+    expect(v?.version).toBe(real.version);
+    expect(v?.params.map(([k]) => k)).toEqual(["arm_len", "motor_d"]);
+    expect(v?.datums.map(([k]) => k)).toEqual(["deck"]);
+    expect(v?.envelope).not.toBeNull();
+    expect(shapeDiff(read(DIR, "project_skeleton.json") as Json, read(APP, "project_skeleton.json") as Json, "project_skeleton.json")).toEqual([]);
   });
 
   it("drawing.dxf: both are DXF text (sections, an ENTITIES section, EOF)", () => {
@@ -311,6 +331,7 @@ const COVERAGE: Record<string, string> = {
   "GET /projects/{project_id}/bom.csv": "browser/bom.csv",
   "POST /projects/{project_id}/bom": "browser/bom_add.json",
   "PATCH /projects/{project_id}/bom/{item_id}": "browser/bom_patch.json",
+  "GET /projects/{project_id}/skeleton": "project_skeleton_empty.json",
   "DELETE /projects/{project_id}/bom/{item_id}": "EXEMPT: answers {ok: true} (the generic ok shape); contract.browser.test.ts and the fake-core tests drive it",
 };
 
