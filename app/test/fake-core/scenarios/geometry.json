@@ -19,12 +19,13 @@
    "owner_pid": null,
    "project_id": "466a0d9d96a8",
    "shape_complexity": {
-    "level": "high",
     "score": 0.82,
-    "keywords": [
+    "level": "high",
+    "signals": [
      "enclosure with internals",
      "fan"
-    ]
+    ],
+    "vision_recommended": true
    }
   }
  ],
@@ -54,13 +55,28 @@
      "title": "Lifted the board off the floor, moved the fan to the vent wall",
      "detail": "",
      "ref": {
+      "parts": [
+       "pi_case",
+       "pi_board",
+       "pi_battery",
+       "pi_fan",
+       "pi_lid"
+      ],
       "round": 1,
       "max_rounds": 3,
+      "mode": "vision_model",
       "score": 0.62,
       "threshold": 0.8,
-      "project_id": "466a0d9d96a8",
-      "before_image_id": "crit_r1_before",
-      "after_image_id": "crit_r1_after",
+      "done": false,
+      "stop_reason": null,
+      "iou": null,
+      "image_tokens": 1180,
+      "before": {
+       "iso": "crit_r1_before"
+      },
+      "after": {
+       "iso": "crit_r1_after"
+      },
       "issues_fixed": [
        {
         "view": "section",
@@ -102,14 +118,27 @@
      "title": "Cleared the fan; every gap is at least 2 mm",
      "detail": "",
      "ref": {
+      "parts": [
+       "pi_case",
+       "pi_board",
+       "pi_battery",
+       "pi_fan",
+       "pi_lid"
+      ],
       "round": 2,
       "max_rounds": 3,
+      "mode": "vision_model",
       "score": 0.88,
       "threshold": 0.8,
-      "stop_reason": "passed",
-      "project_id": "466a0d9d96a8",
-      "before_image_id": "crit_r1_after",
-      "after_image_id": "crit_r2_after",
+      "done": true,
+      "stop_reason": "score_threshold",
+      "image_tokens": 2360,
+      "before": {
+       "iso": "crit_r1_after"
+      },
+      "after": {
+       "iso": "crit_r2_after"
+      },
       "issues_fixed": [
        {
         "view": "top",
@@ -155,7 +184,7 @@
        },
        "caption": "The whole case: vents on the fan side, lid on top."
       },
-      "thumbnail_id": "view_case_iso"
+      "thumbnail": "view_case_iso"
      }
     }
    },
@@ -289,6 +318,7 @@
         "pi_fan",
         "pi_battery"
        ],
+       "ghost": true,
        "caption": "Fan and battery: 3 mm apart, airflow clear."
       }
      }

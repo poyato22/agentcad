@@ -19,6 +19,9 @@ import "./critique.css";
 
 export interface ViewCardDeps { createRenderer?: RendererFactory }
 
+/** How long the pointer or focus rests on a card before it takes the live context. */
+export const CLAIM_MS = 150;
+
 /** The live stage of a card: modes from the spec, the explode gliding in once loaded. */
 export function SpecStage({ view, playing, onSnapshot, deps, class: cls }: { view: PresentedView; playing: boolean; onSnapshot?(u: string): void; deps?: ViewCardDeps; class?: string }): JSX.Element {
   const [host, setHost] = useState<ModeHost | null>(null);
@@ -50,14 +53,22 @@ export function ViewCard({ view, group, deps }: { view: PresentedView; group: re
   const spec = view.spec;
   const ids = partsForSpec(spec, parts.value);
   const index = Math.max(0, group.findIndex((v) => v.key === view.key));
-  const claim = () => { if (liveCard.peek() !== view.key) liveCard.value = view.key; };
+  // sweeping the pointer across cards must not spin up a context (and load the parts) per card:
+  // the live context moves only once the pointer or focus has settled on one
+  const settle = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const claim = () => {
+    if (settle.current) clearTimeout(settle.current);
+    settle.current = setTimeout(() => { settle.current = null; if (liveCard.peek() !== view.key) liveCard.value = view.key; }, CLAIM_MS);
+  };
+  const unclaim = () => { if (settle.current) { clearTimeout(settle.current); settle.current = null; } };
+  useEffect(() => unclaim, []);
   const open = () => openViewImmersive(group.length ? group : [view], index);
   const kind = VIEW_KIND_TEXT[spec.kind];
   const image = still ?? thumb;
 
   return (
     <article class="vcard" data-testid="view-card" data-kind={spec.kind} data-live={live ? "true" : "false"} aria-label={`${kind} view`}
-      onPointerEnter={claim} onFocusIn={claim}>
+      onPointerEnter={claim} onPointerLeave={unclaim} onFocusIn={claim}>
       <div class="vcard-stage">
         <button type="button" class="vcard-open" onClick={open} aria-label={`Open the ${kind.toLowerCase()} view full window`} data-testid="view-card-open">
           {live

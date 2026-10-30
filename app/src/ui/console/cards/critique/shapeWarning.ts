@@ -1,6 +1,7 @@
 // G-R6: warn when shape-heavy work runs on a model that cannot see its renders, or on a small local
 // model. Shape-heaviness is the core's `shape_complexity` on the run (G1), read leniently: a score
-// (0…1, or 0…10), a level ("low" | "medium" | "high") or {level?, score?, keywords?}. No guess is
+// (0…1, or 0…10), a level ("low" | "medium" | "high") or {level?, score?, signals? | keywords?,
+// vision_recommended?} (G1's run row). No guess is
 // made without it.
 import type { AgentRun } from "../../../../api/types";
 
@@ -18,7 +19,9 @@ export function shapeComplexity(raw: unknown): ShapeComplexity | null {
   const score = typeof r.score === "number" && Number.isFinite(r.score) ? norm(r.score) : null;
   const level = r.level === "low" || r.level === "medium" || r.level === "high" ? r.level : score !== null ? levelOf(score) : null;
   if (!level) return null;
-  const keywords = Array.isArray(r.keywords) ? r.keywords.filter((k): k is string => typeof k === "string").map((k) => k.slice(0, 40)).slice(0, 6) : [];
+  // G1 names them `signals`
+  const words = Array.isArray(r.signals) ? r.signals : r.keywords;
+  const keywords = Array.isArray(words) ? words.filter((k): k is string => typeof k === "string").map((k) => k.slice(0, 40)).slice(0, 6) : [];
   return { level, score, keywords };
 }
 

@@ -72,6 +72,9 @@ export function LiveView(p: LiveViewProps): JSX.Element {
     try {
       handle = createViewer(canvas, { createRenderer: (c) => { gl = (props.current.createRenderer ?? defaultRenderer)(c); return gl; } });
     } catch {
+      // the renderer may exist already (the viewer failed after it): never leak its context
+      const made = gl as (RendererLike & { forceContextLoss?(): void }) | null;
+      try { made?.dispose(); made?.forceContextLoss?.(); } catch { /* already gone */ }
       setState("no-webgl");
       return;
     }

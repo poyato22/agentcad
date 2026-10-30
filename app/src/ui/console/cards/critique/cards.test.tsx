@@ -68,7 +68,7 @@ describe("CritiqueCard", () => {
     runId: "r1", title: "fixed the trailing edge", detail: "", round: 2, maxRounds: 3, score: 0.86, threshold: 0.8, stopReason: "passed",
     before: { id: "r1b" }, after: { dataUrl: "data:image/png;base64,iVBORw0KGgo=" },
     fixed: [{ view: "top", issue: "straight trailing edge", severity: "high", fix: "sawtooth" }], open: [{ view: "side", issue: "nose too blunt", severity: "low", fix: null }],
-    iou: [{ view: "top", value: 0.91 }], partId: "b2", projectId: null,
+    iou: [{ view: "top", value: 0.91 }], parts: ["b2"], done: true,
   };
 
   it("is compact (thumbnails, round, score) and expands on click to the issues", async () => {
@@ -161,9 +161,39 @@ describe("ViewCard", () => {
     fireEvent.pointerEnter(cards()[0]);
     await waitFor(() => expect(cards()[0].getAttribute("data-live")).toBe("true"));
     expect(cards().filter((c) => c.getAttribute("data-live") === "true")).toHaveLength(1);
-    expect(liveContexts.value).toBe(1);
-    expect(r.live()).toHaveLength(1);
+    // the claim lands after the hover settles (a timer), so its effects run a tick later; never two
+    await waitFor(() => expect(liveContexts.value).toBe(1));
+    await waitFor(() => expect(r.live()).toHaveLength(1));
+    expect(r.made.length).toBe(2);
     expect(cards()[2].querySelector("[data-testid=view-card-still]")).not.toBeNull();
+  });
+});
+
+describe("live context hygiene", () => {
+  it("sweeping the pointer across a card does not move the live context", async () => {
+    const r = renderers();
+    const vs = [view("a", { kind: "orbit" }), view("b", { kind: "section" })];
+    render(<>{vs.map((v) => <ViewCard key={v.key} view={v} group={vs} deps={{ createRenderer: r.factory }} />)}</>);
+    const cards = () => screen.getAllByTestId("view-card");
+    await waitFor(() => expect(cards()[1].getAttribute("data-live")).toBe("true"));
+    const made = r.made.length;
+    fireEvent.pointerEnter(cards()[0]);
+    fireEvent.pointerLeave(cards()[0]);
+    await new Promise((res) => setTimeout(res, 300));
+    expect(cards()[1].getAttribute("data-live")).toBe("true");
+    expect(r.made.length).toBe(made);
+  });
+
+  it("a viewer that fails after its renderer was made gives the context back", () => {
+    const lost = vi.fn();
+    const v = view("a", { kind: "orbit" });
+    render(<ViewCard view={v} group={[v]} deps={{ createRenderer: () => ({
+      info: { memory: { geometries: 0, textures: 0 } }, render: () => {}, setSize: vi.fn(), setPixelRatio: vi.fn(),
+      setClearColor: () => { throw new Error("context lost"); }, dispose: vi.fn(), forceContextLoss: lost,
+    }) }} />);
+    expect(screen.getByTestId("live-view").getAttribute("data-state")).toBe("no-webgl");
+    expect(lost).toHaveBeenCalledTimes(1);
+    expect(liveContexts.value).toBe(0);
   });
 });
 

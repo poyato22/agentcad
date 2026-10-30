@@ -56,11 +56,64 @@ describe("g4 announcements", () => {
     expect(modesForSpec(spec({ kind: "exploded" })).explode).toBe(1);
     expect(modesForSpec(spec({ kind: "exploded", explode: 0.4 })).explode).toBe(0.4);
     expect(modesForSpec(spec({ kind: "subset", parts: ["pi_fan"] })).isolate).toEqual(["pi_fan"]);
-    expect(spec({ kind: "orbit" }).orbit).toEqual({ duration_s: 12, turns: 1 });
+    expect(spec({ kind: "orbit" }).orbit).toEqual({ duration_s: 6, turns: 1 });
+    // G1 sends explode 0 when the agent gave none: an exploded view still goes apart
+    expect(modesForSpec(spec({ kind: "exploded", explode: 0 })).explode).toBe(1);
+    expect(modesForSpec(spec({ kind: "section", explode: 0, xray_parts: [] })).xray.opacity).toBe(1);
     const all = [{ part_id: "a", project_id: "b1", vars: {}, metrics: {} as never, mtime: 1 }, { part_id: "b", project_id: "b1", vars: {}, metrics: {} as never, mtime: 1 }, { part_id: "c", project_id: "b2", vars: {}, metrics: {} as never, mtime: 1 }];
     expect(partsForSpec(spec({ kind: "subset", parts: ["b"] }), all)).toEqual(["a", "b"]);
     expect(partsForSpec(spec({ kind: "orbit" }), all)).toEqual(["a", "b"]);
     expect(partsForSpec(parseViewSpec({ kind: "orbit", target: { part_id: "c" } })!, all)).toEqual(["c"]);
+    // ghost: false shows the subset alone
+    const alone = spec({ kind: "subset", parts: ["b"], ghost: false });
+    expect(partsForSpec(alone, all)).toEqual(["b"]);
+    expect(modesForSpec(alone).isolate).toBeNull();
+  });
+
+  // The shared contract (fix round 1): a stored step, the fields under `ref`, issues split,
+  // threshold, renders as ids, a structured target.
+  it("reads the shared contract", () => {
+    const crit = g4Announcement(step({ agent_announce: { run_id: "r1", kind: "critique_round", title: "Round 2", detail: "", ref: {
+      parts: ["wing"], round: 2, max_rounds: 3, mode: "self", score: 0.9, threshold: 0.8, done: true, stop_reason: "score_threshold",
+      issues_fixed: [{ view: "top", issue: "flat trailing edge", severity: "high", suggested_fix: "sawtooth" }], issues_open: [],
+      iou: { top: 0.9 }, before: { front: "cr_c1_front", iso: "cr_c1_iso" }, after: { iso: "cr_c2_iso" },
+    } } }));
+    if (crit?.kind !== "critique_round") throw new Error("no card");
+    expect(crit.round).toMatchObject({ round: 2, threshold: 0.8, done: true, parts: ["wing"], before: { id: "cr_c1_iso" }, after: { id: "cr_c2_iso" } });
+    expect(crit.round.fixed).toHaveLength(1);
+    const view = g4Announcement(step({ agent_announce: { run_id: "r1", kind: "view_presented", title: "", detail: "", ref: {
+      view_spec: { kind: "subset", target: { project_id: "b1" }, ghost: true, parts: ["fan"], caption: "x" }, thumbnail: "pv_c3_iso",
+    } } }));
+    if (view?.kind !== "view_presented") throw new Error("no card");
+    expect(view.view.spec.target).toEqual({ part_id: null, project_id: "b1" });
+    expect(view.view.thumbnail).toEqual({ id: "pv_c3_iso" });
+  });
+
+  // G1's first cut, as its views.py publishes it today (flat body, one issues list, absolute PNG
+  // paths, a string target with is_project): still a full card, never a blank one.
+  it("reads G1's first-cut payloads", () => {
+    const crit = g4Announcement(step({ agent_announce: {
+      kind: "critique_round", parts: ["wing"], round: 1, max_rounds: 3, mode: "vision_model", score: 0.55,
+      issues: [{ view: "top", issue: "oval cockpit", severity: "high", suggested_fix: "blend the center body" }],
+      iou: null, done: false, stop_reason: null, before: null,
+      after: { front: "/h/runs/r1/renders/cr_c1_front.png", iso: "/h/runs/r1/renders/cr_c1_iso.png" }, image_tokens: 1200,
+    } }));
+    if (crit?.kind !== "critique_round") throw new Error("no card");
+    expect(crit.round.open.map((i) => i.issue)).toEqual(["oval cockpit"]);
+    expect(crit.round.after).toEqual({ id: "cr_c1_iso" });
+    expect(crit.round.before).toBeNull();
+    const view = g4Announcement(step({ agent_announce: {
+      kind: "view_presented", thumbnail: "/h/runs/r1/renders/pv_c3_iso.png",
+      view_spec: { kind: "internal", target: "466a0d9d96a8", is_project: true, parts: ["pi_case", "pi_fan"], section: null,
+        xray_parts: [], explode: 0, camera: "auto", orbit: null, caption: "c".repeat(450), thumbnail: "/h/runs/r1/renders/pv_c3_iso.png" },
+    } }));
+    if (view?.kind !== "view_presented") throw new Error("no card");
+    expect(view.view.spec.target).toEqual({ part_id: null, project_id: "466a0d9d96a8" });
+    expect(view.view.spec.caption).toHaveLength(400);
+    expect(view.view.thumbnail).toEqual({ id: "pv_c3_iso" });
+    expect(modesForSpec(view.view.spec).xray.parts).toBeNull();
+    // a path outside renders/ is never an image
+    expect(imageRef("/etc/passwd.png")).toBeNull();
   });
 
   it("threads: cards in place of notes; the views of one reply form one set", () => {
@@ -91,6 +144,8 @@ describe("model warning", () => {
     expect(shapeComplexity(4)?.level).toBe("medium");
     expect(shapeComplexity("low")?.level).toBe("low");
     expect(shapeComplexity({ score: 0.7, keywords: ["aircraft", 3] })).toEqual({ level: "high", score: 0.7, keywords: ["aircraft"] });
+    // G1's run row
+    expect(shapeComplexity({ score: 0.66, level: "high", signals: ["aircraft", "loft"], vision_recommended: true })?.keywords).toEqual(["aircraft", "loft"]);
     expect(shapeComplexity({ nope: 1 })).toBeNull();
     expect(shapeComplexity(undefined)).toBeNull();
   });

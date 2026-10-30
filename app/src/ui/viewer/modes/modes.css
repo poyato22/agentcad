@@ -47,6 +47,10 @@
   position: absolute; right: -6px; bottom: -6px; width: 12px; height: 12px; pointer-events: auto; cursor: move;
   border: 1px solid var(--dim); background: var(--paper); touch-action: none;
 }
+.vm-ref-grip:hover { border-color: var(--ink); }
+.vm-ref-grip:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; border-color: var(--blue); }
+/* the frame the grip moves, shown while it has focus */
+.vm-ref:has(.vm-ref-grip:focus-visible) { outline: 1px dashed var(--blue); outline-offset: 2px; }
 .vm-ref-away { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); z-index: 4; }
 
 .vp[data-tab="code"] .vm, .vp[data-tab="code"] .vm-handle, .vp[data-tab="code"] .vm-ref, .vp[data-tab="code"] .vm-ref-away { visibility: hidden; }

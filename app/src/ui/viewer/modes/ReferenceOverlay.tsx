@@ -1,6 +1,7 @@
 // A reference image (a photo, a three-view sheet) laid over the model, pinned to one standard
 // view. Pinning moves the camera to that view; the image only shows while the camera is there, so
 // orbiting away never leaves a misaligned picture on the sheet ("Back to front view" returns).
+// It lines up by dragging its grip or from the keyboard (focus the grip: arrows, Shift+arrows, + / -).
 // The image stays on this Mac: it is read into a blob: URL and never sent anywhere.
 import { signal, type Signal } from "@preact/signals";
 import type { JSX } from "preact";
@@ -38,6 +39,25 @@ export function patchReference(p: Partial<Reference>): void {
   if (r) reference.value = { ...r, ...p };
 }
 
+export const NUDGE_PX = 1;
+export const NUDGE_FAR_PX = 10;
+export const SCALE_STEP = 1.05;
+
+/** What a key does to the reference (arrows move it, Shift ten times as far, + / - resize it), or
+ *  null for any other key. */
+export function referenceKey(key: string, shift: boolean, r: Pick<Reference, "dx" | "dy" | "scale">): Partial<Reference> | null {
+  const d = shift ? NUDGE_FAR_PX : NUDGE_PX;
+  switch (key) {
+    case "ArrowLeft": return { dx: r.dx - d };
+    case "ArrowRight": return { dx: r.dx + d };
+    case "ArrowUp": return { dy: r.dy - d };
+    case "ArrowDown": return { dy: r.dy + d };
+    case "+": case "=": return { scale: Math.min(3, r.scale * SCALE_STEP) };
+    case "-": case "_": return { scale: Math.max(0.25, r.scale / SCALE_STEP) };
+    default: return null;
+  }
+}
+
 /** Moves the camera to the reference's view. */
 export function goToView(host: ModeHost, view: ViewName): void {
   const box = liveBox(host.parts());
@@ -67,7 +87,10 @@ export function ReferenceOverlay({ host }: { host: ModeHost | null }): JSX.Eleme
     <div class="vm-ref" data-testid="reference-overlay" data-view={r.view}
       style={{ opacity: r.opacity, transform: `translate(calc(-50% + ${r.dx}px), calc(-50% + ${r.dy}px)) scale(${r.scale})` }}>
       <img src={r.url} alt={`Reference: ${r.name}`} draggable={false} />
-      <span class="vm-ref-grip" title="Drag to line the reference up" aria-hidden="true"
+      <span class="vm-ref-grip" role="button" tabIndex={0} data-testid="reference-grip"
+        title="Drag, or use the arrow keys (Shift: 10 px), to line the reference up; + and - resize it"
+        aria-label="Line up the reference: arrow keys move it, Shift moves further, plus and minus resize it"
+        onKeyDown={(e) => { const p = referenceKey(e.key, e.shiftKey, r); if (p) { e.preventDefault(); patchReference(p); } }}
         onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId); drag.current = { x: e.clientX, y: e.clientY, dx: r.dx, dy: r.dy }; }}
         onPointerMove={(e) => { const d = drag.current; if (d) patchReference({ dx: d.dx + (e.clientX - d.x), dy: d.dy + (e.clientY - d.y) }); }}
         onPointerUp={() => { drag.current = null; }} />

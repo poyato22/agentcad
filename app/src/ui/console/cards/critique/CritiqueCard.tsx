@@ -11,8 +11,9 @@ import { useImageUrl } from "./images";
 import "./critique.css";
 
 const STOP_TEXT: Record<string, string> = {
-  passed: "stopped: the score passed", score_passed: "stopped: the score passed",
-  no_high_issues: "stopped: nothing serious left", max_rounds: "stopped: round limit",
+  passed: "stopped: the score passed", score_passed: "stopped: the score passed", score_threshold: "stopped: the score passed",
+  no_high_issues: "stopped: nothing serious left", no_high_severity: "stopped: nothing serious left", max_rounds: "stopped: round limit",
+  image_budget: "stopped: image budget",
   budget: "stopped: time or cost budget", time_budget: "stopped: time budget", cost_budget: "stopped: cost budget",
   unavailable: "no vision model to critique with",
 };

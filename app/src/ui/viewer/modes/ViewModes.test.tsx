@@ -4,7 +4,7 @@ import * as THREE from "three";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadPart } from "../loadPart";
 import { createViewer, type DesignViewerHandle, type ModeHost, type RendererLike } from "../scene";
-import { reference } from "./ReferenceOverlay";
+import { reference, referenceKey } from "./ReferenceOverlay";
 import { MODES_OFF, type ModesState } from "./state";
 import { ViewModes } from "./ViewModes";
 
@@ -102,5 +102,28 @@ describe("ViewModes", () => {
     h.controls.dispatchEvent({ type: "change" });
     fireEvent.click(await screen.findByTestId("reference-away"));
     expect(await screen.findByTestId("reference-overlay")).toBeTruthy();
+  });
+
+  it("reference: lines up from the keyboard (arrows, Shift+arrows, + and -)", async () => {
+    const h = await host();
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: () => "blob:ref", revokeObjectURL: () => {} }));
+    render(<Harness h={h} seen={vi.fn()} />);
+    fireEvent.change(screen.getByTestId("reference-file"), { target: { files: [new File(["x"], "b2.png", { type: "image/png" })] } });
+    const grip = await screen.findByTestId("reference-grip");
+    expect(grip.getAttribute("tabindex")).toBe("0");
+    expect(grip.getAttribute("aria-label")).toContain("arrow keys");
+    grip.focus();
+    expect(document.activeElement).toBe(grip);
+    fireEvent.keyDown(grip, { key: "ArrowRight" });
+    fireEvent.keyDown(grip, { key: "ArrowDown", shiftKey: true });
+    expect(reference.value).toMatchObject({ dx: 1, dy: 10 });
+    fireEvent.keyDown(grip, { key: "+" });
+    expect(reference.value?.scale).toBeCloseTo(1.05);
+    fireEvent.keyDown(grip, { key: "-" });
+    fireEvent.keyDown(grip, { key: "-" });
+    expect(reference.value?.scale).toBeCloseTo(1 / 1.05);
+    // other keys pass through (Tab still leaves)
+    expect(referenceKey("Tab", false, { dx: 0, dy: 0, scale: 1 })).toBeNull();
+    expect(referenceKey("-", false, { dx: 0, dy: 0, scale: 0.25 })?.scale).toBe(0.25);
   });
 });
