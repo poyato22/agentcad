@@ -114,6 +114,10 @@ class InterviewArgs(BaseModel):
 
 class SpecSetArgs(BaseModel):
     project_id: str | None = None
+    base_updated_at: float | None = Field(
+        default=None, description="the spec's updated_at you read (spec_get); default: this "
+        "run's last spec_get. If the spec changed since (e.g. the user edited it), the write is "
+        "refused with the current spec, so you re-apply on top of it")
     goal: str = Field(default="", max_length=2000)
     requirements: list[Requirement] = Field(default_factory=list)
     load_cases: list[LoadCase] = Field(default_factory=list)
@@ -204,9 +208,24 @@ async def interview_plan(ctx: ToolContext, args: InterviewArgs) -> ToolOutput:
 async def spec_get(ctx: ToolContext, args: ProjectArg) -> ToolOutput:
     pid = _resolve_project(ctx, args.project_id)
     spec = _load_spec(ctx, pid)
+    at = _spec_updated_at(ctx, pid)
+    _spec_seen[(ctx.run_id, pid)] = at
     s = (f"spec for {pid}: {len(spec.requirements)} requirement(s), "
          f"{len(spec.load_cases)} load case(s)")
-    return ToolOutput(summary=s, data={"project_id": pid, "spec": spec.model_dump()})
+    return ToolOutput(summary=s, data={"project_id": pid, "spec": spec.model_dump(),
+                                       "updated_at": at})
+
+
+# (run id, project) -> the spec updated_at that run last read or wrote. spec_set without
+# base_updated_at is checked against it, as C6 does for parts: a run cannot overwrite a spec
+# edit (by the user) that it never saw. In memory; after a restart a run re-reads.
+_spec_seen: dict[tuple[str | None, str], float | None] = {}
+_NEVER = object()
+
+
+def _spec_updated_at(ctx: ToolContext, pid: str) -> float | None:
+    getter = getattr(ctx.store, "get_spec_updated_at", None)
+    return getter(pid) if getter is not None else None
 
 
 @tool("spec_set", safety=SafetyClass.LOCAL_MUTATE,
@@ -227,7 +246,24 @@ async def spec_set(ctx: ToolContext, args: SpecSetArgs) -> ToolOutput:
     except ValidationError as e:
         raise MisesError(ErrorCode.INVALID_INPUT, "invalid spec: " + "; ".join(
             f"{'.'.join(map(str, x['loc']))}: {x['msg']}" for x in e.errors())) from None
+    cur = _spec_updated_at(ctx, pid)
+    base = args.base_updated_at
+    if base is None:
+        base = _spec_seen.get((ctx.run_id, pid), _NEVER)
+    # a first write (no spec yet) needs no read; otherwise the base must match the stored one
+    stale = cur is not None and (base is _NEVER or base is None or abs(cur - base) > 1e-6)
+    if stale:
+        current = _load_spec(ctx, pid)
+        _spec_seen[(ctx.run_id, pid)] = cur   # now read: a retry on top of it may proceed
+        why = ("this run has not read the spec yet" if base is _NEVER
+               else "the spec changed since you read it (possibly the user's edit)")
+        return ToolOutput(ok=False, step_kind=StepKind.ERROR,
+                          summary=f"spec not saved: {why}; the current spec is in data — merge "
+                                  "your change into it and call spec_set again",
+                          data={"error": "stale_version", "project_id": pid,
+                                "current_updated_at": cur, "spec": current.model_dump()})
     ctx.store.put_spec(pid, spec.model_dump())
+    _spec_seen[(ctx.run_id, pid)] = _spec_updated_at(ctx, pid)
     ctx.events.publish(Event(type="spec_changed", run_id=ctx.run_id, data={"project_id": pid}))
     s = (f"spec saved for {pid}: {len(spec.requirements)} requirement(s), "
          f"{len(spec.load_cases)} load case(s)")

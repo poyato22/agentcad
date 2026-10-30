@@ -49,6 +49,25 @@ async def test_spec_set_and_get_roundtrip(tmp_path):
     assert ctx.store.get_spec(DEFAULT_PROJECT) is not None
 
 
+async def test_spec_set_refuses_to_overwrite_an_unseen_user_edit(tmp_path):
+    """I6: the agent's spec_set is checked against the spec it last read; a user edit made in
+    between is a structured conflict with the current spec, never a silent overwrite."""
+    import time
+    ctx = _ctx(tmp_path)
+    assert (await spec_set.handler(ctx, SpecSetArgs(**DRONE))).ok   # first write: no read needed
+    got = await spec_get.handler(ctx, ProjectArg())
+    assert got.data["updated_at"] is not None
+    time.sleep(0.01)
+    user = {**DRONE, "goal": "user's goal SF>=3"}
+    ctx.store.put_spec(DEFAULT_PROJECT, {**got.data["spec"], "goal": user["goal"]})  # user edit
+    out = await spec_set.handler(ctx, SpecSetArgs(**{**DRONE, "goal": "agent's goal"}))
+    assert not out.ok and out.data["error"] == "stale_version"
+    assert out.data["spec"]["goal"] == user["goal"]                       # current spec returned
+    assert ctx.store.get_spec(DEFAULT_PROJECT)["goal"] == user["goal"]    # not overwritten
+    # having seen the conflict, a retry on top of it goes through
+    assert (await spec_set.handler(ctx, SpecSetArgs(**{**DRONE, "goal": "merged"}))).ok
+
+
 async def test_spec_set_emits_spec_changed(tmp_path):
     bus = EventBus()
     sub = bus.subscribe()
