@@ -315,6 +315,9 @@ export function SketchCanvas(): JSX.Element {
         <line class="sk-axis-x" x1={Math.max(vis.x, -5)} y1={H} x2={Math.min(vis.x + vis.w, W + 5)} y2={H} />
         <line class="sk-axis-y" x1={0} y1={H - Math.max(vis.y, -5)} x2={0} y2={H - Math.min(vis.y + vis.h, H + 5)} />
         <circle class="sk-origin" cx={0} cy={H} r={3 * u} />
+        {/* neutral axes, told apart by their letter (status colours stay for status) */}
+        <text class="sk-axis-label" x={Math.min(vis.x + vis.w, W + 5) - 8 * u} y={H - 5 * u} style={fs(10)} aria-hidden="true">X</text>
+        <text class="sk-axis-label" x={6 * u} y={H - Math.min(vis.y + vis.h, H + 5) + 12 * u} style={fs(10)} aria-hidden="true">Y</text>
       </g>
       <g class="sk-profiles">
         {profiles.map((p, i) => <path key={i} class="sk-profile" d={profilePath(p, toSvg)} data-profile={i} />)}

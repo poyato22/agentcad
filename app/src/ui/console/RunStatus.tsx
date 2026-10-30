@@ -44,7 +44,7 @@ export function RunStatus({ runId, status }: { runId: string; status?: RunState 
     return () => clearInterval(t);
   }, [a?.state, a?.since]);
 
-  if (!a) return null;
+  if (!a || a.state === "idle") return null;   // idle: the turn ended; nothing to say here
   const waiting = isWaiting(a.state);
   return (
     <div class={`cv-status${waiting ? " needs-you" : ""}`} data-run-status={a.state} role="status" aria-live="polite">

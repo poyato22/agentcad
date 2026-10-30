@@ -47,6 +47,9 @@ export class SpecController {
   readonly applying = signal<{ studyId: string; n: number } | null>(null);
   readonly applied = signal<{ studyId: string; n: number; summary: string } | null>(null);
   readonly applyError = signal<string | null>(null);
+  /** The last apply was refused as stale (409 stale_version): the part changed after the
+   *  confirm opened. Cleared by the next apply or selection. */
+  readonly applyConflict = signal<{ studyId: string; n: number } | null>(null);
 
   private readonly client: () => CoreClient;
   private studyTimer: ReturnType<typeof setTimeout> | null = null;
@@ -172,19 +175,19 @@ export class SpecController {
     batch(() => {
       this.selectedStudyId.value = id;
       this.selectedN.value = null;
-      this.applyError.value = null;
+      this.applyError.value = null; this.applyConflict.value = null;
     });
   }
 
   selectIteration(n: number | null): void {
-    batch(() => { this.selectedN.value = n; this.applyError.value = null; });
+    batch(() => { this.selectedN.value = n; this.applyError.value = null; this.applyConflict.value = null; });
   }
 
   /** "Use this variant" (study_apply). Infeasible variants only with `allowInfeasible`. */
   async apply(study: Study, n: number, opts: { allowInfeasible?: boolean; baseVersion?: number } = {}): Promise<boolean> {
     const pid = this.projectId.peek();
     if (!pid || this.applying.peek()) return false;
-    batch(() => { this.applying.value = { studyId: study.id, n }; this.applyError.value = null; });
+    batch(() => { this.applying.value = { studyId: study.id, n }; this.applyError.value = null; this.applyConflict.value = null; });
     try {
       const out = await this.client().applyStudy(pid, study.id, {
         iteration: n, ...(opts.allowInfeasible ? { allow_infeasible: true } : {}),
@@ -193,6 +196,14 @@ export class SpecController {
       this.applied.value = { studyId: study.id, n, summary: out.summary };
       return true;
     } catch (e) {
+      if (e instanceof CoreError && e.code === "stale_version") {
+        // the part moved on since the confirm was opened: the variant view offers Reload / Keep
+        batch(() => {
+          this.applyConflict.value = { studyId: study.id, n };
+          this.applyError.value = "The part changed since you opened this (an agent's edit or yours). Reload to review the change again, or Keep to apply this variant on top.";
+        });
+        return false;
+      }
       this.applyError.value = errorWords(e);
       return false;
     } finally {

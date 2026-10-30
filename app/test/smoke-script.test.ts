@@ -4,7 +4,7 @@
 // on exit. MISES_SMOKE_DRY_RUN=1 stops right after the setup (no core, no Vite).
 import { spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -14,6 +14,15 @@ function dryRun(env: Record<string, string>) {
   const r = spawnSync("bash", [SCRIPT], { env: { ...process.env, MISES_SMOKE_DRY_RUN: "1", ...env }, encoding: "utf8" });
   const home = /MISES_HOME=(\S+)/.exec(r.stdout)?.[1] ?? null;
   return { status: r.status, stdout: r.stdout, stderr: r.stderr, home };
+}
+
+/** Is `dir` (resolved through symlinks as far as it exists) under a system temp dir, as the
+ *  script's own check reads it? */
+function isUnderSystemTemp(dir: string): boolean {
+  let p = resolve(dir);
+  while (!existsSync(p) && p !== "/") p = resolve(p, "..");
+  const real = realpathSync(p);
+  return /^\/(private\/)?(tmp|var\/folders)(\/|$)/.test(real) || real.startsWith(realpathSync(tmpdir()));
 }
 
 describe("smoke-real-core.sh", () => {
@@ -51,10 +60,17 @@ describe("smoke-real-core.sh", () => {
     }
   });
 
-  it("refuses_a_home_outside_the_system_temp_dirs", () => {
+  // The "not a temp dir" fixture must really be outside the system temp dirs. The checkout's
+  // node_modules/.cache is, unless the checkout itself lives under /tmp (a worktree there); then
+  // the per-user cache folder is used. No such folder: the case can't be set up, so it's skipped.
+  const notTempParent = [resolve(import.meta.dirname, "../node_modules/.cache"), join(homedir(), "Library/Caches")]
+    .find((d) => !isUnderSystemTemp(d) && (existsSync(d) || existsSync(resolve(d, ".."))));
+
+  it.skipIf(notTempParent === undefined)("refuses_a_home_outside_the_system_temp_dirs", () => {
     // unique per run: concurrent test runs must not remove each other's TMPDIR
-    mkdirSync(resolve(import.meta.dirname, "../node_modules/.cache"), { recursive: true });
-    const notTemp = mkdtempSync(resolve(import.meta.dirname, "../node_modules/.cache/smoke-not-temp-"));
+    mkdirSync(notTempParent as string, { recursive: true });
+    const notTemp = mkdtempSync(join(notTempParent as string, "mises-smoke-not-temp-"));
+    expect(isUnderSystemTemp(notTemp)).toBe(false);
     try {
       const r = dryRun({ TMPDIR: notTemp });
       expect(r.status).not.toBe(0);

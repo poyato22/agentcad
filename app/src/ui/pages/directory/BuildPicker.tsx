@@ -1,15 +1,18 @@
 // "Into build" picker shared by the Directory ("Insert into build") and Onshape ("Import to build")
 // pages. Lists the live builds (GET /projects) and starts at the active one (profile
 // active_project_id, else the "Default" build, else the first). The choice is remembered across
-// both pages for the session.
+// both pages until the next build-tab switch, which makes the picker follow the new tab again.
 import type { JSX } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { signal, type Signal } from "@preact/signals";
 import type { BuildRef } from "../../../api/directory";
+import { activeBuildId, onBuildSwitch } from "../../../state/builds";
 import { conn, actions } from "../../../state/store";
 
 /** The build the user picked on either page (null: not chosen yet, use the default). */
 export const chosenBuild: Signal<string | null> = signal<string | null>(null);
+// a tab switch wins over an earlier pick here (final review M-3)
+onBuildSwitch(() => { chosenBuild.value = null; });
 
 export function defaultBuild(builds: readonly BuildRef[], active: string | null): string | null {
   if (active && builds.some((b) => b.id === active)) return active;
@@ -30,7 +33,7 @@ export function useBuilds(): { builds: BuildRef[] | null; buildId: string | null
   }, [stream]);
   const builds = state.builds;
   const picked = chosenBuild.value;
-  const buildId = builds ? (picked && builds.some((b) => b.id === picked) ? picked : defaultBuild(builds, state.active)) : null;
+  const buildId = builds ? (picked && builds.some((b) => b.id === picked) ? picked : defaultBuild(builds, activeBuildId.value ?? state.active)) : null;
   return { builds, buildId, error: state.error };
 }
 

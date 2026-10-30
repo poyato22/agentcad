@@ -171,3 +171,8 @@ h4.mk-h, h5.mk-h, h6.mk-h { font-size: 1em; }
 @media (prefers-reduced-motion: reduce) {
   .mk-more { transition: none; }
 }
+
+/* agent text outside the conversation (Details rows, the immersive "Why", the spec goal, review
+   notes): the same markup, laid out in the line it sits in */
+.con-mk .mk, .imm-why .mk { display: inline-block; vertical-align: top; max-width: 100%; }
+.scard-fail .mk { display: inline; }

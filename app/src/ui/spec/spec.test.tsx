@@ -79,7 +79,7 @@ describe("interview card (real batched question_asked)", () => {
     const size = card.querySelector('[data-q="size_class"]') as HTMLElement;
     fireEvent.input(within(size).getByRole("textbox"), { target: { value: "4 inch" } });
     expect(send.disabled).toBe(true);
-    expect(card.textContent).toContain("Answer every question to send.");
+    expect(card.querySelector("[data-open]")!.textContent).toBe("Answer 3 to send.");
     fireEvent.click(within(card.querySelector('[data-q="motor_prop"]') as HTMLElement).getByRole("button", { name: "2207" }));
     expect(send.disabled).toBe(false);
 
@@ -90,7 +90,7 @@ describe("interview card (real batched question_asked)", () => {
     await waitFor(() => expect(questions.value.size).toBe(0));
   });
 
-  it("ranks in the order the options are picked and sends that order", async () => {
+  it("ranks with the move buttons and sends the full order", async () => {
     await start();
     core.emit({ type: "question_asked", run_id: "b7c79a57cbb4", data: {
       question_id: "q_rank", question: "Last one:\n1. Rank", options: [],
@@ -99,7 +99,8 @@ describe("interview card (real batched question_asked)", () => {
     const q = core.state.questions.get("q_rank") as Question;
     render(<QuestionCard question={q} runLabel="engineer" />);
     clock += 500;
-    for (const o of ["stiffness", "weight", "impact strength"]) fireEvent.click(screen.getByRole("button", { name: o }));
+    fireEvent.click(screen.getByRole("button", { name: "Move stiffness up" }));
+    fireEvent.click(screen.getByRole("button", { name: "Move stiffness up" }));
     fireEvent.click(screen.getByRole("button", { name: "Send answers" }));
     await waitFor(() => expect(calls("/answer")).toHaveLength(1));
     expect(JSON.parse((calls("/answer")[0].body as { text: string }).text)).toEqual({ priorities: ["stiffness", "weight", "impact strength"] });
@@ -138,6 +139,19 @@ describe("spec card", () => {
     expect(container.querySelector('[data-req="drop_safety"]')!.textContent).toContain("estimate");
     expect(container.querySelector('[data-case="drop_hit"]')!.textContent).toContain("estimate");
     expect(container.querySelector("[data-tally]")!.textContent).toBe("2 pass · 4 not checked");
+  });
+
+  it("an agent-written goal renders as Mises markup, not literal asterisks (M-5)", async () => {
+    await start({ spec: "fixture" });
+    const c = new SpecController(() => client);
+    await c.load();
+    const spec = { ...c.spec.value!, goal: "A **light** plate for [[part:mount_plate|the mount]] <script>x</script>" };
+    const { container } = render(<SpecCard spec={spec} check={null} updatedAt={null} onSave={(s, b) => c.save(s, b)} />);
+    const goal = container.querySelector(".sp-goal") as HTMLElement;
+    expect(goal.querySelector("strong")!.textContent).toBe("light");
+    expect(goal.textContent).not.toContain("**");
+    expect(goal.textContent).not.toContain("[[part:");
+    expect(goal.querySelector("script")).toBeNull();
   });
 
   it("edit round trip: the PUT carries the user's edit and the card shows it", async () => {
@@ -273,7 +287,7 @@ describe("study view: preview and use a variant", () => {
     fireEvent.click(screen.getByRole("button", { name: "Apply and rebuild" }));
     await waitFor(() => expect(calls("/apply")).toHaveLength(1));
     expect(calls("/apply")[0].path).toBe(`/projects/${FIXTURE_PROJECT}/studies/${STUDY.id}/apply`);
-    expect(calls("/apply")[0].body).toEqual({ iteration: best.n });
+    expect(calls("/apply")[0].body).toEqual({ iteration: best.n, base_version: 1 });
     await waitFor(() => expect(container.querySelector("[data-applied]")).toBeTruthy());
     expect(core.state.parts.find((p) => p.part_id === "mount_plate")!.vars.thickness).toBe(best.vars.thickness);
     expect(c.applied.value?.n).toBe(best.n);
@@ -287,7 +301,40 @@ describe("study view: preview and use a variant", () => {
     expect(screen.getByRole("group", { name: "Confirm variant" }).textContent).toContain("This variant fails the spec.");
     fireEvent.click(screen.getByRole("button", { name: "Apply and rebuild" }));
     await waitFor(() => expect(calls("/apply")).toHaveLength(1));
-    expect(calls("/apply")[0].body).toEqual({ iteration: 0, allow_infeasible: true });
+    expect(calls("/apply")[0].body).toEqual({ iteration: 0, allow_infeasible: true, base_version: 1 });
+  });
+
+  it("the apply is sent on the version the confirm showed; a change meanwhile is a 409 with Reload / Keep (I-4)", async () => {
+    const { container } = await mountView();
+    const best = STUDY.iterations.find((i) => i.n === STUDY.best_id)!;
+    fireEvent.click(screen.getByRole("button", { name: "Use this variant" }));
+    // an agent edits the part while the confirm is open
+    core.agentEdit({ part_id: "mount_plate", vars: { thickness: 9 } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply and rebuild" }));
+    await waitFor(() => expect(container.querySelector("[data-apply-error][data-conflict]")).toBeTruthy());
+    expect(calls("/apply")[0].body).toEqual({ iteration: best.n, base_version: 1 });
+    expect(container.querySelector("[data-applied]")).toBeNull();
+    expect(container.querySelector("[data-apply-error]")!.textContent).toContain("The part changed since you opened this");
+    // Reload: the confirm shows the change against the part as it is now
+    fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+    await waitFor(() => expect(container.querySelector("[data-apply-error]")).toBeNull());
+    expect(screen.getByRole("group", { name: "Confirm variant" }).textContent).toContain("9");
+    fireEvent.click(screen.getByRole("button", { name: "Apply and rebuild" }));
+    await waitFor(() => expect(calls("/apply")).toHaveLength(2));
+    expect(calls("/apply")[1].body).toEqual({ iteration: best.n, base_version: 2 });
+    await waitFor(() => expect(container.querySelector("[data-applied]")).toBeTruthy());
+  });
+
+  it("Keep after a 409 applies on top of the newest version", async () => {
+    const { container } = await mountView();
+    fireEvent.click(screen.getByRole("button", { name: "Use this variant" }));
+    core.agentEdit({ part_id: "mount_plate", vars: { thickness: 9 } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply and rebuild" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Keep" })).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Keep" }));
+    await waitFor(() => expect(calls("/apply")).toHaveLength(2));
+    expect((calls("/apply")[1].body as { base_version: number }).base_version).toBe(2);
+    await waitFor(() => expect(container.querySelector("[data-applied]")).toBeTruthy());
   });
 
   it("a refusal is shown in plain words", async () => {
@@ -406,7 +453,7 @@ describe("fix round 1", () => {
     fireEvent.click(screen.getByRole("button", { name: "Use anyway" }));
     fireEvent.click(screen.getByRole("button", { name: "Apply and rebuild" }));
     await waitFor(() => expect(calls("/apply")).toHaveLength(1));
-    expect(calls("/apply")[0].body).toEqual({ iteration: best.n, allow_infeasible: true });
+    expect(calls("/apply")[0].body).toEqual({ iteration: best.n, allow_infeasible: true, base_version: 1 });
   });
 
   it("the confirm panel closes when another variant is picked", async () => {

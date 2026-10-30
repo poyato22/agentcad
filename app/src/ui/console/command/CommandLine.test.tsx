@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CoreError, type CoreClient } from "../../../api/client";
 import type { AgentRun } from "../../../api/types";
 import { actions, beginCoreSession, bindClient, corePid, newRunOpen, resetStore, runs, selectedRunId, sessionRuns } from "../../../state/store";
+import { addCatalogChip, agentChips, clearAgentChips } from "../../../state/agentChips";
 import { CommandLine } from "./CommandLine";
 
 function run(id: string, agent: string, task: string, status: AgentRun["status"] = "done"): AgentRun {
@@ -42,6 +43,17 @@ describe("CommandLine", () => {
     enter();
     await waitFor(() => expect(client.message).toHaveBeenCalledWith("r1", "make it thicker"));
     await waitFor(() => expect(box().value).toBe(""));
+  });
+
+  it("parts-directory chips ride along with a message to a running agent, then clear (M-6)", async () => {
+    addCatalogChip("motor_2207", "2207 motor");
+    render(<CommandLine />);
+    expect(screen.getByTestId("cmd-agent-chips").textContent).toContain("2207 motor");
+    type("use this motor");
+    enter();
+    await waitFor(() => expect(client.message).toHaveBeenCalledWith("r1", "use this motor\n\nParts directory items to use (read each with catalog_get): motor_2207"));
+    await waitFor(() => expect(agentChips.value).toEqual([]));
+    clearAgentChips();
   });
 
   it("shows_target_chip_for_selected_and_at", () => {

@@ -109,7 +109,7 @@ test("inline_composer_starts_a_run_with_profile_defaults", async ({ page, fake }
   await form.getByLabel("Task").press("Enter");
   await expect(form).toHaveCount(0);
   const posts = (await fake.calls()).filter((c) => c.method === "POST" && c.path === "/runs");
-  expect(posts.map((c) => c.body)).toEqual([{ agent: "designer", prompt: "stiffen the upright", model_ref: "claude-code/opus", edit_scope: ["*"], read_scope: ["*"] }]);
+  expect(posts.map((c) => c.body)).toEqual([{ agent: "designer", prompt: "stiffen the upright", model_ref: "claude-code/opus", edit_scope: ["*"], read_scope: ["*"], project_id: expect.any(String) }]);
   await expect(switcher(page)).toContainText("designer · stiffen upright");
   await expect(acts(page)).toHaveText(["measured mount plate · 8.0 cm³"]);
   await expect(thread(page).locator("[data-msg=agent]")).toContainText("Measuring the plate first.");

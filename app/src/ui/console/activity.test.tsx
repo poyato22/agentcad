@@ -94,6 +94,24 @@ describe("thread status line from agent_activity transitions", () => {
   });
 });
 
+describe("waiting and idle states (the core's tracker emits them)", () => {
+  it("waiting_approval / waiting_user show the needs-you line; idle shows none", async () => {
+    mount();
+    recordActivity(act_("waiting_approval"));
+    await frame();
+    expect(status()?.dataset.runStatus).toBe("waiting_approval");
+    expect(status()?.classList.contains("needs-you")).toBe(true);
+    expect(status()?.textContent).toContain("waiting for your approval");
+    recordActivity(act_("waiting_user"));
+    await frame();
+    expect(status()?.textContent).toContain("waiting for your answer");
+    recordActivity(act_("idle"));
+    await frame();
+    expect(status()).toBeNull();
+    expect(activityByRun.value.get("r1")?.state).toBe("idle");   // kept for the manager's "idle"
+  });
+});
+
 describe("a finished run shows no stale activity", () => {
   it("the line hides when the run's status is terminal, even without a final idle/done", async () => {
     mount();

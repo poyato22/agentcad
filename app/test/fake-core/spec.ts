@@ -60,6 +60,10 @@ export interface SpecDeps {
   parts(): readonly PartSummary[];
   setParts(p: PartSummary[]): void;
   emit(ev: EventIn): unknown;
+  /** The part's C6 version in the part tree (builds fake), used when the scenario sets no
+   *  `versions`; `bumpPart` is the accepted apply (version+1, part_changed by the user). */
+  partVersion?(partId: string): number | undefined;
+  bumpPart?(partId: string, summary: string): void;
 }
 
 const PART_ID_RE = /^[a-z][a-z0-9_]{1,40}$/;
@@ -193,7 +197,8 @@ export function specRoutes(d: SpecDeps): Route[] {
         if (!meetsSpec(s.spec.requirements, it, st.geometry_only) && b.allow_infeasible !== true) {
           throw mises("invalid_input", `iteration ${b.iteration} is infeasible`, `apply the best feasible one (${st.best_id}) or set allow_infeasible`);
         }
-        const cur = s.versions[st.part_id];
+        const pinned = s.versions[st.part_id];
+        const cur = pinned ?? d.partVersion?.(st.part_id);
         if (typeof b.base_version === "number" && cur !== undefined && cur !== b.base_version) {
           throw mises("stale_version", `${st.part_id} is at version ${cur}, not ${b.base_version}`, "re-read the part, then decide again");
         }
@@ -202,7 +207,8 @@ export function specRoutes(d: SpecDeps): Route[] {
           metrics: p.metrics && it.metrics.mass_g !== null ? { ...p.metrics, mass_g: it.metrics.mass_g } : p.metrics,
         } : p));
         d.setParts(parts);
-        if (cur !== undefined) s.versions[st.part_id] = cur + 1;
+        if (pinned !== undefined) s.versions[st.part_id] = pinned + 1;
+        else if (cur !== undefined) d.bumpPart?.(st.part_id, `applied variant #${b.iteration} of ${sid}`);
         const callId = `ui-${sid.slice(-6)}${b.iteration}`;
         const summary = `applied ${sid} #${b.iteration}: ${st.part_id}: mass ${it.metrics.mass_g?.toFixed(2) ?? "?"} g`;
         d.emit({ type: "tool_call", run_id: null, data: { call_id: callId, name: "study_apply", input: { study_id: sid, part_id: st.part_id, iteration: b.iteration } } });

@@ -5,7 +5,7 @@ import { z } from "zod";
 import { buildSchema, type Build } from "../api/builds";
 import type { CoreClient } from "../api/client";
 import type { AgentRun, PartSummary } from "../api/types";
-import { activeBuildId, buildActions, builds, normalizeTabs, openBuildIds, openBuilds, resetBuilds, trashedBuilds } from "./builds";
+import { activeBuildId, buildActions, builds, buildsError, normalizeTabs, openBuildIds, openBuilds, resetBuilds, runBuild, trashedBuilds } from "./builds";
 import { bindClient, parts, resetStore, runs, selectedPartId, selectedRunId } from "./store";
 
 const FX = resolve(import.meta.dirname, "../../test/fixtures/core-ui");
@@ -157,5 +157,28 @@ describe("integration: a build switch reaches the other build-scoped views", () 
     await buildActions.switchTo("b");                                          // no change: no event
     expect(seen).toEqual(["b"]);
     off();
+  });
+
+  it("a switch waits for the profile save; a failed save is said in plain words and the switch stays (I-2)", async () => {
+    const c = fakeClient([b("a", "Quad"), b("b", "Bench")]);
+    bindClient(c as unknown as CoreClient);
+    await buildActions.refresh();
+    let reject!: (e: Error) => void;
+    c.setBuildTabs.mockImplementationOnce(() => new Promise((_r, rej) => { reject = rej; }));
+    let done = false;
+    const sw = buildActions.switchTo("b").then(() => { done = true; });
+    expect(activeBuildId.value).toBe("b");             // the UI switches at once
+    expect(runBuild()).toEqual({ project_id: "b" });   // and a new run started now names the new build
+    await new Promise((r) => setTimeout(r, 0));
+    expect(done).toBe(false);                          // still saving
+    reject(new Error("disk full"));
+    await sw;
+    expect(buildsError.value).toContain("Saving the open builds failed");
+    expect(buildsError.value).toContain("disk full");
+    expect(activeBuildId.value).toBe("b");
+  });
+
+  it("runBuild is empty before the builds load", () => {
+    expect(runBuild()).toEqual({});
   });
 });

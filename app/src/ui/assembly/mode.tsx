@@ -1,9 +1,9 @@
 // Design page mode: one part on the sheet, or the build's assembly.
 //
 // Ruling (A4): Assembly is a toggle on the Design page, not a sixth tab. It keeps the left pane
-// (the build's parts, which is where you add from) and the console beside it, and it leaves ⌘6 to
-// the agent manager (A2) with no shortcut shuffle. The switch sits under the sheet's FIG label;
-// ⌥⌘A flips it from anywhere on the Design page. The choice is remembered per Mac.
+// (the build's parts, which is where you add from) and the console beside it, with no page
+// shortcut shuffle (⌘1–7 stay the pages, ⇧⌘A the agent manager). The switch sits in the sheet's
+// top-left corner, after Model | Code; ⌥⌘A flips it from anywhere on the Design page. The choice is remembered per Mac.
 import { signal, type Signal } from "@preact/signals";
 import type { JSX } from "preact";
 import { isTrustedKey, registerShortcut } from "../../lib/keys";

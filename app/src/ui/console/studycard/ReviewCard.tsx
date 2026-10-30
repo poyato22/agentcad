@@ -4,6 +4,7 @@
 import type { JSX } from "preact";
 import { Button } from "../../common/Button";
 import { Led } from "../../common/Led";
+import { Markup } from "../../markup/render";
 import { openImmersive } from "../../pages/studies/immersive/state";
 import { fmtValue, typeName, VERDICT_TEXT, verdictTone } from "../../pages/studies/model";
 import { kindText, type ReviewCallView } from "./cardModel";
@@ -26,7 +27,7 @@ export function ReviewCard({ view }: { view: ReviewCallView }): JSX.Element {
       </header>
       <p class="scard-fidelity"><span class="scard-guide">GUIDE ONLY</span><span class="faint text">{r?.label ?? "guide only, not a guarantee"}</span></p>
       {view.running && <p class="faint text">Running the studies the spec needs…</p>}
-      {view.failed && <p class="scard-fail text" role="alert">{view.summary ?? "the review failed"}{view.hint ? <span class="faint"> · {view.hint}</span> : null}</p>}
+      {view.failed && <div class="scard-fail text" role="alert"><Markup source={view.summary ?? "the review failed"} collapsible={false} />{view.hint ? <span class="faint"> · {view.hint}</span> : null}</div>}
       {r && (
         <table class="scard-table" data-testid="review-table">
           <thead><tr><th>requirement</th><th>target</th><th>measured</th><th>result</th><th><span class="sr-only">study</span></th></tr></thead>
@@ -34,7 +35,7 @@ export function ReviewCard({ view }: { view: ReviewCallView }): JSX.Element {
             {r.table.map((row, i) => (
               <tr key={`${row.requirement_id ?? i}-${row.case ?? ""}`} data-testid="review-row" data-status={row.status} data-sim={row.sim_id ?? ""}>
                 <td class="text">{row.requirement_id ? <span class="faint">{row.requirement_id} </span> : null}{kindText(row.kind)}{row.study ? <span class="faint"> · {typeName(row.study)}{row.case && row.case !== row.study ? ` ${row.case}` : ""}</span> : null}
-                  {row.note && <div class="faint text scard-row-note">{row.note}</div>}
+                  {row.note && <div class="faint text scard-row-note" data-agent-text><Markup source={row.note} collapsible={false} /></div>}
                 </td>
                 <td>{fmtValue(row.target, row.unit)}</td>
                 <td>{fmtValue(row.measured, row.unit)}</td>

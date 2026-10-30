@@ -39,18 +39,19 @@ test("interview_card_answers_the_batch_by_keyboard_and_click", async ({ page, fa
   await page.waitForTimeout(450); // the card arms ARM_MS after it appears (approval click rules)
   await card.getByRole("button", { name: "freestyle" }).click();
   await card.locator('[data-q="size_class"]').getByRole("textbox").fill("4 inch");
-  // rank: the options in the order they are picked (A2's card), by keyboard
-  for (const o of ["stiffness", "weight", "impact strength", "print time"]) {
-    await card.locator('[data-q="priorities"]').getByRole("button", { name: o }).focus();
-    await page.keyboard.press("Space");
-  }
+  // rank: the full order, pre-filled; Alt+↑ on a focused row moves it (A7's ranking)
+  await card.locator('[data-rank="stiffness"]').focus();
+  await page.keyboard.press("Alt+ArrowUp");
+  await page.keyboard.press("Alt+ArrowUp");
+  await card.locator('[data-rank="impact strength"]').focus();
+  await page.keyboard.press("Alt+ArrowDown");
   if (SHOTS) await card.screenshot({ path: `${SHOTS}/interview-dark.png` });
   await card.getByRole("button", { name: "Send answers" }).click();
   await expect(card).toHaveCount(0);
   const sent = (await fake.calls()).filter((c) => c.path === "/questions/q_iv1/answer");
   expect(sent).toHaveLength(1);
   expect(JSON.parse((sent[0].body as { text: string }).text)).toEqual({
-    use: "freestyle", size_class: "4 inch", priorities: ["stiffness", "weight", "impact strength", "print time"],
+    use: "freestyle", size_class: "4 inch", priorities: ["stiffness", "weight", "print time", "impact strength"],
   });
 });
 
@@ -96,7 +97,7 @@ for (const theme of ["dark", "light"] as const) {
     await expect(sec.locator("[data-applied]")).toBeVisible();
     const applied = (await fake.calls()).filter((c) => c.path.endsWith("/apply"));
     expect(applied).toHaveLength(1);
-    expect(applied[0].body).toEqual({ iteration: STUDIES[0].best_id });
+    expect(applied[0].body).toEqual({ iteration: STUDIES[0].best_id, base_version: expect.any(Number) }); // I-4
   });
 }
 

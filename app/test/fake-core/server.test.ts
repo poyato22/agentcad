@@ -200,6 +200,27 @@ describe("fake core", () => {
     ws.close();
   });
 
+  it("a question or approval puts the run in waiting_user / waiting_approval; answering resumes it", async () => {
+    const { ws, events } = await openWs("t0k");
+    const states = () => events.filter((e) => e.type === "agent_activity" && e.run_id === RID).map((e) => e.data.state);
+    core.emit({ type: "question_asked", run_id: RID, data: { question_id: "q_w", question: "Which?", options: ["a"] } });
+    await until(() => states().includes("waiting_user"));
+    await client.answer("q_w", "a");
+    await until(() => states().includes("thinking"));
+    core.emit({ type: "approval_requested", run_id: RID, data: { id: "ap_w" } });
+    await until(() => states().includes("waiting_approval"));
+    expect(states()).toEqual(["waiting_user", "thinking", "waiting_approval"]);
+    ws.close();
+  });
+
+  it("POST /runs files the run under the explicit project_id; an unknown build is 404", async () => {
+    const builds = await client.listBuilds();
+    const target = builds.at(-1)!.id;
+    const { run_id } = await client.createRun({ agent: "designer", prompt: "go", project_id: target });
+    expect((await client.getRun(run_id)).project_id).toBe(target);
+    await expect(client.createRun({ agent: "designer", prompt: "go", project_id: "nope" })).rejects.toMatchObject({ status: 404 });
+  });
+
   it("ws_filters_by_run_id", async () => {
     const { ws, events } = await openWs("t0k", "other");
     core.emit({ type: "note", run_id: RID, data: { text: "a" } });

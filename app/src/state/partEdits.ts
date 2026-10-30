@@ -5,7 +5,10 @@
 //   · the user's own edit lines ("You · changed thickness 4 → 5 mm") that the conversation shows;
 //   · a short flash per part an agent just changed (the part tree highlights it).
 // Edits made by this window are recorded with their exact wording and the matching
-// `part_changed` echo is not shown twice.
+// `part_changed` echo is not shown twice. The core publishes that echo *inside* the edit request,
+// so it usually arrives before the HTTP answer: while an edit of a part is in flight
+// (`trackEdit`), the part's `by:"user"` events are held, and once the answer names the new
+// version the echo of that version is dropped and anything else held is shown.
 import { computed, signal, type ReadonlySignal, type Signal } from "@preact/signals";
 import { partChangedSchema, type PartChanged } from "../api/builds";
 import { onCoreEvent } from "../api/events";
@@ -28,6 +31,12 @@ export const lastAgentChange: Signal<ReadonlyMap<string, PartChanged>> = signal<
 export const FLASH_MS = 1600;
 const MAX_LINES = 200;
 const mine = new Set<string>();
+/** Parts with an edit request in flight from this window, part id → how many. */
+const inFlight = new Map<string, number>();
+/** `by:"user"` part_changed events held while their part has an edit in flight. */
+const held = new Map<string, { d: PartChanged; ts: number }[]>();
+/** Echoes dropped while held (so `noteMyEdit` doesn't wait for them again). */
+const echoed = new Set<string>();
 /** Every version this window's own edits made (kept; `mine` only skips the echo once). */
 const myVersions = new Set<string>();
 
@@ -48,18 +57,59 @@ export function noteVersion(partId: string, version: number): void {
   knownVersions.value = m;
 }
 
+/** The line is filed under the part's own build: a part the active build lists is in it (its
+ *  row's project_id); one it doesn't list (an import into another build) gets no build yet and
+ *  shows wherever that part is listed (M-4). */
 function pushLine(partId: string, text: string, ts: number): void {
-  const line: UserEditLine = { key: `you-${++seq}`, ts, partId, buildId: activeBuildId.peek(), text };
+  const row = parts.peek().find((p) => p.part_id === partId);
+  const buildId = row ? (row.project_id ?? activeBuildId.peek()) : null;
+  const line: UserEditLine = { key: `you-${++seq}`, ts, partId, buildId, text };
   const next = [...userEdits.peek(), line];
   userEdits.value = next.length > MAX_LINES ? next.slice(next.length - MAX_LINES) : next;
 }
 
 /** An edit this window made and the core accepted (its echo event is then skipped). */
 export function noteMyEdit(partId: string, version: number, text: string, ts = Date.now() / 1000): void {
-  mine.add(`${partId}@${version}`);
+  if (!echoed.delete(`${partId}@${version}`)) mine.add(`${partId}@${version}`);
   myVersions.add(`${partId}@${version}`);
   noteVersion(partId, version);
   pushLine(partId, text, ts);
+}
+
+/** Runs one edit request of `partId` from this window. Until it answers, the part's `by:"user"`
+ *  events are held; then the echo of the answered version is dropped and the rest are shown
+ *  (all of them if the request failed). Call `noteMyEdit` with the answer as before. */
+export async function trackEdit<T extends { version: number }>(partId: string, request: Promise<T>): Promise<T> {
+  inFlight.set(partId, (inFlight.get(partId) ?? 0) + 1);
+  let version: number | null = null;
+  try {
+    const r = await request;
+    version = r.version;
+    return r;
+  } finally {
+    settle(partId, version);
+  }
+}
+
+function settle(partId: string, version: number | null): void {
+  const n = (inFlight.get(partId) ?? 1) - 1;
+  if (n > 0) inFlight.set(partId, n); else inFlight.delete(partId);
+  const list = held.get(partId) ?? [];
+  const keep: typeof list = [];
+  for (const h of list) {
+    if (version !== null && h.d.version === version) { echoed.add(`${partId}@${version}`); continue; }
+    keep.push(h);
+  }
+  if (n > 0) { held.set(partId, keep); return; }   // another edit still in flight: keep holding
+  held.delete(partId);
+  for (const h of keep) showUserEvent(h.d, h.ts);
+}
+
+function showUserEvent(d: PartChanged, ts: number): void {
+  const key = `${d.part_id}@${d.version}`;
+  if (mine.has(key)) { mine.delete(key); return; }
+  // the user's edit from somewhere else (another window): the core's summary, as data
+  pushLine(d.part_id, d.summary || `changed ${nameOf(d.part_id)}`, ts);
 }
 
 /** The part's name as the tree shows it (its label, else its id with spaces). */
@@ -106,10 +156,11 @@ export function onPartChanged(ev: MisesEvent): void {
     flash(d.part_id);
     return;
   }
-  const key = `${d.part_id}@${d.version}`;
-  if (mine.has(key)) { mine.delete(key); return; }
-  // the user's edit from somewhere else (another window): the core's summary, as data
-  pushLine(d.part_id, d.summary || `changed ${nameOf(d.part_id)}`, ev.ts);
+  if (inFlight.has(d.part_id)) {
+    held.set(d.part_id, [...(held.get(d.part_id) ?? []), { d, ts: ev.ts }]);
+    return;
+  }
+  showUserEvent(d, ev.ts);
 }
 
 /** The user's edit lines that belong to the active build. */
@@ -132,4 +183,7 @@ export function resetPartEdits(): void {
   lastAgentChange.value = new Map();
   mine.clear();
   myVersions.clear();
+  inFlight.clear();
+  held.clear();
+  echoed.clear();
 }

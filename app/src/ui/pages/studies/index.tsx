@@ -24,7 +24,7 @@ import { History } from "./History";
 import { openImmersive } from "./immersive/state";
 import { InstallCard } from "./InstallCard";
 import { MaterialEditor, Templates } from "./Library";
-import { phaseText, settingsMarkers, STARTERS, TYPE_NAMES, TYPE_ORDER } from "./model";
+import { phaseText, settingsMarkers, STARTERS, TYPE_NAMES, TYPE_ORDER, typeName } from "./model";
 import { showStudyRequest } from "./nav";
 import { ResultPanel } from "./ResultPanel";
 import { SchemaForm } from "./SchemaForm";
@@ -95,6 +95,7 @@ export function StudiesPage({ controller = studies, deps = {} }: { controller?: 
         : needsCcx && c.ccxMissing.value ? "Install CalculiX to run FEM studies (wind studies still run)." : null;
   const canRun = why === null && info !== null && settings !== null && active === null;
   const showResult = viewSig.value === "result" && recShown !== null;
+  const pickType = (t: typeof type) => { typeSig.value = t; c.fieldErrors.value = []; setPicking(null); viewSig.value = "setup"; caseSig.value = 0; };
 
   const openRun = (runId: string) => { actions.selectRun(runId); setConsoleCollapsed(false); };
   const onAsk = async () => { if (!recShown) return; const runId = await c.ask(recShown); if (runId) openRun(runId); };
@@ -119,14 +120,26 @@ export function StudiesPage({ controller = studies, deps = {} }: { controller?: 
                 </select>
               )}
           </div>
-          <div class="st-types" role="tablist" aria-label="Study type">
+          {/* a tablist with roving focus: Tab lands on the selected type, ←/→ (Home/End) move and select */}
+          <div class="st-types" role="tablist" aria-label="Study type"
+            onKeyDown={(e) => {
+              const i = TYPE_ORDER.indexOf(type);
+              const n = TYPE_ORDER.length;
+              const j = e.key === "ArrowRight" ? (i + 1) % n : e.key === "ArrowLeft" ? (i - 1 + n) % n : e.key === "Home" ? 0 : e.key === "End" ? n - 1 : -1;
+              if (j < 0) return;
+              e.preventDefault();
+              pickType(TYPE_ORDER[j]);
+              const bar = e.currentTarget as HTMLElement;
+              requestAnimationFrame(() => bar.querySelector<HTMLElement>(`[data-testid="type-${TYPE_ORDER[j]}"]`)?.focus());
+            }}>
             {TYPE_ORDER.map((t) => {
               const ti = c.types.value.find((x) => x.id === t);
               return (
                 <button key={t} type="button" role="tab" class="st-type" aria-selected={t === type} data-testid={`type-${t}`}
+                  tabIndex={t === type ? 0 : -1}
                   title={ti ? `${ti.name}: ${ti.doc}${ti.available ? "" : ` · ${ti.detail ?? "not available"}`}` : TYPE_NAMES[t]}
                   data-available={ti ? String(ti.available) : undefined}
-                  onClick={() => { typeSig.value = t; c.fieldErrors.value = []; setPicking(null); viewSig.value = "setup"; caseSig.value = 0; }}>
+                  onClick={() => pickType(t)}>
                   {TYPE_NAMES[t]}
                 </button>
               );
@@ -189,7 +202,13 @@ export function StudiesPage({ controller = studies, deps = {} }: { controller?: 
             <>
               <div class="st-viewtabs" role="tablist" aria-label="Viewport">
                 <button type="button" role="tab" class="st-type" aria-selected={!showResult} onClick={() => { viewSig.value = "setup"; }} data-testid="view-setup">Setup</button>
-                <button type="button" role="tab" class="st-type" aria-selected={showResult} disabled={!recShown} onClick={() => { setPicking(null); viewSig.value = "result"; }} data-testid="view-result">Result</button>
+                <button type="button" role="tab" class="st-type" aria-selected={showResult} disabled={!recShown} onClick={() => { setPicking(null); viewSig.value = "result"; }} data-testid="view-result">
+                  {recShown?.type ? `${typeName(recShown.type)} result` : "Result"}
+                </button>
+                {/* the shown result's own type, when it isn't the setup's (M-2) */}
+                {showResult && recShown.type && recShown.type !== type && (
+                  <span class="faint st-note" data-testid="result-type-note">{`a ${typeName(recShown.type)} study · the setup above is ${TYPE_NAMES[type]}`}</span>
+                )}
                 {!showResult && markers.length > 0 && <span class="faint st-note">{markers.filter((m) => m.role === "load").length} loads · {markers.filter((m) => m.role !== "load").length} held or thermal faces</span>}
               </div>
               <StudyView partId={partId} mtime={part.mtime} record={showResult ? recShown : null} markers={markers} faces={faces}

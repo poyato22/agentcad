@@ -9,6 +9,7 @@ import type { JSX } from "preact";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import type { Step } from "../../api/types";
 import { fmtClock } from "../../lib/format";
+import { Markup } from "../markup/render";
 import { actions, filter, focusedStepId, follow, steps } from "../../state/store";
 import { ApprovalCard } from "./approvals/ApprovalCard";
 import { QuestionCard } from "./approvals/QuestionCard";
@@ -198,7 +199,10 @@ function RowBody({ item, label }: { item: LogItem; label?: string }): JSX.Elemen
           <span class="con-body">
             <Prefix label={label} />
             {item.role === "user" && <span class="faint">you · </span>}
-            <span class="ink text">{item.text}</span>
+            {/* the agent's words render as Mises markup, as in the conversation view; yours stay plain */}
+            {item.role === "user"
+              ? <span class="ink text">{item.text}</span>
+              : <span class="ink text con-mk" data-agent-text><Markup source={item.text} collapsible={false} /></span>}
           </span>
         </div>
       );

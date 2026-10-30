@@ -369,7 +369,22 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     if (extras.glb) state.glb = { ...state.glb, ...extras.glb };
     applyEvent(ev);
     broadcast(ev);
+    // like the core's activity tracker (final fix wave): a pending approval or question puts the
+    // run in waiting_approval / waiting_user until it is decided or answered
+    if (ev.run_id && (ev.type === "approval_requested" || ev.type === "question_asked")) {
+      const st = ev.type === "approval_requested" ? "waiting_approval" : "waiting_user";
+      emit({ type: "agent_activity", run_id: ev.run_id, data: { run_id: ev.run_id, state: st, detail: "", since: now() } });
+    }
     return { step_ids: ids };
+  }
+
+  /** The run worked on after you decided or answered (it was waiting on you): back to thinking. */
+  function resumeActivity(runId: string | null) {
+    if (!runId) return;
+    const last = lastActivity.get(runId) as { state?: string } | undefined;
+    if (last?.state !== "waiting_approval" && last?.state !== "waiting_user") return;
+    if (state.runs.get(runId)?.status !== "running") return;
+    emit({ type: "agent_activity", run_id: runId, data: { run_id: runId, state: "thinking", detail: "", since: now() } });
   }
 
   function cancelRun(id: string) {
@@ -514,6 +529,12 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         strList(b, "edit_scope", ["*"]);
         strList(b, "read_scope", ["*"]);
         const sketchId = checkRunSketch(b.sketch_id, state.sketches);
+        // C1: an explicit build for the run (the app always sends it); unknown or trashed → 404
+        const projectId = b.project_id;
+        if (projectId !== undefined && projectId !== null && typeof projectId !== "string") throw wrongType("project_id", "string", projectId);
+        if (typeof projectId === "string" && !state.builds.builds.some((x) => x.id === projectId && x.trashed_at === null)) {
+          throw mises("not_found", `unknown build: ${projectId}`);
+        }
         const def = state.agents.find((a) => a.name === agent);
         if (!def) throw mises("not_found", `unknown agent: ${agent}`, `agents: ${state.agents.map((a) => a.name).join(", ")}`);
         const ref = (typeof modelRef === "string" && modelRef) || (def.model !== "inherit" ? def.model : state.models.default);
@@ -536,6 +557,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         const working = [...state.runs.values()].filter((r) => r.status === "running").length;
         const queued = limit !== undefined && working >= limit;
         const run = newRun(agent, vendor, model, prompt, claude, queued ? "queued" : "running");
+        if (typeof projectId === "string") run.project_id = projectId;
         // a sketch run's user step: like the core, the words sent plus the sketch as `context`
         const sk = sketchId ? state.sketches.get(sketchId) : undefined;
         appendStep({ kind: "message", payload: sk ? sketchUserPayload(prompt, sk) : { role: "user", text: prompt } }, run.id);
@@ -669,6 +691,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         const edited = approve && b.edited_payload && typeof b.edited_payload === "object" ? (b.edited_payload as Record<string, unknown>) : null;
         const decided: Approval = { ...a, status: approve ? "approved" : "rejected", decided_by: DECIDED_BY, decided_at: now(), edited_payload: edited };
         state.approvals.set(a.id, decided);
+        resumeActivity(a.run_id);
         play(approve ? state.on.decide : state.on.decide_reject, a.run_id);
         return decided;
       },
@@ -679,6 +702,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         if (!state.questions.has(m[1])) throw mises("not_found", `no open question: ${m[1]}`);
         const q = state.questions.get(m[1]) as Question;
         emit({ type: "question_answered", run_id: q.run_id, data: { question_id: q.question_id } });
+        resumeActivity(q.run_id);
         return { ok: true };
       },
     },
@@ -840,7 +864,16 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     }),
     ...sketchRoutes(() => state.sketches),
     ...directoryRoutes({ get: () => state.directory, emit: (ev) => { emit(ev); } }),
-    ...specRoutes({ get: () => state.spec, parts: () => state.parts, setParts: (p) => { state.parts = p; }, emit: (ev) => emit(ev) }),
+    ...specRoutes({
+      get: () => state.spec, parts: () => state.parts, setParts: (p) => { state.parts = p; }, emit: (ev) => emit(ev),
+      partVersion: (id) => state.builds.rows.get(id)?.version,
+      bumpPart: (id, summary) => {
+        const r = state.builds.rows.get(id);
+        if (!r) return;
+        r.version += 1;
+        emit({ type: "part_changed", run_id: state.builds.uiRun, data: { part_id: id, version: r.version, by: "user", run_id: null, summary } });
+      },
+    }),
     ...printingRoutes({
       get: () => state.print, parts: () => state.parts, defaultMaterial: () => state.setup.profile.default_material,
       emit: (ev, extras) => { emit(ev, extras); }, approval: (id) => state.approvals.get(id),

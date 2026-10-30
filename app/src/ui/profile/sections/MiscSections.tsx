@@ -4,6 +4,7 @@ import { useEffect, useState } from "preact/hooks";
 import { isTauri } from "@tauri-apps/api/core";
 import { Button } from "../../common/Button";
 import { replayIntro } from "../../boot/boot";
+import { closeProfile } from "../open";
 import { openSetupWizard } from "../../setup/gate";
 import { SystemCheck } from "../../system/SystemCheck";
 import { Card, SectionBox, type SectionProps } from "../common";
@@ -41,9 +42,9 @@ export function SystemSection(): JSX.Element {
   return (
     <SectionBox title="System">
       <Card title="Welcome intro">
-        <p class="dim">Replay the cube-assembling welcome the next time nothing is running.</p>
+        <p class="dim">Play the cube-assembling welcome again now. Click or press any key to skip it.</p>
         <div class="profile-row">
-          <Button onClick={() => replayIntro()}>Replay intro</Button>
+          <Button onClick={() => { closeProfile(); replayIntro(); }}>Replay intro</Button>
         </div>
       </Card>
       <SystemCheck />

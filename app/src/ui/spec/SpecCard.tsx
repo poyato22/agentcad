@@ -12,6 +12,7 @@ import { SIM_FACE_PRESETS } from "../../api/sims";
 import { partLabel } from "../../lib/names";
 import { Button } from "../common/Button";
 import { Led } from "../common/Led";
+import { Markup } from "../markup/render";
 import type { SaveResult } from "./controller";
 import {
   draftFromSpec, fmtMeasured, fmtTarget, KIND_LABEL, newReqId, overallTone, priorityDots, reqViews, specFromDraft, STATUS_TONE, STATUS_WORD,
@@ -79,7 +80,7 @@ export function SpecCard(props: SpecCardProps): JSX.Element {
       </header>
       {draft
         ? <input class="sp-goal-in" aria-label="Goal" value={draft.goal} onInput={(e) => setDraft({ ...draft, goal: (e.currentTarget as HTMLInputElement).value })} />
-        : spec.goal && <p class="sp-goal text">{spec.goal}</p>}
+        : spec.goal && <div class="sp-goal text" data-agent-text><Markup source={spec.goal} collapsible={false} /></div>}
       {conflict && (
         <div class="sp-conflict" role="alert" data-spec-conflict>
           <span class="text">The spec changed while you were editing (the agent updated it).</span>

@@ -12,6 +12,7 @@ import {
   type StudySolvers, type StudySummary, type StudyTemplate, type StudyType, type StudyTypeInfo,
 } from "../../../api/studies";
 import type { MisesEvent } from "../../../api/types";
+import { runBuild } from "../../../state/builds";
 import { askPrompt } from "./model";
 import { validate, type FieldError } from "./formSchema";
 
@@ -242,7 +243,7 @@ export class StudiesController {
     if (prev && prev.simId === rec.sim_id && prev.error === null) return prev.runId;
     this.asked.value = { simId: rec.sim_id, runId: null, error: null };
     try {
-      const { run_id } = await this.client().createRun({ agent: "designer", prompt: askPrompt(rec), edit_scope: [rec.part_id] });
+      const { run_id } = await this.client().createRun({ agent: "designer", prompt: askPrompt(rec), edit_scope: [rec.part_id], ...runBuild() });
       this.asked.value = { simId: rec.sim_id, runId: run_id, error: null };
       return run_id;
     } catch (e) {

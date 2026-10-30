@@ -1,8 +1,10 @@
 /* Boot gates: the loading screen and the welcome intro. Both fill the window over the shell on a
    themed backdrop, keep square corners and Iosevka, and let the grey cube be the one loud element. */
 
+/* above the side panels (Profile, the manager: 150) and the setup wizard (200), below the
+   immersive study view (900): "Replay intro" from Profile plays in full, not behind the panel */
 .boot, .intro {
-  position: fixed; inset: 0; z-index: 100;
+  position: fixed; inset: 0; z-index: 300;
   display: flex; align-items: center; justify-content: center;
   background: var(--bg); color: var(--ink);
 }
