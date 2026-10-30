@@ -305,6 +305,8 @@
    "kind": "message",
    "payload": {
     "role": "assistant",
+    "stop_reason": "end_turn",
+    "tool_calls": [],
     "text": "Done. The Pi sits on 4 mm standoffs, the 30 mm fan blows through the side vents and the battery keeps 3 mm clear of it. Two critique rounds; the second passed."
    },
    "evidence_hash": "0000000000000000000000000000000000000000000000000000000000000009",
