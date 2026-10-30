@@ -8,7 +8,7 @@ import { OPENFOAM_ID_RE } from "../../../../api/accuracy";
 import type { CoreClient } from "../../../../api/client";
 import { onCoreEvent } from "../../../../api/events";
 import type { StudySolvers } from "../../../../api/studies";
-import type { MisesEvent } from "../../../../api/types";
+import { isInstallDep, type MisesEvent } from "../../../../api/types";
 import { Button } from "../../../common/Button";
 import { ExternalLink } from "../../../common/ExternalLink";
 import { Led } from "../../../common/Led";
@@ -34,6 +34,8 @@ export function OpenFoamCard({ solvers, chosen, client, onInstalled, subscribe =
   const [state, setState] = useState<"idle" | "running" | "failed">("idle");
   const fix = (row?.fix ?? null) as Fix | null;
   const dep = fix?.dep ?? "openfoam";
+  // only a dependency the app knows is ever sent (the core's INSTALLERS allowlist is the other guard)
+  const knownDep = isInstallDep(dep);
   useEffect(() => subscribe((ev) => {
     if (ev.type !== "system_install" || ev.data.dep !== dep) return;
     if (typeof ev.data.line === "string" && ev.data.line) setLines((l) => [...l.slice(-200), ev.data.line as string]);
@@ -48,6 +50,7 @@ export function OpenFoamCard({ solvers, chosen, client, onInstalled, subscribe =
   const install = async () => {
     setState("running"); setLines([]);
     try {
+      if (!knownDep) return;
       const r = await client().systemInstall(dep);
       if (!r.ok) { setState("failed"); setLines([r.fix?.label ? `Can't install here: ${r.fix.label}` : "The install was refused."]); }
     } catch (e) { setState("failed"); setLines([e instanceof Error ? e.message : String(e)]); }
@@ -60,7 +63,7 @@ export function OpenFoamCard({ solvers, chosen, client, onInstalled, subscribe =
         <p><span class="st-band-title">{ready ? "OpenFOAM is ready" : "OpenFOAM is not set up"}</span></p>
         <p class="dim text">{row.detail}</p>
         {!ready && chosen && <p class="text">Until it is, this study runs on the built-in solver and is labelled that way.</p>}
-        {!ready && fix?.kind === "install" && (
+        {!ready && fix?.kind === "install" && knownDep && (
           <Button onClick={() => { void install(); }} disabled={state === "running"} data-testid="openfoam-install">
             {state === "running" ? "Downloading…" : fix.label ?? "Download OpenFOAM"}
           </Button>

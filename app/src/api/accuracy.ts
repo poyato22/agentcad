@@ -30,9 +30,10 @@ export const partTestSchema = z.looseObject({
   sim_id: z.string(), point: vec3, load_n: z.number(), deflection_mm: z.number(),
   direction: vec3.nullable().optional(), study_load_n: num.optional(), note: z.string().optional(),
 });
-export type TensileTest = z.infer<typeof tensileTestSchema>;
-export type BendTest = z.infer<typeof bendTestSchema>;
-export type PartTest = z.infer<typeof partTestSchema>;
+/** Input shapes (the core fills orientation / note defaults). */
+export type TensileTest = z.input<typeof tensileTestSchema>;
+export type BendTest = z.input<typeof bendTestSchema>;
+export type PartTest = z.input<typeof partTestSchema>;
 export type CalibrationTestKind = "tensile" | "bend" | "part";
 
 /** POST /sims/calibrations/fit and POST /sims/calibrations (core CalibrationInput; extra keys are refused). */

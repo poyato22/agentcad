@@ -102,6 +102,14 @@
 .acc-fit-label { font: 700 var(--fs-label) var(--font-mono); fill: var(--ink); }
 .acc-cal-dot { fill: var(--ink); stroke: var(--paper); stroke-width: 2; }
 
+/* ---- S3 additions: ratio overrides, the coupon's print orientation, a measured point, the confirm */
+.acc-ratios { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.acc-ratios .acc-in input { width: 64px; }
+.acc-orient { display: block; margin-top: 4px; font-size: var(--fs-small); }
+.acc-in input.acc-pt { width: 56px; }
+.acc-confirm { border: 1px solid var(--ink); background: var(--paper2); padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.acc-confirm p { margin: 0; }
+
 @media (prefers-reduced-motion: reduce) {
   .acc-axis circle { transition: none; }
 }
