@@ -4,6 +4,7 @@
 // The `Same<...>` checks at the bottom fail the type check if a schema and its type drift apart.
 import { z } from "zod";
 import { partEdgeSchema } from "./builds";
+import { suggestedSitesSchema } from "./browser";
 import {
   ERROR_CODES, SETUP_PIECES, STEP_KINDS, SYSTEM_STATUSES,
   type RunNode,
@@ -174,6 +175,8 @@ export const profileSchema = z.object({
   max_parallel_agents: z.union([z.number().int(), z.literal("auto")]).default("auto"), local_endpoints: z.record(z.string(), z.string()).default({}),
   theme: z.enum(["system", "light", "dark"]).default("system"),
   hidden_agents: z.array(z.string()).optional(),
+  // Plan 7 R3: the agent's curated browse list (apart in api/browser.ts)
+  suggested_sites: suggestedSitesSchema.optional(),
   setup_completed_at: z.number().nullable().default(null),
   // the core's Profile carries `schema_version` and `printers`; both are stripped here and never sent
   // back in PUT /profile (the core merges the patch, so they are kept; printers go through /printers)

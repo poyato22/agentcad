@@ -2,6 +2,7 @@
 // server/ui_api.py). Field names are exactly the server's. Times are unix seconds (float).
 // Runtime validation lives in schemas.ts; keep both in step.
 import type { PartEdge, PartKind } from "./builds";
+import type { SuggestedSite } from "./browser";
 
 export type ErrorCode = "stale_version" | "budget_exhausted" | "needs_approval" | "transient" | "invalid_input"
   | "out_of_scope" | "denied" | "not_found" | "tool_failed" | "cancelled";
@@ -228,6 +229,9 @@ export interface Profile {
   /** Built-in agents the user has hidden (custom agents are deleted outright, not hidden).
    *  Optional: a core/fixture that predates it reads as "none hidden". */
   hidden_agents?: string[];
+  /** Curated, user-editable sites the agent browses without an approval card (Plan 7 R3).
+   *  Optional: a core/fixture that predates it reads as the empty list in the UI. */
+  suggested_sites?: SuggestedSite[];
   setup_completed_at: number | null;
 }
 

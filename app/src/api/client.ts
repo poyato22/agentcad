@@ -44,6 +44,10 @@ import {
   buildSchema, buildTabsProfileSchema, emptyTrashRefusedSchema, emptyTrashSchema, partEditResultSchema, partSourceSchema,
   type Build, type BuildTabsProfile, type EmptyTrashRefused, type EmptyTrashResult, type OpRequest, type PartEditResult, type PartSource,
 } from "./builds";
+import {
+  bomLineSchema, bomSchema, browserListSchema, browserSnapshotSchema, isProxyPath,
+  type Bom, type BomLine, type BomPatch, type BrowserSnapshot, type NewBomLine,
+} from "./browser";
 
 type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
@@ -51,7 +55,7 @@ type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
  *  schema_version, which the app never writes. */
 const PROFILE_PATCH_KEYS: ReadonlySet<string> = new Set<string>([
   "display_name", "default_material", "default_agent", "default_model", "onshape_calls_year_cap", "onshape_calls_run_cap",
-  "max_parallel_agents", "local_endpoints", "theme", "hidden_agents",
+  "max_parallel_agents", "local_endpoints", "theme", "hidden_agents", "suggested_sites",
 ] satisfies (keyof ProfilePatch)[]);
 
 /** For routes whose answer the UI doesn't use (it refetches status instead): any 2xx JSON body. */
@@ -566,6 +570,43 @@ export class CoreClient {
     return this.json("POST", `/parts/${enc(id)}/ops`, partEditResultSchema, { body: { ...op, base_version: baseVersion } });
   }
 
+  // ---- Plan 7 (R3/R4/R5): agent browser snapshots and the build parts list (BOM); core U4c
+
+  /** The pages this run visited (web_open), in order. Snapshots are untrusted data. */
+  runBrowser(runId: string): Promise<BrowserSnapshot[]> {
+    return this.json("GET", `/runs/${enc(runId)}/browser`, browserListSchema);
+  }
+  /** One stored snapshot. Untrusted data. */
+  browserSnapshot(sid: string): Promise<BrowserSnapshot> {
+    return this.json("GET", `/browser/snapshots/${enc(sid)}`, browserSnapshotSchema);
+  }
+  /** A snapshot or part-card image through the core's proxy. Only a core-relative path from a
+   *  parsed snapshot/card is fetched — never a page's own image host (R3 safety). */
+  async snapshotImage(proxyUrl: string): Promise<Blob> {
+    if (!isProxyPath(proxyUrl)) throw new CoreError("invalid_input", "not a core proxy path");
+    const res = await this.request("GET", proxyUrl, {});
+    if (!res.ok) throw await toError(res);
+    const type = (res.headers.get("content-type") ?? "").split(";")[0].trim();
+    if (!/^image\/(png|jpeg|gif|webp|svg\+xml)$/.test(type)) throw new CoreError("validation", "proxied file is not an image");
+    return new Blob([await res.arrayBuffer()], { type });
+  }
+
+  /** The build's parts list: made and bought lines plus totals (by vendor, made/bought, grand). */
+  bom(projectId: string): Promise<Bom> { return this.json("GET", bomPath(projectId), bomSchema); }
+  /** Add a line (a hand-entered bought part, or a catalog/shown part). */
+  bomAdd(projectId: string, body: NewBomLine): Promise<BomLine> {
+    return this.json("POST", bomPath(projectId), bomLineSchema, { body });
+  }
+  /** Edit a line's qty, cost, notes, name, vendor or currency. */
+  bomPatch(projectId: string, lineId: string, patch: BomPatch): Promise<BomLine> {
+    return this.json("PATCH", `${bomPath(projectId)}/${enc(lineId)}`, bomLineSchema, { body: patch });
+  }
+  async bomDelete(projectId: string, lineId: string): Promise<void> {
+    await this.json("DELETE", `${bomPath(projectId)}/${enc(lineId)}`, okSchema);
+  }
+  /** The parts list as CSV (a typed Blob; saved/exported by the app). */
+  bomCsv(projectId: string): Promise<Blob> { return this.blob(`/projects/${enc(projectId)}/bom.csv`, "text/csv"); }
+
   // ---- internals
 
   /** A binary answer as a Blob of `type` (the type is ours, not the server's). */
@@ -698,4 +739,5 @@ const lenientSteps: z.ZodType<Step[]> =z.array(z.unknown()).transform((items) =>
 
 const enc = encodeURIComponent;
 const asm = (projectId: string) => `/projects/${enc(projectId)}/assembly`;
+const bomPath = (projectId: string) => `/projects/${enc(projectId)}/bom`;
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
