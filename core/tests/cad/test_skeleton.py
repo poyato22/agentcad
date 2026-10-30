@@ -268,3 +268,51 @@ async def test_unknown_remove_is_invalid(world):
     await _set(w.ctx, w.project, params={"wing_span": 100.0})
     with pytest.raises(MisesError, match="no skeleton names"):
         await skeleton_set.handler(w.ctx, SkeletonSetArgs(project_id=w.project, remove=["nope"]))
+
+
+CASE = '''VARS = {"wall": 2.0}
+
+def build(v):
+    L, w = skeleton("case_length"), v["wall"]
+    return Box(L, 40, 30) - Box(L - 2 * w, 40 - 2 * w, 30 - 2 * w)
+'''
+
+INSERT = '''VARS = {}
+
+def build(v):
+    size = inner_volume("case").bounding_box().size
+    return Box(size.X - 4, size.Y - 4, 5)
+'''
+
+
+async def test_parts_reading_a_regenerated_part_follow_it(world):
+    """inner_volume("case") is a recorded reference too: when the skeleton regenerates the case,
+    the insert sized from its cavity is regenerated after it."""
+    w = world
+    await _set(w.ctx, w.project, params={"case_length": 80.0})
+    assert (await mirror_part_create.handler(w.ctx, CreateArgs(part_id="case", script=CASE))).ok
+    r = await mirror_part_create.handler(w.ctx, CreateArgs(part_id="insert", script=INSERT))
+    assert r.ok, r.summary
+    assert r.data["bbox"]["size"][0] == pytest.approx(72.0)
+    assert sk.read_refs(w.root / "insert")["parts"] == ["case"]
+    r = await _set(w.ctx, w.project, params={"case_length": 100.0})
+    assert [x["part_id"] for x in r.data["regenerated"]] == ["case", "insert"]
+    m = await mirror_measure.handler(w.ctx, PartArgs(part_id="insert"))
+    assert m.data["bbox"]["size"][0] == pytest.approx(92.0)
+
+
+async def test_an_explicit_skeleton_file_reaches_a_scratch_build(world, tmp_path):
+    """Study variants build a scratch copy elsewhere: run_build(skeleton_file=) hands them the
+    live part's staged skeleton (engineering/tools.py does this)."""
+    from mises.cad.runner import run_build
+    w = world
+    await _set(w.ctx, w.project, params={"wing_span": 64.0})
+    await mirror_part_create.handler(w.ctx, CreateArgs(part_id="wing", script=WING))
+    scratch = tmp_path / "scratch" / "parts" / "wing"
+    scratch.mkdir(parents=True)
+    (scratch / "part.py").write_text(WING)
+    res = await run_build(scratch, {"chord": 10.0},
+                          skeleton_file=sk.staged_file(w.root / "wing"))
+    assert res.ok, res.error
+    assert res.metrics["bbox"]["size"][:2] == pytest.approx([64.0, 10.0])
+    assert res.skeleton_refs["params"] == ["wing_span"]
