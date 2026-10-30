@@ -18,11 +18,20 @@ FACE_ID_RE = re.compile(r"^f(\d{1,5})$")
 # a named face the part script tags (FACES = {"motor_mount": fn} in part.py): re-resolved on every
 # build, so unlike a face id it holds across a study's variants
 FACE_TAG_RE = re.compile(r"^tag:([a-z][a-z0-9_]{0,30})$")
+# an assembly study's instance face: face f3 of instance <id> ("f3@1a2b3c4d5e6f")
+INSTANCE_FACE_RE = re.compile(r"^f(\d{1,5})@([A-Za-z0-9_-]{1,40})$")
 
 
 def is_face_spec(v: str) -> bool:
-    """A preset ("bottom", "x-max", ...), a face id ("f3") or a tag ("tag:motor_mount")."""
-    return v in FACE_PRESETS or bool(FACE_ID_RE.match(v)) or bool(FACE_TAG_RE.match(v))
+    """A preset ("bottom", "x-max", ...), a face id ("f3"), a tag ("tag:motor_mount") or an
+    assembly instance's face ("f3@<instance id>")."""
+    return (v in FACE_PRESETS or bool(FACE_ID_RE.match(v)) or bool(FACE_TAG_RE.match(v))
+            or bool(INSTANCE_FACE_RE.match(v)))
+
+
+def is_face_id(v: str) -> bool:
+    """A face id looked up in the metrics face_list: "f3", or "f3@<instance>" (assemblies)."""
+    return bool(FACE_ID_RE.match(v)) or bool(INSTANCE_FACE_RE.match(v))
 
 
 def tag_face_ids(spec: str, face_tags: dict | None) -> list[str]:
@@ -46,6 +55,7 @@ class Surface:
     bbox: list[float]          # xmin, ymin, zmin, xmax, ymax, zmax
     area: float
     tris: list[list[int]]      # 6-node triangles: 3 corners then 3 midside nodes
+    instance: str | None = None  # assembly studies: the instance whose solid it bounds
 
 
 @dataclass
@@ -90,15 +100,21 @@ def load_mesh(path: Path) -> Mesh:
     tt = d["tets"]
     tets = [tt[i:i + nt] for i in range(0, len(tt), nt)]
     surfaces = [Surface(tag=s["tag"], center=s["center"], bbox=s["bbox"], area=s["area"],
-                        tris=[s["tris"][i:i + nf] for i in range(0, len(s["tris"]), nf)])
+                        tris=[s["tris"][i:i + nf] for i in range(0, len(s["tris"]), nf)],
+                        instance=s.get("instance"))
                 for s in d["surfaces"]]
-    return Mesh(nodes=nodes, tets=tets, surfaces=surfaces, size_mm=d["size_mm"],
+    mesh = Mesh(nodes=nodes, tets=tets, surfaces=surfaces, size_mm=d["size_mm"],
                 gmsh_version=d.get("gmsh_version", ""), order=order)
+    if d.get("tet_instances"):  # assembly: [instance id, tet count] runs in element order
+        mesh.extra["tet_instances"] = [(str(i), int(n)) for i, n in d["tet_instances"]]
+    return mesh
 
 
 async def mesh_step(step: Path, job_dir: Path, size_mm: float, *, timeout_s: float,
                     options: dict | None = None) -> Mesh:
-    """options: {"order": 1|2, "refine": [...]} (see mesh_worker)."""
+    """options: {"order": 1|2, "refine": [...], "instances": [...]} (see mesh_worker). With
+    instances (an assembly study) `step` is only the directory anchor: each instance names its
+    own STEP copy inside the job root."""
     job_dir = Path(job_dir)
     job_dir.mkdir(parents=True, exist_ok=True)
     out = job_dir / "mesh.json"
@@ -145,7 +161,7 @@ def select_faces(spec: str, surfaces: list[Surface], part_bbox: dict,
             raise SimError("bad_setup", f"no flat face on the {spec} side of the part",
                            hint="pick a face_id (e.g. \"f3\") from mirror_measure face_list")
         return tags
-    m = FACE_ID_RE.match(spec)
+    m = FACE_ID_RE.match(spec) or INSTANCE_FACE_RE.match(spec)
     if not m:
         raise SimError("bad_setup", f"unknown face {spec!r}",
                        hint=f"use a preset ({', '.join(FACE_PRESETS)}) or a face id like \"f3\"")
@@ -157,6 +173,9 @@ def select_faces(spec: str, surfaces: list[Surface], part_bbox: dict,
     if face is None:
         raise SimError("bad_setup", f"no face {spec} on this part",
                        hint=f"face ids run f0..f{len(face_list) - 1}; see mirror_measure")
+    inst = INSTANCE_FACE_RE.match(spec)
+    if inst is not None:  # only that instance's surfaces: touching instances share centres
+        surfaces = [s for s in surfaces if s.instance == inst.group(2)]
     best = min(surfaces, key=lambda s: math.dist(s.center, face["center"]), default=None)
     match_tol = max(1e2 * tol, 1e-3)
     if best is None or math.dist(best.center, face["center"]) > match_tol:

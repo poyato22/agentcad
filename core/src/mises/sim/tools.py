@@ -92,7 +92,11 @@ class StaticArgs(BaseModel):
 class SimRunArgs(BaseModel):
     type: Literal["static", "modal", "buckling", "thermal", "drop", "wind"]
     part_id: str | None = Field(None, description="the part to study")
-    project_id: str | None = Field(None, description="an assembly (build); not supported yet")
+    project_id: str | None = Field(None, pattern=r"^[A-Za-z0-9_-]{1,64}$",
+                                   description="an assembly (build) instead of a part: "
+                                   "static studies of every instance at its solved position; "
+                                   "faces are f<i>@<instance id>, instances interact through "
+                                   "settings.nonlinear.contacts (contact or bonded)")
     settings: dict[str, Any] = Field(default_factory=dict, description="the type's settings; "
                                      "see sim_types_list for every field, default and range")
     reason: str | None = Field(None, max_length=200, description="one line: why this study "
@@ -105,8 +109,8 @@ class SimRunArgs(BaseModel):
 
     @model_validator(mode="after")
     def _target(self):
-        if self.part_id is None and self.project_id is None:
-            raise ValueError("give part_id (or project_id)")
+        if (self.part_id is None) == (self.project_id is None):
+            raise ValueError("give exactly one of part_id or project_id")
         return self
 
 
@@ -119,7 +123,9 @@ def legacy_settings(fix: str, load: dict, material: str | None,
 
 
 def _run_scope(a) -> list[str]:
-    return [a.part_id] if a.part_id else [f"project:{a.project_id}"]
+    # an assembly study is in scope by its build id (like the assembly_* tools) or the
+    # "project:<id>" form
+    return [a.part_id] if a.part_id else [a.project_id, f"project:{a.project_id}"]
 
 
 class ResultArgs(BaseModel):
@@ -168,12 +174,21 @@ def _bad(e: SimError) -> MisesError:
     return MisesError(ErrorCode.INVALID_INPUT, e.message, hint=e.hint)
 
 
-def _in_read_scope(ctx: ToolContext, part_id: str) -> bool:
+def _rec_scope(rec: dict) -> list[str]:
+    """The scope keys a stored study answers to: its part, or its build."""
+    if rec.get("part_id"):
+        return [rec["part_id"]]
+    pid = rec.get("project_id") or ""
+    return [pid, f"project:{pid}"]
+
+
+def _in_read_scope(ctx: ToolContext, part_id: str | list[str]) -> bool:
     pol = getattr(ctx, "policy", None)
     if pol is None:
         return True
     allowed = set(pol.edit_scope) | set(pol.read_scope)
-    return "*" in allowed or part_id in allowed
+    keys = [part_id] if isinstance(part_id, str) else part_id
+    return "*" in allowed or any(k in allowed for k in keys)
 
 
 def _load_rec(ctx: ToolContext, sim_id: str) -> dict:
@@ -181,8 +196,8 @@ def _load_rec(ctx: ToolContext, sim_id: str) -> dict:
     d = find_sim(root, sim_id)
     if d is None:
         raise MisesError(ErrorCode.NOT_FOUND, f"no study {sim_id}", hint="run one with sim_run")
-    rec = read_record(d, root)
-    if not _in_read_scope(ctx, rec.get("part_id", "")):
+    rec = read_record(d, d.parent.parent.parent)
+    if not _in_read_scope(ctx, _rec_scope(rec)):
         raise MisesError(ErrorCode.OUT_OF_SCOPE, f"{sim_id} belongs to a part outside this "
                          "run's scope", hint="ask the user to widen the scope")
     return rec
@@ -213,17 +228,39 @@ async def _run(ctx: ToolContext, type_id: str, part_id: str, settings: dict, *,
                   "state), drop (equivalent static impact load, an ESTIMATE) or wind (CFD: Cd, "
                   "Cl, drag and lift in N, surface Cp, yaw sweep; LOW FIDELITY). settings follow "
                   "the type's schema from sim_types_list (mesh, material incl. custom and FDM "
-                  "infill, convergence, solver timeout and threads). Faces are presets or face "
+                  "infill, convergence, solver timeout and threads). Static settings.nonlinear "
+                  "adds large deflection, plasticity, contact / bonded pairs and rigid "
+                  "supports (slower; reports the load fraction reached, plastic strain and "
+                  "contact pressure with a validated error band). project_id instead of "
+                  "part_id runs a static study of the build's assembly (instance faces "
+                  "f3@<instance id>; instances interact only through settings.nonlinear."
+                  "contacts). Faces are presets or face "
                   "ids from mirror_measure / mirror_faces. Give a one-line `reason`; pass spec "
                   "`requirements` to get pass / warn / fail checks. Results are a GUIDE ONLY: "
                   "always say so, with the solver, mesh and error band.")
 async def sim_run(ctx: ToolContext, args: SimRunArgs) -> ToolOutput:
-    if args.part_id is None:
-        raise MisesError(ErrorCode.INVALID_INPUT, "assembly (project_id) studies are not "
-                         "supported yet", hint="study each part with its part_id")
+    extra = {"estimate": True} if args.estimate else None
+    if args.project_id is not None:
+        return await _run_assembly(ctx, args, extra)
     return await _run(ctx, args.type, args.part_id, args.settings, reason=args.reason,
-                      requirements=args.requirements,
-                      inputs_extra={"estimate": True} if args.estimate else None)
+                      requirements=args.requirements, inputs_extra=extra)
+
+
+async def _run_assembly(ctx: ToolContext, args: SimRunArgs, extra: dict | None):
+    from . import assembly_study
+    if args.type != "static":
+        raise MisesError(ErrorCode.INVALID_INPUT, f"assembly studies are static only (not "
+                         f"{args.type})", hint="study each part with its part_id")
+    try:
+        model = studies.validate_settings("static", args.settings)
+    except SimError as e:
+        raise _bad(e) from None
+    target = assembly_study.resolve(ctx, args.project_id)
+    return await studies.run_study(ctx, "static", None, None, model, reason=args.reason,
+                                   requirements=args.requirements,
+                                   inputs_extra={"project_id": target["project_id"],
+                                                 **(extra or {})},
+                                   assembly=target)
 
 
 @tool("sim_static_run", safety=SafetyClass.LOCAL_MUTATE, scope_arg="part_id",
@@ -290,7 +327,8 @@ async def sim_compare(ctx: ToolContext, args: CompareArgs) -> ToolOutput:
 async def sim_cancel(ctx: ToolContext, args: ResultArgs) -> ToolOutput:
     rec = _load_rec(ctx, args.sim_id)
     pol = getattr(ctx, "policy", None)
-    if pol is not None and "*" not in pol.edit_scope and rec.get("part_id") not in pol.edit_scope:
+    if pol is not None and "*" not in pol.edit_scope and not any(
+            k in pol.edit_scope for k in _rec_scope(rec)):
         raise MisesError(ErrorCode.OUT_OF_SCOPE, f"{args.sim_id} is outside this run's scope")
     if not studies.cancel(args.sim_id):
         return ToolOutput(ok=False, summary=f"{args.sim_id} is not running "

@@ -63,6 +63,16 @@ def charts(rec: dict, sim_dir: Path) -> dict:
             if h:
                 h["markers"] = [{"label": "allowable", "x": r.get("allowable_mpa")}]
                 out.append(h)
+            path = r.get("load_path") or []
+            if len(path) > 1:  # a nonlinear study: how the part took the load
+                out.append({"id": "load_path", "kind": "line", "title": "Load path",
+                            "x": {"label": "load fraction", "unit": ""},
+                            "y": {"label": "max displacement", "unit": "mm"},
+                            "series": [{"name": "max displacement",
+                                        "points": _thin([[a, b] for a, b in path])}],
+                            "bands": [] if r.get("converged") is not False else [
+                                {"label": "no equilibrium past here", "axis": "x",
+                                 "from": r.get("load_fraction"), "to": 1.0}]})
         elif typ == "thermal":
             h = _hist(sim_dir, "temperature", "Temperature distribution", "degC")
             if h:

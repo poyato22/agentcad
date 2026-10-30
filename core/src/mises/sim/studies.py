@@ -30,9 +30,11 @@ from pydantic import BaseModel, ValidationError
 from ..cad import safe_io
 from ..events import Event
 from ..types import (ErrorCode, MisesError, StepKind, ToolOutput, canonical_json, sha256_hex)
+from .assembly_study import ASSEMBLIES_DIR, assemblies_root
 from .ccx import INSTALL_HINT, ccx_version, find_ccx
 from .environments import get_environment
 from .materials import Material, custom_material, get_material, with_fdm
+from .mesh import INSTANCE_FACE_RE
 from .settings import SETTINGS_MODELS, unit_vec
 from .types import SimError
 
@@ -50,6 +52,29 @@ CAVEATS_FEM = [
     "Small deflections assumed; contact, creep, fatigue, temperature and vibration are not "
     "simulated unless this study type says so.",
 ]
+CAVEATS_NONLINEAR = [
+    "Guide only: a nonlinear FEM estimate (CalculiX, load controlled), not a certification or "
+    "a guarantee; its validated model error band is shown with the result.",
+    "Isotropic material model; printed parts are weaker across layers and often crack before "
+    "they flow.",
+    "Plasticity is bilinear (yield at the knocked-down allowable, then the tangent modulus); "
+    "its validated band covers the collapse load, not the plastic strain.",
+    "Contact is penalty contact (a little penetration stands for the contact stiffness); "
+    "creep, fatigue, temperature and vibration are not simulated.",
+]
+CAVEAT_ORTHOTROPIC = ("Orthotropic FDM material model (layer direction from the print "
+                      "direction); the between-layer values are typical or estimated.")
+
+
+def material_caveats(caveats: list[str], material) -> list[str]:
+    """The caveat list with the isotropic-material line swapped for an orthotropic one when the
+    material is orthotropic (S3's print-direction materials)."""
+    if not getattr(material, "orthotropic", False):
+        return list(caveats)
+    return [CAVEAT_ORTHOTROPIC if c.startswith("Isotropic material model") else c
+            for c in caveats]
+
+
 CAVEATS_STATIC_FIXTURE = (
     "Peak stress excludes nodes on the fixed face (an ideal clamp gives a constraint "
     "singularity there); that value and a safety factor including it are reported separately.")
@@ -106,6 +131,10 @@ STUDY_TYPES: dict[str, StudyType] = {t.id: t for t in [
 ]}
 
 
+# the channels a static study with `nonlinear` settings adds (when it has plasticity / contact)
+NONLINEAR_CHANNELS = ("plastic_strain", "contact_pressure")
+
+
 def types_list() -> list[dict]:
     st = find_ccx()
     out = []
@@ -115,7 +144,9 @@ def types_list() -> list[dict]:
                     "fidelity_class": t.fidelity_class, "doc": t.doc, "channels": list(t.channels),
                     "available": available,
                     "detail": None if available else f"CalculiX missing: {INSTALL_HINT}",
-                    "schema": SETTINGS_MODELS[t.id].model_json_schema()})
+                    "schema": SETTINGS_MODELS[t.id].model_json_schema(),
+                    **({"nonlinear_channels": list(NONLINEAR_CHANNELS),
+                        "targets": ["part_id", "project_id"]} if t.id == "static" else {})})
     return out
 
 
@@ -174,47 +205,68 @@ def file_hash(p: Path) -> str | None:
 
 
 def find_sim(parts_root: Path, sim_id: str) -> Path | None:
-    """The record dir of sim_id, or None. sim_id must already match SIM_ID_RE."""
-    if not SIM_ID_RE.fullmatch(sim_id) or not Path(parts_root).is_dir():
+    """The record dir of sim_id (a part's, or an assembly study's in the sibling assemblies
+    dir), or None. sim_id must already match SIM_ID_RE."""
+    if not SIM_ID_RE.fullmatch(sim_id):
         return None
-    root = Path(parts_root).resolve()
-    for d in Path(parts_root).glob(f"*/sims/{sim_id}"):
-        try:
-            real = d.resolve(strict=True)
-        except OSError:
+    for top in (Path(parts_root), assemblies_root(parts_root)):
+        if not top.is_dir():
             continue
-        if (real.is_relative_to(root) and not d.is_symlink() and not d.parent.is_symlink()
-                and safe_io.exists(d, "result.json")):
-            return real
+        root = top.resolve()
+        for d in top.glob(f"*/sims/{sim_id}"):
+            try:
+                real = d.resolve(strict=True)
+            except OSError:
+                continue
+            if (real.is_relative_to(root) and not d.is_symlink() and not d.parent.is_symlink()
+                    and safe_io.exists(d, "result.json")):
+                return real
     return None
 
 
 def read_record(sim_dir: Path, parts_root: Path) -> dict:
+    """A record and whether it is stale. parts_root: the parts dir (or, for an assembly
+    study's record, the assemblies dir beside it)."""
     rec = safe_io.read_json(sim_dir, "result.json")
     if not isinstance(rec, dict):
         raise ValueError(f"{Path(sim_dir).name}: no study record")
+    if Path(parts_root).name == ASSEMBLIES_DIR:
+        parts_root = Path(parts_root).parent / "parts"
+    if rec.get("project_id") and not rec.get("part_id"):   # an assembly study
+        hashes = rec.get("part_hashes") or {}
+        rec["stale"] = not hashes or any(
+            file_hash(Path(parts_root) / p / "model.step") != h for p, h in hashes.items())
+        rec.setdefault("type", "static")
+        return rec
     cur = file_hash(Path(parts_root) / rec.get("part_id", "") / "model.step")
     rec["stale"] = cur is None or cur != rec.get("geometry_hash")
     rec.setdefault("type", "static")
     return rec
 
 
-SUMMARY_KEYS = ("sim_id", "part_id", "run_id", "step_id", "type", "status", "stage", "phase",
+SUMMARY_KEYS = ("sim_id", "part_id", "project_id", "run_id", "step_id", "type", "status",
+                "stage", "phase",
                 "pct", "created_at", "finished_at", "error", "hint", "inputs", "results",
                 "guide", "label", "fidelity_class", "reason")
 
 
 def list_sims(parts_root: Path, part_id: str | None = None,
-              run_id: str | None = None) -> list[dict]:
+              run_id: str | None = None, project_id: str | None = None) -> list[dict]:
+    """Study summaries, newest first: a part's (part_id), an assembly's (project_id), or all."""
     out = []
-    pattern = f"{part_id}/sims/*/result.json" if part_id else "*/sims/*/result.json"
-    if not Path(parts_root).is_dir():
-        return out
-    for f in Path(parts_root).glob(pattern):
+    files: list[Path] = []
+    if project_id is None and Path(parts_root).is_dir():
+        files += Path(parts_root).glob(f"{part_id}/sims/*/result.json" if part_id
+                                       else "*/sims/*/result.json")
+    asm = assemblies_root(parts_root)
+    if part_id is None and asm.is_dir():
+        files += asm.glob(f"{project_id}/sims/*/result.json" if project_id
+                          else "*/sims/*/result.json")
+    for f in files:
         if not SIM_ID_RE.fullmatch(f.parent.name):
             continue
         try:
-            rec = read_record(f.parent, parts_root)
+            rec = read_record(f.parent, f.parent.parent.parent.parent)  # parts / assemblies
         except (OSError, ValueError):
             continue
         if run_id is not None and rec.get("run_id") != run_id:
@@ -285,15 +337,21 @@ def _faces_in(obj) -> set[str]:
     return out
 
 
-def preflight(type_id: str, settings: BaseModel, part_dir: Path, home: Path | None,
-              default_mat: str) -> tuple[Material | None, dict | None]:
+def preflight(type_id: str, settings: BaseModel, part_dir: Path | None, home: Path | None,
+              default_mat: str, assembly: dict | None = None) -> tuple[Material | None,
+                                                                    dict | None]:
     """Everything that can be checked before a run or record exists: the material, the
-    environment, and that every face id names a face of this part. Raises SimError."""
+    environment, and that every face id names a face of this part (or, for an assembly
+    target, an instance face "f3@<instance>"). Raises SimError."""
     material = (resolve_material(getattr(settings, "material", None), default_mat, home)
                 if type_id != "wind" else None)
     env = (get_environment(settings.environment)
            if getattr(settings, "environment", None) else None)
-    ids = {f for f in _faces_in(settings.model_dump(mode="json")) if re.fullmatch(r"f\d+", f)}
+    dump = settings.model_dump(mode="json")
+    if assembly is not None:
+        _preflight_assembly(type_id, dump, assembly)
+        return material, env
+    ids = {f for f in _faces_in(dump) if re.fullmatch(r"f\d+", f)}
     if ids:
         try:
             faces = (safe_io.read_json(part_dir, "metrics.json") or {}).get("face_list")
@@ -307,6 +365,34 @@ def preflight(type_id: str, settings: BaseModel, part_dir: Path, home: Path | No
                                  if known else "rebuild the part so it lists face ids, or "
                                                "use a preset"))
     return material, env
+
+
+def _preflight_assembly(type_id: str, dump: dict, assembly: dict) -> None:
+    if type_id != "static":
+        raise SimError("bad_setup", f"assembly studies are static only (not {type_id})",
+                       hint="study each part by part_id for the other study types")
+    insts = {i["id"] for i in assembly["instances"]}
+    known = {f.get("id") for f in assembly["metrics"].get("face_list") or []}
+    bad, plain = [], []
+    for f in _faces_in(dump):
+        if re.fullmatch(r"f\d+", f):
+            plain.append(f)
+        elif INSTANCE_FACE_RE.match(f) and f not in known:
+            bad.append(f)
+    sides = [side for c in ((dump.get("nonlinear") or {}).get("contacts") or [])
+             for side in (c.get("a") or {}, c.get("b") or {})]
+    plain = [f for f in plain if not any(sd.get("face") == f and sd.get("instance")
+                                         for sd in sides)]
+    unknown = sorted({sd["instance"] for sd in sides if sd.get("instance")} - insts)
+    if plain:
+        raise SimError("bad_setup", f"face {', '.join(sorted(set(plain)))} is ambiguous in an "
+                       "assembly", hint="name the instance: f3@<instance id> (assembly_get)")
+    if bad:
+        raise SimError("bad_setup", f"no face {', '.join(sorted(set(bad)))} in this assembly",
+                       hint="faces are f<i>@<instance id> with the part's face ids")
+    if unknown:
+        raise SimError("bad_setup", f"no instance {', '.join(unknown)} in this assembly",
+                       hint=f"instances: {', '.join(sorted(insts))}")
 
 
 def wind_memory_cap(ctx) -> int:
@@ -346,42 +432,63 @@ def urls(sim_id: str) -> dict:
 Runner = Callable[..., Any]
 
 
-async def run_study(ctx, type_id: str, part_id: str, part_dir: Path, settings: BaseModel, *,
+async def run_study(ctx, type_id: str, part_id: str | None, part_dir: Path | None,
+                    settings: BaseModel, *,
                     reason: str | None = None, requirements: list[dict] | None = None,
                     inputs_extra: dict | None = None,
                     solve_timeout_s: float | None = None,
-                    coarse_only: bool = False) -> ToolOutput:
+                    coarse_only: bool = False, assembly: dict | None = None) -> ToolOutput:
+    """assembly: a resolved build target (assembly_study.resolve) instead of a part."""
     t = STUDY_TYPES[type_id]
     home = _home(ctx)
     try:
-        material, env = preflight(type_id, settings, part_dir, home, default_material(ctx))
+        material, env = preflight(type_id, settings, part_dir, home, default_material(ctx),
+                                  assembly)
     except SimError as e:
         raise MisesError(ErrorCode.INVALID_INPUT, e.message, hint=e.hint) from None
 
     parts_root = Path(ctx.workdir) / "parts"
     sim_id = "sim_" + secrets.token_hex(6)
-    sim_dir = sims_dir(parts_root, part_id) / sim_id
+    if assembly is not None:
+        sim_dir = assemblies_root(parts_root) / assembly["project_id"] / "sims" / sim_id
+    else:
+        sim_dir = sims_dir(parts_root, part_id) / sim_id
     job_root = Path(ctx.workdir) / "sim_tmp" / sim_id
     from ..cad.tools import _lock
+    snap: dict = {}
     try:
         job_root.mkdir(parents=True, exist_ok=True)
-        async with _lock(part_dir):  # a consistent snapshot of the geometry this study solves
-            # read without following links (C6 safe_io): the build sandbox can write the part dir
-            if safe_io.copy_out(part_dir, "model.step", job_root) is None:
-                raise MisesError(ErrorCode.NOT_FOUND, f"{part_id} has no model.step",
-                                 hint="rebuild the part")
-            safe_io.copy_out(part_dir, "model.stl", job_root)
-            metrics = safe_io.read_json(part_dir, "metrics.json")
+        if assembly is not None:
+            from . import assembly_study
+            async with assembly_study.locked(parts_root, [i["part_id"] for i in
+                                                          assembly["instances"]]):
+                snap = assembly_study.snapshot(parts_root, assembly, job_root)
+            metrics = assembly["metrics"]
+            safe_io.ensure_dir(sim_dir.parent.parent.parent)
+            safe_io.ensure_dir(sim_dir.parent.parent)
+        else:
+            async with _lock(part_dir):  # a consistent snapshot of the geometry it solves
+                # read without following links (C6 safe_io): the build sandbox can write the
+                # part dir
+                if safe_io.copy_out(part_dir, "model.step", job_root) is None:
+                    raise MisesError(ErrorCode.NOT_FOUND, f"{part_id} has no model.step",
+                                     hint="rebuild the part")
+                safe_io.copy_out(part_dir, "model.stl", job_root)
+                metrics = safe_io.read_json(part_dir, "metrics.json")
     except BaseException:  # never leave a half-made temp dir behind
         shutil.rmtree(job_root, ignore_errors=True)
         raise
-    geometry_hash = file_hash(job_root / "model.step")
+    geometry_hash = snap.get("geometry_hash") or file_hash(job_root / "model.step")
     sdump = settings.model_dump(mode="json")
     inputs = {"type": type_id, "settings": sdump, **(inputs_extra or {}),
               "material": material.name if material else None,
               "environment": env["name"] if env else None}
     rec: dict = {
         "sim_id": sim_id, "part_id": part_id, "type": type_id,
+        **({"project_id": assembly["project_id"],
+            "instances": [{k: i[k] for k in ("id", "part_id", "name", "transform")}
+                          for i in assembly["instances"]],
+            "part_hashes": snap["part_hashes"]} if assembly is not None else {}),
         "run_id": getattr(ctx, "run_id", None), "call_id": getattr(ctx, "call_id", None),
         "step_id": _step_id(ctx), "reason": (reason or None),
         "status": "running", "stage": "queued", "phase": "queued", "pct": 0.0,
@@ -392,8 +499,10 @@ async def run_study(ctx, type_id: str, part_id: str, part_dir: Path, settings: B
         "material": material.to_dict() if material else None, "environment": env,
         "error": None, "hint": None, "warnings": [],
         "caveats": (CAVEATS_WIND if type_id == "wind" else
-                    CAVEATS_FEM + ([CAVEATS_STATIC_FIXTURE] if type_id in ("static", "drop")
-                                   else [])),
+                    material_caveats(CAVEATS_NONLINEAR
+                                     if getattr(settings, "nonlinear", None) is not None
+                                     else CAVEATS_FEM, material)
+                    + ([CAVEATS_STATIC_FIXTURE] if type_id in ("static", "drop") else [])),
         "urls": urls(sim_id)}
     write_record(sim_dir, rec)
 
@@ -456,7 +565,8 @@ async def run_study(ctx, type_id: str, part_id: str, part_dir: Path, settings: B
         try:
             out = await _dispatch(type_id, job_root, metrics, material, ccx, settings, env,
                                   progress, sim_id, part_id, solve_timeout_s,
-                                  wind_memory_cap(ctx), coarse_only=coarse_only)
+                                  wind_memory_cap(ctx), coarse_only=coarse_only,
+                                  assembly=(assembly, snap) if assembly is not None else None)
         except SimError as e:
             return fail(e.code, e.message, e.hint)
         finally:
@@ -525,7 +635,7 @@ def queue_timeout() -> float:
 
 async def _dispatch(type_id, job_root, metrics, material, ccx, settings, env, progress,
                     sim_id, part_id, solve_timeout_s=None, memory_cap=8192,
-                    coarse_only: bool = False) -> dict:
+                    coarse_only: bool = False, assembly=None) -> dict:
     if type_id == "wind":
         return await _run_wind(job_root, metrics, settings, progress, memory_cap)
     from .fem import FemJob
@@ -534,11 +644,14 @@ async def _dispatch(type_id, job_root, metrics, material, ccx, settings, env, pr
                  solver_settings=settings.solver, progress=progress,
                  convergence=getattr(settings, "convergence", None),
                  extra={**({"solve_timeout_s": solve_timeout_s} if solve_timeout_s else {}),
-                        **({"coarse_only": True} if coarse_only else {})})
+                        **({"coarse_only": True} if coarse_only else {}),
+                        **({"instances": assembly[1]["instances"],
+                            "target_instances": assembly[0]["instances"],
+                            "project_id": assembly[0]["project_id"]} if assembly else {})})
     if type_id == "static":
         from .static import run_static
         return await run_static(job, settings.load_cases, env=env, sim_id=sim_id,
-                                part_id=part_id)
+                                part_id=part_id, nonlinear=settings.nonlinear)
     if type_id == "modal":
         from .modal import run_modal
         return await run_modal(job, settings, sim_id=sim_id, part_id=part_id)
@@ -760,6 +873,13 @@ def summary(rec: dict) -> str:
     return s
 
 
+def target_name(rec: dict) -> str:
+    """What a study ran on: the part id, or "assembly <project id>"."""
+    if rec.get("part_id"):
+        return rec["part_id"]
+    return f"assembly {rec.get('project_id')}" if rec.get("project_id") else "?"
+
+
 def static_summary(rec: dict) -> str:
     r, m, sv, mesh = rec["results"], rec["material"], rec["solver"], rec["mesh"]
     band = r.get("error_band")
@@ -769,13 +889,28 @@ def static_summary(rec: dict) -> str:
                    f"incl. fixture {_num(r.get('safety_factor_incl_fixture'), '.2f')})")
     else:
         fixture = "peak includes the fixed face (every stressed node is on it)"
+    nl = r.get("nonlinear")
+    iso = "orthotropic" if (m.get("orthotropic") or "orthotropic" in str(m.get("model"))) \
+        else "isotropic"
+    tangent = " (tangent estimated)" if nl and nl.get("tangent_estimated") else ""
+    model = (f"{iso}, NONLINEAR ({nl['description']}{tangent}; {fidelity_note(rec)})" if nl
+             else f"{iso} linear elastic")
     s = (f"GUIDE ONLY - {sv['name']} {sv['version']}, fine mesh {mesh['fine']['size_mm']:.2g} mm "
-         f"(coarse {mesh['coarse']['size_mm']:.2g} mm), material {m['name']} isotropic linear "
-         f"elastic, strength x{m['knockdown']:.3g} FDM knock-down: {rec['part_id']} max von "
+         f"(coarse {mesh['coarse']['size_mm']:.2g} mm), material {m['name']} {model}, "
+         f"strength x{m['knockdown']:.3g} FDM knock-down: {target_name(rec)} max von "
          f"Mises {r['max_von_mises_mpa']:.3g} MPa (error band "
          f"{'n/a' if band is None else format(band, '.1%')}), max displacement "
          f"{r['max_displacement_mm']:.3g} mm, safety factor {_num(r.get('safety_factor'), '.2f')}"
          f"; {fixture}")
+    if nl:
+        s += f"; load reached {_num(r.get('load_fraction'), '.0%')}"
+        if r.get("converged") is False:
+            s += (f" (did NOT reach full load; fields at "
+                  f"{_num(r.get('fields_at_fraction'), '.0%')})")
+        if r.get("max_plastic_strain") is not None:
+            s += f", max plastic strain {100 * r['max_plastic_strain']:.3g}%"
+        if r.get("max_contact_pressure_mpa") is not None:
+            s += f", max contact pressure {r['max_contact_pressure_mpa']:.3g} MPa"
     cases = r.get("cases") or []
     if len(cases) > 1:
         s += f"; governing case {r.get('governing_case')} of {len(cases)}"
@@ -806,6 +941,12 @@ KEY_METRICS = {
 }
 
 
+NONLINEAR_METRICS = [("load_fraction", "load reached", ""),
+                     ("max_plastic_strain", "max plastic strain", ""),
+                     ("max_contact_pressure_mpa", "max contact pressure", "MPa")]
+OPTIONAL_METRICS = {"max_plastic_strain", "max_contact_pressure_mpa"}
+
+
 def fidelity_note(rec: dict) -> str | None:
     """The label a card / summary shows next to the numbers, e.g. "low fidelity · ±30%
     (validated)", "low fidelity (preview) · ±40% (validated)", "estimate · ±40%",
@@ -826,6 +967,13 @@ def fidelity_note(rec: dict) -> str | None:
         return f"estimate · ±{100 * band:.0f}% (shape-class table)"
     if fc == "fem_estimate":
         return "estimate (equivalent static load F = m g k)"
+    if fc == "fem_nonlinear" and band is not None:
+        nl = r.get("nonlinear") or {}
+        desc = nl.get("description") or "nonlinear"
+        if nl.get("unvalidated"):
+            return (f"nonlinear ({desc}) · ±{100 * band:.0f}% validated for the benchmarked "
+                    f"setups; UNVALIDATED configuration: {'; '.join(nl['unvalidated'])}")
+        return f"nonlinear ({desc}) · ±{100 * band:.0f}% (validated)"
     return None
 
 
@@ -851,7 +999,9 @@ def card(rec: dict) -> dict:
     r = rec.get("results") or {}
     metrics = [{"key": k, "label": error_band_label(rec) if (typ, k) == ("wind", "error_band_pct")
                 else lab, "unit": u, "value": r.get(k)}
-               for k, lab, u in KEY_METRICS.get(typ, [])]
+               for k, lab, u in KEY_METRICS.get(typ, [])
+               + (NONLINEAR_METRICS if rec.get("fidelity_class") == "fem_nonlinear" else [])
+               if not (k in OPTIONAL_METRICS and r.get(k) is None)]
     status = None
     if rec.get("status") == "done":
         status = "warn" if rec.get("warnings") else "pass"
@@ -970,17 +1120,27 @@ def check_requirements(rec: dict, reqs: list[dict]) -> list[dict]:
     r = rec.get("results") or {}
     typ = rec.get("type")
     band = r.get("error_band")
+    if rec.get("fidelity_class") == "fem_nonlinear" and r.get("model_error_band") is not None:
+        band = max(band or 0.0, r["model_error_band"])  # mesh and validated model error
     out = []
+    cases = {c.get("name"): c for c in r.get("cases") or [] if isinstance(c, dict)}
     for q in reqs:
         kind, target = q.get("kind"), q.get("target")
         meas, sense, unit = None, None, ""
-        if typ in ("static", "drop") and kind == "min_safety_factor":
+        scope = None   # the cases a static requirement is judged on
+        if typ in ("static", "drop") and kind in ("min_safety_factor", "max_deflection_mm"):
             case = q.get("load_case_id")
-            sfs = r.get("sf_by_case") or {}
-            meas = sfs.get(case) if case in sfs else r.get("safety_factor")
+            scope = [cases[case]] if case in cases else list(cases.values())
+        if typ in ("static", "drop") and kind == "min_safety_factor":
+            sfs = [c.get("safety_factor") for c in scope or []
+                   if c.get("safety_factor") is not None]
+            # no case named: every case must hold (the worst one is the measure)
+            meas = min(sfs) if sfs else r.get("safety_factor")
             sense = "min"
         elif typ in ("static", "drop") and kind == "max_deflection_mm":
-            meas, sense, unit = r.get("max_displacement_mm"), "max", "mm"
+            ds = [c.get("max_displacement_mm") for c in scope or []
+                  if c.get("max_displacement_mm") is not None]
+            meas, sense, unit = (max(ds) if ds else r.get("max_displacement_mm")), "max", "mm"
         elif typ == "modal" and kind == "min_natural_freq_hz":
             meas, sense, unit = r.get("first_freq_hz"), "min", "Hz"
         elif typ == "modal" and kind == "avoid_band_hz":
@@ -1006,6 +1166,10 @@ def check_requirements(rec: dict, reqs: list[dict]) -> list[dict]:
             st = _verdict(meas, float(target), sense, band)
         if typ != "wind" and rec.get("fidelity_class") in LOW_FIDELITY and st == "pass":
             st, note = "warn", f"passes, but {LOW_FIDELITY[rec['fidelity_class']]}"
+        stopped = [c for c in scope or [] if c.get("converged") is False]
+        if stopped:   # a partial solve never signs off a requirement
+            frac = min(c.get("load_fraction") or 0.0 for c in stopped)
+            st, note = "fail", f"did not reach full load ({frac:.0%})"
         out.append({"requirement_id": q.get("id"), "kind": kind, "target": target,
                     "measured": meas, "unit": unit, "status": st, "sim_id": rec.get("sim_id"),
                     "note": note})
