@@ -1,6 +1,6 @@
 {
   "id": "quad_arm",
-  "project_id": "eaf3c91cc2d0",
+  "project_id": "74ab71a5279a",
   "label": "Quad arm",
   "parent_id": null,
   "order": 0,
@@ -463,5 +463,5 @@
     "holes": [],
     "solids": 1
   },
-  "mtime": 1793371662.8696985
+  "mtime": 1793384774.2264416
 }

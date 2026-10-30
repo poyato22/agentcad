@@ -1,11 +1,11 @@
 {
-  "slice_id": "slice_4c80108df3",
+  "slice_id": "slice_41fb6b81f7",
   "status": "done",
   "part_id": "mount_plate",
   "printer_id": "bench_mk4",
   "material": "PLA",
   "model": "MK4",
-  "created_at": 1793371539.862736,
+  "created_at": 1793384693.747801,
   "estimate": {
     "time_s": 93802,
     "time_text": "1d 2h 3m 22s",

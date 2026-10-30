@@ -437,7 +437,7 @@
   },
   {
     "name": "render_views",
-    "description": "Render a built part (or the whole build) to standard views, for an ad-hoc look (critique_model already renders, so do not call this before it). Views: front, top, side, iso (at most 4, 512 px by default). Pass `section` {origin, normal} for a cutaway that reveals internals (the +normal half is removed), or `transparent` for an x-ray. If your model can see images, the renders come back to you as images (<= 4 at <= 512 px); otherwise as PNG handles.",
+    "description": "Render a built part (or the whole build, its assembly instances at their solved positions) to views, for an ad-hoc look (critique_model already renders, so do not call this before it). Standard views: front (camera on -Y), top (+Z), side (+X), iso; or naming='aircraft' with `nose` for nose (head-on), top, left, right, tail, bottom, iso. At most 4, 512 px by default. Pass `section` {origin, normal} for a cutaway that reveals internals (the +normal half is removed), or `transparent` for an x-ray. If your model can see images, the renders come back to you as images (<= 4 at <= 512 px); otherwise as PNG handles.",
     "safety": "read",
     "implied_classes": [],
     "open_world": false

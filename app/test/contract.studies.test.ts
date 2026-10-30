@@ -253,7 +253,7 @@ describe("S1 nonlinear / contact and S2 OpenFOAM: fake core = real core", () => 
     expect(prec.results.nonlinear).toMatchObject({ contact_pairs: 1, description: "contact" });
   });
 
-  it("OpenFOAM: the real runtime + image rows per install state, and the real record (validation pending)", async () => {
+  it("OpenFOAM: the real runtime + image rows per install state, and the real record (validated)", async () => {
     core.reset(scenario());
     const rows = read("s2_openfoam_rows.json") as Record<string, Json[]>;
     const cfd = async () => ((await get("/sims/solvers")) as { cfd: { id: string }[] }).cfd.filter((r) => r.id.startsWith("openfoam"));
@@ -268,6 +268,6 @@ describe("S1 nonlinear / contact and S2 OpenFOAM: fake core = real core", () => 
     const of = await run("wind", "cube", settingsOf("s2_wind_openfoam.json"));
     const rec = await get(`/sims/${of}`) as { card: { fidelity_note: string } };
     expect(shapeDiff(read("s2_wind_openfoam.json"), rec, "s2 wind")).toEqual([]);
-    expect(rec.card.fidelity_note).toBe("OpenFOAM k-ω SST · ±10% (target; validation pending)");
+    expect(rec.card.fidelity_note).toBe("OpenFOAM k-ω SST · ±10% (validated)");
   });
 });

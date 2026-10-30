@@ -507,6 +507,9 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       last_activity_at: r.last_activity_at ?? r.updated_at,
       // Plan 8 G1 (the shape hint): null on a plain run, as the core's AgentRun has it
       shape_complexity: (r as { shape_complexity?: unknown }).shape_complexity ?? null,
+      // the lead's per-turn caps window (core budget.start_turn): null until a turn starts
+      turn_started_at: r.turn_started_at ?? null,
+      turn_usd0: r.turn_usd0 ?? null,
       cost: {
         usd: r.usd, tokens: r.input_tokens + r.output_tokens,
         // core budget.py: only Claude Code reports dollars; other providers count as $0

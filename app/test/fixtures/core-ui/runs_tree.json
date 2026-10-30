@@ -1,6 +1,6 @@
 [
   {
-    "id": "87e6fc373c39",
+    "id": "c5227bd622db",
     "parent_id": null,
     "agent": "designer",
     "provider": "fake",
@@ -12,16 +12,16 @@
     "input_tokens": 0,
     "output_tokens": 0,
     "usd": 0.0,
-    "created_at": 1793371493.05661,
-    "updated_at": 1793371493.057894,
-    "owner_pid": 14650,
+    "created_at": 1793384668.715494,
+    "updated_at": 1793384668.7178319,
+    "owner_pid": 14889,
     "external": false,
     "session_ref": null,
-    "project_id": "3f619c9bdd63",
+    "project_id": "c6c9dce06184",
     "title": null,
     "pinned": false,
     "archived": false,
-    "last_activity_at": 1793371527.920408,
+    "last_activity_at": 1793384674.957463,
     "role": null,
     "routed": null,
     "shape_complexity": {
@@ -30,6 +30,8 @@
       "signals": [],
       "vision_recommended": false
     },
+    "turn_started_at": null,
+    "turn_usd0": null,
     "parent_run_id": null,
     "cost": {
       "usd": 0.0,

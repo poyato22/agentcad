@@ -107,7 +107,7 @@ describe("g4 announcements", () => {
     const vref = cards["view_presented"].ref as Record<string, unknown>;
     const crit = g4Announcement(step({ agent_announce: cards["critique_round"] }));
     if (crit?.kind !== "critique_round") throw new Error("no critique card");
-    expect(crit.round).toMatchObject({ round: 2, maxRounds: 3, score: 0.9, threshold: 0.8, done: true, stopReason: "score_threshold",
+    expect(crit.round).toMatchObject({ round: 2, maxRounds: 3, score: 0.9, threshold: 0.85, done: true, stopReason: "score_threshold",
       before: { id: cref.before_image_id }, after: { id: cref.after_image_id }, parts: ["body"] });
     expect(crit.round.fixed.map((i) => i.issue)).toEqual(["flat wing"]);
     const view = g4Announcement(step({ agent_announce: cards["view_presented"] }));

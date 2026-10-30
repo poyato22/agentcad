@@ -11,7 +11,7 @@
 //       channels plastic_strain / contact_pressure (from s1_static_nonlinear / s1_static_contact).
 //   S2  wind settings.solver "openfoam"; the /sims/solvers cfd rows "openfoam_container" and
 //       "openfoam" (install fix POST /system/install/openfoam); the record of s2_wind_openfoam
-//       ("OpenFOAM k-ω SST · ±10% (target; validation pending)").
+//       ("OpenFOAM k-ω SST · ±10% (validated)", after fix-bench's sphere and plate rows).
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";

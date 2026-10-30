@@ -1,22 +1,22 @@
 {
   "critique_round": {
-    "detail": "1 fixed \u00b7 0 open (0 high)",
+    "detail": "1 fixed \u00b7 0 open (0 high, 0 medium)",
     "kind": "critique_round",
     "ref": {
       "after": {
-        "front": "crit_36095de5_3ee656a441_front",
-        "iso": "crit_36095de5_3ee656a441_iso",
-        "side": "crit_36095de5_3ee656a441_side",
-        "top": "crit_36095de5_3ee656a441_top"
+        "front": "crit_e126cae5_332f1d4e64_front",
+        "iso": "crit_e126cae5_332f1d4e64_iso",
+        "side": "crit_e126cae5_332f1d4e64_side",
+        "top": "crit_e126cae5_332f1d4e64_top"
       },
-      "after_image_id": "crit_36095de5_3ee656a441_iso",
+      "after_image_id": "crit_e126cae5_332f1d4e64_iso",
       "before": {
-        "front": "crit_36095de5_1d2adbc648_front",
-        "iso": "crit_36095de5_1d2adbc648_iso",
-        "side": "crit_36095de5_1d2adbc648_side",
-        "top": "crit_36095de5_1d2adbc648_top"
+        "front": "crit_e126cae5_e9dfe6e218_front",
+        "iso": "crit_e126cae5_e9dfe6e218_iso",
+        "side": "crit_e126cae5_e9dfe6e218_side",
+        "top": "crit_e126cae5_e9dfe6e218_top"
       },
-      "before_image_id": "crit_36095de5_1d2adbc648_iso",
+      "before_image_id": "crit_e126cae5_e9dfe6e218_iso",
       "done": true,
       "image_tokens": 2792,
       "iou": null,
@@ -35,22 +35,22 @@
       "parts": [
         "body"
       ],
-      "project_id": "62539b9e170c",
+      "project_id": "004566550cb5",
       "reference_scores": [],
       "round": 2,
       "score": 0.9,
       "stop_reason": "score_threshold",
-      "threshold": 0.8
+      "threshold": 0.85
     },
-    "run_id": "36095de5c9ea",
+    "run_id": "e126cae56bb3",
     "title": "Critique round 2/3: score 0.90 \u2014 matches"
   },
   "view_presented": {
     "detail": "the lid",
     "kind": "view_presented",
     "ref": {
-      "project_id": "62539b9e170c",
-      "thumbnail_id": "pv_36095de5_d69cff0431_iso",
+      "project_id": "004566550cb5",
+      "thumbnail_id": "pv_e126cae5_482dd8ca43_iso",
       "view_spec": {
         "camera": {
           "azimuth": 45.0,
@@ -76,18 +76,18 @@
           "ghost": [
             "body"
           ],
-          "id": "62539b9e170c",
+          "id": "004566550cb5",
           "kind": "project",
           "parts": [
             "lid"
           ],
-          "project_id": "62539b9e170c"
+          "project_id": "004566550cb5"
         },
-        "thumbnail_id": "pv_36095de5_d69cff0431_iso",
+        "thumbnail_id": "pv_e126cae5_482dd8ca43_iso",
         "xray_parts": []
       }
     },
-    "run_id": "36095de5c9ea",
+    "run_id": "e126cae56bb3",
     "title": "Subset view of 1 part(s) of the build"
   }
 }

@@ -68,6 +68,8 @@ export const DEFAULT_BROWSER_FETCHES = 60;
 const PLAN5_PROFILE_DEFAULTS = {
   active_project_id: null, open_project_ids: [], hidden_agents: [], catalog_allowed_domains: [],
   viewer_background: { mode: "theme", colors: [] },
+  // the lead's per-turn spawn cap and the wind study's container limits (core profile defaults)
+  max_spawns_per_turn: 8, wind_max_memory_mb: 4096, wind_max_cpus: 8, wind_max_timeout_s: 3600.0,
   // Plan 8 G1: the render-critique loop's ceilings (core profile defaults)
   critique_max_rounds: 3, critique_time_budget_s: 300.0, critique_max_image_tokens: 12_000,
   suggested_sites: DEFAULT_SUGGESTED_SITES, browser_fetches_per_run: DEFAULT_BROWSER_FETCHES,

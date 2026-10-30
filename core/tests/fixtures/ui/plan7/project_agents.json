@@ -2,7 +2,7 @@
   "lead": {
     "activity": {
       "detail": "",
-      "since": 1793371693.5997021,
+      "since": 1793384848.685065,
       "state": "done"
     },
     "agent": "engineer",
@@ -12,7 +12,7 @@
       {
         "activity": {
           "detail": "",
-          "since": 1793371693.128396,
+          "since": 1793384848.195383,
           "state": "done"
         },
         "agent": "designer",
@@ -24,19 +24,19 @@
           "usd": 0.0,
           "usd_note": "this provider does not report cost; counted as $0 toward the dollar cap"
         },
-        "created_at": 1793371693.1121888,
+        "created_at": 1793384848.1690109,
         "external": false,
-        "id": "a0aba229f8d1",
+        "id": "1c3b04fffd0e",
         "input_tokens": 0,
-        "last_activity_at": 1793371693.112999,
+        "last_activity_at": 1793384848.170495,
         "model": "fake-model",
         "onshape_calls": 0,
         "output_tokens": 0,
-        "owner_pid": 36732,
-        "parent_id": "f4b6fa21d98e",
-        "parent_run_id": "f4b6fa21d98e",
+        "owner_pid": 31782,
+        "parent_id": "fe7a152424b1",
+        "parent_run_id": "fe7a152424b1",
         "pinned": false,
-        "project_id": "72dc7da15910",
+        "project_id": "2901673e0de2",
         "provider": "fake",
         "queued": [],
         "role": "sub",
@@ -51,7 +51,9 @@
         "status": "done",
         "task": "Design motor mount",
         "title": "Design motor mount",
-        "updated_at": 1793371693.128396,
+        "turn_started_at": null,
+        "turn_usd0": null,
+        "updated_at": 1793384848.195383,
         "usd": 0.0
       }
     ],
@@ -60,19 +62,19 @@
       "usd": 0.0,
       "usd_note": "this provider does not report cost; counted as $0 toward the dollar cap"
     },
-    "created_at": 1793371693.093914,
+    "created_at": 1793384848.128082,
     "external": false,
-    "id": "f4b6fa21d98e",
+    "id": "fe7a152424b1",
     "input_tokens": 0,
-    "last_activity_at": 1793371693.520032,
+    "last_activity_at": 1793384848.590009,
     "model": "fake-model",
     "onshape_calls": 0,
     "output_tokens": 0,
-    "owner_pid": 36732,
+    "owner_pid": 31782,
     "parent_id": null,
     "parent_run_id": null,
     "pinned": false,
-    "project_id": "72dc7da15910",
+    "project_id": "2901673e0de2",
     "provider": "fake",
     "queued": [],
     "role": "lead",
@@ -93,14 +95,16 @@
     "status": "done",
     "task": "Build me a drone",
     "title": null,
-    "updated_at": 1793371693.5997021,
+    "turn_started_at": 1793384848.5895932,
+    "turn_usd0": 0.0,
+    "updated_at": 1793384848.685065,
     "usd": 0.0
   },
   "others": [
     {
       "activity": {
         "detail": "",
-        "since": 1793371693.2375271,
+        "since": 1793384848.3075972,
         "state": "done"
       },
       "agent": "verifier",
@@ -112,19 +116,19 @@
         "usd": 0.0,
         "usd_note": "this provider does not report cost; counted as $0 toward the dollar cap"
       },
-      "created_at": 1793371693.2335098,
+      "created_at": 1793384848.303404,
       "external": false,
-      "id": "9d58464e1a33",
+      "id": "785cd6f85aa5",
       "input_tokens": 0,
-      "last_activity_at": 1793371693.234586,
+      "last_activity_at": 1793384848.304438,
       "model": "fake-model",
       "onshape_calls": 0,
       "output_tokens": 0,
-      "owner_pid": 36732,
+      "owner_pid": 31782,
       "parent_id": null,
       "parent_run_id": null,
       "pinned": false,
-      "project_id": "72dc7da15910",
+      "project_id": "2901673e0de2",
       "provider": "fake",
       "queued": [],
       "role": null,
@@ -139,9 +143,11 @@
       "status": "done",
       "task": "check",
       "title": null,
-      "updated_at": 1793371693.2375271,
+      "turn_started_at": null,
+      "turn_usd0": null,
+      "updated_at": 1793384848.3075972,
       "usd": 0.0
     }
   ],
-  "project_id": "72dc7da15910"
+  "project_id": "2901673e0de2"
 }

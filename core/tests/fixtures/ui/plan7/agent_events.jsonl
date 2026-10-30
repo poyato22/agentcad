@@ -1,3 +1,3 @@
-{"data": {"detail": "", "kind": "agent_spawned", "ref": {"agent": "designer", "parent_id": "f4b6fa21d98e", "run_id": "a0aba229f8d1"}, "run_id": "f4b6fa21d98e", "title": "Spawned designer: Design motor mount"}, "run_id": "f4b6fa21d98e", "ts": 1793371693.113162, "type": "agent_announce"}
-{"data": {"message_id": "msg_87f8b9d6a9e4", "position": 1, "run_id": "f4b6fa21d98e", "text": "and paint it red"}, "run_id": "f4b6fa21d98e", "ts": 1793371693.50128, "type": "message_queued"}
-{"data": {"message_id": "msg_87f8b9d6a9e4", "run_id": "f4b6fa21d98e"}, "run_id": "f4b6fa21d98e", "ts": 1793371693.5202339, "type": "message_delivered"}
+{"data": {"detail": "", "kind": "agent_spawned", "ref": {"agent": "designer", "parent_id": "fe7a152424b1", "run_id": "1c3b04fffd0e"}, "run_id": "fe7a152424b1", "title": "Spawned designer: Design motor mount"}, "run_id": "fe7a152424b1", "ts": 1793384848.1709921, "type": "agent_announce"}
+{"data": {"message_id": "msg_e42f485031cb", "position": 1, "run_id": "fe7a152424b1", "text": "and paint it red"}, "run_id": "fe7a152424b1", "ts": 1793384848.571003, "type": "message_queued"}
+{"data": {"message_id": "msg_e42f485031cb", "run_id": "fe7a152424b1"}, "run_id": "fe7a152424b1", "ts": 1793384848.5902998, "type": "message_delivered"}

@@ -196,9 +196,9 @@ describe("Plan 6 results", () => {
     expect(screen.getByTestId("nonlinear-result").textContent).toContain("results are at 70% of the load");
   });
 
-  it("OpenFOAM (S2, the real record): the validation-pending band, never 'validated'", () => {
+  it("OpenFOAM (S2, the real record): the band fix-bench validated (sphere, plate)", () => {
     panel(studyRecordSchema.parse(read("s2_wind_openfoam.json")));
-    expect(screen.getByTestId("fidelity-note").textContent).toBe("OpenFOAM k-ω SST · ±10% (target; validation pending)");
+    expect(screen.getByTestId("fidelity-note").textContent).toBe("OpenFOAM k-ω SST · ±10% (validated)");
     expect(screen.getByTestId("solver-label").textContent).toContain("OpenFOAM v2512");
   });
 });

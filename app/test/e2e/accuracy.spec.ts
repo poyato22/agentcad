@@ -114,7 +114,7 @@ test("openfoam_is_a_wind_solver_installed_by_a_click_and_labelled_on_the_result"
   await page.getByTestId("run-study").click();
   const r = page.getByTestId("study-result");
   // the real core's label: no recorded real-solver benchmark yet, so the band is the target
-  await expect(r.getByTestId("fidelity-note")).toHaveText("OpenFOAM k-ω SST · ±10% (target; validation pending)");
+  await expect(r.getByTestId("fidelity-note")).toHaveText("OpenFOAM k-ω SST · ±10% (validated)");
   await expect(r.getByTestId("solver-label")).toContainText("OpenFOAM v2512");
 });
 

@@ -48,6 +48,9 @@ export interface AgentRun {
   /** Plan 8 G1: how shape-heavy the prompt looks (the router prefers strong vision models for it).
    *  Kept raw: ui/console/cards/critique/shapeWarning.ts reads a score, a level or {level, score, keywords}. */
   shape_complexity?: unknown;
+  /** The lead's per-turn caps window (core budget.start_turn): null until a turn starts. */
+  turn_started_at?: number | null;
+  turn_usd0?: number | null;
   /** How the router chose this run's agent (POST /runs with no `agent`). A sub-agent's task
    *  title is its `title` (core lead.task_title). */
   routed?: Routed | null;

@@ -1,7 +1,7 @@
 {
   "activity": {
     "detail": "",
-    "since": 1793371693.5997021,
+    "since": 1793384848.685065,
     "state": "done"
   },
   "agent": "engineer",
@@ -12,15 +12,15 @@
     "usd": 0.0,
     "usd_note": "this provider does not report cost; counted as $0 toward the dollar cap"
   },
-  "created_at": 1793371693.093914,
+  "created_at": 1793384848.128082,
   "external": false,
-  "id": "f4b6fa21d98e",
+  "id": "fe7a152424b1",
   "input_tokens": 0,
-  "last_activity_at": 1793371693.520032,
+  "last_activity_at": 1793384848.590009,
   "model": "fake-model",
   "onshape_calls": 0,
   "output_tokens": 0,
-  "owner_pid": 36732,
+  "owner_pid": 31782,
   "parent_id": null,
   "parent_run_id": null,
   "pending": {
@@ -28,7 +28,7 @@
     "questions": []
   },
   "pinned": false,
-  "project_id": "72dc7da15910",
+  "project_id": "2901673e0de2",
   "provider": "fake",
   "role": "lead",
   "routed": {
@@ -48,6 +48,8 @@
   "status": "done",
   "task": "Build me a drone",
   "title": null,
-  "updated_at": 1793371693.5997021,
+  "turn_started_at": 1793384848.5895932,
+  "turn_usd0": 0.0,
+  "updated_at": 1793384848.685065,
   "usd": 0.0
 }

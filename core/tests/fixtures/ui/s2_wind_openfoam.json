@@ -1,17 +1,17 @@
 {
-  "sim_id": "sim_73997419b74e",
+  "sim_id": "sim_39701616f0c1",
   "part_id": "ball",
   "type": "wind",
-  "run_id": "6971ed0bda1b",
-  "call_id": "ui-fee3993ddea1",
+  "run_id": "9ce16fd88add",
+  "call_id": "ui-2084675de50c",
   "step_id": 14,
   "reason": null,
   "status": "done",
   "stage": "done",
   "phase": "done",
   "pct": 100.0,
-  "created_at": 1793371657.3172889,
-  "finished_at": 1793371658.27692,
+  "created_at": 1793384842.171435,
+  "finished_at": 1793384843.428527,
   "analysis": "wind",
   "guide": true,
   "label": "guide only, not a guarantee",
@@ -60,13 +60,13 @@
     "cpus": 4,
     "shape_class": "auto"
   },
-  "geometry_hash": "16660bbfa74208a0b041c9b770ec5df38baaddb03d69d98b3062a7ccbe0137be",
+  "geometry_hash": "51e705dc423f8dd290434614ac46e95d68cd1021aaf7f08fed25b285e75acf34",
   "material": null,
   "environment": null,
   "error": null,
   "hint": null,
   "warnings": [
-    "OpenFOAM k-\u03c9 SST RANS: \u00b110% model error (the acceptance target; validation pending: no real-solver benchmark recorded yet); mesh ~0.11 M cells, 1.67 mm at the surface"
+    "OpenFOAM k-\u03c9 SST RANS: \u00b110% model error (validated against the recorded sphere / flat-plate benchmarks); mesh ~0.11 M cells, 1.67 mm at the surface"
   ],
   "caveats": [
     "Guide only: a steady RANS solution (OpenFOAM simpleFoam, k-omega SST with wall functions) on a snappyHexMesh mesh around the part, in a tunnel with symmetry side walls.",
@@ -74,11 +74,11 @@
     "The model error band is the recorded real-solver benchmark (sphere, flat plate) when one exists; until then it is the acceptance target and the result says 'validation pending'."
   ],
   "urls": {
-    "record": "/sims/sim_73997419b74e",
-    "glb": "/sims/sim_73997419b74e/result.glb",
-    "charts": "/sims/sim_73997419b74e/charts",
-    "probe": "/sims/sim_73997419b74e/probe",
-    "section": "/sims/sim_73997419b74e/section"
+    "record": "/sims/sim_39701616f0c1",
+    "glb": "/sims/sim_39701616f0c1/result.glb",
+    "charts": "/sims/sim_39701616f0c1/charts",
+    "probe": "/sims/sim_39701616f0c1/probe",
+    "section": "/sims/sim_39701616f0c1/section"
   },
   "solver": {
     "name": "OpenFOAM",
@@ -118,9 +118,12 @@
       ],
       "iterations_cap": 1500,
       "cpus": 4,
+      "reynolds": 8121.546961325967,
+      "regime": "laminar",
+      "bluff_body": true,
       "solver": "OpenFOAM v2512",
       "image": "opencfd/openfoam-run@sha256:707421ab7d1e5201d86723945a6649490e292a0c46ed03d36982449e6b3b7243",
-      "turbulence": "k-omega SST (RANS, wall functions)",
+      "turbulence": "laminar (no turbulence model; Re < 1e5)",
       "boundaries": "fixed-velocity inlet, fixed-pressure outlet, symmetry sides"
     },
     "frame": [
@@ -142,24 +145,41 @@
     ]
   },
   "results": {
-    "cd": 0.45157311645833337,
-    "cl": 0.002003223027916667,
-    "cs": 9.204085633125001e-06,
-    "drag_n": 0.003125963633668371,
-    "lift_n": 1.3867083994076376e-05,
-    "side_n": 6.371423789789099e-08,
+    "cd": 0.4509462789152542,
+    "cl": 0.0019997195822881353,
+    "cs": -6.7917347941949145e-06,
+    "drag_n": 0.0031216244219383826,
+    "lift_n": 1.3842831789442898e-05,
+    "side_n": -4.7015013078468764e-08,
     "moment_nm": [
-      -1.1821298449999998e-07,
-      6.419546820000001e-08,
-      -2.8165845315e-07
+      2.7234134371440677e-08,
+      2.8755467415593227e-07,
+      -5.113097981440677e-08
     ],
     "reynolds": 8121.546961325968,
     "ref_area_m2": 0.00125576171875,
     "frontal_area_m2": 0.00125576171875,
     "dynamic_pressure_pa": 5.5125,
     "model_error_band": 0.1,
-    "convergence_band": 0.0043656830852790065,
-    "validation": [],
+    "convergence_band": 0.014192836211352148,
+    "validation": [
+      {
+        "body": "sphere",
+        "reynolds": 20300.0,
+        "refinement": 3,
+        "cd": 0.445,
+        "reference_cd": 0.47,
+        "error": -0.053
+      },
+      {
+        "body": "flat plate",
+        "reynolds": 10200.0,
+        "refinement": 3,
+        "cd": 1.276,
+        "reference_cd": 1.17,
+        "error": 0.091
+      }
+    ],
     "converged": true,
     "stopped": "converged",
     "steps": 236,
@@ -171,8 +191,8 @@
     ],
     "error_band": 0.1,
     "error_band_pct": 10.0,
-    "validated": false,
-    "convergence_band_pct": 0.4,
+    "validated": true,
+    "convergence_band_pct": 1.4,
     "convergence": {
       "history": [
         {
@@ -1359,22 +1379,22 @@
       "converged": true
     },
     "force_n_wind": [
-      0.01955089139166667,
-      3.984915664458333e-07,
-      8.672968873749999e-05
+      0.019523752410169494,
+      -2.94048657711017e-07,
+      8.657800681440676e-05
     ],
     "force_pressure_n_wind": [
-      0.018182328979166665,
-      3.70597156925e-07,
-      8.06586105375e-05
+      0.0181570897338983,
+      -2.7346525315254233e-07,
+      8.051754634915253e-05
     ],
     "force_viscous_n_wind": [
-      0.00136856239625,
-      2.7894409664166663e-08,
-      6.0710782125e-06
+      0.0013666626683898307,
+      -2.058340610745763e-08,
+      6.060460477627119e-06
     ]
   },
-  "inputs_hash": "e5bd4af8cc11fb4b880c92547165c9bf8b2a534c3b61aa67acca54a52c8b4584",
+  "inputs_hash": "33289c7a50b905a5b2c14c7b6e8d6271e69408c8f069f4d66d134eb4858e6b50",
   "glb": "result.glb",
   "outputs": [
     "result.glb",
@@ -1387,7 +1407,7 @@
   ],
   "stale": false,
   "card": {
-    "sim_id": "sim_73997419b74e",
+    "sim_id": "sim_39701616f0c1",
     "type": "wind",
     "status": "done",
     "verdict": "warn",
@@ -1396,54 +1416,54 @@
     "part_id": "ball",
     "label": "guide only, not a guarantee",
     "fidelity_class": "cfd_openfoam",
-    "fidelity_note": "OpenFOAM k-\u03c9 SST \u00b7 \u00b110% (target; validation pending)",
+    "fidelity_note": "OpenFOAM k-\u03c9 SST \u00b7 \u00b110% (validated)",
     "notes": [],
     "metrics": [
       {
         "key": "cd",
         "label": "Cd",
         "unit": "",
-        "value": 0.45157311645833337
+        "value": 0.4509462789152542
       },
       {
         "key": "cl",
         "label": "Cl",
         "unit": "",
-        "value": 0.002003223027916667
+        "value": 0.0019997195822881353
       },
       {
         "key": "drag_n",
         "label": "drag",
         "unit": "N",
-        "value": 0.003125963633668371
+        "value": 0.0031216244219383826
       },
       {
         "key": "lift_n",
         "label": "lift",
         "unit": "N",
-        "value": 1.3867083994076376e-05
+        "value": 1.3842831789442898e-05
       },
       {
         "key": "error_band_pct",
-        "label": "model error (target, validation pending)",
+        "label": "model error (validated)",
         "unit": "%",
         "value": 10.0
       }
     ],
     "checks": [],
     "warnings": [
-      "OpenFOAM k-\u03c9 SST RANS: \u00b110% model error (the acceptance target; validation pending: no real-solver benchmark recorded yet); mesh ~0.11 M cells, 1.67 mm at the surface"
+      "OpenFOAM k-\u03c9 SST RANS: \u00b110% model error (validated against the recorded sphere / flat-plate benchmarks); mesh ~0.11 M cells, 1.67 mm at the surface"
     ],
     "reason": null,
-    "run_id": "6971ed0bda1b",
+    "run_id": "9ce16fd88add",
     "step_id": 14,
     "urls": {
-      "record": "/sims/sim_73997419b74e",
-      "glb": "/sims/sim_73997419b74e/result.glb",
-      "charts": "/sims/sim_73997419b74e/charts",
-      "probe": "/sims/sim_73997419b74e/probe",
-      "section": "/sims/sim_73997419b74e/section"
+      "record": "/sims/sim_39701616f0c1",
+      "glb": "/sims/sim_39701616f0c1/result.glb",
+      "charts": "/sims/sim_39701616f0c1/charts",
+      "probe": "/sims/sim_39701616f0c1/probe",
+      "section": "/sims/sim_39701616f0c1/section"
     },
-    "charts_url": "/sims/sim_73997419b74e/charts"
+    "charts_url": "/sims/sim_39701616f0c1/charts"
   }
 }

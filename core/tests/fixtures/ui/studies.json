@@ -34,16 +34,16 @@
         },
         "sim_failed_by_case": {},
         "sim_ids_by_case": {
-          "desk_load": "sim_0cc3f5e4f438",
-          "drop_hit": "sim_8a1ae2232ac4"
+          "desk_load": "sim_c0041aa51838",
+          "drop_hit": "sim_b041e3ba3a4b"
         },
         "variant": "e5"
       },
       "n": 5
     },
-    "created_at": 1793371540.648132,
+    "created_at": 1793384694.589052,
     "geometry_only": false,
-    "id": "study_20c7dcd850c9",
+    "id": "study_dc51b09593d4",
     "iterations": [
       {
         "feasible": false,
@@ -52,42 +52,42 @@
             "max": [
               20.0,
               10.0,
-              2.911822968933102
+              2.378083835906509
             ],
             "min": [
               -20.0,
               -10.0,
-              -2.911822968933102
+              -2.378083835906509
             ],
             "size": [
               40.0,
               20.0,
-              5.823645937866204
+              4.756167671813018
             ]
           },
           "disp_by_case": {
-            "desk_load": 0.5933300627358932,
-            "drop_hit": 0.44499679606954545
+            "desk_load": 1.0790843548672822,
+            "drop_hit": 0.8093157538702787
           },
-          "mass_g": 5.576962291184958,
-          "max_disp_mm": 0.5933300627358932,
-          "min_sf": 3.2586603227486366,
+          "mass_g": 4.554701305548969,
+          "max_disp_mm": 1.0790843548672822,
+          "min_sf": 2.224695271074188,
           "sf_by_case": {
-            "desk_load": 3.2586603227486366,
-            "drop_hit": 4.344896410978877
+            "desk_load": 2.224695271074188,
+            "drop_hit": 2.9662544395202337
           },
           "sim_failed_by_case": {},
           "sim_ids_by_case": {
-            "desk_load": "sim_ae6f3bac9de9",
-            "drop_hit": "sim_e91f1d3c8ad4"
+            "desk_load": "sim_958ef701e44c",
+            "drop_hit": "sim_2e11e8b7ff43"
           },
           "sims_removed": true,
-          "variant": "e0"
+          "variant": "e2"
         },
         "n": 0,
         "pareto": false,
         "vars": {
-          "thickness": 5.823645937866204
+          "thickness": 4.756167671813018
         }
       },
       {
@@ -123,8 +123,8 @@
           },
           "sim_failed_by_case": {},
           "sim_ids_by_case": {
-            "desk_load": "sim_2db7159445cd",
-            "drop_hit": "sim_5cc55d4fb635"
+            "desk_load": "sim_94aa4ce4ef36",
+            "drop_hit": "sim_ea3a19a2c8e4"
           },
           "sims_removed": true,
           "variant": "e1"
@@ -142,42 +142,42 @@
             "max": [
               20.0,
               10.0,
-              2.378083835906509
+              2.911822968933102
             ],
             "min": [
               -20.0,
               -10.0,
-              -2.378083835906509
+              -2.911822968933102
             ],
             "size": [
               40.0,
               20.0,
-              4.756167671813018
+              5.823645937866204
             ]
           },
           "disp_by_case": {
-            "desk_load": 1.0790843548672822,
-            "drop_hit": 0.8093157538702787
+            "desk_load": 0.5933300627358932,
+            "drop_hit": 0.44499679606954545
           },
-          "mass_g": 4.554701305548969,
-          "max_disp_mm": 1.0790843548672822,
-          "min_sf": 2.224695271074188,
+          "mass_g": 5.576962291184958,
+          "max_disp_mm": 0.5933300627358932,
+          "min_sf": 3.2586603227486366,
           "sf_by_case": {
-            "desk_load": 2.224695271074188,
-            "drop_hit": 2.9662544395202337
+            "desk_load": 3.2586603227486366,
+            "drop_hit": 4.344896410978877
           },
           "sim_failed_by_case": {},
           "sim_ids_by_case": {
-            "desk_load": "sim_b4350395f62d",
-            "drop_hit": "sim_8a5128ec8901"
+            "desk_load": "sim_4b2af6f36091",
+            "drop_hit": "sim_552bd20f1687"
           },
           "sims_removed": true,
-          "variant": "e2"
+          "variant": "e0"
         },
         "n": 2,
         "pareto": false,
         "vars": {
-          "thickness": 4.756167671813018
+          "thickness": 5.823645937866204
         }
       },
       {
@@ -213,8 +213,8 @@
           },
           "sim_failed_by_case": {},
           "sim_ids_by_case": {
-            "desk_load": "sim_bd4a0e3a8ba3",
-            "drop_hit": "sim_477a17673971"
+            "desk_load": "sim_8fa6b0cc3880",
+            "drop_hit": "sim_d78f4521ceff"
           },
           "variant": "e3"
         },
@@ -257,8 +257,8 @@
           },
           "sim_failed_by_case": {},
           "sim_ids_by_case": {
-            "desk_load": "sim_2bcd6dc4dfc7",
-            "drop_hit": "sim_ee65848d598c"
+            "desk_load": "sim_44d7072ff50b",
+            "drop_hit": "sim_a96bdfe19edd"
           },
           "variant": "e4"
         },
@@ -301,8 +301,8 @@
           },
           "sim_failed_by_case": {},
           "sim_ids_by_case": {
-            "desk_load": "sim_73ab84108e7c",
-            "drop_hit": "sim_3acebab977d9"
+            "desk_load": "sim_2c1592c52635",
+            "drop_hit": "sim_8306043a5c66"
           },
           "variant": "e5"
         },
@@ -321,8 +321,8 @@
     "max_parallel": 3,
     "objective": "min_mass",
     "part_id": "mount_plate",
-    "project_id": "3f619c9bdd63",
-    "run_id": "5ebf08d5c6f1",
+    "project_id": "c6c9dce06184",
+    "run_id": "c0dc9f51f2d2",
     "solver": "CalculiX",
     "status": "done",
     "variables": [
