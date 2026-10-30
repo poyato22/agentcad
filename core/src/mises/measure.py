@@ -28,6 +28,7 @@ from collections import OrderedDict
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .heavy import heavy_slot
 from . import edits as _edits
 from .cad import safe_io
 from .cad.runner import WORKER, _kill_group, reap
@@ -176,17 +177,18 @@ async def _spawn(part_dir: Path, mtime_ns: int) -> _Warm:
     nonce = secrets.token_hex(16)
     env = {"MISES_NONCE": nonce, "PATH": "/usr/bin:/bin", "TMPDIR": str(tmp), "HOME": str(tmp),
            "PYTHONDONTWRITEBYTECODE": "1", "PYTHONUNBUFFERED": "1"}
-    proc = await asyncio.create_subprocess_exec(
-        *sandboxed_command([sys.executable, "-I", str(WORKER), str(part_dir), "--measure-serve"],
-                           tmp, read_dirs=(part_dir,)),
-        stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.DEVNULL, env=env, start_new_session=True, limit=1 << 22)
-    w = _Warm(part_dir, mtime_ns, proc, nonce)
-    try:
-        await _read_answer(w, 0, WARM_START_S)    # "ready": the shape is loaded
-    except BaseException:
-        await _close(w)
-        raise
+    async with heavy_slot("measure (start)"):   # one of the global heavy-worker slots (M9)
+        proc = await asyncio.create_subprocess_exec(
+            *sandboxed_command([sys.executable, "-I", str(WORKER), str(part_dir), "--measure-serve"],
+                               tmp, read_dirs=(part_dir,)),
+            stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL, env=env, start_new_session=True, limit=1 << 22)
+        w = _Warm(part_dir, mtime_ns, proc, nonce)
+        try:
+            await _read_answer(w, 0, WARM_START_S)    # "ready": the shape is loaded
+        except BaseException:
+            await _close(w)
+            raise
     prev = _warm.get(key)
     if prev is not None and prev is not w:         # another start of this part won the race
         if prev.mtime_ns == mtime_ns and prev.proc.returncode is None:
@@ -309,23 +311,24 @@ async def _one_shot(part_dir: Path, refs: list[dict], timeout_s: float) -> dict:
     nonce = secrets.token_hex(16)
     env = {"MISES_NONCE": nonce, "PATH": "/usr/bin:/bin", "TMPDIR": str(tmp), "HOME": str(tmp),
            "PYTHONDONTWRITEBYTECODE": "1"}
-    proc = await asyncio.create_subprocess_exec(
-        *sandboxed_command([sys.executable, "-I", str(WORKER), str(part_dir),
-                            str(tmp / "measure_args.json"), "--measure"], tmp,
-                           read_dirs=(part_dir,)),
-        stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE, env=env, start_new_session=True)
-    try:
-        _, err = await asyncio.wait_for(proc.communicate(), timeout_s)
-    except asyncio.TimeoutError:
+    async with heavy_slot("measure"):   # one of the global heavy-worker slots (M9)
+        proc = await asyncio.create_subprocess_exec(
+            *sandboxed_command([sys.executable, "-I", str(WORKER), str(part_dir),
+                                str(tmp / "measure_args.json"), "--measure"], tmp,
+                               read_dirs=(part_dir,)),
+            stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE, env=env, start_new_session=True)
+        try:
+            _, err = await asyncio.wait_for(proc.communicate(), timeout_s)
+        except asyncio.TimeoutError:
+            await reap(proc)
+            await proc.wait()
+            raise MeasureError("tool_failed", f"measure timed out after {timeout_s:g}s") from None
+        except BaseException:
+            _kill_group(proc)
+            await proc.wait()
+            raise
         await reap(proc)
-        await proc.wait()
-        raise MeasureError("tool_failed", f"measure timed out after {timeout_s:g}s") from None
-    except BaseException:
-        _kill_group(proc)
-        await proc.wait()
-        raise
-    await reap(proc)
     bad = safe_io.scrub(part_dir)
     if bad:
         raise MeasureError("tool_failed",

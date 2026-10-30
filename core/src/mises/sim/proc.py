@@ -61,6 +61,18 @@ async def run_sandboxed(argv: list[str], job_dir: Path, *, timeout_s: float, wha
                         env: dict[str, str] | None = None,
                         memory_limit_mb: float | None = None,
                         read_dirs: "tuple[Path, ...] | list[Path]" = ()) -> tuple[int, str, str]:
+    """Run a heavy sandboxed worker (render, gmsh, CalculiX, the CFD lattice) in one of the
+    global heavy-worker slots (heavy.py, M9); the wait for a slot is not part of timeout_s."""
+    from ..heavy import heavy_slot
+    async with heavy_slot(what):
+        return await _run_sandboxed(argv, job_dir, timeout_s=timeout_s, what=what, env=env,
+                                    memory_limit_mb=memory_limit_mb, read_dirs=read_dirs)
+
+
+async def _run_sandboxed(argv: list[str], job_dir: Path, *, timeout_s: float, what: str,
+                         env: dict[str, str] | None = None,
+                         memory_limit_mb: float | None = None,
+                         read_dirs: "tuple[Path, ...] | list[Path]" = ()) -> tuple[int, str, str]:
     """Returns (returncode, stdout tail, stderr tail). Raises SimError("timeout") on timeout,
     and SimError("memory") when memory_limit_mb is given and the process group exceeds it.
     `read_dirs` are extra dirs the process may read (e.g. the job root holding model.step when

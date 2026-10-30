@@ -21,6 +21,7 @@ from datetime import date as _date
 
 from pydantic import BaseModel, Field
 
+from .heavy import heavy_slot
 from .cad import safe_io
 from .cad.runner import WORKER, _kill_group, reap
 from .cad.tools import _check_part_id, _lock
@@ -101,22 +102,23 @@ async def _mirror_drawing(part_dir: Path, *, label: str, material: str, date: st
     nonce = secrets.token_hex(16)
     env = {"MISES_NONCE": nonce, "PATH": "/usr/bin:/bin", "TMPDIR": str(tmp), "HOME": str(tmp),
            "PYTHONDONTWRITEBYTECODE": "1"}
-    proc = await asyncio.create_subprocess_exec(
-        *sandboxed_command([sys.executable, "-I", str(WORKER), str(part_dir), str(args_path),
-                            "--drawing"], part_dir),
-        stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE, env=env, start_new_session=True)
-    try:
-        _, err = await asyncio.wait_for(proc.communicate(), timeout_s)
-    except asyncio.TimeoutError:
+    async with heavy_slot("drawing"):   # one of the global heavy-worker slots (M9)
+        proc = await asyncio.create_subprocess_exec(
+            *sandboxed_command([sys.executable, "-I", str(WORKER), str(part_dir), str(args_path),
+                                "--drawing"], part_dir),
+            stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE, env=env, start_new_session=True)
+        try:
+            _, err = await asyncio.wait_for(proc.communicate(), timeout_s)
+        except asyncio.TimeoutError:
+            await reap(proc)
+            await proc.wait()
+            raise DrawingError(f"drawing timed out after {timeout_s:g}s; the part is too complex") from None
+        except BaseException:
+            _kill_group(proc)
+            await proc.wait()
+            raise
         await reap(proc)
-        await proc.wait()
-        raise DrawingError(f"drawing timed out after {timeout_s:g}s; the part is too complex") from None
-    except BaseException:
-        _kill_group(proc)
-        await proc.wait()
-        raise
-    await reap(proc)
     bad = safe_io.scrub(part_dir)
     if bad:
         raise DrawingError(f"drawing refused: links or special files appeared ({', '.join(bad[:5])})")
