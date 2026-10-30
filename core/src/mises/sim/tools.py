@@ -310,9 +310,13 @@ async def sim_env_list(ctx: ToolContext, args: EnvListArgs) -> ToolOutput:
             "directions": list(DIRECTIONS), "knockdown": FDM_KNOCKDOWN,
             "materials": [m.to_dict() for m in [*MATERIALS.values(), *load_custom(home)]],
             "solvers": st, "study_types": list(STUDY_TYPES)}
+    from . import cfd as cfd_mod     # S2: the optional OpenFOAM wind solver (read-only check)
+    docker, why = await asyncio.to_thread(cfd_mod.openfoam_available)
+    data["solvers"] = {**st, "openfoam": {"available": docker is not None, "why_not": why}}
     s = (f"{len(ENVIRONMENTS)} environments, {len(data['materials'])} materials, study types "
          f"{', '.join(STUDY_TYPES)}; CalculiX "
-         + ("found" if st["ccx"]["found"] else f"MISSING (install: {INSTALL_HINT})"))
+         + ("found" if st["ccx"]["found"] else f"MISSING (install: {INSTALL_HINT})")
+         + "; OpenFOAM wind solver " + ("ok" if docker else f"unavailable ({why})"))
     return ToolOutput(summary=s, data=data)
 
 

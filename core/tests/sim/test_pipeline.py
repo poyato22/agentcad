@@ -197,6 +197,10 @@ async def test_env_list_and_result_get_errors(tmp_path):
     assert {"environments", "face_presets", "directions", "materials", "solvers"} <= set(out.data)
     assert out.data["solvers"]["ccx"]["install"] == INSTALL_HINT
     assert out.data["knockdown"] == 0.7
+    # S2: the optional OpenFOAM solver is reported (conftest: the image reads as not pulled)
+    of = out.data["solvers"]["openfoam"]
+    assert of["available"] is False and of["why_not"]
+    assert "OpenFOAM wind solver unavailable" in out.summary
     with pytest.raises(MisesError) as e:
         await sim_result_get.handler(ctx, ResultArgs(sim_id="sim_000000000000"))
     assert e.value.code == ErrorCode.NOT_FOUND
