@@ -43,10 +43,10 @@
   align-content: start;
 }
 .overview-cell { display: flex; flex-direction: column; }
-.overview-cell > .pcard { flex: 1; }
+.overview-cell > .ov-card { flex: 1; }
 .overview-empty { padding: 24px 16px; }
 
-.pcard {
+.ov-card {
   display: flex;
   flex-direction: column;
   padding: 0;
@@ -60,10 +60,10 @@
   cursor: pointer;
   transition: border-color 120ms ease;
 }
-.pcard:hover { border-color: var(--line2); }
-.pcard.on { border-color: var(--blue); }
-.pcard:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
-.pcard-thumb {
+.ov-card:hover { border-color: var(--line2); }
+.ov-card.on { border-color: var(--blue); }
+.ov-card:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.ov-card-thumb {
   aspect-ratio: 1 / 1;
   display: grid;
   place-items: center;
@@ -73,10 +73,10 @@
   background-size: 16px 16px;
   border-bottom: 1px solid var(--line);
 }
-.pcard-img { width: 100%; height: 100%; object-fit: contain; display: block; }
-.pcard-body { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px 10px; }
-.pcard-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pcard-meta { font-size: var(--fs-small); }
+.ov-card-img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.ov-card-body { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px 10px; }
+.ov-card-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ov-card-meta { font-size: var(--fs-small); }
 
 @media (max-width: 560px) {
   .overview-grid { grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 10px; padding: 12px; }
