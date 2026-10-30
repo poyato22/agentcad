@@ -582,6 +582,10 @@ async def _run_wind(job_root: Path, metrics: dict, s, progress, memory_cap: int)
                         f"refinement {level}): lattice of {r['lattice']['cells_across']} cells "
                         f"across the body at an effective Reynolds number of "
                         f"{r['lattice']['reynolds_effective']:.3g} (real {r['reynolds']:.3g})")
+        if r["lattice"].get("refined_from_cells"):
+            warnings.append(f"the lattice was refined from {r['lattice']['refined_from_cells']} "
+                            f"to {r['lattice']['cells_across']} cells across so the part's "
+                            "thinnest side facing the flow spans at least 2 cells")
         warnings.append(f"drag includes a flat-plate skin-friction estimate (Cd "
                         f"{r['cd_friction_estimate']:.3f}) added to the resolved pressure drag; "
                         "the lattice cannot resolve the boundary layer")

@@ -3,6 +3,7 @@ time and memory budget, else the empirical shape-class estimate. Runs inside the
 process (see worker.py); pure numpy, no Mises state."""
 from __future__ import annotations
 
+import math
 import time
 from pathlib import Path
 
@@ -10,8 +11,9 @@ import numpy as np
 
 from .results import (CD_TABLE, EMPIRICAL_BAND, classify, friction_cd, mesh_volume_mm3,
                       slice_png, surface_cp)
-from .setup import (NU_MIN_BGK, NU_MIN_LES, U_LATTICE, estimate_mb, estimate_seconds, fit_budget,
-                    frontal_area_mm2, steps_needed, surface_area_mm2, voxelize, wind_frame, yawed)
+from .setup import (CELLS_ACROSS, MEMORY_MARGIN, NU_MIN_BGK, NU_MIN_LES, U_LATTICE, estimate_mb,
+                    estimate_seconds, fit_budget, frontal_area_mm2, plan_grid, steps_needed,
+                    surface_area_mm2, voxelize, wind_frame, yawed)
 from .solver import run_lbm
 from .validation import model_error_band, validation_rows
 
@@ -33,6 +35,50 @@ def empirical(tris_w: np.ndarray, s: dict, a_ref_m2: float, q: float, reason: st
             "lift_n": 0.0, "side_n": 0.0, "model_error_band": EMPIRICAL_BAND,
             "convergence_band": None,
             "moment_nm": [0.0, 0.0, 0.0], "converged": None, "history": []}
+
+
+MAX_AREA_RATIO = 1.3      # lattice / true frontal area beyond which the body is under-resolved
+MIN_THIN_CELLS = 2.0      # cells wanted across the thinnest side facing the flow
+
+
+def _needed_cells(ext) -> int:
+    """Cells across the frontal size that put MIN_THIN_CELLS across its thinnest side."""
+    d_ref, thin = max(ext[1], ext[2], 1e-6), max(min(ext[1], ext[2]), 1e-6)
+    return int(math.ceil(MIN_THIN_CELLS * d_ref / thin))
+
+
+def _too_thin(solid: np.ndarray, grid, frontal_m2: float, ext, refinement: int) -> str | None:
+    """None when the lattice body's frontal area matches the part's, else why it does not
+    (one line, with the fix: a finer refinement when one resolves it, else 'empirical')."""
+    a_vox = float(solid.any(0).sum()) * grid.h_mm ** 2
+    a_true = frontal_m2 * 1e6
+    ratio = a_vox / a_true if a_true > 0 else 0.0
+    if 1 / MAX_AREA_RATIO <= ratio <= MAX_AREA_RATIO:
+        return None
+    thin = min(ext[1], ext[2])
+    need = _needed_cells(ext)
+    level = next((lv for lv, n in sorted(CELLS_ACROSS.items()) if n >= need), None)
+    fix = (f"use refinement {level} or solver 'empirical'" if level is not None and
+           level > refinement else "use solver 'empirical' (no refinement level resolves it)")
+    seen = ("is lost between cells" if ratio == 0 else
+            f"blocks {ratio:.1f}x the part's frontal area")
+    return (f"too thin for this refinement: the {thin:.3g} mm side facing the flow spans "
+            f"{thin / grid.h_mm:.2g} lattice cells of {grid.h_mm:.3g} mm at refinement "
+            f"{refinement}, so the lattice body {seen}; {fix}")
+
+
+def _finer_grid(lo, hi, ext, s: dict, want: int, time_budget_s: float):
+    """(grid, steps) at the cells across that resolve the thinnest frontal side, when that is
+    no finer than the finest refinement and fits the memory and time budgets; else None."""
+    n = _needed_cells(ext)
+    if n > max(CELLS_ACROSS.values()):
+        return None
+    g = plan_grid(lo, hi, n, s["domain_multiplier"])
+    steps = min(s["iterations"], steps_needed(g))
+    if (estimate_mb(g) > MEMORY_MARGIN * s["memory_mb"]
+            or estimate_seconds(g, steps // 2) > time_budget_s):
+        return None
+    return g, steps
 
 
 def solve_one(tris_part: np.ndarray, s: dict, direction, up, a_ref_m2: float | None,
@@ -68,8 +114,22 @@ def solve_one(tris_part: np.ndarray, s: dict, direction, up, a_ref_m2: float | N
                                     f"the lattice needs ~{est:.0f} s, over the "
                                     f"{time_budget_s:.0f} s budget")}
     solid = voxelize(tris_w, grid)
-    if not solid.any():
-        raise ValueError("the body is smaller than one lattice cell")
+    thin = _too_thin(solid, grid, frontal, ext, s["refinement"])
+    refined_from = None
+    if thin is not None:
+        # QA B1-4/B1-5: a side facing the flow thinner than a cell is voxelised a whole cell
+        # thick (or not at all), so the lattice body blocks up to 2x the part's frontal area
+        # and Cd is off by that much. Refine when a finer lattice fits the budgets.
+        finer = _finer_grid(lo, hi, ext, s, want, time_budget_s)
+        if finer is not None:
+            fsolid = voxelize(tris_w, finer[0])
+            if _too_thin(fsolid, finer[0], frontal, ext, s["refinement"]) is None:
+                refined_from = grid.cells_across
+                grid, want, solid, thin = finer[0], finer[1], fsolid, None
+    if thin is not None:
+        if s["solver"] == "lbm":
+            raise ValueError(thin)
+        return {**base, **empirical(tris_w, s, a_ref, q, thin)}
     les = s["turbulence"] == "smagorinsky"
     n = grid.cells_across
     nu = max(U_LATTICE * n / re, NU_MIN_LES if les else NU_MIN_BGK)
@@ -106,7 +166,8 @@ def solve_one(tris_part: np.ndarray, s: dict, direction, up, a_ref_m2: float | N
            "converged": res.converged, "stopped": res.stopped, "steps": res.steps,
            "seconds": res.seconds, "history": hist,
            "lattice": {"shape": list(grid.shape), "cells": grid.cells, "cell_mm": grid.h_mm,
-                       "cells_across": n, "u_lattice": U_LATTICE, "nu_lattice": nu,
+                       "cells_across": n, "refined_from_cells": refined_from,
+                       "u_lattice": U_LATTICE, "nu_lattice": nu,
                        "tau": 3 * nu + 0.5, "reynolds_effective": re_eff,
                        "memory_mb_estimate": estimate_mb(grid),
                        "memory_mb_budget": s["memory_mb"],
