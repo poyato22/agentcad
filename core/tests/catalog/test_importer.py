@@ -230,3 +230,63 @@ async def test_http_error_status(web, public_dns):
     with pytest.raises(MisesError) as e:
         await import_url(URL, transport=web.transport, resolve=public_dns)
     assert "404" in e.value.message
+
+
+# ---- U4c: price extraction and the fetcher options the agent browser uses
+
+async def test_price_from_jsonld_offers(web, public_dns):
+    web.page(URL, """<script type="application/ld+json">{"@type": "Product", "name": "Servo",
+      "offers": {"@type": "Offer", "price": "12.95", "priceCurrency": "usd"}}</script>""")
+    it = await import_url(URL, transport=web.transport, resolve=public_dns)
+    assert it["price"] == 12.95 and it["currency"] == "USD"
+
+
+async def test_price_from_aggregate_offer_list(web, public_dns):
+    web.page(URL, """<script type="application/ld+json">{"@type": "Product", "name": "Bearing",
+      "offers": [{"@type": "AggregateOffer", "lowPrice": 3.5, "priceCurrency": "EUR"}]}
+      </script>""")
+    it = await import_url(URL, transport=web.transport, resolve=public_dns)
+    assert it["price"] == 3.5 and it["currency"] == "EUR"
+
+
+async def test_price_from_meta_tags(web, public_dns):
+    web.page(URL, '<meta property="product:price:amount" content="1,299.00">'
+                  '<meta property="product:price:currency" content="USD"><p>x</p>')
+    it = await import_url(URL, transport=web.transport, resolve=public_dns)
+    assert it["price"] == 1299.0 and it["currency"] == "USD"
+
+
+async def test_no_price_is_none(web, public_dns):
+    web.fixture(URL, "table_motor.html")
+    it = await import_url(URL, transport=web.transport, resolve=public_dns)
+    assert it["price"] is None and it["currency"] is None
+
+
+async def test_http_error_carries_upstream_status(web, public_dns):
+    web.pages[URL] = lambda req: httpx.Response(403, text="denied")
+    with pytest.raises(MisesError) as e:
+        await importer.fetch(URL, transport=web.transport, resolve=public_dns)
+    assert e.value.upstream_status == 403
+
+
+async def test_redirect_ok_can_refuse_another_site(web, public_dns):
+    web.redirect(URL, "https://other.example.net/p")
+    web.page("https://other.example.net/p", "<p>other</p>")
+    with pytest.raises(MisesError) as e:
+        await importer.fetch(URL, transport=web.transport, resolve=public_dns,
+                             redirect_ok=lambda host: host == "shop.example.com")
+    assert "another site (other.example.net)" in e.value.message
+    assert len(web.requests) == 1                        # nothing was sent to the other site
+
+
+async def test_custom_types_and_cap(web, public_dns):
+    web.page(URL, b"\x89PNG\r\n\x1a\n" + b"0" * 100, ctype="image/png")
+    page = await importer.fetch(URL, transport=web.transport, resolve=public_dns,
+                                types=("image/png",), max_bytes=1024, user_agent="ua-test")
+    assert page.body.startswith(b"\x89PNG") and page.content_type == "image/png"
+    assert web.requests[-1].headers["user-agent"] == "ua-test"
+    web.page(URL, b"\x89PNG" + b"0" * 2000, ctype="image/png")
+    with pytest.raises(MisesError) as e:
+        await importer.fetch(URL, transport=web.transport, resolve=public_dns,
+                             types=("image/png",), max_bytes=1024)
+    assert "larger than 1 KB" in e.value.message
