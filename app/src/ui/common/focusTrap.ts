@@ -6,7 +6,8 @@ import { useEffect } from "preact/hooks";
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 export function focusables(root: HTMLElement): HTMLElement[] {
-  return [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => !el.closest("[inert]") && el.getAttribute("aria-hidden") !== "true");
+  // a disabled control can carry tabindex="0" (Button, lib/tabReach — I7) but never takes focus
+  return [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => !el.closest("[inert]") && el.getAttribute("aria-hidden") !== "true" && !el.matches(":disabled"));
 }
 
 /** Traps Tab inside `ref` while mounted. `initial` picks the element focused on open (else the first). */
