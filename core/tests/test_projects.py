@@ -74,6 +74,20 @@ def test_legacy_parts_go_to_default_once(store, tmp_path):
     assert store.get_part("later_plate") is None
 
 
+def test_legacy_part_version_migrates_into_the_meta(store, tmp_path):
+    """I2: a part built before versioning (no meta version) listed as version 1 migrates that 1
+    into the meta, so the edit guard checks the same number and the first user edit is not a 409."""
+    from mises import edits
+    _write_part(tmp_path, "old_plate")
+    store.register_part("old_plate", store.ensure_default_project().id)
+    row = store.get_part("old_plate")
+    assert edits.read_version(tmp_path / "parts" / "old_plate") == 0   # legacy: no meta version
+    assert projects.part_version(tmp_path, row) == 1
+    # now stored in the meta, so read_version (what check_base_version uses) agrees with the list
+    assert edits.read_version(tmp_path / "parts" / "old_plate") == 1
+    assert edits.check_base_version(tmp_path / "parts" / "old_plate", 1) is None
+
+
 def test_ghost_part_rows_are_hidden(store, tmp_path):
     p = store.create_project("B")
     _built(store, tmp_path, p.id, "gone_part", "kept_part")

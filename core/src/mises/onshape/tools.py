@@ -332,13 +332,17 @@ class ImportElementArgs(BaseModel):
 async def onshape_import_element(ctx: ToolContext, args: ImportElementArgs) -> ToolOutput:
     from pathlib import Path
 
-    from ..catalog.tools import resolve_project, ui_call_meta
+    from ..catalog.tools import (_default_project, _register_tree_row, resolve_project,
+                                 ui_call_meta)
     from ..events import Event
 
     ad = _adapter(ctx)
     project = resolve_project(ctx, args.project_id)
     out = await browse.import_element(ad.client, Path(ctx.workdir) / "parts", args.did, args.wid,
                                       args.eid, project, run_id=ctx.run_id)
+    # I7: like catalog_insert, give the imported part a C1 part-tree row (kind "part" from its
+    # meta), so it shows in GET /parts and can be colored, reordered and instanced from the UI
+    _register_tree_row(ctx, out, project or _default_project(ctx))
     by = "user" if ui_call_meta(ctx) is not None else "agent"
     if not out["existing"]:
         ctx.events.publish(Event(type="part_changed", run_id=ctx.run_id, data={

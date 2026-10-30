@@ -124,6 +124,9 @@ def test_import_mirrors_bbox_envelope_and_never_writes_onshape(client, onshape, 
                                               pytest.approx(10)]
     meta = json.loads((rt.home / "parts" / "part_studio" / "part.json").read_text())
     assert meta["onshape"]["eid"] == onshape.eid and meta["project_id"] == "prj"
+    # I7: the imported part gets a part-tree row, so it shows in its build's GET /parts
+    parts = client.get("/parts", headers=AUTH, params={"project_id": "prj"}).json()
+    assert any(p["part_id"] == "part_studio" for p in parts)
     assert all(m == "GET" for m, _ in onshape.requests) and len(onshape.requests) == 2
     types = [e.type for e in drain(sub)]
     assert types.count("onshape_budget") == 2 and "part_changed" in types

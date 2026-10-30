@@ -196,12 +196,23 @@ _NO_DISK = {"vars": {}, "metrics": None, "mtime": None}
 
 def part_version(home: Path, row: Part) -> int:
     """The part's version. Source of truth: C6's host-only meta file
-    (parts/.mises-meta/<id>/version.json), bumped by every successful edit. The parts.version
-    column is only a mirror of it (Store.set_part_version); it answers for a part that has no
-    meta version yet (built before versioning: read_version gives 0)."""
+    (parts/.mises-meta/<id>/version.json), bumped by every successful edit. A part built before
+    versioning has no meta version (read_version gives 0) while the parts.version column (and the
+    UI) show row.version (>= 1): migrate the column value into the meta once, so the edit guard
+    checks the same number the UI listed and the first user edit is not a spurious 409."""
     from . import edits
-    v = edits.read_version(_parts_root(home) / row.id)
-    return v if v > 0 else row.version
+    root = _parts_root(home)
+    v = edits.read_version(root / row.id)
+    if v == 0 and row.version > 0:
+        real = _contained(root, root / row.id)
+        if real is not None and real.is_dir():
+            try:
+                edits.write_version(real, row.version)
+                return row.version
+            except OSError:
+                pass
+        return row.version
+    return v
 
 
 def part_view(store: Store, home: Path, row: Part) -> dict:
