@@ -50,6 +50,9 @@ def model_cards(mesh: Mesh, material: Material, plastic: list[str] | None = None
             "*CONDUCTIVITY", f"{material.k_w_mk:.9g}",
             "*EXPANSION", f"{material.alpha_per_k:.9g}",
             "*SOLID SECTION, ELSET=EALL, MATERIAL=MAT"]
+    if material.orthotropic:  # FDM layers: engineering constants in the print's frame (S3)
+        from .aniso import orthotropic_cards
+        out = orthotropic_cards(out, material)
     return out
 
 

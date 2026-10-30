@@ -108,6 +108,32 @@ class CustomMaterial(_M):
     tangent_modulus_mpa: float | None = Field(None, ge=0, le=5e5, description="post-yield "
                                               "slope for plastic (nonlinear) studies; null = "
                                               "an estimate (1% of E)", **_u("MPa"))
+    e_z_mpa: float | None = Field(None, gt=1, le=5e5, description="modulus across the layers "
+                                  "(FDM, build direction); null = a typical ratio (estimate)",
+                                  **_u("MPa"))
+    z_strength_mpa: float | None = Field(None, gt=0, le=1e4, description="tensile strength "
+                                         "across the layers; null = a typical ratio "
+                                         "(estimate)", **_u("MPa"))
+    sn_a_mpa: float | None = Field(None, gt=0, le=1e5, description="S-N curve (Basquin) "
+                                   "sigma_a = A N^b: A from a fatigue data sheet; null = the "
+                                   "AM PLA design-curve estimate", **_u("MPa"))
+    sn_b: float | None = Field(None, gt=-1, lt=0, description="S-N curve exponent b "
+                               "(negative)")
+
+
+class AnisotropySettings(_M):
+    print_direction: Direction = Field("+z", description="build direction of the print in "
+                                       "part coordinates (the layer normal): '+z' = printed as "
+                                       "modelled, flat on the bed")
+    e_z_ratio: float | None = Field(None, gt=0.05, le=1.2, description="E across the layers / "
+                                    "E in-plane; null = the material's typical ratio "
+                                    "(estimate) or its calibrated Z data")
+    strength_z_ratio: float | None = Field(None, gt=0.05, le=1.0, description="tensile "
+                                           "strength across the layers / in-plane; null = "
+                                           "typical (estimate) or calibrated")
+
+
+PRINTER_KEY_RE = r"^[A-Za-z0-9][A-Za-z0-9 ._+()-]{0,39}$"
 
 
 class MaterialSettings(_M):
@@ -115,6 +141,14 @@ class MaterialSettings(_M):
                              "null = the profile's default material")
     custom: CustomMaterial | None = Field(None, description="an inline material (overrides name)")
     fdm: FdmSettings | None = Field(None, description="print settings -> approximate knock-downs")
+    anisotropy: AnisotropySettings | None = Field(
+        None, description="orthotropic FDM model: in-plane vs between-layer (Z) stiffness and "
+        "strength, with the print direction; tension across the layers is checked against the "
+        "Z strength. null = isotropic")
+    printer: str | None = Field(None, pattern=PRINTER_KEY_RE, description="the printer "
+                                "profile whose calibration to use; null = 'default'")
+    calibrated: bool = Field(True, description="use the calibration of this material and "
+                             "printer when there is one (fitted from the user's coupon tests)")
 
 
 class SolverSettings(_M):
@@ -290,6 +324,27 @@ class NonlinearSettings(_M):
             raise ValueError("nonlinear needs large_deflection, plasticity, a contact pair or "
                              "a rigid support (else leave it out: the study is linear)")
         return self
+class SNCurve(_M):
+    a_mpa: float = Field(gt=0, le=1e5, description="Basquin sigma_a = A N^b: A", **_u("MPa"))
+    b: float = Field(gt=-1, lt=0, description="exponent (negative)")
+    source: str = Field("user", max_length=200)
+
+
+class FatigueSettings(_M):
+    cycles: float = Field(gt=0, le=1e12, description="load cycles the part must survive "
+                          "(a drone arm: flights x minutes x motor-speed changes; a fan: rpm x "
+                          "hours x 60)")
+    cycle: Literal["fully_reversed", "zero_to_max", "min_max"] = Field(
+        "zero_to_max", description="fully_reversed: +F to -F; zero_to_max: 0 to F; "
+        "min_max: min_pct x F to F (F = the load case's load)")
+    min_pct: float = Field(0, ge=-100, le=100, description="min_max: the minimum load as a "
+                           "percentage of the load case's load", **_u("%"))
+    sn: SNCurve | None = Field(None, description="the material's S-N curve from a data sheet; "
+                               "null = the material's own or the AM PLA design-curve estimate")
+
+    def load_ratio(self) -> float:
+        """R = min load / max load."""
+        return {"fully_reversed": -1.0, "zero_to_max": 0.0}.get(self.cycle, self.min_pct / 100)
 
 
 # ---- per-type settings
@@ -308,6 +363,9 @@ class StaticSettings(_Common):
     nonlinear: NonlinearSettings | None = Field(None, description="null = linear elastic; "
                                                 "else large deflection, plasticity and / or "
                                                 "contact (slower: an incremental solve)")
+    fatigue: FatigueSettings | None = Field(None, description="cyclic loading: cycles to "
+                                            "failure and a fatigue safety factor at the "
+                                            "hotspot (Basquin S-N + Goodman; an ESTIMATE)")
 
     @model_validator(mode="after")
     def _names(self):

@@ -28,6 +28,7 @@ from ..types import ErrorCode, MisesError, SafetyClass, StepKind, ToolOutput
 from . import studies
 from .ccx import INSTALL_HINT, find_ccx, solver_status  # noqa: F401  (find_ccx: patchable)
 from .environments import DIRECTIONS, ENVIRONMENTS, FACE_PRESETS
+from .calibration import load_all as load_calibrations
 from .materials import FDM_KNOCKDOWN, MATERIALS, load_custom
 from .settings import check_face
 from .studies import (GUIDE_LABEL, SIM_ID_RE, STUDY_TYPES, find_sim, list_sims,  # noqa: F401
@@ -347,7 +348,10 @@ async def sim_env_list(ctx: ToolContext, args: EnvListArgs) -> ToolOutput:
             "face_ids": "or a face id (\"f3\") from mirror_measure face_list / mirror_faces",
             "directions": list(DIRECTIONS), "knockdown": FDM_KNOCKDOWN,
             "materials": [m.to_dict() for m in [*MATERIALS.values(), *load_custom(home)]],
-            "solvers": st, "study_types": list(STUDY_TYPES)}
+            "solvers": st, "study_types": list(STUDY_TYPES),
+            "calibrations": [{k: r.get(k) for k in ("id", "material", "printer", "basis")}
+                             | {"confidence": r["fit"].get("confidence")}
+                             for r in load_calibrations(home)]}
     from . import cfd as cfd_mod     # S2: the optional OpenFOAM wind solver (read-only check)
     docker, why = await asyncio.to_thread(cfd_mod.openfoam_available)
     data["solvers"] = {**st, "openfoam": {"available": docker is not None, "why_not": why}}
@@ -696,3 +700,5 @@ def register_sim_tools(registry: ToolRegistry) -> None:
               sim_env_list, design_review):
         if not registry.list([t.name]):
             registry.register(t)
+    from .calibration_tools import register_calibration_tools  # S3
+    register_calibration_tools(registry)

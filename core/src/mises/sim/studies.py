@@ -33,7 +33,7 @@ from ..types import (ErrorCode, MisesError, StepKind, ToolOutput, canonical_json
 from .assembly_study import ASSEMBLIES_DIR, assemblies_root
 from .ccx import INSTALL_HINT, ccx_version, find_ccx
 from .environments import get_environment
-from .materials import Material, custom_material, get_material, with_fdm
+from .materials import Material, custom_material, get_material, with_anisotropy, with_fdm
 from .mesh import INSTANCE_FACE_RE
 from .settings import SETTINGS_MODELS, unit_vec
 from .types import SimError
@@ -62,8 +62,21 @@ CAVEATS_NONLINEAR = [
     "Contact is penalty contact (a little penetration stands for the contact stiffness); "
     "creep, fatigue, temperature and vibration are not simulated.",
 ]
-CAVEAT_ORTHOTROPIC = ("Orthotropic FDM material model (layer direction from the print "
-                      "direction); the between-layer values are typical or estimated.")
+# One orthotropic text: S1 swaps it in for the isotropic line, S3 adds it (deduped)
+CAVEAT_ORTHOTROPIC = ("Orthotropic FDM model: in-plane and between-layer (Z) stiffness and "
+                      "strength from typical ratios (estimates) unless calibrated or given; "
+                      "tension across the layers is checked against the Z strength. Layer "
+                      "bonding varies with print settings; the model does not see seams, voids "
+                      "or infill patterns.")
+CAVEAT_FATIGUE = ("Fatigue is an ESTIMATE: a Basquin S-N curve (data sheet, or the AM PLA design "
+                  "curve of Ezeh & Susmel 2019, 10% of UTS at 2e6 cycles) with a Goodman "
+                  "mean-stress correction at the hotspot; real printed parts scatter widely in "
+                  "fatigue, and notches, temperature, frequency and UV are not modelled.")
+
+
+def _dedupe(caveats: list[str]) -> list[str]:
+    """Caveats in order, each once (S1's orthotropic swap and S3's caveats may both add one)."""
+    return list(dict.fromkeys(caveats))
 
 
 def material_caveats(caveats: list[str], material) -> list[str]:
@@ -94,6 +107,44 @@ CAVEATS_WIND_OPENFOAM = [
     "The model error band is the recorded real-solver benchmark (sphere, flat plate) when one "
     "exists; until then it is the acceptance target and the result says 'validation pending'.",
 ]
+
+
+CAVEAT_ORTHO = CAVEAT_ORTHOTROPIC  # S3 name
+
+
+def s3_caveats(material, settings) -> list[str]:
+    out = []
+    if material is not None and material.orthotropic:
+        out.append(CAVEAT_ORTHO)
+    if getattr(settings, "fatigue", None) is not None:
+        out.append(CAVEAT_FATIGUE)
+    if material is not None and material.calibration:
+        c = material.calibration
+        by = material.basis_by_property or {}
+        rest = [k for k, v in by.items() if not v.startswith("calibrated")]
+        out.append(f"Material {material.basis} on printer {c['printer']} (confidence "
+                   f"{c.get('confidence')}): fitted to the user's own tests"
+                   + (f"; {', '.join(rest)}: datasheet / estimate" if rest else "") + ".")
+        out += list(c.get("notes") or [])
+    if (material is not None and material.orthotropic
+            and _plastic(getattr(settings, "nonlinear", None))):
+        out.append(CAVEAT_ORTHO_PLASTIC)
+    return out
+
+
+CAVEAT_ORTHO_PLASTIC = ("Plasticity with the orthotropic FDM model: yield uses the in-plane "
+                        "strength (isotropic von Mises, small strain); the Z check across the "
+                        "layers is elastic only and does not hold after yield.")
+
+
+def _plastic(nl) -> bool:
+    """Whether S1's nonlinear settings turn plasticity on (shape-tolerant)."""
+    if nl is None or nl is False:
+        return False
+    if nl is True:
+        return True
+    d = nl.model_dump() if hasattr(nl, "model_dump") else nl
+    return bool(isinstance(d, dict) and (d.get("plasticity") or d.get("plastic")))
 
 
 @dataclass(frozen=True)
@@ -170,8 +221,22 @@ def resolve_material(ms, default: str, home: Path | None) -> Material:
         m = custom_material(ms.custom.model_dump())
     else:
         m = get_material(ms.name or default, home)
+    # S3: the user's calibration of this material and printer, when there is a plausible one
+    # (a rejected / implausible fit is never applied; an inline custom material is never
+    # calibrated by a built-in's name)
+    if home is not None and (ms is None or (ms.calibrated and ms.custom is None)):
+        from . import calibration
+        rec = calibration.applicable(home, m, getattr(ms, "printer", None))
+        if rec is not None:
+            m = calibration.apply(m, rec)
+    aniso = getattr(ms, "anisotropy", None)
     if ms is not None and ms.fdm is not None:
-        m = with_fdm(m, ms.fdm.infill_pct, ms.fdm.walls, ms.fdm.layer_orientation)
+        # an orthotropic model checks tension across the layers itself: no 0.6 "z" factor
+        m = with_fdm(m, ms.fdm.infill_pct, ms.fdm.walls,
+                     "xy" if aniso is not None else ms.fdm.layer_orientation)
+    if aniso is not None:
+        m = with_anisotropy(m, unit_vec(aniso.print_direction), aniso.e_z_ratio,
+                            aniso.strength_z_ratio)
     return m
 
 
@@ -499,10 +564,11 @@ async def run_study(ctx, type_id: str, part_id: str | None, part_dir: Path | Non
         "material": material.to_dict() if material else None, "environment": env,
         "error": None, "hint": None, "warnings": [],
         "caveats": (CAVEATS_WIND if type_id == "wind" else
-                    material_caveats(CAVEATS_NONLINEAR
-                                     if getattr(settings, "nonlinear", None) is not None
-                                     else CAVEATS_FEM, material)
-                    + ([CAVEATS_STATIC_FIXTURE] if type_id in ("static", "drop") else [])),
+                    _dedupe(material_caveats(CAVEATS_NONLINEAR
+                                             if getattr(settings, "nonlinear", None) is not None
+                                             else CAVEATS_FEM, material)
+                            + ([CAVEATS_STATIC_FIXTURE] if type_id in ("static", "drop") else [])
+                            + s3_caveats(material, settings))),
         "urls": urls(sim_id)}
     write_record(sim_dir, rec)
 
@@ -647,7 +713,9 @@ async def _dispatch(type_id, job_root, metrics, material, ccx, settings, env, pr
                         **({"coarse_only": True} if coarse_only else {}),
                         **({"instances": assembly[1]["instances"],
                             "target_instances": assembly[0]["instances"],
-                            "project_id": assembly[0]["project_id"]} if assembly else {})})
+                            "project_id": assembly[0]["project_id"]} if assembly else {}),
+                        **({"fatigue": settings.fatigue}
+                           if getattr(settings, "fatigue", None) is not None else {})})
     if type_id == "static":
         from .static import run_static
         return await run_static(job, settings.load_cases, env=env, sim_id=sim_id,
@@ -890,13 +958,22 @@ def static_summary(rec: dict) -> str:
     else:
         fixture = "peak includes the fixed face (every stressed node is on it)"
     nl = r.get("nonlinear")
-    iso = "orthotropic" if (m.get("orthotropic") or "orthotropic" in str(m.get("model"))) \
-        else "isotropic"
+    ortho = bool(m.get("build_dir") or m.get("orthotropic")
+                 or "orthotropic" in str(m.get("model")))
     tangent = " (tangent estimated)" if nl and nl.get("tangent_estimated") else ""
-    model = (f"{iso}, NONLINEAR ({nl['description']}{tangent}; {fidelity_note(rec)})" if nl
-             else f"{iso} linear elastic")
+    model = (f"{'orthotropic' if ortho else 'isotropic'}, NONLINEAR ({nl['description']}"
+             f"{tangent}; {fidelity_note(rec)})" if nl
+             else "orthotropic FDM (layers across the print direction)" if ortho
+             else "isotropic linear elastic")
+    basis = ""
+    if m.get("calibration"):  # S3: say which properties are calibrated, and any lower bound
+        rest = [k for k, v in (m.get("basis_by_property") or {}).items()
+                if not str(v).startswith("calibrated")]
+        notes = m["calibration"].get("notes") or []
+        basis = (f" [{m['basis']}" + (f"; {', '.join(rest)}: datasheet / estimate" if rest
+                                      else "") + "".join(f"; {n}" for n in notes) + "]")
     s = (f"GUIDE ONLY - {sv['name']} {sv['version']}, fine mesh {mesh['fine']['size_mm']:.2g} mm "
-         f"(coarse {mesh['coarse']['size_mm']:.2g} mm), material {m['name']} {model}, "
+         f"(coarse {mesh['coarse']['size_mm']:.2g} mm), material {m['name']}{basis} {model}, "
          f"strength x{m['knockdown']:.3g} FDM knock-down: {target_name(rec)} max von "
          f"Mises {r['max_von_mises_mpa']:.3g} MPa (error band "
          f"{'n/a' if band is None else format(band, '.1%')}), max displacement "
@@ -911,6 +988,16 @@ def static_summary(rec: dict) -> str:
             s += f", max plastic strain {100 * r['max_plastic_strain']:.3g}%"
         if r.get("max_contact_pressure_mpa") is not None:
             s += f", max contact pressure {r['max_contact_pressure_mpa']:.3g} MPa"
+    if r.get("layer_safety_factor") is not None:
+        s += (f"; tension across layers {_num(r.get('max_layer_tension_mpa'), '.3g')} MPa vs Z "
+              f"allowable {_num(r.get('allowable_z_mpa'), '.3g')} MPa (governs: "
+              f"{r.get('governing_failure')})")
+    f = r.get("fatigue")
+    if f:
+        s += (f"; FATIGUE ESTIMATE ({f['sn_curve']['basis']} S-N, Goodman): "
+              f"{_num(f.get('cycles_to_failure'), '.3g')} cycles to failure vs "
+              f"{f['cycles_required']:.3g} required, fatigue safety factor "
+              f"{_num(f.get('safety_factor'), '.2f')} at the hotspot")
     cases = r.get("cases") or []
     if len(cases) > 1:
         s += f"; governing case {r.get('governing_case')} of {len(cases)}"
@@ -945,6 +1032,9 @@ NONLINEAR_METRICS = [("load_fraction", "load reached", ""),
                      ("max_plastic_strain", "max plastic strain", ""),
                      ("max_contact_pressure_mpa", "max contact pressure", "MPa")]
 OPTIONAL_METRICS = {"max_plastic_strain", "max_contact_pressure_mpa"}
+S3_OPTIONAL_METRICS = [("layer_safety_factor", "safety factor across layers", ""),
+                       ("fatigue_safety_factor", "fatigue safety factor (estimate)", ""),
+                       ("cycles_to_failure", "cycles to failure (estimate)", "cycles")]
 
 
 def fidelity_note(rec: dict) -> str | None:
@@ -1002,6 +1092,9 @@ def card(rec: dict) -> dict:
                for k, lab, u in KEY_METRICS.get(typ, [])
                + (NONLINEAR_METRICS if rec.get("fidelity_class") == "fem_nonlinear" else [])
                if not (k in OPTIONAL_METRICS and r.get(k) is None)]
+    # S3: shown only when the study computed them
+    metrics += [{"key": k, "label": lab, "unit": u, "value": r.get(k)}
+                for k, lab, u in S3_OPTIONAL_METRICS if k in r]
     status = None
     if rec.get("status") == "done":
         status = "warn" if rec.get("warnings") else "pass"
@@ -1019,6 +1112,19 @@ def card(rec: dict) -> dict:
     u = urls(rec.get("sim_id") or "")
     extra = ({"per_case": r["per_case"], "governing_case_id": r.get("governing_case_id")}
              if isinstance(r.get("per_case"), list) else {})
+    mat = rec.get("material") or {}
+    if mat.get("basis"):  # S3: "calibrated (n tests)" or "datasheet / estimate"
+        extra["material_basis"] = mat["basis"]
+        if mat.get("basis_by_property"):
+            extra["material_basis_by_property"] = mat["basis_by_property"]
+        notes += list((mat.get("calibration") or {}).get("notes") or [])
+    if isinstance(r.get("fatigue"), dict):
+        extrap = ("; extrapolated" if "extrapolated" in r["fatigue"]["sn_curve"].get(
+            "source", "") else "")
+        extra["fatigue_note"] = (f"fatigue estimate{extrap} · "
+                                 f"{r['fatigue']['sn_curve']['basis']} "
+                                 "S-N, Goodman")
+        notes.append("fatigue is an estimate (Basquin S-N + Goodman mean-stress correction)")
     return {**extra, "sim_id": rec.get("sim_id"), "type": typ, "status": rec.get("status"),
             "verdict": status, "phase": rec.get("phase"), "pct": rec.get("pct"),
             "part_id": rec.get("part_id"), "label": GUIDE_LABEL,
@@ -1137,6 +1243,8 @@ def check_requirements(rec: dict, reqs: list[dict]) -> list[dict]:
             # no case named: every case must hold (the worst one is the measure)
             meas = min(sfs) if sfs else r.get("safety_factor")
             sense = "min"
+        elif typ == "static" and kind == "min_fatigue_safety_factor":
+            meas, sense = r.get("fatigue_safety_factor"), "min"
         elif typ in ("static", "drop") and kind == "max_deflection_mm":
             ds = [c.get("max_displacement_mm") for c in scope or []
                   if c.get("max_displacement_mm") is not None]
@@ -1170,6 +1278,8 @@ def check_requirements(rec: dict, reqs: list[dict]) -> list[dict]:
         if stopped:   # a partial solve never signs off a requirement
             frac = min(c.get("load_fraction") or 0.0 for c in stopped)
             st, note = "fail", f"did not reach full load ({frac:.0%})"
+        if kind == "min_fatigue_safety_factor" and st == "pass":
+            st, note = "warn", "passes, but fatigue is an estimate (S-N + Goodman)"
         out.append({"requirement_id": q.get("id"), "kind": kind, "target": target,
                     "measured": meas, "unit": unit, "status": st, "sim_id": rec.get("sim_id"),
                     "note": note})
