@@ -106,11 +106,16 @@ const PartRow = memo(function PartRow(p: RowProps): JSX.Element {
         {p.hasChildren
           ? <button type="button" class="tree-twisty" tabIndex={-1} aria-label={p.collapsed ? `Expand ${p.name}` : `Collapse ${p.name}`} onClick={() => c.current.toggle(p.id)}>{p.collapsed ? "▸" : "▾"}</button>
           : <span class="tree-twisty" aria-hidden="true" />}
-        <button type="button" class="tree-eye" tabIndex={-1} aria-pressed={!p.hidden} aria-label={p.hidden ? `Show ${p.name} in the viewer` : `Hide ${p.name} in the viewer`}
-          title={p.hidden ? "Hidden in the viewer: click to show" : "Shown in the viewer: click to hide"} onClick={() => c.current.eye(p.id)}>{p.hidden ? <EyeShut /> : <EyeOpen />}</button>
-        <button type="button" class="tree-swatch" tabIndex={-1} data-appearance-anchor="" style={swatch} aria-haspopup="dialog" aria-expanded={p.lookOpen}
-          aria-label={`Appearance of ${p.name}: ${p.lookName || swatchName(parseMaterial(p.mat).color)}`}
-          title={`Appearance: ${p.lookName || swatchName(parseMaterial(p.mat).color)}`} onClick={(e) => c.current.swatch(e, p.id)} />
+        {/* the layout skeleton has no model: nothing to hide or colour (I4b) */}
+        {p.skeleton
+          ? <><span class="tree-eye" aria-hidden="true" /><span class="tree-swatch tree-swatch-none" aria-hidden="true" /></>
+          : <>
+          <button type="button" class="tree-eye" tabIndex={-1} aria-pressed={!p.hidden} aria-label={p.hidden ? `Show ${p.name} in the viewer` : `Hide ${p.name} in the viewer`}
+            title={p.hidden ? "Hidden in the viewer: click to show" : "Shown in the viewer: click to hide"} onClick={() => c.current.eye(p.id)}>{p.hidden ? <EyeShut /> : <EyeOpen />}</button>
+          <button type="button" class="tree-swatch" tabIndex={-1} data-appearance-anchor="" style={swatch} aria-haspopup="dialog" aria-expanded={p.lookOpen}
+            aria-label={`Appearance of ${p.name}: ${p.lookName || swatchName(parseMaterial(p.mat).color)}`}
+            title={`Appearance: ${p.lookName || swatchName(parseMaterial(p.mat).color)}`} onClick={(e) => c.current.swatch(e, p.id)} />
+          </>}
         {p.editing
           ? <RenameField name={p.label} onDone={(v) => c.current.renamed(p.id, v)} />
           : (

@@ -30,6 +30,8 @@ import { modalOpen } from "../pages/router";
 import { createViewer, type DesignViewerHandle, type PickMarker } from "./scene";
 import { TitleBlock } from "./TitleBlock";
 import { ViewerTools, type ViewMode, type ViewScope } from "./ViewerTools";
+import { AllPartsToggle } from "./Overview";
+import { SkeletonPanel } from "./SkeletonPanel";
 import { ModeSwitch } from "../assembly/mode";
 import { materialOf } from "../../lib/appearance";
 import { backgroundStyle, edgeInk, isLight, viewerBackground } from "./background";
@@ -96,8 +98,9 @@ export const changingRunLabel = computed<string | null>(() => {
 
 /** The parts on the sheet: the focused one, or (build view) every visible part with a model. */
 export function shownParts(list: readonly PartSummary[], focus: PartSummary | null, scope: ViewScope, hidden: ReadonlySet<string>): PartSummary[] {
-  if (scope === "part") return focus ? [focus] : [];
-  return list.filter((p) => p.metrics !== null && (p.part_id === focus?.part_id || !hidden.has(p.part_id)));
+  // the layout skeleton (G3) has no model: it is never loaded as a GLB (I4b)
+  if (scope === "part") return focus && focus.kind !== "skeleton" ? [focus] : [];
+  return list.filter((p) => p.metrics !== null && p.kind !== "skeleton" && (p.part_id === focus?.part_id || !hidden.has(p.part_id)));
 }
 
 interface OpenOps { seq: number; partId: string; target: OpsTarget; at: { x: number; y: number } | null; keyboard: boolean; baseVersion: number }
@@ -491,6 +494,7 @@ export function Viewer(): JSX.Element {
       <span class="label vp-fig">{scope === "build" ? "FIG. 1 — BUILD" : "FIG. 1 — DESIGN"}</span>
       <ViewerTools mode={mode} onMode={setMode} scope={scope} onScope={(s) => { viewScope.value = s; }}
         code={tab === "code"} onCode={(on) => { viewTab.value = on ? "code" : "model"; }}
+        lead={tab !== "code" ? <AllPartsToggle /> : null}
         canEdit={canEdit && tab === "model"}
         onEdit={() => { if (part) setOps({ seq: ++pickSeq.current, partId: part.part_id, target: { face: null, edge: null, point: null }, at: null, keyboard: true, baseVersion: part.version ?? 0 }); }}
         extra={[
@@ -503,8 +507,9 @@ export function Viewer(): JSX.Element {
           ...(part !== null && tab === "model" ? designModeItems() : []),
           { id: "background", label: "Background…", onSelect: () => setBgOpen(true) },
         ]} />
-      {part !== null && <DesignViewModes host={modeHost} focusId={partId} partIds={shown.map((p) => p.part_id)} />}
+      {part !== null && part.kind !== "skeleton" && <DesignViewModes host={modeHost} focusId={partId} partIds={shown.map((p) => p.part_id)} />}
       {part === null && <div class="vp-empty label">NO PART · ask an agent to create one</div>}
+      {part?.kind === "skeleton" && tab === "model" && <SkeletonPanel part={part} />}
       {tab === "model" && tool === "comment" && !comment && <div class="vx-mode-hint label" role="status">Click the model where something should change</div>}
       {tab === "model" && v && (shownPins.length > 0 || dots.length > 0) && (
         <PinLayer pins={shownPins} dots={dots} toScreen={(p) => v.toScreen(p)} bounds={bounds} openPin={openPin} onOpen={setOpenPin}

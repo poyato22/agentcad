@@ -30,11 +30,14 @@ export interface ViewerToolsProps {
   code?: boolean; onCode?(on: boolean): void;
   /** Extra tools (U2a: Measure; G4: X-ray / section), shown in their own group. */
   extra?: readonly ViewMenuItem[];
+  /** Controls shown in the same row, left of View ▾ (the "All parts" toggle — I3: in the toolbar
+   *  flow, so it never floats over a panel). */
+  lead?: JSX.Element | null;
 }
 
 interface Row { key: string; role: "menuitemradio" | "menuitemcheckbox" | "menuitem"; label: string; checked?: boolean; disabled?: boolean; hint?: string; run(): void }
 
-export function ViewerTools({ mode, onMode, scope, onScope, canEdit, onEdit, code, onCode, extra = [] }: ViewerToolsProps): JSX.Element {
+export function ViewerTools({ mode, onMode, scope, onScope, canEdit, onEdit, code, onCode, extra = [], lead = null }: ViewerToolsProps): JSX.Element {
   const [open, setOpen] = useState(false);
   const btn = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
@@ -83,6 +86,7 @@ export function ViewerTools({ mode, onMode, scope, onScope, canEdit, onEdit, cod
 
   return (
     <div class="viewer-tools view-menu" ref={wrap}>
+      {lead}
       <button ref={btn} type="button" class="vt-btn view-btn" aria-haspopup="menu" aria-expanded={open} aria-controls="view-menu"
         aria-label="View options" title="Shading, what to show, features and the part script"
         onClick={() => (open ? close(false) : show("first"))}
