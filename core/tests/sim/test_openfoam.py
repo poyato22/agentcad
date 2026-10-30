@@ -253,7 +253,8 @@ async def test_sphere_study_from_recorded_output(tmp_path, monkeypatch):
     assert r["reynolds"] == pytest.approx(1.225 * 3 * 0.1 / 1.81e-5, rel=0.02)
     assert r["drag_n"] == pytest.approx(r["cd"] * r["dynamic_pressure_pa"] * r["ref_area_m2"])
     assert r["converged"] is True and r["stopped"] == "converged" and r["steps"] == 236
-    assert r["model_error_band"] == OPENFOAM_TARGET_BAND and r["validation"] == []
+    assert r["model_error_band"] == OPENFOAM_TARGET_BAND
+    assert [v["body"] for v in r["validation"]] == ["sphere", "flat plate"]   # recorded rows
     assert r["force_n_wind"][0] > 0 and len(r["moment_nm"]) == 3
     assert r["history"][0]["step"] == 1 and "cd" in r["history"][-1]
     # outputs in the existing formats: a Cp GLB and two slice PNGs
@@ -350,6 +351,8 @@ def _noop(*a, **k):
 
 @pytest.mark.timeout(60)
 async def test_record_is_labelled_openfoam_with_its_band(tmp_path, monkeypatch):
+    from mises.sim.cfd import validation
+    monkeypatch.setattr(validation, "OPENFOAM_VALIDATION", [])      # the pre-benchmark state
     use(monkeypatch, FakeRunner("sphere_re2e4"))
     monkeypatch.setattr("mises.sim.cfd.openfoam_available", lambda: (DOCKER, None))
     s = studies.validate_settings("wind", {"solver": "openfoam", "speed_m_s": 3})
@@ -407,12 +410,25 @@ async def test_missing_openfoam_falls_back_to_the_built_in_solver_and_says_so(tm
 
 def test_band_is_the_target_until_a_benchmark_is_recorded(monkeypatch):
     from mises.sim.cfd import validation
+    monkeypatch.setattr(validation, "OPENFOAM_VALIDATION", [])
     assert not openfoam_validated() and openfoam_error_band() == 0.10
     monkeypatch.setattr(validation, "OPENFOAM_VALIDATION",
                         [("sphere", 2e4, 3, 0.44, 0.47, -0.064),
                          ("flat plate", 1e4, 3, 1.31, 1.17, +0.12)])
     assert validation.openfoam_validated() and validation.openfoam_error_band() == 0.15
     assert validation.openfoam_validation_rows()[1]["body"] == "flat plate"
+
+
+def test_recorded_real_benchmarks_are_both_within_the_target():
+    # fix-bench: the real-solver rows are recorded only because BOTH are within 10%
+    from mises.sim.cfd import validation
+    rows = validation.openfoam_validation_rows()
+    assert {r["body"] for r in rows} == {"sphere", "flat plate"}
+    for r in rows:
+        assert abs(r["cd"] - r["reference_cd"]) / r["reference_cd"] == pytest.approx(
+            abs(r["error"]), abs=0.002)
+        assert abs(r["error"]) < OPENFOAM_TARGET_BAND
+    assert openfoam_validated() and openfoam_error_band() == 0.10
 
 
 # ---- fix round 1: runner hardening
