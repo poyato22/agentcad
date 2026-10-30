@@ -99,7 +99,7 @@ test("details_toggle_shows_the_dense_log_and_is_remembered", async ({ page }) =>
 
 test("inline_composer_starts_a_run_with_profile_defaults", async ({ page, fake }) => {
   await open(page);
-  await page.getByRole("button", { name: "New" }).click();
+  await page.getByRole("button", { name: "New", exact: true }).click();
   const form = page.getByRole("form", { name: "New run" });
   await expect(form).toBeVisible();
   await expect(page.getByRole("dialog", { name: "New run" })).toHaveCount(0);
@@ -117,7 +117,7 @@ test("inline_composer_starts_a_run_with_profile_defaults", async ({ page, fake }
 
 test("enter_in_the_picker's_other_model_box_never_starts_a_run", async ({ page, fake }) => {
   await open(page);
-  await page.getByRole("button", { name: "New" }).click();
+  await page.getByRole("button", { name: "New", exact: true }).click();
   const form = page.getByRole("form", { name: "New run" });
   await expect(form.getByRole("button", { name: /^Model: Claude Code · opus/ })).toBeVisible();
   await form.getByLabel("Task").fill("stiffen the upright");
@@ -162,7 +162,7 @@ test("scrolled_up_the_thread_counts_new_rows_and_a_new_card_comes_into_view", as
 
 test("model_picker_groups_badges_start_ollama_and_download_with_progress", async ({ page, fake }) => {
   await open(page);
-  await page.getByRole("button", { name: "New" }).click();
+  await page.getByRole("button", { name: "New", exact: true }).click();
   const form = page.getByRole("form", { name: "New run" });
   await form.getByRole("button", { name: /^Model:/ }).click();
   const panel = form.getByRole("region", { name: "Choose a model" });
@@ -208,7 +208,7 @@ test("a_run_beyond_the_parallel_limit_waits_for_a_slot", async ({ page, fake }) 
   sc.status.parallel = { limit: 1, auto: true, reason: "M5 Pro · 24 GB · local model → 1" };
   await fake.reset(sc);
   await open(page);
-  await page.getByRole("button", { name: "New" }).click();
+  await page.getByRole("button", { name: "New", exact: true }).click();
   const form = page.getByRole("form", { name: "New run" });
   await expect(form).toContainText("1 running · queues for a free slot (Auto: 1)");
   await form.getByLabel("Task").fill("add a gusset");
