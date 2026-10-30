@@ -62,7 +62,8 @@ def test_missing_key_denied_with_hint():
     with pytest.raises(MisesError) as ei:
         registry.resolve("anthropic/claude-sonnet-5-5")
     assert ei.value.code == ErrorCode.DENIED
-    assert ei.value.hint == "set ANTHROPIC_API_KEY or run `mises keys set anthropic`"
+    assert ei.value.hint == ("add a key in Profile → Model (or set ANTHROPIC_API_KEY, or run "
+                             "`mises keys set anthropic`)")  # QA B1-14: app-first advice
 
 
 @pytest.mark.parametrize("ref", ["nope/model", "gpt-4", "ollama/"])
