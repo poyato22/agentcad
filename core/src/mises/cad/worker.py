@@ -680,6 +680,23 @@ def _assembly(job_path: Path, nonce: str) -> None:
     os.replace(out_dir / "new_result.json", out_dir / "result.json")
 
 
+def _mises_shapes():
+    """The curved-geometry recipe module that sits next to this file (cad/mises_shapes.py).
+
+    Loaded by path (the worker runs with -I, so its directory is not on sys.path) and registered
+    as `mises_shapes`, so `import mises_shapes` in a part script works too."""
+    import importlib.util
+
+    if "mises_shapes" in sys.modules:
+        return sys.modules["mises_shapes"]
+    spec = importlib.util.spec_from_file_location(
+        "mises_shapes", Path(__file__).resolve().parent / "mises_shapes.py")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["mises_shapes"] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
 def _load_part(part_file: Path):
     """Execute part.py in a namespace that already has build123d in scope.
 
@@ -694,6 +711,8 @@ def _load_part(part_file: Path):
     ns.update({"math": math, "build123d": build123d, "bd": build123d})
     exec("from build123d import *", ns)  # noqa: S102 - fixed string
     ns["math"] = math  # `from build123d import *` must not shadow the stdlib module
+    shapes = _mises_shapes()
+    ns.update({"mises_shapes": shapes, "ms": shapes})
     # resolvers the `# mises-op` blocks call to re-find their target in the current shape
     ns.update({"_mises_face": _mises_face, "_mises_edge": _mises_edge,
                "_mises_faces": _mises_faces, "_mises_edges": _mises_edges,
@@ -707,7 +726,8 @@ def _load_part(part_file: Path):
 def _hint(e: BaseException) -> str | None:
     if isinstance(e, NameError):
         return ("build123d names are pre-imported (Box, BuildPart, Hole, Locations, ..., plus "
-                "`bd`, `build123d`, `math`); check the spelling.")
+                "`bd`, `build123d`, `math`, and the curved-shape recipes as `ms` / "
+                "`mises_shapes`); check the spelling.")
     if isinstance(e, _MissingBuild):
         return BUILD_SIGNATURE_HINT
     if isinstance(e, TypeError) and "unexpected keyword argument" in str(e):
