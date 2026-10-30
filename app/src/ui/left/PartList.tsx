@@ -69,6 +69,8 @@ interface RowProps {
   ctl: { current: RowCtl };
   id: string; name: string; label: string; depth: number; hasChildren: boolean; collapsed: boolean;
   selected: boolean; primary: boolean; busy: boolean; flash: boolean; hidden: boolean; catalog: boolean;
+  /** Plan 8 G3: the build's layout skeleton (shared dimensions and datums), not a real part. */
+  skeleton?: boolean;
   editing: boolean; drop: DropPos | null; dragging: boolean; lookOpen: boolean; menuOpen: boolean;
   /** materialKey() of the part's look. */
   mat: string; lookName: string; mass: string;
@@ -116,6 +118,7 @@ const PartRow = memo(function PartRow(p: RowProps): JSX.Element {
               onClick={(e) => c.current.click(e, p.id)} onDblClick={() => c.current.rename(p.id)} onKeyDown={(e) => c.current.key(e, p.id)}>
               <span class="row-name" data-label>{p.name}</span>
               {p.catalog && <span class="tree-kind faint">catalog</span>}
+              {p.skeleton && <span class="tree-kind faint" title="The build's layout skeleton: shared dimensions and datums the parts read">skeleton</span>}
               {p.busy && <span class="tag-changing">changing</span>}
             </button>
           )}
@@ -438,7 +441,7 @@ export function PartList(): JSX.Element {
           return (
             <PartRow key={id} ctl={ctl} id={id} name={partName(p)} label={p.label ?? partName(p)} depth={r.depth} hasChildren={r.hasChildren}
               collapsed={collapsed.has(id)} selected={selection.has(id)} primary={id === primary} busy={changing.has(id)} flash={flashing.has(id)}
-              hidden={hidden.has(id)} catalog={p.kind === "catalog"} editing={editing === id} drop={drop?.id === id ? drop.pos : null}
+              hidden={hidden.has(id)} catalog={p.kind === "catalog"} skeleton={p.kind === "skeleton"} editing={editing === id} drop={drop?.id === id ? drop.pos : null}
               dragging={drag === id} lookOpen={pop?.kind === "look" && pop.id === id} menuOpen={pop?.kind === "menu" && pop.id === id}
               mat={materialKey(m)} lookName={appearanceName(p.appearance) ?? ""} mass={p.metrics ? fmtGrams(p.metrics.mass_g, 1) : ""} />
           );

@@ -164,6 +164,15 @@ describe("part tree", () => {
     expect(screen.queryByRole("menu")).toBeNull();
   });
 
+  it("a G3 layout skeleton row is tagged and offers no Modify…", () => {
+    parts.value = [...LIST(), { ...row("skeleton_main", 9), kind: "skeleton", metrics: null }];
+    render(<PartTree />);
+    expect(rowEl("skeleton_main").textContent).toContain("skeleton");
+    fireEvent.click(screen.getByRole("button", { name: "Actions for skeleton main" }));
+    const modify = screen.queryByRole("menuitem", { name: "Modify…" }) as HTMLButtonElement | null;
+    expect(modify === null || modify.disabled).toBe(true);
+  });
+
   it("Modify… (the feature ops) is in the part's menu: it selects the part and asks the viewer", () => {
     parts.value = [...LIST().slice(0, 3), { ...row("plate", 1), metrics: { mass_g: 1 } as PartSummary["metrics"] }];
     render(<PartTree />);

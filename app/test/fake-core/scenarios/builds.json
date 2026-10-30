@@ -648,7 +648,8 @@
               0.0
             ],
             "normal": null,
-            "area": 47.124
+            "area": 47.124,
+            "radius": 1.5
           }
         ],
         "edges": 18,
@@ -1304,7 +1305,8 @@
               0.0
             ],
             "normal": null,
-            "area": 79.168
+            "area": 79.168,
+            "radius": 2.1
           },
           {
             "id": "f7",
@@ -1315,7 +1317,8 @@
               0.0
             ],
             "normal": null,
-            "area": 79.168
+            "area": 79.168,
+            "radius": 2.1
           }
         ],
         "edge_list": [

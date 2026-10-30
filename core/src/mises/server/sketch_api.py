@@ -1,4 +1,4 @@
-"""Sketch page routes (admin token): `POST /sketches` stores a sketch (strokes in mm, typed
+"""Sketch routes (admin token; the app's Sketch page is gone, Plan 7 U2b): `POST /sketches` stores a sketch (strokes in mm, typed
 dimensions, notes, optional photo and canvas render) and returns its id; `GET /sketches/{id}`
 returns the same summary. A run gets the sketch with `POST /runs {..., "sketch_id"}`."""
 from __future__ import annotations

@@ -22,12 +22,12 @@ export interface BuildsScenario {
   active?: string | null;
   open?: string[];
   /** Tree fields per part id. */
-  tree?: Record<string, { project_id?: string; label?: string; parent_id?: string | null; order?: number; color?: string | null; kind?: "part" | "group" | "catalog"; version?: number; appearance?: Appearance | null }>;
+  tree?: Record<string, { project_id?: string; label?: string; parent_id?: string | null; order?: number; color?: string | null; kind?: "part" | "group" | "catalog" | "skeleton"; version?: number; appearance?: Appearance | null }>;
   /** Scripts per part id (default: generated from its vars). */
   sources?: Record<string, string>;
 }
 
-interface Row { project_id: string; label: string; parent_id: string | null; order: number; color: string | null; kind: "part" | "group" | "catalog"; version: number; appearance?: Appearance | null }
+interface Row { project_id: string; label: string; parent_id: string | null; order: number; color: string | null; kind: "part" | "group" | "catalog" | "skeleton"; version: number; appearance?: Appearance | null }
 interface FakeBuild { id: string; name: string; created_at: number; updated_at: number; trashed_at: number | null }
 
 export interface FakeBuilds {

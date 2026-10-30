@@ -1,4 +1,5 @@
-"""Sketches from the app's Sketch page: validated stroke data plus an optional photo.
+"""Sketches (POST /sketches, a run's sketch_id): validated stroke data plus an optional photo.
+The app's Sketch page is gone (Plan 7 U2b); the API and DXF import (imports/dxf.py) still use it.
 
 `POST /sketches` stores a sketch under `<home>/sketches/<id>/` (sketch.json, photo.jpg,
 render.png). Starting a run with `sketch_id` copies it into the run's workdir (`sketch/`); from

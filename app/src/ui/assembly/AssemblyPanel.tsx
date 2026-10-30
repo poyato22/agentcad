@@ -166,7 +166,8 @@ function InstanceDetails({ ctl }: { ctl: AssemblyController }): JSX.Element | nu
 }
 
 function AddPart({ ctl }: { ctl: AssemblyController }): JSX.Element {
-  const parts = ctl.parts.value.filter((p) => p.metrics !== null && (p.kind ?? "part") !== "group");
+  // a group has no geometry and the layout skeleton (G3) is a reference, not a part to place
+  const parts = ctl.parts.value.filter((p) => p.metrics !== null && (p.kind ?? "part") !== "group" && p.kind !== "skeleton");
   const [partId, setPartId] = useState<string>("");
   const [name, setName] = useState("");
   const [touched, setTouched] = useState(false);
