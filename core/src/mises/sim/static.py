@@ -8,7 +8,10 @@ from pathlib import Path
 
 import numpy as np
 
+from .aniso import layer_peaks
 from .deck import Setup, resolve_loads, resolve_supports, static_step, write_deck
+from .fatigue import case_fatigue, node_field, stress_arrays
+from .fatigue import warnings_for as fatigue_warnings
 from .fem import FemJob, mesh_level, result_glb, run_levels, save_fields, solve_deck
 from .fields import principal_stresses, von_mises_np
 from .results import parse_frd, peaks
@@ -46,6 +49,7 @@ async def solve_cases(job: FemJob, size: float, d: Path, label: str, lo: float, 
             case=case.name)
         res = await asyncio.to_thread(parse_frd, frd)
         pk = await asyncio.to_thread(lambda r=res, s=setup: peaks(mesh, r, exclude=s.supported))
+        pk.update(layer_peaks(mesh, res, job.material, setup.supported))  # S3: {} if isotropic
         out.append({"case": case, "setup": setup, "peaks": pk, "frd": res})
     worst = max(out, key=lambda c: c["peaks"]["max_von_mises_mpa"])
     info = {"size_mm": round(size, 4), "nodes": len(mesh.nodes), "elements": len(mesh.tets),
@@ -87,6 +91,8 @@ async def run_static(job: FemJob, cases: list, *, env: dict | None, sim_id: str,
                          "peak_excludes": "nodes on the fixed face" if pf["excludes_fixture"]
                          else None})
         pre = f"{name}: " if len(fine["cases"]) > 1 else ""
+        # S3: tension across the layers (orthotropic) and fatigue, when asked for
+        per_case[-1].update(layer_and_fatigue(job, fine["mesh"], fc, per_case[-1], warnings, pre))
         sf = per_case[-1]["safety_factor"]
         if sf is not None and sf < 1:
             warnings.append(f"{pre}predicted to yield: safety factor {sf:.2f} < 1")
@@ -116,6 +122,13 @@ async def run_static(job: FemJob, cases: list, *, env: dict | None, sim_id: str,
     results["governing_case"] = gov["name"]
     results["cases"] = per_case
     results["sf_by_case"] = {c["name"]: c["safety_factor"] for c in per_case}
+    fats = [c for c in per_case if c.get("fatigue")]
+    if fats:  # S3: the fatigue estimate of the worst case
+        w = min(fats, key=lambda c: (c["fatigue_safety_factor"]
+                                     if c["fatigue_safety_factor"] is not None else float("inf")))
+        results.update(fatigue={**w["fatigue"], "case": w["name"]},
+                       fatigue_safety_factor=w["fatigue_safety_factor"],
+                       cycles_to_failure=w["cycles_to_failure"])
     # QA B1-3: the per-case table the card renders. Case names are unique (StaticSettings) and
     # are what a spec's load_case_id matches, so the name is the case id.
     results["governing_case_id"] = gov["name"]
@@ -139,6 +152,32 @@ async def run_static(job: FemJob, cases: list, *, env: dict | None, sim_id: str,
             "color_range_mpa": [0.0, gov["max_von_mises_mpa"]]}
 
 
+def layer_and_fatigue(job: FemJob, mesh, fc: dict, row: dict, warnings: list[str],
+                      pre: str) -> dict:
+    """S3 additions to one case's row: with an orthotropic material the safety factor is the
+    lower of von Mises / in-plane allowable and Z strength / peak tension across the layers;
+    with fatigue settings, the hotspot's cycles to failure and fatigue safety factor."""
+    m, pf, out = job.material, fc["peaks"], {}
+    if m.orthotropic:
+        lsf = pf.get("layer_safety_factor")
+        sf = row["safety_factor"]
+        out.update(safety_factor_von_mises=sf,
+                   max_layer_tension_mpa=pf.get("max_layer_tension_mpa"),
+                   max_layer_tension_at=pf.get("max_layer_tension_at"),
+                   allowable_z_mpa=pf.get("allowable_z_mpa"), layer_safety_factor=lsf,
+                   governing_failure="in-plane (von Mises)")
+        if lsf is not None and (sf is None or lsf < sf):
+            out.update(safety_factor=lsf, governing_failure="across layers (Z tension)")
+    fat = job.extra.get("fatigue")
+    if fat is not None:
+        f = case_fatigue(mesh, fc["frd"], m, fat, fc["setup"].supported)
+        if f is not None:
+            out.update(fatigue=f, fatigue_safety_factor=f["safety_factor"],
+                       cycles_to_failure=f["cycles_to_failure"])
+            warnings += fatigue_warnings(f, pre)
+    return out
+
+
 def _outputs(job: FemJob, mesh, case: dict, gov: dict, sim_id: str, part_id: str) -> None:
     frd = case["frd"]
     S = frd.get("STRESS", {})
@@ -157,6 +196,9 @@ def _outputs(job: FemJob, mesh, case: dict, gov: dict, sim_id: str, part_id: str
                 "safety_factor": sf}
     units = {"von_mises": "MPa", "displacement": "mm", "displacement_magnitude": "mm",
              "s1": "MPa", "s3": "MPa", "safety_factor": ""}
+    extra = s3_channels(job, mesh, frd, sf)  # S3: layer tension, fatigue; sf takes the Z check
+    channels.update({c["name"]: c["values"] for c in extra})
+    units.update({c["name"]: c["units"] for c in extra})
     save_fields(job.root / "fields.npz", mesh, channels, units)
     peak = gov["max_von_mises_mpa"]
     result_glb(job.root / "result.glb", mesh, vm, vmin=0.0, vmax=peak, field_name="von_mises",
@@ -171,4 +213,27 @@ def _outputs(job: FemJob, mesh, case: dict, gov: dict, sim_id: str, part_id: str
                          {"name": "s3", "attribute": "_S3", "units": "MPa", "kind": "scalar",
                           "values": channels["s3"]},
                          {"name": "safety_factor", "attribute": "_SAFETY_FACTOR", "units": "",
-                          "kind": "scalar", "values": sf}])
+                          "kind": "scalar", "values": sf}, *extra])
+
+
+def s3_channels(job: FemJob, mesh, frd: dict, sf: dict[int, float]) -> list[dict]:
+    """Extra result channels: `layer_tension` (stress across the layers, orthotropic) and
+    `fatigue_safety_factor` (with fatigue settings). The safety-factor field `sf` is lowered
+    in place where tension across the layers governs."""
+    m = job.material
+    fat = job.extra.get("fatigue")
+    if not m.orthotropic and fat is None:
+        return []
+    ids, arr, normal = stress_arrays(mesh, frd, m)
+    out = []
+    if normal is not None:
+        out.append({"name": "layer_tension", "attribute": "_LAYER_TENSION", "units": "MPa",
+                    "kind": "scalar", "values": {n: float(normal[i]) for i, n in enumerate(ids)}})
+        for i, n in enumerate(ids):
+            if normal[i] > 0:
+                sf[n] = min(sf.get(n, SF_FIELD_CAP), m.allowable_z_mpa / normal[i])
+    if fat is not None and ids:
+        out.append({"name": "fatigue_safety_factor", "attribute": "_FATIGUE_SAFETY_FACTOR",
+                    "units": "", "kind": "scalar",
+                    "values": node_field(ids, arr, m, fat, layer_normal=normal)})
+    return out
