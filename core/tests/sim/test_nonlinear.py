@@ -386,6 +386,8 @@ async def test_fast_large_deflection_cantilever_follows_the_elastica(tmp_path):
     assert len(r["load_path"]) >= 4 and r["load_path"][-1][0] == pytest.approx(1.0)
     assert "NONLINEAR (large deflection" in out.summary
     assert r["nonlinear"]["validation"][0]["effect"] == "large_deflection"
+    assert r["nonlinear"]["converged"] is True and r["nonlinear"]["load_reached_pct"] == 100
+    assert r["nonlinear"]["large_deflection"] and r["nonlinear"]["contact_pairs"] == 0
 
 
 @needs_ccx

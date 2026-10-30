@@ -205,6 +205,16 @@ async def run_static(job: FemJob, cases: list, *, env: dict | None, sim_id: str,
         for k in ("load_fraction", "converged", "max_plastic_strain",
                   "max_contact_pressure_mpa", "load_path"):
             results[k] = gov.get(k)
+        # the governing case's outcome, also inside the block (the Studies page reads it here)
+        frac = gov.get("load_fraction")
+        results["nonlinear"].update({
+            "converged": gov.get("converged"),
+            "load_reached_pct": None if frac is None else round(100 * frac, 2),
+            "increments_done": gov.get("increments"), "cutbacks": gov.get("cutbacks"),
+            "large_deflection": nonlinear.large_deflection, "plasticity": nonlinear.plasticity,
+            "contact_pairs": len(nonlinear.contacts) + len(nonlinear.rigid_supports),
+            "max_plastic_strain": gov.get("max_plastic_strain"),
+            "max_contact_pressure_mpa": gov.get("max_contact_pressure_mpa")})
     results.update(extras or {})
 
     gi = next(i for i, c in enumerate(fine["cases"]) if c["case"].name == gov["name"])
