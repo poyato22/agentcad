@@ -96,7 +96,7 @@ export const partShownSchema = z.object({
   url: z.string().nullish().transform((v) => v ?? null),
   specs: specList,
   // only a core proxy path is kept, so the card can never pull an image from a page's host
-  image: z.unknown().transform((v) => (isProxyPath(v) ? v : null)),
+  image: z.unknown().optional().transform((v) => (isProxyPath(v) ? v : null)),
   snapshot_id: z.string().nullish().transform((v) => v ?? null),
   catalog_id: z.string().nullish().transform((v) => v ?? null),
 });

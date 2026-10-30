@@ -21,6 +21,7 @@ import { Markup } from "../markup/render";
 import { CopyButton } from "./CopyButton";
 import { RunStatus } from "./RunStatus";
 import { StudyCardSlot } from "./studycard";
+import { PartCardSlot } from "./cards/partcard";
 import { buildUserEdits } from "../../state/partEdits";
 import { editsForRun, weave } from "./userEditLines";
 
@@ -215,6 +216,7 @@ function Activity({ item }: { item: Extract<ThreadItem, { kind: "activity" }> })
         <span class={`text${item.tone === "fail" ? " cv-fail" : " dim"}`} data-activity-text>{item.text}</span>
         {item.hint && <span class="cv-hint faint text">{item.hint}</span>}
         {item.call && <StudyCardSlot call={item.call} />}
+        {item.call && <PartCardSlot call={item.call} />}
         {open && (
           <span class="cv-open">
             {item.diff && <DiffView item={item.diff} />}
