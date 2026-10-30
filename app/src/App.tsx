@@ -17,6 +17,7 @@ import { NewRunDialog } from "./ui/dialogs/NewRunDialog";
 import { LeftPane } from "./ui/left/LeftPane";
 import { activePage, consoleCollapsed, installPageShortcuts, toggleConsole } from "./ui/pages/router";
 import { DirectoryPage } from "./ui/pages/directory";
+import { BomPage } from "./ui/pages/bom";
 import { DrawingPage } from "./ui/pages/drawing";
 import { OnshapePage } from "./ui/pages/onshape";
 import { PrintPage } from "./ui/pages/print";
@@ -38,6 +39,7 @@ function PageRegion(): JSX.Element {
     case "print": return <div class="region region-page" data-region="page"><PrintPage /></div>;
     case "onshape": return <div class="region region-page" data-region="page"><OnshapePage /></div>;
     case "directory": return <div class="region region-page" data-region="page"><DirectoryPage /></div>;
+    case "bom": return <div class="region region-page" data-region="page"><BomPage /></div>;
     default: return (
       <>
         <div class="region region-left" data-region="left"><LeftPane /></div>

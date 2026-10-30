@@ -9,7 +9,7 @@
 import { signal, type Signal } from "@preact/signals";
 import { isTrustedKey, registerShortcut } from "../../lib/keys";
 
-export type Page = "design" | "studies" | "sketch" | "drawing" | "print" | "onshape" | "directory";
+export type Page = "design" | "studies" | "sketch" | "drawing" | "print" | "onshape" | "directory" | "bom";
 
 export interface PageDef {
   id: Page;
@@ -31,6 +31,8 @@ export const PAGES: readonly PageDef[] = [
   // Plan 5 A6
   { id: "onshape", label: "Onshape", title: "Onshape", key: "6" },
   { id: "directory", label: "Parts", title: "Parts directory", key: "7" },
+  // Plan 7 R5 — appended; U2b renumbers after Sketch is removed
+  { id: "bom", label: "Parts list", title: "Parts list", key: "8" },
 ];
 
 export const DEFAULT_PAGE: Page = "design";
