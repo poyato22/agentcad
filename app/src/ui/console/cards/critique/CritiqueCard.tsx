@@ -56,7 +56,11 @@ export function CritiqueCard({ round: r }: { round: CritiqueRound }): JSX.Elemen
   const roundText = r.round !== null ? `Round ${r.round}${r.maxRounds !== null ? ` of ${r.maxRounds}` : ""}` : "Critique";
   const score = r.score !== null ? `score ${r.score.toFixed(2)}${r.threshold !== null ? ` / ${r.threshold.toFixed(2)}` : ""}` : null;
   const counts = [`${r.fixed.length} fixed`, r.open.length ? `${r.open.length} open` : null].filter(Boolean).join(" · ");
-  const canOpen = r.fixed.length > 0 || r.open.length > 0 || r.iou.length > 0 || r.detail !== "";
+  // the core's own title / detail ("Critique round 1/3: …", "2 fixed · 1 open …") repeat what the
+  // card already shows; anything else (a summary of the round) is shown
+  const title = /^critique round \d/i.test(r.title) ? "" : r.title;
+  const detail = /^\d+ fixed\b/i.test(r.detail) ? "" : r.detail;
+  const canOpen = r.fixed.length > 0 || r.open.length > 0 || r.iou.length > 0 || detail !== "";
   return (
     <article class="crit" data-testid="critique-card" data-round={r.round ?? ""} data-open={open ? "true" : "false"} aria-label={`Critique ${roundText.toLowerCase()}`}>
       <button type="button" class="crit-sum" aria-expanded={open} disabled={!canOpen} onClick={() => setOpen(!open)}>
@@ -72,13 +76,13 @@ export function CritiqueCard({ round: r }: { round: CritiqueRound }): JSX.Elemen
             {score && <span class={`crit-score tone-${tone}`} data-testid="critique-score">{score}</span>}
             <span class="dim">{counts}</span>
           </span>
-          {r.title && <span class="crit-what text dim">{r.title}</span>}
+          {title && <span class="crit-what text dim">{title}</span>}
         </span>
         {canOpen && <span class="crit-x faint" aria-hidden="true">{open ? "▾" : "▸"}</span>}
       </button>
       {open && (
         <div class="crit-more" data-testid="critique-details">
-          {r.detail && <p class="text crit-detail">{r.detail}</p>}
+          {detail && <p class="text crit-detail">{detail}</p>}
           {r.fixed.length > 0 && <ul class="crit-issues" aria-label="Fixed this round">{r.fixed.map((i, k) => <Issue key={k} i={i} fixed />)}</ul>}
           {r.open.length > 0 && <ul class="crit-issues" aria-label="Still open">{r.open.map((i, k) => <Issue key={k} i={i} fixed={false} />)}</ul>}
           {r.iou.length > 0 && (

@@ -56,18 +56,22 @@ describe("g4 announcements", () => {
     expect(modesForSpec(spec({ kind: "exploded" })).explode).toBe(1);
     expect(modesForSpec(spec({ kind: "exploded", explode: 0.4 })).explode).toBe(0.4);
     expect(modesForSpec(spec({ kind: "subset", parts: ["pi_fan"] })).isolate).toEqual(["pi_fan"]);
-    expect(spec({ kind: "orbit" }).orbit).toEqual({ duration_s: 6, turns: 1 });
+    expect(spec({ kind: "orbit" }).orbit).toEqual({ duration_s: 12, turns: 1 });
     // G1 sends explode 0 when the agent gave none: an exploded view still goes apart
     expect(modesForSpec(spec({ kind: "exploded", explode: 0 })).explode).toBe(1);
     expect(modesForSpec(spec({ kind: "section", explode: 0, xray_parts: [] })).xray.opacity).toBe(1);
     const all = [{ part_id: "a", project_id: "b1", vars: {}, metrics: {} as never, mtime: 1 }, { part_id: "b", project_id: "b1", vars: {}, metrics: {} as never, mtime: 1 }, { part_id: "c", project_id: "b2", vars: {}, metrics: {} as never, mtime: 1 }];
-    expect(partsForSpec(spec({ kind: "subset", parts: ["b"] }), all)).toEqual(["a", "b"]);
+    expect(partsForSpec(spec({ kind: "subset", parts: ["b"] }), all)).toEqual(["b", "a"]);
+    expect(modesForSpec(spec({ kind: "subset", parts: ["b"] }), all).isolate).toEqual(["b"]);
     expect(partsForSpec(spec({ kind: "orbit" }), all)).toEqual(["a", "b"]);
     expect(partsForSpec(parseViewSpec({ kind: "orbit", target: { part_id: "c" } })!, all)).toEqual(["c"]);
-    // ghost: false shows the subset alone
-    const alone = spec({ kind: "subset", parts: ["b"], ghost: false });
+    // an empty ghost list shows the subset alone; a listed ghost is drawn around a part view too
+    const alone = spec({ kind: "subset", parts: ["b"], ghost: [] });
     expect(partsForSpec(alone, all)).toEqual(["b"]);
-    expect(modesForSpec(alone).isolate).toBeNull();
+    expect(modesForSpec(alone, all).isolate).toBeNull();
+    const around = parseViewSpec({ kind: "orbit", target: { kind: "part", id: "c", part_id: "c", parts: ["c"], ghost: ["a"] } })!;
+    expect(partsForSpec(around, all)).toEqual(["c", "a"]);
+    expect(modesForSpec(around, all).isolate).toEqual(["c"]);
   });
 
   // The shared contract (fix round 1): a stored step, the fields under `ref`, issues split,
@@ -82,10 +86,13 @@ describe("g4 announcements", () => {
     expect(crit.round).toMatchObject({ round: 2, threshold: 0.8, done: true, parts: ["wing"], before: { id: "cr_c1_iso" }, after: { id: "cr_c2_iso" } });
     expect(crit.round.fixed).toHaveLength(1);
     const view = g4Announcement(step({ agent_announce: { run_id: "r1", kind: "view_presented", title: "", detail: "", ref: {
-      view_spec: { kind: "subset", target: { project_id: "b1" }, ghost: true, parts: ["fan"], caption: "x" }, thumbnail: "pv_c3_iso",
+      view_spec: { kind: "subset", target: { kind: "project", id: "b1", project_id: "b1", parts: ["fan"], ghost: ["case"] },
+        is_project: true, parts: ["fan"], ghost: ["case"], xray_parts: [], explode: 0, camera: "auto", orbit: null, caption: "x", thumbnail_id: "pv_c3_iso" },
+      thumbnail_id: "pv_c3_iso", project_id: "b1",
     } } }));
     if (view?.kind !== "view_presented") throw new Error("no card");
     expect(view.view.spec.target).toEqual({ part_id: null, project_id: "b1" });
+    expect(view.view.spec.ghost).toEqual(["case"]);
     expect(view.view.thumbnail).toEqual({ id: "pv_c3_iso" });
   });
 

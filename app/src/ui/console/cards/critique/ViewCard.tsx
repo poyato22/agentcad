@@ -25,7 +25,7 @@ export const CLAIM_MS = 150;
 /** The live stage of a card: modes from the spec, the explode gliding in once loaded. */
 export function SpecStage({ view, playing, onSnapshot, deps, class: cls }: { view: PresentedView; playing: boolean; onSnapshot?(u: string): void; deps?: ViewCardDeps; class?: string }): JSX.Element {
   const [host, setHost] = useState<ModeHost | null>(null);
-  const target = modesForSpec(view.spec);
+  const target = modesForSpec(view.spec, parts.value);
   const [modes, setModes] = useState(() => ({ ...target, explode: 0 }));
   const animate = useRef(false);
   useModesController(host, modes, animate);

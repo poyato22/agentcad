@@ -52,8 +52,8 @@
     "agent_announce": {
      "run_id": "c4e1a9b07d21",
      "kind": "critique_round",
-     "title": "Lifted the board off the floor, moved the fan to the vent wall",
-     "detail": "",
+     "title": "Critique round 1/3: score 0.41 \u2014 needs fixes",
+     "detail": "0 fixed \u00b7 3 open (2 high)",
      "ref": {
       "parts": [
        "pi_case",
@@ -62,22 +62,14 @@
        "pi_fan",
        "pi_lid"
       ],
+      "part_id": null,
+      "project_id": "466a0d9d96a8",
       "round": 1,
       "max_rounds": 3,
       "mode": "vision_model",
-      "score": 0.62,
+      "score": 0.41,
       "threshold": 0.8,
-      "done": false,
-      "stop_reason": null,
-      "iou": null,
-      "image_tokens": 1180,
-      "before": {
-       "iso": "crit_r1_before"
-      },
-      "after": {
-       "iso": "crit_r1_after"
-      },
-      "issues_fixed": [
+      "issues_open": [
        {
         "view": "section",
         "issue": "The board sat on the case floor with no standoffs",
@@ -89,16 +81,27 @@
         "issue": "The fan faced the lid, not the vent slots",
         "severity": "high",
         "suggested_fix": "turn it to blow through the side wall"
-       }
-      ],
-      "issues_open": [
+       },
        {
         "view": "top",
         "issue": "Battery is 1 mm from the fan hub",
         "severity": "medium",
         "suggested_fix": "slide it 3 mm toward -X"
        }
-      ]
+      ],
+      "issues_fixed": [],
+      "iou": null,
+      "done": false,
+      "stop_reason": null,
+      "before": {
+       "iso": "crit_r1_before"
+      },
+      "after": {
+       "iso": "crit_r1_after"
+      },
+      "before_image_id": "crit_r1_before",
+      "after_image_id": "crit_r1_after",
+      "image_tokens": 1180
      }
     }
    },
@@ -115,8 +118,8 @@
     "agent_announce": {
      "run_id": "c4e1a9b07d21",
      "kind": "critique_round",
-     "title": "Cleared the fan; every gap is at least 2 mm",
-     "detail": "",
+     "title": "Critique round 2/3: score 0.88 \u2014 matches",
+     "detail": "3 fixed \u00b7 0 open (0 high)",
      "ref": {
       "parts": [
        "pi_case",
@@ -125,34 +128,50 @@
        "pi_fan",
        "pi_lid"
       ],
+      "part_id": null,
+      "project_id": "466a0d9d96a8",
       "round": 2,
       "max_rounds": 3,
       "mode": "vision_model",
       "score": 0.88,
       "threshold": 0.8,
+      "issues_open": [],
+      "issues_fixed": [
+       {
+        "view": "section",
+        "issue": "The board sat on the case floor with no standoffs",
+        "severity": "high",
+        "suggested_fix": "raise it 4 mm on standoffs"
+       },
+       {
+        "view": "front",
+        "issue": "The fan faced the lid, not the vent slots",
+        "severity": "high",
+        "suggested_fix": "turn it to blow through the side wall"
+       },
+       {
+        "view": "top",
+        "issue": "Battery is 1 mm from the fan hub",
+        "severity": "medium",
+        "suggested_fix": "slide it 3 mm toward -X"
+       }
+      ],
+      "iou": {
+       "front": 0.93,
+       "top": 0.89,
+       "side": 0.84
+      },
       "done": true,
       "stop_reason": "score_threshold",
-      "image_tokens": 2360,
       "before": {
        "iso": "crit_r1_after"
       },
       "after": {
        "iso": "crit_r2_after"
       },
-      "issues_fixed": [
-       {
-        "view": "top",
-        "issue": "Battery is 1 mm from the fan hub",
-        "severity": "medium",
-        "suggested_fix": "slid it 3 mm toward -X"
-       }
-      ],
-      "issues_open": [],
-      "iou": {
-       "front": 0.93,
-       "top": 0.89,
-       "side": 0.84
-      }
+      "before_image_id": "crit_r1_after",
+      "after_image_id": "crit_r2_after",
+      "image_tokens": 2360
      }
     }
    },
@@ -169,22 +188,46 @@
     "agent_announce": {
      "run_id": "c4e1a9b07d21",
      "kind": "view_presented",
-     "title": "Presented an orbit",
-     "detail": "",
+     "title": "Orbit view of 5 part(s) of the build",
+     "detail": "The whole case: vents on the fan side, lid on top.",
      "ref": {
       "view_spec": {
        "kind": "orbit",
        "target": {
-        "project_id": "466a0d9d96a8"
+        "kind": "project",
+        "id": "466a0d9d96a8",
+        "project_id": "466a0d9d96a8",
+        "parts": [
+         "pi_case",
+         "pi_board",
+         "pi_battery",
+         "pi_fan",
+         "pi_lid"
+        ],
+        "ghost": []
        },
+       "is_project": true,
+       "parts": [
+        "pi_case",
+        "pi_board",
+        "pi_battery",
+        "pi_fan",
+        "pi_lid"
+       ],
+       "ghost": [],
+       "section": null,
+       "xray_parts": [],
+       "explode": 0.0,
        "camera": "auto",
        "orbit": {
-        "duration_s": 10,
-        "turns": 1
+        "duration_s": 10.0,
+        "turns": 1.0
        },
-       "caption": "The whole case: vents on the fan side, lid on top."
+       "caption": "The whole case: vents on the fan side, lid on top.",
+       "thumbnail_id": "view_case_iso"
       },
-      "thumbnail": "view_case_iso"
+      "thumbnail_id": "view_case_iso",
+      "project_id": "466a0d9d96a8"
      }
     }
    },
@@ -201,25 +244,50 @@
     "agent_announce": {
      "run_id": "c4e1a9b07d21",
      "kind": "view_presented",
-     "title": "Presented the inside",
-     "detail": "",
+     "title": "X-ray view of 5 part(s) of the build",
+     "detail": "Through the walls: board on standoffs, battery beside it, fan at the vents.",
      "ref": {
       "view_spec": {
        "kind": "internal",
        "target": {
-        "project_id": "466a0d9d96a8"
+        "kind": "project",
+        "id": "466a0d9d96a8",
+        "project_id": "466a0d9d96a8",
+        "parts": [
+         "pi_case",
+         "pi_board",
+         "pi_battery",
+         "pi_fan",
+         "pi_lid"
+        ],
+        "ghost": []
        },
+       "is_project": true,
+       "parts": [
+        "pi_case",
+        "pi_board",
+        "pi_battery",
+        "pi_fan",
+        "pi_lid"
+       ],
+       "ghost": [],
+       "section": null,
        "xray_parts": [
         "pi_case",
         "pi_lid"
        ],
+       "explode": 0.0,
        "camera": {
-        "azimuth": 35,
-        "elevation": 30,
-        "distance": 260
+        "azimuth": 35.0,
+        "elevation": 30.0,
+        "distance": 260.0
        },
-       "caption": "Through the walls: board on standoffs, battery beside it, fan at the vents."
-      }
+       "orbit": null,
+       "caption": "Through the walls: board on standoffs, battery beside it, fan at the vents.",
+       "thumbnail_id": null
+      },
+      "thumbnail_id": null,
+      "project_id": "466a0d9d96a8"
      }
     }
    },
@@ -236,33 +304,58 @@
     "agent_announce": {
      "run_id": "c4e1a9b07d21",
      "kind": "view_presented",
-     "title": "Presented a section",
-     "detail": "",
+     "title": "Section view of 5 part(s) of the build",
+     "detail": "Cut through the middle: 2 mm walls, 4 mm under the board.",
      "ref": {
       "view_spec": {
        "kind": "section",
        "target": {
-        "project_id": "466a0d9d96a8"
+        "kind": "project",
+        "id": "466a0d9d96a8",
+        "project_id": "466a0d9d96a8",
+        "parts": [
+         "pi_case",
+         "pi_board",
+         "pi_battery",
+         "pi_fan",
+         "pi_lid"
+        ],
+        "ghost": []
        },
+       "is_project": true,
+       "parts": [
+        "pi_case",
+        "pi_board",
+        "pi_battery",
+        "pi_fan",
+        "pi_lid"
+       ],
+       "ghost": [],
        "section": {
         "origin": [
-         0,
-         0,
-         0
+         0.0,
+         0.0,
+         0.0
         ],
         "normal": [
-         0,
-         -1,
-         0
+         0.0,
+         -1.0,
+         0.0
         ]
        },
+       "xray_parts": [],
+       "explode": 0.0,
        "camera": {
-        "azimuth": 0,
-        "elevation": 12,
-        "distance": 240
+        "azimuth": 0.0,
+        "elevation": 12.0,
+        "distance": 240.0
        },
-       "caption": "Cut through the middle: 2 mm walls, 4 mm under the board."
-      }
+       "orbit": null,
+       "caption": "Cut through the middle: 2 mm walls, 4 mm under the board.",
+       "thumbnail_id": null
+      },
+      "thumbnail_id": null,
+      "project_id": "466a0d9d96a8"
      }
     }
    },
@@ -279,17 +372,43 @@
     "agent_announce": {
      "run_id": "c4e1a9b07d21",
      "kind": "view_presented",
-     "title": "Presented an exploded view",
-     "detail": "",
+     "title": "Exploded view of 5 part(s) of the build",
+     "detail": "Taken apart in assembly order.",
      "ref": {
       "view_spec": {
        "kind": "exploded",
        "target": {
-        "project_id": "466a0d9d96a8"
+        "kind": "project",
+        "id": "466a0d9d96a8",
+        "project_id": "466a0d9d96a8",
+        "parts": [
+         "pi_case",
+         "pi_board",
+         "pi_battery",
+         "pi_fan",
+         "pi_lid"
+        ],
+        "ghost": []
        },
-       "explode": 1,
-       "caption": "Taken apart in assembly order."
-      }
+       "is_project": true,
+       "parts": [
+        "pi_case",
+        "pi_board",
+        "pi_battery",
+        "pi_fan",
+        "pi_lid"
+       ],
+       "ghost": [],
+       "section": null,
+       "xray_parts": [],
+       "explode": 1.0,
+       "camera": "auto",
+       "orbit": null,
+       "caption": "Taken apart in assembly order.",
+       "thumbnail_id": null
+      },
+      "thumbnail_id": null,
+      "project_id": "466a0d9d96a8"
      }
     }
    },
@@ -306,21 +425,45 @@
     "agent_announce": {
      "run_id": "c4e1a9b07d21",
      "kind": "view_presented",
-     "title": "Presented the fan and battery",
-     "detail": "",
+     "title": "Subset view of 2 part(s) of the build",
+     "detail": "Fan and battery: 3 mm apart, airflow clear.",
      "ref": {
       "view_spec": {
        "kind": "subset",
        "target": {
-        "project_id": "466a0d9d96a8"
+        "kind": "project",
+        "id": "466a0d9d96a8",
+        "project_id": "466a0d9d96a8",
+        "parts": [
+         "pi_fan",
+         "pi_battery"
+        ],
+        "ghost": [
+         "pi_case",
+         "pi_board",
+         "pi_lid"
+        ]
        },
+       "is_project": true,
        "parts": [
         "pi_fan",
         "pi_battery"
        ],
-       "ghost": true,
-       "caption": "Fan and battery: 3 mm apart, airflow clear."
-      }
+       "ghost": [
+        "pi_case",
+        "pi_board",
+        "pi_lid"
+       ],
+       "section": null,
+       "xray_parts": [],
+       "explode": 0.0,
+       "camera": "auto",
+       "orbit": null,
+       "caption": "Fan and battery: 3 mm apart, airflow clear.",
+       "thumbnail_id": null
+      },
+      "thumbnail_id": null,
+      "project_id": "466a0d9d96a8"
      }
     }
    },

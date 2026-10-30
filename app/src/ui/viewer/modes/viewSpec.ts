@@ -2,15 +2,18 @@
 // present_view tool validated it. Parsed defensively (anything malformed is dropped, never thrown)
 // and turned into the modes, camera and orbit a live view renders.
 //
-//   {target: {part_id} | {project_id}, ghost?: bool, kind: "orbit"|"internal"|"section"|"exploded"|"subset",
-//    parts?: [part_id], section?: {origin, normal}, xray_parts?: [part_id], explode?: 0..1,
-//    camera?: {azimuth, elevation, distance} | "auto", orbit?: {duration_s, turns}, caption}
+//   {kind: "orbit"|"internal"|"section"|"exploded"|"subset",
+//    target: {kind: "part"|"project", id, part_id | project_id, parts: [shown], ghost: [ghosted]},
+//    parts: [shown], ghost: [ghosted], section?: {origin, normal}, xray_parts?: [part_id],
+//    explode?: 0..1, camera?: {azimuth, elevation, distance} | "auto", orbit?: {duration_s, turns},
+//    caption, thumbnail_id}
 //
-// G1's first cut sent `target` as a string with `is_project`; that is read too.
+// (G1's present_view, fix round 1.) Its first cut sent `target` as a bare string with
+// `is_project`; that is read too, and a subset with no ghost list ghosts the rest of its build.
 // Fields apply whatever the kind (a section view may also X-ray a part); the kind picks the
 // defaults: an internal view with no xray_parts X-rays everything, an exploded view with no
-// amount explodes fully, a subset isolates `parts` and (unless `ghost` is false) shows the rest of
-// its build as faint ghosts. Camera azimuth runs from -Y toward +X, elevation up from XY (Z up).
+// amount explodes fully. Ghosted parts are drawn faintly around the shown ones for context.
+// Camera azimuth runs from -Y toward +X, elevation up from XY (Z up), as G1 documents it.
 import type { PartSummary } from "../../../api/types";
 import { MODES_OFF, XRAY_OPACITY, type ModesState, type Vec3 } from "./state";
 
@@ -29,14 +32,15 @@ export interface ViewSpec {
   camera: ViewCamera | "auto";
   orbit: { duration_s: number; turns: number } | null;
   caption: string;
-  /** A subset shows the rest of its build as ghosts (default) or alone. */
-  ghost: boolean;
+  /** Parts drawn faintly around the shown ones: these ids, or "build" (the rest of the target's
+   *  build: a subset that named none). */
+  ghost: string[] | "build";
 }
 
-/** G1's present_view allows 400 characters. */
+/** G1's present_view allows 200 characters; a little room for a looser core. */
 const CAPTION_CHARS = 400;
 /** G1's OrbitSpec default. */
-const ORBIT_S = 6;
+const ORBIT_S = 12;
 const ID_RE = /^[A-Za-z0-9_.:-]{1,128}$/;
 
 function rec(v: unknown): Record<string, unknown> | null { return typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null; }
@@ -60,12 +64,15 @@ export function parseViewSpec(raw: unknown): ViewSpec | null {
   if (!kind) return null;
   const t = rec(r.target);
   const flat = typeof r.target === "string" ? id(r.target) : null;
-  const flatIsProject = r.is_project === true;
+  const isProject = t ? t.kind === "project" || (t.kind === undefined && t.project_id !== undefined) : r.is_project === true;
+  const tid = id(t?.id) ?? flat;
   const target = {
-    part_id: id(t?.part_id) ?? (flat && !flatIsProject ? flat : null),
-    project_id: id(t?.project_id) ?? (flat && flatIsProject ? flat : null),
+    part_id: id(t?.part_id) ?? (tid && !isProject ? tid : null),
+    project_id: id(t?.project_id) ?? (tid && isProject ? tid : null),
   };
   const ghostRaw = r.ghost ?? t?.ghost;
+  const ghost: string[] | "build" = Array.isArray(ghostRaw) ? ids(ghostRaw) ?? []
+    : ghostRaw === false ? [] : ghostRaw === true || kind === "subset" ? "build" : [];
   const s = rec(r.section);
   const origin = vec(s?.origin);
   const normal = vec(s?.normal);
@@ -80,24 +87,36 @@ export function parseViewSpec(raw: unknown): ViewSpec | null {
   const ex = num(r.explode);
   const caption = typeof r.caption === "string" ? r.caption.replace(/\s+/g, " ").trim().slice(0, CAPTION_CHARS) : "";
   return {
-    kind, target, parts: ids(r.parts), section, xray_parts: ids(r.xray_parts),
+    kind, target, parts: ids(r.parts) ?? ids(t?.parts), section, xray_parts: ids(r.xray_parts),
     explode: ex === null ? null : Math.min(1, Math.max(0, ex)), camera, orbit, caption,
-    ghost: ghostRaw !== false,
+    ghost,
   };
 }
 
-/** The parts a view shows: the named subset's build (ghosted context) or `parts`, else the target. */
-export function partsForSpec(s: ViewSpec, all: readonly PartSummary[]): string[] {
-  const inBuild = s.target.project_id
+function inBuild(s: ViewSpec, all: readonly PartSummary[]): string[] {
+  return s.target.project_id
     ? all.filter((p) => p.project_id === s.target.project_id && p.metrics !== null && (p.kind ?? "part") === "part").map((p) => p.part_id)
     : [];
-  if (s.kind === "subset" && s.ghost && inBuild.length) return [...new Set([...inBuild, ...(s.parts ?? [])])];
-  if (s.parts) return s.parts;
-  if (s.target.part_id) return [s.target.part_id];
-  return inBuild;
 }
 
-export function modesForSpec(s: ViewSpec): ModesState {
+/** The parts shown at full strength: `parts`, else the target part, else the whole build. */
+export function shownForSpec(s: ViewSpec, all: readonly PartSummary[]): string[] {
+  return s.parts ?? (s.target.part_id ? [s.target.part_id] : inBuild(s, all));
+}
+
+/** The ghosted context around them. */
+export function ghostsForSpec(s: ViewSpec, all: readonly PartSummary[]): string[] {
+  const shown = new Set(shownForSpec(s, all));
+  return (s.ghost === "build" ? inBuild(s, all) : s.ghost).filter((p) => !shown.has(p));
+}
+
+/** Every part the view loads: the shown ones, then the ghosts. */
+export function partsForSpec(s: ViewSpec, all: readonly PartSummary[]): string[] {
+  return [...new Set([...shownForSpec(s, all), ...ghostsForSpec(s, all)])];
+}
+
+export function modesForSpec(s: ViewSpec, all: readonly PartSummary[] = []): ModesState {
+  const ghosts = ghostsForSpec(s, all);
   const xrayParts = s.xray_parts ?? (s.kind === "internal" ? null : undefined);
   return {
     xray: xrayParts === undefined ? MODES_OFF.xray : { opacity: XRAY_OPACITY, parts: xrayParts },
@@ -106,7 +125,9 @@ export function modesForSpec(s: ViewSpec): ModesState {
       : s.kind === "section" ? { on: true, normal: [1, 0, 0], at: null } : MODES_OFF.section,
     // an exploded view with no amount (or 0) goes fully apart; other kinds only when asked
     explode: s.kind === "exploded" ? (s.explode || 1) : s.explode ?? 0,
-    isolate: s.kind === "subset" && s.parts && s.ghost ? s.parts : null,
+    // ghosts at all: the shown parts are the isolated set (a subset names its parts; with no
+    // build at hand its ghosts are not known yet, so it still isolates)
+    isolate: ghosts.length || (s.kind === "subset" && s.ghost === "build") ? shownForSpec(s, all) : null,
   };
 }
 

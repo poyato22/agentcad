@@ -143,7 +143,7 @@ describe("ViewCard", () => {
   it("subset: the named parts stay solid, the rest are ghosts", async () => {
     const { scene } = await renderOne({ kind: "subset", parts: ["pi_board"] });
     await waitFor(() => {
-      const [a, b] = sceneParts(scene());
+      const [b, a] = sceneParts(scene());   // the shown part first, then its ghosted context
       expect(faceMaterials(a).every((m) => m.opacity < 0.2)).toBe(true);
       expect(faceMaterials(b).every((m) => m.opacity === 1)).toBe(true);
     });

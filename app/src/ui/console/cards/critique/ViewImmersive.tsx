@@ -12,7 +12,7 @@ import { LiveView } from "../../../viewer/modes/LiveView";
 import { prefersReducedMotion } from "../../../viewer/modes/motion";
 import type { ModesState } from "../../../viewer/modes/state";
 import { ViewModes } from "../../../viewer/modes/ViewModes";
-import { modesForSpec, partsForSpec, VIEW_KIND_TEXT } from "../../../viewer/modes/viewSpec";
+import { ghostsForSpec, modesForSpec, partsForSpec, VIEW_KIND_TEXT } from "../../../viewer/modes/viewSpec";
 import type { ModeHost } from "../../../viewer/scene";
 import "../../../pages/studies/immersive/immersive.css";
 import type { PresentedView } from "./announce";
@@ -72,12 +72,13 @@ function ViewImmersive({ view, index, count, deps }: { view: PresentedView; inde
 }
 
 function ImmersiveStage({ view, agent, deps }: { view: PresentedView; agent: string | null; deps?: ViewCardDeps }): JSX.Element {
-  const target = modesForSpec(view.spec);
+  const target = modesForSpec(view.spec, parts.value);
   const [host, setHost] = useState<ModeHost | null>(null);
   const [modes, setModes] = useState<ModesState>(() => ({ ...target, explode: 0 }));
   const animate = useRef(false);
   const [play, setPlay] = useState(!prefersReducedMotion());
   const ids = partsForSpec(view.spec, parts.value);
+  const ghosts = ghostsForSpec(view.spec, parts.value);
   return (
     <div class="imm-body">
       <div class="imm-stage vimm-stage">
@@ -101,7 +102,7 @@ function ImmersiveStage({ view, agent, deps }: { view: PresentedView; agent: str
           <h2 class="label">Parts</h2>
           <ul class="vimm-parts">
             {ids.map((id) => (
-              <li key={id} class="text" data-ghost={view.spec.kind === "subset" && view.spec.parts && !view.spec.parts.includes(id) ? "" : undefined}>{partLabel(id)}</li>
+              <li key={id} class="text" data-ghost={ghosts.includes(id) ? "" : undefined}>{partLabel(id)}{ghosts.includes(id) ? " (context)" : ""}</li>
             ))}
           </ul>
         </section>
