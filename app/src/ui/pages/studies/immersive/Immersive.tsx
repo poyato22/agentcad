@@ -13,6 +13,7 @@ import { setConsoleCollapsed } from "../../router";
 import { Button } from "../../../common/Button";
 import { Led } from "../../../common/Led";
 import { useFocusTrap } from "../../../common/focusTrap";
+import { Markup } from "../../../markup/render";
 import { CheckRows, PhaseBar } from "../../../console/studycard/StudyCard";
 import { StudyChart } from "../charts/StudyChart";
 import { studyData, type StudyData } from "../data";
@@ -173,7 +174,10 @@ function Immersive({ target, deps }: { target: ImmersiveTarget; deps: ImmersiveD
           {(agent || reason) && (
             <section class="imm-sec" data-testid="imm-why">
               <h2 class="label">Why</h2>
-              <p class="text">{agent ? <b>{agent}</b> : null}{agent && reason ? ": " : ""}{reason}</p>
+              <div class="text imm-why" data-agent-text>
+                {agent ? <b>{agent}</b> : null}{agent && reason ? ": " : ""}
+                {reason && <Markup source={reason} collapsible={false} />}
+              </div>
             </section>
           )}
           {card?.notes.map((n, i) => <p key={i} class="faint text">{n}</p>)}

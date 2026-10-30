@@ -141,6 +141,19 @@ describe("spec card", () => {
     expect(container.querySelector("[data-tally]")!.textContent).toBe("2 pass · 4 not checked");
   });
 
+  it("an agent-written goal renders as Mises markup, not literal asterisks (M-5)", async () => {
+    await start({ spec: "fixture" });
+    const c = new SpecController(() => client);
+    await c.load();
+    const spec = { ...c.spec.value!, goal: "A **light** plate for [[part:mount_plate|the mount]] <script>x</script>" };
+    const { container } = render(<SpecCard spec={spec} check={null} updatedAt={null} onSave={(s, b) => c.save(s, b)} />);
+    const goal = container.querySelector(".sp-goal") as HTMLElement;
+    expect(goal.querySelector("strong")!.textContent).toBe("light");
+    expect(goal.textContent).not.toContain("**");
+    expect(goal.textContent).not.toContain("[[part:");
+    expect(goal.querySelector("script")).toBeNull();
+  });
+
   it("edit round trip: the PUT carries the user's edit and the card shows it", async () => {
     await start({ spec: "fixture" });
     const c = new SpecController(() => client);

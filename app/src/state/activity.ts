@@ -1,6 +1,7 @@
 // Live per-run agent activity, fed by the `agent_activity` event (Plan 5 contract). The top-bar
 // activity pill and (Task A2) the agent manager read `activityByRun` / `activitySummary`. A run drops
-// out of the map once it goes idle or done, so "working" counts only runs actually doing something.
+// out of the map once it is done; an idle run (its turn ended, waiting for your next message) stays
+// so the manager can say "idle", but only working / waiting states are counted.
 import { computed, signal, type ReadonlySignal, type Signal } from "@preact/signals";
 import { onCoreEvent } from "../api/events";
 import { ACTIVITY_STATES, type ActivityState, type AgentActivity, type MisesEvent } from "../api/types";
@@ -38,8 +39,9 @@ export function recordActivity(ev: MisesEvent): void {
   const a = parseActivity(ev);
   if (!a) return;
   const m = new Map(activityByRun.value);
-  // "idle"/"done" mean the run is no longer active; drop it rather than show a stale state.
-  if (a.state === "idle" || a.state === "done") m.delete(a.run_id);
+  // "done" means the run is no longer active; drop it rather than show a stale state. "idle" is
+  // kept (the manager shows it; the thread status line and the pill ignore it).
+  if (a.state === "done") m.delete(a.run_id);
   else m.set(a.run_id, a);
   activityByRun.value = m;
 }

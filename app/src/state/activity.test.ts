@@ -27,12 +27,27 @@ describe("recordActivity + summary", () => {
     expect(activitySummary.value).toMatchObject({ working: 2, thinking: 1, label: "2 working · 1 thinking" });
   });
 
-  it("drops a run when it goes idle or done", () => {
+  it("drops a run when it is done", () => {
     recordActivity(act("r1", "writing"));
     expect(activityByRun.value.has("r1")).toBe(true);
     recordActivity(act("r1", "done"));
     expect(activityByRun.value.has("r1")).toBe(false);
     expect(activitySummary.value.label).toBeNull();
+  });
+
+  it("keeps an idle run (the manager says idle) but never counts it as working or waiting", () => {
+    recordActivity(act("r1", "tool"));
+    recordActivity(act("r1", "idle"));
+    expect(activityByRun.value.get("r1")?.state).toBe("idle");
+    expect(activitySummary.value).toMatchObject({ working: 0, waiting: 0, label: null });
+  });
+
+  it("a waiting state ends when the run works on (waiting_approval → tool)", () => {
+    recordActivity(act("r1", "waiting_approval"));
+    recordActivity(act("r2", "waiting_user"));
+    expect(activitySummary.value).toMatchObject({ waiting: 2, label: "2 waiting" });
+    recordActivity(act("r1", "tool"));
+    expect(activitySummary.value).toMatchObject({ working: 1, waiting: 1, label: "1 working" });
   });
 
   it("labels waiting runs when nothing is working", () => {

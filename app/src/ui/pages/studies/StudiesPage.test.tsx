@@ -14,6 +14,7 @@ import type { PartSummary } from "../../../api/types";
 import { actions, parts, resetStore } from "../../../state/store";
 import { StudiesController, type StudiesClient } from "./controller";
 import { resetStudiesPage, StudiesPage } from "./index";
+import { TYPE_ORDER } from "./model";
 
 const DIR = resolve(import.meta.dirname, "../../../../../core/tests/fixtures/ui");
 const read = (n: string): unknown => JSON.parse(readFileSync(resolve(DIR, n), "utf8"));
@@ -84,6 +85,26 @@ describe("Studies page", () => {
     expect(speed.textContent).toMatch(/> 0, ≤ 150/);
     expect(document.querySelector(".sf-adv")?.textContent).toMatch(/Refinement|Iterations|Memory budget/);
     expect(screen.getByTestId("type-doc").textContent).toMatch(/low fidelity/);
+  });
+
+  it("the type tablist has roving focus: one Tab stop, ←/→ and Home/End move and select (M-9)", async () => {
+    mount();
+    await settle();
+    fireEvent.click(screen.getByTestId(`type-${TYPE_ORDER[0]}`));
+    await settle();
+    const tabs = TYPE_ORDER.map((t) => screen.getByTestId(`type-${t}`));
+    expect(tabs.map((b) => b.tabIndex)).toEqual(TYPE_ORDER.map((_, i) => (i === 0 ? 0 : -1)));
+    fireEvent.keyDown(tabs[0], { key: "ArrowRight" });
+    await settle();
+    expect(screen.getByTestId(`type-${TYPE_ORDER[1]}`).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByTestId(`type-${TYPE_ORDER[1]}`).tabIndex).toBe(0);
+    fireEvent.keyDown(tabs[1], { key: "ArrowLeft" });
+    fireEvent.keyDown(tabs[0], { key: "ArrowLeft" });     // wraps to the last
+    await settle();
+    expect(screen.getByTestId(`type-${TYPE_ORDER.at(-1)!}`).getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(tabs[0], { key: "Home" });
+    await settle();
+    expect(screen.getByTestId(`type-${TYPE_ORDER[0]}`).getAttribute("aria-selected")).toBe("true");
   });
 
   it("static: the load-case list adds, selects and reorders cases; faces offer the part's face ids", async () => {

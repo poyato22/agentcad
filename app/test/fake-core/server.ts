@@ -369,7 +369,22 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     if (extras.glb) state.glb = { ...state.glb, ...extras.glb };
     applyEvent(ev);
     broadcast(ev);
+    // like the core's activity tracker (final fix wave): a pending approval or question puts the
+    // run in waiting_approval / waiting_user until it is decided or answered
+    if (ev.run_id && (ev.type === "approval_requested" || ev.type === "question_asked")) {
+      const st = ev.type === "approval_requested" ? "waiting_approval" : "waiting_user";
+      emit({ type: "agent_activity", run_id: ev.run_id, data: { run_id: ev.run_id, state: st, detail: "", since: now() } });
+    }
     return { step_ids: ids };
+  }
+
+  /** The run worked on after you decided or answered (it was waiting on you): back to thinking. */
+  function resumeActivity(runId: string | null) {
+    if (!runId) return;
+    const last = lastActivity.get(runId) as { state?: string } | undefined;
+    if (last?.state !== "waiting_approval" && last?.state !== "waiting_user") return;
+    if (state.runs.get(runId)?.status !== "running") return;
+    emit({ type: "agent_activity", run_id: runId, data: { run_id: runId, state: "thinking", detail: "", since: now() } });
   }
 
   function cancelRun(id: string) {
@@ -676,6 +691,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         const edited = approve && b.edited_payload && typeof b.edited_payload === "object" ? (b.edited_payload as Record<string, unknown>) : null;
         const decided: Approval = { ...a, status: approve ? "approved" : "rejected", decided_by: DECIDED_BY, decided_at: now(), edited_payload: edited };
         state.approvals.set(a.id, decided);
+        resumeActivity(a.run_id);
         play(approve ? state.on.decide : state.on.decide_reject, a.run_id);
         return decided;
       },
@@ -686,6 +702,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         if (!state.questions.has(m[1])) throw mises("not_found", `no open question: ${m[1]}`);
         const q = state.questions.get(m[1]) as Question;
         emit({ type: "question_answered", run_id: q.run_id, data: { question_id: q.question_id } });
+        resumeActivity(q.run_id);
         return { ok: true };
       },
     },

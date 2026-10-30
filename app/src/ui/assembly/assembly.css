@@ -4,8 +4,8 @@
 .asm { display: grid; grid-template-columns: minmax(0, 1fr) 288px; height: 100%; min-height: 0; }
 .asm-sheet { min-width: 0; }
 
-/* under the FIG label, clear of the tool strip on the right at any sheet width */
-.mode-switch { position: absolute; left: 22px; top: 36px; display: flex; z-index: 2; }
+/* the sheet corner (FIG label below); in the Design viewer it sits in .vp-corner after Model | Code */
+.mode-switch { position: absolute; left: 22px; top: 14px; display: flex; z-index: 2; }
 .mode-switch .vt-btn:focus-visible, .viewer-tools .vt-btn:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; z-index: 1; }
 
 .asm-hint {
