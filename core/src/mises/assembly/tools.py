@@ -224,7 +224,10 @@ class CheckArgs(ProjectArgs):
         "and every position is checked.")
 
 
-@tool("assembly_check", safety=SafetyClass.READ, scope_arg="project_id",
+SWEEP_TIMEOUT_S = 240.0        # one worker for the whole sweep; the tool's own cap is above it
+
+
+@tool("assembly_check", safety=SafetyClass.READ, scope_arg="project_id", timeout_s=300,
       description="Check the assembly: interfering instance pairs (OCCT common volume), the "
                   "degrees of freedom left, and over-constraint: groups of 2+ fixed instances "
                   "linked by a joint path (a fixed instance never moves, so the joint closing "
@@ -260,29 +263,49 @@ async def _check_sweep(ctx: ToolContext, pid: str, sweep: SweepArgs) -> ToolOutp
     joint = _joint_or_404(asm, sweep.joint_id)
     start = joint.value if sweep.from_ is None else sweep.from_
     resolver = face_resolver(_parts_root(ctx))
-    positions = []
+    values, poses = [], []
     for k in range(sweep.steps):
         value = motion.clamp_value(motion.lerp(start, sweep.to, k / (sweep.steps - 1)),
                                    joint.limits)
-        posed = motion.with_values(asm, {joint.id: value})
-        res = solve(posed, resolve_face=resolver)
-        try:
-            geo = await run_geometry(_parts_root(ctx), posed, res, want="interference")
-            hits = geo.interferences
-        except MisesError as e:
-            if e.code != ErrorCode.NOT_FOUND:
-                raise
+        res = solve(motion.with_values(asm, {joint.id: value}), resolve_face=resolver)
+        values.append(value)
+        poses.append(res.transforms)
+    # ONE sandboxed worker for every position (each STEP read once), inside the tool timeout
+    try:
+        geo = await run_geometry(_parts_root(ctx), asm, solve(asm, resolve_face=resolver),
+                                 poses=poses, timeout_s=SWEEP_TIMEOUT_S)
+    except MisesError as e:
+        if e.code == ErrorCode.NOT_FOUND:
             raise MisesError(ErrorCode.NOT_FOUND, "no built parts in this assembly",
                              hint="build the parts before sweeping for interference") from None
-        positions.append({"value": value, "interferences": hits})
-    bad = [p for p in positions if p["interferences"]]
+        if "timed out" in e.message:
+            raise MisesError(ErrorCode.TOOL_FAILED, e.message,
+                             hint="sweep fewer steps, or check a narrower range") from None
+        raise
+    names = {i.id: i.name for i in asm.instances}
+    colliding, best = [], None
+    for value, pos in zip(values, geo.positions):
+        if pos.get("interferences"):
+            colliding.append({"value": value, "pairs": [
+                {"a": names.get(h["a"], h["a"]), "b": names.get(h["b"], h["b"]),
+                 "volume_mm3": h.get("volume_mm3")} for h in pos["interferences"]]})
+        c = pos.get("min_clearance_mm")
+        if c is not None and (best is None or c < best[0]):
+            best = (c, value, [names.get(n, n) for n in pos.get("closest") or []])
     summary = (f"swept joint {joint.id} ({joint.kind}) from {start} to {sweep.to} in "
-               f"{sweep.steps} positions: ")
-    summary += (f"interference at {len(bad)} of {len(positions)} (first at {bad[0]['value']})"
-                if bad else "no interference at any position")
+               f"{len(values)} positions: ")
+    summary += (f"interference at {len(colliding)} of {len(values)} (first at "
+                f"{colliding[0]['value']})" if colliding else "no interference at any position")
+    if best is not None:
+        summary += f"; min clearance {best[0]:g} mm at {best[1]}"
+    # compact: the agent gets the verdict; the app plays the motion from assembly_animate
     return ToolOutput(summary=summary,
-                      data={"joint_id": joint.id, "positions": positions,
-                            "interfering_positions": len(bad)},
+                      data={"joint_id": joint.id, "from": start, "to": sweep.to,
+                            "steps": len(values), "interfering_positions": len(colliding),
+                            "colliding": colliding,
+                            "min_clearance_mm": None if best is None else best[0],
+                            "min_clearance_at": None if best is None else best[1],
+                            "closest_pair": None if best is None else best[2]},
                       step_kind=StepKind.MEASURE)
 
 
@@ -497,6 +520,10 @@ async def assembly_move(ctx: ToolContext, args: MoveArgs) -> ToolOutput:
                       warnings=warnings, step_kind=StepKind.DIFF)
 
 
+MAX_LOOPS = 10               # a looping animation plays at most this many times
+MAX_POSE_MATRICES = 120      # transforms returned to the model; beyond, step ends only
+
+
 class AnimStep(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     joint_id: str
@@ -515,7 +542,11 @@ class AnimateArgs(BaseModel):
     duration_s: float = Field(default=2.0, gt=0, le=60)
     sequence: list[AnimStep] | None = Field(default=None, max_length=12,
                                             description="Joints moved one after another.")
-    loop: bool = False
+    loop: bool = Field(default=False, description="Repeat the motion (MAX_LOOPS times unless "
+                                                  "`loops` says fewer).")
+    loops: int | None = Field(default=None, ge=1, le=10,
+                              description="How many times the app plays it (1-10). The user can "
+                                          "always stop it.")
     keyframes: int = Field(default=5, ge=2, le=21,
                            description="Poses returned per step, ends included.")
 
@@ -541,7 +572,7 @@ async def assembly_animate(ctx: ToolContext, args: AnimateArgs) -> ToolOutput:
                        **({"from": args.from_} if args.from_ is not None else {}))])
     resolver = face_resolver(_parts_root(ctx))
     values = {j.id: j.value for j in asm.joints}
-    plan, poses, t0 = [], [], 0.0
+    plan, step_poses, frames, t0 = [], [], [], 0.0
     for st in steps:
         joint = _joint_or_404(asm, st.joint_id)
         start = values[joint.id] if st.from_ is None else st.from_
@@ -553,22 +584,31 @@ async def assembly_animate(ctx: ToolContext, args: AnimateArgs) -> ToolOutput:
             f = k / (args.keyframes - 1)
             values[joint.id] = motion.lerp(start, end, f)
             res = solve(motion.with_values(asm, values), resolve_face=resolver)
-            poses.append({"t": round(t0 + f * st.duration_s, 4), "joint_id": joint.id,
-                          "value": values[joint.id],
-                          "transforms": {i: motion.round_mat(m)
-                                         for i, m in res.transforms.items()}})
+            frames.append((round(t0 + f * st.duration_s, 4), values[joint.id],
+                           {i: motion.round_mat(m) for i, m in res.transforms.items()}))
+        # only the instances this step moves (the rest hold still), so the result stays small
+        moving = {i for i in frames[0][2] if any(fr[2][i] != frames[0][2][i] for fr in frames)}
+        step_poses.append([{"t": t, "joint_id": joint.id, "value": v,
+                            "transforms": {i: m for i, m in tr.items() if i in moving}}
+                           for t, v, tr in frames])
+        frames = []
         values[joint.id] = end
         t0 += st.duration_s
+    loops = args.loops or (MAX_LOOPS if args.loop else 1)
     if args.sequence:
-        event = {"project_id": pid, "sequence": plan, "loop": args.loop}
+        event = {"project_id": pid, "sequence": plan, "loop": loops > 1, "loops": loops}
     else:
-        event = {"project_id": pid, **plan[0], "loop": args.loop}
+        event = {"project_id": pid, **plan[0], "loop": loops > 1, "loops": loops}
     ctx.events.publish(Event(type="assembly_animate", run_id=getattr(ctx, "run_id", None),
                              data=event))
+    size = sum(len(p["transforms"]) for sp in step_poses for p in sp)
+    if size > MAX_POSE_MATRICES:       # a big assembly: the ends of each step only
+        step_poses = [[sp[0], sp[-1]] for sp in step_poses]
+    poses = [p for sp in step_poses for p in sp]
     what = (f"joint {plan[0]['joint_id']} from {plan[0]['from']} to {plan[0]['to']}"
             if len(plan) == 1 else f"{len(plan)} joints in sequence")
     return ToolOutput(summary=f"animating {what} over {t0:g} s"
-                              + (" (looping)" if args.loop else "")
+                              + (f" ({loops}x)" if loops > 1 else "")
                               + f"; {len(poses)} key poses returned",
                       data={"animation": event, "poses": poses}, step_kind=StepKind.MEASURE)
 

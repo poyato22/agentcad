@@ -169,6 +169,32 @@ async def test_revolute_turns_only_about_its_axis(ctx):
                                                   translate=[1, 0, 0]))
 
 
+async def test_cylindrical_turns_and_slides_along_its_axis(ctx):
+    _, b, jid = await _two_with(ctx, "cylindrical")
+    r = await assembly_move.handler(ctx, MoveArgs(
+        project_id="p", instance_id=b, translate=[0, 0, 7],
+        rotate={"axis": [0, 0, 1], "angle_deg": 90}))
+    assert r.data["value"] == pytest.approx([90, 7])
+    assert _pt(r.data["world_transform"], [1, 0, 0]) == pytest.approx([0, 1, 7], abs=1e-9)
+    with pytest.raises(MisesError, match="turns only about the joint axis"):
+        await assembly_move.handler(ctx, MoveArgs(
+            project_id="p", instance_id=b, rotate={"axis": [0, 1, 0], "angle_deg": 5}))
+
+
+async def test_ball_turns_about_one_frame_axis(ctx):
+    _, b, jid = await _two_with(ctx, "ball")
+    r = await assembly_move.handler(ctx, MoveArgs(
+        project_id="p", instance_id=b, rotate={"axis": [0, 0, 1], "angle_deg": 30}))
+    # the frame's local Z is the world +Z here: the third component turns
+    assert r.data["value"] == pytest.approx([0, 0, 30])
+    with pytest.raises(MisesError, match="frame axes only"):
+        await assembly_move.handler(ctx, MoveArgs(
+            project_id="p", instance_id=b, rotate={"axis": [1, 1, 0], "angle_deg": 5}))
+    with pytest.raises(MisesError, match="does not slide"):
+        await assembly_move.handler(ctx, MoveArgs(project_id="p", instance_id=b,
+                                                  translate=[1, 0, 0]))
+
+
 async def test_fixed_joint_instance_cannot_move(ctx):
     await _add(ctx, "base")
     b = (await _add(ctx, "arm")).data["instance"]["id"]
@@ -192,8 +218,10 @@ async def test_animate_emits_event_and_returns_key_poses(ctx):
     ev = sub.queue.get_nowait()
     assert ev.type == "assembly_animate"
     assert ev.data == {"project_id": "p", "joint_id": jid, "from": 0, "to": 90,
-                       "duration_s": 3, "loop": True}
+                       "duration_s": 3, "loop": True, "loops": asm_tools.MAX_LOOPS}
     poses = r.data["poses"]
+    # only the moving instance's transforms come back
+    assert all(set(p["transforms"]) == {b} for p in poses)
     assert [p["t"] for p in poses] == [0, 1.5, 3]
     assert [p["value"] for p in poses] == [0, 45, 90]
     assert _pt(poses[-1]["transforms"][b], [1, 0, 0]) == pytest.approx([0, 1, 0], abs=1e-4)
@@ -211,8 +239,27 @@ async def test_animate_sequence(ctx):
     assert ev.data["sequence"] == [
         {"joint_id": jid, "from": 0, "to": 5, "duration_s": 1},   # clamped to the limits
         {"joint_id": jid, "from": 5, "to": 0, "duration_s": 1}]
-    assert ev.data["loop"] is False
+    assert ev.data["loop"] is False and ev.data["loops"] == 1
     assert r.data["poses"][-1]["t"] == 2 and len(r.data["poses"]) == 10
+
+
+async def test_animate_loop_count_is_bounded(ctx):
+    _, _, jid = await _two_with(ctx, "revolute")
+    sub = ctx.events.subscribe()
+    r = await assembly_animate.handler(ctx, AnimateArgs.model_validate(
+        {"project_id": "p", "joint_id": jid, "to": 45, "loops": 3}))
+    ev = sub.queue.get_nowait()
+    assert ev.data["loops"] == 3 and ev.data["loop"] is True and "(3x)" in r.summary
+    with pytest.raises(ValueError):
+        AnimateArgs.model_validate({"project_id": "p", "joint_id": jid, "to": 1, "loops": 11})
+
+
+async def test_animate_big_assembly_returns_step_ends_only(ctx, monkeypatch):
+    _, _, jid = await _two_with(ctx, "revolute")
+    monkeypatch.setattr(asm_tools, "MAX_POSE_MATRICES", 3)
+    r = await assembly_animate.handler(ctx, AnimateArgs.model_validate(
+        {"project_id": "p", "joint_id": jid, "to": 90, "keyframes": 9}))
+    assert [p["value"] for p in r.data["poses"]] == [0, 90]
 
 
 def test_animate_args_need_one_form():
@@ -228,24 +275,46 @@ async def test_animate_unknown_joint(ctx):
 
 
 # ---- assembly_check sweep
-async def test_sweep_reports_interference_per_position(ctx, monkeypatch):
+async def test_sweep_uses_one_worker_and_returns_a_compact_summary(ctx, monkeypatch):
     _, b, jid = await _two_with(ctx, "slider", axis=(1, 0, 0))
-    seen = []
+    calls = []
 
-    async def fake_geometry(root, asm, res, want="both", **kw):
-        x = res.transforms[b][0][3]
-        seen.append(x)
-        # the arm hits the base once it slides within 10 mm of it
-        return GeometryResult(interferences=[{"a": "base", "b": "arm", "volume_mm3": 1.0}]
-                              if x < 10 else [])
+    async def fake_geometry(root, asm, res, want="both", poses=None, **kw):
+        calls.append(len(poses))
+        out = []
+        for pose in poses:
+            x = pose[b][0][3]
+            # the arm hits the base once it slides within 10 mm of it
+            out.append({"interferences": [{"a": asm.instances[0].id, "b": b, "volume_mm3": 1.0}]
+                        if x < 10 else [], "min_clearance_mm": max(0.0, x - 10),
+                        "closest": [asm.instances[0].id, b]})
+        return GeometryResult(positions=out)
 
     monkeypatch.setattr(asm_tools, "run_geometry", fake_geometry)
     r = await assembly_check.handler(ctx, CheckArgs.model_validate(
         {"project_id": "p", "sweep": {"joint_id": jid, "from": 40, "to": 0, "steps": 5}}))
-    assert seen == pytest.approx([40, 30, 20, 10, 0])
+    assert calls == [5]                           # one worker for all five positions
     assert r.data["interfering_positions"] == 1
-    assert [p["value"] for p in r.data["positions"] if p["interferences"]] == [0]
-    assert "interference at 1 of 5" in r.summary
+    assert r.data["colliding"] == [{"value": 0.0, "pairs": [
+        {"a": "base", "b": "arm", "volume_mm3": 1.0}]}]
+    # the first position reaching the minimum (10 mm: touching) is reported
+    assert r.data["min_clearance_mm"] == 0 and r.data["min_clearance_at"] == 10
+    assert r.data["closest_pair"] == ["base", "arm"]
+    assert "positions" not in r.data and "poses" not in r.data
+    assert "interference at 1 of 5" in r.summary and "min clearance 0 mm" in r.summary
+
+
+async def test_sweep_timeout_says_use_fewer_steps(ctx, monkeypatch):
+    _, _, jid = await _two_with(ctx, "slider")
+
+    async def slow(*a, **k):
+        raise MisesError(asm_tools.ErrorCode.TOOL_FAILED, "assembly geometry timed out after 240s")
+
+    monkeypatch.setattr(asm_tools, "run_geometry", slow)
+    with pytest.raises(MisesError) as ei:
+        await assembly_check.handler(ctx, CheckArgs.model_validate(
+            {"project_id": "p", "sweep": {"joint_id": jid, "to": 5}}))
+    assert "fewer steps" in ei.value.hint
 
 
 async def test_sweep_needs_built_parts(ctx, monkeypatch):
@@ -281,7 +350,10 @@ async def test_sweep_detects_real_interference(ctx, tmp_path):
     out = await assembly_check.handler(ctx, CheckArgs.model_validate(
         {"project_id": "p", "sweep": {"joint_id": j.data["joint"]["id"], "from": 40, "to": 5,
                                       "steps": 2}}))
-    first, last = out.data["positions"]
-    assert first["interferences"] == []
-    assert len(last["interferences"]) == 1
-    assert last["interferences"][0]["volume_mm3"] == pytest.approx(500, rel=0.02)
+    assert out.data["interfering_positions"] == 1
+    [hit] = out.data["colliding"]
+    assert hit["value"] == 5
+    assert hit["pairs"][0]["volume_mm3"] == pytest.approx(500, rel=0.02)
+    assert out.data["min_clearance_mm"] == 0 and out.data["min_clearance_at"] == 5
+    # apart at 40 mm the faces are 30 mm apart: the sweep measured that position too
+    assert "min clearance 0 mm at 5" in out.summary

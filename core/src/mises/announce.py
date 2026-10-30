@@ -10,7 +10,10 @@ says. Each one is an `agent_announce` event
 published on the acting run, plus a copy on its lead (the root of its run tree) so the lead's
 thread shows what its sub-agents did; `run_id` in the data is always the acting run. Each is
 also stored as a DECISION step ({"agent_announce": {...}}) so a reloaded thread can rebuild the
-cards. Titles carry only ids the core validated (part ids, instance ids), never page text.
+cards. Titles carry core-validated ids (part ids, instance ids), except agent_spawned, whose
+title includes the model's task title (UI-escaped like all card text); never page text.
+The signature of `announce(events, store, run_id, kind, title, detail, ref)` is a shared
+contract (Plan 8 G1 reuses it): keep it stable.
 """
 from __future__ import annotations
 
@@ -24,7 +27,10 @@ from .types import StepKind, ToolOutput
 log = logging.getLogger(__name__)
 
 KINDS = ("part_created", "agent_spawned", "assembly_added", "bom_added", "part_shown",
-         "drawing_imported")
+         "drawing_imported",
+         # Plan 8 G1 (geometry quality): its view and critique cards go through announce() too,
+         # their fields in `ref`, so they are stored as steps the same way
+         "view_presented", "critique_round")
 TITLE_CHARS = 120
 DETAIL_CHARS = 300
 

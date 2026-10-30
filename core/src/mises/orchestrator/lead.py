@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import math
 import re
@@ -79,11 +80,22 @@ def lead_definition(defn: AgentDefinition, *, claude_code: bool = False) -> Agen
                                    "body": defn.body.rstrip() + "\n\n" + lead})
 
 
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s")
+
+
 def task_title(task: str | None, prompt: str) -> str:
-    """A sub-agent's task title: the one given, else the prompt's first line, clipped."""
-    text = " ".join((task or "").split()) or " ".join(
-        (prompt.strip().splitlines() or [""])[0].split())
-    return text if len(text) <= TASK_TITLE_CHARS else text[: TASK_TITLE_CHARS - 1] + "…"
+    """A short task title, no model needed: the one given, else the prompt's first sentence of
+    its first line; clipped at a word boundary to TASK_TITLE_CHARS."""
+    text = " ".join((task or "").split())
+    if not text:
+        line = " ".join((prompt.strip().splitlines() or [""])[0].split())
+        text = _SENTENCE_END.split(line, 1)[0].rstrip(".!") if line else ""
+    if len(text) <= TASK_TITLE_CHARS:
+        return text
+    cut = text[: TASK_TITLE_CHARS - 1]
+    if " " in cut[TASK_TITLE_CHARS // 2:]:
+        cut = cut.rsplit(" ", 1)[0]
+    return cut.rstrip(",;:") + "…"
 
 
 def find_lead(store, project_id: str) -> AgentRun | None:
@@ -102,40 +114,169 @@ def _reachable(rt: Runtime, run: AgentRun) -> bool:
     return run.id in rt._runs or rt._is_claude_run(run.id)
 
 
+class QueueFull(MisesError):
+    """The lead already holds QUEUE_MAX waiting messages (HTTP 429)."""
+    http_status = 429
+
+    def __init__(self, n: int):
+        super().__init__(ErrorCode.INVALID_INPUT,
+                         f"the lead agent already has {n} messages waiting",
+                         hint="wait for it to work through them, or cancel it")
+
+
+QUEUE_MAX = 20
+
+
+def _lock(rt: Runtime, project_id: str) -> asyncio.Lock:
+    lock = rt.lead_locks.get(project_id)
+    if lock is None:
+        lock = rt.lead_locks[project_id] = asyncio.Lock()
+    return lock
+
+
+def _notes(rt: Runtime, lead: AgentRun, model_ref: str | None, edit_scope,
+           read_scope) -> list[str]:
+    """What a follow-up asked for that the existing lead keeps as it is."""
+    notes = []
+    lead_ref = f"{lead.provider}/{lead.model}"
+    st = rt._runs.get(lead.id)
+    if st is not None and st.ref:
+        lead_ref = st.ref
+    if model_ref and model_ref != lead_ref:
+        notes.append(f"model_ref ignored: the build's lead runs on {lead_ref}")
+    try:
+        pol = rt.store.current_policy(lead.id)
+    except KeyError:
+        return notes
+    if list(edit_scope) != list(pol.edit_scope) or list(read_scope) != list(pol.read_scope):
+        notes.append("scope ignored: the build's lead keeps the scope it was started with")
+    return notes
+
+
+def _publish(rt: Runtime, kind: str, run_id: str, data: dict) -> None:
+    from ..events import Event
+    rt.events.publish(Event(type=kind, run_id=run_id, data={"run_id": run_id, **data}))
+
+
+def queued_messages(rt: Runtime, run_id: str) -> list[dict]:
+    """The lead's waiting messages, oldest first (message_id, text, position)."""
+    return [{"message_id": m["message_id"], "text": m["shown"], "position": i + 1}
+            for i, m in enumerate(rt.lead_queues.get(run_id) or [])]
+
+
+def _enqueue(rt: Runtime, lead_id: str, text: str, log: dict | None, routed: Routed) -> dict:
+    q = rt.lead_queues.setdefault(lead_id, [])
+    if len(q) >= QUEUE_MAX:
+        raise QueueFull(len(q))
+    mid = "msg_" + secrets.token_hex(6)
+    shown = (log or {}).get("text", text)
+    q.append({"message_id": mid, "text": text, "log": log, "shown": shown})
+    # shown in the thread at once, in a queued state; message_delivered settles it
+    rt.store.append_step(lead_id, StepKind.DECISION, {"queued_message": {
+        "message_id": mid, "text": shown, "position": len(q), "routed": routed.model_dump(),
+        **({"feedback": log["feedback"]} if log and "feedback" in log else {})}})
+    _publish(rt, "message_queued", lead_id, {"message_id": mid, "text": shown,
+                                             "position": len(q)})
+    task = rt.lead_drainers.get(lead_id)
+    if task is None or task.done():
+        rt.lead_drainers[lead_id] = asyncio.get_running_loop().create_task(_drain(rt, lead_id))
+    return {"message_id": mid, "position": len(q)}
+
+
+async def _drain(rt: Runtime, lead_id: str) -> None:
+    """Deliver the lead's queued messages in order, each once its current turn has ended.
+    A cancelled turn drops the rest of the queue (the user stopped the lead)."""
+    while rt.lead_queues.get(lead_id):
+        try:
+            res = await rt.wait(lead_id)
+        except MisesError:
+            res = None
+        except Exception:  # noqa: BLE001 - delivery must not die on a crashed turn
+            res = None
+        await asyncio.sleep(0)            # let the finished turn's done callbacks run
+        q = rt.lead_queues.get(lead_id)
+        if not q:
+            break
+        if res is not None and res.stop_reason == "cancelled":
+            for m in q:
+                rt.store.append_step(lead_id, StepKind.DECISION, {
+                    "queued_message_dropped": {"message_id": m["message_id"],
+                                               "reason": "the lead was cancelled"}})
+                _publish(rt, "message_dropped", lead_id,
+                         {"message_id": m["message_id"], "reason": "cancelled"})
+            rt.lead_queues.pop(lead_id, None)
+            break
+        if rt.run_busy(lead_id):
+            await asyncio.sleep(0.05)
+            continue
+        m = q[0]
+        try:
+            await rt.send(lead_id, m["text"], log=m["log"])
+        except MisesError as e:
+            if "still working" in e.message:
+                await asyncio.sleep(0.05)
+                continue
+            q.pop(0)
+            rt.store.append_step(lead_id, StepKind.DECISION, {
+                "queued_message_dropped": {"message_id": m["message_id"], "reason": e.message}})
+            _publish(rt, "message_dropped", lead_id,
+                     {"message_id": m["message_id"], "reason": e.message})
+            continue
+        q.pop(0)
+        rt.store.append_step(lead_id, StepKind.DECISION,
+                             {"queued_message_delivered": {"message_id": m["message_id"]}})
+        _publish(rt, "message_delivered", lead_id, {"message_id": m["message_id"]})
+    if not rt.lead_queues.get(lead_id):
+        rt.lead_queues.pop(lead_id, None)
+    rt.lead_drainers.pop(lead_id, None)
+
+
 async def submit(rt: Runtime, prompt: str, *, project_id: str, model_ref: str | None = None,
                  attachments: list[Attachment] | None = None, edit_scope=("*",),
                  read_scope=("*",), default_agent: str = "engineer",
-                 classifier=None, route_text: str | None = None) -> tuple[str, Routed, bool]:
+                 classifier=None, route_text: str | None = None,
+                 log: dict | None = None) -> dict:
     """Route the prompt (or `route_text`, the user's own words when the prompt wraps them) and
-    hand it to the build's lead. Returns (run id, routing, new_lead)."""
+    hand it to the build's lead: sent now when the lead is idle, else queued (delivered in order
+    at its turn boundary), else a new lead is started. `log` overrides the stored user step.
+    Returns {run_id, routed, new_lead, queued, position?, message_id?, notes}. The find-or-start
+    runs under a per-build lock, so concurrent first messages make one lead."""
     known = set(rt.definitions) - {"planner"} - set(rt.profile().hidden_agents or ())
     routed = await route(prompt if route_text is None else route_text,
                          attachments=attachments or [], known=known,
                          default=default_agent, classifier=classifier)
-    lead = find_lead(rt.store, project_id)
-    if lead is not None and _reachable(rt, lead):
-        try:
-            await rt.send(lead.id, prompt)
-        except MisesError as e:
-            if e.code == ErrorCode.INVALID_INPUT and "still working" in e.message:
-                raise MisesError(ErrorCode.INVALID_INPUT,
-                                 "the build's lead agent is still working",
-                                 hint="wait for it to finish its turn, or cancel it") from None
-            raise
-        rt.store.update_run(lead.id, routed=routed.model_dump())
-        return lead.id, routed, False
-    if lead is not None:              # a lead this process cannot talk to any more: retire it
-        rt.store.update_run(lead.id, archived=True)
-    rid = await rt.start_run(routed.agent, prompt, model_ref=model_ref, edit_scope=edit_scope,
-                             read_scope=read_scope, project_id=project_id, role=LEAD,
-                             routed=routed.model_dump())
-    return rid, routed, True
+    out = {"routed": routed, "new_lead": False, "queued": False, "notes": []}
+    async with _lock(rt, project_id):
+        lead = find_lead(rt.store, project_id)
+        if lead is not None and _reachable(rt, lead):
+            out.update(run_id=lead.id, notes=_notes(rt, lead, model_ref, edit_scope, read_scope))
+            # the lead's own routing (why it is this agent) stays; each message's routing goes
+            # on its queued step or in the reply
+            if rt.lead_queues.get(lead.id) or rt.run_busy(lead.id):
+                out.update(queued=True, **_enqueue(rt, lead.id, prompt, log, routed))
+                return out
+            try:
+                await rt.send(lead.id, prompt, log=log)
+            except MisesError as e:
+                if not (e.code == ErrorCode.INVALID_INPUT and "still working" in e.message):
+                    raise
+                out.update(queued=True, **_enqueue(rt, lead.id, prompt, log, routed))
+            return out
+        if lead is not None:          # a lead this process cannot talk to any more: retire it
+            rt.store.update_run(lead.id, archived=True)
+        rid = await rt.start_run(routed.agent, prompt, model_ref=model_ref,
+                                 edit_scope=edit_scope, read_scope=read_scope,
+                                 project_id=project_id, role=LEAD, routed=routed.model_dump(),
+                                 log=log)
+        out.update(run_id=rid, new_lead=True)
+        return out
 
 
 def _node(rt: Runtime, run: AgentRun, children: dict[str, list[AgentRun]]) -> dict:
     from ..projects import run_view
     d = run_view(run)
-    d["task"] = run.title or run.task
+    d["task"] = task_title(run.title, run.task)
+    d["queued"] = queued_messages(rt, run.id)
     d["activity"] = rt.activity_of(run.id)
     d["children"] = [_node(rt, c, children) for c in children.get(run.id, [])]
     return d
@@ -160,7 +301,6 @@ def agents_view(rt: Runtime, project_id: str) -> dict:
 
 # ---- feedback pins (Plan 7 R9): a spot on the model plus a note, to the build's lead
 FEEDBACK_TAG = "user_feedback"
-_FEEDBACK_CLOSE_RE = re.compile(r"<\s*/\s*" + FEEDBACK_TAG, re.IGNORECASE)
 
 
 def nearby_feature(home: Path, part_id: str, point: list[float],
@@ -208,7 +348,12 @@ async def submit_feedback(rt: Runtime, project_id: str, *, part_id: str, point: 
                 "face_id": face_id,
                 "nearby_feature": nearby_feature(rt.home, part_id, point, face_id)}
     msg = feedback_message(location, text)
-    rid, routed, _new = await submit(rt, msg, project_id=project_id, model_ref=model_ref,
-                                     default_agent=default_agent, route_text=text)
-    step = rt.store.append_step(rid, StepKind.DECISION, {"feedback": {**location, "text": text}})
-    return {"run_id": rid, "step_id": step.id, "routed": routed.model_dump()}
+    pin = {**location, "text": text}
+    # the thread shows the note (plus the pin chip from `feedback`), never the wrapped block
+    out = await submit(rt, msg, project_id=project_id, model_ref=model_ref,
+                       default_agent=default_agent, route_text=text,
+                       log={"text": text, "feedback": pin})
+    step = rt.store.append_step(out["run_id"], StepKind.DECISION, {"feedback": pin})
+    return {"run_id": out["run_id"], "step_id": step.id, "routed": out["routed"].model_dump(),
+            "queued": out["queued"], "position": out.get("position"),
+            "message_id": out.get("message_id")}

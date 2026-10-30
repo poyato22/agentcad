@@ -257,7 +257,8 @@ class ClaudeCodeSession:
             "resumed": self.resumed, "model": self.model_alias, "version": self.info.version})
 
     async def prompt(self, text: str, *, context: dict | None = None,
-                     images: list[tuple[str, str]] | None = None) -> str:
+                     images: list[tuple[str, str]] | None = None,
+                     log: dict | None = None) -> str:
         """Send one user message; returns the turn's assistant text when `result` arrives.
         `context` (the Mises UI context) is prepended as a data block to the first prompt only.
         `images` ((media_type, base64) pairs, e.g. a sketch photo) follow the text as image
@@ -283,6 +284,8 @@ class ClaudeCodeSession:
             message_content = [{"type": "text", "text": content}] + [
                 {"type": "image", "source": {"type": "base64", "media_type": m, "data": d}}
                 for m, d in images]
+        if log:          # the stored step shows the user's own words (e.g. a feedback note)
+            body.update(log)
         self.runtime.store.append_step(self.run_id, StepKind.MESSAGE, body)
         self._turn = asyncio.get_running_loop().create_future()
         self._turn_text = []

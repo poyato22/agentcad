@@ -279,12 +279,13 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
         project_id = (_projects.check_project(runtime.store, body.project_id) if body.project_id
                       else _projects.active_project_id(runtime.store, prof.active_project_id))
         if body.agent is None and body.sketch_id is None:
-            rid, routed, new = await _lead.submit(
+            out = await _lead.submit(
                 runtime, body.prompt, project_id=project_id, model_ref=body.model_ref,
                 attachments=body.attachments, edit_scope=tuple(body.edit_scope),
                 read_scope=tuple(body.read_scope), default_agent=profile_default)
-            return {"run_id": rid, "routed": routed.model_dump(), "role": "lead",
-                    "new_lead": new}
+            # queued: the lead is busy; the message waits (message_queued) and is delivered in
+            # order at its turn boundary (message_delivered). A full queue is a 429.
+            return {**out, "routed": out["routed"].model_dump(), "role": "lead"}
         agent = body.agent or profile_default
         if body.sketch_id and agent == profile_default:
             agent = "designer"

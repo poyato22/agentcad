@@ -118,6 +118,8 @@ def joint_motion(kind: str, value) -> Mat:
     then Z). fixed: identity.
     """
     z = [0.0, 0.0, 1.0]
+    if kind in ("cylindrical", "ball") and not isinstance(value, (list, tuple)):
+        value = [float(value)]        # a bare number (the default 0) is the first component
     if kind == "fixed":
         return identity()
     if kind == "revolute":

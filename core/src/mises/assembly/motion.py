@@ -5,6 +5,9 @@ first instance of an ungrounded group) moves anywhere and its attached parts fol
 the solve places through a joint moves only along that joint: a request is turned into a change
 of the joint's value (slider: along its axis; revolute: about its axis; cylindrical: both;
 ball: about one of its frame axes). A fixed joint does not move at all.
+
+A ball move adds the angle to one intrinsic-XYZ component, matched against the joint frame's
+unrotated axes: exact while the other two components are 0, an approximation otherwise.
 """
 from __future__ import annotations
 

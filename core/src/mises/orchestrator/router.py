@@ -61,7 +61,8 @@ PART_NOUNS = ("bracket", "plate", "part", "hole", "mount", "spacer", "washer", "
 SIM_NOUNS = ("stress", "fea", "fem", "finite element", "deflection", "displacement", "modal",
              "natural frequenc", "resonan", "vibration", "buckl", "thermal", "temperature",
              "heat", "drop test", "impact", "wind", "drag", "lift", "aerodynamic", "cfd",
-             "safety factor", "von mises", "strain", "fatigue", "load case", "simulat")
+             "safety factor", "von mises", "strain", "fatigue", "load case", "simulat",
+             "bend", "sag", "flex")
 SIM_VERBS = ("test", "analy", "simulate", "stress-test", "how strong", "will it break",
              "can it hold", "can it take", "how much load", "how stiff", "survive")
 CHECK_VERBS = ("check", "review", "verify", "validate", "audit", "inspect", "confirm",
@@ -69,6 +70,10 @@ CHECK_VERBS = ("check", "review", "verify", "validate", "audit", "inspect", "con
                "is this right", "meets the spec", "against the spec", "requirements met")
 LOAD_WORDS = ("load", "newton", "safety factor", "lightweight", "as light as", "strong enough",
               "stiff", "weight target", "under 50 g", "payload")
+# "want" / "need" ask for something without saying build it: they do not outrank a test request
+WEAK_BUILD = frozenset({"need", "want", "give me"})
+FORCE_RE = re.compile(r"\b\d+(?:\.\d+)?\s*(?:n|kn|kg|kgf|lbf|lbs?|newtons?)\b|\bload",
+                      re.IGNORECASE)
 DIMENSION_RE = re.compile(r"\b\d+(?:\.\d+)?\s*(?:mm|cm|m|in|inch|inches|°|deg)\b|\b\d+\s*[x×]\s*\d+",
                           re.IGNORECASE)
 _WORD_RE_CACHE: dict[str, re.Pattern[str]] = {}
@@ -119,6 +124,9 @@ def route_rules(prompt: str, *, attachments: Iterable[Attachment | dict] = (),
     def pick(agent: str, reason: str, conf: float) -> Routed:
         return Routed(agent=_known(agent, known, default), reason=reason, confidence=conf)
 
+    # "test / analyze / simulate … under 50 N": a test request, even next to "want" or "need"
+    if not (set(build) - WEAK_BUILD) and (sim_v or sim_n) and (sim_v or FORCE_RE.search(text)):
+        return pick("sim", "test / analyze", 0.8)
     if build or (dims and (part or system)):
         if system:
             return pick("engineer", "system build", 0.85 if build else 0.7)
