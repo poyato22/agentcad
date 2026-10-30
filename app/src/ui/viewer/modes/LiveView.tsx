@@ -26,8 +26,6 @@ function defaultRenderer(canvas: HTMLCanvasElement): RendererLike & { forceConte
 export interface LiveViewProps {
   partIds: readonly string[];
   camera: ViewCamera | "auto";
-  /** The explode the view will settle at (the frame leaves room for it). */
-  explode: number;
   orbit: { duration_s: number; turns: number } | null;
   /** Orbit runs while true (callers pass false under reduced motion until the user presses play). */
   playing: boolean;
@@ -60,7 +58,8 @@ export function LiveView(p: LiveViewProps): JSX.Element {
     if (!box) return;
     const cam = props.current.camera;
     const dir = cam === "auto" ? viewDirection("iso") : dirFromAzEl(cam.azimuth, cam.elevation);
-    const zoom = (cam !== "auto" && cam.distance ? zoomForDistance(box, cam.distance) : 1) / (1 + props.current.explode * 0.8);
+    // an explode that glides in afterwards zooms out as it goes (ModesController)
+    const zoom = cam !== "auto" && cam.distance ? zoomForDistance(box, cam.distance) : 1;
     frameView(h, dir, box, zoom);
   }
 

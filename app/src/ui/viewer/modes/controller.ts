@@ -1,8 +1,9 @@
 // One viewer's view modes: X-ray, section caps, explode and an isolated subset, applied together
 // and re-applied after every restyle of the viewer (new parts, shaded / wire, theme), since a part
 // that reloads comes with fresh materials.
-import type * as THREE from "three";
+import * as THREE from "three";
 import type { ModeHost, ShownPart } from "../scene";
+import { liveBox } from "./camera";
 import { Exploder } from "./explode";
 import { realClock, type Clock } from "./motion";
 import { SectionCaps } from "./section";
@@ -15,6 +16,8 @@ export class ModesController {
   private state: ModesState = MODES_OFF;
   private readonly off: () => void;
   private applying = false;
+  /** The camera zoom from before the parts moved apart (null: assembled). */
+  private baseZoom: number | null = null;
 
   readonly host: ModeHost;
 
@@ -22,7 +25,7 @@ export class ModesController {
     this.host = host;
     this.caps = new SectionCaps(host);
     this.exploder = new Exploder(host, clock);
-    this.exploder.onChange = () => { if (!this.applying) this.applySection(); };
+    this.exploder.onChange = () => { this.followZoom(); if (!this.applying) this.applySection(); };
     this.off = host.onRestyle(() => this.reapply());
   }
 
@@ -59,6 +62,29 @@ export class ModesController {
     // does not slide the cut
     this.caps.apply(this.state.section, parts, restBox(parts));
     this.host.requestRender();
+  }
+
+  /** While exploded, zoom out just enough to keep every part in view (with the glide); back at the
+   *  user's own zoom once assembled again. The camera's direction and target never change. */
+  private followZoom(): void {
+    const { camera } = this.host;
+    if (this.exploder.value <= 0) {
+      if (this.baseZoom !== null) { camera.zoom = this.baseZoom; camera.updateProjectionMatrix(); this.baseZoom = null; }
+      return;
+    }
+    if (this.baseZoom === null) this.baseZoom = camera.zoom;
+    const box = liveBox(this.host.parts());
+    if (!box) return;
+    camera.updateMatrixWorld(true);
+    let mx = 1e-6; let my = 1e-6;
+    const v = new THREE.Vector3();
+    for (const x of [box.min.x, box.max.x]) for (const y of [box.min.y, box.max.y]) for (const z of [box.min.z, box.max.z]) {
+      v.set(x, y, z).applyMatrix4(camera.matrixWorldInverse);
+      mx = Math.max(mx, Math.abs(v.x)); my = Math.max(my, Math.abs(v.y));
+    }
+    const fits = Math.min((camera.right - camera.left) / 2 / mx, (camera.top - camera.bottom) / 2 / my) / 1.06;
+    camera.zoom = Math.min(this.baseZoom, fits);
+    camera.updateProjectionMatrix();
   }
 
   dispose(): void {

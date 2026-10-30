@@ -28,7 +28,7 @@ export function SpecStage({ view, playing, onSnapshot, deps, class: cls }: { vie
   useModesController(host, modes, animate);
   const ids = partsForSpec(view.spec, parts.value);
   return (
-    <LiveView class={cls} partIds={ids} camera={view.spec.camera} explode={target.explode} orbit={view.spec.orbit} playing={playing}
+    <LiveView class={cls} partIds={ids} camera={view.spec.camera} orbit={view.spec.orbit} playing={playing}
       label={`${VIEW_KIND_TEXT[view.spec.kind]} view${view.spec.caption ? `: ${view.spec.caption}` : ""}`}
       // a card is a picture to click, not a viewer to drag: orbiting is for the full-window view
       onHost={(h) => { if (h) h.controls.enabled = false; setHost(h); }} onSnapshot={onSnapshot} createRenderer={deps?.createRenderer}
@@ -64,7 +64,7 @@ export function ViewCard({ view, group, deps }: { view: PresentedView; group: re
             ? <SpecStage view={view} playing={play} onSnapshot={setStill} deps={deps} />
             : image
               ? <img class="vcard-still" src={image} alt="" data-testid="view-card-still" />
-              : <span class="vcard-blank label" data-testid="view-card-still">{kind}</span>}
+              : <span class="vcard-blank faint" data-testid="view-card-still">Point here to render</span>}
         </button>
         <span class="vcard-kind label" aria-hidden="true">{kind}</span>
         {spec.orbit && live && (

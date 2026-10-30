@@ -152,6 +152,9 @@ describe("section", () => {
   });
 });
 
+/** Two plates (40 × 20 × 6) at x = ±10, fully exploded: each goes out by 1.2× its distance plus 0.45× the diagonal. */
+const APART = 10 + 10 * 1.2 + Math.hypot(60, 20, 6) * 0.45;
+
 describe("explode", () => {
   it("groups a part's per-face meshes into solids: one plate is one body, two apart are two", async () => {
     const one = await loadPart(fixtureBytes());
@@ -167,7 +170,8 @@ describe("explode", () => {
     const overall = new THREE.Box3(new THREE.Vector3(-10, -10, -10), new THREE.Vector3(10, 10, 10));
     const s = new THREE.Vector3(2, 2, 2);
     const v = explodeVectors([new THREE.Vector3(5, 0, 0), new THREE.Vector3(-5, 0, 0)], [s, s], overall);
-    expect(v[0].x).toBeCloseTo(5); expect(v[1].x).toBeCloseTo(-5);
+    const far = 5 * 1.2 + Math.hypot(20, 20, 20) * 0.45;   // its own distance, and a share of the whole
+    expect(v[0].x).toBeCloseTo(far); expect(v[1].x).toBeCloseTo(-far);
     const st = explodeVectors([new THREE.Vector3(0, 0, 0.1), new THREE.Vector3(0, 0, -0.1)], [s, s], overall);
     expect(st[0].z).toBeGreaterThan(0); expect(st[1].z).toBeLessThan(0);
     expect(st[0].x).toBe(0);
@@ -183,8 +187,8 @@ describe("explode", () => {
     // no frame jumps more than a fifth of the way
     const total = xs[xs.length - 1] - 10;
     for (let i = 1; i < xs.length; i++) expect(xs[i] - xs[i - 1]).toBeLessThan(total / 5);
-    expect(scenes[1].object.position.x).toBeCloseTo(20);
-    expect(scenes[0].object.position.x).toBeCloseTo(-20);
+    expect(scenes[1].object.position.x).toBeCloseTo(APART);
+    expect(scenes[0].object.position.x).toBeCloseTo(-APART);
     expect(c.exploder.value).toBe(1);
     c.set(modes({ explode: 0 }));
     expect(scenes[1].object.position.x).toBeCloseTo(10);
@@ -194,7 +198,24 @@ describe("explode", () => {
     vi.stubGlobal("matchMedia", (q: string) => ({ matches: q.includes("reduce"), media: q, addEventListener() {}, removeEventListener() {} }));
     const { c, scenes } = await setup(["case", "board"], [[-10, 0, 0], [10, 0, 0]]);
     c.set(modes({ explode: 1 }), { animate: true });
-    expect(scenes[1].object.position.x).toBeCloseTo(20);
+    expect(scenes[1].object.position.x).toBeCloseTo(APART);
+  });
+
+  it("zooms out to keep the exploded parts in view, and back when assembled", async () => {
+    const { c, host, v } = await setup(["case", "board"], [[-10, 0, 0], [10, 0, 0]]);
+    v.resize(400, 300);
+    const zoom0 = host.camera.zoom;
+    c.set(modes({ explode: 1 }));
+    expect(host.camera.zoom).toBeLessThan(zoom0);
+    const box = liveBox(host.parts())!;
+    host.camera.updateMatrixWorld(true);
+    for (const x of [box.min.x, box.max.x]) for (const y of [box.min.y, box.max.y]) for (const z of [box.min.z, box.max.z]) {
+      const p = new THREE.Vector3(x, y, z).project(host.camera);
+      expect(Math.abs(p.x)).toBeLessThanOrEqual(1);
+      expect(Math.abs(p.y)).toBeLessThanOrEqual(1);
+    }
+    c.set(modes({ explode: 0 }));
+    expect(host.camera.zoom).toBeCloseTo(zoom0);
   });
 
   it("the section caps follow exploded parts", async () => {
@@ -205,7 +226,7 @@ describe("explode", () => {
     const src: THREE.Mesh[] = [];
     scenes[0].object.traverse((o) => { if (o instanceof THREE.Mesh) src.push(o); });
     expect(stencil.matrixWorld.equals(src[0].matrixWorld)).toBe(true);
-    expect(c.caps.caps()[1].position.x).toBeCloseTo(20);
+    expect(c.caps.caps()[1].position.x).toBeCloseTo(APART);
   });
 });
 

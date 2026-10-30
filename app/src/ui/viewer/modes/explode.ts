@@ -11,8 +11,14 @@ export function explodeVectors(centers: readonly THREE.Vector3[], sizes: readonl
   const mid = overall.getCenter(new THREE.Vector3());
   const diag = Math.max(overall.getSize(new THREE.Vector3()).length(), 1e-6);
   const out = centers.map((c) => c.clone().sub(mid));
-  // radial (the rest): the further out a unit sits, the further it goes, so the gaps grow evenly
   const tight = out.map((d) => d.length() < diag * 0.02);
+  // radial (the rest): the further out a unit sits, the further it goes, plus a fixed share of the
+  // whole so internals clear the case they sit in
+  for (let i = 0; i < out.length; i++) {
+    if (tight[i]) continue;
+    const len = out[i].length();
+    out[i].multiplyScalar((len * 1.2 + diag * 0.45) / len);
+  }
   const stack = out.map((_, i) => i).filter((i) => tight[i]);
   if (stack.length > 1) {
     // a stack: spread along Z by height order, one unit height apart

@@ -1,0 +1,600 @@
+{
+ "_comment": "Plan 8 G4: a vented Raspberry Pi case (pi_case / pi_lid / pi_board / pi_battery / pi_fan, GLBs from glb/make_enclosure.py, placed as assembled) and one finished designer run on a small local model (shape_complexity high: the model warning shows) with two critique_round and five view_presented announcements (renders/*.png from renders/make_renders.py).",
+ "runs": [
+  {
+   "id": "c4e1a9b07d21",
+   "parent_id": null,
+   "agent": "designer",
+   "provider": "ollama",
+   "model": "qwen3:8b",
+   "task": "Put a Raspberry Pi in a vented case with a fan and a battery",
+   "status": "done",
+   "branch": null,
+   "onshape_calls": 0,
+   "input_tokens": 0,
+   "output_tokens": 0,
+   "usd": 0.0,
+   "created_at": 1793340500.0,
+   "updated_at": 1793340530.0,
+   "owner_pid": null,
+   "project_id": "466a0d9d96a8",
+   "shape_complexity": {
+    "level": "high",
+    "score": 0.82,
+    "keywords": [
+     "enclosure with internals",
+     "fan"
+    ]
+   }
+  }
+ ],
+ "steps": [
+  {
+   "id": 1,
+   "run_id": "c4e1a9b07d21",
+   "ts": 1793340510.0,
+   "kind": "message",
+   "payload": {
+    "role": "user",
+    "text": "Put a Raspberry Pi in a vented case with a fan and a battery"
+   },
+   "evidence_hash": "0000000000000000000000000000000000000000000000000000000000000001",
+   "prev_hash": null,
+   "collapsed": false
+  },
+  {
+   "id": 2,
+   "run_id": "c4e1a9b07d21",
+   "ts": 1793340511.0,
+   "kind": "decision",
+   "payload": {
+    "agent_announce": {
+     "run_id": "c4e1a9b07d21",
+     "kind": "critique_round",
+     "title": "Lifted the board off the floor, moved the fan to the vent wall",
+     "detail": "",
+     "ref": {
+      "round": 1,
+      "max_rounds": 3,
+      "score": 0.62,
+      "threshold": 0.8,
+      "project_id": "466a0d9d96a8",
+      "before_image_id": "crit_r1_before",
+      "after_image_id": "crit_r1_after",
+      "issues_fixed": [
+       {
+        "view": "section",
+        "issue": "The board sat on the case floor with no standoffs",
+        "severity": "high",
+        "suggested_fix": "raise it 4 mm on standoffs"
+       },
+       {
+        "view": "front",
+        "issue": "The fan faced the lid, not the vent slots",
+        "severity": "high",
+        "suggested_fix": "turn it to blow through the side wall"
+       }
+      ],
+      "issues_open": [
+       {
+        "view": "top",
+        "issue": "Battery is 1 mm from the fan hub",
+        "severity": "medium",
+        "suggested_fix": "slide it 3 mm toward -X"
+       }
+      ]
+     }
+    }
+   },
+   "evidence_hash": "0000000000000000000000000000000000000000000000000000000000000002",
+   "prev_hash": "0000000000000000000000000000000000000000000000000000000000000001",
+   "collapsed": false
+  },
+  {
+   "id": 3,
+   "run_id": "c4e1a9b07d21",
+   "ts": 1793340512.0,
+   "kind": "decision",
+   "payload": {
+    "agent_announce": {
+     "run_id": "c4e1a9b07d21",
+     "kind": "critique_round",
+     "title": "Cleared the fan; every gap is at least 2 mm",
+     "detail": "",
+     "ref": {
+      "round": 2,
+      "max_rounds": 3,
+      "score": 0.88,
+      "threshold": 0.8,
+      "stop_reason": "passed",
+      "project_id": "466a0d9d96a8",
+      "before_image_id": "crit_r1_after",
+      "after_image_id": "crit_r2_after",
+      "issues_fixed": [
+       {
+        "view": "top",
+        "issue": "Battery is 1 mm from the fan hub",
+        "severity": "medium",
+        "suggested_fix": "slid it 3 mm toward -X"
+       }
+      ],
+      "issues_open": [],
+      "iou": {
+       "front": 0.93,
+       "top": 0.89,
+       "side": 0.84
+      }
+     }
+    }
+   },
+   "evidence_hash": "0000000000000000000000000000000000000000000000000000000000000003",
+   "prev_hash": "0000000000000000000000000000000000000000000000000000000000000002",
+   "collapsed": false
+  },
+  {
+   "id": 4,
+   "run_id": "c4e1a9b07d21",
+   "ts": 1793340513.0,
+   "kind": "decision",
+   "payload": {
+    "agent_announce": {
+     "run_id": "c4e1a9b07d21",
+     "kind": "view_presented",
+     "title": "Presented an orbit",
+     "detail": "",
+     "ref": {
+      "view_spec": {
+       "kind": "orbit",
+       "target": {
+        "project_id": "466a0d9d96a8"
+       },
+       "camera": "auto",
+       "orbit": {
+        "duration_s": 10,
+        "turns": 1
+       },
+       "caption": "The whole case: vents on the fan side, lid on top."
+      },
+      "thumbnail_id": "view_case_iso"
+     }
+    }
+   },
+   "evidence_hash": "0000000000000000000000000000000000000000000000000000000000000004",
+   "prev_hash": "0000000000000000000000000000000000000000000000000000000000000003",
+   "collapsed": false
+  },
+  {
+   "id": 5,
+   "run_id": "c4e1a9b07d21",
+   "ts": 1793340514.0,
+   "kind": "decision",
+   "payload": {
+    "agent_announce": {
+     "run_id": "c4e1a9b07d21",
+     "kind": "view_presented",
+     "title": "Presented the inside",
+     "detail": "",
+     "ref": {
+      "view_spec": {
+       "kind": "internal",
+       "target": {
+        "project_id": "466a0d9d96a8"
+       },
+       "xray_parts": [
+        "pi_case",
+        "pi_lid"
+       ],
+       "camera": {
+        "azimuth": 35,
+        "elevation": 30,
+        "distance": 260
+       },
+       "caption": "Through the walls: board on standoffs, battery beside it, fan at the vents."
+      }
+     }
+    }
+   },
+   "evidence_hash": "0000000000000000000000000000000000000000000000000000000000000005",
+   "prev_hash": "0000000000000000000000000000000000000000000000000000000000000004",
+   "collapsed": false
+  },
+  {
+   "id": 6,
+   "run_id": "c4e1a9b07d21",
+   "ts": 1793340515.0,
+   "kind": "decision",
+   "payload": {
+    "agent_announce": {
+     "run_id": "c4e1a9b07d21",
+     "kind": "view_presented",
+     "title": "Presented a section",
+     "detail": "",
+     "ref": {
+      "view_spec": {
+       "kind": "section",
+       "target": {
+        "project_id": "466a0d9d96a8"
+       },
+       "section": {
+        "origin": [
+         0,
+         0,
+         0
+        ],
+        "normal": [
+         0,
+         -1,
+         0
+        ]
+       },
+       "camera": {
+        "azimuth": 0,
+        "elevation": 12,
+        "distance": 240
+       },
+       "caption": "Cut through the middle: 2 mm walls, 4 mm under the board."
+      }
+     }
+    }
+   },
+   "evidence_hash": "0000000000000000000000000000000000000000000000000000000000000006",
+   "prev_hash": "0000000000000000000000000000000000000000000000000000000000000005",
+   "collapsed": false
+  },
+  {
+   "id": 7,
+   "run_id": "c4e1a9b07d21",
+   "ts": 1793340516.0,
+   "kind": "decision",
+   "payload": {
+    "agent_announce": {
+     "run_id": "c4e1a9b07d21",
+     "kind": "view_presented",
+     "title": "Presented an exploded view",
+     "detail": "",
+     "ref": {
+      "view_spec": {
+       "kind": "exploded",
+       "target": {
+        "project_id": "466a0d9d96a8"
+       },
+       "explode": 1,
+       "caption": "Taken apart in assembly order."
+      }
+     }
+    }
+   },
+   "evidence_hash": "0000000000000000000000000000000000000000000000000000000000000007",
+   "prev_hash": "0000000000000000000000000000000000000000000000000000000000000006",
+   "collapsed": false
+  },
+  {
+   "id": 8,
+   "run_id": "c4e1a9b07d21",
+   "ts": 1793340517.0,
+   "kind": "decision",
+   "payload": {
+    "agent_announce": {
+     "run_id": "c4e1a9b07d21",
+     "kind": "view_presented",
+     "title": "Presented the fan and battery",
+     "detail": "",
+     "ref": {
+      "view_spec": {
+       "kind": "subset",
+       "target": {
+        "project_id": "466a0d9d96a8"
+       },
+       "parts": [
+        "pi_fan",
+        "pi_battery"
+       ],
+       "caption": "Fan and battery: 3 mm apart, airflow clear."
+      }
+     }
+    }
+   },
+   "evidence_hash": "0000000000000000000000000000000000000000000000000000000000000008",
+   "prev_hash": "0000000000000000000000000000000000000000000000000000000000000007",
+   "collapsed": false
+  },
+  {
+   "id": 9,
+   "run_id": "c4e1a9b07d21",
+   "ts": 1793340518.0,
+   "kind": "message",
+   "payload": {
+    "role": "assistant",
+    "text": "Done. The Pi sits on 4 mm standoffs, the 30 mm fan blows through the side vents and the battery keeps 3 mm clear of it. Two critique rounds; the second passed."
+   },
+   "evidence_hash": "0000000000000000000000000000000000000000000000000000000000000009",
+   "prev_hash": "0000000000000000000000000000000000000000000000000000000000000008",
+   "collapsed": false
+  }
+ ],
+ "approvals": [],
+ "parts": [
+  {
+   "part_id": "pi_case",
+   "vars": {},
+   "metrics": {
+    "valid": true,
+    "volume_mm3": 28920.00000000005,
+    "area_mm2": 29528.0,
+    "bbox": {
+     "min": [
+      -45.0,
+      -31.0,
+      -16.0
+     ],
+     "max": [
+      45.0,
+      31.0,
+      16.0
+     ],
+     "size": [
+      90.0,
+      62.0,
+      32.0
+     ]
+    },
+    "center_of_mass": [
+     4.4369050653590026e-15,
+     -1.368015889596207e-15,
+     -5.1742738589211505
+    ],
+    "holes": [],
+    "faces": 11,
+    "edges": 24,
+    "solids": 1,
+    "mass_g": 35.861
+   },
+   "mtime": 1793340500.0,
+   "project_id": "466a0d9d96a8",
+   "label": "pi_case",
+   "order": 0,
+   "color": null,
+   "kind": "part",
+   "version": 1
+  },
+  {
+   "part_id": "pi_board",
+   "vars": {},
+   "metrics": {
+    "valid": true,
+    "volume_mm3": 4480.0,
+    "area_mm2": 4863.999999999999,
+    "bbox": {
+     "min": [
+      -40.0,
+      -20.0,
+      -13.0
+     ],
+     "max": [
+      16.0,
+      20.0,
+      -11.0
+     ],
+     "size": [
+      56.0,
+      40.0,
+      2.0
+     ]
+    },
+    "center_of_mass": [
+     -12.0,
+     -4.123685520036296e-16,
+     -12.0
+    ],
+    "holes": [],
+    "faces": 6,
+    "edges": 12,
+    "solids": 1,
+    "mass_g": 5.555
+   },
+   "mtime": 1793340501.0,
+   "project_id": "466a0d9d96a8",
+   "label": "pi_board",
+   "order": 1,
+   "color": null,
+   "kind": "part",
+   "version": 1
+  },
+  {
+   "part_id": "pi_battery",
+   "vars": {},
+   "metrics": {
+    "valid": true,
+    "volume_mm3": 12480.0,
+    "area_mm2": 3664.0,
+    "bbox": {
+     "min": [
+      -32.0,
+      -13.0,
+      -10.0
+     ],
+     "max": [
+      8.0,
+      13.0,
+      2.0
+     ],
+     "size": [
+      40.0,
+      26.0,
+      12.0
+     ]
+    },
+    "center_of_mass": [
+     -12.0,
+     1.0362081563168127e-16,
+     -4.0
+    ],
+    "holes": [],
+    "faces": 6,
+    "edges": 12,
+    "solids": 1,
+    "mass_g": 15.475
+   },
+   "mtime": 1793340502.0,
+   "project_id": "466a0d9d96a8",
+   "label": "pi_battery",
+   "order": 2,
+   "color": "#c9a227",
+   "kind": "part",
+   "version": 1
+  },
+  {
+   "part_id": "pi_fan",
+   "vars": {},
+   "metrics": {
+    "valid": true,
+    "volume_mm3": 2312.212193042089,
+    "area_mm2": 2287.07945181337,
+    "bbox": {
+     "min": [
+      23.999999999999996,
+      -15.0,
+      -13.0
+     ],
+     "max": [
+      32.0,
+      15.0,
+      17.0
+     ],
+     "size": [
+      8.000000000000004,
+      30.0,
+      30.0
+     ]
+    },
+    "center_of_mass": [
+     28.0,
+     3.1644487150814556e-15,
+     1.9999999999999967
+    ],
+    "holes": [],
+    "faces": 7,
+    "edges": 9,
+    "solids": 2,
+    "mass_g": 2.867
+   },
+   "mtime": 1793340503.0,
+   "project_id": "466a0d9d96a8",
+   "label": "pi_fan",
+   "order": 3,
+   "color": null,
+   "kind": "part",
+   "version": 1
+  },
+  {
+   "part_id": "pi_lid",
+   "vars": {},
+   "metrics": {
+    "valid": true,
+    "volume_mm3": 11160.000000000002,
+    "area_mm2": 11768.0,
+    "bbox": {
+     "min": [
+      -45.0,
+      -31.0,
+      16.0
+     ],
+     "max": [
+      45.0,
+      31.0,
+      18.0
+     ],
+     "size": [
+      90.0,
+      62.0,
+      2.0
+     ]
+    },
+    "center_of_mass": [
+     1.8302476692097441e-16,
+     1.9737298215558335e-16,
+     17.0
+    ],
+    "holes": [],
+    "faces": 6,
+    "edges": 12,
+    "solids": 1,
+    "mass_g": 13.838
+   },
+   "mtime": 1793340504.0,
+   "project_id": "466a0d9d96a8",
+   "label": "pi_lid",
+   "order": 4,
+   "color": null,
+   "kind": "part",
+   "version": 1
+  }
+ ],
+ "agents": [
+  {
+   "name": "designer",
+   "description": "Main CAD agent. Designs and edits parts using the local mirror and Onshape.",
+   "model": "inherit"
+  },
+  {
+   "name": "planner",
+   "description": "Turns a design request into a step-by-step plan. Produces a plan only; changes nothing.",
+   "model": "inherit"
+  },
+  {
+   "name": "sim",
+   "description": "Placeholder for simulation work (milestone 4). Simulation is not available yet.",
+   "model": "inherit"
+  },
+  {
+   "name": "verifier",
+   "description": "Skeptical read-only checker. Tries to prove a change wrong and reports pass/fail per requirement.",
+   "model": "inherit"
+  }
+ ],
+ "models": {
+  "default": "anthropic/claude-sonnet-5-5",
+  "vendors": [
+   {
+    "vendor": "anthropic",
+    "key": "env"
+   },
+   {
+    "vendor": "openai",
+    "key": "none"
+   },
+   {
+    "vendor": "gemini",
+    "key": "none"
+   },
+   {
+    "vendor": "openrouter",
+    "key": "none"
+   },
+   {
+    "vendor": "ollama",
+    "key": "not_needed"
+   },
+   {
+    "vendor": "lmstudio",
+    "key": "not_needed"
+   }
+  ]
+ },
+ "status": {
+  "core_version": "0.1.0",
+  "onshape": "not_configured",
+  "onshape_calls_year": 0,
+  "onshape_cap_year": 2500,
+  "runs_running": 0,
+  "approvals_pending": 0
+ },
+ "script": [],
+ "glb": {
+  "pi_case": "glb/pi_case.glb",
+  "pi_board": "glb/pi_board.glb",
+  "pi_battery": "glb/pi_battery.glb",
+  "pi_fan": "glb/pi_fan.glb",
+  "pi_lid": "glb/pi_lid.glb"
+ }
+}

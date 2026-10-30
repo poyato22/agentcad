@@ -1,5 +1,5 @@
-// The view-mode strip in the sheet's bottom-left corner: X-ray, section, explode, reference. Each
-// mode that is on opens its own row of controls above the strip. The strip drives a
+// The view-mode strip in the sheet's top-left, under the figure label: X-ray, section, explode,
+// reference. Each mode that is on opens its own row of controls below the strip. The strip drives a
 // ModesController on the viewer it is given (the Design sheet or the immersive view).
 import type { JSX, RefObject } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
@@ -54,7 +54,7 @@ export interface ViewModesProps {
   focusId: string | null;
   /** The parts shown, for X-ray per part. */
   partIds: readonly string[];
-  /** Reference overlay (the Design sheet only). */
+  /** The reference image overlay and its button. */
   withReference?: boolean;
   /** Set true before changing `modes` from outside to let that change glide (the explode). */
   animateRef?: RefObject<boolean>;

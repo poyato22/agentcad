@@ -81,7 +81,7 @@ function ImmersiveStage({ view, agent, deps }: { view: PresentedView; agent: str
   return (
     <div class="imm-body">
       <div class="imm-stage vimm-stage">
-        <LiveView class="vimm-live" partIds={ids} camera={view.spec.camera} explode={target.explode} orbit={view.spec.orbit} playing={play}
+        <LiveView class="vimm-live" partIds={ids} camera={view.spec.camera} orbit={view.spec.orbit} playing={play}
           label={`${VIEW_KIND_TEXT[view.spec.kind]} view`} onHost={setHost} createRenderer={deps?.createRenderer}
           onLoaded={() => { animate.current = true; setModes(target); }} />
         <ViewModes host={host} modes={modes} onModes={(m) => setModes(m)} animateRef={animate} focusId={ids[0] ?? null} partIds={ids} />
@@ -105,7 +105,7 @@ function ImmersiveStage({ view, agent, deps }: { view: PresentedView; agent: str
             ))}
           </ul>
         </section>
-        <p class="faint vimm-hint">Drag to orbit · scroll to zoom · the strip at the bottom left cuts, X-rays and explodes.</p>
+        <p class="faint vimm-hint">Drag to orbit · scroll to zoom · the strip at the top left cuts, X-rays and explodes.</p>
       </aside>
     </div>
   );
