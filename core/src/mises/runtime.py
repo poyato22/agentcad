@@ -668,13 +668,20 @@ class Runtime:
                         edit_scope=("*",), read_scope=("*",), caps: Caps | None = None,
                         parent_id: str | None = None,
                         allowed_classes: set[SafetyClass] | None = None,
-                        sketch_id: str | None = None, project_id: str | None = None) -> str:
+                        sketch_id: str | None = None, project_id: str | None = None,
+                        role: str | None = None, title: str | None = None,
+                        routed: dict | None = None) -> str:
         """`sketch_id` (from POST /sketches): copy that sketch into the run's workdir and give
-        it to the agent as data (plus its images for vision-capable providers)."""
+        it to the agent as data (plus its images for vision-capable providers).
+        Plan 7 U3c: `role` "lead" (the build's main agent: its definition gets the lead prompt
+        and tools) or "sub" (a spawned sub-agent, `title` its task), `routed` the router's
+        choice; all three are stored on the run."""
         defn = self.definitions.get(agent)
         if defn is None:
             raise MisesError(ErrorCode.NOT_FOUND, f"unknown agent: {agent}",
                              hint=f"agents: {', '.join(sorted(self.definitions))}")
+        meta = {k: v for k, v in (("role", role), ("title", title), ("routed", routed))
+                if v is not None}
         project_id = self.project_for(project_id, parent_id)
         if sketch_id is not None:
             sketch_mod.load_summary(self.home, sketch_id)    # unknown → 404 before any run exists
@@ -689,12 +696,18 @@ class Runtime:
                                                 read_scope=read_scope, caps=caps,
                                                 parent_id=parent_id,
                                                 allowed_classes=allowed_classes,
-                                                sketch_id=sketch_id, project_id=project_id)
+                                                sketch_id=sketch_id, project_id=project_id,
+                                                meta=meta)
         provider, model = self._resolve_provider(ref, prof)
         if hardware.model_kind(ref) == "local":
             await self.refresh_local_sizes()
         run = self.store.create_run(agent, provider.name, model, prompt, parent_id=parent_id,
                                     project_id=project_id)
+        if meta:
+            self.store.update_run(run.id, **meta)
+        if role == "lead":
+            from .orchestrator.lead import lead_definition
+            defn = lead_definition(defn)
         classes = set(SafetyClass) if allowed_classes is None else set(allowed_classes)
         self.store.create_policy(run.id, list(edit_scope), list(read_scope), caps,
                                  [c for c in SafetyClass if c in classes])
@@ -705,7 +718,7 @@ class Runtime:
                          activity=self.activity_tracker(run.id))
         st = self._runs[run.id] = _RunState(loop=loop, ref=ref)
         started = {"agent": agent, "provider": provider.name, "model": model,
-                   "parent_id": parent_id}
+                   "parent_id": parent_id, **meta}
         slot = self._admit(run.id, ref, started)
         first: str | list[Block] = prompt
         user_log = None
@@ -835,7 +848,8 @@ class Runtime:
                                 read_scope, caps: Caps, parent_id: str | None,
                                 allowed_classes: set[SafetyClass] | None,
                                 sketch_id: str | None = None,
-                                project_id: str | None = None) -> str:
+                                project_id: str | None = None,
+                                meta: dict | None = None) -> str:
         url, token = await self._mcp()
         info, auth = await self._claude_ready()
         ref = f"{CLAUDE_CODE}/{alias}"
@@ -843,6 +857,8 @@ class Runtime:
                                        edit_scope=edit_scope, read_scope=read_scope, caps=caps,
                                        allowed_classes=allowed_classes, parent_id=parent_id,
                                        task=prompt, slot_ref=ref, project_id=project_id)
+        if meta:     # before the session starts: its rules file reads the run's role
+            self.store.update_run(rid, **meta)
         st = self._claude[rid] = _ClaudeRun(ref=ref)
         st.slot, st.started_data = self._external_slots.pop(rid, (None, {}))
         text, images = prompt, None

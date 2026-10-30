@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from . import budget
+from . import announce, budget
 from .approvals import ApprovalService, hash_payload
 from .events import Event, EventBus
 from .store import Store
@@ -132,6 +132,10 @@ class Gate:
             # ok=False is never cached: a retry of a failed call must really run again
             self.store.cache_put(key, out.model_dump(mode="json"))
         self._finish(run_id, name, call_id, out)
+        # Plan 7 R16: a card for the user when this result created a part, placed it, …;
+        # made from the result itself, never from what the model says (a cache hit above is a
+        # retry of a call that was already announced)
+        announce.on_tool_result(self, run_id, name, payload, out)
         return out
 
     @staticmethod

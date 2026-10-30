@@ -34,6 +34,12 @@ Always carry the unit; a bare number is not a measurement.
 
 Raw HTML is escaped, never rendered, so do not rely on it. A short results table (one row per \
 requirement or variant, pass/warn/fail in a column) beats a paragraph.
+
+## After studies
+Every study (sim_run, study_run, design_review) already appears in the thread as a study card \
+with its numbers, checks and honesty label. After studies, write at most 2-3 short lines: the \
+verdict, the one caveat that matters, and the next step, and point at the cards ("see the 3 \
+study cards above"). Never restate the full numbers or a table the cards already show.
 """
 
 RULES = """\
