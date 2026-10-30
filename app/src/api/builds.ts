@@ -24,6 +24,14 @@ export const buildSchema = z.object({
 export interface EmptyTrashResult { purged: string[]; count: number }
 export const emptyTrashSchema = z.object({ purged: z.array(z.string()), count: z.number() });
 
+/** POST /projects/trash/empty refused (409): a trashed build still has live work — runs that are
+ *  running, queued or awaiting your approval. Nothing was deleted. */
+export interface EmptyTrashRefused { reason: string; run_ids: string[]; project_ids: string[]; message: string | null; hint: string | null }
+export const emptyTrashRefusedSchema = z.object({
+  reason: z.string(), run_ids: z.array(z.string()), project_ids: z.array(z.string()).catch([]).default([]),
+  message: z.string().nullable().catch(null).default(null), hint: z.string().nullable().catch(null).default(null),
+});
+
 /** The two fields of GET/PUT /profile the build tabs use (the app's Profile schema strips them). */
 export interface BuildTabsProfile { active_project_id: string | null; open_project_ids: string[] }
 export const buildTabsProfileSchema = z.object({

@@ -41,8 +41,8 @@ import {
   type JointValue, type NewInstanceBody, type NewJointBody, type ProjectRow,
 } from "./assembly";
 import {
-  buildSchema, buildTabsProfileSchema, emptyTrashSchema, partEditResultSchema, partSourceSchema,
-  type Build, type BuildTabsProfile, type EmptyTrashResult, type OpRequest, type PartEditResult, type PartSource,
+  buildSchema, buildTabsProfileSchema, emptyTrashRefusedSchema, emptyTrashSchema, partEditResultSchema, partSourceSchema,
+  type Build, type BuildTabsProfile, type EmptyTrashRefused, type EmptyTrashResult, type OpRequest, type PartEditResult, type PartSource,
 } from "./builds";
 
 type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -519,7 +519,23 @@ export class CoreClient {
   /** Moves the build to the Trash (nothing is deleted until emptyTrash). */
   trashBuild(id: string): Promise<Build> { return this.json("DELETE", `/projects/${enc(id)}`, buildSchema); }
   restoreBuild(id: string): Promise<Build> { return this.json("POST", `/projects/${enc(id)}/restore`, buildSchema); }
-  emptyTrash(): Promise<EmptyTrashResult> { return this.json("POST", "/projects/trash/empty", emptyTrashSchema); }
+  /** Purges the Trash. A 409 {reason, run_ids, …} (a trashed build still has live work; nothing
+   *  was deleted) comes back as `{ refused }`; any other failure throws. */
+  async emptyTrash(): Promise<EmptyTrashResult | { refused: EmptyTrashRefused }> {
+    const res = await this.request("POST", "/projects/trash/empty", {});
+    if (res.status === 409) {
+      let body: unknown = null;
+      try { body = await res.clone().json(); } catch { /* fall through to the generic error */ }
+      const r = emptyTrashRefusedSchema.safeParse(body);
+      if (r.success) return { refused: r.data };
+    }
+    if (!res.ok) throw await toError(res);
+    let data: unknown;
+    try { data = await res.json(); } catch { throw new CoreError("validation", "POST /projects/trash/empty: response is not JSON", { status: res.status }); }
+    const parsed = emptyTrashSchema.safeParse(data);
+    if (!parsed.success) throw new CoreError("validation", "POST /projects/trash/empty: unexpected response shape", { status: res.status });
+    return parsed.data;
+  }
   buildTabs(): Promise<BuildTabsProfile> { return this.json("GET", "/profile", buildTabsProfileSchema); }
   /** The active build and the open tabs (profile fields; PUT /profile merges, nothing else changes). */
   setBuildTabs(tabs: BuildTabsProfile): Promise<BuildTabsProfile> {

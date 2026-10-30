@@ -549,6 +549,13 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     get: () => state.builds, parts: () => state.parts, setParts: (list) => { state.parts = list; },
     profile: () => state.setup.profile as unknown as ReturnType<BuildsDeps["profile"]>,
     emit: (ev) => { emit(ev); },
+    blockers: (projectIds) => {
+      const inTrash = [...state.runs.values()].filter((r) => r.project_id && projectIds.includes(r.project_id));
+      const live = inTrash.filter((r) => r.status === "running" || r.status === "queued").map((r) => r.id);
+      if (live.length) return { reason: "running", run_ids: live };
+      const waiting = inTrash.filter((r) => [...state.approvals.values()].some((a) => a.run_id === r.id && a.status === "pending")).map((r) => r.id);
+      return waiting.length ? { reason: "pending_approval", run_ids: waiting } : null;
+    },
   };
 
   const routes: Route[] = [

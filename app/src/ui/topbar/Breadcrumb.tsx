@@ -5,12 +5,13 @@
 import type { JSX } from "preact";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import type { Build } from "../../api/builds";
-import { partName } from "../../lib/names";
+import { partName, runLabel } from "../../lib/names";
 import {
-  activeBuild, activeBuildId, buildActions, buildsError, liveBuilds, openBuildIds, openBuilds, trashedBuilds,
+  activeBuild, activeBuildId, buildActions, buildsError, liveBuilds, openBuildIds, openBuilds, trashBlocked, trashedBuilds,
 } from "../../state/builds";
 import { activePart } from "../../state/selection";
-import { selectedPartId } from "../../state/store";
+import { actions, runs, selectedPartId } from "../../state/store";
+import { setConsoleCollapsed } from "../pages/router";
 import { useDismiss } from "../common/dismiss";
 
 /** The part the viewer and Variables show (activePart); a fallback part is shown plain, not as selected. */
@@ -206,6 +207,8 @@ function BuildsMenu({ at, onClose, onRename }: { at: { left: number; top: number
   const open = new Set(openBuildIds.value);
   const cur = activeBuild.value;
   const [confirmEmpty, setConfirmEmpty] = useState(false);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const blocked = trashBlocked.value;
   const confirmFocused = useRef(false);
   const ref = useRef<HTMLDivElement>(null);
   const run = (f: () => void) => { onClose(); f(); };
@@ -214,19 +217,46 @@ function BuildsMenu({ at, onClose, onRename }: { at: { left: number; top: number
       onKeyDown={(e) => {
         if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); onClose(); return; }
         if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+        if (e.target instanceof HTMLInputElement) return;   // a rename field
         e.preventDefault();
         const f = [...(ref.current?.querySelectorAll<HTMLButtonElement>("button:not([disabled])") ?? [])];
         const i = f.indexOf(document.activeElement as HTMLButtonElement);
         f[(i + (e.key === "ArrowDown" ? 1 : -1) + f.length) % f.length]?.focus();
       }}>
       <div class="bmenu-head label">Builds</div>
-      {live.map((b) => (
-        <button key={b.id} type="button" role="menuitemradio" aria-checked={b.id === cur?.id} class="bmenu-item"
-          onClick={() => run(() => { void buildActions.switchTo(b.id); })}>
-          <span>{b.name}</span>
-          <span class="faint">{b.id === cur?.id ? "active" : open.has(b.id) ? "open" : `${b.part_count} part${b.part_count === 1 ? "" : "s"}`}</span>
-        </button>
-      ))}
+      {live.map((b) => {
+        if (renamingId === b.id) {
+          return (
+            <div key={b.id} class="bmenu-row" data-build-row={b.id}>
+              <NameField initial={b.name} label={`Rename ${b.name}`} onDone={(v) => {
+                setRenamingId(null);
+                if (v && v !== b.name) void buildActions.rename(b.id, v);
+                requestAnimationFrame(() => ref.current?.querySelector<HTMLButtonElement>(`[data-build-row="${CSS.escape(b.id)}"] button`)?.focus());
+              }} />
+            </div>
+          );
+        }
+        const isCur = b.id === cur?.id;
+        return (
+          <div key={b.id} class="bmenu-row" data-build-row={b.id}>
+            <button type="button" role="menuitemradio" aria-checked={isCur} class="bmenu-item"
+              onClick={() => run(() => { void buildActions.switchTo(b.id); })}>
+              <span>{b.name}</span>
+              <span class="faint">{isCur ? "active" : open.has(b.id) ? "open" : `${b.part_count} part${b.part_count === 1 ? "" : "s"}`}</span>
+            </button>
+            {/* any build, a tab hidden behind "+N" included, can be renamed or trashed from here;
+                the active one has the items below */}
+            {!isCur && (
+              <>
+                <button type="button" role="menuitem" class="bmenu-act" aria-label={`Rename build ${b.name}`} title="Rename"
+                  onClick={() => setRenamingId(b.id)}>rename</button>
+                <button type="button" role="menuitem" class="bmenu-act" aria-label={`Move build ${b.name} to the Trash`} title="Move to the Trash"
+                  onClick={() => { void buildActions.trash(b.id); }}>trash</button>
+              </>
+            )}
+          </div>
+        );
+      })}
       {cur && (
         <>
           <div class="bmenu-sep" />
@@ -244,6 +274,20 @@ function BuildsMenu({ at, onClose, onRename }: { at: { left: number; top: number
           <span class="dim">{b.name}</span><span>Restore</span>
         </button>
       ))}
+      {blocked && blocked.run_ids.length > 0 && (
+        <div class="bmenu-blocked text" data-trash-blocked={blocked.reason}>
+          <span>{blocked.reason === "pending_approval" ? "Waiting for your approval:" : "Still working:"}</span>
+          {blocked.run_ids.map((id) => {
+            const r = runs.value.get(id);
+            return (
+              <button key={id} type="button" role="menuitem" class="bmenu-item" data-blocking-run={id}
+                onClick={() => run(() => { actions.selectRun(id); setConsoleCollapsed(false); })}>
+                <span>{r ? runLabel(r, [...runs.value.values()]) : `run ${id}`}</span><span class="faint">show</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
       {trash.length > 0 && (confirmEmpty
         ? (
           <div class="bmenu-confirm" role="group" aria-label="Confirm emptying the Trash">
