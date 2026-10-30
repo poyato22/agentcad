@@ -42,8 +42,8 @@
 
 /* Model | Code: two cells in the sheet's top-left corner, the same build as the tool strip */
 .vp-tabs { position: absolute; left: 22px; top: 14px; display: flex; z-index: 5; }
-/* Model | Code and Part | Assembly share the corner row, above the Code view (which starts at 44px) */
-.vp-corner { position: absolute; left: 22px; top: 14px; display: flex; align-items: stretch; gap: 10px; z-index: 5; }
+/* Part | Assembly then Model | Code share the corner row, above the Code view (which starts at 44px) */
+.vp-corner { position: absolute; left: 22px; top: 14px; display: flex; align-items: center; gap: 12px; z-index: 5; }
 .vp-corner .vp-tabs, .vp-corner .mode-switch { position: static; }
 .vp-tab {
   font: var(--fs-small)/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase;

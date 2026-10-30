@@ -241,8 +241,9 @@ export function Viewer(): JSX.Element {
         onPointerUp={onPointerUp}
       />
       <span class="tick tick-tl" /><span class="tick tick-tr" /><span class="tick tick-bl" /><span class="tick tick-br" />
-      {/* one row in the sheet corner: Model | Code, then Part | Assembly — above the Code view (M-1) */}
+      {/* one row in the sheet corner: Part | Assembly first (U2b), then Model | Code — above the Code view (M-1) */}
       <div class="vp-corner">
+        <ModeSwitch />
         <div class="vp-tabs" role="tablist" aria-label="Show">
           {(["model", "code"] as const).map((t) => (
             <button key={t} type="button" role="tab" class="vp-tab" aria-selected={tab === t} data-selected={tab === t ? "" : undefined} tabIndex={tab === t ? 0 : -1}
@@ -252,7 +253,6 @@ export function Viewer(): JSX.Element {
             </button>
           ))}
         </div>
-        <ModeSwitch />
       </div>
       <span class="label vp-fig">{scope === "build" ? "FIG. 1 — BUILD" : "FIG. 1 — DESIGN"}</span>
       <ViewerTools mode={mode} onMode={setMode} scope={scope} onScope={(s) => { viewScope.value = s; }}

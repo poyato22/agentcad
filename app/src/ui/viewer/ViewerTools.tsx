@@ -11,8 +11,9 @@ export interface ViewerToolsProps {
   canEdit?: boolean; onEdit?(): void;
 }
 
-/** Tool strip along the top of the sheet: part · build, shaded · wire, features, with section and
- *  measure shown disabled. */
+/** Tool strip along the top of the sheet: this part · whole build, shaded · wire, features, with
+ *  measure shown disabled. (U2b: "part · build" read like a second Part | Assembly switch, so the
+ *  scope says what it shows; the dead "section" button is gone.) */
 export function ViewerTools({ mode, onMode, scope, onScope, canEdit, onEdit }: ViewerToolsProps): JSX.Element {
   const toggle = (m: ViewMode, text: string) => (
     <button type="button" class="vt-btn" aria-pressed={mode === m} data-active={mode === m} data-selected={mode === m ? "" : undefined} onClick={() => onMode(m)}>{text}</button>
@@ -27,8 +28,8 @@ export function ViewerTools({ mode, onMode, scope, onScope, canEdit, onEdit }: V
     <div class="viewer-tools" role="toolbar" aria-label="View tools">
       {scope !== undefined && (
         <>
-          {scopeBtn("part", "part", "Only the selected part")}
-          {scopeBtn("build", "build", "Every visible part of this build")}
+          {scopeBtn("part", "this part", "Only the selected part")}
+          {scopeBtn("build", "whole build", "Every visible part of this build")}
           <span class="vt-gap" />
         </>
       )}
@@ -42,7 +43,6 @@ export function ViewerTools({ mode, onMode, scope, onScope, canEdit, onEdit }: V
         </>
       )}
       <span class="vt-gap" />
-      {later("section")}
       {later("measure")}
     </div>
   );

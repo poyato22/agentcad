@@ -79,7 +79,7 @@ test("color_a_part_from_the_palette_and_the_viewer_paints_it", async ({ page, fa
   expect((await callsTo(fake, "PATCH", "/parts/top_plate")).at(-1)?.body).toEqual({ color: "#2f9a9c" });
   await expect(page.getByTestId("viewer-canvas")).toHaveAttribute("data-shown", "top_plate:#2f9a9c");
   // the whole build: both parts, each in its color
-  await page.getByRole("button", { name: "build", exact: true }).click();
+  await page.getByRole("button", { name: "whole build", exact: true }).click();
   await expect(page.getByTestId("viewer-canvas")).toHaveAttribute("data-shown", "quad_arm:#d9822b top_plate:#2f9a9c");
 });
 
