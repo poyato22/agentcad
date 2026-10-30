@@ -57,9 +57,12 @@ def test_bom_and_part_shown_and_drawing_mappings():
     assert a["detail"] == "MG996R servo" and a["ref"]["bom_id"] == "bom1"
     a = announce.from_tool_result("part_show", {}, ok(card={"name": "Servo", "card_id": "c1"}))
     assert a["kind"] == "part_shown" and a["ref"] == {"card_id": "c1"}
-    a = announce.from_tool_result("drawing_import", {}, ok(import_id="imp1", part_id="plate"))
-    assert a["kind"] == "drawing_imported" and a["ref"] == {"import_id": "imp1",
-                                                            "part_id": "plate"}
+    assert a["detail"] == ""                    # page-derived names never reach the detail
+    a = announce.from_tool_result("part_show", {"name": "MG996R"}, ok(card={"card_id": "c1"}))
+    assert a["detail"] == "MG996R"
+    # drawing_imported comes from the import itself (imports/drawing_import.py), not a mapper
+    for name in ("drawing_import", "drawing_import_build"):
+        assert announce.from_tool_result(name, {}, ok(import_id="imp1")) is None
 
 
 def test_titles_are_clipped_and_kinds_checked():

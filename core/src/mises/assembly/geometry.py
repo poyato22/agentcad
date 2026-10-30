@@ -139,7 +139,7 @@ async def run_geometry(parts_root: Path, assembly, result: SolveResult, *, want:
     if proc.returncode != 0:
         raise MisesError(ErrorCode.TOOL_FAILED, f"assembly geometry failed: {stderr.strip()}")
     try:
-        data = json.loads((out / "result.json").read_text())
+        data = safe_io.read_json(out, "result.json")    # a planted link is refused
         if data.get("nonce") != nonce:
             raise ValueError("nonce mismatch")
     except Exception as e:  # noqa: BLE001

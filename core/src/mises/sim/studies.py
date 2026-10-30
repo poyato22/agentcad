@@ -470,7 +470,22 @@ def wind_memory_cap(ctx) -> int:
         local = rt.parallel.local_gb_in_use() if rt is not None else 0.0
     except Exception:  # noqa: BLE001
         local = 0.0
-    return memory_cap_mb(hardware.machine()["ram_gb"], local)
+    cap = memory_cap_mb(hardware.machine()["ram_gb"], local)
+    return min(cap, wind_limits(ctx)["memory_mb"])
+
+
+def wind_limits(ctx) -> dict:
+    """The user's ceilings for an agent's wind settings (profile wind_max_*): memory, OpenFOAM
+    cores and time per run. Studies run one at a time, but they share the Mac with warm
+    measure workers, renders and local models."""
+    from ..profile import Profile, load_profile
+    rt = (getattr(ctx, "services", None) or {}).get("runtime")
+    try:
+        p = load_profile(rt.home) if rt is not None and getattr(rt, "home", None) else Profile()
+    except Exception:  # noqa: BLE001 - a broken profile keeps the defaults
+        p = Profile()
+    return {"memory_mb": int(p.wind_max_memory_mb), "cpus": int(p.wind_max_cpus),
+            "timeout_s": float(p.wind_max_timeout_s)}
 
 
 def _step_id(ctx) -> int | None:
@@ -632,6 +647,7 @@ async def run_study(ctx, type_id: str, part_id: str | None, part_dir: Path | Non
             out = await _dispatch(type_id, job_root, metrics, material, ccx, settings, env,
                                   progress, sim_id, part_id, solve_timeout_s,
                                   wind_memory_cap(ctx), coarse_only=coarse_only,
+                                  wind_limits=wind_limits(ctx),
                                   assembly=(assembly, snap) if assembly is not None else None)
         except SimError as e:
             return fail(e.code, e.message, e.hint)
@@ -701,9 +717,11 @@ def queue_timeout() -> float:
 
 async def _dispatch(type_id, job_root, metrics, material, ccx, settings, env, progress,
                     sim_id, part_id, solve_timeout_s=None, memory_cap=8192,
-                    coarse_only: bool = False, assembly=None) -> dict:
+                    coarse_only: bool = False, assembly=None,
+                    wind_limits: dict | None = None) -> dict:
     if type_id == "wind":
-        return await _run_wind(job_root, metrics, settings, progress, memory_cap)
+        return await _run_wind(job_root, metrics, settings, progress, memory_cap,
+                               limits=wind_limits)
     from .fem import FemJob
     job = FemJob(root=job_root, step=job_root / "model.step", metrics=metrics,
                  material=material, ccx=ccx, mesh_settings=settings.mesh,
@@ -740,7 +758,8 @@ def wind_payload(s) -> dict:
     return d
 
 
-async def _run_wind(job_root: Path, metrics: dict, s, progress, memory_cap: int) -> dict:
+async def _run_wind(job_root: Path, metrics: dict, s, progress, memory_cap: int,
+                    limits: dict | None = None) -> dict:
     from .cfd import run_wind_job
     from .cfd.setup import read_stl
     from .cfd.validation import PREVIEW_REFINEMENT
@@ -759,11 +778,19 @@ async def _run_wind(job_root: Path, metrics: dict, s, progress, memory_cap: int)
     payload = wind_payload(s)
     payload["memory_mb"] = min(int(payload["memory_mb"]), memory_cap)
     warnings = []
+    for key, label in (("cpus", "OpenFOAM cores"), ("timeout_s", "time limit")):
+        top = (limits or {}).get(key)
+        if top is not None and payload[key] > top:
+            payload[key] = type(payload[key])(top)
+            warnings.append(f"{label} lowered to {payload[key]:g} (the profile's ceiling for "
+                            "a wind study)")
     if payload["solver"] == "openfoam":
         from . import cfd as cfd_mod
         docker, why = await asyncio.to_thread(cfd_mod.openfoam_available)
         if docker is not None:
-            return await _run_openfoam(job_root, tris, payload, s, docker, progress)
+            out = await _run_openfoam(job_root, tris, payload, s, docker, progress)
+            out["warnings"] = [*out.get("warnings", []), *warnings]   # the profile ceilings
+            return out
         # S2: OpenFOAM is optional; without it the built-in solver runs, and says so
         warnings.append(f"OpenFOAM was requested but is unavailable ({why}); the built-in "
                         "solver was used instead")
