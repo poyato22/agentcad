@@ -64,7 +64,7 @@ def _run_project_id(ctx: ToolContext) -> str | None:
         return None
     try:
         return store.get_run(run_id).project_id
-    except (KeyError, Exception):  # noqa: BLE001 - bare unit tests have no run row
+    except Exception:  # noqa: BLE001 - bare unit tests have no run row
         return None
 
 

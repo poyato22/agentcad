@@ -711,7 +711,7 @@ class Runtime:
             await self.refresh_local_sizes()
         run = self.store.create_run(agent, provider.name, model, prompt, parent_id=parent_id,
                                     project_id=project_id)
-        self._note_shape_complexity(run.id, prompt)
+        shape = self._note_shape_complexity(run.id, prompt)
         classes = set(SafetyClass) if allowed_classes is None else set(allowed_classes)
         self.store.create_policy(run.id, list(edit_scope), list(read_scope), caps,
                                  [c for c in SafetyClass if c in classes])
@@ -722,7 +722,7 @@ class Runtime:
                          activity=self.activity_tracker(run.id))
         st = self._runs[run.id] = _RunState(loop=loop, ref=ref)
         started = {"agent": agent, "provider": provider.name, "model": model,
-                   "parent_id": parent_id}
+                   "parent_id": parent_id, "shape_complexity": shape}
         slot = self._admit(run.id, ref, started)
         first: str | list[Block] = prompt
         user_log = None
@@ -843,7 +843,6 @@ class Runtime:
             self.store.set_shape_complexity(run_id, est)
         except Exception:  # noqa: BLE001 - a routing hint must never break a run
             log.debug("could not store shape_complexity for %s", run_id, exc_info=True)
-        self.events.publish(Event(type="run_shape_complexity", run_id=run_id, data=est))
         return est
 
     def vision_model_for(self, run_id: str):

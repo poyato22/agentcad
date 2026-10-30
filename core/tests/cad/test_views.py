@@ -127,6 +127,25 @@ async def test_critique_budget_caps_rounds(tmp_path):
     assert done["round"] == 3 and done["done"] is True and done["stop_reason"] == "max_rounds"
 
 
+async def test_critique_reports_iou_against_reference(tmp_path):
+    from mises import references as refs
+    from mises.references import PhotoIn, ReferenceUpload
+    _make_part(tmp_path, "cube")
+    import base64
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", (64, 64), (255, 255, 255)).save(buf, "PNG")  # a reference image
+    saved = refs.save_reference(tmp_path, ReferenceUpload(
+        image=PhotoIn(data_b64=base64.b64encode(buf.getvalue()).decode())))
+    rt = _fake_rt(tmp_path, [[TextDelta(text=_BAD)]])
+    ctx = _bare_ctx(tmp_path, run_id="rio", services={"runtime": rt})
+    out = await views.critique_model.handler(ctx, views.CritiqueArgs(
+        part_id="cube", request="a wing", reference_image_ids=[saved["reference_id"]]))
+    assert out.data["iou"] is not None
+    assert set(out.data["iou"]) == {"front", "top", "side", "iso"}
+    assert all(0.0 <= v <= 1.0 for v in out.data["iou"].values())
+
+
 async def test_critique_no_high_severity_stops(tmp_path):
     _make_part(tmp_path, "cube")
     low = '{"score": 0.5, "issues": [{"view": "top", "issue": "minor", "severity": "low"}]}'
