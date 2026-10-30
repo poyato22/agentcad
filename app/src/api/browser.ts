@@ -173,7 +173,7 @@ export const bomSchema: z.ZodType<Bom> = z.looseObject({
 export interface NewBomLine {
   kind: BomKind; name: string; qty?: number; unit_cost?: number | null; currency?: string;
   vendor?: string | null; url?: string | null; specs?: PartSpec[]; notes?: string;
-  catalog_id?: string | null; part_id?: string | null; snapshot_id?: string | null;
+  catalog_id?: string | null; part_id?: string | null; snapshot_id?: string | null; source?: BomSource;
 }
 /** PATCH /projects/{id}/bom/{lid} body: the user's edits (qty, cost, notes, …). */
 export interface BomPatch {
