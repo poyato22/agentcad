@@ -101,6 +101,11 @@ TOOL_LABELS: dict[str, str] = {
     "assembly_check": "checking the assembly", "ui_ask_user": "asking you",
     "agent_spawn": "delegating", "orchestrator_run": "delegating",
     "agent_wait": "waiting on subagents", "agent_result": "collecting a subagent",
+    "sim_run": "running a study", "design_review": "reviewing the design",
+    "study_apply": "applying a variant", "study_get": "reading a design study",
+    "interview_plan": "planning the interview", "spec_get": "reading the spec",
+    "loads_impact": "estimating impact loads", "catalog_get": "reading a catalog part",
+    "onshape_import_element": "importing from Onshape",
 }
 
 

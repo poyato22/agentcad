@@ -614,10 +614,38 @@ async def design_review(ctx: ToolContext, args: ReviewArgs) -> ToolOutput:
                      + (f" ({r['measured']:.4g}{r.get('unit') or ''} vs {r['target']})"
                         if isinstance(r.get("measured"), (int, float)) else "")
                      + (f" [{r['sim_id']}]" if r.get("sim_id") else "") for r in table)
-    return ToolOutput(summary=head + (": " + rows if rows else ""),
-                      data={"verdict": verdict, "table": table, "studies": studies_run,
-                            "label": GUIDE_LABEL, "part_id": args.part_id},
+    data = {"verdict": verdict, "table": table, "studies": studies_run,
+            "label": GUIDE_LABEL, "part_id": args.part_id}
+    _fit_review(data)
+    return ToolOutput(summary=head + (": " + rows if rows else ""), data=data,
                       warnings=[s["error"] for s in studies_run if s.get("error")])
+
+
+REVIEW_SOFT_MAX_BYTES = 14 * 1024
+
+
+def _fit_review(data: dict) -> None:
+    """Keep design_review under the Gate's 16 KB spill limit (many load cases + modal + a wind
+    sweep can approach it): drop the cards' charts first, then trim their warnings. The verdict,
+    the table and every study id always stay; the full cards are at each study's url."""
+    import json
+
+    def size() -> int:
+        return len(json.dumps(data, default=float).encode())
+    if size() <= REVIEW_SOFT_MAX_BYTES:
+        return
+    for s in data["studies"]:
+        if isinstance(s.get("card"), dict):
+            s["card"] = {k: v for k, v in s["card"].items() if k != "charts"}
+    if size() > REVIEW_SOFT_MAX_BYTES:
+        for s in data["studies"]:
+            if isinstance(s.get("card"), dict):
+                s["card"]["warnings"] = (s["card"].get("warnings") or [])[:1]
+                s["card"]["checks"] = []
+    if size() > REVIEW_SOFT_MAX_BYTES:
+        for s in data["studies"]:
+            s["card"] = None
+    data["trimmed"] = True
 
 
 def register_sim_tools(registry: ToolRegistry) -> None:

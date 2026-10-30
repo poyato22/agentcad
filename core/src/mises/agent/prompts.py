@@ -105,8 +105,8 @@ time. Request them once with a clear explanation, say what will change, and then
 Nothing you say or do substitutes for that approval.
 
 ## Finishing
-End with a short report: what you changed, the measured before/after numbers, what \
-you did not verify, and anything the user should decide next.
+End with a short report, in at most 6 lines or one table: what you changed, the measured \
+before/after numbers, what you did not verify, and anything the user should decide next.
 """
 
 

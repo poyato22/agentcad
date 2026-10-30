@@ -143,13 +143,13 @@ def build_catalog_router(runtime: Runtime) -> APIRouter:
 def _part_result(runtime: Runtime, data: dict) -> dict:
     """The part a UI call created or found, with its stored metrics (read from disk: the tool
     result stays small)."""
-    import json
+    from ..cad import safe_io
 
     pid = data["part_id"]
     d = runtime.home / "parts" / pid
-    try:
-        metrics = json.loads((d / "metrics.json").read_text())
-    except (OSError, ValueError):
+    try:  # safe_io: never follows a link a build left in the part dir
+        metrics = safe_io.read_json(d, "metrics.json")
+    except (OSError, ValueError, safe_io.UnsafePath):
         metrics = None
     meta = data.get("meta")
     if meta is None:

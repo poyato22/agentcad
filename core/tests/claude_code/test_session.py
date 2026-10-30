@@ -105,6 +105,7 @@ async def test_start_passes_exactly_the_documented_flags(rt, claude_bin):
                         "TMPDIR", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME",
                         "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "https_proxy", "http_proxy",
                         "no_proxy", "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "CLAUDE_CONFIG_DIR",
+                        "MCP_TOOL_TIMEOUT",   # M-6: long studies must not time out in claude
                         "PWD", "SHLVL", "_", "__CF_USER_TEXT_ENCODING", "OLDPWD"}
 
 

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import re
+import stat
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -136,6 +137,14 @@ def _contained(root: Path, p: Path) -> Path | None:
     return None
 
 
+def _safe_json(d: Path, name: str):
+    from .cad import safe_io
+    try:
+        return safe_io.read_json(d, name)
+    except (OSError, ValueError, safe_io.UnsafePath):
+        return None
+
+
 def _read_json(path: Path):
     try:
         return json.loads(path.read_text())
@@ -183,9 +192,18 @@ def _part_disk(home: Path, part_id: str) -> dict | None:
     real = _contained(root, root / part_id) if root.is_dir() else None
     if real is None or not real.is_dir():
         return None
-    vars_ = _read_json(real / "vars.json")
-    metrics = _read_json(real / "metrics.json")
-    mtimes = [p.stat().st_mtime for p in real.iterdir() if p.is_file()]
+    # the build sandbox can write the part dir: read through safe_io (a link left there by a
+    # racing build is refused, never followed to e.g. server.json), and stat without following
+    vars_ = _safe_json(real, "vars.json")
+    metrics = _safe_json(real, "metrics.json")
+    mtimes = []
+    for p in real.iterdir():
+        try:
+            st = p.lstat()
+        except OSError:
+            continue
+        if stat.S_ISREG(st.st_mode):
+            mtimes.append(st.st_mtime)
     return {"vars": vars_ if isinstance(vars_, dict) else {},
             "metrics": metrics if isinstance(metrics, dict) else None,
             "mtime": float(max(mtimes)) if mtimes else real.stat().st_mtime}

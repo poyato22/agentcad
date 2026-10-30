@@ -241,7 +241,13 @@ def _spec_updated_at(ctx: ToolContext, pid: str) -> float | None:
     return getter(pid) if getter is not None else None
 
 
-@tool("spec_set", safety=SafetyClass.LOCAL_MUTATE,
+def _build_scope(args) -> list[str]:
+    """Build-wide tools (spec_set) need the whole build in scope: "*" or "project:<id>". A run
+    narrowed to some parts cannot rewrite the build's spec."""
+    return [f"project:{getattr(args, 'project_id', None) or ''}"]
+
+
+@tool("spec_set", safety=SafetyClass.LOCAL_MUTATE, scope_keys=_build_scope,
       description="Write the project's engineering spec (goal, requirements, load cases, interview "
                   "answers). Requirement kinds: max_mass_g, min_safety_factor, max_deflection_mm, "
                   "envelope_mm, mount_pattern, printable, custom. Drag and vibration targets are "
@@ -625,6 +631,9 @@ async def study_run(ctx: ToolContext, args: StudyRunArgs) -> ToolOutput:
         ctx.events.publish(Event(type="study_progress", run_id=ctx.run_id,
                                  data={"study_id": study_id, "n": len(its),
                                        "total": budget.evals}))
+        rt = (ctx.services or {}).get("runtime")     # the status line: "design study · 6/24"
+        if rt is not None and hasattr(rt, "activity_tracker"):
+            rt.activity_tracker(ctx.run_id).set("tool", f"design study · {len(its)}/{budget.evals}")
 
     def save(status: str, best_id: int | None) -> None:
         keep = {it["n"] for it in iterations if it.get("pareto")}
