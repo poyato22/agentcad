@@ -3,13 +3,13 @@
 //   "layers along +x" reads as a picture of the print, not a word;
 // - contact pairs: face A ⟷ face B with one "Pick pair" that arms the viewer twice in a row,
 //   a part resting on a rigid support, or two assembly instances; friction μ on each;
-// - fatigue: the load cycle as a trace (fully reversed / zero to max / min–max), the required
-//   life with everyday presets, and the mean-stress correction.
+// - fatigue: the load cycle as a trace (zero to max / fully reversed / min–max), the required
+//   life with everyday presets, and an optional data-sheet S-N curve (Goodman is always applied).
 // Every other field of these settings (steps, large deflection …) stays generic. Values are
 // written back through the form's own `set`, so validation and the core's checks are unchanged.
 import type { JSX } from "preact";
 import { useRef } from "preact/hooks";
-import { orthotropic } from "../../../../api/accuracy";
+import { zData } from "../../../../api/accuracy";
 import type { StudyMaterial } from "../../../../api/studies";
 import { Button } from "../../../common/Button";
 import type { Path } from "../formSchema";
@@ -65,12 +65,17 @@ function layerLines(a: Axis, n = 7): string {
   return out.join("");
 }
 
+/** settings.material.anisotropy (core AnisotropySettings): null = isotropic; else the print
+ *  direction and optional ratio overrides (null = the material's calibrated Z data or typical ratios). */
 export function PrintDirectionField(p: CustomFieldProps): JSX.Element {
-  const on = p.value !== null && p.value !== undefined;
-  const axis: Axis | null = isAxis(p.value) ? p.value : null;
-  const ortho = p.material ? orthotropic(p.material as unknown as Record<string, unknown>) : null;
+  const aniso = isObj(p.value) ? p.value : null;
+  const on = aniso !== null;
+  const dir = aniso?.print_direction ?? null;
+  const axis: Axis | null = isAxis(dir) ? dir : null;
+  const z = p.material ? zData(p.material as unknown as Record<string, unknown>) : null;
   const group = useRef<SVGGElement>(null);
-  const pick = (a: Axis) => { if (!p.disabled) p.set(p.path, a); };
+  const dirPath = [...p.path, "print_direction"];
+  const pick = (a: Axis) => { if (!p.disabled) p.set(dirPath, a); };
   const onKey = (e: KeyboardEvent) => {
     const i = axis ? AXES.indexOf(axis) : -1;
     const step = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 0;
@@ -86,7 +91,7 @@ export function PrintDirectionField(p: CustomFieldProps): JSX.Element {
       <legend>
         <label class="sf-check">
           <input type="checkbox" checked={on} disabled={p.disabled} data-testid="print-direction-on"
-            onChange={() => p.set(p.path, on ? null : "+z")} /> Print direction
+            onChange={() => p.set(p.path, on ? null : { print_direction: "+z" })} /> Print direction (anisotropic)
         </label>
       </legend>
       {!on && <span class="sf-doc faint text">Off: the material is treated as the same in every direction. Turn on for a printed part: tension across the layers uses the weaker Z strength.</span>}
@@ -114,18 +119,32 @@ export function PrintDirectionField(p: CustomFieldProps): JSX.Element {
             </g>
           </svg>
           <div class="acc-print-text">
-            <span class="text" data-testid="print-direction-text">{printDirectionText(p.value)}</span>
-            {Array.isArray(p.value) && (
-              <span class="faint">a vector set by an agent · <button type="button" class="scard-link" onClick={() => p.set(p.path, "+z")}>use +z</button></span>
+            <span class="text" data-testid="print-direction-text">{printDirectionText(dir)}</span>
+            {Array.isArray(dir) && (
+              <span class="faint">a vector set by an agent · <button type="button" class="scard-link" onClick={() => p.set(dirPath, "+z")}>use +z</button></span>
             )}
-            {ortho && (
-              <span class="faint" data-testid="ortho-note">
-                {`E ${sig3(ortho.e_xy_mpa)} in-plane · ${sig3(ortho.e_z_mpa)} across layers MPa`}
-                {typeof ortho.strength_z_mpa === "number" ? ` · Z strength ${sig3(ortho.strength_z_mpa)} MPa` : ""}
-              </span>
-            )}
-            {!ortho && p.material && <span class="faint">{p.material.name} has no across-layer data: an estimate is used</span>}
+            <span class="faint" data-testid="ortho-note">
+              {z && (z.e_z_mpa !== null || z.z_strength_mpa !== null)
+                ? `${p.material?.name}: ${[z.e_z_mpa !== null && `E across layers ${sig3(z.e_z_mpa)} MPa`, z.z_strength_mpa !== null && `Z strength ${sig3(z.z_strength_mpa)} MPa`].filter(Boolean).join(" · ")}`
+                : "Across the layers: the material's calibrated Z data, else typical ratios (estimate). Tension across the layers is checked against the Z strength."}
+            </span>
           </div>
+        </div>
+      )}
+      {on && (
+        <div class="acc-ratios">
+          {([["e_z_ratio", "E across ÷ in-plane", 0.05, 1.5], ["strength_z_ratio", "Z ÷ in-plane strength", 0.05, 1]] as const).map(([k, label, lo, hi]) => {
+            const v = aniso?.[k];
+            return (
+              <label key={k} class="acc-in">
+                <span class="faint">{label}</span>
+                <input type="number" step="0.05" min={lo} max={hi} disabled={p.disabled} placeholder="typical" aria-label={`${label} (empty: typical)`}
+                  value={typeof v === "number" ? String(v) : ""}
+                  onInput={(e) => { const s = (e.target as HTMLInputElement).value; p.set([...p.path, k], s === "" ? null : Number.parseFloat(s)); }} />
+              </label>
+            );
+          })}
+          <Err msgs={[...p.errors([...p.path, "e_z_ratio"]), ...p.errors([...p.path, "strength_z_ratio"]), ...p.errors(dirPath)]} />
         </div>
       )}
       <Err msgs={p.errors(p.path)} />
@@ -219,15 +238,15 @@ export function ContactPairsField(p: CustomFieldProps): JSX.Element {
   );
 }
 
-// ---- fatigue
+// ---- fatigue (core settings.FatigueSettings: cycles, cycle, min_pct, sn; Goodman always)
 
 const CYCLES: { mode: string; text: string }[] = [
-  { mode: "fully_reversed", text: "Fully reversed" }, { mode: "zero_to_max", text: "Zero to max" }, { mode: "min_max", text: "Min to max" },
+  { mode: "zero_to_max", text: "Zero to max" }, { mode: "fully_reversed", text: "Fully reversed" }, { mode: "min_max", text: "Min to max" },
 ];
 
 /** Two load cycles as a trace between the cycle's min and max (fractions of the case's load). */
-export function CycleTrace({ mode, minRatio }: { mode: string; minRatio: number | null }): JSX.Element {
-  const [lo, hi] = cycleRange(mode, minRatio);
+export function CycleTrace({ mode, minPct }: { mode: string; minPct: number | null }): JSX.Element {
+  const [lo, hi] = cycleRange(mode, minPct);
   // the trace on the left, its two levels named in a gutter on the right
   const W = 260; const H = 60; const pad = 8; const TW = 190;
   const y = (f: number) => pad + ((1 - f) / 2) * (H - 2 * pad); // +1 top, −1 bottom
@@ -237,10 +256,10 @@ export function CycleTrace({ mode, minRatio }: { mode: string; minRatio: number 
     const f = lo + (hi - lo) * (0.5 - 0.5 * Math.cos(t * 4 * Math.PI));
     pts.push(`${(6 + t * (TW - 12)).toFixed(1)},${y(f).toFixed(1)}`);
   }
-  const loText = lo === -1 ? "− load" : lo === 0 ? "zero" : `${sig3(lo)} × load`;
+  const loText = lo === -1 ? "− load" : lo === 0 ? "zero" : `${sig3(lo * 100)}% load`;
   return (
     <svg class="acc-trace" viewBox={`0 0 ${W} ${H}`} width="100%" height={H} role="img" preserveAspectRatio="xMinYMid meet"
-      aria-label={`Load cycle from ${sig3(lo)} to ${sig3(hi)} times the case's load`} data-testid="cycle-trace">
+      aria-label={`Load cycle from ${sig3(lo * 100)}% to ${sig3(hi * 100)}% of the case's load`} data-testid="cycle-trace">
       <line class="acc-trace-zero" x1={0} x2={TW} y1={y(0)} y2={y(0)} />
       <line class="acc-trace-ref" x1={0} x2={TW + 4} y1={y(hi)} y2={y(hi)} />
       <line class="acc-trace-ref" x1={0} x2={TW + 4} y1={y(lo)} y2={y(lo)} />
@@ -254,16 +273,17 @@ export function CycleTrace({ mode, minRatio }: { mode: string; minRatio: number 
 export function FatigueField(p: CustomFieldProps): JSX.Element {
   const on = isObj(p.value);
   const v = on ? (p.value as Record<string, unknown>) : {};
-  const mode = typeof v.cycle === "string" ? v.cycle : "fully_reversed";
+  const mode = typeof v.cycle === "string" ? v.cycle : "zero_to_max";
   const cycles = typeof v.cycles === "number" ? v.cycles : null;
-  const minRatio = typeof v.min_ratio === "number" ? v.min_ratio : null;
+  const minPct = typeof v.min_pct === "number" ? v.min_pct : null;
+  const sn = isObj(v.sn) ? v.sn : null;
   const at = (k: string) => [...p.path, k];
   return (
     <fieldset class="sf-group acc-fatigue" data-field={key(p.path)} data-testid="fatigue">
       <legend>
         <label class="sf-check">
           <input type="checkbox" checked={on} disabled={p.disabled} data-testid="fatigue-on"
-            onChange={() => p.set(p.path, on ? null : { cycles: 1e6, cycle: "fully_reversed", min_ratio: 0, mean_correction: "goodman" })} /> Cyclic loading (fatigue)
+            onChange={() => p.set(p.path, on ? null : { cycles: 1e6, cycle: "zero_to_max", min_pct: 0 })} /> Cyclic loading (fatigue)
         </label>
       </legend>
       {!on && <span class="sf-doc faint text">For parts that vibrate, spin or flex again and again (drone arms, motor mounts, clips). Reports the life at the hotspot.</span>}
@@ -275,16 +295,16 @@ export function FatigueField(p: CustomFieldProps): JSX.Element {
                 onClick={() => p.set(at("cycle"), c.mode)}>{c.text}</button>
             ))}
           </div>
-          <CycleTrace mode={mode} minRatio={minRatio} />
+          <CycleTrace mode={mode} minPct={minPct} />
           {mode === "min_max" && (
             <div class="sf-row">
-              <label class="sf-label" for="acc-fat-r">Min ÷ max (R)</label>
+              <label class="sf-label" for="acc-fat-r">Min load</label>
               <span class="sf-control">
-                <input id="acc-fat-r" type="number" step="0.1" min={-1} max={1} disabled={p.disabled} value={minRatio === null ? "" : String(minRatio)}
-                  onInput={(e) => p.set(at("min_ratio"), Number.parseFloat((e.target as HTMLInputElement).value))} />
-                <span class="sf-range faint">−1 to 1</span>
+                <input id="acc-fat-r" type="number" step="5" min={-100} max={100} disabled={p.disabled} value={minPct === null ? "" : String(minPct)}
+                  onInput={(e) => p.set(at("min_pct"), Number.parseFloat((e.target as HTMLInputElement).value))} />
+                <span class="sf-range faint">% of the load, −100 to 100</span>
               </span>
-              <Err msgs={p.errors(at("min_ratio"))} />
+              <Err msgs={p.errors(at("min_pct"))} />
             </div>
           )}
           <div class="sf-row">
@@ -302,15 +322,24 @@ export function FatigueField(p: CustomFieldProps): JSX.Element {
                 title={`${cyclesText(l.cycles)} cycles`} onClick={() => p.set(at("cycles"), l.cycles)}>{l.text}</button>
             ))}
           </div>
-          <div class="sf-row">
-            <label class="sf-label" for="acc-fat-mc">Mean stress</label>
-            <select id="acc-fat-mc" disabled={p.disabled} value={typeof v.mean_correction === "string" ? v.mean_correction : "goodman"}
-              onChange={(e) => p.set(at("mean_correction"), (e.target as HTMLSelectElement).value)}>
-              <option value="goodman">Goodman correction</option>
-              <option value="none">no correction</option>
-            </select>
-          </div>
-          <span class="sf-doc faint text">Fatigue estimate from the material's S-N curve (datasheet or estimate). Cycles: {cycles ? cyclesShort(cycles) : "?"}.</span>
+          <label class="sf-check">
+            <input type="checkbox" checked={sn !== null} disabled={p.disabled} data-testid="fatigue-sn-on"
+              onChange={() => p.set(at("sn"), sn ? null : { a_mpa: 100, b: -0.1, source: "data sheet" })} /> S-N curve from a data sheet
+          </label>
+          {sn && (
+            <div class="acc-ratios">
+              {([["a_mpa", "A (MPa)", "any"], ["b", "b", "0.01"]] as const).map(([k, label, step]) => (
+                <label key={k} class="acc-in">
+                  <span class="faint">{label}</span>
+                  <input type="number" step={step} disabled={p.disabled} aria-label={`S-N ${label}`} value={typeof sn[k] === "number" ? String(sn[k]) : ""}
+                    onInput={(e) => p.set([...at("sn"), k], Number.parseFloat((e.target as HTMLInputElement).value))} />
+                </label>
+              ))}
+              <span class="faint">σa = A·N^b</span>
+              <Err msgs={[...p.errors([...at("sn"), "a_mpa"]), ...p.errors([...at("sn"), "b"])]} />
+            </div>
+          )}
+          <span class="sf-doc faint text">Fatigue estimate: {sn ? "your S-N curve" : "the material's S-N curve, else the AM PLA design-curve estimate"}, Goodman mean-stress correction. Cycles: {cycles ? cyclesShort(cycles) : "?"}.</span>
         </>
       )}
       <Err msgs={p.errors(p.path)} />

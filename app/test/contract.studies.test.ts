@@ -10,7 +10,7 @@ import { WebSocket } from "ws";
 import { STUDY_TYPES } from "../src/api/studies";
 import type { MisesEvent } from "../src/api/types";
 import type { PartSummary } from "../src/api/types";
-import { P6_MATERIAL_KEYS, p6Types } from "./fake-core/accuracy";
+import { p6Types } from "./fake-core/accuracy";
 import { loadScenario, startFakeCore, type FakeCore, type Scenario } from "./fake-core/server";
 import { shapeDiff, type Json } from "./shape";
 
@@ -36,15 +36,17 @@ afterAll(async () => { await core.stop(); });
 describe("C7 study routes: fake core = real core", () => {
   it("types, solvers, templates, materials", async () => {
     core.reset(scenario());
-    // the schemas are data the form reads: served exactly as the real core wrote them, plus the
-    // Plan 6 settings (assumed until S5 re-dumps the fixtures from the S1-S3 core: fake-core/accuracy.ts)
-    expect(await get("/sims/types")).toEqual(p6Types(read("study_types.json") as unknown as { id: string; schema: unknown }[]));
+    // the schemas are data the form reads: served exactly as the real S3 core wrote them, plus the
+    // assumed Plan 6 S1 / S2 settings (fake-core/accuracy.ts; S5 re-dumps those)
+    expect(await get("/sims/types")).toEqual(p6Types(read("s3_types.json") as unknown as { id: string; schema: unknown }[]));
     expect(shapeDiff(read("study_solvers.json"), await get("/sims/solvers"), "solvers")).toEqual([]);
     const realT = read("study_templates.json") as { type: string }[];
     for (const t of await get("/sims/templates") as { type: string }[]) expect(shapeDiff(realT.find((x) => x.type === t.type), t, "template")).toEqual([]);
     const add = await call("POST", "/sims/templates", { name: "Tip load 2", type: "static", settings: {} });
     expect(add.status).toBe(201);
-    expect(shapeDiff(read("study_template_add.json"), add.json, "template")).toEqual([]);
+    // a template stores every default: the S3 core's settings add these (the template fixture predates S3)
+    const s3Defaults = /settings\.(fatigue|material\.(anisotropy|printer|calibrated)): extra/;
+    expect(shapeDiff(read("study_template_add.json"), add.json, "template").filter((x) => !s3Defaults.test(x))).toEqual([]);
     const dup = await call("POST", "/sims/templates", { name: "tip load 2", type: "static", settings: {} });
     expect(dup.status).toBe(409);
     expect(shapeDiff(read("study_template_conflict.json"), dup.json, "conflict")).toEqual([]);
@@ -53,9 +55,8 @@ describe("C7 study routes: fake core = real core", () => {
     const mat = await call("POST", "/sims/materials", { name: "Spool PETG-CF", e_mpa: 3800, nu: 0.35, yield_mpa: 45, density_g_cm3: 1.3 });
     expect(mat.status).toBe(201);
     expect(shapeDiff(read("study_material_add.json"), mat.json, "material")).toEqual([]);
-    // Plan 6 S3 (assumed): the materials' extra sn / orthotropic / calibration blocks
-    const p6Extra = new RegExp(`\\.(${P6_MATERIAL_KEYS.join("|")}): extra`);
-    expect(shapeDiff(read("study_materials.json"), await get("/sims/materials"), "materials").filter((x) => !p6Extra.test(x))).toEqual([]);
+    // the S3 core's material rows (basis, Z data, S-N keys)
+    expect(shapeDiff(read("s3_materials.json"), await get("/sims/materials"), "materials")).toEqual([]);
     expect(shapeDiff(read("study_material_delete.json"), (await call("DELETE", "/sims/materials/Spool%20PETG-CF")).json, "del")).toEqual([]);
   });
 
@@ -123,5 +124,62 @@ describe("C7 study routes: fake core = real core", () => {
     const rec = await get(`/sims/${s.sim_id}`) as { status: string };
     expect(rec.status).toBe("cancelled");
     expect(shapeDiff(read("study_cancelled.json"), rec, "cancelled")).toEqual([]);
+  });
+});
+
+// Plan 6 S3: the fake core against the real S3 core (core/scripts/dump_s3_fixtures.py → s3_*)
+describe("S3 calibration, anisotropy and fatigue: fake core = real core", () => {
+  const until = async (cond: () => Promise<boolean>) => { for (let i = 0; i < 300 && !(await cond()); i++) await new Promise((r) => setTimeout(r, 10)); };
+  const runStatic = async (settings: Record<string, unknown>) => {
+    const r = await call("POST", "/sims", { type: "static", part_id: "beam", settings });
+    const runId = (r.json as { run_id: string }).run_id;
+    await until(async () => ((await get(`/sims?run_id=${runId}`)) as { status: string }[])[0]?.status === "done");
+    return ((await get(`/sims?run_id=${runId}`)) as { sim_id: string }[])[0].sim_id;
+  };
+  const CASE = { name: "tip", supports: [{ kind: "fixed", face: "x-min" }], loads: [{ kind: "force", face: "x-max", newtons: 10, direction: "-z" }] };
+  const body = (simId: string) => ({
+    material: "PLA", printer: "MK4",
+    tensile: [1300, 1180, 1240].map((f) => ({ force_n: f, width_mm: 10, thickness_mm: 4 })).concat([{ force_n: 720, width_mm: 10, thickness_mm: 4, orientation: "z" } as never]),
+    bend: [2.0, 2.1].map((d) => ({ span_mm: 64, width_mm: 10, thickness_mm: 4, load_n: 40, deflection_mm: d })),
+    part: [{ sim_id: simId, point: [100, 5, 10], load_n: 10, deflection_mm: 1.9 }],
+  });
+
+  it("fit preview, save (= apply), list, invalid, delete", async () => {
+    core.reset(scenario());
+    const plain = await runStatic({ load_cases: [CASE], material: { name: "PLA" } });
+    const fit = await call("POST", "/sims/calibrations/fit", body(plain));
+    expect(fit.status).toBe(200);
+    expect(shapeDiff(read("s3_cal_fit.json"), fit.json, "fit")).toEqual([]);
+    // the same E, strength and knock-down for the coupons (the part test's E is the fake's estimate)
+    const real = (read("s3_cal_fit.json") as { fit: { strength: { value_mpa: number; knockdown: number }; z_strength: { value_mpa: number } } }).fit;
+    const mine = (fit.json as { fit: typeof real }).fit;
+    expect(mine.strength.value_mpa).toBeCloseTo(real.strength.value_mpa, 6);
+    expect(mine.strength.knockdown).toBeCloseTo(real.strength.knockdown, 6);
+    expect(mine.z_strength.value_mpa).toBeCloseTo(real.z_strength.value_mpa, 6);
+    const bad = await call("POST", "/sims/calibrations/fit", { material: "PLA", printer: "MK4", tensile: [{ force_n: 5 }] });
+    expect(bad.status).toBe(422);
+    expect(shapeDiff(read("s3_cal_invalid.json"), bad.json, "invalid")).toEqual([]);
+    const extra = await call("POST", "/sims/calibrations/fit", { ...body(plain), printer_profile: "MK4" });
+    expect(extra.status).toBe(422);
+    const saved = await call("POST", "/sims/calibrations", body(plain));
+    expect(saved.status).toBe(201);
+    expect(shapeDiff(read("s3_cal_save.json"), saved.json, "save")).toEqual([]);
+    expect(shapeDiff(read("s3_cal_list.json"), await get("/sims/calibrations"), "list")).toEqual([]);
+    const del = await call("DELETE", `/sims/calibrations/${(saved.json as { id: string }).id}`);
+    expect(shapeDiff(read("s3_cal_delete.json"), del.json, "delete")).toEqual([]);
+  });
+
+  it("an orthotropic study with fatigue, and the same study calibrated on its printer", async () => {
+    core.reset(scenario());
+    const settings = { load_cases: [CASE], material: { name: "PLA", anisotropy: { print_direction: "+x" } }, fatigue: { cycles: 1e6, cycle: "zero_to_max" } };
+    const sid = await runStatic(settings);
+    expect(shapeDiff(read("s3_static.json"), await get(`/sims/${sid}`), "s3 static")).toEqual([]);
+    const plain = await runStatic({ load_cases: [CASE], material: { name: "PLA" } });
+    await call("POST", "/sims/calibrations", body(plain));
+    const cal = await runStatic({ ...settings, material: { ...settings.material, printer: "MK4" } });
+    const rec = await get(`/sims/${cal}`) as { material: { basis: string }; card: { material_basis: string } };
+    expect(shapeDiff(read("s3_static_calibrated.json"), rec, "calibrated")).toEqual([]);
+    expect(rec.material.basis).toBe("calibrated (7 tests)");
+    expect(rec.card.material_basis).toBe("calibrated (7 tests)");
   });
 });

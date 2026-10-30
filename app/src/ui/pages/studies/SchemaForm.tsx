@@ -5,7 +5,7 @@
 // "Advanced". Problems show at their field. Every label and doc comes from the schema as text.
 import type { JSX } from "preact";
 import { useRef, useState } from "preact/hooks";
-import { provenance } from "../../../api/accuracy";
+import { CAL_KEY_RE, calibrationFor, DEFAULT_PRINTER, provenance, type Calibration } from "../../../api/accuracy";
 import type { JsonSchema, StudyMaterial } from "../../../api/studies";
 import type { PartFace } from "../../../api/types";
 import { fmtClock } from "../../../lib/format";
@@ -29,6 +29,8 @@ export interface SchemaFormProps {
   materials?: readonly string[];
   /** The material rows (Plan 6: calibration badge in the picker, orthotropic data by the print direction). */
   materialRows?: readonly StudyMaterial[];
+  /** Saved calibrations (S3): the badge says "calibrated" only when one applies to the chosen material and printer. */
+  calibrations?: readonly Calibration[];
   onEditMaterials?: () => void;
   /** Opens the calibration panel for the chosen material (null: the profile default). */
   onCalibrate?: (material: string | null) => void;
@@ -180,16 +182,37 @@ function Field({ ctx, path, k, schema, required }: { ctx: Ctx; path: Path; k: st
   if ("const" in n) return null; // a union's tag: the kind picker shows it
 
   // Plan 6: the print-direction gizmo, contact pairs picked in the viewer, the fatigue cycle
-  if (k === "print_direction" && path.length === 1) return <PrintDirectionField {...customProps(ctx, path)} />;
+  if (k === "anisotropy" && path.length === 2 && path[0] === "material") return <PrintDirectionField {...customProps(ctx, path)} />;
   if (k === "fatigue" && path.length === 1) return <FatigueField {...customProps(ctx, path)} />;
   if (k === "contact" && path[0] === "nonlinear") return <ContactPairsField {...customProps(ctx, path)} />;
 
-  // material name: the saved and built-in materials (with their calibration badge)
+  // the printer profile whose calibration the study uses (null = "default")
+  if (k === "printer" && path.length === 2 && path[0] === "material") {
+    const keys = [...new Set([DEFAULT_PRINTER, ...(ctx.calibrations ?? []).map((c) => c.printer)])];
+    const t = typeof value === "string" ? value : "";
+    const bad = t !== "" && !CAL_KEY_RE.test(t);
+    return (
+      <Row ctx={ctx} path={path} label="Printer" n={{ description: "the printer profile whose calibration applies; empty = default" }}>
+        <span>
+          <input id={fid(path)} list="sf-printers" disabled={ctx.disabled} value={t} placeholder={DEFAULT_PRINTER} maxLength={40}
+            aria-invalid={bad ? "true" : undefined} data-testid="material-printer"
+            onInput={(e) => { const s = (e.target as HTMLInputElement).value; ctx.set(path, s.trim() ? s : null); }} />
+          <datalist id="sf-printers">{keys.map((x) => <option key={x} value={x} />)}</datalist>
+          {bad && <span class="sf-err" role="alert">1–40 letters, digits, spaces or ._+()-</span>}
+        </span>
+      </Row>
+    );
+  }
+
+  // material name: the saved and built-in materials (with their calibration badge on the chosen printer)
   if (k === "name" && path.length === 2 && path[0] === "material") {
     const names = ctx.materials ?? [];
+    const printer = getAt(ctx.value, ["material", "printer"]);
+    const useCal = getAt(ctx.value, ["material", "calibrated"]) !== false;
     const badge = (m: string) => {
       const row = ctx.materialRows?.find((r) => r.name === m);
-      return row ? ` · ${provenance(row).label}` : "";
+      const cal = useCal ? calibrationFor(ctx.calibrations ?? [], m, typeof printer === "string" ? printer : null) : null;
+      return row ? ` · ${provenance(row, cal).label}` : "";
     };
     return (
       <Row ctx={ctx} path={path} label="Material" n={{}}>

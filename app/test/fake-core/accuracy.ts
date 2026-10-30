@@ -1,44 +1,48 @@
-// Fake core: Plan 6 (simulation accuracy) on top of the real Plan 5 shapes. S1-S3 ran in parallel
-// with the app (S4), so nothing here was dumped from a real core: every shape is an ASSUMPTION,
-// mirrored in src/api/accuracy.ts and listed in the S4 report for integration to check.
-//   S1  static settings.nonlinear {large_deflection, plasticity, steps, contact: [faces | rigid |
-//       instances]}; results.nonlinear; channels plastic_strain / contact_pressure (probe values).
-//   S2  wind settings.solver "openfoam"; a /sims/solvers cfd row "openfoam" whose install fix is
-//       POST /system/install/openfoam; the result's fidelity "OpenFOAM k-ω SST · ±10% (validated)".
-//   S3  settings.print_direction (every FEM type), static settings.fatigue {cycles, cycle,
-//       min_ratio, mean_correction}; results.fatigue; materials carry sn / orthotropic /
-//       calibration; /sims/calibrations (GET, POST fit, POST {id}/apply, DELETE {id}).
+// Fake core: Plan 6 (simulation accuracy) on top of the real Plan 5 shapes.
+//   S3  REAL shapes (core/scripts/dump_s3_fixtures.py → core/tests/fixtures/ui/s3_*): the study
+//       types with material.anisotropy / material.printer / fatigue, the materials, a static
+//       study with an orthotropic PLA and fatigue, and /sims/calibrations (GET, POST /fit preview,
+//       POST save = apply, GET /{id}, DELETE /{id}) with a port of core sim/calibration.py's fit.
+//   S1  ASSUMED: static settings.nonlinear {large_deflection, plasticity, steps, contact: [faces |
+//       rigid | instances]}; results.nonlinear; channels plastic_strain / contact_pressure.
+//   S2  ASSUMED: wind settings.solver "openfoam"; a /sims/solvers cfd row "openfoam" whose install
+//       fix is POST /system/install/openfoam; the result "OpenFOAM k-ω SST · ±10% (validated)".
 import { randomBytes } from "node:crypto";
-import { calibrationTestSchema, type Calibration, type CalibrationTest } from "../../src/api/accuracy";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import type { Calibration, CalibrationFit } from "../../src/api/accuracy";
 import type { StudyMaterial, StudyRecord } from "../../src/api/studies";
-import { ampMean, confidenceOf, goodman, implied, meanCv, snCycles, snStress } from "../../src/ui/pages/studies/accuracy/model";
 import { asBody, HttpError, mises, RAW, type Route } from "./server";
 
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => typeof v === "object" && v !== null && !Array.isArray(v);
 const hex = (n: number) => randomBytes(n).toString("hex");
 const now = () => Date.now() / 1000;
+const DIR = resolve(import.meta.dirname, "../../../core/tests/fixtures/ui");
+const json = <T>(n: string): T => JSON.parse(readFileSync(resolve(DIR, n), "utf8")) as T;
 
-// ---- schemas (pydantic-style JSON schema, like core sim/settings.py emits)
+/** The real S3 core's answers. */
+export const REAL_S3 = {
+  types: json<{ id: string; schema: unknown; channels?: string[] }[]>("s3_types.json"),
+  materials: json<{ builtin: StudyMaterial[]; custom: StudyMaterial[] }>("s3_materials.json"),
+  static: json<StudyRecord>("s3_static.json"),
+  calibrated: json<StudyRecord>("s3_static_calibrated.json"),
+  probe: json<Obj>("s3_probe.json"),
+};
 
-const DIR_NAMES = ["+x", "-x", "+y", "-y", "+z", "-z"];
-const coord = { maximum: 1e6, minimum: -1e6, type: "number" };
+// ---- S1 / S2 schema additions (assumed), on top of the real S3 types
+
 const FACE = { description: "a preset (bottom, top, x-min, x-max, y-min, y-max, z-min, z-max) or a face id like 'f3' (mirror_faces)", type: "string" };
 const FRICTION = { default: 0.2, minimum: 0, maximum: 2, description: "friction coefficient μ (0 = frictionless)", type: "number" };
 
 export const P6_DEFS: Obj = {
   ContactFaces: {
     additionalProperties: false, title: "ContactFaces", type: "object", required: ["master", "slave"],
-    properties: {
-      kind: { const: "faces", default: "faces", type: "string" },
-      master: { ...FACE, title: "Master" }, slave: { ...FACE, title: "Slave" }, friction: FRICTION,
-    },
+    properties: { kind: { const: "faces", default: "faces", type: "string" }, master: { ...FACE, title: "Master" }, slave: { ...FACE, title: "Slave" }, friction: FRICTION },
   },
   ContactRigid: {
     additionalProperties: false, title: "ContactRigid", type: "object", required: ["kind", "face"],
-    properties: {
-      kind: { const: "rigid", type: "string" }, face: { ...FACE, title: "Face", description: "the face resting on a rigid support" }, friction: FRICTION,
-    },
+    properties: { kind: { const: "rigid", type: "string" }, face: { ...FACE, title: "Face", description: "the face resting on a rigid support" }, friction: FRICTION },
   },
   ContactInstances: {
     additionalProperties: false, title: "ContactInstances", type: "object", required: ["kind", "a", "b"],
@@ -63,24 +67,9 @@ export const P6_DEFS: Obj = {
       },
     },
   },
-  FatigueSettings: {
-    additionalProperties: false, title: "FatigueSettings", type: "object",
-    properties: {
-      cycles: { default: 1e6, minimum: 1, maximum: 1e12, type: "number", description: "required life", unit: "cycles" },
-      cycle: { default: "fully_reversed", enum: ["fully_reversed", "zero_to_max", "min_max"], type: "string", description: "how the load swings each cycle" },
-      min_ratio: { default: 0, minimum: -1, maximum: 1, type: "number", description: "R = min load / max load (min_max only)" },
-      mean_correction: { default: "goodman", enum: ["goodman", "none"], type: "string", description: "mean-stress correction" },
-    },
-  },
 };
 
-const PRINT_DIRECTION = {
-  anyOf: [{ enum: DIR_NAMES, type: "string" }, { maxItems: 3, minItems: 3, prefixItems: [coord, coord, coord], type: "array" }, { type: "null" }],
-  default: null, title: "Print Direction",
-  description: "build direction (the axis the layers stack along) in part coordinates; null = isotropic",
-};
-
-/** The real GET /sims/types plus the Plan 6 settings. */
+/** GET /sims/types: the real S3 types plus the assumed S1 (nonlinear) and S2 (openfoam) settings. */
 export function p6Types<T extends { id: string; schema: unknown; channels?: string[] }>(types: readonly T[]): T[] {
   return types.map((t0) => {
     const t = structuredClone(t0) as T & { schema: Obj; channels: string[] };
@@ -93,45 +82,133 @@ export function p6Types<T extends { id: string; schema: unknown; channels?: stri
       }
       return t;
     }
-    t.schema.$defs = { ...(t.schema.$defs as Obj), ...P6_DEFS };
-    props.print_direction = PRINT_DIRECTION;
     if (t.id === "static") {
+      t.schema.$defs = { ...(t.schema.$defs as Obj), ...P6_DEFS };
       props.nonlinear = { anyOf: [{ $ref: "#/$defs/NonlinearSettings" }, { type: "null" }], default: null, description: "large deflection, plasticity and contact (CalculiX NLGEOM); null = linear" };
-      props.fatigue = { anyOf: [{ $ref: "#/$defs/FatigueSettings" }, { type: "null" }], default: null, description: "cyclic loading: life at the hotspot (S-N, estimate)" };
       t.channels = [...(t.channels ?? []), "plastic_strain", "contact_pressure"];
     }
     return t;
   });
 }
 
-// ---- materials
+// ---- S3 calibration: a port of core sim/calibration.py
 
-/** The keys p6Material adds to a material row. */
-export const P6_MATERIAL_KEYS = ["sn", "orthotropic", "calibration"] as const;
+const KEY_RE = /^[A-Za-z0-9][A-Za-z0-9 ._+()-]{0,39}$/;
+const KEYS = {
+  top: ["material", "printer", "tensile", "bend", "part", "note"],
+  tensile: ["force_n", "width_mm", "thickness_mm", "area_mm2", "elongation_pct", "orientation", "note"],
+  bend: ["span_mm", "width_mm", "thickness_mm", "load_n", "deflection_mm", "break_load_n", "orientation", "note"],
+  part: ["sim_id", "point", "load_n", "deflection_mm", "direction", "study_load_n", "note"],
+} as const;
 
-/** S-N (Basquin) and orthotropic data the fake gives the built-in materials. */
-const SN: Record<string, { sf_mpa: number; b: number }> = {
-  PLA: { sf_mpa: 76, b: -0.085 }, PETG: { sf_mpa: 62, b: -0.08 }, ABS: { sf_mpa: 52, b: -0.09 }, ASA: { sf_mpa: 58, b: -0.09 }, "PA-CF": { sf_mpa: 105, b: -0.075 },
-};
+const err422 = (loc: (string | number)[], msg: string, input: unknown) =>
+  new HttpError(422, { detail: [{ type: "value_error", loc: ["body", ...loc], msg, input, ctx: { error: {} } }] });
 
-export function p6Material(m: StudyMaterial, cal: Calibration | undefined): StudyMaterial {
-  const sn = SN[m.name] ?? { sf_mpa: m.yield_mpa * 1.4, b: -0.09 };
-  const out: Obj = {
-    ...m,
-    sn: { ...sn, source: SN[m.name] ? "estimate" : "estimate", label: "S-N estimate (Basquin, from the datasheet strength)" },
-    orthotropic: m.custom ? null : { e_xy_mpa: m.e_mpa, e_z_mpa: Math.round(m.e_mpa * 0.8), strength_xy_mpa: m.yield_mpa, strength_z_mpa: Math.round(m.yield_mpa * 0.6), nu_xy: m.nu, nu_xz: m.nu },
-    calibration: null,
-  };
-  if (cal?.applied && cal.fit) {
-    out.calibration = { id: cal.id, n_tests: cal.fit.n, confidence: cal.fit.confidence, printer_profile: cal.printer_profile, fitted_at: cal.updated_at };
-    if (cal.fit.e_mpa !== null) out.e_mpa = Math.round(cal.fit.e_mpa);
-    if (cal.fit.yield_mpa !== null) out.yield_mpa = Math.round(cal.fit.yield_mpa * 10) / 10;
-    out.source = `calibrated: ${cal.fit.n} tests on ${cal.printer_profile}`;
-  }
-  return out as StudyMaterial;
+function stats(v: number[]) {
+  const n = v.length;
+  const mean = v.reduce((a, b) => a + b, 0) / n;
+  const sd = n > 1 ? Math.sqrt(v.reduce((a, b) => a + (b - mean) ** 2, 0) / (n - 1)) : null;
+  return { n, mean, sd, cv: sd !== null && mean > 0 ? sd / mean : null, min: Math.min(...v), max: Math.max(...v) };
+}
+const confidence = (n: number, cv: number | null) => (n >= 5 && cv !== null && cv <= 0.05 ? "high" : n >= 3 && cv !== null && cv <= 0.15 ? "medium" : "low") as "low" | "medium" | "high";
+function fitModulus(e: number[]) {
+  const fit = e.reduce((a, x) => a + x * x, 0) / e.reduce((a, x) => a + x, 0);
+  const st = stats(e);
+  return { ...st, value_mpa: fit, residuals: e.map((x) => 1 - fit / x), confidence: confidence(st.n, st.cv) };
+}
+function fitStrength(s: number[]) {
+  const st = stats(s);
+  let kd = st.n >= 3 && st.sd !== null ? (st.mean - 2 * st.sd) / st.mean : (0.85 * st.min) / st.mean;
+  kd = Math.min(1, Math.max(0.4, kd));
+  return { ...st, value_mpa: st.mean, knockdown: kd, knockdown_rule: st.n >= 3 ? "(mean - 2 sd) / mean" : "0.85 x weakest / mean (n < 3)", confidence: confidence(st.n, st.cv) };
 }
 
-// ---- calibration
+interface Body { material: string; printer: string; tensile: Obj[]; bend: Obj[]; part: Obj[]; note: string }
+
+/** pydantic-like checks of CalibrationInput (extra keys are refused, like extra="forbid"). */
+function parseBody(raw: unknown, allowAppend = false): Body {
+  const b = asBody(raw);
+  for (const k of Object.keys(b)) if (!(KEYS.top as readonly string[]).includes(k) && !(allowAppend && k === "append")) throw new HttpError(422, { detail: [{ type: "extra_forbidden", loc: ["body", k], msg: "Extra inputs are not permitted", input: b[k] }] });
+  const asList = (k: string): Obj[] => {
+    const v = b[k] ?? [];
+    if (!Array.isArray(v) || v.length > 100) throw err422([k], "a list of at most 100 tests", v);
+    return v as Obj[];
+  };
+  const lists = { tensile: asList("tensile"), bend: asList("bend"), part: asList("part") };
+  for (const [kind, list] of Object.entries(lists)) {
+    list.forEach((t, i) => {
+      if (!isObj(t)) throw err422([kind, i], "a test object", t);
+      for (const k of Object.keys(t)) if (!(KEYS[kind as "tensile"] as readonly string[]).includes(k)) throw new HttpError(422, { detail: [{ type: "extra_forbidden", loc: ["body", kind, i, k], msg: "Extra inputs are not permitted", input: t[k] }] });
+    });
+  }
+  lists.tensile.forEach((t: Obj, i: number) => {
+    if (!(Number(t.force_n) > 0)) throw err422(["tensile", i, "force_n"], "Input should be greater than 0", t.force_n);
+    if (t.area_mm2 == null && (t.width_mm == null || t.thickness_mm == null)) throw err422(["tensile", i], "Value error, give area_mm2 or width_mm and thickness_mm", t);
+  });
+  lists.part.forEach((t: Obj, i: number) => {
+    if (typeof t.sim_id !== "string" || !/^sim_[0-9a-f]{12}$/.test(t.sim_id)) throw err422(["part", i, "sim_id"], "String should match pattern '^sim_[0-9a-f]{12}$'", t.sim_id);
+    if (!Array.isArray(t.point) || t.point.length !== 3) throw err422(["part", i, "point"], "Field required", t.point);
+  });
+  const material = String(b.material ?? "").trim();
+  const printer = String(b.printer ?? "default").trim();
+  for (const k of [material, printer]) if (!KEY_RE.test(k)) throw err422([], `Value error, bad name '${k}': 1-40 letters, digits, spaces or ._+()-`, b);
+  if (!lists.tensile.length && !lists.bend.length && !lists.part.length) throw err422([], "Value error, give at least one tensile, bend or part test", b);
+  return { material, printer, tensile: lists.tensile, bend: lists.bend, part: lists.part, note: typeof b.note === "string" ? b.note : "" };
+}
+
+const area = (t: Obj) => (t.area_mm2 != null ? Number(t.area_mm2) : Number(t.width_mm) * Number(t.thickness_mm));
+const bendE = (t: Obj) => (Number(t.load_n) * Number(t.span_mm) ** 3) / (48 * Number(t.deflection_mm) * ((Number(t.width_mm) * Number(t.thickness_mm) ** 3) / 12));
+const xy = (t: Obj) => (t.orientation ?? "xy") === "xy";
+
+export function fakeFit(b: Body, base: StudyMaterial, record: (id: string) => StudyRecord | undefined): CalibrationFit {
+  const parts = b.part.map((t) => {
+    const r = record(String(t.sim_id));
+    if (!r || r.status !== "done") throw mises("invalid_input", `no study ${String(t.sim_id)}`, "run a static study of the tested part first");
+    const res = (r.results ?? {}) as Obj;
+    const cases = ((r.settings ?? {}) as Obj).load_cases as { loads?: { newtons?: number }[] }[] | undefined;
+    const load = Number(t.study_load_n ?? 0) || (cases?.[0]?.loads ?? []).reduce((s, l) => s + Math.abs(l.newtons ?? 0), 0);
+    const eStudy = Number((r.material as Obj | undefined)?.e_mpa ?? base.e_mpa);
+    const pred = Number(res.max_displacement_mm ?? 1) * Number(t.load_n) / (load || 1);
+    return { sim_id: String(t.sim_id), e_mpa: eStudy * pred / Number(t.deflection_mm), e_study_mpa: eStudy, predicted_deflection_mm: pred, measured_deflection_mm: Number(t.deflection_mm), study_load_n: load };
+  });
+  const out: Obj = { n_tests: b.tensile.length + b.bend.length + b.part.length };
+  const eXy = [...b.bend.filter(xy).map(bendE), ...parts.map((p) => p.e_mpa)];
+  const eZ = b.bend.filter((t) => !xy(t)).map(bendE);
+  const secant = b.tensile.filter((t) => xy(t) && Number(t.elongation_pct) > 0).map((t) => Number(t.force_n) / area(t) / (Number(t.elongation_pct) / 100));
+  if (eXy.length) out.e = { ...fitModulus(eXy), method: "least squares: three-point bend / part load tests" };
+  else if (secant.length) out.e = { ...fitModulus(secant), method: "secant modulus at break (a lower bound)" };
+  if (eZ.length) out.e_z = { ...fitModulus(eZ), method: "least squares: three-point bend (z)" };
+  const sXy = b.tensile.filter(xy).map((t) => Number(t.force_n) / area(t));
+  const sZ = b.tensile.filter((t) => !xy(t)).map((t) => Number(t.force_n) / area(t));
+  if (sXy.length) { out.strength = fitStrength(sXy); out.datasheet_ratio = (out.strength as { mean: number }).mean / base.yield_mpa; }
+  if (sZ.length) out.z_strength = fitStrength(sZ);
+  const kds = (["strength", "z_strength"] as const).filter((k) => out[k]).map((k) => (out[k] as { knockdown: number }).knockdown);
+  if (kds.length) out.knockdown = Math.min(...kds);
+  const order = { low: 0, medium: 1, high: 2 };
+  const confs = (["e", "e_z", "strength", "z_strength"] as const).filter((k) => out[k]).map((k) => (out[k] as { confidence: "low" | "medium" | "high" }).confidence);
+  out.confidence = confs.length ? confs.reduce((a, c) => (order[c] < order[a] ? c : a)) : "low";
+  if (parts.length) out.part_tests = parts;
+  return out as unknown as CalibrationFit;
+}
+
+const basisLabel = (n: number) => `calibrated (${n} test${n === 1 ? "" : "s"})`;
+
+/** core calibration.apply: the material with the fitted values. */
+export function applyFit(m: StudyMaterial, rec: { id: string; printer: string; fit: CalibrationFit; updated_at?: number | null }): StudyMaterial {
+  const f = rec.fit;
+  const kw: Obj = {};
+  if (f.e) kw.e_mpa = f.e.value_mpa;
+  if (f.e_z) kw.e_z_mpa = f.e_z.value_mpa;
+  if (f.strength) kw.yield_mpa = f.strength.value_mpa;
+  if (f.z_strength) kw.z_strength_mpa = f.z_strength.value_mpa;
+  if (typeof f.knockdown === "number") kw.knockdown = f.knockdown;
+  const label = basisLabel(f.n_tests);
+  const out = { ...m, ...kw, basis: label, source: `${m.source}; ${label} on ${rec.printer}`,
+    calibration: { id: rec.id, printer: rec.printer, n_tests: f.n_tests, confidence: f.confidence, updated_at: rec.updated_at ?? null } } as Obj;
+  out.allowable_mpa = Number(out.yield_mpa) * Number(out.knockdown);
+  out.e_eff_mpa = Number(out.e_mpa) * Number(out.stiffness_factor ?? 1);
+  return out as unknown as StudyMaterial;
+}
 
 export interface CalState { list: Calibration[] }
 export const calStateFrom = (): CalState => ({ list: [] });
@@ -142,103 +219,79 @@ export interface CalDeps {
   record(simId: string): StudyRecord | undefined;
 }
 
-/** The least-squares fit the core makes, simplified: means, scatter (CV) and a confidence. */
-export function fakeFit(tests: readonly CalibrationTest[], m: StudyMaterial | undefined, rec: (id: string) => StudyRecord | undefined): Calibration["fit"] {
-  const per = tests.map((t, index) => {
-    let { e_mpa, strength_mpa } = implied(t);
-    if (t.kind === "part_load" && m) {
-      // inverse comparison: the study's deflection at this load over the measured one scales E
-      const r = rec(t.sim_id);
-      const res = (r?.results ?? {}) as Obj;
-      const settings = (r?.settings ?? {}) as Obj;
-      const cases = Array.isArray(settings.load_cases) ? settings.load_cases as { loads?: { newtons?: number }[] }[] : [];
-      const studyLoad = cases[0]?.loads?.reduce((s, l) => s + Math.abs(l.newtons ?? 0), 0) ?? 0;
-      const disp = typeof res.max_displacement_mm === "number" ? res.max_displacement_mm : null;
-      if (disp && studyLoad > 0 && t.deflection_mm > 0) e_mpa = m.e_mpa * ((disp * t.load_n) / studyLoad) / t.deflection_mm;
-      strength_mpa = null;
-    }
-    return { index, kind: t.kind, e_mpa, strength_mpa };
-  });
-  const e = meanCv(per.map((p) => p.e_mpa));
-  const s = meanCv(per.map((p) => p.strength_mpa));
-  const scatter = e?.cvPct ?? s?.cvPct ?? null;
-  const warnings: string[] = [];
-  if (!e) warnings.push("no stiffness test (bend, part load or elongation): E stays the datasheet value");
-  if (!s) warnings.push("no tensile test: the strength stays the datasheet value");
-  if (tests.length < 3) warnings.push("fewer than 3 tests: the scatter is not known well");
-  return {
-    e_mpa: e?.mean ?? null, yield_mpa: s?.mean ?? null, uts_mpa: s?.mean ?? null,
-    knockdown: s && m ? s.mean / m.yield_mpa : null,
-    n: tests.length, scatter_pct: scatter, confidence: confidenceOf(tests.length, scatter),
-    per_test: per.map((p) => {
-      const ref = p.e_mpa !== null ? e?.mean : p.strength_mpa !== null ? s?.mean : null;
-      const v = p.e_mpa ?? p.strength_mpa;
-      return { ...p, residual_pct: ref && v !== null ? ((v - ref) / ref) * 100 : null, used: v !== null };
-    }),
-    datasheet: m ? { e_mpa: m.e_mpa, yield_mpa: m.yield_mpa } : null,
-    warnings,
-  };
+const same = (c: Calibration, material: string, printer: string) => c.material.toLowerCase() === material.toLowerCase() && c.printer.toLowerCase() === printer.toLowerCase();
+
+/** The calibration a study of `material` on `printer` uses (core studies.resolve_material). */
+export function calibrationOf(st: CalState, material: string, printer: string | null | undefined): Calibration | undefined {
+  return st.list.find((c) => same(c, material, printer || "default"));
 }
 
 export function calibrationRoutes(d: CalDeps): Route[] {
-  const find = (id: string) => {
-    const c = d.cal().list.find((x) => x.id === id);
-    if (!c) throw mises("not_found", `no calibration ${id}`);
-    return c;
+  const base = (name: string) => {
+    const m = d.material(name);
+    if (!m) throw mises("invalid_input", `unknown material '${name}'`, "use one of the built-in or saved materials");
+    return m;
   };
+  const dumpTests = (b: Body) => ({
+    tensile: b.tensile.map((t) => ({ force_n: Number(t.force_n), width_mm: t.width_mm ?? null, thickness_mm: t.thickness_mm ?? null, area_mm2: t.area_mm2 ?? null, elongation_pct: t.elongation_pct ?? null, orientation: t.orientation ?? "xy", note: t.note ?? "" })),
+    bend: b.bend.map((t) => ({ span_mm: Number(t.span_mm), width_mm: Number(t.width_mm), thickness_mm: Number(t.thickness_mm), load_n: Number(t.load_n), deflection_mm: Number(t.deflection_mm), break_load_n: t.break_load_n ?? null, orientation: t.orientation ?? "xy", note: t.note ?? "" })),
+    part: b.part.map((t) => ({ sim_id: t.sim_id, point: t.point, load_n: Number(t.load_n), deflection_mm: Number(t.deflection_mm), direction: t.direction ?? null, study_load_n: t.study_load_n ?? null, note: t.note ?? "" })),
+  });
   return [
-    { method: "GET", re: /^\/sims\/calibrations$/, h: () => structuredClone(d.cal().list) },
+    {
+      method: "GET", re: /^\/sims\/calibrations$/, h: (_m, q) => {
+        const m = q.get("material");
+        return structuredClone(d.cal().list.filter((c) => m === null || c.material.toLowerCase() === m.toLowerCase()));
+      },
+    },
+    {
+      method: "POST", re: /^\/sims\/calibrations\/fit$/, h: (_m, _q, raw) => {
+        const b = parseBody(raw);
+        const m = base(b.material);
+        const fit = fakeFit(b, m, d.record);
+        return { fit, material: applyFit(m, { id: "cal_preview", printer: b.printer, fit, updated_at: null }), datasheet: m, basis: basisLabel(fit.n_tests), saved: false };
+      },
+    },
     {
       method: "POST", re: /^\/sims\/calibrations$/, h: (_m, _q, raw, _r, res) => {
-        const b = asBody(raw);
-        const material = typeof b.material === "string" ? b.material.trim() : "";
-        const printer = typeof b.printer_profile === "string" ? b.printer_profile.trim() : "";
-        const m = d.material(material);
-        if (!m) throw mises("invalid_input", `unknown material '${material}'`, "calibrate a built-in or saved material");
-        if (!printer || printer.length > 60) throw mises("invalid_input", "a printer profile of 1-60 characters", "the printer the coupons were printed on");
-        if (!Array.isArray(b.tests) || b.tests.length === 0 || b.tests.length > 50) throw mises("invalid_input", "1-50 tests");
-        const tests = b.tests.map((t, i) => {
-          const p = calibrationTestSchema.safeParse(t);
-          if (!p.success) throw new HttpError(422, { detail: [{ type: "value_error", loc: ["body", "tests", i], msg: p.error.issues[0]?.message ?? "bad test", input: t }] });
-          if (p.data.kind === "part_load" && !d.record(p.data.sim_id)) throw mises("invalid_input", `test ${i + 1}: no study ${p.data.sim_id}`, "pick a finished study of the loaded part");
-          return p.data;
-        });
+        const b = parseBody(raw, true);
+        const m = base(b.material);
+        const fit = fakeFit(b, m, d.record);
         const st = d.cal();
-        const old = st.list.find((c) => c.material.toLowerCase() === material.toLowerCase() && c.printer_profile === printer);
-        const c: Calibration = {
-          id: old?.id ?? `cal_${hex(5)}`, material: m.name, printer_profile: printer, tests, applied: false,
-          fit: fakeFit(tests, m, (id) => d.record(id)), created_at: old?.created_at ?? now(), updated_at: now(),
-        };
-        st.list = [...st.list.filter((x) => x.id !== c.id), c];
-        const text = JSON.stringify(c);
+        const old = st.list.find((c) => same(c, b.material, b.printer));
+        const rec = {
+          id: old?.id ?? `cal_${hex(5)}`, material: b.material, printer: b.printer, created_at: old?.created_at ?? now(), updated_at: now(),
+          note: b.note, basis: basisLabel(fit.n_tests), tests: dumpTests(b), fit,
+        } as unknown as Calibration;
+        st.list = [...st.list.filter((c) => c !== old), rec];
+        const text = JSON.stringify({ ...rec, material_preview: applyFit(m, rec) });
         res.writeHead(201, { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(text) });
         res.end(text);
         return RAW;
       },
     },
     {
-      method: "POST", re: /^\/sims\/calibrations\/([^/]+)\/apply$/, h: (m) => {
-        const c = find(decodeURIComponent(m[1]));
-        if (!c.fit || (c.fit.e_mpa === null && c.fit.yield_mpa === null)) throw mises("invalid_input", "nothing fitted to apply", "add a tensile, bend or part load test");
-        // one applied calibration per material
-        for (const x of d.cal().list) if (x.material === c.material) x.applied = false;
-        c.applied = true;
-        c.updated_at = now();
-        const mat = d.material(c.material);
-        return { calibration: structuredClone(c), material: mat ? p6Material(mat, c) : { name: c.material } };
+      method: "GET", re: /^\/sims\/calibrations\/([^/]+)$/, h: (m) => {
+        const id = decodeURIComponent(m[1]);
+        if (!/^cal_[0-9a-f]{10}$/.test(id)) throw mises("invalid_input", `bad calibration id: '${id}'`);
+        const c = d.cal().list.find((x) => x.id === id);
+        if (!c) throw mises("not_found", `no calibration ${id}`);
+        return structuredClone(c);
       },
     },
     {
       method: "DELETE", re: /^\/sims\/calibrations\/([^/]+)$/, h: (m) => {
-        const c = find(decodeURIComponent(m[1]));
-        d.cal().list = d.cal().list.filter((x) => x.id !== c.id);
-        return { deleted: c.id };
+        const id = decodeURIComponent(m[1]);
+        if (!/^cal_[0-9a-f]{10}$/.test(id)) throw mises("invalid_input", `bad calibration id: '${id}'`);
+        if (!d.cal().list.some((x) => x.id === id)) throw mises("not_found", `no calibration ${id}`);
+        d.cal().list = d.cal().list.filter((x) => x.id !== id);
+        return { deleted: id };
       },
     },
   ];
 }
 
-// ---- solvers
+// ---- solvers (S2, assumed)
 
 export type OpenFoamState = "ok" | "missing" | "no_runtime";
 
@@ -265,23 +318,50 @@ export function withOpenFoam(cfd: Obj[] | undefined, state: OpenFoamState): Obj[
 
 // ---- results
 
-const sig = (v: number) => Number(v.toPrecision(4));
+/** The real record a study's finish starts from: S3's static study when it asks for anisotropy or fatigue. */
+export function p6Base(type: string, settings: Obj): StudyRecord | null {
+  const mat = isObj(settings.material) ? settings.material : {};
+  return type === "static" && (isObj(settings.fatigue) || isObj(mat.anisotropy)) ? REAL_S3.static : null;
+}
 
 /** A finished study, with what the Plan 6 core adds for these settings. */
-export function p6Finish(rec: StudyRecord, type: string, settings: Obj): void {
+export function p6Finish(rec: StudyRecord, type: string, settings: Obj, cal: CalState): void {
   const card = rec.card;
   if (!card) return;
   const res = { ...((rec.results ?? {}) as Obj) };
   const notes = [...card.notes];
-  const metrics = [...card.metrics];
+  let metrics = [...card.metrics];
+  const mat = isObj(settings.material) ? settings.material : {};
+  // S3: fatigue and anisotropy come from the real S3 record; drop what these settings did not ask for
+  if (!isObj(settings.fatigue)) {
+    for (const k of ["fatigue", "fatigue_safety_factor", "cycles_to_failure"]) delete res[k];
+    metrics = metrics.filter((m) => m.key !== "fatigue_safety_factor" && m.key !== "cycles_to_failure");
+    delete (card as Obj).fatigue_note;
+  } else if (isObj(res.fatigue)) {
+    const f = settings.fatigue as Obj;
+    res.fatigue = { ...res.fatigue, cycles_required: f.cycles, cycle: f.cycle ?? "zero_to_max" };
+  }
+  if (!isObj(mat.anisotropy)) {
+    for (const k of ["safety_factor_von_mises", "max_layer_tension_mpa", "max_layer_tension_at", "allowable_z_mpa", "layer_safety_factor", "governing_failure"]) delete res[k];
+    metrics = metrics.filter((m) => m.key !== "layer_safety_factor");
+  }
+  // S3: a saved calibration of this material and printer applies (core studies.resolve_material)
+  const name = typeof mat.name === "string" ? mat.name : "PLA";
+  const c = mat.calibrated === false ? undefined : calibrationOf(cal, name, typeof mat.printer === "string" ? mat.printer : null);
+  if (c && isObj(rec.material)) {
+    rec.material = applyFit(rec.material as unknown as StudyMaterial, c) as unknown as StudyRecord["material"];
+    (card as Obj).material_basis = c.basis;
+    rec.caveats = [...rec.caveats, `Material ${c.basis} on printer ${c.printer} (confidence ${c.fit.confidence}): fitted to the user's own tests.`];
+  }
+  // S2 (assumed)
   if (type === "wind" && settings.solver === "openfoam") {
     Object.assign(rec, { fidelity_class: "cfd_openfoam", solver: { name: "OpenFOAM", version: "v2406", procedure: "simpleFoam, k-ω SST", method: "snappyHexMesh around the STL" } });
     if (isObj(rec.mesh)) delete (rec.mesh as Obj).lattice;
     Object.assign(card, { fidelity_class: "cfd_openfoam", fidelity_note: "OpenFOAM k-ω SST · ±10% (validated)" });
     for (const mt of metrics) if (mt.key === "error_band_pct") mt.value = 10;
     res.model_error_band = 0.1;
-    res.solver_used = "openfoam";
   }
+  // S1 (assumed)
   const nl = isObj(settings.nonlinear) ? settings.nonlinear : null;
   if (type === "static" && nl) {
     const contact = Array.isArray(nl.contact) ? nl.contact.length : 0;
@@ -298,45 +378,24 @@ export function p6Finish(rec: StudyRecord, type: string, settings: Obj): void {
     rec.fidelity_class = "fem_nonlinear";
     for (const mt of metrics) if (mt.key === "error_band_pct") mt.value = 8;
   }
-  const fat = isObj(settings.fatigue) ? settings.fatigue : null;
-  if (type === "static" && fat && typeof res.max_von_mises_mpa === "number") {
-    const mat = (rec.material ?? { name: "PLA" }) as Obj;
-    const name = String(mat.name ?? "PLA");
-    const sn = { ...(SN[name] ?? SN.PLA), source: "estimate", label: "S-N estimate (Basquin, from the datasheet strength)" };
-    const uts = typeof mat.yield_mpa === "number" ? mat.yield_mpa : 51;
-    const mode = String(fat.cycle ?? "fully_reversed");
-    const { amp, mean } = ampMean(res.max_von_mises_mpa, mode, typeof fat.min_ratio === "number" ? fat.min_ratio : 0);
-    const ar = fat.mean_correction === "none" ? amp : goodman(amp, mean, uts) ?? amp;
-    const required = typeof fat.cycles === "number" ? fat.cycles : 1e6;
-    const nf = snCycles(sn, ar);
-    const sf = ar > 0 ? snStress(sn, required) / ar : null;
-    res.fatigue = {
-      cycles_to_failure: nf !== null && nf > 1e12 ? null : nf, required_cycles: required, safety_factor: sf,
-      sigma_a_mpa: sig(amp), sigma_m_mpa: sig(mean), sigma_ar_mpa: sig(ar), hotspot: res.max_von_mises_at ?? null,
-      sn, mean_correction: fat.mean_correction ?? "goodman", label: "fatigue estimate",
-    };
-    metrics.push({ key: "fatigue_cycles", label: "cycles to failure", unit: "cycles", value: nf });
-    metrics.push({ key: "fatigue_sf", label: "fatigue safety factor", unit: "", value: sf });
-    notes.push("fatigue estimate: S-N estimate with Goodman mean-stress correction, at the hotspot");
-    if (sf !== null && sf < 1) card.verdict = "fail";
-  }
-  if (settings.print_direction !== null && settings.print_direction !== undefined && isObj(rec.material)) {
-    const dir = Array.isArray(settings.print_direction) ? `[${settings.print_direction.join(", ")}]` : String(settings.print_direction);
-    (rec.material as Obj).model = `orthotropic FDM (engineering constants), layers along ${dir}; Z strength across layers`;
-    notes.push(`anisotropic: layers stack along ${dir}; tension across layers uses the Z strength`);
-  }
   rec.results = res;
   card.notes = notes;
   card.metrics = metrics;
 }
 
-/** Probe values for the new channels on a nonlinear result. */
+/** Probe values: the real S3 channels on an S3 record, plus the assumed S1 channels on a nonlinear one. */
 export function p6Probe(rec: StudyRecord, probe: Obj): Obj {
-  const nl = isObj(rec.results) ? (rec.results as Obj).nonlinear : null;
-  if (!isObj(nl) || !isObj(probe.values)) return probe;
-  const values = { ...probe.values } as Obj;
-  const units = { ...(isObj(probe.units) ? probe.units : {}) } as Obj;
+  const r = isObj(rec.results) ? rec.results : {};
+  let out = probe;
+  if (isObj(r.fatigue) || "layer_safety_factor" in r) {
+    const s3 = REAL_S3.probe;
+    out = { ...out, values: { ...(out.values as Obj), ...(s3.values as Obj) }, units: { ...(out.units as Obj), ...(s3.units as Obj) } };
+  }
+  const nl = r.nonlinear;
+  if (!isObj(nl) || !isObj(out.values)) return out;
+  const values = { ...out.values } as Obj;
+  const units = { ...(isObj(out.units) ? out.units : {}) } as Obj;
   if (nl.plasticity) { values.plastic_strain = 0.0011; units.plastic_strain = ""; }
   if (typeof nl.contact_pairs === "number" && nl.contact_pairs > 0) { values.contact_pressure = 6.2; units.contact_pressure = "MPa"; }
-  return { ...probe, values, units };
+  return { ...out, values, units };
 }

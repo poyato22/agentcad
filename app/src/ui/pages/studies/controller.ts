@@ -11,6 +11,7 @@ import {
   studyProgressSchema, type CustomMaterialBody, type StudyCharts, type StudyCompare, type StudyMaterials, type StudyRecord,
   type StudySolvers, type StudySummary, type StudyTemplate, type StudyType, type StudyTypeInfo,
 } from "../../../api/studies";
+import type { Calibration } from "../../../api/accuracy";
 import type { MisesEvent } from "../../../api/types";
 import { runBuild } from "../../../state/builds";
 import { askPrompt } from "./model";
@@ -19,7 +20,7 @@ import { validate, type FieldError } from "./formSchema";
 export type StudiesClient = Pick<CoreClient,
   | "studyTypes" | "studySolvers" | "listStudies" | "getStudy" | "startStudy" | "cancelStudy" | "studyCharts" | "compareStudies"
   | "studyTemplates" | "addStudyTemplate" | "deleteStudyTemplate" | "studyMaterials" | "addStudyMaterial" | "deleteStudyMaterial"
-  | "cancel" | "getRun" | "steps" | "createRun">;
+  | "cancel" | "getRun" | "steps" | "createRun"> & Partial<Pick<CoreClient, "calibrations">>;
 
 export interface ActiveStudy {
   runId: string; partId: string; type: StudyType; startedAt: number;
@@ -44,6 +45,8 @@ export class StudiesController {
   readonly ccxMissing: ReadonlySignal<boolean> = computed(() => this.solvers.value?.ccx.found === false);
   readonly materials: Signal<StudyMaterials | null> = signal(null);
   readonly templates: Signal<readonly StudyTemplate[]> = signal([]);
+  /** Saved material calibrations (S3): which material + printer pairs studies run calibrated. */
+  readonly calibrations: Signal<readonly Calibration[]> = signal([]);
   readonly libraryError: Signal<string | null> = signal(null);
   readonly historyPart: Signal<string | null> = signal(null);
   readonly history: Signal<readonly StudySummary[]> = signal([]);
@@ -94,6 +97,13 @@ export class StudiesController {
       this.templates.value = t;
       this.libraryError.value = null;
     } catch (e) { this.libraryError.value = messageOf(e).message; }
+  }
+
+  /** A core without the calibration routes (or a failed read) leaves the list empty: every material reads "datasheet / estimate". */
+  async loadCalibrations(): Promise<void> {
+    const cl = this.client();
+    if (!cl.calibrations) return;
+    try { this.calibrations.value = await cl.calibrations(); } catch { this.calibrations.value = []; }
   }
 
   async saveTemplate(name: string, type: StudyType, settings: Record<string, unknown>): Promise<Problem | null> {

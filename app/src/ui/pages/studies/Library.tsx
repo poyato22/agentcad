@@ -3,7 +3,7 @@
 // saved in the Mises home). Loading a template switches to its type and replaces the settings.
 import type { JSX } from "preact";
 import { useState } from "preact/hooks";
-import { provenance } from "../../../api/accuracy";
+import type { Calibration } from "../../../api/accuracy";
 import type { CustomMaterialBody, StudyMaterials, StudyTemplate, StudyType } from "../../../api/studies";
 import { Button } from "../../common/Button";
 import type { Problem } from "./controller";
@@ -70,8 +70,8 @@ export function materialProblems(m: CustomMaterialBody): string[] {
   return out;
 }
 
-export function MaterialEditor({ materials, onSave, onDelete, onClose, onCalibrate }: {
-  materials: StudyMaterials | null; onClose: () => void; onCalibrate?: (name: string) => void;
+export function MaterialEditor({ materials, onSave, onDelete, onClose, onCalibrate, calibrations = [] }: {
+  materials: StudyMaterials | null; onClose: () => void; onCalibrate?: (name: string) => void; calibrations?: readonly Calibration[];
   onSave: (m: CustomMaterialBody) => Promise<Problem | null>; onDelete: (name: string) => Promise<Problem | null>;
 }): JSX.Element {
   const blank = (): CustomMaterialBody => ({ name: "", source: "", ...Object.fromEntries(FIELDS.map((f) => [f.key, f.def])) } as CustomMaterialBody);
@@ -93,7 +93,12 @@ export function MaterialEditor({ materials, onSave, onDelete, onClose, onCalibra
               <td class="text">
                 {x.name}{x.custom ? <span class="faint"> · saved</span> : null}
                 {/* Plan 6: calibrated (n tests) or datasheet / estimate, on every material */}
-                <span class={`acc-badge${provenance(x).calibrated ? " is-cal" : ""}`} data-testid="material-badge">{provenance(x).label}</span>
+                {(() => {
+                  // S3: a calibration applies per printer; name each printer that has one
+                  const cals = calibrations.filter((c) => c.material.toLowerCase() === x.name.toLowerCase());
+                  const label = cals.length ? cals.map((c) => `${c.basis} on ${c.printer}`).join(" · ") : "datasheet / estimate";
+                  return <span class={`acc-badge${cals.length ? " is-cal" : ""}`} data-testid="material-badge">{label}</span>;
+                })()}
               </td>
               <td>{x.e_mpa}</td><td>{x.nu}</td><td>{x.yield_mpa}</td><td>{x.density_g_cm3}</td><td>{x.k_w_mk}</td><td>{x.hdt_c}</td>
               <td>

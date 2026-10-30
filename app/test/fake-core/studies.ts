@@ -10,8 +10,8 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { StudyMaterial, StudyRecord, StudyTemplate, StudyType } from "../../src/api/studies";
 import type { AgentRun, MisesEvent, PartSummary } from "../../src/api/types";
-import { withDefaults } from "../../src/ui/pages/studies/formSchema";
-import { calibrationRoutes, calStateFrom, p6Finish, p6Material, p6Probe, p6Types, type CalState } from "./accuracy";
+import { defaultFor, deref, discriminated, nullableInner, properties, withDefaults } from "../../src/ui/pages/studies/formSchema";
+import { calibrationRoutes, calStateFrom, p6Base, p6Finish, p6Probe, p6Types, REAL_S3, type CalState } from "./accuracy";
 import { asBody, HttpError, mises, RAW, type EmitExtras, type EventIn, type Route } from "./server";
 
 const DIR = resolve(import.meta.dirname, "../../../core/tests/fixtures/ui");
@@ -75,10 +75,37 @@ const hex = (n: number) => randomBytes(n).toString("hex");
 const now = () => Date.now() / 1000;
 /** Like the core's pydantic models: stored settings carry every default. */
 const fullSettings = (type: StudyType, s: unknown): Record<string, unknown> => {
-  const t = REAL_STUDY.types.find((x) => x.id === type);
-  const given = (typeof s === "object" && s !== null ? s : {}) as Record<string, unknown>;
-  return t ? withDefaults(t.schema as Record<string, unknown>, given) : given;
+  const t = REAL_S3.types.find((x) => x.id === type);
+  if (t) {
+    // pydantic fills defaults at every depth (list items, objects the user gave in part)
+    const root = t.schema as Record<string, unknown>;
+    return fill(withDefaults(root, (typeof s === "object" && s !== null ? s : {}) as Record<string, unknown>), root, root) as Record<string, unknown>;
+  }
+  return (typeof s === "object" && s !== null ? s : {}) as Record<string, unknown>;
 };
+
+/** Every default the schema has, filled in below what `v` already gives (a given value wins). */
+function fill(v: unknown, node: Record<string, unknown>, root: Record<string, unknown>): unknown {
+  const n = deref(node, root);
+  if (v === null || v === undefined) return v;
+  const inner = nullableInner(n, root);
+  if (inner) return fill(v, inner, root);
+  const d = discriminated(n, root);
+  if (d && typeof v === "object" && !Array.isArray(v)) {
+    const opt = d.options.find((o) => o.value === (v as Record<string, unknown>)[d.prop]) ?? d.options[0];
+    return opt ? fill(v, opt.schema, root) : v;
+  }
+  if (Array.isArray(v)) return Array.isArray(n.prefixItems) ? v : v.map((x) => fill(x, (n.items ?? {}) as Record<string, unknown>, root));
+  if (typeof v === "object" && n.type === "object") {
+    const o = { ...(v as Record<string, unknown>) };
+    for (const p of properties(n)) {
+      if (!(p.key in o)) { const dv = defaultFor(p.schema, root, p.key); if (dv !== undefined && "default" in deref(p.schema, root)) o[p.key] = dv; }
+      o[p.key] = fill(o[p.key], p.schema, root);
+    }
+    return o;
+  }
+  return v;
+}
 const isType = (v: unknown): v is StudyType => typeof v === "string" && (STUDY_TYPE_IDS as readonly string[]).includes(v);
 
 function invalid(message: string, errors: unknown[] = []): HttpError {
@@ -94,12 +121,11 @@ export function studyRoutes(d: StudyDeps): Route[] {
   };
   const typeOf = (r: StudyRecord): StudyType => (isType(r.type) ? r.type : "static");
   const png = (name: string) => readFileSync(resolve(DIR, `study_${name}.png`));
-  // Plan 6 (assumed shapes, see accuracy.ts): materials carry their S-N curve, orthotropic data and calibration
-  const applied = (name: string) => d.state().cal.list.find((c) => c.applied && c.material.toLowerCase() === name.toLowerCase());
-  const material = (name: string) => [...REAL_STUDY.materials.builtin, ...d.state().custom].find((x) => x.name.toLowerCase() === name.toLowerCase());
+  // Plan 6 (accuracy.ts): S3 real shapes; the calibration routes look materials up by name
+  const material = (name: string) => [...REAL_S3.materials.builtin, ...d.state().custom].find((x) => x.name.toLowerCase() === name.toLowerCase());
   return [
     ...calibrationRoutes({ cal: () => d.state().cal, material, record: (id) => d.records().get(id) }),
-    { method: "GET", re: /^\/sims\/types$/, h: () => p6Types(REAL_STUDY.types) },
+    { method: "GET", re: /^\/sims\/types$/, h: () => p6Types(REAL_S3.types) },
     { method: "GET", re: /^\/sims\/templates$/, h: () => structuredClone(d.state().templates) },
     {
       method: "POST", re: /^\/sims\/templates$/, h: (_m, _q, raw, _r, res) => {
@@ -130,8 +156,9 @@ export function studyRoutes(d: StudyDeps): Route[] {
     },
     {
       method: "GET", re: /^\/sims\/materials$/, h: () => ({
-        builtin: REAL_STUDY.materials.builtin.map((m) => p6Material(m, applied(m.name))),
-        custom: d.state().custom.map((m) => p6Material(m, applied(m.name))),
+        // like the S3 core: the raw materials (a calibration applies inside a study, per printer)
+        builtin: structuredClone(REAL_S3.materials.builtin),
+        custom: structuredClone(d.state().custom),
       }),
     },
     {
@@ -233,7 +260,7 @@ export function startStudy(d: StudyDeps, b: Record<string, unknown>): { run_id: 
   if (type === "modal" && typeof settings.n_modes === "number" && settings.n_modes > 30) {
     throw invalid("invalid modal settings: n_modes: Input should be less than or equal to 30", [{ type: "less_than_equal", loc: ["n_modes"], msg: "Input should be less than or equal to 30", input: settings.n_modes, ctx: { le: 30 }, url: "https://errors.pydantic.dev/2.14/v/less_than_equal" }]);
   }
-  const real = REAL_STUDY.records[type];
+  const real = p6Base(type, settings) ?? REAL_STUDY.records[type];
   const run = d.newRun("studies", "ui", "studies-page", `Studies page: ${type} study of ${partId}`, true);
   const callId = `ui-${hex(6)}`;
   const simId = `sim_${hex(6)}`;
@@ -308,7 +335,7 @@ export function startStudy(d: StudyDeps, b: Record<string, unknown>): { run_id: 
     // core studies.card: a static result's per-case table rides on the card too
     const caseCard = Array.isArray(resNow.per_case) ? { per_case: resNow.per_case, governing_case_id: resNow.governing_case_id ?? null } : {};
     rec.card = { ...structuredClone(real.card!), ...caseCard, sim_id: simId, run_id: run.id, reason: rec.reason, urls: { record: `/sims/${simId}`, glb: `/sims/${simId}/result.glb`, charts: `/sims/${simId}/charts`, probe: `/sims/${simId}/probe`, section: `/sims/${simId}/section` }, charts_url: `/sims/${simId}/charts` };
-    p6Finish(rec, type, settings); // Plan 6 (assumed): nonlinear, fatigue, OpenFOAM, print direction
+    p6Finish(rec, type, settings, st.cal); // Plan 6: S3 fatigue / anisotropy / calibration (real), S1 / S2 (assumed)
     const data = { sim_id: simId, part_id: partId, type, status: "done", card: rec.card, checks: rec.card.checks, results: rec.results };
     const summary = `GUIDE ONLY - ${type} study of ${partId} (fake core, real ${type} numbers)`;
     progress({ stage: "done", phase: "done", pct: 100, detail: "done" });

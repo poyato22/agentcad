@@ -293,6 +293,12 @@ const COVERAGE: Record<string, string> = {
   "POST /sims/materials": "study_material_add.json", // contract.studies.test.ts (Task A8)
   "POST /sims/templates": "study_template_add.json", // contract.studies.test.ts (Task A8)
   "POST /sims/{sim_id}/cancel": "study_cancel.json", // contract.studies.test.ts (Task A8)
+  // Plan 6 S3: core/scripts/dump_s3_fixtures.py; contract.studies.test.ts (S4 fix round 1)
+  "GET /sims/calibrations": "s3_cal_list.json",
+  "POST /sims/calibrations/fit": "s3_cal_fit.json",
+  "POST /sims/calibrations": "s3_cal_save.json",
+  "DELETE /sims/calibrations/{cal_id}": "s3_cal_delete.json",
+  "GET /sims/calibrations/{cal_id}": "EXEMPT: the app reads the list (GET /sims/calibrations); one record has the list item's shape (s3_cal_list.json)",
 };
 
 function coreRoutes(): string[] {

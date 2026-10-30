@@ -67,7 +67,7 @@ export function StudiesPage({ controller = studies, deps = {} }: { controller?: 
   const [panel, setPanel] = useState<"none" | "materials" | "compare" | "calibrate">("none");
   const [calMaterial, setCalMaterial] = useState<string | null>(null);
 
-  useEffect(() => { void c.loadTypes(); void c.loadSolvers(); void c.loadLibrary(); }, [c]);
+  useEffect(() => { void c.loadTypes(); void c.loadSolvers(); void c.loadLibrary(); void c.loadCalibrations(); }, [c]);
   useEffect(() => { c.resume(); return () => c.pause(); }, [c]);
   useEffect(() => { if (partId) void c.loadHistory(partId); }, [c, partId, part?.mtime]);
   // the user's own study finished: show its result, not the setup wireframe (B1-2)
@@ -95,6 +95,11 @@ export function StudiesPage({ controller = studies, deps = {} }: { controller?: 
   const materialNames = useMemo(() => materialRows.map((m) => m.name), [materialRows]);
   const pickFace = (p: Path | null, then?: Path) => { setPicking(p); setPickNext(p ? then ?? null : null); if (p) viewSig.value = "setup"; };
   const calibrate = (name: string | null) => { setCalMaterial(name); setPanel("calibrate"); };
+  const matSettings = (settings?.material ?? {}) as { name?: unknown; printer?: unknown };
+  const studyMaterial = {
+    name: typeof matSettings.name === "string" ? matSettings.name : null,
+    printer: typeof matSettings.printer === "string" ? matSettings.printer : null,
+  };
 
   const solvers = c.solvers.value;
   const active = c.active.value;
@@ -176,7 +181,7 @@ export function StudiesPage({ controller = studies, deps = {} }: { controller?: 
           {info && settings && (
             <form class="st-setup" noValidate aria-label={`${TYPE_NAMES[type]} study setup`} onSubmit={(e) => { e.preventDefault(); if (canRun && partId) void c.start(partId, type, settings); }}>
               <SchemaForm schema={info.schema} value={settings} onChange={setSettings} errors={c.fieldErrors.value} disabled={active !== null}
-                faces={faces} materials={materialNames} materialRows={materialRows} onEditMaterials={() => setPanel("materials")} onCalibrate={calibrate}
+                faces={faces} materials={materialNames} materialRows={materialRows} calibrations={c.calibrations.value} onEditMaterials={() => setPanel("materials")} onCalibrate={calibrate}
                 onPickFace={pickFace} picking={picking}
                 selectedCase={caseSig.value} onSelectCase={(i) => { caseSig.value = i; viewSig.value = "setup"; }} />
               {activeHere ? (
@@ -237,12 +242,18 @@ export function StudiesPage({ controller = studies, deps = {} }: { controller?: 
           )}
           {panel === "materials" && (
             <MaterialEditor materials={c.materials.value} onClose={() => setPanel("none")}
-              onSave={(m) => c.saveMaterial(m)} onDelete={(n) => c.deleteMaterial(n)} onCalibrate={calibrate} />
+              onSave={(m) => c.saveMaterial(m)} onDelete={(n) => c.deleteMaterial(n)} onCalibrate={calibrate} calibrations={c.calibrations.value} />
           )}
           {panel === "calibrate" && (
             <CalibrationPanel client={() => actions.client()} materials={materialRows} studies={c.history.value}
-              initialMaterial={calMaterial ?? (typeof (settings?.material as { name?: unknown } | undefined)?.name === "string" ? (settings?.material as { name: string }).name : null)}
-              onApplied={() => { void c.loadLibrary(); }} onClose={() => setPanel("none")} />
+              initialMaterial={calMaterial ?? studyMaterial.name} initialPrinter={studyMaterial.printer}
+              onApplied={(m, printer) => {
+                void c.loadCalibrations();
+                // the study of this material now runs on that printer's calibration (S3 settings.material.printer)
+                if (settings && studyMaterial.name?.toLowerCase() === m.toLowerCase()) {
+                  setSettings(setAt(settings, ["material", "printer"], printer === "default" ? null : printer));
+                }
+              }} onClose={() => setPanel("none")} />
           )}
           {panel === "compare" && c.compare.value && (
             <Compare data={c.compare.value} onClose={() => setPanel("none")} onOpen={(id) => { viewSig.value = "result"; void c.select(id); }} />

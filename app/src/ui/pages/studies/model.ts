@@ -286,9 +286,11 @@ export function settingsMarkers(type: StudyType, settings: Record<string, unknow
       }
     });
   }
-  // the build direction: layer planes across the part, stacked along it
-  if (s.print_direction !== null && s.print_direction !== undefined && (typeof s.print_direction === "string" || Array.isArray(s.print_direction))) {
-    out.push({ role: "print", face: "body", kind: "print", direction: s.print_direction as string | number[], magnitude: null, unit: "", caseIndex: null, path: ["print_direction"] });
+  // the build direction (S3: settings.material.anisotropy.print_direction): layer planes across the part
+  const aniso = isObj(s.material) && isObj(s.material.anisotropy) ? s.material.anisotropy : null;
+  const dir = aniso?.print_direction;
+  if (typeof dir === "string" || Array.isArray(dir)) {
+    out.push({ role: "print", face: "body", kind: "print", direction: dir as string | number[], magnitude: null, unit: "", caseIndex: null, path: ["material", "anisotropy", "print_direction"] });
   }
   return out;
 }

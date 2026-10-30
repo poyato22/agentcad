@@ -1,0 +1,19 @@
+{
+  "detail": [
+    {
+      "type": "value_error",
+      "loc": [
+        "body",
+        "tensile",
+        0
+      ],
+      "msg": "Value error, give area_mm2 or width_mm and thickness_mm",
+      "input": {
+        "force_n": 5
+      },
+      "ctx": {
+        "error": {}
+      }
+    }
+  ]
+}

@@ -7,7 +7,7 @@ import type { JSX } from "preact";
 import { useMemo, useState } from "preact/hooks";
 import { provenance } from "../../../api/accuracy";
 import type { StudyCharts, StudyRecord } from "../../../api/studies";
-import { FatigueSection, NonlinearSection } from "./accuracy/results";
+import { FatigueSection, LayersSection, NonlinearSection } from "./accuracy/results";
 import { Button } from "../../common/Button";
 import { Led } from "../../common/Led";
 import { CheckRows } from "../../console/studycard/StudyCard";
@@ -130,6 +130,7 @@ export function ResultPanel({ rec, charts, onAsk, onOpenRun, asked, onImmersive 
       )}
       {done && type === "static" && <LoadCases rec={rec} />}
       {done && <NonlinearSection rec={rec} />}
+      {done && <LayersSection rec={rec} />}
       {done && <FatigueSection rec={rec} />}
       <CheckRows checks={card?.checks ?? []} />
       {done && charts && charts.charts.length > 0 && (
