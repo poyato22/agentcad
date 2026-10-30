@@ -54,5 +54,6 @@
   },
   "handles": [],
   "warnings": [],
-  "step_kind": "tool_result"
+  "step_kind": "tool_result",
+  "images": []
 }

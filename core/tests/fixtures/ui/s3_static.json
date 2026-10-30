@@ -1,17 +1,17 @@
 {
-  "sim_id": "sim_45be17f3507a",
+  "sim_id": "sim_dbf7141675cf",
   "part_id": "beam",
   "type": "static",
-  "run_id": "bbcb3d51aa79",
-  "call_id": "ui-a57686afaa1b",
-  "step_id": 3,
+  "run_id": "671e1c2510e6",
+  "call_id": "ui-51d11875e225",
+  "step_id": 4,
   "reason": null,
   "status": "done",
   "stage": "done",
   "phase": "done",
   "pct": 100.0,
-  "created_at": 1793353502.8876438,
-  "finished_at": 1793353503.7096782,
+  "created_at": 1793359819.183394,
+  "finished_at": 1793359819.9892612,
   "analysis": "static",
   "guide": true,
   "label": "guide only, not a guarantee",
@@ -140,7 +140,7 @@
       "sn": null
     }
   },
-  "geometry_hash": "e3ed2cd213387ec293f49774078c2bd386e4bc8ca577a4df1aaddba722410e65",
+  "geometry_hash": "09c390ff414238e0299075200803a6d126c2b8c16ece3e9d44b7c03d068b206d",
   "material": {
     "name": "PLA",
     "e_mpa": 2300.0,
@@ -190,11 +190,11 @@
     "Fatigue is an ESTIMATE: a Basquin S-N curve (data sheet, or the AM PLA design curve of Ezeh & Susmel 2019, 10% of UTS at 2e6 cycles) with a Goodman mean-stress correction at the hotspot; real printed parts scatter widely in fatigue, and notches, temperature, frequency and UV are not modelled."
   ],
   "urls": {
-    "record": "/sims/sim_45be17f3507a",
-    "glb": "/sims/sim_45be17f3507a/result.glb",
-    "charts": "/sims/sim_45be17f3507a/charts",
-    "probe": "/sims/sim_45be17f3507a/probe",
-    "section": "/sims/sim_45be17f3507a/section"
+    "record": "/sims/sim_dbf7141675cf",
+    "glb": "/sims/sim_dbf7141675cf/result.glb",
+    "charts": "/sims/sim_dbf7141675cf/charts",
+    "probe": "/sims/sim_dbf7141675cf/probe",
+    "section": "/sims/sim_dbf7141675cf/section"
   },
   "solver": {
     "name": "CalculiX",
@@ -405,7 +405,7 @@
     },
     "deformed_scale": 2.61008099578702
   },
-  "inputs_hash": "8093aa2823453388892d34f17e67d0d7994b81dc1d2c57bdf22dcd4400647577",
+  "inputs_hash": "ba93bd9074754c863ff33fc9dc913920926b7d0874639bbfaebe6eae00f7b436",
   "glb": "result.glb",
   "outputs": [
     "result.glb",
@@ -429,7 +429,7 @@
     "governing_case_id": "tip",
     "material_basis": "datasheet / estimate",
     "fatigue_note": "fatigue estimate \u00b7 estimate S-N, Goodman",
-    "sim_id": "sim_45be17f3507a",
+    "sim_id": "sim_dbf7141675cf",
     "type": "static",
     "status": "done",
     "verdict": "warn",
@@ -491,15 +491,15 @@
       "FATIGUE ESTIMATE: predicted to fail after about 8.74e+05 cycles, before the 1e+06 required (fatigue safety factor 0.98, across layers (Z), estimate S-N curve)"
     ],
     "reason": null,
-    "run_id": "bbcb3d51aa79",
-    "step_id": 3,
+    "run_id": "671e1c2510e6",
+    "step_id": 4,
     "urls": {
-      "record": "/sims/sim_45be17f3507a",
-      "glb": "/sims/sim_45be17f3507a/result.glb",
-      "charts": "/sims/sim_45be17f3507a/charts",
-      "probe": "/sims/sim_45be17f3507a/probe",
-      "section": "/sims/sim_45be17f3507a/section"
+      "record": "/sims/sim_dbf7141675cf",
+      "glb": "/sims/sim_dbf7141675cf/result.glb",
+      "charts": "/sims/sim_dbf7141675cf/charts",
+      "probe": "/sims/sim_dbf7141675cf/probe",
+      "section": "/sims/sim_dbf7141675cf/section"
     },
-    "charts_url": "/sims/sim_45be17f3507a/charts"
+    "charts_url": "/sims/sim_dbf7141675cf/charts"
   }
 }

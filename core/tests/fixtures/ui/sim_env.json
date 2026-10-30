@@ -98,8 +98,20 @@
       "knockdown": 0.7,
       "stiffness_factor": 1.0,
       "custom": false,
+      "tangent_modulus_mpa": null,
+      "e_z_mpa": null,
+      "z_strength_mpa": null,
+      "build_dir": null,
+      "sn_a_mpa": null,
+      "sn_b": null,
+      "basis": "datasheet / estimate",
+      "calibration": null,
+      "basis_by_property": null,
+      "fdm_strength_factor": 1.0,
       "allowable_mpa": 35.699999999999996,
       "e_eff_mpa": 2300.0,
+      "tangent_eff_mpa": 23.0,
+      "tangent_source": "estimate (1% of E)",
       "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers"
     },
     {
@@ -115,8 +127,20 @@
       "knockdown": 0.7,
       "stiffness_factor": 1.0,
       "custom": false,
+      "tangent_modulus_mpa": null,
+      "e_z_mpa": null,
+      "z_strength_mpa": null,
+      "build_dir": null,
+      "sn_a_mpa": null,
+      "sn_b": null,
+      "basis": "datasheet / estimate",
+      "calibration": null,
+      "basis_by_property": null,
+      "fdm_strength_factor": 1.0,
       "allowable_mpa": 32.9,
       "e_eff_mpa": 1500.0,
+      "tangent_eff_mpa": 15.0,
+      "tangent_source": "estimate (1% of E)",
       "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers"
     },
     {
@@ -132,8 +156,20 @@
       "knockdown": 0.7,
       "stiffness_factor": 1.0,
       "custom": false,
+      "tangent_modulus_mpa": null,
+      "e_z_mpa": null,
+      "z_strength_mpa": null,
+      "build_dir": null,
+      "sn_a_mpa": null,
+      "sn_b": null,
+      "basis": "datasheet / estimate",
+      "calibration": null,
+      "basis_by_property": null,
+      "fdm_strength_factor": 1.0,
       "allowable_mpa": 24.5,
       "e_eff_mpa": 1900.0,
+      "tangent_eff_mpa": 19.0,
+      "tangent_source": "estimate (1% of E)",
       "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers"
     },
     {
@@ -149,8 +185,20 @@
       "knockdown": 0.7,
       "stiffness_factor": 1.0,
       "custom": false,
+      "tangent_modulus_mpa": null,
+      "e_z_mpa": null,
+      "z_strength_mpa": null,
+      "build_dir": null,
+      "sn_a_mpa": null,
+      "sn_b": null,
+      "basis": "datasheet / estimate",
+      "calibration": null,
+      "basis_by_property": null,
+      "fdm_strength_factor": 1.0,
       "allowable_mpa": 28.0,
       "e_eff_mpa": 2000.0,
+      "tangent_eff_mpa": 20.0,
+      "tangent_source": "estimate (1% of E)",
       "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers"
     },
     {
@@ -166,8 +214,20 @@
       "knockdown": 0.7,
       "stiffness_factor": 1.0,
       "custom": false,
+      "tangent_modulus_mpa": null,
+      "e_z_mpa": null,
+      "z_strength_mpa": null,
+      "build_dir": null,
+      "sn_a_mpa": null,
+      "sn_b": null,
+      "basis": "datasheet / estimate",
+      "calibration": null,
+      "basis_by_property": null,
+      "fdm_strength_factor": 1.0,
       "allowable_mpa": 44.8,
       "e_eff_mpa": 3860.0,
+      "tangent_eff_mpa": 38.6,
+      "tangent_source": "estimate (1% of E)",
       "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers"
     }
   ],
@@ -184,6 +244,10 @@
       "found": true,
       "version": "4.15.2",
       "install": "gmsh is a core dependency: run `uv sync` in core/"
+    },
+    "openfoam": {
+      "available": false,
+      "why_not": "Docker / OrbStack is not running"
     }
   },
   "study_types": [
@@ -193,5 +257,6 @@
     "thermal",
     "drop",
     "wind"
-  ]
+  ],
+  "calibrations": []
 }

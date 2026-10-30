@@ -1,16 +1,17 @@
 [
   {
-    "sim_id": "sim_5a7245e07a69",
+    "sim_id": "sim_c1b6fb68da51",
     "part_id": "beam",
-    "run_id": "3a4f540ec817",
-    "step_id": 28,
+    "project_id": null,
+    "run_id": "96374179f1f7",
+    "step_id": 30,
     "type": "modal",
     "status": "done",
     "stage": "done",
     "phase": "done",
     "pct": 100.0,
-    "created_at": 1793339776.472864,
-    "finished_at": 1793339777.577725,
+    "created_at": 1793359787.5427399,
+    "finished_at": 1793359788.5922198,
     "error": null,
     "hint": null,
     "inputs": {
@@ -19,12 +20,16 @@
         "material": {
           "name": null,
           "custom": null,
-          "fdm": null
+          "fdm": null,
+          "anisotropy": null,
+          "printer": null,
+          "calibrated": true
         },
         "mesh": {
           "size_mm": null,
           "refine_faces": [],
           "refine_factor": 0.4,
+          "refine_points": [],
           "second_order": true
         },
         "solver": {
@@ -138,17 +143,18 @@
     "stale": false
   },
   {
-    "sim_id": "sim_54e7b558f730",
+    "sim_id": "sim_8568fe50b51b",
     "part_id": "beam",
-    "run_id": "3a4f540ec817",
-    "step_id": 26,
+    "project_id": null,
+    "run_id": "96374179f1f7",
+    "step_id": 28,
     "type": "static",
     "status": "done",
     "stage": "done",
     "phase": "done",
     "pct": 100.0,
-    "created_at": 1793339775.5557692,
-    "finished_at": 1793339776.467732,
+    "created_at": 1793359786.811466,
+    "finished_at": 1793359787.538215,
     "error": null,
     "hint": null,
     "inputs": {
@@ -157,12 +163,16 @@
         "material": {
           "name": null,
           "custom": null,
-          "fdm": null
+          "fdm": null,
+          "anisotropy": null,
+          "printer": null,
+          "calibrated": true
         },
         "mesh": {
           "size_mm": null,
           "refine_faces": [],
           "refine_factor": 0.4,
+          "refine_points": [],
           "second_order": true
         },
         "solver": {
@@ -195,7 +205,9 @@
           "tol_pct": 5.0,
           "max_levels": 4
         },
-        "environment": null
+        "environment": null,
+        "nonlinear": null,
+        "fatigue": null
       },
       "material": "PLA",
       "environment": null
@@ -290,17 +302,18 @@
     "stale": false
   },
   {
-    "sim_id": "sim_7997ccb61c62",
+    "sim_id": "sim_5e07e3ef0379",
     "part_id": "cube",
-    "run_id": "3a4f540ec817",
-    "step_id": 22,
+    "project_id": null,
+    "run_id": "96374179f1f7",
+    "step_id": 24,
     "type": "wind",
     "status": "done",
     "stage": "done",
     "phase": "done",
     "pct": 100.0,
-    "created_at": 1793339769.81473,
-    "finished_at": 1793339775.550519,
+    "created_at": 1793359782.295121,
+    "finished_at": 1793359786.807177,
     "error": null,
     "hint": null,
     "inputs": {
@@ -324,6 +337,8 @@
           15.0
         ],
         "solver": "auto",
+        "openfoam_iterations": 1500,
+        "cpus": 4,
         "shape_class": "auto"
       },
       "material": null,
@@ -778,17 +793,18 @@
     "stale": false
   },
   {
-    "sim_id": "sim_e97e218807ea",
+    "sim_id": "sim_531da4348759",
     "part_id": "beam",
-    "run_id": "3a4f540ec817",
-    "step_id": 19,
+    "project_id": null,
+    "run_id": "96374179f1f7",
+    "step_id": 21,
     "type": "drop",
     "status": "done",
     "stage": "done",
     "phase": "done",
     "pct": 100.0,
-    "created_at": 1793339769.1302998,
-    "finished_at": 1793339769.809267,
+    "created_at": 1793359781.5702138,
+    "finished_at": 1793359782.2895849,
     "error": null,
     "hint": null,
     "inputs": {
@@ -797,12 +813,16 @@
         "material": {
           "name": null,
           "custom": null,
-          "fdm": null
+          "fdm": null,
+          "anisotropy": null,
+          "printer": null,
+          "calibrated": true
         },
         "mesh": {
           "size_mm": null,
           "refine_faces": [],
           "refine_factor": 0.4,
+          "refine_points": [],
           "second_order": true
         },
         "solver": {
@@ -925,17 +945,18 @@
     "stale": false
   },
   {
-    "sim_id": "sim_2e1ebd541a5b",
+    "sim_id": "sim_137fe1977618",
     "part_id": "beam",
-    "run_id": "3a4f540ec817",
-    "step_id": 16,
+    "project_id": null,
+    "run_id": "96374179f1f7",
+    "step_id": 18,
     "type": "thermal",
     "status": "done",
     "stage": "done",
     "phase": "done",
     "pct": 100.0,
-    "created_at": 1793339768.554069,
-    "finished_at": 1793339769.1252449,
+    "created_at": 1793359780.983426,
+    "finished_at": 1793359781.5650308,
     "error": null,
     "hint": null,
     "inputs": {
@@ -944,12 +965,16 @@
         "material": {
           "name": null,
           "custom": null,
-          "fdm": null
+          "fdm": null,
+          "anisotropy": null,
+          "printer": null,
+          "calibrated": true
         },
         "mesh": {
           "size_mm": null,
           "refine_faces": [],
           "refine_factor": 0.4,
+          "refine_points": [],
           "second_order": true
         },
         "solver": {
@@ -1020,17 +1045,18 @@
     "stale": false
   },
   {
-    "sim_id": "sim_f1d4c8fb97c5",
+    "sim_id": "sim_8977dbba9764",
     "part_id": "beam",
-    "run_id": "3a4f540ec817",
-    "step_id": 13,
+    "project_id": null,
+    "run_id": "96374179f1f7",
+    "step_id": 15,
     "type": "buckling",
     "status": "done",
     "stage": "done",
     "phase": "done",
     "pct": 100.0,
-    "created_at": 1793339767.314273,
-    "finished_at": 1793339768.5487921,
+    "created_at": 1793359779.777966,
+    "finished_at": 1793359780.978278,
     "error": null,
     "hint": null,
     "inputs": {
@@ -1039,12 +1065,16 @@
         "material": {
           "name": null,
           "custom": null,
-          "fdm": null
+          "fdm": null,
+          "anisotropy": null,
+          "printer": null,
+          "calibrated": true
         },
         "mesh": {
           "size_mm": null,
           "refine_faces": [],
           "refine_factor": 0.4,
+          "refine_points": [],
           "second_order": true
         },
         "solver": {
@@ -1120,17 +1150,18 @@
     "stale": false
   },
   {
-    "sim_id": "sim_ace335f7f9a7",
+    "sim_id": "sim_77f319aff6cb",
     "part_id": "beam",
-    "run_id": "3a4f540ec817",
-    "step_id": 10,
+    "project_id": null,
+    "run_id": "96374179f1f7",
+    "step_id": 12,
     "type": "modal",
     "status": "done",
     "stage": "done",
     "phase": "done",
     "pct": 100.0,
-    "created_at": 1793339766.36221,
-    "finished_at": 1793339767.308908,
+    "created_at": 1793359778.836589,
+    "finished_at": 1793359779.77245,
     "error": null,
     "hint": null,
     "inputs": {
@@ -1139,12 +1170,16 @@
         "material": {
           "name": null,
           "custom": null,
-          "fdm": null
+          "fdm": null,
+          "anisotropy": null,
+          "printer": null,
+          "calibrated": true
         },
         "mesh": {
           "size_mm": null,
           "refine_faces": [],
           "refine_factor": 0.4,
+          "refine_points": [],
           "second_order": true
         },
         "solver": {
@@ -1243,17 +1278,18 @@
     "stale": false
   },
   {
-    "sim_id": "sim_8358bfc945c8",
+    "sim_id": "sim_a281305b04ae",
     "part_id": "beam",
-    "run_id": "3a4f540ec817",
-    "step_id": 7,
+    "project_id": null,
+    "run_id": "96374179f1f7",
+    "step_id": 9,
     "type": "static",
     "status": "done",
     "stage": "done",
     "phase": "done",
     "pct": 100.0,
-    "created_at": 1793339765.019444,
-    "finished_at": 1793339766.3548238,
+    "created_at": 1793359777.636117,
+    "finished_at": 1793359778.830325,
     "error": null,
     "hint": null,
     "inputs": {
@@ -1262,12 +1298,16 @@
         "material": {
           "name": null,
           "custom": null,
-          "fdm": null
+          "fdm": null,
+          "anisotropy": null,
+          "printer": null,
+          "calibrated": true
         },
         "mesh": {
           "size_mm": null,
           "refine_faces": [],
           "refine_factor": 0.4,
+          "refine_points": [],
           "second_order": true
         },
         "solver": {
@@ -1319,7 +1359,9 @@
           "tol_pct": 5.0,
           "max_levels": 4
         },
-        "environment": null
+        "environment": null,
+        "nonlinear": null,
+        "fatigue": null
       },
       "material": "PLA",
       "environment": null

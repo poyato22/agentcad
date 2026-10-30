@@ -70,6 +70,8 @@
   },
   "geometry": "envelope",
   "mass_source": "catalog",
+  "price": null,
+  "currency": null,
   "sources": [
     {
       "title": "Imported from shop.example.com",
@@ -77,7 +79,7 @@
     }
   ],
   "raw_text": "Falcon 2207 1950KV Brushless Motor | Example Hobby\nFalcon 2207 1950KV\nA smooth 5-inch freestyle motor.\nStator\n22 x 7 mm\nKV\n1950\nWeight\n1.2 oz\nMounting pattern\n16x16mm M3\nShaft diameter\n0.197 in\nMax thrust\n1650 g\nBell diameter\n2.75 cm\nHeight\n32 mm\nMax current: 45 A",
-  "project_id": "0097bb15772c",
+  "project_id": "fc9de0f5b810",
   "edited_by_user": true,
-  "edited_at": 1793289462.2905412
+  "edited_at": 1793359805.696223
 }

@@ -39,7 +39,8 @@
           16.0
         ],
         "normal": null,
-        "area": 2764.602
+        "area": 2764.602,
+        "radius": 13.75
       },
       {
         "id": "f1",
@@ -80,7 +81,8 @@
           37.0
         ],
         "normal": null,
-        "area": 157.08
+        "area": 157.08,
+        "radius": 2.5
       },
       {
         "id": "f4",
@@ -91,7 +93,8 @@
           2.0
         ],
         "normal": null,
-        "area": 37.699
+        "area": 37.699,
+        "radius": 1.5
       },
       {
         "id": "f5",
@@ -102,7 +105,8 @@
           2.0
         ],
         "normal": null,
-        "area": 37.699
+        "area": 37.699,
+        "radius": 1.5
       },
       {
         "id": "f6",
@@ -113,7 +117,8 @@
           2.0
         ],
         "normal": null,
-        "area": 37.699
+        "area": 37.699,
+        "radius": 1.5
       },
       {
         "id": "f7",
@@ -124,7 +129,8 @@
           2.0
         ],
         "normal": null,
-        "area": 37.699
+        "area": 37.699,
+        "radius": 1.5
       },
       {
         "id": "f8",
@@ -203,6 +209,380 @@
       }
     ],
     "edges": 18,
+    "edge_list": [
+      {
+        "id": "e0",
+        "type": "circle",
+        "length": 86.394,
+        "center": [
+          -13.75,
+          0.0,
+          32.0
+        ],
+        "direction": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "adjacent": [
+          [
+            0.0,
+            0.0,
+            1.0
+          ]
+        ],
+        "radius": 13.75
+      },
+      {
+        "id": "e1",
+        "type": "line",
+        "length": 32.0,
+        "center": [
+          13.75,
+          0.0,
+          16.0
+        ],
+        "direction": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "adjacent": []
+      },
+      {
+        "id": "e2",
+        "type": "circle",
+        "length": 86.394,
+        "center": [
+          -13.75,
+          0.0,
+          0.0
+        ],
+        "direction": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "adjacent": [
+          [
+            0.0,
+            0.0,
+            -1.0
+          ]
+        ],
+        "radius": 13.75
+      },
+      {
+        "id": "e3",
+        "type": "circle",
+        "length": 15.708,
+        "center": [
+          -2.5,
+          0.0,
+          32.0
+        ],
+        "direction": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "adjacent": [
+          [
+            0.0,
+            0.0,
+            1.0
+          ]
+        ],
+        "radius": 2.5
+      },
+      {
+        "id": "e4",
+        "type": "circle",
+        "length": 9.425,
+        "center": [
+          -7.157,
+          -5.657,
+          0.0
+        ],
+        "direction": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "adjacent": [
+          [
+            0.0,
+            0.0,
+            -1.0
+          ]
+        ],
+        "radius": 1.5
+      },
+      {
+        "id": "e5",
+        "type": "circle",
+        "length": 9.425,
+        "center": [
+          4.157,
+          -5.657,
+          0.0
+        ],
+        "direction": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "adjacent": [
+          [
+            0.0,
+            0.0,
+            -1.0
+          ]
+        ],
+        "radius": 1.5
+      },
+      {
+        "id": "e6",
+        "type": "circle",
+        "length": 9.425,
+        "center": [
+          -7.157,
+          5.657,
+          0.0
+        ],
+        "direction": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "adjacent": [
+          [
+            0.0,
+            0.0,
+            -1.0
+          ]
+        ],
+        "radius": 1.5
+      },
+      {
+        "id": "e7",
+        "type": "circle",
+        "length": 9.425,
+        "center": [
+          4.157,
+          5.657,
+          0.0
+        ],
+        "direction": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "adjacent": [
+          [
+            0.0,
+            0.0,
+            -1.0
+          ]
+        ],
+        "radius": 1.5
+      },
+      {
+        "id": "e8",
+        "type": "circle",
+        "length": 15.708,
+        "center": [
+          -2.5,
+          0.0,
+          42.0
+        ],
+        "direction": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "adjacent": [
+          [
+            0.0,
+            0.0,
+            1.0
+          ]
+        ],
+        "radius": 2.5
+      },
+      {
+        "id": "e9",
+        "type": "line",
+        "length": 10.0,
+        "center": [
+          2.5,
+          0.0,
+          37.0
+        ],
+        "direction": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "adjacent": []
+      },
+      {
+        "id": "e10",
+        "type": "circle",
+        "length": 9.425,
+        "center": [
+          -7.157,
+          -5.657,
+          4.0
+        ],
+        "direction": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "adjacent": [
+          [
+            0.0,
+            0.0,
+            -1.0
+          ]
+        ],
+        "radius": 1.5
+      },
+      {
+        "id": "e11",
+        "type": "line",
+        "length": 4.0,
+        "center": [
+          -4.157,
+          -5.657,
+          2.0
+        ],
+        "direction": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "adjacent": []
+      },
+      {
+        "id": "e12",
+        "type": "circle",
+        "length": 9.425,
+        "center": [
+          4.157,
+          -5.657,
+          4.0
+        ],
+        "direction": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "adjacent": [
+          [
+            0.0,
+            0.0,
+            -1.0
+          ]
+        ],
+        "radius": 1.5
+      },
+      {
+        "id": "e13",
+        "type": "line",
+        "length": 4.0,
+        "center": [
+          7.157,
+          -5.657,
+          2.0
+        ],
+        "direction": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "adjacent": []
+      },
+      {
+        "id": "e14",
+        "type": "circle",
+        "length": 9.425,
+        "center": [
+          -7.157,
+          5.657,
+          4.0
+        ],
+        "direction": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "adjacent": [
+          [
+            0.0,
+            0.0,
+            -1.0
+          ]
+        ],
+        "radius": 1.5
+      },
+      {
+        "id": "e15",
+        "type": "line",
+        "length": 4.0,
+        "center": [
+          -4.157,
+          5.657,
+          2.0
+        ],
+        "direction": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "adjacent": []
+      },
+      {
+        "id": "e16",
+        "type": "circle",
+        "length": 9.425,
+        "center": [
+          4.157,
+          5.657,
+          4.0
+        ],
+        "direction": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "adjacent": [
+          [
+            0.0,
+            0.0,
+            -1.0
+          ]
+        ],
+        "radius": 1.5
+      },
+      {
+        "id": "e17",
+        "type": "line",
+        "length": 4.0,
+        "center": [
+          7.157,
+          5.657,
+          2.0
+        ],
+        "direction": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "adjacent": []
+      }
+    ],
     "holes": [
       {
         "diameter_mm": 3.0,
@@ -267,7 +647,7 @@
   "meta": {
     "kind": "catalog",
     "catalog_item_id": "motor_2207_class",
-    "project_id": "0097bb15772c",
+    "project_id": "fc9de0f5b810",
     "label": "2207 brushless motor class",
     "category": "motor",
     "source": "builtin",

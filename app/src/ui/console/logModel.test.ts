@@ -119,7 +119,7 @@ describe("buildLog", () => {
     const items = buildLog(input({ stepList: FIXTURE_STEPS, selectedRunId: FIXTURE_RUN }));
     const diff = items.find((i) => i.kind === "diff");
     if (!diff || diff.kind !== "diff") throw new Error("no diff");
-    expect(diff.step.id).toBe(7);
+    expect(diff.step.id).toBe(8);   // after U3c's part_created announcement (step 5)
     expect(diff.partId).toBe("mount_plate");
     expect(diff.vars).toEqual([{ name: "thickness", prev: 5, now: 6 }]);
     expect(diff.delta).toEqual({ bbox_size: [0, 0, 1], mass_g: 0.9576410294662194, volume_mm3: 772.2911527953379 });
@@ -156,7 +156,7 @@ describe("buildLog", () => {
     // the pending approval shows under every filter (it needs the human)
     expect(counts.errors).toBe(3);
     expect(counts.files).toBe(2);
-    expect(counts.decisions).toBe(2); // decision step + pending approval
+    expect(counts.decisions).toBe(3); // U3c's announcement + decision step + pending approval
     const tc = buildLog({ ...base, filter: { scope: "run", kind: "tool_calls" } });
     expect(new Set(kinds(tc))).toEqual(new Set(["call", "fold", "diff", "approval"]));
   });

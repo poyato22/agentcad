@@ -16,7 +16,7 @@ describe("changedVars", () => {
     expect(c).toBeDefined();
     expect(c?.now).toBe(6);
     expect(c?.prev).toBe(5);
-    expect(c?.stepId).toBe(7);
+    expect(c?.stepId).toBe(8);
     expect(c?.runId).toBe(fixture[0].run_id);
     expect(changedVars("other_part", fixture).size).toBe(0);
   });

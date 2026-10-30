@@ -1,21 +1,21 @@
 [
   {
-    "id": 5,
-    "run_id": "3a4f540ec817",
-    "ts": 1793339765.015538,
+    "id": 7,
+    "run_id": "96374179f1f7",
+    "ts": 1793359777.6295738,
     "kind": "message",
     "payload": {
       "role": "user",
       "text": "study the beam and the cube, then review the beam against its spec"
     },
-    "evidence_hash": "552fb125f5220a3fc2932d9ec17e44c79fe09a7910b8bd77980fa7532ee47e2b",
+    "evidence_hash": "633399160afff7cb8c2464bb9c3a89e9ad3af82f6c2c716f8e4614d23587a49c",
     "prev_hash": null,
     "collapsed": false
   },
   {
-    "id": 6,
-    "run_id": "3a4f540ec817",
-    "ts": 1793339765.0175202,
+    "id": 8,
+    "run_id": "96374179f1f7",
+    "ts": 1793359777.634207,
     "kind": "message",
     "payload": {
       "role": "assistant",
@@ -28,14 +28,14 @@
         }
       ]
     },
-    "evidence_hash": "43a804492ab40eb79dd7f44cd104cd7b7c51f59ac1e1e88a5f2bdfa991d95d34",
-    "prev_hash": "552fb125f5220a3fc2932d9ec17e44c79fe09a7910b8bd77980fa7532ee47e2b",
+    "evidence_hash": "e210c73db8b18431bf4f6340e79514563f6f73de1d8656a76679577a4e59a73a",
+    "prev_hash": "633399160afff7cb8c2464bb9c3a89e9ad3af82f6c2c716f8e4614d23587a49c",
     "collapsed": false
   },
   {
-    "id": 7,
-    "run_id": "3a4f540ec817",
-    "ts": 1793339765.017719,
+    "id": 9,
+    "run_id": "96374179f1f7",
+    "ts": 1793359777.634445,
     "kind": "tool_call",
     "payload": {
       "call_id": "s1",
@@ -96,14 +96,14 @@
       },
       "name": "sim_run"
     },
-    "evidence_hash": "744938538c71c2aaca239967dba29e4c3f1d32d2beb603cf915a15df9905754a",
-    "prev_hash": "43a804492ab40eb79dd7f44cd104cd7b7c51f59ac1e1e88a5f2bdfa991d95d34",
+    "evidence_hash": "9741fbdfc083725f5012888391d051d49b66f19ace797e5c4dc12517d4e7a33e",
+    "prev_hash": "e210c73db8b18431bf4f6340e79514563f6f73de1d8656a76679577a4e59a73a",
     "collapsed": false
   },
   {
-    "id": 8,
-    "run_id": "3a4f540ec817",
-    "ts": 1793339766.360182,
+    "id": 10,
+    "run_id": "96374179f1f7",
+    "ts": 1793359778.834613,
     "kind": "sim_run",
     "payload": {
       "call_id": "s1",
@@ -112,14 +112,14 @@
         "data": {
           "call_id": "s1",
           "card": {
-            "charts_url": "/sims/sim_8358bfc945c8/charts",
+            "charts_url": "/sims/sim_a281305b04ae/charts",
             "checks": [
               {
                 "kind": "min_safety_factor",
                 "measured": 5.906498504081631,
                 "note": null,
                 "requirement_id": "r1",
-                "sim_id": "sim_8358bfc945c8",
+                "sim_id": "sim_a281305b04ae",
                 "status": "pass",
                 "target": 2.0,
                 "unit": ""
@@ -129,7 +129,7 @@
                 "measured": 1.7386006851423133,
                 "note": null,
                 "requirement_id": "r2",
-                "sim_id": "sim_8358bfc945c8",
+                "sim_id": "sim_a281305b04ae",
                 "status": "fail",
                 "target": 1.0,
                 "unit": "mm"
@@ -139,6 +139,7 @@
             "fidelity_note": null,
             "governing_case_id": "tip",
             "label": "guide only, not a guarantee",
+            "material_basis": "datasheet / estimate",
             "metrics": [
               {
                 "key": "max_von_mises_mpa",
@@ -186,29 +187,29 @@
             ],
             "phase": "done",
             "reason": "tip load on the beam under both cases",
-            "run_id": "3a4f540ec817",
-            "sim_id": "sim_8358bfc945c8",
+            "run_id": "96374179f1f7",
+            "sim_id": "sim_a281305b04ae",
             "status": "done",
-            "step_id": 7,
+            "step_id": 9,
             "type": "static",
             "urls": {
-              "charts": "/sims/sim_8358bfc945c8/charts",
-              "glb": "/sims/sim_8358bfc945c8/result.glb",
-              "probe": "/sims/sim_8358bfc945c8/probe",
-              "record": "/sims/sim_8358bfc945c8",
-              "section": "/sims/sim_8358bfc945c8/section"
+              "charts": "/sims/sim_a281305b04ae/charts",
+              "glb": "/sims/sim_a281305b04ae/result.glb",
+              "probe": "/sims/sim_a281305b04ae/probe",
+              "record": "/sims/sim_a281305b04ae",
+              "section": "/sims/sim_a281305b04ae/section"
             },
             "verdict": "fail",
             "warnings": []
           },
-          "charts_url": "/sims/sim_8358bfc945c8/charts",
+          "charts_url": "/sims/sim_a281305b04ae/charts",
           "checks": [
             {
               "kind": "min_safety_factor",
               "measured": 5.906498504081631,
               "note": null,
               "requirement_id": "r1",
-              "sim_id": "sim_8358bfc945c8",
+              "sim_id": "sim_a281305b04ae",
               "status": "pass",
               "target": 2.0,
               "unit": ""
@@ -218,7 +219,7 @@
               "measured": 1.7386006851423133,
               "note": null,
               "requirement_id": "r2",
-              "sim_id": "sim_8358bfc945c8",
+              "sim_id": "sim_a281305b04ae",
               "status": "fail",
               "target": 1.0,
               "unit": "mm"
@@ -232,19 +233,31 @@
           "material": {
             "allowable_mpa": 35.699999999999996,
             "alpha_per_k": 6.8e-05,
+            "basis": "datasheet / estimate",
+            "basis_by_property": null,
+            "build_dir": null,
+            "calibration": null,
             "custom": false,
             "density_g_cm3": 1.24,
             "e_eff_mpa": 2300.0,
             "e_mpa": 2300.0,
+            "e_z_mpa": null,
+            "fdm_strength_factor": 1.0,
             "hdt_c": 55.0,
             "k_w_mk": 0.13,
             "knockdown": 0.7,
             "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers",
             "name": "PLA",
             "nu": 0.35,
+            "sn_a_mpa": null,
+            "sn_b": null,
             "source": "Prusament PLA TDS v1.1 (printed, horizontal)",
             "stiffness_factor": 1.0,
-            "yield_mpa": 51.0
+            "tangent_eff_mpa": 23.0,
+            "tangent_modulus_mpa": null,
+            "tangent_source": "estimate (1% of E)",
+            "yield_mpa": 51.0,
+            "z_strength_mpa": null
           },
           "mesh": {
             "coarse": {
@@ -335,8 +348,8 @@
               "tip": 5.906498504081631
             }
           },
-          "run_id": "3a4f540ec817",
-          "sim_id": "sim_8358bfc945c8",
+          "run_id": "96374179f1f7",
+          "sim_id": "sim_a281305b04ae",
           "solver": {
             "element": "C3D10 (quadratic tetrahedra)",
             "name": "CalculiX",
@@ -346,14 +359,14 @@
           },
           "stale": null,
           "status": "done",
-          "step_id": 7,
+          "step_id": 9,
           "type": "static",
           "urls": {
-            "charts": "/sims/sim_8358bfc945c8/charts",
-            "glb": "/sims/sim_8358bfc945c8/result.glb",
-            "probe": "/sims/sim_8358bfc945c8/probe",
-            "record": "/sims/sim_8358bfc945c8",
-            "section": "/sims/sim_8358bfc945c8/section"
+            "charts": "/sims/sim_a281305b04ae/charts",
+            "glb": "/sims/sim_a281305b04ae/result.glb",
+            "probe": "/sims/sim_a281305b04ae/probe",
+            "record": "/sims/sim_a281305b04ae",
+            "section": "/sims/sim_a281305b04ae/section"
           },
           "warnings": []
         },
@@ -364,14 +377,14 @@
         "warnings": []
       }
     },
-    "evidence_hash": "62ac11567a6ffe655e8585e8d3e49f3370266f18bd4e6ea7f093eb73e9df6900",
-    "prev_hash": "744938538c71c2aaca239967dba29e4c3f1d32d2beb603cf915a15df9905754a",
+    "evidence_hash": "83346b3c97fcbc2eea2f80b760f0dc063cf325649a1d55592f00c57e09716e22",
+    "prev_hash": "9741fbdfc083725f5012888391d051d49b66f19ace797e5c4dc12517d4e7a33e",
     "collapsed": false
   },
   {
-    "id": 9,
-    "run_id": "3a4f540ec817",
-    "ts": 1793339766.360748,
+    "id": 11,
+    "run_id": "96374179f1f7",
+    "ts": 1793359778.835217,
     "kind": "message",
     "payload": {
       "role": "assistant",
@@ -384,14 +397,14 @@
         }
       ]
     },
-    "evidence_hash": "09c57ac596eb07f4cdff81e561ed139ce5c85e410f5f5bae7ea48b90b8829e4f",
-    "prev_hash": "62ac11567a6ffe655e8585e8d3e49f3370266f18bd4e6ea7f093eb73e9df6900",
+    "evidence_hash": "1655e922d7d80eec7a66fa33703dc257b0ac298d8d415c38e8ab06824b993d2f",
+    "prev_hash": "83346b3c97fcbc2eea2f80b760f0dc063cf325649a1d55592f00c57e09716e22",
     "collapsed": false
   },
   {
-    "id": 10,
-    "run_id": "3a4f540ec817",
-    "ts": 1793339766.360887,
+    "id": 12,
+    "run_id": "96374179f1f7",
+    "ts": 1793359778.835351,
     "kind": "tool_call",
     "payload": {
       "call_id": "s2",
@@ -426,14 +439,14 @@
       },
       "name": "sim_run"
     },
-    "evidence_hash": "b04ee3d7b440149eb21faef3d63eb20bb79c0448488934c0d34ce5d0b49b91f5",
-    "prev_hash": "09c57ac596eb07f4cdff81e561ed139ce5c85e410f5f5bae7ea48b90b8829e4f",
+    "evidence_hash": "88e0ef8f51e56a27f95627695955f7d0aa2c37f56f29e9a2ecdc5d638aa66b77",
+    "prev_hash": "1655e922d7d80eec7a66fa33703dc257b0ac298d8d415c38e8ab06824b993d2f",
     "collapsed": false
   },
   {
-    "id": 11,
-    "run_id": "3a4f540ec817",
-    "ts": 1793339767.312335,
+    "id": 13,
+    "run_id": "96374179f1f7",
+    "ts": 1793359779.7756438,
     "kind": "sim_run",
     "payload": {
       "call_id": "s2",
@@ -442,14 +455,14 @@
         "data": {
           "call_id": "s2",
           "card": {
-            "charts_url": "/sims/sim_ace335f7f9a7/charts",
+            "charts_url": "/sims/sim_77f319aff6cb/charts",
             "checks": [
               {
                 "kind": "avoid_band_hz",
                 "measured": 0,
                 "note": null,
                 "requirement_id": "r3",
-                "sim_id": "sim_ace335f7f9a7",
+                "sim_id": "sim_77f319aff6cb",
                 "status": "pass",
                 "target": [
                   340,
@@ -461,6 +474,7 @@
             "fidelity_class": "fem",
             "fidelity_note": null,
             "label": "guide only, not a guarantee",
+            "material_basis": "datasheet / estimate",
             "metrics": [
               {
                 "key": "first_freq_hz",
@@ -486,29 +500,29 @@
             "pct": 100.0,
             "phase": "done",
             "reason": "keep the beam's modes clear of the 2-blade prop at 12k rpm",
-            "run_id": "3a4f540ec817",
-            "sim_id": "sim_ace335f7f9a7",
+            "run_id": "96374179f1f7",
+            "sim_id": "sim_77f319aff6cb",
             "status": "done",
-            "step_id": 10,
+            "step_id": 12,
             "type": "modal",
             "urls": {
-              "charts": "/sims/sim_ace335f7f9a7/charts",
-              "glb": "/sims/sim_ace335f7f9a7/result.glb",
-              "probe": "/sims/sim_ace335f7f9a7/probe",
-              "record": "/sims/sim_ace335f7f9a7",
-              "section": "/sims/sim_ace335f7f9a7/section"
+              "charts": "/sims/sim_77f319aff6cb/charts",
+              "glb": "/sims/sim_77f319aff6cb/result.glb",
+              "probe": "/sims/sim_77f319aff6cb/probe",
+              "record": "/sims/sim_77f319aff6cb",
+              "section": "/sims/sim_77f319aff6cb/section"
             },
             "verdict": "pass",
             "warnings": []
           },
-          "charts_url": "/sims/sim_ace335f7f9a7/charts",
+          "charts_url": "/sims/sim_77f319aff6cb/charts",
           "checks": [
             {
               "kind": "avoid_band_hz",
               "measured": 0,
               "note": null,
               "requirement_id": "r3",
-              "sim_id": "sim_ace335f7f9a7",
+              "sim_id": "sim_77f319aff6cb",
               "status": "pass",
               "target": [
                 340,
@@ -525,19 +539,31 @@
           "material": {
             "allowable_mpa": 35.699999999999996,
             "alpha_per_k": 6.8e-05,
+            "basis": "datasheet / estimate",
+            "basis_by_property": null,
+            "build_dir": null,
+            "calibration": null,
             "custom": false,
             "density_g_cm3": 1.24,
             "e_eff_mpa": 2300.0,
             "e_mpa": 2300.0,
+            "e_z_mpa": null,
+            "fdm_strength_factor": 1.0,
             "hdt_c": 55.0,
             "k_w_mk": 0.13,
             "knockdown": 0.7,
             "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers",
             "name": "PLA",
             "nu": 0.35,
+            "sn_a_mpa": null,
+            "sn_b": null,
             "source": "Prusament PLA TDS v1.1 (printed, horizontal)",
             "stiffness_factor": 1.0,
-            "yield_mpa": 51.0
+            "tangent_eff_mpa": 23.0,
+            "tangent_modulus_mpa": null,
+            "tangent_source": "estimate (1% of E)",
+            "yield_mpa": 51.0,
+            "z_strength_mpa": null
           },
           "mesh": {
             "coarse": {
@@ -600,8 +626,8 @@
             ],
             "modes_in_band": 0
           },
-          "run_id": "3a4f540ec817",
-          "sim_id": "sim_ace335f7f9a7",
+          "run_id": "96374179f1f7",
+          "sim_id": "sim_77f319aff6cb",
           "solver": {
             "element": "C3D10 (quadratic tetrahedra)",
             "name": "CalculiX",
@@ -611,14 +637,14 @@
           },
           "stale": null,
           "status": "done",
-          "step_id": 10,
+          "step_id": 12,
           "type": "modal",
           "urls": {
-            "charts": "/sims/sim_ace335f7f9a7/charts",
-            "glb": "/sims/sim_ace335f7f9a7/result.glb",
-            "probe": "/sims/sim_ace335f7f9a7/probe",
-            "record": "/sims/sim_ace335f7f9a7",
-            "section": "/sims/sim_ace335f7f9a7/section"
+            "charts": "/sims/sim_77f319aff6cb/charts",
+            "glb": "/sims/sim_77f319aff6cb/result.glb",
+            "probe": "/sims/sim_77f319aff6cb/probe",
+            "record": "/sims/sim_77f319aff6cb",
+            "section": "/sims/sim_77f319aff6cb/section"
           },
           "warnings": []
         },
@@ -629,14 +655,14 @@
         "warnings": []
       }
     },
-    "evidence_hash": "d0d260a9a3fdc747a614380ebdee800123bde1fca1381032165ec1f557f207a2",
-    "prev_hash": "b04ee3d7b440149eb21faef3d63eb20bb79c0448488934c0d34ce5d0b49b91f5",
+    "evidence_hash": "8fc018c7d7fb85fd599c05b444c26e277637f0b3cee137a535851e67de31456d",
+    "prev_hash": "88e0ef8f51e56a27f95627695955f7d0aa2c37f56f29e9a2ecdc5d638aa66b77",
     "collapsed": false
   },
   {
-    "id": 12,
-    "run_id": "3a4f540ec817",
-    "ts": 1793339767.31291,
+    "id": 14,
+    "run_id": "96374179f1f7",
+    "ts": 1793359779.7765582,
     "kind": "message",
     "payload": {
       "role": "assistant",
@@ -649,14 +675,14 @@
         }
       ]
     },
-    "evidence_hash": "555950de796c46865615e98b273a7a9ccd8eb03ecb38b2e09a7ad3c5b554be01",
-    "prev_hash": "d0d260a9a3fdc747a614380ebdee800123bde1fca1381032165ec1f557f207a2",
+    "evidence_hash": "23889d9bf32e62481a77506452495e4c57ee21693a1eb15bf42b2b8b15c7a8bd",
+    "prev_hash": "8fc018c7d7fb85fd599c05b444c26e277637f0b3cee137a535851e67de31456d",
     "collapsed": false
   },
   {
-    "id": 13,
-    "run_id": "3a4f540ec817",
-    "ts": 1793339767.313057,
+    "id": 15,
+    "run_id": "96374179f1f7",
+    "ts": 1793359779.776694,
     "kind": "tool_call",
     "payload": {
       "call_id": "s3",
@@ -694,14 +720,14 @@
       },
       "name": "sim_run"
     },
-    "evidence_hash": "d0211afecb2dc5f5b06571304d257f81863aeda83b93d02e46b0ba98a8abc4c7",
-    "prev_hash": "555950de796c46865615e98b273a7a9ccd8eb03ecb38b2e09a7ad3c5b554be01",
+    "evidence_hash": "d9f71f3bd638c460ba95534945934a23cc4130be672375d26904ea1b775f76dd",
+    "prev_hash": "23889d9bf32e62481a77506452495e4c57ee21693a1eb15bf42b2b8b15c7a8bd",
     "collapsed": false
   },
   {
-    "id": 14,
-    "run_id": "3a4f540ec817",
-    "ts": 1793339768.552104,
+    "id": 16,
+    "run_id": "96374179f1f7",
+    "ts": 1793359780.981365,
     "kind": "sim_run",
     "payload": {
       "call_id": "s3",
@@ -710,14 +736,14 @@
         "data": {
           "call_id": "s3",
           "card": {
-            "charts_url": "/sims/sim_f1d4c8fb97c5/charts",
+            "charts_url": "/sims/sim_8977dbba9764/charts",
             "checks": [
               {
                 "kind": "min_buckling_factor",
                 "measured": 4.72461547244,
                 "note": null,
                 "requirement_id": "r4",
-                "sim_id": "sim_f1d4c8fb97c5",
+                "sim_id": "sim_8977dbba9764",
                 "status": "pass",
                 "target": 3.0,
                 "unit": ""
@@ -726,6 +752,7 @@
             "fidelity_class": "fem",
             "fidelity_note": null,
             "label": "guide only, not a guarantee",
+            "material_basis": "datasheet / estimate",
             "metrics": [
               {
                 "key": "first_factor",
@@ -751,29 +778,29 @@
             "pct": 100.0,
             "phase": "done",
             "reason": "axial load margin",
-            "run_id": "3a4f540ec817",
-            "sim_id": "sim_f1d4c8fb97c5",
+            "run_id": "96374179f1f7",
+            "sim_id": "sim_8977dbba9764",
             "status": "done",
-            "step_id": 13,
+            "step_id": 15,
             "type": "buckling",
             "urls": {
-              "charts": "/sims/sim_f1d4c8fb97c5/charts",
-              "glb": "/sims/sim_f1d4c8fb97c5/result.glb",
-              "probe": "/sims/sim_f1d4c8fb97c5/probe",
-              "record": "/sims/sim_f1d4c8fb97c5",
-              "section": "/sims/sim_f1d4c8fb97c5/section"
+              "charts": "/sims/sim_8977dbba9764/charts",
+              "glb": "/sims/sim_8977dbba9764/result.glb",
+              "probe": "/sims/sim_8977dbba9764/probe",
+              "record": "/sims/sim_8977dbba9764",
+              "section": "/sims/sim_8977dbba9764/section"
             },
             "verdict": "pass",
             "warnings": []
           },
-          "charts_url": "/sims/sim_f1d4c8fb97c5/charts",
+          "charts_url": "/sims/sim_8977dbba9764/charts",
           "checks": [
             {
               "kind": "min_buckling_factor",
               "measured": 4.72461547244,
               "note": null,
               "requirement_id": "r4",
-              "sim_id": "sim_f1d4c8fb97c5",
+              "sim_id": "sim_8977dbba9764",
               "status": "pass",
               "target": 3.0,
               "unit": ""
@@ -787,19 +814,31 @@
           "material": {
             "allowable_mpa": 35.699999999999996,
             "alpha_per_k": 6.8e-05,
+            "basis": "datasheet / estimate",
+            "basis_by_property": null,
+            "build_dir": null,
+            "calibration": null,
             "custom": false,
             "density_g_cm3": 1.24,
             "e_eff_mpa": 2300.0,
             "e_mpa": 2300.0,
+            "e_z_mpa": null,
+            "fdm_strength_factor": 1.0,
             "hdt_c": 55.0,
             "k_w_mk": 0.13,
             "knockdown": 0.7,
             "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers",
             "name": "PLA",
             "nu": 0.35,
+            "sn_a_mpa": null,
+            "sn_b": null,
             "source": "Prusament PLA TDS v1.1 (printed, horizontal)",
             "stiffness_factor": 1.0,
-            "yield_mpa": 51.0
+            "tangent_eff_mpa": 23.0,
+            "tangent_modulus_mpa": null,
+            "tangent_source": "estimate (1% of E)",
+            "yield_mpa": 51.0,
+            "z_strength_mpa": null
           },
           "mesh": {
             "coarse": {
@@ -847,8 +886,8 @@
             ],
             "first_factor": 4.72461547244
           },
-          "run_id": "3a4f540ec817",
-          "sim_id": "sim_f1d4c8fb97c5",
+          "run_id": "96374179f1f7",
+          "sim_id": "sim_8977dbba9764",
           "solver": {
             "element": "C3D10 (quadratic tetrahedra)",
             "name": "CalculiX",
@@ -858,14 +897,14 @@
           },
           "stale": null,
           "status": "done",
-          "step_id": 13,
+          "step_id": 15,
           "type": "buckling",
           "urls": {
-            "charts": "/sims/sim_f1d4c8fb97c5/charts",
-            "glb": "/sims/sim_f1d4c8fb97c5/result.glb",
-            "probe": "/sims/sim_f1d4c8fb97c5/probe",
-            "record": "/sims/sim_f1d4c8fb97c5",
-            "section": "/sims/sim_f1d4c8fb97c5/section"
+            "charts": "/sims/sim_8977dbba9764/charts",
+            "glb": "/sims/sim_8977dbba9764/result.glb",
+            "probe": "/sims/sim_8977dbba9764/probe",
+            "record": "/sims/sim_8977dbba9764",
+            "section": "/sims/sim_8977dbba9764/section"
           },
           "warnings": []
         },
@@ -876,14 +915,14 @@
         "warnings": []
       }
     },
-    "evidence_hash": "2845f6be28a198fd2e9f1905f159cf08acd87834e7ecbc2f8b551a270f458853",
-    "prev_hash": "d0211afecb2dc5f5b06571304d257f81863aeda83b93d02e46b0ba98a8abc4c7",
+    "evidence_hash": "921dfcb999f8b2466e59192388d39cf78013582f73ac15b9d46d5aa82606e772",
+    "prev_hash": "d9f71f3bd638c460ba95534945934a23cc4130be672375d26904ea1b775f76dd",
     "collapsed": false
   },
   {
-    "id": 15,
-    "run_id": "3a4f540ec817",
-    "ts": 1793339768.552684,
+    "id": 17,
+    "run_id": "96374179f1f7",
+    "ts": 1793359780.9819741,
     "kind": "message",
     "payload": {
       "role": "assistant",
@@ -896,14 +935,14 @@
         }
       ]
     },
-    "evidence_hash": "f8aa70846aa2202b3bf37849274a3da782f6446e72370be911aff493e4b3a6c7",
-    "prev_hash": "2845f6be28a198fd2e9f1905f159cf08acd87834e7ecbc2f8b551a270f458853",
+    "evidence_hash": "6aa8997a6c6dac869738882b90ccdc1baf5741b384e3cc97dfd85bd55b30d4da",
+    "prev_hash": "921dfcb999f8b2466e59192388d39cf78013582f73ac15b9d46d5aa82606e772",
     "collapsed": false
   },
   {
-    "id": 16,
-    "run_id": "3a4f540ec817",
-    "ts": 1793339768.552833,
+    "id": 18,
+    "run_id": "96374179f1f7",
+    "ts": 1793359780.982089,
     "kind": "tool_call",
     "payload": {
       "call_id": "s4",
@@ -936,14 +975,14 @@
       },
       "name": "sim_run"
     },
-    "evidence_hash": "fa244e16f6be01cfb5fc8a07c0f1e29786d08921673af4ffe0ee1f4daebc42e4",
-    "prev_hash": "f8aa70846aa2202b3bf37849274a3da782f6446e72370be911aff493e4b3a6c7",
+    "evidence_hash": "cfb34ee0fe976fb461ebd46470a93d494db7e944271604167120f5ad3ce679a6",
+    "prev_hash": "6aa8997a6c6dac869738882b90ccdc1baf5741b384e3cc97dfd85bd55b30d4da",
     "collapsed": false
   },
   {
-    "id": 17,
-    "run_id": "3a4f540ec817",
-    "ts": 1793339769.128345,
+    "id": 19,
+    "run_id": "96374179f1f7",
+    "ts": 1793359781.5681732,
     "kind": "sim_run",
     "payload": {
       "call_id": "s4",
@@ -952,14 +991,14 @@
         "data": {
           "call_id": "s4",
           "card": {
-            "charts_url": "/sims/sim_2e1ebd541a5b/charts",
+            "charts_url": "/sims/sim_137fe1977618/charts",
             "checks": [
               {
                 "kind": "max_temp_c",
                 "measured": 70.0,
                 "note": null,
                 "requirement_id": "r5",
-                "sim_id": "sim_2e1ebd541a5b",
+                "sim_id": "sim_137fe1977618",
                 "status": "fail",
                 "target": 60,
                 "unit": "degC"
@@ -968,6 +1007,7 @@
             "fidelity_class": "fem",
             "fidelity_note": null,
             "label": "guide only, not a guarantee",
+            "material_basis": "datasheet / estimate",
             "metrics": [
               {
                 "key": "max_temp_c",
@@ -993,31 +1033,31 @@
             "pct": 100.0,
             "phase": "done",
             "reason": "motor heat at the root",
-            "run_id": "3a4f540ec817",
-            "sim_id": "sim_2e1ebd541a5b",
+            "run_id": "96374179f1f7",
+            "sim_id": "sim_137fe1977618",
             "status": "done",
-            "step_id": 16,
+            "step_id": 18,
             "type": "thermal",
             "urls": {
-              "charts": "/sims/sim_2e1ebd541a5b/charts",
-              "glb": "/sims/sim_2e1ebd541a5b/result.glb",
-              "probe": "/sims/sim_2e1ebd541a5b/probe",
-              "record": "/sims/sim_2e1ebd541a5b",
-              "section": "/sims/sim_2e1ebd541a5b/section"
+              "charts": "/sims/sim_137fe1977618/charts",
+              "glb": "/sims/sim_137fe1977618/result.glb",
+              "probe": "/sims/sim_137fe1977618/probe",
+              "record": "/sims/sim_137fe1977618",
+              "section": "/sims/sim_137fe1977618/section"
             },
             "verdict": "fail",
             "warnings": [
               "peak 70.0 C is at or above PLA's heat deflection temperature (55 C): the part may soften or creep"
             ]
           },
-          "charts_url": "/sims/sim_2e1ebd541a5b/charts",
+          "charts_url": "/sims/sim_137fe1977618/charts",
           "checks": [
             {
               "kind": "max_temp_c",
               "measured": 70.0,
               "note": null,
               "requirement_id": "r5",
-              "sim_id": "sim_2e1ebd541a5b",
+              "sim_id": "sim_137fe1977618",
               "status": "fail",
               "target": 60,
               "unit": "degC"
@@ -1031,19 +1071,31 @@
           "material": {
             "allowable_mpa": 35.699999999999996,
             "alpha_per_k": 6.8e-05,
+            "basis": "datasheet / estimate",
+            "basis_by_property": null,
+            "build_dir": null,
+            "calibration": null,
             "custom": false,
             "density_g_cm3": 1.24,
             "e_eff_mpa": 2300.0,
             "e_mpa": 2300.0,
+            "e_z_mpa": null,
+            "fdm_strength_factor": 1.0,
             "hdt_c": 55.0,
             "k_w_mk": 0.13,
             "knockdown": 0.7,
             "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers",
             "name": "PLA",
             "nu": 0.35,
+            "sn_a_mpa": null,
+            "sn_b": null,
             "source": "Prusament PLA TDS v1.1 (printed, horizontal)",
             "stiffness_factor": 1.0,
-            "yield_mpa": 51.0
+            "tangent_eff_mpa": 23.0,
+            "tangent_modulus_mpa": null,
+            "tangent_source": "estimate (1% of E)",
+            "yield_mpa": 51.0,
+            "z_strength_mpa": null
           },
           "mesh": {
             "coarse": {
@@ -1086,8 +1138,8 @@
             ],
             "min_temp_c": 25.3232
           },
-          "run_id": "3a4f540ec817",
-          "sim_id": "sim_2e1ebd541a5b",
+          "run_id": "96374179f1f7",
+          "sim_id": "sim_137fe1977618",
           "solver": {
             "element": "C3D10 (quadratic tetrahedra)",
             "name": "CalculiX",
@@ -1097,14 +1149,14 @@
           },
           "stale": null,
           "status": "done",
-          "step_id": 16,
+          "step_id": 18,
           "type": "thermal",
           "urls": {
-            "charts": "/sims/sim_2e1ebd541a5b/charts",
-            "glb": "/sims/sim_2e1ebd541a5b/result.glb",
-            "probe": "/sims/sim_2e1ebd541a5b/probe",
-            "record": "/sims/sim_2e1ebd541a5b",
-            "section": "/sims/sim_2e1ebd541a5b/section"
+            "charts": "/sims/sim_137fe1977618/charts",
+            "glb": "/sims/sim_137fe1977618/result.glb",
+            "probe": "/sims/sim_137fe1977618/probe",
+            "record": "/sims/sim_137fe1977618",
+            "section": "/sims/sim_137fe1977618/section"
           },
           "warnings": [
             "peak 70.0 C is at or above PLA's heat deflection temperature (55 C): the part may soften or creep"
@@ -1119,14 +1171,14 @@
         ]
       }
     },
-    "evidence_hash": "67b98b10e4d8d85677a04281890e2cdc9f54870bb47c85c3c32d9ccbeb58dd3c",
-    "prev_hash": "fa244e16f6be01cfb5fc8a07c0f1e29786d08921673af4ffe0ee1f4daebc42e4",
+    "evidence_hash": "6b81605a70c44344f5f5a0717a37e161796c8014e8843f38152827edc28d8b1a",
+    "prev_hash": "cfb34ee0fe976fb461ebd46470a93d494db7e944271604167120f5ad3ce679a6",
     "collapsed": false
   },
   {
-    "id": 18,
-    "run_id": "3a4f540ec817",
-    "ts": 1793339769.128953,
+    "id": 20,
+    "run_id": "96374179f1f7",
+    "ts": 1793359781.568782,
     "kind": "message",
     "payload": {
       "role": "assistant",
@@ -1139,14 +1191,14 @@
         }
       ]
     },
-    "evidence_hash": "cdea23ce091ac6e5714af2f02923db3043f06c3706f4e5df6251526f138b30f8",
-    "prev_hash": "67b98b10e4d8d85677a04281890e2cdc9f54870bb47c85c3c32d9ccbeb58dd3c",
+    "evidence_hash": "83cb9198e173909b2c5853bfbdd34a89de55cf61e8c9afa679be2c98cf5f9d2c",
+    "prev_hash": "6b81605a70c44344f5f5a0717a37e161796c8014e8843f38152827edc28d8b1a",
     "collapsed": false
   },
   {
-    "id": 19,
-    "run_id": "3a4f540ec817",
-    "ts": 1793339769.129119,
+    "id": 21,
+    "run_id": "96374179f1f7",
+    "ts": 1793359781.568922,
     "kind": "tool_call",
     "payload": {
       "call_id": "s5",
@@ -1169,14 +1221,14 @@
       },
       "name": "sim_run"
     },
-    "evidence_hash": "b075fae0b7058d8bca175889401e4041f5f70f4af857585e43602c9ff671ad5b",
-    "prev_hash": "cdea23ce091ac6e5714af2f02923db3043f06c3706f4e5df6251526f138b30f8",
+    "evidence_hash": "936a121a6bc7746a850ebe96a17deceaf1d9b3540fd74a31274aa34ddee5317d",
+    "prev_hash": "83cb9198e173909b2c5853bfbdd34a89de55cf61e8c9afa679be2c98cf5f9d2c",
     "collapsed": false
   },
   {
-    "id": 20,
-    "run_id": "3a4f540ec817",
-    "ts": 1793339769.812684,
+    "id": 22,
+    "run_id": "96374179f1f7",
+    "ts": 1793359782.292991,
     "kind": "sim_run",
     "payload": {
       "call_id": "s5",
@@ -1185,14 +1237,14 @@
         "data": {
           "call_id": "s5",
           "card": {
-            "charts_url": "/sims/sim_e97e218807ea/charts",
+            "charts_url": "/sims/sim_531da4348759/charts",
             "checks": [
               {
                 "kind": "min_safety_factor",
                 "measured": 27860.09705599586,
                 "note": null,
                 "requirement_id": "r6",
-                "sim_id": "sim_e97e218807ea",
+                "sim_id": "sim_531da4348759",
                 "status": "warn",
                 "target": 2.0,
                 "unit": ""
@@ -1202,6 +1254,7 @@
             "fidelity_note": "estimate (equivalent static load F = m g k)",
             "governing_case_id": "impact",
             "label": "guide only, not a guarantee",
+            "material_basis": "datasheet / estimate",
             "metrics": [
               {
                 "key": "max_von_mises_mpa",
@@ -1242,17 +1295,17 @@
             ],
             "phase": "done",
             "reason": "1 m drop onto the floor",
-            "run_id": "3a4f540ec817",
-            "sim_id": "sim_e97e218807ea",
+            "run_id": "96374179f1f7",
+            "sim_id": "sim_531da4348759",
             "status": "done",
-            "step_id": 19,
+            "step_id": 21,
             "type": "drop",
             "urls": {
-              "charts": "/sims/sim_e97e218807ea/charts",
-              "glb": "/sims/sim_e97e218807ea/result.glb",
-              "probe": "/sims/sim_e97e218807ea/probe",
-              "record": "/sims/sim_e97e218807ea",
-              "section": "/sims/sim_e97e218807ea/section"
+              "charts": "/sims/sim_531da4348759/charts",
+              "glb": "/sims/sim_531da4348759/result.glb",
+              "probe": "/sims/sim_531da4348759/probe",
+              "record": "/sims/sim_531da4348759",
+              "section": "/sims/sim_531da4348759/section"
             },
             "verdict": "warn",
             "warnings": [
@@ -1260,14 +1313,14 @@
               "mesh not converged: peak stress changed 19% between the coarse and fine mesh; treat the peak as uncertain"
             ]
           },
-          "charts_url": "/sims/sim_e97e218807ea/charts",
+          "charts_url": "/sims/sim_531da4348759/charts",
           "checks": [
             {
               "kind": "min_safety_factor",
               "measured": 27860.09705599586,
               "note": null,
               "requirement_id": "r6",
-              "sim_id": "sim_e97e218807ea",
+              "sim_id": "sim_531da4348759",
               "status": "warn",
               "target": 2.0,
               "unit": ""
@@ -1281,19 +1334,31 @@
           "material": {
             "allowable_mpa": 35.699999999999996,
             "alpha_per_k": 6.8e-05,
+            "basis": "datasheet / estimate",
+            "basis_by_property": null,
+            "build_dir": null,
+            "calibration": null,
             "custom": false,
             "density_g_cm3": 1.24,
             "e_eff_mpa": 2300.0,
             "e_mpa": 2300.0,
+            "e_z_mpa": null,
+            "fdm_strength_factor": 1.0,
             "hdt_c": 55.0,
             "k_w_mk": 0.13,
             "knockdown": 0.7,
             "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers",
             "name": "PLA",
             "nu": 0.35,
+            "sn_a_mpa": null,
+            "sn_b": null,
             "source": "Prusament PLA TDS v1.1 (printed, horizontal)",
             "stiffness_factor": 1.0,
-            "yield_mpa": 51.0
+            "tangent_eff_mpa": 23.0,
+            "tangent_modulus_mpa": null,
+            "tangent_source": "estimate (1% of E)",
+            "yield_mpa": 51.0,
+            "z_strength_mpa": null
           },
           "mesh": {
             "coarse": {
@@ -1382,8 +1447,8 @@
               "impact": 27860.09705599586
             }
           },
-          "run_id": "3a4f540ec817",
-          "sim_id": "sim_e97e218807ea",
+          "run_id": "96374179f1f7",
+          "sim_id": "sim_531da4348759",
           "solver": {
             "element": "C3D10 (quadratic tetrahedra)",
             "name": "CalculiX",
@@ -1393,14 +1458,14 @@
           },
           "stale": null,
           "status": "done",
-          "step_id": 19,
+          "step_id": 21,
           "type": "drop",
           "urls": {
-            "charts": "/sims/sim_e97e218807ea/charts",
-            "glb": "/sims/sim_e97e218807ea/result.glb",
-            "probe": "/sims/sim_e97e218807ea/probe",
-            "record": "/sims/sim_e97e218807ea",
-            "section": "/sims/sim_e97e218807ea/section"
+            "charts": "/sims/sim_531da4348759/charts",
+            "glb": "/sims/sim_531da4348759/result.glb",
+            "probe": "/sims/sim_531da4348759/probe",
+            "record": "/sims/sim_531da4348759",
+            "section": "/sims/sim_531da4348759/section"
           },
           "warnings": [
             "ESTIMATE: the drop is an equivalent static load of 1.22 N (k = 10 for 1 m); real impacts depend on the floor, the contact and the drop angle",
@@ -1417,14 +1482,14 @@
         ]
       }
     },
-    "evidence_hash": "b53b45c598b5c8cbfc84c58804dc06550e80bc55f2492ae27c5c51791adae662",
-    "prev_hash": "b075fae0b7058d8bca175889401e4041f5f70f4af857585e43602c9ff671ad5b",
+    "evidence_hash": "2f865c0f79bead867d38c4a398e5edc3af89aeceeac5d3a01ee0b9a72287a659",
+    "prev_hash": "936a121a6bc7746a850ebe96a17deceaf1d9b3540fd74a31274aa34ddee5317d",
     "collapsed": false
   },
   {
-    "id": 21,
-    "run_id": "3a4f540ec817",
-    "ts": 1793339769.813371,
+    "id": 23,
+    "run_id": "96374179f1f7",
+    "ts": 1793359782.293618,
     "kind": "message",
     "payload": {
       "role": "assistant",
@@ -1437,14 +1502,14 @@
         }
       ]
     },
-    "evidence_hash": "e714350b36f76df2b0708f651cd307d55bda3a41f48f11308ca7f3a4f5668699",
-    "prev_hash": "b53b45c598b5c8cbfc84c58804dc06550e80bc55f2492ae27c5c51791adae662",
+    "evidence_hash": "2a2e707c672bb24a93a6feedd9f10a24bbca164065fd7e47d62d5a68c4fc9a59",
+    "prev_hash": "2f865c0f79bead867d38c4a398e5edc3af89aeceeac5d3a01ee0b9a72287a659",
     "collapsed": false
   },
   {
-    "id": 22,
-    "run_id": "3a4f540ec817",
-    "ts": 1793339769.8134851,
+    "id": 24,
+    "run_id": "96374179f1f7",
+    "ts": 1793359782.293802,
     "kind": "tool_call",
     "payload": {
       "call_id": "s6",
@@ -1474,14 +1539,14 @@
       },
       "name": "sim_run"
     },
-    "evidence_hash": "cd7cf6fc6a5a72df6f909e1ea4367c1880c5011f937e0f730901f3f873ad1359",
-    "prev_hash": "e714350b36f76df2b0708f651cd307d55bda3a41f48f11308ca7f3a4f5668699",
+    "evidence_hash": "445596773cf48dc57661baad7bc22d9d34614ead584706c6320c4e5fb3352d6f",
+    "prev_hash": "2a2e707c672bb24a93a6feedd9f10a24bbca164065fd7e47d62d5a68c4fc9a59",
     "collapsed": false
   },
   {
-    "id": 23,
-    "run_id": "3a4f540ec817",
-    "ts": 1793339775.5525692,
+    "id": 25,
+    "run_id": "96374179f1f7",
+    "ts": 1793359786.808488,
     "kind": "sim_run",
     "payload": {
       "call_id": "s6",
@@ -1490,14 +1555,14 @@
         "data": {
           "call_id": "s6",
           "card": {
-            "charts_url": "/sims/sim_7997ccb61c62/charts",
+            "charts_url": "/sims/sim_5e07e3ef0379/charts",
             "checks": [
               {
                 "kind": "max_drag_n",
                 "measured": 0.028096656510070196,
                 "note": "clear of the \u00b140% model error band",
                 "requirement_id": "r7",
-                "sim_id": "sim_7997ccb61c62",
+                "sim_id": "sim_5e07e3ef0379",
                 "status": "pass",
                 "target": 0.5,
                 "unit": "N"
@@ -1545,17 +1610,17 @@
             "pct": 100.0,
             "phase": "done",
             "reason": "drag of the cube at 5 m/s",
-            "run_id": "3a4f540ec817",
-            "sim_id": "sim_7997ccb61c62",
+            "run_id": "96374179f1f7",
+            "sim_id": "sim_5e07e3ef0379",
             "status": "done",
-            "step_id": 22,
+            "step_id": 24,
             "type": "wind",
             "urls": {
-              "charts": "/sims/sim_7997ccb61c62/charts",
-              "glb": "/sims/sim_7997ccb61c62/result.glb",
-              "probe": "/sims/sim_7997ccb61c62/probe",
-              "record": "/sims/sim_7997ccb61c62",
-              "section": "/sims/sim_7997ccb61c62/section"
+              "charts": "/sims/sim_5e07e3ef0379/charts",
+              "glb": "/sims/sim_5e07e3ef0379/result.glb",
+              "probe": "/sims/sim_5e07e3ef0379/probe",
+              "record": "/sims/sim_5e07e3ef0379",
+              "section": "/sims/sim_5e07e3ef0379/section"
             },
             "verdict": "warn",
             "warnings": [
@@ -1565,14 +1630,14 @@
               "tunnel blockage 11.1% inflates drag; raise domain_multiplier"
             ]
           },
-          "charts_url": "/sims/sim_7997ccb61c62/charts",
+          "charts_url": "/sims/sim_5e07e3ef0379/charts",
           "checks": [
             {
               "kind": "max_drag_n",
               "measured": 0.028096656510070196,
               "note": "clear of the \u00b140% model error band",
               "requirement_id": "r7",
-              "sim_id": "sim_7997ccb61c62",
+              "sim_id": "sim_5e07e3ef0379",
               "status": "pass",
               "target": 0.5,
               "unit": "N"
@@ -1680,8 +1745,8 @@
               }
             ]
           },
-          "run_id": "3a4f540ec817",
-          "sim_id": "sim_7997ccb61c62",
+          "run_id": "96374179f1f7",
+          "sim_id": "sim_5e07e3ef0379",
           "solver": {
             "fidelity": "low fidelity",
             "method": "BGK + Smagorinsky LES, half-way bounce-back, momentum exchange",
@@ -1690,14 +1755,14 @@
           },
           "stale": null,
           "status": "done",
-          "step_id": 22,
+          "step_id": 24,
           "type": "wind",
           "urls": {
-            "charts": "/sims/sim_7997ccb61c62/charts",
-            "glb": "/sims/sim_7997ccb61c62/result.glb",
-            "probe": "/sims/sim_7997ccb61c62/probe",
-            "record": "/sims/sim_7997ccb61c62",
-            "section": "/sims/sim_7997ccb61c62/section"
+            "charts": "/sims/sim_5e07e3ef0379/charts",
+            "glb": "/sims/sim_5e07e3ef0379/result.glb",
+            "probe": "/sims/sim_5e07e3ef0379/probe",
+            "record": "/sims/sim_5e07e3ef0379",
+            "section": "/sims/sim_5e07e3ef0379/section"
           },
           "warnings": [
             "LOW FIDELITY (PREVIEW, \u00b140% validated model error at refinement 1): lattice of 8 cells across the body at an effective Reynolds number of 8e+03 (real 1.35e+04)",
@@ -1718,14 +1783,14 @@
         ]
       }
     },
-    "evidence_hash": "0abba7d3004acbbf21ead2c5550f6811966bd2a76d4815d90294fba7979b1460",
-    "prev_hash": "cd7cf6fc6a5a72df6f909e1ea4367c1880c5011f937e0f730901f3f873ad1359",
+    "evidence_hash": "71ddba04c2dbfecc53fc6870b18d332794ae3caf118699228cbba1ae646fe3f6",
+    "prev_hash": "445596773cf48dc57661baad7bc22d9d34614ead584706c6320c4e5fb3352d6f",
     "collapsed": false
   },
   {
-    "id": 24,
-    "run_id": "3a4f540ec817",
-    "ts": 1793339775.5535161,
+    "id": 26,
+    "run_id": "96374179f1f7",
+    "ts": 1793359786.809154,
     "kind": "message",
     "payload": {
       "role": "assistant",
@@ -1738,14 +1803,14 @@
         }
       ]
     },
-    "evidence_hash": "1520cbb63f31e76bab17cf70c96a57d049a6753428121bf641a478ceaa98d6a2",
-    "prev_hash": "0abba7d3004acbbf21ead2c5550f6811966bd2a76d4815d90294fba7979b1460",
+    "evidence_hash": "3f6ae9d58d102c2922e347cd911391ce58a8379552dddbeaa54ce4181f0f47f2",
+    "prev_hash": "71ddba04c2dbfecc53fc6870b18d332794ae3caf118699228cbba1ae646fe3f6",
     "collapsed": false
   },
   {
-    "id": 25,
-    "run_id": "3a4f540ec817",
-    "ts": 1793339775.553828,
+    "id": 27,
+    "run_id": "96374179f1f7",
+    "ts": 1793359786.809369,
     "kind": "tool_call",
     "payload": {
       "call_id": "rv1",
@@ -1798,14 +1863,14 @@
       },
       "name": "design_review"
     },
-    "evidence_hash": "cc828d3e30f29ac9bcdec229ef4109233f6ea2563da7ad70f1fcb9ca6d9336b6",
-    "prev_hash": "1520cbb63f31e76bab17cf70c96a57d049a6753428121bf641a478ceaa98d6a2",
+    "evidence_hash": "7fa694a30c920dd97b1367f0582b0c291bc34a35255bafa56ef6a8985eb001ff",
+    "prev_hash": "3f6ae9d58d102c2922e347cd911391ce58a8379552dddbeaa54ce4181f0f47f2",
     "collapsed": false
   },
   {
-    "id": 26,
-    "run_id": "3a4f540ec817",
-    "ts": 1793339775.5545018,
+    "id": 28,
+    "run_id": "96374179f1f7",
+    "ts": 1793359786.8101919,
     "kind": "tool_call",
     "payload": {
       "call_id": "rv1.r1",
@@ -1853,14 +1918,14 @@
       },
       "name": "sim_run"
     },
-    "evidence_hash": "50e0ea743e9e2b262212127fb3963c297d2a36ef626f53a17d12800a9433b947",
-    "prev_hash": "cc828d3e30f29ac9bcdec229ef4109233f6ea2563da7ad70f1fcb9ca6d9336b6",
+    "evidence_hash": "4c092f963fcc3dae1dda95659300241f672a874dca823c1c0db5967e7822aa04",
+    "prev_hash": "7fa694a30c920dd97b1367f0582b0c291bc34a35255bafa56ef6a8985eb001ff",
     "collapsed": false
   },
   {
-    "id": 27,
-    "run_id": "3a4f540ec817",
-    "ts": 1793339776.471251,
+    "id": 29,
+    "run_id": "96374179f1f7",
+    "ts": 1793359787.541172,
     "kind": "sim_run",
     "payload": {
       "call_id": "rv1.r1",
@@ -1869,14 +1934,14 @@
         "data": {
           "call_id": "rv1.r1",
           "card": {
-            "charts_url": "/sims/sim_54e7b558f730/charts",
+            "charts_url": "/sims/sim_8568fe50b51b/charts",
             "checks": [
               {
                 "kind": "min_safety_factor",
                 "measured": 5.906498504081631,
                 "note": null,
                 "requirement_id": "q1",
-                "sim_id": "sim_54e7b558f730",
+                "sim_id": "sim_8568fe50b51b",
                 "status": "pass",
                 "target": 2.0,
                 "unit": ""
@@ -1886,6 +1951,7 @@
             "fidelity_note": null,
             "governing_case_id": "lc1",
             "label": "guide only, not a guarantee",
+            "material_basis": "datasheet / estimate",
             "metrics": [
               {
                 "key": "max_von_mises_mpa",
@@ -1926,29 +1992,29 @@
             ],
             "phase": "done",
             "reason": "design review: static lc1",
-            "run_id": "3a4f540ec817",
-            "sim_id": "sim_54e7b558f730",
+            "run_id": "96374179f1f7",
+            "sim_id": "sim_8568fe50b51b",
             "status": "done",
-            "step_id": 26,
+            "step_id": 28,
             "type": "static",
             "urls": {
-              "charts": "/sims/sim_54e7b558f730/charts",
-              "glb": "/sims/sim_54e7b558f730/result.glb",
-              "probe": "/sims/sim_54e7b558f730/probe",
-              "record": "/sims/sim_54e7b558f730",
-              "section": "/sims/sim_54e7b558f730/section"
+              "charts": "/sims/sim_8568fe50b51b/charts",
+              "glb": "/sims/sim_8568fe50b51b/result.glb",
+              "probe": "/sims/sim_8568fe50b51b/probe",
+              "record": "/sims/sim_8568fe50b51b",
+              "section": "/sims/sim_8568fe50b51b/section"
             },
             "verdict": "pass",
             "warnings": []
           },
-          "charts_url": "/sims/sim_54e7b558f730/charts",
+          "charts_url": "/sims/sim_8568fe50b51b/charts",
           "checks": [
             {
               "kind": "min_safety_factor",
               "measured": 5.906498504081631,
               "note": null,
               "requirement_id": "q1",
-              "sim_id": "sim_54e7b558f730",
+              "sim_id": "sim_8568fe50b51b",
               "status": "pass",
               "target": 2.0,
               "unit": ""
@@ -1962,19 +2028,31 @@
           "material": {
             "allowable_mpa": 35.699999999999996,
             "alpha_per_k": 6.8e-05,
+            "basis": "datasheet / estimate",
+            "basis_by_property": null,
+            "build_dir": null,
+            "calibration": null,
             "custom": false,
             "density_g_cm3": 1.24,
             "e_eff_mpa": 2300.0,
             "e_mpa": 2300.0,
+            "e_z_mpa": null,
+            "fdm_strength_factor": 1.0,
             "hdt_c": 55.0,
             "k_w_mk": 0.13,
             "knockdown": 0.7,
             "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers",
             "name": "PLA",
             "nu": 0.35,
+            "sn_a_mpa": null,
+            "sn_b": null,
             "source": "Prusament PLA TDS v1.1 (printed, horizontal)",
             "stiffness_factor": 1.0,
-            "yield_mpa": 51.0
+            "tangent_eff_mpa": 23.0,
+            "tangent_modulus_mpa": null,
+            "tangent_source": "estimate (1% of E)",
+            "yield_mpa": 51.0,
+            "z_strength_mpa": null
           },
           "mesh": {
             "coarse": {
@@ -2050,8 +2128,8 @@
               "lc1": 5.906498504081631
             }
           },
-          "run_id": "3a4f540ec817",
-          "sim_id": "sim_54e7b558f730",
+          "run_id": "96374179f1f7",
+          "sim_id": "sim_8568fe50b51b",
           "solver": {
             "element": "C3D10 (quadratic tetrahedra)",
             "name": "CalculiX",
@@ -2061,14 +2139,14 @@
           },
           "stale": null,
           "status": "done",
-          "step_id": 26,
+          "step_id": 28,
           "type": "static",
           "urls": {
-            "charts": "/sims/sim_54e7b558f730/charts",
-            "glb": "/sims/sim_54e7b558f730/result.glb",
-            "probe": "/sims/sim_54e7b558f730/probe",
-            "record": "/sims/sim_54e7b558f730",
-            "section": "/sims/sim_54e7b558f730/section"
+            "charts": "/sims/sim_8568fe50b51b/charts",
+            "glb": "/sims/sim_8568fe50b51b/result.glb",
+            "probe": "/sims/sim_8568fe50b51b/probe",
+            "record": "/sims/sim_8568fe50b51b",
+            "section": "/sims/sim_8568fe50b51b/section"
           },
           "warnings": []
         },
@@ -2079,14 +2157,14 @@
         "warnings": []
       }
     },
-    "evidence_hash": "fbc6542975eef7024d09a32873c94ef49879afae4c33ee2b7dd947886e72c808",
-    "prev_hash": "50e0ea743e9e2b262212127fb3963c297d2a36ef626f53a17d12800a9433b947",
+    "evidence_hash": "e38fbc62331fa71b458b3d0d6539461c7d4ab79f79e92d65abeae42534d97f63",
+    "prev_hash": "4c092f963fcc3dae1dda95659300241f672a874dca823c1c0db5967e7822aa04",
     "collapsed": false
   },
   {
-    "id": 28,
-    "run_id": "3a4f540ec817",
-    "ts": 1793339776.4715672,
+    "id": 30,
+    "run_id": "96374179f1f7",
+    "ts": 1793359787.541419,
     "kind": "tool_call",
     "payload": {
       "call_id": "rv1.r2",
@@ -2126,14 +2204,14 @@
       },
       "name": "sim_run"
     },
-    "evidence_hash": "017150312a6700c00db9098c73f7300f2b93566e79d1f0a233d633994632caa4",
-    "prev_hash": "fbc6542975eef7024d09a32873c94ef49879afae4c33ee2b7dd947886e72c808",
+    "evidence_hash": "dc06b288eecbad8c7049a302d92a17189e9ada1f303110a8fe30c802c64bd2e4",
+    "prev_hash": "e38fbc62331fa71b458b3d0d6539461c7d4ab79f79e92d65abeae42534d97f63",
     "collapsed": false
   },
   {
-    "id": 29,
-    "run_id": "3a4f540ec817",
-    "ts": 1793339777.581702,
+    "id": 31,
+    "run_id": "96374179f1f7",
+    "ts": 1793359788.596583,
     "kind": "sim_run",
     "payload": {
       "call_id": "rv1.r2",
@@ -2142,14 +2220,14 @@
         "data": {
           "call_id": "rv1.r2",
           "card": {
-            "charts_url": "/sims/sim_5a7245e07a69/charts",
+            "charts_url": "/sims/sim_c1b6fb68da51/charts",
             "checks": [
               {
                 "kind": "avoid_band_hz",
                 "measured": 0,
                 "note": null,
                 "requirement_id": "q3",
-                "sim_id": "sim_5a7245e07a69",
+                "sim_id": "sim_c1b6fb68da51",
                 "status": "pass",
                 "target": [
                   340,
@@ -2161,6 +2239,7 @@
             "fidelity_class": "fem",
             "fidelity_note": null,
             "label": "guide only, not a guarantee",
+            "material_basis": "datasheet / estimate",
             "metrics": [
               {
                 "key": "first_freq_hz",
@@ -2186,29 +2265,29 @@
             "pct": 100.0,
             "phase": "done",
             "reason": "design review: modal modal",
-            "run_id": "3a4f540ec817",
-            "sim_id": "sim_5a7245e07a69",
+            "run_id": "96374179f1f7",
+            "sim_id": "sim_c1b6fb68da51",
             "status": "done",
-            "step_id": 28,
+            "step_id": 30,
             "type": "modal",
             "urls": {
-              "charts": "/sims/sim_5a7245e07a69/charts",
-              "glb": "/sims/sim_5a7245e07a69/result.glb",
-              "probe": "/sims/sim_5a7245e07a69/probe",
-              "record": "/sims/sim_5a7245e07a69",
-              "section": "/sims/sim_5a7245e07a69/section"
+              "charts": "/sims/sim_c1b6fb68da51/charts",
+              "glb": "/sims/sim_c1b6fb68da51/result.glb",
+              "probe": "/sims/sim_c1b6fb68da51/probe",
+              "record": "/sims/sim_c1b6fb68da51",
+              "section": "/sims/sim_c1b6fb68da51/section"
             },
             "verdict": "pass",
             "warnings": []
           },
-          "charts_url": "/sims/sim_5a7245e07a69/charts",
+          "charts_url": "/sims/sim_c1b6fb68da51/charts",
           "checks": [
             {
               "kind": "avoid_band_hz",
               "measured": 0,
               "note": null,
               "requirement_id": "q3",
-              "sim_id": "sim_5a7245e07a69",
+              "sim_id": "sim_c1b6fb68da51",
               "status": "pass",
               "target": [
                 340,
@@ -2225,19 +2304,31 @@
           "material": {
             "allowable_mpa": 35.699999999999996,
             "alpha_per_k": 6.8e-05,
+            "basis": "datasheet / estimate",
+            "basis_by_property": null,
+            "build_dir": null,
+            "calibration": null,
             "custom": false,
             "density_g_cm3": 1.24,
             "e_eff_mpa": 2300.0,
             "e_mpa": 2300.0,
+            "e_z_mpa": null,
+            "fdm_strength_factor": 1.0,
             "hdt_c": 55.0,
             "k_w_mk": 0.13,
             "knockdown": 0.7,
             "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers",
             "name": "PLA",
             "nu": 0.35,
+            "sn_a_mpa": null,
+            "sn_b": null,
             "source": "Prusament PLA TDS v1.1 (printed, horizontal)",
             "stiffness_factor": 1.0,
-            "yield_mpa": 51.0
+            "tangent_eff_mpa": 23.0,
+            "tangent_modulus_mpa": null,
+            "tangent_source": "estimate (1% of E)",
+            "yield_mpa": 51.0,
+            "z_strength_mpa": null
           },
           "mesh": {
             "coarse": {
@@ -2312,8 +2403,8 @@
             ],
             "modes_in_band": 0
           },
-          "run_id": "3a4f540ec817",
-          "sim_id": "sim_5a7245e07a69",
+          "run_id": "96374179f1f7",
+          "sim_id": "sim_c1b6fb68da51",
           "solver": {
             "element": "C3D10 (quadratic tetrahedra)",
             "name": "CalculiX",
@@ -2323,14 +2414,14 @@
           },
           "stale": null,
           "status": "done",
-          "step_id": 28,
+          "step_id": 30,
           "type": "modal",
           "urls": {
-            "charts": "/sims/sim_5a7245e07a69/charts",
-            "glb": "/sims/sim_5a7245e07a69/result.glb",
-            "probe": "/sims/sim_5a7245e07a69/probe",
-            "record": "/sims/sim_5a7245e07a69",
-            "section": "/sims/sim_5a7245e07a69/section"
+            "charts": "/sims/sim_c1b6fb68da51/charts",
+            "glb": "/sims/sim_c1b6fb68da51/result.glb",
+            "probe": "/sims/sim_c1b6fb68da51/probe",
+            "record": "/sims/sim_c1b6fb68da51",
+            "section": "/sims/sim_c1b6fb68da51/section"
           },
           "warnings": []
         },
@@ -2341,14 +2432,14 @@
         "warnings": []
       }
     },
-    "evidence_hash": "4c4204411a994b32ae0f890f0ff204ae66d02eedf63c62fc87e3c1576508f703",
-    "prev_hash": "017150312a6700c00db9098c73f7300f2b93566e79d1f0a233d633994632caa4",
+    "evidence_hash": "1f920afd61c9b1679ee4bb57785af5b48563eb72859ecfbefefe653be97342ce",
+    "prev_hash": "dc06b288eecbad8c7049a302d92a17189e9ada1f303110a8fe30c802c64bd2e4",
     "collapsed": false
   },
   {
-    "id": 30,
-    "run_id": "3a4f540ec817",
-    "ts": 1793339777.582125,
+    "id": 32,
+    "run_id": "96374179f1f7",
+    "ts": 1793359788.5970728,
     "kind": "tool_result",
     "payload": {
       "call_id": "rv1",
@@ -2360,14 +2451,14 @@
           "studies": [
             {
               "card": {
-                "charts_url": "/sims/sim_54e7b558f730/charts",
+                "charts_url": "/sims/sim_8568fe50b51b/charts",
                 "checks": [
                   {
                     "kind": "min_safety_factor",
                     "measured": 5.906498504081631,
                     "note": null,
                     "requirement_id": "q1",
-                    "sim_id": "sim_54e7b558f730",
+                    "sim_id": "sim_8568fe50b51b",
                     "status": "pass",
                     "target": 2.0,
                     "unit": ""
@@ -2377,6 +2468,7 @@
                 "fidelity_note": null,
                 "governing_case_id": "lc1",
                 "label": "guide only, not a guarantee",
+                "material_basis": "datasheet / estimate",
                 "metrics": [
                   {
                     "key": "max_von_mises_mpa",
@@ -2417,17 +2509,17 @@
                 ],
                 "phase": "done",
                 "reason": "design review: static lc1",
-                "run_id": "3a4f540ec817",
-                "sim_id": "sim_54e7b558f730",
+                "run_id": "96374179f1f7",
+                "sim_id": "sim_8568fe50b51b",
                 "status": "done",
-                "step_id": 26,
+                "step_id": 28,
                 "type": "static",
                 "urls": {
-                  "charts": "/sims/sim_54e7b558f730/charts",
-                  "glb": "/sims/sim_54e7b558f730/result.glb",
-                  "probe": "/sims/sim_54e7b558f730/probe",
-                  "record": "/sims/sim_54e7b558f730",
-                  "section": "/sims/sim_54e7b558f730/section"
+                  "charts": "/sims/sim_8568fe50b51b/charts",
+                  "glb": "/sims/sim_8568fe50b51b/result.glb",
+                  "probe": "/sims/sim_8568fe50b51b/probe",
+                  "record": "/sims/sim_8568fe50b51b",
+                  "section": "/sims/sim_8568fe50b51b/section"
                 },
                 "verdict": "pass",
                 "warnings": []
@@ -2435,20 +2527,20 @@
               "case": "lc1",
               "error": null,
               "ok": true,
-              "sim_id": "sim_54e7b558f730",
+              "sim_id": "sim_8568fe50b51b",
               "type": "static",
-              "url": "/sims/sim_54e7b558f730"
+              "url": "/sims/sim_8568fe50b51b"
             },
             {
               "card": {
-                "charts_url": "/sims/sim_5a7245e07a69/charts",
+                "charts_url": "/sims/sim_c1b6fb68da51/charts",
                 "checks": [
                   {
                     "kind": "avoid_band_hz",
                     "measured": 0,
                     "note": null,
                     "requirement_id": "q3",
-                    "sim_id": "sim_5a7245e07a69",
+                    "sim_id": "sim_c1b6fb68da51",
                     "status": "pass",
                     "target": [
                       340,
@@ -2460,6 +2552,7 @@
                 "fidelity_class": "fem",
                 "fidelity_note": null,
                 "label": "guide only, not a guarantee",
+                "material_basis": "datasheet / estimate",
                 "metrics": [
                   {
                     "key": "first_freq_hz",
@@ -2485,17 +2578,17 @@
                 "pct": 100.0,
                 "phase": "done",
                 "reason": "design review: modal modal",
-                "run_id": "3a4f540ec817",
-                "sim_id": "sim_5a7245e07a69",
+                "run_id": "96374179f1f7",
+                "sim_id": "sim_c1b6fb68da51",
                 "status": "done",
-                "step_id": 28,
+                "step_id": 30,
                 "type": "modal",
                 "urls": {
-                  "charts": "/sims/sim_5a7245e07a69/charts",
-                  "glb": "/sims/sim_5a7245e07a69/result.glb",
-                  "probe": "/sims/sim_5a7245e07a69/probe",
-                  "record": "/sims/sim_5a7245e07a69",
-                  "section": "/sims/sim_5a7245e07a69/section"
+                  "charts": "/sims/sim_c1b6fb68da51/charts",
+                  "glb": "/sims/sim_c1b6fb68da51/result.glb",
+                  "probe": "/sims/sim_c1b6fb68da51/probe",
+                  "record": "/sims/sim_c1b6fb68da51",
+                  "section": "/sims/sim_c1b6fb68da51/section"
                 },
                 "verdict": "pass",
                 "warnings": []
@@ -2503,9 +2596,9 @@
               "case": "modal",
               "error": null,
               "ok": true,
-              "sim_id": "sim_5a7245e07a69",
+              "sim_id": "sim_c1b6fb68da51",
               "type": "modal",
-              "url": "/sims/sim_5a7245e07a69"
+              "url": "/sims/sim_c1b6fb68da51"
             }
           ],
           "table": [
@@ -2525,12 +2618,12 @@
               "measured": 5.906498504081631,
               "note": null,
               "requirement_id": "q1",
-              "sim_id": "sim_54e7b558f730",
+              "sim_id": "sim_8568fe50b51b",
               "status": "pass",
               "study": "static",
               "target": 2.0,
               "unit": "",
-              "url": "/sims/sim_54e7b558f730"
+              "url": "/sims/sim_8568fe50b51b"
             },
             {
               "case": "modal",
@@ -2538,7 +2631,7 @@
               "measured": 0,
               "note": null,
               "requirement_id": "q3",
-              "sim_id": "sim_5a7245e07a69",
+              "sim_id": "sim_c1b6fb68da51",
               "status": "pass",
               "study": "modal",
               "target": [
@@ -2546,7 +2639,7 @@
                 460
               ],
               "unit": "modes",
-              "url": "/sims/sim_5a7245e07a69"
+              "url": "/sims/sim_c1b6fb68da51"
             }
           ],
           "verdict": "pass"
@@ -2554,18 +2647,18 @@
         "handles": [],
         "ok": true,
         "step_kind": "tool_result",
-        "summary": "design review of beam (guide only, not a guarantee): PASS; 3 pass, 0 warn, 0 fail: q2 max_mass_g: pass (12.4g vs 20); q1 min_safety_factor: pass (5.906 vs 2.0) [sim_54e7b558f730]; q3 avoid_band_hz: pass (0modes vs [340, 460]) [sim_5a7245e07a69]",
+        "summary": "design review of beam (guide only, not a guarantee): PASS; 3 pass, 0 warn, 0 fail: q2 max_mass_g: pass (12.4g vs 20); q1 min_safety_factor: pass (5.906 vs 2.0) [sim_8568fe50b51b]; q3 avoid_band_hz: pass (0modes vs [340, 460]) [sim_c1b6fb68da51]",
         "warnings": []
       }
     },
-    "evidence_hash": "cfdc343b117810c4aa60f543861204293bbdf5fe4a65ab053ee391f86f0695cc",
-    "prev_hash": "4c4204411a994b32ae0f890f0ff204ae66d02eedf63c62fc87e3c1576508f703",
+    "evidence_hash": "c27f95786a930134ad2620a97ace2f7dc4401b9b107534127b2ffa036cb79bb2",
+    "prev_hash": "1f920afd61c9b1679ee4bb57785af5b48563eb72859ecfbefefe653be97342ce",
     "collapsed": false
   },
   {
-    "id": 31,
-    "run_id": "3a4f540ec817",
-    "ts": 1793339777.582772,
+    "id": 33,
+    "run_id": "96374179f1f7",
+    "ts": 1793359788.597815,
     "kind": "message",
     "payload": {
       "role": "assistant",
@@ -2573,8 +2666,8 @@
       "text": "Review done: see the table.",
       "tool_calls": []
     },
-    "evidence_hash": "2f4fd74f16c5c2978fa196b2a8af6e68bcad98618cfdffc6504e47b81bacdebb",
-    "prev_hash": "cfdc343b117810c4aa60f543861204293bbdf5fe4a65ab053ee391f86f0695cc",
+    "evidence_hash": "188a614c4255ce8d63a251c3e413fb1147af0df84843e38b7571671ac791630b",
+    "prev_hash": "c27f95786a930134ad2620a97ace2f7dc4401b9b107534127b2ffa036cb79bb2",
     "collapsed": false
   }
 ]

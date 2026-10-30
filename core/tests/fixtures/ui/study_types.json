@@ -17,6 +17,83 @@
     "detail": null,
     "schema": {
       "$defs": {
+        "AnisotropySettings": {
+          "additionalProperties": false,
+          "properties": {
+            "print_direction": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "+x",
+                    "-x",
+                    "+y",
+                    "-y",
+                    "+z",
+                    "-z"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "maxItems": 3,
+                  "minItems": 3,
+                  "prefixItems": [
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    },
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    },
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    }
+                  ],
+                  "type": "array"
+                }
+              ],
+              "default": "+z",
+              "description": "build direction of the print in part coordinates (the layer normal): '+z' = printed as modelled, flat on the bed",
+              "title": "Print Direction"
+            },
+            "e_z_ratio": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0.05,
+                  "maximum": 1.2,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "E across the layers / E in-plane; null = the material's typical ratio (estimate) or its calibrated Z data",
+              "title": "E Z Ratio"
+            },
+            "strength_z_ratio": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0.05,
+                  "maximum": 1.0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "tensile strength across the layers / in-plane; null = typical (estimate) or calibrated",
+              "title": "Strength Z Ratio"
+            }
+          },
+          "title": "AnisotropySettings",
+          "type": "object"
+        },
         "BearingLoad": {
           "additionalProperties": false,
           "properties": {
@@ -85,6 +162,87 @@
             "direction"
           ],
           "title": "BearingLoad",
+          "type": "object"
+        },
+        "ContactPair": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "default": "contact",
+              "description": "contact: the faces may touch, slide (friction) and separate (surface-to-surface penalty contact); bonded: glued / tied (*TIE), they move together",
+              "enum": [
+                "contact",
+                "bonded"
+              ],
+              "title": "Kind",
+              "type": "string"
+            },
+            "a": {
+              "$ref": "#/$defs/ContactSide",
+              "description": "the dependent (slave) side: usually the finer or softer face, or the smaller one"
+            },
+            "b": {
+              "$ref": "#/$defs/ContactSide",
+              "description": "the independent (master) side"
+            },
+            "friction": {
+              "default": 0.0,
+              "description": "Coulomb friction coefficient \u03bc (0 = frictionless; printed plastics ~0.2-0.5)",
+              "maximum": 2,
+              "minimum": 0,
+              "title": "Friction",
+              "type": "number"
+            },
+            "search_mm": {
+              "default": 0.1,
+              "description": "automatic faces: how close two instances' faces must be to count as touching",
+              "exclusiveMinimum": 0,
+              "maximum": 10,
+              "title": "Search Mm",
+              "type": "number",
+              "unit": "mm"
+            }
+          },
+          "required": [
+            "a",
+            "b"
+          ],
+          "title": "ContactPair",
+          "type": "object"
+        },
+        "ContactSide": {
+          "additionalProperties": false,
+          "properties": {
+            "face": {
+              "anyOf": [
+                {
+                  "description": "a preset (bottom, top, x-min, x-max, y-min, y-max, z-min, z-max) or a face id like 'f3' (mirror_faces)",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "the face that touches: a preset, a face id ('f3'), or in an assembly an instance face 'f3@<instance id>'; null with an instance = its faces near the other side, found automatically",
+              "title": "Face"
+            },
+            "instance": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z0-9_-]{1,40}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "assembly studies: the instance (assembly_get ids)",
+              "title": "Instance"
+            }
+          },
+          "title": "ContactSide",
           "type": "object"
         },
         "ConvergenceSettings": {
@@ -188,6 +346,85 @@
               "maxLength": 200,
               "title": "Source",
               "type": "string"
+            },
+            "tangent_modulus_mpa": {
+              "anyOf": [
+                {
+                  "maximum": 500000.0,
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "post-yield slope for plastic (nonlinear) studies; null = an estimate (1% of E)",
+              "title": "Tangent Modulus Mpa",
+              "unit": "MPa"
+            },
+            "e_z_mpa": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 1,
+                  "maximum": 500000.0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "modulus across the layers (FDM, build direction); null = a typical ratio (estimate)",
+              "title": "E Z Mpa",
+              "unit": "MPa"
+            },
+            "z_strength_mpa": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0,
+                  "maximum": 10000.0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "tensile strength across the layers; null = a typical ratio (estimate)",
+              "title": "Z Strength Mpa",
+              "unit": "MPa"
+            },
+            "sn_a_mpa": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0,
+                  "maximum": 100000.0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "S-N curve (Basquin) sigma_a = A N^b: A from a fatigue data sheet; null = the AM PLA design-curve estimate",
+              "title": "Sn A Mpa",
+              "unit": "MPa"
+            },
+            "sn_b": {
+              "anyOf": [
+                {
+                  "exclusiveMaximum": 0,
+                  "exclusiveMinimum": -1,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "S-N curve exponent b (negative)",
+              "title": "Sn B"
             }
           },
           "required": [
@@ -198,6 +435,55 @@
             "density_g_cm3"
           ],
           "title": "CustomMaterial",
+          "type": "object"
+        },
+        "FatigueSettings": {
+          "additionalProperties": false,
+          "properties": {
+            "cycles": {
+              "description": "load cycles the part must survive (a drone arm: flights x minutes x motor-speed changes; a fan: rpm x hours x 60)",
+              "exclusiveMinimum": 0,
+              "maximum": 1000000000000.0,
+              "title": "Cycles",
+              "type": "number"
+            },
+            "cycle": {
+              "default": "zero_to_max",
+              "description": "fully_reversed: +F to -F; zero_to_max: 0 to F; min_max: min_pct x F to F (F = the load case's load)",
+              "enum": [
+                "fully_reversed",
+                "zero_to_max",
+                "min_max"
+              ],
+              "title": "Cycle",
+              "type": "string"
+            },
+            "min_pct": {
+              "default": 0,
+              "description": "min_max: the minimum load as a percentage of the load case's load",
+              "maximum": 100,
+              "minimum": -100,
+              "title": "Min Pct",
+              "type": "number",
+              "unit": "%"
+            },
+            "sn": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SNCurve"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "the material's S-N curve from a data sheet; null = the material's own or the AM PLA design-curve estimate"
+            }
+          },
+          "required": [
+            "cycles"
+          ],
+          "title": "FatigueSettings",
           "type": "object"
         },
         "FdmSettings": {
@@ -480,6 +766,38 @@
               ],
               "default": null,
               "description": "print settings -> approximate knock-downs"
+            },
+            "anisotropy": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/AnisotropySettings"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "orthotropic FDM model: in-plane vs between-layer (Z) stiffness and strength, with the print direction; tension across the layers is checked against the Z strength. null = isotropic"
+            },
+            "printer": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9 ._+()-]{0,39}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "the printer profile whose calibration to use; null = 'default'",
+              "title": "Printer"
+            },
+            "calibrated": {
+              "default": true,
+              "description": "use the calibration of this material and printer when there is one (fitted from the user's coupon tests)",
+              "title": "Calibrated",
+              "type": "boolean"
             }
           },
           "title": "MaterialSettings",
@@ -521,6 +839,15 @@
               "minimum": 0.05,
               "title": "Refine Factor",
               "type": "number"
+            },
+            "refine_points": {
+              "description": "balls to mesh finer (e.g. around a contact point, where the stress is local)",
+              "items": {
+                "$ref": "#/$defs/RefinePoint"
+              },
+              "maxItems": 10,
+              "title": "Refine Points",
+              "type": "array"
             },
             "second_order": {
               "default": true,
@@ -602,6 +929,91 @@
           "title": "MomentLoad",
           "type": "object"
         },
+        "NonlinearSettings": {
+          "additionalProperties": false,
+          "properties": {
+            "large_deflection": {
+              "default": false,
+              "description": "geometric nonlinearity (NLGEOM): large deflections and rotations, stress stiffening",
+              "title": "Large Deflection",
+              "type": "boolean"
+            },
+            "plasticity": {
+              "default": false,
+              "description": "bilinear elastic-plastic material: yield stress plus a tangent modulus after yield",
+              "title": "Plasticity",
+              "type": "boolean"
+            },
+            "tangent_modulus_mpa": {
+              "anyOf": [
+                {
+                  "maximum": 500000.0,
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "slope of the stress-strain curve after yield; null = the material's (or an estimate)",
+              "title": "Tangent Modulus Mpa",
+              "unit": "MPa"
+            },
+            "contacts": {
+              "description": "contact or bonded pairs: between faces of the part, or between assembly instances",
+              "items": {
+                "$ref": "#/$defs/ContactPair"
+              },
+              "maxItems": 12,
+              "title": "Contacts",
+              "type": "array"
+            },
+            "rigid_supports": {
+              "description": "rigid flat supports the part can press on (contact; never pulls)",
+              "items": {
+                "$ref": "#/$defs/RigidSupport"
+              },
+              "maxItems": 6,
+              "title": "Rigid Supports",
+              "type": "array"
+            },
+            "increments": {
+              "default": 10,
+              "description": "load steps: the first increment is 1/increments of the load (CalculiX adapts it)",
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Increments",
+              "type": "integer"
+            },
+            "max_increments": {
+              "default": 200,
+              "description": "the solve stops after this many increments",
+              "maximum": 10000,
+              "minimum": 1,
+              "title": "Max Increments",
+              "type": "integer"
+            },
+            "min_increment": {
+              "default": 1e-05,
+              "description": "smallest load increment (fraction of the load) before the solve gives up: the load reached then is reported (collapse or no convergence)",
+              "exclusiveMinimum": 0,
+              "maximum": 0.5,
+              "title": "Min Increment",
+              "type": "number"
+            },
+            "penalty": {
+              "default": 50.0,
+              "description": "contact stiffness in multiples of the material's Young's modulus per mm (higher: less penetration, harder convergence)",
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Penalty",
+              "type": "number"
+            }
+          },
+          "title": "NonlinearSettings",
+          "type": "object"
+        },
         "PressureLoad": {
           "additionalProperties": false,
           "properties": {
@@ -630,6 +1042,59 @@
             "mpa"
           ],
           "title": "PressureLoad",
+          "type": "object"
+        },
+        "RefinePoint": {
+          "additionalProperties": false,
+          "properties": {
+            "point": {
+              "description": "centre of the refined ball (part / assembly coordinates)",
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "maximum": 1000000.0,
+                  "minimum": -1000000.0,
+                  "type": "number"
+                },
+                {
+                  "maximum": 1000000.0,
+                  "minimum": -1000000.0,
+                  "type": "number"
+                },
+                {
+                  "maximum": 1000000.0,
+                  "minimum": -1000000.0,
+                  "type": "number"
+                }
+              ],
+              "title": "Point",
+              "type": "array",
+              "unit": "mm"
+            },
+            "radius_mm": {
+              "description": "ball radius",
+              "exclusiveMinimum": 0,
+              "maximum": 10000.0,
+              "title": "Radius Mm",
+              "type": "number",
+              "unit": "mm"
+            },
+            "size_mm": {
+              "description": "element size inside the ball",
+              "exclusiveMinimum": 0,
+              "maximum": 1000,
+              "title": "Size Mm",
+              "type": "number",
+              "unit": "mm"
+            }
+          },
+          "required": [
+            "point",
+            "radius_mm",
+            "size_mm"
+          ],
+          "title": "RefinePoint",
           "type": "object"
         },
         "RemoteForce": {
@@ -725,6 +1190,110 @@
             "point"
           ],
           "title": "RemoteForce",
+          "type": "object"
+        },
+        "RigidSupport": {
+          "additionalProperties": false,
+          "properties": {
+            "face": {
+              "description": "the face of the part that rests on the support",
+              "title": "Face",
+              "type": "string"
+            },
+            "normal": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "+x",
+                    "-x",
+                    "+y",
+                    "-y",
+                    "+z",
+                    "-z"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "maxItems": 3,
+                  "minItems": 3,
+                  "prefixItems": [
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    },
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    },
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    }
+                  ],
+                  "type": "array"
+                }
+              ],
+              "default": "+z",
+              "description": "the support's surface normal, pointing from the support into the part ('+z' = a floor under the part)",
+              "title": "Normal"
+            },
+            "friction": {
+              "default": 0.0,
+              "description": "Coulomb friction coefficient \u03bc",
+              "maximum": 2,
+              "minimum": 0,
+              "title": "Friction",
+              "type": "number"
+            },
+            "gap_mm": {
+              "default": 0.0,
+              "description": "clearance between the face's lowest point and the support at the start",
+              "maximum": 100,
+              "minimum": 0,
+              "title": "Gap Mm",
+              "type": "number",
+              "unit": "mm"
+            }
+          },
+          "required": [
+            "face"
+          ],
+          "title": "RigidSupport",
+          "type": "object"
+        },
+        "SNCurve": {
+          "additionalProperties": false,
+          "properties": {
+            "a_mpa": {
+              "description": "Basquin sigma_a = A N^b: A",
+              "exclusiveMinimum": 0,
+              "maximum": 100000.0,
+              "title": "A Mpa",
+              "type": "number",
+              "unit": "MPa"
+            },
+            "b": {
+              "description": "exponent (negative)",
+              "exclusiveMaximum": 0,
+              "exclusiveMinimum": -1,
+              "title": "B",
+              "type": "number"
+            },
+            "source": {
+              "default": "user",
+              "maxLength": 200,
+              "title": "Source",
+              "type": "string"
+            }
+          },
+          "required": [
+            "a_mpa",
+            "b"
+          ],
+          "title": "SNCurve",
           "type": "object"
         },
         "SolverSettings": {
@@ -854,6 +1423,30 @@
           "default": null,
           "description": "Desk, Outdoor, ... (temperature checked against the material)",
           "title": "Environment"
+        },
+        "nonlinear": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NonlinearSettings"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "null = linear elastic; else large deflection, plasticity and / or contact (slower: an incremental solve)"
+        },
+        "fatigue": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FatigueSettings"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "cyclic loading: cycles to failure and a fatigue safety factor at the hotspot (Basquin S-N + Goodman; an ESTIMATE)"
         }
       },
       "required": [
@@ -861,7 +1454,15 @@
       ],
       "title": "StaticSettings",
       "type": "object"
-    }
+    },
+    "nonlinear_channels": [
+      "plastic_strain",
+      "contact_pressure"
+    ],
+    "targets": [
+      "part_id",
+      "project_id"
+    ]
   },
   {
     "id": "modal",
@@ -878,6 +1479,83 @@
     "detail": null,
     "schema": {
       "$defs": {
+        "AnisotropySettings": {
+          "additionalProperties": false,
+          "properties": {
+            "print_direction": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "+x",
+                    "-x",
+                    "+y",
+                    "-y",
+                    "+z",
+                    "-z"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "maxItems": 3,
+                  "minItems": 3,
+                  "prefixItems": [
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    },
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    },
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    }
+                  ],
+                  "type": "array"
+                }
+              ],
+              "default": "+z",
+              "description": "build direction of the print in part coordinates (the layer normal): '+z' = printed as modelled, flat on the bed",
+              "title": "Print Direction"
+            },
+            "e_z_ratio": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0.05,
+                  "maximum": 1.2,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "E across the layers / E in-plane; null = the material's typical ratio (estimate) or its calibrated Z data",
+              "title": "E Z Ratio"
+            },
+            "strength_z_ratio": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0.05,
+                  "maximum": 1.0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "tensile strength across the layers / in-plane; null = typical (estimate) or calibrated",
+              "title": "Strength Z Ratio"
+            }
+          },
+          "title": "AnisotropySettings",
+          "type": "object"
+        },
         "CustomMaterial": {
           "additionalProperties": false,
           "properties": {
@@ -950,6 +1628,85 @@
               "maxLength": 200,
               "title": "Source",
               "type": "string"
+            },
+            "tangent_modulus_mpa": {
+              "anyOf": [
+                {
+                  "maximum": 500000.0,
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "post-yield slope for plastic (nonlinear) studies; null = an estimate (1% of E)",
+              "title": "Tangent Modulus Mpa",
+              "unit": "MPa"
+            },
+            "e_z_mpa": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 1,
+                  "maximum": 500000.0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "modulus across the layers (FDM, build direction); null = a typical ratio (estimate)",
+              "title": "E Z Mpa",
+              "unit": "MPa"
+            },
+            "z_strength_mpa": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0,
+                  "maximum": 10000.0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "tensile strength across the layers; null = a typical ratio (estimate)",
+              "title": "Z Strength Mpa",
+              "unit": "MPa"
+            },
+            "sn_a_mpa": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0,
+                  "maximum": 100000.0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "S-N curve (Basquin) sigma_a = A N^b: A from a fatigue data sheet; null = the AM PLA design-curve estimate",
+              "title": "Sn A Mpa",
+              "unit": "MPa"
+            },
+            "sn_b": {
+              "anyOf": [
+                {
+                  "exclusiveMaximum": 0,
+                  "exclusiveMinimum": -1,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "S-N curve exponent b (negative)",
+              "title": "Sn B"
             }
           },
           "required": [
@@ -1071,6 +1828,38 @@
               ],
               "default": null,
               "description": "print settings -> approximate knock-downs"
+            },
+            "anisotropy": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/AnisotropySettings"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "orthotropic FDM model: in-plane vs between-layer (Z) stiffness and strength, with the print direction; tension across the layers is checked against the Z strength. null = isotropic"
+            },
+            "printer": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9 ._+()-]{0,39}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "the printer profile whose calibration to use; null = 'default'",
+              "title": "Printer"
+            },
+            "calibrated": {
+              "default": true,
+              "description": "use the calibration of this material and printer when there is one (fitted from the user's coupon tests)",
+              "title": "Calibrated",
+              "type": "boolean"
             }
           },
           "title": "MaterialSettings",
@@ -1113,6 +1902,15 @@
               "title": "Refine Factor",
               "type": "number"
             },
+            "refine_points": {
+              "description": "balls to mesh finer (e.g. around a contact point, where the stress is local)",
+              "items": {
+                "$ref": "#/$defs/RefinePoint"
+              },
+              "maxItems": 10,
+              "title": "Refine Points",
+              "type": "array"
+            },
             "second_order": {
               "default": true,
               "description": "quadratic (10-node) tetrahedra; first-order tetrahedra are much too stiff in bending: use only to preview",
@@ -1121,6 +1919,59 @@
             }
           },
           "title": "MeshSettings",
+          "type": "object"
+        },
+        "RefinePoint": {
+          "additionalProperties": false,
+          "properties": {
+            "point": {
+              "description": "centre of the refined ball (part / assembly coordinates)",
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "maximum": 1000000.0,
+                  "minimum": -1000000.0,
+                  "type": "number"
+                },
+                {
+                  "maximum": 1000000.0,
+                  "minimum": -1000000.0,
+                  "type": "number"
+                },
+                {
+                  "maximum": 1000000.0,
+                  "minimum": -1000000.0,
+                  "type": "number"
+                }
+              ],
+              "title": "Point",
+              "type": "array",
+              "unit": "mm"
+            },
+            "radius_mm": {
+              "description": "ball radius",
+              "exclusiveMinimum": 0,
+              "maximum": 10000.0,
+              "title": "Radius Mm",
+              "type": "number",
+              "unit": "mm"
+            },
+            "size_mm": {
+              "description": "element size inside the ball",
+              "exclusiveMinimum": 0,
+              "maximum": 1000,
+              "title": "Size Mm",
+              "type": "number",
+              "unit": "mm"
+            }
+          },
+          "required": [
+            "point",
+            "radius_mm",
+            "size_mm"
+          ],
+          "title": "RefinePoint",
           "type": "object"
         },
         "SolverSettings": {
@@ -1296,6 +2147,83 @@
     "detail": null,
     "schema": {
       "$defs": {
+        "AnisotropySettings": {
+          "additionalProperties": false,
+          "properties": {
+            "print_direction": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "+x",
+                    "-x",
+                    "+y",
+                    "-y",
+                    "+z",
+                    "-z"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "maxItems": 3,
+                  "minItems": 3,
+                  "prefixItems": [
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    },
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    },
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    }
+                  ],
+                  "type": "array"
+                }
+              ],
+              "default": "+z",
+              "description": "build direction of the print in part coordinates (the layer normal): '+z' = printed as modelled, flat on the bed",
+              "title": "Print Direction"
+            },
+            "e_z_ratio": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0.05,
+                  "maximum": 1.2,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "E across the layers / E in-plane; null = the material's typical ratio (estimate) or its calibrated Z data",
+              "title": "E Z Ratio"
+            },
+            "strength_z_ratio": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0.05,
+                  "maximum": 1.0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "tensile strength across the layers / in-plane; null = typical (estimate) or calibrated",
+              "title": "Strength Z Ratio"
+            }
+          },
+          "title": "AnisotropySettings",
+          "type": "object"
+        },
         "BearingLoad": {
           "additionalProperties": false,
           "properties": {
@@ -1438,6 +2366,85 @@
               "maxLength": 200,
               "title": "Source",
               "type": "string"
+            },
+            "tangent_modulus_mpa": {
+              "anyOf": [
+                {
+                  "maximum": 500000.0,
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "post-yield slope for plastic (nonlinear) studies; null = an estimate (1% of E)",
+              "title": "Tangent Modulus Mpa",
+              "unit": "MPa"
+            },
+            "e_z_mpa": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 1,
+                  "maximum": 500000.0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "modulus across the layers (FDM, build direction); null = a typical ratio (estimate)",
+              "title": "E Z Mpa",
+              "unit": "MPa"
+            },
+            "z_strength_mpa": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0,
+                  "maximum": 10000.0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "tensile strength across the layers; null = a typical ratio (estimate)",
+              "title": "Z Strength Mpa",
+              "unit": "MPa"
+            },
+            "sn_a_mpa": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0,
+                  "maximum": 100000.0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "S-N curve (Basquin) sigma_a = A N^b: A from a fatigue data sheet; null = the AM PLA design-curve estimate",
+              "title": "Sn A Mpa",
+              "unit": "MPa"
+            },
+            "sn_b": {
+              "anyOf": [
+                {
+                  "exclusiveMaximum": 0,
+                  "exclusiveMinimum": -1,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "S-N curve exponent b (negative)",
+              "title": "Sn B"
             }
           },
           "required": [
@@ -1730,6 +2737,38 @@
               ],
               "default": null,
               "description": "print settings -> approximate knock-downs"
+            },
+            "anisotropy": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/AnisotropySettings"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "orthotropic FDM model: in-plane vs between-layer (Z) stiffness and strength, with the print direction; tension across the layers is checked against the Z strength. null = isotropic"
+            },
+            "printer": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9 ._+()-]{0,39}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "the printer profile whose calibration to use; null = 'default'",
+              "title": "Printer"
+            },
+            "calibrated": {
+              "default": true,
+              "description": "use the calibration of this material and printer when there is one (fitted from the user's coupon tests)",
+              "title": "Calibrated",
+              "type": "boolean"
             }
           },
           "title": "MaterialSettings",
@@ -1771,6 +2810,15 @@
               "minimum": 0.05,
               "title": "Refine Factor",
               "type": "number"
+            },
+            "refine_points": {
+              "description": "balls to mesh finer (e.g. around a contact point, where the stress is local)",
+              "items": {
+                "$ref": "#/$defs/RefinePoint"
+              },
+              "maxItems": 10,
+              "title": "Refine Points",
+              "type": "array"
             },
             "second_order": {
               "default": true,
@@ -1880,6 +2928,59 @@
             "mpa"
           ],
           "title": "PressureLoad",
+          "type": "object"
+        },
+        "RefinePoint": {
+          "additionalProperties": false,
+          "properties": {
+            "point": {
+              "description": "centre of the refined ball (part / assembly coordinates)",
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "maximum": 1000000.0,
+                  "minimum": -1000000.0,
+                  "type": "number"
+                },
+                {
+                  "maximum": 1000000.0,
+                  "minimum": -1000000.0,
+                  "type": "number"
+                },
+                {
+                  "maximum": 1000000.0,
+                  "minimum": -1000000.0,
+                  "type": "number"
+                }
+              ],
+              "title": "Point",
+              "type": "array",
+              "unit": "mm"
+            },
+            "radius_mm": {
+              "description": "ball radius",
+              "exclusiveMinimum": 0,
+              "maximum": 10000.0,
+              "title": "Radius Mm",
+              "type": "number",
+              "unit": "mm"
+            },
+            "size_mm": {
+              "description": "element size inside the ball",
+              "exclusiveMinimum": 0,
+              "maximum": 1000,
+              "title": "Size Mm",
+              "type": "number",
+              "unit": "mm"
+            }
+          },
+          "required": [
+            "point",
+            "radius_mm",
+            "size_mm"
+          ],
+          "title": "RefinePoint",
           "type": "object"
         },
         "RemoteForce": {
@@ -2110,6 +3211,83 @@
     "detail": null,
     "schema": {
       "$defs": {
+        "AnisotropySettings": {
+          "additionalProperties": false,
+          "properties": {
+            "print_direction": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "+x",
+                    "-x",
+                    "+y",
+                    "-y",
+                    "+z",
+                    "-z"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "maxItems": 3,
+                  "minItems": 3,
+                  "prefixItems": [
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    },
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    },
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    }
+                  ],
+                  "type": "array"
+                }
+              ],
+              "default": "+z",
+              "description": "build direction of the print in part coordinates (the layer normal): '+z' = printed as modelled, flat on the bed",
+              "title": "Print Direction"
+            },
+            "e_z_ratio": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0.05,
+                  "maximum": 1.2,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "E across the layers / E in-plane; null = the material's typical ratio (estimate) or its calibrated Z data",
+              "title": "E Z Ratio"
+            },
+            "strength_z_ratio": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0.05,
+                  "maximum": 1.0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "tensile strength across the layers / in-plane; null = typical (estimate) or calibrated",
+              "title": "Strength Z Ratio"
+            }
+          },
+          "title": "AnisotropySettings",
+          "type": "object"
+        },
         "Convection": {
           "additionalProperties": false,
           "properties": {
@@ -2214,6 +3392,85 @@
               "maxLength": 200,
               "title": "Source",
               "type": "string"
+            },
+            "tangent_modulus_mpa": {
+              "anyOf": [
+                {
+                  "maximum": 500000.0,
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "post-yield slope for plastic (nonlinear) studies; null = an estimate (1% of E)",
+              "title": "Tangent Modulus Mpa",
+              "unit": "MPa"
+            },
+            "e_z_mpa": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 1,
+                  "maximum": 500000.0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "modulus across the layers (FDM, build direction); null = a typical ratio (estimate)",
+              "title": "E Z Mpa",
+              "unit": "MPa"
+            },
+            "z_strength_mpa": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0,
+                  "maximum": 10000.0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "tensile strength across the layers; null = a typical ratio (estimate)",
+              "title": "Z Strength Mpa",
+              "unit": "MPa"
+            },
+            "sn_a_mpa": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0,
+                  "maximum": 100000.0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "S-N curve (Basquin) sigma_a = A N^b: A from a fatigue data sheet; null = the AM PLA design-curve estimate",
+              "title": "Sn A Mpa",
+              "unit": "MPa"
+            },
+            "sn_b": {
+              "anyOf": [
+                {
+                  "exclusiveMaximum": 0,
+                  "exclusiveMinimum": -1,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "S-N curve exponent b (negative)",
+              "title": "Sn B"
             }
           },
           "required": [
@@ -2370,6 +3627,38 @@
               ],
               "default": null,
               "description": "print settings -> approximate knock-downs"
+            },
+            "anisotropy": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/AnisotropySettings"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "orthotropic FDM model: in-plane vs between-layer (Z) stiffness and strength, with the print direction; tension across the layers is checked against the Z strength. null = isotropic"
+            },
+            "printer": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9 ._+()-]{0,39}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "the printer profile whose calibration to use; null = 'default'",
+              "title": "Printer"
+            },
+            "calibrated": {
+              "default": true,
+              "description": "use the calibration of this material and printer when there is one (fitted from the user's coupon tests)",
+              "title": "Calibrated",
+              "type": "boolean"
             }
           },
           "title": "MaterialSettings",
@@ -2412,6 +3701,15 @@
               "title": "Refine Factor",
               "type": "number"
             },
+            "refine_points": {
+              "description": "balls to mesh finer (e.g. around a contact point, where the stress is local)",
+              "items": {
+                "$ref": "#/$defs/RefinePoint"
+              },
+              "maxItems": 10,
+              "title": "Refine Points",
+              "type": "array"
+            },
             "second_order": {
               "default": true,
               "description": "quadratic (10-node) tetrahedra; first-order tetrahedra are much too stiff in bending: use only to preview",
@@ -2420,6 +3718,59 @@
             }
           },
           "title": "MeshSettings",
+          "type": "object"
+        },
+        "RefinePoint": {
+          "additionalProperties": false,
+          "properties": {
+            "point": {
+              "description": "centre of the refined ball (part / assembly coordinates)",
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "maximum": 1000000.0,
+                  "minimum": -1000000.0,
+                  "type": "number"
+                },
+                {
+                  "maximum": 1000000.0,
+                  "minimum": -1000000.0,
+                  "type": "number"
+                },
+                {
+                  "maximum": 1000000.0,
+                  "minimum": -1000000.0,
+                  "type": "number"
+                }
+              ],
+              "title": "Point",
+              "type": "array",
+              "unit": "mm"
+            },
+            "radius_mm": {
+              "description": "ball radius",
+              "exclusiveMinimum": 0,
+              "maximum": 10000.0,
+              "title": "Radius Mm",
+              "type": "number",
+              "unit": "mm"
+            },
+            "size_mm": {
+              "description": "element size inside the ball",
+              "exclusiveMinimum": 0,
+              "maximum": 1000,
+              "title": "Size Mm",
+              "type": "number",
+              "unit": "mm"
+            }
+          },
+          "required": [
+            "point",
+            "radius_mm",
+            "size_mm"
+          ],
+          "title": "RefinePoint",
           "type": "object"
         },
         "SolverSettings": {
@@ -2510,6 +3861,83 @@
     "detail": null,
     "schema": {
       "$defs": {
+        "AnisotropySettings": {
+          "additionalProperties": false,
+          "properties": {
+            "print_direction": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "+x",
+                    "-x",
+                    "+y",
+                    "-y",
+                    "+z",
+                    "-z"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "maxItems": 3,
+                  "minItems": 3,
+                  "prefixItems": [
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    },
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    },
+                    {
+                      "maximum": 1000000.0,
+                      "minimum": -1000000.0,
+                      "type": "number"
+                    }
+                  ],
+                  "type": "array"
+                }
+              ],
+              "default": "+z",
+              "description": "build direction of the print in part coordinates (the layer normal): '+z' = printed as modelled, flat on the bed",
+              "title": "Print Direction"
+            },
+            "e_z_ratio": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0.05,
+                  "maximum": 1.2,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "E across the layers / E in-plane; null = the material's typical ratio (estimate) or its calibrated Z data",
+              "title": "E Z Ratio"
+            },
+            "strength_z_ratio": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0.05,
+                  "maximum": 1.0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "tensile strength across the layers / in-plane; null = typical (estimate) or calibrated",
+              "title": "Strength Z Ratio"
+            }
+          },
+          "title": "AnisotropySettings",
+          "type": "object"
+        },
         "ConvergenceSettings": {
           "additionalProperties": false,
           "properties": {
@@ -2611,6 +4039,85 @@
               "maxLength": 200,
               "title": "Source",
               "type": "string"
+            },
+            "tangent_modulus_mpa": {
+              "anyOf": [
+                {
+                  "maximum": 500000.0,
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "post-yield slope for plastic (nonlinear) studies; null = an estimate (1% of E)",
+              "title": "Tangent Modulus Mpa",
+              "unit": "MPa"
+            },
+            "e_z_mpa": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 1,
+                  "maximum": 500000.0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "modulus across the layers (FDM, build direction); null = a typical ratio (estimate)",
+              "title": "E Z Mpa",
+              "unit": "MPa"
+            },
+            "z_strength_mpa": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0,
+                  "maximum": 10000.0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "tensile strength across the layers; null = a typical ratio (estimate)",
+              "title": "Z Strength Mpa",
+              "unit": "MPa"
+            },
+            "sn_a_mpa": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0,
+                  "maximum": 100000.0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "S-N curve (Basquin) sigma_a = A N^b: A from a fatigue data sheet; null = the AM PLA design-curve estimate",
+              "title": "Sn A Mpa",
+              "unit": "MPa"
+            },
+            "sn_b": {
+              "anyOf": [
+                {
+                  "exclusiveMaximum": 0,
+                  "exclusiveMinimum": -1,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "S-N curve exponent b (negative)",
+              "title": "Sn B"
             }
           },
           "required": [
@@ -2697,6 +4204,38 @@
               ],
               "default": null,
               "description": "print settings -> approximate knock-downs"
+            },
+            "anisotropy": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/AnisotropySettings"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "orthotropic FDM model: in-plane vs between-layer (Z) stiffness and strength, with the print direction; tension across the layers is checked against the Z strength. null = isotropic"
+            },
+            "printer": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9 ._+()-]{0,39}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "the printer profile whose calibration to use; null = 'default'",
+              "title": "Printer"
+            },
+            "calibrated": {
+              "default": true,
+              "description": "use the calibration of this material and printer when there is one (fitted from the user's coupon tests)",
+              "title": "Calibrated",
+              "type": "boolean"
             }
           },
           "title": "MaterialSettings",
@@ -2739,6 +4278,15 @@
               "title": "Refine Factor",
               "type": "number"
             },
+            "refine_points": {
+              "description": "balls to mesh finer (e.g. around a contact point, where the stress is local)",
+              "items": {
+                "$ref": "#/$defs/RefinePoint"
+              },
+              "maxItems": 10,
+              "title": "Refine Points",
+              "type": "array"
+            },
             "second_order": {
               "default": true,
               "description": "quadratic (10-node) tetrahedra; first-order tetrahedra are much too stiff in bending: use only to preview",
@@ -2747,6 +4295,59 @@
             }
           },
           "title": "MeshSettings",
+          "type": "object"
+        },
+        "RefinePoint": {
+          "additionalProperties": false,
+          "properties": {
+            "point": {
+              "description": "centre of the refined ball (part / assembly coordinates)",
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "maximum": 1000000.0,
+                  "minimum": -1000000.0,
+                  "type": "number"
+                },
+                {
+                  "maximum": 1000000.0,
+                  "minimum": -1000000.0,
+                  "type": "number"
+                },
+                {
+                  "maximum": 1000000.0,
+                  "minimum": -1000000.0,
+                  "type": "number"
+                }
+              ],
+              "title": "Point",
+              "type": "array",
+              "unit": "mm"
+            },
+            "radius_mm": {
+              "description": "ball radius",
+              "exclusiveMinimum": 0,
+              "maximum": 10000.0,
+              "title": "Radius Mm",
+              "type": "number",
+              "unit": "mm"
+            },
+            "size_mm": {
+              "description": "element size inside the ball",
+              "exclusiveMinimum": 0,
+              "maximum": 1000,
+              "title": "Size Mm",
+              "type": "number",
+              "unit": "mm"
+            }
+          },
+          "required": [
+            "point",
+            "radius_mm",
+            "size_mm"
+          ],
+          "title": "RefinePoint",
           "type": "object"
         },
         "SolverSettings": {
@@ -2844,7 +4445,7 @@
   {
     "id": "wind",
     "name": "Wind / aero (CFD)",
-    "solver": "built-in lattice-Boltzmann D3Q19 (numpy)",
+    "solver": "built-in lattice-Boltzmann D3Q19 (numpy); optional OpenFOAM k-omega SST (solver 'openfoam', Docker / OrbStack)",
     "fidelity_class": "cfd_lbm",
     "doc": "drag and lift (Cd, Cl), moments, surface Cp, velocity slices and a yaw sweep",
     "channels": [
@@ -3043,14 +4644,31 @@
         },
         "solver": {
           "default": "auto",
-          "description": "auto: lattice-Boltzmann, falling back to the empirical estimate when it cannot fit the time or memory budget",
+          "description": "auto: lattice-Boltzmann, falling back to the empirical estimate when it cannot fit the time or memory budget; openfoam: OpenFOAM k-omega SST RANS in a Docker / OrbStack container (optional; the built-in solver is used, and labelled, when it is not installed)",
           "enum": [
             "auto",
             "lbm",
-            "empirical"
+            "empirical",
+            "openfoam"
           ],
           "title": "Solver",
           "type": "string"
+        },
+        "openfoam_iterations": {
+          "default": 1500,
+          "description": "OpenFOAM: simpleFoam iterations cap (stops earlier on convergence)",
+          "maximum": 20000,
+          "minimum": 100,
+          "title": "Openfoam Iterations",
+          "type": "integer"
+        },
+        "cpus": {
+          "default": 4,
+          "description": "OpenFOAM: CPU cores given to the container (MPI ranks)",
+          "maximum": 32,
+          "minimum": 1,
+          "title": "Cpus",
+          "type": "integer"
         },
         "shape_class": {
           "default": "auto",

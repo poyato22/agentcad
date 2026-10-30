@@ -28,6 +28,8 @@
   "mount": null,
   "geometry": null,
   "mass_source": "catalog",
+  "price": null,
+  "currency": null,
   "sources": [
     {
       "title": "Imported from shop.example.com",

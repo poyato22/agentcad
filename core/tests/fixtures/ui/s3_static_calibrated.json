@@ -1,17 +1,17 @@
 {
-  "sim_id": "sim_8c921ad674f7",
+  "sim_id": "sim_4b9e349bbb39",
   "part_id": "beam",
   "type": "static",
-  "run_id": "d1ab8fe36f59",
-  "call_id": "ui-bc3c9a37d502",
-  "step_id": 7,
+  "run_id": "dbcada0ee370",
+  "call_id": "ui-8af66054a16e",
+  "step_id": 8,
   "reason": null,
   "status": "done",
   "stage": "done",
   "phase": "done",
   "pct": 100.0,
-  "created_at": 1793353504.757349,
-  "finished_at": 1793353505.5339541,
+  "created_at": 1793359820.841398,
+  "finished_at": 1793359821.597048,
   "analysis": "static",
   "guide": true,
   "label": "guide only, not a guarantee",
@@ -140,7 +140,7 @@
       "sn": null
     }
   },
-  "geometry_hash": "e3ed2cd213387ec293f49774078c2bd386e4bc8ca577a4df1aaddba722410e65",
+  "geometry_hash": "09c390ff414238e0299075200803a6d126c2b8c16ece3e9d44b7c03d068b206d",
   "material": {
     "name": "PLA",
     "e_mpa": 2036.3582715522537,
@@ -166,7 +166,7 @@
     "sn_b": null,
     "basis": "calibrated E (3), strength (3), Z strength (1), low confidence",
     "calibration": {
-      "id": "cal_7d672f0692",
+      "id": "cal_7769a31abc",
       "printer": "MK4",
       "n_tests": 7,
       "confidence": "low",
@@ -176,7 +176,7 @@
         "z_strength"
       ],
       "notes": [],
-      "updated_at": 1793353504.752691
+      "updated_at": 1793359820.836236
     },
     "basis_by_property": {
       "e": "calibrated (3 tests)",
@@ -208,11 +208,11 @@
     "Material calibrated E (3), strength (3), Z strength (1), low confidence on printer MK4 (confidence low): fitted to the user's own tests; e_z: datasheet / estimate."
   ],
   "urls": {
-    "record": "/sims/sim_8c921ad674f7",
-    "glb": "/sims/sim_8c921ad674f7/result.glb",
-    "charts": "/sims/sim_8c921ad674f7/charts",
-    "probe": "/sims/sim_8c921ad674f7/probe",
-    "section": "/sims/sim_8c921ad674f7/section"
+    "record": "/sims/sim_4b9e349bbb39",
+    "glb": "/sims/sim_4b9e349bbb39/result.glb",
+    "charts": "/sims/sim_4b9e349bbb39/charts",
+    "probe": "/sims/sim_4b9e349bbb39/probe",
+    "section": "/sims/sim_4b9e349bbb39/section"
   },
   "solver": {
     "name": "CalculiX",
@@ -423,7 +423,7 @@
     },
     "deformed_scale": 2.310890675308011
   },
-  "inputs_hash": "2f60242d247614ceaf03d2ae87a9c70626d3693ca7295171a7fe5468f422c22b",
+  "inputs_hash": "79b1b2876e33636e158b34fb56bf6e9c98b9c582f3baffdd12e7f11fa5a53363",
   "glb": "result.glb",
   "outputs": [
     "result.glb",
@@ -453,7 +453,7 @@
       "z_strength": "calibrated (1 test)"
     },
     "fatigue_note": "fatigue estimate \u00b7 estimate S-N, Goodman",
-    "sim_id": "sim_8c921ad674f7",
+    "sim_id": "sim_4b9e349bbb39",
     "type": "static",
     "status": "done",
     "verdict": "warn",
@@ -515,15 +515,15 @@
       "FATIGUE ESTIMATE: predicted to fail after about 2.96e+04 cycles, before the 1e+06 required (fatigue safety factor 0.53, across layers (Z), estimate S-N curve)"
     ],
     "reason": null,
-    "run_id": "d1ab8fe36f59",
-    "step_id": 7,
+    "run_id": "dbcada0ee370",
+    "step_id": 8,
     "urls": {
-      "record": "/sims/sim_8c921ad674f7",
-      "glb": "/sims/sim_8c921ad674f7/result.glb",
-      "charts": "/sims/sim_8c921ad674f7/charts",
-      "probe": "/sims/sim_8c921ad674f7/probe",
-      "section": "/sims/sim_8c921ad674f7/section"
+      "record": "/sims/sim_4b9e349bbb39",
+      "glb": "/sims/sim_4b9e349bbb39/result.glb",
+      "charts": "/sims/sim_4b9e349bbb39/charts",
+      "probe": "/sims/sim_4b9e349bbb39/probe",
+      "section": "/sims/sim_4b9e349bbb39/section"
     },
-    "charts_url": "/sims/sim_8c921ad674f7/charts"
+    "charts_url": "/sims/sim_4b9e349bbb39/charts"
   }
 }

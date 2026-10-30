@@ -47,7 +47,7 @@ describe("buildThread on the real core's steps", () => {
     const set = t.find((x) => x.kind === "activity" && x.text.startsWith("changed")) as Extract<ThreadItem, { kind: "activity" }>;
     expect(set.call?.name).toBe("mirror_part_set_vars");
     expect(set.diff?.vars).toEqual([{ name: "thickness", prev: 5, now: 6 }]);
-    expect(set.stepIds).toContain(7);
+    expect(set.stepIds).toContain(8);
   });
 
   it("the_pending_approval_sits_inline_after_the_last_step", () => {
@@ -137,5 +137,19 @@ describe("activityText", () => {
     expect(ok("mirror_export", { part_id: "mount_plate" })).toBe("exported mount plate");
     expect(ok("some_new_tool", {}, {}, "did a thing\nsecond line")).toBe("some new tool · did a thing");
     expect(ok("mcp__mises__mirror_measure", { part_id: "bracket" })).toBe("measured bracket");
+  });
+});
+
+describe("U3c announcements without U3a's cards (int-678)", () => {
+  const ann = (runId: string, kind: string, title: string) =>
+    step(RID, "decision", { agent_announce: { run_id: runId, kind, title, detail: "", ref: {} } }, 1);
+  it("a sub-agent's announcement copied to the lead is one line; the acting run's own is not repeated", () => {
+    const sub = thread({ runs: [run(RID)], stepList: [ann("sub000000001", "part_created", "Created part arm_left")], selectedRunId: RID });
+    expect(brief(sub)).toEqual(["note Created part arm_left"]);
+    const own = thread({ runs: [run(RID)], stepList: [ann(RID, "part_created", "Created part arm_left")], selectedRunId: RID });
+    expect(brief(own)).toEqual([]);
+    // part_show: U4a's rich part card is the one card (no announcement line on the acting run)
+    const shown = thread({ runs: [run(RID)], stepList: [ann(RID, "part_shown", "Showing a part for you to look at")], selectedRunId: RID });
+    expect(brief(shown)).toEqual([]);
   });
 });

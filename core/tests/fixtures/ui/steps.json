@@ -1,21 +1,21 @@
 [
   {
     "id": 1,
-    "run_id": "8b079c306d4b",
-    "ts": 1793340399.804739,
+    "run_id": "fc3a0320cdb4",
+    "ts": 1793359736.7818508,
     "kind": "message",
     "payload": {
       "role": "user",
       "text": "thicken the mount plate to 6 mm"
     },
-    "evidence_hash": "e801f9b052e18150b569f5e1ae59c2f8f4f44c6932c362f33194a46dd302959c",
+    "evidence_hash": "7a3b0dcdf8bf827823f4acee92197592b1d408760d304d186577612a5fa88f9c",
     "prev_hash": null,
     "collapsed": false
   },
   {
     "id": 2,
-    "run_id": "8b079c306d4b",
-    "ts": 1793340399.811011,
+    "run_id": "fc3a0320cdb4",
+    "ts": 1793359736.797392,
     "kind": "message",
     "payload": {
       "role": "assistant",
@@ -28,14 +28,14 @@
         }
       ]
     },
-    "evidence_hash": "96262fed08c6a92e8017595a4ec7ccdb6d7ceb47ec783a9a3138718752efeb64",
-    "prev_hash": "e801f9b052e18150b569f5e1ae59c2f8f4f44c6932c362f33194a46dd302959c",
+    "evidence_hash": "c080de95b700ce75d2e490b8f5bce641c60bf03b35c12bdec62ea14d5a1e9245",
+    "prev_hash": "7a3b0dcdf8bf827823f4acee92197592b1d408760d304d186577612a5fa88f9c",
     "collapsed": false
   },
   {
     "id": 3,
-    "run_id": "8b079c306d4b",
-    "ts": 1793340399.8112168,
+    "run_id": "fc3a0320cdb4",
+    "ts": 1793359736.797606,
     "kind": "tool_call",
     "payload": {
       "call_id": "c1",
@@ -48,14 +48,14 @@
       },
       "name": "mirror_part_create"
     },
-    "evidence_hash": "73ded5ecc577be972ed3015f2266e800f5d33ca02287a4e698431573f5a2a5b3",
-    "prev_hash": "96262fed08c6a92e8017595a4ec7ccdb6d7ceb47ec783a9a3138718752efeb64",
+    "evidence_hash": "550b460ca7329921a5feddf968d05a1b86d262a2d4794d17293cd12935eec020",
+    "prev_hash": "c080de95b700ce75d2e490b8f5bce641c60bf03b35c12bdec62ea14d5a1e9245",
     "collapsed": false
   },
   {
     "id": 4,
-    "run_id": "8b079c306d4b",
-    "ts": 1793340401.580362,
+    "run_id": "fc3a0320cdb4",
+    "ts": 1793359739.2099662,
     "kind": "tool_result",
     "payload": {
       "call_id": "c1",
@@ -188,6 +188,7 @@
               ],
               "id": "f6",
               "normal": null,
+              "radius": 2.1,
               "type": "cylinder"
             },
             {
@@ -199,6 +200,7 @@
               ],
               "id": "f7",
               "normal": null,
+              "radius": 2.1,
               "type": "cylinder"
             }
           ],
@@ -251,14 +253,34 @@
         "warnings": []
       }
     },
-    "evidence_hash": "561ce3943737d0058ab1ce7ff2cec81a26dbd6301f2b782cdc549a6fc453e612",
-    "prev_hash": "73ded5ecc577be972ed3015f2266e800f5d33ca02287a4e698431573f5a2a5b3",
+    "evidence_hash": "da12c06788365289e35bedf5e71dbf2f4a655f1b981dff62abcbe8a0581eeff2",
+    "prev_hash": "550b460ca7329921a5feddf968d05a1b86d262a2d4794d17293cd12935eec020",
     "collapsed": false
   },
   {
     "id": 5,
-    "run_id": "8b079c306d4b",
-    "ts": 1793340401.5809228,
+    "run_id": "fc3a0320cdb4",
+    "ts": 1793359739.21012,
+    "kind": "decision",
+    "payload": {
+      "agent_announce": {
+        "detail": "",
+        "kind": "part_created",
+        "ref": {
+          "part_id": "mount_plate"
+        },
+        "run_id": "fc3a0320cdb4",
+        "title": "Created part mount_plate"
+      }
+    },
+    "evidence_hash": "7232a555034e1005460ac3bb2c009a09a6e648086a83d711bbaa6c3ebfbb7a39",
+    "prev_hash": "da12c06788365289e35bedf5e71dbf2f4a655f1b981dff62abcbe8a0581eeff2",
+    "collapsed": false
+  },
+  {
+    "id": 6,
+    "run_id": "fc3a0320cdb4",
+    "ts": 1793359739.210637,
     "kind": "message",
     "payload": {
       "role": "assistant",
@@ -271,14 +293,14 @@
         }
       ]
     },
-    "evidence_hash": "590d674fce0794230a35b4c49a2aa56c435f0ca6d791a48e1970ca87540605f9",
-    "prev_hash": "561ce3943737d0058ab1ce7ff2cec81a26dbd6301f2b782cdc549a6fc453e612",
+    "evidence_hash": "5a11516a6d972ea6959be1ac387d2172230395df3b3a1e9368f7d5df34942115",
+    "prev_hash": "7232a555034e1005460ac3bb2c009a09a6e648086a83d711bbaa6c3ebfbb7a39",
     "collapsed": false
   },
   {
-    "id": 6,
-    "run_id": "8b079c306d4b",
-    "ts": 1793340401.5810938,
+    "id": 7,
+    "run_id": "fc3a0320cdb4",
+    "ts": 1793359739.2108312,
     "kind": "tool_call",
     "payload": {
       "call_id": "c2",
@@ -290,14 +312,14 @@
       },
       "name": "mirror_part_set_vars"
     },
-    "evidence_hash": "1a93f553c0d7b9cdb4563f7b321ad65f769c1d2484fee380cb733ebaaabd97a1",
-    "prev_hash": "590d674fce0794230a35b4c49a2aa56c435f0ca6d791a48e1970ca87540605f9",
+    "evidence_hash": "9c9954470f3fb919fc397a3ed17eedea2c04ae1ffbf8c51725e4d540e8424775",
+    "prev_hash": "5a11516a6d972ea6959be1ac387d2172230395df3b3a1e9368f7d5df34942115",
     "collapsed": false
   },
   {
-    "id": 7,
-    "run_id": "8b079c306d4b",
-    "ts": 1793340403.133693,
+    "id": 8,
+    "run_id": "fc3a0320cdb4",
+    "ts": 1793359740.6580758,
     "kind": "diff",
     "payload": {
       "call_id": "c2",
@@ -439,6 +461,7 @@
               ],
               "id": "f6",
               "normal": null,
+              "radius": 2.1,
               "type": "cylinder"
             },
             {
@@ -450,6 +473,7 @@
               ],
               "id": "f7",
               "normal": null,
+              "radius": 2.1,
               "type": "cylinder"
             }
           ],
@@ -502,14 +526,14 @@
         "warnings": []
       }
     },
-    "evidence_hash": "96bb2abbef697dd07b99ee7140e08a14b4f484936266b105b502470fe07609d0",
-    "prev_hash": "1a93f553c0d7b9cdb4563f7b321ad65f769c1d2484fee380cb733ebaaabd97a1",
+    "evidence_hash": "4347e2d534f2cdddc8897a983a7c7f892c04862cb8498a12a1e30bdbc8dd31c3",
+    "prev_hash": "9c9954470f3fb919fc397a3ed17eedea2c04ae1ffbf8c51725e4d540e8424775",
     "collapsed": false
   },
   {
-    "id": 8,
-    "run_id": "8b079c306d4b",
-    "ts": 1793340403.1341782,
+    "id": 9,
+    "run_id": "fc3a0320cdb4",
+    "ts": 1793359740.658577,
     "kind": "message",
     "payload": {
       "role": "assistant",
@@ -522,14 +546,14 @@
         }
       ]
     },
-    "evidence_hash": "f5f21d483f754fc75508a7706dbd47448e5edf2de55f64109cc30199e71af6ab",
-    "prev_hash": "96bb2abbef697dd07b99ee7140e08a14b4f484936266b105b502470fe07609d0",
+    "evidence_hash": "142c4974a5264efbab8b94c349f76d80887ae6031ec518b03daaf580d22ddd95",
+    "prev_hash": "4347e2d534f2cdddc8897a983a7c7f892c04862cb8498a12a1e30bdbc8dd31c3",
     "collapsed": false
   },
   {
-    "id": 9,
-    "run_id": "8b079c306d4b",
-    "ts": 1793340403.13436,
+    "id": 10,
+    "run_id": "fc3a0320cdb4",
+    "ts": 1793359740.658761,
     "kind": "tool_call",
     "payload": {
       "call_id": "c3",
@@ -538,14 +562,14 @@
       },
       "name": "mirror_measure"
     },
-    "evidence_hash": "55b3ab524944ff299e54d9e460679e469ede33edacf67e30693c1574e75b42e5",
-    "prev_hash": "f5f21d483f754fc75508a7706dbd47448e5edf2de55f64109cc30199e71af6ab",
+    "evidence_hash": "35a08e2ed684d3faeb7c211ba1f60d0c421663a88d732f5c5940c4c90126e875",
+    "prev_hash": "142c4974a5264efbab8b94c349f76d80887ae6031ec518b03daaf580d22ddd95",
     "collapsed": false
   },
   {
-    "id": 10,
-    "run_id": "8b079c306d4b",
-    "ts": 1793340403.1348522,
+    "id": 11,
+    "run_id": "fc3a0320cdb4",
+    "ts": 1793359740.6592472,
     "kind": "measure",
     "payload": {
       "call_id": "c3",
@@ -678,6 +702,7 @@
               ],
               "id": "f6",
               "normal": null,
+              "radius": 2.1,
               "type": "cylinder"
             },
             {
@@ -689,6 +714,7 @@
               ],
               "id": "f7",
               "normal": null,
+              "radius": 2.1,
               "type": "cylinder"
             }
           ],
@@ -738,14 +764,14 @@
         "warnings": []
       }
     },
-    "evidence_hash": "23c620eda6e71ee93fa8608c295fc441522704a624e81383d9e62eafa028fe18",
-    "prev_hash": "55b3ab524944ff299e54d9e460679e469ede33edacf67e30693c1574e75b42e5",
+    "evidence_hash": "7ba11aedd97deafab54187ff520972316b894b81cc10e706cb46a67d84b72409",
+    "prev_hash": "35a08e2ed684d3faeb7c211ba1f60d0c421663a88d732f5c5940c4c90126e875",
     "collapsed": false
   },
   {
-    "id": 11,
-    "run_id": "8b079c306d4b",
-    "ts": 1793340403.1351712,
+    "id": 12,
+    "run_id": "fc3a0320cdb4",
+    "ts": 1793359740.659724,
     "kind": "message",
     "payload": {
       "role": "assistant",
@@ -758,14 +784,14 @@
         }
       ]
     },
-    "evidence_hash": "6604eb10ae1c85980a178867337c12a37d9af5b725b21ab9cc7e5909a5f47283",
-    "prev_hash": "23c620eda6e71ee93fa8608c295fc441522704a624e81383d9e62eafa028fe18",
+    "evidence_hash": "ce4d589a5159b7c52d917cc55a5ce4b0da0f1ca961e52e102b7c6378e94e4f82",
+    "prev_hash": "7ba11aedd97deafab54187ff520972316b894b81cc10e706cb46a67d84b72409",
     "collapsed": false
   },
   {
-    "id": 12,
-    "run_id": "8b079c306d4b",
-    "ts": 1793340403.135314,
+    "id": 13,
+    "run_id": "fc3a0320cdb4",
+    "ts": 1793359740.6598651,
     "kind": "tool_call",
     "payload": {
       "call_id": "c4",
@@ -774,8 +800,8 @@
       },
       "name": "fixture_merge"
     },
-    "evidence_hash": "59753b00d0f78008d5f1930bea61ba282d710bd367c37875fdf3db38ba540301",
-    "prev_hash": "6604eb10ae1c85980a178867337c12a37d9af5b725b21ab9cc7e5909a5f47283",
+    "evidence_hash": "caa6970688c3d0290470025ae4da294d30ee3dfdc002e0c6c9c65fb5e048ed3f",
+    "prev_hash": "ce4d589a5159b7c52d917cc55a5ce4b0da0f1ca961e52e102b7c6378e94e4f82",
     "collapsed": false
   }
 ]

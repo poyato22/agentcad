@@ -192,6 +192,18 @@ export function buildThread(items: readonly LogItem[]): ThreadItem[] {
           last = null;
           break;
         }
+        // U3c's other announcements (part created, agent spawned, added to the assembly or the
+        // BOM, part shown, drawing imported): the acting run's own thread already shows the call
+        // (and U4a's part card for part_shown), so only a copy on the lead from a sub-agent is a
+        // line here; its title is core text (ids and counts), shown as text
+        const ann = rec(it.step.payload.agent_announce);
+        if (typeof ann.kind === "string") {
+          if ((str(ann.run_id) ?? it.step.run_id) !== it.step.run_id && str(ann.title)) {
+            out.push({ kind: "note", key, text: firstLine(str(ann.title) as string), stepIds: [it.step.id] });
+            last = null;
+          }
+          break;
+        }
         if (last && last.call && lastCallResult() === it.step.id) { last.extra.push(it); break; }
         // Claude Code's bookkeeping (session start, init, stored thinking) is not a decision the
         // reader needs; it stays in the step log (C-10)

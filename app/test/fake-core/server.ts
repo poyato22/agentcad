@@ -126,32 +126,12 @@ export interface Scenario {
 /** A GET /tools row, as core server/app.py list_tools answers it. */
 export interface FakeTool { name: string; description: string; safety: string; implied_classes: string[]; open_world: boolean }
 
-/** The real core's registered tools and safety classes (core/tests/fixtures/ui/tools.json, the
- *  dump's test-only fixture_merge left out). */
-const CORE_TOOLS: readonly [string, string][] = [
-  ["agent_result", "read"], ["agent_spawn", "local_mutate"], ["agent_wait", "local_mutate"], ["assembly_add_instance", "local_mutate"],
-  ["assembly_add_joint", "local_mutate"], ["assembly_check", "read"], ["assembly_drive", "local_mutate"], ["assembly_get", "read"],
-  ["assembly_remove", "local_mutate"], ["catalog_get", "read"], ["catalog_import_url", "local_mutate"], ["catalog_insert", "local_mutate"],
-  ["catalog_search", "read"], ["design_review", "read"], ["interview_plan", "read"], ["loads_impact", "read"],
-  ["mirror_drawing", "local_mutate"], ["mirror_edges", "read"], ["mirror_export", "read"], ["mirror_faces", "read"],
-  ["mirror_measure", "read"], ["mirror_part_create", "local_mutate"], ["mirror_part_get_source", "read"], ["mirror_part_list", "read"],
-  ["mirror_part_op", "local_mutate"], ["mirror_part_set_source", "local_mutate"], ["mirror_part_set_vars", "local_mutate"],
-  ["mises_context_get", "read"], ["onshape_budget_get", "read"], ["onshape_doc_elements", "read"], ["onshape_doc_open", "read"],
-  ["onshape_docs_search", "read"], ["onshape_features_list", "read"], ["onshape_import_element", "local_mutate"],
-  ["onshape_merge_request", "irreversible"], ["onshape_propose", "onshape_mutate"], ["onshape_variables_get", "read"],
-  ["orchestrator_run", "local_mutate"], ["orchestrator_submit_plan", "read"], ["print_printers_list", "read"],
-  ["print_send", "irreversible"], ["print_slice", "local_mutate"], ["sim_cancel", "local_mutate"], ["sim_compare", "read"],
-  ["sim_env_list", "read"], ["sim_result_get", "read"], ["sim_run", "local_mutate"], ["sim_static_run", "local_mutate"],
-  ["sim_types_list", "read"], ["spec_check", "read"], ["spec_get", "read"], ["spec_set", "local_mutate"], ["study_apply", "local_mutate"],
-  ["study_get", "read"], ["study_run", "local_mutate"], ["ui_ask_user", "read"], ["ui_note", "read"],
-];
-/** Tools whose ToolSpec sets implied_classes / open_world (the rest: [] and false). */
-const TOOL_EXTRAS: Readonly<Record<string, Partial<FakeTool>>> = {
-  catalog_import_url: { open_world: true }, design_review: { implied_classes: ["local_mutate"] },
-};
-export const DEFAULT_TOOLS: readonly FakeTool[] = CORE_TOOLS.map(([name, safety]) => ({
-  name, description: `${name.replace(/_/g, " ")}.`, safety, implied_classes: [], open_world: false, ...TOOL_EXTRAS[name],
-}));
+/** The real core's registered tools and safety classes, read from its dump
+ *  (core/tests/fixtures/ui/tools.json, the dump's test-only fixture_merge left out), so the
+ *  picker's list follows every plan's tools without a hand-kept copy. */
+export const DEFAULT_TOOLS: readonly FakeTool[] = (JSON.parse(readFileSync(resolve(HERE, "../../../core/tests/fixtures/ui/tools.json"), "utf8")) as FakeTool[])
+  .filter((t) => t.name !== "fixture_merge")
+  .map((t) => ({ name: t.name, description: `${t.name.replace(/_/g, " ")}.`, safety: t.safety, implied_classes: [...(t.implied_classes ?? [])], open_world: !!t.open_world }));
 
 /** A small healthy default when a scenario names no `system` rows. */
 export const DEFAULT_SYSTEM_CHECK: SystemCheckRow[] = [
@@ -497,6 +477,11 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       title: r.title ?? null, pinned: r.pinned ?? false, archived: r.archived ?? false,
       parent_run_id: r.parent_id,
       last_activity_at: r.last_activity_at ?? r.updated_at,
+      // Plan 7 U3c (lead / sub and how the router chose) and Plan 8 G1 (the shape hint): null
+      // on a plain run, as the core's AgentRun has them
+      role: r.role ?? null,
+      ...{ routed: (r as { routed?: unknown }).routed ?? null },
+      shape_complexity: (r as { shape_complexity?: unknown }).shape_complexity ?? null,
       cost: {
         usd: r.usd, tokens: r.input_tokens + r.output_tokens,
         // core budget.py: only Claude Code reports dollars; other providers count as $0
@@ -663,7 +648,8 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
           emit({ type: "run_queued", run_id: run.id, data: { agent, provider: vendor, model, limit } });
           return { run_id: run.id };
         }
-        emit({ type: "run_started", run_id: run.id, data: { agent, provider: vendor, model, parent_id: null, ...(claude ? { external: true } : {}) } });
+        // Plan 8 G1: the core estimates the prompt's shape complexity on start (null: unknown here)
+        emit({ type: "run_started", run_id: run.id, data: { agent, provider: vendor, model, parent_id: null, shape_complexity: { score: 0, level: "low", signals: [], vision_recommended: false }, ...(claude ? { external: true } : {}) } });
         play(state.on.create_run, run.id);
         return { run_id: run.id };
       },

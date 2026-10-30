@@ -1,6 +1,6 @@
 {
   "selected_part_id": "mount_plate",
-  "selected_run_id": "8b079c306d4b",
+  "selected_run_id": "fc3a0320cdb4",
   "picks": [],
   "metrics": {
     "valid": true,
@@ -130,7 +130,8 @@
           0.0
         ],
         "normal": null,
-        "area": 79.168
+        "area": 79.168,
+        "radius": 2.1
       },
       {
         "id": "f7",
@@ -141,7 +142,8 @@
           0.0
         ],
         "normal": null,
-        "area": 79.168
+        "area": 79.168,
+        "radius": 2.1
       }
     ],
     "edges": 18,
@@ -409,7 +411,8 @@
             0.0,
             1.0
           ]
-        ]
+        ],
+        "radius": 2.1
       },
       {
         "id": "e10",
@@ -431,7 +434,8 @@
             0.0,
             1.0
           ]
-        ]
+        ],
+        "radius": 2.1
       },
       {
         "id": "e11",
@@ -534,7 +538,8 @@
             0.0,
             -1.0
           ]
-        ]
+        ],
+        "radius": 2.1
       },
       {
         "id": "e15",
@@ -556,7 +561,8 @@
             0.0,
             -1.0
           ]
-        ]
+        ],
+        "radius": 2.1
       },
       {
         "id": "e16",
@@ -632,7 +638,7 @@
   "untrusted_user_data": {
     "recent_user_edits": [
       {
-        "ts": 1793340430.348188,
+        "ts": 1793359766.312685,
         "part_id": "mount_plate",
         "project_id": null,
         "version": 3,
@@ -640,7 +646,7 @@
         "summary": "set thickness=6.4797482362934655"
       },
       {
-        "ts": 1793340431.9904692,
+        "ts": 1793359767.773418,
         "part_id": "mount_plate",
         "project_id": null,
         "version": 4,

@@ -1,17 +1,17 @@
 {
-  "sim_id": "sim_bafdecc488d4",
+  "sim_id": "sim_56654f4447d0",
   "part_id": "mount_plate",
   "type": "static",
-  "run_id": "b5b68b01c40a",
-  "call_id": "ui-95b8a58f44bd",
-  "step_id": 13,
+  "run_id": "1371436baa53",
+  "call_id": "ui-d821d36256cf",
+  "step_id": 14,
   "reason": null,
   "status": "done",
   "stage": "done",
   "phase": "done",
   "pct": 100.0,
-  "created_at": 1793340403.190971,
-  "finished_at": 1793340405.824518,
+  "created_at": 1793359740.884196,
+  "finished_at": 1793359743.504311,
   "analysis": "static",
   "guide": true,
   "label": "guide only, not a guarantee",
@@ -23,12 +23,16 @@
       "material": {
         "name": "PETG",
         "custom": null,
-        "fdm": null
+        "fdm": null,
+        "anisotropy": null,
+        "printer": null,
+        "calibrated": true
       },
       "mesh": {
         "size_mm": null,
         "refine_faces": [],
         "refine_factor": 0.4,
+        "refine_points": [],
         "second_order": true
       },
       "solver": {
@@ -61,7 +65,9 @@
         "tol_pct": 5.0,
         "max_levels": 4
       },
-      "environment": "Desk"
+      "environment": "Desk",
+      "nonlinear": null,
+      "fatigue": null
     },
     "fix": "x-min",
     "load": {
@@ -76,12 +82,16 @@
     "material": {
       "name": "PETG",
       "custom": null,
-      "fdm": null
+      "fdm": null,
+      "anisotropy": null,
+      "printer": null,
+      "calibrated": true
     },
     "mesh": {
       "size_mm": null,
       "refine_faces": [],
       "refine_factor": 0.4,
+      "refine_points": [],
       "second_order": true
     },
     "solver": {
@@ -114,9 +124,11 @@
       "tol_pct": 5.0,
       "max_levels": 4
     },
-    "environment": "Desk"
+    "environment": "Desk",
+    "nonlinear": null,
+    "fatigue": null
   },
-  "geometry_hash": "77aecaeb1da35dfd08166136267d621cd69879d93afa7e1c1887e7de86c72612",
+  "geometry_hash": "301bef3bdca978d941a26876481e9246ff8c01aaabc5ecf26f490f2a69309c0f",
   "material": {
     "name": "PETG",
     "e_mpa": 1500.0,
@@ -130,8 +142,20 @@
     "knockdown": 0.7,
     "stiffness_factor": 1.0,
     "custom": false,
+    "tangent_modulus_mpa": null,
+    "e_z_mpa": null,
+    "z_strength_mpa": null,
+    "build_dir": null,
+    "sn_a_mpa": null,
+    "sn_b": null,
+    "basis": "datasheet / estimate",
+    "calibration": null,
+    "basis_by_property": null,
+    "fdm_strength_factor": 1.0,
     "allowable_mpa": 32.9,
     "e_eff_mpa": 1500.0,
+    "tangent_eff_mpa": 15.0,
+    "tangent_source": "estimate (1% of E)",
     "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers"
   },
   "environment": {
@@ -158,11 +182,11 @@
     "Peak stress excludes nodes on the fixed face (an ideal clamp gives a constraint singularity there); that value and a safety factor including it are reported separately."
   ],
   "urls": {
-    "record": "/sims/sim_bafdecc488d4",
-    "glb": "/sims/sim_bafdecc488d4/result.glb",
-    "charts": "/sims/sim_bafdecc488d4/charts",
-    "probe": "/sims/sim_bafdecc488d4/probe",
-    "section": "/sims/sim_bafdecc488d4/section"
+    "record": "/sims/sim_56654f4447d0",
+    "glb": "/sims/sim_56654f4447d0/result.glb",
+    "charts": "/sims/sim_56654f4447d0/charts",
+    "probe": "/sims/sim_56654f4447d0/probe",
+    "section": "/sims/sim_56654f4447d0/section"
   },
   "solver": {
     "name": "CalculiX",
@@ -294,7 +318,7 @@
     },
     "deformed_scale": 2.712757958194665
   },
-  "inputs_hash": "29a7a5c1d6d77c9e5d4c4af8de79f08c4bd59dd6af82206d107763a0eb0e5c13",
+  "inputs_hash": "ef15844aacbb8da8bf2d55e19d7db5800e200a91f55b7e36b644778612ed80c9",
   "glb": "result.glb",
   "outputs": [
     "result.glb",
@@ -316,7 +340,8 @@
       }
     ],
     "governing_case_id": "case 1",
-    "sim_id": "sim_bafdecc488d4",
+    "material_basis": "datasheet / estimate",
+    "sim_id": "sim_56654f4447d0",
     "type": "static",
     "status": "done",
     "verdict": "pass",
@@ -356,15 +381,15 @@
     "checks": [],
     "warnings": [],
     "reason": null,
-    "run_id": "b5b68b01c40a",
-    "step_id": 13,
+    "run_id": "1371436baa53",
+    "step_id": 14,
     "urls": {
-      "record": "/sims/sim_bafdecc488d4",
-      "glb": "/sims/sim_bafdecc488d4/result.glb",
-      "charts": "/sims/sim_bafdecc488d4/charts",
-      "probe": "/sims/sim_bafdecc488d4/probe",
-      "section": "/sims/sim_bafdecc488d4/section"
+      "record": "/sims/sim_56654f4447d0",
+      "glb": "/sims/sim_56654f4447d0/result.glb",
+      "charts": "/sims/sim_56654f4447d0/charts",
+      "probe": "/sims/sim_56654f4447d0/probe",
+      "section": "/sims/sim_56654f4447d0/section"
     },
-    "charts_url": "/sims/sim_bafdecc488d4/charts"
+    "charts_url": "/sims/sim_56654f4447d0/charts"
   }
 }

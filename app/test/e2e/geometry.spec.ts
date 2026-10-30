@@ -11,6 +11,12 @@ test.beforeEach(async ({ fake, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
 });
 
+/** The sheet's View ▾ menu (U2b) hosts the view modes and the part / build scope. */
+async function viewItem(page: Page, label: string): Promise<void> {
+  await page.getByRole("button", { name: "View options" }).click();
+  await page.locator("#view-menu [role^=menuitem]", { hasText: label }).first().click();
+}
+
 async function openDesign(page: Page): Promise<void> {
   await page.goto("/");
   await expect(page.locator("[data-testid=viewer-canvas]")).toHaveAttribute("data-bbox-size", /.+/, { timeout: 15_000 });
@@ -50,7 +56,7 @@ test("section_caps_close_the_cut_in_the_part_color", async ({ page }) => {
   await openDesign(page);
   await page.locator('[data-part="pi_battery"] .tree-name').first().click();
   await expect(page.locator("[data-testid=viewer-canvas]")).toHaveAttribute("data-bbox-size", /^40\.00,26\.00,12\.00$/, { timeout: 10_000 });
-  await page.getByTestId("view-modes").getByRole("button", { name: "section" }).click();
+  await viewItem(page, "Section");
   await page.getByRole("button", { name: "Z", exact: true }).click();
   const handle = page.getByTestId("section-handle");
   await expect(handle).toBeVisible();
@@ -82,19 +88,19 @@ test("section_caps_close_the_cut_in_the_part_color", async ({ page }) => {
 
 test("explode_glides_the_build_apart_and_back", async ({ page }) => {
   await openDesign(page);
-  await page.getByRole("button", { name: "build", exact: true }).click();
+  await viewItem(page, "Whole build");
   await expect(page.locator("[data-testid=viewer-canvas]")).toHaveAttribute("data-shown", /pi_fan/);
   await page.waitForTimeout(500);
   const assembled = await canvasHash(page, "[data-testid=viewer-canvas]");
-  await page.getByTestId("view-modes").getByRole("button", { name: "explode" }).click();
+  await viewItem(page, "Explode");
   await expect(page.getByTestId("explode-slider")).toHaveValue("1");
   await page.waitForTimeout(700);
   const apart = await canvasHash(page, "[data-testid=viewer-canvas]");
   expect(apart).not.toBe(assembled);
   await page.screenshot({ path: test.info().outputPath("exploded.png") });
-  await page.getByTestId("view-modes").getByRole("button", { name: "x-ray" }).click();
+  await viewItem(page, "X-ray");
   await expect(page.getByLabel("X-ray opacity")).toBeVisible();
-  await page.getByTestId("view-modes").getByRole("button", { name: "clear" }).click();
+  await viewItem(page, "Clear view modes");
   await expect(page.getByTestId("explode-slider")).toHaveCount(0);
 });
 

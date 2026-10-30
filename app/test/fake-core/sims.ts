@@ -122,7 +122,8 @@ function summary(r: SimRecord) {
   const c7 = Object.fromEntries(["type", "phase", "pct", "step_id", "reason"].filter((k) => k in extra).map((k) => [k, extra[k]]));
   return {
     ...c7,
-    sim_id: r.sim_id, part_id: r.part_id, run_id: r.run_id, status: r.status, stage: r.stage, created_at: r.created_at,
+    // an assembly study's build (core SUMMARY_KEYS); a part study's is null
+    sim_id: r.sim_id, part_id: r.part_id, project_id: (extra.project_id as string | null | undefined) ?? null, run_id: r.run_id, status: r.status, stage: r.stage, created_at: r.created_at,
     finished_at: r.finished_at, error: r.error, hint: r.hint, inputs: r.inputs, results: r.results ?? null, guide: r.guide,
     label: r.label, fidelity_class: r.fidelity_class, stale: r.stale,
   };
@@ -236,7 +237,7 @@ function start(d: SimDeps, b: Record<string, unknown>): unknown {
   const finish = (status: "done" | "failed", ok: boolean, summaryText: string, data: Record<string, unknown>) => {
     d.emit({ type: "tool_result", run_id: run.id, data: { call_id: callId, name: "sim_static_run", ok, summary: summaryText } },
       { steps: [{ kind: ok ? "sim_run" : "error", payload: ok
-        ? { call_id: callId, name: "sim_static_run", output: { ok, summary: summaryText, data, handles: [], warnings: [], step_kind: "sim_run" } }
+        ? { call_id: callId, name: "sim_static_run", output: { ok, summary: summaryText, data, handles: [], warnings: [], step_kind: "sim_run", images: [] } }
         : { call_id: callId, name: "sim_static_run", error: String(data.error ?? "tool_failed"), message: summaryText, hint: data.hint ?? null, retryable: false } }] });
     d.emit({ type: "run_finished", run_id: run.id, data: { status, stop_reason: status, error: null, final_text: "", external: true } });
     sims.timers.delete(run.id);
@@ -268,9 +269,12 @@ function start(d: SimDeps, b: Record<string, unknown>): unknown {
   const realDone = REAL.done as unknown as Record<string, unknown>;
   const realSettings = realDone.settings as Record<string, unknown>;
   const settings = {
-    material: { name: material.name, custom: null, fdm: null }, mesh: structuredClone(realSettings.mesh), solver: structuredClone(realSettings.solver),
+    // the merged core's defaults too (Plan 6: S3 anisotropy / printer / calibrated, S1 nonlinear, S3 fatigue)
+    material: { ...structuredClone(realSettings.material as Record<string, unknown>), name: material.name, custom: null, fdm: null },
+    mesh: structuredClone(realSettings.mesh), solver: structuredClone(realSettings.solver),
     load_cases: [{ name: "case 1", supports: [{ kind: "fixed", face: fix, axis: null }], loads: [{ kind: "force", face: loadFace, newtons: l.newtons, direction }], note: "" }],
     convergence: structuredClone(realSettings.convergence), environment: env ? env.name : null,
+    nonlinear: realSettings.nonlinear ?? null, fatigue: realSettings.fatigue ?? null,
   };
   const urls = { record: `/sims/${simId}`, glb: `/sims/${simId}/result.glb`, charts: `/sims/${simId}/charts`, probe: `/sims/${simId}/probe`, section: `/sims/${simId}/section` };
   const cardOf = (real: SimRecord, over: Record<string, unknown>) => ({

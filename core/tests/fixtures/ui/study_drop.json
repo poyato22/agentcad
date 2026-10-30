@@ -1,17 +1,17 @@
 {
-  "sim_id": "sim_e97e218807ea",
+  "sim_id": "sim_531da4348759",
   "part_id": "beam",
   "type": "drop",
-  "run_id": "3a4f540ec817",
+  "run_id": "96374179f1f7",
   "call_id": "s5",
-  "step_id": 19,
+  "step_id": 21,
   "reason": "1 m drop onto the floor",
   "status": "done",
   "stage": "done",
   "phase": "done",
   "pct": 100.0,
-  "created_at": 1793339769.1302998,
-  "finished_at": 1793339769.809267,
+  "created_at": 1793359781.5702138,
+  "finished_at": 1793359782.2895849,
   "analysis": "drop",
   "guide": true,
   "label": "guide only, not a guarantee",
@@ -23,12 +23,16 @@
       "material": {
         "name": null,
         "custom": null,
-        "fdm": null
+        "fdm": null,
+        "anisotropy": null,
+        "printer": null,
+        "calibrated": true
       },
       "mesh": {
         "size_mm": null,
         "refine_faces": [],
         "refine_factor": 0.4,
+        "refine_points": [],
         "second_order": true
       },
       "solver": {
@@ -52,12 +56,16 @@
     "material": {
       "name": null,
       "custom": null,
-      "fdm": null
+      "fdm": null,
+      "anisotropy": null,
+      "printer": null,
+      "calibrated": true
     },
     "mesh": {
       "size_mm": null,
       "refine_faces": [],
       "refine_factor": 0.4,
+      "refine_points": [],
       "second_order": true
     },
     "solver": {
@@ -74,7 +82,7 @@
       "max_levels": 4
     }
   },
-  "geometry_hash": "e98fb40e3ea48d4f7c20c1cba05bb6dd8bc9e89abac498aeca9e69209fa6aace",
+  "geometry_hash": "a9afc15b45552cc4874699b40d9965ddd435fdef908cddc96c3ecf358ae670e1",
   "material": {
     "name": "PLA",
     "e_mpa": 2300.0,
@@ -88,8 +96,20 @@
     "knockdown": 0.7,
     "stiffness_factor": 1.0,
     "custom": false,
+    "tangent_modulus_mpa": null,
+    "e_z_mpa": null,
+    "z_strength_mpa": null,
+    "build_dir": null,
+    "sn_a_mpa": null,
+    "sn_b": null,
+    "basis": "datasheet / estimate",
+    "calibration": null,
+    "basis_by_property": null,
+    "fdm_strength_factor": 1.0,
     "allowable_mpa": 35.699999999999996,
     "e_eff_mpa": 2300.0,
+    "tangent_eff_mpa": 23.0,
+    "tangent_source": "estimate (1% of E)",
     "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers"
   },
   "environment": null,
@@ -106,11 +126,11 @@
     "Peak stress excludes nodes on the fixed face (an ideal clamp gives a constraint singularity there); that value and a safety factor including it are reported separately."
   ],
   "urls": {
-    "record": "/sims/sim_e97e218807ea",
-    "glb": "/sims/sim_e97e218807ea/result.glb",
-    "charts": "/sims/sim_e97e218807ea/charts",
-    "probe": "/sims/sim_e97e218807ea/probe",
-    "section": "/sims/sim_e97e218807ea/section"
+    "record": "/sims/sim_531da4348759",
+    "glb": "/sims/sim_531da4348759/result.glb",
+    "charts": "/sims/sim_531da4348759/charts",
+    "probe": "/sims/sim_531da4348759/probe",
+    "section": "/sims/sim_531da4348759/section"
   },
   "solver": {
     "name": "CalculiX",
@@ -255,7 +275,7 @@
       "impact_velocity_m_s": 4.4294469180700204
     }
   },
-  "inputs_hash": "8279ccda0f5e167a4d357d11a76d9b73a4851b003b2d8eb1894290b955ee431f",
+  "inputs_hash": "776f1fb22e2ff40d7a231665984d30183d1d98525cd26899aaf46e75038db00c",
   "glb": "result.glb",
   "outputs": [
     "result.glb",
@@ -273,7 +293,7 @@
       "measured": 27860.09705599586,
       "unit": "",
       "status": "warn",
-      "sim_id": "sim_e97e218807ea",
+      "sim_id": "sim_531da4348759",
       "note": null
     }
   ],
@@ -289,7 +309,8 @@
       }
     ],
     "governing_case_id": "impact",
-    "sim_id": "sim_e97e218807ea",
+    "material_basis": "datasheet / estimate",
+    "sim_id": "sim_531da4348759",
     "type": "drop",
     "status": "done",
     "verdict": "warn",
@@ -334,7 +355,7 @@
         "measured": 27860.09705599586,
         "unit": "",
         "status": "warn",
-        "sim_id": "sim_e97e218807ea",
+        "sim_id": "sim_531da4348759",
         "note": null
       }
     ],
@@ -343,15 +364,15 @@
       "mesh not converged: peak stress changed 19% between the coarse and fine mesh; treat the peak as uncertain"
     ],
     "reason": "1 m drop onto the floor",
-    "run_id": "3a4f540ec817",
-    "step_id": 19,
+    "run_id": "96374179f1f7",
+    "step_id": 21,
     "urls": {
-      "record": "/sims/sim_e97e218807ea",
-      "glb": "/sims/sim_e97e218807ea/result.glb",
-      "charts": "/sims/sim_e97e218807ea/charts",
-      "probe": "/sims/sim_e97e218807ea/probe",
-      "section": "/sims/sim_e97e218807ea/section"
+      "record": "/sims/sim_531da4348759",
+      "glb": "/sims/sim_531da4348759/result.glb",
+      "charts": "/sims/sim_531da4348759/charts",
+      "probe": "/sims/sim_531da4348759/probe",
+      "section": "/sims/sim_531da4348759/section"
     },
-    "charts_url": "/sims/sim_e97e218807ea/charts"
+    "charts_url": "/sims/sim_531da4348759/charts"
   }
 }

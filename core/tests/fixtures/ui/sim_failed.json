@@ -1,17 +1,17 @@
 {
-  "sim_id": "sim_7341181be221",
+  "sim_id": "sim_79982871b01d",
   "part_id": "mount_plate",
   "type": "static",
-  "run_id": "6fd101567df3",
-  "call_id": "ui-1d347428f743",
-  "step_id": 15,
+  "run_id": "93a78ab6602f",
+  "call_id": "ui-4c946d40b282",
+  "step_id": 16,
   "reason": null,
   "status": "failed",
   "stage": "failed",
   "phase": "queued",
   "pct": 0.0,
-  "created_at": 1793340405.837328,
-  "finished_at": 1793340405.837711,
+  "created_at": 1793359743.6367779,
+  "finished_at": 1793359743.637235,
   "analysis": "static",
   "guide": true,
   "label": "guide only, not a guarantee",
@@ -23,12 +23,16 @@
       "material": {
         "name": "PETG",
         "custom": null,
-        "fdm": null
+        "fdm": null,
+        "anisotropy": null,
+        "printer": null,
+        "calibrated": true
       },
       "mesh": {
         "size_mm": null,
         "refine_faces": [],
         "refine_factor": 0.4,
+        "refine_points": [],
         "second_order": true
       },
       "solver": {
@@ -61,7 +65,9 @@
         "tol_pct": 5.0,
         "max_levels": 4
       },
-      "environment": "Desk"
+      "environment": "Desk",
+      "nonlinear": null,
+      "fatigue": null
     },
     "fix": "x-min",
     "load": {
@@ -76,12 +82,16 @@
     "material": {
       "name": "PETG",
       "custom": null,
-      "fdm": null
+      "fdm": null,
+      "anisotropy": null,
+      "printer": null,
+      "calibrated": true
     },
     "mesh": {
       "size_mm": null,
       "refine_faces": [],
       "refine_factor": 0.4,
+      "refine_points": [],
       "second_order": true
     },
     "solver": {
@@ -114,9 +124,11 @@
       "tol_pct": 5.0,
       "max_levels": 4
     },
-    "environment": "Desk"
+    "environment": "Desk",
+    "nonlinear": null,
+    "fatigue": null
   },
-  "geometry_hash": "77aecaeb1da35dfd08166136267d621cd69879d93afa7e1c1887e7de86c72612",
+  "geometry_hash": "301bef3bdca978d941a26876481e9246ff8c01aaabc5ecf26f490f2a69309c0f",
   "material": {
     "name": "PETG",
     "e_mpa": 1500.0,
@@ -130,8 +142,20 @@
     "knockdown": 0.7,
     "stiffness_factor": 1.0,
     "custom": false,
+    "tangent_modulus_mpa": null,
+    "e_z_mpa": null,
+    "z_strength_mpa": null,
+    "build_dir": null,
+    "sn_a_mpa": null,
+    "sn_b": null,
+    "basis": "datasheet / estimate",
+    "calibration": null,
+    "basis_by_property": null,
+    "fdm_strength_factor": 1.0,
     "allowable_mpa": 32.9,
     "e_eff_mpa": 1500.0,
+    "tangent_eff_mpa": 15.0,
+    "tangent_source": "estimate (1% of E)",
     "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers"
   },
   "environment": {
@@ -158,15 +182,16 @@
     "Peak stress excludes nodes on the fixed face (an ideal clamp gives a constraint singularity there); that value and a safety factor including it are reported separately."
   ],
   "urls": {
-    "record": "/sims/sim_7341181be221",
-    "glb": "/sims/sim_7341181be221/result.glb",
-    "charts": "/sims/sim_7341181be221/charts",
-    "probe": "/sims/sim_7341181be221/probe",
-    "section": "/sims/sim_7341181be221/section"
+    "record": "/sims/sim_79982871b01d",
+    "glb": "/sims/sim_79982871b01d/result.glb",
+    "charts": "/sims/sim_79982871b01d/charts",
+    "probe": "/sims/sim_79982871b01d/probe",
+    "section": "/sims/sim_79982871b01d/section"
   },
   "stale": false,
   "card": {
-    "sim_id": "sim_7341181be221",
+    "material_basis": "datasheet / estimate",
+    "sim_id": "sim_79982871b01d",
     "type": "static",
     "status": "failed",
     "verdict": "fail",
@@ -206,15 +231,15 @@
     "checks": [],
     "warnings": [],
     "reason": null,
-    "run_id": "6fd101567df3",
-    "step_id": 15,
+    "run_id": "93a78ab6602f",
+    "step_id": 16,
     "urls": {
-      "record": "/sims/sim_7341181be221",
-      "glb": "/sims/sim_7341181be221/result.glb",
-      "charts": "/sims/sim_7341181be221/charts",
-      "probe": "/sims/sim_7341181be221/probe",
-      "section": "/sims/sim_7341181be221/section"
+      "record": "/sims/sim_79982871b01d",
+      "glb": "/sims/sim_79982871b01d/result.glb",
+      "charts": "/sims/sim_79982871b01d/charts",
+      "probe": "/sims/sim_79982871b01d/probe",
+      "section": "/sims/sim_79982871b01d/section"
     },
-    "charts_url": "/sims/sim_7341181be221/charts"
+    "charts_url": "/sims/sim_79982871b01d/charts"
   }
 }

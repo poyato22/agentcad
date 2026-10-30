@@ -1,17 +1,17 @@
 {
-  "sim_id": "sim_2e1ebd541a5b",
+  "sim_id": "sim_137fe1977618",
   "part_id": "beam",
   "type": "thermal",
-  "run_id": "3a4f540ec817",
+  "run_id": "96374179f1f7",
   "call_id": "s4",
-  "step_id": 16,
+  "step_id": 18,
   "reason": "motor heat at the root",
   "status": "done",
   "stage": "done",
   "phase": "done",
   "pct": 100.0,
-  "created_at": 1793339768.554069,
-  "finished_at": 1793339769.1252449,
+  "created_at": 1793359780.983426,
+  "finished_at": 1793359781.5650308,
   "analysis": "thermal",
   "guide": true,
   "label": "guide only, not a guarantee",
@@ -23,12 +23,16 @@
       "material": {
         "name": null,
         "custom": null,
-        "fdm": null
+        "fdm": null,
+        "anisotropy": null,
+        "printer": null,
+        "calibrated": true
       },
       "mesh": {
         "size_mm": null,
         "refine_faces": [],
         "refine_factor": 0.4,
+        "refine_points": [],
         "second_order": true
       },
       "solver": {
@@ -57,12 +61,16 @@
     "material": {
       "name": null,
       "custom": null,
-      "fdm": null
+      "fdm": null,
+      "anisotropy": null,
+      "printer": null,
+      "calibrated": true
     },
     "mesh": {
       "size_mm": null,
       "refine_faces": [],
       "refine_factor": 0.4,
+      "refine_points": [],
       "second_order": true
     },
     "solver": {
@@ -84,7 +92,7 @@
       }
     ]
   },
-  "geometry_hash": "e98fb40e3ea48d4f7c20c1cba05bb6dd8bc9e89abac498aeca9e69209fa6aace",
+  "geometry_hash": "a9afc15b45552cc4874699b40d9965ddd435fdef908cddc96c3ecf358ae670e1",
   "material": {
     "name": "PLA",
     "e_mpa": 2300.0,
@@ -98,8 +106,20 @@
     "knockdown": 0.7,
     "stiffness_factor": 1.0,
     "custom": false,
+    "tangent_modulus_mpa": null,
+    "e_z_mpa": null,
+    "z_strength_mpa": null,
+    "build_dir": null,
+    "sn_a_mpa": null,
+    "sn_b": null,
+    "basis": "datasheet / estimate",
+    "calibration": null,
+    "basis_by_property": null,
+    "fdm_strength_factor": 1.0,
     "allowable_mpa": 35.699999999999996,
     "e_eff_mpa": 2300.0,
+    "tangent_eff_mpa": 23.0,
+    "tangent_source": "estimate (1% of E)",
     "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers"
   },
   "environment": null,
@@ -114,11 +134,11 @@
     "Small deflections assumed; contact, creep, fatigue, temperature and vibration are not simulated unless this study type says so."
   ],
   "urls": {
-    "record": "/sims/sim_2e1ebd541a5b",
-    "glb": "/sims/sim_2e1ebd541a5b/result.glb",
-    "charts": "/sims/sim_2e1ebd541a5b/charts",
-    "probe": "/sims/sim_2e1ebd541a5b/probe",
-    "section": "/sims/sim_2e1ebd541a5b/section"
+    "record": "/sims/sim_137fe1977618",
+    "glb": "/sims/sim_137fe1977618/result.glb",
+    "charts": "/sims/sim_137fe1977618/charts",
+    "probe": "/sims/sim_137fe1977618/probe",
+    "section": "/sims/sim_137fe1977618/section"
   },
   "solver": {
     "name": "CalculiX",
@@ -202,7 +222,7 @@
       "converged": null
     }
   },
-  "inputs_hash": "df0d5874c1f2cec618e7d771a2ebc784351c6e24e1ed52445be225576364a92f",
+  "inputs_hash": "20172762acae2e9adf33ddd35f0d35ebc26ae32c6a2f13aba7d452a42690c01c",
   "glb": "result.glb",
   "outputs": [
     "result.glb",
@@ -220,13 +240,14 @@
       "measured": 70.0,
       "unit": "degC",
       "status": "fail",
-      "sim_id": "sim_2e1ebd541a5b",
+      "sim_id": "sim_137fe1977618",
       "note": null
     }
   ],
   "stale": false,
   "card": {
-    "sim_id": "sim_2e1ebd541a5b",
+    "material_basis": "datasheet / estimate",
+    "sim_id": "sim_137fe1977618",
     "type": "thermal",
     "status": "done",
     "verdict": "fail",
@@ -265,7 +286,7 @@
         "measured": 70.0,
         "unit": "degC",
         "status": "fail",
-        "sim_id": "sim_2e1ebd541a5b",
+        "sim_id": "sim_137fe1977618",
         "note": null
       }
     ],
@@ -273,15 +294,15 @@
       "peak 70.0 C is at or above PLA's heat deflection temperature (55 C): the part may soften or creep"
     ],
     "reason": "motor heat at the root",
-    "run_id": "3a4f540ec817",
-    "step_id": 16,
+    "run_id": "96374179f1f7",
+    "step_id": 18,
     "urls": {
-      "record": "/sims/sim_2e1ebd541a5b",
-      "glb": "/sims/sim_2e1ebd541a5b/result.glb",
-      "charts": "/sims/sim_2e1ebd541a5b/charts",
-      "probe": "/sims/sim_2e1ebd541a5b/probe",
-      "section": "/sims/sim_2e1ebd541a5b/section"
+      "record": "/sims/sim_137fe1977618",
+      "glb": "/sims/sim_137fe1977618/result.glb",
+      "charts": "/sims/sim_137fe1977618/charts",
+      "probe": "/sims/sim_137fe1977618/probe",
+      "section": "/sims/sim_137fe1977618/section"
     },
-    "charts_url": "/sims/sim_2e1ebd541a5b/charts"
+    "charts_url": "/sims/sim_137fe1977618/charts"
   }
 }

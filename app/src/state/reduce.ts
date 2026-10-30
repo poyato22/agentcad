@@ -35,6 +35,8 @@ export const KNOWN_EVENTS: ReadonlySet<string> = new Set([
   "run_started", "run_queued", "run_finished", "tool_call", "tool_result", "approval_requested", "question_asked",
   "question_answered", "text_delta", "thought_delta", "note", "plan", "usage", "diff", "file_written",
   "turn_retry", "compaction", "part_changed", "run_deleted", "agent_activity", "agent_thinking",
+  // Plan 7 U3c announcements (and Plan 8 G1's critique / view cards in the same format)
+  "agent_announce",
 ]);
 
 type Out = { state: AppState; effects: Effect[] };

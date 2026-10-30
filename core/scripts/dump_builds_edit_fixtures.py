@@ -7,7 +7,7 @@ the Builds, Part-tree and live-edit routes return:
 
     uv run python scripts/dump_builds_edit_fixtures.py --out tests/fixtures/ui
 
-projects_*.json, part_patch*.json, parts_reorder.json, parts_tree.json (+ quad_arm.glb, top_plate.glb), part_source*.json,
+projects_*.json, part_patch*.json, part_duplicate.json, part_delete.json, parts_reorder.json, parts_tree.json (+ quad_arm.glb, top_plate.glb), part_source*.json,
 part_vars*.json, part_ops*.json and builds_events.jsonl (the `part_changed` events).
 """
 import argparse
@@ -182,6 +182,11 @@ async def dump(out: Path) -> None:
             await create("mount_plate", MOUNT_PLATE, {"thickness": 6.0})
             plate = next(p for p in await call("GET", "/parts") if p["id"] == "mount_plate")
             write("mount_plate_metrics.json", plate["metrics"])
+
+            # Plan 7 U8's parts manager: duplicate a built part, then delete the copy
+            dup = await call("POST", "/parts/mount_plate/duplicate")
+            write("part_duplicate.json", dup)
+            write("part_delete.json", await call("DELETE", f"/parts/{dup['id']}"))
 
         events = []
         while not sub.queue.empty():

@@ -37,12 +37,21 @@
     },
     {
       "id": "openfoam_container",
-      "name": "OpenFOAM via Docker / OrbStack (optional)",
+      "name": "Docker / OrbStack (for OpenFOAM, optional)",
       "status": "ok",
       "version": null,
       "path": "/usr/local/bin/docker",
-      "detail": "container runtime found; OpenFOAM runs are not wired up yet",
+      "detail": "container runtime found",
       "fix": null
+    },
+    {
+      "id": "openfoam",
+      "name": "OpenFOAM v2512 image (optional CFD solver)",
+      "status": "optional_missing",
+      "version": null,
+      "path": null,
+      "fix": null,
+      "detail": "Docker / OrbStack is installed but not running; start it to check for the OpenFOAM image"
     }
   ]
 }

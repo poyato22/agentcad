@@ -156,7 +156,7 @@ describe("left pane", () => {
     const step = screen.getByText(/^v-step: thickness 5→6 · \+0\.96 g$/);
     fireEvent.click(step);
     expect(selectedRunId.value).toBe(RUN);
-    expect(focusedStepId.value).toBe(7);
+    expect(focusedStepId.value).toBe(8);
   });
 
   it("no_auto_numbered_labels", () => {

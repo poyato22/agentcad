@@ -17,7 +17,7 @@
    "created_at": 1793340500.0,
    "updated_at": 1793340530.0,
    "owner_pid": null,
-   "project_id": "466a0d9d96a8",
+   "project_id": "068b8b99ce32",
    "shape_complexity": {
     "score": 0.82,
     "level": "high",
@@ -52,8 +52,8 @@
     "agent_announce": {
      "run_id": "c4e1a9b07d21",
      "kind": "critique_round",
-     "title": "Critique round 1/3: score 0.41 \u2014 needs fixes",
-     "detail": "0 fixed \u00b7 3 open (2 high)",
+     "title": "Critique round 1/3: score 0.41 — needs fixes",
+     "detail": "0 fixed · 3 open (2 high)",
      "ref": {
       "parts": [
        "pi_case",
@@ -63,7 +63,7 @@
        "pi_lid"
       ],
       "part_id": null,
-      "project_id": "466a0d9d96a8",
+      "project_id": "068b8b99ce32",
       "round": 1,
       "max_rounds": 3,
       "mode": "vision_model",
@@ -101,7 +101,8 @@
       },
       "before_image_id": "crit_r1_before",
       "after_image_id": "crit_r1_after",
-      "image_tokens": 1180
+      "image_tokens": 1180,
+      "reference_scores": []
      }
     }
    },
@@ -118,8 +119,8 @@
     "agent_announce": {
      "run_id": "c4e1a9b07d21",
      "kind": "critique_round",
-     "title": "Critique round 2/3: score 0.88 \u2014 matches",
-     "detail": "3 fixed \u00b7 0 open (0 high)",
+     "title": "Critique round 2/3: score 0.88 — matches",
+     "detail": "3 fixed · 0 open (0 high)",
      "ref": {
       "parts": [
        "pi_case",
@@ -129,7 +130,7 @@
        "pi_lid"
       ],
       "part_id": null,
-      "project_id": "466a0d9d96a8",
+      "project_id": "068b8b99ce32",
       "round": 2,
       "max_rounds": 3,
       "mode": "vision_model",
@@ -171,7 +172,8 @@
       },
       "before_image_id": "crit_r1_after",
       "after_image_id": "crit_r2_after",
-      "image_tokens": 2360
+      "image_tokens": 2360,
+      "reference_scores": []
      }
     }
    },
@@ -195,8 +197,8 @@
        "kind": "orbit",
        "target": {
         "kind": "project",
-        "id": "466a0d9d96a8",
-        "project_id": "466a0d9d96a8",
+        "id": "068b8b99ce32",
+        "project_id": "068b8b99ce32",
         "parts": [
          "pi_case",
          "pi_board",
@@ -227,7 +229,7 @@
        "thumbnail_id": "view_case_iso"
       },
       "thumbnail_id": "view_case_iso",
-      "project_id": "466a0d9d96a8"
+      "project_id": "068b8b99ce32"
      }
     }
    },
@@ -251,8 +253,8 @@
        "kind": "internal",
        "target": {
         "kind": "project",
-        "id": "466a0d9d96a8",
-        "project_id": "466a0d9d96a8",
+        "id": "068b8b99ce32",
+        "project_id": "068b8b99ce32",
         "parts": [
          "pi_case",
          "pi_board",
@@ -287,7 +289,7 @@
        "thumbnail_id": null
       },
       "thumbnail_id": null,
-      "project_id": "466a0d9d96a8"
+      "project_id": "068b8b99ce32"
      }
     }
    },
@@ -311,8 +313,8 @@
        "kind": "section",
        "target": {
         "kind": "project",
-        "id": "466a0d9d96a8",
-        "project_id": "466a0d9d96a8",
+        "id": "068b8b99ce32",
+        "project_id": "068b8b99ce32",
         "parts": [
          "pi_case",
          "pi_board",
@@ -355,7 +357,7 @@
        "thumbnail_id": null
       },
       "thumbnail_id": null,
-      "project_id": "466a0d9d96a8"
+      "project_id": "068b8b99ce32"
      }
     }
    },
@@ -379,8 +381,8 @@
        "kind": "exploded",
        "target": {
         "kind": "project",
-        "id": "466a0d9d96a8",
-        "project_id": "466a0d9d96a8",
+        "id": "068b8b99ce32",
+        "project_id": "068b8b99ce32",
         "parts": [
          "pi_case",
          "pi_board",
@@ -408,7 +410,7 @@
        "thumbnail_id": null
       },
       "thumbnail_id": null,
-      "project_id": "466a0d9d96a8"
+      "project_id": "068b8b99ce32"
      }
     }
    },
@@ -432,8 +434,8 @@
        "kind": "subset",
        "target": {
         "kind": "project",
-        "id": "466a0d9d96a8",
-        "project_id": "466a0d9d96a8",
+        "id": "068b8b99ce32",
+        "project_id": "068b8b99ce32",
         "parts": [
          "pi_fan",
          "pi_battery"
@@ -463,7 +465,7 @@
        "thumbnail_id": null
       },
       "thumbnail_id": null,
-      "project_id": "466a0d9d96a8"
+      "project_id": "068b8b99ce32"
      }
     }
    },
@@ -525,7 +527,7 @@
     "mass_g": 35.861
    },
    "mtime": 1793340500.0,
-   "project_id": "466a0d9d96a8",
+   "project_id": "068b8b99ce32",
    "label": "pi_case",
    "order": 0,
    "color": null,
@@ -568,7 +570,7 @@
     "mass_g": 5.555
    },
    "mtime": 1793340501.0,
-   "project_id": "466a0d9d96a8",
+   "project_id": "068b8b99ce32",
    "label": "pi_board",
    "order": 1,
    "color": null,
@@ -611,7 +613,7 @@
     "mass_g": 15.475
    },
    "mtime": 1793340502.0,
-   "project_id": "466a0d9d96a8",
+   "project_id": "068b8b99ce32",
    "label": "pi_battery",
    "order": 2,
    "color": "#c9a227",
@@ -654,7 +656,7 @@
     "mass_g": 2.867
    },
    "mtime": 1793340503.0,
-   "project_id": "466a0d9d96a8",
+   "project_id": "068b8b99ce32",
    "label": "pi_fan",
    "order": 3,
    "color": null,
@@ -697,7 +699,7 @@
     "mass_g": 13.838
    },
    "mtime": 1793340504.0,
-   "project_id": "466a0d9d96a8",
+   "project_id": "068b8b99ce32",
    "label": "pi_lid",
    "order": 4,
    "color": null,

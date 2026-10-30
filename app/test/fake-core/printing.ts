@@ -165,7 +165,7 @@ export function printingRoutes(d: PrintingDeps): Route[] {
       p.call = {
         ...p.call, status: "done",
         output: { ok: true, summary: `sent ${String(a.payload.file_name)} to ${printer(pid).name}; the printer is starting the job`,
-          data: { slice_id: sid, printer_id: pid, file: a.payload.file_name }, handles: [], warnings: [], step_kind: "tool_result" },
+          data: { slice_id: sid, printer_id: pid, file: a.payload.file_name }, handles: [], warnings: [], step_kind: "tool_result", images: [] },
       };
     } else {
       p.call = { ...p.call, status: "failed", error: { error: "denied", message: `approval ${a.status} for print_send`, hint: null, retryable: false } };

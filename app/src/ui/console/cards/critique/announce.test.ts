@@ -99,20 +99,23 @@ describe("g4 announcements", () => {
   });
 
   // The real core's cards (G1's tests/fixtures/g1_cards.json, captured from tool output; a copy
-  // lives in app/test/fixtures/core-ui/ until G5 merges): every field the cards use is there.
+  // in app/test/fixtures/core-ui/, re-dumped from the merged core): every field the cards use is
+  // there. Ids are the dump's own (random per run), read from it.
   it("reads G1's captured cards", () => {
     const cards = JSON.parse(readFileSync(resolve(import.meta.dirname, "../../../../../test/fixtures/core-ui/g1_cards.json"), "utf8")) as Record<string, Record<string, unknown>>;
+    const cref = cards["critique_round"].ref as Record<string, unknown>;
+    const vref = cards["view_presented"].ref as Record<string, unknown>;
     const crit = g4Announcement(step({ agent_announce: cards["critique_round"] }));
     if (crit?.kind !== "critique_round") throw new Error("no critique card");
     expect(crit.round).toMatchObject({ round: 2, maxRounds: 3, score: 0.9, threshold: 0.8, done: true, stopReason: "score_threshold",
-      before: { id: "crit_k1_iso" }, after: { id: "crit_k3_iso" }, parts: ["body"] });
+      before: { id: cref.before_image_id }, after: { id: cref.after_image_id }, parts: ["body"] });
     expect(crit.round.fixed.map((i) => i.issue)).toEqual(["flat wing"]);
     const view = g4Announcement(step({ agent_announce: cards["view_presented"] }));
     if (view?.kind !== "view_presented") throw new Error("no view card");
     const s = view.view.spec;
-    expect(s).toMatchObject({ kind: "subset", target: { part_id: null, project_id: "e902d34049f0" }, parts: ["lid"], ghost: ["body"],
+    expect(s).toMatchObject({ kind: "subset", target: { part_id: null, project_id: vref.project_id }, parts: ["lid"], ghost: ["body"],
       camera: { azimuth: 45, elevation: 30, distance: null }, orbit: { duration_s: 12, turns: 1 }, caption: "the lid" });
-    expect(view.view.thumbnail).toEqual({ id: "pv_v1_iso" });
+    expect(view.view.thumbnail).toEqual({ id: vref.thumbnail_id });
     expect(partsForSpec(s, [])).toEqual(["lid", "body"]);
     expect(modesForSpec(s).isolate).toEqual(["lid"]);
   });

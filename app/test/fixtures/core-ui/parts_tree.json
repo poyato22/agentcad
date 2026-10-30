@@ -1,7 +1,7 @@
 [
   {
     "id": "top_plate",
-    "project_id": "1f53b1bfcb90",
+    "project_id": "068b8b99ce32",
     "label": "top_plate",
     "parent_id": null,
     "order": 0,
@@ -464,11 +464,11 @@
       "holes": [],
       "solids": 1
     },
-    "mtime": 1793308709.2909997
+    "mtime": 1793360637.77218
   },
   {
     "id": "quad_arm",
-    "project_id": "1f53b1bfcb90",
+    "project_id": "068b8b99ce32",
     "label": "Quad arm",
     "parent_id": null,
     "order": 1,
@@ -553,7 +553,8 @@
             -0.7071,
             0.0
           ],
-          "area": 7.854
+          "area": 7.854,
+          "radius": 1.0
         },
         {
           "id": "f3",
@@ -624,7 +625,8 @@
             0.0
           ],
           "normal": null,
-          "area": 47.124
+          "area": 47.124,
+          "radius": 1.5
         }
       ],
       "edges": 18,
@@ -762,7 +764,8 @@
               -0.7071,
               0.0
             ]
-          ]
+          ],
+          "radius": 1.0
         },
         {
           "id": "e5",
@@ -865,7 +868,8 @@
               0.0,
               1.0
             ]
-          ]
+          ],
+          "radius": 1.5
         },
         {
           "id": "e9",
@@ -892,7 +896,8 @@
               0.0,
               -1.0
             ]
-          ]
+          ],
+          "radius": 1.0
         },
         {
           "id": "e10",
@@ -1049,7 +1054,8 @@
               0.0,
               -1.0
             ]
-          ]
+          ],
+          "radius": 1.5
         },
         {
           "id": "e16",
@@ -1113,6 +1119,6 @@
       ],
       "solids": 1
     },
-    "mtime": 1793308724.5216644
+    "mtime": 1793360645.0660439
   }
 ]

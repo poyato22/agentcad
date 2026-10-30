@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "display_name": "",
   "units": "mm",
   "default_material": "PLA",
@@ -16,10 +16,206 @@
   },
   "setup_completed_at": null,
   "printers": [],
-  "active_project_id": "1f53b1bfcb90",
+  "active_project_id": "068b8b99ce32",
   "open_project_ids": [
-    "1f53b1bfcb90"
+    "068b8b99ce32"
   ],
   "hidden_agents": [],
-  "catalog_allowed_domains": []
+  "catalog_allowed_domains": [],
+  "suggested_sites": [
+    {
+      "name": "McMaster-Carr",
+      "domain": "mcmaster.com",
+      "search_url": "https://www.mcmaster.com/{q}/",
+      "categories": [
+        "fasteners",
+        "bearings",
+        "mechanical",
+        "materials"
+      ],
+      "suggested": true
+    },
+    {
+      "name": "Misumi",
+      "domain": "misumi-ec.com",
+      "search_url": "https://us.misumi-ec.com/vona2/result/?Keyword={q}",
+      "categories": [
+        "fasteners",
+        "bearings",
+        "mechanical",
+        "materials"
+      ],
+      "suggested": true
+    },
+    {
+      "name": "Digi-Key",
+      "domain": "digikey.com",
+      "search_url": "https://www.digikey.com/en/products/result?keywords={q}",
+      "categories": [
+        "electronics",
+        "motors"
+      ],
+      "suggested": true
+    },
+    {
+      "name": "Mouser",
+      "domain": "mouser.com",
+      "search_url": "https://www.mouser.com/c/?q={q}",
+      "categories": [
+        "electronics"
+      ],
+      "suggested": true
+    },
+    {
+      "name": "Adafruit",
+      "domain": "adafruit.com",
+      "search_url": "https://www.adafruit.com/search?q={q}",
+      "categories": [
+        "electronics",
+        "maker",
+        "servos",
+        "motors"
+      ],
+      "suggested": true
+    },
+    {
+      "name": "SparkFun",
+      "domain": "sparkfun.com",
+      "search_url": "https://www.sparkfun.com/catalogsearch/result/?q={q}",
+      "categories": [
+        "electronics",
+        "maker",
+        "motors"
+      ],
+      "suggested": true
+    },
+    {
+      "name": "Pololu",
+      "domain": "pololu.com",
+      "search_url": "https://www.pololu.com/search?query={q}",
+      "categories": [
+        "motors",
+        "servos",
+        "robotics",
+        "electronics"
+      ],
+      "suggested": true
+    },
+    {
+      "name": "ServoCity",
+      "domain": "servocity.com",
+      "search_url": "https://www.servocity.com/search.php?search_query={q}",
+      "categories": [
+        "servos",
+        "motors",
+        "robotics",
+        "mechanical",
+        "bearings"
+      ],
+      "suggested": true
+    },
+    {
+      "name": "GetFPV",
+      "domain": "getfpv.com",
+      "search_url": "https://www.getfpv.com/catalogsearch/result/?q={q}",
+      "categories": [
+        "fpv",
+        "motors"
+      ],
+      "suggested": true
+    },
+    {
+      "name": "RobotShop",
+      "domain": "robotshop.com",
+      "search_url": "https://www.robotshop.com/search?q={q}",
+      "categories": [
+        "robotics",
+        "servos",
+        "motors"
+      ],
+      "suggested": true
+    },
+    {
+      "name": "AliExpress",
+      "domain": "aliexpress.com",
+      "search_url": "https://www.aliexpress.com/wholesale?SearchText={q}",
+      "categories": [
+        "general"
+      ],
+      "suggested": true
+    },
+    {
+      "name": "Amazon",
+      "domain": "amazon.com",
+      "search_url": "https://www.amazon.com/s?k={q}",
+      "categories": [
+        "general"
+      ],
+      "suggested": true
+    },
+    {
+      "name": "Texas Instruments",
+      "domain": "ti.com",
+      "search_url": null,
+      "categories": [
+        "datasheets",
+        "electronics"
+      ],
+      "suggested": true
+    },
+    {
+      "name": "STMicroelectronics",
+      "domain": "st.com",
+      "search_url": null,
+      "categories": [
+        "datasheets",
+        "electronics"
+      ],
+      "suggested": true
+    },
+    {
+      "name": "Analog Devices",
+      "domain": "analog.com",
+      "search_url": null,
+      "categories": [
+        "datasheets",
+        "electronics"
+      ],
+      "suggested": true
+    },
+    {
+      "name": "Microchip",
+      "domain": "microchip.com",
+      "search_url": null,
+      "categories": [
+        "datasheets",
+        "electronics"
+      ],
+      "suggested": true
+    },
+    {
+      "name": "Raspberry Pi",
+      "domain": "raspberrypi.com",
+      "search_url": null,
+      "categories": [
+        "datasheets",
+        "electronics"
+      ],
+      "suggested": true
+    },
+    {
+      "name": "Arduino",
+      "domain": "arduino.cc",
+      "search_url": null,
+      "categories": [
+        "datasheets",
+        "electronics"
+      ],
+      "suggested": true
+    }
+  ],
+  "browser_fetches_per_run": 60,
+  "critique_max_rounds": 3,
+  "critique_time_budget_s": 300.0,
+  "critique_max_image_tokens": 12000
 }

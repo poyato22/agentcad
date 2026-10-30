@@ -1,17 +1,17 @@
 {
-  "sim_id": "sim_ace335f7f9a7",
+  "sim_id": "sim_77f319aff6cb",
   "part_id": "beam",
   "type": "modal",
-  "run_id": "3a4f540ec817",
+  "run_id": "96374179f1f7",
   "call_id": "s2",
-  "step_id": 10,
+  "step_id": 12,
   "reason": "keep the beam's modes clear of the 2-blade prop at 12k rpm",
   "status": "done",
   "stage": "done",
   "phase": "done",
   "pct": 100.0,
-  "created_at": 1793339766.36221,
-  "finished_at": 1793339767.308908,
+  "created_at": 1793359778.836589,
+  "finished_at": 1793359779.77245,
   "analysis": "modal",
   "guide": true,
   "label": "guide only, not a guarantee",
@@ -23,12 +23,16 @@
       "material": {
         "name": null,
         "custom": null,
-        "fdm": null
+        "fdm": null,
+        "anisotropy": null,
+        "printer": null,
+        "calibrated": true
       },
       "mesh": {
         "size_mm": null,
         "refine_faces": [],
         "refine_factor": 0.4,
+        "refine_points": [],
         "second_order": true
       },
       "solver": {
@@ -57,12 +61,16 @@
     "material": {
       "name": null,
       "custom": null,
-      "fdm": null
+      "fdm": null,
+      "anisotropy": null,
+      "printer": null,
+      "calibrated": true
     },
     "mesh": {
       "size_mm": null,
       "refine_faces": [],
       "refine_factor": 0.4,
+      "refine_points": [],
       "second_order": true
     },
     "solver": {
@@ -84,7 +92,7 @@
       "margin_pct": 15.0
     }
   },
-  "geometry_hash": "e98fb40e3ea48d4f7c20c1cba05bb6dd8bc9e89abac498aeca9e69209fa6aace",
+  "geometry_hash": "a9afc15b45552cc4874699b40d9965ddd435fdef908cddc96c3ecf358ae670e1",
   "material": {
     "name": "PLA",
     "e_mpa": 2300.0,
@@ -98,8 +106,20 @@
     "knockdown": 0.7,
     "stiffness_factor": 1.0,
     "custom": false,
+    "tangent_modulus_mpa": null,
+    "e_z_mpa": null,
+    "z_strength_mpa": null,
+    "build_dir": null,
+    "sn_a_mpa": null,
+    "sn_b": null,
+    "basis": "datasheet / estimate",
+    "calibration": null,
+    "basis_by_property": null,
+    "fdm_strength_factor": 1.0,
     "allowable_mpa": 35.699999999999996,
     "e_eff_mpa": 2300.0,
+    "tangent_eff_mpa": 23.0,
+    "tangent_source": "estimate (1% of E)",
     "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers"
   },
   "environment": null,
@@ -112,11 +132,11 @@
     "Small deflections assumed; contact, creep, fatigue, temperature and vibration are not simulated unless this study type says so."
   ],
   "urls": {
-    "record": "/sims/sim_ace335f7f9a7",
-    "glb": "/sims/sim_ace335f7f9a7/result.glb",
-    "charts": "/sims/sim_ace335f7f9a7/charts",
-    "probe": "/sims/sim_ace335f7f9a7/probe",
-    "section": "/sims/sim_ace335f7f9a7/section"
+    "record": "/sims/sim_77f319aff6cb",
+    "glb": "/sims/sim_77f319aff6cb/result.glb",
+    "charts": "/sims/sim_77f319aff6cb/charts",
+    "probe": "/sims/sim_77f319aff6cb/probe",
+    "section": "/sims/sim_77f319aff6cb/section"
   },
   "solver": {
     "name": "CalculiX",
@@ -228,7 +248,7 @@
       "converged": null
     }
   },
-  "inputs_hash": "3a35cd2b4e79fb71f16b45858e1322a63b1a4bbb9d2907355efe880587b4f8bc",
+  "inputs_hash": "8124458762ce7a658706160c5c0747a740e7fea4b51edddbf93872cac5dd2cf4",
   "glb": "result.glb",
   "outputs": [
     "result.glb",
@@ -245,12 +265,13 @@
       "measured": 0,
       "unit": "modes",
       "status": "pass",
-      "sim_id": "sim_ace335f7f9a7"
+      "sim_id": "sim_77f319aff6cb"
     }
   ],
   "stale": false,
   "card": {
-    "sim_id": "sim_ace335f7f9a7",
+    "material_basis": "datasheet / estimate",
+    "sim_id": "sim_77f319aff6cb",
     "type": "modal",
     "status": "done",
     "verdict": "pass",
@@ -292,21 +313,21 @@
         "measured": 0,
         "unit": "modes",
         "status": "pass",
-        "sim_id": "sim_ace335f7f9a7",
+        "sim_id": "sim_77f319aff6cb",
         "note": null
       }
     ],
     "warnings": [],
     "reason": "keep the beam's modes clear of the 2-blade prop at 12k rpm",
-    "run_id": "3a4f540ec817",
-    "step_id": 10,
+    "run_id": "96374179f1f7",
+    "step_id": 12,
     "urls": {
-      "record": "/sims/sim_ace335f7f9a7",
-      "glb": "/sims/sim_ace335f7f9a7/result.glb",
-      "charts": "/sims/sim_ace335f7f9a7/charts",
-      "probe": "/sims/sim_ace335f7f9a7/probe",
-      "section": "/sims/sim_ace335f7f9a7/section"
+      "record": "/sims/sim_77f319aff6cb",
+      "glb": "/sims/sim_77f319aff6cb/result.glb",
+      "charts": "/sims/sim_77f319aff6cb/charts",
+      "probe": "/sims/sim_77f319aff6cb/probe",
+      "section": "/sims/sim_77f319aff6cb/section"
     },
-    "charts_url": "/sims/sim_ace335f7f9a7/charts"
+    "charts_url": "/sims/sim_77f319aff6cb/charts"
   }
 }

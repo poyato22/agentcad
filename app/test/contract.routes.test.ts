@@ -9,6 +9,7 @@ import { z } from "zod";
 import {
   agentDetailSchema, agentInfoSchema, agentRunSchema, approvalSchema, cancelAllSchema, cleanupResultSchema, coreErrorBodySchema, keyStatusSchema,
   localActionSchema, okSchema, runIdSchema, runNodeSchema,
+  partSummarySchema,
 } from "../src/api/schemas";
 import { parsePendingQuestions, toolListSchema } from "../src/api/client";
 import type { Approval } from "../src/api/types";
@@ -57,6 +58,10 @@ beforeAll(async () => {
   fake.set("key_set.json", await ok("POST", "/keys/openai", { secret: "sk-fixture-0000" }));
   fake.set("key_delete.json", await ok("DELETE", "/keys/openai"));
   fake.set("drawing.dxf", await ok("GET", "/parts/mount_plate/drawing.dxf"));
+  // Plan 7 U8's parts manager (dump_builds_edit_fixtures.py: duplicate mount_plate, delete the copy)
+  const dup = (await ok("POST", "/parts/mount_plate/duplicate")) as { part_id: string };
+  fake.set("part_duplicate.json", dup);
+  fake.set("part_delete.json", await ok("DELETE", `/parts/${dup.part_id}`));
   // POST /runs: the real core's dump started its run from a sketch (sketch_run.json); the answer is
   // the same {run_id} without one, and the app no longer sends sketches (Plan 7 U2b)
   fake.set("sketch_run.json", await ok("POST", "/runs", { agent: "designer", prompt: "make this bracket" }));
@@ -110,6 +115,7 @@ const CASES: [string, z.ZodType<unknown>][] = [
   ["runs_tree.json", z.array(runNodeSchema)], ["runs_cleanup.json", cleanupResultSchema],
   ["run_patch.json", agentRunSchema], ["run_delete.json", okSchema],
   ["tools.json", toolListSchema], ["run_pending.json", runPendingSchema],
+  ["part_duplicate.json", partSummarySchema], ["part_delete.json", z.object({ deleted: z.string() })],
 ];
 
 describe("contract: remaining routes ↔ schemas ↔ fake core", () => {
@@ -197,6 +203,10 @@ const COVERAGE: Record<string, string> = {
   "GET /sims/{sim_id}": "sim_done.json", "GET /sims/{sim_id}/result.glb": "sim_result.glb",
   "POST /sketches": "EXEMPT: Plan 7 U2b removed the app's Sketch page; the app never calls it (core sketch tests cover it)",
   "GET /sketches/{sketch_id}": "EXEMPT: Plan 7 U2b removed the app's Sketch page; the app never calls it (core sketch tests cover it)",
+  // Plan 8 G1 render images and reference uploads
+  "GET /renders/{name}": "EXEMPT: PNG bytes of a sandboxed render; core test_renders_api covers ids, links and auth, and the cards that name them are g1_cards.json (contract-checked in the critique card tests)",
+  "POST /references": "EXEMPT: Plan 8 G-R4 reference images; the app has no upload UI yet (the agent reads them from context); core test_references covers it",
+  "GET /references/{reference_id}": "EXEMPT: Plan 8 G-R4 reference images; the app has no viewer for them yet; core test_references covers it",
   // Plan 7 U5 drawing import (contract.imports.test.ts)
   "POST /imports/drawing": "drawing_import_upload.json", "GET /imports/{import_id}": "drawing_import_done.json",
   "GET /imports/{import_id}/original": "drawing_import_original.svg",
@@ -223,8 +233,8 @@ const COVERAGE: Record<string, string> = {
   "POST /agents": "agent_create.json",
   "POST /parts/reorder": "parts_reorder.json",
   // Plan 7 U8: the part menu's duplicate / delete / export (core tests/server/test_parts_manager_api.py)
-  "POST /parts/{part_id}/duplicate": "EXEMPT: Plan 7 U8; answers a GET /parts row (part_patch.json's shape); core test_parts_manager_api covers it; real-core fixture at the integration re-dump",
-  "DELETE /parts/{part_id}": "EXEMPT: Plan 7 U8; answers {deleted}; core test_parts_manager_api covers it; real-core fixture at the integration re-dump",
+  "POST /parts/{part_id}/duplicate": "part_duplicate.json",   // Plan 7 U8 (dump_builds_edit_fixtures.py)
+  "DELETE /parts/{part_id}": "part_delete.json",
   "POST /parts/{part_id}/export": "EXEMPT: Plan 7 U8; writes to ~/Downloads (MISES_EXPORT_DIR), so the dump can't run it on the dev home; core test_parts_manager_api covers it",
   "POST /projects": "project_create.json",
   "POST /projects/trash/empty": "projects_trash_empty.json",

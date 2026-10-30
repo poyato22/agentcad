@@ -1,13 +1,14 @@
 [
   {
     "id": "mount_plate",
-    "project_id": "56c12daaee72",
+    "project_id": "2e74d4c1b6a0",
     "label": "mount_plate",
     "parent_id": null,
     "order": 0,
     "color": null,
     "kind": "part",
     "version": 1,
+    "appearance": null,
     "part_id": "mount_plate",
     "vars": {
       "thickness": 5.0
@@ -639,6 +640,6 @@
       ],
       "solids": 1
     },
-    "mtime": 1793353899.7870717
+    "mtime": 1793359814.9462092
   }
 ]

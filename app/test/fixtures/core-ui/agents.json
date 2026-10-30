@@ -8,6 +8,20 @@
     "hidden": false
   },
   {
+    "name": "drawing-import",
+    "description": "Reads a technical drawing (PDF or image) and builds the part it shows, then checks every dimension against the drawing.",
+    "model": "inherit",
+    "tools": [
+      "drawing_spec_submit",
+      "mirror_measure",
+      "mirror_part_list",
+      "ui_ask_user",
+      "ui_note"
+    ],
+    "builtin": true,
+    "hidden": false
+  },
+  {
     "name": "engineer",
     "description": "Lead engineering agent. Turns \"build me a <system>\" into questions, a spec, several studied concepts and a chosen, verified variant.",
     "model": "inherit",
@@ -43,6 +57,9 @@
     "tools": [
       "sim_env_list",
       "sim_types_list",
+      "calibration_list",
+      "calibration_fit",
+      "calibration_save",
       "sim_run",
       "sim_static_run",
       "sim_result_get",
@@ -70,7 +87,9 @@
       "onshape_variables_get",
       "onshape_budget_get",
       "design_review",
-      "ui_note"
+      "ui_note",
+      "render_views",
+      "critique_model"
     ],
     "builtin": true,
     "hidden": false

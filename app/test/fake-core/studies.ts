@@ -343,7 +343,7 @@ export function startStudy(d: StudyDeps, b: Record<string, unknown>): { run_id: 
     const summary = `GUIDE ONLY - ${type} study of ${partId} (fake core, real ${type} numbers)`;
     progress({ stage: "done", phase: "done", pct: 100, detail: "done" });
     d.emit({ type: "tool_result", run_id: run.id, data: { call_id: callId, name: "sim_run", ok: true, summary } },
-      { steps: [{ kind: "sim_run", payload: { call_id: callId, name: "sim_run", output: { ok: true, summary, data, handles: [], warnings: rec.warnings, step_kind: "sim_run" } } }] });
+      { steps: [{ kind: "sim_run", payload: { call_id: callId, name: "sim_run", output: { ok: true, summary, data, handles: [], warnings: rec.warnings, step_kind: "sim_run", images: [] } } }] });
     d.emit({ type: "run_finished", run_id: run.id, data: { status: "done", stop_reason: "done", error: null, final_text: "", external: true } });
   };
   st.running.set(simId, { runId: run.id, timers, finish: () => finish("cancelled") });

@@ -1,17 +1,17 @@
 {
-  "sim_id": "sim_d4bf1e6c82ee",
+  "sim_id": "sim_b58ae926a3bd",
   "part_id": "beam",
   "type": "static",
-  "run_id": "7a209d054009",
-  "call_id": "ui-70ebcff7eed5",
-  "step_id": 7,
+  "run_id": "fc6404f48f30",
+  "call_id": "ui-4a4ac1b35537",
+  "step_id": 10,
   "reason": null,
   "status": "done",
   "stage": "done",
   "phase": "done",
   "pct": 100.0,
-  "created_at": 1793354239.686889,
-  "finished_at": 1793354241.32002,
+  "created_at": 1793359827.782651,
+  "finished_at": 1793359829.194865,
   "analysis": "static",
   "guide": true,
   "label": "guide only, not a guarantee",
@@ -142,7 +142,7 @@
     },
     "fatigue": null
   },
-  "geometry_hash": "ef22478aa482fe45fd2f212b56c1fee9f8d3e39cab1442a44f38edc4a0592691",
+  "geometry_hash": "149f87bd740a9118ba2e3f59c7cc6f5a4222140cfc48d42cfbcbcff72905ef88",
   "material": {
     "name": "PLA",
     "e_mpa": 2300.0,
@@ -188,11 +188,11 @@
     "Peak stress excludes nodes on the fixed face (an ideal clamp gives a constraint singularity there); that value and a safety factor including it are reported separately."
   ],
   "urls": {
-    "record": "/sims/sim_d4bf1e6c82ee",
-    "glb": "/sims/sim_d4bf1e6c82ee/result.glb",
-    "charts": "/sims/sim_d4bf1e6c82ee/charts",
-    "probe": "/sims/sim_d4bf1e6c82ee/probe",
-    "section": "/sims/sim_d4bf1e6c82ee/section"
+    "record": "/sims/sim_b58ae926a3bd",
+    "glb": "/sims/sim_b58ae926a3bd/result.glb",
+    "charts": "/sims/sim_b58ae926a3bd/charts",
+    "probe": "/sims/sim_b58ae926a3bd/probe",
+    "section": "/sims/sim_b58ae926a3bd/section"
   },
   "solver": {
     "name": "CalculiX",
@@ -521,7 +521,7 @@
     },
     "model_error_band": 0.1
   },
-  "inputs_hash": "275382f30b5df87ebead0b4dc2f73cec09b2ac1efcc7d9979584e08341b58ba0",
+  "inputs_hash": "db0d78dcec279c4d159a5475532ef420dc15d279d1ba19f5ac7f914667a8170d",
   "glb": "result.glb",
   "outputs": [
     "result.glb",
@@ -544,7 +544,7 @@
     ],
     "governing_case_id": "tip",
     "material_basis": "datasheet / estimate",
-    "sim_id": "sim_d4bf1e6c82ee",
+    "sim_id": "sim_b58ae926a3bd",
     "type": "static",
     "status": "done",
     "verdict": "fail",
@@ -600,15 +600,15 @@
       "post-yield slope estimated (estimate (1% of E)): plastic strain is indicative only; the validated plasticity band covers the collapse load, not plastic strain"
     ],
     "reason": null,
-    "run_id": "7a209d054009",
-    "step_id": 7,
+    "run_id": "fc6404f48f30",
+    "step_id": 10,
     "urls": {
-      "record": "/sims/sim_d4bf1e6c82ee",
-      "glb": "/sims/sim_d4bf1e6c82ee/result.glb",
-      "charts": "/sims/sim_d4bf1e6c82ee/charts",
-      "probe": "/sims/sim_d4bf1e6c82ee/probe",
-      "section": "/sims/sim_d4bf1e6c82ee/section"
+      "record": "/sims/sim_b58ae926a3bd",
+      "glb": "/sims/sim_b58ae926a3bd/result.glb",
+      "charts": "/sims/sim_b58ae926a3bd/charts",
+      "probe": "/sims/sim_b58ae926a3bd/probe",
+      "section": "/sims/sim_b58ae926a3bd/section"
     },
-    "charts_url": "/sims/sim_d4bf1e6c82ee/charts"
+    "charts_url": "/sims/sim_b58ae926a3bd/charts"
   }
 }

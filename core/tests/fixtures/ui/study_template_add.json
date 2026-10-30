@@ -1,17 +1,21 @@
 {
-  "id": "tpl_aa8dfaa2b6",
+  "id": "tpl_4861759ea6",
   "name": "Tip load",
   "type": "static",
   "settings": {
     "material": {
       "name": null,
       "custom": null,
-      "fdm": null
+      "fdm": null,
+      "anisotropy": null,
+      "printer": null,
+      "calibrated": true
     },
     "mesh": {
       "size_mm": null,
       "refine_faces": [],
       "refine_factor": 0.4,
+      "refine_points": [],
       "second_order": true
     },
     "solver": {
@@ -44,7 +48,9 @@
       "tol_pct": 5.0,
       "max_levels": 4
     },
-    "environment": null
+    "environment": null,
+    "nonlinear": null,
+    "fatigue": null
   },
-  "created_at": 1793339765.012225
+  "created_at": 1793359777.6243
 }

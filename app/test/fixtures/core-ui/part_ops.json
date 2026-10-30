@@ -133,7 +133,8 @@
         0.0
       ],
       "normal": null,
-      "area": 47.124
+      "area": 47.124,
+      "radius": 1.5
     }
   ],
   "edges": 15,

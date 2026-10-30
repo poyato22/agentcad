@@ -263,7 +263,8 @@
                   0.0
                 ],
                 "normal": null,
-                "area": 79.168
+                "area": 79.168,
+                "radius": 2.1
               },
               {
                 "id": "f7",
@@ -274,7 +275,8 @@
                   0.0
                 ],
                 "normal": null,
-                "area": 79.168
+                "area": 79.168,
+                "radius": 2.1
               }
             ],
             "face_count": 8,
@@ -512,7 +514,8 @@
                   0.0
                 ],
                 "normal": null,
-                "area": 79.168
+                "area": 79.168,
+                "radius": 2.1
               },
               {
                 "id": "f7",
@@ -523,7 +526,8 @@
                   0.0
                 ],
                 "normal": null,
-                "area": 79.168
+                "area": 79.168,
+                "radius": 2.1
               }
             ],
             "face_count": 8,
@@ -746,7 +750,8 @@
                   0.0
                 ],
                 "normal": null,
-                "area": 79.168
+                "area": 79.168,
+                "radius": 2.1
               },
               {
                 "id": "f7",
@@ -757,7 +762,8 @@
                   0.0
                 ],
                 "normal": null,
-                "area": 79.168
+                "area": 79.168,
+                "radius": 2.1
               }
             ],
             "face_count": 8,

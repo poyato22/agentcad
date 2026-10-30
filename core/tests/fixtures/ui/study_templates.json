@@ -1,18 +1,22 @@
 [
   {
-    "id": "tpl_aa8dfaa2b6",
+    "id": "tpl_4861759ea6",
     "name": "Tip load",
     "type": "static",
     "settings": {
       "material": {
         "name": null,
         "custom": null,
-        "fdm": null
+        "fdm": null,
+        "anisotropy": null,
+        "printer": null,
+        "calibrated": true
       },
       "mesh": {
         "size_mm": null,
         "refine_faces": [],
         "refine_factor": 0.4,
+        "refine_points": [],
         "second_order": true
       },
       "solver": {
@@ -45,12 +49,14 @@
         "tol_pct": 5.0,
         "max_levels": 4
       },
-      "environment": null
+      "environment": null,
+      "nonlinear": null,
+      "fatigue": null
     },
-    "created_at": 1793339765.012225
+    "created_at": 1793359777.6243
   },
   {
-    "id": "tpl_0104eaf27c",
+    "id": "tpl_ec0b871b99",
     "name": "Breeze",
     "type": "wind",
     "settings": {
@@ -68,8 +74,10 @@
       "memory_mb": 1024,
       "yaw_deg": [],
       "solver": "auto",
+      "openfoam_iterations": 1500,
+      "cpus": 4,
       "shape_class": "auto"
     },
-    "created_at": 1793339765.012754
+    "created_at": 1793359777.6249862
   }
 ]

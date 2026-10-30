@@ -10,6 +10,10 @@
   "max_parallel_agents": "auto",
   "local_endpoints": {},
   "theme": "system",
+  "viewer_background": {
+    "mode": "theme",
+    "colors": []
+  },
   "setup_completed_at": null,
   "printers": [],
   "active_project_id": null,
@@ -208,5 +212,8 @@
       "suggested": true
     }
   ],
-  "browser_fetches_per_run": 60
+  "browser_fetches_per_run": 60,
+  "critique_max_rounds": 3,
+  "critique_time_budget_s": 300.0,
+  "critique_max_image_tokens": 12000
 }

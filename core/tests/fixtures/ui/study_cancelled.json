@@ -1,17 +1,17 @@
 {
-  "sim_id": "sim_171079febba3",
+  "sim_id": "sim_b2dd8bf21be6",
   "part_id": "cube",
   "type": "wind",
-  "run_id": "52693fcb2d10",
-  "call_id": "ui-658d9099b320",
-  "step_id": 32,
+  "run_id": "ad722ec70fb3",
+  "call_id": "ui-b5edf5b7b93a",
+  "step_id": 34,
   "reason": "cancel me",
   "status": "cancelled",
   "stage": "cancelled",
   "phase": "solve",
   "pct": 5.5,
-  "created_at": 1793339777.659803,
-  "finished_at": 1793339778.2762408,
+  "created_at": 1793359788.670486,
+  "finished_at": 1793359789.287679,
   "analysis": "wind",
   "guide": true,
   "label": "guide only, not a guarantee",
@@ -34,6 +34,8 @@
       "memory_mb": 1024,
       "yaw_deg": [],
       "solver": "auto",
+      "openfoam_iterations": 1500,
+      "cpus": 4,
       "shape_class": "auto"
     },
     "material": null,
@@ -54,9 +56,11 @@
     "memory_mb": 1024,
     "yaw_deg": [],
     "solver": "auto",
+    "openfoam_iterations": 1500,
+    "cpus": 4,
     "shape_class": "auto"
   },
-  "geometry_hash": "a5405c181855e10c53a847a63ff05579263dc7ac94eb46f7dd611ca9ba8bcaca",
+  "geometry_hash": "b4c759ed363f40645d34b522df1b4503f0b1c45e740cb7f425bb43215423c54b",
   "material": null,
   "environment": null,
   "error": "cancelled",
@@ -68,15 +72,15 @@
     "Validated on a sphere and a flat plate (see the Mises C7 report); expect 10-30% error on other shapes, more on streamlined bodies whose drag is mostly friction."
   ],
   "urls": {
-    "record": "/sims/sim_171079febba3",
-    "glb": "/sims/sim_171079febba3/result.glb",
-    "charts": "/sims/sim_171079febba3/charts",
-    "probe": "/sims/sim_171079febba3/probe",
-    "section": "/sims/sim_171079febba3/section"
+    "record": "/sims/sim_b2dd8bf21be6",
+    "glb": "/sims/sim_b2dd8bf21be6/result.glb",
+    "charts": "/sims/sim_b2dd8bf21be6/charts",
+    "probe": "/sims/sim_b2dd8bf21be6/probe",
+    "section": "/sims/sim_b2dd8bf21be6/section"
   },
   "stale": false,
   "card": {
-    "sim_id": "sim_171079febba3",
+    "sim_id": "sim_b2dd8bf21be6",
     "type": "wind",
     "status": "cancelled",
     "verdict": "fail",
@@ -122,15 +126,15 @@
     "checks": [],
     "warnings": [],
     "reason": "cancel me",
-    "run_id": "52693fcb2d10",
-    "step_id": 32,
+    "run_id": "ad722ec70fb3",
+    "step_id": 34,
     "urls": {
-      "record": "/sims/sim_171079febba3",
-      "glb": "/sims/sim_171079febba3/result.glb",
-      "charts": "/sims/sim_171079febba3/charts",
-      "probe": "/sims/sim_171079febba3/probe",
-      "section": "/sims/sim_171079febba3/section"
+      "record": "/sims/sim_b2dd8bf21be6",
+      "glb": "/sims/sim_b2dd8bf21be6/result.glb",
+      "charts": "/sims/sim_b2dd8bf21be6/charts",
+      "probe": "/sims/sim_b2dd8bf21be6/probe",
+      "section": "/sims/sim_b2dd8bf21be6/section"
     },
-    "charts_url": "/sims/sim_171079febba3/charts"
+    "charts_url": "/sims/sim_b2dd8bf21be6/charts"
   }
 }
