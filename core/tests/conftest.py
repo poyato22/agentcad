@@ -38,9 +38,13 @@ def _no_real_claude(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def _no_real_docker(monkeypatch):
+def _no_real_docker(monkeypatch, request):
     """The real docker CLI is never run from tests (S2): the pinned OpenFOAM image reads as not
-    pulled unless a test fakes it present."""
+    pulled unless a test fakes it present. The one exception is the user-approved real-solver
+    QA: openfoam_real tests with MISES_OPENFOAM_QA=1 see the real image."""
+    if (os.environ.get("MISES_OPENFOAM_QA") == "1"
+            and request.node.get_closest_marker("openfoam_real")):
+        return
     from mises.sim import cfd, foam_image
     monkeypatch.setattr(foam_image, "image_status", lambda d: "absent")
     monkeypatch.setattr(cfd, "image_status", lambda d: "absent")
