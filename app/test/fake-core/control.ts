@@ -5,6 +5,7 @@
 //   POST /__fake/drop_sockets  {mode?: "close"|"terminate"}              → kill every events socket
 //   POST /__fake/rotate_token  {token}                                    → new token; sockets closed, reconnects get 4401
 //   POST /__fake/agent_edit    {part_id, vars?, source?, run_id?, summary?} → an agent's part edit (part_changed by "agent")
+//   POST /__fake/restart_core                                            → leads become unreachable (next prompt starts a new lead)
 import type { EmitExtras, EventIn, FakeCore, Scenario } from "./server";
 
 export async function handleControl(core: FakeCore, method: string, path: string, body: unknown): Promise<unknown> {
@@ -20,6 +21,7 @@ export async function handleControl(core: FakeCore, method: string, path: string
   }
   if (method === "GET" && path === "/__fake/calls") return core.state.calls;
   if (method === "POST" && path === "/__fake/agent_edit") return core.agentEdit(b);
+  if (method === "POST" && path === "/__fake/restart_core") { core.restartCore(); return { ok: true }; }
   if (method === "POST" && path === "/__fake/drop_sockets") {
     core.dropSockets(b.mode === "terminate" ? "terminate" : "close");
     return { ok: true };

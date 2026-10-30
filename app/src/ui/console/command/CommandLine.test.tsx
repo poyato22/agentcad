@@ -258,6 +258,54 @@ describe("CommandLine", () => {
     await waitFor(() => expect(box().value).toBe(""));
   });
 
+  // I2: after a core restart the core retires the lead it can't reach and starts a new one. The
+  // console follows the new run (the message stays on screen) and says so in one line.
+  it("a message to a retired lead follows the new lead the core started", async () => {
+    const lead = { ...run("L1", "engineer", "build a robot arm"), role: "lead" as const, project_id: "b1", owner_pid: 111 };
+    runs.value = new Map([["L1", lead]]);
+    actions.selectRun("L1");
+    corePid.value = 222;                          // a new core process: L1 belongs to the old one
+    const c = { ...client, createRun: vi.fn().mockResolvedValue({ run_id: "L2", new_lead: true, routed: null, notes: [] }),
+      getRun: vi.fn().mockResolvedValue({ ...lead, id: "L2", owner_pid: 222, status: "running" }) };
+    bindClient(c as unknown as CoreClient);
+    render(<CommandLine />);
+    expect(screen.getByTestId("target-chip").textContent).toBe("→ new lead (the earlier one can't be reached)");
+    type("add a gripper");
+    enter();
+    await waitFor(() => expect(c.createRun).toHaveBeenCalledWith({ prompt: "add a gripper", project_id: "b1" }));
+    await waitFor(() => expect(selectedRunId.value).toBe("L2"));
+    expect(c.message).not.toHaveBeenCalled();
+    expect(screen.getByTestId("cmd-info").textContent).toContain("a new lead took over");
+  });
+
+  it("an archived lead still routes through the build, never /message (no 'unknown run')", async () => {
+    const lead = { ...run("L1", "engineer", "build a robot arm"), role: "lead" as const, project_id: "b1", archived: true };
+    runs.value = new Map([["L1", lead], ["L2", { ...lead, id: "L2", archived: false }]]);
+    actions.selectRun("L1");
+    const c = { ...client, createRun: vi.fn().mockResolvedValue({ run_id: "L2", new_lead: false, routed: null, notes: [] }), getRun: vi.fn() };
+    bindClient(c as unknown as CoreClient);
+    render(<CommandLine />);
+    type("hello again");
+    enter();
+    await waitFor(() => expect(selectedRunId.value).toBe("L2"));
+    expect(c.message).not.toHaveBeenCalled();
+  });
+
+  it("the same lead taking the message keeps the selection", async () => {
+    const lead = { ...run("L1", "engineer", "build a robot arm"), role: "lead" as const, project_id: "b1" };
+    runs.value = new Map([["L1", lead]]);
+    actions.selectRun("L1");
+    const c = { ...client, createRun: vi.fn().mockResolvedValue({ run_id: "L1", new_lead: false, routed: null, notes: [] }) };
+    bindClient(c as unknown as CoreClient);
+    render(<CommandLine />);
+    expect(screen.getByTestId("target-chip").textContent).toBe("→ engineer · build robot arm");
+    type("thicker");
+    enter();
+    await waitFor(() => expect(c.createRun).toHaveBeenCalled());
+    expect(selectedRunId.value).toBe("L1");
+    expect(screen.queryByTestId("cmd-info")).toBeNull();
+  });
+
   it("cmd_k_focuses", () => {
     render(<CommandLine />);
     (document.activeElement as HTMLElement | null)?.blur();

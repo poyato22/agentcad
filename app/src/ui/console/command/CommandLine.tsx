@@ -9,6 +9,8 @@ import { agentChips, chipsPromptLine, clearAgentChips } from "../../../state/age
 import { effectiveRun } from "../../../state/selection";
 import { actions, corePid, filter, follow, runs, sessionRuns, type LogFilter } from "../../../state/store";
 import { stopAll } from "../../topbar/stopAll";
+import { followLead, leadUnreachable } from "../leadFollow";
+import { shownPending } from "../queued";
 import { allTargets } from "./isExternal";
 import { parseCommand, type Command } from "./parseCommand";
 import "./command.css";
@@ -43,8 +45,10 @@ export function CommandLine(): JSX.Element {
   const allRuns = [...runs.value.values()];
   const parsed: Command = value.trim() ? parseCommand(value, allRuns) : { kind: "message", target: "selected", text: "" };
   // the run the console shows (selected, else the newest running run): what the chip names
-  const selected = effectiveRun.value ?? undefined;
-  const chip = chipText(parsed, selected, allRuns);
+  // (or the run just started/followed that the store doesn't list yet — I2: a second message sent
+  // right after a new lead took over still has a target)
+  const selected = effectiveRun.value ?? shownPending.value ?? undefined;
+  const chip = chipText(parsed, selected, allRuns, corePid.value);
 
   async function execute(cmd: Command): Promise<boolean> {
     if (cmd.kind === "invalid") { setError(cmd.reason); return false; }
@@ -82,8 +86,14 @@ export function CommandLine(): JSX.Element {
       const text = chipLine ? `${cmd.text}\n\n${chipLine}` : cmd.text;
       // the build's lead takes a prompt even while it works: through POST /runs the core routes
       // it to that lead and queues it behind the current step (U3c); other runs get /message
-      if (run.role === "lead" && !run.archived && run.project_id) showRoutedNotes(await actions.client().createRun({ prompt: text, project_id: run.project_id }));
-      else await actions.client().message(run.id, text);
+      // (an archived or unreachable lead too: the core hands the prompt to the build's current
+      // lead or starts a new one, and the console follows that run — I2)
+      if (run.role === "lead" && run.project_id) {
+        const res = await actions.client().createRun({ prompt: text, project_id: run.project_id });
+        showRoutedNotes(res);
+        const note = followLead(run, res);
+        if (note) setInfo(note);
+      } else await actions.client().message(run.id, text);
       if (chipLine) clearAgentChips();
       return true;
     } catch (e) {
@@ -199,10 +209,14 @@ export function CommandLine(): JSX.Element {
   );
 }
 
-function chipText(cmd: Command, selected: AgentRun | undefined, all: readonly AgentRun[]): string {
+function chipText(cmd: Command, selected: AgentRun | undefined, all: readonly AgentRun[], pid: number | null): string {
   if (cmd.kind === "slash") return `/${cmd.name}`;
   if (cmd.kind === "invalid") return "";
   if (cmd.target === "all") return "→ all idle runs";
-  if (cmd.target === "selected") return selected ? `→ ${runLabel(selected, all)}` : "→ no run selected";
+  if (cmd.target === "selected") {
+    if (!selected) return "→ no run selected";
+    if (selected.project_id && leadUnreachable(selected, pid)) return "→ new lead (the earlier one can't be reached)";
+    return `→ ${runLabel(selected, all)}`;
+  }
   return `→ ${cmd.target.label}`;
 }

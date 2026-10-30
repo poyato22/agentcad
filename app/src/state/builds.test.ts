@@ -87,6 +87,20 @@ describe("builds", () => {
     expect(selectedPartId.value).toBe("arm");
   });
 
+  it("switching to a build shows its lead, not its newest sub-agent (m4)", async () => {
+    const c = fakeClient([b("a", "Quad"), b("b", "Bench")]);
+    bindClient(c as unknown as CoreClient);
+    const run = (id: string, over: Partial<AgentRun>): [string, AgentRun] => [id, { id, parent_id: null, agent: "designer", provider: "fake", model: "m", task: id, status: "done", branch: null, onshape_calls: 0, input_tokens: 0, output_tokens: 0, usd: 0, created_at: 1, updated_at: 1, project_id: "b", ...over }];
+    runs.value = new Map<string, AgentRun>([
+      run("old", { role: "lead", archived: true, created_at: 1 }),
+      run("lead", { role: "lead", created_at: 2 }),
+      run("sub", { role: "sub", parent_id: "lead", created_at: 3 }),
+    ]);
+    await buildActions.refresh();
+    await buildActions.switchTo("b");
+    expect(selectedRunId.value).toBe("lead");
+  });
+
   it("a parts answer for a build you already left is dropped", async () => {
     const c = fakeClient([b("a", "Quad"), b("b", "Bench"), b("c", "Cam")]);
     let release: (() => void) | null = null;

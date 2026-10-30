@@ -133,7 +133,9 @@ function followRuns(buildId: string): void {
   const run = sel ? runs.peek().get(sel) : undefined;
   if (run && (run.project_id ?? null) === buildId) return;
   const mine = [...runs.peek().values()].filter((r) => r.project_id === buildId).sort((a, b) => b.created_at - a.created_at);
-  selectedRunId.value = mine[0]?.id ?? null;
+  // m4: the build's live lead is its conversation; land there, not on its newest sub-agent
+  const lead = mine.find((r) => r.role === "lead" && !r.archived);
+  selectedRunId.value = (lead ?? mine[0])?.id ?? null;
 }
 
 export const buildActions = {
