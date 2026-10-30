@@ -23,6 +23,7 @@ import { PrintPage } from "./ui/pages/print";
 import { SketchPage } from "./ui/pages/sketch";
 import { StudiesPage } from "./ui/pages/studies";
 import { ImmersiveRoot } from "./ui/pages/studies/immersive/Immersive";
+import { ViewImmersiveRoot } from "./ui/console/cards/critique";
 import { closeProfile, profileOpen, profileSection } from "./ui/profile/open";
 import { ProfilePane } from "./ui/profile/ProfilePane";
 import { SetupGate } from "./ui/setup/SetupGate";
@@ -85,6 +86,7 @@ export function App(): JSX.Element {
       <PageRegion />
       <ConsoleRegion />
       <ImmersiveRoot />
+      <ViewImmersiveRoot />
       <NewRunDialog />
       <AgentManager />
       <ProfilePane open={profileOpen.value} section={profileSection.value} onClose={closeProfile} />

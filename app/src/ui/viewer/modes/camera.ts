@@ -67,7 +67,9 @@ export class Orbiter {
   private id = 0;
   private last = 0;
   private running = false;
-  constructor(private readonly host: ModeHost, private readonly clock: Clock = realClock) {}
+  private readonly host: ModeHost;
+  private readonly clock: Clock;
+  constructor(host: ModeHost, clock: Clock = realClock) { this.host = host; this.clock = clock; }
 
   get playing(): boolean { return this.running; }
 

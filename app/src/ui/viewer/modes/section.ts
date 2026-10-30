@@ -92,7 +92,10 @@ export class SectionCaps {
   private builtFor: THREE.Object3D[] = [];
   private on = false;
 
-  constructor(private readonly host: ModeHost) {
+  private readonly host: ModeHost;
+
+  constructor(host: ModeHost) {
+    this.host = host;
     this.group.name = "section-caps";
     this.group.userData["modeHelper"] = true;
     host.scene.add(this.group);

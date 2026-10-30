@@ -5,6 +5,7 @@
 // only successful calls fold (logModel's rule). Text stays plain strings (rendered as text).
 import type { Approval, Question, Step } from "../../api/types";
 import { foldKey, itemKey, type LogItem } from "./logModel";
+import { g4Announcement, type CritiqueRound, type PresentedView } from "./cards/critique/announce";
 
 type Call = Extract<LogItem, { kind: "call" }>;
 type Diff = Extract<LogItem, { kind: "diff" }>;
@@ -28,7 +29,11 @@ export type ThreadItem =
   | { kind: "error"; key: string; code: string; message: string; hint: string | null; ts: number; stepIds: number[] }
   | { kind: "note"; key: string; text: string; stepIds: number[] }
   | { kind: "approval"; key: string; approval: Approval }
-  | { kind: "question"; key: string; question: Question };
+  | { kind: "question"; key: string; question: Question }
+  // Plan 8 (G4): a render-and-critique round, and a view an agent presents (with the other views of
+  // the same reply, which ⌘[ / ⌘] step through in the immersive view)
+  | { kind: "critique"; key: string; round: CritiqueRound; stepIds: number[] }
+  | { kind: "view"; key: string; view: PresentedView; group: PresentedView[]; stepIds: number[] };
 
 const PREFIXES = ["mcp__mises__"];
 
@@ -127,11 +132,13 @@ export function buildThread(items: readonly LogItem[]): ThreadItem[] {
   const out: ThreadItem[] = [];
   let last: Extract<ThreadItem, { kind: "activity" }> | null = null;
   const lastCallResult = (): number | null => last?.call?.result?.id ?? null;
+  let views: PresentedView[] | null = null;
 
   for (const it of items) {
     const key = itemKey(it);
     switch (it.kind) {
       case "message":
+        if (it.role === "user") views = null;   // the reply to it gets its own set of presented views
         out.push(it.role === "user"
           ? { kind: "user", key, text: it.text, ts: it.step.ts, stepIds: [it.step.id] }
           : { kind: "agent", key, text: it.text, ts: it.step.ts, live: false, stepIds: [it.step.id] });
@@ -168,7 +175,17 @@ export function buildThread(items: readonly LogItem[]): ThreadItem[] {
         last = a;
         break;
       }
-      case "decision":
+      case "decision": {
+        const g4 = g4Announcement(it.step);
+        if (g4?.kind === "critique_round") { out.push({ kind: "critique", key, round: g4.round, stepIds: [it.step.id] }); last = null; break; }
+        if (g4?.kind === "view_presented") {
+          const view: PresentedView = { ...g4.view, key };
+          views ??= [];
+          views.push(view);
+          out.push({ kind: "view", key, view, group: views, stepIds: [it.step.id] });
+          last = null;
+          break;
+        }
         if (last && last.call && lastCallResult() === it.step.id) { last.extra.push(it); break; }
         // Claude Code's bookkeeping (session start, init, stored thinking) is not a decision the
         // reader needs; it stays in the step log (C-10)
@@ -176,6 +193,7 @@ export function buildThread(items: readonly LogItem[]): ThreadItem[] {
         out.push({ kind: "note", key, text: decisionText(it.step), stepIds: [it.step.id] });
         last = null;
         break;
+      }
       case "file": {
         const a: Extract<ThreadItem, { kind: "activity" }> = {
           kind: "activity", key, text: `edited ${it.path} · +${it.added} −${it.removed}`, tone: "ok", ts: it.step.ts, call: null, diff: null,

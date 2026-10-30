@@ -120,6 +120,9 @@ function reduceUnsafe(s: AppState, e: MisesEvent): Out {
     }
     case "note": case "compaction": case "plan": case "diff": case "file_written":
       return { state: s, effects: steps() };
+    case "agent_announce":
+      // U3c / Plan 8: the announcement is also stored as a decision step; the thread draws its card
+      return { state: s, effects: steps() };
     case "part_changed":
       // a user or agent edit (C6): new version, vars, metrics and GLB
       return { state: s, effects: [{ kind: "fetchParts" }] };

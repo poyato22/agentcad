@@ -21,6 +21,8 @@ import { createViewer, type DesignViewerHandle, type PickMarker } from "./scene"
 import { TitleBlock } from "./TitleBlock";
 import { ViewerTools, type ViewMode, type ViewScope } from "./ViewerTools";
 import { ModeSwitch } from "../assembly/mode";
+import { DesignViewModes } from "./modes";
+import type { ModeHost } from "./scene";
 import "./viewer.css";
 
 /** The part on the sheet: the selected one, else the first part (state/selection.ts). */
@@ -103,6 +105,7 @@ export function Viewer(): JSX.Element {
   const [size, setSize] = useState<string | null>(null);
   const [ops, setOps] = useState<OpenOps | null>(null);
   const [bounds, setBounds] = useState({ w: 1, h: 1 });
+  const [modeHost, setModeHost] = useState<ModeHost | null>(null);
 
   const part = activePart.value;
   const partId = part?.part_id ?? null;
@@ -125,6 +128,7 @@ export function Viewer(): JSX.Element {
       handle = null; // no WebGL: the sheet, title block and metrics still work
     }
     viewerRef.current = handle;
+    setModeHost(handle?.modeHost?.() ?? null);
     const measure = () => {
       const r = host.getBoundingClientRect();
       if (r.width > 0 && r.height > 0) { handle?.resize(r.width, r.height); setBounds({ w: r.width, h: r.height }); }
@@ -137,6 +141,7 @@ export function Viewer(): JSX.Element {
       handle?.setPart(null);
       for (const s of scenes.current.values()) s.dispose();
       scenes.current.clear();
+      setModeHost(null);
       handle?.dispose();
       viewerRef.current = null;
     };
@@ -258,6 +263,7 @@ export function Viewer(): JSX.Element {
       <ViewerTools mode={mode} onMode={setMode} scope={scope} onScope={(s) => { viewScope.value = s; }}
         canEdit={canEdit && tab === "model"}
         onEdit={() => { if (part) setOps({ seq: ++pickSeq.current, partId: part.part_id, target: { face: null, edge: null, point: null }, at: null, keyboard: true, baseVersion: part.version ?? 0 }); }} />
+      {part !== null && <DesignViewModes host={modeHost} focusId={partId} partIds={shown.map((p) => p.part_id)} />}
       {part === null && <div class="vp-empty label">NO PART · ask an agent to create one</div>}
       {ops && opsPart && tab === "model" && (
         <OpsMenu key={ops.seq} part={opsPart} target={ops.target} baseVersion={ops.baseVersion} keyboard={ops.keyboard} at={ops.at} bounds={bounds}

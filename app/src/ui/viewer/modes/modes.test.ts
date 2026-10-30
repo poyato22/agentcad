@@ -4,7 +4,7 @@ import { loadPart, type PartScene } from "../loadPart";
 import { createViewer, type DesignViewerHandle, type ModeHost, type RendererLike } from "../scene";
 import { currentView, dirFromAzEl, frameView, liveBox, Orbiter, viewDirection, zoomForDistance } from "./camera";
 import { ModesController } from "./controller";
-import { EXPLODE_MS, explodeVectors } from "./explode";
+import { bodies, EXPLODE_MS, explodeVectors } from "./explode";
 import { easeInOutCubic, tween, type Clock } from "./motion";
 import { capColor, clipPlane, sectionRange } from "./section";
 import { GHOST_OPACITY, MODES_OFF, type ModesState } from "./state";
@@ -153,6 +153,16 @@ describe("section", () => {
 });
 
 describe("explode", () => {
+  it("groups a part's per-face meshes into solids: one plate is one body, two apart are two", async () => {
+    const one = await loadPart(fixtureBytes());
+    expect(bodies(one.object)).toHaveLength(1);
+    const two = new THREE.Group();
+    const a = await loadPart(fixtureBytes()); const b = await loadPart(fixtureBytes());
+    b.object.position.x = 100;
+    two.add(a.object, b.object);
+    expect(bodies(two)).toHaveLength(2);
+  });
+
   it("pushes units out from the middle along their own direction; concentric ones stack on Z", () => {
     const overall = new THREE.Box3(new THREE.Vector3(-10, -10, -10), new THREE.Vector3(10, 10, 10));
     const s = new THREE.Vector3(2, 2, 2);

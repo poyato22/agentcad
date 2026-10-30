@@ -33,6 +33,8 @@ export const agentRunSchema = z.object({
   project_id: z.string().nullish(), title: z.string().nullish(), pinned: z.boolean().optional(), archived: z.boolean().optional(),
   last_activity_at: z.number().nullish(), parent_run_id: z.string().nullish(),
   cost: runCostSchema.optional(),
+  // Plan 8 G1 routing hint (shape is read leniently by the model warning chip)
+  shape_complexity: z.unknown().optional(),
 });
 
 /** GET /runs/tree node: a run plus its worker children. */

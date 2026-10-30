@@ -23,52 +23,85 @@ export function explodeVectors(centers: readonly THREE.Vector3[], sizes: readonl
   return out;
 }
 
-interface Unit { obj: THREE.Object3D; base: THREE.Vector3; local: THREE.Vector3 }
+/**
+ * A part's meshes grouped into bodies. The exported GLB has one mesh per B-rep face, so faces that
+ * share a vertex (a seam edge) belong to one solid; separate solids share none.
+ */
+export function bodies(root: THREE.Object3D): THREE.Mesh[][] {
+  const meshes: THREE.Mesh[] = [];
+  root.traverse((o) => { if (o instanceof THREE.Mesh && !o.userData["modeHelper"]) meshes.push(o); });
+  if (meshes.length < 2) return meshes.length ? [meshes] : [];
+  root.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(root);
+  const q = Math.max(box.getSize(new THREE.Vector3()).length() * 1e-5, 1e-9);
+  const parent = meshes.map((_, i) => i);
+  const find = (i: number): number => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
+  const seen = new Map<string, number>();
+  const v = new THREE.Vector3();
+  meshes.forEach((m, i) => {
+    const pos = m.geometry.getAttribute("position");
+    if (!pos) return;
+    for (let k = 0; k < pos.count; k++) {
+      v.fromBufferAttribute(pos, k).applyMatrix4(m.matrixWorld);
+      const key = `${Math.round(v.x / q)},${Math.round(v.y / q)},${Math.round(v.z / q)}`;
+      const j = seen.get(key);
+      if (j === undefined) seen.set(key, i);
+      else { const a = find(i); const b = find(j); if (a !== b) parent[a] = b; }
+    }
+  });
+  const groups = new Map<number, THREE.Mesh[]>();
+  meshes.forEach((m, i) => { const r = find(i); groups.set(r, [...(groups.get(r) ?? []), m]); });
+  return [...groups.values()];
+}
+
+interface Moved { obj: THREE.Object3D; base: THREE.Vector3; local: THREE.Vector3 }
 
 export const EXPLODE_MS = 450;
 
 export class Exploder {
-  private units: Unit[] = [];
+  /** Per unit, the objects that move with it. */
+  private units: Moved[][] = [];
   private builtFor: THREE.Object3D[] = [];
   private amount = 0;
   private cancel: (() => void) | null = null;
   /** Called after the amount changes (the section caps follow the parts). */
   onChange: (() => void) | null = null;
 
-  constructor(private readonly host: ModeHost, private readonly clock: Clock = realClock) {}
+  private readonly host: ModeHost;
+  private readonly clock: Clock;
+  constructor(host: ModeHost, clock: Clock = realClock) { this.host = host; this.clock = clock; }
 
   get value(): number { return this.amount; }
+  /** How many things move apart (0: nothing to explode). */
+  get count(): number { return this.units.length; }
 
   /** Re-derive the units when the shown objects changed; keeps the current amount. */
   sync(parts: readonly ShownPart[]): void {
-    const objs = unitObjects(parts);
-    if (objs.length === this.builtFor.length && objs.every((o, i) => o === this.builtFor[i])) return;
-    for (const u of this.units) u.obj.position.copy(u.base);
-    this.builtFor = objs;
-    this.units = [];
-    if (objs.length < 2) return;
-    for (const o of objs) {
-      const b = o.userData["explodeBase"];
-      if (!(b instanceof THREE.Vector3)) o.userData["explodeBase"] = o.position.clone();
+    const roots = parts.map((p) => p.scene.object);
+    if (roots.length === this.builtFor.length && roots.every((o, i) => o === this.builtFor[i])) return;
+    this.reset();
+    this.builtFor = roots;
+    const groups = unitGroups(parts);
+    if (groups.length < 2) return;
+    for (const g of groups) for (const o of g) {
+      if (!(o.userData["explodeBase"] instanceof THREE.Vector3)) o.userData["explodeBase"] = o.position.clone();
       o.position.copy(o.userData["explodeBase"] as THREE.Vector3);
     }
-    for (const p of parts) p.scene.object.updateMatrixWorld(true);
-    const boxes = objs.map((o) => new THREE.Box3().setFromObject(o));
+    for (const r of roots) r.updateMatrixWorld(true);
+    const boxes = groups.map((g) => { const b = new THREE.Box3(); for (const o of g) b.union(new THREE.Box3().setFromObject(o)); return b; });
     const overall = new THREE.Box3();
     for (const b of boxes) overall.union(b);
     const vecs = explodeVectors(boxes.map((b) => b.getCenter(new THREE.Vector3())), boxes.map((b) => b.getSize(new THREE.Vector3())), overall);
-    objs.forEach((o, i) => {
-      const base = (o.userData["explodeBase"] as THREE.Vector3).clone();
-      // a world offset → the unit's parent frame (bodies sit under the part's scale and Z-up turn)
+    this.units = groups.map((g, i) => g.map((o) => {
+      // a world offset → the object's parent frame (faces sit under the part's scale and Z-up turn)
       let local = vecs[i].clone();
       const parent = o.parent;
       if (parent && !(parent instanceof THREE.Scene)) {
-        parent.updateMatrixWorld(true);
         const p0 = o.getWorldPosition(new THREE.Vector3());
         local = parent.worldToLocal(p0.clone().add(vecs[i])).sub(parent.worldToLocal(p0.clone()));
       }
-      this.units.push({ obj: o, base, local });
-    });
+      return { obj: o, base: (o.userData["explodeBase"] as THREE.Vector3).clone(), local };
+    }));
     this.place(this.amount);
   }
 
@@ -83,26 +116,26 @@ export class Exploder {
 
   private place(f: number): void {
     this.amount = f;
-    for (const u of this.units) u.obj.position.copy(u.base).addScaledVector(u.local, f);
-    for (const u of this.units) u.obj.updateMatrixWorld(true);
+    for (const u of this.units) for (const m of u) { m.obj.position.copy(m.base).addScaledVector(m.local, f); m.obj.updateMatrixWorld(true); }
     this.onChange?.();
     this.host.requestRender();
   }
 
-  dispose(): void {
-    this.cancel?.();
-    for (const u of this.units) u.obj.position.copy(u.base);
+  private reset(): void {
+    for (const u of this.units) for (const m of u) { m.obj.position.copy(m.base); m.obj.updateMatrixWorld(true); }
     this.units = [];
     this.builtFor = [];
+  }
+
+  dispose(): void {
+    this.cancel?.();
+    this.reset();
   }
 }
 
 /** What moves: the parts when there are several, else the bodies of the one part. */
-function unitObjects(parts: readonly ShownPart[]): THREE.Object3D[] {
-  if (parts.length > 1) return parts.map((p) => p.scene.object);
+function unitGroups(parts: readonly ShownPart[]): THREE.Object3D[][] {
+  if (parts.length > 1) return parts.map((p) => [p.scene.object]);
   const one = parts[0];
-  if (!one) return [];
-  const meshes: THREE.Object3D[] = [];
-  one.scene.object.traverse((o) => { if (o instanceof THREE.Mesh && !o.userData["modeHelper"]) meshes.push(o); });
-  return meshes;
+  return one ? bodies(one.scene.object) : [];
 }

@@ -21,6 +21,7 @@ import { Markup } from "../markup/render";
 import { CopyButton } from "./CopyButton";
 import { RunStatus } from "./RunStatus";
 import { StudyCardSlot } from "./studycard";
+import { G4Card } from "./cards/critique";
 import { buildUserEdits } from "../../state/partEdits";
 import { editsForRun, weave } from "./userEditLines";
 
@@ -194,6 +195,8 @@ function Item({ item, agent }: { item: ThreadItem; agent: AgentRun["agent"] }): 
           <QuestionCard question={item.question} runLabel={labelOf(item.question.run_id)} />
         </div>
       );
+    case "critique": case "view":
+      return <G4Card item={item} />;
   }
 }
 

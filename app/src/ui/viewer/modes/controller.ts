@@ -16,7 +16,10 @@ export class ModesController {
   private readonly off: () => void;
   private applying = false;
 
-  constructor(readonly host: ModeHost, clock: Clock = realClock) {
+  readonly host: ModeHost;
+
+  constructor(host: ModeHost, clock: Clock = realClock) {
+    this.host = host;
     this.caps = new SectionCaps(host);
     this.exploder = new Exploder(host, clock);
     this.exploder.onChange = () => { if (!this.applying) this.applySection(); };

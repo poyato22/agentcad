@@ -11,8 +11,8 @@ export interface ViewerToolsProps {
   canEdit?: boolean; onEdit?(): void;
 }
 
-/** Tool strip along the top of the sheet: part · build, shaded · wire, features, with section and
- *  measure shown disabled. */
+/** Tool strip along the top of the sheet: part · build, shaded · wire, features, with measure
+ *  shown disabled (section lives in the view-mode strip, modes/). */
 export function ViewerTools({ mode, onMode, scope, onScope, canEdit, onEdit }: ViewerToolsProps): JSX.Element {
   const toggle = (m: ViewMode, text: string) => (
     <button type="button" class="vt-btn" aria-pressed={mode === m} data-active={mode === m} data-selected={mode === m ? "" : undefined} onClick={() => onMode(m)}>{text}</button>
@@ -42,7 +42,6 @@ export function ViewerTools({ mode, onMode, scope, onScope, canEdit, onEdit }: V
         </>
       )}
       <span class="vt-gap" />
-      {later("section")}
       {later("measure")}
     </div>
   );

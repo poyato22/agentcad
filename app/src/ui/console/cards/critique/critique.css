@@ -1,0 +1,91 @@
+/* Critique-round cards, presented-view cards (a miniature of the drawing sheet: the same drafting
+   grid, corner ticks and figure label), the full-window view and the model warning chip.
+   Tokens only, square corners. Green / amber: pass / warn; blue is never used here. */
+.cv-g4 { margin: 6px 0 4px 22px; }
+
+/* ---- critique round */
+.crit { border: 1px solid var(--line2); background: var(--paper); min-width: 0; }
+.crit-sum {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px 8px; background: none; border: 0;
+  font: inherit; color: inherit; text-align: left; cursor: pointer;
+}
+.crit-sum:disabled { cursor: default; }
+.crit-sum:focus-visible { outline: 1px solid var(--blue); outline-offset: -1px; }
+.crit-shots { display: flex; align-items: center; gap: 4px; flex: none; }
+.crit-shot { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.crit-shot img, .crit-shot-empty { display: block; width: 72px; height: 48px; border: 1px solid var(--line); background: var(--vp); object-fit: contain; }
+.crit-shot-empty { background-image: linear-gradient(135deg, transparent 49%, var(--line) 50%, transparent 51%); }
+.crit-arrow { font-size: var(--fs-small); }
+.crit-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+.crit-title { font: 700 var(--fs)/1.2 var(--font-head); color: var(--ink); }
+.crit-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: var(--fs-small); }
+.crit-score { font-variant-numeric: tabular-nums; font-weight: 700; }
+.crit-what { font-size: var(--fs-small); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crit-x { flex: none; align-self: flex-start; }
+.crit .tone-green { color: var(--green); }
+.crit .tone-amber { color: var(--amber); }
+.crit .tone-faint { color: var(--dim); }
+.crit-more { border-top: 1px solid var(--line); padding: 6px 8px 8px; display: flex; flex-direction: column; gap: 6px; }
+.crit-detail, .crit-stop { margin: 0; }
+.crit-issues { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.crit-issue { display: flex; gap: 6px; align-items: baseline; }
+.crit-mark { flex: none; width: 10px; text-align: center; }
+.crit-issue-body { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.crit-issue-head { display: flex; gap: 6px; }
+.crit-view, .crit-sev { font: 700 var(--fs-label)/1.3 var(--font-head); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+.crit-sev[data-sev="high"] { color: var(--amber); }
+.crit-iou { margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 4px 12px; }
+.crit-iou div { display: flex; flex-direction: column; gap: 2px; }
+.crit-iou dd { margin: 0; display: flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; color: var(--ink); }
+.crit-bar { flex: 1; height: 3px; background: var(--line); }
+.crit-bar i { display: block; height: 100%; background: var(--dim); }
+
+/* ---- presented view */
+.vcard { border: 1px solid var(--line2); background: var(--paper); min-width: 0; max-width: 420px; }
+.vcard-stage {
+  position: relative; height: 188px; border-bottom: 1px solid var(--line);
+  background-color: var(--vp);
+  background-image:
+    linear-gradient(var(--grid-strong) 1px, transparent 1px), linear-gradient(90deg, var(--grid-strong) 1px, transparent 1px),
+    linear-gradient(var(--grid-faint) 1px, transparent 1px), linear-gradient(90deg, var(--grid-faint) 1px, transparent 1px);
+  background-size: 50px 50px, 50px 50px, 10px 10px, 10px 10px;
+}
+/* drafting corner ticks, as on the sheet */
+.vcard-stage::before, .vcard-stage::after { content: ""; position: absolute; width: 8px; height: 8px; border: 0 solid var(--dim); pointer-events: none; z-index: 2; }
+.vcard-stage::before { left: 5px; top: 5px; border-left-width: 1px; border-top-width: 1px; }
+.vcard-stage::after { right: 5px; bottom: 5px; border-right-width: 1px; border-bottom-width: 1px; }
+.vcard-open { position: absolute; inset: 0; display: block; width: 100%; padding: 0; border: 0; background: none; cursor: zoom-in; }
+.vcard-open:focus-visible { outline: 1px solid var(--blue); outline-offset: -2px; }
+.vcard-still { display: block; width: 100%; height: 100%; object-fit: contain; }
+.vcard-blank { display: grid; place-items: center; width: 100%; height: 100%; }
+.vcard-kind { position: absolute; left: 16px; top: 10px; pointer-events: none; z-index: 2; }
+.vcard-play {
+  position: absolute; right: 10px; top: 8px; z-index: 3; font: var(--fs-label)/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase;
+  color: var(--dim); background: var(--paper); border: 1px solid var(--line2); padding: 4px 7px; cursor: pointer;
+}
+.vcard-play:hover { color: var(--ink); }
+.vcard-play:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
+.vcard-foot { padding: 6px 8px; display: flex; flex-direction: column; gap: 3px; }
+.vcard-caption { margin: 0; color: var(--ink); }
+.vcard-meta { margin: 0; display: flex; gap: 10px; font-size: var(--fs-small); }
+.vcard-meta span:last-child:not(:first-child) { margin-left: auto; }
+
+.lv { position: absolute; inset: 0; }
+.lv-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+.lv-note { position: absolute; left: 0; right: 0; bottom: 10px; text-align: center; pointer-events: none; }
+
+/* ---- full window */
+.vimm-stage { background-color: var(--vp);
+  background-image:
+    linear-gradient(var(--grid-strong) 1px, transparent 1px), linear-gradient(90deg, var(--grid-strong) 1px, transparent 1px),
+    linear-gradient(var(--grid-faint) 1px, transparent 1px), linear-gradient(90deg, var(--grid-faint) 1px, transparent 1px);
+  background-size: 100px 100px, 100px 100px, 20px 20px, 20px 20px; overflow: hidden; }
+.vimm-caption { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vimm-parts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.vimm-parts li[data-ghost] { color: var(--faint); }
+.vimm-hint { margin: 0; font-size: var(--fs-small); }
+
+/* ---- model warning */
+.mwarn { display: inline-flex; align-items: center; gap: 5px; margin-left: 8px; color: var(--amber); cursor: help; white-space: nowrap; }
+.mwarn:focus-visible { outline: 1px solid var(--blue); outline-offset: 2px; }
+.cv-who:has(.mwarn) { display: flex; align-items: center; }
