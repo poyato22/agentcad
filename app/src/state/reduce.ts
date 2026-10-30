@@ -237,6 +237,13 @@ export function forgetRuns(s: AppState, ids: Iterable<string>): AppState {
   return { ...next, runs, steps, approvals: approvals.size === next.approvals.size ? next.approvals : approvals };
 }
 
+/** The core's open questions per run (GET /runs/{id} on connect, C-2) replace that run's own. */
+export function applyPendingQuestions(s: AppState, byRun: ReadonlyMap<string, readonly Question[]>): AppState {
+  const questions = new Map([...s.questions].filter(([, q]) => !byRun.has(q.run_id)));
+  for (const list of byRun.values()) for (const q of list) questions.set(q.question_id, q);
+  return { ...s, questions };
+}
+
 /** The run ids a `run_deleted` event names (`run_id`, or `data.run_id` / `data.run_ids`). */
 export function deletedRunIds(e: MisesEvent): string[] {
   const out = new Set<string>();

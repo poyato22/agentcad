@@ -5,7 +5,7 @@ import { debug } from "../lib/log";
 import {
   agentDetailSchema, agentInfoSchema, agentRunSchema, approvalSchema, cancelAllSchema, claudeCodeStatusSchema, cleanupResultSchema, coreErrorBodySchema, coreStatusSchema, deleteRefusedSchema,
   keyStatusSchema, localActionSchema, localStatusSchema, localTestSchema, modelsInfoSchema, okSchema, onshapeTestSchema, partSummarySchema, profileSchema, runIdSchema, runNodeSchema, setupStateSchema, sketchSummarySchema,
-  stepSchema, systemCheckRowSchema, systemInstallStartSchema,
+  questionAskedSchema, stepSchema, systemCheckRowSchema, systemInstallStartSchema,
 } from "./schemas";
 import {
   simRecordSchema, simSolversSchema, simStartedSchema, simSummarySchema,
@@ -23,7 +23,7 @@ import {
 } from "./studies";
 import type {
   AgentDefBody, AgentDetail, AgentInfo, AgentRun, Approval, CancelAllResult, ClaudeCodeStatus, CleanupBody, CleanupResult, CoreInfo, CoreStatusInfo, DecisionBody, DeleteRefused, ErrorCode, KeyStatus, LocalActionResult, LocalStatus, LocalTestResult,
-  ModelsInfo, NewRunBody, OnshapeTestResult, PartSummary, Profile, ProfilePatch, RunNode, RunPatch, SetupState, SketchSummary, SketchUpload, Step,
+  ModelsInfo, NewRunBody, OnshapeTestResult, PartSummary, Profile, ProfilePatch, Question, RunNode, RunPatch, SetupState, SketchSummary, SketchUpload, Step,
   SystemCheckRow, SystemInstallStart, UiContext,
 } from "./types";
 import {
@@ -98,11 +98,29 @@ export class CoreClient {
 
   listRuns(limit = 50): Promise<AgentRun[]> { return this.json("GET", "/runs", z.array(agentRunSchema), { query: { limit } }); }
   getRun(id: string): Promise<AgentRun> { return this.json("GET", `/runs/${enc(id)}`, agentRunSchema); }
-  /** GET /runs/{id}'s live `activity` snapshot (C4): {state, detail, since, tokens_out?} or null.
-   *  Untrusted shape: state/activity.ts parses it like an agent_activity event. */
-  async runActivity(id: string): Promise<unknown> {
+  /**
+   * What a working run is doing right now, for seeding the UI on load and reconnect (C-2, C-3):
+   * GET /runs/{id}'s live `activity` snapshot ({state, detail, since, tokens_out?}, untrusted:
+   * state/activity.ts parses it like an agent_activity event) and its open ui_ask_user questions.
+   * The questions come from the run itself (`pending.questions`, `pending_questions` or
+   * `questions`), else from GET /runs/{id}/pending; `questions` is null when the core has neither
+   * (an older core: the store keeps what it has).
+   */
+  async runLive(id: string): Promise<RunLive> {
     const r = await this.json("GET", `/runs/${enc(id)}`, z.looseObject({ activity: z.unknown().optional() }));
-    return r.activity ?? null;
+    const raw = r as Record<string, unknown>;
+    const pending = raw.pending as Record<string, unknown> | undefined;
+    let qs: unknown = pending && typeof pending === "object" ? pending.questions : undefined;
+    if (qs === undefined) qs = raw.pending_questions ?? raw.questions;
+    if (qs === undefined) {
+      const res = await this.request("GET", `/runs/${enc(id)}/pending`, {});
+      if (res.ok) {
+        let body: unknown = null;
+        try { body = await res.json(); } catch { /* not JSON: no questions known */ }
+        qs = Array.isArray(body) ? body : (body as { questions?: unknown } | null)?.questions;
+      } else if (res.status !== 404 && res.status !== 405) throw await toError(res);
+    }
+    return { activity: r.activity ?? null, questions: Array.isArray(qs) ? parsePendingQuestions(id, qs) : null };
   }
   /** One malformed step (e.g. a kind this UI doesn't know yet) is dropped, not the whole page. */
   steps(runId: string, afterId = 0): Promise<Step[]> {
@@ -174,6 +192,17 @@ export class CoreClient {
 
   status(): Promise<CoreStatusInfo> { return this.json("GET", "/status", coreStatusSchema); }
   agents(): Promise<AgentInfo[]> { return this.json("GET", "/agents", z.array(agentInfoSchema)); }
+  /** Every tool the core registers (GET /tools: [{name, description, safety_class}]; a bare name
+   *  list is read too), for the custom-agent tools picker (C-7). null from a core without the
+   *  route (404): the picker then falls back to the tools the agents list. */
+  async tools(): Promise<ToolInfo[] | null> {
+    try {
+      return await this.json("GET", "/tools", toolListSchema);
+    } catch (e) {
+      if (e instanceof CoreError && (e.status === 404 || e.status === 405)) return null;
+      throw e;
+    }
+  }
   models(): Promise<ModelsInfo> { return this.json("GET", "/models", modelsInfoSchema); }
   /** The part tree of a build (without one: the core's active build). */
   parts(projectId?: string | null): Promise<PartSummary[]> {
@@ -608,7 +637,39 @@ function summarizeDetail(body: unknown): string {
     `${Array.isArray(d.loc) ? d.loc.join(".") : "?"}: ${d.msg ?? "invalid"}`).join("; ");
 }
 
-const lenientSteps: z.ZodType<Step[]> = z.array(z.unknown()).transform((items) => {
+/** GET /tools item. */
+export interface ToolInfo { name: string; description: string; safety_class: string | null }
+const toolListSchema: z.ZodType<ToolInfo[]> = z.array(z.union([
+  z.string().transform((name): ToolInfo => ({ name, description: "", safety_class: null })),
+  z.looseObject({ name: z.string(), description: z.string().nullish(), safety_class: z.string().nullish() })
+    .transform((t): ToolInfo => ({ name: t.name, description: t.description ?? "", safety_class: t.safety_class ?? null })),
+])).or(z.looseObject({ tools: z.array(z.unknown()) }).transform((o, ctx) => {
+  const r = z.array(z.union([z.string(), z.looseObject({ name: z.string() })])).safeParse(o.tools);
+  if (!r.success) { ctx.addIssue({ code: "custom", message: "bad tools list" }); return z.NEVER; }
+  return r.data.map((t): ToolInfo => (typeof t === "string" ? { name: t, description: "", safety_class: null }
+    : { name: t.name, description: typeof t.description === "string" ? t.description : "", safety_class: typeof t.safety_class === "string" ? t.safety_class : null }));
+}));
+
+/** GET /runs/{id} seen live: see CoreClient.runLive. */
+export interface RunLive { activity: unknown; questions: Question[] | null }
+
+/** Pending questions in the question_asked shape (`id` accepted for `question_id`); a malformed
+ *  one is dropped, not the rest. */
+export function parsePendingQuestions(runId: string, items: readonly unknown[]): Question[] {
+  const out: Question[] = [];
+  for (const item of items) {
+    if (typeof item !== "object" || item === null) continue;
+    const o = item as Record<string, unknown>;
+    const q = questionAskedSchema.safeParse({ ...o, question_id: o.question_id ?? o.id });
+    if (!q.success) continue;
+    if (typeof o.status === "string" && o.status !== "pending") continue;
+    out.push({ question_id: q.data.question_id, run_id: typeof o.run_id === "string" ? o.run_id : runId, question: q.data.question,
+      options: q.data.options, ...(q.data.questions.length ? { items: q.data.questions } : {}) });
+  }
+  return out;
+}
+
+const lenientSteps: z.ZodType<Step[]> =z.array(z.unknown()).transform((items) => {
   const out: Step[] = [];
   for (const item of items) {
     const r = stepSchema.safeParse(item);

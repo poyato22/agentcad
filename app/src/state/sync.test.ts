@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { startSync } from "./sync";
 import { activityByRun, resetActivity } from "./activity";
-import { approvals, conn, coreStatus, liveText, parts, resetStore, runs, selectedRunId, sessionRuns, steps } from "./store";
+import { approvals, conn, coreStatus, liveText, parts, questions, resetStore, runs, selectedRunId, sessionRuns, steps } from "./store";
 import type { CoreClient } from "../api/client";
 import type { StreamState } from "../api/events";
 import type { AgentRun, Approval, CoreStatusInfo, MisesEvent, Step } from "../api/types";
@@ -387,8 +387,13 @@ describe("startSync", () => {
     const { c, client } = fakeClient(() => []);
     const done = { ...run(R2), status: "done" as const };
     c.listRuns.mockResolvedValue([run(RID), done]);
-    const runActivity = vi.fn(async (id: string) => (id === RID ? { state: "tool", detail: "listing parts", since: 1792869500 } : null));
-    (c as Record<string, unknown>).runActivity = runActivity;
+    const runActivity = vi.fn(async (id: string) => ({
+      activity: id === RID ? { state: "waiting_user", detail: "asking you", since: 1792869500 } : null,
+      questions: [{ question_id: "q1", run_id: RID, question: "Which phone?", options: ["a", "b"] }],
+    }));
+    (c as Record<string, unknown>).runLive = runActivity;
+    // a question the UI still shows but the core no longer has (answered in another window)
+    questions.value = new Map([["q_old", { question_id: "q_old", run_id: RID, question: "old", options: [] }]]);
     // a stale working entry of a run that has since finished (an earlier core session)
     activityByRun.value = new Map([[R2, { run_id: R2, state: "thinking", detail: "", since: 1 }]]);
     const s = new FakeStream();
@@ -398,8 +403,10 @@ describe("startSync", () => {
     await f.drain();
     expect(runActivity).toHaveBeenCalledTimes(1);
     expect(runActivity).toHaveBeenCalledWith(RID);
-    expect(activityByRun.value.get(RID)).toMatchObject({ state: "tool", detail: "listing parts" });
+    expect(activityByRun.value.get(RID)).toMatchObject({ state: "waiting_user", detail: "asking you" });
     expect(activityByRun.value.has(R2)).toBe(false);
+    // C-2: the open question comes back after a reload; the answered one is gone
+    expect([...questions.value.keys()]).toEqual(["q1"]);
     // a reconnect seeds again
     s.state("closed"); s.state("open");
     await f.drain();

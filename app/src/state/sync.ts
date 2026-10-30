@@ -8,11 +8,11 @@
 import { batch } from "@preact/signals";
 import type { CoreClient } from "../api/client";
 import type { EventStream } from "../api/events";
-import type { MisesEvent } from "../api/types";
+import type { MisesEvent, Question } from "../api/types";
 import { debug } from "../lib/log";
 import { activeBuildId, isActiveBuild } from "./builds";
 import { seedActivity } from "./activity";
-import { applyRuns, applySteps, deletedRunIds, forgetRuns, mergeApprovals, reduce, type Effect } from "./reduce";
+import { applyPendingQuestions, applyRuns, applySteps, deletedRunIds, forgetRuns, mergeApprovals, reduce, type Effect } from "./reduce";
 import { approvals, commitAppState, conn, coreStatus, dropRunRefs, noteRunStarted, parts, readAppState } from "./store";
 
 export interface SyncOptions {
@@ -134,10 +134,20 @@ export function startSync(client: CoreClient, stream: Source, opts: SyncOptions 
       case "fetchActivity": {
         // one GET per working run (a handful); a run that fails to answer keeps what it had
         const snaps = new Map<string, unknown>();
+        const asked = new Map<string, Question[]>();
         await Promise.all(eff.runIds.map(async (id) => {
-          try { snaps.set(id, await client.runActivity(id)); } catch (e) { debug("activity seed failed", id, e); }
+          try {
+            const live = await client.runLive(id);
+            snaps.set(id, live.activity);
+            if (live.questions) asked.set(id, live.questions);
+          } catch (e) { debug("activity seed failed", id, e); }
         }));
-        return () => seedActivity(snaps, eff.finished);
+        return () => {
+          seedActivity(snaps, eff.finished);
+          // the open questions of a run the core answered for replace ours: a card lost on reload
+          // comes back (C-2), one answered elsewhere goes
+          if (asked.size) commitAppState(applyPendingQuestions(readAppState(), asked));
+        };
       }
       case "fetchRuns": {
         const list = await client.listRuns();
