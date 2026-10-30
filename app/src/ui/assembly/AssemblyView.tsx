@@ -13,23 +13,45 @@ import "../viewer/viewer.css";
 import { AssemblyPanel, fmtVolume, KIND_LABEL } from "./AssemblyPanel";
 import { AssemblyController, valueAt, withComponent } from "./controller";
 import { jointWorldFrame, transformPoint } from "./kinematics";
-import { modalOpen } from "../pages/router";
-import { ModeSwitch } from "./mode";
+import { activePage, modalOpen, setPage } from "../pages/router";
+import { designMode, ModeSwitch, setDesignMode } from "./mode";
 import { faceOptions, pickOption, type FaceOption } from "./pick";
 import { createAssemblyScene, type AssemblyScene, type GizmoSpec, type OverlayLabel, type PickMarker } from "./scene";
 import { onBuildSwitch } from "../../state/builds";
 import { setAnimationPlayer } from "../../state/assemblyAnimation";
+import { registerAnnounceJump } from "../console/announceJumps";
 import "./assembly.css";
 
 /** One per app: leaving assembly mode and coming back keeps the build loaded. */
 export const assembly = new AssemblyController(() => actions.client());
 onCoreEvent((ev) => assembly.onEvent(ev));
-// R19: an agent's `assembly_animate` plays through the controller's existing joint sweep; Stop
-// (the "Agent is animating…" chip) puts the joint back. A named sequence has no local player yet.
+// Plan 7 R19: an agent's `assembly_animate` plays through the controller (its steps, loops) when
+// that build's assembly is on screen; Watch brings it on screen first; Stop puts the joints back.
+const onScreen = (pid: string | null) =>
+  activePage.peek() === "design" && designMode.peek() === "assembly" && assembly.data.peek() !== null
+  && (pid === null || assembly.projectId.peek() === pid);
 setAnimationPlayer({
-  play: (spec) => { if (spec.joint_id) assembly.animate(spec.joint_id); },
+  play: (spec, onEnd) => onScreen(spec.project_id) && assembly.play(spec.steps, { loops: spec.loops, onEnd }),
+  watch: async (spec, onEnd) => {
+    setPage("design");
+    setDesignMode("assembly");
+    if (assembly.data.peek() === null || (spec.project_id && assembly.projectId.peek() !== spec.project_id)) await assembly.open(spec.project_id);
+    return assembly.play(spec.steps, { loops: spec.loops, onEnd });
+  },
   stop: () => assembly.stopAnimate(),
 });
+// Plan 7 I5: an "Added to the assembly" card opens that instance in Assembly mode
+registerAnnounceJump("assembly_added", (a) => (a.ref.instance_id ? {
+  label: "Show in assembly",
+  go: () => {
+    setPage("design");
+    setDesignMode("assembly");
+    const id = a.ref.instance_id as string;
+    const pick = () => assembly.select(id);
+    if (assembly.data.peek() === null || (a.projectId && assembly.projectId.peek() !== a.projectId)) void assembly.open(a.projectId).then(pick);
+    else pick();
+  },
+} : null));
 // A3's build tabs: switching builds re-opens the assembly on the new build (once it was opened)
 onBuildSwitch((id) => { if (assembly.projectId.peek() !== null && assembly.projectId.peek() !== id) void assembly.open(id); });
 

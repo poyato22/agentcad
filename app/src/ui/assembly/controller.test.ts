@@ -96,6 +96,53 @@ describe("animate", () => {
   });
 });
 
+describe("play (an agent's assembly_animate, R19)", () => {
+  const run = (ms: number) => { const seen: number[] = []; for (let t = 0; t < ms; t += 16) { clock.tick(16); seen.push(ctl.values.value[JOINT] as number); } return seen; };
+
+  it("plays_each_step_from_to_over_its_duration_in_order_then_puts_the_joint_back", () => {
+    let ended = 0;
+    expect(ctl.play([{ joint_id: JOINT, from: 0, to: 45, duration_s: 1 }, { joint_id: JOINT, from: 45, to: 10, duration_s: 1 }], { onEnd: () => { ended++; } })).toBe(true);
+    expect(ctl.animating.value).toBe(JOINT);
+    const first = run(1000);
+    expect(Math.max(...first)).toBeCloseTo(45, 0);          // the first step reaches its end…
+    expect(Math.min(...first)).toBeCloseTo(0, 0);           // …from its start, not the full range
+    const second = run(900);
+    expect(second[second.length - 1]).toBeLessThan(20);     // the second step heads to 10
+    run(200);
+    expect(ctl.animating.value).toBeNull();
+    expect(ended).toBe(1);
+    expect(ctl.values.value[JOINT]).toBe(90);               // back where it was
+    expect(core.named("drive")).toHaveLength(0);            // a preview: nothing written
+  });
+
+  it("loops_repeat_the_sequence", () => {
+    ctl.play([{ joint_id: JOINT, from: 0, to: 30, duration_s: 0.5 }], { loops: 3 });
+    const seen = run(1400);
+    expect(ctl.animating.value).toBe(JOINT);                // still in its 3rd pass
+    const restarts = seen.filter((v, i) => i > 0 && v < seen[i - 1] - 10).length;
+    expect(restarts).toBe(2);
+    run(200);
+    expect(ctl.animating.value).toBeNull();
+  });
+
+  it("stop_restores_every_joint_it_touched_and_a_new_play_replaces_the_old_one", () => {
+    ctl.play([{ joint_id: JOINT, from: 0, to: 45, duration_s: 2 }]);
+    run(500);
+    expect(ctl.play([{ joint_id: JOINT, from: 10, to: 20, duration_s: 2 }])).toBe(true);   // never toggles off
+    expect(ctl.animating.value).toBe(JOINT);
+    run(300);
+    ctl.stopAnimate();
+    expect(ctl.animating.value).toBeNull();
+    expect(ctl.values.value[JOINT]).toBe(90);
+  });
+
+  it("skips_unknown_joints_and_refuses_when_none_is_left", () => {
+    expect(ctl.play([{ joint_id: "nope", from: 0, to: 1, duration_s: 1 }])).toBe(false);
+    expect(ctl.animating.value).toBeNull();
+    expect(ctl.play([{ joint_id: "nope", from: 0, to: 1, duration_s: 1 }, { joint_id: JOINT, from: 0, to: 9, duration_s: 1 }])).toBe(true);
+  });
+});
+
 describe("agent changes", () => {
   it("assembly_changed_rereads_and_glides_the_parts_to_the_new_pose", async () => {
     core.asm.joints[0].value = 0;     // an agent drove the hinge flat
