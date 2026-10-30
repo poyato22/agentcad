@@ -76,10 +76,25 @@ function applyParts(list: PartSummary[]): void {
   if (sel !== null && !list.some((p) => p.part_id === sel)) selectedPartId.value = null;
 }
 
-function persist(): void {
+/** Writes the tabs to the profile; false (and a plain-words error under the tabs) when it failed.
+ *  New runs don't depend on it (they name their build), only the tabs restored at the next launch. */
+async function persist(): Promise<boolean> {
   const active = activeBuildId.peek();
-  void actions.client().setBuildTabs({ active_project_id: active, open_project_ids: [...openBuildIds.peek()] })
-    .catch((e: unknown) => fail("Saving the open builds failed", e));
+  try {
+    await actions.client().setBuildTabs({ active_project_id: active, open_project_ids: [...openBuildIds.peek()] });
+    return true;
+  } catch (e) {
+    fail("Saving the open builds failed (this tab won't be restored next launch)", e);
+    return false;
+  }
+}
+
+/** The build a new run belongs to, for POST /runs: always the active tab, explicitly (I-2), so a
+ *  run started right after a tab switch — or after the profile save failed — is filed under the
+ *  build on screen, not the profile's. Empty before the builds load (the core then uses its own). */
+export function runBuild(): { project_id?: string } {
+  const id = activeBuildId.peek();
+  return id ? { project_id: id } : {};
 }
 
 /** Show the newest run of the build when the selected run belongs to another one. */
@@ -144,12 +159,13 @@ export const buildActions = {
         selectedPartId.value = selectionByBuild.get(id) ?? null;
       }
     });
-    persist();
+    const saved = persist();
     if (prev !== id) {
       followRuns(id);
       announceSwitch(id);
       await loadParts(id);
     }
+    await saved;
   },
 
   /** Close a tab; the neighbour to its right (else left) becomes active. The last tab stays. */
@@ -160,7 +176,7 @@ export const buildActions = {
     const rest = open.filter((x) => x !== id);
     openBuildIds.value = rest;
     if (activeBuildId.peek() === id) await buildActions.switchTo(rest[Math.min(i, rest.length - 1)]);
-    else persist();
+    else await persist();
   },
 
   async create(name: string): Promise<Build | null> {
@@ -207,7 +223,7 @@ export const buildActions = {
           activeBuildId.value = null;
           await buildActions.refresh();
         }
-      } else persist();
+      } else await persist();
     } catch (e) {
       fail("Moving the build to the Trash failed", e);
     }

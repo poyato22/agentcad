@@ -6,6 +6,7 @@ import { CoreError } from "../../api/client";
 import type { AgentInfo, ModelsInfo } from "../../api/types";
 import { registerShortcut } from "../../lib/keys";
 import { partLabel, providerLabel } from "../../lib/names";
+import { runBuild } from "../../state/builds";
 import { actions, newRunOpen, parts } from "../../state/store";
 import { Button } from "../common/Button";
 import { openProfile } from "../profile/open";
@@ -104,7 +105,7 @@ function DialogBody(): JSX.Element {
     setBusy(true);
     setError(null);
     try {
-      const { run_id } = await actions.client().createRun({ agent, prompt: taskText, model_ref: model, edit_scope: scope, read_scope: ["*"] });
+      const { run_id } = await actions.client().createRun({ agent, prompt: taskText, model_ref: model, edit_scope: scope, read_scope: ["*"], ...runBuild() });
       actions.selectRun(run_id);
       actions.closeNewRun();
     } catch (e) {

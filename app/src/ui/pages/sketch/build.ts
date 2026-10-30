@@ -4,6 +4,7 @@
 // photo/render as images for vision-capable models.
 import { CoreError, type CoreClient } from "../../../api/client";
 import type { AgentInfo, ModelsInfo, Profile, SketchSummary } from "../../../api/types";
+import { runBuild } from "../../../state/builds";
 import { defaultModelRef, splitModelRef } from "../../dialogs/modelRef";
 import { toUpload, type SketchDoc } from "./model";
 import type { PickedPhoto } from "./photo";
@@ -43,7 +44,7 @@ export async function buildPart(client: CoreClient, input: BuildInput, onStep?: 
   });
   onStep?.("starting");
   // pass the model shown in the build target so the run uses exactly it, not a re-resolved default
-  const { run_id } = await client.createRun({ agent: input.agent, prompt: BUILD_PROMPT, sketch_id: sketch.sketch_id, model_ref: input.modelRef });
+  const { run_id } = await client.createRun({ agent: input.agent, prompt: BUILD_PROMPT, sketch_id: sketch.sketch_id, model_ref: input.modelRef, ...runBuild() });
   return { run_id, sketch };
 }
 

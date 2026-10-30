@@ -103,8 +103,10 @@ export interface AskItem { id: string; prompt: string; options: string[]; multi:
  *  answer is a JSON object `{id: value}`. A single question has no `items`. */
 export interface Question { question_id: string; run_id: string; question: string; options: string[]; items?: AskItem[] }
 
-/** `sketch_id` (POST /sketches): the run gets that sketch as data (and its images for vision models). */
-export interface NewRunBody { agent: string; prompt: string; model_ref?: string | null; edit_scope?: string[]; read_scope?: string[]; sketch_id?: string }
+/** `sketch_id` (POST /sketches): the run gets that sketch as data (and its images for vision models).
+ *  `project_id` (C1): the build the run belongs to. The app always sends the active build, so a
+ *  run never lands under the profile's build while a tab switch is still being saved. */
+export interface NewRunBody { agent: string; prompt: string; model_ref?: string | null; edit_scope?: string[]; read_scope?: string[]; sketch_id?: string; project_id?: string }
 
 /** edited_payload is not sent in v1. */
 export interface DecisionBody { payload_hash: string; approve: boolean }

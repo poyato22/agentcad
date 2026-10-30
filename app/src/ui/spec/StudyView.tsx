@@ -10,6 +10,8 @@ import type { JSX } from "preact";
 import { useState } from "preact/hooks";
 import type { Requirement, Study, StudyIteration } from "../../api/spec";
 import { partLabel } from "../../lib/names";
+import { loadParts } from "../../state/builds";
+import { knownVersions, versionOf } from "../../state/partEdits";
 import { parts } from "../../state/store";
 import { Button } from "../common/Button";
 import { Led, type LedTone } from "../common/Led";
@@ -91,18 +93,39 @@ export function StudyView({ c, study, requirements, compact = false }: { c: Spec
 }
 
 function Variant({ c, study, it, requirements, meets }: { c: SpecController; study: Study; it: StudyIteration; requirements: readonly Requirement[]; meets: boolean }): JSX.Element {
-  const [confirm, setConfirm] = useState(false);
+  // The confirm shows the live part as of when it opened: its vars and version are kept, and the
+  // apply is sent on that version (base_version), so a change made meanwhile is a 409, not lost.
+  const [confirm, setConfirm] = useState<{ base: number | undefined; vars: Record<string, number> } | null>(null);
   const live = parts.value.find((p) => p.part_id === study.part_id) ?? null;
+  void knownVersions.value; // re-render when a newer version is seen
   const busy = c.applying.value;
   const applied = c.applied.value;
   const isApplied = applied?.studyId === study.id && applied.n === it.n;
-  const changes = Object.entries(it.vars).map(([k, v]) => ({ k, from: live?.vars[k], to: v }));
+  const conflict = c.applyConflict.value?.studyId === study.id && c.applyConflict.value.n === it.n;
+  const shownVars = confirm?.vars ?? live?.vars ?? {};
+  const changes = Object.entries(it.vars).map(([k, v]) => ({ k, from: shownVars[k], to: v }));
   const running = study.status === "running";
   const m = it.metrics;
 
-  const doApply = async () => {
-    const ok = await c.apply(study, it.n, { allowInfeasible: !meets });
-    if (ok) setConfirm(false);
+  const snapshot = () => {
+    const p = parts.peek().find((x) => x.part_id === study.part_id) ?? null;
+    return { base: p && p.version !== undefined ? versionOf(p) : undefined, vars: { ...(p?.vars ?? {}) } };
+  };
+  const open = () => setConfirm(snapshot());
+  const doApply = async (baseVersion: number | undefined) => {
+    const ok = await c.apply(study, it.n, { allowInfeasible: !meets, baseVersion });
+    if (ok) setConfirm(null);
+  };
+  /** 409 → Reload: re-read the part, then show the change against it again. */
+  const reload = async () => {
+    await loadParts();
+    c.selectIteration(it.n);           // clears the conflict line
+    setConfirm(snapshot());
+  };
+  /** 409 → Keep: apply this variant on top of the newest version (re-read first). */
+  const keep = async () => {
+    await loadParts();
+    await doApply(snapshot().base);
   };
 
   return (
@@ -140,7 +163,7 @@ function Variant({ c, study, it, requirements, meets }: { c: SpecController; stu
       {!confirm
         ? (
           <div class="spv-actions">
-            <Button variant={meets ? "ink" : "danger"} disabled={running || busy !== null} onClick={() => setConfirm(true)}
+            <Button variant={meets ? "ink" : "danger"} disabled={running || busy !== null} onClick={open}
               title={running ? "Wait for the study to finish" : undefined}>
               {meets ? "Use this variant" : "Use anyway"}
             </Button>
@@ -158,12 +181,19 @@ function Variant({ c, study, it, requirements, meets }: { c: SpecController; stu
             </ul>
             {!meets && <p class="tone-red text">This variant fails the spec.</p>}
             <div class="spv-actions">
-              <Button variant="primary" disabled={busy !== null} onClick={() => { void doApply(); }}>{busy ? "Applying…" : "Apply and rebuild"}</Button>
-              <Button variant="ghost" disabled={busy !== null} onClick={() => setConfirm(false)}>Cancel</Button>
+              {conflict
+                ? (
+                  <>
+                    <Button variant="primary" disabled={busy !== null} onClick={() => { void reload(); }}>Reload</Button>
+                    <Button disabled={busy !== null} onClick={() => { void keep(); }} title="Apply this variant on top of the part's newest version">Keep</Button>
+                  </>
+                )
+                : <Button variant="primary" disabled={busy !== null} onClick={() => { void doApply(confirm.base); }}>{busy ? "Applying…" : "Apply and rebuild"}</Button>}
+              <Button variant="ghost" disabled={busy !== null} onClick={() => setConfirm(null)}>Cancel</Button>
             </div>
           </div>
         )}
-      {c.applyError.value && <p class="tone-red text" role="alert" data-apply-error>{c.applyError.value}</p>}
+      {c.applyError.value && <p class={`${conflict ? "tone-amber" : "tone-red"} text`} role="alert" data-apply-error data-conflict={conflict ? "" : undefined}>{c.applyError.value}</p>}
     </div>
   );
 }

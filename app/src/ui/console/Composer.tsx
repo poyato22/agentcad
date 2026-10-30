@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { CoreError } from "../../api/client";
 import type { AgentInfo } from "../../api/types";
 import { agentChips, chipsPromptLine, clearAgentChips, removeAgentChip } from "../../state/agentChips";
+import { runBuild } from "../../state/builds";
 import { actions, coreStatus, runs } from "../../state/store";
 import { Button } from "../common/Button";
 import { catalog } from "../dialogs/catalog";
@@ -71,7 +72,7 @@ export function Composer(): JSX.Element {
     try {
       const chipLine = chipsPromptLine(agentChips.peek());
       const prompt = chipLine ? `${text}\n\n${chipLine}` : text;
-      const { run_id } = await actions.client().createRun({ agent, prompt, model_ref: model, edit_scope: ["*"], read_scope: ["*"] });
+      const { run_id } = await actions.client().createRun({ agent, prompt, model_ref: model, edit_scope: ["*"], read_scope: ["*"], ...runBuild() });
       if (chipLine) clearAgentChips();
       actions.selectRun(run_id);
       noteRun(run_id);          // shown at once, even before the store lists it (e.g. queued)
