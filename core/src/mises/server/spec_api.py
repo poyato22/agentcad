@@ -66,7 +66,14 @@ async def _apply(runtime: Runtime, project_id: str, args: dict) -> dict:
         pass
     if call.status == "done" and call.output is not None:
         return call.output
-    err = call.error or (call.output or {}).get("data") or {}
+    data = (call.output or {}).get("data") or {}
+    if call.error is None and data.get("conflict"):
+        # the part changed under the user: 409 stale_version (the app offers reload / keep)
+        raise MisesError(ErrorCode.STALE_VERSION,
+                         f"{data.get('part_id')} changed (now version "
+                         f"{data.get('current_version')}); review the variant again",
+                         hint="reload the part, then apply again")
+    err = call.error or data
     code = err.get("error")
     raise MisesError(ErrorCode(code) if code in set(ErrorCode) else ErrorCode.TOOL_FAILED,
                      err.get("message") or (call.output or {}).get("summary") or "study_apply failed",
@@ -153,10 +160,17 @@ def build_spec_router(runtime: Runtime) -> APIRouter:
         part_id = str(rec.get("part_id") or "")
         args = {"study_id": study_id, "part_id": part_id, "iteration": body.iteration,
                 "allow_infeasible": body.allow_infeasible}
-        if body.base_version is not None:
-            args["base_version"] = body.base_version
         if not PART_ID_RE.match(part_id):
             raise MisesError(ErrorCode.INVALID_INPUT, f"bad part id: {part_id!r}")
+        if body.base_version is not None:
+            args["base_version"] = body.base_version
+        else:
+            # the user's own click with no base: apply on top of the live part as it is now (the
+            # app sends the on-screen version to get a 409 on a concurrent change). Agents never
+            # come through here: their omitted base_version means their last read (C6).
+            from .. import edits
+            args["base_version"] = await run_in_threadpool(
+                edits.read_version, runtime.home / "parts" / part_id)
         out = await _apply(runtime, project_id, args)
         return {"study_id": study_id, "part_id": part_id, "iteration": body.iteration,
                 "summary": out["summary"], "warnings": out.get("warnings", []),

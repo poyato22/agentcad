@@ -125,6 +125,10 @@ def test_sandboxed_command(tmp_path):
     assert cmd[:2] == ["/usr/bin/sandbox-exec", "-p"]
     assert cmd[2] == p.sandbox_profile(tmp_path)
     assert cmd[3:] == ["python", "-I", "x.py"]
+    # with a Runtime-registered home, the command's profile denies reads of that home
+    p.register_sandbox_home(tmp_path / "h")
+    assert p.sandboxed_command(["x"], tmp_path)[2] == p.sandbox_profile(tmp_path,
+                                                                        home=tmp_path / "h")
 
 
 def test_agent_sandbox_profile_shape(tmp_path):

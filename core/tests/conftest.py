@@ -18,6 +18,16 @@ REAL_FIND_CLAUDE = detect.find_claude
 
 
 @pytest.fixture(autouse=True)
+def _no_leaked_sandbox_home():
+    """A Runtime registers its home for the build sandbox (platform.register_sandbox_home); a
+    test's temp home must not leak into the next test's sandboxed workers or profile checks."""
+    from mises import platform
+    platform.register_sandbox_home(None)
+    yield
+    platform.register_sandbox_home(None)
+
+
+@pytest.fixture(autouse=True)
 def _no_real_claude(monkeypatch):
     """Never run the user's real `claude` from tests: code that looks it up through the module
     (Runtime, routes, CLI) sees it as not installed unless the test asks for the fake one
