@@ -1,5 +1,6 @@
 import type { JSX } from "preact";
 import { useRef } from "preact/hooks";
+import { atHome } from "../../state/home";
 import { activePage, setPage, TAB_PAGES } from "../pages/router";
 
 /** The top mode tabs. Every tab is clickable and navigates (⌘1–⌘7 do the same); the active tab is
@@ -25,7 +26,9 @@ export function ModeTabs(): JSX.Element {
   return (
     <div ref={list} class="tabs" role="tablist" aria-label="mode" onKeyDown={onKeyDown}>
       {TAB_PAGES.map((p) => {
-        const active = p.id === current;
+        // m1: on Home no page tab reads as the one shown (the roving tab stop stays on it)
+        const current_ = p.id === current;
+        const active = current_ && !atHome.value;
         return (
           <button
             key={p.id}
@@ -34,7 +37,7 @@ export function ModeTabs(): JSX.Element {
             class={active ? "tab tab-active active-tab" : "tab"}
             aria-selected={active}
             title={`${p.label} (⌘${p.key})`}
-            tabIndex={active ? 0 : -1}
+            tabIndex={current_ ? 0 : -1}
             onClick={() => setPage(p.id)}
           >{p.label}</button>
         );
