@@ -1,6 +1,6 @@
 [
   {
-    "id": "6d16f35dfd61",
+    "id": "d28701ede5d8",
     "parent_id": null,
     "agent": "designer",
     "provider": "fake",
@@ -12,20 +12,21 @@
     "input_tokens": 0,
     "output_tokens": 0,
     "usd": 0.0,
-    "created_at": 1793310698.026484,
-    "updated_at": 1793310698.027363,
-    "owner_pid": 77519,
+    "created_at": 1793339764.353838,
+    "updated_at": 1793339764.3544168,
+    "owner_pid": 43697,
     "external": false,
     "session_ref": null,
-    "project_id": "b42c90984efd",
+    "project_id": "add6c5ac3948",
     "title": null,
     "pinned": false,
     "archived": false,
-    "last_activity_at": 1793310698.027456,
+    "last_activity_at": 1793339764.354502,
     "parent_run_id": null,
     "cost": {
       "usd": 0.0,
-      "tokens": 0
+      "tokens": 0,
+      "usd_note": "this provider does not report cost; counted as $0 toward the dollar cap"
     },
     "children": []
   }

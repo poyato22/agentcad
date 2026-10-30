@@ -9,8 +9,9 @@ import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
-import { okSchema, questionAskedSchema } from "../src/api/schemas";
-import { specCheckSchema, specDocSchema, studyAppliedSchema, studyProgressSchema, studySchema } from "../src/api/spec";
+import { CoreError, toError } from "../src/api/client";
+import { coreErrorBodySchema, okSchema, questionAskedSchema } from "../src/api/schemas";
+import { specCheckSchema, specDocSchema, STUDY_STATUSES, studyAppliedSchema, studyProgressSchema, studySchema } from "../src/api/spec";
 import { emptyState, reduce } from "../src/state/reduce";
 import type { MisesEvent } from "../src/api/types";
 import { loadScenario, startFakeCore, type FakeCore, type Scenario } from "./fake-core/server";
@@ -44,6 +45,12 @@ beforeAll(async () => {
   fake.set("studies.json", await ok("GET", `/projects/${pid}/studies`));
   const st = REAL_SPEC.studies[0];
   fake.set("study_apply.json", await ok("POST", `/projects/${pid}/studies/${st.id}/apply`, { iteration: st.best_id }));
+  // the same click with the on-screen version from before that apply: 409 stale_version
+  const r = await fetch(`${core.url}/projects/${pid}/studies/${st.id}/apply`, {
+    method: "POST", headers: { Authorization: `Bearer ${core.token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ iteration: st.best_id, base_version: 0 }),
+  });
+  fake.set("study_apply_stale.json", { status: r.status, body: await r.json() });
 });
 afterAll(async () => { await core.stop(); });
 
@@ -65,6 +72,22 @@ describe("contract: spec / design-study routes ↔ schemas ↔ fake core", () =>
       });
     });
   }
+
+  it("study_apply_stale.json: a stale base_version is 409 stale_version, from the fake core too", async () => {
+    const real = read("study_apply_stale.json") as { status: number; body: unknown };
+    const f = fake.get("study_apply_stale.json") as typeof real;
+    expect(real.status).toBe(409);
+    const body = coreErrorBodySchema.parse(real.body);
+    expect(body.error).toBe("stale_version");
+    expect(f.status).toBe(409);
+    expect(shapeDiff(real.body as Json, f.body as Json, "stale")).toEqual([]);
+    expect(coreErrorBodySchema.parse(f.body).error).toBe("stale_version");
+    expect(coreErrorBodySchema.parse(f.body).hint).toBe(body.hint);
+    // and the client turns the real answer into a stale_version CoreError (the reload / keep offer)
+    const err = await toError(new Response(JSON.stringify(real.body), { status: 409, headers: { "Content-Type": "application/json" } }));
+    expect(err).toBeInstanceOf(CoreError);
+    expect(err.code).toBe("stale_version");
+  });
 
   it("the real study keeps every iteration metric the panel reads (C3 I-6)", () => {
     const s = z.array(studySchema).parse(read("studies.json"))[0];
@@ -90,7 +113,11 @@ describe("contract: spec / design-study routes ↔ schemas ↔ fake core", () =>
     const s = reduce(emptyState(), asked).state;
     expect(s.questions.get(q.question_id)?.items).toHaveLength(3);   // the app's batch field (A2)
     const progress = events.filter((e) => e.type === "study_progress").map((e) => studyProgressSchema.parse(e.data));
-    expect(progress.map((p) => p.n)).toEqual([1, 2, 3, 4, 5, 6]);
+    // one per evaluation, then the terminal one with the final status (QA B2-1)
+    expect(progress.map((p) => p.n)).toEqual([1, 2, 3, 4, 5, 6, 6]);
+    expect(progress.slice(0, -1).every((p) => p.status == null)).toBe(true);
+    expect(STUDY_STATUSES).toContain(progress.at(-1)?.status);
+    expect(progress.at(-1)?.status).not.toBe("running");
   });
 
   it("the answer the app sends (a JSON object string) is what the core stored", () => {

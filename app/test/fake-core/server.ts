@@ -119,25 +119,35 @@ export interface Scenario {
   tools?: FakeTool[] | null;
 }
 
-export interface FakeTool { name: string; description: string; safety_class: string }
+/** A GET /tools row, as core server/app.py list_tools answers it. */
+export interface FakeTool { name: string; description: string; safety: string; implied_classes: string[]; open_world: boolean }
 
-/** The real core's registered tools (core/src/mises, `@tool(...)`), with their safety class. */
+/** The real core's registered tools and safety classes (core/tests/fixtures/ui/tools.json, the
+ *  dump's test-only fixture_merge left out). */
 const CORE_TOOLS: readonly [string, string][] = [
-  ["agent_result", "read"], ["agent_spawn", "local_mutate"], ["agent_wait", "read"], ["assembly_add_instance", "local_mutate"],
+  ["agent_result", "read"], ["agent_spawn", "local_mutate"], ["agent_wait", "local_mutate"], ["assembly_add_instance", "local_mutate"],
   ["assembly_add_joint", "local_mutate"], ["assembly_check", "read"], ["assembly_drive", "local_mutate"], ["assembly_get", "read"],
-  ["assembly_remove", "local_mutate"], ["catalog_get", "read"], ["catalog_import_url", "network"], ["catalog_insert", "local_mutate"],
-  ["catalog_search", "read"], ["design_review", "read"], ["interview_plan", "read"], ["loads_impact", "read"], ["mirror_drawing", "read"],
-  ["mirror_edges", "read"], ["mirror_export", "read"], ["mirror_faces", "read"], ["mirror_measure", "read"], ["mirror_part_create", "local_mutate"],
-  ["mirror_part_get_source", "read"], ["mirror_part_list", "read"], ["mirror_part_op", "local_mutate"], ["mirror_part_set_source", "local_mutate"],
-  ["mirror_part_set_vars", "local_mutate"], ["onshape_budget_get", "read"], ["onshape_doc_elements", "remote_read"], ["onshape_doc_open", "remote_read"],
-  ["onshape_docs_search", "remote_read"], ["onshape_features_list", "remote_read"], ["onshape_import_element", "remote_read"],
-  ["onshape_merge_request", "remote_mutate"], ["onshape_propose", "remote_mutate"], ["onshape_variables_get", "remote_read"],
-  ["orchestrator_run", "local_mutate"], ["orchestrator_submit_plan", "local_mutate"], ["print_printers_list", "read"], ["print_send", "physical"],
-  ["print_slice", "local_mutate"], ["sim_cancel", "local_mutate"], ["sim_compare", "read"], ["sim_env_list", "read"], ["sim_result_get", "read"],
-  ["sim_run", "local_mutate"], ["sim_static_run", "local_mutate"], ["sim_types_list", "read"], ["spec_check", "read"], ["spec_get", "read"],
-  ["spec_set", "local_mutate"], ["study_apply", "local_mutate"], ["study_get", "read"], ["study_run", "local_mutate"], ["ui_ask_user", "read"], ["ui_note", "read"],
+  ["assembly_remove", "local_mutate"], ["catalog_get", "read"], ["catalog_import_url", "local_mutate"], ["catalog_insert", "local_mutate"],
+  ["catalog_search", "read"], ["design_review", "read"], ["interview_plan", "read"], ["loads_impact", "read"],
+  ["mirror_drawing", "local_mutate"], ["mirror_edges", "read"], ["mirror_export", "read"], ["mirror_faces", "read"],
+  ["mirror_measure", "read"], ["mirror_part_create", "local_mutate"], ["mirror_part_get_source", "read"], ["mirror_part_list", "read"],
+  ["mirror_part_op", "local_mutate"], ["mirror_part_set_source", "local_mutate"], ["mirror_part_set_vars", "local_mutate"],
+  ["mises_context_get", "read"], ["onshape_budget_get", "read"], ["onshape_doc_elements", "read"], ["onshape_doc_open", "read"],
+  ["onshape_docs_search", "read"], ["onshape_features_list", "read"], ["onshape_import_element", "local_mutate"],
+  ["onshape_merge_request", "irreversible"], ["onshape_propose", "onshape_mutate"], ["onshape_variables_get", "read"],
+  ["orchestrator_run", "local_mutate"], ["orchestrator_submit_plan", "read"], ["print_printers_list", "read"],
+  ["print_send", "irreversible"], ["print_slice", "local_mutate"], ["sim_cancel", "local_mutate"], ["sim_compare", "read"],
+  ["sim_env_list", "read"], ["sim_result_get", "read"], ["sim_run", "local_mutate"], ["sim_static_run", "local_mutate"],
+  ["sim_types_list", "read"], ["spec_check", "read"], ["spec_get", "read"], ["spec_set", "local_mutate"], ["study_apply", "local_mutate"],
+  ["study_get", "read"], ["study_run", "local_mutate"], ["ui_ask_user", "read"], ["ui_note", "read"],
 ];
-export const DEFAULT_TOOLS: readonly FakeTool[] = CORE_TOOLS.map(([name, safety_class]) => ({ name, safety_class, description: `${name.replace(/_/g, " ")}.` }));
+/** Tools whose ToolSpec sets implied_classes / open_world (the rest: [] and false). */
+const TOOL_EXTRAS: Readonly<Record<string, Partial<FakeTool>>> = {
+  catalog_import_url: { open_world: true }, design_review: { implied_classes: ["local_mutate"] },
+};
+export const DEFAULT_TOOLS: readonly FakeTool[] = CORE_TOOLS.map(([name, safety]) => ({
+  name, description: `${name.replace(/_/g, " ")}.`, safety, implied_classes: [], open_world: false, ...TOOL_EXTRAS[name],
+}));
 
 /** A small healthy default when a scenario names no `system` rows. */
 export const DEFAULT_SYSTEM_CHECK: SystemCheckRow[] = [
@@ -361,6 +371,10 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
 
   /** The latest agent_activity per run (GET /runs/{id} `activity`, like the core's tracker). */
   const lastActivity = new Map<string, unknown>();
+  /** The state a run was in before it started waiting on you (restored when you answer). */
+  const beforeWaiting = new Map<string, { state: string; detail: string }>();
+  /** When each open question was asked (GET /runs/{id}/pending `asked_at`). */
+  const askedAt = new Map<string, number>();
   /** Runs cancelled but still stopping (stop_delay_ms). */
   const stopping = new Set<string>();
 
@@ -369,6 +383,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     const d = ev.data;
     if (ev.type === "agent_activity" && ev.run_id) lastActivity.set(ev.run_id, d);
     if (ev.type === "question_asked" && ev.run_id && typeof d.question_id === "string") {
+      askedAt.set(d.question_id, ev.ts);
       state.questions.set(d.question_id, {
         question_id: d.question_id, run_id: ev.run_id, question: String(d.question ?? ""),
         options: Array.isArray(d.options) ? d.options.map(String) : [],
@@ -402,9 +417,16 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     broadcast(ev);
     // like the core's activity tracker (final fix wave): a pending approval or question puts the
     // run in waiting_approval / waiting_user until it is decided or answered
+    // (core gate.py / runtime.ask: data {state, detail, since}, the previous state restored after)
     if (ev.run_id && (ev.type === "approval_requested" || ev.type === "question_asked")) {
-      const st = ev.type === "approval_requested" ? "waiting_approval" : "waiting_user";
-      emit({ type: "agent_activity", run_id: ev.run_id, data: { run_id: ev.run_id, state: st, detail: "", since: now() } });
+      const waiting = ev.type === "approval_requested"
+        ? { state: "waiting_approval", detail: `waiting for approval: ${String(ev.data.action ?? "")}` }
+        : { state: "waiting_user", detail: "waiting for your answer" };
+      const prev = lastActivity.get(ev.run_id) as { state?: unknown; detail?: unknown } | undefined;
+      if (prev && typeof prev.state === "string" && !prev.state.startsWith("waiting_")) {
+        beforeWaiting.set(ev.run_id, { state: prev.state, detail: typeof prev.detail === "string" ? prev.detail : "" });
+      }
+      emit({ type: "agent_activity", run_id: ev.run_id, data: { ...waiting, since: now() } });
     }
     return { step_ids: ids };
   }
@@ -415,7 +437,9 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     const last = lastActivity.get(runId) as { state?: string } | undefined;
     if (last?.state !== "waiting_approval" && last?.state !== "waiting_user") return;
     if (state.runs.get(runId)?.status !== "running") return;
-    emit({ type: "agent_activity", run_id: runId, data: { run_id: runId, state: "thinking", detail: "", since: now() } });
+    const prev = beforeWaiting.get(runId) ?? { state: "thinking", detail: "" };
+    beforeWaiting.delete(runId);
+    emit({ type: "agent_activity", run_id: runId, data: { ...prev, since: now() } });
   }
 
   function cancelRun(id: string) {
@@ -464,7 +488,11 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       title: r.title ?? null, pinned: r.pinned ?? false, archived: r.archived ?? false,
       parent_run_id: r.parent_id,
       last_activity_at: r.last_activity_at ?? r.updated_at,
-      cost: { usd: r.usd, tokens: r.input_tokens + r.output_tokens },
+      cost: {
+        usd: r.usd, tokens: r.input_tokens + r.output_tokens,
+        // core budget.py: only Claude Code reports dollars; other providers count as $0
+        ...(r.provider !== "claude-code" && r.provider !== "ui" ? { usd_note: "this provider does not report cost; counted as $0 toward the dollar cap" } : {}),
+      },
     };
   }
 
@@ -496,13 +524,18 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
   function pendingOf(runId: string): { questions: Record<string, unknown>[]; approvals: Approval[] } {
     return {
       questions: [...state.questions.values()].filter((q) => q.run_id === runId)
-        .map((q) => ({ question_id: q.question_id, run_id: q.run_id, question: q.question, options: q.options, questions: q.items ?? [], status: "pending" })),
+        // core runtime.pending_questions: the question_asked payload plus run_id and asked_at
+        .map((q) => ({ question_id: q.question_id, question: q.question, options: q.options, ...(q.items?.length ? { questions: q.items } : {}),
+          run_id: q.run_id, asked_at: askedAt.get(q.question_id) ?? now() })),
       approvals: [...state.approvals.values()].filter((a) => a.run_id === runId && a.status === "pending"),
     };
   }
 
   function removeRun(id: string): void {
+    const gone = state.runs.get(id);
     state.runs.delete(id);
+    // core runtime.delete_run (QA C-6): other windows drop the run on this
+    if (gone) emit({ type: "run_deleted", run_id: id, data: { run_id: id, project_id: gone.project_id ?? null } });
     state.steps = state.steps.filter((s) => s.run_id !== id);
     for (const a of [...state.approvals.values()]) if (a.run_id === id) state.approvals.delete(a.id);
   }
@@ -636,7 +669,13 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         const provider = req(b, "provider", "string");
         const model = req(b, "model", "string");
         if (!agent) throw mises("invalid_input", "external run needs an agent name");
+        // like the core: the build named (unknown or trashed → 404), else the active one
+        const projectId = b.project_id;
+        if (typeof projectId === "string" && !state.builds.builds.some((x) => x.id === projectId && x.trashed_at === null)) {
+          throw mises("not_found", `unknown build: ${projectId}`);
+        }
         const run = newRun(agent, provider, model, `external agent: ${agent}`, true);
+        if (typeof projectId === "string") state.runs.set(run.id, { ...run, project_id: projectId });
         emit({ type: "run_started", run_id: run.id, data: { agent, provider, model, parent_id: null, external: true } });
         return { run_id: run.id };
       },
@@ -702,7 +741,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       },
     },
     // like the core's GET /runs/{id}: run_view plus the live `activity` (C4; null when none)
-    { method: "GET", re: /^\/runs\/([^/]+)$/, h: (m) => ({ ...runView(getRun(m[1])), activity: lastActivity.get(m[1]) ?? null }) },
+    { method: "GET", re: /^\/runs\/([^/]+)$/, h: (m) => ({ ...runView(getRun(m[1])), activity: lastActivity.get(m[1]) ?? null, pending: pendingOf(m[1]) }) },
     // the QA-fix core's open ui_ask_user questions and approvals of a run, so a reload brings a
     // question card back (C-2). Assumed shape; the app also reads `pending` inside GET /runs/{id}.
     // (GET /runs/{id} stays the real core's dumped shape: test/contract.routes.test.ts.)
@@ -1135,7 +1174,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     dropSockets();
     stopPrinting(state.print);
     // the live activity belongs to the old scenario's runs (GET /runs/{id} serves it, C-3)
-    lastActivity.clear();
+    lastActivity.clear(); beforeWaiting.clear(); askedAt.clear();
     stopping.clear();
     state = stateFrom(loadScenario(scenario), token ?? state.token);
   }

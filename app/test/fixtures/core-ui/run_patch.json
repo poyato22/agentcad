@@ -1,5 +1,5 @@
 {
-  "id": "fa9dca1eab4c",
+  "id": "3b6726ab187f",
   "parent_id": null,
   "agent": "fixture-acp",
   "provider": "acp",
@@ -11,19 +11,20 @@
   "input_tokens": 0,
   "output_tokens": 0,
   "usd": 0.0,
-  "created_at": 1793310733.200056,
-  "updated_at": 1793310733.201611,
-  "owner_pid": 77519,
+  "created_at": 1793339798.137187,
+  "updated_at": 1793339798.138309,
+  "owner_pid": 43697,
   "external": true,
   "session_ref": null,
-  "project_id": "b42c90984efd",
+  "project_id": "add6c5ac3948",
   "title": "Fixture agent",
   "pinned": true,
   "archived": false,
-  "last_activity_at": 1793310733.200994,
+  "last_activity_at": 1793339798.1379251,
   "parent_run_id": null,
   "cost": {
     "usd": 0.0,
-    "tokens": 0
+    "tokens": 0,
+    "usd_note": "this provider does not report cost; counted as $0 toward the dollar cap"
   }
 }

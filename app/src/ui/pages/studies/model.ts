@@ -368,9 +368,9 @@ const numOr = (...vs: unknown[]): number | null => {
 
 /**
  * A static result's load cases with the governing one marked, or null for a single case. Reads
- * the QA-fix core's `per_case: [{case_id, name, max_vm, sf, …}]` + `governing_case_id` (on the
- * record or in its results), else the current core's `results.cases[]` (by name) +
- * `results.governing_case` (a name). Every value is data.
+ * the core's `results.per_case: [{case_id, name, max_vm_mpa, max_disp_mm, sf}]` +
+ * `results.governing_case_id` (sim/static.py; also on the card), else `results.cases[]` (by name)
+ * + `results.governing_case` (a name). Every value is data.
  */
 export function loadCases(rec: Pick<StudyRecord, "results"> & Record<string, unknown>): CaseRow[] | null {
   const r = (rec.results ?? {}) as Record<string, unknown>;
@@ -386,7 +386,7 @@ export function loadCases(rec: Pick<StudyRecord, "results"> & Record<string, unk
     const id = typeof c.case_id === "string" && c.case_id ? c.case_id : name;
     const band = numOr(c.error_band_pct, typeof c.error_band === "number" ? c.error_band * 100 : null);
     rows.push({
-      id, name, maxVm: numOr(c.max_vm, c.max_von_mises_mpa), sf: numOr(c.sf, c.safety_factor), dispMm: numOr(c.max_disp_mm, c.max_displacement_mm),
+      id, name, maxVm: numOr(c.max_vm_mpa, c.max_vm, c.max_von_mises_mpa), sf: numOr(c.sf, c.safety_factor), dispMm: numOr(c.max_disp_mm, c.max_displacement_mm),
       bandPct: band, governing: govId !== null ? id === govId : govName !== null && name === govName,
     });
   });

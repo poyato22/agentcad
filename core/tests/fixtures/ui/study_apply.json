@@ -1,14 +1,15 @@
 {
-  "study_id": "study_92df921c1b92",
+  "study_id": "study_680c595c6435",
   "part_id": "mount_plate",
   "iteration": 5,
-  "summary": "applied study_92df921c1b92 #5: mount_plate: volume 5004.3 mm3, mass 6.21 g, bbox 40.0x20.0x6.5 mm, 2 hole(s), valid=True; volume delta +370.5 mm3",
+  "summary": "applied study_680c595c6435 #5: mount_plate: volume 5004.3 mm3, mass 6.21 g, bbox 40.0x20.0x6.5 mm, 2 hole(s), valid=True; volume delta +370.5 mm3",
   "warnings": [],
   "data": {
     "part_id": "mount_plate",
     "vars": {
       "thickness": 6.4797482362934655
     },
+    "version": 3,
     "delta": {
       "volume_mm3": 370.5053184586113,
       "mass_g": 0.45942659488867843,
@@ -193,7 +194,8 @@
     "solids": 1,
     "face_count": 8,
     "face_list_truncated": false,
-    "study_id": "study_92df921c1b92",
+    "edge_count": 18,
+    "study_id": "study_680c595c6435",
     "iteration": 5
   }
 }

@@ -1,9 +1,9 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "display_name": "",
   "units": "mm",
   "default_material": "PLA",
-  "default_agent": "designer",
+  "default_agent": "engineer",
   "default_model": null,
   "onshape_calls_year_cap": 2500,
   "onshape_calls_run_cap": 200,
@@ -11,5 +11,9 @@
   "local_endpoints": {},
   "theme": "system",
   "setup_completed_at": null,
-  "printers": []
+  "printers": [],
+  "active_project_id": null,
+  "open_project_ids": [],
+  "hidden_agents": [],
+  "catalog_allowed_domains": []
 }

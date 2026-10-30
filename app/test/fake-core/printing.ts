@@ -341,7 +341,8 @@ export function printingRoutes(d: PrintingDeps): Route[] {
         fp.prints.set(callId, p);
         fp.timers.push(setTimeout(() => {
           const t = now();
-          const payload = { file_name: s.file_name, gcode_sha256: s.gcode_sha256, printer_id: pr.id, slice_id: sid };
+          // core print/tools.py: the payload pins the printer host (a re-pointed printer needs a new approval)
+          const payload = { file_name: s.file_name, gcode_sha256: s.gcode_sha256, host: pr.host, printer_id: pr.id, slice_id: sid };
           const est = s.estimate as NonNullable<Slice["estimate"]>;
           const approval: Approval = {
             id: hex(6), run_id: run, action: "print_send", payload, payload_hash: hex(32), microversion: null,

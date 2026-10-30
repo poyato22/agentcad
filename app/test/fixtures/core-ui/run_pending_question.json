@@ -1,0 +1,52 @@
+{
+  "questions": [
+    {
+      "question_id": "586f2a0bc3af",
+      "question": "A few questions first:\n1. What will this drone do?\n2. Prop / size class?\n3. Which motors and props? (pick a class; the catalog fills in thrust/mass)",
+      "options": [],
+      "questions": [
+        {
+          "id": "use",
+          "prompt": "What will this drone do?",
+          "options": [
+            "freestyle",
+            "racing",
+            "cinematic",
+            "long-range"
+          ],
+          "multi": false,
+          "rank": false,
+          "allow_text": true
+        },
+        {
+          "id": "size_class",
+          "prompt": "Prop / size class?",
+          "options": [
+            "3\"",
+            "5\"",
+            "7\""
+          ],
+          "multi": false,
+          "rank": false,
+          "allow_text": true
+        },
+        {
+          "id": "motor_prop",
+          "prompt": "Which motors and props? (pick a class; the catalog fills in thrust/mass)",
+          "options": [
+            "1404",
+            "2207",
+            "2306",
+            "2806.5"
+          ],
+          "multi": false,
+          "rank": false,
+          "allow_text": true
+        }
+      ],
+      "run_id": "1898d9311680",
+      "asked_at": 1793339795.795685
+    }
+  ],
+  "approvals": []
+}

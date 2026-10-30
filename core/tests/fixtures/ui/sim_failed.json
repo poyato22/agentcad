@@ -1,17 +1,68 @@
 {
-  "sim_id": "sim_385e9019d289",
+  "sim_id": "sim_7341181be221",
   "part_id": "mount_plate",
-  "run_id": "d2279fcd653f",
+  "type": "static",
+  "run_id": "6fd101567df3",
+  "call_id": "ui-1d347428f743",
+  "step_id": 15,
+  "reason": null,
   "status": "failed",
   "stage": "failed",
-  "created_at": 1793209400.108948,
-  "finished_at": 1793209400.109223,
-  "analysis": "static_linear_elastic",
+  "phase": "queued",
+  "pct": 0.0,
+  "created_at": 1793340405.837328,
+  "finished_at": 1793340405.837711,
+  "analysis": "static",
   "guide": true,
   "label": "guide only, not a guarantee",
   "fidelity_class": "fem",
   "validated_against": null,
   "inputs": {
+    "type": "static",
+    "settings": {
+      "material": {
+        "name": "PETG",
+        "custom": null,
+        "fdm": null
+      },
+      "mesh": {
+        "size_mm": null,
+        "refine_faces": [],
+        "refine_factor": 0.4,
+        "second_order": true
+      },
+      "solver": {
+        "timeout_s": 300.0,
+        "threads": null
+      },
+      "load_cases": [
+        {
+          "name": "case 1",
+          "supports": [
+            {
+              "kind": "fixed",
+              "face": "x-min",
+              "axis": null
+            }
+          ],
+          "loads": [
+            {
+              "kind": "force",
+              "face": "x-max",
+              "newtons": 20.0,
+              "direction": "-z"
+            }
+          ],
+          "note": ""
+        }
+      ],
+      "convergence": {
+        "enabled": false,
+        "tol_pct": 5.0,
+        "max_levels": 4
+      },
+      "environment": "Desk"
+    },
     "fix": "x-min",
     "load": {
       "face": "x-max",
@@ -21,7 +72,51 @@
     "material": "PETG",
     "environment": "Desk"
   },
-  "geometry_hash": "b1897377fda914c6dfe502d4853ea90fa69657a619168ee3e18b5ca2246924e8",
+  "settings": {
+    "material": {
+      "name": "PETG",
+      "custom": null,
+      "fdm": null
+    },
+    "mesh": {
+      "size_mm": null,
+      "refine_faces": [],
+      "refine_factor": 0.4,
+      "second_order": true
+    },
+    "solver": {
+      "timeout_s": 300.0,
+      "threads": null
+    },
+    "load_cases": [
+      {
+        "name": "case 1",
+        "supports": [
+          {
+            "kind": "fixed",
+            "face": "x-min",
+            "axis": null
+          }
+        ],
+        "loads": [
+          {
+            "kind": "force",
+            "face": "x-max",
+            "newtons": 20.0,
+            "direction": "-z"
+          }
+        ],
+        "note": ""
+      }
+    ],
+    "convergence": {
+      "enabled": false,
+      "tol_pct": 5.0,
+      "max_levels": 4
+    },
+    "environment": "Desk"
+  },
+  "geometry_hash": "77aecaeb1da35dfd08166136267d621cd69879d93afa7e1c1887e7de86c72612",
   "material": {
     "name": "PETG",
     "e_mpa": 1500.0,
@@ -30,8 +125,13 @@
     "density_g_cm3": 1.27,
     "hdt_c": 68.0,
     "source": "Prusament PETG TDS v1.1 (printed, horizontal)",
+    "k_w_mk": 0.2,
+    "alpha_per_k": 6e-05,
     "knockdown": 0.7,
+    "stiffness_factor": 1.0,
+    "custom": false,
     "allowable_mpa": 32.9,
+    "e_eff_mpa": 1500.0,
     "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers"
   },
   "environment": {
@@ -53,9 +153,68 @@
   "warnings": [],
   "caveats": [
     "Guide only: a linear-elastic FEM estimate, not a certification or a guarantee.",
-    "Isotropic material model; printed parts are weaker across layers, so strength is multiplied by an FDM knock-down of 0.7.",
-    "Small deflections assumed; contact, creep, fatigue, temperature and vibration are not simulated.",
+    "Isotropic material model; printed parts are weaker across layers, so strength is multiplied by an FDM knock-down.",
+    "Small deflections assumed; contact, creep, fatigue, temperature and vibration are not simulated unless this study type says so.",
     "Peak stress excludes nodes on the fixed face (an ideal clamp gives a constraint singularity there); that value and a safety factor including it are reported separately."
   ],
-  "stale": false
+  "urls": {
+    "record": "/sims/sim_7341181be221",
+    "glb": "/sims/sim_7341181be221/result.glb",
+    "charts": "/sims/sim_7341181be221/charts",
+    "probe": "/sims/sim_7341181be221/probe",
+    "section": "/sims/sim_7341181be221/section"
+  },
+  "stale": false,
+  "card": {
+    "sim_id": "sim_7341181be221",
+    "type": "static",
+    "status": "failed",
+    "verdict": "fail",
+    "phase": "queued",
+    "pct": 0.0,
+    "part_id": "mount_plate",
+    "label": "guide only, not a guarantee",
+    "fidelity_class": "fem",
+    "fidelity_note": null,
+    "notes": [],
+    "metrics": [
+      {
+        "key": "max_von_mises_mpa",
+        "label": "max von Mises",
+        "unit": "MPa",
+        "value": null
+      },
+      {
+        "key": "safety_factor",
+        "label": "safety factor",
+        "unit": "",
+        "value": null
+      },
+      {
+        "key": "max_displacement_mm",
+        "label": "max displacement",
+        "unit": "mm",
+        "value": null
+      },
+      {
+        "key": "error_band_pct",
+        "label": "error band",
+        "unit": "%",
+        "value": null
+      }
+    ],
+    "checks": [],
+    "warnings": [],
+    "reason": null,
+    "run_id": "6fd101567df3",
+    "step_id": 15,
+    "urls": {
+      "record": "/sims/sim_7341181be221",
+      "glb": "/sims/sim_7341181be221/result.glb",
+      "charts": "/sims/sim_7341181be221/charts",
+      "probe": "/sims/sim_7341181be221/probe",
+      "section": "/sims/sim_7341181be221/section"
+    },
+    "charts_url": "/sims/sim_7341181be221/charts"
+  }
 }

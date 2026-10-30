@@ -11,6 +11,7 @@ import {
   localActionSchema, okSchema, runIdSchema, runNodeSchema,
   sketchSummarySchema, stepSchema,
 } from "../src/api/schemas";
+import { parsePendingQuestions, toolListSchema } from "../src/api/client";
 import type { Approval, Step } from "../src/api/types";
 import { loadScenario, startFakeCore, type FakeCore, type Scenario } from "./fake-core/server";
 import { shapeDiff, type Json } from "./shape";
@@ -69,6 +70,9 @@ beforeAll(async () => {
   core.reset("base");
   fake.set("health.json", await ok("GET", "/health"));
   fake.set("run.json", await ok("GET", `/runs/${runId}`));
+  // QA C-7 / C-2: the tools picker's list, and what the run is blocked on (its pending card)
+  fake.set("tools.json", await ok("GET", "/tools"));
+  fake.set("run_pending.json", await ok("GET", `/runs/${runId}/pending`));
   fake.set("context.json", await ok("GET", "/context"));
   fake.set("key_set.json", await ok("POST", "/keys/openai", { secret: "sk-fixture-0000" }));
   fake.set("key_delete.json", await ok("DELETE", "/keys/openai"));
@@ -116,6 +120,8 @@ beforeAll(async () => {
 afterAll(async () => { await core.stop(); });
 
 const errorAnswer = z.object({ status: z.number(), body: coreErrorBodySchema });
+/** GET /runs/{id}/pending (and GET /runs/{id}'s `pending`): open questions and pending cards. */
+const runPendingSchema = z.object({ questions: z.array(z.unknown()), approvals: z.array(approvalSchema) });
 const anyJson = z.unknown();
 const CASES: [string, z.ZodType<unknown>][] = [
   ["health.json", okSchema], ["run.json", agentRunSchema], ["context.json", anyJson],
@@ -128,6 +134,7 @@ const CASES: [string, z.ZodType<unknown>][] = [
   ["agent_create.json", agentInfoSchema], ["agent_put.json", agentInfoSchema], ["agent_delete.json", okSchema],
   ["runs_tree.json", z.array(runNodeSchema)], ["runs_cleanup.json", cleanupResultSchema],
   ["run_patch.json", agentRunSchema], ["run_delete.json", okSchema],
+  ["tools.json", toolListSchema], ["run_pending.json", runPendingSchema],
 ];
 
 describe("contract: remaining routes ↔ schemas ↔ fake core", () => {
@@ -155,6 +162,27 @@ describe("contract: remaining routes ↔ schemas ↔ fake core", () => {
     expect(f.body.message).toBe(real.body.message);
   });
 
+  it("tools.json: every real tool keeps its name and safety class (the picker's list)", () => {
+    const tools = toolListSchema.parse(read(DIR, "tools.json"));
+    expect(tools.length).toBeGreaterThan(40);
+    expect(tools.every((t) => t.name && t.safety_class)).toBe(true);
+    expect(tools.find((t) => t.name === "print_send")?.safety_class).toBe("irreversible");
+    // the fake core lists the same tools (the dump's test-only fixture_merge aside)
+    const fakeNames = new Set(toolListSchema.parse(fake.get("tools.json")).map((t) => t.name));
+    expect(tools.map((t) => t.name).filter((n) => n !== "fixture_merge" && !fakeNames.has(n))).toEqual([]);
+  });
+
+  it("pending: the run's open card, and a batched question a reloaded app recovers", () => {
+    const run = read(DIR, "run.json") as { id: string; pending: unknown };
+    expect(runPendingSchema.parse(run.pending).approvals).toHaveLength(1);
+    const q = read(DIR, "run_pending_question.json") as { questions: unknown[] };
+    const runId = (q.questions[0] as { run_id: string }).run_id;
+    const qs = parsePendingQuestions(runId, q.questions);
+    expect(qs).toHaveLength(1);
+    expect(qs[0].items?.map((x) => x.id)).toEqual(["use", "size_class", "motor_prop"]);
+    expect(qs[0].run_id).toBe(runId);
+  });
+
   it("drawing.dxf: both are DXF text (sections, an ENTITIES section, EOF)", () => {
     for (const dxf of [readFileSync(join(DIR, "drawing.dxf"), "utf8"), String(fake.get("drawing.dxf"))]) {
       expect(dxf).toMatch(/^\s*0\r?\nSECTION\r?\n/);
@@ -172,6 +200,7 @@ const COVERAGE: Record<string, string> = {
   "GET /agents/{name}": "agent_get.json",
   "GET /parts": "parts.json", "GET /parts/{part_id}/model.glb": "mount_plate.glb",
   "GET /runs": "runs.json", "GET /runs/{run_id}": "run.json", "GET /runs/{run_id}/steps": "steps.json",
+  "GET /runs/{run_id}/pending": "run_pending.json", "GET /tools": "tools.json",
   "POST /runs": "sketch_run.json", "POST /runs/external": "run_external.json", "POST /runs/{run_id}/cancel": "run_cancel.json",
   "POST /runs/cancel_all": "cancel_all.json",
   "POST /runs/{run_id}/message": "EXEMPT: needs a live turn of a real model; the e2e suite drives it against the fake core",

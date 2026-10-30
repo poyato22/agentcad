@@ -34,7 +34,7 @@ const RUN_STATUSES: ReadonlySet<string> = new Set<RunStatus>(["running", "done",
 export const KNOWN_EVENTS: ReadonlySet<string> = new Set([
   "run_started", "run_queued", "run_finished", "tool_call", "tool_result", "approval_requested", "question_asked",
   "question_answered", "text_delta", "thought_delta", "note", "plan", "usage", "diff", "file_written",
-  "turn_retry", "compaction", "part_changed", "run_deleted",
+  "turn_retry", "compaction", "part_changed", "run_deleted", "agent_activity", "agent_thinking",
 ]);
 
 type Out = { state: AppState; effects: Effect[] };
@@ -127,6 +127,9 @@ function reduceUnsafe(s: AppState, e: MisesEvent): Out {
       // deleted from another window or by the core's Clean up (C-6); a no-op for unknown runs
       return { state: forgetRuns(s, deletedRunIds(e)), effects: [] };
     case "thought_delta": case "usage": case "turn_retry":
+      return { state: s, effects: [] };
+    case "agent_activity": case "agent_thinking":
+      // their own subscribers keep them (state/activity.ts, state/thinking.ts)
       return { state: s, effects: [] };
     default:
       debug("ignoring unknown event type", e.type);

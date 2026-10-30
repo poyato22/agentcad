@@ -35,7 +35,9 @@ export function shapeDiff(expected: unknown, actual: unknown, path = "$", out: s
     if (e.length === 0 || a.length === 0) return out;
     a.forEach((item, i) => {
       const d = discriminator(item);
-      const match = d === null ? e[0] : e.find((x) => discriminator(x) === d);
+      // no discriminator: the real element it differs from least (a key only some real elements
+      // carry, like an iteration's `sims_removed`, must not read as drift on the others)
+      const match = d === null ? closest(e, item, `${path}[]`) : e.find((x) => discriminator(x) === d);
       if (match === undefined) { out.push(`${path}[${i}]: ${d} has no counterpart in the real core's answer`); return; }
       shapeDiff(match, item, `${path}[]`, out);
     });
@@ -54,4 +56,15 @@ export function shapeDiff(expected: unknown, actual: unknown, path = "$", out: s
     for (const k of Object.keys(e)) if (k in a) shapeDiff(e[k], a[k], `${path}.${k}`, out);
   }
   return out;
+}
+
+function closest(candidates: unknown[], item: unknown, path: string): unknown {
+  let best = candidates[0];
+  let bestN = Infinity;
+  for (const c of candidates.length > 50 ? candidates.slice(0, 50) : candidates) {
+    const n = shapeDiff(c, item, path).length;
+    if (n < bestN) { best = c; bestN = n; }
+    if (n === 0) break;
+  }
+  return best;
 }

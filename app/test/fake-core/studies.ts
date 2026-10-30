@@ -269,8 +269,9 @@ export function startStudy(d: StudyDeps, b: Record<string, unknown>): { run_id: 
       return;
     }
     Object.assign(rec, { ...structuredClone(real), sim_id: simId, part_id: partId, run_id: run.id, call_id: callId, settings, reason: rec.reason, created_at: rec.created_at, finished_at: now(), stale: false });
-    // several load cases: the QA-fix core's per_case + governing_case_id (B1-3; assumed shape),
-    // each case's figures scaled from the real result by its load, the largest governing
+    // several load cases: like core sim/static.py (QA B1-3), results.per_case
+    // [{case_id, name, max_vm_mpa, max_disp_mm, sf}] + results.governing_case_id (case names are
+    // the ids), each case's figures scaled from the real result by its load, the largest governing
     const cases = type === "static" && Array.isArray(settings.load_cases) ? settings.load_cases as { name?: string; loads?: { newtons?: number }[] }[] : [];
     if (cases.length > 1) {
       const res = (rec.results ?? {}) as Record<string, unknown>;
@@ -281,13 +282,20 @@ export function startStudy(d: StudyDeps, b: Record<string, unknown>): { run_id: 
       const top = Math.max(...cases.map(force));
       const perCase = cases.map((c, i) => {
         const k = force(c) / top;
-        return { case_id: `lc${i + 1}`, name: c.name ?? `case ${i + 1}`, max_vm: vm * k, sf: allow / (vm * k), max_disp_mm: disp * k, error_band_pct: 4.2 };
+        const name = c.name ?? `case ${i + 1}`;
+        return { case_id: name, name, max_vm_mpa: vm * k, max_disp_mm: disp * k, sf: allow / (vm * k) };
       });
-      const gov = perCase.reduce((a, x) => (x.max_vm > a.max_vm ? x : a));
-      Object.assign(rec, { per_case: perCase, governing_case_id: gov.case_id });
-      rec.results = { ...res, governing_case: gov.name, cases: perCase.map((x) => ({ name: x.name, max_von_mises_mpa: x.max_vm, safety_factor: x.sf, max_displacement_mm: x.max_disp_mm, error_band: 0.042 })) };
+      const gov = perCase.reduce((a, x) => (x.max_vm_mpa > a.max_vm_mpa ? x : a));
+      rec.results = {
+        ...res, governing_case: gov.name, governing_case_id: gov.case_id, per_case: perCase,
+        cases: perCase.map((x) => ({ name: x.name, max_von_mises_mpa: x.max_vm_mpa, safety_factor: x.sf, max_displacement_mm: x.max_disp_mm, error_band: 0.042 })),
+        sf_by_case: Object.fromEntries(perCase.map((x) => [x.name, x.sf])),
+      };
     }
-    rec.card = { ...structuredClone(real.card!), sim_id: simId, run_id: run.id, reason: rec.reason, urls: { record: `/sims/${simId}`, glb: `/sims/${simId}/result.glb`, charts: `/sims/${simId}/charts`, probe: `/sims/${simId}/probe`, section: `/sims/${simId}/section` }, charts_url: `/sims/${simId}/charts` };
+    const resNow = (rec.results ?? {}) as Record<string, unknown>;
+    // core studies.card: a static result's per-case table rides on the card too
+    const caseCard = Array.isArray(resNow.per_case) ? { per_case: resNow.per_case, governing_case_id: resNow.governing_case_id ?? null } : {};
+    rec.card = { ...structuredClone(real.card!), ...caseCard, sim_id: simId, run_id: run.id, reason: rec.reason, urls: { record: `/sims/${simId}`, glb: `/sims/${simId}/result.glb`, charts: `/sims/${simId}/charts`, probe: `/sims/${simId}/probe`, section: `/sims/${simId}/section` }, charts_url: `/sims/${simId}/charts` };
     const data = { sim_id: simId, part_id: partId, type, status: "done", card: rec.card, checks: rec.card.checks, results: rec.results };
     const summary = `GUIDE ONLY - ${type} study of ${partId} (fake core, real ${type} numbers)`;
     progress({ stage: "done", phase: "done", pct: 100, detail: "done" });

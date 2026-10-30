@@ -215,11 +215,12 @@ function start(d: SimDeps, b: Record<string, unknown>): unknown {
   if (!d.parts().some((p) => p.part_id === partId && p.metrics !== null)) throw mises("not_found", `no built part '${partId}'`);
 
   const run = d.newRun("studies", "ui", "studies-page", `Studies page: static study of ${partId}`, true);
-  const input = { part_id: partId, fix, load: { face: loadFace, newtons: l.newtons, direction }, material: b.material ?? null, environment: b.environment ?? null };
+  const input = { part_id: partId, fix, load: { face: loadFace, newtons: l.newtons, direction }, material: b.material ?? null, environment: b.environment ?? null, fine: b.fine ?? true };
   const callId = `ui-${hex(6)}`;
   d.emit({ type: "run_started", run_id: run.id, data: { agent: "studies", provider: "ui", model: "studies-page", parent_id: null, external: true } });
-  d.emit({ type: "tool_call", run_id: run.id, data: { call_id: callId, name: "sim_static_run", input } },
-    { steps: [{ kind: "tool_call", payload: { call_id: callId, name: "sim_static_run", input } }] });
+  const emitted = d.emit({ type: "tool_call", run_id: run.id, data: { call_id: callId, name: "sim_static_run", input } },
+    { steps: [{ kind: "tool_call", payload: { call_id: callId, name: "sim_static_run", input } }] }) as { step_ids?: number[] } | undefined;
+  const stepId = emitted?.step_ids?.[0] ?? null;
 
   const sims = d.sims();
   const timers: ReturnType<typeof setTimeout>[] = [];
@@ -255,40 +256,59 @@ function start(d: SimDeps, b: Record<string, unknown>): unknown {
   }
 
   const simId = `sim_${hex(6)}`;
+  // the real core runs the legacy body as a C7 static study (one load case): its record carries
+  // the study fields (type, call_id, step_id, phase, pct, settings, urls, card) too
+  const realDone = REAL.done as unknown as Record<string, unknown>;
+  const realSettings = realDone.settings as Record<string, unknown>;
+  const settings = {
+    material: { name: material.name, custom: null, fdm: null }, mesh: structuredClone(realSettings.mesh), solver: structuredClone(realSettings.solver),
+    load_cases: [{ name: "case 1", supports: [{ kind: "fixed", face: fix, axis: null }], loads: [{ kind: "force", face: loadFace, newtons: l.newtons, direction }], note: "" }],
+    convergence: structuredClone(realSettings.convergence), environment: env ? env.name : null,
+  };
+  const urls = { record: `/sims/${simId}`, glb: `/sims/${simId}/result.glb`, charts: `/sims/${simId}/charts`, probe: `/sims/${simId}/probe`, section: `/sims/${simId}/section` };
+  const cardOf = (real: SimRecord, over: Record<string, unknown>) => ({
+    ...structuredClone((real as unknown as { card: Record<string, unknown> }).card), sim_id: simId, part_id: partId, run_id: run.id, step_id: stepId, urls, charts_url: urls.charts, ...over,
+  });
   const rec: SimRecord = {
     sim_id: simId, part_id: partId, run_id: run.id, status: "running", stage: "queued", created_at: now(), finished_at: null,
     analysis: "static_linear_elastic", guide: true, label: REAL.done.label, fidelity_class: "fem", validated_against: null,
-    inputs: { fix, load: { face: loadFace, newtons: l.newtons, direction }, material: material.name, environment: env ? env.name : null },
+    inputs: { type: "static", settings, fix, load: { face: loadFace, newtons: l.newtons, direction }, material: material.name, environment: env ? env.name : null } as SimRecord["inputs"],
     geometry_hash: REAL.done.geometry_hash, material: structuredClone(material), environment: env ? structuredClone(env) : null,
     error: null, hint: null, warnings: [], caveats: [...REAL.done.caveats], stale: false,
   };
+  Object.assign(rec, {
+    type: "static", call_id: callId, step_id: stepId, reason: null, phase: "queued", pct: 0, settings, urls,
+    card: cardOf(REAL.failed, { status: "running", verdict: null, phase: "queued", pct: 0, metrics: [], checks: [], warnings: [], notes: [] }),
+  });
   sims.records.set(simId, rec);
-  const progress = (stage: SimRecord["stage"], data: Record<string, unknown> = {}) => {
-    rec.stage = stage;
-    d.emit({ type: "sim_progress", run_id: run.id, data: { sim_id: simId, part_id: partId, stage, ...data } });
+  const progress = (stage: SimRecord["stage"], phase: string, pct: number, detail: string, data: Record<string, unknown> = {}) => {
+    Object.assign(rec, { stage, phase, pct });
+    d.emit({ type: "sim_progress", run_id: run.id, data: { sim_id: simId, part_id: partId, type: "static", call_id: callId, step_id: stepId, stage, phase, pct, detail, ...data } });
   };
   const mesh = REAL.done.mesh;
   if (sims.outcome === "solver_missing") {
     at(1, () => {
-      Object.assign(rec, { status: "failed", stage: "failed", error: REAL.failed.error, hint: REAL.failed.hint, finished_at: now() });
+      progress("failed", "failed", 0, REAL.failed.error ?? "CalculiX (ccx) is not installed");
+      Object.assign(rec, { status: "failed", stage: "failed", error: REAL.failed.error, hint: REAL.failed.hint, finished_at: now(), card: cardOf(REAL.failed, {}) });
       finish("failed", false, `study failed: ${REAL.failed.error} (${REAL.failed.hint})`,
         { sim_id: simId, error: "solver_missing", missing: ["ccx"], install: REAL.solvers.ccx.install, hint: REAL.failed.hint });
     });
     return { run_id: run.id, status: "running" };
   }
-  at(1, () => progress("mesh_coarse", { size_mm: mesh?.coarse.size_mm }));
-  at(2, () => progress("solve_coarse", { nodes: mesh?.coarse.nodes, elements: mesh?.coarse.elements }));
-  at(3, () => progress("mesh_fine", { size_mm: mesh?.fine.size_mm }));
-  at(4, () => progress("solve_fine", { nodes: mesh?.fine.nodes, elements: mesh?.fine.elements }));
+  at(1, () => progress("mesh_coarse", "mesh", 0, `meshing coarse (${mesh?.coarse.size_mm} mm)`, { size_mm: mesh?.coarse.size_mm }));
+  at(2, () => progress("solve_coarse", "solve", 22.5, "solving coarse", { nodes: mesh?.coarse.nodes, elements: mesh?.coarse.elements, case: "case 1" }));
+  at(3, () => progress("mesh_fine", "mesh", 45, `meshing fine (${mesh?.fine.size_mm} mm)`, { size_mm: mesh?.fine.size_mm }));
+  at(4, () => progress("solve_fine", "solve", 67.5, "solving fine", { nodes: mesh?.fine.nodes, elements: mesh?.fine.elements, case: "case 1" }));
   if (sims.outcome === "hang") return { run_id: run.id, status: "running" };
   if (sims.outcome === "solve_failed") {
     at(5, () => {
-      Object.assign(rec, { status: "failed", stage: "failed", error: "CalculiX failed: see the solver log", hint: "check the setup (is the part held?)", finished_at: now() });
+      progress("failed", "failed", 67.5, "CalculiX failed: see the solver log");
+      Object.assign(rec, { status: "failed", stage: "failed", error: "CalculiX failed: see the solver log", hint: "check the setup (is the part held?)", finished_at: now(), card: cardOf(REAL.failed, {}) });
       finish("failed", false, `study failed: ${rec.error} (${rec.hint})`, { sim_id: simId, error: "solve_failed", hint: rec.hint });
     });
     return { run_id: run.id, status: "running" };
   }
-  at(5, () => progress("post"));
+  at(5, () => progress("post", "post", 92, "post-processing"));
   at(6, () => {
     // the real core's numbers for the same part, scaled to this material's allowable
     const res = structuredClone(REAL.done.results);
@@ -298,9 +318,11 @@ function start(d: SimDeps, b: Record<string, unknown>): unknown {
       const worst = Math.max(res.max_von_mises_mpa, res.max_von_mises_at_fixture_mpa ?? 0);
       res.safety_factor_incl_fixture = material.allowable_mpa / worst;
     }
+    progress("done", "done", 100, "done");
     Object.assign(rec, {
       status: "done", stage: "done", finished_at: now(), solver: structuredClone(REAL.done.solver), mesh: structuredClone(REAL.done.mesh),
       results: res, warnings: [], inputs_hash: hex(32), glb: "result.glb", color_range_mpa: [0, res?.max_von_mises_mpa ?? 0],
+      outputs: structuredClone(realDone.outputs), card: cardOf(REAL.done, {}),
     });
     finish("done", true, `GUIDE ONLY - CalculiX: ${partId} max von Mises ${res?.max_von_mises_mpa.toPrecision(3)} MPa`, rec as unknown as Record<string, unknown>);
   });

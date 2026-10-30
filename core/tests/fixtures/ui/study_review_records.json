@@ -1,9 +1,9 @@
 [
   {
-    "sim_id": "sim_d21d8c718560",
+    "sim_id": "sim_54e7b558f730",
     "part_id": "beam",
     "type": "static",
-    "run_id": "2dc26015c93a",
+    "run_id": "3a4f540ec817",
     "call_id": "rv1.r1",
     "step_id": 26,
     "reason": "design review: static lc1",
@@ -11,8 +11,8 @@
     "stage": "done",
     "phase": "done",
     "pct": 100.0,
-    "created_at": 1793308710.24578,
-    "finished_at": 1793308711.009901,
+    "created_at": 1793339775.5557692,
+    "finished_at": 1793339776.467732,
     "analysis": "static",
     "guide": true,
     "label": "guide only, not a guarantee",
@@ -111,7 +111,7 @@
       },
       "environment": null
     },
-    "geometry_hash": "40f54ddff9a8168879a3feed368e149255caa6b5a76dc046c83952ddbb5c36bb",
+    "geometry_hash": "e98fb40e3ea48d4f7c20c1cba05bb6dd8bc9e89abac498aeca9e69209fa6aace",
     "material": {
       "name": "PLA",
       "e_mpa": 2300.0,
@@ -140,11 +140,11 @@
       "Peak stress excludes nodes on the fixed face (an ideal clamp gives a constraint singularity there); that value and a safety factor including it are reported separately."
     ],
     "urls": {
-      "record": "/sims/sim_d21d8c718560",
-      "glb": "/sims/sim_d21d8c718560/result.glb",
-      "charts": "/sims/sim_d21d8c718560/charts",
-      "probe": "/sims/sim_d21d8c718560/probe",
-      "section": "/sims/sim_d21d8c718560/section"
+      "record": "/sims/sim_54e7b558f730",
+      "glb": "/sims/sim_54e7b558f730/result.glb",
+      "charts": "/sims/sim_54e7b558f730/charts",
+      "probe": "/sims/sim_54e7b558f730/probe",
+      "section": "/sims/sim_54e7b558f730/section"
     },
     "solver": {
       "name": "CalculiX",
@@ -243,6 +243,16 @@
       "sf_by_case": {
         "lc1": 5.906498504081631
       },
+      "governing_case_id": "lc1",
+      "per_case": [
+        {
+          "case_id": "lc1",
+          "name": "lc1",
+          "max_vm_mpa": 6.044190136563963,
+          "max_disp_mm": 1.7386006851423133,
+          "sf": 5.906498504081631
+        }
+      ],
       "convergence": {
         "history": [
           {
@@ -266,7 +276,7 @@
       },
       "deformed_scale": 2.9044923957151734
     },
-    "inputs_hash": "b1b89c85e82effb22300b941ee7f4760e76627ee51299c19f39558d4a48780b0",
+    "inputs_hash": "aa4d90bd59e09b7af684e2853720e33152d6a4184ea14272a79ab6c89b262223",
     "glb": "result.glb",
     "outputs": [
       "result.glb",
@@ -284,13 +294,23 @@
         "measured": 5.906498504081631,
         "unit": "",
         "status": "pass",
-        "sim_id": "sim_d21d8c718560",
+        "sim_id": "sim_54e7b558f730",
         "note": null
       }
     ],
     "stale": false,
     "card": {
-      "sim_id": "sim_d21d8c718560",
+      "per_case": [
+        {
+          "case_id": "lc1",
+          "name": "lc1",
+          "max_vm_mpa": 6.044190136563963,
+          "max_disp_mm": 1.7386006851423133,
+          "sf": 5.906498504081631
+        }
+      ],
+      "governing_case_id": "lc1",
+      "sim_id": "sim_54e7b558f730",
       "type": "static",
       "status": "done",
       "verdict": "pass",
@@ -335,29 +355,29 @@
           "measured": 5.906498504081631,
           "unit": "",
           "status": "pass",
-          "sim_id": "sim_d21d8c718560",
+          "sim_id": "sim_54e7b558f730",
           "note": null
         }
       ],
       "warnings": [],
       "reason": "design review: static lc1",
-      "run_id": "2dc26015c93a",
+      "run_id": "3a4f540ec817",
       "step_id": 26,
       "urls": {
-        "record": "/sims/sim_d21d8c718560",
-        "glb": "/sims/sim_d21d8c718560/result.glb",
-        "charts": "/sims/sim_d21d8c718560/charts",
-        "probe": "/sims/sim_d21d8c718560/probe",
-        "section": "/sims/sim_d21d8c718560/section"
+        "record": "/sims/sim_54e7b558f730",
+        "glb": "/sims/sim_54e7b558f730/result.glb",
+        "charts": "/sims/sim_54e7b558f730/charts",
+        "probe": "/sims/sim_54e7b558f730/probe",
+        "section": "/sims/sim_54e7b558f730/section"
       },
-      "charts_url": "/sims/sim_d21d8c718560/charts"
+      "charts_url": "/sims/sim_54e7b558f730/charts"
     }
   },
   {
-    "sim_id": "sim_c1ffa674cef3",
+    "sim_id": "sim_5a7245e07a69",
     "part_id": "beam",
     "type": "modal",
-    "run_id": "2dc26015c93a",
+    "run_id": "3a4f540ec817",
     "call_id": "rv1.r2",
     "step_id": 28,
     "reason": "design review: modal modal",
@@ -365,8 +385,8 @@
     "stage": "done",
     "phase": "done",
     "pct": 100.0,
-    "created_at": 1793308711.014485,
-    "finished_at": 1793308712.053867,
+    "created_at": 1793339776.472864,
+    "finished_at": 1793339777.577725,
     "analysis": "modal",
     "guide": true,
     "label": "guide only, not a guarantee",
@@ -437,7 +457,7 @@
       ],
       "excitation": null
     },
-    "geometry_hash": "40f54ddff9a8168879a3feed368e149255caa6b5a76dc046c83952ddbb5c36bb",
+    "geometry_hash": "e98fb40e3ea48d4f7c20c1cba05bb6dd8bc9e89abac498aeca9e69209fa6aace",
     "material": {
       "name": "PLA",
       "e_mpa": 2300.0,
@@ -465,11 +485,11 @@
       "Small deflections assumed; contact, creep, fatigue, temperature and vibration are not simulated unless this study type says so."
     ],
     "urls": {
-      "record": "/sims/sim_c1ffa674cef3",
-      "glb": "/sims/sim_c1ffa674cef3/result.glb",
-      "charts": "/sims/sim_c1ffa674cef3/charts",
-      "probe": "/sims/sim_c1ffa674cef3/probe",
-      "section": "/sims/sim_c1ffa674cef3/section"
+      "record": "/sims/sim_5a7245e07a69",
+      "glb": "/sims/sim_5a7245e07a69/result.glb",
+      "charts": "/sims/sim_5a7245e07a69/charts",
+      "probe": "/sims/sim_5a7245e07a69/probe",
+      "section": "/sims/sim_5a7245e07a69/section"
     },
     "solver": {
       "name": "CalculiX",
@@ -597,7 +617,7 @@
         "converged": null
       }
     },
-    "inputs_hash": "c3bf2f0b736a98b7540ebd50f0acf118e1dca52a9bf0638e27e0cde0433db2b3",
+    "inputs_hash": "f920bf40438f56b7bf40a6c413b38b88d0fe79b6b9289c0f3cf7b5e397eb280e",
     "glb": "result.glb",
     "outputs": [
       "result.glb",
@@ -614,12 +634,12 @@
         "measured": 0,
         "unit": "modes",
         "status": "pass",
-        "sim_id": "sim_c1ffa674cef3"
+        "sim_id": "sim_5a7245e07a69"
       }
     ],
     "stale": false,
     "card": {
-      "sim_id": "sim_c1ffa674cef3",
+      "sim_id": "sim_5a7245e07a69",
       "type": "modal",
       "status": "done",
       "verdict": "pass",
@@ -661,22 +681,22 @@
           "measured": 0,
           "unit": "modes",
           "status": "pass",
-          "sim_id": "sim_c1ffa674cef3",
+          "sim_id": "sim_5a7245e07a69",
           "note": null
         }
       ],
       "warnings": [],
       "reason": "design review: modal modal",
-      "run_id": "2dc26015c93a",
+      "run_id": "3a4f540ec817",
       "step_id": 28,
       "urls": {
-        "record": "/sims/sim_c1ffa674cef3",
-        "glb": "/sims/sim_c1ffa674cef3/result.glb",
-        "charts": "/sims/sim_c1ffa674cef3/charts",
-        "probe": "/sims/sim_c1ffa674cef3/probe",
-        "section": "/sims/sim_c1ffa674cef3/section"
+        "record": "/sims/sim_5a7245e07a69",
+        "glb": "/sims/sim_5a7245e07a69/result.glb",
+        "charts": "/sims/sim_5a7245e07a69/charts",
+        "probe": "/sims/sim_5a7245e07a69/probe",
+        "section": "/sims/sim_5a7245e07a69/section"
       },
-      "charts_url": "/sims/sim_c1ffa674cef3/charts"
+      "charts_url": "/sims/sim_5a7245e07a69/charts"
     }
   }
 ]

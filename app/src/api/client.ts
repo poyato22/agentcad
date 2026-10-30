@@ -192,7 +192,7 @@ export class CoreClient {
 
   status(): Promise<CoreStatusInfo> { return this.json("GET", "/status", coreStatusSchema); }
   agents(): Promise<AgentInfo[]> { return this.json("GET", "/agents", z.array(agentInfoSchema)); }
-  /** Every tool the core registers (GET /tools: [{name, description, safety_class}]; a bare name
+  /** Every tool the core registers (GET /tools: [{name, description, safety, …}]; a bare name
    *  list is read too), for the custom-agent tools picker (C-7). null from a core without the
    *  route (404): the picker then falls back to the tools the agents list. */
   async tools(): Promise<ToolInfo[] | null> {
@@ -620,7 +620,7 @@ export class CoreClient {
   }
 }
 
-async function toError(res: Response): Promise<CoreError> {
+export async function toError(res: Response): Promise<CoreError> {
   let body: unknown = null;
   try { body = await res.json(); } catch { /* not JSON */ }
   const message = typeof (body as { message?: unknown })?.message === "string"
@@ -653,18 +653,19 @@ function summarizeDetail(body: unknown): string {
     `${Array.isArray(d.loc) ? d.loc.join(".") : "?"}: ${d.msg ?? "invalid"}`).join("; ");
 }
 
-/** GET /tools item. */
+/** GET /tools item. The core answers `[{name, description, safety, implied_classes, open_world}]`
+ *  (server/app.py list_tools); `safety_class` is read too, and a bare name list. */
 export interface ToolInfo { name: string; description: string; safety_class: string | null }
-const toolListSchema: z.ZodType<ToolInfo[]> = z.array(z.union([
-  z.string().transform((name): ToolInfo => ({ name, description: "", safety_class: null })),
-  z.looseObject({ name: z.string(), description: z.string().nullish(), safety_class: z.string().nullish() })
-    .transform((t): ToolInfo => ({ name: t.name, description: t.description ?? "", safety_class: t.safety_class ?? null })),
-])).or(z.looseObject({ tools: z.array(z.unknown()) }).transform((o, ctx) => {
-  const r = z.array(z.union([z.string(), z.looseObject({ name: z.string() })])).safeParse(o.tools);
-  if (!r.success) { ctx.addIssue({ code: "custom", message: "bad tools list" }); return z.NEVER; }
-  return r.data.map((t): ToolInfo => (typeof t === "string" ? { name: t, description: "", safety_class: null }
-    : { name: t.name, description: typeof t.description === "string" ? t.description : "", safety_class: typeof t.safety_class === "string" ? t.safety_class : null }));
-}));
+const strOrNull = (v: unknown): string | null => (typeof v === "string" ? v : null);
+const toolInfo = (t: string | { name: string; [k: string]: unknown }): ToolInfo => (typeof t === "string"
+  ? { name: t, description: "", safety_class: null }
+  : { name: t.name, description: strOrNull(t.description) ?? "", safety_class: strOrNull(t.safety) ?? strOrNull(t.safety_class) });
+export const toolListSchema: z.ZodType<ToolInfo[]> = z.array(z.union([z.string(), z.looseObject({ name: z.string() })])).transform((ts) => ts.map(toolInfo))
+  .or(z.looseObject({ tools: z.array(z.unknown()) }).transform((o, ctx) => {
+    const r = z.array(z.union([z.string(), z.looseObject({ name: z.string() })])).safeParse(o.tools);
+    if (!r.success) { ctx.addIssue({ code: "custom", message: "bad tools list" }); return z.NEVER; }
+    return r.data.map(toolInfo);
+  }));
 
 /** GET /runs/{id} seen live: see CoreClient.runLive. */
 export interface RunLive { activity: unknown; questions: Question[] | null }

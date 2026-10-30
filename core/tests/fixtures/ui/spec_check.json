@@ -1,5 +1,5 @@
 {
-  "project_id": "4b8d50756366",
+  "project_id": "466a0d9d96a8",
   "part_id": "mount_plate",
   "requirements": [
     {
@@ -20,9 +20,9 @@
       "target": 2.0,
       "load_case_id": "desk_load",
       "priority": 4,
-      "measured": null,
-      "status": "not_checked",
-      "detail": "no stress study for this load case yet",
+      "measured": 3.165770915716302,
+      "status": "pass",
+      "detail": "",
       "guide": true,
       "estimate": false
     },
@@ -32,9 +32,9 @@
       "target": 1.5,
       "load_case_id": "drop_hit",
       "priority": 4,
-      "measured": null,
-      "status": "not_checked",
-      "detail": "no stress study for this load case yet",
+      "measured": 3.165770915716302,
+      "status": "pass",
+      "detail": "",
       "guide": true,
       "estimate": true
     },
@@ -44,9 +44,9 @@
       "target": 0.5,
       "load_case_id": "desk_load",
       "priority": 3,
-      "measured": null,
-      "status": "not_checked",
-      "detail": "no stress study for this load case yet",
+      "measured": 0.8316638894083745,
+      "status": "fail",
+      "detail": "",
       "guide": true,
       "estimate": false
     },
@@ -83,7 +83,7 @@
       "estimate": false
     }
   ],
-  "overall": "pass",
-  "checked": 2,
+  "overall": "fail",
+  "checked": 5,
   "total": 6
 }

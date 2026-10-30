@@ -93,8 +93,13 @@
       "density_g_cm3": 1.24,
       "hdt_c": 55.0,
       "source": "Prusament PLA TDS v1.1 (printed, horizontal)",
+      "k_w_mk": 0.13,
+      "alpha_per_k": 6.8e-05,
       "knockdown": 0.7,
+      "stiffness_factor": 1.0,
+      "custom": false,
       "allowable_mpa": 35.699999999999996,
+      "e_eff_mpa": 2300.0,
       "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers"
     },
     {
@@ -105,8 +110,13 @@
       "density_g_cm3": 1.27,
       "hdt_c": 68.0,
       "source": "Prusament PETG TDS v1.1 (printed, horizontal)",
+      "k_w_mk": 0.2,
+      "alpha_per_k": 6e-05,
       "knockdown": 0.7,
+      "stiffness_factor": 1.0,
+      "custom": false,
       "allowable_mpa": 32.9,
+      "e_eff_mpa": 1500.0,
       "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers"
     },
     {
@@ -117,8 +127,13 @@
       "density_g_cm3": 1.04,
       "hdt_c": 80.0,
       "source": "generic FDM ABS, typical TDS low end (approximate)",
+      "k_w_mk": 0.17,
+      "alpha_per_k": 9e-05,
       "knockdown": 0.7,
+      "stiffness_factor": 1.0,
+      "custom": false,
       "allowable_mpa": 24.5,
+      "e_eff_mpa": 1900.0,
       "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers"
     },
     {
@@ -129,8 +144,13 @@
       "density_g_cm3": 1.07,
       "hdt_c": 90.0,
       "source": "generic FDM ASA, typical TDS low end (approximate)",
+      "k_w_mk": 0.17,
+      "alpha_per_k": 9.5e-05,
       "knockdown": 0.7,
+      "stiffness_factor": 1.0,
+      "custom": false,
       "allowable_mpa": 28.0,
+      "e_eff_mpa": 2000.0,
       "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers"
     },
     {
@@ -141,8 +161,13 @@
       "density_g_cm3": 1.06,
       "hdt_c": 170.0,
       "source": "Bambu PAHT-CF TDS v2 (X-Y modulus, Z strength)",
+      "k_w_mk": 0.3,
+      "alpha_per_k": 4e-05,
       "knockdown": 0.7,
+      "stiffness_factor": 1.0,
+      "custom": false,
       "allowable_mpa": 44.8,
+      "e_eff_mpa": 3860.0,
       "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers"
     }
   ],
@@ -160,5 +185,13 @@
       "version": "4.15.2",
       "install": "gmsh is a core dependency: run `uv sync` in core/"
     }
-  }
+  },
+  "study_types": [
+    "static",
+    "modal",
+    "buckling",
+    "thermal",
+    "drop",
+    "wind"
+  ]
 }

@@ -265,8 +265,15 @@ async def dump(out: Path, only: str = "all") -> None:
             (out / "mount_plate.glb").write_bytes((await get("/parts/mount_plate/model.glb")).content)
             await dump_draw_print(out, call, get, rt)
             await dump_spec(out, call, get, rt)
+            # the spec dump applied a study variant (a new thickness): put the run's 6 mm plate
+            # back, so the later fixtures do not depend on which variant the study found best
+            from mises import edits
+            await call("POST", "/parts/mount_plate/vars", {
+                "vars": {"thickness": 6.0},
+                "base_version": edits.read_version(rt.home / "parts" / "mount_plate")})
             await dump_more(out, call, get, run_id)
             await dump_assembly(out, call, get)
+            events.extend(await dump_trash_and_delete(out, call, rt))
         if only == "all":
             (out / "events.jsonl").write_text("".join(line + "\n" for line in events))
     finally:
@@ -434,7 +441,8 @@ async def dump_spec(out: Path, call, get, rt) -> None:
         while not sub.queue.empty():
             ev = sub.queue.get_nowait()
             if ev.type in ("study_progress", "spec_changed", "question_asked",
-                           "question_answered"):
+                           "question_answered") or (
+                    ev.type == "agent_activity" and (ev.data or {}).get("state") == "waiting_user"):
                 events.append(ev.model_dump_json())
     try:
         write("spec_empty.json", (await get(f"/projects/{pid}/spec")).json())
@@ -449,9 +457,17 @@ async def dump_spec(out: Path, call, get, rt) -> None:
         write("studies.json", studies)
         write("spec_check.json", (await get(f"/projects/{pid}/spec/check?part_id=mount_plate")).json())
         best = rec["best_id"] if rec["best_id"] is not None else rec["iterations"][0]["n"]
-        write("study_apply.json", (await call("POST", f"/projects/{pid}/studies/{rec['id']}/apply",
-                                              {"iteration": best,
-                                               "allow_infeasible": rec["best_id"] is None})).json())
+        from mises import edits
+        before = edits.read_version(rt.home / "parts" / "mount_plate")
+        apply_body = {"iteration": best, "allow_infeasible": rec["best_id"] is None}
+        apply_url = f"/projects/{pid}/studies/{rec['id']}/apply"
+        write("study_apply.json", (await call("POST", apply_url, apply_body)).json())
+        try:        # the on-screen version is the one before that apply: 409 stale_version
+            await call("POST", apply_url, {**apply_body, "base_version": before})
+            raise SystemExit("a stale study_apply should be refused")
+        except httpx.HTTPStatusError as e:
+            write("study_apply_stale.json", {"status": e.response.status_code,
+                                             "body": e.response.json()})
 
         plan = await ui_call(rt, "interview_plan", {"goal": "build me a 5 inch drone"})
         batch = plan["batches"][0]
@@ -464,6 +480,8 @@ async def dump_spec(out: Path, call, get, rt) -> None:
                 events.append(ev.model_dump_json())
             if ev.type == "question_asked":
                 q = ev.data
+                # QA C-2: the open question as a reloaded app recovers it
+                write("run_pending_question.json", (await get(f"/runs/{ev.run_id}/pending")).json())
         answers = {batch[0]["id"]: batch[0]["options"][0], batch[1]["id"]: "my own words"}
         write("question_answer.json", (await call(
             "POST", f"/questions/{q['question_id']}/answer",
@@ -487,6 +505,10 @@ async def dump_more(out: Path, call, get, run_id: str) -> None:
 
     write("health.json", (await get("/health")).json())
     write("run.json", (await get(f"/runs/{run_id}")).json())
+    # QA C-7 / C-2: the tools picker's registry list, and what the run is blocked on (the
+    # fixture_merge approval is still pending here)
+    write("tools.json", (await get("/tools")).json())
+    write("run_pending.json", (await get(f"/runs/{run_id}/pending")).json())
     write("context.json", (await get("/context")).json())
     # Plan 5 (A2): one custom agent read back with its instructions (the app's edit form)
     write("agent_create.json", (await call("POST", "/agents", {
@@ -541,6 +563,41 @@ async def dump_more(out: Path, call, get, run_id: str) -> None:
                                               {"payload_hash": card["payload_hash"],
                                                "approve": False})).json())
     write("cancel_all.json", (await call("POST", "/runs/cancel_all")).json())
+
+
+async def dump_trash_and_delete(out: Path, call, rt) -> list[str]:
+    """QA I4 / C-6: Empty Trash refused while a trashed build still has a live (external) run,
+    then that run cancelled and deleted (its run_deleted event, returned for events.jsonl) and
+    the Trash emptied. Runs last: it leaves a build purged."""
+    def write(name: str, data) -> None:
+        (out / name).write_text(json.dumps(data, indent=2) + "\n")
+
+    sub = rt.events.subscribe()
+    try:
+        doomed = (await call("POST", "/projects", {"name": "Doomed"})).json()
+        live = (await call("POST", "/runs/external", {
+            "agent": "fixture-acp", "provider": "acp", "model": "fixture",
+            "project_id": doomed["id"]})).json()
+        await call("DELETE", f"/projects/{doomed['id']}")
+        try:
+            await call("POST", "/projects/trash/empty")
+            raise SystemExit("emptying a Trash with a live run should be refused")
+        except httpx.HTTPStatusError as e:
+            write("projects_trash_empty_busy.json", {"status": e.response.status_code,
+                                                     "body": e.response.json()})
+        await call("POST", f"/runs/{live['run_id']}/cancel")
+        await call("DELETE", f"/runs/{live['run_id']}")
+        await call("POST", "/projects/trash/empty")
+        lines: list[str] = []
+        while not sub.queue.empty():
+            ev = sub.queue.get_nowait()
+            if ev.type == "run_deleted":
+                lines.append(ev.model_dump_json())
+        if not lines:
+            raise SystemExit("no run_deleted event")
+        return lines
+    finally:
+        sub.close()
 
 
 async def dump_assembly(out: Path, call, get) -> None:

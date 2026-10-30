@@ -87,7 +87,7 @@ describe("fake core /sims", () => {
     await until(() => got.some((e) => e.type === "run_finished"));
     ws.close();
     const stages = got.filter((e) => e.type === "sim_progress").map((e) => e.data.stage);
-    expect(stages).toEqual(["mesh_coarse", "solve_coarse", "mesh_fine", "solve_fine", "post"]);
+    expect(stages).toEqual(["mesh_coarse", "solve_coarse", "mesh_fine", "solve_fine", "post", "done"]);
     expect(got.map((e) => e.type)[0]).toBe("run_started");
     const [s] = await client.listSims({ runId: started.run_id });
     expect(s.status).toBe("done");

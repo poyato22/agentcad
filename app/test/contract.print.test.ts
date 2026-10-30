@@ -115,7 +115,7 @@ describe("contract: drawing + print fixtures ↔ schemas ↔ fake core", () => {
     const fake = fakeAnswers.get("print_approval.json") as { payload: unknown; deltas: unknown };
     expect(shapeDiff(real.payload, fake.payload, "print_payload")).toEqual([]);
     expect(shapeDiff(real.deltas, fake.deltas, "print_deltas")).toEqual([]);
-    expect(Object.keys(fake.payload as object).sort()).toEqual(["file_name", "gcode_sha256", "printer_id", "slice_id"]);
+    expect(Object.keys(fake.payload as object).sort()).toEqual(["file_name", "gcode_sha256", "host", "printer_id", "slice_id"]);
   });
 
   it("drawing_svg_fixture_is_a_plain_svg_picture", () => {

@@ -12,7 +12,10 @@ import type { MisesEvent } from "../../api/types";
 export const STUDY_REFRESH_MS = 400;
 /** While a design study runs, its list is re-read this often (its last save may send no event). */
 export const STUDY_POLL_MS = 2000;
-const TERMINAL_STUDY: ReadonlySet<string> = new Set(["done", "failed", "cancelled"]);
+/** core engineering/tools.py study_run save(): the terminal study_progress carries one of these
+ *  (run_study's "done" / "budget_exhausted", or "cancelled" / "failed"); "interrupted" is a
+ *  record the core found unfinished on restart. */
+const TERMINAL_STUDY: ReadonlySet<string> = new Set(["done", "failed", "cancelled", "budget_exhausted", "interrupted"]);
 /** spec checks wait this long, so a burst of changes (and both mounted views) check once. */
 export const CHECK_DEBOUNCE_MS = 150;
 

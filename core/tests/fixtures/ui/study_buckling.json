@@ -1,8 +1,8 @@
 {
-  "sim_id": "sim_878b41d468d5",
+  "sim_id": "sim_f1d4c8fb97c5",
   "part_id": "beam",
   "type": "buckling",
-  "run_id": "2dc26015c93a",
+  "run_id": "3a4f540ec817",
   "call_id": "s3",
   "step_id": 13,
   "reason": "axial load margin",
@@ -10,8 +10,8 @@
   "stage": "done",
   "phase": "done",
   "pct": 100.0,
-  "created_at": 1793308702.534981,
-  "finished_at": 1793308703.765802,
+  "created_at": 1793339767.314273,
+  "finished_at": 1793339768.5487921,
   "analysis": "buckling",
   "guide": true,
   "label": "guide only, not a guarantee",
@@ -96,7 +96,7 @@
     },
     "n_modes": 3
   },
-  "geometry_hash": "40f54ddff9a8168879a3feed368e149255caa6b5a76dc046c83952ddbb5c36bb",
+  "geometry_hash": "e98fb40e3ea48d4f7c20c1cba05bb6dd8bc9e89abac498aeca9e69209fa6aace",
   "material": {
     "name": "PLA",
     "e_mpa": 2300.0,
@@ -124,11 +124,11 @@
     "Small deflections assumed; contact, creep, fatigue, temperature and vibration are not simulated unless this study type says so."
   ],
   "urls": {
-    "record": "/sims/sim_878b41d468d5",
-    "glb": "/sims/sim_878b41d468d5/result.glb",
-    "charts": "/sims/sim_878b41d468d5/charts",
-    "probe": "/sims/sim_878b41d468d5/probe",
-    "section": "/sims/sim_878b41d468d5/section"
+    "record": "/sims/sim_f1d4c8fb97c5",
+    "glb": "/sims/sim_f1d4c8fb97c5/result.glb",
+    "charts": "/sims/sim_f1d4c8fb97c5/charts",
+    "probe": "/sims/sim_f1d4c8fb97c5/probe",
+    "section": "/sims/sim_f1d4c8fb97c5/section"
   },
   "solver": {
     "name": "CalculiX",
@@ -146,7 +146,9 @@
       "elements": 433,
       "order": 2,
       "fixed_nodes": 37,
-      "applied_n": 100.0
+      "applied_n": 100.0,
+      "reference_scale": 0.047309000000000004,
+      "solves": 2
     },
     "fine": {
       "size_mm": 2.5,
@@ -154,7 +156,9 @@
       "elements": 3582,
       "order": 2,
       "fixed_nodes": 105,
-      "applied_n": 100.0
+      "applied_n": 100.0,
+      "reference_scale": 0.047309000000000004,
+      "solves": 1
     },
     "levels": [
       {
@@ -171,25 +175,25 @@
         "size_mm": 2.5,
         "nodes": 6598,
         "elements": 3582,
-        "metric": 4.724615
+        "metric": 4.72461547244
       }
     ]
   },
   "results": {
     "factors": [
-      4.724615,
-      4.7247,
-      39.88282
+      4.72461547244,
+      4.72469968246,
+      39.8828211138
     ],
-    "first_factor": 4.724615,
-    "critical_load_n": 472.4615,
+    "first_factor": 4.72461547244,
+    "critical_load_n": 472.46154724400003,
     "applied_load_n": 100.0,
     "coarse_factors": [
       4.7309,
-      4.731711,
-      39.98299
+      4.7317089839,
+      39.9829931904
     ],
-    "error_band": 0.0013302671222946412,
+    "error_band": 0.0013301669938346281,
     "error_band_pct": 0.1,
     "convergence": {
       "history": [
@@ -207,13 +211,13 @@
           "size_mm": 2.5,
           "nodes": 6598,
           "elements": 3582,
-          "metric": 4.724615
+          "metric": 4.72461547244
         }
       ],
       "converged": null
     }
   },
-  "inputs_hash": "d7acff96bfaeb81df6a22be12aafa0ede9b168dbae88d847dfaf82c886051560",
+  "inputs_hash": "f2f04d256a605906e1df9102fe4c87d48904c9a6ec8c0e8a7e3eb384c0ec1441",
   "glb": "result.glb",
   "outputs": [
     "result.glb",
@@ -224,16 +228,16 @@
       "requirement_id": "r4",
       "kind": "min_buckling_factor",
       "target": 3.0,
-      "measured": 4.724615,
+      "measured": 4.72461547244,
       "unit": "",
       "status": "pass",
-      "sim_id": "sim_878b41d468d5",
+      "sim_id": "sim_f1d4c8fb97c5",
       "note": null
     }
   ],
   "stale": false,
   "card": {
-    "sim_id": "sim_878b41d468d5",
+    "sim_id": "sim_f1d4c8fb97c5",
     "type": "buckling",
     "status": "done",
     "verdict": "pass",
@@ -249,13 +253,13 @@
         "key": "first_factor",
         "label": "buckling factor",
         "unit": "",
-        "value": 4.724615
+        "value": 4.72461547244
       },
       {
         "key": "critical_load_n",
         "label": "critical load",
         "unit": "N",
-        "value": 472.4615
+        "value": 472.46154724400003
       },
       {
         "key": "error_band_pct",
@@ -269,24 +273,24 @@
         "requirement_id": "r4",
         "kind": "min_buckling_factor",
         "target": 3.0,
-        "measured": 4.724615,
+        "measured": 4.72461547244,
         "unit": "",
         "status": "pass",
-        "sim_id": "sim_878b41d468d5",
+        "sim_id": "sim_f1d4c8fb97c5",
         "note": null
       }
     ],
     "warnings": [],
     "reason": "axial load margin",
-    "run_id": "2dc26015c93a",
+    "run_id": "3a4f540ec817",
     "step_id": 13,
     "urls": {
-      "record": "/sims/sim_878b41d468d5",
-      "glb": "/sims/sim_878b41d468d5/result.glb",
-      "charts": "/sims/sim_878b41d468d5/charts",
-      "probe": "/sims/sim_878b41d468d5/probe",
-      "section": "/sims/sim_878b41d468d5/section"
+      "record": "/sims/sim_f1d4c8fb97c5",
+      "glb": "/sims/sim_f1d4c8fb97c5/result.glb",
+      "charts": "/sims/sim_f1d4c8fb97c5/charts",
+      "probe": "/sims/sim_f1d4c8fb97c5/probe",
+      "section": "/sims/sim_f1d4c8fb97c5/section"
     },
-    "charts_url": "/sims/sim_878b41d468d5/charts"
+    "charts_url": "/sims/sim_f1d4c8fb97c5/charts"
   }
 }

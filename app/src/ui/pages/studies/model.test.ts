@@ -85,6 +85,15 @@ describe("loadCases (B1-3)", () => {
     ] });
     expect(rows?.map((r) => [r.id, r.governing, r.sf])).toEqual([["lc1", false, 1.55], ["lc2", true, 1.2]]);
   });
+  it("reads the real core's two-case static result (results.per_case, max_vm_mpa)", () => {
+    const rec = studyRecordSchema.parse(read("study_static.json"));
+    const res = rec.results as { per_case: { case_id: string; max_vm_mpa: number; sf: number }[]; governing_case_id: string };
+    const rows = loadCases(rec as Parameters<typeof loadCases>[0]);
+    expect(rows?.map((r) => r.id)).toEqual(res.per_case.map((c) => c.case_id));
+    expect(rows?.map((r) => r.maxVm)).toEqual(res.per_case.map((c) => c.max_vm_mpa));
+    expect(rows?.map((r) => r.sf)).toEqual(res.per_case.map((c) => c.sf));
+    expect(rows?.find((r) => r.governing)?.id).toBe(res.governing_case_id);
+  });
   it("falls back to results.cases + governing_case by name, and skips a single case", () => {
     const rows = loadCases({ results: { governing_case: "tip down", cases: [
       { name: "tip down", max_von_mises_mpa: 23.1, safety_factor: 1.55, max_displacement_mm: 4.8, error_band: 0.05 },

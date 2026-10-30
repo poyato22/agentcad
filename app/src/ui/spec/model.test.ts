@@ -35,8 +35,10 @@ describe("reading requirements", () => {
     expect(v[0].req.id).toBe("mass_budget");
     expect(v.map((x) => x.req.priority)).toEqual([...v.map((x) => x.req.priority)].sort((a, b) => b - a));
     const t = tally(v);
-    expect(t).toEqual({ pass: 2, warn: 0, fail: 0, not_checked: 4 });
-    expect(tallyText(t)).toBe("2 pass · 4 not checked");
+    // the real check (CalculiX solved both load cases): the stiffness target fails, the mount
+    // pattern needs a human
+    expect(t).toEqual({ pass: 4, warn: 0, fail: 1, not_checked: 1 });
+    expect(tallyText(t)).toBe("4 pass · 1 fail · 1 not checked");
     expect(reqViews(SPEC, null).every((x) => x.status === "not_checked")).toBe(true);
   });
 });

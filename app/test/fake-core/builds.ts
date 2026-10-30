@@ -240,7 +240,8 @@ export function buildRoutes(d: BuildsDeps): Route[] {
         if (busy) {
           throw new HttpError(409, {
             ...busy, project_ids: purged,
-            message: `${busy.run_ids.length} run(s) in the Trash are still ${busy.reason === "running" ? "working" : "waiting for approval"}`,
+            // core projects.TrashBusy
+            message: `a build in the Trash still has ${busy.reason.replace(/_/g, " ")} runs`,
             hint: "wait for them to finish, or cancel them, then empty the Trash",
           });
         }

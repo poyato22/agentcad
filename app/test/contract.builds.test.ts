@@ -7,8 +7,9 @@ import { join, resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
-  buildErrorLine, buildSchema, buildTabsProfileSchema, editConflictSchema, emptyTrashSchema, partChangedSchema, partEditResultSchema, partSourceSchema,
+  buildErrorLine, buildSchema, buildTabsProfileSchema, editConflictSchema, emptyTrashRefusedSchema, emptyTrashSchema, partChangedSchema, partEditResultSchema, partSourceSchema,
 } from "../src/api/builds";
+import { deletedRunIds } from "../src/state/reduce";
 import { coreErrorBodySchema, partSummarySchema } from "../src/api/schemas";
 import type { MisesEvent } from "../src/api/types";
 import { startFakeCore, type FakeCore } from "./fake-core/server";
@@ -83,6 +84,14 @@ beforeAll(async () => {
   fake.set("project_restore.json", await ok("POST", `/projects/${bench.id}/restore`));
   await ok("DELETE", `/projects/${bench.id}`);
   fake.set("projects_trash_empty.json", await ok("POST", "/projects/trash/empty"));
+  // a trashed build with a live (external) run: Empty Trash refuses as a whole (QA I4)
+  const doomed = (await ok("POST", "/projects", { name: "Doomed" })) as { id: string };
+  const live = (await ok("POST", "/runs/external", { agent: "fixture-acp", provider: "acp", model: "fixture", project_id: doomed.id })) as { run_id: string };
+  await ok("DELETE", `/projects/${doomed.id}`);
+  fake.set("projects_trash_empty_busy.json", await req("POST", "/projects/trash/empty"));
+  await ok("POST", `/runs/${live.run_id}/cancel`);
+  await ok("DELETE", `/runs/${live.run_id}`);
+  await ok("POST", "/projects/trash/empty");
   fake.set("profile_builds.json", await ok("PUT", "/profile", { active_project_id: "q0quadframe0", open_project_ids: ["q0quadframe0"] }));
   await new Promise((r) => setTimeout(r, 50));
   ws.close();
@@ -147,6 +156,29 @@ describe("contract: builds, part tree, live edits ↔ schemas ↔ fake core", ()
       if (real.status !== 422) expect(coreErrorBodySchema.safeParse(real.body).success).toBe(true);
     });
   }
+
+  it("projects_trash_empty_busy.json: a live run in the Trash is 409 {reason, run_ids, …}, read as refused", () => {
+    const real = read(DIR, "projects_trash_empty_busy.json") as { status: number; body: { run_ids: string[]; project_ids: string[]; message: string; hint: string } };
+    const f = fake.get("projects_trash_empty_busy.json") as typeof real;
+    expect(real.status).toBe(409);
+    const refused = emptyTrashRefusedSchema.parse(real.body);
+    expect(refused.reason).toBe("running");
+    expect(refused.run_ids).toHaveLength(1);
+    expect(f.status).toBe(409);
+    expect(shapeDiff(real.body as unknown as Json, f.body as unknown as Json, "trash_busy")).toEqual([]);
+    expect(emptyTrashRefusedSchema.parse(f.body)).toMatchObject({ reason: "running", message: real.body.message, hint: real.body.hint });
+    expect(f.body.run_ids).toHaveLength(1);
+  });
+
+  it("run_deleted: the real event names the run (run_id and data.run_id), the fake's too", () => {
+    const lines = readFileSync(join(DIR, "events.jsonl"), "utf8").split("\n").filter((l) => l.trim()).map((l) => JSON.parse(l) as MisesEvent);
+    const real = lines.find((e) => e.type === "run_deleted")!;
+    expect(real.run_id).toBe(real.data.run_id);
+    expect(deletedRunIds(real)).toEqual([real.run_id]);
+    const f = events.find((e) => e.type === "run_deleted");
+    expect(f, "the fake core sent run_deleted").toBeDefined();
+    expect(shapeDiff(real.data as Json, f!.data as Json, "$run_deleted")).toEqual([]);
+  });
 
   it("a stale edit's 409 carries current_version (and, for a merge edit, the current vars)", () => {
     for (const name of ["part_vars_stale.json", "part_source_stale.json"]) {

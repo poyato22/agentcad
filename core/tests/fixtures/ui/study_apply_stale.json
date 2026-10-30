@@ -1,0 +1,9 @@
+{
+  "status": 409,
+  "body": {
+    "error": "stale_version",
+    "message": "mount_plate is at version 3, not 2",
+    "hint": "re-read the part, then decide again",
+    "retryable": false
+  }
+}

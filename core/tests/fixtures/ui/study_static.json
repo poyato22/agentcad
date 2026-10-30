@@ -1,8 +1,8 @@
 {
-  "sim_id": "sim_6c36cb0857cb",
+  "sim_id": "sim_8358bfc945c8",
   "part_id": "beam",
   "type": "static",
-  "run_id": "2dc26015c93a",
+  "run_id": "3a4f540ec817",
   "call_id": "s1",
   "step_id": 7,
   "reason": "tip load on the beam under both cases",
@@ -10,8 +10,8 @@
   "stage": "done",
   "phase": "done",
   "pct": 100.0,
-  "created_at": 1793308700.198785,
-  "finished_at": 1793308701.545311,
+  "created_at": 1793339765.019444,
+  "finished_at": 1793339766.3548238,
   "analysis": "static",
   "guide": true,
   "label": "guide only, not a guarantee",
@@ -148,7 +148,7 @@
     },
     "environment": null
   },
-  "geometry_hash": "40f54ddff9a8168879a3feed368e149255caa6b5a76dc046c83952ddbb5c36bb",
+  "geometry_hash": "e98fb40e3ea48d4f7c20c1cba05bb6dd8bc9e89abac498aeca9e69209fa6aace",
   "material": {
     "name": "PLA",
     "e_mpa": 2300.0,
@@ -177,11 +177,11 @@
     "Peak stress excludes nodes on the fixed face (an ideal clamp gives a constraint singularity there); that value and a safety factor including it are reported separately."
   ],
   "urls": {
-    "record": "/sims/sim_6c36cb0857cb",
-    "glb": "/sims/sim_6c36cb0857cb/result.glb",
-    "charts": "/sims/sim_6c36cb0857cb/charts",
-    "probe": "/sims/sim_6c36cb0857cb/probe",
-    "section": "/sims/sim_6c36cb0857cb/section"
+    "record": "/sims/sim_8358bfc945c8",
+    "glb": "/sims/sim_8358bfc945c8/result.glb",
+    "charts": "/sims/sim_8358bfc945c8/charts",
+    "probe": "/sims/sim_8358bfc945c8/probe",
+    "section": "/sims/sim_8358bfc945c8/section"
   },
   "solver": {
     "name": "CalculiX",
@@ -303,6 +303,23 @@
       "tip": 5.906498504081631,
       "side": 9.825430605248293
     },
+    "governing_case_id": "tip",
+    "per_case": [
+      {
+        "case_id": "tip",
+        "name": "tip",
+        "max_vm_mpa": 6.044190136563963,
+        "max_disp_mm": 1.7386006851423133,
+        "sf": 5.906498504081631
+      },
+      {
+        "case_id": "side",
+        "name": "side",
+        "max_vm_mpa": 3.6334285421476284,
+        "max_disp_mm": 1.0431744243422987,
+        "sf": 9.825430605248293
+      }
+    ],
     "convergence": {
       "history": [
         {
@@ -326,7 +343,7 @@
     },
     "deformed_scale": 2.9044923957151734
   },
-  "inputs_hash": "f2d5c63c3b94d27132f746e38cc18a44967e0274e69985558de850b71e8c7a9c",
+  "inputs_hash": "3ee6b9e78493f31153798895fa5948586420755704ea93a758c4f43039d0be11",
   "glb": "result.glb",
   "outputs": [
     "result.glb",
@@ -344,7 +361,7 @@
       "measured": 5.906498504081631,
       "unit": "",
       "status": "pass",
-      "sim_id": "sim_6c36cb0857cb",
+      "sim_id": "sim_8358bfc945c8",
       "note": null
     },
     {
@@ -354,13 +371,30 @@
       "measured": 1.7386006851423133,
       "unit": "mm",
       "status": "fail",
-      "sim_id": "sim_6c36cb0857cb",
+      "sim_id": "sim_8358bfc945c8",
       "note": null
     }
   ],
   "stale": false,
   "card": {
-    "sim_id": "sim_6c36cb0857cb",
+    "per_case": [
+      {
+        "case_id": "tip",
+        "name": "tip",
+        "max_vm_mpa": 6.044190136563963,
+        "max_disp_mm": 1.7386006851423133,
+        "sf": 5.906498504081631
+      },
+      {
+        "case_id": "side",
+        "name": "side",
+        "max_vm_mpa": 3.6334285421476284,
+        "max_disp_mm": 1.0431744243422987,
+        "sf": 9.825430605248293
+      }
+    ],
+    "governing_case_id": "tip",
+    "sim_id": "sim_8358bfc945c8",
     "type": "static",
     "status": "done",
     "verdict": "fail",
@@ -405,7 +439,7 @@
         "measured": 5.906498504081631,
         "unit": "",
         "status": "pass",
-        "sim_id": "sim_6c36cb0857cb",
+        "sim_id": "sim_8358bfc945c8",
         "note": null
       },
       {
@@ -415,21 +449,21 @@
         "measured": 1.7386006851423133,
         "unit": "mm",
         "status": "fail",
-        "sim_id": "sim_6c36cb0857cb",
+        "sim_id": "sim_8358bfc945c8",
         "note": null
       }
     ],
     "warnings": [],
     "reason": "tip load on the beam under both cases",
-    "run_id": "2dc26015c93a",
+    "run_id": "3a4f540ec817",
     "step_id": 7,
     "urls": {
-      "record": "/sims/sim_6c36cb0857cb",
-      "glb": "/sims/sim_6c36cb0857cb/result.glb",
-      "charts": "/sims/sim_6c36cb0857cb/charts",
-      "probe": "/sims/sim_6c36cb0857cb/probe",
-      "section": "/sims/sim_6c36cb0857cb/section"
+      "record": "/sims/sim_8358bfc945c8",
+      "glb": "/sims/sim_8358bfc945c8/result.glb",
+      "charts": "/sims/sim_8358bfc945c8/charts",
+      "probe": "/sims/sim_8358bfc945c8/probe",
+      "section": "/sims/sim_8358bfc945c8/section"
     },
-    "charts_url": "/sims/sim_6c36cb0857cb/charts"
+    "charts_url": "/sims/sim_8358bfc945c8/charts"
   }
 }

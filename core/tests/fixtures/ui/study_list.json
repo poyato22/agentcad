@@ -1,16 +1,16 @@
 [
   {
-    "sim_id": "sim_c1ffa674cef3",
+    "sim_id": "sim_5a7245e07a69",
     "part_id": "beam",
-    "run_id": "2dc26015c93a",
+    "run_id": "3a4f540ec817",
     "step_id": 28,
     "type": "modal",
     "status": "done",
     "stage": "done",
     "phase": "done",
     "pct": 100.0,
-    "created_at": 1793308711.014485,
-    "finished_at": 1793308712.053867,
+    "created_at": 1793339776.472864,
+    "finished_at": 1793339777.577725,
     "error": null,
     "hint": null,
     "inputs": {
@@ -138,17 +138,17 @@
     "stale": false
   },
   {
-    "sim_id": "sim_d21d8c718560",
+    "sim_id": "sim_54e7b558f730",
     "part_id": "beam",
-    "run_id": "2dc26015c93a",
+    "run_id": "3a4f540ec817",
     "step_id": 26,
     "type": "static",
     "status": "done",
     "stage": "done",
     "phase": "done",
     "pct": 100.0,
-    "created_at": 1793308710.24578,
-    "finished_at": 1793308711.009901,
+    "created_at": 1793339775.5557692,
+    "finished_at": 1793339776.467732,
     "error": null,
     "hint": null,
     "inputs": {
@@ -250,6 +250,16 @@
       "sf_by_case": {
         "lc1": 5.906498504081631
       },
+      "governing_case_id": "lc1",
+      "per_case": [
+        {
+          "case_id": "lc1",
+          "name": "lc1",
+          "max_vm_mpa": 6.044190136563963,
+          "max_disp_mm": 1.7386006851423133,
+          "sf": 5.906498504081631
+        }
+      ],
       "convergence": {
         "history": [
           {
@@ -280,17 +290,17 @@
     "stale": false
   },
   {
-    "sim_id": "sim_233fac650446",
+    "sim_id": "sim_7997ccb61c62",
     "part_id": "cube",
-    "run_id": "2dc26015c93a",
+    "run_id": "3a4f540ec817",
     "step_id": 22,
     "type": "wind",
     "status": "done",
     "stage": "done",
     "phase": "done",
     "pct": 100.0,
-    "created_at": 1793308704.95678,
-    "finished_at": 1793308710.242382,
+    "created_at": 1793339769.81473,
+    "finished_at": 1793339775.550519,
     "error": null,
     "hint": null,
     "inputs": {
@@ -768,17 +778,17 @@
     "stale": false
   },
   {
-    "sim_id": "sim_c1572af0ab9c",
+    "sim_id": "sim_e97e218807ea",
     "part_id": "beam",
-    "run_id": "2dc26015c93a",
+    "run_id": "3a4f540ec817",
     "step_id": 19,
     "type": "drop",
     "status": "done",
     "stage": "done",
     "phase": "done",
     "pct": 100.0,
-    "created_at": 1793308704.317884,
-    "finished_at": 1793308704.95188,
+    "created_at": 1793339769.1302998,
+    "finished_at": 1793339769.809267,
     "error": null,
     "hint": null,
     "inputs": {
@@ -862,6 +872,16 @@
       "sf_by_case": {
         "impact": 27860.09705599586
       },
+      "governing_case_id": "impact",
+      "per_case": [
+        {
+          "case_id": "impact",
+          "name": "impact",
+          "max_vm_mpa": 0.0012814025711485053,
+          "max_disp_mm": 2.603087180173447e-06,
+          "sf": 27860.09705599586
+        }
+      ],
       "convergence": {
         "history": [
           {
@@ -887,11 +907,13 @@
       "impact": {
         "newtons": 1.216,
         "estimate": true,
-        "formula": "F = m\u00b7g\u00b7k (equivalent static load)",
+        "formula": "F = m g k_h, k_h = k \u221a(h / 1 m) = 10 x \u221a(1 / 1) = 10",
         "source": "engineering.loads.impact_equivalent",
         "mass_g": 12.399999999999999,
         "drop_m": 1.0,
         "k": 10.0,
+        "k_effective": 10.0,
+        "k_ref_drop_m": 1.0,
         "g_equivalent": 9.996382887770872,
         "impact_velocity_m_s": 4.4294469180700204
       }
@@ -903,17 +925,17 @@
     "stale": false
   },
   {
-    "sim_id": "sim_2c66122b69c6",
+    "sim_id": "sim_2e1ebd541a5b",
     "part_id": "beam",
-    "run_id": "2dc26015c93a",
+    "run_id": "3a4f540ec817",
     "step_id": 16,
     "type": "thermal",
     "status": "done",
     "stage": "done",
     "phase": "done",
     "pct": 100.0,
-    "created_at": 1793308703.770871,
-    "finished_at": 1793308704.313204,
+    "created_at": 1793339768.554069,
+    "finished_at": 1793339769.1252449,
     "error": null,
     "hint": null,
     "inputs": {
@@ -998,17 +1020,17 @@
     "stale": false
   },
   {
-    "sim_id": "sim_878b41d468d5",
+    "sim_id": "sim_f1d4c8fb97c5",
     "part_id": "beam",
-    "run_id": "2dc26015c93a",
+    "run_id": "3a4f540ec817",
     "step_id": 13,
     "type": "buckling",
     "status": "done",
     "stage": "done",
     "phase": "done",
     "pct": 100.0,
-    "created_at": 1793308702.534981,
-    "finished_at": 1793308703.765802,
+    "created_at": 1793339767.314273,
+    "finished_at": 1793339768.5487921,
     "error": null,
     "hint": null,
     "inputs": {
@@ -1055,19 +1077,19 @@
     },
     "results": {
       "factors": [
-        4.724615,
-        4.7247,
-        39.88282
+        4.72461547244,
+        4.72469968246,
+        39.8828211138
       ],
-      "first_factor": 4.724615,
-      "critical_load_n": 472.4615,
+      "first_factor": 4.72461547244,
+      "critical_load_n": 472.46154724400003,
       "applied_load_n": 100.0,
       "coarse_factors": [
         4.7309,
-        4.731711,
-        39.98299
+        4.7317089839,
+        39.9829931904
       ],
-      "error_band": 0.0013302671222946412,
+      "error_band": 0.0013301669938346281,
       "error_band_pct": 0.1,
       "convergence": {
         "history": [
@@ -1085,7 +1107,7 @@
             "size_mm": 2.5,
             "nodes": 6598,
             "elements": 3582,
-            "metric": 4.724615
+            "metric": 4.72461547244
           }
         ],
         "converged": null
@@ -1098,17 +1120,17 @@
     "stale": false
   },
   {
-    "sim_id": "sim_83dabd97666f",
+    "sim_id": "sim_ace335f7f9a7",
     "part_id": "beam",
-    "run_id": "2dc26015c93a",
+    "run_id": "3a4f540ec817",
     "step_id": 10,
     "type": "modal",
     "status": "done",
     "stage": "done",
     "phase": "done",
     "pct": 100.0,
-    "created_at": 1793308701.5516071,
-    "finished_at": 1793308702.528329,
+    "created_at": 1793339766.36221,
+    "finished_at": 1793339767.308908,
     "error": null,
     "hint": null,
     "inputs": {
@@ -1221,17 +1243,17 @@
     "stale": false
   },
   {
-    "sim_id": "sim_6c36cb0857cb",
+    "sim_id": "sim_8358bfc945c8",
     "part_id": "beam",
-    "run_id": "2dc26015c93a",
+    "run_id": "3a4f540ec817",
     "step_id": 7,
     "type": "static",
     "status": "done",
     "stage": "done",
     "phase": "done",
     "pct": 100.0,
-    "created_at": 1793308700.198785,
-    "finished_at": 1793308701.545311,
+    "created_at": 1793339765.019444,
+    "finished_at": 1793339766.3548238,
     "error": null,
     "hint": null,
     "inputs": {
@@ -1375,6 +1397,23 @@
         "tip": 5.906498504081631,
         "side": 9.825430605248293
       },
+      "governing_case_id": "tip",
+      "per_case": [
+        {
+          "case_id": "tip",
+          "name": "tip",
+          "max_vm_mpa": 6.044190136563963,
+          "max_disp_mm": 1.7386006851423133,
+          "sf": 5.906498504081631
+        },
+        {
+          "case_id": "side",
+          "name": "side",
+          "max_vm_mpa": 3.6334285421476284,
+          "max_disp_mm": 1.0431744243422987,
+          "sf": 9.825430605248293
+        }
+      ],
       "convergence": {
         "history": [
           {

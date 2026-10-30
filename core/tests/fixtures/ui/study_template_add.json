@@ -1,5 +1,5 @@
 {
-  "id": "tpl_1f8c10e5cf",
+  "id": "tpl_aa8dfaa2b6",
   "name": "Tip load",
   "type": "static",
   "settings": {
@@ -46,5 +46,5 @@
     },
     "environment": null
   },
-  "created_at": 1793308700.191488
+  "created_at": 1793339765.012225
 }

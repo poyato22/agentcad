@@ -52,7 +52,10 @@ export const DEFAULT_PROFILE: Profile = {
 /** Core profile.PROFILE_SCHEMA_VERSION: GET/PUT /profile carry it, and the core's `printers`
  *  list (the print page's; none here). The app's schema strips both and never sends them. */
 export const PROFILE_SCHEMA_VERSION = 2;
-const withVersion = (p: Profile) => ({ schema_version: PROFILE_SCHEMA_VERSION, ...p, printers: [] });
+/** The Plan 5 profile fields the app's Profile schema leaves out (core profile.Profile defaults):
+ *  the build tabs, hidden built-in agents and the catalog's allowed domains. */
+const PLAN5_PROFILE_DEFAULTS = { active_project_id: null, open_project_ids: [], hidden_agents: [], catalog_allowed_domains: [] };
+const withVersion = (p: Profile) => ({ schema_version: PROFILE_SCHEMA_VERSION, ...PLAN5_PROFILE_DEFAULTS, ...p, printers: [] });
 
 const EMPTY_CONTEXT = { selected_part_id: null, selected_run_id: null, picks: [] };
 
@@ -174,15 +177,10 @@ function buildContext(st: FakeSetup, parts: () => readonly PartSummary[]): Recor
   const part = c.selected_part_id ? parts().find((p) => p.part_id === c.selected_part_id) : undefined;
   return {
     selected_part_id: c.selected_part_id, selected_run_id: c.selected_run_id, picks: [...c.picks],
-    // the real-core context fixtures predate C6's edge_list (Task I re-dumps them with the rest of
-    // the Plan 5 context fields)
-    metrics: part?.metrics ? withoutEdges(part.metrics) : null, vars: part?.vars ?? null, doc_url: null, recent_sim: null,
+    metrics: part?.metrics ?? null, vars: part?.vars ?? null, version: part ? (part.version ?? 1) : null, doc_url: null, recent_sim: null,
+    // core context_tools.build_context: the user's last live edits, labelled untrusted data
+    untrusted_user_data: { recent_user_edits: [] },
   };
-}
-
-function withoutEdges(m: NonNullable<PartSummary["metrics"]>): Omit<NonNullable<PartSummary["metrics"]>, "edge_list"> {
-  const { edge_list: _edges, ...rest } = m;
-  return rest;
 }
 
 function claudeBody(st: FakeSetup): ClaudeCodeStatus {

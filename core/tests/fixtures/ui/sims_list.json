@@ -1,15 +1,64 @@
 [
   {
-    "sim_id": "sim_385e9019d289",
+    "sim_id": "sim_7341181be221",
     "part_id": "mount_plate",
-    "run_id": "d2279fcd653f",
+    "run_id": "6fd101567df3",
+    "step_id": 15,
+    "type": "static",
     "status": "failed",
     "stage": "failed",
-    "created_at": 1793209400.108948,
-    "finished_at": 1793209400.109223,
+    "phase": "queued",
+    "pct": 0.0,
+    "created_at": 1793340405.837328,
+    "finished_at": 1793340405.837711,
     "error": "CalculiX (ccx) is not installed",
     "hint": "install it with: conda install -c conda-forge calculix",
     "inputs": {
+      "type": "static",
+      "settings": {
+        "material": {
+          "name": "PETG",
+          "custom": null,
+          "fdm": null
+        },
+        "mesh": {
+          "size_mm": null,
+          "refine_faces": [],
+          "refine_factor": 0.4,
+          "second_order": true
+        },
+        "solver": {
+          "timeout_s": 300.0,
+          "threads": null
+        },
+        "load_cases": [
+          {
+            "name": "case 1",
+            "supports": [
+              {
+                "kind": "fixed",
+                "face": "x-min",
+                "axis": null
+              }
+            ],
+            "loads": [
+              {
+                "kind": "force",
+                "face": "x-max",
+                "newtons": 20.0,
+                "direction": "-z"
+              }
+            ],
+            "note": ""
+          }
+        ],
+        "convergence": {
+          "enabled": false,
+          "tol_pct": 5.0,
+          "max_levels": 4
+        },
+        "environment": "Desk"
+      },
       "fix": "x-min",
       "load": {
         "face": "x-max",
@@ -23,19 +72,69 @@
     "guide": true,
     "label": "guide only, not a guarantee",
     "fidelity_class": "fem",
+    "reason": null,
     "stale": false
   },
   {
-    "sim_id": "sim_f17dd532b767",
+    "sim_id": "sim_bafdecc488d4",
     "part_id": "mount_plate",
-    "run_id": "80d2e2e89bdd",
+    "run_id": "b5b68b01c40a",
+    "step_id": 13,
+    "type": "static",
     "status": "done",
     "stage": "done",
-    "created_at": 1793209396.153652,
-    "finished_at": 1793209400.096739,
+    "phase": "done",
+    "pct": 100.0,
+    "created_at": 1793340403.190971,
+    "finished_at": 1793340405.824518,
     "error": null,
     "hint": null,
     "inputs": {
+      "type": "static",
+      "settings": {
+        "material": {
+          "name": "PETG",
+          "custom": null,
+          "fdm": null
+        },
+        "mesh": {
+          "size_mm": null,
+          "refine_faces": [],
+          "refine_factor": 0.4,
+          "second_order": true
+        },
+        "solver": {
+          "timeout_s": 300.0,
+          "threads": null
+        },
+        "load_cases": [
+          {
+            "name": "case 1",
+            "supports": [
+              {
+                "kind": "fixed",
+                "face": "x-min",
+                "axis": null
+              }
+            ],
+            "loads": [
+              {
+                "kind": "force",
+                "face": "x-max",
+                "newtons": 20.0,
+                "direction": "-z"
+              }
+            ],
+            "note": ""
+          }
+        ],
+        "convergence": {
+          "enabled": false,
+          "tol_pct": 5.0,
+          "max_levels": 4
+        },
+        "environment": "Desk"
+      },
       "fix": "x-min",
       "load": {
         "face": "x-max",
@@ -61,16 +160,77 @@
       ],
       "safety_factor": 3.165770915716302,
       "safety_factor_incl_fixture": 3.165770915716302,
-      "allowable_mpa": 32.9,
       "coarse_max_von_mises_mpa": 10.919695771690655,
       "coarse_max_displacement_mm": 0.8276497177720116,
       "error_band": 0.05073724262883155,
+      "peak_excludes": "nodes on the fixed face",
+      "allowable_mpa": 32.9,
       "error_band_pct": 5.1,
-      "peak_excludes": "nodes on the fixed face"
+      "governing_case": "case 1",
+      "cases": [
+        {
+          "name": "case 1",
+          "max_von_mises_mpa": 10.392413372891163,
+          "max_von_mises_at": [
+            -9.999999999999991,
+            2.1,
+            3.0
+          ],
+          "max_von_mises_at_fixture_mpa": 6.229826616468381,
+          "max_displacement_mm": 0.8316638894083745,
+          "max_displacement_at": [
+            20.0,
+            -2.4868995751603507e-14,
+            3.0
+          ],
+          "safety_factor": 3.165770915716302,
+          "safety_factor_incl_fixture": 3.165770915716302,
+          "coarse_max_von_mises_mpa": 10.919695771690655,
+          "coarse_max_displacement_mm": 0.8276497177720116,
+          "error_band": 0.05073724262883155,
+          "peak_excludes": "nodes on the fixed face"
+        }
+      ],
+      "sf_by_case": {
+        "case 1": 3.165770915716302
+      },
+      "governing_case_id": "case 1",
+      "per_case": [
+        {
+          "case_id": "case 1",
+          "name": "case 1",
+          "max_vm_mpa": 10.392413372891163,
+          "max_disp_mm": 0.8316638894083745,
+          "sf": 3.165770915716302
+        }
+      ],
+      "convergence": {
+        "history": [
+          {
+            "level": 0,
+            "label": "coarse",
+            "size_mm": 3.0,
+            "nodes": 6732,
+            "elements": 3784,
+            "metric": 10.919695771690655
+          },
+          {
+            "level": 1,
+            "label": "fine",
+            "size_mm": 1.5,
+            "nodes": 16752,
+            "elements": 9997,
+            "metric": 10.392413372891163
+          }
+        ],
+        "converged": null
+      },
+      "deformed_scale": 2.712757958194665
     },
     "guide": true,
     "label": "guide only, not a guarantee",
     "fidelity_class": "fem",
+    "reason": null,
     "stale": false
   }
 ]

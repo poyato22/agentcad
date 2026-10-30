@@ -106,6 +106,7 @@
               -5.502091439831045e-17,
               -1.124175016826848e-17
             ],
+            "edge_count": 18,
             "edges": 18,
             "faces": 8,
             "holes": [
@@ -261,7 +262,8 @@
               }
             ],
             "face_count": 8,
-            "face_list_truncated": false
+            "face_list_truncated": false,
+            "version": 1
           },
           "handles": [],
           "ok": true,
@@ -346,6 +348,7 @@
               -1.2682862350235098e-16,
               1.7563595855833278e-17
             ],
+            "edge_count": 18,
             "delta": {
               "bbox_size": [
                 0.0,
@@ -510,7 +513,8 @@
               }
             ],
             "face_count": 8,
-            "face_list_truncated": false
+            "face_list_truncated": false,
+            "version": 2
           },
           "handles": [],
           "ok": true,
@@ -592,6 +596,7 @@
               -1.2682862350235098e-16,
               1.7563595855833278e-17
             ],
+            "edge_count": 18,
             "edges": 18,
             "faces": 8,
             "holes": [
@@ -744,7 +749,8 @@
               }
             ],
             "face_count": 8,
-            "face_list_truncated": false
+            "face_list_truncated": false,
+            "version": 2
           },
           "handles": [],
           "ok": true,

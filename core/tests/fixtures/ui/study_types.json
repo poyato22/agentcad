@@ -2808,7 +2808,7 @@
         },
         "k": {
           "default": 10.0,
-          "description": "dynamic factor: equivalent static load = m g k (estimate; ~5-20 for rigid floors and stiff plastic)",
+          "description": "dynamic factor for a 1 m drop: equivalent static load = m g k \u221a(h / 1 m) (estimate; ~5-20 for rigid floors and stiff plastic)",
           "maximum": 500,
           "minimum": 1,
           "title": "K",

@@ -1,17 +1,68 @@
 {
-  "sim_id": "sim_f17dd532b767",
+  "sim_id": "sim_bafdecc488d4",
   "part_id": "mount_plate",
-  "run_id": "80d2e2e89bdd",
+  "type": "static",
+  "run_id": "b5b68b01c40a",
+  "call_id": "ui-95b8a58f44bd",
+  "step_id": 13,
+  "reason": null,
   "status": "done",
   "stage": "done",
-  "created_at": 1793209396.153652,
-  "finished_at": 1793209400.096739,
-  "analysis": "static_linear_elastic",
+  "phase": "done",
+  "pct": 100.0,
+  "created_at": 1793340403.190971,
+  "finished_at": 1793340405.824518,
+  "analysis": "static",
   "guide": true,
   "label": "guide only, not a guarantee",
   "fidelity_class": "fem",
   "validated_against": null,
   "inputs": {
+    "type": "static",
+    "settings": {
+      "material": {
+        "name": "PETG",
+        "custom": null,
+        "fdm": null
+      },
+      "mesh": {
+        "size_mm": null,
+        "refine_faces": [],
+        "refine_factor": 0.4,
+        "second_order": true
+      },
+      "solver": {
+        "timeout_s": 300.0,
+        "threads": null
+      },
+      "load_cases": [
+        {
+          "name": "case 1",
+          "supports": [
+            {
+              "kind": "fixed",
+              "face": "x-min",
+              "axis": null
+            }
+          ],
+          "loads": [
+            {
+              "kind": "force",
+              "face": "x-max",
+              "newtons": 20.0,
+              "direction": "-z"
+            }
+          ],
+          "note": ""
+        }
+      ],
+      "convergence": {
+        "enabled": false,
+        "tol_pct": 5.0,
+        "max_levels": 4
+      },
+      "environment": "Desk"
+    },
     "fix": "x-min",
     "load": {
       "face": "x-max",
@@ -21,7 +72,51 @@
     "material": "PETG",
     "environment": "Desk"
   },
-  "geometry_hash": "b1897377fda914c6dfe502d4853ea90fa69657a619168ee3e18b5ca2246924e8",
+  "settings": {
+    "material": {
+      "name": "PETG",
+      "custom": null,
+      "fdm": null
+    },
+    "mesh": {
+      "size_mm": null,
+      "refine_faces": [],
+      "refine_factor": 0.4,
+      "second_order": true
+    },
+    "solver": {
+      "timeout_s": 300.0,
+      "threads": null
+    },
+    "load_cases": [
+      {
+        "name": "case 1",
+        "supports": [
+          {
+            "kind": "fixed",
+            "face": "x-min",
+            "axis": null
+          }
+        ],
+        "loads": [
+          {
+            "kind": "force",
+            "face": "x-max",
+            "newtons": 20.0,
+            "direction": "-z"
+          }
+        ],
+        "note": ""
+      }
+    ],
+    "convergence": {
+      "enabled": false,
+      "tol_pct": 5.0,
+      "max_levels": 4
+    },
+    "environment": "Desk"
+  },
+  "geometry_hash": "77aecaeb1da35dfd08166136267d621cd69879d93afa7e1c1887e7de86c72612",
   "material": {
     "name": "PETG",
     "e_mpa": 1500.0,
@@ -30,8 +125,13 @@
     "density_g_cm3": 1.27,
     "hdt_c": 68.0,
     "source": "Prusament PETG TDS v1.1 (printed, horizontal)",
+    "k_w_mk": 0.2,
+    "alpha_per_k": 6e-05,
     "knockdown": 0.7,
+    "stiffness_factor": 1.0,
+    "custom": false,
     "allowable_mpa": 32.9,
+    "e_eff_mpa": 1500.0,
     "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers"
   },
   "environment": {
@@ -53,15 +153,23 @@
   "warnings": [],
   "caveats": [
     "Guide only: a linear-elastic FEM estimate, not a certification or a guarantee.",
-    "Isotropic material model; printed parts are weaker across layers, so strength is multiplied by an FDM knock-down of 0.7.",
-    "Small deflections assumed; contact, creep, fatigue, temperature and vibration are not simulated.",
+    "Isotropic material model; printed parts are weaker across layers, so strength is multiplied by an FDM knock-down.",
+    "Small deflections assumed; contact, creep, fatigue, temperature and vibration are not simulated unless this study type says so.",
     "Peak stress excludes nodes on the fixed face (an ideal clamp gives a constraint singularity there); that value and a safety factor including it are reported separately."
   ],
+  "urls": {
+    "record": "/sims/sim_bafdecc488d4",
+    "glb": "/sims/sim_bafdecc488d4/result.glb",
+    "charts": "/sims/sim_bafdecc488d4/charts",
+    "probe": "/sims/sim_bafdecc488d4/probe",
+    "section": "/sims/sim_bafdecc488d4/section"
+  },
   "solver": {
     "name": "CalculiX",
     "version": "2.23",
     "path": "/Users/fixture/miniconda3/bin/ccx",
-    "element": "C3D10 (quadratic tetrahedra)"
+    "element": "C3D10 (quadratic tetrahedra)",
+    "procedure": "CalculiX *STATIC"
   },
   "mesh": {
     "mesher": "gmsh",
@@ -70,6 +178,7 @@
       "size_mm": 3.0,
       "nodes": 6732,
       "elements": 3784,
+      "order": 2,
       "fixed_nodes": 107,
       "loaded_nodes": 75,
       "dropped_load_n": 0.0
@@ -78,10 +187,29 @@
       "size_mm": 1.5,
       "nodes": 16752,
       "elements": 9997,
+      "order": 2,
       "fixed_nodes": 333,
       "loaded_nodes": 240,
       "dropped_load_n": 0.0
-    }
+    },
+    "levels": [
+      {
+        "level": 0,
+        "label": "coarse",
+        "size_mm": 3.0,
+        "nodes": 6732,
+        "elements": 3784,
+        "metric": 10.919695771690655
+      },
+      {
+        "level": 1,
+        "label": "fine",
+        "size_mm": 1.5,
+        "nodes": 16752,
+        "elements": 9997,
+        "metric": 10.392413372891163
+      }
+    ]
   },
   "results": {
     "max_von_mises_mpa": 10.392413372891163,
@@ -99,18 +227,144 @@
     ],
     "safety_factor": 3.165770915716302,
     "safety_factor_incl_fixture": 3.165770915716302,
-    "allowable_mpa": 32.9,
     "coarse_max_von_mises_mpa": 10.919695771690655,
     "coarse_max_displacement_mm": 0.8276497177720116,
     "error_band": 0.05073724262883155,
+    "peak_excludes": "nodes on the fixed face",
+    "allowable_mpa": 32.9,
     "error_band_pct": 5.1,
-    "peak_excludes": "nodes on the fixed face"
+    "governing_case": "case 1",
+    "cases": [
+      {
+        "name": "case 1",
+        "max_von_mises_mpa": 10.392413372891163,
+        "max_von_mises_at": [
+          -9.999999999999991,
+          2.1,
+          3.0
+        ],
+        "max_von_mises_at_fixture_mpa": 6.229826616468381,
+        "max_displacement_mm": 0.8316638894083745,
+        "max_displacement_at": [
+          20.0,
+          -2.4868995751603507e-14,
+          3.0
+        ],
+        "safety_factor": 3.165770915716302,
+        "safety_factor_incl_fixture": 3.165770915716302,
+        "coarse_max_von_mises_mpa": 10.919695771690655,
+        "coarse_max_displacement_mm": 0.8276497177720116,
+        "error_band": 0.05073724262883155,
+        "peak_excludes": "nodes on the fixed face"
+      }
+    ],
+    "sf_by_case": {
+      "case 1": 3.165770915716302
+    },
+    "governing_case_id": "case 1",
+    "per_case": [
+      {
+        "case_id": "case 1",
+        "name": "case 1",
+        "max_vm_mpa": 10.392413372891163,
+        "max_disp_mm": 0.8316638894083745,
+        "sf": 3.165770915716302
+      }
+    ],
+    "convergence": {
+      "history": [
+        {
+          "level": 0,
+          "label": "coarse",
+          "size_mm": 3.0,
+          "nodes": 6732,
+          "elements": 3784,
+          "metric": 10.919695771690655
+        },
+        {
+          "level": 1,
+          "label": "fine",
+          "size_mm": 1.5,
+          "nodes": 16752,
+          "elements": 9997,
+          "metric": 10.392413372891163
+        }
+      ],
+      "converged": null
+    },
+    "deformed_scale": 2.712757958194665
   },
-  "inputs_hash": "b5fe2d6f806982e364207738b072c78bc5b2cf0303c22801df1a09fddbbcfd70",
+  "inputs_hash": "29a7a5c1d6d77c9e5d4c4af8de79f08c4bd59dd6af82206d107763a0eb0e5c13",
   "glb": "result.glb",
+  "outputs": [
+    "result.glb",
+    "fields.npz"
+  ],
   "color_range_mpa": [
     0.0,
     10.392413372891163
   ],
-  "stale": false
+  "stale": false,
+  "card": {
+    "per_case": [
+      {
+        "case_id": "case 1",
+        "name": "case 1",
+        "max_vm_mpa": 10.392413372891163,
+        "max_disp_mm": 0.8316638894083745,
+        "sf": 3.165770915716302
+      }
+    ],
+    "governing_case_id": "case 1",
+    "sim_id": "sim_bafdecc488d4",
+    "type": "static",
+    "status": "done",
+    "verdict": "pass",
+    "phase": "done",
+    "pct": 100.0,
+    "part_id": "mount_plate",
+    "label": "guide only, not a guarantee",
+    "fidelity_class": "fem",
+    "fidelity_note": null,
+    "notes": [],
+    "metrics": [
+      {
+        "key": "max_von_mises_mpa",
+        "label": "max von Mises",
+        "unit": "MPa",
+        "value": 10.392413372891163
+      },
+      {
+        "key": "safety_factor",
+        "label": "safety factor",
+        "unit": "",
+        "value": 3.165770915716302
+      },
+      {
+        "key": "max_displacement_mm",
+        "label": "max displacement",
+        "unit": "mm",
+        "value": 0.8316638894083745
+      },
+      {
+        "key": "error_band_pct",
+        "label": "error band",
+        "unit": "%",
+        "value": 5.1
+      }
+    ],
+    "checks": [],
+    "warnings": [],
+    "reason": null,
+    "run_id": "b5b68b01c40a",
+    "step_id": 13,
+    "urls": {
+      "record": "/sims/sim_bafdecc488d4",
+      "glb": "/sims/sim_bafdecc488d4/result.glb",
+      "charts": "/sims/sim_bafdecc488d4/charts",
+      "probe": "/sims/sim_bafdecc488d4/probe",
+      "section": "/sims/sim_bafdecc488d4/section"
+    },
+    "charts_url": "/sims/sim_bafdecc488d4/charts"
+  }
 }

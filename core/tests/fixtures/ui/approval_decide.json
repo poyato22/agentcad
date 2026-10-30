@@ -1,6 +1,6 @@
 {
-  "id": "fe6826cce2be",
-  "run_id": "37dda16f1bfc",
+  "id": "3faf50a3b7e8",
+  "run_id": "8b079c306d4b",
   "action": "fixture_merge",
   "payload": {
     "part_id": "mount_plate"
@@ -9,8 +9,8 @@
   "microversion": null,
   "deltas": {},
   "status": "rejected",
-  "expires_at": 1793211196.086884,
+  "expires_at": 1793342203.135458,
   "decided_by": "local-user",
-  "decided_at": 1793209406.298367,
+  "decided_at": 1793340434.2381089,
   "edited_payload": null
 }
