@@ -11,6 +11,8 @@ import { QuestionCard } from "../console/approvals/QuestionCard";
 import { errorWords, SpecController } from "./controller";
 import { SpecPanel, specPanelOpen } from "./index";
 import { Scatter } from "./Scatter";
+import { openVariant } from "./StudyView";
+import { immersive } from "../pages/studies/immersive/state";
 import { SpecCard } from "./SpecCard";
 import { StudyView } from "./StudyView";
 
@@ -191,6 +193,23 @@ describe("study scatter", () => {
     expect(container.querySelector('[data-threshold="mass"]')!.textContent).toBe("≤ 8 g");
     expect(container.textContent).toContain(`best #${STUDY.best_id}`);
     expect(container.querySelector("[aria-label='Legend']")!.textContent).toContain("Pareto front");
+  });
+
+  it("double-click or ⇧Enter opens a variant's stress results in A8's immersive view", () => {
+    const cur = () => immersive.peek();   // a getter: TS would narrow `immersive.value` to null below
+    immersive.value = null;
+    const { container } = render(<Scatter iterations={STUDY.iterations} requirements={SPEC.requirements} bestId={STUDY.best_id} selected={null}
+      onSelect={() => {}} onOpen={(n) => openVariant(STUDY, STUDY.iterations.find((i) => i.n === n)!)} width={480} />);
+    fireEvent.dblClick(container.querySelector('[data-point="0"]') as SVGGElement);
+    const want = Object.values(STUDY.iterations[0].metrics.sim_ids_by_case);
+    expect(cur()?.simId).toBe(want[0]);
+    expect(cur()?.ids).toEqual(want);
+    expect(cur()?.origin?.reason).toContain("variant #0");
+    immersive.value = null;
+    const tab = container.querySelector('[data-point][tabindex="0"]') as SVGGElement;
+    fireEvent.keyDown(tab, { key: "Enter", shiftKey: true });
+    expect(cur()?.simId).toBe(Object.values(STUDY.iterations.find((i) => i.n === STUDY.best_id)!.metrics.sim_ids_by_case)[0]);
+    immersive.value = null;
   });
 
   it("click, hover and keyboard pick a variant", () => {

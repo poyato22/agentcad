@@ -316,3 +316,17 @@ def test_sim_progress_names_its_call_and_ends_with_a_terminal_phase(client, rt):
     prog = [p for p in _progress(sub, rid) if p["call_id"] == "s1"]
     assert prog[-1]["phase"] == "failed" and prog[-1]["stage"] == "failed"
     sub.close()
+
+
+def test_design_study_variant_sims_are_served(client, rt):
+    # C3 keeps the best / Pareto variants' stress studies under <home>/studies/<study>/<variant>/;
+    # the spec panel's scatter opens them in the immersive view through the normal sim routes
+    d = rt.home / "studies" / "study_abcdefabcdef" / "e3" / "parts" / "frame_x" / "sims" / "sim_00000000beef"
+    d.mkdir(parents=True)
+    rec = {"sim_id": "sim_00000000beef", "part_id": "frame_x", "type": "static", "status": "done",
+           "created_at": time.time(), "run_id": "r1", "geometry_hash": "x", "fidelity_class": "fem",
+           "label": "guide only, not a guarantee", "results": {}, "warnings": []}
+    (d / "result.json").write_text(json.dumps(rec))
+    r = client.get("/sims/sim_00000000beef", headers=AUTH)
+    assert r.status_code == 200 and r.json()["part_id"] == "frame_x"
+    assert client.get("/sims/sim_00000000dead", headers=AUTH).status_code == 404

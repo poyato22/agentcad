@@ -10,7 +10,9 @@
 .scard .tone-green { color: var(--green); }
 .scard .tone-amber { color: var(--amber); }
 .scard .tone-red { color: var(--red); }
-.scard-reason { margin: 0; color: var(--ink); }
+.scard-reason { margin: 0; color: var(--ink); display: flex; gap: 4px; align-items: baseline; min-width: 0; }
+.scard-reason .scard-reason-who { flex: none; }
+.scard-reason .mk-body { min-width: 0; }
 .scard-fidelity { margin: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .scard-guide { font: 700 var(--fs-label)/1 var(--font-head); letter-spacing: .12em; border: 1px solid var(--ink); padding: 2px 5px; color: var(--ink); }
 .scard-fidelity-note { color: var(--ink); font-weight: 700; }

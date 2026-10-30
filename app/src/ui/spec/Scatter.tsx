@@ -20,6 +20,8 @@ export interface ScatterProps {
   bestId: number | null;
   selected: number | null;
   onSelect: (n: number) => void;
+  /** Open a point's stress result in A8's immersive view (double-click, or ⇧Enter on a point). */
+  onOpen?: (n: number) => void;
   /** Meets the spec as it is now (default: the study's stored flag). */
   meets?: (it: StudyIteration) => boolean;
   /** Width when the container can't be measured (tests). */
@@ -95,6 +97,7 @@ export function Scatter(props: ScatterProps): JSX.Element {
     else if (e.key === "ArrowLeft" || e.key === "ArrowUp") next = Math.max(0, i - 1);
     else if (e.key === "Home") next = 0;
     else if (e.key === "End") next = byMass.length - 1;
+    else if (e.key === "Enter" && e.shiftKey && current !== null && props.onOpen) { e.preventDefault(); props.onOpen(current); return; }
     else if ((e.key === "Enter" || e.key === " ") && current !== null) { e.preventDefault(); props.onSelect(current); return; }
     else return;
     e.preventDefault();
@@ -159,7 +162,7 @@ export function Scatter(props: ScatterProps): JSX.Element {
               tabindex={n === tabTarget ? 0 : -1} role="button" aria-pressed={sel} aria-label={pointLabel(p, props.bestId, ok)}
               onMouseEnter={() => setHover(n)} onMouseLeave={() => setHover((h) => (h === n ? null : h))}
               onFocus={() => setFocusN(n)} onBlur={() => setFocusN((f) => (f === n ? null : f))}
-              onClick={() => props.onSelect(n)}>
+              onClick={() => props.onSelect(n)} onDblClick={props.onOpen ? () => props.onOpen?.(n) : undefined}>
               <circle cx={cx} cy={cy} r={HIT_R} fill="transparent" />
               {sel && <circle cx={cx} cy={cy} r={8} fill="none" stroke="var(--blue)" stroke-width="2" />}
               {kind === "infeasible"

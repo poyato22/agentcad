@@ -126,7 +126,7 @@ def build_sim_router(runtime: Runtime) -> APIRouter:
     async def compare(body: CompareBody):
         recs = []
         for sid in body.ids:
-            recs.append(_interrupted(read_record(_dir(sid), parts_root())))
+            recs.append(_interrupted(_record(_dir(sid))))
         return studies.compare(recs)
 
     @router.get("/sims/templates")
@@ -177,9 +177,23 @@ def build_sim_router(runtime: Runtime) -> APIRouter:
             _check_part(part_id)
         return [_interrupted(r) for r in list_sims(parts_root(), part_id, run_id)]
 
+    def _record(d: Path) -> dict:
+        """A study record; staleness against the parts dir the study lives in (the user's
+        parts, or a design-study variant's own)."""
+        return read_record(d, d.parent.parent.parent)
+
     def _dir(sim_id: str) -> Path:
         _check_sim(sim_id)
         d = find_sim(parts_root(), sim_id)
+        if d is None:
+            # a design study's kept variants (C3: <home>/studies/<study>/<variant>/parts/...):
+            # the spec panel's scatter opens their stress studies in A8's immersive view
+            studies_root = Path(runtime.home) / "studies"
+            if studies_root.is_dir():
+                for proot in sorted(studies_root.glob("study_*/e*/parts")):
+                    d = find_sim(proot, sim_id)
+                    if d is not None:
+                        break
         if d is None:
             raise MisesError(ErrorCode.NOT_FOUND, f"no study {sim_id}")
         return d
@@ -214,7 +228,7 @@ def build_sim_router(runtime: Runtime) -> APIRouter:
 
     @router.get("/sims/{sim_id}")
     async def sim(sim_id: str):
-        rec = _interrupted(read_record(_dir(sim_id), parts_root()))
+        rec = _interrupted(_record(_dir(sim_id)))
         return {**rec, "card": studies.card(rec)}
 
     @router.get("/sims/{sim_id}/result.glb")
@@ -231,7 +245,7 @@ def build_sim_router(runtime: Runtime) -> APIRouter:
     @router.get("/sims/{sim_id}/charts")
     async def sim_charts(sim_id: str):
         d = _dir(sim_id)
-        rec = _interrupted(read_record(d, parts_root()))
+        rec = _interrupted(_record(d))
         return await run_in_threadpool(charts, rec, d)
 
     @router.get("/sims/{sim_id}/probe")
@@ -258,7 +272,7 @@ def build_sim_router(runtime: Runtime) -> APIRouter:
 
     @router.post("/sims/{sim_id}/cancel")
     async def cancel(sim_id: str):
-        rec = read_record(_dir(sim_id), parts_root())
+        rec = _record(_dir(sim_id))
         if not studies.cancel(sim_id):
             return JSONResponse({"error": "not_running", "status": rec.get("status"),
                                  "message": f"{sim_id} is not running"}, status_code=409)

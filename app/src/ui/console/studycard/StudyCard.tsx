@@ -12,6 +12,7 @@ import { Led } from "../../common/Led";
 import { cardChart } from "../../pages/studies/charts/chartModel";
 import { StudyChart } from "../../pages/studies/charts/StudyChart";
 import { studyData } from "../../pages/studies/data";
+import { Markup } from "../../markup/render";
 import { openImmersive } from "../../pages/studies/immersive/state";
 import { liveProgress, progressForCall } from "../../pages/studies/live";
 import { fmtMetric, honesty, fmtValue, phaseText, PHASES, progressFraction, typeName, VERDICT_TEXT, verdictTone } from "../../pages/studies/model";
@@ -138,7 +139,13 @@ export function StudyCard({ view, siblings = [] }: StudyCardProps): JSX.Element 
           <span class={`scard-verdict${verdict ? ` tone-${verdictTone(verdict)}` : ""}`}>{view.running ? "running" : verdict ? VERDICT_TEXT[verdict] : status}</span>
         </span>
       </header>
-      {view.reason && <p class="scard-reason text">{agent ? <span class="faint">{agent}: </span> : null}{view.reason}</p>}
+      {/* the agent's own words (its sim_run `reason`) render as Mises markup, like its replies (A2) */}
+      {view.reason && (
+        <div class="scard-reason text" data-agent-text>
+          {agent ? <span class="faint scard-reason-who">{agent}: </span> : null}
+          <Markup source={view.reason} collapsible={false} />
+        </div>
+      )}
       <p class="scard-fidelity" data-testid="fidelity">
         <span class="scard-guide">GUIDE ONLY</span>
         <span class="scard-fidelity-note text" data-testid="fidelity-note">{hon.fidelity}</span>

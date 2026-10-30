@@ -13,6 +13,7 @@ import { partLabel } from "../../lib/names";
 import { parts } from "../../state/store";
 import { Button } from "../common/Button";
 import { Led, type LedTone } from "../common/Led";
+import { openImmersive } from "../pages/studies/immersive/state";
 import type { SpecController } from "./controller";
 import { fmtMeasured, fmtNum, iterStatus, meetsSpec, KIND_LABEL, KIND_SHORT, nextSort, sortIterations, STATUS_TONE, STATUS_WORD, type SortKey, type SortState } from "./model";
 import { Scatter } from "./Scatter";
@@ -80,7 +81,8 @@ export function StudyView({ c, study, requirements, compact = false }: { c: Spec
         <span class="sp-guide">guide only</span>
       </div>
       <div class="spv-grid">
-        <Scatter iterations={study.iterations} requirements={requirements} bestId={study.best_id} selected={sel} onSelect={(x) => c.selectIteration(x)} meets={meetsOf} />
+        <Scatter iterations={study.iterations} requirements={requirements} bestId={study.best_id} selected={sel} onSelect={(x) => c.selectIteration(x)} meets={meetsOf}
+          onOpen={(x) => { const v = study.iterations.find((i) => i.n === x); if (v) openVariant(study, v); }} />
         {it ? <Variant key={`${study.id}:${it.n}`} c={c} study={study} it={it} requirements={requirements} meets={meetsOf(it)} /> : <p class="faint spv-none">Pick a variant on the chart or in the table.</p>}
       </div>
       <IterTable study={study} selected={sel} onSelect={(x) => c.selectIteration(x)} meets={meetsOf} />
@@ -142,6 +144,9 @@ function Variant({ c, study, it, requirements, meets }: { c: SpecController; stu
               title={running ? "Wait for the study to finish" : undefined}>
               {meets ? "Use this variant" : "Use anyway"}
             </Button>
+            {variantSims(it).length > 0 && (
+              <Button onClick={() => openVariant(study, it)} title="Open this variant's stress result (immersive view)">View result</Button>
+            )}
             {isApplied && <span class="tone-green" data-applied>Applied.</span>}
           </div>
         )
@@ -215,4 +220,16 @@ function IterTable({ study, selected, onSelect, meets }: { study: Study; selecte
       </table>
     </div>
   );
+}
+
+/** The stress studies a variant ran (one per load case); kept for the best and Pareto variants. */
+export function variantSims(it: StudyIteration): string[] {
+  return Object.values(it.metrics.sim_ids_by_case ?? {}).filter((x): x is string => typeof x === "string" && x !== "");
+}
+
+/** A design-study point → A8's immersive view on its stress result(s), stepping across its load cases. */
+export function openVariant(study: Study, it: StudyIteration): void {
+  const ids = variantSims(it);
+  if (ids.length === 0) return;
+  openImmersive({ simId: ids[0], ids, origin: { agent: "design study", runId: study.run_id, reason: `${partLabel(study.part_id)} · variant #${it.n}` } });
 }

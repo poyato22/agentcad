@@ -252,3 +252,21 @@ describe("inline study cards", () => {
     expect(consoleCollapsed.value).toBe(false);
   });
 });
+
+describe("the agent's reason renders as Mises markup (A2)", () => {
+  it("bold / callout markup renders; raw HTML stays text", async () => {
+    const i = STEPS.findIndex((s) => s.kind === "tool_call" && (s.payload as { name?: string }).name === "sim_run");
+    expect(i).toBeGreaterThanOrEqual(0);
+    const call = STEPS[i];
+    const payload = call.payload as { input?: Record<string, unknown> };
+    const edited: Step = { ...call, payload: { ...payload, input: { ...(payload.input ?? {}), reason: "check **arm root** <b>x</b>" } } as Step["payload"] };
+    setThread([...STEPS.slice(0, i), edited, ...STEPS.slice(i + 1)]);
+    const { container } = render(<Conversation />);
+    await settle();
+    const why = container.querySelector("[data-agent-text]") as HTMLElement;
+    expect(why).toBeTruthy();
+    expect(why.querySelector("strong")?.textContent).toBe("arm root");
+    expect(why.querySelector("b")).toBeNull();
+    expect(why.textContent).toContain("<b>x</b>");
+  });
+});
