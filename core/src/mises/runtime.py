@@ -22,6 +22,10 @@ from .assembly.tools import register_assembly_tools
 from .cad.tools import register_mirror_tools
 from .catalog import Catalog
 from .catalog.tools import register_catalog_tools
+from .bom import BomStore
+from .bom.tools import register_bom_tools
+from .browser.snapshot import SnapshotStore
+from .browser.tools import CardStore, register_browser_tools
 from .engineering import register_engineering_tools
 from .sim.tools import register_sim_tools
 from .claude_code import detect as claude_detect
@@ -142,12 +146,20 @@ class Runtime:
         register_orchestrator_tools(self.registry)
         register_assembly_tools(self.registry)
         register_catalog_tools(self.registry)
+        register_browser_tools(self.registry)
+        register_bom_tools(self.registry)
         self.orchestrator = Orchestrator(self)
         self.started_at = time.time()
         self.catalog = Catalog(self.store)
+        # the agent browser's snapshots and part cards, and the builds' parts lists (U4c)
+        self.snapshots = SnapshotStore(self.store)
+        self.part_cards = CardStore(self.store)
+        self.bom = BomStore(self.store)
         services: dict = {"approvals": self.approvals, "runtime": self,
                           "orchestrator": self.orchestrator, "assembly": self.assembly_store,
-                          "catalog": self.catalog, "secrets": set()}
+                          "catalog": self.catalog, "secrets": set(),
+                          "browser": self.snapshots, "part_cards": self.part_cards,
+                          "bom": self.bom}
         adapter = self._onshape_adapter(keychain_get("mises", "onshape"))
         if adapter is not None:
             services["onshape"] = adapter

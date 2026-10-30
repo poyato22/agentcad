@@ -321,6 +321,10 @@ class Store:
             db.execute("DELETE FROM steps WHERE run_id=?", (run_id,))
             db.execute("DELETE FROM approvals WHERE run_id=?", (run_id,))
             db.execute("DELETE FROM policies WHERE run_id=?", (run_id,))
+            for table in ("browser_snapshots", "part_cards"):     # U4c, when present
+                if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+                              (table,)).fetchone() is not None:
+                    db.execute(f"DELETE FROM {table} WHERE run_id=?", (run_id,))
             db.execute("DELETE FROM runs WHERE id=?", (run_id,))
 
     def runs_in_project(self, project_id: str) -> list[AgentRun]:
@@ -439,6 +443,9 @@ class Store:
             if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND"
                           " name='catalog_items'").fetchone() is not None:
                 db.execute("DELETE FROM catalog_items WHERE project_id=?", (project_id,))
+            if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND"
+                          " name='bom_items'").fetchone() is not None:        # U4c
+                db.execute("DELETE FROM bom_items WHERE project_id=?", (project_id,))
             db.execute("DELETE FROM projects WHERE id=?", (project_id,))
 
     def project_part_count(self, project_id: str) -> int:
