@@ -114,7 +114,8 @@ export function StatusLights(): JSX.Element {
     + `Onshape ${os.text}, ${running} ${running === 1 ? "agent" : "agents"} running, printer ${printer.text}.`;
 
   return (
-    <div class="status">
+    // Escape closes the card from the button or from inside it, and focus returns to the button
+    <div class="status" onKeyDown={(e) => { if (e.key === "Escape" && at) { e.preventDefault(); e.stopPropagation(); close(true); } }}>
       <button ref={btn} type="button" class="status-btn" data-status-tone={head.tone} aria-label={label} title="Status"
         aria-haspopup="dialog" aria-expanded={at !== null} aria-controls="status-card" onClick={toggle}>
         <span class="status-dots" aria-hidden="true">
@@ -126,8 +127,7 @@ export function StatusLights(): JSX.Element {
       </button>
       {/* always in the DOM (hidden when closed) so the lights keep their state and titles */}
       <div id="status-card" ref={cardRef} class="status-card" role="dialog" aria-label="Status" hidden={at === null}
-        style={at ? { right: `${at.right}px` } : undefined}
-        onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(true); } }}>
+        style={at ? { right: `${at.right}px` } : undefined}>
         <div class="lights">
           <span class={restartable ? "light light-click" : "light"} data-light="core" title={coreTitle(shell, stream, tone, lost)}
             role={restartable ? "button" : undefined} tabIndex={restartable ? 0 : undefined}

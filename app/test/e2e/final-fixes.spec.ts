@@ -156,8 +156,9 @@ test("M-1: in Code view the Part | Assembly switch is on top and usable", async 
   const onTop = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest("[data-testid]")?.getAttribute("data-testid"), [bb!.x + bb!.width / 2, bb!.y + bb!.height / 2]);
   expect(onTop).toBe("mode-switch");
   const tabs = await page.locator(".vp-tabs").boundingBox();
-  expect(Math.abs((tabs?.y ?? 0) - bb!.y)).toBeLessThan(2);           // one row with Model | Code
-  expect(bb!.x).toBeGreaterThan((tabs?.x ?? 0) + (tabs?.width ?? 0));  // after it, not over it
+  // one row with Model | Code (centred on each other), and since Plan 7 U2b the switch comes first
+  expect(Math.abs((tabs?.y ?? 0) + (tabs?.height ?? 0) / 2 - (bb!.y + bb!.height / 2))).toBeLessThan(2);
+  expect(tabs!.x).toBeGreaterThan(bb!.x + bb!.width);                // Model | Code after it, not over it
   await shots(page, "m1-code-view-mode-switch", page.locator(".vp").first());
 });
 

@@ -371,10 +371,10 @@ test("connects_to_fake_core_without_errors", async ({ page, fake }) => {
   await page.goto("/");
   await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
   // A6: /onshape/budget twice (the session figure, then the selected run's top-bar meter); A3: the
-  // builds (GET /projects + the profile's tabs) and the Variables panel's VARS schema; A7: the
-  // console spec strip loads the active build's spec and studies
+  // builds (GET /projects + the profile's tabs); A7: the console spec strip loads the active
+  // build's spec and studies. (Plan 7 U2b: no Variables panel, so no GET /parts/{id}/source on boot.)
   await expect.poll(async () => (await fake.calls()).map((c) => c.path.replace(/^\/projects\/[^/]+\//, "/projects/{id}/")).filter((p) => p !== "/context").sort()).toEqual(
-    ["/approvals", "/onshape/budget", "/onshape/budget", "/parts", "/parts/mount_plate/model.glb", "/parts/mount_plate/source", "/printers", "/profile", "/profile",
+    ["/approvals", "/onshape/budget", "/onshape/budget", "/parts", "/parts/mount_plate/model.glb", "/printers", "/profile", "/profile",
       // C-2/C-3: the running run's live activity and open questions are seeded on connect (GET
       // /runs/{id} carries `pending`, as the real core's does, so no GET /runs/{id}/pending)
       "/projects", "/projects/{id}/spec", "/projects/{id}/studies", "/runs", "/runs/b7c79a57cbb4", "/runs/b7c79a57cbb4/steps", "/setup", "/status"]);
@@ -409,7 +409,7 @@ for (const theme of ["dark", "light"] as const) {
     await page.goto("/");
     await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
     await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
-    const top = await chromeOffsets(page, [".crumb", ".tab", ".profile-btn", ".stop-all", ".light"]);
+    const top = await chromeOffsets(page, [".crumb", ".tab", ".profile-btn", ".stop-all", ".status-btn"]);
     expect(top.centre).toBe(22);
     for (const [sel, d] of top.off) expect(d, `top bar ${sel}`).toBeLessThanOrEqual(2);
     // the setup wizard header

@@ -197,6 +197,10 @@ describe("Status button", () => {
     fireEvent.keyDown(card(), { key: "Escape" });
     expect(card().hidden).toBe(true);
     await waitFor(() => expect(document.activeElement).toBe(btn()));
+    // Escape also works with focus still on the button (a mouse click leaves it there)
+    fireEvent.click(btn());
+    fireEvent.keyDown(btn(), { key: "Escape" });
+    expect(card().hidden).toBe(true);
   });
 
   it("headline: ready, needs you, connecting, core down", async () => {
