@@ -11,6 +11,8 @@ from pydantic import BaseModel, Field
 from .. import budget
 from ..tools.registry import ToolContext, ToolRegistry, tool
 from ..types import Caps, ErrorCode, MisesError, SafetyClass, ToolOutput
+from ..announce import announce
+from .lead import SUB, task_title
 from .plan import Plan, PlanTask, validate_plan
 from .scheduler import TaskResult, run_plan
 
@@ -181,7 +183,10 @@ class Orchestrator:
 
         async def spawn(task: PlanTask, deps: dict[str, TaskResult]) -> TaskResult:
             rid = await rt.start_run(task.agent, task_prompt(task, deps), model_ref=model_ref,
+                                     role=SUB, title=task_title(task.title, task.prompt),
                                      **child_policy(rt, parent_run_id, task.agent))
+            _announce_spawn(rt, parent_run_id, rid, task.agent, task_title(task.title,
+                                                                           task.prompt))
             try:
                 res = await rt.wait(rid)
             except asyncio.CancelledError:
@@ -207,6 +212,10 @@ class SubmitPlanArgs(BaseModel):
 class SpawnArgs(BaseModel):
     agent: str = Field(min_length=1)
     prompt: str = Field(min_length=1)
+    task: str | None = Field(
+        default=None, max_length=200,
+        description="A short title for the sub-agent's task, shown to the user (3-6 words, e.g. "
+                    "\"Design motor mount\"). Default: the prompt's first line.")
     edit_scope: list[str] | None = Field(
         default=None, description="Optional narrower edit scope (parts); never wider than yours.")
     wait: bool = Field(
@@ -237,6 +246,22 @@ def _services(ctx: ToolContext):
     return rt, orch
 
 
+def _announce_spawn(rt: Runtime, parent_run_id: str, child_id: str, agent: str,
+                    title: str) -> None:
+    """agent_spawned on the parent (and so on its lead): made here, when the child starts."""
+    announce(rt.events, rt.store, parent_run_id, "agent_spawned", f"Spawned {agent}: {title}",
+             ref={"run_id": child_id, "agent": agent, "parent_id": parent_run_id})
+
+
+async def _start_sub(rt: Runtime, ctx: ToolContext, args: SpawnArgs) -> str:
+    """Start an agent_spawn child as a sub-agent with its task title, and announce it."""
+    title = task_title(args.task, args.prompt)
+    rid = await rt.start_run(args.agent, args.prompt, role=SUB, title=title,
+                             **child_policy(rt, ctx.run_id, args.agent, args.edit_scope))
+    _announce_spawn(rt, ctx.run_id, rid, args.agent, title)
+    return rid
+
+
 def _require_child(rt: Runtime, parent_run_id: str, run_id: str):
     """The run must be one this caller spawned; a run only ever reaches its own subagents."""
     try:
@@ -259,22 +284,21 @@ async def orchestrator_submit_plan(ctx: ToolContext, args: SubmitPlanArgs) -> To
 
 
 @tool("agent_spawn", safety=SafetyClass.LOCAL_MUTATE, timeout_s=LONG_TOOL_TIMEOUT_S,
-      description="Run a narrower subagent on a self-contained prompt, wait for it, and return "
-                  "its final answer. It can never do more than you may do.")
+      description="Run a narrower sub-agent on a self-contained prompt, wait for it, and return "
+                  "its final answer. Give it a short `task` title the user sees. It can never do "
+                  "more than you may do.")
 async def agent_spawn(ctx: ToolContext, args: SpawnArgs) -> ToolOutput:
     rt, _ = _services(ctx)
     check_depth(rt, ctx.run_id)
     if not args.wait:
         # fan-out: start the child and return at once. It runs on its own slot; the parent
         # collects it with agent_wait / agent_result (which give the parent's slot up to wait).
-        rid = await rt.start_run(args.agent, args.prompt,
-                                 **child_policy(rt, ctx.run_id, args.agent, args.edit_scope))
+        rid = await _start_sub(rt, ctx, args)
         return ToolOutput(summary=f"subagent {args.agent} started as run {rid}; collect it with "
                           "agent_wait then agent_result.", data={"run_id": rid, "status": "running"})
     # the parent only waits for its child: its parallel-agents slot is the child's meanwhile
     async with rt.waiting_on_subagents(ctx.run_id):
-        rid = await rt.start_run(args.agent, args.prompt,
-                                 **child_policy(rt, ctx.run_id, args.agent, args.edit_scope))
+        rid = await _start_sub(rt, ctx, args)
         try:
             res = await rt.wait(rid)
         except asyncio.CancelledError:

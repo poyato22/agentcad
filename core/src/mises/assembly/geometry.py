@@ -59,6 +59,7 @@ class GeometryResult:
     interferences: list[dict] = field(default_factory=list)
     glb_path: Path | None = None
     stderr: str = ""
+    positions: list[dict] = field(default_factory=list)   # want="sweep": one per pose
 
 
 def _kill_group(proc: asyncio.subprocess.Process) -> None:
@@ -70,10 +71,13 @@ def _kill_group(proc: asyncio.subprocess.Process) -> None:
 
 async def run_geometry(parts_root: Path, assembly, result: SolveResult, *, want: str = "both",
                        threshold: float = 0.01, out_dir: Path | None = None,
-                       timeout_s: float = 90) -> GeometryResult:
+                       timeout_s: float = 90, poses: list[dict] | None = None) -> GeometryResult:
     """Spawn the sandboxed worker to compute interference and/or write the assembly GLB.
 
-    Only instances whose part is built (``model.step`` present) take part. ``out_dir`` holds the
+    Only instances whose part is built (``model.step`` present) take part. With ``poses`` (a
+    list of {instance id: world transform}) the worker sweeps them in ONE process, each STEP
+    read once (want="sweep"): ``positions`` gets interference plus min clearance per pose, and
+    the instances are named by id. ``out_dir`` holds the
     GLB; when omitted a temp dir is used (its GLB is read into memory by the caller if needed).
     """
     parts_root = Path(parts_root)
@@ -96,7 +100,8 @@ async def run_geometry(parts_root: Path, assembly, result: SolveResult, *, want:
             if step is not None:
                 copied[inst.part_id] = step
         if step is not None:
-            instances.append({"name": inst.name or inst.id, "step": str(step),
+            instances.append({"name": inst.id if poses is not None else (inst.name or inst.id),
+                              "step": str(step),
                               "transform": result.transforms[inst.id]})
     if not instances:
         raise MisesError(ErrorCode.NOT_FOUND, "no built parts in this assembly",
@@ -105,8 +110,10 @@ async def run_geometry(parts_root: Path, assembly, result: SolveResult, *, want:
     tmp = out / "tmp"
     tmp.mkdir(exist_ok=True)
     job = out / "job.json"
-    job.write_text(json.dumps({"out_dir": str(out.resolve()), "want": want,
-                               "threshold": threshold, "instances": instances}))
+    job.write_text(json.dumps({"out_dir": str(out.resolve()),
+                               "want": "sweep" if poses is not None else want,
+                               "threshold": threshold, "instances": instances,
+                               **({"poses": poses} if poses is not None else {})}))
     (out / "result.json").unlink(missing_ok=True)
     nonce = secrets.token_hex(16)
     env = {"MISES_NONCE": nonce, "PATH": "/usr/bin:/bin", "TMPDIR": str(tmp), "HOME": str(tmp),
@@ -140,4 +147,5 @@ async def run_geometry(parts_root: Path, assembly, result: SolveResult, *, want:
     glb = out / "assembly.glb" if data.get("glb") else None
     if owned and glb is None:
         pass
-    return GeometryResult(interferences=data.get("interferences", []), glb_path=glb, stderr=stderr)
+    return GeometryResult(interferences=data.get("interferences", []), glb_path=glb, stderr=stderr,
+                          positions=data.get("positions", []))

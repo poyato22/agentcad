@@ -222,3 +222,13 @@ async def test_mcp_list_equals_registry_minus_internal(rt):
         async with http, client:
             names = {t.name for t in (await client.list_tools()).tools}
     assert names == {t.name for t in rt.registry.list()} - INTERNAL_ONLY
+
+
+async def test_mcp_exposes_the_assembly_control_tools(rt):
+    # Plan 7 R11 / R19: a Claude Code lead brings parts in, moves and animates them over MCP
+    async with running(rt) as app:
+        rid = rt.create_external_run("engineer", provider="claude-code", model="sonnet")
+        http, client = mcp_client(app, rid)
+        async with http, client:
+            names = {t.name for t in (await client.list_tools()).tools}
+    assert {"assembly_add_part", "assembly_move", "assembly_animate", "assembly_check"} <= names

@@ -170,6 +170,11 @@ class Runtime:
         # build id -> that build's long-lived ui run (spec panel apply; Plan 5 A7)
         self._ui_runs: dict[str, str] = {}
         self._questions: dict[str, tuple[str, asyncio.Future[str]]] = {}
+        # Plan 7 U3c: messages waiting for a busy lead (orchestrator/lead.py), per lead run, and
+        # the per-build locks around find-or-start-lead
+        self.lead_queues: dict[str, list] = {}
+        self.lead_locks: dict[str, asyncio.Lock] = {}
+        self.lead_drainers: dict[str, asyncio.Task] = {}
         # question id -> its question_asked payload (+ run_id, asked_at), so a reloaded app can
         # recover the open question cards (GET /runs/{id}/pending; QA C-2)
         self._question_data: dict[str, dict] = {}
@@ -323,6 +328,7 @@ class Runtime:
                 return "running", []
             self._runs.pop(run_id, None)
             self._external.discard(run_id)
+            self.lead_queues.pop(run_id, None)
             self.store.delete_run(run_id)
             self.forget_activity(run_id)      # C4's tracker, dropped without a "done" event
             wd = self.home / "runs" / run_id
@@ -370,6 +376,8 @@ class Runtime:
         for c in list(self.ui_calls.values()):
             if c.task is not None and not c.task.done():
                 c.task.cancel()
+        for t in list(self.lead_drainers.values()):
+            t.cancel()
         for rid in [self._ui_run, *self._ui_runs.values()]:
             if rid is not None and rid in self._external:
                 self.finish_external_run(rid, "done")
@@ -672,16 +680,23 @@ class Runtime:
                         parent_id: str | None = None,
                         allowed_classes: set[SafetyClass] | None = None,
                         sketch_id: str | None = None, project_id: str | None = None,
+                        role: str | None = None, title: str | None = None,
+                        routed: dict | None = None, log: dict | None = None,
                         first_context: dict | None = None,
                         images: list[tuple[str, str]] | None = None) -> str:
         """`sketch_id` (from POST /sketches): copy that sketch into the run's workdir and give
         it to the agent as data (plus its images for vision-capable providers).
+        Plan 7 U3c: `role` "lead" (the build's main agent: its definition gets the lead prompt
+        and tools) or "sub" (a spawned sub-agent, `title` its task), `routed` the router's
+        choice; all three are stored on the run.
         `first_context` / `images` (e.g. a drawing import): a data block and (media_type,
         base64) images for the first prompt; images reach vision-capable providers only."""
         defn = self.definitions.get(agent)
         if defn is None:
             raise MisesError(ErrorCode.NOT_FOUND, f"unknown agent: {agent}",
                              hint=f"agents: {', '.join(sorted(self.definitions))}")
+        meta = {k: v for k, v in (("role", role), ("title", title), ("routed", routed))
+                if v is not None}
         project_id = self.project_for(project_id, parent_id)
         if sketch_id is not None:
             sketch_mod.load_summary(self.home, sketch_id)    # unknown → 404 before any run exists
@@ -697,12 +712,18 @@ class Runtime:
                                                 parent_id=parent_id,
                                                 allowed_classes=allowed_classes,
                                                 sketch_id=sketch_id, project_id=project_id,
+                                                meta=meta, log=log,
                                                 first_context=first_context, images=images)
         provider, model = self._resolve_provider(ref, prof)
         if hardware.model_kind(ref) == "local":
             await self.refresh_local_sizes()
         run = self.store.create_run(agent, provider.name, model, prompt, parent_id=parent_id,
                                     project_id=project_id)
+        if meta:
+            self.store.update_run(run.id, **meta)
+        if role == "lead":
+            from .orchestrator.lead import lead_definition
+            defn = lead_definition(defn)
         classes = set(SafetyClass) if allowed_classes is None else set(allowed_classes)
         self.store.create_policy(run.id, list(edit_scope), list(read_scope), caps,
                                  [c for c in SafetyClass if c in classes])
@@ -713,10 +734,10 @@ class Runtime:
                          activity=self.activity_tracker(run.id))
         st = self._runs[run.id] = _RunState(loop=loop, ref=ref)
         started = {"agent": agent, "provider": provider.name, "model": model,
-                   "parent_id": parent_id}
+                   "parent_id": parent_id, **meta}
         slot = self._admit(run.id, ref, started)
         first: str | list[Block] = prompt
-        user_log = None
+        user_log = log      # e.g. a feedback pin's note instead of the wrapped message
         if sketch_id is not None:
             try:
                 first, user_log = self._sketch_first_prompt(run.id, sketch_id, prompt, provider.name)
@@ -858,6 +879,7 @@ class Runtime:
                                 allowed_classes: set[SafetyClass] | None,
                                 sketch_id: str | None = None,
                                 project_id: str | None = None,
+                                meta: dict | None = None, log: dict | None = None,
                                 first_context: dict | None = None,
                                 images: list[tuple[str, str]] | None = None) -> str:
         url, token = await self._mcp()
@@ -867,6 +889,8 @@ class Runtime:
                                        edit_scope=edit_scope, read_scope=read_scope, caps=caps,
                                        allowed_classes=allowed_classes, parent_id=parent_id,
                                        task=prompt, slot_ref=ref, project_id=project_id)
+        if meta:     # before the session starts: its rules file reads the run's role
+            self.store.update_run(rid, **meta)
         st = self._claude[rid] = _ClaudeRun(ref=ref, first_context=first_context)
         st.slot, st.started_data = self._external_slots.pop(rid, (None, {}))
         text = prompt
@@ -888,7 +912,8 @@ class Runtime:
             self.parallel.release(rid)
             await st.session.close()
             return rid
-        st.task = asyncio.create_task(self._drive_claude(rid, text, first=True, images=images))
+        st.task = asyncio.create_task(self._drive_claude(rid, text, first=True, images=images,
+                                                         log=log))
         return rid
 
     async def _spawn_claude(self, rid: str, st: _ClaudeRun, alias: str, info, auth, url: str,
@@ -917,7 +942,8 @@ class Runtime:
             return None
 
     async def _drive_claude(self, rid: str, text: str, *, first: bool,
-                            images: list[tuple[str, str]] | None = None) -> RunResult:
+                            images: list[tuple[str, str]] | None = None,
+                            log: dict | None = None) -> RunResult:
         st = self._claude[rid]
         assert st.session is not None
         slot, st.slot = st.slot, None
@@ -935,7 +961,7 @@ class Runtime:
             context = self._claude_context(rid) if first else None
             if first and st.first_context is not None:
                 context = {**(context or {}), **st.first_context}
-            final = await st.session.prompt(text, context=context, images=images)
+            final = await st.session.prompt(text, context=context, images=images, log=log)
             result = RunResult(final_text=final, messages=[], stop_reason="end_turn")
         except MisesError as e:
             stop = "cancelled" if e.code == ErrorCode.CANCELLED else "error"
@@ -989,7 +1015,7 @@ class Runtime:
         await self._spawn_claude(run_id, st, run.model, info, auth, url, token,
                                  resume=run.session_ref)
 
-    async def _send_claude(self, run_id: str, text: str) -> None:
+    async def _send_claude(self, run_id: str, text: str, log: dict | None = None) -> None:
         st = self._claude.get(run_id)
         if st is not None and st.task is not None and not st.task.done():
             raise MisesError(ErrorCode.INVALID_INPUT, "run is still working",
@@ -1006,7 +1032,7 @@ class Runtime:
         st.started_data = {"resumed": True, "external": True}
         st.slot = (None if self.parallel.try_acquire(run_id, st.ref)
                    else self._queue(run_id, st.ref, st.started_data))
-        st.task = asyncio.create_task(self._drive_claude(run_id, text, first=False))
+        st.task = asyncio.create_task(self._drive_claude(run_id, text, first=False, log=log))
 
     async def release_claude_session(self, run_id: str) -> None:
         """Close an idle Claude Code session once its result is collected (orchestrated
@@ -1257,7 +1283,9 @@ class Runtime:
             raise MisesError(ErrorCode.NOT_FOUND, f"unknown run: {run_id}")
         return st
 
-    async def send(self, run_id: str, text: str) -> None:
+    async def send(self, run_id: str, text: str, *, log: dict | None = None) -> None:
+        """`log` overrides the stored user step's fields (e.g. a feedback pin's note instead of
+        the wrapped message the model reads)."""
         if run_id in self._deleting:
             raise MisesError(ErrorCode.NOT_FOUND, f"run {run_id} is being deleted")
         if run_id in self._sending:
@@ -1265,13 +1293,14 @@ class Runtime:
                              hint="wait for it to finish or cancel it")
         self._sending.add(run_id)
         try:
-            await self._send(run_id, text)
+            # the plain two-argument call when there is no log (tests patch _send that way)
+            await (self._send(run_id, text) if log is None else self._send(run_id, text, log))
         finally:
             self._sending.discard(run_id)
 
-    async def _send(self, run_id: str, text: str) -> None:
+    async def _send(self, run_id: str, text: str, log: dict | None = None) -> None:
         if self._is_claude_run(run_id):
-            await self._send_claude(run_id, text)
+            await self._send_claude(run_id, text, log)
             return
         if run_id in self._external:
             raise MisesError(ErrorCode.INVALID_INPUT, "run is driven by an external agent",
@@ -1286,7 +1315,8 @@ class Runtime:
             await self.refresh_local_sizes()
         started = {"resumed": True}
         slot = self._admit(run_id, st.ref, started)
-        st.task = asyncio.create_task(self._drive_slotted(run_id, text, slot, started))
+        st.task = asyncio.create_task(self._drive_slotted(run_id, text, slot, started,
+                                                          user_log=log))
         st.task.add_done_callback(functools.partial(self._slotted_done, run_id))
 
     async def wait(self, run_id: str) -> RunResult:
