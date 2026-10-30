@@ -103,6 +103,14 @@ function callSteps(c: Call): number[] {
   return ids;
 }
 
+/** A decision step with nothing to say: Claude Code's {claude_code: "session_started" | "init"}
+ *  or a stored {agent_thinking} record, without a reason. */
+export function isBookkeeping(step: Step): boolean {
+  const p = step.payload;
+  if (step.kind !== "decision" || str(p.reason) || str(rec(p.output).summary)) return false;
+  return typeof p.claude_code === "string" || "agent_thinking" in p;
+}
+
 function decisionText(step: Step): string {
   const p = step.payload;
   if (step.kind === "plan") {
@@ -162,6 +170,9 @@ export function buildThread(items: readonly LogItem[]): ThreadItem[] {
       }
       case "decision":
         if (last && last.call && lastCallResult() === it.step.id) { last.extra.push(it); break; }
+        // Claude Code's bookkeeping (session start, init, stored thinking) is not a decision the
+        // reader needs; it stays in the step log (C-10)
+        if (isBookkeeping(it.step)) break;
         out.push({ kind: "note", key, text: decisionText(it.step), stepIds: [it.step.id] });
         last = null;
         break;

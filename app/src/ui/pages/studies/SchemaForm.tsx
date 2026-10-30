@@ -403,6 +403,10 @@ function ArrayField({ ctx, path, k, n }: { ctx: Ctx; path: Path; k: string | num
             if (names.has(name)) name = `case from ${fmtClock(Date.now() / 1000)}`;
             if (names.has(name)) name = `case from ${new Date().toISOString().slice(11, 23)}`;
             (fresh as Record<string, unknown>).name = name;
+            // held where the first case is held (the schema's default holds and loads the same
+            // face, which the core refuses, B1-11)
+            const first = arr[0] as Record<string, unknown> | undefined;
+            if (first && Array.isArray(first.supports)) (fresh as Record<string, unknown>).supports = structuredClone(first.supports);
           }
           ctx.set(path, [...arr, fresh]);
           if (isCases) ctx.onSelectCase?.(arr.length);

@@ -93,6 +93,8 @@ export interface Scenario {
   local?: LocalStatus;
   /** ms between `local_pull` progress events (default 120). */
   local_pull_ms?: number;
+  /** ms a cancelled run takes to stop (stays "running" until then; default 0: at once). */
+  stop_delay_ms?: number;
   /** Static stress studies: solver status, stored studies, how POST /sims ends (Studies page). */
   sims?: SimScenario;
   /** Printers, slicer and drawing state (Plan 4). Absent: no printers, PrusaSlicer installed. */
@@ -164,6 +166,7 @@ export interface FakeState {
   setup: FakeSetup;
   local: LocalStatus | null;
   localPullMs: number;
+  stopDelayMs: number;
   /** Downloads in flight: model -> their pending progress timers (POST /local/pull/cancel clears them). */
   pulling: Map<string, ReturnType<typeof setTimeout>[]>;
   sims: FakeSims;
@@ -241,7 +244,7 @@ function stateFrom(sc: Scenario, token: string): FakeState {
     tools: sc.tools === null ? null : structuredClone(sc.tools ?? [...DEFAULT_TOOLS]),
     glb: sc.glb ?? {}, script: sc.script ?? [], on: sc.on ?? {}, calls: [],
     setup: withBuildTabs(setupFrom(sc), sc.builds),
-    local: sc.local ? structuredClone(sc.local) : null, localPullMs: sc.local_pull_ms ?? 120, pulling: new Map(),
+    local: sc.local ? structuredClone(sc.local) : null, localPullMs: sc.local_pull_ms ?? 120, stopDelayMs: sc.stop_delay_ms ?? 0, pulling: new Map(),
     sims: simsFrom(sc.sims),
     sketches: new Map(),
     print: printingFrom(sc.print),
@@ -358,6 +361,8 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
 
   /** The latest agent_activity per run (GET /runs/{id} `activity`, like the core's tracker). */
   const lastActivity = new Map<string, unknown>();
+  /** Runs cancelled but still stopping (stop_delay_ms). */
+  const stopping = new Set<string>();
 
   /** Keeps fake state consistent with what an event implies in the real core. */
   function applyEvent(ev: MisesEvent) {
@@ -416,6 +421,19 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
   function cancelRun(id: string) {
     const r = state.runs.get(id);
     if (!r || r.status !== "running") return;
+    // a run that takes a while to stop (the core's worst case is ~7 s: 2 s close + 5 s TERM grace)
+    if (state.stopDelayMs > 0 && !stopping.has(id)) {
+      stopping.add(id);
+      setTimeout(() => { stopping.delete(id); if (state.runs.get(id)?.status === "running") finishCancel(id); }, state.stopDelayMs);
+      return;
+    }
+    if (stopping.has(id)) return;
+    finishCancel(id);
+  }
+
+  function finishCancel(id: string) {
+    const r = state.runs.get(id);
+    if (!r) return;
     state.runs.set(id, { ...r, status: "cancelled", updated_at: now() });
     // same as core approvals.py on cancel
     for (const a of state.approvals.values()) {
@@ -1116,6 +1134,9 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     clearSimTimers(state.sims);
     dropSockets();
     stopPrinting(state.print);
+    // the live activity belongs to the old scenario's runs (GET /runs/{id} serves it, C-3)
+    lastActivity.clear();
+    stopping.clear();
     state = stateFrom(loadScenario(scenario), token ?? state.token);
   }
 

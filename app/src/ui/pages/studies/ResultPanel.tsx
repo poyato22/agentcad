@@ -42,7 +42,7 @@ export function LoadCases({ rec }: { rec: StudyRecord }): JSX.Element | null {
   const gov = rows.find((x) => x.governing) ?? null;
   const sel = rows.find((x) => x.id === picked) ?? gov ?? rows[0];
   return (
-    <div class="st-cases" data-testid="load-cases" data-governing={gov?.id}>
+    <div class="st-cases" data-testid="result-cases" data-governing={gov?.id}>
       <p class="text" data-testid="governing-case">
         {gov ? <>Governing case: <b>{gov.name}</b> <span class="faint">· the figures above and the contour are this case</span></> : "No governing case reported."}
       </p>
@@ -78,7 +78,9 @@ export function ResultPanel({ rec, charts, onAsk, onOpenRun, asked, onImmersive 
   const card = rec.card;
   const type = rec.type ?? "static";
   const done = rec.status === "done";
-  const verdict = card?.verdict ?? (done ? null : "fail");
+  // a study you cancelled has no verdict (the core's card still says "fail"): it reads "cancelled" (B1-10)
+  const cancelled = rec.status === "cancelled";
+  const verdict = cancelled ? null : card?.verdict ?? (done ? null : "fail");
   const r = (rec.results ?? {}) as Record<string, unknown>;
   return (
     <div class="st-results" data-testid="study-result" data-type={type} data-status={rec.status}>
@@ -139,7 +141,7 @@ export function ResultPanel({ rec, charts, onAsk, onOpenRun, asked, onImmersive 
       )}
       <div class="st-actions">
         <Button variant="ink" onClick={onImmersive} data-testid="open-immersive">Immersive</Button>
-        <Button onClick={onAsk} disabled={asked !== null && asked.error === null} data-testid="ask-agent">Ask agent to fix</Button>
+        {!cancelled && <Button onClick={onAsk} disabled={asked !== null && asked.error === null} data-testid="ask-agent">Ask agent to fix</Button>}
         {asked?.runId && (
           <>
             <span class="dim" data-testid="asked">Sent to designer with the full settings and result.</span>
