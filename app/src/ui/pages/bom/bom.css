@@ -1,0 +1,63 @@
+/* Parts list (BOM) page (R5). Tokens only, square corners; numbers are tabular and right-aligned
+   the way an engineer reads a bill of materials. The estimate tag borrows the console's warn tone
+   (amber = a caution / honesty label), nothing else is coloured. */
+.bom { display: flex; flex-direction: column; gap: 16px; max-width: 1040px; }
+.bom-bar { display: flex; align-items: center; gap: 8px; }
+.bom-buildname { font: 700 var(--fs)/1.2 var(--font-head); color: var(--ink); }
+.bom-spacer { flex: 1; }
+.bom-empty { max-width: 56ch; margin: 8px 0; }
+.bom-error { margin: 0; }
+
+.bom-section { display: flex; flex-direction: column; gap: 4px; }
+.bom-section-title { color: var(--dim); }
+
+.bom-table { border-collapse: collapse; width: 100%; font-size: var(--fs); }
+.bom-table th { text-align: left; color: var(--faint); font-weight: 400; padding: 4px 10px 4px 0; border-bottom: 1px solid var(--line2); white-space: nowrap; }
+.bom-table td { padding: 5px 10px 5px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+.bom-c-qty, .bom-c-cost, .bom-c-total, .bom-table th.bom-c-qty, .bom-table th.bom-c-cost, .bom-table th.bom-c-total { text-align: right; font-variant-numeric: tabular-nums; }
+.bom-c-total { color: var(--ink); white-space: nowrap; }
+.bom-c-rm { width: 1%; }
+.bom-c-name { min-width: 180px; }
+
+.bom-name { color: var(--ink); overflow-wrap: anywhere; }
+.bom-name-link { color: var(--ink); }
+.bom-specs { font-size: var(--fs-small); margin-top: 1px; }
+
+.bom-num { width: 72px; text-align: right; font: inherit; font-variant-numeric: tabular-nums; background: var(--vp); color: var(--ink); border: 1px solid var(--line); padding: 2px 4px; }
+.bom-notes-in { width: 100%; min-width: 120px; font: inherit; background: var(--vp); color: var(--ink); border: 1px solid var(--line); padding: 2px 4px; }
+.bom-cur { width: 52px; font: inherit; text-transform: uppercase; background: var(--vp); color: var(--ink); border: 1px solid var(--line); padding: 2px 4px; }
+.bom-cur::placeholder { text-transform: none; }
+.bom-host { font-size: var(--fs-small); }
+.bom-note { font-size: var(--fs-small); max-width: 22ch; text-align: right; margin-top: 2px; }
+.bom-add-err { flex-basis: 100%; margin: 0; }
+.bom-num:focus-visible, .bom-cur:focus-visible, .bom-notes-in:focus-visible, .bom-add input:focus-visible { outline: 1px solid var(--blue); border-color: var(--blue); }
+
+.bom-est { display: inline-block; margin-left: 6px; font-size: var(--fs-label); letter-spacing: .06em; color: var(--amber); border: 1px solid var(--amber); padding: 0 4px; vertical-align: middle; }
+
+.bom-rm { background: none; border: 0; color: var(--faint); font-size: 16px; line-height: 1; cursor: pointer; padding: 0 4px; }
+.bom-rm:hover { color: var(--red); }
+.bom-rm:focus-visible { outline: 1px solid var(--blue); }
+
+.bom-add { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; border: 1px solid var(--line2); background: var(--paper); padding: 8px 10px; }
+.bom-add-name { flex: 2 1 160px; }
+.bom-add-vendor { flex: 1 1 120px; }
+.bom-add input[type="text"] { font: inherit; background: var(--vp); color: var(--ink); border: 1px solid var(--line); padding: 3px 6px; }
+
+.bom-totals { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--line2); padding-top: 12px; max-width: 420px; }
+.bom-grand { border-collapse: collapse; width: 100%; }
+.bom-grand caption { text-align: left; color: var(--dim); margin-bottom: 4px; }
+.bom-grand th { text-align: left; font-weight: 400; padding: 3px 12px 3px 0; white-space: nowrap; }
+.bom-grand td { padding: 3px 0 3px 12px; }
+.bom-grand-amt { font: 700 16px/1.2 var(--font-head); color: var(--ink); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.bom-grand-est { font-size: var(--fs-small); white-space: nowrap; }
+.bom-cur-note, .bom-unpriced { margin: 0; max-width: 56ch; }
+.bom-split { display: flex; gap: 24px; margin: 0; }
+.bom-split div { display: flex; gap: 8px; align-items: baseline; }
+.bom-split dt { margin: 0; } .bom-split dd { margin: 0; font-variant-numeric: tabular-nums; }
+.bom-vendors { border-collapse: collapse; width: 100%; }
+.bom-vendors caption { text-align: left; color: var(--dim); margin-bottom: 2px; }
+.bom-vendors td { padding: 2px 0; border-bottom: 1px solid var(--line); }
+.bom-vendors-amt { text-align: right; font-variant-numeric: tabular-nums; }
+.bom-est-note { margin: 0; max-width: 56ch; }
+
+.vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

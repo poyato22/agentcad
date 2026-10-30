@@ -1,0 +1,25 @@
+/* Inline part card (R4): the agent surfacing a real component. Tokens only, square corners, to
+   match the study/review cards. Blue is reserved for agent/selection; this card stays achromatic
+   except the estimate/fail tones it shares with the rest of the console. */
+.pcard-slot { margin: 6px 0 4px 22px; }
+.pcard { border: 1px solid var(--line2); background: var(--paper); padding: 8px 10px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.pcard[data-state="running"] { border-color: var(--blue); }
+.pcard-pending { min-height: 0; }
+
+.pcard-main { display: flex; gap: 10px; align-items: flex-start; min-width: 0; }
+.pcard-img { flex: none; width: 64px; height: 64px; border: 1px solid var(--line); background: var(--vp); display: block; object-fit: contain; }
+.pcard-info { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+.pcard-name { font: 700 var(--fs)/1.25 var(--font-head); color: var(--ink); overflow-wrap: anywhere; }
+.pcard-meta { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.pcard-price { color: var(--ink); font-weight: 700; font-variant-numeric: tabular-nums; }
+.pcard-vendor { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.pcard-specs { list-style: none; margin: 2px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 2px 12px; }
+.pcard-specs li { font-variant-numeric: tabular-nums; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.pcard-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pcard-open { text-decoration: none; }
+.pcard-outcome { margin: 0; }
+.pcard-outcome.pcard-ok { color: var(--green); }
+
+/* proxied-image placeholder (shared with the browser panel) */
+.proxy-img-empty { display: grid; place-items: center; color: var(--faint); background: var(--vp); border: 1px solid var(--line); font-size: 18px; }

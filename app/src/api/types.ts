@@ -3,6 +3,7 @@
 // Runtime validation lives in schemas.ts; keep both in step.
 import type { PartEdge, PartKind } from "./builds";
 import type { Appearance } from "../lib/appearance";
+import type { SuggestedSite } from "./browser";
 
 export type ErrorCode = "stale_version" | "budget_exhausted" | "needs_approval" | "transient" | "invalid_input"
   | "out_of_scope" | "denied" | "not_found" | "tool_failed" | "cancelled";
@@ -234,6 +235,11 @@ export interface Profile {
   hidden_agents?: string[];
   /** Plan 7 U8: the viewer's background. Optional: a core/fixture that predates it reads as "theme". */
   viewer_background?: ViewerBackground;
+  /** Curated, user-editable sites the agent browses without an approval card (Plan 7 R3).
+   *  Optional: a core/fixture that predates it reads as the empty list in the UI. */
+  suggested_sites?: SuggestedSite[];
+  /** Web fetches (sites searched + pages opened) one agent run may make (1-1000; core default 60). */
+  browser_fetches_per_run?: number;
   setup_completed_at: number | null;
 }
 

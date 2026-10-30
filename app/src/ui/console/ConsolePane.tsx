@@ -14,6 +14,7 @@ import { DetailsBar, RunSwitcher } from "./RunSwitcher";
 import { watchQueued } from "./queued";
 import { StepLog } from "./StepLog";
 import { SpecPanel } from "../spec";
+import { BrowserPanel } from "./browser/BrowserPanel";
 import { composerOpen, consoleView, setConsoleView } from "./view";
 import "./console.css";
 import "./conversation.css";
@@ -25,6 +26,8 @@ export function ConsolePane(): JSX.Element {
   useEffect(() => {
     if (focus !== null && consoleView.peek() === "chat") setConsoleView("details", false);
   }, [focus]);
+
+  if (view === "browser") return <BrowserPanel />;
 
   if (view === "details") {
     return (

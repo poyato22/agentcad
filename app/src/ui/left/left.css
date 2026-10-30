@@ -57,6 +57,10 @@
 .vars-conflict { color: var(--ink); background: var(--blue-tint); border-top-color: var(--blue); }
 .vars-actions { display: inline-flex; gap: 6px; margin-left: auto; }
 
+.left-bom-link { flex: none; background: none; border: 0; padding: 0; font: inherit; color: var(--dim); text-decoration: underline; cursor: pointer; }
+.left-bom-link:hover { color: var(--ink); }
+.left-bom-link:focus-visible { outline: 1px solid var(--blue); }
+
 .step-list { padding-left: 21px; }
 .step-row {
   display: block; width: 100%; text-align: left; padding: 2px 8px; border: 0; background: transparent;

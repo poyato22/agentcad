@@ -1,0 +1,9 @@
+kind,name,qty,unit_cost,currency,line_total,estimate,vendor,url,part_id,catalog_id,specs,notes,source
+made,Arm bracket,1,0.27,USD,0.27,yes,,,arm_bracket,,mass: 12.4 g; material: PLA; size: 40.0 x 20.0 x 12.5 mm,estimate: 12.4 g of PLA solid (100% infill) x $22.00/kg (material only),auto
+bought,Micro servo SG92R,6,5.95,USD,35.70,,Adafruit,https://www.adafruit.com/product/169,,,mass: 9.0 g,two spares,user
+bought,Bearing 608ZZ,2,1.20,EUR,2.40,,Misumi,,,,,,user
+bought,"'=HYPERLINK(""https://evil.example"")",1,3.00,unknown,3.00,,Shop,,,,,,user
+bought,M3 screws,20,,unknown,,,,,,,,,user
+total,,,,USD,35.97,yes,,,,,,,
+total,,,,EUR,2.40,,,,,,,,
+total,,,,unknown,3.00,,,,,,,,

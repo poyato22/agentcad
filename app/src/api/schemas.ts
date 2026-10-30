@@ -5,6 +5,7 @@
 import { z } from "zod";
 import { partEdgeSchema } from "./builds";
 import { PRESET_IDS } from "../lib/appearance";
+import { suggestedSitesSchema } from "./browser";
 import {
   ERROR_CODES, SETUP_PIECES, STEP_KINDS, SYSTEM_STATUSES,
   type RunNode,
@@ -184,6 +185,9 @@ export const profileSchema = z.object({
   theme: z.enum(["system", "light", "dark"]).default("system"),
   hidden_agents: z.array(z.string()).optional(),
   viewer_background: z.object({ mode: z.enum(["theme", "solid", "gradient"]), colors: z.array(z.string()) }).optional().catch(undefined),
+  // Plan 7 R3: the agent's curated browse list (apart in api/browser.ts)
+  suggested_sites: suggestedSitesSchema.optional(),
+  browser_fetches_per_run: z.number().int().optional(),
   setup_completed_at: z.number().nullable().default(null),
   // the core's Profile carries `schema_version` and `printers`; both are stripped here and never sent
   // back in PUT /profile (the core merges the patch, so they are kept; printers go through /printers)

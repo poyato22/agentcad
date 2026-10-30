@@ -12,7 +12,7 @@
 import { signal, type Signal } from "@preact/signals";
 import { isTrustedKey, registerShortcut } from "../../lib/keys";
 
-export type Page = "design" | "studies" | "drawing" | "print" | "onshape" | "directory";
+export type Page = "design" | "studies" | "drawing" | "print" | "onshape" | "directory" | "bom";
 
 export interface PageDef {
   id: Page;
@@ -22,6 +22,9 @@ export interface PageDef {
   title: string;
   /** ⌘<key> digit that navigates to this page. */
   key: "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9";
+  /** A reachable page that is NOT a top-bar mode tab (its own build-scoped entry opens it).
+   *  Keeps the mode-tab strip within its width budget. */
+  hidden?: boolean;
 }
 
 /** Order is the tab order and the ⌘<digit> order. Design is first and is the default. */
@@ -33,7 +36,12 @@ export const PAGES: readonly PageDef[] = [
   // Plan 5 A6
   { id: "onshape", label: "Onshape", title: "Onshape", key: "5" },
   { id: "directory", label: "Parts", title: "Parts directory", key: "6" },
+  // Plan 7 R5: the build's parts list, a top tab with a short label now that Sketch is gone (U2b)
+  { id: "bom", label: "BOM", title: "Parts list (BOM)", key: "7" },
 ];
+
+/** The mode tabs shown in the top bar (hidden pages have their own entry points). */
+export const TAB_PAGES: readonly PageDef[] = PAGES.filter((p) => !p.hidden);
 
 export const DEFAULT_PAGE: Page = "design";
 

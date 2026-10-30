@@ -80,12 +80,12 @@ describe("ProfilePane shell", () => {
     expect(client.getProfile).not.toHaveBeenCalled();
   });
 
-  it("lists_the_eight_sections_and_marks_only_the_selected_one", async () => {
+  it("lists_the_sections_and_marks_only_the_selected_one", async () => {
     render(<ProfilePane open onClose={() => undefined} />);
     await pane();
     const nav = await screen.findByRole("navigation", { name: "Profile sections" });
     const names = within(nav).getAllByRole("button").map((b) => b.textContent);
-    expect(names).toEqual(["Profile", "Models", "Onshape", "Printers", "Agents & budgets", "Data", "System", "Setup", "About"]);
+    expect(names).toEqual(["Profile", "Models", "Onshape", "Printers", "Agents & budgets", "Browsing", "Data", "System", "Setup", "About"]);
     expect(within(nav).getByRole("button", { name: "Profile" }).getAttribute("aria-current")).toBe("page");
     fireEvent.click(within(nav).getByRole("button", { name: "Onshape" }));
     expect(within(nav).getByRole("button", { name: "Onshape" }).getAttribute("aria-current")).toBe("page");

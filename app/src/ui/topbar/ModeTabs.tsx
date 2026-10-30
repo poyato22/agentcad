@@ -1,6 +1,6 @@
 import type { JSX } from "preact";
 import { useRef } from "preact/hooks";
-import { activePage, PAGES, setPage } from "../pages/router";
+import { activePage, setPage, TAB_PAGES } from "../pages/router";
 
 /** The top mode tabs. Every tab is clickable and navigates (⌘1–⌘6 do the same); the active tab is
  *  underlined in blue. Keyboard: one tab stop (roving tabindex); ←/→ move to the previous/next tab
@@ -10,21 +10,21 @@ export function ModeTabs(): JSX.Element {
   const list = useRef<HTMLDivElement>(null);
 
   function onKeyDown(e: KeyboardEvent): void {
-    const i = PAGES.findIndex((p) => p.id === current);
+    const i = TAB_PAGES.findIndex((p) => p.id === current);
     let next: number;
-    if (e.key === "ArrowRight") next = (i + 1) % PAGES.length;
-    else if (e.key === "ArrowLeft") next = (i - 1 + PAGES.length) % PAGES.length;
+    if (e.key === "ArrowRight") next = (i + 1) % TAB_PAGES.length;
+    else if (e.key === "ArrowLeft") next = (i - 1 + TAB_PAGES.length) % TAB_PAGES.length;
     else if (e.key === "Home") next = 0;
-    else if (e.key === "End") next = PAGES.length - 1;
+    else if (e.key === "End") next = TAB_PAGES.length - 1;
     else return;
     e.preventDefault();
-    setPage(PAGES[next].id);
+    setPage(TAB_PAGES[next].id);
     list.current?.querySelectorAll<HTMLButtonElement>("[role=tab]")[next]?.focus();
   }
 
   return (
     <div ref={list} class="tabs" role="tablist" aria-label="mode" onKeyDown={onKeyDown}>
-      {PAGES.map((p) => {
+      {TAB_PAGES.map((p) => {
         const active = p.id === current;
         return (
           <button

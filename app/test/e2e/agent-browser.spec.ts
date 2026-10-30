@@ -1,0 +1,108 @@
+// Plan 7 U4a (R3/R4/R5): the agent Browser tab, the part card, the per-build parts list (BOM)
+// and the Profile Browsing editor, against the fake core's "parts-list" scenario: the base run
+// plus the real core's dumped snapshots, part cards and parts list (scenarios/make_parts_list.py).
+import type { Page } from "@playwright/test";
+import { expect, test } from "./fixtures";
+
+test.beforeEach(async ({ fake, page }) => {
+  await fake.reset("parts-list");
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/");
+  await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
+});
+
+test("the parts list shows one total per currency, estimates and the unpriced count, edits and exports", async ({ page, fake }) => {
+  await page.getByRole("button", { name: "Parts list", exact: true }).click();
+  await expect(page.locator("[data-bom-page]")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Made in-house" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Bought" })).toBeVisible();
+  await expect(page.getByText("Arm bracket")).toBeVisible();
+  await expect(page.locator('[data-bom-line="auto_arm_bracket"]').getByText("estimate")).toBeVisible();
+  // a formula-like name from the core is plain text
+  await expect(page.getByText('=HYPERLINK("https://evil.example")')).toBeVisible();
+  // one total per currency, never summed
+  const totals = page.locator("[data-bom-totals]");
+  await expect(totals.locator('[data-currency="USD"]')).toContainText("$35.97");
+  await expect(totals.locator('[data-currency="EUR"]')).toContainText("€2.40");
+  await expect(totals.locator('[data-currency="unknown"]')).toContainText("3.00 (currency unknown)");
+  await expect(totals.getByText("1 part has no price yet, so it isn't in the totals.")).toBeVisible();
+
+  // editing a quantity persists via PATCH (only the core's fields)
+  const qty = page.getByLabel("Quantity of Micro servo SG92R");
+  await qty.fill("8");
+  await qty.press("Enter");
+  await expect.poll(async () => (await fake.calls()).find((c) => c.method === "PATCH" && /\/bom\//.test(c.path))?.body).toEqual({ qty: 8 });
+  await expect(totals.locator('[data-currency="USD"]')).toContainText("$47.87");    // 8 × 5.95 + 0.27, re-read from the core
+
+  // adding a bought part with no currency keeps it unknown
+  await page.getByRole("button", { name: "Add bought part" }).click();
+  await page.getByLabel("Part name", { exact: true }).fill("M3 nut");
+  await page.getByLabel("Unit cost", { exact: true }).fill("0.10");
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(page.getByText("M3 nut")).toBeVisible();
+  await expect(totals.locator('[data-currency="unknown"]')).toContainText("3.10 (currency unknown)");
+
+  await page.getByRole("button", { name: "Export CSV" }).click();
+  await expect.poll(async () => (await fake.calls()).some((c) => /\/bom\.csv$/.test(c.path))).toBe(true);
+
+  await page.getByRole("button", { name: "Back to design" }).first().click();
+  await expect(page.locator('[data-region="viewer"]')).toBeVisible();
+});
+
+test("the part card loads from the core and adds itself to its build's parts list", async ({ page, fake }) => {
+  const card = page.locator('[data-part-card][data-state="ready"]');
+  await expect(card).toBeVisible();
+  await expect(card).toContainText("Micro servo - TowerPro SG92R");
+  await expect(card).toContainText("$5.95");
+  await expect(card.getByRole("link", { name: "Open · www.adafruit.com" })).toBeVisible();
+  await card.getByRole("button", { name: /^Add .* to the parts list$/ }).click();
+  await expect(card.getByRole("button", { name: /is in the parts list/ })).toBeDisabled();
+  const post = (await fake.calls()).find((c) => c.method === "POST" && /\/bom$/.test(c.path));
+  expect(Object.keys(post?.body as object).sort()).toEqual(["catalog_id", "currency", "kind", "name", "qty", "specs", "unit_cost", "url", "vendor"]);
+  await page.getByRole("button", { name: "Parts list", exact: true }).click();
+  await expect(page.locator("[data-bom-page]").getByText("Micro servo - TowerPro SG92R")).toBeVisible();
+});
+
+test("the agent Browser tab shows the search, the page as escaped text, and the blocked page", async ({ page }) => {
+  await page.getByRole("button", { name: "Browser", exact: true }).click();
+  const panel = page.locator("[data-browser-panel]");
+  const product = panel.locator('[data-kind="page"]:not([data-blocked])');
+  await expect(product.locator(".brz-title")).toHaveText("Micro servo - TowerPro SG92R : ID 169 : Adafruit");
+  await expect(product.locator(".brz-host")).toHaveText("www.adafruit.com");
+  await expect(product.getByText(/Ignore all previous/)).toBeVisible();          // shown verbatim, never obeyed
+  await expect(product.locator("table").getByText("Weight")).toBeVisible();
+  await expect(product.locator('[data-proxy-img="loaded"]')).toHaveCount(2);      // bytes through the core proxy
+  await expect(product.getByRole("link", { name: "Open in browser" })).toHaveAttribute("href", "https://www.adafruit.com/product/169");
+  await expect(panel.locator('[data-kind="search"]')).toContainText("Search · Adafruit");
+  await expect(panel.locator('[data-kind="search"] li')).toHaveCount(3);
+  await expect(panel.locator("[data-blocked]")).toContainText("site blocked automated access");
+  await page.getByRole("button", { name: "Conversation" }).click();
+  await expect(page.locator("[data-browser-panel]")).toHaveCount(0);
+});
+
+async function openProfile(page: Page) {
+  const btn = page.locator("[data-region=topbar]").getByRole("button", { name: "Profile", exact: true });
+  await expect(btn).not.toHaveText("Profile");
+  await btn.click();
+  await expect(page.getByRole("dialog", { name: "Profile" })).toBeVisible();
+}
+
+test("the Browsing profile section keeps every default when adding a site, and edits the fetch limit", async ({ page, fake }) => {
+  await openProfile(page);
+  const dialog = page.getByRole("dialog", { name: "Profile" });
+  await dialog.getByRole("button", { name: "Browsing", exact: true }).click();
+  await expect(dialog.getByText("Texas Instruments")).toBeVisible();
+  await dialog.getByLabel("Site name").fill("Bot Shop");
+  await dialog.getByLabel("Site domain").fill("botshop.io");
+  await dialog.getByLabel("Search URL").fill("https://www.botshop.io/search?q={q}");
+  await dialog.getByRole("button", { name: "Add site" }).click();
+  await expect(dialog.getByText("botshop.io")).toBeVisible();
+  const put = (await fake.calls()).find((c) => c.method === "PUT" && c.path === "/profile");
+  const sites = (put?.body as { suggested_sites: { domain: string; search_url: string | null }[] }).suggested_sites;
+  expect(sites).toHaveLength(19);
+  expect(sites.filter((s) => s.search_url === null).length).toBe(6);          // the datasheet hosts survive
+  const fetches = dialog.getByRole("textbox", { name: "Browser fetches per run" });
+  await fetches.fill("120");
+  await fetches.locator("xpath=ancestor::section[1]").getByRole("button", { name: "Save" }).click();
+  await expect.poll(async () => (await fake.calls()).some((c) => c.method === "PUT" && (c.body as { browser_fetches_per_run?: number }).browser_fetches_per_run === 120)).toBe(true);
+});

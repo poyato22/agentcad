@@ -3,12 +3,13 @@
 // just isn't remembered). The inline new-run composer's open state lives here too.
 import { signal, type Signal } from "@preact/signals";
 
-export type ConsoleView = "chat" | "details";
+export type ConsoleView = "chat" | "details" | "browser";
 
 export const VIEW_KEY = "mises.console.view";
 
 function readView(): ConsoleView {
   try {
+    // "browser" is per-run, never remembered: only chat / details persist
     return globalThis.localStorage?.getItem(VIEW_KEY) === "details" ? "details" : "chat";
   } catch {
     return "chat";

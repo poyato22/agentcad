@@ -1,0 +1,43 @@
+{
+  "name": "Micro servo - TowerPro SG92R",
+  "price": 5.95,
+  "currency": "USD",
+  "vendor": "TowerPro",
+  "url": "https://www.adafruit.com/product/169",
+  "specs": [
+    {
+      "key": "dimensions",
+      "value": "23 x 12.2 x 29",
+      "unit": "mm"
+    },
+    {
+      "key": "weight",
+      "value": 9.0,
+      "unit": "g"
+    },
+    {
+      "key": "stall_torque",
+      "value": "2.5 kg-cm",
+      "unit": null
+    },
+    {
+      "key": "voltage",
+      "value": "4.8 V - 6 V",
+      "unit": null
+    },
+    {
+      "key": "micro_servo_towerpro_sg92r",
+      "value": "ID 169 : Adafruit",
+      "unit": null
+    }
+  ],
+  "image": "/browser/snapshots/snap_a275417c1444ba54/images/0",
+  "snapshot_id": "snap_a275417c1444ba54",
+  "catalog_id": "url_7651991da5c5d4f4",
+  "domain": "www.adafruit.com",
+  "id": "card_eb46b7f4cfd92263",
+  "run_id": "5965068bfe6c",
+  "project_id": "11d0cd40174a",
+  "catalog_backed": true,
+  "created_at": 1793352873.156357
+}
