@@ -14,9 +14,17 @@ from .types import SimError
 
 BUCKLE_HEADER = "B U C K L I N G   F A C T O R   O U T P U T"
 KNOCKDOWN_WARN = 3.0
+# CalculiX *BUCKLE silently misses eigenvalues below ~0.5: a column loaded 13x over its Euler
+# load reports its second mode as the first (QA B1-1), and near a factor of 1e6 it loses them
+# all. So factors are trusted only from a solve whose lowest factor lands in TRUSTED; otherwise
+# the load is rescaled so the lowest factor sits near REF_FACTOR and solved again (the factors
+# are linear in the load). A missed mode would have to sit 40x below the reported one to slip.
+TRUSTED = (20.0, 2000.0)
+REF_FACTOR = 100.0
+MAX_SOLVES = 6
 
 
-async def _solve(job: FemJob, s, size, d, label, lo, hi):
+async def _solve(job: FemJob, s, size, d, label, lo, hi, ref: dict):
     mesh = await mesh_level(job, d, size, label, lo)
     setup = Setup()
     resolve_supports(mesh, job.metrics, s.load_case.supports, setup)
@@ -24,27 +32,49 @@ async def _solve(job: FemJob, s, size, d, label, lo, hi):
     if not setup.cload and not setup.dload:
         raise SimError("bad_setup", "every load sits on the fixed face",
                        hint="load a different face than the one held fixed")
-    frd, dat = await solve_deck(
-        job, d, lambda p: write_deck(p, mesh, job.material, setup.cards,
-                                     buckle_step(setup, s.n_modes), "Mises buckling study"),
-        label, (lo + hi) / 2, nodes=len(mesh.nodes), elements=len(mesh.tets))
-    rows = await asyncio.to_thread(parse_dat_table, dat, BUCKLE_HEADER, 2)
-    if not rows:
-        raise SimError("solve_failed", "CalculiX returned no buckling factors",
-                       hint="the load must compress some part of the model")
-    factors = [r[1] for r in rows]
+    async def at(k: float):
+        frd, dat = await solve_deck(
+            job, d, lambda p: write_deck(p, mesh, job.material, setup.cards,
+                                         buckle_step(setup, s.n_modes, k),
+                                         "Mises buckling study"),
+            label, (lo + hi) / 2, nodes=len(mesh.nodes), elements=len(mesh.tets))
+        return frd, [r[1] for r in await asyncio.to_thread(parse_dat_table, dat, BUCKLE_HEADER,
+                                                           2)]
+
+    # start from the previous mesh level's reference load: usually one solve per level
+    scale, best, solves = ref.get("scale", 1.0), None, 0
+    while solves < MAX_SOLVES:
+        solves += 1
+        frd, ref_factors = await at(scale)
+        if not ref_factors:
+            if best is None:
+                raise SimError("solve_failed", "CalculiX returned no buckling factors",
+                               hint="the load must compress some part of the model")
+            solves += 1      # the rescaled solve lost them: redo the last one that had them
+            scale, ref_factors = best
+            frd, ref_factors = await at(scale)
+            break
+        best = (scale, ref_factors)
+        first = ref_factors[0]
+        if first <= 0 or TRUSTED[0] <= first <= TRUSTED[1]:
+            break
+        scale *= first / REF_FACTOR
+    if ref_factors[0] > 0:
+        ref["scale"] = scale * ref_factors[0] / REF_FACTOR
+    factors = [f * scale for f in ref_factors]     # back to multiples of the user's load
     blocks = await asyncio.to_thread(parse_frd_blocks, frd)
     # *BUCKLE writes the static pre-load displacement first, then one block per mode
     modes = [b for name, b in blocks if name == "DISP"][-len(factors):]
     info = {"size_mm": round(size, 4), "nodes": len(mesh.nodes), "elements": len(mesh.tets),
             "order": mesh.order, "fixed_nodes": len(setup.held),
-            "applied_n": setup.total_n}
+            "applied_n": setup.total_n, "reference_scale": scale, "solves": solves}
     return factors[0], {"mesh": mesh, "factors": factors, "modes": modes, "info": info}
 
 
 async def run_buckling(job: FemJob, s, *, sim_id: str, part_id: str) -> dict:
+    ref: dict = {}
     lv = await run_levels(job, lambda size, d, label, lo, hi: _solve(job, s, size, d, label,
-                                                                      lo, hi))
+                                                                      lo, hi, ref))
     fine, coarse = lv["fine"], lv["coarse"]
     job.progress("post", phase="post", pct=92.0, detail="post-processing")
     f = fine["factors"]

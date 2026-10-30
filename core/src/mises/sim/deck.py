@@ -291,12 +291,25 @@ def frequency_step(setup: Setup | None, n_modes: int) -> list[str]:
     return out + ["*NODE FILE", "U", "*END STEP"]
 
 
-def buckle_step(setup: Setup, n_modes: int) -> list[str]:
+def _scaled_dload(line: str, scale: float) -> str:
+    """One *DLOAD line with its magnitude times scale: GRAV carries it third, pressure last."""
+    parts = line.split(",")
+    i = 2 if parts[1].strip().upper() == "GRAV" else len(parts) - 1
+    parts[i] = f"{float(parts[i]) * scale:.9g}"
+    return ",".join(parts)
+
+
+def buckle_step(setup: Setup, n_modes: int, scale: float = 1.0) -> list[str]:
+    """The *BUCKLE step with every load times `scale` (a reference load: buckling factors are
+    linear in the load, so the caller multiplies them back by `scale`)."""
     out = ["*STEP", "*BUCKLE", str(n_modes), "*BOUNDARY", *setup.boundary]
     if setup.cload:
-        out += ["*CLOAD", *cload_lines(setup.cload)]
+        cload = setup.cload if scale == 1.0 else {
+            n: [v * scale for v in vec] for n, vec in setup.cload.items()}
+        out += ["*CLOAD", *cload_lines(cload)]
     if setup.dload:
-        out += ["*DLOAD", *setup.dload]
+        out += ["*DLOAD", *(setup.dload if scale == 1.0
+                            else [_scaled_dload(x, scale) for x in setup.dload])]
     return out + ["*NODE FILE", "U", "*END STEP"]
 
 
