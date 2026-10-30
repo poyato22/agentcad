@@ -279,6 +279,15 @@ class Store:
             family += frontier
         return root, family
 
+    def runs_usd(self, run_ids: list[str]) -> float:
+        """Dollars spent by these runs together (the dollar family cap, budget.py)."""
+        if not run_ids:
+            return 0.0
+        q = ",".join("?" * len(run_ids))
+        row = self._one(f"SELECT COALESCE(SUM(usd), 0) FROM runs WHERE id IN ({q})",
+                        tuple(run_ids))
+        return float(row[0] or 0.0)
+
     def running_runs(self, *, include_queued: bool = False) -> list[AgentRun]:
         sql = ("SELECT * FROM runs WHERE status IN ('running','queued') ORDER BY created_at"
                if include_queued else
@@ -420,10 +429,16 @@ class Store:
         return self.get_project(project_id)
 
     def purge_project(self, project_id: str) -> None:
-        """Delete the build and its part-tree rows (the on-disk part files stay; runs keep
-        their now-dangling project_id as history until cleaned up)."""
+        """Delete the build and every row it owns: part tree, spec, studies and build-scoped
+        catalog items (projects.empty_trash removes its files and assembly). Runs keep their
+        now-dangling project_id as history until cleaned up."""
         with self._tx() as db:
             db.execute("DELETE FROM parts WHERE project_id=?", (project_id,))
+            db.execute("DELETE FROM specs WHERE project_id=?", (project_id,))
+            db.execute("DELETE FROM studies WHERE project_id=?", (project_id,))
+            if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND"
+                          " name='catalog_items'").fetchone() is not None:
+                db.execute("DELETE FROM catalog_items WHERE project_id=?", (project_id,))
             db.execute("DELETE FROM projects WHERE id=?", (project_id,))
 
     def project_part_count(self, project_id: str) -> int:

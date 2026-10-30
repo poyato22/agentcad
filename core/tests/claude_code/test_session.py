@@ -130,7 +130,7 @@ async def test_text_streams_as_message_step_and_deltas(rt, claude_bin, caplog):
     assert init and init[0]["model"] == "sonnet" and "mcp__mises__mirror_part_list" in init[0]["tools"]
     run = rt.store.get_run(s.run_id)
     assert run.status == "done" and run.input_tokens == 11 and run.output_tokens == 7
-    assert run.usd == 0.0                                  # tokens only, no $
+    assert run.usd == pytest.approx(0.0123)                # stream-json total_cost_usd
     finished = [e for e in events if e.type == "run_finished"]
     assert finished and finished[-1].data["status"] == "done"
     assert any("non-JSON" in r.getMessage() for r in caplog.records)

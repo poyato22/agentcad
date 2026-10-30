@@ -165,6 +165,7 @@ def recent_user_edits(home: Path, limit: int = RECENT_USER_EDITS, *, part_id: st
             continue
         if project_id is not None and rec.get("project_id") not in (None, project_id):
             continue
+        rec.pop("run_id", None)   # the ui run the edit went through is never shown to agents
         out.append(rec)
         if len(out) >= limit:
             break

@@ -40,6 +40,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from .. import budget
 from ..events import Event, calls_label
 from ..platform import claude_sandboxed_command
 from ..types import ErrorCode, MisesError, StepKind
@@ -125,6 +126,7 @@ class ClaudeCodeSession:
         self._cancelling = False
         self._failed = False
         self._closed = False
+        self._cost_seen = 0.0          # this process's last total_cost_usd (cumulative)
         runtime.register_cancel_hook(run_id, self.cancel)
 
     @property
@@ -261,6 +263,7 @@ class ClaudeCodeSession:
         if self._turn is not None and not self._turn.done():
             raise MisesError(ErrorCode.INVALID_INPUT, "Claude Code is still working",
                              hint="wait for it to finish or cancel it")
+        budget.check_usd(self.runtime.store, self.run_id)   # no new turn past the dollar cap
         self._reopen()
         content = text
         body: dict = {"role": "user", "text": text}
@@ -577,6 +580,21 @@ class ClaudeCodeSession:
                 self._publish("tool_result", call_id=block.get("tool_use_id"),
                               ok=not block.get("is_error", False), source=SOURCE)
 
+    def _cost_delta(self, total: Any) -> float:
+        """The dollars this result adds. stream-json `total_cost_usd` is the process's running
+        total, so each result adds its increase; a smaller total (a new process) adds itself.
+        A result without it adds $0, noted as a decision Step (the cap cannot see that turn)."""
+        if isinstance(total, bool) or not isinstance(total, (int, float)) or total < 0:
+            self.runtime.store.append_step(self.run_id, StepKind.DECISION, {
+                "claude_code": "cost_unknown", "source": SOURCE,
+                "note": "the result reported no total_cost_usd; counted as $0 toward the "
+                        "dollar cap"})
+            return 0.0
+        total = float(total)
+        delta = total - self._cost_seen if total >= self._cost_seen else total
+        self._cost_seen = total
+        return delta
+
     def _on_result(self, msg: dict) -> None:
         if not self._init_ok and not msg.get("is_error"):
             self._abort(f"{UNVERIFIED}: a result arrived before system/init")
@@ -585,7 +603,8 @@ class ClaudeCodeSession:
         tokens_in = (_int(usage.get("input_tokens")) + _int(usage.get("cache_read_input_tokens"))
                      + _int(usage.get("cache_creation_input_tokens")))
         self.runtime.store.add_usage(self.run_id, input_tokens=tokens_in,
-                                     output_tokens=_int(usage.get("output_tokens")))
+                                     output_tokens=_int(usage.get("output_tokens")),
+                                     usd=self._cost_delta(msg.get("total_cost_usd")))
         if isinstance(msg.get("session_id"), str):
             self.session_id = msg["session_id"]
         if msg.get("is_error"):
@@ -594,6 +613,17 @@ class ClaudeCodeSession:
             self._error(message, subtype=msg.get("subtype"))
             self._finish("failed")
             self._fail_turn(MisesError(ErrorCode.TOOL_FAILED, message))
+            return
+        spent = budget.usd_exhausted(self.runtime.store, self.run_id)
+        if spent is not None:
+            # the turn's work is kept (its text is the result), but the run stops here
+            self.runtime.store.append_step(self.run_id, StepKind.ERROR, {
+                **spent.to_dict(), "stop_reason": "budget", "source": SOURCE})
+            self._failed = True
+            self.activity.set("done", tokens_out=_int(usage.get("output_tokens")))
+            self._finish("failed")
+            if self._turn is not None and not self._turn.done():
+                self._turn.set_result("".join(self._turn_text))
             return
         self.activity.set("done", tokens_out=_int(usage.get("output_tokens")))
         self._finish("done")
