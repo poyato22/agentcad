@@ -394,17 +394,23 @@ def _arr1(a) -> list:
     return [a.Value(k) for k in range(a.Lower(), a.Upper() + 1)]
 
 
-def _patch_fast_bspline_export() -> None:
+#: The patch below is a verbatim copy of these build123d internals; any other version keeps
+#: build123d's own (slow but correct) exporters rather than silently freezing old behaviour.
+_FAST_EXPORT_FOR = "0.13."
+
+
+def _patch_fast_bspline_export() -> bool:
     """Replace the two exporter methods that iterate OCCT pole/knot arrays with versions that
     index them instead. The geometry (and therefore the SVG path data and DXF spline) is
-    byte-for-byte identical; only the hot Python-level iteration changes. Idempotent."""
+    byte-for-byte identical; only the hot Python-level iteration changes. Idempotent. Returns
+    whether the fast path is active (False on a build123d version it was not written for)."""
+    import build123d
     import build123d.exporters as ex
 
     if getattr(ex.ExportSVG, "_mises_fast_poles", False):
-        return
-    # keep build123d's originals so a test can pin the fast path against them
-    ex.ExportSVG._mises_stock_bspline_segments = ex.ExportSVG._bspline_segments
-    ex.ExportDXF._mises_stock_convert_bspline = ex.ExportDXF._convert_bspline
+        return True
+    if not str(getattr(build123d, "__version__", "")).startswith(_FAST_EXPORT_FOR):
+        return False
 
     def _svg_bspline_segments(self, edge, reverse):
         edge = edge.to_splines()
@@ -464,20 +470,29 @@ def _patch_fast_bspline_export() -> None:
         path = ex.PT.Path(*_svg_bspline_segments(self, edge, False))
         return ex.ET.Element("path", {"d": path.d()})
 
-    ex.ExportSVG._bspline_segments = _svg_bspline_segments
-    ex.ExportSVG._other_segments = _svg_other_segments
-    ex.ExportSVG._bspline_element = _svg_bspline_element
-    ex.ExportSVG._other_element = _svg_bspline_element
-    ex.ExportDXF._convert_bspline = _dxf_convert_bspline
-    ex.ExportDXF._convert_other = _dxf_convert_bspline
     # The exporters dispatch each edge through a class-level {GeomType: method} table built at
-    # import from the original functions; reassigning the attributes above is not enough, so
-    # repoint the B-spline (and catch-all) entries at the fast versions too.
+    # import from the original functions; reassigning the attributes is not enough, so the
+    # B-spline entries of those tables are repointed too. (target, key, is_table_entry, fast)
     bspline = ex.GeomType.BSPLINE
-    ex.ExportSVG._SEGMENT_LOOKUP[bspline] = _svg_bspline_segments
-    ex.ExportSVG._ELEMENT_LOOKUP[bspline] = _svg_bspline_element
-    ex.ExportDXF._CONVERTER_LOOKUP[bspline] = _dxf_convert_bspline
+    swaps = [(ex.ExportSVG, "_bspline_segments", False, _svg_bspline_segments),
+             (ex.ExportSVG, "_other_segments", False, _svg_other_segments),
+             (ex.ExportSVG, "_bspline_element", False, _svg_bspline_element),
+             (ex.ExportSVG, "_other_element", False, _svg_bspline_element),
+             (ex.ExportDXF, "_convert_bspline", False, _dxf_convert_bspline),
+             (ex.ExportDXF, "_convert_other", False, _dxf_convert_bspline),
+             (ex.ExportSVG._SEGMENT_LOOKUP, bspline, True, _svg_bspline_segments),
+             (ex.ExportSVG._ELEMENT_LOOKUP, bspline, True, _svg_bspline_element),
+             (ex.ExportDXF._CONVERTER_LOOKUP, bspline, True, _dxf_convert_bspline)]
+    # build123d's originals, so a test can put stock back and compare whole drawings
+    ex.ExportSVG._mises_stock = [(t, k, item, t[k] if item else t.__dict__[k])
+                                 for t, k, item, _ in swaps]
+    for t, k, item, fast in swaps:
+        if item:
+            t[k] = fast
+        else:
+            setattr(t, k, fast)
     ex.ExportSVG._mises_fast_poles = True
+    return True
 
 
 def _drawing(part_dir: Path, args: dict, nonce: str) -> None:

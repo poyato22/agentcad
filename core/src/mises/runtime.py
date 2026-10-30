@@ -188,7 +188,8 @@ class Runtime:
         self.parallel = ParallelLimiter(self._limits_for)
         # warms the 2D-drawing cache in the background when a part changes (U6); started and
         # stopped by the server lifespan. Half the parallel budget (min 1) bounds the heavy
-        # sandboxed drawing workers so pre-gen never crowds out the agents' own work.
+        # sandboxed drawing workers so pre-gen never crowds out the agents' own work. The cap is
+        # read once here: a later max_parallel_agents change applies after a restart.
         self.drawing_pregen = DrawingPregenerator(
             self.home, self.events, material=lambda: self.profile().default_material,
             max_concurrent=max(1, self._total_limit() // 2))
