@@ -75,7 +75,8 @@ LOCAL_SIZES_TTL_S = 60.0
 FREE_GROUP = "openrouter:free"
 
 _STATUS = {"end_turn": "done", "max_tokens": "done", "cancelled": "cancelled",
-           "error": "failed", "circuit_open": "failed", "max_turns": "failed"}
+           "error": "failed", "circuit_open": "failed", "max_turns": "failed",
+           "budget": "failed"}
 
 
 @dataclass

@@ -55,6 +55,7 @@ class Usage(BaseModel):
     input_tokens: int
     output_tokens: int
     cache_read_tokens: int = 0
+    usd: float | None = None     # the request's dollar cost, when the provider reports it
 
 
 class Done(BaseModel):

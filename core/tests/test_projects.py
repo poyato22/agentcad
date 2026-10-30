@@ -5,7 +5,7 @@ import time
 
 import pytest
 
-from mises import projects
+from mises import budget, projects
 from mises.store import Approval, Store
 from mises.types import ErrorCode, MisesError
 
@@ -256,4 +256,4 @@ def test_runs_tree_nests_by_parent(store):
     tree = projects.runs_tree(store, p.id)
     assert len(tree) == 1 and tree[0]["id"] == root.id
     assert [c["id"] for c in tree[0]["children"]] == [child.id]
-    assert tree[0]["cost"] == {"usd": 0.0, "tokens": 0}
+    assert tree[0]["cost"] == {"usd": 0.0, "tokens": 0, "usd_note": budget.UNKNOWN_NOTE}

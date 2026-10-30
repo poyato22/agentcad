@@ -20,6 +20,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from . import budget
 from .cad.tools import PART_ID_RE
 from .store import AgentRun, Part, Project, Store
 from .types import ErrorCode, MisesError
@@ -418,6 +419,8 @@ def run_view(run: AgentRun) -> dict:
     d["parent_run_id"] = run.parent_id     # the API name for the one parent_id column
     d["last_activity_at"] = run.last_activity_at or run.updated_at
     d["cost"] = {"usd": run.usd, "tokens": run.input_tokens + run.output_tokens}
+    if run.provider not in budget.COST_REPORTING and run.provider != "ui":
+        d["cost"]["usd_note"] = budget.UNKNOWN_NOTE
     return d
 
 

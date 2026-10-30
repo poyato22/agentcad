@@ -110,7 +110,8 @@ def test_run_patch_and_delete_rules(client, rt):
     patched = client.patch(f"/runs/{done.id}", json={"title": "arm", "pinned": True},
                            headers=AUTH).json()
     assert patched["title"] == "arm" and patched["pinned"] is True
-    assert patched["cost"] == {"usd": 0.0, "tokens": 0}
+    assert {k: patched["cost"][k] for k in ("usd", "tokens")} == {"usd": 0.0, "tokens": 0}
+    assert "counted as $0" in patched["cost"]["usd_note"]        # a fake provider: no cost
     assert client.delete(f"/runs/{done.id}", headers=AUTH).json() == {"ok": True}
     assert client.get(f"/runs/{done.id}", headers=AUTH).status_code == 404
 

@@ -279,6 +279,15 @@ class Store:
             family += frontier
         return root, family
 
+    def runs_usd(self, run_ids: list[str]) -> float:
+        """Dollars spent by these runs together (the dollar family cap, budget.py)."""
+        if not run_ids:
+            return 0.0
+        q = ",".join("?" * len(run_ids))
+        row = self._one(f"SELECT COALESCE(SUM(usd), 0) FROM runs WHERE id IN ({q})",
+                        tuple(run_ids))
+        return float(row[0] or 0.0)
+
     def running_runs(self, *, include_queued: bool = False) -> list[AgentRun]:
         sql = ("SELECT * FROM runs WHERE status IN ('running','queued') ORDER BY created_at"
                if include_queued else

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 
+from .. import budget
 from ..tools.registry import ToolContext, ToolRegistry, tool
 from ..types import Caps, ErrorCode, MisesError, SafetyClass, ToolOutput
 from .plan import Plan, PlanTask, validate_plan
@@ -69,8 +70,14 @@ def child_policy(runtime: Runtime, parent_run_id: str, agent: str,
         classes &= needed
     used = runtime.store.get_run(parent_run_id).onshape_calls
     remaining = max(0, parent.caps.onshape_calls_run - used)
+    # the dollar cap is a family budget (I-8): a child gets what the parent and the whole
+    # family have left, never a fresh copy; the family sum (budget.py) holds them together
+    usd_left = budget.remaining_usd(runtime.store, parent_run_id)
+    if (err := budget.usd_exhausted(runtime.store, parent_run_id)) is not None:
+        raise err
     caps = parent.caps.model_copy(update={"onshape_calls_run": min(parent.caps.onshape_calls_run,
-                                                                   remaining)})
+                                                                   remaining),
+                                          "usd_run": min(parent.caps.usd_run, usd_left)})
     return {"edit_scope": tuple(_intersect(parent.edit_scope, edit_scope)),
             "read_scope": tuple(parent.read_scope), "caps": caps,
             "allowed_classes": classes, "parent_id": parent_run_id,

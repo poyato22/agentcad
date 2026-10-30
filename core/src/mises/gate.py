@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from . import budget
 from .approvals import ApprovalService, hash_payload
 from .events import Event, EventBus
 from .store import Store
@@ -172,6 +173,7 @@ class Gate:
                          hint="ask the user to widen the scope")
 
     def _check_budget(self, t: ToolDef, run_id: str, policy) -> None:
+        budget.check_usd(self.store, run_id)     # the run's / its family's dollar cap (I-8)
         if t.onshape_cost <= 0:
             return
         used_year = self.store.ledger_used(self.user, since=_year_start())
