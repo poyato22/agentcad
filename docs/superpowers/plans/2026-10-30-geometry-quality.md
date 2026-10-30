@@ -20,6 +20,7 @@
 | G-R3 | **Layout skeleton first.** A skeleton part (key dimensions, datums, envelope, reference planes and curves) that the other parts are built against. For internals: define the inner volume, place components with clearances, then check with sections and interference. | G3 |
 | G-R4 | **Reference input:** the user can attach reference images or a three-view, and the agent traces outlines and sections from them. Reuses Plan 7 U5's drawing import where possible. | G1 (+U5) |
 | G-R5 | **X-ray, transparency and section views, plus an exploded view,** in the Design viewer, so the user and agents can see internals. | G4 |
+| G-R7 | **Agents present views in their replies:** orbiting shots, internal (X-ray) shots, cutaways/sections, exploded views, and subsets (a few parts out of the whole). Each shows as a live view card in the thread that you can click to open in an **immersive** full-window viewer. | G1 (core `present_view` tool + event), G4 (cards + immersive) |
 | G-R6 | **Model choice for shape work:** routing prefers the strongest vision-capable model (the user's Claude Code / Opus) for geometry-heavy prompts, and the UI warns when a small or non-vision model is used for complex shape work. | G1 (core routing hint) + G4 (UI warning) |
 
 ## Global Constraints
@@ -47,6 +48,11 @@
   - IoU on synthetic shapes (identical → 1.0, offset → lower)
   - a fake vision model gives a deterministic critique and the loop stops correctly
   - budgets are respected
+
+**G-R7 core (added 2026-10-30):** the read tool `present_view(target: part_id|project_id, kind: "orbit"|"internal"|"section"|"exploded"|"subset", parts?: [part_ids], section?: {origin, normal}, xray_parts?: [...], explode?: 0..1, camera?: {azimuth, elevation, distance}|"auto", orbit?: {duration_s, turns}, caption)`.
+- It validates ids against the run's own build and emits `agent_announce` kind `"view_presented"` with a `view_spec` (no rendering needed; the app renders it live).
+- It returns a small static thumbnail via render_views for non-visual clients such as the Claude Code transcript.
+- Prompts: when presenting results, show 1–3 views chosen to explain the design: an orbit for the overall shape, a section or internal view for enclosures, a subset for specific parts. Keep the text short (R18).
 
 ### G2: Curved-geometry recipe library (core)
 - **`mises_shapes`:** a module pre-imported into the sandboxed worker namespace, alongside build123d, bd and math. Recipes:
