@@ -770,7 +770,9 @@ def card(rec: dict) -> dict:
         notes.append("drag includes a flat-plate skin-friction estimate added to the resolved "
                      "pressure drag")
     u = urls(rec.get("sim_id") or "")
-    return {"sim_id": rec.get("sim_id"), "type": typ, "status": rec.get("status"),
+    extra = ({"per_case": r["per_case"], "governing_case_id": r.get("governing_case_id")}
+             if isinstance(r.get("per_case"), list) else {})
+    return {**extra, "sim_id": rec.get("sim_id"), "type": typ, "status": rec.get("status"),
             "verdict": status, "phase": rec.get("phase"), "pct": rec.get("pct"),
             "part_id": rec.get("part_id"), "label": GUIDE_LABEL,
             "fidelity_class": rec.get("fidelity_class"), "fidelity_note": fidelity_note(rec),
@@ -815,7 +817,8 @@ def compact(rec: dict) -> dict:
                 "charts_url": f"/sims/{rec.get('sim_id')}/charts", "card": card(rec)})
     if len(json.dumps(out, default=float)) > COMPACT_MAX_BYTES:
         out["results"] = {k: v for k, v in r.items()
-                          if not isinstance(v, (list, dict)) or k in ("sf_by_case", "band_hz")}
+                          if not isinstance(v, (list, dict))
+                          or k in ("sf_by_case", "band_hz", "per_case")}
         out["material"] = (rec.get("material") or {}).get("name") if rec.get("material") else None
         out["mesh"] = {}
         out["truncated"] = True

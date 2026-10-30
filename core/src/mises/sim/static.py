@@ -116,6 +116,13 @@ async def run_static(job: FemJob, cases: list, *, env: dict | None, sim_id: str,
     results["governing_case"] = gov["name"]
     results["cases"] = per_case
     results["sf_by_case"] = {c["name"]: c["safety_factor"] for c in per_case}
+    # QA B1-3: the per-case table the card renders. Case names are unique (StaticSettings) and
+    # are what a spec's load_case_id matches, so the name is the case id.
+    results["governing_case_id"] = gov["name"]
+    results["per_case"] = [{"case_id": c["name"], "name": c["name"],
+                            "max_vm_mpa": c["max_von_mises_mpa"],
+                            "max_disp_mm": c["max_displacement_mm"], "sf": c["safety_factor"]}
+                           for c in per_case]
     results["convergence"] = {"history": lv["history"], "converged": lv["converged"]}
     # the viewer's default deformed-shape scale: the peak displacement drawn at 5% of the part
     size = job.metrics["bbox"]["size"]

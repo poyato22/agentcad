@@ -381,6 +381,21 @@ def test_card_and_requirement_checks():
     assert studies.fidelity_note(prev) == "low fidelity (preview) · ±40% (validated)"
 
 
+def test_per_case_rows_reach_the_card_and_survive_compact_truncation():
+    rows = [{"case_id": f"c{i}", "name": f"c{i}", "max_vm_mpa": 1.0 + i, "max_disp_mm": 0.1,
+             "sf": 9.0 - i} for i in range(3)]
+    rec = _rec("sim_0000000000ab", max_von_mises_mpa=3.0, safety_factor=7.0,
+               max_displacement_mm=0.1, per_case=rows, governing_case_id="c2",
+               convergence={"history": [{"x": "y" * 400}] * 60, "converged": True})
+    c = studies.compact(rec)
+    assert c["card"]["per_case"] == rows and c["card"]["governing_case_id"] == "c2"
+    assert c["results"]["per_case"] == rows and c["results"]["governing_case_id"] == "c2"
+    big = {**rec, "results": {**rec["results"], "blob": ["z" * 100] * 200}}
+    t = studies.compact(big)
+    assert t.get("truncated") and t["results"]["per_case"] == rows
+    assert "per_case" not in studies.card(_rec("sim_0000000000ac", "modal", first_freq_hz=1))
+
+
 def test_plan_review_picks_the_studies_the_spec_needs():
     spec = {"requirements": [
         {"id": "r1", "kind": "min_safety_factor", "target": 2, "load_case_id": "crash"},

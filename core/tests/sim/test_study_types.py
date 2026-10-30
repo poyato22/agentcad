@@ -174,6 +174,16 @@ async def test_static_two_cases_supports_and_load_kinds(tmp_path):
     assert by["moment"]["max_von_mises_mpa"] == pytest.approx(6.0, rel=0.15)
     assert by["tip"]["max_von_mises_mpa"] == pytest.approx(6.0, rel=0.15)
     assert r["governing_case"] in by and set(r["sf_by_case"]) == set(by)
+    # QA B1-3: the per-case table, in the record, the compact result and its card
+    assert r["governing_case_id"] == r["governing_case"]
+    assert [c["case_id"] for c in r["per_case"]] == ["tip", "moment", "gravity"]
+    for row in r["per_case"]:
+        assert set(row) == {"case_id", "name", "max_vm_mpa", "max_disp_mm", "sf"}
+        assert row["max_vm_mpa"] == by[row["name"]]["max_von_mises_mpa"]
+        assert row["max_disp_mm"] == by[row["name"]]["max_displacement_mm"]
+        assert row["sf"] == by[row["name"]]["safety_factor"]
+    assert out.data["card"]["per_case"] == r["per_case"]
+    assert out.data["card"]["governing_case_id"] == r["governing_case"]
     m = out.data["material"]
     assert m["stiffness_factor"] < 1 and m["knockdown"] < 0.7 and "approximate" in m["source"]
     # a softer (infill) model deflects more than the solid beam's F L^3 / 3 E I
