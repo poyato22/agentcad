@@ -108,6 +108,9 @@ export interface StudyCardProps {
 }
 
 export function StudyCard({ view, siblings = [] }: StudyCardProps): JSX.Element {
+  // R18: the card is compact by default (type, status, honesty, key numbers, thumbnail); the chart
+  // and the full requirement checks open inline on click so the thread isn't a wall of detail.
+  const [expanded, setExpanded] = useState(false);
   const card: Card | null = view.card;
   const live = view.running && view.runId
     ? progressForCall(liveProgress.value, { runId: view.runId, callId: view.callId, type: view.type, partId: view.partId, sinceTs: view.startedTs })
@@ -130,15 +133,17 @@ export function StudyCard({ view, siblings = [] }: StudyCardProps): JSX.Element 
   const awaiting = view.running && view.runId !== null && [...approvals.value.values()].some((a) =>
     a.run_id === view.runId && a.status === "pending" && bareToolName(a.action) === bareToolName(view.tool));
   return (
-    <article class="scard" data-testid="study-card" data-type={view.type} data-status={status} data-verdict={verdict ?? "none"} aria-label={`${typeName(view.type)} study${view.partId ? ` of ${view.partId}` : ""}`}>
-      <header class="scard-head">
+    <article class="scard" data-testid="study-card" data-type={view.type} data-status={status} data-verdict={verdict ?? "none"} data-expanded={expanded ? "" : undefined} aria-label={`${typeName(view.type)} study${view.partId ? ` of ${view.partId}` : ""}`}>
+      <button type="button" class="scard-head scard-head-btn" data-testid="card-expand" aria-expanded={expanded}
+        aria-label={expanded ? "Hide study details" : "Show study details"} onClick={() => setExpanded((v) => !v)}>
+        <span class="scard-caret" aria-hidden="true">{expanded ? "▾" : "▸"}</span>
         <span class="scard-type">{typeName(view.type)}</span>
         {view.partId && <span class="scard-part text">{view.partId}</span>}
         <span class="scard-status">
           {view.running ? <Led tone="blue" title="running" /> : <Led tone={verdictTone(verdict)} />}
           <span class={`scard-verdict${verdict ? ` tone-${verdictTone(verdict)}` : ""}`}>{view.running ? "running" : verdict ? VERDICT_TEXT[verdict] : status}</span>
         </span>
-      </header>
+      </button>
       {/* the agent's own words (its sim_run `reason`) render as Mises markup, like its replies (A2) */}
       {view.reason && (
         <div class="scard-reason text" data-agent-text>
@@ -167,8 +172,13 @@ export function StudyCard({ view, siblings = [] }: StudyCardProps): JSX.Element 
           </dl>
         </div>
       )}
-      <CheckRows checks={view.checks} />
-      {done && simId && <SmallChart simId={simId} type={view.type} onOpen={open} />}
+      {expanded && <CheckRows checks={view.checks} />}
+      {expanded && done && simId && <SmallChart simId={simId} type={view.type} onOpen={open} />}
+      {!expanded && (view.checks.length > 0 || (done && simId)) && (
+        <button type="button" class="scard-more faint" aria-expanded={false} onClick={() => setExpanded(true)}>
+          {view.checks.length > 0 ? `Show ${view.checks.length} check${view.checks.length === 1 ? "" : "s"} and the chart` : "Show the chart"}
+        </button>
+      )}
       {card && card.warnings.length > 0 && (
         <ul class="scard-warn" data-testid="card-warnings" aria-label="Warnings">
           {card.warnings.map((w, i) => <li key={i}><Led tone="amber" /><span class="text dim">{w}</span></li>)}
