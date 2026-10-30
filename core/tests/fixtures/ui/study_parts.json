@@ -8,6 +8,7 @@
     "color": null,
     "kind": "part",
     "version": 1,
+    "appearance": null,
     "part_id": "beam",
     "vars": {
       "length": 100.0
@@ -473,6 +474,7 @@
     "color": null,
     "kind": "part",
     "version": 1,
+    "appearance": null,
     "part_id": "cube",
     "vars": {
       "s": 40.0

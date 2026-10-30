@@ -7,6 +7,7 @@
   "color": "#d9822b",
   "kind": "part",
   "version": 1,
+  "appearance": null,
   "part_id": "quad_arm",
   "vars": {
     "thickness": 4.0,

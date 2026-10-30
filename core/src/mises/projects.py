@@ -447,6 +447,14 @@ def reorder_parts(store: Store, home: Path, project_id: str, parent_id: str | No
 
 # ---- the parts manager's menu (Plan 7 U8): duplicate, delete, export
 
+def display_name(row: Part) -> str:
+    """The name the app shows (app lib/names.partName): the label, else the id with spaces."""
+    label = (row.label or "").strip()
+    if label and label != row.id:
+        return label
+    return re.sub(r"[_-]+", " ", row.id).strip()
+
+
 def _free_part_id(store: Store, home: Path, base: str) -> str:
     root = _parts_root(home)
     stem = base[:36]
@@ -482,7 +490,7 @@ def duplicate_part(store: Store, home: Path, part_id: str) -> dict:
         if data is not None:
             safe_io.write_bytes(dst, f.name, data)
     store.register_part(new_id, row.project_id or store.ensure_default_project().id,
-                        label=f"{row.label} copy", kind=row.kind)
+                        label=f"{display_name(row)} copy", kind=row.kind)
     store.update_part(new_id, color=row.color, appearance=row.appearance, parent_id=row.parent_id)
     sibs = [p.id for p in store.list_part_rows(row.project_id)
             if p.parent_id == row.parent_id and p.id != new_id]
@@ -551,7 +559,7 @@ def export_part(store: Store, home: Path, part_id: str, fmt: str) -> dict:
                          hint="rebuild the part")
     out = export_dir()
     out.mkdir(parents=True, exist_ok=True)
-    stem = _file_stem(row.label or part_id)
+    stem = _file_stem(display_name(row))
     for n in range(1, 1000):
         name = f"{stem}.{fmt}" if n == 1 else f"{stem} ({n}).{fmt}"
         try:

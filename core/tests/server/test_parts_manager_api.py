@@ -70,6 +70,9 @@ def test_duplicate_copies_the_build_and_the_look(client, rt):
     assert ids == ["arm", "arm_copy"]
     assert client.post("/parts/arm/duplicate", headers=AUTH).json()["part_id"] == "arm_copy2"
     assert client.post("/parts/nope/duplicate", headers=AUTH).status_code == 404
+    # an unlabeled part's copy is named as the app shows it ("top_plate" reads "top plate")
+    _mk_part(rt, "top_plate")
+    assert client.post("/parts/top_plate/duplicate", headers=AUTH).json()["label"] == "top plate copy"
 
 
 def test_delete_moves_the_part_to_the_trash_and_lifts_its_children(client, rt):
