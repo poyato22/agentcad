@@ -328,6 +328,15 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
                 "approvals": [a.model_dump(mode="json")
                               for a in runtime.store.pending_approvals(run_id)]}
 
+    @app.get("/tools")
+    async def list_tools():
+        """Every registered tool, for the custom-agent "Only these" picker (QA C-7): the
+        built-in agents' tool lists cover only some of them. App token only (not MCP)."""
+        return [{"name": t.name, "description": t.description, "safety": str(t.safety),
+                 "implied_classes": sorted(str(c) for c in t.implied_classes),
+                 "open_world": t.open_world}
+                for t in sorted(runtime.registry.list(), key=lambda t: t.name)]
+
     @app.get("/runs/{run_id}/pending")
     async def get_pending(run_id: str):
         """What the run is blocked on: its open ui_ask_user questions (the question_asked

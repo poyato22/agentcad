@@ -129,6 +129,25 @@ def test_answer_unknown_question(client):
     assert r.status_code == 404 and r.json()["error"] == "not_found"
 
 
+def test_tools_lists_every_registered_tool_for_the_agent_picker(rt, client):
+    """QA C-7: the custom-agent picker offered only the 23 tools the built-ins name."""
+    r = client.get("/tools", headers=AUTH)
+    assert r.status_code == 200
+    rows = r.json()
+    names = [t["name"] for t in rows]
+    assert names == sorted(n.name for n in rt.registry.list())
+    for n in ("mirror_part_create", "mirror_part_set_vars", "spec_set", "study_run",
+              "agent_spawn"):
+        assert n in names, n
+    by = {t["name"]: t for t in rows}
+    assert by["mirror_part_create"]["safety"] == "local_mutate" and by["mirror_part_create"][
+        "description"]
+    assert set(rows[0]) == {"name", "description", "safety", "implied_classes", "open_world"}
+    assert client.get("/tools").status_code == 401
+    mcp = {"Authorization": f"Bearer {client.app.state.mcp_token}"}
+    assert client.get("/tools", headers=mcp).status_code == 403
+
+
 def test_pending_question_survives_a_reload(rt, client, fake):
     """QA C-2: a reloaded app had no way to get an open ui_ask_user question back."""
     from mises.providers.base import Done, ToolCall
