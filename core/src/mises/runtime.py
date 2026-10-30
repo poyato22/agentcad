@@ -328,6 +328,10 @@ class Runtime:
                     shutil.rmtree(wd, ignore_errors=True)
             except (OSError, RuntimeError):
                 log.warning("could not remove workdir for run %s", run_id)
+            # QA C-6: other windows (History, the run switcher) drop the run on this
+            self.events.publish(Event(type="run_deleted", run_id=run_id,
+                                      data={"run_id": run_id,
+                                            "project_id": run.project_id}))
         finally:
             self._deleting.discard(run_id)
         return None

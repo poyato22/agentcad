@@ -102,9 +102,14 @@ async def test_cleanup_releases_sessions(rt):
     app = create_app(rt, "tok")
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://core",
                                  headers={"Authorization": "Bearer tok"}) as c:
+        sub = rt.events.subscribe()
         r = await c.post("/runs/cleanup", json={"dry_run": False})
     assert rid in r.json()["ids"]
     assert s.closed == 1 and rid not in rt._claude
+    # QA C-6: other views drop the deleted run on this event
+    gone = [e for e in iter(lambda: None if sub.queue.empty() else sub.queue.get_nowait(), None)
+            if e.type == "run_deleted"]
+    assert [e.run_id for e in gone] == [rid] and gone[0].data["run_id"] == rid
 
 
 async def test_delete_forgets_the_runs_activity_tracker(rt):

@@ -250,6 +250,11 @@ class AssemblyStore:
         cur = self.get_joint(project_id, jid)
         merged = cur.model_copy(update=fields)
         merged = Joint.model_validate(merged.model_dump())  # re-run validators
+        if merged.limits is not None and isinstance(merged.value, (int, float)):
+            # QA A-1: tightening a limit below the current value kept the old value (45 with
+            # limits [-90, 30]); the stored value now follows the pose the solver draws
+            lo, hi = merged.limits
+            merged = merged.model_copy(update={"value": min(max(float(merged.value), lo), hi)})
         with self._lock:
             self._db.execute(
                 "UPDATE assembly_joints SET kind=?, a=?, b=?, value=?, limits=?"
