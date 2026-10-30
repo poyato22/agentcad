@@ -46,10 +46,17 @@ export function taskWords(task: string): string {
 /** The app's own run (provider "ui": slices, prints and other actions started from a page). */
 export const UI_RUN_LABEL = "You (Mises)";
 
+/** A run's own words: the user's title (a rename in the agent manager) when it has one, kept as
+ *  typed, else the first words of its task (C-5). */
+export function runPurpose(run: Pick<AgentRun, "task" | "title">): string {
+  const t = run.title?.trim();
+  return t ? t : taskWords(run.task);
+}
+
 export function runLabel(run: AgentRun, all: readonly AgentRun[]): string {
   if (run.provider === "ui") return UI_RUN_LABEL;
-  const base = `${run.agent} · ${taskWords(run.task)}`;
-  const clash = all.filter((r) => r.id !== run.id && `${r.agent} · ${taskWords(r.task)}` === base);
+  const base = `${run.agent} · ${runPurpose(run)}`;
+  const clash = all.filter((r) => r.id !== run.id && `${r.agent} · ${runPurpose(r)}` === base);
   if (clash.length === 0) return base;
   if (clash.every((r) => r.provider !== run.provider)) return `${base} · ${run.provider}`;
   if (clash.every((r) => r.model !== run.model)) return `${base} · ${run.model}`;

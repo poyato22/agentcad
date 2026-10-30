@@ -11,8 +11,9 @@ import type { EventStream } from "../api/events";
 import type { MisesEvent } from "../api/types";
 import { debug } from "../lib/log";
 import { activeBuildId, isActiveBuild } from "./builds";
-import { applyRuns, applySteps, mergeApprovals, reduce, type Effect } from "./reduce";
-import { approvals, commitAppState, conn, coreStatus, noteRunStarted, parts, readAppState } from "./store";
+import { seedActivity } from "./activity";
+import { applyRuns, applySteps, deletedRunIds, forgetRuns, mergeApprovals, reduce, type Effect } from "./reduce";
+import { approvals, commitAppState, conn, coreStatus, dropRunRefs, noteRunStarted, parts, readAppState } from "./store";
 
 export interface SyncOptions {
   /** Schedules one flush; returns a cancel function. Default: requestAnimationFrame. */
@@ -59,6 +60,8 @@ export function startSync(client: CoreClient, stream: Source, opts: SyncOptions 
   let runsWindowFull = false;
   /** Counts (core vs ours) of the last mismatch we refetched for: the same again isn't refetched. */
   let lastMismatch: string | null = null;
+  /** The stream (re)opened and the next runs list should seed live activity (C-3). */
+  let seedPending = false;
 
   const requestFrame = () => {
     if (stopped || cancelFrame) return;
@@ -91,6 +94,7 @@ export function startSync(client: CoreClient, stream: Source, opts: SyncOptions 
         let state = readAppState();
         for (const ev of events) {
           if (ev.type === "run_started" && ev.run_id && ev.data.resumed !== true) noteRunStarted(ev.run_id);
+          if (ev.type === "run_deleted") dropRunRefs(deletedRunIds(ev));
           const r = reduce(state, ev);
           state = r.state;
           r.effects.forEach(enqueue);
@@ -127,12 +131,34 @@ export function startSync(client: CoreClient, stream: Source, opts: SyncOptions 
         const list = await client.steps(eff.runId, after);
         return () => commitAppState(applySteps(readAppState(), eff.runId, list));
       }
+      case "fetchActivity": {
+        // one GET per working run (a handful); a run that fails to answer keeps what it had
+        const snaps = new Map<string, unknown>();
+        await Promise.all(eff.runIds.map(async (id) => {
+          try { snaps.set(id, await client.runActivity(id)); } catch (e) { debug("activity seed failed", id, e); }
+        }));
+        return () => seedActivity(snaps, eff.finished);
+      }
       case "fetchRuns": {
         const list = await client.listRuns();
         return () => {
           runsWindowFull = list.length >= RUNS_WINDOW;
-          const next = applyRuns(readAppState(), list);
+          let next = applyRuns(readAppState(), list);
+          // a window that isn't full is every run the core has (but its own "ui" runs): a run we
+          // know that it no longer lists was deleted elsewhere (C-6)
+          if (!runsWindowFull) {
+            const listed = new Set(list.map((r) => r.id));
+            const gone = [...next.runs.values()].filter((r) => r.provider !== "ui" && !listed.has(r.id)).map((r) => r.id);
+            if (gone.length) { next = forgetRuns(next, gone); dropRunRefs(gone); }
+          }
           commitAppState(next);
+          if (seedPending) {
+            // the first runs list after the stream (re)opened: seed the pill and the manager (C-3)
+            seedPending = false;
+            const working = list.filter((r) => r.status === "running" || r.status === "queued").map((r) => r.id);
+            const finished = list.filter((r) => r.status !== "running" && r.status !== "queued").map((r) => r.id);
+            enqueue({ kind: "fetchActivity", runIds: working, finished });
+          }
           // runs we have never loaded steps for (new, or first boot); started later in this frame
           for (const id of next.runs.keys()) if (!next.steps.has(id)) enqueue({ kind: "fetchSteps", runId: id });
         };
@@ -178,6 +204,7 @@ export function startSync(client: CoreClient, stream: Source, opts: SyncOptions 
     if (stopped) return;
     conn.value = s;
     if (s !== "open") return;
+    seedPending = true;
     enqueue({ kind: "fetchRuns" });
     enqueue({ kind: "fetchApprovals" });
     enqueue({ kind: "fetchParts" });

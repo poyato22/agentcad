@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { startSync } from "./sync";
-import { approvals, conn, coreStatus, liveText, parts, resetStore, runs, sessionRuns, steps } from "./store";
+import { activityByRun, resetActivity } from "./activity";
+import { approvals, conn, coreStatus, liveText, parts, resetStore, runs, selectedRunId, sessionRuns, steps } from "./store";
 import type { CoreClient } from "../api/client";
 import type { StreamState } from "../api/events";
 import type { AgentRun, Approval, CoreStatusInfo, MisesEvent, Step } from "../api/types";
@@ -379,5 +380,67 @@ describe("startSync", () => {
     await f.flush();
     expect(c.steps).not.toHaveBeenCalled();
     expect(s.ev.size).toBe(0);
+  });
+
+  it("open_seeds_activity_of_working_runs_from_get_run_C3", async () => {
+    resetActivity();
+    const { c, client } = fakeClient(() => []);
+    const done = { ...run(R2), status: "done" as const };
+    c.listRuns.mockResolvedValue([run(RID), done]);
+    const runActivity = vi.fn(async (id: string) => (id === RID ? { state: "tool", detail: "listing parts", since: 1792869500 } : null));
+    (c as Record<string, unknown>).runActivity = runActivity;
+    // a stale working entry of a run that has since finished (an earlier core session)
+    activityByRun.value = new Map([[R2, { run_id: R2, state: "thinking", detail: "", since: 1 }]]);
+    const s = new FakeStream();
+    const f = frames();
+    const stop = startSync(client, s as never, { schedule: f.schedule });
+    s.state("open");
+    await f.drain();
+    expect(runActivity).toHaveBeenCalledTimes(1);
+    expect(runActivity).toHaveBeenCalledWith(RID);
+    expect(activityByRun.value.get(RID)).toMatchObject({ state: "tool", detail: "listing parts" });
+    expect(activityByRun.value.has(R2)).toBe(false);
+    // a reconnect seeds again
+    s.state("closed"); s.state("open");
+    await f.drain();
+    expect(runActivity).toHaveBeenCalledTimes(2);
+    stop();
+    resetActivity();
+  });
+
+  it("a_run_missing_from_a_partial_runs_list_was_deleted_and_is_forgotten_C6", async () => {
+    const { c, client } = fakeClient(() => [step(1)]);
+    c.listRuns.mockResolvedValue([run(RID), run(R2)]);
+    const s = new FakeStream();
+    const f = frames();
+    const stop = startSync(client, s as never, { schedule: f.schedule });
+    s.state("open");
+    await f.drain();
+    selectedRunId.value = R2;
+    expect(runs.value.has(R2)).toBe(true);
+    c.listRuns.mockResolvedValue([run(RID)]);
+    s.emit({ type: "run_finished", run_id: RID, data: { status: "done" }, ts: 2 });
+    await f.drain();
+    expect(runs.value.has(R2)).toBe(false);
+    expect(steps.value.has(R2)).toBe(false);
+    expect(selectedRunId.value).toBe(null);
+    stop();
+  });
+
+  it("run_deleted_event_forgets_the_run_C6", async () => {
+    const { c, client } = fakeClient(() => [step(1)]);
+    c.listRuns.mockResolvedValue([run(RID), run(R2)]);
+    const s = new FakeStream();
+    const f = frames();
+    const stop = startSync(client, s as never, { schedule: f.schedule });
+    s.state("open");
+    await f.drain();
+    selectedRunId.value = RID;
+    s.emit({ type: "run_deleted", run_id: null, data: { run_ids: [RID] }, ts: 3 });
+    await f.drain();
+    expect(runs.value.has(RID)).toBe(false);
+    expect(runs.value.has(R2)).toBe(true);
+    expect(selectedRunId.value).toBe(null);
+    stop();
   });
 });

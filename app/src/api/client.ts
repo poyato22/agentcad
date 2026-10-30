@@ -98,6 +98,12 @@ export class CoreClient {
 
   listRuns(limit = 50): Promise<AgentRun[]> { return this.json("GET", "/runs", z.array(agentRunSchema), { query: { limit } }); }
   getRun(id: string): Promise<AgentRun> { return this.json("GET", `/runs/${enc(id)}`, agentRunSchema); }
+  /** GET /runs/{id}'s live `activity` snapshot (C4): {state, detail, since, tokens_out?} or null.
+   *  Untrusted shape: state/activity.ts parses it like an agent_activity event. */
+  async runActivity(id: string): Promise<unknown> {
+    const r = await this.json("GET", `/runs/${enc(id)}`, z.looseObject({ activity: z.unknown().optional() }));
+    return r.activity ?? null;
+  }
   /** One malformed step (e.g. a kind this UI doesn't know yet) is dropped, not the whole page. */
   steps(runId: string, afterId = 0): Promise<Step[]> {
     return this.json("GET", `/runs/${enc(runId)}/steps`, lenientSteps, { query: { after_id: afterId } });
