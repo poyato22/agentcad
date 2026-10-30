@@ -96,6 +96,7 @@ def test_verify_table_against_measured_values():
 
 
 @pytest.mark.slow
+@pytest.mark.timeout(120)
 async def test_generated_script_builds_the_exact_part(tmp_path):
     s = plate(outline=[{"polyline": [[10, 20], [110, 20], [110, 80]]},
                        {"arc": {"center": [60, 80], "r": 50, "start": [110, 80],

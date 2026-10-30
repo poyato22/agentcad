@@ -49,6 +49,7 @@ from .print_api import build_print_router
 from .assembly_api import build_assembly_router
 from .sim_api import build_sim_router
 from .sketch_api import build_sketch_router
+from .imports_api import build_imports_router
 from .spec_api import build_spec_router
 from .ui_api import add_cors, build_ui_router
 
@@ -237,6 +238,7 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
     app.include_router(build_print_router(runtime))
     app.include_router(build_sim_router(runtime))
     app.include_router(build_sketch_router(runtime))
+    app.include_router(build_imports_router(runtime))
     app.include_router(build_assembly_router(runtime))
     app.include_router(build_onshape_router(runtime))
     app.include_router(build_catalog_router(runtime))
