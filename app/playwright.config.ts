@@ -21,8 +21,10 @@ export default defineConfig({
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 }, colorScheme: "dark" } },
     // The app runs in WKWebView: approval input safety, the markup layout (the "Show more" clamp)
-    // and the part-tree drag are also checked on WebKit (needs `npx playwright install webkit`).
-    { name: "webkit", testMatch: ["**/approvals.spec.ts", "**/approval-keys-ra.spec.ts", "**/markup.spec.ts", "**/builds-drag.spec.ts"], use: { ...devices["Desktop Safari"], viewport: { width: 1440, height: 900 }, colorScheme: "dark" } },
+    // and the part-tree drag are also checked on WebKit (needs `npx playwright install webkit`), plus
+    // the final review's fixes: Tab reach (I7), the build tabs at 1280 (I6), Home, the part card's
+    // layout (C1), the skeleton row and the flows it never exercised (e2e-gaps).
+    { name: "webkit", testMatch: ["**/approvals.spec.ts", "**/approval-keys-ra.spec.ts", "**/markup.spec.ts", "**/builds-drag.spec.ts", "**/keyboard-reach.spec.ts", "**/builds-topbar.spec.ts", "**/home.spec.ts", "**/final-app.spec.ts", "**/agent-browser.spec.ts", "**/e2e-gaps.spec.ts"], use: { ...devices["Desktop Safari"], viewport: { width: 1440, height: 900 }, colorScheme: "dark" } },
   ],
   webServer: [
     {
