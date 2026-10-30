@@ -18,11 +18,18 @@ import { ModeSwitch } from "./mode";
 import { faceOptions, pickOption, type FaceOption } from "./pick";
 import { createAssemblyScene, type AssemblyScene, type GizmoSpec, type OverlayLabel, type PickMarker } from "./scene";
 import { onBuildSwitch } from "../../state/builds";
+import { setAnimationPlayer } from "../../state/assemblyAnimation";
 import "./assembly.css";
 
 /** One per app: leaving assembly mode and coming back keeps the build loaded. */
 export const assembly = new AssemblyController(() => actions.client());
 onCoreEvent((ev) => assembly.onEvent(ev));
+// R19: an agent's `assembly_animate` plays through the controller's existing joint sweep; Stop
+// (the "Agent is animating…" chip) puts the joint back. A named sequence has no local player yet.
+setAnimationPlayer({
+  play: (spec) => { if (spec.joint_id) assembly.animate(spec.joint_id); },
+  stop: () => assembly.stopAnimate(),
+});
 // A3's build tabs: switching builds re-opens the assembly on the new build (once it was opened)
 onBuildSwitch((id) => { if (assembly.projectId.peek() !== null && assembly.projectId.peek() !== id) void assembly.open(id); });
 

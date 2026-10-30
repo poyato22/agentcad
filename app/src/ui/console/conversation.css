@@ -129,6 +129,15 @@ button.cv-x { border: 1px solid var(--line2); }
 .cv-routed-agent { color: var(--ink); }
 .cv-who { display: flex; align-items: center; }
 
+/* R19: "Agent is animating…" chip while an agent drives the assembly in the viewer */
+.cv-animating { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); z-index: 6; display: flex; align-items: center; gap: 8px; padding: 4px 8px; border: 1px solid var(--blue); border-radius: 3px; background: var(--blue-tint); color: var(--blue2); font-size: var(--fs-small); }
+.cv-animating-dot { animation: cv-animating-pulse 1.1s ease-in-out infinite; }
+.cv-animating-stop { border: 1px solid var(--blue); background: transparent; color: var(--blue2); font: inherit; font-size: var(--fs-small); padding: 1px 7px; cursor: pointer; }
+.cv-animating-stop:hover { background: var(--paper2); }
+.cv-animating-stop:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
+@keyframes cv-animating-pulse { 0%, 100% { opacity: .4; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .cv-animating-dot { animation: none; } }
+
 /* R16: a clear card for each thing an agent did, woven into the thread by time */
 .cv-announce { display: flex; align-items: flex-start; gap: 8px; margin: 6px 10px; padding: 6px 8px; border: 1px solid var(--line2); border-left: 3px solid var(--blue); background: var(--paper2); }
 .cv-announce-glyph { flex: none; color: var(--blue2); line-height: 1.4; }

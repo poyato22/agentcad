@@ -26,6 +26,7 @@ import { editsForRun, weave } from "./userEditLines";
 import { announcementsForRun } from "../../state/announcements";
 import { weaveAnnouncements } from "./announceLines";
 import { AnnouncementCard } from "./AnnouncementCard";
+import { AssemblyAnimationChip } from "./AssemblyAnimationChip";
 
 const AT_BOTTOM_PX = 24;
 /** Rows rendered at once (the last ones); "show earlier" adds this many more. Same as StepLog. */
@@ -119,6 +120,7 @@ export function Conversation(): JSX.Element {
         {run && run.status !== "queued" && <RunStatus runId={run.id} status={run.status} />}
       </div>
       {newCount > 0 && <button type="button" class="cv-chip-new" onClick={toBottom}>{`${newCount} new ↓`}</button>}
+      <AssemblyAnimationChip />
     </div>
   );
 }
