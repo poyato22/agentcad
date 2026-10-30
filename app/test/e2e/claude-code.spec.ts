@@ -82,7 +82,7 @@ test("first_run_sign_in_then_a_claude_code_run_through_the_gate_to_done", async 
   await expect(dialog).toBeHidden();
 
   const post = (await fake.calls()).filter((c) => c.method === "POST" && c.path === "/runs");
-  expect(post.map((c) => c.body)).toEqual([{ agent: "designer", prompt: TASK, model_ref: "claude-code/sonnet", edit_scope: ["*"], read_scope: ["*"] }]);
+  expect(post.map((c) => c.body)).toEqual([{ agent: "designer", prompt: TASK, model_ref: "claude-code/sonnet", edit_scope: ["*"], read_scope: ["*"], project_id: expect.any(String) }]);
   const runs = await getJson(fake, "/runs") as { id: string; provider: string; model: string; external: boolean }[];
   expect(runs).toHaveLength(1);
   const run = runs[0];

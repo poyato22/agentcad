@@ -25,6 +25,7 @@ test("new_run_flow", async ({ page, fake }) => {
   expect(post).toHaveLength(1);
   expect(post[0].body).toEqual({
     agent: "designer", prompt: "stiffen the upright", model_ref: "anthropic/claude-sonnet-5-5", edit_scope: ["*"], read_scope: ["*"],
+    project_id: expect.any(String),   // a new run always names its build (final review I-2)
   });
 
   // the new run shows up in the roster as "designer · stiffen upright", selected

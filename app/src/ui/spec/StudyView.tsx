@@ -11,7 +11,6 @@ import { useState } from "preact/hooks";
 import type { Requirement, Study, StudyIteration } from "../../api/spec";
 import { partLabel } from "../../lib/names";
 import { loadParts } from "../../state/builds";
-import { knownVersions, versionOf } from "../../state/partEdits";
 import { parts } from "../../state/store";
 import { Button } from "../common/Button";
 import { Led, type LedTone } from "../common/Led";
@@ -97,7 +96,6 @@ function Variant({ c, study, it, requirements, meets }: { c: SpecController; stu
   // apply is sent on that version (base_version), so a change made meanwhile is a 409, not lost.
   const [confirm, setConfirm] = useState<{ base: number | undefined; vars: Record<string, number> } | null>(null);
   const live = parts.value.find((p) => p.part_id === study.part_id) ?? null;
-  void knownVersions.value; // re-render when a newer version is seen
   const busy = c.applying.value;
   const applied = c.applied.value;
   const isApplied = applied?.studyId === study.id && applied.n === it.n;
@@ -109,7 +107,8 @@ function Variant({ c, study, it, requirements, meets }: { c: SpecController; stu
 
   const snapshot = () => {
     const p = parts.peek().find((x) => x.part_id === study.part_id) ?? null;
-    return { base: p && p.version !== undefined ? versionOf(p) : undefined, vars: { ...(p?.vars ?? {}) } };
+    // the version of the row whose vars are shown (not a newer one only an event has named yet)
+    return { base: p?.version, vars: { ...(p?.vars ?? {}) } };
   };
   const open = () => setConfirm(snapshot());
   const doApply = async (baseVersion: number | undefined) => {

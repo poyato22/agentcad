@@ -1,6 +1,6 @@
 /* Sketch page. Plan tokens only, square corners. Blue marks the selected tool / stroke, inference
    guides and constraint badges; amber marks a warning (no image for this model); red marks a
-   failure. Axes follow CAD: x red, y green. */
+   failure. The axes are neutral (labelled X / Y), not red/green: those mean status here. */
 .sk-layout {
   display: grid; grid-template-columns: minmax(0, 1fr) 272px; gap: 16px;
   height: 100%; min-height: 460px;
