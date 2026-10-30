@@ -2,14 +2,17 @@
 // Design keeps today's layout (left pane + viewer); the others render full-width under the top bar.
 // The agent console stays available on every page and can collapse to a rail.
 //
-// Navigation: the top tabs (ui/topbar/ModeTabs) and ⌘1–⌘7 both call setPage(). A page component
-// is just the default/exported component of ui/pages/<id>/index.tsx, rendered by App when active
-// (Tasks 6–8 replace the stubs there). To read or change the active page from anywhere, import
-// `activePage` / `setPage` / `PAGES` from here.
+// Navigation: the top tabs (ui/topbar/ModeTabs) and ⌘1–⌘6 both call setPage(). A page component
+// is just the default/exported component of ui/pages/<id>/index.tsx, rendered by App when active.
+// To read or change the active page from anywhere, import `activePage` / `setPage` / `PAGES` from here.
+//
+// Shortcuts (Plan 7 U2b removed the Sketch page and renumbered the rest):
+//   ⌘1 Design · ⌘2 Studies · ⌘3 Drawing · ⌘4 Print · ⌘5 Onshape · ⌘6 Parts
+//   ⌥⌘A flips Part / Assembly on the Design page (ui/assembly/mode). ⌘0 is left for Home (U1).
 import { signal, type Signal } from "@preact/signals";
 import { isTrustedKey, registerShortcut } from "../../lib/keys";
 
-export type Page = "design" | "studies" | "sketch" | "drawing" | "print" | "onshape" | "directory";
+export type Page = "design" | "studies" | "drawing" | "print" | "onshape" | "directory";
 
 export interface PageDef {
   id: Page;
@@ -25,12 +28,11 @@ export interface PageDef {
 export const PAGES: readonly PageDef[] = [
   { id: "design", label: "Design", title: "Design", key: "1" },
   { id: "studies", label: "Studies", title: "Studies", key: "2" },
-  { id: "sketch", label: "Sketch", title: "Sketch", key: "3" },
-  { id: "drawing", label: "Drawing", title: "Drawing", key: "4" },
-  { id: "print", label: "Print", title: "Print", key: "5" },
+  { id: "drawing", label: "Drawing", title: "Drawing", key: "3" },
+  { id: "print", label: "Print", title: "Print", key: "4" },
   // Plan 5 A6
-  { id: "onshape", label: "Onshape", title: "Onshape", key: "6" },
-  { id: "directory", label: "Parts", title: "Parts directory", key: "7" },
+  { id: "onshape", label: "Onshape", title: "Onshape", key: "5" },
+  { id: "directory", label: "Parts", title: "Parts directory", key: "6" },
 ];
 
 export const DEFAULT_PAGE: Page = "design";
@@ -67,7 +69,7 @@ export interface PageShortcutDeps {
   isModalOpen?: () => boolean;
 }
 
-/** Registers ⌘1–⌘7 to navigate between pages (capture phase, works inside inputs). Synthetic or
+/** Registers ⌘1–⌘6 to navigate between pages (capture phase, works inside inputs). Synthetic or
  *  auto-repeat keys are ignored, and so is everything while a modal is open (the page must not
  *  change under the wizard, Profile or a dialog). Returns an unregister function. */
 export function installPageShortcuts(deps: PageShortcutDeps = {}): () => void {

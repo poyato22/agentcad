@@ -9,10 +9,9 @@ import { z } from "zod";
 import {
   agentDetailSchema, agentInfoSchema, agentRunSchema, approvalSchema, cancelAllSchema, cleanupResultSchema, coreErrorBodySchema, keyStatusSchema,
   localActionSchema, okSchema, runIdSchema, runNodeSchema,
-  sketchSummarySchema, stepSchema,
 } from "../src/api/schemas";
 import { parsePendingQuestions, toolListSchema } from "../src/api/client";
-import type { Approval, Step } from "../src/api/types";
+import type { Approval } from "../src/api/types";
 import { loadScenario, startFakeCore, type FakeCore, type Scenario } from "./fake-core/server";
 import { shapeDiff, type Json } from "./shape";
 
@@ -45,25 +44,6 @@ async function until<T>(get: () => Promise<T>, done: (v: T) => boolean): Promise
   throw new Error("never settled");
 }
 
-/** A small real PNG (the core's sketch_upload fixture used a generated 64×48 one). */
-function png(): string {
-  // 1×1 PNG
-  return "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4/58BAAT/Af9jgNErAAAAAElFTkSuQmCC";
-}
-
-/** Same body as the dump script's SKETCH_BODY. */
-const SKETCH = {
-  units: "mm" as const, width_mm: 120, height_mm: 80, notes: "a bracket, 3 mm wall",
-  strokes: [
-    { id: "s1", kind: "rect" as const, points: [[10, 10], [70, 10], [70, 40], [10, 40]] as [number, number][], closed: true, label: "plate" },
-    { id: "s2", kind: "circle" as const, points: [[27.1, 25]] as [number, number][], closed: true, center: [25, 25] as [number, number], radius_mm: 2.1, label: "hole" },
-  ],
-  dimensions: [
-    { stroke_id: "s1", text: "60", value_mm: 60, kind: "length" as const },
-    { stroke_id: "s2", text: "⌀4.2", value_mm: 4.2, kind: "diameter" as const },
-  ],
-};
-
 beforeAll(async () => {
   core = await startFakeCore({ port: 0, token: "contract", scenario: "base" });
   const runId = loadScenario("base").runs[0].id;
@@ -77,13 +57,9 @@ beforeAll(async () => {
   fake.set("key_set.json", await ok("POST", "/keys/openai", { secret: "sk-fixture-0000" }));
   fake.set("key_delete.json", await ok("DELETE", "/keys/openai"));
   fake.set("drawing.dxf", await ok("GET", "/parts/mount_plate/drawing.dxf"));
-  const up = (await ok("POST", "/sketches", { sketch: SKETCH, photo: { data_b64: png(), name: "napkin.png" }, render_png_b64: png() })) as { sketch_id: string };
-  fake.set("sketch_upload.json", up);
-  fake.set("sketch.json", await ok("GET", `/sketches/${up.sketch_id}`));
-  const skRun = (await ok("POST", "/runs", { agent: "designer", prompt: "make this bracket", sketch_id: up.sketch_id })) as { run_id: string };
-  fake.set("sketch_run.json", skRun);
-  const steps = await until(async () => (await ok("GET", `/runs/${skRun.run_id}/steps?after_id=0`)) as Step[], (s) => s.length > 0);
-  fake.set("sketch_run_steps.json", steps.slice(0, 1));
+  // POST /runs: the real core's dump started its run from a sketch (sketch_run.json); the answer is
+  // the same {run_id} without one, and the app no longer sends sketches (Plan 7 U2b)
+  fake.set("sketch_run.json", await ok("POST", "/runs", { agent: "designer", prompt: "make this bracket" }));
   const ext = (await ok("POST", "/runs/external", { agent: "fixture-acp", provider: "acp", model: "fixture" })) as { run_id: string };
   fake.set("run_external.json", ext);
   fake.set("run_cancel.json", await ok("POST", `/runs/${ext.run_id}/cancel`));
@@ -126,8 +102,7 @@ const anyJson = z.unknown();
 const CASES: [string, z.ZodType<unknown>][] = [
   ["health.json", okSchema], ["run.json", agentRunSchema], ["context.json", anyJson],
   ["key_set.json", keyStatusSchema], ["key_delete.json", keyStatusSchema],
-  ["sketch_upload.json", sketchSummarySchema], ["sketch.json", sketchSummarySchema], ["sketch_run.json", runIdSchema],
-  ["sketch_run_steps.json", z.array(stepSchema)],
+  ["sketch_run.json", runIdSchema],
   ["local_pull.json", localActionSchema], ["slice_cancel_finished.json", errorAnswer],
   ["run_external.json", runIdSchema], ["run_cancel.json", okSchema], ["approval_decide.json", approvalSchema],
   ["cancel_all.json", cancelAllSchema], ["agent_get.json", agentDetailSchema],
@@ -218,7 +193,8 @@ const COVERAGE: Record<string, string> = {
   "POST /local/pull": "local_pull.json", "POST /local/pull/cancel": "local_pull_cancel.json",
   "GET /sims": "sims_list.json", "POST /sims": "sims_start.json", "GET /sims/solvers": "sims_solvers.json",
   "GET /sims/{sim_id}": "sim_done.json", "GET /sims/{sim_id}/result.glb": "sim_result.glb",
-  "POST /sketches": "sketch_upload.json", "GET /sketches/{sketch_id}": "sketch.json",
+  "POST /sketches": "EXEMPT: Plan 7 U2b removed the app's Sketch page; the app never calls it (core sketch tests cover it)",
+  "GET /sketches/{sketch_id}": "EXEMPT: Plan 7 U2b removed the app's Sketch page; the app never calls it (core sketch tests cover it)",
   "GET /parts/{part_id}/drawing.json": "drawing.json", "GET /parts/{part_id}/drawing.svg": "drawing.svg",
   "GET /parts/{part_id}/drawing.dxf": "drawing.dxf",
   "GET /print/capabilities": "print_capabilities.json", "GET /printers": "printers.json", "POST /printers": "printer_add.json",

@@ -1,4 +1,4 @@
-/* Full-width pages (Studies/Sketch/Drawing/Print). Plan tokens only, square corners, same look as
+/* Full-width pages (Studies/Drawing/Print/Onshape/Parts). Plan tokens only, square corners, same look as
    the panes. The page sits under the top bar, so its header never meets the traffic lights. */
 .page { display: flex; flex-direction: column; height: 100%; background: var(--paper); min-height: 0; }
 .page-head {

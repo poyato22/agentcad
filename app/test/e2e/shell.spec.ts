@@ -271,13 +271,16 @@ test("tabs_navigate_between_pages", async ({ page }) => {
   await expect(page.locator("[data-region=viewer]")).toBeVisible();
 });
 
-test("cmd_1_to_5_navigate", async ({ page }) => {
+test("cmd_1_to_6_navigate", async ({ page }) => {
   await page.goto("/");
+  // Plan 7 U2b: Sketch is gone, so ⌘3 is Drawing and ⌘4 Print
+  await expect(page.getByRole("tab", { name: "Sketch" })).toHaveCount(0);
   await page.keyboard.press("Meta+3");
-  await expect(page.locator('[data-region="page"]')).toContainText("Sketch");
-  await expect(page.getByRole("tab", { name: "Sketch" })).toHaveAttribute("aria-selected", "true");
-  await page.keyboard.press("Meta+5");
-  await expect(page.locator('[data-region="page"]')).toContainText("Print");
+  await expect(page.getByRole("tab", { name: "Drawing" })).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("Meta+4");
+  await expect(page.getByRole("tab", { name: "Print" })).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("Meta+6");
+  await expect(page.getByRole("tab", { name: "Parts" })).toHaveAttribute("aria-selected", "true");
   await page.keyboard.press("Meta+1");
   await expect(page.locator("[data-region=viewer]")).toBeVisible();
 });

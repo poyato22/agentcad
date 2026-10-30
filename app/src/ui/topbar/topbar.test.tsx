@@ -38,9 +38,13 @@ describe("ModeTabs", () => {
   it("every_tab_is_clickable_and_navigates", async () => {
     render(<ModeTabs />);
     // no tab is disabled any more
-    for (const n of ["Design", "Studies", "Sketch", "Drawing", "Print"]) {
+    for (const n of ["Design", "Studies", "Drawing", "Print", "Onshape", "Parts"]) {
       expect(screen.getByRole("tab", { name: n }).getAttribute("aria-disabled")).toBeNull();
     }
+    // Plan 7 U2b: no Sketch tab, and each tab's tooltip names its renumbered shortcut
+    expect(screen.queryByRole("tab", { name: "Sketch" })).toBeNull();
+    expect(screen.getByRole("tab", { name: "Drawing" }).getAttribute("title")).toBe("Drawing (⌘3)");
+    expect(screen.getByRole("tab", { name: "Parts" }).getAttribute("title")).toBe("Parts (⌘6)");
     expect(screen.getByRole("tab", { name: "Design" }).getAttribute("aria-selected")).toBe("true");
     fireEvent.click(screen.getByRole("tab", { name: "Studies" }));
     expect(activePage.value).toBe("studies");
