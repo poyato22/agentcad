@@ -24,6 +24,12 @@ const MAX_SPECS = 6;
 
 /** Cards already fetched this session (a card never changes once shown). */
 const cards = new Map<string, Card>();
+/** "www.adafruit.com" → "adafruit.com"; null for no site. */
+export function shopOf(domain: string | null | undefined): string | null {
+  const d = (domain ?? "").trim().toLowerCase().replace(/^www\./, "");
+  return d || null;
+}
+
 /** Tests. */
 export function resetPartCards(): void { cards.clear(); }
 
@@ -77,10 +83,15 @@ function CardBody({ card: c, runId }: { card: Card; runId: string | null }): JSX
   };
 
   // exactly what the core's parts-list row accepts; an unknown currency stays unknown (null)
+  // m3: the parts list's vendor is the shop you buy from (the page's site), not the brand; the
+  // brand rides along as a spec so it isn't lost
+  const shop = shopOf(c.domain ?? host) ?? c.vendor;
+  const brand = c.vendor && c.vendor !== shop && !c.specs.some((s) => s.key.toLowerCase() === "brand")
+    ? [{ key: "brand", value: c.vendor, unit: null }] : [];
   const addToList = () => run("add", (pid) => actions.client().bomAdd(pid, {
     kind: "bought", name, qty: 1, unit_cost: c.price, currency: c.currency,
-    vendor: c.vendor, url: c.url, catalog_id: c.catalog_id,
-    specs: c.specs.filter((s) => s.key.trim() !== "").slice(0, 40),
+    vendor: shop, url: c.url, catalog_id: c.catalog_id,
+    specs: [...brand, ...c.specs.filter((s) => s.key.trim() !== "")].slice(0, 40),
   }), buildName ? `Added to the parts list of ${buildName}` : "Added to the parts list");
   const insert = () => run("insert", (pid) => actions.client().catalogInsert(c.catalog_id as string, pid),
     buildName ? `Inserted into ${buildName}` : "Inserted into the build");
