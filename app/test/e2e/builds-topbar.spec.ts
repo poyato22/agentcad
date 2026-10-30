@@ -67,3 +67,39 @@ for (const width of [1280, 1440]) {
     });
   }
 }
+
+// I6: at 1280 px with 4 open builds (the review's case: "Default", "Robot arm", "Big build (100
+// parts)", "Test rig"), "+" was under the last tab's ×, so clicking it closed a tab. "+" and ▾ are
+// always the topmost element at their centre, and clicking "+" starts a new build.
+test("topbar_1280_four_tabs_the_plus_is_never_under_a_close_button", async ({ page, fake }) => {
+  const sc = scenario() as { builds: { builds: { id: string; name: string }[]; open: string[]; active: string } };
+  const four = ["Default", "Robot arm", "Big build (100 parts)", "Test rig"].map((name, i) => ({ ...sc.builds.builds[0], id: `f${i}fourtabs000`.slice(0, 12), name }));
+  sc.builds.builds = four;
+  sc.builds.open = four.map((b) => b.id);
+  sc.builds.active = four[1].id;
+  await fake.reset(sc as unknown as Record<string, unknown>);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/");
+  await expect(page.getByRole("tab", { name: "Robot arm" })).toHaveAttribute("aria-selected", "true");
+  await page.waitForTimeout(200);
+  for (const name of ["Add a build", "All builds and the Trash"]) {
+    const btn = page.getByRole("button", { name, exact: true });
+    const b = (await btn.boundingBox())!;
+    const top = await page.evaluate(({ x, y }) => {
+      const el = document.elementFromPoint(x, y);
+      return el?.closest("button")?.getAttribute("aria-label") ?? el?.tagName ?? null;
+    }, { x: b.x + b.width / 2, y: b.y + b.height / 2 });
+    expect(top, name).toBe(name);
+  }
+  // no tab reaches into the "+" button
+  const plus = (await page.getByRole("button", { name: "Add a build" }).boundingBox())!;
+  const tabRights = await page.locator("[data-testid=build-tabs] .btab-list .btab").evaluateAll((els) => els.map((e) => e.getBoundingClientRect().right));
+  const listRight = await page.locator("[data-testid=build-tabs] .btab-list").evaluate((e) => e.getBoundingClientRect().right);
+  expect(listRight).toBeLessThanOrEqual(plus.x + 0.5);
+  for (const r of tabRights.filter((r) => r <= listRight + 0.5)) expect(r).toBeLessThanOrEqual(plus.x + 0.5);
+  await page.getByRole("button", { name: "Add a build" }).click();
+  await expect(page.getByRole("textbox", { name: "New build name" })).toBeVisible();
+  // every build is still open (none was closed by the click)
+  const hidden = Number((await page.locator(".btab-more").textContent().catch(() => "+0"))?.replace("+", "") || 0);
+  expect(await page.locator("[data-testid=build-tabs] .btab-list .btab").count() + hidden).toBe(4);
+});
