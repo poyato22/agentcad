@@ -8,6 +8,7 @@ import { agentFlash, onPartChanged, resetPartEdits } from "../../state/partEdits
 import { bindClient, parts, resetStore, selectedPartId } from "../../state/store";
 import { PartTree } from "./PartTree";
 import { hiddenParts, resetVisibility } from "./visibility";
+import { modifyRequest } from "../viewer/tool";
 
 const row = (id: string, order: number, parent: string | null = null, color: string | null = null): PartSummary =>
   ({ part_id: id, id, label: id, vars: {}, metrics: null, mtime: 1, parent_id: parent, order, kind: "part", version: 1, project_id: "b1", color });
@@ -135,6 +136,17 @@ describe("part tree", () => {
     expect(menu.contains(document.activeElement)).toBe(true);
     fireEvent.click(screen.getByRole("menuitem", { name: /Move into the part above/ }));
     await waitFor(() => expect(client.reorderParts).toHaveBeenCalledWith("b1", "frame", ["arm_a", "arm_b", "plate"]));
+  });
+
+  it("Modify… (the feature ops) is in the part's menu: it selects the part and asks the viewer", () => {
+    parts.value = [...LIST().slice(0, 3), { ...row("plate", 1), metrics: { mass_g: 1 } as PartSummary["metrics"] }];
+    render(<PartTree />);
+    fireEvent.click(screen.getByRole("button", { name: "Move or edit arm a" }));
+    expect((screen.getByRole("menuitem", { name: "Modify…" }) as HTMLButtonElement).disabled).toBe(true);   // not built: nothing to modify
+    fireEvent.click(screen.getByRole("button", { name: "Move or edit plate" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Modify…" }));
+    expect(selectedPartId.value).toBe("plate");
+    expect(modifyRequest.value?.partId).toBe("plate");
   });
 
   it("a refused move is put back with the core's reason", async () => {

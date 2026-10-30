@@ -238,8 +238,10 @@ export function Viewer(): JSX.Element {
   useEffect(() => { compose(true); setOps(null); setChip(null); }, [partId, scope]);
   useEffect(() => { compose(false); }, [colorSig]);
 
-  // picks name one version's faces / edges: a new version (or another part) starts measure afresh
-  useEffect(() => { setPicks([]); }, [partId, part?.version]);
+  // picks name one build's faces / edges: a rebuilt model (or another part) starts measure afresh.
+  // Keyed on mtime, not version: a list that only now learns the version is no rebuild (a pick
+  // made on an older version still gets the core's 409 and a "pick again").
+  useEffect(() => { setPicks([]); }, [partId, part?.mtime]);
 
   // a new tool starts clean
   useEffect(() => { setChip(null); setPicks([]); setComment(null); setCommentError(null); setOps(null); }, [tool]);

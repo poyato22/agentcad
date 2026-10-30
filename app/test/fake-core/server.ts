@@ -991,6 +991,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     // Plan 7 U2a: measure and feedback pins
     ...measureRoutes({
       parts: () => state.parts, partVersion: (id) => state.builds.rows.get(id)?.version, partProject: (id) => state.builds.rows.get(id)?.project_id,
+      partLabel: (id) => state.builds.rows.get(id)?.label,
       liveBuild: (id) => state.builds.builds.some((b) => b.id === id && b.trashed_at === null), runs: () => [...state.runs.values()],
       newRun: (task, projectId) => { const r = newRun("engineer", "fake", "fake-model", task, false, "done"); r.project_id = projectId; return r; },
       appendStep: (st, runId) => appendStep(st, runId), emit: (ev) => { emit(ev); },
