@@ -34,6 +34,7 @@ from .claude_code.session import MCP_FILE as CLAUDE_MCP_FILE, SOURCE as CLAUDE_C
 from .claude_code.prompts import context_block
 from .claude_code.session import ClaudeCodeSession, model_alias
 from .context_tools import build_context, ui_context
+from .drawing_pregen import DrawingPregenerator
 from .events import ActivityTracker, Event, EventBus
 from .gate import Gate
 from .onshape import browse as onshape_browse
@@ -203,6 +204,13 @@ class Runtime:
         self._claude_status_lock = asyncio.Lock()
         # how many runs talk to their model at once (profile max_parallel_agents)
         self.parallel = ParallelLimiter(self._limits_for)
+        # warms the 2D-drawing cache in the background when a part changes (U6); started and
+        # stopped by the server lifespan. Half the parallel budget (min 1) bounds the heavy
+        # sandboxed drawing workers so pre-gen never crowds out the agents' own work. The cap is
+        # read once here: a later max_parallel_agents change applies after a restart.
+        self.drawing_pregen = DrawingPregenerator(
+            self.home, self.events, material=lambda: self.profile().default_material,
+            max_concurrent=max(1, self._total_limit() // 2))
         hardware.machine()          # sysctl once now, not later on the event loop
         self._local_sizes: tuple[float, dict[str, float]] | None = None
         self.interrupted = self._fail_orphaned_runs()

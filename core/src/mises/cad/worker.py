@@ -382,12 +382,126 @@ def _hole_notes(holes, bbox_size: list[float]) -> list[str]:
             for (d, dep), n in sorted(groups.items(), key=lambda kv: (kv[0][0], kv[0][1] or 0))]
 
 
+def _arr1(a) -> list:
+    """OCCT Array1 (TColgp_Array1OfPnt, TColStd_Array1OfReal, ...) -> a Python list.
+
+    build123d's SVG/DXF exporters iterate these arrays directly (`for p in curve.Poles()`).
+    OCP's pybind11 `__iter__` for an Array1 is pathologically slow — ~1 ms per element — so a
+    drawing of a part with many hidden curved edges (every hole seen edge-on becomes a hidden
+    B-spline, each broken into several Bézier arcs) spends tens of seconds iterating poles.
+    Indexed `Value(k)` access over Lower()..Upper() is ~200x faster and returns the same points.
+    """
+    return [a.Value(k) for k in range(a.Lower(), a.Upper() + 1)]
+
+
+#: The patch below is a verbatim copy of these build123d internals; any other version keeps
+#: build123d's own (slow but correct) exporters rather than silently freezing old behaviour.
+_FAST_EXPORT_FOR = "0.13."
+
+
+def _patch_fast_bspline_export() -> bool:
+    """Replace the two exporter methods that iterate OCCT pole/knot arrays with versions that
+    index them instead. The geometry (and therefore the SVG path data and DXF spline) is
+    byte-for-byte identical; only the hot Python-level iteration changes. Idempotent. Returns
+    whether the fast path is active (False on a build123d version it was not written for)."""
+    import build123d
+    import build123d.exporters as ex
+
+    if getattr(ex.ExportSVG, "_mises_fast_poles", False):
+        return True
+    if not str(getattr(build123d, "__version__", "")).startswith(_FAST_EXPORT_FOR):
+        return False
+
+    def _svg_bspline_segments(self, edge, reverse):
+        edge = edge.to_splines()
+        adaptor = edge.geom_adaptor()
+        spline = adaptor.Curve().Curve().Copy()
+        u1, u2 = adaptor.FirstParameter(), adaptor.LastParameter()
+        if not edge or edge.location is None:
+            raise ValueError(f"Edge is empty {edge}.")
+        spline.Transform(edge.location.wrapped.Transformation())
+        converter = ex.GeomConvert_BSplineCurveToBezierCurve(
+            ex.tcast(ex.Geom_BSplineCurve, spline), u1, u2, ex.Export2D.PARAMETRIC_TOLERANCE)
+
+        def make_segment(bezier, reverse):
+            p = [self._path_point(x) for x in _arr1(bezier.Poles())]
+            if reverse:
+                p.reverse()
+            if len(p) == 2:
+                return ex.PT.Line(start=p[0], end=p[1])
+            if len(p) == 3:
+                return ex.PT.QuadraticBezier(start=p[0], control=p[1], end=p[2])
+            if len(p) == 4:
+                return ex.PT.CubicBezier(start=p[0], control1=p[1], control2=p[2], end=p[3])
+            raise ValueError(f"Surprising Bézier of degree {bezier.Degree()}!")
+
+        result = [make_segment(converter.Arc(i), reverse)
+                  for i in range(1, converter.NbArcs() + 1)]
+        if reverse:
+            result.reverse()
+        return result
+
+    def _dxf_convert_bspline(self, edge, attribs):
+        edge = edge.to_splines()
+        adaptor = edge.geom_adaptor()
+        curve = adaptor.Curve().Curve()
+        u1, u2 = adaptor.FirstParameter(), adaptor.LastParameter()
+        spline = ex.GeomConvert.SplitBSplineCurve_s(
+            ex.tcast(ex.Geom_BSplineCurve, curve), u1, u2, ex.Export2D.PARAMETRIC_TOLERANCE)
+        if not edge or edge.location is None:
+            raise ValueError(f"Edge is empty {edge}.")
+        spline.Transform(edge.location.wrapped.Transformation())
+        order = spline.Degree() + 1
+        knots = _arr1(spline.KnotSequence())
+        poles = [self._convert_point(p) for p in _arr1(spline.Poles())]
+        weights = ([spline.Weight(i) for i in range(1, spline.NbPoles() + 1)]
+                   if spline.IsRational() else None)
+        if spline.IsPeriodic():
+            pad = spline.NbKnots() - spline.LastUKnotIndex()
+            poles += poles[:pad]
+        dxf_spline = ex.ezdxf.math.BSpline(poles, order, knots, weights)
+        self._modelspace.add_spline(dxfattribs=attribs).apply_construction_tool(dxf_spline)
+
+    # _other_* delegate to the bspline path in stock build123d, so repoint them too.
+    def _svg_other_segments(self, edge, reverse):
+        return _svg_bspline_segments(self, edge, reverse)
+
+    def _svg_bspline_element(self, edge):
+        path = ex.PT.Path(*_svg_bspline_segments(self, edge, False))
+        return ex.ET.Element("path", {"d": path.d()})
+
+    # The exporters dispatch each edge through a class-level {GeomType: method} table built at
+    # import from the original functions; reassigning the attributes is not enough, so the
+    # B-spline entries of those tables are repointed too. (target, key, is_table_entry, fast)
+    bspline = ex.GeomType.BSPLINE
+    swaps = [(ex.ExportSVG, "_bspline_segments", False, _svg_bspline_segments),
+             (ex.ExportSVG, "_other_segments", False, _svg_other_segments),
+             (ex.ExportSVG, "_bspline_element", False, _svg_bspline_element),
+             (ex.ExportSVG, "_other_element", False, _svg_bspline_element),
+             (ex.ExportDXF, "_convert_bspline", False, _dxf_convert_bspline),
+             (ex.ExportDXF, "_convert_other", False, _dxf_convert_bspline),
+             (ex.ExportSVG._SEGMENT_LOOKUP, bspline, True, _svg_bspline_segments),
+             (ex.ExportSVG._ELEMENT_LOOKUP, bspline, True, _svg_bspline_element),
+             (ex.ExportDXF._CONVERTER_LOOKUP, bspline, True, _dxf_convert_bspline)]
+    # build123d's originals, so a test can put stock back and compare whole drawings
+    ex.ExportSVG._mises_stock = [(t, k, item, t[k] if item else t.__dict__[k])
+                                 for t, k, item, _ in swaps]
+    for t, k, item, fast in swaps:
+        if item:
+            t[k] = fast
+        else:
+            setattr(t, k, fast)
+    ex.ExportSVG._mises_fast_poles = True
+    return True
+
+
 def _drawing(part_dir: Path, args: dict, nonce: str) -> None:
     import io
 
     import build123d as b3
     from build123d import Compound, Edge, ExportDXF, ExportSVG, LineType, Location, Polyline
 
+    _patch_fast_bspline_export()
     shape = b3.import_step(str(part_dir / "model.step"))
     metrics = json.loads((part_dir / "metrics.json").read_text())
     size = metrics["bbox"]["size"]
