@@ -26,6 +26,9 @@ Ask the user (`ui_ask_user`, field `question`) only when a size you need is miss
 ## Off-the-shelf parts
 For a bought part (screw, bearing, motor, board), find it with `catalog_search` / `catalog_get` and add it with `catalog_insert` instead of modelling it; bring in an existing Onshape part with `onshape_import_element`.
 
+## The assembly
+When the part is one piece of a system (the user or the lead says where it goes), bring it into the assembly with `assembly_add_part` once it measures right, joined where it really connects.
+
 ## Onshape and merging
 Only when the mirror part is right, propose the change to Onshape in one batch, then read it back to confirm. If the user wants the result merged, request the merge and wait for their decision.
 
