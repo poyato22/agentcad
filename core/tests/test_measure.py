@@ -1,15 +1,25 @@
 """Exact B-rep measurements (POST /parts/{id}/measure, cad/worker.py --measure), checked against
 geometry whose answers are known: a 60 × 40 × 5 plate with two Ø4.2 through holes."""
+import asyncio
 import json
 import math
+import time
 from types import SimpleNamespace
 
 import pytest
 
-from mises.cad.tools import CreateArgs, mirror_part_create
+from mises import measure as M
+from mises.cad.tools import CreateArgs, SetVarsArgs, mirror_part_create, mirror_part_set_vars
 from mises.measure import MeasureError, measure_part
 
 pytestmark = pytest.mark.slow
+
+
+@pytest.fixture(autouse=True)
+async def _close_warm_workers():
+    yield
+    await M.close_servers()
+    M._cache.clear()
 
 PLATE = ('from build123d import *\nVARS={}\ndef build(v):\n'
          '    with BuildPart() as p:\n'
@@ -174,3 +184,82 @@ async def test_metrics_carry_hole_radii_for_the_selection_label(plate):
     assert {e.get("radius") for e in m["edge_list"] if e["type"] == "circle"} == {2.1}
     assert {f.get("radius") for f in m["face_list"] if f["type"] == "cylinder"} == {2.1}
     assert all("radius" not in e for e in m["edge_list"] if e["type"] == "line")
+
+
+async def test_a_hole_wall_against_the_plate_top_is_90_degrees(plate):
+    # a cylinder's axis is a line: a hole drilled straight through the plate is at 90°
+    d, m = plate
+    top = _face(m, "plane", [0.0, 0.0, 1.0])
+    wall = next(f for f in m["face_list"] if f["type"] == "cylinder")
+    v = _values(await measure_part(d, [{"face_id": top["id"]}, {"face_id": wall["id"]}]))
+    assert v["angle"] == pytest.approx(90.0, abs=1e-9)
+    side = _face(m, "plane", [1.0, 0.0, 0.0])
+    s = _values(await measure_part(d, [{"face_id": side["id"]}, {"face_id": wall["id"]}]))
+    assert s["angle"] == pytest.approx(0.0, abs=1e-9)      # the axis lies along the side
+
+
+async def test_a_warm_worker_answers_new_pick_sets_fast(box):
+    d, m = box
+    faces = [f["id"] for f in m["face_list"]]
+    await measure_part(d, [{"face_id": faces[0]}])           # starts the warm worker (cold)
+    w = M._warm[str(d.resolve())]
+    times = []
+    for refs in ([{"face_id": faces[0]}, {"face_id": faces[1]}], [{"face_id": faces[2]}],
+                 [{"face_id": faces[0]}, {"face_id": faces[3]}]):
+        t = time.perf_counter()
+        await measure_part(d, refs)
+        times.append(time.perf_counter() - t)
+    assert M._warm[str(d.resolve())] is w                    # the same process answered
+    assert max(times) < 1.0, times                           # ~10 ms; generous under CI load
+    await M.close_servers()
+    assert w.proc.returncode is not None and not M._warm
+
+
+async def test_a_rebuilt_part_gets_a_new_worker_and_a_stale_pick_is_refused(tmp_path):
+    d, m = await _build(tmp_path, "slab", 'from build123d import *\nVARS={"t": 5.0}\n'
+                        'def build(v):\n    return Box(60, 40, v["t"])\n')
+    top = _face(m, "plane", [0.0, 0.0, 1.0])
+    first = await measure_part(d, [{"face_id": top["id"]}], base_version=1)
+    assert first["version"] == 1
+    w = M._warm[str(d.resolve())]
+    r = await mirror_part_set_vars.handler(SimpleNamespace(workdir=tmp_path), SetVarsArgs(
+        part_id="slab", vars={"t": 8.0}, base_version=1))
+    assert r.ok, r.summary
+    with pytest.raises(MeasureError) as e:
+        await measure_part(d, [{"face_id": top["id"]}], base_version=1)
+    assert e.value.code == "stale_version" and e.value.current_version == 2
+    m2 = json.loads((d / "metrics.json").read_text())
+    top2 = _face(m2, "plane", [0.0, 0.0, 1.0])
+    bottom2 = _face(m2, "plane", [0.0, 0.0, -1.0])
+    v = _values(await measure_part(d, [{"face_id": top2["id"]}, {"face_id": bottom2["id"]}]))
+    assert v["distance"] == pytest.approx(8.0, abs=1e-9)    # the new shape, not the old worker's
+    assert M._warm[str(d.resolve())] is not w and w.proc.returncode is not None
+
+
+async def test_at_most_two_workers_stay(box, plate, tmp_path):
+    d1, _ = box
+    d2, _ = plate
+    d3, _ = await _build(tmp_path, "third", BOX)
+    for d in (d1, d2, d3):
+        assert await M.warm_part(d)
+    assert len(M._warm) == M.MAX_WARM and str(d1.resolve()) not in M._warm   # LRU closed
+
+
+async def test_an_idle_worker_closes(box, monkeypatch):
+    monkeypatch.setattr(M, "IDLE_S", 1.0)
+    assert await M.warm_part(box[0])
+    for _ in range(50):
+        if not M._warm:
+            break
+        await asyncio.sleep(0.1)
+    assert not M._warm                                        # idle → closed
+
+
+async def test_a_dead_worker_falls_back_to_the_one_shot(box):
+    d, m = box
+    assert await M.warm_part(d)
+    w = M._warm[str(d.resolve())]
+    w.proc.kill()
+    await w.proc.wait()
+    v = _values(await measure_part(d, [{"face_id": _face(m, "plane", [0.0, 0.0, 1.0])["id"]}]))
+    assert v["area"] == pytest.approx(2400.0, abs=1e-9)

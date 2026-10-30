@@ -558,8 +558,9 @@ def _measure_two(sa, ia: dict, sb, ib: dict) -> list[dict]:
     da, db = _direction(ia), _direction(ib)
     if da is not None and db is not None:
         ang = _angle_deg(da, db)
-        # a line against a plane: the angle to the plane, not to its normal
-        if ("normal" in ia) != ("normal" in ib) and "edge" in (ia["kind"], ib["kind"]):
+        # a line (an edge, or a cylinder's axis) against a plane: the angle to the plane, not to
+        # its normal; a hole drilled straight through a plate is at 90°
+        if ("normal" in ia) != ("normal" in ib):
             ang = 90.0 - ang
         out.append(_val("angle", "Angle", ang, "°"))
         if "normal" in ia and "normal" in ib and ang < _PARALLEL_DEG:
@@ -579,17 +580,22 @@ def _measure_two(sa, ia: dict, sb, ib: dict) -> list[dict]:
     return out
 
 
-def _measure(part_dir: Path, args: dict, nonce: str) -> None:
-    import build123d as b3
-
-    metrics = json.loads((part_dir / "metrics.json").read_text())
-    shape = b3.import_step(str(part_dir / "model.step"))
-    refs = args.get("refs")
-    result: dict = {"nonce": nonce}
+def _measure_compute(shape, metrics: dict, refs, cache: dict | None = None) -> dict:
+    """{items, values} for the picks, or {error: {code, message}}. `cache` (the serving worker's)
+    keeps each resolved pick, so A then A+B then A+C re-finds A once."""
+    import copy
     try:
         if not isinstance(refs, list) or not 1 <= len(refs) <= 8:
             raise ValueError("refs must list 1 to 8 picks")
-        picked = [_measure_resolve(shape, metrics, r) for r in refs]
+        picked = []
+        for r in refs:
+            key = json.dumps(r, sort_keys=True)
+            hit = cache.get(key) if cache is not None else None
+            if hit is None:
+                hit = _measure_resolve(shape, metrics, r)
+                if cache is not None:
+                    cache[key] = hit
+            picked.append((hit[0], copy.deepcopy(hit[1])))
         infos = [i for _, i in picked]
         if len(picked) == 1:
             values = _measure_one(infos[0])
@@ -608,14 +614,49 @@ def _measure(part_dir: Path, args: dict, nonce: str) -> None:
             for k in ("area", "length", "radius", "arc_deg"):
                 if k in i:
                     i[k] = round(float(i[k]), 6) + 0.0
-        result.update({"items": infos, "values": values})
+        return {"items": infos, "values": values}
     except LookupError as e:
-        result["error"] = {"code": "not_found", "message": str(e)}
+        return {"error": {"code": "not_found", "message": str(e)}}
     except ValueError as e:
-        result["error"] = {"code": "invalid_input", "message": str(e)}
+        return {"error": {"code": "invalid_input", "message": str(e)}}
+
+
+def _measure(part_dir: Path, args: dict, nonce: str) -> None:
+    import build123d as b3
+
+    metrics = json.loads((part_dir / "metrics.json").read_text())
+    shape = b3.import_step(str(part_dir / "model.step"))
+    result = {"nonce": nonce, **_measure_compute(shape, metrics, args.get("refs"))}
     tmp = part_dir / "tmp"
     (tmp / "new_measure.json").write_text(json.dumps(result))
     os.replace(tmp / "new_measure.json", tmp / "measure.json")
+
+
+MEASURE_MARK = "MISES_MEASURE"
+
+
+def _measure_serve(part_dir: Path, nonce: str) -> None:
+    """The warm measure worker: load the shape once, then answer one JSON request per stdin line
+    ({id, refs}) with one stdout line "MISES_MEASURE <nonce> {id, ...}" (other output, e.g. a
+    library's warning, is never mistaken for an answer). Exits at EOF: the host closes stdin when
+    it evicts the worker, and a dead host closes it too."""
+    import build123d as b3
+
+    metrics = json.loads((part_dir / "metrics.json").read_text())
+    shape = b3.import_step(str(part_dir / "model.step"))
+    cache: dict = {}
+    out = sys.stdout
+    out.write(f"{MEASURE_MARK} {nonce} " + json.dumps({"id": 0, "ready": True}) + "\n")
+    out.flush()
+    for line in sys.stdin:
+        try:
+            req = json.loads(line)
+            rid = req.get("id") if isinstance(req, dict) else None
+            res = _measure_compute(shape, metrics, req.get("refs") if isinstance(req, dict) else None, cache)
+        except Exception as e:  # noqa: BLE001 - one bad request never ends the worker
+            rid, res = None, {"error": {"code": "tool_failed", "message": f"{type(e).__name__}: {e}"}}
+        out.write(f"{MEASURE_MARK} {nonce} " + json.dumps({"id": rid, **res}) + "\n")
+        out.flush()
 
 
 # ---- 2D engineering drawing (python -I worker.py <part_dir> <args.json> --drawing)
@@ -1050,6 +1091,12 @@ def main(argv: list[str]) -> int:
         if not nonce:
             raise RuntimeError("missing build nonce")
         _drawing(part_dir, json.loads(Path(argv[2]).read_text()), nonce)
+        return 0
+    if len(argv) > 2 and argv[2] == "--measure-serve":
+        nonce = os.environ.pop("MISES_NONCE", "")
+        if not nonce:
+            raise RuntimeError("missing build nonce")
+        _measure_serve(part_dir, nonce)
         return 0
     if len(argv) > 3 and argv[3] == "--measure":
         nonce = os.environ.pop("MISES_NONCE", "")

@@ -70,3 +70,16 @@ async def test_measure_errors(client, rt):
                         json={"refs": [{"face_id": "f0"}], "base_version": 99})
     assert stale.status_code == 409
     assert stale.json()["error"] == "stale_version" and stale.json()["current_version"] == 1
+
+
+async def test_warm_loads_the_part_ahead_and_shutdown_closes_it(rt, monkeypatch):
+    from mises import measure as M
+    monkeypatch.setattr("mises.platform.keychain_get", lambda *a: None)
+    await _build(rt)
+    with TestClient(create_app(rt, TOKEN)) as client:
+        r = client.post("/parts/plate/measure", headers=AUTH, json={"warm": True})
+        assert r.status_code == 200 and r.json() == {"part_id": "plate", "warm": True}
+        w = next(iter(M._warm.values()))
+        assert w.proc.returncode is None
+        assert client.post("/parts/ghost/measure", headers=AUTH, json={"warm": True}).status_code == 404
+    assert not M._warm and w.proc.returncode is not None      # the server's shutdown closed it

@@ -1,23 +1,34 @@
 """Exact measurements of a built local part (Onshape-style measure, Plan 7 U2a).
 
-`measure_part(part_dir, refs)` runs the sandboxed CAD worker in --measure mode: it re-reads the
-part's model.step (never the part script) and measures the picked faces / edges / vertices /
-points on the exact B-rep, not the display mesh. Refs name faces and edges by their metrics ids
-(`f3`, `e7`); the worker re-finds each one in the STEP shape by its metrics signature.
+`measure_part(part_dir, refs)` measures the picked faces / edges / vertices / points on the exact
+B-rep (never the display mesh), in the sandboxed CAD worker, which re-reads the part's model.step
+(never the part script). Refs name faces and edges by their metrics ids (`f3`, `e7`); the worker
+re-finds each one in the STEP shape by its metrics signature.
 
-Answers are cached per (model.step mtime, refs): the worker costs a build123d import, and a user
-measuring tends to click the same few things.
+Speed: a fresh worker pays the build123d import and the STEP import (~1.5 s). So a part being
+measured gets a warm worker (`worker.py <part_dir> --measure-serve`) that keeps the shape loaded
+and every resolved pick cached, and answers one JSON line per request (~10-50 ms):
+  · one per (part dir, model.step mtime): a rebuilt part gets a new one, the old one is closed;
+  · at most MAX_WARM live (the least recently used is closed), each closed after IDLE_S idle;
+  · it writes nothing (answers go over stdout, marked with a nonce) and is sandboxed to write only
+    its tmp dir; closing it closes stdin, kills its group and reaps any stragglers.
+A worker that fails or times out is dropped and the one-shot worker (`--measure`) answers instead.
+Answers are also cached per (model.step mtime, refs).
 """
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import secrets
 import sys
+import time
 from collections import OrderedDict
+from dataclasses import dataclass, field
 from pathlib import Path
 
+from . import edits as _edits
 from .cad import safe_io
 from .cad.runner import WORKER, _kill_group, reap
 from .cad.tools import _lock
@@ -25,19 +36,25 @@ from .platform import sandboxed_command
 from .types import MisesError
 
 TIMEOUT_S = 30.0
+WARM_START_S = 60.0
+WARM_CALL_S = 15.0
+IDLE_S = 60.0
+MAX_WARM = 2
 MAX_REFS = 8
+MARK = "MISES_MEASURE"
 _TAIL = 2000
 _CACHE_MAX = 256
 _cache: OrderedDict[tuple, dict] = OrderedDict()
 
 
 class MeasureError(Exception):
-    """`code` is a core error code: not_found, invalid_input or tool_failed."""
+    """`code` is a core error code: not_found, invalid_input, stale_version or tool_failed."""
 
-    def __init__(self, code: str, message: str):
+    def __init__(self, code: str, message: str, *, current_version: int | None = None):
         super().__init__(message)
         self.code = code
         self.message = message
+        self.current_version = current_version
 
 
 def check_refs(refs: object) -> list[dict]:
@@ -64,18 +81,166 @@ def check_refs(refs: object) -> list[dict]:
     return out
 
 
-async def measure_part(part_dir: Path, refs: object, *, timeout_s: float = TIMEOUT_S) -> dict:
-    """{items: [...], values: [{key, label, value, unit}]} for the picks; MeasureError otherwise."""
+# ---- the warm workers
+
+@dataclass
+class _Warm:
+    part_dir: Path
+    mtime_ns: int
+    proc: asyncio.subprocess.Process
+    nonce: str
+    used: float = field(default_factory=time.monotonic)
+    seq: int = 0
+    io: asyncio.Lock = field(default_factory=asyncio.Lock)
+    reaper: asyncio.Task | None = None
+    loop: asyncio.AbstractEventLoop = field(default_factory=asyncio.get_running_loop)
+
+
+_warm: OrderedDict[str, _Warm] = OrderedDict()
+
+
+async def _close(w: _Warm) -> None:
+    if _warm.get(str(w.part_dir)) is w:
+        del _warm[str(w.part_dir)]
+    if w.loop is not asyncio.get_running_loop():
+        # made under another event loop (a finished test's): its pipes are dead here; kill it
+        _kill_group(w.proc)
+        return
+    if w.reaper is not None and w.reaper is not asyncio.current_task():
+        w.reaper.cancel()
+    with contextlib.suppress(Exception):
+        if w.proc.stdin is not None:
+            w.proc.stdin.close()
+    _kill_group(w.proc)
+    with contextlib.suppress(Exception):
+        await reap(w.proc)
+        await asyncio.wait_for(w.proc.wait(), 5)
+
+
+async def close_servers() -> None:
+    """Close every warm measure worker (the server's shutdown, tests)."""
+    for w in list(_warm.values()):
+        await _close(w)
+
+
+async def _idle_reaper(w: _Warm) -> None:
+    while True:
+        await asyncio.sleep(max(1.0, IDLE_S - (time.monotonic() - w.used)))
+        if time.monotonic() - w.used >= IDLE_S and not w.io.locked():
+            await _close(w)
+            return
+
+
+async def _read_answer(w: _Warm, want_id: int, timeout_s: float) -> dict:
+    """The next marked line for `want_id` (anything else on stdout is skipped)."""
+    assert w.proc.stdout is not None
+    prefix = f"{MARK} {w.nonce} ".encode()
+
+    async def read() -> dict:
+        while True:
+            line = await w.proc.stdout.readline()
+            if not line:
+                raise MeasureError("tool_failed", "the measure worker exited")
+            if line.startswith(prefix):
+                msg = json.loads(line[len(prefix):])
+                if isinstance(msg, dict) and msg.get("id") == want_id:
+                    return msg
+    return await asyncio.wait_for(read(), timeout_s)
+
+
+async def _start(part_dir: Path, mtime_ns: int) -> _Warm:
+    old = _warm.get(str(part_dir))
+    if old is not None:
+        await _close(old)                          # another version of the part: never reused
+    while len(_warm) >= MAX_WARM:
+        await _close(next(iter(_warm.values())))  # least recently used
+    tmp = part_dir / "tmp"
+    safe_io.ensure_dir(tmp)
+    nonce = secrets.token_hex(16)
+    env = {"MISES_NONCE": nonce, "PATH": "/usr/bin:/bin", "TMPDIR": str(tmp), "HOME": str(tmp),
+           "PYTHONDONTWRITEBYTECODE": "1", "PYTHONUNBUFFERED": "1"}
+    proc = await asyncio.create_subprocess_exec(
+        *sandboxed_command([sys.executable, "-I", str(WORKER), str(part_dir), "--measure-serve"],
+                           tmp, read_dirs=(part_dir,)),
+        stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.DEVNULL, env=env, start_new_session=True, limit=1 << 22)
+    w = _Warm(part_dir, mtime_ns, proc, nonce)
+    try:
+        await _read_answer(w, 0, WARM_START_S)    # "ready": the shape is loaded
+    except BaseException:
+        await _close(w)
+        raise
+    _warm[str(part_dir)] = w
+    w.reaper = asyncio.create_task(_idle_reaper(w))
+    return w
+
+
+async def _ask_warm(part_dir: Path, mtime_ns: int, refs: list[dict]) -> dict:
+    w = _warm.get(str(part_dir))
+    if (w is None or w.mtime_ns != mtime_ns or w.proc.returncode is not None
+            or w.loop is not asyncio.get_running_loop()):
+        w = await _start(part_dir, mtime_ns)
+    _warm.move_to_end(str(part_dir))
+    async with w.io:
+        w.seq += 1
+        w.used = time.monotonic()
+        assert w.proc.stdin is not None
+        try:
+            w.proc.stdin.write((json.dumps({"id": w.seq, "refs": refs}) + "\n").encode())
+            await w.proc.stdin.drain()
+            msg = await _read_answer(w, w.seq, WARM_CALL_S)
+        except BaseException:
+            await _close(w)
+            raise
+        w.used = time.monotonic()
+    msg.pop("id", None)
+    return msg
+
+
+async def warm_part(part_dir: Path) -> bool:
+    """Start (or keep) the part's warm worker ahead of the first pick (Measure mode opened)."""
+    try:
+        part_dir = safe_io.real_dir(part_dir)
+    except MisesError:
+        return False
+    async with _lock(part_dir):
+        try:
+            mtime = os.lstat(part_dir / "model.step").st_mtime_ns
+        except OSError:
+            return False
+        w = _warm.get(str(part_dir))
+        if (w is not None and w.mtime_ns == mtime and w.proc.returncode is None
+                and w.loop is asyncio.get_running_loop()):
+            w.used = time.monotonic()
+            return True
+        try:
+            await _start(part_dir, mtime)
+        except (MeasureError, OSError, asyncio.TimeoutError, ValueError):
+            return False
+        return True
+
+
+# ---- one measure
+
+async def measure_part(part_dir: Path, refs: object, *, base_version: int | None = None,
+                       timeout_s: float = TIMEOUT_S, warm: bool = True) -> dict:
+    """{version, items: [...], values: [{key, label, value, unit}]} for the picks; MeasureError
+    otherwise. `base_version` (the version the picks were made on) is checked under the part
+    lock, against the same STEP the measure reads: stale → MeasureError("stale_version")."""
     clean = check_refs(refs)
     try:
         part_dir = safe_io.real_dir(part_dir)
     except MisesError as e:
         raise MeasureError("not_found", f"part is not built: {e.message}") from None
     async with _lock(part_dir):          # never while the part is being rebuilt
-        return await _measure(part_dir, clean, timeout_s)
+        version = _edits.read_version(part_dir)
+        if base_version is not None and base_version != version:
+            raise MeasureError("stale_version", f"the part changed since version {base_version}; "
+                               "pick again", current_version=version)
+        return {"version": version, **await _measure(part_dir, clean, timeout_s, warm)}
 
 
-async def _measure(part_dir: Path, refs: list[dict], timeout_s: float) -> dict:
+async def _measure(part_dir: Path, refs: list[dict], timeout_s: float, warm: bool) -> dict:
     try:
         os.close(safe_io.open_dir(part_dir))
         safe_io.scrub(part_dir)
@@ -90,6 +255,26 @@ async def _measure(part_dir: Path, refs: list[dict], timeout_s: float) -> dict:
     if key in _cache:
         _cache.move_to_end(key)
         return json.loads(json.dumps(_cache[key]))
+    out: dict | None = None
+    if warm:
+        try:
+            out = await _ask_warm(part_dir, step.st_mtime_ns, refs)
+        except (MeasureError, OSError, asyncio.TimeoutError, ValueError):
+            out = None                   # the one-shot worker answers instead
+    if out is None:
+        out = await _one_shot(part_dir, refs, timeout_s)
+    error = out.get("error")
+    if isinstance(error, dict):
+        code = error.get("code") if error.get("code") in ("not_found", "invalid_input") else "tool_failed"
+        raise MeasureError(code, str(error.get("message") or "measure failed"))
+    res = {"items": out.get("items") or [], "values": out.get("values") or []}
+    _cache[key] = res
+    while len(_cache) > _CACHE_MAX:
+        _cache.popitem(last=False)
+    return json.loads(json.dumps(res))
+
+
+async def _one_shot(part_dir: Path, refs: list[dict], timeout_s: float) -> dict:
     tmp = part_dir / "tmp"
     safe_io.ensure_dir(tmp)
     safe_io.write_text(tmp, "measure_args.json", json.dumps({"refs": refs}))
@@ -99,7 +284,8 @@ async def _measure(part_dir: Path, refs: list[dict], timeout_s: float) -> dict:
            "PYTHONDONTWRITEBYTECODE": "1"}
     proc = await asyncio.create_subprocess_exec(
         *sandboxed_command([sys.executable, "-I", str(WORKER), str(part_dir),
-                            str(tmp / "measure_args.json"), "--measure"], part_dir),
+                            str(tmp / "measure_args.json"), "--measure"], tmp,
+                           read_dirs=(part_dir,)),
         stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE, env=env, start_new_session=True)
     try:
@@ -126,15 +312,7 @@ async def _measure(part_dir: Path, refs: list[dict], timeout_s: float) -> dict:
             raise ValueError("nonce mismatch")
     except (OSError, ValueError, MisesError) as e:
         raise MeasureError("tool_failed", f"measure did not complete: {e}") from None
-    error = out.get("error")
-    if isinstance(error, dict):
-        code = error.get("code") if error.get("code") in ("not_found", "invalid_input") else "tool_failed"
-        raise MeasureError(code, str(error.get("message") or "measure failed"))
-    res = {"items": out.get("items") or [], "values": out.get("values") or []}
-    _cache[key] = res
-    while len(_cache) > _CACHE_MAX:
-        _cache.popitem(last=False)
-    return json.loads(json.dumps(res))
+    return out
 
 
-__all__ = ["MeasureError", "check_refs", "measure_part"]
+__all__ = ["MeasureError", "check_refs", "close_servers", "measure_part", "warm_part"]
