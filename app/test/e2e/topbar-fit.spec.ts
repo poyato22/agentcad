@@ -1,5 +1,5 @@
-// Integration (Plan 5 wave D): the top bar carries A1/A2's activity pill AND A6's Onshape budget
-// meter beside the status lights, profile and STOP ALL. Nothing may clip or overlap at the two
+// Integration (Plan 5 wave D): the top bar carries A1/A2's activity pill beside the Status button
+// (Plan 7 U2b folded the lights and A6's Onshape meter into it), profile and STOP ALL. Nothing may clip or overlap at the two
 // window widths the app is designed for (1280 and 1440), in either theme. MISES_SHOTS=<dir> also
 // saves a screenshot of each.
 import type { Page } from "@playwright/test";
@@ -29,7 +29,8 @@ for (const width of [1280, 1440]) {
       await fake.emit({ type: "agent_activity", run_id: "b7c79a57cbb4", data: { state: "thinking", detail: "", since: now } });
       await fake.emit({ type: "agent_activity", run_id: "c2d4e6f8a0b1", data: { state: "tool", detail: "measuring mount plate", since: now } });
       await expect(page.locator(".activity-pill")).toBeVisible();
-      await expect(page.locator("[data-budget-used]")).toBeVisible();
+      await expect(page.locator(".status-btn")).toBeVisible();
+      await expect(page.locator(".budget-chip")).toBeVisible();   // Onshape connected: the live count is in the bar
 
       if (SHOTS) await page.locator("header.topbar").screenshot({ path: `${SHOTS}/topbar-${width}-${theme}.png` });
       const bar = await boxOf(page, "header.topbar");
@@ -42,7 +43,7 @@ for (const width of [1280, 1440]) {
       expect(right(r)).toBeLessThanOrEqual(width + 0.5);
       expect(right(bar)).toBeLessThanOrEqual(width + 0.5);
       // every right-side item is fully visible and its text is not cut off
-      for (const sel of [".activity-pill", ".budget-slot", "[data-light]", ".stop-all"]) {
+      for (const sel of [".activity-pill", ".budget-chip", ".status-btn", ".profile-btn", ".stop-all"]) {
         const items = page.locator(`.topbar-right ${sel}`);
         for (let i = 0; i < await items.count(); i++) {
           const el = items.nth(i);
@@ -50,17 +51,13 @@ for (const width of [1280, 1440]) {
           expect(b, `${sel} #${i} laid out`).not.toBeNull();
           expect(b!.x).toBeGreaterThanOrEqual(r.x - 0.5);
           expect(right(b!), `${sel} #${i} right edge ${right(b!)} vs group ${right(r)}`).toBeLessThanOrEqual(right(r) + 0.5);
-          if (sel === "[data-light]") {   // the lights row clips its own overflow: each light must fit in it
-            const row = await boxOf(page, ".topbar-right .lights");
-            expect(right(b!), `${sel} #${i} right edge ${right(b!)} vs lights row ${right(row)}`).toBeLessThanOrEqual(right(row) + 0.5);
-          }
           expect(b!.y).toBeGreaterThanOrEqual(bar.y - 0.5);
           expect(b!.y + b!.height).toBeLessThanOrEqual(bar.y + bar.height + 0.5);
           const clipped = await el.evaluate((n) => n.scrollWidth > n.clientWidth + 1);
           expect(clipped, `${sel} #${i} text is not clipped`).toBe(false);
         }
       }
-      // the mode tabs all fit (⌘1–⌘7), and A3's build tabs never run under them
+      // the mode tabs all fit (⌘1–⌘6), and A3's build tabs never run under them
       for (const sel of [".btab", ".btab-add"]) {
         const els = page.locator(`.topbar-left ${sel}`);
         for (let i = 0; i < await els.count(); i++) {

@@ -1,6 +1,12 @@
+// Top-bar status (Plan 7 U2b, R13). One "Status" button replaces the row of CORE / ONSHAPE /
+// AGENTS / PRINTER lights and the separate Onshape budget meter, which said the same things twice
+// (the ONSHAPE light and the meter; the AGENTS light and the activity pill). The button shows three
+// dots (core, Onshape, printer) and one headline — the thing that matters now: "Core down",
+// "Connecting", "N needs you", else "Ready". Its card holds each light in full, the core restart,
+// and the Onshape budget.
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { JSX } from "preact";
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import type { ShellCoreStatus } from "../../api/connection";
 import type { StreamState } from "../../api/events";
 import type { CoreStatusInfo, Printer, PrinterStatus } from "../../api/types";
@@ -9,9 +15,11 @@ import { budgetLevel, onshapeBudget } from "../../state/onshapeBudget";
 import { printersRev } from "../../state/printers";
 import { needsYou } from "../../state/selection";
 import { actions, conn, coreStatus, runs, shellStatus } from "../../state/store";
+import { useDismiss } from "../common/dismiss";
 import { Led, type LedTone } from "../common/Led";
 import { printerLight } from "../pages/print/printLogic";
 import { usePoll } from "../pages/print/usePrint";
+import { BudgetMeter } from "./BudgetMeter";
 
 /** The top bar checks the first printer this often (the Print page polls faster while shown). */
 export const PRINTER_LIGHT_MS = 15_000;
@@ -70,6 +78,18 @@ function restartCore(): void {
   if (isTauri()) void invoke("core_restart").catch(() => {});
 }
 
+/** The Status button's headline: the one thing that matters now. */
+export function statusHeadline(core: LedTone, stream: StreamState, needs: number): { text: string; tone: LedTone } {
+  if (core === "red") return { text: "Core down", tone: "red" };
+  if (core === "amber") {
+    // what needs you stays in view while the stream (re)connects
+    const word = stream === "connecting" ? "Starting" : "Connecting";
+    return { text: needs > 0 ? `${word} · ${needs} needs you` : word, tone: "amber" };
+  }
+  if (needs > 0) return { text: `${needs} needs you`, tone: "blue" };
+  return { text: "Ready", tone: "faint" };
+}
+
 export function StatusLights(): JSX.Element {
   const shell = shellStatus.value;
   const stream = conn.value;
@@ -80,29 +100,71 @@ export function StatusLights(): JSX.Element {
   let running = 0;
   for (const r of runs.value.values()) if (r.status === "running") running++;
   const needs = needsYou.value.count;
+  const printer = usePrinterLight();
+  const head = statusHeadline(tone, stream, needs);
+
+  const [at, setAt] = useState<{ right: number } | null>(null);
+  const btn = useRef<HTMLButtonElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const close = (refocus: boolean) => { setAt(null); if (refocus) btn.current?.focus(); };
+  const toggle = () => {
+    if (at) { close(false); return; }
+    // the card is position: fixed (the top bar's right side clips overflow), right-aligned under the button
+    const r = btn.current?.getBoundingClientRect();
+    setAt({ right: r && r.width > 0 ? Math.max(8, window.innerWidth - r.right) : 8 });
+  };
+  useDismiss(cardRef, () => { if (at) close(false); }, [btn]);
+  const label = `Status: ${head.text}. Core ${tone === "green" ? "connected" : tone === "red" ? "down" : "connecting"}, `
+    + `Onshape ${os.text}, ${running} ${running === 1 ? "agent" : "agents"} running, printer ${printer.text}.`;
 
   return (
-    <div class="lights">
-      <span class={restartable ? "light light-click" : "light"} data-light="core" title={coreTitle(shell, stream, tone, lost)}
-        role={restartable ? "button" : undefined} tabIndex={restartable ? 0 : undefined}
-        onClick={restartable ? restartCore : undefined}
-        onKeyDown={restartable ? (e) => { if (e.key === "Enter" || e.key === " ") restartCore(); } : undefined}>
-        <Led tone={tone} /> CORE
-      </span>
-      <span class="light" data-light="onshape" title={os.title}><Led tone={os.tone} /> ONSHAPE <span class="light-val">{os.text}</span></span>
-      <span class="light" data-light="agents" title={`${running} ${running === 1 ? "agent" : "agents"} running`}>
-        <Led tone={running > 0 ? "blue" : "faint"} /> AGENTS{" "}
-        <span class="light-val">{running} {running === 1 ? "agent" : "agents"}</span>
-        {needs > 0 && <span class="light-need needs-you"> · {needs} needs you</span>}
-      </span>
-      <PrinterLight />
+    // Escape closes the card from the button or from inside it, and focus returns to the button
+    // and the card closes once focus leaves both the button and the card (Tab past it)
+    <div class="status" onKeyDown={(e) => { if (e.key === "Escape" && at) { e.preventDefault(); e.stopPropagation(); close(true); } }}
+      onFocusOut={(e) => {
+        const to = e.relatedTarget as Node | null;
+        if (at && to && !btn.current?.contains(to) && !cardRef.current?.contains(to)) close(false);
+      }}>
+      <button ref={btn} type="button" class="status-btn" data-status-tone={head.tone} aria-label={label} title="Status"
+        aria-haspopup="dialog" aria-expanded={at !== null} aria-controls="status-card" onClick={toggle}>
+        <span class="status-dots" aria-hidden="true">
+          <span data-dot="core"><Led tone={tone} /></span>
+          <span data-dot="onshape"><Led tone={os.tone} /></span>
+          <span data-dot="printer"><Led tone={printer.tone} /></span>
+        </span>
+        <span class={head.tone === "blue" ? "status-head needs-you" : "status-head"} data-headline>{head.text}</span>
+      </button>
+      {restartable && (
+        <button type="button" class="status-restart" aria-label="Restart the core" title={coreTitle(shell, stream, tone, lost)}
+          onClick={restartCore}>Restart</button>
+      )}
+      {/* always in the DOM (hidden when closed) so the lights keep their state and titles */}
+      <div id="status-card" ref={cardRef} class="status-card" role="dialog" aria-label="Status" hidden={at === null}
+        style={at ? { right: `${at.right}px` } : undefined}>
+        <div class="lights">
+          <span class={restartable ? "light light-click" : "light"} data-light="core" title={coreTitle(shell, stream, tone, lost)}
+            role={restartable ? "button" : undefined} tabIndex={restartable ? 0 : undefined}
+            onClick={restartable ? restartCore : undefined}
+            onKeyDown={restartable ? (e) => { if (e.key === "Enter" || e.key === " ") restartCore(); } : undefined}>
+            <Led tone={tone} /> Core <span class="light-val">{restartable ? "down · click to restart" : tone === "green" ? "connected" : stream}</span>
+          </span>
+          <span class="light" data-light="onshape" title={os.title}><Led tone={os.tone} /> Onshape <span class="light-val">{os.text}</span></span>
+          <span class="light" data-light="agents" title={`${running} ${running === 1 ? "agent" : "agents"} running`}>
+            <Led tone={running > 0 ? "blue" : "faint"} /> Agents{" "}
+            <span class="light-val">{running} {running === 1 ? "agent" : "agents"}</span>
+            {needs > 0 && <span class="light-need needs-you"> · {needs} needs you</span>}
+          </span>
+          <span class="light" data-light="printer" title={printer.title}><Led tone={printer.tone} /> Printer <span class="light-val">{printer.text}</span></span>
+        </div>
+        <BudgetMeter onOpen={() => close(false)} />
+      </div>
     </div>
   );
 }
 
 /** PRINTER: GET /printers (re-read when the event stream (re)opens or the list changes), then the
  *  first printer's status. No printers (or no core): faint "no printer". */
-function PrinterLight(): JSX.Element {
+function usePrinterLight(): { tone: LedTone; text: string; title: string } {
   const stream = conn.value;
   const rev = printersRev.value;
   const [list, setList] = useState<Printer[] | null>(null);
@@ -124,16 +186,10 @@ function PrinterLight(): JSX.Element {
       setSt({ id: first.id, status: null, stale: true });
     }
   });
-  if (!first) {
-    return <span class="light" data-light="printer" title="No printer"><Led tone="faint" /> PRINTER <span class="light-val">no printer</span></span>;
-  }
+  if (!first) return { tone: "faint", text: "no printer", title: "No printer" };
   const cur = st && st.id === first.id ? st : null;
   const l = printerLight(cur?.status ?? null, cur?.stale ?? false);
   const more = list && list.length > 1 ? ` +${list.length - 1}` : "";
   const short = cur?.status ? (cur.status.reachable ? (cur.status.state ?? "unknown").toLowerCase() : "unreachable") : "…";
-  return (
-    <span class="light" data-light="printer" title={`${first.name}: ${l.text}`}>
-      <Led tone={l.tone} /> PRINTER <span class="light-val">{first.name}{more} · {short}</span>
-    </span>
-  );
+  return { tone: l.tone, text: `${first.name}${more} · ${short}`, title: `${first.name}: ${l.text}` };
 }

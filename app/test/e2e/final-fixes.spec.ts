@@ -40,22 +40,6 @@ async function openBase(page: Page): Promise<void> {
 
 test.afterEach(async ({ fake }) => { await fake.reset("base"); });
 
-test("I-1: one slider step shows ONE You line in the thread, not the echo too", async ({ page, fake }) => {
-  await fake.reset("builds");
-  await openBuilds(page);
-  await tree(page).getByRole("button", { name: "Quad arm", exact: true }).click();
-  await expect(page.getByTestId("var-thickness")).toHaveValue("5");
-  await page.getByRole("slider", { name: "thickness (mm)" }).focus();
-  await page.keyboard.press("ArrowRight");
-  await expect.poll(async () => (await callsTo(fake, "POST", "/parts/quad_arm/vars")).length).toBe(1);
-  await expect(page.getByTestId("var-thickness")).toHaveValue("5.5");
-  const you = page.locator("[data-you-edit] .cv-body");
-  await expect(you.last()).toHaveText("You · changed thickness 5 → 5.5 mm on Quad arm");
-  await page.waitForTimeout(400);               // nothing else arrives later
-  await expect(you).toHaveCount(1);
-  await shots(page, "i1-one-you-line");
-});
-
 test("I-2: a run started right after a tab switch is filed under the new build", async ({ page, fake }) => {
   await fake.reset("builds");
   await openBuilds(page);
@@ -164,17 +148,22 @@ test("I-5: interview — chip vs text, multi + text, keyboard ranking, counter a
 test("M-1: in Code view the Part | Assembly switch is on top and usable", async ({ page }) => {
   await page.goto("/");
   await page.locator("[data-region=app][data-conn=open]").waitFor();
-  await page.getByRole("tab", { name: "Code" }).click();
+  // Plan 7 U2b: the script opens from View ▸ Part script; "Back to the model" returns
+  await page.getByRole("button", { name: "View options" }).click();
+  await page.locator("#view-menu [role^=menuitem]", { hasText: "Part script" }).click();
   await page.getByTestId("source-editor").waitFor();
   const ms = page.getByTestId("mode-switch");
   const bb = await ms.boundingBox();
   expect(bb).not.toBeNull();
   const onTop = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest("[data-testid]")?.getAttribute("data-testid"), [bb!.x + bb!.width / 2, bb!.y + bb!.height / 2]);
   expect(onTop).toBe("mode-switch");
-  const tabs = await page.locator(".vp-tabs").boundingBox();
-  expect(Math.abs((tabs?.y ?? 0) - bb!.y)).toBeLessThan(2);           // one row with Model | Code
-  expect(bb!.x).toBeGreaterThan((tabs?.x ?? 0) + (tabs?.width ?? 0));  // after it, not over it
+  const back = page.getByRole("button", { name: "Back to the model" });
+  const bk = await back.boundingBox();
+  expect(Math.abs(bk!.y + bk!.height / 2 - (bb!.y + bb!.height / 2))).toBeLessThan(2);   // one row with the switch
+  expect(bk!.x).toBeGreaterThan(bb!.x + bb!.width);                                      // after it, not over it
   await shots(page, "m1-code-view-mode-switch", page.locator(".vp").first());
+  await back.click();
+  await expect(page.getByTestId("source-editor")).toHaveCount(0);
 });
 
 test("M-3: the Into build picker follows a build-tab switch after a pick", async ({ page, fake }) => {
@@ -213,44 +202,4 @@ test("M-9: the Studies type picker moves with the arrow keys", async ({ page }) 
   await expect(first).toBeFocused();
   await expect(first).toHaveAttribute("aria-selected", "true");
   await shots(page, "m9-studies-type-tabs", page.locator(".st-types"));
-});
-
-test("M-8 / M-10: neutral sketch axes and profile; the side panel's mm suffixes fit at 1440×900", async ({ page }) => {
-  await page.goto("/");
-  await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
-  await page.getByRole("tab", { name: "Sketch" }).click();
-  const svg = page.locator("[data-sketch-canvas]");
-  await expect(svg).toBeVisible();
-  // a typed 40×20 rectangle
-  await svg.click({ position: { x: 5, y: 5 } });
-  await page.keyboard.press("r");
-  const b = (await svg.boundingBox())!;
-  await page.mouse.click(b.x + b.width * 0.3, b.y + b.height * 0.6);
-  await page.mouse.move(b.x + b.width * 0.5, b.y + b.height * 0.4);
-  await page.keyboard.type("40,20");
-  await page.keyboard.press("Enter");
-  await expect(page.locator("[data-profiles]")).toHaveText("1 closed profile");
-  // colours: axes and profile fill are neutral tokens (computed, so a token swap is caught too)
-  const colors = await page.evaluate(() => {
-    const css = (sel: string, prop: string) => { const el = document.querySelector(sel); return el ? getComputedStyle(el).getPropertyValue(prop) : null; };
-    const tok = (name: string) => { const p = document.createElement("div"); p.style.color = `var(${name})`; document.body.append(p); const c = getComputedStyle(p).color; p.remove(); return c; };
-    return { x: css(".sk-axis-x", "stroke"), y: css(".sk-axis-y", "stroke"), fill: css(".sk-profile", "fill"), red: tok("--red"), green: tok("--green"), blue: tok("--blue-tint"), dim: tok("--dim") };
-  });
-  expect(colors.x).toBe(colors.dim);
-  expect(colors.y).toBe(colors.dim);
-  expect([colors.red, colors.green]).not.toContain(colors.x);
-  expect(colors.fill).not.toBe(colors.blue);
-  await expect(svg.locator(".sk-axis-label")).toHaveText(["X", "Y"]);
-  // select the rectangle so the stroke panel (Offset … mm) shows; every "mm" is inside the panel
-  await page.getByRole("button", { name: /^Select/ }).click();
-  const edge = await svg.locator("[data-kind=rect]").evaluate((el) => { const r = (el as SVGGraphicsElement).getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height] as [number, number]; });
-  await page.mouse.click(edge[0], edge[1] - 1);
-  await expect(page.getByLabel("Offset (mm)")).toBeVisible();
-  const side = (await page.locator(".sk-side").boundingBox())!;
-  const clipped = await page.locator(".sk-side .sk-row > .faint").evaluateAll((els, right) => els
-    .filter((e) => e.textContent?.trim().endsWith("mm"))
-    .map((e) => e.getBoundingClientRect())
-    .filter((r) => r.right > (right as number) + 0.5).length, side.x + side.width);
-  expect(clipped).toBe(0);
-  await shots(page, "m8-m10-sketch");
 });

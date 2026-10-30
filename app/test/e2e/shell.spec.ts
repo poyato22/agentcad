@@ -271,13 +271,16 @@ test("tabs_navigate_between_pages", async ({ page }) => {
   await expect(page.locator("[data-region=viewer]")).toBeVisible();
 });
 
-test("cmd_1_to_5_navigate", async ({ page }) => {
+test("cmd_1_to_6_navigate", async ({ page }) => {
   await page.goto("/");
+  // Plan 7 U2b: Sketch is gone, so ⌘3 is Drawing and ⌘4 Print
+  await expect(page.getByRole("tab", { name: "Sketch" })).toHaveCount(0);
   await page.keyboard.press("Meta+3");
-  await expect(page.locator('[data-region="page"]')).toContainText("Sketch");
-  await expect(page.getByRole("tab", { name: "Sketch" })).toHaveAttribute("aria-selected", "true");
-  await page.keyboard.press("Meta+5");
-  await expect(page.locator('[data-region="page"]')).toContainText("Print");
+  await expect(page.getByRole("tab", { name: "Drawing" })).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("Meta+4");
+  await expect(page.getByRole("tab", { name: "Print" })).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("Meta+6");
+  await expect(page.getByRole("tab", { name: "Parts" })).toHaveAttribute("aria-selected", "true");
   await page.keyboard.press("Meta+1");
   await expect(page.locator("[data-region=viewer]")).toBeVisible();
 });
@@ -351,6 +354,10 @@ test("tauri_startup_crash_before_listen_shows_red_core_light_with_reason", async
   await expect(core.locator(".led")).toHaveClass(/led-red/);
   await expect(core).toHaveAttribute("title", /could not find `uv`/);
   await expect(core).toHaveAttribute("role", "button");
+  // U2b: the light lives in the Status card; the button says so in its headline
+  const status = page.getByRole("button", { name: /^Status/ });
+  await expect(status).toContainText("Core down");
+  await status.click();
   await core.click();
   await expect.poll(() => page.evaluate(() => (window as unknown as { __ipcCalls: string[] }).__ipcCalls)).toContain("core_restart");
 });
@@ -364,10 +371,10 @@ test("connects_to_fake_core_without_errors", async ({ page, fake }) => {
   await page.goto("/");
   await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
   // A6: /onshape/budget twice (the session figure, then the selected run's top-bar meter); A3: the
-  // builds (GET /projects + the profile's tabs) and the Variables panel's VARS schema; A7: the
-  // console spec strip loads the active build's spec and studies
+  // builds (GET /projects + the profile's tabs); A7: the console spec strip loads the active
+  // build's spec and studies. (Plan 7 U2b: no Variables panel, so no GET /parts/{id}/source on boot.)
   await expect.poll(async () => (await fake.calls()).map((c) => c.path.replace(/^\/projects\/[^/]+\//, "/projects/{id}/")).filter((p) => p !== "/context").sort()).toEqual(
-    ["/approvals", "/onshape/budget", "/onshape/budget", "/parts", "/parts/mount_plate/model.glb", "/parts/mount_plate/source", "/printers", "/profile", "/profile",
+    ["/approvals", "/onshape/budget", "/onshape/budget", "/parts", "/parts/mount_plate/model.glb", "/printers", "/profile", "/profile",
       // C-2/C-3: the running run's live activity and open questions are seeded on connect (GET
       // /runs/{id} carries `pending`, as the real core's does, so no GET /runs/{id}/pending)
       "/projects", "/projects/{id}/spec", "/projects/{id}/studies", "/runs", "/runs/b7c79a57cbb4", "/runs/b7c79a57cbb4/steps", "/setup", "/status"]);
@@ -402,7 +409,7 @@ for (const theme of ["dark", "light"] as const) {
     await page.goto("/");
     await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
     await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
-    const top = await chromeOffsets(page, [".crumb", ".tab", ".profile-btn", ".stop-all", ".light"]);
+    const top = await chromeOffsets(page, [".crumb", ".tab", ".profile-btn", ".stop-all", ".status-btn"]);
     expect(top.centre).toBe(22);
     for (const [sel, d] of top.off) expect(d, `top bar ${sel}`).toBeLessThanOrEqual(2);
     // the setup wizard header

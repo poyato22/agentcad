@@ -7,7 +7,7 @@ import type { CoreStatusInfo, MisesEvent } from "../../api/types";
 import { applyBudget, parseBudgetEvent, resetOnshapeBudget } from "../../state/onshapeBudget";
 import { coreStatus, resetStore, selectedRunId } from "../../state/store";
 import { activePage, setPage } from "../pages/router";
-import { BudgetMeter, fmtResetDate } from "./BudgetMeter";
+import { BudgetChip, BudgetMeter, fmtResetDate } from "./BudgetMeter";
 import { onshapeTone } from "./StatusLights";
 
 const FX = resolve(import.meta.dirname, "../../../test/fixtures/core-ui");
@@ -60,27 +60,20 @@ describe("BudgetMeter", () => {
     expect(meter().dataset.level).toBe("warn");
     feed(ev({ used_year: 2500 }));
     expect(meter().dataset.level).toBe("limit");
-    expect(screen.getByRole("button").getAttribute("aria-label")).toMatch(/Limit reached/);
+    expect(screen.getByRole("group").getAttribute("aria-label")).toMatch(/Limit reached/);
   });
 
-  it("hover and focus show the reset date; a click opens the Onshape page", () => {
+  it("shows the reset date and what is left; its button opens the Onshape page (U2b: it lives in the Status card)", () => {
     coreStatus.value = status();
     applyBudget(BUDGET, null);
-    render(<BudgetMeter />);
-    const card = document.getElementById("budget-card") as HTMLElement;
-    expect(card.hidden).toBe(true);
-    fireEvent.mouseEnter(meter());
-    expect(card.hidden).toBe(false);
-    expect(card.querySelector("[data-budget-reset]")?.textContent).toBe(fmtResetDate(BUDGET.reset_at));
+    let opened = 0;
+    render(<BudgetMeter onOpen={() => { opened++; }} />);
+    expect(meter().querySelector("[data-budget-reset]")?.textContent).toBe(fmtResetDate(BUDGET.reset_at));
     expect(fmtResetDate(BUDGET.reset_at)).toMatch(/^1 Jan \d{4}$/);
-    fireEvent.mouseLeave(meter());
-    expect(card.hidden).toBe(true);
-    fireEvent.focus(screen.getByRole("button"));
-    expect(card.hidden).toBe(false);
-    fireEvent.keyDown(screen.getByRole("button"), { key: "Escape" });
-    expect(card.hidden).toBe(true);
-    fireEvent.click(screen.getByRole("button"));
+    expect(meter().textContent).toContain("Left2,495");
+    fireEvent.click(screen.getByRole("button", { name: "Open the Onshape page" }));
     expect(activePage.value).toBe("onshape");
+    expect(opened).toBe(1);
   });
 
   it("shows idle when Onshape isn't set up (the connect card points at it, A-7), hidden while nothing is known", () => {
@@ -89,8 +82,8 @@ describe("BudgetMeter", () => {
     render(<BudgetMeter />);
     expect(meter().dataset.state).toBe("idle");
     expect(meter().querySelector("[data-budget-delta]")).toBeNull();
-    expect(screen.getByRole("button").getAttribute("aria-label")).toContain("Onshape budget (not connected): 0 of 2,500 calls used this year");
-    expect(screen.getByRole("button").getAttribute("aria-label")).toContain("add your Onshape keys to connect it.");
+    expect(screen.getByRole("group").getAttribute("aria-label")).toContain("Onshape budget (not connected): 0 of 2,500 calls used this year");
+    expect(screen.getByRole("group").getAttribute("aria-label")).toContain("add your Onshape keys to connect it.");
     expect(onshapeTone(status("not_configured")).title).toBe("Onshape not set up: add your Onshape keys to connect it.");
     cleanup();
     resetOnshapeBudget();
@@ -110,5 +103,47 @@ describe("BudgetMeter", () => {
     applyBudget({ ...BUDGET, used_run: 9 }, "agent-run");
     render(<BudgetMeter />);
     expect(document.querySelector("[data-budget-delta]")?.textContent).toBe("+0");
+  });
+});
+
+// U2b fix round 1 (I-1): while Onshape is connected the live count stays in the bar, next to Status
+describe("BudgetChip", () => {
+  const chip = () => document.querySelector(".budget-chip") as HTMLElement | null;
+  const chipUsed = () => chip()?.querySelector("[data-chip-used]")?.textContent;
+
+  it("shows the live year count, flashes on each call and goes amber / red", () => {
+    coreStatus.value = status();
+    applyBudget({ ...BUDGET, used_year: 312 }, null);
+    render(<BudgetChip />);
+    expect(chip()?.textContent).toBe("Onshape 312/2,500");
+    expect(chip()?.dataset.level).toBe("ok");
+    feed(ev({ used_year: 313 }));
+    expect(chipUsed()).toBe("313");
+    expect(chip()?.querySelector("[data-chip-used]")?.classList.contains("budget-moved")).toBe(true);
+    feed(ev({ used_year: 2000 }));
+    expect(chip()?.dataset.level).toBe("warn");
+    feed(ev({ used_year: 2500 }));
+    expect(chip()?.dataset.level).toBe("limit");
+    expect(chip()?.getAttribute("aria-label")).toMatch(/2,500 of 2,500 calls used this year.*Limit reached/);
+  });
+
+  it("a click opens the Onshape page", () => {
+    coreStatus.value = status();
+    applyBudget(BUDGET, null);
+    render(<BudgetChip />);
+    fireEvent.click(chip() as HTMLElement);
+    expect(activePage.value).toBe("onshape");
+  });
+
+  it("is not in the bar while Onshape isn't connected, or before any figure is known", () => {
+    coreStatus.value = status("not_configured");
+    applyBudget(BUDGET, null);
+    render(<BudgetChip />);
+    expect(chip()).toBeNull();
+    cleanup();
+    resetOnshapeBudget();
+    coreStatus.value = status();
+    render(<BudgetChip />);
+    expect(chip()).toBeNull();
   });
 });

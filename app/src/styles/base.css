@@ -44,7 +44,7 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: 700; margin: 0; }
 .region-topbar { grid-row: 1; grid-column: 1 / -1; }
 .region-left { grid-row: 2; grid-column: 1; border-right: 1px solid var(--line2); }
 .region-viewer { grid-row: 2; grid-column: 2; }
-/* Full-width pages (Studies/Sketch/Drawing/Print) take the left + center tracks. */
+/* Full-width pages (Studies/Drawing/Print/Onshape/Parts) take the left + center tracks. */
 .region-page { grid-row: 2; grid-column: 1 / 3; }
 .region-console { grid-row: 2; grid-column: 3; border-left: 1px solid var(--line2); }
 

@@ -1,9 +1,9 @@
 // The drawing sheet: CSS drafting grid + Three.js canvas + corner ticks + figure label + tool strip + title block.
-// Model | Code tabs: the model (this part, or the whole build) or the part's script.
-// A click on the model says what it hit ("Face · planar · 1,200 mm²"); "Modify…" there (or in the
-// part's menu) adds a feature on it (hole / shell on a face, fillet / chamfer on an edge). Measure
-// (M) shows exact values from the core; Comment pins feedback on the model for the build's agent.
-// In the build view a click on another part selects it. Each part shows in its color.
+// Model | Code (View ▸ Part script): the model (this part, or the whole build) or the part's script.
+// A click on the model says what it hit ("Face · planar · 1,200 mm²"); "Modify…" there (or View ▸
+// Add a feature…) adds a feature on it (hole / shell on a face, fillet / chamfer on an edge).
+// View ▸ Measure (M) shows exact values from the core; View ▸ Comment pins feedback on the model
+// for the build's agent. In the build view a click on another part selects it. Each part shows in its color.
 import { computed, effect, signal, type Signal } from "@preact/signals";
 import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
@@ -422,22 +422,26 @@ export function Viewer(): JSX.Element {
         onPointerUp={onPointerUp}
       />
       <span class="tick tick-tl" /><span class="tick tick-tr" /><span class="tick tick-bl" /><span class="tick tick-br" />
-      {/* one row in the sheet corner: Model | Code, then Part | Assembly — above the Code view (M-1) */}
+      {/* the sheet corner holds only Part | Assembly (U2b), above the Code view (M-1); the script
+          opens from View ▸ Part script, and while it shows a "Back to the model" button sits here */}
       <div class="vp-corner">
-        <div class="vp-tabs" role="tablist" aria-label="Show">
-          {(["model", "code"] as const).map((t) => (
-            <button key={t} type="button" role="tab" class="vp-tab" aria-selected={tab === t} data-selected={tab === t ? "" : undefined} tabIndex={tab === t ? 0 : -1}
-              onClick={() => { viewTab.value = t; }}
-              onKeyDown={(e) => { if (e.key === "ArrowRight" || e.key === "ArrowLeft") { e.preventDefault(); viewTab.value = tab === "model" ? "code" : "model"; (e.currentTarget.parentElement?.querySelector(`[aria-selected=false]`) as HTMLElement | null)?.focus(); } }}>
-              {t === "model" ? "Model" : "Code"}
-            </button>
-          ))}
-        </div>
         <ModeSwitch />
+        {tab === "code" && (
+          <button type="button" class="vt-btn vp-back" onClick={() => { viewTab.value = "model"; }}>Back to the model</button>
+        )}
       </div>
       <span class="label vp-fig">{scope === "build" ? "FIG. 1 — BUILD" : "FIG. 1 — DESIGN"}</span>
       <ViewerTools mode={mode} onMode={setMode} scope={scope} onScope={(s) => { viewScope.value = s; }}
-        tool={tool} onTool={(t) => { viewerTool.value = viewerTool.peek() === t ? "select" : t; }} canPick={part !== null && tab === "model"} />
+        code={tab === "code"} onCode={(on) => { viewTab.value = on ? "code" : "model"; }}
+        canEdit={canEdit && tab === "model"}
+        onEdit={() => { if (part) setOps({ seq: ++pickSeq.current, partId: part.part_id, target: { face: null, edge: null, point: null }, at: null, keyboard: true, baseVersion: part.version ?? 0 }); }}
+        extra={[
+          // U2a's click tools, in U2b's View menu: pressed again, back to Select
+          { id: "measure", label: "Measure", hint: "M", checked: tool === "measure", disabled: !(part !== null && tab === "model"),
+            onSelect: () => { viewerTool.value = viewerTool.peek() === "measure" ? "select" : "measure"; } },
+          { id: "comment", label: "Comment on the model", checked: tool === "comment", disabled: !(part !== null && tab === "model"),
+            onSelect: () => { viewerTool.value = viewerTool.peek() === "comment" ? "select" : "comment"; } },
+        ]} />
       {part === null && <div class="vp-empty label">NO PART · ask an agent to create one</div>}
       {tab === "model" && tool === "comment" && !comment && <div class="vx-mode-hint label" role="status">Click the model where something should change</div>}
       {tab === "model" && v && (shownPins.length > 0 || dots.length > 0) && (

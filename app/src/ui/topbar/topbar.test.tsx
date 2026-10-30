@@ -13,6 +13,10 @@ import { initials, ProfileButton } from "./ProfileButton";
 import { closeProfile, openProfile, profileOpen, profileSection } from "../profile/open";
 import { printersChanged } from "../../state/printers";
 import { installStopAllShortcut, resetStopAll } from "./stopAll";
+import { applyBudget, resetOnshapeBudget } from "../../state/onshapeBudget";
+import type { OnshapeBudget } from "../../api/directory";
+
+const BUDGET: OnshapeBudget = { used_year: 5, limit_year: 2500, used_run: 3, warn_at: 2000, reset_at: 1830000000, run_id: null };
 
 const invokeMock = vi.hoisted(() => vi.fn(async () => null));
 vi.mock("@tauri-apps/api/core", async (orig) => ({
@@ -38,9 +42,13 @@ describe("ModeTabs", () => {
   it("every_tab_is_clickable_and_navigates", async () => {
     render(<ModeTabs />);
     // no tab is disabled any more
-    for (const n of ["Design", "Studies", "Sketch", "Drawing", "Print"]) {
+    for (const n of ["Design", "Studies", "Drawing", "Print", "Onshape", "Parts"]) {
       expect(screen.getByRole("tab", { name: n }).getAttribute("aria-disabled")).toBeNull();
     }
+    // Plan 7 U2b: no Sketch tab, and each tab's tooltip names its renumbered shortcut
+    expect(screen.queryByRole("tab", { name: "Sketch" })).toBeNull();
+    expect(screen.getByRole("tab", { name: "Drawing" }).getAttribute("title")).toBe("Drawing (⌘3)");
+    expect(screen.getByRole("tab", { name: "Parts" }).getAttribute("title")).toBe("Parts (⌘6)");
     expect(screen.getByRole("tab", { name: "Design" }).getAttribute("aria-selected")).toBe("true");
     fireEvent.click(screen.getByRole("tab", { name: "Studies" }));
     expect(activePage.value).toBe("studies");
@@ -176,6 +184,82 @@ describe("StatusLights", () => {
   });
 });
 
+// Plan 7 U2b (R13): the four lights and the Onshape meter fold into one Status button; its card
+// holds the details. The button says the one thing that matters now.
+describe("Status button", () => {
+  const btn = () => screen.getByRole("button", { name: /^Status/ });
+  const card = () => document.getElementById("status-card") as HTMLElement;
+
+  it("one button in the bar; the lights live in its card, which opens and closes", async () => {
+    render(<StatusLights />);
+    expect(card().hidden).toBe(true);
+    expect(card().querySelectorAll("[data-light]")).toHaveLength(4);
+    expect(btn().getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(btn());
+    expect(card().hidden).toBe(false);
+    expect(btn().getAttribute("aria-expanded")).toBe("true");
+    fireEvent.keyDown(card(), { key: "Escape" });
+    expect(card().hidden).toBe(true);
+    await waitFor(() => expect(document.activeElement).toBe(btn()));
+    // Escape also works with focus still on the button (a mouse click leaves it there)
+    fireEvent.click(btn());
+    fireEvent.keyDown(btn(), { key: "Escape" });
+    expect(card().hidden).toBe(true);
+  });
+
+  it("headline: ready, needs you, connecting, core down", async () => {
+    render(<StatusLights />);
+    act(() => { conn.value = "open"; shellStatus.value = { state: "starting" }; });
+    await waitFor(() => expect(btn().textContent).toContain("Ready"));
+    runs.value = new Map([["a", run("a")]]);
+    approvals.value = new Map([["x", { id: "x", run_id: "a", status: "pending" } as unknown as Approval]]);
+    await waitFor(() => expect(btn().textContent).toContain("1 needs you"));
+    expect(btn().getAttribute("aria-label")).toContain("1 needs you");
+    act(() => { conn.value = "reconnecting"; });
+    // what needs you stays in view while the stream reconnects
+    await waitFor(() => expect(btn().textContent).toContain("Connecting · 1 needs you"));
+    act(() => { shellStatus.value = { state: "crashed", code: 1, stderrTail: "x", restarts: 0 }; });
+    await waitFor(() => expect(btn().textContent).toContain("Core down"));
+    expect(btn().querySelector("[data-dot=core] .led")?.className).toContain("led-red");
+  });
+
+  it("core down: a Restart button beside Status restarts the core in one click", async () => {
+    invokeMock.mockClear();
+    render(<StatusLights />);
+    expect(screen.queryByRole("button", { name: "Restart the core" })).toBeNull();
+    act(() => { shellStatus.value = { state: "crashed", code: 1, stderrTail: "x", restarts: 0 }; });
+    fireEvent.click(await screen.findByRole("button", { name: "Restart the core" }));
+    expect(invokeMock).toHaveBeenCalledWith("core_restart");
+  });
+
+  it("the card closes when focus leaves it and the button", async () => {
+    render(<div><StatusLights /><button type="button">elsewhere</button></div>);
+    fireEvent.click(btn());
+    expect(card().hidden).toBe(false);
+    const open = card().querySelector<HTMLButtonElement>(".budget-open, button");
+    // focus moving between the button and the card keeps it open
+    fireEvent.focusOut(btn(), { relatedTarget: open ?? card() });
+    expect(card().hidden).toBe(false);
+    fireEvent.focusOut(btn(), { relatedTarget: screen.getByRole("button", { name: "elsewhere" }) });
+    expect(card().hidden).toBe(true);
+  });
+
+  it("the top bar has no light row; the live Onshape count shows only while Onshape is connected", () => {
+    coreStatus.value = status({ onshape: "not_configured" });
+    applyBudget(BUDGET, null);
+    render(<TopBar />);
+    expect(document.querySelector(".topbar-right > .lights")).toBeNull();
+    expect(screen.getByRole("button", { name: /^Status/ })).toBeTruthy();
+    expect(document.querySelector(".topbar-right .budget-chip")).toBeNull();
+    act(() => { coreStatus.value = status(); });
+    const chip = document.querySelector(".topbar-right .budget-chip") as HTMLElement;
+    expect(chip.textContent).toBe("Onshape 5/2,500");
+    // it sits just before Status
+    expect(chip.nextElementSibling?.classList.contains("status")).toBe(true);
+    resetOnshapeBudget();
+  });
+});
+
 describe("stop all", () => {
   function bindFake(cancelAll: () => Promise<CancelAllResult>): void {
     bindClient({ cancelAll } as unknown as CoreClient);
@@ -289,7 +373,8 @@ describe("ProfileButton", () => {
     const btn = screen.getByRole("button", { name: "Profile" });
     expect(btn.textContent).toBe("Profile");
     await waitFor(() => expect(btn.textContent).toBe("HD"));
-    expect(btn.getAttribute("title")).toBe("Profile · Hartigan Deely");
+    expect(btn.getAttribute("title")).toBe("Profile and settings · Hartigan Deely");
+    expect(btn.querySelector("svg.profile-mark")).not.toBeNull();   // U2b: says what "HD" is
     fireEvent.click(btn);
     expect(profileOpen.value).toBe(true);
     expect(profileSection.value).toBe("profile");

@@ -1,7 +1,7 @@
 // App shell: 44px top bar (--topbar-h; the macOS traffic lights sit on its centre line) across the top. Below it the active page shows:
 //   · Design keeps today's layout — left 240px · viewer · console. Its viewer is either one part
 //     or the build's assembly (ui/assembly/mode: the Part | Assembly switch, ⌥⌘A).
-//   · Studies / Sketch / Drawing / Print render full-width under the top bar.
+//   · Studies / Drawing / Print / Onshape / Parts render full-width under the top bar.
 // The agent console stays on every page as a right-hand panel that can collapse to a 36px rail.
 // The new-run dialog, the Profile panel and the setup gate mount at the root.
 import type { JSX } from "preact";
@@ -26,7 +26,6 @@ import { DirectoryPage } from "./ui/pages/directory";
 import { DrawingPage } from "./ui/pages/drawing";
 import { OnshapePage } from "./ui/pages/onshape";
 import { PrintPage } from "./ui/pages/print";
-import { SketchPage } from "./ui/pages/sketch";
 import { StudiesPage } from "./ui/pages/studies";
 import { ImmersiveRoot } from "./ui/pages/studies/immersive/Immersive";
 import { closeProfile, profileOpen, profileSection } from "./ui/profile/open";
@@ -39,7 +38,6 @@ function PageRegion(): JSX.Element {
   // Design keeps the left pane + viewer; every other page renders full-width.
   switch (activePage.value) {
     case "studies": return <div class="region region-page" data-region="page"><StudiesPage /></div>;
-    case "sketch": return <div class="region region-page" data-region="page"><SketchPage /></div>;
     case "drawing": return <div class="region region-page" data-region="page"><DrawingPage /></div>;
     case "print": return <div class="region region-page" data-region="page"><PrintPage /></div>;
     case "onshape": return <div class="region region-page" data-region="page"><OnshapePage /></div>;

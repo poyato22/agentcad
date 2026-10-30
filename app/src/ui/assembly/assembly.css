@@ -4,9 +4,19 @@
 .asm { display: grid; grid-template-columns: minmax(0, 1fr) 288px; height: 100%; min-height: 0; }
 .asm-sheet { min-width: 0; }
 
-/* the sheet corner (FIG label below); in the Design viewer it sits in .vp-corner after Model | Code */
-.mode-switch { position: absolute; left: 22px; top: 14px; display: flex; z-index: 2; }
-.mode-switch .vt-btn:focus-visible, .viewer-tools .vt-btn:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; z-index: 1; }
+/* Part | Assembly (U2b): the sheet's top-left corner in both modes (in the Design viewer it leads
+   .vp-corner, before Model | Code). A filled segmented control, sentence case, a step larger than
+   the uppercase view toggles: it says which view you are in. The selected half is inverted ink. */
+.mode-switch { position: absolute; left: 22px; top: 14px; z-index: 6; }
+.seg { display: inline-flex; gap: 2px; padding: 2px; background: var(--paper); border: 1px solid var(--line2); }
+.seg-btn {
+  font: var(--fs)/1 var(--font-mono); color: var(--dim); background: transparent; border: 0; border-radius: 0;
+  padding: 5px 14px; cursor: pointer;
+}
+.seg-btn:hover { color: var(--ink); background: var(--paper2); }
+.seg-btn[aria-checked="true"] { color: var(--bg); background: var(--ink); cursor: default; }
+.seg-btn:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
+.viewer-tools .vt-btn:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; z-index: 1; }
 
 .asm-hint {
   position: absolute; left: 22px; bottom: 22px; max-width: calc(100% - 44px);

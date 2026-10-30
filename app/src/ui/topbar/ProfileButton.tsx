@@ -44,7 +44,14 @@ export function ProfileButton(): JSX.Element {
 
   const short = initials(name);
   return (
-    <Button class="profile-btn" aria-label="Profile" title={name ? `Profile · ${name}` : "Profile"} aria-haspopup="dialog"
-      aria-expanded={open} onClick={() => openProfile()}>{short || "Profile"}</Button>
+    // U2b: a person mark before the initials says what the lone "HD" is; the tooltip says it in words
+    <Button class="profile-btn" aria-label="Profile" title={name ? `Profile and settings · ${name}` : "Profile and settings"} aria-haspopup="dialog"
+      aria-expanded={open} onClick={() => openProfile()}>
+      <svg class="profile-mark" width="10" height="11" viewBox="0 0 10 11" aria-hidden="true" focusable="false">
+        <circle cx="5" cy="3" r="2.4" fill="none" stroke="currentColor" stroke-width="1.2" />
+        <path d="M1 10.5c0-2.4 1.8-4 4-4s4 1.6 4 4" fill="none" stroke="currentColor" stroke-width="1.2" />
+      </svg>
+      {short || "Profile"}
+    </Button>
   );
 }

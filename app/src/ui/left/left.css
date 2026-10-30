@@ -1,7 +1,9 @@
 /* Left pane. Blue only for: selected, being changed by an agent. LED colors come from base.css. */
 .left-pane { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .left-pane > .pane { height: auto; flex: 1 1 0; border-bottom: 1px solid var(--line); }
-.left-pane > .pane:last-child { border-bottom: 0; flex: 1.4 1 0; }
+.left-pane > .pane:last-child { border-bottom: 0; }
+/* Parts gets most of the height: it is what you work from; History is a short trail under it */
+.left-pane > .left-parts { flex: 1.8 1 0; }
 
 .left-list, .step-list { list-style: none; margin: 0; padding: 0; }
 .left-row {
@@ -118,7 +120,6 @@
 .tree-menu-item:hover:not([disabled]), .tree-menu-item:focus-visible { background: var(--paper2); outline: none; }
 .tree-menu-item[disabled] { color: var(--faint); cursor: default; }
 .tree-error { padding: 4px 8px; color: var(--red); font-size: var(--fs-small); }
-.left-build { color: var(--dim); max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: bottom; }
 
 /* color picker: a legend panel under the row */
 .cpick { margin: 2px 8px 6px 22px; padding: 6px; border: 1px solid var(--line2); background: var(--paper); display: flex; flex-direction: column; gap: 6px; }

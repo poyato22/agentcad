@@ -1,4 +1,4 @@
-// Full-width page scaffold used by the Studies / Sketch / Drawing / Print pages. It renders a page
+// Full-width page scaffold used by the Studies / Drawing / Print / Onshape / Parts pages. It renders a page
 // header with the title and a scrolling body. The page sits under the top bar, so its header is
 // already clear of the macOS traffic lights (which only cover the top-left of the window).
 // Tasks 6–8 keep this wrapper and fill `children`.

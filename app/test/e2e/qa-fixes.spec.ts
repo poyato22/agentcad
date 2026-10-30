@@ -267,10 +267,12 @@ test("B2_2_view_result_is_offered_only_for_kept_variants", async ({ page, fake }
 test("A7_the_budget_meter_shows_idle_when_onshape_is_not_connected", async ({ page, fake }) => {
   await fake.reset("base");   // onshape: not_configured
   await open(page);
-  await page.keyboard.press("Meta+Digit6");
+  await page.keyboard.press("Meta+Digit5");   // Onshape (Plan 7 U2b renumbered the tabs)
+  await page.getByRole("button", { name: /^Status/ }).click();   // the meter lives in the Status card
   const meter = page.locator(".budget");
+  await expect(meter).toBeVisible();
   await expect(meter).toHaveAttribute("data-state", "idle");
-  await expect(meter.getByRole("button")).toHaveAttribute("aria-label", /not connected.*0 of 2,500/);
+  await expect(meter).toHaveAttribute("aria-label", /not connected.*0 of 2,500/);
   await expect(page.locator('[data-light="onshape"]')).toHaveAttribute("title", /Onshape not set up/);
 });
 

@@ -10,6 +10,11 @@ test.beforeEach(async ({ fake }) => { await fake.reset("builds"); });
 test.afterEach(async ({ fake }) => { await fake.reset("base"); });
 
 const tree = (page: Page) => page.getByTestId("part-tree");
+/** Picks an item from the viewer's View menu (Plan 7 U2b: the display controls live there). */
+async function viewMenu(page: Page, item: string): Promise<void> {
+  await page.getByRole("button", { name: "View options" }).click();
+  await page.locator("#view-menu [role^=menuitem]", { hasText: item }).click();
+}
 const callsTo = async (fake: FakeControl, method: string, path: string | RegExp): Promise<FakeCall[]> =>
   (await fake.calls()).filter((c) => c.method === method && (typeof path === "string" ? c.path === path : path.test(c.path)));
 
@@ -79,42 +84,8 @@ test("color_a_part_from_the_palette_and_the_viewer_paints_it", async ({ page, fa
   expect((await callsTo(fake, "PATCH", "/parts/top_plate")).at(-1)?.body).toEqual({ color: "#2f9a9c" });
   await expect(page.getByTestId("viewer-canvas")).toHaveAttribute("data-shown", "top_plate:#2f9a9c");
   // the whole build: both parts, each in its color
-  await page.getByRole("button", { name: "build", exact: true }).click();
+  await viewMenu(page, "Whole build");
   await expect(page.getByTestId("viewer-canvas")).toHaveAttribute("data-shown", "quad_arm:#d9822b top_plate:#2f9a9c");
-});
-
-test("change_a_variable_and_it_rebuilds_with_your_line_in_the_thread", async ({ page, fake }) => {
-  await open(page);
-  await tree(page).getByRole("button", { name: "Quad arm", exact: true }).click();
-  const field = page.getByTestId("var-thickness");
-  await expect(field).toHaveValue("5");
-  await expect(page.locator('[data-var="thickness"] .var-range')).toHaveText("2 – 12");
-  await expect(page.locator('[data-var="length"] .var-range')).toHaveText("~15 – 240");
-  // the scale: two arrow presses = +1 mm on a 0.5 step, debounced into one rebuild
-  await page.getByRole("slider", { name: "thickness (mm)" }).focus();
-  await page.keyboard.press("ArrowRight");
-  await page.keyboard.press("ArrowRight");
-  await expect.poll(async () => (await callsTo(fake, "POST", "/parts/quad_arm/vars")).length).toBe(1);
-  expect((await callsTo(fake, "POST", "/parts/quad_arm/vars"))[0].body).toEqual({ vars: { thickness: 6 }, base_version: 5 });
-  await expect(field).toHaveValue("6");
-  await expect(page.locator("[data-you-edit] .cv-body").last()).toHaveText("You · changed thickness 5 → 6 mm on Quad arm");
-});
-
-test("an_agent_edit_mid_change_asks_reload_or_keep_mine", async ({ page, fake }) => {
-  await open(page);
-  await tree(page).getByRole("button", { name: "Quad arm", exact: true }).click();
-  const field = page.getByTestId("var-thickness");
-  await field.fill("8");                                   // started from version 5
-  await fake.agentEdit({ part_id: "quad_arm", vars: { thickness: 5.5 }, run_id: "a3quadrun001", summary: "set thickness=5.5" });
-  await expect(tree(page).locator('[data-part="quad_arm"] .tree-row')).toHaveAttribute("data-flash", "");   // the agent's edit flashes the row
-  await field.press("Enter");
-  const alert = page.locator("[data-conflict]");
-  await expect(alert).toContainText("changed this part (now thickness 5.5) while you were editing.");
-  await alert.getByRole("button", { name: "Keep mine" }).click();
-  await expect(alert).toHaveCount(0);
-  const posts = await callsTo(fake, "POST", "/parts/quad_arm/vars");
-  expect(posts.map((c) => (c.body as { base_version: number }).base_version)).toEqual([5, 6]);
-  await expect(field).toHaveValue("8");
 });
 
 test("click_a_face_to_add_a_hole_there", async ({ page, fake }) => {
@@ -184,7 +155,7 @@ test("modify_from_the_part_menu_rounds_an_edge", async ({ page, fake }) => {
 test("code_tab_edit_save_and_a_conflict", async ({ page, fake }) => {
   await open(page);
   await tree(page).getByRole("button", { name: "Quad arm", exact: true }).click();
-  await page.getByRole("tab", { name: "Code" }).click();
+  await viewMenu(page, "Part script");
   const editor = page.getByTestId("source-editor");
   await expect(editor.locator(".cm-content")).toContainText('"thickness": 4.0,  # mises: min=2 max=12');
   await expect(editor.locator(".cm-mises-op")).toHaveCount(0);
@@ -216,7 +187,7 @@ test("code_tab_edit_save_and_a_conflict", async ({ page, fake }) => {
 test("a_failed_rebuild_names_the_op", async ({ page }) => {
   await open(page);
   await tree(page).getByRole("button", { name: "Quad arm", exact: true }).click();
-  await page.getByRole("tab", { name: "Code" }).click();
+  await viewMenu(page, "Part script");
   const editor = page.getByTestId("source-editor");
   await expect(editor.locator(".cm-content")).toContainText("Box(");
   await editor.locator(".cm-content").click();

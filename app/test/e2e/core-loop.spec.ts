@@ -48,10 +48,8 @@ test.afterEach(async ({ fake }) => { await fake.reset("base"); });
 
 test("create_run_to_merge", async ({ page, fake }) => {
   await open(page);
-  const v = page.getByTestId("var-thickness");
-  await expect(v).toHaveValue("5");
-  await expect(v).not.toHaveAttribute("data-changed", "true");
-  // the viewer shows the 5 mm plate first
+  // the viewer shows the 5 mm plate first (Plan 7 U2b: no Variables panel; the model and the
+  // thread's diff show the change)
   await expect(page.getByTestId("viewer-canvas")).toHaveAttribute("data-bbox-size", "40.00,20.00,5.00", { timeout: 15_000 });
   const firstGlb = (await fake.calls()).filter((c) => c.path === "/parts/mount_plate/model.glb");
   expect(firstGlb).toHaveLength(1);
@@ -69,11 +67,6 @@ test("create_run_to_merge", async ({ page, fake }) => {
   await expect(page.locator('[data-row][data-key="c:c1"]')).toContainText("mirror_part_list");
   await expect(rows(page, "diff")).toHaveCount(1);
   await expect(rows(page, "diff")).toContainText("Part · mount plate");
-
-  // Variables: thickness turns blue 5.00 → 6.00
-  await expect(v).toHaveValue("6");
-  await expect(v).toHaveAttribute("data-changed", "true");
-  await expect(v).toHaveCSS("color", "rgb(141, 186, 255)");
 
   // the viewer reloads the new GLB, revalidating with the ETag it had
   await expect(page.getByTestId("viewer-canvas")).toHaveAttribute("data-bbox-size", "40.00,20.00,6.00", { timeout: 15_000 });
@@ -216,7 +209,7 @@ async function midRun(page: Page, fake: FakeControl): Promise<void> {
   // (here the start time), never by a counter
   const second = await startRun(page, fake, "make the plate 6 mm wide");
   await expect(page.locator(`[data-card][data-approval="ap_${second}"]`)).toBeVisible();
-  await expect(page.getByTestId("var-thickness")).toHaveAttribute("data-changed", "true");
+  await expect(page.getByTestId("viewer-canvas")).toHaveAttribute("data-bbox-size", "40.00,20.00,6.00", { timeout: 15_000 });
   await expect(page.getByRole("button", { name: /^▸ \d+ more tool calls/ }).first()).toBeVisible();
   await page.mouse.move(0, 0);
   await page.evaluate(() => { (document.activeElement as HTMLElement | null)?.blur(); });
@@ -286,9 +279,9 @@ test("topbar_zones_never_overlap_with_busy_lights", async ({ page, fake }) => {
       return b;
     };
     const tabs = await box(".tabs");
-    const lights = await box(".lights");
+    const lights = await box(".status-btn");   // U2b: the lights fold into the Status button
     const crumb = await box(".crumb");
-    expect(lights.x, `lights overlap the tabs at ${width}px`).toBeGreaterThanOrEqual(tabs.x + tabs.width);
+    expect(lights.x, `status overlaps the tabs at ${width}px`).toBeGreaterThanOrEqual(tabs.x + tabs.width);
     expect(crumb.x + crumb.width, `breadcrumb overlaps the tabs at ${width}px`).toBeLessThanOrEqual(tabs.x);
     await expect(page.getByRole("button", { name: "STOP ALL" })).toBeInViewport({ ratio: 1 });
   }

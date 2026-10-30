@@ -2,8 +2,12 @@
 //
 // Ruling (A4): Assembly is a toggle on the Design page, not a sixth tab. It keeps the left pane
 // (the build's parts, which is where you add from) and the console beside it, with no page
-// shortcut shuffle (⌘1–7 stay the pages, ⇧⌘A the agent manager). The switch sits in the sheet's
-// top-left corner, after Model | Code; ⌥⌘A flips it from anywhere on the Design page. The choice is remembered per Mac.
+// shortcut shuffle (⌘1–6 stay the pages, ⇧⌘A the agent manager). ⌥⌘A flips it from anywhere on
+// the Design page. The choice is remembered per Mac.
+//
+// Plan 7 U2b (R13): the switch is the first thing in the sheet's top-left corner, in the same spot
+// in both modes (Model | Code follows it in Part mode), drawn as a filled segmented control so it
+// reads as "which view am I in", not as one more view toggle.
 import { signal, type Signal } from "@preact/signals";
 import type { JSX } from "preact";
 import { isTrustedKey, registerShortcut } from "../../lib/keys";
@@ -36,11 +40,11 @@ export function installModeShortcut(isDesign: () => boolean): () => void {
   });
 }
 
-/** The Part | Assembly switch, under the Design sheet's FIG label. */
+/** The Part | Assembly segmented control, first in the Design sheet's top-left corner. */
 export function ModeSwitch(): JSX.Element {
   const mode = designMode.value;
-  const btn = (m: DesignMode, text: string) => (
-    <button type="button" role="radio" class="vt-btn" aria-checked={mode === m} data-active={mode === m} data-selected={(mode === m) ? "" : undefined}
+  const btn = (m: DesignMode, text: string, hint: string) => (
+    <button type="button" role="radio" class="seg-btn" aria-checked={mode === m} data-active={mode === m} data-selected={(mode === m) ? "" : undefined}
       tabIndex={mode === m ? 0 : -1} onClick={() => setDesignMode(m)}
       onKeyDown={(e) => {
         if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
@@ -50,12 +54,12 @@ export function ModeSwitch(): JSX.Element {
           (e.currentTarget.parentElement?.querySelector(`[data-mode=${next}]`) as HTMLButtonElement | null)?.focus();
         }
       }}
-      data-mode={m} title={`${text} (⌥⌘A)`}>{text}</button>
+      data-mode={m} title={`${hint} (⌥⌘A)`}>{text}</button>
   );
   return (
-    <div class="mode-switch" role="radiogroup" aria-label="Design mode" data-testid="mode-switch">
-      {btn("part", "part")}
-      {btn("assembly", "assembly")}
+    <div class="mode-switch seg" role="radiogroup" aria-label="Part or assembly" data-testid="mode-switch">
+      {btn("part", "Part", "One part at a time")}
+      {btn("assembly", "Assembly", "The whole build, put together")}
     </div>
   );
 }

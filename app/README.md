@@ -24,6 +24,19 @@ cd ../core && uv sync
 | Unit tests / lint / e2e | `npm test` / `npm run lint` / `npm run e2e` |
 | Real-core smoke run | `scripts/smoke-real-core.sh` |
 
+## Keyboard shortcuts
+
+The page tabs were renumbered when the Sketch page was removed (Plan 7).
+
+| Keys | Action |
+| --- | --- |
+| ⌘1 · ⌘2 · ⌘3 · ⌘4 · ⌘5 · ⌘6 | Design · Studies · Drawing · Print · Onshape · Parts |
+| ⌥⌘A | Switch the Design view between Part and Assembly |
+| ⌘N | Start a new agent run |
+| ⌘K | Focus the agent console's command line |
+| ⇧⌘A | Open the agent manager |
+| ⇧⌘. | Stop all runs |
+
 ## Build a dev `.app`
 
 ```sh

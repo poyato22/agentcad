@@ -22,7 +22,6 @@ import { directoryFrom, directoryRoutes, type DirectoryScenario, type FakeDirect
 import { printingFrom, printingRoutes, stopPrinting, type FakePrinting, type PrintScenario } from "./printing";
 import { setupFrom, setupRoutes, type FakeSetup, type SetupScenario } from "./setup";
 import { cancelSimsOfRun, clearSimTimers, simRoutes, simsFrom, type FakeSims, type SimScenario } from "./sims";
-import { checkRunSketch, sketchRoutes, sketchUserPayload, type FakeSketch } from "./sketch";
 import { importRoutes, parseMultipart, type FakeImport } from "./imports";
 import { specFrom, specRoutes, type FakeSpec, type SpecScenario } from "./spec";
 
@@ -182,8 +181,6 @@ export interface FakeState {
   /** Downloads in flight: model -> their pending progress timers (POST /local/pull/cancel clears them). */
   pulling: Map<string, ReturnType<typeof setTimeout>[]>;
   sims: FakeSims;
-  /** POST /sketches uploads, by sketch_id. */
-  sketches: Map<string, FakeSketch>;
   /** Plan 7 U5: POST /imports/drawing uploads, by import_id. */
   imports: Map<string, FakeImport>;
   print: FakePrinting;
@@ -260,7 +257,6 @@ function stateFrom(sc: Scenario, token: string): FakeState {
     setup: withBuildTabs(setupFrom(sc), sc.builds),
     local: sc.local ? structuredClone(sc.local) : null, localPullMs: sc.local_pull_ms ?? 120, stopDelayMs: sc.stop_delay_ms ?? 0, pulling: new Map(),
     sims: simsFrom(sc.sims),
-    sketches: new Map(),
     imports: new Map(),
     print: printingFrom(sc.print),
     system: sc.system ? structuredClone(sc.system) : structuredClone(DEFAULT_SYSTEM_CHECK),
@@ -627,7 +623,6 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         if (modelRef !== undefined && modelRef !== null && typeof modelRef !== "string") throw wrongType("model_ref", "string", modelRef);
         strList(b, "edit_scope", ["*"]);
         strList(b, "read_scope", ["*"]);
-        const sketchId = checkRunSketch(b.sketch_id, state.sketches);
         // C1: an explicit build for the run (the app always sends it); unknown or trashed → 404
         const projectId = b.project_id;
         if (projectId !== undefined && projectId !== null && typeof projectId !== "string") throw wrongType("project_id", "string", projectId);
@@ -657,9 +652,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         const queued = limit !== undefined && working >= limit;
         const run = newRun(agent, vendor, model, prompt, claude, queued ? "queued" : "running");
         if (typeof projectId === "string") run.project_id = projectId;
-        // a sketch run's user step: like the core, the words sent plus the sketch as `context`
-        const sk = sketchId ? state.sketches.get(sketchId) : undefined;
-        appendStep({ kind: "message", payload: sk ? sketchUserPayload(prompt, sk) : { role: "user", text: prompt } }, run.id);
+        appendStep({ kind: "message", payload: { role: "user", text: prompt } }, run.id);
         if (queued) {
           emit({ type: "run_queued", run_id: run.id, data: { agent, provider: vendor, model, limit } });
           return { run_id: run.id };
@@ -977,7 +970,6 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       sims: () => state.sims, parts: () => state.parts, defaultMaterial: () => state.setup.profile.default_material,
       newRun, emit,
     }),
-    ...sketchRoutes(() => state.sketches),
     ...importRoutes({
       get: () => state.imports, parts: () => state.parts, setParts: (p) => { state.parts = p; }, emit: (ev) => { emit(ev); },
       activeProject: () => (state.setup.profile as { active_project_id?: string | null }).active_project_id ?? state.builds.defaultId ?? DEFAULT_PROJECT,

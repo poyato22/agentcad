@@ -1,9 +1,11 @@
-/* Full-width pages (Studies/Sketch/Drawing/Print). Plan tokens only, square corners, same look as
+/* Full-width pages (Studies/Drawing/Print/Onshape/Parts). Plan tokens only, square corners, same look as
    the panes. The page sits under the top bar, so its header never meets the traffic lights. */
 .page { display: flex; flex-direction: column; height: 100%; background: var(--paper); min-height: 0; }
+/* U2b: the header strip only repeated the active top tab ("STUDIES" under Studies), so it is
+   visually hidden; the h1 stays for screen readers and the page keeps the 24px. */
 .page-head {
-  flex: none; height: var(--pane-head-h); display: flex; align-items: center; gap: 8px; padding: 0 12px;
-  border-bottom: 1px solid var(--line); background: var(--head);
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
 }
 .page-title {
   font: 700 var(--fs-label)/1 var(--font-head);
