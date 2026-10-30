@@ -1,7 +1,11 @@
-// Pure model for the interview card: the per-question answer state and how it serializes into the
-// JSON object the core's ui_ask_user expects (`{id: value}`, parsed by core _batch_answers). A
-// single-select answers with the chosen string; multi-select with an array; a ranked question with
-// the chosen options in order; a free-text answer overrides when the user typed something.
+// Pure model for the interview card: the per-question draft and how it serializes into the JSON
+// object the core's ui_ask_user expects (`{id: value}`, parsed by core _batch_answers). Ported from
+// A7's spec card (ba9fce9 ui/spec/model.ts):
+//   · single — one answer: the chip, or the typed text; whichever the user touched last wins and
+//     the other is cleared, so what is shown is what is sent;
+//   · multi — the picked chips plus the typed text (both are sent);
+//   · rank — every option, pre-filled in the given order and reordered with Move up/down
+//     (Alt+↑/↓); the full order is always sent (typed text replaces it).
 import type { AskItem } from "../../../api/types";
 
 /** The intro line: the core appends every prompt to `question` for older UIs ("…\n1. …");
@@ -11,47 +15,67 @@ export function introOf(question: string): string {
   return (listed >= 0 ? question.slice(0, listed) : question).trim();
 }
 
-/** What the user has entered for one sub-question. */
-export interface ItemAnswer {
-  /** Picked options, in click order (rank uses the order; single keeps the last one only). */
-  picks: string[];
-  /** Free-text answer (used when non-empty, or when the question has no options). */
-  text: string;
+/** What the user has picked or typed for one question. `order` is the rank order (rank kind). */
+export interface AnswerDraft { picks: string[]; text: string; order: string[] }
+export type InterviewDraft = Record<string, AnswerDraft>;
+
+const blank = (q: AskItem): AnswerDraft => ({ picks: [], text: "", order: q.rank ? [...q.options] : [] });
+
+export function emptyDraft(items: readonly AskItem[]): InterviewDraft {
+  return Object.fromEntries(items.map((q) => [q.id, blank(q)]));
 }
 
-export function emptyAnswers(items: AskItem[]): Record<string, ItemAnswer> {
-  return Object.fromEntries(items.map((q) => [q.id, { picks: [], text: "" }]));
+/** Toggle an option chip: single replaces (and clears typed text), multi adds/removes. */
+export function pick(draft: InterviewDraft, q: AskItem, option: string): InterviewDraft {
+  const cur = draft[q.id] ?? blank(q);
+  const picks = q.multi
+    ? (cur.picks.includes(option) ? cur.picks.filter((p) => p !== option) : [...cur.picks, option])
+    : (cur.picks[0] === option ? [] : [option]);
+  return { ...draft, [q.id]: { ...cur, picks, text: q.multi ? cur.text : "" } };
 }
 
-/** Toggle an option for a sub-question, honouring single vs multi vs rank. */
-export function togglePick(item: AskItem, current: string[], option: string): string[] {
-  const has = current.includes(option);
-  if (!item.multi && !item.rank) return has ? [] : [option];     // single-select
-  if (has) return current.filter((o) => o !== option);           // deselect (multi / rank)
-  return [...current, option];                                   // add (order matters for rank)
+/** Typed text. For a single question, typing something clears the picked chip. */
+export function setText(draft: InterviewDraft, q: AskItem, text: string): InterviewDraft {
+  const cur = draft[q.id] ?? blank(q);
+  return { ...draft, [q.id]: { ...cur, text, picks: q.multi || q.rank || !text.trim() ? cur.picks : [] } };
 }
 
-/** The value sent for one sub-question, or undefined when it has no answer yet. */
-export function itemValue(item: AskItem, a: ItemAnswer): string | string[] | undefined {
-  const text = a.text.trim();
-  if (text !== "") return text;                 // free text always wins
-  if (a.picks.length === 0) return undefined;
-  if (item.multi || item.rank) return a.picks;  // array (ranked = ordered)
-  return a.picks[0];                            // single
+/** Move a ranked option up (-1) or down (+1). */
+export function move(draft: InterviewDraft, q: AskItem, option: string, delta: -1 | 1): InterviewDraft {
+  const cur = draft[q.id];
+  if (!cur) return draft;
+  const i = cur.order.indexOf(option);
+  const j = i + delta;
+  if (i < 0 || j < 0 || j >= cur.order.length) return draft;
+  const order = [...cur.order];
+  [order[i], order[j]] = [order[j], order[i]];
+  return { ...draft, [q.id]: { ...cur, order } };
 }
 
-/** The JSON-serializable answer object for the whole batch ({id: value}). */
-export function batchAnswer(items: AskItem[], answers: Record<string, ItemAnswer>): Record<string, string | string[]> {
+/** The value sent for one question, or null while it is unanswered. Single: the typed text, else
+ *  the chip. Multi: the chips, plus the typed text. Rank: the full order (typed text replaces it). */
+export function answerOf(q: AskItem, a: AnswerDraft | undefined): string | string[] | null {
+  if (!a) return null;
+  const text = q.allow_text ? a.text.trim() : "";
+  if (q.rank) return text || (a.order.length === q.options.length && a.order.length > 0 ? a.order : null);
+  if (q.multi) {
+    const all = text ? [...a.picks, text] : a.picks;
+    return all.length ? all : null;
+  }
+  return text || a.picks[0] || null;
+}
+
+/** {id: value} for every answered question (the core's batch answer). */
+export function buildAnswers(items: readonly AskItem[], draft: InterviewDraft): Record<string, string | string[]> {
   const out: Record<string, string | string[]> = {};
   for (const q of items) {
-    const v = itemValue(q, answers[q.id] ?? { picks: [], text: "" });
-    if (v !== undefined) out[q.id] = v;
+    const v = answerOf(q, draft[q.id]);
+    if (v !== null) out[q.id] = v;
   }
   return out;
 }
 
-/** True once every sub-question that must be answered has an answer. A question with options but
- *  no free text must be picked; an open (text-only) question must be typed. */
-export function isComplete(items: AskItem[], answers: Record<string, ItemAnswer>): boolean {
-  return items.every((q) => itemValue(q, answers[q.id] ?? { picks: [], text: "" }) !== undefined);
+/** The questions still unanswered (Send waits for none). */
+export function unanswered(items: readonly AskItem[], draft: InterviewDraft): AskItem[] {
+  return items.filter((q) => answerOf(q, draft[q.id]) === null);
 }

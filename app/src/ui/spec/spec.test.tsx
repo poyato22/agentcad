@@ -79,7 +79,7 @@ describe("interview card (real batched question_asked)", () => {
     const size = card.querySelector('[data-q="size_class"]') as HTMLElement;
     fireEvent.input(within(size).getByRole("textbox"), { target: { value: "4 inch" } });
     expect(send.disabled).toBe(true);
-    expect(card.textContent).toContain("Answer every question to send.");
+    expect(card.querySelector("[data-open]")!.textContent).toBe("Answer 3 to send.");
     fireEvent.click(within(card.querySelector('[data-q="motor_prop"]') as HTMLElement).getByRole("button", { name: "2207" }));
     expect(send.disabled).toBe(false);
 
@@ -90,7 +90,7 @@ describe("interview card (real batched question_asked)", () => {
     await waitFor(() => expect(questions.value.size).toBe(0));
   });
 
-  it("ranks in the order the options are picked and sends that order", async () => {
+  it("ranks with the move buttons and sends the full order", async () => {
     await start();
     core.emit({ type: "question_asked", run_id: "b7c79a57cbb4", data: {
       question_id: "q_rank", question: "Last one:\n1. Rank", options: [],
@@ -99,7 +99,8 @@ describe("interview card (real batched question_asked)", () => {
     const q = core.state.questions.get("q_rank") as Question;
     render(<QuestionCard question={q} runLabel="engineer" />);
     clock += 500;
-    for (const o of ["stiffness", "weight", "impact strength"]) fireEvent.click(screen.getByRole("button", { name: o }));
+    fireEvent.click(screen.getByRole("button", { name: "Move stiffness up" }));
+    fireEvent.click(screen.getByRole("button", { name: "Move stiffness up" }));
     fireEvent.click(screen.getByRole("button", { name: "Send answers" }));
     await waitFor(() => expect(calls("/answer")).toHaveLength(1));
     expect(JSON.parse((calls("/answer")[0].body as { text: string }).text)).toEqual({ priorities: ["stiffness", "weight", "impact strength"] });

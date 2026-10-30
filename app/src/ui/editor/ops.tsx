@@ -10,7 +10,7 @@ import { buildErrorLine, type OpKind, type OpRequest, type PartEdge } from "../.
 import { CoreError } from "../../api/client";
 import type { PartFace, PartSummary, Vec3 } from "../../api/types";
 import { partName } from "../../lib/names";
-import { fmtNum, knownVersions, noteMyEdit } from "../../state/partEdits";
+import { fmtNum, knownVersions, noteMyEdit, trackEdit } from "../../state/partEdits";
 import { actions } from "../../state/store";
 import { describeEdge, describeFace } from "../viewer/pick";
 import "./editor.css";
@@ -121,7 +121,7 @@ export function OpsMenu({ part, target, baseVersion, keyboard, at, bounds, onTar
     setBusy(true);
     setError(null);
     try {
-      const r = await actions.client().partOp(part.part_id, req, baseVersion);
+      const r = await trackEdit(part.part_id, actions.client().partOp(part.part_id, req, baseVersion));
       noteMyEdit(part.part_id, r.version, describeOp(req, name));
       onClose();
     } catch (err) {

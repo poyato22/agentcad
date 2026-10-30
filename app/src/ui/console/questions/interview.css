@@ -11,7 +11,7 @@
 }
 .icard-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .icard-flag { color: var(--blue2); font: 600 var(--fs-label)/1.4 var(--font-head); letter-spacing: .14em; }
-.icard-run { margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.icard-run { margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .icard-intro { margin: 6px 0 2px; color: var(--ink); }
 
 .icard-list { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
@@ -29,11 +29,20 @@
 .icard-opt:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
 .icard-opt.on { border-color: var(--blue); background: var(--blue); color: var(--on-blue); }
 .icard-opt[disabled] { opacity: .5; cursor: default; }
-.icard-rank {
-  display: inline-grid; place-items: center; min-width: 15px; height: 15px; padding: 0 3px;
-  border-radius: 8px; background: var(--on-blue); color: var(--blue);
-  font-size: var(--fs-label); font-weight: 700;
-}
+.icard-n { display: inline-block; min-width: 14px; font-weight: 400; font-variant-numeric: tabular-nums; }
+.icard-q[data-answered] .icard-n { color: var(--ink); }
+.icard-count { font-size: var(--fs-small); white-space: nowrap; }
+
+/* rank: the full order, reordered with the arrow buttons or Alt+↑/↓ on a row */
+.icard-rankl { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+.icard-rank-row { display: flex; align-items: center; gap: 6px; padding: 2px; border-bottom: 1px solid var(--line); }
+.icard-rank-row:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
+.icard-rank-n { width: 14px; color: var(--faint); font-variant-numeric: tabular-nums; }
+.icard-rank-label { flex: 1; min-width: 0; color: var(--ink); }
+.icard-mv { font: inherit; background: var(--paper); border: 1px solid var(--line2); color: var(--dim); width: 22px; height: 20px; padding: 0; cursor: pointer; border-radius: 0; }
+.icard-mv:hover:not(:disabled) { color: var(--ink); border-color: var(--dim); }
+.icard-mv:disabled { color: var(--line2); cursor: default; }
+.icard-mv:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
 
 .icard-text { width: 100%; min-width: 0; margin-top: 2px; }
 

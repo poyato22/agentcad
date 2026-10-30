@@ -6,6 +6,7 @@
 // reloads; while it has unsaved changes the editor says so before the save is refused.
 import { buildErrorLine, editConflictSchema, type PartEditResult, type PartSource } from "../../api/builds";
 import { CoreError, type CoreClient } from "../../api/client";
+import { trackEdit } from "../../state/partEdits";
 
 export type SourceStatus =
   | { kind: "loading" }
@@ -76,7 +77,7 @@ export class SourceSession {
     this.status = { kind: "saving" };
     this.changed();
     try {
-      const r = await this.deps.client().putPartSource(this.partId, sent, this.base);
+      const r = await trackEdit(this.partId, this.deps.client().putPartSource(this.partId, sent, this.base));
       this.deps.onSaved(r);
       // the core may rewrite the script after a build (refreshed op references): re-read it,
       // unless the user typed on meanwhile

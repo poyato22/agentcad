@@ -5,6 +5,7 @@
 // One request at a time; changes made meanwhile go out next, on top of the version it returned.
 import { buildErrorLine, editConflictSchema, type PartEditResult } from "../../api/builds";
 import { CoreError, type CoreClient } from "../../api/client";
+import { trackEdit } from "../../state/partEdits";
 
 export type VarsStatus =
   | { kind: "idle" }
@@ -88,7 +89,7 @@ export class VarsEditor {
     this.status = { kind: "saving" };
     this.changed();
     try {
-      const result = await this.deps.client().setPartVars(this.partId, sent, this.base);
+      const result = await trackEdit(this.partId, this.deps.client().setPartVars(this.partId, sent, this.base));
       if (this.disposed) return;
       this.inflight = null;
       this.base = result.version;
