@@ -44,7 +44,10 @@ function resolve(p: PartSummary, ref: unknown): Item {
   if (k === "face_id") {
     const f = p.metrics?.face_list?.find((x) => x.id === v);
     if (!f) throw mises("not_found", `face '${String(v)}' is not on this version of the part; pick again`);
-    return { kind: "face", id: f.id, type: f.type, area: f.area, center: f.center, ...(f.normal ? { normal: f.normal } : {}), ...(f.radius !== undefined ? { radius: f.radius } : {}) };
+    // a hole's wall: area = π · d · depth (older metrics carry no radius)
+    const wall = f.type === "cylinder" ? p.metrics?.holes.find((x) => Math.abs(Math.PI * x.diameter_mm * x.depth_mm - f.area) < 0.05) : undefined;
+    const radius = f.radius ?? (wall ? wall.diameter_mm / 2 : undefined);
+    return { kind: "face", id: f.id, type: f.type, area: f.area, center: f.center, ...(f.normal ? { normal: f.normal } : {}), ...(radius !== undefined ? { radius } : {}) };
   }
   if (k === "edge_id") {
     const e = p.metrics?.edge_list?.find((x) => x.id === v);
@@ -55,11 +58,13 @@ function resolve(p: PartSummary, ref: unknown): Item {
       const dir = e.direction;
       return { kind: "edge", id: e.id, type: e.type, length: e.length, start: [c[0] - dir[0] * h, c[1] - dir[1] * h, c[2] - dir[2] * h], end: [c[0] + dir[0] * h, c[1] + dir[1] * h, c[2] + dir[2] * h], direction: dir };
     }
-    // a hole's ring: the centre on the hole's axis (the fake has no curve, only the metrics)
-    const hole = p.metrics?.holes.find((x) => e.radius !== undefined && Math.abs(x.diameter_mm - 2 * e.radius) < 1e-3);
+    // a hole's ring: the hole whose circumference is this edge's length (older metrics carry no
+    // radius), its centre on the hole's axis (the fake has no curve, only the metrics)
+    const hole = p.metrics?.holes.find((x) => e.radius !== undefined ? Math.abs(x.diameter_mm - 2 * e.radius) < 1e-3 : Math.abs(Math.PI * x.diameter_mm - e.length) < 0.01);
+    const radius = e.radius ?? (hole ? hole.diameter_mm / 2 : undefined);
     const axis: V = hole ? [hole.axis[0], hole.axis[1], hole.axis[2]] : [0, 0, 1];
     const centre: V = hole ? [hole.center[0], hole.center[1], c[2]] : c;
-    return { kind: "edge", id: e.id, type: e.type, length: e.length, ...(e.radius !== undefined ? { radius: e.radius, center: centre, axis, arc_deg: 360 } : {}) };
+    return { kind: "edge", id: e.id, type: e.type, length: e.length, ...(radius !== undefined ? { radius, center: centre, axis, arc_deg: 360 } : {}) };
   }
   if (k === "point") {
     if (!Array.isArray(v) || v.length !== 3 || !v.every((c) => typeof c === "number")) throw bad("point must be [x, y, z] in mm");
