@@ -23,6 +23,9 @@ import { RunStatus } from "./RunStatus";
 import { StudyCardSlot } from "./studycard";
 import { buildUserEdits } from "../../state/partEdits";
 import { editsForRun, weave } from "./userEditLines";
+import { announcementsForRun } from "../../state/announcements";
+import { weaveAnnouncements } from "./announceLines";
+import { AnnouncementCard } from "./AnnouncementCard";
 
 const AT_BOTTOM_PX = 24;
 /** Rows rendered at once (the last ones); "show earlier" adds this many more. Same as StepLog. */
@@ -103,9 +106,12 @@ export function Conversation(): JSX.Element {
       <div class="cv-thread" ref={scroller} onScroll={onScroll} role="log" aria-label="Conversation" aria-live="off" data-conversation>
         {start > 0 && <button type="button" class="cv-earlier" onClick={showEarlier}>{`Show earlier (${start})`}</button>}
         {!run && items.length === 0 && <Empty />}
-        {weave(shown, editsForRun(buildUserEdits.value, run ?? null)).map((r) => (r.kind === "you"
-          ? <div key={r.line.key} class="cv-item" data-key={r.line.key}><YouLine text={r.line.text} /></div>
-          : <div key={r.item.key} class="cv-item" data-key={r.item.key}><Item item={r.item} agent={run?.agent ?? "agent"} /></div>))}
+        {weaveAnnouncements(weave(shown, editsForRun(buildUserEdits.value, run ?? null)), announcementsForRun(run?.id ?? null)).map((r) => (
+          r.kind === "you"
+            ? <div key={r.line.key} class="cv-item" data-key={r.line.key}><YouLine text={r.line.text} /></div>
+            : r.kind === "announce"
+              ? <div key={r.announcement.id} class="cv-item" data-key={r.announcement.id}><AnnouncementCard announcement={r.announcement} /></div>
+              : <div key={r.item.key} class="cv-item" data-key={r.item.key}><Item item={r.item} agent={run?.agent ?? "agent"} /></div>))}
         {run && items.length === 0 && run.task && (
           <Item item={{ kind: "user", key: "task", text: run.task, ts: run.created_at, stepIds: [] }} agent={run.agent} />
         )}

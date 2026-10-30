@@ -7,6 +7,7 @@ import { stepSchema } from "../../api/schemas";
 import type { AgentRun, CoreStatusInfo, Step } from "../../api/types";
 import { addCatalogChip, agentChips, clearAgentChips } from "../../state/agentChips";
 import { actions, approvals, bindClient, coreStatus, focusedStepId, questions, resetStore, runs, selectedRunId, steps } from "../../state/store";
+import { recordAnnouncement, resetAnnouncements } from "../../state/announcements";
 import { resetCatalog } from "../dialogs/catalog";
 import { ConsolePane } from "./ConsolePane";
 import { expandedFolds, resetOffListRuns } from "./derived";
@@ -48,7 +49,7 @@ function client(over: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => { resetIds(); try { localStorage.removeItem(VIEW_KEY); } catch { /* none */ } resetConsoleView(); });
-afterEach(() => { cleanup(); resetStore(); resetCatalog(); resetConsoleView(); resetOffListRuns(); expandedFolds.value = new Set(); clearAgentChips(); });
+afterEach(() => { cleanup(); resetStore(); resetCatalog(); resetConsoleView(); resetOffListRuns(); expandedFolds.value = new Set(); clearAgentChips(); resetAnnouncements(); });
 
 describe("conversation view (default)", () => {
   it("renders_the_real_steps_as_a_thread_with_compact_activity_lines", async () => {
@@ -255,6 +256,19 @@ describe("conversation view (default)", () => {
     await frame();
     expect(log.querySelectorAll("[data-msg]")).toHaveLength(620);
     expect(screen.queryByRole("button", { name: /^Show earlier/ })).toBeNull();
+  });
+
+  it("agent_announcements_show_as_cards_woven_into_the_thread", async () => {
+    client();
+    setRuns([run("r1", { created_at: 0 })]);
+    setSteps([message("r1", "assistant", "done", 5)]);
+    recordAnnouncement({ type: "agent_announce", run_id: "r1", ts: 3, data: { id: "an1", kind: "part_created", title: "quad_arm", ref: { part_id: "quad_arm" } } });
+    render(<ConsolePane />);
+    await frame();
+    const card = document.querySelector('[data-announce="part_created"]') as HTMLElement;
+    expect(card).toBeTruthy();
+    expect(card.textContent).toContain("Created a part");
+    expect(card.textContent).toContain("quad_arm");
   });
 
   it("agent_text_renders_as_text_never_html", async () => {

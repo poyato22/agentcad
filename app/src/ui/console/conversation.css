@@ -129,6 +129,18 @@ button.cv-x { border: 1px solid var(--line2); }
 .cv-routed-agent { color: var(--ink); }
 .cv-who { display: flex; align-items: center; }
 
+/* R16: a clear card for each thing an agent did, woven into the thread by time */
+.cv-announce { display: flex; align-items: flex-start; gap: 8px; margin: 6px 10px; padding: 6px 8px; border: 1px solid var(--line2); border-left: 3px solid var(--blue); background: var(--paper2); }
+.cv-announce-glyph { flex: none; color: var(--blue2); line-height: 1.4; }
+.cv-announce-body { flex: 1; min-width: 0; }
+.cv-announce-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
+.cv-announce-label { font-weight: 600; color: var(--ink); }
+.cv-announce-title { color: var(--dim); min-width: 0; overflow-wrap: anywhere; }
+.cv-announce-detail { margin-top: 2px; }
+.cv-announce-jump { flex: none; align-self: center; border: 1px solid var(--line2); background: transparent; color: var(--blue2); font: inherit; font-size: var(--fs-small); padding: 2px 6px; cursor: pointer; }
+.cv-announce-jump:hover { border-color: var(--blue); }
+.cv-announce-jump:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
+
 /* your own part edits (vars, code, feature ops), woven into the thread by time */
 .cv-you .text { color: var(--ink); }
 .cv-you-who { font-weight: 600; }

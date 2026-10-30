@@ -137,7 +137,10 @@ export interface AnnounceRef {
 /** Parsed `agent_announce` event (U3c). `title` is a short line; `detail` an optional second line.
  *  Both are untrusted model/tool text and render as text. */
 export interface Announcement {
-  id: string; run_id: string; kind: AnnounceKind; title: string; detail: string | null; ref: AnnounceRef; ts: number;
+  id: string; run_id: string;
+  /** One of ANNOUNCE_KINDS; a kind from a newer core still shows (with a generic icon). */
+  kind: AnnounceKind | (string & {});
+  title: string; detail: string | null; ref: AnnounceRef; ts: number;
 }
 
 /** `assembly_animate` event data (U3c, R19): a joint sweep or a named motion sequence the agent
