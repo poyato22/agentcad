@@ -179,24 +179,26 @@ async def regenerate(ctx: ToolContext, project_id: str, changed: dict,
                      skel_version: int) -> dict:
     """Rebuild every part of the build whose last build read a changed skeleton name, then (in
     order, each once) the parts that read one of those through inner_volume(). Each rebuild uses
-    the part's CURRENT script and vars under its part lock; a failure keeps the part's previous
-    build and marks it stale."""
+    the part's CURRENT script and vars under its part lock.
+
+    Every planned part is marked stale BEFORE the first rebuild; only a successful rebuild clears
+    the flag (record_refs rewrites the record). So a failure, a cancel or timeout mid-cascade, or
+    the MAX_REGEN cap can never leave a part silently built against an older skeleton."""
     from . import tools as T
     root = _parts_root(ctx)
-    skel_id = sk.skeleton_id(project_id)
-    ids = _part_rows(ctx, project_id)
-    refs = {pid: sk.read_refs(root / pid) for pid in ids}
-    queue = [pid for pid in ids if sk.depends(refs[pid], changed, skel_id)]
+    plan, direct, refs = plan_regeneration(ctx, project_id, changed)
+    mark_planned(root, plan, skel_version)
     done: list[dict] = []
     failed: list[dict] = []
-    skipped: list[dict] = []
-    visited: set[str] = set()
-    while queue and len(visited) < MAX_REGEN:
-        pid = queue.pop(0)
-        if pid in visited:
-            continue
-        visited.add(pid)
+    skipped: list[dict] = [{"part_id": p, "reason": f"over the {MAX_REGEN}-part regeneration "
+                                                   "cap; left stale"} for p in plan[MAX_REGEN:]]
+    regenerated: set[str] = set()
+    for pid in plan[:MAX_REGEN]:
         d = root / pid
+        if pid not in direct and not regenerated & set((refs.get(pid) or {}).get("parts") or ()):
+            skipped.append({"part_id": pid, "reason": "the part it reads was not regenerated; "
+                                                      "left stale"})
+            continue
         if not _in_scope(ctx, project_id, pid):
             skipped.append({"part_id": pid, "reason": "outside this run's edit scope"})
             sk.mark_stale(d, skel_version, "outside the editing run's scope")
@@ -223,10 +225,36 @@ async def regenerate(ctx: ToolContext, project_id: str, changed: dict,
             version = T._finish_edit(ctx, pid, d, f"regenerated {pid} from skeleton "
                                                   f"v{skel_version}")
         done.append({"part_id": pid, "version_before": before, "version": version})
-        for other in ids:
-            if other not in visited and pid in ((refs.get(other) or {}).get("parts") or ()):
-                queue.append(other)
+        regenerated.add(pid)
     return {"regenerated": done, "failed": failed, "skipped": skipped}
+
+
+def plan_regeneration(ctx: ToolContext, project_id: str,
+                      changed: dict) -> tuple[list[str], set[str], dict]:
+    """(ordered parts to rebuild, the direct dependents among them, their recorded refs): the
+    parts that read a changed name (or are still stale), then, breadth first and each once, the
+    parts that read one of those through inner_volume()."""
+    root = _parts_root(ctx)
+    skel_id = sk.skeleton_id(project_id)
+    ids = _part_rows(ctx, project_id)
+    refs = {pid: sk.read_refs(root / pid) for pid in ids}
+    plan = [pid for pid in ids if sk.depends(refs[pid], changed, skel_id)]
+    direct, seen = set(plan), set(plan)
+    i = 0
+    while i < len(plan):
+        cur = plan[i]
+        i += 1
+        for other in ids:
+            if other not in seen and cur in ((refs.get(other) or {}).get("parts") or ()):
+                seen.add(other)
+                plan.append(other)
+    return plan, direct, refs
+
+
+def mark_planned(root: Path, plan: list[str], skel_version: int) -> None:
+    for pid in plan:
+        sk.mark_stale(root / pid, skel_version, f"not yet regenerated for skeleton "
+                                                f"v{skel_version}")
 
 
 @tool("skeleton_get", safety=SafetyClass.READ, scope_arg="project_id",
@@ -273,14 +301,19 @@ async def skeleton_set(ctx: ToolContext, args: SkeletonSetArgs) -> ToolOutput:
             return ToolOutput(summary=f"skeleton v{current}: nothing changed",
                               data={**_view(pid, old, current), "regenerated": [], "failed": [],
                                     "skipped": []})
+        store = getattr(ctx, "store", None)
+        clash = store.get_part(skel_id) if store is not None and hasattr(store, "get_part") \
+            else None
+        if (clash is not None and clash.kind != sk.KIND) or safe_io.exists(root / skel_id,
+                                                                           "part.py"):
+            raise MisesError(ErrorCode.TOOL_FAILED, f"{skel_id} is already a real part's id, so "
+                             "this build's skeleton cannot be stored",
+                             hint="rename or delete that part (the skeleton_ prefix is reserved)")
         version = current + 1
         sk.save(root, pid, new, version)
         _note_seen(ctx, skel_id, version)
-        store = getattr(ctx, "store", None)
         if store is not None and hasattr(store, "register_part"):
-            row = store.register_part(skel_id, pid, label="Skeleton", kind=sk.KIND)
-            if row is not None and row.kind != sk.KIND:
-                store.update_part(skel_id, kind=sk.KIND)
+            store.register_part(skel_id, pid, label="Skeleton", kind=sk.KIND)
             store.set_part_version(skel_id, version)
         events = getattr(ctx, "events", None)
         run_id = getattr(ctx, "run_id", None)
@@ -290,11 +323,13 @@ async def skeleton_set(ctx: ToolContext, args: SkeletonSetArgs) -> ToolOutput:
                 "part_id": skel_id, "version": version, "by": by,
                 "run_id": run_id if by == "agent" else None,
                 "summary": f"skeleton v{version}"}))
-        regen = (await regenerate(ctx, pid, changed, version) if args.regenerate
-                 else {"regenerated": [], "failed": [], "skipped": [
-                     {"part_id": p, "reason": "regenerate=false"}
-                     for p in _part_rows(ctx, pid)
-                     if sk.depends(sk.read_refs(root / p), changed, skel_id)]})
+        if args.regenerate:
+            regen = await regenerate(ctx, pid, changed, version)
+        else:
+            plan = plan_regeneration(ctx, pid, changed)[0]
+            mark_planned(root, plan, version)
+            regen = {"regenerated": [], "failed": [], "skipped": [
+                {"part_id": p, "reason": "regenerate=false; left stale"} for p in plan]}
     if events is not None:
         events.publish(Event(type="skeleton_changed", run_id=run_id, data={
             "project_id": pid, "skeleton_id": skel_id, "version": version, "by": by,

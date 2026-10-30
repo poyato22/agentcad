@@ -186,15 +186,14 @@ def cavity_parts(shape) -> list[tuple]:
 
 
 def cavity(shape):
-    """The cavity solid of a case: its largest enclosed void, or a Compound of all of them."""
-    import build123d as bd
-    parts = cavity_parts(shape)
+    """The cavity solid of a case: its largest void by volume. The rule above also accepts
+    outer pockets and through-holes (a recessed label, a hole in a plate); those are smaller
+    than the real inside and are left out (internals() lists them)."""
+    parts = sorted(cavity_parts(shape), key=lambda p: -float(p[0].volume))
     if not parts:
         raise ValueError("no enclosed cavity found: the shape has no inside (shell or hollow "
                          "it first, e.g. with offset/shell, or give the cavity as a box)")
-    if len(parts) == 1:
-        return parts[0][0]
-    return bd.Compound([s for s, _ in parts])
+    return parts[0][0]
 
 
 # ---- packing (pure python; `inside` lets the worker test a real cavity solid)
@@ -221,7 +220,7 @@ def _r(v) -> list[float]:
 
 def pack_boxes(region_min, region_max, components, clearance_mm: float = 2.0,
                strategy: str = "layered", keep_outs=(), inside=None,
-               allow_rotate: bool = True) -> dict:
+               allow_rotate: bool = True, wall_coords=None) -> dict:
     """Greedy box placement inside a region (a cavity's bounding box).
 
     components: [{"name", "size": [x, y, z]}]. Each component keeps `clearance_mm` to the region
@@ -261,6 +260,13 @@ def pack_boxes(region_min, region_max, components, clearance_mm: float = 2.0,
             p = list(start)
             p[i] = k_lo[i] + k_sz[i] + c
             points.append(p)
+    if wall_coords and cells is None:
+        # a real cavity's axis-aligned inner walls (a boss, a block, a step): corners one
+        # clearance off each wall, so the packer can tuck in beside them
+        axes = [sorted({start[i], *(w + c for w in wall_coords[i]
+                                    if start[i] - _EPS <= w + c <= hi[i] - c + _EPS)})[:12]
+                for i in range(3)]
+        points += [[x, y, z] for z in axes[2] for y in axes[1] for x in axes[0]]
     if inside is not None and cells is None:   # a real cavity: a coarse lattice as a fallback
         for fz in (0.0, 0.25, 0.5):
             for fy in (0.0, 0.25, 0.5, 0.75):
@@ -328,15 +334,33 @@ def pack(components, cavity_solid=None, clearance_mm: float = 2.0, strategy: str
         raise TypeError("pack(): components are dicts {'name', 'size': [x, y, z]}")
     if cavity_solid is None and region is None:
         raise ValueError("pack(): give a cavity solid or region={'min': ..., 'max': ...}")
-    inside = None
+    inside = walls = None
     if cavity_solid is not None:
         bb = cavity_solid.bounding_box()
         lo, hi = [bb.min.X, bb.min.Y, bb.min.Z], [bb.max.X, bb.max.Y, bb.max.Z]
         inside = _inside_fn(cavity_solid)
+        walls = _wall_coords(cavity_solid)
     else:
         lo, hi = list(region["min"]), list(region["max"])
     return pack_boxes(lo, hi, components, clearance_mm, strategy, keep_outs, inside,
-                      allow_rotate)
+                      allow_rotate, walls)
+
+
+def _wall_coords(solid) -> list[list[float]]:
+    """Per axis, the positions of the solid's planar faces normal to that axis."""
+    out: list[set] = [set(), set(), set()]
+    for f in solid.faces()[:500]:
+        if "plane" not in str(f.geom_type).lower():
+            continue
+        try:
+            c = f.center()
+            n = f.normal_at(c)
+        except Exception:  # noqa: BLE001 - a degenerate face has no usable normal
+            continue
+        for i, (comp, pos) in enumerate(((n.X, c.X), (n.Y, c.Y), (n.Z, c.Z))):
+            if abs(abs(comp) - 1.0) < 1e-6:
+                out[i].add(round(float(pos), 6))
+    return [sorted(s) for s in out]
 
 
 def _inside_fn(cavity_solid):
@@ -427,18 +451,26 @@ def internals(job_path: Path, nonce: str) -> None:
     else:
         cav = None
         if job.get("step"):
-            parts = cavity_parts(bd.import_step(job["step"]))
+            parts = sorted(cavity_parts(bd.import_step(job["step"])),
+                           key=lambda p: -float(p[0].volume))
             if not parts:
                 raise ValueError("no enclosed cavity found in that part: shell or hollow it "
                                  "first, or give the cavity as a box")
-            cav = parts[0][0] if len(parts) == 1 else bd.Compound([s for s, _ in parts])
-            bb = cav.bounding_box()
+            cav, sides = parts[0]
+
+            def box(s) -> dict:
+                bb = s.bounding_box()
+                return {"min": _r((bb.min.X, bb.min.Y, bb.min.Z)),
+                        "max": _r((bb.max.X, bb.max.Y, bb.max.Z)),
+                        "size": _r((bb.size.X, bb.size.Y, bb.size.Z))}
+            # the largest void is the cavity; smaller ones (outer pockets, through-holes) are
+            # listed but never packed into
             result["cavity"] = {
-                "volume_mm3": round(float(cav.volume), 4), "solids": len(parts),
-                "open_sides": sorted({side for _, sides in parts for side in sides}),
-                "bbox": {"min": _r((bb.min.X, bb.min.Y, bb.min.Z)),
-                         "max": _r((bb.max.X, bb.max.Y, bb.max.Z)),
-                         "size": _r((bb.size.X, bb.size.Y, bb.size.Z))}}
+                "volume_mm3": round(float(cav.volume), 4), "open_sides": sorted(sides),
+                "bbox": box(cav),
+                "other_voids": [{"volume_mm3": round(float(s.volume), 4),
+                                 "open_sides": sorted(o), "bbox": box(s)}
+                                for s, o in parts[1:20]]}
         if action == "pack":
             result.update(pack(job["components"], cav, float(job.get("clearance_mm", 2.0)),
                                job.get("strategy", "layered"), job.get("keep_outs") or (),

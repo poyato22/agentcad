@@ -122,6 +122,7 @@ def _metrics(parts_root: Path, pid: str) -> dict:
 # ---- inner_volume
 
 class InnerVolumeArgs(BaseModel):
+    project_id: str
     part_id: str
 
     @field_validator("part_id")
@@ -132,9 +133,12 @@ class InnerVolumeArgs(BaseModel):
 
 @tool("inner_volume", safety=SafetyClass.READ, scope_arg="part_id",
       description="The cavity of a built case or shell part: its volume, bounding box and open "
-                  "sides (an open-top case reports z-max). Part scripts can get the cavity "
-                  "solid itself with inner_volume(\"case_id\").")
+                  "sides (an open-top case reports z-max); smaller voids such as outer pockets "
+                  "are listed in other_voids. The part must be in this build. Part scripts can "
+                  "get the cavity solid itself with inner_volume(\"case_id\").")
 async def inner_volume(ctx: ToolContext, args: InnerVolumeArgs) -> ToolOutput:
+    pid = _resolve_build(ctx, args.project_id)
+    _check_part_in_build(ctx, pid, args.part_id)
     root = _parts_root(ctx)
     data = await run_internals({"action": "inner_volume", "step": "case"},
                                {"case": part_dir(root, args.part_id)})

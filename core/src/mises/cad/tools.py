@@ -38,6 +38,9 @@ def _check_part_id(part_id: str) -> None:
     if not PART_ID_RE.match(part_id):
         raise _bad(f"part_id {part_id!r} must match {PART_ID_RE.pattern}",
                    "lowercase letters, digits, underscores; start with a letter")
+    if part_id.startswith("skeleton_"):  # Plan 8 G3: the build skeletons' reserved ids
+        raise _bad(f"part_id {part_id!r}: the skeleton_ prefix is reserved for build skeletons",
+                   "edit the skeleton with skeleton_set; name parts by what they are")
     check_name(part_id)
 
 

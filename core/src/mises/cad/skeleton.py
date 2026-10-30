@@ -232,14 +232,14 @@ def clean_refs(raw) -> dict:
     return out
 
 
-def record_refs(part_dir: Path, raw, *, part_version: int | None = None) -> dict:
+def record_refs(part_dir: Path, raw) -> dict:
     """After a successful build: what it read, with the skeleton version it was built against
     (from the snapshot staged for it). Written to the part's host-only meta dir."""
     refs = clean_refs(raw)
     snap = staged(part_dir) or {}
     sv = snap.get("version")
     rec = {**refs, "skeleton_id": snap.get("skeleton_id"),
-           "skeleton_version": sv if isinstance(sv, int) else None, "part_version": part_version}
+           "skeleton_version": sv if isinstance(sv, int) else None}
     md = edits.meta_dir(part_dir)
     safe_io.ensure_dir(md)
     safe_io.write_text(md, REFS_NAME, json.dumps(rec))
@@ -287,6 +287,8 @@ def depends(refs: dict | None, changed: dict, skel_id: str) -> bool:
     """Whether a part built with `refs` must be regenerated after `changed`."""
     if not refs or refs.get("skeleton_id") not in (None, skel_id):
         return False
+    if refs.get("stale"):                 # missed an earlier regeneration: catch it up now
+        return True
     if changed.get("envelope") and refs.get("envelope"):
         return True
     return any(set(refs.get(c) or ()) & changed.get(c, set()) for c in _CATS)

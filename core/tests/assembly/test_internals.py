@@ -126,13 +126,64 @@ async def _build(ctx, part_id, script):
 @pytest.mark.timeout(180)
 async def test_inner_volume_of_closed_and_open_cases(world):
     await _build(world.ctx, "case", CASE)
-    r = await inner_volume.handler(world.ctx, InnerVolumeArgs(part_id="case"))
+    r = await inner_volume.handler(world.ctx, InnerVolumeArgs(project_id=world.project,
+                                                              part_id="case"))
     assert r.data["volume_mm3"] == pytest.approx(96 * 56 * 36, rel=1e-6)
     assert r.data["open_sides"] == [] and r.data["bbox"]["size"] == pytest.approx([96, 56, 36])
     await _build(world.ctx, "tray", OPEN_CASE)
-    r = await inner_volume.handler(world.ctx, InnerVolumeArgs(part_id="tray"))
+    r = await inner_volume.handler(world.ctx, InnerVolumeArgs(project_id=world.project,
+                                                              part_id="tray"))
     assert r.data["open_sides"] == ["z-max"]
     assert r.data["volume_mm3"] == pytest.approx(96 * 56 * 38, rel=1e-6)
+
+
+POCKET_CASE = '''VARS = {}
+
+def build(v):
+    shell = Box(100, 60, 40) - Box(96, 56, 36)
+    return shell - Box(20, 20, 1).moved(Location((30, 0, 19.5)))   # a label recess on top
+'''
+
+# a closed case whose inside is L-shaped: a solid block fills the -x/-y quarter, so the cavity's
+# bounding box is the full 96 x 56 x 36 but its -x/-y corner is not free
+L_CASE = '''VARS = {}
+
+def build(v):
+    shell = Box(100, 60, 40) - Box(96, 56, 36)
+    return shell + Box(48, 28, 36).moved(Location((-24, -14, 0)))
+'''
+
+
+@pytest.mark.slow
+@pytest.mark.timeout(180)
+async def test_cavity_is_the_largest_void_and_other_voids_are_listed(world):
+    await _build(world.ctx, "label_case", POCKET_CASE)
+    r = await inner_volume.handler(world.ctx, InnerVolumeArgs(project_id=world.project,
+                                                              part_id="label_case"))
+    assert r.data["volume_mm3"] == pytest.approx(96 * 56 * 36, rel=1e-6)
+    assert r.data["open_sides"] == []
+    assert [v["volume_mm3"] for v in r.data["other_voids"]] == [pytest.approx(400.0)]
+    assert r.data["other_voids"][0]["open_sides"] == ["z-max"]
+    r = await internals_pack.handler(world.ctx, PackArgs(
+        project_id=world.project, case_part_id="label_case",
+        components=[{"name": "board", "size": [30, 20, 10]}]))
+    assert r.data["fits"] and r.data["placements"][0]["max"][2] <= 18 - 2 + 1e-6  # inside
+
+
+@pytest.mark.slow
+@pytest.mark.timeout(240)
+async def test_pack_rejects_bbox_placements_the_real_cavity_does_not_allow(world):
+    await _build(world.ctx, "l_case", L_CASE)
+    comps = [{"name": "battery", "size": [40, 20, 20]}]
+    boxed = pack_boxes([-48, -28, -18], [48, 28, 18], comps, 2.0)
+    p = boxed["placements"][0]
+    assert p["min"][0] < 0 and p["min"][1] < 0               # by bbox alone: into the block
+    r = await internals_pack.handler(world.ctx, PackArgs(
+        project_id=world.project, case_part_id="l_case", components=comps, clearance_mm=2.0))
+    assert r.data["fits"], r.summary
+    p = r.data["placements"][0]
+    # clear of the block (x < 0 and y < 0) by the clearance
+    assert p["min"][0] >= 2 - 1e-6 or p["min"][1] >= 2 - 1e-6
 
 
 @pytest.mark.slow
