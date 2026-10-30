@@ -106,6 +106,8 @@ TOOL_LABELS: dict[str, str] = {
     "interview_plan": "planning the interview", "spec_get": "reading the spec",
     "loads_impact": "estimating impact loads", "catalog_get": "reading a catalog part",
     "onshape_import_element": "importing from Onshape",
+    "assembly_add_part": "adding to the assembly", "assembly_move": "moving a part",
+    "assembly_animate": "animating the assembly",
 }
 
 

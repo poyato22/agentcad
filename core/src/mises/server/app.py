@@ -53,6 +53,9 @@ from .sim_api import build_sim_router
 from .sketch_api import build_sketch_router
 from .spec_api import build_spec_router
 from .ui_api import add_cors, build_ui_router
+from .agents_api import build_agents_router
+from ..orchestrator import lead as _lead
+from ..orchestrator.router import Attachment
 
 if TYPE_CHECKING:
     from ..runtime import Runtime
@@ -147,7 +150,10 @@ class _McpEndpoint:
 
 
 class NewRun(BaseModel):
-    agent: str | None = None  # the profile's default_agent when omitted
+    # omitted: the router picks the agent and the prompt goes to the build's lead (Plan 7 R8);
+    # given: a run of exactly that agent ("Use a specific agent…"), outside the lead's tree
+    agent: str | None = None
+    attachments: list[Attachment] = Field(default_factory=list, max_length=20)
     prompt: str
     model_ref: str | None = None
     edit_scope: list[str] = ["*"]
@@ -247,6 +253,7 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
     app.include_router(build_measure_router(runtime))
     app.include_router(build_feedback_router(runtime))
     app.include_router(build_system_router(runtime))
+    app.include_router(build_agents_router(runtime))
 
     @app.exception_handler(MisesError)
     async def _mises_error(_req, e: MisesError):
@@ -273,11 +280,19 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
         # The app sends the profile default explicitly, so that counts as "no choice" too.
         prof = load_profile(runtime.home)
         profile_default = prof.default_agent
+        project_id = (_projects.check_project(runtime.store, body.project_id) if body.project_id
+                      else _projects.active_project_id(runtime.store, prof.active_project_id))
+        if body.agent is None and body.sketch_id is None:
+            out = await _lead.submit(
+                runtime, body.prompt, project_id=project_id, model_ref=body.model_ref,
+                attachments=body.attachments, edit_scope=tuple(body.edit_scope),
+                read_scope=tuple(body.read_scope), default_agent=profile_default)
+            # queued: the lead is busy; the message waits (message_queued) and is delivered in
+            # order at its turn boundary (message_delivered). A full queue is a 429.
+            return {**out, "routed": out["routed"].model_dump(), "role": "lead"}
         agent = body.agent or profile_default
         if body.sketch_id and agent == profile_default:
             agent = "designer"
-        project_id = (_projects.check_project(runtime.store, body.project_id) if body.project_id
-                      else _projects.active_project_id(runtime.store, prof.active_project_id))
         rid = await runtime.start_run(agent, body.prompt, model_ref=body.model_ref,
                                       edit_scope=tuple(body.edit_scope),
                                       read_scope=tuple(body.read_scope),

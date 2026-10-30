@@ -172,7 +172,13 @@ class ClaudeCodeSession:
     def _write_files(self) -> None:
         role = None
         with contextlib.suppress(Exception):
-            defn = self.runtime.definitions.get(self.runtime.store.get_run(self.run_id).agent)
+            run = self.runtime.store.get_run(self.run_id)
+            defn = self.runtime.definitions.get(run.agent)
+            if defn is not None and run.role == "lead":
+                # Plan 7: the build's lead is this main session; its sub-agents are Mises
+                # spawns (mcp__mises__agent_spawn), so the run tree matches native leads
+                from ..orchestrator.lead import lead_definition
+                defn = lead_definition(defn, claude_code=True)
             role = defn.body if defn is not None else None
         (self.workdir / RULES_FILE).write_text(
             mises_rules_md(role, self.runtime.definitions, self._hidden_agents()))
@@ -251,7 +257,8 @@ class ClaudeCodeSession:
             "resumed": self.resumed, "model": self.model_alias, "version": self.info.version})
 
     async def prompt(self, text: str, *, context: dict | None = None,
-                     images: list[tuple[str, str]] | None = None) -> str:
+                     images: list[tuple[str, str]] | None = None,
+                     log: dict | None = None) -> str:
         """Send one user message; returns the turn's assistant text when `result` arrives.
         `context` (the Mises UI context) is prepended as a data block to the first prompt only.
         `images` ((media_type, base64) pairs, e.g. a sketch photo) follow the text as image
@@ -277,6 +284,8 @@ class ClaudeCodeSession:
             message_content = [{"type": "text", "text": content}] + [
                 {"type": "image", "source": {"type": "base64", "media_type": m, "data": d}}
                 for m, d in images]
+        if log:          # the stored step shows the user's own words (e.g. a feedback note)
+            body.update(log)
         self.runtime.store.append_step(self.run_id, StepKind.MESSAGE, body)
         self._turn = asyncio.get_running_loop().create_future()
         self._turn_text = []

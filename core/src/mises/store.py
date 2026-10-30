@@ -11,7 +11,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from .types import Caps, SafetyClass, StepKind, canonical_json, sha256_hex
 
@@ -41,6 +41,14 @@ class AgentRun(BaseModel):
     pinned: bool = False
     archived: bool = False
     last_activity_at: float | None = None  # bumped as the run works; falls back to updated_at
+    # ---- Plan 7 U3c: the build's lead and its sub-agents, and how the router chose the agent
+    role: Literal["lead", "sub"] | None = None
+    routed: dict | None = None     # {agent, reason, confidence}; stored as JSON text
+
+    @field_validator("routed", mode="before")
+    @classmethod
+    def _routed_json(cls, v: Any) -> Any:
+        return json.loads(v) if isinstance(v, str) else v
 
 
 class AgentPolicy(BaseModel):
@@ -149,7 +157,7 @@ CREATE INDEX IF NOT EXISTS studies_project ON studies(project_id, id);
 
 _RUN_FIELDS = {"status", "branch", "agent", "provider", "model", "task", "parent_id",
                "session_ref", "owner_pid", "project_id", "title", "pinned",
-               "archived", "last_activity_at"}
+               "archived", "last_activity_at", "role", "routed"}
 _APPROVAL_JSON = {"payload", "deltas", "edited_payload"}
 
 
@@ -182,7 +190,8 @@ class Store:
         for col, decl in (("project_id", "TEXT"), ("title", "TEXT"),
                           ("pinned", "INTEGER NOT NULL DEFAULT 0"),
                           ("archived", "INTEGER NOT NULL DEFAULT 0"),
-                          ("last_activity_at", "REAL")):
+                          ("last_activity_at", "REAL"),
+                          ("role", "TEXT"), ("routed", "TEXT")):   # Plan 7 U3c
             if col not in cols:
                 self._db.execute(f"ALTER TABLE runs ADD COLUMN {col} {decl}")
         self._migrate_default_project()
@@ -233,6 +242,8 @@ class Store:
         bad = set(fields) - _RUN_FIELDS
         if bad:
             raise ValueError(f"cannot update run fields: {sorted(bad)}")
+        if isinstance(fields.get("routed"), dict):
+            fields["routed"] = canonical_json(fields["routed"])
         if fields:
             sets = ", ".join(f"{k}=?" for k in fields)
             with self._tx() as db:
