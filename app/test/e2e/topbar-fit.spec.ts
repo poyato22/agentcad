@@ -31,8 +31,9 @@ for (const width of [1280, 1440]) {
       await expect(page.locator(".activity-pill")).toBeVisible();
       await expect(page.locator("[data-budget-used]")).toBeVisible();
 
+      if (SHOTS) await page.locator("header.topbar").screenshot({ path: `${SHOTS}/topbar-${width}-${theme}.png` });
       const bar = await boxOf(page, "header.topbar");
-      const tabs = await boxOf(page, '[role="tablist"]');
+      const tabs = await boxOf(page, '[role="tablist"][aria-label="mode"]');   // the mode tabs (A3's build tabs are a tablist too)
       const left = await boxOf(page, ".topbar-left");
       const r = await boxOf(page, ".topbar-right");
       // the three groups sit side by side inside the window
@@ -59,13 +60,19 @@ for (const width of [1280, 1440]) {
           expect(clipped, `${sel} #${i} text is not clipped`).toBe(false);
         }
       }
-      // the mode tabs all fit (⌘1–⌘7)
-      const tabEls = page.getByRole("tab");
+      // the mode tabs all fit (⌘1–⌘7), and A3's build tabs never run under them
+      for (const sel of [".btab", ".btab-add"]) {
+        const els = page.locator(`.topbar-left ${sel}`);
+        for (let i = 0; i < await els.count(); i++) {
+          const b = await els.nth(i).boundingBox();
+          if (b) expect(right(b), `${sel} #${i} stays left of the mode tabs`).toBeLessThanOrEqual(tabs.x + 0.5);
+        }
+      }
+      const tabEls = page.getByRole("tablist", { name: "mode" }).getByRole("tab");
       for (let i = 0; i < await tabEls.count(); i++) {
         const b = await tabEls.nth(i).boundingBox();
         expect(b && right(b) <= right(tabs) + 0.5 && b.x >= tabs.x - 0.5).toBe(true);
       }
-      if (SHOTS) await page.locator("header.topbar").screenshot({ path: `${SHOTS}/topbar-${width}-${theme}.png` });
     });
   }
 }

@@ -1,6 +1,6 @@
 .topbar {
   /* breadcrumb takes what is left; the lights never run under the tabs (they clip at the far left) */
-  position: relative; height: var(--topbar-h); display: grid; grid-template-columns: minmax(80px, 1fr) auto minmax(0, max-content); align-items: stretch;
+  position: relative; height: var(--topbar-h); display: grid; grid-template-columns: minmax(var(--crumb-min, 80px), 1fr) auto minmax(0, max-content); align-items: stretch;
   background: var(--head); border-bottom: 1px solid var(--line2); padding: 0 12px 0 var(--chrome-inset-x); /* room for the macOS traffic lights (78px inset) */
 }
 .topbar-left, .topbar-right { display: flex; align-items: center; min-width: 0; }
@@ -28,10 +28,27 @@
    the tabs and the lights also pack tighter. */
 @media (max-width: 1499px) {
   .lights .light-val { display: none; }
+  .lights { gap: 9px; }
+  .topbar-right { gap: 9px; }
 }
 @media (max-width: 1399px) {
   .tab { padding: 0 10px; }
-  .lights { gap: 10px; }
+  .lights { gap: 7px; }
+  .topbar-right { gap: 6px; padding-left: 8px; }
+}
+/* A3's build tabs: the left column keeps room for the root crumb, the active build tab
+   (TAB_MIN 84 px) and its menu button, so the tab never slides under the mode tabs; the
+   right group (which clips its own overflow) gives way instead. */
+.topbar { --crumb-min: 190px; }
+@media (max-width: 1499px) {
+  /* "◇ LOCAL /" and the "/ Part · …" crumb go first when space is short (the part stays
+     selected in the tree and named in the viewer); the active build tab always shows */
+  .topbar { --crumb-min: 132px; }
+  .crumb > .crumb-root, .crumb > .crumb-root + .crumb-sep,
+  .crumb > [data-crumb=part], .crumb > .crumb-sep:has(+ [data-crumb=part]) { display: none; }
+}
+@media (max-width: 1399px) {
+  .budget-bar { display: none; }   /* the meter keeps its count; the gauge goes */
 }
 .light-click { cursor: pointer; border: 1px solid var(--line2); padding: 2px 6px; }
 .light-click:hover { border-color: var(--dim); color: var(--ink); }
