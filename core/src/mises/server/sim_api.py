@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import logging
 import math
 import uuid
@@ -26,6 +27,7 @@ from starlette.concurrency import run_in_threadpool
 
 from ..cad import safe_io
 from ..cad.tools import PART_ID_RE
+from ..sim import calibration as cal
 from ..sim import studies
 from ..sim.ccx import solver_status
 from ..sim.cfd import cfd_solver_status
@@ -88,6 +90,10 @@ class StartBody(BaseModel):
     settings: dict[str, Any] = Field(default_factory=dict)
     reason: str | None = Field(None, max_length=200)
     requirements: list[dict[str, Any]] = Field(default_factory=list, max_length=40)
+
+
+class CalibrationBody(cal.CalibrationInput):
+    append: bool = Field(False, description="add these tests to the saved ones")
 
 
 class CompareBody(BaseModel):
@@ -202,6 +208,55 @@ def build_sim_router(runtime: Runtime) -> APIRouter:
         if not delete_custom(runtime.home, name):
             raise MisesError(ErrorCode.NOT_FOUND, f"no custom material {name!r}")
         return {"deleted": name}
+
+    # ---- S3: material calibrations (per material and printer profile)
+
+    def _cal_fit(body: cal.CalibrationInput):
+        try:
+            return cal.fit_input(runtime.home, parts_root(), body)
+        except SimError as e:
+            raise _bad(e) from None
+
+    @router.get("/sims/calibrations")
+    async def calibrations(material: str | None = None):
+        recs = cal.load_all(runtime.home)
+        return [r for r in recs if material is None or r["material"].lower() == material.lower()]
+
+    @router.post("/sims/calibrations/fit")
+    async def calibration_fit(body: cal.CalibrationInput):
+        fitted, base, m = await run_in_threadpool(_cal_fit, body)
+        return {"fit": fitted, "material": m.to_dict(), "datasheet": base.to_dict(),
+                "basis": cal.basis_label(fitted["n_tests"]), "saved": False}
+
+    @router.post("/sims/calibrations")
+    async def calibration_save(body: CalibrationBody):
+        inp = cal.CalibrationInput(**body.model_dump(exclude={"append"}))
+        if body.append:
+            inp = cal.merged(cal.find(runtime.home, inp.material, inp.printer), inp)
+        fitted, _, m = await run_in_threadpool(_cal_fit, inp)
+        try:
+            rec = cal.save(runtime.home, inp, fitted)
+        except SimError as e:
+            raise _bad(e) from None
+        return JSONResponse(json.loads(json.dumps({**rec, "material_preview": m.to_dict()},
+                                                  default=float)), status_code=201)
+
+    @router.get("/sims/calibrations/{cal_id}")
+    async def calibration_get(cal_id: str):
+        if not cal.CAL_ID_RE.fullmatch(cal_id):
+            raise MisesError(ErrorCode.INVALID_INPUT, f"bad calibration id: {cal_id!r}")
+        rec = cal.get(runtime.home, cal_id)
+        if rec is None:
+            raise MisesError(ErrorCode.NOT_FOUND, f"no calibration {cal_id}")
+        return rec
+
+    @router.delete("/sims/calibrations/{cal_id}")
+    async def calibration_delete(cal_id: str):
+        if not cal.CAL_ID_RE.fullmatch(cal_id):
+            raise MisesError(ErrorCode.INVALID_INPUT, f"bad calibration id: {cal_id!r}")
+        if not cal.delete(runtime.home, cal_id):
+            raise MisesError(ErrorCode.NOT_FOUND, f"no calibration {cal_id}")
+        return {"deleted": cal_id}
 
     @router.get("/sims")
     async def sims(part_id: str | None = None, run_id: str | None = None):
