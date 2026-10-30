@@ -45,7 +45,17 @@ def test_project_lifecycle(client):
     client.delete(f"/projects/{pid}", headers=AUTH)
     assert client.post("/projects/trash/empty", headers=AUTH).json() == {"purged": [pid],
                                                                           "count": 1}
-    assert client.get("/projects", headers=AUTH).json() == []
+    # the purged build is gone; with no live build left, a fresh Default stands in
+    assert [(p["name"], p["trashed_at"]) for p in client.get("/projects", headers=AUTH).json()] == [
+        ("Default", None)]
+
+
+def test_a_fresh_home_lists_its_default_build_first_call(client, rt):
+    """QA smoke: GET /projects is the app's first call on a new home, in parallel with
+    GET /parts. It must not answer [] while /parts makes the Default build."""
+    listed = client.get("/projects", headers=AUTH).json()
+    assert [p["name"] for p in listed] == ["Default"]
+    assert listed[0]["id"] == rt.active_project_id()
 
 
 def test_empty_trash_refuses_live_runs_then_purges_and_drops_ui_run(client, rt):

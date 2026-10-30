@@ -61,6 +61,11 @@ def build_projects_router(runtime: Runtime) -> APIRouter:
     # ---- builds
     @router.get("/projects")
     async def list_projects():
+        # every request belongs to a build: on a fresh home (or after the last live build was
+        # purged) the Default is made here too, not only by the first project-less request.
+        # Otherwise the app's first GET /projects raced its GET /parts and saw no build at all
+        # (no tabs until the next reconnect).
+        runtime.active_project_id()
         return _projects.list_projects(store)
 
     @router.post("/projects")
