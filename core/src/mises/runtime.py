@@ -845,6 +845,21 @@ class Runtime:
             log.debug("could not store shape_complexity for %s", run_id, exc_info=True)
         return est
 
+    def run_sees_images(self, run_id: str | None) -> bool:
+        """Whether the model driving `run_id` can look at images itself: a Claude Code run, an
+        external MCP agent on a vision vendor, or a native run on a vision-capable model. Tools
+        then hand renders straight back to it (MCP image content / provider image blocks)."""
+        if not run_id:
+            return False
+        try:
+            run = self.store.get_run(run_id)
+        except KeyError:
+            return False
+        if run.provider == "ui":
+            return False
+        st = self._runs.get(run_id)
+        return is_vision_model(st.ref if st is not None else f"{run.provider}/{run.model}")
+
     def vision_model_for(self, run_id: str):
         """(provider, model, reason) for a critique of `run_id`: the run's own model when it can
         see images, else a configured vision-capable model, else (None, None, reason)."""

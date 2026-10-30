@@ -237,3 +237,104 @@ def test_render_views_is_read_only_tool():
     assert views.render_views.safety == SafetyClass.READ
     assert views.critique_model.safety == SafetyClass.READ
     assert views.present_view.safety == SafetyClass.READ
+
+
+# ---- self-critique: the calling model can see images (Claude Code, a vision API model)
+
+def _seeing_rt(tmp_path):
+    def no_second_model(rid):
+        raise AssertionError("self-critique must not call a separate vision model")
+    return SimpleNamespace(home=tmp_path, run_sees_images=lambda rid: True,
+                           vision_model_for=no_second_model)
+
+
+def _decoded_png_size(img):
+    import base64
+    return _png_size(base64.b64decode(img.data_b64))
+
+
+async def test_render_views_attaches_images_for_a_seeing_model(tmp_path):
+    _make_part(tmp_path, "cube")
+    ctx = _bare_ctx(tmp_path, run_id="s0", services={"runtime": _seeing_rt(tmp_path)})
+    out = await views.render_views.handler(ctx, views.RenderViewsArgs(part_id="cube", size=1024))
+    assert [i.label for i in out.images] == ["front", "top", "side", "iso"]
+    assert all(i.media_type == "image/png" for i in out.images)
+    assert all(max(_decoded_png_size(i)) <= 512 for i in out.images)   # capped at 512 px
+    assert out.data["image_tokens"] == 4 * (512 * 512 // 750)
+
+
+async def test_render_views_no_images_for_a_blind_model(tmp_path):
+    _make_part(tmp_path, "cube")
+    rt = SimpleNamespace(home=tmp_path, run_sees_images=lambda rid: False)
+    ctx = _bare_ctx(tmp_path, run_id="s1", services={"runtime": rt})
+    out = await views.render_views.handler(ctx, views.RenderViewsArgs(part_id="cube"))
+    assert out.images == [] and out.handles
+
+
+_BAD_REPORT = views.CritiqueReport(score=0.3, issues=[views.CritiqueIssue(
+    view="front", issue="flat planes where the wing should be curved", severity="high",
+    suggested_fix="loft NACA sections")])
+_GOOD_REPORT = views.CritiqueReport(score=0.9, issues=[])
+
+
+async def test_self_critique_loop_stops_on_passing_report(tmp_path):
+    _make_part(tmp_path, "cube")
+    ctx = _bare_ctx(tmp_path, run_id="s2", services={"runtime": _seeing_rt(tmp_path)})
+    args = dict(part_id="cube", request="a B-2 bomber")
+    r = await views.critique_model.handler(ctx, views.CritiqueArgs(**args))
+    assert r.data["mode"] == "self" and r.data["awaiting_report"] and len(r.images) == 4
+    r = await views.critique_model.handler(ctx, views.CritiqueArgs(**args, report=_BAD_REPORT))
+    assert r.data["round"] == 1 and r.data["done"] is False and r.images == []
+    r = await views.critique_model.handler(ctx, views.CritiqueArgs(**args))
+    assert len(r.images) == 4 and r.data["round"] == 2
+    r = await views.critique_model.handler(ctx, views.CritiqueArgs(**args, report=_GOOD_REPORT))
+    assert r.data["done"] is True and r.data["stop_reason"] == "score_threshold"
+
+
+async def test_self_critique_round_cap_and_no_more_renders(tmp_path):
+    _make_part(tmp_path, "cube")
+    ctx = _bare_ctx(tmp_path, run_id="s3", services={"runtime": _seeing_rt(tmp_path)})
+    args = dict(part_id="cube", request="x", max_rounds=2)
+    for _ in range(2):
+        await views.critique_model.handler(ctx, views.CritiqueArgs(**args))
+        r = await views.critique_model.handler(ctx, views.CritiqueArgs(**args, report=_BAD_REPORT))
+    assert r.data["round"] == 2 and r.data["done"] and r.data["stop_reason"] == "max_rounds"
+    again = await views.critique_model.handler(ctx, views.CritiqueArgs(**args))
+    assert again.data["done"] and again.data["stop_reason"] == "max_rounds" and again.images == []
+
+
+async def test_self_critique_image_token_budget(tmp_path):
+    _make_part(tmp_path, "cube")
+    ctx = _bare_ctx(tmp_path, run_id="s4", services={"runtime": _seeing_rt(tmp_path)})
+    args = dict(part_id="cube", request="x", max_image_tokens=1000)   # < one round of 4 views
+    r = await views.critique_model.handler(ctx, views.CritiqueArgs(**args))
+    assert r.data["image_tokens"] >= 1000
+    r = await views.critique_model.handler(ctx, views.CritiqueArgs(**args, report=_BAD_REPORT))
+    assert r.data["done"] and r.data["stop_reason"] == "image_budget"
+
+
+async def test_self_critique_report_without_renders_is_refused(tmp_path):
+    _make_part(tmp_path, "cube")
+    ctx = _bare_ctx(tmp_path, run_id="s5", services={"runtime": _seeing_rt(tmp_path)})
+    with pytest.raises(MisesError) as e:
+        await views.critique_model.handler(ctx, views.CritiqueArgs(
+            part_id="cube", request="x", report=_GOOD_REPORT))
+    assert e.value.code == ErrorCode.INVALID_INPUT
+
+
+async def test_self_critique_attaches_reference_images(tmp_path):
+    import base64
+    from mises import references as refs
+    from mises.references import PhotoIn, ReferenceUpload
+    from PIL import Image
+    _make_part(tmp_path, "cube")
+    buf = io.BytesIO()
+    Image.new("RGB", (900, 600), (255, 255, 255)).save(buf, "PNG")
+    rid = refs.save_reference(tmp_path, ReferenceUpload(
+        image=PhotoIn(data_b64=base64.b64encode(buf.getvalue()).decode())))["reference_id"]
+    ctx = _bare_ctx(tmp_path, run_id="s6", services={"runtime": _seeing_rt(tmp_path)})
+    r = await views.critique_model.handler(ctx, views.CritiqueArgs(
+        part_id="cube", request="x", reference_image_ids=[rid]))
+    assert len(r.images) == 5 and r.images[-1].label == f"reference {rid}"
+    assert max(_decoded_png_size(r.images[-1])) <= 512
+    assert r.data["iou"] is not None
