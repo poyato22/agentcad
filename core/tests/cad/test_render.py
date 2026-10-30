@@ -30,14 +30,9 @@ def _box_tris(sx: float, sy: float, sz: float, center=(0.0, 0.0, 0.0)) -> np.nda
 
 
 def _binary_stl(tris: np.ndarray) -> bytes:
-    out = bytearray(b"\0" * 80)
-    out += struct.pack("<I", len(tris))
-    for tri in tris:
-        out += struct.pack("<3f", 0.0, 0.0, 0.0)
-        for vert in tri:
-            out += struct.pack("<3f", *vert)
-        out += struct.pack("<H", 0)
-    return bytes(out)
+    rec = np.zeros(len(tris), dtype=[("n", "<f4", (3,)), ("v", "<f4", (3, 3)), ("a", "<u2")])
+    rec["v"] = tris
+    return b"\0" * 80 + struct.pack("<I", len(tris)) + rec.tobytes()
 
 
 def _png_size(data: bytes) -> tuple[int, int]:
@@ -151,6 +146,70 @@ def test_explode_separates_meshes():
     before = np.linalg.norm(a.centroid() - b.centroid())
     after = np.linalg.norm(exploded[0].centroid() - exploded[1].centroid())
     assert after > before
+
+
+def blended_wing_tris(n_span: int = 300, n_around: int = 250) -> np.ndarray:
+    """A G2-style blended-wing body: swept, tapering NACA-00xx sections whose thickness swells
+    into a centre body. 2 * n_span * n_around triangles (300 x 250 -> 150k)."""
+    s = np.linspace(-1.0, 1.0, n_span)
+    th = np.linspace(0.0, 2 * np.pi, n_around, endpoint=False)
+    xc = (1 + np.cos(th)) / 2                      # 1 -> 0 -> 1 around the section
+    side = np.where(th < np.pi, 1.0, -1.0)
+    chord = 40 * (1 - 0.75 * np.abs(s)) + 8
+    x_le = 30 * np.abs(s)
+    tc = 0.12 + 0.12 * (1 - np.abs(s)) ** 4
+    yt = 5 * (0.2969 * np.sqrt(xc) - 0.126 * xc - 0.3516 * xc ** 2
+              + 0.2843 * xc ** 3 - 0.1015 * xc ** 4)
+    X = x_le[:, None] + xc[None, :] * chord[:, None]
+    Y = np.repeat((s * 120)[:, None], n_around, axis=1)
+    Z = side[None, :] * yt[None, :] * (tc * chord)[:, None]
+    P = np.stack([X, Y, Z], axis=-1)              # (n_span, n_around, 3)
+    a = P[:-1, :]
+    b = P[1:, :]
+    c = np.roll(P, -1, axis=1)[1:, :]
+    d = np.roll(P, -1, axis=1)[:-1, :]
+    t1 = np.stack([a, b, c], axis=2).reshape(-1, 3, 3)
+    t2 = np.stack([a, c, d], axis=2).reshape(-1, 3, 3)
+    return np.concatenate([t1, t2], axis=0)
+
+
+def test_four_views_of_a_150k_triangle_wing_under_2s():
+    """G1 speed budget: 4 views at 512 px of a realistic ~150k-triangle mesh in < 2 s.
+    MISES_RENDER_BUDGET_S loosens it on a heavily loaded machine (it is never tightened)."""
+    import os
+    import time
+    tris = blended_wing_tris()
+    assert 140_000 <= len(tris) <= 160_000
+    stl = _binary_stl(tris)
+    best = float("inf")
+    for _ in range(2):
+        t0 = time.perf_counter()
+        imgs = render.render_views(render.load_stl(stl), size=512)
+        best = min(best, time.perf_counter() - t0)
+    assert len(imgs) == 4
+    mask = render.render_mask(tris, "top", size=512)
+    assert mask.mean() > 0.05                      # the wing really is drawn
+    budget = max(2.0, float(os.environ.get("MISES_RENDER_BUDGET_S", "2.0")))
+    print(f"render 4x512 views, {len(tris)} tris: {best:.3f} s")
+    assert best < budget, f"4 views took {best:.2f} s (budget {budget} s)"
+
+
+def test_long_thin_triangles_render_fast_and_cover_their_area():
+    """A planar face fan-triangulated into slivers (what export_stl makes of flat faces): every
+    sliver spans the frame, so a bbox test would scan ~the whole image per triangle."""
+    import time
+    n = 4000
+    ang = np.linspace(0, 2 * np.pi, n + 1)
+    rim = np.stack([50 * np.cos(ang), 50 * np.sin(ang), np.zeros(n + 1)], axis=1)
+    disk = np.stack([np.zeros((n, 3)), rim[:-1], rim[1:]], axis=1)   # a fan of 4000 slivers
+    t0 = time.perf_counter()
+    imgs = render.render_views(disk, size=512)
+    assert time.perf_counter() - t0 < 2.0
+    assert len(imgs) == 4
+    mask = render.render_mask(disk, "top", size=512)
+    # a disk filling 90% of the frame's width covers pi/4 * 0.9^2 of it, with no gaps
+    assert mask.mean() == pytest.approx(np.pi / 4 * 0.9 ** 2, abs=0.02)
+    assert mask[256, 256] and mask[256, 40] and not mask[5, 5]
 
 
 def test_transparent_render_is_valid_png():
