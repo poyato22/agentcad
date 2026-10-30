@@ -154,7 +154,7 @@ describe("part tree", () => {
     expect(menu.contains(document.activeElement)).toBe(true);
     const labels = screen.getAllByRole("menuitem").map((b) => b.textContent);
     expect(labels).toEqual(["RenameF2", "Appearance…", "HideH", "Isolate", "Measure", "Add to assembly", "Duplicate⌘D",
-      "Export STEP", "Export STL", "Properties⌘I", "Delete"]);
+      "Export STEP", "Export STL", "Properties⌘I", "Modify…", "Delete"]);   // Modify…: U2a's item (the viewer registers it)
     fireEvent.keyDown(menu, { key: "Escape" });
     expect(screen.queryByRole("menu")).toBeNull();
     fireEvent.contextMenu(rowEl("frame"), { clientX: 30, clientY: 40 });
@@ -167,9 +167,10 @@ describe("part tree", () => {
   it("Modify… (the feature ops) is in the part's menu: it selects the part and asks the viewer", () => {
     parts.value = [...LIST().slice(0, 3), { ...row("plate", 1), metrics: { mass_g: 1 } as PartSummary["metrics"] }];
     render(<PartTree />);
-    fireEvent.click(screen.getByRole("button", { name: "Move or edit arm a" }));
+    fireEvent.click(screen.getByRole("button", { name: "Actions for arm a" }));
     expect((screen.getByRole("menuitem", { name: "Modify…" }) as HTMLButtonElement).disabled).toBe(true);   // not built: nothing to modify
-    fireEvent.click(screen.getByRole("button", { name: "Move or edit plate" }));
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: "Actions for plate" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Modify…" }));
     expect(selectedPartId.value).toBe("plate");
     expect(modifyRequest.value?.partId).toBe("plate");
@@ -380,6 +381,8 @@ describe("part tree", () => {
 
   it("Measure hands the parts to the measure tool when one is registered, else shows Properties", () => {
     parts.value = LIST().map((p) => ({ ...p, metrics: METRICS }));
+    const viewerHook = measureHook.peek();   // the viewer's (U2a) when it is loaded
+    measureHook.value = null;
     render(<PartTree />);
     fireEvent.contextMenu(rowEl("plate"), { clientX: 10, clientY: 10 });
     fireEvent.click(screen.getByRole("menuitem", { name: "Measure" }));
@@ -389,7 +392,7 @@ describe("part tree", () => {
     fireEvent.contextMenu(rowEl("frame"), { clientX: 10, clientY: 10 });
     fireEvent.click(screen.getByRole("menuitem", { name: "Measure" }));
     expect(seen).toEqual([["frame"]]);
-    measureHook.value = null;
+    measureHook.value = viewerHook;
   });
 
   it("a click re-renders only the rows it changed, and a refetch with the same rows re-renders none", () => {

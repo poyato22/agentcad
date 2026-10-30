@@ -23,7 +23,7 @@ test("right_click_opens_the_part_menu_with_useful_items", async ({ page }) => {
   const menu = page.getByRole("menu", { name: "top plate actions" });
   await expect(menu).toBeVisible();
   await expect(menu.getByRole("menuitem")).toHaveText([/Rename/, "Appearance…", /Hide/, "Isolate", "Measure", "Add to assembly",
-    /Duplicate/, "Export STEP", "Export STL", /Properties/, "Delete"]);
+    /Duplicate/, "Export STEP", "Export STL", /Properties/, "Modify…", "Delete"]);
   // the right-click selected the row
   await expect(tree(page).getByRole("button", { name: "top plate", exact: true })).toHaveAttribute("aria-pressed", "true");
   await page.keyboard.press("Escape");
@@ -80,11 +80,13 @@ test("duplicate_export_and_delete_from_the_menu", async ({ page, fake }) => {
   expect(await callsTo(fake, "DELETE", "/parts/top_plate_copy")).toHaveLength(1);
 });
 
-test("viewer_background_from_the_corner_menu_is_saved_to_the_profile", async ({ page, fake }) => {
+test("viewer_background_from_the_view_menu_is_saved_to_the_profile", async ({ page, fake }) => {
   await open(page);
   const vp = page.getByTestId("viewer");
   await expect(vp).toHaveAttribute("data-bg-mode", "theme");
-  await page.getByRole("button", { name: "background" }).click();
+  // View ▸ Background… (the sheet keeps only Part | Assembly and View)
+  await page.getByRole("button", { name: "View options" }).click();
+  await page.getByRole("menuitem", { name: "Background…" }).click();
   await page.getByRole("radio", { name: "Soft gradient" }).click();
   await expect(vp).toHaveAttribute("data-bg-mode", "gradient");
   await expect(vp).toHaveAttribute("data-bg", "light");

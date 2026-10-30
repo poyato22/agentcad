@@ -35,6 +35,18 @@ import { materialOf } from "../../lib/appearance";
 import { backgroundStyle, edgeInk, isLight, viewerBackground } from "./background";
 import { BackgroundMenu } from "./BackgroundMenu";
 import "./viewer.css";
+import { addPartMenuItem, measureHook } from "../left/partMenuHooks";
+import { setDesignMode } from "../assembly/mode";
+import { requestModify } from "./tool";
+
+// U2a's part actions in U8's part menu (the one place a part's actions live): Measure opens the
+// viewer's measure tool on the part; Modify… opens the ops form (hole / shell / fillet / chamfer).
+measureHook.value = (ids) => { if (ids[0]) actions.selectPart(ids[0]); setDesignMode("part"); viewerTool.value = "measure"; };
+addPartMenuItem({
+  label: "Modify…", single: true,
+  disabled: (ids) => { const p = parts.peek().find((x) => x.part_id === ids[0]); return !p || p.metrics === null || (p.kind ?? "part") !== "part"; },
+  run: (ids) => { const id = ids[0]; if (!id) return; actions.selectPart(id); setDesignMode("part"); requestModify(id); },
+});
 
 /** The part on the sheet: the selected one, else the first part (state/selection.ts). */
 export { activePart };
@@ -139,6 +151,7 @@ export function Viewer(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [size, setSize] = useState<string | null>(null);
   const [ops, setOps] = useState<OpenOps | null>(null);
+  const [bgOpen, setBgOpen] = useState(false);   // View ▸ Background… (U8's picker)
   const [bounds, setBounds] = useState({ w: 1, h: 1 });
   const [chip, setChip] = useState<Chip | null>(null);
   const [picks, setPicks] = useState<Picked[]>([]);
@@ -479,6 +492,7 @@ export function Viewer(): JSX.Element {
           // U2a's click tools, in U2b's View menu: pressed again, back to Select
           { id: "measure", label: "Measure", hint: "M", checked: tool === "measure", disabled: !(part !== null && tab === "model"),
             onSelect: () => { viewerTool.value = viewerTool.peek() === "measure" ? "select" : "measure"; } },
+          { id: "background", label: "Background…", onSelect: () => setBgOpen(true) },
           { id: "comment", label: "Comment on the model", checked: tool === "comment", disabled: !(part !== null && tab === "model"),
             onSelect: () => { viewerTool.value = viewerTool.peek() === "comment" ? "select" : "comment"; } },
         ]} />
@@ -508,7 +522,7 @@ export function Viewer(): JSX.Element {
       {tab === "code" && (part
         ? <SourceEditor key={part.part_id} part={part} />
         : <div class="src src-empty"><p class="faint">Select a part to see its script.</p></div>)}
-      <BackgroundMenu />
+      <BackgroundMenu open={bgOpen} onOpenChange={setBgOpen} />
       <TitleBlock part={part} runLabel={byLabel} error={error} />
     </div>
   );

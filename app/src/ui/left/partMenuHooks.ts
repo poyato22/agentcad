@@ -8,6 +8,8 @@ export interface PartMenuExtra {
   /** Shown only for one part (not a multi-selection). */
   single?: boolean;
   run(partIds: string[]): void;
+  /** Off for these parts (e.g. "Modify…" on an unbuilt or bought part). */
+  disabled?(partIds: string[]): boolean;
 }
 
 /** Starts measuring on these parts (selects them in the viewer's measure mode). */

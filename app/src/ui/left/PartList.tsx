@@ -255,7 +255,7 @@ export function PartList(): JSX.Element {
         { label: "Properties", keys: "⌘I", run: () => openProps(id) },
       );
     }
-    for (const x of extras) items.push({ label: x.label, run: () => x.run(targets) });
+    for (const x of extras) items.push({ label: x.label, disabled: x.disabled?.(targets) ?? false, run: () => x.run(targets) });
     items.push("sep", {
       label: `Delete${many}`, danger: true, confirm: single ? "Click again to delete" : `Click again to delete${many}`,
       // an agent changing it now would rebuild it half-deleted (the core refuses too: 409)

@@ -139,7 +139,7 @@ test("a_second_pick_while_the_callout_is_open_starts_it_fresh", async ({ page, f
 test("modify_from_the_part_menu_rounds_an_edge", async ({ page, fake }) => {
   await open(page);
   await tree(page).getByRole("button", { name: "top plate", exact: true }).click();
-  await tree(page).getByRole("button", { name: "Move or edit top plate" }).click();
+  await tree(page).getByRole("button", { name: "Actions for top plate" }).click();
   await page.getByRole("menuitem", { name: "Modify…" }).click();
   const menu = page.getByTestId("ops-menu");
   await menu.getByRole("radio", { name: "Fillet" }).check();
