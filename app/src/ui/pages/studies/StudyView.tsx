@@ -346,6 +346,9 @@ function Legend({ channel, range, full, onRange }: { channel: Channel; range: [n
         <label><span class="faint">max</span><input type="number" step="any" value={hi} data-testid="range-hi" onInput={(e) => setHi((e.target as HTMLInputElement).value)} onBlur={apply} /></label>
         <label><span class="faint">min</span><input type="number" step="any" value={lo} data-testid="range-lo" onInput={(e) => setLo((e.target as HTMLInputElement).value)} onBlur={apply} /></label>
         {full && (range[0] !== full[0] || range[1] !== full[1]) && <button type="button" class="scard-link" onClick={() => onRange(null)}>full range</button>}
+        {/* two fields and no submit button: without this, Enter would not submit the form (B1-8) */}
+        {/* rendered but unseen (a display:none default button is skipped by some engines) */}
+        <button type="submit" aria-hidden="true" tabIndex={-1} style={{ position: "absolute", width: 0, height: 0, padding: 0, border: 0, opacity: 0, overflow: "hidden" }} />
       </form>
     </div>
   );

@@ -6,7 +6,9 @@ import type { AgentRun, Approval, MisesEvent, Question, RunStatus, Step } from "
 import { debug } from "../lib/log";
 
 export type Effect = { kind: "fetchSteps"; runId: string } | { kind: "fetchRuns" } | { kind: "fetchApprovals" }
-  | { kind: "fetchParts" } | { kind: "fetchStatus" };
+  | { kind: "fetchParts" } | { kind: "fetchStatus" }
+  /** Seed live activity from GET /runs/{id} for runs still working (on load and reconnect, C-3). */
+  | { kind: "fetchActivity"; runIds: string[]; finished: string[]; asOf: number };
 
 export interface InflightCall { run_id: string; name: string; input: Record<string, unknown> }
 
@@ -32,7 +34,7 @@ const RUN_STATUSES: ReadonlySet<string> = new Set<RunStatus>(["running", "done",
 export const KNOWN_EVENTS: ReadonlySet<string> = new Set([
   "run_started", "run_queued", "run_finished", "tool_call", "tool_result", "approval_requested", "question_asked",
   "question_answered", "text_delta", "thought_delta", "note", "plan", "usage", "diff", "file_written",
-  "turn_retry", "compaction", "part_changed",
+  "turn_retry", "compaction", "part_changed", "run_deleted",
 ]);
 
 type Out = { state: AppState; effects: Effect[] };
@@ -121,6 +123,9 @@ function reduceUnsafe(s: AppState, e: MisesEvent): Out {
     case "part_changed":
       // a user or agent edit (C6): new version, vars, metrics and GLB
       return { state: s, effects: [{ kind: "fetchParts" }] };
+    case "run_deleted":
+      // deleted from another window or by the core's Clean up (C-6); a no-op for unknown runs
+      return { state: forgetRuns(s, deletedRunIds(e)), effects: [] };
     case "thought_delta": case "usage": case "turn_retry":
       return { state: s, effects: [] };
     default:
@@ -214,6 +219,45 @@ function clearRunTransients(s: AppState, runId: string): AppState {
     next = { ...next, inflight };
   }
   return next;
+}
+
+/**
+ * Drop runs the core no longer has (deleted, cleaned up): the run, its steps, live text,
+ * in-flight calls, questions and approval cards. Returns `s` itself when none of them is known.
+ */
+export function forgetRuns(s: AppState, ids: Iterable<string>): AppState {
+  const gone = new Set([...ids].filter((id) => s.runs.has(id) || s.steps.has(id)));
+  if (gone.size === 0) return s;
+  let next = s;
+  for (const id of gone) next = clearRunTransients(next, id);
+  const runs = new Map(next.runs);
+  const steps = new Map(next.steps);
+  for (const id of gone) { runs.delete(id); steps.delete(id); }
+  const approvals = new Map([...next.approvals].filter(([, a]) => !gone.has(a.run_id)));
+  return { ...next, runs, steps, approvals: approvals.size === next.approvals.size ? next.approvals : approvals };
+}
+
+/**
+ * The core's open questions per run (GET /runs/{id} on connect, C-2): its questions are added,
+ * and a question we had before the fetch began that it no longer lists is dropped (answered
+ * elsewhere). One that arrived (question_asked) while the fetch was in flight is kept: the
+ * answer may predate it.
+ */
+export function applyPendingQuestions(s: AppState, byRun: ReadonlyMap<string, readonly Question[]>, knownBefore: ReadonlySet<string>): AppState {
+  const listed = new Set([...byRun.values()].flatMap((l) => l.map((q) => q.question_id)));
+  const questions = new Map([...s.questions].filter(([id, q]) => !(byRun.has(q.run_id) && knownBefore.has(id) && !listed.has(id))));
+  // a question we had before the fetch and no longer have was answered meanwhile: not re-added
+  for (const list of byRun.values()) for (const q of list) if (!questions.has(q.question_id) && !knownBefore.has(q.question_id)) questions.set(q.question_id, q);
+  return { ...s, questions };
+}
+
+/** The run ids a `run_deleted` event names (`run_id`, or `data.run_id` / `data.run_ids`). */
+export function deletedRunIds(e: MisesEvent): string[] {
+  const out = new Set<string>();
+  if (e.run_id) out.add(e.run_id);
+  if (typeof e.data.run_id === "string") out.add(e.data.run_id);
+  if (Array.isArray(e.data.run_ids)) for (const x of e.data.run_ids) if (typeof x === "string") out.add(x);
+  return [...out];
 }
 
 function setIn<K, V>(m: ReadonlyMap<K, V>, k: K, v: V): ReadonlyMap<K, V> {

@@ -368,7 +368,8 @@ test("connects_to_fake_core_without_errors", async ({ page, fake }) => {
   // console spec strip loads the active build's spec and studies
   await expect.poll(async () => (await fake.calls()).map((c) => c.path.replace(/^\/projects\/[^/]+\//, "/projects/{id}/")).filter((p) => p !== "/context").sort()).toEqual(
     ["/approvals", "/onshape/budget", "/onshape/budget", "/parts", "/parts/mount_plate/model.glb", "/parts/mount_plate/source", "/printers", "/profile", "/profile",
-      "/projects", "/projects/{id}/spec", "/projects/{id}/studies", "/runs", "/runs/b7c79a57cbb4/steps", "/setup", "/status"]);
+      // C-2/C-3: the running run's live activity and open questions are seeded on connect
+      "/projects", "/projects/{id}/spec", "/projects/{id}/studies", "/runs", "/runs/b7c79a57cbb4", "/runs/b7c79a57cbb4/pending", "/runs/b7c79a57cbb4/steps", "/setup", "/status"]);
   // PUT /context goes out 150 ms after the session starts (state/context.ts debounce)
   await expect.poll(async () => (await fake.calls()).filter((c) => c.path === "/context").length).toBeGreaterThanOrEqual(1);
   const ctx = (await fake.calls()).filter((c) => c.path === "/context");

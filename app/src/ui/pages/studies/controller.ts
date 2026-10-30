@@ -60,6 +60,8 @@ export class StudiesController {
   readonly compare: Signal<StudyCompare | null> = signal(null);
   readonly compareError: Signal<string | null> = signal(null);
   readonly asked: Signal<{ simId: string; runId: string | null; error: string | null } | null> = signal(null);
+  /** The study this page ran just finished and is shown (`n` counts, so each finish is news). */
+  readonly finished: Signal<{ simId: string; n: number } | null> = signal(null);
 
   private readonly client: () => StudiesClient;
   private readonly pollMs: number;
@@ -328,6 +330,8 @@ export class StudiesController {
       this.selectedSimId.value = s.sim_id;
       await this.loadHistory(a.partId);
       await this.select(s.sim_id);
+      // the page's viewer switches from the setup to this result (B1-2)
+      if (this.selectedSimId.peek() === s.sim_id) this.finished.value = { simId: s.sim_id, n: (this.finished.peek()?.n ?? 0) + 1 };
     }
   }
 

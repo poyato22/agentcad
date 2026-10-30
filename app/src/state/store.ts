@@ -6,7 +6,8 @@ import type { CoreClient } from "../api/client";
 import type { ShellCoreStatus } from "../api/connection";
 import type { StreamState } from "../api/events";
 import type { AgentRun, Approval, CoreStatusInfo, PartSummary, Question, Step } from "../api/types";
-import type { AppState, InflightCall } from "./reduce";
+import { forgetActivity } from "./activity";
+import { forgetRuns, type AppState, type InflightCall } from "./reduce";
 
 export type LogFilter = { scope: "run" | "all"; kind: "everything" | "decisions" | "tool_calls" | "files" | "errors" };
 
@@ -65,6 +66,17 @@ export const actions = {
     m.delete(id);
     questions.value = m;
   },
+  /** A run the app just changed (PATCH rename / pin / archive): every label shows it at once. */
+  upsertRun(run: AgentRun): void {
+    const known = runs.value.get(run.id);
+    if (!known) return;
+    const m = new Map(runs.value);
+    m.set(run.id, { ...known, ...run });
+    runs.value = m;
+  },
+  /** Runs the core deleted (DELETE /runs/{id}, Clean up, or a `run_deleted` event): they leave
+   *  History, the switcher and the command line, and can no longer be opened or messaged (C-6). */
+  forgetRuns(ids: readonly string[]): void { commitForgottenRuns(ids); },
   openNewRun(): void { newRunOpen.value = true; },
   closeNewRun(): void { newRunOpen.value = false; },
   client(): CoreClient {
@@ -87,6 +99,27 @@ export function beginCoreSession(pid: number | null): void {
 export function noteRunStarted(runId: string): void {
   if (sessionRuns.peek().has(runId)) return;
   sessionRuns.value = new Set([...sessionRuns.peek(), runId]);
+}
+
+/** Forget deleted runs everywhere the app holds them (C-6). */
+export function commitForgottenRuns(ids: readonly string[]): void {
+  if (ids.length === 0) return;
+  batch(() => {
+    commitAppState(forgetRuns(readAppState(), ids));
+    dropRunRefs(ids);
+  });
+}
+
+/** The selection, this session's runs and live activity no longer point at deleted runs (the
+ *  state maps are cleaned by reduce.forgetRuns). */
+export function dropRunRefs(ids: readonly string[]): void {
+  const gone = new Set(ids);
+  batch(() => {
+    const sel = selectedRunId.peek();
+    if (sel !== null && gone.has(sel)) selectedRunId.value = null;
+    if (ids.some((id) => sessionRuns.peek().has(id))) sessionRuns.value = new Set([...sessionRuns.peek()].filter((id) => !gone.has(id)));
+    forgetActivity(ids);
+  });
 }
 
 export function readAppState(): AppState {

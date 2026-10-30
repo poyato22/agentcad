@@ -93,6 +93,8 @@ export interface Scenario {
   local?: LocalStatus;
   /** ms between `local_pull` progress events (default 120). */
   local_pull_ms?: number;
+  /** ms a cancelled run takes to stop (stays "running" until then; default 0: at once). */
+  stop_delay_ms?: number;
   /** Static stress studies: solver status, stored studies, how POST /sims ends (Studies page). */
   sims?: SimScenario;
   /** Printers, slicer and drawing state (Plan 4). Absent: no printers, PrusaSlicer installed. */
@@ -112,7 +114,30 @@ export interface Scenario {
   spec?: SpecScenario;
   /** Plan 5 builds, part tree and live edits (A3). Absent: one "Default" build with every part. */
   builds?: BuildsScenario;
+  /** GET /tools (the QA-fix core's registry list). Absent: every real core tool; null: no route
+   *  (404, an older core). */
+  tools?: FakeTool[] | null;
 }
+
+export interface FakeTool { name: string; description: string; safety_class: string }
+
+/** The real core's registered tools (core/src/mises, `@tool(...)`), with their safety class. */
+const CORE_TOOLS: readonly [string, string][] = [
+  ["agent_result", "read"], ["agent_spawn", "local_mutate"], ["agent_wait", "read"], ["assembly_add_instance", "local_mutate"],
+  ["assembly_add_joint", "local_mutate"], ["assembly_check", "read"], ["assembly_drive", "local_mutate"], ["assembly_get", "read"],
+  ["assembly_remove", "local_mutate"], ["catalog_get", "read"], ["catalog_import_url", "network"], ["catalog_insert", "local_mutate"],
+  ["catalog_search", "read"], ["design_review", "read"], ["interview_plan", "read"], ["loads_impact", "read"], ["mirror_drawing", "read"],
+  ["mirror_edges", "read"], ["mirror_export", "read"], ["mirror_faces", "read"], ["mirror_measure", "read"], ["mirror_part_create", "local_mutate"],
+  ["mirror_part_get_source", "read"], ["mirror_part_list", "read"], ["mirror_part_op", "local_mutate"], ["mirror_part_set_source", "local_mutate"],
+  ["mirror_part_set_vars", "local_mutate"], ["onshape_budget_get", "read"], ["onshape_doc_elements", "remote_read"], ["onshape_doc_open", "remote_read"],
+  ["onshape_docs_search", "remote_read"], ["onshape_features_list", "remote_read"], ["onshape_import_element", "remote_read"],
+  ["onshape_merge_request", "remote_mutate"], ["onshape_propose", "remote_mutate"], ["onshape_variables_get", "remote_read"],
+  ["orchestrator_run", "local_mutate"], ["orchestrator_submit_plan", "local_mutate"], ["print_printers_list", "read"], ["print_send", "physical"],
+  ["print_slice", "local_mutate"], ["sim_cancel", "local_mutate"], ["sim_compare", "read"], ["sim_env_list", "read"], ["sim_result_get", "read"],
+  ["sim_run", "local_mutate"], ["sim_static_run", "local_mutate"], ["sim_types_list", "read"], ["spec_check", "read"], ["spec_get", "read"],
+  ["spec_set", "local_mutate"], ["study_apply", "local_mutate"], ["study_get", "read"], ["study_run", "local_mutate"], ["ui_ask_user", "read"], ["ui_note", "read"],
+];
+export const DEFAULT_TOOLS: readonly FakeTool[] = CORE_TOOLS.map(([name, safety_class]) => ({ name, safety_class, description: `${name.replace(/_/g, " ")}.` }));
 
 /** A small healthy default when a scenario names no `system` rows. */
 export const DEFAULT_SYSTEM_CHECK: SystemCheckRow[] = [
@@ -141,6 +166,7 @@ export interface FakeState {
   setup: FakeSetup;
   local: LocalStatus | null;
   localPullMs: number;
+  stopDelayMs: number;
   /** Downloads in flight: model -> their pending progress timers (POST /local/pull/cancel clears them). */
   pulling: Map<string, ReturnType<typeof setTimeout>[]>;
   sims: FakeSims;
@@ -156,6 +182,8 @@ export interface FakeState {
   spec: FakeSpec;
   /** Plan 5 A3: builds, part-tree rows, scripts and versions. */
   builds: FakeBuilds;
+  /** GET /tools; null answers 404. */
+  tools: FakeTool[] | null;
 }
 
 export interface FakeCore {
@@ -213,9 +241,10 @@ function stateFrom(sc: Scenario, token: string): FakeState {
     approvals: new Map(sc.approvals.map((a) => [a.id, a])),
     questions: new Map((sc.questions ?? []).map((q) => [q.question_id, q])),
     parts: sc.parts, agents: sc.agents, models: sc.models, status: sc.status,
+    tools: sc.tools === null ? null : structuredClone(sc.tools ?? [...DEFAULT_TOOLS]),
     glb: sc.glb ?? {}, script: sc.script ?? [], on: sc.on ?? {}, calls: [],
     setup: withBuildTabs(setupFrom(sc), sc.builds),
-    local: sc.local ? structuredClone(sc.local) : null, localPullMs: sc.local_pull_ms ?? 120, pulling: new Map(),
+    local: sc.local ? structuredClone(sc.local) : null, localPullMs: sc.local_pull_ms ?? 120, stopDelayMs: sc.stop_delay_ms ?? 0, pulling: new Map(),
     sims: simsFrom(sc.sims),
     sketches: new Map(),
     print: printingFrom(sc.print),
@@ -332,6 +361,8 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
 
   /** The latest agent_activity per run (GET /runs/{id} `activity`, like the core's tracker). */
   const lastActivity = new Map<string, unknown>();
+  /** Runs cancelled but still stopping (stop_delay_ms). */
+  const stopping = new Set<string>();
 
   /** Keeps fake state consistent with what an event implies in the real core. */
   function applyEvent(ev: MisesEvent) {
@@ -390,6 +421,19 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
   function cancelRun(id: string) {
     const r = state.runs.get(id);
     if (!r || r.status !== "running") return;
+    // a run that takes a while to stop (the core's worst case is ~7 s: 2 s close + 5 s TERM grace)
+    if (state.stopDelayMs > 0 && !stopping.has(id)) {
+      stopping.add(id);
+      setTimeout(() => { stopping.delete(id); if (state.runs.get(id)?.status === "running") finishCancel(id); }, state.stopDelayMs);
+      return;
+    }
+    if (stopping.has(id)) return;
+    finishCancel(id);
+  }
+
+  function finishCancel(id: string) {
+    const r = state.runs.get(id);
+    if (!r) return;
     state.runs.set(id, { ...r, status: "cancelled", updated_at: now() });
     // same as core approvals.py on cancel
     for (const a of state.approvals.values()) {
@@ -449,6 +493,14 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     const own = blockedReason(getRun(id));
     return own ? { reason: own, children: [] } : null;
   }
+  function pendingOf(runId: string): { questions: Record<string, unknown>[]; approvals: Approval[] } {
+    return {
+      questions: [...state.questions.values()].filter((q) => q.run_id === runId)
+        .map((q) => ({ question_id: q.question_id, run_id: q.run_id, question: q.question, options: q.options, questions: q.items ?? [], status: "pending" })),
+      approvals: [...state.approvals.values()].filter((a) => a.run_id === runId && a.status === "pending"),
+    };
+  }
+
   function removeRun(id: string): void {
     state.runs.delete(id);
     state.steps = state.steps.filter((s) => s.run_id !== id);
@@ -515,6 +567,13 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     get: () => state.builds, parts: () => state.parts, setParts: (list) => { state.parts = list; },
     profile: () => state.setup.profile as unknown as ReturnType<BuildsDeps["profile"]>,
     emit: (ev) => { emit(ev); },
+    blockers: (projectIds) => {
+      const inTrash = [...state.runs.values()].filter((r) => r.project_id && projectIds.includes(r.project_id));
+      const live = inTrash.filter((r) => r.status === "running" || r.status === "queued").map((r) => r.id);
+      if (live.length) return { reason: "running", run_ids: live };
+      const waiting = inTrash.filter((r) => [...state.approvals.values()].some((a) => a.run_id === r.id && a.status === "pending")).map((r) => r.id);
+      return waiting.length ? { reason: "pending_approval", run_ids: waiting } : null;
+    },
   };
 
   const routes: Route[] = [
@@ -644,6 +703,10 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     },
     // like the core's GET /runs/{id}: run_view plus the live `activity` (C4; null when none)
     { method: "GET", re: /^\/runs\/([^/]+)$/, h: (m) => ({ ...runView(getRun(m[1])), activity: lastActivity.get(m[1]) ?? null }) },
+    // the QA-fix core's open ui_ask_user questions and approvals of a run, so a reload brings a
+    // question card back (C-2). Assumed shape; the app also reads `pending` inside GET /runs/{id}.
+    // (GET /runs/{id} stays the real core's dumped shape: test/contract.routes.test.ts.)
+    { method: "GET", re: /^\/runs\/([^/]+)\/pending$/, h: (m) => { getRun(m[1]); return pendingOf(m[1]); } },
     {
       method: "GET", re: /^\/runs\/([^/]+)\/steps$/, h: (m, q) => {
         getRun(m[1]);
@@ -718,6 +781,12 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       // An agent carrying a `builtin` flag (a created custom agent, or a scenario that opts in)
       // is returned in the Plan 5 shape; a plain scenario agent stays {name,description,model}
       // so the pre-Plan-5 contract fixture (agents.json) still matches shape.
+      method: "GET", re: /^\/tools$/, h: () => {
+        if (state.tools === null) throw new HttpError(404, { detail: "Not Found" });
+        return state.tools;
+      },
+    },
+    {
       method: "GET", re: /^\/agents$/, h: () => {
         const hidden = new Set(state.setup.profile.hidden_agents ?? []);
         // the Plan 5 shape for every agent (the re-dumped agents.json); scenario agents are built-ins
@@ -1065,6 +1134,9 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     clearSimTimers(state.sims);
     dropSockets();
     stopPrinting(state.print);
+    // the live activity belongs to the old scenario's runs (GET /runs/{id} serves it, C-3)
+    lastActivity.clear();
+    stopping.clear();
     state = stateFrom(loadScenario(scenario), token ?? state.token);
   }
 

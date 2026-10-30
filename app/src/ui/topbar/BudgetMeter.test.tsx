@@ -83,11 +83,15 @@ describe("BudgetMeter", () => {
     expect(activePage.value).toBe("onshape");
   });
 
-  it("is hidden when Onshape isn't set up or nothing is known yet", () => {
+  it("shows idle when Onshape isn't set up (the connect card points at it, A-7), hidden while nothing is known", () => {
     coreStatus.value = status("not_configured");
-    applyBudget(BUDGET, null);
+    applyBudget({ ...BUDGET, used_year: 0 }, null);
     render(<BudgetMeter />);
-    expect(meter()).toBeNull();
+    expect(meter().dataset.state).toBe("idle");
+    expect(meter().querySelector("[data-budget-delta]")).toBeNull();
+    expect(screen.getByRole("button").getAttribute("aria-label")).toContain("Onshape budget (not connected): 0 of 2,500 calls used this year");
+    expect(screen.getByRole("button").getAttribute("aria-label")).toContain("add your Onshape keys to connect it.");
+    expect(onshapeTone(status("not_configured")).title).toBe("Onshape not set up: add your Onshape keys to connect it.");
     cleanup();
     resetOnshapeBudget();
     coreStatus.value = status();

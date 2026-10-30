@@ -195,3 +195,30 @@ describe("CoreClient", () => {
     expect(e.hint).toBeNull();
   });
 });
+
+describe("CoreClient.runLive (C-2, C-3)", () => {
+  const q = { question_id: "q1", question: "Which phone?", options: ["a", "b"], questions: [] };
+  const act = { state: "waiting_user", detail: "asking you", since: 1 };
+
+  it("reads activity and pending questions inside GET /runs/{id}", async () => {
+    const { client, f } = clientWith(async () => json({ ...run, activity: act, pending: { questions: [q], approvals: [] } }));
+    const live = await client.runLive(run.id);
+    expect(live.activity).toEqual(act);
+    expect(live.questions).toEqual([{ question_id: "q1", run_id: run.id, question: "Which phone?", options: ["a", "b"] }]);
+    expect(f).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to GET /runs/{id}/pending, accepting `id` and dropping answered or malformed items", async () => {
+    const { client, f } = clientWith(async (url) => (url.endsWith("/pending")
+      ? json({ questions: [{ id: "q2", question: "Size?", options: [] }, { question_id: "q3", question: "x", status: "answered" }, { nope: 1 }] })
+      : json({ ...run, activity: null })));
+    const live = await client.runLive(run.id);
+    expect(f.mock.calls[1][0]).toBe(`http://127.0.0.1:7400/runs/${run.id}/pending`);
+    expect(live.questions?.map((x) => x.question_id)).toEqual(["q2"]);
+  });
+
+  it("an older core with neither gives null questions (the store keeps its own)", async () => {
+    const { client } = clientWith(async (url) => (url.endsWith("/pending") ? json({ detail: "Not Found" }, 404) : json({ ...run })));
+    expect(await client.runLive(run.id)).toEqual({ activity: null, questions: null });
+  });
+});

@@ -42,17 +42,31 @@ export interface SpecScenario {
   studies?: Study[] | "fixture";
   /** Part versions (C6) for the stale check; absent: the core's "no version" (never stale). */
   versions?: Record<string, number>;
+  /** "fixture-running": the fixture study still running (no kept variants yet) … */
+  running?: boolean;
+  /** … that turns done (its fixture kept_variants) this long after the reset, with NO event —
+   *  like an older core's final save after the fine-mesh confirmation (B2-1). */
+  finish_after_ms?: number;
 }
 
 /** `updatedAt`: when the spec was last written (null: never), like the core's specs.updated_at. */
-export interface FakeSpec { projectId: string; spec: Spec; updatedAt: number | null; studies: Map<string, Study>; versions: Record<string, number> }
+export interface FakeSpec {
+  projectId: string; spec: Spec; updatedAt: number | null; studies: Map<string, Study>; versions: Record<string, number>;
+  finishAt: number | null; keptOnFinish: string[] | null;
+}
 
 export function specFrom(s: SpecScenario | undefined): FakeSpec {
   const projectId = s?.project_id ?? FIXTURE_PROJECT;
   const spec = s?.spec === "fixture" ? REAL_SPEC.spec.spec : (s?.spec ?? REAL_SPEC.empty.spec);
   const list = s?.studies === "fixture" ? REAL_SPEC.studies.map((x) => ({ ...x, project_id: projectId })) : (s?.studies ?? []);
   const updatedAt = s?.spec === undefined ? null : REAL_SPEC.spec.updated_at ?? 1793289539.3;
-  return { projectId, spec: structuredClone(spec), updatedAt, studies: new Map(list.map((x) => [x.id, structuredClone(x)])), versions: { ...(s?.versions ?? {}) } };
+  const studies = new Map(list.map((x) => [x.id, structuredClone(x)]));
+  const keptOnFinish = list[0]?.kept_variants ?? null;
+  if (s?.running) for (const st of studies.values()) Object.assign(st, { status: "running", kept_variants: [] });
+  return {
+    projectId, spec: structuredClone(spec), updatedAt, studies, versions: { ...(s?.versions ?? {}) },
+    finishAt: s?.running && s.finish_after_ms !== undefined ? Date.now() + s.finish_after_ms : null, keptOnFinish,
+  };
 }
 
 export interface SpecDeps {
@@ -175,6 +189,11 @@ export function specRoutes(d: SpecDeps): Route[] {
       method: "GET", re: /^\/projects\/([^/]+)\/studies$/, h: (m) => {
         const id = decodeURIComponent(m[1]);
         const s = project(id);
+        // a study that finishes with no event (an older core's final save, B2-1)
+        if (s.finishAt !== null && Date.now() >= s.finishAt) {
+          for (const st of s.studies.values()) if (st.status === "running") Object.assign(st, { status: "done", kept_variants: s.keptOnFinish });
+          s.finishAt = null;
+        }
         return own(id) ? [...s.studies.values()].sort((a, b) => b.created_at - a.created_at).map((x) => structuredClone(x)) : [];
       },
     },

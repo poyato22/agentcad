@@ -101,6 +101,9 @@ export interface BuildsDeps {
   setParts(list: PartSummary[]): void;
   profile(): { active_project_id?: string | null; open_project_ids?: string[] } & Record<string, unknown>;
   emit(ev: EventIn): void;
+  /** Live work in these builds (the core's _blocked rule: running / queued, or a pending approval):
+   *  Empty Trash refuses as a whole while any (409 {reason, run_ids, project_ids, message, hint}). */
+  blockers?(projectIds: readonly string[]): { reason: "running" | "pending_approval"; run_ids: string[] } | null;
 }
 
 export function buildRoutes(d: BuildsDeps): Route[] {
@@ -233,6 +236,14 @@ export function buildRoutes(d: BuildsDeps): Route[] {
     {
       method: "POST", re: /^\/projects\/trash\/empty$/, h: () => {
         const purged = B().builds.filter((b) => b.trashed_at !== null).map((b) => b.id);
+        const busy = d.blockers?.(purged) ?? null;
+        if (busy) {
+          throw new HttpError(409, {
+            ...busy, project_ids: purged,
+            message: `${busy.run_ids.length} run(s) in the Trash are still ${busy.reason === "running" ? "working" : "waiting for approval"}`,
+            hint: "wait for them to finish, or cancel them, then empty the Trash",
+          });
+        }
         B().builds = B().builds.filter((b) => b.trashed_at === null);
         for (const [id, r] of [...B().rows]) if (purged.includes(r.project_id)) B().rows.delete(id);
         return { purged, count: purged.length };

@@ -9,6 +9,7 @@
 // buttons.
 import type { JSX } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
+import { CoreError } from "../../api/client";
 import { onCoreEvent } from "../../api/events";
 import type { AgentRun, CleanupResult, DeleteRefused, RunNode } from "../../api/types";
 import { activityByRun } from "../../state/activity";
@@ -24,8 +25,45 @@ import {
 const TONE: Record<AgentRun["status"], LedTone> = { queued: "faint", running: "blue", done: "green", failed: "red", cancelled: "faint" };
 /** Refetch the tree at most this often while runs start and finish. */
 const RELOAD_MS = 300;
-/** Cancel and delete: retries while a cancelled run stops (250 ms apart, ~5 s in all). */
+/** Cancel and delete: first wait (up to STOP_WAIT_MS) for the cancelled runs to reach a final
+ *  state — their run_finished, or GET /runs/{id} polled STOP_POLL_MS apart — since the core's
+ *  worst-case stop is ~7 s (2 s close + 5 s TERM grace, C-8); then retry the delete while the core
+ *  still winds the session down (250 ms apart, ~5 s more). */
+export const STOP_WAIT_MS = 12_000;
+const STOP_POLL_MS = 250;
 const STOP_TRIES = 20;
+const TERMINAL: ReadonlySet<string> = new Set(["done", "failed", "cancelled"]);
+
+/** Resolves once every run is final (or gone), or after `ms`; true when they all stopped. */
+export async function waitStopped(ids: readonly string[], getStatus: (id: string) => Promise<string | null>,
+  opts: { ms?: number; pollMs?: number; subscribe?: typeof onCoreEvent } = {}): Promise<boolean> {
+  const left = new Set(ids);
+  const deadline = Date.now() + (opts.ms ?? STOP_WAIT_MS);
+  let wake: (() => void) | null = null;
+  const off = (opts.subscribe ?? onCoreEvent)((ev) => {
+    if (ev.type === "run_finished" && ev.run_id && left.delete(ev.run_id)) wake?.();
+  });
+  try {
+    while (left.size > 0 && Date.now() < deadline) {
+      for (const id of [...left]) {
+        const st = await getStatus(id).catch(() => "unknown");
+        if (st === null || TERMINAL.has(st)) left.delete(id);
+      }
+      if (left.size === 0) break;
+      await new Promise<void>((r) => { wake = r; setTimeout(r, opts.pollMs ?? STOP_POLL_MS); });
+      wake = null;
+    }
+    return left.size === 0;
+  } finally { off(); }
+}
+
+/** A run's status, or null when the core no longer has it (404). */
+async function runStatus(id: string): Promise<string | null> {
+  try { return (await actions.client().getRun(id)).status; } catch (e) {
+    if (e instanceof CoreError && e.code === "not_found") return null;
+    throw e;
+  }
+}
 /** …but a blocker that is only an approval stops the retries after this many (cancel didn't clear it). */
 const APPROVAL_TRIES = 4;
 
@@ -60,6 +98,14 @@ export function RunsTab(): JSX.Element {
       const [t, n] = await Promise.all([client.runsTree(), client.projectNames().catch(() => new Map<string, string>())]);
       setTree(t);
       setNames(n);
+      // a refusal says "still working": once the run (and its workers) stopped, it is stale (C-8)
+      const busy = new Set<string>();
+      const walk = (ns: readonly RunNode[]) => { for (const x of ns) { if (x.status === "running" || x.status === "queued") busy.add(x.id); walk(x.children); } };
+      walk(t);
+      setRefusals((m) => {
+        const keep = [...m].filter(([id, r]) => busy.has(id) || r.reason === "pending_approval" || r.children.some((c) => busy.has(c)));
+        return keep.length === m.size ? m : new Map(keep);
+      });
       setError(null);
     } catch (e) {
       setError(message(e));
@@ -130,6 +176,7 @@ export function RunsTab(): JSX.Element {
     const refused = await actions.client().deleteRun(id);
     if (refused) { setRefusal(id, refused); return false; }
     setRefusal(id, null);
+    actions.forgetRuns([id]);
     setSelected((s) => { if (!s.has(id)) return s; const n = new Set(s); n.delete(id); return n; });
     return true;
   };
@@ -150,10 +197,13 @@ export function RunsTab(): JSX.Element {
     setError(null);
     const client = actions.client();
     try {
-      for (const rid of [...refused.children, id]) await client.cancel(rid).catch(() => undefined);
+      const targets = [...refused.children, id];
+      for (const rid of targets) await client.cancel(rid).catch(() => undefined);
+      // a run waiting only for an approval never stops by itself: no point waiting for it
+      if (refused.reason !== "pending_approval") await waitStopped(targets, runStatus);
       for (let i = 0; i < STOP_TRIES; i++) {
         const again = await client.deleteRun(id);
-        if (!again) { setRefusal(id, null); setNotice(`Cancelled and deleted ${labelOf(id)}.`); await load(); return; }
+        if (!again) { setRefusal(id, null); actions.forgetRuns([id]); setNotice(`Cancelled and deleted ${labelOf(id)}.`); await load(); return; }
         setRefusal(id, again);
         const onlyApprovals = again.reason === "pending_approval"
           || (again.children.length > 0 && again.children.every(awaitingApproval) && i + 1 >= APPROVAL_TRIES);
@@ -184,7 +234,8 @@ export function RunsTab(): JSX.Element {
   };
 
   const patch = async (id: string, p: { title?: string; pinned?: boolean; archived?: boolean }) => {
-    try { await actions.client().patchRun(id, p); await load(); } catch (e) { setError(message(e)); }
+    // the store's copy too, so History, the switcher and the command line show a rename at once (C-5)
+    try { actions.upsertRun(await actions.client().patchRun(id, p)); await load(); } catch (e) { setError(message(e)); }
   };
 
   return (
@@ -371,7 +422,7 @@ function CleanupPanel({ labelOf, refusalOf, onDeleted }: {
       try {
         const refused = await client.deleteRun(id);
         if (refused) kept.push({ id, why: refusalOf(refused) });
-        else deleted++;
+        else { deleted++; actions.forgetRuns([id]); }
       } catch (e) { kept.push({ id, why: message(e) }); }
     }
     const total = preview.ids.length;

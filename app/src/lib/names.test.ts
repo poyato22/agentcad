@@ -61,6 +61,17 @@ describe("runLabel", () => {
     expect(label.startsWith("designer · ")).toBe(true);
   });
 
+  it("a renamed run reads its title (C-5)", () => {
+    const r = run({ title: "QA renamed run" });
+    expect(runLabel(r, [r])).toBe("designer · QA renamed run");
+    const blank = run({ title: "   " });
+    expect(runLabel(blank, [blank])).toBe("designer · stiffen upright");
+    // two runs with the same task: a rename alone tells them apart
+    const a = run({ id: "a" }), b = run({ id: "b", title: "second try" });
+    expect(runLabel(a, [a, b])).toBe("designer · stiffen upright");
+    expect(runLabel(b, [a, b])).toBe("designer · second try");
+  });
+
   it("empty task falls back", () => {
     const r = run({ task: "   " });
     expect(runLabel(r, [r])).toBe("designer · task");

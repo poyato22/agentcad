@@ -36,16 +36,30 @@ test("interview_card_answers_the_batch_by_keyboard_and_click", async ({ page, fa
   await expect(card).toBeVisible();
   await expect(card).toContainText("A few questions first:");
   await expect(card).not.toContainText("1. What will this drone do?");  // the appended listing is not repeated
-  await page.waitForTimeout(450); // the card arms ARM_MS after it appears (approval click rules)
+  // wait on state, never on time: each step checks what it changed before the next one
   await card.getByRole("button", { name: "freestyle" }).click();
+  await expect(card.getByRole("button", { name: "freestyle" })).toHaveAttribute("aria-pressed", "true");
   await card.locator('[data-q="size_class"]').getByRole("textbox").fill("4 inch");
-  // rank: the full order, pre-filled; Alt+↑ on a focused row moves it (A7's ranking)
-  await card.locator('[data-rank="stiffness"]').focus();
-  await page.keyboard.press("Alt+ArrowUp");
-  await page.keyboard.press("Alt+ArrowUp");
-  await card.locator('[data-rank="impact strength"]').focus();
-  await page.keyboard.press("Alt+ArrowDown");
+  await expect(card.locator('[data-q="size_class"]').getByRole("textbox")).toHaveValue("4 inch");
+  // rank: the full order, pre-filled; Alt+↑ on a focused row moves it (A7's ranking) and keeps
+  // focus on it. Each press waits for the new order and that focus before the next one.
+  const order = () => card.locator('[data-q="priorities"] [data-rank]');
+  const rankMove = async (option: string, key: "Alt+ArrowUp" | "Alt+ArrowDown", want: string[]) => {
+    const row = card.locator(`[data-rank="${option}"]`);
+    await row.focus();
+    await expect(row).toBeFocused();
+    await page.keyboard.press(key);
+    await expect.poll(async () => order().evaluateAll((els) => els.map((e) => e.getAttribute("data-rank")))).toEqual(want);
+    await expect(row).toBeFocused();
+  };
+  await expect.poll(async () => order().evaluateAll((els) => els.map((e) => e.getAttribute("data-rank"))))
+    .toEqual(["weight", "impact strength", "stiffness", "print time"]);
+  await rankMove("stiffness", "Alt+ArrowUp", ["weight", "stiffness", "impact strength", "print time"]);
+  await rankMove("stiffness", "Alt+ArrowUp", ["stiffness", "weight", "impact strength", "print time"]);
+  await rankMove("impact strength", "Alt+ArrowDown", ["stiffness", "weight", "print time", "impact strength"]);
   if (SHOTS) await card.screenshot({ path: `${SHOTS}/interview-dark.png` });
+  // the card arms ARM_MS after it appears (approval click rules): data-armed says when
+  await expect(card).toHaveAttribute("data-armed", "");
   await card.getByRole("button", { name: "Send answers" }).click();
   await expect(card).toHaveCount(0);
   const sent = (await fake.calls()).filter((c) => c.path === "/questions/q_iv1/answer");

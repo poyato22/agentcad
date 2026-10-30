@@ -6,10 +6,11 @@
 // Switching keeps each build's own part selection; the old build's parts never show under the new
 // tab (a parts answer for a build that is no longer active is dropped).
 import { batch, computed, effect, signal, type ReadonlySignal, type Signal } from "@preact/signals";
-import type { Build } from "../api/builds";
+import type { Build, EmptyTrashRefused } from "../api/builds";
 import { CoreError } from "../api/client";
 import type { PartSummary } from "../api/types";
 import { debug } from "../lib/log";
+import { runLabel } from "../lib/names";
 import { actions, conn, parts, runs, selectedPartId, selectedRunId } from "./store";
 
 /** Every build the core knows, the trashed ones included. */
@@ -41,6 +42,22 @@ function message(e: unknown): string {
 function fail(what: string, e: unknown): void {
   buildsError.value = `${what}: ${message(e)}`;
   debug("builds", what, e);
+}
+
+/** The last Empty Trash the core refused (409): the runs that block it. Cleared by the next try. */
+export const trashBlocked: Signal<EmptyTrashRefused | null> = signal<EmptyTrashRefused | null>(null);
+
+/** "The Trash wasn't emptied: 2 runs in trashed builds are still working (designer · arm, …)." */
+export function trashRefusalText(r: EmptyTrashRefused, label: (id: string) => string): string {
+  const n = r.run_ids.length;
+  const shown = r.run_ids.slice(0, 3).map(label).join(", ");
+  const who = n === 0 ? "" : ` (${shown}${n > 3 ? ` and ${n - 3} more` : ""})`;
+  const runsWord = n === 1 ? "1 run in a trashed build" : `${n} runs in trashed builds`;
+  const verb = n === 1 ? "is" : "are";
+  if (r.reason === "pending_approval") {
+    return `The Trash wasn't emptied: ${runsWord} ${verb} waiting for your approval${who}. Decide ${n === 1 ? "its card" : "their cards"}, then empty it again.`;
+  }
+  return `The Trash wasn't emptied: ${runsWord} ${verb} still working${who}. Wait for ${n === 1 ? "it" : "them"} to finish or stop ${n === 1 ? "it" : "them"}, then empty it again.`;
 }
 
 /** Active first-choice, else the first open live tab, else the first live build. */
@@ -242,8 +259,18 @@ export const buildActions = {
 
   async emptyTrash(): Promise<void> {
     buildsError.value = null;
+    trashBlocked.value = null;
     try {
       const r = await actions.client().emptyTrash();
+      if ("refused" in r) {
+        // nothing was deleted: say which runs hold it up (the ▾ menu lists them to open)
+        trashBlocked.value = r.refused;
+        buildsError.value = trashRefusalText(r.refused, (id) => {
+          const run = runs.peek().get(id);
+          return run ? runLabel(run, [...runs.peek().values()]) : `run ${id}`;
+        });
+        return;
+      }
       const gone = new Set(r.purged);
       builds.value = builds.peek().filter((b) => !gone.has(b.id));
     } catch (e) {
@@ -274,6 +301,7 @@ export function resetBuilds(): void {
     activeBuildId.value = null;
     openBuildIds.value = [];
     buildsError.value = null;
+    trashBlocked.value = null;
   });
   selectionByBuild.clear();
   loadSeq++;

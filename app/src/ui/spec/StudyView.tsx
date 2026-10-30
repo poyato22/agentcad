@@ -166,7 +166,7 @@ function Variant({ c, study, it, requirements, meets }: { c: SpecController; stu
               title={running ? "Wait for the study to finish" : undefined}>
               {meets ? "Use this variant" : "Use anyway"}
             </Button>
-            {variantSims(it).length > 0 && (
+            {variantSims(it, study).length > 0 && (
               <Button onClick={() => openVariant(study, it)} title="Open this variant's stress result (immersive view)">View result</Button>
             )}
             {isApplied && <span class="tone-green" data-applied>Applied.</span>}
@@ -252,13 +252,15 @@ function IterTable({ study, selected, onSelect, meets }: { study: Study; selecte
 }
 
 /** The stress studies a variant ran (one per load case); kept for the best and Pareto variants. */
-export function variantSims(it: StudyIteration): string[] {
+export function variantSims(it: StudyIteration, study?: Pick<Study, "status" | "kept_variants">): string[] {
+  // a finished study keeps only the best and Pareto variants' results; the others' sims are deleted (B2-2)
+  if (study && study.status !== "running" && study.kept_variants && !(it.metrics.variant && study.kept_variants.includes(it.metrics.variant))) return [];
   return Object.values(it.metrics.sim_ids_by_case ?? {}).filter((x): x is string => typeof x === "string" && x !== "");
 }
 
 /** A design-study point → A8's immersive view on its stress result(s), stepping across its load cases. */
 export function openVariant(study: Study, it: StudyIteration): void {
-  const ids = variantSims(it);
+  const ids = variantSims(it, study);
   if (ids.length === 0) return;
   openImmersive({ simId: ids[0], ids, origin: { agent: "design study", runId: study.run_id, reason: `${partLabel(study.part_id)} · variant #${it.n}` } });
 }

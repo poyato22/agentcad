@@ -83,6 +83,8 @@
 /* Task A6: Onshape budget meter. A short gauge: grey fill, amber past warn_at, red at the limit
    (status colours only for the warn/fail states). The count flashes once when a call lands. */
 .budget { display: flex; align-items: center; flex: none; }
+/* not connected yet: the yearly allowance, dimmed */
+.budget[data-state="idle"] { opacity: 0.6; }
 .budget-btn {
   display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px;
   background: transparent; border: 1px solid var(--line2); border-radius: 0; color: var(--dim);
@@ -167,6 +169,15 @@
 .bmenu-item > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bmenu-item:hover, .bmenu-item:focus-visible { background: var(--paper2); outline: none; }
 .bmenu-item[aria-checked="true"] { box-shadow: inset 2px 0 0 var(--blue); }
+/* a build row: switch to it, or rename / trash it without opening it (a tab behind "+N") */
+.bmenu-row { display: flex; align-items: stretch; }
+.bmenu-row > .bmenu-item { flex: 1 1 auto; min-width: 0; }
+.bmenu-act {
+  flex: none; padding: 0 6px; border: 0; background: transparent; color: var(--dim); font: inherit; cursor: pointer;
+}
+.bmenu-act:hover, .bmenu-act:focus-visible { color: var(--ink); background: var(--paper2); outline: none; }
+.bmenu-row .btab-input { flex: 1 1 auto; margin: 2px 10px; }
+.bmenu-blocked { display: flex; flex-direction: column; gap: 2px; padding: 3px 10px; color: var(--red); }
 .bmenu-sep { height: 1px; background: var(--line); margin: 4px 0; }
 .bmenu-empty { padding: 3px 10px; }
 .bmenu-confirm { display: flex; flex-direction: column; gap: 6px; padding: 6px 10px; color: var(--ink); }

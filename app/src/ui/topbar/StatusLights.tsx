@@ -54,7 +54,7 @@ function coreTitle(shell: ShellCoreStatus, stream: StreamState, tone: LedTone, l
 /** `live`: the budget meter's figures (onshape_budget events). When the meter shows them, the light keeps
  *  only its tone and "connected" (the count is in the meter and in the light's title), to save top-bar room. */
 export function onshapeTone(s: CoreStatusInfo | null, live: OnshapeBudget | null = null): { tone: LedTone; text: string; title?: string } {
-  if (!s || s.onshape !== "connected") return { tone: "faint", text: "not set up" };
+  if (!s || s.onshape !== "connected") return { tone: "faint", text: "not set up", ...(s ? { title: "Onshape not set up: add your Onshape keys to connect it." } : {}) };
   if (live) {
     const level = budgetLevel(live);
     return { tone: level === "limit" ? "red" : level === "warn" ? "amber" : "green",

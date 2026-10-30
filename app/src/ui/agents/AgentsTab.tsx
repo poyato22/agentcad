@@ -4,7 +4,7 @@
 // model picker (GET /models) and a tools picker ("default tools", or only the ones ticked).
 import type { JSX } from "preact";
 import { useEffect, useMemo, useState } from "preact/hooks";
-import { CoreError } from "../../api/client";
+import { CoreError, type ToolInfo } from "../../api/client";
 import type { AgentInfo } from "../../api/types";
 import { actions } from "../../state/store";
 import { Button } from "../common/Button";
@@ -22,6 +22,7 @@ const EMPTY: Draft = { name: "", description: "", model: "inherit", useDefaults:
 export function AgentsTab(): JSX.Element {
   const [agents, setAgents] = useState<AgentInfo[] | null>(null);
   const [hidden, setHidden] = useState<string[]>([]);
+  const [registry, setRegistry] = useState<ToolInfo[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   /** null: no form; "": a new agent; otherwise the custom agent being edited. */
   const [editing, setEditing] = useState<string | null>(null);
@@ -29,8 +30,10 @@ export function AgentsTab(): JSX.Element {
   const load = async () => {
     try {
       const client = actions.client();
-      const [list, profile] = await Promise.all([client.agents(), client.getProfile()]);
+      // the tools list degrades quietly: without it the picker offers what the agents list
+      const [list, profile, tools] = await Promise.all([client.agents(), client.getProfile(), client.tools().catch(() => null)]);
       setAgents(list);
+      setRegistry(tools);
       setHidden(profile.hidden_agents ?? list.filter((a) => a.hidden).map((a) => a.name));
       setError(null);
     } catch (e) { setError(message(e)); }
@@ -45,8 +48,10 @@ export function AgentsTab(): JSX.Element {
     try { await actions.client().deleteAgent(name); await load(); } catch (e) { setError(message(e)); }
   };
 
-  /** Every tool name any agent lists: the choices the tools picker offers. */
-  const knownTools = useMemo(() => [...new Set((agents ?? []).flatMap((a) => a.tools ?? []))].sort(), [agents]);
+  /** The picker's choices: every tool the core registers (GET /tools, C-7), plus any an agent
+   *  lists that it doesn't (an older core: only those). */
+  const knownTools = useMemo(() => [...new Set([...(registry ?? []).map((t) => t.name), ...(agents ?? []).flatMap((a) => a.tools ?? [])])].sort(), [agents, registry]);
+  const toolDocs = useMemo(() => new Map((registry ?? []).map((t) => [t.name, t.description])), [registry]);
   const builtins = (agents ?? []).filter((a) => a.builtin !== false);
   const custom = (agents ?? []).filter((a) => a.builtin === false);
 
@@ -60,7 +65,7 @@ export function AgentsTab(): JSX.Element {
       {error && <div class="am-error tone-red text" role="alert">{error}</div>}
       {editing !== null && (
         <AgentForm key={editing} existing={editing ? custom.find((a) => a.name === editing) ?? null : null}
-          knownTools={knownTools} taken={(agents ?? []).map((a) => a.name)}
+          knownTools={knownTools} toolDocs={toolDocs} taken={(agents ?? []).map((a) => a.name)}
           onCancel={() => setEditing(null)} onSaved={() => { setEditing(null); void load(); }} />
       )}
       {agents === null && !error && <div class="am-empty faint">Loading agents…</div>}
@@ -119,8 +124,8 @@ function DeleteAgent({ name, onConfirm }: { name: string; onConfirm: () => void 
   );
 }
 
-function AgentForm({ existing, knownTools, taken, onCancel, onSaved }: {
-  existing: AgentInfo | null; knownTools: string[]; taken: string[]; onCancel: () => void; onSaved: () => void;
+function AgentForm({ existing, knownTools, toolDocs, taken, onCancel, onSaved }: {
+  existing: AgentInfo | null; knownTools: string[]; toolDocs: ReadonlyMap<string, string>; taken: string[]; onCancel: () => void; onSaved: () => void;
 }): JSX.Element {
   const [d, setD] = useState<Draft>(() => existing
     ? { name: existing.name, description: existing.description, model: existing.model, useDefaults: existing.tools == null, tools: existing.tools ?? [], body: "" }
@@ -193,7 +198,7 @@ function AgentForm({ existing, knownTools, taken, onCancel, onSaved }: {
         {!d.useDefaults && (
           <div class="am-toolgrid" role="group" aria-label="Allowed tools">
             {[...new Set([...knownTools, ...d.tools])].map((t) => (
-              <label key={t} class="am-check text"><input type="checkbox" checked={d.tools.includes(t)} onChange={() => toggleTool(t)} />{t}</label>
+              <label key={t} class="am-check text" title={toolDocs.get(t) || undefined}><input type="checkbox" checked={d.tools.includes(t)} onChange={() => toggleTool(t)} />{t}</label>
             ))}
           </div>
         )}

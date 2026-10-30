@@ -116,6 +116,9 @@ describe("Studies page", () => {
     await settle();
     expect(cases()).toHaveLength(2);
     expect(cases()[1].dataset.selected).toBe("true");
+    // the new case is held like the first (bottom), not on the face it loads (B1-11)
+    expect((document.getElementById("sf-load_cases-1-supports-0-face") as HTMLSelectElement).value)
+      .toBe((document.getElementById("sf-load_cases-0-supports-0-face") as HTMLSelectElement).value);
     const face = document.getElementById("sf-load_cases-1-loads-0-face") as HTMLSelectElement;
     expect([...face.options].map((o) => o.value)).toEqual(expect.arrayContaining(["top", "x-max", "f0", "f1"]));
     fireEvent.change(face, { target: { value: "f1" } });

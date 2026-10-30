@@ -4,6 +4,7 @@ import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { CoreError } from "../../api/client";
 import type { AgentInfo, ModelsInfo } from "../../api/types";
+import { startableAgents } from "../../lib/agents";
 import { registerShortcut } from "../../lib/keys";
 import { partLabel, providerLabel } from "../../lib/names";
 import { runBuild } from "../../state/builds";
@@ -63,7 +64,8 @@ function DialogBody(): JSX.Element {
   useEffect(() => {
     let live = true;
     // via a promise so "core client not ready" (⌘N before the core is up) shows as an error
-    Promise.resolve().then(() => Promise.all([actions.client().agents(), refreshCatalog()])).then(([as]) => {
+    Promise.resolve().then(() => Promise.all([actions.client().agents(), refreshCatalog()])).then(([all]) => {
+      const as = startableAgents(all);   // hidden agents are not offered (C-4)
       if (!live) return;
       setAgents(as);
       if (catalog.peek().error && !catalog.peek().models) setError(catalog.peek().error);

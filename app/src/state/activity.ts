@@ -36,6 +36,11 @@ export function recordActivity(ev: MisesEvent): void {
     activityByRun.value = m;
     return;
   }
+  if (ev.type === "run_deleted") {
+    const ids = [ev.run_id, ev.data.run_id, ...(Array.isArray(ev.data.run_ids) ? ev.data.run_ids : [])].filter((x): x is string => typeof x === "string");
+    forgetActivity(ids);
+    return;
+  }
   const a = parseActivity(ev);
   if (!a) return;
   const m = new Map(activityByRun.value);
@@ -71,6 +76,50 @@ export const activitySummary: ReadonlySignal<ActivitySummary> = computed(() => s
 /** Subscribes to the event stream (default onCoreEvent). Call once at boot; returns an unsubscribe. */
 export function startActivity(subscribe: (cb: (e: MisesEvent) => void) => () => void = onCoreEvent): () => void {
   return subscribe(recordActivity);
+}
+
+/** Deleted runs (C-6) leave the pill and the manager. */
+export function forgetActivity(ids: readonly string[]): void {
+  if (!ids.some((id) => activityByRun.peek().has(id))) return;
+  const m = new Map(activityByRun.peek());
+  for (const id of ids) m.delete(id);
+  activityByRun.value = m;
+}
+
+/** A snapshot from GET /runs/{id} (`activity`), as the event would carry it; null when absent or
+ *  malformed. */
+export function parseSnapshot(runId: string, raw: unknown): AgentActivity | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  return parseActivity({ type: "agent_activity", run_id: runId, data: raw as Record<string, unknown>, ts: 0 });
+}
+
+/**
+ * Seeds activity from the core on load and on every reconnect (C-3): the pill and the manager
+ * show what runs are doing even though their `agent_activity` events came before this socket.
+ * `snapshots` holds each run the core still runs (by id → its `activity`, null when none yet);
+ * `finished` are runs the core reports as no longer running. Runs not named keep their entry.
+ */
+export function seedActivity(snapshots: ReadonlyMap<string, unknown>, finished: readonly string[] = [], asOf = Infinity): void {
+  const m = new Map(activityByRun.peek());
+  let changed = false;
+  // a finished run's working state is stale (its done came before this socket); an idle Claude
+  // Code session between turns stays, as recordActivity keeps it
+  for (const id of finished) {
+    const cur = m.get(id);
+    if (cur && cur.state !== "idle" && cur.since < asOf) { m.delete(id); changed = true; }
+  }
+  for (const [id, raw] of snapshots) {
+    const a = parseSnapshot(id, raw);
+    // no snapshot (nothing yet when the core answered): what came live since stays
+    if (!a) continue;
+    const cur = m.get(id);
+    // a live event newer than the snapshot wins (the fetch may predate it)
+    if (cur && cur.since > a.since) continue;
+    if (a.state === "done") { if (m.delete(id)) changed = true; continue; }
+    m.set(id, a);
+    changed = true;
+  }
+  if (changed) activityByRun.value = m;
 }
 
 /** Clears activity (a new core session starts fresh). */

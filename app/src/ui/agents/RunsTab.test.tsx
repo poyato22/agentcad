@@ -1,11 +1,11 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/preact";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { startFakeCore, type FakeCore } from "../../../test/fake-core/server";
 import { CoreClient } from "../../api/client";
-import type { AgentRun, Approval } from "../../api/types";
+import type { AgentRun, Approval, MisesEvent } from "../../api/types";
 import { recordActivity, resetActivity } from "../../state/activity";
-import { bindClient, resetStore } from "../../state/store";
-import { RunsTab } from "./RunsTab";
+import { bindClient, resetStore, runs, selectedRunId } from "../../state/store";
+import { RunsTab, waitStopped } from "./RunsTab";
 
 let core: FakeCore;
 
@@ -284,5 +284,63 @@ describe("RunsTab", () => {
     fireEvent.click(within(row("r1")).getByRole("button", { name: "Archive" }));
     await waitFor(() => expect(core.state.runs.get("r1")?.archived).toBe(true));
     await waitFor(() => expect(row("r1")).toBeNull());                 // archived runs hide by default
+  });
+});
+
+describe("RunsTab keeps the app's runs in step (C-5, C-6, C-8)", () => {
+  const known = (id: string, over: Partial<AgentRun> = {}) => {
+    const r = core.state.runs.get(id) as AgentRun;
+    runs.value = new Map([...runs.value, [id, { ...r, ...over }]]);
+  };
+
+  it("a deleted run leaves the app's run list and the selection", async () => {
+    seed({ id: "r1" });
+    known("r1");
+    selectedRunId.value = "r1";
+    render(<RunsTab />);
+    await waitFor(() => expect(row("r1")).toBeTruthy());
+    twice(row("r1"), "Delete", "Confirm delete");
+    await waitFor(() => expect(runs.value.has("r1")).toBe(false));
+    expect(selectedRunId.value).toBe(null);
+  });
+
+  it("a rename shows in the app's run list at once", async () => {
+    seed({ id: "r1" });
+    known("r1");
+    render(<RunsTab />);
+    await waitFor(() => expect(row("r1")).toBeTruthy());
+    fireEvent.click(within(row("r1")).getByRole("button", { name: "Rename" }));
+    const input = within(row("r1")).getByRole("textbox", { name: "Run title" });
+    fireEvent.input(input, { target: { value: "QA renamed run" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(runs.value.get("r1")?.title).toBe("QA renamed run"));
+  });
+
+  it("waitStopped resolves on the run's run_finished, before the poll says so", async () => {
+    let fire: ((e: MisesEvent) => void) | null = null;
+    const subscribe = (cb: (e: MisesEvent) => void) => { fire = cb; return () => { fire = null; }; };
+    const status = vi.fn(async () => "running");
+    const p = waitStopped(["r1"], status, { ms: 5000, pollMs: 2000, subscribe });
+    await new Promise((r) => setTimeout(r, 10));
+    (fire as unknown as (e: MisesEvent) => void)({ type: "run_finished", run_id: "r1", data: { status: "cancelled" }, ts: 1 });
+    await expect(p).resolves.toBe(true);
+    expect(fire).toBe(null); // unsubscribed
+  });
+
+  it("waitStopped gives up after its bound and treats a 404 as stopped", async () => {
+    const subscribe = () => () => {};
+    await expect(waitStopped(["a"], async () => "running", { ms: 60, pollMs: 10, subscribe })).resolves.toBe(false);
+    await expect(waitStopped(["a", "b"], async (id) => (id === "a" ? null : "cancelled"), { ms: 60, pollMs: 10, subscribe })).resolves.toBe(true);
+  });
+
+  it("a stale 'still working' refusal clears once the run has stopped", async () => {
+    seed({ id: "r1", status: "running" });
+    render(<RunsTab />);
+    await waitFor(() => expect(row("r1")).toBeTruthy());
+    twice(row("r1"), "Delete", "Confirm delete");
+    await waitFor(() => expect(row("r1").querySelector("[data-refusal]")).toBeTruthy());
+    core.state.runs.set("r1", { ...(core.state.runs.get("r1") as AgentRun), status: "cancelled" });
+    fireEvent.click(within(row("r1")).getByRole("button", { name: "Pin" }));   // any reload
+    await waitFor(() => expect(row("r1").querySelector("[data-refusal]")).toBeNull());
   });
 });

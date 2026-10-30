@@ -10,6 +10,9 @@ import { specChangedSchema, studyProgressSchema, type Spec, type SpecCheck, type
 import type { MisesEvent } from "../../api/types";
 
 export const STUDY_REFRESH_MS = 400;
+/** While a design study runs, its list is re-read this often (its last save may send no event). */
+export const STUDY_POLL_MS = 2000;
+const TERMINAL_STUDY: ReadonlySet<string> = new Set(["done", "failed", "cancelled"]);
 /** spec checks wait this long, so a burst of changes (and both mounted views) check once. */
 export const CHECK_DEBOUNCE_MS = 150;
 
@@ -221,7 +224,10 @@ export class SpecController {
       const m = new Map(this.progress.peek());
       m.set(d.data.study_id, { n: d.data.n, total: d.data.total });
       this.progress.value = m;
-      this.scheduleStudies();
+      const final = [d.data.phase, d.data.status].some((x) => typeof x === "string" && TERMINAL_STUDY.has(x));
+      this.scheduleStudies(final ? 0 : STUDY_REFRESH_MS);
+    } else if (ev.type === "study_finished") {
+      this.scheduleStudies(0);
     } else if (ev.type === "run_finished") {
       // a study's run ended (done, cancelled, out of budget): its final record is in the store
       if (this.studies.peek().some((s) => s.run_id === ev.run_id && s.status === "running")) this.scheduleStudies();
@@ -236,17 +242,23 @@ export class SpecController {
     this.checkTimer = null;
   }
 
-  private scheduleStudies(): void {
-    if (this.studyTimer !== null) return;
+  private scheduleStudies(ms = STUDY_REFRESH_MS): void {
+    if (this.studyTimer !== null) {
+      if (ms > 0) return;
+      clearTimeout(this.studyTimer);   // a terminal event: refresh now
+    }
     this.studyTimer = setTimeout(() => {
       this.studyTimer = null;
       void this.refreshStudies();
-    }, STUDY_REFRESH_MS);
+    }, ms);
   }
 
   private setStudies(list: readonly Study[]): void {
     const sorted = [...list].sort((a, b) => b.created_at - a.created_at);
     this.studies.value = sorted;
+    // B2-1: a study's final save (after the fine-mesh confirmation) may come with no event on an
+    // older core: while one is running, look again until it is final
+    if (sorted.some((s) => s.status === "running")) this.scheduleStudies(STUDY_POLL_MS);
     const sel = this.selectedStudyId.peek();
     if (sel !== null && !sorted.some((s) => s.id === sel)) this.selectedStudyId.value = null;
   }

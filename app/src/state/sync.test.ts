@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { startSync } from "./sync";
-import { approvals, conn, coreStatus, liveText, parts, resetStore, runs, sessionRuns, steps } from "./store";
+import { activityByRun, resetActivity } from "./activity";
+import { approvals, conn, coreStatus, liveText, parts, questions, resetStore, runs, selectedRunId, sessionRuns, steps } from "./store";
 import type { CoreClient } from "../api/client";
 import type { StreamState } from "../api/events";
 import type { AgentRun, Approval, CoreStatusInfo, MisesEvent, Step } from "../api/types";
@@ -379,5 +380,94 @@ describe("startSync", () => {
     await f.flush();
     expect(c.steps).not.toHaveBeenCalled();
     expect(s.ev.size).toBe(0);
+  });
+
+  it("open_seeds_activity_of_working_runs_from_get_run_C3", async () => {
+    resetActivity();
+    const { c, client } = fakeClient(() => []);
+    const done = { ...run(R2), status: "done" as const };
+    c.listRuns.mockResolvedValue([run(RID), done]);
+    const runActivity = vi.fn(async (id: string) => ({
+      activity: id === RID ? { state: "waiting_user", detail: "asking you", since: 1792869500 } : null,
+      questions: [{ question_id: "q1", run_id: RID, question: "Which phone?", options: ["a", "b"] }],
+    }));
+    (c as Record<string, unknown>).runLive = runActivity;
+    // a question the UI still shows but the core no longer has (answered in another window)
+    questions.value = new Map([["q_old", { question_id: "q_old", run_id: RID, question: "old", options: [] }]]);
+    // a stale working entry of a run that has since finished (an earlier core session)
+    activityByRun.value = new Map([[R2, { run_id: R2, state: "thinking", detail: "", since: 1 }]]);
+    const s = new FakeStream();
+    const f = frames();
+    const stop = startSync(client, s as never, { schedule: f.schedule });
+    s.state("open");
+    await f.drain();
+    expect(runActivity).toHaveBeenCalledTimes(1);
+    expect(runActivity).toHaveBeenCalledWith(RID);
+    expect(activityByRun.value.get(RID)).toMatchObject({ state: "waiting_user", detail: "asking you" });
+    expect(activityByRun.value.has(R2)).toBe(false);
+    // C-2: the open question comes back after a reload; the answered one is gone
+    expect([...questions.value.keys()]).toEqual(["q1"]);
+    // a reconnect seeds again
+    s.state("closed"); s.state("open");
+    await f.drain();
+    expect(runActivity).toHaveBeenCalledTimes(2);
+    stop();
+    resetActivity();
+  });
+
+  it("a_question_asked_while_the_seed_is_in_flight_is_kept_and_one_answered_is_not_brought_back", async () => {
+    const { c, client } = fakeClient(() => []);
+    let release: (v: unknown) => void = () => {};
+    // the core's answer was taken before q_new was asked, and while q_old was still open
+    (c as Record<string, unknown>).runLive = vi.fn(() => new Promise((r) => { release = r; }));
+    questions.value = new Map([["q_old", { question_id: "q_old", run_id: RID, question: "old", options: [] }]]);
+    const s = new FakeStream();
+    const f = frames();
+    const stop = startSync(client, s as never, { schedule: f.schedule });
+    s.state("open");
+    await f.drain();
+    s.emit({ type: "question_asked", run_id: RID, data: { question_id: "q_new", question: "new?", options: [] }, ts: 5 });
+    s.emit({ type: "question_answered", run_id: RID, data: { question_id: "q_old" }, ts: 6 });
+    await f.drain();
+    release({ activity: null, questions: [{ question_id: "q_old", run_id: RID, question: "old", options: [] }] });
+    await f.drain();
+    expect([...questions.value.keys()]).toEqual(["q_new"]);
+    stop();
+  });
+
+  it("a_run_missing_from_a_partial_runs_list_was_deleted_and_is_forgotten_C6", async () => {
+    const { c, client } = fakeClient(() => [step(1)]);
+    c.listRuns.mockResolvedValue([run(RID), run(R2)]);
+    const s = new FakeStream();
+    const f = frames();
+    const stop = startSync(client, s as never, { schedule: f.schedule });
+    s.state("open");
+    await f.drain();
+    selectedRunId.value = R2;
+    expect(runs.value.has(R2)).toBe(true);
+    c.listRuns.mockResolvedValue([run(RID)]);
+    s.emit({ type: "run_finished", run_id: RID, data: { status: "done" }, ts: 2 });
+    await f.drain();
+    expect(runs.value.has(R2)).toBe(false);
+    expect(steps.value.has(R2)).toBe(false);
+    expect(selectedRunId.value).toBe(null);
+    stop();
+  });
+
+  it("run_deleted_event_forgets_the_run_C6", async () => {
+    const { c, client } = fakeClient(() => [step(1)]);
+    c.listRuns.mockResolvedValue([run(RID), run(R2)]);
+    const s = new FakeStream();
+    const f = frames();
+    const stop = startSync(client, s as never, { schedule: f.schedule });
+    s.state("open");
+    await f.drain();
+    selectedRunId.value = RID;
+    s.emit({ type: "run_deleted", run_id: null, data: { run_ids: [RID] }, ts: 3 });
+    await f.drain();
+    expect(runs.value.has(RID)).toBe(false);
+    expect(runs.value.has(R2)).toBe(true);
+    expect(selectedRunId.value).toBe(null);
+    stop();
   });
 });

@@ -5,7 +5,7 @@ import { z } from "zod";
 import { buildSchema, type Build } from "../api/builds";
 import type { CoreClient } from "../api/client";
 import type { AgentRun, PartSummary } from "../api/types";
-import { activeBuildId, buildActions, builds, buildsError, normalizeTabs, openBuildIds, openBuilds, resetBuilds, runBuild, trashedBuilds } from "./builds";
+import { activeBuildId, buildActions, builds, buildsError, normalizeTabs, openBuildIds, openBuilds, resetBuilds, runBuild, trashBlocked, trashedBuilds, trashRefusalText } from "./builds";
 import { bindClient, parts, resetStore, runs, selectedPartId, selectedRunId } from "./store";
 
 const FX = resolve(import.meta.dirname, "../../test/fixtures/core-ui");
@@ -135,6 +135,28 @@ describe("builds", () => {
     expect(openBuilds.value.map((x) => x.name)).toEqual(["Quad", "Gimbal"]);
     await buildActions.emptyTrash();
     expect(builds.value.map((x) => x.id)).toEqual(["a", "n"]);
+  });
+
+  it("a refused Empty Trash keeps every build and names the runs that block it", async () => {
+    const c = fakeClient([b("a", "Quad"), b("t", "Old", 9)]);
+    c.emptyTrash.mockResolvedValueOnce({ refused: { reason: "running", run_ids: ["r1", "zz"], project_ids: ["t"], message: null, hint: null } } as never);
+    runs.value = new Map([["r1", { id: "r1", parent_id: null, agent: "designer", provider: "fake", model: "m", task: "stiffen the arm", status: "running",
+      branch: null, onshape_calls: 0, input_tokens: 0, output_tokens: 0, usd: 0, created_at: 1, updated_at: 1 } as AgentRun]]);
+    bindClient(c as unknown as CoreClient);
+    await buildActions.refresh();
+    await buildActions.emptyTrash();
+    expect(builds.value.map((x) => x.id)).toEqual(["a", "t"]);
+    expect(trashBlocked.value?.run_ids).toEqual(["r1", "zz"]);
+    expect(buildsError.value).toBe("The Trash wasn't emptied: 2 runs in trashed builds are still working (designer · stiffen arm, run zz). Wait for them to finish or stop them, then empty it again.");
+    // the next try starts clean
+    await buildActions.emptyTrash();
+    expect(trashBlocked.value).toBe(null);
+    expect(builds.value.map((x) => x.id)).toEqual(["a"]);
+  });
+
+  it("trashRefusalText words an approval block", () => {
+    expect(trashRefusalText({ reason: "pending_approval", run_ids: ["x"], project_ids: [], message: null, hint: null }, (id) => id))
+      .toBe("The Trash wasn't emptied: 1 run in a trashed build is waiting for your approval (x). Decide its card, then empty it again.");
   });
 });
 

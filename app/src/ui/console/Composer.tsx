@@ -6,6 +6,7 @@ import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { CoreError } from "../../api/client";
 import type { AgentInfo } from "../../api/types";
+import { startableAgents } from "../../lib/agents";
 import { agentChips, chipsPromptLine, clearAgentChips, removeAgentChip } from "../../state/agentChips";
 import { runBuild } from "../../state/builds";
 import { actions, coreStatus, runs } from "../../state/store";
@@ -36,8 +37,9 @@ export function Composer(): JSX.Element {
   useEffect(() => {
     let live = true;
     const profile = Promise.resolve().then(() => actions.client().getProfile()).catch(() => null);
-    Promise.resolve().then(() => Promise.all([actions.client().agents(), profile])).then(([as, p]) => {
+    Promise.resolve().then(() => Promise.all([actions.client().agents(), profile])).then(([all, p]) => {
       if (!live) return;
+      const as = startableAgents(all);   // hidden agents are not offered (C-4)
       setAgents(as);
       const dflt = p && as.some((a) => a.name === p.default_agent) ? p.default_agent : as[0]?.name ?? "";
       setAgent(dflt);

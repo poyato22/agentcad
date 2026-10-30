@@ -58,6 +58,19 @@ describe("buildThread on the real core's steps", () => {
 });
 
 describe("buildThread rules", () => {
+  it("claude_code_bookkeeping_decisions_are_not_bare_decided_lines_C10", () => {
+    resetIds();
+    const stepList = [
+      step("r1", "decision", { claude_code: "session_started", session_id: "s1" }, 1),
+      message("r1", "user", "crash now", 2),
+      step("r1", "decision", { claude_code: "init" }, 3),
+      step("r1", "decision", { agent_thinking: "…", signature: "x" }, 4),
+      step("r1", "decision", { reason: "use 6 mm walls" }, 5),
+    ];
+    const t = thread({ runs: [run("r1")], stepList, selectedRunId: "r1" });
+    expect(brief(t)).toEqual(["user: crash now", "note decided · use 6 mm walls"]);
+  });
+
   it("failed_calls_and_errors_are_always_their_own_red_lines_with_the_hint", () => {
     resetIds();
     const stepList = [

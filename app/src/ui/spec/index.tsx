@@ -63,7 +63,7 @@ export function SpecPanel({ c = specs }: { c?: SpecController }): JSX.Element | 
       </button>
       {open && (
         <div class="spp-body">
-          {shown && <StudyLine study={shown} requirements={spec.requirements} onOpen={() => { c.selectStudy(shown.id); setPage("studies"); }} />}
+          {shown && <StudyLine study={shown} requirements={spec.requirements} onOpen={() => { c.selectStudy(shown.id); setPage("studies"); revealDesignStudies(); }} />}
           <SpecCard spec={spec} check={c.check.value} checkError={c.checkError.value} updatedAt={c.updatedAt.value} onSave={(s, b) => c.save(s, b)} compact />
         </div>
       )}
@@ -72,6 +72,15 @@ export function SpecPanel({ c = specs }: { c?: SpecController }): JSX.Element | 
 }
 
 /** The console's one-line study summary: the best variant still meeting the spec now. */
+/** Bring the Studies page's design studies into view once the page has rendered (B2-3). */
+function revealDesignStudies(tries = 10): void {
+  requestAnimationFrame(() => {
+    const el = document.querySelector<HTMLElement>("[data-design-studies]");
+    if (el) el.scrollIntoView?.({ block: "start" });
+    else if (tries > 0) revealDesignStudies(tries - 1);
+  });
+}
+
 function StudyLine({ study, requirements, onOpen }: { study: Study; requirements: Spec["requirements"]; onOpen: () => void }): JSX.Element {
   const ok = study.iterations.filter((i) => meetsSpec(requirements, i, study.geometry_only));
   const best = ok.find((i) => i.n === study.best_id) ?? [...ok].sort((a, b) => (a.metrics.mass_g ?? Infinity) - (b.metrics.mass_g ?? Infinity))[0];

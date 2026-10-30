@@ -4,6 +4,7 @@
 import type { JSX } from "preact";
 import { useState } from "preact/hooks";
 import type { ProfilePatch } from "../../../api/types";
+import { startableAgents } from "../../../lib/agents";
 import { actions } from "../../../state/store";
 import { Button } from "../../common/Button";
 import { ModelPicker } from "../../dialogs/ModelPicker";
@@ -19,7 +20,8 @@ export function AgentsSection({ data, update }: SectionProps): JSX.Element {
   const [runCap, setRunCap] = useState(String(p.onshape_calls_run_cap));
   const task = useTask();
 
-  const agentNames = data.agents.map((a) => a.name);
+  // hidden agents leave the picker (C-4), except the saved default (kept so the field shows it)
+  const agentNames = startableAgents(data.agents, p.default_agent).map((a) => a.name);
   if (!agentNames.includes(p.default_agent)) agentNames.unshift(p.default_agent);
   const par = data.status?.parallel;
   // the core's limit is "N on this Mac" only when it picked it; a manual limit reads "Manual: N"
