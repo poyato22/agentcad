@@ -23,6 +23,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from .. import budget
 from ..naming import display_name
 from ..tools.registry import ToolContext, ToolRegistry, tool
 from ..types import ErrorCode, MisesError, SafetyClass, StepKind, ToolOutput
@@ -271,7 +272,8 @@ async def onshape_budget_get(ctx: ToolContext, args: NoArgs) -> ToolOutput:
     user = ad.client.user if ad is not None else ctx.user
     caps = ctx.policy.caps
     year = ctx.store.ledger_used(user, since=_year_start())
-    run = ctx.store.ledger_used(user, since=0, run_id=ctx.run_id)
+    run = ctx.store.ledger_used(user, since=budget.turn_since(ctx.store, ctx.run_id),
+                                run_id=ctx.run_id)
     return ToolOutput(
         summary=f"Onshape calls: {year}/{caps.onshape_calls_year} this year,"
                 f" {run}/{caps.onshape_calls_run} this run.",

@@ -114,6 +114,31 @@ def _reachable(rt: Runtime, run: AgentRun) -> bool:
     return run.id in rt._runs or rt._is_claude_run(run.id)
 
 
+def _spent(rt: Runtime, lead: AgentRun) -> bool:
+    """An idle lead that failed, or whose last message used up its dollar cap: a new message
+    would only fail again, so submit replaces it. A busy lead keeps its queue."""
+    if rt.lead_queues.get(lead.id) or rt.run_busy(lead.id):
+        return False
+    from .. import budget
+    return lead.status == "failed" or budget.usd_exhausted(rt.store, lead.id) is not None
+
+
+def _covers(wide, narrow) -> bool:
+    return "*" in wide or set(narrow) <= set(wide)
+
+
+def _narrows(rt: Runtime, lead: AgentRun, edit_scope, read_scope) -> bool:
+    """The follow-up asks for a strictly narrower scope than the lead's (never wider)."""
+    try:
+        pol = rt.store.current_policy(lead.id)
+    except KeyError:
+        return False
+    pairs = ((list(edit_scope), list(pol.edit_scope)), (list(read_scope), list(pol.read_scope)))
+    if any(not _covers(have, want) for want, have in pairs):
+        return False                  # wider somewhere: the lead keeps its own (a note says so)
+    return any(set(want) != set(have) for want, have in pairs)
+
+
 class QueueFull(MisesError):
     """The lead already holds QUEUE_MAX waiting messages (HTTP 429)."""
     http_status = 429
@@ -245,10 +270,21 @@ async def submit(rt: Runtime, prompt: str, *, project_id: str, model_ref: str | 
     routed = await route(prompt if route_text is None else route_text,
                          attachments=attachments or [], known=known,
                          default=default_agent, classifier=classifier)
-    out = {"routed": routed, "new_lead": False, "queued": False, "notes": []}
+    out = {"routed": routed, "new_lead": False, "queued": False, "notes": [], "role": LEAD}
     async with _lock(rt, project_id):
         lead = find_lead(rt.store, project_id)
-        if lead is not None and _reachable(rt, lead):
+        retire = lead is not None and (not _reachable(rt, lead) or _spent(rt, lead))
+        if lead is not None and not retire:
+            if _narrows(rt, lead, edit_scope, read_scope):
+                # a follow-up that asks for less than the lead may do never runs with the
+                # lead's wider scope: it gets its own run, scoped as asked
+                rid = await rt.start_run(routed.agent, prompt, model_ref=model_ref,
+                                         edit_scope=edit_scope, read_scope=read_scope,
+                                         project_id=project_id, routed=routed.model_dump(),
+                                         log=log)
+                out.update(run_id=rid, role=None, notes=[
+                    "narrower scope than the build's lead: started a separate run with it"])
+                return out
             out.update(run_id=lead.id, notes=_notes(rt, lead, model_ref, edit_scope, read_scope))
             # the lead's own routing (why it is this agent) stays; each message's routing goes
             # on its queued step or in the reply
@@ -262,7 +298,9 @@ async def submit(rt: Runtime, prompt: str, *, project_id: str, model_ref: str | 
                     raise
                 out.update(queued=True, **_enqueue(rt, lead.id, prompt, log, routed))
             return out
-        if lead is not None:          # a lead this process cannot talk to any more: retire it
+        if lead is not None:
+            # a lead this process cannot talk to any more, or one that failed or spent its
+            # whole budget on its last message: retire it (archived) and start a fresh one
             rt.store.update_run(lead.id, archived=True)
         rid = await rt.start_run(routed.agent, prompt, model_ref=model_ref,
                                  edit_scope=edit_scope, read_scope=read_scope,

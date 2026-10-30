@@ -248,10 +248,30 @@ async def test_follow_up_notes_ignored_model_and_scope(home):
     pid = rt.active_project_id()
     lead = (await lead_mod.submit(rt, "Build me a drone", project_id=pid))["run_id"]
     await rt.wait(lead)
-    out = await lead_mod.submit(rt, "more", project_id=pid, model_ref="anthropic/other",
-                                edit_scope=("plate",))
+    out = await lead_mod.submit(rt, "more", project_id=pid, model_ref="anthropic/other")
+    assert out["run_id"] == lead
     assert any("model_ref ignored" in n for n in out["notes"])
-    assert any("scope ignored" in n for n in out["notes"])
+    await rt.wait(lead)
+
+
+async def test_narrower_follow_up_gets_its_own_run_and_wider_is_never_granted(home):
+    """M1: a follow-up asking for less than the lead may do never runs with the lead's scope;
+    one asking for more stays on the lead, with the lead's (narrower) scope and a note."""
+    prov = RoleProvider(engineer=[text("one"), text("two"), text("three")])
+    rt = make(home, prov)
+    pid = rt.active_project_id()
+    lead = (await lead_mod.submit(rt, "Build me a drone", project_id=pid,
+                                  edit_scope=("plate", "arm")))["run_id"]
+    await rt.wait(lead)
+    out = await lead_mod.submit(rt, "Build me a drone part", project_id=pid,
+                                edit_scope=("plate",))
+    assert out["run_id"] != lead and out["role"] is None and out["new_lead"] is False
+    assert rt.store.current_policy(out["run_id"]).edit_scope == ["plate"]
+    assert rt.store.get_run(out["run_id"]).role is None
+    await rt.wait(out["run_id"])
+    out = await lead_mod.submit(rt, "Build me a drone again", project_id=pid)   # "*": wider
+    assert out["run_id"] == lead and any("scope ignored" in n for n in out["notes"])
+    assert rt.store.current_policy(lead).edit_scope == ["plate", "arm"]
     await rt.wait(lead)
 
 

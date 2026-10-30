@@ -300,8 +300,9 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
                 attachments=body.attachments, edit_scope=tuple(body.edit_scope),
                 read_scope=tuple(body.read_scope), default_agent=profile_default)
             # queued: the lead is busy; the message waits (message_queued) and is delivered in
-            # order at its turn boundary (message_delivered). A full queue is a 429.
-            return {**out, "routed": out["routed"].model_dump(), "role": "lead"}
+            # order at its turn boundary (message_delivered). A full queue is a 429. `role` is
+            # "lead", or None for a follow-up that asked for a narrower scope (its own run).
+            return {**out, "routed": out["routed"].model_dump()}
         agent = body.agent or profile_default
         if body.sketch_id and agent == profile_default:
             agent = "designer"

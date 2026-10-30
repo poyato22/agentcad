@@ -56,6 +56,7 @@ from .profile import load_profile
 from .providers.registry import DEFAULT_MODEL, VENDORS, resolve
 from .store import Store
 from .tools.registry import ToolRegistry
+from . import budget as budget_mod
 from . import projects as projects_mod
 from . import sketch as sketch_mod
 from .types import (Block, Caps, ErrorCode, ImageBlock, Message, MisesError, SafetyClass,
@@ -1390,12 +1391,25 @@ class Runtime:
         if run_id in self._sending:
             raise MisesError(ErrorCode.INVALID_INPUT, "run is still working",
                              hint="wait for it to finish or cancel it")
+        busy = self.run_busy(run_id)
         self._sending.add(run_id)
         try:
+            if not busy:
+                self._start_lead_turn(run_id)
             # the plain two-argument call when there is no log (tests patch _send that way)
             await (self._send(run_id, text) if log is None else self._send(run_id, text, log))
         finally:
             self._sending.discard(run_id)
+
+    def _start_lead_turn(self, run_id: str) -> None:
+        """A user message to a build's lead opens a new cap window (budget.start_turn): its
+        dollar, Onshape, web-fetch and spawn caps count per message, not over the build."""
+        try:
+            run = self.store.get_run(run_id)
+        except KeyError:
+            return
+        if run.role == "lead":
+            budget_mod.start_turn(self.store, run_id)
 
     async def _send(self, run_id: str, text: str, log: dict | None = None) -> None:
         if self._is_claude_run(run_id):
