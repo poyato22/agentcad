@@ -108,6 +108,32 @@ async def test_remove_missing_instance_is_not_found(ctx):
     assert e.value.code == ErrorCode.NOT_FOUND
 
 
+async def test_agent_run_cannot_touch_another_builds_assembly(tmp_path):
+    """I8: an agent run may only change its own build's assembly, and the build must exist."""
+    from mises.store import Store
+    from mises.types import ErrorCode
+
+    store = Store(":memory:")
+    a = store.create_project("A")
+    b = store.create_project("B")
+    store.register_part("plate", a.id)
+    run = store.create_run("designer", "fake", "m", "t", project_id=a.id)
+    asm = AssemblyStore(tmp_path / "assembly.db")
+    rctx = SimpleNamespace(workdir=tmp_path, events=EventBus(), store=store, run_id=run.id,
+                           call_id="c", policy=None, services={"assembly": asm})
+    # its own build is fine
+    r = await assembly_add_instance.handler(
+        rctx, AddInstanceArgs(project_id=a.id, part_id="plate", name="base", fixed=True))
+    assert r.ok
+    # its own build still reads fine
+    assert (await assembly_get.handler(rctx, ProjectArgs(project_id=a.id))).ok
+    # another build is refused
+    with pytest.raises(MisesError) as e:
+        await assembly_add_instance.handler(
+            rctx, AddInstanceArgs(project_id=b.id, part_id="plate", name="x"))
+    assert e.value.code == ErrorCode.OUT_OF_SCOPE
+
+
 async def test_check_reports_overconstraint(ctx):
     from mises.assembly.tools import assembly_check
     a = await assembly_add_instance.handler(
