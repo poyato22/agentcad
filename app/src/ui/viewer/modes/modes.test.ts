@@ -4,7 +4,7 @@ import { loadPart, type PartScene } from "../loadPart";
 import { createViewer, type DesignViewerHandle, type ModeHost, type RendererLike } from "../scene";
 import { currentView, dirFromAzEl, frameView, liveBox, Orbiter, viewDirection, zoomForDistance } from "./camera";
 import { ModesController } from "./controller";
-import { bodies, EXPLODE_MS, explodeVectors } from "./explode";
+import { bodies, EXPLODE_MS, explodeOffset, explodeVectors } from "./explode";
 import { easeInOutCubic, tween, type Clock } from "./motion";
 import { capColor, clipPlane, sectionRange } from "./section";
 import { GHOST_OPACITY, MODES_OFF, type ModesState } from "./state";
@@ -273,5 +273,17 @@ describe("camera", () => {
     expect(after.z).toBeCloseTo(before.z);
     expect(after.distanceTo(before)).toBeGreaterThan(1);
     o.stop();
+  });
+});
+
+describe("pins follow the explode (m11)", () => {
+  it("a point on a moved body gets that body's offset; one on a body at rest gets none", () => {
+    const root = new THREE.Group();
+    const box = (x: number) => { const m = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2)); m.position.set(x, 0, 0); m.userData["explodeBase"] = m.position.clone(); root.add(m); return m; };
+    const a = box(0); box(10);
+    a.position.set(-5, 0, 3);                      // exploded
+    root.updateMatrixWorld(true);
+    expect(explodeOffset(root, new THREE.Vector3(1, 0, 0)).toArray()).toEqual([-5, 0, 3]);
+    expect(explodeOffset(new THREE.Group(), new THREE.Vector3(1, 0, 0)).toArray()).toEqual([0, 0, 0]);
   });
 });

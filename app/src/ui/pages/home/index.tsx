@@ -102,7 +102,7 @@ function BuildTile({ build: b }: { build: Build }): JSX.Element {
       title={`Open ${b.name}`} onClick={() => { void openBuild(b.id); }}>
       <div class="tile-thumb">
         <Thumb class="tile-img" alt={`${b.name} preview`} cacheKey={`${b.id}:${edited}:${b.part_count}`}
-          load={() => actions.client().projectThumb(b.id)} />
+          load={b.part_count > 0 ? () => actions.client().projectThumb(b.id) : null} />
       </div>
       <div class="tile-body">
         <span class="tile-name">{b.name}</span>

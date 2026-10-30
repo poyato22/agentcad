@@ -38,6 +38,13 @@ beforeEach(() => {
 afterEach(() => { cleanup(); builds.value = []; });
 
 describe("HomePage", () => {
+  it("an empty build asks for no preview (m12: no 404 per Home load)", async () => {
+    builds.value = [build({ id: "empty", name: "Empty", part_count: 0 }), build({ id: "arm", name: "Robot arm", part_count: 3 })];
+    render(<HomePage />);
+    await waitFor(() => expect(client.projectThumb).toHaveBeenCalledWith("arm"));
+    expect(client.projectThumb).not.toHaveBeenCalledWith("empty");
+  });
+
   it("shows a tile per live build with its name and part count", () => {
     render(<HomePage />);
     expect(screen.getByText("Robot arm")).toBeTruthy();

@@ -37,6 +37,7 @@ import { materialOf } from "../../lib/appearance";
 import { backgroundStyle, edgeInk, isLight, viewerBackground } from "./background";
 import { BackgroundMenu } from "./BackgroundMenu";
 import { DesignViewModes, designModeItems } from "./modes";
+import { explodeOffset } from "./modes/explode";
 import type { ModeHost } from "./scene";
 import "./viewer.css";
 import { addPartMenuItem, measureHook } from "../left/partMenuHooks";
@@ -95,6 +96,14 @@ export const changingRunLabel = computed<string | null>(() => {
   const run = runId === null ? undefined : runs.value.get(runId);
   return run ? formatRunLabel(run, all) : null;
 });
+
+/** A pin's point where its body is now (explode moves bodies; the pin's point is at rest). */
+function followExplode(p: Pin, host: ModeHost | null): Pin {
+  const part = host?.parts().find((x) => x.id === p.partId);
+  if (!part) return p;
+  const off = explodeOffset(part.scene.object, new Vector3(...p.point));
+  return off.lengthSq() === 0 ? p : { ...p, point: [p.point[0] + off.x, p.point[1] + off.y, p.point[2] + off.z] };
+}
 
 /** The parts on the sheet: the focused one, or (build view) every visible part with a model. */
 export function shownParts(list: readonly PartSummary[], focus: PartSummary | null, scope: ViewScope, hidden: ReadonlySet<string>): PartSummary[] {
@@ -471,7 +480,8 @@ export function Viewer(): JSX.Element {
 
   const v = viewerRef.current;
   const shownIds = new Set(shown.map((p) => p.part_id));
-  const shownPins: Pin[] = tab === "model" ? pins.filter((p) => shownIds.has(p.partId)) : [];
+  // m11: a pin rides with its exploded body (it used to hang in mid-air at its rest point)
+  const shownPins: Pin[] = tab === "model" ? pins.filter((p) => shownIds.has(p.partId)).map((p) => followExplode(p, modeHost)) : [];
   const dots: Vec3[] = tool === "measure" ? picks.flatMap((p) => (p.kind === "vertex" || p.kind === "point" ? [p.point] : [])) : [];
 
   return (

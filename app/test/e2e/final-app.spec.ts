@@ -63,6 +63,15 @@ test("the console header stays on one line with a long model id and routing reas
   }
 });
 
+test("the part row's ⋯ is a full hit target (m8)", async ({ page }) => {
+  await page.goto("/");
+  const more = page.getByRole("button", { name: "Actions for mount plate" });
+  await page.locator('[data-part="mount_plate"] .tree-row').hover();
+  const b = (await more.boundingBox())!;
+  expect(b.width).toBeGreaterThanOrEqual(20);
+  expect(b.height).toBeGreaterThanOrEqual(20);
+});
+
 test("All parts sits in the viewer's tool row, not over a panel, and Assembly view doesn't offer it (I3)", async ({ page }) => {
   await page.goto("/");
   const toggle = page.getByRole("button", { name: "All parts" });

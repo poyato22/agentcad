@@ -6,7 +6,8 @@ import type { JSX } from "preact";
 import { useEffect, useState } from "preact/hooks";
 
 export function Thumb({ load, alt, cacheKey, class: className, glyph = "◇" }: {
-  load: () => Promise<Blob>;
+  /** null: nothing to fetch (an empty build has no preview — m12: no 404 on every Home load). */
+  load: (() => Promise<Blob>) | null;
   alt: string;
   /** Re-fetch whenever this changes (e.g. `${id}:${version}`). */
   cacheKey: string;
@@ -20,7 +21,8 @@ export function Thumb({ load, alt, cacheKey, class: className, glyph = "◇" }: 
     let live = true;
     let made: string | null = null;
     setUrl(null);
-    setFailed(false);
+    setFailed(load === null);
+    if (load === null) return;
     load()
       .then((b) => { if (live) { made = URL.createObjectURL(b); setUrl(made); } })
       .catch(() => { if (live) setFailed(true); });

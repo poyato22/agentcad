@@ -13,7 +13,7 @@ import { useModesController } from "../../../viewer/modes/ViewModes";
 import { modesForSpec, partsForSpec, VIEW_KIND_TEXT } from "../../../viewer/modes/viewSpec";
 import { partLabel } from "../../../../lib/names";
 import type { PresentedView } from "./announce";
-import { useImageUrl } from "./images";
+import { useKeyedImageUrl } from "./images";
 import { liveCard, openViewImmersive, viewImmersive } from "./viewState";
 import "./critique.css";
 
@@ -47,7 +47,7 @@ export function ViewCard({ view, group, deps }: { view: PresentedView; group: re
   }, [view.key]);
   const live = liveCard.value === view.key && viewImmersive.value === null;
   const [still, setStill] = useState<string | null>(null);
-  const thumb = useImageUrl(view.thumbnail);
+  const thumb = useKeyedImageUrl(view.thumbnail);   // m10: no white box in the dark theme
   const reduced = prefersReducedMotion();
   const [play, setPlay] = useState(!reduced);
   const spec = view.spec;

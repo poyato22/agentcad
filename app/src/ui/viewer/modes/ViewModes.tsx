@@ -207,9 +207,13 @@ export function ViewModes({ host, modes, onModes, focusId, partIds, withReferenc
                     <button key={v} type="button" class="vm-chip" aria-pressed={ref.view === v} onClick={() => { patchReference({ view: v }); if (host) goToView(host, v); }}>{v}</button>
                   ))}
                 </span>
+                {/* m8: each slider says what it sets */}
+                <span class="vm-sub faint" aria-hidden="true">opacity</span>
                 <input type="range" min={0.1} max={1} step={0.05} value={ref.opacity} aria-label="Reference opacity" onInput={(e) => patchReference({ opacity: Number(e.currentTarget.value) })} />
                 <span class="vm-val">{pct(ref.opacity)}</span>
+                <span class="vm-sub faint" aria-hidden="true">size</span>
                 <input type="range" min={0.25} max={3} step={0.05} value={ref.scale} aria-label="Reference size" onInput={(e) => patchReference({ scale: Number(e.currentTarget.value) })} />
+                <span class="vm-val">{`${Math.round(ref.scale * 100)}%`}</span>
                 <button type="button" class="vm-chip" onClick={() => fileRef.current?.click()}>replace</button>
                 <button type="button" class="vm-chip" onClick={() => { clearReference(); setRefError(null); }}>remove</button>
               </div>
