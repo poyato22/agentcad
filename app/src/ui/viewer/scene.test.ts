@@ -211,6 +211,29 @@ describe("design viewer: part colors, picks and the build view", () => {
     v.dispose();
   });
 
+  it("measure's markers (a face, an edge, a hole's ring) and the frame listener", async () => {
+    const v = createViewer(document.createElement("canvas"), { createRenderer: stubRenderer });
+    const p = await loadPart(plateBytes());
+    v.resize(400, 300);
+    v.setParts([{ id: "top_plate", scene: p, color: null, focus: true }], true);
+    const seen = vi.fn();
+    const off = v.onView(seen);
+    v.setMarkers([
+      { kind: "face", partId: "top_plate", normal: [0, 0, 1], point: [0, 0, 1.5], tol: 0.05 },
+      { kind: "edge", a: [-20, 20, 1.5], b: [20, 20, 1.5] },
+      { kind: "ring", center: [0, 0, 1.5], axis: [0, 0, 1], radius: 2.1 },
+    ]);
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
+    await new Promise((r) => setTimeout(r, 30));
+    expect(seen).toHaveBeenCalled();
+    off();
+    seen.mockClear();
+    v.setMarkers([]);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(seen).not.toHaveBeenCalled();
+    v.dispose();
+  });
+
   it("the build view frames every part, and a click names the part under it", async () => {
     const v = createViewer(document.createElement("canvas"), { createRenderer: stubRenderer });
     const a = await loadPart(plateBytes());

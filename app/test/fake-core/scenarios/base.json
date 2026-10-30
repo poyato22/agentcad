@@ -978,6 +978,7 @@
           {
             "id": "f6",
             "type": "cylinder",
+            "radius": 2.1,
             "center": [
               -10.0,
               0.0,
@@ -989,6 +990,7 @@
           {
             "id": "f7",
             "type": "cylinder",
+            "radius": 2.1,
             "center": [
               10.0,
               0.0,
@@ -1245,6 +1247,7 @@
           {
             "id": "e9",
             "type": "circle",
+            "radius": 2.1,
             "length": 13.195,
             "center": [
               -7.9,
@@ -1267,6 +1270,7 @@
           {
             "id": "e10",
             "type": "circle",
+            "radius": 2.1,
             "length": 13.195,
             "center": [
               12.1,
@@ -1370,6 +1374,7 @@
           {
             "id": "e14",
             "type": "circle",
+            "radius": 2.1,
             "length": 13.195,
             "center": [
               -7.9,
@@ -1392,6 +1397,7 @@
           {
             "id": "e15",
             "type": "circle",
+            "radius": 2.1,
             "length": 13.195,
             "center": [
               12.1,

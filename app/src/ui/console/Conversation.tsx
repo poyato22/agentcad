@@ -23,6 +23,8 @@ import { RunStatus } from "./RunStatus";
 import { StudyCardSlot } from "./studycard";
 import { buildUserEdits } from "../../state/partEdits";
 import { editsForRun, weave } from "./userEditLines";
+import { FeedbackNote } from "../viewer/FeedbackNote";
+import { parseFeedback } from "../viewer/pins";
 
 const AT_BOTTOM_PX = 24;
 /** Rows rendered at once (the last ones); "show earlier" adds this many more. Same as StepLog. */
@@ -145,13 +147,16 @@ function Queued(): JSX.Element {
 
 function Item({ item, agent }: { item: ThreadItem; agent: AgentRun["agent"] }): JSX.Element {
   switch (item.kind) {
-    case "user":
+    case "user": {
+      // a comment pinned on the model (U2a): the words, then the pin, never the raw location block
+      const fb = parseFeedback(item.text);
       return (
         <div class="cv-msg cv-user" data-msg="user" data-row data-kind="message">
           <div class="label">you</div>
-          <div class="cv-text text">{item.text}</div>
+          {fb ? <FeedbackNote feedback={fb} stepId={item.stepIds[0] ?? null} /> : <div class="cv-text text">{item.text}</div>}
         </div>
       );
+    }
     case "agent":
       return (
         <div class="cv-msg cv-agent" data-msg="agent" data-row data-kind={item.live ? "live" : "message"} data-changing={item.live ? "" : undefined}>

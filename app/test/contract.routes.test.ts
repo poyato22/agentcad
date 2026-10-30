@@ -293,6 +293,9 @@ const COVERAGE: Record<string, string> = {
   "POST /sims/materials": "study_material_add.json", // contract.studies.test.ts (Task A8)
   "POST /sims/templates": "study_template_add.json", // contract.studies.test.ts (Task A8)
   "POST /sims/{sim_id}/cancel": "study_cancel.json", // contract.studies.test.ts (Task A8)
+  // Plan 7 U2a measure and feedback pins: contract.measure.test.ts
+  "POST /parts/{part_id}/measure": "part_measure_edge.json",
+  "POST /projects/{project_id}/feedback": "project_feedback.json",
 };
 
 function coreRoutes(): string[] {

@@ -19,6 +19,8 @@ import { changingParts } from "./derived";
 import { dropPosAt, flatten, planDrop, planIndent, planOutdent, planStep, type DropPos, type Move } from "./tree";
 import { commitMove, renamePart, setColor, treeError } from "./treeActions";
 import { hiddenParts, setHidden } from "./visibility";
+import { requestModify } from "../viewer/tool";
+import { setDesignMode } from "../assembly/mode";
 
 /** Pointer travel before a press becomes a drag (a shorter one stays a click). */
 export const DRAG_THRESHOLD_PX = 4;
@@ -179,6 +181,8 @@ export function PartTree(): JSX.Element {
             { label: "Move down", keys: "⌥↓", run: () => move(planStep(list, id, 1), id), disabled: !planStep(list, id, 1) },
             { label: "Move into the part above", keys: "⌥→", run: () => move(planIndent(list, id), id), disabled: !planIndent(list, id) },
             { label: "Move out of its parent", keys: "⌥←", run: () => move(planOutdent(list, id), id), disabled: !planOutdent(list, id) },
+            // the feature ops (hole, shell, fillet, chamfer) live here now, not on every click (U2a)
+            { label: "Modify…", run: () => { actions.selectPart(id); setDesignMode("part"); requestModify(id); }, disabled: p.metrics === null || (p.kind ?? "part") !== "part" },
             { label: "Rename", keys: "F2", run: () => setEditing(id) },
             { label: "Color…", run: () => setColoring(id) },
             { label: isHidden ? "Show in the viewer" : "Hide in the viewer", run: () => { setHidden(id, !isHidden); focusRow(id); } },
