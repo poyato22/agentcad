@@ -8,6 +8,9 @@ import {
   questionAskedSchema, stepSchema, systemCheckRowSchema, systemInstallStartSchema,
 } from "./schemas";
 import {
+  calibrationPreviewSchema, calibrationSchema, type Calibration, type CalibrationBody, type CalibrationPreview,
+} from "./accuracy";
+import {
   simRecordSchema, simSolversSchema, simStartedSchema, simSummarySchema,
   type SimRecord, type SimSolvers, type SimStartBody, type SimStarted, type SimSummary,
 } from "./sims";
@@ -259,6 +262,18 @@ export class CoreClient {
   studyMaterials(): Promise<StudyMaterials> { return this.json("GET", "/sims/materials", studyMaterialsSchema); }
   addStudyMaterial(body: CustomMaterialBody): Promise<StudyMaterial> { return this.json("POST", "/sims/materials", studyMaterialSchema, { body }); }
   deleteStudyMaterial(name: string): Promise<unknown> { return this.json("DELETE", `/sims/materials/${enc(name)}`, anyBody); }
+
+  // ---- material calibration (Plan 6 S3: core server/sim_api.py, sim/calibration.py)
+
+  calibrations(): Promise<Calibration[]> { return this.json("GET", "/sims/calibrations", z.array(calibrationSchema)); }
+  /** A preview: fits the tests, saves nothing. */
+  fitCalibration(body: CalibrationBody): Promise<CalibrationPreview> {
+    return this.json("POST", "/sims/calibrations/fit", calibrationPreviewSchema, { body });
+  }
+  /** Saves (replaces) the record of this material and printer: from then on every study of that
+   *  material on that printer uses it. Only after the user confirms. */
+  saveCalibration(body: CalibrationBody): Promise<Calibration> { return this.json("POST", "/sims/calibrations", calibrationSchema, { body }); }
+  deleteCalibration(id: string): Promise<unknown> { return this.json("DELETE", `/sims/calibrations/${enc(id)}`, anyBody); }
 
   private async glb(path: string, etag?: string): Promise<{ bytes: ArrayBuffer; etag: string } | "not-modified"> {
     const headers: Record<string, string> = {};

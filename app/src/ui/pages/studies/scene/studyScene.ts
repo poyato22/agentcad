@@ -380,7 +380,17 @@ export function createStudyScene(canvas: HTMLCanvasElement, deps: StudySceneDeps
       const c = colors();
       const mags = list.filter((m) => m.role === "load" && typeof m.magnitude === "number").map((m) => Math.abs(m.magnitude as number));
       const maxMag = Math.max(1e-9, ...mags);
+      const pairs = new Map<string, THREE.Vector3[]>();
       for (const m of list) {
+        if (m.role === "print") {
+          // Plan 6: layer planes across the part's box, stacked along the build direction
+          const d = dirVec(m.direction);
+          if (!d) continue;
+          const obj = layerStack(b, new THREE.Vector3(...d).normalize(), c.dim, c.ink);
+          obj.userData.marker = m.role;
+          markers.add(obj);
+          continue;
+        }
         const at = m.face === "body"
           ? { center: b.min.map((x, i) => (x + b.max[i]) / 2) as V3, normal: [0, 0, 1] as V3 }
           : faceAnchor(m.face, b, faces);
@@ -400,10 +410,20 @@ export function createStudyScene(canvas: HTMLCanvasElement, deps: StudySceneDeps
           obj.userData.marker = m.role;
           markers.add(obj);
         } else {
-          const glyph = supportGlyph(m.role, center, normal, size * 0.06, color);
+          const glyph = supportGlyph(m.role, center, normal, size * 0.06, m.role === "contact" ? c.ink : color);
           glyph.userData.marker = m.role;
           markers.add(glyph);
+          if (m.role === "contact") pairs.set(m.kind, [...(pairs.get(m.kind) ?? []), center.clone().addScaledVector(normal, size * 0.02)]);
         }
+      }
+      // a contact pair: its two faces joined by a dashed line
+      for (const pts of pairs.values()) {
+        if (pts.length < 2) continue;
+        const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts.slice(0, 2)),
+          new THREE.LineDashedMaterial({ color: c.ink, dashSize: size * 0.03, gapSize: size * 0.02 }));
+        line.computeLineDistances();
+        line.userData.marker = "contact";
+        markers.add(line);
       }
       requestRender();
     },
@@ -583,6 +603,36 @@ function supportGlyph(role: Marker["role"], center: THREE.Vector3, normal: THREE
   lines.quaternion.copy(q);
   g.add(lines);
   g.position.copy(center).addScaledVector(normal, s * 0.15);
+  return g;
+}
+
+/** The print's layers: outlines of planes through the part's box, normal to the build direction,
+ *  and an arrow along it from the box's centre (which way the layers stack). */
+function layerStack(b: { min: V3; max: V3 }, dir: THREE.Vector3, color: string, arrowColor: string): THREE.Object3D {
+  const g = new THREE.Group();
+  const min = new THREE.Vector3(...b.min); const max = new THREE.Vector3(...b.max);
+  const c = min.clone().add(max).multiplyScalar(0.5);
+  const half = max.clone().sub(min).multiplyScalar(0.5);
+  // two axes spanning the layer plane
+  const up = Math.abs(dir.z) < 0.9 ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(1, 0, 0);
+  const u = new THREE.Vector3().crossVectors(dir, up).normalize();
+  const v = new THREE.Vector3().crossVectors(dir, u).normalize();
+  const ext = (a: THREE.Vector3) => Math.abs(a.x) * half.x + Math.abs(a.y) * half.y + Math.abs(a.z) * half.z;
+  const eu = ext(u) * 1.08; const ev = ext(v) * 1.08; const ed = ext(dir);
+  const pts: number[] = [];
+  const n = 6;
+  for (let i = 0; i < n; i++) {
+    const t = -ed + ((i + 0.5) / n) * 2 * ed;
+    const o = c.clone().addScaledVector(dir, t);
+    const corner = (a: number, bb: number) => o.clone().addScaledVector(u, a * eu).addScaledVector(v, bb * ev);
+    const q = [corner(-1, -1), corner(1, -1), corner(1, 1), corner(-1, 1)];
+    for (let k = 0; k < 4; k++) { const p0 = q[k]; const p1 = q[(k + 1) % 4]; pts.push(p0.x, p0.y, p0.z, p1.x, p1.y, p1.z); }
+  }
+  const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
+  g.add(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.55 })));
+  // the arrow leaves the box at its top layer, so the part never hides it
+  const len = Math.max(ed, eu, ev) * 0.6;
+  g.add(new THREE.ArrowHelper(dir, c.clone().addScaledVector(dir, ed * 1.04), len, new THREE.Color(arrowColor).getHex(), len * 0.25, len * 0.14));
   return g;
 }
 

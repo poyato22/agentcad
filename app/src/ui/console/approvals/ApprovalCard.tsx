@@ -255,7 +255,7 @@ export function ApprovalCard(props: { approval: Approval; runLabel: string }): J
         <div class="acard-evidence">
           <span class="label">evidence</span>
           {evidence.map((ev) => (
-            <button key={ev.stepId} type="button" class="acard-link" data-evidence={String(ev.stepId)}
+            <button key={ev.stepId} type="button" tabIndex={0} class="acard-link" data-evidence={String(ev.stepId)}
               onClick={() => actions.focusStep(ev.stepId)}>
               <span class="text">{ev.label}</span> <span class="faint">{ev.hash8}</span>
             </button>
@@ -263,18 +263,20 @@ export function ApprovalCard(props: { approval: Approval; runLabel: string }): J
         </div>
       )}
       {notice && <div class={`acard-notice tone-${notice.tone}`} role="status">{notice.text}</div>}
+      {/* Explicit tabIndex: WebKit (the app's WKWebView) skips <button>s on Tab unless they carry
+          one, so without it Tab left the card and the m/a/k/r letters could not be armed there. */}
       <div class="acard-buttons">
         {/* m and a both approve on every card; the merge card lists both */}
-        <Button variant="primary" disabled={disabled} data-decision="approve" onPointerDown={onPress("approve")}
+        <Button variant="primary" tabIndex={0} disabled={disabled} data-decision="approve" onPointerDown={onPress("approve")}
           onClick={onButton("approve")} aria-keyshortcuts={isMerge ? "m a" : "a m"}>
           {isMerge ? "Merge" : "Approve"} <kbd>{isMerge ? "m" : "a"}</kbd>
         </Button>
-        <Button onClick={() => choose("diff")} aria-pressed={showDiff} aria-keyshortcuts="d">Diff <kbd>d</kbd></Button>
+        <Button tabIndex={0} onClick={() => choose("diff")} aria-pressed={showDiff} aria-keyshortcuts="d">Diff <kbd>d</kbd></Button>
         {isMerge && (
-          <Button disabled={disabled} data-decision="keep_branch" onPointerDown={onPress("keep_branch")}
+          <Button tabIndex={0} disabled={disabled} data-decision="keep_branch" onPointerDown={onPress("keep_branch")}
             onClick={onButton("keep_branch")} aria-keyshortcuts="k">Keep branch <kbd>k</kbd></Button>
         )}
-        <Button disabled={disabled} data-decision="reject" onPointerDown={onPress("reject")}
+        <Button tabIndex={0} disabled={disabled} data-decision="reject" onPointerDown={onPress("reject")}
           onClick={onButton("reject")} aria-keyshortcuts="r">Reject <kbd>r</kbd></Button>
       </div>
       {showDiff && (

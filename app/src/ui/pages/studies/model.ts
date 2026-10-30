@@ -76,6 +76,9 @@ export function fidelityText(card: Pick<StudyCard, "fidelity_note" | "fidelity_c
     case "fem_estimate": return "estimate";
     case "cfd_lbm": return "low fidelity";
     case "empirical": return "estimate";
+    // Plan 6 (assumed classes; the core's fidelity_note, with its validated band, wins)
+    case "fem_nonlinear": return "nonlinear FEM";
+    case "cfd_openfoam": return "OpenFOAM k-ω SST";
     default: return card.fidelity_class ?? "";
   }
 }
@@ -108,6 +111,8 @@ export function honesty(type: string | null | undefined, card: Pick<StudyCard, "
   }
   if (type === "wind") {
     const s = (typeof fallback.settings === "object" && fallback.settings !== null ? fallback.settings : {}) as Record<string, unknown>;
+    // OpenFOAM's validated band comes with its result (Plan 6 S2); before that, say so
+    if (s.solver === "openfoam" && !card?.fidelity_note) return { fidelity: "OpenFOAM k-ω SST", band: "validated band after the run" };
     const level = typeof s.refinement === "number" ? s.refinement : 2;
     const pct = WIND_MODEL_ERROR[level];
     return { fidelity: level === 1 ? "low fidelity (preview)" : fidelity, band: pct ? `±${pct}% (validated)` : "model error band after the run" };
@@ -218,7 +223,7 @@ export function summaryHeadline(s: StudySummary): string {
 
 // ---- markers: what a setup holds and loads, drawn on the part
 
-export type MarkerRole = "support" | "load" | "temperature" | "heat" | "convection" | "impact" | "refine";
+export type MarkerRole = "support" | "load" | "temperature" | "heat" | "convection" | "impact" | "refine" | "contact" | "print";
 export interface Marker {
   role: MarkerRole; face: string; kind: string;
   /** Unit vector or direction name for loads (the arrow); null for supports and thermal faces. */
@@ -270,6 +275,23 @@ export function settingsMarkers(type: StudyType, settings: Record<string, unknow
   if (type === "drop" && typeof s.impact_face === "string") out.push({ role: "impact", face: s.impact_face, kind: "impact", direction: null, magnitude: typeof s.drop_m === "number" ? s.drop_m : null, unit: "m", caseIndex: null, path: ["impact_face"] });
   const mesh = isObj(s.mesh) ? s.mesh : null;
   if (mesh && Array.isArray(mesh.refine_faces)) mesh.refine_faces.forEach((f, i) => { if (typeof f === "string") out.push({ role: "refine", face: f, kind: "refine", direction: null, magnitude: null, unit: "", caseIndex: null, path: ["mesh", "refine_faces", i] }); });
+  // Plan 6: contact pairs (both faces of a pair share its kind "contact <n>", the scene links them)
+  const nl = isObj(s.nonlinear) ? s.nonlinear : null;
+  if (nl && Array.isArray(nl.contact)) {
+    nl.contact.forEach((c, i) => {
+      if (!isObj(c)) return;
+      const pair = `contact ${i + 1}`;
+      for (const k of ["master", "slave", "face"]) {
+        if (typeof c[k] === "string") out.push({ role: "contact", face: c[k] as string, kind: pair, direction: null, magnitude: null, unit: "", caseIndex: null, path: ["nonlinear", "contact", i, k] });
+      }
+    });
+  }
+  // the build direction (S3: settings.material.anisotropy.print_direction): layer planes across the part
+  const aniso = isObj(s.material) && isObj(s.material.anisotropy) ? s.material.anisotropy : null;
+  const dir = aniso?.print_direction;
+  if (typeof dir === "string" || Array.isArray(dir)) {
+    out.push({ role: "print", face: "body", kind: "print", direction: dir as string | number[], magnitude: null, unit: "", caseIndex: null, path: ["material", "anisotropy", "print_direction"] });
+  }
   return out;
 }
 

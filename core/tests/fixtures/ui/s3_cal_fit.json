@@ -1,0 +1,114 @@
+{
+  "fit": {
+    "n_tests": 7,
+    "e": {
+      "n": 3,
+      "mean": 2034.36596374348,
+      "sd": 77.97194875853714,
+      "cv": 0.038327395438261906,
+      "min": 1950.4761904761901,
+      "max": 2104.62170075425,
+      "value_mpa": 2036.3582715522537,
+      "residuals": [
+        0.005684437718626145,
+        -0.04403134039544265,
+        0.03243501156408879
+      ],
+      "confidence": "medium",
+      "method": "least squares: three-point bend / part load tests"
+    },
+    "strength": {
+      "n": 3,
+      "mean": 31.0,
+      "sd": 1.5,
+      "cv": 0.04838709677419355,
+      "min": 29.5,
+      "max": 32.5,
+      "value_mpa": 31.0,
+      "knockdown": 0.9032258064516129,
+      "knockdown_rule": "(mean - 2 sd) / mean",
+      "confidence": "medium"
+    },
+    "datasheet_ratio": 0.6078431372549019,
+    "z_strength": {
+      "n": 1,
+      "mean": 18.0,
+      "sd": null,
+      "cv": null,
+      "min": 18.0,
+      "max": 18.0,
+      "value_mpa": 18.0,
+      "knockdown": 0.85,
+      "knockdown_rule": "0.85 x weakest / mean (n < 3)",
+      "confidence": "low"
+    },
+    "knockdown": 0.85,
+    "confidence": "low",
+    "part_tests": [
+      {
+        "sim_id": "sim_5c5af1cac4dc",
+        "e_mpa": 2104.62170075425,
+        "e_study_mpa": 2300.0,
+        "predicted_deflection_mm": 1.7386005354056846,
+        "measured_deflection_mm": 1.9,
+        "study_load_n": 10.0
+      }
+    ]
+  },
+  "material": {
+    "name": "PLA",
+    "e_mpa": 2036.3582715522537,
+    "nu": 0.35,
+    "yield_mpa": 31.0,
+    "density_g_cm3": 1.24,
+    "hdt_c": 55.0,
+    "source": "Prusament PLA TDS v1.1 (printed, horizontal); calibrated (7 tests) on MK4",
+    "k_w_mk": 0.13,
+    "alpha_per_k": 6.8e-05,
+    "knockdown": 0.85,
+    "stiffness_factor": 1.0,
+    "custom": false,
+    "e_z_mpa": null,
+    "z_strength_mpa": 18.0,
+    "build_dir": null,
+    "sn_a_mpa": null,
+    "sn_b": null,
+    "basis": "calibrated (7 tests)",
+    "calibration": {
+      "id": "cal_preview",
+      "printer": "MK4",
+      "n_tests": 7,
+      "confidence": "low",
+      "updated_at": null
+    },
+    "allowable_mpa": 26.349999999999998,
+    "e_eff_mpa": 2036.3582715522537,
+    "model": "isotropic linear elastic; strength x FDM knock-down 0.85; printed parts are weaker across layers"
+  },
+  "datasheet": {
+    "name": "PLA",
+    "e_mpa": 2300.0,
+    "nu": 0.35,
+    "yield_mpa": 51.0,
+    "density_g_cm3": 1.24,
+    "hdt_c": 55.0,
+    "source": "Prusament PLA TDS v1.1 (printed, horizontal)",
+    "k_w_mk": 0.13,
+    "alpha_per_k": 6.8e-05,
+    "knockdown": 0.7,
+    "stiffness_factor": 1.0,
+    "custom": false,
+    "e_z_mpa": null,
+    "z_strength_mpa": null,
+    "build_dir": null,
+    "sn_a_mpa": null,
+    "sn_b": null,
+    "basis": "datasheet / estimate",
+    "calibration": null,
+    "allowable_mpa": 35.699999999999996,
+    "e_eff_mpa": 2300.0,
+    "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers"
+  },
+  "basis": "calibrated (7 tests)",
+  "saved": false
+}

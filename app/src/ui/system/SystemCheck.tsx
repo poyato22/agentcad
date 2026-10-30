@@ -6,7 +6,7 @@ import type { JSX } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import type { CoreClient } from "../../api/client";
 import { onCoreEvent } from "../../api/events";
-import type { MisesEvent, SystemCheckRow, SystemFix, SystemInstallEvent } from "../../api/types";
+import { isInstallDep, type MisesEvent, type SystemCheckRow, type SystemFix, type SystemInstallEvent } from "../../api/types";
 import { actions } from "../../state/store";
 import { DragStrip } from "../boot/DragStrip";
 import { ExternalLink } from "../common/ExternalLink";
@@ -96,6 +96,12 @@ export function SystemCheck({ standalone = false, onDone, client, subscribe = on
   }), [subscribe]);
 
   async function install(dep: string): Promise<void> {
+    // the dep name is core data: only one the app knows is ever sent (the core allowlists too)
+    if (!isInstallDep(dep)) {
+      setInstalls((p) => ({ ...p, [dep]: { lines: [`Not installed: "${dep}" is not a dependency this app installs.`], status: "fail" } }));
+      setOpenLogs((p) => ({ ...p, [dep]: true }));
+      return;
+    }
     setRefused((r) => { const n = { ...r }; delete n[dep]; return n; });
     setInstalls((p) => ({ ...p, [dep]: { lines: [], status: "running" } }));
     setOpenLogs((p) => ({ ...p, [dep]: true }));

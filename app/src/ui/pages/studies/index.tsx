@@ -22,6 +22,9 @@ import { Compare } from "./Compare";
 import { StudiesController } from "./controller";
 import { History } from "./History";
 import { openImmersive } from "./immersive/state";
+import { CalibrationPanel } from "./accuracy/Calibration";
+import { OpenFoamCard } from "./accuracy/OpenFoamCard";
+import "./accuracy/accuracy.css";
 import { InstallCard } from "./InstallCard";
 import { MaterialEditor, Templates } from "./Library";
 import { phaseText, settingsMarkers, STARTERS, TYPE_NAMES, TYPE_ORDER, typeName } from "./model";
@@ -59,9 +62,12 @@ export function StudiesPage({ controller = studies, deps = {} }: { controller?: 
   const built = part !== null && part.metrics !== null;
   const [checking, setChecking] = useState(false);
   const [picking, setPicking] = useState<Path | null>(null);
-  const [panel, setPanel] = useState<"none" | "materials" | "compare">("none");
+  // a contact pair is picked as two faces in a row: after `picking` the viewer arms `pickNext`
+  const [pickNext, setPickNext] = useState<Path | null>(null);
+  const [panel, setPanel] = useState<"none" | "materials" | "compare" | "calibrate">("none");
+  const [calMaterial, setCalMaterial] = useState<string | null>(null);
 
-  useEffect(() => { void c.loadTypes(); void c.loadSolvers(); void c.loadLibrary(); }, [c]);
+  useEffect(() => { void c.loadTypes(); void c.loadSolvers(); void c.loadLibrary(); void c.loadCalibrations(); }, [c]);
   useEffect(() => { c.resume(); return () => c.pause(); }, [c]);
   useEffect(() => { if (partId) void c.loadHistory(partId); }, [c, partId, part?.mtime]);
   // the user's own study finished: show its result, not the setup wireframe (B1-2)
@@ -85,7 +91,15 @@ export function StudiesPage({ controller = studies, deps = {} }: { controller?: 
   const setSettings = (s: Record<string, unknown>) => { settingsSig.value = { ...settingsSig.peek(), [type]: s }; viewSig.value = "setup"; };
   const markers = useMemo(() => (settings ? settingsMarkers(type, settings) : []), [type, settings]);
   const faces = part?.metrics?.face_list ?? [];
-  const materialNames = useMemo(() => [...(c.materials.value?.builtin ?? []), ...(c.materials.value?.custom ?? [])].map((m) => m.name), [c.materials.value]);
+  const materialRows = useMemo(() => [...(c.materials.value?.builtin ?? []), ...(c.materials.value?.custom ?? [])], [c.materials.value]);
+  const materialNames = useMemo(() => materialRows.map((m) => m.name), [materialRows]);
+  const pickFace = (p: Path | null, then?: Path) => { setPicking(p); setPickNext(p ? then ?? null : null); if (p) viewSig.value = "setup"; };
+  const calibrate = (name: string | null) => { setCalMaterial(name); setPanel("calibrate"); };
+  const matSettings = (settings?.material ?? {}) as { name?: unknown; printer?: unknown };
+  const studyMaterial = {
+    name: typeof matSettings.name === "string" ? matSettings.name : null,
+    printer: typeof matSettings.printer === "string" ? matSettings.printer : null,
+  };
 
   const solvers = c.solvers.value;
   const active = c.active.value;
@@ -152,6 +166,9 @@ export function StudiesPage({ controller = studies, deps = {} }: { controller?: 
           {c.typesError.value && <p class="tone-red text">Could not read the study types: {c.typesError.value}</p>}
           {c.solversError.value && <p class="tone-red text">Could not read the solver status: {c.solversError.value}</p>}
           {solvers && needsCcx && <InstallCard solvers={solvers} checking={checking} onRecheck={() => { setChecking(true); void c.loadSolvers().finally(() => setChecking(false)); }} />}
+          {type === "wind" && (
+            <OpenFoamCard solvers={solvers} chosen={settings?.solver === "openfoam"} client={() => actions.client()} onInstalled={() => { void c.loadSolvers(); }} />
+          )}
           <Templates templates={c.templates.value} type={type} disabled={active !== null || !settings}
             onLoad={(t) => {
               const ti = c.types.peek().find((x) => x.id === t.type);
@@ -164,8 +181,8 @@ export function StudiesPage({ controller = studies, deps = {} }: { controller?: 
           {info && settings && (
             <form class="st-setup" noValidate aria-label={`${TYPE_NAMES[type]} study setup`} onSubmit={(e) => { e.preventDefault(); if (canRun && partId) void c.start(partId, type, settings); }}>
               <SchemaForm schema={info.schema} value={settings} onChange={setSettings} errors={c.fieldErrors.value} disabled={active !== null}
-                faces={faces} materials={materialNames} onEditMaterials={() => setPanel("materials")}
-                onPickFace={(p) => { setPicking(p); viewSig.value = "setup"; }} picking={picking}
+                faces={faces} materials={materialNames} materialRows={materialRows} calibrations={c.calibrations.value} onEditMaterials={() => setPanel("materials")} onCalibrate={calibrate}
+                onPickFace={pickFace} picking={picking}
                 selectedCase={caseSig.value} onSelectCase={(i) => { caseSig.value = i; viewSig.value = "setup"; }} />
               {activeHere ? (
                 <div class="st-progress" data-testid="study-progress" data-phase={activeHere.phase ?? "starting"} role="status">
@@ -216,15 +233,27 @@ export function StudiesPage({ controller = studies, deps = {} }: { controller?: 
               </div>
               <StudyView partId={partId} mtime={part.mtime} record={showResult ? recShown : null} markers={markers} faces={faces}
                 selectedCase={caseSig.value} picking={showResult ? null : picking}
-                onPicked={(face) => { if (picking && settings) setSettings(setAt(settings, picking, face)); setPicking(null); }}
-                onCancelPick={() => setPicking(null)}
+                onPicked={(face) => { if (picking && settings) setSettings(setAt(settings, picking, face)); setPicking(pickNext); setPickNext(null); }}
+                onCancelPick={() => pickFace(null)}
+                pickHint={picking && pickNext ? "Click face A of the contact pair · Esc to stop" : picking && picking[picking.length - 1] === "slave" ? "Now click face B · Esc to stop" : null}
                 liveCaption={activeHere ? `${TYPE_NAMES[activeHere.type]} · ${phaseText(activeHere.phase)}${activeHere.detail ? ` · ${activeHere.detail}` : ""}` : null}
                 deps={deps.view} />
             </>
           )}
           {panel === "materials" && (
             <MaterialEditor materials={c.materials.value} onClose={() => setPanel("none")}
-              onSave={(m) => c.saveMaterial(m)} onDelete={(n) => c.deleteMaterial(n)} />
+              onSave={(m) => c.saveMaterial(m)} onDelete={(n) => c.deleteMaterial(n)} onCalibrate={calibrate} calibrations={c.calibrations.value} />
+          )}
+          {panel === "calibrate" && (
+            <CalibrationPanel client={() => actions.client()} materials={materialRows} studies={c.history.value}
+              initialMaterial={calMaterial ?? studyMaterial.name} initialPrinter={studyMaterial.printer}
+              onApplied={(m, printer) => {
+                void c.loadCalibrations();
+                // the study of this material now runs on that printer's calibration (S3 settings.material.printer)
+                if (settings && studyMaterial.name?.toLowerCase() === m.toLowerCase()) {
+                  setSettings(setAt(settings, ["material", "printer"], printer === "default" ? null : printer));
+                }
+              }} onClose={() => setPanel("none")} />
           )}
           {panel === "compare" && c.compare.value && (
             <Compare data={c.compare.value} onClose={() => setPanel("none")} onOpen={(id) => { viewSig.value = "result"; void c.select(id); }} />

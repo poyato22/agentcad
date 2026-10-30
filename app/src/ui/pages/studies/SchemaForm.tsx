@@ -5,13 +5,15 @@
 // "Advanced". Problems show at their field. Every label and doc comes from the schema as text.
 import type { JSX } from "preact";
 import { useRef, useState } from "preact/hooks";
-import type { JsonSchema } from "../../../api/studies";
+import { CAL_KEY_RE, calibrationFor, DEFAULT_PRINTER, provenance, type Calibration } from "../../../api/accuracy";
+import type { JsonSchema, StudyMaterial } from "../../../api/studies";
 import type { PartFace } from "../../../api/types";
 import { fmtClock } from "../../../lib/format";
 import { Button } from "../../common/Button";
+import { ContactPairsField, FatigueField, PrintDirectionField, type CustomFieldProps } from "./accuracy/fields";
 import { unitText } from "./model";
 import {
-  ADVANCED, defaultFor, deref, directionNames, discriminated, FACE_PRESETS, getAt, isDirection, isFaceKey, labelFor, nullableInner,
+  ADVANCED, defaultFor, deref, directionNames, discriminated, enumText, FACE_PRESETS, getAt, isDirection, isFaceKey, labelFor, nullableInner,
   pathKey, properties, setAt, type FieldError, type Path,
 } from "./formSchema";
 
@@ -25,9 +27,15 @@ export interface SchemaFormProps {
   faces?: readonly PartFace[];
   /** Material names the material field offers (built-in + saved). */
   materials?: readonly string[];
+  /** The material rows (Plan 6: calibration badge in the picker, orthotropic data by the print direction). */
+  materialRows?: readonly StudyMaterial[];
+  /** Saved calibrations (S3): the badge says "calibrated" only when one applies to the chosen material and printer. */
+  calibrations?: readonly Calibration[];
   onEditMaterials?: () => void;
-  /** Arms the viewer to pick a face for this field; null disarms. */
-  onPickFace?: (path: Path | null) => void;
+  /** Opens the calibration panel for the chosen material (null: the profile default). */
+  onCalibrate?: (material: string | null) => void;
+  /** Arms the viewer to pick a face for this field, then (a contact pair) for `then`; null disarms. */
+  onPickFace?: (path: Path | null, then?: Path) => void;
   picking?: Path | null;
   /** The load case shown selected in the viewer (static: index into load_cases). */
   selectedCase?: number | null;
@@ -48,8 +56,10 @@ export function SchemaForm(props: SchemaFormProps): JSX.Element {
   const ctx: Ctx = { ...props, root, errs, set: (p, v) => props.onChange(setAt(props.value, p, v)) };
   const n = deref(root, root);
   const props_ = properties(n);
-  const basic = props_.filter((p) => !ADVANCED.has(p.key));
-  const advanced = props_.filter((p) => ADVANCED.has(p.key));
+  // a solver *choice* (wind: built-in or OpenFOAM, Plan 6) stays in sight; FEM solver settings fold
+  const isAdv = (p: { key: string; schema: JsonSchema }) => ADVANCED.has(p.key) && !(p.key === "solver" && Array.isArray(deref(p.schema, root).enum));
+  const basic = props_.filter((p) => !isAdv(p));
+  const advanced = props_.filter(isAdv);
   const advErrors = advanced.some((p) => [...errs.keys()].some((k) => k === p.key || k.startsWith(`${p.key}.`)));
   return (
     <div class="sf" data-testid="schema-form">
@@ -64,6 +74,18 @@ export function SchemaForm(props: SchemaFormProps): JSX.Element {
       )}
     </div>
   );
+}
+
+/** What a Plan 6 custom field needs from the form. */
+function customProps(ctx: Ctx, path: Path): CustomFieldProps {
+  const matName = getAt(ctx.value, ["material", "name"]);
+  return {
+    path, value: getAt(ctx.value, path), set: ctx.set, disabled: ctx.disabled,
+    face: (p, label) => <FaceInput ctx={ctx} path={p} value={getAt(ctx.value, p)} label={label} />,
+    onPickFace: ctx.onPickFace, picking: ctx.picking,
+    material: typeof matName === "string" ? ctx.materialRows?.find((m) => m.name === matName) ?? null : null,
+    errors: (p) => ctx.errs.get(pathKey(p)) ?? [],
+  };
 }
 
 function Errors({ ctx, path }: { ctx: Ctx; path: Path }): JSX.Element | null {
@@ -159,18 +181,52 @@ function Field({ ctx, path, k, schema, required }: { ctx: Ctx; path: Path; k: st
   const unit = typeof n.unit === "string" ? n.unit : undefined;
   if ("const" in n) return null; // a union's tag: the kind picker shows it
 
-  // material name: the saved and built-in materials
+  // Plan 6: the print-direction gizmo, contact pairs picked in the viewer, the fatigue cycle
+  if (k === "anisotropy" && path.length === 2 && path[0] === "material") return <PrintDirectionField {...customProps(ctx, path)} />;
+  if (k === "fatigue" && path.length === 1) return <FatigueField {...customProps(ctx, path)} />;
+  if (k === "contact" && path[0] === "nonlinear") return <ContactPairsField {...customProps(ctx, path)} />;
+
+  // the printer profile whose calibration the study uses (null = "default")
+  if (k === "printer" && path.length === 2 && path[0] === "material") {
+    const keys = [...new Set([DEFAULT_PRINTER, ...(ctx.calibrations ?? []).map((c) => c.printer)])];
+    const t = typeof value === "string" ? value : "";
+    const bad = t !== "" && !CAL_KEY_RE.test(t);
+    return (
+      <Row ctx={ctx} path={path} label="Printer" n={{ description: "the printer profile whose calibration applies; empty = default" }}>
+        <span>
+          <input id={fid(path)} list="sf-printers" disabled={ctx.disabled} value={t} placeholder={DEFAULT_PRINTER} maxLength={40}
+            aria-invalid={bad ? "true" : undefined} data-testid="material-printer"
+            onInput={(e) => { const s = (e.target as HTMLInputElement).value; ctx.set(path, s.trim() ? s : null); }} />
+          <datalist id="sf-printers">{keys.map((x) => <option key={x} value={x} />)}</datalist>
+          {bad && <span class="sf-err" role="alert">1–40 letters, digits, spaces or ._+()-</span>}
+        </span>
+      </Row>
+    );
+  }
+
+  // material name: the saved and built-in materials (with their calibration badge on the chosen printer)
   if (k === "name" && path.length === 2 && path[0] === "material") {
     const names = ctx.materials ?? [];
+    const printer = getAt(ctx.value, ["material", "printer"]);
+    const useCal = getAt(ctx.value, ["material", "calibrated"]) !== false;
+    const badge = (m: string) => {
+      const row = ctx.materialRows?.find((r) => r.name === m);
+      const cal = useCal ? calibrationFor(ctx.calibrations ?? [], m, typeof printer === "string" ? printer : null) : null;
+      return row ? ` · ${provenance(row, cal).label}` : "";
+    };
     return (
       <Row ctx={ctx} path={path} label="Material" n={{}}>
         <span class="sf-face">
           <select id={fid(path)} disabled={ctx.disabled} value={typeof value === "string" ? value : ""} onChange={(e) => { const t = (e.target as HTMLSelectElement).value; ctx.set(path, t || null); }}>
             <option value="">profile default</option>
-            {names.map((m) => <option key={m} value={m}>{m}</option>)}
+            {names.map((m) => <option key={m} value={m}>{m}{badge(m)}</option>)}
             {typeof value === "string" && value && !names.includes(value) && <option value={value}>{value}</option>}
           </select>
           {ctx.onEditMaterials && <Button variant="ghost" onClick={ctx.onEditMaterials} disabled={ctx.disabled}>Edit materials</Button>}
+          {ctx.onCalibrate && (
+            <Button variant="ghost" disabled={ctx.disabled} data-testid="open-calibration"
+              onClick={() => ctx.onCalibrate?.(typeof value === "string" && value ? value : null)}>Calibrate</Button>
+          )}
         </span>
       </Row>
     );
@@ -231,7 +287,7 @@ function Inner({ ctx, path, k, n, required = true }: { ctx: Ctx; path: Path; k: 
     return (
       <Row ctx={ctx} path={path} label={label} n={n}>
         <select id={fid(path)} disabled={ctx.disabled} value={String(value ?? "")} onChange={(e) => ctx.set(path, (e.target as HTMLSelectElement).value)}>
-          {(n.enum as unknown[]).map((x) => <option key={String(x)} value={String(x)}>{String(x).replace(/_/g, " ")}</option>)}
+          {(n.enum as unknown[]).map((x) => <option key={String(x)} value={String(x)}>{enumText(x)}</option>)}
         </select>
       </Row>
     );

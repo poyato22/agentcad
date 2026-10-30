@@ -6,6 +6,7 @@
 // reduced motion). Values read from the core render as text.
 import type { JSX } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
+import { NEW_CHANNELS } from "../../../api/accuracy";
 import type { StudyProbe, StudyRecord, StudySection } from "../../../api/studies";
 import type { PartFace } from "../../../api/types";
 import { actions } from "../../../state/store";
@@ -48,6 +49,8 @@ export interface StudyViewProps {
   immersive?: boolean;
   /** A running study: a caption over the part (mesh → solve → post). */
   liveCaption?: string | null;
+  /** What the face pick is for, when it is more than one face (a contact pair). */
+  pickHint?: string | null;
   deps?: StudyViewDeps;
 }
 
@@ -57,6 +60,7 @@ const reducedMotion = () => typeof matchMedia === "function" && matchMedia("(pre
 const CHANNEL_TEXT: Record<string, string> = {
   von_mises: "von Mises", displacement: "displacement", s1: "max principal", s3: "min principal", safety_factor: "safety factor",
   temperature: "temperature", cp: "Cp (pressure)", velocity: "velocity", speed: "speed",
+  ...NEW_CHANNELS,
 };
 export const channelText = (c: string): string => CHANNEL_TEXT[c] ?? c.replace(/^mode_(\d+)$/, "mode $1").replace(/_/g, " ");
 
@@ -250,7 +254,7 @@ export function StudyView(props: StudyViewProps): JSX.Element {
         <span class="tick tick-tl" /><span class="tick tick-tr" /><span class="tick tick-bl" /><span class="tick tick-br" />
         <span class="label vp-fig">{simId ? `FIG. — ${channelText(channel ?? "result").toUpperCase()}` : "FIG. — SETUP"}</span>
         {labels.map((l) => <span key={l.key} class="sv-mlabel" style={{ left: `${l.x}px`, top: `${l.y}px` }}>{l.text}</span>)}
-        {props.picking && <div class="sv-hint" role="status">Click a face of the part · Esc to stop</div>}
+        {props.picking && <div class="sv-hint" role="status" data-testid="pick-hint">{props.pickHint ?? "Click a face of the part · Esc to stop"}</div>}
         {caption && <div class="sv-caption" role="status" data-testid="live-caption">{caption}</div>}
         {state !== "loaded" && state !== "loading" && state !== "none" && <div class="st-sheet-msg text">{state}</div>}
         {probe && (
