@@ -6,7 +6,7 @@
 // every test against the fit and the datasheet value. "Apply" makes the material "calibrated
 // (n tests)" everywhere. Nothing is applied without that click.
 import type { JSX } from "preact";
-import { useEffect, useMemo, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { provenance, type Calibration, type CalibrationTest, type CalibrationTestKind } from "../../../../api/accuracy";
 import { CoreError, type CoreClient } from "../../../../api/client";
 import type { StudyMaterial, StudySummary } from "../../../../api/studies";
@@ -81,12 +81,20 @@ export function CalibrationPanel({ client, materials, studies, initialMaterial, 
     }, () => setPrinters([]));
   }, []);
 
-  // the material + printer's stored tests (or a fresh sheet)
+  // the material + printer's stored tests (or a fresh sheet); a list that arrives later never
+  // throws away tests being typed in
+  const shown = useRef<{ key: string; saved: Calibration | null }>({ key: "", saved: null });
   useEffect(() => {
     const c = all.find((x) => x.material === material && x.printer_profile === printer) ?? null;
+    const key = `${material}\n${printer}`;
+    const prev = shown.current;
+    const switched = prev.key !== key;
+    shown.current = { key, saved: c };
     setSaved(c);
-    setTests(c ? structuredClone(c.tests) : []);
-    setNote(null);
+    const fresh = c ? structuredClone(c.tests) : [];
+    // a stored set for the new pair replaces the sheet; otherwise unsaved typing stays
+    setTests((cur) => ((switched && c) || JSON.stringify(cur) === JSON.stringify(prev.saved?.tests ?? []) ? fresh : cur));
+    if (switched) setNote(null);
   }, [material, printer, all]);
 
   const row = materials.find((m) => m.name === material) ?? null;

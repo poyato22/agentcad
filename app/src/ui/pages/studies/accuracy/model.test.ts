@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { provenance } from "../../../../api/accuracy";
+import { settingsMarkers } from "../model";
 import {
   ampMean, confidenceOf, cycleRange, cyclesShort, cyclesText, goodman, implied, meanCv, printDirectionText, snCycles, snStress,
 } from "./model";
@@ -57,6 +58,19 @@ describe("fatigue arithmetic", () => {
     expect(cyclesText(null)).toBe("beyond the curve");
     expect(cyclesShort(1e6)).toBe("10⁶");
     expect(cyclesShort(1e10)).toBe("10¹⁰");
+  });
+
+  it("contact faces and the print direction become viewer markers", () => {
+    const m = settingsMarkers("static", {
+      load_cases: [],
+      nonlinear: { contact: [{ kind: "faces", master: "f1", slave: "f2" }, { kind: "rigid", face: "bottom" }] },
+      print_direction: "+x",
+    });
+    expect(m.filter((x) => x.role === "contact").map((x) => [x.kind, x.face, x.path.join(".")])).toEqual([
+      ["contact 1", "f1", "nonlinear.contact.0.master"], ["contact 1", "f2", "nonlinear.contact.0.slave"], ["contact 2", "bottom", "nonlinear.contact.1.face"],
+    ]);
+    expect(m.find((x) => x.role === "print")?.direction).toBe("+x");
+    expect(settingsMarkers("static", { load_cases: [], print_direction: null }).some((x) => x.role === "print")).toBe(false);
   });
 
   it("print direction words", () => {
