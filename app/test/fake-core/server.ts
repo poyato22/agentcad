@@ -576,7 +576,10 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
   }
   /** The orchestrator → worker forest (ui runs excluded), each node run_view-shaped. */
   function runsTree(projectId: string | null): (AgentRun & { children: unknown[] })[] {
-    const runs = [...state.runs.values()].filter((r) => r.provider !== "ui" && (!projectId || r.project_id === projectId));
+    // like run_view, a run with no stored build belongs to the default build; filter on that same
+    // effective id so a project-scoped tree (GET /projects/{id}/agents) finds it
+    const defPid = state.assembly.projects[0]?.id ?? null;
+    const runs = [...state.runs.values()].filter((r) => r.provider !== "ui" && (!projectId || (r.project_id ?? defPid) === projectId));
     const nodes = new Map(runs.map((r) => [r.id, { ...runView(r), children: [] as unknown[] }]));
     const roots: (AgentRun & { children: unknown[] })[] = [];
     for (const r of runs) {

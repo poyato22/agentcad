@@ -67,8 +67,13 @@ function DialogBody(): JSX.Element {
     // agents are loaded only for the "specific agent" override; routing needs none.
     Promise.resolve().then(() => Promise.all([actions.client().agents(), refreshCatalog()])).then(([all]) => {
       if (!live) return;
-      setAgents(startableAgents(all));   // hidden agents are not offered (C-4)
-      if (catalog.peek().error && !catalog.peek().models) setError(catalog.peek().error);
+      const as = startableAgents(all);   // hidden agents are not offered (C-4)
+      setAgents(as);
+      // the model the router would land on: the first agent's own model, else the profile default,
+      // else the core default. Set once, so a later user pick is never overridden (catalog is ready).
+      const c = catalog.peek();
+      if (c.models) setModel((cur) => cur ?? (as[0] ? defaultModelRef(as[0], c.models!, c.profileDefault) : (c.profileDefault ?? c.models!.default)));
+      if (c.error && !c.models) setError(c.error);
     }, (e: unknown) => { if (live) setError(describeError(e)); });
     return () => { live = false; };
   }, []);
@@ -130,14 +135,6 @@ function DialogBody(): JSX.Element {
   function togglePart(id: string, on: boolean): void {
     setPicked(on ? [...picked, id] : picked.filter((p) => p !== id));
   }
-
-  // in auto mode (no override), or before any override is chosen: the profile default, else the
-  // core default — the same ref the core would route to (matching defaultModelRef for an inherit agent)
-  useEffect(() => {
-    if (model !== null || !models) return;
-    if (current) { prefill(current); return; }
-    setModel(cat.profileDefault ?? models.default);
-  }, [models, current?.name]);
 
   return (
     <div class="dlg-backdrop">
