@@ -128,7 +128,12 @@ def test_case_has_sst_snappy_and_the_force_function_objects(tmp_path):
                 "constant/triSurface/part.stl", "0/U", "0/p", "0/k", "0/omega", "0/nut",
                 "Allrun"):
         assert (c / rel).is_file(), rel
-    assert "kOmegaSST" in (c / "constant/turbulenceProperties").read_text()
+    # Re 2e4: laminar; the same sphere at 30 m/s (Re 2e5) runs k-omega SST
+    assert plan.laminar and plan.reynolds == pytest.approx(2.03e4, rel=0.01)
+    assert "simulationType  laminar;" in (c / "constant/turbulenceProperties").read_text()
+    fast = foam_case.write_case(tmp_path / "fast", tris, settings(speed_m_s=30), 0.00785)
+    assert not fast.laminar
+    assert "kOmegaSST" in (tmp_path / "fast/constant/turbulenceProperties").read_text()
     ctl = (c / "system/controlDict").read_text()
     assert "application     simpleFoam" in ctl and "type            forceCoeffs" in ctl
     assert "magUInf         3;" in ctl and "Aref            0.00785;" in ctl
@@ -155,7 +160,13 @@ def test_serial_run_without_mpi_and_refinement_sets_levels(tmp_path):
     plan = foam_case.write_case(tmp_path, box(4, 100, 100) * 1e-3, s, 0.01)
     allrun = (tmp_path / "Allrun").read_text()
     assert "mpirun" not in allrun and "run simpleFoam simpleFoam" in allrun
-    assert plan.surface_levels == (4, 5) and plan.layers == 3
+    # a bluff body (the plate) is meshed at the finest level all over; a streamlined one keeps
+    # the curvature-driven (min, max) range
+    assert plan.bluff and plan.surface_levels == (5, 5) and plan.layers == 3
+    slender = foam_case.plan_case(box(400, 40, 40) * 1e-3, s)
+    assert not slender.bluff and slender.surface_levels == (4, 5)
+    assert foam_case.plan_case(box(4, 100, 100) * 1e-3,
+                               settings(refinement=2)).surface_levels == (3, 3)
     assert "addLayers       true;" in (tmp_path / "system/snappyHexMeshDict").read_text()
     lo = foam_case.plan_case(box(4, 100, 100) * 1e-3, settings(refinement=1))
     assert lo.cells_estimate < plan.cells_estimate
@@ -231,12 +242,14 @@ async def test_sphere_study_from_recorded_output(tmp_path, monkeypatch):
     r = await openfoam.run_openfoam_study(sphere(n=24), settings(speed_m_s=3), tmp_path, DOCKER,
                                           progress=seen.append)
     assert len(run.calls) == 1 and run.calls[0][0] == DOCKER
-    assert r["method"] == "openfoam" and r["fidelity"] == "OpenFOAM k-ω SST"
+    # Re 2e4 < 1e5: the case runs laminar (fully turbulent SST separates far too late)
+    assert r["method"] == "openfoam" and r["fidelity"] == "OpenFOAM laminar"
+    assert r["mesh"]["regime"] == "laminar" and r["mesh"]["turbulence"].startswith("laminar")
     # Re 2e4 sphere, reference Cd 0.47 (subcritical plateau): within 10%
     assert abs(r["cd"] - 0.47) / 0.47 < 0.10, r["cd"]
     coef = foam_parse.function_object_table(FIX / "sphere_re2e4", "forceCoeffs",
                                             "coefficient.dat")
-    assert r["cd"] == pytest.approx(np.mean(coef["Cd"][-24:]))       # last 10% of 236
+    assert r["cd"] == pytest.approx(np.mean(coef["Cd"][-118:]))      # laminar: last 50% of 236
     assert r["reynolds"] == pytest.approx(1.225 * 3 * 0.1 / 1.81e-5, rel=0.02)
     assert r["drag_n"] == pytest.approx(r["cd"] * r["dynamic_pressure_pa"] * r["ref_area_m2"])
     assert r["converged"] is True and r["stopped"] == "converged" and r["steps"] == 236

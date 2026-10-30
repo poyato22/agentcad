@@ -1052,7 +1052,7 @@ def fidelity_note(rec: dict) -> str | None:
     if fc == "cfd_openfoam" and band is not None:
         # S2: "(validated)" only once a real-solver benchmark is recorded (validation.py)
         tag = "validated" if r.get("validated") else "target; validation pending"
-        return f"OpenFOAM k-ω SST · ±{100 * band:.0f}% ({tag})"
+        return f"{r.get('fidelity') or 'OpenFOAM k-ω SST'} · ±{100 * band:.0f}% ({tag})"
     if fc == "empirical" and band is not None:
         return f"estimate · ±{100 * band:.0f}% (shape-class table)"
     if fc == "fem_estimate":
