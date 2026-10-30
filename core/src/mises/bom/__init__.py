@@ -350,6 +350,8 @@ def add_row(bom: BomStore, project_id: str, data: dict, source: str) -> dict:
 
 def patch_row(store: Store, bom: BomStore, home: Path, project_id: str, item_id: str,
               patch: dict, *, catalog=None, material: str = "PLA") -> dict:
+    if not ITEM_RE.match(item_id or ""):
+        raise MisesError(ErrorCode.NOT_FOUND, f"no parts list row {item_id!r}")
     row = bom.get(project_id, item_id)
     if row is None or row.get("hidden"):
         auto = auto_rows(store, home, project_id, catalog, material).get(item_id)
@@ -362,6 +364,8 @@ def patch_row(store: Store, bom: BomStore, home: Path, project_id: str, item_id:
 
 
 def delete_row(store: Store, bom: BomStore, project_id: str, item_id: str) -> None:
+    if not ITEM_RE.match(item_id or ""):
+        raise MisesError(ErrorCode.NOT_FOUND, f"no parts list row {item_id!r}")
     row = bom.get(project_id, item_id)
     part_id = (row or {}).get("part_id")
     if row is None:

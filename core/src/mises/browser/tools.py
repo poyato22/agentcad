@@ -56,6 +56,7 @@ TEXT_FOR_AGENT = 6000
 TABLES_FOR_AGENT = 2500
 SNIPPET_FOR_AGENT = 160
 SITES_MAX = 5
+RESULTS_FOR_AGENT = 25       # keeps the result under the Gate's 16 KB output cap
 CARD_RE = re.compile(r"^card_[0-9a-f]{16}$")
 
 _CARDS = """
@@ -235,7 +236,8 @@ async def web_search(ctx: ToolContext, args: SearchArgs) -> ToolOutput:
         raise MisesError(ErrorCode.INVALID_INPUT, "no suggested site has a search page",
                          hint="the user can add sites in Profile")
     per = await asyncio.gather(*(_search_site(ctx, s, args.query, args.limit) for s in picked))
-    flat = [{**r, "snippet": r["snippet"][:SNIPPET_FOR_AGENT]} for p in per for r in p["results"]]
+    flat = [{**r, "snippet": r["snippet"][:SNIPPET_FOR_AGENT]}
+            for p in per for r in p["results"]][:RESULTS_FOR_AGENT]
     sites_out = [{k: p.get(k) for k in ("site", "status", "message", "snapshot_id")}
                  | {"count": len(p["results"])} for p in per]
     parts = [f"{p['site']}: {len(p['results'])}" if p["status"] == "ok"

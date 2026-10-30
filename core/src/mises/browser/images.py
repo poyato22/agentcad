@@ -4,6 +4,10 @@ caps it at IMAGE_MAX_BYTES, decodes it with Pillow (PNG, JPEG, GIF or WebP only;
 anything else refused; at most MAX_PIXELS pixels, so no decompression bombs), shrinks it to
 MAX_SIDE and re-encodes it as PNG, which also drops metadata. Results are cached under
 <home>/browser/images.
+
+The image hosts are whatever the page named (often a CDN on another domain): they are not
+asked an approval card, because the user's own view loads them, not an agent, and nothing an
+agent wrote goes into those URLs.
 """
 from __future__ import annotations
 
