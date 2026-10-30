@@ -57,7 +57,7 @@ for (const width of [1280, 1440]) {
           expect(clipped, `${sel} #${i} text is not clipped`).toBe(false);
         }
       }
-      // the mode tabs all fit (⌘1–⌘6), and A3's build tabs never run under them
+      // the mode tabs all fit (⌘1–⌘7), and A3's build tabs never run under them
       for (const sel of [".btab", ".btab-add"]) {
         const els = page.locator(`.topbar-left ${sel}`);
         for (let i = 0; i < await els.count(); i++) {

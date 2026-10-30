@@ -2,13 +2,14 @@
 // Design keeps today's layout (left pane + viewer); the others render full-width under the top bar.
 // The agent console stays available on every page and can collapse to a rail.
 //
-// Navigation: the top tabs (ui/topbar/ModeTabs) and ⌘1–⌘6 both call setPage(). A page component
+// Navigation: the top tabs (ui/topbar/ModeTabs) and ⌘1–⌘7 both call setPage(). A page component
 // is just the default/exported component of ui/pages/<id>/index.tsx, rendered by App when active.
 // To read or change the active page from anywhere, import `activePage` / `setPage` / `PAGES` from here.
 //
-// Shortcuts (Plan 7 U2b removed the Sketch page and renumbered the rest):
-//   ⌘1 Design · ⌘2 Studies · ⌘3 Drawing · ⌘4 Print · ⌘5 Onshape · ⌘6 Parts
-//   ⌥⌘A flips Part / Assembly on the Design page (ui/assembly/mode). ⌘0 is left for Home (U1).
+// Shortcuts (Plan 7 U2b removed the Sketch page and renumbered the rest; every shortcut in the
+// app is listed in lib/shortcuts.ts and docs/shortcuts.md):
+//   ⌘1 Design · ⌘2 Studies · ⌘3 Drawing · ⌘4 Print · ⌘5 Onshape · ⌘6 Parts · ⌘7 BOM
+//   ⌥⌘A flips Part / Assembly on the Design page (ui/assembly/mode). ⌘0 is Home (U1).
 import { signal, type Signal } from "@preact/signals";
 import { isTrustedKey, registerShortcut } from "../../lib/keys";
 
@@ -77,7 +78,7 @@ export interface PageShortcutDeps {
   isModalOpen?: () => boolean;
 }
 
-/** Registers ⌘1–⌘6 to navigate between pages (capture phase, works inside inputs). Synthetic or
+/** Registers ⌘1–⌘7 to navigate between pages (capture phase, works inside inputs). Synthetic or
  *  auto-repeat keys are ignored, and so is everything while a modal is open (the page must not
  *  change under the wizard, Profile or a dialog). Returns an unregister function. */
 export function installPageShortcuts(deps: PageShortcutDeps = {}): () => void {

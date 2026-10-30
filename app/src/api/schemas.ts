@@ -37,6 +37,8 @@ export const agentRunSchema = z.object({
   cost: runCostSchema.optional(),
   // Plan 8 G1 routing hint (shape is read leniently by the model warning chip)
   shape_complexity: z.unknown().optional(),
+  // Plan 7 U3c: the build's lead agent and its sub-agents (null: a plain run)
+  role: z.enum(["lead", "sub"]).nullish(),
 });
 
 /** GET /runs/tree node: a run plus its worker children. */

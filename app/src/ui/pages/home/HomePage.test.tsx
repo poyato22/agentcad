@@ -47,6 +47,13 @@ describe("HomePage", () => {
     expect(screen.getByText(/1 part\b/)).toBeTruthy();
   });
 
+  it("has U5's drawing drop tile next to New build (not in the Trash)", () => {
+    render(<HomePage />);
+    expect(screen.getByTestId("home").querySelector(".home-cell-drop")).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /^Trash/ }));
+    expect(screen.getByTestId("home").querySelector(".home-cell-drop")).toBeNull();
+  });
+
   it("searches by name", () => {
     render(<HomePage />);
     fireEvent.input(screen.getByLabelText("Search builds"), { target: { value: "gear" } });

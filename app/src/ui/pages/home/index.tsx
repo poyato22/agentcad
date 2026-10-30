@@ -10,6 +10,7 @@ import { atHome, openBuild } from "../../../state/home";
 import { actions, runs } from "../../../state/store";
 import { Led } from "../../common/Led";
 import { Thumb } from "../../common/Thumb";
+import { DrawingDrop } from "../../imports";
 import { buildStatus, DEFAULT_VIEW, fmtLastEdited, partsLabel, SORTS, type HomeSort, viewBuilds } from "./model";
 import "./home.css";
 
@@ -59,6 +60,8 @@ export function HomePage(): JSX.Element {
                 </button>}
           </li>
         )}
+        {/* U5: drop a technical drawing to start a part (the core picks or makes its build) */}
+        {!trash && <li class="home-cell home-cell-drop"><DrawingDrop variant="tile" /></li>}
 
         {shown.map((b) => (
           <li key={b.id} class="home-cell">

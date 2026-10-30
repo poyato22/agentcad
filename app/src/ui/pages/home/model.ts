@@ -34,7 +34,7 @@ export function viewBuilds(builds: readonly Build[], view: HomeView): Build[] {
 }
 
 /** A run as the status dot needs it (store AgentRun, narrowed for testing). */
-export interface RunLike { project_id?: string | null; status: string }
+export interface RunLike { project_id?: string | null; status: string; role?: string | null }
 
 /**
  * The lead-agent status dot for a build, from its runs:
@@ -46,11 +46,16 @@ export interface RunLike { project_id?: string | null; status: string }
 export function buildStatus(buildId: string, runs: Iterable<RunLike>): { tone: LedTone; label: string } {
   let running = false;
   let queued = false;
+  let lead: RunLike | null = null;
   for (const r of runs) {
     if ((r.project_id ?? null) !== buildId) continue;
+    if (r.role === "lead" && (lead === null || r.status === "running")) lead = r;
     if (r.status === "running") running = true;
     else if (r.status === "queued") queued = true;
   }
+  // U3c: the build's lead agent speaks for the build first
+  if (lead?.status === "running") return { tone: "green", label: "The lead agent is working" };
+  if (lead?.status === "queued") return { tone: "amber", label: "The lead agent is queued" };
   if (running) return { tone: "green", label: "An agent is working" };
   if (queued) return { tone: "amber", label: "An agent is queued" };
   return { tone: "faint", label: "Idle" };

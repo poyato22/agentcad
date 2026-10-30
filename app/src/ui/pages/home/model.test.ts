@@ -46,6 +46,13 @@ describe("viewBuilds", () => {
 });
 
 describe("buildStatus", () => {
+  it("the build's lead agent (U3c) speaks for it first", () => {
+    const runs = [{ project_id: "arm", status: "running", role: "sub" }, { project_id: "arm", status: "queued", role: "lead" }];
+    expect(buildStatus("arm", runs)).toEqual({ tone: "amber", label: "The lead agent is queued" });
+    expect(buildStatus("arm", [{ project_id: "arm", status: "running", role: "lead" }]).label).toBe("The lead agent is working");
+    expect(buildStatus("arm", [{ project_id: "arm", status: "done", role: "lead" }, { project_id: "arm", status: "running", role: "sub" }]).label).toBe("An agent is working");
+  });
+
   const runs = [
     { project_id: "arm", status: "running" },
     { project_id: "gear", status: "queued" },

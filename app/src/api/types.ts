@@ -41,6 +41,8 @@ export interface AgentRun {
   last_activity_at?: number | null;
   /** The API name of the one parent column (an orchestrator's worker points at its parent). */
   parent_run_id?: string | null;
+  /** Plan 7 U3c: the build's lead agent ("lead") or one of its sub-agents ("sub"); null otherwise. */
+  role?: "lead" | "sub" | null;
   /** Rolled-up cost: dollars (null when unpriced) and total tokens. */
   cost?: RunCost;
   /** Plan 8 G1: how shape-heavy the prompt looks (the router prefers strong vision models for it).

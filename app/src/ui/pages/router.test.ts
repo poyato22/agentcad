@@ -60,7 +60,7 @@ describe("page router", () => {
     d.remove();
   });
 
-  it("⌘1–⌘6 navigate and unregister cleanly", () => {
+  it("⌘1–⌘7 navigate and unregister cleanly", () => {
     const off = installPageShortcuts({ isTrusted: () => true, isModalOpen: () => false });
     const press = (key: string) =>
       window.dispatchEvent(new KeyboardEvent("keydown", { key, code: `Digit${key}`, metaKey: true, bubbles: true, cancelable: true }));
