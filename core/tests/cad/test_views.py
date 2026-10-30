@@ -836,3 +836,32 @@ def test_section_thumbnail_faces_the_cut():
     assert views._section_view([0, -1, 0]) == "front"     # -Y half removed: look along +Y
     assert views._section_view([0, 0, 1]) == "top"        # +Z half removed: look down
     assert views._section_view([1, 0, 0]) == "side"       # +X half removed: look along -X
+
+
+async def test_critique_model_only_reads_references_of_its_own_build(tmp_path, monkeypatch):
+    """Release merge (b), M7: a run's critique_model reads its build's references (and ones tied to
+    no build, which its context lists); another build's reference id is refused, not read."""
+    import base64
+    from mises import references as refs
+    from mises.references import PhotoIn, ReferenceUpload
+    from mises.types import MisesError
+    from PIL import Image
+    _make_part(tmp_path, "cube")
+    buf = io.BytesIO()
+    Image.new("RGB", (64, 64), (20, 20, 20)).save(buf, "PNG")
+
+    def ref(project):
+        return refs.save_reference(tmp_path, ReferenceUpload(
+            image=PhotoIn(data_b64=base64.b64encode(buf.getvalue()).decode()), view="top",
+            project_id=project))["reference_id"]
+    mine, loose, theirs = ref("buildA"), ref(None), ref("buildB")
+    monkeypatch.setattr(views, "_run_project_id", lambda ctx: "buildA")
+    ctx = _bare_ctx(tmp_path, run_id="m7", services={"runtime": _seeing_rt(tmp_path)})
+    r = await views.critique_model.handler(ctx, views.CritiqueArgs(
+        part_id="cube", request="x", reference_image_ids=[mine, loose]))
+    assert {i.label for i in r.images} >= {f"reference {mine}", f"reference {loose}"}
+    ctx2 = _bare_ctx(tmp_path, run_id="m7b", services={"runtime": _seeing_rt(tmp_path)})
+    with pytest.raises(MisesError) as e:
+        await views.critique_model.handler(ctx2, views.CritiqueArgs(
+            part_id="cube", request="x", reference_image_ids=[mine, theirs]))
+    assert e.value.code == "out_of_scope" and theirs in e.value.message

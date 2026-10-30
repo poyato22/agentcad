@@ -749,6 +749,27 @@ async def _collect_text(ctx: ToolContext, provider, req: ModelRequest) -> str:
     return "".join(parts)
 
 
+def _check_reference_scope(ctx: ToolContext, ids: list[str]) -> None:
+    """M7: a run may only use reference images of its own build (or ones tied to no build,
+    which every build's context lists). One from another build is refused, not silently read;
+    an unknown id stays skipped later, as before."""
+    home = _home(ctx)
+    if home is None or not ids:
+        return
+    own = _run_project_id(ctx)
+    for rid in ids:
+        try:
+            meta = refs_mod.reference_summary(home, rid)
+        except (MisesError, OSError, ValueError):
+            continue
+        rp = meta.get("project_id")
+        if rp is not None and rp != own:
+            raise MisesError(ErrorCode.OUT_OF_SCOPE,
+                             f"reference image {rid} belongs to another build",
+                             hint="use the reference ids listed in this run's context "
+                                  "(mises_context_get `references`)")
+
+
 def _references(ctx: ToolContext, ids: list[str]) -> list[dict]:
     home = _home(ctx)
     out = []
@@ -884,6 +905,7 @@ def _stopped(part_ids: list[str], st: dict, lim: _Limits, stop: str) -> ToolOutp
 async def critique_model(ctx: ToolContext, args: CritiqueArgs) -> ToolOutput:
     part_ids, whole = _resolve_targets(ctx, args.part_id, args.project_id, args.parts)
     _check_scope_all(ctx, part_ids, whole)
+    _check_reference_scope(ctx, list(args.reference_image_ids))
     st = _run_state(getattr(ctx, "run_id", None))
     tgt = st["targets"].setdefault(_target_key(part_ids), {})
     lim = _limits(ctx, _sticky_limits(tgt, args))
