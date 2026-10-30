@@ -22,6 +22,26 @@ def test_rules_can_carry_the_run_role():
     assert md.index("# Mises harness rules") < md.index("# Role: designer")
 
 
+def test_rules_list_every_agent_and_both_delegation_paths():
+    """I-6: the appended prompt names the real agents (engineer, sim, verifier, designer and
+    any custom), not a stale 'designer and verifier only', and both delegation paths."""
+    md = mises_rules_md()
+    for name in ("engineer", "sim", "verifier", "designer"):
+        assert f"`{name}`" in md
+    assert "No other agent types are available" not in md
+    assert "Agent` tool" in md and "agent_spawn" in md
+
+
+def test_hidden_agents_are_not_in_the_delegation_line():
+    md = mises_rules_md(hidden={"designer"})
+    assert "`engineer`" in md and "`designer`" not in md
+
+
+def test_subagent_prompt_has_no_delegation_line():
+    md = mises_rules_md(delegating=False)
+    assert "agent_spawn" not in md and "You may delegate to these Mises agents" not in md
+
+
 def test_agents_json_lists_mises_tools_explicitly():
     names = ["mirror_part_create", "mirror_measure", "mirror_part_list", "onshape_doc_open",
              "ui_note", "mises_context_get"]

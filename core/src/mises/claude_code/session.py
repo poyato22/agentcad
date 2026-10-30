@@ -172,7 +172,8 @@ class ClaudeCodeSession:
         with contextlib.suppress(Exception):
             defn = self.runtime.definitions.get(self.runtime.store.get_run(self.run_id).agent)
             role = defn.body if defn is not None else None
-        (self.workdir / RULES_FILE).write_text(mises_rules_md(role))
+        (self.workdir / RULES_FILE).write_text(
+            mises_rules_md(role, self.runtime.definitions, self._hidden_agents()))
         # subagents never get the delegating tools (they would orchestrate past the depth intent)
         deny = INTERNAL_ONLY | DELEGATION_TOOLS
         tools = [t.name for t in self.runtime.registry.list() if t.name not in deny]
