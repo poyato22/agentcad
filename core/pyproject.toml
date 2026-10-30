@@ -32,4 +32,5 @@ asyncio_default_fixture_loop_scope = "function"
 timeout = 30
 testpaths = ["tests"]
 markers = ["slow: spawns real sandboxed build subprocesses",
-           "cfd_slow: minutes-long CFD validation runs; excluded unless -m cfd_slow or MISES_CFD_SLOW=1"]
+           "cfd_slow: minutes-long CFD validation runs; excluded unless -m cfd_slow or MISES_CFD_SLOW=1",
+           "openfoam_real: real OpenFOAM container benchmarks (S5 QA, after the user approves the image pull; MISES_OPENFOAM_QA=1)"]

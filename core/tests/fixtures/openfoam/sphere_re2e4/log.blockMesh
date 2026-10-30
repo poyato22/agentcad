@@ -1,0 +1,75 @@
+/*---------------------------------------------------------------------------*\
+| =========                 |                                                 |
+| \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\    /   O peration     | Version:  2512                                  |
+|   \\  /    A nd           | Website:  www.openfoam.com                      |
+|    \\/     M anipulation  |                                                 |
+\*---------------------------------------------------------------------------*/
+Build  : _9b2fdb5a-20251219 OPENFOAM=2512 version=v2512
+Arch   : "LSB;label=32;scalar=64"
+Exec   : blockMesh
+Date   : Oct 30 2026
+Time   : 14:02:11
+Host   : 3f1c2a9d7b4e
+PID    : 211
+I/O    : uncollated
+Case   : /case
+nProcs : 4
+trapFpe: Floating point exception trapping enabled (FOAM_SIGFPE).
+fileModificationChecking : Monitoring run-time modified files using timeStampMaster (fileModificationSkew 5, maxFileModificationPolls 20)
+allowSystemOperations : Allowing user-supplied system call operations
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+Create time
+
+Create mesh for time = 0
+
+
+SIMPLE: convergence criteria
+    field p	 tolerance 0.0001
+    field U	 tolerance 1e-05
+    field "(k|omega)"	 tolerance 1e-05
+
+Reading field p
+
+Reading field U
+
+Reading/calculating face flux field phi
+
+Selecting incompressible transport model Newtonian
+Selecting turbulence model type RAS
+Selecting RAS turbulence model kOmegaSST
+Selecting patchDistMethod meshWave
+RAS
+{
+    RASModel        kOmegaSST;
+    turbulence      on;
+    printCoeffs     on;
+}
+
+No MRF models present
+
+No finite volume options present
+forces forces:
+    Not including porosity effects
+
+forceCoeffs forceCoeffs:
+    Not including porosity effects
+    Selecting coefficients
+    - Cd: Drag force
+    - Cs: Side force
+    - Cl: Lift force
+    - CmRoll: Roll moment
+    - CmPitch: Pitch moment
+    - CmYaw: Yaw moment
+
+surfaces surfaces:
+    fields: (p U)
+    body => patch (body_body) faces:10412
+    slice_xz => cuttingPlane faces:5170
+    slice_xy => cuttingPlane faces:5170
+
+
+Starting time loop
+
+End
