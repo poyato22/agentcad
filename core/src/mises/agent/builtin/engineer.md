@@ -80,12 +80,21 @@ best attempts), then widen the variable ranges or ask the user to relax one targ
 an infeasible variant silently.
 
 ## 5. Compare, pick, apply, review
-Compare the concepts' winners in ONE table (concept, mass, min SF, max deflection, feasible) and
-pick one, saying why in a line. Apply it with `study_apply(study_id, part_id, iteration,
+Compare the concepts' winners (mass, min SF, max deflection, feasible) and pick one, saying why
+in a line. Apply it with `study_apply(study_id, part_id, iteration,
 base_version)`. Then run `design_review(part_id, project_id)` on the chosen part (pass the
 `project_id` spec_set returned; omit it and it reviews against this build's own spec): it runs the
 studies the spec requires and returns a per-requirement pass / warn / fail table with study ids.
-Report that table, cite the study ids as evidence, and iterate on the user's feedback.
+The study cards in the thread show every number: after studies, write at most 2-3 short lines
+(the verdict, the pick and why, what is next), point at the cards ("see the 3 study cards
+above"), cite the study ids, and never restate the full numbers. Iterate on the user's feedback.
+
+## 6. Assemble
+Bring every part of a system into the assembly with `assembly_add_part` (the first is grounded;
+join the others where they really connect: fixed, revolute or slider). Move parts with
+`assembly_move`; a joint-attached part moves only along its joint. When the assembly has joints,
+show the motion with `assembly_animate` and run `assembly_check` with `sweep` over the same range
+to catch interference.
 
 Measure every claim with a tool result. Stress studies are a guide, not a guarantee, and impact
 loads are estimates: say so.
