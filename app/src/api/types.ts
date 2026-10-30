@@ -44,11 +44,22 @@ export interface AgentRun {
   // ---- Plan 7 (U3c) lead/sub and routing. Optional so an older core / fixture still parses.
   /** A build's one long-lived agent is the "lead"; the agents it spawns are "sub". */
   role?: "lead" | "sub" | null;
-  /** A sub-agent's short task title ("design the gearbox"); the lead has none. */
-  task_title?: string | null;
-  /** How the router chose this run's agent (POST /runs with no `agent`). */
+  /** How the router chose this run's agent (POST /runs with no `agent`). A sub-agent's task
+   *  title is its `title` (core lead.task_title). */
   routed?: Routed | null;
 }
+
+/** A message waiting for a busy lead (core lead.queued_messages), oldest first. */
+export interface QueuedMessage { message_id: string; text: string; position: number }
+
+/** GET /projects/{id}/agents node (core lead._node): a run_view whose `task` is the run's task
+ *  title (its title, else its prompt's first line), plus its waiting messages, live activity
+ *  (the agent_activity shape, untrusted; null when none) and its sub-agents, oldest first. */
+export interface AgentNode extends AgentRun { queued: QueuedMessage[]; activity: unknown; children: AgentNode[] }
+
+/** GET /projects/{id}/agents (core lead.agents_view): the build's lead with its sub-tree, and its
+ *  other top-level runs (started with an explicit agent, earlier leads). */
+export interface AgentsView { project_id: string; lead: AgentNode | null; others: AgentNode[] }
 
 /** The router's choice when POST /runs is sent with no `agent` (U3c): the agent it picked, a short
  *  reason ("system build"), and a 0–1 confidence. Shown in the UI as a small chip. */
@@ -119,12 +130,18 @@ export interface Question { question_id: string; run_id: string; question: strin
  *  run never lands under the profile's build while a tab switch is still being saved. */
 export interface NewRunBody { agent?: string; prompt: string; model_ref?: string | null; edit_scope?: string[]; read_scope?: string[]; sketch_id?: string; project_id?: string }
 
-/** POST /runs answer. `routed` is present only when the request sent no `agent` (U3c). */
-export interface CreateRunResult { run_id: string; routed?: Routed | null }
+/** POST /runs answer. With no `agent` (U3c lead.submit) it also carries the routing, `new_lead`,
+ *  `queued` (the lead was busy: the message waits, delivered at its turn boundary — then
+ *  `message_id` and `position`), and `notes` (what the existing lead ignored, e.g. a model). */
+export interface CreateRunResult {
+  run_id: string; routed?: Routed | null; role?: "lead" | null; new_lead?: boolean; queued?: boolean;
+  message_id?: string | null; position?: number | null; notes?: string[];
+}
 
-/** `agent_announce` event kinds (U3c): the clear things an agent did, shown as a card in the
- *  thread (R16) whatever the model says. */
-export const ANNOUNCE_KINDS = ["part_created", "agent_spawned", "assembly_added", "bom_added", "part_shown", "drawing_imported", "assembly_animated"] as const;
+/** `agent_announce` event kinds (U3c announce.KINDS): the clear things an agent did, shown as a
+ *  card in the thread (R16) whatever the model says. view_presented / critique_round are Plan 8
+ *  G1's (geometry quality) cards, their fields in `ref`. */
+export const ANNOUNCE_KINDS = ["part_created", "agent_spawned", "assembly_added", "bom_added", "part_shown", "drawing_imported", "view_presented", "critique_round"] as const;
 export type AnnounceKind = (typeof ANNOUNCE_KINDS)[number];
 
 /** Where an announcement points: a part, a child run, an assembly instance, a BOM row, a part-card
@@ -143,17 +160,14 @@ export interface Announcement {
   title: string; detail: string | null; ref: AnnounceRef; ts: number;
 }
 
-/** `assembly_animate` event data (U3c, R19): a joint sweep or a named motion sequence the agent
- *  wants the viewer to play. `from`/`to` are joint values; `duration_s` the sweep time. */
-export interface AnimateSpec {
-  project_id: string | null;
-  joint_id: string | null;
-  sequence: string | null;
-  from: number | number[] | null;
-  to: number | number[] | null;
-  duration_s: number;
-  loop: boolean;
-}
+/** One move of an agent's animation: a joint from → to (joint values: revolute deg, slider mm,
+ *  cylindrical [deg, mm], ball [rx, ry, rz]) over duration_s. */
+export interface AnimateStep { joint_id: string; from: number | number[]; to: number | number[]; duration_s: number }
+
+/** `assembly_animate` event (U3c assembly_animate, R19), normalised: the single-joint form
+ *  {joint_id, from, to, duration_s} and the `sequence` form both become `steps`, played one after
+ *  another, `loops` times (1 = once). */
+export interface AnimateSpec { project_id: string | null; steps: AnimateStep[]; loops: number }
 
 /** edited_payload is not sent in v1. */
 export interface DecisionBody { payload_hash: string; approve: boolean }

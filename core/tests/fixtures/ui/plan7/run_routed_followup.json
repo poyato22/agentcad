@@ -1,0 +1,12 @@
+{
+  "new_lead": false,
+  "notes": [],
+  "queued": false,
+  "role": "lead",
+  "routed": {
+    "agent": "sim",
+    "confidence": 0.8,
+    "reason": "test / analyze"
+  },
+  "run_id": "7a1aaf8f5569"
+}

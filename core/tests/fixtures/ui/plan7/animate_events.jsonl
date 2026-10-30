@@ -1,0 +1,2 @@
+{"data": {"duration_s": 3.0, "from": 0.0, "joint_id": "07d181d29ac6", "loop": true, "loops": 10, "project_id": "p", "to": 90.0}, "run_id": "run_fixture", "ts": 1793352334.893274, "type": "assembly_animate"}
+{"data": {"loop": false, "loops": 1, "project_id": "p", "sequence": [{"duration_s": 1.0, "from": 0.0, "joint_id": "07d181d29ac6", "to": 45.0}, {"duration_s": 1.0, "from": 45.0, "joint_id": "07d181d29ac6", "to": 0.0}]}, "run_id": "run_fixture", "ts": 1793352334.893645, "type": "assembly_animate"}

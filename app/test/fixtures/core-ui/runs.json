@@ -27,6 +27,8 @@
       "usd": 0.0,
       "tokens": 0,
       "usd_note": "this provider does not report cost; counted as $0 toward the dollar cap"
-    }
+    },
+    "role": null,
+    "routed": null
   }
 ]

@@ -6,7 +6,7 @@ import { z } from "zod";
 import { partEdgeSchema } from "./builds";
 import {
   ERROR_CODES, SETUP_PIECES, STEP_KINDS, SYSTEM_STATUSES,
-  type RunNode,
+  type AgentNode, type AgentsView, type RunNode,
   type SystemCheckRow, type SystemFix, type SystemInstallStart,
   type AgentInfo, type AgentRun, type Approval, type CancelAllResult, type ClaudeCodeStatus, type CoreErrorBody, type CoreStatusInfo,
   type KeyStatus, type MisesEvent, type ModelsInfo, type LocalTestResult, type LocalStatus, type LocalActionResult, type LocalPullEvent, type OnshapeTestResult, type PartFace, type PartHole, type PartMetrics, type PartSummary,
@@ -39,13 +39,26 @@ export const agentRunSchema = z.object({
   last_activity_at: z.number().nullish(), parent_run_id: z.string().nullish(),
   cost: runCostSchema.optional(),
   // Plan 7 (U3c): lead/sub role and the router's choice
-  role: z.enum(["lead", "sub"]).nullish(), task_title: z.string().nullish(),
+  role: z.enum(["lead", "sub"]).nullish(),
   routed: routedSchema.nullish(),
 });
 
 /** GET /runs/tree node: a run plus its worker children. */
 export const runNodeSchema: z.ZodType<RunNode> = z.lazy(() =>
   agentRunSchema.extend({ children: z.array(runNodeSchema) }) as unknown as z.ZodType<RunNode>);
+
+/** GET /projects/{id}/agents (U3c lead.agents_view): {project_id, lead: node|null, others}. A
+ *  malformed waiting-message list reads as empty rather than failing the whole view. */
+export const queuedMessageSchema = z.object({ message_id: z.string(), text: z.string(), position: z.number() });
+export const agentNodeSchema: z.ZodType<AgentNode> = z.lazy(() =>
+  agentRunSchema.extend({
+    queued: z.array(queuedMessageSchema).catch([]).default([]),
+    activity: z.unknown().optional().transform((v) => v ?? null),
+    children: z.array(agentNodeSchema),
+  }) as unknown as z.ZodType<AgentNode>);
+export const agentsViewSchema: z.ZodType<AgentsView> = z.object({
+  project_id: z.string(), lead: agentNodeSchema.nullable(), others: z.array(agentNodeSchema),
+}) as unknown as z.ZodType<AgentsView>;
 
 export const agentDetailSchema = z.object({
   name: z.string(), description: z.string(), model: z.string(), tools: z.array(z.string()).nullable(),
@@ -153,7 +166,10 @@ export const coreErrorBodySchema = z.object({
 export const okSchema = z.object({ ok: z.literal(true) });
 export const runIdSchema = z.object({ run_id: z.string() });
 /** POST /runs answer: the run id, plus the router's choice when no agent was named (U3c). */
-export const createRunResultSchema = z.object({ run_id: z.string(), routed: routedSchema.nullish() });
+export const createRunResultSchema = z.object({
+  run_id: z.string(), routed: routedSchema.nullish(), role: z.literal("lead").nullish(), new_lead: z.boolean().optional(),
+  queued: z.boolean().optional(), message_id: z.string().nullish(), position: z.number().nullish(), notes: z.array(z.string()).optional(),
+});
 /** `failed` defaults to [] so a core that predates it still parses. */
 export const cancelAllSchema = z.object({
   cancelled: z.array(z.string()),

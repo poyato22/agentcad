@@ -4,7 +4,7 @@ import { z } from "zod";
 import { debug } from "../lib/log";
 import {
   agentDetailSchema, agentInfoSchema, agentRunSchema, approvalSchema, cancelAllSchema, claudeCodeStatusSchema, cleanupResultSchema, coreErrorBodySchema, coreStatusSchema, deleteRefusedSchema,
-  createRunResultSchema,
+  agentsViewSchema, createRunResultSchema,
   keyStatusSchema, localActionSchema, localStatusSchema, localTestSchema, modelsInfoSchema, okSchema, onshapeTestSchema, partSummarySchema, profileSchema, runNodeSchema, setupStateSchema, sketchSummarySchema,
   questionAskedSchema, stepSchema, systemCheckRowSchema, systemInstallStartSchema,
 } from "./schemas";
@@ -24,7 +24,7 @@ import {
 } from "./studies";
 import type {
   AgentDefBody, AgentDetail, AgentInfo, AgentRun, Approval, CancelAllResult, ClaudeCodeStatus, CleanupBody, CleanupResult, CoreInfo, CoreStatusInfo, DecisionBody, DeleteRefused, ErrorCode, KeyStatus, LocalActionResult, LocalStatus, LocalTestResult,
-  CreateRunResult, ModelsInfo, NewRunBody, OnshapeTestResult, PartSummary, Profile, ProfilePatch, Question, RunNode, RunPatch, SetupState, SketchSummary, SketchUpload, Step,
+  AgentsView, CreateRunResult, ModelsInfo, NewRunBody, OnshapeTestResult, PartSummary, Profile, ProfilePatch, Question, RunNode, RunPatch, SetupState, SketchSummary, SketchUpload, Step,
   SystemCheckRow, SystemInstallStart, UiContext,
 } from "./types";
 import {
@@ -129,10 +129,10 @@ export class CoreClient {
   }
   /** Start a run. With no `agent` the core routes to one (U3c) and the answer carries `routed`. */
   createRun(body: NewRunBody): Promise<CreateRunResult> { return this.json("POST", "/runs", createRunResultSchema, { body }); }
-  /** The build's agents (U3c): the lead and its sub-tree, as run nodes with role and task title.
-   *  Roots are returned lead-first; a build with no lead yet answers []. */
-  projectAgents(projectId: string): Promise<RunNode[]> {
-    return this.json("GET", `/projects/${enc(projectId)}/agents`, z.array(runNodeSchema));
+  /** The build's agents (U3c lead.agents_view): its lead with the sub-tree, and its other
+   *  top-level runs. A build with no lead yet answers `lead: null`. */
+  projectAgents(projectId: string): Promise<AgentsView> {
+    return this.json("GET", `/projects/${enc(projectId)}/agents`, agentsViewSchema);
   }
   message(runId: string, text: string): Promise<{ ok: true }> {
     return this.json("POST", `/runs/${enc(runId)}/message`, okSchema, { body: { text } });

@@ -1,0 +1,127 @@
+{
+  "lead": {
+    "activity": {
+      "detail": "",
+      "since": 1793352334.657099,
+      "state": "done"
+    },
+    "agent": "engineer",
+    "archived": false,
+    "branch": null,
+    "children": [
+      {
+        "activity": {
+          "detail": "",
+          "since": 1793352334.263362,
+          "state": "done"
+        },
+        "agent": "designer",
+        "archived": false,
+        "branch": null,
+        "children": [],
+        "cost": {
+          "tokens": 0,
+          "usd": 0.0,
+          "usd_note": "this provider does not report cost; counted as $0 toward the dollar cap"
+        },
+        "created_at": 1793352334.2531252,
+        "external": false,
+        "id": "915fa6335f17",
+        "input_tokens": 0,
+        "last_activity_at": 1793352334.253838,
+        "model": "fake-model",
+        "onshape_calls": 0,
+        "output_tokens": 0,
+        "owner_pid": 90747,
+        "parent_id": "7a1aaf8f5569",
+        "parent_run_id": "7a1aaf8f5569",
+        "pinned": false,
+        "project_id": "6b0b2d521b7c",
+        "provider": "fake",
+        "queued": [],
+        "role": "sub",
+        "routed": null,
+        "session_ref": null,
+        "status": "done",
+        "task": "Design motor mount",
+        "title": "Design motor mount",
+        "updated_at": 1793352334.263362,
+        "usd": 0.0
+      }
+    ],
+    "cost": {
+      "tokens": 0,
+      "usd": 0.0,
+      "usd_note": "this provider does not report cost; counted as $0 toward the dollar cap"
+    },
+    "created_at": 1793352334.238545,
+    "external": false,
+    "id": "7a1aaf8f5569",
+    "input_tokens": 0,
+    "last_activity_at": 1793352334.6435468,
+    "model": "fake-model",
+    "onshape_calls": 0,
+    "output_tokens": 0,
+    "owner_pid": 90747,
+    "parent_id": null,
+    "parent_run_id": null,
+    "pinned": false,
+    "project_id": "6b0b2d521b7c",
+    "provider": "fake",
+    "queued": [],
+    "role": "lead",
+    "routed": {
+      "agent": "engineer",
+      "confidence": 0.85,
+      "reason": "system build"
+    },
+    "session_ref": null,
+    "status": "done",
+    "task": "Build me a drone",
+    "title": null,
+    "updated_at": 1793352334.657099,
+    "usd": 0.0
+  },
+  "others": [
+    {
+      "activity": {
+        "detail": "",
+        "since": 1793352334.376174,
+        "state": "done"
+      },
+      "agent": "verifier",
+      "archived": false,
+      "branch": null,
+      "children": [],
+      "cost": {
+        "tokens": 0,
+        "usd": 0.0,
+        "usd_note": "this provider does not report cost; counted as $0 toward the dollar cap"
+      },
+      "created_at": 1793352334.371087,
+      "external": false,
+      "id": "25cd675f05e9",
+      "input_tokens": 0,
+      "last_activity_at": 1793352334.3724391,
+      "model": "fake-model",
+      "onshape_calls": 0,
+      "output_tokens": 0,
+      "owner_pid": 90747,
+      "parent_id": null,
+      "parent_run_id": null,
+      "pinned": false,
+      "project_id": "6b0b2d521b7c",
+      "provider": "fake",
+      "queued": [],
+      "role": null,
+      "routed": null,
+      "session_ref": null,
+      "status": "done",
+      "task": "check",
+      "title": null,
+      "updated_at": 1793352334.376174,
+      "usd": 0.0
+    }
+  ],
+  "project_id": "6b0b2d521b7c"
+}

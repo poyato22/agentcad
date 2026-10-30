@@ -28,6 +28,8 @@
       "tokens": 0,
       "usd_note": "this provider does not report cost; counted as $0 toward the dollar cap"
     },
-    "children": []
+    "children": [],
+    "role": null,
+    "routed": null
   }
 ]
