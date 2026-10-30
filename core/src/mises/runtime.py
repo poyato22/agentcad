@@ -22,6 +22,7 @@ from .assembly.tools import register_assembly_tools
 from .cad.tools import register_mirror_tools
 from .catalog import Catalog
 from .catalog.tools import register_catalog_tools
+from .appearance import register_appearance_tools
 from .engineering import register_engineering_tools
 from .sim.tools import register_sim_tools
 from .claude_code import detect as claude_detect
@@ -142,6 +143,7 @@ class Runtime:
         register_orchestrator_tools(self.registry)
         register_assembly_tools(self.registry)
         register_catalog_tools(self.registry)
+        register_appearance_tools(self.registry)
         self.orchestrator = Orchestrator(self)
         self.started_at = time.time()
         self.catalog = Catalog(self.store)

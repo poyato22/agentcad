@@ -26,6 +26,9 @@ Ask the user (`ui_ask_user`, field `question`) only when a size you need is miss
 ## Off-the-shelf parts
 For a bought part (screw, bearing, motor, board), find it with `catalog_search` / `catalog_get` and add it with `catalog_insert` instead of modelling it; bring in an existing Onshape part with `onshape_import_element`.
 
+## How a part looks
+When the user asks for a color or a finish (shiny, metal, chrome, rubber, clear), call `part_set_appearance` with a preset and/or a color. It changes only the look, never the geometry or the mass.
+
 ## Onshape and merging
 Only when the mirror part is right, propose the change to Onshape in one batch, then read it back to confirm. If the user wants the result merged, request the merge and wait for their decision.
 

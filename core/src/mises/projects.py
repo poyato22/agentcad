@@ -383,10 +383,13 @@ def _parent_in(store: Store, parent_id: str, project_id: str | None) -> None:
 
 
 def patch_part(store: Store, home: Path, part_id: str, *, label: str | None = None,
-               color: str | None | object = ..., parent_id: str | None | object = ...) -> dict:
-    """Rename, recolor or re-parent a part. `color`/`parent_id` left as the sentinel are
-    unchanged; None clears them. The parent must be in the same build, and a move that would
-    form a cycle is rejected."""
+               color: str | None | object = ..., parent_id: str | None | object = ...,
+               appearance: dict | None | object = ...) -> dict:
+    """Rename, recolor, re-material or re-parent a part. `color`/`parent_id`/`appearance` left
+    as the sentinel are unchanged; None clears them. The parent must be in the same build, and
+    a move that would form a cycle is rejected. The row's color and appearance.color stay equal:
+    a new appearance with a color sets the color, a new color recolors the appearance."""
+    from . import appearance as _appearance
     row = _part_or_404(store, part_id)
     fields: dict = {}
     if label is not None:
@@ -398,6 +401,19 @@ def patch_part(store: Store, home: Path, part_id: str, *, label: str | None = No
         if color is not None and not _HEX_RE.match(str(color)):
             raise _bad("color must be #rrggbb")
         fields["color"] = color
+        if row.appearance and appearance is ...:
+            fields["appearance"] = {**_appearance.normalize(row.appearance), "color": color}
+    if appearance is not ...:
+        if appearance is None:
+            fields["appearance"] = None
+        else:
+            a = _appearance.normalize(appearance)
+            # an untinted preset (plastics) left without a color keeps the part's own color
+            if a["color"] is None and isinstance(appearance, dict) and "color" not in appearance:
+                a["color"] = fields.get("color", row.color)
+            fields["appearance"] = a
+            if a["color"] is not None:
+                fields["color"] = a["color"]
     if parent_id is not ...:
         if parent_id is not None:
             _parent_in(store, str(parent_id), row.project_id)
@@ -427,6 +443,125 @@ def reorder_parts(store: Store, home: Path, project_id: str, parent_id: str | No
         _reject_cycle(store, pid, parent_id)
     store.reorder_parts(project_id, parent_id, ids)
     return list_parts(store, home, project_id)
+
+
+# ---- the parts manager's menu (Plan 7 U8): duplicate, delete, export
+
+def _free_part_id(store: Store, home: Path, base: str) -> str:
+    root = _parts_root(home)
+    stem = base[:36]
+    for n in range(1, 1000):
+        cand = f"{stem}_copy" if n == 1 else f"{stem}_copy{n}"
+        if PART_ID_RE.fullmatch(cand) and store.get_part(cand) is None \
+                and not os.path.lexists(root / cand):
+            return cand
+    raise _bad(f"too many copies of {base}")
+
+
+def duplicate_part(store: Store, home: Path, part_id: str) -> dict:
+    """A new part with the same build files (script, vars, metrics, exports) and look, named
+    "<label> copy", placed right after the original. Only the part dir's own regular files are
+    copied (read through safe_io: a link left there is never followed)."""
+    from .cad import safe_io
+    row = _part_or_404(store, part_id)
+    root = _parts_root(home)
+    src = _contained(root, root / part_id) if root.is_dir() else None
+    if row.kind == "group" or src is None or not src.is_dir():
+        raise _bad(f"{part_id} has no build to copy", hint="only built parts can be duplicated")
+    new_id = _free_part_id(store, home, part_id)
+    dst = root / new_id
+    safe_io.ensure_dir(dst)
+    for f in sorted(src.iterdir(), key=lambda p: p.name):
+        try:
+            st = f.lstat()
+        except OSError:
+            continue
+        if not stat.S_ISREG(st.st_mode):
+            continue
+        data = safe_io.read_bytes(src, f.name)
+        if data is not None:
+            safe_io.write_bytes(dst, f.name, data)
+    store.register_part(new_id, row.project_id or store.ensure_default_project().id,
+                        label=f"{row.label} copy", kind=row.kind)
+    store.update_part(new_id, color=row.color, appearance=row.appearance, parent_id=row.parent_id)
+    sibs = [p.id for p in store.list_part_rows(row.project_id)
+            if p.parent_id == row.parent_id and p.id != new_id]
+    at = sibs.index(part_id) + 1 if part_id in sibs else len(sibs)
+    sibs.insert(at, new_id)
+    store.reorder_parts(row.project_id, row.parent_id, sibs)
+    return part_view(store, home, _part_or_404(store, new_id))
+
+
+def delete_part(store: Store, home: Path, part_id: str, *, assembly: Any = None) -> dict:
+    """Remove a part from its build. Its files move to home/trash/parts/<id>.<time> (nothing is
+    destroyed); its children move up to its parent. Refused while the build's assembly uses it."""
+    row = _part_or_404(store, part_id)
+    if assembly is not None and row.project_id:
+        try:
+            used = [i.name for i in assembly.get(row.project_id).instances if i.part_id == part_id]
+        except KeyError:
+            used = []
+        if used:
+            raise _bad(f"{part_id} is in the assembly ({', '.join(used[:3])})",
+                       hint="remove it from the assembly first")
+    root = _parts_root(home)
+    stamp = f"{part_id}.{time.time_ns()}"
+    trash = Path(home) / "trash" / "parts"
+    for src in (root / part_id, root / ".mises-meta" / part_id):
+        real = _contained(root, src) if root.is_dir() else None
+        if real is None or not os.path.isdir(real) or os.path.islink(src):
+            continue
+        dest = trash / stamp if src.parent == root else trash / ".mises-meta" / stamp
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        os.rename(real, dest)
+    for child in store.list_part_rows(row.project_id):
+        if child.parent_id == part_id:
+            store.update_part(child.id, parent_id=row.parent_id)
+    store.delete_part_row(part_id)
+    return {"deleted": part_id}
+
+
+EXPORT_FORMATS = ("step", "stl")
+
+
+def export_dir() -> Path:
+    """Where exports land: MISES_EXPORT_DIR, else ~/Downloads."""
+    env = os.environ.get("MISES_EXPORT_DIR")
+    return Path(env) if env else Path.home() / "Downloads"
+
+
+def _file_stem(label: str) -> str:
+    s = re.sub(r"[^\w .()-]+", " ", label, flags=re.UNICODE)
+    s = re.sub(r"\s+", " ", s).strip(" .")
+    return s[:80] or "part"
+
+
+def export_part(store: Store, home: Path, part_id: str, fmt: str) -> dict:
+    """Copy the part's model.<fmt> to the export folder as "<label>.<fmt>" (never overwriting:
+    "<label> (2).<fmt>", ...). Returns {path, name, format}."""
+    from .cad import safe_io
+    if fmt not in EXPORT_FORMATS:
+        raise _bad(f"export format must be one of {', '.join(EXPORT_FORMATS)}")
+    row = _part_or_404(store, part_id)
+    root = _parts_root(home)
+    src = _contained(root, root / part_id) if root.is_dir() else None
+    data = safe_io.read_bytes(src, f"model.{fmt}") if src is not None else None
+    if data is None:
+        raise MisesError(ErrorCode.NOT_FOUND, f"{part_id} has no {fmt.upper()} export",
+                         hint="rebuild the part")
+    out = export_dir()
+    out.mkdir(parents=True, exist_ok=True)
+    stem = _file_stem(row.label or part_id)
+    for n in range(1, 1000):
+        name = f"{stem}.{fmt}" if n == 1 else f"{stem} ({n}).{fmt}"
+        try:
+            fd = os.open(out / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
+        except FileExistsError:
+            continue
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(data)
+        return {"path": str(out / name), "name": name, "format": fmt}
+    raise _bad("too many exports with that name")
 
 
 # ---- runs and agent management

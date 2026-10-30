@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
 from .. import projects as _projects
 from ..agent import definitions as _defs
@@ -34,6 +35,10 @@ class Reorder(BaseModel):
     project_id: str
     parent_id: str | None = None
     ids: list[str]
+
+
+class ExportBody(BaseModel):
+    format: str  # "step" | "stl" (checked by projects.export_part: a 400, not a 422)
 
 
 class NewAgent(BaseModel):
@@ -114,11 +119,26 @@ def build_projects_router(runtime: Runtime) -> APIRouter:
         return _projects.patch_part(
             store, _home(), part_id, label=body.get("label"),
             color=body["color"] if "color" in body else ...,
-            parent_id=body["parent_id"] if "parent_id" in body else ...)
+            parent_id=body["parent_id"] if "parent_id" in body else ...,
+            appearance=body["appearance"] if "appearance" in body else ...)
 
     @router.post("/parts/reorder")
     async def reorder(body: Reorder):
         return _projects.reorder_parts(store, _home(), body.project_id, body.parent_id, body.ids)
+
+    # ---- the parts manager's menu (Plan 7 U8)
+    @router.post("/parts/{part_id}/duplicate")
+    async def duplicate_part(part_id: str):
+        return await run_in_threadpool(_projects.duplicate_part, store, _home(), part_id)
+
+    @router.delete("/parts/{part_id}")
+    async def delete_part(part_id: str):
+        return await run_in_threadpool(lambda: _projects.delete_part(
+            store, _home(), part_id, assembly=getattr(runtime, "assembly_store", None)))
+
+    @router.post("/parts/{part_id}/export")
+    async def export_part(part_id: str, body: ExportBody):
+        return await run_in_threadpool(_projects.export_part, store, _home(), part_id, body.format)
 
     # ---- custom agents (built-ins can only be hidden, via the profile)
     def _reload():
