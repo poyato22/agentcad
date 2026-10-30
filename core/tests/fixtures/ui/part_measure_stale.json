@@ -1,0 +1,9 @@
+{
+  "status": 409,
+  "body": {
+    "error": "stale_version",
+    "retryable": false,
+    "message": "mount_plate changed since version 6; pick again",
+    "current_version": 1
+  }
+}

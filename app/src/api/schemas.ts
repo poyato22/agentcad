@@ -118,7 +118,7 @@ export const coreStatusSchema = z.object({
 
 export const partHoleSchema = z.object({ diameter_mm: z.number(), axis: vec3, center: vec3, depth_mm: z.number() });
 
-export const partFaceSchema = z.object({ id: z.string(), type: z.string(), center: vec3, normal: vec3.nullable(), area: z.number() });
+export const partFaceSchema = z.object({ id: z.string(), type: z.string(), center: vec3, normal: vec3.nullable(), area: z.number(), radius: z.number().optional() });
 
 export const partMetricsSchema = z.object({
   valid: z.boolean(), volume_mm3: z.number(), area_mm2: z.number(), mass_g: z.number(),

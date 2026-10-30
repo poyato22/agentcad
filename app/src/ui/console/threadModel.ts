@@ -3,6 +3,7 @@
 // ("measured mount plate · 8.0 cm³"). Nothing safety-relevant is dropped: every approval and
 // question stays a card, every failed call and error stays its own (red) line with its hint;
 // only successful calls fold (logModel's rule). Text stays plain strings (rendered as text).
+import { pinOf, type FeedbackPin } from "../../api/measure";
 import type { Approval, Question, Step } from "../../api/types";
 import { foldKey, itemKey, type LogItem } from "./logModel";
 
@@ -10,7 +11,11 @@ type Call = Extract<LogItem, { kind: "call" }>;
 type Diff = Extract<LogItem, { kind: "diff" }>;
 
 export type ThreadItem =
-  | { kind: "user"; key: string; text: string; ts: number; stepIds: number[] }
+  | {
+      kind: "user"; key: string; text: string; ts: number; stepIds: number[];
+      /** A comment pinned on the model (U2a/U3c): shown as the words plus the pin chip. */
+      feedback?: FeedbackPin | null;
+    }
   | { kind: "agent"; key: string; text: string; ts: number | null; live: boolean; stepIds: number[] }
   | {
       kind: "activity"; key: string; text: string; tone: "ok" | "running" | "fail"; ts: number;
@@ -108,7 +113,8 @@ function callSteps(c: Call): number[] {
 export function isBookkeeping(step: Step): boolean {
   const p = step.payload;
   if (step.kind !== "decision" || str(p.reason) || str(rec(p.output).summary)) return false;
-  return typeof p.claude_code === "string" || "agent_thinking" in p;
+  // a feedback pin's stored record: the user's message step (or the queue) shows it in the thread
+  return typeof p.claude_code === "string" || "agent_thinking" in p || pinOf(p) !== null;
 }
 
 function decisionText(step: Step): string {
@@ -133,7 +139,7 @@ export function buildThread(items: readonly LogItem[]): ThreadItem[] {
     switch (it.kind) {
       case "message":
         out.push(it.role === "user"
-          ? { kind: "user", key, text: it.text, ts: it.step.ts, stepIds: [it.step.id] }
+          ? { kind: "user", key, text: it.text, ts: it.step.ts, stepIds: [it.step.id], feedback: pinOf(it.step.payload) }
           : { kind: "agent", key, text: it.text, ts: it.step.ts, live: false, stepIds: [it.step.id] });
         last = null;
         break;

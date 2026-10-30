@@ -16,6 +16,7 @@ import type {
 import { INSTALL_DEPS } from "../../src/api/types";
 import { assemblyFrom, assemblyRoutes, DEFAULT_PROJECT, DEFAULT_PROJECT_ROW, type AssemblyScenario, type FakeAssembly } from "./assembly";
 import { agentEdit, buildRoutes, buildsFrom, type BuildsDeps, type BuildsScenario, type FakeBuilds } from "./builds";
+import { measureRoutes } from "./measure";
 import { handleControl } from "./control";
 import { directoryFrom, directoryRoutes, type DirectoryScenario, type FakeDirectory } from "./directory";
 import { printingFrom, printingRoutes, stopPrinting, type FakePrinting, type PrintScenario } from "./printing";
@@ -997,6 +998,14 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       emit: (ev, extras) => { emit(ev, extras); }, approval: (id) => state.approvals.get(id),
     }),
     ...assemblyRoutes({ get: () => state.assembly, parts: () => state.parts, emit: (ev) => { emit(ev); } }),
+    // Plan 7 U2a: measure and feedback pins
+    ...measureRoutes({
+      parts: () => state.parts, partVersion: (id) => state.builds.rows.get(id)?.version, partProject: (id) => state.builds.rows.get(id)?.project_id,
+      partLabel: (id) => state.builds.rows.get(id)?.label,
+      liveBuild: (id) => state.builds.builds.some((b) => b.id === id && b.trashed_at === null), runs: () => [...state.runs.values()],
+      newRun: (task, projectId) => { const r = newRun("engineer", "fake", "fake-model", task, false, "done"); r.project_id = projectId; return r; },
+      appendStep: (st, runId) => appendStep(st, runId), emit: (ev) => { emit(ev); },
+    }),
     { method: "GET", re: /^\/system\/check$/, h: () => state.system },
     {
       // POST /system/install/{dep}: allowlist only, no arguments from the body (Review Focus 3).

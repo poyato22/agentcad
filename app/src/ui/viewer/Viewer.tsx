@@ -1,22 +1,32 @@
 // The drawing sheet: CSS drafting grid + Three.js canvas + corner ticks + figure label + tool strip + title block.
 // Model | Code tabs: the model (this part, or the whole build) or the part's script.
-// Click the model to add a feature where you clicked (hole / shell on a face, fillet / chamfer on
-// an edge); in the build view a click on another part selects it. Each part shows in its color.
-import { computed, signal, type Signal } from "@preact/signals";
+// A click on the model says what it hit ("Face · planar · 1,200 mm²"); "Modify…" there (or in the
+// part's menu) adds a feature on it (hole / shell on a face, fillet / chamfer on an edge). Measure
+// (M) shows exact values from the core; Comment pins feedback on the model for the build's agent.
+// In the build view a click on another part selects it. Each part shows in its color.
+import { computed, effect, signal, type Signal } from "@preact/signals";
 import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { Vector3 } from "three";
 import type { PartEdge } from "../../api/builds";
 import type { PartFace, PartSummary } from "../../api/types";
 import { activePart } from "../../state/selection";
+import { activeBuildId } from "../../state/builds";
 import { actions, inflight, parts, runs, steps } from "../../state/store";
-import { runLabel as formatRunLabel } from "../../lib/names";
+import { CoreError } from "../../api/client";
+import type { Vec3 } from "../../api/types";
+import { partName as formatPartName, runLabel as formatRunLabel } from "../../lib/names";
 import { OpsMenu, type OpsTarget } from "../editor/ops";
 import { SourceEditor } from "../editor/SourceEditor";
 import { hiddenParts } from "../left/visibility";
 import type { PartScene } from "./loadPart";
 import { PartLoader } from "./partLoader";
 import { edgeEnds, matchFace, nearestEdge } from "./pick";
+import { circleOf, labelFor, pickTarget, provisionalValues, refOf, togglePick, type Picked } from "./interact";
+import { CommentBox, MeasurePanel, PinLayer, SelectionLabel, type MeasureState } from "./Overlays";
+import { addLocalPin, buildPins, type Pin } from "./pins";
+import { modifyRequest, takeModify, viewerTool, type ViewerTool } from "./tool";
+import { modalOpen } from "../pages/router";
 import { createViewer, type DesignViewerHandle, type PickMarker } from "./scene";
 import { TitleBlock } from "./TitleBlock";
 import { ViewerTools, type ViewMode, type ViewScope } from "./ViewerTools";
@@ -75,6 +85,24 @@ export function shownParts(list: readonly PartSummary[], focus: PartSummary | nu
 
 interface OpenOps { seq: number; partId: string; target: OpsTarget; at: { x: number; y: number } | null; keyboard: boolean; baseVersion: number }
 
+/** The blue marker of a pick (a vertex or point is a dot in the overlay instead). */
+function markerOfPick(part: PartSummary, p: Picked): PickMarker {
+  if (p.kind === "face") return markerFor(part, p.face, null);
+  if (p.kind !== "edge") return null;
+  const ring = circleOf(p.edge, part.metrics?.holes);
+  return ring ? { kind: "ring", ...ring } : markerFor(part, null, p.edge);
+}
+
+/** Typing in a field never switches the viewer's tool. */
+function typing(t: EventTarget | null): boolean {
+  const el = t as HTMLElement | null;
+  return !!el && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName));
+}
+
+interface Chip { seq: number; partId: string; picked: Picked; point: Vec3; at: { x: number; y: number }; baseVersion: number }
+interface Comment { partId: string; point: Vec3; faceId: string | null; where: string; at: { x: number; y: number } }
+const IDLE: MeasureState = { status: "idle", values: [], error: null };
+
 /** The blue marker for an ops target. */
 function markerFor(part: PartSummary, face: PartFace | null, edge: PartEdge | null): PickMarker {
   if (edge) {
@@ -103,6 +131,17 @@ export function Viewer(): JSX.Element {
   const [size, setSize] = useState<string | null>(null);
   const [ops, setOps] = useState<OpenOps | null>(null);
   const [bounds, setBounds] = useState({ w: 1, h: 1 });
+  const [chip, setChip] = useState<Chip | null>(null);
+  const [picks, setPicks] = useState<Picked[]>([]);
+  const [measured, setMeasured] = useState<MeasureState>(IDLE);
+  const measureSeq = useRef(0);
+  const [comment, setComment] = useState<Comment | null>(null);
+  const [sending, setSending] = useState(false);
+  const [commentError, setCommentError] = useState<string | null>(null);
+  const [openPin, setOpenPin] = useState<string | null>(null);
+  const [, setFrame] = useState(0);
+  const tool = viewerTool.value;
+  const pins = buildPins.value;
 
   const part = activePart.value;
   const partId = part?.part_id ?? null;
@@ -125,6 +164,8 @@ export function Viewer(): JSX.Element {
       handle = null; // no WebGL: the sheet, title block and metrics still work
     }
     viewerRef.current = handle;
+    // HTML overlays (pins, measure dots) re-place after each frame; at most one render per frame
+    const offView = handle?.onView?.(() => setFrame((n) => n + 1));
     const measure = () => {
       const r = host.getBoundingClientRect();
       if (r.width > 0 && r.height > 0) { handle?.resize(r.width, r.height); setBounds({ w: r.width, h: r.height }); }
@@ -134,6 +175,7 @@ export function Viewer(): JSX.Element {
     ro?.observe(host);
     return () => {
       ro?.disconnect();
+      offView?.();
       handle?.setPart(null);
       for (const s of scenes.current.values()) s.dispose();
       scenes.current.clear();
@@ -193,11 +235,110 @@ export function Viewer(): JSX.Element {
   }, [loadSig]);
 
   // focus / scope changes refit; color changes repaint
-  useEffect(() => { compose(true); setOps(null); }, [partId, scope]);
+  useEffect(() => { compose(true); setOps(null); setChip(null); }, [partId, scope]);
   useEffect(() => { compose(false); }, [colorSig]);
 
-  // the pick marker follows the open ops target; nothing is marked without it
-  useEffect(() => { if (!ops) viewerRef.current?.setMarker(null); }, [ops]);
+  // picks name one build's faces / edges: a rebuilt model (or another part) starts measure afresh.
+  // Keyed on mtime, not version: a list that only now learns the version is no rebuild (a pick
+  // made on an older version still gets the core's 409 and a "pick again").
+  useEffect(() => { setPicks([]); }, [partId, part?.mtime]);
+
+  // a new tool starts clean, at once: a click right after the switch (before an after-paint
+  // effect would run) must not be wiped
+  useEffect(() => {
+    let last = viewerTool.peek();
+    return effect(() => {
+      const t = viewerTool.value;
+      if (t === last) return;
+      last = t;
+      setChip(null); setPicks([]); setComment(null); setCommentError(null); setOps(null);
+    });
+  }, []);
+
+  // "Modify…" from the part's menu: the ops form for that part (choose the face / edge in it)
+  const modify = modifyRequest.value;
+  useEffect(() => {
+    const req = takeModify();
+    if (!req) return;
+    const p = parts.peek().find((x) => x.part_id === req.partId);
+    if (!p || p.metrics === null || (p.kind ?? "part") !== "part") return;
+    viewerTool.value = "select";
+    viewTab.value = "model";
+    setChip(null);
+    setOps({ seq: ++pickSeq.current, partId: p.part_id, target: { face: null, edge: null, point: null }, at: null, keyboard: true, baseVersion: p.version ?? 0 });
+  }, [modify?.seq]);
+
+  // the blue markers: the open ops target (OpsMenu sets it), else measure's picks, else the
+  // selection label's pick; nothing is marked without one
+  useEffect(() => {
+    const v = viewerRef.current;
+    if (!v || ops) return;
+    const focus = activePart.peek();
+    const list = !focus ? [] : tool === "measure" ? picks : chip && chip.partId === focus.part_id ? [chip.picked] : [];
+    const markers = focus ? list.map((p) => markerOfPick(focus, p)).filter((m) => m !== null) : [];
+    if (v.setMarkers) v.setMarkers(markers); else v.setMarker(markers[0] ?? null);
+  }, [ops, picks, chip, tool, partId]);
+
+  // Measure opened on a part: the core loads its shape in a warm worker before the first pick
+  // (a cold measure pays ~1.5 s of imports, a warm one milliseconds); best effort
+  useEffect(() => {
+    if (tool !== "measure" || !partId || part?.metrics === null) return;
+    try { void actions.client().warmMeasure?.(partId).catch(() => undefined); } catch { /* no core bound */ }
+  }, [tool, partId, part?.mtime]);
+
+  // measure: the core's exact values for the picks (one pick shows its metrics values meanwhile)
+  useEffect(() => {
+    const seq = ++measureSeq.current;
+    const focus = activePart.peek();
+    if (tool !== "measure" || !focus || picks.length === 0) { setMeasured(IDLE); return; }
+    setMeasured({ status: "busy", values: provisionalValues(picks), error: null });
+    let client;
+    try { client = actions.client(); } catch { return; }
+    void client.measurePart(focus.part_id, picks.map(refOf), focus.version ?? undefined).then(
+      (r) => { if (seq === measureSeq.current) setMeasured({ status: "done", values: r.values, error: null }); },
+      (e: unknown) => {
+        if (seq !== measureSeq.current) return;
+        const msg = e instanceof CoreError && e.status === 409 ? "This part just changed. Pick again on the new version."
+          : `Couldn't measure exactly: ${e instanceof Error ? e.message : String(e)}`;
+        setMeasured({ status: "error", values: provisionalValues(picks), error: msg });
+      },
+    );
+  }, [picks, tool]);
+
+  // M toggles measure, Escape goes back to Select (never while typing in a field)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      // (the viewer is mounted only on the Design page; a modal dialog keeps its own keys)
+      if (e.defaultPrevented || typing(e.target) || viewTab.peek() !== "model" || modalOpen()) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === "m" || e.key === "M") { e.preventDefault(); viewerTool.value = viewerTool.peek() === "measure" ? "select" : "measure"; }
+      else if (e.key === "Escape" && viewerTool.peek() !== "select") { e.preventDefault(); viewerTool.value = "select"; }
+      else if (e.key === "Escape") setChip(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  async function sendComment(text: string): Promise<void> {
+    const c = comment;
+    const build = activeBuildId.peek() ?? parts.peek().find((p) => p.part_id === c?.partId)?.project_id ?? null;
+    if (!c) return;
+    if (!build) { setCommentError("Open a build first: the comment goes to its agent."); return; }
+    setSending(true);
+    setCommentError(null);
+    try {
+      const r = await actions.client().sendFeedback(build, { part_id: c.partId, point: c.point, ...(c.faceId ? { face_id: c.faceId } : {}), text });
+      addLocalPin({ buildId: build, runId: r.run_id, stepId: r.step_id, partId: c.partId, point: c.point, faceId: c.faceId, text, ts: Date.now() / 1000 });
+      // the lead's thread shows the comment (queued there while the lead works)
+      actions.selectRun(r.run_id);
+      setComment(null);
+      viewerTool.value = "select";
+    } catch (e) {
+      setCommentError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSending(false);
+    }
+  }
 
   function onPointerUp(e: PointerEvent): void {
     const d = down.current;
@@ -209,10 +350,36 @@ export function Viewer(): JSX.Element {
     const r = host.getBoundingClientRect();
     const x = e.clientX - r.left; const y = e.clientY - r.top;
     const hit = v.pick(x, y);
-    if (!hit) { setOps(null); return; }
+    const mode: ViewerTool = viewerTool.peek();
+    if (!hit) {
+      setOps(null); setChip(null); setOpenPin(null);
+      if (mode === "measure" && !e.shiftKey) setPicks([]);
+      if (mode === "comment") setComment(null);
+      return;
+    }
     const target = parts.peek().find((p) => p.part_id === hit.partId);
     if (!target) return;
+    const toScreen = (p: Vec3) => v.toScreen(p);
+    if (mode === "comment") {
+      const pk = pickTarget(target.metrics, hit, toScreen, { asPoint: true });
+      const face = pk?.kind === "point" ? pk.face : null;
+      setCommentError(null);
+      setComment({ partId: target.part_id, point: hit.point, faceId: face?.id ?? null, at: { x, y },
+        where: `${formatPartName(target)}${face ? ` · ${labelFor({ kind: "face", face })}` : ""}` });
+      return;
+    }
     if (hit.partId !== activePart.peek()?.part_id) { actions.selectPart(hit.partId); return; }
+    if (mode === "measure") {
+      const pk = pickTarget(target.metrics, hit, toScreen);
+      if (pk) setPicks((prev) => togglePick(prev, pk, e.shiftKey));
+      return;
+    }
+    if (!ops) {
+      // Select: say what was clicked; "Modify…" on the label opens the feature ops there
+      const pk = pickTarget(target.metrics, hit, toScreen);
+      setChip(pk ? { seq: ++pickSeq.current, partId: target.part_id, picked: pk, point: hit.point, at: { x, y }, baseVersion: target.version ?? 0 } : null);
+      return;
+    }
     const m = target.metrics;
     const sizeV = m?.bbox.size ?? [1, 1, 1];
     const diag = Math.hypot(sizeV[0], sizeV[1], sizeV[2]);
@@ -226,6 +393,19 @@ export function Viewer(): JSX.Element {
   const opsPart = ops ? parts.value.find((p) => p.part_id === ops.partId) ?? null : null;
   const canEdit = part !== null && part.metrics !== null && (part.kind ?? "part") === "part";
 
+  /** The label's "Modify…": the ops callout on that face / edge, at the click. */
+  function modifyChip(c: Chip): void {
+    const face = c.picked.kind === "face" ? c.picked.face : null;
+    const edge = c.picked.kind === "edge" ? c.picked.edge : null;
+    setChip(null);
+    setOps({ seq: ++pickSeq.current, partId: c.partId, target: { face, edge, point: face ? c.point : null }, at: c.at, keyboard: false, baseVersion: c.baseVersion });
+  }
+
+  const v = viewerRef.current;
+  const shownIds = new Set(shown.map((p) => p.part_id));
+  const shownPins: Pin[] = tab === "model" ? pins.filter((p) => shownIds.has(p.partId)) : [];
+  const dots: Vec3[] = tool === "measure" ? picks.flatMap((p) => (p.kind === "vertex" || p.kind === "point" ? [p.point] : [])) : [];
+
   return (
     <div class="vp" ref={hostRef} data-testid="viewer" data-tab={tab}>
       <canvas
@@ -237,6 +417,7 @@ export function Viewer(): JSX.Element {
         data-mode={mode}
         data-scope={scope}
         data-shown={shown.map((p) => `${p.part_id}${p.color ? `:${p.color}` : ""}`).join(" ") || undefined}
+        data-tool={tool}
         onPointerDown={(e) => { if (e.button === 0) down.current = { x: e.clientX, y: e.clientY }; }}
         onPointerUp={onPointerUp}
       />
@@ -256,9 +437,25 @@ export function Viewer(): JSX.Element {
       </div>
       <span class="label vp-fig">{scope === "build" ? "FIG. 1 — BUILD" : "FIG. 1 — DESIGN"}</span>
       <ViewerTools mode={mode} onMode={setMode} scope={scope} onScope={(s) => { viewScope.value = s; }}
-        canEdit={canEdit && tab === "model"}
-        onEdit={() => { if (part) setOps({ seq: ++pickSeq.current, partId: part.part_id, target: { face: null, edge: null, point: null }, at: null, keyboard: true, baseVersion: part.version ?? 0 }); }} />
+        tool={tool} onTool={(t) => { viewerTool.value = viewerTool.peek() === t ? "select" : t; }} canPick={part !== null && tab === "model"} />
       {part === null && <div class="vp-empty label">NO PART · ask an agent to create one</div>}
+      {tab === "model" && tool === "comment" && !comment && <div class="vx-mode-hint label" role="status">Click the model where something should change</div>}
+      {tab === "model" && v && (shownPins.length > 0 || dots.length > 0) && (
+        <PinLayer pins={shownPins} dots={dots} toScreen={(p) => v.toScreen(p)} bounds={bounds} openPin={openPin} onOpen={setOpenPin}
+          onThread={(p) => { actions.selectRun(p.runId); setOpenPin(null); }} />
+      )}
+      {tab === "model" && tool === "select" && chip && !ops && (
+        <SelectionLabel key={chip.seq} picked={chip.picked} at={chip.at} bounds={bounds}
+          canModify={canEdit && chip.picked.kind !== "vertex" && chip.picked.kind !== "point"}
+          onModify={() => modifyChip(chip)} onClose={() => setChip(null)} />
+      )}
+      {tab === "model" && tool === "measure" && part && (
+        <MeasurePanel picks={picks} state={measured} onClear={() => setPicks([])} onClose={() => { viewerTool.value = "select"; }} />
+      )}
+      {tab === "model" && tool === "comment" && comment && (
+        <CommentBox key={`${comment.at.x},${comment.at.y}`} at={comment.at} bounds={bounds} where={comment.where} busy={sending} error={commentError}
+          onSend={(t) => { void sendComment(t); }} onCancel={() => { setComment(null); setCommentError(null); }} />
+      )}
       {ops && opsPart && tab === "model" && (
         <OpsMenu key={ops.seq} part={opsPart} target={ops.target} baseVersion={ops.baseVersion} keyboard={ops.keyboard} at={ops.at} bounds={bounds}
           onTarget={(f, ed) => viewerRef.current?.setMarker(markerFor(opsPart, f, ed))}

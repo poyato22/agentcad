@@ -90,10 +90,27 @@ def _face_list(shape) -> list[dict]:
             normal = [round(n.X, 4) + 0.0, round(n.Y, 4) + 0.0, round(n.Z, 4) + 0.0]
         except Exception:  # noqa: BLE001 - degenerate/odd surfaces have no usable normal
             normal = None
-        out.append({"id": f"f{i}", "type": str(face.geom_type).split(".")[-1].lower(),
-                    "center": [round(c.X, 3) + 0.0, round(c.Y, 3) + 0.0, round(c.Z, 3) + 0.0],
-                    "normal": normal, "area": round(float(face.area), 3)})
+        row = {"id": f"f{i}", "type": str(face.geom_type).split(".")[-1].lower(),
+               "center": [round(c.X, 3) + 0.0, round(c.Y, 3) + 0.0, round(c.Z, 3) + 0.0],
+               "normal": normal, "area": round(float(face.area), 3)}
+        r = _radius(face)
+        if r is not None:
+            row["radius"] = r
+        out.append(row)
     return out
+
+
+def _radius(obj) -> float | None:
+    """A cylindrical face's or a circular edge's exact radius (the app's click label), else None."""
+    try:
+        if hasattr(obj, "geom_type") and _geom(obj) == "cylinder":
+            from OCP.BRepAdaptor import BRepAdaptor_Surface
+            return round(float(BRepAdaptor_Surface(obj.wrapped).Cylinder().Radius()), 4) + 0.0
+        if hasattr(obj, "geom_type") and _geom(obj) == "circle":
+            return round(float(obj.radius), 4) + 0.0
+    except Exception:  # noqa: BLE001 - an odd surface just has no label radius
+        return None
+    return None
 
 
 _TAG_NAME_RE = re.compile(r"^[a-z][a-z0-9_]{0,30}$")
@@ -164,9 +181,13 @@ def _edge_list(shape) -> list[dict]:
             direction = [round(c, 4) + 0.0 for c in _canon(_xyz(edge.tangent_at(0.5)))]
         except Exception:  # noqa: BLE001 - degenerate edges have no usable parameterisation
             center = direction = None
-        out.append({"id": f"e{i}", "type": _geom(edge), "length": round(float(edge.length), 3),
-                    "center": center, "direction": direction,
-                    "adjacent": [[round(c, 4) + 0.0 for c in n] for n in adj.get(edge, [])]})
+        row = {"id": f"e{i}", "type": _geom(edge), "length": round(float(edge.length), 3),
+               "center": center, "direction": direction,
+               "adjacent": [[round(c, 4) + 0.0 for c in n] for n in adj.get(edge, [])]}
+        r = _radius(edge)
+        if r is not None:
+            row["radius"] = r
+        out.append(row)
     return out
 
 
@@ -347,6 +368,295 @@ def _metrics(shape, density: float) -> dict:
         "holes": _hole_groups(shape),
         "solids": len(shape.solids()),
     }
+
+
+# ---- measure (python -I worker.py <part_dir> <args.json> --measure)
+#
+# Exact B-rep measurements of picked faces / edges / vertices / points on the built part
+# (model.step, never the part script). The app names faces and edges by their metrics ids; the
+# STEP round trip may reorder topology (edges do), so each id is re-found by its metrics
+# signature: same type, same length / area, and its recorded point on it. A point snaps to a
+# vertex within _SNAP_MM, else to the closest point of the part's surface.
+
+_SNAP_MM = 0.02
+_PARALLEL_DEG = 0.01
+
+
+def _vec(p) -> list[float]:
+    return [float(p.X), float(p.Y), float(p.Z)]
+
+
+def _pnt(p) -> list[float]:
+    """An OCCT gp_Pnt as [x, y, z]."""
+    return [float(p.X()), float(p.Y()), float(p.Z())]
+
+
+def _round_list(v, n: int = 6) -> list[float]:
+    return [round(float(c), n) + 0.0 for c in v]
+
+
+def _measure_match_face(faces, row: dict):
+    from build123d import CenterOf
+    best, best_d = None, 0.01
+    a0 = float(row["area"])
+    for i, f in enumerate(faces):
+        if _geom(f) != row["type"] or abs(float(f.area) - a0) > 0.002 + 1e-6 * a0:
+            continue
+        d = math.dist(_vec(f.center(CenterOf.MASS)), row["center"])
+        if d <= best_d:
+            best, best_d = (i, f), d
+    return best
+
+
+def _measure_match_edge(edges, row: dict):
+    from build123d import Vector
+    best, best_d = None, 0.01
+    l0 = float(row["length"])
+    if row.get("center") is None:
+        return None
+    p = Vector(*row["center"])
+    for i, e in enumerate(edges):
+        if _geom(e) != row["type"] or abs(float(e.length) - l0) > 0.002 + 1e-6 * l0:
+            continue
+        d = float(e.distance_to(p))
+        if d <= best_d:
+            best, best_d = (i, e), d
+    return best
+
+
+def _face_info(face, fid: str) -> dict:
+    from OCP.BRepAdaptor import BRepAdaptor_Surface
+    from OCP.GeomAbs import GeomAbs_Cylinder, GeomAbs_Plane
+    from build123d import CenterOf
+    info: dict = {"kind": "face", "id": fid, "type": _geom(face), "area": float(face.area),
+                  "center": _vec(face.center(CenterOf.MASS))}
+    surf = BRepAdaptor_Surface(face.wrapped)
+    if surf.GetType() == GeomAbs_Plane:
+        info["normal"] = _xyz(face.normal_at(face.center(CenterOf.MASS)))
+    elif surf.GetType() == GeomAbs_Cylinder:
+        cyl = surf.Cylinder()
+        ax = cyl.Axis()
+        info["radius"] = float(cyl.Radius())
+        info["axis"] = _canon([ax.Direction().X(), ax.Direction().Y(), ax.Direction().Z()])
+        info["axis_point"] = [ax.Location().X(), ax.Location().Y(), ax.Location().Z()]
+    return info
+
+
+def _edge_info(edge, eid: str) -> dict:
+    from OCP.BRepAdaptor import BRepAdaptor_Curve
+    from OCP.GeomAbs import GeomAbs_Circle, GeomAbs_Line
+    info: dict = {"kind": "edge", "id": eid, "type": _geom(edge), "length": float(edge.length)}
+    curve = BRepAdaptor_Curve(edge.wrapped)
+    if curve.GetType() == GeomAbs_Line:
+        info["start"] = _vec(edge.position_at(0))
+        info["end"] = _vec(edge.position_at(1))
+        info["direction"] = _canon(_xyz(edge.tangent_at(0.5)))
+    elif curve.GetType() == GeomAbs_Circle:
+        circ = curve.Circle()
+        c, ax = circ.Location(), circ.Axis().Direction()
+        info["radius"] = float(circ.Radius())
+        info["center"] = [c.X(), c.Y(), c.Z()]
+        info["axis"] = _canon([ax.X(), ax.Y(), ax.Z()])
+        sweep = abs(curve.LastParameter() - curve.FirstParameter())
+        info["arc_deg"] = min(360.0, math.degrees(sweep))
+    return info
+
+
+def _measure_resolve(shape, metrics: dict, ref: dict):
+    """One ref -> (the shape distances are measured from, its info)."""
+    from build123d import Vector, Vertex
+    if not isinstance(ref, dict) or len(ref) != 1:
+        raise ValueError("each ref is one of {face_id}, {edge_id}, {vertex_id} or {point}")
+    (key, val), = ref.items()
+    if key == "face_id":
+        row = next((f for f in metrics.get("face_list") or [] if f.get("id") == val), None)
+        hit = _measure_match_face(list(shape.faces()), row) if row else None
+        if hit is None:
+            raise LookupError(f"face {val!r} is not on this version of the part; pick again")
+        return hit[1], _face_info(hit[1], str(val))
+    if key == "edge_id":
+        row = next((e for e in metrics.get("edge_list") or [] if e.get("id") == val), None)
+        hit = _measure_match_edge(list(shape.edges()), row) if row else None
+        if hit is None:
+            raise LookupError(f"edge {val!r} is not on this version of the part; pick again")
+        return hit[1], _edge_info(hit[1], str(val))
+    verts = list(shape.vertices())
+    if key == "vertex_id":
+        m = re.fullmatch(r"v(\d+)", str(val))
+        if not m or int(m.group(1)) >= len(verts):
+            raise LookupError(f"vertex {val!r} is not on this version of the part; pick again")
+        v = verts[int(m.group(1))]
+        return v, {"kind": "vertex", "id": str(val), "point": _vec(v)}
+    if key == "point":
+        if (not isinstance(val, (list, tuple)) or len(val) != 3
+                or not all(isinstance(c, (int, float)) and not isinstance(c, bool)
+                           and math.isfinite(c) for c in val)):
+            raise ValueError("point must be [x, y, z] in mm")
+        p = Vector(*[float(c) for c in val])
+        best = min(range(len(verts)), key=lambda i: (Vector(verts[i]) - p).length, default=None)
+        if best is not None and (Vector(verts[best]) - p).length <= _SNAP_MM:
+            v = verts[best]
+            return v, {"kind": "vertex", "id": f"v{best}", "point": _vec(v)}
+        # the closest point of the part's surface (a click lands on a tessellated facet)
+        from OCP.BRepExtrema import BRepExtrema_DistShapeShape
+        ext = BRepExtrema_DistShapeShape(shape.wrapped, Vertex(p.X, p.Y, p.Z).wrapped)
+        on = _pnt(ext.PointOnShape1(1)) if ext.IsDone() and ext.NbSolution() else _vec(p)
+        return Vertex(*on), {"kind": "point", "point": on}
+    raise ValueError(f"unknown ref {key!r}: use face_id, edge_id, vertex_id or point")
+
+
+def _angle_deg(a, b) -> float:
+    """Angle between two lines (or plane normals, cylinder axes): no sense, so in [0, 90]."""
+    na, nb = math.sqrt(sum(x * x for x in a)), math.sqrt(sum(x * x for x in b))
+    c = max(-1.0, min(1.0, sum(x * y for x, y in zip(a, b)) / (na * nb)))
+    deg = math.degrees(math.acos(c))
+    return min(deg, 180.0 - deg)
+
+
+def _val(key: str, label: str, value: float, unit: str) -> dict:
+    return {"key": key, "label": label, "value": round(float(value), 6) + 0.0, "unit": unit}
+
+
+def _measure_one(info: dict) -> list[dict]:
+    out: list[dict] = []
+    if info["kind"] == "edge":
+        if "radius" in info:
+            out += [_val("diameter", "Diameter", 2 * info["radius"], "mm"),
+                    _val("radius", "Radius", info["radius"], "mm")]
+            if info["arc_deg"] < 359.999:
+                out.append(_val("arc_angle", "Arc angle", info["arc_deg"], "°"))
+        out.append(_val("length", "Length", info["length"], "mm"))
+    elif info["kind"] == "face":
+        if "radius" in info:
+            out += [_val("diameter", "Diameter", 2 * info["radius"], "mm"),
+                    _val("radius", "Radius", info["radius"], "mm")]
+        out.append(_val("area", "Area", info["area"], "mm²"))
+    else:
+        p = info["point"]
+        out += [_val("x", "X", p[0], "mm"), _val("y", "Y", p[1], "mm"), _val("z", "Z", p[2], "mm")]
+    return out
+
+
+def _direction(info: dict):
+    """What an angle compares: a line edge's direction, a plane's normal, a cylinder's axis."""
+    if info["kind"] == "edge":
+        return info.get("direction")
+    if info["kind"] == "face":
+        return info.get("normal") or info.get("axis")
+    return None
+
+
+def _measure_two(sa, ia: dict, sb, ib: dict) -> list[dict]:
+    from OCP.BRepExtrema import BRepExtrema_DistShapeShape
+    ext = BRepExtrema_DistShapeShape(sa.wrapped, sb.wrapped)
+    if not ext.IsDone() or ext.NbSolution() == 0:
+        raise ValueError("could not measure the distance between these two")
+    pa, pb = _pnt(ext.PointOnShape1(1)), _pnt(ext.PointOnShape2(1))
+    out = [_val("distance", "Distance", ext.Value(), "mm"),
+           _val("dx", "ΔX", abs(pb[0] - pa[0]), "mm"), _val("dy", "ΔY", abs(pb[1] - pa[1]), "mm"),
+           _val("dz", "ΔZ", abs(pb[2] - pa[2]), "mm")]
+    da, db = _direction(ia), _direction(ib)
+    if da is not None and db is not None:
+        ang = _angle_deg(da, db)
+        # a line (an edge, or a cylinder's axis) against a plane: the angle to the plane, not to
+        # its normal; a hole drilled straight through a plate is at 90°
+        if ("normal" in ia) != ("normal" in ib):
+            ang = 90.0 - ang
+        out.append(_val("angle", "Angle", ang, "°"))
+        if "normal" in ia and "normal" in ib and ang < _PARALLEL_DEG:
+            n = ia["normal"]
+            gap = abs(sum((ib["center"][i] - ia["center"][i]) * n[i] for i in range(3)))
+            out.insert(0, _val("normal_distance", "Normal distance", gap, "mm"))
+    if all(i["kind"] == "edge" and "radius" in i for i in (ia, ib)):
+        out.append(_val("center_distance", "Center distance",
+                        math.dist(ia["center"], ib["center"]), "mm"))
+    if (all(i["kind"] == "face" and "axis" in i for i in (ia, ib))
+            and _angle_deg(ia["axis"], ib["axis"]) < _PARALLEL_DEG):
+        a, d = ia["axis_point"], ia["axis"]
+        w = [ib["axis_point"][i] - a[i] for i in range(3)]
+        t = sum(w[i] * d[i] for i in range(3))
+        out.append(_val("center_distance", "Center distance",
+                        math.sqrt(max(0.0, sum(x * x for x in w) - t * t)), "mm"))
+    return out
+
+
+def _measure_compute(shape, metrics: dict, refs, cache: dict | None = None) -> dict:
+    """{items, values} for the picks, or {error: {code, message}}. `cache` (the serving worker's)
+    keeps each resolved pick, so A then A+B then A+C re-finds A once."""
+    import copy
+    try:
+        if not isinstance(refs, list) or not 1 <= len(refs) <= 8:
+            raise ValueError("refs must list 1 to 8 picks")
+        picked = []
+        for r in refs:
+            key = json.dumps(r, sort_keys=True)
+            hit = cache.get(key) if cache is not None else None
+            if hit is None:
+                hit = _measure_resolve(shape, metrics, r)
+                if cache is not None:
+                    cache[key] = hit
+            picked.append((hit[0], copy.deepcopy(hit[1])))
+        infos = [i for _, i in picked]
+        if len(picked) == 1:
+            values = _measure_one(infos[0])
+        elif len(picked) == 2:
+            values = _measure_two(picked[0][0], infos[0], picked[1][0], infos[1])
+        elif all(i["kind"] == "edge" for i in infos):
+            values = [_val("total_length", "Total length", sum(i["length"] for i in infos), "mm")]
+        elif all(i["kind"] == "face" for i in infos):
+            values = [_val("total_area", "Total area", sum(i["area"] for i in infos), "mm²")]
+        else:
+            raise ValueError("pick one or two items (or several edges, or several faces)")
+        for i in infos:
+            for k in ("center", "normal", "axis", "axis_point", "start", "end", "direction", "point"):
+                if k in i:
+                    i[k] = _round_list(i[k])
+            for k in ("area", "length", "radius", "arc_deg"):
+                if k in i:
+                    i[k] = round(float(i[k]), 6) + 0.0
+        return {"items": infos, "values": values}
+    except LookupError as e:
+        return {"error": {"code": "not_found", "message": str(e)}}
+    except ValueError as e:
+        return {"error": {"code": "invalid_input", "message": str(e)}}
+
+
+def _measure(part_dir: Path, args: dict, nonce: str) -> None:
+    import build123d as b3
+
+    metrics = json.loads((part_dir / "metrics.json").read_text())
+    shape = b3.import_step(str(part_dir / "model.step"))
+    result = {"nonce": nonce, **_measure_compute(shape, metrics, args.get("refs"))}
+    tmp = part_dir / "tmp"
+    (tmp / "new_measure.json").write_text(json.dumps(result))
+    os.replace(tmp / "new_measure.json", tmp / "measure.json")
+
+
+MEASURE_MARK = "MISES_MEASURE"
+
+
+def _measure_serve(part_dir: Path, nonce: str) -> None:
+    """The warm measure worker: load the shape once, then answer one JSON request per stdin line
+    ({id, refs}) with one stdout line "MISES_MEASURE <nonce> {id, ...}" (other output, e.g. a
+    library's warning, is never mistaken for an answer). Exits at EOF: the host closes stdin when
+    it evicts the worker, and a dead host closes it too."""
+    import build123d as b3
+
+    metrics = json.loads((part_dir / "metrics.json").read_text())
+    shape = b3.import_step(str(part_dir / "model.step"))
+    cache: dict = {}
+    out = sys.stdout
+    out.write(f"{MEASURE_MARK} {nonce} " + json.dumps({"id": 0, "ready": True}) + "\n")
+    out.flush()
+    for line in sys.stdin:
+        try:
+            req = json.loads(line)
+            rid = req.get("id") if isinstance(req, dict) else None
+            res = _measure_compute(shape, metrics, req.get("refs") if isinstance(req, dict) else None, cache)
+        except Exception as e:  # noqa: BLE001 - one bad request never ends the worker
+            rid, res = None, {"error": {"code": "tool_failed", "message": f"{type(e).__name__}: {e}"}}
+        out.write(f"{MEASURE_MARK} {nonce} " + json.dumps({"id": rid, **res}) + "\n")
+        out.flush()
 
 
 # ---- 2D engineering drawing (python -I worker.py <part_dir> <args.json> --drawing)
@@ -895,6 +1205,18 @@ def main(argv: list[str]) -> int:
         if not nonce:
             raise RuntimeError("missing build nonce")
         _drawing(part_dir, json.loads(Path(argv[2]).read_text()), nonce)
+        return 0
+    if len(argv) > 2 and argv[2] == "--measure-serve":
+        nonce = os.environ.pop("MISES_NONCE", "")
+        if not nonce:
+            raise RuntimeError("missing build nonce")
+        _measure_serve(part_dir, nonce)
+        return 0
+    if len(argv) > 3 and argv[3] == "--measure":
+        nonce = os.environ.pop("MISES_NONCE", "")
+        if not nonce:
+            raise RuntimeError("missing build nonce")
+        _measure(part_dir, json.loads(Path(argv[2]).read_text()), nonce)
         return 0
     vars_path = Path(argv[2])
     density = float(os.environ.get("MISES_DENSITY", "1.24"))

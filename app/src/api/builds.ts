@@ -54,11 +54,13 @@ export type PartKind = "part" | "group" | "catalog";
 export interface PartEdge {
   id: string; type: string; length: number; center: [number, number, number] | null;
   direction: [number, number, number] | null; adjacent: [number, number, number][];
+  /** A circle's or arc's radius (U2a; parts built before it have none). */
+  radius?: number;
 }
 const vec3 = z.tuple([z.number(), z.number(), z.number()]);
 export const partEdgeSchema = z.object({
   id: z.string(), type: z.string(), length: z.number(), center: vec3.nullable(), direction: vec3.nullable(),
-  adjacent: z.array(vec3).default([]),
+  adjacent: z.array(vec3).default([]), radius: z.number().optional(),
 });
 
 // ---- live edits (C6)

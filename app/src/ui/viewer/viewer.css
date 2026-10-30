@@ -77,3 +77,73 @@
 .overview-toggle:hover { color: var(--ink); }
 .overview-toggle.on { color: var(--ink); border-color: var(--blue); background: var(--blue-tint); }
 .overview-toggle:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+/* ---- Plan 7 U2a: selection label, measure panel, comment box, feedback pins (greys; blue marks the pick) */
+.vx-label {
+  position: absolute; z-index: 3; display: flex; align-items: center; gap: 8px; max-width: 320px; padding: 4px 6px 4px 9px;
+  background: var(--paper); border: 1px solid var(--line2); border-left: 2px solid var(--blue); color: var(--ink);
+  font: var(--fs-small)/1.4 var(--font-mono); white-space: nowrap;
+}
+.vx-label-text { overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.vx-link { border: 0; background: transparent; padding: 0; color: var(--blue2); cursor: pointer; font: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.vx-link:hover { color: var(--ink); }
+.vx-x { border: 0; background: transparent; color: var(--faint); cursor: pointer; font: inherit; padding: 0 2px; margin-left: auto; }
+.vx-x:hover { color: var(--ink); }
+.vx-link:focus-visible, .vx-x:focus-visible, .vx-pin:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
+
+.vx-panel {
+  /* top-left, under the FIG label: the title block owns the bottom edge */
+  position: absolute; left: 22px; top: 112px; z-index: 3; width: 248px; max-width: calc(100% - 44px);
+  display: flex; flex-direction: column; gap: 6px; padding: 7px 10px 9px;
+  background: var(--paper); border: 1px solid var(--line2); border-top: 2px solid var(--blue); font-size: var(--fs-small);
+}
+.vx-panel-head { display: flex; align-items: center; gap: 8px; }
+.vx-hint { margin: 0; font-size: var(--fs-small); }
+.vx-picks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; color: var(--ink); font-family: var(--font-mono); }
+.vx-picks li { display: flex; gap: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vx-n { color: var(--blue2); min-width: 1.5ch; }
+.vx-values { margin: 0; display: flex; flex-direction: column; border-top: 1px solid var(--line2); padding-top: 4px; }
+.vx-row { display: flex; justify-content: space-between; gap: 10px; padding: 1px 0; }
+.vx-row dt { color: var(--dim); }
+.vx-row dd { margin: 0; color: var(--ink); font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.vx-values:not([data-exact]) dd { color: var(--dim); }
+.vx-error { margin: 0; color: var(--red); font-size: var(--fs-small); }
+.vx-actions { display: flex; align-items: center; gap: 6px; }
+.vx-actions .vx-hint { margin-right: auto; }
+
+.vx-comment {
+  position: absolute; z-index: 3; width: 280px; display: flex; flex-direction: column; gap: 6px; padding: 8px 10px 10px;
+  background: var(--paper); border: 1px solid var(--line2); border-top: 2px solid var(--blue);
+}
+.vx-comment-label { display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-small); }
+.vx-comment textarea { resize: vertical; min-height: 54px; padding: 4px 6px; font: inherit; color: var(--ink); background: var(--paper2); border: 1px solid var(--line2); }
+.vx-comment textarea:focus { outline: 1px solid var(--blue); outline-offset: -1px; }
+.vx-mode-hint { position: absolute; left: 50%; top: 50px; transform: translateX(-50%); padding: 3px 9px; background: var(--paper); border: 1px solid var(--line2); pointer-events: none; z-index: 2; }
+
+.vx-pins { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
+.vx-dot { position: absolute; width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px; background: var(--blue); border-radius: 50%; }
+/* a map-pin flag: its corner sits on the spot */
+.vx-pin {
+  position: absolute; pointer-events: auto; width: 18px; height: 18px; margin: -18px 0 0 0; padding: 0;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  font: 600 var(--fs-small)/1 var(--font-mono); color: var(--on-blue); background: var(--blue); border: 1px solid var(--blue2);
+  border-radius: 9px 9px 9px 0;
+}
+.vx-pin[aria-expanded="true"] { outline: 2px solid var(--ink); outline-offset: 1px; }
+.vx-pin-note {
+  position: absolute; pointer-events: auto; width: 240px; display: flex; flex-direction: column; gap: 4px; padding: 6px 9px 7px;
+  background: var(--paper); border: 1px solid var(--line2); border-left: 2px solid var(--blue); font-size: var(--fs-small);
+}
+.vx-pin-text { margin: 0; color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; }
+.vp[data-tab="code"] .vx-pins { visibility: hidden; }
+/* the pin in the thread (console/Conversation: a feedback message) */
+.vx-thread-pin {
+  display: inline-flex; align-items: center; gap: 6px; margin-top: 4px; padding: 2px 8px 2px 4px; max-width: 100%;
+  border: 1px solid var(--line2); background: transparent; color: var(--dim); cursor: pointer; font: var(--fs-small)/1.5 var(--font-mono);
+  text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.vx-thread-pin:hover { color: var(--ink); border-color: var(--dim); }
+.vx-thread-pin:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
+.vx-thread-flag {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 14px; height: 14px; padding: 0 2px; flex: none;
+  color: var(--on-blue); background: var(--blue); border-radius: 7px 7px 7px 0; font-weight: 600;
+}

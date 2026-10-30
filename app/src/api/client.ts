@@ -1,6 +1,7 @@
 // Typed HTTP client for the local core. Every request carries the bearer token; every response
 // is validated with zod. Failures always surface as CoreError (never a raw fetch/zod error).
 import { z } from "zod";
+import { feedbackResultSchema, measureResultSchema, measureWarmSchema, type FeedbackBody, type FeedbackResult, type MeasureRef, type MeasureResult } from "./measure";
 import { debug } from "../lib/log";
 import {
   agentDetailSchema, agentInfoSchema, agentRunSchema, approvalSchema, cancelAllSchema, claudeCodeStatusSchema, cleanupResultSchema, coreErrorBodySchema, coreStatusSchema, deleteRefusedSchema,
@@ -604,6 +605,20 @@ export class CoreClient {
   drawingImport(id: string): Promise<DrawingImport> { return this.json("GET", `/imports/${enc(id)}`, drawingImportSchema); }
   /** The original drawing as a picture (page 1, or an SVG of a DXF): shown via a blob: URL in an <img>. */
   drawingImportOriginal(id: string, type: string): Promise<Blob> { return this.blob(`/imports/${enc(id)}/original`, type); }
+  // ---- Plan 7 U2a: measure and feedback pins (server/measure_api.py, server/feedback_api.py)
+
+  /** Exact B-rep values for the picks; 409 (stale_version) when the part changed since `baseVersion`. */
+  measurePart(id: string, refs: MeasureRef[], baseVersion?: number): Promise<MeasureResult> {
+    return this.json("POST", `/parts/${enc(id)}/measure`, measureResultSchema, { body: { refs, ...(baseVersion === undefined ? {} : { base_version: baseVersion }) } });
+  }
+  /** Measure mode opened on a part: warm the core's measure worker (best effort). */
+  warmMeasure(id: string): Promise<{ part_id: string; warm: boolean }> {
+    return this.json("POST", `/parts/${enc(id)}/measure`, measureWarmSchema, { body: { warm: true } });
+  }
+  /** A comment pinned on the model: a message to the build's agent with the location as data. */
+  sendFeedback(projectId: string, body: FeedbackBody): Promise<FeedbackResult> {
+    return this.json("POST", `/projects/${enc(projectId)}/feedback`, feedbackResultSchema, { body });
+  }
 
   // ---- internals
 

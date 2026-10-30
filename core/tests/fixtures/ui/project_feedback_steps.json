@@ -1,0 +1,85 @@
+[
+  {
+    "id": 3,
+    "run_id": "326f3eb17fae",
+    "ts": 1793353902.0524778,
+    "kind": "decision",
+    "payload": {
+      "feedback": {
+        "face_id": "f2",
+        "nearby_feature": {
+          "area_mm2": 772.291,
+          "center": [
+            0.0,
+            0.0,
+            2.5
+          ],
+          "face_id": "f2",
+          "type": "plane"
+        },
+        "nearby_hole": "Ø4.2 hole, 0.9 mm away",
+        "part": "mount_plate",
+        "part_id": "mount_plate",
+        "point": [
+          7.0,
+          0.0,
+          2.5
+        ],
+        "text": "make these holes M3 clearance"
+      }
+    },
+    "evidence_hash": "624407c849dfbfd9e8fbb6b480debb12d11668421ed6a07a06c554b479418fad",
+    "prev_hash": null,
+    "collapsed": false
+  },
+  {
+    "id": 4,
+    "run_id": "326f3eb17fae",
+    "ts": 1793353902.054216,
+    "kind": "message",
+    "payload": {
+      "feedback": {
+        "face_id": "f2",
+        "nearby_feature": {
+          "area_mm2": 772.291,
+          "center": [
+            0.0,
+            0.0,
+            2.5
+          ],
+          "face_id": "f2",
+          "type": "plane"
+        },
+        "nearby_hole": "Ø4.2 hole, 0.9 mm away",
+        "part": "mount_plate",
+        "part_id": "mount_plate",
+        "point": [
+          7.0,
+          0.0,
+          2.5
+        ],
+        "text": "make these holes M3 clearance"
+      },
+      "role": "user",
+      "text": "make these holes M3 clearance"
+    },
+    "evidence_hash": "1a926c9fcc2b39c8516b5c66221e0c30e2213f064893732ecdd84a58810707ad",
+    "prev_hash": "624407c849dfbfd9e8fbb6b480debb12d11668421ed6a07a06c554b479418fad",
+    "collapsed": false
+  },
+  {
+    "id": 5,
+    "run_id": "326f3eb17fae",
+    "ts": 1793353902.064928,
+    "kind": "message",
+    "payload": {
+      "role": "assistant",
+      "stop_reason": "end_turn",
+      "text": "ok",
+      "tool_calls": []
+    },
+    "evidence_hash": "1da352df9e6ad180ab31ef561c8c52ce39e11933d5e6a51cd1c40a44e3464330",
+    "prev_hash": "1a926c9fcc2b39c8516b5c66221e0c30e2213f064893732ecdd84a58810707ad",
+    "collapsed": false
+  }
+]

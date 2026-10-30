@@ -23,6 +23,7 @@ import { RunStatus } from "./RunStatus";
 import { StudyCardSlot } from "./studycard";
 import { buildUserEdits } from "../../state/partEdits";
 import { editsForRun, weave } from "./userEditLines";
+import { FeedbackNote } from "../viewer/FeedbackNote";
 
 const AT_BOTTOM_PX = 24;
 /** Rows rendered at once (the last ones); "show earlier" adds this many more. Same as StepLog. */
@@ -105,7 +106,7 @@ export function Conversation(): JSX.Element {
         {!run && items.length === 0 && <Empty />}
         {weave(shown, editsForRun(buildUserEdits.value, run ?? null)).map((r) => (r.kind === "you"
           ? <div key={r.line.key} class="cv-item" data-key={r.line.key}><YouLine text={r.line.text} /></div>
-          : <div key={r.item.key} class="cv-item" data-key={r.item.key}><Item item={r.item} agent={run?.agent ?? "agent"} /></div>))}
+          : <div key={r.item.key} class="cv-item" data-key={r.item.key}><Item item={r.item} agent={run?.agent ?? "agent"} runId={run?.id ?? null} /></div>))}
         {run && items.length === 0 && run.task && (
           <Item item={{ kind: "user", key: "task", text: run.task, ts: run.created_at, stepIds: [] }} agent={run.agent} />
         )}
@@ -143,15 +144,18 @@ function Queued(): JSX.Element {
   return <div class="cv-note faint" data-queued>{`waiting for a free agent slot${why}`}</div>;
 }
 
-function Item({ item, agent }: { item: ThreadItem; agent: AgentRun["agent"] }): JSX.Element {
+function Item({ item, agent, runId = null }: { item: ThreadItem; agent: AgentRun["agent"]; runId?: string | null }): JSX.Element {
   switch (item.kind) {
-    case "user":
+    case "user": {
+      // a comment pinned on the model (U2a): the words, then the pin, never the raw location block
+      const fb = item.feedback ?? null;
       return (
         <div class="cv-msg cv-user" data-msg="user" data-row data-kind="message">
           <div class="label">you</div>
-          <div class="cv-text text">{item.text}</div>
+          {fb ? <FeedbackNote feedback={fb} runId={runId} /> : <div class="cv-text text">{item.text}</div>}
         </div>
       );
+    }
     case "agent":
       return (
         <div class="cv-msg cv-agent" data-msg="agent" data-row data-kind={item.live ? "live" : "message"} data-changing={item.live ? "" : undefined}>

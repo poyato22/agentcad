@@ -1,0 +1,9 @@
+{
+  "status": 404,
+  "body": {
+    "error": "not_found",
+    "message": "face 'f999' is not on this version of the part; pick again",
+    "hint": null,
+    "retryable": false
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "part_id": "mount_plate",
+  "version": 1,
+  "items": [
+    {
+      "kind": "edge",
+      "id": "e9",
+      "type": "circle",
+      "length": 13.194689,
+      "radius": 2.1,
+      "center": [
+        -10.0,
+        0.0,
+        2.5
+      ],
+      "axis": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "arc_deg": 360.0
+    }
+  ],
+  "values": [
+    {
+      "key": "diameter",
+      "label": "Diameter",
+      "value": 4.2,
+      "unit": "mm"
+    },
+    {
+      "key": "radius",
+      "label": "Radius",
+      "value": 2.1,
+      "unit": "mm"
+    },
+    {
+      "key": "length",
+      "label": "Length",
+      "value": 13.194689,
+      "unit": "mm"
+    }
+  ]
+}

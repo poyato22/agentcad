@@ -124,6 +124,11 @@ test("click_a_face_to_add_a_hole_there", async ({ page, fake }) => {
   await expect(canvas).toHaveAttribute("data-bbox-size", "40.00,40.00,3.00", { timeout: 15_000 });
   const b = await canvas.boundingBox();
   await page.mouse.click((b?.x ?? 0) + (b?.width ?? 0) / 2, (b?.y ?? 0) + (b?.height ?? 0) / 2);
+  // a click says what it hit (no ops callout); Modify… there opens the feature ops (U2a)
+  const label = page.getByTestId("pick-label");
+  await expect(label).toContainText("Face · planar · 1,600 mm²");
+  await expect(page.getByTestId("ops-menu")).toHaveCount(0);
+  await label.getByRole("button", { name: "Modify…" }).click();
   const menu = page.getByTestId("ops-menu");
   await expect(menu).toBeVisible();
   await expect(menu).toContainText(/f\d+ · plane facing \+Z · 1600 mm²/);
@@ -146,6 +151,7 @@ test("a_second_pick_while_the_callout_is_open_starts_it_fresh", async ({ page, f
   const b = await canvas.boundingBox();
   const cx = (b?.x ?? 0) + (b?.width ?? 0) / 2; const cy = (b?.y ?? 0) + (b?.height ?? 0) / 2;
   await page.mouse.click(cx, cy);
+  await page.getByTestId("pick-label").getByRole("button", { name: "Modify…" }).click();
   const menu = page.getByTestId("ops-menu");
   await menu.getByRole("radio", { name: "Shell" }).check();
   await menu.getByRole("textbox", { name: "Wall (mm)" }).fill("9");
@@ -159,10 +165,11 @@ test("a_second_pick_while_the_callout_is_open_starts_it_fresh", async ({ page, f
   expect(op.base_version).toBe(1);
 });
 
-test("features_by_keyboard_round_an_edge", async ({ page, fake }) => {
+test("modify_from_the_part_menu_rounds_an_edge", async ({ page, fake }) => {
   await open(page);
   await tree(page).getByRole("button", { name: "top plate", exact: true }).click();
-  await page.getByRole("button", { name: "features" }).click();
+  await tree(page).getByRole("button", { name: "Move or edit top plate" }).click();
+  await page.getByRole("menuitem", { name: "Modify…" }).click();
   const menu = page.getByTestId("ops-menu");
   await menu.getByRole("radio", { name: "Fillet" }).check();
   await menu.getByRole("combobox").selectOption({ index: 1 });

@@ -1,0 +1,30 @@
+{
+  "part_id": "mount_plate",
+  "version": 1,
+  "items": [
+    {
+      "kind": "face",
+      "id": "f2",
+      "type": "plane",
+      "area": 772.291153,
+      "center": [
+        0.0,
+        0.0,
+        2.5
+      ],
+      "normal": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  ],
+  "values": [
+    {
+      "key": "area",
+      "label": "Area",
+      "value": 772.291153,
+      "unit": "mm²"
+    }
+  ]
+}

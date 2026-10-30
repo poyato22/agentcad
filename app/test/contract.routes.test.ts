@@ -304,6 +304,10 @@ const COVERAGE: Record<string, string> = {
   "POST /sims/calibrations": "s3_cal_save.json",
   "DELETE /sims/calibrations/{cal_id}": "s3_cal_delete.json",
   "GET /sims/calibrations/{cal_id}": "EXEMPT: the app reads the list (GET /sims/calibrations); one record has the list item's shape (s3_cal_list.json)",
+  // Plan 7 U2a measure and feedback pins: contract.measure.test.ts
+  "POST /parts/{part_id}/measure": "part_measure_edge.json",
+  // POST /projects/{project_id}/feedback (U3c's agents_api.py, declared `@r.post`, which this scan
+  // does not read) is covered by project_feedback*.json in contract.measure.test.ts
 };
 
 function coreRoutes(): string[] {

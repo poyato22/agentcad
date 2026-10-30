@@ -324,6 +324,42 @@ def nearby_feature(home: Path, part_id: str, point: list[float],
             "center": face.get("center")}
 
 
+def _num(x: float) -> str:
+    return f"{round(float(x), 2):g}"
+
+
+def nearby_hole(home: Path, part_id: str, point: list[float]) -> str | None:
+    """The hole nearest the pin, measured from its wall, when one is close (U2a): "Ø4.2 hole,
+    1.9 mm away" / "on the Ø4.2 hole". The clicked face alone rarely says which feature is meant."""
+    from ..cad import safe_io
+    try:
+        metrics = safe_io.read_json(Path(home) / "parts" / part_id, "metrics.json")
+    except (OSError, ValueError, safe_io.UnsafePath):
+        return None
+    if not isinstance(metrics, dict):
+        return None
+    size = (metrics.get("bbox") or {}).get("size") or [0, 0, 0]
+    try:
+        reach = max(10.0, 0.25 * math.hypot(*[float(s) for s in size]))
+    except (TypeError, ValueError):
+        reach = 10.0
+    best: tuple[float, float] | None = None
+    for h in metrics.get("holes") or []:
+        try:
+            c, a, dia = h["center"], h["axis"], float(h["diameter_mm"])
+            w = [float(point[i]) - float(c[i]) for i in range(3)]
+            t = sum(w[i] * float(a[i]) for i in range(3))
+            gap = max(0.0, math.sqrt(max(0.0, sum(x * x for x in w) - t * t)) - dia / 2)
+        except (KeyError, TypeError, ValueError, IndexError):
+            continue
+        if gap <= reach and (best is None or gap < best[0]):
+            best = (gap, dia)
+    if best is None:
+        return None
+    gap, dia = best
+    return f"Ø{_num(dia)} hole, {_num(gap)} mm away" if gap > 0 else f"on the Ø{_num(dia)} hole"
+
+
 def feedback_message(location: dict, text: str, nonce: str | None = None) -> str:
     """The lead's message: one line of framing, then the user's note and the clicked location
     as one nonce-delimited JSON block (JSON escapes "<", so nothing inside can close it)."""
@@ -344,9 +380,11 @@ async def submit_feedback(rt: Runtime, project_id: str, *, part_id: str, point: 
     row = rt.store.get_part(part_id)
     if row is None or row.project_id != project_id:
         raise MisesError(ErrorCode.NOT_FOUND, f"no part {part_id!r} in this build")
-    location = {"part_id": part_id, "point": [round(float(c), 4) for c in point],
+    location = {"part_id": part_id, "part": row.label or part_id,
+                "point": [round(float(c), 4) for c in point],
                 "face_id": face_id,
-                "nearby_feature": nearby_feature(rt.home, part_id, point, face_id)}
+                "nearby_feature": nearby_feature(rt.home, part_id, point, face_id),
+                "nearby_hole": nearby_hole(rt.home, part_id, point)}
     msg = feedback_message(location, text)
     pin = {**location, "text": text}
     # the thread shows the note (plus the pin chip from `feedback`), never the wrapped block

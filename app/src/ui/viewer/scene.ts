@@ -27,10 +27,12 @@ export interface ShownPart { id: string; scene: PartScene; color: string | null;
 /** A click on a shown part: where (world = the part's CAD frame, mm) and the surface normal. */
 export interface ViewerHit { partId: string; point: [number, number, number]; normal: [number, number, number] }
 
-/** The blue pick marker: a face (drawn on the triangles in that plane) or an edge segment. */
+/** The blue pick marker: a face (drawn on the triangles in that plane), an edge segment, or a
+ *  circular edge (a ring around `axis`). */
 export type PickMarker =
   | { kind: "face"; partId: string; normal: [number, number, number]; point: [number, number, number]; tol: number }
   | { kind: "edge"; a: [number, number, number]; b: [number, number, number] }
+  | { kind: "ring"; center: [number, number, number]; axis: [number, number, number]; radius: number }
   | null;
 
 export interface ViewerHandle {
@@ -53,6 +55,11 @@ export interface DesignViewerHandle extends ViewerHandle {
   /** A world point → canvas pixels. */
   toScreen(p: [number, number, number]): [number, number];
   setMarker(m: PickMarker): void;
+  /** Several markers at once (measure's picks); replaces setMarker's. */
+  setMarkers(list: readonly PickMarker[]): void;
+  /** Called after every frame (the camera moved, the canvas resized): HTML overlays re-place
+   *  themselves with toScreen. Returns the unsubscribe. */
+  onView(cb: () => void): () => void;
 }
 
 /** The slice of WebGLRenderer the viewer uses (lets tests stub it). */
@@ -133,13 +140,15 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
   let highlight = false;
   let frame = 0;
   let disposed = false;
-  let marker: THREE.Object3D | null = null;
+  let marker: THREE.Group | null = null;
+  const viewListeners = new Set<() => void>();
   let frameAll = false;
 
   const draw = () => {
     frame = 0;
     if (disposed) return;
     try { renderer.render(scene, camera); } catch { /* the canvas never throws */ }
+    for (const cb of [...viewListeners]) { try { cb(); } catch { /* an overlay never breaks a frame */ } }
   };
   const requestRender = () => {
     if (frame || disposed) return;
@@ -176,7 +185,7 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
 
   // Follow the theme live: <html data-theme> changes (profile toggle) and OS light/dark changes
   // (theme "system") re-read the tokens and repaint.
-  const onTheme = () => { colors = viewerColors(); applyStyle(); setMarkerObj(lastMarker); requestRender(); };
+  const onTheme = () => { colors = viewerColors(); applyStyle(); setMarkerObjs(lastMarkers); requestRender(); };
   const themeObserver = typeof MutationObserver === "function" && typeof document !== "undefined"
     ? new MutationObserver(onTheme) : null;
   themeObserver?.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
@@ -240,7 +249,7 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
 
   // ---- pick marker (blue: the selected face / edge)
 
-  let lastMarker: PickMarker = null;
+  let lastMarkers: readonly PickMarker[] = [];
   function clearMarker(): void {
     if (!marker) return;
     scene.remove(marker);
@@ -281,26 +290,43 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
     return out;
   }
 
-  function setMarkerObj(m: PickMarker): void {
-    clearMarker();
-    lastMarker = m;
-    if (!m) { requestRender(); return; }
-    const blue = new THREE.Color(colors.highlight);
-    if (m.kind === "edge") {
-      const g = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(...m.a), new THREE.Vector3(...m.b)]);
-      const line = new THREE.Line(g, new THREE.LineBasicMaterial({ color: blue, depthTest: false }));
+  function markerObj(m: NonNullable<PickMarker>, blue: THREE.Color): THREE.Object3D | null {
+    if (m.kind === "edge" || m.kind === "ring") {
+      let pts: THREE.Vector3[];
+      if (m.kind === "edge") pts = [new THREE.Vector3(...m.a), new THREE.Vector3(...m.b)];
+      else {
+        const ax = new THREE.Vector3(...m.axis).normalize();
+        const u = new THREE.Vector3().crossVectors(ax, Math.abs(ax.z) < 0.9 ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(1, 0, 0)).normalize();
+        const v = new THREE.Vector3().crossVectors(ax, u);
+        const c = new THREE.Vector3(...m.center);
+        pts = Array.from({ length: 65 }, (_, i) => {
+          const t = (i / 64) * Math.PI * 2;
+          return c.clone().addScaledVector(u, Math.cos(t) * m.radius).addScaledVector(v, Math.sin(t) * m.radius);
+        });
+      }
+      const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: blue, depthTest: false }));
       line.renderOrder = 10;
-      marker = line;
-    } else {
-      const tris = planeTriangles(m.partId, new THREE.Vector3(...m.normal), new THREE.Vector3(...m.point), m.tol);
-      if (!tris.length) { requestRender(); return; }
-      const g = new THREE.BufferGeometry();
-      g.setAttribute("position", new THREE.Float32BufferAttribute(tris, 3));
-      const mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: blue, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false }));
-      mesh.renderOrder = 10;
-      marker = mesh;
+      return line;
     }
-    scene.add(marker);
+    const tris = planeTriangles(m.partId, new THREE.Vector3(...m.normal), new THREE.Vector3(...m.point), m.tol);
+    if (!tris.length) return null;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(tris, 3));
+    const mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: blue, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false }));
+    mesh.renderOrder = 10;
+    return mesh;
+  }
+
+  function setMarkerObjs(list: readonly PickMarker[]): void {
+    clearMarker();
+    lastMarkers = list;
+    const blue = new THREE.Color(colors.highlight);
+    const group = new THREE.Group();
+    for (const m of list) {
+      const o = m ? markerObj(m, blue) : null;
+      if (o) group.add(o);
+    }
+    if (group.children.length) { marker = group; scene.add(group); }
     requestRender();
   }
 
@@ -311,7 +337,9 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
     setHighlight(on) { highlight = on; applyStyle(); requestRender(); },
     pick,
     toScreen,
-    setMarker: setMarkerObj,
+    setMarker(m) { setMarkerObjs(m ? [m] : []); },
+    setMarkers(list) { setMarkerObjs(list); },
+    onView(cb) { viewListeners.add(cb); return () => { viewListeners.delete(cb); }; },
     fit,
     resize(w, h) {
       width = Math.max(1, w); height = Math.max(1, h);
@@ -329,6 +357,7 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
       disposed = true;
       if (frame) cancelAnimationFrame(frame);
       clearMarker();
+      viewListeners.clear();
       controls.dispose();
       themeObserver?.disconnect();
       osScheme?.removeEventListener("change", onTheme);

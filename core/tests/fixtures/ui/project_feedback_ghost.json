@@ -1,0 +1,9 @@
+{
+  "status": 404,
+  "body": {
+    "error": "not_found",
+    "message": "no part 'ghost' in this build",
+    "hint": null,
+    "retryable": false
+  }
+}

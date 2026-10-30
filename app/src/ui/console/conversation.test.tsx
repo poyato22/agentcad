@@ -6,7 +6,7 @@ import type { CoreClient } from "../../api/client";
 import { stepSchema } from "../../api/schemas";
 import type { AgentRun, CoreStatusInfo, Step } from "../../api/types";
 import { addCatalogChip, agentChips, clearAgentChips } from "../../state/agentChips";
-import { actions, approvals, bindClient, coreStatus, focusedStepId, questions, resetStore, runs, selectedRunId, steps } from "../../state/store";
+import { actions, approvals, bindClient, coreStatus, focusedStepId, questions, resetStore, runs, selectedPartId, selectedRunId, steps } from "../../state/store";
 import { resetCatalog } from "../dialogs/catalog";
 import { ConsolePane } from "./ConsolePane";
 import { expandedFolds, resetOffListRuns } from "./derived";
@@ -268,6 +268,27 @@ describe("conversation view (default)", () => {
     expect(thread.querySelector("img")).toBeNull();
     expect(thread.textContent).toContain("<img src=x onerror=alert(1)>");
     expect(thread.querySelector("[data-msg=agent] strong")?.textContent).toBe("bold");
+  });
+});
+
+describe("feedback pins in the thread (U2a)", () => {
+  it("shows the words and the pin, never the location block; the pin selects the part", async () => {
+    client();
+    // U3c's steps: the stored pin (a decision {feedback}) and the user's message carrying it
+    const pin = { part_id: "mount_plate", part: "mount_plate", point: [7, 0, 2.5], face_id: null, nearby_feature: null,
+      nearby_hole: "Ø4.2 hole, 0.9 mm away", text: "add a cable slot here" };
+    setRuns([run("r1", { status: "done" })]);
+    const said = message("r1", "user", "add a cable slot here", 1792869401);
+    setSteps([step("r1", "decision", { feedback: pin }, 1792869400), { ...said, payload: { ...said.payload, feedback: pin } }]);
+    selectedRunId.value = "r1";
+    const { container } = render(<ConsolePane />);
+    await frame();
+    const msg = container.querySelector('[data-msg="user"]') as HTMLElement;
+    expect(msg.textContent).toContain("add a cable slot here");
+    expect(msg.textContent).not.toContain("untrusted_user_data");
+    const chip = within(msg).getByRole("button", { name: /Comment 1 · on mount_plate · Ø4.2 hole, 0.9 mm away/ });
+    fireEvent.click(chip);
+    expect(selectedPartId.value).toBe("mount_plate");
   });
 });
 

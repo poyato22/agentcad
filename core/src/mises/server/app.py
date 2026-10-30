@@ -45,6 +45,8 @@ from .browser_api import build_browser_router
 from .drawing_api import build_drawing_router
 from .onshape_api import build_onshape_router
 from .edit_api import build_edit_router
+from .measure_api import build_measure_router
+from ..measure import close_servers as close_measure_servers
 from .system_api import build_system_router
 from .print_api import build_print_router
 from .assembly_api import build_assembly_router
@@ -232,6 +234,8 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
             await ui_router.aclose()
             # Claude Code sessions reach Mises only through this server: close them with it
             await runtime.close_claude_sessions()
+            # and the warm measure workers (U2a) with them
+            await close_measure_servers()
 
     app = FastAPI(title="Mises", lifespan=lifespan, docs_url=None, redoc_url=None,
                   openapi_url=None)
@@ -255,6 +259,7 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
     app.include_router(build_browser_router(runtime))
     app.include_router(build_spec_router(runtime))
     app.include_router(build_edit_router(runtime))
+    app.include_router(build_measure_router(runtime))
     app.include_router(build_system_router(runtime))
     app.include_router(build_agents_router(runtime))
 
