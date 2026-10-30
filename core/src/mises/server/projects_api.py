@@ -6,15 +6,17 @@ owned by Task C6; this router covers the rest of the Builds and Part-tree contra
 """
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from .. import projects as _projects
 from ..agent import definitions as _defs
+from ..cad import thumbs
 from ..profile import load_profile, save_profile
 from ..types import ErrorCode, MisesError
 
@@ -89,6 +91,29 @@ def build_projects_router(runtime: Runtime) -> APIRouter:
                 prof.active_project_id = _projects.active_project_id(store, None)
             save_profile(_home(), prof)
         return out
+
+    @router.get("/projects/{project_id}/thumb.png")
+    async def project_thumb(project_id: str, request: Request, size: int = thumbs.DEFAULT_SIZE):
+        """A composite tile of up to four of the build's parts (each rendered in the sandboxed
+        worker, cached by version; composed on the host). 404 until a part has a built mesh."""
+        _projects._project_or_404(store, project_id)
+        home = _home()
+        chosen = [(p["part_id"], p["version"])
+                  for p in _projects.list_parts(store, home, project_id)
+                  if p.get("kind") == "part"][:4]
+        sz = thumbs.clamp_size(size)
+        key = ",".join(f"{pid}:{v}" for pid, v in chosen)
+        digest = hashlib.sha256(key.encode()).hexdigest()[:12]
+        etag = f'"proj-{project_id}-{sz}-{len(chosen)}-{digest}"'
+        headers = {"ETag": etag, "Cache-Control": "private, no-cache"}
+        inm = request.headers.get("if-none-match")
+        if inm and any(t.strip().removeprefix("W/") == etag for t in inm.split(",")):
+            return Response(status_code=304, headers=headers)
+        png = await thumbs.project_thumb(home, project_id, chosen, sz)
+        if png is None:
+            raise MisesError(ErrorCode.NOT_FOUND, f"no preview for build {project_id!r} yet",
+                             hint="it has no parts with a built mesh")
+        return Response(png, media_type="image/png", headers=headers)
 
     @router.post("/projects/{project_id}/restore")
     async def restore_project(project_id: str):

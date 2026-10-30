@@ -23,6 +23,7 @@ from starlette.middleware.cors import CORSMiddleware
 from .. import hardware, local_models
 from .. import platform as _platform
 from .. import projects as _projects
+from ..cad import thumbs
 from ..cad.tools import PART_ID_RE
 from ..claude_code.session import MODEL_ALIASES, SOURCE as CLAUDE_CODE
 from ..events import Event
@@ -333,6 +334,27 @@ def build_ui_router(runtime: Runtime) -> UiRouter:
         if _etag_matches(request.headers.get("if-none-match"), etag):
             return Response(status_code=304, headers=headers)
         return Response(real.read_bytes(), media_type="model/gltf-binary", headers=headers)
+
+    @router.get("/parts/{part_id}/thumb.png")
+    async def part_thumb(part_id: str, request: Request, size: int = thumbs.DEFAULT_SIZE):
+        """A shaded thumbnail of the part, rendered in the sandboxed worker and cached by the
+        part's version (so a rebuild refreshes it). 404 until the part has a built mesh."""
+        if not PART_ID_RE.fullmatch(part_id):
+            raise MisesError(ErrorCode.INVALID_INPUT, f"bad part id: {part_id!r}",
+                             hint=f"part ids match {PART_ID_RE.pattern}")
+        home = Path(runtime.home)
+        row = runtime.store.get_part(part_id)
+        version = _projects.part_version(home, row) if row is not None else 0
+        sz = thumbs.clamp_size(size)
+        etag = f'"{part_id}-{sz}-v{version}"'
+        headers = {"ETag": etag, "Cache-Control": "private, no-cache"}
+        if _etag_matches(request.headers.get("if-none-match"), etag):
+            return Response(status_code=304, headers=headers)
+        png = await thumbs.part_thumb(home, part_id, version, sz)
+        if png is None:
+            raise MisesError(ErrorCode.NOT_FOUND, f"no thumbnail for part {part_id!r}",
+                             hint="build it first")
+        return Response(png, media_type="image/png", headers=headers)
 
     def _cancel_orphan(run_id: str) -> None:
         # "running" in the database but not driven here: nothing live to stop, fix the record
