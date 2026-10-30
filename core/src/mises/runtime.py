@@ -18,6 +18,7 @@ from .agent.definitions import load_definitions
 from .agent.loop import AgentLoop, LoopConfig, RunResult
 from .approvals import ApprovalService
 from .assembly.model import AssemblyStore
+from .assembly.internals import register_layout_tools
 from .assembly.tools import register_assembly_tools
 from .cad.tools import register_mirror_tools
 from .catalog import Catalog
@@ -141,6 +142,7 @@ class Runtime:
         register_engineering_tools(self.registry)
         register_orchestrator_tools(self.registry)
         register_assembly_tools(self.registry)
+        register_layout_tools(self.registry)  # Plan 8 G3: skeleton + internals
         register_catalog_tools(self.registry)
         self.orchestrator = Orchestrator(self)
         self.started_at = time.time()
