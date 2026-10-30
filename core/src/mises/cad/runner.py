@@ -12,6 +12,7 @@ from pathlib import Path
 
 from ..platform import kill_process_tree, sandboxed_command
 from . import safe_io
+from . import skeleton as _skeleton
 
 WORKER = Path(__file__).resolve().parent / "worker.py"
 _TAIL = 4000
@@ -27,6 +28,9 @@ class BuildResult:
     # op label -> the signatures its targets resolved to in THIS build (see cad/worker.py);
     # untrusted (the worker ran the part script), validated by edits.refresh_op_refs
     op_refs: dict = field(default_factory=dict)
+    # skeleton names (and other parts) the script read in THIS build (Plan 8 G3); untrusted,
+    # validated by cad/skeleton.record_refs
+    skeleton_refs: dict = field(default_factory=dict)
 
 
 def _kill_group(proc: asyncio.subprocess.Process) -> None:
@@ -44,9 +48,12 @@ async def reap(proc: asyncio.subprocess.Process) -> list[int]:
 
 
 async def run_build(part_dir: Path, vars: dict[str, float], *, timeout_s: float = 60,
-                    density_g_cm3: float = 1.24, vars_path: Path | None = None) -> BuildResult:
+                    density_g_cm3: float = 1.24, vars_path: Path | None = None,
+                    skeleton_file: Path | None = None) -> BuildResult:
     """Build part_dir/part.py with `vars`. `vars` is written to a temp file (or `vars_path`)
-    inside part_dir/tmp; the caller owns promoting it to vars.json."""
+    inside part_dir/tmp; the caller owns promoting it to vars.json. The layout skeleton the
+    script reads is `skeleton_file`, by default the snapshot staged in the part's host-only meta
+    dir (cad/skeleton.stage): readable by the sandbox, never writable by it."""
     part_dir = safe_io.real_dir(part_dir)
     os.close(safe_io.open_dir(part_dir))     # the part dir must be a plain dir, not a link
     tmp = part_dir / "tmp"
@@ -60,6 +67,9 @@ async def run_build(part_dir: Path, vars: dict[str, float], *, timeout_s: float 
     nonce = secrets.token_hex(16)
     env = {"MISES_NONCE": nonce, "PATH": "/usr/bin:/bin", "TMPDIR": str(tmp), "HOME": str(tmp),
            "MISES_DENSITY": repr(density_g_cm3), "PYTHONDONTWRITEBYTECODE": "1"}
+    skel = skeleton_file if skeleton_file is not None else _skeleton.staged_file(part_dir)
+    if skel is not None:
+        env["MISES_SKELETON"] = str(skel)
     proc = await asyncio.create_subprocess_exec(
         *sandboxed_command([sys.executable, "-I", str(WORKER), str(part_dir), str(vp)], part_dir),
         stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE,
@@ -91,5 +101,7 @@ async def run_build(part_dir: Path, vars: dict[str, float], *, timeout_s: float 
         return BuildResult(False, error=f"build did not complete (no valid result): {e}",
                            stdout_tail=tail)
     refs = result.get("op_refs")
+    skel_refs = result.get("skeleton_refs")
     return BuildResult(True, metrics=result["metrics"], vars=result.get("vars", {}),
-                       stdout_tail=tail, op_refs=refs if isinstance(refs, dict) else {})
+                       stdout_tail=tail, op_refs=refs if isinstance(refs, dict) else {},
+                       skeleton_refs=skel_refs if isinstance(skel_refs, dict) else {})

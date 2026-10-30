@@ -680,7 +680,21 @@ def _assembly(job_path: Path, nonce: str) -> None:
     os.replace(out_dir / "new_result.json", out_dir / "result.json")
 
 
-def _load_part(part_file: Path):
+def _layout():
+    """cad/layout_worker.py (skeleton accessors, cavity, packing), loaded from this file's
+    directory: `python -I` puts no script dir on sys.path, and the worker never imports mises."""
+    mod = sys.modules.get("mises_layout_worker")
+    if mod is None:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "mises_layout_worker", Path(__file__).resolve().parent / "layout_worker.py")
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules["mises_layout_worker"] = mod
+        spec.loader.exec_module(mod)
+    return mod
+
+
+def _load_part(part_file: Path, skeleton: str | None = None):
     """Execute part.py in a namespace that already has build123d in scope.
 
     Local models routinely write `-> build123d` annotations or call `Box(...)` /`bd.Box(...)`
@@ -698,6 +712,8 @@ def _load_part(part_file: Path):
     ns.update({"_mises_face": _mises_face, "_mises_edge": _mises_edge,
                "_mises_faces": _mises_faces, "_mises_edges": _mises_edges,
                "_mises_on_face": _mises_on_face})
+    # Plan 8 G3: read-only layout skeleton accessors (skeleton, datum, curve, envelope, ...)
+    _layout().install(ns, skeleton, part_file.parent)
     code = compile(part_file.read_text(), str(part_file), "exec",
                    flags=__future__.annotations.compiler_flag, dont_inherit=True)
     exec(code, ns)  # noqa: S102 - the sandboxed part script is the whole point
@@ -745,6 +761,12 @@ def main(argv: list[str]) -> int:
             raise RuntimeError("missing build nonce")
         _assembly(Path(argv[2]), nonce)
         return 0
+    if argv[1] == "--internals":
+        nonce = os.environ.pop("MISES_NONCE", "")
+        if not nonce:
+            raise RuntimeError("missing build nonce")
+        _layout().internals(Path(argv[2]), nonce)
+        return 0
     part_dir = Path(argv[1]).resolve()
     if len(argv) > 3 and argv[3] == "--drawing":
         nonce = os.environ.pop("MISES_NONCE", "")
@@ -759,9 +781,10 @@ def main(argv: list[str]) -> int:
     if not nonce:
         raise RuntimeError("missing build nonce")
     variables = json.loads(vars_path.read_text())
+    skeleton = os.environ.pop("MISES_SKELETON", None)
 
     try:
-        mod = _load_part(part_dir / "part.py")
+        mod = _load_part(part_dir / "part.py", skeleton)
     except BaseException as e:  # noqa: BLE001
         if isinstance(e, Exception):
             raise
@@ -805,7 +828,8 @@ def main(argv: list[str]) -> int:
         os.replace(tmp / ("new_" + name), part_dir / name)
     # Very last step: the result marker the runner trusts (carries the nonce).
     (tmp / "new_result.json").write_text(
-        json.dumps({"nonce": nonce, "metrics": metrics, "vars": merged, "op_refs": _RESOLVED}))
+        json.dumps({"nonce": nonce, "metrics": metrics, "vars": merged, "op_refs": _RESOLVED,
+                    "skeleton_refs": _layout().used_refs()}))
     os.replace(tmp / "new_result.json", part_dir / "result.json")
     return 0
 

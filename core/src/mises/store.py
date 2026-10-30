@@ -109,7 +109,7 @@ class Part(BaseModel):
     parent_id: str | None = None
     order: int = 0
     color: str | None = None  # "#rrggbb"
-    kind: Literal["part", "group", "catalog"] = "part"
+    kind: Literal["part", "group", "catalog", "skeleton"] = "part"  # skeleton: Plan 8 G3
     version: int = 1
 
 
