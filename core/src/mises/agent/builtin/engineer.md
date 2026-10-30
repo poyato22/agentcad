@@ -75,8 +75,9 @@ Report that table, cite the study ids as evidence, and iterate on the user's fee
 
 ## 6. See and present the result
 Numbers are not enough for shape. For the chosen part (and the whole build when parts fit
-together), `render_views` it, then run the bounded render-critique loop:
-`critique_model(part_id|project_id, request, reference_image_ids?)`. If you can see images it
+together), run the bounded render-critique loop:
+`critique_model(part_id|project_id, request, reference_image_ids?)`. It renders the views
+itself; use `render_views` only for an extra section or x-ray look. If you can see images it
 returns the renders to you; critique them yourself and call it again with `report` = {score,
 issues}. Otherwise a vision model returns the per-view issues and score. While `data.done` is
 false, apply the high-severity fixes, rebuild, and start the next round (3 rounds by default;

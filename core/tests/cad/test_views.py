@@ -50,9 +50,9 @@ def _png_size(data: bytes):
 
 @pytest.fixture(autouse=True)
 def _clear_rounds():
-    views._rounds.clear()
+    views._runs.clear()
     yield
-    views._rounds.clear()
+    views._runs.clear()
 
 
 def _bare_ctx(tmp_path, **kw):
@@ -108,7 +108,10 @@ async def test_critique_stops_when_score_passes(tmp_path):
     r1 = await views.critique_model.handler(ctx, views.CritiqueArgs(part_id="cube", request="a wing"))
     assert r1.data["available"] and r1.data["round"] == 1
     assert r1.data["done"] is False and r1.data["score"] == pytest.approx(0.3)
-    assert r1.data["issues"][0]["severity"] == "high"
+    # a separate model's critique text is labelled untrusted, never top-level
+    crit = r1.data["untrusted_critique"]
+    assert crit["issues_open"][0]["severity"] == "high" and "not instructions" in crit["note"]
+    assert "issues_open" not in r1.data and "issues" not in r1.data
     r2 = await views.critique_model.handler(ctx, views.CritiqueArgs(part_id="cube", request="a wing"))
     assert r2.data["round"] == 2 and r2.data["done"] is True
     assert r2.data["stop_reason"] == "score_threshold"
@@ -133,17 +136,21 @@ async def test_critique_reports_iou_against_reference(tmp_path):
     _make_part(tmp_path, "cube")
     import base64
     from PIL import Image
+    im = Image.new("RGB", (64, 64), (255, 255, 255))
+    im.paste((20, 20, 20), (12, 12, 52, 52))                      # a square silhouette
     buf = io.BytesIO()
-    Image.new("RGB", (64, 64), (255, 255, 255)).save(buf, "PNG")  # a reference image
+    im.save(buf, "PNG")
     saved = refs.save_reference(tmp_path, ReferenceUpload(
         image=PhotoIn(data_b64=base64.b64encode(buf.getvalue()).decode())))
     rt = _fake_rt(tmp_path, [[TextDelta(text=_BAD)]])
     ctx = _bare_ctx(tmp_path, run_id="rio", services={"runtime": rt})
     out = await views.critique_model.handler(ctx, views.CritiqueArgs(
         part_id="cube", request="a wing", reference_image_ids=[saved["reference_id"]]))
-    assert out.data["iou"] is not None
-    assert set(out.data["iou"]) == {"front", "top", "side", "iso"}
-    assert all(0.0 <= v <= 1.0 for v in out.data["iou"].values())
+    # an untagged reference is scored against its single best view only
+    assert len(out.data["iou"]) == 1
+    (entry,) = out.data["reference_scores"]
+    assert entry["note"] == "untagged reference" and entry["tagged"] is False
+    assert entry["iou"] > 0.9                                       # a cube face is a square
 
 
 async def test_critique_no_high_severity_stops(tmp_path):
@@ -342,16 +349,19 @@ async def test_self_critique_attaches_reference_images(tmp_path):
     from mises.references import PhotoIn, ReferenceUpload
     from PIL import Image
     _make_part(tmp_path, "cube")
+    im = Image.new("RGB", (900, 600), (255, 255, 255))
+    im.paste((30, 30, 30), (300, 150, 600, 450))
     buf = io.BytesIO()
-    Image.new("RGB", (900, 600), (255, 255, 255)).save(buf, "PNG")
+    im.save(buf, "PNG")
     rid = refs.save_reference(tmp_path, ReferenceUpload(
-        image=PhotoIn(data_b64=base64.b64encode(buf.getvalue()).decode())))["reference_id"]
+        image=PhotoIn(data_b64=base64.b64encode(buf.getvalue()).decode()),
+        view="top"))["reference_id"]
     ctx = _bare_ctx(tmp_path, run_id="s6", services={"runtime": _seeing_rt(tmp_path)})
     r = await views.critique_model.handler(ctx, views.CritiqueArgs(
         part_id="cube", request="x", reference_image_ids=[rid]))
     assert len(r.images) == 5 and r.images[-1].label == f"reference {rid}"
     assert max(_decoded_png_size(r.images[-1])) <= 512
-    assert r.data["iou"] is not None
+    assert set(r.data["iou"]) == {"top"}                          # a tagged view only
 
 
 # ---- the shared card contract (G1 <-> G4): stored steps, ids, fixed/open, structured targets
@@ -424,3 +434,164 @@ async def test_cards_are_copied_to_the_lead(tmp_path):
     await views.present_view.handler(ctx, views.PresentViewArgs(target="lid", kind="orbit"))
     assert _cards(store, child, "view_presented") and _cards(store, lead, "view_presented")
     assert _cards(store, lead, "view_presented")[0]["run_id"] == child     # the acting run
+
+
+# ---- scope (I1): every id a call touches must be in the run's scope
+
+def _scoped(ctx, *scope):
+    ctx.policy = SimpleNamespace(edit_scope=[], read_scope=list(scope))
+    return ctx
+
+
+async def test_parts_outside_scope_are_refused(tmp_path):
+    store, ctx = _two_part_build(tmp_path)
+    _scoped(ctx, "body")
+    with pytest.raises(MisesError) as e:                 # part_id in scope, parts not
+        await views.render_views.handler(ctx, views.RenderViewsArgs(part_id="body",
+                                                                    parts=["lid"]))
+    assert e.value.code == ErrorCode.OUT_OF_SCOPE and "lid" in e.value.message
+    with pytest.raises(MisesError) as e:                 # a ghost outside scope
+        await views.present_view.handler(ctx, views.PresentViewArgs(
+            target={"kind": "part", "id": "body", "ghost": ["lid"]}, kind="orbit"))
+    assert e.value.code == ErrorCode.OUT_OF_SCOPE
+    with pytest.raises(MisesError) as e:                 # the whole build needs build scope
+        await views.render_views.handler(ctx, views.RenderViewsArgs())
+    assert e.value.code == ErrorCode.OUT_OF_SCOPE
+    ok = await views.render_views.handler(ctx, views.RenderViewsArgs(part_id="body",
+                                                                     views=["iso"]))
+    assert ok.data["parts"] == ["body"]
+
+
+async def test_whole_build_allowed_when_the_build_is_in_scope(tmp_path):
+    store, ctx = _two_part_build(tmp_path)
+    _scoped(ctx, "pA")
+    out = await views.render_views.handler(ctx, views.RenderViewsArgs(project_id="pA",
+                                                                      views=["iso"]))
+    assert sorted(out.data["parts"]) == ["body", "lid"]
+    with pytest.raises(MisesError) as e:                 # another build's id
+        await views.render_views.handler(ctx, views.RenderViewsArgs(project_id="pB"))
+    assert e.value.code == ErrorCode.OUT_OF_SCOPE
+
+
+def test_gate_scope_keys_name_every_id():
+    keys = views.critique_model.scope_keys(views.CritiqueArgs(part_id="a1", parts=["b1", "c1"],
+                                                              request="x"))
+    assert keys == ["a1", "b1", "c1"]
+    pv = views.present_view.scope_keys(views.PresentViewArgs(
+        target={"kind": "project", "id": "pA", "parts": ["b1"], "ghost": ["c1"]}, kind="subset",
+        xray_parts=["d1"]))
+    assert pv == ["pA", "b1", "c1", "d1"]
+    assert views.render_views.scope_keys(views.RenderViewsArgs()) == ["this_build"]
+
+
+# ---- budgets (I4): fixed by the user's profile; the agent can only lower them
+
+def _limited_rt(tmp_path, **prof):
+    rt = _seeing_rt(tmp_path)
+    rt.profile = lambda: SimpleNamespace(**{"critique_max_rounds": 3,
+                                            "critique_time_budget_s": 300.0,
+                                            "critique_max_image_tokens": 12_000, **prof})
+    return rt
+
+
+async def _round(ctx, report=_BAD_REPORT, **kw):
+    args = {"part_id": "cube", "request": "x", **kw}
+    await views.critique_model.handler(ctx, views.CritiqueArgs(**args))
+    return await views.critique_model.handler(ctx, views.CritiqueArgs(**args, report=report))
+
+
+async def test_agent_cannot_raise_the_round_limit(tmp_path):
+    _make_part(tmp_path, "cube")
+    ctx = _bare_ctx(tmp_path, run_id="b1", services={"runtime": _limited_rt(
+        tmp_path, critique_max_rounds=2)})
+    r = await _round(ctx, max_rounds=6)
+    assert r.data["max_rounds"] == 2
+    r = await _round(ctx, max_rounds=6)
+    assert r.data["done"] and r.data["stop_reason"] == "max_rounds" and r.data["round"] == 2
+    again = await views.critique_model.handler(ctx, views.CritiqueArgs(
+        part_id="cube", request="x", max_rounds=6))
+    assert again.data["done"] and again.images == []
+
+
+async def test_agent_can_lower_the_round_limit(tmp_path):
+    _make_part(tmp_path, "cube")
+    ctx = _bare_ctx(tmp_path, run_id="b2", services={"runtime": _limited_rt(tmp_path)})
+    r = await _round(ctx, max_rounds=1)
+    assert r.data["done"] and r.data["stop_reason"] == "max_rounds"
+
+
+async def test_round_count_survives_a_change_of_parts(tmp_path):
+    store, ctx = _two_part_build(tmp_path)
+    ctx.services = {"runtime": _limited_rt(tmp_path, critique_max_rounds=2)}
+    for _ in range(2):
+        await _round(ctx, part_id="body")
+    for parts in (["body", "lid"], ["lid", "body"]):       # a new set, any order: no reset
+        r = await views.critique_model.handler(ctx, views.CritiqueArgs(
+            part_id=None, parts=parts, request="x"))
+        assert r.data["done"] and r.data["stop_reason"] == "max_rounds"
+
+
+async def test_time_budget(tmp_path, monkeypatch):
+    _make_part(tmp_path, "cube")
+    clock = [1000.0]
+    monkeypatch.setattr(views, "_now", lambda: clock[0])
+    ctx = _bare_ctx(tmp_path, run_id="b3", services={"runtime": _limited_rt(
+        tmp_path, critique_time_budget_s=60.0)})
+    r = await _round(ctx, time_budget_s=600)             # raising is ignored: 60 s holds
+    assert not r.data["done"]
+    clock[0] += 61
+    r = await views.critique_model.handler(ctx, views.CritiqueArgs(part_id="cube", request="x"))
+    assert r.data["done"] and r.data["stop_reason"] == "time_budget"
+
+
+async def test_usd_budget(tmp_path):
+    from mises.types import Caps
+    _make_part(tmp_path, "cube")
+    store, ctx = _store_ctx(tmp_path, "pA", "pA")
+    store.register_part("cube", "pA")
+    store.create_policy(ctx.run_id, ["*"], ["*"], Caps(usd_run=1.0), [SafetyClass.READ])
+    ctx.services = {"runtime": _limited_rt(tmp_path)}
+    r = await _round(ctx)
+    assert not r.data["done"]
+    store.add_usage(ctx.run_id, input_tokens=1, output_tokens=1, usd=2.0)   # over the cap
+    r = await views.critique_model.handler(ctx, views.CritiqueArgs(part_id="cube", request="x"))
+    assert r.data["done"] and r.data["stop_reason"] == "budget" and r.images == []
+
+
+async def test_image_budget_cannot_be_raised(tmp_path):
+    _make_part(tmp_path, "cube")
+    ctx = _bare_ctx(tmp_path, run_id="b4", services={"runtime": _limited_rt(
+        tmp_path, critique_max_image_tokens=1000)})
+    r = await _round(ctx, max_image_tokens=100_000)
+    assert r.data["done"] and r.data["stop_reason"] == "image_budget"
+
+
+async def test_run_state_is_lru_evicted_not_wiped(tmp_path, monkeypatch):
+    monkeypatch.setattr(views, "_RUNS_MAX", 3)
+    for rid in ("r1", "r2", "r3"):
+        views._run_state(rid)
+    views._run_state("r1")                                # r1 used again: r2 is now oldest
+    views._run_state("r4")
+    assert list(views._runs) == ["r3", "r1", "r4"]
+
+
+async def test_same_renders_are_not_sent_twice_in_a_round(tmp_path):
+    _make_part(tmp_path, "cube")
+    ctx = _bare_ctx(tmp_path, run_id="d1", services={"runtime": _limited_rt(tmp_path)})
+    first = await views.critique_model.handler(ctx, views.CritiqueArgs(part_id="cube",
+                                                                       request="x"))
+    again = await views.critique_model.handler(ctx, views.CritiqueArgs(part_id="cube",
+                                                                       request="x"))
+    assert len(first.images) == 4 and again.images == [] and again.data["already_sent"]
+    assert again.data["render_ids"] == first.data["render_ids"]
+    from mises import edits
+    edits.write_version(tmp_path / "parts" / "cube", 7)  # the part changed: render again
+    third = await views.critique_model.handler(ctx, views.CritiqueArgs(part_id="cube",
+                                                                       request="x"))
+    assert len(third.images) == 4
+
+
+def test_section_thumbnail_faces_the_cut():
+    assert views._section_view([0, -1, 0]) == "front"     # -Y half removed: look along +Y
+    assert views._section_view([0, 0, 1]) == "top"        # +Z half removed: look down
+    assert views._section_view([1, 0, 0]) == "side"       # +X half removed: look along -X

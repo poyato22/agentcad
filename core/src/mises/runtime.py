@@ -6,6 +6,7 @@ import contextlib
 import functools
 import logging
 import os
+import re
 import shutil
 import time
 import uuid
@@ -72,11 +73,20 @@ def tools_withheld_for(model_ref: str) -> frozenset[str]:
 VISION_VENDORS = frozenset({"anthropic", "openai", "gemini", CLAUDE_CODE})
 
 
+#: Text-only models of otherwise vision-capable vendors: sent an image, they reject the request
+#: (and every later turn that still carries it), so they must never be treated as seeing.
+_TEXT_ONLY = re.compile(r"^(o1-mini|o1-preview|o3-mini|gpt-3\.5|text-|davinci|babbage|tts-|"
+                        r"whisper|omni-moderation|gemini-1\.0-pro|gemini-pro$)|embedding|"
+                        r"-instruct\b")
+
+
 def is_vision_model(model_ref: str) -> bool:
-    vendor = model_ref.split("/", 1)[0]
-    if model_ref.startswith("claude-"):
+    vendor, _, model = model_ref.partition("/")
+    if model_ref.startswith("claude-") or vendor == CLAUDE_CODE:
         return True
-    return vendor in VISION_VENDORS
+    if vendor not in VISION_VENDORS:
+        return False
+    return _TEXT_ONLY.search(model.lower()) is None
 
 
 USER = "local"

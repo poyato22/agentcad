@@ -27,17 +27,25 @@ _add(0.6, "organic", "freeform", "sculpt", "sculpted", "ergonomic", "streamlined
      "blended", "teardrop", "biomimetic", "contoured")
 # enclosures with internals and multi-part systems
 _add(0.5, "enclosure", "internals", "internal components", "pack the", "cavity",
-     "assembly", "mechanism", "linkage", "gearbox", "housing with", "vented case")
+     "assembly", "mechanism", "linkage", "gearbox", "housing with", "vented case",
+     "electronics case", "battery case", "phone case", "project case")
+# ("case" alone is not a signal: "in case the user ..." is not an enclosure)
 _add(0.35, "curved", "curve", "sweep", "revolve", "shell", "fillet", "chamfer", "rounded",
-     "dome", "turbine", "blade", "helix", "spiral", "case", "housing", "lid", "cowling")
-# explicitly simple prismatic parts pull the score down
-_add(0.0, "box", "plate", "block", "cube", "cylinder", "washer", "spacer", "standoff",
-     "bracket", "flat")
+     "dome", "turbine", "blade", "helix", "spiral", "housing", "lid", "cowling")
 
-_SIMPLE = {"box", "plate", "block", "cube", "cylinder", "washer", "spacer", "flat"}
+# explicitly simple prismatic parts: when a request names one and has no strong shape signal,
+# its weak signals (a filleted plate is still a plate) count for less
+_SIMPLE = ("box", "plate", "block", "cube", "cylinder", "washer", "spacer", "standoff",
+           "bracket", "flat")
+_STRONG = 0.5
+_SIMPLE_DAMPING = 0.6
 
 HIGH = 0.6
 MEDIUM = 0.3
+
+
+def _has(term: str, text: str) -> bool:
+    return re.search(r"\b" + re.escape(term) + r"\b", text) is not None
 
 
 def estimate(prompt: str) -> dict:
@@ -46,19 +54,12 @@ def estimate(prompt: str) -> dict:
     score is 0..1, saturating as more/heavier signals appear. level is "low"|"medium"|"high".
     vision_recommended is True when a vision-capable model is worth preferring."""
     text = (prompt or "").lower()
-    matched: list[str] = []
-    weight = 0.0
-    for term, w in _SIGNALS.items():
-        if w <= 0:
-            continue
-        if re.search(r"\b" + re.escape(term) + r"\b", text):
-            matched.append(term)
-            weight += w
+    matched = [t for t in _SIGNALS if _has(t, text)]
+    simple = [t for t in _SIMPLE if _has(t, text)]
     # saturating combine so a long prompt with many weak hits cannot run away
-    score = 1.0 - _prod(1.0 - min(w, 0.95) for w in (_SIGNALS[t] for t in matched))
-    simple_only = bool(matched) and all(t in _SIMPLE for t in matched)
-    if simple_only or not matched:
-        score = min(score, 0.2)
+    score = 1.0 - _prod(1.0 - min(_SIGNALS[t], 0.95) for t in matched)
+    if simple and not any(_SIGNALS[t] >= _STRONG for t in matched):
+        score *= _SIMPLE_DAMPING
     score = round(float(score), 2)
     level = "high" if score >= HIGH else "medium" if score >= MEDIUM else "low"
     return {"score": score, "level": level, "signals": sorted(set(matched)),

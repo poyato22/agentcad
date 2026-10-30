@@ -3,33 +3,12 @@ the calling model critiques its own renders: no second vision model, no "unavail
 import base64
 import io
 import json
-import struct
 
-import numpy as np
 from mcp_types import ImageContent, TextContent
 
 from mises.claude_code.session import SOURCE as CLAUDE_CODE
 
-from .test_mcp import mcp_client, running
-
-
-def _cube_stl() -> bytes:
-    s = 10.0
-    v = {0: (-s, -s, -s), 1: (s, -s, -s), 2: (s, s, -s), 3: (-s, s, -s),
-         4: (-s, -s, s), 5: (s, -s, s), 6: (s, s, s), 7: (-s, s, s)}
-    quads = [(0, 1, 2, 3), (4, 5, 6, 7), (0, 1, 5, 4), (2, 3, 7, 6), (1, 2, 6, 5), (0, 3, 7, 4)]
-    tris = np.array([[v[a], v[b], v[c]] for a, b, c, d in quads] +
-                    [[v[a], v[c], v[d]] for a, b, c, d in quads], dtype=np.float32)
-    rec = np.zeros(len(tris), dtype=[("n", "<f4", (3,)), ("v", "<f4", (3, 3)), ("a", "<u2")])
-    rec["v"] = tris
-    return b"\0" * 80 + struct.pack("<I", len(tris)) + rec.tobytes()
-
-
-def _put_part(rt, part_id="cube"):
-    d = rt.home / "parts" / part_id
-    d.mkdir(parents=True, exist_ok=True)
-    (d / "model.stl").write_bytes(_cube_stl())
-    (d / "metrics.json").write_text("{}")
+from .mcp_helpers import mcp_client, put_part as _put_part, running
 
 
 def _png_size(b64: str):

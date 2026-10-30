@@ -16,7 +16,9 @@ import secrets
 import shutil
 from pathlib import Path
 
-from pydantic import BaseModel, Field
+from typing import Literal
+
+from pydantic import BaseModel, Field, model_validator
 
 from .sketch import PhotoIn, _decode_b64, normalize_photo
 from .types import ErrorCode, MisesError
@@ -24,12 +26,32 @@ from .types import ErrorCode, MisesError
 REF_ID_RE = re.compile(r"^ref_[0-9a-f]{12}$")
 _EXT = {"jpeg": "jpg", "png": "png"}
 MAX_REFERENCES = 24          # listed per build in the agent's context
+VIEWS = ("front", "top", "side", "iso")
+RefView = Literal["front", "top", "side", "iso", "sheet", "unknown"]
+
+
+class Region(BaseModel):
+    """One panel of a sheet (a three-view): fractions of the image, 0..1, x0 < x1, y0 < y1."""
+    x0: float = Field(ge=0, le=1)
+    y0: float = Field(ge=0, le=1)
+    x1: float = Field(ge=0, le=1)
+    y1: float = Field(ge=0, le=1)
+
+    @model_validator(mode="after")
+    def _ordered(self):
+        if not (self.x0 < self.x1 and self.y0 < self.y1):
+            raise ValueError("a region needs x0 < x1 and y0 < y1")
+        return self
 
 
 class ReferenceUpload(BaseModel):
     image: PhotoIn
     project_id: str | None = None
     kind: str = Field(default="image")       # "image" or "three_view" (a hint for the agent)
+    # which standard view the image shows; "sheet" = several views in one image, located by
+    # `regions`; "unknown" = scored against the best-matching view only
+    view: RefView | None = None
+    regions: dict[Literal["front", "top", "side", "iso"], Region] = Field(default_factory=dict)
     note: str = Field(default="", max_length=400)
 
 
@@ -50,7 +72,9 @@ def save_reference(home: Path, up: ReferenceUpload) -> dict:
     d.mkdir(parents=True, exist_ok=False)
     (d / f"image.{_EXT[fmt]}").write_bytes(data)
     kind = up.kind if up.kind in ("image", "three_view") else "image"
-    meta = {"reference_id": rid, "project_id": up.project_id, "kind": kind,
+    view = up.view or ("sheet" if kind == "three_view" or up.regions else "unknown")
+    meta = {"reference_id": rid, "project_id": up.project_id, "kind": kind, "view": view,
+            "regions": {v: r.model_dump() for v, r in up.regions.items()},
             "note": up.note, "name": up.image.name, **info}
     (d / "meta.json").write_text(json.dumps(meta))    # last: marks it complete
     return _public(meta)
@@ -58,7 +82,8 @@ def save_reference(home: Path, up: ReferenceUpload) -> dict:
 
 def _public(meta: dict) -> dict:
     return {"reference_id": meta["reference_id"], "project_id": meta.get("project_id"),
-            "kind": meta.get("kind", "image"), "note": meta.get("note", ""),
+            "kind": meta.get("kind", "image"), "view": meta.get("view", "unknown"),
+            "regions": meta.get("regions") or {}, "note": meta.get("note", ""),
             "media_type": meta.get("media_type"), "width": meta.get("width"),
             "height": meta.get("height")}
 

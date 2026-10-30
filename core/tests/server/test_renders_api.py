@@ -13,8 +13,7 @@ import httpx2
 from mises.claude_code.session import SOURCE as CLAUDE_CODE
 
 from .conftest import AUTH
-from .test_mcp import running
-from .test_mcp_images import _put_part
+from .mcp_helpers import put_part as _put_part, running
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "g1_cards.json"
 
@@ -79,6 +78,8 @@ async def test_card_contract_matches_the_shared_fixture(rt):
     _put_part(rt, "body")
     _put_part(rt, "lid")
     rid = rt.create_external_run("designer", provider=CLAUDE_CODE, model="opus")
+    for p in ("body", "lid"):                     # parts belong to the run's build
+        rt.store.register_part(p, rt.store.get_run(rid).project_id)
     report = {"score": 0.4, "issues": [{"view": "front", "issue": "flat wing", "severity": "high",
                                         "suggested_fix": "loft NACA sections"}]}
     base = {"part_id": "body", "request": "a B-2 bomber"}

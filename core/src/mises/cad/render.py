@@ -64,15 +64,53 @@ class Mesh:
 
 
 # ---- mesh loading (binary or ASCII STL)
+#
+# The STL is written by the sandboxed build, so it is attacker-shaped input: its size, its
+# triangle count and its coordinates are all bounded here before anything is rasterised.
+
+MAX_STL_BYTES = 50 * 1024 * 1024
+MAX_TRIANGLES = 2_000_000
+# a vertex further than this from the origin, or more than OUTLIER_FACTOR x the 90th percentile
+# distance from the mesh's median, is an outlier: it would set the framing and shrink the model
+# to a dot (a long legitimate spar is still well inside 50x the 90th percentile)
+MAX_COORD_MM = 1e6
+OUTLIER_FACTOR = 50.0
+
+
+class RenderError(ValueError):
+    """The mesh cannot be rendered within the renderer's bounds (too big, too complex, empty)."""
+
 
 def load_stl(data: bytes) -> np.ndarray:
     """Triangles (N, 3, 3) from STL bytes. Binary and ASCII are both accepted; the real build
-    worker writes binary STL, but a hand-written ASCII solid loads too."""
+    worker writes binary STL, but a hand-written ASCII solid loads too. Refuses files over
+    MAX_STL_BYTES or MAX_TRIANGLES (RenderError)."""
+    if len(data) > MAX_STL_BYTES:
+        raise RenderError(f"the mesh is {len(data) / 2**20:.0f} MB, over the "
+                          f"{MAX_STL_BYTES // 2**20} MB render limit")
     if _looks_ascii_stl(data):
         tris = _load_ascii_stl(data)
         if len(tris):
             return tris
     return _load_binary_stl(data)
+
+
+def clean_triangles(tris: np.ndarray) -> tuple[np.ndarray, int]:
+    """(triangles with every non-finite or far-outlier vertex dropped, how many were dropped).
+    One NaN or 1e38 vertex would otherwise blank the whole render silently."""
+    tris = np.asarray(tris, dtype=np.float64).reshape(-1, 3, 3)
+    if len(tris) == 0:
+        return tris, 0
+    with np.errstate(invalid="ignore", over="ignore"):
+        ok = np.isfinite(tris).all(axis=(1, 2)) & (np.abs(tris) < MAX_COORD_MM).all(axis=(1, 2))
+        kept = tris[ok]
+        if len(kept):
+            pts = kept.reshape(-1, 3)
+            center = np.median(pts, axis=0)
+            dist = np.linalg.norm(pts - center, axis=1).reshape(-1, 3).max(axis=1)
+            limit = max(float(np.percentile(dist, 90)) * OUTLIER_FACTOR, 1e-6)
+            kept = kept[dist <= limit]
+    return kept, int(len(tris) - len(kept))
 
 
 def _looks_ascii_stl(data: bytes) -> bool:
@@ -84,6 +122,8 @@ def _load_binary_stl(data: bytes) -> np.ndarray:
     if len(data) < 84:
         raise ValueError("STL too short for a binary header")
     (n,) = struct.unpack_from("<I", data, 80)
+    if n > MAX_TRIANGLES:
+        raise RenderError(f"the mesh has {n} triangles, over the {MAX_TRIANGLES} render limit")
     expected = 84 + n * 50
     if n == 0 or len(data) < expected:
         raise ValueError("binary STL triangle count does not match its length")
@@ -97,7 +137,13 @@ def _load_ascii_stl(data: bytes) -> np.ndarray:
     for line in data.decode("ascii", "replace").splitlines():
         parts = line.split()
         if len(parts) == 4 and parts[0] == "vertex":
-            verts.append([float(parts[1]), float(parts[2]), float(parts[3])])
+            try:
+                verts.append([float(parts[1]), float(parts[2]), float(parts[3])])
+            except ValueError:
+                continue
+            if len(verts) > 3 * MAX_TRIANGLES:
+                raise RenderError(f"the mesh has over {MAX_TRIANGLES} triangles, over the "
+                                  "render limit")
     if len(verts) < 3 or len(verts) % 3 != 0:
         return np.empty((0, 3, 3))
     return np.array(verts, dtype=np.float64).reshape(-1, 3, 3)
@@ -189,75 +235,25 @@ def _clip_triangle(tri: np.ndarray, d: np.ndarray) -> list[np.ndarray]:
     return poly
 
 
-# ---- rasterization (vectorised)
+# ---- rasterization (vectorised, streaming)
 #
-# Every triangle of every mesh is projected at once. Triangles are bucketed by the size of their
-# pixel bounding box (next power of two), and each bucket is rasterised as one numpy batch: the
-# candidate pixel centres of all its triangles are tested with barycentric coordinates together.
-# The fragments (pixel, depth, triangle) are then resolved by a single sort: the nearest fragment
-# per pixel wins (z-buffer); for x-ray they are composited front to back with per-triangle
-# opacity.
+# Every triangle of every mesh is projected at once. Small triangles are rasterised in batches
+# that test the candidate pixel centres of each triangle's (power-of-two) bounding box with
+# barycentric coordinates; triangles with a large bounding box go through a vectorised
+# scanline path instead (a planar face's long thin slivers would waste nearly all of a box
+# test). Fragments are produced in bounded batches and folded into a running z-buffer batch by
+# batch, so memory never depends on how many layers a hostile or dense mesh stacks per pixel;
+# x-ray composites with weighted-blended order-independent transparency, also batch by batch.
+# The total work is bounded up front by MAX_LAYERS (estimated covered area / frame area).
 
-_FRAG_CHUNK = 2_000_000                       # candidate pixels per batch, bounds peak memory
-# Triangles whose pixel bbox is wider/taller than this go through the scanline path instead of
-# the box batch: a long thin triangle (typical of a planar face's fan triangulation) has a huge
-# bbox but little area, and testing every pixel of its box is what made such meshes slow.
+_FRAG_CHUNK = 250_000                         # fragments (or candidates) per batch (~50 MB)
+# Triangles whose pixel bbox is wider/taller than this go through the scanline path.
 _BOX_MAX = 8
-_SCAN_CHUNK = 4_000_000                       # pixels per scanline batch
-
-
-def _scan_fragments(fr: _Frame, ids, x0, x1, y0, y1, denom, size: int,
-                    pix_out: list, dep_out: list, tri_out: list) -> None:
-    """Scanline fragments of the triangles `ids`, all at once: for every (triangle, pixel row)
-    the row centre's crossing with the three edges gives an x span, and only the pixels in that
-    span are generated, so the work is the triangle's area, not its bounding box."""
-    px, py, pz = fr.px, fr.py, fr.pz
-    h = y1[ids] - y0[ids] + 1
-    # rows in batches so a very large mesh cannot blow up memory
-    cum = np.cumsum(h)
-    starts = np.searchsorted(cum, np.arange(0, cum[-1], _SCAN_CHUNK), side="right")
-    bounds = list(starts) + [len(ids)]
-    for lo_i, hi_i in zip(bounds[:-1], bounds[1:]):
-        if hi_i <= lo_i:
-            continue
-        t_ids = ids[lo_i:hi_i]
-        hh = h[lo_i:hi_i]
-        rep = np.repeat(np.arange(len(t_ids)), hh)
-        first_row = np.repeat(np.cumsum(hh) - hh, hh)
-        tri = t_ids[rep]
-        ry = y0[tri] + (np.arange(len(rep)) - first_row)
-        yc = ry + 0.5
-        xl = np.full(len(rep), np.inf)
-        xr = np.full(len(rep), -np.inf)
-        for i, j in ((0, 1), (1, 2), (2, 0)):
-            yi, yj, xi, xj = py[tri, i], py[tri, j], px[tri, i], px[tri, j]
-            dy = yj - yi
-            hit = (np.minimum(yi, yj) <= yc) & (yc <= np.maximum(yi, yj)) & (np.abs(dy) > 1e-12)
-            with np.errstate(divide="ignore", invalid="ignore"):
-                x = np.where(hit, xi + (yc - yi) * (xj - xi) / np.where(hit, dy, 1.0), 0.0)
-            xl = np.where(hit, np.minimum(xl, x), xl)
-            xr = np.where(hit, np.maximum(xr, x), xr)
-        good = np.isfinite(xl) & np.isfinite(xr)
-        cx0 = np.where(good, np.ceil(xl - 0.5), 0).astype(np.int64)
-        cx1 = np.where(good, np.floor(xr - 0.5), -1).astype(np.int64)
-        cx0 = np.maximum(cx0, x0[tri])
-        cx1 = np.minimum(cx1, x1[tri])
-        n = np.maximum(cx1 - cx0 + 1, 0)
-        if n.sum() == 0:
-            continue
-        rep2 = np.repeat(np.arange(len(rep)), n)
-        first_px = np.repeat(np.cumsum(n) - n, n)
-        X = cx0[rep2] + (np.arange(len(rep2)) - first_px)
-        Y = ry[rep2]
-        t = tri[rep2]
-        gx, gy = X + 0.5, Y + 0.5
-        tx, ty, dn = px[t], py[t], denom[t]
-        a = ((ty[:, 1] - ty[:, 2]) * (gx - tx[:, 2]) + (tx[:, 2] - tx[:, 1]) * (gy - ty[:, 2])) / dn
-        b = ((ty[:, 2] - ty[:, 0]) * (gx - tx[:, 2]) + (tx[:, 0] - tx[:, 2]) * (gy - ty[:, 2])) / dn
-        z = pz[t]
-        pix_out.append(Y * size + X)
-        dep_out.append(a * z[:, 0] + b * z[:, 1] + (1.0 - a - b) * z[:, 2])
-        tri_out.append(t)
+_SCAN_ROWS = 250_000                          # (triangle, row) pairs per scanline batch
+# Average layers per pixel a view may cost (sum of projected triangle areas / frame area). A
+# closed solid is ~2; a dense assembly seen through its stack maybe 10-20. A stack of thousands
+# of full-frame triangles (the hostile case) is refused before any rasterising.
+MAX_LAYERS = 64
 
 
 @dataclass
@@ -299,12 +295,8 @@ def _project(meshes: list[Mesh], view: str, size: int, framing) -> _Frame:
     return _Frame(px, py, pz, shade, alpha)
 
 
-def _fragments(fr: _Frame, size: int):
-    """(pixel index, depth, triangle index) of every covered pixel centre, all triangles."""
-    px, py, pz = fr.px, fr.py, fr.pz
-    empty = (np.zeros(0, dtype=np.int64), np.zeros(0), np.zeros(0, dtype=np.int64))
-    if len(px) == 0:
-        return empty
+def _setup(fr: _Frame, size: int):
+    px, py = fr.px, fr.py
     x0 = np.maximum(np.ceil(px.min(axis=1) - 0.5), 0).astype(np.int64)
     x1 = np.minimum(np.floor(px.max(axis=1) - 0.5), size - 1).astype(np.int64)
     y0 = np.maximum(np.ceil(py.min(axis=1) - 0.5), 0).astype(np.int64)
@@ -312,26 +304,33 @@ def _fragments(fr: _Frame, size: int):
     denom = ((py[:, 1] - py[:, 2]) * (px[:, 0] - px[:, 2])
              + (px[:, 2] - px[:, 1]) * (py[:, 0] - py[:, 2]))
     live = np.nonzero((x1 >= x0) & (y1 >= y0) & (np.abs(denom) > 1e-12))[0]
-    if len(live) == 0:
-        return empty
-    ext = np.maximum(x1[live] - x0[live] + 1, y1[live] - y0[live] + 1)
-    pix_out, dep_out, tri_out = [], [], []
-    big = live[ext > _BOX_MAX]
-    if len(big):
-        _scan_fragments(fr, big, x0, x1, y0, y1, denom, size, pix_out, dep_out, tri_out)
-    live, ext = live[ext <= _BOX_MAX], ext[ext <= _BOX_MAX]
-    bucket = np.ceil(np.log2(ext)).astype(np.int64) if len(live) else np.zeros(0, np.int64)
+    return x0, x1, y0, y1, denom, live
+
+
+def _check_budget(denom, live, size: int) -> None:
+    """Refuse before rasterising when the view would cost more than MAX_LAYERS per pixel."""
+    area = 0.5 * float(np.abs(denom[live]).sum())
+    layers = area / float(size * size)
+    if layers > MAX_LAYERS:
+        raise RenderError(f"the view is too complex to render: about {layers:.0f} layers per "
+                          f"pixel (limit {MAX_LAYERS})")
+
+
+def _box_batches(fr: _Frame, ids, x0, x1, y0, y1, denom, size: int):
+    """Fragments (pix, depth, tri) of small triangles, in bounded batches."""
+    px, py, pz = fr.px, fr.py, fr.pz
+    ext = np.maximum(x1[ids] - x0[ids] + 1, y1[ids] - y0[ids] + 1)
+    bucket = np.ceil(np.log2(ext)).astype(np.int64)
     for b in np.unique(bucket):
         k = 1 << int(b)
-        ids = live[bucket == b]
+        sel = ids[bucket == b]
         oy, ox = np.divmod(np.arange(k * k, dtype=np.int64), k)
         step = max(1, _FRAG_CHUNK // (k * k))
-        for s in range(0, len(ids), step):
-            t = ids[s:s + step]
+        for s in range(0, len(sel), step):
+            t = sel[s:s + step]
             X = x0[t, None] + ox[None, :]
             Y = y0[t, None] + oy[None, :]
-            gx = X + 0.5
-            gy = Y + 0.5
+            gx, gy = X + 0.5, Y + 0.5
             tx, ty, dn = px[t], py[t], denom[t, None]
             a = ((ty[:, 1, None] - ty[:, 2, None]) * (gx - tx[:, 2, None])
                  + (tx[:, 2, None] - tx[:, 1, None]) * (gy - ty[:, 2, None])) / dn
@@ -344,48 +343,122 @@ def _fragments(fr: _Frame, size: int):
             if len(rows) == 0:
                 continue
             z = pz[t[rows]]
-            ar, br, cr = a[rows, cols], bb[rows, cols], c[rows, cols]
-            pix_out.append(Y[rows, cols] * size + X[rows, cols])
-            dep_out.append(ar * z[:, 0] + br * z[:, 1] + cr * z[:, 2])
-            tri_out.append(t[rows])
-    if not pix_out:
-        return empty
-    return np.concatenate(pix_out), np.concatenate(dep_out), np.concatenate(tri_out)
+            yield (Y[rows, cols] * size + X[rows, cols],
+                   a[rows, cols] * z[:, 0] + bb[rows, cols] * z[:, 1] + c[rows, cols] * z[:, 2],
+                   t[rows])
+
+
+def _scan_batches(fr: _Frame, ids, x0, x1, y0, y1, denom, size: int):
+    """Scanline fragments of large triangles: for every (triangle, pixel row) the row centre's
+    crossing with the three edges gives an x span, and only the pixels in it are generated, so
+    the work is the triangle's area, not its bounding box. Bounded batches."""
+    px, py, pz = fr.px, fr.py, fr.pz
+    h = y1[ids] - y0[ids] + 1
+    cum = np.cumsum(h)
+    cuts = np.searchsorted(cum, np.arange(0, cum[-1], _SCAN_ROWS), side="right")
+    bounds = sorted(set([0, *cuts.tolist(), len(ids)]))
+    for lo_i, hi_i in zip(bounds[:-1], bounds[1:]):
+        t_ids, hh = ids[lo_i:hi_i], h[lo_i:hi_i]
+        rep = np.repeat(np.arange(len(t_ids)), hh)
+        tri = t_ids[rep]
+        ry = y0[tri] + (np.arange(len(rep)) - np.repeat(np.cumsum(hh) - hh, hh))
+        yc = ry + 0.5
+        xl = np.full(len(rep), np.inf)
+        xr = np.full(len(rep), -np.inf)
+        for i, j in ((0, 1), (1, 2), (2, 0)):
+            yi, yj, xi, xj = py[tri, i], py[tri, j], px[tri, i], px[tri, j]
+            dy = yj - yi
+            hit = (np.minimum(yi, yj) <= yc) & (yc <= np.maximum(yi, yj)) & (np.abs(dy) > 1e-12)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                x = np.where(hit, xi + (yc - yi) * (xj - xi) / np.where(hit, dy, 1.0), 0.0)
+            xl = np.where(hit, np.minimum(xl, x), xl)
+            xr = np.where(hit, np.maximum(xr, x), xr)
+        good = np.isfinite(xl) & np.isfinite(xr)
+        cx0 = np.maximum(np.where(good, np.ceil(xl - 0.5), 0).astype(np.int64), x0[tri])
+        cx1 = np.minimum(np.where(good, np.floor(xr - 0.5), -1).astype(np.int64), x1[tri])
+        n = np.maximum(cx1 - cx0 + 1, 0)
+        # expand the spans to pixels in sub-batches of at most _FRAG_CHUNK pixels
+        ncum = np.cumsum(n)
+        if ncum[-1] == 0:
+            continue
+        rcuts = np.searchsorted(ncum, np.arange(0, ncum[-1], _FRAG_CHUNK), side="right")
+        rb = sorted(set([0, *rcuts.tolist(), len(n)]))
+        for r0, r1 in zip(rb[:-1], rb[1:]):
+            nn = n[r0:r1]
+            if nn.sum() == 0:
+                continue
+            rep2 = r0 + np.repeat(np.arange(r1 - r0), nn)
+            X = cx0[rep2] + (np.arange(len(rep2)) - np.repeat(np.cumsum(nn) - nn, nn))
+            Y = ry[rep2]
+            t = tri[rep2]
+            gx, gy = X + 0.5, Y + 0.5
+            tx, ty, dn = px[t], py[t], denom[t]
+            a = ((ty[:, 1] - ty[:, 2]) * (gx - tx[:, 2])
+                 + (tx[:, 2] - tx[:, 1]) * (gy - ty[:, 2])) / dn
+            b = ((ty[:, 2] - ty[:, 0]) * (gx - tx[:, 2])
+                 + (tx[:, 0] - tx[:, 2]) * (gy - ty[:, 2])) / dn
+            z = pz[t]
+            yield Y * size + X, a * z[:, 0] + b * z[:, 1] + (1.0 - a - b) * z[:, 2], t
+
+
+def _fragment_batches(fr: _Frame, size: int):
+    """Every covered pixel centre of every triangle, as bounded (pix, depth, tri) batches."""
+    if len(fr.px) == 0:
+        return
+    x0, x1, y0, y1, denom, live = _setup(fr, size)
+    if len(live) == 0:
+        return
+    _check_budget(denom, live, size)
+    ext = np.maximum(x1[live] - x0[live] + 1, y1[live] - y0[live] + 1)
+    big, small = live[ext > _BOX_MAX], live[ext <= _BOX_MAX]
+    if len(small):
+        yield from _box_batches(fr, small, x0, x1, y0, y1, denom, size)
+    if len(big):
+        yield from _scan_batches(fr, big, x0, x1, y0, y1, denom, size)
+
+
+def _nearest_per_pixel(pix, dep):
+    """Index of the nearest fragment of each distinct pixel in one batch."""
+    dmin = float(dep.min())
+    span = (float(dep.max()) - dmin) or 1.0
+    order = np.argsort(pix + (dep - dmin) / (span * 1.000001))
+    pix_s = pix[order]
+    first = np.ones(len(pix_s), dtype=bool)
+    first[1:] = pix_s[1:] != pix_s[:-1]
+    return order[first]
 
 
 def _raster(fr: _Frame, size: int, transparent: bool):
-    """(rgb float HxWx3 0..1, mask bool HxW, zbuf HxW) for one projected frame."""
+    """(rgb float HxWx3 0..1, mask bool HxW, zbuf HxW) for one projected frame, streaming."""
     n_pix = size * size
     bg = np.array(_BG, dtype=np.float64) / 255.0
-    img = np.tile(bg, (n_pix, 1))
     zbuf = np.full(n_pix, np.inf)
-    mask = np.zeros(n_pix, dtype=bool)
-    pix, dep, tri = _fragments(fr, size)
-    if len(pix):
-        # order by pixel, then nearest first: one argsort on a combined float key
-        dmin = float(dep.min())
-        span = (float(dep.max()) - dmin) or 1.0
-        order = np.argsort(pix + (dep - dmin) / (span * 1.000001))
-        pix_s, dep_s, tri_s = pix[order], dep[order], tri[order]
-        first = np.ones(len(pix_s), dtype=bool)
-        first[1:] = pix_s[1:] != pix_s[:-1]
-        near = pix_s[first]
-        zbuf[near] = dep_s[first]
-        mask[near] = True
-        if not transparent:
-            img[near] = fr.shade[tri_s[first]]
-        else:
-            # front-to-back "over": C = sum(c_i a_i T_i) + bg T, T_i = prod_{j<i}(1 - a_j)
-            a = np.minimum(fr.alpha[tri_s], 0.999)
-            la = np.log1p(-a)
-            cs = np.cumsum(la)
-            start = np.maximum.accumulate(np.where(first, np.arange(len(pix_s)), 0))
-            excl = cs - la - (cs[start] - la[start])
-            w = a * np.exp(excl)
-            acc = np.stack([np.bincount(pix_s, weights=w * fr.shade[tri_s, ch],
-                                        minlength=n_pix) for ch in range(3)], axis=1)
-            trans = np.exp(np.bincount(pix_s, weights=la, minlength=n_pix))
-            img = acc + bg[None, :] * trans[:, None]
+    tri_at = np.full(n_pix, -1, dtype=np.int64)
+    if transparent:
+        acc = np.zeros((n_pix, 3))
+        acc_a = np.zeros(n_pix)
+        log_t = np.zeros(n_pix)
+    for pix, dep, tri in _fragment_batches(fr, size):
+        win = _nearest_per_pixel(pix, dep)
+        p, d = pix[win], dep[win]
+        closer = d < zbuf[p]
+        zbuf[p[closer]] = d[closer]
+        tri_at[p[closer]] = tri[win][closer]
+        if transparent:
+            # weighted-blended OIT (McGuire & Bavoil): order-independent, so it streams
+            a = np.minimum(fr.alpha[tri], 0.999)
+            for ch in range(3):
+                acc[:, ch] += np.bincount(pix, weights=a * fr.shade[tri, ch], minlength=n_pix)
+            acc_a += np.bincount(pix, weights=a, minlength=n_pix)
+            log_t += np.bincount(pix, weights=np.log1p(-a), minlength=n_pix)
+    mask = tri_at >= 0
+    img = np.tile(bg, (n_pix, 1))
+    if transparent:
+        t = np.exp(log_t)
+        avg = acc / np.maximum(acc_a, 1e-12)[:, None]
+        img = avg * (1.0 - t)[:, None] + bg[None, :] * t[:, None]
+    else:
+        img[mask] = fr.shade[tri_at[mask]]
     return img.reshape(size, size, 3), mask.reshape(size, size), zbuf.reshape(size, size)
 
 

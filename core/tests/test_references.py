@@ -50,6 +50,29 @@ def test_bad_image_rejected_and_nothing_written(tmp_path):
     assert not (tmp_path / "references").exists() or not any((tmp_path / "references").iterdir())
 
 
+def test_reference_view_tags(tmp_path):
+    top = refs.save_reference(tmp_path, ReferenceUpload(image=PhotoIn(data_b64=_png_b64()),
+                                                        view="top"))
+    assert top["view"] == "top"
+    untagged = refs.save_reference(tmp_path, ReferenceUpload(image=PhotoIn(data_b64=_png_b64())))
+    assert untagged["view"] == "unknown"
+    sheet = refs.save_reference(tmp_path, ReferenceUpload(
+        image=PhotoIn(data_b64=_png_b64()), kind="three_view",
+        regions={"front": {"x0": 0, "y0": 0, "x1": 0.5, "y1": 1},
+                 "top": {"x0": 0.5, "y0": 0, "x1": 1, "y1": 1}}))
+    assert sheet["view"] == "sheet" and set(sheet["regions"]) == {"front", "top"}
+    assert refs.reference_summary(tmp_path, sheet["reference_id"])["regions"] == sheet["regions"]
+
+
+def test_bad_region_rejected():
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError):
+        ReferenceUpload(image=PhotoIn(data_b64=_png_b64()),
+                        regions={"top": {"x0": 0.6, "y0": 0, "x1": 0.5, "y1": 1}})
+    with pytest.raises(ValidationError):
+        ReferenceUpload(image=PhotoIn(data_b64=_png_b64()), view="underside")
+
+
 def test_unknown_reference_not_found(tmp_path):
     with pytest.raises(MisesError) as e:
         refs.reference_summary(tmp_path, "ref_000000000000")

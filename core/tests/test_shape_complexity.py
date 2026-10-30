@@ -27,6 +27,22 @@ def test_enclosure_with_internals_is_at_least_medium():
     assert est["vision_recommended"] is True
 
 
+def test_simple_part_with_a_fillet_stays_low():
+    est = sc.estimate("a 40x20x5 plate with filleted edges and a chamfer")
+    assert est["level"] == "low" and est["vision_recommended"] is False
+
+
+def test_curved_bracket_is_damped_but_a_wing_is_not():
+    damped = sc.estimate("a curved bracket with a rounded edge")["score"]
+    assert damped < sc.estimate("a curved shape with a rounded edge")["score"]
+    assert sc.estimate("a wing bracket")["level"] == "high"      # a strong signal wins
+
+
+def test_in_case_is_not_an_enclosure():
+    est = sc.estimate("make a 30 mm block, and in case it is too big, shrink it")
+    assert est["level"] == "low" and est["signals"] == []
+
+
 def test_empty_prompt_is_low():
     est = sc.estimate("")
     assert est["level"] == "low"
