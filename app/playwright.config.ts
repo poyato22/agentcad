@@ -21,8 +21,8 @@ export default defineConfig({
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 }, colorScheme: "dark" } },
     // The app runs in WKWebView: approval input safety is also checked on WebKit
-    // (needs `npx playwright install webkit`).
-    { name: "webkit", testMatch: "**/approvals.spec.ts", use: { ...devices["Desktop Safari"], viewport: { width: 1440, height: 900 }, colorScheme: "dark" } },
+    // (needs `npx playwright install webkit`). The part-tree drag is checked there too.
+    { name: "webkit", testMatch: ["**/approvals.spec.ts", "**/builds-drag.spec.ts"], use: { ...devices["Desktop Safari"], viewport: { width: 1440, height: 900 }, colorScheme: "dark" } },
   ],
   webServer: [
     {

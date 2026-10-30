@@ -10,7 +10,8 @@ export type VarsStatus =
   | { kind: "idle" }
   | { kind: "pending" }                       // waiting out the debounce
   | { kind: "saving" }
-  | { kind: "conflict"; current: number; theirs: Record<string, number> | null }
+  /** `current` null: the 409 didn't say which version is current (Reload is the only way on). */
+  | { kind: "conflict"; current: number | null; theirs: Record<string, number> | null }
   | { kind: "error"; message: string };
 
 export interface SavedEdit { result: PartEditResult; sent: Record<string, number>; prev: Record<string, number | null> }
@@ -58,11 +59,13 @@ export class VarsEditor {
   /** Is anything of the user's not yet saved (drafts, in flight, or a conflict waiting)? */
   get busy(): boolean { return this.drafts.size > 0 || this.inflight !== null || this.status.kind === "conflict"; }
 
-  /** The user moved a slider / typed a value. `version` is the newest version seen and
-   *  `current` the part's values now (for the "4 → 5" line). */
+  /** The user moved a slider / typed a value. `version` is the version of the values on screen
+   *  (the part list row, never a newer version only heard of: an edit landed since must come back
+   *  as a 409) and `current` those values (for the "4 → 5" line). While the list still lags behind
+   *  the user's own last save, the screen shows that save's values, so that version is the base. */
   set(name: string, value: number, version: number, current: Record<string, number>): void {
     if (this.disposed || !Number.isFinite(value)) return;
-    if (!this.busy) this.base = version;
+    if (!this.busy) this.base = Math.max(version, this.savedVersion);
     if (!this.prev.has(name)) this.prev.set(name, name in this.saved ? this.saved[name] : name in current ? current[name] : null);
     this.drafts.set(name, value);
     if (this.status.kind !== "conflict") this.status = { kind: "pending" };
@@ -104,7 +107,8 @@ export class VarsEditor {
       this.inflight = null;
       if (e instanceof CoreError && e.status === 409) {
         const c = editConflictSchema.safeParse(e.body ?? {});
-        this.status = { kind: "conflict", current: c.success ? c.data.current_version : (this.base ?? 0) + 1, theirs: c.success ? c.data.vars : null };
+        // an unreadable 409 never guesses a version to write on
+        this.status = { kind: "conflict", current: c.success ? c.data.current_version : null, theirs: c.success ? c.data.vars : null };
       } else if (e instanceof CoreError && e.status === 422) {
         this.status = { kind: "error", message: `The part didn't rebuild: ${buildErrorLine(e.message)}` };
       } else {
@@ -116,7 +120,7 @@ export class VarsEditor {
 
   /** After a 409: apply the user's values on top of the agent's version. */
   async keepMine(): Promise<void> {
-    if (this.status.kind !== "conflict") return;
+    if (this.status.kind !== "conflict" || this.status.current === null) return;
     this.base = this.status.current;
     this.status = { kind: "pending" };
     this.changed();

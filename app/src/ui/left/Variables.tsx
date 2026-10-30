@@ -86,7 +86,8 @@ export function Variables(): JSX.Element {
           const title = c && !draft ? `was ${c.prev === null ? "unknown" : c.prev.toFixed(2)} · set by ${who}` : spec.doc ?? undefined;
           return (
             <VarRow key={name} spec={spec} value={value} agentChanged={!!c && !draft} draft={draft} title={title}
-              onChange={(v) => ed.set(name, v, versionOf(part), part.vars)} onCommit={() => { void ed.send(); }} />
+              // the version of the values on screen (this row), never a newer one only heard of
+              onChange={(v) => ed.set(name, v, part.version ?? 0, part.vars)} onCommit={() => { void ed.send(); }} />
           );
         })}
       </div>
@@ -170,7 +171,7 @@ function VarsStatusLine({ ed, partId, status }: { ed: VarsEditor; partId: string
       <span>{`${who} changed this part${theirs ? ` (now ${theirs})` : ""} while you were editing.`}</span>
       <span class="vars-actions">
         <button type="button" class="btn" onClick={() => { ed.discard(); void loadParts(); }}>Reload</button>
-        <button type="button" class="btn" onClick={() => { void ed.keepMine(); }}>Keep mine</button>
+        {status.current !== null && <button type="button" class="btn" onClick={() => { void ed.keepMine(); }}>Keep mine</button>}
       </span>
     </div>
   );

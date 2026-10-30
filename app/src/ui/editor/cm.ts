@@ -4,7 +4,7 @@
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { python } from "@codemirror/lang-python";
 import { bracketMatching, HighlightStyle, indentOnInput, syntaxHighlighting } from "@codemirror/language";
-import { EditorState, RangeSetBuilder, type Extension } from "@codemirror/state";
+import { Annotation, EditorState, RangeSetBuilder, Transaction, type Extension } from "@codemirror/state";
 import {
   Decoration, drawSelection, EditorView, highlightActiveLine, highlightActiveLineGutter, keymap, lineNumbers, ViewPlugin,
   type DecorationSet, type ViewUpdate,
@@ -63,7 +63,10 @@ export function editorExtensions(h: EditorHooks): Extension[] {
     python(), syntaxHighlighting(highlight), theme, opRule,
     EditorState.tabSize.of(4),
     keymap.of([{ key: "Mod-s", preventDefault: true, run: () => { h.onSave(); return true; } }, indentWithTab, ...defaultKeymap, ...historyKeymap]),
-    EditorView.updateListener.of((u) => { if (u.docChanged) h.onChange(u.state.doc.toString()); }),
+    // a reload from the core is not the user's edit (no "Unsaved changes", no onChange)
+    EditorView.updateListener.of((u) => {
+      if (u.docChanged && !u.transactions.some((t) => t.annotation(reloadMark))) h.onChange(u.state.doc.toString());
+    }),
     EditorView.contentAttributes.of({ "aria-label": "Part script (Python)", spellcheck: "false" }),
   ];
 }
@@ -72,7 +75,13 @@ export function createEditor(parent: HTMLElement, doc: string, h: EditorHooks): 
   return new EditorView({ parent, state: EditorState.create({ doc, extensions: editorExtensions(h) }) });
 }
 
-/** Replace the whole document (a reload), keeping it out of the undo history's way. */
+const reloadMark = Annotation.define<boolean>();
+
+/** Replace the whole document with the core's text (a reload). It stays out of the undo history,
+ *  so ⌘Z never brings back text the user chose to drop, and is not reported as an edit. */
 export function setDoc(view: EditorView, doc: string): void {
-  view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: doc } });
+  view.dispatch({
+    changes: { from: 0, to: view.state.doc.length, insert: doc },
+    annotations: [Transaction.addToHistory.of(false), reloadMark.of(true)],
+  });
 }

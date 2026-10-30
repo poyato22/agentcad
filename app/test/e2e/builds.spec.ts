@@ -10,7 +10,6 @@ test.beforeEach(async ({ fake }) => { await fake.reset("builds"); });
 test.afterEach(async ({ fake }) => { await fake.reset("base"); });
 
 const tree = (page: Page) => page.getByTestId("part-tree");
-const rows = async (page: Page) => tree(page).locator("[data-part]").evaluateAll((els) => els.map((e) => `${e.getAttribute("data-depth")}${e.getAttribute("data-part")}`));
 const callsTo = async (fake: FakeControl, method: string, path: string | RegExp): Promise<FakeCall[]> =>
   (await fake.calls()).filter((c) => c.method === method && (typeof path === "string" ? c.path === path : path.test(c.path)));
 
@@ -69,33 +68,7 @@ test("new_build_rename_trash_restore", async ({ page, fake }) => {
   await expect(page.getByRole("tab", { name: "Gimbal arm" })).toHaveAttribute("aria-selected", "true");
 });
 
-test("drag_parts_to_reorder_and_nest_and_the_keyboard_way", async ({ page, fake }) => {
-  await open(page);
-  expect(await rows(page)).toEqual(["0quad_arm", "0top_plate"]);
-  const arm = tree(page).locator('[data-part="quad_arm"] .tree-row');
-  const plate = tree(page).locator('[data-part="top_plate"] .tree-row');
-
-  // drag the plate above the arm (top quarter of the arm's row)
-  const box = await arm.boundingBox();
-  await plate.dragTo(arm, { targetPosition: { x: 40, y: 2 } });
-  await expect.poll(() => rows(page)).toEqual(["0top_plate", "0quad_arm"]);
-  let call = (await callsTo(fake, "POST", "/parts/reorder")).at(-1);
-  expect(call?.body).toEqual({ project_id: QUAD, parent_id: null, ids: ["top_plate", "quad_arm"] });
-
-  // drop onto the middle of the arm: the plate nests under it
-  await plate.dragTo(arm, { targetPosition: { x: 40, y: (box?.height ?? 22) / 2 } });
-  await expect.poll(() => rows(page)).toEqual(["0quad_arm", "1top_plate"]);
-  call = (await callsTo(fake, "POST", "/parts/reorder")).at(-1);
-  expect(call?.body).toEqual({ project_id: QUAD, parent_id: "quad_arm", ids: ["top_plate"] });
-
-  // keyboard: Alt+← moves it back out, Alt+↑ above the arm
-  await tree(page).getByRole("button", { name: "top plate", exact: true }).focus();
-  await page.keyboard.press("Alt+ArrowLeft");
-  await expect.poll(() => rows(page)).toEqual(["0quad_arm", "0top_plate"]);
-  await page.keyboard.press("Alt+ArrowUp");
-  await expect.poll(() => rows(page)).toEqual(["0top_plate", "0quad_arm"]);
-  await expect(tree(page).getByRole("button", { name: "top plate", exact: true })).toBeFocused();
-});
+// dragging and the keyboard way: builds-drag.spec.ts (Chromium and WebKit)
 
 test("color_a_part_from_the_palette_and_the_viewer_paints_it", async ({ page, fake }) => {
   await open(page);
@@ -163,6 +136,27 @@ test("click_a_face_to_add_a_hole_there", async ({ page, fake }) => {
   expect(op.params).toMatchObject({ diameter: 4, through: true });
   expect(op.base_version).toBe(1);
   await expect(page.locator("[data-you-edit] .cv-body").last()).toContainText("You · added a Ø4 mm through hole on top plate");
+});
+
+test("a_second_pick_while_the_callout_is_open_starts_it_fresh", async ({ page, fake }) => {
+  await open(page);
+  await tree(page).getByRole("button", { name: "top plate", exact: true }).click();
+  const canvas = page.getByTestId("viewer-canvas");
+  await expect(canvas).toHaveAttribute("data-bbox-size", "40.00,40.00,3.00", { timeout: 15_000 });
+  const b = await canvas.boundingBox();
+  const cx = (b?.x ?? 0) + (b?.width ?? 0) / 2; const cy = (b?.y ?? 0) + (b?.height ?? 0) / 2;
+  await page.mouse.click(cx, cy);
+  const menu = page.getByTestId("ops-menu");
+  await menu.getByRole("radio", { name: "Shell" }).check();
+  await menu.getByRole("textbox", { name: "Wall (mm)" }).fill("9");
+  await page.mouse.click(cx + 30, cy + 10);                 // pick again, elsewhere on the top
+  await expect(menu.getByRole("radio", { name: "Hole" })).toBeChecked();
+  await expect(menu.getByRole("textbox", { name: "Diameter (mm)" })).not.toHaveValue("9");
+  await menu.getByRole("button", { name: "Add hole" }).click();
+  await expect(menu).toHaveCount(0);
+  const op = (await callsTo(fake, "POST", "/parts/top_plate/ops")).at(-1)?.body as { op: string; params: { point: number[] }; base_version: number };
+  expect(op.op).toBe("hole");
+  expect(op.base_version).toBe(1);
 });
 
 test("features_by_keyboard_round_an_edge", async ({ page, fake }) => {

@@ -55,6 +55,32 @@ describe("SourceSession", () => {
     expect(h.putPartSource).toHaveBeenLastCalledWith("quad_arm", "mine", 5);
   });
 
+  it("keep mine saves only on the version the notice named; a newer agent edit is a new conflict, never a PUT", async () => {
+    const stale = fx<{ body: Record<string, unknown> }>("part_source_stale.json");     // names version 5
+    const h = session({
+      reads: [SRC, { ...SRC, version: 6, source: "the agent's newer script" }],
+      put: async () => { throw new CoreError("stale_version", String(stale.body.message), { status: 409, body: stale.body }); },
+    });
+    await h.s.open();
+    h.s.edit("mine");
+    await h.s.save();
+    expect(h.s.status).toEqual({ kind: "conflict", current: 5 });
+    await h.s.keepMine();                                    // the agent wrote v6 meanwhile
+    expect(h.s.status).toEqual({ kind: "conflict", current: 6 });
+    expect(h.putPartSource).toHaveBeenCalledTimes(1);        // only the first, refused save
+    expect(h.s.text).toBe("mine");
+  });
+
+  it("an unreadable 409 offers no keep mine (no guessed version)", async () => {
+    const h = session({ put: async () => { throw new CoreError("stale_version", "conflict", { status: 409, body: {} }); } });
+    await h.s.open();
+    h.s.edit("mine");
+    await h.s.save();
+    expect(h.s.status).toEqual({ kind: "conflict", current: null });
+    await h.s.keepMine();
+    expect(h.putPartSource).toHaveBeenCalledTimes(1);
+  });
+
   it("load theirs drops my text", async () => {
     const h = session({ reads: [SRC, { ...SRC, version: 9, source: "theirs" }] });
     await h.s.open();

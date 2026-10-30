@@ -9,7 +9,6 @@ import { Vector3 } from "three";
 import type { PartEdge } from "../../api/builds";
 import type { PartFace, PartSummary } from "../../api/types";
 import { activePart } from "../../state/selection";
-import { versionOf } from "../../state/partEdits";
 import { actions, inflight, parts, runs, steps } from "../../state/store";
 import { runLabel as formatRunLabel } from "../../lib/names";
 import { OpsMenu, type OpsTarget } from "../editor/ops";
@@ -73,7 +72,7 @@ export function shownParts(list: readonly PartSummary[], focus: PartSummary | nu
   return list.filter((p) => p.metrics !== null && (p.part_id === focus?.part_id || !hidden.has(p.part_id)));
 }
 
-interface OpenOps { partId: string; target: OpsTarget; at: { x: number; y: number } | null; keyboard: boolean; baseVersion: number }
+interface OpenOps { seq: number; partId: string; target: OpsTarget; at: { x: number; y: number } | null; keyboard: boolean; baseVersion: number }
 
 /** The blue marker for an ops target. */
 function markerFor(part: PartSummary, face: PartFace | null, edge: PartEdge | null): PickMarker {
@@ -96,6 +95,8 @@ export function Viewer(): JSX.Element {
   const scenes = useRef(new Map<string, PartScene>());
   const loaders = useRef(new Map<string, PartLoader>());
   const down = useRef<{ x: number; y: number } | null>(null);
+  /** Each pick opens a fresh callout (its own op, face / edge and fields). */
+  const pickSeq = useRef(0);
   const [mode, setMode] = useState<ViewMode>("shaded");
   const [error, setError] = useState<string | null>(null);
   const [size, setSize] = useState<string | null>(null);
@@ -216,7 +217,9 @@ export function Viewer(): JSX.Element {
     const diag = Math.hypot(sizeV[0], sizeV[1], sizeV[2]);
     const face = m?.face_list ? matchFace(m.face_list, hit.point, hit.normal, Math.max(0.05, diag * 0.01)) : null;
     const edge = m?.edge_list ? nearestEdge(m.edge_list, hit.point, (p) => v.toScreen(p), 10) : null;
-    setOps({ partId: target.part_id, target: { face, edge, point: hit.point }, at: { x, y }, keyboard: false, baseVersion: versionOf(target) });
+    // the version of the metrics the pick was resolved from (the same row), never a newer one
+    // only heard of: face / edge ids name one version's topology, so a stale pick gets a 409
+    setOps({ seq: ++pickSeq.current, partId: target.part_id, target: { face, edge, point: hit.point }, at: { x, y }, keyboard: false, baseVersion: target.version ?? 0 });
   }
 
   const opsPart = ops ? parts.value.find((p) => p.part_id === ops.partId) ?? null : null;
@@ -249,10 +252,10 @@ export function Viewer(): JSX.Element {
       <span class="label vp-fig">{scope === "build" ? "FIG. 1 — BUILD" : "FIG. 1 — DESIGN"}</span>
       <ViewerTools mode={mode} onMode={setMode} scope={scope} onScope={(s) => { viewScope.value = s; }}
         canEdit={canEdit && tab === "model"}
-        onEdit={() => { if (part) setOps({ partId: part.part_id, target: { face: null, edge: null, point: null }, at: null, keyboard: true, baseVersion: versionOf(part) }); }} />
+        onEdit={() => { if (part) setOps({ seq: ++pickSeq.current, partId: part.part_id, target: { face: null, edge: null, point: null }, at: null, keyboard: true, baseVersion: part.version ?? 0 }); }} />
       {part === null && <div class="vp-empty label">NO PART · ask an agent to create one</div>}
       {ops && opsPart && tab === "model" && (
-        <OpsMenu part={opsPart} target={ops.target} baseVersion={ops.baseVersion} keyboard={ops.keyboard} at={ops.at} bounds={bounds}
+        <OpsMenu key={ops.seq} part={opsPart} target={ops.target} baseVersion={ops.baseVersion} keyboard={ops.keyboard} at={ops.at} bounds={bounds}
           onTarget={(f, ed) => viewerRef.current?.setMarker(markerFor(opsPart, f, ed))}
           onClose={() => { setOps(null); canvasRef.current?.focus(); }} />
       )}

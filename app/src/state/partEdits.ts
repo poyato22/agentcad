@@ -28,6 +28,11 @@ export const lastAgentChange: Signal<ReadonlyMap<string, PartChanged>> = signal<
 export const FLASH_MS = 1600;
 const MAX_LINES = 200;
 const mine = new Set<string>();
+/** Every version this window's own edits made (kept; `mine` only skips the echo once). */
+const myVersions = new Set<string>();
+
+/** Did this window's own edit make that version? */
+export function isMyVersion(partId: string, version: number): boolean { return myVersions.has(`${partId}@${version}`); }
 let seq = 0;
 
 /** The version an edit of `p` is based on: the newest one seen. */
@@ -52,6 +57,7 @@ function pushLine(partId: string, text: string, ts: number): void {
 /** An edit this window made and the core accepted (its echo event is then skipped). */
 export function noteMyEdit(partId: string, version: number, text: string, ts = Date.now() / 1000): void {
   mine.add(`${partId}@${version}`);
+  myVersions.add(`${partId}@${version}`);
   noteVersion(partId, version);
   pushLine(partId, text, ts);
 }
@@ -125,4 +131,5 @@ export function resetPartEdits(): void {
   knownVersions.value = new Map();
   lastAgentChange.value = new Map();
   mine.clear();
+  myVersions.clear();
 }

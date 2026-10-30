@@ -66,6 +66,13 @@
 .tree-row.sel { border-left-color: var(--blue); background: var(--blue-tint); }
 .tree-row.changing .tree-name { color: var(--blue2); }
 .tree-row.dragging { opacity: .45; }
+/* the drag is pointer events: no text selection or scrolling gestures from a press on a row */
+.tree-row { touch-action: none; user-select: none; -webkit-user-select: none; }
+.tree.is-dragging, .tree.is-dragging * { cursor: grabbing; }
+.tree-ghost {
+  position: fixed; z-index: 30; pointer-events: none; padding: 2px 8px; max-width: 200px; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; background: var(--paper); color: var(--ink); border: 1px solid var(--blue); font-size: var(--fs-small);
+}
 .tree-row.is-hidden .row-name, .tree-row.is-hidden .tree-chip { opacity: .45; }
 /* an agent just changed this part: one blue sweep along the row */
 .tree-row.flash { animation: tree-flash 1.6s ease-out 1; }

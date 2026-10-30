@@ -1,4 +1,4 @@
-import { act, cleanup, createEvent, fireEvent, render, screen, waitFor } from "@testing-library/preact";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/preact";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CoreClient } from "../../api/client";
 import { CoreError } from "../../api/client";
@@ -17,7 +17,7 @@ const row = (id: string, order: number, parent: string | null = null, color: str
 // plate
 const LIST = () => [row("frame", 0), row("arm_a", 0, "frame"), row("arm_b", 1, "frame"), row("plate", 1)];
 
-let client: { reorderParts: ReturnType<typeof vi.fn>; patchPart: ReturnType<typeof vi.fn> };
+let client: { reorderParts: ReturnType<typeof vi.fn>; patchPart: ReturnType<typeof vi.fn>; parts: ReturnType<typeof vi.fn> };
 
 beforeEach(() => {
   resetStore(); resetBuilds(); resetPartEdits(); resetVisibility();
@@ -29,6 +29,7 @@ beforeEach(() => {
       return i < 0 ? p : { ...p, parent_id: parent, order: i };
     })),
     patchPart: vi.fn(async (id: string, patch: Record<string, unknown>) => ({ ...parts.peek().find((p) => p.part_id === id), ...patch })),
+    parts: vi.fn(async () => LIST()),                       // the core's tree as it is (after a refused move)
   };
   bindClient(client as unknown as CoreClient);
 });
@@ -37,24 +38,26 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 const rowEl = (id: string) => document.querySelector<HTMLElement>(`[data-part="${id}"] .tree-row`) as HTMLElement;
 const names = () => [...document.querySelectorAll("[data-part]")].map((el) => `${el.getAttribute("data-depth")}${el.getAttribute("data-part")}`);
 
-function dt(): DataTransfer {
-  const data = new Map<string, string>();
-  return {
-    types: ["application/x-mises-part"], setData: (k: string, v: string) => data.set(k, v), getData: (k: string) => data.get(k) ?? "",
-    dropEffect: "none", effectAllowed: "all",
-  } as unknown as DataTransfer;
+/** Lays the rows out 20 px apart from y = 100 (jsdom has no layout). */
+function layout(): void {
+  document.querySelectorAll<HTMLElement>("[data-part] > .tree-row").forEach((el, i) => {
+    const top = 100 + i * 20;
+    vi.spyOn(el, "getBoundingClientRect").mockReturnValue({ top, height: 20, bottom: top + 20, left: 0, right: 200, width: 200, x: 0, y: top, toJSON: () => ({}) });
+  });
 }
 
+/** A real pointer drag: press on the row's name, move past the threshold, over the target row's zone. */
 function drag(from: string, to: string, where: "top" | "middle" | "bottom") {
-  const transfer = dt();
-  const target = rowEl(to);
-  vi.spyOn(target, "getBoundingClientRect").mockReturnValue({ top: 100, height: 20, bottom: 120, left: 0, right: 200, width: 200, x: 0, y: 100, toJSON: () => ({}) });
-  const y = where === "top" ? 101 : where === "bottom" ? 119 : 110;
-  // jsdom has no DragEvent: the pointer position is set on the event by hand
-  const at = (ev: Event) => { Object.defineProperty(ev, "clientY", { value: y }); return ev; };
-  fireEvent.dragStart(rowEl(from), { dataTransfer: transfer });
-  fireEvent(target, at(createEvent.dragOver(target, { dataTransfer: transfer })));
-  return { transfer, target, drop: () => fireEvent(target, at(createEvent.drop(target, { dataTransfer: transfer }))) };
+  layout();
+  const target = rowEl(to).getBoundingClientRect();
+  const y = target.top + (where === "top" ? 1 : where === "bottom" ? 19 : 10);
+  const name = rowEl(from).querySelector(".tree-name") as HTMLElement;
+  const start = rowEl(from).getBoundingClientRect().top + 10;
+  fireEvent.pointerDown(name, { button: 0, clientX: 40, clientY: start });
+  fireEvent.pointerMove(window, { clientX: 41, clientY: start + 2 });         // under the threshold: still a click
+  fireEvent.pointerMove(window, { clientX: 44, clientY: (start + y) / 2 });
+  fireEvent.pointerMove(window, { clientX: 44, clientY: y });
+  return { drop: () => { fireEvent.pointerUp(window, { clientX: 44, clientY: y }); fireEvent.click(name); } };
 }
 
 describe("part tree", () => {
@@ -79,6 +82,29 @@ describe("part tree", () => {
     await waitFor(() => expect(rowEl("arm_b").getAttribute("data-drop")).toBe("inside"));
     d.drop();
     await waitFor(() => expect(client.reorderParts).toHaveBeenCalledWith("b1", "arm_b", ["plate"]));
+  });
+
+  it("a short press is a click (selects); a drag ending on a button doesn't select it; Esc cancels a drag", async () => {
+    render(<PartTree />);
+    layout();
+    const name = rowEl("plate").querySelector(".tree-name") as HTMLElement;
+    fireEvent.pointerDown(name, { button: 0, clientX: 40, clientY: 170 });
+    fireEvent.pointerMove(window, { clientX: 42, clientY: 171 });
+    fireEvent.pointerUp(window, { clientX: 42, clientY: 171 });
+    fireEvent.click(name);
+    expect(selectedPartId.value).toBe("plate");
+    expect(client.reorderParts).not.toHaveBeenCalled();
+
+    selectedPartId.value = null;
+    const d = drag("plate", "frame", "top");
+    await waitFor(() => expect(rowEl("frame").getAttribute("data-drop")).toBe("before"));
+    expect(document.querySelector(".tree-ghost")?.textContent).toBe("plate");
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(rowEl("frame").getAttribute("data-drop")).toBeNull();
+    d.drop();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(client.reorderParts).not.toHaveBeenCalled();
+    expect(selectedPartId.value).toBeNull();
   });
 
   it("never offers dropping a part into its own child (cycle prevention)", async () => {
@@ -117,6 +143,33 @@ describe("part tree", () => {
     fireEvent.keyDown(rowEl("frame").querySelector(".tree-name") as HTMLElement, { key: "ArrowDown", altKey: true });
     await screen.findByText("Couldn't move the part: that move would create a cycle in the part tree");
     expect(names()).toEqual(["0frame", "1arm_a", "1arm_b", "0plate"]);
+  });
+
+  it("quick moves go out one at a time, and the latest answer is the one kept", async () => {
+    const answers: (() => void)[] = [];
+    client.reorderParts.mockImplementation((_b: string, parent: string | null, ids: string[]) => new Promise((res) => {
+      answers.push(() => res(parts.peek().map((p) => { const i = ids.indexOf(p.part_id); return i < 0 ? p : { ...p, parent_id: parent, order: i }; })));
+    }));
+    render(<PartTree />);
+    const name = rowEl("plate").querySelector(".tree-name") as HTMLElement;
+    fireEvent.keyDown(name, { key: "ArrowUp", altKey: true });
+    fireEvent.keyDown(rowEl("plate").querySelector(".tree-name") as HTMLElement, { key: "ArrowDown", altKey: true });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(client.reorderParts).toHaveBeenCalledTimes(1);          // the second waits for the first
+    answers[0]();
+    await waitFor(() => expect(client.reorderParts).toHaveBeenCalledTimes(2));
+    answers[1]();
+    await waitFor(() => expect(names()).toEqual(["0frame", "1arm_a", "1arm_b", "0plate"]));
+  });
+
+  it("an outside press closes the color picker; opening the Move menu closes it too", () => {
+    render(<PartTree />);
+    fireEvent.click(screen.getByRole("button", { name: /Color of plate/ }));
+    expect(screen.getByTestId("color-picker")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Move or edit plate" }));
+    expect(screen.queryByTestId("color-picker")).toBeNull();
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole("menu")).toBeNull();
   });
 
   it("picks a color from the palette or a custom hex (PATCH color)", async () => {

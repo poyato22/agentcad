@@ -74,8 +74,32 @@ describe("variables panel", () => {
     expect(alert.textContent).toContain("An agent changed this part (now thickness 5) while you were editing.");
     fireEvent.click(screen.getByRole("button", { name: "Keep mine" }));
     await flush();
-    expect(client.setPartVars.mock.calls.map((c) => c[2])).toEqual([2, 2]);
+    // the edit was based on v1 (the values on screen), the agent's v2 came back as the 409
+    expect(client.setPartVars.mock.calls.map((c) => c[2])).toEqual([1, 2]);
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("edits are based on the version on screen, not a newer one only heard of (an edit since must 409)", async () => {
+    client.setPartVars.mockResolvedValue({ part_id: "quad_arm", version: 3, vars: { thickness: 6, length: 60 } });
+    render(<Variables />);
+    await flush();
+    // an agent's edit (v2) is announced; the part list (v1 values on screen) hasn't refetched yet
+    act(() => onPartChanged({ type: "part_changed", run_id: null, ts: 1, data: { part_id: "quad_arm", version: 2, by: "agent", run_id: null, summary: "set thickness=5.0" } }));
+    fireEvent.input(screen.getByTestId("var-thickness"), { target: { value: "6" } });
+    fireEvent.keyDown(screen.getByTestId("var-thickness"), { key: "Enter" });
+    await flush();
+    expect(client.setPartVars).toHaveBeenCalledWith("quad_arm", { thickness: 6 }, 1);
+  });
+
+  it("an unreadable 409 never guesses a version: only Reload is offered", async () => {
+    client.setPartVars.mockRejectedValueOnce(new CoreError("stale_version", "conflict", { status: 409, body: { error: "stale_version" } }));
+    render(<Variables />);
+    await flush();
+    fireEvent.input(screen.getByTestId("var-thickness"), { target: { value: "9" } });
+    fireEvent.keyDown(screen.getByTestId("var-thickness"), { key: "Enter" });
+    await flush();
+    expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Keep mine" })).toBeNull();
   });
 
   it("Reload drops your value", async () => {

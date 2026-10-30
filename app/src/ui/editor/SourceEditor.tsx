@@ -6,7 +6,7 @@ import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { PartSummary } from "../../api/types";
 import { partName, runLabel } from "../../lib/names";
-import { knownVersions, lastAgentChange, nameOf, noteMyEdit, versionOf } from "../../state/partEdits";
+import { isMyVersion, knownVersions, lastAgentChange, nameOf, noteMyEdit, versionOf } from "../../state/partEdits";
 import { actions, runs } from "../../state/store";
 import { createEditor, setDoc } from "./cm";
 import "./editor.css";
@@ -55,6 +55,8 @@ export function SourceEditor({ part }: { part: PartSummary }): JSX.Element {
   const change = lastAgentChange.value.get(part.part_id);
   const run = change?.run_id ? runs.value.get(change.run_id) : undefined;
   const who = run ? runLabel(run, [...runs.value.values()]) : change ? "An agent" : "Someone else";
+  // your own vars / feature edit bumps the version too: say so, not "an agent"
+  const whoAt = (v: number) => (isMyVersion(part.part_id, v) ? "You (a variable or feature edit)" : who);
 
   return (
     <div class="src" data-testid="source-editor">
@@ -75,16 +77,18 @@ export function SourceEditor({ part }: { part: PartSummary }): JSX.Element {
       </div>
       {st.kind === "behind" && (
         <div class="src-note needs-you" role="alert">
-          {`${who} changed this part (now version ${st.current}) since you opened the script. Saving will ask what to keep.`}
+          {`${whoAt(st.current)} changed this part (now version ${st.current}) since you opened the script. Saving will ask what to keep.`}
           <span class="src-note-actions"><button type="button" class="btn" onClick={() => { void s.loadTheirs(); }}>Load theirs</button></span>
         </div>
       )}
       {st.kind === "conflict" && (
         <div class="src-note needs-you" role="alert" data-conflict>
-          {`${who} changed this part (version ${st.current}) since you opened the script. Your edit was not saved.`}
+          {st.current === null
+            ? "This part changed since you opened the script. Your edit was not saved; load the current script to go on."
+            : `${whoAt(st.current)} changed this part (version ${st.current}) since you opened the script. Your edit was not saved.`}
           <span class="src-note-actions">
             <button type="button" class="btn" onClick={() => { void s.loadTheirs(); }}>Load theirs</button>
-            <button type="button" class="btn" onClick={() => { void s.keepMine(); }}>Keep mine</button>
+            {st.current !== null && <button type="button" class="btn" onClick={() => { void s.keepMine(); }}>Keep mine</button>}
           </span>
         </div>
       )}

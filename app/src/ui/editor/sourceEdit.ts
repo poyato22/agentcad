@@ -13,7 +13,8 @@ export type SourceStatus =
   | { kind: "saving" }
   | { kind: "saved"; version: number }
   | { kind: "behind"; current: number }                    // changed elsewhere; you have unsaved edits
-  | { kind: "conflict"; current: number }
+  /** `current`: the version the notice names (null: the 409 didn't say; only Load theirs). */
+  | { kind: "conflict"; current: number | null }
   | { kind: "error"; message: string };
 
 export interface SourceDeps {
@@ -94,7 +95,7 @@ export class SourceSession {
     } catch (e) {
       if (e instanceof CoreError && e.status === 409) {
         const c = editConflictSchema.safeParse(e.body ?? {});
-        this.status = { kind: "conflict", current: c.success ? c.data.current_version : (this.base ?? 0) + 1 };
+        this.status = { kind: "conflict", current: c.success ? c.data.current_version : null };
       } else if (e instanceof CoreError && e.status === 422) {
         this.status = { kind: "error", message: `The part didn't rebuild, nothing changed: ${buildErrorLine(e.message)}` };
       } else {
@@ -107,11 +108,20 @@ export class SourceSession {
   /** After a conflict: drop mine, load the current script. */
   async loadTheirs(): Promise<void> { await this.open(); }
 
-  /** After a conflict: read the current version (fresh GET), then write my text on top of it. */
+  /** After a conflict: write my text over exactly the version the notice named. The fresh read
+   *  (the contract's) must still be at that version; if the part moved on again, that is a new
+   *  conflict the user sees, never an unseen overwrite. */
   async keepMine(): Promise<void> {
+    if (this.status.kind !== "conflict" || this.status.current === null) return;
+    const named = this.status.current;
     const mine = this.text;
     try {
       const s = await this.deps.client().partSource(this.partId);
+      if (s.version !== named) {
+        this.status = { kind: "conflict", current: s.version };
+        this.changed();
+        return;
+      }
       this.base = s.version;
       this.loaded = s.source;
       this.text = mine;

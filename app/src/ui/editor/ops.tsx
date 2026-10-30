@@ -10,7 +10,7 @@ import { buildErrorLine, type OpKind, type OpRequest, type PartEdge } from "../.
 import { CoreError } from "../../api/client";
 import type { PartFace, PartSummary, Vec3 } from "../../api/types";
 import { partName } from "../../lib/names";
-import { fmtNum, noteMyEdit } from "../../state/partEdits";
+import { fmtNum, knownVersions, noteMyEdit } from "../../state/partEdits";
 import { actions } from "../../state/store";
 import { describeEdge, describeFace } from "../viewer/pick";
 import "./editor.css";
@@ -100,6 +100,9 @@ export function OpsMenu({ part, target, baseVersion, keyboard, at, bounds, onTar
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const box = useRef<HTMLFormElement>(null);
+  // a newer version than the one picked on exists (an edit's answer or an event is in, the part
+  // list not yet): wait for it, the ids may name other faces now
+  const behind = (knownVersions.value.get(part.part_id) ?? 0) > baseVersion;
   const onFace = op === "hole" || op === "shell";
   const name = partName(part);
 
@@ -110,7 +113,7 @@ export function OpsMenu({ part, target, baseVersion, keyboard, at, bounds, onTar
 
   async function apply(e: Event): Promise<void> {
     e.preventDefault();
-    if (busy) return;
+    if (busy || behind) return;
     // the click point only places a hole on the face it was clicked on
     const point = target.face && faceId === target.face.id ? target.point : null;
     const req = buildOp(op, faceId, edgeId, { size: Number(size), through, depth: Number(depth) }, point);
@@ -204,9 +207,12 @@ export function OpsMenu({ part, target, baseVersion, keyboard, at, bounds, onTar
                   )}
                 </div>
               )}
+              {behind && !busy && <p class="ops-note faint" role="status" data-behind>This part just changed. Click the model again to pick on the new version.</p>}
               {error && <p class="ops-error" role="alert">{error}</p>}
               <div class="ops-actions">
-                <button type="submit" class="btn" disabled={busy} aria-busy={busy || undefined}>{busy ? "Rebuilding…" : `Add ${LABEL[op].toLowerCase()}`}</button>
+                <button type="submit" class="btn" disabled={busy || behind} aria-busy={busy || undefined}>
+                  {busy ? "Rebuilding…" : `Add ${LABEL[op].toLowerCase()}`}
+                </button>
                 <button type="button" class="btn btn-ghost" onClick={onClose}>Cancel</button>
               </div>
             </>

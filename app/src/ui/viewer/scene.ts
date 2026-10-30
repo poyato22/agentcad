@@ -296,7 +296,7 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
       if (!tris.length) { requestRender(); return; }
       const g = new THREE.BufferGeometry();
       g.setAttribute("position", new THREE.Float32BufferAttribute(tris, 3));
-      const mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: blue, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false }));
+      const mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: blue, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false }));
       mesh.renderOrder = 10;
       marker = mesh;
     }

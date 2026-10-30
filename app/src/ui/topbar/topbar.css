@@ -52,14 +52,15 @@
 /* ---- build tabs (Breadcrumb): drafting title-block cells; the active one is underlined in blue
    like the mode tabs. Names shrink with an ellipsis before the part crumb does. */
 .btabs { display: inline-flex; align-items: center; gap: 2px; min-width: 0; flex: 0 1 auto; position: relative; }
-.btab-list { display: inline-flex; align-items: center; gap: 2px; min-width: 0; overflow: hidden; }
+/* tabs keep a readable width (TAB_MIN..TAB_MAX in Breadcrumb.tsx); the ones that don't fit go behind "+N" */
+.btab-list { display: inline-flex; align-items: center; gap: 2px; min-width: 0; }
 .btab {
-  display: inline-flex; align-items: center; min-width: 0; max-width: 160px; height: 24px;
+  display: inline-flex; align-items: center; flex: none; min-width: 84px; max-width: 168px; height: 24px;
   border: 1px solid var(--line2); border-bottom-width: 2px; border-bottom-color: transparent; background: transparent;
 }
 .btab-on { border-color: var(--line2); border-bottom-color: var(--blue); background: var(--paper2); }
 .btab-name {
-  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 8px; height: 100%;
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 8px; height: 100%;
   border: 0; background: transparent; color: var(--dim); font: inherit; cursor: pointer;
 }
 .btab-on .btab-name { color: var(--ink); }
@@ -74,7 +75,10 @@
   font: inherit; cursor: pointer;
 }
 .btab-add:hover, .btab-add[aria-expanded="true"] { color: var(--ink); border-color: var(--line2); }
+.btab-more { width: auto; padding: 0 6px; color: var(--ink); border-color: var(--line2); }
 .bmenu-wrap { position: relative; display: inline-flex; }
+/* the part crumb keeps its place next to the tabs */
+.crumb > [data-crumb="part"] { flex: 0 1 auto; min-width: 9ch; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
 .bmenu {
   position: fixed; z-index: 20; min-width: 240px; max-width: 320px; white-space: normal;
   background: var(--paper); border: 1px solid var(--line2); display: flex; flex-direction: column; padding: 4px 0;
@@ -95,3 +99,5 @@
   position: fixed; left: var(--chrome-inset-x); top: calc(var(--topbar-h) + 4px); z-index: 19; display: inline-flex; gap: 6px; align-items: center; white-space: normal;
   max-width: 360px; padding: 3px 4px 3px 8px; background: var(--paper2); border: 1px solid var(--red); color: var(--red);
 }
+/* a gap between the breadcrumb (build tabs, part) and the mode tabs */
+.topbar-left { padding-right: 12px; }

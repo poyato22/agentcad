@@ -4,7 +4,7 @@ import type { Build } from "../../api/builds";
 import type { CoreClient } from "../../api/client";
 import { activeBuildId, builds, openBuildIds, resetBuilds } from "../../state/builds";
 import { bindClient, resetStore } from "../../state/store";
-import { Breadcrumb } from "./Breadcrumb";
+import { Breadcrumb, fitTabs, TAB_MAX, TAB_MIN, tabWidth } from "./Breadcrumb";
 
 const b = (id: string, name: string, trashed: number | null = null): Build =>
   ({ id, name, created_at: 1, updated_at: 1, trashed_at: trashed, part_count: 2, run_count: 0, onshape: null });
@@ -27,6 +27,26 @@ beforeEach(() => {
   bindClient(c as unknown as CoreClient);
 });
 afterEach(() => cleanup());
+
+describe("fitting tabs into the top bar", () => {
+  const t = (id: string, name: string) => ({ id, name });
+  const four = [t("a", "Quad frame"), t("b", "Bench rig"), t("c", "Gimbal mount with a long name"), t("d", "Camera cage")];
+
+  it("never shrinks a tab below TAB_MIN: what doesn't fit goes behind +N, the active tab always shows", () => {
+    expect(tabWidth("ab", true)).toBe(TAB_MIN);
+    expect(tabWidth("x".repeat(80), true)).toBe(TAB_MAX);
+    expect(fitTabs(four, "a", Infinity).hidden).toEqual([]);
+    const tight = fitTabs(four, "c", 120);
+    expect(tight.shown.map((x) => x.id)).toEqual(["c"]);
+    expect(tight.hidden.map((x) => x.id)).toEqual(["a", "b", "d"]);
+    const some = fitTabs(four, "d", 300);
+    expect(some.shown.map((x) => x.id)).toEqual(["a", "b", "d"].filter((id) => some.shown.some((s) => s.id === id)));
+    expect(some.shown.some((x) => x.id === "d")).toBe(true);
+    expect(some.shown.length + some.hidden.length).toBe(4);
+    const used = some.shown.reduce((s, x) => s + tabWidth(x.name, true) + 2, 0);
+    expect(used).toBeLessThanOrEqual(300);
+  });
+});
 
 describe("build tabs", () => {
   it("shows the open builds as tabs between LOCAL and the part", () => {

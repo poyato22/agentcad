@@ -3,7 +3,7 @@
 import { signal, type Signal } from "@preact/signals";
 import { CoreError } from "../../api/client";
 import type { PartSummary } from "../../api/types";
-import { activeBuildId, isActiveBuild } from "../../state/builds";
+import { activeBuildId, isActiveBuild, loadParts } from "../../state/builds";
 import { actions, parts } from "../../state/store";
 import { applyMove, type Move } from "./tree";
 
@@ -20,21 +20,31 @@ function patchLocal(id: string, patch: Partial<PartSummary>): readonly PartSumma
   return before;
 }
 
+/** Moves are sent one at a time, in the order made (two quick Alt+↑ presses never race). */
+let moveChain: Promise<unknown> = Promise.resolve();
+let moveSeq = 0;
+
 export async function commitMove(m: Move): Promise<boolean> {
   const build = activeBuildId.peek();
   if (!build) return false;
   treeError.value = null;
-  const before = parts.peek();
-  parts.value = applyMove(before, m);
-  try {
-    const list = await actions.client().reorderParts(build, m.parentId, m.ids);
-    if (isActiveBuild(build)) parts.value = list;
-    return true;
-  } catch (e) {
-    if (isActiveBuild(build)) parts.value = before;
-    treeError.value = `Couldn't move the part: ${reason(e)}`;
-    return false;
-  }
+  parts.value = applyMove(parts.peek(), m);              // shown at once
+  const mine = ++moveSeq;
+  const run = moveChain.then(async () => {
+    try {
+      const list = await actions.client().reorderParts(build, m.parentId, m.ids);
+      // a later move is already on screen: its answer is the one to keep
+      if (mine === moveSeq && isActiveBuild(build)) parts.value = list;
+      return true;
+    } catch (e) {
+      treeError.value = `Couldn't move the part: ${reason(e)}`;
+      // the optimistic state may hold later moves too: take the core's tree as it is
+      if (isActiveBuild(build)) await loadParts(build);
+      return false;
+    }
+  });
+  moveChain = run.catch(() => false);
+  return run;
 }
 
 export async function setColor(id: string, color: string | null): Promise<boolean> {

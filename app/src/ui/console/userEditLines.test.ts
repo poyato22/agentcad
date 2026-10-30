@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { AgentRun, MisesEvent } from "../../api/types";
 import { activeBuildId, resetBuilds } from "../../state/builds";
-import { buildUserEdits, describeVarsEdit, knownVersions, noteMyEdit, onPartChanged, resetPartEdits, userEdits, type UserEditLine } from "../../state/partEdits";
+import { buildUserEdits, describeVarsEdit, isMyVersion, knownVersions, noteMyEdit, onPartChanged, resetPartEdits, userEdits, type UserEditLine } from "../../state/partEdits";
 import { parts, resetStore } from "../../state/store";
 import type { ThreadItem } from "./threadModel";
 import { editsForRun, weave } from "./userEditLines";
@@ -44,6 +44,13 @@ describe("your edits in the thread", () => {
     expect(userEdits.value.map((l) => l.text)).toEqual(["changed thickness 4 → 5 mm on Quad arm", "hole op on quad_arm"]);
     expect(knownVersions.value.get("quad_arm")).toBe(hole.data.version);
     expect(buildUserEdits.value.length).toBe(2);
+  });
+
+  it("remembers which versions this window's own edits made (the code editor says 'You', not 'an agent')", () => {
+    noteMyEdit("p", 7, "changed wall");
+    onPartChanged({ type: "part_changed", run_id: null, ts: 1, data: { part_id: "p", version: 7, by: "user", run_id: null, summary: "set wall=4" } });
+    expect(isMyVersion("p", 7)).toBe(true);
+    expect(isMyVersion("p", 8)).toBe(false);
   });
 
   it("an agent's part_changed is not a You line", () => {

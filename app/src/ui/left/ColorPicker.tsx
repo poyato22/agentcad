@@ -1,6 +1,7 @@
 import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { normalizeHex, PALETTE, swatchName } from "./colors";
+import { useDismissRow } from "./dismissRow";
 
 export interface ColorPickerProps {
   value: string | null;
@@ -17,10 +18,13 @@ export function ColorPicker({ value, onPick, onClose, partName }: ColorPickerPro
   const grid = useRef<HTMLDivElement>(null);
   const valid = normalizeHex(hex);
 
+  const rootRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = grid.current?.querySelector<HTMLButtonElement>("[aria-checked=true]") ?? grid.current?.querySelector<HTMLButtonElement>("button");
     el?.focus();
+    rootRef.current?.scrollIntoView?.({ block: "nearest" });
   }, []);
+  useDismissRow(rootRef, onClose);
 
   function onKeyDown(e: KeyboardEvent): void {
     if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); onClose(); return; }
@@ -34,7 +38,7 @@ export function ColorPicker({ value, onPick, onClose, partName }: ColorPickerPro
   }
 
   return (
-    <div class="cpick" role="dialog" aria-label={`Color of ${partName}`} onKeyDown={onKeyDown} data-testid="color-picker">
+    <div ref={rootRef} class="cpick" role="dialog" aria-label={`Color of ${partName}`} onKeyDown={onKeyDown} data-testid="color-picker">
       <div class="cpick-grid" ref={grid} role="radiogroup" aria-label="Palette">
         {PALETTE.map((s) => (
           <button key={s.hex} type="button" role="radio" class="cpick-sw" aria-checked={value === s.hex} title={s.name} aria-label={s.name}
