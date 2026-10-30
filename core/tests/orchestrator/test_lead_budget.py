@@ -199,3 +199,30 @@ def test_usd_message_for_a_child_of_a_windowed_lead_hints_a_new_message():
     err = budget.usd_exhausted(s, child)
     assert err is not None and isinstance(err, MisesError)
     assert "next message" in (err.hint or "")
+
+
+async def test_one_new_user_turn_hook_resets_the_critique_loop_and_the_lead_caps(home, monkeypatch):
+    """Release merge: fix-bench (critique loop per user turn) and fix-final-core (lead caps per
+    message) share Runtime.new_user_turn; a message joining a turn still running resets neither."""
+    from mises.cad import views
+    rt = Runtime(home, provider_resolver=lambda ref: (FakeProvider([]), "m"))
+    lead = rt.store.create_run("engineer", "fake", "fake/model", "a Pi case").id
+    rt.store.update_run(lead, role="lead")
+    seen: list = []
+    monkeypatch.setattr(views, "reset_loop", lambda rid: seen.append(("loop", rid)))
+    monkeypatch.setattr(budget, "start_turn", lambda store, rid: seen.append(("caps", rid)))
+
+    async def idle_send(run_id, text):
+        return None
+    monkeypatch.setattr(rt, "_send", idle_send)
+    await rt.send(lead, "make the case")
+    assert seen == [("loop", lead), ("caps", lead)]
+    seen.clear()
+    monkeypatch.setattr(rt, "run_busy", lambda rid: True)      # the lead is mid-turn
+    await rt.send(lead, "and paint it red")
+    assert seen == []
+    # a plain (non-lead) run: a new turn resets its critique loop, no lead cap window
+    plain = rt.store.create_run("designer", "fake", "fake/model", "a bracket").id
+    rt.new_user_turn(plain)
+    assert seen == [("loop", plain)]
+    await rt.aclose()

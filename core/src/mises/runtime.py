@@ -1394,21 +1394,25 @@ class Runtime:
                              hint="wait for it to finish or cancel it")
         busy = self.run_busy(run_id)
         self._sending.add(run_id)
-        # a new user turn: the render-critique loop's budgets (clock, rounds, image tokens)
-        # start afresh, so a long-lived lead's follow-up request gets its own loop (I2)
-        from .cad.views import reset_loop
-        reset_loop(run_id)
         try:
             if not busy:
-                self._start_lead_turn(run_id)
+                self.new_user_turn(run_id)
             # the plain two-argument call when there is no log (tests patch _send that way)
             await (self._send(run_id, text) if log is None else self._send(run_id, text, log))
         finally:
             self._sending.discard(run_id)
 
-    def _start_lead_turn(self, run_id: str) -> None:
-        """A user message to a build's lead opens a new cap window (budget.start_turn): its
-        dollar, Onshape, web-fetch and spawn caps count per message, not over the build."""
+    def new_user_turn(self, run_id: str) -> None:
+        """The one hook for "a new user turn begins on this run" (a message to an idle run, or
+        a queued message the lead's drainer delivers): everything scoped to a user turn starts
+        afresh here.
+        - the render-critique loop's budgets (clock, rounds, image tokens), so a long-lived
+          lead's follow-up request gets its own loop (fix-bench, final review I2);
+        - a build lead's caps (dollars, Onshape calls, web fetches, spawns) open a new window,
+          counting per message, not over the build (fix-final-core C1, budget.start_turn).
+        A message that joins a turn still running is not a new turn: nothing resets."""
+        from .cad.views import reset_loop
+        reset_loop(run_id)
         try:
             run = self.store.get_run(run_id)
         except KeyError:
