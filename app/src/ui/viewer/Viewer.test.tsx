@@ -221,7 +221,10 @@ describe("Viewer", () => {
     handle.toScreen.mockImplementation((p: [number, number, number]): [number, number] => [p[0] * 10, p[1] * 10]);
     const { getByTestId, findByTestId, getByRole } = render(<Viewer />);
     act(() => { fireEvent.keyDown(window, { key: "m" }); });
-    expect(getByRole("button", { name: "measure" }).getAttribute("aria-pressed")).toBe("true");
+    // U2b's View menu hosts U2a's tools: Measure is checked there
+    fireEvent.click(getByRole("button", { name: "View options" }));
+    expect(getByRole("menuitemcheckbox", { name: "Measure" }).getAttribute("aria-checked")).toBe("true");
+    fireEvent.keyDown(getByRole("menu"), { key: "Escape" });
     const panel = await findByTestId("measure-panel");
     expect(panel.textContent).toContain("Click an edge, a face or a corner");
     await waitFor(() => expect(warmMeasure).toHaveBeenCalledWith("top_plate"));   // the core loads the shape ahead
@@ -265,7 +268,8 @@ describe("Viewer", () => {
     selectedPartId.value = "top_plate";
     handle.toScreen.mockImplementation((p: [number, number, number]): [number, number] => [100 + p[0] * 10, 100 + p[1] * 10]);
     const { getByTestId, findByTestId, getByRole, findAllByTestId } = render(<Viewer />);
-    fireEvent.click(getByRole("button", { name: "comment" }));
+    fireEvent.click(getByRole("button", { name: "View options" }));
+    fireEvent.click(getByRole("menuitemcheckbox", { name: "Comment on the model" }));
     handle.pick.mockReturnValue({ partId: "top_plate", point: [5, -4, 1.5], normal: [0, 0, 1] });
     fireEvent.pointerDown(getByTestId("viewer-canvas"), { button: 0, clientX: 150, clientY: 60 });
     fireEvent.pointerUp(getByTestId("viewer-canvas"), { button: 0, clientX: 150, clientY: 60 });

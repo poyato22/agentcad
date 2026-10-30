@@ -9,7 +9,7 @@ import { designMode, ModeSwitch, setDesignMode } from "./mode";
 
 const handle = vi.hoisted(() => ({
   setPart: vi.fn(), setParts: vi.fn(), setMode: vi.fn(), setHighlight: vi.fn(), fit: vi.fn(), resize: vi.fn(), dispose: vi.fn(),
-  pick: vi.fn(), toScreen: vi.fn((): [number, number] => [0, 0]), setMarker: vi.fn(),
+  pick: vi.fn(), toScreen: vi.fn((): [number, number] => [0, 0]), setMarker: vi.fn(), setMarkers: vi.fn(), onView: vi.fn(() => () => undefined),
 }));
 vi.mock("../viewer/scene", async (orig) => ({ ...(await orig<typeof import("../viewer/scene")>()), createViewer: (): DesignViewerHandle => handle }));
 

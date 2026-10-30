@@ -7,7 +7,15 @@ test.beforeEach(async ({ fake }) => { await fake.reset("builds"); });
 test.afterEach(async ({ fake }) => { await fake.reset("base"); });
 
 const tree = (page: Page) => page.getByTestId("part-tree");
-const tools = (page: Page) => page.getByRole("toolbar", { name: "View tools" });
+/** U2b's View ▾ menu hosts U2a's Measure / Comment: the item, checked or not. */
+async function viewItem(page: Page, name: string) {
+  await page.getByRole("button", { name: "View options" }).click();
+  return page.getByRole("menuitemcheckbox", { name });
+}
+async function measuring(page: Page, on: boolean): Promise<void> {
+  await expect(await viewItem(page, "Measure")).toHaveAttribute("aria-checked", String(on));
+  await page.keyboard.press("Escape");
+}
 const callsTo = async (fake: FakeControl, method: string, path: string): Promise<FakeCall[]> =>
   (await fake.calls()).filter((c) => c.method === method && c.path === path);
 
@@ -35,7 +43,7 @@ test("measure_with_m_shows_the_exact_area_then_shift_click_toggles_the_pick", as
   const { cx, cy } = await openPlate(page);
   await page.getByTestId("viewer-canvas").focus();
   await page.keyboard.press("m");
-  await expect(tools(page).getByRole("button", { name: "measure", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await measuring(page, true);
   const panel = page.getByTestId("measure-panel");
   await expect(panel).toContainText("Click an edge, a face or a corner");
   await page.mouse.click(cx, cy);
@@ -52,12 +60,12 @@ test("measure_with_m_shows_the_exact_area_then_shift_click_toggles_the_pick", as
   await expect(panel).toContainText("Click an edge, a face or a corner");
   await page.keyboard.press("Escape");
   await expect(panel).toHaveCount(0);
-  await expect(tools(page).getByRole("button", { name: "measure", exact: true })).toHaveAttribute("aria-pressed", "false");
+  await measuring(page, false);
 });
 
 test("comment_pins_feedback_for_the_agent_and_it_stays_on_the_model", async ({ page, fake }) => {
   const { cx, cy } = await openPlate(page);
-  await tools(page).getByRole("button", { name: "comment", exact: true }).click();
+  await (await viewItem(page, "Comment on the model")).click();
   await expect(page.getByText("Click the model where something should change")).toBeVisible();
   await page.mouse.click(cx, cy);
   const box = page.getByTestId("comment-box");
@@ -82,7 +90,7 @@ test("comment_pins_feedback_for_the_agent_and_it_stays_on_the_model", async ({ p
 
 test("pins_survive_a_reload_read_back_from_the_core", async ({ page }) => {
   const { cx, cy } = await openPlate(page);
-  await tools(page).getByRole("button", { name: "comment", exact: true }).click();
+  await (await viewItem(page, "Comment on the model")).click();
   await page.mouse.click(cx, cy);
   await page.getByTestId("comment-box").getByRole("textbox", { name: "Your comment" }).fill("thinner here");
   await page.getByRole("button", { name: "Send to agent" }).click();
