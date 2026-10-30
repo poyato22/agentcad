@@ -75,14 +75,16 @@ def main(out_dir: str) -> int:
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     try:
-        from mises.cad.render import render_views  # Plan 8 G1; absent until it merges
+        from mises.cad.render import load_stl, render_views  # Plan 8 G1's rasterizer
     except ImportError:
         render_views = None
     for name, make in examples().items():
         shape = make()
         bd.export_stl(shape, str(out / f"{name}.stl"), tolerance=0.05, angular_tolerance=0.1)
-        if render_views is not None:
-            render_views(shape, ["iso", "top", "front", "side"], 512, None)
+        if render_views is not None:   # G1's renderer takes triangles (here: the STL just written)
+            tris = load_stl((out / f"{name}.stl").read_bytes())
+            for view, png in render_views(tris, views=("iso", "top", "front", "side"), size=512).items():
+                (out / f"{name}_{view}.png").write_bytes(png)
         print(f"{name}: volume {shape.volume:.0f} mm3")
     if render_views is None:
         print("render_views unavailable (G1 not merged): wrote STLs only")
