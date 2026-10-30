@@ -10,7 +10,8 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 FX = HERE.parents[3] / "core" / "tests" / "fixtures" / "ui" / "browser"
-DEFAULT_PROJECT = json.loads((HERE.parents[1] / "fixtures" / "core-ui" / "projects.json").read_text())[0]["id"]
+# the same Default build the fake core uses (fake-core/assembly.ts DEFAULT_PROJECT_ROW)
+DEFAULT_PROJECT = json.loads((FX.parent / "projects.json").read_text())[0]["id"]
 
 
 def load(name):

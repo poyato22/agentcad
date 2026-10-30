@@ -2,7 +2,7 @@ import type { JSX } from "preact";
 import { useRef } from "preact/hooks";
 import { activePage, setPage, TAB_PAGES } from "../pages/router";
 
-/** The top mode tabs. Every tab is clickable and navigates (⌘1–⌘6 do the same); the active tab is
+/** The top mode tabs. Every tab is clickable and navigates (⌘1–⌘7 do the same); the active tab is
  *  underlined in blue. Keyboard: one tab stop (roving tabindex); ←/→ move to the previous/next tab
  *  (wrapping), Home/End to the first/last, and the focused tab opens. */
 export function ModeTabs(): JSX.Element {

@@ -245,7 +245,7 @@ test("tab_arrow_keys_navigate", async ({ page }) => {
   await expect(page.getByRole("tab", { name: "Studies" })).toBeFocused();
   await expect(page.locator('[data-region="page"]')).toContainText("Studies");
   await page.keyboard.press("End");
-  await expect(page.getByRole("tab", { name: "Parts" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tab", { name: "BOM" })).toHaveAttribute("aria-selected", "true");
 });
 
 test("cmd_digits_do_nothing_while_a_modal_is_open", async ({ page }) => {

@@ -2,7 +2,7 @@
 .overview {
   position: absolute;
   inset: 0;
-  z-index: 5;
+  z-index: 7;   /* over the sheet's View ▾ menu (6) and its toggles */
   display: flex;
   flex-direction: column;
   background: var(--bg);

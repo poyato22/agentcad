@@ -72,11 +72,11 @@
 .vp[data-tab="code"] .src { top: 44px; }
 .src-empty { display: flex; align-items: center; justify-content: center; }
 
-/* "All parts" overview toggle: a quiet chip in the viewer's top-right corner (R17). */
+/* "All parts" overview toggle: a quiet chip under the View ▾ button (R17; U2b owns the corner). */
 .overview-toggle {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: 52px;
+  right: 22px;
   z-index: 4;
   height: 24px;
   padding: 0 11px;
