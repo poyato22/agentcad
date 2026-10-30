@@ -60,7 +60,7 @@ export const jointDeletedSchema = z.object({ removed_joint: z.string() });
  *  part tree fields are Plan 5 C1's, and older rows carry only part_id/vars/metrics/mtime. */
 export const assemblyPartSchema = z.object({
   part_id: z.string(), label: z.string().nullish(), color: z.string().nullish(), kind: z.string().nullish(),
-  metrics: partMetricsSchema.nullable(), mtime: z.number(),
+  metrics: partMetricsSchema.nullable(), mtime: z.number().nullish().transform((v) => v ?? 0),   // the layout skeleton row has none (G3): one row must not fail the list
   // U8 finish, so Assembly view draws a polished part shiny as the Part viewer does (I5)
   appearance: appearanceSchema.nullish().catch(null),
 });

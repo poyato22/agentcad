@@ -2,7 +2,7 @@
 // grid and a build tab. Launch lands on the grid (R1); opening a tile opens that build as a tab
 // and leaves the grid; the Home button / ⌘0 returns to it.
 import { signal, type Signal } from "@preact/signals";
-import { buildActions } from "./builds";
+import { buildActions, selectBuildLead } from "./builds";
 
 /** Launch shows the grid. A localStorage override ("mises.home.open": "0"/"1") is a test seam
  *  only — real users never set it, so every launch lands on Home (R1). */
@@ -28,6 +28,7 @@ export function closeOverview(): void { overviewOpen.value = false; }
 /** Open a build as a tab and leave the grid. */
 export async function openBuild(id: string): Promise<void> {
   await buildActions.switchTo(id);
+  selectBuildLead(id);
   atHome.value = false;
 }
 

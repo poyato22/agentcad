@@ -291,6 +291,21 @@ describe("CommandLine", () => {
     expect(c.message).not.toHaveBeenCalled();
   });
 
+  it("a run the restarted core no longer knows hands the message to its build's lead, never 'unknown run'", async () => {
+    runs.value = new Map([["X1", { ...run("X1", "qa", "outside work"), external: false, project_id: "b1" }]]);
+    actions.selectRun("X1");
+    const c = { ...client, message: vi.fn().mockRejectedValue(new CoreError("not_found", "unknown run: X1", { status: 404 })),
+      createRun: vi.fn().mockResolvedValue({ run_id: "L2", new_lead: false, routed: null, notes: [] }), getRun: vi.fn().mockResolvedValue(run("L2", "engineer", "x")) };
+    bindClient(c as unknown as CoreClient);
+    render(<CommandLine />);
+    type("still there?");
+    enter();
+    await waitFor(() => expect(c.createRun).toHaveBeenCalledWith({ prompt: "still there?", project_id: "b1" }));
+    await waitFor(() => expect(selectedRunId.value).toBe("L2"));
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByTestId("cmd-info").textContent).toContain("sent to the build's lead");
+  });
+
   it("the same lead taking the message keeps the selection", async () => {
     const lead = { ...run("L1", "engineer", "build a robot arm"), role: "lead" as const, project_id: "b1" };
     runs.value = new Map([["L1", lead]]);

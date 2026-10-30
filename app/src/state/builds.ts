@@ -128,6 +128,14 @@ function announceSwitch(id: string): void {
   }
 }
 
+/** m4: opening a build from Home shows its live lead's conversation (when it has one), whatever
+ *  run was selected before (a sub-agent, an outside agent's run). */
+export function selectBuildLead(buildId: string): void {
+  const lead = [...runs.peek().values()].filter((r) => r.project_id === buildId && r.role === "lead" && !r.archived)
+    .sort((a, b) => b.created_at - a.created_at)[0];
+  if (lead) selectedRunId.value = lead.id;
+}
+
 function followRuns(buildId: string): void {
   const sel = selectedRunId.peek();
   const run = sel ? runs.peek().get(sel) : undefined;

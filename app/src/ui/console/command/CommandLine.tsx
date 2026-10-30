@@ -9,7 +9,7 @@ import { agentChips, chipsPromptLine, clearAgentChips } from "../../../state/age
 import { effectiveRun } from "../../../state/selection";
 import { actions, corePid, filter, follow, runs, sessionRuns, type LogFilter } from "../../../state/store";
 import { stopAll } from "../../topbar/stopAll";
-import { followLead, leadUnreachable } from "../leadFollow";
+import { followLead, leadUnreachable, NEW_LEAD_NOTE } from "../leadFollow";
 import { shownPending } from "../queued";
 import { allTargets } from "./isExternal";
 import { parseCommand, type Command } from "./parseCommand";
@@ -93,7 +93,19 @@ export function CommandLine(): JSX.Element {
         showRoutedNotes(res);
         const note = followLead(run, res);
         if (note) setInfo(note);
-      } else await actions.client().message(run.id, text);
+      } else {
+        try {
+          await actions.client().message(run.id, text);
+        } catch (e) {
+          // a run of an earlier core process (after a restart) is gone from this core: rather than
+          // fail with "unknown run", hand the message to its build's lead and follow that (I2)
+          if (!(e instanceof CoreError && e.code === "not_found" && /unknown run/i.test(e.message) && run.project_id)) throw e;
+          const res = await actions.client().createRun({ prompt: text, project_id: run.project_id });
+          showRoutedNotes(res);
+          followLead(run, res);
+          setInfo(res.new_lead ? NEW_LEAD_NOTE : "that run ended with the earlier Mises session · sent to the build's lead");
+        }
+      }
       if (chipLine) clearAgentChips();
       return true;
     } catch (e) {
