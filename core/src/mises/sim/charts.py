@@ -94,13 +94,15 @@ def charts(rec: dict, sim_dir: Path) -> dict:
                 cut = WIND_TRANSIENT * hist[-1]["step"]
                 hist = [h for h in hist if h["step"] >= cut]
             if hist:
+                lattice = "cd_lattice_total" in hist[0]       # OpenFOAM (S2): no lattice
+                series = [{"name": "Cd", "points": _thin([[h["step"], h["cd"]] for h in hist])}]
+                if lattice:
+                    series.append({"name": "Cd (lattice total)", "points": _thin(
+                        [[h["step"], h["cd_lattice_total"]] for h in hist])})
                 out.append({"id": "cd_history", "kind": "line", "title": "Drag convergence",
-                            "x": {"label": "lattice step", "unit": ""},
-                            "y": {"label": "Cd", "unit": ""},
-                            "series": [{"name": "Cd", "points": _thin(
-                                [[h["step"], h["cd"]] for h in hist])},
-                                {"name": "Cd (lattice total)", "points": _thin(
-                                    [[h["step"], h["cd_lattice_total"]] for h in hist])}]})
+                            "x": {"label": "lattice step" if lattice else "iteration",
+                                  "unit": ""},
+                            "y": {"label": "Cd", "unit": ""}, "series": series})
             sweep = [s for s in r.get("yaw_sweep") or [] if "cd" in s]
             if len(sweep) > 1:
                 sweep.sort(key=lambda s: s["yaw_deg"])

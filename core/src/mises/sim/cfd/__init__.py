@@ -6,7 +6,8 @@ Solver choice (researched 2026-10-29, see the C7 report):
   download page offers a macOS binary without naming the architecture
   (https://su2code.github.io/download.html). Not installable by Mises; detected only.
 - OpenFOAM: conda-forge `openfoam` is linux-64 only; on a Mac it runs in a container (Docker
-  or OrbStack). Detected only, never required.
+  or OrbStack) from the pinned image in ..foam_image (S2: solver "openfoam", openfoam.py).
+  Optional, never required: the image is pulled only by a user's click.
 - Built-in: a numpy D3Q19 lattice-Boltzmann solver (solver.py), labelled "low fidelity", with an
   empirical shape-class estimate (labelled "estimate") when the lattice does not fit the time
   or memory budget. This is the solver Mises runs.
@@ -22,14 +23,15 @@ from pathlib import Path
 
 import numpy as np
 
+from ..foam_image import (DOCKER_CANDIDATES, OPENFOAM_IMAGE, OPENFOAM_VERSION,  # noqa: F401
+                          ORBSTACK_URL, find_container_runtime, image_status)
 from ..proc import run_sandboxed
 from ..types import SimError
 
 SU2_CANDIDATES = [str(Path("~/miniconda3/envs/mises-su2/bin/SU2_CFD").expanduser()),
                   str(Path("~/miniforge3/envs/mises-su2/bin/SU2_CFD").expanduser()),
                   "/opt/homebrew/bin/SU2_CFD", "/usr/local/bin/SU2_CFD"]
-DOCKER_CANDIDATES = ["/usr/local/bin/docker", "/opt/homebrew/bin/docker",
-                     str(Path("~/.orbstack/bin/docker").expanduser())]
+OPENFOAM_PULL_LABEL = "Pull the OpenFOAM image"
 
 
 def _exe(p: str | None) -> str | None:
@@ -41,14 +43,47 @@ def find_su2() -> str | None:
             or next((c for c in SU2_CANDIDATES if _exe(c)), None))
 
 
-def find_container_runtime() -> str | None:
-    return _exe(shutil.which("docker")) or next((c for c in DOCKER_CANDIDATES if _exe(c)), None)
+def openfoam_rows(dock: str | None, image: str | None) -> list[dict]:
+    """The container runtime row and the pinned-image row (S2). `image` is image_status()."""
+    runtime = {"id": "openfoam_container", "name": "Docker / OrbStack (for OpenFOAM, optional)",
+               "status": "ok" if dock else "optional_missing", "version": None, "path": dock,
+               "detail": "container runtime found" if dock
+               else "no Docker or OrbStack; not needed (the built-in solver is used)",
+               "fix": None if dock else {"kind": "open_url", "label": "Get OrbStack",
+                                         "url": ORBSTACK_URL}}
+    row = {"id": "openfoam", "name": f"OpenFOAM {OPENFOAM_VERSION} image (optional CFD solver)",
+           "status": "optional_missing", "version": None, "path": None, "fix": None}
+    if not dock:
+        row["detail"] = "needs Docker or OrbStack; the built-in solver is used"
+    elif image == "present":
+        row.update(status="ok", version=OPENFOAM_VERSION, path=OPENFOAM_IMAGE,
+                   detail="k-omega SST (simpleFoam + snappyHexMesh), runs with no network")
+    elif image == "daemon_down":
+        row["detail"] = ("Docker / OrbStack is installed but not running; start it to check "
+                         "for the OpenFOAM image")
+    else:
+        row["detail"] = "image not pulled (~180 MB, native arm64); the built-in solver is used"
+        row["fix"] = {"kind": "install", "label": OPENFOAM_PULL_LABEL, "dep": "openfoam"}
+    return [runtime, row]
+
+
+def openfoam_available() -> tuple[str | None, str | None]:
+    """(docker path, None) when an OpenFOAM run can start, else (None, why not)."""
+    dock = find_container_runtime()
+    if not dock:
+        return None, "no Docker or OrbStack"
+    st = image_status(dock)
+    if st == "present":
+        return dock, None
+    return None, ("Docker / OrbStack is not running" if st == "daemon_down"
+                  else "the OpenFOAM image is not pulled (System check)")
 
 
 def cfd_solver_status() -> list[dict]:
     """Rows for the system check (C6's GET /system/check): the built-in solver is always ok;
-    SU2 and an OpenFOAM container are optional and only detected (never installed: SU2 has no
-    osx-arm64 conda-forge build). Same row shape as /system/check."""
+    SU2 is detected only (no osx-arm64 conda-forge build); OpenFOAM runs in a container from
+    the pinned image, which the user pulls with one click (S2). Same row shape as
+    /system/check."""
     su2 = find_su2()
     dock = find_container_runtime()
     return [
@@ -63,11 +98,7 @@ def cfd_solver_status() -> list[dict]:
                                          "the built-in solver is used"),
          "fix": None if su2 else {"kind": "open_url", "label": "SU2 downloads",
                                   "url": "https://su2code.github.io/download.html"}},
-        {"id": "openfoam_container", "name": "OpenFOAM via Docker / OrbStack (optional)",
-         "status": "ok" if dock else "optional_missing", "version": None, "path": dock,
-         "detail": ("container runtime found; OpenFOAM runs are not wired up yet") if dock
-         else "no Docker or OrbStack; not needed (the built-in solver is used)",
-         "fix": None},
+        *openfoam_rows(dock, image_status(dock) if dock else None),
     ]
 
 

@@ -35,6 +35,15 @@ def _no_real_claude(monkeypatch):
     monkeypatch.setattr(detect, "find_claude", lambda: detect.ClaudeInfo(path=None, version=None))
 
 
+@pytest.fixture(autouse=True)
+def _no_real_docker(monkeypatch):
+    """The real docker CLI is never run from tests (S2): the pinned OpenFOAM image reads as not
+    pulled unless a test fakes it present."""
+    from mises.sim import cfd, foam_image
+    monkeypatch.setattr(foam_image, "image_status", lambda d: "absent")
+    monkeypatch.setattr(cfd, "image_status", lambda d: "absent")
+
+
 FAKE_MAC = {"hw.ncpu": "15", "hw.perflevel0.physicalcpu": "6", "hw.memsize": str(24 * 2**30),
             "machdep.cpu.brand_string": "Apple M5 Pro"}
 

@@ -61,6 +61,14 @@ CAVEATS_WIND = [
     "Validated on a sphere and a flat plate (see the Mises C7 report); expect 10-30% error on "
     "other shapes, more on streamlined bodies whose drag is mostly friction.",
 ]
+CAVEATS_WIND_OPENFOAM = [
+    "Guide only: a steady RANS solution (OpenFOAM simpleFoam, k-omega SST with wall functions) "
+    "on a snappyHexMesh mesh around the part, in a tunnel with symmetry side walls.",
+    "Steady RANS averages out vortex shedding and predicts laminar separation poorly; bluff "
+    "bodies are usually within the band, streamlined or transitional flows may not be.",
+    "The model error band is the recorded real-solver benchmark (sphere, flat plate) when one "
+    "exists; until then it is the acceptance target and the result says 'validation pending'.",
+]
 
 
 @dataclass(frozen=True)
@@ -91,7 +99,8 @@ STUDY_TYPES: dict[str, StudyType] = {t.id: t for t in [
     StudyType("drop", "Drop / impact (estimate)", "CalculiX *STATIC (equivalent load)",
               "fem_estimate", "an equivalent static load F = m g k toward the impact face",
               ("von_mises", "displacement", "displacement_magnitude", "safety_factor")),
-    StudyType("wind", "Wind / aero (CFD)", "built-in lattice-Boltzmann D3Q19 (numpy)",
+    StudyType("wind", "Wind / aero (CFD)", "built-in lattice-Boltzmann D3Q19 (numpy); optional "
+              "OpenFOAM k-omega SST (solver 'openfoam', Docker / OrbStack)",
               "cfd_lbm", "drag and lift (Cd, Cl), moments, surface Cp, velocity slices and a "
               "yaw sweep", ("cp", "velocity", "speed"), needs_ccx=False),
 ]}
@@ -470,7 +479,8 @@ async def run_study(ctx, type_id: str, part_id: str, part_dir: Path, settings: B
                    results=out["results"], warnings=out["warnings"], inputs_hash=inputs_hash,
                    glb="result.glb" if "result.glb" in outputs else None, outputs=outputs,
                    **{k: v for k, v in out.items()
-                      if k.startswith("color_range") or k in ("fidelity_class", "lattice")})
+                      if k.startswith("color_range")
+                      or k in ("fidelity_class", "lattice", "caveats")})
         if requirements:
             rec["checks"] = check_requirements(rec, requirements)
         write_record(sim_dir, rec)
@@ -567,11 +577,20 @@ async def _run_wind(job_root: Path, metrics: dict, s, progress, memory_cap: int)
                  detail=f"lattice step {d.get('step')}/{d.get('steps')}{ang}")
     payload = wind_payload(s)
     payload["memory_mb"] = min(int(payload["memory_mb"]), memory_cap)
+    warnings = []
+    if payload["solver"] == "openfoam":
+        from . import cfd as cfd_mod
+        docker, why = await asyncio.to_thread(cfd_mod.openfoam_available)
+        if docker is not None:
+            return await _run_openfoam(job_root, tris, payload, s, docker, progress)
+        # S2: OpenFOAM is optional; without it the built-in solver runs, and says so
+        warnings.append(f"OpenFOAM was requested but is unavailable ({why}); the built-in "
+                        "solver was used instead")
+        payload["solver"] = "auto"
     r = await run_wind_job(tris, payload, job_root, progress=prog)
     progress("post", phase="post", pct=96.0, detail="post-processing")
     lbm = r.get("method") == "lbm"
     band = r.get("model_error_band")
-    warnings = []
     if payload["memory_mb"] < s.memory_mb:
         warnings.append(f"memory budget lowered to {payload['memory_mb']} MB (this Mac's limit "
                         "for a wind study)")
@@ -622,6 +641,58 @@ async def _run_wind(job_root: Path, metrics: dict, s, progress, memory_cap: int)
             "color_range_cp": r.get("cp_range")}
 
 
+WIND_RESULT_KEYS = ("cd", "cl", "cs", "drag_n", "lift_n", "side_n", "moment_nm", "reynolds",
+                    "ref_area_m2", "frontal_area_m2", "dynamic_pressure_pa", "model_error_band",
+                    "convergence_band", "validation", "converged", "stopped", "steps", "method",
+                    "yaw_sweep", "cp_range")
+
+
+async def _run_openfoam(job_root: Path, tris, payload: dict, s, docker: str, progress) -> dict:
+    """S2: the OpenFOAM k-omega SST run (one container per angle) and its record fields."""
+    from .cfd import openfoam as of
+    from .cfd.validation import openfoam_validated
+    from .foam_image import OPENFOAM_IMAGE, OPENFOAM_VERSION
+    progress("setup", phase="mesh", pct=5.0, detail="writing the OpenFOAM case")
+    r = await of.run_openfoam_study(tris, payload, job_root, docker,
+                                    progress=of.progress_adapter(progress))
+    progress("post", phase="post", pct=96.0, detail="post-processing")
+    band = r["model_error_band"]
+    validated = openfoam_validated()
+    mesh = r["mesh"]
+    warnings = [f"{of.LABEL} RANS: ±{100 * band:.0f}% model error "
+                + ("(validated against the recorded sphere / flat-plate benchmarks)" if validated
+                   else "(the acceptance target; validation pending: no real-solver benchmark "
+                        "recorded yet)")
+                + f"; mesh ~{mesh['cells_estimate'] / 1e6:.2g} M cells, "
+                  f"{mesh['surface_cell_mm']:.3g} mm at the surface"]
+    if payload["memory_mb"] < s.memory_mb:
+        warnings.append(f"memory budget lowered to {payload['memory_mb']} MB (this Mac's limit "
+                        "for a wind study)")
+    if not r.get("converged"):
+        warnings.append(f"simpleFoam did not reach its residual targets in {r.get('steps')} "
+                        "iterations; Cd is the mean of the last 10% (raise openfoam_iterations)")
+    cb = r.get("convergence_band")
+    if cb is not None and cb > 0.02:
+        warnings.append(f"Cd still varies {100 * cb:.1f}% over the last iterations (unsteady "
+                        "wake under steady RANS)")
+    results = {k: r.get(k) for k in WIND_RESULT_KEYS}
+    results.update(error_band=band, error_band_pct=round(100 * band, 1), validated=validated,
+                   convergence_band_pct=None if cb is None else round(100 * cb, 1),
+                   convergence={"history": r.get("history", []),
+                                "converged": r.get("converged")},
+                   force_n_wind=r.get("force_n_wind"),
+                   force_pressure_n_wind=r.get("force_pressure_n_wind"),
+                   force_viscous_n_wind=r.get("force_viscous_n_wind"))
+    solver = {"name": "OpenFOAM", "version": OPENFOAM_VERSION, "image": OPENFOAM_IMAGE,
+              "method": "simpleFoam (steady RANS, k-omega SST, wall functions) on a "
+                        "snappyHexMesh mesh; forces / forceCoeffs function objects",
+              "fidelity": of.LABEL}
+    return {"results": results, "warnings": warnings, "solver": solver,
+            "mesh": {"openfoam": mesh, "frame": r.get("frame")},
+            "fidelity_class": "cfd_openfoam", "color_range_cp": r.get("cp_range"),
+            "caveats": CAVEATS_WIND_OPENFOAM}
+
+
 # ---- summaries and cards
 
 def _num(v, fmt: str) -> str:
@@ -650,8 +721,12 @@ def summary(rec: dict) -> str:
     bands = "n/a" if band is None else format(band, ".1%")
     if typ == "wind":
         lat = (rec.get("mesh") or {}).get("lattice") or {}
+        fm = (rec.get("mesh") or {}).get("openfoam") or {}
         mesh = (f"lattice {lat.get('cells_across')} cells across, "
-                f"Re_eff {_num(lat.get('reynolds_effective'), '.3g')}" if lat else "no lattice")
+                f"Re_eff {_num(lat.get('reynolds_effective'), '.3g')}" if lat else
+                f"mesh ~{_num(fm.get('cells_estimate'), '.3g')} cells, "
+                f"{_num(fm.get('surface_cell_mm'), '.3g')} mm at the surface" if fm
+                else "no lattice")
         s = (f"GUIDE ONLY - {fidelity_note(rec)}, {sv['name']}, {mesh}: {rec['part_id']} Cd "
              f"{_num(r.get('cd'), '.3f')}, Cl {_num(r.get('cl'), '.3f')}, drag "
              f"{_num(r.get('drag_n'), '.3g')} N, lift {_num(r.get('lift_n'), '.3g')} N at Re "
@@ -733,7 +808,9 @@ KEY_METRICS = {
 
 def fidelity_note(rec: dict) -> str | None:
     """The label a card / summary shows next to the numbers, e.g. "low fidelity · ±30%
-    (validated)", "low fidelity (preview) · ±40% (validated)", "estimate · ±40%"."""
+    (validated)", "low fidelity (preview) · ±40% (validated)", "estimate · ±40%",
+    "OpenFOAM k-ω SST · ±10% (validated)" (S2; "target; validation pending" until a
+    real-solver benchmark is recorded)."""
     r = rec.get("results") or {}
     fc = rec.get("fidelity_class")
     band = r.get("model_error_band")
@@ -741,6 +818,10 @@ def fidelity_note(rec: dict) -> str | None:
         from .cfd.validation import PREVIEW_REFINEMENT
         pre = " (preview)" if r.get("refinement_level") == PREVIEW_REFINEMENT else ""
         return f"low fidelity{pre} · ±{100 * band:.0f}% (validated)"
+    if fc == "cfd_openfoam" and band is not None:
+        # S2: "(validated)" only once a real-solver benchmark is recorded (validation.py)
+        tag = "validated" if r.get("validated") else "target; validation pending"
+        return f"OpenFOAM k-ω SST · ±{100 * band:.0f}% ({tag})"
     if fc == "empirical" and band is not None:
         return f"estimate · ±{100 * band:.0f}% (shape-class table)"
     if fc == "fem_estimate":
@@ -748,12 +829,28 @@ def fidelity_note(rec: dict) -> str | None:
     return None
 
 
+def error_band_label(rec: dict) -> str:
+    """The wind card's error-band label, per solver: only a band backed by a recorded benchmark
+    says "validated" (S2 review I1)."""
+    fc = rec.get("fidelity_class")
+    r = rec.get("results") or {}
+    if fc == "cfd_lbm":
+        return "model error (validated)"
+    if fc == "cfd_openfoam":
+        return ("model error (validated)" if r.get("validated")
+                else "model error (target, validation pending)")
+    if fc == "empirical":
+        return "model error (shape-class estimate)"
+    return "model error"
+
+
 def card(rec: dict) -> dict:
     """What a thread / Studies card renders: type, status, progress, key metrics with
     pass / warn / fail, and the URLs of the result GLB and chart data."""
     typ = rec.get("type", "static")
     r = rec.get("results") or {}
-    metrics = [{"key": k, "label": lab, "unit": u, "value": r.get(k)}
+    metrics = [{"key": k, "label": error_band_label(rec) if (typ, k) == ("wind", "error_band_pct")
+                else lab, "unit": u, "value": r.get(k)}
                for k, lab, u in KEY_METRICS.get(typ, [])]
     status = None
     if rec.get("status") == "done":

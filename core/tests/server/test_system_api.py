@@ -135,6 +135,47 @@ async def test_installs_are_serialized(rt):
     assert oks == [True, True] and peak == 1
 
 
+def test_openfoam_pull_is_the_fixed_pinned_image_no_body_args(rt, monkeypatch):
+    from mises.sim.foam_image import OPENFOAM_IMAGE
+    monkeypatch.setattr(sysapi, "find_docker", lambda: "/usr/local/bin/docker")
+    calls = []
+
+    async def fake_runner(argv, emit):
+        calls.append(list(argv))
+        return 0
+
+    with TestClient(_mount(rt, fake_runner), base_url="http://127.0.0.1") as c:
+        r = c.post("/system/install/openfoam",
+                   json={"image": "evil/image:latest", "args": ["--network", "host"]})
+    assert r.status_code == 200, r.text
+    assert r.json()["command"] == ["/usr/local/bin/docker", "pull", OPENFOAM_IMAGE]
+
+
+def test_openfoam_pull_without_docker_offers_orbstack(rt, monkeypatch):
+    monkeypatch.setattr(sysapi, "find_docker", lambda: None)
+
+    async def fake_runner(argv, emit):
+        return 0
+
+    with TestClient(_mount(rt, fake_runner), base_url="http://127.0.0.1") as c:
+        r = c.post("/system/install/openfoam")
+    assert r.json()["ok"] is False
+    assert r.json()["fix"] == {"kind": "open_url", "label": "Get docker",
+                               "url": sysapi.ORBSTACK_URL}
+
+
+async def test_installer_env_puts_the_managers_own_dir_first_on_path(tmp_path):
+    # S2 fix: an OrbStack-only docker keeps its credential helper next to the CLI
+    d = tmp_path / "orb" / "bin"
+    d.mkdir(parents=True)
+    fake = d / "docker"
+    fake.write_text('#!/bin/sh\necho "PATH=$PATH"\n')
+    fake.chmod(0o755)
+    lines = []
+    assert await sysapi._subprocess_runner([str(fake), "pull", "x"], lines.append) == 0
+    assert lines[0].startswith(f"PATH={d}:")
+
+
 def _drain(sub):
     out = []
     while not sub.queue.empty():

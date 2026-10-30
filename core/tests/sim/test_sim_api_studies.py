@@ -64,12 +64,13 @@ def test_new_routes_need_admin_token(client):
     assert client.post("/sims/sim_0123456789ab/cancel").status_code == 401
 
 
-def test_types_route_has_schemas(client):
+def test_types_route_has_schemas(client, monkeypatch):
+    monkeypatch.setattr("mises.sim.cfd.image_status", lambda d: "absent")  # no real docker
     ts = client.get("/sims/types", headers=AUTH).json()
     assert [t["id"] for t in ts] == ["static", "modal", "buckling", "thermal", "drop", "wind"]
     assert all("properties" in t["schema"] for t in ts)
     s = client.get("/sims/solvers", headers=AUTH).json()
-    assert {r["id"] for r in s["cfd"]} == {"cfd_builtin", "su2", "openfoam_container"}
+    assert {r["id"] for r in s["cfd"]} == {"cfd_builtin", "su2", "openfoam_container", "openfoam"}
 
 
 def test_post_rejects_bad_settings_before_creating_a_run(client, rt):

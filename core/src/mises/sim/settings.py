@@ -322,9 +322,15 @@ class WindSettings(_M):
                            "this Mac's RAM - 6 GB - running local models", **_u("MB"))
     yaw_deg: list[float] = Field(default_factory=list, max_length=13, description="yaw sweep "
                                  "angles (each one is a separate run)", **_u("deg"))
-    solver: Literal["auto", "lbm", "empirical"] = Field(
+    solver: Literal["auto", "lbm", "empirical", "openfoam"] = Field(
         "auto", description="auto: lattice-Boltzmann, falling back to the empirical estimate "
-        "when it cannot fit the time or memory budget")
+        "when it cannot fit the time or memory budget; openfoam: OpenFOAM k-omega SST RANS in "
+        "a Docker / OrbStack container (optional; the built-in solver is used, and labelled, "
+        "when it is not installed)")
+    openfoam_iterations: int = Field(1500, ge=100, le=20_000, description="OpenFOAM: "
+                                     "simpleFoam iterations cap (stops earlier on convergence)")
+    cpus: int = Field(4, ge=1, le=32, description="OpenFOAM: CPU cores given to the "
+                      "container (MPI ranks)")
     shape_class: Literal["auto", "sphere", "cube", "cylinder", "flat_plate", "streamlined",
                          "bluff"] = Field("auto", description="for the empirical estimate")
 
