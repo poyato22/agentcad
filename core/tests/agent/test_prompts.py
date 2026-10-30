@@ -14,14 +14,19 @@ def test_post_study_replies_point_at_the_cards():
     # Plan 7 R18: no walls of text after studies, in every agent's shared rules and the
     # engineer, sim and lead bodies
     from mises.agent.prompts import RESPONSE_RULES
-    from mises.orchestrator.lead import LEAD_PROMPT
+    from mises.claude_code.prompts import mises_rules_md
+    from mises.orchestrator.lead import lead_definition
     assert "study cards above" in RESPONSE_RULES and "Never restate" in RESPONSE_RULES
     defs = load_definitions()
-    for body in (defs["engineer"].body, defs["sim"].body, LEAD_PROMPT):
-        flat = " ".join(body.split())
-        assert "study cards above" in flat and "2-3 short lines" in flat
-    assert "assembly_animate" in defs["engineer"].body and "sweep" in defs["engineer"].body
-    assert "assembly_add_part" in LEAD_PROMPT and "assembly_animate" in LEAD_PROMPT
+    # final review M-1: the rule is stated once, in RESPONSE_RULES, which every path carries;
+    # the specific assembly ordering appears once in every lead's prompt
+    for name in ("engineer", "sim", "designer"):
+        lead = lead_definition(defs[name])
+        native = " ".join(build_system_prompt(lead, POLICY, []).split())
+        cc = " ".join(mises_rules_md(lead.body, defs, lead=True).split())
+        for text in (native, cc):
+            assert text.count("2-3 short lines") == 1 and text.count("study cards above") == 1
+            assert text.count("assembly_animate") == 1 and "sweep" in text, name
 
 
 def test_prompt_stable_prefix():

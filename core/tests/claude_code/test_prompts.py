@@ -32,6 +32,16 @@ def test_rules_list_every_agent_and_both_delegation_paths():
     assert "Agent` tool" in md and "agent_spawn" in md
 
 
+def test_lead_delegates_only_through_agent_spawn():
+    """Final review I-1: a build's lead must spawn tracked Mises sub-agents (the agent_spawned
+    card, the agents view), so its prompt never offers the Agent tool for delegation."""
+    md = mises_rules_md(lead=True)
+    assert "mcp__mises__agent_spawn" in md and "`engineer`" in md
+    assert "quick role switch" not in md and "no separate run" not in md
+    assert "Never use the `Agent` tool for sub-agents" in md
+    assert "Two ways" not in md
+
+
 def test_hidden_agents_are_not_in_the_delegation_line():
     md = mises_rules_md(hidden={"designer"})
     assert "`engineer`" in md and "`designer`" not in md

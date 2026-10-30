@@ -439,6 +439,8 @@ async def test_claude_code_lead_rules_keep_lockdown(home):
     s._write_files()
     rules = (rt.workdir(rid) / RULES_FILE).read_text()
     assert "this build's lead agent" in rules and "mcp__mises__agent_spawn" in rules
+    # final review I-1: the lead is never told to delegate through the Agent tool
+    assert "quick role switch" not in rules and "Never use the `Agent` tool" in rules
     args = s.claude_args()
     assert args[args.index("--tools") + 1] == "Agent"
     assert "--strict-mcp-config" in args and "--setting-sources=" in args
