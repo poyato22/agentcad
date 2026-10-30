@@ -135,7 +135,8 @@
    like the mode tabs. Names shrink with an ellipsis before the part crumb does. */
 .btabs { display: inline-flex; align-items: center; gap: 2px; min-width: 0; flex: 0 1 auto; position: relative; }
 /* tabs keep a readable width (TAB_MIN..TAB_MAX in Breadcrumb.tsx); the ones that don't fit go behind "+N" */
-.btab-list { display: inline-flex; align-items: center; gap: 2px; min-width: 0; }
+/* overflow clips (never overlaps): the + and ▾ after the list always stay clickable (I6) */
+.btab-list { display: inline-flex; align-items: center; gap: 2px; min-width: 0; overflow: hidden; }
 .btab {
   display: inline-flex; align-items: center; flex: none; min-width: 84px; max-width: 168px; height: 24px;
   border: 1px solid var(--line2); border-bottom-width: 2px; border-bottom-color: transparent; background: transparent;

@@ -63,8 +63,9 @@ describe("conversation view (default)", () => {
     const you = within(thread).getAllByText("thicken the mount plate to 6 mm");
     expect(you[0].closest("[data-msg=user]")).toBeTruthy();
     const acts = [...thread.querySelectorAll("[data-activity]")].map((a) => a.querySelector("[data-activity-text]")?.textContent);
+    // m6: "created mount plate" is the part_created card's, not a raw row too
+    expect(thread.querySelector("[data-announce=part_created]")).toBeTruthy();
     expect(acts).toEqual([
-      "created mount plate · 3.9 cm³",
       "changed mount plate · thickness 5 → 6 · +0.8 cm³",
       "measured mount plate · 4.6 cm³",
       "asking to merge mount plate",

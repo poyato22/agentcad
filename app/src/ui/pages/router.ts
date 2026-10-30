@@ -12,6 +12,7 @@
 //   ⌥⌘A flips Part / Assembly on the Design page (ui/assembly/mode). ⌘0 is Home (U1).
 import { signal, type Signal } from "@preact/signals";
 import { isTrustedKey, registerShortcut } from "../../lib/keys";
+import { atHome } from "../../state/home";
 
 export type Page = "design" | "studies" | "drawing" | "print" | "onshape" | "directory" | "bom";
 
@@ -53,7 +54,9 @@ export function isPage(v: unknown): v is Page {
 }
 
 export function setPage(p: Page): void {
-  if (isPage(p)) activePage.value = p;
+  if (!isPage(p)) return;
+  activePage.value = p;
+  atHome.value = false;     // a mode tab (or ⌘1–⌘7) on Home opens that page of the open build (m1)
 }
 
 /** The page a ⌘<digit> shortcut maps to, or null. */

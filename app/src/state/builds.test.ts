@@ -5,7 +5,7 @@ import { z } from "zod";
 import { buildSchema, type Build } from "../api/builds";
 import type { CoreClient } from "../api/client";
 import type { AgentRun, PartSummary } from "../api/types";
-import { activeBuildId, buildActions, builds, buildsError, normalizeTabs, openBuildIds, openBuilds, resetBuilds, runBuild, trashBlocked, trashedBuilds, trashRefusalText } from "./builds";
+import { activeBuildId, buildActions, builds, buildsError, normalizeTabs, openBuildIds, openBuilds, resetBuilds, runBuild, selectBuildLead, trashBlocked, trashedBuilds, trashRefusalText } from "./builds";
 import { bindClient, parts, resetStore, runs, selectedPartId, selectedRunId } from "./store";
 
 const FX = resolve(import.meta.dirname, "../../test/fixtures/core-ui");
@@ -85,6 +85,28 @@ describe("builds", () => {
     expect(selectedRunId.value).toBe("r2");             // the run shown follows the build
     await buildActions.switchTo("a");
     expect(selectedPartId.value).toBe("arm");
+  });
+
+  it("switching to a build shows its lead, not its newest sub-agent (m4)", async () => {
+    const c = fakeClient([b("a", "Quad"), b("b", "Bench")]);
+    bindClient(c as unknown as CoreClient);
+    const run = (id: string, over: Partial<AgentRun>): [string, AgentRun] => [id, { id, parent_id: null, agent: "designer", provider: "fake", model: "m", task: id, status: "done", branch: null, onshape_calls: 0, input_tokens: 0, output_tokens: 0, usd: 0, created_at: 1, updated_at: 1, project_id: "b", ...over }];
+    runs.value = new Map<string, AgentRun>([
+      run("old", { role: "lead", archived: true, created_at: 1 }),
+      run("lead", { role: "lead", created_at: 2 }),
+      run("sub", { role: "sub", parent_id: "lead", created_at: 3 }),
+    ]);
+    await buildActions.refresh();
+    await buildActions.switchTo("b");
+    expect(selectedRunId.value).toBe("lead");
+  });
+
+  it("opening a build from Home shows its lead even when another of its runs was selected (m4)", async () => {
+    const run = (id: string, over: Partial<AgentRun>): [string, AgentRun] => [id, { id, parent_id: null, agent: "qa", provider: "fake", model: "m", task: id, status: "done", branch: null, onshape_calls: 0, input_tokens: 0, output_tokens: 0, usd: 0, created_at: 1, updated_at: 1, project_id: "b", ...over }];
+    runs.value = new Map<string, AgentRun>([run("lead", { role: "lead" }), run("outside", { created_at: 9 })]);
+    selectedRunId.value = "outside";
+    selectBuildLead("b");
+    expect(selectedRunId.value).toBe("lead");
   });
 
   it("a parts answer for a build you already left is dropped", async () => {

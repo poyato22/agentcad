@@ -126,6 +126,18 @@ export function rowProblems(r: SheetRow): string[] {
   return out;
 }
 
+/** The fit's property keys (core calibration.py) as words. */
+const PROP_WORDS: Record<string, string> = { e: "Stiffness (E)", e_z: "Stiffness across the layers (E_z)", strength: "Strength", z_strength: "Strength across the layers" };
+
+/** A fit warning in plain words (m7: "e: only 2 test(s): low confidence" →
+ *  "Stiffness (E): only 2 tests, low confidence"). Unknown shapes pass through. */
+export function calWarningText(w: string): string {
+  const m = /^([a-z_]+): (.*)$/.exec(w.trim());
+  let out = m && PROP_WORDS[m[1]] ? `${PROP_WORDS[m[1]]}: ${m[2]}` : w;
+  out = out.replace(/\b(\d+) test\(s\)/g, (_s, n: string) => `${n} test${n === "1" ? "" : "s"}`).replace(/: low confidence$/, ", low confidence");
+  return out;
+}
+
 export const CONFIDENCE_TEXT: Record<Confidence, string> = {
   low: "low confidence: add tests",
   medium: "medium confidence",

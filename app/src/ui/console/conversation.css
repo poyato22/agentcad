@@ -24,6 +24,7 @@
 .cv-opt.sel { background: var(--blue-tint); color: var(--ink); box-shadow: inset 2px 0 var(--blue); }
 .cv-opt-l { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
 .cv-opt-s { font-size: 10px; }
+.cv-opt-lead { margin-left: 6px; font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: .08em; }
 .cv-opt-s.needs-you { color: var(--blue2); }
 .cv-detailsbar { flex: none; display: flex; align-items: center; gap: 6px; padding: 2px 6px 2px 8px; border-bottom: 1px solid var(--line2); background: var(--head); }
 
@@ -127,7 +128,14 @@ button.cv-x { border: 1px solid var(--line2); }
 .cv-routed { display: inline-flex; align-items: baseline; gap: 2px; margin-left: 6px; padding: 0 5px; border: 1px solid var(--line2); border-radius: 2px; letter-spacing: 0; }
 .cv-routed-arrow { color: var(--blue2); }
 .cv-routed-agent { color: var(--ink); }
-.cv-who { display: flex; align-items: center; }
+.cv-who { display: flex; align-items: center; min-width: 0; }
+/* m5: one line at 420 px — the model id and the routing reason ellipsize; the warning chip keeps its words */
+.cv-who > * { white-space: nowrap; }
+.cv-who > span:first-child { flex: 0 1 auto; min-width: 4ch; overflow: hidden; text-overflow: ellipsis; }
+.cv-who .mwarn { flex: none; }
+.cv-who .cv-routed { flex: 0 1 auto; min-width: 0; overflow: hidden; }
+.cv-routed-agent { flex: none; }
+.cv-routed-why { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* R19: "Agent is animating…" chip while an agent drives the assembly in the viewer */
 .cv-animating { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); z-index: 6; display: flex; align-items: center; gap: 8px; padding: 4px 8px; border: 1px solid var(--blue); border-radius: 3px; background: var(--blue-tint); color: var(--blue2); font-size: var(--fs-small); }

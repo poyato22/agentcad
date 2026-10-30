@@ -32,6 +32,20 @@ function cancelRun(id: string): void {
   }
 }
 
+/** m4: the switcher's order — the build's live lead first with its sub-agents indented under it,
+ *  then every other run in the list's order. */
+export function switcherRows(list: readonly AgentRun[]): { run: AgentRun; depth: number }[] {
+  const leads = list.filter((r) => r.role === "lead" && !r.archived);
+  const out: { run: AgentRun; depth: number }[] = [];
+  const used = new Set<string>();
+  for (const l of leads) {
+    out.push({ run: l, depth: 0 }); used.add(l.id);
+    for (const c of list) if (c.parent_id === l.id && !used.has(c.id)) { out.push({ run: c, depth: 1 }); used.add(c.id); }
+  }
+  for (const r of list) if (!used.has(r.id)) out.push({ run: r, depth: 0 });
+  return out;
+}
+
 export function RunSwitcher(): JSX.Element {
   const list = buildRuns.value;   // the active build's runs (A3)
   const offList = offListRuns.value;
@@ -97,13 +111,14 @@ export function RunSwitcher(): JSX.Element {
       )}
       {open && (
         <div class="cv-menu" role="listbox" aria-label="Runs" onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); setOpen(false); } }}>
-          {list.map((r) => {
+          {switcherRows(list).map(({ run: r, depth }) => {
             const sel = r.id === shownId;
             return (
               <div key={r.id} role="option" aria-selected={sel} tabIndex={0} class={`cv-opt${sel ? " sel" : ""}`} data-run={r.id} data-selected={sel ? "" : undefined}
+                data-depth={depth} style={depth ? { paddingLeft: `${8 + depth * 14}px` } : undefined}
                 onClick={() => pick(r.id)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(r.id); } }}>
                 <span class="cv-actdot" data-activity={activityByRun.value.get(r.id)?.state}><Led tone={tone(r, needs)} title={needs.has(r.id) ? "needs you" : r.status} /></span>
-                <span class="cv-opt-l text" data-run-label>{labelOf(r.id)}</span>
+                <span class="cv-opt-l text" data-run-label>{labelOf(r.id)}{r.role === "lead" && !r.archived && <span class="cv-opt-lead" data-lead> lead</span>}</span>
                 <span class={needs.has(r.id) ? "cv-opt-s needs-you" : "cv-opt-s faint"}>{needs.has(r.id) ? "needs you" : r.status}</span>
               </div>
             );

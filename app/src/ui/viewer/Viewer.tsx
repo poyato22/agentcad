@@ -30,11 +30,14 @@ import { modalOpen } from "../pages/router";
 import { createViewer, type DesignViewerHandle, type PickMarker } from "./scene";
 import { TitleBlock } from "./TitleBlock";
 import { ViewerTools, type ViewMode, type ViewScope } from "./ViewerTools";
+import { AllPartsToggle } from "./Overview";
+import { SkeletonPanel } from "./SkeletonPanel";
 import { ModeSwitch } from "../assembly/mode";
 import { materialOf } from "../../lib/appearance";
 import { backgroundStyle, edgeInk, isLight, viewerBackground } from "./background";
 import { BackgroundMenu } from "./BackgroundMenu";
 import { DesignViewModes, designModeItems } from "./modes";
+import { explodeOffset } from "./modes/explode";
 import type { ModeHost } from "./scene";
 import "./viewer.css";
 import { addPartMenuItem, measureHook } from "../left/partMenuHooks";
@@ -94,10 +97,19 @@ export const changingRunLabel = computed<string | null>(() => {
   return run ? formatRunLabel(run, all) : null;
 });
 
+/** A pin's point where its body is now (explode moves bodies; the pin's point is at rest). */
+function followExplode(p: Pin, host: ModeHost | null): Pin {
+  const part = host?.parts().find((x) => x.id === p.partId);
+  if (!part) return p;
+  const off = explodeOffset(part.scene.object, new Vector3(...p.point));
+  return off.lengthSq() === 0 ? p : { ...p, point: [p.point[0] + off.x, p.point[1] + off.y, p.point[2] + off.z] };
+}
+
 /** The parts on the sheet: the focused one, or (build view) every visible part with a model. */
 export function shownParts(list: readonly PartSummary[], focus: PartSummary | null, scope: ViewScope, hidden: ReadonlySet<string>): PartSummary[] {
-  if (scope === "part") return focus ? [focus] : [];
-  return list.filter((p) => p.metrics !== null && (p.part_id === focus?.part_id || !hidden.has(p.part_id)));
+  // the layout skeleton (G3) has no model: it is never loaded as a GLB (I4b)
+  if (scope === "part") return focus && focus.kind !== "skeleton" ? [focus] : [];
+  return list.filter((p) => p.metrics !== null && p.kind !== "skeleton" && (p.part_id === focus?.part_id || !hidden.has(p.part_id)));
 }
 
 interface OpenOps { seq: number; partId: string; target: OpsTarget; at: { x: number; y: number } | null; keyboard: boolean; baseVersion: number }
@@ -191,6 +203,14 @@ export function Viewer(): JSX.Element {
       handle = null; // no WebGL: the sheet, title block and metrics still work
     }
     viewerRef.current = handle;
+    if (handle && import.meta.env.MODE !== "production") {
+      // e2e probe (like assembly's __misesAssembly): a model point (mm) → client pixels, so a
+      // test can click a known corner (two-point measure)
+      const h = handle;
+      (window as unknown as { __misesViewer?: { project(p: Vec3): { x: number; y: number } } }).__misesViewer = {
+        project: (p) => { const r = host.getBoundingClientRect(); const [x, y] = h.toScreen(p); return { x: r.left + x, y: r.top + y }; },
+      };
+    }
     // HTML overlays (pins, measure dots) re-place after each frame; at most one render per frame
     const offView = handle?.onView?.(() => setFrame((n) => n + 1));
     setModeHost(handle?.modeHost?.() ?? null);
@@ -460,7 +480,8 @@ export function Viewer(): JSX.Element {
 
   const v = viewerRef.current;
   const shownIds = new Set(shown.map((p) => p.part_id));
-  const shownPins: Pin[] = tab === "model" ? pins.filter((p) => shownIds.has(p.partId)) : [];
+  // m11: a pin rides with its exploded body (it used to hang in mid-air at its rest point)
+  const shownPins: Pin[] = tab === "model" ? pins.filter((p) => shownIds.has(p.partId)).map((p) => followExplode(p, modeHost)) : [];
   const dots: Vec3[] = tool === "measure" ? picks.flatMap((p) => (p.kind === "vertex" || p.kind === "point" ? [p.point] : [])) : [];
 
   return (
@@ -491,6 +512,7 @@ export function Viewer(): JSX.Element {
       <span class="label vp-fig">{scope === "build" ? "FIG. 1 — BUILD" : "FIG. 1 — DESIGN"}</span>
       <ViewerTools mode={mode} onMode={setMode} scope={scope} onScope={(s) => { viewScope.value = s; }}
         code={tab === "code"} onCode={(on) => { viewTab.value = on ? "code" : "model"; }}
+        lead={tab !== "code" ? <AllPartsToggle /> : null}
         canEdit={canEdit && tab === "model"}
         onEdit={() => { if (part) setOps({ seq: ++pickSeq.current, partId: part.part_id, target: { face: null, edge: null, point: null }, at: null, keyboard: true, baseVersion: part.version ?? 0 }); }}
         extra={[
@@ -503,8 +525,9 @@ export function Viewer(): JSX.Element {
           ...(part !== null && tab === "model" ? designModeItems() : []),
           { id: "background", label: "Background…", onSelect: () => setBgOpen(true) },
         ]} />
-      {part !== null && <DesignViewModes host={modeHost} focusId={partId} partIds={shown.map((p) => p.part_id)} />}
+      {part !== null && part.kind !== "skeleton" && <DesignViewModes host={modeHost} focusId={partId} partIds={shown.map((p) => p.part_id)} />}
       {part === null && <div class="vp-empty label">NO PART · ask an agent to create one</div>}
+      {part?.kind === "skeleton" && tab === "model" && <SkeletonPanel part={part} />}
       {tab === "model" && tool === "comment" && !comment && <div class="vx-mode-hint label" role="status">Click the model where something should change</div>}
       {tab === "model" && v && (shownPins.length > 0 || dots.length > 0) && (
         <PinLayer pins={shownPins} dots={dots} toScreen={(p) => v.toScreen(p)} bounds={bounds} openPin={openPin} onOpen={setOpenPin}

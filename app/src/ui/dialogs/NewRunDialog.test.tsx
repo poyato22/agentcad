@@ -82,7 +82,11 @@ describe("NewRunDialog", () => {
     await chip("openai · gpt-x");
     // that vendor has no key: Start is blocked and the hint is shown
     expect((screen.getByText("Start") as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText(/mises keys set openai/, { selector: "[data-hint]" })).toBeTruthy();
+    // in-app words, not a CLI command (I6): the hint says so and offers the Profile pane
+    const hint = document.querySelector("[data-hint]")!;
+    expect(hint.textContent).toMatch(/No API key for .* on this Mac/);
+    expect(hint.textContent).not.toContain("mises keys");
+    expect(screen.getByRole("button", { name: "Add a key" })).toBeTruthy();
   });
 
   it("double_click_on_start_creates_one_run", async () => {

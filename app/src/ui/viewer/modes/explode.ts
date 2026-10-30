@@ -62,6 +62,24 @@ export function bodies(root: THREE.Object3D): THREE.Mesh[][] {
 
 interface Moved { obj: THREE.Object3D; base: THREE.Vector3; local: THREE.Vector3 }
 
+/** m11: how far the exploded body holding `point` (a rest-pose world point on the part under
+ *  `root`) has moved, so a pin on it can follow. Zero when nothing under `root` is moved. */
+export function explodeOffset(root: THREE.Object3D, point: THREE.Vector3): THREE.Vector3 {
+  let best: { d: number; off: THREE.Vector3 } | null = null;
+  root.traverse((o) => {
+    const base = o.userData["explodeBase"];
+    if (!(base instanceof THREE.Vector3) || o.position.equals(base)) return;
+    const now = o.getWorldPosition(new THREE.Vector3());
+    const rest = o.parent ? o.parent.localToWorld(base.clone()) : base.clone();
+    const off = now.sub(rest);
+    // the body's box back at rest: the point on (or nearest to) it picks the body
+    const box = new THREE.Box3().setFromObject(o).translate(off.clone().negate());
+    const d = box.distanceToPoint(point);
+    if (!best || d < best.d) best = { d, off };
+  });
+  return (best as { d: number; off: THREE.Vector3 } | null)?.off ?? new THREE.Vector3();
+}
+
 export const EXPLODE_MS = 450;
 
 export class Exploder {

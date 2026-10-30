@@ -155,7 +155,8 @@ export function buildRoutes(d: BuildsDeps): Route[] {
     for (const p of d.parts()) if (!B().rows.has(p.part_id)) {
       const pid = activeId();
       const order = [...B().rows.values()].filter((r) => r.project_id === pid && r.parent_id === null).length;
-      B().rows.set(p.part_id, { project_id: pid, label: p.part_id, parent_id: null, order, color: null, kind: "part", version: 1 });
+      // an emitted part may say what it is (e.g. the layout skeleton row)
+      B().rows.set(p.part_id, { project_id: pid, label: p.label ?? p.part_id, parent_id: null, order, color: null, kind: p.kind ?? "part", version: p.version ?? 1 });
     }
   };
   const rowView = (p: PartSummary) => {

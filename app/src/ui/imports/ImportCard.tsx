@@ -7,6 +7,8 @@
 import type { JSX } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import type { DrawingImport, MatchRow } from "../../api/imports";
+import { builds } from "../../state/builds";
+import { openBuild } from "../../state/home";
 import { actions } from "../../state/store";
 import { Button } from "../common/Button";
 import { dismissImport, type ImportEntry } from "./state";
@@ -159,6 +161,17 @@ function stageText(e: ImportEntry): string {
   return s ? s.charAt(0).toUpperCase() + s.slice(1) + "…" : "Reading the drawing…";
 }
 
+/** The build a part landed in, by name (m2: an import from Home no longer lands silently). */
+function buildName(id: string | null): string | null {
+  return id ? builds.value.find((b) => b.id === id)?.name ?? null : null;
+}
+
+async function openPart(rec: DrawingImport, key: string): Promise<void> {
+  if (rec.project_id && builds.peek().some((b) => b.id === rec.project_id && b.trashed_at === null)) await openBuild(rec.project_id);
+  if (rec.part_id) actions.selectPart(rec.part_id);
+  dismissImport(key);
+}
+
 export function ImportCard({ entry }: { entry: ImportEntry }): JSX.Element {
   const rec = entry.rec;
   const failed = entry.error !== null || rec?.status === "failed";
@@ -195,7 +208,7 @@ export function ImportCard({ entry }: { entry: ImportEntry }): JSX.Element {
         <div class="imp-done">
           <p class="imp-result" data-result={rec.result ?? ""}>
             <span class={`led ${rec.result === "match" ? "led-green" : "led-amber"}`} aria-hidden="true" />
-            <span>Made <b>{rec.part_id}</b> · {summary(rec)}</span>
+            <span>Made <b>{rec.part_id}</b>{buildName(rec.project_id) && <> in <b data-import-build>{buildName(rec.project_id)}</b></>} · {summary(rec)}</span>
           </p>
           <SideBySide rec={rec} />
           {rec.table && <MatchTableView rows={rec.table.rows} basis={rec.basis} />}
@@ -204,7 +217,9 @@ export function ImportCard({ entry }: { entry: ImportEntry }): JSX.Element {
             <ul class="imp-notes">{rec.notes.map((n, i) => <li key={i}>{n}</li>)}</ul>
           )}
           <div class="imp-actions">
-            <Button variant="primary" onClick={() => { if (rec.part_id) actions.selectPart(rec.part_id); }}>Open part</Button>
+            {/* m2: opens the part's own build (from Home too) and puts the card away, so it no
+                longer floats over the viewer */}
+            <Button variant="primary" onClick={() => { void openPart(rec, entry.key); }}>Open part</Button>
           </div>
         </div>
       )}

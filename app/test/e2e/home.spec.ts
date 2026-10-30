@@ -45,3 +45,39 @@ test("all_parts_overview_opens_and_closes", async ({ page }) => {
   await page.getByRole("button", { name: "Close all-parts view" }).click();
   await expect(page.getByRole("dialog", { name: "All parts" })).toHaveCount(0);
 });
+
+// I1: Home spans the whole window under the top bar — no dead console column, no blank band.
+for (const width of [1440, 1280]) {
+  test(`home_is_full_width_with_no_band_at_${width}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto("/");
+    const home = page.locator('[data-testid="home"]');
+    await expect(home).toBeVisible();
+    const box = (await home.boundingBox())!;
+    const bar = (await page.locator('[data-region="topbar"]').boundingBox())!;
+    expect(box.x).toBe(0);
+    expect(Math.round(box.width)).toBe(width);
+    expect(Math.round(box.y)).toBe(Math.round(bar.y + bar.height));
+    const grid = (await home.locator(".home-grid").boundingBox())!;
+    expect(grid.x + grid.width).toBeGreaterThan(width - 4);
+  });
+}
+
+// I7: Home has a visible way into every build's agents.
+test("home_agents_button_opens_the_agents_panel", async ({ page }) => {
+  await page.goto("/");
+  await page.locator('[data-testid="home"]').getByRole("button", { name: /^Agents/ }).click();
+  await expect(page.getByRole("dialog", { name: /agent/i })).toBeVisible();
+});
+
+// m1: returning to Home refetches the builds, so part counts and "last edited" never go stale.
+test("home_refetches_builds_each_time_it_shows", async ({ page, fake }) => {
+  await page.goto("/");
+  await page.locator('[data-testid="home"]').getByTitle("Open Default").click();
+  await expect(page.locator('[data-region="viewer"]')).toBeVisible();
+  const lists = async () => (await fake.calls()).filter((c) => c.method === "GET" && c.path === "/projects").length;
+  const before = await lists();
+  await page.getByRole("button", { name: "Home" }).click();
+  await expect(page.locator('[data-testid="home"]')).toBeVisible();
+  await expect.poll(lists).toBeGreaterThan(before);
+});

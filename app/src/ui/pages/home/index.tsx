@@ -3,14 +3,15 @@
 // lead-agent status dot. Search and sort sit in the toolbar; a New-build tile starts a build;
 // the Trash filter shows trashed builds with Restore. Opening a tile opens that build as a tab.
 import type { JSX } from "preact";
-import { useRef, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { lastEditedAt, type Build } from "../../../api/builds";
 import { buildActions, builds, buildsError } from "../../../state/builds";
 import { atHome, openBuild } from "../../../state/home";
-import { actions, runs } from "../../../state/store";
+import { actions, conn, runs } from "../../../state/store";
 import { Led } from "../../common/Led";
 import { Thumb } from "../../common/Thumb";
-import { DrawingDrop } from "../../imports";
+import { DrawingDrop, ImportCards } from "../../imports";
+import { openAgentManager } from "../../agents/manager";
 import { buildStatus, DEFAULT_VIEW, fmtLastEdited, partsLabel, SORTS, type HomeSort, viewBuilds } from "./model";
 import "./home.css";
 
@@ -19,9 +20,13 @@ export function HomePage(): JSX.Element {
   const [sort, setSort] = useState<HomeSort>(DEFAULT_VIEW.sort);
   const [trash, setTrash] = useState(DEFAULT_VIEW.trash);
   const [creating, setCreating] = useState(false);
+  // m1: the tiles (part count, last edited) are refetched every time Home shows, so returning with
+  // ⌘0 never shows a stale count. The first launch is covered by the connect-time refresh.
+  useEffect(() => { if (conn.peek() === "open") void buildActions.reloadList(); }, []);
 
   const shown = viewBuilds(builds.value, { query, sort, trash });
   const trashCount = builds.value.filter((b) => b.trashed_at !== null).length;
+  const working = [...runs.value.values()].filter((r) => !r.archived && r.status === "running").length;
 
   return (
     <section class="home" data-testid="home" aria-label="Builds">
@@ -36,6 +41,9 @@ export function HomePage(): JSX.Element {
               {SORTS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
             </select>
           </label>
+          {/* I7: the one easy view of every build's agents, reachable from Home (also ⇧⌘A) */}
+          <button type="button" class="home-trash home-agents" title="Every build's lead and sub-agents (⇧⌘A)"
+            onClick={() => openAgentManager()}>{`Agents${working ? ` · ${working} working` : ""}`}</button>
           <button type="button" class={trash ? "home-trash on" : "home-trash"} aria-pressed={trash}
             title="Show trashed builds" onClick={() => setTrash((t) => !t)}>
             {`Trash${trashCount ? ` · ${trashCount}` : ""}`}
@@ -49,6 +57,8 @@ export function HomePage(): JSX.Element {
         </p>
       )}
 
+      {/* m2: import results get the page's full width, not a 200 px grid cell */}
+      {!trash && <div class="home-imports"><ImportCards /></div>}
       <ul class="home-grid" role="list" aria-label={trash ? "Trashed builds" : "Builds"}>
         {!trash && (
           <li class="home-cell">
@@ -61,7 +71,7 @@ export function HomePage(): JSX.Element {
           </li>
         )}
         {/* U5: drop a technical drawing to start a part (the core picks or makes its build) */}
-        {!trash && <li class="home-cell home-cell-drop"><DrawingDrop variant="tile" /></li>}
+        {!trash && <li class="home-cell home-cell-drop"><DrawingDrop variant="tile" cards={false} /></li>}
 
         {shown.map((b) => (
           <li key={b.id} class="home-cell">
@@ -92,7 +102,7 @@ function BuildTile({ build: b }: { build: Build }): JSX.Element {
       title={`Open ${b.name}`} onClick={() => { void openBuild(b.id); }}>
       <div class="tile-thumb">
         <Thumb class="tile-img" alt={`${b.name} preview`} cacheKey={`${b.id}:${edited}:${b.part_count}`}
-          load={() => actions.client().projectThumb(b.id)} />
+          load={b.part_count > 0 ? () => actions.client().projectThumb(b.id) : null} />
       </div>
       <div class="tile-body">
         <span class="tile-name">{b.name}</span>

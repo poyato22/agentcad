@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import type { Signal } from "@preact/signals";
 import * as THREE from "three";
 import { partLabel } from "../../../lib/names";
+import { useDismiss } from "../../common/dismiss";
 import type { ModeHost } from "../scene";
 import { VIEW_NAMES, type ViewName } from "./camera";
 import { ModesController, restBox } from "./controller";
@@ -47,6 +48,51 @@ function axisOf(n: Vec3): string | null {
 }
 
 const pct = (v: number) => `${Math.round(v * 100)}%`;
+
+/** Above this many parts the X-ray row shows one "N parts" chip with a list instead of a chip each. */
+export const XRAY_CHIPS_MAX = 8;
+/** The chip text: the part's words, without partLabel's repeated "Part · " prefix (I4a). */
+const partWords = (id: string) => partLabel(id).replace(/^Part · /, "");
+
+/** The X-ray part chooser for a big build: a chip naming how many parts are picked, opening a
+ *  filterable list of toggle buttons. Esc or a click outside closes it. */
+function XrayPartPicker({ partIds, picked, onToggle }: { partIds: readonly string[]; picked: readonly string[] | null; onToggle(id: string): void }): JSX.Element {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const wrap = useRef<HTMLSpanElement>(null);
+  const btn = useRef<HTMLButtonElement>(null);
+  const qRef = useRef<HTMLInputElement>(null);
+  useDismiss(wrap, () => { if (open) setOpen(false); });
+  useEffect(() => { if (open) qRef.current?.focus(); }, [open]);
+  const n = picked?.length ?? 0;
+  const needle = q.trim().toLowerCase();
+  const shown = needle ? partIds.filter((id) => partWords(id).toLowerCase().includes(needle) || id.toLowerCase().includes(needle)) : partIds;
+  return (
+    <span class="vm-pick" ref={wrap}>
+      <button ref={btn} type="button" class="vm-chip" aria-haspopup="dialog" aria-expanded={open} data-testid="xray-parts"
+        aria-pressed={n > 0} onClick={() => setOpen(!open)}>
+        {n > 0 ? `${n} of ${partIds.length} parts ▾` : `${partIds.length} parts ▾`}
+      </button>
+      {open && (
+        <div class="vm-pop" role="dialog" aria-label="X-ray these parts"
+          onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setOpen(false); btn.current?.focus(); } }}>
+          <input type="search" class="vm-pop-q" placeholder="Filter parts" aria-label="Filter parts" value={q}
+            ref={qRef}
+            onInput={(e) => setQ(e.currentTarget.value)} />
+          <ul class="vm-pop-list" aria-label="Parts">
+            {shown.map((id) => (
+              <li key={id}>
+                <button type="button" class="vm-pop-item" aria-pressed={picked?.includes(id) ?? false} title={id}
+                  onClick={() => onToggle(id)}>{partWords(id)}</button>
+              </li>
+            ))}
+            {shown.length === 0 && <li class="vm-pop-none faint">No parts match.</li>}
+          </ul>
+        </div>
+      )}
+    </span>
+  );
+}
 
 export interface ViewModesProps {
   host: ModeHost | null;
@@ -118,11 +164,14 @@ export function ViewModes({ host, modes, onModes, focusId, partIds, withReferenc
                 <span class="vm-val">{pct(modes.xray.opacity)}</span>
                 <span class="vm-chips" role="group" aria-label="X-ray which parts">
                   <button type="button" class="vm-chip" aria-pressed={modes.xray.parts === null} onClick={() => set({ xray: { ...modes.xray, parts: null } })}>all</button>
-                  {partIds.length > 1
-                    ? partIds.map((id) => (
-                      <button key={id} type="button" class="vm-chip" aria-pressed={modes.xray.parts?.includes(id) ?? false} onClick={() => togglePart(id)} title={id}>{partLabel(id)}</button>
-                    ))
-                    : focusId && <button type="button" class="vm-chip" aria-pressed={modes.xray.parts?.includes(focusId) ?? false} onClick={() => set({ xray: { ...modes.xray, parts: [focusId] } })}>this part</button>}
+                  {partIds.length > XRAY_CHIPS_MAX
+                    // I4a: a big build gets one "N parts" chip with a filterable list, not a wall of chips
+                    ? <XrayPartPicker partIds={partIds} picked={modes.xray.parts} onToggle={togglePart} />
+                    : partIds.length > 1
+                      ? partIds.map((id) => (
+                        <button key={id} type="button" class="vm-chip" aria-pressed={modes.xray.parts?.includes(id) ?? false} onClick={() => togglePart(id)} title={id}>{partWords(id)}</button>
+                      ))
+                      : focusId && <button type="button" class="vm-chip" aria-pressed={modes.xray.parts?.includes(focusId) ?? false} onClick={() => set({ xray: { ...modes.xray, parts: [focusId] } })}>this part</button>}
                 </span>
               </div>
             )}
@@ -158,9 +207,13 @@ export function ViewModes({ host, modes, onModes, focusId, partIds, withReferenc
                     <button key={v} type="button" class="vm-chip" aria-pressed={ref.view === v} onClick={() => { patchReference({ view: v }); if (host) goToView(host, v); }}>{v}</button>
                   ))}
                 </span>
+                {/* m8: each slider says what it sets */}
+                <span class="vm-sub faint" aria-hidden="true">opacity</span>
                 <input type="range" min={0.1} max={1} step={0.05} value={ref.opacity} aria-label="Reference opacity" onInput={(e) => patchReference({ opacity: Number(e.currentTarget.value) })} />
                 <span class="vm-val">{pct(ref.opacity)}</span>
+                <span class="vm-sub faint" aria-hidden="true">size</span>
                 <input type="range" min={0.25} max={3} step={0.05} value={ref.scale} aria-label="Reference size" onInput={(e) => patchReference({ scale: Number(e.currentTarget.value) })} />
+                <span class="vm-val">{`${Math.round(ref.scale * 100)}%`}</span>
                 <button type="button" class="vm-chip" onClick={() => fileRef.current?.click()}>replace</button>
                 <button type="button" class="vm-chip" onClick={() => { clearReference(); setRefError(null); }}>remove</button>
               </div>

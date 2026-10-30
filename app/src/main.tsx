@@ -5,6 +5,7 @@ import "./styles/theme";
 import { render } from "preact";
 import { App } from "./App";
 import { trackPastes } from "./lib/keys";
+import { installTabReach } from "./lib/tabReach";
 import { startActivity } from "./state/activity";
 import { startAssemblyAnimation } from "./state/assemblyAnimation";
 import { startOnshapeBudget } from "./state/onshapeBudget";
@@ -20,6 +21,7 @@ import "./styles/base.css";
 trackPastes(document);
 trackFocusModality(document);
 render(<App />, document.getElementById("app") as HTMLElement);
+installTabReach(document.body);   // I7: every control reachable by Tab in WebKit
 startActivity();
 startAssemblyAnimation();
 startOnshapeBudget();

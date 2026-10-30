@@ -16,7 +16,7 @@ import { actions, coreStatus, runs } from "../../state/store";
 import { Button } from "../common/Button";
 import { OverflowMenu } from "../common/OverflowMenu";
 import { catalog } from "../dialogs/catalog";
-import { buildModelGroups, choiceFor, pickDefault } from "../dialogs/modelGroups";
+import { buildModelGroups, choiceFor, newRunModel } from "../dialogs/modelGroups";
 import { ModelPicker } from "../dialogs/ModelPicker";
 import { noteRun } from "./queued";
 import { startErrorText as describeError } from "./startError";
@@ -52,9 +52,7 @@ export function Composer(): JSX.Element {
   useEffect(() => {
     // a ref, not the state: an effect queued before the pick may run after it with a stale closure
     if (pickedRef.current || !cat.models) return;
-    const own = current?.model && current.model !== "inherit" ? current.model : null;
-    const preferred = cat.profileDefault ?? cat.models.default;
-    setModel(own ?? pickDefault(groups, preferred) ?? preferred);
+    setModel(newRunModel(cat, current?.model));
   }, [cat.models, cat.local, cat.profileDefault, current?.name, picked]);
 
   const choice = model ? choiceFor(groups, model) : null;

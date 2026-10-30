@@ -176,6 +176,18 @@ export class StudiesController {
     }
   }
 
+  /** m9: the study type changed in the setup — the result shown follows it: this part's newest
+   *  finished study of that type, else none (never another type's result under this setup). */
+  showType(type: string): void {
+    if (this.record.peek()?.type === type) return;
+    const latest = [...this.history.peek()].filter((s) => s.type === type && s.status === "done").sort((a, b) => b.created_at - a.created_at)[0];
+    if (latest) { void this.select(latest.sim_id); return; }
+    this.selectSeq++;
+    this.selectedSimId.value = null;
+    this.record.value = null;
+    this.charts.value = null;
+  }
+
   async select(simId: string): Promise<void> {
     const seq = ++this.selectSeq;
     this.selectedSimId.value = simId;

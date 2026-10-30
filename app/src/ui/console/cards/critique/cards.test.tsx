@@ -114,6 +114,16 @@ describe("ViewCard", () => {
     expect(screen.getByTestId("live-view").getAttribute("data-orbit")).toBe("paused");
   });
 
+  it("a polished part keeps its finish in the view card (I5: PBR metal, not the matte look)", async () => {
+    parts.value = [{ ...part("pi_case"), appearance: { preset: "polished_metal", color: "#b0b4ba", metalness: 1, roughness: 0.15, opacity: 1 } }, part("pi_board")];
+    const { scene } = await renderOne({ kind: "orbit" });
+    await waitFor(() => {
+      const [a, b] = sceneParts(scene());
+      expect(faceMaterials(a).every((m) => m instanceof THREE.MeshStandardMaterial && m.metalness === 1)).toBe(true);
+      expect(faceMaterials(b).every((m) => m instanceof THREE.MeshLambertMaterial)).toBe(true);
+    });
+  });
+
   it("internal: the named parts turn see-through", async () => {
     const { scene } = await renderOne({ kind: "internal", xray_parts: ["pi_case"] });
     await waitFor(() => {

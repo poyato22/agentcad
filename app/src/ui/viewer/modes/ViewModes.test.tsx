@@ -51,6 +51,35 @@ describe("ViewModes", () => {
     expect(opacities(h, "p1")[0]).toBeCloseTo(0.6);
   });
 
+  it("x-ray on a big build: one 'N parts' chip with a filterable list, no chip per part (I4a)", async () => {
+    const h = await host();
+    const ids = Array.from({ length: 100 }, (_, i) => `part_${i}`);
+    function Big() {
+      const [m, setM] = useState<ModesState>(MODES_OFF);
+      return <ViewModes host={h} modes={m} onModes={setM} focusId="part_0" partIds={ids} />;
+    }
+    render(<Big />);
+    fireEvent.click(screen.getByRole("button", { name: "x-ray" }));
+    const group = screen.getByRole("group", { name: "X-ray which parts" });
+    expect(group.querySelectorAll("button")).toHaveLength(2);                 // "all" + "100 parts ▾"
+    expect(group.textContent).not.toContain("Part ·");
+    fireEvent.click(screen.getByTestId("xray-parts"));
+    expect(screen.getByTestId("xray-parts").textContent).toBe("100 parts ▾");
+    fireEvent.input(screen.getByLabelText("Filter parts"), { target: { value: "part 4" } });
+    const list = screen.getByRole("list", { name: "Parts" });
+    expect(list.querySelectorAll("button").length).toBe(11);                  // 4, 40..49
+    fireEvent.click(screen.getByTitle("part_42"));
+    expect(screen.getByTestId("xray-parts").textContent).toBe("1 of 100 parts ▾");
+    expect(screen.getByTitle("part_42").getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("x-ray chips drop the repeated 'Part · ' prefix", async () => {
+    const h = await host();
+    render(<Harness h={h} seen={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "x-ray" }));
+    expect(screen.getByTitle("p1").textContent).toBe("p1");
+  });
+
   it("section: axis, slider and the drag handle move the plane", async () => {
     const h = await host();
     const seen = vi.fn();

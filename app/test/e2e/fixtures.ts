@@ -20,6 +20,8 @@ export interface FakeControl {
   rotateToken(token: string): Promise<void>;
   /** An agent's edit of a part (fake core builds.ts): version+1, part_changed by "agent". */
   agentEdit(body: { part_id: string; vars?: Record<string, number>; source?: string; run_id?: string; summary?: string }): Promise<void>;
+  /** As after a core restart: the build's native leads can't be reached; the next prompt starts a new lead. */
+  restartCore(): Promise<void>;
 }
 
 function control(): FakeControl {
@@ -43,6 +45,7 @@ function control(): FakeControl {
     dropSockets: (mode = "close") => post("/__fake/drop_sockets", { mode }),
     rotateToken: (t) => post("/__fake/rotate_token", { token: t }).then(() => { token = t; }),
     agentEdit: (body) => post("/__fake/agent_edit", body),
+    restartCore: () => post("/__fake/restart_core", {}),
   };
 }
 

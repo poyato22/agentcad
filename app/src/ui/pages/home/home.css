@@ -2,7 +2,7 @@
    previews carries the page; everything else stays quiet. Tokens only (tokens.css). */
 .home {
   position: absolute;
-  inset: var(--topbar-h) 0 0 0;
+  inset: 0;   /* the page region already sits under the top bar */
   overflow-y: auto;
   background: var(--bg);
   color: var(--ink);
@@ -192,3 +192,7 @@ button.tile-new:hover { color: var(--ink); border-color: var(--blue); }
   .home-search { flex: 1; max-width: none; }
   .home-grid { padding: 16px; gap: 12px; }
 }
+
+/* m2: drawing-import results span the page above the grid (not squeezed into the drop tile's cell) */
+.home-imports { padding: 16px 24px 0; max-width: 1100px; }
+.home-imports:empty { display: none; }

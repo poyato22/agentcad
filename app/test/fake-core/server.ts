@@ -193,6 +193,9 @@ export interface FakeCore {
   rotateToken(token: string): void;
   /** An agent's edit of a part (Plan 5 C6): version+1, vars merged, `part_changed {by:"agent"}`. */
   agentEdit(b: Record<string, unknown>): { ok: true; version: number };
+  /** I2: as after a core restart, every native lead becomes unreachable — the next routed prompt
+   *  archives it and starts a new lead (core lead.submit), answering `new_lead: true`. */
+  restartCore(): void;
   stop(): Promise<void>;
 }
 
@@ -592,6 +595,8 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
   const QUEUE_MAX = 20;
   /** Waiting messages per lead, oldest first. */
   const leadQueues = new Map<string, { message_id: string; text: string }[]>();
+  /** Leads an earlier "core process" drove (restartCore): this one can't reach them. */
+  const unreachableLeads = new Set<string>();
   const effPid = (r: AgentRun): string | null => r.project_id ?? state.assembly.projects[0]?.id ?? null;
   /** The build's newest non-archived lead (lead.find_lead). */
   function findLead(projectId: string | null): AgentRun | null {
@@ -730,7 +735,11 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         }
         // U3c lead.submit: a routed prompt goes to the build's lead — sent now when it is idle,
         // queued behind its turn when busy (429 past QUEUE_MAX), else a new lead is started
-        const lead = routed ? findLead(typeof projectId === "string" ? projectId : state.assembly.projects[0]?.id ?? null) : null;
+        let lead = routed ? findLead(typeof projectId === "string" ? projectId : state.assembly.projects[0]?.id ?? null) : null;
+        if (lead && unreachableLeads.has(lead.id)) {      // a lead this process can't reach: retire it
+          state.runs.set(lead.id, { ...lead, archived: true });
+          lead = null;
+        }
         if (routed && lead) {
           const base = { run_id: lead.id, routed, role: "lead", new_lead: false, notes: [] as string[] };
           if (leadBusy(lead) || leadQueues.get(lead.id)?.length) return { ...base, queued: true, ...enqueue(lead, prompt, routed) };
@@ -1327,7 +1336,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     dropSockets();
     stopPrinting(state.print);
     // the live activity belongs to the old scenario's runs (GET /runs/{id} serves it, C-3)
-    lastActivity.clear(); beforeWaiting.clear(); askedAt.clear(); leadQueues.clear();
+    lastActivity.clear(); beforeWaiting.clear(); askedAt.clear(); leadQueues.clear(); unreachableLeads.clear();
     stopping.clear();
     state = stateFrom(loadScenario(scenario), token ?? state.token);
   }
@@ -1346,6 +1355,9 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     reset,
     dropSockets,
     agentEdit: (b) => agentEdit(buildsDeps, b),
+    restartCore() {
+      for (const r of state.runs.values()) if (r.role === "lead" && r.provider !== "claude-code") unreachableLeads.add(r.id);
+    },
     rotateToken(token: string) {
       state.token = token;
       dropSockets();

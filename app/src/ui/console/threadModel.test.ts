@@ -42,7 +42,7 @@ describe("buildThread on the real core's steps", () => {
     const t = thread({ runs: [run(RID)], stepList: REAL, selectedRunId: RID });
     expect(brief(t)).toEqual([
       "user: thicken the mount plate to 6 mm",
-      "· created mount plate · 3.9 cm³",
+      // m6: the card stands for mirror_part_create's raw row (still in the Full log)
       "announce part_created: Created part mount_plate",   // U3c's announcement, U3a's card
       "· changed mount plate · thickness 5 → 6 · +0.8 cm³",
       "· measured mount plate · 4.6 cm³",
@@ -154,6 +154,26 @@ describe("Plan 7: the lead's stored announcements and message queue (real U3c st
     const t = brief(thread({ runs: [run(LID)], stepList: LEAD, selectedRunId: LID }));
     expect(t).toContain("announce agent_spawned: Spawned designer: Design motor mount");
     expect(t.some((x) => x?.startsWith("note decided"))).toBe(false);
+  });
+
+  it("a card replaces its own tool's raw row, but not another tool's (m6)", () => {
+    resetIds();
+    const ann = (kind: string, title: string, ts: number) => step("r1", "decision", { agent_announce: { run_id: "r1", kind, title, detail: "", ref: {} } }, ts);
+    const stepList = [
+      message("r1", "user", "add a base", 1),
+      toolCall("r1", "m1", "mirror_measure", { part_id: "base" }, 2), toolResult("r1", "m1", "mirror_measure", 2.5, { summary: "measured base" }),
+      toolCall("r1", "c1", "mcp__mises__bom_add", { name: "M3 screw" }, 3), toolResult("r1", "c1", "mcp__mises__bom_add", 3.5, { summary: "added M3 screw" }),
+      ann("bom_added", "Added M3 screw to the parts list", 4),
+      toolCall("r1", "s1", "agent_spawn", { agent: "designer" }, 5), toolResult("r1", "s1", "agent_spawn", 5.5, { summary: "spawned designer" }),
+      ann("part_created", "Created part base", 6),                       // not agent_spawn's card: its row stays
+    ];
+    const t = thread({ runs: [run("r1")], stepList, selectedRunId: "r1" });
+    const b = brief(t);
+    expect(b.some((x) => x?.includes("M3 screw") && x.startsWith("·"))).toBe(false);
+    expect(b).toContain("announce bom_added: Added M3 screw to the parts list");
+    expect(b.filter((x) => x?.startsWith("·")).length).toBe(2);         // measure and spawn rows stay
+    const card = t.find((x) => x.kind === "announce" && x.announcement.kind === "bom_added")!;
+    expect(card.kind === "announce" && card.stepIds.length).toBeGreaterThan(1);   // the row's steps ride with the card
   });
 
   it("a queued message shows once, at the place it was typed, and reads delivered", () => {

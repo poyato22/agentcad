@@ -1,5 +1,6 @@
 // Assembly mode of the Design page: the sheet with every part of the build's assembly posed by its
 // joints, a gizmo to drag them, face picking for new joints, interference tags, and the panel.
+import { materialOf } from "../../lib/appearance";
 import { effect } from "@preact/signals";
 import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
@@ -178,6 +179,7 @@ export function AssemblyView(): JSX.Element {
     scene.setReach(reachOf());
     scene.setInstances((data?.instances ?? []).map((i) => ({
       id: i.id, template: templates.current.get(i.part_id)?.scene ?? null, color: ctl.part(i.part_id)?.color ?? null,
+      material: materialOf(ctl.part(i.part_id) ?? {}),
     })));
     scene.setPose(ctl.currentPose());
   }, [data, templateTick, ctl.parts.value]);

@@ -188,6 +188,17 @@ export function pickDefault(groups: readonly ModelGroup[], preferred: string | n
   return all.find((c) => c.usable)?.ref ?? null;
 }
 
+/** The model a new run starts on, shared by ⌘N's dialog and the console's inline composer (I6:
+ *  they used to disagree): the agent's own model when one is picked, else the profile default the user
+ *  chose (even when it can't run now: the form says why and offers Sign in), else the best usable model. */
+export function newRunModel(cat: { models: ModelsInfo | null; local?: GroupOpts["local"]; profileDefault: string | null }, agentModel?: string | null): string | null {
+  if (!cat.models) return null;
+  const own = agentModel && agentModel !== "inherit" ? agentModel : null;
+  const preferred = cat.profileDefault ?? cat.models.default;
+  const groups = buildModelGroups(cat.models, { local: cat.local ?? null, profile: { default_model: cat.profileDefault } });
+  return own ?? cat.profileDefault ?? pickDefault(groups, preferred) ?? preferred;
+}
+
 /** A ref's choice in its home group (not the Recommended copy), with that group's id. */
 export function choiceFor(groups: readonly ModelGroup[], ref: string): ModelChoice | null {
   for (const g of groups) {

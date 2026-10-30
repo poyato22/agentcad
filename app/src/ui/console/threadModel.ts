@@ -57,6 +57,30 @@ function bareName(name: string): string {
   return n;
 }
 
+/** m6: the tool whose successful result a card stands for (core announce.MAPPERS, G1's present_view
+ *  and critique_model, agent_spawn). The card replaces that tool's raw row in the thread; the
+ *  row stays in the Full log. */
+const CARD_TOOLS: Readonly<Record<string, string>> = {
+  mirror_part_create: "part_created", catalog_insert: "part_created", onshape_import_element: "part_created",
+  assembly_add_instance: "assembly_added", assembly_add_part: "assembly_added", bom_add: "bom_added",
+  part_show: "part_shown", drawing_import: "drawing_imported", drawing_import_build: "drawing_imported",
+  agent_spawn: "agent_spawned", present_view: "view_presented", critique_model: "critique_round",
+};
+
+/** Take out of `out` the newest raw row (since the last non-row item) of a tool the card of `kind`
+ *  stands for; its step ids go to the card. */
+function absorbRow(out: ThreadItem[], kind: string): number[] {
+  for (let i = out.length - 1; i >= 0; i--) {
+    const t = out[i];
+    if (t.kind !== "activity") return [];
+    if (t.call && t.call.ok !== false && t.call.result !== null && CARD_TOOLS[bareName(t.call.name)] === kind) {
+      out.splice(i, 1);
+      return t.stepIds;
+    }
+  }
+  return [];
+}
+
 function str(v: unknown): string | null { return typeof v === "string" && v.trim() !== "" ? v : null; }
 function rec(v: unknown): Record<string, unknown> { return typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : {}; }
 function partName(id: string | null): string | null { return id ? id.replace(/[_-]+/g, " ").trim() : null; }
@@ -198,12 +222,13 @@ export function buildThread(items: readonly LogItem[]): ThreadItem[] {
       case "decision": {
         // G1's cards (G4 renders them): a critique round, a presented view
         const g4 = g4Announcement(it.step);
-        if (g4?.kind === "critique_round") { out.push({ kind: "critique", key, round: g4.round, stepIds: [it.step.id] }); last = null; break; }
+        if (g4?.kind === "critique_round") { const own = absorbRow(out, "critique_round"); out.push({ kind: "critique", key, round: g4.round, stepIds: [...own, it.step.id] }); last = null; break; }
         if (g4?.kind === "view_presented") {
           const view: PresentedView = { ...g4.view, key };
           views ??= [];
           views.push(view);
-          out.push({ kind: "view", key, view, group: views, stepIds: [it.step.id] });
+          const own = absorbRow(out, "view_presented");
+          out.push({ kind: "view", key, view, group: views, stepIds: [...own, it.step.id] });
           last = null;
           break;
         }
@@ -213,7 +238,8 @@ export function buildThread(items: readonly LogItem[]): ThreadItem[] {
         if (ann) {
           // part_show on the acting run: U4a's rich part card is the one card (int-final)
           if (ann.kind === "part_shown" && (ann.actor ?? it.step.run_id) === it.step.run_id) break;
-          out.push({ kind: "announce", key, announcement: ann, ts: it.step.ts, stepIds: [it.step.id] }); last = null; break;
+          const own = absorbRow(out, ann.kind);
+          out.push({ kind: "announce", key, announcement: ann, ts: it.step.ts, stepIds: [...own, it.step.id] }); last = null; break;
         }
         const q = queuedOf(it.step);
         if (q) {

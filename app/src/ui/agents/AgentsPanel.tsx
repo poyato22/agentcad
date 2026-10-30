@@ -105,12 +105,18 @@ export function AgentsPanel(): JSX.Element {
       {builds === null && !error && <div class="am-empty faint">Loading agents…</div>}
       {builds !== null && shown.length === 0 && !error && <div class="am-empty faint">No agents yet. Start one with New run (⌘N).</div>}
       {shown.map((b) => {
-        const rows = b.view ? viewRows(b.view, collapsed) : { lead: [], others: [] };
+        const rows = b.view ? viewRows(b.view, collapsed) : { lead: [], others: [], earlier: [] };
         return (
           <section key={b.id} class="am-group" aria-label={`Agents in ${b.name}`} data-build={b.id}>
             <h3 class="am-group-h">{b.name}</h3>
             {b.error && <div class="am-error tone-red text" role="alert" data-build-error>{`Couldn't read this build's agents: ${b.error}`}</div>}
             {rows.lead.length > 0 && rowList(rows.lead, `Lead agent of ${b.name}`)}
+            {rows.earlier.length > 0 && (
+              <>
+                <h4 class="ap-others-h faint">Earlier leads of this build</h4>
+                {rowList(rows.earlier, `Earlier leads of ${b.name}`)}
+              </>
+            )}
             {rows.others.length > 0 && (
               <>
                 <h4 class="ap-others-h faint">Other agents in this build</h4>

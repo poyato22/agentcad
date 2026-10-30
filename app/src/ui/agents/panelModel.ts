@@ -19,9 +19,12 @@ export function treeRows(roots: readonly AgentNode[], collapsed: ReadonlySet<str
 
 /** The lead's rows (it and its sub-tree) and the other runs' rows, as the panel groups them.
  *  Archived other runs are left out unless asked for. */
-export function viewRows(view: AgentsView, collapsed: ReadonlySet<string> = new Set(), showArchived = false): { lead: AgentRow[]; others: AgentRow[] } {
+export function viewRows(view: AgentsView, collapsed: ReadonlySet<string> = new Set(), showArchived = false): { lead: AgentRow[]; others: AgentRow[]; earlier: AgentRow[] } {
   const others = showArchived ? view.others : view.others.filter((o) => !o.archived);
-  return { lead: view.lead ? treeRows([view.lead], collapsed) : [], others: treeRows(others, collapsed) };
+  // I2: a lead retired by the core (e.g. after a restart it can't reach) is archived; it stays in
+  // the panel as an "earlier" lead with its sub-agents, so the build's history isn't lost.
+  const earlier = showArchived ? [] : view.others.filter((o) => o.archived && o.role === "lead");
+  return { lead: view.lead ? treeRows([view.lead], collapsed) : [], others: treeRows(others, collapsed), earlier: treeRows(earlier, collapsed) };
 }
 
 /** The row's label: the user's rename, else the core's task title (a sub-agent's "Design motor

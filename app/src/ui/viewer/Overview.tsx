@@ -7,7 +7,7 @@ import type { PartSummary } from "../../api/types";
 import { fmtGrams } from "../../lib/format";
 import { registerShortcut } from "../../lib/keys";
 import { partName } from "../../lib/names";
-import { closeOverview } from "../../state/home";
+import { closeOverview, overviewOpen, toggleOverview } from "../../state/home";
 import { actions, parts, selectedPartId } from "../../state/store";
 import { Thumb } from "../common/Thumb";
 import "./overview.css";
@@ -15,6 +15,16 @@ import "./overview.css";
 /** Parts that have a built mesh (so a thumbnail and metrics exist); groups and catalog rows don't. */
 function meshParts(all: readonly PartSummary[]): PartSummary[] {
   return all.filter((p) => (p.kind ?? "part") === "part" && p.metrics !== null);
+}
+
+/** The "All parts" toggle. It sits in the Part viewer's tool row, left of View ▾ (I3: it used to
+ *  float over the X-ray rows and the Assembly panel; Assembly view lists its parts itself). */
+export function AllPartsToggle(): JSX.Element {
+  return (
+    <button type="button" class={overviewOpen.value ? "vt-btn overview-toggle on" : "vt-btn overview-toggle"}
+      aria-pressed={overviewOpen.value} title="See every part of this build"
+      onClick={() => toggleOverview()}>All parts</button>
+  );
 }
 
 export function Overview(): JSX.Element {
@@ -43,16 +53,16 @@ export function Overview(): JSX.Element {
         : <ul class="overview-grid" role="list" aria-label="Parts">
             {shown.map((p) => (
               <li key={p.part_id} class="overview-cell">
-              <button type="button" class={selectedPartId.value === p.part_id ? "pcard on" : "pcard"}
+              <button type="button" class={selectedPartId.value === p.part_id ? "ov-card on" : "ov-card"}
                 data-part={p.part_id} title={`Focus ${partName(p)}`}
                 onClick={() => { actions.selectPart(p.part_id); closeOverview(); }}>
-                <div class="pcard-thumb">
-                  <Thumb class="pcard-img" alt={`${partName(p)} preview`} cacheKey={`${p.part_id}:${p.version ?? 0}:${p.mtime}`}
+                <div class="ov-card-thumb">
+                  <Thumb class="ov-card-img" alt={`${partName(p)} preview`} cacheKey={`${p.part_id}:${p.version ?? 0}:${p.mtime}`}
                     load={() => actions.client().partThumb(p.part_id)} />
                 </div>
-                <div class="pcard-body">
-                  <span class="pcard-name">{partName(p)}</span>
-                  <span class="pcard-meta dim">
+                <div class="ov-card-body">
+                  <span class="ov-card-name">{partName(p)}</span>
+                  <span class="ov-card-meta dim">
                     {material ? `${material} · ` : ""}{p.metrics ? fmtGrams(p.metrics.mass_g) : "—"}
                   </span>
                 </div>

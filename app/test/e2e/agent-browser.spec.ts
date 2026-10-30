@@ -54,6 +54,17 @@ test("the part card loads from the core and adds itself to its build's parts lis
   await expect(card).toBeVisible();
   await expect(card).toContainText("Micro servo - TowerPro SG92R");
   await expect(card).toContainText("$5.95");
+  // C1: the All-parts overview once shared .pcard-* classes and squeezed the card's info column to
+  // 0 px while the text stayed in the DOM. Assert the layout, not just the text.
+  const infoW = await card.locator(".pcard-info").evaluate((el) => el.getBoundingClientRect().width);
+  expect(infoW).toBeGreaterThan(100);
+  for (const sel of [".pcard-name", ".pcard-price"]) {
+    const box = await card.locator(sel).first().boundingBox();
+    expect(box?.width ?? 0, sel).toBeGreaterThan(0);
+    await expect(card.locator(sel).first()).toBeVisible();
+  }
+  const imgW = await card.locator(".pcard-img").first().evaluate((el) => el.getBoundingClientRect().width);
+  expect(imgW).toBeLessThanOrEqual(64);
   await expect(card.getByRole("link", { name: "Open · www.adafruit.com" })).toBeVisible();
   await card.getByRole("button", { name: /^Add .* to the parts list$/ }).click();
   await expect(card.getByRole("button", { name: /is in the parts list/ })).toBeDisabled();

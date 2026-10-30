@@ -12,12 +12,19 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
 import type { Mat4 } from "../../api/assembly";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import type { MaterialParams } from "../../lib/appearance";
 import { meshColors, type PartScene } from "../viewer/loadPart";
 import { fitOrtho, ISO_AZIMUTH_DEG, ISO_ELEVATION_DEG, type RendererLike } from "../viewer/scene";
 import type { Vec3 } from "./kinematics";
 import { angleAboutZ, snapMove, snapTurn, TURN_STEP_DEG } from "./snap";
 
-export interface SceneInstance { id: string; template: PartScene | null; color: string | null }
+export interface SceneInstance {
+  id: string; template: PartScene | null; color: string | null;
+  /** Plan 7 U8 finish (lib/appearance materialOf): a shiny one is drawn PBR with the room's
+   *  reflections, as in the Part viewer (I5). Absent = the matte drafting look. */
+  material?: MaterialParams;
+}
 
 /** Where the gizmo sits and what it moves. */
 export type GizmoSpec =
@@ -93,7 +100,7 @@ function defaultRenderer(canvas: HTMLCanvasElement): RendererLike {
   return new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
 }
 
-interface Entry { id: string; group: THREE.Group; body: THREE.Object3D | null; template: PartScene | null; color: string | null }
+interface Entry { id: string; group: THREE.Group; body: THREE.Object3D | null; template: PartScene | null; color: string | null; material: MaterialParams | null }
 
 export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallbacks, deps: AssemblySceneDeps = {}): AssemblyScene {
   const renderer = (deps.createRenderer ?? defaultRenderer)(canvas);
@@ -248,22 +255,65 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
 
   // ---- materials
 
+  /** The room the shiny parts reflect: RoomEnvironment through PMREM, turned Z-up — the Part
+   *  viewer's (viewer/scene.ts), made once on first need. Null without WebGL (tests). */
+  let envTex: THREE.Texture | null | undefined;
+  function environment(): void {
+    if (envTex !== undefined) return;
+    envTex = null;
+    try {
+      if (renderer instanceof THREE.WebGLRenderer) {
+        const pmrem = new THREE.PMREMGenerator(renderer);
+        const room = new RoomEnvironment();
+        envTex = pmrem.fromScene(room, 0.04).texture;
+        room.dispose();
+        pmrem.dispose();
+      }
+    } catch { envTex = null; }
+    scene.environment = envTex;
+    scene.environmentRotation.x = Math.PI / 2;
+  }
+
+  /** Matte Lambert, or PBR Standard for a shiny finish; swapped only when the kind changes. */
+  function meshMaterial(o: THREE.Mesh, look: MaterialParams | null): THREE.MeshLambertMaterial | THREE.MeshStandardMaterial {
+    const cur = o.material as THREE.MeshLambertMaterial | THREE.MeshStandardMaterial;
+    const shiny = !!look?.shiny && !cur.vertexColors;
+    if (shiny && !(cur instanceof THREE.MeshStandardMaterial)) {
+      environment();
+      o.material = new THREE.MeshStandardMaterial({ polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+      cur.dispose();
+    } else if (!shiny && cur instanceof THREE.MeshStandardMaterial) {
+      o.material = new THREE.MeshLambertMaterial({ polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+      cur.dispose();
+    }
+    const m = o.material as THREE.MeshLambertMaterial | THREE.MeshStandardMaterial;
+    if (m instanceof THREE.MeshStandardMaterial && look) {
+      m.metalness = look.metalness;
+      m.roughness = look.roughness;
+      m.envMapIntensity = look.metalness > 0.5 ? 1.3 : 1;
+    }
+    return m;
+  }
+
   function restyle(): void {
     const hot = new Set<string>();
     for (const p of interference) for (const id of [...p.a, ...p.b]) hot.add(id);
     for (const e of entries.values()) {
       if (!e.body) continue;
       // the part keeps its own color; a clash shows as red edges and the red overlap block
-      const face = e.color ?? colors.face;
+      const face = e.material?.shiny ? (e.material.color ?? e.color ?? colors.face) : (e.color ?? colors.face);
       const edge = e.id === selected || arriving ? colors.blue : hot.has(e.id) ? colors.red : colors.edge;
       e.body.traverse((o) => {
         if (o instanceof THREE.LineSegments) (o.material as THREE.LineBasicMaterial).color.set(edge);
         else if (o instanceof THREE.Mesh) {
-          const m = o.material as THREE.MeshLambertMaterial;
+          const m = meshMaterial(o, e.material);
           m.color.set(face);
-          m.transparent = hot.has(e.id);
-          m.opacity = hot.has(e.id) ? 0.55 : 1;
-          m.depthWrite = !hot.has(e.id);
+          // a clash shows through; else the finish's own opacity (glass-like looks)
+          const see = hot.has(e.id) ? 0.55 : (e.material?.shiny ? e.material.opacity : 1);
+          if (m.transparent !== see < 1) m.needsUpdate = true;
+          m.transparent = see < 1;
+          m.opacity = see;
+          m.depthWrite = see >= 1;
         }
       });
     }
@@ -488,7 +538,7 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
           group.matrixAutoUpdate = false;
           group.userData["instanceId"] = inst.id;
           root.add(group);
-          e = { id: inst.id, group, body: null, template: null, color: null };
+          e = { id: inst.id, group, body: null, template: null, color: null, material: null };
           entries.set(inst.id, e);
         }
         if (e.template !== inst.template) {
@@ -498,6 +548,7 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
           e.template = inst.template;
         }
         e.color = inst.color;
+        e.material = inst.material ?? null;
       }
       restyle();
       refitIfNew();
@@ -567,6 +618,7 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
       entries.clear();
       markers = []; hoverMarker = null;
       rebuildMarkers();
+      envTex?.dispose();
       renderer.dispose();
     },
   };

@@ -23,7 +23,7 @@ import { Led } from "../../../common/Led";
 import { isTrustedActivation } from "../../../console/approvals/approvalKeys";
 import { sig3 } from "../model";
 import { CalScatter, type CalPoint } from "./CalScatter";
-import { bodyKey, bodyOf, CONFIDENCE_TEXT, eFromResidual, eRows, implied, outlierRow, rowProblems, rowsOf, TEST_TEXT, type SheetRow } from "./model";
+import { bodyKey, bodyOf, calWarningText, CONFIDENCE_TEXT, eFromResidual, eRows, implied, outlierRow, rowProblems, rowsOf, TEST_TEXT, type SheetRow } from "./model";
 
 export type CalibrationClient = Pick<CoreClient, "calibrations" | "fitCalibration" | "saveCalibration" | "deleteCalibration" | "printers">;
 
@@ -301,7 +301,7 @@ export function CalibrationPanel({ client, materials, studies, initialMaterial, 
           {fit.e_secant && (
             <p class="faint text" data-testid="cal-secant">{`Tensile secant modulus ${sig3(fit.e_secant.mean)} MPa (n ${fit.e_secant.n}): a lower bound of E, reported only and never applied${fit.e ? "" : "; E stays the datasheet value"}.`}</p>
           )}
-          {fit.warnings.length > 0 && <ul class="st-warnings" data-testid="cal-warnings">{fit.warnings.map((w) => <li key={w}><Led tone="amber" /><span class="text">{w}</span></li>)}</ul>}
+          {fit.warnings.length > 0 && <ul class="st-warnings" data-testid="cal-warnings">{fit.warnings.map((w) => <li key={w}><Led tone="amber" /><span class="text">{calWarningText(w)}</span></li>)}</ul>}
           {fit.part_tests && fit.part_tests.length > 0 && (
             <p class="faint text">{fit.part_tests.map((p) => `${p.sim_id}: E ${sig3(p.e_mpa)} MPa (measured ${sig3(p.measured_deflection_mm)} vs predicted ${sig3(p.predicted_deflection_mm)} mm)`).join(" · ")}</p>
           )}

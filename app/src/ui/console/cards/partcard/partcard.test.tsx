@@ -78,6 +78,9 @@ describe("PartCardSlot", () => {
     expect(pid).toBe(CARD.project_id);
     expect(Object.keys(row).sort()).toEqual(["catalog_id", "currency", "kind", "name", "qty", "specs", "unit_cost", "url", "vendor"]);
     expect(row).toMatchObject({ kind: "bought", name: CARD.name, qty: 1, unit_cost: 5.95, currency: "USD" });
+    // m3: the vendor is the shop (the page's site), the brand is kept as a spec
+    expect(row.vendor).toBe("adafruit.com");
+    expect(row.specs[0]).toEqual({ key: "brand", value: "TowerPro", unit: null });
     await screen.findByText("Added to the parts list of Robot arm");
     expect(screen.getByRole("button", { name: /is in the parts list/ }).hasAttribute("disabled")).toBe(true);
   });

@@ -60,9 +60,37 @@ export function fmtValue(v: unknown, unit: string | null | undefined): string {
   return String(v);
 }
 
+/** Metrics the core sends as a 0–1 fraction (unit ""): read as a percent (m7: "load reached 1"). */
+const FRACTION_METRICS: ReadonlySet<string> = new Set(["load_fraction", "max_plastic_strain"]);
+
 export function fmtMetric(m: StudyMetric): string {
   if (m.key === "error_band_pct" && typeof m.value === "number") return `±${sig3(m.value)}%`;
+  if (FRACTION_METRICS.has(m.key) && typeof m.value === "number") return `${sig3(m.value * 100)}%`;
   return fmtValue(m.value, m.unit);
+}
+
+/** A card metric in its study's context. m13: a free-free modal study whose modes are all rigid
+ *  body (the core warns so) has no real first frequency — "0.00143 Hz" beside that warning read as
+ *  a result; it shows as "—" instead. */
+export function fmtStudyMetric(m: StudyMetric, warnings: readonly string[] = []): string {
+  if (m.key === "first_freq_hz" && typeof m.value === "number" && m.value < 1 && warnings.some((w) => /rigid[- ]body|free-free/i.test(w))) return "— (rigid-body modes only)";
+  return fmtMetric(m);
+}
+
+/** The metric's label. m7: a solid study's error band is the coarse-vs-fine mesh difference —
+ *  said so, so it never reads against the validated model band in the fidelity note. */
+export function metricLabel(m: Pick<StudyMetric, "key" | "label">, type: string | null | undefined): string {
+  if (m.key === "error_band_pct" && type !== "wind" && /^error band$/i.test(m.label.trim())) return "mesh error band";
+  return m.label;
+}
+
+/** Metrics a Plan 6 section already shows in full (fatigue: life and safety factor) — the
+ *  summary row leaves them out so no number is said twice (m7). */
+export function summaryMetrics<T extends Pick<StudyMetric, "key" | "value">>(metrics: readonly T[], results: unknown): T[] {
+  const r = (typeof results === "object" && results !== null ? results : {}) as Record<string, unknown>;
+  const fatigue = typeof r.fatigue === "object" && r.fatigue !== null;
+  const drop = fatigue ? new Set(["fatigue_safety_factor", "cycles_to_failure"]) : new Set<string>();
+  return metrics.filter((m) => m.value !== null && m.value !== undefined && !drop.has(m.key));
 }
 
 /** The card's verdict as a word; null while running. */

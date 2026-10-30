@@ -51,7 +51,7 @@ function ChooseFile({ projectId, label }: { projectId: string | null; label: str
   );
 }
 
-function Tile({ projectId }: { projectId: string | null }): JSX.Element {
+function Tile({ projectId, cards }: { projectId: string | null; cards: boolean }): JSX.Element {
   const [over, setOver] = useState(false);
   return (
     <div class="imp-tile-wrap">
@@ -63,7 +63,7 @@ function Tile({ projectId }: { projectId: string | null }): JSX.Element {
         <p class="imp-drop-sub">PDF, PNG, JPG or DXF · up to 20 MB</p>
         <ChooseFile projectId={projectId} label="Choose a file…" />
       </div>
-      <ImportCards />
+      {cards && <ImportCards />}
     </div>
   );
 }
@@ -119,6 +119,7 @@ function Overlay({ projectId }: { projectId: string | null }): JSX.Element {
   );
 }
 
-export function DrawingDrop({ variant = "tile", projectId = null }: { variant?: "tile" | "overlay"; projectId?: string | null }): JSX.Element {
-  return variant === "overlay" ? <Overlay projectId={projectId} /> : <Tile projectId={projectId} />;
+/** `cards={false}`: the host shows ImportCards itself (Home puts them in a full-width row — m2). */
+export function DrawingDrop({ variant = "tile", projectId = null, cards = true }: { variant?: "tile" | "overlay"; projectId?: string | null; cards?: boolean }): JSX.Element {
+  return variant === "overlay" ? <Overlay projectId={projectId} /> : <Tile projectId={projectId} cards={cards} />;
 }

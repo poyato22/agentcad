@@ -128,12 +128,22 @@ function announceSwitch(id: string): void {
   }
 }
 
+/** m4: opening a build from Home shows its live lead's conversation (when it has one), whatever
+ *  run was selected before (a sub-agent, an outside agent's run). */
+export function selectBuildLead(buildId: string): void {
+  const lead = [...runs.peek().values()].filter((r) => r.project_id === buildId && r.role === "lead" && !r.archived)
+    .sort((a, b) => b.created_at - a.created_at)[0];
+  if (lead) selectedRunId.value = lead.id;
+}
+
 function followRuns(buildId: string): void {
   const sel = selectedRunId.peek();
   const run = sel ? runs.peek().get(sel) : undefined;
   if (run && (run.project_id ?? null) === buildId) return;
   const mine = [...runs.peek().values()].filter((r) => r.project_id === buildId).sort((a, b) => b.created_at - a.created_at);
-  selectedRunId.value = mine[0]?.id ?? null;
+  // m4: the build's live lead is its conversation; land there, not on its newest sub-agent
+  const lead = mine.find((r) => r.role === "lead" && !r.archived);
+  selectedRunId.value = (lead ?? mine[0])?.id ?? null;
 }
 
 export const buildActions = {
@@ -157,6 +167,13 @@ export const buildActions = {
     } catch (e) {
       fail("Loading the builds failed", e);
     }
+  },
+
+  /** Re-reads only the builds list (part counts, last edited) — Home refetches it whenever it
+   *  shows, so its tiles never lag the core (m1). Tabs are left alone. */
+  async reloadList(): Promise<void> {
+    try { builds.value = await actions.client().listBuilds(); }
+    catch (e) { fail("Loading the builds failed", e); }
   },
 
   /** Make a build the active tab (opening it if it isn't). */

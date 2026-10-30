@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { modelsInfoSchema } from "../../api/schemas";
 import type { LocalStatus, ModelsInfo } from "../../api/types";
-import { buildModelGroups, choiceFor, GROUP_TITLES, pickDefault, refLabel, stripVendor } from "./modelGroups";
+import { buildModelGroups, choiceFor, GROUP_TITLES, newRunModel, pickDefault, refLabel, stripVendor } from "./modelGroups";
 
 const REAL = modelsInfoSchema.parse(JSON.parse(readFileSync(resolve(__dirname, "../../../test/fixtures/core-ui/models.json"), "utf8")));
 
@@ -149,6 +149,15 @@ describe("pickDefault / labels", () => {
     expect(pickDefault(g, null)).toBe("claude-code/opus");
     expect(pickDefault(buildModelGroups(REAL, {}), null)).toBe("claude-code/opus");
     expect(pickDefault([], null)).toBeNull();
+  });
+
+  it("new_run_model_is_one_rule_for_the_dialog_and_the_composer (I6)", () => {
+    // the user's own profile default is kept even when it can't run now (the form says why)
+    expect(newRunModel({ models: PLAN4, local: LOCAL, profileDefault: "openai/gpt-5.5" })).toBe("openai/gpt-5.5");
+    expect(newRunModel({ models: PLAN4, local: LOCAL, profileDefault: "claude-code/haiku" })).toBe("claude-code/haiku");
+    expect(newRunModel({ models: PLAN4, local: LOCAL, profileDefault: null }, "openai/gpt-5.5")).toBe("openai/gpt-5.5");   // the agent's own
+    expect(newRunModel({ models: PLAN4, local: LOCAL, profileDefault: null }, "inherit")).toBe(newRunModel({ models: PLAN4, local: LOCAL, profileDefault: null }));
+    expect(newRunModel({ models: null, profileDefault: null })).toBeNull();
   });
 
   it("ref_labels_name_the_user's_way", () => {

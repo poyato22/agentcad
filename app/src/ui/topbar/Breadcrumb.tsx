@@ -111,10 +111,25 @@ export function BuildTabs(): JSX.Element {
       others += c.getAttribute("data-crumb") === "part" ? Math.min(cw, PART_ROOM) : cw;
     }
     for (const c of Array.from(el.children)) if (!c.classList.contains("btab-list") && !c.classList.contains("btab-more")) others += (c as HTMLElement).getBoundingClientRect().width;
-    const w = left.clientWidth - others - 16;
+    // I6: the left column also holds the Home button and the traffic-light inset (its padding);
+    // leaving them out let 4 tabs at 1280 px overflow under "+", whose click then closed a tab
+    for (const c of Array.from(left.children)) if (c !== nav) others += (c as HTMLElement).getBoundingClientRect().width;
+    const cs = getComputedStyle(left);
+    const pad = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+    // the gaps between the tab cells (2px each) and the chips beside them
+    const gaps = (el.children.length + 1) * 2;
+    const w = left.clientWidth - pad - others - gaps - 16;
     if (w > 0) setAvail((a) => (Math.abs(a - w) < 1 ? a : w));
   };
   useLayoutEffect(measure, [openKey]);
+  // the widths above are estimates (tabWidth); if the shown tabs still don't fit (the list clips
+  // them, .btab-list overflow:hidden), take the overflow off the room so one more goes behind "+N"
+  useLayoutEffect(() => {
+    const l = list.current;
+    if (!l || !Number.isFinite(avail) || tabs.length <= 1) return;
+    const over = l.scrollWidth - l.clientWidth;
+    if (over > 1) setAvail((a) => a - over);
+  });
   useEffect(() => {
     const left = wrap.current?.closest<HTMLElement>(".crumb")?.parentElement;
     if (!left || typeof ResizeObserver === "undefined") return;

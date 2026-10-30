@@ -112,3 +112,35 @@ test("thinking_shows_in_the_thread_and_the_pill_opens_the_manager", async ({ pag
   await expect(manager(page)).toBeVisible();
   await expect(row(page, DES).locator("[data-row-activity]")).toHaveText("working · measuring mount plate");
 });
+
+// I2: after a core restart the core can't reach the build's lead; the next message starts a new
+// lead. The console follows it (the message stays on screen), the Agents panel shows the new lead
+// with the earlier one kept beneath, and a second message never fails with "unknown run".
+test("after_a_core_restart_the_console_follows_the_new_lead", async ({ page, fake }) => {
+  await open(page);
+  const get = async <T,>(path: string) => await (await fetch(`${CORE_URL}${path}`, { headers: { Authorization: `Bearer ${fake.token}` } })).json() as T;
+  const list = () => get<AgentRun[]>("/runs?limit=50");
+  const tabs = await get<{ active_project_id: string }>("/builds/tabs").catch(() => null);
+  const build = tabs?.active_project_id ?? (await get<{ id: string }[]>("/projects"))[0].id;
+  // a native lead from the previous core process, finished
+  const first = run("lead01", { agent: "engineer", task: "build robot arm", role: "lead", project_id: build, created_at: Date.now() / 1000 });
+  await fake.emit({ type: "run_finished", run_id: first.id, data: { status: "done" } }, { run: first });
+  await page.locator("[data-region=left]").getByRole("button", { name: /engineer · build robot arm/ }).click();
+  await expect(page.getByTestId("target-chip")).toContainText("engineer · build robot arm");
+  await fake.restartCore();
+  const cmd = page.getByLabel("Command line");
+  await cmd.fill("add landing gear");
+  await cmd.press("Enter");
+  await expect(page.getByTestId("cmd-info")).toContainText("a new lead took over");
+  await expect(page.locator("[data-msg=user]", { hasText: "add landing gear" })).toBeVisible();
+  const second = (await list()).find((r) => r.role === "lead" && r.id !== first.id) as AgentRun;
+  expect(second).toBeTruthy();
+  await fake.emit({ type: "run_finished", run_id: second.id, data: { status: "done" } });
+  await cmd.fill("and a camera mount");
+  await cmd.press("Enter");
+  await expect(page.locator("[data-msg=user]", { hasText: "and a camera mount" })).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: "unknown run" })).toHaveCount(0);
+  await page.keyboard.press("Meta+Shift+KeyA");
+  await expect(row(page, second.id).locator("[data-lead]")).toBeVisible();
+  await expect(manager(page).getByRole("list", { name: /^Earlier leads of / }).locator(`[data-agent-row="${first.id}"]`)).toBeVisible();
+});

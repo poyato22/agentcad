@@ -5,6 +5,7 @@ import type { AgentRun, Approval, CancelAllResult, CoreStatusInfo } from "../../
 import { isAutoNumbered } from "../../lib/names";
 import { approvals, bindClient, conn, coreStatus, parts, questions, resetStore, retiredApprovals, runs, selectedPartId, shellStatus } from "../../state/store";
 import { activePage, setPage, TAB_PAGES } from "../pages/router";
+import { atHome } from "../../state/home";
 import { Breadcrumb } from "./Breadcrumb";
 import { ModeTabs } from "./ModeTabs";
 import { StatusLights } from "./StatusLights";
@@ -39,7 +40,18 @@ afterEach(() => cleanup());
 describe("ModeTabs", () => {
   afterEach(() => { setPage("design"); });
 
+  it("on_home_no_page_tab_reads_as_shown_and_a_tab_leaves_home (m1)", () => {
+    atHome.value = true;
+    render(<ModeTabs />);
+    expect(screen.getByRole("tab", { name: "Design" }).getAttribute("aria-selected")).toBe("false");
+    expect(screen.getByRole("tab", { name: "Design" }).getAttribute("tabindex")).toBe("0");
+    fireEvent.click(screen.getByRole("tab", { name: "Studies" }));
+    expect(atHome.value).toBe(false);
+    expect(activePage.value).toBe("studies");
+  });
+
   it("every_tab_is_clickable_and_navigates", async () => {
+    atHome.value = false;
     render(<ModeTabs />);
     // no tab is disabled any more
     for (const n of ["Design", "Studies", "Drawing", "Print", "Onshape", "Parts"]) {

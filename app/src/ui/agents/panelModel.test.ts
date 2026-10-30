@@ -28,6 +28,17 @@ describe("agents panel model", () => {
     expect(r.others.map((x) => x.node.id)).toEqual(["o1"]);              // archived left out
     expect(viewRows(view, new Set(["lead"])).lead.map((x) => x.node.id)).toEqual(["lead"]);   // folded
     expect(viewRows(view, new Set(), true).others).toHaveLength(2);
+    expect(r.earlier).toEqual([]);                                       // an archived non-lead isn't an earlier lead
+  });
+
+  it("an archived lead (retired after a core restart) shows as an earlier lead with its sub-agents", () => {
+    const old = node({ id: "old", role: "lead", archived: true, status: "done",
+      children: [node({ id: "s0", role: "sub", parent_id: "old", title: "Design arm base" })] });
+    const view: AgentsView = { project_id: "b1", lead: node({ id: "new", role: "lead" }), others: [old] };
+    const r = viewRows(view);
+    expect(r.lead.map((x) => x.node.id)).toEqual(["new"]);
+    expect(r.others).toEqual([]);
+    expect(r.earlier.map((x) => [x.node.id, x.depth])).toEqual([["old", 0], ["s0", 1]]);
   });
 
   it("labels: the user's rename, else the core's task title, else the agent", () => {
