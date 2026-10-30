@@ -211,6 +211,21 @@ def test_grid_probe_is_trilinear_and_rotated(tmp_path):
     assert r["inside"] and r["values"]["cp"] == pytest.approx(0.5 * g[0] - 0.25 * g[1] + g[2])
 
 
+def test_grid_probe_on_the_surface_reports_the_flow_just_outside(tmp_path):
+    """QA B1-7: a click on the part always said 'inside the part' (a solid voxel)."""
+    shape = (12, 12, 12)
+    I, _, _ = np.meshgrid(*[np.arange(n, dtype=float) for n in shape], indexing="ij")
+    solid = np.zeros(shape, bool)
+    solid[3:9, 3:9, 3:9] = True                     # a 6-cell cube
+    path = tmp_path / "g.npz"
+    save_grid(path, [0, 0, 0], 1.0, {"cp": I}, {"cp": ""}, solid=solid)
+    f = Fields(path)
+    face = f.probe([[3.0, 5.0, 5.0]])[0]            # on the upstream face: cell 3 is solid
+    assert face["inside"] and face["surface"] and face["values"]["cp"] == 2.0
+    deep = f.probe([[6.0, 6.0, 6.0]])[0]            # 3 cells from fluid: still the part
+    assert deep["inside"] is False and deep["solid"]
+
+
 # ---- convergence loop
 
 def _job(tmp_path, conv=None, size=None):
@@ -335,6 +350,13 @@ def test_charts_per_type(tmp_path):
     c = {x["id"]: x for x in charts(wind, tmp_path)["charts"]}
     assert c["cd_vs_yaw"]["series"][0]["points"] == [[0, 0.5], [10, 0.6]]
     assert c["cd_history"]["series"][0]["points"] == [[10, 1.0]]
+    # QA B1-13: the start-up transient (first 20% of steps) is left out of the chart
+    hist = [{"step": s, "cd": -80.0 if s < 200 else 1.5, "cd_lattice_total": 1.6}
+            for s in range(0, 1000, 50)]
+    wind2 = _rec("sim_0000000000bc", "wind", convergence={"history": hist})
+    pts = {x["id"]: x for x in charts(wind2, tmp_path)["charts"]}["cd_history"]["series"][0][
+        "points"]
+    assert pts[0][0] >= 190 and all(y == 1.5 for _, y in pts)
     save_fem(tmp_path / "fields.npz", np.zeros((3, 3)), np.zeros((0, 4), int),
              {"von_mises": np.array([1.0, 2.0, 3.0])}, {"von_mises": "MPa"})
     st = _rec("sim_0000000000cc", allowable_mpa=35.0)

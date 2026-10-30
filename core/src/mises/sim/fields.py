@@ -15,6 +15,7 @@ import numpy as np
 FIELDS_FILE = "fields.npz"
 MAX_SECTION = 64  # samples per side of a section plane
 MAX_SECTION_WORK = 2_000_000  # tet-sample pairs one section may test
+SURFACE_CELLS = 1.5  # a grid probe in a solid cell this close to fluid reports the fluid
 
 
 def principal_stresses(S: np.ndarray) -> np.ndarray:
@@ -129,6 +130,23 @@ class Fields:
             return None
         return int(cand[good][inside[0]]), w[inside[0]]
 
+    def _nearest_fluid(self, g: np.ndarray) -> tuple[int, int, int] | None:
+        """The index of the fluid cell nearest grid point g, within SURFACE_CELLS cells."""
+        c = np.round(g).astype(int)
+        r = int(np.ceil(SURFACE_CELLS))
+        lo = np.maximum(c - r, 0)
+        hi = np.minimum(c + r + 1, np.array(self.shape))
+        sub = ~self.solid[lo[0]:hi[0], lo[1]:hi[1], lo[2]:hi[2]]
+        idx = np.argwhere(sub)
+        if not len(idx):
+            return None
+        idx = idx + lo
+        d2 = ((idx - g) ** 2).sum(1)
+        i = int(np.argmin(d2))
+        if d2[i] > SURFACE_CELLS ** 2:
+            return None
+        return int(idx[i][0]), int(idx[i][1]), int(idx[i][2])
+
     def probe(self, pts) -> list[dict]:
         pts = np.atleast_2d(np.asarray(pts, dtype=np.float64))
         res = []
@@ -151,7 +169,14 @@ class Fields:
             i0 = np.minimum(np.floor(g).astype(int), np.array(self.shape) - 2)
             f = g - i0
             if self.solid is not None and self.solid[tuple(np.round(g).astype(int))]:
-                res.append({"inside": False, "solid": True, "values": {}})
+                # QA B1-7: a click on the part's surface lands in a solid voxel; report the
+                # flow just outside it (the nearest fluid cell within SURFACE_CELLS)
+                near = self._nearest_fluid(g)
+                if near is None:
+                    res.append({"inside": False, "solid": True, "values": {}})
+                else:
+                    res.append({"inside": True, "surface": True, "values": {
+                        k: _round(v[(..., *near)]) for k, v in self.ch.items()}})
                 continue
             vals = {}
             for k, v in self.ch.items():

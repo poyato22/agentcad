@@ -8,6 +8,7 @@ from pathlib import Path
 from .fields import FIELDS_FILE, Fields, histogram
 
 MAX_POINTS = 400
+WIND_TRANSIENT = 0.2      # the first 20% of lattice steps are the start-up transient
 
 
 def _thin(pts: list) -> list:
@@ -86,6 +87,12 @@ def charts(rec: dict, sim_dir: Path) -> dict:
                         "bands": [{"label": "buckles", "axis": "y", "from": 0, "to": 1}]})
         elif typ == "wind":
             hist = (r.get("convergence") or {}).get("history") or []
+            # QA B1-13: the first lattice steps swing Cd to -80, which flattens the converged
+            # value to a line at 0; the start-up transient is left out (the average uses the
+            # second half anyway)
+            if len(hist) > 4:
+                cut = WIND_TRANSIENT * hist[-1]["step"]
+                hist = [h for h in hist if h["step"] >= cut]
             if hist:
                 out.append({"id": "cd_history", "kind": "line", "title": "Drag convergence",
                             "x": {"label": "lattice step", "unit": ""},
