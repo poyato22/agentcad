@@ -9,7 +9,8 @@ import { POLL_MS, resetImports } from "./state";
 const rec = (over: Partial<DrawingImport> = {}): DrawingImport => ({
   import_id: "imp_0123456789ab", kind: "dxf", file_name: "plate.dxf", status: "reading", stage: "reading the drawing",
   error: null, project_id: "p1", part_id: null, run_id: null, attempts: 0, max_attempts: 1, table: null, result: null,
-  notes: [], pages: 1, original_url: "/imports/imp_0123456789ab/original", drawing_url: null, ...over,
+  notes: [], pages: 1, original_url: "/imports/imp_0123456789ab/original", drawing_url: null,
+  basis: "drawing", checks: { text_layer: null, second_look: null }, ...over,
 });
 
 const DONE = rec({
@@ -60,7 +61,9 @@ describe("DrawingDrop", () => {
     expect(client.importDrawing).toHaveBeenCalledWith(expect.any(File), "plate.dxf", { projectId: "p1" });
     await screen.findByRole("progressbar");
     const result = await screen.findByText(/Made/);
-    expect(result.textContent).toBe("Made plate · 2 of 3 dimensions match");
+    expect(result.textContent).toBe("Made plate · 2 of 3 dimensions match the drawing");
+    expect(screen.getByText("Checked against the drawing")).toBeTruthy();
+    expect(document.querySelector("[data-checks]")).toBeNull();          // a DXF needs none
     const table = document.querySelector("[data-match-table]") as HTMLTableElement;
     expect(table.querySelectorAll("tbody tr")).toHaveLength(4);
     expect(table.textContent).toContain("✗ off by -0.5");
@@ -76,6 +79,32 @@ describe("DrawingDrop", () => {
     expect(screen.getByText("the DXF gives no thickness; 5 mm was assumed")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Open part" }));
     expect(selectedPartId.value).toBe("plate");
+  });
+
+  it("a_pdf_import_says_what_was_really_checked", async () => {
+    const rows = DONE.table!.rows.map((r) => (r.id === "W"
+      ? { ...r, status: "match" as const, measured: 60, evidence: "not printed" as const }
+      : r.kind === "length" ? { ...r, evidence: "printed" as const } : r));
+    client.drawingImport.mockReset().mockResolvedValue({
+      ...DONE, kind: "pdf", basis: "reading", result: "mismatch",
+      table: { ...DONE.table!, rows, ok: true, matches: 3, mismatches: 0 },
+      checks: {
+        text_layer: { available: true, ok: false, supported: ["L"], unsupported: ["W"], built_unsupported: ["overall width 60"] },
+        second_look: { status: "issues", summary: "x", mismatches: [{ feature: "corner", drawing: "R5", part: "sharp" }] },
+      },
+    });
+    render(<DrawingDrop variant="tile" />);
+    choose(file("plate.pdf", "%PDF-1.7"));
+    expect((await screen.findByText(/^Made/)).textContent).toBe("Made plate · All 3 dimensions match the model's reading");
+    expect(screen.getByText("Built part vs the dimensions the model read from the drawing")).toBeTruthy();
+    expect(document.querySelector("caption")?.textContent).toContain("not checked against the drawing");
+    expect(document.querySelector("[data-check=text]")?.textContent).toBe("Not printed on the drawing: W, overall width 60");
+    const table = document.querySelector("[data-match-table]") as HTMLElement;
+    expect(table.textContent).toContain("· on drawing");
+    expect(table.textContent).toContain("· not on drawing");
+    const look = document.querySelector("[data-check=second-look]") as HTMLElement;
+    expect(look.textContent).toContain("Second opinion");
+    expect(look.textContent).toContain("corner: drawing R5; part sharp");
   });
 
   it("a_refused_upload_shows_the_cores_message_and_hint", async () => {

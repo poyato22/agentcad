@@ -116,3 +116,62 @@ def test_check_upload_and_names():
     assert _part_base("Bracket-V2 (rev 3).pdf") == "bracket_v2_rev"
     assert _part_base("1234.png") == "drawing_part"
     assert _part_base("ä.dxf") == "drawing_part"
+
+
+@pytest.mark.parametrize("layer,annotation", [
+    ("DIMS", True), ("TITLE_BLOCK", True), ("Center-Lines", True), ("defpoints", True),
+    ("FRAME_PLATE", False), ("SHEET_METAL", False), ("FRAME", False), ("GRIDFINITY", False),
+    ("0", False), ("OUTLINE", False), ("sheet", False)])
+def test_annotation_layers_are_whole_words(layer, annotation):
+    from mises.imports.dxf import annotation_layer
+    assert annotation_layer(layer) is annotation
+
+
+def test_the_dimensioned_shape_is_the_part_not_a_bigger_frame():
+    """A part on FRAME_PLATE and a sheet border on layer 0: the border is the largest loop,
+    but the dimensions sit on the plate, so the plate is the part."""
+    raw = {"units": 4, "texts": [], "entities": [
+        rect_poly(-50, -50, 400, 300, "0"), rect_poly(0, 0, 100, 60, "FRAME_PLATE"),
+        circle(20, 30, 3, "FRAME_PLATE"), lin([0, 0], [100, 0], 100), lin([0, 0], [0, 60], 60, 90)]}
+    spec, facts = spec_from_dxf(raw, thickness_mm=3)
+    dims = {d.kind: d.value for d in spec.dimensions}
+    assert dims["length"] == 100 and dims["width"] == 60 and len(spec.holes) == 1
+    assert any("chosen by its dimensions" in n for n in facts["notes"])
+
+
+def _dxf_with(tmp_path, **dim):
+    import ezdxf
+    doc = ezdxf.new("R2010", setup=True)
+    doc.header["$INSUNITS"] = 4
+    msp = doc.modelspace()
+    msp.add_lwpolyline([(0, 0), (50, 0), (50, 20), (0, 20)], close=True)
+    msp.add_linear_dim(base=(25, -10), p1=(0, 0), p2=(50, 0), dimstyle="EZDXF", **dim).render()
+    doc.saveas(tmp_path / "input.dxf")
+    return _dxf(tmp_path)
+
+
+def test_dimlfac_scales_the_stated_value(tmp_path):
+    raw = _dxf_with(tmp_path, override={"dimlfac": 2.0})
+    spec, _ = spec_from_dxf(raw, thickness_mm=2)
+    d = next(x for x in spec.dimensions if x.id == "d1")
+    assert d.value == 100 and d.kind == "other"     # a 2:1 detail: not the drawn length
+
+
+def test_mtext_override_formatting_is_stripped(tmp_path):
+    raw = _dxf_with(tmp_path, override={"dimlfac": 1.0}, text=r"{\fArial|b0;50}")
+    dim = next(e for e in raw["entities"] if e["t"] == "dim")
+    assert dim["text"] == "50"
+    spec, _ = spec_from_dxf(raw, thickness_mm=2)
+    assert next(x for x in spec.dimensions if x.id == "d1").value == 50
+
+
+def test_big_pdf_pages_get_tiles_and_text_is_read(tmp_path):
+    from PIL import Image
+    from mises.imports.parse_worker import TILE_FROM, _pdf
+    Image.new("RGB", (1700, 1200), "white").save(tmp_path / "input.pdf", "PDF", resolution=72.0)
+    res = _pdf(tmp_path)
+    assert max(res["pages"][0]["full_px"]) > TILE_FROM and len(res["tiles"]) == 4
+    assert all(max(t["width"], t["height"]) <= 1568 for t in res["pages"] + res["tiles"])
+    (tmp_path / "input.pdf").write_bytes((FIX / "plate_vector.pdf").read_bytes())
+    res = _pdf(tmp_path)
+    assert "4X Ø6 THRU" in res["pages"][0]["text"] and res["tiles"] == []

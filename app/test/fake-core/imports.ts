@@ -108,11 +108,12 @@ export function importRoutes(d: ImportDeps): Route[] {
         const base = partBase(file.name);
         const taken = new Set(d.parts().map((p) => p.part_id));
         let part = base;
-        for (let i = 0; taken.has(part); i++) part = `${base}_${String.fromCharCode(98 + i)}`;
+        for (let i = 0; taken.has(part); i++) part = `${base}_${String.fromCharCode(97 + i)}`;
         const rec: Json = {
           ...fx("drawing_import_upload.json"), import_id: id, kind, file_name: file.name.split(/[\\/]/).pop() ?? "drawing",
           project_id: mp?.fields.project_id || d.activeProject(), run_id: kind === "dxf" ? null : `run_${randomBytes(4).toString("hex")}`,
           max_attempts: kind === "dxf" ? 1 : 3, original_url: `/imports/${id}/original`, _part: part,
+          basis: kind === "dxf" ? "drawing" : "reading",
           stage: kind === "dxf" ? "building the part" : "the agent is reading the drawing",
         };
         d.get().set(id, { rec, file: file.data, polls: 0 });
@@ -170,6 +171,14 @@ function advance(imp: FakeImport, d: ImportDeps): void {
   Object.assign(rec, {
     status: "done", stage: "", attempts: rec.kind === "dxf" ? 1 : 2, table, result: table.ok ? "match" : "mismatch",
     part_id: part, drawing_url: `/parts/${part}/drawing.svg`, notes: done.notes, updated_at: Date.now() / 1000,
+    // a PDF / image: the table only shows the part matches the model's reading; the core adds
+    // a text-layer check (vector PDFs) and a second look, labelled a second opinion
+    checks: rec.kind === "dxf" ? { text_layer: null, second_look: null } : {
+      text_layer: rec.kind === "pdf"
+        ? { available: true, ok: true, supported: table.rows.filter((r) => r.kind !== "callout").map((r) => String(r.id)), unsupported: [], built_unsupported: [] }
+        : { available: false, note: "an image has no text layer: only the model's reading was checked" },
+      second_look: { status: "ok", mismatches: [], summary: "The two drawings agree." },
+    },
   });
   d.setParts([...d.parts(), { part_id: part, vars: { thickness: 6, hole_a_d: 6, hole_b_d: 10 }, metrics: null, mtime: Date.now() / 1000 }]);
   d.emit({ type: "part_changed", run_id: null, data: { part_id: part, version: 1, by: "user", run_id: null, summary: `created ${part} from script` } });

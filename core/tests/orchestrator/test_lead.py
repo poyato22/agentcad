@@ -121,14 +121,15 @@ def test_explicit_agent_is_not_the_lead(home):
 
 
 def test_drawing_attachment_routes_to_drawing_agent_or_designer(home):
-    prov = RoleProvider(designer=[text("built from the drawing")])
+    # "# Role: drawing import" (U5's drawing-import agent) and the designer, for a fallback
+    prov = RoleProvider(drawing=[text("read the drawing")], designer=[text("built it")])
     rt = make(home, prov)
     with TestClient(create_app(rt, TOKEN)) as client:
         r = client.post("/runs", headers=AUTH, json={
             "prompt": "make this", "attachments": [{"name": "plate.dxf"}]})
         routed = r.json()["routed"]
-        # this branch has no drawing-import agent (U5 adds it): the designer builds it
-        assert routed["agent"] == "designer" and "drawing" in routed["reason"]
+        # U5 defines the drawing-import agent, so an attached drawing goes to it
+        assert routed["agent"] == "drawing-import" and "drawing" in routed["reason"]
         wait_done(client, r.json()["run_id"])
 
 

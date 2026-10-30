@@ -400,3 +400,56 @@ def verify(spec: DrawingSpec, drawing_info: dict, metrics: dict) -> dict:
             "missing": counts["missing"], "unchecked": counts["unchecked"],
             "printed_callouts": printed,
             "ok": bool(checked) and all(r["status"] == "match" for r in checked)}
+
+
+# ---- independent check: the numbers printed on a vector PDF (its text layer)
+
+_TEXT_NUM_RE = re.compile(r"(?<![\d.,])(\d+(?:[.,]\d+)?)(?!\d)")
+_TEXT_KINDS = ("length", "width", "thickness", "diameter", "radius", "position_x",
+               "position_y", "hole_spacing_x", "hole_spacing_y", "angle")
+
+
+def text_numbers(texts: list[str]) -> list[float]:
+    """Every number printed in the pages' text ("Ø6", "4X", "100.5", "6,35")."""
+    out = []
+    for t in texts:
+        for m in _TEXT_NUM_RE.finditer(t or ""):
+            try:
+                out.append(float(m.group(1).replace(",", ".")))
+            except ValueError:
+                continue
+    return out[:5000]
+
+
+def _printed(value: float, numbers: list[float]) -> bool:
+    return any(abs(n - value) <= max(0.005, 1e-3 * abs(value)) for n in numbers)
+
+
+def text_check(spec: DrawingSpec, table: dict, drawing_info: dict, metrics: dict,
+               numbers: list[float]) -> dict:
+    """Cross-check a model's reading against the numbers the drawing really prints (a vector
+    PDF's text layer): each row's stated value (in the spec's units), and each built overall
+    size and hole diameter, should appear somewhere in it. Marks each row's `evidence`
+    ("printed" / "not printed") and returns the summary."""
+    k = INCH_MM if spec.units == "in" else 1.0
+    supported, unsupported = [], []
+    for r in table["rows"]:
+        if r["kind"] not in _TEXT_KINDS or r["expected"] is None:
+            continue
+        v = r["expected"] if r["kind"] == "angle" else r["expected"] / k
+        if _printed(v, numbers):
+            r["evidence"] = "printed"
+            supported.append(r["id"])
+        else:
+            r["evidence"] = "not printed"
+            unsupported.append(r["id"])
+    built = []
+    size = drawing_info.get("overall_mm") or (metrics.get("bbox") or {}).get("size") or []
+    for name, v in zip(("length", "width", "thickness"), size):
+        if not _printed(float(v) / k, numbers):
+            built.append(f"overall {name} {round(float(v) / k, 3):g}")
+    for d in sorted({round(h["d"], 3) for h in _z_holes(metrics)}):
+        if not _printed(d / k, numbers):
+            built.append(f"hole Ø{round(d / k, 3):g}")
+    return {"available": True, "supported": supported, "unsupported": unsupported,
+            "built_unsupported": built, "ok": not unsupported and not built}

@@ -1,0 +1,46 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 150] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>
+endobj
+4 0 obj
+<< /Length 983 >>
+stream
+0.5 w
+50 50 m 150 50 l S
+150 50 m 150 110 l S
+150 110 m 50 110 l S
+50 110 m 50 50 l S
+68 65 m 68 66.6569 66.6569 68 65 68 c 63.3431 68 62 66.6569 62 65 c 62 63.3431 63.3431 62 65 62 c 66.6569 62 68 63.3431 68 65 c S
+138 65 m 138 66.6569 136.6569 68 135 68 c 133.3431 68 132 66.6569 132 65 c 132 63.3431 133.3431 62 135 62 c 136.6569 62 138 63.3431 138 65 c S
+68 95 m 68 96.6569 66.6569 98 65 98 c 63.3431 98 62 96.6569 62 95 c 62 93.3431 63.3431 92 65 92 c 66.6569 92 68 93.3431 68 95 c S
+138 95 m 138 96.6569 136.6569 98 135 98 c 133.3431 98 132 96.6569 132 95 c 132 93.3431 133.3431 92 135 92 c 136.6569 92 138 93.3431 138 95 c S
+105 80 m 105 82.7615 102.7615 85 100 85 c 97.2385 85 95 82.7615 95 80 c 95 77.2385 97.2385 75 100 75 c 102.7615 75 105 77.2385 105 80 c S
+BT /F1 6 Tf 95 35 Td (100) Tj ET
+BT /F1 6 Tf 30 80 Td (60) Tj ET
+BT /F1 6 Tf 70 72 Td (4X Ø6 THRU) Tj ET
+BT /F1 6 Tf 100 85 Td (Ø10 THRU) Tj ET
+BT /F1 6 Tf 40 20 Td (MOUNTING PLATE  AL 6061  THK 6  UNITS mm) Tj ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000001275 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1372
+%%EOF

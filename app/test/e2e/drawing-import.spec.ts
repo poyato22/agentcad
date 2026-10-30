@@ -50,7 +50,7 @@ for (const theme of ["dark", "light"] as const) {
     await expect(card(page).getByText("Mounting Plate.dxf")).toBeVisible();
     // progress first (the fake moves one stage per poll), then the result
     await expect(card(page)).toHaveAttribute("data-import-state", "done", { timeout: 10_000 });
-    await expect(card(page).locator("[data-result]")).toHaveText(/Made mounting_plate · All \d+ dimensions match/);
+    await expect(card(page).locator("[data-result]")).toHaveText(/Made mounting_plate · All \d+ dimensions match the drawing/);
     const rows = card(page).locator("[data-match-table] tbody tr");
     await expect(rows.first()).toBeVisible();
     expect(await rows.count()).toBeGreaterThanOrEqual(6);
@@ -93,6 +93,17 @@ test("a_mismatch_is_shown_in_the_table", async ({ page }) => {
   await expect(card(page)).toHaveAttribute("data-import-state", "done", { timeout: 10_000 });
   await expect(card(page).locator("[data-result]")).toHaveText(/\d+ of \d+ dimensions match/);
   await expect(card(page).locator("[data-row-status=mismatch]")).toContainText("off by -0.5");
+});
+
+test("an_image_import_says_it_was_checked_against_the_models_reading", async ({ page }) => {
+  await open(page, "dark");
+  await dropFile(page, "plate.png", readFileSync(resolve(DRAWINGS, "plate_drawing.png")));
+  await expect(card(page)).toHaveAttribute("data-import-state", "done", { timeout: 10_000 });
+  await expect(card(page).locator("[data-result]")).toHaveText(/dimensions match the model's reading/);
+  await expect(card(page).locator("[data-match-table] caption")).toContainText("the reading itself is the model's");
+  await expect(card(page).locator("[data-check=text]")).toContainText("only the model's reading was checked");
+  await expect(card(page).locator("[data-check=second-look]")).toContainText("Second opinion");
+  if (SHOTS) await card(page).screenshot({ path: `${SHOTS}/u5-reading.png` });
 });
 
 test("non_file_drags_do_not_open_the_drop_zone", async ({ page }) => {

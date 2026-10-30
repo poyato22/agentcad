@@ -95,3 +95,22 @@ async def test_claude_run_from_sketch(rt, claude_bin, signed_in):
     ctx = build_context(rt, rid)
     assert ctx["sketch"]["images"] == [{"kind": "photo", "path": "sketch/photo.jpg",
                                         "attached": True}]
+
+
+@needs_sandbox
+async def test_claude_run_gets_drawing_pages_and_context(rt, claude_bin, signed_in):
+    """Plan 7 U5: start_run(first_context=..., images=...) on Claude Code (a drawing import's
+    run): the pages arrive as image blocks and the import's facts in the first context block."""
+    ctx = {"drawing_import": {"import_id": "imp_0123456789ab", "pages_attached": 2}}
+    _port, _token, handle = await serve_async(rt, write_server_json=False)
+    try:
+        rid = await rt.start_run("drawing-import", "Make the part.",
+                                 model_ref="claude-code/sonnet", first_context=ctx,
+                                 images=[("image/png", _png()), ("image/png", _png())])
+        await asyncio.wait_for(rt.wait(rid), 15)
+    finally:
+        await handle.stop()
+    first = _stdin(rt, rid)[0]["message"]["content"]
+    assert [b["type"] for b in first] == ["text", "image", "image"]
+    assert first[0]["text"].startswith("<mises-context>")
+    assert "imp_0123456789ab" in first[0]["text"] and "Make the part." in first[0]["text"]

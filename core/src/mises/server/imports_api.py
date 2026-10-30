@@ -10,7 +10,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, File, Form, Response, UploadFile
+from fastapi import APIRouter, Request, Response
+from starlette.datastructures import UploadFile
 
 from .. import projects as _projects
 from ..imports.drawing_import import MAX_UPLOAD_BYTES, current, import_dir, start_import
@@ -21,15 +22,35 @@ if TYPE_CHECKING:
     from ..runtime import Runtime
 
 _CSP = "default-src 'none'; style-src 'unsafe-inline'"
+_FORM_SLACK = 64 * 1024          # multipart boundaries and the small fields around the file
+_FIELDS = ("project_id", "thickness_mm", "model_ref")
 
 
 def build_imports_router(runtime: Runtime) -> APIRouter:
     router = APIRouter()
 
     @router.post("/imports/drawing")
-    async def post_drawing(file: UploadFile = File(...), project_id: str | None = Form(None),
-                           thickness_mm: float | None = Form(None),
-                           model_ref: str | None = Form(None)):
+    async def post_drawing(request: Request):
+        # refused from the header, before the multipart body is spooled to disk
+        try:
+            length = int(request.headers.get("content-length", ""))
+        except ValueError:
+            raise MisesError(ErrorCode.INVALID_INPUT, "the upload needs a Content-Length",
+                             hint="send the file as a normal (non-chunked) form upload") from None
+        if length > MAX_UPLOAD_BYTES + _FORM_SLACK:
+            raise MisesError(ErrorCode.INVALID_INPUT, "the drawing is larger than 20 MB",
+                             hint="export a smaller file (20 MB at most)")
+        form = await request.form(max_files=1, max_fields=8)
+        file, fields = form.get("file"), {k: form.get(k) for k in _FIELDS}
+        if not isinstance(file, UploadFile):
+            raise MisesError(ErrorCode.INVALID_INPUT, "the upload has no `file`")
+        project_id, model_ref = fields["project_id"] or None, fields["model_ref"] or None
+        try:
+            thickness_mm = float(fields["thickness_mm"]) if fields["thickness_mm"] else None
+        except (TypeError, ValueError):
+            raise MisesError(ErrorCode.INVALID_INPUT, "thickness_mm must be a number") from None
+        if not all(v is None or isinstance(v, str) for v in (project_id, model_ref)):
+            raise MisesError(ErrorCode.INVALID_INPUT, "bad form field")
         raw = await file.read(MAX_UPLOAD_BYTES + 1)
         pid = (_projects.check_project(runtime.store, project_id) if project_id
                else _projects.active_project_id(runtime.store,

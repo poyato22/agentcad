@@ -24,8 +24,19 @@ UNIT_MM = {0: 1.0, 1: 25.4, 2: 304.8, 4: 1.0, 5: 10.0, 6: 1000.0, 8: 25.4e-6, 9:
            10: 914.4, 13: 0.001, 14: 100.0}
 UNIT_NAME = {0: "unitless (taken as mm)", 1: "inch", 2: "foot", 4: "mm", 5: "cm", 6: "m",
              8: "microinch", 9: "mil", 10: "yard", 13: "micron", 14: "decimetre"}
-IGNORE_LAYER_RE = re.compile(r"border|frame|title|sheet|defpoints|dim|text|anno|hatch|cent(er|re)"
-                             r"|hidden|constr|viewport|grid", re.I)
+# a layer is annotation (left out of the part's loops) when EVERY word of its name is one of
+# these: "TITLE_BLOCK", "DIMS", "CENTER-LINES" are; "FRAME_PLATE", "SHEET_METAL", "GRID" are not
+ANNOTATION_WORDS = frozenset({
+    "border", "borders", "title", "titles", "block", "titleblock", "defpoints", "dim", "dims",
+    "dimension", "dimensions", "text", "texts", "note", "notes", "anno", "annotation",
+    "annotations", "hatch", "hatching", "center", "centre", "centerline", "centerlines",
+    "centreline", "centrelines", "line", "lines", "hidden", "construction", "constr",
+    "viewport", "viewports", "sheet"})
+
+
+def annotation_layer(name: str) -> bool:
+    words = [w for w in re.split(r"[^a-z]+", name.lower()) if w]
+    return bool(words) and all(w in ANNOTATION_WORDS for w in words) and words != ["sheet"]
 DEFAULT_THICKNESS_MM = 5.0
 MAX_PIECES = 2_000               # open pieces fed to the loop finder (it is quadratic in ends)
 MAX_SPAN_MM = 100_000.0
@@ -172,12 +183,11 @@ def _profiles(strokes: list[Stroke]) -> list[dict]:
                 lp["parent"] = j
                 break
         lp["depth"] = 0 if lp["parent"] is None else loops[lp["parent"]]["depth"] + 1
-    out = []
-    for i, lp in enumerate(loops):
-        if lp["depth"] % 2 == 0:
-            out.append({"outer": lp["segs"], "area": lp["area"],
-                        "holes": [h["segs"] for h in loops if h["parent"] == i]})
-    return out
+    # every loop is a candidate outline (with the loops right inside it as its holes): a part
+    # drawn inside a sheet frame is a hole of the frame by nesting, yet it is the part
+    return [{"outer": lp["segs"], "area": lp["area"], "depth": lp["depth"],
+             "holes": [h["segs"] for h in loops if h["parent"] == i]}
+            for i, lp in enumerate(loops)]
 
 
 def _segments(segs: list) -> list[dict]:
@@ -273,8 +283,16 @@ def _dimensions(raw: dict, k: float, ox: float, oy: float, bbox, holes: list[dic
         item = {"id": f"d{len(out) + 1}", "kind": "other", "value": value, "text": text}
         if tolv is not None:
             item.update(tol_plus=tolv, tol_minus=tolv)
+        try:
+            lfac = float(d.get("dimlfac", 1.0) or 1.0)
+        except (TypeError, ValueError):
+            lfac = 1.0
         if is_angle:
             item["kind"] = "angle"
+        elif abs(lfac - 1.0) > 1e-9:
+            # a scaled view (DIMLFAC): its drawn geometry is not the part's size, so the stated
+            # value is listed, not checked against the outline
+            item["text"] = f"{text} (scaled view ×{lfac:g})"[:64]
         elif dimtype in (0, 1) and "defpoint2" in pts and "defpoint3" in pts:
             p2, p3 = pts["defpoint2"], pts["defpoint3"]
             if dimtype == 1:
@@ -310,6 +328,53 @@ def _dimensions(raw: dict, k: float, ox: float, oy: float, bbox, holes: list[dic
     return out
 
 
+def _on_loop(p, poly, tol: float) -> bool:
+    for (x1, y1), (x2, y2) in zip(poly, poly[1:] + poly[:1]):
+        dx, dy = x2 - x1, y2 - y1
+        L2 = dx * dx + dy * dy
+        t = 0.0 if L2 == 0 else max(0.0, min(1.0, ((p[0] - x1) * dx + (p[1] - y1) * dy) / L2))
+        if math.hypot(p[0] - (x1 + t * dx), p[1] - (y1 + t * dy)) <= tol:
+            return True
+    return False
+
+
+def _dimensioned(profiles: list[dict], raw: dict, k: float, ox: float, oy: float,
+                 notes: list[str]) -> dict:
+    """The part's profile: the one whose edges (outline or holes) the DIMENSION entities'
+    definition points touch most; ties (or no dimensions) go to the largest. A sheet frame
+    nobody dimensions loses to the part it surrounds."""
+    pts = []
+    for d in raw.get("entities") or []:
+        if isinstance(d, dict) and d.get("t") == "dim":
+            for key, v in (d.get("pts") or {}).items():
+                if key in ("defpoint2", "defpoint3", "defpoint4") or (
+                        key == "defpoint" and int(d.get("dimtype", 0) or 0) in (3, 4)):
+                    try:
+                        q = _sc(_pt(v), k)
+                    except (TypeError, ValueError, IndexError):
+                        continue
+                    pts.append((q[0] - ox, q[1] - oy))
+    if not pts or len(profiles) == 1:
+        return profiles[0]
+    polys = [[_sample(p["outer"])] + [_sample(h) for h in p["holes"]] for p in profiles]
+    span = max(max(abs(x) for x, _ in polys[0][0]), max(abs(y) for _, y in polys[0][0]), 1.0)
+    tol = max(0.05, 1e-3 * span)
+    # dimensions on the outline itself count first (a frame's "hole" is the part's outline)
+    outer = [sum(1 for q in pts if _on_loop(q, loops[0], tol)) for loops in polys]
+    total = [sum(1 for q in pts if any(_on_loop(q, poly, tol) for poly in loops))
+             for loops in polys]
+    # a lone circle (a dimensioned hole) is never the outline, unless it is the largest shape
+    eligible = [i for i, p in enumerate(profiles)
+                if i == 0 or not (len(p["outer"]) == 1 and p["outer"][0][0] == "circle")]
+    best = max(eligible, key=lambda i: (outer[i], total[i], profiles[i]["area"]))
+    if outer[best] == 0:
+        best = 0
+        notes.append("no dimension touches the outline; it was taken as the largest shape")
+    elif best != 0:
+        notes.append("the outline was chosen by its dimensions, not as the largest shape")
+    return profiles[best]
+
+
 def _thickness(texts: list[str], k: float) -> float | None:
     for rx in _THK_RES:
         for t in texts:
@@ -333,7 +398,7 @@ def spec_from_dxf(raw: dict, *, thickness_mm: float | None = None) -> tuple[Draw
         units = 0
     k = UNIT_MM[units]
     geom_all = _geometry(raw, k)
-    geom = [g for g in geom_all if not IGNORE_LAYER_RE.search(g["layer"])] or geom_all
+    geom = [g for g in geom_all if not annotation_layer(g["layer"])] or geom_all
     if not geom:
         raise _bad("the DXF has no lines, arcs, circles or polylines to build from",
                    hint="export the part's outline (not only text or dimensions)")
@@ -349,9 +414,10 @@ def spec_from_dxf(raw: dict, *, thickness_mm: float | None = None) -> tuple[Draw
     if not profiles:
         raise _bad("no closed outline found in the DXF",
                    hint="the part's outline must be a closed loop (gaps under 0.01 mm are joined)")
-    main = profiles[0]
-    if len(profiles) > 1:
-        notes.append(f"{len(profiles) - 1} other closed shape(s) left out (other views or a frame)")
+    main = _dimensioned(profiles, raw, k, ox, oy, notes)
+    others = sum(1 for p in profiles if p["depth"] == main["depth"]) - 1 + main["depth"]
+    if others:
+        notes.append(f"{others} other closed shape(s) left out (other views or a frame)")
     holes, cutouts = [], []
     for segs in main["holes"]:
         if len(segs) == 1 and segs[0][0] == "circle":
@@ -404,7 +470,7 @@ def preview_svg(raw: dict) -> str:
         k = 1.0
     geom = _geometry(raw, k)
     # framed on the part and its dimensions (a sheet frame or title block would shrink it)
-    part = [g for g in geom if not IGNORE_LAYER_RE.search(g["layer"])] or geom
+    part = [g for g in geom if not annotation_layer(g["layer"])] or geom
     pts = [p for g in part for p in _points(g)]
     if not pts:
         return ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"></svg>')

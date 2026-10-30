@@ -30,11 +30,18 @@ function rowResult(r: MatchRow): { text: string; cls: string } {
   return { text: off === null ? "✗ differs" : `✗ off by ${off > 0 ? "+" : ""}${off}`, cls: "bad" };
 }
 
-function MatchTableView({ rows }: { rows: readonly MatchRow[] }): JSX.Element {
+function MatchTableView({ rows, basis }: { rows: readonly MatchRow[]; basis: DrawingImport["basis"] }): JSX.Element {
+  const caption = basis === "drawing"
+    ? "Checked against the drawing"
+    : "Built part vs the dimensions the model read from the drawing";
   return (
-    <table class="imp-table" data-match-table>
+    <table class="imp-table" data-match-table data-basis={basis}>
+      <caption class="imp-caption">
+        {caption}
+        {basis === "reading" && <span class="imp-caption-note"> · the reading itself is the model's, not checked against the drawing</span>}
+      </caption>
       <thead>
-        <tr><th scope="col">Dimension</th><th scope="col">Drawing</th><th scope="col">Part</th><th scope="col">Result</th></tr>
+        <tr><th scope="col">Dimension</th><th scope="col">{basis === "drawing" ? "Drawing" : "Model's reading"}</th><th scope="col">Part</th><th scope="col">Result</th></tr>
       </thead>
       <tbody>
         {rows.map((r) => {
@@ -49,7 +56,11 @@ function MatchTableView({ rows }: { rows: readonly MatchRow[] }): JSX.Element {
               </th>
               <td>{callout ? r.text : fmt(r.expected, unit)}</td>
               <td>{callout ? (r.status === "match" ? r.text : "—") : fmt(r.measured, unit)}</td>
-              <td class={`imp-res-${res.cls}`}>{res.text}</td>
+              <td class={`imp-res-${res.cls}`}>
+                {res.text}
+                {r.evidence === "printed" && <span class="imp-ev imp-res-ok" title="This number is printed on the drawing (its PDF text)"> · on drawing</span>}
+                {r.evidence === "not printed" && <span class="imp-ev imp-res-warn" title="No such number is printed on the drawing (its PDF text)"> · not on drawing</span>}
+              </td>
             </tr>
           );
         })}
@@ -102,8 +113,44 @@ function summary(rec: DrawingImport): string {
   const t = rec.table;
   if (!t) return "";
   const checked = t.matches + t.mismatches + t.missing;
-  if (t.ok) return checked === 1 ? "The dimension matches" : `All ${checked} dimensions match`;
-  return `${t.matches} of ${checked} dimensions match`;
+  const what = rec.basis === "drawing" ? "the drawing" : "the model's reading";
+  if (t.ok) return checked === 1 ? `The dimension matches ${what}` : `All ${checked} dimensions match ${what}`;
+  return `${t.matches} of ${checked} dimensions match ${what}`;
+}
+
+/** The independent checks a PDF / image import has (none for a DXF: it is checked directly). */
+function Checks({ rec }: { rec: DrawingImport }): JSX.Element | null {
+  if (rec.basis === "drawing") return null;
+  const tl = rec.checks.text_layer;
+  const look = rec.checks.second_look;
+  const notOn = [...(tl?.unsupported ?? []), ...(tl?.built_unsupported ?? [])];
+  return (
+    <div class="imp-checks" data-checks>
+      {tl && (
+        <p class={`imp-check ${!tl.available ? "faint" : tl.ok ? "imp-res-ok" : "imp-res-warn"}`} data-check="text">
+          {!tl.available ? (tl.note ?? "No text on the drawing to check against")
+            : tl.ok ? "Every value is a number printed on the drawing (its PDF text)"
+              : `Not printed on the drawing: ${notOn.join(", ")}`}
+        </p>
+      )}
+      {look && (
+        <div class="imp-look" data-check="second-look" data-look={look.status}>
+          <p class="imp-look-head"><span class="label">Second opinion</span>{" "}
+            {look.status === "ok" ? "The model compared both drawings and found no difference."
+              : look.status === "issues" ? "The model compared both drawings and noticed:"
+                : (look.note ?? "Not available")}
+          </p>
+          {look.status === "issues" && (
+            <ul class="imp-notes">
+              {(look.mismatches ?? []).map((m, i) => (
+                <li key={i}>{m.feature}: drawing {m.drawing}; part {m.part}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function stageText(e: ImportEntry): string {
@@ -151,7 +198,8 @@ export function ImportCard({ entry }: { entry: ImportEntry }): JSX.Element {
             <span>Made <b>{rec.part_id}</b> · {summary(rec)}</span>
           </p>
           <SideBySide rec={rec} />
-          {rec.table && <MatchTableView rows={rec.table.rows} />}
+          {rec.table && <MatchTableView rows={rec.table.rows} basis={rec.basis} />}
+          <Checks rec={rec} />
           {rec.notes.length > 0 && (
             <ul class="imp-notes">{rec.notes.map((n, i) => <li key={i}>{n}</li>)}</ul>
           )}

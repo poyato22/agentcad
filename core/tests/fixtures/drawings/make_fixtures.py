@@ -13,6 +13,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 OX, OY = 250.0, 120.0           # the plate is not drawn at the origin
 HOLES = [(15, 15), (85, 15), (15, 45), (85, 45)]
+MM = {"dimlfac": 1.0}           # ezdxf's EZDXF style scales by 100 (m → cm); this drawing is in mm
 
 
 def dxf() -> None:
@@ -38,15 +39,15 @@ def dxf() -> None:
     msp.add_circle((OX + 50, OY + 30), 5, dxfattribs={"layer": "HOLES"})
     a = {"layer": "DIMS"}
     msp.add_linear_dim(base=(OX + 50, OY - 15), p1=(OX, OY), p2=(OX + 100, OY),
-                       dimstyle="EZDXF", dxfattribs=a).render()
+                       dimstyle="EZDXF", dxfattribs=a, override=MM).render()
     msp.add_linear_dim(base=(OX - 15, OY + 30), p1=(OX, OY), p2=(OX, OY + 60), angle=90,
-                       dimstyle="EZDXF", dxfattribs=a).render()
+                       dimstyle="EZDXF", dxfattribs=a, override=MM).render()
     msp.add_diameter_dim(center=(OX + 15, OY + 15), radius=3, angle=225, text="4X <>",
-                         dimstyle="EZDXF", dxfattribs=a).render()
+                         dimstyle="EZDXF", dxfattribs=a, override=MM).render()
     msp.add_linear_dim(base=(OX + 7, OY + 70), p1=(OX, OY + 60), p2=(OX + 15, OY + 45),
-                       dimstyle="EZDXF", dxfattribs=a).render()
+                       dimstyle="EZDXF", dxfattribs=a, override=MM).render()
     msp.add_linear_dim(base=(OX + 50, OY + 5), p1=(OX + 15, OY + 15), p2=(OX + 85, OY + 15),
-                       dimstyle="EZDXF", dxfattribs=a).render()
+                       dimstyle="EZDXF", dxfattribs=a, override=MM).render()
     doc.saveas(HERE / "plate_holes.dxf")
 
 
@@ -76,6 +77,48 @@ def png() -> None:
     im.save(HERE / "plate_drawing.pdf", "PDF", resolution=72.0)
 
 
+def vector_pdf() -> None:
+    """The plate as a CAD-style vector PDF: lines plus real text (a text layer), 1 pt = 1 mm."""
+    ops = ["0.5 w"]
+
+    def ln(a, b):
+        ops.append(f"{a[0] + 50} {a[1] + 50} m {b[0] + 50} {b[1] + 50} l S")
+    for a, b in (((0, 0), (100, 0)), ((100, 0), (100, 60)), ((100, 60), (0, 60)), ((0, 60), (0, 0))):
+        ln(a, b)
+    def circle(cx, cy, r):
+        k = 0.5523 * r              # four cubic Béziers
+        cx, cy = cx + 50, cy + 50
+        ops.append(f"{cx + r} {cy} m {cx + r} {cy + k} {cx + k} {cy + r} {cx} {cy + r} c "
+                   f"{cx - k} {cy + r} {cx - r} {cy + k} {cx - r} {cy} c "
+                   f"{cx - r} {cy - k} {cx - k} {cy - r} {cx} {cy - r} c "
+                   f"{cx + k} {cy - r} {cx + r} {cy - k} {cx + r} {cy} c S")
+    for x, y in HOLES:
+        circle(x, y, 3)
+    circle(50, 30, 5)
+    texts = [(95, 35, "100"), (30, 80, "60"), (70, 72, "4X \xd86 THRU"), (100, 85, "\xd810 THRU"),
+             (40, 20, "MOUNTING PLATE  AL 6061  THK 6  UNITS mm")]
+    for x, y, t in texts:
+        ops.append(f"BT /F1 6 Tf {x} {y} Td ({t}) Tj ET")
+    content = "\n".join(ops).encode("latin-1")
+    objs = [b"<< /Type /Catalog /Pages 2 0 R >>",
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 150] /Contents 4 0 R "
+            b"/Resources << /Font << /F1 5 0 R >> >> >>",
+            b"<< /Length " + str(len(content)).encode() + b" >>\nstream\n" + content + b"\nendstream",
+            b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>"]
+    out = bytearray(b"%PDF-1.4\n")
+    offsets = []
+    for i, o in enumerate(objs, 1):
+        offsets.append(len(out))
+        out += f"{i} 0 obj\n".encode() + o + b"\nendobj\n"
+    xref = len(out)
+    out += f"xref\n0 {len(objs) + 1}\n0000000000 65535 f \n".encode()
+    out += b"".join(f"{off:010d} 00000 n \n".encode() for off in offsets)
+    out += f"trailer\n<< /Size {len(objs) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode()
+    (HERE / "plate_vector.pdf").write_bytes(bytes(out))
+
+
 if __name__ == "__main__":
     dxf()
     png()
+    vector_pdf()

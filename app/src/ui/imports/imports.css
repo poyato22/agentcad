@@ -73,3 +73,11 @@
 .imp-res-faint { color: var(--faint); }
 .imp-notes { margin: 0; padding-left: 16px; color: var(--dim); }
 .imp-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.imp-caption { caption-side: top; text-align: left; padding: 0 0 4px; color: var(--ink); font-size: var(--fs-small); }
+.imp-caption-note { color: var(--dim); }
+.imp-res-warn { color: var(--amber); }
+.imp-ev { white-space: nowrap; }
+.imp-checks { display: flex; flex-direction: column; gap: 6px; }
+.imp-check { margin: 0; }
+.imp-look { border-left: 2px solid var(--line2); padding-left: 8px; }
+.imp-look-head { margin: 0; color: var(--ink); }

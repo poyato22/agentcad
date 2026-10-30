@@ -32,8 +32,15 @@ class ScriptedVision:
     def __init__(self, turns):
         self.turns = list(turns)
         self.requests = []
+        self.look_requests = []         # the second-look calls (their own script: `look`)
+        self.look = '{"mismatches": [], "summary": "The two drawings agree."}'
 
     async def stream(self, req):
+        if req.system.startswith("You check a part built from a technical drawing"):
+            self.look_requests.append(req)
+            yield TextDelta(text=self.look)
+            yield Done(stop_reason="end_turn")
+            return
         self.requests.append(req)
         events = self.turns.pop(0)(req) if self.turns else [TextDelta(text="(no more turns)")]
         for ev in events:
@@ -47,12 +54,13 @@ def import_id_of(req) -> str:
     return re.search(r'"import_id":\s*"(imp_[0-9a-f]{12})"', first.text).group(1)
 
 
-def plate_spec(width=60.0, hole_d=6.0) -> dict:
+def plate_spec(width=60.0, hole_d=6.0, stated_width=60.0) -> dict:
     return {"units": "mm", "title": "MOUNTING PLATE", "thickness": 6,
             "outline": [{"polyline": [[0, 0], [100, 0], [100, width], [0, width], [0, 0]]}],
             "holes": [{"x": x, "y": y, "diameter": hole_d} for x, y in HOLES],
             "dimensions": [{"id": "L", "kind": "length", "value": 100, "text": "100"},
-                           {"id": "W", "kind": "width", "value": 60, "text": "60"},
+                           {"id": "W", "kind": "width", "value": stated_width,
+                            "text": f"{stated_width:g}"},
                            {"id": "T", "kind": "thickness", "value": 6, "text": "THK 6"},
                            {"id": "D", "kind": "diameter", "value": 6, "hole": 0,
                             "text": "4X Ø6 THRU"}],
@@ -145,6 +153,15 @@ def test_dxf_plate_gives_the_exact_part(client, rt):
     ann = [e for e in seen if e.type == "agent_announce"]
     assert ann and ann[-1].data["kind"] == "drawing_imported"
     assert ann[-1].data["ref"] == {"import_id": out["import_id"], "part_id": "mounting_plate"}
+    # U3c's announce(): the title carries the validated part id only, the (untrusted) file
+    # name is detail; the card is stored as a step so a reload rebuilds it
+    assert ann[-1].data["title"] == "Imported a technical drawing as part mounting_plate"
+    assert "Mounting Plate.dxf" in ann[-1].data["detail"]
+    assert "match the drawing" in ann[-1].data["detail"]
+    steps = rt.store.steps(ann[-1].run_id)
+    assert any((s.payload or {}).get("agent_announce", {}).get("kind") == "drawing_imported"
+               for s in steps)
+    assert done["basis"] == "drawing" and done["checks"]["text_layer"] is None
 
 
 def test_dxf_thickness_from_the_form_wins(client, rt):
@@ -181,6 +198,79 @@ def test_png_drawing_through_a_scripted_vision_model(client, rt, model):
     assert pic.status_code == 200 and pic.headers["content-type"] == "image/png"
     run = client.get(f"/runs/{out['run_id']}", headers=AUTH).json()
     assert run["agent"] == "drawing-import"
+    # honest basis: the table compares the built part with the model's reading, nothing more;
+    # an image has no text layer, and the second look (a second opinion) saw both drawings
+    assert done["basis"] == "reading"
+    assert done["checks"]["text_layer"]["available"] is False
+    assert "only the model's reading" in done["checks"]["text_layer"]["note"]
+    assert done["checks"]["second_look"]["status"] == "ok"
+    look = model.look_requests[0].messages[0].content
+    assert [type(b).__name__ for b in look] == ["TextBlock", "ImageBlock", "ImageBlock"]
+    assert look[-1].media_type == "image/png"
+
+
+def test_a_consistent_misread_is_caught_by_the_pdf_text_layer(client, rt, model):
+    """The model reads the 60 mm width as 50 everywhere (outline and stated dimension): the
+    built part matches its reading, but the vector PDF prints no 50. That goes back to the
+    model, which re-reads; the second spec is right and every row is backed by the text."""
+    model.turns = [submit(lambda: plate_spec(width=50, stated_width=50)),
+                   submit(plate_spec, "c2"), say("Fixed the width to 60.")]
+    out = post(client, "plate.pdf", (FIX / "plate_vector.pdf").read_bytes()).json()
+    done = wait_import(client, out["import_id"])
+    assert done["status"] == "done" and done["result"] == "match", json.dumps(done)[:3000]
+    assert done["attempts"] == 2
+    second = json.dumps([m.model_dump(mode="json") for m in model.requests[1].messages])
+    assert "W (50)" in second and "overall width 50" in second and "text layer" in second
+    tl = done["checks"]["text_layer"]
+    assert tl["available"] and tl["ok"] and "W" in tl["supported"]
+    assert {r["id"]: r.get("evidence") for r in done["table"]["rows"]}["W"] == "printed"
+
+
+def test_a_consistent_misread_on_every_attempt_is_reported_not_green(client, model):
+    model.turns = [submit(lambda: plate_spec(width=50, stated_width=50), f"c{i}")
+                   for i in range(3)] + [say("still 50")]
+    out = post(client, "plate.pdf", (FIX / "plate_vector.pdf").read_bytes()).json()
+    done = wait_import(client, out["import_id"])
+    assert done["status"] == "done" and done["result"] == "mismatch"
+    assert done["table"]["ok"] is True          # it does match the (wrong) reading...
+    assert done["checks"]["text_layer"]["unsupported"] == ["W"]   # ...but not the drawing
+
+
+def test_second_look_differences_are_kept_as_a_second_opinion(client, model):
+    model.look = ('Here: {"mismatches": [{"feature": "corner", "drawing": "R5 fillet top '
+                  'right", "part": "sharp corner"}], "summary": "One corner differs."}')
+    model.turns = [submit(plate_spec), say("done")]
+    out = post(client, "plate.png", (FIX / "plate_drawing.png").read_bytes()).json()
+    done = wait_import(client, out["import_id"])
+    look = done["checks"]["second_look"]
+    assert look["status"] == "issues" and look["mismatches"][0]["feature"] == "corner"
+    assert done["result"] == "match"          # an opinion, not a measurement
+
+
+def test_same_file_name_twice_gets_two_parts(client, rt):
+    data = (FIX / "plate_holes.dxf").read_bytes()
+    a = post(client, "plate.dxf", data).json()
+    b = post(client, "plate.dxf", data).json()
+    da, db = wait_import(client, a["import_id"]), wait_import(client, b["import_id"])
+    assert da["status"] == db["status"] == "done"
+    assert {da["part_id"], db["part_id"]} == {"plate", "plate_a"}
+
+
+def test_a_part_changed_by_someone_else_is_never_overwritten(client, rt, model):
+    from mises import edits
+
+    def bump_then_submit(req):
+        d = rt.home / "parts" / "plate"
+        edits.write_version(d, edits.read_version(d) + 1)      # the user edited it meanwhile
+        return submit(plate_spec, "c2")(req)
+    model.turns = [submit(lambda: plate_spec(width=50)), bump_then_submit, say("stopped")]
+    out = post(client, "plate.png", (FIX / "plate_drawing.png").read_bytes()).json()
+    done = wait_import(client, out["import_id"])
+    assert done["attempts"] == 2 and done["status"] == "done"
+    m = json.loads((rt.home / "parts" / "plate" / "metrics.json").read_text())
+    assert m["bbox"]["size"][1] == pytest.approx(50)            # attempt 2 did not touch it
+    second = json.dumps([x.model_dump(mode="json") for x in model.requests[2].messages])
+    assert "was changed after this import built it" in second
 
 
 def test_three_attempts_at_most_then_the_table_is_reported(client, model):
@@ -235,6 +325,7 @@ def test_no_vision_model_is_a_clear_error(home):
     ("a.dwg", b"AC1032" + b"\0" * 64, "PDF, PNG, JPEG or DXF"),
     ("empty.pdf", b"", "empty"),
     ("big.pdf", b"%PDF-1.7\n" + b"0" * (20 * 1024 * 1024), "20 MB"),
+    ("huge.pdf", b"%PDF-1.7\n" + b"0" * (21 * 1024 * 1024), "20 MB"),     # refused by header
     ("a.heic", b"\0\0\0\x18ftypheic" + b"\0" * 64, "HEIC"),
 ])
 def test_bad_uploads_are_refused(client, name, data, msg):
