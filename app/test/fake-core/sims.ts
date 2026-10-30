@@ -12,6 +12,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { FACE_ID_RE, SIM_DIRECTIONS, SIM_FACE_PRESETS, type SimEnvironment, type SimMaterial, type SimRecord, type SimSolvers } from "../../src/api/sims";
 import type { AgentRun, PartSummary } from "../../src/api/types";
+import { withOpenFoam, type OpenFoamState } from "./accuracy";
 import { asBody, HttpError, mises, RAW, type EmitExtras, type EventIn, type Route } from "./server";
 import {
   cancelStudiesOfRun, clearStudyTimers, REAL_STUDY, startStudy, studyGlbPath, studyRoutes, studyStateFrom, STUDY_TYPE_IDS, type StudyState,
@@ -48,9 +49,13 @@ export interface SimScenario {
   step_ms?: number;
   /** Plan 5 C7: also store the real core's study of every type (beam / cube parts) and its templates. */
   studies?: boolean;
+  /** Plan 6 S2 (assumed): the OpenFOAM row of /sims/solvers. Default "missing" (image not pulled). */
+  openfoam?: OpenFoamState;
 }
 
 export interface FakeSims {
+  /** Plan 6 S2: the OpenFOAM row's state ("ok" after POST /system/install/openfoam). */
+  openfoam: OpenFoamState;
   ccx: boolean;
   records: Map<string, SimRecord>;
   outcome: SimOutcome;
@@ -78,6 +83,7 @@ export function simsFrom(s: SimScenario | undefined): FakeSims {
     timers: new Map(),
     study: studyStateFrom(s?.studies === true),
     studiesOn: s?.studies === true,
+    openfoam: s?.openfoam ?? "missing",
   };
 }
 
@@ -160,7 +166,8 @@ export function simRoutes(d: SimDeps): Route[] {
     { method: "GET", re: /^\/sims\/solvers$/, h: () => {
       // the C7 core adds the CFD rows; the older sims fixtures predate them
       const base = structuredClone(d.sims().ccx ? REAL.solvers : REAL.solversMissing);
-      return d.sims().studiesOn ? { ...base, cfd: structuredClone(REAL_STUDY.solvers.cfd) } : base;
+      // Plan 6 S2 (assumed): the OpenFOAM row replaces the C7 placeholder
+      return d.sims().studiesOn ? { ...base, cfd: withOpenFoam(structuredClone(REAL_STUDY.solvers.cfd) as Record<string, unknown>[], d.sims().openfoam) } : base;
     } },
     {
       method: "GET", re: /^\/sims$/, h: (_m, q) => {

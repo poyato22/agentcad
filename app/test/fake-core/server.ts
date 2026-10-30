@@ -1004,7 +1004,10 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
             state.systemInstallMs * (i + 1));
           scriptTimers.push(t);
         });
-        const done = setTimeout(() => emit({ type: "system_install", run_id: null, data: { dep, line: "", done: true, ok } }),
+        const done = setTimeout(() => {
+          if (dep === "openfoam" && ok) state.sims.openfoam = "ok"; // Plan 6 S2: the image is pulled
+          emit({ type: "system_install", run_id: null, data: { dep, line: "", done: true, ok } });
+        },
           state.systemInstallMs * (lines.length + 1));
         scriptTimers.push(done);
         return { ok: true, fix: null };

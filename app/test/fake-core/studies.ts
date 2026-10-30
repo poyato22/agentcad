@@ -11,6 +11,7 @@ import { resolve } from "node:path";
 import type { StudyMaterial, StudyRecord, StudyTemplate, StudyType } from "../../src/api/studies";
 import type { AgentRun, MisesEvent, PartSummary } from "../../src/api/types";
 import { withDefaults } from "../../src/ui/pages/studies/formSchema";
+import { calibrationRoutes, calStateFrom, p6Finish, p6Material, p6Probe, p6Types, type CalState } from "./accuracy";
 import { asBody, HttpError, mises, RAW, type EmitExtras, type EventIn, type Route } from "./server";
 
 const DIR = resolve(import.meta.dirname, "../../../core/tests/fixtures/ui");
@@ -48,12 +49,14 @@ export const studyPartGlb = (partId: string): string => resolve(DIR, `study_part
 export interface StudyState {
   templates: StudyTemplate[];
   custom: StudyMaterial[];
+  /** Plan 6 S3 (assumed): material calibrations. */
+  cal: CalState;
   /** sim_id → the run's pending timers (cancel clears them). */
   running: Map<string, { runId: string; timers: ReturnType<typeof setTimeout>[]; finish: (status: "cancelled") => void }>;
 }
 
 export function studyStateFrom(on: boolean): StudyState {
-  return { templates: on ? structuredClone(REAL_STUDY.templates) : [], custom: [], running: new Map() };
+  return { templates: on ? structuredClone(REAL_STUDY.templates) : [], custom: [], running: new Map(), cal: calStateFrom() };
 }
 
 export interface StudyDeps {
@@ -91,8 +94,12 @@ export function studyRoutes(d: StudyDeps): Route[] {
   };
   const typeOf = (r: StudyRecord): StudyType => (isType(r.type) ? r.type : "static");
   const png = (name: string) => readFileSync(resolve(DIR, `study_${name}.png`));
+  // Plan 6 (assumed shapes, see accuracy.ts): materials carry their S-N curve, orthotropic data and calibration
+  const applied = (name: string) => d.state().cal.list.find((c) => c.applied && c.material.toLowerCase() === name.toLowerCase());
+  const material = (name: string) => [...REAL_STUDY.materials.builtin, ...d.state().custom].find((x) => x.name.toLowerCase() === name.toLowerCase());
   return [
-    { method: "GET", re: /^\/sims\/types$/, h: () => structuredClone(REAL_STUDY.types) },
+    ...calibrationRoutes({ cal: () => d.state().cal, material, record: (id) => d.records().get(id) }),
+    { method: "GET", re: /^\/sims\/types$/, h: () => p6Types(REAL_STUDY.types) },
     { method: "GET", re: /^\/sims\/templates$/, h: () => structuredClone(d.state().templates) },
     {
       method: "POST", re: /^\/sims\/templates$/, h: (_m, _q, raw, _r, res) => {
@@ -121,7 +128,12 @@ export function studyRoutes(d: StudyDeps): Route[] {
         return { deleted: id };
       },
     },
-    { method: "GET", re: /^\/sims\/materials$/, h: () => ({ builtin: structuredClone(REAL_STUDY.materials.builtin), custom: structuredClone(d.state().custom) }) },
+    {
+      method: "GET", re: /^\/sims\/materials$/, h: () => ({
+        builtin: REAL_STUDY.materials.builtin.map((m) => p6Material(m, applied(m.name))),
+        custom: d.state().custom.map((m) => p6Material(m, applied(m.name))),
+      }),
+    },
     {
       method: "POST", re: /^\/sims\/materials$/, h: (_m, _q, raw, _r, res) => {
         const b = asBody(raw);
@@ -172,7 +184,7 @@ export function studyRoutes(d: StudyDeps): Route[] {
         const r = rec(decodeURIComponent(m[1]));
         const p = ["x", "y", "z"].map((k) => Number(q.get(k)));
         if (p.some((x) => !Number.isFinite(x))) throw new HttpError(422, { detail: [{ type: "float_parsing", loc: ["query", "x"], msg: "Input should be a valid number", input: q.get("x") }] });
-        return { ...structuredClone(typeOf(r) === "wind" ? REAL_STUDY.probeWind : REAL_STUDY.probe), sim_id: r.sim_id, point: p };
+        return p6Probe(r, { ...structuredClone(typeOf(r) === "wind" ? REAL_STUDY.probeWind : REAL_STUDY.probe), sim_id: r.sim_id, point: p });
       },
     },
     {
@@ -296,6 +308,7 @@ export function startStudy(d: StudyDeps, b: Record<string, unknown>): { run_id: 
     // core studies.card: a static result's per-case table rides on the card too
     const caseCard = Array.isArray(resNow.per_case) ? { per_case: resNow.per_case, governing_case_id: resNow.governing_case_id ?? null } : {};
     rec.card = { ...structuredClone(real.card!), ...caseCard, sim_id: simId, run_id: run.id, reason: rec.reason, urls: { record: `/sims/${simId}`, glb: `/sims/${simId}/result.glb`, charts: `/sims/${simId}/charts`, probe: `/sims/${simId}/probe`, section: `/sims/${simId}/section` }, charts_url: `/sims/${simId}/charts` };
+    p6Finish(rec, type, settings); // Plan 6 (assumed): nonlinear, fatigue, OpenFOAM, print direction
     const data = { sim_id: simId, part_id: partId, type, status: "done", card: rec.card, checks: rec.card.checks, results: rec.results };
     const summary = `GUIDE ONLY - ${type} study of ${partId} (fake core, real ${type} numbers)`;
     progress({ stage: "done", phase: "done", pct: 100, detail: "done" });

@@ -369,7 +369,7 @@ export interface SystemCheckRow {
   detail: string; fix: SystemFix | null;
 }
 /** Deps POST /system/install/{dep} accepts; the body carries no arguments (Review Focus 3). */
-export const INSTALL_DEPS = ["prusaslicer", "calculix", "ollama"] as const;
+export const INSTALL_DEPS = ["prusaslicer", "calculix", "ollama", "openfoam"] as const;
 export type InstallDep = (typeof INSTALL_DEPS)[number];
 /** POST /system/install/{dep} answer: install started, or refused with a fix (e.g. brew missing). */
 export interface SystemInstallStart { ok: boolean; fix: SystemFix | null }

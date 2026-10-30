@@ -10,6 +10,7 @@ import { WebSocket } from "ws";
 import { STUDY_TYPES } from "../src/api/studies";
 import type { MisesEvent } from "../src/api/types";
 import type { PartSummary } from "../src/api/types";
+import { P6_MATERIAL_KEYS, p6Types } from "./fake-core/accuracy";
 import { loadScenario, startFakeCore, type FakeCore, type Scenario } from "./fake-core/server";
 import { shapeDiff, type Json } from "./shape";
 
@@ -35,8 +36,9 @@ afterAll(async () => { await core.stop(); });
 describe("C7 study routes: fake core = real core", () => {
   it("types, solvers, templates, materials", async () => {
     core.reset(scenario());
-    // the schemas are data the form reads: served exactly as the real core wrote them
-    expect(await get("/sims/types")).toEqual(read("study_types.json"));
+    // the schemas are data the form reads: served exactly as the real core wrote them, plus the
+    // Plan 6 settings (assumed until S5 re-dumps the fixtures from the S1-S3 core: fake-core/accuracy.ts)
+    expect(await get("/sims/types")).toEqual(p6Types(read("study_types.json") as unknown as { id: string; schema: unknown }[]));
     expect(shapeDiff(read("study_solvers.json"), await get("/sims/solvers"), "solvers")).toEqual([]);
     const realT = read("study_templates.json") as { type: string }[];
     for (const t of await get("/sims/templates") as { type: string }[]) expect(shapeDiff(realT.find((x) => x.type === t.type), t, "template")).toEqual([]);
@@ -51,7 +53,9 @@ describe("C7 study routes: fake core = real core", () => {
     const mat = await call("POST", "/sims/materials", { name: "Spool PETG-CF", e_mpa: 3800, nu: 0.35, yield_mpa: 45, density_g_cm3: 1.3 });
     expect(mat.status).toBe(201);
     expect(shapeDiff(read("study_material_add.json"), mat.json, "material")).toEqual([]);
-    expect(shapeDiff(read("study_materials.json"), await get("/sims/materials"), "materials")).toEqual([]);
+    // Plan 6 S3 (assumed): the materials' extra sn / orthotropic / calibration blocks
+    const p6Extra = new RegExp(`\\.(${P6_MATERIAL_KEYS.join("|")}): extra`);
+    expect(shapeDiff(read("study_materials.json"), await get("/sims/materials"), "materials").filter((x) => !p6Extra.test(x))).toEqual([]);
     expect(shapeDiff(read("study_material_delete.json"), (await call("DELETE", "/sims/materials/Spool%20PETG-CF")).json, "del")).toEqual([]);
   });
 
