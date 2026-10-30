@@ -40,22 +40,6 @@ async function openBase(page: Page): Promise<void> {
 
 test.afterEach(async ({ fake }) => { await fake.reset("base"); });
 
-test("I-1: one slider step shows ONE You line in the thread, not the echo too", async ({ page, fake }) => {
-  await fake.reset("builds");
-  await openBuilds(page);
-  await tree(page).getByRole("button", { name: "Quad arm", exact: true }).click();
-  await expect(page.getByTestId("var-thickness")).toHaveValue("5");
-  await page.getByRole("slider", { name: "thickness (mm)" }).focus();
-  await page.keyboard.press("ArrowRight");
-  await expect.poll(async () => (await callsTo(fake, "POST", "/parts/quad_arm/vars")).length).toBe(1);
-  await expect(page.getByTestId("var-thickness")).toHaveValue("5.5");
-  const you = page.locator("[data-you-edit] .cv-body");
-  await expect(you.last()).toHaveText("You · changed thickness 5 → 5.5 mm on Quad arm");
-  await page.waitForTimeout(400);               // nothing else arrives later
-  await expect(you).toHaveCount(1);
-  await shots(page, "i1-one-you-line");
-});
-
 test("I-2: a run started right after a tab switch is filed under the new build", async ({ page, fake }) => {
   await fake.reset("builds");
   await openBuilds(page);

@@ -354,6 +354,10 @@ test("tauri_startup_crash_before_listen_shows_red_core_light_with_reason", async
   await expect(core.locator(".led")).toHaveClass(/led-red/);
   await expect(core).toHaveAttribute("title", /could not find `uv`/);
   await expect(core).toHaveAttribute("role", "button");
+  // U2b: the light lives in the Status card; the button says so in its headline
+  const status = page.getByRole("button", { name: /^Status/ });
+  await expect(status).toContainText("Core down");
+  await status.click();
   await core.click();
   await expect.poll(() => page.evaluate(() => (window as unknown as { __ipcCalls: string[] }).__ipcCalls)).toContain("core_restart");
 });

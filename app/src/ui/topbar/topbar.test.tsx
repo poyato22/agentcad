@@ -180,6 +180,48 @@ describe("StatusLights", () => {
   });
 });
 
+// Plan 7 U2b (R13): the four lights and the Onshape meter fold into one Status button; its card
+// holds the details. The button says the one thing that matters now.
+describe("Status button", () => {
+  const btn = () => screen.getByRole("button", { name: /^Status/ });
+  const card = () => document.getElementById("status-card") as HTMLElement;
+
+  it("one button in the bar; the lights live in its card, which opens and closes", async () => {
+    render(<StatusLights />);
+    expect(card().hidden).toBe(true);
+    expect(card().querySelectorAll("[data-light]")).toHaveLength(4);
+    expect(btn().getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(btn());
+    expect(card().hidden).toBe(false);
+    expect(btn().getAttribute("aria-expanded")).toBe("true");
+    fireEvent.keyDown(card(), { key: "Escape" });
+    expect(card().hidden).toBe(true);
+    await waitFor(() => expect(document.activeElement).toBe(btn()));
+  });
+
+  it("headline: ready, needs you, connecting, core down", async () => {
+    render(<StatusLights />);
+    act(() => { conn.value = "open"; shellStatus.value = { state: "starting" }; });
+    await waitFor(() => expect(btn().textContent).toContain("Ready"));
+    runs.value = new Map([["a", run("a")]]);
+    approvals.value = new Map([["x", { id: "x", run_id: "a", status: "pending" } as unknown as Approval]]);
+    await waitFor(() => expect(btn().textContent).toContain("1 needs you"));
+    expect(btn().getAttribute("aria-label")).toContain("1 needs you");
+    act(() => { conn.value = "reconnecting"; });
+    await waitFor(() => expect(btn().textContent).toContain("Connecting"));
+    act(() => { shellStatus.value = { state: "crashed", code: 1, stderrTail: "x", restarts: 0 }; });
+    await waitFor(() => expect(btn().textContent).toContain("Core down"));
+    expect(btn().querySelector("[data-dot=core] .led")?.className).toContain("led-red");
+  });
+
+  it("the top bar has no separate budget meter or light row any more", () => {
+    render(<TopBar />);
+    expect(document.querySelector(".budget-slot")).toBeNull();
+    expect(document.querySelector(".topbar-right > .lights")).toBeNull();
+    expect(screen.getByRole("button", { name: /^Status/ })).toBeTruthy();
+  });
+});
+
 describe("stop all", () => {
   function bindFake(cancelAll: () => Promise<CancelAllResult>): void {
     bindClient({ cancelAll } as unknown as CoreClient);

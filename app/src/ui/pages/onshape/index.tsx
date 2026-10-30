@@ -111,7 +111,7 @@ export function OnshapePage(): JSX.Element {
         <div class="os-connect" data-onshape="connect">
           <h2 class="os-connect-title">Connect Onshape</h2>
           <p class="dim">Add your Onshape API keys to browse your documents here and bring Part Studios and Assemblies into a build. Mises only reads from Onshape.</p>
-          <p class="faint">Each page of documents, each new thumbnail and each import uses calls from your yearly Onshape allowance. The meter in the top bar shows how many are left.</p>
+          <p class="faint">Each page of documents, each new thumbnail and each import uses calls from your yearly Onshape allowance. The Status button in the top bar shows how many are left.</p>
           <Button variant="ink" onClick={() => openProfile("onshape")}>Add Onshape keys</Button>
         </div>
       </PageShell>

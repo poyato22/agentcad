@@ -39,6 +39,9 @@ test("status_lights_reflect_core", async ({ page }) => {
   await expect(page.locator("[data-budget-used]")).toHaveText("214");
   await expect(light(page, "agents")).toContainText("2 agents");
   await expect(light(page, "agents")).toContainText("· 1 needs you");
+  // U2b: the bar shows one Status button whose headline is what matters now
+  await expect(page.getByRole("button", { name: /^Status/ })).toContainText("1 needs you");
+  await expect(page.locator("#status-card")).toBeHidden();
 });
 
 test("stop_all_stops_running_runs", async ({ page, fake }) => {

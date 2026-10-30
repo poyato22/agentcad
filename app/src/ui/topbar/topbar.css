@@ -17,25 +17,35 @@
 .tab:hover { color: var(--ink); }
 .tab-active { color: var(--ink); border-bottom-color: var(--blue); }
 .tab:focus-visible { outline: 1px solid var(--blue); outline-offset: -3px; }
-.lights { display: flex; gap: 14px; align-items: center; white-space: nowrap; color: var(--dim); font-size: 11px; min-width: 0; overflow: hidden; }
-.light { display: inline-flex; gap: 5px; align-items: center; }
-.light-val { color: var(--ink); }
-.light-need { color: var(--blue2); }
-/* With the activity pill (A1/A2) and the budget meter (A6) in the bar, the PRINTER light was
-   clipped off the right edge at 1280 and 1440 (test/e2e/topbar-fit.spec.ts). Below 1500 px the
-   lights drop their values: the budget meter carries the Onshape count, the pill the working
-   agents, and each light's title keeps its value; the LEDs and "needs you" stay. Below 1400 px
-   the tabs and the lights also pack tighter. */
-@media (max-width: 1499px) {
-  .lights .light-val { display: none; }
-  .lights { gap: 9px; }
-  .topbar-right { gap: 9px; }
+/* ---- Status (U2b): one button in the bar (three dots + a headline), the details in its card.
+   It replaced a row of four lights and an Onshape meter that said the same things twice. */
+.status { display: flex; align-items: center; flex: none; }
+.status-btn {
+  display: inline-flex; align-items: center; gap: 8px; height: 24px; padding: 0 10px;
+  background: transparent; border: 1px solid var(--line2); border-radius: 0; color: var(--dim);
+  font: inherit; font-size: 11px; white-space: nowrap; cursor: pointer;
 }
-@media (max-width: 1399px) {
-  .tab { padding: 0 10px; }
-  .lights { gap: 7px; }
-  .topbar-right { gap: 6px; padding-left: 8px; }
+.status-btn:hover, .status-btn[aria-expanded="true"] { border-color: var(--dim); color: var(--ink); }
+.status-btn:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
+.status-btn[data-status-tone="red"] { border-color: var(--red); color: var(--red); }
+.status-btn[data-status-tone="amber"] .status-head { color: var(--amber); }
+.status-dots { display: inline-flex; gap: 3px; align-items: center; }
+.status-dots > span { display: inline-flex; }
+.status-head { color: var(--ink); }
+.status-head.needs-you { color: var(--blue2); }
+.status-card {
+  position: fixed; top: calc(var(--topbar-h) + 4px); z-index: 30; width: 280px;
+  background: var(--paper2); border: 1px solid var(--line2); padding: 10px 12px; color: var(--ink); font-size: 11px;
 }
+.status-card[hidden] { display: none; }
+.lights { display: flex; flex-direction: column; gap: 6px; color: var(--dim); }
+.light { display: flex; gap: 6px; align-items: center; min-width: 0; }
+.light-val { margin-left: auto; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.light-need { color: var(--blue2); white-space: nowrap; }
+.light-click { cursor: pointer; border: 1px solid var(--red); margin: 0 -6px; padding: 3px 6px; }
+.light-click .light-val { color: var(--red); }
+.light-click:hover { background: var(--paper); }
+.light-click:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
 /* A3's build tabs: the left column keeps room for the root crumb, the active build tab
    (TAB_MIN 84 px) and its menu button, so the tab never slides under the mode tabs; the
    right group (which clips its own overflow) gives way instead. */
@@ -49,12 +59,6 @@
   .topbar:has(.activity-pill) .crumb > [data-crumb=part],
   .topbar:has(.activity-pill) .crumb > .crumb-sep:has(+ [data-crumb=part]) { display: none; }
 }
-@media (max-width: 1399px) {
-  .budget-bar { display: none; }   /* the meter keeps its count; the gauge goes */
-}
-.light-click { cursor: pointer; border: 1px solid var(--line2); padding: 2px 6px; }
-.light-click:hover { border-color: var(--dim); color: var(--ink); }
-.light-click:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
 .stop-all { flex: none; }
 .toast {
   position: absolute; right: 12px; top: calc(var(--topbar-h) + 2px); z-index: 5; background: var(--paper2); border: 1px solid var(--line2);
@@ -62,7 +66,7 @@
 }
 .toast:empty { display: none; }
 
-/* activity pill (count of working agents) + Task A6 budget slot */
+/* activity pill (count of working agents) */
 .activity-pill {
   display: inline-flex; align-items: center; gap: 6px; flex: none;
   background: transparent; border: 1px solid var(--line2); border-radius: 0;
@@ -77,54 +81,35 @@
 .activity-label { color: var(--dim); }
 @keyframes activity-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .4; transform: scale(.8); } }
 @media (prefers-reduced-motion: reduce) { .activity-pill .activity-dot { animation: none !important; } }
-.budget-slot { display: flex; align-items: center; flex: none; }
-.budget-slot:empty { display: none; }
-
-/* Task A6: Onshape budget meter. A short gauge: grey fill, amber past warn_at, red at the limit
-   (status colours only for the warn/fail states). The count flashes once when a call lands. */
-.budget { display: flex; align-items: center; flex: none; }
+/* Task A6's Onshape budget, now inside the Status card (U2b). A gauge: grey fill, amber past
+   warn_at, red at the limit (status colours only for the warn/fail states). The count flashes once
+   when a call lands. */
+.budget { display: flex; flex-direction: column; gap: 3px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line2); }
 /* not connected yet: the yearly allowance, dimmed */
-.budget[data-state="idle"] { opacity: 0.6; }
-.budget-btn {
-  display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px;
-  background: transparent; border: 1px solid var(--line2); border-radius: 0; color: var(--dim);
-  font: inherit; font-size: 11px; white-space: nowrap; cursor: pointer;
-}
-.budget-btn:hover { border-color: var(--dim); color: var(--ink); }
-.budget-btn:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
+.budget[data-state="idle"] .budget-head, .budget[data-state="idle"] .budget-bar { opacity: 0.6; }
+.budget-head { display: flex; justify-content: space-between; gap: 12px; }
+.budget-name { color: var(--dim); }
 .budget-val { font-variant-numeric: tabular-nums; }
 .budget-used { color: var(--ink); padding: 0 1px; }
 .budget-limit { color: var(--faint); }
-.budget-bar { position: relative; width: 44px; height: 4px; background: var(--line); overflow: hidden; }
+.budget-bar { position: relative; display: block; width: 100%; height: 4px; margin: 2px 0 4px; background: var(--line); overflow: hidden; }
 .budget-fill { position: absolute; top: 0; bottom: 0; left: 0; background: var(--dim); transition: width .3s ease-out; }
 .budget-warn { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--faint); }
-.budget-delta { color: var(--dim); font-variant-numeric: tabular-nums; }
 .budget[data-level=warn] .budget-fill { background: var(--amber); }
 .budget[data-level=warn] .budget-used, .budget[data-level=warn] .budget-card-state { color: var(--amber); }
 .budget[data-level=limit] .budget-fill { background: var(--red); }
 .budget[data-level=limit] .budget-used, .budget[data-level=limit] .budget-card-state { color: var(--red); }
-.budget[data-level=limit] .budget-btn { border-color: var(--red); }
 .budget-moved { animation: budget-moved .9s ease-out; }
 @keyframes budget-moved { 0% { background: var(--line2); } 100% { background: transparent; } }
 @media (prefers-reduced-motion: reduce) { .budget-moved { animation: none; } .budget-fill { transition: none; } }
-.budget-card {
-  position: fixed; top: calc(var(--topbar-h) + 4px); z-index: 30; width: 240px;
-  background: var(--paper2); border: 1px solid var(--line2); padding: 8px 10px; color: var(--ink); font-size: 11px;
-}
-.budget-card[hidden] { display: none; }
 .budget-card-row { display: flex; justify-content: space-between; gap: 12px; padding: 1px 0; }
 .budget-card-row > span:first-child { color: var(--dim); }
 .budget-card-row > span:last-child { font-variant-numeric: tabular-nums; }
-.budget-card-note { margin: 6px 0 0; color: var(--dim); white-space: normal; }
-
-/* Narrower windows (13"/14" laptops at default scaling and below): the meter drops its word label
-   and run delta (both stay in its aria-label and hover card) and the ONSHAPE light drops its
-   "connected" text (its tone and title stay), so every status light still fits. */
-@media (max-width: 1400px) {
-  .budget-name, .budget-delta { display: none; }
-  .light[data-light=onshape] .light-val { display: none; }
-  .topbar-right { gap: 8px; }
-  .lights { gap: 10px; }
+.budget-card-note { margin: 4px 0 0; color: var(--dim); white-space: normal; }
+.budget-open { align-self: flex-start; margin-top: 6px; }
+@media (max-width: 1399px) {
+  .tab { padding: 0 10px; }
+  .topbar-right { gap: 6px; padding-left: 8px; }
 }
 
 /* ---- build tabs (Breadcrumb): drafting title-block cells; the active one is underlined in blue

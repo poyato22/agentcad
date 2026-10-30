@@ -4,7 +4,6 @@ import { runs } from "../../state/store";
 import { Button } from "../common/Button";
 import { ActivityPill } from "./ActivityPill";
 import { Breadcrumb } from "./Breadcrumb";
-import { BudgetMeter } from "./BudgetMeter";
 import { ModeTabs } from "./ModeTabs";
 import { ProfileButton } from "./ProfileButton";
 import { StatusLights } from "./StatusLights";
@@ -23,11 +22,11 @@ export function TopBar(): JSX.Element {
       <ModeTabs />
       <div class="topbar-right">
         <ActivityPill />
-        <div class="budget-slot" data-slot="budget"><BudgetMeter /></div>
+        {/* U2b: one Status button (lights + Onshape budget in its card) instead of a row of lights and a meter */}
         <StatusLights />
         <ProfileButton />
         <Button variant={anyRunning ? "danger" : "default"} class="stop-all" title="Stop all runs (⌘⇧.)" aria-busy={busy || undefined}
-          onClick={() => { void stopAll(); }}>STOP ALL</Button>
+          onClick={() => { void stopAll(); }}>Stop all</Button>
       </div>
       <div class="toast" role="status" aria-live="polite">{toast.value}</div>
     </header>

@@ -7,16 +7,20 @@ test.beforeEach(async ({ fake, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
 });
 
+// Plan 7 U2b: the meter lives in the top bar's Status card (always in the DOM, shown on click)
 const meter = (page: import("@playwright/test").Page) => page.locator(".budget");
 
 test("budget_meter_updates_live_as_onshape_is_used_and_turns_amber_at_warn", async ({ page, fake }) => {
   await page.goto("/");
   await expect(meter(page).locator("[data-budget-used]")).toHaveText("1,999");
   await expect(meter(page)).toHaveAttribute("data-level", "ok");
-  // hover shows the details and the reset date
-  await meter(page).hover();
-  await expect(page.locator("#budget-card")).toBeVisible();
+  // the Status button opens the card with the details and the reset date
+  await page.getByRole("button", { name: /^Status/ }).click();
+  await expect(page.locator("#status-card")).toBeVisible();
+  await expect(meter(page)).toBeVisible();
   await expect(page.locator("[data-budget-reset]")).toHaveText(/^1 Jan \d{4}$/);
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#status-card")).toBeHidden();
   // browsing Onshape spends calls: one documents page + the thumbnails of the tiles near the
   // viewport only (lazy); the meter follows each event
   await page.getByRole("tab", { name: "Onshape" }).click();
@@ -40,11 +44,13 @@ test("budget_meter_updates_live_as_onshape_is_used_and_turns_amber_at_warn", asy
   await expect(meter(page)).toHaveAttribute("data-level", "limit");
   await expect(page.locator("[data-light=onshape] .led")).toHaveClass(/led-red/);
   await expect(page.locator("[data-light=onshape]")).toHaveAttribute("title", /2,500 of 2,500/);
+  // the Status button's Onshape dot carries the same tone
+  await expect(page.locator(".status-btn [data-dot=onshape] .led")).toHaveClass(/led-red/);
 });
 
 test("onshape_grid_paging_open_and_import_to_build", async ({ page, fake }) => {
   await page.goto("/");
-  await page.keyboard.press("Meta+6");
+  await page.keyboard.press("Meta+5");   // Onshape (U2b renumbered the tabs)
   await expect(page.getByRole("list", { name: "20 documents" })).toBeVisible();
   await expect(page.locator('[data-thumb="loaded"]').first()).toBeVisible();
   await page.getByRole("button", { name: "Load more" }).click();
@@ -104,7 +110,7 @@ test("directory_categories_cards_insert_and_use_with_agent", async ({ page, fake
 
 test("import_from_link_review_edits_are_saved_and_page_text_is_plain", async ({ page, fake }) => {
   await page.goto("/");
-  await page.keyboard.press("Meta+7");
+  await page.keyboard.press("Meta+6");   // Parts (U2b renumbered the tabs)
   await page.getByRole("button", { name: "Import from link" }).click();
   await page.getByRole("textbox", { name: "Product page link" }).fill("https://shop.example.com/p/sketchy");
   await page.getByRole("button", { name: "Read the page" }).click();
@@ -140,17 +146,19 @@ test("allowed_import_sites_editor", async ({ page, fake }) => {
 });
 
 for (const width of [1280, 1440]) {
-  test(`every_status_light_fits_the_top_bar_with_the_meter_at_${width}`, async ({ page }) => {
+  test(`the_status_card_shows_every_light_and_the_meter_inside_the_window_at_${width}`, async ({ page }) => {
     await page.setViewportSize({ width, height: 800 });
     await page.goto("/");
+    await page.getByRole("button", { name: /^Status/ }).click();
     await expect(page.locator(".budget")).toBeVisible();
     await expect(page.locator("[data-light=printer]")).toBeVisible();
-    const fit = await page.evaluate(() => {
+    const fit = await page.evaluate((w) => {
+      const card = (document.getElementById("status-card") as HTMLElement).getBoundingClientRect();
       const lights = document.querySelector(".lights") as HTMLElement;
-      const right = lights.getBoundingClientRect().right;
-      return [...lights.querySelectorAll("[data-light]")].every((l) => l.getBoundingClientRect().right <= right + 0.5)
+      return card.left >= 0 && card.right <= w
+        && [...lights.querySelectorAll("[data-light]")].every((l) => l.getBoundingClientRect().right <= card.right + 0.5)
         && lights.scrollWidth <= lights.clientWidth;
-    });
+    }, width);
     expect(fit).toBe(true);
   });
 }

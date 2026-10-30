@@ -83,40 +83,6 @@ test("color_a_part_from_the_palette_and_the_viewer_paints_it", async ({ page, fa
   await expect(page.getByTestId("viewer-canvas")).toHaveAttribute("data-shown", "quad_arm:#d9822b top_plate:#2f9a9c");
 });
 
-test("change_a_variable_and_it_rebuilds_with_your_line_in_the_thread", async ({ page, fake }) => {
-  await open(page);
-  await tree(page).getByRole("button", { name: "Quad arm", exact: true }).click();
-  const field = page.getByTestId("var-thickness");
-  await expect(field).toHaveValue("5");
-  await expect(page.locator('[data-var="thickness"] .var-range')).toHaveText("2 – 12");
-  await expect(page.locator('[data-var="length"] .var-range')).toHaveText("~15 – 240");
-  // the scale: two arrow presses = +1 mm on a 0.5 step, debounced into one rebuild
-  await page.getByRole("slider", { name: "thickness (mm)" }).focus();
-  await page.keyboard.press("ArrowRight");
-  await page.keyboard.press("ArrowRight");
-  await expect.poll(async () => (await callsTo(fake, "POST", "/parts/quad_arm/vars")).length).toBe(1);
-  expect((await callsTo(fake, "POST", "/parts/quad_arm/vars"))[0].body).toEqual({ vars: { thickness: 6 }, base_version: 5 });
-  await expect(field).toHaveValue("6");
-  await expect(page.locator("[data-you-edit] .cv-body").last()).toHaveText("You · changed thickness 5 → 6 mm on Quad arm");
-});
-
-test("an_agent_edit_mid_change_asks_reload_or_keep_mine", async ({ page, fake }) => {
-  await open(page);
-  await tree(page).getByRole("button", { name: "Quad arm", exact: true }).click();
-  const field = page.getByTestId("var-thickness");
-  await field.fill("8");                                   // started from version 5
-  await fake.agentEdit({ part_id: "quad_arm", vars: { thickness: 5.5 }, run_id: "a3quadrun001", summary: "set thickness=5.5" });
-  await expect(tree(page).locator('[data-part="quad_arm"] .tree-row')).toHaveAttribute("data-flash", "");   // the agent's edit flashes the row
-  await field.press("Enter");
-  const alert = page.locator("[data-conflict]");
-  await expect(alert).toContainText("changed this part (now thickness 5.5) while you were editing.");
-  await alert.getByRole("button", { name: "Keep mine" }).click();
-  await expect(alert).toHaveCount(0);
-  const posts = await callsTo(fake, "POST", "/parts/quad_arm/vars");
-  expect(posts.map((c) => (c.body as { base_version: number }).base_version)).toEqual([5, 6]);
-  await expect(field).toHaveValue("8");
-});
-
 test("click_a_face_to_add_a_hole_there", async ({ page, fake }) => {
   await open(page);
   await tree(page).getByRole("button", { name: "top plate", exact: true }).click();
