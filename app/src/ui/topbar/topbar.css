@@ -41,11 +41,13 @@
    right group (which clips its own overflow) gives way instead. */
 .topbar { --crumb-min: 190px; }
 @media (max-width: 1499px) {
-  /* "◇ LOCAL /" and the "/ Part · …" crumb go first when space is short (the part stays
-     selected in the tree and named in the viewer); the active build tab always shows */
+  /* "◇ LOCAL /" goes first when space is short; while the activity pill is up the "/ Part · …"
+     crumb gives way too (the part stays selected in the tree and named in the viewer). The
+     active build tab always shows. */
   .topbar { --crumb-min: 132px; }
-  .crumb > .crumb-root, .crumb > .crumb-root + .crumb-sep,
-  .crumb > [data-crumb=part], .crumb > .crumb-sep:has(+ [data-crumb=part]) { display: none; }
+  .crumb > .crumb-root, .crumb > .crumb-root + .crumb-sep { display: none; }
+  .topbar:has(.activity-pill) .crumb > [data-crumb=part],
+  .topbar:has(.activity-pill) .crumb > .crumb-sep:has(+ [data-crumb=part]) { display: none; }
 }
 @media (max-width: 1399px) {
   .budget-bar { display: none; }   /* the meter keeps its count; the gauge goes */

@@ -237,7 +237,12 @@ export const buildActions = {
 };
 
 /** Loads builds whenever the event stream (re)opens. Called once at boot (main.tsx). */
+/** True while the app follows the core's builds (startBuilds ran): views that need the active
+ *  build wait for it rather than look it up themselves. */
+export let buildsTracked = false;
+
 export function startBuilds(): () => void {
+  buildsTracked = true;
   let was: string | null = null;
   return effect(() => {
     const now = conn.value;

@@ -3,7 +3,7 @@
 // (module state), shared by the console panel and the Studies page. Events drive refreshes:
 // spec_changed reloads the spec, study_progress the studies (throttled), a part change the check.
 import { batch, signal } from "@preact/signals";
-import { activeBuildId } from "../../state/builds";
+import { activeBuildId, buildsError, buildsTracked } from "../../state/builds";
 import type { CoreClient } from "../../api/client";
 import { CoreError } from "../../api/client";
 import { specChangedSchema, studyProgressSchema, type Spec, type SpecCheck, type Study } from "../../api/spec";
@@ -29,6 +29,8 @@ export function errorWords(e: unknown): string {
 }
 
 export class SpecController {
+  /** A load asked for before A3's builds had loaded (it runs once the active build is known). */
+  waitingForBuild = false;
   readonly projectId = signal<string | null>(null);
   readonly spec = signal<Spec | null>(null);
   /** The spec's `updated_at` (null: never written): the base an edit is saved against. */
@@ -62,9 +64,15 @@ export class SpecController {
   async load(projectId?: string | null): Promise<void> {
     const seq = ++this.loads;
     try {
-      // A3's build signal is the active build (the spec follows the build tabs); the core's own
-      // resolution only before the builds have loaded
-      const pid = projectId ?? activeBuildId.peek() ?? this.projectId.peek() ?? await this.client().activeProjectId();
+      // A3's build signal is the active build (the spec follows the build tabs). Until the builds
+      // have loaded, wait for it (spec/index.tsx loads once it is set); the core's own lookup only
+      // when the builds could not be read (an older core without builds).
+      let pid = projectId ?? activeBuildId.peek() ?? this.projectId.peek();
+      if (pid === null) {
+        if (buildsTracked && buildsError.peek() === null) { this.waitingForBuild = true; return; }
+        pid = await this.client().activeProjectId();
+      }
+      this.waitingForBuild = false;
       if (seq !== this.loads) return;
       if (pid !== this.projectId.peek()) {
         batch(() => {

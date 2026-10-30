@@ -2,12 +2,12 @@
 // one SpecController (module state), so a study started by the agent shows live in both. The
 // console strip stays small (spec card plus a one-line study summary, at most ~35% of the
 // console); the scatter, variants and table live on the Studies page.
-import { signal } from "@preact/signals";
+import { effect, signal } from "@preact/signals";
 import type { JSX } from "preact";
 import { useEffect } from "preact/hooks";
 import { onCoreEvent } from "../../api/events";
 import { partLabel } from "../../lib/names";
-import { onBuildSwitch } from "../../state/builds";
+import { activeBuildId, onBuildSwitch } from "../../state/builds";
 import { activePart } from "../../state/selection";
 import { actions, conn } from "../../state/store";
 import { Button } from "../common/Button";
@@ -25,6 +25,8 @@ export { SpecController } from "./controller";
 export const specs = new SpecController(() => actions.client());
 // A3's build tabs: the spec panel follows the active build once it has loaded one
 onBuildSwitch((id) => { if (specs.projectId.peek() !== null && specs.projectId.peek() !== id) void specs.load(id); });
+// a load that waited for the builds runs once the active build is known
+effect(() => { const id = activeBuildId.value; if (id !== null && specs.waitingForBuild) void specs.load(id); });
 onCoreEvent((ev) => specs.onEvent(ev));
 
 /** Whether the console's spec strip is open (survives run and page switches). */

@@ -11,7 +11,10 @@ const read = (n: string): unknown => JSON.parse(readFileSync(resolve(FX, n), "ut
 const BASE = JSON.parse(readFileSync(resolve(import.meta.dirname, "../fake-core/scenarios/base.json"), "utf8")) as Record<string, unknown>;
 const PARTS = read("study_parts.json");
 const GLB = { beam: resolve(FX, "study_part_beam.glb"), cube: resolve(FX, "study_part_cube.glb") };
-const RUN = read("study_agent_run.json") as Record<string, unknown>;
+// the real run belongs to the dump's build; here it is the fake core's active build (A3's tabs
+// show each build's own runs)
+const DEFAULT_BUILD = (read("projects.json") as { id: string }[])[0].id;   // the fake core's Default build
+const RUN = { ...(read("study_agent_run.json") as Record<string, unknown>), project_id: DEFAULT_BUILD };
 const STEPS = read("study_agent_steps.json");
 const rec = (t: string) => read(`study_${t}.json`) as { sim_id: string; part_id: string };
 
