@@ -1,0 +1,5 @@
+{
+  "error": "conflict",
+  "message": "a template named 'tip load' already exists",
+  "hint": "pick another name or delete the old one"
+}

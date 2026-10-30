@@ -1,0 +1,1407 @@
+[
+  {
+    "sim_id": "sim_c1ffa674cef3",
+    "part_id": "beam",
+    "run_id": "2dc26015c93a",
+    "step_id": 28,
+    "type": "modal",
+    "status": "done",
+    "stage": "done",
+    "phase": "done",
+    "pct": 100.0,
+    "created_at": 1793308711.014485,
+    "finished_at": 1793308712.053867,
+    "error": null,
+    "hint": null,
+    "inputs": {
+      "type": "modal",
+      "settings": {
+        "material": {
+          "name": null,
+          "custom": null,
+          "fdm": null
+        },
+        "mesh": {
+          "size_mm": null,
+          "refine_faces": [],
+          "refine_factor": 0.4,
+          "second_order": true
+        },
+        "solver": {
+          "timeout_s": 300.0,
+          "threads": null
+        },
+        "supports": [
+          {
+            "kind": "fixed",
+            "face": "x-min",
+            "axis": null
+          }
+        ],
+        "n_modes": 6,
+        "band_hz": [
+          340.0,
+          460.0
+        ],
+        "excitation": null
+      },
+      "material": "PLA",
+      "environment": null
+    },
+    "results": {
+      "frequencies_hz": [
+        219.8506,
+        219.8542,
+        1316.892,
+        1316.908,
+        1911.015,
+        3419.775
+      ],
+      "modes": [
+        {
+          "mode": 1,
+          "freq_hz": 219.8506,
+          "coarse_freq_hz": 220.1347,
+          "rigid": false,
+          "in_band": false
+        },
+        {
+          "mode": 2,
+          "freq_hz": 219.8542,
+          "coarse_freq_hz": 220.1775,
+          "rigid": false,
+          "in_band": false
+        },
+        {
+          "mode": 3,
+          "freq_hz": 1316.892,
+          "coarse_freq_hz": 1319.65,
+          "rigid": false,
+          "in_band": false
+        },
+        {
+          "mode": 4,
+          "freq_hz": 1316.908,
+          "coarse_freq_hz": 1320.853,
+          "rigid": false,
+          "in_band": false
+        },
+        {
+          "mode": 5,
+          "freq_hz": 1911.015,
+          "coarse_freq_hz": 1942.768,
+          "rigid": false,
+          "in_band": false
+        },
+        {
+          "mode": 6,
+          "freq_hz": 3419.775,
+          "coarse_freq_hz": 3421.066,
+          "rigid": false,
+          "in_band": false
+        }
+      ],
+      "first_freq_hz": 219.8506,
+      "band_hz": [
+        340.0,
+        460.0
+      ],
+      "modes_in_band": 0,
+      "error_band": 0.001292241185605241,
+      "error_band_pct": 0.1,
+      "convergence": {
+        "history": [
+          {
+            "level": 0,
+            "label": "coarse",
+            "size_mm": 5.0,
+            "nodes": 998,
+            "elements": 433,
+            "metric": 220.1347
+          },
+          {
+            "level": 1,
+            "label": "fine",
+            "size_mm": 2.5,
+            "nodes": 6598,
+            "elements": 3582,
+            "metric": 219.8506
+          }
+        ],
+        "converged": null
+      }
+    },
+    "guide": true,
+    "label": "guide only, not a guarantee",
+    "fidelity_class": "fem",
+    "reason": "design review: modal modal",
+    "stale": false
+  },
+  {
+    "sim_id": "sim_d21d8c718560",
+    "part_id": "beam",
+    "run_id": "2dc26015c93a",
+    "step_id": 26,
+    "type": "static",
+    "status": "done",
+    "stage": "done",
+    "phase": "done",
+    "pct": 100.0,
+    "created_at": 1793308710.24578,
+    "finished_at": 1793308711.009901,
+    "error": null,
+    "hint": null,
+    "inputs": {
+      "type": "static",
+      "settings": {
+        "material": {
+          "name": null,
+          "custom": null,
+          "fdm": null
+        },
+        "mesh": {
+          "size_mm": null,
+          "refine_faces": [],
+          "refine_factor": 0.4,
+          "second_order": true
+        },
+        "solver": {
+          "timeout_s": 300.0,
+          "threads": null
+        },
+        "load_cases": [
+          {
+            "name": "lc1",
+            "supports": [
+              {
+                "kind": "fixed",
+                "face": "x-min",
+                "axis": null
+              }
+            ],
+            "loads": [
+              {
+                "kind": "force",
+                "face": "x-max",
+                "newtons": 10.0,
+                "direction": "-z"
+              }
+            ],
+            "note": ""
+          }
+        ],
+        "convergence": {
+          "enabled": false,
+          "tol_pct": 5.0,
+          "max_levels": 4
+        },
+        "environment": null
+      },
+      "material": "PLA",
+      "environment": null
+    },
+    "results": {
+      "max_von_mises_mpa": 6.044190136563963,
+      "max_von_mises_at": [
+        1.8301270189221936,
+        8.169872981077807,
+        10.0
+      ],
+      "max_von_mises_at_fixture_mpa": 5.582107209390285,
+      "max_displacement_mm": 1.7386006851423133,
+      "max_displacement_at": [
+        100.0,
+        3.75,
+        0.0
+      ],
+      "safety_factor": 5.906498504081631,
+      "safety_factor_incl_fixture": 5.906498504081631,
+      "coarse_max_von_mises_mpa": 6.0847374130466445,
+      "coarse_max_displacement_mm": 1.7348891617849151,
+      "error_band": 0.006708471369454942,
+      "peak_excludes": "nodes on the fixed face",
+      "allowable_mpa": 35.699999999999996,
+      "error_band_pct": 0.7,
+      "governing_case": "lc1",
+      "cases": [
+        {
+          "name": "lc1",
+          "max_von_mises_mpa": 6.044190136563963,
+          "max_von_mises_at": [
+            1.8301270189221936,
+            8.169872981077807,
+            10.0
+          ],
+          "max_von_mises_at_fixture_mpa": 5.582107209390285,
+          "max_displacement_mm": 1.7386006851423133,
+          "max_displacement_at": [
+            100.0,
+            3.75,
+            0.0
+          ],
+          "safety_factor": 5.906498504081631,
+          "safety_factor_incl_fixture": 5.906498504081631,
+          "coarse_max_von_mises_mpa": 6.0847374130466445,
+          "coarse_max_displacement_mm": 1.7348891617849151,
+          "error_band": 0.006708471369454942,
+          "peak_excludes": "nodes on the fixed face"
+        }
+      ],
+      "sf_by_case": {
+        "lc1": 5.906498504081631
+      },
+      "convergence": {
+        "history": [
+          {
+            "level": 0,
+            "label": "coarse",
+            "size_mm": 5.0,
+            "nodes": 998,
+            "elements": 433,
+            "metric": 6.0847374130466445
+          },
+          {
+            "level": 1,
+            "label": "fine",
+            "size_mm": 2.5,
+            "nodes": 6598,
+            "elements": 3582,
+            "metric": 6.044190136563963
+          }
+        ],
+        "converged": null
+      },
+      "deformed_scale": 2.9044923957151734
+    },
+    "guide": true,
+    "label": "guide only, not a guarantee",
+    "fidelity_class": "fem",
+    "reason": "design review: static lc1",
+    "stale": false
+  },
+  {
+    "sim_id": "sim_233fac650446",
+    "part_id": "cube",
+    "run_id": "2dc26015c93a",
+    "step_id": 22,
+    "type": "wind",
+    "status": "done",
+    "stage": "done",
+    "phase": "done",
+    "pct": 100.0,
+    "created_at": 1793308704.95678,
+    "finished_at": 1793308710.242382,
+    "error": null,
+    "hint": null,
+    "inputs": {
+      "type": "wind",
+      "settings": {
+        "speed_m_s": 5.0,
+        "direction": "+x",
+        "up": "+z",
+        "air_density": 1.225,
+        "air_viscosity": 1.81e-05,
+        "ref_area_m2": null,
+        "domain_multiplier": 3.0,
+        "refinement": 1,
+        "turbulence": "smagorinsky",
+        "iterations": 600,
+        "timeout_s": 240.0,
+        "memory_mb": 1024,
+        "yaw_deg": [
+          -15.0,
+          0.0,
+          15.0
+        ],
+        "solver": "auto",
+        "shape_class": "auto"
+      },
+      "material": null,
+      "environment": null
+    },
+    "results": {
+      "cd": 1.1468023065334776,
+      "cl": -5.480315949935033e-06,
+      "cs": -6.560650108363337e-07,
+      "drag_n": 0.028096656510070196,
+      "lift_n": -1.342677407734083e-07,
+      "side_n": -1.6073592765490175e-08,
+      "moment_nm": [
+        1.044149717235876e-09,
+        8.933013297389551e-10,
+        -1.0392059460476166e-09
+      ],
+      "cd_pressure": 1.1125590093433853,
+      "cd_friction_estimate": 0.034243297190092246,
+      "cd_lattice_total": -1.7692197921375434,
+      "reynolds": 13535.911602209944,
+      "ref_area_m2": 0.0015999999999999999,
+      "frontal_area_m2": 0.0015999999999999999,
+      "dynamic_pressure_pa": 15.3125,
+      "model_error_band": 0.4,
+      "convergence_band": 0.06376380516256162,
+      "refinement_level": 1,
+      "validation": [
+        {
+          "body": "sphere",
+          "cells_across": 8,
+          "cd": 0.65,
+          "reference_cd": 0.47,
+          "error": 0.38
+        }
+      ],
+      "converged": false,
+      "stopped": "iterations",
+      "steps": 600,
+      "method": "lbm",
+      "shape_class": null,
+      "reason": null,
+      "yaw_sweep": [
+        {
+          "yaw_deg": 0.0,
+          "cd": 1.1468023065334776,
+          "cl": -5.480315949935033e-06,
+          "cs": -6.560650108363337e-07,
+          "drag_n": 0.028096656510070196,
+          "lift_n": -1.342677407734083e-07,
+          "side_n": -1.6073592765490175e-08,
+          "method": "lbm"
+        },
+        {
+          "yaw_deg": -15.0,
+          "cd": 1.0739105391687718,
+          "cl": -3.290673089573204e-07,
+          "cs": -0.10585976764559803,
+          "drag_n": 0.026310808209634908,
+          "lift_n": -8.062149069454348e-09,
+          "side_n": -0.0025935643073171514,
+          "method": "lbm"
+        },
+        {
+          "yaw_deg": 15.0,
+          "cd": 1.07391333934531,
+          "cl": 1.7477820313249739e-06,
+          "cs": 0.10586257713536246,
+          "drag_n": 0.026310876813960094,
+          "lift_n": 4.2820659767461856e-08,
+          "side_n": 0.00259363313981638,
+          "method": "lbm"
+        }
+      ],
+      "cp_range": [
+        -1.2957632541656494,
+        1.149129867553711
+      ],
+      "error_band": 0.4,
+      "error_band_pct": 40.0,
+      "convergence_band_pct": 6.4,
+      "convergence": {
+        "history": [
+          {
+            "step": 10,
+            "cd": 8.549110833913696,
+            "cd_lattice_total": -12.944265664555132,
+            "cl": 5.898376309598774e-06
+          },
+          {
+            "step": 20,
+            "cd": -2.0841664382709877,
+            "cd_lattice_total": -19.48808083543554,
+            "cl": -7.947285973752827e-06
+          },
+          {
+            "step": 30,
+            "cd": 0.6468245080219007,
+            "cd_lattice_total": -13.812759809661657,
+            "cl": 1.5522042873250541e-06
+          },
+          {
+            "step": 40,
+            "cd": 2.353506901970123,
+            "cd_lattice_total": -13.3589954697527,
+            "cl": 7.885197805812538e-06
+          },
+          {
+            "step": 50,
+            "cd": 1.2442547769453387,
+            "cd_lattice_total": -11.753735016100109,
+            "cl": -5.339582764829487e-06
+          },
+          {
+            "step": 60,
+            "cd": 0.8113660480684263,
+            "cd_lattice_total": -11.970432719681412,
+            "cl": 1.0679165518556744e-05
+          },
+          {
+            "step": 70,
+            "cd": 1.4163009763862837,
+            "cd_lattice_total": -10.126299946568906,
+            "cl": -1.8626451603331873e-06
+          },
+          {
+            "step": 80,
+            "cd": 1.5562965165680869,
+            "cd_lattice_total": -7.7412224491126835,
+            "cl": 1.0244548320770264e-05
+          },
+          {
+            "step": 90,
+            "cd": 2.4261010131345486,
+            "cd_lattice_total": -7.203239167574793,
+            "cl": -7.140139735017925e-06
+          },
+          {
+            "step": 100,
+            "cd": 0.44053190113169916,
+            "cd_lattice_total": -9.051628585439175,
+            "cl": 3.2285849327351457e-06
+          },
+          {
+            "step": 110,
+            "cd": -0.0600763344659113,
+            "cd_lattice_total": -8.7295031407848,
+            "cl": -1.2417634320804893e-05
+          },
+          {
+            "step": 120,
+            "cd": 1.8413082327550871,
+            "cd_lattice_total": -6.4823459717445076,
+            "cl": 1.2045105302060932e-05
+          },
+          {
+            "step": 130,
+            "cd": 1.6949735523369063,
+            "cd_lattice_total": -5.983292090240866,
+            "cl": 9.313225746154785e-07
+          },
+          {
+            "step": 140,
+            "cd": 0.8879916063056684,
+            "cd_lattice_total": -6.603935046587139,
+            "cl": -1.0741253686497032e-05
+          },
+          {
+            "step": 150,
+            "cd": 0.9602325599497888,
+            "cd_lattice_total": -5.620475753676146,
+            "cl": 3.725290298461914e-06
+          },
+          {
+            "step": 160,
+            "cd": 1.876377246390401,
+            "cd_lattice_total": -4.735217778943479,
+            "cl": 1.3969838619232178e-05
+          },
+          {
+            "step": 170,
+            "cd": 0.9897548025951967,
+            "cd_lattice_total": -5.471043766010553,
+            "cl": -7.947285973752827e-06
+          },
+          {
+            "step": 180,
+            "cd": 1.4253140679107184,
+            "cd_lattice_total": -5.497449031099677,
+            "cl": 3.3527612686157227e-05
+          },
+          {
+            "step": 190,
+            "cd": 1.0221459533876402,
+            "cd_lattice_total": -5.934158235322684,
+            "cl": -3.7252901874396116e-07
+          },
+          {
+            "step": 200,
+            "cd": 1.2384526993936522,
+            "cd_lattice_total": -5.677412496879697,
+            "cl": 3.4521023439815224e-05
+          },
+          {
+            "step": 210,
+            "cd": 1.6337177968130805,
+            "cd_lattice_total": -5.303200939670205,
+            "cl": -8.940696716308594e-06
+          },
+          {
+            "step": 220,
+            "cd": 0.9191015055881239,
+            "cd_lattice_total": -5.885679600760341,
+            "cl": 7.512668753761886e-06
+          },
+          {
+            "step": 230,
+            "cd": 0.71340513141018,
+            "cd_lattice_total": -5.8777898899279535,
+            "cl": -1.862645149230957e-05
+          },
+          {
+            "step": 240,
+            "cd": 1.4960306948528872,
+            "cd_lattice_total": -4.989982582628727,
+            "cl": 1.0058283816949398e-05
+          },
+          {
+            "step": 250,
+            "cd": 1.1799116870866515,
+            "cd_lattice_total": -5.054138717241585,
+            "cl": -6.208816794028849e-08
+          },
+          {
+            "step": 260,
+            "cd": 1.049157598724601,
+            "cd_lattice_total": -4.857707908377051,
+            "cl": -9.934107469966591e-06
+          },
+          {
+            "step": 270,
+            "cd": 1.064021010310076,
+            "cd_lattice_total": -4.6051067765802145,
+            "cl": -6.395081675325542e-06
+          },
+          {
+            "step": 280,
+            "cd": 1.1707599526749128,
+            "cd_lattice_total": -4.304840159602463,
+            "cl": 2.3158888029506386e-05
+          },
+          {
+            "step": 290,
+            "cd": 1.238925562908863,
+            "cd_lattice_total": -3.8915124721825123,
+            "cl": -2.4835267176115394e-07
+          },
+          {
+            "step": 300,
+            "cd": 1.124983212958394,
+            "cd_lattice_total": -3.849394991993904,
+            "cl": 2.0116567622796566e-05
+          },
+          {
+            "step": 310,
+            "cd": 1.079420242816817,
+            "cd_lattice_total": -3.5651166224852204,
+            "cl": -9.747842943941265e-06
+          },
+          {
+            "step": 320,
+            "cd": 1.2446626962330092,
+            "cd_lattice_total": -3.143827151507139,
+            "cl": -1.5708307421480328e-05
+          },
+          {
+            "step": 330,
+            "cd": 1.0838443975752814,
+            "cd_lattice_total": -3.16774194361642,
+            "cl": -8.071462320735634e-06
+          },
+          {
+            "step": 340,
+            "cd": 1.146384446929513,
+            "cd_lattice_total": -2.938602410722524,
+            "cl": -5.9604644775390625e-06
+          },
+          {
+            "step": 350,
+            "cd": 1.181356354664384,
+            "cd_lattice_total": -2.6747042196802795,
+            "cl": -3.781169654049066e-05
+          },
+          {
+            "step": 360,
+            "cd": 1.0912724401658995,
+            "cd_lattice_total": -2.6364594814367592,
+            "cl": -2.9802322387695312e-06
+          },
+          {
+            "step": 370,
+            "cd": 1.1300705935663207,
+            "cd_lattice_total": -2.4324887432157993,
+            "cl": 9.56157842901817e-06
+          },
+          {
+            "step": 380,
+            "cd": 1.172929685921084,
+            "cd_lattice_total": -2.3354704841040075,
+            "cl": -6.829698917520943e-07
+          },
+          {
+            "step": 390,
+            "cd": 1.0875260398890834,
+            "cd_lattice_total": -2.2874191403388977,
+            "cl": -3.501772881664422e-05
+          },
+          {
+            "step": 400,
+            "cd": 1.2743433258043029,
+            "cd_lattice_total": -1.9432266824878752,
+            "cl": -1.2728075193813027e-05
+          },
+          {
+            "step": 410,
+            "cd": 1.0572850024805651,
+            "cd_lattice_total": -2.0539284916594625,
+            "cl": 1.7508864391668766e-05
+          },
+          {
+            "step": 420,
+            "cd": 1.1067210327691062,
+            "cd_lattice_total": -1.9841495784930885,
+            "cl": 1.1858840776035606e-05
+          },
+          {
+            "step": 430,
+            "cd": 1.2809494451787333,
+            "cd_lattice_total": -1.6972305136732757,
+            "cl": -2.5021533167635113e-05
+          },
+          {
+            "step": 440,
+            "cd": 1.1858817131426196,
+            "cd_lattice_total": -1.7522532725706697,
+            "cl": -1.6267100966249615e-05
+          },
+          {
+            "step": 450,
+            "cd": 1.0056169024215438,
+            "cd_lattice_total": -1.8920843140222132,
+            "cl": 7.202227902958214e-06
+          },
+          {
+            "step": 460,
+            "cd": 1.2563970502323134,
+            "cd_lattice_total": -1.6223507234826684,
+            "cl": 1.645336548117271e-05
+          },
+          {
+            "step": 470,
+            "cd": 1.1806036597595908,
+            "cd_lattice_total": -1.6001321841031313,
+            "cl": 1.30385160446167e-06
+          },
+          {
+            "step": 480,
+            "cd": 1.1249866898960097,
+            "cd_lattice_total": -1.5492688631638885,
+            "cl": -6.457169843265831e-06
+          },
+          {
+            "step": 490,
+            "cd": 1.1800157468623034,
+            "cd_lattice_total": -1.397674751933664,
+            "cl": -4.0357311381633565e-06
+          },
+          {
+            "step": 500,
+            "cd": 1.0715885650223604,
+            "cd_lattice_total": -1.3797023333609104,
+            "cl": 6.208817238118058e-07
+          },
+          {
+            "step": 510,
+            "cd": 1.1839240730907667,
+            "cd_lattice_total": -1.0753043461591005,
+            "cl": 7.698933290889443e-06
+          },
+          {
+            "step": 520,
+            "cd": 1.2436258858547904,
+            "cd_lattice_total": -0.9463786613196135,
+            "cl": -2.3158888007301925e-05
+          },
+          {
+            "step": 530,
+            "cd": 1.0601409341997352,
+            "cd_lattice_total": -1.0625098715536296,
+            "cl": -5.898376309598774e-06
+          },
+          {
+            "step": 540,
+            "cd": 1.0793559815591907,
+            "cd_lattice_total": -0.9775639977306128,
+            "cl": 1.2231369816984028e-05
+          },
+          {
+            "step": 550,
+            "cd": 1.284844857067488,
+            "cd_lattice_total": -0.7067907485179603,
+            "cl": -4.2219956641886824e-06
+          },
+          {
+            "step": 560,
+            "cd": 1.086100557556377,
+            "cd_lattice_total": -0.8975140633992851,
+            "cl": -8.878608559470536e-06
+          },
+          {
+            "step": 570,
+            "cd": 1.099792303254829,
+            "cd_lattice_total": -0.8501824224367738,
+            "cl": 7.450580596923828e-07
+          },
+          {
+            "step": 580,
+            "cd": 1.140581065526222,
+            "cd_lattice_total": -0.8227498852647841,
+            "cl": -6.953875208992599e-06
+          },
+          {
+            "step": 590,
+            "cd": 1.1417983662194013,
+            "cd_lattice_total": -0.8280152687802911,
+            "cl": 6.395081686427773e-06
+          },
+          {
+            "step": 600,
+            "cd": 1.142049140344689,
+            "cd_lattice_total": -0.8557525929063559,
+            "cl": -2.63874729511393e-05
+          }
+        ],
+        "converged": false
+      }
+    },
+    "guide": true,
+    "label": "guide only, not a guarantee",
+    "fidelity_class": "cfd_lbm",
+    "reason": "drag of the cube at 5 m/s",
+    "stale": false
+  },
+  {
+    "sim_id": "sim_c1572af0ab9c",
+    "part_id": "beam",
+    "run_id": "2dc26015c93a",
+    "step_id": 19,
+    "type": "drop",
+    "status": "done",
+    "stage": "done",
+    "phase": "done",
+    "pct": 100.0,
+    "created_at": 1793308704.317884,
+    "finished_at": 1793308704.95188,
+    "error": null,
+    "hint": null,
+    "inputs": {
+      "type": "drop",
+      "settings": {
+        "material": {
+          "name": null,
+          "custom": null,
+          "fdm": null
+        },
+        "mesh": {
+          "size_mm": null,
+          "refine_faces": [],
+          "refine_factor": 0.4,
+          "second_order": true
+        },
+        "solver": {
+          "timeout_s": 300.0,
+          "threads": null
+        },
+        "impact_face": "bottom",
+        "drop_m": 1.0,
+        "k": 10.0,
+        "mass_g": null,
+        "convergence": {
+          "enabled": false,
+          "tol_pct": 5.0,
+          "max_levels": 4
+        }
+      },
+      "material": "PLA",
+      "environment": null
+    },
+    "results": {
+      "max_von_mises_mpa": 0.0012814025711485053,
+      "max_von_mises_at": [
+        100.0,
+        0.9150635094610967,
+        0.9150635094610967
+      ],
+      "max_von_mises_at_fixture_mpa": 0.0015064259055974575,
+      "max_displacement_mm": 2.603087180173447e-06,
+      "max_displacement_at": [
+        97.86952911447675,
+        4.850705840537988,
+        10.0
+      ],
+      "safety_factor": 27860.09705599586,
+      "safety_factor_incl_fixture": 23698.477215074952,
+      "coarse_max_von_mises_mpa": 0.0010362400003305606,
+      "coarse_max_displacement_mm": 2.5778973483859434e-06,
+      "error_band": 0.19132361393516523,
+      "peak_excludes": "nodes on the fixed face",
+      "allowable_mpa": 35.699999999999996,
+      "error_band_pct": 19.1,
+      "governing_case": "impact",
+      "cases": [
+        {
+          "name": "impact",
+          "max_von_mises_mpa": 0.0012814025711485053,
+          "max_von_mises_at": [
+            100.0,
+            0.9150635094610967,
+            0.9150635094610967
+          ],
+          "max_von_mises_at_fixture_mpa": 0.0015064259055974575,
+          "max_displacement_mm": 2.603087180173447e-06,
+          "max_displacement_at": [
+            97.86952911447675,
+            4.850705840537988,
+            10.0
+          ],
+          "safety_factor": 27860.09705599586,
+          "safety_factor_incl_fixture": 23698.477215074952,
+          "coarse_max_von_mises_mpa": 0.0010362400003305606,
+          "coarse_max_displacement_mm": 2.5778973483859434e-06,
+          "error_band": 0.19132361393516523,
+          "peak_excludes": "nodes on the fixed face"
+        }
+      ],
+      "sf_by_case": {
+        "impact": 27860.09705599586
+      },
+      "convergence": {
+        "history": [
+          {
+            "level": 0,
+            "label": "coarse",
+            "size_mm": 5.0,
+            "nodes": 998,
+            "elements": 433,
+            "metric": 0.0010362400003305606
+          },
+          {
+            "level": 1,
+            "label": "fine",
+            "size_mm": 2.5,
+            "nodes": 6598,
+            "elements": 3582,
+            "metric": 0.0012814025711485053
+          }
+        ],
+        "converged": null
+      },
+      "deformed_scale": 1939909.0847370576,
+      "impact": {
+        "newtons": 1.216,
+        "estimate": true,
+        "formula": "F = m\u00b7g\u00b7k (equivalent static load)",
+        "source": "engineering.loads.impact_equivalent",
+        "mass_g": 12.399999999999999,
+        "drop_m": 1.0,
+        "k": 10.0,
+        "g_equivalent": 9.996382887770872,
+        "impact_velocity_m_s": 4.4294469180700204
+      }
+    },
+    "guide": true,
+    "label": "guide only, not a guarantee",
+    "fidelity_class": "fem_estimate",
+    "reason": "1 m drop onto the floor",
+    "stale": false
+  },
+  {
+    "sim_id": "sim_2c66122b69c6",
+    "part_id": "beam",
+    "run_id": "2dc26015c93a",
+    "step_id": 16,
+    "type": "thermal",
+    "status": "done",
+    "stage": "done",
+    "phase": "done",
+    "pct": 100.0,
+    "created_at": 1793308703.770871,
+    "finished_at": 1793308704.313204,
+    "error": null,
+    "hint": null,
+    "inputs": {
+      "type": "thermal",
+      "settings": {
+        "material": {
+          "name": null,
+          "custom": null,
+          "fdm": null
+        },
+        "mesh": {
+          "size_mm": null,
+          "refine_faces": [],
+          "refine_factor": 0.4,
+          "second_order": true
+        },
+        "solver": {
+          "timeout_s": 300.0,
+          "threads": null
+        },
+        "temperatures": [
+          {
+            "face": "x-min",
+            "temp_c": 70.0
+          }
+        ],
+        "heat": [],
+        "convection": [
+          {
+            "face": "x-max",
+            "h_w_m2k": 25.0,
+            "ambient_c": 23.0
+          }
+        ]
+      },
+      "material": "PLA",
+      "environment": null
+    },
+    "results": {
+      "max_temp_c": 70.0,
+      "max_temp_at": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "min_temp_c": 25.3232,
+      "min_temp_at": [
+        100.0,
+        0.0,
+        0.0
+      ],
+      "coarse_max_temp_c": 70.0,
+      "hdt_c": 55.0,
+      "error_band": null,
+      "error_band_pct": null,
+      "convergence": {
+        "history": [
+          {
+            "level": 0,
+            "label": "coarse",
+            "size_mm": 5.0,
+            "nodes": 998,
+            "elements": 433,
+            "metric": 70.0
+          },
+          {
+            "level": 1,
+            "label": "fine",
+            "size_mm": 2.5,
+            "nodes": 6598,
+            "elements": 3582,
+            "metric": 70.0
+          }
+        ],
+        "converged": null
+      }
+    },
+    "guide": true,
+    "label": "guide only, not a guarantee",
+    "fidelity_class": "fem",
+    "reason": "motor heat at the root",
+    "stale": false
+  },
+  {
+    "sim_id": "sim_878b41d468d5",
+    "part_id": "beam",
+    "run_id": "2dc26015c93a",
+    "step_id": 13,
+    "type": "buckling",
+    "status": "done",
+    "stage": "done",
+    "phase": "done",
+    "pct": 100.0,
+    "created_at": 1793308702.534981,
+    "finished_at": 1793308703.765802,
+    "error": null,
+    "hint": null,
+    "inputs": {
+      "type": "buckling",
+      "settings": {
+        "material": {
+          "name": null,
+          "custom": null,
+          "fdm": null
+        },
+        "mesh": {
+          "size_mm": null,
+          "refine_faces": [],
+          "refine_factor": 0.4,
+          "second_order": true
+        },
+        "solver": {
+          "timeout_s": 300.0,
+          "threads": null
+        },
+        "load_case": {
+          "name": "axial",
+          "supports": [
+            {
+              "kind": "fixed",
+              "face": "x-min",
+              "axis": null
+            }
+          ],
+          "loads": [
+            {
+              "kind": "force",
+              "face": "x-max",
+              "newtons": 100.0,
+              "direction": "-x"
+            }
+          ],
+          "note": ""
+        },
+        "n_modes": 3
+      },
+      "material": "PLA",
+      "environment": null
+    },
+    "results": {
+      "factors": [
+        4.724615,
+        4.7247,
+        39.88282
+      ],
+      "first_factor": 4.724615,
+      "critical_load_n": 472.4615,
+      "applied_load_n": 100.0,
+      "coarse_factors": [
+        4.7309,
+        4.731711,
+        39.98299
+      ],
+      "error_band": 0.0013302671222946412,
+      "error_band_pct": 0.1,
+      "convergence": {
+        "history": [
+          {
+            "level": 0,
+            "label": "coarse",
+            "size_mm": 5.0,
+            "nodes": 998,
+            "elements": 433,
+            "metric": 4.7309
+          },
+          {
+            "level": 1,
+            "label": "fine",
+            "size_mm": 2.5,
+            "nodes": 6598,
+            "elements": 3582,
+            "metric": 4.724615
+          }
+        ],
+        "converged": null
+      }
+    },
+    "guide": true,
+    "label": "guide only, not a guarantee",
+    "fidelity_class": "fem",
+    "reason": "axial load margin",
+    "stale": false
+  },
+  {
+    "sim_id": "sim_83dabd97666f",
+    "part_id": "beam",
+    "run_id": "2dc26015c93a",
+    "step_id": 10,
+    "type": "modal",
+    "status": "done",
+    "stage": "done",
+    "phase": "done",
+    "pct": 100.0,
+    "created_at": 1793308701.5516071,
+    "finished_at": 1793308702.528329,
+    "error": null,
+    "hint": null,
+    "inputs": {
+      "type": "modal",
+      "settings": {
+        "material": {
+          "name": null,
+          "custom": null,
+          "fdm": null
+        },
+        "mesh": {
+          "size_mm": null,
+          "refine_faces": [],
+          "refine_factor": 0.4,
+          "second_order": true
+        },
+        "solver": {
+          "timeout_s": 300.0,
+          "threads": null
+        },
+        "supports": [
+          {
+            "kind": "fixed",
+            "face": "x-min",
+            "axis": null
+          }
+        ],
+        "n_modes": 4,
+        "band_hz": null,
+        "excitation": {
+          "rpm": 12000.0,
+          "blades": 2,
+          "margin_pct": 15.0
+        }
+      },
+      "material": "PLA",
+      "environment": null
+    },
+    "results": {
+      "frequencies_hz": [
+        219.8506,
+        219.8542,
+        1316.892,
+        1316.908
+      ],
+      "modes": [
+        {
+          "mode": 1,
+          "freq_hz": 219.8506,
+          "coarse_freq_hz": 220.1347,
+          "rigid": false,
+          "in_band": false
+        },
+        {
+          "mode": 2,
+          "freq_hz": 219.8542,
+          "coarse_freq_hz": 220.1775,
+          "rigid": false,
+          "in_band": false
+        },
+        {
+          "mode": 3,
+          "freq_hz": 1316.892,
+          "coarse_freq_hz": 1319.65,
+          "rigid": false,
+          "in_band": false
+        },
+        {
+          "mode": 4,
+          "freq_hz": 1316.908,
+          "coarse_freq_hz": 1320.853,
+          "rigid": false,
+          "in_band": false
+        }
+      ],
+      "first_freq_hz": 219.8506,
+      "band_hz": [
+        340.0,
+        459.99999999999994
+      ],
+      "modes_in_band": 0,
+      "error_band": 0.001292241185605241,
+      "error_band_pct": 0.1,
+      "convergence": {
+        "history": [
+          {
+            "level": 0,
+            "label": "coarse",
+            "size_mm": 5.0,
+            "nodes": 998,
+            "elements": 433,
+            "metric": 220.1347
+          },
+          {
+            "level": 1,
+            "label": "fine",
+            "size_mm": 2.5,
+            "nodes": 6598,
+            "elements": 3582,
+            "metric": 219.8506
+          }
+        ],
+        "converged": null
+      }
+    },
+    "guide": true,
+    "label": "guide only, not a guarantee",
+    "fidelity_class": "fem",
+    "reason": "keep the beam's modes clear of the 2-blade prop at 12k rpm",
+    "stale": false
+  },
+  {
+    "sim_id": "sim_6c36cb0857cb",
+    "part_id": "beam",
+    "run_id": "2dc26015c93a",
+    "step_id": 7,
+    "type": "static",
+    "status": "done",
+    "stage": "done",
+    "phase": "done",
+    "pct": 100.0,
+    "created_at": 1793308700.198785,
+    "finished_at": 1793308701.545311,
+    "error": null,
+    "hint": null,
+    "inputs": {
+      "type": "static",
+      "settings": {
+        "material": {
+          "name": null,
+          "custom": null,
+          "fdm": null
+        },
+        "mesh": {
+          "size_mm": null,
+          "refine_faces": [],
+          "refine_factor": 0.4,
+          "second_order": true
+        },
+        "solver": {
+          "timeout_s": 300.0,
+          "threads": null
+        },
+        "load_cases": [
+          {
+            "name": "tip",
+            "supports": [
+              {
+                "kind": "fixed",
+                "face": "x-min",
+                "axis": null
+              }
+            ],
+            "loads": [
+              {
+                "kind": "force",
+                "face": "x-max",
+                "newtons": 10.0,
+                "direction": "-z"
+              }
+            ],
+            "note": ""
+          },
+          {
+            "name": "side",
+            "supports": [
+              {
+                "kind": "fixed",
+                "face": "x-min",
+                "axis": null
+              }
+            ],
+            "loads": [
+              {
+                "kind": "force",
+                "face": "x-max",
+                "newtons": 6.0,
+                "direction": "+y"
+              }
+            ],
+            "note": ""
+          }
+        ],
+        "convergence": {
+          "enabled": false,
+          "tol_pct": 5.0,
+          "max_levels": 4
+        },
+        "environment": null
+      },
+      "material": "PLA",
+      "environment": null
+    },
+    "results": {
+      "max_von_mises_mpa": 6.044190136563963,
+      "max_von_mises_at": [
+        1.8301270189221936,
+        8.169872981077807,
+        10.0
+      ],
+      "max_von_mises_at_fixture_mpa": 5.582107209390285,
+      "max_displacement_mm": 1.7386006851423133,
+      "max_displacement_at": [
+        100.0,
+        3.75,
+        0.0
+      ],
+      "safety_factor": 5.906498504081631,
+      "safety_factor_incl_fixture": 5.906498504081631,
+      "coarse_max_von_mises_mpa": 6.0847374130466445,
+      "coarse_max_displacement_mm": 1.7348891617849151,
+      "error_band": 0.006708471369454942,
+      "peak_excludes": "nodes on the fixed face",
+      "allowable_mpa": 35.699999999999996,
+      "error_band_pct": 0.7,
+      "governing_case": "tip",
+      "cases": [
+        {
+          "name": "tip",
+          "max_von_mises_mpa": 6.044190136563963,
+          "max_von_mises_at": [
+            1.8301270189221936,
+            8.169872981077807,
+            10.0
+          ],
+          "max_von_mises_at_fixture_mpa": 5.582107209390285,
+          "max_displacement_mm": 1.7386006851423133,
+          "max_displacement_at": [
+            100.0,
+            3.75,
+            0.0
+          ],
+          "safety_factor": 5.906498504081631,
+          "safety_factor_incl_fixture": 5.906498504081631,
+          "coarse_max_von_mises_mpa": 6.0847374130466445,
+          "coarse_max_displacement_mm": 1.7348891617849151,
+          "error_band": 0.006708471369454942,
+          "peak_excludes": "nodes on the fixed face"
+        },
+        {
+          "name": "side",
+          "max_von_mises_mpa": 3.6334285421476284,
+          "max_von_mises_at": [
+            1.8301270189221932,
+            10.0,
+            1.830127018922193
+          ],
+          "max_von_mises_at_fixture_mpa": 3.340976459018381,
+          "max_displacement_mm": 1.0431744243422987,
+          "max_displacement_at": [
+            100.0,
+            10.0,
+            6.25
+          ],
+          "safety_factor": 9.825430605248293,
+          "safety_factor_incl_fixture": 9.825430605248293,
+          "coarse_max_von_mises_mpa": 3.659186701386981,
+          "coarse_max_displacement_mm": 1.0411729397349019,
+          "error_band": 0.00708921585784856,
+          "peak_excludes": "nodes on the fixed face"
+        }
+      ],
+      "sf_by_case": {
+        "tip": 5.906498504081631,
+        "side": 9.825430605248293
+      },
+      "convergence": {
+        "history": [
+          {
+            "level": 0,
+            "label": "coarse",
+            "size_mm": 5.0,
+            "nodes": 998,
+            "elements": 433,
+            "metric": 6.0847374130466445
+          },
+          {
+            "level": 1,
+            "label": "fine",
+            "size_mm": 2.5,
+            "nodes": 6598,
+            "elements": 3582,
+            "metric": 6.044190136563963
+          }
+        ],
+        "converged": null
+      },
+      "deformed_scale": 2.9044923957151734
+    },
+    "guide": true,
+    "label": "guide only, not a guarantee",
+    "fidelity_class": "fem",
+    "reason": "tip load on the beam under both cases",
+    "stale": false
+  }
+]

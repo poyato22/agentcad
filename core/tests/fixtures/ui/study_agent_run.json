@@ -1,0 +1,34 @@
+{
+  "id": "2dc26015c93a",
+  "parent_id": null,
+  "agent": "sim",
+  "provider": "fake",
+  "model": "fake-model",
+  "task": "study the beam and the cube, then review the beam against its spec",
+  "status": "done",
+  "branch": null,
+  "onshape_calls": 0,
+  "input_tokens": 0,
+  "output_tokens": 0,
+  "usd": 0.0,
+  "created_at": 1793308700.19411,
+  "updated_at": 1793308712.058478,
+  "owner_pid": 40963,
+  "external": false,
+  "session_ref": null,
+  "project_id": "146df0a5eae9",
+  "title": null,
+  "pinned": false,
+  "archived": false,
+  "last_activity_at": 1793308710.244386,
+  "parent_run_id": null,
+  "cost": {
+    "usd": 0.0,
+    "tokens": 0
+  },
+  "activity": {
+    "state": "done",
+    "detail": "",
+    "since": 1793308712.058478
+  }
+}

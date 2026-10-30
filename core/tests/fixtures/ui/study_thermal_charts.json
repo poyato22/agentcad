@@ -1,0 +1,101 @@
+{
+  "sim_id": "sim_2c66122b69c6",
+  "type": "thermal",
+  "status": "done",
+  "label": "guide only, not a guarantee",
+  "fidelity_class": "fem",
+  "charts": [
+    {
+      "id": "convergence",
+      "kind": "line",
+      "title": "Mesh convergence",
+      "x": {
+        "label": "nodes",
+        "unit": ""
+      },
+      "y": {
+        "label": "max temperature",
+        "unit": "degC"
+      },
+      "series": [
+        {
+          "name": "max temperature",
+          "points": [
+            [
+              998,
+              70.0
+            ],
+            [
+              6598,
+              70.0
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "temperature_histogram",
+      "kind": "histogram",
+      "title": "Temperature distribution",
+      "x": {
+        "label": "temperature",
+        "unit": "degC"
+      },
+      "y": {
+        "label": "nodes",
+        "unit": ""
+      },
+      "edges": [
+        25.3232,
+        27.55704,
+        29.79088,
+        32.02472,
+        34.25856,
+        36.4924,
+        38.72624,
+        40.96008,
+        43.19392,
+        45.42776,
+        47.6616,
+        49.89544,
+        52.12928,
+        54.36312,
+        56.59696,
+        58.8308,
+        61.06464,
+        63.29848,
+        65.53232,
+        67.76616,
+        70.0
+      ],
+      "counts": [
+        399,
+        323,
+        328,
+        313,
+        324,
+        329,
+        295,
+        324,
+        336,
+        339,
+        330,
+        297,
+        345,
+        306,
+        325,
+        309,
+        319,
+        342,
+        309,
+        406
+      ],
+      "markers": [
+        {
+          "label": "HDT",
+          "x": 55.0
+        }
+      ]
+    }
+  ]
+}

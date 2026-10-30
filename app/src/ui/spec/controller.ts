@@ -77,7 +77,7 @@ export class SpecController {
         this.checkKey = null;
       }
       if (!pid) return;
-      const [doc, studies] = await Promise.all([this.client().getSpec(pid), this.client().listStudies(pid)]);
+      const [doc, studies] = await Promise.all([this.client().getSpec(pid), this.client().listDesignStudies(pid)]);
       if (seq !== this.loads) return;
       batch(() => {
         this.spec.value = doc.spec;
@@ -94,7 +94,7 @@ export class SpecController {
     const pid = this.projectId.peek();
     if (!pid) return;
     try {
-      this.setStudies(await this.client().listStudies(pid));
+      this.setStudies(await this.client().listDesignStudies(pid));
     } catch (e) {
       this.loadError.value = errorWords(e);
     }

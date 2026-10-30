@@ -1,0 +1,435 @@
+{
+  "sim_id": "sim_6c36cb0857cb",
+  "part_id": "beam",
+  "type": "static",
+  "run_id": "2dc26015c93a",
+  "call_id": "s1",
+  "step_id": 7,
+  "reason": "tip load on the beam under both cases",
+  "status": "done",
+  "stage": "done",
+  "phase": "done",
+  "pct": 100.0,
+  "created_at": 1793308700.198785,
+  "finished_at": 1793308701.545311,
+  "analysis": "static",
+  "guide": true,
+  "label": "guide only, not a guarantee",
+  "fidelity_class": "fem",
+  "validated_against": null,
+  "inputs": {
+    "type": "static",
+    "settings": {
+      "material": {
+        "name": null,
+        "custom": null,
+        "fdm": null
+      },
+      "mesh": {
+        "size_mm": null,
+        "refine_faces": [],
+        "refine_factor": 0.4,
+        "second_order": true
+      },
+      "solver": {
+        "timeout_s": 300.0,
+        "threads": null
+      },
+      "load_cases": [
+        {
+          "name": "tip",
+          "supports": [
+            {
+              "kind": "fixed",
+              "face": "x-min",
+              "axis": null
+            }
+          ],
+          "loads": [
+            {
+              "kind": "force",
+              "face": "x-max",
+              "newtons": 10.0,
+              "direction": "-z"
+            }
+          ],
+          "note": ""
+        },
+        {
+          "name": "side",
+          "supports": [
+            {
+              "kind": "fixed",
+              "face": "x-min",
+              "axis": null
+            }
+          ],
+          "loads": [
+            {
+              "kind": "force",
+              "face": "x-max",
+              "newtons": 6.0,
+              "direction": "+y"
+            }
+          ],
+          "note": ""
+        }
+      ],
+      "convergence": {
+        "enabled": false,
+        "tol_pct": 5.0,
+        "max_levels": 4
+      },
+      "environment": null
+    },
+    "material": "PLA",
+    "environment": null
+  },
+  "settings": {
+    "material": {
+      "name": null,
+      "custom": null,
+      "fdm": null
+    },
+    "mesh": {
+      "size_mm": null,
+      "refine_faces": [],
+      "refine_factor": 0.4,
+      "second_order": true
+    },
+    "solver": {
+      "timeout_s": 300.0,
+      "threads": null
+    },
+    "load_cases": [
+      {
+        "name": "tip",
+        "supports": [
+          {
+            "kind": "fixed",
+            "face": "x-min",
+            "axis": null
+          }
+        ],
+        "loads": [
+          {
+            "kind": "force",
+            "face": "x-max",
+            "newtons": 10.0,
+            "direction": "-z"
+          }
+        ],
+        "note": ""
+      },
+      {
+        "name": "side",
+        "supports": [
+          {
+            "kind": "fixed",
+            "face": "x-min",
+            "axis": null
+          }
+        ],
+        "loads": [
+          {
+            "kind": "force",
+            "face": "x-max",
+            "newtons": 6.0,
+            "direction": "+y"
+          }
+        ],
+        "note": ""
+      }
+    ],
+    "convergence": {
+      "enabled": false,
+      "tol_pct": 5.0,
+      "max_levels": 4
+    },
+    "environment": null
+  },
+  "geometry_hash": "40f54ddff9a8168879a3feed368e149255caa6b5a76dc046c83952ddbb5c36bb",
+  "material": {
+    "name": "PLA",
+    "e_mpa": 2300.0,
+    "nu": 0.35,
+    "yield_mpa": 51.0,
+    "density_g_cm3": 1.24,
+    "hdt_c": 55.0,
+    "source": "Prusament PLA TDS v1.1 (printed, horizontal)",
+    "k_w_mk": 0.13,
+    "alpha_per_k": 6.8e-05,
+    "knockdown": 0.7,
+    "stiffness_factor": 1.0,
+    "custom": false,
+    "allowable_mpa": 35.699999999999996,
+    "e_eff_mpa": 2300.0,
+    "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers"
+  },
+  "environment": null,
+  "error": null,
+  "hint": null,
+  "warnings": [],
+  "caveats": [
+    "Guide only: a linear-elastic FEM estimate, not a certification or a guarantee.",
+    "Isotropic material model; printed parts are weaker across layers, so strength is multiplied by an FDM knock-down.",
+    "Small deflections assumed; contact, creep, fatigue, temperature and vibration are not simulated unless this study type says so.",
+    "Peak stress excludes nodes on the fixed face (an ideal clamp gives a constraint singularity there); that value and a safety factor including it are reported separately."
+  ],
+  "urls": {
+    "record": "/sims/sim_6c36cb0857cb",
+    "glb": "/sims/sim_6c36cb0857cb/result.glb",
+    "charts": "/sims/sim_6c36cb0857cb/charts",
+    "probe": "/sims/sim_6c36cb0857cb/probe",
+    "section": "/sims/sim_6c36cb0857cb/section"
+  },
+  "solver": {
+    "name": "CalculiX",
+    "version": "2.23",
+    "path": "/Users/fixture/miniconda3/bin/ccx",
+    "element": "C3D10 (quadratic tetrahedra)",
+    "procedure": "CalculiX *STATIC"
+  },
+  "mesh": {
+    "mesher": "gmsh",
+    "mesher_version": "4.15.2",
+    "coarse": {
+      "size_mm": 5.0,
+      "nodes": 998,
+      "elements": 433,
+      "order": 2,
+      "fixed_nodes": 37,
+      "loaded_nodes": 25,
+      "dropped_load_n": 0.0
+    },
+    "fine": {
+      "size_mm": 2.5,
+      "nodes": 6598,
+      "elements": 3582,
+      "order": 2,
+      "fixed_nodes": 105,
+      "loaded_nodes": 71,
+      "dropped_load_n": 0.0
+    },
+    "levels": [
+      {
+        "level": 0,
+        "label": "coarse",
+        "size_mm": 5.0,
+        "nodes": 998,
+        "elements": 433,
+        "metric": 6.0847374130466445
+      },
+      {
+        "level": 1,
+        "label": "fine",
+        "size_mm": 2.5,
+        "nodes": 6598,
+        "elements": 3582,
+        "metric": 6.044190136563963
+      }
+    ]
+  },
+  "results": {
+    "max_von_mises_mpa": 6.044190136563963,
+    "max_von_mises_at": [
+      1.8301270189221936,
+      8.169872981077807,
+      10.0
+    ],
+    "max_von_mises_at_fixture_mpa": 5.582107209390285,
+    "max_displacement_mm": 1.7386006851423133,
+    "max_displacement_at": [
+      100.0,
+      3.75,
+      0.0
+    ],
+    "safety_factor": 5.906498504081631,
+    "safety_factor_incl_fixture": 5.906498504081631,
+    "coarse_max_von_mises_mpa": 6.0847374130466445,
+    "coarse_max_displacement_mm": 1.7348891617849151,
+    "error_band": 0.006708471369454942,
+    "peak_excludes": "nodes on the fixed face",
+    "allowable_mpa": 35.699999999999996,
+    "error_band_pct": 0.7,
+    "governing_case": "tip",
+    "cases": [
+      {
+        "name": "tip",
+        "max_von_mises_mpa": 6.044190136563963,
+        "max_von_mises_at": [
+          1.8301270189221936,
+          8.169872981077807,
+          10.0
+        ],
+        "max_von_mises_at_fixture_mpa": 5.582107209390285,
+        "max_displacement_mm": 1.7386006851423133,
+        "max_displacement_at": [
+          100.0,
+          3.75,
+          0.0
+        ],
+        "safety_factor": 5.906498504081631,
+        "safety_factor_incl_fixture": 5.906498504081631,
+        "coarse_max_von_mises_mpa": 6.0847374130466445,
+        "coarse_max_displacement_mm": 1.7348891617849151,
+        "error_band": 0.006708471369454942,
+        "peak_excludes": "nodes on the fixed face"
+      },
+      {
+        "name": "side",
+        "max_von_mises_mpa": 3.6334285421476284,
+        "max_von_mises_at": [
+          1.8301270189221932,
+          10.0,
+          1.830127018922193
+        ],
+        "max_von_mises_at_fixture_mpa": 3.340976459018381,
+        "max_displacement_mm": 1.0431744243422987,
+        "max_displacement_at": [
+          100.0,
+          10.0,
+          6.25
+        ],
+        "safety_factor": 9.825430605248293,
+        "safety_factor_incl_fixture": 9.825430605248293,
+        "coarse_max_von_mises_mpa": 3.659186701386981,
+        "coarse_max_displacement_mm": 1.0411729397349019,
+        "error_band": 0.00708921585784856,
+        "peak_excludes": "nodes on the fixed face"
+      }
+    ],
+    "sf_by_case": {
+      "tip": 5.906498504081631,
+      "side": 9.825430605248293
+    },
+    "convergence": {
+      "history": [
+        {
+          "level": 0,
+          "label": "coarse",
+          "size_mm": 5.0,
+          "nodes": 998,
+          "elements": 433,
+          "metric": 6.0847374130466445
+        },
+        {
+          "level": 1,
+          "label": "fine",
+          "size_mm": 2.5,
+          "nodes": 6598,
+          "elements": 3582,
+          "metric": 6.044190136563963
+        }
+      ],
+      "converged": null
+    },
+    "deformed_scale": 2.9044923957151734
+  },
+  "inputs_hash": "f2d5c63c3b94d27132f746e38cc18a44967e0274e69985558de850b71e8c7a9c",
+  "glb": "result.glb",
+  "outputs": [
+    "result.glb",
+    "fields.npz"
+  ],
+  "color_range_mpa": [
+    0.0,
+    6.044190136563963
+  ],
+  "checks": [
+    {
+      "requirement_id": "r1",
+      "kind": "min_safety_factor",
+      "target": 2.0,
+      "measured": 5.906498504081631,
+      "unit": "",
+      "status": "pass",
+      "sim_id": "sim_6c36cb0857cb",
+      "note": null
+    },
+    {
+      "requirement_id": "r2",
+      "kind": "max_deflection_mm",
+      "target": 1.0,
+      "measured": 1.7386006851423133,
+      "unit": "mm",
+      "status": "fail",
+      "sim_id": "sim_6c36cb0857cb",
+      "note": null
+    }
+  ],
+  "stale": false,
+  "card": {
+    "sim_id": "sim_6c36cb0857cb",
+    "type": "static",
+    "status": "done",
+    "verdict": "fail",
+    "phase": "done",
+    "pct": 100.0,
+    "part_id": "beam",
+    "label": "guide only, not a guarantee",
+    "fidelity_class": "fem",
+    "fidelity_note": null,
+    "notes": [],
+    "metrics": [
+      {
+        "key": "max_von_mises_mpa",
+        "label": "max von Mises",
+        "unit": "MPa",
+        "value": 6.044190136563963
+      },
+      {
+        "key": "safety_factor",
+        "label": "safety factor",
+        "unit": "",
+        "value": 5.906498504081631
+      },
+      {
+        "key": "max_displacement_mm",
+        "label": "max displacement",
+        "unit": "mm",
+        "value": 1.7386006851423133
+      },
+      {
+        "key": "error_band_pct",
+        "label": "error band",
+        "unit": "%",
+        "value": 0.7
+      }
+    ],
+    "checks": [
+      {
+        "requirement_id": "r1",
+        "kind": "min_safety_factor",
+        "target": 2.0,
+        "measured": 5.906498504081631,
+        "unit": "",
+        "status": "pass",
+        "sim_id": "sim_6c36cb0857cb",
+        "note": null
+      },
+      {
+        "requirement_id": "r2",
+        "kind": "max_deflection_mm",
+        "target": 1.0,
+        "measured": 1.7386006851423133,
+        "unit": "mm",
+        "status": "fail",
+        "sim_id": "sim_6c36cb0857cb",
+        "note": null
+      }
+    ],
+    "warnings": [],
+    "reason": "tip load on the beam under both cases",
+    "run_id": "2dc26015c93a",
+    "step_id": 7,
+    "urls": {
+      "record": "/sims/sim_6c36cb0857cb",
+      "glb": "/sims/sim_6c36cb0857cb/result.glb",
+      "charts": "/sims/sim_6c36cb0857cb/charts",
+      "probe": "/sims/sim_6c36cb0857cb/probe",
+      "section": "/sims/sim_6c36cb0857cb/section"
+    },
+    "charts_url": "/sims/sim_6c36cb0857cb/charts"
+  }
+}

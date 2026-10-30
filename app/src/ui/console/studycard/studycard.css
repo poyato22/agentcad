@@ -1,0 +1,60 @@
+/* Inline study / review cards. Tokens only; square corners like the rest of the console.
+   Blue: running (an agent is changing something). Green / amber / red: pass / warn / fail. */
+.scard-slot { margin: 6px 0 4px 22px; }
+.scard { border: 1px solid var(--line2); background: var(--paper); padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.scard-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.scard-type { font: 700 var(--fs)/1.2 var(--font-head); color: var(--ink); }
+.scard-part { color: var(--dim); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scard-status { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.scard-verdict { font: 700 var(--fs-label)/1 var(--font-head); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+.scard .tone-green { color: var(--green); }
+.scard .tone-amber { color: var(--amber); }
+.scard .tone-red { color: var(--red); }
+.scard-reason { margin: 0; color: var(--ink); }
+.scard-fidelity { margin: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.scard-guide { font: 700 var(--fs-label)/1 var(--font-head); letter-spacing: .12em; border: 1px solid var(--ink); padding: 2px 5px; color: var(--ink); }
+.scard-fidelity-note { color: var(--ink); font-weight: 700; }
+.scard-note { margin: 0; }
+.scard-fail { margin: 0; color: var(--red); }
+
+.scard-phase { display: flex; flex-direction: column; gap: 4px; }
+.scard-phase-steps { display: flex; gap: 10px; font-size: var(--fs-small); }
+.scard-phase-step { color: var(--faint); }
+.scard-phase-step[data-state="now"] { color: var(--blue2); }
+.scard-phase-step[data-state="done"] { color: var(--dim); }
+.scard-bar { height: 3px; background: var(--line); }
+.scard-bar-fill { height: 100%; background: var(--blue); transition: width .3s; }
+@media (prefers-reduced-motion: reduce) { .scard-bar-fill { transition: none; } }
+
+.scard-body { display: flex; gap: 10px; align-items: flex-start; }
+.scard-thumb { flex: none; width: 56px; height: 56px; border: 1px solid var(--line); background: var(--vp); display: grid; place-items: center; }
+.scard-thumb img { display: block; width: 56px; height: 56px; }
+.scard-thumb-empty { width: 18px; height: 1px; background: var(--line2); }
+.scard-metrics { margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 4px 12px; flex: 1; min-width: 0; }
+.scard-metrics div { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.scard-metrics dd { margin: 0; color: var(--ink); font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.scard-checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.scard-checks li { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.scard-checks .led { align-self: center; }
+.scard-check-what { color: var(--dim); }
+.scard-check-got { color: var(--ink); font-weight: 700; font-variant-numeric: tabular-nums; }
+.scard-check-note { flex-basis: 100%; padding-left: 14px; }
+.scard-link { background: none; border: 0; padding: 0; font: inherit; color: var(--dim); text-decoration: underline; cursor: pointer; }
+.scard-link:focus-visible { outline: 1px solid var(--blue); }
+
+.scard-chart { min-height: 20px; }
+.scard-chart-title { font-size: var(--fs-small); margin-bottom: 2px; }
+.scard-warn { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; font-size: var(--fs-small); }
+.scard-warn li { display: flex; gap: 6px; align-items: baseline; }
+.scard-band { color: var(--ink); }
+.scard-awaiting { margin: 0; color: var(--blue2); border-left: 2px solid var(--blue); padding-left: 6px; }
+.scard-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.scard-id { margin-left: auto; font-size: var(--fs-small); }
+
+.scard-table { border-collapse: collapse; width: 100%; font-size: var(--fs-small); }
+.scard-table th { text-align: left; color: var(--faint); font-weight: 400; padding: 2px 6px 2px 0; border-bottom: 1px solid var(--line); }
+.scard-table td { padding: 3px 6px 3px 0; border-bottom: 1px solid var(--line); vertical-align: top; font-variant-numeric: tabular-nums; }
+.scard-table td:nth-child(4) { white-space: nowrap; }
+.scard-row-note { margin-top: 2px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

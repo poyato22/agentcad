@@ -1,0 +1,48 @@
+{
+  "ccx": {
+    "name": "CalculiX",
+    "found": true,
+    "path": "/Users/fixture/miniconda3/bin/ccx",
+    "version": "2.23",
+    "install": "conda install -c conda-forge calculix"
+  },
+  "gmsh": {
+    "name": "gmsh",
+    "found": true,
+    "version": "4.15.2",
+    "install": "gmsh is a core dependency: run `uv sync` in core/"
+  },
+  "cfd": [
+    {
+      "id": "cfd_builtin",
+      "name": "Wind solver (built-in lattice-Boltzmann)",
+      "status": "ok",
+      "version": "D3Q19 LES",
+      "path": null,
+      "detail": "always available; low fidelity (coarse lattice, modelled skin friction)",
+      "fix": null
+    },
+    {
+      "id": "su2",
+      "name": "SU2 (optional CFD solver)",
+      "status": "optional_missing",
+      "version": null,
+      "path": null,
+      "detail": "not installed; conda-forge has no macOS arm64 build, the built-in solver is used",
+      "fix": {
+        "kind": "open_url",
+        "label": "SU2 downloads",
+        "url": "https://su2code.github.io/download.html"
+      }
+    },
+    {
+      "id": "openfoam_container",
+      "name": "OpenFOAM via Docker / OrbStack (optional)",
+      "status": "ok",
+      "version": null,
+      "path": "/usr/local/bin/docker",
+      "detail": "container runtime found; OpenFOAM runs are not wired up yet",
+      "fix": null
+    }
+  ]
+}

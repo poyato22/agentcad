@@ -1,0 +1,40 @@
+/* Study charts. Tokens only, both themes. Data in ink / dim; grid and axes recessive; amber and
+   red only where the value means warn / fail (a mode in the excitation band, a factor below 1). */
+.sc { margin: 0; display: flex; flex-direction: column; gap: 6px; min-width: 0; position: relative; }
+.sc-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.sc-title { font-weight: 700; color: var(--ink); }
+.sc-legend { display: flex; gap: 12px; color: var(--dim); font-size: var(--fs-small); }
+.sc-key { display: inline-flex; align-items: center; gap: 6px; }
+.sc-key-line { display: inline-block; width: 12px; height: 2px; border-radius: 1px; }
+.sc-table-btn { margin-left: auto; background: transparent; border: 0; color: var(--dim); font: inherit; font-size: var(--fs-small); cursor: pointer; padding: 0 2px; text-decoration: underline; text-underline-offset: 2px; }
+.sc-table-btn:focus-visible { outline: 1px solid var(--blue); }
+.sc-plot { position: relative; }
+.sc svg { display: block; overflow: visible; }
+.sc svg:focus-visible { outline: 1px solid var(--blue); outline-offset: 2px; }
+.sc-grid { stroke: var(--line); stroke-width: 1; shape-rendering: crispEdges; }
+.sc-tick { fill: var(--faint); font: var(--fs-label) var(--font-mono); font-variant-numeric: tabular-nums; }
+.sc-axis { fill: var(--dim); font: var(--fs-small) var(--font-mono); }
+.sc-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.sc-dot { stroke: var(--paper); stroke-width: 2; }
+.sc-bar { fill: var(--ink); }
+.sc-bar-hist { fill: var(--dim); }
+.sc-bar-flag { fill: var(--amber); }
+.sc-bar[data-active] { opacity: .75; }
+.sc-band { opacity: .14; }
+.sc-band-warn { fill: var(--amber); }
+.sc-band-fail { fill: var(--red); }
+.sc-band-label { fill: var(--dim); font: var(--fs-label) var(--font-mono); }
+.sc-marker { stroke: var(--ink); stroke-width: 1; }
+.sc-marker-label { fill: var(--dim); font: var(--fs-label) var(--font-mono); }
+.sc-cross { stroke: var(--line2); stroke-width: 1; pointer-events: none; }
+.sc-tip {
+  position: absolute; top: 0; z-index: 2; pointer-events: none; min-width: 120px; max-width: 220px;
+  background: var(--paper2); border: 1px solid var(--line2); padding: 5px 7px; font-size: var(--fs-small);
+}
+.sc-tip-x { color: var(--dim); margin-bottom: 3px; }
+.sc-tip-row { display: flex; align-items: center; gap: 6px; }
+.sc-tip-row b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.sc-table { border-collapse: collapse; font-size: var(--fs-small); font-variant-numeric: tabular-nums; max-height: 220px; display: block; overflow: auto; }
+.sc-table th, .sc-table td { text-align: right; padding: 2px 10px 2px 0; border-bottom: 1px solid var(--line); }
+.sc-table th { color: var(--dim); font-weight: 400; position: sticky; top: 0; background: var(--paper); }
+.sc-compact .sc-tick { font-size: 8.5px; }

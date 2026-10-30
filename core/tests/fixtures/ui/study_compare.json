@@ -1,0 +1,67 @@
+{
+  "columns": [
+    {
+      "sim_id": "sim_6c36cb0857cb",
+      "type": "static",
+      "part_id": "beam",
+      "status": "done",
+      "stale": false,
+      "fidelity_class": "fem",
+      "material": "PLA",
+      "created_at": 1793308700.198785
+    },
+    {
+      "sim_id": "sim_c1572af0ab9c",
+      "type": "drop",
+      "part_id": "beam",
+      "status": "done",
+      "stale": false,
+      "fidelity_class": "fem_estimate",
+      "material": "PLA",
+      "created_at": 1793308704.317884
+    }
+  ],
+  "rows": [
+    {
+      "key": "max_von_mises_mpa",
+      "label": "max von Mises",
+      "unit": "MPa",
+      "values": [
+        6.044190136563963,
+        0.0012814025711485053
+      ],
+      "best": 1
+    },
+    {
+      "key": "safety_factor",
+      "label": "safety factor",
+      "unit": "",
+      "values": [
+        5.906498504081631,
+        27860.09705599586
+      ],
+      "best": 1
+    },
+    {
+      "key": "max_displacement_mm",
+      "label": "max displacement",
+      "unit": "mm",
+      "values": [
+        1.7386006851423133,
+        2.603087180173447e-06
+      ],
+      "best": 1
+    },
+    {
+      "key": "error_band_pct",
+      "label": "error band",
+      "unit": "%",
+      "values": [
+        0.7,
+        19.1
+      ],
+      "best": 0
+    }
+  ],
+  "label": "guide only, not a guarantee"
+}

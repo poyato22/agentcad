@@ -1,0 +1,29 @@
+{
+  "sim_id": "sim_6c36cb0857cb",
+  "point": [
+    50.0,
+    5.0,
+    5.0
+  ],
+  "units": {
+    "von_mises": "MPa",
+    "displacement": "mm",
+    "displacement_magnitude": "mm",
+    "s1": "MPa",
+    "s3": "MPa",
+    "safety_factor": ""
+  },
+  "inside": true,
+  "values": {
+    "von_mises": 0.6677175530768193,
+    "displacement": [
+      5.118361455887183e-06,
+      0.0001139616642998082,
+      -0.5410774889508078
+    ],
+    "displacement_magnitude": 0.5415922732325225,
+    "s1": 0.3441199631052403,
+    "s3": -0.34619960168872044,
+    "safety_factor": 10.0
+  }
+}

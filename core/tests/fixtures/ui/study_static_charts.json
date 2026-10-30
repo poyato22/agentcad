@@ -1,0 +1,101 @@
+{
+  "sim_id": "sim_6c36cb0857cb",
+  "type": "static",
+  "status": "done",
+  "label": "guide only, not a guarantee",
+  "fidelity_class": "fem",
+  "charts": [
+    {
+      "id": "convergence",
+      "kind": "line",
+      "title": "Mesh convergence",
+      "x": {
+        "label": "nodes",
+        "unit": ""
+      },
+      "y": {
+        "label": "peak von Mises",
+        "unit": "MPa"
+      },
+      "series": [
+        {
+          "name": "peak von Mises",
+          "points": [
+            [
+              998,
+              6.0847374130466445
+            ],
+            [
+              6598,
+              6.044190136563963
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "von_mises_histogram",
+      "kind": "histogram",
+      "title": "Stress distribution",
+      "x": {
+        "label": "von mises",
+        "unit": "MPa"
+      },
+      "y": {
+        "label": "nodes",
+        "unit": ""
+      },
+      "edges": [
+        0.088155,
+        0.385957,
+        0.683759,
+        0.98156,
+        1.279362,
+        1.577164,
+        1.874966,
+        2.172767,
+        2.470569,
+        2.768371,
+        3.066173,
+        3.363974,
+        3.661776,
+        3.959578,
+        4.25738,
+        4.555181,
+        4.852983,
+        5.150785,
+        5.448586,
+        5.746388,
+        6.04419
+      ],
+      "counts": [
+        1177,
+        847,
+        622,
+        526,
+        448,
+        378,
+        351,
+        311,
+        271,
+        249,
+        234,
+        198,
+        180,
+        197,
+        146,
+        111,
+        104,
+        107,
+        123,
+        18
+      ],
+      "markers": [
+        {
+          "label": "allowable",
+          "x": 35.699999999999996
+        }
+      ]
+    }
+  ]
+}

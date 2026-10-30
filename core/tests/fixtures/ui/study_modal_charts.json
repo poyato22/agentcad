@@ -1,0 +1,87 @@
+{
+  "sim_id": "sim_83dabd97666f",
+  "type": "modal",
+  "status": "done",
+  "label": "guide only, not a guarantee",
+  "fidelity_class": "fem",
+  "charts": [
+    {
+      "id": "convergence",
+      "kind": "line",
+      "title": "Mesh convergence",
+      "x": {
+        "label": "nodes",
+        "unit": ""
+      },
+      "y": {
+        "label": "first frequency",
+        "unit": "Hz"
+      },
+      "series": [
+        {
+          "name": "first frequency",
+          "points": [
+            [
+              998,
+              220.1347
+            ],
+            [
+              6598,
+              219.8506
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "modal_frequencies",
+      "kind": "bar",
+      "title": "Natural frequencies",
+      "x": {
+        "label": "mode",
+        "unit": ""
+      },
+      "y": {
+        "label": "frequency",
+        "unit": "Hz"
+      },
+      "series": [
+        {
+          "name": "frequency",
+          "points": [
+            [
+              1,
+              219.8506
+            ],
+            [
+              2,
+              219.8542
+            ],
+            [
+              3,
+              1316.892
+            ],
+            [
+              4,
+              1316.908
+            ]
+          ],
+          "flags": [
+            false,
+            false,
+            false,
+            false
+          ]
+        }
+      ],
+      "bands": [
+        {
+          "label": "excitation band",
+          "axis": "y",
+          "from": 340.0,
+          "to": 459.99999999999994
+        }
+      ]
+    }
+  ]
+}

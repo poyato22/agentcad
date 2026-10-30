@@ -388,6 +388,19 @@ async def run_study(ctx, type_id: str, part_id: str, part_dir: Path, settings: B
         "urls": urls(sim_id)}
     write_record(sim_dir, rec)
 
+    def publish(stage: str, detail: str | None, phase: str | None = None,
+                pct: float | None = None, **data) -> None:
+        # call_id / step_id tie the event to its tool call: design_review runs several
+        # same-type studies of one part in one run at once, so run / type / part is ambiguous
+        events = getattr(ctx, "events", None)
+        if events is not None:
+            events.publish(Event(type="sim_progress", run_id=getattr(ctx, "run_id", None),
+                                 data={"sim_id": sim_id, "part_id": part_id, "type": type_id,
+                                       "call_id": rec.get("call_id"), "step_id": rec.get("step_id"),
+                                       "stage": stage, "phase": phase or rec["phase"],
+                                       "pct": rec["pct"] if pct is None else pct,
+                                       "detail": detail or stage, **data}))
+
     def progress(stage: str, phase: str | None = None, pct: float | None = None,
                  detail: str | None = None, **data) -> None:
         rec["stage"] = stage
@@ -396,18 +409,19 @@ async def run_study(ctx, type_id: str, part_id: str, part_dir: Path, settings: B
         if pct is not None:
             rec["pct"] = round(float(pct), 1)
         write_record(sim_dir, rec)
-        events = getattr(ctx, "events", None)
-        if events is not None:
-            events.publish(Event(type="sim_progress", run_id=getattr(ctx, "run_id", None),
-                                 data={"sim_id": sim_id, "part_id": part_id, "type": type_id,
-                                       "stage": stage, "phase": rec["phase"], "pct": rec["pct"],
-                                       "detail": detail or stage, **data}))
+        publish(stage, detail, **data)
+
+    def terminal(status: str, detail: str | None = None) -> None:
+        """The last sim_progress of a study: phase done / failed / cancelled."""
+        publish(status, detail or status, phase=status,
+                pct=100.0 if status == "done" else None)
 
     def fail(code: str, message: str, hint: str | None, extra: dict | None = None,
              status: str = "failed") -> ToolOutput:
         rec.update(status=status, stage=status, error=message, hint=hint,
                    finished_at=time.time())
         write_record(sim_dir, rec)
+        terminal(status, message)
         summary = f"study {status}: {message}" + (f" ({hint})" if hint else "")
         return ToolOutput(ok=False, summary=summary, step_kind=StepKind.ERROR,
                           data={"sim_id": sim_id, "error": code, "message": message,
@@ -460,6 +474,7 @@ async def run_study(ctx, type_id: str, part_id: str, part_dir: Path, settings: B
         if requirements:
             rec["checks"] = check_requirements(rec, requirements)
         write_record(sim_dir, rec)
+        terminal("done")
         return ToolOutput(summary=summary(rec), data=compact(rec),
                           step_kind=StepKind.SIM_RUN, warnings=rec["warnings"][:12])
 
@@ -471,6 +486,7 @@ async def run_study(ctx, type_id: str, part_id: str, part_dir: Path, settings: B
         rec.update(status="cancelled", stage="cancelled", error="cancelled",
                    finished_at=time.time())
         write_record(sim_dir, rec)
+        terminal("cancelled")
         cur = asyncio.current_task()
         if sim_id in _cancel_requested and not (cur is not None and cur.cancelling()):
             return ToolOutput(ok=False, summary=f"study {sim_id} cancelled by the user",
