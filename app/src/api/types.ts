@@ -41,7 +41,18 @@ export interface AgentRun {
   parent_run_id?: string | null;
   /** Rolled-up cost: dollars (null when unpriced) and total tokens. */
   cost?: RunCost;
+  // ---- Plan 7 (U3c) lead/sub and routing. Optional so an older core / fixture still parses.
+  /** A build's one long-lived agent is the "lead"; the agents it spawns are "sub". */
+  role?: "lead" | "sub" | null;
+  /** A sub-agent's short task title ("design the gearbox"); the lead has none. */
+  task_title?: string | null;
+  /** How the router chose this run's agent (POST /runs with no `agent`). */
+  routed?: Routed | null;
 }
+
+/** The router's choice when POST /runs is sent with no `agent` (U3c): the agent it picked, a short
+ *  reason ("system build"), and a 0–1 confidence. Shown in the UI as a small chip. */
+export interface Routed { agent: string; reason: string; confidence: number }
 
 /** Rolled-up run cost (run_view `cost`). */
 export interface RunCost { usd: number | null; tokens: number }
@@ -106,7 +117,40 @@ export interface Question { question_id: string; run_id: string; question: strin
 /** `sketch_id` (POST /sketches): the run gets that sketch as data (and its images for vision models).
  *  `project_id` (C1): the build the run belongs to. The app always sends the active build, so a
  *  run never lands under the profile's build while a tab switch is still being saved. */
-export interface NewRunBody { agent: string; prompt: string; model_ref?: string | null; edit_scope?: string[]; read_scope?: string[]; sketch_id?: string; project_id?: string }
+export interface NewRunBody { agent?: string; prompt: string; model_ref?: string | null; edit_scope?: string[]; read_scope?: string[]; sketch_id?: string; project_id?: string }
+
+/** POST /runs answer. `routed` is present only when the request sent no `agent` (U3c). */
+export interface CreateRunResult { run_id: string; routed?: Routed | null }
+
+/** `agent_announce` event kinds (U3c): the clear things an agent did, shown as a card in the
+ *  thread (R16) whatever the model says. */
+export const ANNOUNCE_KINDS = ["part_created", "agent_spawned", "assembly_added", "bom_added", "part_shown", "drawing_imported", "assembly_animated"] as const;
+export type AnnounceKind = (typeof ANNOUNCE_KINDS)[number];
+
+/** Where an announcement points: a part, a child run, an assembly instance, a BOM row, a part-card
+ *  snapshot, a drawing import. All optional; the card jumps to whichever it carries. */
+export interface AnnounceRef {
+  part_id?: string | null; run_id?: string | null; instance_id?: string | null;
+  bom_id?: string | null; snapshot_id?: string | null; catalog_id?: string | null; import_id?: string | null;
+}
+
+/** Parsed `agent_announce` event (U3c). `title` is a short line; `detail` an optional second line.
+ *  Both are untrusted model/tool text and render as text. */
+export interface Announcement {
+  id: string; run_id: string; kind: AnnounceKind; title: string; detail: string | null; ref: AnnounceRef; ts: number;
+}
+
+/** `assembly_animate` event data (U3c, R19): a joint sweep or a named motion sequence the agent
+ *  wants the viewer to play. `from`/`to` are joint values; `duration_s` the sweep time. */
+export interface AnimateSpec {
+  project_id: string | null;
+  joint_id: string | null;
+  sequence: string | null;
+  from: number | number[] | null;
+  to: number | number[] | null;
+  duration_s: number;
+  loop: boolean;
+}
 
 /** edited_payload is not sent in v1. */
 export interface DecisionBody { payload_hash: string; approve: boolean }

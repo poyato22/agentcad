@@ -4,7 +4,8 @@ import { z } from "zod";
 import { debug } from "../lib/log";
 import {
   agentDetailSchema, agentInfoSchema, agentRunSchema, approvalSchema, cancelAllSchema, claudeCodeStatusSchema, cleanupResultSchema, coreErrorBodySchema, coreStatusSchema, deleteRefusedSchema,
-  keyStatusSchema, localActionSchema, localStatusSchema, localTestSchema, modelsInfoSchema, okSchema, onshapeTestSchema, partSummarySchema, profileSchema, runIdSchema, runNodeSchema, setupStateSchema, sketchSummarySchema,
+  createRunResultSchema,
+  keyStatusSchema, localActionSchema, localStatusSchema, localTestSchema, modelsInfoSchema, okSchema, onshapeTestSchema, partSummarySchema, profileSchema, runNodeSchema, setupStateSchema, sketchSummarySchema,
   questionAskedSchema, stepSchema, systemCheckRowSchema, systemInstallStartSchema,
 } from "./schemas";
 import {
@@ -23,7 +24,7 @@ import {
 } from "./studies";
 import type {
   AgentDefBody, AgentDetail, AgentInfo, AgentRun, Approval, CancelAllResult, ClaudeCodeStatus, CleanupBody, CleanupResult, CoreInfo, CoreStatusInfo, DecisionBody, DeleteRefused, ErrorCode, KeyStatus, LocalActionResult, LocalStatus, LocalTestResult,
-  ModelsInfo, NewRunBody, OnshapeTestResult, PartSummary, Profile, ProfilePatch, Question, RunNode, RunPatch, SetupState, SketchSummary, SketchUpload, Step,
+  CreateRunResult, ModelsInfo, NewRunBody, OnshapeTestResult, PartSummary, Profile, ProfilePatch, Question, RunNode, RunPatch, SetupState, SketchSummary, SketchUpload, Step,
   SystemCheckRow, SystemInstallStart, UiContext,
 } from "./types";
 import {
@@ -126,7 +127,13 @@ export class CoreClient {
   steps(runId: string, afterId = 0): Promise<Step[]> {
     return this.json("GET", `/runs/${enc(runId)}/steps`, lenientSteps, { query: { after_id: afterId } });
   }
-  createRun(body: NewRunBody): Promise<{ run_id: string }> { return this.json("POST", "/runs", runIdSchema, { body }); }
+  /** Start a run. With no `agent` the core routes to one (U3c) and the answer carries `routed`. */
+  createRun(body: NewRunBody): Promise<CreateRunResult> { return this.json("POST", "/runs", createRunResultSchema, { body }); }
+  /** The build's agents (U3c): the lead and its sub-tree, as run nodes with role and task title.
+   *  Roots are returned lead-first; a build with no lead yet answers []. */
+  projectAgents(projectId: string): Promise<RunNode[]> {
+    return this.json("GET", `/projects/${enc(projectId)}/agents`, z.array(runNodeSchema));
+  }
   message(runId: string, text: string): Promise<{ ok: true }> {
     return this.json("POST", `/runs/${enc(runId)}/message`, okSchema, { body: { text } });
   }

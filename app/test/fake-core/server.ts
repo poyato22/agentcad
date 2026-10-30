@@ -277,6 +277,21 @@ function withBuildTabs(setup: FakeSetup, b: BuildsScenario | undefined): FakeSet
 const now = () => Date.now() / 1000;
 const hex = (bytes: number) => randomBytes(bytes).toString("hex");
 
+/** The core's cheap prompt classifier (U3c), as a rules-only stand-in. Falls back to the first
+ *  available agent when its first choice isn't registered, so a thin scenario still routes. */
+export function routeAgent(prompt: string, available: readonly string[]): { agent: string; reason: string; confidence: number } {
+  const p = prompt.toLowerCase();
+  const pick = (names: string[], reason: string, confidence: number) => {
+    const agent = names.find((n) => available.includes(n)) ?? available[0] ?? names[0];
+    return { agent, reason, confidence };
+  };
+  if (/\b(drawing|dxf|blueprint|\.pdf)\b/.test(p)) return pick(["drawing-import", "engineer"], "drawing import", 0.9);
+  if (/\b(test|analy[sz]e|simulat|stress|fea|load)\b/.test(p)) return pick(["sim", "engineer"], "test/analyze", 0.75);
+  if (/\b(check|review|verify|validate)\b/.test(p)) return pick(["verifier", "engineer"], "check/review", 0.75);
+  if (/\b(system|assembly|robot|mechanism|arm|gearbox|drivetrain|chassis)\b/.test(p)) return pick(["engineer", "designer"], "system build", 0.8);
+  return pick(["designer", "engineer"], "single part", 0.6);
+}
+
 // ---- HTTP helpers
 
 export class HttpError extends Error {
@@ -486,6 +501,11 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       ...r,
       project_id: r.project_id ?? state.assembly.projects[0]?.id ?? null,
       title: r.title ?? null, pinned: r.pinned ?? false, archived: r.archived ?? false,
+      // U3c: lead/sub role, a sub's task title, the router's choice. Added only when set, so a run
+      // from before Plan 7 (and the pre-Plan-7 contract fixtures) keeps its exact shape.
+      ...(r.role ? { role: r.role } : {}),
+      ...(r.task_title != null ? { task_title: r.task_title } : {}),
+      ...(r.routed ? { routed: r.routed } : {}),
       parent_run_id: r.parent_id,
       last_activity_at: r.last_activity_at ?? r.updated_at,
       cost: {
@@ -614,8 +634,11 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     {
       method: "POST", re: /^\/runs$/, h: (_m, _q, raw) => {
         const b = asBody(raw);
-        const agent = req(b, "agent", "string");
         const prompt = req(b, "prompt", "string");
+        // U3c: with no `agent` the core routes to one from the prompt; the answer carries `routed`.
+        if (b.agent !== undefined && typeof b.agent !== "string") throw wrongType("agent", "string", b.agent);
+        const routed = typeof b.agent === "string" && b.agent ? null : routeAgent(prompt, state.agents.map((a) => a.name));
+        const agent = routed ? routed.agent : (b.agent as string);
         const modelRef = b.model_ref;
         if (modelRef !== undefined && modelRef !== null && typeof modelRef !== "string") throw wrongType("model_ref", "string", modelRef);
         strList(b, "edit_scope", ["*"]);
@@ -650,16 +673,19 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         const queued = limit !== undefined && working >= limit;
         const run = newRun(agent, vendor, model, prompt, claude, queued ? "queued" : "running");
         if (typeof projectId === "string") run.project_id = projectId;
+        // U3c: a routed run (no agent named) becomes the build's long-lived lead. A run started
+        // with an explicit agent keeps the pre-Plan-7 shape, so the contract fixtures still match.
+        if (routed) { run.role = "lead"; run.routed = routed; }
         // a sketch run's user step: like the core, the words sent plus the sketch as `context`
         const sk = sketchId ? state.sketches.get(sketchId) : undefined;
         appendStep({ kind: "message", payload: sk ? sketchUserPayload(prompt, sk) : { role: "user", text: prompt } }, run.id);
         if (queued) {
           emit({ type: "run_queued", run_id: run.id, data: { agent, provider: vendor, model, limit } });
-          return { run_id: run.id };
+          return routed ? { run_id: run.id, routed } : { run_id: run.id };
         }
-        emit({ type: "run_started", run_id: run.id, data: { agent, provider: vendor, model, parent_id: null, ...(claude ? { external: true } : {}) } });
+        emit({ type: "run_started", run_id: run.id, data: { agent, provider: vendor, model, parent_id: null, ...(routed ? { routed } : {}), ...(claude ? { external: true } : {}) } });
         play(state.on.create_run, run.id);
-        return { run_id: run.id };
+        return routed ? { run_id: run.id, routed } : { run_id: run.id };
       },
     },
     {
@@ -701,6 +727,15 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       method: "GET", re: /^\/runs\/tree$/, h: (_m, q) => {
         const projectId = q.get("project_id");
         return runsTree(projectId);
+      },
+    },
+    {
+      // U3c: a build's agents — the lead (role "lead") first, then any other roots and their
+      // sub-trees. Same run_view nodes as /runs/tree, filtered to this build.
+      method: "GET", re: /^\/projects\/([^/]+)\/agents$/, h: (m) => {
+        const projectId = decodeURIComponent(m[1]);
+        if (!state.builds.builds.some((x) => x.id === projectId)) throw mises("not_found", `unknown build: ${projectId}`);
+        return [...runsTree(projectId)].sort((a, b) => Number(b.role === "lead") - Number(a.role === "lead"));
       },
     },
     {

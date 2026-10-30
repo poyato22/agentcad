@@ -22,6 +22,11 @@ export const errorCodeSchema = z.enum(ERROR_CODES);
 export const stepKindSchema = z.enum(STEP_KINDS);
 
 export const runCostSchema = z.object({ usd: z.number().nullable(), tokens: z.number() });
+/** The router's choice (U3c). Confidence is clamped to 0–1; an out-of-range or missing one reads 0. */
+export const routedSchema = z.object({
+  agent: z.string(), reason: z.string().default(""),
+  confidence: z.number().min(0).max(1).catch(0).default(0),
+});
 
 export const agentRunSchema = z.object({
   id: z.string(), parent_id: z.string().nullable(), agent: z.string(), provider: z.string(), model: z.string(),
@@ -33,6 +38,9 @@ export const agentRunSchema = z.object({
   project_id: z.string().nullish(), title: z.string().nullish(), pinned: z.boolean().optional(), archived: z.boolean().optional(),
   last_activity_at: z.number().nullish(), parent_run_id: z.string().nullish(),
   cost: runCostSchema.optional(),
+  // Plan 7 (U3c): lead/sub role and the router's choice
+  role: z.enum(["lead", "sub"]).nullish(), task_title: z.string().nullish(),
+  routed: routedSchema.nullish(),
 });
 
 /** GET /runs/tree node: a run plus its worker children. */
@@ -144,6 +152,8 @@ export const coreErrorBodySchema = z.object({
 
 export const okSchema = z.object({ ok: z.literal(true) });
 export const runIdSchema = z.object({ run_id: z.string() });
+/** POST /runs answer: the run id, plus the router's choice when no agent was named (U3c). */
+export const createRunResultSchema = z.object({ run_id: z.string(), routed: routedSchema.nullish() });
 /** `failed` defaults to [] so a core that predates it still parses. */
 export const cancelAllSchema = z.object({
   cancelled: z.array(z.string()),
