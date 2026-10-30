@@ -69,6 +69,22 @@ def test_titles_are_clipped_and_kinds_checked():
         announce.make("r", "nonsense", "t")
 
 
+def test_plan8_view_and_critique_kinds_are_accepted_and_stored(rt):
+    # Plan 8 G1 routes its cards through announce(): same signature, stored as steps
+    from mises.events import EventBus
+    rid = rt.store.create_run("designer", "fake", "m", "x").id
+    bus = EventBus()
+    sub = bus.subscribe()
+    for kind, ref in (("view_presented", {"view_spec": {"preset": "iso"}}),
+                      ("critique_round", {"round": 1, "max_rounds": 3, "score": 0.8})):
+        announce.announce(bus, rt.store, rid, kind, "t", ref=ref)
+        assert sub.queue.get_nowait().data["kind"] == kind
+    stored = [s.payload["agent_announce"] for s in rt.store.steps(rid)
+              if "agent_announce" in s.payload]
+    assert [a["kind"] for a in stored] == ["view_presented", "critique_round"]
+    assert stored[1]["ref"]["score"] == 0.8
+
+
 async def _run(rt, **kw):
     rid = await rt.start_run("designer", "go", **kw)
     await rt.wait(rid)

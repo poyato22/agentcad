@@ -592,6 +592,30 @@ def _assembly_interference(placed, threshold: float) -> list:
     return out
 
 
+def _sweep_pose(loaded, pose: dict, threshold: float, location) -> dict:
+    """One sweep position: pairwise interference, and the smallest clearance between any pair
+    (0 where they overlap) with that pair's names."""
+    placed = [(name, shape.moved(location(_trsf(pose.get(name, m))))) for name, shape, m in loaded]
+    hits = _assembly_interference(placed, threshold)
+    overlap = {(h["a"], h["b"]) for h in hits}
+    best = None
+    for i in range(len(placed)):
+        for j in range(i + 1, len(placed)):
+            (na, sa), (nb, sb) = placed[i], placed[j]
+            if (na, nb) in overlap:
+                d = 0.0
+            else:
+                try:
+                    d = float(sa.distance_to(sb))
+                except Exception:  # noqa: BLE001 - an unmeasurable pair is skipped
+                    continue
+            if best is None or d < best[0]:
+                best = (d, na, nb)
+    return {"interferences": hits,
+            "min_clearance_mm": None if best is None else round(best[0], 4),
+            "closest": None if best is None else [best[1], best[2]]}
+
+
 def _col_major(matrix) -> list:
     return [float(matrix[r][c]) for c in range(4) for r in range(4)]
 
@@ -662,6 +686,12 @@ def _assembly(job_path: Path, nonce: str) -> None:
 
     loaded = [(it["name"], b3.import_step(it["step"]), it["transform"]) for it in job["instances"]]
     result: dict = {"nonce": nonce}
+
+    if want == "sweep":
+        # Plan 7 R19: one worker for a whole joint sweep; each STEP is read once. Every pose
+        # maps instance name -> transform (missing names keep their job transform).
+        result["positions"] = [_sweep_pose(loaded, pose, threshold, Location)
+                               for pose in job.get("poses") or []]
 
     if want in ("both", "interference"):
         placed = [(name, shape.moved(Location(_trsf(m)))) for name, shape, m in loaded]

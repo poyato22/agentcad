@@ -37,6 +37,12 @@ CORPUS = [
     ("check the stress at the fixture", [], "sim"),
     ("how strong is it?", [], "sim"),
     ("will it break if I hang 5 kg from it", [], "sim"),
+    ("I want to test the bracket under 50 N", [], "sim"),
+    ("I need to know if the plate will bend under 200 N", [], "sim"),
+    ("simulate the arm under a 2 kg load", [], "sim"),
+    ("analyze the bracket under 100 N", [], "sim"),
+    ("test the mount under load", [], "sim"),
+    ("I need the frame tested under a 30 kN load", [], "sim"),
     # check / review -> verifier
     ("Check the hole diameters", [], "verifier"),
     ("review the design against the spec", [], "verifier"),

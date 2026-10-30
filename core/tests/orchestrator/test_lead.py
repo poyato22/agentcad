@@ -36,10 +36,13 @@ class RoleProvider:
         self.roles = {k: FakeProvider(v) for k, v in roles.items()}
         self.systems: list[str] = []
         self.tools: list[list[str]] = []
+        self.user_texts: list[str] = []
 
     async def stream(self, req):
         self.systems.append(req.system)
         self.tools.append([t.name for t in req.tools])
+        last = req.messages[-1].content
+        self.user_texts.append(last if isinstance(last, str) else getattr(last[0], "text", ""))
         role = req.system.split("# Role: ", 1)[1].split()[0]
         async for ev in self.roles[role].stream(req):
             yield ev
@@ -84,8 +87,10 @@ def test_prompts_in_a_build_go_to_its_one_lead(home):
         r = client.post("/runs", headers=AUTH, json={"prompt": "now test the frame for stress"})
         assert r.status_code == 200, r.text
         assert r.json()["run_id"] == lead and r.json()["new_lead"] is False
-        assert r.json()["routed"]["agent"] == "sim"
+        assert r.json()["routed"]["agent"] == "sim" and r.json()["queued"] is False
         wait_done(client, lead)
+        # the lead keeps its own routing (why it is the engineer); follow-ups do not overwrite it
+        assert client.get(f"/runs/{lead}", headers=AUTH).json()["routed"]["agent"] == "engineer"
         msgs = [s.payload.get("text") for s in rt.store.steps(lead) if s.kind == StepKind.MESSAGE]
         assert "now test the frame for stress" in msgs and "added the arm" in msgs
     assert "this build's lead agent" in prov.systems[0]
@@ -127,35 +132,138 @@ def test_drawing_attachment_routes_to_drawing_agent_or_designer(home):
         wait_done(client, r.json()["run_id"])
 
 
-def test_busy_lead_refuses_a_second_prompt(home):
-    gate = asyncio.Event()
+class Gated:
+    """Each turn waits for its own gate; records the user text each turn saw."""
+    name = "fake"
 
-    class Slow:
-        name = "fake"
+    def __init__(self):
+        self.gates: list[asyncio.Event] = []
+        self.seen: list[str] = []
 
-        async def stream(self, req):
-            await gate.wait()
-            yield TextDelta(text="done")
-            yield Done(stop_reason="end_turn")
+    async def stream(self, req):
+        last = req.messages[-1].content
+        self.seen.append(last if isinstance(last, str) else last[0].text)
+        gate = asyncio.Event()
+        self.gates.append(gate)
+        await gate.wait()
+        yield TextDelta(text=f"done {len(self.seen)}")
+        yield Done(stop_reason="end_turn")
 
-    rt = make(home, Slow())
+
+async def _until(cond, n=400):
+    for _ in range(n):
+        if cond():
+            return
+        await asyncio.sleep(0.01)
+    raise AssertionError("condition not reached")
+
+
+async def test_busy_lead_queues_messages_and_delivers_them_in_order(home):
+    prov = Gated()
+    rt = make(home, prov)
+    pid = rt.active_project_id()
+    events = rt.events.subscribe()
+    first = await lead_mod.submit(rt, "Build me a drone", project_id=pid)
+    lead = first["run_id"]
+    await _until(lambda: len(prov.gates) == 1)
+    a = await lead_mod.submit(rt, "make the arms 200 mm", project_id=pid)
+    b = await lead_mod.submit(rt, "and add a gimbal", project_id=pid)
+    assert a["run_id"] == b["run_id"] == lead
+    assert (a["queued"], a["position"], b["queued"], b["position"]) == (True, 1, True, 2)
+    # shown in the thread at once, in a queued state
+    queued = [s.payload["queued_message"] for s in rt.store.steps(lead)
+              if "queued_message" in s.payload]
+    assert [q["text"] for q in queued] == ["make the arms 200 mm", "and add a gimbal"]
+    assert [m["text"] for m in lead_mod.queued_messages(rt, lead)] == [
+        "make the arms 200 mm", "and add a gimbal"]
+    for k in range(3):                       # each turn ends; the next message goes in
+        prov.gates[k].set()
+        if k < 2:
+            await _until(lambda: len(prov.gates) == k + 2)
+    await _until(lambda: not rt.lead_queues.get(lead) and not rt.run_busy(lead))
+    assert prov.seen == ["Build me a drone", "make the arms 200 mm", "and add a gimbal"]
+    types = []
+    while not events.queue.empty():
+        ev = events.queue.get_nowait()
+        if ev.type in ("message_queued", "message_delivered"):
+            types.append((ev.type, ev.data["message_id"]))
+    assert types == [("message_queued", a["message_id"]), ("message_queued", b["message_id"]),
+                     ("message_delivered", a["message_id"]),
+                     ("message_delivered", b["message_id"])]
+    assert lead_mod.find_lead(rt.store, pid).id == lead
+
+
+async def test_queue_is_capped_with_a_429(home, monkeypatch):
+    prov = Gated()
+    rt = make(home, prov)
+    pid = rt.active_project_id()
+    monkeypatch.setattr(lead_mod, "QUEUE_MAX", 2)
+    lead = (await lead_mod.submit(rt, "Build me a drone", project_id=pid))["run_id"]
+    await _until(lambda: len(prov.gates) == 1)
+    await lead_mod.submit(rt, "one", project_id=pid)
+    await lead_mod.submit(rt, "two", project_id=pid)
+    with pytest.raises(lead_mod.QueueFull) as ei:
+        await lead_mod.submit(rt, "three", project_id=pid)
+    assert ei.value.http_status == 429 and "2 messages waiting" in ei.value.message
+    rt.cancel(lead)
+    await _until(lambda: not rt.lead_queues.get(lead))
+    dropped = [s.payload for s in rt.store.steps(lead) if "queued_message_dropped" in s.payload]
+    assert len(dropped) == 2                 # a cancelled lead drops what was waiting
+
+
+def test_full_queue_is_http_429(home, monkeypatch):
+    prov = Gated()
+    rt = make(home, prov)
+    monkeypatch.setattr(lead_mod, "QUEUE_MAX", 0)
     with TestClient(create_app(rt, TOKEN)) as client:
         rid = client.post("/runs", headers=AUTH, json={"prompt": "Build me a drone"}).json()[
             "run_id"]
         r = client.post("/runs", headers=AUTH, json={"prompt": "and a gimbal"})
-        assert r.status_code == 400 and "lead agent is still working" in r.text
-        client.portal.call(gate.set)
+        assert r.status_code == 429 and "waiting" in r.json()["message"]
+        client.portal.call(lambda: [g.set() for g in prov.gates])
         wait_done(client, rid)
+
+
+async def test_concurrent_first_messages_make_one_lead(home):
+    prov = Gated()
+    rt = make(home, prov)
+    pid = rt.active_project_id()
+    a, b = await asyncio.gather(lead_mod.submit(rt, "Build me a drone", project_id=pid),
+                                lead_mod.submit(rt, "and a gimbal", project_id=pid))
+    assert a["run_id"] == b["run_id"]
+    assert [a["new_lead"], b["new_lead"]].count(True) == 1
+    leads = [r for r in rt.store.list_runs(project_id=pid) if r.role == "lead"]
+    assert len(leads) == 1
+    await _until(lambda: len(prov.gates) == 1)
+    prov.gates[0].set()
+    await _until(lambda: len(prov.gates) == 2)
+    prov.gates[1].set()
+    await _until(lambda: not rt.run_busy(a["run_id"]) and not rt.lead_queues.get(a["run_id"]))
+
+
+async def test_follow_up_notes_ignored_model_and_scope(home):
+    prov = RoleProvider(engineer=[text("one"), text("two")])
+    rt = make(home, prov)
+    pid = rt.active_project_id()
+    lead = (await lead_mod.submit(rt, "Build me a drone", project_id=pid))["run_id"]
+    await rt.wait(lead)
+    out = await lead_mod.submit(rt, "more", project_id=pid, model_ref="anthropic/other",
+                                edit_scope=("plate",))
+    assert any("model_ref ignored" in n for n in out["notes"])
+    assert any("scope ignored" in n for n in out["notes"])
+    await rt.wait(lead)
 
 
 async def test_unreachable_lead_is_retired_and_replaced(home):
     prov = RoleProvider(engineer=[text("one"), text("two")])
     rt = make(home, prov)
     pid = rt.active_project_id()
-    first, _, new = await lead_mod.submit(rt, "Build me a drone", project_id=pid)
+    r1 = await lead_mod.submit(rt, "Build me a drone", project_id=pid)
+    first, new = r1["run_id"], r1["new_lead"]
     await rt.wait(first)
     rt._runs.pop(first)            # as after a restart: this process cannot drive it any more
-    second, _, new2 = await lead_mod.submit(rt, "Build me a rover", project_id=pid)
+    r2 = await lead_mod.submit(rt, "Build me a rover", project_id=pid)
+    second, new2 = r2["run_id"], r2["new_lead"]
     await rt.wait(second)
     assert new and new2 and second != first
     assert rt.store.get_run(first).archived is True
@@ -174,7 +282,7 @@ async def test_lead_spawns_titled_sub_agents_and_announces_them(home):
     rt = make(home, prov)
     pid = rt.active_project_id()
     events = rt.events.subscribe()
-    lead, _, _ = await lead_mod.submit(rt, "Build me a drone", project_id=pid)
+    lead = (await lead_mod.submit(rt, "Build me a drone", project_id=pid))["run_id"]
     await rt.wait(lead)
     [child] = [r for r in rt.store.list_runs() if r.parent_id == lead]
     assert child.role == "sub" and child.title == "Design motor mount"
@@ -196,7 +304,12 @@ async def test_lead_spawns_titled_sub_agents_and_announces_them(home):
 
 def test_task_title_defaults_to_the_prompt_first_line():
     assert lead_mod.task_title(None, "Make the arm\nwith details") == "Make the arm"
+    assert lead_mod.task_title(None, "Build me a drone. It should fly 20 min.") == \
+        "Build me a drone"
     assert len(lead_mod.task_title("x" * 300, "")) == lead_mod.TASK_TITLE_CHARS
+    long = lead_mod.task_title(None, "Design a lightweight quadcopter frame for a five inch "
+                                     "propeller with a camera mount and battery tray")
+    assert len(long) <= lead_mod.TASK_TITLE_CHARS and long.endswith("…") and "  " not in long
 
 
 def test_agents_route(home):
@@ -241,8 +354,13 @@ def test_feedback_goes_to_the_lead_with_the_location(home):
         step = rt.store.get_step(out["step_id"])
         assert step.payload["feedback"]["nearby_feature"]["face_id"] == "f2"
         wait_done(client, lead)
-        msgs = [s.payload.get("text") for s in rt.store.steps(lead) if s.kind == StepKind.MESSAGE]
-        sent = next(m for m in msgs if m and "user_feedback" in m)
+        steps = [s.payload for s in rt.store.steps(lead) if s.kind == StepKind.MESSAGE]
+        # the thread shows the note plus the pin, never the wrapped block
+        shown = next(p for p in steps if p.get("feedback"))
+        assert shown["text"] == "this hole is too small"
+        assert not any("user_feedback" in (p.get("text") or "") for p in steps)
+        # the model read the delimited block
+        sent = next(m for m in prov.user_texts if "user_feedback" in m)
         block = sent.split('">\n', 1)[1].rsplit("\n</user_feedback", 1)[0]
         data = json.loads(block)
         assert data["part_id"] == "plate" and data["note"] == "this hole is too small"
@@ -281,3 +399,27 @@ async def test_claude_code_lead_rules_keep_lockdown(home):
     s2._write_files()
     assert "this build's lead agent" not in (rt.workdir(rid2) / RULES_FILE).read_text()
     (rt.workdir(rid2) / "claude-mcp.json").unlink()
+
+
+async def test_feedback_on_a_busy_lead_is_queued_not_lost(home):
+    prov = Gated()
+    rt = make(home, prov)
+    pid = rt.active_project_id()
+    rt.store.register_part("plate", pid)
+    lead = (await lead_mod.submit(rt, "Build me a drone", project_id=pid))["run_id"]
+    await _until(lambda: len(prov.gates) == 1)
+    out = await lead_mod.submit_feedback(rt, pid, part_id="plate", point=[1, 2, 3],
+                                         text="round this corner")
+    assert out["run_id"] == lead and out["queued"] is True and out["position"] == 1
+    assert rt.store.get_step(out["step_id"]).payload["feedback"]["text"] == "round this corner"
+    q = next(s.payload["queued_message"] for s in rt.store.steps(lead)
+             if "queued_message" in s.payload)
+    assert q["text"] == "round this corner" and q["feedback"]["part_id"] == "plate"
+    prov.gates[0].set()
+    await _until(lambda: len(prov.gates) == 2)
+    assert "user_feedback" in prov.seen[1]          # the model got the delimited block
+    prov.gates[1].set()
+    await _until(lambda: not rt.run_busy(lead))
+    shown = [s.payload for s in rt.store.steps(lead)
+             if s.kind == StepKind.MESSAGE and s.payload.get("role") == "user"]
+    assert shown[-1]["text"] == "round this corner" and shown[-1]["feedback"]["point"] == [1, 2, 3]
