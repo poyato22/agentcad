@@ -14,7 +14,8 @@ from .ccx import run_ccx
 from .environments import FACE_PRESETS
 from .fields import save_fem
 from .materials import Material
-from .mesh import FACE_ID_RE, Mesh, mesh_sizes, mesh_step, size_floor
+from .mesh import (FACE_ID_RE, FACE_TAG_RE, Mesh, mesh_sizes, mesh_step, size_floor,
+                   tag_face_ids)
 from .results import boundary_triangles, error_band, write_glb
 from .types import SimError
 
@@ -77,12 +78,16 @@ def mesh_options(job: FemJob, size: float) -> dict | None:
         if f in FACE_PRESETS:
             axis, side = FACE_PRESETS[f]
             refine.append({"size": local, "axis": axis, "value": bbox[side][axis]})
-        elif FACE_ID_RE.match(f):
-            face = next((x for x in job.metrics.get("face_list") or [] if x.get("id") == f), None)
-            if face is None:
-                raise SimError("bad_setup", f"no face {f} on this part to refine",
-                               hint="pick a face id from mirror_measure face_list")
-            refine.append({"size": local, "center": face["center"]})
+        else:
+            ids = (tag_face_ids(f, job.metrics.get("face_tags")) if FACE_TAG_RE.match(f)
+                   else [f] if FACE_ID_RE.match(f) else [])
+            for fid in ids:
+                face = next((x for x in job.metrics.get("face_list") or []
+                             if x.get("id") == fid), None)
+                if face is None:
+                    raise SimError("bad_setup", f"no face {fid} on this part to refine",
+                                   hint="pick a face id from mirror_measure face_list")
+                refine.append({"size": local, "center": face["center"]})
     if refine:
         opts["refine"] = refine
     return opts or None

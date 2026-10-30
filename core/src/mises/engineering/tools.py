@@ -236,7 +236,8 @@ def _spec_updated_at(ctx: ToolContext, pid: str) -> float | None:
                   "{\"min_natural_freq_hz\": Hz} or {\"avoid_band_hz\": [lo, hi]}. "
                   "A safety-factor or deflection "
                   "requirement names a load_case_id. Load cases use face presets (bottom, top, "
-                  "x-min, ...), which hold across variants. Impact/crash load cases must set "
+                  "x-min, ...) or tagged faces 'tag:<name>' the part script names in a FACES "
+                  "dict (e.g. tag:motor_mount); both hold across variants. Impact/crash load cases must set "
                   "estimate=true; get their newtons from loads_impact.")
 async def spec_set(ctx: ToolContext, args: SpecSetArgs) -> ToolOutput:
     pid = _resolve_project(ctx, args.project_id)
@@ -522,8 +523,9 @@ async def study_run(ctx: ToolContext, args: StudyRunArgs) -> ToolOutput:
     by_id = [c.id for c in spec.load_cases if FACE_ID_RE.match(c.fix) or FACE_ID_RE.match(c.load)]
     if by_id:
         raise MisesError(ErrorCode.INVALID_INPUT, f"load case(s) {by_id} use face ids, which "
-                         "change between variants", hint="use face presets (bottom, top, "
-                         "x-min, ...) in the spec's load cases, then run the study")
+                         "change between variants", hint="use tagged faces (tag:<name>, from a "
+                         "FACES dict in part.py) or presets (bottom, top, x-min, ...) in the "
+                         "spec's load cases, then run the study")
     obj = _objective(args)
     have_solver = _find_ccx() is not None
     budget = Budget(evals=args.max_evals, minutes=args.max_minutes).clamped()

@@ -12,7 +12,7 @@ from typing import Annotated, Literal, Union
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .environments import DIRECTIONS, FACE_PRESETS
-from .mesh import FACE_ID_RE
+from .mesh import FACE_ID_RE, is_face_spec
 
 Coord = Annotated[float, Field(ge=-1e6, le=1e6, allow_inf_nan=False)]
 Vec3 = tuple[Coord, Coord, Coord]   # finite: NaN / inf never reach a deck
@@ -24,8 +24,9 @@ def _u(unit: str, **kw) -> dict:
 
 
 def check_face(v: str) -> str:
-    if v not in FACE_PRESETS and not FACE_ID_RE.match(v):
-        raise ValueError(f"face must be one of {list(FACE_PRESETS)} or a face id like 'f3'")
+    if not is_face_spec(v):
+        raise ValueError(f"face must be one of {list(FACE_PRESETS)}, a face id like 'f3' or a "
+                         "tagged face like 'tag:motor_mount'")
     return v
 
 

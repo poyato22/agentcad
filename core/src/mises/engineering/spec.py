@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from ..naming import check_name
 from ..sim.environments import FACE_PRESETS
-from ..sim.mesh import FACE_ID_RE
+from ..sim.mesh import FACE_ID_RE, is_face_spec
 from ..types import MisesError
 
 MAX_REQUIREMENTS = 64
@@ -47,9 +47,10 @@ def _check_id(name: str) -> None:
 
 
 def _check_face(face: str, what: str) -> None:
-    if face not in FACE_PRESETS and not FACE_ID_RE.match(face):
-        raise ValueError(f"{what} face {face!r} must be a preset ({', '.join(FACE_PRESETS)}) "
-                         "or a face id like 'f3'; prefer presets, which hold across variants")
+    if not is_face_spec(face):
+        raise ValueError(f"{what} face {face!r} must be a preset ({', '.join(FACE_PRESETS)}), "
+                         "a tagged face like 'tag:motor_mount', or a face id like 'f3'; presets "
+                         "and tags hold across variants, ids do not")
 
 
 def _json_len(v: Any) -> int:
@@ -96,9 +97,11 @@ class Requirement(BaseModel):
 class LoadCase(BaseModel):
     id: str = Field(min_length=1, max_length=48)
     name: str = Field(min_length=1, max_length=120)
-    fix: str = Field(description="face held fixed: a preset (bottom, top, x-min, ...) or a "
-                                 "face id; presets hold across variants, ids do not")
-    load: str = Field(description="face the load is applied to: a preset or a face id")
+    fix: str = Field(description="face held fixed: a preset (bottom, top, x-min, ...), a "
+                                 "tagged face 'tag:<name>' the part script names in FACES, or a "
+                                 "face id; presets and tags hold across variants, ids do not")
+    load: str = Field(description="face the load is applied to: a preset, 'tag:<name>' or a "
+                                  "face id")
     newtons: float = Field(gt=0, le=1e6)
     direction: Direction
     note: str = Field(default="", max_length=1000)

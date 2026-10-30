@@ -27,9 +27,15 @@ Call `spec_set` with the goal, the requirements, the load cases and the intervie
 - Drag and vibration go in as `custom` with the study key as target, which `design_review`
   reads: `{"max_drag_n": 2}` (wind), `{"min_natural_freq_hz": 120}` or
   `{"avoid_band_hz": [380, 420]}` (modal).
-- Load cases name faces by **preset** only: bottom, top, x-min, x-max, y-min, y-max, z-min,
-  z-max. Never use a raw face id such as f3: ids change between variants and concepts, so the
-  load would land on the wrong face (study_run refuses them).
+- Load cases name faces by **tag** (`tag:<name>`) or **preset** (bottom, top, x-min, x-max,
+  y-min, y-max, z-min, z-max). Never use a raw face id such as f3: ids change between variants
+  and concepts, so the load would land on the wrong face (study_run refuses them).
+- Tag the real load path in every concept's part.py with a module-level `FACES` dict of
+  selectors, re-run on each build so the tag follows the geometry. For a drone frame tag the
+  motor mounts and the flight-stack mount, then fix `tag:stack` and load `tag:motor_mount`:
+  `FACES = {"motor_mount": lambda p: [f for f in p.faces().filter_by(GeomType.CYLINDER) if f.center().X**2 + f.center().Y**2 > 60**2], "stack": lambda p: [f for f in p.faces().filter_by(GeomType.CYLINDER) if f.center().X**2 + f.center().Y**2 < 25**2]}`
+  (the mount holes far from / near the centre; give every concept the same tag names). A preset like `fix x-min, load x-max` spans the whole
+  frame and overstates the arm moment; use it only for a part with no better faces.
 - Motor-thrust cases: take the max thrust from the catalog (`catalog_get`, when available) and
   note it is "typical".
 - Crash and impact cases: get the force from `loads_impact(mass_kg, drop_m, k)`, set

@@ -147,7 +147,8 @@ class Setup:
 
 def _faces(mesh: Mesh, face: str, metrics: dict, cache: dict) -> list[int]:
     if face not in cache:
-        cache[face] = select_faces(face, mesh.surfaces, metrics["bbox"], metrics.get("face_list"))
+        cache[face] = select_faces(face, mesh.surfaces, metrics["bbox"], metrics.get("face_list"),
+                                   metrics.get("face_tags"))
     return cache[face]
 
 

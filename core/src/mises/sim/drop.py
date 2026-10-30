@@ -5,6 +5,7 @@ and microsecond time steps that do not fit a laptop study budget (see the C7 rep
 from __future__ import annotations
 
 from .environments import FACE_PRESETS
+from .mesh import FACE_TAG_RE, tag_face_ids
 from .fem import FemJob
 from .settings import GravityLoad, LoadCase, Support
 from .static import run_static
@@ -45,6 +46,8 @@ def impact_direction(face: str, metrics: dict) -> tuple[float, float, float]:
         d = [0.0, 0.0, 0.0]
         d[axis] = -1.0 if side == "min" else 1.0
         return (d[0], d[1], d[2])
+    if FACE_TAG_RE.match(face):  # a tagged face: the first one it names
+        face = tag_face_ids(face, metrics.get("face_tags"))[0]
     f = next((x for x in metrics.get("face_list") or [] if x.get("id") == face), None)
     if f is None or not f.get("normal"):
         raise SimError("bad_setup", f"no face {face} with a normal on this part",
