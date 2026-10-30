@@ -531,12 +531,30 @@ async def _dynamic_checks(ctx: ToolContext, root: Path, part_id: str, iterations
     return {"types": [p["type"] for p in plan], "checked": checked, "failed": failed}
 
 
+REMOVED_SIMS_FILE = "removed_sims.json"
+
+
 def _cleanup(root: Path, iterations: list[dict], keep_ns: set[int]) -> list[str]:
+    """Delete the scratch dirs of the variants that are neither best nor Pareto. Their sims go
+    with them: each such iteration is marked `sims_removed`, and the ids are listed in
+    <study>/removed_sims.json so GET /sims/{id} answers 410 Gone, not 404 (QA B2-2)."""
     keep = {it["metrics"].get("variant") for it in iterations if it["n"] in keep_ns}
+    removed: set[str] = set()
+    kept_ids: set[str] = set()
+    for it in iterations:
+        m = it.get("metrics") or {}
+        ids = {s for s in (m.get("sim_ids_by_case") or {}).values() if isinstance(s, str)}
+        if m.get("variant") in keep:
+            kept_ids |= ids
+        elif ids:
+            m["sims_removed"] = True
+            removed |= ids
     if root.is_dir():
         for d in root.iterdir():
             if d.is_dir() and d.name.startswith("e") and d.name not in keep:
                 shutil.rmtree(d, ignore_errors=True)
+        if removed - kept_ids:
+            (root / REMOVED_SIMS_FILE).write_text(json.dumps(sorted(removed - kept_ids)))
     return sorted(v for v in keep if v)
 
 
@@ -642,6 +660,13 @@ async def study_run(ctx: ToolContext, args: StudyRunArgs) -> ToolOutput:
         record.update(status=status, best_id=best_id,
                       kept_variants=_cleanup(root, iterations, keep))
         ctx.store.update_study(study_id, record, status)
+        # QA B2-1: the last progress event fired before the fine-mesh confirmation, so the UI
+        # stayed on "running 4/4"; the terminal one carries the final status
+        ctx.events.publish(Event(type="study_progress", run_id=ctx.run_id,
+                                 data={"study_id": study_id, "n": len(iterations),
+                                       "total": budget.evals, "status": status,
+                                       "best_id": best_id,
+                                       "kept_variants": record["kept_variants"]}))
 
     try:
         result = await run_study(variables, _static_evaluator(ctx, args.part_id, d, base_vars,

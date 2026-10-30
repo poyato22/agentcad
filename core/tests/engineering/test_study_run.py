@@ -80,10 +80,80 @@ async def test_iterations_persist_and_scratch_is_pruned(tmp_path, monkeypatch):
     stored = ctx.store.get_study(out.data["id"])
     assert len(stored["iterations"]) == out.data["iterations_total"] and stored["status"] == "done"
     root = tmp_path / "studies" / out.data["id"]
-    left = sorted(p.name for p in root.iterdir())
+    left = sorted(p.name for p in root.iterdir() if p.is_dir())
     assert left == out.data["kept_variants"]
     keep_ns = {it["n"] for it in stored["iterations"] if it["pareto"]} | {out.data["best_id"]}
     assert len(left) == len(keep_ns)
+
+
+def test_cleanup_marks_and_lists_the_pruned_variants_sims(tmp_path):
+    """QA B2-2: the pruned variants' sims are marked and listed, so GET /sims/{id} says 410."""
+    from mises.engineering.tools import REMOVED_SIMS_FILE, _cleanup
+    for v in ("e0", "e1", "e2"):
+        (tmp_path / v).mkdir()
+    its = [{"n": 0, "metrics": {"variant": "e0", "sim_ids_by_case": {"a": "sim_000000000000"}}},
+           {"n": 1, "metrics": {"variant": "e1", "sim_ids_by_case": {"a": "sim_000000000001",
+                                                                     "b": "sim_000000000002"}}},
+           {"n": 2, "metrics": {"variant": "e2", "sim_ids_by_case": {}}}]
+    assert _cleanup(tmp_path, its, {0}) == ["e0"]
+    assert sorted(p.name for p in tmp_path.iterdir() if p.is_dir()) == ["e0"]
+    assert json.loads((tmp_path / REMOVED_SIMS_FILE).read_text()) == [
+        "sim_000000000001", "sim_000000000002"]
+    assert its[1]["metrics"]["sims_removed"] is True
+    assert "sims_removed" not in its[0]["metrics"] and "sims_removed" not in its[2]["metrics"]
+
+
+async def test_a_finished_study_publishes_a_terminal_progress_event(tmp_path, monkeypatch):
+    """QA B2-1: the last study_progress came before the fine-mesh confirmation, so the UI
+    stayed on 'running 4/4' until a reload."""
+    ctx, _ = _setup(tmp_path)
+    install(monkeypatch)
+    sub = ctx.events.subscribe()
+    out = await study_run.handler(ctx, _args(max_evals=6))
+    evs = []
+    while not sub.queue.empty():
+        ev = sub.queue.get_nowait()
+        if ev.type == "study_progress":
+            evs.append(ev.data)
+    assert all("status" not in e for e in evs[:-1])
+    last = evs[-1]
+    assert last["status"] == "done" and last["study_id"] == out.data["id"]
+    assert last["best_id"] == out.data["best_id"] and last["kept_variants"]
+    assert last["n"] == out.data["iterations_total"]
+
+
+async def test_a_cancelled_study_publishes_cancelled(tmp_path, monkeypatch):
+    ctx, _ = _setup(tmp_path)
+    install(monkeypatch, sim_delay=0.05)
+    sub = ctx.events.subscribe()
+    task = asyncio.create_task(study_run.handler(ctx, _args(max_evals=24)))
+    for _ in range(400):
+        await asyncio.sleep(0.01)
+        rows = ctx.store.list_studies(PID)
+        if rows and len(rows[0]["iterations"]) >= 2:
+            break
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    evs = []
+    while not sub.queue.empty():
+        ev = sub.queue.get_nowait()
+        if ev.type == "study_progress":
+            evs.append(ev.data)
+    assert evs[-1]["status"] == "cancelled"
+
+
+async def test_a_study_out_of_time_publishes_budget_exhausted(tmp_path, monkeypatch):
+    ctx, _ = _setup(tmp_path)
+    install(monkeypatch, sim_delay=0.2)
+    sub = ctx.events.subscribe()
+    await study_run.handler(ctx, _args(max_evals=24, max_minutes=0.01))
+    evs = []
+    while not sub.queue.empty():
+        ev = sub.queue.get_nowait()
+        if ev.type == "study_progress":
+            evs.append(ev.data)
+    assert evs[-1]["status"] == "budget_exhausted"
 
 
 async def test_cancel_keeps_partial_results(tmp_path, monkeypatch):

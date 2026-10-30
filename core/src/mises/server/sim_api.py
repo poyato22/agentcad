@@ -49,6 +49,38 @@ UI_AGENT = "studies"
 SLICES = ("slice_xz", "slice_xy")
 
 
+class SimGone(MisesError):
+    """410 Gone: the stress study of a design-study variant that was neither best nor Pareto,
+    deleted with the variant's scratch copy when the study finished (QA B2-2)."""
+    http_status = 410
+
+    def __init__(self, sim_id: str, study_id: str):
+        super().__init__(ErrorCode.NOT_FOUND,
+                         f"study {sim_id} belonged to a variant of design study {study_id} "
+                         "that was not kept; only the best and Pareto variants keep their "
+                         "results", hint="apply the variant (Use this variant) and run the "
+                                         "study again to see its result")
+        self.study_id = study_id
+
+    def to_dict(self) -> dict:
+        return {**super().to_dict(), "error": "gone", "study_id": self.study_id}
+
+
+def _removed_variant_sim(studies_root: Path, sim_id: str) -> str | None:
+    """The design study whose cleanup removed sim_id (its removed_sims.json), or None."""
+    from ..engineering.tools import REMOVED_SIMS_FILE
+    if not studies_root.is_dir():
+        return None
+    for d in sorted(studies_root.glob("study_*")):
+        try:
+            ids = safe_io.read_json(d, REMOVED_SIMS_FILE)
+        except (OSError, ValueError, safe_io.UnsafePath):
+            continue
+        if isinstance(ids, list) and sim_id in ids:
+            return d.name
+    return None
+
+
 class StartBody(BaseModel):
     type: Literal["static", "modal", "buckling", "thermal", "drop", "wind"]
     part_id: str | None = None
@@ -195,6 +227,9 @@ def build_sim_router(runtime: Runtime) -> APIRouter:
                     if d is not None:
                         break
         if d is None:
+            gone = _removed_variant_sim(Path(runtime.home) / "studies", sim_id)
+            if gone is not None:
+                raise SimGone(sim_id, gone)
             raise MisesError(ErrorCode.NOT_FOUND, f"no study {sim_id}")
         return d
 

@@ -69,7 +69,8 @@ _HTTP_STATUS = {
 
 
 def _error_response(e: MisesError, status: int | None = None) -> JSONResponse:
-    return JSONResponse(e.to_dict(), status_code=status or _HTTP_STATUS.get(e.code, 400))
+    return JSONResponse(e.to_dict(), status_code=status or getattr(e, "http_status", None)
+                        or _HTTP_STATUS.get(e.code, 400))
 
 
 def _token_ok(given: str | None, token: str) -> bool:

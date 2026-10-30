@@ -60,8 +60,9 @@ class FakeSim:
             return ToolOutput(ok=False, summary="study failed: mesh failed",
                               step_kind=StepKind.ERROR,
                               data={"error": "mesh_failed", "message": "gmsh: thin wall"})
-        return ToolOutput(summary="ok", data={"sim_id": "sim_" + "a" * 12, "results": {
-            "safety_factor": wall, "max_displacement_mm": 1.0 / wall}})
+        return ToolOutput(summary="ok", data={
+            "sim_id": f"sim_{len(self.calls):012x}",
+            "results": {"safety_factor": wall, "max_displacement_mm": 1.0 / wall}})
 
 
 def make_ctx(tmp_path: Path, *, services: dict | None = None) -> ToolContext:

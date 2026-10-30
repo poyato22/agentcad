@@ -333,3 +333,17 @@ def test_design_study_variant_sims_are_served(client, rt):
     r = client.get("/sims/sim_00000000beef", headers=AUTH)
     assert r.status_code == 200 and r.json()["part_id"] == "frame_x"
     assert client.get("/sims/sim_00000000dead", headers=AUTH).status_code == 404
+
+
+def test_a_removed_variant_sim_is_gone_not_missing(client, rt):
+    # QA B2-2: "View result" on a variant the study did not keep opened a bare 404
+    root = rt.home / "studies" / "study_abcdefabcdef"
+    root.mkdir(parents=True)
+    (root / "removed_sims.json").write_text(json.dumps(["sim_00000000cafe"]))
+    r = client.get("/sims/sim_00000000cafe", headers=AUTH)
+    assert r.status_code == 410, r.text
+    body = r.json()
+    assert body["error"] == "gone" and body["study_id"] == "study_abcdefabcdef"
+    assert "not kept" in body["message"] and body["hint"]
+    assert client.get("/sims/sim_00000000cafe/result.glb", headers=AUTH).status_code == 410
+    assert client.get("/sims/sim_00000000dead", headers=AUTH).status_code == 404
