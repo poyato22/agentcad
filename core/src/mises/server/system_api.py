@@ -34,9 +34,12 @@ def _find_mgr(name: str) -> str | None:
 
 
 async def _subprocess_runner(argv: list[str], emit: Callable[[str], None]) -> int:
-    """Run argv, streaming stdout+stderr lines to `emit`. The environment is minimal."""
-    env = {"PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
-           "HOME": os.path.expanduser("~")}
+    """Run argv, streaming stdout+stderr lines to `emit`. The environment is minimal, plus the
+    manager's own dir first on PATH (S2: an OrbStack-only docker keeps its credential helper
+    next to it)."""
+    path = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+    mgr_dir = os.path.dirname(argv[0]) if argv and os.path.isabs(argv[0]) else ""
+    env = {"PATH": f"{mgr_dir}:{path}" if mgr_dir else path, "HOME": os.path.expanduser("~")}
     proc = await asyncio.create_subprocess_exec(
         *argv, stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT, env=env)

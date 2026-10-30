@@ -35,11 +35,14 @@ class FakeRunner:
     case dir, as the container would have written them."""
 
     def __init__(self, fixture: str | None, rc: int = 0, out: str = "", delay: float = 0.0,
-                 raise_exc: BaseException | None = None, extra: dict | None = None):
+                 raise_exc: BaseException | None = None, extra: dict | None = None,
+                 ncpus: int | None = 8, kill_problem: str | None = None):
         self.fixture, self.rc, self.out, self.delay = fixture, rc, out, delay
         self.raise_exc, self.extra = raise_exc, extra or {}
+        self.ncpus, self.kill_problem = ncpus, kill_problem
         self.calls: list[list[str]] = []
         self.killed: list[str] = []
+        self.cleanups = 0
 
     async def run(self, argv, *, timeout_s):
         self.calls.append(list(argv))
@@ -58,6 +61,13 @@ class FakeRunner:
 
     async def kill(self, name):
         self.killed.append(name)
+        return self.kill_problem
+
+    async def cleanup(self):
+        self.cleanups += 1
+
+    async def ncpu(self):
+        return self.ncpus
 
 
 def use(monkeypatch, runner):
@@ -162,10 +172,15 @@ def test_docker_command_has_no_network_and_only_the_case_mount(tmp_path):
     assert argv[argv.index("--pull") + 1] == "never"
     mounts = [argv[i + 1] for i, a in enumerate(argv) if a in ("-v", "--volume", "--mount")]
     assert mounts == [f"{case.resolve()}:/case:rw"]
-    for banned in ("--privileged", "--tmpfs", "--volumes-from", "--net", "--network=host",
+    # read-only root; the one other writable place is exactly an in-memory /tmp (no host path)
+    assert "--read-only" in argv
+    tmpfs = [argv[i + 1] for i, a in enumerate(argv) if a == "--tmpfs"]
+    assert tmpfs == ["/tmp:rw,nosuid,nodev,size=256m"]
+    assert argv[argv.index("TMPDIR=/tmp") - 1] == "-e"
+    for banned in ("--privileged", "--volumes-from", "--net", "--network=host",
                    "--ipc", "--pid", "--device"):
         assert banned not in argv
-    assert not any(a.startswith(("--mount", "--volume=", "-v=")) for a in argv)
+    assert not any(a.startswith(("--mount", "--volume=", "-v=", "--tmpfs=")) for a in argv)
     assert "--cpus=3" in argv and "--memory=2048m" in argv and "--memory-swap=2048m" in argv
     assert any(a.startswith("--pids-limit=") for a in argv)
     assert argv[argv.index("--cap-drop") + 1] == "ALL"
@@ -177,6 +192,34 @@ def test_docker_command_refuses_a_path_that_would_split_the_mount(tmp_path):
     bad.mkdir()
     with pytest.raises(SimError):
         openfoam.docker_argv(DOCKER, bad, "n", cpus=1, memory_mb=512)
+
+
+def test_a_symlinked_case_dir_is_refused_not_resolved(tmp_path):
+    job = tmp_path / "job"
+    job.mkdir()
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (job / "openfoam_0").symlink_to(elsewhere)
+    with pytest.raises(SimError) as e:
+        openfoam.docker_argv(DOCKER, job / "openfoam_0", "n", cpus=1, memory_mb=512,
+                             job_root=job)
+    assert "symlink" in e.value.message
+    (job / "real").mkdir()
+    with pytest.raises(SimError):          # outside the job root
+        openfoam.docker_argv(DOCKER, elsewhere, "n", cpus=1, memory_mb=512, job_root=job)
+    argv = openfoam.docker_argv(DOCKER, job / "real", "n", cpus=1, memory_mb=512, job_root=job)
+    assert f"{(job / 'real').resolve()}:/case:rw" in argv
+
+
+def test_min_vol_scales_with_the_part(tmp_path):
+    big = foam_case.plan_case(sphere() * 1e-3, settings(refinement=4))
+    small = foam_case.plan_case(sphere() * 1e-4, settings(refinement=4))   # D = 10 mm
+    assert foam_case.min_vol(small) == pytest.approx(foam_case.min_vol(big) * 1e-3, rel=0.05)
+    # the thinnest layer cell (0.1 of a surface cell thick) stays far above minVol
+    assert 0.1 * small.surface_cell_m ** 3 > 100 * foam_case.min_vol(small)
+    foam_case.write_case(tmp_path, sphere() * 1e-4, settings(refinement=4), 7.85e-5, small)
+    assert f"minVol {foam_case.min_vol(small):.3g};" in (
+        tmp_path / "system/snappyHexMeshDict").read_text()
 
 
 # ---- whole studies through the fake runner ("benchmarks" replayed from recorded output)
@@ -309,13 +352,30 @@ async def test_record_is_labelled_openfoam_with_its_band(tmp_path, monkeypatch):
            "mesh": out["mesh"], "warnings": out["warnings"]}
     assert studies.fidelity_note(rec) == "OpenFOAM k-ω SST · ±10% (target; validation pending)"
     assert "OpenFOAM k-ω SST · ±10%" in studies.summary(rec)
-    assert studies.card(rec)["fidelity_note"].startswith("OpenFOAM k-ω SST")
+    c = studies.card(rec)
+    assert c["fidelity_note"].startswith("OpenFOAM k-ω SST")
+    # I1: nothing on an unvalidated card says "validated"
+    band = next(m for m in c["metrics"] if m["key"] == "error_band_pct")
+    assert band["label"] == "model error (target, validation pending)"
+    assert not any("validated" in m["label"] for m in c["metrics"])
+    assert "validated" not in c["fidelity_note"].replace("validation pending", "")
     ch = {c["id"]: c for c in charts.charts(rec, tmp_path)["charts"]}
     assert ch["cd_history"]["x"]["label"] == "iteration"
     assert [s["name"] for s in ch["cd_history"]["series"]] == ["Cd"]
     # once a real benchmark row is recorded the label says validated
     rec["results"] = {**r, "validated": True}
     assert studies.fidelity_note(rec) == "OpenFOAM k-ω SST · ±10% (validated)"
+    assert studies.error_band_label(rec) == "model error (validated)"
+    # the empirical estimate's band is not a validated one either
+    assert studies.error_band_label({"fidelity_class": "empirical"}) == \
+        "model error (shape-class estimate)"
+
+
+def test_sim_md_only_calls_the_built_in_band_validated():
+    md = (Path(studies.__file__).parents[1] / "agent/builtin/sim.md").read_text()
+    line = next(ln for ln in md.splitlines() if "(validated)\"" in ln)
+    assert "built-in solver" in line
+    assert "OpenFOAM" in md and "word for word" in md and "validation pending" in md
 
 
 @pytest.mark.timeout(60)
@@ -340,6 +400,122 @@ def test_band_is_the_target_until_a_benchmark_is_recorded(monkeypatch):
                          ("flat plate", 1e4, 3, 1.31, 1.17, +0.12)])
     assert validation.openfoam_validated() and validation.openfoam_error_band() == 0.15
     assert validation.openfoam_validation_rows()[1]["body"] == "flat plate"
+
+
+# ---- fix round 1: runner hardening
+
+@pytest.mark.timeout(60)
+async def test_cpus_are_clamped_to_the_docker_vm_and_leftovers_cleaned(tmp_path, monkeypatch):
+    run = use(monkeypatch, FakeRunner("sphere_re2e4", ncpus=2))
+    r = await openfoam.run_openfoam_study(sphere(n=16), settings(cpus=8), tmp_path, DOCKER)
+    assert run.cleanups == 1
+    assert "--cpus=2" in run.calls[0]
+    assert "mpirun -np 2 " in (tmp_path / "openfoam_0/Allrun").read_text()
+    assert r["mesh"]["cpus"] == 2
+    # Reynolds, lRef and Aref share one reference length / frame (D, frontal area)
+    assert r["reynolds_length_m"] == r["l_ref_m"] == pytest.approx(0.1, rel=0.01)
+    assert r["reynolds"] == pytest.approx(1.225 * 10 * r["l_ref_m"] / 1.81e-5)   # default 10 m/s
+
+
+async def test_a_container_that_will_not_stop_is_reported(tmp_path, monkeypatch):
+    use(monkeypatch, FakeRunner(None, delay=30, kill_problem="the OpenFOAM container x could "
+                                                             "not be stopped"))
+    with pytest.raises(SimError) as e:
+        await openfoam.run_openfoam_study(sphere(n=8), settings(timeout_s=5), tmp_path, DOCKER)
+    assert e.value.code == "timeout" and "could not be stopped" in e.value.message
+
+
+FAKE_DOCKER = """#!/bin/bash
+here="$(cd "$(dirname "$0")" && pwd)"
+echo "$*" >> "$here/calls.log"
+case "$1" in
+  run) exec /bin/sleep 30 ;;
+  kill|rm) [ -f "$here/slow" ] && /bin/sleep 5; exit 0 ;;
+  ps) printf 'abc123\\ndef456\\n' ;;
+  info) echo 3 ;;
+esac
+"""
+
+
+def _fake_docker(tmp_path) -> Path:
+    d = tmp_path / "bin"
+    d.mkdir()
+    p = d / "docker"
+    p.write_text(FAKE_DOCKER)
+    p.chmod(0o755)
+    return p
+
+
+@pytest.mark.timeout(60)
+async def test_real_docker_runner_kills_then_removes_on_timeout(tmp_path):
+    docker = _fake_docker(tmp_path)
+    runner = openfoam.DockerRunner(str(docker))
+    case = tmp_path / "job" / "openfoam_0"
+    case.mkdir(parents=True)
+    with pytest.raises(SimError) as e:
+        await openfoam.run_case(case, runner, str(docker), cpus=1, iterations=10,
+                                memory_mb=512, timeout_s=3, job_root=case.parent)
+    assert e.value.code == "timeout" and "could not be stopped" not in e.value.message
+    calls = (docker.parent / "calls.log").read_text().splitlines()
+    name = calls[0].split("--name ")[1].split()[0]
+    assert calls[0].startswith("run --rm --name mises-of-")
+    assert calls[1:] == [f"kill {name}", f"rm -f {name}"]
+    assert await runner.ncpu() == 3
+    await runner.cleanup()
+    assert (docker.parent / "calls.log").read_text().splitlines()[-2:] == [
+        "ps -aq --filter label=mises.study=wind", "rm -f abc123 def456"]
+
+
+@pytest.mark.timeout(60)
+async def test_real_docker_runner_escalates_a_kill_that_hangs(tmp_path, monkeypatch):
+    docker = _fake_docker(tmp_path)
+    (docker.parent / "slow").write_text("")
+    monkeypatch.setattr(openfoam, "KILL_TIMEOUT_S", 0.3)
+    problem = await openfoam.DockerRunner(str(docker)).kill("mises-of-abc")
+    assert problem and "could not be stopped" in problem and "docker rm -f mises-of-abc" in problem
+    calls = (docker.parent / "calls.log").read_text().splitlines()
+    assert calls == ["kill mises-of-abc", "rm -f mises-of-abc", "rm -f mises-of-abc"]
+
+
+def test_container_outputs_are_read_no_follow_and_capped(tmp_path, monkeypatch):
+    case = tmp_path / "case"
+    shutil.copytree(FIX / "sphere_re2e4", case)
+    coef = case / "postProcessing/forceCoeffs/0/coefficient.dat"
+    secret = tmp_path / "secret.dat"
+    secret.write_text(coef.read_text())
+    coef.unlink()
+    coef.symlink_to(secret)
+    with pytest.raises(SimError) as e:
+        openfoam.read_results(case)
+    assert "unreadable" in e.value.message
+    coef.unlink()
+    coef.write_text(secret.read_text())
+    monkeypatch.setattr(foam_parse, "TABLE_CAP", 1000)     # the table is now "oversized"
+    with pytest.raises(SimError):
+        openfoam.read_results(case)
+    # a log symlinked at something huge is not followed
+    log = case / "log.simpleFoam"
+    log.unlink()
+    log.symlink_to("/dev/zero")
+    with pytest.raises(OSError):
+        foam_parse.read_log_file(log)
+
+
+def test_log_is_tailed_incrementally(tmp_path):
+    log = tmp_path / "log.simpleFoam"
+    log.write_text("banner\nTime = 1\n\nsmoothSolver: ...\nTime = 2\n")
+    t = openfoam.LogTail(log)
+    assert t.poll() == 2 and t.offset == log.stat().st_size
+    with log.open("a") as f:
+        f.write("x\nTime = 3")                       # the line is not finished yet
+    assert t.poll() == 2
+    with log.open("a") as f:
+        f.write("\n\nTime = 4\n")
+    assert t.poll() == 4
+    big = "Time = 5\n" + "y" * (foam_parse.LOG_TAIL * 3) + "\nTime = 6\n"
+    with log.open("a") as f:
+        f.write(big)
+    assert t.poll() == 6                              # only the last LOG_TAIL bytes read
 
 
 # ---- real-solver benchmarks: ONLY in the user-approved QA step (the image must be pulled)

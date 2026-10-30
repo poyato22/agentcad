@@ -829,12 +829,28 @@ def fidelity_note(rec: dict) -> str | None:
     return None
 
 
+def error_band_label(rec: dict) -> str:
+    """The wind card's error-band label, per solver: only a band backed by a recorded benchmark
+    says "validated" (S2 review I1)."""
+    fc = rec.get("fidelity_class")
+    r = rec.get("results") or {}
+    if fc == "cfd_lbm":
+        return "model error (validated)"
+    if fc == "cfd_openfoam":
+        return ("model error (validated)" if r.get("validated")
+                else "model error (target, validation pending)")
+    if fc == "empirical":
+        return "model error (shape-class estimate)"
+    return "model error"
+
+
 def card(rec: dict) -> dict:
     """What a thread / Studies card renders: type, status, progress, key metrics with
     pass / warn / fail, and the URLs of the result GLB and chart data."""
     typ = rec.get("type", "static")
     r = rec.get("results") or {}
-    metrics = [{"key": k, "label": lab, "unit": u, "value": r.get(k)}
+    metrics = [{"key": k, "label": error_band_label(rec) if (typ, k) == ("wind", "error_band_pct")
+                else lab, "unit": u, "value": r.get(k)}
                for k, lab, u in KEY_METRICS.get(typ, [])]
     status = None
     if rec.get("status") == "done":

@@ -15,12 +15,62 @@ Columns are always looked up by name, never by position.
 """
 from __future__ import annotations
 
+import os
 import re
+import stat
 from pathlib import Path
 
 import numpy as np
 
 _NUM = re.compile(r"^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$")
+# Container-written files are untrusted: never follow a symlink, only read regular files, and
+# cap what is read (a table or surface beyond these is refused; a log is read from its tail).
+TABLE_CAP = 256 * 2**20
+LOG_TAIL = 256 * 2**10
+
+
+def read_capped(path: Path, cap: int = TABLE_CAP, *, tail: bool = False,
+                offset: int = 0) -> tuple[str, int]:
+    """(text, file size) of a regular file opened with O_NOFOLLOW. Over `cap` bytes: the last
+    `cap` bytes when `tail`, else ValueError. `offset` starts the read there (log tailing)."""
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_NONBLOCK", 0))
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode):
+            raise ValueError(f"{Path(path).name} is not a regular file")
+        size = st.st_size
+        start = max(offset, 0)
+        if size - start > cap:
+            if not tail:
+                raise ValueError(f"{Path(path).name} is over {cap // 2**20} MB")
+            start = size - cap
+        os.lseek(fd, start, os.SEEK_SET)
+        data = b""
+        while len(data) < size - start:
+            chunk = os.read(fd, min(1 << 20, size - start - len(data)))
+            if not chunk:
+                break
+            data += chunk
+        return data.decode(errors="replace"), size
+    finally:
+        os.close(fd)
+
+
+def read_text(path: Path, cap: int | None = None) -> str:
+    return read_capped(path, cap or TABLE_CAP)[0]
+
+
+def read_log_file(path: Path) -> dict:
+    """read_log on the last LOG_TAIL bytes of a log (no-follow)."""
+    return read_log(read_capped(path, LOG_TAIL, tail=True)[0])
+
+
+def _plain_dir(p: Path) -> bool:
+    """A real directory, not a symlink (also checks postProcessing above an FO dir)."""
+    p = Path(p)
+    if p.parent.name == "postProcessing" and p.parent.is_symlink():
+        return False
+    return p.is_dir() and not p.is_symlink()
 
 
 def _is_num(tok: str) -> bool:
@@ -33,7 +83,7 @@ def read_table(path: Path) -> dict[str, np.ndarray]:
     names: list[str] | None = None
     header: dict[str, str] = {}
     rows: list[list[float]] = []
-    for line in Path(path).read_text(errors="replace").splitlines():
+    for line in read_text(path).splitlines():
         s = line.strip()
         if not s:
             continue
@@ -61,11 +111,12 @@ def function_object_table(case: Path, name: str, file: str) -> dict[str, np.ndar
     """postProcessing/<name>/<time>/<file>, every start-time dir joined in time order (a restart
     writes a new one), or None when the function object wrote nothing."""
     root = Path(case) / "postProcessing" / name
-    if not root.is_dir():
+    if not _plain_dir(root):
         return None
-    dirs = sorted((d for d in root.iterdir() if d.is_dir() and _is_num(d.name)),
+    dirs = sorted((d for d in root.iterdir() if _plain_dir(d) and _is_num(d.name)),
                   key=lambda d: float(d.name))
-    parts = [read_table(d / file) for d in dirs if (d / file).is_file()]
+    # a symlinked table is not skipped silently: read_table's no-follow open refuses it
+    parts = [read_table(d / file) for d in dirs if os.path.lexists(d / file)]
     if not parts:
         return None
     out = {k: np.concatenate([p[k] for p in parts]) for k in parts[0] if k != "_header"}
@@ -78,7 +129,7 @@ def read_raw(path: Path) -> tuple[list[str], np.ndarray]:
     that starts with x y z; without one they are x y z + c0.. ."""
     names: list[str] | None = None
     rows: list[list[float]] = []
-    for line in Path(path).read_text(errors="replace").splitlines():
+    for line in read_text(path).splitlines():
         s = line.strip()
         if not s:
             continue
@@ -101,15 +152,15 @@ def find_surface(case: Path, fo: str, surface: str, field: str) -> Path | None:
     """The raw file of `field` on `surface` at the last written time. Writers name it
     <surface>/<field>.raw, <field>_<surface>.raw or <surface>.raw across versions; any of them."""
     root = Path(case) / "postProcessing" / fo
-    if not root.is_dir():
+    if not _plain_dir(root):
         return None
-    times = sorted((d for d in root.iterdir() if d.is_dir() and _is_num(d.name)),
+    times = sorted((d for d in root.iterdir() if _plain_dir(d) and _is_num(d.name)),
                    key=lambda d: float(d.name))
     for d in reversed(times):
         cands = [d / surface / f"{field}.raw", d / f"{field}_{surface}.raw",
                  d / f"{surface}_{field}.raw", d / f"{surface}.raw"]
         for c in cands:
-            if c.is_file():
+            if c.is_file() and not c.is_symlink() and not c.parent.is_symlink():
                 return c
     return None
 

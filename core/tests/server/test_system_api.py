@@ -164,6 +164,18 @@ def test_openfoam_pull_without_docker_offers_orbstack(rt, monkeypatch):
                                "url": sysapi.ORBSTACK_URL}
 
 
+async def test_installer_env_puts_the_managers_own_dir_first_on_path(tmp_path):
+    # S2 fix: an OrbStack-only docker keeps its credential helper next to the CLI
+    d = tmp_path / "orb" / "bin"
+    d.mkdir(parents=True)
+    fake = d / "docker"
+    fake.write_text('#!/bin/sh\necho "PATH=$PATH"\n')
+    fake.chmod(0o755)
+    lines = []
+    assert await sysapi._subprocess_runner([str(fake), "pull", "x"], lines.append) == 0
+    assert lines[0].startswith(f"PATH={d}:")
+
+
 def _drain(sub):
     out = []
     while not sub.queue.empty():

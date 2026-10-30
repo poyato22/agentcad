@@ -4,11 +4,17 @@ result dict, GLB and slice PNGs as the built-in solver.
 
 Container isolation (hard rules):
 - `--network none`: no network at all;
-- the ONLY mount is this angle's case dir inside the job dir, read-write (`-v case:/case:rw`);
+- the ONLY host mount is this angle's case dir inside the job dir, read-write
+  (`-v case:/case:rw`; a symlinked path is refused); the root filesystem is read-only
+  (`--read-only`), with an in-memory /tmp (`--tmpfs`, TMPDIR=/tmp) for OpenMPI;
 - CPU (`--cpus`), memory (`--memory` = `--memory-swap`, so no swap) and process (`--pids-limit`)
   limits; all capabilities dropped, no privilege escalation, the host user's uid:gid;
 - `--pull never`: a run never fetches anything (the image is pulled only by the user's click);
-- a timeout, and cancel: both `docker kill` the named container (the CLI process is killed too).
+- a timeout, and cancel: both `docker kill` then `docker rm -f` the named container (the CLI
+  process is killed too); a daemon that does not answer is retried and reported, and leftover
+  labelled containers are removed before the next run;
+- `cpus` is clamped to the CPUs the Docker VM reports;
+- every file read back from the case is opened no-follow, must be regular and is size-capped.
 The docker CLI itself is not wrapped in sandbox-exec: it must reach the daemon's socket, and the
 container is the sandbox.
 
@@ -18,6 +24,7 @@ OpenFOAM output files (tests/fixtures/openfoam).
 from __future__ import annotations
 
 import asyncio
+import logging
 import math
 import os
 import re
@@ -43,9 +50,18 @@ TAIL = 4000
 AVERAGE_TAIL = 0.1          # coefficients: the mean over the last 10% of the iterations run
 
 
+LABEL_FILTER = "label=mises.study=wind"
+TMP_MB = 256
+TMPFS = f"/tmp:rw,nosuid,nodev,size={TMP_MB}m"   # in-memory: not a host mount
+
+log = logging.getLogger("mises.sim.openfoam")
+
+
 class ContainerRunner(Protocol):
     async def run(self, argv: list[str], *, timeout_s: float) -> tuple[int, str]: ...
-    async def kill(self, name: str) -> None: ...
+    async def kill(self, name: str) -> str | None: ...       # None, or what went wrong
+    async def cleanup(self) -> None: ...
+    async def ncpu(self) -> int | None: ...
 
 
 class DockerRunner:
@@ -53,6 +69,24 @@ class DockerRunner:
 
     def __init__(self, docker: str):
         self.docker = docker
+
+    async def _cli(self, *args: str, timeout_s: float | None = None) -> tuple[int, str]:
+        """(exit code, stdout) of a short docker CLI call; (-1, why) on a timeout / OS error."""
+        timeout_s = KILL_TIMEOUT_S if timeout_s is None else timeout_s
+        try:
+            p = await asyncio.create_subprocess_exec(
+                self.docker, *args, stdin=asyncio.subprocess.DEVNULL,
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+                env=docker_env(self.docker), start_new_session=True)
+        except OSError as e:
+            return -1, str(e)
+        try:
+            out, _ = await asyncio.wait_for(p.communicate(), timeout_s)
+        except asyncio.TimeoutError:
+            p.kill()
+            await p.wait()
+            return -1, f"`docker {args[0]}` did not answer within {timeout_s:g}s"
+        return p.returncode or 0, out.decode(errors="replace")
 
     async def run(self, argv: list[str], *, timeout_s: float) -> tuple[int, str]:
         proc = await asyncio.create_subprocess_exec(
@@ -68,36 +102,81 @@ class DockerRunner:
             raise
         return proc.returncode or 0, out.decode(errors="replace")[-TAIL:]
 
-    async def kill(self, name: str) -> None:
+    async def kill(self, name: str) -> str | None:
+        """`docker kill`, then `docker rm -f` (a container cancelled between create and start
+        is never --rm'd); a slow daemon is retried once and reported, never ignored."""
+        rc, msg = await self._cli("kill", name)
+        if rc == -1:
+            log.warning("docker kill %s: %s; retrying with rm -f", name, msg)
+        for attempt in (1, 2):
+            rc2, msg2 = await self._cli("rm", "-f", name)
+            if rc2 != -1:
+                return None
+            log.warning("docker rm -f %s (attempt %d): %s", name, attempt, msg2)
+        return (f"the OpenFOAM container {name} could not be stopped ({msg2}); stop it with "
+                f"`docker rm -f {name}`")
+
+    async def cleanup(self) -> None:
+        """Remove Mises wind containers left behind (a crashed or quit core, a failed rm).
+        Wind studies run one at a time (studies.semaphore), so none of them is live."""
+        rc, out = await self._cli("ps", "-aq", "--filter", LABEL_FILTER)
+        ids = out.split() if rc == 0 else []
+        if ids:
+            log.warning("removing %d leftover OpenFOAM container(s)", len(ids))
+            await self._cli("rm", "-f", *ids)
+
+    async def ncpu(self) -> int | None:
+        rc, out = await self._cli("info", "--format", "{{.NCPU}}")
         try:
-            p = await asyncio.create_subprocess_exec(
-                self.docker, "kill", name, stdin=asyncio.subprocess.DEVNULL,
-                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
-                env=docker_env(self.docker))
-            await asyncio.wait_for(p.wait(), KILL_TIMEOUT_S)
-        except (OSError, asyncio.TimeoutError):
-            pass
+            return int(out.strip()) if rc == 0 else None
+        except ValueError:
+            return None
 
 
 def make_runner(docker: str) -> ContainerRunner:
     return DockerRunner(docker)
 
 
-def docker_argv(docker: str, case: Path, name: str, *, cpus: int, memory_mb: int) -> list[str]:
-    """The one `docker run` Mises issues. Nothing from the part or the user's text reaches it
-    except numbers (cpus, memory) and the case path Mises created."""
-    case = Path(case).resolve()
-    if ":" in str(case) or "," in str(case):
+def mount_path(case: Path, job_root: Path | None = None) -> Path:
+    """The case dir to mount, refused (like safe_io) when it, job_root or any dir between them
+    is a symlink, when it escapes job_root, or when its text would split the -v spec. (Dirs
+    above job_root, e.g. macOS's /var -> /private/var, are the Mises home's own.)"""
+    case = Path(case).absolute()
+    root = Path(job_root).absolute() if job_root is not None else case
+    if not (case == root or case.is_relative_to(root)):
+        raise SimError("bad_setup", "the OpenFOAM case is outside the study folder")
+    p = case
+    while True:
+        if p.is_symlink() or not p.is_dir():
+            raise SimError("bad_setup", f"refusing to mount {case}: {p} is a symlink or not a "
+                           "directory", hint="the study folder must be a plain directory")
+        if p == root:
+            break
+        p = p.parent
+    real = case.resolve()
+    if ":" in str(real) or "," in str(real):
         raise SimError("bad_setup", "the study folder path contains ':' or ','",
                        hint="move the Mises home to a plain path")
+    return real
+
+
+def docker_argv(docker: str, case: Path, name: str, *, cpus: int, memory_mb: int,
+                job_root: Path | None = None) -> list[str]:
+    """The one `docker run` Mises issues. Nothing from the part or the user's text reaches it
+    except numbers (cpus, memory) and the case path Mises created. The root filesystem is
+    read-only; the only writable places are the case mount and an in-memory /tmp (not a host
+    mount)."""
+    case = mount_path(case, job_root)
     return [docker, "run", "--rm", "--name", name, "--pull", "never",
             "--network", "none",
             "-v", f"{case}:/case:rw", "-w", "/case",
+            "--read-only", "--tmpfs", TMPFS,
             f"--cpus={cpus}", f"--memory={memory_mb}m", f"--memory-swap={memory_mb}m",
             f"--pids-limit={PIDS_LIMIT}", f"--shm-size={SHM_MB}m",
             "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
             "--user", f"{os.getuid()}:{os.getgid()}",
-            "-e", "HOME=/case", "-e", "OMPI_MCA_btl_vader_single_copy_mechanism=none",
+            "-e", "HOME=/case", "-e", "TMPDIR=/tmp",
+            "-e", "OMPI_MCA_btl_vader_single_copy_mechanism=none",
             "--label", "mises.study=wind",
             OPENFOAM_IMAGE, "/bin/bash", "/case/Allrun"]
 
@@ -112,7 +191,12 @@ def _coeff_mean(tab: dict, key: str, n_tail: int) -> float:
 def read_results(case: Path) -> dict:
     """Cd / Cl / Cs and the moments (wind frame) from postProcessing, averaged over the last
     AVERAGE_TAIL of the iterations, with the history and the log state."""
-    coef = foam_parse.function_object_table(case, "forceCoeffs", "coefficient.dat")
+    try:
+        coef = foam_parse.function_object_table(case, "forceCoeffs", "coefficient.dat")
+        forces = foam_parse.function_object_table(case, "forces", "force.dat")
+        moments = foam_parse.function_object_table(case, "forces", "moment.dat")
+    except (OSError, ValueError) as e:     # a symlink, a non-regular or an oversized file
+        raise SimError("solve_failed", f"unreadable OpenFOAM output: {e}") from None
     if coef is None or not len(coef.get("Time", [])):
         raise SimError("solve_failed", "OpenFOAM wrote no force coefficients",
                        hint="see log.simpleFoam in the study folder")
@@ -127,8 +211,6 @@ def read_results(case: Path) -> dict:
                        "cl": float(coef.get("Cl", np.zeros(n))[i])}
                       for i in range(0, n, step)]
     out["iterations"] = int(coef["Time"][-1])
-    forces = foam_parse.function_object_table(case, "forces", "force.dat")
-    moments = foam_parse.function_object_table(case, "forces", "moment.dat")
 
     def vec(tab, root):
         if tab is None or f"{root}_x" not in tab:
@@ -138,50 +220,82 @@ def read_results(case: Path) -> dict:
     out["force_pressure_n"] = vec(forces, "pressure")
     out["force_viscous_n"] = vec(forces, "viscous")
     out["moment_nm"] = vec(moments, "total")
-    log = case / "log.simpleFoam"
-    st = foam_parse.read_log(log.read_text(errors="replace")) if log.is_file() else {}
+    try:
+        st = foam_parse.read_log_file(case / "log.simpleFoam")
+    except (OSError, ValueError):
+        st = {}
     out["converged"] = bool(st.get("converged"))
     out["stopped"] = "converged" if out["converged"] else "iterations"
     return out
 
 
+class LogTail:
+    """The last 'Time = N' of a growing log, reading only the bytes added since the last poll
+    (no-follow, at most LOG_TAIL per poll)."""
+
+    def __init__(self, path: Path):
+        self.path, self.offset, self.iteration, self._rest = path, 0, None, ""
+
+    def poll(self) -> float | None:
+        try:
+            text, size = foam_parse.read_capped(self.path, foam_parse.LOG_TAIL, tail=True,
+                                                offset=self.offset)
+        except (OSError, ValueError):
+            return self.iteration
+        if size < self.offset:                 # truncated / replaced: start over
+            self.offset, self._rest = 0, ""
+            return self.poll()
+        self.offset = size
+        chunk = self._rest + text
+        cut = chunk.rfind("\n")
+        self._rest = chunk[cut + 1:][-200:] if cut >= 0 else chunk[-200:]
+        it = foam_parse.read_log(chunk[:cut + 1] if cut >= 0 else "")["iteration"]
+        if it is not None:
+            self.iteration = it
+        return self.iteration
+
+
 async def _watch(case: Path, plan_iters: int, progress) -> None:
     last = None
+    tail = LogTail(case / "log.simpleFoam")
     while True:
         await asyncio.sleep(1.0)
         if progress is None:
             continue
         try:
-            stage = (case / "stage").read_text().strip()
-        except OSError:
+            stage = foam_parse.read_capped(case / "stage", 256, tail=True)[0].strip()
+        except (OSError, ValueError):
             continue
-        it = None
-        if stage == "simpleFoam":
-            try:
-                it = foam_parse.read_log((case / "log.simpleFoam").read_text(
-                    errors="replace"))["iteration"]
-            except OSError:
-                it = None
+        it = await asyncio.to_thread(tail.poll) if stage == "simpleFoam" else None
         d = (stage, it)
         if d != last:
             last = d
             progress({"stage": stage, "iteration": it, "iterations": plan_iters})
 
 
+async def _stop(runner: ContainerRunner, name: str) -> str | None:
+    problem = await runner.kill(name)
+    if problem:
+        log.error(problem)
+    return problem
+
+
 async def run_case(case: Path, runner: ContainerRunner, docker: str, *, cpus: int,
-                   iterations: int, memory_mb: int, timeout_s: float, progress=None) -> None:
+                   iterations: int, memory_mb: int, timeout_s: float, progress=None,
+                   job_root: Path | None = None) -> None:
     name = f"mises-of-{uuid.uuid4().hex[:12]}"
-    argv = docker_argv(docker, case, name, cpus=cpus, memory_mb=memory_mb)
+    argv = docker_argv(docker, case, name, cpus=cpus, memory_mb=memory_mb, job_root=job_root)
     watch = asyncio.create_task(_watch(case, iterations, progress))
     try:
         rc, out = await runner.run(argv, timeout_s=timeout_s)
     except asyncio.TimeoutError:
-        await runner.kill(name)
-        raise SimError("timeout", f"OpenFOAM timed out after {timeout_s:g}s",
+        problem = await _stop(runner, name)
+        raise SimError("timeout", f"OpenFOAM timed out after {timeout_s:g}s"
+                       + (f"; {problem}" if problem else ""),
                        hint="raise timeout_s, lower refinement or openfoam_iterations") \
             from None
     except BaseException:                 # cancelled: never leave a container running
-        await runner.kill(name)
+        await _stop(runner, name)
         raise
     finally:
         watch.cancel()
@@ -191,9 +305,12 @@ async def run_case(case: Path, runner: ContainerRunner, docker: str, *, cpus: in
     if rc != 0:
         m = re.search(r"MISES_STAGE_FAILED (\S+)", out)
         stage = m.group(1) if m else None
-        log = case / f"log.{stage}" if stage else None
-        fatal = (foam_parse.read_log(log.read_text(errors="replace"))["error"]
-                 if log is not None and log.is_file() else None)
+        fatal = None
+        if stage and re.fullmatch(r"[A-Za-z]+", stage):
+            try:
+                fatal = foam_parse.read_log_file(case / f"log.{stage}")["error"]
+            except (OSError, ValueError):
+                fatal = None
         msg = fatal or out.strip()[-600:] or f"exit {rc}"
         raise SimError("solve_failed", f"OpenFOAM {stage or 'run'} failed: {msg}",
                        hint=_hint(stage, out))
@@ -216,6 +333,9 @@ async def run_openfoam_study(tris_part_mm: np.ndarray, s: dict, job_dir: Path, d
     job_dir = Path(job_dir)
     runner = runner or make_runner(docker)
     t0 = time.monotonic()
+    await runner.cleanup()             # leftovers of a crashed / quit core (studies run 1 at a time)
+    ncpu = await runner.ncpu()
+    s = {**s, "cpus": max(1, min(int(s.get("cpus", 1)), ncpu or os.cpu_count() or 1))}
     d0, up = np.array(s["direction"], float), np.array(s["up"], float)
     angles = [0.0] + [a for a in s.get("yaw_deg", []) if abs(a) > 1e-9]
     a_ref = s.get("ref_area_m2")
@@ -263,17 +383,17 @@ async def _solve_angle(tris_part_mm, s, case: Path, direction, up, a_ref_m2, doc
                        f"needs ~{plan.memory_mb_estimate:.0f} MB, over the {s['memory_mb']} MB "
                        "budget", hint="lower the refinement or raise memory_mb")
     write_case(case, tris_m, s, a_ref, plan)
-    ext = tris_w.reshape(-1, 3).max(0) - tris_w.reshape(-1, 3).min(0)
-    re_ = rho * U * max(ext[0] * 1e-3, plan.d_ref_m) / mu
+    re_ = rho * U * plan.d_ref_m / mu           # on lRef = D, like Cm and the benchmarks
     await run_case(case, runner, docker, cpus=int(s.get("cpus", 1)),
                    iterations=plan.end_iterations, memory_mb=int(s["memory_mb"]),
-                   timeout_s=timeout_s, progress=progress)
+                   timeout_s=timeout_s, progress=progress, job_root=case.parent)
     r = read_results(case)
     m_w = r["moment_nm"]
     if m_w is None:      # from the coefficients: Cm q A lRef (roll x, pitch y, yaw z)
         m_w = [c * q * a_ref * plan.d_ref_m for c in (r["CmRoll"], r["CmPitch"], r["CmYaw"])]
     band = openfoam_error_band()
     return {"frontal_area_m2": frontal, "ref_area_m2": a_ref, "reynolds": re_,
+            "reynolds_length_m": plan.d_ref_m, "l_ref_m": plan.d_ref_m,
             "dynamic_pressure_pa": q, "frame": R.tolist(), "method": "openfoam",
             "fidelity": LABEL, "cd": r["Cd"], "cl": r["Cl"], "cs": r["Cs"],
             "drag_n": r["Cd"] * q * a_ref, "lift_n": r["Cl"] * q * a_ref,
@@ -309,6 +429,16 @@ def _nearest(src: np.ndarray, dst: np.ndarray) -> np.ndarray:
     return out
 
 
+def _surface(path: Path, field: str) -> tuple[np.ndarray, np.ndarray]:
+    """surface_values, or empty when the file is a symlink, not regular or over the cap (the
+    output is then left out with no Cp / slice; the forces still stand)."""
+    try:
+        return foam_parse.surface_values(path, field)
+    except (OSError, ValueError) as e:
+        log.warning("skipping OpenFOAM surface %s: %s", path.name, e)
+        return np.zeros((0, 3)), np.zeros(0)
+
+
 def write_outputs(out_dir: Path, case: Path, tris_part_mm: np.ndarray, R: np.ndarray, s: dict,
                   main: dict) -> None:
     from ..results import write_glb
@@ -321,7 +451,7 @@ def write_outputs(out_dir: Path, case: Path, tris_part_mm: np.ndarray, R: np.nda
     surf = foam_parse.find_surface(case, "surfaces", "body", "p")
     outputs: dict = {"glb": "result.glb"}
     if surf is not None:
-        xyz, p = foam_parse.surface_values(surf, "p")
+        xyz, p = _surface(surf, "p")
         if len(xyz) and np.ndim(p) == 1:
             vw = verts @ R.T * 1e-3
             cpv = p[_nearest(xyz, vw)] / q_kin
@@ -340,7 +470,7 @@ def write_outputs(out_dir: Path, case: Path, tris_part_mm: np.ndarray, R: np.nda
         f = foam_parse.find_surface(case, "surfaces", name, "U")
         if f is None:
             continue
-        xyz, U = foam_parse.surface_values(f, "U")
+        xyz, U = _surface(f, "U")
         if not len(xyz) or np.ndim(U) != 2:
             continue
         img = slice_image(xyz, np.linalg.norm(U, axis=1), tris_m, axes)

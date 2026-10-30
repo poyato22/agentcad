@@ -211,6 +211,13 @@ def _location_in_mesh(p: CasePlan) -> np.ndarray:
                      c[2] + 0.373 * h])
 
 
+def min_vol(p: CasePlan) -> float:
+    """snappyHexMesh's minVol scaled to the part: 1e-4 of a surface cell. The layers' thinnest
+    cells (minThickness 0.1 of a surface cell) stay ~1000x above it, so a 10 mm part at
+    refinement 4 keeps its layers (an absolute 1e-13 m3 rejected them)."""
+    return p.surface_cell_m ** 3 * 1e-4
+
+
 def _snappy(p: CasePlan) -> str:
     d = p.d_ref_m
     lmin, lmax = p.surface_levels
@@ -245,7 +252,7 @@ def _snappy(p: CasePlan) -> str:
             "    maxThicknessToMedialRatio 0.3;\n    minMedialAxisAngle 90;\n"
             "    nBufferCellsNoExtrude 0;\n    nLayerIter 50;\n}\n\n"
             "meshQualityControls\n{\n    maxNonOrtho 65;\n    maxBoundarySkewness 20;\n"
-            "    maxInternalSkewness 4;\n    maxConcave 80;\n    minVol 1e-13;\n"
+            f"    maxInternalSkewness 4;\n    maxConcave 80;\n    minVol {min_vol(p):.3g};\n"
             "    minTetQuality 1e-15;\n    minArea -1;\n    minTwist 0.02;\n"
             "    minDeterminant 0.001;\n    minFaceWeight 0.05;\n    minVolRatio 0.01;\n"
             "    minTriangleTwist -1;\n    nSmoothScale 4;\n    errorReduction 0.75;\n"
