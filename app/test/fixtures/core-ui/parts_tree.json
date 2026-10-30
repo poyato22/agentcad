@@ -8,6 +8,7 @@
     "color": null,
     "kind": "part",
     "version": 1,
+    "appearance": null,
     "part_id": "top_plate",
     "vars": {
       "side": 40.0,
@@ -474,6 +475,7 @@
     "color": "#d9822b",
     "kind": "part",
     "version": 5,
+    "appearance": null,
     "part_id": "quad_arm",
     "vars": {
       "thickness": 5.0,

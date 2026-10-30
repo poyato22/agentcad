@@ -16,7 +16,7 @@ import copy
 
 import httpx
 from pydantic import (BaseModel, ConfigDict, Field, StrictInt, ValidationError,
-                      field_validator)
+                      field_validator, model_validator)
 
 from .browser.sites import DEFAULT_SITES, on_domain
 
@@ -111,6 +111,32 @@ class SuggestedSite(BaseModel):
 
 def default_sites() -> list[SuggestedSite]:
     return [SuggestedSite.model_validate(copy.deepcopy(s)) for s in DEFAULT_SITES]
+_BG_HEX_RE = re.compile(r"^#[0-9a-f]{6}$")
+
+
+class ViewerBackground(BaseModel):
+    """The viewer's background (Plan 7 U8, R21): the theme's drafting sheet, one solid color, or
+    a soft two-stop gradient (top, bottom), Onshape-style."""
+    model_config = ConfigDict(extra="forbid")
+
+    mode: Literal["theme", "solid", "gradient"] = "theme"
+    colors: list[str] = Field(default_factory=list, max_length=2)
+
+    @field_validator("colors")
+    @classmethod
+    def _hex(cls, v: list[str]) -> list[str]:
+        out = [c.strip().lower() for c in v]
+        for c in out:
+            if not _BG_HEX_RE.match(c):
+                raise ValueError(f"{c!r} is not a #rrggbb color")
+        return out
+
+    @model_validator(mode="after")
+    def _count(self) -> "ViewerBackground":
+        need = {"theme": 0, "solid": 1, "gradient": 2}[self.mode]
+        if self.mode != "theme" and len(self.colors) != need:
+            raise ValueError(f"a {self.mode} background needs {need} color(s)")
+        return self
 
 
 class Profile(BaseModel):
@@ -129,6 +155,7 @@ class Profile(BaseModel):
     max_parallel_agents: Literal["auto"] | Annotated[StrictInt, Field(ge=1, le=16)] = "auto"
     local_endpoints: dict[str, str] = {}
     theme: Literal["system", "light", "dark"] = "system"
+    viewer_background: ViewerBackground = Field(default_factory=ViewerBackground)
     setup_completed_at: float | None = None
     printers: list[PrinterEntry] = []
     # builds (Plan 5 C1): the active build and the open build tabs, plus hidden built-in agents

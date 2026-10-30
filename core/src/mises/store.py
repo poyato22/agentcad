@@ -119,6 +119,8 @@ class Part(BaseModel):
     color: str | None = None  # "#rrggbb"
     kind: Literal["part", "group", "catalog"] = "part"
     version: int = 1
+    # Plan 7 U8: {preset, color, metalness, roughness, opacity} (appearance.normalize), or None
+    appearance: dict | None = None
 
 
 _SCHEMA = """
@@ -170,6 +172,16 @@ def _step_hash(run_id: str, kind: str, payload: dict, prev_hash: str | None) -> 
         {"run_id": run_id, "kind": str(kind), "payload": payload, "prev_hash": prev_hash}))
 
 
+def _json_or_none(raw: str | None) -> dict | None:
+    if not raw:
+        return None
+    try:
+        v = json.loads(raw)
+    except ValueError:
+        return None
+    return v if isinstance(v, dict) else None
+
+
 class Store:
     def __init__(self, path: Path | str):
         self._lock = threading.RLock()
@@ -194,6 +206,10 @@ class Store:
                           ("role", "TEXT"), ("routed", "TEXT")):   # Plan 7 U3c
             if col not in cols:
                 self._db.execute(f"ALTER TABLE runs ADD COLUMN {col} {decl}")
+        # Plan 7 U8: the part's material (JSON), added to existing databases
+        part_cols = {r[1] for r in self._db.execute("PRAGMA table_info(parts)")}
+        if "appearance" not in part_cols:
+            self._db.execute("ALTER TABLE parts ADD COLUMN appearance TEXT")
         self._migrate_default_project()
 
     @contextmanager
@@ -478,7 +494,8 @@ class Store:
         d = dict(row)
         return Part(id=d["id"], project_id=d["project_id"], label=d["label"],
                     parent_id=d["parent_id"], order=d["ord"] or 0, color=d["color"],
-                    kind=d["kind"] or "part", version=d["version"] or 1)
+                    kind=d["kind"] or "part", version=d["version"] or 1,
+                    appearance=_json_or_none(d.get("appearance")))
 
     def get_part(self, part_id: str) -> Part | None:
         row = self._one("SELECT * FROM parts WHERE id=?", (part_id,))
@@ -507,13 +524,16 @@ class Store:
         return self.get_part(part_id)
 
     def update_part(self, part_id: str, **fields: Any) -> Part:
-        allowed = {"label", "color", "parent_id", "project_id", "kind", "version", "ord"}
+        allowed = {"label", "color", "parent_id", "project_id", "kind", "version", "ord",
+                   "appearance"}
         bad = set(fields) - allowed
         if bad:
             raise ValueError(f"cannot update part fields: {sorted(bad)}")
         with self._tx() as db:
             if db.execute("SELECT 1 FROM parts WHERE id=?", (part_id,)).fetchone() is None:
                 raise KeyError(part_id)
+            if fields.get("appearance") is not None:
+                fields = {**fields, "appearance": json.dumps(fields["appearance"])}
             if fields:
                 sets = ", ".join(f"{k}=?" for k in fields)
                 db.execute(f"UPDATE parts SET {sets} WHERE id=?", (*fields.values(), part_id))

@@ -1,6 +1,7 @@
 import type { JSX } from "preact";
-import { useState } from "preact/hooks";
-import type { ProfilePatch } from "../../../api/types";
+import { useEffect, useRef, useState } from "preact/hooks";
+import type { ProfilePatch, ViewerBackground } from "../../../api/types";
+import { applyBackground, BACKGROUNDS, choiceOf, previewBackground, THEME_BACKGROUND } from "../../viewer/background";
 import { actions } from "../../../state/store";
 import { setTheme, THEMES, type Theme } from "../../../styles/theme";
 import { Button } from "../../common/Button";
@@ -13,12 +14,28 @@ export function ProfileSection({ data, update }: SectionProps): JSX.Element {
   const [name, setName] = useState(p.display_name);
   const [material, setMaterial] = useState(p.default_material);
   const [theme, setThemeState] = useState<Theme>(p.theme);
+  const savedBg = p.viewer_background ?? THEME_BACKGROUND;
+  const [bg, setBg] = useState<ViewerBackground>(savedBg);
+  // the background last saved: an unsaved preview is put back when the Profile closes
+  const savedRef = useRef(savedBg);
+  useEffect(() => () => { applyBackground(savedRef.current); }, []);
   const task = useTask();
 
   const patch: ProfilePatch = {};
   if (name !== p.display_name) patch.display_name = name;
   if (material !== p.default_material) patch.default_material = material;
   if (theme !== p.theme) patch.theme = theme;
+  if (JSON.stringify(bg) !== JSON.stringify(savedBg)) patch.viewer_background = bg;
+  const bgChoice = choiceOf(bg);
+
+  // Like the theme, the background previews live as it is picked; Save persists it.
+  function pickBackground(id: string): void {
+    const c = BACKGROUNDS.find((x) => x.id === id);
+    if (!c) return;
+    setBg(c.bg);
+    previewBackground(c.bg);
+    task.clear();
+  }
   const dirty = Object.keys(patch).length > 0;
 
   // The theme previews live as it is picked; Save persists it (PUT /profile).
@@ -36,6 +53,9 @@ export function ProfileSection({ data, update }: SectionProps): JSX.Element {
       setMaterial(next.default_material);
       setThemeState(next.theme);
       setTheme(next.theme);
+      setBg(next.viewer_background ?? THEME_BACKGROUND);
+      savedRef.current = next.viewer_background ?? THEME_BACKGROUND;
+      applyBackground(savedRef.current);
     }, "saved");
   }
 
@@ -52,6 +72,12 @@ export function ProfileSection({ data, update }: SectionProps): JSX.Element {
         <label class="profile-field"><span class="label">Theme</span>
           <select aria-label="Theme" value={theme} onChange={(e) => pickTheme(e.currentTarget.value as Theme)}>
             {THEMES.map((t) => <option key={t} value={t}>{THEME_LABEL[t]}</option>)}
+          </select>
+        </label>
+        <label class="profile-field"><span class="label">Viewer background</span>
+          <select aria-label="Viewer background" value={bgChoice?.id ?? "custom"} onChange={(e) => pickBackground(e.currentTarget.value)}>
+            {BACKGROUNDS.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            {!bgChoice && <option value="custom">Custom ({bg.colors.join(" → ")})</option>}
           </select>
         </label>
         <div class="profile-row">

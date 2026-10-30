@@ -222,6 +222,10 @@ const COVERAGE: Record<string, string> = {
   "GET /runs/tree": "runs_tree.json",
   "POST /agents": "agent_create.json",
   "POST /parts/reorder": "parts_reorder.json",
+  // Plan 7 U8: the part menu's duplicate / delete / export (core tests/server/test_parts_manager_api.py)
+  "POST /parts/{part_id}/duplicate": "EXEMPT: Plan 7 U8; answers a GET /parts row (part_patch.json's shape); core test_parts_manager_api covers it; real-core fixture at the integration re-dump",
+  "DELETE /parts/{part_id}": "EXEMPT: Plan 7 U8; answers {deleted}; core test_parts_manager_api covers it; real-core fixture at the integration re-dump",
+  "POST /parts/{part_id}/export": "EXEMPT: Plan 7 U8; writes to ~/Downloads (MISES_EXPORT_DIR), so the dump can't run it on the dev home; core test_parts_manager_api covers it",
   "POST /projects": "project_create.json",
   "POST /projects/trash/empty": "projects_trash_empty.json",
   "POST /projects/{project_id}/restore": "project_restore.json",

@@ -31,6 +31,9 @@ import { createViewer, type DesignViewerHandle, type PickMarker } from "./scene"
 import { TitleBlock } from "./TitleBlock";
 import { ViewerTools, type ViewMode, type ViewScope } from "./ViewerTools";
 import { ModeSwitch } from "../assembly/mode";
+import { materialOf } from "../../lib/appearance";
+import { backgroundStyle, edgeInk, isLight, viewerBackground } from "./background";
+import { BackgroundMenu } from "./BackgroundMenu";
 import "./viewer.css";
 
 /** The part on the sheet: the selected one, else the first part (state/selection.ts). */
@@ -117,12 +120,18 @@ function markerFor(part: PartSummary, face: PartFace | null, edge: PartEdge | nu
   return null;
 }
 
+/** Models kept off the sheet for a quick re-select (GPU memory: a few MB each at most). */
+export const PARKED_MAX = 24;
+
 export function Viewer(): JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewerRef = useRef<DesignViewerHandle | null>(null);
   const scenes = useRef(new Map<string, PartScene>());
   const loaders = useRef(new Map<string, PartLoader>());
+  /** Models no longer on the sheet, kept (newest last) so selecting the part again shows it at once
+   *  instead of refetching and re-parsing its GLB (U8: the lag the user felt on every click). */
+  const parked = useRef(new Map<string, { scene: PartScene; loader: PartLoader }>());
   const down = useRef<{ x: number; y: number } | null>(null);
   /** Each pick opens a fresh callout (its own op, face / edge and fields). */
   const pickSeq = useRef(0);
@@ -151,7 +160,8 @@ export function Viewer(): JSX.Element {
   const byLabel = changingRunLabel.value;
   const shown = shownParts(parts.value, part, scope, hiddenParts.value);
   const loadSig = shown.map((p) => `${p.part_id}@${p.mtime}`).join("|");
-  const colorSig = shown.map((p) => `${p.part_id}:${p.color ?? ""}`).join("|");
+  const colorSig = shown.map((p) => `${p.part_id}:${p.color ?? ""}:${JSON.stringify(p.appearance ?? null)}`).join("|");
+  const bg = viewerBackground.value;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -159,7 +169,8 @@ export function Viewer(): JSX.Element {
     if (!canvas || !host) return;
     let handle: DesignViewerHandle | null = null;
     try {
-      handle = createViewer(canvas);
+      // edges follow the background's lightness when it isn't the theme's sheet (R21)
+      handle = createViewer(canvas, { edgeColor: () => edgeInk(viewerBackground.peek()) });
     } catch {
       handle = null; // no WebGL: the sheet, title block and metrics still work
     }
@@ -179,6 +190,8 @@ export function Viewer(): JSX.Element {
       handle?.setPart(null);
       for (const s of scenes.current.values()) s.dispose();
       scenes.current.clear();
+      for (const p of parked.current.values()) p.scene.dispose();
+      parked.current.clear();
       handle?.dispose();
       viewerRef.current = null;
     };
@@ -186,6 +199,7 @@ export function Viewer(): JSX.Element {
 
   useEffect(() => { viewerRef.current?.setMode(mode); }, [mode]);
   useEffect(() => { viewerRef.current?.setHighlight(highlight); }, [highlight]);
+  useEffect(() => { viewerRef.current?.restyle?.(); }, [bg]);
 
   /** Put the loaded parts on the sheet. */
   function compose(refit: boolean): void {
@@ -193,25 +207,50 @@ export function Viewer(): JSX.Element {
     const focus = activePart.peek()?.part_id ?? null;
     const items = list.flatMap((p) => {
       const sc = scenes.current.get(p.part_id);
-      return sc ? [{ id: p.part_id, scene: sc, color: p.color ?? null, focus: p.part_id === focus }] : [];
+      return sc ? [{ id: p.part_id, scene: sc, color: p.color ?? null, focus: p.part_id === focus, material: materialOf(p) }] : [];
     });
     viewerRef.current?.setParts(items, refit, viewScope.peek() === "build");
     const f = focus ? scenes.current.get(focus) : undefined;
     if (f) {
       const s = f.bbox.getSize(new Vector3());
       setSize(`${s.x.toFixed(2)},${s.y.toFixed(2)},${s.z.toFixed(2)}`);
+      // after the frame that draws it (this callback runs after the viewer's own): the click-to-
+      // model latency the parts perf spec measures
+      if (typeof performance !== "undefined" && typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(() => { try { performance.mark("mises:viewer-settled", { detail: focus }); } catch { /* no marks */ } });
+      }
     } else setSize(null);
   }
 
-  // load what is shown (each part only when its mtime changed), drop what no longer is
+  function park(id: string, sc: PartScene, ld: PartLoader): void {
+    parked.current.delete(id);
+    parked.current.set(id, { scene: sc, loader: ld });
+    while (parked.current.size > PARKED_MAX) {
+      const [old, p] = parked.current.entries().next().value as [string, { scene: PartScene; loader: PartLoader }];
+      parked.current.delete(old);
+      p.scene.dispose();
+      p.loader.reset();
+    }
+  }
+
+  // load what is shown (each part only when its mtime changed), park what no longer is
   useEffect(() => {
     const want = new Map(shown.map((p) => [p.part_id, p.mtime]));
     for (const id of [...scenes.current.keys()]) {
       if (want.has(id)) continue;
-      scenes.current.get(id)?.dispose();
+      const sc = scenes.current.get(id) as PartScene;
+      const ld = loaders.current.get(id);
       scenes.current.delete(id);
-      loaders.current.get(id)?.reset();
       loaders.current.delete(id);
+      if (ld) park(id, sc, ld);
+      else sc.dispose();
+    }
+    for (const id of want.keys()) {
+      const p = parked.current.get(id);
+      if (!p || scenes.current.has(id)) continue;
+      parked.current.delete(id);
+      scenes.current.set(id, p.scene);              // its loader answers "unchanged" while the mtime holds
+      loaders.current.set(id, p.loader);
     }
     if (want.size === 0) { compose(false); setError(null); return; }
     try { actions.client(); } catch { return; } // no core bound yet
@@ -407,7 +446,8 @@ export function Viewer(): JSX.Element {
   const dots: Vec3[] = tool === "measure" ? picks.flatMap((p) => (p.kind === "vertex" || p.kind === "point" ? [p.point] : [])) : [];
 
   return (
-    <div class="vp" ref={hostRef} data-testid="viewer" data-tab={tab}>
+    <div class="vp" ref={hostRef} data-testid="viewer" data-tab={tab} style={backgroundStyle(bg)} data-bg-mode={bg.mode}
+      data-bg={isLight(bg) === null ? undefined : isLight(bg) ? "light" : "dark"}>
       <canvas
         ref={canvasRef}
         class="vp-canvas"
@@ -468,6 +508,7 @@ export function Viewer(): JSX.Element {
       {tab === "code" && (part
         ? <SourceEditor key={part.part_id} part={part} />
         : <div class="src src-empty"><p class="faint">Select a part to see its script.</p></div>)}
+      <BackgroundMenu />
       <TitleBlock part={part} runLabel={byLabel} error={error} />
     </div>
   );

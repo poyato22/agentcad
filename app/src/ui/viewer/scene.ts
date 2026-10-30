@@ -2,6 +2,9 @@
 // grid shows through), rendered on demand only.
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { RectAreaLightUniformsLib } from "three/addons/lights/RectAreaLightUniformsLib.js";
+import type { MaterialParams } from "../../lib/appearance";
 import { EDGE_COLOR, meshColors, type MeshColors, type PartScene } from "./loadPart";
 
 export { EDGE_COLOR };
@@ -22,7 +25,11 @@ export const ISO_ELEVATION_DEG = 35;
 
 /** One part on the sheet: its model, its color (null: the theme's face grey) and whether it is
  *  the focused part (the one the camera fits and the highlight applies to). */
-export interface ShownPart { id: string; scene: PartScene; color: string | null; focus: boolean }
+export interface ShownPart {
+  id: string; scene: PartScene; color: string | null; focus: boolean;
+  /** Plan 7 U8: the part's look (lib/appearance materialOf); absent = the plain drafting material. */
+  material?: MaterialParams;
+}
 
 /** A click on a shown part: where (world = the part's CAD frame, mm) and the surface normal. */
 export interface ViewerHit { partId: string; point: [number, number, number]; normal: [number, number, number] }
@@ -60,6 +67,8 @@ export interface DesignViewerHandle extends ViewerHandle {
   /** Called after every frame (the camera moved, the canvas resized): HTML overlays re-place
    *  themselves with toScreen. Returns the unsubscribe. */
   onView(cb: () => void): () => void;
+  /** Re-reads the edge color (deps.edgeColor) and repaints: the background changed. */
+  restyle?(): void;
 }
 
 /** The slice of WebGLRenderer the viewer uses (lets tests stub it). */
@@ -76,7 +85,10 @@ export interface ViewerDeps {
   createRenderer?: (canvas: HTMLCanvasElement) => RendererLike;
   /** Edge color when not highlighted (default: the --mesh-edge token). Read on every restyle (setPart /
    *  setMode / setHighlight / theme change). */
-  edgeColor?: () => string;
+  edgeColor?: () => string | null | undefined;
+  /** The environment map shiny parts reflect (default: RoomEnvironment through PMREM, turned Z-up on a real
+   *  WebGLRenderer, none on a stub). Built once, on the first shiny part. */
+  environment?: () => THREE.Texture | null;
 }
 
 function defaultRenderer(canvas: HTMLCanvasElement): RendererLike {
@@ -113,6 +125,24 @@ export function fitOrtho(camera: THREE.OrthographicCamera, bbox: THREE.Box3, asp
   camera.updateProjectionMatrix();
 }
 
+/** Ambient light for plain (drafting) parts; with a shiny part on the sheet it drops to
+ *  SHINY_AMBIENT (a flat ambient washes PBR finishes out) and plain Lambert faces get the
+ *  difference back as emissive, so they look exactly as before. */
+export const AMBIENT = 1.1;
+export const SHINY_AMBIENT = 0.5;
+/** The highlight light (shiny parts only): a small softbox above and across from the iso camera,
+ *  sized and placed from the framed box, so flat faces under the orthographic camera show a
+ *  highlight that moves across them instead of one flat reflected color. */
+export const SOFTBOX = { intensity: 10, width: 0.5, height: 0.2, distance: 0.8, dir: [-0.3, 0.7, 0.6] as const };
+
+let rectLib = false;
+/** RectAreaLight needs its lookup tables once per page. */
+function initRectLights(): void {
+  if (rectLib) return;
+  rectLib = true;
+  try { RectAreaLightUniformsLib.init(); } catch { /* no WebGL tables: the softbox is just dark */ }
+}
+
 export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): DesignViewerHandle {
   const renderer = (deps.createRenderer ?? defaultRenderer)(canvas);
   const edgeColor = deps.edgeColor;
@@ -120,10 +150,18 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
   renderer.setPixelRatio(typeof window === "undefined" ? 1 : Math.min(window.devicePixelRatio || 1, 2));
 
   const scene = new THREE.Scene();
-  scene.add(new THREE.AmbientLight(0xffffff, 1.1));
+  const ambient = new THREE.AmbientLight(0xffffff, AMBIENT);
+  scene.add(ambient);
   const key = new THREE.DirectionalLight(0xffffff, 0.9);
   key.position.set(-1, -2, 3);
   scene.add(key);
+  // Filmic tone mapping for the PBR finishes; every plain material opts out (toneMapped: false),
+  // so the drafting look is unchanged.
+  if (renderer instanceof THREE.WebGLRenderer) {
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1;
+  }
+  let softbox: THREE.RectAreaLight | null = null;
 
   const camera = new THREE.OrthographicCamera(-50, 50, 50, -50, 0.1, 1000);
   camera.up.set(0, 0, 1);
@@ -166,18 +204,115 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
 
   let colors = viewerColors();
 
+  // ---- materials (Plan 7 U8, R22): a part with an appearance gets a physically based material lit
+  // by Three's RoomEnvironment (turned Z-up, through PMREM) and the softbox, so metals reflect and
+  // flat faces carry a highlight; a plain part keeps loadPart's matte drafting material.
+
+  let envTex: THREE.Texture | null | undefined;
+  function environment(): THREE.Texture | null {
+    if (envTex !== undefined) return envTex;
+    envTex = null;
+    try {
+      if (deps.environment) envTex = deps.environment();
+      else if (renderer instanceof THREE.WebGLRenderer) {
+        const pmrem = new THREE.PMREMGenerator(renderer);
+        const room = new RoomEnvironment();
+        envTex = pmrem.fromScene(room, 0.04).texture;
+        room.dispose();
+        pmrem.dispose();
+      }
+    } catch { envTex = null; /* no env map: shiny parts still get the lights */ }
+    scene.environment = envTex;
+    scene.environmentRotation.x = Math.PI / 2;                    // RoomEnvironment is Y-up; the CAD frame is Z-up
+    return envTex;
+  }
+
+  /** The mesh's material for this look: swapped between matte Lambert and PBR Standard only when
+   *  the kind has to change, then tuned in place. */
+  function materialFor(o: THREE.Mesh, look: MaterialParams | undefined): THREE.MeshLambertMaterial | THREE.MeshStandardMaterial {
+    const cur = o.material as THREE.MeshLambertMaterial | THREE.MeshStandardMaterial;
+    const shiny = !!look?.shiny && !cur.vertexColors;
+    if (shiny && !(cur instanceof THREE.MeshStandardMaterial)) {
+      environment();
+      const next = new THREE.MeshStandardMaterial({ polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+      cur.dispose();
+      o.material = next;
+    } else if (!shiny && cur instanceof THREE.MeshStandardMaterial) {
+      const next = new THREE.MeshLambertMaterial({ polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+      cur.dispose();
+      o.material = next;
+    }
+    const m = o.material as THREE.MeshLambertMaterial | THREE.MeshStandardMaterial;
+    if (m instanceof THREE.MeshStandardMaterial && look) {
+      m.metalness = look.metalness;
+      m.roughness = look.roughness;
+      const see = look.opacity < 1;
+      if (m.transparent !== see) m.needsUpdate = true;
+      m.transparent = see;
+      m.opacity = look.opacity;
+      m.depthWrite = !see;
+      // metals live on their reflections: a little more of the environment
+      m.envMapIntensity = look.metalness > 0.5 ? 1.3 : 1;
+    }
+    return m;
+  }
+
+  /** Lights for what is on the sheet: with a shiny part, the softbox on and the ambient down
+   *  (plain faces get the difference back as emissive). */
+  function applyLights(): void {
+    const shiny = items.some((i) => i.material?.shiny);
+    ambient.intensity = shiny ? SHINY_AMBIENT : AMBIENT;
+    if (shiny && !softbox) {
+      initRectLights();
+      softbox = new THREE.RectAreaLight(0xffffff, SOFTBOX.intensity, 1, 1);
+      scene.add(softbox);
+      placeSoftbox();
+    } else if (!shiny && softbox) {
+      scene.remove(softbox);
+      softbox.dispose();
+      softbox = null;
+    }
+  }
+
+  function placeSoftbox(): void {
+    if (!softbox) return;
+    const box = fitBox();
+    if (!box) return;
+    const c = box.getCenter(new THREE.Vector3());
+    const r = Math.max(box.getSize(new THREE.Vector3()).length(), 1e-3);
+    softbox.width = r * SOFTBOX.width;
+    softbox.height = r * SOFTBOX.height;
+    softbox.position.copy(c).addScaledVector(new THREE.Vector3(...SOFTBOX.dir).normalize(), r * SOFTBOX.distance);
+    softbox.lookAt(c);
+  }
+
+  /** Plain materials (Lambert faces, edges, markers) skip tone mapping. */
+  function untoned(m: THREE.Material): void {
+    if (!m.toneMapped) return;
+    m.toneMapped = false;
+    m.needsUpdate = true;
+  }
+
   function applyStyle(): void {
+    applyLights();
+    const lift = AMBIENT - ambient.intensity;
     for (const it of items) {
       it.scene.object.traverse((o) => {
         if (o instanceof THREE.LineSegments) {
-          (o.material as THREE.LineBasicMaterial).color.set(highlight && it.focus ? colors.highlight : (edgeColor?.() ?? colors.edge));
+          const lm = o.material as THREE.LineBasicMaterial;
+          untoned(lm);
+          lm.color.set(highlight && it.focus ? colors.highlight : (edgeColor?.() ?? colors.edge));
         } else if (o instanceof THREE.Mesh) {
           o.userData["partId"] = it.id;
-          const m = o.material as THREE.MeshLambertMaterial;
+          const m = materialFor(o, it.material);
           m.visible = mode === "shaded";
           // per-vertex colored meshes (the stress heatmap) keep their colors; plain faces take the
           // part's own color, else follow the theme
-          if (!m.vertexColors) m.color?.set(it.color ?? colors.face);
+          if (!m.vertexColors) m.color?.set(it.material?.color ?? it.color ?? colors.face);
+          if (m instanceof THREE.MeshLambertMaterial) {
+            untoned(m);
+            if (!m.vertexColors) { m.emissive.copy(m.color); m.emissiveIntensity = lift; }
+          }
         }
       });
     }
@@ -209,6 +344,7 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
     fitOrtho(camera, box, width / height);
     controls.target.copy(box.getCenter(new THREE.Vector3()));
     controls.update();
+    placeSoftbox();
     requestRender();
   }
 
@@ -304,7 +440,7 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
           return c.clone().addScaledVector(u, Math.cos(t) * m.radius).addScaledVector(v, Math.sin(t) * m.radius);
         });
       }
-      const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: blue, depthTest: false }));
+      const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: blue, depthTest: false, toneMapped: false }));
       line.renderOrder = 10;
       return line;
     }
@@ -312,7 +448,7 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
     if (!tris.length) return null;
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.Float32BufferAttribute(tris, 3));
-    const mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: blue, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false }));
+    const mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: blue, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false, toneMapped: false }));
     mesh.renderOrder = 10;
     return mesh;
   }
@@ -340,6 +476,7 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
     setMarker(m) { setMarkerObjs(m ? [m] : []); },
     setMarkers(list) { setMarkerObjs(list); },
     onView(cb) { viewListeners.add(cb); return () => { viewListeners.delete(cb); }; },
+    restyle() { applyStyle(); requestRender(); },
     fit,
     resize(w, h) {
       width = Math.max(1, w); height = Math.max(1, h);
@@ -358,6 +495,8 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
       if (frame) cancelAnimationFrame(frame);
       clearMarker();
       viewListeners.clear();
+      envTex?.dispose();
+      softbox?.dispose();
       controls.dispose();
       themeObserver?.disconnect();
       osScheme?.removeEventListener("change", onTheme);

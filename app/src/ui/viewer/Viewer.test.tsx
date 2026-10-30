@@ -64,6 +64,26 @@ describe("Viewer", () => {
     expect(container.textContent).toContain("Part · mount plate");
   });
 
+  it("selecting a part again shows its kept model at once, without refetching it (U8)", async () => {
+    const partGlb = vi.fn().mockResolvedValue({ bytes: fixtureBytes(), etag: '"x"' });
+    bind(partGlb);
+    const other: PartSummary = { ...mk(1), part_id: "arm" };
+    parts.value = [mk(1), other];
+    selectedPartId.value = "mount_plate";
+    render(<Viewer />);
+    const shows = (id: string) => handle.setParts.mock.calls.some(([list]) => (list as { id: string }[]).some((i) => i.id === id));
+    await waitFor(() => expect(shows("mount_plate")).toBe(true));
+    act(() => { selectedPartId.value = "arm"; });
+    await waitFor(() => expect(shows("arm")).toBe(true));
+    expect(partGlb).toHaveBeenCalledTimes(2);
+    handle.setParts.mockClear();
+    act(() => { selectedPartId.value = "mount_plate"; });
+    // shown in the same render pass: no fetch, no parse
+    expect(handle.setParts.mock.calls.some(([list]) => (list as { id: string }[]).some((i) => i.id === "mount_plate"))).toBe(true);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(partGlb).toHaveBeenCalledTimes(2);
+  });
+
   it("reload_only_on_mtime_change", async () => {
     const partGlb = vi.fn().mockResolvedValue({ bytes: fixtureBytes(), etag: '"x"' });
     bind(partGlb);

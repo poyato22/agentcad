@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { feedbackResultSchema, measureResultSchema, measureWarmSchema, type FeedbackBody, type FeedbackResult, type MeasureRef, type MeasureResult } from "./measure";
 import { debug } from "../lib/log";
+import type { Appearance } from "../lib/appearance";
 import {
   agentDetailSchema, agentInfoSchema, agentRunSchema, approvalSchema, cancelAllSchema, claudeCodeStatusSchema, cleanupResultSchema, coreErrorBodySchema, coreStatusSchema, deleteRefusedSchema,
   keyStatusSchema, localActionSchema, localStatusSchema, localTestSchema, modelsInfoSchema, okSchema, onshapeTestSchema, partSummarySchema, profileSchema, runIdSchema, runNodeSchema, setupStateSchema, sketchSummarySchema,
@@ -56,7 +57,7 @@ type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
  *  schema_version, which the app never writes. */
 const PROFILE_PATCH_KEYS: ReadonlySet<string> = new Set<string>([
   "display_name", "default_material", "default_agent", "default_model", "onshape_calls_year_cap", "onshape_calls_run_cap",
-  "max_parallel_agents", "local_endpoints", "theme", "hidden_agents",
+  "max_parallel_agents", "local_endpoints", "theme", "hidden_agents", "viewer_background",
 ] satisfies (keyof ProfilePatch)[]);
 
 /** For routes whose answer the UI doesn't use (it refetches status instead): any 2xx JSON body. */
@@ -573,8 +574,21 @@ export class CoreClient {
 
   /** PATCH semantics: a key left out is unchanged; `color: null` / `parent_id: null` clear it.
    *  A move that would form a cycle is refused (400). */
-  patchPart(id: string, patch: { label?: string; color?: string | null; parent_id?: string | null }): Promise<PartSummary> {
+  patchPart(id: string, patch: { label?: string; color?: string | null; parent_id?: string | null; appearance?: Appearance | null }): Promise<PartSummary> {
     return this.json("PATCH", `/parts/${enc(id)}`, partSummarySchema, { body: patch });
+  }
+  // ---- Plan 7 U8: the parts manager's menu
+  /** A copy named "<label> copy", right after the original. */
+  duplicatePart(id: string): Promise<PartSummary> {
+    return this.json("POST", `/parts/${enc(id)}/duplicate`, partSummarySchema);
+  }
+  /** Moves the part's files to the core's trash; refused (400) while the assembly uses it. */
+  deletePart(id: string): Promise<{ deleted: string }> {
+    return this.json("DELETE", `/parts/${enc(id)}`, z.object({ deleted: z.string() }));
+  }
+  /** Saves model.step / model.stl to the export folder (~/Downloads) as "<label>.<fmt>". */
+  exportPart(id: string, format: "step" | "stl"): Promise<{ path: string; name: string; format: string }> {
+    return this.json("POST", `/parts/${enc(id)}/export`, z.object({ path: z.string(), name: z.string(), format: z.string() }), { body: { format } });
   }
   /** The listed siblings take order 0..n-1 under `parentId` (re-parenting them there). */
   reorderParts(projectId: string, parentId: string | null, ids: string[]): Promise<PartSummary[]> {

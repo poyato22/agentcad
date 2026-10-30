@@ -29,6 +29,9 @@ For a bought part (screw, bearing, motor, board), find it with `catalog_search` 
 ## The assembly
 When the part is one piece of a system (the user or the lead says where it goes), bring it into the assembly with `assembly_add_part` once it measures right, joined where it really connects.
 
+## How a part looks
+When the user asks for a color or a finish (shiny, metal, chrome, rubber, clear), call `part_set_appearance` with a preset and/or a color. It changes only the look, never the geometry or the mass.
+
 ## Onshape and merging
 Only when the mirror part is right, propose the change to Onshape in one batch, then read it back to confirm. If the user wants the result merged, request the merge and wait for their decision.
 
