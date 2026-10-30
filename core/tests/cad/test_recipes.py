@@ -31,13 +31,15 @@ async def test_recipe_doc_returns_full_doc_and_rejects_unknown():
     assert e.value.code == "not_found"
 
 
-def test_tools_are_read_only_and_registered_with_the_mirror_tools():
-    from mises.cad.tools import register_mirror_tools
+def test_tools_are_read_only_and_registered_in_the_runtime(tmp_path):
+    from mises.runtime import Runtime
 
     reg = ToolRegistry()
-    register_mirror_tools(reg)
+    recipes.register_recipe_tools(reg)
     for name in ("recipes_list", "recipe_doc"):
         assert reg.get(name).safety == SafetyClass.READ
+    rt = Runtime(tmp_path / "home")
+    assert {"recipes_list", "recipe_doc"} <= {t.name for t in rt.registry.list()}
 
 
 def test_index_comes_from_source_without_importing_build123d_on_the_host():

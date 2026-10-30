@@ -19,6 +19,7 @@ from .agent.loop import AgentLoop, LoopConfig, RunResult
 from .approvals import ApprovalService
 from .assembly.model import AssemblyStore
 from .assembly.tools import register_assembly_tools
+from .cad.recipes import register_recipe_tools
 from .cad.tools import register_mirror_tools
 from .catalog import Catalog
 from .catalog.tools import register_catalog_tools
@@ -134,6 +135,7 @@ class Runtime:
         self.approvals = ApprovalService(self.store, self.events)
         self.registry = ToolRegistry()
         register_mirror_tools(self.registry)
+        register_recipe_tools(self.registry)
         register_sim_tools(self.registry)
         register_onshape_tools(self.registry)
         register_ui_tools(self.registry)
