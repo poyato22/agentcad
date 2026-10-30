@@ -13,6 +13,10 @@ import { initials, ProfileButton } from "./ProfileButton";
 import { closeProfile, openProfile, profileOpen, profileSection } from "../profile/open";
 import { printersChanged } from "../../state/printers";
 import { installStopAllShortcut, resetStopAll } from "./stopAll";
+import { applyBudget, resetOnshapeBudget } from "../../state/onshapeBudget";
+import type { OnshapeBudget } from "../../api/directory";
+
+const BUDGET: OnshapeBudget = { used_year: 5, limit_year: 2500, used_run: 3, warn_at: 2000, reset_at: 1830000000, run_id: null };
 
 const invokeMock = vi.hoisted(() => vi.fn(async () => null));
 vi.mock("@tauri-apps/api/core", async (orig) => ({
@@ -212,17 +216,47 @@ describe("Status button", () => {
     await waitFor(() => expect(btn().textContent).toContain("1 needs you"));
     expect(btn().getAttribute("aria-label")).toContain("1 needs you");
     act(() => { conn.value = "reconnecting"; });
-    await waitFor(() => expect(btn().textContent).toContain("Connecting"));
+    // what needs you stays in view while the stream reconnects
+    await waitFor(() => expect(btn().textContent).toContain("Connecting · 1 needs you"));
     act(() => { shellStatus.value = { state: "crashed", code: 1, stderrTail: "x", restarts: 0 }; });
     await waitFor(() => expect(btn().textContent).toContain("Core down"));
     expect(btn().querySelector("[data-dot=core] .led")?.className).toContain("led-red");
   });
 
-  it("the top bar has no separate budget meter or light row any more", () => {
+  it("core down: a Restart button beside Status restarts the core in one click", async () => {
+    invokeMock.mockClear();
+    render(<StatusLights />);
+    expect(screen.queryByRole("button", { name: "Restart the core" })).toBeNull();
+    act(() => { shellStatus.value = { state: "crashed", code: 1, stderrTail: "x", restarts: 0 }; });
+    fireEvent.click(await screen.findByRole("button", { name: "Restart the core" }));
+    expect(invokeMock).toHaveBeenCalledWith("core_restart");
+  });
+
+  it("the card closes when focus leaves it and the button", async () => {
+    render(<div><StatusLights /><button type="button">elsewhere</button></div>);
+    fireEvent.click(btn());
+    expect(card().hidden).toBe(false);
+    const open = card().querySelector<HTMLButtonElement>(".budget-open, button");
+    // focus moving between the button and the card keeps it open
+    fireEvent.focusOut(btn(), { relatedTarget: open ?? card() });
+    expect(card().hidden).toBe(false);
+    fireEvent.focusOut(btn(), { relatedTarget: screen.getByRole("button", { name: "elsewhere" }) });
+    expect(card().hidden).toBe(true);
+  });
+
+  it("the top bar has no light row; the live Onshape count shows only while Onshape is connected", () => {
+    coreStatus.value = status({ onshape: "not_configured" });
+    applyBudget(BUDGET, null);
     render(<TopBar />);
-    expect(document.querySelector(".budget-slot")).toBeNull();
     expect(document.querySelector(".topbar-right > .lights")).toBeNull();
     expect(screen.getByRole("button", { name: /^Status/ })).toBeTruthy();
+    expect(document.querySelector(".topbar-right .budget-chip")).toBeNull();
+    act(() => { coreStatus.value = status(); });
+    const chip = document.querySelector(".topbar-right .budget-chip") as HTMLElement;
+    expect(chip.textContent).toBe("Onshape 5/2,500");
+    // it sits just before Status
+    expect(chip.nextElementSibling?.classList.contains("status")).toBe(true);
+    resetOnshapeBudget();
   });
 });
 
@@ -339,7 +373,8 @@ describe("ProfileButton", () => {
     const btn = screen.getByRole("button", { name: "Profile" });
     expect(btn.textContent).toBe("Profile");
     await waitFor(() => expect(btn.textContent).toBe("HD"));
-    expect(btn.getAttribute("title")).toBe("Profile · Hartigan Deely");
+    expect(btn.getAttribute("title")).toBe("Profile and settings · Hartigan Deely");
+    expect(btn.querySelector("svg.profile-mark")).not.toBeNull();   // U2b: says what "HD" is
     fireEvent.click(btn);
     expect(profileOpen.value).toBe(true);
     expect(profileSection.value).toBe("profile");

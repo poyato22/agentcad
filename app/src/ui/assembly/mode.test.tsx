@@ -36,10 +36,14 @@ describe("ModeSwitch", () => {
     expect(designMode.value).toBe("part");
   });
 
-  it("comes first in the Design viewer's corner, before Model | Code", () => {
+  it("is the only control in the Design viewer's corner; the rest is in the View menu", () => {
     const { container } = render(<Viewer />);
     const corner = container.querySelector(".vp-corner");
+    expect(corner?.children).toHaveLength(1);
     expect(corner?.firstElementChild?.getAttribute("data-testid")).toBe("mode-switch");
-    expect(corner?.querySelector(".vp-tabs")).not.toBeNull();
+    expect(container.querySelector(".vp-tabs")).toBeNull();
+    // the sheet's buttons: Part, Assembly and View — nothing else until a menu opens
+    expect(Array.from(container.querySelectorAll("button")).map((b) => b.textContent?.replace("▾", "").trim()))
+      .toEqual(["Part", "Assembly", "View"]);
   });
 });

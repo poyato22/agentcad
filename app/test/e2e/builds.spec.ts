@@ -10,6 +10,11 @@ test.beforeEach(async ({ fake }) => { await fake.reset("builds"); });
 test.afterEach(async ({ fake }) => { await fake.reset("base"); });
 
 const tree = (page: Page) => page.getByTestId("part-tree");
+/** Picks an item from the viewer's View menu (Plan 7 U2b: the display controls live there). */
+async function viewMenu(page: Page, item: string): Promise<void> {
+  await page.getByRole("button", { name: "View options" }).click();
+  await page.locator("#view-menu [role^=menuitem]", { hasText: item }).click();
+}
 const callsTo = async (fake: FakeControl, method: string, path: string | RegExp): Promise<FakeCall[]> =>
   (await fake.calls()).filter((c) => c.method === method && (typeof path === "string" ? c.path === path : path.test(c.path)));
 
@@ -79,7 +84,7 @@ test("color_a_part_from_the_palette_and_the_viewer_paints_it", async ({ page, fa
   expect((await callsTo(fake, "PATCH", "/parts/top_plate")).at(-1)?.body).toEqual({ color: "#2f9a9c" });
   await expect(page.getByTestId("viewer-canvas")).toHaveAttribute("data-shown", "top_plate:#2f9a9c");
   // the whole build: both parts, each in its color
-  await page.getByRole("button", { name: "whole build", exact: true }).click();
+  await viewMenu(page, "Whole build");
   await expect(page.getByTestId("viewer-canvas")).toHaveAttribute("data-shown", "quad_arm:#d9822b top_plate:#2f9a9c");
 });
 
@@ -128,7 +133,7 @@ test("a_second_pick_while_the_callout_is_open_starts_it_fresh", async ({ page, f
 test("features_by_keyboard_round_an_edge", async ({ page, fake }) => {
   await open(page);
   await tree(page).getByRole("button", { name: "top plate", exact: true }).click();
-  await page.getByRole("button", { name: "features" }).click();
+  await viewMenu(page, "Add a feature");
   const menu = page.getByTestId("ops-menu");
   await menu.getByRole("radio", { name: "Fillet" }).check();
   await menu.getByRole("combobox").selectOption({ index: 1 });
@@ -143,7 +148,7 @@ test("features_by_keyboard_round_an_edge", async ({ page, fake }) => {
 test("code_tab_edit_save_and_a_conflict", async ({ page, fake }) => {
   await open(page);
   await tree(page).getByRole("button", { name: "Quad arm", exact: true }).click();
-  await page.getByRole("tab", { name: "Code" }).click();
+  await viewMenu(page, "Part script");
   const editor = page.getByTestId("source-editor");
   await expect(editor.locator(".cm-content")).toContainText('"thickness": 4.0,  # mises: min=2 max=12');
   await expect(editor.locator(".cm-mises-op")).toHaveCount(0);
@@ -175,7 +180,7 @@ test("code_tab_edit_save_and_a_conflict", async ({ page, fake }) => {
 test("a_failed_rebuild_names_the_op", async ({ page }) => {
   await open(page);
   await tree(page).getByRole("button", { name: "Quad arm", exact: true }).click();
-  await page.getByRole("tab", { name: "Code" }).click();
+  await viewMenu(page, "Part script");
   const editor = page.getByTestId("source-editor");
   await expect(editor.locator(".cm-content")).toContainText("Box(");
   await editor.locator(".cm-content").click();

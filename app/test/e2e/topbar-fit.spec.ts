@@ -30,6 +30,7 @@ for (const width of [1280, 1440]) {
       await fake.emit({ type: "agent_activity", run_id: "c2d4e6f8a0b1", data: { state: "tool", detail: "measuring mount plate", since: now } });
       await expect(page.locator(".activity-pill")).toBeVisible();
       await expect(page.locator(".status-btn")).toBeVisible();
+      await expect(page.locator(".budget-chip")).toBeVisible();   // Onshape connected: the live count is in the bar
 
       if (SHOTS) await page.locator("header.topbar").screenshot({ path: `${SHOTS}/topbar-${width}-${theme}.png` });
       const bar = await boxOf(page, "header.topbar");
@@ -42,7 +43,7 @@ for (const width of [1280, 1440]) {
       expect(right(r)).toBeLessThanOrEqual(width + 0.5);
       expect(right(bar)).toBeLessThanOrEqual(width + 0.5);
       // every right-side item is fully visible and its text is not cut off
-      for (const sel of [".activity-pill", ".status-btn", ".profile-btn", ".stop-all"]) {
+      for (const sel of [".activity-pill", ".budget-chip", ".status-btn", ".profile-btn", ".stop-all"]) {
         const items = page.locator(`.topbar-right ${sel}`);
         for (let i = 0; i < await items.count(); i++) {
           const el = items.nth(i);

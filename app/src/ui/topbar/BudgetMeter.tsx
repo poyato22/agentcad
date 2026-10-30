@@ -1,5 +1,5 @@
-// Onshape budget (Plan 5 A6), shown inside the top bar's Status card (Plan 7 U2b moved it there
-// from its own top-bar button, so the bar carries one status control instead of two Onshape ones).
+// Onshape budget (Plan 5 A6). Plan 7 U2b split it in two: while Onshape is connected the bar keeps a
+// compact live count beside Status (BudgetChip); the details live in the Status card (BudgetMeter).
 // Calls used / the yearly limit as a short gauge, plus what the selected run (or, with no run
 // selected, the app's own browsing this session) used, the reset date and a way to the Onshape page.
 // It moves live: every real Onshape request is followed by an `onshape_budget` event
@@ -14,6 +14,27 @@ const num = (n: number) => n.toLocaleString("en-US");
 
 export function fmtResetDate(epochSeconds: number): string {
   return new Date(epochSeconds * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+}
+
+/** The live count in the top bar beside Status (U2b fix round 1): only while Onshape is connected,
+ *  so a busy agent's spend is visible without opening anything. Flashes on every call, amber from
+ *  warn_at, red at the limit; a click opens the Onshape page. The details stay in the Status card. */
+export function BudgetChip(): JSX.Element | null {
+  const b = onshapeBudget.value;
+  const tick = onshapeBudgetTick.value;
+  const s = coreStatus.value;
+  if (!b || !s || s.onshape === "not_configured") return null;
+  const level = budgetLevel(b);
+  const note = level === "limit" ? " Limit reached." : level === "warn" ? ` Past the warning line of ${num(b.warn_at)}.` : "";
+  return (
+    <button type="button" class="budget-chip" data-level={level} title="Onshape calls this year: opens the Onshape page"
+      aria-label={`Onshape: ${num(b.used_year)} of ${num(b.limit_year)} calls used this year.${note} Opens the Onshape page.`}
+      onClick={() => setPage("onshape")}>
+      <span class="budget-chip-name">Onshape </span>
+      <span key={tick} class={tick > 0 ? "budget-chip-used budget-moved" : "budget-chip-used"} data-chip-used>{num(b.used_year)}</span>
+      <span class="budget-limit">/{num(b.limit_year)}</span>
+    </button>
+  );
 }
 
 /** `onOpen`: called after "Open the Onshape page" navigates (the Status card closes). */

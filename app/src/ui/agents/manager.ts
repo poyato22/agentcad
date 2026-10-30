@@ -1,5 +1,5 @@
 // Agent manager state and pure helpers. The manager is a slide-over reachable from every page:
-// the top-bar activity pill, the run switcher's "Manage", and ⇧⌘A (⌘6/⌘7 are the Onshape and Parts pages). It lists runs as the
+// the top-bar activity pill, the run switcher's "Manage", and ⇧⌘A (⌘5/⌘6 are the Onshape and Parts pages). It lists runs as the
 // orchestrator → worker tree (GET /runs/tree), grouped by build, and custom agent definitions.
 // Everything here is pure or a signal, so the view stays thin and the rules are unit-tested.
 import { signal, type Signal } from "@preact/signals";

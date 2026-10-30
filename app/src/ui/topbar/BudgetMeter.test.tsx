@@ -7,7 +7,7 @@ import type { CoreStatusInfo, MisesEvent } from "../../api/types";
 import { applyBudget, parseBudgetEvent, resetOnshapeBudget } from "../../state/onshapeBudget";
 import { coreStatus, resetStore, selectedRunId } from "../../state/store";
 import { activePage, setPage } from "../pages/router";
-import { BudgetMeter, fmtResetDate } from "./BudgetMeter";
+import { BudgetChip, BudgetMeter, fmtResetDate } from "./BudgetMeter";
 import { onshapeTone } from "./StatusLights";
 
 const FX = resolve(import.meta.dirname, "../../../test/fixtures/core-ui");
@@ -103,5 +103,47 @@ describe("BudgetMeter", () => {
     applyBudget({ ...BUDGET, used_run: 9 }, "agent-run");
     render(<BudgetMeter />);
     expect(document.querySelector("[data-budget-delta]")?.textContent).toBe("+0");
+  });
+});
+
+// U2b fix round 1 (I-1): while Onshape is connected the live count stays in the bar, next to Status
+describe("BudgetChip", () => {
+  const chip = () => document.querySelector(".budget-chip") as HTMLElement | null;
+  const chipUsed = () => chip()?.querySelector("[data-chip-used]")?.textContent;
+
+  it("shows the live year count, flashes on each call and goes amber / red", () => {
+    coreStatus.value = status();
+    applyBudget({ ...BUDGET, used_year: 312 }, null);
+    render(<BudgetChip />);
+    expect(chip()?.textContent).toBe("Onshape 312/2,500");
+    expect(chip()?.dataset.level).toBe("ok");
+    feed(ev({ used_year: 313 }));
+    expect(chipUsed()).toBe("313");
+    expect(chip()?.querySelector("[data-chip-used]")?.classList.contains("budget-moved")).toBe(true);
+    feed(ev({ used_year: 2000 }));
+    expect(chip()?.dataset.level).toBe("warn");
+    feed(ev({ used_year: 2500 }));
+    expect(chip()?.dataset.level).toBe("limit");
+    expect(chip()?.getAttribute("aria-label")).toMatch(/2,500 of 2,500 calls used this year.*Limit reached/);
+  });
+
+  it("a click opens the Onshape page", () => {
+    coreStatus.value = status();
+    applyBudget(BUDGET, null);
+    render(<BudgetChip />);
+    fireEvent.click(chip() as HTMLElement);
+    expect(activePage.value).toBe("onshape");
+  });
+
+  it("is not in the bar while Onshape isn't connected, or before any figure is known", () => {
+    coreStatus.value = status("not_configured");
+    applyBudget(BUDGET, null);
+    render(<BudgetChip />);
+    expect(chip()).toBeNull();
+    cleanup();
+    resetOnshapeBudget();
+    coreStatus.value = status();
+    render(<BudgetChip />);
+    expect(chip()).toBeNull();
   });
 });

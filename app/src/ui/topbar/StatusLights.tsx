@@ -81,7 +81,11 @@ function restartCore(): void {
 /** The Status button's headline: the one thing that matters now. */
 export function statusHeadline(core: LedTone, stream: StreamState, needs: number): { text: string; tone: LedTone } {
   if (core === "red") return { text: "Core down", tone: "red" };
-  if (core === "amber") return { text: stream === "connecting" ? "Starting" : "Connecting", tone: "amber" };
+  if (core === "amber") {
+    // what needs you stays in view while the stream (re)connects
+    const word = stream === "connecting" ? "Starting" : "Connecting";
+    return { text: needs > 0 ? `${word} · ${needs} needs you` : word, tone: "amber" };
+  }
   if (needs > 0) return { text: `${needs} needs you`, tone: "blue" };
   return { text: "Ready", tone: "faint" };
 }
@@ -115,7 +119,12 @@ export function StatusLights(): JSX.Element {
 
   return (
     // Escape closes the card from the button or from inside it, and focus returns to the button
-    <div class="status" onKeyDown={(e) => { if (e.key === "Escape" && at) { e.preventDefault(); e.stopPropagation(); close(true); } }}>
+    // and the card closes once focus leaves both the button and the card (Tab past it)
+    <div class="status" onKeyDown={(e) => { if (e.key === "Escape" && at) { e.preventDefault(); e.stopPropagation(); close(true); } }}
+      onFocusOut={(e) => {
+        const to = e.relatedTarget as Node | null;
+        if (at && to && !btn.current?.contains(to) && !cardRef.current?.contains(to)) close(false);
+      }}>
       <button ref={btn} type="button" class="status-btn" data-status-tone={head.tone} aria-label={label} title="Status"
         aria-haspopup="dialog" aria-expanded={at !== null} aria-controls="status-card" onClick={toggle}>
         <span class="status-dots" aria-hidden="true">
@@ -125,6 +134,10 @@ export function StatusLights(): JSX.Element {
         </span>
         <span class={head.tone === "blue" ? "status-head needs-you" : "status-head"} data-headline>{head.text}</span>
       </button>
+      {restartable && (
+        <button type="button" class="status-restart" aria-label="Restart the core" title={coreTitle(shell, stream, tone, lost)}
+          onClick={restartCore}>Restart</button>
+      )}
       {/* always in the DOM (hidden when closed) so the lights keep their state and titles */}
       <div id="status-card" ref={cardRef} class="status-card" role="dialog" aria-label="Status" hidden={at === null}
         style={at ? { right: `${at.right}px` } : undefined}>

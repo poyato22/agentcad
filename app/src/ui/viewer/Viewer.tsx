@@ -1,5 +1,5 @@
 // The drawing sheet: CSS drafting grid + Three.js canvas + corner ticks + figure label + tool strip + title block.
-// Model | Code tabs: the model (this part, or the whole build) or the part's script.
+// The model (this part, or the whole build) or the part's script (View ▸ Part script).
 // Click the model to add a feature where you clicked (hole / shell on a face, fillet / chamfer on
 // an edge); in the build view a click on another part selects it. Each part shows in its color.
 import { computed, signal, type Signal } from "@preact/signals";
@@ -241,21 +241,17 @@ export function Viewer(): JSX.Element {
         onPointerUp={onPointerUp}
       />
       <span class="tick tick-tl" /><span class="tick tick-tr" /><span class="tick tick-bl" /><span class="tick tick-br" />
-      {/* one row in the sheet corner: Part | Assembly first (U2b), then Model | Code — above the Code view (M-1) */}
+      {/* the sheet corner holds only Part | Assembly (U2b), above the Code view (M-1); the script
+          opens from View ▸ Part script, and while it shows a "Back to the model" button sits here */}
       <div class="vp-corner">
         <ModeSwitch />
-        <div class="vp-tabs" role="tablist" aria-label="Show">
-          {(["model", "code"] as const).map((t) => (
-            <button key={t} type="button" role="tab" class="vp-tab" aria-selected={tab === t} data-selected={tab === t ? "" : undefined} tabIndex={tab === t ? 0 : -1}
-              onClick={() => { viewTab.value = t; }}
-              onKeyDown={(e) => { if (e.key === "ArrowRight" || e.key === "ArrowLeft") { e.preventDefault(); viewTab.value = tab === "model" ? "code" : "model"; (e.currentTarget.parentElement?.querySelector(`[aria-selected=false]`) as HTMLElement | null)?.focus(); } }}>
-              {t === "model" ? "Model" : "Code"}
-            </button>
-          ))}
-        </div>
+        {tab === "code" && (
+          <button type="button" class="vt-btn vp-back" onClick={() => { viewTab.value = "model"; }}>Back to the model</button>
+        )}
       </div>
       <span class="label vp-fig">{scope === "build" ? "FIG. 1 — BUILD" : "FIG. 1 — DESIGN"}</span>
       <ViewerTools mode={mode} onMode={setMode} scope={scope} onScope={(s) => { viewScope.value = s; }}
+        code={tab === "code"} onCode={(on) => { viewTab.value = on ? "code" : "model"; }}
         canEdit={canEdit && tab === "model"}
         onEdit={() => { if (part) setOps({ seq: ++pickSeq.current, partId: part.part_id, target: { face: null, edge: null, point: null }, at: null, keyboard: true, baseVersion: part.version ?? 0 }); }} />
       {part === null && <div class="vp-empty label">NO PART · ask an agent to create one</div>}

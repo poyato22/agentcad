@@ -148,18 +148,22 @@ test("I-5: interview — chip vs text, multi + text, keyboard ranking, counter a
 test("M-1: in Code view the Part | Assembly switch is on top and usable", async ({ page }) => {
   await page.goto("/");
   await page.locator("[data-region=app][data-conn=open]").waitFor();
-  await page.getByRole("tab", { name: "Code" }).click();
+  // Plan 7 U2b: the script opens from View ▸ Part script; "Back to the model" returns
+  await page.getByRole("button", { name: "View options" }).click();
+  await page.locator("#view-menu [role^=menuitem]", { hasText: "Part script" }).click();
   await page.getByTestId("source-editor").waitFor();
   const ms = page.getByTestId("mode-switch");
   const bb = await ms.boundingBox();
   expect(bb).not.toBeNull();
   const onTop = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest("[data-testid]")?.getAttribute("data-testid"), [bb!.x + bb!.width / 2, bb!.y + bb!.height / 2]);
   expect(onTop).toBe("mode-switch");
-  const tabs = await page.locator(".vp-tabs").boundingBox();
-  // one row with Model | Code (centred on each other), and since Plan 7 U2b the switch comes first
-  expect(Math.abs((tabs?.y ?? 0) + (tabs?.height ?? 0) / 2 - (bb!.y + bb!.height / 2))).toBeLessThan(2);
-  expect(tabs!.x).toBeGreaterThan(bb!.x + bb!.width);                // Model | Code after it, not over it
+  const back = page.getByRole("button", { name: "Back to the model" });
+  const bk = await back.boundingBox();
+  expect(Math.abs(bk!.y + bk!.height / 2 - (bb!.y + bb!.height / 2))).toBeLessThan(2);   // one row with the switch
+  expect(bk!.x).toBeGreaterThan(bb!.x + bb!.width);                                      // after it, not over it
   await shots(page, "m1-code-view-mode-switch", page.locator(".vp").first());
+  await back.click();
+  await expect(page.getByTestId("source-editor")).toHaveCount(0);
 });
 
 test("M-3: the Into build picker follows a build-tab switch after a pick", async ({ page, fake }) => {

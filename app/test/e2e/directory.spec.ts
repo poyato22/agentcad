@@ -7,13 +7,17 @@ test.beforeEach(async ({ fake, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
 });
 
-// Plan 7 U2b: the meter lives in the top bar's Status card (always in the DOM, shown on click)
+// Plan 7 U2b: the details live in the top bar's Status card (always in the DOM, shown on click);
+// while Onshape is connected the live count also stays in the bar (the chip beside Status)
 const meter = (page: import("@playwright/test").Page) => page.locator(".budget");
+const chip = (page: import("@playwright/test").Page) => page.locator(".topbar-right .budget-chip");
 
 test("budget_meter_updates_live_as_onshape_is_used_and_turns_amber_at_warn", async ({ page, fake }) => {
   await page.goto("/");
   await expect(meter(page).locator("[data-budget-used]")).toHaveText("1,999");
   await expect(meter(page)).toHaveAttribute("data-level", "ok");
+  await expect(chip(page)).toBeVisible();
+  await expect(chip(page)).toHaveText("Onshape 1,999/2,500");
   // the Status button opens the card with the details and the reset date
   await page.getByRole("button", { name: /^Status/ }).click();
   await expect(page.locator("#status-card")).toBeVisible();
@@ -26,10 +30,12 @@ test("budget_meter_updates_live_as_onshape_is_used_and_turns_amber_at_warn", asy
   await page.getByRole("tab", { name: "Onshape" }).click();
   await expect(page.getByRole("list", { name: "20 documents" })).toBeVisible();
   await expect(meter(page)).toHaveAttribute("data-level", "warn");
+  await expect(chip(page)).toHaveAttribute("data-level", "warn");
   await expect.poll(async () => {
     const loaded = await page.locator('[data-thumb="loaded"]').count();
     const used = Number((await meter(page).locator("[data-budget-used]").textContent())?.replace(",", ""));
-    return used === 1999 + 1 + loaded && loaded > 0;
+    const inBar = Number((await chip(page).locator("[data-chip-used]").textContent())?.replace(",", ""));
+    return used === 1999 + 1 + loaded && inBar === used && loaded > 0;
   }).toBe(true);
   const thumbCalls = (await fake.calls()).filter((c) => c.path === "/onshape/thumbnail").length;
   expect(thumbCalls).toBeLessThan(20);                    // the tiles below the fold weren't fetched
@@ -42,6 +48,8 @@ test("budget_meter_updates_live_as_onshape_is_used_and_turns_amber_at_warn", asy
   await fake.emit({ type: "onshape_budget", run_id: "agent-run", data: { used_year: 2500, limit_year: 2500, used_run: 4, warn_at: 2000, reset_at: 1830000000, run_id: "agent-run" } });
   await expect(meter(page).locator("[data-budget-used]")).toHaveText("2,500");
   await expect(meter(page)).toHaveAttribute("data-level", "limit");
+  await expect(chip(page)).toHaveText("Onshape 2,500/2,500");
+  await expect(chip(page)).toHaveAttribute("data-level", "limit");
   await expect(page.locator("[data-light=onshape] .led")).toHaveClass(/led-red/);
   await expect(page.locator("[data-light=onshape]")).toHaveAttribute("title", /2,500 of 2,500/);
   // the Status button's Onshape dot carries the same tone
