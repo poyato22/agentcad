@@ -155,7 +155,13 @@ def build_projects_router(runtime: Runtime) -> APIRouter:
     # ---- the parts manager's menu (Plan 7 U8)
     @router.post("/parts/{part_id}/duplicate")
     async def duplicate_part(part_id: str):
-        return await run_in_threadpool(_projects.duplicate_part, store, _home(), part_id)
+        # under the part lock (cad.tools._lock): never a copy mixing an agent's new model.step
+        # with the old metrics.json mid-accept
+        from ..cad.tools import PART_ID_RE, _lock as part_lock
+        if not PART_ID_RE.match(part_id):        # not a buildable id: 404 / 400 from projects
+            return await run_in_threadpool(_projects.duplicate_part, store, _home(), part_id)
+        async with part_lock(_home() / "parts" / part_id):
+            return await run_in_threadpool(_projects.duplicate_part, store, _home(), part_id)
 
     @router.delete("/parts/{part_id}")
     async def delete_part(part_id: str):

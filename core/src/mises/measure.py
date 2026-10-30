@@ -97,6 +97,8 @@ class _Warm:
 
 
 _warm: OrderedDict[str, _Warm] = OrderedDict()
+# workers being started (awaiting "ready"): they hold a MAX_WARM slot already
+_starting: list[str] = []
 
 
 async def _close(w: _Warm) -> None:
@@ -149,11 +151,26 @@ async def _read_answer(w: _Warm, want_id: int, timeout_s: float) -> dict:
 
 
 async def _start(part_dir: Path, mtime_ns: int) -> _Warm:
-    old = _warm.get(str(part_dir))
+    key = str(part_dir)
+    old = _warm.get(key)
     if old is not None:
         await _close(old)                          # another version of the part: never reused
-    while len(_warm) >= MAX_WARM:
-        await _close(next(iter(_warm.values())))  # least recently used
+    # the slot is reserved before the (up to WARM_START_S) wait for "ready", so concurrent
+    # starts of different parts never run more than MAX_WARM workers together
+    while len(_warm) + len(_starting) >= MAX_WARM:
+        if _warm:
+            await _close(next(iter(_warm.values())))  # least recently used
+        else:
+            await asyncio.sleep(0.05)              # every slot is a start in flight
+    _starting.append(key)
+    try:
+        return await _spawn(part_dir, mtime_ns)
+    finally:
+        _starting.remove(key)
+
+
+async def _spawn(part_dir: Path, mtime_ns: int) -> _Warm:
+    key = str(part_dir)
     tmp = part_dir / "tmp"
     safe_io.ensure_dir(tmp)
     nonce = secrets.token_hex(16)
@@ -170,7 +187,13 @@ async def _start(part_dir: Path, mtime_ns: int) -> _Warm:
     except BaseException:
         await _close(w)
         raise
-    _warm[str(part_dir)] = w
+    prev = _warm.get(key)
+    if prev is not None and prev is not w:         # another start of this part won the race
+        if prev.mtime_ns == mtime_ns and prev.proc.returncode is None:
+            await _close(w)
+            return prev
+        await _close(prev)
+    _warm[key] = w
     w.reaper = asyncio.create_task(_idle_reaper(w))
     return w
 
@@ -203,7 +226,7 @@ async def warm_part(part_dir: Path) -> bool:
         part_dir = safe_io.real_dir(part_dir)
     except MisesError:
         return False
-    async with _lock(part_dir):
+    async with _lock(part_dir):          # the STEP's mtime, never mid-rebuild
         try:
             mtime = os.lstat(part_dir / "model.step").st_mtime_ns
         except OSError:
@@ -213,11 +236,15 @@ async def warm_part(part_dir: Path) -> bool:
                 and w.loop is asyncio.get_running_loop()):
             w.used = time.monotonic()
             return True
-        try:
-            await _start(part_dir, mtime)
-        except (MeasureError, OSError, asyncio.TimeoutError, ValueError):
-            return False
-        return True
+        if str(part_dir) in _starting:
+            return True                  # already being warmed
+    # started outside the part lock: a rebuild is never held up for the worker's start (the
+    # mtime is captured; a measure checks it again and restarts a worker of an older STEP)
+    try:
+        await _start(part_dir, mtime)
+    except (MeasureError, OSError, asyncio.TimeoutError, ValueError):
+        return False
+    return True
 
 
 # ---- one measure

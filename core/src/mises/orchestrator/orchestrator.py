@@ -23,6 +23,9 @@ MAX_DEPTH = 2
 PLANNER = "planner"
 RESULT_CHARS = 8000
 LONG_TOOL_TIMEOUT_S = 6 * 3600
+# sub-agents a run's family may start per user message (profile max_spawns_per_turn): a
+# fan-out guard, since each child gets its own fetch and Onshape headroom within the family's
+DEFAULT_SPAWNS_PER_TURN = 8
 # Tools that delegate to other agents. A worker subagent (designer, verifier, …) must not get
 # these, or it could orchestrate past the depth limit's intent; only the top-level run delegates.
 DELEGATION_TOOLS = frozenset({"agent_spawn", "agent_wait", "agent_result", "orchestrator_run",
@@ -56,6 +59,25 @@ def check_depth(runtime: Runtime, run_id: str) -> None:
                          hint="do the work yourself instead of delegating further")
 
 
+def _tool_classes(runtime: Runtime, names: list[str]) -> set[SafetyClass]:
+    """A tool's own class, plus the classes it calls internally (e.g. design_review and
+    study_run run child studies as LOCAL_MUTATE)."""
+    tools = runtime.registry.list(names)
+    return {t.safety for t in tools}.union(*(t.implied_classes for t in tools), set())
+
+
+def _run_tools(runtime: Runtime, run_id: str) -> list[str] | None:
+    """The tool list of the run's own agent definition, or None when it has every tool. A
+    lead's LEAD_TOOLS (delegation, assembly) are left out: they are the lead's to use, not
+    classes it may hand down."""
+    try:
+        run = runtime.store.get_run(run_id)
+    except KeyError:
+        return None
+    defn = runtime.definitions.get(run.agent)
+    return None if defn is None or defn.tools is None else list(defn.tools)
+
+
 def child_policy(runtime: Runtime, parent_run_id: str, agent: str,
                  edit_scope: list[str] | None = None) -> dict:
     """start_run kwargs for a child: scopes, classes and caps only ever narrow the parent's."""
@@ -65,12 +87,14 @@ def child_policy(runtime: Runtime, parent_run_id: str, agent: str,
         raise MisesError(ErrorCode.NOT_FOUND, f"unknown agent: {agent}")
     classes = set(parent.allowed_classes)
     if defn.tools is not None:
-        tools = runtime.registry.list(defn.tools)
-        # a tool's own class, plus the classes it calls internally (e.g. design_review and
-        # study_run run child studies as LOCAL_MUTATE); still intersected with the parent's
-        needed = {t.safety for t in tools}.union(*(t.implied_classes for t in tools), set())
-        classes &= needed
-    used = runtime.store.get_run(parent_run_id).onshape_calls
+        classes &= _tool_classes(runtime, defn.tools)
+    # a parent restricted to a tool list (a verifier or custom read-only agent as the lead)
+    # never hands a child the classes its own list does not reach
+    parent_tools = _run_tools(runtime, parent_run_id)
+    if parent_tools is not None:
+        classes &= _tool_classes(runtime, parent_tools)
+    user = getattr(getattr(runtime, "gate", None), "user", "local")
+    used = budget.onshape_used(runtime.store, user, parent_run_id)    # a lead: this turn
     remaining = max(0, parent.caps.onshape_calls_run - used)
     # the dollar cap is a family budget (I-8): a child gets what the parent and the whole
     # family have left, never a fresh copy; the family sum (budget.py) holds them together
@@ -253,8 +277,22 @@ def _announce_spawn(rt: Runtime, parent_run_id: str, child_id: str, agent: str,
              ref={"run_id": child_id, "agent": agent, "parent_id": parent_run_id})
 
 
+def _spawn_cap(rt: Runtime) -> int:
+    try:
+        return int(rt.profile().max_spawns_per_turn)
+    except Exception:  # noqa: BLE001 - a bare test runtime has no profile
+        return DEFAULT_SPAWNS_PER_TURN
+
+
 async def _start_sub(rt: Runtime, ctx: ToolContext, args: SpawnArgs) -> str:
     """Start an agent_spawn child as a sub-agent with its task title, and announce it."""
+    cap = _spawn_cap(rt)
+    if budget.spawned_this_turn(rt.store, ctx.run_id) >= cap:
+        raise MisesError(ErrorCode.BUDGET_EXHAUSTED,
+                         f"{cap} sub-agents were already started for this request",
+                         hint="collect the running ones with agent_wait / agent_result and do"
+                              " the rest yourself, or ask the user to raise 'max spawns per"
+                              " turn' in the profile")
     title = task_title(args.task, args.prompt)
     rid = await rt.start_run(args.agent, args.prompt, role=SUB, title=title,
                              **child_policy(rt, ctx.run_id, args.agent, args.edit_scope))

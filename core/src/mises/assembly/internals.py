@@ -98,7 +98,7 @@ async def run_internals(job: dict, steps: dict[str, Path], *, timeout_s: float =
             last = msg.splitlines()[-1] if msg else f"worker exited {proc.returncode}"
             raise MisesError(ErrorCode.TOOL_FAILED, f"internals check failed: {last}")
         try:
-            data = json.loads((out / "result.json").read_text())
+            data = safe_io.read_json(out, "result.json")    # a planted link is refused
             if not isinstance(data, dict) or data.get("nonce") != nonce:
                 raise ValueError("nonce mismatch")
         except Exception as e:  # noqa: BLE001

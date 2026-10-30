@@ -187,6 +187,19 @@ def test_child_policy_narrowing(tmp_path):
     assert child_policy(rt, parent, "designer", ["*"])["edit_scope"] == ("a", "b")
 
 
+def test_tool_restricted_parent_never_hands_a_child_wider_classes(tmp_path):
+    """Final review M2: a read-only custom agent as the build's lead (it gets agent_spawn
+    through LEAD_TOOLS) cannot spawn a designer that may mutate parts."""
+    from mises.agent.definitions import AgentDefinition
+    rt = Runtime(tmp_path / "home")
+    rt.definitions["reader"] = AgentDefinition(name="reader", description="d", body="# Role: r",
+                                               tools=["mirror_part_list", "mirror_measure"])
+    parent = rt.store.create_run("reader", "fake", "m", "t").id
+    rt.store.update_run(parent, role="lead")
+    rt.store.create_policy(parent, ["*"], ["*"], Caps(), list(C))
+    assert child_policy(rt, parent, "designer")["allowed_classes"] == {C.READ}
+
+
 async def test_depth_limit(tmp_path):
     rt = make(tmp_path, FakeProvider([]))
     a = rt.store.create_run("designer", "fake", "m", "t").id

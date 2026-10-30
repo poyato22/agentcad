@@ -170,18 +170,18 @@ class ClaudeCodeSession:
                     "MISES_HOME": str(self.runtime.home)}}}}
 
     def _write_files(self) -> None:
-        role = None
+        role, lead = None, False
         with contextlib.suppress(Exception):
             run = self.runtime.store.get_run(self.run_id)
             defn = self.runtime.definitions.get(run.agent)
             if defn is not None and run.role == "lead":
                 # Plan 7: the build's lead is this main session; its sub-agents are Mises
-                # spawns (mcp__mises__agent_spawn), so the run tree matches native leads
+                # spawns (mcp__mises__agent_spawn only), so the run tree matches native leads
                 from ..orchestrator.lead import lead_definition
-                defn = lead_definition(defn, claude_code=True)
+                defn, lead = lead_definition(defn), True
             role = defn.body if defn is not None else None
         (self.workdir / RULES_FILE).write_text(
-            mises_rules_md(role, self.runtime.definitions, self._hidden_agents()))
+            mises_rules_md(role, self.runtime.definitions, self._hidden_agents(), lead=lead))
         # subagents never get the delegating tools (they would orchestrate past the depth intent)
         deny = INTERNAL_ONLY | DELEGATION_TOOLS
         tools = [t.name for t in self.runtime.registry.list() if t.name not in deny]

@@ -51,7 +51,7 @@ Call `calibration_list` once. If the user has calibrated the chosen material (fo
 use it: pass `material: {name, printer}` in study settings, and say the result uses the
 calibrated material, quoting its label (e.g. "calibrated E (3), strength (5)") and confidence. Otherwise the material is "datasheet /
 estimate"; say so. If the user gives coupon or load-test results, record them with
-`calibration_save` (never invent test numbers). A calibration with status "rejected" (implausible
+`calibration_save` (never invent test numbers; the user approves a card showing what changes). A calibration with status "rejected" (implausible
 numbers or outliers) is never used: read its reasons to the user so they can re-measure. For a part loaded across its print layers, set
 `material.anisotropy.print_direction` (the build direction) so the Z strength is checked.
 
@@ -123,9 +123,8 @@ in a line. Apply it with `study_apply(study_id, part_id, iteration,
 base_version)`. Then run `design_review(part_id, project_id)` on the chosen part (pass the
 `project_id` spec_set returned; omit it and it reviews against this build's own spec): it runs the
 studies the spec requires and returns a per-requirement pass / warn / fail table with study ids.
-The study cards in the thread show every number: after studies, write at most 2-3 short lines
-(the verdict, the pick and why, what is next), point at the cards ("see the 3 study cards
-above"), cite the study ids, and never restate the full numbers. Iterate on the user's feedback.
+Report it as the "After studies" rule says (the pick and why in those lines, with the study
+ids). Iterate on the user's feedback.
 
 ## 6. Assemble
 Bring every part of a system into the assembly with `assembly_add_part` (the first is grounded;

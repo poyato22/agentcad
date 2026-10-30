@@ -167,8 +167,15 @@ class Profile(BaseModel):
     catalog_allowed_domains: list[str] = Field(default_factory=list, max_length=200)
     # the agent browser's suggested sites (U4c): read without a card; user-editable
     suggested_sites: list[SuggestedSite] = Field(default_factory=default_sites, max_length=100)
-    # web fetches (sites searched + pages opened) one agent run may make
+    # web fetches (sites searched + pages opened) one agent run and its sub-agents may make
+    # (a build's lead: per user message)
     browser_fetches_per_run: int = Field(DEFAULT_BROWSER_FETCHES, ge=1, le=1000)
+    # sub-agents a run and its sub-agents may start (a build's lead: per user message)
+    max_spawns_per_turn: int = Field(8, ge=1, le=64)
+    # ceilings for an agent's wind-study settings (memory, OpenFOAM cores, time per run)
+    wind_max_memory_mb: int = Field(4096, ge=256, le=8192)
+    wind_max_cpus: int = Field(8, ge=1, le=32)
+    wind_max_timeout_s: float = Field(3600.0, ge=60, le=7200)
     # Plan 8 G1: the user's ceilings for the render-critique loop. A critique_model call can
     # lower them for itself, never raise them.
     critique_max_rounds: int = Field(3, ge=1, le=6)

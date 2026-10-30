@@ -46,6 +46,10 @@ class AgentRun(BaseModel):
     routed: dict | None = None     # {agent, reason, confidence}; stored as JSON text
     # Plan 8 G-R6 routing hint: {score, level, signals, vision_recommended}; NULL until estimated
     shape_complexity: dict | None = None
+    # a build's lead: when the current user message began, and the family's dollars then
+    # (budget.py counts the lead's per-run caps from here; NULL = the run's whole life)
+    turn_started_at: float | None = None
+    turn_usd0: float | None = None
 
     @field_validator("routed", "shape_complexity", mode="before")
     @classmethod
@@ -206,7 +210,8 @@ class Store:
                           ("archived", "INTEGER NOT NULL DEFAULT 0"),
                           ("last_activity_at", "REAL"),
                           ("role", "TEXT"), ("routed", "TEXT"),   # Plan 7 U3c
-                          ("shape_complexity", "TEXT")):          # Plan 8 G1
+                          ("shape_complexity", "TEXT"),           # Plan 8 G1
+                          ("turn_started_at", "REAL"), ("turn_usd0", "REAL")):  # per-turn caps
             if col not in cols:
                 self._db.execute(f"ALTER TABLE runs ADD COLUMN {col} {decl}")
         # Plan 7 U8: the part's material (JSON), added to existing databases
@@ -276,6 +281,16 @@ class Store:
             db.execute("UPDATE runs SET shape_complexity=? WHERE id=?",
                        (canonical_json(data), run_id))
 
+    def start_turn(self, run_id: str, ts: float, family_usd: float) -> None:
+        """A new user message to a lead: its caps count from `ts` (Onshape ledger rows) and
+        from `family_usd` (dollars), and its family's web-fetch budget starts again."""
+        with self._tx() as db:
+            db.execute("UPDATE runs SET turn_started_at=?, turn_usd0=? WHERE id=?",
+                       (ts, family_usd, run_id))
+            if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND"
+                          " name='browser_budget'").fetchone() is not None:
+                db.execute("DELETE FROM browser_budget WHERE run_id=?", (run_id,))
+
     def touch_run_activity(self, run_id: str, ts: float) -> None:
         """Bump last_activity_at only (not updated_at); a deleted run is a no-op."""
         with self._tx() as db:
@@ -323,6 +338,15 @@ class Store:
         row = self._one(f"SELECT COALESCE(SUM(usd), 0) FROM runs WHERE id IN ({q})",
                         tuple(run_ids))
         return float(row[0] or 0.0)
+
+    def runs_created_since(self, run_ids: list[str], since: float) -> int:
+        """How many of these runs were created at or after `since` (spawns this turn)."""
+        if not run_ids:
+            return 0
+        q = ",".join("?" * len(run_ids))
+        row = self._one(f"SELECT COUNT(*) FROM runs WHERE id IN ({q}) AND created_at>=?",
+                        (*run_ids, since))
+        return int(row[0] or 0)
 
     def running_runs(self, *, include_queued: bool = False) -> list[AgentRun]:
         sql = ("SELECT * FROM runs WHERE status IN ('running','queued') ORDER BY created_at"

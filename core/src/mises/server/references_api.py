@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from fastapi import APIRouter
 
+from ..projects import check_project
 from ..references import ReferenceUpload, reference_summary, save_reference
 
 if TYPE_CHECKING:
@@ -19,6 +20,8 @@ def build_references_router(runtime: Runtime) -> APIRouter:
 
     @router.post("/references")
     async def post_reference(body: ReferenceUpload):
+        if body.project_id is not None:          # a reference belongs to a real build
+            check_project(runtime.store, body.project_id)
         # image decoding (and HEIC via sips) is blocking work
         return await asyncio.to_thread(save_reference, runtime.home, body)
 

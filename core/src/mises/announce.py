@@ -137,22 +137,19 @@ def _bom_added(args: dict, data: dict) -> Announcement | None:
 
 
 def _part_shown(args: dict, data: dict) -> Announcement | None:
+    # part_show's data.card carries ids only: a page-derived name is untrusted page text
+    # (it lives in untrusted_page_data, and the part card shows it from the card store), so
+    # the detail is only the name the agent passed itself, if any
     card = data.get("card") or data
     return {"kind": "part_shown", "title": "Showing a part for you to look at",
-            "detail": _clip(card.get("name") or args.get("name"), 80),
+            "detail": _clip(args.get("name"), 80),
             "ref": {k: card.get(k) or args.get(k) for k in ("snapshot_id", "catalog_id", "card_id")
                     if card.get(k) or args.get(k)}}
 
 
-def _drawing_imported(args: dict, data: dict) -> Announcement | None:
-    pid = data.get("part_id")
-    return {"kind": "drawing_imported", "title": "Imported a technical drawing"
-            + (f" as part {pid}" if pid else ""),
-            "ref": {k: data.get(k) for k in ("import_id", "part_id") if data.get(k)}}
-
-
 #: tool name -> how its successful result becomes an announcement (None: nothing to say).
-#: Tools other tasks add (bom_add, part_show, drawing import) are listed by name already.
+#: drawing_imported has no mapper: imports/drawing_import.py announces it itself, once, when
+#: the import finishes (no tool result marks that moment).
 MAPPERS: dict[str, Mapper] = {
     "mirror_part_create": _part_created,
     "catalog_insert": _catalog_part,
@@ -161,8 +158,6 @@ MAPPERS: dict[str, Mapper] = {
     "assembly_add_part": _assembly_added,
     "bom_add": _bom_added,
     "part_show": _part_shown,
-    "drawing_import": _drawing_imported,
-    "drawing_import_build": _drawing_imported,
 }
 
 

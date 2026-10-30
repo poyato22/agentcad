@@ -18,8 +18,9 @@ Which sites ask a card:
 - Exfiltration guards: a link that skips the card must look like a product link (path at most
   PATH_MAX characters, no segment or query value that looks like an encoded blob); one that
   does not asks a card instead. web_search queries are at most 120 characters with no
-  base64- or hex-looking tokens. Every run has a fetch budget (profile
-  `browser_fetches_per_run`, default 60): one per site searched, one per page opened.
+  base64- or hex-looking tokens. Every run family has one fetch budget (profile
+  `browser_fetches_per_run`, default 60; sub-agents share their root's, and a build's lead
+  gets a fresh one per user message): one per site searched, one per page opened.
 
 Untrusted data: page text, titles, result snippets and a card's page-derived fields reach the
 model only inside one nonce-delimited <untrusted_page> block (data["untrusted_page_data"]),
@@ -172,12 +173,17 @@ def _budget(ctx: ToolContext) -> int:
 
 
 def _charge(ctx: ToolContext, n: int) -> None:
-    """Spend `n` of this run's fetch budget, or refuse before anything is fetched."""
+    """Spend `n` of the fetch budget, or refuse before anything is fetched. The budget is the
+    family's (charged to the root run, like the dollar and Onshape caps), so spawning
+    sub-agents never buys more fetches; a build's lead gets a fresh one per user message
+    (budget.start_turn clears its row)."""
     cap = _budget(ctx)
-    used = _snapshots(ctx).charge(ctx.run_id, n, cap)
+    root, _family = ctx.store.run_family(ctx.run_id)
+    used = _snapshots(ctx).charge(root, n, cap)
     if used is None:
         raise MisesError(ErrorCode.BUDGET_EXHAUSTED,
-                         f"this run used its {cap} web fetches",
+                         f"this request used its {cap} web fetches (shared by the agent and"
+                         " its sub-agents)",
                          hint="work with the pages already read, or ask the user to raise"
                               " 'browser fetches per run' in Profile")
 

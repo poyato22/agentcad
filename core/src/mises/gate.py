@@ -187,7 +187,7 @@ class Gate:
         if t.onshape_cost <= 0:
             return
         used_year = self.store.ledger_used(self.user, since=_year_start())
-        used_run = self.store.get_run(run_id).onshape_calls
+        used_run = budget.onshape_used(self.store, self.user, run_id)   # a lead: this turn
         if (used_year + t.onshape_cost > policy.caps.onshape_calls_year
                 or used_run + t.onshape_cost > policy.caps.onshape_calls_run):
             raise MisesError(ErrorCode.BUDGET_EXHAUSTED,

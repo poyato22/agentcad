@@ -56,6 +56,15 @@ afterEach(async () => {
 });
 
 describe("ApprovalCard", () => {
+  it("shows_the_cores_before_after_lines_as_text", () => {
+    const { container } = mount({ ...pending(), action: "calibration_save", payload: { material: "PLA" }, deltas: {
+      changes: ["E: 2300 MPa → 3220 MPa", "<b>x</b>", 7], note: "Approving saves this calibration." } });
+    const lines = [...container.querySelectorAll("[data-change]")].map((e) => e.textContent);
+    expect(lines).toEqual(["E: 2300 MPa → 3220 MPa", "<b>x</b>"]);
+    expect(container.querySelector("[data-change-facts]")?.textContent).toContain("Approving saves this calibration.");
+    expect(container.querySelector("b")).toBeNull();
+  });
+
   it("renders_header_summary_deltas_hash_and_buttons", () => {
     const { container } = mount();
     const card = container.querySelector("[data-card]") as HTMLElement;

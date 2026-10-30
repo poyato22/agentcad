@@ -236,7 +236,7 @@ def test_a_consistent_misread_on_every_attempt_is_reported_not_green(client, mod
     assert done["checks"]["text_layer"]["unsupported"] == ["W"]   # ...but not the drawing
 
 
-def test_second_look_differences_are_kept_as_a_second_opinion(client, model):
+def test_second_look_differences_are_kept_as_a_second_opinion(client, model, rt):
     model.look = ('Here: {"mismatches": [{"feature": "corner", "drawing": "R5 fillet top '
                   'right", "part": "sharp corner"}], "summary": "One corner differs."}')
     model.turns = [submit(plate_spec), say("done")]
@@ -245,6 +245,11 @@ def test_second_look_differences_are_kept_as_a_second_opinion(client, model):
     look = done["checks"]["second_look"]
     assert look["status"] == "issues" and look["mismatches"][0]["feature"] == "corner"
     assert done["result"] == "match"          # an opinion, not a measurement
+    # final review M3: the agent reads it labelled untrusted (it came from a hostile-able image)
+    import json as _json
+    outs = [_json.dumps(s.payload) for s in rt.store.steps(out["run_id"])
+            if "corner" in _json.dumps(s.payload) and "tool" in s.kind.value]
+    assert outs and all("untrusted_second_look" in o and '"second_look"' not in o for o in outs)
 
 
 def test_same_file_name_twice_gets_two_parts(client, rt):

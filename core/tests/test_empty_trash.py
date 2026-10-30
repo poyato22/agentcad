@@ -116,6 +116,42 @@ def test_purges_everything_the_build_owns(store, tmp_path, asm):
     assert len(asm.get(keep.id).instances) == 1
 
 
+def test_purges_the_builds_references_and_drawing_imports(store, tmp_path):
+    """Final review M6: reference images and imported drawings (the user's own files) of a
+    purged build go with it; another build's, and unbuilt ones, stay."""
+    pid = _trashed(store)
+    keep = store.create_project("Keep")
+    for sub, rec, name, owner in (("references", "meta.json", "ref_aa", pid),
+                                  ("references", "meta.json", "ref_bb", keep.id),
+                                  ("references", "meta.json", "ref_cc", None),
+                                  ("imports", "import.json", "imp_aa", pid),
+                                  ("imports", "import.json", "imp_bb", keep.id)):
+        d = tmp_path / sub / name
+        d.mkdir(parents=True)
+        (d / rec).write_text(json.dumps({"project_id": owner}))
+    projects.empty_trash(store, tmp_path)
+    left = {p.name for sub in ("references", "imports") for p in (tmp_path / sub).iterdir()}
+    assert left == {"ref_bb", "ref_cc", "imp_bb"}
+
+
+async def test_deleting_a_run_removes_its_renders(tmp_path, monkeypatch):
+    """Final review M6: GET /renders/{id} stops serving a deleted run's renders."""
+    import mises.runtime as runtime_mod
+    from mises.runtime import Runtime
+    monkeypatch.setattr(runtime_mod, "keychain_get", lambda *a: None)
+    rt = Runtime(tmp_path / "home")
+    run = rt.store.create_run("designer", "fake", "m", "t")
+    rt.store.update_run(run.id, status="done")
+    other = "zz" + run.id[2:]
+    d = rt.home / "renders"
+    d.mkdir(parents=True)
+    mine = [f"crit_{run.id[:8]}_0123456789_iso.png", f"rv_{run.id[:8]}_abcdef0123_front.png"]
+    for n in (*mine, f"pv_{other[:8]}_0123456789_iso.png"):
+        (d / n).write_bytes(b"png")
+    assert await rt.delete_run(run.id) is None
+    assert sorted(p.name for p in d.iterdir()) == [f"pv_{other[:8]}_0123456789_iso.png"]
+
+
 def test_part_placed_by_another_build_keeps_its_files(store, tmp_path, asm):
     pid = _trashed(store)
     keep = store.create_project("Keep")

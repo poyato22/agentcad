@@ -350,6 +350,27 @@ def _noop(*a, **k):
 
 
 @pytest.mark.timeout(60)
+async def test_profile_ceilings_bound_an_agents_wind_settings(tmp_path, monkeypatch):
+    """Final review M9: the user's profile caps the cores and time an agent may ask for."""
+    seen = {}
+
+    async def fake_study(tris, payload, job_root, docker, progress=None):
+        seen.update(payload)
+        raise SimError("bad_setup", "stop here")
+    monkeypatch.setattr("mises.sim.cfd.openfoam_available", lambda: (DOCKER, None))
+    monkeypatch.setattr(openfoam, "run_openfoam_study", fake_study)
+    s = studies.validate_settings("wind", {"solver": "openfoam", "speed_m_s": 3, "cpus": 32,
+                                           "timeout_s": 7200})
+    with pytest.raises(SimError):
+        await studies._run_wind(_job(tmp_path, sphere(n=16)), {}, s, _noop, 8192,
+                                limits={"cpus": 8, "timeout_s": 3600})
+    assert seen["cpus"] == 8 and seen["timeout_s"] == 3600
+    from mises.profile import Profile
+    lim = studies.wind_limits(None)
+    assert lim == {"memory_mb": Profile().wind_max_memory_mb, "cpus": 8, "timeout_s": 3600.0}
+
+
+@pytest.mark.timeout(60)
 async def test_record_is_labelled_openfoam_with_its_band(tmp_path, monkeypatch):
     from mises.sim.cfd import validation
     monkeypatch.setattr(validation, "OPENFOAM_VALIDATION", [])      # the pre-benchmark state
