@@ -9,6 +9,7 @@ import allParts from "../../../test/fixtures/core-ui/parts.json";
 import allRuns from "../../../test/fixtures/core-ui/runs.json";
 import { openPartId } from "../assembly/focus";
 import { LeftPane } from "./LeftPane";
+import { assemblyOf } from "./treeActions";
 import { PartTree as PartList } from "./PartTree";
 import { Variables } from "./Variables";
 
@@ -150,6 +151,17 @@ describe("left pane", () => {
     expect(screen.queryByText("History")).toBeNull();
     expect(screen.queryByText("Parts list")).toBeNull();
     expect(container.querySelector(".left-vars, .vars")).toBeNull();
+  });
+
+  it("the_total_is_the_assemblys_once_it_loads (FW-app M7: one total, not two)", () => {
+    load();
+    // two instances of the 5.7 g plate: the build weighs what its assembly does
+    assemblyOf.value = { instances: [{ id: "i1", part_id: "mount_plate" }, { id: "i2", part_id: "mount_plate" }], total_mass_g: 11.4, mass_unknown: [] };
+    render(<LeftPane />);
+    const t = screen.getByTestId("parts-total");
+    expect(t.textContent).toContain("11.4 g");
+    expect(t.getAttribute("title")).toMatch(/every instance/);
+    assemblyOf.value = null;
   });
 
   it("a_plain_click_opens_the_part_and_a_modifier_click_only_selects", () => {

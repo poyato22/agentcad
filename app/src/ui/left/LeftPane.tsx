@@ -9,7 +9,8 @@ import { BomSummary } from "./BomSummary";
 import "./left.css";
 import { fmtMass, totalMass } from "./mass";
 import { PartTree } from "./PartTree";
-import { lastDeleted, undoDelete } from "./treeActions";
+import { assemblyOf, lastDeleted, undoDelete } from "./treeActions";
+import { assemblyMassTitle } from "../../lib/mass";
 
 /** How long the Undo toast stays. */
 export const UNDO_MS = 8000;
@@ -32,15 +33,22 @@ function UndoToast(): JSX.Element | null {
 
 export function LeftPane(): JSX.Element {
   const list = parts.value;
-  const total = totalMass(list);
   const counted = list.some((p) => p.kind !== "skeleton");
+  // one total for the build (FW-app M7: the viewer no longer repeats it): its assembly's, every
+  // instance x its part's mass, once loaded with something in it; else the tree's sum
+  const asm = assemblyOf.value;
+  const asmG = asm && asm.instances.length > 0 && typeof asm.total_mass_g === "number" ? asm.total_mass_g : null;
+  const tree = totalMass(list);
+  const total = asmG !== null ? { g: asmG, unknown: (asm?.mass_unknown ?? []).reduce((n, u) => n + u.count, 0) } : tree;
+  const title = asmG !== null ? assemblyMassTitle(asm?.mass_unknown ?? [])
+    : tree.unknown ? `${tree.unknown} part${tree.unknown === 1 ? "" : "s"} without a mass yet` : undefined;
   return (
     <div class="left-pane" data-testid="left-pane">
       <section class="left-parts" aria-label="Parts">
         <header class="left-sec-head"><span class="left-sec-title">Parts</span></header>
         <div class="left-parts-body pane-body"><PartTree /></div>
         {counted && (
-          <div class="left-total" data-testid="parts-total" title={total.unknown ? `${total.unknown} part${total.unknown === 1 ? "" : "s"} without a mass yet` : undefined}>
+          <div class="left-total" data-testid="parts-total" title={title}>
             <span>Total</span>
             <span class="num">{fmtMass(total.g)}{total.unknown ? <span class="dim"> +{total.unknown} unknown</span> : null}</span>
           </div>

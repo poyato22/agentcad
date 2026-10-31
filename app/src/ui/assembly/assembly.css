@@ -107,4 +107,3 @@
 }
 
 /* Plan 9 B2: the assembly's total mass, top-left of the sheet */
-.asm-mass { position: absolute; left: 14px; top: 12px; z-index: 2; font-size: var(--fs); color: var(--dim); pointer-events: auto; }

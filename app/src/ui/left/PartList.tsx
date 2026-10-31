@@ -20,8 +20,7 @@ import { partName } from "../../lib/names";
 import { activeBuildId } from "../../state/builds";
 import { agentFlash } from "../../state/partEdits";
 import { parts, selectedPartId } from "../../state/store";
-import { viewScope } from "../viewer/Viewer";
-import { openPart } from "../assembly/focus";
+import { closePart, openPart } from "../assembly/focus";
 import { ConfirmDelete } from "./ConfirmDelete";
 import { masses, rowMassText } from "./mass";
 import { AppearancePopover } from "./AppearancePopover";
@@ -252,7 +251,8 @@ export function PartList(): JSX.Element {
     items.push(
       { label: "Appearance…", run: () => openLook(id) },
       { label: anyShown ? `Hide${many}` : `Show${many}`, keys: "H", run: () => setHidden(targets, anyShown) },
-      { label: single ? "Isolate" : `Isolate${many}`, title: "Show only this in the build view", run: () => { isolate(targets, buildIds); viewScope.value = "build"; } },
+      // on the build view (the assembly): a part open alone goes back to it (FW-app I1)
+      { label: single ? "Isolate" : `Isolate${many}`, title: "Show only this in the build view", run: () => { isolate(targets, buildIds); closePart(); } },
     );
     if (hidden.size > 0) items.push({ label: "Show all parts", run: () => showAll() });
     items.push({

@@ -10,7 +10,6 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import type { AssemblyPart } from "../../api/assembly";
 import { onCoreEvent } from "../../api/events";
 import { isTrustedKey } from "../../lib/keys";
-import { assemblyMassTitle, fmtMass } from "../../lib/mass";
 import { actions, parts as storeParts } from "../../state/store";
 import type { PartScene } from "../viewer/loadPart";
 import { PartLoader } from "../viewer/partLoader";
@@ -32,6 +31,7 @@ import { prefersReducedMotion } from "../viewer/modes/motion";
 import type { ModesState } from "../viewer/modes/state";
 import { activeBuildId, onBuildSwitch } from "../../state/builds";
 import { assemblyOf } from "../left/treeActions";
+import { hiddenParts } from "../left/visibility";
 import { parseAnimateSteps, setAnimationPlayer } from "../../state/assemblyAnimation";
 import type { AnimateStep } from "../../api/types";
 import { registerAnnounceJump } from "../console/announceJumps";
@@ -125,6 +125,8 @@ export function AssemblyView(): JSX.Element {
   const modesCtl = useModesController(modeHost, assemblyModes.value, animate);
 
   const data = ctl.data.value;
+  // the parts tree's Hide / Show / Isolate (FW-app I1): by part, so every instance of it
+  const hidden = hiddenParts.value;
 
   // the scene: created once per mount
   useEffect(() => {
@@ -209,10 +211,10 @@ export function AssemblyView(): JSX.Element {
     scene.setReach(reachOf());
     scene.setInstances((data?.instances ?? []).map((i) => ({
       id: i.id, template: templates.current.get(i.part_id)?.scene ?? null, color: ctl.part(i.part_id)?.color ?? null,
-      material: materialOf(ctl.part(i.part_id) ?? {}),
+      material: materialOf(ctl.part(i.part_id) ?? {}), hidden: hidden.has(i.part_id),
     })));
     scene.setPose(ctl.currentPose());
-  }, [data, templateTick, ctl.parts.value]);
+  }, [data, templateTick, ctl.parts.value, hidden]);
 
   // a rebuilt part (the global part list moved on): re-read the build's parts
   // (only on a real change after the assembly loaded: the first list is the one open() read)
@@ -380,20 +382,15 @@ export function AssemblyView(): JSX.Element {
           : "placed freely";
   const issues = checkIssues(it.status === "done" ? it.items : [], data?.overconstrained ?? []);
   const count = data?.instances.length ?? 0;
+  const shownCount = (data?.instances ?? []).filter((i) => !hidden.has(i.part_id)).length;
 
   return (
     <div class="asm" data-testid="assembly-view" data-immersive={imm?.mode ?? undefined}>
       <div class="vp asm-sheet" ref={hostRef}>
         <canvas ref={canvasRef} class="vp-canvas" data-testid="assembly-canvas"
-          data-instances={count} data-arriving={ctl.arriving.value ? "on" : "off"}
+          data-instances={count} data-shown={shownCount} data-arriving={ctl.arriving.value ? "on" : "off"}
           data-section={assemblyModes.value.section.on ? "on" : "off"} data-explode={assemblyModes.value.explode > 0 ? "on" : "off"}
           aria-label="Assembly view" />
-        {data && count > 0 && (
-          <span class="asm-mass num" data-testid="assembly-mass" title={assemblyMassTitle(data.mass_unknown)}>
-            {`Mass ${data.total_mass_g === null || data.total_mass_g === undefined ? "—" : fmtMass(data.total_mass_g)}`}
-            {data.mass_unknown.length > 0 ? <span class="dim">{` · ${data.mass_unknown.length} unknown`}</span> : null}
-          </span>
-        )}
         {labels.map((l) => (
           <span key={l.key} class="asm-tag" style={{ left: `${l.x}px`, top: `${l.y}px` }} data-testid="interference-tag">{l.text}</span>
         ))}

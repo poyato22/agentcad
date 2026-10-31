@@ -6,13 +6,13 @@ import type { PartSummary } from "../../api/types";
 import { activeBuildId, resetBuilds } from "../../state/builds";
 import { agentFlash, onPartChanged, resetPartEdits } from "../../state/partEdits";
 import { bindClient, parts, resetStore, selectedPartId } from "../../state/store";
-import { viewScope } from "../viewer/Viewer";
 import { measureHook } from "./partMenuHooks";
 import { resetSelection, selectedIds } from "./partSelection";
 import { PartTree } from "./PartTree";
 import { assemblyOf, lastDeleted, onAgentDeleted, treeError, treeNote } from "./treeActions";
 import { LeftPane } from "./LeftPane";
 import { openPartId } from "../assembly/focus";
+import "../viewer/Viewer";   // its part-menu items (Modify…, Measure)
 import { hiddenParts, resetVisibility } from "./visibility";
 import { modifyRequest } from "../viewer/tool";
 
@@ -36,7 +36,7 @@ let client: {
 
 beforeEach(() => {
   resetStore(); resetBuilds(); resetPartEdits(); resetVisibility(); resetSelection();
-  treeError.value = null; treeNote.value = null; viewScope.value = "part";
+  treeError.value = null; treeNote.value = null; openPartId.value = null;
   activeBuildId.value = "b1";
   parts.value = LIST();
   client = {
@@ -342,11 +342,12 @@ describe("part tree", () => {
   });
 
   it("Isolate shows only the part in the build view; Show all brings the rest back", () => {
+    openPartId.value = "plate";      // a part open alone: Isolate goes back to the assembly
     render(<PartTree />);
     fireEvent.contextMenu(rowEl("plate"), { clientX: 10, clientY: 10 });
     fireEvent.click(screen.getByRole("menuitem", { name: "Isolate" }));
     expect(hiddenParts.value).toEqual(new Set(["frame", "arm_a", "arm_b"]));
-    expect(viewScope.value).toBe("build");
+    expect(openPartId.value).toBeNull();   // on the assembly (FW-app I1)
     fireEvent.contextMenu(rowEl("plate"), { clientX: 10, clientY: 10 });
     fireEvent.click(screen.getByRole("menuitem", { name: "Show all parts" }));
     expect(hiddenParts.value.size).toBe(0);

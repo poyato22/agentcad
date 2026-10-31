@@ -20,6 +20,9 @@ export interface SceneInstance {
   /** Plan 7 U8 finish (lib/appearance materialOf): a shiny one is drawn PBR with the room's
    *  reflections, as in the Part viewer (I5). Absent = the matte drafting look. */
   material?: MaterialParams;
+  /** Hidden from the parts tree (Hide / Isolate, ui/left/visibility): not drawn, not hit, not
+   *  cut or framed, and out of the modes' parts. */
+  hidden?: boolean;
 }
 
 export interface OverlayLabel { key: string; x: number; y: number; text: string }
@@ -77,7 +80,7 @@ function defaultRenderer(canvas: HTMLCanvasElement): RendererLike {
   return new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true, stencil: true });
 }
 
-interface Entry { id: string; group: THREE.Group; body: THREE.Object3D | null; template: PartScene | null; color: string | null; material: MaterialParams | null }
+interface Entry { id: string; group: THREE.Group; body: THREE.Object3D | null; template: PartScene | null; color: string | null; material: MaterialParams | null; hidden: boolean }
 
 export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallbacks, deps: AssemblySceneDeps = {}): AssemblyScene {
   const renderer = (deps.createRenderer ?? defaultRenderer)(canvas);
@@ -210,8 +213,8 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
     for (const c of [...overlapRoot.children]) c.removeFromParent();
     for (const p of interference) {
       const a = new THREE.Box3(); const b = new THREE.Box3();
-      for (const id of p.a) { const e = entries.get(id); if (e?.body) a.expandByObject(e.group); }
-      for (const id of p.b) { const e = entries.get(id); if (e?.body) b.expandByObject(e.group); }
+      for (const id of p.a) { const e = entries.get(id); if (e?.body && !e.hidden) a.expandByObject(e.group); }
+      for (const id of p.b) { const e = entries.get(id); if (e?.body && !e.hidden) b.expandByObject(e.group); }
       const both = a.intersect(b);
       if (both.isEmpty()) continue;
       const size = both.getSize(new THREE.Vector3()).max(new THREE.Vector3(0.2, 0.2, 0.2));
@@ -248,8 +251,9 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
   function labels(): OverlayLabel[] {
     const out: OverlayLabel[] = [];
     interference.forEach((p, i) => {
-      const a = p.a.map((id) => entries.get(id)?.group).filter(Boolean) as THREE.Group[];
-      const b = p.b.map((id) => entries.get(id)?.group).filter(Boolean) as THREE.Group[];
+      const shownGroup = (id: string) => { const e = entries.get(id); return e && !e.hidden ? e.group : undefined; };
+      const a = p.a.map(shownGroup).filter(Boolean) as THREE.Group[];
+      const b = p.b.map(shownGroup).filter(Boolean) as THREE.Group[];
       if (!a.length || !b.length) return;
       box.makeEmpty(); for (const g of a) box.expandByObject(g);
       box2.makeEmpty(); for (const g of b) box2.expandByObject(g);
@@ -270,7 +274,7 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
     ndc.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
     ray.setFromCamera(ndc, camera);
     const meshes: THREE.Object3D[] = [];
-    for (const e of entries.values()) e.body?.traverse((o) => { if (o instanceof THREE.Mesh) meshes.push(o); });
+    for (const e of entries.values()) if (!e.hidden) e.body?.traverse((o) => { if (o instanceof THREE.Mesh) meshes.push(o); });
     // a section keeps only the near side: a hit on a clipped-away face is not a hit
     const plane = sectionPlane();
     const h = ray.intersectObjects(meshes, false).find((x) => !plane || plane.distanceToPoint(x.point) >= -1e-6);
@@ -316,7 +320,7 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
 
   function worldBox(): THREE.Box3 {
     const b = new THREE.Box3();
-    for (const e of entries.values()) if (e.body) b.expandByObject(e.group);
+    for (const e of entries.values()) if (e.body && !e.hidden) b.expandByObject(e.group);
     if (b.isEmpty()) return b;
     for (const r of reach) {
       const c = new THREE.Vector3(...r.center);
@@ -326,7 +330,8 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
   }
 
   function refitIfNew(): void {
-    const key = [...entries.values()].filter((e) => e.body).map((e) => e.id).sort().join(",");
+    // what is shown: a Hide or Isolate in the parts tree frames what is left
+    const key = [...entries.values()].filter((e) => e.body && !e.hidden).map((e) => e.id).sort().join(",");
     if (key === fittedKey || key === "") return;
     fittedKey = key;
     root.updateMatrixWorld(true);
@@ -338,7 +343,7 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
   let framingMargin = FIT_MARGIN;
   function posedBox(): THREE.Box3 {
     const b = new THREE.Box3();
-    for (const e of entries.values()) if (e.body) b.expandByObject(e.group);
+    for (const e of entries.values()) if (e.body && !e.hidden) b.expandByObject(e.group);
     return b;
   }
   function posesBox(poses: readonly Readonly<Record<string, Mat4>>[]): THREE.Box3 {
@@ -346,7 +351,7 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
     for (const pose of poses) {
       for (const e of entries.values()) {
         const m = pose[e.id];
-        if (!e.template || !m) continue;
+        if (!e.template || !m || e.hidden) continue;
         b.union(e.template.bbox.clone().applyMatrix4(toMatrix4(m)));
       }
     }
@@ -373,7 +378,7 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
   function shownParts(): readonly ShownPart[] {
     const out: ShownPart[] = [];
     for (const e of entries.values()) {
-      if (!e.body || !e.template) { shown.delete(e.id); continue; }
+      if (!e.body || !e.template || e.hidden) { shown.delete(e.id); continue; }
       let s = shown.get(e.id);
       if (!s || s.scene.object !== e.body) {
         const body = e.body as THREE.Group;
@@ -418,7 +423,7 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
           group.matrixAutoUpdate = false;
           group.userData["instanceId"] = inst.id;
           root.add(group);
-          e = { id: inst.id, group, body: null, template: null, color: null, material: null };
+          e = { id: inst.id, group, body: null, template: null, color: null, material: null, hidden: false };
           entries.set(inst.id, e);
         }
         if (e.template !== inst.template) {
@@ -429,6 +434,8 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
         }
         e.color = inst.color;
         e.material = inst.material ?? null;
+        e.hidden = !!inst.hidden;
+        e.group.visible = !e.hidden;
       }
       restyle();
       refitIfNew();

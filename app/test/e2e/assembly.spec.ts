@@ -86,11 +86,13 @@ test("the_design_page_is_the_assembly_with_no_panel_no_toolbar_and_no_part_toggl
   await expect(page.getByTestId("assembly-canvas")).toBeVisible();
 });
 
-test("the_assembly_shows_its_total_mass (Plan 9 B2)", async ({ page }) => {
+test("the_assembly_shows_its_total_mass_once (Plan 9 B2, FW-app M7)", async ({ page }) => {
   await openAssembly(page);
-  // two mount plates: instances x the part's tree mass (volume x PLA, the build default)
-  await expect(page.getByTestId("assembly-mass")).toHaveText(/^Mass \d+(\.\d+)? g$/);
-  await expect(page.getByTestId("assembly-mass")).toHaveAttribute("title", /every instance/);
+  // two mount plates: instances x the part's tree mass (volume x PLA, the build default), shown
+  // once: the left surface's total, not again over the viewer
+  await expect(page.getByTestId("parts-total")).toContainText(/Total\s*\d+(\.\d+)? g/);
+  await expect(page.getByTestId("parts-total")).toHaveAttribute("title", /every instance/);
+  await expect(page.getByTestId("assembly-mass")).toHaveCount(0);
 });
 
 test("a_tree_click_opens_the_part_alone_and_back_or_esc_returns", async ({ page }) => {
@@ -167,6 +169,36 @@ function enclosure(): Record<string, unknown> {
     assembly: { by_project: { [PROJECT]: stored, b0default000: stored }, interference: "none" },
   };
 }
+
+test("hide_show_and_isolate_in_the_tree_drive_the_assembly (FW-app I1)", async ({ page, fake }) => {
+  await fake.reset(enclosure());
+  await page.goto("/");
+  const canvas = page.getByTestId("assembly-canvas");
+  await expect(canvas).toHaveAttribute("data-instances", "5");
+  await expect.poll(async () => (await pixels(page)).total, { timeout: 15_000 }).toBeGreaterThan(2000);
+  await page.waitForTimeout(300);
+  const all = (await pixels(page)).total;
+  const row = (id: string) => page.locator(`[data-part="${id}"] .tree-row`).first();
+  // Hide the case: one instance fewer drawn, the canvas changes
+  await row("pi_case").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Hide" }).click();
+  await expect(canvas).toHaveAttribute("data-shown", "4");
+  await expect.poll(async () => (await pixels(page)).total).not.toBe(all);
+  // Show brings it back
+  await row("pi_case").click({ button: "right" });
+  await page.getByRole("menuitem", { name: /^Show( H)?$/ }).click();
+  await expect(canvas).toHaveAttribute("data-shown", "5");
+  // Isolate the lid: only it stays, on the assembly (no part opened, no other view)
+  await row("pi_lid").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Isolate" }).click();
+  await expect(canvas).toHaveAttribute("data-shown", "1");
+  await expect(page.getByTestId("assembly-view")).toBeVisible();
+  await expect(page.getByTestId("viewer-canvas")).toHaveCount(0);
+  await row("pi_lid").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Show all parts" }).click();
+  await expect(canvas).toHaveAttribute("data-shown", "5");
+  await expect.poll(async () => (await pixels(page)).total).toBeGreaterThan(all * 0.8);
+});
 
 /** Pixels on the assembly canvas lit well above the dark faces (luma > 150). */
 async function bright(page: Page): Promise<number> {

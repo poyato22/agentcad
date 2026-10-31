@@ -87,6 +87,47 @@ describe("the view modes on the assembly (Plan 9 D17)", () => {
   });
 });
 
+describe("hidden instances (FW-app I1: the tree's Hide / Isolate drive the build view)", () => {
+  const at = (x: number): number[][] => [[1, 0, 0, x], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]];
+
+  it("a hidden instance is not drawn and not a shown part for the modes", async () => {
+    sc = createAssemblyScene(document.createElement("canvas"), cb, { createRenderer: stub });
+    const t = await loadPart(fixtureBytes());
+    sc.setInstances([{ id: "a", template: t, color: null }, { id: "b", template: t, color: null, hidden: true }]);
+    sc.setPose({ a: at(0), b: at(500) });
+    let group: THREE.Object3D | undefined;
+    sc.modeHost().scene.traverse((o) => { if (o.userData["instanceId"] === "b") group = o; });
+    expect(group?.visible).toBe(false);
+    expect(sc.modeHost().parts().map((p) => p.id)).toEqual(["a"]);
+    // shown again: back in the modes' parts and drawn
+    sc.setInstances([{ id: "a", template: t, color: null }, { id: "b", template: t, color: null }]);
+    expect(group?.visible).toBe(true);
+    expect(sc.modeHost().parts().map((p) => p.id)).toEqual(["a", "b"]);
+  });
+
+  it("a click where only a hidden instance is hits nothing", async () => {
+    const onSelect = vi.fn();
+    const canvas = document.createElement("canvas");
+    canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 400, height: 300, right: 400, bottom: 300, x: 0, y: 0, toJSON: () => ({}) });
+    canvas.setPointerCapture = () => {}; canvas.releasePointerCapture = () => {};   // the orbit's
+    sc = createAssemblyScene(canvas, { onSelect, onLabels: vi.fn() }, { createRenderer: stub });
+    const t = await loadPart(fixtureBytes());
+    sc.resize(400, 300);
+    sc.setInstances([{ id: "a", template: t, color: null }]);
+    sc.setPose({ a: at(0) });
+    sc.fit();
+    const click = () => {
+      canvas.dispatchEvent(new PointerEvent("pointerdown", { clientX: 200, clientY: 150 }));
+      canvas.dispatchEvent(new PointerEvent("pointerup", { clientX: 200, clientY: 150 }));
+    };
+    click();
+    expect(onSelect).toHaveBeenLastCalledWith("a");
+    sc.setInstances([{ id: "a", template: t, color: null, hidden: true }]);
+    click();
+    expect(onSelect).toHaveBeenLastCalledWith(null);
+  });
+});
+
 function meshesOfScene(s: AssemblyScene, id: string): THREE.Mesh[] {
   const out: THREE.Mesh[] = [];
   s.modeHost().scene.traverse((o) => { if (o.userData["instanceId"] === id) o.traverse((m) => { if (m instanceof THREE.Mesh) out.push(m); }); });

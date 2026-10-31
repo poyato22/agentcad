@@ -211,6 +211,9 @@ export function instanceCount(ids: readonly string[]): number {
 export const assemblyOf: Signal<{
   instances: readonly { id: string; part_id: string; name?: string }[];
   joints?: readonly { a: { instance_id: string }; b: { instance_id: string } }[];
+  /** Plan 9 B2: instances x their part's mass (the left surface's one total, FW-app M7). */
+  total_mass_g?: number | null;
+  mass_unknown?: readonly { part_id: string; count: number; reason: string }[];
 } | null> = signal(null);
 
 /** What "Remove from assembly" takes with it: the instances, and the joints that come loose with
