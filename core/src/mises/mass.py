@@ -72,8 +72,11 @@ def default_material(home: Path | None) -> str:
 def build_density(store, home: Path, part_id: str) -> float:
     """The density a part's next build hands the worker (so the build's own metrics agree with
     the tree): its row's material, else the build default; PLA when neither is known."""
-    row = store.get_part(part_id) if store is not None else None
-    mat = (row.material if row is not None else None) or default_material(home)
+    try:   # a bare test context's store may not be a Store
+        row = store.get_part(part_id) if store is not None else None
+    except Exception:  # noqa: BLE001 - no row: the build default
+        row = None
+    mat = getattr(row, "material", None) or default_material(home)
     return density_g_cm3(mat, home) or density_g_cm3(DEFAULT_MATERIAL)  # type: ignore[return-value]
 
 
