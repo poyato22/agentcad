@@ -30,6 +30,15 @@
       "signals": [],
       "vision_recommended": false
     },
+    "design_class": {
+      "score": 0.12,
+      "cls": "engineering",
+      "per_part": {},
+      "reasons": [
+        "mount plate: a functional part judged by fit and load"
+      ],
+      "source": "prior"
+    },
     "turn_started_at": null,
     "turn_usd0": null,
     "parent_run_id": null,

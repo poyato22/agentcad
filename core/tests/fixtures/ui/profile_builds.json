@@ -221,5 +221,6 @@
   "wind_max_timeout_s": 3600.0,
   "critique_max_rounds": 3,
   "critique_time_budget_s": 300.0,
-  "critique_max_image_tokens": 12000
+  "critique_max_image_tokens": 12000,
+  "design_classifier_model": null
 }

@@ -1,4 +1,4 @@
-{"type":"run_started","run_id":"b3287052853b","data":{"agent":"sim","provider":"fake","model":"fake-model","parent_id":null,"shape_complexity":{"score":0.0,"level":"low","signals":[],"vision_recommended":false}},"ts":1793384749.636039}
+{"type":"run_started","run_id":"b3287052853b","data":{"agent":"sim","provider":"fake","model":"fake-model","parent_id":null,"shape_complexity":{"score":0.0,"level":"low","signals":[],"vision_recommended":false},"design_class":{"score":0.2,"cls":"engineering","per_part":{},"reasons":["no archetype or styling signal: engineering by default (design needs evidence)"],"source":"prior"}},"ts":1793384749.636039}
 {"type":"agent_activity","run_id":"b3287052853b","data":{"state":"starting","detail":"","since":1793384749.636051},"ts":1793384749.636055}
 {"type":"text_delta","run_id":"b3287052853b","data":{"text":"Running the static study."},"ts":1793384749.642466}
 {"type":"agent_activity","run_id":"b3287052853b","data":{"state":"writing","detail":"","since":1793384749.642473},"ts":1793384749.642475}

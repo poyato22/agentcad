@@ -42,6 +42,8 @@ export const agentRunSchema = z.object({
   cost: runCostSchema.optional(),
   // Plan 8 G1 routing hint (shape is read leniently by the model warning chip)
   shape_complexity: z.unknown().optional(),
+  // Plan 9 G-B (D27): {score, cls: engineering|mixed|design, per_part, reasons, source}
+  design_class: z.unknown().optional(),
   turn_started_at: z.number().nullable().optional(), turn_usd0: z.number().nullable().optional(),
   // Plan 7 (U3c): lead/sub role and the router's choice
   role: z.enum(["lead", "sub"]).nullish(),
