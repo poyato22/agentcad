@@ -159,3 +159,27 @@ async def test_job_dir_is_cleaned_up(tmp_path):
     await run_render_job(tmp_path / "jobs", [m], renders=[{"key": "k", "views": ["iso"],
                                                            "size": 128}])
     assert not any((tmp_path / "jobs").iterdir())
+
+
+async def test_design_styles_render_in_the_worker_within_memory(tmp_path):
+    """Plan 9 G-R: style / perspective / background / CMF travel to the sandboxed worker, and a
+    1024 px supersampled render (a 2048 px internal raster) stays inside the 1 GB budget."""
+    import io
+
+    from PIL import Image
+    m = _part(tmp_path, "wing", blended_wing_tris())
+    m.roughness, m.metalness = 0.2, 1.0
+    out = await run_render_job(tmp_path / "jobs", [m], timeout_s=120, memory_mb=1024, renders=[
+        {"key": "s", "views": ["iso"], "size": 1024, "style": "sketch", "perspective": True},
+        {"key": "z", "views": ["iso"], "size": 256, "style": "zebra"},
+        {"key": "t", "views": ["iso"], "size": 256, "background": "transparent"},
+        {"key": "x", "views": ["front"], "size": 256, "style": "silhouette"}])
+    for key, rgba in (("s", False), ("z", False), ("t", True), ("x", False)):
+        png = next(iter(out.pngs[key].values()))
+        assert len(png) < 1024 * 1024
+        with Image.open(io.BytesIO(png)) as im:
+            assert (im.mode == "RGBA") == rgba, (key, im.mode)
+    assert out.peak_rss_mb < 1024, out.peak_rss_mb
+    with pytest.raises(MisesError):
+        await run_render_job(tmp_path / "jobs", [m], timeout_s=60, renders=[
+            {"key": "b", "views": ["iso"], "size": 128, "style": "oil-paint"}])

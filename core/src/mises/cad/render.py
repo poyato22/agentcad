@@ -24,9 +24,14 @@ from __future__ import annotations
 
 import io
 import struct
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
+
+try:                                   # inside the package, or as the worker's sibling module
+    from . import render_shade as shade
+except ImportError:                    # pragma: no cover - the sandboxed worker
+    import render_shade as shade  # type: ignore[no-redef]
 
 # The four standard views: a unit "forward" (the direction the camera looks, from eye to the
 # model) and an "up". Matches the third-angle projection directions used by the 2D drawing.
@@ -65,6 +70,11 @@ class Mesh:
     color: tuple[float, float, float] = _DEFAULT_COLOR
     opacity: float = 1.0
     name: str = ""
+    # CMF (appearance): 0..1 roughness and metalness drive the specular and reflection of the
+    # shaded style; the defaults are the drafting look (matte plastic)
+    roughness: float = 0.9
+    metalness: float = 0.0
+    role: str = ""                     # "figure": the sketch's human-scale figure
 
     def __post_init__(self) -> None:
         self.tris = np.asarray(self.tris, dtype=np.float64).reshape(-1, 3, 3)
@@ -225,7 +235,7 @@ def explode_meshes(meshes: list[Mesh], factor: float) -> list[Mesh]:
         d = m.centroid() - center
         n = np.linalg.norm(d)
         shift = (d / n) * scale * factor if n > 1e-9 else np.zeros(3)
-        out.append(Mesh(m.tris + shift, color=m.color, opacity=m.opacity, name=m.name))
+        out.append(replace(m, tris=m.tris + shift))
     return out
 
 
@@ -291,46 +301,117 @@ _SCAN_ROWS = 250_000                          # (triangle, row) pairs per scanli
 MAX_LAYERS = 64
 
 
+# 35 mm-equivalent lens across the frame width (36 mm film): the perspective of a product shot
+_HALF_FOV = float(np.arctan(18.0 / 35.0))
+
+
+@dataclass
+class _Cam:
+    """A view's camera on a size x size frame. Orthographic: screen coordinates are distances
+    along right/up from the framing centre. Perspective: they are right/up over depth from an
+    eye placed so the framing's bounding sphere fills a 35 mm-equivalent field of view. Either
+    way pixel = size/2 + (screen - screen_centre) * k, y down."""
+    f: np.ndarray
+    right: np.ndarray
+    up: np.ndarray
+    persp: bool
+    center: np.ndarray
+    eye: np.ndarray
+    k: float
+    xs0: float
+    ys0: float
+    size: int
+    reach: float                               # framing diagonal (mm)
+
+    def screen(self, pts: np.ndarray):
+        """(px, py, linear depth along f) of world points (..., 3)."""
+        if self.persp:
+            d = pts - self.eye
+            z = d @ self.f
+            zc = np.maximum(z, 1e-9)
+            xs, ys = (d @ self.right) / zc, (d @ self.up) / zc
+        else:
+            d = pts - self.center
+            z = d @ self.f
+            xs, ys = d @ self.right, d @ self.up
+        h = self.size / 2.0
+        return h + (xs - self.xs0) * self.k, h - (ys - self.ys0) * self.k, z
+
+    def rays(self, gx: np.ndarray, gy: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """(origins, unit directions) of the rays through pixel coordinates (gx, gy)."""
+        h = self.size / 2.0
+        xs = (gx - h) / self.k + self.xs0
+        ys = (h - gy) / self.k + self.ys0
+        if self.persp:
+            d = self.f[None, :] + xs[:, None] * self.right + ys[:, None] * self.up
+            d = d / np.linalg.norm(d, axis=1)[:, None]
+            return np.broadcast_to(self.eye, d.shape), d
+        o = (self.center + xs[:, None] * self.right + ys[:, None] * self.up
+             - 4.0 * self.reach * self.f)
+        return o, np.broadcast_to(self.f, o.shape)
+
+    def scaled(self, size: int) -> "_Cam":
+        """The same camera on a size x size frame."""
+        return replace(self, size=size, k=self.k * size / self.size)
+
+
+def _make_cam(view: str, size: int, framing, cameras: dict | None = None,
+              perspective: bool = False, fill: float = 0.90) -> _Cam:
+    f, right, up = _camera_basis(view, cameras)
+    lo, hi = (np.asarray(framing[0], dtype=np.float64), np.asarray(framing[1], dtype=np.float64))
+    center = (lo + hi) / 2.0
+    reach = float(np.linalg.norm(hi - lo)) or 1e-6
+    corners = np.array([[x, y, z] for x in (lo[0], hi[0]) for y in (lo[1], hi[1])
+                        for z in (lo[2], hi[2])])
+    eye = center - (reach / 2.0) / np.sin(_HALF_FOV) * f
+    if perspective:
+        d = corners - eye
+        z = d @ f
+        xs, ys = (d @ right) / z, (d @ up) / z
+    else:
+        xs, ys = (corners - center) @ right, (corners - center) @ up
+    xs0, ys0 = (xs.max() + xs.min()) / 2.0, (ys.max() + ys.min()) / 2.0
+    half = max(xs.max() - xs.min(), ys.max() - ys.min(), 1e-9) / 2.0
+    return _Cam(f, right, up, bool(perspective), center, eye, (size / 2.0) * fill / half,
+                float(xs0), float(ys0), int(size), reach)
+
+
 @dataclass
 class _Frame:
     px: np.ndarray                            # (N, 3) pixel x of each vertex
     py: np.ndarray                            # (N, 3) pixel y (grows downward)
-    pz: np.ndarray                            # (N, 3) camera depth (bigger = farther)
-    shade: np.ndarray                         # (N, 3) rgb 0..1 per triangle
+    pz: np.ndarray                            # (N, 3) raster depth (bigger = farther)
+    shade: np.ndarray                         # (N, 3) rgb 0..1 per triangle (flat)
     alpha: np.ndarray                         # (N,) opacity per triangle
+    tris: np.ndarray | None = None            # (N, 3, 3) world triangles
+    mesh_of: np.ndarray | None = None         # (N,) index into the live meshes
+    zlin: np.ndarray | None = None            # (N, 3) linear camera depth (mm)
+    live: list | None = None                  # the meshes with triangles, in order
+    face_unit: np.ndarray | None = None       # (N, 3) unit face normals (float32)
 
 
-def _project(meshes: list[Mesh], view: str, size: int, framing,
-             cameras: dict | None = None) -> _Frame:
-    f, right, up = _camera_basis(view, cameras)
-    lo, hi = framing if framing is not None else bbox(meshes)
-    center = (lo + hi) / 2.0
-    corners = np.array([[x, y, z] for x in (lo[0], hi[0]) for y in (lo[1], hi[1])
-                        for z in (lo[2], hi[2])])
-    cx = (corners - center) @ right
-    cy = (corners - center) @ up
-    half = max(cx.max() - cx.min(), cy.max() - cy.min(), 1e-6) / 2.0
-    scale = (size / 2.0) * 0.90 / half
+def _project(meshes: list[Mesh], cam: _Cam) -> _Frame:
     live = [m for m in meshes if len(m.tris)]
     if not live:
         z = np.zeros((0, 3))
-        return _Frame(z, z, z, z, np.zeros(0))
+        return _Frame(z, z, z, z, np.zeros(0), np.zeros((0, 3, 3)), np.zeros(0, np.int64), z, [])
     tris = np.concatenate([m.tris for m in live], axis=0)
     color = np.concatenate([np.broadcast_to(np.asarray(m.color, dtype=np.float64),
                                             (len(m.tris), 3)) for m in live], axis=0)
     alpha = np.concatenate([np.full(len(m.tris), float(m.opacity)) for m in live])
-    v = tris - center
-    px = (v @ right) * scale + size / 2.0
-    py = size / 2.0 - (v @ up) * scale
-    pz = v @ f
+    mesh_of = np.concatenate([np.full(len(m.tris), i, dtype=np.int64)
+                              for i, m in enumerate(live)])
+    px, py, zl = cam.screen(tris)
+    # perspective: 1/z interpolates linearly in screen space, so the z-buffer stores -1/z
+    pz = -1.0 / np.maximum(zl, 1e-9) if cam.persp else zl
     nrm = np.cross(tris[:, 1] - tris[:, 0], tris[:, 2] - tris[:, 0])
     ln = np.linalg.norm(nrm, axis=1)
     unit = nrm / np.maximum(ln, 1e-12)[:, None]
-    key = np.abs(unit @ key_light(f, right, up))       # double-sided Lambert
+    key = np.abs(unit @ key_light(cam.f, cam.right, cam.up))       # double-sided Lambert
     fill = np.abs(unit @ _FILL_DIR)
     intensity = np.where(ln > 1e-12, _AMBIENT + _KEY * key + _FILL * fill, _AMBIENT)
-    shade = np.clip(color * intensity[:, None], 0.0, 1.0)
-    return _Frame(px, py, pz, shade, alpha)
+    flat = np.clip(color * intensity[:, None], 0.0, 1.0)
+    return _Frame(px, py, pz, flat, alpha, tris, mesh_of, zl, live, unit.astype(np.float32))
 
 
 def _setup(fr: _Frame, size: int):
@@ -538,26 +619,437 @@ def _depth_edges(zbuf: np.ndarray, mask: np.ndarray, thresh: float) -> np.ndarra
     return edge & mask
 
 
+def _zbuffer(fr: _Frame, size: int) -> tuple[np.ndarray, np.ndarray]:
+    """(triangle index per pixel, -1 for background; raster depth per pixel), flat arrays."""
+    zbuf = np.full(size * size, np.inf)
+    tri_at = np.full(size * size, -1, dtype=np.int64)
+    for pix, dep, tri in _fragment_batches(fr, size):
+        win = _nearest_per_pixel(pix, dep)
+        p, d = pix[win], dep[win]
+        closer = d < zbuf[p]
+        zbuf[p[closer]] = d[closer]
+        tri_at[p[closer]] = tri[win][closer]
+    return tri_at, zbuf
+
+
+# ---- styles (Plan 9 G-R): shaded (smooth, CMF, studio light, ground shadow), zebra, sketch
+# (NPR line art on paper), silhouette (black fill). Opaque styles are supersampled 2x up to a
+# 2048 px internal raster and box-filtered down, so edges are anti-aliased.
+
+STYLES = ("shaded", "zebra", "sketch", "silhouette")
+BACKGROUNDS = ("flat", "transparent")
+MAX_SIZE = 2048
+MAX_PNG_BYTES = 1024 * 1024 - 1          # every PNG stays under 1 MB (model image input)
+_PAPER = (250, 249, 245)
+_INK = (36, 38, 44)
+_FIGURE_INK = 0.6                        # the scale figure is drawn lighter than the design
+_LINE_CREASE_DEG = 35.0                   # normal step between neighbouring pixels: a line
+
+
+_SS_MAX_LAYERS = 12                       # deeper stacks render without supersampling
+
+
+def _supersample(size: int) -> int:
+    return 2 if size * 2 <= MAX_SIZE else 1
+
+
+def _layers(fr: _Frame, size: int) -> float:
+    """Average triangles per pixel of a projected frame (projected area / frame area)."""
+    if len(fr.px) == 0:
+        return 0.0
+    px, py = fr.px, fr.py
+    area = 0.5 * np.abs((px[:, 1] - px[:, 0]) * (py[:, 2] - py[:, 0])
+                        - (px[:, 2] - px[:, 0]) * (py[:, 1] - py[:, 0]))
+    return float(area.sum()) / float(size * size)
+
+
+def _pixel_attrs(fr: _Frame, cam: _Cam, tri_at: np.ndarray, pix: np.ndarray):
+    """For the covered pixels `pix` (flat indices): (triangle, perspective-correct barycentric
+    weights (M, 3))."""
+    S = cam.size
+    t = tri_at[pix]
+    gy, gx = np.divmod(pix, S)
+    gx = gx + 0.5
+    gy = gy + 0.5
+    tx, ty = fr.px[t], fr.py[t]
+    dn = ((ty[:, 1] - ty[:, 2]) * (tx[:, 0] - tx[:, 2])
+          + (tx[:, 2] - tx[:, 1]) * (ty[:, 0] - ty[:, 2]))
+    dn = np.where(np.abs(dn) > 1e-12, dn, 1e-12)
+    a = ((ty[:, 1] - ty[:, 2]) * (gx - tx[:, 2]) + (tx[:, 2] - tx[:, 1]) * (gy - ty[:, 2])) / dn
+    b = ((ty[:, 2] - ty[:, 0]) * (gx - tx[:, 2]) + (tx[:, 0] - tx[:, 2]) * (gy - ty[:, 2])) / dn
+    w = np.clip(np.stack([a, b, 1.0 - a - b], axis=1), 0.0, 1.0)
+    if cam.persp:
+        w = w / np.maximum(fr.zlin[t], 1e-9)
+    w = w / np.maximum(w.sum(axis=1), 1e-12)[:, None]
+    return t, w.astype(np.float32)
+
+
+def _neighbour_lines(img_n: np.ndarray, mid: np.ndarray, mask: np.ndarray, cos_t: float):
+    """(part-boundary pixels, crease pixels): neighbouring foreground pixels of different
+    meshes, or of one mesh whose normals differ by more than the line angle."""
+    part = np.zeros_like(mask)
+    crease = np.zeros_like(mask)
+    for axis in (0, 1):
+        sl0 = (slice(None, -1), slice(None)) if axis == 0 else (slice(None), slice(None, -1))
+        sl1 = (slice(1, None), slice(None)) if axis == 0 else (slice(None), slice(1, None))
+        both = mask[sl0] & mask[sl1]
+        diff = both & (mid[sl0] != mid[sl1])
+        part[sl0] |= diff
+        dot = (img_n[sl0] * img_n[sl1]).sum(axis=-1)
+        crease[sl0] |= both & ~diff & (dot < cos_t)
+    return part, crease
+
+
+def _line_px(size: int) -> float:
+    """Output px per 'design px': line widths are specified at 1024 px and scale gently."""
+    return max(0.6, (size / 1024.0) ** 0.5)
+
+
+def _segment_mask(shape, p0, p1) -> np.ndarray:
+    """Pixels along the 2D segment p0 -> p1 (pixel coordinates)."""
+    h, w = shape
+    m = np.zeros(shape, dtype=bool)
+    n = int(max(abs(p1[0] - p0[0]), abs(p1[1] - p0[1]), 1.0) * 2) + 1
+    t = np.linspace(0.0, 1.0, n)
+    x = np.floor(p0[0] + (p1[0] - p0[0]) * t).astype(np.int64)
+    y = np.floor(p0[1] + (p1[1] - p0[1]) * t).astype(np.int64)
+    ok = (x >= 0) & (x < w) & (y >= 0) & (y < h)
+    m[y[ok], x[ok]] = True
+    return m
+
+
+def _shadow_light(cam: _Cam) -> np.ndarray:
+    """Toward the shadow-casting light: from above, tilted toward the key light's side."""
+    key = shade.lights(cam.f, cam.right, cam.up)["key"]
+    hz = key - np.array([0.0, 0.0, key[2]])
+    hn = np.linalg.norm(hz)
+    lt = np.array([0.0, 0.0, 1.0]) + (0.35 * hz / hn if hn > 1e-6 else 0.0)
+    return lt / np.linalg.norm(lt)
+
+
+_SHADOW_MAP = 384
+_RAY_CHUNK = 262_144               # ground rays per batch
+
+
+def _ground_shadow(meshes: list[Mesh], cam: _Cam, framing) -> np.ndarray | None:
+    """Soft ground-shadow strength 0..1 per pixel of `cam`'s frame on the plane under the model
+    (z = framing min z): a wide penumbra of the whole model plus a darker contact shadow of what
+    is near the ground. None when the camera cannot see the ground (side-on views)."""
+    casting = [m for m in meshes if len(m.tris) and m.role != "figure"]
+    if not casting:
+        return None
+    lo, hi = (np.asarray(framing[0], dtype=np.float64), np.asarray(framing[1], dtype=np.float64))
+    z0 = float(lo[2])
+    S = cam.size
+    gy, gx = np.divmod(np.arange(S * S, dtype=np.int32), S)
+    # can the camera see the ground anywhere? (the frame corners bound every ray)
+    _o, dc = cam.rays(np.array([0.0, S, 0.0, S]), np.array([0.0, 0.0, S, S]))
+    if not (dc[:, 2] < -1e-4).any():
+        return None
+    ls = _shadow_light(cam)
+    hint = (0.0, 1.0, 0.0) if abs(ls[1]) < 0.9 else (1.0, 0.0, 0.0)
+    ext = hi - lo
+    margin = 0.6 * float(max(ext[0], ext[1], ext[2]))
+    lframe = (lo - margin, hi + margin)
+    lcam = _make_cam("__light", _SHADOW_MAP, lframe, {"__light": (tuple(-ls), hint)}, fill=1.0)
+    full, _ = _zbuffer(_project(casting, lcam), _SHADOW_MAP)
+    hc = z0 + 0.04 * float(max(ext[2], 1e-6))
+    near = [replace(m, tris=section_mesh(m.tris, (0.0, 0.0, hc), (0.0, 0.0, 1.0)))
+            for m in casting]
+    contact, _ = _zbuffer(_project(near, lcam), _SHADOW_MAP)
+    sz = (_SHADOW_MAP, _SHADOW_MAP)
+    wide = shade.blur((full >= 0).reshape(sz).astype(np.float32), 0.03 * _SHADOW_MAP)
+    tight = shade.blur((contact >= 0).reshape(sz).astype(np.float32), 0.008 * _SHADOW_MAP)
+    occl = 1.0 - (1.0 - 0.30 * wide) * (1.0 - 0.60 * tight)
+    out = np.zeros(S * S, dtype=np.float32)
+    for r0 in range(0, S * S, _RAY_CHUNK):
+        idx = np.arange(r0, min(S * S, r0 + _RAY_CHUNK))
+        o, d = cam.rays(gx[idx] + 0.5, gy[idx] + 0.5)
+        down = d[:, 2] < -1e-4
+        t = (z0 - o[down, 2]) / d[down, 2]
+        ahead = t > 0
+        sel = idx[down][ahead]
+        if len(sel) == 0:
+            continue
+        g = o[down][ahead] + t[ahead, None] * d[down][ahead]
+        sx, sy, _z = lcam.screen(g)
+        out[sel] = shade.bilinear(occl, sx, sy)
+    return out.reshape(S, S)
+
+
+def _figure_mesh(meshes: list[Mesh], cam_f: np.ndarray, cam_right: np.ndarray) -> Mesh | None:
+    """A 1.75 m human figure standing on the ground beside the model (for scale), facing the
+    camera, made of elliptical-section tubes. None for a model with nothing to measure."""
+    lo, hi = bbox(meshes)
+    if not np.isfinite(lo).all():
+        return None
+    r = cam_right - np.array([0.0, 0.0, cam_right[2]])
+    if np.linalg.norm(r) < 1e-6:
+        r = np.array([1.0, 0.0, 0.0])
+    r = r / np.linalg.norm(r)
+    fwd = np.cross(np.array([0.0, 0.0, 1.0]), r)              # the figure's depth axis
+    center = (lo + hi) / 2.0
+    corners = np.array([[x, y, z] for x in (lo[0], hi[0]) for y in (lo[1], hi[1])
+                        for z in (lo[2], hi[2])])
+    reach = float(((corners - center) @ r).max())
+    base = center + r * (reach + 450.0)
+    base[2] = lo[2]
+
+    def tube(secs):            # secs: (z, half-width, half-depth, x offset)
+        th = np.linspace(0.0, 2 * np.pi, 18, endpoint=False)
+        rings = np.array([[base + r * (ox + a * np.cos(q)) + fwd * (b * np.sin(q))
+                           + np.array([0.0, 0.0, z]) for q in th] for z, a, b, ox in secs])
+        out = []
+        n = len(th)
+        for i in range(len(secs) - 1):
+            for j in range(n):
+                p, q2 = rings[i, j], rings[i, (j + 1) % n]
+                s, u = rings[i + 1, j], rings[i + 1, (j + 1) % n]
+                out += [[p, q2, u], [p, u, s]]
+        for ring in (rings[0], rings[-1]):                   # caps
+            c = ring.mean(axis=0)
+            out += [[c, ring[j], ring[(j + 1) % n]] for j in range(n)]
+        return out
+
+    phi = np.linspace(np.pi, 0.0, 11)                                       # head
+    tris = tube([(1645 + 105 * np.cos(q), max(1.0, 82 * np.sin(q)), max(1.0, 95 * np.sin(q)), 0)
+                 for q in phi])
+    tris += tube([(1450, 45, 45, 0), (1560, 45, 45, 0)])                     # neck
+    tris += tube([(930, 150, 95, 0), (1100, 140, 90, 0), (1300, 175, 100, 0),
+                  (1440, 200, 95, 0), (1490, 120, 70, 0)])                   # torso
+    for sx in (-1.0, 1.0):
+        tris += tube([(80, 55, 55, sx * 95), (470, 50, 55, sx * 95), (520, 55, 60, sx * 92),
+                      (900, 80, 80, sx * 85)])                              # leg
+        tris += tube([(0, 50, 120, sx * 95), (80, 50, 110, sx * 95)])       # foot
+        tris += tube([(780, 32, 32, sx * 245), (1100, 38, 38, sx * 238),
+                      (1440, 50, 50, sx * 222)])                            # arm
+    return Mesh(np.array(tris, dtype=np.float64), color=(1.0, 1.0, 1.0), name="scale figure",
+                role="figure")
+
+
+_PIX_CHUNK = 200_000                      # covered pixels shaded per batch (bounds memory)
+
+
+def _mesh_normals(meshes: list[Mesh], style: str) -> np.ndarray | None:
+    """Corner normals (N, 3, 3) of the meshes with triangles, in _project's order: view
+    independent, so render_views computes them once for all its views."""
+    if style == "silhouette":
+        return None
+    live = [m for m in meshes if len(m.tris)]
+    if not live:
+        return np.zeros((0, 3, 3))
+    tris = np.concatenate([m.tris for m in live], axis=0)
+    mesh_of = np.concatenate([np.full(len(m.tris), i, dtype=np.int64)
+                              for i, m in enumerate(live)])
+    crease = shade.ZEBRA_CREASE_DEG if style == "zebra" else shade.CREASE_DEG
+    return shade.corner_normals(tris, shade.weld(tris, mesh_of), crease).astype(np.float32)
+
+
+def _style_pixels(style: str, fr: _Frame, cam: _Cam, tri_at: np.ndarray, framing,
+                  cn: np.ndarray | None = None):
+    """The covered pixels' colour and the line masks for one opaque style, at the internal
+    resolution. Returns (rgb HxWx3 float32 with the background colour, foreground mask,
+    {line kind: bool mask}, figure-pixel mask). Pixels are shaded in bounded batches so a
+    2048 px internal raster stays well inside the worker's memory budget."""
+    S = cam.size
+    mask = (tri_at >= 0).reshape(S, S)
+    bg = np.array(_PAPER if style == "sketch" else (255, 255, 255) if style == "silhouette"
+                  else _BG, dtype=np.float32) / 255.0
+    rgb = np.empty((S * S, 3), dtype=np.float32)
+    rgb[:] = bg
+    covered = np.flatnonzero(tri_at >= 0)
+    mid_flat = np.full(S * S, -1, dtype=np.int32)
+    mid_flat[covered] = fr.mesh_of[tri_at[covered]]
+    mid = mid_flat.reshape(S, S)
+    fig_ids = [i for i, m in enumerate(fr.live) if m.role == "figure"]
+    figure = np.isin(mid, fig_ids) if fig_ids else np.zeros_like(mask)
+    lines: dict[str, np.ndarray] = {}
+    if style == "silhouette":
+        rgb[covered] = 0.0
+        return rgb.reshape(S, S, 3), mask, lines, figure
+    if cn is None or len(cn) != len(fr.tris):
+        cn = _mesh_normals(fr.live, style)
+    # per-pixel shading runs in float32 (twice the throughput, half the memory)
+    rig = {k: d.astype(np.float32) for k, d in shade.lights(cam.f, cam.right, cam.up).items()}
+    up = np.array([0.0, 0.0, 1.0], dtype=np.float32)
+    f32 = {k: getattr(cam, k).astype(np.float32) for k in ("f", "right", "up", "eye")}
+    live = fr.live
+    base_of = np.array([m.color for m in live], dtype=np.float32)
+    rough_of = np.array([m.roughness for m in live], dtype=np.float32)
+    metal_of = np.array([m.metalness for m in live], dtype=np.float32)
+    paper = np.array(_PAPER, dtype=np.float32) / 255.0
+    img_n = np.zeros((S * S, 3), dtype=np.float32)
+    zl = np.full(S * S, np.inf, dtype=np.float32)
+    dark = np.zeros(S * S, dtype=bool) if style == "sketch" else None
+    for c0 in range(0, len(covered), _PIX_CHUNK):
+        pix = covered[c0:c0 + _PIX_CHUNK]
+        t, w = _pixel_attrs(fr, cam, tri_at, pix)
+        n = np.einsum("mi,mij->mj", w, cn[t])
+        n /= np.maximum(np.linalg.norm(n, axis=1), 1e-12)[:, None]
+        if cam.persp:
+            v = (cam.eye[None, :] - np.einsum("mi,mij->mj", w, fr.tris[t])).astype(np.float32)
+            v /= np.maximum(np.linalg.norm(v, axis=1), 1e-12)[:, None]
+        else:
+            v = np.broadcast_to(-f32["f"], n.shape).copy()
+        fu = fr.face_unit[t]
+        flip = np.einsum("ij,ij->i", fu, v) < 0               # double-sided: face the eye
+        n[flip] = -n[flip]
+        mi = fr.mesh_of[t]
+        if style == "shaded":
+            rgb[pix] = shade.shade_cmf(n, v, base_of[mi], rough_of[mi], metal_of[mi], rig, up)
+        elif style == "zebra":
+            rgb[pix] = (0.06 + 0.90 * shade.zebra(n, v, f32["right"], f32["up"]))[:, None]
+        else:                                                  # sketch: 3-band toon fill
+            lam = shade.lambert(n, rig)
+            fig = np.isin(mi, fig_ids)
+            tone = np.where(lam > 0.55, 0.975, np.where(lam > 0.25, 0.90, 0.80))
+            tone[fig] = 1.0
+            rgb[pix] = paper[None, :] * tone[:, None]
+            dark[pix[(lam <= 0.25) & ~fig]] = True
+        img_n[pix] = n
+        zl[pix] = np.einsum("mi,mi->m", w, fr.zlin[t])
+    if dark is not None:
+        lines["hatch"] = dark.reshape(S, S)
+    part, cr = _neighbour_lines(img_n.reshape(S, S, 3), mid, mask,
+                                float(np.cos(np.radians(_LINE_CREASE_DEG))))
+    del img_n
+    lines["silhouette"] = _silhouette_edges(mask) | part
+    lines["contour"] = _depth_edges(zl.reshape(S, S), mask, 0.01 * cam.reach)
+    lines["crease"] = cr
+    return rgb.reshape(S, S, 3), mask, lines, figure
+
+
+def _over(rgb: np.ndarray, alpha: np.ndarray, color, ink: np.ndarray) -> None:
+    """Composite ink (0..1) of `color` over rgb/alpha in place (straight colour)."""
+    c = np.asarray(color, dtype=np.float32) / 255.0
+    for ch in range(3):                         # per channel: no HxWx3 temporaries
+        rgb[..., ch] += (c[ch] - rgb[..., ch]) * ink
+    alpha += (1.0 - alpha) * ink
+
+
+def _render_styled(meshes: list[Mesh], view: str, size: int, framing, cameras: dict | None,
+                   style: str, perspective: bool, shadow: bool, background: str,
+                   normals: np.ndarray | None = None) -> np.ndarray:
+    """One opaque view as uint8 HxWx3 (or HxWx4 for a transparent background)."""
+    ss = _supersample(size)
+    cam = _make_cam(view, size * ss, framing, cameras, perspective)
+    fr = _project(meshes, cam)
+    if ss > 1 and _layers(fr, size * ss) > _SS_MAX_LAYERS:
+        ss = 1                                   # a dense stack: anti-aliasing would 4x it
+        cam = cam.scaled(size)
+        fr = _project(meshes, cam)
+    S = size * ss
+    tri_at, _z = _zbuffer(fr, S)
+    rgb, mask, lines, figure = _style_pixels(style, fr, cam, tri_at, framing, normals)
+    del fr, tri_at, _z                           # the raster is no longer needed: free it
+    alpha = mask.astype(np.float32)
+    lp = _line_px(size) * ss                     # internal px per design px
+    if style in ("shaded", "sketch") and shadow:
+        sh = _ground_shadow(meshes, cam.scaled(size), framing)
+        if sh is not None:
+            if style == "sketch":
+                sh = sh * 0.6
+            sh = np.repeat(np.repeat(sh, ss, axis=0), ss, axis=1)
+            bgm = ~mask
+            if background == "transparent":
+                rgb[bgm] = 0.0
+                alpha[bgm] = sh[bgm]
+            else:
+                rgb[bgm] *= (1.0 - sh[bgm])[:, None]
+    if style == "shaded":
+        strong = lines["silhouette"] | lines["contour"]
+        ink = np.maximum(0.80 * shade.soft(strong, 1.0 * lp), 0.30 * shade.soft(lines["crease"],
+                                                                              0.9 * lp))
+        _over(rgb, alpha, _EDGE, ink * mask)
+    elif style == "zebra":
+        _over(rgb, alpha, _EDGE, 0.9 * shade.soft(lines["silhouette"], 1.0 * lp) * mask)
+    elif style == "sketch":
+        ink = shade.soft(lines["silhouette"] & ~figure, 2.5 * lp)
+        np.maximum(ink, shade.soft((lines["contour"] | lines["crease"]) & ~figure, 1.5 * lp),
+                   out=ink)
+        # light diagonal hatching across the darkest tone band
+        diag = np.add.outer(np.arange(S, dtype=np.int32), np.arange(S, dtype=np.int32))
+        hatch = (diag % max(3, int(round(7 * lp)))) < max(1, int(round(0.7 * lp)))
+        del diag
+        np.maximum(ink, 0.30 * shade.soft(hatch & lines["hatch"], 0.8 * lp), out=ink)
+        del hatch
+        ground = np.zeros((S, S), dtype=bool)
+        if abs(float(cam.f[2])) < 0.35:          # elevations: a ground line
+            lo, hi = framing
+            c = (np.asarray(lo) + np.asarray(hi)) / 2.0
+            r = cam.right - np.array([0.0, 0.0, cam.right[2]])
+            r = r / (np.linalg.norm(r) or 1.0)
+            half = 0.65 * float(np.linalg.norm(np.asarray(hi)[:2] - np.asarray(lo)[:2]))
+            a = np.array([c[0], c[1], lo[2]]) - r * half
+            b = np.array([c[0], c[1], lo[2]]) + r * half
+            (ax, bx), (ay, by), _zz = cam.screen(np.array([a, b]))
+            ground = _segment_mask((S, S), (ax, ay), (bx, by)) & ~dilate_mask(mask, lp)
+        np.maximum(ink, shade.soft(ground, 1.5 * lp), out=ink)
+        ink = shade.sketch_ink(ink, lp)
+        if figure.any():
+            fig = shade.soft((lines["silhouette"] | lines["contour"]) & figure, 1.2 * lp)
+            np.maximum(ink, _FIGURE_INK * shade.sketch_ink(fig, lp, seed=11), out=ink)
+            del fig
+        _over(rgb, alpha, _INK, ink)
+    del lines
+    if ss > 1:
+        if background == "transparent":
+            rgb *= alpha[..., None]                  # premultiply, then box-filter
+        rgb = rgb.reshape(size, ss, size, ss, 3).mean(axis=(1, 3), dtype=np.float32)
+        alpha = alpha.reshape(size, ss, size, ss).mean(axis=(1, 3), dtype=np.float32)
+        if background == "transparent":
+            rgb /= np.maximum(alpha, 1e-6)[..., None]
+    if background == "transparent":
+        bgc = np.array(_BG, dtype=np.float32) / 255.0
+        rgb = np.where(alpha[..., None] > 1e-6, rgb, bgc)
+        out = np.concatenate([rgb, alpha[..., None]], axis=-1)
+    else:
+        out = rgb
+    return (np.clip(out, 0.0, 1.0) * 255.0 + 0.5).astype(np.uint8)
+
+
+def dilate_mask(mask: np.ndarray, r: float) -> np.ndarray:
+    return shade.dilate(mask, r)
+
+
 def _render_one(meshes: list[Mesh], view: str, size: int,
                 framing, transparent: bool,
-                cameras: dict | None = None) -> tuple[np.ndarray, np.ndarray]:
-    img, mask, zbuf = _raster(_project(meshes, view, size, framing, cameras), size,
-                              transparent)
-    edge = _silhouette_edges(mask)
+                cameras: dict | None = None, *, style: str = "shaded",
+                perspective: bool = False, shadow: bool = True,
+                background: str = "flat", normals: np.ndarray | None = None) -> np.ndarray:
     if not transparent:
-        lo, hi = framing
-        diag = float(np.linalg.norm(np.asarray(hi) - np.asarray(lo))) or 1.0
-        edge |= _depth_edges(zbuf, mask, 0.01 * diag)
-    img[edge] = np.array(_EDGE) / 255.0
-    return (np.clip(img, 0.0, 1.0) * 255.0).astype(np.uint8), mask
+        return _render_styled(meshes, view, size, framing, cameras, style, perspective, shadow,
+                              background, normals)
+    # x-ray: weighted-blended transparency of flat-shaded triangles (unchanged)
+    cam = _make_cam(view, size, framing, cameras, perspective)
+    img, mask, _zbuf = _raster(_project(meshes, cam), size, transparent)
+    img[_silhouette_edges(mask)] = np.array(_EDGE) / 255.0
+    return (np.clip(img, 0.0, 1.0) * 255.0).astype(np.uint8)
 
 
-def _to_png(rgb: np.ndarray) -> bytes:
+def _to_png(arr: np.ndarray, max_bytes: int = MAX_PNG_BYTES) -> bytes:
+    """PNG of an RGB or RGBA uint8 image, kept under `max_bytes`: when the lossless encoding
+    is too big it is palettised (256 colours, dithered), then, if still too big, scaled down."""
     from PIL import Image
-    buf = io.BytesIO()
-    # compress_level 6 without `optimize`: optimize multiplies encode time for little gain
-    Image.fromarray(rgb, "RGB").save(buf, "PNG", compress_level=6)
-    return buf.getvalue()
+    im = Image.fromarray(arr, "RGBA" if arr.shape[-1] == 4 else "RGB")
+
+    def enc(img) -> bytes:
+        buf = io.BytesIO()
+        # compress_level 6 without `optimize`: optimize multiplies encode time for little gain
+        img.save(buf, "PNG", compress_level=6)
+        return buf.getvalue()
+    data = enc(im)
+    if len(data) <= max_bytes:
+        return data
+    method = Image.Quantize.FASTOCTREE if im.mode == "RGBA" else Image.Quantize.MEDIANCUT
+    q = im.quantize(256, method=method, dither=Image.Dither.FLOYDSTEINBERG)
+    data = enc(q)
+    while len(data) > max_bytes and min(q.size) > 64:
+        im = im.resize((int(im.size[0] * 0.85), int(im.size[1] * 0.85)),
+                       Image.Resampling.LANCZOS)
+        q = im.quantize(256, method=method, dither=Image.Dither.FLOYDSTEINBERG)
+        data = enc(q)
+    return data
 
 
 def fit_png(png: bytes, max_edge: int = 512) -> bytes:
@@ -567,7 +1059,7 @@ def fit_png(png: bytes, max_edge: int = 512) -> bytes:
     with Image.open(io.BytesIO(png)) as im:
         if max(im.size) <= max_edge:
             return png
-        im = im.convert("RGB")
+        im = im.convert("RGBA" if "A" in im.getbands() or im.mode == "P" else "RGB")
         im.thumbnail((max_edge, max_edge), Image.Resampling.LANCZOS)
         buf = io.BytesIO()
         im.save(buf, "PNG", compress_level=6)
@@ -582,40 +1074,71 @@ def _coerce(meshes) -> list[Mesh]:
     return [m if isinstance(m, Mesh) else Mesh(m) for m in meshes]
 
 
+def _check_style(style: str, size: int, background: str) -> None:
+    if style not in STYLES:
+        raise RenderError(f"unknown render style {style!r}; known: {', '.join(STYLES)}")
+    if background not in BACKGROUNDS:
+        raise RenderError(f"unknown background {background!r}; known: {', '.join(BACKGROUNDS)}")
+    if not 1 <= int(size) <= MAX_SIZE:
+        raise RenderError(f"render size {size} is outside 1..{MAX_SIZE} px")
+
+
 def render_views(meshes, *, views=DEFAULT_VIEWS, size: int = 512,
                  section: tuple | None = None, explode: float = 0.0,
-                 transparent: bool = False, cameras: dict | None = None) -> dict[str, bytes]:
+                 transparent: bool = False, cameras: dict | None = None,
+                 style: str = "shaded", perspective: bool = False, shadow: bool = True,
+                 background: str = "flat", figure: bool = False) -> dict[str, bytes]:
     """Render `meshes` (a Mesh, a triangles array, or a list of them) from each named view.
 
-    Returns {view_name: PNG bytes}. `section` is (origin, normal): the +normal half is cut away.
-    `explode` > 0 separates multiple meshes. `transparent` composites with each mesh's opacity
-    (x-ray). `cameras` adds named views: {name: (forward, up)}."""
+    Returns {view_name: PNG bytes}, each under 1 MB. `section` is (origin, normal): the +normal
+    half is cut away. `explode` > 0 separates multiple meshes. `transparent` composites with
+    each mesh's opacity (x-ray). `cameras` adds named views: {name: (forward, up)}.
+
+    `style`: "shaded" (smooth crease-split normals, per-mesh colour/roughness/metalness, studio
+    three-point light, soft ground shadow), "zebra" (surface-continuity stripes), "sketch" (NPR
+    line art on paper: silhouette/crease/contour lines, toon fill, hand wobble, over-sketch, a
+    ground line) or "silhouette" (black fill on white). `perspective`: a 35 mm-equivalent
+    camera instead of orthographic. `shadow`: the ground shadow (shaded, sketch). `background`
+    "transparent" gives RGBA (shadow in alpha). `figure`: a 1.75 m human beside the model for
+    scale (sketch). `size` up to MAX_SIZE px."""
+    _check_style(style, size, background)
     ms = _coerce(meshes)
     if explode > 0:
         ms = explode_meshes(ms, explode)
     if section is not None:
         o, n = section
-        ms = [Mesh(section_mesh(m.tris, o, n), color=m.color, opacity=m.opacity, name=m.name)
-              for m in ms]
+        ms = [replace(m, tris=section_mesh(m.tris, o, n)) for m in ms]
     framing = bbox(ms)
+    normals = None if transparent else _mesh_normals(ms, style)
     out: dict[str, bytes] = {}
     for view in views:
         _camera(view, cameras)                        # unknown or malformed: ValueError
-        rgb, _mask = _render_one(ms, view, size, framing, transparent, cameras)
-        out[view] = _to_png(rgb)
+        drawn, frame, cn = ms, framing, normals
+        if figure and style == "sketch":
+            f, right, _up = _camera_basis(view, cameras)
+            fig = _figure_mesh(ms, f, right)
+            if fig is not None:
+                drawn = [*ms, fig]
+                frame = bbox(drawn)
+                cn = None
+        arr = _render_one(drawn, view, size, frame, transparent, cameras, style=style,
+                          perspective=perspective, shadow=shadow, background=background,
+                          normals=cn)
+        out[view] = _to_png(arr)
     return out
 
 
 def render_mask(meshes, view: str, *, size: int = 512,
-                section: tuple | None = None, cameras: dict | None = None) -> np.ndarray:
+                section: tuple | None = None, cameras: dict | None = None,
+                perspective: bool = False) -> np.ndarray:
     """The view's silhouette (bool HxW): the pixels the model covers. Used for IoU matching."""
     ms = _coerce(meshes)
     if section is not None:
         o, n = section
         ms = [Mesh(section_mesh(m.tris, o, n)) for m in ms]
-    fr = _project(ms, view, size, bbox(ms), cameras)
-    _img, mask, _z = _raster(fr, size, transparent=False)
-    return mask
+    cam = _make_cam(view, size, bbox(ms), cameras, perspective)
+    tri_at, _z = _zbuffer(_project(ms, cam), size)
+    return (tri_at >= 0).reshape(size, size)
 
 
 # ---- silhouette matching

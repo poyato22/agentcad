@@ -49,6 +49,9 @@ class MeshIn:
     opacity: float = 1.0
     # the instance's world transform (4x4, row-major, mm), or None for the part's own frame
     transform: list[list[float]] | None = None
+    # CMF from the part's appearance (shaded style): 0..1
+    roughness: float = 0.9
+    metalness: float = 0.0
 
 
 def check_transform(m) -> list[list[float]] | None:
@@ -101,7 +104,8 @@ async def run_render_job(jobs_root: Path, meshes: list[MeshIn], *, renders: list
                          masks: list[dict] = (), timeout_s: float | None = None,
                          memory_mb: float | None = None,
                          max_layers: float | None = None) -> RenderOut:
-    """Render `renders` ({key, views, size, section?, explode?, transparent?}) and compute
+    """Render `renders` ({key, views, size, section?, explode?, transparent?, style?,
+    perspective?, shadow?, background?, figure?}; see render.render_views) and compute
     `masks` ({key, view, size, section?}) of `meshes` in the sandboxed worker. `max_layers`
     overrides the worker's complexity budget (tests only; tools never pass it)."""
     if len(meshes) > MAX_MESHES:
@@ -122,7 +126,8 @@ async def run_render_job(jobs_root: Path, meshes: list[MeshIn], *, renders: list
                 fname = files[key] = f"m{len(files)}.stl"
                 safe_io.write_bytes(job_dir, fname, _read_stl(m.part_dir, m.name))
             spec["meshes"].append({"file": fname, "name": m.name, "color": list(m.color),
-                                   "opacity": m.opacity,
+                                   "opacity": m.opacity, "roughness": float(m.roughness),
+                                   "metalness": float(m.metalness),
                                    "transform": check_transform(m.transform)})
         safe_io.write_text(job_dir, "job.json", json.dumps(spec))
         nonce = secrets.token_hex(16)

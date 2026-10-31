@@ -56,6 +56,15 @@ def _transform(m) -> np.ndarray | None:
     return a
 
 
+def _unit(v, default: float) -> float:
+    """A 0..1 CMF number from the host (roughness, metalness); anything else is the default."""
+    try:
+        x = float(v)
+    except (TypeError, ValueError):
+        return default
+    return min(1.0, max(0.0, x)) if np.isfinite(x) else default
+
+
 def run(job_dir: Path, nonce: str) -> dict:
     job = json.loads((job_dir / "job.json").read_text())
     if job.get("max_layers"):                  # host-set (tests); never from the agent
@@ -79,7 +88,9 @@ def run(job_dir: Path, nonce: str) -> dict:
         tris, n_bad = render.clean_triangles(tris)
         dropped += n_bad
         meshes.append(render.Mesh(tris, color=tuple(m.get("color") or render._DEFAULT_COLOR),
-                                  opacity=float(m.get("opacity", 1.0)), name=m.get("name", "")))
+                                  opacity=float(m.get("opacity", 1.0)), name=m.get("name", ""),
+                                  roughness=_unit(m.get("roughness"), 0.9),
+                                  metalness=_unit(m.get("metalness"), 0.0)))
     if not any(len(m.tris) for m in meshes):
         raise render.RenderError("nothing finite to render (every triangle was invalid)")
     pngs: dict[str, dict[str, str]] = {}
@@ -88,7 +99,12 @@ def run(job_dir: Path, nonce: str) -> dict:
                                    section=_section(r.get("section")),
                                    explode=float(r.get("explode", 0.0)),
                                    cameras=_cameras(r.get("cameras")),
-                                   transparent=bool(r.get("transparent")))
+                                   transparent=bool(r.get("transparent")),
+                                   style=str(r.get("style") or "shaded"),
+                                   perspective=bool(r.get("perspective")),
+                                   shadow=bool(r.get("shadow", True)),
+                                   background=str(r.get("background") or "flat"),
+                                   figure=bool(r.get("figure")))
         pngs[r["key"]] = {}
         for view, data in imgs.items():
             name = f"{r['key']}_{view}.png"
