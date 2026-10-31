@@ -43,16 +43,6 @@ async function pixelsAt(page: Page, selector: string, x: number, y: number, r = 
   }, { selector, x, y, r });
 }
 
-async function canvasHash(page: Page, selector: string): Promise<string> {
-  return page.evaluate((s) => {
-    const c = document.querySelector<HTMLCanvasElement>(s);
-    const u = c?.toDataURL() ?? "";
-    let h = 0;
-    for (let i = 0; i < u.length; i++) h = (h * 31 + u.charCodeAt(i)) | 0;
-    return `${u.length}:${h}`;
-  }, selector);
-}
-
 test("section_caps_close_the_cut_in_the_part_color", async ({ page }) => {
   await openDesign(page);
   await page.locator('[data-part="pi_battery"] .tree-name').first().click();
@@ -85,24 +75,6 @@ test("section_caps_close_the_cut_in_the_part_color", async ({ page }) => {
   await page.mouse.up();
   await expect.poll(async () => Number(await slider.inputValue())).not.toBe(before);
   await page.screenshot({ path: test.info().outputPath("section-caps.png") });
-});
-
-test("explode_glides_the_build_apart_and_back", async ({ page }) => {
-  await openDesign(page);
-  await viewItem(page, "Whole build");
-  await expect(page.locator("[data-testid=viewer-canvas]")).toHaveAttribute("data-shown", /pi_fan/);
-  await page.waitForTimeout(500);
-  const assembled = await canvasHash(page, "[data-testid=viewer-canvas]");
-  await viewItem(page, "Explode");
-  await expect(page.getByTestId("explode-slider")).toHaveValue("1");
-  await page.waitForTimeout(700);
-  const apart = await canvasHash(page, "[data-testid=viewer-canvas]");
-  expect(apart).not.toBe(assembled);
-  await page.screenshot({ path: test.info().outputPath("exploded.png") });
-  await viewItem(page, "X-ray");
-  await expect(page.getByLabel("X-ray opacity")).toBeVisible();
-  await viewItem(page, "Clear view modes");
-  await expect(page.getByTestId("explode-slider")).toHaveCount(0);
 });
 
 const viewStream = (page: Page) => page.locator("[data-dock] [data-stream=view]");

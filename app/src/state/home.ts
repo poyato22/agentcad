@@ -28,10 +28,6 @@ export const homeView: Signal<HomeView> = signal<HomeView>("builds");
 /** Go to Home and show one of its views (the top bar's Onshape meter opens "onshape"). */
 export function showHome(view: HomeView): void { homeView.value = view; atHome.value = true; }
 
-/** Build overview (R17): the full-build "All parts" grid, shown over the viewer. */
-export const overviewOpen: Signal<boolean> = signal<boolean>(false);
-export function toggleOverview(): void { overviewOpen.value = !overviewOpen.value; }
-export function closeOverview(): void { overviewOpen.value = false; }
 
 /** Open a build as a tab and leave the grid. */
 export async function openBuild(id: string): Promise<void> {
@@ -41,4 +37,4 @@ export async function openBuild(id: string): Promise<void> {
 }
 
 /** Back to the launch state (tests). */
-export function resetHome(): void { atHome.value = true; overviewOpen.value = false; homeView.value = "builds"; }
+export function resetHome(): void { atHome.value = true; homeView.value = "builds"; }

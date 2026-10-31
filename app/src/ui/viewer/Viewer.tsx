@@ -1,9 +1,10 @@
 // The drawing sheet: CSS drafting grid + Three.js canvas + corner ticks + figure label + tool strip + title block.
-// Model | Code (View ▸ Part script): the model (this part, or the whole build) or the part's script.
+// Model | Code (View ▸ Part script): the part's model or its script. One part, opened alone from the
+// parts tree (Plan 9 D7): the build as a whole is the assembly (ui/assembly), never a second view here.
 // A click on the model says what it hit ("Face · planar · 1,200 mm²"); "Modify…" there (or View ▸
 // Add a feature…) adds a feature on it (hole / shell on a face, fillet / chamfer on an edge).
 // View ▸ Measure (M) shows exact values from the core; View ▸ Comment pins feedback on the model
-// for the build's agent. In the build view a click on another part selects it. Each part shows in its color.
+// for the build's agent. The part shows in its color.
 import { computed, effect, signal, type Signal } from "@preact/signals";
 import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
@@ -18,7 +19,6 @@ import type { Vec3 } from "../../api/types";
 import { partName as formatPartName, runLabel as formatRunLabel } from "../../lib/names";
 import { OpsMenu, type OpsTarget } from "../editor/ops";
 import { SourceEditor } from "../editor/SourceEditor";
-import { hiddenParts } from "../left/visibility";
 import type { PartScene } from "./loadPart";
 import { PartLoader } from "./partLoader";
 import { edgeEnds, matchFace, nearestEdge } from "./pick";
@@ -29,8 +29,7 @@ import { modifyRequest, takeModify, viewerTool, type ViewerTool } from "./tool";
 import { modalOpen } from "../pages/router";
 import { createViewer, type DesignViewerHandle, type PickMarker } from "./scene";
 import { TitleBlock } from "./TitleBlock";
-import { ViewerTools, type ViewMode, type ViewScope } from "./ViewerTools";
-import { AllPartsToggle } from "./Overview";
+import { ViewerTools, type ViewMode } from "./ViewerTools";
 import { SkeletonPanel } from "./SkeletonPanel";
 import { materialOf } from "../../lib/appearance";
 import { backgroundStyle, edgeInk, isLight, viewerBackground } from "./background";
@@ -57,8 +56,6 @@ export { activePart };
 
 /** Model or Code (the part's script). */
 export const viewTab: Signal<"model" | "code"> = signal<"model" | "code">("model");
-/** This part only, or every visible part of the build. */
-export const viewScope: Signal<ViewScope> = signal<ViewScope>("part");
 
 /** True while an agent tool call on the active part is in flight (edges turn blue). */
 export const highlighted = computed<boolean>(() => {
@@ -104,11 +101,10 @@ function followExplode(p: Pin, host: ModeHost | null): Pin {
   return off.lengthSq() === 0 ? p : { ...p, point: [p.point[0] + off.x, p.point[1] + off.y, p.point[2] + off.z] };
 }
 
-/** The parts on the sheet: the focused one, or (build view) every visible part with a model. */
-export function shownParts(list: readonly PartSummary[], focus: PartSummary | null, scope: ViewScope, hidden: ReadonlySet<string>): PartSummary[] {
+/** The part on the sheet: the focused one (FW-app I2: no whole-build scope; that is the assembly). */
+export function shownParts(focus: PartSummary | null): PartSummary[] {
   // the layout skeleton (G3) has no model: it is never loaded as a GLB (I4b)
-  if (scope === "part") return focus && focus.kind !== "skeleton" ? [focus] : [];
-  return list.filter((p) => p.metrics !== null && p.kind !== "skeleton" && (p.part_id === focus?.part_id || !hidden.has(p.part_id)));
+  return focus && focus.kind !== "skeleton" ? [focus] : [];
 }
 
 interface OpenOps { seq: number; partId: string; target: OpsTarget; at: { x: number; y: number } | null; keyboard: boolean; baseVersion: number }
@@ -183,11 +179,10 @@ export function Viewer(): JSX.Element {
 
   const part = activePart.value;
   const partId = part?.part_id ?? null;
-  const scope = viewScope.value;
   const tab = viewTab.value;
   const highlight = highlighted.value;
   const byLabel = changingRunLabel.value;
-  const shown = shownParts(parts.value, part, scope, hiddenParts.value);
+  const shown = shownParts(part);
   const loadSig = shown.map((p) => `${p.part_id}@${p.mtime}`).join("|");
   const colorSig = shown.map((p) => `${p.part_id}:${p.color ?? ""}:${JSON.stringify(p.appearance ?? null)}`).join("|");
   const bg = viewerBackground.value;
@@ -242,13 +237,13 @@ export function Viewer(): JSX.Element {
 
   /** Put the loaded parts on the sheet. */
   function compose(refit: boolean): void {
-    const list = shownParts(parts.peek(), activePart.peek(), viewScope.peek(), hiddenParts.peek());
+    const list = shownParts(activePart.peek());
     const focus = activePart.peek()?.part_id ?? null;
     const items = list.flatMap((p) => {
       const sc = scenes.current.get(p.part_id);
       return sc ? [{ id: p.part_id, scene: sc, color: p.color ?? null, focus: p.part_id === focus, material: materialOf(p) }] : [];
     });
-    viewerRef.current?.setParts(items, refit, viewScope.peek() === "build");
+    viewerRef.current?.setParts(items, refit);
     const f = focus ? scenes.current.get(focus) : undefined;
     if (f) {
       const s = f.bbox.getSize(new Vector3());
@@ -304,7 +299,7 @@ export function Viewer(): JSX.Element {
         if (!loaders.current.has(id)) { r.scene.dispose(); return; }   // no longer shown
         const prev = scenes.current.get(id);
         scenes.current.set(id, r.scene);              // the previous model stayed on screen until now
-        compose(isFocus || viewScope.peek() === "build");
+        compose(isFocus);
         prev?.dispose();
         if (isFocus) setError(null);
       });
@@ -312,8 +307,8 @@ export function Viewer(): JSX.Element {
     compose(false);
   }, [loadSig]);
 
-  // focus / scope changes refit; color changes repaint
-  useEffect(() => { compose(true); setOps(null); setChip(null); }, [partId, scope]);
+  // focus changes refit; color changes repaint
+  useEffect(() => { compose(true); setOps(null); setChip(null); }, [partId]);
   useEffect(() => { compose(false); }, [colorSig]);
 
   // picks name one build's faces / edges: a rebuilt model (or another part) starts measure afresh.
@@ -497,7 +492,6 @@ export function Viewer(): JSX.Element {
         data-bbox-size={size ?? undefined}
         data-highlight={highlight ? "on" : "off"}
         data-mode={mode}
-        data-scope={scope}
         data-shown={shown.map((p) => `${p.part_id}${p.color ? `:${p.color}` : ""}`).join(" ") || undefined}
         data-tool={tool}
         onPointerDown={(e) => { if (e.button === 0) down.current = { x: e.clientX, y: e.clientY }; }}
@@ -513,10 +507,8 @@ export function Viewer(): JSX.Element {
           <button type="button" class="vt-btn vp-back" onClick={() => { viewTab.value = "model"; }}>Back to the model</button>
         )}
       </div>
-      <span class="label vp-fig">{scope === "build" ? "FIG. 1 — BUILD" : "FIG. 1 — DESIGN"}</span>
-      <ViewerTools mode={mode} onMode={setMode} scope={scope} onScope={(s) => { viewScope.value = s; }}
+      <ViewerTools mode={mode} onMode={setMode}
         code={tab === "code"} onCode={(on) => { viewTab.value = on ? "code" : "model"; }}
-        lead={tab !== "code" ? <AllPartsToggle /> : null}
         canEdit={canEdit && tab === "model"}
         onEdit={() => { if (part) setOps({ seq: ++pickSeq.current, partId: part.part_id, target: { face: null, edge: null, point: null }, at: null, keyboard: true, baseVersion: part.version ?? 0 }); }}
         extra={[

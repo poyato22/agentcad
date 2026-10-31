@@ -9,7 +9,7 @@
 import type { JSX } from "preact";
 import { useEffect } from "preact/hooks";
 import { conn } from "./state/store";
-import { atHome, goHome, overviewOpen } from "./state/home";
+import { atHome, goHome } from "./state/home";
 import { isTrustedKey, registerShortcut } from "./lib/keys";
 import { needsYou } from "./state/selection";
 import { HomePage } from "./ui/pages/home";
@@ -21,7 +21,6 @@ import { ConsolePane } from "./ui/console/ConsolePane";
 import { dockLayout } from "./ui/console/dockLayout";
 import { NewRunDialog } from "./ui/dialogs/NewRunDialog";
 import { LeftPane } from "./ui/left/LeftPane";
-import { Overview } from "./ui/viewer/Overview";
 import { activePage, consoleCollapsed, installPageShortcuts, modalOpen, toggleConsole } from "./ui/pages/router";
 import { activeBuildId } from "./state/builds";
 import { DrawingDrop } from "./ui/imports";
@@ -50,9 +49,6 @@ function PageRegion(): JSX.Element {
         <div class="region region-left" data-region="left"><LeftPane /></div>
         <main class="region region-viewer" data-region="viewer" data-mode={openPartId.value === null ? "assembly" : "part"}>
           {openPartId.value === null ? <AssemblyView /> : <Viewer />}
-          {/* "All parts" lives in the Part viewer's tool row (Viewer → ViewerTools); the build view
-              is the parts put together, so the overview isn't offered over it (I3) */}
-          {overviewOpen.value && openPartId.value !== null && <Overview />}
           <DrawingDrop variant="overlay" projectId={activeBuildId.value} />
         </main>
       </>

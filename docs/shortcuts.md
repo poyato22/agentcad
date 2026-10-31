@@ -32,9 +32,9 @@ noted (the viewer or the parts list focused, a focused approval card).
 | F | Fit the assembly in the view (or double-click empty space) |
 | Esc | Back to the assembly from an open part / close Play |
 | M | Measure (viewer focused; again for Select) |
-| Esc | Back to Select / close the overview, a menu or an immersive view |
+| Esc | Back to Select / close a menu or an immersive view |
 
-The viewer's display options (shaded / wireframe, this part / whole build, Measure, Comment,
+The viewer's display options (shaded / wireframe, Measure, Comment,
 X-ray, Section, Explode, Reference image, Background, Add a feature, Part script) are in its
 View ▾ menu: ↓ / ↑ open it, ↑ ↓ Home End move, Enter / Space pick, Esc closes.
 

@@ -28,7 +28,7 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { combo: "F", keys: "F", action: "Fit the assembly in the view (or double-click empty space)", scope: "design" },
   { combo: "Escape", keys: "Esc", action: "Back to the assembly from an open part / close Play", scope: "design" },
   { combo: "M", keys: "M", action: "Measure (viewer focused; again for Select)", scope: "viewer" },
-  { combo: "Escape", keys: "Esc", action: "Back to Select / close the overview, a menu or an immersive view", scope: "viewer" },
+  { combo: "Escape", keys: "Esc", action: "Back to Select / close a menu or an immersive view", scope: "viewer" },
   { combo: "F2", keys: "F2", action: "Rename the part", scope: "parts" },
   { combo: "H", keys: "H", action: "Hide / show the selected parts", scope: "parts" },
   { combo: "Meta+D", keys: "⌘D", action: "Duplicate the selected parts", scope: "parts" },

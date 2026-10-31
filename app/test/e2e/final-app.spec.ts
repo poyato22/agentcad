@@ -1,5 +1,5 @@
 // The final review's app fixes (final-678-app.md) that have no better home: the layout skeleton's
-// row (I4b) and the "All parts" toggle's place (I3).
+// row (I4b); an opened part has no All parts or whole-build view (FW-app I2).
 import type { PartSummary } from "../../src/api/types";
 import { expect, openPartView, showRun, test } from "./fixtures";
 import { CORE_URL } from "./ports";
@@ -75,19 +75,18 @@ test("the part row's ⋯ is a full hit target (m8)", async ({ page }) => {
   expect(b.height).toBeGreaterThanOrEqual(20);
 });
 
-test("All parts sits in the viewer's tool row, not over a panel, and Assembly view doesn't offer it (I3)", async ({ page }) => {
+test("an opened part has no All parts and no Whole build: the build view is the assembly (FW-app I2, D7)", async ({ page }) => {
   await page.goto("/");
-  // Plan 9 D7: the build view (the assembly) has no All parts; an opened part does
   await expect(page.getByTestId("assembly-view")).toBeVisible();
   await expect(page.getByRole("button", { name: "All parts" })).toHaveCount(0);
   await openPartView(page);
-  const toggle = page.getByRole("button", { name: "All parts" });
-  const view = page.getByRole("button", { name: "View options" });
-  await expect(toggle).toBeVisible();
-  const t = (await toggle.boundingBox())!;
-  const v = (await view.boundingBox())!;
-  expect(Math.abs((t.y + t.height / 2) - (v.y + v.height / 2))).toBeLessThan(2);   // one row
-  expect(t.x + t.width).toBeLessThanOrEqual(v.x);                                    // left of View ▾
-  await page.getByTestId("back-to-assembly").click();
   await expect(page.getByRole("button", { name: "All parts" })).toHaveCount(0);
+  await page.getByRole("button", { name: "View options" }).click();
+  await expect(page.getByRole("menuitemradio", { name: "Shaded" })).toBeVisible();
+  await expect(page.getByRole("menuitemradio", { name: "Whole build" })).toHaveCount(0);
+  await expect(page.getByRole("menuitemradio", { name: "This part" })).toHaveCount(0);
+  await expect(page.getByText(/FIG\. 1 — BUILD/)).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await page.getByTestId("back-to-assembly").click();
+  await expect(page.getByTestId("assembly-view")).toBeVisible();
 });

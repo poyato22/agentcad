@@ -86,11 +86,6 @@
 .vp[data-tab="code"] .src { top: 44px; }
 .src-empty { display: flex; align-items: center; justify-content: center; }
 
-/* "All parts" overview toggle: a tool-row button left of View ▾ (R17; I3 — in the row's flow, so it
-   never floats over the X-ray rows or a panel). It takes .vt-btn's look. */
-.overview-toggle { margin-right: 8px; padding: 6px 10px; font-size: var(--fs); letter-spacing: 0; text-transform: none; }
-.overview-toggle.on { color: var(--ink); border-color: var(--blue); background: var(--blue-tint); }
-.overview-toggle:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
 /* ---- Plan 7 U2a: selection label, measure panel, comment box, feedback pins (greys; blue marks the pick) */
 .vx-label {
   position: absolute; z-index: 3; display: flex; align-items: center; gap: 8px; max-width: 320px; padding: 4px 6px 4px 9px;

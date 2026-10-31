@@ -35,16 +35,16 @@ test.beforeEach(async ({ fake, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
 });
 
-test("design: Tab reaches Home, the part list, View, All parts, the dock headers and the composer", async ({ page }) => {
+test("design: Tab reaches Home, the part list, View, the dock headers and the composer", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
-  // Plan 9: the build view's pill, then a part opened alone (View, All parts, ← Assembly)
+  // Plan 9: the build view's pill, then a part opened alone (View, ← Assembly)
   const pill = await tabStops(page);
   for (const want of [/^X-ray$/]) expect(has(pill, want), `${want} in ${JSON.stringify(pill)}`).toBe(true);
   await openPartView(page);
   await page.locator("[data-region=viewer]").click({ position: { x: 300, y: 400 } });
   const stops = await tabStops(page);
-  for (const want of [/^Home$/, /^View options$/, /^All parts$/, /Assembly/, /^Command line$/, /^(Send|Stop)$/, /^Conversation options$/, /^Resize the agent dock$/, /mount plate/, /^Build: Default/]) {
+  for (const want of [/^Home$/, /^View options$/, /Assembly/, /^Command line$/, /^(Send|Stop)$/, /^Conversation options$/, /^Resize the agent dock$/, /mount plate/, /^Build: Default/]) {
     expect(has(stops, want), `${want} in ${JSON.stringify(stops)}`).toBe(true);
   }
 });

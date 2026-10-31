@@ -1,7 +1,6 @@
 // The Design viewer's "View" menu (Plan 7 U2b, R13). One button at the sheet's top right opens a
-// menu with every display control, so the sheet itself only carries Part | Assembly (top left):
+// menu with every display control (one part, opened alone: FW-app I2, the build is the assembly):
 //   Display  Shaded / Wireframe             (radio)
-//   Show     This part / Whole build        (radio)
 //   Tools    `extra` items — the slot other tasks fill: U2a's Measure, G4's X-ray / section
 //   ——       Add a feature…  ·  Part script (the Code view, a power-user view)
 // Keyboard: ↓ / ↑ / Enter / Space on the button open it on the first / last item; ↑ ↓ Home End move
@@ -11,8 +10,6 @@ import { useLayoutEffect, useRef, useState } from "preact/hooks";
 import { useDismiss } from "../common/dismiss";
 
 export type ViewMode = "shaded" | "wire";
-/** This part only, or every visible part of the build. */
-export type ViewScope = "part" | "build";
 
 /** A tool another task adds to the View menu (its own "Tools" group). `checked` makes it a toggle
  *  (menuitemcheckbox); leave it out for a one-shot action. `hint` is the key shown at the right. */
@@ -23,21 +20,17 @@ export interface ViewMenuItem {
 
 export interface ViewerToolsProps {
   mode: ViewMode; onMode(m: ViewMode): void;
-  scope?: ViewScope; onScope?(s: ViewScope): void;
   /** "Add a feature…": the ops form without a pick (choose the face / edge from a list). */
   canEdit?: boolean; onEdit?(): void;
   /** The part's script instead of the model (the Code view). */
   code?: boolean; onCode?(on: boolean): void;
   /** Extra tools (U2a: Measure; G4: X-ray / section), shown in their own group. */
   extra?: readonly ViewMenuItem[];
-  /** Controls shown in the same row, left of View ▾ (the "All parts" toggle — I3: in the toolbar
-   *  flow, so it never floats over a panel). */
-  lead?: JSX.Element | null;
 }
 
 interface Row { key: string; role: "menuitemradio" | "menuitemcheckbox" | "menuitem"; label: string; checked?: boolean; disabled?: boolean; hint?: string; run(): void }
 
-export function ViewerTools({ mode, onMode, scope, onScope, canEdit, onEdit, code, onCode, extra = [], lead = null }: ViewerToolsProps): JSX.Element {
+export function ViewerTools({ mode, onMode, canEdit, onEdit, code, onCode, extra = [] }: ViewerToolsProps): JSX.Element {
   const [open, setOpen] = useState(false);
   const btn = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
@@ -48,16 +41,12 @@ export function ViewerTools({ mode, onMode, scope, onScope, canEdit, onEdit, cod
     { key: "shaded", role: "menuitemradio", label: "Shaded", checked: mode === "shaded", run: () => onMode("shaded") },
     { key: "wire", role: "menuitemradio", label: "Wireframe", checked: mode === "wire", run: () => onMode("wire") },
   ];
-  const scopeRows: Row[] = scope === undefined ? [] : [
-    { key: "part", role: "menuitemradio", label: "This part", checked: scope === "part", run: () => onScope?.("part") },
-    { key: "build", role: "menuitemradio", label: "Whole build", checked: scope === "build", run: () => onScope?.("build") },
-  ];
   const tools: Row[] = extra.map((x) => ({ key: `x-${x.id}`, role: x.checked === undefined ? "menuitem" : "menuitemcheckbox", label: x.label,
     checked: x.checked, disabled: x.disabled, hint: x.hint, run: () => x.onSelect() }));
   const part: Row[] = [];
   if (onEdit) part.push({ key: "features", role: "menuitem", label: "Add a feature…", disabled: !canEdit, run: () => onEdit() });
   if (onCode) part.push({ key: "code", role: "menuitemcheckbox", label: "Part script", checked: !!code, run: () => onCode(!code) });
-  const groups = [display, scopeRows, tools, part].filter((g) => g.length > 0);
+  const groups = [display, tools, part].filter((g) => g.length > 0);
 
   const items = (): HTMLElement[] => Array.from(menu.current?.querySelectorAll<HTMLElement>("[role^=menuitem]") ?? []);
   // where focus lands once the menu has rendered
@@ -86,7 +75,6 @@ export function ViewerTools({ mode, onMode, scope, onScope, canEdit, onEdit, cod
 
   return (
     <div class="viewer-tools view-menu" ref={wrap}>
-      {lead}
       <button ref={btn} type="button" class="vt-btn view-btn" aria-haspopup="menu" aria-expanded={open} aria-controls="view-menu"
         aria-label="View options" title="Shading, what to show, features and the part script"
         onClick={() => (open ? close(false) : show("first"))}

@@ -8,7 +8,7 @@ afterEach(() => cleanup());
 
 function setup(over: Partial<ViewerToolsProps> = {}) {
   const props: ViewerToolsProps = {
-    mode: "shaded", onMode: vi.fn(), scope: "part", onScope: vi.fn(), canEdit: true, onEdit: vi.fn(), code: false, onCode: vi.fn(), ...over,
+    mode: "shaded", onMode: vi.fn(), canEdit: true, onEdit: vi.fn(), code: false, onCode: vi.fn(), ...over,
   };
   render(<ViewerTools {...props} />);
   return props;
@@ -28,10 +28,11 @@ describe("ViewerTools (View menu)", () => {
   });
 
   it("lists display, scope, features and code, checked by state", () => {
-    setup({ mode: "wire", scope: "build" });
+    setup({ mode: "wire" });
     const menu = open();
     const radios = Array.from(menu.querySelectorAll("[role=menuitemradio]")).map((e) => [e.querySelector(".view-label")?.textContent, e.getAttribute("aria-checked")]);
-    expect(radios).toEqual([["Shaded", "false"], ["Wireframe", "true"], ["This part", "false"], ["Whole build", "true"]]);
+    // one part, opened alone: no This part / Whole build (FW-app I2: the build is the assembly)
+    expect(radios).toEqual([["Shaded", "false"], ["Wireframe", "true"]]);
     expect(screen.getByRole("menuitem", { name: /Add a feature/ })).toBeTruthy();
     expect(screen.getByRole("menuitemcheckbox", { name: /Part script/ }).getAttribute("aria-checked")).toBe("false");
   });
@@ -43,9 +44,6 @@ describe("ViewerTools (View menu)", () => {
     expect(p.onMode).toHaveBeenCalledWith("wire");
     expect(screen.queryByRole("menu")).toBeNull();
     expect(document.activeElement).toBe(viewBtn());
-    open();
-    fireEvent.click(screen.getByRole("menuitemradio", { name: "Whole build" }));
-    expect(p.onScope).toHaveBeenCalledWith("build");
     open();
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: /Part script/ }));
     expect(p.onCode).toHaveBeenCalledWith(true);

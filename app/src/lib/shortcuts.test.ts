@@ -25,7 +25,7 @@ describe("keyboard shortcuts", () => {
     }
     const listed = new Set(SHORTCUTS.map((s) => s.combo));
     expect([...used].filter((c) => !listed.has(c))).toEqual([]);
-    expect(used.size).toBeGreaterThan(5);
+    expect(used.size).toBeGreaterThan(4);   // the scan still finds them (the overview's Esc went, FW-app I2)
   });
 
   it("no two shortcuts share a combo in one scope", () => {

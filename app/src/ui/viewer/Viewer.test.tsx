@@ -34,11 +34,10 @@ afterEach(() => { cleanup(); resetStore(); activeBuildId.value = null; });
 const treeParts = (): PartSummary[] => JSON.parse(readFileSync(resolve(import.meta.dirname, "../../../test/fixtures/core-ui/parts_tree.json"), "utf8")) as PartSummary[];
 
 describe("Viewer", () => {
-  it("empty state shows the figure label and prompt without calling the core", () => {
+  it("empty state shows the prompt without calling the core", () => {
     const partGlb = vi.fn();
     bind(partGlb);
     const { container } = render(<Viewer />);
-    expect(container.textContent).toContain("FIG. 1 — DESIGN");
     expect(container.textContent).toContain("NO PART · ask an agent to create one");
     expect(partGlb).not.toHaveBeenCalled();
   });
