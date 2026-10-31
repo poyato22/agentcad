@@ -55,6 +55,9 @@ describe("background jobs state", () => {
     onJobEvent({ type: "tool_result", run_id: JOB.run_id, ts: 0, data: { name: "mcp__mises__topopt_generate", ok: true } });
     await vi.advanceTimersByTimeAsync(200);
     expect(listJobs).toHaveBeenCalledTimes(1);
+    onJobEvent({ type: "topopt_progress", run_id: null, ts: 0, data: { topopt_id: TO.job_id, part_id: "beam", status: "running", started: true } });
+    await vi.advanceTimersByTimeAsync(200);
+    expect(listJobs).toHaveBeenCalledTimes(2);           // the core's start event (a panel run)
   });
 
   it("the composer's jobs are the agents': a run you started from the panel is not one (B3-I2)", () => {

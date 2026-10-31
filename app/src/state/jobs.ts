@@ -94,6 +94,8 @@ export function onJobEvent(ev: MisesEvent): void {
     soon();
   } else if (ev.type === "tool_result" && typeof ev.data.name === "string" && SIM_TOOLS.test(ev.data.name)) {
     soon();
+  } else if (ev.type === "topopt_progress" && ev.data.started === true) {
+    soon();      // FW-core: a generative run announces its start (a panel run has no agent tool_result)
   }
 }
 

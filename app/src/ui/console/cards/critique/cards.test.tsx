@@ -99,6 +99,14 @@ describe("ViewCard", () => {
     return { r, scene: () => r.made[0].scene! };
   }
 
+  it("a view of parts the build no longer has says so instead of a failing live stage (FW-app)", () => {
+    parts.value = [part("other")];
+    const v = view("gone", { kind: "orbit", target: { part_id: "deleted_part" }, parts: ["deleted_part"] });
+    render(<ViewCard view={v} group={[v]} deps={{ createRenderer: renderers().factory }} />);
+    expect(screen.queryByTestId("live-view")).toBeNull();
+    expect(screen.getByTestId("view-card-still").textContent).toBe("Its parts are no longer in this build.");
+  });
+
   it("orbit: renders live with its caption, orbiting", async () => {
     await renderOne({ kind: "orbit" });
     expect(screen.getByTestId("view-card").getAttribute("data-live")).toBe("true");

@@ -74,17 +74,21 @@ function LiveViewCard({ view, group, deps }: { view: PresentedView; group: reado
   const open = () => openViewImmersive(group.length ? group : [view], index);
   const kind = VIEW_KIND_TEXT[spec.kind];
   const image = still ?? thumb;
+  // FW-app: a view of parts this build no longer has shows its picture (or says so), never a
+  // live stage that can only fail ("Could not load these parts")
+  // (judged once the build's parts are listed: an empty list is "not loaded yet")
+  const gone = parts.value.length > 0 && ids.every((id) => !parts.value.some((p) => p.part_id === id));
 
   return (
     <article class="vcard" data-testid="view-card" data-kind={spec.kind} data-live={live ? "true" : "false"} aria-label={`${kind} view`}
       onPointerEnter={claim} onPointerLeave={unclaim} onFocusIn={claim}>
       <div class="vcard-stage">
         <button type="button" class="vcard-open" onClick={open} aria-label={`Open the ${kind.toLowerCase()} view full window`} data-testid="view-card-open">
-          {live
+          {live && !gone
             ? <SpecStage view={view} playing={play} onSnapshot={setStill} deps={deps} />
             : image
               ? <img class="vcard-still" src={image} alt="" data-testid="view-card-still" />
-              : <span class="vcard-blank faint" data-testid="view-card-still">Point here to render</span>}
+              : <span class="vcard-blank faint" data-testid="view-card-still">{gone ? "Its parts are no longer in this build." : "Point here to render"}</span>}
         </button>
         <span class="vcard-kind label" aria-hidden="true">{kind}</span>
         {spec.orbit && live && (
