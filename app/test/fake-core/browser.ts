@@ -48,6 +48,30 @@ export interface FakeBrowserBom {
   snapshots: Map<string, SnapshotSeed>;
   cards: Map<string, PartCard>;
   bom: Map<string, StoredRow[]>;
+  /** Core bom.view's automatic rows (FW-app M8): every part of the build's tree is a made row
+   *  (a catalog part a bought one) unless a stored row covers it. Set by the fake core. */
+  auto?: (projectId: string) => StoredRow[];
+}
+
+/** A part of the build as an automatic parts-list row (core bom._auto_row + made_estimate). */
+export interface AutoPart { part_id: string; name: string; kind: "part" | "catalog"; qty: number; mass_g: number | null; material: string; size: readonly number[] | null }
+/** $/kg of the slicer's filaments (core print.slicer.MATERIALS). */
+const USD_KG: Record<string, number> = { PLA: 22.0, PETG: 25.0, ABS: 22.0, ASA: 28.0, TPU: 35.0 };
+
+export function autoRow(p: AutoPart): StoredRow {
+  const base: StoredRow = {
+    id: `auto_${p.part_id}`, kind: p.kind === "catalog" ? "bought" : "made", part_id: p.part_id, catalog_id: null, name: p.name,
+    qty: Math.max(1, p.qty), unit_cost: null, currency: null, vendor: null, url: null, specs: [], notes: "", source: "auto", auto_estimate: null,
+  };
+  if (p.kind === "catalog") return base;
+  const usd = USD_KG[p.material.toUpperCase()];
+  if (p.mass_g !== null) base.specs.push({ key: "mass", value: p.mass_g, unit: "g" });
+  base.specs.push({ key: "material", value: p.material, unit: null });
+  if (p.size) base.specs.push({ key: "size", value: p.size.map((v) => v.toFixed(1)).join(" x "), unit: "mm" });
+  if (p.mass_g !== null && usd !== undefined) {
+    base.auto_estimate = { unit_cost: r2(p.mass_g / 1000 * usd), note: `estimate: ${p.mass_g.toFixed(1)} g of ${p.material} solid (100% infill) x $${usd.toFixed(2)}/kg (material only)` };
+  }
+  return base;
 }
 
 function stored(r: BomSeed): StoredRow {
@@ -118,8 +142,15 @@ export function totalsOf(items: BomRow[]) {
     rows: items.length, qty: items.reduce((n, i) => n + i.qty, 0) };
 }
 
+/** Stored rows, then the automatic rows no stored row covers (a hidden one still covers). */
+function allRows(st: FakeBrowserBom, projectId: string): StoredRow[] {
+  const stored = st.bom.get(projectId) ?? [];
+  const covered = new Set(stored.map((r) => r.part_id).filter(Boolean));
+  return [...(st.auto?.(projectId) ?? []).filter((r) => !covered.has(r.part_id)), ...stored];
+}
+
 function view(st: FakeBrowserBom, projectId: string) {
-  const items = (st.bom.get(projectId) ?? []).filter((r) => !r.hidden).map(finish);
+  const items = allRows(st, projectId).filter((r) => !r.hidden).map(finish);
   items.sort((a, b) => (a.kind === "made" ? 0 : 1) - (b.kind === "made" ? 0 : 1));
   return { project_id: projectId, material: "PLA", items, totals: totalsOf(items) };
 }
@@ -271,7 +302,10 @@ export function bomRoutes(get: () => FakeBrowserBom): Route[] {
     return it;
   };
   const find = (pid: string, id: string): StoredRow => {
-    const r = ITEM_RE.test(id) ? rows(pid).find((x) => x.id === id && !x.hidden) : undefined;
+    let r = ITEM_RE.test(id) ? rows(pid).find((x) => x.id === id && !x.hidden) : undefined;
+    // an automatic row is stored (same id) once it is edited or hidden, like the core
+    const auto = !r && ITEM_RE.test(id) ? allRows(get(), pid).find((x) => x.id === id && x.source === "auto") : undefined;
+    if (auto) { r = { ...structuredClone(auto) }; rows(pid).push(r); }
     if (!r) throw mises("not_found", `no parts list row '${id}'`);
     return r;
   };

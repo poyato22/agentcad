@@ -22,7 +22,6 @@ import { linkHost } from "../../markup/parse";
 import { describeError } from "../../profile/common";
 import { saveBlob } from "../drawing/save";
 import { PageShell } from "../PageShell";
-import { setPage } from "../router";
 import {
   currencies, grouped, keyCurrency, lineTotalText, parseCurrency, perCurrency, specsLine, unpricedText, validQty, vendorLabel,
 } from "./model";
@@ -51,11 +50,10 @@ export function BomPage(): JSX.Element {
     return onCoreEvent((ev) => { if (ev.type === "bom_changed" && ev.data.project_id === build.id) reload(build.id); });
   }, [build?.id]);
 
-  const back = <div class="bom-bar"><Button variant="ghost" aria-label="Back to design" onClick={() => setPage("design")}>← Design</Button></div>;
+  // BOM is a tab of the build (Plan 9 D9): the tabs lead back, the page has no "← Design" (FW-app M8)
   if (!build) {
     return (
       <PageShell title="Parts list">
-        {back}
         <p class="bom-empty dim">Open a build to see its parts list. Made parts appear here automatically; add the bought ones as the design settles.</p>
       </PageShell>
     );
@@ -77,7 +75,6 @@ export function BomPage(): JSX.Element {
     <PageShell title="Parts list">
       <div class="bom" data-bom-page data-build={build.id}>
         <div class="bom-bar">
-          <Button variant="ghost" aria-label="Back to design" onClick={() => setPage("design")}>← Design</Button>
           <div class="bom-buildname text">{build.name || "Untitled build"}</div>
           <span class="bom-spacer" />
           <Button variant="default" onClick={() => setAdding(true)}>Add bought part</Button>

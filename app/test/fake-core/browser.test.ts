@@ -12,6 +12,8 @@ const RUN = sc().runs[0].id;
 const PROJ = sc().browser!.bom![0].project_id;
 
 async function start() { core = await startFakeCore({ port: 0, token: "t", scenario: sc() }); }
+/** The dumped build held only the dumped rows: base's own mount plate left out (its totals). */
+async function startDumped() { core = await startFakeCore({ port: 0, token: "t", scenario: { ...sc(), parts: [] } }); }
 async function req(method: string, path: string, body?: unknown) {
   const r = await fetch(core.url + path, {
     method, headers: { Authorization: "Bearer t", ...(body !== undefined ? { "Content-Type": "application/json" } : {}) },
@@ -62,7 +64,7 @@ describe("fake core: agent browser (R3)", () => {
 
 describe("fake core: parts list (R5)", () => {
   it("totals per currency, never summed across currencies", async () => {
-    await start();
+    await startDumped();
     const t = (await req("GET", `/projects/${PROJ}/bom`)).json.totals;
     expect(t.by_currency).toEqual({ USD: 35.97, EUR: 2.4, unknown: 3 });
     expect(t.unpriced).toBe(1);
@@ -99,6 +101,20 @@ describe("fake core: parts list (R5)", () => {
     expect(back.unit_cost).toBe(auto.unit_cost);
   });
 
+  it("every part of the build is an automatic made row with its own mass and estimate, like the core (FW-app M8)", async () => {
+    await start();
+    const items = (await req("GET", `/projects/${PROJ}/bom`)).json.items as { id: string; kind: string; source: string; qty: number; unit_cost: number; estimate: boolean; estimate_note: string; specs: { key: string; value: unknown }[] }[];
+    const plate = items.find((r) => r.id === "auto_mount_plate");
+    expect(plate).toMatchObject({ kind: "made", source: "auto", qty: 1, estimate: true });
+    const mass = plate?.specs.find((s) => s.key === "mass")?.value as number;
+    expect(mass).toBeGreaterThan(0);
+    expect(plate?.unit_cost).toBeCloseTo(Math.round(mass / 1000 * 22 * 100) / 100);
+    expect(plate?.estimate_note).toMatch(/^estimate: [\d.]+ g of PLA solid \(100% infill\) x \$22\.00\/kg \(material only\)$/);
+    // hidden on delete (it would come back otherwise), like the core
+    expect((await req("DELETE", `/projects/${PROJ}/bom/auto_mount_plate`)).status).toBe(200);
+    expect((await req("GET", `/projects/${PROJ}/bom`)).json.items.some((r: { id: string }) => r.id === "auto_mount_plate")).toBe(false);
+  });
+
   it("deleting a part's row hides it; a stored row goes away", async () => {
     await start();
     const items = (await req("GET", `/projects/${PROJ}/bom`)).json.items;
@@ -108,7 +124,7 @@ describe("fake core: parts list (R5)", () => {
   });
 
   it("the CSV neutralizes a formula-like name and lists one total row per currency", async () => {
-    await start();
+    await startDumped();
     const csv = (await req("GET", `/projects/${PROJ}/bom.csv`)).text;
     expect(csv).toContain(`"'=HYPERLINK(""https://evil.example"")"`);
     const totals = csv.split("\r\n").filter((l) => l.startsWith("total,"));

@@ -20,7 +20,7 @@ import { measureRoutes } from "./measure";
 import { conceptFrom, conceptRoutes, conceptSeedSteps, stopConcept, type ConceptScenario, type FakeConcept } from "./concept";
 import { handleControl } from "./control";
 import { directoryFrom, directoryRoutes, type DirectoryScenario, type FakeDirectory } from "./directory";
-import { bomRoutes, browserBomFrom, browserRoutes, type BrowserBomScenario, type FakeBrowserBom } from "./browser";
+import { autoRow, bomRoutes, browserBomFrom, browserRoutes, type BrowserBomScenario, type FakeBrowserBom } from "./browser";
 import { printingFrom, printingRoutes, stopPrinting, type FakePrinting, type PrintScenario } from "./printing";
 import { setupFrom, setupRoutes, type FakeSetup, type SetupScenario } from "./setup";
 import { cancelSimsOfRun, clearSimTimers, simRoutes, simsFrom, type FakeSims, type SimScenario } from "./sims";
@@ -1251,7 +1251,22 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       get: () => state.browserBom, hasRun: (id) => state.runs.has(id),
       setSites: (sites) => { state.setup.profile = { ...state.setup.profile, suggested_sites: sites }; },
     }),
-    ...bomRoutes(() => state.browserBom),
+    // FW-app M8: like the core's bom.view, every part of the build is a row (made: its own tree
+    // mass x $/kg; quantity: its assembly instances)
+    ...bomRoutes(() => Object.assign(state.browserBom, {
+      auto: (pid: string) => {
+        const counts = new Map<string, number>();
+        for (const i of state.assembly.byProject.get(pid)?.instances ?? []) counts.set(i.part_id, (counts.get(i.part_id) ?? 0) + 1);
+        const fallback = String((state.setup.profile as { default_material?: string | null }).default_material ?? "PLA");
+        return [...state.builds.rows.entries()].filter(([, r]) => r.project_id === pid && (r.kind === "part" || r.kind === "catalog"))
+          .map(([id, r]) => {
+            const m = fakeTreeMass(state.parts, state.builds.rows, id, fallback);
+            const own = m.own_mass_g ?? (m.mass_source === "built" ? m.mass_g : null);
+            const size = state.parts.find((p) => p.part_id === id)?.metrics?.bbox?.size ?? null;
+            return autoRow({ part_id: id, name: r.label, kind: r.kind as "part" | "catalog", qty: counts.get(id) ?? 1, mass_g: own, material: r.material ?? fallback, size });
+          });
+      },
+    })),
     ...specRoutes({
       get: () => state.spec, parts: () => state.parts, setParts: (p) => { state.parts = p; }, emit: (ev) => emit(ev),
       partVersion: (id) => state.builds.rows.get(id)?.version,

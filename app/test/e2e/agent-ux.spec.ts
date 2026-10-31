@@ -79,7 +79,7 @@ test("failed_calls_and_errors_are_red_inline_and_another_run_needing_you_is_one_
   await expect(err).toContainText("transient · provider timed out");
   await expect(err.locator(".cv-fail").first()).toHaveCSS("color", RED);
   // the designer's approval is still one click away
-  const needs = page.getByRole("button", { name: "designer · thicken mount plate to needs you · 1 waiting" });
+  const needs = page.getByRole("button", { name: "designer · thicken mount plate to 6 mm needs you · 1 waiting" });
   await expect(needs).toHaveText("1");
   await needs.click();
   await expect(thread(page).locator(`[data-approval="${AID}"]`)).toBeVisible();

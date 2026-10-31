@@ -114,7 +114,7 @@ describe("left pane", () => {
     expect(v.className).toContain("changed");
     expect(leftCss).toMatch(/\.var-value\.changed\s*\{[^}]*color:\s*var\(--blue2\)/);
     expect(tokensCss).toMatch(/--blue2:\s*#8dbaff/);
-    expect(v.getAttribute("title")).toBe("was 5.00 · set by designer · thicken mount plate to");
+    expect(v.getAttribute("title")).toBe("was 5.00 · set by designer · thicken mount plate to 6 mm");
   });
 
   it("unchanged_value_ink", () => {

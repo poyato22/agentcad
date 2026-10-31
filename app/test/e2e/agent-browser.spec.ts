@@ -18,11 +18,13 @@ test("the parts list shows one total per currency, estimates and the unpriced co
   await expect(page.getByRole("heading", { name: "Bought" })).toBeVisible();
   await expect(page.getByText("Arm bracket")).toBeVisible();
   await expect(page.locator('[data-bom-line="auto_arm_bracket"]').getByText("estimate")).toBeVisible();
+  // FW-app M8: the build's own part is a made row by itself, like the core (its mass x PLA $/kg)
+  await expect(page.locator('[data-bom-line="auto_mount_plate"]').getByText("estimate")).toBeVisible();
   // a formula-like name from the core is plain text
   await expect(page.getByText('=HYPERLINK("https://evil.example")')).toBeVisible();
   // one total per currency, never summed
   const totals = page.locator("[data-bom-totals]");
-  await expect(totals.locator('[data-currency="USD"]')).toContainText("$35.97");
+  await expect(totals.locator('[data-currency="USD"]')).toContainText("$36.10");     // 35.97 + the mount plate's 0.13
   await expect(totals.locator('[data-currency="EUR"]')).toContainText("€2.40");
   await expect(totals.locator('[data-currency="unknown"]')).toContainText("3.00 (currency unknown)");
   await expect(totals.getByText("1 part has no price yet, so it isn't in the totals.")).toBeVisible();
@@ -32,7 +34,7 @@ test("the parts list shows one total per currency, estimates and the unpriced co
   await qty.fill("8");
   await qty.press("Enter");
   await expect.poll(async () => (await fake.calls()).find((c) => c.method === "PATCH" && /\/bom\//.test(c.path))?.body).toEqual({ qty: 8 });
-  await expect(totals.locator('[data-currency="USD"]')).toContainText("$47.87");    // 8 × 5.95 + 0.27, re-read from the core
+  await expect(totals.locator('[data-currency="USD"]')).toContainText("$48.00");    // 8 × 5.95 + 0.27 + 0.13, re-read from the core
 
   // adding a bought part with no currency keeps it unknown
   await page.getByRole("button", { name: "Add bought part" }).click();
@@ -45,7 +47,8 @@ test("the parts list shows one total per currency, estimates and the unpriced co
   await page.getByRole("button", { name: "Export CSV" }).click();
   await expect.poll(async () => (await fake.calls()).some((c) => /\/bom\.csv$/.test(c.path))).toBe(true);
 
-  await page.getByRole("button", { name: "Back to design" }).first().click();
+  await expect(page.getByRole("button", { name: "Back to design" })).toHaveCount(0);   // FW-app M8: a tab, no back button
+  await page.getByRole("tab", { name: "Design" }).click();
   await expect(page.locator('[data-region="viewer"]')).toBeVisible();
 });
 
