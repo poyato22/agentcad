@@ -54,6 +54,8 @@ def test_bad_frontmatter_skipped(tmp_path: Path):
     assert "good" in defs and defs["good"].tools == ["mirror_measure"]
     assert "bad" not in defs
     assert len(defs.warnings) == 3
-    # built-ins (designer, planner, verifier, sim, engineer, drawing-import, simulation) plus
-    # the one good one
-    assert len(defs) == 8
+    # every built-in (designer, planner, verifier, sim, engineer, drawing-import, simulation,
+    # and any later one) plus the one good one
+    assert {"designer", "planner", "verifier", "sim", "engineer", "drawing-import",
+            "simulation", "good"} <= set(defs)
+    assert len(defs) == len(load_definitions()) + 1

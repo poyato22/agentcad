@@ -356,9 +356,13 @@ def rule_proposals(parts: list[dict], spec: dict | None, records: list[dict],
     1. a spec load case a part has no current stress study for;
     2. a spec frequency requirement with no current modal study;
     3. a study whose part changed since (stale): run it again;
-    4. a built part with no stress study at all: BODY_WEIGHT_FACTOR x the build's weight on its
-       top face, bottom held (heaviest part first)."""
-    built = [p for p in parts if p["kind"] == "part" and p["built"]]
+    4. a part in the build's load path (grounded in the assembly, else the heaviest part) with
+       no finished stress study: BODY_WEIGHT_FACTOR x the build's weight on its top face, bottom
+       held. Other parts get no generic load: a guessed load on a cover says nothing.
+    Load-path parts come first everywhere (grounded, then heaviest)."""
+    grounded = set((assembly or {}).get("grounded") or [])
+    built = sorted((p for p in parts if p["kind"] == "part" and p["built"]),
+                   key=lambda p: (p["part_id"] not in grounded, -(p["mass_g"] or 0)))
     by_part: dict[str, list[dict]] = {}
     for r in records:
         if r.get("part_id"):
@@ -432,16 +436,21 @@ def rule_proposals(parts: list[dict], spec: dict | None, records: list[dict],
                 "result no longer counts. Run it again with the same settings.")
     known = [p["mass_g"] for p in parts if p["kind"] == "part" and p["mass_g"] is not None]
     weight = (assembly or {}).get("total_mass_g") or (sum(known) if known else None)
-    for part in sorted(built, key=lambda p: -(p["mass_g"] or 0)):
-        if by_part.get(part["part_id"]) and any(r.get("type") in ("static", "drop")
-                                                for r in by_part[part["part_id"]]):
+    load_path = [p for p in built if p["part_id"] in grounded] or built[:1]
+    for part in load_path:
+        # only a finished study counts: a failed or cancelled one leaves the question open
+        if any(r.get("type") in ("static", "drop") and r.get("status") in ("done", "running")
+               for r in by_part.get(part["part_id"], [])):
             continue
         if any(o["part_id"] == part["part_id"] and o["type"] == "static" for o in out):
             continue                      # already has a stress proposal (a spec case)
         if weight:
             n = max(MIN_PROPOSAL_N, round(BODY_WEIGHT_FACTOR * weight / 1000 * G, 1))
-            basis = (f"at {BODY_WEIGHT_FACTOR:g}x the build's weight ({_fmt_mass(weight)}, so "
-                     f"{n:g} N) pressing on its top face with the bottom held")
+            role = ("it is grounded in the assembly, so it carries the build"
+                    if part["part_id"] in grounded else "it is the build's heaviest part")
+            basis = (f"{role}; at {BODY_WEIGHT_FACTOR:g}x the build's weight "
+                     f"({_fmt_mass(weight)}, so {n:g} N) pressing on its top face with the "
+                     "bottom held")
         else:
             n = MIN_PROPOSAL_N
             basis = f"with a {n:g} N load on its top face and the bottom held (no mass known yet)"
@@ -481,6 +490,41 @@ def save_proposals(home: Path, project_id: str, run_id: str, proposals: list[dic
     return data
 
 
+def _geometry_mtime(home: Path, part_id: str) -> float | None:
+    """When the part's geometry last changed (its model.step), without following links."""
+    try:
+        st = (Path(home) / "parts" / part_id / "model.step").lstat()
+    except OSError:
+        return None
+    return st.st_mtime
+
+
+def live_agent_proposals(home: Path, saved: dict | None, part_ids: set[str],
+                         records: list[dict]) -> list[dict]:
+    """The agent's saved proposals that still say what to do next. Retired: a part no longer
+    in the build, a part whose geometry changed since they were saved (their basis is stale),
+    and a proposal a current (not stale) study of the same part and type finished since. One
+    whose study is running stays, marked `status: "running"`, so the page shows it in flight."""
+    if not saved:
+        return []
+    ts = float(saved.get("ts") or 0)
+    out = []
+    for p in saved.get("proposals") or []:
+        if not isinstance(p, dict) or p.get("part_id") not in part_ids:
+            continue
+        geo = _geometry_mtime(home, p["part_id"])
+        if geo is not None and geo > ts:
+            continue
+        since = [r for r in records if r.get("part_id") == p["part_id"]
+                 and r.get("type") == p.get("type") and not r.get("stale")
+                 and (r.get("created_at") or 0) >= ts]
+        if any(r.get("status") == "done" for r in since):
+            continue
+        out.append({**p, "status": "running"} if any(r.get("status") == "running"
+                                                      for r in since) else p)
+    return out
+
+
 def studies_context(home: Path, store, project_id: str, *, assembly_store=None,
                     default_material: str = "PLA",
                     solvers: Callable[[], list[dict]] | None = None) -> dict:
@@ -493,8 +537,7 @@ def studies_context(home: Path, store, project_id: str, *, assembly_store=None,
     rules = rule_proposals(parts, spec, records, asm)
     saved = saved_proposals(home, project_id)
     part_ids = {p["part_id"] for p in parts}
-    agent = [p for p in (saved or {}).get("proposals") or []
-             if isinstance(p, dict) and p.get("part_id") in part_ids]
+    agent = live_agent_proposals(home, saved, part_ids, records)
     try:
         name = store.get_project(project_id).name
     except (KeyError, MisesError):
@@ -535,13 +578,15 @@ def _run_project(ctx: ToolContext, asked: str | None) -> str:
         own = ctx.store.get_run(ctx.run_id).project_id
     except KeyError:
         own = None
-    if asked and own and asked != own:
+    if asked and asked != own:
+        # another build, or any build from a run that has none: never handed out
         raise MisesError(ErrorCode.DENIED, "a run reads only its own build's studies context",
-                         hint=f"this run belongs to build {own}")
-    pid = asked or own
+                         hint=f"this run belongs to build {own}" if own
+                         else "this run has no build")
+    pid = own
     if not pid:
         raise MisesError(ErrorCode.INVALID_INPUT, "this run has no build",
-                         hint="pass project_id")
+                         hint="start the studies agent from a build")
     if not PROJECT_ID_RE.fullmatch(pid):
         raise MisesError(ErrorCode.INVALID_INPUT, f"bad project id: {pid!r}")
     return pid
@@ -641,10 +686,35 @@ def lead_message(sender: str, text: str, nonce: str | None = None) -> str:
             f'<{AGENT_NOTE_TAG} nonce="{nonce}">\n{body}\n</{AGENT_NOTE_TAG} nonce="{nonce}">')
 
 
+def _message_needs_approval(ctx: ToolContext, args: MessageArgs) -> str:
+    """Every hand-off starts a lead turn (with its own budget window): the user approves the
+    exact text on an approval card first, every time."""
+    return "hand this recommendation to the build's lead agent (it starts a lead turn)"
+
+
+#: per runtime: sender run id -> the message id still waiting in the lead's queue
+_PENDING_ATTR = "studies_agent_pending"
+
+
+def _pending_from(rt, lead_id: str, sender_run: str) -> str | None:
+    pending = getattr(rt, _PENDING_ATTR, None)
+    if not isinstance(pending, dict):
+        pending = {}
+        setattr(rt, _PENDING_ATTR, pending)
+    mid = pending.get(sender_run)
+    if mid and any(m.get("message_id") == mid for m in rt.lead_queues.get(lead_id) or []):
+        return mid
+    pending.pop(sender_run, None)
+    return None
+
+
 @tool("agent_message", safety=SafetyClass.LOCAL_MUTATE, timeout_s=60,
+      needs_approval=_message_needs_approval,
       description="Hand a recommendation (a design change a study showed is needed) to this "
-                  "build's lead agent as a message. It is delivered now when the lead is idle, "
-                  "else queued for its next turn. Refused when the build has no lead.")
+                  "build's lead agent as a message. The user approves the exact text first. "
+                  "It is delivered now when the lead is idle, else queued for its next turn. "
+                  "Refused when the build has no lead, or while your previous message still "
+                  "waits in its queue.")
 async def agent_message(ctx: ToolContext, args: MessageArgs) -> ToolOutput:
     from ..orchestrator import lead as lead_mod
     from ..orchestrator.router import Routed
@@ -655,6 +725,10 @@ async def agent_message(ctx: ToolContext, args: MessageArgs) -> ToolOutput:
     if lead is None or lead.id == ctx.run_id:
         raise MisesError(ErrorCode.INVALID_INPUT, "this build has no lead agent to message",
                          hint="tell the user the recommendation instead")
+    if _pending_from(rt, lead.id, ctx.run_id):
+        raise MisesError(ErrorCode.INVALID_INPUT,
+                         "your previous message still waits in the lead's queue",
+                         hint="wait until the lead has read it; one message at a time")
     sender = me.agent or "studies"
     text = lead_message(sender, args.text)
     log = {"text": f"From the {sender} agent: {args.text}"}
@@ -670,6 +744,8 @@ async def agent_message(ctx: ToolContext, args: MessageArgs) -> ToolOutput:
             if "still working" not in e.message:
                 raise
             queued = lead_mod._enqueue(rt, lead.id, text, log, routed)
+    if queued is not None:
+        getattr(rt, _PENDING_ATTR)[ctx.run_id] = queued["message_id"]
     s = (f"sent to the lead ({lead.id})" if queued is None
          else f"queued for the lead ({lead.id}), position {queued['position']}")
     return ToolOutput(summary=s, data={"lead_run_id": lead.id, "queued": queued is not None,

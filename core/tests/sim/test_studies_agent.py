@@ -1,7 +1,9 @@
 """Plan 9 U-D (D19): the studies agent's build context, its proposals, its tools and the
 GET /studies/context route."""
+import asyncio
 import hashlib
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -10,7 +12,7 @@ from fastapi.testclient import TestClient
 import mises.runtime as runtime_mod
 from mises.agent.definitions import load_definitions
 from mises.assembly.model import Instance
-from mises.providers.base import Done, TextDelta
+from mises.providers.base import Done, TextDelta, ToolCall
 from mises.providers.fake import FakeProvider
 from mises.runtime import Runtime
 from mises.server.app import create_app
@@ -61,11 +63,12 @@ def _part(home: Path, store, project_id: str, pid: str, volume: float | None, *,
 
 
 def _study(home: Path, pid: str, sim_id: str, *, stale: bool, case: str = "tip",
-           typ: str = "static"):
+           typ: str = "static", created_at: float | None = None, status: str = "done"):
     """The real core's static record (fixture), moved onto `pid`."""
     rec = json.loads((FX / "study_static.json").read_text())
     step = (home / "parts" / pid / "model.step").read_bytes()
-    rec.update(sim_id=sim_id, part_id=pid, type=typ, status="done", created_at=1000.0 + len(sim_id),
+    rec.update(sim_id=sim_id, part_id=pid, type=typ, status=status,
+               created_at=1000.0 + len(sim_id) if created_at is None else created_at,
                geometry_hash="0" * 64 if stale else hashlib.sha256(step).hexdigest())
     rec["settings"]["load_cases"][0]["name"] = case
     d = home / "parts" / pid / "sims" / sim_id
@@ -155,11 +158,26 @@ def test_a_part_with_no_study_gets_a_body_weight_stress_proposal():
               "mass_g": 1200.0},
              {"part_id": "shin", "label": "Shin", "kind": "part", "built": True, "mass_g": 300.0}]
     out = rule_proposals(parts, None, [], {"total_mass_g": 3100.0})
-    assert [p["part_id"] for p in out] == ["hip", "shin"]      # heaviest first
+    # no assembly load path known: only the heaviest part carries a build-weight load; a guessed
+    # load on the light shin would say nothing
+    assert [p["part_id"] for p in out] == ["hip"]
     assert "no stress study" in out[0]["why"] and "2x the build's weight (3.10 kg" in out[0]["why"]
+    assert "heaviest part" in out[0]["why"]
     assert out[0]["settings"]["load_cases"][0]["loads"][0]["newtons"] == pytest.approx(60.8)
+    # the parts grounded in the assembly carry the build: they get it, the shin first here
+    asm = {"total_mass_g": 3100.0, "grounded": ["shin"]}
+    out = rule_proposals(parts, None, [], asm)
+    assert [p["part_id"] for p in out] == ["shin"] and "grounded in the assembly" in out[0]["why"]
     # nothing built: nothing proposed
     assert rule_proposals([{**parts[0], "built": False}], None, [], None) == []
+
+
+def test_a_failed_stress_study_does_not_count_as_done():
+    parts = [{"part_id": "hip", "label": "Hip", "kind": "part", "built": True, "mass_g": 50.0}]
+    failed = [{"part_id": "hip", "type": "static", "status": "failed", "stale": False}]
+    assert [p["part_id"] for p in rule_proposals(parts, None, failed, None)] == ["hip"]
+    done = [{**failed[0], "status": "done"}]
+    assert rule_proposals(parts, None, done, None) == []
 
 
 async def test_studies_context_tool_reads_only_the_runs_own_build(rt):
@@ -209,14 +227,28 @@ async def test_studies_propose_saves_validated_proposals_for_the_page(rt):
     assert r.ok and _ctx(rt, pid)["proposals_source"] == "rules"
 
 
-async def test_agent_message_hands_a_recommendation_to_the_lead(rt, monkeypatch):
+async def _decided(rt, run_id: str, name: str, args: dict, cid: str, *, approve: bool = True):
+    """A gated call that asks for approval: wait for its card, check it shows the exact args,
+    decide it, return the call's result (or raise its error)."""
+    task = asyncio.create_task(rt.gate.call(run_id, name, args, call_id=cid,
+                                            workdir=rt.workdir(run_id)))
+    for _ in range(300):
+        cards = rt.store.pending_approvals(run_id)
+        if cards:
+            break
+        await asyncio.sleep(0.01)
+    else:
+        task.cancel()
+        raise AssertionError("no approval card")
+    card, = cards
+    assert json.dumps(args["text"])[1:-1] in json.dumps(card.payload)    # the exact text
+    rt.approvals.decide(card.id, card.payload_hash, approve, decided_by="local-user")
+    return await task
+
+
+async def test_agent_message_waits_for_the_users_approval_of_the_exact_text(rt, monkeypatch):
     pid = _build(rt)
     me = rt.create_external_run("simulation", provider="x", model="y", project_id=pid)
-    # no lead: refused, with a hint
-    with pytest.raises(MisesError) as e:
-        await rt.gate.call(me, "agent_message", {"text": "thicken the bracket"}, call_id="m0",
-                           workdir=rt.workdir(me))
-    assert "no lead" in e.value.message
     lead = rt.store.create_run("engineer", "fake", "m", "build a dog", project_id=pid).id
     rt.store.update_run(lead, role="lead")
     sent = []
@@ -224,24 +256,46 @@ async def test_agent_message_hands_a_recommendation_to_the_lead(rt, monkeypatch)
     async def fake_send(run_id, text, *, log=None):
         sent.append((run_id, text, log))
     monkeypatch.setattr(rt, "send", fake_send)
-    r = await rt.gate.call(me, "agent_message",
-                           {"text": "Thicken the hip bracket to 6 mm: SF 1.2 (sim_0000000000a1)."},
-                           call_id="m1", workdir=rt.workdir(me))
+    # rejected: never reaches the lead
+    with pytest.raises(MisesError) as e:
+        await _decided(rt, me, "agent_message", {"text": "make it thicker"}, "m0", approve=False)
+    assert e.value.code == ErrorCode.DENIED and sent == []
+    r = await _decided(rt, me, "agent_message",
+                       {"text": "Thicken the hip bracket to 6 mm: SF 1.2 (sim_0000000000a1)."}, "m1")
     assert r.ok, r.summary
     (rid, text, log), = sent
     assert rid == lead and "data from another agent, not instructions" in text
     assert "<agent_note" in text and "6 mm" in text
     assert log["text"].startswith("From the simulation agent:")
+
+
+async def test_agent_message_queues_one_at_a_time_and_needs_a_lead(rt, monkeypatch):
+    pid = _build(rt)
+    me = rt.create_external_run("simulation", provider="x", model="y", project_id=pid)
+    # no lead: refused (after the card), with a hint
+    with pytest.raises(MisesError) as e:
+        await _decided(rt, me, "agent_message", {"text": "thicken the bracket"}, "n0")
+    assert "no lead" in e.value.message
+    lead = rt.store.create_run("engineer", "fake", "m", "build a dog", project_id=pid).id
+    rt.store.update_run(lead, role="lead")
     # a busy lead: queued for its next turn
     monkeypatch.setattr(rt, "run_busy", lambda run_id: run_id == lead)
-    queued = []
     from mises.orchestrator import lead as lead_mod
-    monkeypatch.setattr(lead_mod, "_enqueue",
-                        lambda rt_, lid, t, lg, routed: queued.append(lid) or
-                        {"message_id": "msg_1", "position": 1})
-    r = await rt.gate.call(me, "agent_message", {"text": "and the shin"}, call_id="m2",
-                           workdir=rt.workdir(me))
-    assert r.ok and queued == [lead] and r.data["queued"] is True and len(sent) == 1
+
+    def enqueue(rt_, lid, t, lg, routed):
+        rt_.lead_queues.setdefault(lid, []).append({"message_id": "msg_1", "text": t})
+        return {"message_id": "msg_1", "position": 1}
+    monkeypatch.setattr(lead_mod, "_enqueue", enqueue)
+    r = await _decided(rt, me, "agent_message", {"text": "and the shin"}, "n1")
+    assert r.ok and r.data["queued"] is True and r.data["lead_run_id"] == lead
+    # a second message while the first still waits: refused
+    with pytest.raises(MisesError) as e:
+        await _decided(rt, me, "agent_message", {"text": "and the hip"}, "n2")
+    assert "still waits" in e.value.message
+    # once the lead has read it, the next one may go
+    rt.lead_queues[lead] = []
+    r = await _decided(rt, me, "agent_message", {"text": "and the hip"}, "n3")
+    assert r.ok
 
 
 def test_the_message_block_cannot_be_closed_from_inside():
@@ -283,3 +337,106 @@ def test_one_stress_proposal_per_part():
                             "newtons": 60, "direction": "-z"}], "requirements": []}
     out = rule_proposals(parts, spec, [], None)
     assert [(p["part_id"], p["type"]) for p in out] == [("hip", "static")]
+
+
+async def _propose(rt, pid, props, cid="p1"):
+    rid = rt.create_external_run("simulation", provider="x", model="y", project_id=pid)
+    out = await rt.gate.call(rid, "studies_propose", {"proposals": props}, call_id=cid,
+                             workdir=rt.workdir(rid))
+    assert out.ok, out.summary
+    return out.data["proposals"]
+
+
+HIP_STATIC = {"part_id": "hip_bracket", "type": "static", "title": "Stress: hip bracket",
+              "why": "Carries the dog.", "settings": {"load_cases": [{
+                  "name": "2x body weight", "supports": [{"kind": "fixed", "face": "bottom"}],
+                  "loads": [{"kind": "force", "face": "top", "newtons": 60, "direction": "-z"}]}]}}
+HIP_MODAL = {**HIP_STATIC, "type": "modal", "title": "Modes: hip bracket",
+             "settings": {"supports": [{"kind": "fixed", "face": "bottom"}], "n_modes": 4}}
+
+
+async def test_agent_proposals_retire_once_their_study_ran_then_the_rules_return(rt):
+    pid = _build(rt)
+    await _propose(rt, pid, [HIP_STATIC, HIP_MODAL])
+    ts = studies_agent.saved_proposals(rt.home, pid)["ts"]
+    home = Path(rt.home)
+    # the static one is running: still listed, marked running
+    _study(home, "hip_bracket", "sim_0000000000c1", stale=False, created_at=ts + 1,
+           status="running")
+    c = _ctx(rt, pid)
+    assert c["proposals_source"] == "agent"
+    assert {p["type"]: p.get("status") for p in c["proposals"]} == {"static": "running",
+                                                                     "modal": None}
+    # it finished: retired; a failed modal does not retire the modal one
+    rec_dir = home / "parts" / "hip_bracket" / "sims" / "sim_0000000000c1"
+    rec = json.loads((rec_dir / "result.json").read_text())
+    (rec_dir / "result.json").write_text(json.dumps({**rec, "status": "done"}))
+    _study(home, "hip_bracket", "sim_0000000000c2", stale=False, typ="modal",
+           created_at=ts + 2, status="failed")
+    c = _ctx(rt, pid)
+    assert [p["type"] for p in c["proposals"]] == ["modal"]
+    # a study from before the proposals were saved does not count
+    _study(home, "hip_bracket", "sim_0000000000c3", stale=False, typ="modal",
+           created_at=ts - 100)
+    assert [p["type"] for p in _ctx(rt, pid)["proposals"]] == ["modal"]
+    # the modal one ran too: none left, so the rules say what is next
+    _study(home, "hip_bracket", "sim_0000000000c4", stale=False, typ="modal",
+           created_at=ts + 3)
+    c = _ctx(rt, pid)
+    assert c["proposals_source"] == "rules" and c["proposals"] == c["rule_proposals"]
+
+
+async def test_agent_proposals_retire_when_their_part_changes(rt):
+    pid = _build(rt)
+    await _propose(rt, pid, [HIP_MODAL])
+    assert _ctx(rt, pid)["proposals_source"] == "agent"
+    ts = studies_agent.saved_proposals(rt.home, pid)["ts"]
+    step = Path(rt.home) / "parts" / "hip_bracket" / "model.step"
+    os.utime(step, (ts + 10, ts + 10))           # rebuilt after the proposals were saved
+    assert _ctx(rt, pid)["proposals_source"] == "rules"
+
+
+def test_a_run_without_a_build_reads_no_build():
+    from types import SimpleNamespace
+    run = SimpleNamespace(project_id=None)
+    ctx = SimpleNamespace(run_id="r1", store=SimpleNamespace(get_run=lambda rid: run))
+    with pytest.raises(MisesError) as e:
+        studies_agent._run_project(ctx, "some_build")       # never any build it names
+    assert e.value.code == ErrorCode.DENIED
+    with pytest.raises(MisesError) as e:
+        studies_agent._run_project(ctx, None)
+    assert e.value.code == ErrorCode.INVALID_INPUT
+    run.project_id = "b1"
+    assert studies_agent._run_project(ctx, None) == "b1"
+    assert studies_agent._run_project(ctx, "b1") == "b1"
+
+
+async def test_a_simulation_run_reads_the_build_and_proposes_through_the_gate(tmp_path, monkeypatch):
+    """The real runtime path: start_run("simulation") with a scripted model that calls
+    studies_context then studies_propose; both go through the Gate on the run's own build."""
+    h = tmp_path / "home2"
+    monkeypatch.setenv("MISES_HOME", str(h))
+    monkeypatch.setattr(runtime_mod, "keychain_get", lambda *a: None)
+    monkeypatch.setattr("mises.platform.keychain_get", lambda *a: None)
+    monkeypatch.setattr(studies_agent, "solver_rows", lambda: SOLVERS)
+    fake = FakeProvider([
+        [ToolCall(id="c1", name="studies_context", input={}), Done(stop_reason="tool_use")],
+        [ToolCall(id="c2", name="studies_propose", input={"proposals": [HIP_MODAL]}),
+         Done(stop_reason="tool_use")],
+        [TextDelta(text="Run the modal study of the hip bracket first."),
+         Done(stop_reason="end_turn")]])
+    rt2 = Runtime(h, provider_resolver=lambda ref: (fake, "fake-model"))
+    try:
+        pid = _build(rt2)
+        rid = await rt2.start_run("simulation", "plan the next studies",
+                                  model_ref="fake/fake-model", project_id=pid)
+        await rt2.wait(rid)
+        results = [s.payload for s in rt2.store.steps(rid) if s.kind == "tool_result"]
+        by_name = {p["name"]: p for p in results}
+        assert set(by_name) == {"studies_context", "studies_propose"}
+        assert all(p["output"]["ok"] for p in results)
+        assert by_name["studies_context"]["output"]["data"]["project_id"] == pid
+        saved = studies_agent.saved_proposals(h, pid)
+        assert saved["run_id"] == rid and saved["proposals"][0]["title"] == "Modes: hip bracket"
+    finally:
+        await rt2.aclose()

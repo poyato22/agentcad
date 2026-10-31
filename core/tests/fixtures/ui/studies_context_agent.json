@@ -1,5 +1,5 @@
 {
-  "project_id": "0ba76c3cb9a8",
+  "project_id": "aad164b95f98",
   "build_name": "Robot dog",
   "default_material": "PLA",
   "parts": [
@@ -126,7 +126,7 @@
     },
     {
       "source": "study",
-      "sim_id": "sim_6002ae53ec8f",
+      "sim_id": "sim_d6c6f5c35b35",
       "part_id": "leg_front",
       "name": "standing",
       "supports": [
@@ -144,13 +144,13 @@
   ],
   "studies": [
     {
-      "sim_id": "sim_6002ae53ec8f",
+      "sim_id": "sim_d6c6f5c35b35",
       "part_id": "leg_front",
       "project_id": null,
       "type": "static",
       "status": "done",
       "stale": false,
-      "created_at": 1793415928.9452941,
+      "created_at": 1793420565.8250911,
       "reason": "standing load",
       "verdict": "pass",
       "fidelity_note": null,
@@ -350,7 +350,7 @@
     }
   ],
   "proposals_source": "agent",
-  "proposals_run_id": "e09e991d5118",
+  "proposals_run_id": "46632b5bbc47",
   "rule_proposals": [
     {
       "part_id": "hip_bracket",

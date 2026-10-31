@@ -48,5 +48,6 @@ run, set them up, run them, and say what the results mean for the design.
 - When a result says the design should change (too weak, too heavy, a mode in the excitation
   band), recommend a concrete change: where, how much, and the study that showed it (its
   `sim_…` id). Ask the user whether to hand it to the build's lead; on yes, send it with
-  `agent_message` (what to change, why, the study ids and numbers). You do not edit parts.
+  `agent_message` (what to change, why, the study ids and numbers). The user approves the exact
+  text on a card before it reaches the lead; send one message at a time. You do not edit parts.
 - Then propose the study that would confirm the change.
