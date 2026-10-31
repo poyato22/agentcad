@@ -67,6 +67,35 @@ describe("studies agent model", () => {
     expect(a.sendError.value).toMatch(/still working/);
   });
 
+  it("never starts a second studies agent while one is starting or still working (M3)", async () => {
+    const c = { studiesContext: vi.fn().mockResolvedValue(AGENT), createRun: vi.fn().mockResolvedValue({ run_id: "sa9" }), message: vi.fn() };
+    const a = new StudiesAgentController(() => c as unknown as StudiesAgentClient);
+    await a.load(PID);
+    expect(await a.send("first", null)).toBe("sa9");
+    // the runs list does not have sa9 yet: a second send must not start another
+    expect(await a.send("second", null)).toBeNull();
+    expect(a.sendError.value).toMatch(/starting/);
+    expect(c.createRun).toHaveBeenCalledTimes(1);
+    a.noteRun(run({ id: "sa9" }));
+    // the core says it is still working (the race before the runs list updates): said, no new run
+    c.message.mockRejectedValueOnce(new CoreError("invalid_input", "run sa9 is still working", { status: 400 }));
+    expect(await a.send("third", run({ id: "sa9" }))).toBeNull();
+    expect(a.sendError.value).toMatch(/still working/);
+    expect(c.createRun).toHaveBeenCalledTimes(1);
+  });
+
+  it("the proposal Run pressed is remembered per build across a reload", async () => {
+    const c = { studiesContext: vi.fn().mockResolvedValue(AGENT), createRun: vi.fn(), message: vi.fn() };
+    const a = new StudiesAgentController(() => c as unknown as StudiesAgentClient);
+    await a.load(PID);
+    a.noteRan(AGENT.proposals[0]);
+    const b = new StudiesAgentController(() => c as unknown as StudiesAgentClient);
+    await b.load(PID);
+    expect(b.ranProposal.value?.id).toBe(AGENT.proposals[0].id);
+    await b.load("another_build");
+    expect(b.ranProposal.value).toBeNull();
+  });
+
   it("reloads when the agent saves proposals for this build", async () => {
     vi.useFakeTimers();
     try {
@@ -90,6 +119,7 @@ describe("Studies page, agent-first", () => {
   const settle = async () => { await act(async () => { await new Promise((r) => setTimeout(r, 20)); }); };
 
   beforeEach(() => {
+    localStorage.clear();
     resetStore(); resetStudiesPage();
     parts.value = [part("hip_bracket"), part("leg_front")];
     actions.selectPart("leg_front");
@@ -144,6 +174,19 @@ describe("Studies page, agent-first", () => {
     fireEvent.click(screen.getByTestId("manual-setup-toggle"));
     await settle();
     expect((document.getElementById("sf-load_cases-0-loads-0-newtons") as HTMLInputElement).value).toBe("60");
+  });
+
+  it("a proposal whose study is running says so and cannot run twice; the Run card sits under its proposal", async () => {
+    ac.studiesContext.mockResolvedValue({ ...AGENT, proposals: [{ ...AGENT.proposals[0], status: "running" }, AGENT.proposals[1]] });
+    mount();
+    await settle();
+    const [first, second] = screen.getAllByTestId("study-proposal");
+    const run0 = within(first).getByTestId("run-proposal") as HTMLButtonElement;
+    expect(run0.textContent).toBe("Running…");
+    expect(run0.disabled).toBe(true);
+    fireEvent.click(within(second).getByTestId("run-proposal"));
+    await settle();
+    expect(within(screen.getAllByTestId("study-proposal")[1]).getByTestId("agent-study-card")).toBeTruthy();
   });
 
   it("the conversation shows the studies agent's thread and the composer starts it", async () => {

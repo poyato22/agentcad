@@ -6,6 +6,7 @@
 // order (its real settings kept), so its Run starts a study the fake's POST /sims can play.
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import type { StudyRecord } from "../../src/api/studies";
 import type { PartSummary } from "../../src/api/types";
 import { mises, type Route } from "./server";
 
@@ -20,6 +21,20 @@ export interface StudiesAgentDeps {
   liveBuild(id: string): boolean;
   buildName(id: string): string | null;
   mode(): StudiesAgentMode;
+  /** The fake's stored studies (GET /sims): the context's past studies are the same ones. */
+  records(): Iterable<StudyRecord>;
+}
+
+/** A study as the core's context lists it (studies_agent._study_row). */
+function studyRow(r: StudyRecord): Record<string, unknown> {
+  const card = r.card;
+  return {
+    sim_id: r.sim_id, part_id: r.part_id, project_id: null, type: r.type ?? "static", status: r.status, stale: !!r.stale,
+    created_at: r.created_at, reason: r.reason ?? null, verdict: card?.verdict ?? null, fidelity_note: card?.fidelity_note ?? null,
+    material_basis: (card as Record<string, unknown> | undefined)?.material_basis ?? null,
+    metrics: (card?.metrics ?? []).filter((m) => m.value !== null && m.value !== undefined), checks: card?.checks ?? [],
+    warnings: (r.warnings ?? []).slice(0, 3), summary: `GUIDE ONLY - ${r.type ?? "static"} study of ${r.part_id} (fake core)`,
+  };
 }
 
 /** The fixture's own part names, as its why texts spell them. */
@@ -42,8 +57,10 @@ export function studiesContextFor(d: StudiesAgentDeps, projectId: string): Recor
     mass_note: p.metrics ? null : "not built yet", volume_mm3: p.metrics?.volume_mm3 ?? null,
     bbox_mm: p.metrics ? [...p.metrics.bbox.size] : null, faces: p.metrics?.faces ?? null, holes: p.metrics?.holes.length ?? 0,
   }));
+  const ids = new Set(parts.map((p) => p.part_id));
+  const rows = [...d.records()].filter((r) => ids.has(r.part_id)).sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0)).map(studyRow);
   return {
-    ...src, project_id: projectId, build_name: d.buildName(projectId), parts, studies: [], studies_total: 0, proposals,
+    ...src, project_id: projectId, build_name: d.buildName(projectId), parts, studies: rows.slice(0, 40), studies_total: rows.length, proposals,
     proposals_source: mode === "agent" ? "agent" : "rules", proposals_run_id: mode === "agent" ? src.proposals_run_id ?? null : null,
   };
 }

@@ -18,6 +18,8 @@ export const studyProposalSchema = z.looseObject({
   why: z.string(),
   settings: z.record(z.string(), z.unknown()),
   source: z.enum(["agent", "rules"]).catch("rules"),
+  /** "running": the agent's proposal whose study is running now (it retires once that is done). */
+  status: z.string().nullish(),
 });
 export type StudyProposal = z.infer<typeof studyProposalSchema>;
 

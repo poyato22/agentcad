@@ -74,10 +74,20 @@ test("run_on_a_proposal_starts_its_study_and_its_card_appears", async ({ page, f
   await expect(card).toHaveAttribute("data-status", "done", { timeout: 15_000 });
   await expect(card).toContainText("Guide only");
   await expect(page.getByTestId("study-result")).toBeVisible();
+  // the card sits under the proposal that started it, and names the proposal's own case
+  await expect(first.getByTestId("agent-study-card")).toBeVisible();
+  await expect(page.getByTestId("governing-case")).toHaveCount(0);   // one case: no case table
   for (const theme of ["dark", "light"] as const) {
     await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
     await page.screenshot({ path: `test-results/ud-studies-run-${theme}.png` });
   }
+  // the past-study count follows the study list
+  await expect(page.getByTestId("proposals-source")).not.toContainText(" 0 past studies");
+  // Run state survives a reload
+  await page.reload();
+  await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
+  await page.getByRole("tab", { name: "Studies" }).click();
+  await expect(page.getByTestId("study-proposal").first().getByTestId("run-proposal")).toHaveAttribute("data-state", "ran");
 });
 
 test("manual_setup_still_runs_a_study", async ({ page, fake }) => {

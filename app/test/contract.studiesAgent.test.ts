@@ -46,6 +46,29 @@ describe("GET /studies/context: fake core = real core", () => {
     }
   });
 
+  it("the fake's past studies are its GET /sims list, and a proposal's Run studies the proposal's own case", async () => {
+    core.reset({ ...scenario("agent"), sims: { studies: true, step_ms: 5 } } as Scenario);
+    const pid = ((await get("/projects")).json as { id: string }[])[0].id;
+    const listed = (await Promise.all(["beam", "cube"].map(async (p) => (await get(`/sims?part_id=${p}`)).json as unknown[]))).flat();
+    let ctx = studiesContextSchema.parse((await get(`/studies/context?project_id=${pid}`)).json);
+    expect(ctx.studies_total).toBe(listed.length);
+    const prop = ctx.proposals.find((p) => p.type === "static")!;
+    const r = await fetch(`${core.url}/sims`, { method: "POST", headers: { Authorization: `Bearer ${core.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ type: prop.type, part_id: prop.part_id, settings: prop.settings }) });
+    const { run_id } = (await r.json()) as { run_id: string };
+    let rec: { status: string; results?: { governing_case?: string }; card?: { checks: unknown[] } } | undefined;
+    for (let i = 0; i < 200 && rec?.status !== "done"; i++) {
+      await new Promise((res) => setTimeout(res, 10));
+      const [s] = (await get(`/sims?run_id=${run_id}`)).json as { sim_id: string }[];
+      if (s) rec = (await get(`/sims/${s.sim_id}`)).json as typeof rec;
+    }
+    const caseName = (prop.settings.load_cases as { name: string }[])[0].name;
+    expect(rec?.results?.governing_case).toBe(caseName);
+    expect(rec?.card?.checks).toEqual([]);           // no requirements were posted
+    ctx = studiesContextSchema.parse((await get(`/studies/context?project_id=${pid}`)).json);
+    expect(ctx.studies_total).toBe(listed.length + 1);
+  });
+
   it("an unknown build is 404, a bad id 400 (like the core)", async () => {
     core.reset(scenario("rules"));
     expect((await get("/studies/context?project_id=nope")).status).toBe(404);

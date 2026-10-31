@@ -4,7 +4,7 @@
 // conversation and a composer. Questions and approvals stay in the agent dock (one place answers
 // them): the pane shows that one is waiting and opens it. Every text from the core (labels, why,
 // replies) renders as text or Mises markup, never as HTML.
-import type { JSX } from "preact";
+import type { ComponentChildren, JSX } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { StudyProposal, StudiesContext } from "../../../../api/studiesAgent";
 import type { StudyRecord } from "../../../../api/studies";
@@ -62,6 +62,11 @@ export function AgentPane(p: AgentPaneProps): JSX.Element {
   const scroller = useRef<HTMLDivElement>(null);
   const shown = thread.length;
   useEffect(() => { const el = scroller.current; if (el) el.scrollTop = el.scrollHeight; }, [shown]);
+  // the study a Run started sits right under its proposal (M7); once the proposal retired (its
+  // study is done), under the proposals
+  const ranId = p.agent.ranProposal.value?.id ?? null;
+  const cardUnderProposal = ranId !== null && (ctx?.proposals.some((x) => x.id === ranId) ?? false);
+  const card = <RanCard active={p.active} rec={p.ranRecord} onCancel={p.onCancel} onWatch={p.onWatch} onOpen={p.onOpenResult} />;
 
   return (
     <section class="sa" data-testid="studies-agent" aria-label="Studies agent">
@@ -74,8 +79,8 @@ export function AgentPane(p: AgentPaneProps): JSX.Element {
       </header>
       <div class="sa-body" ref={scroller}>
         <Opening ctx={ctx} error={p.agent.contextError.value} loading={p.agent.loading.value} blocked={p.blocked} onRun={p.onRun}
-          ranId={p.agent.ranProposal.value?.id ?? null} />
-        <RanCard active={p.active} rec={p.ranRecord} onCancel={p.onCancel} onWatch={p.onWatch} onOpen={p.onOpenResult} />
+          ranId={ranId} ranCard={cardUnderProposal ? card : null} />
+        {!cardUnderProposal && card}
         {thread.map((it) => <Item key={it.key} item={it} onOpenRun={() => runId && p.onOpenRun(runId)} />)}
       </div>
       <Composer agent={p.agent} run={p.run} busy={busy} />
@@ -83,8 +88,9 @@ export function AgentPane(p: AgentPaneProps): JSX.Element {
   );
 }
 
-function Opening({ ctx, error, loading, blocked, onRun, ranId }: {
+function Opening({ ctx, error, loading, blocked, onRun, ranId, ranCard }: {
   ctx: StudiesContext | null; error: string | null; loading: boolean; blocked: AgentPaneProps["blocked"]; onRun: AgentPaneProps["onRun"]; ranId: string | null;
+  ranCard: JSX.Element | null;
 }): JSX.Element {
   if (error) return <p class="sa-msg tone-red text" data-testid="studies-agent-error" role="alert">Could not read the build: {error}</p>;
   if (!ctx) return <p class="sa-msg dim">{loading ? "Reading the build…" : "Open a build to plan its studies."}</p>;
@@ -102,15 +108,22 @@ function Opening({ ctx, error, loading, blocked, onRun, ranId }: {
       </p>
       {props.length > 0 && (
         <ol class="sa-props" aria-label="Proposed studies">
-          {props.map((x, i) => <ProposalCard key={x.id} p={x} n={i + 1} ctx={ctx} why={blocked(x)} ran={x.id === ranId} onRun={() => onRun(x)} />)}
+          {props.map((x, i) => (
+            <ProposalCard key={x.id} p={x} n={i + 1} ctx={ctx} why={blocked(x)} ran={x.id === ranId} onRun={() => onRun(x)}>
+              {x.id === ranId ? ranCard : null}
+            </ProposalCard>
+          ))}
         </ol>
       )}
     </div>
   );
 }
 
-function ProposalCard({ p, n, ctx, why, ran, onRun }: { p: StudyProposal; n: number; ctx: StudiesContext; why: string | null; ran: boolean; onRun: () => void }): JSX.Element {
+function ProposalCard({ p, n, ctx, why, ran, onRun, children }: {
+  p: StudyProposal; n: number; ctx: StudiesContext; why: string | null; ran: boolean; onRun: () => void; children?: ComponentChildren;
+}): JSX.Element {
   const part = ctx.parts.find((x) => x.part_id === p.part_id);
+  const running = p.status === "running";
   const fid = honesty(p.type, null, { settings: p.settings }).fidelity;
   return (
     <li class="sa-prop" data-testid="study-proposal" data-proposal={p.id} data-type={p.type} data-part={p.part_id}>
@@ -121,10 +134,11 @@ function ProposalCard({ p, n, ctx, why, ran, onRun }: { p: StudyProposal; n: num
       <p class="sa-prop-why">{p.why}</p>
       <div class="sa-prop-foot">
         <span class="sa-prop-meta dim">{part?.label ?? nameOf(p.part_id)} · {typeWord(p.type)} · {fid}</span>
-        <Button variant="ink" class="sa-run" onClick={onRun} disabled={why !== null} title={why ?? `Run the ${TYPE_NAMES[p.type].toLowerCase()} study`}
-          aria-label={`Run: ${p.title}`} data-testid="run-proposal">{ran ? "Run again" : "Run"}</Button>
+        <Button variant="ink" class="sa-run" onClick={onRun} disabled={why !== null || running} title={running ? "Its study is running" : why ?? `Run the ${TYPE_NAMES[p.type].toLowerCase()} study`}
+          aria-label={`Run: ${p.title}`} data-testid="run-proposal" data-state={running ? "running" : ran ? "ran" : "new"}>{running ? "Running…" : ran ? "Run again" : "Run"}</Button>
       </div>
-      {why && <p class="sa-prop-why-not faint" data-testid="proposal-blocked">{why}</p>}
+      {why && !running && <p class="sa-prop-why-not faint" data-testid="proposal-blocked">{why}</p>}
+      {children}
     </li>
   );
 }

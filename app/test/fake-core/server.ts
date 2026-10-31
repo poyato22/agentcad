@@ -1153,6 +1153,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       parts: () => state.parts.map((p) => ({ ...p, project_id: state.builds.rows.get(p.part_id)?.project_id ?? p.project_id ?? state.builds.defaultId })),
       liveBuild: (id) => state.builds.builds.some((b) => b.id === id && b.trashed_at === null),
       buildName: (id) => state.builds.builds.find((b) => b.id === id)?.name ?? null, mode: () => state.studiesAgent,
+      records: () => (state.sims.records as unknown as Map<string, import("../../src/api/studies").StudyRecord>).values(),
     }),
     ...browserRoutes({
       get: () => state.browserBom, hasRun: (id) => state.runs.has(id),

@@ -78,6 +78,7 @@ export function StudiesPage({ controller = studies, agent = studiesAgent, deps =
   const buildId = activeBuildId.value;
   useEffect(() => { void agent.load(buildId); }, [agent, buildId]);
   const agentRun = studiesAgentRun(runs.value.values(), buildId);
+  useEffect(() => { agent.noteRun(agentRun); }, [agent, agentRun?.id]);
   const manual = manualSig.value;
   const part = activePart.value;
   const partId = part?.part_id ?? null;

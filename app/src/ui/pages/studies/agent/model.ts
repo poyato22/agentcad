@@ -34,6 +34,26 @@ export const isBusy = (r: AgentRun | null): boolean => r !== null && (r.status =
 const TYPE_WORD: Record<string, string> = { static: "Stress", modal: "Modes", buckling: "Buckling", thermal: "Thermal", drop: "Drop", wind: "Wind" };
 export const typeWord = (t: string): string => TYPE_WORD[t] ?? t;
 
+const RAN_KEY = "mises.studies.ran.";
+
+function readRan(projectId: string): { id: string; partId: string; at: number } | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(RAN_KEY + projectId) ?? "null") as unknown;
+    if (v && typeof v === "object") {
+      const o = v as Record<string, unknown>;
+      if (typeof o.id === "string" && typeof o.partId === "string" && typeof o.at === "number") return { id: o.id, partId: o.partId, at: o.at };
+    }
+  } catch { /* none */ }
+  return null;
+}
+
+/** A message error after which a new studies agent may replace the old run. */
+export function canReplace(e: unknown): boolean {
+  if (!(e instanceof CoreError)) return false;
+  if (/still working/i.test(e.message) || e.status === 409 || e.status === 429) return false;
+  return e.code === "not_found" || /external|cannot take messages|not running in this process/i.test(e.message);
+}
+
 const messageOf = (e: unknown): string => e instanceof CoreError
   ? (e.hint ? `${e.message} (${e.hint})` : e.message)
   : e instanceof Error ? e.message : String(e);
@@ -51,13 +71,15 @@ export class StudiesAgentController {
   private projectId: string | null = null;
   private seq = 0;
   private reloadTimer: ReturnType<typeof setTimeout> | null = null;
+  /** The studies agent a send just started, per build, until the runs list has it (M3). */
+  private readonly started = new Map<string, string>();
 
   constructor(client: () => StudiesAgentClient) { this.client = client; }
 
   /** Loads the build's context; a stale answer for another build is dropped. */
   async load(projectId: string | null): Promise<void> {
     const seq = ++this.seq;
-    if (projectId !== this.projectId) { this.context.value = null; this.contextError.value = null; this.ranProposal.value = null; }
+    if (projectId !== this.projectId) { this.context.value = null; this.contextError.value = null; this.ranProposal.value = projectId ? readRan(projectId) : null; }
     this.projectId = projectId;
     if (!projectId) return;
     this.loading.value = true;
@@ -85,14 +107,18 @@ export class StudiesAgentController {
           await this.client().message(run.id, t);
           return run.id;
         } catch (e) {
-          // a run this core can no longer continue (restarted, or one that never takes messages):
-          // a fresh studies agent picks the build up from its context
-          if (!(e instanceof CoreError) || e.code === "network") throw e;
+          // only a run this core can no longer continue (gone after a restart, or one that never
+          // takes messages) is replaced by a fresh studies agent; "still working" and anything
+          // else is said, never a second studies agent for the build (M3)
+          if (!canReplace(e)) throw e;
         }
       } else if (run) {
         throw new Error("The studies agent is still working. Wait for it to finish, or stop it.");
+      } else if (this.started.has(this.projectId)) {
+        throw new Error("The studies agent is starting. Send again once it answers.");
       }
       const { run_id } = await this.client().createRun({ agent: STUDIES_AGENT, prompt: t, project_id: this.projectId });
+      this.started.set(this.projectId, run_id);
       return run_id;
     } catch (e) {
       this.sendError.value = messageOf(e);
@@ -102,7 +128,17 @@ export class StudiesAgentController {
     }
   }
 
-  noteRan(p: StudyProposal): void { this.ranProposal.value = { id: p.id, partId: p.part_id, at: Date.now() / 1000 }; }
+  /** The runs list now has the run a send started (or a newer one): sends go to it. */
+  noteRun(run: AgentRun | null): void {
+    if (run && this.projectId && this.started.has(this.projectId)) this.started.delete(this.projectId);
+  }
+
+  /** Remembered per build (localStorage), so the card and "Run again" survive a reload. */
+  noteRan(p: StudyProposal): void {
+    const ran = { id: p.id, partId: p.part_id, at: Date.now() / 1000 };
+    this.ranProposal.value = ran;
+    if (this.projectId) { try { localStorage.setItem(RAN_KEY + this.projectId, JSON.stringify(ran)); } catch { /* per session only */ } }
+  }
 
   onEvent(ev: MisesEvent, runs: ReadonlyMap<string, AgentRun>): void {
     const pid = this.projectId;
