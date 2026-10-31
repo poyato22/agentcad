@@ -128,8 +128,8 @@ base_version)`. Then run `design_review(part_id, project_id)` on the chosen part
 `project_id` spec_set returned; omit it and it reviews against this build's own spec): it runs the
 studies the spec requires and returns a per-requirement pass / warn / fail table with study ids.
 It too runs in the background (`review_id`); report its table when its note arrives
-(`design_review_get` reads it). Report it as the "After studies" rule says (the pick and why in those lines, with the study
-ids). Iterate on the user's feedback.
+(`design_review_get` reads it). Report it as the "After studies" rule says (the pick and why
+in those lines, with the study ids). Iterate on the user's feedback.
 
 ## 6. Assemble
 Bring every part of a system into the assembly with `assembly_add_part` (the first is grounded;

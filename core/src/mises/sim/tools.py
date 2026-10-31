@@ -773,9 +773,10 @@ async def design_review(ctx: ToolContext, args: ReviewArgs) -> ToolOutput:
                             "passes, but the load is an estimate (F = m*g*k)"
                     table.append(row)
             else:
-                # the study produced no checks: it was denied, errored or timed out, or ran but gave
-                # no requirement verdict. Either way we have no evidence, so the row is "not checked"
-                # (warn), never "fail" — a fail must mean a study ran and a requirement failed.
+                # the study produced no checks: it was denied, errored or timed out, or ran but
+                # gave no requirement verdict. Either way we have no evidence, so the row is
+                # "not checked" (warn), never "fail" — a fail must mean a study ran and a
+                # requirement failed.
                 note = (res.get("error") or (out.summary[:200] if out else None)
                         or "not checked: the study produced no result")
                 for r in p["requirements"]:

@@ -360,7 +360,8 @@ def test_every_tool_maps_to_its_intended_stream(make_rt):
     assert view == {"render_views", "present_view", "critique_model", "part_show",
                     "section_check", "assembly_animate"}
     # a tool that sounds like a study or a view but is tagged text must be a conscious choice
-    text_ok = {"study_apply", "interview_plan", "mirror_drawing", "drawing_spec_submit", "calibration_list",
+    text_ok = {"study_apply", "interview_plan", "mirror_drawing", "drawing_spec_submit",
+               "calibration_list",
                "calibration_get", "calibration_fit", "calibration_save", "calibration_delete"}
     suspicious = {n for n in names - sim - view
                   if any(w in n for w in ("sim", "study", "review", "render", "view", "topopt",
