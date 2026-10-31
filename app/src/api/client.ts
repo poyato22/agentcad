@@ -18,6 +18,10 @@ import {
   type SimRecord, type SimSolvers, type SimStartBody, type SimStarted, type SimSummary,
 } from "./sims";
 import {
+  topoptAcceptResultSchema, topoptRecordSchema,
+  type TopoptAcceptBody, type TopoptAcceptResult, type TopoptRecord, type TopoptStartBody,
+} from "./topopt";
+import {
   profileActiveSchema, projectsLiteSchema, specCheckSchema, specDocSchema, studyAppliedSchema, studySchema,
   type Spec, type SpecCheck, type SpecDoc, type Study, type StudyApplied, type StudyApplyBody,
 } from "./spec";
@@ -329,6 +333,26 @@ export class CoreClient {
    *  material on that printer uses it. Only after the user confirms. */
   saveCalibration(body: CalibrationBody): Promise<Calibration> { return this.json("POST", "/sims/calibrations", calibrationSchema, { body }); }
   deleteCalibration(id: string): Promise<unknown> { return this.json("DELETE", `/sims/calibrations/${enc(id)}`, anyBody); }
+
+  // ---- Plan 9 D14: generative design / topology optimization (core server/topopt_api.py)
+
+  /** 202: topopt_run (or topopt_generate with variants / sweep) through the Gate; the run goes on
+   *  in the background (topopt_progress / topopt_finished events, or poll topoptGet). */
+  topoptStart(body: TopoptStartBody): Promise<TopoptRecord> { return this.json("POST", "/topopt", topoptRecordSchema, { body }); }
+  topoptList(filter: { partId?: string; projectId?: string } = {}): Promise<TopoptRecord[]> {
+    return this.json("GET", "/topopt", z.array(topoptRecordSchema), { query: { part_id: filter.partId, project_id: filter.projectId } });
+  }
+  topoptGet(id: string): Promise<TopoptRecord> { return this.json("GET", `/topopt/${enc(id)}`, topoptRecordSchema); }
+  topoptCancel(id: string): Promise<unknown> { return this.json("POST", `/topopt/${enc(id)}/cancel`, anyBody); }
+  topoptAccept(id: string, body: TopoptAcceptBody): Promise<TopoptAcceptResult> {
+    return this.json("POST", `/topopt/${enc(id)}/accept`, topoptAcceptResultSchema, { body });
+  }
+  /** A variant's live density preview / result / stress GLB (same frame as a part's model.glb). */
+  topoptGlb(id: string, variant: string, name: "preview" | "result" | "stress", etag?: string): Promise<{ bytes: ArrayBuffer; etag: string } | "not-modified"> {
+    return this.glb(`/topopt/${enc(id)}/variants/${enc(variant)}/${name}.glb`, etag);
+  }
+  /** A variant's iso render (PNG), for the variant grid. */
+  topoptRender(id: string, variant: string): Promise<Blob> { return this.blob(`/topopt/${enc(id)}/variants/${enc(variant)}/render.png`, "image/png"); }
 
   private async glb(path: string, etag?: string): Promise<{ bytes: ArrayBuffer; etag: string } | "not-modified"> {
     const headers: Record<string, string> = {};

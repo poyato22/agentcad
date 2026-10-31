@@ -30,6 +30,7 @@ import { PrintSection } from "./ui/pages/print";
 import { StudiesPage } from "./ui/pages/studies";
 import { ImmersiveRoot } from "./ui/pages/studies/immersive/Immersive";
 import { ViewImmersiveRoot } from "./ui/console/cards/critique";
+import { GenerativeRoot } from "./ui/topopt";
 import { SketchReviewRoot } from "./ui/sketch/register";
 import { closeProfile, profileOpen, profileSection } from "./ui/profile/open";
 import { ProfilePane } from "./ui/profile/ProfilePane";
@@ -104,6 +105,7 @@ export function App(): JSX.Element {
         : <><div class="region region-topbar" data-region="topbar"><TopBar /></div><PageRegion /><ConsoleRegion /></>}
       <ImmersiveRoot />
       <ViewImmersiveRoot />
+      <GenerativeRoot />
       <SketchReviewRoot />
       <NewRunDialog />
       <AgentManager />

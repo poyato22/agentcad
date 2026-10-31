@@ -27,6 +27,7 @@ import { cancelSimsOfRun, clearSimTimers, simRoutes, simsFrom, type FakeSims, ty
 import { studiesAgentRoutes, type StudiesAgentMode } from "./studiesAgent";
 import { importRoutes, parseMultipart, type FakeImport } from "./imports";
 import { specFrom, specRoutes, type FakeSpec, type SpecScenario } from "./spec";
+import { topoptFake } from "./topopt";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const SCENARIO_DIR = resolve(HERE, "scenarios");
@@ -753,6 +754,8 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     },
   };
 
+  // Plan 9 D14: generative design runs (records live with this fake core, cleared on reset)
+  const topopt = topoptFake({ parts: () => state.parts, setParts: (p) => { state.parts = p; }, emit: (ev) => { emit(ev); } });
   const routes: Route[] = [
     { method: "GET", re: /^\/health$/, h: () => ({ ok: true }) },
     {
@@ -1172,6 +1175,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         return { ok: true };
       },
     },
+    ...topopt.routes,
     ...simRoutes({
       sims: () => state.sims, parts: () => state.parts, defaultMaterial: () => state.setup.profile.default_material,
       newRun, emit,
@@ -1411,6 +1415,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     scriptTimers = [];
     scriptStarted = false;
     clearSimTimers(state.sims);
+    topopt.reset();
     dropSockets();
     stopPrinting(state.print);
     // the live activity belongs to the old scenario's runs (GET /runs/{id} serves it, C-3)
@@ -1445,6 +1450,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     async stop() {
       scriptTimers.forEach(clearTimeout);
       clearSimTimers(state.sims);
+      topopt.reset();
       stopPrinting(state.print);
       dropSockets("terminate");
       wss.close();
