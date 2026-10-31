@@ -56,6 +56,8 @@ export interface SketchImageProps {
   onPointerDown?: JSX.PointerEventHandler<SVGSVGElement>;
   onPointerMove?: JSX.PointerEventHandler<SVGSVGElement>;
   onPointerUp?: JSX.PointerEventHandler<SVGSVGElement>;
+  /** A cancelled pointer (system gesture, lost capture): drop the stroke in progress. */
+  onPointerCancel?: () => void;
   cursor?: string;
 }
 
@@ -68,7 +70,8 @@ export function SketchImage(p: SketchImageProps): JSX.Element {
     <div class={`sk-sheet ${p.class ?? ""}`} style={{ aspectRatio: `${w} / ${h}` }} data-view={p.image.view}>
       {url ? <img src={url} alt={p.alt} draggable={false} /> : <div class="sk-sheet-wait" aria-label="Loading the sketch" />}
       <svg viewBox={`0 0 ${w} ${h}`} class="sk-overlay" ref={p.svgRef} style={p.cursor ? { cursor: p.cursor } : undefined}
-        onPointerDown={p.onPointerDown} onPointerMove={p.onPointerMove} onPointerUp={p.onPointerUp} data-testid="sketch-overlay">
+        onPointerDown={p.onPointerDown} onPointerMove={p.onPointerMove} onPointerUp={p.onPointerUp}
+        onPointerCancel={p.onPointerCancel} onLostPointerCapture={p.onPointerCancel} data-testid="sketch-overlay">
         {callouts.length > 0 && <Callouts callouts={callouts} w={w} h={h} />}
         {p.marks && p.marks.length > 0 && <MarkShapes marks={p.marks} w={w} h={h} />}
         {p.children}

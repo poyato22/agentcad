@@ -95,6 +95,24 @@ describe("SketchCard + SketchReview", () => {
     expect((await screen.findByRole("status")).textContent).toBe("Sketch feedback v1: 3 marks and a comment… sent to the agent");
   });
 
+  it("a cancelled pointer drops its stroke; a later pointerup commits nothing", async () => {
+    client([VIEW]);
+    render(<><SketchCard projectId={PID} sketchId={null} /><SketchReviewRoot /></>);
+    fireEvent.click(await screen.findByTestId("sketch-markup"));
+    const svg = overlay();
+    fireEvent.pointerDown(svg, at(250, 150));
+    fireEvent.pointerMove(svg, at(320, 150));
+    fireEvent.pointerCancel(svg, at(320, 150));
+    fireEvent.pointerUp(svg, at(330, 150));
+    fireEvent.click(screen.getByRole("button", { name: /Lasso/ }));
+    fireEvent.pointerDown(svg, at(100, 200));
+    fireEvent.pointerMove(svg, at(200, 190));
+    fireEvent(svg, new Event("lostpointercapture"));
+    fireEvent.pointerUp(svg, at(260, 260));
+    expect(screen.queryByTestId("mark-comment")).toBeNull();
+    expect(screen.queryByTestId("mark-list")).toBeNull();
+  });
+
   it("Approve posts the version and the card flips to Approved", async () => {
     const c = client([VIEW, APPROVED]);
     render(<SketchCard projectId={PID} sketchId={null} />);

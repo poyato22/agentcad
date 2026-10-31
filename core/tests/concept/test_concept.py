@@ -163,12 +163,28 @@ def test_gate_refuses_new_parts_for_design_until_approved(home, monkeypatch, cls
         assert e.value.message.startswith("needs concept approval")
     else:
         gate_mod.check_call(ctx, "mirror_part_create", args)
-    # massing / skeleton parts, other tools and rebuilds of existing parts always pass
-    gate_mod.check_call(ctx, "mirror_part_create", SimpleNamespace(part_id="massing_body"))
-    gate_mod.check_call(ctx, "mirror_part_create", SimpleNamespace(part_id="skeleton"))
+    # no name is exempt: massing_* / concept_* parts are parts like any other
+    for pid in ("massing_body", "concept_torso", "massing"):
+        if refused:
+            with pytest.raises(MisesError):
+                gate_mod.check_call(ctx, "mirror_part_create", SimpleNamespace(part_id=pid))
+        else:
+            gate_mod.check_call(ctx, "mirror_part_create", SimpleNamespace(part_id=pid))
+    # an Onshape import starts a part too
+    if refused:
+        with pytest.raises(MisesError):
+            gate_mod.check_call(ctx, "onshape_import_element", SimpleNamespace(url="x"))
+    # a part id that exists in ANOTHER build is not a rebuild
+    other = rt.store.create_project("Other build").id
+    rt.store.register_part("leg_fl", other)
+    (rt.home / "parts" / "leg_fl").mkdir(parents=True)
+    (rt.home / "parts" / "leg_fl" / "metrics.json").write_text("{}")
+    if refused:
+        with pytest.raises(MisesError):
+            gate_mod.check_call(ctx, "mirror_part_create", SimpleNamespace(part_id="leg_fl"))
+    # other tools, and rebuilds of a part of THIS build, always pass
     gate_mod.check_call(ctx, "mirror_part_set_vars", args)
-    (rt.home / "parts" / "old_part").mkdir(parents=True)
-    (rt.home / "parts" / "old_part" / "metrics.json").write_text("{}")
+    rt.store.register_part("old_part", project)
     gate_mod.check_call(ctx, "mirror_part_create", SimpleNamespace(part_id="old_part"))
     # approve (or skip) opens the gate
     rt.concepts.update(project, status="approved")
@@ -179,6 +195,76 @@ def test_gate_refuses_new_parts_for_design_until_approved(home, monkeypatch, cls
             gate_mod.check_call(ctx, "mirror_part_create", args)
     rt.concepts.update(project, status="skipped")
     gate_mod.check_call(ctx, "mirror_part_create", args)
+
+
+@pytest.mark.parametrize("where", ["run", "build"])
+async def test_the_gate_reads_design_class_from_the_lead_or_the_build(home, where):
+    """Wave-3 contract: G-B stores the class as `design_class` (JSON) on the lead's run (and/or
+    the build). Set it as G-B's migration will, with no monkeypatch: new parts are refused."""
+    rt, project, run = _gate_rt(home, "design")
+    table, row = ("runs", run.id) if where == "run" else ("projects", project)
+    with rt.store._tx() as db:
+        db.execute(f"ALTER TABLE {table} ADD COLUMN design_class TEXT")
+        db.execute(f"UPDATE {table} SET design_class=? WHERE id=?",
+                   ('{"score": 0.82, "cls": "design", "per_part": {}, "reasons": ["humanoid"]}', row))
+    cls = gate_mod.design_class(rt.store, project, run.id)
+    assert cls["cls"] == "design" and cls["source"] == where
+    with pytest.raises(MisesError) as e:
+        await rt.gate.call(run.id, "mirror_part_create",
+                           {"part_id": "massing_torso", "script": "VARS={}\ndef build(v): pass"},
+                           call_id="c1", workdir=rt.home)
+    assert e.value.code == ErrorCode.NEEDS_APPROVAL
+    assert "massing_" not in (e.value.hint or "")
+    rt.concepts.update(project, status="approved")
+    gate_mod.check_call(_ctx(rt, run, rt.home), "mirror_part_create",
+                        SimpleNamespace(part_id="massing_torso"))
+
+
+def test_design_class_on_an_object_attribute_too(monkeypatch):
+    lead = SimpleNamespace(id="r1", task="t", design_class="design")
+    monkeypatch.setattr("mises.orchestrator.lead.find_lead", lambda store, pid: lead)
+    assert gate_mod.design_class(None, "p")["cls"] == "design"
+
+
+def test_pitch_cap(tmp_path):
+    from mises.concept import MAX_PITCHES
+    cs = ConceptStore(Store(tmp_path / "m.db"))
+    for i in range(MAX_PITCHES):
+        cs.add_pitch("p1", {"pitch_id": f"ckp_{i:012x}", "options": []})
+    with pytest.raises(MisesError):
+        cs.add_pitch("p1", {"pitch_id": "ckp_ffffffffffff", "options": []})
+    assert cs.add_pitch("p2", {"pitch_id": "ckp_eeeeeeeeeeee", "options": []})
+
+
+async def test_concept_status_stays_under_the_gate_output_cap(home):
+    """Many long rounds: the latest round comes back in full (comments cut), older rounds as
+    summaries, and the result is never spilled to a file."""
+    from mises.gate import MAX_OUTPUT_BYTES
+    rt, project, run = _gate_rt(home, "design")
+    sketch = _seed_sketch(rt, project)
+    for k in range(4):
+        rt.concepts.add_feedback(project, sketch["sketch_id"], {
+            "feedback_id": f"ckf_{k:012x}", "version": 1, "comment": "z" * 4000, "annotated": [],
+            "marks": [{"kind": "pin", "x": 0.5, "y": 0.5, "image": 0, "n": n + 1, "view": "side",
+                       "comment": "<" + "y" * 999} for n in range(40)]})
+    out = await rt.gate.call(run.id, "concept_status", {}, call_id="st", workdir=rt.home)
+    assert out.handles == [] and out.data["concept"]["status"] == "sketching"
+    assert len(out.model_dump_json(exclude={"images"}).encode()) <= MAX_OUTPUT_BYTES
+    block = out.data["untrusted_user_feedback"]
+    assert '"rounds_total": 4' in block and "ckf_000000000003" in block
+    assert "<y" not in block                                   # still escaped inside the fence
+
+
+async def test_feedback_images_are_fitted_for_the_lead():
+    from mises.concept.service import ATTACH_MAX_BYTES, fit_attachment
+    from PIL import Image
+    rng = np.random.default_rng(0)
+    buf = io.BytesIO()
+    Image.fromarray(rng.integers(0, 255, (2600, 2600, 3), dtype=np.uint8)).save(buf, "PNG")
+    assert len(buf.getvalue()) > ATTACH_MAX_BYTES
+    out = await fit_attachment(buf.getvalue())
+    w, h = Image.open(io.BytesIO(out)).size
+    assert max(w, h) <= 1024 and len(out) < ATTACH_MAX_BYTES
 
 
 async def test_the_gate_pipeline_runs_the_concept_check(home, monkeypatch):

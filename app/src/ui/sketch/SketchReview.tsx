@@ -101,6 +101,8 @@ function SketchReview({ projectId, sketch, image: initialImage }: { projectId: s
       if (pts) add({ kind: "lasso", points: pts });
     }
   };
+  // a cancelled pointer never commits its stroke (nor does a later click)
+  const cancel = () => setStroke(null);
   const numberedHere = draft.marks.map((m, i) => ({ n: i + 1, mark: m, id: m.id, selected: m.id === editing })).filter((x) => x.mark.image === image);
   const editAt = editMark && editMark.image === image ? markAnchor(editMark, w, h) : null;
   const run = async (f: () => Promise<boolean>, close: boolean) => {
@@ -131,7 +133,7 @@ function SketchReview({ projectId, sketch, image: initialImage }: { projectId: s
         <main class="sk-canvas">
           <div class="sk-canvas-inner">
             <SketchImage image={img} callouts={sketch.callouts} marks={numberedHere} alt={`Concept sketch v${sketch.version}, ${img.label}`}
-              class="is-review" svgRef={(el) => { svg.current = el; }} onPointerDown={down} onPointerMove={move} onPointerUp={up}
+              class="is-review" svgRef={(el) => { svg.current = el; }} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={cancel}
               cursor={tool === "pin" ? "copy" : "crosshair"}>
               {stroke?.tool === "circle" && (() => {
                 const c = circleFromDrag(stroke.a, stroke.b, w, h);

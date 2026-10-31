@@ -1,17 +1,17 @@
 {
   "concept": {
-    "project_id": "8cdd4b2d5e98",
+    "project_id": "453b20dbc0d5",
     "status": "sketching",
     "sketch_ids": [
-      "cks_6acdd3f69e77",
-      "cks_c5b0924c7264"
+      "cks_1d3567e8c8c4",
+      "cks_e3806c1fd60e"
     ],
     "chosen_option": "Companion's body + Athlete's legs",
     "pitch_ids": [
-      "ckp_04b423d0dfa0"
+      "ckp_2b925b6ac694"
     ],
     "approved_sketch_id": null,
-    "updated_at": 1793416769.263752
+    "updated_at": 1793422098.984391
   },
   "design_class": {
     "cls": "mixed",
@@ -19,14 +19,14 @@
   },
   "sketches": [
     {
-      "sketch_id": "cks_6acdd3f69e77",
+      "sketch_id": "cks_1d3567e8c8c4",
       "parent_sketch_id": null,
-      "run_id": "6eff9947acf0",
+      "run_id": "e411ee27277d",
       "images": [
         {
           "view": "three_quarter",
           "label": "3/4 front",
-          "render_id": "cks_6acdd3f69e77_three_quarter",
+          "render_id": "cks_1d3567e8c8c4_three_quarter",
           "width": 1024,
           "height": 1024,
           "camera": {
@@ -64,7 +64,7 @@
         {
           "view": "side",
           "label": "Side",
-          "render_id": "cks_6acdd3f69e77_side",
+          "render_id": "cks_1d3567e8c8c4_side",
           "width": 1024,
           "height": 1024,
           "camera": {
@@ -114,8 +114,8 @@
         }
       ],
       "overlay_svg": {
-        "three_quarter": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1024 1024\" width=\"1024\" height=\"1024\"></svg>",
-        "side": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1024 1024\" width=\"1024\" height=\"1024\"><line x1=\"81.9\" y1=\"122.9\" x2=\"409.6\" y2=\"716.8\" stroke=\"#1b1e23\" stroke-width=\"1.5\"/><circle cx=\"409.6\" cy=\"716.8\" r=\"3\" fill=\"#1b1e23\"/><text x=\"81.9\" y=\"122.9\" font-size=\"18\" fill=\"#1b1e23\" font-family=\"sans-serif\">long legs</text></svg>"
+        "side": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1024 1024\" width=\"1024\" height=\"1024\"><line x1=\"81.9\" y1=\"122.9\" x2=\"409.6\" y2=\"716.8\" stroke=\"#1b1e23\" stroke-width=\"1.5\"/><circle cx=\"409.6\" cy=\"716.8\" r=\"3\" fill=\"#1b1e23\"/><text x=\"81.9\" y=\"122.9\" font-size=\"18\" fill=\"#1b1e23\" font-family=\"sans-serif\">long legs</text></svg>",
+        "three_quarter": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1024 1024\" width=\"1024\" height=\"1024\"></svg>"
       },
       "option": "Companion + Athlete",
       "scale": {
@@ -146,13 +146,13 @@
         ],
         "volume_mm3": 22688651.05973043
       },
-      "project_id": "8cdd4b2d5e98",
-      "build_id": "8cdd4b2d5e98",
+      "project_id": "453b20dbc0d5",
+      "build_id": "453b20dbc0d5",
       "version": 1,
-      "created_at": 1793416763.456647,
+      "created_at": 1793422094.6060958,
       "feedback": [
         {
-          "feedback_id": "ckf_ee4d1e495d72",
+          "feedback_id": "ckf_193931c7b66d",
           "version": 1,
           "marks": [
             {
@@ -298,29 +298,29 @@
             {
               "view": "three_quarter",
               "image": 0,
-              "render_id": "ckf_ee4d1e495d72_three_quarter"
+              "render_id": "ckf_193931c7b66d_three_quarter"
             },
             {
               "view": "side",
               "image": 1,
-              "render_id": "ckf_ee4d1e495d72_side"
+              "render_id": "ckf_193931c7b66d_side"
             }
           ],
-          "project_id": "8cdd4b2d5e98",
-          "sketch_id": "cks_6acdd3f69e77",
-          "created_at": 1793416763.5468931
+          "project_id": "453b20dbc0d5",
+          "sketch_id": "cks_1d3567e8c8c4",
+          "created_at": 1793422094.679959
         }
       ]
     },
     {
-      "sketch_id": "cks_c5b0924c7264",
-      "parent_sketch_id": "cks_6acdd3f69e77",
-      "run_id": "6eff9947acf0",
+      "sketch_id": "cks_e3806c1fd60e",
+      "parent_sketch_id": "cks_1d3567e8c8c4",
+      "run_id": "e411ee27277d",
       "images": [
         {
           "view": "three_quarter",
           "label": "3/4 front",
-          "render_id": "cks_c5b0924c7264_three_quarter",
+          "render_id": "cks_e3806c1fd60e_three_quarter",
           "width": 1024,
           "height": 1024,
           "camera": {
@@ -358,7 +358,7 @@
         {
           "view": "side",
           "label": "Side",
-          "render_id": "cks_c5b0924c7264_side",
+          "render_id": "cks_e3806c1fd60e_side",
           "width": 1024,
           "height": 1024,
           "camera": {
@@ -397,8 +397,8 @@
       "notes": "Shorter body, rounder head",
       "callouts": [],
       "overlay_svg": {
-        "three_quarter": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1024 1024\" width=\"1024\" height=\"1024\"></svg>",
-        "side": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1024 1024\" width=\"1024\" height=\"1024\"></svg>"
+        "side": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1024 1024\" width=\"1024\" height=\"1024\"></svg>",
+        "three_quarter": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1024 1024\" width=\"1024\" height=\"1024\"></svg>"
       },
       "option": null,
       "scale": {
@@ -429,17 +429,17 @@
         ],
         "volume_mm3": 20708651.05973043
       },
-      "project_id": "8cdd4b2d5e98",
-      "build_id": "8cdd4b2d5e98",
+      "project_id": "453b20dbc0d5",
+      "build_id": "453b20dbc0d5",
       "version": 2,
-      "created_at": 1793416769.2634811,
+      "created_at": 1793422098.984121,
       "feedback": []
     }
   ],
   "pitches": [
     {
-      "pitch_id": "ckp_04b423d0dfa0",
-      "run_id": "6eff9947acf0",
+      "pitch_id": "ckp_2b925b6ac694",
+      "run_id": "e411ee27277d",
       "question": "Pick a direction or mix them",
       "options": [
         {
@@ -477,7 +477,7 @@
           "sketch": {
             "view": "three_quarter",
             "label": "3/4 front",
-            "render_id": "ckp_04b423d0dfa0_o0_three_quarter",
+            "render_id": "ckp_2b925b6ac694_o0_three_quarter",
             "width": 1024,
             "height": 1024,
             "camera": {
@@ -513,8 +513,8 @@
             }
           },
           "silhouettes": {
-            "front": "ckp_04b423d0dfa0_o0_sil_front",
-            "side": "ckp_04b423d0dfa0_o0_sil_side"
+            "front": "ckp_2b925b6ac694_o0_sil_front",
+            "side": "ckp_2b925b6ac694_o0_sil_side"
           },
           "massing_size_mm": [
             220.0,
@@ -557,7 +557,7 @@
           "sketch": {
             "view": "three_quarter",
             "label": "3/4 front",
-            "render_id": "ckp_04b423d0dfa0_o1_three_quarter",
+            "render_id": "ckp_2b925b6ac694_o1_three_quarter",
             "width": 1024,
             "height": 1024,
             "camera": {
@@ -593,8 +593,8 @@
             }
           },
           "silhouettes": {
-            "front": "ckp_04b423d0dfa0_o1_sil_front",
-            "side": "ckp_04b423d0dfa0_o1_sil_side"
+            "front": "ckp_2b925b6ac694_o1_sil_front",
+            "side": "ckp_2b925b6ac694_o1_sil_side"
           },
           "massing_size_mm": [
             220.0,
@@ -637,7 +637,7 @@
           "sketch": {
             "view": "three_quarter",
             "label": "3/4 front",
-            "render_id": "ckp_04b423d0dfa0_o2_three_quarter",
+            "render_id": "ckp_2b925b6ac694_o2_three_quarter",
             "width": 1024,
             "height": 1024,
             "camera": {
@@ -673,8 +673,8 @@
             }
           },
           "silhouettes": {
-            "front": "ckp_04b423d0dfa0_o2_sil_front",
-            "side": "ckp_04b423d0dfa0_o2_sil_side"
+            "front": "ckp_2b925b6ac694_o2_sil_front",
+            "side": "ckp_2b925b6ac694_o2_sil_side"
           },
           "massing_size_mm": [
             220.0,
@@ -700,9 +700,9 @@
         "comment": "keep it under 6 kg",
         "label": "Companion's body + Athlete's legs"
       },
-      "project_id": "8cdd4b2d5e98",
-      "build_id": "8cdd4b2d5e98",
-      "created_at": 1793416753.8019571
+      "project_id": "453b20dbc0d5",
+      "build_id": "453b20dbc0d5",
+      "created_at": 1793422090.0190358
     }
   ]
 }

@@ -1,24 +1,28 @@
 """The concept gate (wave-3 shared contract) and the build's design class.
 
 `check_call` runs in the Gate on every tool call (a `call_checks` service) before approval and
-before the handler: for a build whose design class is `design`, `mirror_part_create` of a NEW
-part that is not a massing/skeleton part is refused with "needs concept approval" until the
-user approved a sketch or chose "Skip sketch". Rebuilding an existing part is never refused
-(the gate is about starting parts before the look is agreed, not about editing them).
+before the handler: for a build whose design class is `design`, every `mirror_part_create` of
+a part this build does not have yet, and every `onshape_import_element`, is refused with "needs
+concept approval" until the user approved a sketch or chose "Skip sketch". No part name is
+exempt: the concept massing is built by `concept_sketch` under `<home>/concepts/`, never as a
+build part, and the skeleton goes through `skeleton_set` (not gated). Rebuilding a part that
+already belongs to THIS build is never refused (the gate is about starting parts before the
+look is agreed, not about editing them); a part id that exists in another build is not a
+rebuild. Catalog inserts (bought mechanism parts: servos, bearings) are not gated (ruling).
 
-The design class comes from G-B's classifier (`design_intensity`), stored on the build's lead
-run as `design_class`. Before that lands (or when it is missing) the class is read as `mixed`:
-a sketch is recommended, nothing is refused.
+The design class is the wave-3 contract's field `design_class` (G-B's `design_intensity`
+payload {score, cls, ...} or a bare class name): on the build's lead run (model attribute or the
+`runs.design_class` column), else on the build (`projects.design_class` column), else G-B's
+classifier on the lead's task. Missing everywhere, the class is read as `mixed` (a warning is
+logged once): a sketch is recommended, nothing is refused.
 """
 from __future__ import annotations
 
 import inspect
+import json
 import logging
-import re
-from pathlib import Path
 from typing import Any
 
-from ..cad import safe_io
 from ..types import ErrorCode, MisesError
 from . import OPEN
 
@@ -26,21 +30,19 @@ log = logging.getLogger(__name__)
 
 CLASSES = ("engineering", "mixed", "design")
 FALLBACK_CLASS = "mixed"
-GATED_TOOLS = ("mirror_part_create",)
-# a part named like this is concept-stage geometry (rough massing, the layout skeleton): never
-# refused, it is what the concept stage builds on
-_MASSING_RE = re.compile(r"^(?:massing|skeleton|concept)(?:_|$)")
-
-
-def is_massing_part(part_id: str) -> bool:
-    return bool(_MASSING_RE.match(part_id or ""))
+GATED_TOOLS = ("mirror_part_create", "onshape_import_element")
+_warned = False
 
 
 def _as_class(raw: Any) -> dict | None:
-    """G-B's payload ({score, cls, per_part, reasons}) or a bare class name, normalised; None
-    for anything else."""
+    """G-B's payload ({score, cls, per_part, reasons}), its JSON text, or a bare class name,
+    normalised; None for anything else."""
     if isinstance(raw, str):
-        raw = {"cls": raw}
+        try:
+            parsed = json.loads(raw)
+        except ValueError:
+            parsed = raw
+        raw = parsed if isinstance(parsed, dict) else {"cls": raw}
     if not isinstance(raw, dict):
         return None
     cls = raw.get("cls")
@@ -71,9 +73,22 @@ def _classify(task: str) -> dict | None:
         return None
 
 
+def _column(store, table: str, row_id: str | None) -> Any:
+    """The raw `design_class` column of a runs / projects row; None when the column (G-B's
+    migration) or the row is not there."""
+    if store is None or row_id is None or not hasattr(store, "_one"):
+        return None
+    try:
+        row = store._one(f"SELECT design_class FROM {table} WHERE id=?", (row_id,))
+    except Exception:  # noqa: BLE001 - no such column before G-B's migration
+        return None
+    return row[0] if row else None
+
+
 def design_class(store, project_id: str | None, run_id: str | None = None) -> dict:
-    """{cls, score?, reasons?, source}: the build lead's stored class, else the classifier on
-    its task, else `mixed` (no classifier)."""
+    """{cls, score?, reasons?, source}: the `design_class` of the build's lead run, else of the
+    build, else the classifier on the lead's task, else `mixed`."""
+    global _warned
     from ..orchestrator.lead import find_lead
     run = None
     try:
@@ -83,12 +98,21 @@ def design_class(store, project_id: str | None, run_id: str | None = None) -> di
     except Exception:  # noqa: BLE001
         run = None
     if run is not None:
-        stored = _as_class(getattr(run, "design_class", None))
+        stored = (_as_class(getattr(run, "design_class", None))
+                  or _as_class(_column(store, "runs", getattr(run, "id", None))))
         if stored is not None:
             return {**stored, "source": "run"}
+    build = _as_class(_column(store, "projects", project_id))
+    if build is not None:
+        return {**build, "source": "build"}
+    if run is not None:
         guessed = _classify(run.task or "")
         if guessed is not None:
             return {**guessed, "source": "classifier"}
+    if not _warned:
+        _warned = True
+        log.warning("no design_class on the build or its lead (G-B not merged?): the concept "
+                    "gate reads it as %r and refuses nothing", FALLBACK_CLASS)
     return {"cls": FALLBACK_CLASS, "source": "fallback"}
 
 
@@ -106,15 +130,10 @@ def _run_project(store, run_id: str) -> str | None:
 
 
 def check_call(ctx, name: str, args) -> None:
-    """The Gate's call check: raise NEEDS_APPROVAL for a new non-massing part in a design-class
-    build whose concept is not approved or skipped."""
+    """The Gate's call check: raise NEEDS_APPROVAL for a new part (or an Onshape import) in a
+    design-class build whose concept is not approved or skipped."""
     if name not in GATED_TOOLS:
         return
-    part_id = getattr(args, "part_id", "") or ""
-    if is_massing_part(part_id):
-        return
-    if safe_io.exists(Path(ctx.workdir) / "parts" / part_id, "metrics.json"):
-        return                                   # rebuilding a part that exists
     concepts = (ctx.services or {}).get("concept")
     store = getattr(ctx, "store", None)
     if concepts is None or store is None:
@@ -122,6 +141,13 @@ def check_call(ctx, name: str, args) -> None:
     project_id = _run_project(store, ctx.run_id)
     if project_id is None:
         return
+    if name == "mirror_part_create":
+        try:
+            row = store.get_part(getattr(args, "part_id", "") or "")
+        except Exception:  # noqa: BLE001
+            row = None
+        if row is not None and row.project_id == project_id:
+            return                               # rebuilding a part of this build
     cls = design_class(store, project_id, ctx.run_id)["cls"]
     if cls != "design":
         return
@@ -133,5 +159,5 @@ def check_call(ctx, name: str, args) -> None:
         f"needs concept approval: this is a design-heavy build and its concept is "
         f"{status!r}; parts start after the user approves a sketch (or skips the sketch)",
         hint="pitch 2-3 directions with pitch_options, then concept_sketch the chosen one and "
-             "wait for the user's Approve (concept_status shows where it stands); massing_* "
-             "and skeleton parts are allowed meanwhile")
+             "wait for the user's Approve (concept_status shows where it stands); the layout "
+             "skeleton (skeleton_set) may be set meanwhile")

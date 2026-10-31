@@ -23,6 +23,23 @@ FEEDBACK_NOTE = (
     "mark, and say in one line per mark what you changed.")
 
 
+ATTACH_EDGE = 1024              # like the tools' images (<= 2048 px), well under the 1 MB cap
+ATTACH_MAX_BYTES = 1_000_000
+
+
+async def fit_attachment(png: bytes) -> bytes:
+    """A feedback image as the lead gets it: long edge <= ATTACH_EDGE px and under 1 MB
+    (smaller steps until it fits; refused if even 256 px does not)."""
+    import asyncio
+
+    from ..cad import render as render_mod
+    for edge in (ATTACH_EDGE, 768, 512, 256):
+        out = await asyncio.to_thread(render_mod.fit_png, png, edge)
+        if len(out) < ATTACH_MAX_BYTES:
+            return out
+    raise MisesError(ErrorCode.TOOL_FAILED, "a feedback image is too large to send")
+
+
 def _store(rt: Runtime) -> ConceptStore:
     c = getattr(rt, "concepts", None)
     if c is None:
@@ -78,7 +95,7 @@ async def submit_feedback(rt: Runtime, sketch_id: str, body: FeedbackIn) -> dict
         png = read_png(rt.home, img["render_id"])
         if png is None:
             continue
-        out = await sk.annotate(png, mine)
+        out = await fit_attachment(await sk.annotate(png, mine))
         rid = save_png(rt.home, f"{fb_id}_{img['view']}", out)
         annotated.append({"view": img["view"], "image": i, "render_id": rid})
         attach.append(("image/png", base64.b64encode(out).decode()))
@@ -86,7 +103,7 @@ async def submit_feedback(rt: Runtime, sketch_id: str, body: FeedbackIn) -> dict
         # a comment with no marks still shows the model what it is about: the first image
         png = read_png(rt.home, images[0]["render_id"]) if images else None
         if png is not None:
-            attach.append(("image/png", base64.b64encode(png).decode()))
+            attach.append(("image/png", base64.b64encode(await fit_attachment(png)).decode()))
     fb = store.add_feedback(project, sketch_id, {
         "feedback_id": fb_id, "version": sketch["version"], "marks": marks,
         "comment": body.comment, "annotated": annotated})

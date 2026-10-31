@@ -39,6 +39,7 @@ SKETCH_ID_RE = re.compile(r"^cks_[0-9a-f]{12}$")
 PITCH_ID_RE = re.compile(r"^ckp_[0-9a-f]{12}$")
 FEEDBACK_ID_RE = re.compile(r"^ckf_[0-9a-f]{12}$")
 MAX_SKETCHES = 200                        # per build
+MAX_PITCHES = 50                          # per build (each builds and renders 2-3 massings)
 MAX_MARKS = 40                            # per feedback round
 COMMENT_CHARS = 1000
 GENERAL_CHARS = 4000
@@ -215,6 +216,10 @@ class ConceptStore:
     # ---- pitches
     def add_pitch(self, project_id: str, data: dict) -> dict:
         with self.store._tx() as db:
+            n = db.execute("SELECT COUNT(*) FROM concept_pitches WHERE project_id=?",
+                           (project_id,)).fetchone()[0]
+            if n >= MAX_PITCHES:
+                raise bad(f"a build holds at most {MAX_PITCHES} pitches")
             now = time.time()
             p = {**data, "project_id": project_id, "build_id": project_id, "created_at": now}
             db.execute("INSERT INTO concept_pitches VALUES (?,?,?,?)",
