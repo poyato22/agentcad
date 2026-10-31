@@ -11,10 +11,10 @@ from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Response
 
+from .. import mass as mass_mod
 from ..cad import safe_io
 from ..cad.tools import PART_ID_RE
 from ..drawing import MATERIAL_RE, DrawingError, mirror_drawing
-from ..profile import load_profile
 from ..types import ErrorCode, MisesError
 
 if TYPE_CHECKING:
@@ -44,7 +44,8 @@ def build_drawing_router(runtime: Runtime) -> APIRouter:
                              hint="build it with mirror_part_create")
         try:
             return await mirror_drawing(
-                d, label=part_id, material=material or load_profile(runtime.home).default_material,
+                d, label=part_id, material=material or mass_mod.part_material(
+                    runtime.store, runtime.home, part_id),
                 date=date.today().isoformat())
         except DrawingError as e:
             raise MisesError(ErrorCode.TOOL_FAILED, str(e)) from None

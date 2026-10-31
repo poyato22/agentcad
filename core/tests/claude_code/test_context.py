@@ -22,7 +22,8 @@ async def client(rt):
 def _part(rt, part_id="mount_plate"):
     d = rt.home / "parts" / part_id
     d.mkdir(parents=True)
-    (d / "metrics.json").write_text(json.dumps({"mass_g": 12.5, "volume_mm3": 4630.0}))
+    # mass_g agrees with volume x PLA (the tree mass, Plan 9 B2), as a real build writes it
+    (d / "metrics.json").write_text(json.dumps({"mass_g": 5.7412, "volume_mm3": 4630.0}))
     (d / "vars.json").write_text(json.dumps({"width": 40.0}))
 
 
@@ -37,7 +38,7 @@ async def test_put_context_sets_selection(rt):
         g = await http.get("/context", headers={"Authorization": f"Bearer {TOKEN}"})
     ctx = g.json()
     assert ctx["selected_part_id"] == "mount_plate" and ctx["picks"] == [{"face": 3}]
-    assert ctx["metrics"] == {"mass_g": 12.5, "volume_mm3": 4630.0}
+    assert ctx["metrics"] == {"mass_g": 5.7412, "volume_mm3": 4630.0}
     assert ctx["vars"] == {"width": 40.0}
     assert ui_context(rt).selected_part_id == "mount_plate"
 
@@ -105,7 +106,7 @@ async def test_mises_context_get_tool_through_gate(rt):
         out = await rt.gate.call(rid, "mises_context_get", {}, call_id="c1",
                                  workdir=rt.workdir(rid))
     assert out.ok and out.data["selected_part_id"] == "mount_plate"
-    assert out.data["metrics"]["mass_g"] == 12.5
+    assert out.data["metrics"]["mass_g"] == 5.7412
 
 
 def test_build_context_doc_url_and_recent_sim_from_selected_run(rt):

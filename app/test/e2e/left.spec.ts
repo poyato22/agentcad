@@ -6,8 +6,9 @@ test("left_pane_shows_parts_with_mass_the_total_and_the_bom_no_history_no_variab
   await page.goto("/");
   const left = page.locator("[data-region=left]");
   await expect(left.getByRole("button", { name: "mount plate", exact: true })).toBeVisible();
-  await expect(left.getByTestId("row-mass")).toHaveText("4.8 g");
-  await expect(left.getByTestId("parts-total")).toContainText("4.8 g");
+  // the tree mass: volume x the build default material (Plan 9 B2), not the scenario's stale metrics.mass_g
+  await expect(left.getByTestId("row-mass")).toHaveText("5.7 g");
+  await expect(left.getByTestId("parts-total")).toContainText("5.7 g");
   // Plan 7 U2b (R14): the Variables panel left the main UI
   await expect(left.getByRole("region", { name: "Variables" })).toHaveCount(0);
   await expect(page.getByTestId("var-thickness")).toHaveCount(0);

@@ -1,6 +1,6 @@
 {
   "id": "top_plate",
-  "project_id": "74ab71a5279a",
+  "project_id": "66d130bcdbba",
   "label": "top_plate",
   "parent_id": "quad_arm",
   "order": 1,
@@ -8,6 +8,7 @@
   "kind": "part",
   "version": 1,
   "appearance": null,
+  "material": null,
   "part_id": "top_plate",
   "vars": {
     "side": 40.0,
@@ -15,9 +16,9 @@
   },
   "metrics": {
     "valid": true,
-    "volume_mm3": 4799.999999999999,
+    "volume_mm3": 4800.0,
     "area_mm2": 3680.0,
-    "mass_g": 5.951999999999999,
+    "mass_g": 5.952,
     "bbox": {
       "min": [
         -20.0,
@@ -463,5 +464,8 @@
     "holes": [],
     "solids": 1
   },
-  "mtime": 1793384776.6992543
+  "mtime": 1793432012.043145,
+  "mass_g": 5.952,
+  "mass_source": "built",
+  "mass_note": "4800 mm3 x 1.24 g/cm3 (PLA, build default)"
 }

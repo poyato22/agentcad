@@ -5,9 +5,11 @@ Rows:
 - **Made parts come in automatically**: every part in the build's tree (`kind: "part"`) is a
   row (`id: "auto_<part_id>"`, `source: "auto"`); its quantity is the number of times the
   build's assembly places it (1 when it is not in the assembly). Its cost is an estimate: the
-  part's solid volume (100% infill; a print with less infill uses less) times the profile's
-  default material density gives the mass, times that material's $/kg (the slicer's filament
-  prices). It is labelled `estimate: true` with the basis in `estimate_note`.
+  part's tree mass (Plan 9 B2, mises.mass: solid volume at 100% infill x the density of the
+  part's own material, else the build default) times that material's $/kg (the slicer's
+  filament prices). It is labelled `estimate: true` with the basis in `estimate_note`. The
+  row's `mass` spec is the part's own tree mass (a parent part's line weighs the part itself,
+  not its children: they have their own lines), so the BOM and the part tree never disagree.
 - A currency that is not known is null ("unknown" in totals and the CSV), never assumed.
 - Catalog parts inserted into the build (`kind: "catalog"`) come in the same way as bought
   rows, priced from their parts-directory item when the item has a price.
@@ -196,22 +198,36 @@ def _metrics(home: Path, part_id: str) -> dict | None:
     return m if isinstance(m, dict) else None
 
 
-def made_estimate(home: Path, part_id: str, material: str) -> dict:
-    """{unit_cost, mass_g, note} for a made part: volume x density = mass, x $/kg."""
+def made_estimate(home: Path, part_id: str, material: str,
+                  tree_row: dict | None = None) -> dict:
+    """{unit_cost, mass_g, material, note} for a made part: its tree mass (volume x the
+    density of its material) x $/kg. `tree_row` (projects.mass_rows) carries the part's
+    material and mass; without it the part is weighed here the same way."""
+    from .. import mass as mass_mod
     m = _metrics(home, part_id)
-    vol = (m or {}).get("volume_mm3")
-    if not isinstance(vol, (int, float)) or isinstance(vol, bool) or vol <= 0:
-        return {"unit_cost": None, "mass_g": None,
-                "note": "no cost estimate: the part has not been built"}
+    if tree_row is not None:
+        material = tree_row.get("material") or material
+        # one BOM line is one part: its OWN mass, never a parent's subtree sum
+        mass_g = tree_row.get("own_mass_g") if tree_row.get("own_mass_source") == "built" \
+            else None
+    else:
+        vol = (m or {}).get("volume_mm3")
+        rho = mass_mod.density_g_cm3(material, home)
+        ok = isinstance(vol, (int, float)) and not isinstance(vol, bool) and vol > 0
+        mass_g = round(vol / 1000.0 * rho, 4) if ok and rho is not None else None
+    material = mass_mod.canonical_material(material, home) or material
     price = material_price(material)
     if price is None:
-        return {"unit_cost": None, "mass_g": None,
+        return {"unit_cost": None, "mass_g": mass_g, "material": material,
                 "note": f"no cost estimate: no $/kg for material {material}"}
-    density, usd_kg = price
-    mass_g = vol / 1000.0 * density
+    if mass_g is None:
+        return {"unit_cost": None, "mass_g": None, "material": material,
+                "note": "no cost estimate: the part has not been built"}
+    usd_kg = price[1]
     cost = round(mass_g / 1000.0 * usd_kg, 2)
-    return {"unit_cost": cost, "mass_g": round(mass_g, 2), "bbox": (m.get("bbox") or {}).get("size"),
-            "note": f"estimate: {mass_g:.1f} g of {material.upper()} solid (100% infill)"
+    return {"unit_cost": cost, "mass_g": mass_g, "material": material,
+            "bbox": ((m or {}).get("bbox") or {}).get("size"),
+            "note": f"estimate: {mass_g:.1f} g of {material} solid (100% infill)"
                     f" x ${usd_kg:.2f}/kg (material only)"}
 
 
@@ -259,16 +275,18 @@ def _auto_row(part, home: Path, catalog, material: str, counts: dict | None = No
     return row
 
 
-def _finish(row: dict, home: Path, material: str) -> dict:
-    """A row as routes return it: made rows without a set cost get the live estimate."""
+def _finish(row: dict, home: Path, material: str, tree: dict | None = None) -> dict:
+    """A row as routes return it: made rows without a set cost get the live estimate; every
+    row of a part in the tree carries its tree mass as the `mass` spec."""
     out = {k: row.get(k) for k in ("id", "kind", "part_id", "catalog_id", "name", "qty",
                                    "unit_cost", "currency", "vendor", "url", "specs", "notes",
                                    "source")}
     out["specs"] = list(out["specs"] or [])
     out["notes"] = out["notes"] or ""
     out["estimate"], out["estimate_note"] = False, None
+    trow = (tree or {}).get(out["part_id"]) if out["part_id"] else None
     if out["kind"] == "made" and out["unit_cost"] is None and out["part_id"]:
-        est = made_estimate(home, out["part_id"], material)
+        est = made_estimate(home, out["part_id"], material, trow)
         out["unit_cost"], out["estimate_note"] = est["unit_cost"], est["note"]
         out["estimate"] = est["unit_cost"] is not None
         out["currency"] = "USD"
@@ -276,11 +294,14 @@ def _finish(row: dict, home: Path, material: str) -> dict:
         if est["mass_g"] is not None and "mass" not in keys:
             out["specs"].append({"key": "mass", "value": est["mass_g"], "unit": "g"})
         if "material" not in keys:
-            out["specs"].append({"key": "material", "value": material.upper(), "unit": None})
+            out["specs"].append({"key": "material", "value": est["material"], "unit": None})
         if est.get("bbox") and "size" not in keys:
             out["specs"].append({"key": "size", "value": " x ".join(f"{v:.1f}" for v in
                                                                      est["bbox"]),
                                  "unit": "mm"})
+    elif trow is not None and trow.get("own_mass_g") is not None and \
+            "mass" not in {s["key"] for s in out["specs"]}:
+        out["specs"].append({"key": "mass", "value": trow["own_mass_g"], "unit": "g"})
     q, c = out["qty"], out["unit_cost"]
     out["line_total"] = round(q * c, 2) if c is not None else None
     return out
@@ -348,7 +369,9 @@ def view(store: Store, bom: BomStore, home: Path, project_id: str, *, catalog=No
         if r.get("hidden"):
             continue
         rows.append(r)
-    items = [_finish(r, home, material) for r in rows]
+    from ..projects import mass_rows
+    masses = {r["id"]: r for r in mass_rows(store, home, project_id, material, versions=False)}
+    items = [_finish(r, home, material, masses) for r in rows]
     items.sort(key=lambda i: 0 if i["kind"] == "made" else 1)
     return {"project_id": project_id, "material": material.upper(), "items": items,
             "totals": totals(items)}

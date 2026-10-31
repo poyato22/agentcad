@@ -115,6 +115,27 @@ async def dump_sims(rt, c, auth, out: Path, required: bool) -> None:
         sub.close()
 
 
+# The Default build's id in every dump: the app's fake-core scenarios (parts-list.json,
+# geometry.json) and the contract tests pin it, so a re-dump must not mint a new one.
+DEFAULT_BUILD_ID = "74ab71a5279a"
+
+
+def _pin_default_build(home: Path) -> None:
+    """Create the fixture home's Default build with DEFAULT_BUILD_ID before the Runtime opens
+    the database (store._ensure_default_in then finds it by the id recorded in meta)."""
+    import time
+
+    from mises.store import Store
+    st = Store(home / "mises.db")
+    with st._tx() as db:
+        now = time.time()
+        db.execute("INSERT OR IGNORE INTO projects (id, name, created_at, updated_at,"
+                   " trashed_at) VALUES (?,?,?,?,?)",
+                   (DEFAULT_BUILD_ID, "Default", now, now, None))
+        db.execute("INSERT OR REPLACE INTO meta VALUES ('default_project_id', ?)",
+                   (DEFAULT_BUILD_ID,))
+
+
 async def dump(out: Path, only: str = "all") -> None:
     import mises.platform
     import mises.runtime as runtime_mod
@@ -187,6 +208,7 @@ async def dump(out: Path, only: str = "all") -> None:
          Done(stop_reason="tool_use")],
     ]
     fake = FakeProvider(turns)
+    _pin_default_build(home)
     rt = runtime_mod.Runtime(home, provider_resolver=lambda ref: (fake, "fake-model"))
 
     @tool("fixture_merge", description="test-only irreversible tool",

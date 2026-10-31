@@ -1,7 +1,7 @@
 [
   {
     "id": "mount_plate",
-    "project_id": "7316d9a1f0db",
+    "project_id": "8b794432c1b8",
     "label": "mount_plate",
     "parent_id": null,
     "order": 0,
@@ -9,6 +9,7 @@
     "kind": "part",
     "version": 1,
     "appearance": null,
+    "material": null,
     "part_id": "mount_plate",
     "vars": {
       "thickness": 5.0
@@ -17,7 +18,7 @@
       "valid": true,
       "volume_mm3": 3861.4557639766895,
       "area_mm2": 2276.5291970414473,
-      "mass_g": 4.7882051473310945,
+      "mass_g": 4.7882,
       "bbox": {
         "min": [
           -20.0,
@@ -640,6 +641,9 @@
       ],
       "solids": 1
     },
-    "mtime": 1793384811.2143328
+    "mtime": 1793432030.4222386,
+    "mass_g": 4.7882,
+    "mass_source": "built",
+    "mass_note": "3861 mm3 x 1.24 g/cm3 (PLA, build default)"
   }
 ]

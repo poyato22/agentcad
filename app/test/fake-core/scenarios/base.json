@@ -62,6 +62,7 @@
         "call_id": "c1",
         "input": {
           "part_id": "mount_plate",
+          "place": false,
           "script": "from build123d import *\nVARS = {\"thickness\": 5.0}\ndef build(v):\n    with BuildPart() as p:\n        Box(40, 20, v[\"thickness\"])\n        with Locations((10, 0, 0), (-10, 0, 0)):\n            Hole(2.1)\n    return p.part\n",
           "vars": {
             "thickness": 5.0

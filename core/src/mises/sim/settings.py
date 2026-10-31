@@ -138,7 +138,8 @@ PRINTER_KEY_RE = r"^[A-Za-z0-9][A-Za-z0-9 ._+()-]{0,39}$"
 
 class MaterialSettings(_M):
     name: str | None = Field(None, max_length=40, description="a built-in or saved material; "
-                             "null = the profile's default material")
+                             "null = the part's own material, else the profile's default "
+                             "(one without simulation data is refused)")
     custom: CustomMaterial | None = Field(None, description="an inline material (overrides name)")
     fdm: FdmSettings | None = Field(None, description="print settings -> approximate knock-downs")
     anisotropy: AnisotropySettings | None = Field(

@@ -15,6 +15,7 @@ import os
 import re
 import shutil
 import stat
+import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -430,24 +431,71 @@ def part_version(home: Path, row: Part) -> int:
     return v
 
 
-def part_view(store: Store, home: Path, row: Part) -> dict:
-    d = row.model_dump()
-    d["version"] = part_version(home, row)
+def _row_view(home: Path, r: Part, disk: dict | None, version: bool = True) -> dict:
     # `part_id` is kept beside the contract's `id` so older UI code keeps working
-    return {**d, "part_id": row.id, **(_part_disk(home, row.id) or _NO_DISK)}
+    return {**r.model_dump(), "version": part_version(home, r) if version else r.version,
+            "part_id": r.id, **(disk or _NO_DISK)}
+
+
+def mass_rows(store: Store, home: Path, project_id: str | None,
+              default_material: str | None = None, *, versions: bool = True,
+              only: str | None = None) -> list[dict]:
+    """Every tree row of the build (parts with no build included) with its mass (Plan 9 B2:
+    mass_g, mass_source, mass_note; groups and parents sum their subtree). A part without a
+    material of its own is weighed as `default_material` (default: the profile's).
+    `versions=False` skips the version lookup (it can migrate a version file) for rows other
+    than `only`; mass alone never needs it."""
+    from . import mass
+    rows, has_disk = [], set()
+    for r in store.list_part_rows(project_id):
+        disk = _part_disk(home, r.id)
+        if disk is not None:
+            has_disk.add(r.id)
+        rows.append(_row_view(home, r, disk, versions or r.id == only))
+    return mass.annotate(rows, home, has_disk=has_disk, default_mat=default_material)
+
+
+def _public(r: dict) -> dict:
+    """A row as the API returns it: annotate's own-mass helpers (for the BOM) stay inside."""
+    r.pop("own_mass_g", None)
+    r.pop("own_mass_source", None)
+    return r
+
+
+def _subtree(store: Store, row: Part) -> list[Part]:
+    """The row and its descendants, from the tree rows alone (no disk)."""
+    kids: dict[str | None, list[Part]] = {}
+    for r in store.list_part_rows(row.project_id):
+        kids.setdefault(r.parent_id, []).append(r)
+    out, todo, seen = [row], [row.id], {row.id}
+    while todo:
+        for c in kids.get(todo.pop(), []):
+            if c.id not in seen:            # a cycle is never followed
+                seen.add(c.id)
+                out.append(c)
+                todo.append(c.id)
+    return out
+
+
+def part_view(store: Store, home: Path, row: Part) -> dict:
+    """One tree row with its mass. Only the row and its descendants (a group's or parent's
+    sum) are read from disk, never the whole build: a leaf costs one part-dir read."""
+    from . import mass
+    rows, has_disk = [], set()
+    for i, r in enumerate(_subtree(store, row)):
+        disk = _part_disk(home, r.id)
+        if disk is not None:
+            has_disk.add(r.id)
+        rows.append(_row_view(home, r, disk, version=i == 0))
+    return _public(mass.annotate(rows, home, has_disk=has_disk)[0])
 
 
 def list_parts(store: Store, home: Path, project_id: str) -> list[dict]:
-    """The build's tree rows. A `part` row whose on-disk build is gone is left out (groups
-    and catalog parts have no build directory of their own)."""
-    out = []
-    for r in store.list_part_rows(project_id):
-        disk = _part_disk(home, r.id)
-        if disk is None and r.kind == "part":
-            continue
-        out.append({**r.model_dump(), "version": part_version(home, r), "part_id": r.id,
-                    **(disk or _NO_DISK)})
-    return out
+    """The build's tree rows with their mass. A `part` row whose on-disk build is gone is left
+    out (groups and catalog parts have no build directory of their own), and weighs nothing in
+    its parent's sum."""
+    return [_public(r) for r in mass_rows(store, home, project_id)
+            if not (r["kind"] == "part" and r["mtime"] is None)]   # mtime None: no build dir
 
 
 def _part_or_404(store: Store, part_id: str) -> Part:
@@ -479,9 +527,22 @@ def _parent_in(store: Store, parent_id: str, project_id: str | None) -> None:
         raise _bad("the parent part belongs to another build")
 
 
-def patch_part(store: Store, home: Path, part_id: str, *, label: str | None = None,
+# PATCH /parts runs in worker threads (Plan 9 B2): the cycle check and the write must not
+# interleave with another re-parent, or two moves (A under B, B under A) could both pass
+_TREE_LOCK = threading.RLock()
+
+
+def patch_part(store: Store, home: Path, part_id: str, **kw: Any) -> dict:
+    """Rename, recolor, re-material or re-parent a part (see _patch_part), validated and
+    written under one tree lock."""
+    with _TREE_LOCK:
+        return _patch_part(store, home, part_id, **kw)
+
+
+def _patch_part(store: Store, home: Path, part_id: str, *, label: str | None = None,
                color: str | None | object = ..., parent_id: str | None | object = ...,
-               appearance: dict | None | object = ...) -> dict:
+               appearance: dict | None | object = ...,
+               material: str | None | object = ...) -> dict:
     """Rename, recolor, re-material or re-parent a part. `color`/`parent_id`/`appearance` left
     as the sentinel are unchanged; None clears them. The parent must be in the same build, and
     a move that would form a cycle is rejected. The row's color and appearance.color stay equal:
@@ -511,6 +572,9 @@ def patch_part(store: Store, home: Path, part_id: str, *, label: str | None = No
             fields["appearance"] = a
             if a["color"] is not None:
                 fields["color"] = a["color"]
+    if material is not ...:
+        from . import mass
+        fields["material"] = mass.check_material(material, home)   # type: ignore[arg-type]
     if parent_id is not ...:
         if parent_id is not None:
             _parent_in(store, str(parent_id), row.project_id)
@@ -523,6 +587,12 @@ def patch_part(store: Store, home: Path, part_id: str, *, label: str | None = No
 
 def reorder_parts(store: Store, home: Path, project_id: str, parent_id: str | None,
                   ids: list[str]) -> list[dict]:
+    with _TREE_LOCK:
+        return _reorder_parts(store, home, project_id, parent_id, ids)
+
+
+def _reorder_parts(store: Store, home: Path, project_id: str, parent_id: str | None,
+                   ids: list[str]) -> list[dict]:
     """Order (and re-parent) siblings. Every id and the parent must belong to project_id."""
     _project_or_404(store, project_id)
     if parent_id is not None:

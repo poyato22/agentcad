@@ -126,7 +126,8 @@ class TopoptRunArgs(BaseModel):
     keep_out: list[Region] = Field(default_factory=list, max_length=20)
     fixtures: list[Fixture] = Field(min_length=1, max_length=10)
     load_cases: list[TopoptLoadCase] = Field(min_length=1, max_length=6)
-    material: str | None = Field(None, description="default: the profile's default_material")
+    material: str | None = Field(None, description="default: the part's own material, else "
+                                 "the profile's default_material")
     objective: Literal["min_compliance", "min_mass"] = "min_compliance"
     volume_fraction: float = Field(0.25, gt=0.03, lt=0.8)
     max_deflection_mm: float | None = Field(None, gt=0, le=1e4, description="min_mass: the "

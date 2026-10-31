@@ -37,6 +37,7 @@ from .browser.snapshot import SnapshotStore
 from .browser.tools import CardStore, register_browser_tools
 from .imports.drawing_import import register_import_tools
 from .appearance import register_appearance_tools
+from .mass import register_mass_tools
 from .part_tools import register_part_tools
 from .engineering import register_engineering_tools
 from .sim.tools import register_sim_tools
@@ -200,6 +201,7 @@ class Runtime:
         register_bom_tools(self.registry)
         register_import_tools(self.registry)
         register_appearance_tools(self.registry)
+        register_mass_tools(self.registry)         # Plan 9 B2
         register_part_tools(self.registry)  # Plan 9 D29
         register_view_tools(self.registry)
         register_topopt_tools(self.registry)  # Plan 9 D14: generative design

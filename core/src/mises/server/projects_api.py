@@ -6,6 +6,7 @@ owned by Task C6; this router covers the rest of the Builds and Part-tree contra
 """
 from __future__ import annotations
 
+import functools
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
@@ -211,11 +212,13 @@ def build_projects_router(runtime: Runtime) -> APIRouter:
             body = None
         if not isinstance(body, dict):
             raise MisesError(ErrorCode.INVALID_INPUT, "body must be a JSON object")
-        return _projects.patch_part(
-            store, _home(), part_id, label=body.get("label"),
+        # off the event loop: it reads the part (and a group's subtree) from disk
+        return await run_in_threadpool(functools.partial(
+            _projects.patch_part, store, _home(), part_id, label=body.get("label"),
             color=body["color"] if "color" in body else ...,
             parent_id=body["parent_id"] if "parent_id" in body else ...,
-            appearance=body["appearance"] if "appearance" in body else ...)
+            appearance=body["appearance"] if "appearance" in body else ...,
+            material=body["material"] if "material" in body else ...))
 
     @router.post("/parts/reorder")
     async def reorder(body: Reorder):

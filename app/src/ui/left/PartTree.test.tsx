@@ -459,6 +459,35 @@ describe("part tree", () => {
     await waitFor(() => expect(props.textContent).toContain("PETG (build default)"));
   });
 
+  it("every row shows its tree mass: a group its sum, an unknown part a dash with the reason (Plan 9 B2)", () => {
+    parts.value = [
+      { ...row("frame", 0), kind: "group", mass_g: 3.72, mass_source: "sum", mass_note: "sum of 2 items" },
+      { ...row("arm_a", 0, "frame"), metrics: METRICS, mass_g: 1.24, mass_source: "built", mass_note: "1000 mm3 x 1.24 g/cm3 (PLA, build default)" },
+      { ...row("arm_b", 1, "frame"), metrics: METRICS, mass_g: 2.54, mass_source: "built", material: "PETG", mass_note: "2000 mm3 x 1.27 g/cm3 (PETG)" },
+      { ...row("plate", 1), mass_g: null, mass_source: "unknown", mass_note: "build failed: the part has no successful build yet" },
+    ];
+    render(<PartTree />);
+    const mass = (id: string) => document.querySelector<HTMLElement>(`[data-part="${id}"] [data-testid="row-mass"]`) as HTMLElement;
+    expect(mass("frame").textContent).toBe("Σ 3.7 g");
+    expect(mass("frame").title).toBe("sum of 2 items");
+    // the core's tree mass wins over the worker's metrics.mass_g (12.5 g of PLA)
+    expect(mass("arm_b").textContent).toBe("2.5 g");
+    expect(mass("plate").textContent).toBe("—");
+    expect(mass("plate").title).toMatch(/build failed/);
+  });
+
+  it("Properties shows the part's own material and the mass reason", async () => {
+    parts.value = [...LIST().slice(0, 3), { ...row("plate", 1), metrics: METRICS, mass_g: 5.08, mass_source: "built", material: "PETG", mass_note: "4000 mm3 x 1.27 g/cm3 (PETG)" }];
+    render(<PartTree />);
+    fireEvent.contextMenu(rowEl("plate"), { clientX: 10, clientY: 10 });
+    fireEvent.click(screen.getByRole("menuitem", { name: /Properties/ }));
+    const props = screen.getByRole("dialog", { name: "Properties of plate" });
+    expect(props.textContent).toContain("5.1 g");
+    expect(props.textContent).toContain("PETG");
+    expect(props.textContent).not.toContain("(build default)");
+    expect(screen.getByTestId("pprops-mass-note").textContent).toContain("1.27 g/cm3");
+  });
+
   it("Add to assembly grounds the first instance of an empty assembly", async () => {
     parts.value = LIST().map((p) => ({ ...p, metrics: METRICS }));
     render(<PartTree />);

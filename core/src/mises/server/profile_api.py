@@ -94,6 +94,16 @@ def build_profile_router(runtime: Runtime, claude_status: ClaudeStatusFn | None 
             if ("setup_completed_at" in patch
                     and patch["setup_completed_at"] != current.setup_completed_at):
                 raise ValueError("setup_completed_at is set by POST /setup/complete")
+            if "default_material" in patch and patch["default_material"] != current.default_material:
+                # Plan 9 B2: the build default weighs every part; only a table material
+                # (canonical spelling) is accepted. An old stored value is left as it is.
+                from .. import mass as _mass
+                try:
+                    merged["default_material"] = _mass.check_material(
+                        patch["default_material"], runtime.home)
+                except MisesError as me:
+                    return _invalid(f"invalid profile: default_material: {me.message}"
+                                    + (f" ({me.hint})" if me.hint else ""))
             p = Profile.model_validate(merged)
         except (ValidationError, ValueError) as e:
             msgs = [f"{'.'.join(map(str, x['loc']))}: {x['msg']}" for x in e.errors()] \

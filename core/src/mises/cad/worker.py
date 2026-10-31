@@ -349,9 +349,27 @@ def _mises_on_face(face, point, label: str) -> None:
                          "regeneration — remove or redo the op")
 
 
+def _precise_volume(shape) -> float:
+    """The solid volume by OCCT's adaptive BRepGProp integration at a tight tolerance (closed
+    shells only), for the part's mass (Plan 9 B2): build123d's default `volume` can be off by
+    a few percent on lofted / B-spline surfaces. Falls back to `shape.volume` when the precise
+    call is unavailable or finds no closed volume."""
+    try:
+        from OCP.BRepGProp import BRepGProp
+        from OCP.GProp import GProp_GProps
+        props = GProp_GProps()
+        BRepGProp.VolumeProperties_s(shape.wrapped, props, 1e-9, True)
+        vol = float(props.Mass())
+        if math.isfinite(vol) and vol > 0:
+            return vol
+    except Exception:  # noqa: BLE001 - any OCP trouble: the default volume
+        pass
+    return float(shape.volume)
+
+
 def _metrics(shape, density: float) -> dict:
     bb = shape.bounding_box()
-    vol = float(shape.volume)
+    vol = _precise_volume(shape)
     com = shape.center()
     return {
         "valid": bool(shape.is_valid),

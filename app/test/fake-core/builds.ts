@@ -23,12 +23,12 @@ export interface BuildsScenario {
   active?: string | null;
   open?: string[];
   /** Tree fields per part id. */
-  tree?: Record<string, { project_id?: string; label?: string; parent_id?: string | null; order?: number; color?: string | null; kind?: "part" | "group" | "catalog" | "skeleton"; version?: number; appearance?: Appearance | null }>;
+  tree?: Record<string, { project_id?: string; label?: string; parent_id?: string | null; order?: number; color?: string | null; kind?: "part" | "group" | "catalog" | "skeleton"; version?: number; appearance?: Appearance | null; material?: string | null }>;
   /** Scripts per part id (default: generated from its vars). */
   sources?: Record<string, string>;
 }
 
-interface Row { project_id: string; label: string; parent_id: string | null; order: number; color: string | null; kind: "part" | "group" | "catalog" | "skeleton"; version: number; appearance?: Appearance | null }
+interface Row { project_id: string; label: string; parent_id: string | null; order: number; color: string | null; kind: "part" | "group" | "catalog" | "skeleton"; version: number; appearance?: Appearance | null; material?: string | null }
 interface FakeBuild { id: string; name: string; created_at: number; updated_at: number; trashed_at: number | null }
 
 export interface FakeBuilds {
@@ -57,6 +57,7 @@ export function buildsFrom(sc: BuildsScenario | undefined, partIds: string[]): F
     rows.set(id, {
       project_id: r?.project_id ?? defaultId, label: r?.label ?? id, parent_id: r?.parent_id ?? null, order: r?.order ?? i,
       color: r?.color ?? null, kind: r?.kind ?? "part", version: r?.version ?? 1, appearance: r?.appearance ?? null,
+      material: r?.material ?? null,
     });
   });
   return { builds, defaultId, rows, sources, uiRun: "f0ui0run0000" };
@@ -129,6 +130,42 @@ export interface BuildsDeps {
   assembly?(): { byProject: Map<string, { instances: Instance[]; joints: Joint[] }> };
 }
 
+/** Core mises.mass densities (g/cm3): the sim materials table, then the slicer's (TPU). */
+const DENSITY: Record<string, number> = { PLA: 1.24, PETG: 1.27, ABS: 1.04, ASA: 1.07, "PA-CF": 1.06, TPU: 1.21 };
+const canonicalMaterial = (m: string): string | null => Object.keys(DENSITY).find((k) => k.toLowerCase() === m.trim().toLowerCase()) ?? null;
+export interface FakeMass { mass_g: number | null; mass_source: "built" | "catalog" | "sum" | "unknown"; mass_note: string | null; own_mass_g?: number | null }
+
+/** Core mises.annotate: a built part weighs volume x its material (default PLA), a catalog part
+ *  its stated mass, a group / parent the sum of its subtree; anything else null with a reason. */
+export function fakeTreeMass(parts: readonly PartSummary[], rows: ReadonlyMap<string, Row>, id: string, defaultMaterial = "PLA", seen = new Set<string>()): FakeMass {
+  const r = rows.get(id);
+  const p = parts.find((x) => x.part_id === id);
+  const own = (): FakeMass => {
+    if (!r || r.kind === "skeleton") return { mass_g: null, mass_source: "unknown", mass_note: "layout skeleton: it has no mass" };
+    if (r.kind === "group") return { mass_g: null, mass_source: "unknown", mass_note: null };
+    const m = p?.metrics ?? null;
+    if (r.kind === "catalog") return typeof m?.mass_g === "number" ? { mass_g: m.mass_g, mass_source: "catalog", mass_note: "stated catalog mass" } : { mass_g: null, mass_source: "unknown", mass_note: "the catalog item states no mass" };
+    if (!m || typeof m.volume_mm3 !== "number") return { mass_g: null, mass_source: "unknown", mass_note: p ? "build failed: the part has no successful build yet" : "not built yet" };
+    const mat = r.material ?? defaultMaterial;
+    const rho = DENSITY[canonicalMaterial(mat) ?? ""];
+    const g = (d: number) => Math.round(m.volume_mm3 / 1000 * d * 1e4) / 1e4;
+    // core mass._own: a name no table knows is weighed as PLA, with the reason
+    if (rho === undefined) return { mass_g: g(1.24), mass_source: "built", mass_note: `unknown material ${mat.slice(0, 60)} — weighed as PLA (${m.volume_mm3.toFixed(0)} mm3 x 1.24 g/cm3)` };
+    return { mass_g: g(rho), mass_source: "built", mass_note: `${m.volume_mm3.toFixed(0)} mm3 x ${rho} g/cm3 (${mat}${r.material ? "" : ", build default"})` };
+  };
+  const o = { ...own(), own_mass_g: undefined as number | null | undefined };
+  o.own_mass_g = o.mass_source === "built" ? o.mass_g : undefined;
+  const kids = [...rows.entries()].filter(([k, x]) => x.parent_id === id && k !== id && !seen.has(k)).map(([k]) => k);
+  if (kids.length === 0) return r?.kind === "group" ? { ...o, mass_note: "empty group" } : o;
+  let total: number | null = o.mass_g;
+  for (const k of kids) {
+    const c = fakeTreeMass(parts, rows, k, defaultMaterial, new Set([...seen, id]));
+    if (c.mass_g !== null) total = (total ?? 0) + c.mass_g;
+  }
+  return total === null ? { mass_g: null, mass_source: "unknown", mass_note: "no part in it has a known mass yet", own_mass_g: o.own_mass_g }
+    : { mass_g: Math.round(total * 1e4) / 1e4, mass_source: "sum", mass_note: `sum of ${kids.length} item${kids.length === 1 ? "" : "s"}`, own_mass_g: o.own_mass_g };
+}
+
 /** Plan 9 D29: what an Undo of a part delete puts back (core trash/parts/<id>.<ns>.json). */
 interface Trashed { part: PartSummary; row: Row; children: string[]; instances: Instance[]; joints: Joint[] }
 const trashed = new Map<string, Trashed>();
@@ -169,7 +206,11 @@ export function buildRoutes(d: BuildsDeps): Route[] {
   };
   const rowView = (p: PartSummary) => {
     const r = B().rows.get(p.part_id) as Row;
-    return { id: p.part_id, project_id: r.project_id, label: r.label, parent_id: r.parent_id, order: r.order, color: r.color, kind: r.kind, version: r.version, appearance: r.appearance ?? null, part_id: p.part_id, vars: p.vars, metrics: p.metrics, mtime: p.mtime };
+    const { own_mass_g: own, ...mass } = fakeTreeMass(d.parts(), B().rows, p.part_id);
+    // core annotate: a built part's metrics.mass_g is its OWN mass (a parent's too)
+    const metrics = p.metrics && typeof own === "number" && r.kind === "part" ? { ...p.metrics, mass_g: own } : p.metrics;
+    return { id: p.part_id, project_id: r.project_id, label: r.label, parent_id: r.parent_id, order: r.order, color: r.color, kind: r.kind, version: r.version, appearance: r.appearance ?? null, part_id: p.part_id, vars: p.vars, metrics, mtime: p.mtime,
+      ...mass, material: r.material ?? null };
   };
   const listParts = (pid: string) => {
     register();
@@ -366,9 +407,15 @@ export function buildRoutes(d: BuildsDeps): Route[] {
           parentIn(String(b.parent_id), r.project_id);
         }
         if ("parent_id" in b) rejectCycle(p.part_id, (b.parent_id ?? null) as string | null);
+        let material: string | null | undefined;
+        if ("material" in b) {
+          material = b.material === null ? null : canonicalMaterial(String(b.material));
+          if (material === null && b.material !== null) throw bad(`unknown material '${String(b.material)}'`, `materials: ${Object.keys(DENSITY).join(", ")}`);
+        }
         if (typeof b.label === "string") r.label = b.label.trim();
         if ("color" in b) r.color = (b.color ?? null) as string | null;
         if ("parent_id" in b) r.parent_id = (b.parent_id ?? null) as string | null;
+        if (material !== undefined) r.material = material;
         if ("color" in b && r.appearance && !("appearance" in b)) r.appearance = { ...r.appearance, color: r.color };
         if ("appearance" in b) {
           const a = b.appearance === null ? null : normalizeAppearance(b.appearance, r.color);

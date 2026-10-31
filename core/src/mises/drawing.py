@@ -26,7 +26,6 @@ from .cad import safe_io
 from .cad.runner import WORKER, _kill_group, reap
 from .cad.tools import _check_part_id, _lock
 from .platform import sandboxed_command
-from .profile import load_profile
 from .tools.registry import ToolContext, ToolRegistry, tool
 from .types import ErrorCode, MisesError, SafetyClass, ToolOutput
 
@@ -149,7 +148,9 @@ class DrawingArgs(BaseModel):
 async def mirror_drawing_tool(ctx: ToolContext, args: DrawingArgs) -> ToolOutput:
     _check_part_id(args.part_id)
     rt = (ctx.services or {}).get("runtime")
-    material = args.material or (load_profile(rt.home).default_material if rt else "PLA")
+    from . import mass as _mass        # Plan 9 B2: the part's own material, else the default
+    material = args.material or (_mass.part_material(ctx.store, rt.home, args.part_id)
+                                 if rt else "PLA")
     try:
         d = await mirror_drawing(Path(ctx.workdir) / "parts" / args.part_id,
                                  label=args.part_id, material=material,

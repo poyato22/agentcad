@@ -23,7 +23,7 @@ import { parts, selectedPartId } from "../../state/store";
 import { viewScope } from "../viewer/Viewer";
 import { openPart } from "../assembly/focus";
 import { ConfirmDelete } from "./ConfirmDelete";
-import { fmtMass, masses } from "./mass";
+import { masses, rowMassText } from "./mass";
 import { AppearancePopover } from "./AppearancePopover";
 import { swatchName } from "./colors";
 import { changingParts } from "./derived";
@@ -77,8 +77,8 @@ interface RowProps {
   editing: boolean; drop: DropPos | null; dragging: boolean; lookOpen: boolean; menuOpen: boolean;
   /** materialKey() of the part's look. */
   mat: string; lookName: string; mass: string;
-  /** Why the mass is unknown ("not built yet"), shown on hover. */
-  massNote?: string;
+  /** Plan 9 B2: why the mass is what it is (a group's sum, or the reason it is unknown). */
+  massNote?: string | null;
 }
 
 const materialKey = (m: MaterialParams) => `${m.color ?? ""}|${m.metalness}|${m.roughness}|${m.opacity}|${m.shiny ? 1 : 0}`;
@@ -132,7 +132,7 @@ const PartRow = memo(function PartRow(p: RowProps): JSX.Element {
               {p.busy && <span class="tag-changing">changing</span>}
             </button>
           )}
-        <span class="row-hint num" data-testid="row-mass" title={p.massNote}>{p.mass || (p.massNote ? "—" : "")}</span>
+        <span class="row-hint num" data-testid="row-mass" title={p.massNote ?? undefined}>{p.mass}</span>
         <button type="button" class="tree-more" tabIndex={-1} aria-haspopup="menu" aria-expanded={p.menuOpen} aria-label={`Actions for ${p.name}`}
           title="Actions (right-click the row)" onClick={(e) => c.current.menu(e, p.id)}>⋯</button>
       </div>
@@ -476,8 +476,7 @@ export function PartList(): JSX.Element {
               hidden={hidden.has(id)} catalog={p.kind === "catalog"} skeleton={p.kind === "skeleton"} editing={editing === id} drop={drop?.id === id ? drop.pos : null}
               dragging={drag === id} lookOpen={pop?.kind === "look" && pop.id === id} menuOpen={pop?.kind === "menu" && pop.id === id}
               mat={materialKey(m)} lookName={appearanceName(p.appearance) ?? ""}
-              mass={(() => { const x = massOf.get(id); return x && x.g !== null ? fmtMass(x.g) : ""; })()}
-              massNote={massOf.get(id)?.note ?? undefined} />
+              mass={rowMassText(p, massOf.get(id))} massNote={massOf.get(id)?.note ?? null} />
           );
         })}
         {end < rows.length && <li class="tree-spacer" aria-hidden="true" style={{ height: `${(rows.length - end) * ROW_PX}px` }} />}

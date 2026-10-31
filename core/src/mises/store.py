@@ -136,6 +136,9 @@ class Part(BaseModel):
     version: int = 1
     # Plan 7 U8: {preset, color, metalness, roughness, opacity} (appearance.normalize), or None
     appearance: dict | None = None
+    # Plan 9 B2: the part's material for its mass (a materials-table name), None = the
+    # build default (the profile's default_material)
+    material: str | None = None
 
 
 _SCHEMA = """
@@ -228,6 +231,8 @@ class Store:
         part_cols = {r[1] for r in self._db.execute("PRAGMA table_info(parts)")}
         if "appearance" not in part_cols:
             self._db.execute("ALTER TABLE parts ADD COLUMN appearance TEXT")
+        if "material" not in part_cols:                       # Plan 9 B2
+            self._db.execute("ALTER TABLE parts ADD COLUMN material TEXT")
         self._migrate_default_project()
 
     @contextmanager
@@ -558,7 +563,8 @@ class Store:
         return Part(id=d["id"], project_id=d["project_id"], label=d["label"],
                     parent_id=d["parent_id"], order=d["ord"] or 0, color=d["color"],
                     kind=d["kind"] or "part", version=d["version"] or 1,
-                    appearance=_json_or_none(d.get("appearance")))
+                    appearance=_json_or_none(d.get("appearance")),
+                    material=d.get("material"))
 
     def get_part(self, part_id: str) -> Part | None:
         row = self._one("SELECT * FROM parts WHERE id=?", (part_id,))
@@ -588,7 +594,7 @@ class Store:
 
     def update_part(self, part_id: str, **fields: Any) -> Part:
         allowed = {"label", "color", "parent_id", "project_id", "kind", "version", "ord",
-                   "appearance"}
+                   "appearance", "material"}
         bad = set(fields) - allowed
         if bad:
             raise ValueError(f"cannot update part fields: {sorted(bad)}")

@@ -111,6 +111,9 @@ def build_context(runtime, run_id: str | None = None) -> dict:
     if pid and PART_ID_RE.match(pid):
         d = Path(runtime.home) / "parts" / pid
         metrics, vars_ = _part_json(d, "metrics.json"), _part_json(d, "vars.json")
+        # Plan 9 B2: the part's tree mass (its own material), the number the UI shows
+        from . import mass as _mass
+        metrics = _mass.with_part_mass(metrics, runtime.store, Path(runtime.home), pid)
         version = edits_mod.read_version(d)
         if run_id and metrics is not None:
             note_seen(run_id, d, version)   # the run has now seen this version of the part

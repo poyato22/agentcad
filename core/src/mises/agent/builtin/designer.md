@@ -78,6 +78,7 @@ When the part is one piece of a system (the user or the lead says where it goes)
 
 ## How a part looks
 When the user asks for a color or a finish (shiny, metal, chrome, rubber, clear), call `part_set_appearance` with a preset and/or a color. It changes only the look, never the geometry or the mass.
+When the user says what a part is made of (PETG, ABS, PA-CF, ...), call `part_set_material`: the part's mass (and the BOM and assembly totals) follow its material; the look does not change.
 
 ## Onshape and merging
 Only when the mirror part is right, propose the change to Onshape in one batch, then read it back to confirm. If the user wants the result merged, request the merge and wait for their decision.

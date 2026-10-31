@@ -160,6 +160,23 @@ export const partMetricsSchema = z.object({
   edge_list: z.array(partEdgeSchema).optional(),
 });
 
+const ZERO3: [number, number, number] = [0, 0, 0];
+/** Plan 9 B2: the part list's metrics, caught per field, so one bad or missing field (an old
+ *  build's `holes` count, a catalog part without `area_mm2`) no longer nulls every measurement.
+ *  A field that fails reads as a neutral value (0, [], valid; mass NaN, which lib/mass shows as
+ *  "—"); a non-object stays null. */
+export const partMetricsLenientSchema = z.object({
+  valid: z.boolean().catch(true), volume_mm3: z.number().catch(0), area_mm2: z.number().catch(0), mass_g: z.number().catch(Number.NaN),
+  bbox: z.object({ min: vec3, max: vec3, size: vec3 }).catch({ min: ZERO3, max: ZERO3, size: ZERO3 }),
+  center_of_mass: vec3.catch(ZERO3), faces: z.number().catch(0), edges: z.number().catch(0),
+  holes: z.array(partHoleSchema).catch([]), solids: z.number().catch(0),
+  face_list: z.array(partFaceSchema).optional().catch(undefined),
+  edge_list: z.array(partEdgeSchema).optional().catch(undefined),
+});
+
+/** Plan 9 B2: where a part's mass comes from (core mises.mass). */
+export const MASS_SOURCES = ["built", "catalog", "sum", "unknown"] as const;
+
 /** Plan 7 U8: core appearance.normalize's shape. */
 export const appearanceSchema = z.object({
   preset: z.enum(PRESET_IDS).nullable(), color: z.string().nullable(),
@@ -168,18 +185,17 @@ export const appearanceSchema = z.object({
 
 /** A row whose metrics don't parse keeps its tree place with metrics null (never drops the list). */
 export const partSummarySchema = z.object({
-  part_id: z.string(), vars: z.record(z.string(), z.number()), metrics: partMetricsSchema.nullable().catch(null),
+  part_id: z.string(), vars: z.record(z.string(), z.number()), metrics: partMetricsLenientSchema.nullable().catch(null),
   mtime: z.number().nullable().transform((v) => v ?? 0),
   id: z.string().optional(), label: z.string().optional(), project_id: z.string().nullish(), parent_id: z.string().nullish(),
   order: z.number().optional(), color: z.string().nullish(), kind: z.enum(["part", "group", "catalog", "skeleton"]).optional(),
   version: z.number().int().optional(),
   // a malformed appearance falls back to the drafting look (the row is never dropped)
   appearance: appearanceSchema.nullish().catch(null),
-  // Plan 9 B2: mass for every part (groups: the sum). Optional: a core without B2 leaves it out
-  // and the app falls back to metrics.mass_g (ui/left/mass.ts)
-  mass_g: z.number().nullish().catch(null),
-  mass_source: z.enum(["built", "catalog", "sum", "unknown"]).nullish().catch(null),
-  mass_note: z.string().nullish().catch(null),
+  // Plan 9 B2: the tree mass (volume x the part's material; groups sum their subtree), or null
+  // with the reason in mass_note. Absent from older cores (the app falls back to metrics.mass_g).
+  mass_g: z.number().nullish().catch(null), mass_source: z.enum(MASS_SOURCES).nullish().catch(null),
+  mass_note: z.string().nullish().catch(null), material: z.string().nullish().catch(null),
 });
 
 export const coreErrorBodySchema = z.object({

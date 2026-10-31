@@ -15,7 +15,7 @@ import type {
 } from "../../src/api/types";
 import { INSTALL_DEPS } from "../../src/api/types";
 import { assemblyFrom, assemblyRoutes, DEFAULT_PROJECT, DEFAULT_PROJECT_ROW, type AssemblyScenario, type FakeAssembly } from "./assembly";
-import { agentEdit, buildRoutes, buildsFrom, type BuildsDeps, type BuildsScenario, type FakeBuilds } from "./builds";
+import { agentEdit, buildRoutes, buildsFrom, fakeTreeMass, type BuildsDeps, type BuildsScenario, type FakeBuilds } from "./builds";
 import { measureRoutes } from "./measure";
 import { conceptFrom, conceptRoutes, conceptSeedSteps, stopConcept, type ConceptScenario, type FakeConcept } from "./concept";
 import { handleControl } from "./control";
@@ -1264,7 +1264,8 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       get: () => state.print, parts: () => state.parts, defaultMaterial: () => state.setup.profile.default_material,
       emit: (ev, extras) => { emit(ev, extras); }, approval: (id) => state.approvals.get(id),
     }),
-    ...assemblyRoutes({ get: () => state.assembly, parts: () => state.parts, emit: (ev) => { emit(ev); } }),
+    ...assemblyRoutes({ get: () => state.assembly, parts: () => state.parts, emit: (ev) => { emit(ev); },
+      massOf: (id) => fakeTreeMass(state.parts, state.builds.rows, id) }),
     // Plan 9 G-A: the concept stage
     ...conceptRoutes({
       get: () => state.concept, liveBuild: (id) => state.builds.builds.some((b) => b.id === id && b.trashed_at === null),

@@ -19,7 +19,7 @@ from mises.types import SafetyClass, ToolOutput
 from .conftest import AUTH, TOKEN
 
 ORIGIN = "tauri://localhost"
-METRICS = {"valid": True, "volume_mm3": 4000.0, "area_mm2": 2000.0, "mass_g": 10.8,
+METRICS = {"valid": True, "volume_mm3": 4000.0, "area_mm2": 2000.0, "mass_g": 4.96,
            "bbox": {"min": [0, 0, 0], "max": [40, 20, 5], "size": [40, 20, 5]},
            "center_of_mass": [20, 10, 2.5], "faces": 6, "edges": 12, "holes": 2, "solids": 1}
 

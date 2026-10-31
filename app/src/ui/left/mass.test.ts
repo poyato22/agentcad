@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import partsJson from "../../../test/fixtures/core-ui/parts_tree.json";
 import { partSummarySchema } from "../../api/schemas";
 import type { PartSummary } from "../../api/types";
-import { fmtMass, masses, ownMass, totalMass } from "./mass";
+import { fmtMass, masses, ownMass, rowMassText, totalMass } from "./mass";
 
 const metrics = (g: number) => ({
   valid: true, volume_mm3: 1, area_mm2: 1, mass_g: g, bbox: { min: [0, 0, 0], max: [1, 1, 1], size: [1, 1, 1] },
@@ -41,6 +41,23 @@ describe("parts tree mass (Plan 9 D9)", () => {
     const built = list.filter((p) => p.metrics);
     expect(built.length).toBeGreaterThan(0);
     for (const p of built) expect(masses(list).get(p.part_id)?.g).toBe(p.mass_g ?? p.metrics?.mass_g);
+  });
+
+  it("rows read lib/mass: the core's sum gets Σ, unknown a dash with the core's reason (B2)", () => {
+    const list = [
+      row("frame", { kind: "group", mass_g: 3.72, mass_source: "sum", mass_note: "sum of 2 items" }),
+      row("a", { parent_id: "frame", mass_g: 1.24, mass_source: "built", metrics: metrics(99) }),
+      row("b", { parent_id: "frame", order: 1, mass_g: null, mass_source: "unknown", mass_note: "build failed" }),
+      row("skel", { kind: "skeleton", order: 1 }),
+    ];
+    const m = masses(list);
+    expect(rowMassText(list[0], m.get("frame"))).toBe("Σ 3.7 g");
+    expect(m.get("frame")).toMatchObject({ note: "sum of 2 items", unknown: 1 });
+    expect(rowMassText(list[1], m.get("a"))).toBe("1.2 g");          // the tree mass, not metrics' 99 g
+    expect(rowMassText(list[2], m.get("b"))).toBe("—");
+    expect(m.get("b")?.note).toBe("build failed");
+    expect(rowMassText(list[3], m.get("skel"))).toBe("");
+    expect(totalMass(list)).toEqual({ g: 3.72, unknown: 1 });
   });
 
   it("formats grams and kilograms", () => {

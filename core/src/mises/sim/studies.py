@@ -219,11 +219,11 @@ def validate_settings(type_id: str, settings: dict | None) -> BaseModel:
 
 def resolve_material(ms, default: str, home: Path | None) -> Material:
     if ms is None:
-        m = get_material(default, home)
+        m = _default_sim_material(default, home)
     elif ms.custom is not None:
         m = custom_material(ms.custom.model_dump())
     else:
-        m = get_material(ms.name or default, home)
+        m = get_material(ms.name, home) if ms.name else _default_sim_material(default, home)
     # S3: the user's calibration of this material and printer, when there is a plausible one
     # (a rejected / implausible fit is never applied; an inline custom material is never
     # calibrated by a built-in's name)
@@ -400,12 +400,41 @@ def _home(ctx) -> Path | None:
     return Path(rt.home) if rt is not None and getattr(rt, "home", None) else None
 
 
-def default_material(ctx) -> str:
+def default_material(ctx, part_id: str | None = None) -> str:
+    """The material a study uses when it names none: the part's own material (Plan 9 B2, the
+    one its mass is weighed with), else the profile's default, else PLA. A material without
+    simulation data (a slicer-only filament such as TPU) is never swapped for another one:
+    resolve_material refuses it unless the call names a material."""
+    store = getattr(ctx, "store", None)
+    if part_id and store is not None:
+        try:
+            own = getattr(store.get_part(part_id), "material", None)
+        except Exception:  # noqa: BLE001 - a bare test context
+            own = None
+        if own:
+            return own
     rt = (getattr(ctx, "services", None) or {}).get("runtime")
     try:
         return rt.profile().default_material if rt is not None else "PLA"
     except Exception:  # noqa: BLE001
         return "PLA"
+
+
+def _default_sim_material(default: str, home: Path | None) -> Material:
+    """The study's default material from the sim table. A material the parts know but the sim
+    table does not (a slicer-only filament) is refused with what to do, never substituted."""
+    try:
+        return get_material(default, home)
+    except SimError:
+        from .. import mass as _mass
+        from .materials import MATERIALS, load_custom
+        if _mass.canonical_material(default, home) is None:
+            raise
+        names = [*MATERIALS, *(c.name for c in load_custom(home))]
+        raise SimError("bad_setup", f"{default} has no simulation data; set a sim material "
+                       "for this study or calibrate one",
+                       hint=f"pass material: one of {', '.join(names[:20])}, or add {default} "
+                            "as a custom study material") from None
 
 
 def _faces_in(obj) -> set[str]:
@@ -616,7 +645,8 @@ async def run_study(ctx, type_id: str, part_id: str | None, part_dir: Path | Non
     t = STUDY_TYPES[type_id]
     home = _home(ctx)
     try:
-        material, env = preflight(type_id, settings, part_dir, home, default_material(ctx),
+        material, env = preflight(type_id, settings, part_dir, home,
+                                  default_material(ctx, part_id),
                                   assembly)
     except SimError as e:
         raise MisesError(ErrorCode.INVALID_INPUT, e.message, hint=e.hint) from None

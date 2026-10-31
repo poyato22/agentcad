@@ -319,3 +319,51 @@ def test_replace_by_an_agent_asks_first_when_the_user_edited_the_part(tmp_path):
     edits.log_user_edit(tmp_path, "bracket", version=3, summary="moved a hole", run_id=None)
     assert tools._accept_needs_approval(ctx, a) == tools.APPROVAL_REASON
     assert tools._accept_needs_approval(ctx, a.model_copy(update={"mode": "new"})) is None
+
+
+
+async def test_an_accepted_new_part_is_made_of_the_optimized_material(tmp_path, fake, monkeypatch):
+    """Plan 9 B2: the new part carries the material the optimization used (PETG here), so its
+    tree mass is the variant's: volume x that density; the build weighs it the same."""
+    from mises import projects
+    from mises.cad.runner import BuildResult
+    from mises.store import Store
+    from mises.topopt import accept as accept_mod
+    _part(tmp_path)
+    seen = {}
+
+    async def fake_build(d, vars, **kw):
+        seen["density"] = kw.get("density_g_cm3")
+        m = {"volume_mm3": 900.0, "mass_g": 900.0 / 1000 * kw.get("density_g_cm3", 1.24),
+             "bbox": {"size": [24, 16, 8]}, "valid": True, "holes": []}
+        (d / "metrics.json").write_text(json.dumps(m))
+        (d / "vars.json").write_text("{}")
+        return BuildResult(True, metrics=m, vars={})
+    monkeypatch.setattr(accept_mod, "run_build", fake_build)
+    store = Store(":memory:")
+    store.register_part("bracket", store.ensure_default_project().id)
+    ctx = _ctx(tmp_path)
+    ctx.store = store
+    out = await tools.topopt_run.handler(ctx, TopoptRunArgs(**BASE, material="PETG"))
+    tid = out.data["topopt_id"]
+    await _settle(tid)
+    acc = await tools.topopt_accept.handler(ctx, AcceptArgs(topopt_id=tid, part_id="bracket"))
+    assert acc.ok, acc.summary
+    pid = acc.data["part_id"]
+    assert seen["density"] == 1.27
+    assert store.get_part(pid).material == "PETG"
+    view = projects.part_view(store, tmp_path, store.get_part(pid))
+    assert view["mass_g"] == pytest.approx(900.0 / 1000 * 1.27) and view["mass_source"] == "built"
+
+
+async def test_topopt_on_a_material_without_sim_data_is_refused(tmp_path, fake):
+    from mises.store import Store
+    _part(tmp_path)
+    store = Store(":memory:")
+    store.register_part("bracket", store.ensure_default_project().id)
+    store.update_part("bracket", material="TPU")
+    ctx = _ctx(tmp_path)
+    ctx.store = store
+    with pytest.raises(MisesError) as e:
+        await tools.topopt_run.handler(ctx, TopoptRunArgs(**BASE))
+    assert "TPU has no simulation data" in e.value.message

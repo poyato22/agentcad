@@ -144,7 +144,8 @@ def build_spec_router(runtime: Runtime) -> APIRouter:
             raise MisesError(ErrorCode.INVALID_INPUT, f"bad part id: {part_id!r}")
         data = await run_in_threadpool(runtime.store.get_spec, project_id)
         spec = Spec.model_validate(data) if data else Spec()
-        report = await run_in_threadpool(spec_report, Path(runtime.home), spec, part_id)
+        report = await run_in_threadpool(spec_report, Path(runtime.home), spec, part_id,
+                                         runtime.store)
         return {"project_id": project_id, "part_id": part_id, **report}
 
     @router.post("/projects/{project_id}/studies/{study_id}/apply")

@@ -316,13 +316,17 @@ def _sims_by_case(ctx: ToolContext, part_id: str, spec: Spec) -> tuple[dict, set
     return fresh, stale - set(fresh)
 
 
-def spec_report(workdir: Path, spec: Spec, part_id: str) -> dict:
+def spec_report(workdir: Path, spec: Spec, part_id: str, store=None) -> dict:
     """The part measured against `spec` (spec_check's data without project): per requirement
-    the measured value and pass / warn / fail / not_checked. `workdir` holds `parts/`."""
+    the measured value and pass / warn / fail / not_checked. `workdir` holds `parts/`. The
+    mass is the part's tree mass (Plan 9 B2: its own material), the number the UI shows."""
     from types import SimpleNamespace
+
+    from .. import mass as _mass
     ctx = SimpleNamespace(workdir=workdir)
     d = _existing(ctx, part_id)  # type: ignore[arg-type]
     metrics = _read_part_json(d, "metrics.json")    # safe_io (C6)
+    metrics = _mass.with_part_mass(metrics, store, Path(workdir), part_id) or metrics
     sim_by_case, stale = _sims_by_case(ctx, part_id, spec)  # type: ignore[arg-type]
     report = evaluate_spec(spec, metrics, sim_by_case)
     for r in report["requirements"]:
@@ -341,7 +345,8 @@ def spec_report(workdir: Path, spec: Spec, part_id: str) -> dict:
 async def spec_check(ctx: ToolContext, args: SpecCheckArgs) -> ToolOutput:
     _check_part(args.part_id)
     pid = _resolve_project(ctx, args.project_id)
-    report = spec_report(Path(ctx.workdir), _load_spec(ctx, pid), args.part_id)
+    report = spec_report(Path(ctx.workdir), _load_spec(ctx, pid), args.part_id,
+                         getattr(ctx, "store", None))
     counts: dict[str, int] = {}
     for r in report["requirements"]:
         counts[r["status"]] = counts.get(r["status"], 0) + 1
@@ -430,6 +435,10 @@ def _static_evaluator(ctx: ToolContext, part_id: str, part_dir: Path, base_vars:
     candidate's vars, measured, then a coarse-mesh stress study per load case on that copy.
     The live part is only read (its part.py), never written."""
     counter = itertools.count()
+    # Plan 9 B2: candidates weigh the live part's material, like its own builds
+    from .. import mass as _mass
+    density = _mass.build_density(getattr(ctx, "store", None), Path(part_dir).parent.parent,
+                                  part_id)
     source = safe_io.read_text(part_dir, "part.py")   # live part: read, links never followed
     if source is None:
         raise MisesError(ErrorCode.NOT_FOUND, f"{part_id} has no part.py", hint="rebuild it")
@@ -448,7 +457,7 @@ def _static_evaluator(ctx: ToolContext, part_id: str, part_dir: Path, base_vars:
             safe_io.write_bytes(vpart, "topopt_body.step", body)
         out = _empty_metrics(variant)
         # the live part's staged layout skeleton (Plan 8 G3), so skeleton() works in variants
-        res = await run_build(vpart, {**base_vars, **vars},
+        res = await run_build(vpart, {**base_vars, **vars}, density_g_cm3=density,
                               skeleton_file=skeleton.staged_file(part_dir))
         bad = _after_build(vpart)
         if bad:

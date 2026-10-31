@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import type { AssemblyPart } from "../../api/assembly";
 import { onCoreEvent } from "../../api/events";
 import { isTrustedKey } from "../../lib/keys";
+import { assemblyMassTitle, fmtMass } from "../../lib/mass";
 import { actions, parts as storeParts } from "../../state/store";
 import type { PartScene } from "../viewer/loadPart";
 import { PartLoader } from "../viewer/partLoader";
@@ -387,6 +388,12 @@ export function AssemblyView(): JSX.Element {
           data-instances={count} data-arriving={ctl.arriving.value ? "on" : "off"}
           data-section={assemblyModes.value.section.on ? "on" : "off"} data-explode={assemblyModes.value.explode > 0 ? "on" : "off"}
           aria-label="Assembly view" />
+        {data && count > 0 && (
+          <span class="asm-mass num" data-testid="assembly-mass" title={assemblyMassTitle(data.mass_unknown)}>
+            {`Mass ${data.total_mass_g === null || data.total_mass_g === undefined ? "—" : fmtMass(data.total_mass_g)}`}
+            {data.mass_unknown.length > 0 ? <span class="dim">{` · ${data.mass_unknown.length} unknown`}</span> : null}
+          </span>
+        )}
         {labels.map((l) => (
           <span key={l.key} class="asm-tag" style={{ left: `${l.x}px`, top: `${l.y}px` }} data-testid="interference-tag">{l.text}</span>
         ))}

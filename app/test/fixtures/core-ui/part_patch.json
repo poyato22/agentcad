@@ -1,6 +1,6 @@
 {
   "id": "quad_arm",
-  "project_id": "74ab71a5279a",
+  "project_id": "66d130bcdbba",
   "label": "Quad arm",
   "parent_id": null,
   "order": 0,
@@ -8,6 +8,7 @@
   "kind": "part",
   "version": 1,
   "appearance": null,
+  "material": null,
   "part_id": "quad_arm",
   "vars": {
     "thickness": 4.0,
@@ -463,5 +464,8 @@
     "holes": [],
     "solids": 1
   },
-  "mtime": 1793384774.2264416
+  "mtime": 1793432009.4446058,
+  "mass_g": 4.7616,
+  "mass_source": "built",
+  "mass_note": "3840 mm3 x 1.24 g/cm3 (PLA, build default)"
 }

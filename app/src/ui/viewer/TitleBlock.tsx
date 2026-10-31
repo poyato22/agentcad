@@ -1,6 +1,7 @@
 import type { JSX } from "preact";
 import type { PartSummary } from "../../api/types";
-import { fmtGrams, fmtSize } from "../../lib/format";
+import { fmtSize } from "../../lib/format";
+import { partMassText } from "../../lib/mass";
 import { partName } from "../../lib/names";
 
 export interface TitleBlockProps {
@@ -19,7 +20,7 @@ export function TitleBlock({ part, runLabel, error = null }: TitleBlockProps): J
   const cells: [string, string][] = [
     ["PART", part ? `Part · ${partName(part)}` : DASH],
     ["SIZE mm", m ? fmtSize(m.bbox.size) : DASH],
-    ["MASS", m ? fmtGrams(m.mass_g) : DASH],
+    ["MASS", part ? partMassText(part, 2) : DASH],
     ["BY", part ? (runLabel ?? "you") : DASH],
   ];
   return (

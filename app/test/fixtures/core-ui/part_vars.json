@@ -6,8 +6,8 @@
   },
   "version": 2,
   "delta": {
-    "volume_mm3": 960.0,
-    "mass_g": 1.1904000000000003,
+    "volume_mm3": 959.9999999999991,
+    "mass_g": 1.1904,
     "bbox_size": [
       0.0,
       0.0,
@@ -15,7 +15,7 @@
     ]
   },
   "valid": true,
-  "volume_mm3": 4800.0,
+  "volume_mm3": 4799.999999999999,
   "area_mm2": 2680.0,
   "mass_g": 5.952,
   "bbox": {

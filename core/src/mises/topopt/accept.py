@@ -87,7 +87,7 @@ async def accept(ctx, args: AcceptArgs) -> ToolOutput:
             raise MisesError(ErrorCode.OUT_OF_SCOPE, f"creating {pid} is outside this run's "
                              "edit scope", hint="ask the user to widen the scope, or use "
                                                 "mode=replace on the source part")
-        out = await _new_part(ctx, pid, src, body)
+        out = await _new_part(ctx, pid, src, body, (rec.get("material") or {}).get("name"))
     else:
         out = await _replace(ctx, args.part_id, src, body, args.base_version)
     if not out.ok:
@@ -114,7 +114,12 @@ async def accept(ctx, args: AcceptArgs) -> ToolOutput:
               "stream": jobs.STREAM})
 
 
-async def _new_part(ctx, pid: str, src: str, body: bytes) -> ToolOutput:
+async def _new_part(ctx, pid: str, src: str, body: bytes,
+                    material: str | None = None) -> ToolOutput:
+    """A new part from the variant's body. It is made of the material the optimization used
+    (Plan 9 B2), so its tree mass is the variant's mass: volume x that density."""
+    from .. import mass as _mass
+    material = _mass.canonical_material(material, Path(ctx.workdir)) if material else None
     _check_part_id(pid)
     d = _part_dir(ctx, pid)
     async with _lock(d):
@@ -125,7 +130,10 @@ async def _new_part(ctx, pid: str, src: str, body: bytes) -> ToolOutput:
         try:
             safe_io.write_bytes(d, BODY, body)
             safe_io.write_text(d, "part.py", src)
-            res = await run_build(d, {}, timeout_s=BUILD_TIMEOUT_S)
+            density = (_mass.density_g_cm3(material, Path(ctx.workdir)) if material else None)
+            res = await run_build(d, {}, timeout_s=BUILD_TIMEOUT_S,
+                                  density_g_cm3=density or _mass.build_density(
+                                      getattr(ctx, "store", None), Path(ctx.workdir), pid))
             bad = _after_build(d)
         except BaseException:
             shutil.rmtree(d, ignore_errors=True)
@@ -139,6 +147,8 @@ async def _new_part(ctx, pid: str, src: str, body: bytes) -> ToolOutput:
         if getattr(ctx, "store", None) is not None:
             from ..projects import register_built_part
             register_built_part(ctx.store, ctx.run_id, pid)
+            if material:
+                ctx.store.update_part(pid, material=material)
         version = _finish_edit(ctx, pid, d, f"created {pid} from generative design")
     return ToolOutput(summary=_summary(pid, res.metrics),
                       data={"part_id": pid, "version": version, **_inline(res.metrics)})
@@ -157,7 +167,7 @@ async def _replace(ctx, pid: str, src: str, body: bytes, base_version: int | Non
         safe_io.write_bytes(d, BODY, body)
         safe_io.write_text(d, "part.py", src)
         try:
-            res = await _build_guarded(d, {}, snap,
+            res = await _build_guarded(d, {}, snap, ctx,     # the part keeps its material
                                        timeout_s=BUILD_TIMEOUT_S)
         except BaseException:
             _restore_body(d, old_body)

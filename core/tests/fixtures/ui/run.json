@@ -1,5 +1,5 @@
 {
-  "id": "c5227bd622db",
+  "id": "e4b427694cfc",
   "parent_id": null,
   "agent": "designer",
   "provider": "fake",
@@ -11,16 +11,16 @@
   "input_tokens": 0,
   "output_tokens": 0,
   "usd": 0.0,
-  "created_at": 1793384668.715494,
-  "updated_at": 1793384668.7178319,
-  "owner_pid": 14889,
+  "created_at": 1793432043.0956311,
+  "updated_at": 1793432043.0970721,
+  "owner_pid": 90220,
   "external": false,
   "session_ref": null,
-  "project_id": "c6c9dce06184",
+  "project_id": "74ab71a5279a",
   "title": null,
   "pinned": false,
   "archived": false,
-  "last_activity_at": 1793384674.957463,
+  "last_activity_at": 1793432043.097207,
   "role": null,
   "routed": null,
   "shape_complexity": {
@@ -50,14 +50,14 @@
   "activity": {
     "state": "waiting_approval",
     "detail": "waiting for approval: fixture_merge",
-    "since": 1793384674.959733
+    "since": 1793432047.7218418
   },
   "pending": {
     "questions": [],
     "approvals": [
       {
-        "id": "5df4512829e4",
-        "run_id": "c5227bd622db",
+        "id": "23017cd3a482",
+        "run_id": "e4b427694cfc",
         "action": "fixture_merge",
         "payload": {
           "part_id": "mount_plate"
@@ -66,7 +66,7 @@
         "microversion": null,
         "deltas": {},
         "status": "pending",
-        "expires_at": 1793386474.959486,
+        "expires_at": 1793433847.721707,
         "decided_by": null,
         "decided_at": null,
         "edited_payload": null

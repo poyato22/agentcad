@@ -241,7 +241,10 @@ def plan(ctx, args: TopoptRunArgs) -> dict:
     _check_faces(faces, metrics)
     home = home_of(ctx)
     try:
-        mat = get_material(args.material or studies.default_material(ctx), home)
+        # Plan 9 B2: the part's own material, else the profile's; one without simulation
+        # data is refused with what to do (never swapped for another)
+        mat = (get_material(args.material, home) if args.material else
+               studies._default_sim_material(studies.default_material(ctx, args.part_id), home))
     except SimError as e:
         raise _bad(e.message, e.hint) from None
     bbox = metrics["bbox"]

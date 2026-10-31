@@ -122,7 +122,8 @@ describe("buildLog", () => {
     expect(diff.step.id).toBe(8);   // after U3c's part_created announcement (step 5)
     expect(diff.partId).toBe("mount_plate");
     expect(diff.vars).toEqual([{ name: "thickness", prev: 5, now: 6 }]);
-    expect(diff.delta).toEqual({ bbox_size: [0, 0, 1], mass_g: 0.9576410294662194, volume_mm3: 772.2911527953379 });
+    // the mass delta is the tree mass (volume x the part's material), rounded like it (Plan 9 B2)
+    expect(diff.delta).toEqual({ bbox_size: [0, 0, 1], mass_g: 0.9576, volume_mm3: 772.2911527953379 });
     // order: … call c2, diff, call c3 …
     const i = items.indexOf(diff);
     expect((items[i - 1] as Call).callId).toBe("c2");

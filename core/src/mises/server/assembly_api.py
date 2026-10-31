@@ -10,8 +10,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Request, Response
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, field_validator
 
+from .. import mass as mass_mod
 from ..assembly.geometry import face_resolver, part_dir, run_geometry
 from ..assembly.model import Instance, Joint, JointKind, JointRef, check_part_id
 from ..assembly.solve import solve
@@ -105,6 +107,9 @@ def build_assembly_router(runtime: Runtime) -> APIRouter:
             "joints": [j.model_dump() for j in asm.joints],
             "dof_remaining": res.dof_remaining,
             "overconstrained": res.overconstrained,
+            # Plan 9 B2: each instance x its part's tree mass; parts with no known mass listed
+            **await run_in_threadpool(mass_mod.assembly_total, runtime.store,
+                                      Path(runtime.home), project_id, asm.instances),
         }
 
     @router.post("/projects/{project_id}/assembly/instances", status_code=201)

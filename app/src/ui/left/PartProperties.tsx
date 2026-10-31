@@ -4,7 +4,7 @@ import type { JSX } from "preact";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import type { PartSummary } from "../../api/types";
 import { appearanceName } from "../../lib/appearance";
-import { fmtGrams } from "../../lib/format";
+import { partMassNote, partMassText, partMaterialText } from "../../lib/mass";
 import { partName } from "../../lib/names";
 import { actions } from "../../state/store";
 
@@ -49,9 +49,10 @@ export function PartProperties({ part, anchor, onClose }: PartPropertiesProps): 
   }, [onClose]);
 
   const size = m?.bbox.size;
+  const massNote = partMassNote(part);
   const rows: [string, string][] = [
-    ["Mass", m ? fmtGrams(m.mass_g, 1) : "—"],
-    ["Material", material === null ? "—" : `${material} (build default)`],
+    ["Mass", partMassText(part)],
+    ["Material", partMaterialText(part, material)],
     ["Volume", m ? fmtVolume(m.volume_mm3) : "—"],
     ["Surface", m ? fmtArea(m.area_mm2) : "—"],
     ["Size", size ? `${n1(size[0])} × ${n1(size[1])} × ${n1(size[2])} mm` : "—"],
@@ -67,10 +68,11 @@ export function PartProperties({ part, anchor, onClose }: PartPropertiesProps): 
         <span class="pprops-title">{partName(part)}</span>
         <button type="button" class="pprops-x" aria-label="Close properties" onClick={onClose}>×</button>
       </div>
-      {!m && <p class="faint pprops-note">Not built yet: no measurements.</p>}
+      {!m && part.kind !== "group" && <p class="faint pprops-note">Not built yet: no measurements.</p>}
       <dl class="pprops-list">
         {rows.map(([k, v]) => <div key={k} class="pprops-row"><dt>{k}</dt><dd>{v}</dd></div>)}
       </dl>
+      {massNote && <p class="faint pprops-note" data-testid="pprops-mass-note">{massNote}</p>}
     </div>
   );
 }
