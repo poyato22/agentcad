@@ -28,7 +28,7 @@ export function parseActivity(ev: MisesEvent): AgentActivity | null {
 }
 
 export function recordActivity(ev: MisesEvent): void {
-  if (ev.type === "sim_finished") { recordSimFinished(ev); return; }
+  if (ev.type === "sim_finished" || ev.type === "topopt_finished") { recordSimFinished(ev); return; }
   // a finished run is no longer active, even when no final idle/done activity came (a crash, or
   // a delete whose tracker is forgotten without one): drop it so no stale state lingers (A2)
   if (ev.type === "run_finished" && ev.run_id && activityByRun.value.has(ev.run_id)) {
@@ -135,8 +135,10 @@ export const finishedSims: Signal<ReadonlyMap<string, string>> = signal<Readonly
 const FINISHED_KEEP = 200;
 
 export function recordSimFinished(ev: MisesEvent): void {
-  if (ev.type !== "sim_finished") return;
-  const id = typeof ev.data.sim_id === "string" ? ev.data.sim_id : null;
+  if (ev.type !== "sim_finished" && ev.type !== "topopt_finished") return;
+  // a generative design run (Plan 9 D14) finishes like a study, by its topopt id
+  const raw = ev.type === "sim_finished" ? ev.data.sim_id : ev.data.topopt_id;
+  const id = typeof raw === "string" ? raw : null;
   if (!id) return;
   const m = new Map(finishedSims.peek());
   m.delete(id);

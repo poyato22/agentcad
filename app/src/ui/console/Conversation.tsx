@@ -30,6 +30,7 @@ import { FeedbackNote } from "../viewer/FeedbackNote";
 import { AnnouncementCard } from "./AnnouncementCard";
 import { StudyGrid } from "./studycard/StudyGrid";
 import { AssemblyAnimationChip } from "./AssemblyAnimationChip";
+import { TopoptCardSlot } from "../topopt/TopoptCard";
 
 const AT_BOTTOM_PX = 24;
 /** Rows rendered at once (the last ones); "show earlier" adds this many more. Same as StepLog. */
@@ -254,6 +255,7 @@ function Activity({ item }: { item: Extract<ThreadItem, { kind: "activity" }> })
         {item.hint && <span class="cv-hint faint text">{item.hint}</span>}
         {item.call && <StudyCardSlot call={item.call} />}
         {item.call && <PartCardSlot call={item.call} />}
+        {item.call && <TopoptCardSlot call={item.call} />}
         {open && (
           <span class="cv-open">
             {item.diff && <DiffView item={item.diff} />}

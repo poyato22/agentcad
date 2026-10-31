@@ -1,8 +1,8 @@
 {
-  "sim_id": "sim_5225e6ec5cd4",
+  "sim_id": "sim_46c7f2c8e208",
   "part_id": "beam",
   "type": "thermal",
-  "run_id": "b3287052853b",
+  "run_id": "3d8889e2ca76",
   "call_id": "s4",
   "step_id": 18,
   "reason": "motor heat at the root",
@@ -10,8 +10,8 @@
   "stage": "done",
   "phase": "done",
   "pct": 100.0,
-  "created_at": 1793384754.789591,
-  "finished_at": 1793384755.651417,
+  "created_at": 1793422870.005227,
+  "finished_at": 1793422871.596771,
   "analysis": "thermal",
   "guide": true,
   "label": "guide only, not a guarantee",
@@ -92,7 +92,7 @@
       }
     ]
   },
-  "geometry_hash": "3a056a9860334e4b689492920fb36d02bf8d162cdc78579761fcd057abb39b8d",
+  "geometry_hash": "7e9e797dead972400fb1777172fdc8421e69fdab0fc9cb282f5bc44fbd67ac42",
   "material": {
     "name": "PLA",
     "e_mpa": 2300.0,
@@ -134,11 +134,11 @@
     "Small deflections assumed; contact, creep, fatigue, temperature and vibration are not simulated unless this study type says so."
   ],
   "urls": {
-    "record": "/sims/sim_5225e6ec5cd4",
-    "glb": "/sims/sim_5225e6ec5cd4/result.glb",
-    "charts": "/sims/sim_5225e6ec5cd4/charts",
-    "probe": "/sims/sim_5225e6ec5cd4/probe",
-    "section": "/sims/sim_5225e6ec5cd4/section"
+    "record": "/sims/sim_46c7f2c8e208",
+    "glb": "/sims/sim_46c7f2c8e208/result.glb",
+    "charts": "/sims/sim_46c7f2c8e208/charts",
+    "probe": "/sims/sim_46c7f2c8e208/probe",
+    "section": "/sims/sim_46c7f2c8e208/section"
   },
   "solver": {
     "name": "CalculiX",
@@ -222,7 +222,7 @@
       "converged": null
     }
   },
-  "inputs_hash": "199abab591278ac0813cfc3b94675899348616516f6c198583fbdc8231e161fa",
+  "inputs_hash": "5f3449f20b82a19b76a2b2c125973a69a3722e56a64e84dcb1e493585b87cbcd",
   "glb": "result.glb",
   "outputs": [
     "result.glb",
@@ -240,14 +240,14 @@
       "measured": 70.0,
       "unit": "degC",
       "status": "fail",
-      "sim_id": "sim_5225e6ec5cd4",
+      "sim_id": "sim_46c7f2c8e208",
       "note": null
     }
   ],
   "stale": false,
   "card": {
     "material_basis": "datasheet / estimate",
-    "sim_id": "sim_5225e6ec5cd4",
+    "sim_id": "sim_46c7f2c8e208",
     "type": "thermal",
     "status": "done",
     "verdict": "fail",
@@ -286,7 +286,7 @@
         "measured": 70.0,
         "unit": "degC",
         "status": "fail",
-        "sim_id": "sim_5225e6ec5cd4",
+        "sim_id": "sim_46c7f2c8e208",
         "note": null
       }
     ],
@@ -294,15 +294,15 @@
       "peak 70.0 C is at or above PLA's heat deflection temperature (55 C): the part may soften or creep"
     ],
     "reason": "motor heat at the root",
-    "run_id": "b3287052853b",
+    "run_id": "3d8889e2ca76",
     "step_id": 18,
     "urls": {
-      "record": "/sims/sim_5225e6ec5cd4",
-      "glb": "/sims/sim_5225e6ec5cd4/result.glb",
-      "charts": "/sims/sim_5225e6ec5cd4/charts",
-      "probe": "/sims/sim_5225e6ec5cd4/probe",
-      "section": "/sims/sim_5225e6ec5cd4/section"
+      "record": "/sims/sim_46c7f2c8e208",
+      "glb": "/sims/sim_46c7f2c8e208/result.glb",
+      "charts": "/sims/sim_46c7f2c8e208/charts",
+      "probe": "/sims/sim_46c7f2c8e208/probe",
+      "section": "/sims/sim_46c7f2c8e208/section"
     },
-    "charts_url": "/sims/sim_5225e6ec5cd4/charts"
+    "charts_url": "/sims/sim_46c7f2c8e208/charts"
   }
 }

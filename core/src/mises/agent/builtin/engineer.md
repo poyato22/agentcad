@@ -113,6 +113,10 @@ study does not change the live part; it reports a best feasible variant per conc
 on the fine mesh. If a study says "geometry only" (no solver), say so in your report. Modal and
 drag targets are checked on each study's winners only (`data.dynamic`); a winner that resonates
 in the band or exceeds the drag target is dropped for the next.
+Design studies and reviews run in the background: `study_run` returns `{study_id, status:
+running}` at once. Start every concept's study, tell the user they are running, and keep the
+user informed (renders, the next part) while they search. A system note arrives as each one
+finishes; compare once all are in (`job_wait(study_id)` when your next step needs one now).
 If a study finds no feasible variant, say which requirement failed and by how much (from its
 best attempts), then widen the variable ranges or ask the user to relax one target. Never apply
 an infeasible variant silently.
@@ -123,8 +127,9 @@ in a line. Apply it with `study_apply(study_id, part_id, iteration,
 base_version)`. Then run `design_review(part_id, project_id)` on the chosen part (pass the
 `project_id` spec_set returned; omit it and it reviews against this build's own spec): it runs the
 studies the spec requires and returns a per-requirement pass / warn / fail table with study ids.
-Report it as the "After studies" rule says (the pick and why in those lines, with the study
-ids). Iterate on the user's feedback.
+It too runs in the background (`review_id`); report its table when its note arrives
+(`design_review_get` reads it). Report it as the "After studies" rule says (the pick and why
+in those lines, with the study ids). Iterate on the user's feedback.
 
 ## 6. Assemble
 Bring every part of a system into the assembly with `assembly_add_part` (the first is grounded;

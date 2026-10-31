@@ -1,0 +1,13 @@
+[
+  {
+    "job_id": "sim_a17a7b23fc44",
+    "kind": "sim",
+    "run_id": "ab2d326b70fa",
+    "build_id": "b8d386f729a4",
+    "part_id": "beam",
+    "label": "static study of beam",
+    "status": "running",
+    "started_at": 1793426271.287756,
+    "cancel_url": "/jobs/sim_a17a7b23fc44/cancel"
+  }
+]

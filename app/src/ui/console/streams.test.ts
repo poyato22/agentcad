@@ -79,7 +79,7 @@ describe("dock stream classification (Plan 9 D4)", () => {
   });
 
   it("the schemas read stream as optional and drop an unknown value", () => {
-    const s = TEXT[0];
+    const { stream: _tagged, ...s } = TEXT[0];       // as an older core sends it: no stream
     expect(stepSchema.parse({ ...s, stream: "sim" }).stream).toBe("sim");
     expect(stepSchema.parse({ ...s, stream: "hologram" }).stream).toBeUndefined();
     expect("stream" in stepSchema.parse(s) && stepSchema.parse(s).stream !== undefined).toBe(false);

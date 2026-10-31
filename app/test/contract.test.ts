@@ -200,7 +200,9 @@ describe("contract: real core fixtures ↔ schemas ↔ fake core", () => {
         const real = realSteps.find((x) => discriminator(x) === discriminator(s));
         // a scenario may leave out tool args and result data it doesn't need (missing), but
         // must not invent fields or change types (extra / type: the UI would rely on them)
-        if (real) problems.push(...shapeDiff(real, s, `steps[${s.id}]`).filter((p) => !(/\.payload\.(input|output\.data)\./.test(p) && /: missing/.test(p))));
+        // (`stream` too: the fake core derives it like the real one when it serves the step)
+        if (real) problems.push(...shapeDiff(real, s, `steps[${s.id}]`).filter((p) => !(/\.payload\.(input|output\.data)\./.test(p) && /: missing/.test(p))
+          && !/^steps\[\d+\]\.stream: missing/.test(p)));
       }
       // scripted events: envelope always, data where the real core sent the same type
       // timed scripts and trigger scripts ("$run" stands for the run they play for)

@@ -40,6 +40,7 @@ from .appearance import register_appearance_tools
 from .part_tools import register_part_tools
 from .engineering import register_engineering_tools
 from .sim.tools import register_sim_tools
+from .topopt.tools import register_topopt_tools
 from .claude_code import detect as claude_detect
 from .claude_code.session import MCP_FILE as CLAUDE_MCP_FILE, SOURCE as CLAUDE_CODE
 from .claude_code.prompts import context_block
@@ -192,6 +193,7 @@ class Runtime:
         register_appearance_tools(self.registry)
         register_part_tools(self.registry)  # Plan 9 D29
         register_view_tools(self.registry)
+        register_topopt_tools(self.registry)  # Plan 9 D14: generative design
         register_studies_agent_tools(self.registry)  # Plan 9 U-D: the studies agent
         register_concept_tools(self.registry)   # Plan 9 G-A: concept sketch + pitch
         self.orchestrator = Orchestrator(self)
@@ -234,6 +236,12 @@ class Runtime:
         self.lead_queues: dict[str, list] = {}
         self.lead_locks: dict[str, asyncio.Lock] = {}
         self.lead_drainers: dict[str, asyncio.Task] = {}
+        # Plan 9 D4: system notes (a background study finished): turns they started since the
+        # user's last message, runs whose user pressed Stop (notes wait), and notes that ride
+        # along with the next one (orchestrator/lead.py deliver_note)
+        self.note_turns: dict[str, int] = {}
+        self.note_hold: set[str] = set()
+        self.deferred_notes: dict[str, list] = {}
         # question id -> its question_asked payload (+ run_id, asked_at), so a reloaded app can
         # recover the open question cards (GET /runs/{id}/pending; QA C-2)
         self._question_data: dict[str, dict] = {}
@@ -1399,11 +1407,13 @@ class Runtime:
         return st
 
     async def send(self, run_id: str, text: str, *, log: dict | None = None,
-                   images: list[tuple[str, str]] | None = None) -> None:
+                   images: list[tuple[str, str]] | None = None,
+                   user_turn: bool = True) -> None:
         """`log` overrides the stored user step's fields (e.g. a feedback pin's note instead of
         the wrapped message the model reads). `images` ((media_type, base64) pairs, e.g. a
         concept sketch with the user's marks drawn on it) go with the message to a model that
-        can see images."""
+        can see images. `user_turn=False` (a system note): the turn it starts is not a new
+        user turn, so the user message's budget window goes on."""
         if run_id in self._deleting:
             raise MisesError(ErrorCode.NOT_FOUND, f"run {run_id} is being deleted")
         if run_id in self._sending:
@@ -1412,8 +1422,11 @@ class Runtime:
         busy = self.run_busy(run_id)
         self._sending.add(run_id)
         try:
-            if not busy:
+            if not busy and user_turn:
                 self.new_user_turn(run_id)
+            elif user_turn:     # joins a running turn: still the user, so notes may wake it
+                self.note_turns.pop(run_id, None)
+                self.note_hold.discard(run_id)
             # the plain two-argument call when there is no log (tests patch _send that way)
             if images:
                 await self._send(run_id, text, log, images)
@@ -1433,6 +1446,8 @@ class Runtime:
         A message that joins a turn still running is not a new turn: nothing resets."""
         from .cad.views import reset_loop
         reset_loop(run_id)
+        self.note_turns.pop(run_id, None)        # the user is back: notes may start turns again
+        self.note_hold.discard(run_id)
         try:
             run = self.store.get_run(run_id)
         except KeyError:
@@ -1505,6 +1520,7 @@ class Runtime:
 
     def cancel(self, run_id: str) -> None:
         self.parallel.withdraw(run_id)      # a queued run never starts
+        self.stop_background(run_id)
         if run_id in self._external:
             # mark it cancelled first (the MCP endpoint then refuses its calls), then let the
             # owner stop the agent process
@@ -1527,6 +1543,17 @@ class Runtime:
         st.loop.cancel()
         self.approvals.cancel_run(run_id)
         self.store.release_run_reservations(run_id)
+
+    def stop_background(self, run_id: str) -> None:
+        """Stop reaches the background jobs (studies, reviews, design studies) of the run and
+        of every run below it, and no note wakes them until the user writes again."""
+        from . import jobs
+        try:
+            fam = {run_id, *self.store.descendants(run_id)}
+        except Exception:  # noqa: BLE001
+            fam = {run_id}
+        self.note_hold.update(fam)
+        jobs.cancel_run(fam)
 
     # ---- questions (ui_ask_user)
     async def ask(self, run_id: str, question: str, options: list[str], *,

@@ -328,6 +328,8 @@ const COVERAGE: Record<string, string> = {
   "POST /sims/materials": "study_material_add.json", // contract.studies.test.ts (Task A8)
   "POST /sims/templates": "study_template_add.json", // contract.studies.test.ts (Task A8)
   "POST /sims/{sim_id}/cancel": "study_cancel.json", // contract.studies.test.ts (Task A8)
+  // Plan 9 B3: an agent's background jobs (contract.jobs.test.ts)
+  "GET /jobs": "p9/streams_jobs.json", "POST /jobs/{job_id}/cancel": "p9/streams_job_cancel.json",
   // Plan 6 S3: core/scripts/dump_s3_fixtures.py; contract.studies.test.ts (S4 fix round 1)
   "GET /sims/calibrations": "s3_cal_list.json",
   "POST /sims/calibrations/fit": "s3_cal_fit.json",
@@ -352,6 +354,12 @@ const COVERAGE: Record<string, string> = {
   "POST /projects/{project_id}/bom": "browser/bom_add.json",
   "PATCH /projects/{project_id}/bom/{item_id}": "browser/bom_patch.json",
   "GET /projects/{project_id}/skeleton": "project_skeleton_empty.json",
+  // Plan 9 D14 generative design: contract.topopt.test.ts, fixtures from
+  // core/scripts/dump_topopt_fixtures.py
+  "POST /topopt": "topopt_start.json", "GET /topopt": "topopt_list.json",
+  "GET /topopt/{topopt_id}": "topopt_record.json", "POST /topopt/{topopt_id}/cancel": "topopt_cancel_conflict.json",
+  "POST /topopt/{topopt_id}/accept": "topopt_accept.json",
+  "GET /topopt/{topopt_id}/variants/{vid}/{name}": "topopt_render.png",
   "DELETE /projects/{project_id}/bom/{item_id}": "EXEMPT: answers {ok: true} (the generic ok shape); contract.browser.test.ts and the fake-core tests drive it",
 };
 
