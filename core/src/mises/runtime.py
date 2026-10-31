@@ -33,6 +33,7 @@ from .browser.snapshot import SnapshotStore
 from .browser.tools import CardStore, register_browser_tools
 from .imports.drawing_import import register_import_tools
 from .appearance import register_appearance_tools
+from .part_tools import register_part_tools
 from .engineering import register_engineering_tools
 from .sim.tools import register_sim_tools
 from .claude_code import detect as claude_detect
@@ -185,6 +186,7 @@ class Runtime:
         register_bom_tools(self.registry)
         register_import_tools(self.registry)
         register_appearance_tools(self.registry)
+        register_part_tools(self.registry)  # Plan 9 D29
         register_view_tools(self.registry)
         self.orchestrator = Orchestrator(self)
         self.started_at = time.time()

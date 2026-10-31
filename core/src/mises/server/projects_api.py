@@ -18,6 +18,7 @@ from .. import projects as _projects
 from ..agent import definitions as _defs
 from ..appearance import render_params
 from ..cad import thumbs
+from ..events import Event
 from ..profile import load_profile, save_profile
 from ..types import ErrorCode, MisesError
 
@@ -37,6 +38,10 @@ class Reorder(BaseModel):
     project_id: str
     parent_id: str | None = None
     ids: list[str]
+
+
+class RestoreBody(BaseModel):
+    undo: str  # DELETE /parts/{id}'s `undo`
 
 
 class ExportBody(BaseModel):
@@ -172,15 +177,35 @@ def build_projects_router(runtime: Runtime) -> APIRouter:
         async with part_lock(_home() / "parts" / part_id):
             return await run_in_threadpool(_projects.duplicate_part, store, _home(), part_id)
 
+    def _assembly_changed(project_id: str | None) -> None:
+        events = getattr(runtime, "events", None)
+        if events is not None and project_id:
+            events.publish(Event(type="assembly_changed", data={"project_id": project_id}))
+
     @router.delete("/parts/{part_id}")
-    async def delete_part(part_id: str):
-        # the same live-work rule as the build's Empty Trash (409 while an agent may edit it)
+    async def delete_part(part_id: str, cascade: bool = False):
+        # the same live-work rule as the build's Empty Trash (409 while an agent may edit it);
+        # Plan 9 D29: ?cascade=true also removes the part's instances from the assembly
+        project = getattr(store.get_part(part_id), "project_id", None)
         try:
-            return _projects.delete_part(store, _home(), part_id,
-                                         assembly=getattr(runtime, "assembly_store", None),
-                                         busy=getattr(runtime, "_busy_for_trash", None))
+            out = _projects.delete_part(store, _home(), part_id,
+                                        assembly=getattr(runtime, "assembly_store", None),
+                                        busy=getattr(runtime, "_busy_for_trash", None),
+                                        cascade=cascade)
         except _projects.PartBusy as e:
             return JSONResponse(e.body(), status_code=409)
+        if out["removed_instances"]:
+            _assembly_changed(project)
+        return out
+
+    @router.post("/parts/{part_id}/restore")
+    async def restore_part(part_id: str, body: RestoreBody):
+        """Undo of DELETE /parts/{id}: the files, the tree row and the assembly instances."""
+        out = _projects.restore_part(store, _home(), part_id, body.undo,
+                                     assembly=getattr(runtime, "assembly_store", None))
+        if out["restored_instances"]:
+            _assembly_changed(out.get("project_id"))
+        return out
 
     @router.post("/parts/{part_id}/export")
     async def export_part(part_id: str, body: ExportBody):

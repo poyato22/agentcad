@@ -100,6 +100,8 @@ CREATE TABLE IF NOT EXISTS assembly_instances (
 CREATE TABLE IF NOT EXISTS assembly_joints (
   project_id TEXT, id TEXT, kind TEXT, a TEXT, b TEXT, value TEXT, limits TEXT, ord INTEGER,
   PRIMARY KEY (project_id, id));
+CREATE TABLE IF NOT EXISTS assembly_auto (
+  project_id TEXT, id TEXT, PRIMARY KEY (project_id, id));
 """
 
 _INSTANCE_FIELDS = {"part_id", "name", "transform", "fixed"}
@@ -129,6 +131,7 @@ class AssemblyStore:
                 self._db.execute("DELETE FROM assembly_joints WHERE project_id=?", (project_id,))
                 self._db.execute("DELETE FROM assembly_instances WHERE project_id=?",
                                  (project_id,))
+                self._db.execute("DELETE FROM assembly_auto WHERE project_id=?", (project_id,))
                 self._db.execute("COMMIT")
             except BaseException:
                 self._db.execute("ROLLBACK")
@@ -205,6 +208,8 @@ class AssemblyStore:
                 " WHERE project_id=? AND id=?",
                 (merged.part_id, merged.name, json.dumps(merged.transform), int(merged.fixed),
                  project_id, iid))
+            self._db.execute("DELETE FROM assembly_auto WHERE project_id=? AND id=?",
+                             (project_id, iid))
         return merged
 
     def delete_instance(self, project_id: str, iid: str) -> list[str]:
@@ -225,7 +230,26 @@ class AssemblyStore:
                     f"({','.join('?' * len(removed))})", (project_id, *removed))
             self._db.execute("DELETE FROM assembly_instances WHERE project_id=? AND id=?",
                              (project_id, iid))
+            self._db.execute("DELETE FROM assembly_auto WHERE project_id=? AND id=?",
+                             (project_id, iid))
         return removed
+
+    # ---- Plan 9 D10: instances the core placed by itself (assembly/autoplace.py), until an
+    # agent joins them where they really go (assembly_add_part reuses one instead of a copy)
+    def mark_auto(self, project_id: str, iid: str, on: bool = True) -> None:
+        with self._lock:
+            if on:
+                self._db.execute("INSERT OR IGNORE INTO assembly_auto VALUES (?,?)",
+                                 (project_id, iid))
+            else:
+                self._db.execute("DELETE FROM assembly_auto WHERE project_id=? AND id=?",
+                                 (project_id, iid))
+
+    def auto_ids(self, project_id: str) -> set[str]:
+        with self._lock:
+            rows = self._db.execute("SELECT id FROM assembly_auto WHERE project_id=?",
+                                    (project_id,)).fetchall()
+        return {r[0] for r in rows}
 
     # ---- joint mutations
     def add_joint(self, project_id: str, joint: Joint) -> Joint:
@@ -241,6 +265,10 @@ class AssemblyStore:
                  joint.b.model_dump_json(), json.dumps(joint.value),
                  json.dumps(joint.limits) if joint.limits is not None else None,
                  self._next_ord("assembly_joints", project_id)))
+            # the joined (b) side is placed where it goes: no longer the core's own placement
+            # (a part only joined TO keeps it: assembly_add_part may still ground it)
+            self._db.execute("DELETE FROM assembly_auto WHERE project_id=? AND id=?",
+                             (project_id, joint.b.instance_id))
         return joint
 
     def update_joint(self, project_id: str, jid: str, **fields) -> Joint:

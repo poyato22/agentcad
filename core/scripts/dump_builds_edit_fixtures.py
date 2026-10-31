@@ -187,6 +187,14 @@ async def dump(out: Path) -> None:
             dup = await call("POST", "/parts/mount_plate/duplicate")
             write("part_duplicate.json", dup)
             write("part_delete.json", await call("DELETE", f"/parts/{dup['id']}"))
+            # Plan 9 D29: a part in the assembly, deleted with its instance, then undone
+            dup2 = await call("POST", "/parts/mount_plate/duplicate")
+            await call("POST", f"/projects/{default_id}/assembly/instances",
+                       {"part_id": dup2["id"], "name": "plate copy", "fixed": True})
+            gone = await call("DELETE", f"/parts/{dup2['id']}?cascade=true")
+            write("part_delete_cascade.json", gone)
+            write("part_restore.json", await call("POST", f"/parts/{dup2['id']}/restore",
+                                                  {"undo": gone["undo"]}))
 
             # the skeleton panel's GET /projects/{id}/skeleton: none yet, then one saved
             from mises.cad import skeleton as sk

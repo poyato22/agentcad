@@ -32,7 +32,7 @@ TASK_TITLE_CHARS = 60
 LEAD_TOOLS = ("agent_spawn", "agent_wait", "agent_result", "assembly_get", "assembly_add_part",
               "assembly_add_instance", "assembly_add_joint", "assembly_move", "assembly_drive",
               "assembly_animate", "assembly_check", "assembly_remove", "mirror_part_list",
-              "ui_ask_user", "ui_note")
+              "ui_ask_user", "ui_note", "part_delete")
 
 LEAD_PROMPT = """\
 # You are this build's lead agent
@@ -60,6 +60,9 @@ mount.").
 #: engineer's "Assemble" section does): the ordering guidance appears once in a lead's prompt
 LEAD_ASSEMBLY = """
 ## The assembly
+- A new part lands in the assembly by itself (beside the others, or at its skeleton slot); \
+`assembly_add_part` on it then joins that same instance where it really goes. A throwaway test \
+piece: create it with `place: false`. Delete a part you no longer need with `part_delete`.
 - When you build a system, bring every part into the assembly with `assembly_add_part`: the \
 first part is grounded; join each other part where it really connects (fixed, or revolute / \
 slider where it moves). Move parts with `assembly_move`; a joint-attached part moves only \

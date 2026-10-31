@@ -118,7 +118,7 @@ def world(tmp_path):
 
 
 async def _build(ctx, part_id, script):
-    r = await mirror_part_create.handler(ctx, CreateArgs(part_id=part_id, script=script))
+    r = await mirror_part_create.handler(ctx, CreateArgs(part_id=part_id, script=script, place=False))
     assert r.ok, r.summary
 
 

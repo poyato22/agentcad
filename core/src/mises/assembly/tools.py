@@ -403,6 +403,27 @@ async def assembly_add_part(ctx: ToolContext, args: AddPartArgs) -> ToolOutput:
     place, mate = args.place, args.place.mate or Mate()
     name = args.name or args.part_id
     root = _parts_root(ctx)
+    # Plan 9 D10: a new part is already placed by itself (assembly/autoplace.py). Adding it
+    # joins THAT instance instead of placing a second copy (once: it is then the agent's own);
+    # a later call for the same part adds another instance as before.
+    auto = store.auto_ids(pid)
+    reuse = next((i for i in asm.instances if i.part_id == args.part_id and i.id in auto), None)
+    if reuse is not None:
+        store.mark_auto(pid, reuse.id, False)
+    if reuse is not None and (reuse.fixed or len(asm.instances) == 1):
+        # it is the grounded first part already: only the name and the offset can change
+        upd: dict = {"fixed": True, **({"name": args.name} if args.name else {})}
+        if place.offset is not None:
+            upd["transform"] = translate(place.offset)
+        inst = store.update_instance(pid, reuse.id, **upd)
+        _changed(ctx, pid)
+        return ToolOutput(summary=f"{args.part_id} is instance {inst.name} ({inst.id}), "
+                                  "grounded: the first part of the assembly",
+                          data={"project_id": pid, "instance": inst.model_dump(), "joint": None},
+                          step_kind=StepKind.DIFF)
+    if reuse is not None:
+        asm = asm.model_copy(update={"instances": [i for i in asm.instances if i.id != reuse.id]})
+        name = args.name or reuse.name
     if not asm.instances:
         kw: dict = {"part_id": args.part_id, "name": name, "fixed": True}
         if place.offset is not None:
@@ -426,7 +447,8 @@ async def assembly_add_part(ctx: ToolContext, args: AddPartArgs) -> ToolOutput:
         fa = Frame(origin=list(off), axis=[0.0, 0.0, 1.0])
     fb = (_flipped_face(root, args.part_id, place.on_face) if place.on_face is not None
           else Frame(origin=[0.0, 0.0, 0.0], axis=[0.0, 0.0, 1.0]))
-    inst = Instance(part_id=args.part_id, name=name)
+    inst = (Instance(id=reuse.id, part_id=args.part_id, name=name) if reuse is not None
+            else Instance(part_id=args.part_id, name=name))
     joint = Joint(kind=mate.kind, a=JointRef(instance_id=target.id, frame=fa),
                   b=JointRef(instance_id=inst.id, frame=fb), value=mate.value,
                   limits=mate.limits)
@@ -434,6 +456,8 @@ async def assembly_add_part(ctx: ToolContext, args: AddPartArgs) -> ToolOutput:
     trial = asm.model_copy(update={"instances": [*asm.instances, inst],
                                    "joints": [*asm.joints, joint]})
     res = solve(trial, resolve_face=face_resolver(root))
+    if reuse is not None:
+        store.delete_instance(pid, reuse.id)       # no joints touch it (checked above)
     store.add_instance(pid, inst)
     store.add_joint(pid, joint)
     _changed(ctx, pid)

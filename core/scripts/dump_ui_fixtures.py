@@ -173,7 +173,9 @@ async def dump(out: Path, only: str = "all") -> None:
     os.environ["MISES_HOME"] = str(home)
     turns = [
         [ToolCall(id="c1", name="mirror_part_create", input={
-            "part_id": "mount_plate", "script": PLATE, "vars": {"thickness": 5.0}}),
+            "part_id": "mount_plate", "script": PLATE, "vars": {"thickness": 5.0},
+            # Plan 9 D10: not auto-placed, so the assembly fixtures below keep their shape
+            "place": False}),
          Done(stop_reason="tool_use")],
         [ToolCall(id="c2", name="mirror_part_set_vars", input={
             "part_id": "mount_plate", "vars": {"thickness": 6.0}}),

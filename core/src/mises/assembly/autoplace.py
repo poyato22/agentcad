@@ -110,4 +110,6 @@ def auto_place(assembly: AssemblyStore, parts_root: Path, project_id: str, part_
         transform = _beside(parts_root, asm, part_id) if asm.instances else translate([0, 0, 0])
     inst = Instance(part_id=part_id, name=_free_name(asm, name or part_id),
                     transform=transform, fixed=not asm.instances)
-    return assembly.add_instance(project_id, inst)
+    assembly.add_instance(project_id, inst)
+    assembly.mark_auto(project_id, inst.id)
+    return inst
