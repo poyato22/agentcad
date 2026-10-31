@@ -1,0 +1,708 @@
+{
+  "concept": {
+    "project_id": "8cdd4b2d5e98",
+    "status": "sketching",
+    "sketch_ids": [
+      "cks_6acdd3f69e77",
+      "cks_c5b0924c7264"
+    ],
+    "chosen_option": "Companion's body + Athlete's legs",
+    "pitch_ids": [
+      "ckp_04b423d0dfa0"
+    ],
+    "approved_sketch_id": null,
+    "updated_at": 1793416769.263752
+  },
+  "design_class": {
+    "cls": "mixed",
+    "source": "fallback"
+  },
+  "sketches": [
+    {
+      "sketch_id": "cks_6acdd3f69e77",
+      "parent_sketch_id": null,
+      "run_id": "6eff9947acf0",
+      "images": [
+        {
+          "view": "three_quarter",
+          "label": "3/4 front",
+          "render_id": "cks_6acdd3f69e77_three_quarter",
+          "width": 1024,
+          "height": 1024,
+          "camera": {
+            "view": "three_quarter",
+            "forward": [
+              -0.62,
+              1.0,
+              -0.36
+            ],
+            "up": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "projection": "perspective",
+            "framing": {
+              "min": [
+                -383.371,
+                -450.871,
+                -2.1
+              ],
+              "max": [
+                383.371,
+                315.871,
+                525.0
+              ]
+            },
+            "size": [
+              1024,
+              1024
+            ],
+            "style": "sketch"
+          }
+        },
+        {
+          "view": "side",
+          "label": "Side",
+          "render_id": "cks_6acdd3f69e77_side",
+          "width": 1024,
+          "height": 1024,
+          "camera": {
+            "view": "side",
+            "forward": [
+              -1.0,
+              0.0,
+              0.0
+            ],
+            "up": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "projection": "orthographic",
+            "framing": {
+              "min": [
+                -383.371,
+                -450.871,
+                -2.1
+              ],
+              "max": [
+                383.371,
+                315.871,
+                525.0
+              ]
+            },
+            "size": [
+              1024,
+              1024
+            ],
+            "style": "sketch"
+          }
+        }
+      ],
+      "notes": "Companion body on Athlete legs",
+      "callouts": [
+        {
+          "view": "side",
+          "x": 0.08,
+          "y": 0.12,
+          "text": "long legs",
+          "to": [
+            0.4,
+            0.7
+          ]
+        }
+      ],
+      "overlay_svg": {
+        "three_quarter": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1024 1024\" width=\"1024\" height=\"1024\"></svg>",
+        "side": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1024 1024\" width=\"1024\" height=\"1024\"><line x1=\"81.9\" y1=\"122.9\" x2=\"409.6\" y2=\"716.8\" stroke=\"#1b1e23\" stroke-width=\"1.5\"/><circle cx=\"409.6\" cy=\"716.8\" r=\"3\" fill=\"#1b1e23\"/><text x=\"81.9\" y=\"122.9\" font-size=\"18\" fill=\"#1b1e23\" font-family=\"sans-serif\">long legs</text></svg>"
+      },
+      "option": "Companion + Athlete",
+      "scale": {
+        "framing": {
+          "min": [
+            -383.371,
+            -450.871,
+            -2.1
+          ],
+          "max": [
+            383.371,
+            315.871,
+            525.0
+          ]
+        },
+        "figure": false,
+        "massing_size_mm": [
+          220.0,
+          675.0,
+          525.0
+        ]
+      },
+      "massing": {
+        "size_mm": [
+          220.0,
+          675.0,
+          525.0
+        ],
+        "volume_mm3": 22688651.05973043
+      },
+      "project_id": "8cdd4b2d5e98",
+      "build_id": "8cdd4b2d5e98",
+      "version": 1,
+      "created_at": 1793416763.456647,
+      "feedback": [
+        {
+          "feedback_id": "ckf_ee4d1e495d72",
+          "version": 1,
+          "marks": [
+            {
+              "image": 0,
+              "comment": "rounder head",
+              "kind": "circle",
+              "cx": 0.5,
+              "cy": 0.36,
+              "r": 0.09,
+              "n": 1,
+              "view": "three_quarter",
+              "camera": {
+                "view": "three_quarter",
+                "forward": [
+                  -0.62,
+                  1.0,
+                  -0.36
+                ],
+                "up": [
+                  0.0,
+                  0.0,
+                  1.0
+                ],
+                "projection": "perspective",
+                "framing": {
+                  "min": [
+                    -383.371,
+                    -450.871,
+                    -2.1
+                  ],
+                  "max": [
+                    383.371,
+                    315.871,
+                    525.0
+                  ]
+                },
+                "size": [
+                  1024,
+                  1024
+                ],
+                "style": "sketch"
+              }
+            },
+            {
+              "image": 1,
+              "comment": "shorter body",
+              "kind": "lasso",
+              "points": [
+                [
+                  0.3,
+                  0.42
+                ],
+                [
+                  0.62,
+                  0.4
+                ],
+                [
+                  0.66,
+                  0.55
+                ],
+                [
+                  0.32,
+                  0.58
+                ]
+              ],
+              "n": 2,
+              "view": "side",
+              "camera": {
+                "view": "side",
+                "forward": [
+                  -1.0,
+                  0.0,
+                  0.0
+                ],
+                "up": [
+                  0.0,
+                  0.0,
+                  1.0
+                ],
+                "projection": "orthographic",
+                "framing": {
+                  "min": [
+                    -383.371,
+                    -450.871,
+                    -2.1
+                  ],
+                  "max": [
+                    383.371,
+                    315.871,
+                    525.0
+                  ]
+                },
+                "size": [
+                  1024,
+                  1024
+                ],
+                "style": "sketch"
+              }
+            },
+            {
+              "image": 0,
+              "comment": "thicker legs",
+              "kind": "pin",
+              "x": 0.42,
+              "y": 0.78,
+              "n": 3,
+              "view": "three_quarter",
+              "camera": {
+                "view": "three_quarter",
+                "forward": [
+                  -0.62,
+                  1.0,
+                  -0.36
+                ],
+                "up": [
+                  0.0,
+                  0.0,
+                  1.0
+                ],
+                "projection": "perspective",
+                "framing": {
+                  "min": [
+                    -383.371,
+                    -450.871,
+                    -2.1
+                  ],
+                  "max": [
+                    383.371,
+                    315.871,
+                    525.0
+                  ]
+                },
+                "size": [
+                  1024,
+                  1024
+                ],
+                "style": "sketch"
+              }
+            }
+          ],
+          "comment": "Love the stance; make the head friendlier.",
+          "annotated": [
+            {
+              "view": "three_quarter",
+              "image": 0,
+              "render_id": "ckf_ee4d1e495d72_three_quarter"
+            },
+            {
+              "view": "side",
+              "image": 1,
+              "render_id": "ckf_ee4d1e495d72_side"
+            }
+          ],
+          "project_id": "8cdd4b2d5e98",
+          "sketch_id": "cks_6acdd3f69e77",
+          "created_at": 1793416763.5468931
+        }
+      ]
+    },
+    {
+      "sketch_id": "cks_c5b0924c7264",
+      "parent_sketch_id": "cks_6acdd3f69e77",
+      "run_id": "6eff9947acf0",
+      "images": [
+        {
+          "view": "three_quarter",
+          "label": "3/4 front",
+          "render_id": "cks_c5b0924c7264_three_quarter",
+          "width": 1024,
+          "height": 1024,
+          "camera": {
+            "view": "three_quarter",
+            "forward": [
+              -0.62,
+              1.0,
+              -0.36
+            ],
+            "up": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "projection": "perspective",
+            "framing": {
+              "min": [
+                -352.709,
+                -420.209,
+                -2.1
+              ],
+              "max": [
+                352.709,
+                285.209,
+                525.0
+              ]
+            },
+            "size": [
+              1024,
+              1024
+            ],
+            "style": "sketch"
+          }
+        },
+        {
+          "view": "side",
+          "label": "Side",
+          "render_id": "cks_c5b0924c7264_side",
+          "width": 1024,
+          "height": 1024,
+          "camera": {
+            "view": "side",
+            "forward": [
+              -1.0,
+              0.0,
+              0.0
+            ],
+            "up": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "projection": "orthographic",
+            "framing": {
+              "min": [
+                -352.709,
+                -420.209,
+                -2.1
+              ],
+              "max": [
+                352.709,
+                285.209,
+                525.0
+              ]
+            },
+            "size": [
+              1024,
+              1024
+            ],
+            "style": "sketch"
+          }
+        }
+      ],
+      "notes": "Shorter body, rounder head",
+      "callouts": [],
+      "overlay_svg": {
+        "three_quarter": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1024 1024\" width=\"1024\" height=\"1024\"></svg>",
+        "side": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1024 1024\" width=\"1024\" height=\"1024\"></svg>"
+      },
+      "option": null,
+      "scale": {
+        "framing": {
+          "min": [
+            -352.709,
+            -420.209,
+            -2.1
+          ],
+          "max": [
+            352.709,
+            285.209,
+            525.0
+          ]
+        },
+        "figure": false,
+        "massing_size_mm": [
+          220.0,
+          615.0,
+          525.0
+        ]
+      },
+      "massing": {
+        "size_mm": [
+          220.0,
+          615.0,
+          525.0
+        ],
+        "volume_mm3": 20708651.05973043
+      },
+      "project_id": "8cdd4b2d5e98",
+      "build_id": "8cdd4b2d5e98",
+      "version": 2,
+      "created_at": 1793416769.2634811,
+      "feedback": []
+    }
+  ],
+  "pitches": [
+    {
+      "pitch_id": "ckp_04b423d0dfa0",
+      "run_id": "6eff9947acf0",
+      "question": "Pick a direction or mix them",
+      "options": [
+        {
+          "name": "Companion",
+          "mood": [
+            "friendly",
+            "soft",
+            "appliance"
+          ],
+          "proportion_note": "body 520 mm, legs 260 mm",
+          "cmf": [
+            {
+              "name": "Shell",
+              "color": "#efeee9",
+              "finish": "gloss"
+            },
+            {
+              "name": "Joints",
+              "color": "#2b2d31",
+              "finish": "matte"
+            }
+          ],
+          "tradeoffs": {
+            "mass_delta": "+6%",
+            "part_count": 22,
+            "molding": "2-part shells",
+            "cost_tier": "$$",
+            "risk": "hip cover pinch at full flexion",
+            "gives_up": ""
+          },
+          "recommended": true,
+          "reason": "reads friendly at home scale",
+          "baseline": false,
+          "callouts": [],
+          "sketch": {
+            "view": "three_quarter",
+            "label": "3/4 front",
+            "render_id": "ckp_04b423d0dfa0_o0_three_quarter",
+            "width": 1024,
+            "height": 1024,
+            "camera": {
+              "view": "three_quarter",
+              "forward": [
+                -0.62,
+                1.0,
+                -0.36
+              ],
+              "up": [
+                0.0,
+                0.0,
+                1.0
+              ],
+              "projection": "perspective",
+              "framing": {
+                "min": [
+                  -373.118,
+                  -440.618,
+                  -1.86
+                ],
+                "max": [
+                  373.118,
+                  305.618,
+                  465.0
+                ]
+              },
+              "size": [
+                1024,
+                1024
+              ],
+              "style": "sketch"
+            }
+          },
+          "silhouettes": {
+            "front": "ckp_04b423d0dfa0_o0_sil_front",
+            "side": "ckp_04b423d0dfa0_o0_sil_side"
+          },
+          "massing_size_mm": [
+            220.0,
+            655.0,
+            465.0
+          ]
+        },
+        {
+          "name": "Athlete",
+          "mood": [
+            "taut",
+            "fast",
+            "exposed joints"
+          ],
+          "proportion_note": "body 600 mm, legs 340 mm",
+          "cmf": [
+            {
+              "name": "Shell",
+              "color": "#efeee9",
+              "finish": "gloss"
+            },
+            {
+              "name": "Joints",
+              "color": "#2b2d31",
+              "finish": "matte"
+            }
+          ],
+          "tradeoffs": {
+            "mass_delta": "+11%",
+            "part_count": 26,
+            "molding": "4-part shells, 2 undercuts",
+            "cost_tier": "$$$",
+            "risk": "hip cover pinch at full flexion",
+            "gives_up": ""
+          },
+          "recommended": false,
+          "reason": "",
+          "baseline": false,
+          "callouts": [],
+          "sketch": {
+            "view": "three_quarter",
+            "label": "3/4 front",
+            "render_id": "ckp_04b423d0dfa0_o1_three_quarter",
+            "width": 1024,
+            "height": 1024,
+            "camera": {
+              "view": "three_quarter",
+              "forward": [
+                -0.62,
+                1.0,
+                -0.36
+              ],
+              "up": [
+                0.0,
+                0.0,
+                1.0
+              ],
+              "projection": "perspective",
+              "framing": {
+                "min": [
+                  -414.298,
+                  -481.798,
+                  -2.18
+                ],
+                "max": [
+                  414.298,
+                  346.798,
+                  545.0
+                ]
+              },
+              "size": [
+                1024,
+                1024
+              ],
+              "style": "sketch"
+            }
+          },
+          "silhouettes": {
+            "front": "ckp_04b423d0dfa0_o1_sil_front",
+            "side": "ckp_04b423d0dfa0_o1_sil_side"
+          },
+          "massing_size_mm": [
+            220.0,
+            735.0,
+            545.0
+          ]
+        },
+        {
+          "name": "Honest",
+          "mood": [
+            "plain",
+            "light",
+            "cheap"
+          ],
+          "proportion_note": "body 500 mm, legs 280 mm",
+          "cmf": [
+            {
+              "name": "Shell",
+              "color": "#efeee9",
+              "finish": "gloss"
+            },
+            {
+              "name": "Joints",
+              "color": "#2b2d31",
+              "finish": "matte"
+            }
+          ],
+          "tradeoffs": {
+            "mass_delta": "0%",
+            "part_count": 14,
+            "molding": "flat panels",
+            "cost_tier": "$",
+            "risk": "hip cover pinch at full flexion",
+            "gives_up": ""
+          },
+          "recommended": false,
+          "reason": "",
+          "baseline": true,
+          "callouts": [],
+          "sketch": {
+            "view": "three_quarter",
+            "label": "3/4 front",
+            "render_id": "ckp_04b423d0dfa0_o2_three_quarter",
+            "width": 1024,
+            "height": 1024,
+            "camera": {
+              "view": "three_quarter",
+              "forward": [
+                -0.62,
+                1.0,
+                -0.36
+              ],
+              "up": [
+                0.0,
+                0.0,
+                1.0
+              ],
+              "projection": "perspective",
+              "framing": {
+                "min": [
+                  -362.896,
+                  -430.396,
+                  -1.94
+                ],
+                "max": [
+                  362.896,
+                  295.396,
+                  485.0
+                ]
+              },
+              "size": [
+                1024,
+                1024
+              ],
+              "style": "sketch"
+            }
+          },
+          "silhouettes": {
+            "front": "ckp_04b423d0dfa0_o2_sil_front",
+            "side": "ckp_04b423d0dfa0_o2_sil_side"
+          },
+          "massing_size_mm": [
+            220.0,
+            635.0,
+            485.0
+          ]
+        }
+      ],
+      "chosen": {
+        "option": null,
+        "mix": [
+          {
+            "option": "Companion",
+            "take": "body",
+            "comment": ""
+          },
+          {
+            "option": "Athlete",
+            "take": "legs",
+            "comment": ""
+          }
+        ],
+        "comment": "keep it under 6 kg",
+        "label": "Companion's body + Athlete's legs"
+      },
+      "project_id": "8cdd4b2d5e98",
+      "build_id": "8cdd4b2d5e98",
+      "created_at": 1793416753.8019571
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "concept": {
+    "project_id": "8cdd4b2d5e98",
+    "status": "approved",
+    "sketch_ids": [
+      "cks_6acdd3f69e77",
+      "cks_c5b0924c7264"
+    ],
+    "chosen_option": "Companion's body + Athlete's legs",
+    "pitch_ids": [
+      "ckp_04b423d0dfa0"
+    ],
+    "approved_sketch_id": "cks_c5b0924c7264",
+    "updated_at": 1793416769.294366
+  },
+  "sent": {
+    "run_id": "6eff9947acf0",
+    "queued": false,
+    "position": null,
+    "message_id": null
+  }
+}

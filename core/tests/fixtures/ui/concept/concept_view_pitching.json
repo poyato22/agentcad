@@ -1,0 +1,271 @@
+{
+  "concept": {
+    "project_id": "8cdd4b2d5e98",
+    "status": "pitching",
+    "sketch_ids": [],
+    "chosen_option": null,
+    "pitch_ids": [
+      "ckp_04b423d0dfa0"
+    ],
+    "approved_sketch_id": null,
+    "updated_at": 1793416753.802368
+  },
+  "design_class": {
+    "cls": "mixed",
+    "source": "fallback"
+  },
+  "sketches": [],
+  "pitches": [
+    {
+      "pitch_id": "ckp_04b423d0dfa0",
+      "run_id": "6eff9947acf0",
+      "question": "Pick a direction or mix them",
+      "options": [
+        {
+          "name": "Companion",
+          "mood": [
+            "friendly",
+            "soft",
+            "appliance"
+          ],
+          "proportion_note": "body 520 mm, legs 260 mm",
+          "cmf": [
+            {
+              "name": "Shell",
+              "color": "#efeee9",
+              "finish": "gloss"
+            },
+            {
+              "name": "Joints",
+              "color": "#2b2d31",
+              "finish": "matte"
+            }
+          ],
+          "tradeoffs": {
+            "mass_delta": "+6%",
+            "part_count": 22,
+            "molding": "2-part shells",
+            "cost_tier": "$$",
+            "risk": "hip cover pinch at full flexion",
+            "gives_up": ""
+          },
+          "recommended": true,
+          "reason": "reads friendly at home scale",
+          "baseline": false,
+          "callouts": [],
+          "sketch": {
+            "view": "three_quarter",
+            "label": "3/4 front",
+            "render_id": "ckp_04b423d0dfa0_o0_three_quarter",
+            "width": 1024,
+            "height": 1024,
+            "camera": {
+              "view": "three_quarter",
+              "forward": [
+                -0.62,
+                1.0,
+                -0.36
+              ],
+              "up": [
+                0.0,
+                0.0,
+                1.0
+              ],
+              "projection": "perspective",
+              "framing": {
+                "min": [
+                  -373.118,
+                  -440.618,
+                  -1.86
+                ],
+                "max": [
+                  373.118,
+                  305.618,
+                  465.0
+                ]
+              },
+              "size": [
+                1024,
+                1024
+              ],
+              "style": "sketch"
+            }
+          },
+          "silhouettes": {
+            "front": "ckp_04b423d0dfa0_o0_sil_front",
+            "side": "ckp_04b423d0dfa0_o0_sil_side"
+          },
+          "massing_size_mm": [
+            220.0,
+            655.0,
+            465.0
+          ]
+        },
+        {
+          "name": "Athlete",
+          "mood": [
+            "taut",
+            "fast",
+            "exposed joints"
+          ],
+          "proportion_note": "body 600 mm, legs 340 mm",
+          "cmf": [
+            {
+              "name": "Shell",
+              "color": "#efeee9",
+              "finish": "gloss"
+            },
+            {
+              "name": "Joints",
+              "color": "#2b2d31",
+              "finish": "matte"
+            }
+          ],
+          "tradeoffs": {
+            "mass_delta": "+11%",
+            "part_count": 26,
+            "molding": "4-part shells, 2 undercuts",
+            "cost_tier": "$$$",
+            "risk": "hip cover pinch at full flexion",
+            "gives_up": ""
+          },
+          "recommended": false,
+          "reason": "",
+          "baseline": false,
+          "callouts": [],
+          "sketch": {
+            "view": "three_quarter",
+            "label": "3/4 front",
+            "render_id": "ckp_04b423d0dfa0_o1_three_quarter",
+            "width": 1024,
+            "height": 1024,
+            "camera": {
+              "view": "three_quarter",
+              "forward": [
+                -0.62,
+                1.0,
+                -0.36
+              ],
+              "up": [
+                0.0,
+                0.0,
+                1.0
+              ],
+              "projection": "perspective",
+              "framing": {
+                "min": [
+                  -414.298,
+                  -481.798,
+                  -2.18
+                ],
+                "max": [
+                  414.298,
+                  346.798,
+                  545.0
+                ]
+              },
+              "size": [
+                1024,
+                1024
+              ],
+              "style": "sketch"
+            }
+          },
+          "silhouettes": {
+            "front": "ckp_04b423d0dfa0_o1_sil_front",
+            "side": "ckp_04b423d0dfa0_o1_sil_side"
+          },
+          "massing_size_mm": [
+            220.0,
+            735.0,
+            545.0
+          ]
+        },
+        {
+          "name": "Honest",
+          "mood": [
+            "plain",
+            "light",
+            "cheap"
+          ],
+          "proportion_note": "body 500 mm, legs 280 mm",
+          "cmf": [
+            {
+              "name": "Shell",
+              "color": "#efeee9",
+              "finish": "gloss"
+            },
+            {
+              "name": "Joints",
+              "color": "#2b2d31",
+              "finish": "matte"
+            }
+          ],
+          "tradeoffs": {
+            "mass_delta": "0%",
+            "part_count": 14,
+            "molding": "flat panels",
+            "cost_tier": "$",
+            "risk": "hip cover pinch at full flexion",
+            "gives_up": ""
+          },
+          "recommended": false,
+          "reason": "",
+          "baseline": true,
+          "callouts": [],
+          "sketch": {
+            "view": "three_quarter",
+            "label": "3/4 front",
+            "render_id": "ckp_04b423d0dfa0_o2_three_quarter",
+            "width": 1024,
+            "height": 1024,
+            "camera": {
+              "view": "three_quarter",
+              "forward": [
+                -0.62,
+                1.0,
+                -0.36
+              ],
+              "up": [
+                0.0,
+                0.0,
+                1.0
+              ],
+              "projection": "perspective",
+              "framing": {
+                "min": [
+                  -362.896,
+                  -430.396,
+                  -1.94
+                ],
+                "max": [
+                  362.896,
+                  295.396,
+                  485.0
+                ]
+              },
+              "size": [
+                1024,
+                1024
+              ],
+              "style": "sketch"
+            }
+          },
+          "silhouettes": {
+            "front": "ckp_04b423d0dfa0_o2_sil_front",
+            "side": "ckp_04b423d0dfa0_o2_sil_side"
+          },
+          "massing_size_mm": [
+            220.0,
+            635.0,
+            485.0
+          ]
+        }
+      ],
+      "chosen": null,
+      "project_id": "8cdd4b2d5e98",
+      "build_id": "8cdd4b2d5e98",
+      "created_at": 1793416753.8019571
+    }
+  ]
+}

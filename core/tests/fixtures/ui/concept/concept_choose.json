@@ -1,0 +1,36 @@
+{
+  "concept": {
+    "project_id": "8cdd4b2d5e98",
+    "status": "sketching",
+    "sketch_ids": [],
+    "chosen_option": "Companion's body + Athlete's legs",
+    "pitch_ids": [
+      "ckp_04b423d0dfa0"
+    ],
+    "approved_sketch_id": null,
+    "updated_at": 1793416753.909059
+  },
+  "chosen": {
+    "option": null,
+    "mix": [
+      {
+        "option": "Companion",
+        "take": "body",
+        "comment": ""
+      },
+      {
+        "option": "Athlete",
+        "take": "legs",
+        "comment": ""
+      }
+    ],
+    "comment": "keep it under 6 kg",
+    "label": "Companion's body + Athlete's legs"
+  },
+  "sent": {
+    "run_id": "6eff9947acf0",
+    "queued": false,
+    "position": null,
+    "message_id": null
+  }
+}
