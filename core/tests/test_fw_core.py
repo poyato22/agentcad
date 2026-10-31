@@ -45,6 +45,19 @@ def test_every_builtin_agent_can_read_the_jobs_it_starts():
                     f"job's finish note would point at a tool it does not have")
 
 
+def test_stopping_the_lead_does_not_cancel_a_user_started_generative_run():
+    # B3 follow-up (FW-core): composer Stop cancels the lead run's family of background jobs; a
+    # generative run the user started on their own (run_id = the build's ui run, not a descendant
+    # of the lead) must keep going.
+    jobs.reset_for_tests()
+    agent = jobs.register(jobs.Job(id="to_a", kind="topopt", run_id="lead"))
+    user = jobs.register(jobs.Job(id="to_u", kind="topopt", run_id="ui_run"))
+    jobs.cancel_run({"lead"})                       # Stop reaches only the lead's family
+    assert agent.stopped is True and user.stopped is False
+    assert [j.id for j in jobs.outstanding({"ui_run"})] == ["to_u"]
+    jobs.reset_for_tests()
+
+
 def test_a_routed_lead_has_the_present_tools_its_prompt_names():
     # FW-core M-2: LEAD_PROMPT tells every lead to present_view motion/sweeps; the router can pick
     # `sim` as the lead, whose own tools omit present_view. The lead must still be offered it.

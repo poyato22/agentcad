@@ -696,6 +696,9 @@ async def start(ctx, args: TopoptRunArgs, tool: str) -> dict:
                        label=f"generative design of {args.part_id}", task=_active[tid],
                        cancel=lambda: cancel(tid), build_id=project_id, part_id=args.part_id,
                        scope=[args.part_id]))
+    # a job-list refresh on start, the counterpart to topopt_finished, so the Simulations stream
+    # shows the new generative run at once (B3 follow-up, core side)
+    _publish(events, rec, "topopt_progress", {"status": rec["status"], "started": True})
     return rec
 
 
