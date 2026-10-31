@@ -17,10 +17,11 @@ test.describe("drawing import from Home", () => {
   });
 
   for (const file of [{ name: "plate_vector.pdf", kind: "PDF", text: /PDF text/ }, { name: "plate_drawing.png", kind: "PNG", text: /only the model's reading was checked/ }]) {
-    test(`a ${file.kind} from the Home tile makes a part, shown full width, and Open part goes to it`, async ({ page, fake }) => {
+    test(`a ${file.kind} from Home's Import drawing… makes a part, shown full width, and Open part goes to it`, async ({ page, fake }) => {
       await page.goto("/");
       await expect(page.locator('[data-testid="home"]')).toBeVisible();
-      await page.locator("[data-drawing-drop=tile] [data-drawing-input]").setInputFiles({
+      // review m1: Home's header "Import drawing…" (the grid holds only builds)
+      await page.locator(".home-bar [data-drawing-input]").setInputFiles({
         name: file.name, mimeType: file.kind === "PDF" ? "application/pdf" : "image/png", buffer: readFileSync(resolve(DRAWINGS, file.name)),
       });
       const card = page.locator(".home-imports .imp-card").first();
