@@ -86,7 +86,10 @@ class Mesh:
     role: str = ""                     # "figure": the sketch's human-scale figure
 
     def __post_init__(self) -> None:
-        self.tris = np.asarray(self.tris, dtype=np.float64).reshape(-1, 3, 3)
+        # float32 (what STL stores) is kept as is: half the memory of float64 for meshes up to
+        # MAX_TRIANGLES; every computation upcasts per batch
+        dt = np.float32 if getattr(self.tris, "dtype", None) == np.float32 else np.float64
+        self.tris = np.asarray(self.tris, dtype=dt).reshape(-1, 3, 3)
 
     def centroid(self) -> np.ndarray:
         if len(self.tris) == 0:
@@ -129,7 +132,8 @@ def load_stl(data: bytes) -> np.ndarray:
 def clean_triangles(tris: np.ndarray) -> tuple[np.ndarray, int]:
     """(triangles with every non-finite or far-outlier vertex dropped, how many were dropped).
     One NaN or 1e38 vertex would otherwise blank the whole render silently."""
-    tris = np.asarray(tris, dtype=np.float64).reshape(-1, 3, 3)
+    dt = np.float32 if getattr(tris, "dtype", None) == np.float32 else np.float64
+    tris = np.asarray(tris, dtype=dt).reshape(-1, 3, 3)
     if len(tris) == 0:
         return tris, 0
     # chunked, and no copy when nothing is dropped: the mesh may be MAX_TRIANGLES big and the
@@ -171,7 +175,8 @@ def _load_binary_stl(data: bytes) -> np.ndarray:
         raise ValueError("binary STL triangle count does not match its length")
     # 50-byte records: normal (3 f32), 3 vertices (9 f32), attribute (u16); vertices only
     rec = np.dtype([("n", "<f4", (3,)), ("v", "<f4", (3, 3)), ("a", "<u2")])
-    return np.frombuffer(data, dtype=rec, count=n, offset=84)["v"].astype(np.float64)
+    # float32 as stored (a copy, so the STL bytes can be freed)
+    return np.frombuffer(data, dtype=rec, count=n, offset=84)["v"].astype(np.float32)
 
 
 def _load_ascii_stl(data: bytes) -> np.ndarray:
@@ -851,7 +856,7 @@ def _shadow_light(cam: _Cam) -> np.ndarray:
 
 
 _SHADOW_MAP = 384
-_RAY_CHUNK = 262_144               # ground rays per batch
+_RAY_CHUNK = 65_536                # ground rays per batch
 
 
 def _ground_shadow(meshes: list[Mesh], cam: _Cam, framing) -> np.ndarray | None:
@@ -864,7 +869,6 @@ def _ground_shadow(meshes: list[Mesh], cam: _Cam, framing) -> np.ndarray | None:
     lo, hi = (np.asarray(framing[0], dtype=np.float64), np.asarray(framing[1], dtype=np.float64))
     z0 = float(lo[2])
     S = cam.size
-    gy, gx = np.divmod(np.arange(S * S, dtype=np.int32), S)
     # can the camera see the ground anywhere? (the frame corners bound every ray)
     _o, dc = cam.rays(np.array([0.0, S, 0.0, S]), np.array([0.0, 0.0, S, S]))
     if not (dc[:, 2] < -1e-4).any():
@@ -886,8 +890,9 @@ def _ground_shadow(meshes: list[Mesh], cam: _Cam, framing) -> np.ndarray | None:
     occl = 1.0 - (1.0 - 0.30 * wide) * (1.0 - 0.60 * tight)
     out = np.zeros(S * S, dtype=np.float32)
     for r0 in range(0, S * S, _RAY_CHUNK):
-        idx = np.arange(r0, min(S * S, r0 + _RAY_CHUNK))
-        o, d = cam.rays(gx[idx] + 0.5, gy[idx] + 0.5)
+        idx = np.arange(r0, min(S * S, r0 + _RAY_CHUNK), dtype=np.int32)
+        gy, gx = np.divmod(idx, S)
+        o, d = cam.rays(gx + 0.5, gy + 0.5)
         down = d[:, 2] < -1e-4
         t = (z0 - o[down, 2]) / d[down, 2]
         ahead = t > 0
@@ -1025,7 +1030,7 @@ def _style_pixels(style: str, fr: _Frame, cam: _Cam, tri_at: np.ndarray, framing
                   else _BG, dtype=np.float32) / 255.0
     rgb = np.empty((S * S, 3), dtype=np.float32)
     rgb[:] = bg
-    covered = np.flatnonzero(tri_at >= 0)
+    covered = np.flatnonzero(tri_at >= 0).astype(np.int32)
     mid_flat = np.full(S * S, -1, dtype=np.int32)
     mid_flat[covered] = fr.mesh_of[tri_at[covered]]
     mid = mid_flat.reshape(S, S)
@@ -1045,7 +1050,7 @@ def _style_pixels(style: str, fr: _Frame, cam: _Cam, tri_at: np.ndarray, framing
     rough_of = np.array([m.roughness for m in live], dtype=np.float32)
     metal_of = np.array([m.metalness for m in live], dtype=np.float32)
     paper = np.array(_PAPER, dtype=np.float32) / 255.0
-    img_n = np.zeros((S * S, 3), dtype=np.float32)
+    img_n = np.zeros((S * S, 3), dtype=np.float16)   # enough for a 35 deg crease test
     zl = np.full(S * S, np.inf, dtype=np.float32)
     dark = np.zeros(S * S, dtype=bool) if style == "sketch" else None
     for c0 in range(0, len(covered), _PIX_CHUNK):
@@ -1122,12 +1127,16 @@ def _render_styled(meshes: list[Mesh], view: str, size: int, framing, cameras: d
             if style == "sketch":
                 sh = sh * 0.6
             sh = np.repeat(np.repeat(sh, ss, axis=0), ss, axis=1)
-            bgm = ~mask
+            sh[mask] = 0.0                       # the model covers its own shadow
             if background == "transparent":
-                rgb[bgm] = 0.0
-                alpha[bgm] = sh[bgm]
+                for ch in range(3):              # per channel: no HxWx3 temporaries
+                    rgb[..., ch] *= mask
+                alpha += sh
             else:
-                rgb[bgm] *= (1.0 - sh[bgm])[:, None]
+                np.subtract(1.0, sh, out=sh)
+                for ch in range(3):
+                    rgb[..., ch] *= sh
+            del sh
     if style == "shaded":
         strong = lines["silhouette"] | lines["contour"]
         ink = np.maximum(0.80 * shade.soft(strong, 1.0 * lp), 0.30 * shade.soft(lines["crease"],
@@ -1167,8 +1176,8 @@ def _render_styled(meshes: list[Mesh], view: str, size: int, framing, cameras: d
     if ss > 1:
         if background == "transparent":
             rgb *= alpha[..., None]                  # premultiply, then box-filter
-        rgb = rgb.reshape(size, ss, size, ss, 3).mean(axis=(1, 3), dtype=np.float32)
-        alpha = alpha.reshape(size, ss, size, ss).mean(axis=(1, 3), dtype=np.float32)
+        rgb = _box_down(rgb, ss)
+        alpha = _box_down(alpha, ss)
         if background == "transparent":
             rgb /= np.maximum(alpha, 1e-6)[..., None]
     if background == "transparent":
@@ -1178,6 +1187,17 @@ def _render_styled(meshes: list[Mesh], view: str, size: int, framing, cameras: d
     else:
         out = rgb
     return (np.clip(out, 0.0, 1.0) * 255.0 + 0.5).astype(np.uint8)
+
+
+def _box_down(a: np.ndarray, ss: int) -> np.ndarray:
+    """Average ss x ss pixel blocks by strided adds (no reshaped full-size copy)."""
+    out = a[0::ss, 0::ss].astype(np.float32)
+    for dy in range(ss):
+        for dx in range(ss):
+            if dy or dx:
+                out += a[dy::ss, dx::ss]
+    out /= ss * ss
+    return out
 
 
 def dilate_mask(mask: np.ndarray, r: float) -> np.ndarray:
@@ -1260,11 +1280,15 @@ def render_views(meshes, *, views=DEFAULT_VIEWS, size: int = 512,
                  section: tuple | None = None, explode: float = 0.0,
                  transparent: bool = False, cameras: dict | None = None,
                  style: str = "shaded", perspective: bool = False, shadow: bool = True,
-                 background: str = "flat", figure: bool = False) -> dict[str, bytes]:
+                 background: str = "flat", figure: bool = False,
+                 cameras_out: dict | None = None) -> dict[str, bytes]:
     """Render `meshes` (a Mesh, a triangles array, or a list of them) from each named view.
 
-    Returns {view_name: PNG bytes}, each under 1 MB. `section` is (origin, normal): the +normal
-    half is cut away. `explode` > 0 separates multiple meshes. `transparent` composites with
+    Returns {view_name: PNG bytes}, each under 1 MB. A mesh over SMOOTH_MAX_TRIANGLES asked
+    for more than LARGE_MESH_MAX_SIZE px renders at LARGE_MESH_MAX_SIZE (the memory budget);
+    `cameras_out`, when given, receives each view's camera (camera_info) including the size
+    actually rendered, so pixels map back to 3D whatever happened. `section` is (origin,
+    normal): the +normal half is cut away. `explode` > 0 separates multiple meshes. `transparent` composites with
     each mesh's opacity (x-ray). `cameras` adds named views: {name: (forward, up)}.
 
     `style`: "shaded" (smooth crease-split normals, per-mesh colour/roughness/metalness, studio
@@ -1283,6 +1307,7 @@ def render_views(meshes, *, views=DEFAULT_VIEWS, size: int = 512,
         ms = [replace(m, tris=section_mesh(m.tris, o, n)) for m in ms]
     framing = bbox(ms)
     normals = None if transparent else _mesh_normals(ms, style)
+    size = effective_size(sum(len(m.tris) for m in ms), size)
     out: dict[str, bytes] = {}
     for view in views:
         _camera(view, cameras)                        # unknown or malformed: ValueError
@@ -1299,7 +1324,33 @@ def render_views(meshes, *, views=DEFAULT_VIEWS, size: int = 512,
                           perspective=persp, shadow=shadow, background=background,
                           normals=cn)
         out[view] = _to_png(arr)
+        if cameras_out is not None:
+            cameras_out[view] = camera_info(_make_cam(view, size, frame, cameras, persp))
     return out
+
+
+# Above SMOOTH_MAX_TRIANGLES a render asked for more than this many px is made at this size:
+# measured peak worker RSS then stays <= 768 MB (25% under the 1 GB cap) in every style.
+LARGE_MESH_MAX_SIZE = 1280
+
+
+def effective_size(n_triangles: int, size: int) -> int:
+    """The edge actually rendered for a request of `size` px of `n_triangles` triangles."""
+    if n_triangles > SMOOTH_MAX_TRIANGLES and size > LARGE_MESH_MAX_SIZE:
+        return LARGE_MESH_MAX_SIZE
+    return int(size)
+
+
+def camera_info(cam: _Cam) -> dict:
+    """A view's camera as plain data, enough to map an image pixel (x right, y down, origin
+    top-left) back to a 3D ray: pixel = size/2 + (s - s0) * scale_px, where s is (p - center)
+    projected on right/up (orthographic) or on right/up over the depth along forward from
+    `eye` (perspective)."""
+    return {"size": int(cam.size), "perspective": bool(cam.persp),
+            "forward": [float(x) for x in cam.f], "right": [float(x) for x in cam.right],
+            "up": [float(x) for x in cam.up], "center": [float(x) for x in cam.center],
+            "eye": [float(x) for x in cam.eye] if cam.persp else None,
+            "scale_px": float(cam.k), "screen_center": [float(cam.xs0), float(cam.ys0)]}
 
 
 def render_mask(meshes, view: str, *, size: int = 512,

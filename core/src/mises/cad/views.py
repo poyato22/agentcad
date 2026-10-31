@@ -353,7 +353,9 @@ def _dropped_warning(out: RenderOut) -> list[str]:
     if out.triangles > render_mod.SMOOTH_MAX_TRIANGLES:
         warn.append(f"{out.triangles} triangles (over {render_mod.SMOOTH_MAX_TRIANGLES}): "
                     "shaded with flat facets and no anti-aliasing to stay in the render "
-                    "memory budget; faceting here is the renderer, not the geometry")
+                    "memory budget; faceting here is the renderer, not the geometry; images "
+                    f"over {render_mod.LARGE_MESH_MAX_SIZE} px are rendered at "
+                    f"{render_mod.LARGE_MESH_MAX_SIZE} px (see data.size / cameras)")
     return warn
 
 
@@ -542,8 +544,11 @@ async def render_views(ctx: ToolContext, args: RenderViewsArgs) -> ToolOutput:
     note = " (section)" if args.section else (" (x-ray)" if args.transparent else "")
     if args.style != "shaded":
         note += f" ({args.style})"
+    cams = out.cameras.get("rv") or {}
+    actual = max((c["size"] for c in cams.values()), default=args.size)
     data = {"parts": part_ids, "views": handles, "render_ids": render_ids(handles),
-            "size": args.size, "naming": args.naming, "view_axes": where,
+            "size": actual, "requested_size": args.size, "cameras": cams,
+            "naming": args.naming, "view_axes": where,
             "style": args.style, "perspective": args.perspective,
             "instances": len(shown)}
     images: list[ToolImage] = []

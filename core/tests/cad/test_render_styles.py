@@ -356,3 +356,42 @@ def test_hero_view_is_a_low_three_quarter_in_perspective():
     assert (hero == persp).all()                          # hero is always perspective
     png = render.render_views(both, views=("hero",), size=128)["hero"]
     assert _rgb(png).shape[:2] == (128, 128)
+
+
+def _project_with(info: dict, pts: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Pixel coordinates of world points from camera_info, by its documented formula."""
+    f, r, u = (np.asarray(info[k]) for k in ("forward", "right", "up"))
+    if info["perspective"]:
+        d = pts - np.asarray(info["eye"])
+        z = d @ f
+        xs, ys = (d @ r) / z, (d @ u) / z
+    else:
+        d = pts - np.asarray(info["center"])
+        xs, ys = d @ r, d @ u
+    h, k = info["size"] / 2.0, info["scale_px"]
+    x0, y0 = info["screen_center"]
+    return h + (xs - x0) * k, h - (ys - y0) * k
+
+
+@pytest.mark.parametrize("view", ["iso", "hero", "front"])
+def test_camera_info_maps_world_points_to_the_rendered_pixels(view):
+    box = _box_tris(40, 20, 30, center=(5, -3, 15))
+    cams: dict = {}
+    render.render_views(Mesh(box), views=(view,), size=200, cameras_out=cams)
+    info = cams[view]
+    px, py = _project_with(info, box.reshape(-1, 3))
+    ys, xs = np.nonzero(render.render_mask(Mesh(box), view, size=200))
+    assert abs(px.min() - xs.min()) <= 1.5 and abs(px.max() - (xs.max() + 1)) <= 1.5
+    assert abs(py.min() - ys.min()) <= 1.5 and abs(py.max() - (ys.max() + 1)) <= 1.5
+
+
+def test_huge_meshes_render_at_most_large_mesh_max_size(monkeypatch):
+    body = Mesh(_ellipse_loft())
+    monkeypatch.setattr(render, "SMOOTH_MAX_TRIANGLES", len(body.tris) - 1)
+    assert render.effective_size(len(body.tris), 2048) == render.LARGE_MESH_MAX_SIZE
+    assert render.effective_size(len(body.tris), 1024) == 1024
+    assert render.effective_size(10, 2048) == 2048
+    cams: dict = {}
+    png = render.render_views(body, views=("hero",), size=2048, cameras_out=cams)["hero"]
+    edge = render.LARGE_MESH_MAX_SIZE
+    assert _rgb(png).shape[:2] == (edge, edge) and cams["hero"]["size"] == edge

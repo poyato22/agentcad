@@ -82,7 +82,7 @@ def unit_normals(tris: np.ndarray) -> np.ndarray:
     """(N, 3) float32 unit face normals, computed in bounded batches."""
     out = np.empty((len(tris), 3), dtype=np.float32)
     for s in range(0, len(tris), _TRI_CHUNK):
-        t = tris[s:s + _TRI_CHUNK]
+        t = np.asarray(tris[s:s + _TRI_CHUNK], dtype=np.float64)
         out[s:s + _TRI_CHUNK] = face_normals(t)[1]
     return out
 
@@ -91,7 +91,7 @@ def corner_angles(tris: np.ndarray) -> np.ndarray:
     """(N, 3) float32 interior angle (radians) of each triangle at each corner."""
     out = np.empty(tris.shape[:2], dtype=np.float32)
     for s in range(0, len(tris), _TRI_CHUNK):
-        t = tris[s:s + _TRI_CHUNK]
+        t = np.asarray(tris[s:s + _TRI_CHUNK], dtype=np.float64)
         for k in range(3):
             a = t[:, (k + 1) % 3] - t[:, k]
             b = t[:, (k + 2) % 3] - t[:, k]
