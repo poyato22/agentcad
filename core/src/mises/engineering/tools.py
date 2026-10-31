@@ -730,7 +730,7 @@ async def study_run(ctx: ToolContext, args: StudyRunArgs) -> ToolOutput:
     job = jobs.start(ctx, "design_study", study_id, f"design study of {args.part_id}", body,
                      timeout_s=STUDY_TOOL_TIMEOUT_S,
                      data=lambda out: {"part_id": args.part_id, "study_id": study_id})
-    job.scope = [args.part_id]
+    job.scope, job.part_id = [args.part_id], args.part_id
     return ToolOutput(summary=f"design study {study_id} of {args.part_id} started in the "
                               f"background (up to {budget.evals} variants); you get a note when "
                               "it finishes. Keep working; read it with study_get or job_wait.",

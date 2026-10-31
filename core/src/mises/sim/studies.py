@@ -828,7 +828,7 @@ async def run_study(ctx, type_id: str, part_id: str | None, part_dir: Path | Non
     from .. import jobs
     limit = background_timeout_s or _tools_attr("SIM_RUN_TIMEOUT_S", 4 * 3600.0)
     job = jobs.Job(id=sim_id, kind="sim", run_id=rec["run_id"], label=_label(rec),
-                   cancel=lambda: cancel(sim_id), build_id=build_of(ctx, rec))
+                   cancel=lambda: cancel(sim_id), build_id=build_of(ctx, rec), part_id=part_id)
 
     async def background() -> None:
         sup = asyncio.ensure_future(supervise())

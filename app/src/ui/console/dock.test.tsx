@@ -5,9 +5,12 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CoreClient } from "../../api/client";
+import type { BackgroundJob } from "../../api/jobs";
 import { stepSchema } from "../../api/schemas";
 import type { AgentRun, Step } from "../../api/types";
 import { recordActivity, resetActivity } from "../../state/activity";
+import { activeBuildId } from "../../state/builds";
+import { liveJobs, onJobEvent, resetJobs } from "../../state/jobs";
 import { bindClient, resetStore, runs, selectedRunId, steps } from "../../state/store";
 import { resetCatalog } from "../dialogs/catalog";
 import { ConsolePane } from "./ConsolePane";
@@ -165,5 +168,57 @@ describe("composer: send turns into Stop while the agents work (Plan 9 D2)", () 
     expect(send.hasAttribute("disabled")).toBe(true);               // nothing typed yet
     await act(async () => { fireEvent.keyDown(box, { key: "Escape" }); });
     expect(c.cancel).not.toHaveBeenCalled();                        // Esc stops only a busy run
+  });
+});
+
+// Plan 9 B3 fix round 2: an agent's background job (the real core's dump of a lead whose sim_run
+// returned at once, GET /jobs while it ran) keeps the build busy and has its own Stop.
+describe("agent dock: background jobs", () => {
+  const P9 = resolve(FX, "p9");
+  const BG = parse(resolve(P9, "streams_steps.json")).map((s) => ({ ...s, run_id: RID, id: s.id + 20_000 }));
+  const [JOB] = JSON.parse(readFileSync(resolve(P9, "streams_jobs.json"), "utf8")) as BackgroundJob[];
+  const simId = (BG.find((s) => s.kind === "tool_result" && s.payload.name === "sim_run")?.payload.output as { data: { sim_id: string } }).data.sim_id;
+  const live = (): BackgroundJob => ({ ...JOB, job_id: simId, cancel_url: `/jobs/${simId}/cancel`, run_id: RID, build_id: "b1" });
+
+  afterEach(() => { resetJobs(); activeBuildId.value = null; });
+
+  it("the running study's card has a Stop that cancels that one job", async () => {
+    const { c } = mount(BG);
+    const cancelJob = vi.fn().mockResolvedValue({ job_id: simId, status: "cancelling" });
+    Object.assign(c, { cancelJob });
+    activeBuildId.value = "b1";
+    liveJobs.value = [live()];
+    await frame();
+    const stop = section("sim").querySelector(`[data-job-stop="${simId}"]`) as HTMLButtonElement;
+    expect(stop?.textContent).toBe("Stop");
+    await act(async () => { fireEvent.click(stop); });
+    expect(cancelJob).toHaveBeenCalledWith(simId);
+    expect(c.cancel).not.toHaveBeenCalled();                        // the agent keeps working
+    expect((section("sim").querySelector(`[data-job-stop="${simId}"]`) as HTMLButtonElement).disabled).toBe(true);
+    // sim_finished: the job is gone, so is its Stop
+    await act(async () => { onJobEvent({ type: "sim_finished", run_id: RID, ts: 0, data: { job_id: simId, status: "cancelled" } }); });
+    expect(section("sim").querySelector("[data-job-stop]")).toBeNull();
+  });
+
+  it("an idle lead with a live job: the composer shows Stop, and Stop / Esc cancel the job", async () => {
+    const { c } = mount(BG, { status: "done" });                    // its turn has ended
+    await frame();
+    expect(screen.queryByTestId("composer-stop")).toBeNull();      // nothing runs yet
+    const cancelJob = vi.fn().mockResolvedValue({ job_id: simId, status: "cancelling" });
+    Object.assign(c, { cancelJob });
+    activeBuildId.value = "b1";
+    liveJobs.value = [live()];
+    await frame();
+    await act(async () => { fireEvent.click(screen.getByTestId("composer-stop")); });
+    expect(cancelJob).toHaveBeenCalledWith(simId);
+    cancelJob.mockClear();
+    await act(async () => { fireEvent.keyDown(screen.getByRole("textbox", { name: "Command line" }), { key: "Escape" }); });
+    expect(cancelJob).toHaveBeenCalledWith(simId);
+    // another build's job does not make this one busy
+    resetJobs();
+    liveJobs.value = [{ ...live(), build_id: "other" }];
+    await frame();
+    expect(screen.queryByTestId("composer-stop")).toBeNull();
+    expect(screen.getByTestId("composer-send")).toBeTruthy();
   });
 });

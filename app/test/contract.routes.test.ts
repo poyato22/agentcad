@@ -328,6 +328,8 @@ const COVERAGE: Record<string, string> = {
   "POST /sims/materials": "study_material_add.json", // contract.studies.test.ts (Task A8)
   "POST /sims/templates": "study_template_add.json", // contract.studies.test.ts (Task A8)
   "POST /sims/{sim_id}/cancel": "study_cancel.json", // contract.studies.test.ts (Task A8)
+  // Plan 9 B3: an agent's background jobs (contract.jobs.test.ts)
+  "GET /jobs": "p9/streams_jobs.json", "POST /jobs/{job_id}/cancel": "p9/streams_job_cancel.json",
   // Plan 6 S3: core/scripts/dump_s3_fixtures.py; contract.studies.test.ts (S4 fix round 1)
   "GET /sims/calibrations": "s3_cal_list.json",
   "POST /sims/calibrations/fit": "s3_cal_fit.json",

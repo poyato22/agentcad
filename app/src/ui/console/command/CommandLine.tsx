@@ -11,7 +11,7 @@ import { actions, corePid, filter, follow, runs, sessionRuns, type LogFilter } f
 import { stopAll } from "../../topbar/stopAll";
 import { followLead, leadUnreachable, NEW_LEAD_NOTE } from "../leadFollow";
 import { shownPending } from "../queued";
-import { busyRuns, stopBusy } from "../stopTarget";
+import { stopBusy, stoppable as anyStoppable } from "../stopTarget";
 import { allTargets } from "./isExternal";
 import { parseCommand, type Command } from "./parseCommand";
 import "./command.css";
@@ -50,8 +50,9 @@ export function CommandLine(): JSX.Element {
   // right after a new lead took over still has a target)
   const selected = effectiveRun.value ?? shownPending.value ?? undefined;
   const chip = chipText(parsed, selected, allRuns, corePid.value);
-  // the send button is Stop while the build's lead (or a sub-agent) works (Plan 9 D2)
-  const stoppable = busyRuns.value.length > 0;
+  // the send button is Stop while the build's lead (or a sub-agent) works (Plan 9 D2), or while
+  // a background study / review the agents started still runs (B3)
+  const stoppable = anyStoppable.value;
 
   async function execute(cmd: Command): Promise<boolean> {
     if (cmd.kind === "invalid") { setError(cmd.reason); return false; }

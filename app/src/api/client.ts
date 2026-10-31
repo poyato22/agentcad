@@ -28,6 +28,7 @@ import {
   type StudySection, type StudySolvers, type StudyStartBody, type StudySummary, type StudyTemplate, type StudyType, type StudyTypeInfo,
 } from "./studies";
 import { studiesContextSchema, type StudiesContext } from "./studiesAgent";
+import { backgroundJobSchema, jobCancelSchema, type BackgroundJob, type JobCancel } from "./jobs";
 import type {
   AgentDefBody, AgentDetail, AgentInfo, AgentRun, Approval, CancelAllResult, ClaudeCodeStatus, CleanupBody, CleanupResult, CoreInfo, CoreStatusInfo, DecisionBody, DeleteRefused, ErrorCode, KeyStatus, LocalActionResult, LocalStatus, LocalTestResult,
   AgentsView, CreateRunResult, ModelsInfo, NewRunBody, OnshapeTestResult, PartSummary, Profile, ProfilePatch, Question, RunNode, RunPatch, SetupState, SketchSummary, SketchUpload, Step,
@@ -284,6 +285,12 @@ export class CoreClient {
   cancelStudy(simId: string): Promise<{ sim_id: string; status: "cancelling" }> {
     return this.json("POST", `/sims/${enc(simId)}/cancel`, studyCancelSchema);
   }
+  /** Plan 9 D4: an agent's running background jobs (studies, reviews, design studies). */
+  listJobs(projectId?: string | null): Promise<BackgroundJob[]> {
+    return this.json("GET", "/jobs", z.array(backgroundJobSchema), { query: { project_id: projectId ?? undefined } });
+  }
+  /** Stop one background job; its agent gets no turn for it (the note rides along later). */
+  cancelJob(jobId: string): Promise<JobCancel> { return this.json("POST", `/jobs/${enc(jobId)}/cancel`, jobCancelSchema); }
   studyCharts(simId: string): Promise<StudyCharts> { return this.json("GET", `/sims/${enc(simId)}/charts`, studyChartsSchema); }
   studyProbe(simId: string, p: readonly [number, number, number]): Promise<StudyProbe> {
     return this.json("GET", `/sims/${enc(simId)}/probe`, studyProbeSchema, { query: { x: p[0], y: p[1], z: p[2] } });

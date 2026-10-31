@@ -39,6 +39,7 @@ class Job:
     label: str = ""                # "static study of beam", shown in the note
     scope: list = field(default_factory=list)   # scope keys whose readers may read it
     build_id: str | None = None
+    part_id: str | None = None
     task: asyncio.Future | None = None
     cancel: Callable[[], None] | None = None
     status: str = "running"
@@ -113,7 +114,7 @@ def running() -> list[Job]:
 def view(job: Job) -> dict:
     """A job as GET /jobs lists it (the app's Simulations stream and its Stop buttons)."""
     return {"job_id": job.id, "kind": job.kind, "run_id": job.run_id, "build_id": job.build_id,
-            "label": job.label, "status": job.status, "started_at": job.started_at,
+            "part_id": job.part_id, "label": job.label, "status": job.status, "started_at": job.started_at,
             "cancel_url": cancel_url(job.id)}
 
 

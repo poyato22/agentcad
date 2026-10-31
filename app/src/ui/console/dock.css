@@ -80,6 +80,9 @@
 /* ---- Simulations stream: one card per study, running first */
 .ss { display: flex; flex-direction: column; gap: 8px; padding: 0 12px 10px; }
 .ss-item .scard-slot { margin: 0; }
+.ss-head { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
+.ss-head .dock-run { flex: 1; min-width: 0; }
+.ss-stop { padding: 1px 8px; font-size: 11px; line-height: 16px; flex: none; }
 .ss-item > .cv-line { padding-left: 0; padding-right: 0; }
 
 @media (prefers-reduced-motion: reduce) { .dock-dot { animation: none; } }

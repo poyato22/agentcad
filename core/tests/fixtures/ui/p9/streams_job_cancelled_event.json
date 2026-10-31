@@ -1,18 +1,18 @@
 {
   "type": "sim_finished",
-  "run_id": "7a9a9e61222e",
+  "run_id": "ab2d326b70fa",
   "data": {
     "kind": "sim",
-    "job_id": "sim_82c852d78118",
-    "run_id": "7a9a9e61222e",
-    "build_id": "f66116bf50f2",
+    "job_id": "sim_767d28cf0196",
+    "run_id": "ab2d326b70fa",
+    "build_id": "b8d386f729a4",
     "status": "cancelled",
     "summary": "static study of beam was cancelled by the user",
-    "cancel_url": "/jobs/sim_82c852d78118/cancel",
-    "sim_id": "sim_82c852d78118",
+    "cancel_url": "/jobs/sim_767d28cf0196/cancel",
+    "sim_id": "sim_767d28cf0196",
     "type": "static",
     "part_id": "beam"
   },
-  "ts": 1793426061.5003362,
+  "ts": 1793426272.703501,
   "stream": "sim"
 }

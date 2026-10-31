@@ -826,7 +826,7 @@ async def design_review(ctx: ToolContext, args: ReviewArgs) -> ToolOutput:
                      data=lambda out: {"part_id": args.part_id,
                                        "verdict": (out.data or {}).get("verdict")
                                        if out is not None else None})
-    job.scope = [args.part_id]
+    job.scope, job.part_id = [args.part_id], args.part_id
     return ToolOutput(summary=f"design review {review_id} of {args.part_id} started in the "
                               f"background ({len(plan)} studies, {GUIDE_LABEL}); you get a note "
                               "when it finishes. Keep working; read it with design_review_get "

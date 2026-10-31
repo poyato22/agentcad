@@ -28,6 +28,7 @@ import { studiesAgentRoutes, type StudiesAgentMode } from "./studiesAgent";
 import { importRoutes, parseMultipart, type FakeImport } from "./imports";
 import { specFrom, specRoutes, type FakeSpec, type SpecScenario } from "./spec";
 import { streamOf } from "./streams";
+import type { BackgroundJob } from "../../src/api/jobs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const SCENARIO_DIR = resolve(HERE, "scenarios");
@@ -129,6 +130,8 @@ export interface Scenario {
   studies_agent?: StudiesAgentMode;
   /** Plan 9 G-A: the concept stage (pitch, sketch versions), from the real core's dump. */
   concept?: ConceptScenario;
+  /** Plan 9 B3: an agent's running background jobs (GET /jobs; POST /jobs/{id}/cancel). */
+  jobs?: BackgroundJob[];
 }
 
 /** A GET /tools row, as core server/app.py list_tools answers it. */
@@ -191,6 +194,9 @@ export interface FakeState {
   tools: FakeTool[] | null;
   /** Plan 9 U-D: which proposals GET /studies/context serves. */
   studiesAgent: StudiesAgentMode;
+  /** Plan 9 B3: running background jobs, and the ids of those that ended (cancel: 409). */
+  jobs: BackgroundJob[];
+  jobsEnded: Set<string>;
 }
 
 export interface FakeCore {
@@ -265,6 +271,7 @@ function stateFrom(sc: Scenario, token: string): FakeState {
     spec: specFrom(sc.spec),
     browserBom: browserBomFrom(sc.browser),
     studiesAgent: sc.studies_agent ?? "rules",
+    jobs: structuredClone(sc.jobs ?? []), jobsEnded: new Set(),
     concept: conceptFrom(sc.concept ?? { start: "none" }, DEFAULT_PROJECT),
   };
 }
@@ -438,10 +445,22 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         // U3c: a lead's waiting messages are delivered at its turn boundary
         if (st !== "running" && leadQueues.has(r.id)) { const id = r.id; setTimeout(() => drainLead(id, st), 0); }
       }
+    } else if (ev.type === "sim_finished" && typeof d.job_id === "string") {
+      // like core jobs.finished: the job is no longer running
+      state.jobs = state.jobs.filter((j) => j.job_id !== d.job_id);
+      state.jobsEnded.add(d.job_id);
     } else if (ev.type === "run_started" && ev.run_id && d.resumed === true) {
       const r = state.runs.get(ev.run_id);
       if (r) state.runs.set(r.id, { ...r, status: "running", updated_at: now() });
     }
+  }
+
+  /** A background job ends: sim_finished, shaped like the real core's (jobs.finished). */
+  function endJob(j: BackgroundJob, status: string, summary: string): void {
+    if (!state.jobs.some((x) => x.job_id === j.job_id)) return;
+    emit({ type: "sim_finished", run_id: j.run_id, data: {
+      kind: j.kind, job_id: j.job_id, run_id: j.run_id, build_id: j.build_id, status, summary, cancel_url: j.cancel_url,
+      ...(j.kind === "sim" ? { sim_id: j.job_id, type: "static", part_id: j.part_id ?? null } : { part_id: j.part_id ?? null }) } });
   }
 
   function emit(evIn: EventIn, extras: EmitExtras = {}): { step_ids: number[] } {
@@ -851,7 +870,33 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       method: "POST", re: /^\/runs\/cancel_all$/, h: () => {
         const ids = [...state.runs.values()].filter((r) => r.status === "running").map((r) => r.id);
         ids.forEach(cancelRun);
+        // like the core (B3 N1): an idle agent's background jobs stop too, at their run
+        for (const j of [...state.jobs]) {
+          endJob(j, "cancelled", `${j.label || j.kind} cancelled`);
+          if (j.run_id && !ids.includes(j.run_id)) ids.push(j.run_id);
+        }
         return { cancelled: ids, failed: [] };
+      },
+    },
+    // ---- Plan 9 B3: an agent's background jobs (core server/sim_api.py)
+    {
+      method: "GET", re: /^\/jobs$/, h: (_m, q) => {
+        const pid = q.get("project_id");
+        return state.jobs.filter((j) => !pid || j.build_id === pid).sort((a, b) => b.started_at - a.started_at);
+      },
+    },
+    {
+      method: "POST", re: /^\/jobs\/([^/]+)\/cancel$/, h: (m) => {
+        const id = decodeURIComponent(m[1]);
+        if (!/^(sim|review|study)_[0-9a-f]{12}$/.test(id)) throw mises("invalid_input", `bad job id: '${id}'`, "sim_…, review_… or study_… ids");
+        const j = state.jobs.find((x) => x.job_id === id);
+        if (!j) {
+          if (state.jobsEnded.has(id)) throw new HttpError(409, { error: "not_running", status: "cancelled", message: `${id} is not running` });
+          throw mises("not_found", `no background job ${id} here`);
+        }
+        // a user-stopped job ends cancelled; its note starts no agent turn (the core defers it)
+        setTimeout(() => endJob(j, "cancelled", `${j.label || j.kind} was cancelled by the user`), 0);
+        return { job_id: id, status: "cancelling" };
       },
     },
     {
