@@ -102,6 +102,18 @@ Never approximate organic or aero shapes (wings, fuselages, flying wings, hulls,
 - `ms.vent_slots`: Cutting tool for a row of rounded vent slots; subtract it: `part - ms.vent_slots(...)`.
 - `ms.cable_path`: A cable/hose/wire harness: a round tube swept along a smooth spline through 3D points.
 - `ms.check_solid`: Validate a solid (is_valid, closed, volume > 0) and return it; raises ValueError otherwise.
+- `ms.squircle`: Closed smooth section (a Wire): superellipse |x/a|^n + |y/b|^n = 1 on `plane`.
+- `ms.station_loft`: A body or limb lofted through squircle stations along Z: [(z, half_w, half_d, n, dx, dy)].
+- `ms.skin_shell`: A cover shell: the station_loft minus the same loft inset by `wall`, trust()-checked.
+- `ms.tapered_capsule`: A G1 link between two joint spheres (r1 at start, r2 at end): use it, never a bar.
+- `ms.joint_cowl`: A revolved joint cover around an actuator on the X axis, open for the link's swing.
+- `ms.panel_split`: Split a cover into two panels with a real `gap` (mm) between them: (positive, negative).
+- `ms.clamshell`: Molded halves of a cover split on its silhouette plane: (+normal half, -normal half).
+- `ms.cover_for`: A skin_shell over mechanism: asserts every component fits inside, adds bulkheads.
+- `ms.trust`: Check a freeform solid harder than check_solid: valid AND two volume methods agree.
+- `ms.humanoid`: Sleek covered humanoid starter (Optimus / NEO class): shells, cowls, skeleton, 8 heads.
+- `ms.quadruped`: Covered robot-dog starter (Spot / Go2 class): a clamshell body, shelled legs, cowls.
+- `ms.car_body`: Car body starter: lower body, greenhouse with a roof panel, arches, wheels, beltline.
 <!-- mises-shapes:end -->
 
 ## 4. Study every concept
