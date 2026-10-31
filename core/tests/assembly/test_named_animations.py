@@ -87,3 +87,23 @@ async def test_animate_present_without_built_parts_still_animates(ctx):
         {"project_id": "p", "joint_id": jid, "to": 90, "present": True}))
     assert r.ok and any("card" in w for w in r.warnings)
     assert sub.queue.get_nowait().type == "assembly_animate"
+
+
+async def test_read_only_run_cannot_save_or_present_an_animation(ctx):
+    # FW-core M-1: assembly_animate is classed READ for the common replay, but saving/presenting
+    # a named animation persists build state; a READ-only run must not do it.
+    from mises.store import AgentPolicy
+    from mises.types import Caps, MisesError, SafetyClass
+    jid = await _hinge(ctx)
+    ctx.policy = AgentPolicy(run_id="r", version=1, edit_scope=["*"], read_scope=["*"],
+                             caps=Caps(), allowed_classes=[SafetyClass.READ], created_at=0.0)
+    with pytest.raises(MisesError, match="only read"):
+        await assembly_animate.handler(ctx, AnimateArgs.model_validate(
+            {"project_id": "p", "joint_id": jid, "to": 90, "name": "lid"}))
+    with pytest.raises(MisesError, match="only read"):
+        await assembly_animate.handler(ctx, AnimateArgs.model_validate(
+            {"project_id": "p", "joint_id": jid, "to": 90, "present": True}))
+    assert ctx.services["assembly"].list_animations("p") == []    # nothing persisted
+    # a plain preview (no name/present) is still allowed for a READ run
+    assert (await assembly_animate.handler(ctx, AnimateArgs(project_id="p", joint_id=jid,
+                                                           to=10))).ok

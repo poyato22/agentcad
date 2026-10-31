@@ -647,6 +647,14 @@ async def assembly_animate(ctx: ToolContext, args: AnimateArgs) -> ToolOutput:
     name = args.name or ("Motion" if args.present else None)
     saved = None
     if name:
+        # saving (or presenting) a named animation persists build state that cards and Play read
+        # back, so a READ-only run (e.g. a verifier policy) may not do it (FW-core M-1). The tool
+        # is classed READ for the common replay; the save is the mutation and is gated here.
+        policy = getattr(ctx, "policy", None)
+        if policy is not None and SafetyClass.LOCAL_MUTATE not in policy.allowed_classes:
+            raise MisesError(ErrorCode.OUT_OF_SCOPE, "saving an animation changes the build; "
+                             "this run may only read", hint="animate without name/present to "
+                             "preview, or run with edit permission")
         saved = _store(ctx).save_animation(pid, name, {"steps": plan, "loops": loops,
                                                        "duration_s": round(t0, 4)})
         event["animation_id"] = saved["id"]

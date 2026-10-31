@@ -26,6 +26,20 @@ def test_every_builtin_agent_can_read_the_jobs_it_starts():
                     f"job's finish note would point at a tool it does not have")
 
 
+def test_a_routed_lead_has_the_present_tools_its_prompt_names():
+    # FW-core M-2: LEAD_PROMPT tells every lead to present_view motion/sweeps; the router can pick
+    # `sim` as the lead, whose own tools omit present_view. The lead must still be offered it.
+    from mises.orchestrator.lead import lead_definition
+    defs = load_definitions()
+    # `sim` restricts its tools, so the widening must add the present tools it would otherwise lack
+    sim_tools = set(lead_definition(defs["sim"]).tools)
+    assert "present_view" in sim_tools and "render_views" in sim_tools
+    for name in ("sim", "designer", "engineer"):
+        tools = lead_definition(defs[name]).tools
+        if tools is not None:                      # None = every tool; present_view is included
+            assert {"present_view", "render_views"} <= set(tools), name
+
+
 def test_external_mcp_parent_does_not_leak_an_unresolvable_model_ref(tmp_path):
     # I-3: an external MCP run (POST /runs/external) carries a free-form provider/model Mises
     # cannot resolve. A child must fall back to its definition/profile, not inherit "p/m" and
