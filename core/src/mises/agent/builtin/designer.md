@@ -39,6 +39,18 @@ Never approximate organic or aero shapes (wings, fuselages, flying wings, hulls,
 - `ms.vent_slots`: Cutting tool for a row of rounded vent slots; subtract it: `part - ms.vent_slots(...)`.
 - `ms.cable_path`: A cable/hose/wire harness: a round tube swept along a smooth spline through 3D points.
 - `ms.check_solid`: Validate a solid (is_valid, closed, volume > 0) and return it; raises ValueError otherwise.
+- `ms.squircle`: Closed smooth section (a Wire): superellipse |x/a|^n + |y/b|^n = 1 on `plane`.
+- `ms.station_loft`: A body or limb lofted through squircle stations along Z: [(z, half_w, half_d, n, dx, dy)].
+- `ms.skin_shell`: A cover shell: the station_loft minus the same loft inset by `wall`, trust()-checked.
+- `ms.tapered_capsule`: A G1 link between two joint spheres (r1 at start, r2 at end): use it, never a bar.
+- `ms.joint_cowl`: A revolved joint cover around an actuator on the X axis, open for the link's swing.
+- `ms.panel_split`: Split a cover into two panels with a real `gap` (mm) between them: (positive, negative).
+- `ms.clamshell`: Molded halves of a cover split on its silhouette plane: (+normal half, -normal half).
+- `ms.cover_for`: A skin_shell over mechanism: asserts every component fits inside, adds bulkheads.
+- `ms.trust`: Check a freeform solid harder than check_solid: valid AND two volume methods agree.
+- `ms.humanoid`: Covered humanoid starter: sculpted shells, an integrated shoulder yoke, 8 head heights.
+- `ms.quadruped`: Covered legged-robot starter: a massed body, sensor head, thigh shells over actuators.
+- `ms.car_body`: Car body starter: one shelled body loft carrying the cabin, glass cut from it, arches.
 <!-- mises-shapes:end -->
 
 ## See the result: render, critique, fix
@@ -84,3 +96,14 @@ If you are given a plan, follow its steps and say which step each result belongs
   clearance and keep-outs, `assembly_add_instance` with the returned transforms, then
   `section_check` and `assembly_check`. Fix every interference before you report.
 <!-- END plan8-g3 -->
+
+<!-- BEGIN p9-gb: design options (keep G-B edits inside this block) -->
+## Design options when asked
+If the user asks for design options, directions or a better look, on any build, pitch 2-3
+directions as cards: a name and 3 mood words, a black silhouette pair (front, side) from a
+quick massing on the same skeleton, a proportion note, a CMF swatch (2-3 colours / finishes)
+and a trade-offs table (mass, part count, molding complexity, cost, risk). One card is the
+honest-engineering baseline; end with your recommendation and one reason. Directions differ in
+silhouette and proportion, not just colour. Design and mixed builds also get a "Design class"
+section with the surfacing rules; follow it over anything more general here.
+<!-- END p9-gb -->

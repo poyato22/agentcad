@@ -179,6 +179,9 @@ class ClaudeCodeSession:
                 # spawns (mcp__mises__agent_spawn only), so the run tree matches native leads
                 from ..orchestrator.lead import lead_definition
                 defn, lead = lead_definition(defn), True
+            if defn is not None:     # Plan 9 D27: the design-class block (design / mixed)
+                from ..design_intensity import rules_for
+                defn = rules_for(defn, run.role, run.design_class)
             role = defn.body if defn is not None else None
         (self.workdir / RULES_FILE).write_text(
             mises_rules_md(role, self.runtime.definitions, self._hidden_agents(), lead=lead))

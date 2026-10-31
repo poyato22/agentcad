@@ -72,6 +72,8 @@ const PLAN5_PROFILE_DEFAULTS = {
   max_spawns_per_turn: 8, wind_max_memory_mb: 4096, wind_max_cpus: 8, wind_max_timeout_s: 3600.0,
   // Plan 8 G1: the render-critique loop's ceilings (core profile defaults)
   critique_max_rounds: 3, critique_time_budget_s: 300.0, critique_max_image_tokens: 12_000,
+  // Plan 9 G-B: the optional design-intensity classifier model (unset: keyword prior only)
+  design_classifier_model: null,
   suggested_sites: DEFAULT_SUGGESTED_SITES, browser_fetches_per_run: DEFAULT_BROWSER_FETCHES,
 };
 const withVersion = (p: Profile) => ({ schema_version: PROFILE_SCHEMA_VERSION, ...PLAN5_PROFILE_DEFAULTS, ...p, printers: [] });

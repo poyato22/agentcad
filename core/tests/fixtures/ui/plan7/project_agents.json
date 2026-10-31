@@ -48,6 +48,22 @@
           "signals": [],
           "vision_recommended": false
         },
+        "design_class": {
+          "score": 0.4,
+          "cls": "mixed",
+          "per_part": {
+            "canopy": 0.65,
+            "shell": 0.6,
+            "body": 0.5,
+            "arm": 0.35,
+            "frame": 0.2
+          },
+          "reasons": [
+            "drone: a functional airframe; the canopy and arms can be styled"
+          ],
+          "source": "prior",
+          "archetype": null
+        },
         "status": "done",
         "task": "Design motor mount",
         "title": "Design motor mount",
@@ -91,6 +107,22 @@
         "drone"
       ],
       "vision_recommended": true
+    },
+    "design_class": {
+      "score": 0.4,
+      "cls": "mixed",
+      "per_part": {
+        "canopy": 0.65,
+        "shell": 0.6,
+        "body": 0.5,
+        "arm": 0.35,
+        "frame": 0.2
+      },
+      "reasons": [
+        "drone: a functional airframe; the canopy and arms can be styled"
+      ],
+      "source": "prior",
+      "archetype": "drone"
     },
     "status": "done",
     "task": "Build me a drone",
@@ -139,6 +171,16 @@
         "score": 0.0,
         "signals": [],
         "vision_recommended": false
+      },
+      "design_class": {
+        "score": 0.2,
+        "cls": "engineering",
+        "per_part": {},
+        "reasons": [
+          "no archetype or styling signal: engineering by default (design needs evidence)"
+        ],
+        "source": "prior",
+        "archetype": null
       },
       "status": "done",
       "task": "check",

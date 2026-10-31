@@ -50,6 +50,15 @@
   font-size: 10.5px; font-weight: 600; cursor: pointer;
 }
 .dock-needs:focus-visible { outline: 1px solid var(--blue); outline-offset: 2px; }
+/* Plan 9 G-B: "Design focus: Engineering · Mixed · Design" (the build's design class; user-settable) */
+.dock-focus { display: inline-flex; align-items: center; gap: 3px; flex: none; margin-right: auto; font-size: 11px; white-space: nowrap; }
+.dock-focus-l { margin-right: 2px; }
+.dock-focus-sep { font-size: 10px; }
+.dock-focus-b { padding: 1px 5px; border: 0; border-radius: 6px; background: none; color: var(--dim); font: inherit; cursor: pointer; }
+.dock-focus-b:hover { color: var(--ink); background: var(--paper2); }
+.dock-focus-b.on { color: var(--ink); background: var(--paper2); font-weight: 600; }
+.dock-focus-b:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
+.dock-focus-you { font-size: 10px; }
 /* the ⋯ menu is the shared OverflowMenu, restyled for the dock */
 .dock-more .ovm-btn { width: 26px; height: 22px; padding: 0; border: 0; border-radius: 7px; font-size: 14px; line-height: 1; }
 .dock-more .ovm-btn:hover, .dock-more .ovm-btn[aria-expanded="true"] { background: var(--paper2); color: var(--ink); }

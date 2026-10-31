@@ -1,0 +1,25 @@
+{
+  "about": "Plan 9 D28 design eval: 20 prompts across design-heavy, mixed and engineering-heavy builds. `expect` is the design class the classifier should give (tests/test_design_eval_set.py checks it). Not run in CI: run_eval.py builds each with a chosen model and renders a contact sheet; preference_sheet.py pairs two runs for the user's pairwise preference.",
+  "prompts": [
+    {"id": "humanoid", "expect": "design", "prompt": "Design a sleek home humanoid robot, about 1.7 m, Optimus / NEO class: covered joints, no exposed servos, calm appliance-like look."},
+    {"id": "robot_dog", "expect": "design", "prompt": "Build me a robotic dog about 70 cm long with covered legs and a clean body shell, like a friendly Spot."},
+    {"id": "car", "expect": "design", "prompt": "Design a car body for a compact electric sedan: 2.7 m wheelbase, 17 inch wheels, sporty greenhouse."},
+    {"id": "kettle", "expect": "design", "prompt": "Design a premium electric kettle, 1.2 litres, with a sculpted handle and a soft-touch base."},
+    {"id": "desk_lamp", "expect": "design", "prompt": "A minimalist desk lamp with a slim arm and a rounded head, Braun-like."},
+    {"id": "speaker", "expect": "design", "prompt": "A portable bluetooth speaker with a fabric-wrapped body and a beautiful rounded top."},
+    {"id": "mouse", "expect": "design", "prompt": "An ergonomic computer mouse shell for a right hand, 120 mm long."},
+    {"id": "scooter", "expect": "design", "prompt": "Concept e-scooter with a flowing deck and covered battery, styled like a show car."},
+    {"id": "vacuum_robot", "expect": "design", "prompt": "A robot vacuum with a sleek low body, 330 mm diameter, and a friendly look."},
+    {"id": "watch_case", "expect": "design", "prompt": "A wrist watch case, 40 mm, with elegant lugs and a domed crystal."},
+    {"id": "drone", "expect": "mixed", "prompt": "A 5 inch FPV drone frame with a printed canopy over the flight stack."},
+    {"id": "jet_nacelle", "expect": "mixed", "prompt": "A jet engine nacelle and fan module for a 1:10 scale turbofan model, with the fan disk and compressor inside."},
+    {"id": "robot_arm", "expect": "mixed", "prompt": "A 6-axis robot arm with covered links, 600 mm reach, 1 kg payload."},
+    {"id": "pi_case", "expect": "engineering", "prompt": "An enclosure for a Raspberry Pi 5 with a 30 mm fan and vents."},
+    {"id": "mold", "expect": "engineering", "prompt": "An injection mold for a 30 mm bottle cap with cooling channels and ejector pins."},
+    {"id": "bracket", "expect": "engineering", "prompt": "An L bracket for a NEMA17 motor with four M3 holes, 5 mm thick, 50 N load."},
+    {"id": "gearbox", "expect": "engineering", "prompt": "A gearbox housing for a 10:1 planetary stage with bearing seats at 0.02 mm tolerance."},
+    {"id": "heat_sink", "expect": "engineering", "prompt": "A heat sink for a TO-220 package, 40 x 40 mm, natural convection."},
+    {"id": "jig", "expect": "engineering", "prompt": "A drill jig for 6 holes on a 100 mm PCD flange."},
+    {"id": "manifold", "expect": "engineering", "prompt": "A hydraulic manifold block with 4 ports at 200 bar pressure."}
+  ]
+}

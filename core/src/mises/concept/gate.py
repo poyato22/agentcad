@@ -90,6 +90,16 @@ def design_class(store, project_id: str | None, run_id: str | None = None) -> di
     build, else the classifier on the lead's task, else `mixed`."""
     global _warned
     from ..orchestrator.lead import find_lead
+    # Plan 9 G-B: the class the user set on the build (PATCH /projects/{id} {design_class})
+    # wins over everything else
+    user_cls = None
+    if project_id and hasattr(store, "project_design_class"):
+        try:
+            user_cls = store.project_design_class(project_id)
+        except Exception:  # noqa: BLE001
+            user_cls = None
+    if user_cls in CLASSES:
+        return {"cls": user_cls, "source": "user"}
     run = None
     try:
         run = find_lead(store, project_id) if project_id else None
