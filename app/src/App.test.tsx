@@ -4,7 +4,7 @@ import { App } from "./App";
 import type { CoreClient } from "./api/client";
 import { atHome, resetHome } from "./state/home";
 import { actions, approvals, bindClient, conn, resetStore } from "./state/store";
-import { setConsoleCollapsed } from "./ui/pages/router";
+import { resetDockMemory, setConsoleCollapsed, setLeftCollapsed } from "./ui/pages/router";
 import { closeProfile } from "./ui/profile/open";
 import { ApprovalCard } from "./ui/console/approvals/ApprovalCard";
 import { QuestionCard } from "./ui/console/approvals/QuestionCard";
@@ -18,7 +18,7 @@ vi.mock("./ui/viewer/scene", () => ({
   }),
 }));
 
-afterEach(() => { cleanup(); resetStore(); setConsoleCollapsed(false); resetHome(); });
+afterEach(() => { cleanup(); resetStore(); setConsoleCollapsed(false); setLeftCollapsed(false); resetDockMemory(); resetHome(); });
 // Launch lands on the Home grid (R1); the shell tests below open a build first.
 beforeEach(() => { atHome.value = false; });
 
@@ -112,6 +112,26 @@ describe("App shell", () => {
     // blue (needs the human); the rail expands when clicked
     expect(badge?.classList.contains("needs-you")).toBe(true);
     expect(container.querySelector('[data-region="app"]')?.getAttribute("data-console")).toBe("rail");
+  });
+
+  it("the_parts_surface_and_the_dock_float_and_fold_to_slim_tabs", () => {
+    // FW-layout (D20): open, each surface is a floating card over the full-bleed build view
+    const { container } = render(<App />);
+    const left = container.querySelector('[data-region="left"]');
+    const dock = container.querySelector('[data-region="console"]');
+    expect(left?.classList.contains("surface")).toBe(true);
+    expect(dock?.classList.contains("surface")).toBe(true);
+    expect(container.querySelector('[data-region="viewer"]')).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Hide the parts" }));
+    fireEvent.click(screen.getByRole("button", { name: "Collapse the agent console" }));
+    // folded: a slim tab each, the build view keeps the whole window
+    expect(container.querySelector('[data-region="left"] [data-testid="left-pane"]')).toBeNull();
+    expect(container.querySelector('[data-region="console"] [data-dock]')).toBeNull();
+    expect(container.querySelector('[data-region="app"]')?.getAttribute("data-left")).toBe("rail");
+    fireEvent.click(screen.getByRole("button", { name: "Show the parts" }));
+    fireEvent.click(screen.getByRole("button", { name: "Expand the agent console" }));
+    expect(container.querySelector('[data-region="left"] [data-testid="left-pane"]')).not.toBeNull();
+    expect(container.querySelector('[data-region="console"] [data-dock]')).not.toBeNull();
   });
 
   it("cards_render_untrusted_text_as_text", () => {

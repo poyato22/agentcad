@@ -45,7 +45,11 @@ export function frameView(host: ModeHost, dir: THREE.Vector3, box: THREE.Box3, z
   const center = box.getCenter(new THREE.Vector3());
   camera.position.copy(center).addScaledVector(dir, 100);
   const aspect = Math.max((camera.right - camera.left) / Math.max(camera.top - camera.bottom, 1e-6), 1e-3);
+  // a frustum shifted for the floating surfaces (offsetOrtho) stays shifted
+  const skew = (camera.left + camera.right) / Math.max(camera.right - camera.left, 1e-6);
   fitOrtho(camera, box, aspect);
+  const half = (camera.right - camera.left) / 2;
+  camera.left = half * (skew - 1); camera.right = half * (skew + 1);
   camera.zoom = Math.min(8, Math.max(0.1, zoom));
   camera.updateProjectionMatrix();
   controls.target.copy(center);

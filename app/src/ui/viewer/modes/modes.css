@@ -10,7 +10,7 @@
 .vm-rows { display: flex; flex-direction: column; border: 1px solid var(--line2); background: var(--paper); }
 .vm-row { display: flex; align-items: center; gap: 8px; padding: 5px 8px; min-width: 0; flex-wrap: wrap; }
 .vm-row + .vm-row { border-top: 1px solid var(--line); }
-.vm-name { font: 700 var(--fs-label)/1 var(--font-head); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); width: 64px; flex: none; }
+.vm-name { font: 700 var(--fs-label)/1 var(--font-head); color: var(--dim); width: 64px; flex: none; }
 .vm-sub { font-size: var(--fs-small); }
 .vm-val { color: var(--ink); font-size: var(--fs-small); font-variant-numeric: tabular-nums; min-width: 52px; }
 .vm-row input[type="range"] { width: 120px; accent-color: var(--dim); }

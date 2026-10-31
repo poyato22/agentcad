@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { atHome } from "../../state/home";
 import {
-  activePage, consoleCollapsed, DEFAULT_PAGE, installPageShortcuts, isPage, modalOpen, PAGES,
-  pageForDigit, setConsoleCollapsed, setPage, toggleConsole,
+  activePage, consoleCollapsed, DEFAULT_PAGE, DOCK_OPEN_DEFAULT, installPageShortcuts, installSurfaceShortcuts, isPage, leftCollapsed,
+  modalOpen, PAGES, pageForDigit, resetDockMemory, setConsoleCollapsed, setLeftCollapsed, setPage, toggleConsole,
 } from "./router";
 
-afterEach(() => { setPage(DEFAULT_PAGE); setConsoleCollapsed(false); });
+afterEach(() => { setPage(DEFAULT_PAGE); setConsoleCollapsed(false); setLeftCollapsed(false); resetDockMemory(); atHome.value = false; });
 
 describe("page router", () => {
   it("has the pages in tab/shortcut order, Design first", () => {
@@ -83,5 +84,52 @@ describe("page router", () => {
     expect(consoleCollapsed.value).toBe(true);
     setConsoleCollapsed(false);
     expect(consoleCollapsed.value).toBe(false);
+  });
+
+  it("the dock starts open on Design only; each page keeps its own state (FW-layout)", () => {
+    expect(DOCK_OPEN_DEFAULT).toEqual({ design: true, studies: false, print: false, bom: false });
+    expect(consoleCollapsed.value).toBe(false);
+    setPage("studies");            // Studies has its own agent: the dock is a slim tab
+    expect(consoleCollapsed.value).toBe(true);
+    setPage("print");
+    expect(consoleCollapsed.value).toBe(true);
+    setConsoleCollapsed(false);      // the user opens it on Print
+    setPage("bom");
+    expect(consoleCollapsed.value).toBe(true);
+    setPage("print");              // Print remembers
+    expect(consoleCollapsed.value).toBe(false);
+    setPage("design");             // Design was left open
+    expect(consoleCollapsed.value).toBe(false);
+    toggleConsole();                 // folded on Design, it stays folded there
+    setPage("bom");
+    setPage("design");
+    expect(consoleCollapsed.value).toBe(true);
+  });
+
+  it("⌘[ folds the parts surface on Design, ⌘] the dock; never on Home or under a modal", () => {
+    let modal = false;
+    const off = installSurfaceShortcuts({ isTrusted: () => true, isModalOpen: () => modal });
+    const press = (key: "[" | "]") =>
+      window.dispatchEvent(new KeyboardEvent("keydown", { key, code: key === "[" ? "BracketLeft" : "BracketRight", metaKey: true, bubbles: true, cancelable: true }));
+    press("[");
+    expect(leftCollapsed.value).toBe(true);
+    press("]");
+    expect(consoleCollapsed.value).toBe(true);
+    press("[");
+    press("]");
+    expect([leftCollapsed.value, consoleCollapsed.value]).toEqual([false, false]);
+    modal = true;                    // the immersive views step with ⌘[ / ⌘] (they are modal)
+    press("[");
+    press("]");
+    expect([leftCollapsed.value, consoleCollapsed.value]).toEqual([false, false]);
+    modal = false;
+    atHome.value = true;
+    press("]");
+    expect(consoleCollapsed.value).toBe(false);
+    atHome.value = false;
+    setPage("bom");                // the parts surface is Design's: ⌘[ does nothing elsewhere
+    press("[");
+    expect(leftCollapsed.value).toBe(false);
+    off();
   });
 });

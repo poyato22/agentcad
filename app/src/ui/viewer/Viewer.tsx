@@ -42,6 +42,7 @@ import "./viewer.css";
 import { addPartMenuItem, measureHook } from "../left/partMenuHooks";
 import { closePart, openPart } from "../assembly/focus";
 import { requestModify } from "./tool";
+import { viewInsets } from "../shell/insets";
 
 // U2a's part actions in U8's part menu (the one place a part's actions live): Measure opens the
 // viewer's measure tool on the part; Modify… opens the ops form (hole / shell / fillet / chamfer).
@@ -239,6 +240,9 @@ export function Viewer(): JSX.Element {
   useEffect(() => { viewerRef.current?.setMode(mode); }, [mode]);
   useEffect(() => { viewerRef.current?.setHighlight(highlight); }, [highlight]);
   useEffect(() => { viewerRef.current?.restyle?.(); }, [bg]);
+  // FW-layout: the part centres in what the floating surfaces leave
+  const insets = viewInsets.value;
+  useEffect(() => { viewerRef.current?.setInsets?.(insets.left, insets.right); }, [insets.left, insets.right]);
 
   /** Put the loaded parts on the sheet. */
   function compose(refit: boolean): void {
@@ -503,7 +507,6 @@ export function Viewer(): JSX.Element {
         onPointerDown={(e) => { if (e.button === 0) down.current = { x: e.clientX, y: e.clientY }; }}
         onPointerUp={onPointerUp}
       />
-      <span class="tick tick-tl" /><span class="tick tick-tr" /><span class="tick tick-bl" /><span class="tick tick-br" />
       {/* Plan 9 D7: one part open alone; the corner leads back to the build's assembly (or Esc).
           The script opens from View ▸ Part script, and while it shows "Back to the model" sits here */}
       <div class="vp-corner">
@@ -513,7 +516,6 @@ export function Viewer(): JSX.Element {
           <button type="button" class="vt-btn vp-back" onClick={() => { viewTab.value = "model"; }}>Back to the model</button>
         )}
       </div>
-      <span class="label vp-fig">{scope === "build" ? "FIG. 1 — BUILD" : "FIG. 1 — DESIGN"}</span>
       <ViewerTools mode={mode} onMode={setMode} scope={scope} onScope={(s) => { viewScope.value = s; }}
         code={tab === "code"} onCode={(on) => { viewTab.value = on ? "code" : "model"; }}
         lead={tab !== "code" ? <AllPartsToggle /> : null}
@@ -530,7 +532,7 @@ export function Viewer(): JSX.Element {
           { id: "background", label: "Background…", onSelect: () => setBgOpen(true) },
         ]} />
       {part !== null && part.kind !== "skeleton" && <DesignViewModes host={modeHost} focusId={partId} partIds={shown.map((p) => p.part_id)} />}
-      {part === null && <div class="vp-empty label">NO PART · ask an agent to create one</div>}
+      {part === null && <div class="vp-empty label">No part yet. Ask an agent to create one.</div>}
       {part?.kind === "skeleton" && tab === "model" && <SkeletonPanel part={part} />}
       {tab === "model" && tool === "comment" && !comment && <div class="vx-mode-hint label" role="status">Click the model where something should change</div>}
       {tab === "model" && v && (shownPins.length > 0 || dots.length > 0) && (

@@ -35,13 +35,20 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: 600; margin: 0; let
 .region-console, .region-page { -webkit-user-select: text; user-select: text; }
 [data-tauri-drag-region] { -webkit-user-select: none; user-select: none; }
 
-/* ---- app grid
-   Inside a build: a 44px top bar, then left surface · viewer · agent dock.
+/* ---- app grid (FW-layout, D20: "the model is the hero")
+   Inside a build: a 44px top bar, then ONE area. On Design the build view fills it edge to edge
+   and the Parts surface (left) and the agent dock (right) float over it, --gap in from the window
+   edges. On Studies / Print / BOM the page fills it and makes room for the dock while it is open.
+   Each surface folds to a slim tab (⌘[ / ⌘]).
    Home (D23) has no top bar: its page spans the whole window (it keeps the traffic-light inset). */
 .app {
+  --gap: 12px;
+  /* the dock: ≈440px by default but never more than 32% of the window (the model keeps the
+     middle at 1280); a width the user dragged (App sets --dock-w) is kept as dragged */
+  --console-w: var(--dock-w, max(360px, min(440px, 32vw)));
   display: grid;
-  grid-template-rows: var(--topbar-h) 1fr;
-  grid-template-columns: var(--left-w) 1fr var(--console-w);
+  grid-template-rows: var(--topbar-h) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   width: 100vw;
   height: 100vh;
   min-width: 1280px;
@@ -50,44 +57,63 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: 600; margin: 0; let
   overflow: hidden;
 }
 .region { min-width: 0; min-height: 0; overflow: hidden; position: relative; }
-.region-topbar { grid-row: 1; grid-column: 1 / -1; }
-.region-left { grid-row: 2; grid-column: 1; border-right: 1px solid var(--line); }
-.region-viewer { grid-row: 2; grid-column: 2; }
-/* Full-width pages (Studies/Print/BOM) take the left + center tracks. */
-.region-page { grid-row: 2; grid-column: 1 / 3; }
-.region-console { grid-row: 2; grid-column: 3; border-left: 1px solid var(--line); }
-/* Home: no top bar and no console — the page takes every row and track. */
-.app[data-home] .region-page { grid-row: 1 / -1; grid-column: 1 / -1; }
+.region-topbar { grid-area: 1 / 1; z-index: 20; }
+.region-viewer, .region-page { grid-area: 2 / 1; }
+/* Home: no top bar and no dock — the page takes the whole window. */
+.app[data-home] .region-page { grid-area: 1 / 1 / -1 / -1; }
 
-/* Pages other than Design drop the left pane (240→0) so the page spans full width. */
-.app[data-page]:not([data-page="design"]) { --left-w: 0px; }
-/* The agent console can collapse to a thin rail on any page. */
-.app[data-console="rail"] { --console-w: var(--console-rail-w); }
-
-/* Console rail: a 36px vertical strip with an expand button. */
-.console-rail { display: flex; flex-direction: column; align-items: center; height: 100%; background: var(--bg); }
-.console-rail-btn {
-  writing-mode: vertical-rl; text-orientation: mixed;
-  font: 500 var(--fs-small)/1 var(--font-ui); color: var(--dim); background: transparent; border: 0;
-  padding: 12px 0; cursor: pointer; width: 100%;
+/* the Parts surface: as tall as its content, never past the window */
+.region-left {
+  grid-area: 2 / 1; z-index: 10; align-self: start; justify-self: start;
+  width: var(--left-w); max-height: calc(100% - 2 * var(--gap)); margin: var(--gap);
+  display: flex; flex-direction: column;
 }
-.console-rail-btn:hover { color: var(--ink); }
-.console-rail-btn:focus-visible { outline: 2px solid var(--blue); outline-offset: -3px; border-radius: var(--r-row); }
-/* A card waits for the human: a blue count on the collapsed rail (blue = needs you). */
+/* the agent dock: full height */
+.region-console {
+  grid-area: 2 / 1; z-index: 10; justify-self: end; align-self: stretch;
+  width: var(--console-w); margin: var(--gap);
+}
+.region-left[data-folded], .region-console[data-folded] { width: auto; align-self: start; overflow: visible; }
+/* a page leaves the dock (or its tab) its own column, on the page's own sheet */
+.app:not([data-home]) .region-page { background: var(--paper); }
+.app:not([data-home]):not([data-page="design"]) .region-page { padding-right: calc(var(--console-w) + var(--gap)); }
+.app:not([data-home]):not([data-page="design"])[data-console="rail"] .region-page { padding-right: calc(var(--gap) + 34px); }
+
+/* A folded surface: a slim vertical tab — its glyph, its name, and (the dock) a blue count while
+   a card waits for the human. */
+.surface-tab {
+  display: flex; flex-direction: column; align-items: center; gap: 8px; width: 34px; padding: 10px 0 12px;
+  font: 500 var(--fs)/1 var(--font-ui); color: var(--dim); cursor: pointer;
+  transition: color var(--t-fast) ease, background-color var(--t-fast) ease;
+}
+.surface-tab > span:not(.console-rail-needs) { writing-mode: vertical-rl; text-orientation: mixed; }
+.region-left .surface-tab > span { transform: rotate(180deg); }
+.surface-tab:hover { color: var(--ink); }
+.surface-tab:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+/* A card waits for the human: a blue count on the folded tab (blue = needs you). */
 .console-rail-needs {
   color: var(--on-blue); background: var(--blue); font: 600 var(--fs-label)/1 var(--font-num);
-  min-width: 18px; padding: 3px 5px; margin-top: 2px; text-align: center; border-radius: 9px;
+  min-width: 18px; padding: 3px 5px; text-align: center; border-radius: 9px;
 }
-/* Collapse control pinned in the console pane header (region is position:relative). */
-.console-collapse {
-  position: absolute; top: 2px; right: 4px; z-index: 3; height: 24px; width: 24px;
+/* The fold control, pinned top-right in an open surface (the region is position:relative). */
+.surface-fold {
+  position: absolute; top: 6px; right: 6px; z-index: 3; height: 26px; width: 26px;
   display: inline-flex; align-items: center; justify-content: center;
-  background: transparent; border: 0; border-radius: var(--r-row); color: var(--dim); cursor: pointer;
+  background: transparent; border: 0; border-radius: var(--r-btn); color: var(--faint); cursor: pointer;
+  transition: color var(--t-fast) ease, background-color var(--t-fast) ease;
 }
-.console-collapse:hover { color: var(--ink); background: var(--raised); }
-.console-collapse:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
-/* keep the console's own top-row controls clear of the collapse button */
-.region-console .cv-top-row, .region-console > .pane > .pane-head { padding-right: 32px; }
+.surface-fold:hover { color: var(--ink); background: var(--raised); }
+.surface-fold:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
+/* keep the console's own top-row controls clear of the fold button */
+.region-console .cv-top-row, .region-console > .con > .pane > .pane-head, .region-console .cv-detailsbar { padding-right: 36px; }
+/* inside a floating surface, panes are see-through: the surface is the background */
+.region-console.surface, .region-left.surface { background: var(--surface); }
+.region-console .con, .region-console .dock, .region-console .pane, .region-left .pane { background: transparent; }
+/* the open dock's first stream header starts beside the fold button */
+@media (prefers-reduced-motion: no-preference) {
+  .region-left.surface, .region-console.surface { animation: surface-in var(--t-open) ease-out; }
+}
+@keyframes surface-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 
 /* macOS overlay traffic lights occupy the top-left; keep the setup wizard header clear of them
    (its height, --chrome-h, centres its text on the lights).

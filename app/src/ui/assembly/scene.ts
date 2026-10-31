@@ -12,7 +12,7 @@ import type { Mat4 } from "../../api/assembly";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import type { MaterialParams } from "../../lib/appearance";
 import { meshColors, type PartScene } from "../viewer/loadPart";
-import { fitOrtho, ISO_AZIMUTH_DEG, ISO_ELEVATION_DEG, type ModeHost, type RendererLike, type ShownPart } from "../viewer/scene";
+import { fitOrtho, offsetOrtho, visibleWidth, ISO_AZIMUTH_DEG, ISO_ELEVATION_DEG, type ModeHost, type RendererLike, type ShownPart } from "../viewer/scene";
 import type { Vec3 } from "./kinematics";
 
 export interface SceneInstance {
@@ -50,6 +50,9 @@ export interface AssemblyScene {
   /** A world point (mm) → client pixels. Test probe. */
   probe(): { project(p: Vec3): { x: number; y: number } };
   resize(w: number, h: number): void;
+  /** FW-layout: CSS px of the canvas the floating surfaces cover at each side; the model is framed
+   *  and centred in the rest (ui/shell/insets). */
+  setInsets(left: number, right: number): void;
   dispose(): void;
 }
 
@@ -101,6 +104,12 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
   scene.add(root);
 
   let width = 1; let height = 1;
+  /** FW-layout: canvas px the floating surfaces cover at each side (setInsets). */
+  let insetL = 0; let insetR = 0;
+  const frameView = (b: THREE.Box3, margin: number) => {
+    fitOrtho(camera, b, visibleWidth(width, insetL, insetR) / height, margin);
+    offsetOrtho(camera, width, height, insetL, insetR);
+  };
   let frame = 0;
   let disposed = false;
   let colors = tokens();
@@ -126,6 +135,9 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
   const orbit = new OrbitControls(camera, canvas);
   orbit.enableDamping = false;
   orbit.addEventListener("change", requestRender);
+  /** The user turned, panned or zoomed since the last fit: a fold then only slides the view. */
+  let moved = false;
+  orbit.addEventListener("start", () => { moved = true; });
 
   // ---- materials
 
@@ -361,7 +373,8 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
   function fit(): void {
     const b = frameBox();
     if (b.isEmpty()) return;
-    fitOrtho(camera, b, width / height, frameMargin());
+    moved = false;
+    frameView(b, frameMargin());
     orbit.target.copy(b.getCenter(new THREE.Vector3()));
     orbit.update();
     requestRender();
@@ -467,14 +480,18 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
       renderer.setSize(width, height, false);
       const b = frameBox();
       if (!b.isEmpty()) {
-        fitOrtho(camera, b, width / height, frameMargin());
+        frameView(b, frameMargin());
         if (framing) { orbit.target.copy(b.getCenter(new THREE.Vector3())); orbit.update(); }
       }
-      else {
-        const halfH = (camera.top - camera.bottom) / 2;
-        camera.left = -halfH * (width / height); camera.right = halfH * (width / height);
-        camera.updateProjectionMatrix();
-      }
+      else offsetOrtho(camera, width, height, insetL, insetR);
+      requestRender();
+    },
+    setInsets(l, r) {
+      if (l === insetL && r === insetR) return;
+      insetL = l; insetR = r;
+      // untouched since the last fit: refit to the new room; else keep the user's view, re-centred
+      if (!moved && !frameBox().isEmpty()) fit();
+      else offsetOrtho(camera, width, height, insetL, insetR);
       requestRender();
     },
     dispose() {
