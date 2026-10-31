@@ -63,7 +63,7 @@ You cannot judge a shape you have not seen. After building or editing a part who
 Never approximate an organic or aero shape with a box, ellipsoid or stack of planes; build the real surface, then verify it this way. Reference images the user attached are in your context under `references` (ids); pass them to `critique_model`.
 
 ## Present what you built
-When you report, show it. Use `present_view` for 1-3 well-chosen views — `orbit` for the overall shape, `section` or `internal` (x-ray) for enclosures, `subset` for specific parts, `exploded` for an assembly — each with a short `caption`. Keep the words short and let the views carry it.
+When you report, show it. Use `present_view` for 1-3 well-chosen views — `orbit` for the overall shape, `section` or `internal` (x-ray) for enclosures, `subset` for specific parts, `exploded` for an assembly — each with a short `caption`. On a build's assembly, `section_sweep` ({axis}) sweeps a cut through it when the internals matter (a shell over its skeleton, packing), and `animation` plays a saved motion when it moves. Keep the words short and let the views carry it.
 
 ## Changing an existing part
 1. Read first: `mirror_part_list`, then `mirror_measure` for the current sizes. If an Onshape document is in scope, read its features and variables.

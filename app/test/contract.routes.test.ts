@@ -285,6 +285,7 @@ const COVERAGE: Record<string, string> = {
   "GET /projects/{project_id}/assembly": "assembly.json",
   "GET /projects/{project_id}/assembly.glb": "EXEMPT: the app poses each part's own model.glb (parts move at frame rate); the combined GLB is for export. Core API tests cover it",
   "GET /projects/{project_id}/assembly/interference": "assembly_interference.json",
+  "GET /projects/{project_id}/assembly/animations": "motion/motion_animations.json",
   "POST /projects/{project_id}/assembly/drive": "assembly_drive.json",
   "POST /projects/{project_id}/assembly/instances": "assembly_instance_add.json",
   "POST /projects/{project_id}/assembly/joints": "assembly_joint_add.json",

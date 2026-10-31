@@ -34,12 +34,15 @@ export interface AssemblyScenario {
   /** "none": the solids sit inside each other's boxes but don't touch (a nested enclosure), so the
    *  box-overlap check would report clashes the real (solid) check doesn't. Default "boxes". */
   interference?: "boxes" | "none";
+  /** Plan 9 G-D: saved animations per project id (GET /projects/{id}/assembly/animations). */
+  animations?: Record<string, unknown[]>;
 }
 
 export interface FakeAssembly {
   projects: ProjectRowIn[];
   byProject: Map<string, { instances: Instance[]; joints: Joint[] }>;
   interference: "boxes" | "none";
+  animations: Record<string, unknown[]>;
 }
 
 export function assemblyFrom(sc: AssemblyScenario | undefined): FakeAssembly {
@@ -47,6 +50,7 @@ export function assemblyFrom(sc: AssemblyScenario | undefined): FakeAssembly {
     projects: structuredClone(sc?.projects ?? [{ id: DEFAULT_PROJECT, name: "Default", created_at: DEFAULT_PROJECT_ROW.created_at, trashed_at: null }]),
     byProject: new Map(Object.entries(structuredClone(sc?.by_project ?? {}))),
     interference: sc?.interference ?? "boxes",
+    animations: structuredClone(sc?.animations ?? {}),
   };
 }
 
@@ -274,6 +278,9 @@ export function assemblyRoutes(d: Deps): Route[] {
           transforms: Object.fromEntries(s.instances.map((i) => [i.id, i.transform])),
         };
       },
+    },
+    {
+      method: "GET", re: new RegExp(`${base.source}/animations$`), h: (m) => d.get().animations[m[1]] ?? [],
     },
     {
       method: "GET", re: new RegExp(`${base.source}/interference$`), h: (m) => {

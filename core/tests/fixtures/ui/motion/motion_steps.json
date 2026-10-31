@@ -1,0 +1,973 @@
+[
+  {
+    "id": 1,
+    "run_id": "56ec27e23bfe",
+    "ts": 1793431165.049074,
+    "kind": "message",
+    "payload": {
+      "role": "user",
+      "text": "a mount plate with a hinged lid"
+    },
+    "evidence_hash": "e476138b3bea250ffa2cf5160bcc3165c401a6739dbc199e7b06f5985b648ab8",
+    "prev_hash": null,
+    "collapsed": false,
+    "stream": "text"
+  },
+  {
+    "id": 2,
+    "run_id": "56ec27e23bfe",
+    "ts": 1793431165.072146,
+    "kind": "message",
+    "payload": {
+      "role": "assistant",
+      "stop_reason": "end_turn",
+      "text": "ok",
+      "tool_calls": []
+    },
+    "evidence_hash": "db43340d43a38d09c343775acb1473db5e0c15eb6e20d016b6f3847ff52a4ee8",
+    "prev_hash": "e476138b3bea250ffa2cf5160bcc3165c401a6739dbc199e7b06f5985b648ab8",
+    "collapsed": false,
+    "stream": "text"
+  },
+  {
+    "id": 3,
+    "run_id": "56ec27e23bfe",
+    "ts": 1793431165.0745652,
+    "kind": "tool_call",
+    "payload": {
+      "call_id": "m1",
+      "input": {
+        "part_id": "mount_plate",
+        "place": false,
+        "script": "from build123d import *\nVARS = {\"thickness\": 6.0}\ndef build(v):\n    with BuildPart() as p:\n        Box(40, 20, v[\"thickness\"])\n        with Locations((10, 0, 0), (-10, 0, 0)):\n            Hole(2.1)\n    return p.part\n",
+        "vars": {
+          "thickness": 6.0
+        }
+      },
+      "name": "mirror_part_create"
+    },
+    "evidence_hash": "1538214c2f5fd492d3be5a6d66780329f16e7284ea1746cc189cf11bd355bfec",
+    "prev_hash": "db43340d43a38d09c343775acb1473db5e0c15eb6e20d016b6f3847ff52a4ee8",
+    "collapsed": false,
+    "stream": "text"
+  },
+  {
+    "id": 4,
+    "run_id": "56ec27e23bfe",
+    "ts": 1793431167.756809,
+    "kind": "tool_result",
+    "payload": {
+      "call_id": "m1",
+      "name": "mirror_part_create",
+      "output": {
+        "data": {
+          "area_mm2": 2422.9185753316015,
+          "bbox": {
+            "max": [
+              20.0,
+              10.0,
+              3.0
+            ],
+            "min": [
+              -20.0,
+              -10.0,
+              -3.0
+            ],
+            "size": [
+              40.0,
+              20.0,
+              6.0
+            ]
+          },
+          "center_of_mass": [
+            3.189489881356246e-16,
+            -1.2682862350235098e-16,
+            1.7563595855833278e-17
+          ],
+          "edge_count": 18,
+          "edges": 18,
+          "face_count": 8,
+          "face_list": [
+            {
+              "area": 120.0,
+              "center": [
+                -20.0,
+                0.0,
+                0.0
+              ],
+              "id": "f0",
+              "normal": [
+                -1.0,
+                0.0,
+                0.0
+              ],
+              "type": "plane"
+            },
+            {
+              "area": 240.0,
+              "center": [
+                0.0,
+                -10.0,
+                0.0
+              ],
+              "id": "f1",
+              "normal": [
+                0.0,
+                -1.0,
+                0.0
+              ],
+              "type": "plane"
+            },
+            {
+              "area": 772.291,
+              "center": [
+                0.0,
+                0.0,
+                3.0
+              ],
+              "id": "f2",
+              "normal": [
+                0.0,
+                0.0,
+                1.0
+              ],
+              "type": "plane"
+            },
+            {
+              "area": 240.0,
+              "center": [
+                0.0,
+                10.0,
+                0.0
+              ],
+              "id": "f3",
+              "normal": [
+                0.0,
+                1.0,
+                0.0
+              ],
+              "type": "plane"
+            },
+            {
+              "area": 772.291,
+              "center": [
+                0.0,
+                0.0,
+                -3.0
+              ],
+              "id": "f4",
+              "normal": [
+                0.0,
+                0.0,
+                -1.0
+              ],
+              "type": "plane"
+            },
+            {
+              "area": 120.0,
+              "center": [
+                20.0,
+                0.0,
+                0.0
+              ],
+              "id": "f5",
+              "normal": [
+                1.0,
+                0.0,
+                0.0
+              ],
+              "type": "plane"
+            },
+            {
+              "area": 79.168,
+              "center": [
+                -10.0,
+                0.0,
+                0.0
+              ],
+              "id": "f6",
+              "normal": null,
+              "radius": 2.1,
+              "type": "cylinder"
+            },
+            {
+              "area": 79.168,
+              "center": [
+                10.0,
+                0.0,
+                0.0
+              ],
+              "id": "f7",
+              "normal": null,
+              "radius": 2.1,
+              "type": "cylinder"
+            }
+          ],
+          "face_list_truncated": false,
+          "faces": 8,
+          "holes": [
+            {
+              "axis": [
+                -0.0,
+                -0.0,
+                1.0
+              ],
+              "center": [
+                -10.0,
+                0.0,
+                0.0
+              ],
+              "depth_mm": 6.0,
+              "diameter_mm": 4.2
+            },
+            {
+              "axis": [
+                -0.0,
+                -0.0,
+                1.0
+              ],
+              "center": [
+                10.0,
+                0.0,
+                0.0
+              ],
+              "depth_mm": 6.0,
+              "diameter_mm": 4.2
+            }
+          ],
+          "mass_g": 5.745846176797314,
+          "part_id": "mount_plate",
+          "solids": 1,
+          "valid": true,
+          "vars": {
+            "thickness": 6.0
+          },
+          "version": 1,
+          "volume_mm3": 4633.746916772027
+        },
+        "handles": [],
+        "ok": true,
+        "step_kind": "tool_result",
+        "summary": "mount_plate: volume 4633.7 mm3, mass 5.75 g, bbox 40.0x20.0x6.0 mm, 2 hole(s), valid=True",
+        "warnings": []
+      }
+    },
+    "evidence_hash": "ca7b5b96a17d80066bdb62b9ebe9e9722d432bb8238056b322bd19d08503e9d6",
+    "prev_hash": "1538214c2f5fd492d3be5a6d66780329f16e7284ea1746cc189cf11bd355bfec",
+    "collapsed": false,
+    "stream": "text"
+  },
+  {
+    "id": 5,
+    "run_id": "56ec27e23bfe",
+    "ts": 1793431167.7569962,
+    "kind": "decision",
+    "payload": {
+      "agent_announce": {
+        "detail": "",
+        "kind": "part_created",
+        "ref": {
+          "part_id": "mount_plate",
+          "thumb_url": "/parts/mount_plate/thumb.png"
+        },
+        "run_id": "56ec27e23bfe",
+        "title": "Created part mount_plate"
+      }
+    },
+    "evidence_hash": "391929ffa5edce48c25ea7419c885997b181868708a9f2479f81e369086b99f6",
+    "prev_hash": "ca7b5b96a17d80066bdb62b9ebe9e9722d432bb8238056b322bd19d08503e9d6",
+    "collapsed": false,
+    "stream": "text"
+  },
+  {
+    "id": 6,
+    "run_id": "56ec27e23bfe",
+    "ts": 1793431167.768149,
+    "kind": "tool_call",
+    "payload": {
+      "call_id": "a1",
+      "input": {
+        "caption": "The lid swings 120° on its hinge and closes again",
+        "loops": 2,
+        "name": "Open and shut the lid",
+        "present": true,
+        "sequence": [
+          {
+            "duration_s": 2,
+            "from": 0,
+            "joint_id": "74067abc017b",
+            "to": 120
+          },
+          {
+            "duration_s": 1.5,
+            "from": 120,
+            "joint_id": "74067abc017b",
+            "to": 0
+          }
+        ]
+      },
+      "name": "assembly_animate"
+    },
+    "evidence_hash": "7b73eef304122e86a53c73dc7a545e6edb926ad7af09aa1a3040f2c7997d534c",
+    "prev_hash": "391929ffa5edce48c25ea7419c885997b181868708a9f2479f81e369086b99f6",
+    "collapsed": false,
+    "stream": "view"
+  },
+  {
+    "id": 7,
+    "run_id": "56ec27e23bfe",
+    "ts": 1793431168.157054,
+    "kind": "decision",
+    "payload": {
+      "agent_announce": {
+        "detail": "The lid swings 120° on its hinge and closes again",
+        "kind": "view_presented",
+        "ref": {
+          "project_id": "16c880ed9e83",
+          "thumbnail_id": "pv_56ec27e2_33301a84f2_iso",
+          "view_spec": {
+            "animation": {
+              "animation_id": "70eb2080c99f",
+              "duration_s": 3.5,
+              "loops": 2,
+              "name": "Open and shut the lid",
+              "steps": [
+                {
+                  "duration_s": 2.0,
+                  "from": 0.0,
+                  "joint_id": "74067abc017b",
+                  "to": 120.0
+                },
+                {
+                  "duration_s": 1.5,
+                  "from": 120.0,
+                  "joint_id": "74067abc017b",
+                  "to": 0.0
+                }
+              ]
+            },
+            "camera": "auto",
+            "caption": "The lid swings 120° on its hinge and closes again",
+            "explode": 0.0,
+            "ghost": [],
+            "is_project": true,
+            "kind": "animation",
+            "orbit": null,
+            "parts": [
+              "mount_plate"
+            ],
+            "section": null,
+            "sweep": null,
+            "target": {
+              "ghost": [],
+              "id": "16c880ed9e83",
+              "kind": "project",
+              "parts": [
+                "mount_plate"
+              ],
+              "project_id": "16c880ed9e83"
+            },
+            "thumbnail_id": "pv_56ec27e2_33301a84f2_iso",
+            "xray_parts": []
+          }
+        },
+        "run_id": "56ec27e23bfe",
+        "title": "Animation of 1 part(s) of the build"
+      }
+    },
+    "evidence_hash": "57b657dceaebfedfccc5b93d8c0256bfedeb5fd727bcc79d205d922bc95f5660",
+    "prev_hash": "7b73eef304122e86a53c73dc7a545e6edb926ad7af09aa1a3040f2c7997d534c",
+    "collapsed": false,
+    "stream": "view"
+  },
+  {
+    "id": 8,
+    "run_id": "56ec27e23bfe",
+    "ts": 1793431168.16768,
+    "kind": "measure",
+    "payload": {
+      "call_id": "a1",
+      "name": "assembly_animate",
+      "output": {
+        "data": {
+          "animation": {
+            "animation_id": "70eb2080c99f",
+            "loop": true,
+            "loops": 2,
+            "project_id": "16c880ed9e83",
+            "sequence": [
+              {
+                "duration_s": 2.0,
+                "from": 0.0,
+                "joint_id": "74067abc017b",
+                "to": 120.0
+              },
+              {
+                "duration_s": 1.5,
+                "from": 120.0,
+                "joint_id": "74067abc017b",
+                "to": 0.0
+              }
+            ]
+          },
+          "animation_id": "70eb2080c99f",
+          "poses": [
+            {
+              "joint_id": "74067abc017b",
+              "t": 0.0,
+              "transforms": {
+                "1a478cd496f3": [
+                  [
+                    1.0,
+                    0.0,
+                    0.0,
+                    40.0
+                  ],
+                  [
+                    0.0,
+                    1.0,
+                    0.0,
+                    0.0
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    1.0,
+                    0.0
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ]
+                ]
+              },
+              "value": 0.0
+            },
+            {
+              "joint_id": "74067abc017b",
+              "t": 0.5,
+              "transforms": {
+                "1a478cd496f3": [
+                  [
+                    0.866,
+                    0.0,
+                    0.5,
+                    37.3205
+                  ],
+                  [
+                    0.0,
+                    1.0,
+                    0.0,
+                    0.0
+                  ],
+                  [
+                    -0.5,
+                    0.0,
+                    0.866,
+                    -10.0
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ]
+                ]
+              },
+              "value": 30.0
+            },
+            {
+              "joint_id": "74067abc017b",
+              "t": 1.0,
+              "transforms": {
+                "1a478cd496f3": [
+                  [
+                    0.5,
+                    0.0,
+                    0.866,
+                    30.0
+                  ],
+                  [
+                    0.0,
+                    1.0,
+                    0.0,
+                    0.0
+                  ],
+                  [
+                    -0.866,
+                    0.0,
+                    0.5,
+                    -17.3205
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ]
+                ]
+              },
+              "value": 60.0
+            },
+            {
+              "joint_id": "74067abc017b",
+              "t": 1.5,
+              "transforms": {
+                "1a478cd496f3": [
+                  [
+                    0.0,
+                    0.0,
+                    1.0,
+                    20.0
+                  ],
+                  [
+                    0.0,
+                    1.0,
+                    0.0,
+                    0.0
+                  ],
+                  [
+                    -1.0,
+                    0.0,
+                    0.0,
+                    -20.0
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ]
+                ]
+              },
+              "value": 90.0
+            },
+            {
+              "joint_id": "74067abc017b",
+              "t": 2.0,
+              "transforms": {
+                "1a478cd496f3": [
+                  [
+                    -0.5,
+                    0.0,
+                    0.866,
+                    10.0
+                  ],
+                  [
+                    0.0,
+                    1.0,
+                    0.0,
+                    0.0
+                  ],
+                  [
+                    -0.866,
+                    0.0,
+                    -0.5,
+                    -17.3205
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ]
+                ]
+              },
+              "value": 120.0
+            },
+            {
+              "joint_id": "74067abc017b",
+              "t": 2.0,
+              "transforms": {
+                "1a478cd496f3": [
+                  [
+                    -0.5,
+                    0.0,
+                    0.866,
+                    10.0
+                  ],
+                  [
+                    0.0,
+                    1.0,
+                    0.0,
+                    0.0
+                  ],
+                  [
+                    -0.866,
+                    0.0,
+                    -0.5,
+                    -17.3205
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ]
+                ]
+              },
+              "value": 120.0
+            },
+            {
+              "joint_id": "74067abc017b",
+              "t": 2.375,
+              "transforms": {
+                "1a478cd496f3": [
+                  [
+                    0.0,
+                    0.0,
+                    1.0,
+                    20.0
+                  ],
+                  [
+                    0.0,
+                    1.0,
+                    0.0,
+                    0.0
+                  ],
+                  [
+                    -1.0,
+                    0.0,
+                    0.0,
+                    -20.0
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ]
+                ]
+              },
+              "value": 90.0
+            },
+            {
+              "joint_id": "74067abc017b",
+              "t": 2.75,
+              "transforms": {
+                "1a478cd496f3": [
+                  [
+                    0.5,
+                    0.0,
+                    0.866,
+                    30.0
+                  ],
+                  [
+                    0.0,
+                    1.0,
+                    0.0,
+                    0.0
+                  ],
+                  [
+                    -0.866,
+                    0.0,
+                    0.5,
+                    -17.3205
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ]
+                ]
+              },
+              "value": 60.0
+            },
+            {
+              "joint_id": "74067abc017b",
+              "t": 3.125,
+              "transforms": {
+                "1a478cd496f3": [
+                  [
+                    0.866,
+                    0.0,
+                    0.5,
+                    37.3205
+                  ],
+                  [
+                    0.0,
+                    1.0,
+                    0.0,
+                    0.0
+                  ],
+                  [
+                    -0.5,
+                    0.0,
+                    0.866,
+                    -10.0
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ]
+                ]
+              },
+              "value": 30.0
+            },
+            {
+              "joint_id": "74067abc017b",
+              "t": 3.5,
+              "transforms": {
+                "1a478cd496f3": [
+                  [
+                    1.0,
+                    0.0,
+                    0.0,
+                    40.0
+                  ],
+                  [
+                    0.0,
+                    1.0,
+                    0.0,
+                    0.0
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    1.0,
+                    0.0
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ]
+                ]
+              },
+              "value": 0.0
+            }
+          ],
+          "view_spec": {
+            "animation": {
+              "animation_id": "70eb2080c99f",
+              "duration_s": 3.5,
+              "loops": 2,
+              "name": "Open and shut the lid",
+              "steps": [
+                {
+                  "duration_s": 2.0,
+                  "from": 0.0,
+                  "joint_id": "74067abc017b",
+                  "to": 120.0
+                },
+                {
+                  "duration_s": 1.5,
+                  "from": 120.0,
+                  "joint_id": "74067abc017b",
+                  "to": 0.0
+                }
+              ]
+            },
+            "camera": "auto",
+            "caption": "The lid swings 120° on its hinge and closes again",
+            "explode": 0.0,
+            "ghost": [],
+            "is_project": true,
+            "kind": "animation",
+            "orbit": null,
+            "parts": [
+              "mount_plate"
+            ],
+            "section": null,
+            "sweep": null,
+            "target": {
+              "ghost": [],
+              "id": "16c880ed9e83",
+              "kind": "project",
+              "parts": [
+                "mount_plate"
+              ],
+              "project_id": "16c880ed9e83"
+            },
+            "thumbnail_id": "pv_56ec27e2_33301a84f2_iso",
+            "xray_parts": []
+          }
+        },
+        "handles": [],
+        "ok": true,
+        "step_kind": "measure",
+        "summary": "animating 2 joints in sequence over 3.5 s (2x); 10 key poses returned; saved as 'Open and shut the lid' (animation_id 70eb2080c99f); shown as a view card",
+        "warnings": []
+      }
+    },
+    "evidence_hash": "2b780173990266067f190546be5d44c8dfe7f6d23eabfcee12bfb853bc3ce017",
+    "prev_hash": "57b657dceaebfedfccc5b93d8c0256bfedeb5fd727bcc79d205d922bc95f5660",
+    "collapsed": false,
+    "stream": "view"
+  },
+  {
+    "id": 9,
+    "run_id": "56ec27e23bfe",
+    "ts": 1793431168.168146,
+    "kind": "tool_call",
+    "payload": {
+      "call_id": "s1",
+      "input": {
+        "caption": "A cut through both plates and the hinge line",
+        "kind": "section_sweep",
+        "sweep": {
+          "axis": "x"
+        },
+        "target": {
+          "id": "16c880ed9e83",
+          "kind": "project"
+        }
+      },
+      "name": "present_view"
+    },
+    "evidence_hash": "bcb6c2689a9c2676acee5d47c39171daa8a3b3ebb192b398c8663c03b4da05c9",
+    "prev_hash": "2b780173990266067f190546be5d44c8dfe7f6d23eabfcee12bfb853bc3ce017",
+    "collapsed": false,
+    "stream": "view"
+  },
+  {
+    "id": 10,
+    "run_id": "56ec27e23bfe",
+    "ts": 1793431168.5625029,
+    "kind": "decision",
+    "payload": {
+      "agent_announce": {
+        "detail": "A cut through both plates and the hinge line",
+        "kind": "view_presented",
+        "ref": {
+          "project_id": "16c880ed9e83",
+          "thumbnail_id": "pv_56ec27e2_df92f61bae_iso",
+          "view_spec": {
+            "animation": null,
+            "camera": "auto",
+            "caption": "A cut through both plates and the hinge line",
+            "explode": 0.0,
+            "ghost": [],
+            "is_project": true,
+            "kind": "section_sweep",
+            "orbit": null,
+            "parts": [
+              "mount_plate"
+            ],
+            "section": {
+              "normal": [
+                1.0,
+                0.0,
+                0.0
+              ],
+              "origin": [
+                16.0,
+                0.0,
+                0.0
+              ]
+            },
+            "sweep": {
+              "axis": "x",
+              "duration_s": 4.0,
+              "from": -20.0,
+              "to": 60.0
+            },
+            "target": {
+              "ghost": [],
+              "id": "16c880ed9e83",
+              "kind": "project",
+              "parts": [
+                "mount_plate"
+              ],
+              "project_id": "16c880ed9e83"
+            },
+            "thumbnail_id": "pv_56ec27e2_df92f61bae_iso",
+            "xray_parts": []
+          }
+        },
+        "run_id": "56ec27e23bfe",
+        "title": "Section sweep of 1 part(s) of the build"
+      }
+    },
+    "evidence_hash": "4ed63724fa7a3f4b0561131bec5721ac392b3ddc0172676bbc5dd6c641c001d1",
+    "prev_hash": "bcb6c2689a9c2676acee5d47c39171daa8a3b3ebb192b398c8663c03b4da05c9",
+    "collapsed": false,
+    "stream": "view"
+  },
+  {
+    "id": 11,
+    "run_id": "56ec27e23bfe",
+    "ts": 1793431168.563155,
+    "kind": "measure",
+    "payload": {
+      "call_id": "s1",
+      "images": [
+        {
+          "b64_bytes": 31228,
+          "label": "iso",
+          "media_type": "image/png"
+        }
+      ],
+      "name": "present_view",
+      "output": {
+        "data": {
+          "ghost": [],
+          "parts": [
+            "mount_plate"
+          ],
+          "thumbnail": "/var/folders/h4/y3qg30g91736x48bxcvczsfc0000gn/T/mises-fixtures-motion-e0x58_74/renders/pv_56ec27e2_df92f61bae_iso.png",
+          "thumbnail_id": "pv_56ec27e2_df92f61bae_iso",
+          "view_spec": {
+            "animation": null,
+            "camera": "auto",
+            "caption": "A cut through both plates and the hinge line",
+            "explode": 0.0,
+            "ghost": [],
+            "is_project": true,
+            "kind": "section_sweep",
+            "orbit": null,
+            "parts": [
+              "mount_plate"
+            ],
+            "section": {
+              "normal": [
+                1.0,
+                0.0,
+                0.0
+              ],
+              "origin": [
+                16.0,
+                0.0,
+                0.0
+              ]
+            },
+            "sweep": {
+              "axis": "x",
+              "duration_s": 4.0,
+              "from": -20.0,
+              "to": 60.0
+            },
+            "target": {
+              "ghost": [],
+              "id": "16c880ed9e83",
+              "kind": "project",
+              "parts": [
+                "mount_plate"
+              ],
+              "project_id": "16c880ed9e83"
+            },
+            "thumbnail_id": "pv_56ec27e2_df92f61bae_iso",
+            "xray_parts": []
+          }
+        },
+        "handles": [
+          "/var/folders/h4/y3qg30g91736x48bxcvczsfc0000gn/T/mises-fixtures-motion-e0x58_74/renders/pv_56ec27e2_df92f61bae_iso.png"
+        ],
+        "ok": true,
+        "step_kind": "measure",
+        "summary": "presented section_sweep view of 1 part(s) of the build: A cut through both plates and the hinge line",
+        "warnings": []
+      }
+    },
+    "evidence_hash": "f8b18524741ee28b82400650a2f7ffaeeb3167d461e48b6dcfcc11b7037e3c74",
+    "prev_hash": "4ed63724fa7a3f4b0561131bec5721ac392b3ddc0172676bbc5dd6c641c001d1",
+    "collapsed": false,
+    "stream": "view"
+  }
+]

@@ -14,13 +14,28 @@
 // defaults: an internal view with no xray_parts X-rays everything, an exploded view with no
 // amount explodes fully. Ghosted parts are drawn faintly around the shown ones for context.
 // Camera azimuth runs from -Y toward +X, elevation up from XY (Z up), as G1 documents it.
-import type { PartSummary } from "../../../api/types";
+//
+// Plan 9 G-D: two kinds show the build's assembly on its poses (the app opens them on the build
+// view, not a LiveView): "animation" {animation: {animation_id, name, steps: [{joint_id, from,
+// to, duration_s}], loops, duration_s}} plays a motion; "section_sweep" {sweep: {axis, from, to,
+// duration_s}} sweeps a cut plane through it (from / to null: the assembly's box).
+import type { AnimateStep, PartSummary } from "../../../api/types";
+import { parseAnimateSteps } from "../../../state/assemblyAnimation";
 import { MODES_OFF, XRAY_OPACITY, type ModesState, type Vec3 } from "./state";
 
-export const VIEW_KINDS = ["orbit", "internal", "section", "exploded", "subset"] as const;
+export const VIEW_KINDS = ["orbit", "internal", "section", "exploded", "subset", "animation", "section_sweep"] as const;
 export type ViewKind = (typeof VIEW_KINDS)[number];
 
 export interface ViewCamera { azimuth: number; elevation: number; distance: number | null }
+
+/** A presented motion (G-D): its steps, as the core checked them against the build's joints. */
+export interface ViewAnimation { animation_id: string | null; name: string | null; steps: AnimateStep[]; loops: number; duration_s: number }
+
+/** A presented sweep (G-D): mm along a world axis; null ends = the assembly's box. */
+export interface ViewSweep { axis: "x" | "y" | "z"; from: number | null; to: number | null; duration_s: number }
+
+/** The kinds the build view plays on the assembly's poses. */
+export const isMotionKind = (k: ViewKind): k is "animation" | "section_sweep" => k === "animation" || k === "section_sweep";
 
 export interface ViewSpec {
   kind: ViewKind;
@@ -35,6 +50,36 @@ export interface ViewSpec {
   /** Parts drawn faintly around the shown ones: these ids, or "build" (the rest of the target's
    *  build: a subset that named none). */
   ghost: string[] | "build";
+  /** kind "animation": the motion (null: none that plays). */
+  animation: ViewAnimation | null;
+  /** kind "section_sweep": the sweep. */
+  sweep: ViewSweep | null;
+}
+
+/** A sweep lasts this long when the spec names no (or a silly) duration. */
+const SWEEP_S = 4;
+const NAME_CHARS = 60;
+
+function animationOf(v: unknown): ViewAnimation | null {
+  const a = rec(v);
+  if (!a) return null;
+  const steps = parseAnimateSteps(a.steps);
+  if (!steps.length) return null;
+  const loops = num(a.loops);
+  const name = typeof a.name === "string" ? a.name.replace(/\s+/g, " ").trim().slice(0, NAME_CHARS) : "";
+  return {
+    animation_id: id(a.animation_id), name: name || null, steps,
+    loops: loops !== null && loops >= 1 ? Math.min(10, Math.floor(loops)) : 1,
+    duration_s: steps.reduce((t, s) => t + s.duration_s, 0),
+  };
+}
+
+function sweepOf(v: unknown): ViewSweep | null {
+  const s = rec(v);
+  const axis = s?.axis === "x" || s?.axis === "y" || s?.axis === "z" ? s.axis : null;
+  if (!s || !axis) return null;
+  const d = num(s.duration_s);
+  return { axis, from: num(s.from), to: num(s.to), duration_s: d !== null && d > 0 ? Math.min(30, d) : SWEEP_S };
 }
 
 /** G1's present_view allows 200 characters; a little room for a looser core. */
@@ -86,10 +131,14 @@ export function parseViewSpec(raw: unknown): ViewSpec | null {
     : null;
   const ex = num(r.explode);
   const caption = typeof r.caption === "string" ? r.caption.replace(/\s+/g, " ").trim().slice(0, CAPTION_CHARS) : "";
+  const animation = kind === "animation" ? animationOf(r.animation) : null;
+  const sweep = kind === "section_sweep" ? sweepOf(r.sweep) : null;
+  // a motion card with nothing to play, or a sweep with no axis, is not a card
+  if ((kind === "animation" && !animation) || (kind === "section_sweep" && !sweep)) return null;
   return {
     kind, target, parts: ids(r.parts) ?? ids(t?.parts), section, xray_parts: ids(r.xray_parts),
     explode: ex === null ? null : Math.min(1, Math.max(0, ex)), camera, orbit, caption,
-    ghost,
+    ghost, animation, sweep,
   };
 }
 
@@ -137,4 +186,5 @@ function dot(a: Vec3, b: Vec3): number { return a[0] * b[0] + a[1] * b[1] + a[2]
 /** Plain words for the kind (the card's label). */
 export const VIEW_KIND_TEXT: Record<ViewKind, string> = {
   orbit: "Orbit", internal: "Inside (X-ray)", section: "Section", exploded: "Exploded", subset: "Selected parts",
+  animation: "Animation", section_sweep: "Section sweep",
 };

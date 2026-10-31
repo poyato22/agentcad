@@ -33,7 +33,7 @@ from starlette.datastructures import Headers
 from starlette.routing import Route
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from ..types import ErrorCode, MisesError
+from ..types import ErrorCode, MisesError, finite_json
 from .. import projects as _projects
 from .mcp_server import RUN_HEADER, build_mcp_server
 from ..profile import ClaudeStatusFn, LocalProbeFn, load_profile, probe_local
@@ -402,7 +402,10 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
     @app.get("/runs/{run_id}/steps")
     async def get_steps(run_id: str, after_id: int = 0):
         _run(run_id)
-        return [s.model_dump(mode="json") for s in runtime.store.steps(run_id, after_id=after_id)]
+        # one step holding a non-finite number (an old card, a tool's odd output) must never
+        # make the whole thread unloadable: strict JSON gets null for it
+        return [finite_json(s.model_dump(mode="json"))
+                for s in runtime.store.steps(run_id, after_id=after_id)]
 
     @app.post("/runs/{run_id}/message")
     async def message(run_id: str, body: Text):

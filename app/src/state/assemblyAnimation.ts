@@ -34,6 +34,11 @@ const value = (v: unknown): number | number[] | null =>
     : Array.isArray(v) && v.length > 0 && v.length <= 3 && v.every((x) => typeof x === "number" && Number.isFinite(x)) ? (v as number[]) : null;
 const str = (v: unknown): string | null => (typeof v === "string" && v.trim() !== "" ? v : null);
 
+/** A presented animation's joint steps (Plan 9 G-D; at most 12), dropping what doesn't parse. */
+export function parseAnimateSteps(raw: unknown): AnimateStep[] {
+  return Array.isArray(raw) ? raw.slice(0, MAX_STEPS).map(step).filter((s): s is AnimateStep => s !== null) : [];
+}
+
 function step(raw: unknown): AnimateStep | null {
   if (typeof raw !== "object" || raw === null) return null;
   const d = raw as Record<string, unknown>;

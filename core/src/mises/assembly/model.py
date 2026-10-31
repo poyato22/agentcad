@@ -102,7 +102,13 @@ CREATE TABLE IF NOT EXISTS assembly_joints (
   PRIMARY KEY (project_id, id));
 CREATE TABLE IF NOT EXISTS assembly_auto (
   project_id TEXT, id TEXT, PRIMARY KEY (project_id, id));
+CREATE TABLE IF NOT EXISTS assembly_animations (
+  project_id TEXT, id TEXT, name TEXT, spec TEXT, ord INTEGER,
+  PRIMARY KEY (project_id, id), UNIQUE (project_id, name));
 """
+
+#: saved animations kept per build (Plan 9 G-D)
+MAX_ANIMATIONS = 50
 
 _INSTANCE_FIELDS = {"part_id", "name", "transform", "fixed"}
 _JOINT_FIELDS = {"kind", "a", "b", "value", "limits"}
@@ -132,6 +138,8 @@ class AssemblyStore:
                 self._db.execute("DELETE FROM assembly_instances WHERE project_id=?",
                                  (project_id,))
                 self._db.execute("DELETE FROM assembly_auto WHERE project_id=?", (project_id,))
+                self._db.execute("DELETE FROM assembly_animations WHERE project_id=?",
+                                 (project_id,))
                 self._db.execute("COMMIT")
             except BaseException:
                 self._db.execute("ROLLBACK")
@@ -356,3 +364,42 @@ class AssemblyStore:
                                    (project_id, jid))
             if cur.rowcount == 0:
                 raise KeyError(jid)
+
+    # ---- named animations (Plan 9 G-D): an agent's motion, kept so a view card can replay it
+    def save_animation(self, project_id: str, name: str, spec: dict) -> dict:
+        """Store `spec` ({steps, loops, duration_s}) under `name` in the build; saving the same
+        name again replaces it (same id). Returns {id, name, **spec}."""
+        body = {k: v for k, v in spec.items() if k not in ("id", "name")}
+        with self._lock:
+            row = self._db.execute("SELECT id FROM assembly_animations WHERE project_id=? AND"
+                                   " name=?", (project_id, name)).fetchone()
+            aid = row["id"] if row else _new_id()
+            if row:
+                self._db.execute("UPDATE assembly_animations SET spec=? WHERE project_id=? AND"
+                                 " id=?", (json.dumps(body), project_id, aid))
+            else:
+                self._db.execute("INSERT INTO assembly_animations VALUES (?,?,?,?,?)",
+                                 (project_id, aid, name, json.dumps(body),
+                                  self._next_ord("assembly_animations", project_id)))
+                # a build keeps its newest MAX_ANIMATIONS; the oldest go
+                self._db.execute(
+                    "DELETE FROM assembly_animations WHERE project_id=? AND id NOT IN (SELECT id"
+                    " FROM assembly_animations WHERE project_id=? ORDER BY ord DESC LIMIT ?)",
+                    (project_id, project_id, MAX_ANIMATIONS))
+        return {"id": aid, "name": name, **body}
+
+    def get_animation(self, project_id: str, ref: str) -> dict:
+        """A saved animation of the build, by id first, else by name. KeyError if none."""
+        with self._lock:
+            row = self._db.execute("SELECT * FROM assembly_animations WHERE project_id=? AND"
+                                   " (id=? OR name=?) ORDER BY id=? DESC LIMIT 1",
+                                   (project_id, ref, ref, ref)).fetchone()
+        if row is None:
+            raise KeyError(ref)
+        return {"id": row["id"], "name": row["name"], **json.loads(row["spec"])}
+
+    def list_animations(self, project_id: str) -> list[dict]:
+        with self._lock:
+            rows = self._db.execute("SELECT * FROM assembly_animations WHERE project_id=?"
+                                    " ORDER BY ord, id", (project_id,)).fetchall()
+        return [{"id": r["id"], "name": r["name"], **json.loads(r["spec"])} for r in rows]

@@ -41,6 +41,10 @@ export interface AssemblyScene {
   /** Spheres the moving parts can sweep through (joint origin + reach); the camera frames them too. */
   setReach(spheres: readonly { center: Vec3; radius: number }[]): void;
   fit(): void;
+  /** Fix round 1 (G-D): what the camera frames until reset — the posed parts ("posed": no joint
+   *  reach), the envelope of `poses` (a motion), or null: the default (parts + every joint's reach).
+   *  `margin`: box-to-view ratio (1.4 ≈ the model fills ~70%). Resizes keep it. */
+  setFraming(f: Framing | null, margin?: number): void;
   /** What the view modes drive (ui/viewer/modes): the instances as shown parts, by instance id. */
   modeHost(): ModeHost;
   /** A world point (mm) → client pixels. Test probe. */
@@ -48,6 +52,8 @@ export interface AssemblyScene {
   resize(w: number, h: number): void;
   dispose(): void;
 }
+
+export type Framing = { kind: "posed" } | { kind: "poses"; poses: readonly Readonly<Record<string, Mat4>>[] };
 
 export interface AssemblySceneDeps { createRenderer?: (canvas: HTMLCanvasElement) => RendererLike }
 
@@ -327,10 +333,35 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
     fit();
   }
 
+  /** The framing a full-window view asked for (null: the default). */
+  let framing: Framing | null = null;
+  let framingMargin = FIT_MARGIN;
+  function posedBox(): THREE.Box3 {
+    const b = new THREE.Box3();
+    for (const e of entries.values()) if (e.body) b.expandByObject(e.group);
+    return b;
+  }
+  function posesBox(poses: readonly Readonly<Record<string, Mat4>>[]): THREE.Box3 {
+    const b = new THREE.Box3();
+    for (const pose of poses) {
+      for (const e of entries.values()) {
+        const m = pose[e.id];
+        if (!e.template || !m) continue;
+        b.union(e.template.bbox.clone().applyMatrix4(toMatrix4(m)));
+      }
+    }
+    return b.isEmpty() ? posedBox() : b;
+  }
+  function frameBox(): THREE.Box3 {
+    if (!framing) return worldBox();
+    return framing.kind === "posed" ? posedBox() : posesBox(framing.poses);
+  }
+  const frameMargin = () => (framing ? framingMargin : FIT_MARGIN);
+
   function fit(): void {
-    const b = worldBox();
+    const b = frameBox();
     if (b.isEmpty()) return;
-    fitOrtho(camera, b, width / height, FIT_MARGIN);
+    fitOrtho(camera, b, width / height, frameMargin());
     orbit.target.copy(b.getCenter(new THREE.Vector3()));
     orbit.update();
     requestRender();
@@ -420,6 +451,7 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
     setArriving(on) { if (arriving !== on) { arriving = on; restyle(); } },
     setReach(list) { reach = [...list]; },
     fit,
+    setFraming(f, margin = FIT_MARGIN) { framing = f; framingMargin = margin; fit(); },
     modeHost: () => host,
     probe() {
       return {
@@ -433,8 +465,11 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
     resize(w, h) {
       width = Math.max(1, w); height = Math.max(1, h);
       renderer.setSize(width, height, false);
-      const b = worldBox();
-      if (!b.isEmpty()) fitOrtho(camera, b, width / height, FIT_MARGIN);
+      const b = frameBox();
+      if (!b.isEmpty()) {
+        fitOrtho(camera, b, width / height, frameMargin());
+        if (framing) { orbit.target.copy(b.getCenter(new THREE.Vector3())); orbit.update(); }
+      }
       else {
         const halfH = (camera.top - camera.bottom) / 2;
         camera.left = -halfH * (width / height); camera.right = halfH * (width / height);

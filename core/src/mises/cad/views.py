@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Literal
 
 import numpy as np
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .. import budget as budget_mod
 from .. import edits as _edits
@@ -37,6 +37,7 @@ from .. import references as refs_mod
 # G1 cards (critique_round, view_presented) go through U3c's announcements: one wire format,
 # stored as DECISION steps on the acting run and its lead
 from ..announce import announce as announce_card
+from ..assembly.tools import AnimStep, animation_plan
 from ..providers.base import ModelRequest, TextDelta, Usage
 from ..tools.registry import ToolContext, ToolRegistry, tool
 from ..types import (ErrorCode, ImageBlock, Message, MisesError, SafetyClass, StepKind, TextBlock,
@@ -1456,10 +1457,45 @@ class TargetSpec(BaseModel):
     ghost: list[str] | None = Field(default=None, max_length=64)
 
 
+class AnimationRef(BaseModel):
+    """Plan 9 G-D: the motion an `animation` view plays: a saved one (assembly_animate `name`)
+    by id or name, or inline keyframes (joint steps, as assembly_animate's `sequence`)."""
+    animation_id: str | None = Field(default=None, min_length=1, max_length=64,
+                                     description="A saved animation's id (or name).")
+    keyframes: list[AnimStep] | None = Field(default=None, min_length=1, max_length=12,
+                                             description="Joint steps played one after another.")
+    loops: int | None = Field(default=None, ge=1, le=10)
+
+    @model_validator(mode="after")
+    def _one_form(self) -> "AnimationRef":
+        if (self.animation_id is None) == (self.keyframes is None):
+            raise ValueError("give animation_id or keyframes, not both")
+        return self
+
+
+#: a sweep end an agent may name (mm); the ends are then clamped to the assembly's extent
+MAX_SWEEP_MM = 1e5
+
+
+class SweepSpec(BaseModel):
+    """Plan 9 G-D: a section plane normal to `axis` sweeping from `from` to `to` (mm, world
+    coordinates of the assembly); either end omitted = the assembly's box on that side."""
+    model_config = ConfigDict(populate_by_name=True)
+    axis: Literal["x", "y", "z"]
+    from_: float | None = Field(default=None, alias="from", allow_inf_nan=False,
+                                ge=-MAX_SWEEP_MM, le=MAX_SWEEP_MM)
+    to: float | None = Field(default=None, allow_inf_nan=False, ge=-MAX_SWEEP_MM,
+                             le=MAX_SWEEP_MM)
+    duration_s: float = Field(default=4.0, gt=0, le=30, description="One sweep's length.")
+
+
 class PresentViewArgs(BaseModel):
     target: TargetSpec | str = Field(..., description="{kind: part|project, id, parts?, ghost?}; "
                                      "a bare string is a part id (or this run's project id).")
-    kind: Literal["orbit", "internal", "section", "exploded", "subset"]
+    kind: Literal["orbit", "internal", "section", "exploded", "subset", "animation",
+                  "section_sweep"]
+    animation: AnimationRef | None = Field(default=None, description="For kind 'animation'.")
+    sweep: SweepSpec | None = Field(default=None, description="For kind 'section_sweep'.")
     parts: list[str] | None = Field(default=None, max_length=64,
                                     description="For a subset: which parts to show (same as "
                                     "target.parts).")
@@ -1470,9 +1506,79 @@ class PresentViewArgs(BaseModel):
     orbit: OrbitSpec | None = None
     caption: str = Field(default="", max_length=200)
 
+    @model_validator(mode="after")
+    def _motion_fields(self) -> "PresentViewArgs":
+        if self.kind == "animation" and self.animation is None:
+            raise ValueError("kind 'animation' needs `animation` {animation_id | keyframes}")
+        if self.kind == "section_sweep" and self.sweep is None:
+            raise ValueError("kind 'section_sweep' needs `sweep` {axis, from?, to?}")
+        return self
+
 
 _VIEW_LABEL = {"orbit": "Orbit", "internal": "X-ray", "section": "Section",
-               "exploded": "Exploded", "subset": "Subset"}
+               "exploded": "Exploded", "subset": "Subset", "animation": "Animation",
+               "section_sweep": "Section sweep"}
+_AXIS = {"x": [1.0, 0.0, 0.0], "y": [0.0, 1.0, 0.0], "z": [0.0, 0.0, 1.0]}
+#: where along a sweep its thumbnail cuts (0 = `from`, 1 = `to`)
+SWEEP_THUMB_AT = 0.45
+
+
+def _animation_spec(ctx: ToolContext, project_id: str, ref: AnimationRef) -> dict:
+    """The motion the card plays: {animation_id, name, steps, loops, duration_s}, its steps
+    checked against (and clamped to) this build's joints."""
+    store = (getattr(ctx, "services", None) or {}).get("assembly")
+    if store is None:
+        raise MisesError(ErrorCode.NOT_FOUND, "this build has no assembly to animate")
+    asm = store.get(project_id)
+    if ref.animation_id is not None:
+        try:
+            saved = store.get_animation(project_id, ref.animation_id)
+        except KeyError:
+            raise MisesError(ErrorCode.NOT_FOUND, f"no animation {ref.animation_id!r} in "
+                             "this build", hint="save one with assembly_animate `name`") from None
+        steps = [AnimStep.model_validate(s) for s in saved.get("steps") or []]
+        aid, name, loops = saved["id"], saved["name"], saved.get("loops") or 1
+    else:
+        steps, aid, name, loops = list(ref.keyframes or []), None, None, 1
+    plan = animation_plan(asm, steps)            # NOT_FOUND for a joint it doesn't have
+    if not plan:
+        raise MisesError(ErrorCode.INVALID_INPUT, "the animation has no steps")
+    return {"animation_id": aid, "name": name, "steps": plan, "loops": ref.loops or loops,
+            "duration_s": round(sum(p["duration_s"] for p in plan), 4)}
+
+
+def _world_extent(ctx: ToolContext, placed: list[Placed], axis: list[float]
+                  ) -> tuple[float, float] | None:
+    """The assembly's extent along `axis`: each instance's part box (metrics.json) through its
+    world transform. None when no part has a box."""
+    a = np.asarray(axis, dtype=np.float64)
+    lo, hi = np.inf, -np.inf
+    for pid, tf in placed:
+        try:
+            bb = (safe_io.read_json(_part_dir(ctx, pid), "metrics.json") or {}).get("bbox")
+            mn, mx = np.asarray(bb["min"], float), np.asarray(bb["max"], float)
+        except Exception:  # noqa: BLE001 - no metrics yet: that part does not widen it
+            continue
+        corners = np.array([[x, y, z] for x in (mn[0], mx[0]) for y in (mn[1], mx[1])
+                            for z in (mn[2], mx[2])])
+        if tf is not None:
+            T = np.asarray(tf, dtype=np.float64)
+            corners = corners @ T[:3, :3].T + T[:3, 3]
+        d = corners @ a
+        lo, hi = min(lo, float(d.min())), max(hi, float(d.max()))
+    return (round(lo, 4), round(hi, 4)) if lo <= hi else None
+
+
+def _sweep_spec(ctx: ToolContext, placed: list[Placed], sweep: SweepSpec) -> dict:
+    ext = _world_extent(ctx, placed, _AXIS[sweep.axis])
+    lo = sweep.from_ if sweep.from_ is not None else (ext[0] if ext else None)
+    hi = sweep.to if sweep.to is not None else (ext[1] if ext else None)
+    if ext:            # ends far outside the model would spend the pass on all or nothing
+        pad = 0.05 * (ext[1] - ext[0]) + 1.0
+        lo, hi = (None if v is None else round(min(max(v, ext[0] - pad), ext[1] + pad), 4)
+                  for v in (lo, hi))
+    return {"axis": sweep.axis, "from": None if lo is None else float(lo),
+            "to": None if hi is None else float(hi), "duration_s": float(sweep.duration_s)}
 
 
 def _target(ctx: ToolContext, args: PresentViewArgs) -> TargetSpec:
@@ -1503,13 +1609,23 @@ def _section_view(normal: list[float]) -> str:
       description="Present a live view of the build in your reply: an orbiting shot (kind "
                   "'orbit'), an x-ray internal shot ('internal'), a section cutaway ('section'), "
                   "an exploded view ('exploded'), or a subset of parts ('subset', drawn with the "
-                  "rest of the build ghosted for context). `target` = {kind: 'part'|'project', "
+                  "rest of the build ghosted for context). For the assembly (target = the "
+                  "build): 'animation' plays a motion the user can scrub, loop and speed up "
+                  "(`animation` = {animation_id} saved by assembly_animate `name`, or inline "
+                  "`keyframes` [{joint_id, from?, to, duration_s}]) — present it when motion "
+                  "matters; 'section_sweep' sweeps a cut plane through it once, then hands the "
+                  "slider to the user (`sweep` = {axis: x|y|z, from?, to? in mm, default the "
+                  "assembly's box}) — present it when the internals matter (design, packing). "
+                  "`target` = {kind: 'part'|'project', "
                   "id, parts?, ghost?}. Camera: azimuth in degrees from -Y toward +X with Z up, "
                   "elevation above the XY plane. It shows as a card the user can open "
                   "full-window. Pass `caption` to say what it shows. When presenting results "
                   "show 1-3 well-chosen views and keep the text short.")
 async def present_view(ctx: ToolContext, args: PresentViewArgs) -> ToolOutput:
     t = _target(ctx, args)
+    if args.kind in ("animation", "section_sweep") and t.kind != "project":
+        raise MisesError(ErrorCode.INVALID_INPUT, f"a '{args.kind}' view shows the assembly",
+                         hint="target this run's build: {kind: 'project', id}")
     whole = False
     if t.kind == "part":
         _validate_build_part(ctx, t.id)
@@ -1534,23 +1650,41 @@ async def present_view(ctx: ToolContext, args: PresentViewArgs) -> ToolOutput:
         _validate_build_part(ctx, p)
     _check_scope_all(ctx, [*shown, *ghost, *(args.xray_parts or [])], whole)
     xray = set(args.xray_parts or [])
+    # a build view draws the assembly's instances where the solve puts them; a part view keeps
+    # the part (and any ghosts) in its own frame
+    place = t.kind == "project"
+    placed = _placed(ctx, shown, place=place)
+    # Plan 9 G-D: a motion or a sweeping cut is the assembly's (the app plays it on its poses)
+    animation = sweep = None
+    section = args.section
+    if args.kind == "animation":
+        animation = _animation_spec(ctx, t.id, args.animation)
+    elif args.kind == "section_sweep":
+        sweep = _sweep_spec(ctx, placed, args.sweep)
+        lo, hi = sweep["from"], sweep["to"]
+        # the thumbnail (and an app that knows no sweep) cuts a little before the middle (a
+        # joint line often sits right at it) and shows the cut face from the iso corner
+        at = (lo + SWEEP_THUMB_AT * (hi - lo) if lo is not None and hi is not None
+              else lo if hi is None else hi) or 0.0
+        n = _AXIS[sweep["axis"]]
+        iso = np.asarray(render_mod.VIEWS["iso"][0], dtype=np.float64)
+        n = [0.0 - c for c in n] if float(iso @ np.asarray(n)) > 0 else n
+        section = SectionSpec(origin=[abs(c) * at for c in n], normal=n)
 
     transparent = args.kind == "internal" or bool(xray) or bool(ghost)
     explode = args.explode if args.kind == "exploded" else 0.0
     if args.kind == "exploded" and explode <= 0.0:
         explode = 0.4
-    thumb_view = (_section_view(args.section.normal) if args.kind == "section" and args.section
+    thumb_view = (_section_view(section.normal) if args.kind == "section" and section
                   else "iso")
-    # a build view draws the assembly's instances where the solve puts them; a part view keeps
-    # the part (and any ghosts) in its own frame
-    place = t.kind == "project"
-    meshes = _mesh_inputs(ctx, _placed(ctx, shown, place=place),
-                          ghost=_placed(ctx, ghost, place=place),
+    meshes = _mesh_inputs(ctx, placed, ghost=_placed(ctx, ghost, place=place),
                           xray=xray or (set(shown) if args.kind == "internal" else None))
     out = await _render(ctx, meshes, renders=[{
         "key": "pv", "views": [thumb_view], "size": _SIZE_DEFAULT,
-        "section": args.section.job() if args.section else None, "explode": explode,
-        "transparent": transparent}])
+        "section": section.job() if section else None, "explode": explode,
+        "transparent": transparent,
+        # a motion card's still sits on the dock's own sheet in either theme (shadow in alpha)
+        **({"background": "transparent"} if args.kind in ("animation", "section_sweep") else {})}])
     imgs = out.pngs["pv"]
     handles = _write_pngs(ctx, _tag(ctx, "pv"), imgs)
     thumb_id = render_ids(handles)[thumb_view]
@@ -1561,15 +1695,17 @@ async def present_view(ctx: ToolContext, args: PresentViewArgs) -> ToolOutput:
         "kind": args.kind,
         "target": {"kind": t.kind, "id": t.id, id_key: t.id, "parts": shown, "ghost": ghost},
         "is_project": t.kind == "project", "parts": shown, "ghost": ghost,
-        "section": ({"origin": args.section.origin, "normal": args.section.normal}
-                    if args.section else None),
+        "section": ({"origin": [float(c) for c in section.origin],
+                     "normal": [float(c) for c in section.normal]} if section else None),
         "xray_parts": sorted(xray), "explode": explode, "camera": camera,
         "orbit": args.orbit.model_dump() if args.orbit else None, "caption": args.caption,
+        "animation": animation, "sweep": sweep,
         "thumbnail_id": thumb_id}
     what = t.id if t.kind == "part" else f"{len(shown)} part(s) of the build"
+    motion = args.kind in ("animation", "section_sweep")
     announce_card(getattr(ctx, "events", None), getattr(ctx, "store", None),
                   getattr(ctx, "run_id", None), "view_presented",
-                  f"{_VIEW_LABEL[args.kind]} view of {what}", args.caption,
+                  f"{_VIEW_LABEL[args.kind]}{'' if motion else ' view'} of {what}", args.caption,
                   {"view_spec": view_spec, "thumbnail_id": thumb_id, id_key: t.id})
     images = (await _tool_images(imgs, limit=1))[0] if _sees_images(ctx) else []
     return ToolOutput(ok=True, summary=f"presented {args.kind} view of {what}"
