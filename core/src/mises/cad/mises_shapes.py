@@ -933,13 +933,25 @@ def _occ_volume(shape, eps: float = 1e-6) -> float:
 
 
 def _mesh_volume(shape, tol: float | None = None) -> float:
-    """Volume of a tessellation (0.05 mm, coarser for big parts: 1e-4 of the diagonal)."""
+    """Volume of a tessellation: 0.05 mm, coarser for big parts (1e-4 of the diagonal), but
+    never coarser than a tenth of the wall (2 V / A estimates a thin shell's thickness)."""
     import numpy as np   # a build123d dependency, so always present in the worker
 
     shape = _as_shape(shape)
     if tol is None:
-        tol = max(0.05, 1e-4 * shape.bounding_box().diagonal)
-    verts, tris = shape.tessellate(tol, 0.1)
+        area = float(shape.area) or 1.0
+        wall_est = 2.0 * abs(float(shape.volume)) / area
+        tol = max(0.03, min(max(0.05, 1e-4 * shape.bounding_box().diagonal), 0.1 * wall_est))
+    # OCCT's mesher can fail on one big freeform face at one deflection and succeed at the
+    # next: retry finer, then coarser, before giving up
+    for t in (tol, tol / 3, tol * 3):
+        try:
+            verts, tris = shape.tessellate(t, 0.1)
+            break
+        except AttributeError:          # BRepMesh left a face without a triangulation
+            continue
+    else:
+        raise ValueError("the shape could not be meshed at any tolerance")
     v = np.array([(p.X, p.Y, p.Z) for p in verts], dtype=np.float64)
     f = np.array(tris, dtype=np.int64).reshape(-1, 3)
     a, b, c = v[f[:, 0]], v[f[:, 1]], v[f[:, 2]]
@@ -955,6 +967,12 @@ def trust(shape, what: str = "shape", rel: float = 0.03):
     and cover. Returns the shape; raises ValueError naming `what` otherwise."""
     shape = check_solid(_as_shape(shape), what)
     vo, vm = _occ_volume(shape), _mesh_volume(shape)
+    if vo > 0 and abs(vo - vm) > rel * max(vo, vm):
+        # OCCT's mesher can mis-triangulate one big freeform face at one deflection; a real
+        # defect disagrees at every deflection, so re-mesh finer before giving up
+        area = float(shape.area) or 1.0
+        fine = max(0.01, 0.02 * 2.0 * vo / area)
+        vm = _mesh_volume(shape, tol=fine)
     if not (vo > 0 and abs(vo - vm) <= rel * max(vo, vm)):
         raise ValueError(f"{what}: untrustworthy solid (precise volume {vo:.0f} mm3, mesh "
                          f"volume {vm:.0f} mm3); rebuild it as outer loft minus inset loft")
@@ -1133,8 +1151,10 @@ def panel_split(shape, plane: bd.Plane = bd.Plane.XY, gap: float = 0.8):
     out = []
     for side, off, keep in (("positive", gap / 2, bd.Keep.TOP),
                             ("negative", -gap / 2, bd.Keep.BOTTOM)):
-        part = _as_shape(bd.split(shape, bisect_by=plane.offset(off), keep=keep))
-        solids = part.solids() if part is not None else []
+        solids = []
+        for piece in (shape.solids() or [shape]):        # a compound splits solid by solid
+            part = _as_shape(bd.split(piece, bisect_by=plane.offset(off), keep=keep))
+            solids += part.solids() if part is not None else []
         if not solids:
             raise ValueError(f"panel_split: nothing on the {side} side of the plane")
         out.append(check_solid(solids[0] if len(solids) == 1 else bd.Compound(solids),
@@ -1222,6 +1242,7 @@ class Archetype:
         self.hardpoints: dict[str, tuple] = {}
         self.axes: dict[str, tuple] = {}
         self.envelopes: dict = {}
+        self.hulls: dict = {}        # {name: solid outer volume of a shelled part} for checks
 
     def add(self, name: str, shape, role: str = "shell"):
         self.parts[name] = check_solid(_as_shape(shape), f"{self.kind} {name}")
@@ -1230,6 +1251,16 @@ class Archetype:
 
     def part(self, name: str):
         return self.parts[name]
+
+    def lift(self, dz: float):
+        """Move everything (parts, hulls, envelopes, hardpoints, axes) up by `dz` mm."""
+        loc = bd.Location((0, 0, dz))
+        for d in (self.parts, self.hulls, self.envelopes):
+            for n in d:
+                d[n] = d[n].moved(loc)
+        self.hardpoints = {n: (p[0], p[1], p[2] + dz) for n, p in self.hardpoints.items()}
+        self.axes = {n: ((o[0], o[1], o[2] + dz), v) for n, (o, v) in self.axes.items()}
+        return self
 
     def compound(self, roles=None):
         keep = [s for n, s in self.parts.items() if roles is None or self.roles[n] in roles]
@@ -1277,35 +1308,53 @@ def _joint(me: Archetype, name: str, at, r: float, w: float, rom: float, rx: flo
         me.add(f"{name}_cowl", _placed(cowl, at, (rx, 0, 0)), role)
 
 
+def _girth(a: float, b: float) -> float:
+    """Ramanujan's ellipse perimeter: the girth of a section with half-axes a, b."""
+    h = ((a - b) / (a + b)) ** 2
+    return math.pi * (a + b) * (1 + 3 * h / (10 + math.sqrt(4 - 3 * h)))
+
+
+def _yoke_section(x: float, zc: float, a: float, b: float, n: float, dy: float, inset: float):
+    """A section of a loft along X (the plane x = const): a squircle in Y-Z, half-height `a`
+    (Z) and half-depth `b` (Y), centred on (dy, zc)."""
+    return squircle(b - inset, a - inset, n, bd.Plane(origin=(x, dy, zc), x_dir=(0, 1, 0),
+                                                      z_dir=(1, 0, 0)), seam_deg=200.0)
+
+
 def humanoid(height: float = 1700.0, heads: float = 8.0, shoulder_heads: float = 1.95,
              hip_heads: float = 0.87, shell: bool = True, wall: float = 3.0):
-    """Sleek covered humanoid starter (Optimus / NEO class): shells, cowls, skeleton, 8 heads.
+    """Covered humanoid starter: sculpted shells, an integrated shoulder yoke, 8 head heights.
 
     Stands on z=0 facing -Y (Z up, +X = its left side). `height` and `heads` (head heights per
     body; 7.5-8 reads heroic) set the unit; `shoulder_heads` / `hip_heads` are the shoulder and
-    hip joint spans in heads. Every visible part is a cover: a helmet with a glossy face (a panel
-    gap between them), a V-tapered lofted chest with a panel gap, pelvis shell, tapered thigh /
-    shin / arm shells (skin_shell, open ends tucked into the cowls), closed revolved cowls at
-    shoulders, elbows, knees and ankles, a dark waist and neck, mitten hands and shelled feet.
-    No bars and no exposed actuators: the actuators are `.envelopes` on the joint axes in
-    `.axes` (the hips sit inside the pelvis cover). `shell=False` returns solid massing for
+    hip joint spans in heads. The language is the covered service-humanoid one (light shells,
+    graphite joints, a glossy face): a helmet split from its face by a panel gap; a neck; a
+    chest-and-shoulder yoke lofted shoulder to shoulder so the shoulder cowls grow out of the
+    torso, split front / back by a real seam; banded abdomen plates; pelvis; thighs with a
+    quadriceps mass and a sloped hip line, split front / back; shins flattened at the sides
+    with a posterior calf mass; biceps-heavy upper arms over slimmer forearms; recessed
+    graphite cowls at elbows, knees and ankles nested in socketed shell ends; hands with a palm,
+    four fingers and a thumb; feet with heel, arch and toe, a toe-cap gap and a dark sole. No
+    bars and no exposed actuators: the actuators are `.envelopes` on the joint axes in `.axes`
+    (shoulders inside the yoke, hips inside the pelvis). `.units` carries the head unit and the
+    limb girths; `.hulls` the solid outer lofts. `shell=False` returns solid massing for
     concept sketches. Returns an Archetype."""
     u = height / heads
     k = height / 1700.0                        # stations are drawn for a 1.7 m, 8-head body
-    q = 8.0 / heads                            # head size relative to the 8-head canon
+    q = 8.0 / heads
     sw = shoulder_heads * u / 2
     hw = hip_heads * u / 2
-    z_sh = height - 1.5 * u                    # shoulder joint
-    z_waist = height - 3.0 * u                 # navel
+    z_sh = height - 1.5 * u
+    z_waist = height - 3.0 * u
     z_hip = height - 3.95 * u
     z_knee = 0.285 * height
     z_ank = 0.05 * height
     z_elb = z_sh - 1.42 * u
     z_wri = z_elb - 1.18 * u
+    W = wall
     me = Archetype("humanoid", {"height": height, "head_heights": heads,
                                 "head_unit": round(u, 1),
                                 "shoulder_to_hip_span": round(shoulder_heads / hip_heads, 2)})
-    W = wall
 
     def S(z, a, b, n=2.4, dx=0.0, dy=0.0):
         return (z * k, a * k, b * k, n, dx * k, dy * k)
@@ -1314,8 +1363,11 @@ def humanoid(height: float = 1700.0, heads: float = 8.0, shoulder_heads: float =
         return (skin_shell(stations, W, open_ends, 100.0) if shell
                 else station_loft(stations, seam_deg=100.0))
 
-    # ---- head: a revolved helmet, split by a panel gap into a glossy face and a light shell
-    hh = 212.0 * k * q                         # one head unit, crown to jaw
+    def hull(stations):
+        return station_loft(stations, seam_deg=100.0)
+
+    # ---- head: a revolved helmet split by a panel gap into a glossy face and a light shell
+    hh = 212.0 * k * q
     hz = height - hh
     head = _revolved([(0, 0), (40, 4), (62, 30), (72, 85), (70, 150), (56, 195), (30, 214),
                       (0, 218)], scale=(k * q, 1.2 * k * q, hh / 218.0))
@@ -1324,109 +1376,179 @@ def humanoid(height: float = 1700.0, heads: float = 8.0, shoulder_heads: float =
                                               z_dir=(0, -1, 0.25)), gap=1.5)
     me.add("head_face", face, "accent")
     me.add("head_shell", helmet, "shell")
-    me.add("neck", tapered_capsule(36 * k, 30 * k, start=(0, 6 * k, z_sh + 30 * k),
-                                   end=(0, 8 * k, hz + 0.2 * hh)), "joint")
+    # ---- neck: a defined column (narrowest at its waist) from the yoke into the head
+    neck_st = [S(0, 50, 46, 2.3, 0, 4), S(45, 40, 38, 2.2, 0, 6), S(90, 44, 42, 2.2, 0, 8)]
+    me.add("neck", _placed(station_loft(neck_st, seam_deg=100.0),
+                           (0, 0, z_sh + 40 * k)), "joint")
+    me.hardpoints["neck"] = (0, 6 * k, z_sh + 85 * k)
 
-    # ---- torso: a V-tapered chest shell (open at waist and neck) with a panel gap, broad
-    # shoulders sloping into the neck (trapezius), and a short dark waist into the pelvis
-    zw = z_waist
-    chest = body([S(-30, 100, 78, 2.3), S(0, 104, 80, 2.3), S(80, 124, 88, 2.4, 0, -4),
-                  S(170, 148, 100, 2.6, 0, -10), S(250, 160, 102, 2.8, 0, -8),
-                  S(310, 160, 94, 3.0, 0, -2), S(350, 140, 80, 2.8, 0, 2),
-                  S(378, 96, 62, 2.4, 0, 4), S(392, 66, 52, 2.2, 0, 5)])
-    chest = _placed(chest, (0, 0, zw + 18 * k))
+    # ---- the yoke: chest, upper back and shoulders in ONE loft along X, so the shoulders
+    # grow out of the torso. It ends in an open ring at each shoulder, closed by a graphite
+    # domed cowl over the shoulder actuator: the joint is celebrated, not half-exposed.
+    zs = z_sh / k
+    # (x, centre z, half-height, half-depth, n, forward bulge). Few stations and a near-
+    # constant exponent: every change between stations is a ripple in the reflections, so the
+    # V taper is monotone and the pec bulge eases out toward the shoulders
+    yk = [(0, zs - 92, 166, 110, 2.5, -12), (110, zs - 80, 150, 104, 2.5, -9),
+          (170, zs - 40, 108, 88, 2.5, -3), (204, zs - 10, 76, 72, 2.4, 0),
+          (224, zs - 4, 64, 64, 2.3, 0)]
+    rows = [(-x, zc, a, b, n, dy) for x, zc, a, b, n, dy in reversed(yk[1:])] + yk
+    xs = [x * k for x, *_r in rows]
+
+    def yoke_loft(inset):
+        """Outer loft, or (inset > 0) the cavity through the SAME stations (the same
+        interpolation, so the wall stays even), run out through both ends: open rings."""
+        loft = _as_shape(bd.Solid.make_loft([
+            _yoke_section(xs[i], rows[i][1] * k, rows[i][2] * k, rows[i][3] * k, rows[i][4],
+                          rows[i][5] * k, inset) for i in range(len(rows))]))
+        if inset > 0:
+            for i, sgn in ((0, -1.0), (len(rows) - 1, 1.0)):
+                face = bd.Face(_yoke_section(xs[i], rows[i][1] * k, rows[i][2] * k,
+                                             rows[i][3] * k, rows[i][4], rows[i][5] * k, inset))
+                loft = _as_shape(loft + bd.extrude(face, amount=10 * k, dir=(sgn, 0, 0)))
+        return loft
+    yoke_hull = check_solid(yoke_loft(0.0), "humanoid yoke", hint=_LOFT_HINT)
+    me.hulls["yoke"] = yoke_hull
     if shell:
-        upper, lower = panel_split(chest, bd.Plane.XY.offset(zw + 140 * k), gap=1.2)
-        me.add("chest", upper, "shell")
-        me.add("ribcage", lower, "shell")
+        yoke = trust(_as_shape(yoke_hull - yoke_loft(W)).solids()[0], "humanoid yoke shell")
+        neck_hole = _placed(bd.Solid.make_cylinder(46 * k, 200 * k), (0, 4 * k, z_sh + 10 * k))
+        yoke = _as_shape(yoke - neck_hole)
+        chest, back = panel_split(yoke, bd.Plane(origin=(0, 18 * k, 0), z_dir=(0, -1, 0)),
+                                  gap=1.2)
+        # a sternum gap: the chest reads as two pec plates
+        pec_l, pec_r = panel_split(chest, bd.Plane.YZ, gap=1.2)
+        me.add("chest_left", pec_l, "shell")
+        me.add("chest_right", pec_r, "shell")
+        me.add("back_plate", back, "shell")
     else:
-        me.add("chest", chest, "shell")
-    me.add("waist", _placed(station_loft([S(0, 94, 72, 2.3), S(80, 88, 68, 2.3),
-                                          S(170, 98, 76, 2.3)], seam_deg=100.0),
-                            (0, 0, zw - 120 * k)), "joint")
-    me.add("pelvis", _placed(body([S(0, 62, 70, 2.2, 0, 4), S(40, 112, 84, 2.5),
-                                   S(95, 128, 88, 2.7), S(150, 118, 84, 2.6),
-                                   S(200, 104, 78, 2.4)], (False, True)),
-                             (0, 0, z_hip - 75 * k)), "shell")
+        me.add("yoke", yoke_hull, "shell")
+    # ---- a graphite segmented abdomen (three bands, real gaps) tucked under the chest: the
+    # light chest over a dark core over a light pelvis is the torso's V read; waist; pelvis
+    zw = z_waist / k
+    abd_st = [S(zw - 60, 100, 76, 2.4, 0, -2), S(zw, 108, 80, 2.5, 0, -6),
+              S(zw + 95, 120, 90, 2.6, 0, -8)]
+    abdomen = body(abd_st)
+    if shell:
+        upper, rest = panel_split(abdomen, bd.Plane.XY.offset(z_waist + 50 * k), gap=1.5)
+        middle, lower = panel_split(rest, bd.Plane.XY.offset(z_waist - 5 * k), gap=1.5)
+        for name, band in (("abdomen_upper", upper), ("abdomen_middle", middle),
+                           ("abdomen_lower", lower)):
+            me.add(name, band, "joint")
+    else:
+        me.add("abdomen", abdomen, "joint")
+    me.add("waist", station_loft([S(zw - 132, 92, 70, 2.3), S(zw - 90, 88, 68, 2.3),
+                                  S(zw - 40, 96, 74, 2.3)], seam_deg=100.0), "joint")
+    zh = z_hip / k
+    pel_st = [S(zh - 72, 60, 66, 2.2, 0, 4), S(zh - 30, 112, 82, 2.5), S(zh + 20, 132, 88, 2.7),
+              S(zh + 70, 122, 84, 2.6), S(zh + 112, 100, 76, 2.4)]
+    me.hulls["pelvis"] = hull(pel_st)
+    me.add("pelvis", body(pel_st, (False, True)), "shell")
 
-    # elbow, knee, ankle: actuator radius and width, link swing (deg) and the cowl's turn so
-    # its open sector faces the lower link. ro = the cowl's outer radius (joint_cowl crown)
     J = {"elbow": (34, 60, 120, 15), "knee": (42, 70, 130, 45), "ankle": (26, 50, 120, 0)}
     ro = {n: (1.12 * r * k + W) / k for n, (r, *_rest) in J.items()}
 
     def socket(shape, at, name):
-        """Shell ends are cut concave around the joint's cowl (2 mm running clearance), so the
-        cowl nests in them through the swing instead of clashing: the honest joint read."""
         rad = (ro[name] + 2.0) * k
         cyl = _placed(bd.Solid.make_cylinder(rad, 600 * k, bd.Plane.YZ.offset(-300 * k)), at)
         return max(_as_shape(_as_shape(shape) - cyl).solids(), key=lambda s: s.volume)
 
+    def clam(name, shape, y0):
+        """Front / back halves with a 0.8 mm seam on the side silhouette."""
+        if not shell:
+            me.add(name, shape, "shell")
+            return
+        front, back = panel_split(shape, bd.Plane(origin=(0, y0, 0), z_dir=(0, -1, 0)), gap=0.8)
+        me.add(f"{name}_front", front, "shell")
+        me.add(f"{name}_back", back, "shell")
+
+    girths = {}
     for side, sx in (("left", 1.0), ("right", -1.0)):
-        # ---- legs: hip (inside the pelvis) -> knee -> ankle; a forward thigh belly, a calf
+        # ---- legs: hip (inside the pelvis) -> knee -> ankle
         hip = (sx * hw, 0.0, z_hip)
         knee = (sx * hw * 0.92, -4 * k, z_knee)
         ankle = (sx * hw * 0.92, 2 * k, z_ank)
         Lt, Ls = (z_hip - z_knee) / k, (z_knee - z_ank) / k
         lean = -sx * (hw - hw * 0.92) / k
-        thigh = _placed(body([
-            S(40, 66, 72, 2.3, 0, -2), S(-0.22 * Lt, 74, 78, 2.4, 0.22 * lean, -6),
-            S(-0.6 * Lt, 62, 64, 2.4, 0.6 * lean, -4),
-            S(-Lt + 0.5 * ro["knee"], 52, 55, 2.3, lean, -3)]), hip)
-        # the hip line: the thigh shell's top is cut on a slope, high outside, low inside
+        thigh_st = [S(40, 64, 72, 2.3, 0, -2), S(-0.16 * Lt, 82, 86, 2.4, 0.16 * lean, -10),
+                    S(-0.42 * Lt, 76, 80, 2.5, 0.42 * lean, -9),
+                    S(-0.72 * Lt, 60, 62, 2.4, 0.72 * lean, -4),
+                    S(-Lt + 0.5 * ro["knee"], 50, 54, 2.3, lean, -3)]
+        shin_st = [S(0.45 * ro["knee"], 50, 54, 2.3), S(-0.18 * Ls, 50, 62, 2.4, 0, 10),
+                   S(-0.34 * Ls, 48, 64, 2.4, 0, 14), S(-0.62 * Ls, 38, 46, 2.3, 0, 6),
+                   S(-Ls + 0.55 * ro["ankle"], 31, 35, 2.2)]
+        if side == "left":
+            girths["thigh"] = round(max(_girth(a, b) for _z, a, b, *_r in thigh_st), 1)
+            girths["calf"] = round(max(_girth(a, b) for _z, a, b, *_r in shin_st), 1)
+        thigh = _placed(body(thigh_st), hip)
+        me.hulls[f"thigh_{side}"] = _placed(hull(thigh_st), hip)
         cut = bd.Plane(origin=(hip[0], 0, hip[2] + 10 * k), z_dir=(-sx * 0.55, 0, 1))
         thigh = _as_shape(bd.split(thigh, bisect_by=cut, keep=bd.Keep.BOTTOM)).solids()[0]
-        me.add(f"thigh_{side}", socket(thigh, knee, "knee") if shell else thigh, "shell")
-        shin = _placed(body([
-            S(0.45 * ro["knee"], 52, 55, 2.3), S(-0.24 * Ls, 54, 62, 2.4, 0, 8),
-            S(-0.63 * Ls, 42, 46, 2.3, 0, 3), S(-Ls + 0.55 * ro["ankle"], 33, 36, 2.2)]), knee)
+        clam(f"thigh_{side}", socket(thigh, knee, "knee") if shell else thigh, -6 * k)
+        shin = _placed(body(shin_st), knee)
+        me.hulls[f"shin_{side}"] = _placed(hull(shin_st), knee)
         if shell:
             shin = socket(socket(shin, knee, "knee"), ankle, "ankle")
         me.add(f"shin_{side}", shin, "shell")
-        foot = _placed(body([S(-72, 40, 32, 2.8, 0, 32), S(0, 46, 44, 2.8, 0, 44),
-                             S(110, 50, 30, 3.0, 0, 30), S(186, 42, 15, 2.6, 0, 15)],
-                            (False, False)), (ankle[0], ankle[1], 0), (90, 0, 0))
-        me.add(f"foot_{side}", socket(foot, ankle, "ankle") if shell else foot, "shell")
-        # ---- arms: a slight A-pose; shoulder -> elbow -> wrist
+        # ---- foot: heel, arch, ball and toe; a toe cap behind a real gap and a dark sole
+        foot_st = [S(-80, 34, 26, 2.4, 0, 26), S(-56, 42, 40, 2.8, 0, 40), S(0, 46, 46, 2.9, 0, 46),
+                   S(90, 50, 32, 3.0, 0, 32), S(150, 48, 22, 2.8, 0, 22), S(186, 40, 15, 2.5, 0, 15),
+                   S(200, 26, 9, 2.2, 0, 9)]
+        foot = _placed(body(foot_st, (False, False)), (ankle[0], ankle[1], 0), (90, 0, 0))
+        if shell:
+            foot = socket(foot, ankle, "ankle")
+            upper, sole = panel_split(foot, bd.Plane.XY.offset(12 * k), gap=1.0)
+            toe, upper = panel_split(upper, bd.Plane(origin=(0, ankle[1] - 132 * k, 0),
+                                                     z_dir=(0, -1, 0)), gap=1.0)
+            me.add(f"foot_{side}", upper, "shell")
+            me.add(f"toe_{side}", toe, "shell")
+            me.add(f"sole_{side}", sole, "joint")
+        else:
+            me.add(f"foot_{side}", foot, "shell")
+        # ---- arms: a slight A-pose; shoulder (inside the yoke) -> elbow -> wrist
         tilt = sx * 6.0
         s6 = math.sin(math.radians(6.0)) * sx
         shoulder = (sx * sw, 0.0, z_sh)
         La, Lf = (z_sh - z_elb) / k, (z_elb - z_wri) / k
         elbow = (shoulder[0] + s6 * La * k, 0.0, z_elb)
         wrist = (elbow[0] + s6 * Lf * k, 0.0, z_wri)
-        upper = _placed(body([S(12, 48, 50, 2.3), S(-0.3 * La, 50, 54, 2.4, 0, -3),
-                              S(-La + 0.5 * ro["elbow"], 42, 44, 2.3)]), shoulder, (0, tilt, 0))
+        up_st = [S(12, 52, 54, 2.3), S(-0.28 * La, 56, 60, 2.4, 0, -5),
+                 S(-0.6 * La, 50, 52, 2.4, 0, -2), S(-La + 0.5 * ro["elbow"], 42, 44, 2.3)]
+        fo_st = [S(0.45 * ro["elbow"], 44, 46, 2.3), S(-0.2 * Lf, 47, 49, 2.4, 0, -2),
+                 S(-0.6 * Lf, 38, 40, 2.3), S(-Lf + 14, 30, 32, 2.2)]
+        if side == "left":
+            girths["upper_arm"] = round(max(_girth(a, b) for _z, a, b, *_r in up_st), 1)
+            girths["forearm"] = round(max(_girth(a, b) for _z, a, b, *_r in fo_st), 1)
+        upper = _placed(body(up_st), shoulder, (0, tilt, 0))
+        me.hulls[f"upper_arm_{side}"] = _placed(hull(up_st), shoulder, (0, tilt, 0))
         me.add(f"upper_arm_{side}", socket(upper, elbow, "elbow") if shell else upper, "shell")
-        fore = _placed(body([S(0.45 * ro["elbow"], 43, 45, 2.3), S(-0.25 * Lf, 45, 47, 2.4),
-                             S(-Lf + 14, 30, 32, 2.2)]), elbow, (0, tilt, 0))
+        fore = _placed(body(fo_st), elbow, (0, tilt, 0))
+        me.hulls[f"forearm_{side}"] = _placed(hull(fo_st), elbow, (0, tilt, 0))
         me.add(f"forearm_{side}", socket(fore, elbow, "elbow") if shell else fore, "shell")
-        hand = station_loft([S(34, 28, 34, 2.3), S(-20, 25, 42, 2.6), S(-100, 20, 44, 2.9),
-                             S(-150, 14, 36, 2.6), S(-172, 8, 22, 2.2)], seam_deg=100.0)
-        thumb = tapered_capsule(14 * k, 11 * k, start=(-sx * 6 * k, -30 * k, -24 * k),
-                                end=(-sx * 12 * k, -44 * k, -78 * k))
-        me.add(f"hand_{side}", _placed(_as_shape(hand + thumb), wrist, (0, tilt, 0)), "joint")
-        # ---- shoulder: a light deltoid cap lofted outward from the chest over the actuator
-        # a dome, not a block: rounder sections that fall away fast past the actuator
-        cap_l = 120.0                  # an elliptical taper: r = R * sqrt(1 - (x / L)^2)
-        cap = station_loft([S(x, 66 * f, 74 * f, 2.2) for x, f in (
-            (x, math.sqrt(1 - (x / cap_l) ** 2)) for x in (0, 30, 60, 85, 105, 116, 119))],
-            seam_deg=100.0)
-        x_in = shoulder[0] - sx * 58 * k
-        me.add(f"shoulder_cap_{side}", _placed(cap, (x_in, 0, z_sh + 4 * k), (0, 90 * sx, 0)),
-               "shell")
-        _joint(me, f"shoulder_{side}", shoulder, 52 * k, 84 * k, 0, 0, shell=False, wall=W)
-        # ---- elbow, knee and ankle: cowls the width of the limb, nested in the socketed
-        # shell ends, open toward the lower link
-        for jn, at in (("elbow", elbow), ("knee", knee), ("ankle", ankle)):
-            r, w, rom, rx = J[jn]
-            _joint(me, f"{jn}_{side}", at, r * k, w * k, rom, rx, shell=shell, wall=W)
-        # wrist cuff: a short dark band between the forearm shell and the hand
+        # ---- hand: palm, four slightly curled fingers and a thumb (palm faces the body)
+        palm = station_loft([S(30, 27, 34, 2.3), S(-20, 22, 44, 2.6), S(-82, 18, 45, 2.8),
+                             S(-92, 16, 42, 2.6)], seam_deg=100.0)
+        bits = [palm]
+        for y, ln in ((-33, 74), (-11, 82), (11, 78), (33, 64)):
+            bits.append(tapered_capsule(9.5 * k, 7.5 * k, start=(0, y * k, -84 * k),
+                                        end=(-sx * 14 * k, y * 0.9 * k, (-84 - ln) * k)))
+        bits.append(tapered_capsule(11 * k, 9 * k, start=(-sx * 8 * k, -36 * k, -18 * k),
+                                    end=(-sx * 20 * k, -56 * k, -76 * k)))
+        hand = _as_shape(bits[0].fuse(*bits[1:]))
+        me.add(f"hand_{side}", _placed(hand, wrist, (0, tilt, 0)), "joint")
         me.add(f"wrist_{side}", _placed(station_loft([S(30, 30, 33, 2.3), S(-6, 27, 31, 2.3)],
                                                      seam_deg=100.0), wrist, (0, tilt, 0)),
                "joint")
-        _joint(me, f"hip_{side}", hip, 48 * k, 70 * k, 0, 0, shell=False, wall=W)
         me.hardpoints[f"wrist_{side}"] = wrist
-    me.hardpoints.update({"head": (0, 0, hz + 110 * k), "neck": (0, 6 * k, z_sh + 40 * k),
-                          "waist": (0, 0, z_waist), "eye_line": (0, -80 * k, hz + 120 * k)})
+        # ---- joints: shoulders inside the yoke, hips inside the pelvis (envelopes only);
+        # elbow, knee and ankle cowls nested in the socketed shell ends
+        _joint(me, f"shoulder_{side}", shoulder, 50 * k, 64 * k, 100, 0, shell=shell, wall=W)
+        _joint(me, f"hip_{side}", hip, 48 * k, 70 * k, 0, 0, shell=False, wall=W)
+        for jn, at in (("elbow", elbow), ("knee", knee), ("ankle", ankle)):
+            r, w, rom, rx = J[jn]
+            _joint(me, f"{jn}_{side}", at, r * k, w * k, rom, rx, shell=shell, wall=W)
+    me.units.update({f"{n}_girth_mm": round(g * k, 1) for n, g in girths.items()})
+    me.hardpoints.update({"head": (0, 0, hz + 0.5 * hh), "waist": (0, 0, z_waist),
+                          "eye_line": (0, -80 * k, hz + 0.56 * hh)})
     return me
 
 
@@ -1440,165 +1562,360 @@ def _along_x(stations, *, shell: bool, wall: float, open_ends=(False, False),
     return _placed(body, (0, 0, 0), (0, 90, 0))
 
 
-def quadruped(body_length: float = 700.0, leg_ratio: float = 0.5, shell: bool = True,
+def quadruped(body_length: float = 700.0, leg_ratio: float = 0.6, shell: bool = True,
               wall: float = 2.5):
-    """Covered robot-dog starter (Spot / Go2 class): a clamshell body, shelled legs, cowls.
+    """Covered legged-robot starter: a massed body, sensor head, thigh shells over actuators.
 
     Body along X (head at +X), Z up, feet on z=0. `body_length` sets the scale; each leg's
-    upper and lower links are `leg_ratio` x body length together (about 2:1 body:leg reads
-    planted and low). The body is a soft-box loft split by a real panel gap into a light top
-    shell and a dark belly pan, with a glossy sensor face; legs are tapered shells with knees
-    pointing back, dark revolved cowls at hips and knees nested in socketed shell ends, and
-    rubber feet. Actuators are `.envelopes` on the joint axes (Y). `shell=False` returns solid
-    massing. Returns an Archetype."""
+    thigh and calf are `leg_ratio` x body length together (about 2:1 body:leg reads planted
+    and low). The body is a soft-box loft with haunch and shoulder massing where the legs
+    mount, split by a real panel gap into a light top shell and a dark belly pan; a separate
+    sensor head carries a glossy face behind a panel gap. Each thigh is a shell whose domed top
+    houses BOTH the hip and the knee actuator (coaxial on the hip axis, as in compact robot
+    dogs; `.envelopes`), tapering to a recessed dark knee cowl; the calf tapers to a rubber
+    boot. Knees point back. `.hulls` holds each thigh's solid outer loft. `shell=False` returns
+    solid massing. Returns an Archetype."""
     L = float(body_length)
     k = L / 700.0
-    leg = leg_ratio * L / 2                     # each link
-    th = math.radians(32.0)
-    drop = 2 * leg * math.cos(th)
-    foot_r = 26 * k
-    zc = drop + foot_r                          # hip axis height
-    hx, hy = L / 2 - 95 * k, 150 * k
+    leg = leg_ratio * L / 2                     # thigh, and calf to the ground contact
+    th = math.radians(35.0)
+    zc = 2 * leg * math.cos(th)                 # hip axis height (the foot contact on z=0)
+    hx = L / 2 - 95 * k
     me = Archetype("quadruped", {"body_length": L, "leg_length": round(2 * leg, 1),
                                  "body_to_leg": round(L / (2 * leg), 2),
                                  "stance_height": round(zc, 1)})
 
-    def S(x, a, b, n, z):
-        return (x * k - L / 2, a * k, b * k, n, z)
+    def S(x, a, b, n, dz=0.0):
+        return (x * k - L / 2, a * k, b * k, n, zc + 30 * k + dz * k)
 
-    body = _along_x([S(0, 66, 96, 2.6, zc + 10 * k), S(60, 90, 124, 2.9, zc + 14 * k),
-                     S(350, 100, 134, 3.0, zc + 18 * k), S(610, 94, 128, 2.9, zc + 18 * k),
-                     S(700, 66, 100, 2.6, zc + 14 * k)], shell=shell, wall=wall)
+    body_st = [S(0, 62, 90, 2.6, 6), S(28, 88, 116, 2.9, 4), S(95, 98, 126, 3.1, 2),
+               S(230, 86, 112, 3.0), S(470, 88, 114, 3.0), S(605, 100, 128, 3.1, 2),
+               S(672, 90, 118, 2.9, 4), S(700, 64, 92, 2.6, 6)]
+    body = _along_x(body_st, shell=shell, wall=wall)
+    me.hulls["body"] = _along_x(body_st, shell=False, wall=wall)
+    hy = 128 * k + 40 * k                       # hip plane, outboard of the body side
+    # a flat, wide sensor head that drops slightly forward of the body
+    head_st = [(L / 2 - 30 * k, 64 * k, 100 * k, 3.0, -(zc + 34 * k), 0.0),
+               (L / 2 + 45 * k, 58 * k, 94 * k, 3.0, -(zc + 26 * k), 0.0),
+               (L / 2 + 88 * k, 44 * k, 82 * k, 2.8, -(zc + 16 * k), 0.0),
+               (L / 2 + 104 * k, 22 * k, 52 * k, 2.4, -(zc + 12 * k), 0.0)]
+    head = _placed(station_loft(head_st, seam_deg=100.0), (0, 0, 0), (0, 90, 0))
     if shell:
-        top, belly = panel_split(body, bd.Plane.XY.offset(zc - 10 * k), gap=1.0)
-        nose, top = panel_split(top, bd.Plane(origin=(L / 2 - 60 * k, 0, zc),
-                                              z_dir=(1, 0, 0.35)), gap=1.0)
+        top, belly = panel_split(body, bd.Plane.XY.offset(zc - 12 * k), gap=1.0)
         me.add("body_top", top, "shell")
         me.add("belly_pan", belly, "joint")
-        me.add("sensor_face", nose, "accent")
+        face, cap = panel_split(head, bd.Plane(origin=(L / 2 + 80 * k, 0, zc + 26 * k),
+                                               z_dir=(1, 0, -0.75)), gap=1.0)
+        me.add("sensor_face", face, "accent")
+        me.add("head", cap, "shell")
     else:
         me.add("body", body, "shell")
-    ro_k = (1.12 * 34 * k + wall)
+        me.add("head", head, "shell")
+    r_hip, w_hip, r_kn, w_kn = 38 * k, 40 * k, 34 * k, 34 * k
+    r_cw = 22 * k                               # knee joint cowl (the linkage pivot)
+    ro_k = 1.12 * r_cw + wall
 
     def socket(shape, at):
         cyl = _placed(bd.Solid.make_cylinder(ro_k + 2 * k, 400 * k,
                                              bd.Plane.XZ.offset(-200 * k)), at)
         return max(_as_shape(_as_shape(shape) - cyl).solids(), key=lambda s: s.volume)
 
+    deg = math.degrees(th)
     for name, sx, sy in (("front_left", 1, 1), ("front_right", 1, -1), ("rear_left", -1, 1),
                          ("rear_right", -1, -1)):
         hip = (sx * hx, sy * hy, zc)
         knee = (hip[0] - leg * math.sin(th), hip[1], zc - leg * math.cos(th))
-        foot = (knee[0] + leg * math.sin(th), hip[1], foot_r)
-        deg = math.degrees(th)
-        upper = station_loft([(30 * k, 40 * k, 30 * k, 2.6, 0, 0),
-                              (-0.4 * leg, 46 * k, 30 * k, 2.6, -6 * k, 0),
-                              (-leg + 0.5 * ro_k, 32 * k, 26 * k, 2.4, 0, 0)], seam_deg=100.0)
+        foot = (knee[0] + leg * math.sin(th), hip[1], 0.0)
+        # thigh: a dome over the coaxial hip and knee actuators, tapering to the knee
+        thigh_st = [(58 * k, 18 * k, 34 * k, 2.2, 0, 0), (44 * k, 44 * k, 50 * k, 2.6, 0, 0),
+                    (0, 52 * k, 52 * k, 2.8, 0, 0), (-0.45 * leg, 36 * k, 38 * k, 2.6, 4 * k, 0),
+                    (-leg + 0.5 * ro_k, 25 * k, 30 * k, 2.4, 0, 0)]
+        hull = _placed(station_loft(thigh_st, seam_deg=100.0), hip, (0, deg, 0))
+        me.hulls[f"thigh_{name}"] = hull
+        thigh = (_placed(skin_shell(thigh_st, wall, (False, True), 100.0), hip, (0, deg, 0))
+                 if shell else hull)
+        calf_st = [(0.45 * ro_k, 25 * k, 27 * k, 2.4, 0, 0), (-0.3 * leg, 22 * k, 22 * k, 2.4, 3 * k, 0),
+                   (-leg + 52 * k, 15 * k, 15 * k, 2.2, 0, 0)]
+        me.hulls[f"calf_{name}"] = _placed(station_loft(calf_st, seam_deg=100.0), knee,
+                                           (0, -deg, 0))
+        calf = _placed(skin_shell(calf_st, wall, (True, True), 100.0) if shell
+                       else station_loft(calf_st, seam_deg=100.0), knee, (0, -deg, 0))
         if shell:
-            upper = skin_shell([(30 * k, 40 * k, 30 * k, 2.6, 0, 0),
-                                (-0.4 * leg, 46 * k, 30 * k, 2.6, -6 * k, 0),
-                                (-leg + 0.5 * ro_k, 32 * k, 26 * k, 2.4, 0, 0)], wall,
-                               (True, True), 100.0)
-        upper = _placed(upper, hip, (0, deg, 0))       # +deg about Y: the knee goes back
-        lower_st = [(0.45 * ro_k, 30 * k, 25 * k, 2.4, 0, 0), (-0.45 * leg, 24 * k, 20 * k, 2.3, 0, 0),
-                    (-leg + 1.2 * foot_r, 15 * k, 14 * k, 2.2, 0, 0)]
-        lower = (skin_shell(lower_st, wall, (True, True), 100.0) if shell
-                 else station_loft(lower_st, seam_deg=100.0))
-        lower = _placed(lower, knee, (0, -deg, 0))     # and the foot comes forward under it
+            thigh, calf = socket(thigh, knee), socket(calf, knee)
+        me.add(f"thigh_{name}", thigh, "shell")
+        me.add(f"calf_{name}", calf, "shell")
+        # rubber boot: a short egg on the calf axis whose lowest point is the ground contact
+        boot = station_loft([(-leg + 60 * k, 16 * k, 16 * k, 2.2, 0, 0),
+                             (-leg + 26 * k, 25 * k, 23 * k, 2.2, 0, 0),
+                             (-leg + 8 * k, 20 * k, 19 * k, 2.2, 0, 0),
+                             (-leg + 1 * k, 9 * k, 9 * k, 2.0, 0, 0)], seam_deg=100.0)
+        me.add(f"foot_{name}", _placed(boot, knee, (0, -deg, 0)), "joint")
+        hp, kp = f"hip_{name}", f"knee_{name}"
+        me.hardpoints.update({hp: hip, kp: knee, f"foot_{name}": foot})
+        me.axes[hp] = (hip, (0.0, 1.0, 0.0))
+        me.axes[kp] = (knee, (0.0, 1.0, 0.0))
+        # the hip actuator inboard, the knee actuator outboard, both on the hip axis inside the
+        # thigh dome (the knee is driven by a linkage down the thigh)
+        for jn, r, w, off in (("hip", r_hip, w_hip, -22 * k), ("knee_drive", r_kn, w_kn, 20 * k)):
+            me.envelopes[f"{jn}_{name}"] = _placed(bd.Solid.make_cylinder(
+                r, w, bd.Plane.XZ.offset(-w / 2)), (hip[0], hip[1] + sy * off, hip[2]))
         if shell:
-            upper, lower = socket(socket(upper, knee), hip), socket(lower, knee)
-        me.add(f"upper_leg_{name}", upper, "shell")
-        me.add(f"lower_leg_{name}", lower, "shell")
-        me.add(f"foot_{name}", _placed(bd.Solid.make_sphere(foot_r), foot), "joint")
-        for jn, at, r, w in (("hip", hip, 38 * k, 56 * k), ("knee", knee, 34 * k, 50 * k)):
-            jname = f"{jn}_{name}"
-            me.axes[jname] = (at, (0.0, 1.0, 0.0))
-            me.hardpoints[jname] = at
-            me.envelopes[jname] = _placed(bd.Solid.make_cylinder(r, w, bd.Plane.XZ.offset(-w / 2)),
-                                          at)
-            if shell:
-                cowl = joint_cowl(r, w, 0.04 * r, wall, 120, bulge=0.08 * r, bore=0)
-                me.add(f"{jname}_cowl", _placed(cowl, at, (90 if jn == "knee" else 0, 0, 90)),
-                       "joint")
-        me.hardpoints[f"foot_{name}"] = foot
+            cowl = joint_cowl(r_cw, 40 * k, 0.04 * r_cw, wall, 110, bulge=0.08 * r_cw, bore=0)
+            me.add(f"knee_{name}_cowl", _placed(cowl, knee, (-20, 0, 90)), "joint")
+    # stand on z = 0: the boots' rims, tilted with the calf, reach a little below their axis
+    dz = -min(me.parts[f"foot_{n}"].bounding_box().min.Z
+              for n in ("front_left", "front_right", "rear_left", "rear_right"))
+    me.lift(dz)
+    me.units["stance_height"] = round(zc + dz, 1)
+    for n in ("front_left", "front_right", "rear_left", "rear_right"):
+        me.hardpoints[f"foot_{n}"] = (*me.hardpoints[f"foot_{n}"][:2], 0.0)
     return me
+
+
+# ---- car body: one loft whose sections carry the cabin (glass is cut from it)
+
+def _ray_exit(o, d, c, a, b_up, b_dn, n_up, n_dn) -> float:
+    """Distance from `o` along unit `d` (2D, y-z) to the boundary of an up/down-asymmetric
+    superellipse centred at `c` (half-width a; half-heights b_up above, b_dn below)."""
+    def inside(s):
+        y, z = o[0] + s * d[0] - c[0], o[1] + s * d[1] - c[1]
+        b, n = (b_up, n_up) if z >= 0 else (b_dn, n_dn)
+        return abs(y / a) ** n + abs(z / b) ** n < 1.0
+    if not inside(0.0):
+        return 0.0
+    lo, hi = 0.0, 1.0
+    while inside(hi):
+        hi *= 2.0
+    for _ in range(48):
+        mid = (lo + hi) / 2
+        lo, hi = (mid, hi) if inside(mid) else (lo, mid)
+    return lo
+
+
+def _car_section(x: float, st: dict, inset: float = 0.0, k: int = 96):
+    """A closed spline in the plane x = const: the lower body (an asymmetric superellipse
+    with a shoulder at `zc`) united with the cabin (a superellipse sitting on the beltline);
+    the beltline is the crease where they meet. The outline is traced densely by ray casting,
+    then resampled at equal arc-length fractions from the bottom centre, so point i of every
+    section sits at the same fraction of its outline and the loft does not jump between body
+    and cabin from one station to the next. `inset` > 0 offsets those same points inward along
+    their normals (the cavity's section corresponds point for point: an even wall)."""
+    w, bot, top, zc = st["w"], st["bot"], st["top"], st["zc"]
+    shapes = [((0.0, zc), w, top - zc, zc - bot, 2.6, 3.4)]
+    if st.get("roof", 0) > st["belt"] + 1:
+        cz = st["belt"] - 40
+        shapes.append(((0.0, cz), st["wc"], st["roof"] - cz, 40.0, 2.8, 2.0))
+    o = (0.0, min(top, st["belt"]) - 60)
+    m = 6 * k
+    dense = []
+    for i in range(m + 1):
+        t = -math.pi / 2 + 2 * math.pi * i / m
+        d = (math.cos(t), math.sin(t))
+        # a soft maximum (p-norm) of the two outlines: the beltline crease gets a small
+        # radius instead of a corner, which a fitted spline would overshoot
+        r = sum(_ray_exit(o, d, *s) ** 12 for s in shapes) ** (1 / 12)
+        dense.append((o[0] + r * d[0], o[1] + r * d[1]))
+    acc = [0.0]
+    for (ya, za), (yb, zb) in zip(dense, dense[1:]):
+        acc.append(acc[-1] + math.hypot(yb - ya, zb - za))
+    total, pts, j = acc[-1], [], 0
+    for i in range(k):
+        s_ = total * i / k
+        while acc[j + 1] < s_:
+            j += 1
+        f = (s_ - acc[j]) / ((acc[j + 1] - acc[j]) or 1.0)
+        (ya, za), (yb, zb) = dense[j], dense[j + 1]
+        pts.append((ya + f * (yb - ya), za + f * (zb - za)))
+    if inset > 0:
+        # counter-clockwise outline: the outward normal is the tangent turned clockwise
+        off = []
+        for i, (y, z) in enumerate(pts):
+            (ya, za), (yb, zb) = pts[i - 1], pts[(i + 1) % k]
+            ty, tz = yb - ya, zb - za
+            ln = math.hypot(ty, tz) or 1.0
+            off.append((y - inset * tz / ln, z + inset * ty / ln))
+        pts = off
+    # a periodic interpolating spline with the SAME uniform parameters on every section: point
+    # i is at parameter i/k everywhere, so the loft pairs corresponding points (a fitted
+    # spline gets its own knots per section and the loft twists and pinches the cabin)
+    vs = [bd.Vector(x, y, z) for y, z in pts]
+    return bd.Wire([bd.Edge.make_spline(vs, periodic=True, parameters=_periodic_params(k))])
 
 
 def car_body(wheelbase: float = 2700.0, wheel_d: float = 680.0, length: float | None = None,
              width: float = 1850.0, height: float = 1420.0, greenhouse: float = 0.36,
              shell: bool = True, wall: float = 3.0):
-    """Car body starter: lower body, greenhouse with a roof panel, arches, wheels, beltline.
+    """Car body starter: one shelled body loft carrying the cabin, glass cut from it, arches.
 
-    Faces +X, wheels on z=0, centred on the wheelbase. Proportions in units: `wheelbase` about
-    3.5-4 `wheel_d` (longer reads premium), overall `length` (default wheelbase + 1.65 wheel
-    diameters of overhang, the rear a little longer), `width`, `height`, and `greenhouse` the
-    glass-to-total height share above the beltline (about 1/3 reads sporty). The beltline is
-    the panel gap between body and greenhouse; the roof is split from the glass by another; the
-    doors are panel gaps. CMF: body shell, glass and tyres as dark/accent. `shell=False` returns
-    solid massing. Returns an Archetype."""
+    Faces +X, wheels on z=0, centred on the wheelbase. Proportions in wheel units: `wheelbase`
+    about 3.5-4 `wheel_d` (longer reads premium); `length` defaults to the wheelbase plus 2
+    wheel diameters of overhang (rear longer); `greenhouse` is the glass share of the height
+    above the beltline (about 1/3 reads sporty). Every section of the body loft is the lower
+    body (a shoulder line where it is widest, tumbling in to the beltline) united with the
+    cabin, so hood, greenhouse and tail are one surface with a beltline crease. The shell is
+    the loft minus its inset loft (closed). The glass band (windshield, side and rear windows)
+    is cut from the same shell with a real gap, leaving a B pillar and a body-colour roof; the
+    light bands are cut from nose and tail the same way. Wheel wells are per side, about 1.2x
+    the tyre radius, with each tyre inboard of the body side. Door, hood and trunk shut lines
+    are left to the build (cut the body into panels with ms.panel_split; a narrow slot through
+    the one-face body skin does not mesh). Returns an Archetype (`.hulls["body"]` is the solid
+    outer loft)."""
     WB, R = float(wheelbase), wheel_d / 2
-    Lc = length if length is not None else WB + 3.3 * R
-    ov_f = 0.46 * (Lc - WB)
-    x0, x1 = -WB / 2 - (Lc - WB - ov_f), WB / 2 + ov_f
-    belt = height * (1 - greenhouse)
-    hw = width / 2
-    gc = 0.26 * R                                # ground clearance
+    Lc = length if length is not None else WB + 4.0 * R
+    ov_r = 0.55 * (Lc - WB)
+    x0, x1 = -WB / 2 - ov_r, -WB / 2 - ov_r + Lc
+    H, hw = float(height), width / 2
+    belt = H * (1 - greenhouse)
+    gt = H - belt
+    gc = 0.4 * R                                          # ground clearance
+    tw = 0.34 * R                                         # tyre half-width
+    arch_r = 1.2 * R
     me = Archetype("car", {"wheelbase": WB, "wheel_d": wheel_d,
                            "wheelbase_in_wheels": round(WB / wheel_d, 2), "length": round(Lc),
-                           "greenhouse_share": greenhouse, "beltline_z": round(belt)})
+                           "greenhouse_share": greenhouse, "beltline_z": round(belt),
+                           "arch_to_tyre": round(arch_r / R, 2)})
 
-    def low(f, top, half_w, n=3.0, bot=gc):
-        x = x0 + f * (x1 - x0)
-        return (x, (top - bot) / 2, half_w, n, (top + bot) / 2)
+    def X(f):
+        return x0 + f * (x1 - x0)
 
-    # a wedge: the tail is the beltline's high point, the nose drops low and wide
-    body = _along_x([low(0.0, belt * 0.92, hw * 0.88, 2.8, gc * 1.6),
-                     low(0.04, belt * 1.0, hw * 0.97), low(0.30, belt, hw),
-                     low(0.62, belt * 0.97, hw), low(0.84, belt * 0.84, hw * 0.99),
-                     low(0.96, belt * 0.66, hw * 0.94), low(1.0, belt * 0.52, hw * 0.88, 2.8,
-                                                            gc * 1.3)],
-                    shell=False, wall=wall)
-    tw = 0.34 * R                                # tyre half-width
-    depth = 2 * tw + 0.7 * tw + 60               # wheel well: the tyre plus steering room
-    for ax in (-WB / 2, WB / 2):                 # a wheel well each side, not a trough across
+    # (f, top, bot, half width, roof, cabin half width); the shoulder sits at 72% of the belt
+    rows = [(0.000, 0.82 * belt, gc + 170, 0.80 * hw, 0, 0),
+            (0.025, 0.96 * belt, gc + 70, 0.95 * hw, 0, 0),
+            (0.10, belt, gc + 10, hw, 0, 0),
+            (0.17, belt, gc, hw, belt + 4, 0.68 * hw),
+            (0.25, belt, gc, hw, belt + 0.62 * gt, 0.75 * hw),
+            (0.34, belt, gc, hw, 0.995 * H, 0.80 * hw),
+            (0.40, belt, gc, hw, H, 0.805 * hw),     # the roof stations keep the crown flat:
+            (0.46, belt, gc, hw, H, 0.81 * hw),      # a cubic through two equal peaks between
+            (0.53, belt, gc, hw, 0.995 * H, 0.81 * hw),  # steep neighbours sags in the middle
+            (0.62, 0.99 * belt, gc, hw, belt + 0.80 * gt, 0.80 * hw),
+            (0.72, 0.95 * belt, gc, hw, belt + 0.25 * gt, 0.76 * hw),
+            (0.76, 0.95 * belt, gc, 0.995 * hw, belt + 2, 0.70 * hw),
+            (0.88, 0.90 * belt, gc + 10, 0.98 * hw, 0, 0),   # the hood stays well above
+            (0.97, 0.76 * belt, gc + 50, 0.92 * hw, 0, 0),   # the front arch
+            (1.000, 0.60 * belt, gc + 150, 0.78 * hw, 0, 0)]
+    sts = [dict(x=X(f), top=top, bot=bot, w=w, zc=bot + 0.72 * (min(top, belt) - bot),
+                belt=min(belt, top), roof=roof, wc=wc) for f, top, bot, w, roof, wc in rows]
+    outer = check_solid(bd.Solid.make_loft([_car_section(s["x"], s) for s in sts]), "car body",
+                        hint=_LOFT_HINT)
+    me.hulls["body"] = outer
+    if not shell:                                         # massing: body and tyres only
+        me.add("body", outer, "shell")
+        for name, ax, sy in (("front_left", WB / 2, 1), ("front_right", WB / 2, -1),
+                             ("rear_left", -WB / 2, 1), ("rear_right", -WB / 2, -1)):
+            me.add(f"wheel_{name}", _placed(bd.Solid.make_cylinder(
+                R, 2 * tw, bd.Plane.XZ.offset(-tw)), (ax, sy * (hw - 30 - tw), R)), "joint")
+        return me
+    inner_sts = [dict(s) for s in sts]
+    inner_sts[0]["x"] += wall
+    inner_sts[-1]["x"] -= wall
+    inner = bd.Solid.make_loft([_car_section(s["x"], s, inset=wall) for s in inner_sts])
+    body = _as_shape(outer - inner)
+
+    # wheel wells: a cylinder per side cut into the side, open to the ground
+    # ... with a dark liner (the well's tube, wall thick, inside the body) so the arch shows a
+    # wheel house, not the inside of the skin
+    depth = 2 * tw + 140
+    for ax in (-WB / 2, WB / 2):
         for sy in (1, -1):
-            well = bd.Solid.make_cylinder(R * 1.1, depth, bd.Plane.XZ.offset(-depth / 2))
-            body = _as_shape(body - _placed(well, (ax, sy * (hw + 50 - depth / 2), R)))
-    body = max(body.solids(), key=lambda s: s.volume)
+            at = (ax, sy * (hw + 60) - sy * depth / 2, R)
+            well = _placed(bd.Solid.make_cylinder(arch_r, depth, bd.Plane.XZ.offset(-depth / 2)),
+                           at)
+            body = _as_shape(body - well)
+            tube = _placed(bd.Solid.make_cylinder(arch_r + wall, depth - 40,
+                                                  bd.Plane.XZ.offset(-(depth - 40) / 2))
+                           - bd.Solid.make_cylinder(arch_r, depth, bd.Plane.XZ.offset(-depth / 2)),
+                           (ax, sy * (hw + 40) - sy * depth / 2, R))
+            liner = _as_shape(tube & outer)
+            if liner.solids():
+                me.add(f"wheel_house_{'front' if ax > 0 else 'rear'}_"
+                       f"{'left' if sy > 0 else 'right'}",
+                       max(liner.solids(), key=lambda s_: s_.volume), "joint")
+    # Panels by plane splits (robust half-space cuts, each a real gap): the lower body up to
+    # the beltline; above it the greenhouse band (windshield, side and rear glass) between the
+    # beltline and the roof line, with a B pillar; the roof above; light bands sliced off the
+    # nose and tail caps.
+    g = 3.0
 
-    def gh(f, top, half_w, n=3.0):
-        x = x0 + f * (x1 - x0)
-        bot = belt - 60
-        return (x, (top - bot) / 2, half_w, n, (top + bot) / 2)
+    def cut(shape, plane):
+        """(+normal side, -normal side) with a g-wide gap, or (None, shape) when nothing is
+        on the + side."""
+        try:
+            return panel_split(shape, plane, gap=g)
+        except ValueError:
+            return None, shape
 
-    gt = height - belt
-    glass = _along_x([gh(0.18, belt + 15, hw * 0.70, 2.6),
-                      gh(0.27, belt + 0.66 * gt, hw * 0.76, 2.8),
-                      gh(0.40, height, hw * 0.78, 3.0), gh(0.56, height * 0.995, hw * 0.78, 3.0),
-                      gh(0.68, belt + 0.55 * gt, hw * 0.76, 2.8),
-                      gh(0.76, belt + 15, hw * 0.72, 2.6)], shell=False, wall=wall)
-    if shell:
-        roof, glass = panel_split(glass, bd.Plane.XY.offset(belt + 0.72 * gt), gap=2.0)
+    zplane = bd.Plane.XY
+    upper, lower = cut(body, zplane.offset(belt + 18))
+    roof, band = cut(upper, zplane.offset(H - 0.18 * gt)) if upper is not None else (None, None)
+    xbp = X(0.47)
+    pillars, glass = [], []
+    if band is not None:
+        # a deck or hood crown that reaches above the glass line is body, not glass: the glass
+        # runs only between the rear window base and the windshield base
+        hood_crown, band = cut(band, bd.Plane.YZ.offset(X(0.775)))
+        band, deck_crown = cut(band, bd.Plane.YZ.offset(X(0.165)))
+        for name, crown in (("hood_crown", hood_crown), ("deck_crown", deck_crown)):
+            if crown is not None and crown.solids():
+                me.add(name, crown, "shell")
+    if band is not None:
+        front, rest = cut(band, bd.Plane.YZ.offset(xbp + 45))
+        pillar, rear = cut(rest, bd.Plane.YZ.offset(xbp - 45))
+        glass = [p for p in (front, rear) if p is not None]
+        pillars = [pillar] if pillar is not None else []
+    def end_cap(shape, x, front: bool):
+        """(cap, rest) cut at x, or (None, shape) when either piece would not be valid."""
+        try:
+            a_, b_ = cut(shape, bd.Plane.YZ.offset(x))
+            cap_, rest_ = (a_, b_) if front else (b_, a_)
+            if cap_ is None or rest_ is None:
+                return None, shape
+            check_solid(cap_, "end cap")
+            check_solid(rest_, "body")
+            return cap_, rest_
+        except ValueError:
+            return None, shape
+    nose, lower = end_cap(lower, X(0.975), True)
+    tail, lower = end_cap(lower, X(0.03), False)
+    for name, cap, za, zb in (("headlights", nose, 0.47 * belt, 0.54 * belt),
+                              ("taillights", tail, 0.62 * belt, 0.70 * belt)):
+        if cap is None:
+            continue
+        stem = name.replace("lights", "")
+        try:
+            top_, rest_ = cut(cap, zplane.offset(zb))
+            light, bot_ = cut(rest_, zplane.offset(za))
+            pieces = [(f"{stem}_cap_upper", top_, "shell"), (f"{stem}_cap_lower", bot_, "shell"),
+                      (name, light, "accent")]
+            for _n, piece, _r in pieces:
+                if piece is not None:
+                    check_solid(piece, _n)
+        except ValueError:              # a slice too thin to be valid: keep the cap whole
+            pieces = [(f"{stem}_cap", cap, "shell")]
+        for n_, piece, role in pieces:
+            if piece is not None:
+                me.add(n_, piece, role)
+    me.add("body", trust(lower if not lower.solids() or len(lower.solids()) > 1
+                         else lower.solids()[0], "car body shell"), "shell")
+    if roof is not None:
         me.add("roof", roof, "shell")
-        me.add("glass", glass, "accent")
-        # door gaps: real panel gaps as the feature lines of the side
-        front, rest = panel_split(body, bd.Plane(origin=(x0 + 0.66 * (x1 - x0), 0, 0),
-                                                 z_dir=(1, 0, 0)), gap=4.0)
-        doors, rear = panel_split(rest, bd.Plane(origin=(x0 + 0.34 * (x1 - x0), 0, 0),
-                                                 z_dir=(1, 0, 0)), gap=4.0)
-        me.add("front_body", front, "shell")
-        me.add("door_section", doors, "shell")
-        me.add("rear_body", rear, "shell")
-    else:
-        me.add("body", body, "shell")
-        me.add("greenhouse", glass, "accent")
+    for i, pl in enumerate(pillars):
+        me.add("b_pillars" if i == 0 else f"b_pillars_{i}", pl, "shell")
+    for name, gl in zip(("glass_front", "glass_rear"), glass):
+        me.add(name, gl, "accent")
     for name, ax, sy in (("front_left", WB / 2, 1), ("front_right", WB / 2, -1),
                          ("rear_left", -WB / 2, 1), ("rear_right", -WB / 2, -1)):
-        at = (ax, sy * (hw - 1.25 * tw), R)          # tucked under the arch, flush-ish
-        tyre = bd.Solid.make_cylinder(R, 2 * tw, bd.Plane.XZ.offset(-tw))
-        tyre = blend_edges(tyre, 0.35 * tw)
-        me.add(f"wheel_{name}", _placed(tyre, at), "joint")
+        at = (ax, sy * (hw - 30 - tw), R)                 # the outer face 30 mm inboard
+        tyre = blend_edges(bd.Solid.make_cylinder(R, 2 * tw, bd.Plane.XZ.offset(-tw)), 0.3 * tw)
+        rim = bd.Solid.make_cylinder(0.66 * R, 2 * tw + 4, bd.Plane.XZ.offset(-tw - 2))
+        me.add(f"wheel_{name}", _placed(tyre - rim, at), "joint")
+        me.add(f"rim_{name}", _placed(rim - bd.Solid.make_cylinder(
+            0.66 * R, 2 * tw - 30, bd.Plane.XZ.offset(-tw + 15)), at), "accent")
         me.axes[f"wheel_{name}"] = (at, (0.0, 1.0, 0.0))
         me.hardpoints[f"wheel_{name}"] = at
+        me.envelopes[f"wheel_{name}"] = _placed(bd.Solid.make_cylinder(
+            R, 2 * tw, bd.Plane.XZ.offset(-tw)), at)
     me.hardpoints["beltline"] = (0, 0, belt)
     return me
+
+

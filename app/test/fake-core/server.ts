@@ -798,7 +798,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         // Plan 8 G1: the core estimates the prompt's shape complexity on start (null: unknown here)
         emit({ type: "run_started", run_id: run.id, data: { agent, provider: vendor, model, parent_id: null, shape_complexity: { score: 0, level: "low", signals: [], vision_recommended: false },
           // Plan 9 G-B: the core's class for a prompt with no design signal (engineering by default)
-          design_class: { score: 0.2, cls: "engineering", per_part: {}, reasons: ["no archetype or styling signal: engineering by default (design needs evidence)"], source: "prior" },
+          design_class: { score: 0.2, cls: "engineering", per_part: {}, reasons: ["no archetype or styling signal: engineering by default (design needs evidence)"], source: "prior", archetype: null },
           ...(claude ? { external: true } : {}) } });
         play(state.on.create_run, run.id);
         return answer;

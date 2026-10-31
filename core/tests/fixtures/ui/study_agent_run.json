@@ -36,7 +36,8 @@
     "reasons": [
       "no archetype or styling signal: engineering by default (design needs evidence)"
     ],
-    "source": "prior"
+    "source": "prior",
+    "archetype": null
   },
   "turn_started_at": null,
   "turn_usd0": null,

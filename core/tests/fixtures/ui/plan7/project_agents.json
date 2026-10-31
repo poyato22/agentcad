@@ -61,7 +61,8 @@
           "reasons": [
             "drone: a functional airframe; the canopy and arms can be styled"
           ],
-          "source": "prior"
+          "source": "prior",
+          "archetype": null
         },
         "status": "done",
         "task": "Design motor mount",
@@ -120,7 +121,8 @@
       "reasons": [
         "drone: a functional airframe; the canopy and arms can be styled"
       ],
-      "source": "prior"
+      "source": "prior",
+      "archetype": "drone"
     },
     "status": "done",
     "task": "Build me a drone",
@@ -177,7 +179,8 @@
         "reasons": [
           "no archetype or styling signal: engineering by default (design needs evidence)"
         ],
-        "source": "prior"
+        "source": "prior",
+        "archetype": null
       },
       "status": "done",
       "task": "check",

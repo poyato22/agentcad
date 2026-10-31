@@ -58,7 +58,8 @@
     "reasons": [
       "drone: a functional airframe; the canopy and arms can be styled"
     ],
-    "source": "prior"
+    "source": "prior",
+    "archetype": "drone"
   },
   "status": "done",
   "task": "Build me a drone",

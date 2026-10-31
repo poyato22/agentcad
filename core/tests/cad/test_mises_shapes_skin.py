@@ -151,7 +151,7 @@ def test_trust_accepts_a_good_shell_and_refuses_disagreeing_volumes(monkeypatch)
     ("squircle", 108908.7), ("station_loft", 858365.9), ("skin_shell", 115689.9),
     ("tapered_capsule", 105412.0), ("joint_cowl", 113935.5), ("panel_split", 115210.8),
     ("clamshell", 115386.3), ("cover_for", 126458.4), ("trust", 115689.9),
-    ("humanoid", 64285498.9), ("quadruped", 35605121.9), ("car_body", 5918928067.0)])
+    ("humanoid", 68523319.5), ("quadruped", 35873618.0), ("car_body", 6354136744.4)])
 def test_new_recipe_examples_match_their_reference_volume(name, ref):
     near(vol(EX[name]()), ref)
 
@@ -194,6 +194,22 @@ def _envelopes_inside_cowls(arch):
             assert clo <= lo + 1e-6 and chi >= hi - 1e-6, f"{jn} actuator pokes out of its cowl"
 
 
+def _max_section_area(shape, n: int = 24, slab: float = 2.0) -> float:
+    """The largest horizontal cross-section of `shape` (thin-slab volume / thickness)."""
+    bb = shape.bounding_box()
+    best = 0.0
+    for i in range(1, n):
+        z = bb.min.Z + (bb.max.Z - bb.min.Z) * i / n
+        cut = bd.Solid.make_box(1e4, 1e4, slab, bd.Plane.XY.move(
+            bd.Location((-5e3, -5e3, z - slab / 2))))
+        best = max(best, _overlap(shape, cut) / slab)
+    return best
+
+
+def _inside(env, container, frac: float = 0.99) -> bool:
+    return _overlap(env, container) >= frac * env.volume
+
+
 def test_humanoid_is_eight_heads_and_fully_covered(humanoid):
     h = humanoid
     _covers_everything(h)
@@ -203,26 +219,55 @@ def test_humanoid_is_eight_heads_and_fully_covered(humanoid):
     near(bb.max.Z, 1700, rel=0.01)
     head = h.parts["head_shell"].bounding_box().max.Z - h.parts["head_face"].bounding_box().min.Z
     assert head == pytest.approx(1700 / 8, rel=0.08)          # one head unit
-    assert {"head_face", "head_shell", "chest", "ribcage", "pelvis", "waist",
-            "thigh_left", "shin_right", "knee_left_cowl", "elbow_right_cowl",
-            "shoulder_cap_left", "hand_right", "foot_left"} <= set(h.parts)
+    assert {"head_face", "head_shell", "neck", "chest_left", "chest_right", "back_plate",
+            "abdomen_upper", "abdomen_middle", "abdomen_lower", "waist", "pelvis",
+            "thigh_left_front", "thigh_left_back", "shin_right", "foot_left", "toe_left",
+            "sole_left", "upper_arm_left", "forearm_left", "hand_right", "shoulder_left_cowl",
+            "elbow_right_cowl", "knee_left_cowl", "ankle_right_cowl"} <= set(h.parts)
     assert {"shoulder_left", "elbow_left", "hip_left", "knee_left", "ankle_left"} <= set(h.axes)
-    # the shells are trusted covers, and the chest carries a real panel gap
-    for name in ("chest", "thigh_left", "shin_left", "upper_arm_left", "forearm_left"):
+    for name in ("chest_left", "back_plate", "thigh_left_front", "shin_left", "upper_arm_left",
+                 "forearm_left", "pelvis"):
         ms.trust(h.parts[name], name)
-    assert (h.parts["chest"].bounding_box().min.Z
-            - h.parts["ribcage"].bounding_box().max.Z) == pytest.approx(1.2, abs=1e-3)
     assert set(h.roles.values()) == {"shell", "joint", "accent"}
 
 
-def test_humanoid_hips_and_actuators_are_hidden_inside_covers(humanoid):
-    """The hip actuators have no cowl: they sit inside the pelvis/thigh covers."""
+def test_humanoid_anatomy_proportions(humanoid):
+    """Review I1: thigh girth well above the calf, the upper arm above the forearm (both from
+    the stations and from the geometry), a defined neck, fingers, heel and toe."""
     h = humanoid
-    assert "hip_left_cowl" not in h.parts
-    hull = h.parts["pelvis"].bounding_box()
-    hip = h.envelopes["hip_left"].bounding_box()
-    assert hull.min.X - 1 <= hip.min.X and hip.max.X <= hull.max.X + 1
-    assert hull.min.Z - 1 <= hip.min.Z
+    u = h.units
+    assert u["thigh_girth_mm"] >= 1.25 * u["calf_girth_mm"]
+    assert u["upper_arm_girth_mm"] >= 1.15 * u["forearm_girth_mm"]
+    thigh, calf = (_max_section_area(h.hulls[f"{p}_left"]) for p in ("thigh", "shin"))
+    assert thigh >= 1.25 ** 2 * 0.9 * calf
+    upper, fore = (_max_section_area(h.hulls[f"{p}_left"]) for p in ("upper_arm", "forearm"))
+    assert upper >= 1.15 ** 2 * 0.9 * fore
+    # the calf mass sits behind the shin line (posterior), the quads in front
+    shin = h.hulls["shin_left"].bounding_box()
+    assert shin.max.Y - h.hardpoints["knee_left"][1] > 70
+    # a neck: a column narrower than the head and the chest, between them
+    neck, head = h.parts["neck"].bounding_box(), h.parts["head_shell"].bounding_box()
+    assert neck.size.X < 0.7 * head.size.X and neck.max.Z <= head.max.Z
+    # a hand with separate finger mass: four fingers and a thumb are capsules (5 tips)
+    tips = [f for f in h.parts["hand_left"].faces() if f.geom_type == bd.GeomType.SPHERE]
+    assert len(tips) >= 5
+    # feet: a heel behind the ankle, a toe cap ahead of the foot, a dark sole
+    ank = h.hardpoints["ankle_left"]
+    foot, toe = h.parts["foot_left"].bounding_box(), h.parts["toe_left"].bounding_box()
+    assert foot.max.Y > ank[1] + 50 and toe.min.Y < foot.min.Y
+    assert h.roles["sole_left"] == "joint"
+    # real panel gaps: the sternum and the toe cap
+    gap = h.parts["chest_left"].bounding_box().min.X - h.parts["chest_right"].bounding_box().max.X
+    assert gap == pytest.approx(1.2, abs=1e-3)
+
+
+def test_humanoid_actuators_are_covered(humanoid):
+    h = humanoid
+    for side in ("left", "right"):
+        hip_cover = h.hulls["pelvis"].fuse(h.hulls[f"thigh_{side}"])
+        assert _inside(h.envelopes[f"hip_{side}"], hip_cover, 0.98)
+        assert f"hip_{side}_cowl" not in h.parts            # hidden, not cowled
+        assert f"shoulder_{side}_cowl" in h.parts           # celebrated graphite shoulder
 
 
 def test_humanoid_massing_scales_with_height_and_heads():
@@ -231,22 +276,49 @@ def test_humanoid_massing_scales_with_height_and_heads():
     near(m.compound().bounding_box().max.Z, 1800, rel=0.01)
 
 
-def test_quadruped_is_covered_with_knees_back(quadruped):
+def test_quadruped_thighs_house_both_actuators_and_calves_taper(quadruped):
     q = quadruped
     _covers_everything(q)
     _envelopes_inside_cowls(q)
-    assert q.units["body_to_leg"] == pytest.approx(2.0)
+    assert q.units["body_to_leg"] == pytest.approx(700 / 420, abs=0.01)
     for leg in ("front_left", "rear_right"):
         hip, knee, foot = (q.hardpoints[f"{j}_{leg}"] for j in ("hip", "knee", "foot"))
         assert knee[0] < hip[0] and knee[0] < foot[0]       # the knee points back
+        hull = q.hulls[f"thigh_{leg}"]
+        for env in (q.envelopes[f"hip_{leg}"], q.envelopes[f"knee_drive_{leg}"]):
+            assert _inside(env, hull)                       # housed in the thigh shell
+            assert _overlap(env, q.parts[f"thigh_{leg}"]) < 0.01 * env.volume   # in its cavity
+        calf = q.hulls[f"calf_{leg}"]                       # the calf's solid outer loft
+        cb = calf.bounding_box()
+
+        def area_at(z):
+            return _overlap(calf, bd.Solid.make_box(1e4, 1e4, 2, bd.Plane.XY.move(
+                bd.Location((-5e3, -5e3, z - 1))))) / 2
+        span = cb.max.Z - cb.min.Z
+        assert area_at(cb.max.Z - 0.25 * span) > 1.5 * area_at(cb.min.Z + 0.12 * span)
+        boot = q.parts[f"foot_{leg}"]
+        assert not all(f.geom_type == bd.GeomType.SPHERE for f in boot.faces())
     assert q.compound().bounding_box().min.Z == pytest.approx(0, abs=0.5)
+    assert q.parts["sensor_face"].bounding_box().max.X > q.hulls["body"].bounding_box().max.X
 
 
-def test_car_body_proportions_and_panel_gaps(car):
+def test_car_body_is_one_shelled_loft_with_glass_arches_and_tyres_inside(car):
     c = car
     _covers_everything(c)
     assert c.units["wheelbase_in_wheels"] == pytest.approx(2700 / 680, rel=1e-3)
+    assert 1.15 <= c.units["arch_to_tyre"] <= 1.25
     wheels = [c.hardpoints[f"wheel_{w}"] for w in ("front_left", "rear_left")]
     assert wheels[0][0] - wheels[1][0] == pytest.approx(2700)
-    assert {"roof", "glass", "front_body", "door_section", "rear_body"} <= set(c.parts)
+    hull = c.hulls["body"]
+    assert c.parts["body"].volume < 0.05 * hull.volume     # a real shell, not a solid
+    hb = hull.bounding_box()
+    for w in ("front_left", "front_right", "rear_left", "rear_right"):
+        tyre = c.envelopes[f"wheel_{w}"]
+        assert _overlap(tyre, c.parts["body"]) < 1.0        # inside its arch, no clash
+        tb = tyre.bounding_box()
+        assert max(abs(tb.min.Y), abs(tb.max.Y)) < hb.max.Y - 20   # inboard of the side
+    # the glass is cut from the body loft itself (integrated), with a body-colour roof
+    glass = [p for n, p in c.parts.items() if n.startswith("glass")]
+    assert glass and all(_inside(g, hull, 0.98) for g in glass)
+    assert "roof" in c.parts and c.roles["roof"] == "shell"
     assert c.compound().bounding_box().min.Z == pytest.approx(0, abs=0.5)

@@ -111,9 +111,9 @@ Never approximate organic or aero shapes (wings, fuselages, flying wings, hulls,
 - `ms.clamshell`: Molded halves of a cover split on its silhouette plane: (+normal half, -normal half).
 - `ms.cover_for`: A skin_shell over mechanism: asserts every component fits inside, adds bulkheads.
 - `ms.trust`: Check a freeform solid harder than check_solid: valid AND two volume methods agree.
-- `ms.humanoid`: Sleek covered humanoid starter (Optimus / NEO class): shells, cowls, skeleton, 8 heads.
-- `ms.quadruped`: Covered robot-dog starter (Spot / Go2 class): a clamshell body, shelled legs, cowls.
-- `ms.car_body`: Car body starter: lower body, greenhouse with a roof panel, arches, wheels, beltline.
+- `ms.humanoid`: Covered humanoid starter: sculpted shells, an integrated shoulder yoke, 8 head heights.
+- `ms.quadruped`: Covered legged-robot starter: a massed body, sensor head, thigh shells over actuators.
+- `ms.car_body`: Car body starter: one shelled body loft carrying the cabin, glass cut from it, arches.
 <!-- mises-shapes:end -->
 
 ## 4. Study every concept
