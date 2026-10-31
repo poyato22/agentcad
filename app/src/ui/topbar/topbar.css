@@ -3,7 +3,7 @@
    No boxes around things that are not buttons; one hairline under the bar. */
 .topbar {
   position: relative; height: var(--topbar-h);
-  display: grid; grid-template-columns: minmax(180px, 1fr) auto minmax(0, 1fr); align-items: center;
+  display: grid; grid-template-columns: minmax(160px, 1fr) auto minmax(max-content, 1fr); align-items: center;
   background: var(--bg); border-bottom: 1px solid var(--line);
   padding: 0 12px 0 var(--chrome-inset-x); /* room for the macOS traffic lights (78px inset) */
   font-family: var(--font-ui);

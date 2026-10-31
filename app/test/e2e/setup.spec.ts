@@ -187,20 +187,16 @@ test("local_only_and_skip_onshape_path", async ({ page, fake }) => {
   expect(await getJson(fake, "/setup")).toMatchObject({ complete: true, has_onshape: false, missing: ["onshape"] });
 });
 
-test("drafting_look_square_corners_and_blue_only_on_the_current_step", async ({ page, fake }) => {
+test("drafting_look_blue_only_on_the_current_step", async ({ page, fake }) => {
   await fake.reset("setup");
   await page.goto(PAGE);
   await page.getByRole("button", { name: "Start" }).click();
   await fillProfile(page);
   await expect(heading(page, "Model")).toBeVisible();
-  await expect(wizard(page)).toHaveCSS("background-color", "rgb(10, 10, 10)");
+  await expect(wizard(page)).toHaveCSS("background-color", "rgb(20, 22, 26)");   // Plan 9 Graphite
   await expect(page.locator(".setup-steps [aria-current=step] .setup-step-name")).toHaveText("Model");
   await expect(page.locator(".setup-steps [aria-current=step]")).toHaveCSS("border-bottom-color", "rgb(61, 139, 255)");
-  for (const sel of ["button", "input", "select", ".setup-card"]) {
-    const radii = await wizard(page).locator(sel).evaluateAll((els) => els.map((e) => getComputedStyle(e).borderRadius));
-    expect(radii.length, sel).toBeGreaterThan(0);
-    expect(new Set(radii), sel).toEqual(new Set(["0px"]));
-  }
+  // (Plan 9 dropped the square-corner rule: the Visual spec rounds buttons, rows and surfaces)
   // nothing else is blue: no blue fills or text in the wizard before anything needs the human
   const blue = await wizard(page).locator("*").evaluateAll((els) => els.filter((e) => {
     const cs = getComputedStyle(e);

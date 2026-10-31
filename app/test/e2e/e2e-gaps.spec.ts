@@ -53,7 +53,7 @@ test.describe("measure and the parts list", () => {
 
   async function openPlate(page: Page): Promise<void> {
     await page.goto("/");
-    await expect(page.getByRole("tab", { name: "Quad frame" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("button", { name: /^Build: Quad frame/ })).toBeVisible();
     await tree(page).getByRole("button", { name: "top plate", exact: true }).click();
     await expect(page.getByTestId("viewer-canvas")).toHaveAttribute("data-bbox-size", "40.00,40.00,3.00", { timeout: 15_000 });
   }
@@ -90,7 +90,7 @@ test.describe("measure and the parts list", () => {
 
   test("multi-select: Shift selects a range, ⌘ toggles one, and the menu acts on the selection", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByRole("tab", { name: "Quad frame" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("button", { name: /^Build: Quad frame/ })).toBeVisible();
     await tree(page).getByRole("button", { name: "Quad arm", exact: true }).click();
     await tree(page).getByRole("button", { name: "top plate", exact: true }).click({ modifiers: ["Shift"] });
     await expect(tree(page).locator(".tree-row.sel")).toHaveCount(2);

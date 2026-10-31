@@ -29,7 +29,7 @@ async function shots(page: Page, name: string, el: Locator | null = null): Promi
 
 async function openBuilds(page: Page): Promise<void> {
   await page.goto("/");
-  await expect(page.getByRole("tab", { name: "Quad frame" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("button", { name: /^Build: Quad frame/ })).toBeVisible();
   await expect(tree(page).getByRole("button", { name: "Quad arm", exact: true })).toBeVisible();
 }
 
@@ -40,12 +40,19 @@ async function openBase(page: Page): Promise<void> {
 
 test.afterEach(async ({ fake }) => { await fake.reset("base"); });
 
-test("I-2: a run started right after a tab switch is filed under the new build", async ({ page, fake }) => {
+/** D1: builds switch only through Home — ⌂, then the build's tile. */
+async function switchViaHome(page: Page, name: string): Promise<void> {
+  const home = page.locator('[data-testid="home"]');
+  if (await page.locator("[data-region=topbar]").count()) await page.getByRole("button", { name: "Home" }).click();
+  if (await home.getAttribute("data-home-view") !== "builds") await home.getByRole("button", { name: /Builds/ }).click();
+  await home.getByRole("button", { name: `Open ${name}`, exact: true }).click();
+  await expect(page.getByRole("button", { name: new RegExp(`^Build: ${name}`) })).toBeVisible();
+}
+
+test("I-2: a run started right after a build switch is filed under the new build", async ({ page, fake }) => {
   await fake.reset("builds");
   await openBuilds(page);
-  await page.getByRole("button", { name: "All builds and the Trash" }).click();
-  await page.getByRole("menuitemradio", { name: /Bench rig/ }).click();
-  await expect(page.getByRole("tab", { name: "Bench rig" })).toHaveAttribute("aria-selected", "true");
+  await switchViaHome(page, "Bench rig");
   await page.keyboard.press("Meta+n");
   const dialog = page.getByRole("dialog", { name: "New run" });
   await expect(dialog).toBeVisible();
@@ -166,11 +173,13 @@ test("M-1: in Code view the Part | Assembly switch is on top and usable", async 
   await expect(page.getByTestId("source-editor")).toHaveCount(0);
 });
 
-test("M-3: the Into build picker follows a build-tab switch after a pick", async ({ page, fake }) => {
+test("M-3: the Into build picker follows a build switch after a pick", async ({ page, fake }) => {
   await fake.reset("builds");
   await openBuilds(page);
   const picker = async () => {
-    await page.getByRole("tab", { name: "Parts" }).click();
+    // D22: the parts library is a Home sub-view
+    if (await page.locator("[data-region=topbar]").count()) await page.getByRole("button", { name: "Home" }).click();
+    await page.locator('[data-testid="home"]').getByRole("button", { name: "Parts library", exact: true }).click();
     await page.getByRole("button", { name: "Motors" }).click();
     const card = page.locator('[data-item="motor_2207_class"]');
     if (await page.locator('[data-detail="motor_2207_class"]').count() === 0) await card.click();
@@ -179,12 +188,9 @@ test("M-3: the Into build picker follows a build-tab switch after a pick", async
   const sel = await picker();
   await expect(sel).toHaveValue(QUAD);
   await sel.selectOption(BENCH);                  // picked Bench rig here
-  await page.getByRole("tab", { name: "Design" }).click();
-  await page.getByRole("button", { name: "All builds and the Trash" }).click();
-  await page.getByRole("menuitemradio", { name: /Bench rig/ }).click();
-  await page.getByRole("tab", { name: "Quad frame" }).click();   // then switched tabs back to Quad
-  await expect(page.getByRole("tab", { name: "Quad frame" })).toHaveAttribute("aria-selected", "true");
-  await expect(await picker()).toHaveValue(QUAD);  // the picker follows the tab, not the old pick
+  await switchViaHome(page, "Bench rig");
+  await switchViaHome(page, "Quad frame");        // then switched back to Quad
+  await expect(await picker()).toHaveValue(QUAD);  // the picker follows the build, not the old pick
   await shots(page, "m3-into-build-follows-tab", page.locator('[data-detail="motor_2207_class"]'));
 });
 

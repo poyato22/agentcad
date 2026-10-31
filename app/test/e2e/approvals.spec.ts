@@ -92,7 +92,7 @@ test("card_face_shows_branch_to_target_and_agent_summary_faint", async ({ page }
     "branch https://cad.onshape.com/documents/d1/w/w2 → target https://cad.onshape.com/documents/d1/w/w1");
   const says = card(page).locator("[data-agent-says]");
   await expect(says).toHaveText("agent says: merge agent/designer into main: 2 ribs on the upright");
-  await expect(says).toHaveCSS("color", "rgb(94, 94, 94)");
+  await expect(says).toHaveCSS("color", "rgb(107, 114, 124)");   // --faint (Plan 9 palette)
   await expect(card(page).locator("[data-diff]")).toHaveCount(0);
 });
 
@@ -347,13 +347,13 @@ test("expired_card_disabled", async ({ page, fake }) => {
   expect(await decideCalls(fake)).toEqual([]);
 });
 
-test("card_styles_blue_border_square_corners", async ({ page }) => {
+test("card_styles_blue_border_rounded_corners", async ({ page }) => {
   await mountCard(page);
   const s = await card(page).evaluate((el) => {
     const c = getComputedStyle(el);
     return { border: c.borderTopColor, width: c.borderTopWidth, radius: c.borderRadius, bg: c.backgroundColor };
   });
-  expect(s).toEqual({ border: "rgb(61, 139, 255)", width: "1px", radius: "0px", bg: "rgba(61, 139, 255, 0.1)" });
+  expect(s).toEqual({ border: "rgb(61, 139, 255)", width: "1px", radius: "10px", bg: "rgba(61, 139, 255, 0.1)" });   // Plan 9: --r-surface
   const primary = await page.getByRole("button", { name: /^Merge/ }).evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(primary).toBe("rgb(61, 139, 255)");
 });

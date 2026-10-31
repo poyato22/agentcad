@@ -34,7 +34,7 @@
   --faint: #6b727c;
   --blue: #3d8bff;
   --blue2: #8dbaff;
-  --blue-tint: rgba(61,139,255,.12);
+  --blue-tint: rgba(61,139,255,.10);
   --green: #4fd18b;
   --amber: #f2b134;
   --red: #ff5a4a;
@@ -49,8 +49,8 @@
   --shadow: 0 10px 30px rgba(0,0,0,.38), 0 1px 3px rgba(0,0,0,.30);
 
   /* Viewer drafting grid (on top of --vp); tinted per theme so it follows the viewport. */
-  --grid-strong: rgba(255,255,255,.06);
-  --grid-faint: rgba(255,255,255,.022);
+  --grid-strong: rgba(255,255,255,.07);
+  --grid-faint: rgba(255,255,255,.025);
   /* Viewer mesh (read by ui/viewer/loadPart.ts + scene.ts; grey only). */
   --mesh-face: #2a2e35;
   --mesh-edge: #e6e8eb;
@@ -89,7 +89,7 @@
   --chrome-h: calc(var(--chrome-center-y) * 2);
   --topbar-h: var(--chrome-h);
   --left-w: 240px;
-  --console-w: 440px;
+  --console-w: 420px;
   --console-rail-w: 36px;
   --pane-head-h: 28px;
 

@@ -283,9 +283,9 @@ test("topbar_zones_never_overlap_with_busy_lights", async ({ page, fake }) => {
     };
     const tabs = await box(".tabs");
     const lights = await box(".status-btn");   // U2b: the lights fold into the Status button
-    const crumb = await box(".crumb");
+    const crumb = await box(".topbar-left");
     expect(lights.x, `status overlaps the tabs at ${width}px`).toBeGreaterThanOrEqual(tabs.x + tabs.width);
-    expect(crumb.x + crumb.width, `breadcrumb overlaps the tabs at ${width}px`).toBeLessThanOrEqual(tabs.x);
+    expect(crumb.x + crumb.width, `Home + build name overlap the tabs at ${width}px`).toBeLessThanOrEqual(tabs.x);
     await expect(page.getByRole("button", { name: "STOP ALL" })).toBeInViewport({ ratio: 1 });
   }
 });

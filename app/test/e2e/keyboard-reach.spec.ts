@@ -40,17 +40,17 @@ test("design: Tab reaches Home, the part list, View, All parts, the console head
   await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
   await page.locator("[data-region=viewer]").click({ position: { x: 300, y: 400 } });
   const stops = await tabStops(page);
-  for (const want of [/^Home$/, /^View options$/, /^All parts$/, /^Command line$/, /^New$/, /^Manage$/, /mount plate/, /^Add a build$/]) {
+  for (const want of [/^Home$/, /^View options$/, /^All parts$/, /^Command line$/, /^New$/, /^Manage$/, /mount plate/, /^Build: Default/]) {
     expect(has(stops, want), `${want} in ${JSON.stringify(stops)}`).toBe(true);
   }
 });
 
-test("home: Tab reaches search, sort, Agents, Trash, New build and the build tiles", async ({ page }) => {
+test("home: Tab reaches search, sort, Agents, Onshape, the parts library, Trash, New build and the tiles with their ⋯", async ({ page }) => {
   await openHome(page);
   await page.goto("/");
   await expect(page.locator('[data-testid="home"]')).toBeVisible();
   const stops = await tabStops(page);
-  for (const want of [/^Search builds$/, /^Sort builds$/, /^Agents/, /Show trashed builds|^Trash/, /New build/, /^◇?Default/]) {
+  for (const want of [/^Search builds$/, /^Sort builds$/, /^Agents/, /Show trashed builds|^Trash/, /New build/, /^Open Default$/, /^More for Default$/, /^Onshape$/, /^Parts library$/]) {
     expect(has(stops, want), `${want} in ${JSON.stringify(stops)}`).toBe(true);
   }
 });

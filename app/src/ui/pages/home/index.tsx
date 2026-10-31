@@ -190,7 +190,7 @@ function BuildTile({ build: b, onTrash }: { build: Build; onTrash(): void }): JS
       <button type="button" class="tile-open" title={`Open ${b.name}`} aria-label={`Open ${b.name}`}
         onClick={() => { void openBuild(b.id); }}>
         <div class="tile-thumb">
-          <Thumb class="tile-img" alt={`${b.name} cover`} glyph="" cacheKey={`${b.id}:${edited}:${b.part_count}`}
+          <Thumb class="tile-img" alt={`${b.name} cover`} glyph={b.part_count > 0 ? "" : "No parts yet"} cacheKey={`${b.id}:${edited}:${b.part_count}`}
             load={b.part_count > 0 ? () => actions.client().projectThumb(b.id) : null} />
         </div>
         <div class="tile-body">
@@ -247,7 +247,7 @@ function TrashTile({ build: b }: { build: Build }): JSX.Element {
   return (
     <div class="tile tile-trashed" data-build={b.id}>
       <div class="tile-thumb">
-        <Thumb class="tile-img" alt={`${b.name} cover`} glyph="" cacheKey={`${b.id}:${lastEditedAt(b)}`}
+        <Thumb class="tile-img" alt={`${b.name} cover`} glyph={b.part_count > 0 ? "" : "No parts"} cacheKey={`${b.id}:${lastEditedAt(b)}`}
           load={b.part_count > 0 ? () => actions.client().projectThumb(b.id) : null} />
       </div>
       <div class="tile-body">
