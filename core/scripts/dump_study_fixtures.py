@@ -90,7 +90,10 @@ async def dump(out: Path) -> None:
         turns.append([TextDelta(text=f"Running the {typ} study."),
                       ToolCall(id=f"s{i + 1}", name="sim_run", input={
                           "type": typ, "part_id": part, "settings": settings,
-                          "reason": reason, "requirements": reqs}),
+                          "reason": reason, "requirements": reqs,
+                          # blocking, so each tool_result step carries the finished card
+                          # (an agent's default is the background, Plan 9 D4)
+                          "wait": True}),
                       Done(stop_reason="tool_use")])
     turns.append([ToolCall(id="rv1", name="design_review", input={
         "part_id": "beam", "spec": REVIEW_SPEC}), Done(stop_reason="tool_use")])

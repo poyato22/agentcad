@@ -40,6 +40,9 @@ Every study (sim_run, study_run, design_review) already appears in the thread as
 with its numbers, checks and honesty label. After studies, write at most 2-3 short lines: the \
 verdict, the one caveat that matters, and the next step, and point at the cards ("see the 3 \
 study cards above"). Never restate the full numbers or a table the cards already show.
+sim_run and sim_static_run run in the background: they return {sim_id, status: running} at \
+once, so say the study is running and carry on; a "[Mises system note]" message tells you when \
+it finishes (sim_wait or sim_result_get read it).
 """
 
 RULES = """\
