@@ -4,7 +4,7 @@
 import type { Page } from "@playwright/test";
 import { loadScenario } from "../fake-core/server";
 import type { PrintScenario } from "../fake-core/printing";
-import { expect, test, type FakeControl } from "./fixtures";
+import { expect, showRun, test, type FakeControl } from "./fixtures";
 
 const KEY = "pl-E2E-SECRET-key-never-shown";
 const ARM_WAIT_MS = 450;
@@ -81,21 +81,20 @@ test("a_sent_card_on_the_ui_run_stays_reachable_via_the_chip_and_show_card", asy
   await expect(printCard(page)).toBeVisible();
 
   // switch the console to the designer run (the ui run is off the roster list)
-  const switcher = page.locator("[data-run-switcher]").getByRole("button", { name: /^Run:/ });
-  await switcher.click();
-  await page.getByRole("listbox", { name: "Runs" }).getByRole("option", { name: /designer · thicken mount plate/ }).click();
-  await expect(switcher).toContainText("designer · thicken mount plate");
+  // (from the agent manager: the console has no run dropdown, Plan 9 D2)
+  const showDesigner = () => showRun(page, "b7c79a57cbb4");
+  await showDesigner();
+  await expect(page.locator("[data-conversation-head] [data-run-label]")).toContainText("designer · thicken mount plate");
   await expect(printCard(page)).toHaveCount(0);
 
   // the card is one click away via the needs-you chip, labelled "You (Mises)"
-  const chip = page.getByRole("button", { name: "You (Mises) needs you" });
-  await expect(chip).toContainText("needs you");
+  const chip = page.getByRole("button", { name: "You (Mises) needs you · 1 waiting" });
+  await expect(chip).toHaveText("1");
   await chip.click();
   await expect(printCard(page)).toBeVisible();
 
   // and via "Show card" on the Print page after collapsing the console and leaving the ui run
-  await switcher.click();
-  await page.getByRole("listbox", { name: "Runs" }).getByRole("option", { name: /designer · thicken mount plate/ }).click();
+  await showDesigner();
   await page.getByRole("button", { name: "Collapse the agent console" }).click();
   await pageRegion(page).getByRole("button", { name: "Show card" }).click();
   await expect(page.locator("[data-region=app]")).toHaveAttribute("data-console", "open");

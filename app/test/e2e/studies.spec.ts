@@ -222,13 +222,16 @@ for (const theme of ["dark", "light"] as const) {
     await expect(wind.getByTestId("fidelity-note")).toHaveText("low fidelity (preview) · ±40% (validated)");
     const drop = page.locator("[data-testid=study-card][data-type=drop]");
     await expect(drop.getByTestId("error-band")).toHaveText("error band ±19.1%");
-    // R18: one turn's studies share one grid of compact cards; the chart opens on the card's expand
-    await expect(page.getByTestId("study-grid").first()).toBeVisible();
+    // Plan 9 D4: the studies are the dock's Simulations stream (one compact card each, not the
+    // conversation); the chart opens on the card's expand
+    await expect(page.locator("[data-dock] [data-stream=sim]").getByTestId("study-card")).toHaveCount(8);
+    await expect(page.getByRole("log", { name: "Conversation" }).getByTestId("study-card")).toHaveCount(0);
     await expect(wind.getByTestId("card-chart")).toHaveCount(0);
     await expect(wind.getByTestId("check")).toHaveCount(0);
     await wind.scrollIntoViewIfNeeded();
     await wind.getByTestId("card-expand").click();
     await expect(wind).toHaveAttribute("data-expanded", "");
+    await wind.getByTestId("card-chart").scrollIntoViewIfNeeded();   // the Simulations stream scrolls on its own
     await expect(wind.getByTestId("card-chart")).toHaveAttribute("data-chart", "cd_vs_yaw");
     await expect(wind.getByTestId("study-thumb")).toHaveAttribute("data-state", "loaded");
     await page.locator("[data-region=console]").screenshot({ path: `test-results/a8-cards-${theme}.png` });
@@ -266,6 +269,7 @@ for (const theme of ["dark", "light"] as const) {
     const stat = page.locator("[data-testid=study-card][data-type=static]").first();
     await stat.scrollIntoViewIfNeeded();
     await stat.getByTestId("card-expand").click();
+    await stat.getByTestId("card-chart").scrollIntoViewIfNeeded();
     await stat.getByTestId("study-chart").dblclick();
     await immersiveShows(page);
   });

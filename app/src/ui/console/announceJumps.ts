@@ -18,12 +18,14 @@ export function registerAnnounceJump(kind: string, r: Resolver): () => void {
 }
 
 const showPart = (id: string): Jump => ({ label: "Show part", go: () => { setPage("design"); actions.selectPart(id); } });
+const showInAssembly = (id: string): Jump => ({ label: "Show in assembly", go: () => { setPage("design"); actions.selectPart(id); } });
 const openAgent = (id: string): Jump => ({ label: "Open agent", go: () => actions.selectRun(id) });
 
 /** The defaults, for targets the console can reach itself. */
 const DEFAULTS: Partial<Record<AnnounceKind, Resolver>> = {
   agent_spawned: (a) => (a.ref.run_id ? openAgent(a.ref.run_id) : null),
-  part_created: (a) => (a.ref.part_id ? showPart(a.ref.part_id) : null),
+  // D10: a created part is placed in the build's assembly; the card jumps there with it selected
+  part_created: (a) => (a.ref.part_id ? showInAssembly(a.ref.part_id) : null),
   // the instance itself once the assembly view registers its resolver; the part until then
   assembly_added: (a) => (a.ref.part_id ? showPart(a.ref.part_id) : null),
   drawing_imported: (a) => (a.ref.part_id ? showPart(a.ref.part_id) : null),

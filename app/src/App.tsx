@@ -16,6 +16,7 @@ import { AssemblyView } from "./ui/assembly/AssemblyView";
 import { designMode, installModeShortcut } from "./ui/assembly/mode";
 import { BootOverlay } from "./ui/boot/BootOverlay";
 import { ConsolePane } from "./ui/console/ConsolePane";
+import { dockLayout } from "./ui/console/dockLayout";
 import { NewRunDialog } from "./ui/dialogs/NewRunDialog";
 import { LeftPane } from "./ui/left/LeftPane";
 import { Overview } from "./ui/viewer/Overview";
@@ -96,7 +97,9 @@ export function App(): JSX.Element {
   const home = atHome.value;
   return (
     <div class="app" data-region="app" data-conn={conn.value} data-home={home ? "" : undefined}
-      data-page={activePage.value} data-console={consoleCollapsed.value ? "rail" : "open"}>
+      data-page={activePage.value} data-console={consoleCollapsed.value ? "rail" : "open"}
+      // the agent dock's width (360–640 px, dragged at its left edge; ui/console/dockLayout)
+      style={consoleCollapsed.value ? undefined : { "--console-w": `${dockLayout.value.width}px` }}>
       <div class="region region-topbar" data-region="topbar"><TopBar /></div>
       {home
         ? <div class="region region-page" data-region="page"><HomePage /></div>

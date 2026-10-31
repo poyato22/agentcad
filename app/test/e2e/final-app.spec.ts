@@ -1,7 +1,7 @@
 // The final review's app fixes (final-678-app.md) that have no better home: the layout skeleton's
 // row (I4b) and the "All parts" toggle's place (I3).
 import type { PartSummary } from "../../src/api/types";
-import { expect, test } from "./fixtures";
+import { expect, showRun, test } from "./fixtures";
 import { CORE_URL } from "./ports";
 
 test.beforeEach(async ({ fake, page }) => {
@@ -41,23 +41,26 @@ test("the skeleton row shows its parameters and datums, never a GLB error (I4b)"
   expect(glb).toHaveLength(0);
 });
 
-test("the console header stays on one line with a long model id and routing reason (m5)", async ({ page, fake }) => {
+test("the Conversation header stays on one line with a long run label and the model warning (m5, Plan 9 D2)", async ({ page, fake }) => {
   await page.goto("/");
   await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
   const now = Date.now() / 1000;
   await fake.emit({ type: "run_started", run_id: "long01", data: {} }, { run: {
-    id: "long01", parent_id: null, agent: "engineer", provider: "ollama", model: "huihui_ai/qwen3.5-abliterated:9b-instruct-q8_0", task: "model a B-2 bomber",
+    id: "long01", parent_id: null, agent: "engineer", provider: "ollama", model: "huihui_ai/qwen3.5-abliterated:9b-instruct-q8_0", task: "model a B-2 bomber with a blended wing body and a long label",
     status: "running", branch: null, onshape_calls: 0, input_tokens: 0, output_tokens: 0, usd: 0, created_at: now, updated_at: now,
     routed: { agent: "engineer", reason: "a build request with no clear subject", confidence: 0.5 }, shape_complexity: { level: "high", score: 0.9 },
   } as never });
-  await page.getByRole("button", { name: /^Run: / }).click();
-  await page.getByRole("listbox", { name: "Runs" }).locator('[data-run="long01"]').click();
-  const who = page.locator(".cv-who");
-  await expect(who).toContainText("engineer");
-  const h = (await who.boundingBox())!.height;
-  expect(h).toBeLessThan(22);                                          // one line, not two or three
-  for (const sel of [".cv-routed", "span", ".mwarn"]) {
-    const box = await who.locator(sel).first().boundingBox();
+  await showRun(page, "long01");
+  const head = page.locator("[data-stream=text] .dock-h");
+  await expect(head.locator("[data-run-label]")).toContainText("engineer");
+  // the provider · model id and the routing chip are gone (D2); the weak-model warning stays
+  await expect(head).not.toContainText("qwen3.5-abliterated");
+  await expect(head.locator(".cv-routed")).toHaveCount(0);
+  await expect(head.locator(".mwarn")).toBeVisible();
+  const h = (await head.boundingBox())!.height;
+  expect(h).toBeLessThan(40);                                          // one line, not two or three
+  for (const sel of ["[data-run-label]", ".mwarn"]) {
+    const box = await head.locator(sel).first().boundingBox();
     expect(box!.height, sel).toBeLessThan(22);
     expect(box!.width, sel).toBeGreaterThan(30);                         // squeezed, never gone
   }
