@@ -1309,7 +1309,9 @@ async def present_view(ctx: ToolContext, args: PresentViewArgs) -> ToolOutput:
     out = await _render(ctx, meshes, renders=[{
         "key": "pv", "views": [thumb_view], "size": _SIZE_DEFAULT,
         "section": section.job() if section else None, "explode": explode,
-        "transparent": transparent}])
+        "transparent": transparent,
+        # a motion card's still sits on the dock's own sheet in either theme (shadow in alpha)
+        **({"background": "transparent"} if args.kind in ("animation", "section_sweep") else {})}])
     imgs = out.pngs["pv"]
     handles = _write_pngs(ctx, _tag(ctx, "pv"), imgs)
     thumb_id = render_ids(handles)[thumb_view]

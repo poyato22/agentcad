@@ -234,9 +234,10 @@ export function AssemblyView(): JSX.Element {
   }
   // the full window opens (Play, or an agent's presented card): what it shows starts here
   const loaded = data !== null;
+  // kept as the view opens, before any child's effect (the sweep's first cut) changes the modes
+  if (imm && beforeImm.current === null) beforeImm.current = assemblyModes.peek();
   useEffect(() => {
-    if (!imm) return;
-    if (beforeImm.current === null) beforeImm.current = assemblyModes.peek();
+    if (!imm || !beforeImm.current) return;
     if (imm.mode === "tour") {
       animate.current = true;
       assemblyModes.value = { ...beforeImm.current, explode: 1 };
@@ -244,8 +245,8 @@ export function AssemblyView(): JSX.Element {
       assemblyModes.value = { ...beforeImm.current, explode: 0, section: MODES_OFF.section };
       if (loaded) ctl.openMotion(imm.steps, { loop: imm.loop, autoplay: !prefersReducedMotion() });
     } else {
-      // the sweep bar drives the section; nothing else in the way of the cut
-      assemblyModes.value = { ...beforeImm.current, explode: 0 };
+      // the sweep bar drives the section (its first cut is already on); nothing exploded
+      assemblyModes.value = { ...assemblyModes.peek(), explode: 0 };
     }
   }, [imm, loaded]);
   function closeImmersive(): void {

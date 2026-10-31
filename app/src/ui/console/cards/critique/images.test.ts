@@ -23,4 +23,15 @@ describe("view-card thumbnail backdrop (m10)", () => {
     expect(px[(1 * w + 1) * 4 + 3]).toBe(255);                 // the part
     expect(px[(2 * w + 2) * 4 + 3]).toBe(255);                 // its white face stays
   });
+
+  it("keys_G-R's_studio_grey_backdrop_and_its_faint_shadow_but_not_a_dark_backdrop", () => {
+    const w = 6; const h = 5;
+    const px = picture(w, h, [90, 100, 110]);
+    for (let i = 0; i < w * h; i++) if (px[i * 4] === 255) [px[i * 4], px[i * 4 + 1], px[i * 4 + 2]] = [238, 238, 240];
+    [px[(4 * w + 2) * 4], px[(4 * w + 2) * 4 + 1], px[(4 * w + 2) * 4 + 2]] = [231, 231, 233];   // the soft ground shadow
+    expect(knockOutBackground(px, w, h)).toBe(w * h - 9);      // the shadow too; not the enclosed face
+    expect(px[(4 * w + 2) * 4 + 3]).toBe(0);
+    const dark = new Uint8ClampedArray(w * h * 4).fill(20);
+    expect(knockOutBackground(dark, w, h)).toBe(0);
+  });
 });

@@ -81,6 +81,9 @@ async def test_animation_by_id_carries_the_saved_steps(tmp_path):
     assert spec["sweep"] is None and spec["parts"] == ["plate", "lid_plate"]
     cards = _cards(sub)
     assert len(cards) == 1 and cards[0]["ref"]["view_spec"] == spec
+    from PIL import Image                   # the still has no backdrop: it sits on either theme
+    with Image.open(out.data["thumbnail"]) as im:
+        assert im.mode == "RGBA" and im.getpixel((0, 0))[3] == 0
     assert cards[0]["title"].startswith("Animation of") and cards[0]["ref"]["thumbnail_id"]
     # by name too
     out2 = await views.present_view.handler(ctx, views.PresentViewArgs(

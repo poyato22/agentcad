@@ -1,21 +1,21 @@
 [
   {
     "id": 1,
-    "run_id": "e3389359faea",
-    "ts": 1793426959.9891431,
+    "run_id": "1ba49f804a22",
+    "ts": 1793427749.086032,
     "kind": "message",
     "payload": {
       "role": "user",
       "text": "a mount plate with a hinged lid"
     },
-    "evidence_hash": "5f0b7974f375a0280bb3262eba35831c6368633c845877e2b99e1d3779334f08",
+    "evidence_hash": "74e9c89521713329ad51f02204175066e8d8b1fd81fc352e426bae3870c40f38",
     "prev_hash": null,
     "collapsed": false
   },
   {
     "id": 2,
-    "run_id": "e3389359faea",
-    "ts": 1793426960.042538,
+    "run_id": "1ba49f804a22",
+    "ts": 1793427749.1078131,
     "kind": "message",
     "payload": {
       "role": "assistant",
@@ -23,14 +23,14 @@
       "text": "ok",
       "tool_calls": []
     },
-    "evidence_hash": "c9cb8a02fee23de013c3acbcbf9ce2942de1b6091577ebcb7da5f14a0b8123e1",
-    "prev_hash": "5f0b7974f375a0280bb3262eba35831c6368633c845877e2b99e1d3779334f08",
+    "evidence_hash": "72b1777b955a25b32ee0595432ca3e7cee17312ececf8b28e467428ce748dc4f",
+    "prev_hash": "74e9c89521713329ad51f02204175066e8d8b1fd81fc352e426bae3870c40f38",
     "collapsed": false
   },
   {
     "id": 3,
-    "run_id": "e3389359faea",
-    "ts": 1793426960.090963,
+    "run_id": "1ba49f804a22",
+    "ts": 1793427749.11088,
     "kind": "tool_call",
     "payload": {
       "call_id": "m1",
@@ -44,14 +44,14 @@
       },
       "name": "mirror_part_create"
     },
-    "evidence_hash": "db0bf9ee12561be29da321513ecfed6a104752b0c40aee7d939d22bfe74bf3db",
-    "prev_hash": "c9cb8a02fee23de013c3acbcbf9ce2942de1b6091577ebcb7da5f14a0b8123e1",
+    "evidence_hash": "91539c173858f3b204847af853249ce20e59fc43fa246493b6d5b8404c59dd22",
+    "prev_hash": "72b1777b955a25b32ee0595432ca3e7cee17312ececf8b28e467428ce748dc4f",
     "collapsed": false
   },
   {
     "id": 4,
-    "run_id": "e3389359faea",
-    "ts": 1793426969.1962721,
+    "run_id": "1ba49f804a22",
+    "ts": 1793427754.1580741,
     "kind": "tool_result",
     "payload": {
       "call_id": "m1",
@@ -249,14 +249,14 @@
         "warnings": []
       }
     },
-    "evidence_hash": "1a72b8c76401af19f3f96724c24013dc22426a9e54a552c32d577156ee8fd1c5",
-    "prev_hash": "db0bf9ee12561be29da321513ecfed6a104752b0c40aee7d939d22bfe74bf3db",
+    "evidence_hash": "84cb681cd6009252ab040fd6fdf47b567a582854bb86fc2b56452b5e087671f7",
+    "prev_hash": "91539c173858f3b204847af853249ce20e59fc43fa246493b6d5b8404c59dd22",
     "collapsed": false
   },
   {
     "id": 5,
-    "run_id": "e3389359faea",
-    "ts": 1793426969.197937,
+    "run_id": "1ba49f804a22",
+    "ts": 1793427754.158263,
     "kind": "decision",
     "payload": {
       "agent_announce": {
@@ -266,18 +266,18 @@
           "part_id": "mount_plate",
           "thumb_url": "/parts/mount_plate/thumb.png"
         },
-        "run_id": "e3389359faea",
+        "run_id": "1ba49f804a22",
         "title": "Created part mount_plate"
       }
     },
-    "evidence_hash": "0dc8bc1035eb39d0581b2769a304bb22f9b2acaf5322d3cd03f52d8a3dcf82d4",
-    "prev_hash": "1a72b8c76401af19f3f96724c24013dc22426a9e54a552c32d577156ee8fd1c5",
+    "evidence_hash": "a65e2fe78f74d43d93e25afedd067af638fe73678c808cdaf992d70e1dacb8bc",
+    "prev_hash": "84cb681cd6009252ab040fd6fdf47b567a582854bb86fc2b56452b5e087671f7",
     "collapsed": false
   },
   {
     "id": 6,
-    "run_id": "e3389359faea",
-    "ts": 1793426969.241577,
+    "run_id": "1ba49f804a22",
+    "ts": 1793427754.169742,
     "kind": "tool_call",
     "payload": {
       "call_id": "a1",
@@ -290,38 +290,38 @@
           {
             "duration_s": 2,
             "from": 0,
-            "joint_id": "27e95a1df20a",
+            "joint_id": "43d6ccc16a00",
             "to": 120
           },
           {
             "duration_s": 1.5,
             "from": 120,
-            "joint_id": "27e95a1df20a",
+            "joint_id": "43d6ccc16a00",
             "to": 0
           }
         ]
       },
       "name": "assembly_animate"
     },
-    "evidence_hash": "9e06ba33b018f050136f75dc5c260c54c29233ac9f6f8b0faaa5478ae684614d",
-    "prev_hash": "0dc8bc1035eb39d0581b2769a304bb22f9b2acaf5322d3cd03f52d8a3dcf82d4",
+    "evidence_hash": "fcc71f544af837503d3183096a76536501be8c1380b524229f3634daca6d1f9a",
+    "prev_hash": "a65e2fe78f74d43d93e25afedd067af638fe73678c808cdaf992d70e1dacb8bc",
     "collapsed": false
   },
   {
     "id": 7,
-    "run_id": "e3389359faea",
-    "ts": 1793426970.079624,
+    "run_id": "1ba49f804a22",
+    "ts": 1793427754.65151,
     "kind": "decision",
     "payload": {
       "agent_announce": {
         "detail": "The lid swings 120° on its hinge and closes again",
         "kind": "view_presented",
         "ref": {
-          "project_id": "72a9eb3e92cc",
-          "thumbnail_id": "pv_e3389359_928c5f02ef_iso",
+          "project_id": "4a57eac83297",
+          "thumbnail_id": "pv_1ba49f80_5de69ed7c7_iso",
           "view_spec": {
             "animation": {
-              "animation_id": "21da91ba5128",
+              "animation_id": "be2160cbd3ae",
               "duration_s": 3.5,
               "loops": 2,
               "name": "Open and shut the lid",
@@ -329,13 +329,13 @@
                 {
                   "duration_s": 2.0,
                   "from": 0.0,
-                  "joint_id": "27e95a1df20a",
+                  "joint_id": "43d6ccc16a00",
                   "to": 120.0
                 },
                 {
                   "duration_s": 1.5,
                   "from": 120.0,
-                  "joint_id": "27e95a1df20a",
+                  "joint_id": "43d6ccc16a00",
                   "to": 0.0
                 }
               ]
@@ -354,29 +354,29 @@
             "sweep": null,
             "target": {
               "ghost": [],
-              "id": "72a9eb3e92cc",
+              "id": "4a57eac83297",
               "kind": "project",
               "parts": [
                 "mount_plate"
               ],
-              "project_id": "72a9eb3e92cc"
+              "project_id": "4a57eac83297"
             },
-            "thumbnail_id": "pv_e3389359_928c5f02ef_iso",
+            "thumbnail_id": "pv_1ba49f80_5de69ed7c7_iso",
             "xray_parts": []
           }
         },
-        "run_id": "e3389359faea",
+        "run_id": "1ba49f804a22",
         "title": "Animation of 1 part(s) of the build"
       }
     },
-    "evidence_hash": "efcd1b7b9e365fa0170520aa4dd7eb042cb93c557444d697e232cab524537ae0",
-    "prev_hash": "9e06ba33b018f050136f75dc5c260c54c29233ac9f6f8b0faaa5478ae684614d",
+    "evidence_hash": "17b57608b4538d039613aed7e138565fc9154971aa6147bac263600a32429c01",
+    "prev_hash": "fcc71f544af837503d3183096a76536501be8c1380b524229f3634daca6d1f9a",
     "collapsed": false
   },
   {
     "id": 8,
-    "run_id": "e3389359faea",
-    "ts": 1793426970.1075132,
+    "run_id": "1ba49f804a22",
+    "ts": 1793427754.673376,
     "kind": "measure",
     "payload": {
       "call_id": "a1",
@@ -384,32 +384,32 @@
       "output": {
         "data": {
           "animation": {
-            "animation_id": "21da91ba5128",
+            "animation_id": "be2160cbd3ae",
             "loop": true,
             "loops": 2,
-            "project_id": "72a9eb3e92cc",
+            "project_id": "4a57eac83297",
             "sequence": [
               {
                 "duration_s": 2.0,
                 "from": 0.0,
-                "joint_id": "27e95a1df20a",
+                "joint_id": "43d6ccc16a00",
                 "to": 120.0
               },
               {
                 "duration_s": 1.5,
                 "from": 120.0,
-                "joint_id": "27e95a1df20a",
+                "joint_id": "43d6ccc16a00",
                 "to": 0.0
               }
             ]
           },
-          "animation_id": "21da91ba5128",
+          "animation_id": "be2160cbd3ae",
           "poses": [
             {
-              "joint_id": "27e95a1df20a",
+              "joint_id": "43d6ccc16a00",
               "t": 0.0,
               "transforms": {
-                "8dac3b0f43e2": [
+                "fdb73b598536": [
                   [
                     1.0,
                     0.0,
@@ -439,10 +439,10 @@
               "value": 0.0
             },
             {
-              "joint_id": "27e95a1df20a",
+              "joint_id": "43d6ccc16a00",
               "t": 0.5,
               "transforms": {
-                "8dac3b0f43e2": [
+                "fdb73b598536": [
                   [
                     0.866,
                     0.0,
@@ -472,10 +472,10 @@
               "value": 30.0
             },
             {
-              "joint_id": "27e95a1df20a",
+              "joint_id": "43d6ccc16a00",
               "t": 1.0,
               "transforms": {
-                "8dac3b0f43e2": [
+                "fdb73b598536": [
                   [
                     0.5,
                     0.0,
@@ -505,10 +505,10 @@
               "value": 60.0
             },
             {
-              "joint_id": "27e95a1df20a",
+              "joint_id": "43d6ccc16a00",
               "t": 1.5,
               "transforms": {
-                "8dac3b0f43e2": [
+                "fdb73b598536": [
                   [
                     0.0,
                     0.0,
@@ -538,10 +538,10 @@
               "value": 90.0
             },
             {
-              "joint_id": "27e95a1df20a",
+              "joint_id": "43d6ccc16a00",
               "t": 2.0,
               "transforms": {
-                "8dac3b0f43e2": [
+                "fdb73b598536": [
                   [
                     -0.5,
                     0.0,
@@ -571,10 +571,10 @@
               "value": 120.0
             },
             {
-              "joint_id": "27e95a1df20a",
+              "joint_id": "43d6ccc16a00",
               "t": 2.0,
               "transforms": {
-                "8dac3b0f43e2": [
+                "fdb73b598536": [
                   [
                     -0.5,
                     0.0,
@@ -604,10 +604,10 @@
               "value": 120.0
             },
             {
-              "joint_id": "27e95a1df20a",
+              "joint_id": "43d6ccc16a00",
               "t": 2.375,
               "transforms": {
-                "8dac3b0f43e2": [
+                "fdb73b598536": [
                   [
                     0.0,
                     0.0,
@@ -637,10 +637,10 @@
               "value": 90.0
             },
             {
-              "joint_id": "27e95a1df20a",
+              "joint_id": "43d6ccc16a00",
               "t": 2.75,
               "transforms": {
-                "8dac3b0f43e2": [
+                "fdb73b598536": [
                   [
                     0.5,
                     0.0,
@@ -670,10 +670,10 @@
               "value": 60.0
             },
             {
-              "joint_id": "27e95a1df20a",
+              "joint_id": "43d6ccc16a00",
               "t": 3.125,
               "transforms": {
-                "8dac3b0f43e2": [
+                "fdb73b598536": [
                   [
                     0.866,
                     0.0,
@@ -703,10 +703,10 @@
               "value": 30.0
             },
             {
-              "joint_id": "27e95a1df20a",
+              "joint_id": "43d6ccc16a00",
               "t": 3.5,
               "transforms": {
-                "8dac3b0f43e2": [
+                "fdb73b598536": [
                   [
                     1.0,
                     0.0,
@@ -738,7 +738,7 @@
           ],
           "view_spec": {
             "animation": {
-              "animation_id": "21da91ba5128",
+              "animation_id": "be2160cbd3ae",
               "duration_s": 3.5,
               "loops": 2,
               "name": "Open and shut the lid",
@@ -746,13 +746,13 @@
                 {
                   "duration_s": 2.0,
                   "from": 0.0,
-                  "joint_id": "27e95a1df20a",
+                  "joint_id": "43d6ccc16a00",
                   "to": 120.0
                 },
                 {
                   "duration_s": 1.5,
                   "from": 120.0,
-                  "joint_id": "27e95a1df20a",
+                  "joint_id": "43d6ccc16a00",
                   "to": 0.0
                 }
               ]
@@ -771,32 +771,32 @@
             "sweep": null,
             "target": {
               "ghost": [],
-              "id": "72a9eb3e92cc",
+              "id": "4a57eac83297",
               "kind": "project",
               "parts": [
                 "mount_plate"
               ],
-              "project_id": "72a9eb3e92cc"
+              "project_id": "4a57eac83297"
             },
-            "thumbnail_id": "pv_e3389359_928c5f02ef_iso",
+            "thumbnail_id": "pv_1ba49f80_5de69ed7c7_iso",
             "xray_parts": []
           }
         },
         "handles": [],
         "ok": true,
         "step_kind": "measure",
-        "summary": "animating 2 joints in sequence over 3.5 s (2x); 10 key poses returned; saved as 'Open and shut the lid' (animation_id 21da91ba5128); shown as a view card",
+        "summary": "animating 2 joints in sequence over 3.5 s (2x); 10 key poses returned; saved as 'Open and shut the lid' (animation_id be2160cbd3ae); shown as a view card",
         "warnings": []
       }
     },
-    "evidence_hash": "ce0640a4e5a57967731a3835bfe5d48bac68afbe028314335f880de9e8242f45",
-    "prev_hash": "efcd1b7b9e365fa0170520aa4dd7eb042cb93c557444d697e232cab524537ae0",
+    "evidence_hash": "c2d897663a86bb26951561c9f96738a0f1a4aa8d6e0483125c304b12016eba9b",
+    "prev_hash": "17b57608b4538d039613aed7e138565fc9154971aa6147bac263600a32429c01",
     "collapsed": false
   },
   {
     "id": 9,
-    "run_id": "e3389359faea",
-    "ts": 1793426970.10865,
+    "run_id": "1ba49f804a22",
+    "ts": 1793427754.674518,
     "kind": "tool_call",
     "payload": {
       "call_id": "s1",
@@ -807,28 +807,28 @@
           "axis": "x"
         },
         "target": {
-          "id": "72a9eb3e92cc",
+          "id": "4a57eac83297",
           "kind": "project"
         }
       },
       "name": "present_view"
     },
-    "evidence_hash": "ae6855f9848b488796601c30f6603fafd5cce5b07dd9688588d8385730addc2e",
-    "prev_hash": "ce0640a4e5a57967731a3835bfe5d48bac68afbe028314335f880de9e8242f45",
+    "evidence_hash": "98aa2a43507239e23b1cb42f4bafd94ce076ef26984472c593bf4bcf300e8ac7",
+    "prev_hash": "c2d897663a86bb26951561c9f96738a0f1a4aa8d6e0483125c304b12016eba9b",
     "collapsed": false
   },
   {
     "id": 10,
-    "run_id": "e3389359faea",
-    "ts": 1793426970.957165,
+    "run_id": "1ba49f804a22",
+    "ts": 1793427755.261267,
     "kind": "decision",
     "payload": {
       "agent_announce": {
         "detail": "A cut through both plates and the hinge line",
         "kind": "view_presented",
         "ref": {
-          "project_id": "72a9eb3e92cc",
-          "thumbnail_id": "pv_e3389359_e334292bc0_iso",
+          "project_id": "4a57eac83297",
+          "thumbnail_id": "pv_1ba49f80_97de64b892_iso",
           "view_spec": {
             "animation": null,
             "camera": "auto",
@@ -861,35 +861,35 @@
             },
             "target": {
               "ghost": [],
-              "id": "72a9eb3e92cc",
+              "id": "4a57eac83297",
               "kind": "project",
               "parts": [
                 "mount_plate"
               ],
-              "project_id": "72a9eb3e92cc"
+              "project_id": "4a57eac83297"
             },
-            "thumbnail_id": "pv_e3389359_e334292bc0_iso",
+            "thumbnail_id": "pv_1ba49f80_97de64b892_iso",
             "xray_parts": []
           }
         },
-        "run_id": "e3389359faea",
+        "run_id": "1ba49f804a22",
         "title": "Section sweep of 1 part(s) of the build"
       }
     },
-    "evidence_hash": "77bc959d9c0a9d33d931667ae77f3bb615f7f590ea7dc52b0ea136cb5e405004",
-    "prev_hash": "ae6855f9848b488796601c30f6603fafd5cce5b07dd9688588d8385730addc2e",
+    "evidence_hash": "0e276981cf17bcf923f913f97c8379e87826ea73cd68b23024fa23b255a058e2",
+    "prev_hash": "98aa2a43507239e23b1cb42f4bafd94ce076ef26984472c593bf4bcf300e8ac7",
     "collapsed": false
   },
   {
     "id": 11,
-    "run_id": "e3389359faea",
-    "ts": 1793426970.958546,
+    "run_id": "1ba49f804a22",
+    "ts": 1793427755.2623029,
     "kind": "measure",
     "payload": {
       "call_id": "s1",
       "images": [
         {
-          "b64_bytes": 32384,
+          "b64_bytes": 31228,
           "label": "iso",
           "media_type": "image/png"
         }
@@ -901,8 +901,8 @@
           "parts": [
             "mount_plate"
           ],
-          "thumbnail": "/var/folders/h4/y3qg30g91736x48bxcvczsfc0000gn/T/mises-fixtures-motion-ij2_cmfc/renders/pv_e3389359_e334292bc0_iso.png",
-          "thumbnail_id": "pv_e3389359_e334292bc0_iso",
+          "thumbnail": "/var/folders/h4/y3qg30g91736x48bxcvczsfc0000gn/T/mises-fixtures-motion-025rerha/renders/pv_1ba49f80_97de64b892_iso.png",
+          "thumbnail_id": "pv_1ba49f80_97de64b892_iso",
           "view_spec": {
             "animation": null,
             "camera": "auto",
@@ -935,19 +935,19 @@
             },
             "target": {
               "ghost": [],
-              "id": "72a9eb3e92cc",
+              "id": "4a57eac83297",
               "kind": "project",
               "parts": [
                 "mount_plate"
               ],
-              "project_id": "72a9eb3e92cc"
+              "project_id": "4a57eac83297"
             },
-            "thumbnail_id": "pv_e3389359_e334292bc0_iso",
+            "thumbnail_id": "pv_1ba49f80_97de64b892_iso",
             "xray_parts": []
           }
         },
         "handles": [
-          "/var/folders/h4/y3qg30g91736x48bxcvczsfc0000gn/T/mises-fixtures-motion-ij2_cmfc/renders/pv_e3389359_e334292bc0_iso.png"
+          "/var/folders/h4/y3qg30g91736x48bxcvczsfc0000gn/T/mises-fixtures-motion-025rerha/renders/pv_1ba49f80_97de64b892_iso.png"
         ],
         "ok": true,
         "step_kind": "measure",
@@ -955,8 +955,8 @@
         "warnings": []
       }
     },
-    "evidence_hash": "4c1d4e8f0709518871492e25be2e46da993c029c88fd043e910200a0c05fce1e",
-    "prev_hash": "77bc959d9c0a9d33d931667ae77f3bb615f7f590ea7dc52b0ea136cb5e405004",
+    "evidence_hash": "2cd993aafeadffbf84c86fc63b53ccc9de5f505dcf6b5a6c7ced209b3f45c92c",
+    "prev_hash": "0e276981cf17bcf923f913f97c8379e87826ea73cd68b23024fa23b255a058e2",
     "collapsed": false
   }
 ]
