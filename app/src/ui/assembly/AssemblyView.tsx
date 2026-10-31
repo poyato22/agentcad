@@ -192,7 +192,7 @@ export function AssemblyView(): JSX.Element {
       const key = storeParts.value.map((p) => `${p.part_id}@${p.mtime}@${p.version ?? 0}@${p.color ?? ""}`).join(",");
       const loaded = ctl.data.value !== null;
       if (!loaded) return;
-      if (seen !== null && seen !== key) void ctl.reloadParts();
+      if (seen && seen !== key) void ctl.reloadParts();     // an empty list was just not loaded yet
       seen = key;
     });
   }, []);

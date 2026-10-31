@@ -196,6 +196,8 @@ export class AssemblyController {
       if (seq !== this.loadSeq || id !== this.projectId.peek()) return;
       if (this.busy.peek()) { this.dirty = true; return; }
       this.accept(asm, glide);
+      // an agent's new part placed itself: read the build's parts too (its look, its metrics)
+      if (asm.instances.some((i) => this.part(i.part_id) === null)) void this.reloadParts();
     } catch (e) {
       if (seq === this.loadSeq) this.error.value = messageOf(e);
     }
