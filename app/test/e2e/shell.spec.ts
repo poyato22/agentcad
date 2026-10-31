@@ -391,7 +391,10 @@ test("connects_to_fake_core_without_errors", async ({ page, fake }) => {
     ["/approvals", "/jobs", "/onshape/budget", "/onshape/budget", "/parts", "/parts", "/printers", "/profile", "/profile",
       // C-2/C-3: the running run's live activity and open questions are seeded on connect (GET
       // /runs/{id} carries `pending`, as the real core's does, so no GET /runs/{id}/pending)
-      "/projects", "/projects/{id}/assembly", "/projects/{id}/bom", "/projects/{id}/bom", "/projects/{id}/spec", "/projects/{id}/studies", "/runs", "/runs/b7c79a57cbb4", "/runs/b7c79a57cbb4/steps", "/setup", "/status"]);
+      "/projects", "/projects/{id}/assembly", "/projects/{id}/bom", "/projects/{id}/bom", "/projects/{id}/spec", "/projects/{id}/studies", "/runs", "/runs/b7c79a57cbb4", "/runs/b7c79a57cbb4/steps", "/setup",
+      // FW-app I3: the dock's Simulations stream reads the build's study records (all, and its
+      // assembly's) and its generative runs
+      "/sims", "/sims", "/status", "/topopt"]);
   // PUT /context goes out 150 ms after the session starts (state/context.ts debounce)
   await expect.poll(async () => (await fake.calls()).filter((c) => c.path === "/context").length).toBeGreaterThanOrEqual(1);
   const ctx = (await fake.calls()).filter((c) => c.path === "/context");
