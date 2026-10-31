@@ -24,10 +24,14 @@ from .assembly.tools import register_assembly_tools
 from .cad.recipes import register_recipe_tools
 from .cad.tools import register_mirror_tools
 from .cad.views import register_view_tools
+from .sim.studies_agent import register_studies_agent_tools
 from .catalog import Catalog
 from .catalog.tools import register_catalog_tools
 from .bom import BomStore
 from .bom.tools import register_bom_tools
+from .concept import ConceptStore
+from .concept.gate import check_call as concept_check_call
+from .concept.tools import register_concept_tools
 from .browser import images as browser_images
 from .browser.snapshot import SnapshotStore
 from .browser.tools import CardStore, register_browser_tools
@@ -186,6 +190,8 @@ class Runtime:
         register_import_tools(self.registry)
         register_appearance_tools(self.registry)
         register_view_tools(self.registry)
+        register_studies_agent_tools(self.registry)  # Plan 9 U-D: the studies agent
+        register_concept_tools(self.registry)   # Plan 9 G-A: concept sketch + pitch
         self.orchestrator = Orchestrator(self)
         self.started_at = time.time()
         self.catalog = Catalog(self.store)
@@ -193,11 +199,15 @@ class Runtime:
         self.snapshots = SnapshotStore(self.store)
         self.part_cards = CardStore(self.store)
         self.bom = BomStore(self.store)
+        self.concepts = ConceptStore(self.store)
         services: dict = {"approvals": self.approvals, "runtime": self,
                           "orchestrator": self.orchestrator, "assembly": self.assembly_store,
                           "catalog": self.catalog, "secrets": set(),
                           "browser": self.snapshots, "part_cards": self.part_cards,
-                          "bom": self.bom}
+                          "bom": self.bom, "concept": self.concepts,
+                          # checks every call passes before approval and its handler (G-A's
+                          # concept gate); each raises MisesError to refuse the call
+                          "call_checks": [concept_check_call]}
         adapter = self._onshape_adapter(keychain_get("mises", "onshape"))
         if adapter is not None:
             services["onshape"] = adapter
@@ -1116,7 +1126,8 @@ class Runtime:
         await self._spawn_claude(run_id, st, run.model, info, auth, url, token,
                                  resume=run.session_ref)
 
-    async def _send_claude(self, run_id: str, text: str, log: dict | None = None) -> None:
+    async def _send_claude(self, run_id: str, text: str, log: dict | None = None,
+                           images: list[tuple[str, str]] | None = None) -> None:
         st = self._claude.get(run_id)
         if st is not None and st.task is not None and not st.task.done():
             raise MisesError(ErrorCode.INVALID_INPUT, "run is still working",
@@ -1133,7 +1144,8 @@ class Runtime:
         st.started_data = {"resumed": True, "external": True}
         st.slot = (None if self.parallel.try_acquire(run_id, st.ref)
                    else self._queue(run_id, st.ref, st.started_data))
-        st.task = asyncio.create_task(self._drive_claude(run_id, text, first=False, log=log))
+        st.task = asyncio.create_task(self._drive_claude(run_id, text, first=False, log=log,
+                                                         images=images or None))
 
     async def release_claude_session(self, run_id: str) -> None:
         """Close an idle Claude Code session once its result is collected (orchestrated
@@ -1384,9 +1396,12 @@ class Runtime:
             raise MisesError(ErrorCode.NOT_FOUND, f"unknown run: {run_id}")
         return st
 
-    async def send(self, run_id: str, text: str, *, log: dict | None = None) -> None:
+    async def send(self, run_id: str, text: str, *, log: dict | None = None,
+                   images: list[tuple[str, str]] | None = None) -> None:
         """`log` overrides the stored user step's fields (e.g. a feedback pin's note instead of
-        the wrapped message the model reads)."""
+        the wrapped message the model reads). `images` ((media_type, base64) pairs, e.g. a
+        concept sketch with the user's marks drawn on it) go with the message to a model that
+        can see images."""
         if run_id in self._deleting:
             raise MisesError(ErrorCode.NOT_FOUND, f"run {run_id} is being deleted")
         if run_id in self._sending:
@@ -1398,7 +1413,10 @@ class Runtime:
             if not busy:
                 self.new_user_turn(run_id)
             # the plain two-argument call when there is no log (tests patch _send that way)
-            await (self._send(run_id, text) if log is None else self._send(run_id, text, log))
+            if images:
+                await self._send(run_id, text, log, images)
+            else:
+                await (self._send(run_id, text) if log is None else self._send(run_id, text, log))
         finally:
             self._sending.discard(run_id)
 
@@ -1420,9 +1438,11 @@ class Runtime:
         if run.role == "lead":
             budget_mod.start_turn(self.store, run_id)
 
-    async def _send(self, run_id: str, text: str, log: dict | None = None) -> None:
+    async def _send(self, run_id: str, text: str, log: dict | None = None,
+                    images: list[tuple[str, str]] | None = None) -> None:
         if self._is_claude_run(run_id):
-            await self._send_claude(run_id, text, log)
+            await (self._send_claude(run_id, text, log, images) if images
+                   else self._send_claude(run_id, text, log))
             return
         if run_id in self._external:
             raise MisesError(ErrorCode.INVALID_INPUT, "run is driven by an external agent",
@@ -1437,7 +1457,13 @@ class Runtime:
             await self.refresh_local_sizes()
         started = {"resumed": True}
         slot = self._admit(run_id, st.ref, started)
-        st.task = asyncio.create_task(self._drive_slotted(run_id, text, slot, started,
+        prompt: str | list[Block] = text
+        if images and self.run_sees_images(run_id):
+            # images before the text that asks about them (Claude vision guidance)
+            prompt = [*(ImageBlock(media_type=m, data_b64=d) for m, d in images),
+                      TextBlock(text=text)]
+            log = {"text": text, **(log or {}), "images": len(images)}
+        st.task = asyncio.create_task(self._drive_slotted(run_id, prompt, slot, started,
                                                           user_log=log))
         st.task.add_done_callback(functools.partial(self._slotted_done, run_id))
 

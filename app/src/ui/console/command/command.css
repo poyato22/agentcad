@@ -1,8 +1,22 @@
-.cmd { flex: none; border-top: 1px solid var(--line2); background: var(--head); padding: 6px 8px; }
-.cmd-chip { font-size: var(--fs-small); margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cmd-row { display: flex; align-items: flex-start; gap: 8px; }
-.cmd-prompt { color: var(--blue); line-height: 1.4; padding-top: 3px; }
-.cmd-input { flex: 1; min-width: 0; resize: none; background: transparent; border: none; padding: 3px 0; line-height: 1.4; }
-.cmd-input:focus { border: none; }
-.cmd-error { color: var(--red); margin-top: 4px; }
-.cmd-info { margin-top: 4px; }
+/* The composer at the foot of the agent dock: a rounded field with a round send button that turns
+   into a Stop square while the agents work (Plan 9 D2). Tokens only; blue stays for needs-you. */
+.cmd { flex: none; border-top: 1px solid var(--line); background: var(--paper); padding: 8px 10px 10px; }
+.cmd-chip { font-size: var(--fs-small); margin: 0 2px 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmd-row {
+  display: flex; align-items: flex-end; gap: 8px; padding: 5px 5px 5px 10px;
+  border: 1px solid var(--line2); border-radius: 10px; background: var(--head);
+}
+.cmd-row:focus-within { border-color: var(--dim); }
+.cmd-input { flex: 1; min-width: 0; resize: none; background: transparent; border: none; padding: 4px 0; line-height: 1.4; }
+.cmd-input:focus { border: none; outline: none; }
+.cmd-send {
+  flex: none; width: 26px; height: 26px; border-radius: 50%; display: inline-grid; place-items: center; padding: 0;
+  border: 1px solid var(--line2); background: var(--ink); color: var(--paper); cursor: pointer; font-size: 13px; line-height: 1;
+}
+.cmd-send:disabled { background: transparent; color: var(--faint); cursor: default; }
+.cmd-send:not(:disabled):hover { opacity: .85; }
+.cmd-send:focus-visible { outline: 1px solid var(--blue); outline-offset: 2px; }
+.cmd-send.is-stop { background: var(--ink); color: var(--paper); }
+.cmd-stop-sq { display: block; width: 9px; height: 9px; background: currentColor; border-radius: 2px; }
+.cmd-error { color: var(--red); margin: 4px 2px 0; }
+.cmd-info { margin: 4px 2px 0; }

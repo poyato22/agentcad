@@ -46,15 +46,17 @@ describe("App shell", () => {
     expect(inRegion("left", '[data-testid="left-pane"]')).not.toBeNull();              // Task 5
     expect(container.querySelector('[data-region="left"]')?.textContent).toMatch(/Parts[\s\S]*History/i);
     expect(inRegion("viewer", '[data-testid="viewer"]')).not.toBeNull();               // Task 6
-    expect(inRegion("console", "[data-console] [data-run-switcher]")).not.toBeNull();  // conversation view (default)
+    expect(inRegion("console", "[data-console] [data-dock]")).not.toBeNull();  // the agent dock (default)
+    for (const s of ["view", "sim", "text"]) expect(inRegion("console", `[data-dock] [data-stream=${s}]`)).not.toBeNull();
     expect(inRegion("console", "[data-console] [data-conversation]")).not.toBeNull();
     expect(inRegion("console", "[data-console] [data-command-line] textarea")).not.toBeNull(); // Task 9
     expect(container.querySelector("[data-stub]")).toBeNull(); // no placeholder left anywhere
   });
 
-  it("new_button_opens_the_inline_composer", async () => {
+  it("the_conversation_menu_opens_the_inline_composer", async () => {
     render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    fireEvent.click(screen.getByRole("button", { name: "Conversation options" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "New run…" }));
     expect(await screen.findByRole("form", { name: "New run" })).toBeTruthy();
     expect(screen.queryByRole("dialog")).toBeNull();
   });

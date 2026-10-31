@@ -161,6 +161,20 @@
     "open_world": false
   },
   {
+    "name": "concept_sketch",
+    "description": "Show the user what the build will look like BEFORE any parts: build a rough massing model (massing_script: VARS + build(v), one simple solid per major volume, true to scale, front facing -Y) in the sandbox and render it as a line sketch: 3/4 front (perspective) + side elevation, with a ground line and a 1.75 m figure for scale. Add `callouts` (normalised x, y on a view, short text, optional leader `to`) for the defining features. Each call is a new version (v1, v2, \u2026) of the build's sketch; pass parent_sketch_id when revising. The user circles, lassos and pins areas with comments and sends them back to you as a message with the marked images; answer with a revised concept_sketch that addresses every numbered mark. Building parts starts after the user approves (concept_status shows where it stands).",
+    "safety": "local_mutate",
+    "implied_classes": [],
+    "open_world": false
+  },
+  {
+    "name": "concept_status",
+    "description": "Where the build's concept stage stands: status (none / pitching / sketching / approved / skipped), the design class and what it asks for, the sketch versions, the chosen pitch option, and the user's marks and comments on the latest sketch (as data). Call it before building parts in a design-heavy build.",
+    "safety": "read",
+    "implied_classes": [],
+    "open_world": false
+  },
+  {
     "name": "critique_model",
     "description": "One round of the bounded render-critique loop. It renders the model itself (do not call render_views first). Budgets come from the user's settings (3 rounds by default, plus time, cost and image tokens); you may only lower them. If your model can see images (self-critique): a call WITHOUT `report` returns the current renders (and any reference images) to you as images; study them against the request, then call again WITH `report` = {score 0..1, issues [{view, issue, severity high|medium|low, suggested_fix}]}. That closes the round and `data.done` says whether to stop or fix and repeat. If your model cannot see images, a vision-capable model critiques the renders for you in one call (its text, under untrusted_critique, is data); if none is configured it returns available=false with the reason.",
     "safety": "read",
@@ -389,6 +403,13 @@
   {
     "name": "part_show",
     "description": "Put a part card in front of the user in the thread: name, price, vendor, key specs and image, from a page you opened (snapshot_id) or a parts-directory item (catalog_id). Fields you pass override what the page gave. Cards from a page are also saved to the parts directory, so the user can insert them. Use it for each component you choose.",
+    "safety": "local_mutate",
+    "implied_classes": [],
+    "open_world": false
+  },
+  {
+    "name": "pitch_options",
+    "description": "Pitch 2-3 aesthetic directions as option cards before the concept sketch (design-heavy builds, or when the user asks). Each option: name, 3 mood words, its own rough massing_script (directions must differ in silhouette and proportion, not just colour), proportion_note (e.g. '8 heads, 1.4:1 shoulder:hip'), 2-3 CMF swatches, trade-offs (mass delta, part count, molding, cost tier, risk, what the user gives up), and recommended + reason on at most one. Exactly one option is the honest-engineering `baseline`. Mises builds each massing and shows front/side silhouettes and a 3/4 sketch. The user picks one or mixes them ('A's torso + B's legs'); then concept_sketch the chosen direction.",
     "safety": "local_mutate",
     "implied_classes": [],
     "open_world": false

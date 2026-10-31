@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Page } from "@playwright/test";
 import type { AgentRun } from "../../src/api/types";
-import { expect, test } from "./fixtures";
+import { expect, openManualStudySetup, test } from "./fixtures";
 
 const BASE = JSON.parse(readFileSync(resolve(import.meta.dirname, "../fake-core/scenarios/base.json"), "utf8")) as Record<string, unknown> & { runs: AgentRun[] };
 const RUN = BASE.runs[0].id;   // a running designer run
@@ -65,7 +65,7 @@ test("C5_a_rename_in_the_manager_shows_in_history_and_the_switcher", async ({ pa
   await page.keyboard.press("Escape");
   await expect(historyRow(page, "r_crash")).toContainText("designer · QA renamed run");
   await historyRow(page, "r_crash").click();
-  await expect(page.locator("[data-run-switcher] [data-run-label]").first()).toContainText("QA renamed run");
+  await expect(page.locator("[data-conversation-head] [data-run-label]").first()).toContainText("QA renamed run");
 });
 
 test("C6_a_deleted_run_leaves_history_and_cannot_be_opened", async ({ page, fake }) => {
@@ -90,8 +90,8 @@ test("C6_a_deleted_run_leaves_history_and_cannot_be_opened", async ({ page, fake
   await page.keyboard.press("Escape");
   for (const id of ["r_zulu", "r_old1", "r_old2"]) await expect(historyRow(page, id)).toHaveCount(0);
   await expect(historyRow(page, RUN)).toBeVisible();
-  // the selection moved off the deleted run: the switcher never names it
-  await expect(page.locator("[data-run-switcher]")).not.toContainText("hello zulu");
+  // the selection moved off the deleted run: the Conversation header never names it
+  await expect(page.locator("[data-conversation-head]")).not.toContainText("hello zulu");
 });
 
 test("C4_a_hidden_built_in_agent_is_not_offered_in_new_run", async ({ page, fake }) => {
@@ -171,6 +171,7 @@ const GLB = { beam: resolve(FX, "study_part_beam.glb"), cube: resolve(FX, "study
 const studiesScenario = () => ({ ...BASE, parts: PARTS, glb: GLB, runs: [], steps: [], approvals: [], sims: { studies: true, step_ms: 60 } });
 
 async function openStudies(page: Page, part = "beam") {
+  await openManualStudySetup(page);
   await open(page);
   await page.getByRole("tab", { name: "Studies" }).click();
   await expect(page.getByTestId("studies")).toBeVisible();

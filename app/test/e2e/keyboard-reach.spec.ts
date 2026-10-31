@@ -35,12 +35,12 @@ test.beforeEach(async ({ fake, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
 });
 
-test("design: Tab reaches Home, the part list, View, All parts, the console header and the command line", async ({ page }) => {
+test("design: Tab reaches Home, the part list, View, All parts, the dock headers and the composer", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
   await page.locator("[data-region=viewer]").click({ position: { x: 300, y: 400 } });
   const stops = await tabStops(page);
-  for (const want of [/^Home$/, /^View options$/, /^All parts$/, /^Command line$/, /^New$/, /^Manage$/, /mount plate/, /^Build: Default/]) {
+  for (const want of [/^Home$/, /^View options$/, /^All parts$/, /^Command line$/, /^(Send|Stop)$/, /^Conversation options$/, /^Resize the agent dock$/, /mount plate/, /^Build: Default/]) {
     expect(has(stops, want), `${want} in ${JSON.stringify(stops)}`).toBe(true);
   }
 });
@@ -59,8 +59,7 @@ test("agents panel: Tab reaches its rows' menus and Clean up", async ({ page, fa
   await fake.reset("agent-ux");
   await page.goto("/");
   await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
-  await page.getByRole("button", { name: "Manage", exact: true }).focus();
-  await page.keyboard.press("Enter");
+  await page.keyboard.press("Meta+Shift+KeyA");   // the console has no Manage button (Plan 9 D2)
   const manager = page.getByRole("dialog", { name: "Agent manager" });
   await expect(manager).toBeVisible();
   await expect(manager.locator("[data-agent-row]").first()).toBeVisible();

@@ -4,7 +4,7 @@
 // here, that no two global shortcuts collide, and that docs/shortcuts.md documents each one.
 import { PAGES } from "../ui/pages/router";
 
-export type ShortcutScope = "global" | "topbar" | "design" | "viewer" | "parts" | "approvals" | "immersive";
+export type ShortcutScope = "global" | "topbar" | "design" | "viewer" | "parts" | "approvals" | "immersive" | "composer";
 
 export interface Shortcut {
   /** The registerShortcut combo ("Meta+Shift+A"), or the key a focused handler reads. */
@@ -38,4 +38,5 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { combo: "reject", keys: "R", action: "Reject (a focused approval card)", scope: "approvals" },
   { combo: "keep", keys: "K", action: "Keep the branch (a focused approval card)", scope: "approvals" },
   { combo: "Meta+[", keys: "⌘[ ⌘]", action: "Previous / next view or study (immersive)", scope: "immersive" },
+  { combo: "Escape", keys: "Esc", action: "Stop the agents (the composer focused, while they work)", scope: "composer" },
 ];

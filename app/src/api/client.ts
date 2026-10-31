@@ -27,6 +27,7 @@ import {
   type CustomMaterialBody, type StudyCharts, type StudyCompare, type StudyMaterial, type StudyMaterials, type StudyProbe, type StudyRecord,
   type StudySection, type StudySolvers, type StudyStartBody, type StudySummary, type StudyTemplate, type StudyType, type StudyTypeInfo,
 } from "./studies";
+import { studiesContextSchema, type StudiesContext } from "./studiesAgent";
 import type {
   AgentDefBody, AgentDetail, AgentInfo, AgentRun, Approval, CancelAllResult, ClaudeCodeStatus, CleanupBody, CleanupResult, CoreInfo, CoreStatusInfo, DecisionBody, DeleteRefused, ErrorCode, KeyStatus, LocalActionResult, LocalStatus, LocalTestResult,
   AgentsView, CreateRunResult, ModelsInfo, NewRunBody, OnshapeTestResult, PartSummary, Profile, ProfilePatch, Question, RunNode, RunPatch, SetupState, SketchSummary, SketchUpload, Step,
@@ -40,6 +41,10 @@ import {
   type BuildRef, type CatalogEdit, type CatalogItem, type OnshapeBudget, type OnshapeDoc, type OnshapeElement, type PartResult,
 } from "./directory";
 import { drawingImportSchema, type DrawingImport } from "./imports";
+import {
+  conceptDecisionSchema, conceptSketchSchema, conceptViewSchema, feedbackSentSchema, pitchChosenSchema,
+  type ChooseBody, type ConceptDecision, type ConceptSketch, type ConceptView, type FeedbackSent, type PitchChosen, type SketchFeedbackBody,
+} from "./concept";
 import type { DrawingInfo, NewPrinterBody, PrintCall, PrintCapabilities, Printer, PrinterStatus, PrintStart, Slice, SliceStart } from "./types";
 import {
   assemblyPartSchema, assemblySchema, driveResultSchema, instanceDeletedSchema, instanceSchema, interferenceSchema, jointDeletedSchema,
@@ -265,6 +270,10 @@ export class CoreClient {
   // ---- every study type (Plan 5 C7: core sim/studies.py, server/sim_api.py; Task A8)
 
   studyTypes(): Promise<StudyTypeInfo[]> { return this.json("GET", "/sims/types", z.array(studyTypeInfoSchema)); }
+  /** Plan 9 U-D: the studies agent's build context and proposed next studies. */
+  studiesContext(projectId: string): Promise<StudiesContext> {
+    return this.json("GET", "/studies/context", studiesContextSchema, { query: { project_id: projectId } });
+  }
   studySolvers(): Promise<StudySolvers> { return this.json("GET", "/sims/solvers", studySolversSchema); }
   listStudies(filter: { partId?: string; runId?: string } = {}): Promise<StudySummary[]> {
     return this.json("GET", "/sims", z.array(studySummarySchema), { query: { part_id: filter.partId, run_id: filter.runId } });
@@ -286,6 +295,19 @@ export class CoreClient {
   studySlice(simId: string, name: "slice_xz" | "slice_xy"): Promise<Blob> { return this.blob(`/sims/${enc(simId)}/slices/${name}.png`, "image/png"); }
   /** A render_views image (Plan 8 G1: critique-round before/after, a presented view's thumbnail). */
   renderImage(imageId: string): Promise<Blob> { return this.blob(`/renders/${enc(imageId)}.png`, "image/png"); }
+  // ---- Plan 9 G-A: the concept stage (core concept/api.py)
+  concept(projectId: string): Promise<ConceptView> { return this.json("GET", `/projects/${enc(projectId)}/concept`, conceptViewSchema); }
+  conceptSketch(sketchId: string): Promise<ConceptSketch> { return this.json("GET", `/concept/sketches/${enc(sketchId)}`, conceptSketchSchema); }
+  sketchFeedback(sketchId: string, body: SketchFeedbackBody): Promise<FeedbackSent> {
+    return this.json("POST", `/concept/sketches/${enc(sketchId)}/feedback`, feedbackSentSchema, { body });
+  }
+  approveConcept(projectId: string, sketchId: string | null): Promise<ConceptDecision> {
+    return this.json("POST", `/projects/${enc(projectId)}/concept/approve`, conceptDecisionSchema, { body: sketchId ? { sketch_id: sketchId } : {} });
+  }
+  skipConcept(projectId: string): Promise<ConceptDecision> { return this.json("POST", `/projects/${enc(projectId)}/concept/skip`, conceptDecisionSchema); }
+  choosePitch(pitchId: string, body: ChooseBody): Promise<PitchChosen> {
+    return this.json("POST", `/concept/pitches/${enc(pitchId)}/choose`, pitchChosenSchema, { body });
+  }
   compareStudies(ids: readonly string[]): Promise<StudyCompare> { return this.json("POST", "/sims/compare", studyCompareSchema, { body: { ids } }); }
   studyTemplates(): Promise<StudyTemplate[]> { return this.json("GET", "/sims/templates", z.array(studyTemplateSchema)); }
   addStudyTemplate(body: { name: string; type: StudyType; settings: Record<string, unknown> }): Promise<StudyTemplate> {

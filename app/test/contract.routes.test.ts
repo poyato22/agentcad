@@ -301,6 +301,7 @@ const COVERAGE: Record<string, string> = {
   "GET /sims/materials": "study_materials.json", // contract.studies.test.ts (Task A8)
   "GET /sims/templates": "study_templates.json", // contract.studies.test.ts (Task A8)
   "GET /sims/types": "study_types.json", // contract.studies.test.ts (Task A8)
+  "GET /studies/context": "studies_context.json", // contract.studiesAgent.test.ts (Plan 9 U-D)
   "GET /sims/{sim_id}/charts": "study_wind_charts.json", // contract.studies.test.ts (Task A8)
   "GET /sims/{sim_id}/probe": "study_probe.json", // contract.studies.test.ts (Task A8)
   "GET /sims/{sim_id}/section": "study_section.json", // contract.studies.test.ts (Task A8)

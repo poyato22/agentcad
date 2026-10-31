@@ -83,6 +83,8 @@ class Gate:
         payload = args.model_dump()
         ctx = ToolContext(run_id=run_id, user=self.user, store=self.store, events=self.events,
                           workdir=workdir, policy=policy, call_id=call_id, services=self.services)
+        for check in self.services.get("call_checks") or ():                     # 5b
+            check(ctx, name, args)
         # irreversible tools always ask; any other tool may ask for one call (needs_approval)
         reason = t.needs_approval(ctx, args) if t.needs_approval else None
         if t.safety == SafetyClass.IRREVERSIBLE or reason:                       # 6

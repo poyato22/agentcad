@@ -18,6 +18,7 @@ import { AssemblyView } from "./ui/assembly/AssemblyView";
 import { designMode, installModeShortcut } from "./ui/assembly/mode";
 import { BootOverlay } from "./ui/boot/BootOverlay";
 import { ConsolePane } from "./ui/console/ConsolePane";
+import { dockLayout } from "./ui/console/dockLayout";
 import { NewRunDialog } from "./ui/dialogs/NewRunDialog";
 import { LeftPane } from "./ui/left/LeftPane";
 import { Overview } from "./ui/viewer/Overview";
@@ -29,6 +30,7 @@ import { PrintSection } from "./ui/pages/print";
 import { StudiesPage } from "./ui/pages/studies";
 import { ImmersiveRoot } from "./ui/pages/studies/immersive/Immersive";
 import { ViewImmersiveRoot } from "./ui/console/cards/critique";
+import { SketchReviewRoot } from "./ui/sketch/register";
 import { closeProfile, profileOpen, profileSection } from "./ui/profile/open";
 import { ProfilePane } from "./ui/profile/ProfilePane";
 import { SetupGate } from "./ui/setup/SetupGate";
@@ -95,12 +97,15 @@ export function App(): JSX.Element {
   const home = atHome.value;
   return (
     <div class="app" data-region="app" data-conn={conn.value} data-home={home ? "" : undefined}
-      data-page={activePage.value} data-console={consoleCollapsed.value ? "rail" : "open"}>
+      data-page={activePage.value} data-console={consoleCollapsed.value ? "rail" : "open"}
+      // the agent dock's width (360–640 px, dragged at its left edge; ui/console/dockLayout)
+      style={consoleCollapsed.value ? undefined : { "--console-w": `${dockLayout.value.width}px` }}>
       {home
         ? <div class="region region-page" data-region="page"><HomePage /></div>
         : <><div class="region region-topbar" data-region="topbar"><TopBar /></div><PageRegion /><ConsoleRegion /></>}
       <ImmersiveRoot />
       <ViewImmersiveRoot />
+      <SketchReviewRoot />
       <NewRunDialog />
       <AgentManager />
       <ProfilePane open={profileOpen.value} section={profileSection.value} onClose={closeProfile} />

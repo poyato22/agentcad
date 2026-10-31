@@ -1,14 +1,15 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/preact";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/preact";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { CoreClient } from "../../api/client";
 import { stepSchema } from "../../api/schemas";
 import { ANNOUNCE_KINDS, type Announcement, type Step } from "../../api/types";
-import { resetStore, selectedPartId, selectedRunId } from "../../state/store";
+import { bindClient, resetStore, selectedPartId, selectedRunId } from "../../state/store";
 import { activePage, setPage } from "../pages/router";
 import { announcementOf } from "./announceModel";
 import { jumpFor, PENDING_JUMPS, registerAnnounceJump } from "./announceJumps";
-import { ANNOUNCE_META, AnnouncementCard } from "./AnnouncementCard";
+import { ANNOUNCE_META, AnnouncementCard, PART_RENDER_PX } from "./AnnouncementCard";
 
 afterEach(() => { cleanup(); resetStore(); setPage("design"); });
 
@@ -39,12 +40,34 @@ describe("AnnouncementCard", () => {
     expect(card.textContent).toContain("3 mm plate");
   });
 
-  it("Show part goes to the Design page with that part selected", () => {
+  it("D10: Show in assembly goes to the Design page with the created part selected", () => {
     setPage("studies");
     render(<AnnouncementCard announcement={ann({ ref: { part_id: "gear" } })} />);
-    fireEvent.click(screen.getByRole("button", { name: "Show part" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show in assembly" }));
     expect(selectedPartId.value).toBe("gear");
     expect(activePage.value).toBe("design");
+  });
+
+  it("D10 / D13: a created part's card shows its render, large, from the part's thumbnail route", async () => {
+    const partThumb = vi.fn(async () => new Blob([new Uint8Array([137, 80, 78, 71])], { type: "image/png" }));
+    bindClient({ partThumb } as unknown as CoreClient);
+    const made = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:gear");
+    setPage("studies");
+    render(<AnnouncementCard announcement={ann({ title: "Created part gear", ref: { part_id: "gear" } })} />);
+    expect(partThumb).toHaveBeenCalledWith("gear", PART_RENDER_PX);
+    expect(PART_RENDER_PX).toBeGreaterThanOrEqual(640);   // sharp at the dock's widest
+    await waitFor(() => expect(document.querySelector("img.cv-announce-img")?.getAttribute("src")).toBe("blob:gear"));
+    expect(screen.getByRole("img", { name: "Render of Created part gear" }).tagName).toBe("IMG");
+    // the picture is the jump too
+    fireEvent.click(screen.getByRole("button", { name: "Show Created part gear in the assembly" }));
+    expect(selectedPartId.value).toBe("gear");
+    expect(activePage.value).toBe("design");
+    made.mockRestore();
+  });
+
+  it("other kinds show no part render", () => {
+    render(<AnnouncementCard announcement={ann({ kind: "bom_added", ref: { part_id: "gear" } })} />);
+    expect(document.querySelector("[data-part-render]")).toBeNull();
   });
 
   it("a surface's own jump wins (the assembly view registers assembly_added)", () => {

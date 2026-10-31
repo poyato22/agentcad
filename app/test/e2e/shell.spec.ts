@@ -20,8 +20,8 @@ test("layout_regions_exist", async ({ page }) => {
   expect(top.height).toBe(44);
   expect(top.width).toBe(1440);
   expect(left.width).toBe(240);
-  expect(consoleBox.width).toBe(420);
-  expect(viewer.width).toBe(1440 - 240 - 420);
+  expect(consoleBox.width).toBe(440);   // the agent dock's default width (Plan 9 visual spec)
+  expect(viewer.width).toBe(1440 - 240 - 440);
   expect(consoleBox.y).toBe(44);
   expect(consoleBox.height).toBe(900 - 44);
   expect(left.y).toBe(44);
@@ -296,11 +296,11 @@ test("cmd_1_to_4_navigate", async ({ page }) => {
 test("console_collapses_to_a_rail_and_expands", async ({ page }) => {
   await page.goto("/");
   const consoleRegion = page.locator("[data-region=console]");
-  expect((await consoleRegion.boundingBox())?.width).toBe(420);
+  expect((await consoleRegion.boundingBox())?.width).toBe(440);
   await page.getByRole("button", { name: "Collapse the agent console" }).click();
   await expect.poll(async () => (await consoleRegion.boundingBox())?.width).toBe(36);
   await page.getByRole("button", { name: "Expand the agent console" }).click();
-  await expect.poll(async () => (await consoleRegion.boundingBox())?.width).toBe(420);
+  await expect.poll(async () => (await consoleRegion.boundingBox())?.width).toBe(440);
 });
 
 test("theme_switch_persists_via_put_profile_and_sets_data_theme", async ({ page, fake }) => {

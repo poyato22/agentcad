@@ -61,3 +61,10 @@ View ▾ menu: ↓ / ↑ open it, ↑ ↓ Home End move, Enter / Space pick, Esc
 | Keys | Action |
 |---|---|
 | ⌘[ ⌘] | Previous / next view or study (immersive) |
+
+## Agent dock (the composer focused)
+
+| Keys | Action |
+|---|---|
+| ⏎ | Send (⇧⏎ a new line) |
+| Esc | Stop the agents while they work (the send button is Stop then) |
