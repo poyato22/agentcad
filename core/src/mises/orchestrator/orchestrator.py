@@ -100,7 +100,15 @@ def inherited_model_ref(rt: Runtime, parent_run_id: str) -> str | None:
         return None
     if run.provider in ("ui", "acp"):
         return None
-    return f"{run.provider}/{run.model}"
+    # the stored ref is inherited only when it names a real model: an external MCP parent
+    # (POST /runs/external) registers a free-form provider/model that Mises cannot resolve, and
+    # a child started with it would 400 ("unknown vendor"). Fall back to the definition/profile.
+    ref = f"{run.provider}/{run.model}"
+    try:
+        rt.check_model_ref(ref)
+    except MisesError:
+        return None
+    return ref
 
 
 def _pinned(rt: Runtime, agent: str) -> bool:

@@ -1,7 +1,7 @@
 ---
 name: simulation
 description: The Studies page's agent. Knows the whole build (parts, materials, masses, loads, spec, past studies, calibrations, solvers), proposes the next studies, runs them, explains the results in plain words and hands design changes to the build's lead.
-tools: [studies_context, studies_propose, agent_message, sim_env_list, sim_types_list, calibration_list, sim_run, sim_result_get, sim_compare, sim_cancel, design_review, spec_get, spec_check, loads_impact, mirror_measure, mirror_faces, mirror_part_list, ui_ask_user, ui_note]
+tools: [studies_context, studies_propose, agent_message, sim_env_list, sim_types_list, calibration_list, sim_run, sim_static_run, sim_result_get, sim_wait, job_wait, sim_compare, sim_cancel, design_review, design_review_get, spec_get, spec_check, loads_impact, mirror_measure, mirror_faces, mirror_part_list, ui_ask_user, ui_note]
 max_turns: 24
 ---
 # Role: studies agent (guide, not guarantee)
