@@ -126,7 +126,7 @@ async def test_animation_needs_a_known_joint_and_the_build(tmp_path):
         views.AnimationRef(animation_id="a", keyframes=[{"joint_id": "j", "to": 1}])
 
 
-async def test_section_sweep_defaults_to_the_assembly_box_and_cuts_at_its_middle(tmp_path):
+async def test_section_sweep_defaults_to_the_assembly_box_and_cuts_near_its_middle(tmp_path):
     store, ctx, asm, joint = _hinge(tmp_path)
     sub = ctx.events.subscribe(ctx.run_id)
     out = await views.present_view.handler(ctx, views.PresentViewArgs(
@@ -134,7 +134,11 @@ async def test_section_sweep_defaults_to_the_assembly_box_and_cuts_at_its_middle
     spec = out.data["view_spec"]
     # base spans x -20..20, the lid (at 0 deg, flat beside it) 20..60
     assert spec["sweep"] == {"axis": "x", "from": -20.0, "to": 60.0, "duration_s": 4.0}
-    assert spec["section"] == {"origin": [20.0, 0.0, 0.0], "normal": [1.0, 0.0, 0.0]}
+    # the thumbnail's cut: 45% along (off the joint line at 20), its kept side facing iso
+    assert spec["section"] == {"origin": [16.0, 0.0, 0.0], "normal": [1.0, 0.0, 0.0]}
+    y = await views.present_view.handler(ctx, views.PresentViewArgs(
+        target="pA", kind="section_sweep", sweep={"axis": "y"}))
+    assert y.data["view_spec"]["section"]["normal"] == [-0.0, -1.0, -0.0]
     assert spec["animation"] is None
     card = _cards(sub)[0]
     assert card["title"].startswith("Section sweep of") and card["detail"] == "what is inside"
@@ -147,7 +151,7 @@ async def test_section_sweep_with_a_range(tmp_path):
         "sweep": {"axis": "z", "from": 4, "to": 0, "duration_s": 6}}))
     spec = out.data["view_spec"]
     assert spec["sweep"] == {"axis": "z", "from": 4.0, "to": 0.0, "duration_s": 6.0}
-    assert spec["section"]["origin"] == [0.0, 0.0, 2.0]
+    assert spec["section"]["origin"] == pytest.approx([0.0, 0.0, 2.2])
     with pytest.raises(ValueError):
         views.PresentViewArgs(target="pA", kind="section_sweep")      # needs `sweep`
     with pytest.raises(ValueError):

@@ -1150,6 +1150,8 @@ _VIEW_LABEL = {"orbit": "Orbit", "internal": "X-ray", "section": "Section",
                "exploded": "Exploded", "subset": "Subset", "animation": "Animation",
                "section_sweep": "Section sweep"}
 _AXIS = {"x": [1.0, 0.0, 0.0], "y": [0.0, 1.0, 0.0], "z": [0.0, 0.0, 1.0]}
+#: where along a sweep its thumbnail cuts (0 = `from`, 1 = `to`)
+SWEEP_THUMB_AT = 0.45
 
 
 def _animation_spec(ctx: ToolContext, project_id: str, ref: AnimationRef) -> dict:
@@ -1287,17 +1289,21 @@ async def present_view(ctx: ToolContext, args: PresentViewArgs) -> ToolOutput:
     elif args.kind == "section_sweep":
         sweep = _sweep_spec(ctx, placed, args.sweep)
         lo, hi = sweep["from"], sweep["to"]
-        mid = (lo + hi) / 2 if lo is not None and hi is not None else (lo if hi is None else hi)
+        # the thumbnail (and an app that knows no sweep) cuts a little before the middle (a
+        # joint line often sits right at it) and shows the cut face from the iso corner
+        at = (lo + SWEEP_THUMB_AT * (hi - lo) if lo is not None and hi is not None
+              else lo if hi is None else hi) or 0.0
         n = _AXIS[sweep["axis"]]
-        # the thumbnail (and an app that knows no sweep) cuts at the middle of the sweep
-        section = SectionSpec(origin=[c * (mid or 0.0) for c in n], normal=n)
+        iso = np.asarray(render_mod.VIEWS["iso"][0], dtype=np.float64)
+        n = [0.0 - c for c in n] if float(iso @ np.asarray(n)) > 0 else n
+        section = SectionSpec(origin=[abs(c) * at for c in n], normal=n)
 
     transparent = args.kind == "internal" or bool(xray) or bool(ghost)
     explode = args.explode if args.kind == "exploded" else 0.0
     if args.kind == "exploded" and explode <= 0.0:
         explode = 0.4
-    thumb_view = (_section_view(section.normal)
-                  if args.kind in ("section", "section_sweep") and section else "iso")
+    thumb_view = (_section_view(section.normal) if args.kind == "section" and section
+                  else "iso")
     meshes = _mesh_inputs(ctx, placed, ghost=_placed(ctx, ghost, place=place),
                           xray=xray or (set(shown) if args.kind == "internal" else None))
     out = await _render(ctx, meshes, renders=[{
