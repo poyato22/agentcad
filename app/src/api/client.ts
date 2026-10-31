@@ -617,6 +617,11 @@ export class CoreClient {
   listBuilds(): Promise<Build[]> { return this.json("GET", "/projects", z.array(buildSchema)); }
   createBuild(name: string): Promise<Build> { return this.json("POST", "/projects", buildSchema, { body: { name } }); }
   renameBuild(id: string, name: string): Promise<Build> { return this.json("PATCH", `/projects/${enc(id)}`, buildSchema, { body: { name } }); }
+  /** Plan 9 G-B: the user's design class for a build ("auto" hands it back to the classifier).
+   *  Answers the build view plus `design_class` ({cls, source: "user", ...} or null). */
+  setDesignClass(id: string, cls: "engineering" | "mixed" | "design" | "auto"): Promise<unknown> {
+    return this.json("PATCH", `/projects/${enc(id)}`, anyBody, { body: { design_class: cls } });
+  }
   /** Moves the build to the Trash (nothing is deleted until emptyTrash). */
   trashBuild(id: string): Promise<Build> { return this.json("DELETE", `/projects/${enc(id)}`, buildSchema); }
   restoreBuild(id: string): Promise<Build> { return this.json("POST", `/projects/${enc(id)}/restore`, buildSchema); }

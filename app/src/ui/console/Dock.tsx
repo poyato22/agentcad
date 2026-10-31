@@ -10,6 +10,7 @@ import { useEffect, useMemo, useRef } from "preact/hooks";
 import type { StreamKind } from "../../api/types";
 import { runLabel } from "../../lib/names";
 import { finishedSims } from "../../state/activity";
+import { activeBuildId } from "../../state/builds";
 import { effectiveRun, needsYou } from "../../state/selection";
 import { actions, selectedRunId } from "../../state/store";
 import { SpecPanel } from "../spec";
@@ -18,6 +19,7 @@ import { ModelWarning } from "./cards/critique/ModelWarning";
 import { CommandLine } from "./command/CommandLine";
 import { Composer } from "./Composer";
 import { Conversation } from "./Conversation";
+import { DesignFocus } from "./DesignFocus";
 import { buildRuns, effectiveRunId, labelOf, offListRuns, retainThreadFrames, retainTreeFrames, runLabels, threadFrame, treeFrame } from "./derived";
 import { dockLayout, resizeStream, resizeWidth, setDockLayout, toggleStream } from "./dockLayout";
 import { shownPending } from "./queued";
@@ -180,6 +182,7 @@ function ConversationHead(): JSX.Element {
   const notLead = current !== null && current.role !== "lead";
   return (
     <div class="dock-hx" data-conversation-head>
+      <DesignFocus run={current} buildId={current?.project_id ?? activeBuildId.value} />
       {notLead && label && <span class="dock-who dim text" data-run-label title={label}>{label}</span>}
       {current && <ModelWarning run={current} />}
       {others.length > 0 && (

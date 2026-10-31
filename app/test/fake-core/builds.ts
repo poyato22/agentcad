@@ -243,12 +243,22 @@ export function buildRoutes(d: BuildsDeps): Route[] {
       method: "PATCH", re: /^\/projects\/([^/]+)$/, h: (m, _q, raw) => {
         const b = project(m[1]);
         const bb = body(raw);
-        if (bb.name === undefined || bb.name === null) return view(b);
-        const name = String(bb.name).trim();
-        if (!name) throw bad("a build needs a name");
-        b.name = name;
-        b.updated_at = now();
-        return view(b);
+        // Plan 9 G-B: {design_class: engineering|mixed|design|auto} (core projects_api): the
+        // answer is the build view plus the user's class (core design_intensity.user_override)
+        let dc: Record<string, unknown> | null | undefined;
+        if (bb.design_class !== undefined && bb.design_class !== null) {
+          const cls = String(bb.design_class);
+          if (!["engineering", "mixed", "design", "auto"].includes(cls)) throw new HttpError(422, { detail: "design_class must be engineering, mixed, design or auto" });
+          const score: Record<string, number> = { engineering: 0.15, mixed: 0.5, design: 0.85 };
+          dc = cls === "auto" ? null : { score: score[cls], cls, per_part: {}, reasons: ["set by the user on this build"], source: "user", archetype: null };
+        }
+        if (bb.name !== undefined && bb.name !== null) {
+          const name = String(bb.name).trim();
+          if (!name) throw bad("a build needs a name");
+          b.name = name;
+          b.updated_at = now();
+        }
+        return dc === undefined ? view(b) : { ...view(b), design_class: dc };
       },
     },
     {

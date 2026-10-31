@@ -183,3 +183,20 @@ test("esc_never_cancels_a_run_waiting_on_your_approval_the_card_decides", async 
   await page.waitForTimeout(300);
   expect((await fake.calls()).some((c) => c.method === "POST" && c.path === `/runs/${LEAD}/cancel`)).toBe(false);
 });
+
+// Plan 9 G-B: the Conversation header's "Design focus" chip shows the class the core gave the
+// build and sets the user's own through PATCH /projects/{id} {design_class}
+test("design_focus_chip_shows_the_class_and_sets_the_users_own", async ({ page, fake }) => {
+  const dc = { score: 0.82, cls: "design", per_part: {}, reasons: ["humanoid archetype"], source: "prior", archetype: "humanoid" };
+  await fake.reset({ ...BASE, runs: [{ ...BASE.runs[0], role: "lead", project_id: BUILD, status: "running", design_class: dc }] } as never);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await open(page, "dark");
+  const chip = con(page).locator("[data-conversation-head] [data-design-focus]");
+  await expect(chip).toHaveAttribute("data-design-focus", "design");
+  await expect(chip).toContainText("Design focus");
+  await expect(chip.locator("[data-focus=design]")).toHaveAttribute("aria-pressed", "true");
+  await chip.locator("[data-focus=engineering]").click();
+  await expect(chip).toHaveAttribute("data-design-focus", "engineering");
+  await expect(chip.locator("[data-focus-by-user]")).toBeVisible();
+  expect((await fake.calls()).some((c) => c.method === "PATCH" && c.path === `/projects/${BUILD}`)).toBe(true);
+});
