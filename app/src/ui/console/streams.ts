@@ -18,7 +18,7 @@ const bare = (name: string): string => name.replace(/^mcp__mises__/, "");
  *  design review and generative design (topopt_*, Plan 9 D14). */
 const SIM_TOOL = /^(sim_|study_|studies_|topopt_)|^design_review$/;
 /** Tools whose output is a picture of the model. */
-const VIEW_TOOL = /^(present_view|critique_model|part_show|part_render|assembly_animate)$|^render(_|$)|^view_/;
+const VIEW_TOOL = /^(present_view|critique_model|part_show|part_render|assembly_animate|section_check|concept_sketch|pitch_options)$|^render(_|$)|^view_/;
 
 /** The stream a tool call belongs to, by its name (the fallback when its steps carry none). */
 export function toolStream(name: string): StreamKind {
