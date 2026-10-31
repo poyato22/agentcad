@@ -258,7 +258,8 @@ export function conceptSeedSteps(c: FakeConcept): { run_hint: string; payload: J
       out.push({ run_hint: pid, payload: { agent_announce: { run_id: p.run_id, kind: "concept_pitch", title: `${names.length} design directions`, detail: names.join(" · "), ref: { pitch_id: p.pitch_id, project_id: pid, options: names, stream: "view" } } } });
     }
     for (const s of view.sketches) {
-      out.push({ run_hint: pid, payload: { agent_announce: { run_id: s.run_id, kind: "concept_sketch", title: `Concept sketch v${String(s.version)}`, detail: String(s.notes ?? ""), ref: { sketch_id: s.sketch_id, version: s.version, project_id: pid, stream: "view" } } } });
+      out.push({ run_hint: pid, payload: { agent_announce: { run_id: s.run_id, kind: "concept_sketch", title: `Concept sketch v${String(s.version)}`, detail: String(s.notes ?? ""), ref: { sketch_id: s.sketch_id, version: s.version, project_id: pid, parent_sketch_id: s.parent_sketch_id ?? null,
+        image_ids: (s.images as Json[]).map((i) => i.render_id), stream: "view" } } } });   // like the core's announce ref
     }
   }
   return out;
