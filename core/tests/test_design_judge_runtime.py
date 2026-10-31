@@ -41,6 +41,22 @@ async def test_judge_subagent_is_a_fresh_tool_less_child_with_the_renders(tmp_pa
     await rt.aclose()
 
 
+async def test_judge_runs_under_a_parallel_limit_of_one(tmp_path, monkeypatch):
+    """Re-review N2: the parent holds the only slot while it critiques; its judge must not
+    queue behind it (the parent yields its slot while it waits, like any sub-agent wait)."""
+    fake = FakeProvider([_turn('{"score": 0.7, "issues": []}')])
+    rt = Runtime(tmp_path / "home", provider_resolver=lambda ref: (fake, "fake-model"))
+    monkeypatch.setattr(rt, "_total_limit", lambda prof=None: 1)
+    monkeypatch.setattr(rt, "JUDGE_TIMEOUT_S", 10.0)
+    parent = rt.create_external_run("designer", provider="fake", model="fake-model",
+                                    slot_ref="fake/fake-model")
+    assert rt.parallel.active() == {parent}               # the parent holds the only slot
+    out = await asyncio.wait_for(rt.judge_subagent(parent, "S", "T", []), 15)
+    assert out == '{"score": 0.7, "issues": []}'
+    assert rt.parallel.active() == {parent}               # and takes it back afterwards
+    await rt.aclose()
+
+
 async def test_judge_subagent_failure_returns_none(tmp_path):
     fake = FakeProvider([_turn("ok")])                      # no turn left for the judge
     rt = Runtime(tmp_path / "home", provider_resolver=lambda ref: (fake, "fake-model"))

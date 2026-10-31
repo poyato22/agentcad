@@ -69,10 +69,16 @@ _ARCHETYPES: list[tuple[str, str, float, str, dict[str, float]]] = [
     ("enclosure", r"enclosure|case|housing", 0.38, "a visible enclosure", {}),
     ("tooling", r"injection mold|injection mould|mold|mould|die cast|tooling", 0.08,
      "tooling: judged by moldability", {}),
-    ("functional", r"bracket|mount|mounting plate|plate|gearbox|gear train|gear|manifold|"
-     r"fixture|jig|flange|bushing|shaft|axle|hinge|pin|bolt|screw|nut|washer|lid|adapter|"
-     r"coupler|clip|heat ?sink|pcb|test rig|spacer|standoff|clamp|bearing block|"
-     r"spring|heat exchanger|bearing|pulley|sprocket", 0.12,
+    ("functional", r"bracket|mount|mounting plate|plate|base plate|cover plate|gearbox|"
+     r"gear train|gear|manifold|fixture|jig|flange|bushing|shaft|axle|hinge|pin|bolt|screw|"
+     r"nut|washer|lid|adapter|coupler|clip|heat ?sink|pcb|test rig|spacer|standoff|clamp|"
+     r"bearing block|spring|heat exchanger|bearing|pulley|sprocket|holder|stand|tray|guide|"
+     r"hook|knob|dock|cradle|insert|glide|foot|feet|cap|grommet|duct|gasket|shim|grille|"
+     r"grill|grip|handle|organi[sz]er|rack|shelf|wall mount|strap|buckle|latch|peg|plug|"
+     r"bezel|button|key ?cap|bumper|hanger|divider|funnel|nozzle|socket|sleeve|collar|"
+     r"ring|tube|pipe|fitting|channel|rail|track|enclosure for|case for|housing for|"
+     r"box for|replacement|spare|part for|(?:raspberry pi|arduino|esp32|pcb|electronics|"
+     r"circuit board|battery) (?:case|enclosure|housing|box)", 0.12,
      "a functional part judged by fit and load", {}),
 ]
 _GENERIC = {"enclosure"}                  # yields to a more specific archetype
@@ -90,7 +96,9 @@ _ENG_WORDS = (r"tolerance|load|torque|iso|dfm|cooling channels?|ejectors?|draft 
 # the user asking for plain, functional geometry: lowers the class, even below a prior
 _DOWN_WORDS = (r"simple|plain|basic|just functional|purely functional|functional only|"
                r"no styling|no need to style|unstyled|don'?t care (?:how|what) it looks|"
-               r"looks don'?t matter|appearance doesn'?t matter|utilitarian|no frills")
+               r"looks (?:don'?t|do not) matter|appearance (?:doesn'?t|does not) matter|"
+               r"utilitarian|no frills|make it functional|just for (?:a )?test|test print|"
+               r"quick and dirty|rough prototype")
 _DESIGN_W, _ENG_W = 0.18, 0.12
 DOWN_CAP = 0.2                           # an explicit "keep it plain" caps the score here
 _FLOOR = {"jet_engine": 0.35}            # an engineering core still has its designed nacelle

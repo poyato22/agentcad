@@ -73,6 +73,15 @@ STRONG_MODEL_TOOLS = frozenset({"orchestrator_run", "agent_spawn", "agent_wait",
                                 "orchestrator_submit_plan"})
 
 
+def _user_words(text: str, user_log: dict | None) -> str:
+    """The text the design-class classifier may read: the user's own words. A feedback pin's
+    message wraps the user's note in agent-written context (part labels, nearby features), so
+    when the stored user step carries the user's own `text`, that is what is classified
+    (Plan 9 G-B: agent-written text never moves the class)."""
+    own = (user_log or {}).get("text")
+    return own if isinstance(own, str) and own.strip() else text
+
+
 def tools_withheld_for(model_ref: str) -> frozenset[str]:
     """Tools not offered to a run on this model (local Ollama / LM Studio, OpenRouter free)."""
     return STRONG_MODEL_TOOLS if hardware.model_kind(model_ref) in ("local", "free") else frozenset()
@@ -783,9 +792,9 @@ class Runtime:
             from .orchestrator.lead import lead_definition
             defn = lead_definition(defn)
         shape = self._note_shape_complexity(run.id, prompt)
-        design = self._note_design_class(run.id, prompt, parent_id)
+        design = self._note_design_class(run.id, _user_words(prompt, log), parent_id)
         if parent_id is None:        # a sub-agent inherits; only a top-level request is rated
-            self._design_model_rubric(run.id, prompt, prof)
+            self._design_model_rubric(run.id, _user_words(prompt, log), prof)
         defn = self._design_rules_for(defn, role, design)
         classes = set(SafetyClass) if allowed_classes is None else set(allowed_classes)
         self.store.create_policy(run.id, list(edit_scope), list(read_scope), caps,
@@ -947,14 +956,17 @@ class Runtime:
 
     def _note_design_class(self, run_id: str, prompt: str, parent_id: str | None = None) -> dict:
         """Classify how design-heavy the request is (D27) and store it on the run as
-        `design_class`. The user's own class on the build always wins; otherwise a sub-agent
-        inherits its lead's class unless its own task scores higher. Never fatal."""
+        `design_class`. The user's own class on the build always wins; a sub-agent takes its
+        lead's class as is (its prompt is agent-written, so it never moves the class); only a
+        top-level run classifies its (user-written) prompt. Never fatal."""
         from . import design_intensity as design_mod
-        dc = self._user_design_class(run_id) or design_mod.design_intensity(prompt)
         try:
             parent = self.store.get_run(parent_id).design_class if parent_id else None
-            if dc.get("source") != "user":
-                dc = design_mod.strongest(dc, parent) or dc
+        except Exception:  # noqa: BLE001
+            parent = None
+        dc = (self._user_design_class(run_id) or parent
+              or design_mod.design_intensity("" if parent_id else prompt))
+        try:
             self.store.set_design_class(run_id, dc)
         except Exception:  # noqa: BLE001 - a process hint must never break a run
             log.debug("could not store design_class for %s", run_id, exc_info=True)
@@ -1041,7 +1053,7 @@ class Runtime:
         return is_vision_model(st.ref if st is not None else f"{run.provider}/{run.model}")
 
     #: how long a design critique waits for its judge sub-agent before reporting "no judge"
-    JUDGE_TIMEOUT_S = 140.0
+    JUDGE_TIMEOUT_S = 90.0
 
     async def judge_subagent(self, run_id: str, system: str, text: str,
                              images: list[tuple[str, str]]) -> str | None:
@@ -1061,11 +1073,14 @@ class Runtime:
                   "with the one JSON object only.")
         rid = None
         try:
-            rid = await self.start_run("verifier", prompt, model_ref=ref, parent_id=run_id,
-                                       role="sub", title="Design judge", edit_scope=(),
-                                       read_scope=(), allowed_classes=set(),
-                                       project_id=run.project_id, images=images)
-            res = await asyncio.wait_for(self.wait(rid), self.JUDGE_TIMEOUT_S)
+            # the parent gives its parallel slot up while its judge runs (as for any sub-agent
+            # it waits on): with a limit of 1 the judge would otherwise queue behind it forever
+            async with self.waiting_on_subagents(run_id):
+                rid = await self.start_run("verifier", prompt, model_ref=ref, parent_id=run_id,
+                                           role="sub", title="Design judge", edit_scope=(),
+                                           read_scope=(), allowed_classes=set(),
+                                           project_id=run.project_id, images=images)
+                res = await asyncio.wait_for(self.wait(rid), self.JUDGE_TIMEOUT_S)
         except Exception:  # noqa: BLE001 - no judge: the critique says so
             log.warning("design judge sub-agent for %s failed", run_id, exc_info=True)
             if rid is not None:
@@ -1124,9 +1139,9 @@ class Runtime:
             self.store.update_run(rid, **meta)
         self._note_shape_complexity(rid, prompt)
         # before the session starts too: its rules file carries the design-class block
-        self._note_design_class(rid, prompt, parent_id)
+        self._note_design_class(rid, _user_words(prompt, log), parent_id)
         if parent_id is None:
-            self._design_model_rubric(rid, prompt, self.profile())
+            self._design_model_rubric(rid, _user_words(prompt, log), self.profile())
         st = self._claude[rid] = _ClaudeRun(ref=ref, first_context=first_context)
         st.slot, st.started_data = self._external_slots.pop(rid, (None, {}))
         text = prompt
@@ -1532,7 +1547,7 @@ class Runtime:
         try:
             if not busy:
                 self.new_user_turn(run_id)
-                self._raise_design_class(run_id, text)
+                self._raise_design_class(run_id, _user_words(text, log))
             # the plain two-argument call when there is no log (tests patch _send that way)
             await (self._send(run_id, text) if log is None else self._send(run_id, text, log))
         finally:

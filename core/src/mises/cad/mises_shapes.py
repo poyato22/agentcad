@@ -967,13 +967,15 @@ def trust(shape, what: str = "shape", rel: float = 0.03):
     and cover. Returns the shape; raises ValueError naming `what` otherwise."""
     shape = check_solid(_as_shape(shape), what)
     vo, vm = _occ_volume(shape), _mesh_volume(shape)
-    if vo > 0 and abs(vo - vm) > rel * max(vo, vm):
+
+    def agree(a, b):
+        return a > 0 and b > 0 and abs(a - b) <= rel * max(a, b)
+    if vo > 0 and not agree(vo, vm):
         # OCCT's mesher can mis-triangulate one big freeform face at one deflection; a real
         # defect disagrees at every deflection, so re-mesh finer before giving up
         area = float(shape.area) or 1.0
-        fine = max(0.01, 0.02 * 2.0 * vo / area)
-        vm = _mesh_volume(shape, tol=fine)
-    if not (vo > 0 and abs(vo - vm) <= rel * max(vo, vm)):
+        vm = _mesh_volume(shape, tol=max(0.01, 0.02 * 2.0 * vo / area))
+    if not (vo > 0 and agree(vo, vm)):
         raise ValueError(f"{what}: untrustworthy solid (precise volume {vo:.0f} mm3, mesh "
                          f"volume {vm:.0f} mm3); rebuild it as outer loft minus inset loft")
     return shape
@@ -1243,6 +1245,7 @@ class Archetype:
         self.axes: dict[str, tuple] = {}
         self.envelopes: dict = {}
         self.hulls: dict = {}        # {name: solid outer volume of a shelled part} for checks
+        self.cut_panels: set[str] = set()   # plane-cut panels of a trusted shell
 
     def add(self, name: str, shape, role: str = "shell"):
         self.parts[name] = check_solid(_as_shape(shape), f"{self.kind} {name}")
@@ -1742,6 +1745,11 @@ def _car_section(x: float, st: dict, inset: float = 0.0, k: int = 96):
     return bd.Wire([bd.Edge.make_spline(vs, periodic=True, parameters=_periodic_params(k))])
 
 
+HOOD_F = 0.775
+#: the extra hood stations (f, top / belt, bottom above clearance, half width / hw)
+CAR_HOOD = [(0.82, 0.925, 5, 0.99), (0.93, 0.84, 25, 0.96)]
+
+
 def car_body(wheelbase: float = 2700.0, wheel_d: float = 680.0, length: float | None = None,
              width: float = 1850.0, height: float = 1420.0, greenhouse: float = 0.36,
              shell: bool = True, wall: float = 3.0):
@@ -1791,8 +1799,10 @@ def car_body(wheelbase: float = 2700.0, wheel_d: float = 680.0, length: float | 
             (0.62, 0.99 * belt, gc, hw, belt + 0.80 * gt, 0.80 * hw),
             (0.72, 0.95 * belt, gc, hw, belt + 0.25 * gt, 0.76 * hw),
             (0.76, 0.95 * belt, gc, 0.995 * hw, belt + 2, 0.70 * hw),
-            (0.88, 0.90 * belt, gc + 10, 0.98 * hw, 0, 0),   # the hood stays well above
-            (0.97, 0.76 * belt, gc + 50, 0.92 * hw, 0, 0),   # the front arch
+            *[(f, t * belt, gc + db, wf * hw, 0, 0) for f, t, db, wf in CAR_HOOD[:1]],   # the hood stays well above the
+            (0.88, 0.90 * belt, gc + 10, 0.98 * hw, 0, 0),   # front arch and eases down to
+            *[(f, t * belt, gc + db, wf * hw, 0, 0) for f, t, db, wf in CAR_HOOD[1:]],   # the nose in even steps (no
+            (0.97, 0.76 * belt, gc + 50, 0.92 * hw, 0, 0),   # lumps at the corners)
             (1.000, 0.60 * belt, gc + 150, 0.78 * hw, 0, 0)]
     sts = [dict(x=X(f), top=top, bot=bot, w=w, zc=bot + 0.72 * (min(top, belt) - bot),
                 belt=min(belt, top), roof=roof, wc=wc) for f, top, bot, w, roof, wc in rows]
@@ -1839,11 +1849,17 @@ def car_body(wheelbase: float = 2700.0, wheel_d: float = 680.0, length: float | 
 
     def cut(shape, plane):
         """(+normal side, -normal side) with a g-wide gap, or (None, shape) when nothing is
-        on the + side."""
-        try:
-            return panel_split(shape, plane, gap=g)
-        except ValueError:
-            return None, shape
+        on the + side. A plane that lands where OCCT leaves an invalid sliver is nudged a few
+        mm along its normal before giving up."""
+        for d in (0.0, 6.0, -6.0, 14.0, -14.0):
+            try:
+                return panel_split(shape, plane.offset(d), gap=g)
+            except ValueError:
+                continue
+        # not split: the whole shape is on one side; return it on that side
+        c = shape.center()
+        side = (c - plane.origin).dot(plane.z_dir)
+        return (shape, None) if side > 0 else (None, shape)
 
     zplane = bd.Plane.XY
     upper, lower = cut(body, zplane.offset(belt + 18))
@@ -1853,14 +1869,18 @@ def car_body(wheelbase: float = 2700.0, wheel_d: float = 680.0, length: float | 
     if band is not None:
         # a deck or hood crown that reaches above the glass line is body, not glass: the glass
         # runs only between the rear window base and the windshield base
-        hood_crown, band = cut(band, bd.Plane.YZ.offset(X(0.775)))
-        band, deck_crown = cut(band, bd.Plane.YZ.offset(X(0.165)))
+        hood_crown, band = cut(band, bd.Plane.YZ.offset(X(HOOD_F)))
+        deck_crown = None
+        if band is not None:
+            band, deck_crown = cut(band, bd.Plane.YZ.offset(X(0.165)))
         for name, crown in (("hood_crown", hood_crown), ("deck_crown", deck_crown)):
             if crown is not None and crown.solids():
                 me.add(name, crown, "shell")
+                me.cut_panels.add(name)
     if band is not None:
         front, rest = cut(band, bd.Plane.YZ.offset(xbp + 45))
-        pillar, rear = cut(rest, bd.Plane.YZ.offset(xbp - 45))
+        pillar, rear = cut(rest, bd.Plane.YZ.offset(xbp - 45)) if rest is not None \
+            else (None, None)
         glass = [p for p in (front, rear) if p is not None]
         pillars = [pillar] if pillar is not None else []
     def end_cap(shape, x, front: bool):
@@ -1895,14 +1915,18 @@ def car_body(wheelbase: float = 2700.0, wheel_d: float = 680.0, length: float | 
         for n_, piece, role in pieces:
             if piece is not None:
                 me.add(n_, piece, role)
+                me.cut_panels.add(n_)
     me.add("body", trust(lower if not lower.solids() or len(lower.solids()) > 1
                          else lower.solids()[0], "car body shell"), "shell")
     if roof is not None:
         me.add("roof", roof, "shell")
+        me.cut_panels.add("roof")
     for i, pl in enumerate(pillars):
         me.add("b_pillars" if i == 0 else f"b_pillars_{i}", pl, "shell")
+        me.cut_panels.add("b_pillars" if i == 0 else f"b_pillars_{i}")
     for name, gl in zip(("glass_front", "glass_rear"), glass):
         me.add(name, gl, "accent")
+        me.cut_panels.add(name)
     for name, ax, sy in (("front_left", WB / 2, 1), ("front_right", WB / 2, -1),
                          ("rear_left", -WB / 2, 1), ("rear_right", -WB / 2, -1)):
         at = (ax, sy * (hw - 30 - tw), R)                 # the outer face 30 mm inboard

@@ -53,7 +53,12 @@ def checks(arch) -> dict:
     untrusted = []
     for n, p in arch.parts.items():
         try:
-            ms.trust(p, n)
+            if n in getattr(arch, "cut_panels", ()):
+                # a plane-cut panel of a trusted shell: OCCT's volume integrals wobble on such
+                # trimmed B-spline pieces, so it is checked for validity, not volume agreement
+                ms.check_solid(p, n)
+            else:
+                ms.trust(p, n)
         except ValueError as e:
             untrusted.append(str(e))
     roles = sorted(set(arch.roles.values()))

@@ -601,7 +601,9 @@ def _tried_block(tried: list[str]) -> str:
     """Fixes already tried, as a length-capped data block for the judge's user message."""
     out, total = [], 0
     for t in tried:
-        t = re.sub(r"\s+", " ", str(t)).replace(TRIED_CLOSE, "")[:_TRIED_ITEM]
+        # strip any spelling of the block's own tags (case, spaces) so it cannot close itself
+        t = re.sub(r"<\s*/?\s*tried-fixes\s*>", "", re.sub(r"\s+", " ", str(t)),
+                   flags=re.IGNORECASE)[:_TRIED_ITEM]
         if total + len(t) > _TRIED_TOTAL:
             break
         out.append(f"- {t}")

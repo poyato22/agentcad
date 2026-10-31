@@ -151,7 +151,7 @@ def test_trust_accepts_a_good_shell_and_refuses_disagreeing_volumes(monkeypatch)
     ("squircle", 108908.7), ("station_loft", 858365.9), ("skin_shell", 115689.9),
     ("tapered_capsule", 105412.0), ("joint_cowl", 113935.5), ("panel_split", 115210.8),
     ("clamshell", 115386.3), ("cover_for", 126458.4), ("trust", 115689.9),
-    ("humanoid", 68523319.5), ("quadruped", 35873618.0), ("car_body", 6354136744.4)])
+    ("humanoid", 68523319.5), ("quadruped", 35873618.0), ("car_body", 6354248964.0)])
 def test_new_recipe_examples_match_their_reference_volume(name, ref):
     near(vol(EX[name]()), ref)
 
@@ -319,6 +319,12 @@ def test_car_body_is_one_shelled_loft_with_glass_arches_and_tyres_inside(car):
         assert max(abs(tb.min.Y), abs(tb.max.Y)) < hb.max.Y - 20   # inboard of the side
     # the glass is cut from the body loft itself (integrated), with a body-colour roof
     glass = [p for n, p in c.parts.items() if n.startswith("glass")]
-    assert glass and all(_inside(g, hull, 0.98) for g in glass)
+    assert glass
+    for g in glass:                     # every glass face lies within the body's own loft
+        for f in g.faces():
+            assert hull.is_inside(f.center(), tolerance=1.0)
+        ms.check_solid(g, "glass")
+    assert {"glass_front", "glass_rear", "roof"} <= c.cut_panels
+    ms.trust(c.parts["body"], "body")                    # the shell itself is trusted
     assert "roof" in c.parts and c.roles["roof"] == "shell"
     assert c.compound().bounding_box().min.Z == pytest.approx(0, abs=0.5)

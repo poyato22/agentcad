@@ -132,3 +132,26 @@ def test_claude_code_rules_file_carries_the_block(tmp_path):
     assert plain.body == defs["sim"].body
     again = di.rules_for(lead, "lead", di.design_intensity("a car body"))
     assert again.body.count(di.SECTION_BEGIN) == 1
+
+
+async def test_feedback_pin_classifies_only_the_users_note(tmp_path):
+    """Re-review N1: the pin message wraps the user's note in agent-written part labels."""
+    rt, fake = make(tmp_path, n=4)
+    rid = await rt.start_run("designer", "a bracket for a camera", role="lead")
+    await rt.wait(rid)
+    wrapped = "Feedback on part 'Car body shell' (a sleek car body): move this hole 2 mm left"
+    await rt.send(rid, wrapped, log={"text": "move this hole 2 mm left", "feedback": {}})
+    await rt.wait(rid)
+    assert rt.store.get_run(rid).design_class["cls"] == "engineering"
+    await rt.aclose()
+
+
+async def test_sub_agent_prompts_never_move_the_class(tmp_path):
+    rt, fake = make(tmp_path)
+    lead = await rt.start_run("engineer", "a camera bracket", role="lead")
+    await rt.wait(lead)
+    sub = await rt.start_run("designer", "design the sleek humanoid car body shell",
+                             parent_id=lead, role="sub", title="x")
+    await rt.wait(sub)
+    assert rt.store.get_run(sub).design_class["cls"] == "engineering"
+    await rt.aclose()
