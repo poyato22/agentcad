@@ -54,7 +54,7 @@ describe("runLabel", () => {
 
   it("never ends in a number taken from the task", () => {
     const r = run({ task: "make the plate 6 mm thick" });
-    expect(runLabel(r, [r])).toBe("designer · make plate 6 mm");
+    expect(runLabel(r, [r])).toBe("designer · make plate 6 mm thick");
     const r2 = run({ task: "set thickness to 6" });
     const label = runLabel(r2, [r2]);
     expect(label).not.toMatch(/\d\s*$/);
@@ -70,6 +70,15 @@ describe("runLabel", () => {
     const a = run({ id: "a" }), b = run({ id: "b", title: "second try" });
     expect(runLabel(a, [a, b])).toBe("designer · stiffen upright");
     expect(runLabel(b, [a, b])).toBe("designer · second try");
+  });
+
+  it("the first phrase, never cut mid-phrase (FW-app M6)", () => {
+    const label = (task: string) => runLabel(run({ task }), [run({ task })]);
+    expect(label("Thicken the mount plate to 5 mm so it stops flexing")).toBe("designer · thicken mount plate to 5 mm");
+    expect(label("Re-route the cable along the left side of the frame")).toBe("designer · re-route cable along left side");
+    expect(label("Put a Raspberry Pi in a vented case with a fan and a battery")).toBe("designer · put raspberry pi in vented case");
+    expect(label("Shorten the arm by 0.5 mm. Then re-run the stress study.")).toBe("designer · shorten arm by 0.5 mm");
+    expect(label("Fix the hinge; it binds")).toBe("designer · fix hinge");
   });
 
   it("empty task falls back", () => {

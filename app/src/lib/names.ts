@@ -28,14 +28,19 @@ export function partLabel(partId: string): string {
 }
 
 const ARTICLES = new Set(["the", "a", "an"]);
-const MAX_WORDS = 4;
+const MAX_WORDS = 6;
+/** Words a phrase never ends on ("thicken mount plate to" reads cut off: FW-app M6). */
+const DANGLING = new Set(["to", "for", "with", "of", "and", "or", "in", "on", "at", "by", "from", "into", "onto", "so", "that",
+  "it", "its", "then", "but", "as", "than", "is", "are", "be", "this", "these", "my", "our", "your", "each", "every"]);
 
-/** First words of a task: lower-case, articles dropped, never ending in a number. */
+/** The task's first phrase: its first sentence (a period inside "0.5 mm" is no end), lower-case,
+ *  articles dropped, at most MAX_WORDS words, never ending in a number or a dangling word. */
 export function taskWords(task: string): string {
   const firstLine = task.trim().split("\n")[0] ?? "";
-  const words = firstLine.toLowerCase().replace(/[.,;:!?"'()[\]{}]+/g, " ").split(/\s+/)
+  const sentence = firstLine.split(/[.!?;:](?:\s|$)/)[0] ?? "";
+  const words = sentence.toLowerCase().replace(/'/g, "").replace(/[;:!?"()[\]{}]+|[.,](?!\d)/g, " ").split(/\s+/)
     .filter((w) => w && !ARTICLES.has(w)).slice(0, MAX_WORDS);
-  while (words.length && /\d$/.test(words[words.length - 1])) words.pop();
+  while (words.length && (/\d$/.test(words[words.length - 1]) || DANGLING.has(words[words.length - 1]))) words.pop();
   return words.length ? words.join(" ") : "task";
 }
 

@@ -18,7 +18,7 @@ import { useImageUrl, useKeyedImageUrl } from "./cards/critique/images";
 import { ViewCard } from "./cards/critique/ViewCard";
 import { partsForSpec, VIEW_KIND_TEXT } from "../viewer/modes/viewSpec";
 import { Item } from "./Conversation";
-import { RunTag } from "./SimStream";
+import { manyRuns, RunTag } from "./SimStream";
 import type { ThreadItem } from "./threadModel";
 import type { DockEntry } from "./treeStreams";
 
@@ -40,7 +40,7 @@ function ViewStreamList({ entries }: { entries: readonly DockEntry[] }): JSX.Ele
   return (
     <div class="vs" data-view-stream>
       <div class="vs-main" data-view-main={main.key} data-run={main.runId}>
-        <RunTag runId={main.runId} />
+        {manyRuns.value && <RunTag runId={main.runId} />}
         <Large key={main.key} item={main.item} agent={main.agent} runId={main.runId} />
       </div>
       {entries.length > 1 && (

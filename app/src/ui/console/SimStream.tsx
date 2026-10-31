@@ -20,7 +20,7 @@ import { isTerminal, liveProgress, type LiveProgress } from "../pages/studies/li
 import { topoptIdOf, TopoptRunCard } from "../topopt/TopoptCard";
 import { loadStudyRecord, shownBuildStudies, studyRecords, type BuildStudy } from "./buildStudies";
 import { Item } from "./Conversation";
-import { labelOf, treeFrame } from "./derived";
+import { effectiveRunId, labelOf, treeFrame } from "./derived";
 import { simRunning } from "./streams";
 import { StudyCardSlot } from "./studycard";
 import { studyCallView, type StudyCallView } from "./studycard/cardModel";
@@ -65,6 +65,16 @@ export const simExtras: ReadonlySignal<readonly BuildStudy[]> = computed(() => {
   return extraStudies(t.sim, shownBuildStudies.value, t.runIds ?? []);
 });
 
+/** Do the View and Simulations streams hold more than one run's work, or another run's than the
+ *  conversation shows? Only then does each card name its run (FW-app M6: the one agent's tag
+ *  repeated on every card is a wasted line). */
+export const manyRuns: ReadonlySignal<boolean> = computed(() => {
+  const t = treeFrame.value;
+  const ids = new Set([...t.view, ...t.sim].map((e) => e.runId));
+  for (const r of simExtras.value) ids.add(r.runId ?? `rec/${r.kind}`);
+  return ids.size > 1 || (ids.size === 1 && !ids.has(effectiveRunId.value ?? ""));
+});
+
 /** How many of them run now. */
 export const simExtrasRunning: ReadonlySignal<number> = computed(() =>
   simExtras.value.filter((r) => recordRunning(r, finishedSims.value, liveProgress.value)).length);
@@ -76,13 +86,14 @@ function SimStreamList({ entries }: { entries: readonly DockEntry[] }): JSX.Elem
   if (entries.length === 0 && extras.length === 0) return <p class="dock-empty faint" data-stream-empty>Studies the agents run show here, live.</p>;
   const finished = finishedSims.value;
   const live = liveProgress.value;
+  const tags = manyRuns.value;
   const rows: Row[] = [
     ...entries.map(({ key, item: it, runId, agent, order }, idx) => ({
       key, idx, running: simRunning(it, finished), at: order === Infinity ? Number.MAX_VALUE : order,
       node: (
         <div key={key} class="ss-item" data-key={key} data-run={runId}>
           <div class="ss-head">
-            <RunTag runId={runId} />
+            {tags ? <RunTag runId={runId} /> : <span />}
             {it.kind === "activity" && it.call && <JobStop data={resultData(it.call.result?.payload)} />}
           </div>
           {it.kind === "activity" && it.call && studyCallView(it.call)
@@ -99,7 +110,7 @@ function SimStreamList({ entries }: { entries: readonly DockEntry[] }): JSX.Elem
         node: (
           <div key={key} class="ss-item" data-key={key} data-run={r.runId ?? undefined} data-record={r.kind}>
             <div class="ss-head">
-              {r.runId ? <RunTag runId={r.runId} /> : <div class="dock-run faint text">{r.kind === "topopt" ? "Generative design" : "Study"}</div>}
+              {!tags ? <span /> : r.runId ? <RunTag runId={r.runId} /> : <div class="dock-run faint text">{r.kind === "topopt" ? "Generative design" : "Study"}</div>}
               <JobStop data={r.kind === "sim" ? { sim_id: r.id } : { topopt_id: r.id }} />
             </div>
             {r.kind === "sim" ? <RecordStudyCard rec={r} running={running} /> : <div class="scard-slot" data-topopt-slot><TopoptRunCard id={r.id} partId={r.partId} /></div>}

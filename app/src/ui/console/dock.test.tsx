@@ -84,6 +84,9 @@ describe("agent dock: three streams at once", () => {
     const conv = within(section("text")).getByRole("log", { name: "Conversation" });
     expect(conv.querySelector("[data-msg=user]")).toBeTruthy();
     expect(conv.querySelector("[data-study-slot], [data-testid=view-card]")).toBeNull();
+    // one agent made all of it, and its conversation is the one shown: no run tag on every card (FW-app M6)
+    expect(section("sim").querySelector("[data-run-tag]")).toBeNull();
+    expect(section("view").querySelector("[data-run-tag]")).toBeNull();
   });
 
   it("a sub-agent's studies and views show in the build's dock while the lead's thread is shown, naming that agent", async () => {
