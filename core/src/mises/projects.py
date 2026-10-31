@@ -223,9 +223,10 @@ def _rm_tree(parent: Path, name: str) -> None:
 
 
 def _purge_files(store: Store, home: Path, project_id: str, part_ids: list[str],
-                 study_ids: list[str], assembly: Any) -> list[str]:
+                 study_ids: list[str], assembly: Any, concept_ids: list[str] = ()) -> list[str]:
     """Delete what the purged build owned on disk: its parts' dirs and host-only meta (unless
-    another build still references the part from its assembly), and its studies' scratch."""
+    another build still references the part from its assembly), its studies' scratch, its concept
+    images, its generative-design records (and MB variant files) and its background-job files."""
     from . import edits
     root = _parts_root(home)
     shared: set[str] = set()
@@ -244,6 +245,36 @@ def _purge_files(store: Store, home: Path, project_id: str, part_ids: list[str],
     for sid in study_ids:
         if re.fullmatch(r"study_[0-9a-f]{1,32}", sid):
             _rm_tree(Path(home) / "studies", sid)
+    # the concept stage's sketch and pitch image dirs (<home>/concepts/<id>)
+    for cid in concept_ids:
+        if re.fullmatch(r"[A-Za-z0-9_-]{1,64}", cid or ""):
+            _rm_tree(Path(home) / "concepts", cid)
+    # the generative-design records and their STEP/GLB variant files (<home>/topopt/<id>)
+    from .topopt import jobs as _topopt
+    for rec in _topopt.list_records(home, project_id=project_id):
+        tid = rec.get("topopt_id") or rec.get("id")
+        if isinstance(tid, str) and _topopt.TOPOPT_ID_RE.fullmatch(tid):
+            _rm_tree(Path(home) / _topopt.ROOT, tid)
+    # the build's background-job records (<home>/jobs/<id>.json), by the run they ran on
+    jobs_dir = Path(home) / "jobs"
+    try:
+        names = os.listdir(jobs_dir)
+    except OSError:
+        names = []
+    for name in names:
+        if not name.endswith(".json") or os.path.islink(jobs_dir / name):
+            continue
+        rec = _safe_json(jobs_dir, name)
+        rid = rec.get("run_id") if isinstance(rec, dict) else None
+        try:
+            owned = bool(rid) and store.get_run(rid).project_id == project_id
+        except KeyError:
+            owned = False
+        if owned:
+            try:
+                os.unlink(jobs_dir / name)
+            except OSError:
+                pass
     # the build's reference images and drawing imports (the user's original files)
     for sub, record in (("references", "meta.json"), ("imports", "import.json")):
         for name in _owned_by(Path(home) / sub, record, project_id):
@@ -297,7 +328,8 @@ def _owned_by(parent: Path, record: str, project_id: str) -> list[str]:
 
 
 def empty_trash(store: Store, home: Path | None = None, *, assembly: Any = None,
-                busy: BusyFn | None = None, only: str | None = None) -> dict:
+                busy: BusyFn | None = None, only: str | None = None,
+                concepts: Any = None) -> dict:
     """Purge every trashed build and everything it owns: part-tree rows, spec, studies,
     build-scoped catalog items, assembly rows and (with `home`) its parts' files, meta and
     study scratch. Refused as a whole (TrashBusy -> 409) while any trashed build has a run
@@ -317,10 +349,19 @@ def empty_trash(store: Store, home: Path | None = None, *, assembly: Any = None,
     for pid in purged:
         part_ids = [r.id for r in store.list_part_rows(pid)]
         study_ids = [s.get("id") for s in store.list_studies(pid) if isinstance(s.get("id"), str)]
+        # D30 (FW-core M-5): the concept stage's images, and the generative-design records and
+        # their variant files, are the build's too — gather their ids before the rows go
+        concept_ids: list[str] = []
+        if concepts is not None:
+            concept_ids = [s.get("sketch_id") for s in concepts.sketches(pid)] + \
+                          [p.get("pitch_id") for p in concepts.pitches(pid)]
         if home is not None:
-            removed += _purge_files(store, home, pid, part_ids, study_ids, assembly)
+            removed += _purge_files(store, home, pid, part_ids, study_ids, assembly,
+                                    concept_ids=[c for c in concept_ids if isinstance(c, str)])
         if assembly is not None:
             assembly.purge(pid)
+        if concepts is not None:
+            concepts.delete_project(pid)        # concepts, sketches, pitches, the user's marks
         store.purge_project(pid)
     return {"purged": purged, "count": len(purged)}
 

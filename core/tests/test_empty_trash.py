@@ -40,6 +40,35 @@ def _trashed(store, name="Drone"):
     return p.id
 
 
+def test_purge_removes_concept_topopt_and_job_files(store, tmp_path):
+    # FW-core M-5: Delete forever must also take the concept rows (the user's marks), the concept
+    # images, the generative-design records and the build's background-job files.
+    from mises.concept import ConceptStore
+    concepts = ConceptStore(store)
+    pid = _trashed(store)
+    run = store.create_run("sim", "fake", "m", "x", project_id=pid)
+    store.update_run(run.id, status="done")
+    sk = concepts.add_sketch(pid, {"sketch_id": "sk_1", "version": 1})
+    concepts.add_pitch(pid, {"pitch_id": "pt_1"})
+    (tmp_path / "concepts" / "sk_1").mkdir(parents=True)
+    (tmp_path / "concepts" / "sk_1" / "iso.png").write_text("png")
+    (tmp_path / "concepts" / "pt_1" / "o0").mkdir(parents=True)
+    (tmp_path / "topopt" / "to_abc123def456").mkdir(parents=True)
+    (tmp_path / "topopt" / "to_abc123def456" / "record.json").write_text(
+        json.dumps({"topopt_id": "to_abc123def456", "project_id": pid, "run_id": run.id}))
+    (tmp_path / "jobs").mkdir(parents=True)
+    (tmp_path / "jobs" / "sim_1.json").write_text(json.dumps({"id": "sim_1", "run_id": run.id}))
+
+    out = projects.empty_trash(store, tmp_path, only=pid, concepts=concepts)
+    assert out["purged"] == [pid]
+    assert concepts.sketches(pid) == [] and concepts.pitches(pid) == []
+    assert not (tmp_path / "concepts" / "sk_1").exists()
+    assert not (tmp_path / "concepts" / "pt_1").exists()
+    assert not (tmp_path / "topopt" / "to_abc123def456").exists()
+    assert not (tmp_path / "jobs" / "sim_1.json").exists()
+    assert sk["sketch_id"] == "sk_1"
+
+
 @pytest.mark.parametrize("status", ["running", "queued"])
 def test_refuses_while_a_run_is_live(store, tmp_path, status):
     pid = _trashed(store)
