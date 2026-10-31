@@ -8,7 +8,8 @@ Rows:
   part's tree mass (Plan 9 B2, mises.mass: solid volume at 100% infill x the density of the
   part's own material, else the build default) times that material's $/kg (the slicer's
   filament prices). It is labelled `estimate: true` with the basis in `estimate_note`. The
-  row's `mass` spec is the tree mass, so the BOM and the part tree never disagree.
+  row's `mass` spec is the part's own tree mass (a parent part's line weighs the part itself,
+  not its children: they have their own lines), so the BOM and the part tree never disagree.
 - A currency that is not known is null ("unknown" in totals and the CSV), never assumed.
 - Catalog parts inserted into the build (`kind: "catalog"`) come in the same way as bought
   rows, priced from their parts-directory item when the item has a price.
@@ -206,7 +207,9 @@ def made_estimate(home: Path, part_id: str, material: str,
     m = _metrics(home, part_id)
     if tree_row is not None:
         material = tree_row.get("material") or material
-        mass_g = tree_row.get("mass_g") if tree_row.get("mass_source") == "built" else None
+        # one BOM line is one part: its OWN mass, never a parent's subtree sum
+        mass_g = tree_row.get("own_mass_g") if tree_row.get("own_mass_source") == "built" \
+            else None
     else:
         vol = (m or {}).get("volume_mm3")
         rho = mass_mod.density_g_cm3(material, home)
@@ -296,9 +299,9 @@ def _finish(row: dict, home: Path, material: str, tree: dict | None = None) -> d
             out["specs"].append({"key": "size", "value": " x ".join(f"{v:.1f}" for v in
                                                                      est["bbox"]),
                                  "unit": "mm"})
-    elif trow is not None and trow.get("mass_g") is not None and \
+    elif trow is not None and trow.get("own_mass_g") is not None and \
             "mass" not in {s["key"] for s in out["specs"]}:
-        out["specs"].append({"key": "mass", "value": trow["mass_g"], "unit": "g"})
+        out["specs"].append({"key": "mass", "value": trow["own_mass_g"], "unit": "g"})
     q, c = out["qty"], out["unit_cost"]
     out["line_total"] = round(q * c, 2) if c is not None else None
     return out

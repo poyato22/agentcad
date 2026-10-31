@@ -554,9 +554,12 @@ async def mirror_part_set_vars(ctx: ToolContext, args: SetVarsArgs) -> ToolOutpu
         new_vars = res.vars
         version = _finish_edit(ctx, args.part_id, d,
                                "set " + ", ".join(f"{k}={args.vars[k]}" for k in args.vars))
-    m = res.metrics
+    m = _with_mass(ctx, args.part_id, res.metrics)
+    # the mass delta is geometry only: the previous volume at the CURRENT material's density
+    # (a material change since the last build must not show up as a geometry change)
+    prev_mass = _with_mass(ctx, args.part_id, prev)["mass_g"]
     delta = {"volume_mm3": m["volume_mm3"] - prev["volume_mm3"],
-             "mass_g": m["mass_g"] - prev["mass_g"],
+             "mass_g": m["mass_g"] - prev_mass,
              "bbox_size": [a - b for a, b in zip(m["bbox"]["size"], prev["bbox"]["size"])]}
     return ToolOutput(summary=f"{_summary(args.part_id, m)}; volume delta {delta['volume_mm3']:+.1f} mm3",
                       data={"part_id": args.part_id, "vars": new_vars, "version": version,
@@ -568,7 +571,8 @@ async def mirror_part_set_vars(ctx: ToolContext, args: SetVarsArgs) -> ToolOutpu
       description="Return the stored metrics of a built local part.")
 async def mirror_measure(ctx: ToolContext, args: PartArgs) -> ToolOutput:
     d = _existing(ctx, args.part_id)
-    m = _read_json(d, "metrics.json")
+    # Plan 9 B2: the mass is the part's tree mass (its own material), the number the UI shows
+    m = _with_mass(ctx, args.part_id, _read_json(d, "metrics.json"))
     version = _edits.read_version(d)
     note_seen(getattr(ctx, "run_id", None), d, version)
     return ToolOutput(summary=_summary(args.part_id, m),
@@ -733,6 +737,14 @@ async def mirror_edges(ctx: ToolContext, args: EdgesArgs) -> ToolOutput:
                       data={"part_id": args.part_id, "total": len(edges), "offset": args.offset,
                             "edges": page, "next_offset": nxt if nxt < len(edges) else None},
                       step_kind=StepKind.MEASURE)
+
+
+def _with_mass(ctx, part_id: str, metrics: dict) -> dict:
+    """metrics with the part's tree mass (mises.mass.part_mass: volume x its own material,
+    else the build default), so agents read the same mass as the UI."""
+    from .. import mass as _mass
+    return _mass.with_part_mass(metrics, getattr(ctx, "store", None), Path(ctx.workdir),
+                                part_id) or metrics
 
 
 def _summary(part_id: str, m: dict) -> str:

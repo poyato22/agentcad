@@ -378,7 +378,22 @@ def _home(ctx) -> Path | None:
     return Path(rt.home) if rt is not None and getattr(rt, "home", None) else None
 
 
-def default_material(ctx) -> str:
+def default_material(ctx, part_id: str | None = None) -> str:
+    """The material a study uses when it names none: the part's own material (Plan 9 B2, the
+    one its mass is weighed with), else the profile's default, else PLA. A part material the
+    sim table cannot solve (a slicer-only filament) falls back to the profile default."""
+    store = getattr(ctx, "store", None)
+    if part_id and store is not None:
+        try:
+            own = getattr(store.get_part(part_id), "material", None)
+        except Exception:  # noqa: BLE001 - a bare test context
+            own = None
+        if own:
+            try:
+                get_material(own, _home(ctx))
+                return own
+            except SimError:
+                pass
     rt = (getattr(ctx, "services", None) or {}).get("runtime")
     try:
         return rt.profile().default_material if rt is not None else "PLA"
@@ -522,7 +537,8 @@ async def run_study(ctx, type_id: str, part_id: str | None, part_dir: Path | Non
     t = STUDY_TYPES[type_id]
     home = _home(ctx)
     try:
-        material, env = preflight(type_id, settings, part_dir, home, default_material(ctx),
+        material, env = preflight(type_id, settings, part_dir, home,
+                                  default_material(ctx, part_id),
                                   assembly)
     except SimError as e:
         raise MisesError(ErrorCode.INVALID_INPUT, e.message, hint=e.hint) from None

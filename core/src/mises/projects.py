@@ -447,21 +447,46 @@ def mass_rows(store: Store, home: Path, project_id: str | None,
     return mass.annotate(rows, home, has_disk=has_disk, default_mat=default_material)
 
 
+def _public(r: dict) -> dict:
+    """A row as the API returns it: annotate's own-mass helpers (for the BOM) stay inside."""
+    r.pop("own_mass_g", None)
+    r.pop("own_mass_source", None)
+    return r
+
+
+def _subtree(store: Store, row: Part) -> list[Part]:
+    """The row and its descendants, from the tree rows alone (no disk)."""
+    kids: dict[str | None, list[Part]] = {}
+    for r in store.list_part_rows(row.project_id):
+        kids.setdefault(r.parent_id, []).append(r)
+    out, todo, seen = [row], [row.id], {row.id}
+    while todo:
+        for c in kids.get(todo.pop(), []):
+            if c.id not in seen:            # a cycle is never followed
+                seen.add(c.id)
+                out.append(c)
+                todo.append(c.id)
+    return out
+
+
 def part_view(store: Store, home: Path, row: Part) -> dict:
-    for r in mass_rows(store, home, row.project_id, versions=False, only=row.id):
-        if r["id"] == row.id:
-            return r
-    from . import mass   # a row outside any build's list (should not happen): itself alone
-    disk = _part_disk(home, row.id)
-    return mass.annotate([_row_view(home, row, disk)], home,
-                         has_disk={row.id} if disk is not None else set())[0]
+    """One tree row with its mass. Only the row and its descendants (a group's or parent's
+    sum) are read from disk, never the whole build: a leaf costs one part-dir read."""
+    from . import mass
+    rows, has_disk = [], set()
+    for i, r in enumerate(_subtree(store, row)):
+        disk = _part_disk(home, r.id)
+        if disk is not None:
+            has_disk.add(r.id)
+        rows.append(_row_view(home, r, disk, version=i == 0))
+    return _public(mass.annotate(rows, home, has_disk=has_disk)[0])
 
 
 def list_parts(store: Store, home: Path, project_id: str) -> list[dict]:
     """The build's tree rows with their mass. A `part` row whose on-disk build is gone is left
     out (groups and catalog parts have no build directory of their own), and weighs nothing in
     its parent's sum."""
-    return [r for r in mass_rows(store, home, project_id)
+    return [_public(r) for r in mass_rows(store, home, project_id)
             if not (r["kind"] == "part" and r["mtime"] is None)]   # mtime None: no build dir
 
 

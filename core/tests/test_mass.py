@@ -31,7 +31,7 @@ def _built(store, home, pid, part_id, volume_mm3, *, worker_mass=None, **row):
     (d / "part.py").write_text("x")
     (d / "vars.json").write_text("{}")
     m = {"volume_mm3": volume_mm3, "mass_g": worker_mass if worker_mass is not None
-         else volume_mm3 / 1000 * 1.24, "bbox": {"size": [10, 10, 10]}}
+         else volume_mm3 / 1000 * 1.24, "bbox": {"size": [10, 10, 10]}, "holes": [], "valid": True}
     (d / "metrics.json").write_text(json.dumps(m))
     store.register_part(part_id, pid)
     if row:
@@ -200,3 +200,86 @@ def test_material_column_is_added_to_an_old_database(tmp_path):
     s = Store(db)
     assert s.get_part("arm").material is None
     assert s.update_part("arm", material="PETG").material == "PETG"
+
+
+# ---- fix round 1: one mass truth for every reader
+
+def test_a_parent_parts_bom_line_weighs_the_part_itself(store, tmp_path, build):
+    _built(store, tmp_path, build, "body", 10000.0)
+    _built(store, tmp_path, build, "arm", 2000.0, parent_id="body")
+    tree = _rows(store, tmp_path, build)
+    assert tree["body"]["mass_source"] == "sum" and tree["body"]["mass_g"] == pytest.approx(14.88)
+    assert tree["body"]["metrics"]["mass_g"] == pytest.approx(12.4)     # its own mass
+    assert "own_mass_g" not in tree["body"]                              # internal to the BOM
+    v = bom_mod.view(store, bom_mod.BomStore(store), tmp_path, build, material="PLA")
+    lines = {i["part_id"]: i for i in v["items"]}
+    body = lines["body"]
+    assert body["estimate"] and body["unit_cost"] == round(12.4 / 1000 * 22.0, 2)
+    assert {s["key"]: s["value"] for s in body["specs"]}["mass"] == pytest.approx(12.4)
+    # leaves: BOM mass == tree mass
+    assert {s["key"]: s["value"] for s in lines["arm"]["specs"]}["mass"] == tree["arm"]["mass_g"]
+
+
+def test_an_unknown_stored_default_is_weighed_as_pla_everywhere(store, tmp_path, build):
+    prof = load_profile(tmp_path)
+    prof.default_material = "PLA+"          # an old free-text value, stored before validation
+    save_profile(tmp_path, prof)
+    _built(store, tmp_path, build, "arm", 1000.0)
+    r = _rows(store, tmp_path, build)["arm"]
+    assert r["mass_g"] == pytest.approx(1.24) and r["mass_source"] == "built"
+    assert r["mass_note"].startswith("unknown material PLA+ — weighed as PLA")
+    assert mass.build_density(store, tmp_path, "arm") == 1.24
+    assert mass.part_mass(store, tmp_path, "arm")["mass_g"] == r["mass_g"]
+
+
+def test_the_unknown_material_error_is_capped(store, tmp_path, build):
+    _built(store, tmp_path, build, "arm", 1000.0)
+    with pytest.raises(MisesError) as e:
+        projects.patch_part(store, tmp_path, "arm", material="x" * 500)
+    assert len(e.value.message) < 120 and "PLA" in (e.value.hint or "")
+
+
+async def test_every_reader_agrees_on_a_parts_mass(store, tmp_path, build):
+    """The UI tree, the BOM line, mirror_measure, the spec check and the study default all
+    weigh a PETG part the same, although its metrics.json still holds the PLA build mass."""
+    from mises.cad.tools import PartArgs, mirror_measure
+    from mises.engineering.spec import Spec
+    from mises.engineering.tools import spec_report
+    from mises.sim import studies
+    _built(store, tmp_path, build, "plate", 2000.0)
+    projects.patch_part(store, tmp_path, "plate", material="PETG")
+    tree = _rows(store, tmp_path, build)["plate"]["mass_g"]
+    assert tree == pytest.approx(2.54)
+    ctx = SimpleNamespace(workdir=tmp_path, store=store, run_id=None)
+    measured = await mirror_measure.handler(ctx, PartArgs(part_id="plate"))
+    assert measured.data["mass_g"] == tree and "2.54 g" in measured.summary
+    spec = Spec.model_validate({"requirements": [{"id": "m", "kind": "max_mass_g", "target": 3}]})
+    rep = spec_report(tmp_path, spec, "plate", store)
+    assert rep["requirements"][0]["measured"] == tree
+    v = bom_mod.view(store, bom_mod.BomStore(store), tmp_path, build, material="PLA")
+    assert {s["key"]: s["value"] for s in v["items"][0]["specs"]}["mass"] == tree
+    assert studies.default_material(ctx, "plate") == "PETG"
+    assert mass.part_mass(store, tmp_path, "plate")["mass_g"] == tree
+
+
+def test_a_group_of_hidden_rows_is_an_empty_group(store, tmp_path, build):
+    store.register_part("frame", build, kind="group")
+    store.register_part("gone", build)            # its build dir is gone: hidden
+    store.update_part("gone", parent_id="frame")
+    g = _rows(store, tmp_path, build)["frame"]
+    assert g["mass_g"] is None and g["mass_note"] == "empty group"
+
+
+def test_part_view_reads_only_the_part_and_its_subtree(store, tmp_path, build, monkeypatch):
+    for i in range(30):
+        _built(store, tmp_path, build, f"p{i:02d}", 1000.0)
+    store.register_part("frame", build, kind="group")
+    _built(store, tmp_path, build, "kid", 1000.0, parent_id="frame")
+    calls = []
+    real = projects._part_disk
+    monkeypatch.setattr(projects, "_part_disk", lambda h, pid: (calls.append(pid), real(h, pid))[1])
+    v = projects.part_view(store, tmp_path, store.get_part("p05"))
+    assert calls == ["p05"] and v["mass_g"] == pytest.approx(1.24)
+    calls.clear()
+    g = projects.part_view(store, tmp_path, store.get_part("frame"))
+    assert sorted(calls) == ["frame", "kid"] and g["mass_g"] == pytest.approx(1.24)

@@ -196,7 +196,8 @@ function validSites(v: unknown): boolean {
 const PROFILE_FIELDS: Record<string, (v: unknown) => boolean> = {
   display_name: (v) => typeof v === "string",
   units: (v) => v === "mm",
-  default_material: (v) => typeof v === "string",
+  // Plan 9 B2: only a materials-table name (core mass.check_material, case-insensitive)
+  default_material: (v) => typeof v === "string" && ["PLA", "PETG", "ABS", "ASA", "PA-CF", "TPU"].includes(v.toUpperCase()),
   default_agent: (v) => typeof v === "string",
   default_model: (v) => v === null || typeof v === "string",
   onshape_calls_year_cap: int(0),

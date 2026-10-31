@@ -130,7 +130,7 @@ export interface BuildsDeps {
 /** Core mises.mass densities (g/cm3): the sim materials table, then the slicer's (TPU). */
 const DENSITY: Record<string, number> = { PLA: 1.24, PETG: 1.27, ABS: 1.04, ASA: 1.07, "PA-CF": 1.06, TPU: 1.21 };
 const canonicalMaterial = (m: string): string | null => Object.keys(DENSITY).find((k) => k.toLowerCase() === m.trim().toLowerCase()) ?? null;
-export interface FakeMass { mass_g: number | null; mass_source: "built" | "catalog" | "sum" | "unknown"; mass_note: string | null }
+export interface FakeMass { mass_g: number | null; mass_source: "built" | "catalog" | "sum" | "unknown"; mass_note: string | null; own_mass_g?: number | null }
 
 /** Core mises.annotate: a built part weighs volume x its material (default PLA), a catalog part
  *  its stated mass, a group / parent the sum of its subtree; anything else null with a reason. */
@@ -144,10 +144,14 @@ export function fakeTreeMass(parts: readonly PartSummary[], rows: ReadonlyMap<st
     if (r.kind === "catalog") return typeof m?.mass_g === "number" ? { mass_g: m.mass_g, mass_source: "catalog", mass_note: "stated catalog mass" } : { mass_g: null, mass_source: "unknown", mass_note: "the catalog item states no mass" };
     if (!m || typeof m.volume_mm3 !== "number") return { mass_g: null, mass_source: "unknown", mass_note: p ? "build failed: the part has no successful build yet" : "not built yet" };
     const mat = r.material ?? defaultMaterial;
-    const rho = DENSITY[mat] ?? 1.24;
-    return { mass_g: Math.round(m.volume_mm3 / 1000 * rho * 1e4) / 1e4, mass_source: "built", mass_note: `${m.volume_mm3.toFixed(0)} mm3 x ${rho} g/cm3 (${mat}${r.material ? "" : ", build default"})` };
+    const rho = DENSITY[canonicalMaterial(mat) ?? ""];
+    const g = (d: number) => Math.round(m.volume_mm3 / 1000 * d * 1e4) / 1e4;
+    // core mass._own: a name no table knows is weighed as PLA, with the reason
+    if (rho === undefined) return { mass_g: g(1.24), mass_source: "built", mass_note: `unknown material ${mat.slice(0, 60)} — weighed as PLA (${m.volume_mm3.toFixed(0)} mm3 x 1.24 g/cm3)` };
+    return { mass_g: g(rho), mass_source: "built", mass_note: `${m.volume_mm3.toFixed(0)} mm3 x ${rho} g/cm3 (${mat}${r.material ? "" : ", build default"})` };
   };
-  const o = own();
+  const o = { ...own(), own_mass_g: undefined as number | null | undefined };
+  o.own_mass_g = o.mass_source === "built" ? o.mass_g : undefined;
   const kids = [...rows.entries()].filter(([k, x]) => x.parent_id === id && k !== id && !seen.has(k)).map(([k]) => k);
   if (kids.length === 0) return r?.kind === "group" ? { ...o, mass_note: "empty group" } : o;
   let total: number | null = o.mass_g;
@@ -155,8 +159,8 @@ export function fakeTreeMass(parts: readonly PartSummary[], rows: ReadonlyMap<st
     const c = fakeTreeMass(parts, rows, k, defaultMaterial, new Set([...seen, id]));
     if (c.mass_g !== null) total = (total ?? 0) + c.mass_g;
   }
-  return total === null ? { mass_g: null, mass_source: "unknown", mass_note: "no part in it has a known mass yet" }
-    : { mass_g: Math.round(total * 1e4) / 1e4, mass_source: "sum", mass_note: `sum of ${kids.length} item${kids.length === 1 ? "" : "s"}` };
+  return total === null ? { mass_g: null, mass_source: "unknown", mass_note: "no part in it has a known mass yet", own_mass_g: o.own_mass_g }
+    : { mass_g: Math.round(total * 1e4) / 1e4, mass_source: "sum", mass_note: `sum of ${kids.length} item${kids.length === 1 ? "" : "s"}`, own_mass_g: o.own_mass_g };
 }
 
 export function buildRoutes(d: BuildsDeps): Route[] {
@@ -194,8 +198,9 @@ export function buildRoutes(d: BuildsDeps): Route[] {
   };
   const rowView = (p: PartSummary) => {
     const r = B().rows.get(p.part_id) as Row;
-    const mass = fakeTreeMass(d.parts(), B().rows, p.part_id);
-    const metrics = p.metrics && mass.mass_source === "built" && r.kind === "part" ? { ...p.metrics, mass_g: mass.mass_g as number } : p.metrics;
+    const { own_mass_g: own, ...mass } = fakeTreeMass(d.parts(), B().rows, p.part_id);
+    // core annotate: a built part's metrics.mass_g is its OWN mass (a parent's too)
+    const metrics = p.metrics && typeof own === "number" && r.kind === "part" ? { ...p.metrics, mass_g: own } : p.metrics;
     return { id: p.part_id, project_id: r.project_id, label: r.label, parent_id: r.parent_id, order: r.order, color: r.color, kind: r.kind, version: r.version, appearance: r.appearance ?? null, part_id: p.part_id, vars: p.vars, metrics, mtime: p.mtime,
       ...mass, material: r.material ?? null };
   };

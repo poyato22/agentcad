@@ -55,3 +55,11 @@ def test_assembly_reports_its_total_mass(client, rt):
 def test_part_set_material_is_a_tool(client):
     names = [t["name"] for t in client.get("/tools", headers=AUTH).json()]
     assert "part_set_material" in names
+
+
+def test_the_profile_default_material_must_be_a_table_material(client):
+    bad = client.put("/profile", json={"default_material": "PLA+"}, headers=AUTH)
+    assert bad.status_code == 422 and "PLA+" in bad.json()["message"]
+    assert "PETG" in bad.json()["message"]
+    ok = client.put("/profile", json={"default_material": "petg"}, headers=AUTH)
+    assert ok.status_code == 200 and ok.json()["default_material"] == "PETG"

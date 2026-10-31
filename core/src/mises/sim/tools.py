@@ -555,7 +555,8 @@ async def design_review(ctx: ToolContext, args: ReviewArgs) -> ToolOutput:
     spec = normalize_spec(spec)
     metrics = safe_io.read_json(part, "metrics.json") or {}
     try:
-        material = studies.resolve_material(None, args.material or studies.default_material(ctx),
+        material = studies.resolve_material(None, args.material
+                                             or studies.default_material(ctx, args.part_id),
                                              studies._home(ctx))
     except SimError as e:
         raise _bad(e) from None

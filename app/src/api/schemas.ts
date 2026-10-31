@@ -157,9 +157,10 @@ export const partMetricsSchema = z.object({
 const ZERO3: [number, number, number] = [0, 0, 0];
 /** Plan 9 B2: the part list's metrics, caught per field, so one bad or missing field (an old
  *  build's `holes` count, a catalog part without `area_mm2`) no longer nulls every measurement.
- *  A field that fails reads as a neutral value (0, [], valid); a non-object stays null. */
+ *  A field that fails reads as a neutral value (0, [], valid; mass NaN, which lib/mass shows as
+ *  "—"); a non-object stays null. */
 export const partMetricsLenientSchema = z.object({
-  valid: z.boolean().catch(true), volume_mm3: z.number().catch(0), area_mm2: z.number().catch(0), mass_g: z.number().catch(0),
+  valid: z.boolean().catch(true), volume_mm3: z.number().catch(0), area_mm2: z.number().catch(0), mass_g: z.number().catch(Number.NaN),
   bbox: z.object({ min: vec3, max: vec3, size: vec3 }).catch({ min: ZERO3, max: ZERO3, size: ZERO3 }),
   center_of_mass: vec3.catch(ZERO3), faces: z.number().catch(0), edges: z.number().catch(0),
   holes: z.array(partHoleSchema).catch([]), solids: z.number().catch(0),

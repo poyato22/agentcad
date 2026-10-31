@@ -312,13 +312,17 @@ def _sims_by_case(ctx: ToolContext, part_id: str, spec: Spec) -> tuple[dict, set
     return fresh, stale - set(fresh)
 
 
-def spec_report(workdir: Path, spec: Spec, part_id: str) -> dict:
+def spec_report(workdir: Path, spec: Spec, part_id: str, store=None) -> dict:
     """The part measured against `spec` (spec_check's data without project): per requirement
-    the measured value and pass / warn / fail / not_checked. `workdir` holds `parts/`."""
+    the measured value and pass / warn / fail / not_checked. `workdir` holds `parts/`. The
+    mass is the part's tree mass (Plan 9 B2: its own material), the number the UI shows."""
     from types import SimpleNamespace
+
+    from .. import mass as _mass
     ctx = SimpleNamespace(workdir=workdir)
     d = _existing(ctx, part_id)  # type: ignore[arg-type]
     metrics = _read_part_json(d, "metrics.json")    # safe_io (C6)
+    metrics = _mass.with_part_mass(metrics, store, Path(workdir), part_id) or metrics
     sim_by_case, stale = _sims_by_case(ctx, part_id, spec)  # type: ignore[arg-type]
     report = evaluate_spec(spec, metrics, sim_by_case)
     for r in report["requirements"]:
@@ -337,7 +341,8 @@ def spec_report(workdir: Path, spec: Spec, part_id: str) -> dict:
 async def spec_check(ctx: ToolContext, args: SpecCheckArgs) -> ToolOutput:
     _check_part(args.part_id)
     pid = _resolve_project(ctx, args.project_id)
-    report = spec_report(Path(ctx.workdir), _load_spec(ctx, pid), args.part_id)
+    report = spec_report(Path(ctx.workdir), _load_spec(ctx, pid), args.part_id,
+                         getattr(ctx, "store", None))
     counts: dict[str, int] = {}
     for r in report["requirements"]:
         counts[r["status"]] = counts.get(r["status"], 0) + 1

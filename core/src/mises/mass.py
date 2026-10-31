@@ -118,12 +118,60 @@ def _own(r: dict, has_disk: bool, home: Path | None, default_mat: str,
     if mat not in dens:
         dens[mat] = _lookup(mat, home)
     hit = dens[mat]
-    if hit is None:
-        return None, "unknown", f"no density for material {mat}"
-    shown, rho = hit
     src = "" if r.get("material") else ", build default"
+    if hit is None:
+        # a stored name no table knows (an old free-text default): weighed as PLA, exactly
+        # like build_density hands the worker, so the UI and the tools agree
+        rho = _lookup(DEFAULT_MATERIAL, None)[1]  # type: ignore[index]
+        return (round(vol / 1000.0 * rho, 4), "built",
+                f"unknown material {_short(mat)} — weighed as {DEFAULT_MATERIAL}"
+                f" ({vol:.0f} mm3 x {rho:g} g/cm3)")
+    shown, rho = hit
     return (round(vol / 1000.0 * rho, 4), "built",
             f"{vol:.0f} mm3 x {rho:g} g/cm3 ({shown}{src})")
+
+
+def _short(s: str, n: int = 60) -> str:
+    s = str(s)
+    return s if len(s) <= n else s[:n] + "..."
+
+
+def part_mass(store, home: Path, part_id: str, metrics: dict | None = ...,  # type: ignore[assignment]
+              default_mat: str | None = None) -> dict:
+    """The part's OWN mass (no children): {mass_g, mass_source, mass_note, material} by the
+    same rule as the tree (volume x the part's material, else the build default). Every reader
+    of a single part's mass (mirror_measure, spec checks, studies, context, the BOM line) uses
+    this, so no reader can disagree with the UI. `metrics` defaults to the part's metrics.json."""
+    try:
+        row = store.get_part(part_id) if store is not None else None
+    except Exception:  # noqa: BLE001 - a bare test context
+        row = None
+    has_disk = (Path(home) / "parts" / part_id).is_dir()
+    if metrics is ...:
+        from .cad import safe_io
+        try:
+            metrics = safe_io.read_json(Path(home) / "parts" / part_id, "metrics.json") \
+                if has_disk else None
+        except (OSError, ValueError, safe_io.UnsafePath):
+            metrics = None
+        if not isinstance(metrics, dict):
+            metrics = None
+    r = {"id": part_id, "kind": getattr(row, "kind", None) or "part",
+         "material": getattr(row, "material", None), "metrics": metrics}
+    m, src, note = _own(r, has_disk, home, default_mat or default_material(home), {})
+    return {"mass_g": m, "mass_source": src, "mass_note": note, "material": r["material"]}
+
+
+def with_part_mass(metrics: dict | None, store, home: Path, part_id: str) -> dict | None:
+    """A copy of `metrics` whose mass_g is the part's own tree mass (see part_mass), plus the
+    material it used; None stays None. For tools that hand a part's metrics to an agent."""
+    if not isinstance(metrics, dict):
+        return metrics
+    pm = part_mass(store, home, part_id, metrics)
+    if pm["mass_g"] is None:
+        return metrics
+    return {**metrics, "mass_g": pm["mass_g"], "mass_note": pm["mass_note"],
+            "material": pm["material"] or default_material(home)}
 
 
 def annotate(rows: list[dict], home: Path | None, *, has_disk: set[str],
@@ -138,7 +186,9 @@ def annotate(rows: list[dict], home: Path | None, *, has_disk: set[str],
     kids: dict[str, list[str]] = {}
     for r in rows:
         p = r.get("parent_id")
-        if p in by_id and p != r["id"]:
+        # a part row whose build dir is gone is hidden from the tree: not a child here
+        if p in by_id and p != r["id"] and not (r.get("kind") == "part"
+                                               and r["id"] not in has_disk):
             kids.setdefault(p, []).append(r["id"])
     memo: dict[str, tuple[float | None, list[str]]] = {}
 
@@ -150,9 +200,7 @@ def annotate(rows: list[dict], home: Path | None, *, has_disk: set[str],
         r = by_id[i]
         total = m
         unknown: list[str] = []
-        # a part row whose build dir is gone is hidden from the tree: it weighs nothing here
-        if m is None and (r.get("kind") == "catalog"
-                          or (r.get("kind") == "part" and i in has_disk)):
+        if m is None and r.get("kind") in ("catalog", "part"):
             unknown.append(_name(r))
         for c in kids.get(i, []):
             if c in seen:
@@ -184,6 +232,8 @@ def annotate(rows: list[dict], home: Path | None, *, has_disk: set[str],
         elif r.get("kind") == "group":
             note = "empty group"
         r["mass_g"], r["mass_source"], r["mass_note"] = m, src, note
+        # the row's own mass without its children: what one BOM line of this part weighs
+        r["own_mass_g"], r["own_mass_source"] = own[i][0], own[i][1]
         if r.get("kind") == "part" and own[i][1] == "built" and isinstance(r.get("metrics"), dict):
             r["metrics"] = {**r["metrics"], "mass_g": own[i][0]}
     return rows
@@ -258,6 +308,7 @@ def check_material(material: str | None, home: Path | None) -> str | None:
         return None
     name = canonical_material(str(material), home)
     if name is None:
-        raise _bad(f"unknown material {material!r}",
-                   hint=f"materials: {', '.join(known_materials(home))}")
+        names = known_materials(home)
+        shown = ", ".join(names[:20]) + (f", ... ({len(names) - 20} more)" if len(names) > 20 else "")
+        raise _bad(f"unknown material {_short(material)!r}", hint=f"materials: {shown}")
     return name
