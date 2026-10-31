@@ -1,6 +1,6 @@
 {
   "id": "mount_plate_copy",
-  "project_id": "74ab71a5279a",
+  "project_id": "4dd8c95d4298",
   "label": "mount plate copy",
   "parent_id": null,
   "order": 3,
@@ -8,6 +8,7 @@
   "kind": "part",
   "version": 1,
   "appearance": null,
+  "material": null,
   "part_id": "mount_plate_copy",
   "vars": {
     "thickness": 6.0
@@ -16,7 +17,7 @@
     "valid": true,
     "volume_mm3": 4633.746916772027,
     "area_mm2": 2422.9185753316015,
-    "mass_g": 5.745846176797314,
+    "mass_g": 5.7458,
     "bbox": {
       "min": [
         -20.0,
@@ -639,5 +640,8 @@
     ],
     "solids": 1
   },
-  "mtime": 1793384790.460849
+  "mtime": 1793416230.9079735,
+  "mass_g": 5.7458,
+  "mass_source": "built",
+  "mass_note": "4634 mm3 x 1.24 g/cm3 (PLA, build default)"
 }

@@ -1,7 +1,7 @@
 [
   {
     "id": "top_plate",
-    "project_id": "74ab71a5279a",
+    "project_id": "4dd8c95d4298",
     "label": "top_plate",
     "parent_id": null,
     "order": 0,
@@ -9,6 +9,7 @@
     "kind": "part",
     "version": 1,
     "appearance": null,
+    "material": null,
     "part_id": "top_plate",
     "vars": {
       "side": 40.0,
@@ -16,9 +17,9 @@
     },
     "metrics": {
       "valid": true,
-      "volume_mm3": 4799.999999999999,
+      "volume_mm3": 4800.0,
       "area_mm2": 3680.0,
-      "mass_g": 5.951999999999999,
+      "mass_g": 5.952,
       "bbox": {
         "min": [
           -20.0,
@@ -464,11 +465,14 @@
       "holes": [],
       "solids": 1
     },
-    "mtime": 1793384776.6992543
+    "mtime": 1793416216.5398457,
+    "mass_g": 5.952,
+    "mass_source": "built",
+    "mass_note": "4800 mm3 x 1.24 g/cm3 (PLA, build default)"
   },
   {
     "id": "quad_arm",
-    "project_id": "74ab71a5279a",
+    "project_id": "4dd8c95d4298",
     "label": "Quad arm",
     "parent_id": null,
     "order": 1,
@@ -476,6 +480,7 @@
     "kind": "part",
     "version": 1,
     "appearance": null,
+    "material": null,
     "part_id": "quad_arm",
     "vars": {
       "thickness": 4.0,
@@ -931,6 +936,9 @@
       "holes": [],
       "solids": 1
     },
-    "mtime": 1793384774.2264416
+    "mtime": 1793416214.1294148,
+    "mass_g": 4.7616,
+    "mass_source": "built",
+    "mass_note": "3840 mm3 x 1.24 g/cm3 (PLA, build default)"
   }
 ]

@@ -387,6 +387,13 @@
     "open_world": false
   },
   {
+    "name": "part_set_material",
+    "description": "Set the material a part is made of (its mass is volume x this material's density; the BOM and the assembly total follow). Use a name from the materials table (PLA, PETG, ABS, ASA, PA-CF, TPU or a custom study material); null goes back to the build default. Does not change the geometry or the look (use part_set_appearance for that).",
+    "safety": "local_mutate",
+    "implied_classes": [],
+    "open_world": false
+  },
+  {
     "name": "part_show",
     "description": "Put a part card in front of the user in the thread: name, price, vendor, key specs and image, from a page you opened (snapshot_id) or a parts-directory item (catalog_id). Fields you pass override what the page gave. Cards from a page are also saved to the parts directory, so the user can insert them. Use it for each component you choose.",
     "safety": "local_mutate",

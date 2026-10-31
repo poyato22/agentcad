@@ -1,15 +1,15 @@
 {
-  "id": "f3ff73cc5628",
-  "run_id": "c0dc9f51f2d2",
+  "id": "8d11563295c9",
+  "run_id": "17cf0308f7ed",
   "action": "print_send",
   "payload": {
     "file_name": "mises_mount_plate.gcode",
     "gcode_sha256": "eafcd5bc4670e1b54164c2585fafe2f1973fac4555e6679374df3a470d630944",
-    "host": "127.0.0.1:59192",
+    "host": "127.0.0.1:60426",
     "printer_id": "bench_mk4",
-    "slice_id": "slice_41fb6b81f7"
+    "slice_id": "slice_6b820ab0cc"
   },
-  "payload_hash": "8d27ac2e7d60dd306d2583e8e6241eac5ac6e07680c97d71251409e4fdadfb32",
+  "payload_hash": "736b51d5b57edf46e311ddd711abff149262b0199ac9d64a2a9d6a1102769431",
   "microversion": null,
   "deltas": {
     "cost_usd": 0.1652,
@@ -20,7 +20,7 @@
     "part_id": "mount_plate",
     "preview_available": true,
     "printer": {
-      "host": "127.0.0.1:59192",
+      "host": "127.0.0.1:60426",
       "id": "bench_mk4",
       "model": "MK4",
       "name": "Bench MK4",
@@ -31,7 +31,7 @@
     "time_s": 93802
   },
   "status": "pending",
-  "expires_at": 1793386493.969792,
+  "expires_at": 1793418082.2222562,
   "decided_by": null,
   "decided_at": null,
   "edited_payload": null

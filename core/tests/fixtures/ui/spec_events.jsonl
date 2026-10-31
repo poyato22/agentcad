@@ -1,11 +1,11 @@
-{"type":"spec_changed","run_id":null,"data":{"project_id":"c6c9dce06184"},"ts":1793384694.586278}
-{"type":"study_progress","run_id":"c0dc9f51f2d2","data":{"study_id":"study_dc51b09593d4","n":1,"total":6},"ts":1793384707.223316}
-{"type":"study_progress","run_id":"c0dc9f51f2d2","data":{"study_id":"study_dc51b09593d4","n":2,"total":6},"ts":1793384708.366632}
-{"type":"study_progress","run_id":"c0dc9f51f2d2","data":{"study_id":"study_dc51b09593d4","n":3,"total":6},"ts":1793384709.263277}
-{"type":"study_progress","run_id":"c0dc9f51f2d2","data":{"study_id":"study_dc51b09593d4","n":4,"total":6},"ts":1793384712.3392372}
-{"type":"study_progress","run_id":"c0dc9f51f2d2","data":{"study_id":"study_dc51b09593d4","n":5,"total":6},"ts":1793384717.174161}
-{"type":"study_progress","run_id":"c0dc9f51f2d2","data":{"study_id":"study_dc51b09593d4","n":6,"total":6},"ts":1793384721.8180978}
-{"type":"study_progress","run_id":"c0dc9f51f2d2","data":{"study_id":"study_dc51b09593d4","n":6,"total":6,"status":"done","best_id":5,"kept_variants":["e3","e4","e5"]},"ts":1793384729.31208}
-{"type":"question_asked","run_id":"c0dc9f51f2d2","data":{"question_id":"f93a8219eeab","question":"A few questions first:\n1. What will this drone do?\n2. Prop / size class?\n3. Which motors and props? (pick a class; the catalog fills in thrust/mass)","options":[],"questions":[{"id":"use","prompt":"What will this drone do?","options":["freestyle","racing","cinematic","long-range"],"multi":false,"rank":false,"allow_text":true},{"id":"size_class","prompt":"Prop / size class?","options":["3\"","5\"","7\""],"multi":false,"rank":false,"allow_text":true},{"id":"motor_prop","prompt":"Which motors and props? (pick a class; the catalog fills in thrust/mass)","options":["1404","2207","2306","2806.5"],"multi":false,"rank":false,"allow_text":true}]},"ts":1793384731.939849}
-{"type":"agent_activity","run_id":"c0dc9f51f2d2","data":{"state":"waiting_user","detail":"waiting for your answer","since":1793384731.939853},"ts":1793384731.9398558}
-{"type":"question_answered","run_id":"c0dc9f51f2d2","data":{"question_id":"f93a8219eeab"},"ts":1793384731.941323}
+{"type":"spec_changed","run_id":null,"data":{"project_id":"74ab71a5279a"},"ts":1793416282.850545}
+{"type":"study_progress","run_id":"17cf0308f7ed","data":{"study_id":"study_9159992cb3de","n":1,"total":6},"ts":1793416292.222634}
+{"type":"study_progress","run_id":"17cf0308f7ed","data":{"study_id":"study_9159992cb3de","n":2,"total":6},"ts":1793416293.534786}
+{"type":"study_progress","run_id":"17cf0308f7ed","data":{"study_id":"study_9159992cb3de","n":3,"total":6},"ts":1793416294.753163}
+{"type":"study_progress","run_id":"17cf0308f7ed","data":{"study_id":"study_9159992cb3de","n":4,"total":6},"ts":1793416298.504074}
+{"type":"study_progress","run_id":"17cf0308f7ed","data":{"study_id":"study_9159992cb3de","n":5,"total":6},"ts":1793416304.887559}
+{"type":"study_progress","run_id":"17cf0308f7ed","data":{"study_id":"study_9159992cb3de","n":6,"total":6},"ts":1793416310.917502}
+{"type":"study_progress","run_id":"17cf0308f7ed","data":{"study_id":"study_9159992cb3de","n":6,"total":6,"status":"done","best_id":5,"kept_variants":["e3","e4","e5"]},"ts":1793416318.6363049}
+{"type":"question_asked","run_id":"17cf0308f7ed","data":{"question_id":"521b826f6749","question":"A few questions first:\n1. What will this drone do?\n2. Prop / size class?\n3. Which motors and props? (pick a class; the catalog fills in thrust/mass)","options":[],"questions":[{"id":"use","prompt":"What will this drone do?","options":["freestyle","racing","cinematic","long-range"],"multi":false,"rank":false,"allow_text":true},{"id":"size_class","prompt":"Prop / size class?","options":["3\"","5\"","7\""],"multi":false,"rank":false,"allow_text":true},{"id":"motor_prop","prompt":"Which motors and props? (pick a class; the catalog fills in thrust/mass)","options":["1404","2207","2306","2806.5"],"multi":false,"rank":false,"allow_text":true}]},"ts":1793416321.749547}
+{"type":"agent_activity","run_id":"17cf0308f7ed","data":{"state":"waiting_user","detail":"waiting for your answer","since":1793416321.749562},"ts":1793416321.749565}
+{"type":"question_answered","run_id":"17cf0308f7ed","data":{"question_id":"521b826f6749"},"ts":1793416321.752028}

@@ -3,7 +3,7 @@
   "existing": false,
   "metrics": {
     "valid": true,
-    "volume_mm3": 19089.88775953839,
+    "volume_mm3": 19089.887759538393,
     "area_mm2": 4260.39233734946,
     "mass_g": 33.0,
     "bbox": {
@@ -647,7 +647,7 @@
   "meta": {
     "kind": "catalog",
     "catalog_item_id": "motor_2207_class",
-    "project_id": "4b08f5d12793",
+    "project_id": "0165f9448cbe",
     "label": "2207 brushless motor class",
     "category": "motor",
     "source": "builtin",
@@ -665,7 +665,7 @@
     "geometry": "envelope",
     "mass_g": 33.0,
     "mass_source": "catalog",
-    "density_g_cm3": 1.7286639091689437,
+    "density_g_cm3": 1.7286639091689435,
     "fill_factor": 1.0
   }
 }
