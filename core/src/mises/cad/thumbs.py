@@ -14,12 +14,13 @@ failed edit restored at the same version, never serves an old picture — plus a
 appearance, so a new color or finish re-renders. The routes build their ETags from the same key.
 
 A build's Home cover (D24) is ONE render of its assembly: every instance at its solved pose in
-its part's finish, the iso 3/4 view, in a single sandboxed job. The renderer's background is
-keyed out (the app shows the cover on its themed background) and the picture is framed to the
-content's bounding box in a 16:10 frame. A build with no placed instance falls back to its
+its part's CMF finish, the hero (low product 3/4) view, shaded, in a single sandboxed job. The
+render is on a transparent background so the soft ground shadow lives in alpha (never an opaque
+grey slab), and the picture is framed to the content's bounding box in a 16:10 frame; the app
+shows the cover on its themed background. A build with no placed instance falls back to its
 largest part; a cover is never a grid of parts. It is cached by every instance's part key
-(version + mesh stamp + appearance) and pose, so moving an instance or rebuilding a part
-refreshes it.
+(version + mesh stamp + appearance, including the finish) and pose, so moving an instance,
+rebuilding a part or changing a finish refreshes it.
 
 Renders are capped at _CONCURRENCY at once, a render already in flight for a key is shared, and
 a failed render is remembered for _FAIL_TTL_S so a broken part isn't re-rendered on every visit.
@@ -87,10 +88,14 @@ def mesh_stamp(home: Path, part_id: str) -> str | None:
 
 
 def _look_digest(look: dict | None) -> str:
-    """A short digest of what the render reads from the appearance (color, opacity)."""
-    k = {"color": (look or {}).get("color"), "opacity": float((look or {}).get("opacity") or 1.0)}
-    if k["color"] is None and k["opacity"] == 1.0:
-        return "plain"                 # the default look: the renderer's grey, opaque
+    """A short digest of what the render reads from the appearance: colour, opacity and the CMF
+    finish (roughness, metalness), so a new finish re-renders (Plan 9 FW-core I-4)."""
+    look = look or {}
+    k = {"color": look.get("color"), "opacity": float(look.get("opacity") or 1.0),
+         "roughness": float(look.get("roughness", 0.9)), "metalness": float(look.get("metalness", 0.0))}
+    if (k["color"] is None and k["opacity"] == 1.0 and k["roughness"] == 0.9
+            and k["metalness"] == 0.0):
+        return "plain"                 # the default look: the renderer's grey, matte, opaque
     return hashlib.sha256(json.dumps(k, sort_keys=True).encode()).hexdigest()[:10]
 
 
@@ -161,7 +166,9 @@ async def _render(home: Path, part_dir: Path, size: int, look: dict | None = Non
         return None
     look = look or {}
     mesh = MeshIn(part_dir, part_dir.name, _rgb(look.get("color")),
-                  float(look.get("opacity") or 1.0))
+                  float(look.get("opacity") or 1.0),
+                  roughness=float(look.get("roughness", 0.9)),
+                  metalness=float(look.get("metalness", 0.0)))
     try:
         async with _semaphore():
             out = await run_render_job(base / "jobs", [mesh], renders=[{
@@ -267,13 +274,13 @@ def cover_key(home: Path, placed: list[Placement], size: int | None = None) -> s
 
 
 def _framed(png: bytes, w: int, h: int) -> bytes:
-    """The renderer's RGB PNG keyed to transparency, cropped to its content and fitted (aspect
-    kept, margins clear) into the centre of a transparent w x h frame. Our own worker's PNG."""
+    """The renderer's RGBA PNG (transparent background; the ground shadow lives in alpha),
+    cropped to its content and fitted (aspect kept, margins clear) into the centre of a
+    transparent w x h frame. No colour keying: the render is already transparent, so the soft
+    shadow and the anti-aliased fringe stay as alpha, never an opaque grey slab (FW-core I-4)."""
     from PIL import Image
     with Image.open(io.BytesIO(png)) as src:
-        side = src.size[0]
-    sw, sh, rgba = thumb_render.decode_png(_keyed_rgba(png, side))
-    im = Image.frombytes("RGBA", (sw, sh), bytes(rgba))
+        im = src.convert("RGBA")
     box = im.getchannel("A").getbbox()
     frame = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     if box is not None:
@@ -294,18 +301,25 @@ async def _render_cover(home: Path, project_id: str, shown: list[Placement], w: 
     except (OSError, safe_io.UnsafePath):
         return None
     meshes = [MeshIn(Path(home) / "parts" / pid, pid, _rgb((look or {}).get("color")),
-                     float((look or {}).get("opacity") or 1.0), tf)
+                     float((look or {}).get("opacity") or 1.0), tf,
+                     roughness=float((look or {}).get("roughness", 0.9)),
+                     metalness=float((look or {}).get("metalness", 0.0)))
               for pid, _v, tf, look in shown]
-    # rendered larger than the frame: cropping to the content then scales it down (smooth edges)
+    # rendered larger than the frame: cropping to the content then scales it down (smooth edges).
+    # The hero (product 3/4) view, shaded with the parts' CMF finishes, on a transparent
+    # background so the soft ground shadow lives in alpha, not an opaque grey slab (FW-core I-4).
     rsize = min(MAX_SIZE, max(_RENDER_MIN, round(w * 1.5)))
     try:
         async with _semaphore():
             out = await run_render_job(base / "jobs", meshes, renders=[{
-                "key": "t", "views": ["iso"], "size": rsize,
-                "transparent": any(m.opacity < 1.0 for m in meshes)}])
+                "key": "t", "views": ["hero"], "size": rsize, "style": "shaded",
+                # `background: transparent` (NOT the x-ray `transparent` flag) is the shaded path
+                # whose ground shadow lands in alpha; x-ray only for a translucent finish
+                "transparent": any(m.opacity < 1.0 for m in meshes),
+                "background": "transparent"}])
     except (MisesError, OSError, safe_io.UnsafePath):
         return None
-    png = (out.pngs.get("t") or {}).get("iso")
+    png = (out.pngs.get("t") or {}).get("hero")
     if png is None:
         return None
     try:

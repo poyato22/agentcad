@@ -89,6 +89,40 @@ def _alpha_box(png: bytes) -> tuple[int, int, int, int, int, int]:
     return w, h, min(xs), min(ys), max(xs), max(ys)
 
 
+def _png_rgba(w: int, h: int, pixels: bytes) -> bytes:
+    from PIL import Image
+    import io as _io
+    im = Image.frombytes("RGBA", (w, h), pixels)
+    buf = _io.BytesIO()
+    im.save(buf, "PNG")
+    return buf.getvalue()
+
+
+def test_framed_keeps_the_shadow_in_alpha_no_opaque_slab():
+    # FW-core I-4: the cover render is already transparent; _framed must NOT key by colour or
+    # force the soft shadow opaque. A grey, semi-transparent shadow pixel stays semi-transparent.
+    side = 40
+    px = bytearray(side * side * 4)
+    for y in range(side):
+        for x in range(side):
+            i = (y * side + x) * 4
+            if 12 <= x < 28 and 8 <= y < 24:                 # the model: opaque mid-grey
+                px[i:i + 4] = bytes((120, 120, 120, 255))
+            elif 10 <= x < 30 and 24 <= y < 32:              # a soft ground shadow: part alpha
+                px[i:i + 4] = bytes((90, 90, 90, 80))
+    framed = thumbs._framed(_png_rgba(side, side, bytes(px)), 320, 200)
+    _w, _h, rgba = thumb_render.decode_png(framed)
+    alphas = [rgba[i] for i in range(3, len(rgba), 4)]
+    partial = sum(1 for a in alphas if 0 < a < 255)
+    opaque = sum(1 for a in alphas if a == 255)
+    assert partial > 0 and opaque > 0                        # shadow kept as alpha, model solid
+    # the shadow never becomes an opaque slab: no fully-opaque pixel is the shadow's grey (90)
+    slab = sum(1 for i in range(0, len(rgba), 4)
+               if rgba[i + 3] == 255 and 80 <= rgba[i] <= 100
+               and abs(rgba[i] - rgba[i + 1]) < 6 and abs(rgba[i] - rgba[i + 2]) < 6)
+    assert slab == 0
+
+
 async def test_project_cover_renders_the_assembly_not_a_grid(tmp_path, monkeypatch):
     # D24: two instances of one part, placed apart, render as ONE assembly picture in one job,
     # 16:10, framed to the content's bbox (a 2x2 grid is square with a tile per quadrant)
@@ -97,10 +131,12 @@ async def test_project_cover_renders_the_assembly_not_a_grid(tmp_path, monkeypat
     platform.register_sandbox_home(home)
     await _build_part(home, "box_g", BOX)
     jobs = []
+    specs = []
     real = render_job.run_render_job
 
     async def spy(*a, **kw):
         jobs.append([(m.name, m.transform) for m in a[1]])
+        specs.append(kw.get("renders") or (a[2] if len(a) > 2 else None))
         return await real(*a, **kw)
 
     monkeypatch.setattr(thumbs, "run_render_job", spy)
@@ -108,6 +144,14 @@ async def test_project_cover_renders_the_assembly_not_a_grid(tmp_path, monkeypat
     png = await thumbs.project_cover(home, "proj1", placed, size=320)
     assert png is not None and png[:8] == b"\x89PNG\r\n\x1a\n"
     assert len(jobs) == 1 and [t for _n, t in jobs[0]] == [_shift(0), _shift(80)]
+    # FW-core I-4: the cover is the hero product shot, shaded, on a transparent background
+    r = specs[0][0]
+    assert r["views"] == ["hero"] and r["style"] == "shaded"
+    # opaque parts: the shaded path (x-ray flag off) on a transparent background -> shadow in alpha
+    assert r["transparent"] is False and r["background"] == "transparent"
+    # the soft ground shadow lives in alpha, not an opaque grey slab
+    _ww, _hh, rgba = thumb_render.decode_png(png)
+    assert any(0 < rgba[i] < 255 for i in range(3, len(rgba), 4))
     w, h, x0, y0, x1, y1 = _alpha_box(png)
     assert (w, h) == (320, 200)
     # framed: the content fills most of the frame and is centred (not one quadrant of a grid)
