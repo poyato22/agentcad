@@ -27,9 +27,12 @@ log = logging.getLogger(__name__)
 ENGINEERING, MIXED, DESIGN = "engineering", "mixed", "design"
 CLASSES = (ENGINEERING, MIXED, DESIGN)
 MIXED_AT, DESIGN_AT = 0.3, 0.65
+NEUTRAL = 0.2                    # no archetype, no styling words: engineering by default
 
 # ---- the prior: archetypes (what the thing is) set the base score ----------------------
-# (pattern, score, reason, default per-part scores). The highest-scoring archetype wins.
+# (pattern, score, reason, default per-part scores). The highest-scoring archetype wins,
+# except that tooling (a mold FOR a bottle cap) overrides the product it makes, and the
+# generic enclosure archetype yields to any more specific one (a gearbox housing).
 _ARCHETYPES: list[tuple[str, float, str, dict[str, float]]] = [
     (r"humanoid|android|biped(?:al)?(?: robot)?|optimus|\bneo\b|figure 0\d", 0.85,
      "humanoid robot: judged by how it looks and moves", {}),
@@ -40,7 +43,8 @@ _ARCHETYPES: list[tuple[str, float, str, dict[str, float]]] = [
     (r"motorcycle|scooter|e-?bike|helmet", 0.75, "vehicle a rider sees and touches", {}),
     (r"kettle|toaster|coffee (?:machine|maker)|speaker|headphones?|earbuds?|lamp|chair|"
      r"furniture|\bwatch\b|wearable|phone|game ?controller|\bmouse\b|keyboard|vase|"
-     r"toothbrush|razor|appliance|consumer product|bottle|perfume|lighter|camera body",
+     r"toothbrush|razor|appliance|consumer product|bottle|perfume|lighter|camera body|"
+     r"(?:robot )?vacuum|robot mower|smart speaker|thermostat|drink(?:ing)? glass",
      0.72, "consumer product: most of its surface is customer-facing", {}),
     (r"figurine|statue|sculpture|toy|mascot|character", 0.8, "a sculpted object", {}),
     (r"jet engine|turbofan|turbojet|turbine engine|nacelle", 0.42,
@@ -91,14 +95,23 @@ def _hits(pattern: str, text: str) -> list[str]:
     return sorted({m.group(0) for m in re.finditer(pattern, text)})
 
 
+_TOOLING = r"injection mold|injection mould|\bmold\b|\bmould\b|die cast|tooling"
+_WEAK = r"enclosure|case|housing"
+
+
 def _prior(text: str) -> tuple[float, list[str], dict[str, float], str | None]:
-    best, reasons, per_part, arch = None, [], {}, None
+    hits = []
     for pat, score, why, parts in _ARCHETYPES:
         hit = re.search(r"(?<![a-z0-9])(?:" + pat + r")", text)
-        if hit and (best is None or score > best):
-            best, reasons, per_part, arch = score, [f"{hit.group(0)}: {why}"], dict(parts), \
-                hit.group(0)
-    return (0.3 if best is None else best), reasons, per_part, arch
+        if hit:
+            hits.append((pat, score, why, parts, hit.group(0)))
+    if not hits:
+        return NEUTRAL, [], {}, None
+    tooling = [h for h in hits if h[0] == _TOOLING]
+    specific = [h for h in hits if h[0] != _WEAK]
+    pat, score, why, parts, word = (tooling[0] if tooling
+                                    else max(specific or hits, key=lambda h: h[1]))
+    return score, [f"{word}: {why}"], dict(parts), word
 
 
 def _part_name(p) -> str:
@@ -142,7 +155,7 @@ def design_intensity(prompt: str, parts: Iterable | None = None) -> dict:
             if key in arch or key in text:
                 score = max(score, floor)
     if not reasons:
-        reasons.append("no archetype or styling signal: treated as mixed-low")
+        reasons.append("no archetype or styling signal: engineering by default (design needs evidence)")
     score = round(max(0.0, min(1.0, score)), 2)
     names = [_part_name(p) for p in parts] if parts is not None else list(defaults)
     per_part = {n: part_score(n, score, defaults) for n in names if n}

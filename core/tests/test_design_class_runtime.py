@@ -111,6 +111,17 @@ async def test_model_rubric_failure_keeps_the_prior(tmp_path):
     await rt.aclose()
 
 
+def test_static_prompts_carry_pitch_on_request_but_no_surfacing_rules():
+    """D25: designer and engineer may pitch on any build when the user asks; the surfacing
+    rules themselves arrive only through the design-class block."""
+    from mises.agent.definitions import load_definitions
+    defs = load_definitions()
+    for name in ("designer", "engineer"):
+        body = defs[name].body
+        assert "<!-- BEGIN p9-gb: design options" in body and "baseline" in body
+        assert di.SURFACING_HEADING not in body and di.SECTION_BEGIN not in body
+
+
 def test_claude_code_rules_file_carries_the_block(tmp_path):
     """The Claude Code session's appended system prompt gets the same block (via rules_for)."""
     from mises.agent.definitions import load_definitions

@@ -180,3 +180,14 @@ For a system of several parts, or anything with components inside a case, work t
    `section_check` (sections through the components) and `assembly_check`. Fix every
    interference and tight clearance before you report.
 <!-- END plan8-g3 -->
+
+<!-- BEGIN p9-gb: design options (keep G-B edits inside this block) -->
+## Design options when asked
+If the user asks for design options, directions or a better look, on any build, pitch 2-3
+directions as cards: a name and 3 mood words, a black silhouette pair (front, side) from a
+quick massing on the same skeleton, a proportion note, a CMF swatch (2-3 colours / finishes)
+and a trade-offs table (mass, part count, molding complexity, cost, risk). One card is the
+honest-engineering baseline; end with your recommendation and one reason. Directions differ in
+silhouette and proportion, not just colour. Design and mixed builds also get a "Design class"
+section with the surfacing rules; follow it over anything more general here.
+<!-- END p9-gb -->
