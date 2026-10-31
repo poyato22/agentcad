@@ -46,12 +46,14 @@ class AgentRun(BaseModel):
     routed: dict | None = None     # {agent, reason, confidence}; stored as JSON text
     # Plan 8 G-R6 routing hint: {score, level, signals, vision_recommended}; NULL until estimated
     shape_complexity: dict | None = None
+    # Plan 9 G-B (D27): {score, cls, per_part, reasons, source}; NULL until classified
+    design_class: dict | None = None
     # a build's lead: when the current user message began, and the family's dollars then
     # (budget.py counts the lead's per-run caps from here; NULL = the run's whole life)
     turn_started_at: float | None = None
     turn_usd0: float | None = None
 
-    @field_validator("routed", "shape_complexity", mode="before")
+    @field_validator("routed", "shape_complexity", "design_class", mode="before")
     @classmethod
     def _json_fields(cls, v: Any) -> Any:
         return json.loads(v) if isinstance(v, str) else v
@@ -211,6 +213,7 @@ class Store:
                           ("last_activity_at", "REAL"),
                           ("role", "TEXT"), ("routed", "TEXT"),   # Plan 7 U3c
                           ("shape_complexity", "TEXT"),           # Plan 8 G1
+                          ("design_class", "TEXT"),               # Plan 9 G-B
                           ("turn_started_at", "REAL"), ("turn_usd0", "REAL")):  # per-turn caps
             if col not in cols:
                 self._db.execute(f"ALTER TABLE runs ADD COLUMN {col} {decl}")
@@ -279,6 +282,13 @@ class Store:
         """Store the G-R6 routing hint on the run row (JSON); a deleted run is a no-op."""
         with self._tx() as db:
             db.execute("UPDATE runs SET shape_complexity=? WHERE id=?",
+                       (canonical_json(data), run_id))
+
+    def set_design_class(self, run_id: str, data: dict) -> None:
+        """Store the D27 design-intensity class on the run row (JSON); a deleted run is a
+        no-op."""
+        with self._tx() as db:
+            db.execute("UPDATE runs SET design_class=? WHERE id=?",
                        (canonical_json(data), run_id))
 
     def start_turn(self, run_id: str, ts: float, family_usd: float) -> None:

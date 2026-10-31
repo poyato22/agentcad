@@ -781,6 +781,9 @@ class Runtime:
             from .orchestrator.lead import lead_definition
             defn = lead_definition(defn)
         shape = self._note_shape_complexity(run.id, prompt)
+        design = self._note_design_class(run.id, prompt, parent_id,
+                                         await self._design_model_score(prompt, prof))
+        defn = self._design_rules_for(defn, role, design)
         classes = set(SafetyClass) if allowed_classes is None else set(allowed_classes)
         self.store.create_policy(run.id, list(edit_scope), list(read_scope), caps,
                                  [c for c in SafetyClass if c in classes])
@@ -791,7 +794,8 @@ class Runtime:
                          activity=self.activity_tracker(run.id))
         st = self._runs[run.id] = _RunState(loop=loop, ref=ref)
         started = {"agent": agent, "provider": provider.name, "model": model,
-                   "parent_id": parent_id, "shape_complexity": shape, **meta}
+                   "parent_id": parent_id, "shape_complexity": shape,
+                   "design_class": design, **meta}
         slot = self._admit(run.id, ref, started)
         first: str | list[Block] = prompt
         user_log = log      # e.g. a feedback pin's note instead of the wrapped message
@@ -928,6 +932,41 @@ class Runtime:
             log.debug("could not store shape_complexity for %s", run_id, exc_info=True)
         return est
 
+    def _note_design_class(self, run_id: str, prompt: str, parent_id: str | None = None,
+                           model: float | None = None) -> dict:
+        """Classify how design-heavy the request is (D27), store it on the run as
+        `design_class`. A sub-agent inherits its lead's class unless its own task scores
+        higher; a later user message may raise the class, never lower it. Never fatal."""
+        from . import design_intensity as design_mod
+        dc = design_mod.combine(design_mod.design_intensity(prompt), model)
+        try:
+            prior = self.store.get_run(run_id).design_class
+            parent = self.store.get_run(parent_id).design_class if parent_id else None
+            dc = design_mod.strongest(design_mod.strongest(dc, parent), prior) or dc
+            self.store.set_design_class(run_id, dc)
+        except Exception:  # noqa: BLE001 - a process hint must never break a run
+            log.debug("could not store design_class for %s", run_id, exc_info=True)
+        return dc
+
+    async def _design_model_score(self, prompt: str, prof) -> float | None:
+        """The optional cheap-model rubric (profile `design_classifier_model`, e.g. a Haiku):
+        bounded to a few seconds, never required, any failure keeps the prior."""
+        ref = getattr(prof, "design_classifier_model", None)
+        if not ref or model_alias(ref) is not None:
+            return None
+        from . import design_intensity as design_mod
+        try:
+            provider, model = self._resolve_provider(ref, prof)
+            return await asyncio.wait_for(design_mod.model_score(provider, model, prompt), 8.0)
+        except Exception:  # noqa: BLE001
+            log.debug("design classifier model unavailable", exc_info=True)
+            return None
+
+    @staticmethod
+    def _design_rules_for(defn, role: str | None, dc: dict | None):
+        from .design_intensity import rules_for
+        return rules_for(defn, role, dc)
+
     def run_sees_images(self, run_id: str | None) -> bool:
         """Whether the model driving `run_id` can look at images itself: a Claude Code run, an
         external MCP agent on a vision vendor, or a native run on a vision-capable model. Tools
@@ -992,6 +1031,9 @@ class Runtime:
         if meta:     # before the session starts: its rules file reads the run's role
             self.store.update_run(rid, **meta)
         self._note_shape_complexity(rid, prompt)
+        # before the session starts too: its rules file carries the design-class block
+        self._note_design_class(rid, prompt, parent_id,
+                                await self._design_model_score(prompt, self.profile()))
         st = self._claude[rid] = _ClaudeRun(ref=ref, first_context=first_context)
         st.slot, st.started_data = self._external_slots.pop(rid, (None, {}))
         text = prompt
@@ -1397,6 +1439,7 @@ class Runtime:
         try:
             if not busy:
                 self.new_user_turn(run_id)
+                self._raise_design_class(run_id, text)
             # the plain two-argument call when there is no log (tests patch _send that way)
             await (self._send(run_id, text) if log is None else self._send(run_id, text, log))
         finally:
@@ -1419,6 +1462,25 @@ class Runtime:
             return
         if run.role == "lead":
             budget_mod.start_turn(self.store, run_id)
+
+    def _raise_design_class(self, run_id: str, text: str) -> None:
+        """A follow-up message may make a build more design-heavy ("now make it sleek"): the
+        run's class only ever rises, and a native lead's prompt picks up the new block on its
+        next turn (a Claude Code session's rules file is written when the session starts)."""
+        try:
+            run = self.store.get_run(run_id)
+        except KeyError:
+            return
+        before = run.design_class
+        dc = self._note_design_class(run_id, text)
+        st = self._runs.get(run_id)
+        if st is None or (before or {}).get("cls") == dc.get("cls"):
+            return
+        from .orchestrator.lead import lead_definition
+        base = self.definitions.get(run.agent)
+        if base is not None:
+            base = lead_definition(base) if run.role == "lead" else base
+            st.loop.defn = self._design_rules_for(base, run.role, dc)
 
     async def _send(self, run_id: str, text: str, log: dict | None = None) -> None:
         if self._is_claude_run(run_id):
