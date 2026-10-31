@@ -172,6 +172,10 @@ def _part_shown(args: dict, data: dict) -> Announcement | None:
 #: the import finishes (no tool result marks that moment).
 MAPPERS: dict[str, Mapper] = {
     "mirror_part_create": _part_created,
+    # Plan 9 D10 (FW-core I-5): accepting a generative-design variant as a NEW part delivers a
+    # part, so it gets a part_created card (mode=replace bumps the version, so _part_created
+    # returns None there) and, like mirror_part_create, an auto-placed follow-up.
+    "topopt_accept": _part_created,
     "catalog_insert": _catalog_part,
     "onshape_import_element": _onshape_part,
     "assembly_add_instance": _assembly_added,
@@ -184,6 +188,7 @@ MAPPERS: dict[str, Mapper] = {
 #: tool name -> further announcements one result can imply (after MAPPERS' one)
 FOLLOW_UPS: dict[str, tuple[Mapper, ...]] = {
     "mirror_part_create": (_auto_placed,),
+    "topopt_accept": (_auto_placed,),
 }
 
 

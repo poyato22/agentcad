@@ -34,6 +34,24 @@ def test_part_created_only_for_new_parts():
     assert a["kind"] == "part_created" and a["ref"]["catalog_id"] == "m3"
 
 
+def test_topopt_accept_new_part_gets_a_card_and_is_auto_placed():
+    # FW-core I-5: a generative-design variant accepted as a NEW part is a delivered part, so it
+    # gets a part_created card AND an auto_placed follow-up, like mirror_part_create.
+    out = ok(part_id="block_generative", version=1,
+             placed={"project_id": "p1", "instance": {"id": "i1", "part_id": "block_generative",
+                                                       "name": "Block Generative", "fixed": True}})
+    anns = announce.all_from_tool_result("topopt_accept", {}, out)
+    kinds = [a["kind"] for a in anns]
+    assert kinds == ["part_created", "assembly_added"]
+    assert anns[0]["ref"]["thumb_url"] == "/parts/block_generative/thumb.png"
+    assert anns[1]["ref"]["instance_id"] == "i1"
+
+
+def test_topopt_accept_replace_says_nothing():
+    # mode=replace bumps the version and does not auto-place: no new-part card, no placement
+    assert announce.all_from_tool_result("topopt_accept", {}, ok(part_id="block", version=3)) == []
+
+
 def test_failed_or_unknown_tools_say_nothing():
     assert announce.from_tool_result("mirror_part_create", {},
                                      ToolOutput(ok=False, summary="x", data={})) is None
