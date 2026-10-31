@@ -71,6 +71,8 @@ export class StudiesAgentController {
   private projectId: string | null = null;
   private seq = 0;
   private reloadTimer: ReturnType<typeof setTimeout> | null = null;
+  /** A proposal whose Run was pressed while another study ran: it starts when that one ends. */
+  readonly queued: Signal<StudyProposal | null> = signal(null);
   /** The studies agent a send just started, per build, until the runs list has it (M3). */
   private readonly started = new Map<string, string>();
 

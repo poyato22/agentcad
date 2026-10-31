@@ -63,7 +63,8 @@ def _part(home: Path, store, project_id: str, pid: str, volume: float | None, *,
 
 
 def _study(home: Path, pid: str, sim_id: str, *, stale: bool, case: str = "tip",
-           typ: str = "static", created_at: float | None = None, status: str = "done"):
+           typ: str = "static", created_at: float | None = None, status: str = "done",
+           settings: dict | None = None):
     """The real core's static record (fixture), moved onto `pid`."""
     rec = json.loads((FX / "study_static.json").read_text())
     step = (home / "parts" / pid / "model.step").read_bytes()
@@ -71,6 +72,8 @@ def _study(home: Path, pid: str, sim_id: str, *, stale: bool, case: str = "tip",
                created_at=1000.0 + len(sim_id) if created_at is None else created_at,
                geometry_hash="0" * 64 if stale else hashlib.sha256(step).hexdigest())
     rec["settings"]["load_cases"][0]["name"] = case
+    if settings is not None:          # the study as run from a proposal's own settings
+        rec["settings"] = settings
     d = home / "parts" / pid / "sims" / sim_id
     d.mkdir(parents=True)
     (d / "result.json").write_text(json.dumps(rec))
@@ -357,12 +360,12 @@ HIP_MODAL = {**HIP_STATIC, "type": "modal", "title": "Modes: hip bracket",
 
 async def test_agent_proposals_retire_once_their_study_ran_then_the_rules_return(rt):
     pid = _build(rt)
-    await _propose(rt, pid, [HIP_STATIC, HIP_MODAL])
+    static, modal = await _propose(rt, pid, [HIP_STATIC, HIP_MODAL])
     ts = studies_agent.saved_proposals(rt.home, pid)["ts"]
     home = Path(rt.home)
-    # the static one is running: still listed, marked running
+    # the static one's own study is running: it is marked running, the modal one is not
     _study(home, "hip_bracket", "sim_0000000000c1", stale=False, created_at=ts + 1,
-           status="running")
+           status="running", settings=static["settings"])
     c = _ctx(rt, pid)
     assert c["proposals_source"] == "agent"
     assert {p["type"]: p.get("status") for p in c["proposals"]} == {"static": "running",
@@ -372,27 +375,83 @@ async def test_agent_proposals_retire_once_their_study_ran_then_the_rules_return
     rec = json.loads((rec_dir / "result.json").read_text())
     (rec_dir / "result.json").write_text(json.dumps({**rec, "status": "done"}))
     _study(home, "hip_bracket", "sim_0000000000c2", stale=False, typ="modal",
-           created_at=ts + 2, status="failed")
+           created_at=ts + 2, status="failed", settings=modal["settings"])
     c = _ctx(rt, pid)
     assert [p["type"] for p in c["proposals"]] == ["modal"]
     # a study from before the proposals were saved does not count
     _study(home, "hip_bracket", "sim_0000000000c3", stale=False, typ="modal",
-           created_at=ts - 100)
+           created_at=ts - 100, settings=modal["settings"])
+    assert [p["type"] for p in _ctx(rt, pid)["proposals"]] == ["modal"]
+    # a modal study that asks something else (other supports) does not count either
+    other = {**modal["settings"], "supports": [{"kind": "fixed", "face": "top", "axis": None}]}
+    _study(home, "hip_bracket", "sim_0000000000c5", stale=False, typ="modal",
+           created_at=ts + 3, settings=other)
     assert [p["type"] for p in _ctx(rt, pid)["proposals"]] == ["modal"]
     # the modal one ran too: none left, so the rules say what is next
     _study(home, "hip_bracket", "sim_0000000000c4", stale=False, typ="modal",
-           created_at=ts + 3)
+           created_at=ts + 4, settings=modal["settings"])
     c = _ctx(rt, pid)
     assert c["proposals_source"] == "rules" and c["proposals"] == c["rule_proposals"]
 
 
-async def test_agent_proposals_retire_when_their_part_changes(rt):
+def _static(case: str, newtons: float) -> dict:
+    return {**HIP_STATIC, "title": f"Stress: hip bracket, {case}", "settings": {"load_cases": [{
+        "name": case, "supports": [{"kind": "fixed", "face": "bottom"}],
+        "loads": [{"kind": "force", "face": "top", "newtons": newtons, "direction": "-z"}]}]}}
+
+
+async def test_a_study_retires_only_its_own_proposal_by_load_case(rt):
+    """Two static proposals on one part with different load cases: running and finishing one
+    leaves the other listed and runnable (the study key is part + type + what it asks)."""
+    pid = _build(rt)
+    stand, jump = await _propose(rt, pid, [_static("standing", 60), _static("jump", 180)])
+    assert stand["key"] != jump["key"]
+    ts = studies_agent.saved_proposals(rt.home, pid)["ts"]
+    home = Path(rt.home)
+    _study(home, "hip_bracket", "sim_0000000000d1", stale=False, created_at=ts + 1,
+           status="running", settings=stand["settings"])
+    by = {p["id"]: p.get("status") for p in _ctx(rt, pid)["proposals"]}
+    assert by == {stand["id"]: "running", jump["id"]: None}
+    rec_dir = home / "parts" / "hip_bracket" / "sims" / "sim_0000000000d1"
+    rec = json.loads((rec_dir / "result.json").read_text())
+    (rec_dir / "result.json").write_text(json.dumps({**rec, "status": "done"}))
+    c = _ctx(rt, pid)
+    assert c["proposals_source"] == "agent"
+    assert [(p["id"], p.get("status")) for p in c["proposals"]] == [(jump["id"], None)]
+    # the same case set up by hand (60 as an int, other mesh settings) is the same study
+    by_hand = json.loads(json.dumps(jump["settings"]))
+    by_hand["load_cases"][0]["loads"][0]["newtons"] = 180
+    by_hand["mesh"] = {**by_hand["mesh"], "size_mm": 2.0}
+    _study(home, "hip_bracket", "sim_0000000000d2", stale=False, created_at=ts + 2,
+           settings=by_hand)
+    assert _ctx(rt, pid)["proposals_source"] == "rules"
+
+
+def test_the_study_key_is_what_a_study_asks():
+    k = studies_agent.study_key
+    a = {"load_cases": [{"name": "standing", "supports": [{"kind": "fixed", "face": "bottom"}],
+                         "loads": [{"kind": "force", "face": "top", "newtons": 60,
+                                    "direction": "-z"}]}], "mesh": {"size_mm": None}}
+    assert k("hip", "static", a) == k("hip", "static", {**a, "mesh": {"size_mm": 3.0}})
+    assert k("hip", "static", a) != k("leg", "static", a)
+    assert k("hip", "static", a) != k("hip", "drop", a)
+    b = json.loads(json.dumps(a))
+    b["load_cases"][0]["loads"][0]["newtons"] = 61
+    assert k("hip", "static", a) != k("hip", "static", b)
+
+
+async def test_agent_proposals_retire_when_their_parts_geometry_changes(rt):
     pid = _build(rt)
     await _propose(rt, pid, [HIP_MODAL])
     assert _ctx(rt, pid)["proposals_source"] == "agent"
-    ts = studies_agent.saved_proposals(rt.home, pid)["ts"]
     step = Path(rt.home) / "parts" / "hip_bracket" / "model.step"
-    os.utime(step, (ts + 10, ts + 10))           # rebuilt after the proposals were saved
+    # rebuilt to the very same shape (a newer file, same hash): the proposals stay
+    text = step.read_text()
+    step.write_text(text)
+    os.utime(step, (step.stat().st_mtime + 100, step.stat().st_mtime + 100))
+    assert _ctx(rt, pid)["proposals_source"] == "agent"
+    # a real geometry change: they retire
+    step.write_text(text + " thicker web")
     assert _ctx(rt, pid)["proposals_source"] == "rules"
 
 

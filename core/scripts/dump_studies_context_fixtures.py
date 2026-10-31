@@ -30,6 +30,12 @@ SPEC = {"goal": "a small robot dog that carries 2 kg",
                           "load_case_id": "standing", "priority": 5, "source": "user"},
                          {"id": "mass_max", "kind": "max_mass_g", "target": 400, "priority": 3,
                           "source": "user"}]}
+MESSAGE = ("Thicken the hip bracket web from 3 mm to 4.5 mm and add a 6 mm fillet where it meets "
+           "the hip plate. The stress study sim_1227ecec8686 put the peak at the inner corner with "
+           "a safety factor of 1.3 at 2x body weight, under the spec's 2.0. A 4.5 mm web should "
+           "bring it above 2 for about 3 g more PLA. After the change, run the same 2x body "
+           "weight study again to confirm; this is a guide from a linear FEM study, not a "
+           "guarantee.")
 
 
 async def dump(out: Path) -> None:
@@ -130,6 +136,25 @@ async def dump(out: Path) -> None:
                  "settings": {"supports": [{"kind": "fixed", "face": "top"}], "n_modes": 4}}]},
                 call_id="p1", workdir=rt.workdir(agent))
             assert o.ok, o.summary
+            # the hand-off to the lead waits on the user's approval of the exact text: the card
+            # (GET /approvals) the app shows, then rejected so nothing reaches the lead
+            lead = rt.store.create_run("engineer", "fake", "m", "build a robot dog",
+                                       project_id=pid).id
+            rt.store.update_run(lead, role="lead")
+            hand = asyncio.create_task(rt.gate.call(agent, "agent_message", {"text": MESSAGE},
+                                                    call_id="m1", workdir=rt.workdir(agent)))
+            for _ in range(500):
+                cards = (await call("GET", "/approvals")).json()
+                if cards:
+                    break
+                await asyncio.sleep(0.02)
+            write("studies_agent_message_approval.json", cards[0])
+            await call("POST", f"/approvals/{cards[0]['id']}/decide",
+                       {"payload_hash": cards[0]["payload_hash"], "approve": False})
+            try:
+                await hand
+            except Exception:  # noqa: BLE001 - rejected, as intended
+                pass
             rt.finish_external_run(agent, "done")
             write("studies_context_agent.json",
                   (await call("GET", f"/studies/context?project_id={pid}")).json())

@@ -37,3 +37,13 @@
 .tone-amber { color: var(--amber); }
 .tone-red { color: var(--red); }
 .tone-dim { color: var(--dim); }
+
+/* Plan 9 U-D: why the card asks, and payload text shown whole (the exact words approved):
+   wrapped, scrolling past ~12 lines, never clipped */
+.acard-reason { color: var(--ink); }
+.acard-prose { display: flex; flex-direction: column; gap: 2px; }
+.acard-prose-text {
+  white-space: pre-wrap; overflow-wrap: anywhere; max-height: 15em; overflow: auto;
+  padding: 6px 8px; border: 1px solid var(--line2); background: var(--paper); color: var(--ink);
+}
+.acard-prose-text:focus-visible { outline: 1px solid var(--blue); }

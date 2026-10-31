@@ -1,5 +1,5 @@
 {
-  "project_id": "aad164b95f98",
+  "project_id": "9fd74c44f8c8",
   "build_name": "Robot dog",
   "default_material": "PLA",
   "parts": [
@@ -126,7 +126,7 @@
     },
     {
       "source": "study",
-      "sim_id": "sim_d6c6f5c35b35",
+      "sim_id": "sim_82dc39e3e054",
       "part_id": "leg_front",
       "name": "standing",
       "supports": [
@@ -144,13 +144,13 @@
   ],
   "studies": [
     {
-      "sim_id": "sim_d6c6f5c35b35",
+      "sim_id": "sim_82dc39e3e054",
       "part_id": "leg_front",
       "project_id": null,
       "type": "static",
       "status": "done",
       "stale": false,
-      "created_at": 1793420565.8250911,
+      "created_at": 1793421797.109059,
       "reason": "standing load",
       "verdict": "pass",
       "fidelity_note": null,

@@ -381,6 +381,7 @@ def rule_proposals(parts: list[dict], spec: dict | None, records: list[dict],
         p = {"part_id": part["part_id"], "type": typ, "title": title, "why": why,
              "settings": full, "source": "rules"}
         p["id"] = _pid(p)
+        p["key"] = study_key(p["part_id"], typ, full)
         if all(o["id"] != p["id"] for o in out):
             out.append(p)
 
@@ -483,45 +484,103 @@ def saved_proposals(home: Path, project_id: str) -> dict | None:
 def save_proposals(home: Path, project_id: str, run_id: str, proposals: list[dict]) -> dict:
     p = _proposals_path(home, project_id)
     p.parent.mkdir(parents=True, exist_ok=True)
-    data = {"run_id": run_id, "ts": time.time(), "proposals": proposals}
+    # each part's geometry hash now: a proposal retires once its part's geometry changes
+    geometry = {pid: _geometry_hash(home, pid) for pid in {x.get("part_id") for x in proposals}
+                if isinstance(pid, str)}
+    data = {"run_id": run_id, "ts": time.time(), "proposals": proposals, "geometry": geometry}
     tmp = p.with_name(f".{p.name}.{secrets.token_hex(4)}.tmp")
     tmp.write_text(json.dumps(data, indent=1))
     tmp.replace(p)
     return data
 
 
-def _geometry_mtime(home: Path, part_id: str) -> float | None:
-    """When the part's geometry last changed (its model.step), without following links."""
-    try:
-        st = (Path(home) / "parts" / part_id / "model.step").lstat()
-    except OSError:
+def _geometry_hash(home: Path, part_id: str) -> str | None:
+    """The part's geometry hash (its model.step), the same one studies mark staleness by."""
+    return studies.file_hash(Path(home) / "parts" / part_id / "model.step")
+
+
+#: settings that do not change what a study asks (how it is solved, not what): left out of the key
+_KEY_IGNORES = {"material", "mesh", "solver", "convergence", "cpus", "openfoam_iterations",
+                "timeout_s"}
+
+
+def _norm(v: object) -> object:
+    """Numbers as floats (60 and 60.0 ask the same), recursively."""
+    if isinstance(v, bool) or v is None or isinstance(v, str):
+        return v
+    if isinstance(v, (int, float)):
+        return float(v)
+    if isinstance(v, dict):
+        return {k: _norm(x) for k, x in v.items()}
+    if isinstance(v, (list, tuple)):
+        return [_norm(x) for x in v]
+    return v
+
+
+def _case_sig(c: object) -> object:
+    """A load case by what it asks: its name, the faces held and the loads (kind, face, size,
+    direction)."""
+    if not isinstance(c, dict):
         return None
-    return st.st_mtime
+    sup = sorted(f"{s.get('kind')}:{s.get('face')}" for s in c.get("supports") or []
+                 if isinstance(s, dict))
+    lds = sorted(json.dumps({k: _norm(l.get(k)) for k in ("kind", "face", "newtons", "mpa",
+                                                          "n_mm", "direction", "axis", "g")
+                             if l.get(k) is not None}, sort_keys=True)
+                 for l in c.get("loads") or [] if isinstance(l, dict))
+    return [c.get("name"), sup, lds]
+
+
+def study_key(part_id: str | None, type_id: str | None, settings: dict | None) -> str:
+    """A stable key for "this study of this part": part, type and what the settings ask (load
+    cases for static / buckling, the rest of the settings for the others), never how they are
+    solved. A proposal and the study run from it (or the same study set up by hand) share it."""
+    st = settings if isinstance(settings, dict) else {}
+    if type_id == "static":
+        what: object = sorted(json.dumps(_case_sig(c), sort_keys=True)
+                              for c in st.get("load_cases") or [])
+    elif type_id == "buckling":
+        what = _case_sig(st.get("load_case"))
+    else:
+        what = _norm({k: v for k, v in st.items() if k not in _KEY_IGNORES})
+    blob = json.dumps([part_id, type_id, what], sort_keys=True, default=str)
+    return "sk_" + hashlib.sha256(blob.encode()).hexdigest()[:16]
+
+
+def _record_settings(r: dict) -> dict | None:
+    st = r.get("settings") or (r.get("inputs") or {}).get("settings")
+    return st if isinstance(st, dict) else None
 
 
 def live_agent_proposals(home: Path, saved: dict | None, part_ids: set[str],
                          records: list[dict]) -> list[dict]:
     """The agent's saved proposals that still say what to do next. Retired: a part no longer
-    in the build, a part whose geometry changed since they were saved (their basis is stale),
-    and a proposal a current (not stale) study of the same part and type finished since. One
-    whose study is running stays, marked `status: "running"`, so the page shows it in flight."""
+    in the build; a part whose geometry changed since they were saved (its geometry hash, the
+    rule study staleness uses: a rebuild to the same shape keeps them); and a proposal that a
+    current (not stale) study with the same study key (part, type, what it asks) finished
+    since. A proposal whose own study is running stays, marked `status: "running"`; other
+    proposals of that part are untouched."""
     if not saved:
         return []
     ts = float(saved.get("ts") or 0)
+    hashes = saved.get("geometry") if isinstance(saved.get("geometry"), dict) else {}
     out = []
     for p in saved.get("proposals") or []:
         if not isinstance(p, dict) or p.get("part_id") not in part_ids:
             continue
-        geo = _geometry_mtime(home, p["part_id"])
-        if geo is not None and geo > ts:
+        then = hashes.get(p["part_id"])
+        if then is not None and _geometry_hash(home, p["part_id"]) != then:
             continue
-        since = [r for r in records if r.get("part_id") == p["part_id"]
-                 and r.get("type") == p.get("type") and not r.get("stale")
-                 and (r.get("created_at") or 0) >= ts]
-        if any(r.get("status") == "done" for r in since):
+        key = p.get("key") or study_key(p["part_id"], p.get("type"), p.get("settings"))
+        mine = [r for r in records if r.get("part_id") == p["part_id"]
+                and r.get("type") == p.get("type") and not r.get("stale")
+                and (r.get("created_at") or 0) >= ts
+                and study_key(r.get("part_id"), r.get("type"), _record_settings(r)) == key]
+        if any(r.get("status") == "done" for r in mine):
             continue
+        p = {**p, "key": key}
         out.append({**p, "status": "running"} if any(r.get("status") == "running"
-                                                      for r in since) else p)
+                                                      for r in mine) else p)
     return out
 
 
@@ -657,6 +716,7 @@ async def studies_propose(ctx: ToolContext, args: ProposeArgs) -> ToolOutput:
                              f"proposal {p.title!r}: {e.message}", hint=e.hint) from None
         d = {**p.model_dump(), "settings": full, "source": "agent"}
         d["id"] = _pid(d)
+        d["key"] = study_key(d["part_id"], d["type"], full)
         out.append(d)
     save_proposals(rt.home, pid, ctx.run_id, out)
     rt.events.publish(Event(type="studies_proposed", run_id=ctx.run_id, data={

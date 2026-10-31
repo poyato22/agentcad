@@ -13,7 +13,7 @@ import type { JSX } from "preact";
 import { useEffect, useMemo, useState } from "preact/hooks";
 import { onCoreEvent } from "../../../api/events";
 import type { StudyType } from "../../../api/studies";
-import { partLabel, partName } from "../../../lib/names";
+import { partLabel } from "../../../lib/names";
 import { activePart } from "../../../state/selection";
 import { DesignStudies } from "../../spec";
 import { activeBuildId } from "../../../state/builds";
@@ -146,7 +146,6 @@ export function StudiesPage({ controller = studies, agent = studiesAgent, deps =
 
   // the agent's proposals: why one cannot run now, and Run (the same POST /sims as the form)
   const blocked = (p: StudyProposal): string | null => {
-    if (active) return `A study of ${partName(parts.value.find((x) => x.part_id === active.partId) ?? { part_id: active.partId })} is running.`;
     const target = parts.value.find((x) => x.part_id === p.part_id);
     if (!target) return "This part is not in the build any more.";
     if (target.metrics === null) return "This part has no built model yet.";
@@ -155,8 +154,7 @@ export function StudiesPage({ controller = studies, agent = studiesAgent, deps =
     if (p.type !== "wind" && c.ccxMissing.value) return "Install CalculiX to run FEM studies (wind studies still run).";
     return null;
   };
-  const runProposal = (p: StudyProposal) => {
-    if (blocked(p) !== null) return;
+  const startProposal = (p: StudyProposal) => {
     if (p.part_id !== partId) actions.selectPart(p.part_id);
     // the proposal's settings become the manual setup of that type, so "Set up manually" edits them
     typeSig.value = p.type; settingsSig.value = { ...settingsSig.peek(), [p.type]: p.settings }; caseSig.value = 0;
@@ -164,14 +162,28 @@ export function StudiesPage({ controller = studies, agent = studiesAgent, deps =
     agent.noteRan(p);
     void c.start(p.part_id, p.type, p.settings);
   };
+  // the page runs one study at a time: Run on another proposal while one runs queues it (press
+  // again to take it off); only the running proposal's own Run is disabled
+  const runProposal = (p: StudyProposal) => {
+    if (blocked(p) !== null) return;
+    if (active) { agent.queued.value = agent.queued.peek()?.id === p.id ? null : p; return; }
+    startProposal(p);
+  };
+  const queued = agent.queued.value;
+  useEffect(() => {
+    if (active || !queued) return;
+    agent.queued.value = null;
+    if (blocked(queued) === null) startProposal(queued);
+  }, [active === null, queued]);
   const ran = agent.ranProposal.value;
   const ranRecord = ran && rec && rec.part_id === ran.partId && (rec.created_at ?? 0) >= ran.at - 30 ? rec : null;
+  const runningId = active && ran && active.partId === ran.partId && active.startedAt >= ran.at - 30 ? ran.id : null;
 
   return (
     <PageShell title="Studies">
       <div class="st st-agentfirst" data-testid="studies" data-manual={String(manual)}>
         <aside class="st-side">
-          <AgentPane agent={agent} run={agentRun} blocked={blocked} onRun={runProposal}
+          <AgentPane agent={agent} run={agentRun} blocked={blocked} onRun={runProposal} runningId={runningId} queuedId={queued?.id ?? null}
             active={active} ranRecord={active ? null : ranRecord} onCancel={() => { void c.cancel(); }}
             onWatch={() => { if (active) openImmersive({ simId: active.simId, ids: doneIds, pending: active.simId ? null : { runId: active.runId, type: active.type, partId: active.partId, sinceTs: active.startedAt } }); }}
             onOpenResult={(id) => { setPicking(null); viewSig.value = "result"; void c.select(id); }}

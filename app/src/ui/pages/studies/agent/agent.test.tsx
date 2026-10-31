@@ -168,8 +168,28 @@ describe("Studies page, agent-first", () => {
     expect(selectedPartId.value).toBe("hip_bracket");
     const card = screen.getByTestId("agent-study-card");
     expect(card.dataset.status).toBe("running");
-    // while it runs, the other proposals say why they wait
-    expect(within(screen.getAllByTestId("study-proposal")[1]).getByTestId("proposal-blocked").textContent).toMatch(/is running/);
+    // while it runs, only its own Run is disabled; another proposal's Run queues it (N2)
+    const [ranCard, other] = screen.getAllByTestId("study-proposal");
+    const ranBtn = within(ranCard).getByTestId("run-proposal") as HTMLButtonElement;
+    expect([ranBtn.textContent, ranBtn.disabled]).toEqual(["Running…", true]);
+    const next = within(other).getByTestId("run-proposal") as HTMLButtonElement;
+    expect([next.textContent, next.disabled]).toEqual(["Run next", false]);
+    expect(within(other).queryByTestId("proposal-blocked")).toBeNull();
+    fireEvent.click(next);
+    await settle();
+    expect(next.dataset.state).toBe("queued");
+    fireEvent.click(next);                              // pressed again: off the queue
+    await settle();
+    expect(next.dataset.state).toBe("new");
+    fireEvent.click(next);
+    await settle();
+    // the running study ends: the queued one starts, with its own settings
+    act(() => { ctl.active.value = null; });
+    await settle();
+    expect(sc.startStudy).toHaveBeenLastCalledWith({ type: AGENT.proposals[1].type, part_id: "leg_front", settings: AGENT.proposals[1].settings });
+    await act(async () => { await ctl.cancel(); ctl.active.value = null; });
+    fireEvent.click(within(screen.getAllByTestId("study-proposal")[0]).getByTestId("run-proposal"));
+    await settle();
     // the manual setup now holds the proposal's settings
     fireEvent.click(screen.getByTestId("manual-setup-toggle"));
     await settle();

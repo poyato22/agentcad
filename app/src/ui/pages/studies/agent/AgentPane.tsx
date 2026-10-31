@@ -25,9 +25,13 @@ import "./agent.css";
 export interface AgentPaneProps {
   agent: StudiesAgentController;
   run: AgentRun | null;
-  /** Why a proposal cannot run now (no solver, a study already running, part not built), or null. */
+  /** Why a proposal cannot run now (no solver, part not built), or null. */
   blocked: (p: StudyProposal) => string | null;
   onRun: (p: StudyProposal) => void;
+  /** The proposal whose own study is running now (its Run is the only one disabled). */
+  runningId: string | null;
+  /** The proposal queued to run once the running study ends. */
+  queuedId: string | null;
   /** The study Run started (or the page's own running study). */
   active: ActiveStudy | null;
   /** The finished study the last Run produced, once the page has loaded it. */
@@ -79,7 +83,7 @@ export function AgentPane(p: AgentPaneProps): JSX.Element {
       </header>
       <div class="sa-body" ref={scroller}>
         <Opening ctx={ctx} error={p.agent.contextError.value} loading={p.agent.loading.value} blocked={p.blocked} onRun={p.onRun}
-          ranId={ranId} ranCard={cardUnderProposal ? card : null} />
+          ranId={ranId} ranCard={cardUnderProposal ? card : null} runningId={p.runningId} queuedId={p.queuedId} anyRunning={p.active !== null} />
         {!cardUnderProposal && card}
         {thread.map((it) => <Item key={it.key} item={it} onOpenRun={() => runId && p.onOpenRun(runId)} />)}
       </div>
@@ -88,9 +92,9 @@ export function AgentPane(p: AgentPaneProps): JSX.Element {
   );
 }
 
-function Opening({ ctx, error, loading, blocked, onRun, ranId, ranCard }: {
+function Opening({ ctx, error, loading, blocked, onRun, ranId, ranCard, runningId, queuedId, anyRunning }: {
   ctx: StudiesContext | null; error: string | null; loading: boolean; blocked: AgentPaneProps["blocked"]; onRun: AgentPaneProps["onRun"]; ranId: string | null;
-  ranCard: JSX.Element | null;
+  ranCard: JSX.Element | null; runningId: string | null; queuedId: string | null; anyRunning: boolean;
 }): JSX.Element {
   if (error) return <p class="sa-msg tone-red text" data-testid="studies-agent-error" role="alert">Could not read the build: {error}</p>;
   if (!ctx) return <p class="sa-msg dim">{loading ? "Reading the build…" : "Open a build to plan its studies."}</p>;
@@ -109,7 +113,8 @@ function Opening({ ctx, error, loading, blocked, onRun, ranId, ranCard }: {
       {props.length > 0 && (
         <ol class="sa-props" aria-label="Proposed studies">
           {props.map((x, i) => (
-            <ProposalCard key={x.id} p={x} n={i + 1} ctx={ctx} why={blocked(x)} ran={x.id === ranId} onRun={() => onRun(x)}>
+            <ProposalCard key={x.id} p={x} n={i + 1} ctx={ctx} why={blocked(x)} ran={x.id === ranId} onRun={() => onRun(x)}
+              running={x.status === "running" || x.id === runningId} queued={x.id === queuedId} anyRunning={anyRunning}>
               {x.id === ranId ? ranCard : null}
             </ProposalCard>
           ))}
@@ -119,11 +124,19 @@ function Opening({ ctx, error, loading, blocked, onRun, ranId, ranCard }: {
   );
 }
 
-function ProposalCard({ p, n, ctx, why, ran, onRun, children }: {
-  p: StudyProposal; n: number; ctx: StudiesContext; why: string | null; ran: boolean; onRun: () => void; children?: ComponentChildren;
+function ProposalCard({ p, n, ctx, why, ran, onRun, running, queued, anyRunning, children }: {
+  p: StudyProposal; n: number; ctx: StudiesContext; why: string | null; ran: boolean; onRun: () => void;
+  /** Its own study is running (only then is its Run disabled). */
+  running: boolean;
+  /** Queued behind the study that runs now. */
+  queued: boolean;
+  /** Some other study runs: Run queues this one. */
+  anyRunning: boolean;
+  children?: ComponentChildren;
 }): JSX.Element {
   const part = ctx.parts.find((x) => x.part_id === p.part_id);
-  const running = p.status === "running";
+  const label = running ? "Running…" : queued ? "Queued" : anyRunning ? "Run next" : ran ? "Run again" : "Run";
+  const state = running ? "running" : queued ? "queued" : ran ? "ran" : "new";
   const fid = honesty(p.type, null, { settings: p.settings }).fidelity;
   return (
     <li class="sa-prop" data-testid="study-proposal" data-proposal={p.id} data-type={p.type} data-part={p.part_id}>
@@ -134,8 +147,8 @@ function ProposalCard({ p, n, ctx, why, ran, onRun, children }: {
       <p class="sa-prop-why">{p.why}</p>
       <div class="sa-prop-foot">
         <span class="sa-prop-meta dim">{part?.label ?? nameOf(p.part_id)} · {typeWord(p.type)} · {fid}</span>
-        <Button variant="ink" class="sa-run" onClick={onRun} disabled={why !== null || running} title={running ? "Its study is running" : why ?? `Run the ${TYPE_NAMES[p.type].toLowerCase()} study`}
-          aria-label={`Run: ${p.title}`} data-testid="run-proposal" data-state={running ? "running" : ran ? "ran" : "new"}>{running ? "Running…" : ran ? "Run again" : "Run"}</Button>
+        <Button variant="ink" class="sa-run" onClick={onRun} disabled={why !== null || running} title={running ? "Its study is running" : queued ? "Runs when the current study ends; press to take it off" : why ?? `Run the ${TYPE_NAMES[p.type].toLowerCase()} study`}
+          aria-label={`${label}: ${p.title}`} aria-pressed={queued || undefined} data-testid="run-proposal" data-state={state}>{label}</Button>
       </div>
       {why && !running && <p class="sa-prop-why-not faint" data-testid="proposal-blocked">{why}</p>}
       {children}
