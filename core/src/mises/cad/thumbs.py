@@ -166,7 +166,8 @@ async def _render(home: Path, part_dir: Path, size: int, look: dict | None = Non
         async with _semaphore():
             out = await run_render_job(base / "jobs", [mesh], renders=[{
                 "key": "t", "views": ["iso"], "size": max(size, _RENDER_MIN),
-                "transparent": mesh.opacity < 1.0}])
+                "transparent": mesh.opacity < 1.0, "background": "transparent",
+                "shadow": False}])
     except (MisesError, OSError, safe_io.UnsafePath):
         return None
     png = (out.pngs.get("t") or {}).get("iso")
