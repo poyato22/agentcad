@@ -4,7 +4,7 @@
 
 /* ---- shared table */
 .sp-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
-.sp-table th { font: 600 var(--fs-label)/1.6 var(--font-head); letter-spacing: .1em; text-transform: uppercase; color: var(--faint); text-align: left; padding: 2px 6px; border-bottom: 1px solid var(--line2); white-space: nowrap; }
+.sp-table th { font: 600 var(--fs-label)/1.6 var(--font-head); color: var(--faint); text-align: left; padding: 2px 6px; border-bottom: 1px solid var(--line2); white-space: nowrap; }
 .sp-table td { padding: 3px 6px; border-bottom: 1px solid var(--line); vertical-align: baseline; }
 .sp-table tbody tr:hover { background: var(--paper2); }
 .sp-table tr[tabindex]:focus-visible { outline: 1px solid var(--blue); outline-offset: -1px; }
@@ -16,10 +16,10 @@
 .sp-st .led { margin-right: 5px; vertical-align: 1px; }
 .sp-st-w { font-size: var(--fs-small); }
 .sp-id { font-size: var(--fs-small); }
-.sp-prio { letter-spacing: .05em; color: var(--dim); white-space: nowrap; font-size: var(--fs-small); }
-.sp-tag { display: inline-block; margin-left: 5px; padding: 0 4px; border: 1px solid var(--line2); color: var(--dim); font: 600 var(--fs-label)/1.5 var(--font-head); letter-spacing: .08em; vertical-align: 1px; }
+.sp-prio { color: var(--dim); white-space: nowrap; font-size: var(--fs-small); }
+.sp-tag { display: inline-block; margin-left: 5px; padding: 0 4px; border: 1px solid var(--line2); color: var(--dim); font: 600 var(--fs-label)/1.5 var(--font-head); vertical-align: 1px; }
 .sp-tag-est { border-color: var(--dim); color: var(--ink); }
-.sp-guide { font: 700 var(--fs-label)/1 var(--font-head); letter-spacing: .14em; border: 1px solid var(--ink); padding: 2px 5px; color: var(--ink); text-transform: uppercase; }
+.sp-guide { display: inline-flex; align-items: center; font: 600 var(--fs-label)/1 var(--font-ui); border: 1px solid var(--line2); border-radius: 999px; padding: 3px 8px; color: var(--dim); }
 .sp-sort { all: unset; cursor: pointer; }
 .sp-sort:focus-visible { outline: 1px solid var(--blue); }
 .sp-title { font-weight: 700; color: var(--ink); }
@@ -60,7 +60,7 @@
 .spv-var-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .spv-kv { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 4px 10px; margin: 0; font-variant-numeric: tabular-nums; }
 .spv-kv div { display: flex; flex-direction: column; }
-.spv-kv dt { font-size: var(--fs-label); letter-spacing: .1em; text-transform: uppercase; color: var(--faint); }
+.spv-kv dt { font-size: var(--fs-label); color: var(--faint); }
 .spv-kv dd { margin: 0; color: var(--ink); font-weight: 600; }
 .spv-err { margin: 0; }
 .spv-actions { display: flex; align-items: center; gap: 8px; }

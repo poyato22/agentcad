@@ -143,7 +143,7 @@ function Immersive({ target, deps }: { target: ImmersiveTarget; deps: ImmersiveD
           <span class={`scard-verdict${verdict ? ` tone-${verdictTone(verdict)}` : ""}`}>{failedToLoad ? "could not load" : running ? "running" : verdict ? VERDICT_TEXT[verdict] : rec?.status ?? ""}</span>
         </span>
         <span class="imm-guide">
-          <span class="scard-guide">GUIDE ONLY</span>
+          <span class="scard-guide">Guide only</span>
           <b class="text" data-testid="fidelity-note">{hon.fidelity}</b>
           {hon.band && <span class="text" data-testid="error-band">{hon.band}</span>}
         </span>

@@ -65,7 +65,7 @@ test.beforeEach(async ({ fake, page }) => {
 
 test("full_merge_from_card", async ({ page, fake }) => {
   await mountCard(page);
-  await expect(card(page)).toContainText("▲ NEEDS YOU");
+  await expect(card(page)).toContainText("Needs you");
   await expect(card(page)).toContainText("hash 3f9a1c2e");
   await expect(card(page)).toContainText("+4.1 g");
   await page.waitForTimeout(ARM_WAIT_MS);

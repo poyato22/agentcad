@@ -22,7 +22,8 @@
 .scard-type { font: 700 var(--fs)/1.2 var(--font-head); color: var(--ink); }
 .scard-part { color: var(--dim); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .scard-status { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
-.scard-verdict { font: 700 var(--fs-label)/1 var(--font-head); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+.scard-verdict { display: inline-block; font: 600 var(--fs-small)/1 var(--font-ui); color: var(--dim); }
+.scard-verdict::first-letter { text-transform: uppercase; }
 .scard .tone-green { color: var(--green); }
 .scard .tone-amber { color: var(--amber); }
 .scard .tone-red { color: var(--red); }
@@ -30,7 +31,7 @@
 .scard-reason .scard-reason-who { flex: none; }
 .scard-reason .mk-body { min-width: 0; }
 .scard-fidelity { margin: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.scard-guide { font: 700 var(--fs-label)/1 var(--font-head); letter-spacing: .12em; border: 1px solid var(--ink); padding: 2px 5px; color: var(--ink); }
+.scard-guide { display: inline-flex; align-items: center; font: 600 var(--fs-label)/1 var(--font-ui); border: 1px solid var(--line2); border-radius: 999px; padding: 3px 8px; color: var(--dim); }
 .scard-fidelity-note { color: var(--ink); font-weight: 700; }
 .scard-note { margin: 0; }
 .scard-fail { margin: 0; color: var(--red); }

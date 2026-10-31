@@ -3,7 +3,7 @@
    (amber = a caution / honesty label), nothing else is coloured. */
 .bom { display: flex; flex-direction: column; gap: 16px; max-width: 1040px; }
 .bom-bar { display: flex; align-items: center; gap: 8px; }
-.bom-buildname { font: 700 var(--fs)/1.2 var(--font-head); color: var(--ink); }
+.bom-title { margin: 0; font: 600 var(--fs-display)/1.2 var(--font-ui); color: var(--ink); }
 .bom-spacer { flex: 1; }
 .bom-empty { max-width: 56ch; margin: 8px 0; }
 .bom-error { margin: 0; }

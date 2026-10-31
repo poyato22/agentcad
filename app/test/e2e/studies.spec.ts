@@ -59,7 +59,7 @@ for (const theme of ["dark", "light"] as const) {
     const r = page.getByTestId("study-result");
     await expect(r).toHaveAttribute("data-type", "wind");
     await expect(r.getByTestId("fidelity-note")).toHaveText("low fidelity (preview) · ±40% (validated)");
-    await expect(r.getByTestId("guide-label")).toContainText("GUIDE ONLY");
+    await expect(r.getByTestId("guide-label")).toContainText("Guide only");
     await expect(r.getByTestId("result-note")).toContainText("skin-friction estimate");
     await expect(r.locator("[data-testid=metric][data-key=cd]")).toContainText("1.15");
     await expect(r.locator("[data-testid=metric][data-key=cl]")).toBeVisible();
@@ -184,7 +184,7 @@ test("compare_two_studies_side_by_side", async ({ page, fake }) => {
   await page.getByTestId("compare").click();
   const v = page.getByTestId("compare-view");
   await expect(v.getByTestId("compare-row").first()).toBeVisible();
-  await expect(v).toContainText("GUIDE ONLY");
+  await expect(v).toContainText("Guide only");
 });
 
 test("templates_save_and_load", async ({ page, fake }) => {

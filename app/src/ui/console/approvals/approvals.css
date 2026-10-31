@@ -5,7 +5,7 @@
 [data-card].acard:focus, [data-card].acard:focus-within { outline: 1px solid var(--blue2); outline-offset: 1px; }
 
 .acard-head, .qcard-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
-.acard-flag, .qcard-flag { color: var(--blue2); font: 600 var(--fs-label)/1.4 var(--font-head); letter-spacing: .14em; }
+.acard-flag, .qcard-flag { color: var(--blue2); font: 600 var(--fs-label)/1.4 var(--font-head); }
 .acard-inert .acard-flag { color: var(--faint); }
 .acard-run { margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .acard-what, .qcard-question { margin: 4px 0; color: var(--ink); }

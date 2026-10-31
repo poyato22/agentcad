@@ -10,7 +10,7 @@
   border-radius: 0;
 }
 .icard-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
-.icard-flag { color: var(--blue2); font: 600 var(--fs-label)/1.4 var(--font-head); letter-spacing: .14em; }
+.icard-flag { color: var(--blue2); font: 600 var(--fs-label)/1.4 var(--font-head); }
 .icard-run { margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .icard-intro { margin: 6px 0 2px; color: var(--ink); }
 

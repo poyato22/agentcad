@@ -183,7 +183,7 @@ describe("Studies page", () => {
     await waitFor(() => screen.getByTestId("study-result"));
     const r = screen.getByTestId("study-result");
     expect(r.dataset.type).toBe(t);
-    expect(within(r).getByTestId("guide-label").textContent).toMatch(/GUIDE ONLY/);
+    expect(within(r).getByTestId("guide-label").textContent).toMatch(/Guide only/);
     if (t === "wind") {
       expect(within(r).getByTestId("fidelity-note").textContent).toBe("low fidelity (preview) · ±40% (validated)");
       expect(within(r).getByTestId("result-note").textContent).toMatch(/skin-friction/);

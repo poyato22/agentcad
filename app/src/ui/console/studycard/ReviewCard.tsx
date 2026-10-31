@@ -29,7 +29,7 @@ export function ReviewCard({ view }: { view: ReviewCallView }): JSX.Element {
           <span class={`scard-verdict${verdict ? ` tone-${verdictTone(verdict)}` : ""}`}>{view.running ? "running" : verdict ? VERDICT_TEXT[verdict] : "done"}</span>
         </span>
       </header>
-      <p class="scard-fidelity"><span class="scard-guide">GUIDE ONLY</span><span class="faint text">{r?.label ?? "guide only, not a guarantee"}</span></p>
+      <p class="scard-fidelity"><span class="scard-guide">Guide only</span><span class="faint text">{r?.label ?? "guide only, not a guarantee"}</span></p>
       {view.running && <p class="faint text">Running the studies the spec needs…</p>}
       {view.failed && <div class="scard-fail text" role="alert"><Markup source={view.summary ?? "the review failed"} collapsible={false} />{view.hint ? <span class="faint"> · {view.hint}</span> : null}</div>}
       {r && (

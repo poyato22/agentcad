@@ -59,14 +59,15 @@
 /* results */
 .st-results { display: flex; flex-direction: column; gap: 10px; }
 .st-guide { margin: 0; display: flex; align-items: center; gap: 8px; }
-.st-guide-tag { font: 700 var(--fs-label)/1 var(--font-head); letter-spacing: .14em; border: 1px solid var(--ink); padding: 3px 6px; color: var(--ink); }
+.st-guide-tag { display: inline-flex; align-items: center; font: 600 var(--fs-label)/1 var(--font-ui); border: 1px solid var(--line2); border-radius: 999px; padding: 3px 8px; color: var(--dim); }
 .st-head { display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--line2); padding: 10px 12px; background: var(--paper); }
 .st-sf-top { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 28px; }
 .st-sf { display: flex; flex-direction: column; gap: 4px; flex: none; }
 .st-sf-row { display: flex; align-items: baseline; gap: 8px; }
 .st-sf-row .led { align-self: center; }
 .st-sf-value { font: 700 28px/1 var(--font-head); }
-.st-verdict { font: 700 var(--fs-label)/1 var(--font-head); letter-spacing: .14em; text-transform: uppercase; }
+.st-verdict { display: inline-block; font: 600 var(--fs)/1 var(--font-ui); }
+.st-verdict::first-letter { text-transform: uppercase; }
 .st-sf-side { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1 1 260px; padding-bottom: 2px; }
 .st-num { font-weight: 700; color: var(--ink); }
 .st-num.tone-green { color: var(--green); }
@@ -94,10 +95,17 @@
 /* Plan 9 U-D: agent-first. The studies agent takes the left ~40% (it fills the window height and
    scrolls inside); history and the collapsed manual setup sit below it, and the side scrolls as
    a whole once the manual setup is open. The result viewport on the right is large. */
-.st.st-agentfirst { grid-template-columns: minmax(360px, 40%) minmax(0, 1fr); align-items: start; }
+.st.st-agentfirst { grid-template-columns: minmax(360px, min(40%, 520px)) minmax(0, 1fr); align-items: start; }
 .st-agentfirst .st-side { position: sticky; top: 0; height: calc(100vh - var(--topbar-h) - 32px); overflow: auto; gap: 12px; padding-right: 2px; }
 .st-agentfirst .st-side > .sa { flex: 1 0 440px; height: auto; }
 .st-agentfirst .st-side > .st-history, .st-agentfirst .st-side > .st-band { flex: none; }
+/* FW-layout (D20): with the manual setup folded, the side fits the window — the agent keeps its
+   natural height (its proposals whole), the past studies take what is left and scroll, and "Set up
+   manually" is always in view (at 1280×800 too). */
+.st-agentfirst[data-manual="false"] .st-side { overflow: hidden; }
+.st-agentfirst[data-manual="false"] .st-side > .sa { flex: 0 1 auto; min-height: 280px; }
+.st-agentfirst[data-manual="false"] .st-side > .st-history { flex: 1 1 120px; min-height: 96px; display: flex; flex-direction: column; }
+.st-agentfirst[data-manual="false"] .st-history ul { flex: 1 1 auto; min-height: 0; overflow: auto; }
 .st-agentfirst .sv-vp { height: clamp(360px, 62vh, 760px); }
 .st-manual-toggle {
   flex: none; display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; text-align: left;
