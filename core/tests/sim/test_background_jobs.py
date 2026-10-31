@@ -362,7 +362,9 @@ def test_every_tool_maps_to_its_intended_stream(make_rt):
     # a tool that sounds like a study or a view but is tagged text must be a conscious choice
     text_ok = {"study_apply", "interview_plan", "mirror_drawing", "drawing_spec_submit",
                "calibration_list",
-               "calibration_get", "calibration_fit", "calibration_save", "calibration_delete"}
+               "calibration_get", "calibration_fit", "calibration_save", "calibration_delete",
+               # G-B: a fresh judge's written verdict on the finished design (no render shown)
+               "design_review_final"}
     suspicious = {n for n in names - sim - view
                   if any(w in n for w in ("sim", "study", "review", "render", "view", "topopt",
                                           "section", "animate", "critique", "calibration",
