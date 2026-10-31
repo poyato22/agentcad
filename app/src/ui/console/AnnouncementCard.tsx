@@ -32,7 +32,7 @@ export const PART_RENDER_PX = 768;
 
 export function AnnouncementCard({ announcement }: { announcement: Announcement & { projectId?: string | null; jointId?: string | null } }): JSX.Element {
   const a = announcement;
-  // Plan 9 G-A: a concept sketch / pitch is a full card of its own (View stream)
+  // Plan 9 G-A: a concept sketch / pitch is a full card of its own (the View stream's, streams.ts)
   const concept = conceptCardFor(a);
   if (concept) return concept;
   const meta = ANNOUNCE_META[a.kind] ?? FALLBACK;

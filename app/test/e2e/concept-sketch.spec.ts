@@ -44,6 +44,9 @@ test.describe("concept sketch", () => {
     await expect(card.getByTestId("sketch-status")).toHaveText("Waiting for your review");
     await expect(card.locator(".sk-sheet img")).toBeVisible();
     await shot(page, "card-v1-dark");
+    // FW-app I6: a sketch is a picture: the dock's View stream, not the conversation
+    await expect(page.locator("[data-dock] [data-stream=view] [data-testid=sketch-card]")).toHaveCount(1);
+    await expect(page.locator("[data-dock] [data-stream=text] [data-testid=sketch-card]")).toHaveCount(0);
 
     await card.getByTestId("sketch-markup").click();
     const review = page.getByTestId("sketch-review");
@@ -150,6 +153,8 @@ test.describe("design directions", () => {
     await page.goto("/");
     const pitch = page.getByTestId("pitch-cards").last();
     await expect(pitch.getByTestId("pitch-option")).toHaveCount(3, { timeout: 15_000 });
+    await expect(page.locator("[data-dock] [data-stream=view] [data-testid=pitch-cards]")).toHaveCount(1);   // FW-app I6
+    await expect(page.locator("[data-dock] [data-stream=text] [data-testid=pitch-cards]")).toHaveCount(0);
     const rec = pitch.locator("[data-option=Companion]");
     await expect(rec.locator(".sk-tag.is-rec")).toHaveText("Recommended");
     await expect(pitch.locator("[data-option=Honest] .sk-tag")).toHaveText("Baseline");

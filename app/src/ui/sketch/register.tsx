@@ -1,8 +1,9 @@
 // The concept stage's one hook into the agent dock: the card for a `concept_sketch` or
 // `concept_pitch` announcement (core concept/tools.py announce cards, View stream). The dock asks
 // `conceptCardFor(announcement)` before its generic card; null means "not ours".
-// Plan 9 U-B's View stream wires this in when it lands; until then the thread's AnnouncementCard
-// asks it. The full-window review mounts once at the app root (SketchReviewRoot).
+// The dock's View stream shows them (console/streams.ts classes both kinds as view) through
+// AnnouncementCard, which asks this first. The full-window review mounts once at the app root
+// (SketchReviewRoot).
 import type { JSX } from "preact";
 import { PitchCards } from "./PitchCards";
 import { SketchCard } from "./SketchCard";

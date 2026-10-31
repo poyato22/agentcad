@@ -57,6 +57,18 @@ describe("dock stream classification (Plan 9 D4)", () => {
     expect(streamOf(by("s:9001"))).toBe("text");
   });
 
+  it("concept sketch and pitch cards are pictures: View, by kind, even when an older core marks them text (FW-app I6)", () => {
+    resetIds();
+    // the real core's concept announcements (dump: concept_events.jsonl)
+    const events = readFileSync(resolve(FX, "concept/concept_events.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l) as { type: string; data: Record<string, unknown> });
+    const cards = events.filter((e) => e.type === "agent_announce").map((e) => e.data);
+    expect(cards.map((c) => c.kind)).toEqual(expect.arrayContaining(["concept_sketch", "concept_pitch"]));
+    const list = cards.map((c, i) => announce(c, 9100 + i, 10 + i, i % 2 ? { stream: "text" } : {}));
+    const s = splitStreams(thread(list));
+    expect(s.view.map((i) => (i.kind === "announce" ? i.announcement.kind : i.kind)).sort()).toEqual(cards.map((c) => String(c.kind)).sort());
+    expect(s.text).toHaveLength(0);
+  });
+
   it("never moves the dialogue or what needs you out of the conversation, whatever a step says", () => {
     resetIds();
     const list = [

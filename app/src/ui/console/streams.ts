@@ -28,8 +28,11 @@ export function toolStream(name: string): StreamKind {
   return "text";
 }
 
-/** Announcement kinds that are pictures (the rest are conversation cards). */
-const VIEW_ANNOUNCE: ReadonlySet<string> = new Set(["view_presented", "critique_round", "part_shown"]);
+/** Announcement kinds that are pictures (the rest are conversation cards): the core's
+ *  events.VIEW_ANNOUNCE, with G-A's concept sketch and pitch (FW-app I6). */
+const VIEW_ANNOUNCE: ReadonlySet<string> = new Set(["view_presented", "critique_round", "part_shown", "concept_sketch", "concept_pitch"]);
+/** Kinds a core before FW-core marked "text" by mistake: a picture whatever that mark says. */
+const ALWAYS_VIEW_ANNOUNCE: ReadonlySet<string> = new Set(["concept_sketch", "concept_pitch"]);
 
 /** The stream of a core event: its own `stream`, else by type (sim_progress / sim_finished → sim;
  *  render / view / critique events → view). */
@@ -56,7 +59,11 @@ export function streamOf(item: ThreadItem): StreamKind {
       return c ? toolStream(c.name) : "text";
     }
     case "critique": case "view": return item.stream ?? "view";
-    case "announce": return item.stream ?? (VIEW_ANNOUNCE.has(item.announcement.kind) ? "view" : "text");
+    case "announce": {
+      const k = item.announcement.kind;
+      if (ALWAYS_VIEW_ANNOUNCE.has(k) && item.stream !== "sim") return "view";
+      return item.stream ?? (VIEW_ANNOUNCE.has(k) ? "view" : "text");
+    }
     case "note": return item.stream ?? "text";
     default: return "text";
   }
