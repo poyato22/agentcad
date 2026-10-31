@@ -198,3 +198,21 @@ Spec: `research/2026-10-30-topopt.md` (module + tool design) and the working spi
 - HTTP for the app: start/list/get/cancel/accept.
 - App (new `ui/topopt/**`, registration hooks only elsewhere): a "Generative design" panel reachable from a part's context menu and from the Studies page's manual setup — choose design space (current part), keep regions (pick faces → keep), loads/fixtures (reuse the studies face pickers), goal (volume fraction or max deflection), variants count, manufacturing (3D print / machined / none). Live preview of density as it converges; result card in the Simulations stream with variant grid (render, mass, deflection, peak stress, verified ✓/✗) and Accept.
 - Tests: core — small-grid (e.g. 12×8×4) optimization converges and is deterministic, verification compliance within 5% of optimizer on the small case, keep features survive, cancel works, Pareto ranking; app — panel/model unit tests + e2e with fake core. Real proof: run the 60×40×20 bracket end to end through the tool path and save renders + numbers next to the report.
+
+## Final fix wave (from the whole-branch review)
+
+Findings: `scratchpad/p9-final-core.md` and `scratchpad/p9-final-app.md` (full paths in briefs), plus ledger follow-ups.
+
+### FW-core · branch `p9-fwc` (from p9-int)
+All core Important (I-1..I-5) and Minors (M-1..M-8) in p9-final-core.md, plus: covers use G-R `view="hero"`, shaded CMF finishes, transparent background with NO opaque ground slab (shadow either off or alpha-composited); VIEW_ANNOUNCE includes concept_sketch/concept_pitch (and Event.stream honors data.stream); B3 follow-ups that are core-side; studies agent tool list gets design_review_get/job_wait/sim_wait; `restore_part` refuses when the dir exists and deletes are blocked/cancel jobs first (user confirm text mentions running studies).
+
+### FW-layout · branch `p9-fwl` (from p9-int) — D20
+- Build screen per Visual spec: the viewport is full-bleed behind everything; the left Parts surface and the right agent dock are **floating** surfaces (Panel color 92% + blur, radius 10, 12px inset from window edges, soft shadow), each collapsible to a slim tab (⌘[ / ⌘] or a chevron) so the model can take the whole window. Viewer pill stays bottom-center over the viewport. Fit/framing accounts for the floating panels (model centered in the visible area).
+- Studies page: the dock is hidden (the studies agent pane is the agent there); the page uses the full width; at 1280 the proposals and "Set up manually" are fully visible without clipping. Print and BOM: dock collapsed by default (user can open it).
+- Home: responsive tile grid that fills the width (min tile 280, max 420; 3–5 columns), larger covers; empty-state for 0–2 builds looks intentional.
+- Top bar: remove the red "Stop all" button (⇧⌘. stays; the composer Stop is the visible control); keep activity/status quiet.
+- Sweep remaining ALL-CAPS / monospace labels outside numbers to sentence case Instrument Sans ("Guide only", "Needs you", "Pass", "Pause", remove "FIG. 1 — DESIGN" captions).
+- Screenshots at 1280 and 1440, dark + light, of Home, build, Studies, Print, BOM; review against the spec.
+
+### FW-app · branch `p9-fwa` (after G-B merges) 
+App Important I1–I3, I6 (app side) and Minors in p9-final-app.md not covered by FW-layout: tree Hide/Show/Isolate drive the assembly; remove the part viewer's "Whole build"/"All parts" scope (D7); dock Simulations stream includes every study/topopt job of the build (Studies page runs, studies agent runs, user-started generative runs) via build-scoped job/sim events; concept cards in View; filmstrip thumbnails load, captions not clipped; run labels not cut mid-phrase (use the task title or first sentence); total mass shown once; B3 follow-ups (job list refresh on topopt start/finish; composer Stop does not cancel user-started generative runs).
