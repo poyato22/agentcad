@@ -97,3 +97,25 @@ def test_a_part_built_against_the_skeleton_stays_in_the_layout_frame(env):
     (md / skeleton.REFS_NAME).write_text(json.dumps({"params": ["wing_span"]}))
     inst = auto_place(store, root, "p", "wing")
     assert [inst.transform[r][3] for r in range(3)] == [0, 0, 0]
+
+
+def test_a_write_landing_during_the_plan_is_seen_and_the_plan_redone(env, monkeypatch):
+    """Re-review N3: the plan runs off the lock; a change meanwhile sends it round again."""
+    import mises.assembly.autoplace as ap
+    store, root = env
+    _part(root, "base", [0, 0, 0], [10, 10, 10])
+    _part(root, "arm", [0, 0, 0], [5, 5, 5])
+    auto_place(store, root, "p", "base")
+    real = ap._plan
+    calls = []
+
+    def racing(*a):
+        calls.append(1)
+        if len(calls) == 1:   # another writer adds a part while the first plan is worked out
+            store.add_instance("p", Instance(part_id="base", name="spare", transform=[[1, 0, 0, 40], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]))
+        return real(*a)
+    monkeypatch.setattr(ap, "_plan", racing)
+    inst = auto_place(store, root, "p", "arm")
+    assert len(calls) == 2
+    boxes = _box(store, root, "p")
+    assert boxes["arm"][0][0] > boxes["spare"][1][0]            # planned against the new state

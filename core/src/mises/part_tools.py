@@ -77,7 +77,10 @@ async def part_delete(ctx: ToolContext, args: PartDeleteArgs) -> ToolOutput:
     if row is None:
         raise MisesError(ErrorCode.NOT_FOUND, f"no part {args.part_id!r}")
     own = _own_build(ctx)
-    if own is not None and row.project_id != own:
+    if own is None:
+        raise MisesError(ErrorCode.OUT_OF_SCOPE, "this run has no build to delete parts from",
+                         hint="run part_delete from a build's agent")
+    if row.project_id != own:
         raise MisesError(ErrorCode.OUT_OF_SCOPE, f"{args.part_id} is not in this run's build",
                          hint="an agent deletes only parts of its own build")
 

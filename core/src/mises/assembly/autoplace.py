@@ -99,25 +99,38 @@ def _free_name(asm, base: str) -> str:
 
 
 def auto_place(assembly: AssemblyStore, parts_root: Path, project_id: str, part_id: str,
-               name: str | None = None) -> Instance | None:
+               name: str | None = None, attempts: int = 3) -> Instance | None:
     """Add a placed instance of `part_id` to the build's assembly (see the module doc). None
-    when the assembly places that part already. Read, place and write happen under the store's
-    lock (a REST write from another thread can't slip in between); call it off the event loop
-    (the placement solves the assembly)."""
-    with assembly._lock:
-        return _place(assembly, parts_root, project_id, part_id, name)
+    when the assembly places that part already. The placement (which solves the assembly) is
+    worked out without the store's lock, on a snapshot; the write happens under the lock only if
+    the assembly is still that snapshot, else it is worked out again. Call it off the event loop."""
+    for _ in range(max(1, attempts)):
+        asm = assembly.get(project_id)
+        if any(i.part_id == part_id for i in asm.instances):
+            return None
+        inst = _plan(parts_root, project_id, part_id, name, asm)
+        with assembly._lock:
+            now = assembly.get(project_id)
+            if any(i.part_id == part_id for i in now.instances):
+                return None
+            if now.model_dump() != asm.model_dump():
+                continue                                  # something moved meanwhile: again
+            assembly.add_instance(project_id, inst)
+            assembly.mark_auto(project_id, inst.id)
+            return inst
+    with assembly._lock:                                  # a busy assembly: hold it this once
+        asm = assembly.get(project_id)
+        if any(i.part_id == part_id for i in asm.instances):
+            return None
+        inst = _plan(parts_root, project_id, part_id, name, asm)
+        assembly.add_instance(project_id, inst)
+        assembly.mark_auto(project_id, inst.id)
+        return inst
 
 
-def _place(assembly: AssemblyStore, parts_root: Path, project_id: str, part_id: str,
-           name: str | None) -> Instance | None:
-    asm = assembly.get(project_id)
-    if any(i.part_id == part_id for i in asm.instances):
-        return None
+def _plan(parts_root: Path, project_id: str, part_id: str, name: str | None, asm) -> Instance:
     transform = _skeleton_slot(parts_root, project_id, part_id)
     if transform is None:
         transform = _beside(parts_root, asm, part_id) if asm.instances else translate([0, 0, 0])
-    inst = Instance(part_id=part_id, name=_free_name(asm, name or part_id),
+    return Instance(part_id=part_id, name=_free_name(asm, name or part_id),
                     transform=transform, fixed=not asm.instances)
-    assembly.add_instance(project_id, inst)
-    assembly.mark_auto(project_id, inst.id)
-    return inst

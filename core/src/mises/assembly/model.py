@@ -262,6 +262,52 @@ class AssemblyStore:
                                     (project_id,)).fetchall()
         return {r[0] for r in rows}
 
+    # ---- Plan 9 D29: take a part's instances out, and put them back exactly (Undo)
+    def take_out(self, project_id: str, part_ids: set[str] | list[str]) -> dict:
+        """Remove every instance of these parts (and every joint touching one). Returns what an
+        undo needs: {"instances": [...], "joints": [...]}, each with its list place (`_ord`) and
+        the instances' placed-by-core mark (`_auto`)."""
+        with self._lock:
+            asm = self.get(project_id)
+            used = [i for i in asm.instances if i.part_id in set(part_ids)]
+            ids = {i.id for i in used}
+            joints = [j for j in asm.joints if j.a.instance_id in ids or j.b.instance_id in ids]
+            orders = self.orders(project_id)
+            auto = self.auto_ids(project_id)
+            for i in used:
+                self.delete_instance(project_id, i.id)
+        return {"instances": [{**i.model_dump(mode="json"), "_ord": orders["instances"].get(i.id),
+                               "_auto": i.id in auto} for i in used],
+                "joints": [{**j.model_dump(mode="json"), "_ord": orders["joints"].get(j.id)}
+                           for j in joints]}
+
+    def put_back(self, project_id: str, data: dict) -> tuple[int, int]:
+        """Undo of take_out: the instances (ids, places, marks), then the joints whose two ends
+        exist. Pieces that can't come back (an id taken again) are skipped. (instances, joints)."""
+        ni = nj = 0
+        marked: list[str] = []
+        with self._lock:
+            marked.extend(self.auto_ids(project_id))     # a joint coming back never unmarks these
+            for raw in data.get("instances") or []:
+                try:
+                    inst = Instance.model_validate({k: v for k, v in raw.items() if not k.startswith("_")})
+                    self.add_instance(project_id, inst, ord=raw.get("_ord"))
+                    if raw.get("_auto"):
+                        marked.append(inst.id)
+                    ni += 1
+                except Exception:  # noqa: BLE001 - one bad piece never stops the rest
+                    continue
+            for raw in data.get("joints") or []:
+                try:
+                    self.add_joint(project_id, Joint.model_validate(
+                        {k: v for k, v in raw.items() if not k.startswith("_")}), ord=raw.get("_ord"))
+                    nj += 1
+                except Exception:  # noqa: BLE001 - its other end is gone now
+                    continue
+            for iid in marked:              # after the joints (a joint clears its b side's mark)
+                self.mark_auto(project_id, iid)
+        return ni, nj
+
     # ---- joint mutations
     def add_joint(self, project_id: str, joint: Joint, ord: int | None = None) -> Joint:
         known = {i.id for i in self.get(project_id).instances}

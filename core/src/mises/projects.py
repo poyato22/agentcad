@@ -658,7 +658,6 @@ def delete_part(store: Store, home: Path, part_id: str, *, assembly: Any = None,
     if blockers:
         raise PartBusy(part_id, blockers)
     used: list = []
-    joints: list = []
     if assembly is not None and row.project_id:
         try:
             asm = assembly.get(row.project_id)
@@ -668,9 +667,6 @@ def delete_part(store: Store, home: Path, part_id: str, *, assembly: Any = None,
         if used and not cascade:
             raise _bad(f"{part_id} is in the assembly ({', '.join(i.name for i in used[:3])})",
                        hint="remove it from the assembly first")
-        ids = {i.id for i in used}
-        joints = [j for j in (asm.joints if asm else [])
-                  if j.a.instance_id in ids or j.b.instance_id in ids]
     # another build's assembly may place this part too (a "*"-scoped run can): the same
     # guard as Empty Trash, so that build never loses a placed part
     if assembly is not None and part_id in assembly.part_refs_outside(row.project_id or ""):
@@ -691,14 +687,8 @@ def delete_part(store: Store, home: Path, part_id: str, *, assembly: Any = None,
         for level in (Path(home) / "trash", trash, dest.parent):
             safe_io.ensure_dir(level)
         os.rename(real, safe_io.real_dir(dest.parent) / dest.name)
-    # where each removed piece sat, and which the core had placed itself (Undo puts both back)
-    orders = assembly.orders(row.project_id) if used else {"instances": {}, "joints": {}}
-    auto = assembly.auto_ids(row.project_id) if used else set()
-    for inst in used:                      # D29: the cascade, once the files are in the trash
-        try:
-            assembly.delete_instance(row.project_id, inst.id)
-        except KeyError:
-            pass
+    # D29: the cascade, once the files are in the trash; what Undo needs comes back with it
+    taken = assembly.take_out(row.project_id, [part_id]) if used else {"instances": [], "joints": []}
     children = [c.id for c in store.list_part_rows(row.project_id) if c.parent_id == part_id]
     for child in children:
         store.update_part(child, parent_id=row.parent_id)
@@ -707,13 +697,10 @@ def delete_part(store: Store, home: Path, part_id: str, *, assembly: Any = None,
     safe_io.ensure_dir(trash)
     safe_io.write_text(trash, f"{stamp}.json", json.dumps({
         "part": row.model_dump(mode="json"), "children": children,
-        "instances": [{**i.model_dump(mode="json"), "_ord": orders["instances"].get(i.id),
-                       "_auto": i.id in auto} for i in used],
-        "joints": [{**j.model_dump(mode="json"), "_ord": orders["joints"].get(j.id)} for j in joints],
-        "had_files": moved_files}))
+        "instances": taken["instances"], "joints": taken["joints"], "had_files": moved_files}))
     store.delete_part_row(part_id)
     return {"deleted": part_id, "removed_instances": [i.id for i in used],
-            "removed_joints": [j.id for j in joints], "undo": stamp}
+            "removed_joints": [j["id"] for j in taken["joints"]], "undo": stamp}
 
 
 def restore_part(store: Store, home: Path, part_id: str, undo: str, *,
@@ -721,7 +708,6 @@ def restore_part(store: Store, home: Path, part_id: str, undo: str, *,
     """Undo a delete_part (Plan 9 D29): its files come back from the trash, then its tree row
     (label, look, parent, children), then the assembly instances and joints the delete removed.
     Refused when the trash entry is gone or a part of that id exists again."""
-    from .assembly.model import Instance, Joint
     from .cad import safe_io
     m = _UNDO_RE.fullmatch(undo or "")
     if m is None or m.group(1) != part_id:
@@ -760,22 +746,7 @@ def restore_part(store: Store, home: Path, part_id: str, undo: str, *,
             store.update_part(child, parent_id=part_id)
     restored = 0
     if assembly is not None:
-        for raw in manifest.get("instances") or []:
-            try:
-                inst = Instance.model_validate({k: v for k, v in raw.items() if not k.startswith("_")})
-                assembly.add_instance(project, inst, ord=raw.get("_ord"))
-                if raw.get("_auto"):
-                    assembly.mark_auto(project, inst.id)
-                restored += 1
-            except Exception:  # noqa: BLE001 - an instance id taken again: skip that one
-                continue
-        for raw in manifest.get("joints") or []:
-            try:
-                assembly.add_joint(project, Joint.model_validate({k: v for k, v in raw.items()
-                                                                  if not k.startswith("_")}),
-                                   ord=raw.get("_ord"))
-            except Exception:  # noqa: BLE001 - its other end is gone now
-                continue
+        restored, _ = assembly.put_back(project, manifest)
     safe_io.unlink(trash, f"{undo}.json")
     return {**part_view(store, home, _part_or_404(store, part_id)),
             "restored_instances": restored}
