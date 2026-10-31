@@ -121,7 +121,7 @@ def optimize(p: Problem, o: Options = Options(),
             f"the keep regions alone are {keep_in.sum() / n_space:.0%} of the design space, "
             f"over the {o.volume_fraction:.0%} volume target")
     chain = chain_for(p, o)
-    levels = fe.max_levels(p.n, 3)
+    levels = fe.choose_levels(p.n, 3)
     mg = _solver(p, levels)
     E0, Emin = p.E, p.E * o.emin_rel
     x = np.zeros(ne)

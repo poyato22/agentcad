@@ -119,11 +119,27 @@ def prolong_1d(nc: int) -> sp.csr_matrix:
     return sp.csr_matrix((vals, (rows, cols)), shape=(nf + 1, nc + 1))
 
 
+MIN_COARSE_DOFS = 2000
+
+
 def max_levels(n: tuple[int, int, int], cap: int = 3) -> int:
     """The most levels (up to cap) every dimension can be halved into, keeping >= 2 elements."""
     lv = 1
     while lv < cap and all(d % (2 ** lv) == 0 and d // (2 ** lv) >= 2 for d in n):
         lv += 1
+    return lv
+
+
+def choose_levels(n: tuple[int, int, int], cap: int = 3) -> int:
+    """Multigrid depth: as deep as the grid divides, but not so deep that the directly solved
+    coarsest grid gets under MIN_COARSE_DOFS (a coarse grid much coarser than the members it
+    should correct makes CG crawl: 70+ iterations instead of 10-20)."""
+    lv = max_levels(n, cap)
+    while lv > 2:
+        s = 2 ** (lv - 1)
+        if 3 * np.prod([d // s + 1 for d in n]) >= MIN_COARSE_DOFS:
+            break
+        lv -= 1
     return lv
 
 
