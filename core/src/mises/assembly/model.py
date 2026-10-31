@@ -107,6 +107,9 @@ CREATE TABLE IF NOT EXISTS assembly_animations (
   PRIMARY KEY (project_id, id), UNIQUE (project_id, name));
 """
 
+#: saved animations kept per build (Plan 9 G-D)
+MAX_ANIMATIONS = 50
+
 _INSTANCE_FIELDS = {"part_id", "name", "transform", "fixed"}
 _JOINT_FIELDS = {"kind", "a", "b", "value", "limits"}
 
@@ -378,6 +381,11 @@ class AssemblyStore:
                 self._db.execute("INSERT INTO assembly_animations VALUES (?,?,?,?,?)",
                                  (project_id, aid, name, json.dumps(body),
                                   self._next_ord("assembly_animations", project_id)))
+                # a build keeps its newest MAX_ANIMATIONS; the oldest go
+                self._db.execute(
+                    "DELETE FROM assembly_animations WHERE project_id=? AND id NOT IN (SELECT id"
+                    " FROM assembly_animations WHERE project_id=? ORDER BY ord DESC LIMIT ?)",
+                    (project_id, project_id, MAX_ANIMATIONS))
         return {"id": aid, "name": name, **body}
 
     def get_animation(self, project_id: str, ref: str) -> dict:

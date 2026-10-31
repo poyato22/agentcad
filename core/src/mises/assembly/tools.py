@@ -4,6 +4,7 @@ emit ``assembly_changed``; the solve rejects joint loops before anything is writ
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -556,12 +557,19 @@ MAX_LOOPS = 10               # a looping animation plays at most this many times
 MAX_POSE_MATRICES = 120      # transforms returned to the model; beyond, step ends only
 
 
+#: a joint value an agent may send (deg or mm): finite, bounded, at most 3 components — it is
+#: stored and shown on cards, so NaN / inf / huge never reach strict JSON or the renderer
+MAX_JOINT_VALUE = 1e6
+_Val = Annotated[float, Field(allow_inf_nan=False, ge=-MAX_JOINT_VALUE, le=MAX_JOINT_VALUE)]
+JointVal = _Val | Annotated[list[_Val], Field(min_length=1, max_length=3)]
+
+
 class AnimStep(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
-    joint_id: str
-    from_: float | list[float] | None = Field(
+    joint_id: str = Field(..., min_length=1, max_length=64)
+    from_: JointVal | None = Field(
         default=None, alias="from", description="Default: the joint's current value.")
-    to: float | list[float]
+    to: JointVal
     duration_s: float = Field(default=2.0, gt=0, le=60)
 
 
@@ -569,8 +577,8 @@ class AnimateArgs(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     project_id: str | None = Field(default=None, description="Default: this run's build.")
     joint_id: str | None = None
-    from_: float | list[float] | None = Field(default=None, alias="from")
-    to: float | list[float] | None = None
+    from_: JointVal | None = Field(default=None, alias="from")
+    to: JointVal | None = None
     duration_s: float = Field(default=2.0, gt=0, le=60)
     sequence: list[AnimStep] | None = Field(default=None, max_length=12,
                                             description="Joints moved one after another.")

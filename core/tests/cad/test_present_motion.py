@@ -168,3 +168,50 @@ async def test_motion_kinds_are_view_stream_cards_in_the_thread(tmp_path):
     stored = [s.payload["agent_announce"] for s in store.steps(ctx.run_id)
               if "agent_announce" in s.payload]
     assert stored and stored[-1]["ref"]["view_spec"]["kind"] == "section_sweep"
+
+
+# ---- fix round 1: untrusted agent numbers never reach a card as NaN / inf / huge
+
+@pytest.mark.parametrize("sweep", [
+    '{"axis": "x", "from": -1e308, "to": 1e308}', '{"axis": "x", "from": Infinity}',
+    '{"axis": "x", "to": NaN}', '{"axis": "x", "from": 1e6}'])
+def test_a_sweep_end_must_be_finite_and_bounded(sweep):
+    with pytest.raises(ValueError):
+        views.PresentViewArgs.model_validate(json.loads(
+            '{"target": "pA", "kind": "section_sweep", "sweep": %s}' % sweep))
+
+
+@pytest.mark.parametrize("value", ["NaN", "Infinity", "-Infinity", "1e308", "[1, 2, 3, 4]",
+                                   "[NaN]"])
+def test_a_keyframe_value_must_be_finite_bounded_and_short(value):
+    with pytest.raises(ValueError):
+        views.PresentViewArgs.model_validate(json.loads(
+            '{"target": "pA", "kind": "animation", "animation": {"keyframes": '
+            '[{"joint_id": "j", "to": %s}]}}' % value))
+
+
+def test_more_than_twelve_keyframes_are_refused():
+    steps = [{"joint_id": "j", "to": i} for i in range(13)]
+    with pytest.raises(ValueError):
+        views.AnimationRef(keyframes=steps)
+    assert len(views.AnimationRef(keyframes=steps[:12]).keyframes) == 12
+
+
+async def test_sweep_ends_far_outside_the_model_are_clamped_to_it(tmp_path):
+    store, ctx, asm, joint = _hinge(tmp_path)
+    out = await views.present_view.handler(ctx, views.PresentViewArgs.model_validate({
+        "target": "pA", "kind": "section_sweep",
+        "sweep": {"axis": "x", "from": -99999, "to": 99999}}))
+    spec = out.data["view_spec"]
+    # the model spans -20..60: 5% of it plus 1 mm either side
+    assert spec["sweep"]["from"] == -25.0 and spec["sweep"]["to"] == 65.0
+    json.dumps(spec, allow_nan=False)                     # strict JSON, as the HTTP routes
+
+
+def test_saved_animations_are_capped_per_build(tmp_path):
+    from mises.assembly import model
+    asm = AssemblyStore(tmp_path / "a.db")
+    for i in range(model.MAX_ANIMATIONS + 3):
+        asm.save_animation("p", f"m{i}", {"steps": [], "loops": 1})
+    names = [a["name"] for a in asm.list_animations("p")]
+    assert len(names) == model.MAX_ANIMATIONS and names[0] == "m3" and names[-1] == "m52"

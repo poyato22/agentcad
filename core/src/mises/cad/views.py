@@ -1110,13 +1110,19 @@ class AnimationRef(BaseModel):
         return self
 
 
+#: a sweep end an agent may name (mm); the ends are then clamped to the assembly's extent
+MAX_SWEEP_MM = 1e5
+
+
 class SweepSpec(BaseModel):
     """Plan 9 G-D: a section plane normal to `axis` sweeping from `from` to `to` (mm, world
     coordinates of the assembly); either end omitted = the assembly's box on that side."""
     model_config = ConfigDict(populate_by_name=True)
     axis: Literal["x", "y", "z"]
-    from_: float | None = Field(default=None, alias="from")
-    to: float | None = None
+    from_: float | None = Field(default=None, alias="from", allow_inf_nan=False,
+                                ge=-MAX_SWEEP_MM, le=MAX_SWEEP_MM)
+    to: float | None = Field(default=None, allow_inf_nan=False, ge=-MAX_SWEEP_MM,
+                             le=MAX_SWEEP_MM)
     duration_s: float = Field(default=4.0, gt=0, le=30, description="One sweep's length.")
 
 
@@ -1204,6 +1210,10 @@ def _sweep_spec(ctx: ToolContext, placed: list[Placed], sweep: SweepSpec) -> dic
     ext = _world_extent(ctx, placed, _AXIS[sweep.axis])
     lo = sweep.from_ if sweep.from_ is not None else (ext[0] if ext else None)
     hi = sweep.to if sweep.to is not None else (ext[1] if ext else None)
+    if ext:            # ends far outside the model would spend the pass on all or nothing
+        pad = 0.05 * (ext[1] - ext[0]) + 1.0
+        lo, hi = (None if v is None else round(min(max(v, ext[0] - pad), ext[1] + pad), 4)
+                  for v in (lo, hi))
     return {"axis": sweep.axis, "from": None if lo is None else float(lo),
             "to": None if hi is None else float(hi), "duration_s": float(sweep.duration_s)}
 
