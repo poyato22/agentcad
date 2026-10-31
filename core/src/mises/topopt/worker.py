@@ -319,18 +319,38 @@ def run(job: Path, progress=None) -> dict:
     if len(T) == 0:
         raise TopoptError("the optimized density has no solid region")
     raw = geo.mesh_stats(V, T)
-    V = geo.taubin(V, T, FINAL_SMOOTH)
+    # one closed sheet per body; a cavity (an enclosed void, unprintable anyway) is filled, and
+    # specks under 0.1% of the volume are dropped before they reach the B-rep
+    comps = geo.components(V, T)
+    bodies = [c for c in comps if c[2] > 0]
+    cavities = len(comps) - len(bodies)
+    big = bodies[0][2] if bodies else 0.0
+    specks = [c for c in bodies if c[2] < 1e-3 * big]
+    bodies = [c for c in bodies if c[2] >= 1e-3 * big]
     target = int(spec.get("decimate_tris", 5000))
-    V, T = geo.decimate(V, T, target, max_error=0.25 * p.h)
-    dec = geo.mesh_stats(V, T)
-    if not dec["watertight"]:
-        raise TopoptError("the organic surface is not watertight after decimation")
+    total_tris = sum(len(c[1]) for c in bodies) or 1
+    solids, dec = [], {"tris": 0, "watertight": True, "volume_mm3": 0.0}
+    for Vc, Tc, _vol in bodies:
+        Vc = geo.taubin(Vc, Tc, FINAL_SMOOTH)
+        Vd, Td = geo.decimate(Vc, Tc, max(200, target * len(Tc) // total_tris),
+                              max_error=0.25 * p.h)
+        st = geo.mesh_stats(Vd, Td)
+        sol, valid = geo.mesh_to_solid(Vd, Td) if st["watertight"] else (None, False)
+        if not valid:      # the decimated sheet was refused: the smoothed one, undecimated
+            Vd, Td = Vc, Tc
+            st = geo.mesh_stats(Vd, Td)
+            sol, valid = geo.mesh_to_solid(Vd, Td)
+            if not valid:
+                raise TopoptError("the organic surface did not make a valid solid")
+        solids.append(Solid(sol))
+        dec = {"tris": dec["tris"] + st["tris"], "watertight": dec["watertight"] and st["watertight"],
+               "volume_mm3": dec["volume_mm3"] + st["volume_mm3"]}
+    if not solids:
+        raise TopoptError("the optimized density has no solid region")
     times["surface"] = time.perf_counter() - t
     t = time.perf_counter()
-    sol, valid = geo.mesh_to_solid(V, T)
-    if not valid:
-        raise TopoptError("the organic surface did not make a valid solid")
-    organic = Solid(sol)
+    from build123d import Compound
+    organic = solids[0] if len(solids) == 1 else Compound(solids)
     times["brep"] = time.perf_counter() - t
     t = time.perf_counter()
     part = geo.bool_op("common", organic, [space_solid(spec, shape)])
@@ -360,6 +380,7 @@ def run(job: Path, progress=None) -> dict:
         "vf_bw": res.vf_bw,
         "history": [{k: r[k] for k in ("it", "c", "vf", "ch", "cg")} for r in res.history],
         "mesh_raw": raw, "mesh": dec, "ambiguous_cells_filled": filled,
+        "cavities_filled": cavities, "specks_dropped": len(specks),
         "faces": len(part.faces()), "volume_mm3": float(part.volume),
         "space_volume_mm3": space_vol,
         "final_vf": float(part.volume) / space_vol if space_vol else None,

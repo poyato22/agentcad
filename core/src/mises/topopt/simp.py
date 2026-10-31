@@ -16,6 +16,7 @@ import numpy as np
 from . import fe, filters
 
 CG_FALLBACK_ITERS = 80     # a V-cycle this slow cannot see thin members: drop to 2 levels
+REFACTOR_EVERY = 3
 MIN_ITERS = 15
 
 
@@ -140,17 +141,27 @@ def optimize(p: Problem, o: Options = Options(),
     fallback_at = None
     converged = False
     ke = mg.fine.ke
+    cg_ref: int | None = None
+    cg_prev = 0
     for it in range(o.max_iter):
         Ee = Emin + xPhys ** o.penal * (E0 - Emin)
         ts = time.perf_counter()
-        mg.set_density(Ee)
+        # a 2-level cycle's coarse LU is the expensive part: refresh it every REFACTOR_EVERY
+        # iterations, or as soon as the stale one makes CG noticeably slower
+        refactor = (len(mg.levels) > 2 or it % REFACTOR_EVERY == 0
+                    or (cg_ref is not None and cg_prev > 1.5 * cg_ref))
+        mg.set_density(Ee, refactor=refactor)
         U, cg = _solve_all(mg, p, U, o.cg_tol)
+        if refactor:
+            cg_ref = cg
+        cg_prev = cg
         if cg >= CG_FALLBACK_ITERS and len(mg.levels) > 2:
             mg = _solver(p, 2)
             ke = mg.fine.ke
             mg.set_density(Ee)
             U, cg2 = _solve_all(mg, p, U, o.cg_tol)
             cg += cg2
+            cg_ref = cg_prev = cg2
             fallback_at = it
         tsolve = time.perf_counter() - ts
         c = 0.0

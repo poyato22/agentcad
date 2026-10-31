@@ -178,14 +178,18 @@ class MGCG:
     def fine(self) -> Level:
         return self.levels[0]
 
-    def set_density(self, Ee: np.ndarray) -> None:
-        """Assemble the fine operator for element moduli Ee and the Galerkin coarse ones."""
+    def set_density(self, Ee: np.ndarray, refactor: bool = True) -> None:
+        """Assemble the fine operator for element moduli Ee and the Galerkin coarse ones.
+        refactor=False keeps the previous coarsest-grid LU (a slightly stale but fixed, SPD
+        coarse solve: CG stays valid). The SuperLU factorization of a 2-level cycle's coarse
+        grid is most of an iteration's cost, and the density moves little between iterations."""
         self.A = [self.levels[0].assemble(Ee)]
         for lv in range(1, len(self.levels)):
             P = self.P[lv - 1]
             self.A.append((P.T @ self.A[lv - 1] @ P + sp.diags(self.fixed_c[lv - 1])).tocsr())
         self.dinv = [1.0 / A.diagonal() for A in self.A]
-        self.coarse = spla.splu(self.A[-1].tocsc())
+        if refactor or getattr(self, "coarse", None) is None:
+            self.coarse = spla.splu(self.A[-1].tocsc())
 
     def vcycle(self, lv: int, b: np.ndarray) -> np.ndarray:
         if lv == len(self.A) - 1:

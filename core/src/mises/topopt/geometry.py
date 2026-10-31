@@ -230,6 +230,24 @@ def mesh_stats(V: np.ndarray, T: np.ndarray) -> dict:
             "bad_edges": int((cnt != 2).sum()), "volume_mm3": vol, "area_mm2": area}
 
 
+def components(V: np.ndarray, T: np.ndarray) -> list[tuple[np.ndarray, np.ndarray, float]]:
+    """The closed sheets of a mesh: [(V, T, signed volume)], largest |volume| first. A positive
+    volume is a body (outward normals), a negative one a cavity inside a body."""
+    from scipy.sparse.csgraph import connected_components
+    if len(T) == 0:
+        return []
+    _, lab = connected_components(_adjacency(V, T), directed=False)
+    out = []
+    for c in np.unique(lab[T[:, 0]]):
+        Tc = T[lab[T[:, 0]] == c]
+        used = np.unique(Tc)
+        remap = -np.ones(len(V), np.int64)
+        remap[used] = np.arange(len(used))
+        Vc, Tc = V[used], remap[Tc]
+        out.append((Vc, Tc, mesh_stats(Vc, Tc)["volume_mm3"]))
+    return sorted(out, key=lambda x: -abs(x[2]))
+
+
 def nonmanifold_vertices(T: np.ndarray) -> int:
     """Vertices whose triangle fan is not one disk (their link is not a single cycle)."""
     link: dict[int, list[tuple[int, int]]] = {}

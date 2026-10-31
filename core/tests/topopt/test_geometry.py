@@ -101,3 +101,16 @@ def test_reimpose_cuts_exact_planes_and_bores():
     assert {round(f.center().Z, 6) for f in planes if abs(f.normal_at().Z) > 0.99} >= {0.0, 8.0}
     cyl = [f for f in part.faces() if f.geom_type == GeomType.CYLINDER]
     assert cyl and abs(sum(f.area for f in cyl) - 2 * np.pi * 2 * 8) < 0.5
+
+
+def test_components_tell_bodies_from_cavities():
+    n = (12, 12, 12)
+    x = np.zeros(n)
+    x[2:10, 2:10, 2:10] = 1.0
+    x[5:7, 5:7, 5:7] = 0.0                   # an enclosed void
+    flat = x.transpose(2, 1, 0).ravel()
+    V, T = g.surface_nets(g.nodal_field(flat, n, np.zeros_like(flat, bool)), 1.0, (-1, -1, -1))
+    comps = g.components(V, T)
+    assert len(comps) == 2
+    assert comps[0][2] > 0 > comps[1][2]
+    assert sum(len(c[1]) for c in comps) == len(T)
