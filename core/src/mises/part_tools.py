@@ -1,14 +1,14 @@
 """Plan 9 D29: agents delete parts with `part_delete`, the same delete the app's part menu does
 (projects.delete_part: files to the trash, children lifted, the part's assembly instances removed
-with it). A part the user edited by hand asks the user first (needs_approval), so an agent never
-quietly throws away the user's work; the result's `undo` lets the app restore it."""
+with it). Coordinator ruling (U-C fix round 1): an agent's delete ALWAYS asks the user first
+(needs_approval on every call), only reaches parts of the run's own build, and publishes
+`part_deleted` with its undo token so the app shows the same Undo toast as a delete from the tree."""
 from __future__ import annotations
 
 from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from . import edits
 from .events import Event
 from .tools.registry import ToolContext, ToolRegistry, tool
 from .types import ErrorCode, MisesError, SafetyClass, StepKind, ToolOutput
@@ -29,13 +29,9 @@ def _home(ctx: ToolContext) -> Path:
     return Path(home)
 
 
-def _user_edited(ctx: ToolContext, args: PartDeleteArgs) -> str | None:
-    try:
-        if edits.recent_user_edits(_home(ctx), part_id=args.part_id):
-            return f"delete {args.part_id}, which you edited yourself"
-    except MisesError:
-        return None
-    return None
+def _always(ctx: ToolContext, args: PartDeleteArgs) -> str | None:
+    """Every agent delete asks (the app's own ui calls go through DELETE /parts, not here)."""
+    return f"delete the part {args.part_id}"
 
 
 async def _preview(ctx: ToolContext, args: PartDeleteArgs) -> dict:
@@ -45,7 +41,7 @@ async def _preview(ctx: ToolContext, args: PartDeleteArgs) -> dict:
     if asm is not None and row is not None and row.project_id:
         n = sum(1 for i in asm.get(row.project_id).instances if i.part_id == args.part_id)
     return {"part_id": args.part_id, "instances": n,
-            "note": "Approving moves the part to the trash"
+            "note": "Approving moves the part to the trash (you can undo it)"
                     + (f" and removes its {n} instance(s) from the assembly." if n else ".")}
 
 
@@ -61,11 +57,17 @@ def _lineage(ctx: ToolContext) -> list[str]:
     return out
 
 
+def _own_build(ctx: ToolContext) -> str | None:
+    from .catalog.tools import run_project
+    return run_project(ctx)
+
+
 @tool("part_delete", safety=SafetyClass.LOCAL_MUTATE, scope_arg="part_id",
-      needs_approval=_user_edited, preview=_preview,
-      description="Delete a part of this build: its files go to the trash (the user can undo), "
-                  "its child parts move up a level, and (cascade, the default) its instances "
-                  "leave the assembly. A part the user edited asks the user first.")
+      needs_approval=_always, preview=_preview,
+      description="Delete a part of this build (the user approves every delete, and can undo "
+                  "it): its files go to the trash, its child parts move up a level, and "
+                  "(cascade, the default) its instances leave the assembly. Only parts of this "
+                  "run's own build.")
 async def part_delete(ctx: ToolContext, args: PartDeleteArgs) -> ToolOutput:
     from . import projects
     from .cad.tools import PART_ID_RE, _lock
@@ -74,6 +76,10 @@ async def part_delete(ctx: ToolContext, args: PartDeleteArgs) -> ToolOutput:
     row = ctx.store.get_part(args.part_id)
     if row is None:
         raise MisesError(ErrorCode.NOT_FOUND, f"no part {args.part_id!r}")
+    own = _own_build(ctx)
+    if own is not None and row.project_id != own:
+        raise MisesError(ErrorCode.OUT_OF_SCOPE, f"{args.part_id} is not in this run's build",
+                         hint="an agent deletes only parts of its own build")
 
     def run() -> dict:
         return projects.delete_part(ctx.store, home, args.part_id,
@@ -92,9 +98,11 @@ async def part_delete(ctx: ToolContext, args: PartDeleteArgs) -> ToolOutput:
     if events is not None:
         if out["removed_instances"] and row.project_id:
             events.publish(Event(type="assembly_changed", data={"project_id": row.project_id}))
-        events.publish(Event(type="part_changed", run_id=ctx.run_id, data={
-            "part_id": args.part_id, "version": row.version, "by": "agent", "run_id": ctx.run_id,
-            "summary": f"deleted {args.part_id}", "deleted": True}))
+        # the app's parts tree re-reads and offers Undo (the same toast as its own deletes)
+        events.publish(Event(type="part_deleted", run_id=ctx.run_id, data={
+            "part_id": args.part_id, "project_id": row.project_id, "label": projects.display_name(row),
+            "undo": out["undo"], "removed_instances": out["removed_instances"], "by": "agent",
+            "run_id": ctx.run_id}))
     n = len(out["removed_instances"])
     return ToolOutput(summary=f"deleted {args.part_id}"
                               + (f" and its {n} assembly instance(s)" if n else ""),

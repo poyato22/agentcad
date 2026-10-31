@@ -158,6 +158,9 @@ def test_cascade_delete_removes_the_instances_and_undo_puts_everything_back(clie
         "kind": "revolute", "a": {"instance_id": base["id"], "frame": frame},
         "b": {"instance_id": arm1["id"], "frame": frame}}, headers=AUTH)
     assert j.status_code == 201, j.text
+    add("base", "tail")                                         # after the arms in the list
+    rt.assembly_store.mark_auto(pid, arm2["id"])                 # the core placed this one
+    before = [i.id for i in rt.assembly_store.get(pid).instances]
     events = rt.events.subscribe()
     r = client.delete("/parts/arm?cascade=true", headers=AUTH)
     assert r.status_code == 200, r.text
@@ -165,7 +168,7 @@ def test_cascade_delete_removes_the_instances_and_undo_puts_everything_back(clie
     assert sorted(out["removed_instances"]) == sorted([arm1["id"], arm2["id"]])
     assert out["removed_joints"] == [j.json()["id"]]
     asm = rt.assembly_store.get(pid)
-    assert [i.part_id for i in asm.instances] == ["base"] and asm.joints == []
+    assert [i.part_id for i in asm.instances] == ["base", "base"] and asm.joints == []
     assert not (rt.home / "parts" / "arm").exists()
     types = []
     while not events.queue.empty():
@@ -180,11 +183,22 @@ def test_cascade_delete_removes_the_instances_and_undo_puts_everything_back(clie
     listed = {p["part_id"]: p["parent_id"] for p in client.get("/parts", headers=AUTH).json()}
     assert listed["pin"] == "arm"
     asm = rt.assembly_store.get(pid)
-    assert sorted(i.id for i in asm.instances) == sorted([base["id"], arm1["id"], arm2["id"]])
+    assert [i.id for i in asm.instances] == before                   # back where they were
+    assert rt.assembly_store.auto_ids(pid) == {arm2["id"]}           # and still the core's
     assert [jj.id for jj in asm.joints] == [j.json()["id"]]
     # one undo only; a bad token is refused
     assert client.post("/parts/arm/restore", json={"undo": out["undo"]}, headers=AUTH).status_code == 404
     assert client.post("/parts/arm/restore", json={"undo": "../x"}, headers=AUTH).status_code == 400
+
+
+def test_undo_is_refused_once_the_parts_files_left_the_trash(client, rt):
+    import shutil
+    _mk_part(rt, "arm")
+    undo = client.delete("/parts/arm", headers=AUTH).json()["undo"]
+    shutil.rmtree(rt.home / "trash" / "parts" / undo)        # the trash was emptied by hand
+    r = client.post("/parts/arm/restore", json={"undo": undo}, headers=AUTH)
+    assert r.status_code == 404 and "no longer in the trash" in r.json()["message"]
+    assert all(p["part_id"] != "arm" for p in client.get("/parts", headers=AUTH).json())
 
 
 def test_delete_refused_while_an_agent_may_be_editing_the_part(client, rt):

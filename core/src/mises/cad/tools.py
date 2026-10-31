@@ -524,7 +524,7 @@ async def mirror_part_create(ctx: ToolContext, args: CreateArgs) -> ToolOutput:
         note = _ops_note(kept, dropped)
         version = _finish_edit(ctx, args.part_id, d, f"{'rebuilt' if existed else 'created'} "
                                f"{args.part_id} from script{note}")
-        placed = _auto_place(ctx, args.part_id, d) if args.place and not existed else None
+        placed = await _auto_place(ctx, args.part_id, d) if args.place and not existed else None
     return ToolOutput(summary=_summary(args.part_id, res.metrics) + note
                       + (f"; placed in the assembly as {placed['instance']['name']}"
                          if placed else ""),
@@ -533,7 +533,7 @@ async def mirror_part_create(ctx: ToolContext, args: CreateArgs) -> ToolOutput:
                             **_inline(res.metrics)})
 
 
-def _auto_place(ctx: ToolContext, part_id: str, d: Path) -> dict | None:
+async def _auto_place(ctx: ToolContext, part_id: str, d: Path) -> dict | None:
     """Plan 9 D10: an agent's first build of a part puts it into its build's assembly
     (assembly/autoplace.py). The user's own builds (the app's ui run) are not placed, and a
     placement that fails never fails the build. {project_id, instance} or None."""
@@ -547,8 +547,9 @@ def _auto_place(ctx: ToolContext, part_id: str, d: Path) -> dict | None:
         row = store.get_part(part_id)
         if row is None or not row.project_id:
             return None
-        inst = auto_place(asm, _home(ctx, d) / "parts", row.project_id, part_id,
-                          name=display_name(row))
+        # off the event loop: the placement solves the whole assembly
+        inst = await asyncio.to_thread(auto_place, asm, _home(ctx, d) / "parts", row.project_id,
+                                       part_id, display_name(row))
         if inst is None:
             return None
         events = getattr(ctx, "events", None)

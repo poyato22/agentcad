@@ -5,7 +5,6 @@ import json
 import pytest
 
 import mises.runtime as runtime_mod
-from mises import edits
 from mises.assembly.model import Instance
 from mises.providers.base import Done, TextDelta
 from mises.providers.fake import FakeProvider
@@ -40,22 +39,63 @@ def test_registered_as_a_local_mutation():
     assert part_delete.safety == SafetyClass.LOCAL_MUTATE and part_delete.scope_arg == "part_id"
 
 
-async def test_an_agent_deletes_a_part_and_its_instances(rt):
+async def _approved(rt, run, args, approve=True):
+    """Call part_delete, wait for its card (every agent delete asks), answer it."""
+    task = asyncio.ensure_future(rt.gate.call(run, "part_delete", args, call_id="c1", workdir=rt.workdir(run)))
+    pending = []
+    for _ in range(300):
+        pending = rt.store.pending_approvals(run)
+        if pending:
+            break
+        await asyncio.sleep(0.01)
+    assert len(pending) == 1 and pending[0].action == "part_delete"
+    card = pending[0]
+    rt.approvals.decide(card.id, card.payload_hash, approve, decided_by="local-user")
+    return task, card
+
+
+async def test_every_agent_delete_asks_and_then_deletes_with_its_instances_and_undo(rt):
     lead = await _lead(rt)
     project = rt.store.get_run(lead).project_id
-    _mk(rt, "arm", project)
+    _mk(rt, "arm", project)                                   # an agent's own, untouched part: still asks
     rt.assembly_store.add_instance(project, Instance(part_id="arm", name="arm", fixed=True))
     events = rt.events.subscribe()
-    out = await rt.gate.call(lead, "part_delete", {"part_id": "arm"}, call_id="c1",
-                             workdir=rt.workdir(lead))
+    task, card = await _approved(rt, lead, {"part_id": "arm"})
+    assert card.deltas["instances"] == 1 and "delete the part arm" in card.deltas["approval_reason"]
+    out = await task
     assert out.ok, out.summary
     assert out.data["deleted"] == "arm" and len(out.data["removed_instances"]) == 1
     assert rt.store.get_part("arm") is None and rt.assembly_store.get(project).instances == []
-    types = []
+    got = []
     while not events.queue.empty():
-        types.append(events.queue.get_nowait().type)
-    assert "assembly_changed" in types and "part_changed" in types
-    assert rt.store.pending_approvals(lead) == []
+        got.append(events.queue.get_nowait())
+    assert "assembly_changed" in [e.type for e in got]
+    deleted = [e for e in got if e.type == "part_deleted"]
+    assert len(deleted) == 1 and deleted[0].data["undo"] == out.data["undo"] and deleted[0].data["project_id"] == project
+    # the undo restores it
+    from mises import projects
+    projects.restore_part(rt.store, rt.home, "arm", out.data["undo"], assembly=rt.assembly_store)
+    assert rt.store.get_part("arm") is not None and len(rt.assembly_store.get(project).instances) == 1
+
+
+async def test_a_rejected_delete_never_runs(rt):
+    lead = await _lead(rt)
+    project = rt.store.get_run(lead).project_id
+    _mk(rt, "arm", project)
+    task, _ = await _approved(rt, lead, {"part_id": "arm"}, approve=False)
+    with pytest.raises(MisesError):
+        await task
+    assert rt.store.get_part("arm") is not None
+
+
+async def test_another_builds_part_is_out_of_reach(rt):
+    lead = await _lead(rt)
+    other = rt.store.create_project("Other")
+    _mk(rt, "arm", other.id)
+    task, _ = await _approved(rt, lead, {"part_id": "arm"})
+    with pytest.raises(MisesError, match="not in this run's build"):
+        await task
+    assert rt.store.get_part("arm") is not None
 
 
 async def test_cascade_false_is_refused_while_the_assembly_uses_it(rt):
@@ -63,30 +103,7 @@ async def test_cascade_false_is_refused_while_the_assembly_uses_it(rt):
     project = rt.store.get_run(lead).project_id
     _mk(rt, "arm", project)
     rt.assembly_store.add_instance(project, Instance(part_id="arm", name="arm", fixed=True))
+    task, _ = await _approved(rt, lead, {"part_id": "arm", "cascade": False})
     with pytest.raises(MisesError, match="in the assembly"):
-        await rt.gate.call(lead, "part_delete", {"part_id": "arm", "cascade": False},
-                           call_id="c1", workdir=rt.workdir(lead))
-    assert rt.store.get_part("arm") is not None
-
-
-async def test_a_part_the_user_edited_needs_approval(rt):
-    lead = await _lead(rt)
-    project = rt.store.get_run(lead).project_id
-    _mk(rt, "arm", project)
-    edits.log_user_edit(rt.home, "arm", version=2, summary="set wall=3", run_id=None)
-    task = asyncio.ensure_future(rt.gate.call(lead, "part_delete", {"part_id": "arm"},
-                                              call_id="c1", workdir=rt.workdir(lead)))
-    pending = []
-    for _ in range(300):
-        pending = rt.store.pending_approvals(lead)
-        if pending:
-            break
-        await asyncio.sleep(0.01)
-    assert len(pending) == 1 and pending[0].action == "part_delete"
-    assert "you edited" in pending[0].deltas["approval_reason"]
-    assert pending[0].deltas["instances"] == 0
-    assert rt.store.get_part("arm") is not None              # nothing happens before the answer
-    rt.approvals.decide(pending[0].id, pending[0].payload_hash, False, decided_by="local-user")
-    with pytest.raises(MisesError):
         await task
     assert rt.store.get_part("arm") is not None

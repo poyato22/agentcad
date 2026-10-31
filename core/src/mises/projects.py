@@ -679,16 +679,21 @@ def delete_part(store: Store, home: Path, part_id: str, *, assembly: Any = None,
     root = _parts_root(home)
     stamp = f"{part_id}.{time.time_ns()}"
     trash = Path(home) / "trash" / "parts"
+    moved_files = False
     for src in (root / part_id, root / ".mises-meta" / part_id, root / THUMBS_DIR / part_id):
         real = _contained(root, src) if root.is_dir() else None
         if real is None or not os.path.isdir(real) or os.path.islink(src):
             continue
+        moved_files = moved_files or src.parent == root
         dest = trash / stamp if src.parent == root else trash / src.parent.name / stamp
         # each level made (or checked) top-down through safe_io: a link planted at home/trash
         # or below is refused, never followed
         for level in (Path(home) / "trash", trash, dest.parent):
             safe_io.ensure_dir(level)
         os.rename(real, safe_io.real_dir(dest.parent) / dest.name)
+    # where each removed piece sat, and which the core had placed itself (Undo puts both back)
+    orders = assembly.orders(row.project_id) if used else {"instances": {}, "joints": {}}
+    auto = assembly.auto_ids(row.project_id) if used else set()
     for inst in used:                      # D29: the cascade, once the files are in the trash
         try:
             assembly.delete_instance(row.project_id, inst.id)
@@ -702,8 +707,10 @@ def delete_part(store: Store, home: Path, part_id: str, *, assembly: Any = None,
     safe_io.ensure_dir(trash)
     safe_io.write_text(trash, f"{stamp}.json", json.dumps({
         "part": row.model_dump(mode="json"), "children": children,
-        "instances": [i.model_dump(mode="json") for i in used],
-        "joints": [j.model_dump(mode="json") for j in joints]}))
+        "instances": [{**i.model_dump(mode="json"), "_ord": orders["instances"].get(i.id),
+                       "_auto": i.id in auto} for i in used],
+        "joints": [{**j.model_dump(mode="json"), "_ord": orders["joints"].get(j.id)} for j in joints],
+        "had_files": moved_files}))
     store.delete_part_row(part_id)
     return {"deleted": part_id, "removed_instances": [i.id for i in used],
             "removed_joints": [j.id for j in joints], "undo": stamp}
@@ -729,6 +736,9 @@ def restore_part(store: Store, home: Path, part_id: str, undo: str, *,
                          hint="the trash was emptied")
     if store.get_part(part_id) is not None:
         raise _bad(f"a part {part_id} exists again", hint="rename or delete it first")
+    if manifest.get("had_files") and not os.path.isdir(trash / undo):
+        raise MisesError(ErrorCode.NOT_FOUND, f"the files of {part_id} are no longer in the trash",
+                         hint="the trash was emptied")
     root = _parts_root(home)
     for src, dest in ((trash / undo, root / part_id),
                       (trash / ".mises-meta" / undo, root / ".mises-meta" / part_id),
@@ -752,13 +762,18 @@ def restore_part(store: Store, home: Path, part_id: str, undo: str, *,
     if assembly is not None:
         for raw in manifest.get("instances") or []:
             try:
-                assembly.add_instance(project, Instance.model_validate(raw))
+                inst = Instance.model_validate({k: v for k, v in raw.items() if not k.startswith("_")})
+                assembly.add_instance(project, inst, ord=raw.get("_ord"))
+                if raw.get("_auto"):
+                    assembly.mark_auto(project, inst.id)
                 restored += 1
             except Exception:  # noqa: BLE001 - an instance id taken again: skip that one
                 continue
         for raw in manifest.get("joints") or []:
             try:
-                assembly.add_joint(project, Joint.model_validate(raw))
+                assembly.add_joint(project, Joint.model_validate({k: v for k, v in raw.items()
+                                                                  if not k.startswith("_")}),
+                                   ord=raw.get("_ord"))
             except Exception:  # noqa: BLE001 - its other end is gone now
                 continue
     safe_io.unlink(trash, f"{undo}.json")

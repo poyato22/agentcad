@@ -101,7 +101,15 @@ def _free_name(asm, base: str) -> str:
 def auto_place(assembly: AssemblyStore, parts_root: Path, project_id: str, part_id: str,
                name: str | None = None) -> Instance | None:
     """Add a placed instance of `part_id` to the build's assembly (see the module doc). None
-    when the assembly places that part already."""
+    when the assembly places that part already. Read, place and write happen under the store's
+    lock (a REST write from another thread can't slip in between); call it off the event loop
+    (the placement solves the assembly)."""
+    with assembly._lock:
+        return _place(assembly, parts_root, project_id, part_id, name)
+
+
+def _place(assembly: AssemblyStore, parts_root: Path, project_id: str, part_id: str,
+           name: str | None) -> Instance | None:
     asm = assembly.get(project_id)
     if any(i.part_id == part_id for i in asm.instances):
         return None

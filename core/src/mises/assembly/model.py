@@ -187,14 +187,25 @@ class AssemblyStore:
                      limits=json.loads(row["limits"]) if row["limits"] is not None else None)
 
     # ---- instance mutations
-    def add_instance(self, project_id: str, inst: Instance) -> Instance:
+    def add_instance(self, project_id: str, inst: Instance, ord: int | None = None) -> Instance:
+        """`ord`: the place in the list (an undo puts an instance back where it was)."""
         with self._lock:
             self._db.execute(
                 "INSERT INTO assembly_instances (project_id, id, part_id, name, transform, fixed,"
                 " ord) VALUES (?,?,?,?,?,?,?)",
                 (project_id, inst.id, inst.part_id, inst.name, json.dumps(inst.transform),
-                 int(inst.fixed), self._next_ord("assembly_instances", project_id)))
+                 int(inst.fixed),
+                 self._next_ord("assembly_instances", project_id) if ord is None else int(ord)))
         return inst
+
+    def orders(self, project_id: str) -> dict[str, dict[str, int]]:
+        """{"instances": {id: ord}, "joints": {id: ord}}: where each sits in its list."""
+        with self._lock:
+            ins = self._db.execute("SELECT id, ord FROM assembly_instances WHERE project_id=?",
+                                   (project_id,)).fetchall()
+            js = self._db.execute("SELECT id, ord FROM assembly_joints WHERE project_id=?",
+                                  (project_id,)).fetchall()
+        return {"instances": {r[0]: int(r[1]) for r in ins}, "joints": {r[0]: int(r[1]) for r in js}}
 
     def update_instance(self, project_id: str, iid: str, **fields) -> Instance:
         bad = set(fields) - _INSTANCE_FIELDS
@@ -252,7 +263,7 @@ class AssemblyStore:
         return {r[0] for r in rows}
 
     # ---- joint mutations
-    def add_joint(self, project_id: str, joint: Joint) -> Joint:
+    def add_joint(self, project_id: str, joint: Joint, ord: int | None = None) -> Joint:
         known = {i.id for i in self.get(project_id).instances}
         for ref in (joint.a, joint.b):
             if ref.instance_id not in known:
@@ -264,7 +275,7 @@ class AssemblyStore:
                 (project_id, joint.id, joint.kind, joint.a.model_dump_json(),
                  joint.b.model_dump_json(), json.dumps(joint.value),
                  json.dumps(joint.limits) if joint.limits is not None else None,
-                 self._next_ord("assembly_joints", project_id)))
+                 self._next_ord("assembly_joints", project_id) if ord is None else int(ord)))
             # the joined (b) side is placed where it goes: no longer the core's own placement
             # (a part only joined TO keeps it: assembly_add_part may still ground it)
             self._db.execute("DELETE FROM assembly_auto WHERE project_id=? AND id=?",

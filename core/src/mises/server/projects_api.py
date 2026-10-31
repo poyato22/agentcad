@@ -201,8 +201,12 @@ def build_projects_router(runtime: Runtime) -> APIRouter:
     @router.post("/parts/{part_id}/restore")
     async def restore_part(part_id: str, body: RestoreBody):
         """Undo of DELETE /parts/{id}: the files, the tree row and the assembly instances."""
-        out = _projects.restore_part(store, _home(), part_id, body.undo,
-                                     assembly=getattr(runtime, "assembly_store", None))
+        from ..cad.tools import PART_ID_RE, _lock as part_lock
+        if not PART_ID_RE.match(part_id):
+            raise MisesError(ErrorCode.INVALID_INPUT, f"bad part id: {part_id!r}")
+        async with part_lock(_home() / "parts" / part_id):   # as delete: never mid-build
+            out = _projects.restore_part(store, _home(), part_id, body.undo,
+                                         assembly=getattr(runtime, "assembly_store", None))
         if out["restored_instances"]:
             _assembly_changed(out.get("project_id"))
         return out

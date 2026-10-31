@@ -232,3 +232,28 @@ async def test_mcp_exposes_the_assembly_control_tools(rt):
         async with http, client:
             names = {t.name for t in (await client.list_tools()).tools}
     assert {"assembly_add_part", "assembly_move", "assembly_animate", "assembly_check"} <= names
+
+
+@pytest.mark.slow
+@pytest.mark.timeout(240)
+async def test_a_claude_code_runs_new_part_lands_in_the_assembly(rt):
+    """Plan 9 D10 on the Claude Code path: its mirror_part_create comes over MCP into the same
+    Gate, so the part is placed and both cards are announced."""
+    async with running(rt) as app:
+        pid = rt.active_project_id()
+        rid = rt.create_external_run("designer", provider="claude-code", model="sonnet", project_id=pid)
+        sub = rt.events.subscribe()
+        http, client = mcp_client(app, rid)
+        async with http, client:
+            res = await client.call_tool("mirror_part_create", {
+                "part_id": "cube_cc", "script": "VARS = {}\n\ndef build(v):\n    return Box(10, 10, 10)\n"})
+            body = json.loads(res.content[0].text)
+            assert body["ok"] is True, body
+            assert body["data"]["placed"]["project_id"] == pid
+        assert [i.part_id for i in rt.assembly_store.get(pid).instances] == ["cube_cc"]
+        kinds = []
+        while not sub.queue.empty():
+            ev = sub.queue.get_nowait()
+            if ev.type == "agent_announce":
+                kinds.append(ev.data["kind"])
+        assert kinds[:2] == ["part_created", "assembly_added"]
