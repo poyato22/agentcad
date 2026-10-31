@@ -234,12 +234,12 @@ def _ops_note(kept: bool, dropped: int) -> str:
     return " (kept its feature ops)" if kept else ""
 
 
-async def _build_guarded(d: Path, vars_: dict, snap: dict[str, bytes]):
+async def _build_guarded(d: Path, vars_: dict, snap: dict[str, bytes], timeout_s: float = 60):
     """run_build that puts the part dir back as it was on ANY exception or cancellation, and
     that fails (and restores) a build that left links or special files behind, so a
     half-applied or hostile edit can never be left behind."""
     try:
-        res = await run_build(d, vars_)
+        res = await run_build(d, vars_, timeout_s=timeout_s)
     except BaseException:
         try:
             _after_build(d)

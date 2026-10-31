@@ -35,6 +35,7 @@ from .imports.drawing_import import register_import_tools
 from .appearance import register_appearance_tools
 from .engineering import register_engineering_tools
 from .sim.tools import register_sim_tools
+from .topopt.tools import register_topopt_tools
 from .claude_code import detect as claude_detect
 from .claude_code.session import MCP_FILE as CLAUDE_MCP_FILE, SOURCE as CLAUDE_CODE
 from .claude_code.prompts import context_block
@@ -186,6 +187,7 @@ class Runtime:
         register_import_tools(self.registry)
         register_appearance_tools(self.registry)
         register_view_tools(self.registry)
+        register_topopt_tools(self.registry)  # Plan 9 D14: generative design
         self.orchestrator = Orchestrator(self)
         self.started_at = time.time()
         self.catalog = Catalog(self.store)
