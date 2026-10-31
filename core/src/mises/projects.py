@@ -213,6 +213,12 @@ def trash_blockers(store: Store, project_ids: list[str],
                 running.append(r.id)
             elif why is not None:
                 pending.append(r.id)
+    # a background study or generative run still writing a trashed build's files blocks the
+    # purge, so Empty Trash never recreates a ghost part dir under a reused id (FW-core I-1)
+    for pid in project_ids:
+        for rid in _job_blocker_runs(pid):
+            if rid not in running:
+                running.append(rid)
     if running:
         return "running", running + pending
     if pending:
@@ -239,9 +245,10 @@ def _rm_tree(parent: Path, name: str) -> None:
 
 
 def _purge_files(store: Store, home: Path, project_id: str, part_ids: list[str],
-                 study_ids: list[str], assembly: Any) -> list[str]:
+                 study_ids: list[str], assembly: Any, concept_ids: list[str] = ()) -> list[str]:
     """Delete what the purged build owned on disk: its parts' dirs and host-only meta (unless
-    another build still references the part from its assembly), and its studies' scratch."""
+    another build still references the part from its assembly), its studies' scratch, its concept
+    images, its generative-design records (and MB variant files) and its background-job files."""
     from . import edits
     root = _parts_root(home)
     shared: set[str] = set()
@@ -260,6 +267,36 @@ def _purge_files(store: Store, home: Path, project_id: str, part_ids: list[str],
     for sid in study_ids:
         if re.fullmatch(r"study_[0-9a-f]{1,32}", sid):
             _rm_tree(Path(home) / "studies", sid)
+    # the concept stage's sketch and pitch image dirs (<home>/concepts/<id>)
+    for cid in concept_ids:
+        if re.fullmatch(r"[A-Za-z0-9_-]{1,64}", cid or ""):
+            _rm_tree(Path(home) / "concepts", cid)
+    # the generative-design records and their STEP/GLB variant files (<home>/topopt/<id>)
+    from .topopt import jobs as _topopt
+    for rec in _topopt.list_records(home, project_id=project_id):
+        tid = rec.get("topopt_id") or rec.get("id")
+        if isinstance(tid, str) and _topopt.TOPOPT_ID_RE.fullmatch(tid):
+            _rm_tree(Path(home) / _topopt.ROOT, tid)
+    # the build's background-job records (<home>/jobs/<id>.json), by the run they ran on
+    jobs_dir = Path(home) / "jobs"
+    try:
+        names = os.listdir(jobs_dir)
+    except OSError:
+        names = []
+    for name in names:
+        if not name.endswith(".json") or os.path.islink(jobs_dir / name):
+            continue
+        rec = _safe_json(jobs_dir, name)
+        rid = rec.get("run_id") if isinstance(rec, dict) else None
+        try:
+            owned = bool(rid) and store.get_run(rid).project_id == project_id
+        except KeyError:
+            owned = False
+        if owned:
+            try:
+                os.unlink(jobs_dir / name)
+            except OSError:
+                pass
     # the build's reference images and drawing imports (the user's original files)
     for sub, record in (("references", "meta.json"), ("imports", "import.json")):
         for name in _owned_by(Path(home) / sub, record, project_id):
@@ -313,7 +350,8 @@ def _owned_by(parent: Path, record: str, project_id: str) -> list[str]:
 
 
 def empty_trash(store: Store, home: Path | None = None, *, assembly: Any = None,
-                busy: BusyFn | None = None, only: str | None = None) -> dict:
+                busy: BusyFn | None = None, only: str | None = None,
+                concepts: Any = None) -> dict:
     """Purge every trashed build and everything it owns: part-tree rows, spec, studies,
     build-scoped catalog items, assembly rows and (with `home`) its parts' files, meta and
     study scratch. Refused as a whole (TrashBusy -> 409) while any trashed build has a run
@@ -333,10 +371,19 @@ def empty_trash(store: Store, home: Path | None = None, *, assembly: Any = None,
     for pid in purged:
         part_ids = [r.id for r in store.list_part_rows(pid)]
         study_ids = [s.get("id") for s in store.list_studies(pid) if isinstance(s.get("id"), str)]
+        # D30 (FW-core M-5): the concept stage's images, and the generative-design records and
+        # their variant files, are the build's too — gather their ids before the rows go
+        concept_ids: list[str] = []
+        if concepts is not None:
+            concept_ids = [s.get("sketch_id") for s in concepts.sketches(pid)] + \
+                          [p.get("pitch_id") for p in concepts.pitches(pid)]
         if home is not None:
-            removed += _purge_files(store, home, pid, part_ids, study_ids, assembly)
+            removed += _purge_files(store, home, pid, part_ids, study_ids, assembly,
+                                    concept_ids=[c for c in concept_ids if isinstance(c, str)])
         if assembly is not None:
             assembly.purge(pid)
+        if concepts is not None:
+            concepts.delete_project(pid)        # concepts, sketches, pitches, the user's marks
         store.purge_project(pid)
     return {"purged": purged, "count": len(purged)}
 
@@ -424,9 +471,17 @@ def _part_disk(home: Path, part_id: str) -> dict | None:
             continue
         if stat.S_ISREG(st.st_mode):
             mtimes.append(st.st_mtime)
-    return {"vars": vars_ if isinstance(vars_, dict) else {},
-            "metrics": metrics if isinstance(metrics, dict) else None,
-            "mtime": float(max(mtimes)) if mtimes else real.stat().st_mtime}
+    out = {"vars": vars_ if isinstance(vars_, dict) else {},
+           "metrics": metrics if isinstance(metrics, dict) else None,
+           "mtime": float(max(mtimes)) if mtimes else real.stat().st_mtime}
+    if out["metrics"] is None:
+        # a recorded failed build (cad.tools._mark_build, host-only meta): mass says "build
+        # failed" only then; otherwise the part is "not built yet"
+        from . import edits
+        err = _safe_json(root / edits.META_DIR / part_id, "build_error.json")
+        if isinstance(err, dict) and isinstance(err.get("error"), str):
+            out["build_error"] = err["error"]
+    return out
 
 
 _NO_DISK = {"vars": {}, "metrics": None, "mtime": None}
@@ -716,10 +771,26 @@ class PartBusy(MisesError):
                 "message": self.message, "hint": self.hint, "retryable": False}
 
 
+def _job_blocker_runs(project_id: str | None, part_id: str | None = None) -> list[str]:
+    """The run ids of background jobs (B3 studies, design reviews, generative-design runs) still
+    running on this build or part. After B3 an agent's turn ends while its study keeps writing
+    the part's files, so a delete that ignores these recreates a ghost part dir and Undo cannot
+    get the geometry back (FW-core I-1). jobs._jobs is empty in tests that never start one."""
+    from . import jobs
+    out: list[str] = []
+    for j in jobs.running():
+        hit = (part_id is not None and j.part_id == part_id) or (
+            project_id is not None and j.build_id == project_id)
+        if hit and j.run_id:
+            out.append(j.run_id)
+    return out
+
+
 def part_blockers(store: Store, row: Part, busy: BusyFn | None = None) -> list[str]:
     """Runs of the part's build that are live (running, queued or busy, the build-delete rule)
     and may edit it: their edit scope is "*" or names the part. A run without a policy counts.
-    The app's own `ui` run blocks only while one of its calls is in flight."""
+    The app's own `ui` run blocks only while one of its calls is in flight. A live background job
+    (a study or generative run) on the build or the part blocks too (FW-core I-1)."""
     out: list[str] = []
     if not row.project_id:
         return out
@@ -736,6 +807,9 @@ def part_blockers(store: Store, row: Part, busy: BusyFn | None = None) -> list[s
             scope = {"*"}
         if "*" in scope or row.id in scope:
             out.append(r.id)
+    for rid in _job_blocker_runs(row.project_id, row.id):
+        if rid not in out:
+            out.append(rid)
     return out
 
 
@@ -825,6 +899,13 @@ def restore_part(store: Store, home: Path, part_id: str, undo: str, *,
         raise MisesError(ErrorCode.NOT_FOUND, f"the files of {part_id} are no longer in the trash",
                          hint="the trash was emptied")
     root = _parts_root(home)
+    # the part's files must not already exist: a background study that was still running when the
+    # part was deleted can recreate the dir, and silently skipping the move leaves the geometry in
+    # the trash (the part reads as "build failed"). Refuse instead of losing it (FW-core I-1).
+    if manifest.get("had_files") and os.path.lexists(root / part_id):
+        raise _bad(f"files for {part_id} are already there",
+                   hint="a background study may have recreated them; stop it and remove them, "
+                        "then undo again")
     for src, dest in ((trash / undo, root / part_id),
                       (trash / ".mises-meta" / undo, root / ".mises-meta" / part_id),
                       (trash / THUMBS_DIR / undo, root / THUMBS_DIR / part_id)):
@@ -931,7 +1012,14 @@ def delete_reason(store: Store, run: AgentRun,
             continue
         if _blocked(store, child, busy) is not None:
             children.append(cid)
-    own = _blocked(store, run, busy)
+    # a background job (B3 study / review / generative run) this run or a descendant started and
+    # is still running is live work the status column does not show (FW-core I-1)
+    from . import jobs
+    family = {run.id, *store.descendants(run.id)}
+    job_runs = [j.run_id for j in jobs.running() if j.run_id in family and j.run_id != run.id]
+    children.extend(r for r in job_runs if r not in children)
+    own = _blocked(store, run, busy) or ("running" if any(
+        j.run_id == run.id for j in jobs.running()) else None)
     if children:
         return "running", children
     if own is not None:

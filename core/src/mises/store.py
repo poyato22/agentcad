@@ -545,6 +545,12 @@ class Store:
             if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND"
                           " name='bom_items'").fetchone() is not None:        # U4c
                 db.execute("DELETE FROM bom_items WHERE project_id=?", (project_id,))
+            # G-A concept rows (the user's marks included): the tables exist once a ConceptStore
+            # has run, so guard each (FW-core M-5)
+            for t in ("concepts", "concept_sketches", "concept_pitches", "concept_feedback"):
+                if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+                              (t,)).fetchone() is not None:
+                    db.execute(f"DELETE FROM {t} WHERE project_id=?", (project_id,))
             db.execute("DELETE FROM projects WHERE id=?", (project_id,))
 
     def project_part_count(self, project_id: str) -> int:

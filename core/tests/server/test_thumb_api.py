@@ -115,21 +115,24 @@ def test_part_thumb_rejects_bad_id(client):
 
 
 def _fake_render(jobs: list):
-    """A stand-in for the sandboxed render job: records the meshes, answers the renderer's flat
-    background with a grey block in the middle (what the cover keys out and frames)."""
+    """A stand-in for the sandboxed render job: records the meshes and answers the hero view on a
+    transparent background (FW-core I-4) — an opaque grey block for the model, over a soft, semi-
+    transparent shadow, so the cover frames the content and keeps the shadow in alpha."""
     from PIL import Image
 
-    from mises.cad.render import _BG
     from mises.cad.render_job import RenderOut
 
     async def fake(_root, meshes, *, renders=(), **_kw):
         jobs.append([(m.name, m.transform, m.color) for m in meshes])
-        size = renders[0]["size"]
-        im = Image.new("RGB", (size, size), _BG)
-        im.paste((90, 90, 90), (size // 4, size // 3, 3 * size // 4, 2 * size // 3))
+        r = renders[0]
+        size = r["size"]
+        im = Image.new("RGBA", (size, size), (0, 0, 0, 0))               # transparent background
+        im.paste((90, 90, 90, 90), (size // 5, size // 2, 4 * size // 5, 2 * size // 3))  # shadow
+        im.paste((120, 120, 120, 255), (size // 4, size // 3, 3 * size // 4, 2 * size // 3))  # model
+        view = r["views"][0]
         buf = io.BytesIO()
         im.save(buf, "PNG")
-        return RenderOut(pngs={renders[0]["key"]: {"iso": buf.getvalue()}})
+        return RenderOut(pngs={r["key"]: {view: buf.getvalue()}})
     return fake
 
 

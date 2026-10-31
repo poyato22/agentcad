@@ -117,9 +117,29 @@ def test_unknown_children_are_named_in_the_sum_note(store, tmp_path, build):
     store.update_part("broken", parent_id="frame")
     rows = _rows(store, tmp_path, build)
     assert rows["broken"]["mass_g"] is None and rows["broken"]["mass_source"] == "unknown"
-    assert "build failed" in rows["broken"]["mass_note"]
+    # no build ever recorded as failed: it is simply not built yet (FW-core coordinator fix)
+    assert rows["broken"]["mass_note"] == "not built yet"
+    # a recorded failed build (host-only marker) says so
+    meta = tmp_path / "parts" / ".mises-meta" / "broken"
+    meta.mkdir(parents=True, exist_ok=True)
+    (meta / "build_error.json").write_text('{"error": "NameError: x"}')
+    rows = _rows(store, tmp_path, build)
+    assert rows["broken"]["mass_note"] == "build failed: NameError: x"
+    assert "broken" in rows["frame"]["mass_note"]
     assert rows["frame"]["mass_g"] == pytest.approx(1.24)
     assert "broken" in rows["frame"]["mass_note"] and "1 part" in rows["frame"]["mass_note"]
+
+
+def test_a_failed_build_is_marked_and_a_good_one_clears_it(store, tmp_path, build):
+    from mises.cad.tools import _mark_build
+    d = tmp_path / "parts" / "bracket"
+    d.mkdir(parents=True)
+    (d / "part.py").write_text("x")
+    store.register_part("bracket", build)
+    _mark_build(d, "SyntaxError: bad")                  # failed, no earlier good build
+    assert _rows(store, tmp_path, build)["bracket"]["mass_note"] == "build failed: SyntaxError: bad"
+    _mark_build(d, None)                                # a later build succeeded
+    assert _rows(store, tmp_path, build)["bracket"]["mass_note"] == "not built yet"
 
 
 def test_an_empty_group_and_unbuilt_parts_have_reasons(store, tmp_path, build):

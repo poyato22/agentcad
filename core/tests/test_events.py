@@ -1,6 +1,25 @@
 import asyncio
-from mises.events import ActivityTracker, Event, EventBus, tool_label
+from mises.events import ActivityTracker, Event, EventBus, stream_of, tool_label
 from mises.store import Store
+
+
+def test_concept_cards_ride_the_view_stream():
+    # M-3 (FW-core): G-A's concept sketch / pitch cards are pictures of the design -> View.
+    for kind in ("concept_sketch", "concept_pitch"):
+        card = {"run_id": "r", "kind": kind, "title": "t", "detail": "", "ref": {}}
+        assert stream_of("agent_announce", card) == "view"
+    # the tools themselves stream to View too
+    assert stream_of("agent_step", {"name": "concept_sketch"}) == "view"
+    assert stream_of("agent_step", {"name": "pitch_options"}) == "view"
+
+
+def test_explicit_stream_hint_wins():
+    # M-4 (FW-core): topopt_accepted / studies_proposed carry stream="sim" in data.
+    assert stream_of("topopt_accepted", {"stream": "sim"}) == "sim"
+    assert stream_of("studies_proposed", {"stream": "sim"}) == "sim"
+    assert Event(type="topopt_accepted", data={"stream": "sim"}).stream == "sim"
+    # a bogus hint is ignored (only real streams win)
+    assert stream_of("whatever", {"stream": "nonsense"}) == "text"
 
 
 def _drain(sub):

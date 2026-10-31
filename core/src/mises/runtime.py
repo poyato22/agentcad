@@ -471,7 +471,8 @@ class Runtime:
         The check and the purge run with no await between them. A purged build's ui run is
         finished and forgotten, so no later UI call lands in a build that no longer exists."""
         out = projects_mod.empty_trash(self.store, self.home, assembly=self.assembly_store,
-                                       busy=self._busy_for_trash, only=only)
+                                       busy=self._busy_for_trash, only=only,
+                                       concepts=self.concepts)
         for pid in out["purged"]:
             rid = self._ui_runs.pop(pid, None)
             if rid is not None and rid in self._external:
