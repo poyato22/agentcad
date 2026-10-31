@@ -24,8 +24,11 @@ import { activePage, modalOpen, setPage } from "../pages/router";
 import { closePart, openPartId } from "./focus";
 import { fmtVolume, KIND_LABEL } from "./format";
 import { createAssemblyScene, type AssemblyScene, type OverlayLabel } from "./scene";
-import { assemblyModes, immersive, latestAnimation } from "./state";
+import { ImmersiveBar } from "./ImmersiveBar";
+import { assemblyModes, immersive, latestAnimation, setPresenter } from "./state";
 import { checkIssues, ViewerPill } from "./ViewerPill";
+import { prefersReducedMotion } from "../viewer/modes/motion";
+import type { ModesState } from "../viewer/modes/state";
 import { activeBuildId, onBuildSwitch } from "../../state/builds";
 import { assemblyOf } from "../left/treeActions";
 import { setAnimationPlayer } from "../../state/assemblyAnimation";
@@ -39,6 +42,8 @@ onCoreEvent((ev) => assembly.onEvent(ev));
 // that build's assembly is on screen; Watch brings it on screen first; Stop puts the joints back.
 const onScreen = (pid: string | null) =>
   activePage.peek() === "design" && openPartId.peek() === null && assembly.data.peek() !== null
+  // a motion the user is scrubbing full window is never hijacked: the chip offers Watch instead
+  && immersive.peek()?.mode !== "animation"
   && (pid === null || assembly.projectId.peek() === pid);
 setAnimationPlayer({
   play: (spec, onEnd) => onScreen(spec.project_id) && assembly.play(spec.steps, { loops: spec.loops, onEnd }),
@@ -49,6 +54,13 @@ setAnimationPlayer({
     return assembly.play(spec.steps, { loops: spec.loops, onEnd });
   },
   stop: () => assembly.stopAnimate(),
+});
+// Plan 9 G-D: an agent's presented animation / section sweep card opens the build view full
+// window (the assembly, never a part on its own) and plays there on the instances' poses
+setPresenter((what) => {
+  setPage("design");
+  closePart();
+  immersive.value = what;
 });
 // Plan 7 I5: an "Added to the assembly" card shows that instance in the build view
 registerAnnounceJump("assembly_added", (a) => (a.ref.instance_id ? {
@@ -211,32 +223,49 @@ export function AssemblyView(): JSX.Element {
   // ---- Play: the full-window view
   const imm = immersive.value;
   const orbiter = useRef<Orbiter | null>(null);
-  const beforeImm = useRef(MODES_OFF);
+  /** The modes before the full window opened (they come back on close). */
+  const beforeImm = useRef<ModesState | null>(null);
   function play(): void {
     const spec = latestAnimation(ctl.projectId.peek());
-    beforeImm.current = assemblyModes.peek();
-    if (spec && ctl.play(spec.steps, { loops: spec.loops })) { immersive.value = "animation"; return; }
-    immersive.value = "tour";
-    animate.current = true;
-    assemblyModes.value = { ...assemblyModes.peek(), explode: 1 };
+    const usable = spec?.steps.some((s) => ctl.joint(s.joint_id) !== null);
+    immersive.value = spec && usable
+      ? { mode: "animation", steps: spec.steps, loop: spec.loops > 1, title: "The agent's animation", caption: "" }
+      : { mode: "tour" };
   }
+  // the full window opens (Play, or an agent's presented card): what it shows starts here
+  const loaded = data !== null;
+  useEffect(() => {
+    if (!imm) return;
+    if (beforeImm.current === null) beforeImm.current = assemblyModes.peek();
+    if (imm.mode === "tour") {
+      animate.current = true;
+      assemblyModes.value = { ...beforeImm.current, explode: 1 };
+    } else if (imm.mode === "animation") {
+      assemblyModes.value = { ...beforeImm.current, explode: 0, section: MODES_OFF.section };
+      if (loaded) ctl.openMotion(imm.steps, { loop: imm.loop, autoplay: !prefersReducedMotion() });
+    } else {
+      // the sweep bar drives the section; nothing else in the way of the cut
+      assemblyModes.value = { ...beforeImm.current, explode: 0 };
+    }
+  }, [imm, loaded]);
   function closeImmersive(): void {
     if (immersive.peek() === null) return;
-    const was = immersive.peek();
     immersive.value = null;
     orbiter.current?.stop();
-    if (was === "animation") ctl.stopAnimate();
+    ctl.closeMotion();
     animate.current = true;
-    assemblyModes.value = beforeImm.current;
+    assemblyModes.value = beforeImm.current ?? MODES_OFF;
+    beforeImm.current = null;
     requestAnimationFrame(() => sceneRef.current?.fit());
   }
+  const tour = imm?.mode === "tour";
   useEffect(() => {
-    if (imm !== "tour" || !modeHost) return;
+    if (!tour || !modeHost) return;
     const o = new Orbiter(modeHost);
     orbiter.current = o;
     o.start(1, 14);
     return () => { o.stop(); };
-  }, [imm, modeHost]);
+  }, [tour, modeHost]);
   // the canvas grew to the window (or back): frame the assembly in it
   useEffect(() => { requestAnimationFrame(() => sceneRef.current?.fit()); }, [imm]);
   useEffect(() => () => { if (immersive.peek()) closeImmersive(); }, []);
@@ -247,6 +276,13 @@ export function AssemblyView(): JSX.Element {
     const onKey = (e: KeyboardEvent) => {
       if (!isTrustedKey(e) || modalOpen() || e.defaultPrevented) return;
       if (e.key === "Escape" && immersive.peek() !== null) { e.preventDefault(); closeImmersive(); return; }
+      // Space plays / pauses a full-window motion (not on a focused button: that one's own click)
+      const m = ctl.motion.peek();
+      if (e.key === " " && m && immersive.peek()?.mode === "animation" && !typing(e.target) && !(e.target instanceof HTMLButtonElement)) {
+        e.preventDefault();
+        ctl.setMotion({ playing: !m.playing });
+        return;
+      }
       if (e.key === "Escape" && ctl.animating.peek() !== null) { e.preventDefault(); ctl.stopAnimate(); return; }
       if ((e.key === "f" || e.key === "F") && !e.metaKey && !e.ctrlKey && !e.altKey && !typing(e.target)) {
         e.preventDefault();
@@ -296,7 +332,7 @@ export function AssemblyView(): JSX.Element {
   const count = data?.instances.length ?? 0;
 
   return (
-    <div class="asm" data-testid="assembly-view" data-immersive={imm ?? undefined}>
+    <div class="asm" data-testid="assembly-view" data-immersive={imm?.mode ?? undefined}>
       <div class="vp asm-sheet" ref={hostRef}>
         <canvas ref={canvasRef} class="vp-canvas" data-testid="assembly-canvas"
           data-instances={count} data-arriving={ctl.arriving.value ? "on" : "off"}
@@ -321,13 +357,7 @@ export function AssemblyView(): JSX.Element {
           </div>
         )}
         {imm ? (
-          <div class="asm-imm-bar" data-testid="assembly-immersive" role="dialog" aria-label="Assembly, full window">
-            <span class="asm-imm-title">{imm === "animation" ? "The agent's animation" : "Exploded tour"}</span>
-            {imm === "animation" && (
-              <button type="button" class="pill-btn" onClick={() => { const s = latestAnimation(ctl.projectId.peek()); if (s) ctl.play(s.steps, { loops: s.loops }); }}>Replay</button>
-            )}
-            <button type="button" class="pill-btn" data-testid="assembly-immersive-close" onClick={closeImmersive} title="Close (Esc)">Close</button>
-          </div>
+          <ImmersiveBar imm={imm} ctl={ctl} host={modeHost} onClose={closeImmersive} />
         ) : (
           <ViewerPill host={modeHost} modesCtl={modesCtl} modes={assemblyModes.value} onModes={(m) => { assemblyModes.value = m; }} animate={animate}
             issues={issues} onPlay={play} canPlay={count > 0} />

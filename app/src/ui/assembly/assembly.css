@@ -7,7 +7,7 @@
 .asm { position: relative; height: 100%; min-height: 0; }
 .asm-sheet { min-width: 0; height: 100%; }
 
-.asm-float, .asm-pill, .asm-caption, .asm-error, .asm-imm-bar {
+.asm-float, .asm-pill, .asm-caption, .asm-error, .asm-imm-bar, .asm-imm-head {
   background: var(--surface);
   -webkit-backdrop-filter: blur(var(--surface-blur)); backdrop-filter: blur(var(--surface-blur));
   border: 1px solid var(--line2); border-radius: var(--r-surface);
@@ -78,11 +78,28 @@
 /* ---- Play: the assembly fills the window (above the shell), a bar to close it */
 .asm[data-immersive] { position: fixed; inset: 0; z-index: 60; background: var(--vp); }
 .asm[data-immersive] .asm-sheet { height: 100vh; }
-.asm-imm-bar {
-  position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 6;
-  display: flex; align-items: center; gap: 4px; padding: 4px 4px 4px 14px;
+/* the full window's chrome: a title (and the agent's caption) top-centre, one bar bottom-centre;
+   the layer itself lets the drag reach the model (orbit while it plays) */
+.asm-imm { position: absolute; inset: 0; z-index: 6; pointer-events: none; }
+.asm-imm-head {
+  position: absolute; left: 50%; top: 18px; transform: translateX(-50%); max-width: min(720px, calc(100% - 32px));
+  display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; padding: 7px 14px;
 }
-.asm-imm-title { font-weight: 600; margin-right: 8px; }
+.asm-imm-title { font-size: 14px; font-weight: 600; }
+.asm-imm-caption { font-size: 12.5px; color: var(--dim); }
+.asm-imm-bar {
+  position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); pointer-events: auto;
+  display: flex; align-items: center; gap: 4px; padding: 4px; max-width: calc(100% - 32px); white-space: nowrap;
+}
+.asm-imm-note { padding: 0 8px 0 10px; color: var(--dim); }
+.imm-play { width: 32px; justify-content: center; padding: 0; color: var(--ink); }
+.imm-time { min-width: 34px; font-size: 11px; color: var(--ink); text-align: right; }
+.imm-time.dim { color: var(--dim); text-align: left; }
+.imm-mm { min-width: 64px; }
+.imm-scrub { width: clamp(120px, 28vw, 380px); accent-color: var(--blue); }
+.imm-scrub:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; border-radius: 4px; }
+.imm-axis { display: inline-grid; place-items: center; margin-left: 4px; cursor: default; color: var(--ink); background: var(--raised, var(--paper2)); }
+.imm-speed { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
 
 /* the view modes' section handle is drawn by ui/viewer/modes (modes.css) */
 @media (prefers-reduced-motion: reduce) {

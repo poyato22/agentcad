@@ -10,9 +10,10 @@ import { LiveView, type RendererFactory } from "../../../viewer/modes/LiveView";
 import { prefersReducedMotion } from "../../../viewer/modes/motion";
 import type { ModeHost } from "../../../viewer/scene";
 import { useModesController } from "../../../viewer/modes/ViewModes";
-import { modesForSpec, partsForSpec, VIEW_KIND_TEXT } from "../../../viewer/modes/viewSpec";
+import { isMotionKind, modesForSpec, partsForSpec, VIEW_KIND_TEXT } from "../../../viewer/modes/viewSpec";
 import { partLabel } from "../../../../lib/names";
 import type { PresentedView } from "./announce";
+import { MotionCard } from "./MotionCard";
 import { useKeyedImageUrl } from "./images";
 import { liveCard, openViewImmersive, viewImmersive } from "./viewState";
 import "./critique.css";
@@ -39,7 +40,15 @@ export function SpecStage({ view, playing, onSnapshot, deps, class: cls }: { vie
   );
 }
 
+/** A presented view's card: a live stage, or (Plan 9 G-D) an animation / section sweep that plays
+ *  on the build view's assembly. */
 export function ViewCard({ view, group, deps }: { view: PresentedView; group: readonly PresentedView[]; deps?: ViewCardDeps }): JSX.Element {
+  if (isMotionKind(view.spec.kind)) return <MotionCard view={view} />;
+  // ⌘[ / ⌘] in the full-window view steps through the reply's live views only
+  return <LiveViewCard view={view} group={group.filter((v) => !isMotionKind(v.spec.kind))} deps={deps} />;
+}
+
+function LiveViewCard({ view, group, deps }: { view: PresentedView; group: readonly PresentedView[]; deps?: ViewCardDeps }): JSX.Element {
   // the newest card takes the live context when it appears
   useEffect(() => {
     liveCard.value = view.key;

@@ -64,6 +64,12 @@ function interp(a: Mat4, b: Mat4, t: number): Mat4 {
 
 const ease = (t: number) => 0.5 - 0.5 * Math.cos(Math.PI * Math.min(1, Math.max(0, t)));
 
+/** One joint step of a motion: from → to over duration_s. */
+export interface MotionStep { joint_id: string; from: JointValue; to: JointValue; duration_s: number }
+
+/** A presented animation being shown (G-D): `t` seconds into a pass of `duration`. */
+export interface MotionState { t: number; duration: number; playing: boolean; speed: number; loop: boolean }
+
 export class AssemblyController {
   readonly projectId: Signal<string | null> = signal(null);
   readonly data: Signal<Assembly | null> = signal(null);
@@ -297,17 +303,10 @@ export class AssemblyController {
    * naming a joint this assembly doesn't have are skipped; false when none is left. A new play
    * replaces the one running (never toggles it off).
    */
-  play(steps: readonly { joint_id: string; from: JointValue; to: JointValue; duration_s: number }[],
-    opts: { loops?: number; onEnd?: () => void } = {}): boolean {
-    const usable = steps.filter((s) => this.joint(s.joint_id) !== null);
-    if (usable.length === 0) return false;
-    this.stopAnimate();
+  play(steps: readonly MotionStep[], opts: { loops?: number; onEnd?: () => void } = {}): boolean {
+    const usable = this.beginMotion(steps);
+    if (!usable) return false;
     const loops = Math.max(1, Math.floor(opts.loops ?? 1));
-    const restore = new Map<string, JointValue>();
-    for (const s of usable) {
-      if (!restore.has(s.joint_id)) restore.set(s.joint_id, this.values.peek()[s.joint_id] ?? (this.joint(s.joint_id) as Joint).value);
-    }
-    this.playRestore = restore;
     this.playEnd = opts.onEnd ?? null;
     const durs = usable.map((s) => Math.max(0.05, s.duration_s) * 1000);
     const cycle = durs.reduce((a, b) => a + b, 0);
@@ -316,28 +315,121 @@ export class AssemblyController {
     const frame = () => {
       const el = this.clock.now() - t0;
       if (el >= cycle * loops) { this.finishPlay(); return; }
-      let u = el % cycle;
-      let i = 0;
-      while (i < usable.length - 1 && u >= durs[i]) { u -= durs[i]; i++; }
-      // this cycle's pose: steps before i at their end, step i on its way, later ones at their start
-      const pose = new Map<string, JointValue>();
-      usable.forEach((s, k) => {
-        const j = this.joint(s.joint_id) as Joint;
-        if (k < i) pose.set(s.joint_id, clampJoint(s.to, j.limits));
-        else if (k === i) pose.set(s.joint_id, clampJoint(lerpValue(s.from, s.to, ease(Math.min(1, u / durs[i]))), j.limits));
-        else if (!pose.has(s.joint_id)) pose.set(s.joint_id, clampJoint(s.from, j.limits));
-      });
-      const next = { ...this.values.peek() };
-      for (const [id, v] of pose) { this.moving.set(id, v); next[id] = v; }
-      batch(() => {
-        if (this.animating.peek() !== usable[i].joint_id) this.animating.value = usable[i].joint_id;
-        this.values.value = next;
-      });
-      this.predict();
+      this.showMotionAt(usable, durs, el % cycle);
       this.cancelSweep = this.clock.frame(frame);
     };
     frame();
     return true;
+  }
+
+  /** The joints `steps` touch and the value each goes back to; the steps this assembly can play. */
+  private beginMotion(steps: readonly MotionStep[]): MotionStep[] | null {
+    const usable = steps.filter((s) => this.joint(s.joint_id) !== null);
+    if (usable.length === 0) return null;
+    this.stopAnimate();
+    const restore = new Map<string, JointValue>();
+    for (const s of usable) {
+      if (!restore.has(s.joint_id)) restore.set(s.joint_id, this.values.peek()[s.joint_id] ?? (this.joint(s.joint_id) as Joint).value);
+    }
+    this.playRestore = restore;
+    return usable;
+  }
+
+  /** The pose `u` ms into one pass of `steps`: steps before the current one at their end, the
+   *  current one on its way (eased), later ones at their start. */
+  private showMotionAt(usable: readonly MotionStep[], durs: readonly number[], u: number): void {
+    let i = 0;
+    while (i < usable.length - 1 && u >= durs[i]) { u -= durs[i]; i++; }
+    const pose = new Map<string, JointValue>();
+    usable.forEach((s, k) => {
+      const j = this.joint(s.joint_id) as Joint;
+      if (k < i) pose.set(s.joint_id, clampJoint(s.to, j.limits));
+      else if (k === i) pose.set(s.joint_id, clampJoint(lerpValue(s.from, s.to, ease(Math.min(1, u / durs[i]))), j.limits));
+      else if (!pose.has(s.joint_id)) pose.set(s.joint_id, clampJoint(s.from, j.limits));
+    });
+    const next = { ...this.values.peek() };
+    for (const [id, v] of pose) { this.moving.set(id, v); next[id] = v; }
+    batch(() => {
+      if (this.animating.peek() !== usable[i].joint_id) this.animating.value = usable[i].joint_id;
+      this.values.value = next;
+    });
+    this.predict();
+  }
+
+  // ---- a presented animation (Plan 9 G-D): full window, scrubbable
+
+  /** The presented animation on screen: where it is (s), whether it plays, its speed and loop. */
+  readonly motion: Signal<MotionState | null> = signal(null);
+  private motionSteps: MotionStep[] = [];
+  private motionDurs: number[] = [];
+  private motionLast = 0;
+
+  /**
+   * Show `steps` as a scrubbable motion from its start: it plays at once (`autoplay`, default)
+   * at 1x, wrapping when `loop`, else holding its end. Nothing is written; closeMotion (or Esc,
+   * or an agent's live play) puts every joint back. False when no step names a joint here.
+   */
+  openMotion(steps: readonly MotionStep[], opts: { loop?: boolean; autoplay?: boolean } = {}): boolean {
+    const usable = this.beginMotion(steps);
+    if (!usable) return false;
+    this.motionSteps = usable;
+    this.motionDurs = usable.map((s) => Math.max(0.05, s.duration_s) * 1000);
+    const duration = this.motionDurs.reduce((a, b) => a + b, 0) / 1000;
+    this.animating.value = usable[0].joint_id;
+    this.motion.value = { t: 0, duration, playing: opts.autoplay ?? true, speed: 1, loop: opts.loop ?? false };
+    this.showMotionAt(usable, this.motionDurs, 0);
+    if (this.motion.peek()?.playing) this.runMotion();
+    return true;
+  }
+
+  /** Play / pause, speed, loop. Playing from the end starts over. */
+  setMotion(patch: Partial<Pick<MotionState, "playing" | "speed" | "loop">>): void {
+    const m = this.motion.peek();
+    if (!m) return;
+    const next = { ...m, ...patch, speed: Math.min(4, Math.max(0.1, patch.speed ?? m.speed)) };
+    if (patch.playing && !m.playing && m.t >= m.duration) next.t = 0;
+    this.motion.value = next;
+    if (next.t !== m.t) this.showMotionAt(this.motionSteps, this.motionDurs, next.t * 1000);
+    if (next.playing && !m.playing) this.runMotion();
+    else if (!next.playing) { this.cancelSweep?.(); this.cancelSweep = null; }
+  }
+
+  /** Scrub: show the motion `t` seconds in (clamped), paused there. */
+  seekMotion(t: number): void {
+    const m = this.motion.peek();
+    if (!m) return;
+    this.cancelSweep?.();
+    this.cancelSweep = null;
+    const at = Math.min(m.duration, Math.max(0, Number.isFinite(t) ? t : 0));
+    this.motion.value = { ...m, t: at, playing: false };
+    this.showMotionAt(this.motionSteps, this.motionDurs, at * 1000);
+  }
+
+  /** Close the motion: every joint goes back. */
+  closeMotion(): void {
+    if (this.motion.peek() === null) return;
+    this.stopAnimate();
+  }
+
+  private runMotion(): void {
+    this.cancelSweep?.();
+    this.motionLast = this.clock.now();
+    const frame = () => {
+      const m = this.motion.peek();
+      if (!m || !m.playing) { this.cancelSweep = null; return; }
+      const now = this.clock.now();
+      let t = m.t + ((now - this.motionLast) / 1000) * m.speed;
+      this.motionLast = now;
+      let playing = true;
+      if (t >= m.duration) {
+        if (m.loop && m.duration > 0) t %= m.duration;
+        else { t = m.duration; playing = false; }
+      }
+      this.motion.value = { ...m, t, playing };
+      this.showMotionAt(this.motionSteps, this.motionDurs, t * 1000);
+      this.cancelSweep = playing ? this.clock.frame(frame) : null;
+    };
+    this.cancelSweep = this.clock.frame(frame);
   }
 
   private finishPlay(): void {
@@ -353,6 +445,7 @@ export class AssemblyController {
     const pr = this.playRestore;
     this.playRestore = null;
     this.playEnd = null;
+    this.motion.value = null;
     if (this.animating.peek() === null) return;
     this.animating.value = null;
     if (pr) {
