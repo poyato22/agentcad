@@ -1,7 +1,7 @@
 // The agent manager slide-over (every page). By default it is one view: every build's lead and
 // sub-agents (R10). "Advanced" (remembered) adds two tabs: Runs (every run as the dense
 // orchestrator → worker tree) and Definitions (custom agents). Opened by the activity pill, the
-// run switcher's "Manage" and ⇧⌘A; Esc or the close button closes it and focus returns.
+// Home toolbar and ⇧⌘A; Esc or the close button closes it and focus returns.
 import type { JSX } from "preact";
 import { useEffect, useRef } from "preact/hooks";
 import { AgentsPanel } from "./AgentsPanel";
