@@ -51,8 +51,11 @@ test("message_routes_to_at_target", async ({ page, fake }) => {
 
 test("still_working_run_shows_core_hint", async ({ page }) => {
   await page.goto("/");
+  // M9 (flaky under load): send only once the runs are in, so @designer names the running run
+  await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
   const cmd = page.getByLabel("Command line");
   await cmd.fill("@designer hello");
+  await expect(page.getByTestId("target-chip")).toContainText("designer");
   await cmd.press("Enter");
   await expect(page.getByRole("alert")).toContainText("run is still working");
 });
