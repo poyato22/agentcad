@@ -100,6 +100,8 @@ CREATE TABLE IF NOT EXISTS assembly_instances (
 CREATE TABLE IF NOT EXISTS assembly_joints (
   project_id TEXT, id TEXT, kind TEXT, a TEXT, b TEXT, value TEXT, limits TEXT, ord INTEGER,
   PRIMARY KEY (project_id, id));
+CREATE TABLE IF NOT EXISTS assembly_auto (
+  project_id TEXT, id TEXT, PRIMARY KEY (project_id, id));
 """
 
 _INSTANCE_FIELDS = {"part_id", "name", "transform", "fixed"}
@@ -129,6 +131,7 @@ class AssemblyStore:
                 self._db.execute("DELETE FROM assembly_joints WHERE project_id=?", (project_id,))
                 self._db.execute("DELETE FROM assembly_instances WHERE project_id=?",
                                  (project_id,))
+                self._db.execute("DELETE FROM assembly_auto WHERE project_id=?", (project_id,))
                 self._db.execute("COMMIT")
             except BaseException:
                 self._db.execute("ROLLBACK")
@@ -184,14 +187,25 @@ class AssemblyStore:
                      limits=json.loads(row["limits"]) if row["limits"] is not None else None)
 
     # ---- instance mutations
-    def add_instance(self, project_id: str, inst: Instance) -> Instance:
+    def add_instance(self, project_id: str, inst: Instance, ord: int | None = None) -> Instance:
+        """`ord`: the place in the list (an undo puts an instance back where it was)."""
         with self._lock:
             self._db.execute(
                 "INSERT INTO assembly_instances (project_id, id, part_id, name, transform, fixed,"
                 " ord) VALUES (?,?,?,?,?,?,?)",
                 (project_id, inst.id, inst.part_id, inst.name, json.dumps(inst.transform),
-                 int(inst.fixed), self._next_ord("assembly_instances", project_id)))
+                 int(inst.fixed),
+                 self._next_ord("assembly_instances", project_id) if ord is None else int(ord)))
         return inst
+
+    def orders(self, project_id: str) -> dict[str, dict[str, int]]:
+        """{"instances": {id: ord}, "joints": {id: ord}}: where each sits in its list."""
+        with self._lock:
+            ins = self._db.execute("SELECT id, ord FROM assembly_instances WHERE project_id=?",
+                                   (project_id,)).fetchall()
+            js = self._db.execute("SELECT id, ord FROM assembly_joints WHERE project_id=?",
+                                  (project_id,)).fetchall()
+        return {"instances": {r[0]: int(r[1]) for r in ins}, "joints": {r[0]: int(r[1]) for r in js}}
 
     def update_instance(self, project_id: str, iid: str, **fields) -> Instance:
         bad = set(fields) - _INSTANCE_FIELDS
@@ -205,6 +219,8 @@ class AssemblyStore:
                 " WHERE project_id=? AND id=?",
                 (merged.part_id, merged.name, json.dumps(merged.transform), int(merged.fixed),
                  project_id, iid))
+            self._db.execute("DELETE FROM assembly_auto WHERE project_id=? AND id=?",
+                             (project_id, iid))
         return merged
 
     def delete_instance(self, project_id: str, iid: str) -> list[str]:
@@ -225,10 +241,75 @@ class AssemblyStore:
                     f"({','.join('?' * len(removed))})", (project_id, *removed))
             self._db.execute("DELETE FROM assembly_instances WHERE project_id=? AND id=?",
                              (project_id, iid))
+            self._db.execute("DELETE FROM assembly_auto WHERE project_id=? AND id=?",
+                             (project_id, iid))
         return removed
 
+    # ---- Plan 9 D10: instances the core placed by itself (assembly/autoplace.py), until an
+    # agent joins them where they really go (assembly_add_part reuses one instead of a copy)
+    def mark_auto(self, project_id: str, iid: str, on: bool = True) -> None:
+        with self._lock:
+            if on:
+                self._db.execute("INSERT OR IGNORE INTO assembly_auto VALUES (?,?)",
+                                 (project_id, iid))
+            else:
+                self._db.execute("DELETE FROM assembly_auto WHERE project_id=? AND id=?",
+                                 (project_id, iid))
+
+    def auto_ids(self, project_id: str) -> set[str]:
+        with self._lock:
+            rows = self._db.execute("SELECT id FROM assembly_auto WHERE project_id=?",
+                                    (project_id,)).fetchall()
+        return {r[0] for r in rows}
+
+    # ---- Plan 9 D29: take a part's instances out, and put them back exactly (Undo)
+    def take_out(self, project_id: str, part_ids: set[str] | list[str]) -> dict:
+        """Remove every instance of these parts (and every joint touching one). Returns what an
+        undo needs: {"instances": [...], "joints": [...]}, each with its list place (`_ord`) and
+        the instances' placed-by-core mark (`_auto`)."""
+        with self._lock:
+            asm = self.get(project_id)
+            used = [i for i in asm.instances if i.part_id in set(part_ids)]
+            ids = {i.id for i in used}
+            joints = [j for j in asm.joints if j.a.instance_id in ids or j.b.instance_id in ids]
+            orders = self.orders(project_id)
+            auto = self.auto_ids(project_id)
+            for i in used:
+                self.delete_instance(project_id, i.id)
+        return {"instances": [{**i.model_dump(mode="json"), "_ord": orders["instances"].get(i.id),
+                               "_auto": i.id in auto} for i in used],
+                "joints": [{**j.model_dump(mode="json"), "_ord": orders["joints"].get(j.id)}
+                           for j in joints]}
+
+    def put_back(self, project_id: str, data: dict) -> tuple[int, int]:
+        """Undo of take_out: the instances (ids, places, marks), then the joints whose two ends
+        exist. Pieces that can't come back (an id taken again) are skipped. (instances, joints)."""
+        ni = nj = 0
+        marked: list[str] = []
+        with self._lock:
+            marked.extend(self.auto_ids(project_id))     # a joint coming back never unmarks these
+            for raw in data.get("instances") or []:
+                try:
+                    inst = Instance.model_validate({k: v for k, v in raw.items() if not k.startswith("_")})
+                    self.add_instance(project_id, inst, ord=raw.get("_ord"))
+                    if raw.get("_auto"):
+                        marked.append(inst.id)
+                    ni += 1
+                except Exception:  # noqa: BLE001 - one bad piece never stops the rest
+                    continue
+            for raw in data.get("joints") or []:
+                try:
+                    self.add_joint(project_id, Joint.model_validate(
+                        {k: v for k, v in raw.items() if not k.startswith("_")}), ord=raw.get("_ord"))
+                    nj += 1
+                except Exception:  # noqa: BLE001 - its other end is gone now
+                    continue
+            for iid in marked:              # after the joints (a joint clears its b side's mark)
+                self.mark_auto(project_id, iid)
+        return ni, nj
+
     # ---- joint mutations
-    def add_joint(self, project_id: str, joint: Joint) -> Joint:
+    def add_joint(self, project_id: str, joint: Joint, ord: int | None = None) -> Joint:
         known = {i.id for i in self.get(project_id).instances}
         for ref in (joint.a, joint.b):
             if ref.instance_id not in known:
@@ -240,7 +321,11 @@ class AssemblyStore:
                 (project_id, joint.id, joint.kind, joint.a.model_dump_json(),
                  joint.b.model_dump_json(), json.dumps(joint.value),
                  json.dumps(joint.limits) if joint.limits is not None else None,
-                 self._next_ord("assembly_joints", project_id)))
+                 self._next_ord("assembly_joints", project_id) if ord is None else int(ord)))
+            # the joined (b) side is placed where it goes: no longer the core's own placement
+            # (a part only joined TO keeps it: assembly_add_part may still ground it)
+            self._db.execute("DELETE FROM assembly_auto WHERE project_id=? AND id=?",
+                             (project_id, joint.b.instance_id))
         return joint
 
     def update_joint(self, project_id: str, jid: str, **fields) -> Joint:

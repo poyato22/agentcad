@@ -1,4 +1,5 @@
-// The conversation view: the shown run as a thread — your messages, the agent's replies, and one
+// The Conversation stream of the agent dock (Dock.tsx passes the text rows; views and studies have
+// their own streams): the shown run as a thread — your messages, the agent's replies, and one
 // compact line per thing it did ("measured mount plate · 8.0 cm³") with ▸ for the raw tool
 // input/output. Approval and question cards sit inline (the same cards as the Details view);
 // failed calls and errors are always their own red line with the hint. Everything agent- or
@@ -29,12 +30,14 @@ import { FeedbackNote } from "../viewer/FeedbackNote";
 import { AnnouncementCard } from "./AnnouncementCard";
 import { StudyGrid } from "./studycard/StudyGrid";
 import { AssemblyAnimationChip } from "./AssemblyAnimationChip";
+import { TopoptCardSlot } from "../topopt/TopoptCard";
 
 const AT_BOTTOM_PX = 24;
 /** Rows rendered at once (the last ones); "show earlier" adds this many more. Same as StepLog. */
 export const THREAD_WINDOW = 500;
 
-export function Conversation(): JSX.Element {
+/** `items`: the thread rows to show (the dock passes the Conversation stream; default: all). */
+export function Conversation({ items: given }: { items?: ThreadItem[] } = {}): JSX.Element {
   useEffect(() => retainThreadFrames(), []);
   const frame = threadFrame.value;
   const run = effectiveRun.value ?? shownPending.value;
@@ -49,7 +52,7 @@ export function Conversation(): JSX.Element {
   const keepFromBottom = useRef<number | null>(null);
   const [earlier, setEarlier] = useState<{ runId: string | null; n: number }>({ runId: null, n: 0 });
 
-  const items = frame.items;
+  const items = given ?? frame.items;
   const span = THREAD_WINDOW + (earlier.runId === frame.runId ? earlier.n : 0);
   const start = Math.max(0, items.length - span);
   const shown = start > 0 ? items.slice(start) : items;
@@ -150,7 +153,7 @@ function Queued(): JSX.Element {
   return <div class="cv-note faint" data-queued>{`waiting for a free agent slot${why}`}</div>;
 }
 
-function Item({ item, agent, runId = null }: { item: ThreadItem; agent: AgentRun["agent"]; runId?: string | null }): JSX.Element {
+export function Item({ item, agent, runId = null }: { item: ThreadItem; agent: AgentRun["agent"]; runId?: string | null }): JSX.Element {
   switch (item.kind) {
     case "user": {
       // a comment pinned on the model (U2a): the words, then the pin, never the raw location block
@@ -252,6 +255,7 @@ function Activity({ item }: { item: Extract<ThreadItem, { kind: "activity" }> })
         {item.hint && <span class="cv-hint faint text">{item.hint}</span>}
         {item.call && <StudyCardSlot call={item.call} />}
         {item.call && <PartCardSlot call={item.call} />}
+        {item.call && <TopoptCardSlot call={item.call} />}
         {open && (
           <span class="cv-open">
             {item.diff && <DiffView item={item.diff} />}

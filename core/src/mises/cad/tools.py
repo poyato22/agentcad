@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import re
 import shutil
@@ -20,6 +21,7 @@ from . import safe_io
 from . import skeleton as _skeleton
 from .runner import BuildResult, run_build
 
+log = logging.getLogger(__name__)
 PART_ID_RE = re.compile(r"^[a-z][a-z0-9_]{1,40}$")
 _locks: dict[str, asyncio.Lock] = {}
 
@@ -234,12 +236,12 @@ def _ops_note(kept: bool, dropped: int) -> str:
     return " (kept its feature ops)" if kept else ""
 
 
-async def _build_guarded(d: Path, vars_: dict, snap: dict[str, bytes]):
+async def _build_guarded(d: Path, vars_: dict, snap: dict[str, bytes], timeout_s: float = 60):
     """run_build that puts the part dir back as it was on ANY exception or cancellation, and
     that fails (and restores) a build that left links or special files behind, so a
     half-applied or hostile edit can never be left behind."""
     try:
-        res = await run_build(d, vars_)
+        res = await run_build(d, vars_, timeout_s=timeout_s)
     except BaseException:
         try:
             _after_build(d)
@@ -353,6 +355,9 @@ class CreateArgs(BaseModel):
                                   "source you read. Prefer mirror_part_set_source to edit one.")
     drop_ops: bool = Field(default=False, description="Replacing an existing part: also drop "
                            "its `# mises-op` feature blocks (only when the user asked).")
+    place: bool = Field(default=True, description="A new part is placed into the build's "
+                        "assembly by itself (at its layout skeleton slot, else beside the "
+                        "assembly). false: leave it out (e.g. a test piece or a variant).")
 
 
 class SetVarsArgs(BaseModel):
@@ -519,9 +524,41 @@ async def mirror_part_create(ctx: ToolContext, args: CreateArgs) -> ToolOutput:
         note = _ops_note(kept, dropped)
         version = _finish_edit(ctx, args.part_id, d, f"{'rebuilt' if existed else 'created'} "
                                f"{args.part_id} from script{note}")
-    return ToolOutput(summary=_summary(args.part_id, res.metrics) + note,
+        placed = await _auto_place(ctx, args.part_id, d) if args.place and not existed else None
+    return ToolOutput(summary=_summary(args.part_id, res.metrics) + note
+                      + (f"; placed in the assembly as {placed['instance']['name']}"
+                         if placed else ""),
                       data={"part_id": args.part_id, "vars": res.vars, "version": version,
+                            **({"placed": placed} if placed else {}),
                             **_inline(res.metrics)})
+
+
+async def _auto_place(ctx: ToolContext, part_id: str, d: Path) -> dict | None:
+    """Plan 9 D10: an agent's first build of a part puts it into its build's assembly
+    (assembly/autoplace.py). The user's own builds (the app's ui run) are not placed, and a
+    placement that fails never fails the build. {project_id, instance} or None."""
+    store = getattr(ctx, "store", None)
+    asm = (getattr(ctx, "services", None) or {}).get("assembly")
+    if store is None or asm is None or _editor(ctx) == "user":
+        return None
+    try:
+        from ..assembly.autoplace import auto_place
+        from ..projects import display_name  # lazy: projects imports this module
+        row = store.get_part(part_id)
+        if row is None or not row.project_id:
+            return None
+        # off the event loop: the placement solves the whole assembly
+        inst = await asyncio.to_thread(auto_place, asm, _home(ctx, d) / "parts", row.project_id,
+                                       part_id, display_name(row))
+        if inst is None:
+            return None
+        events = getattr(ctx, "events", None)
+        if events is not None:
+            events.publish(Event(type="assembly_changed", data={"project_id": row.project_id}))
+        return {"project_id": row.project_id, "instance": inst.model_dump()}
+    except Exception:  # noqa: BLE001 - the part is built; placing it is a convenience
+        log.warning("could not place %s in the assembly", part_id, exc_info=True)
+        return None
 
 
 @tool("mirror_part_set_vars", safety=SafetyClass.LOCAL_MUTATE, scope_arg="part_id",

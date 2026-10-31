@@ -4,6 +4,7 @@ Rendering itself is covered (through the real sandbox) by tests/cad/test_thumbs.
 pre-populate the host cache with real PNGs so the routes resolve without a sandbox spawn, and
 check wiring, sizing, ETag/304 and the 404/400 paths.
 """
+import io
 import json
 
 import pytest
@@ -113,16 +114,83 @@ def test_part_thumb_rejects_bad_id(client):
     assert client.get("/parts/Bad-Id/thumb.png", headers=AUTH).json()["error"] == "invalid_input"
 
 
-def test_project_thumb_composites_cached_parts(client, rt):
+def _fake_render(jobs: list):
+    """A stand-in for the sandboxed render job: records the meshes, answers the renderer's flat
+    background with a grey block in the middle (what the cover keys out and frames)."""
+    from PIL import Image
+
+    from mises.cad.render import _BG
+    from mises.cad.render_job import RenderOut
+
+    async def fake(_root, meshes, *, renders=(), **_kw):
+        jobs.append([(m.name, m.transform, m.color) for m in meshes])
+        size = renders[0]["size"]
+        im = Image.new("RGB", (size, size), _BG)
+        im.paste((90, 90, 90), (size // 4, size // 3, 3 * size // 4, 2 * size // 3))
+        buf = io.BytesIO()
+        im.save(buf, "PNG")
+        return RenderOut(pngs={renders[0]["key"]: {"iso": buf.getvalue()}})
+    return fake
+
+
+def _shift(dx: float) -> list[list[float]]:
+    return [[1, 0, 0, dx], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+
+
+def test_project_thumb_renders_the_assembly(client, rt, monkeypatch):
+    # D24: the cover is one render of the build's assembly (every instance at its pose), 16:10,
+    # never a 2x2 grid of parts
+    from mises.assembly.model import Instance
     pid = rt.active_project_id()
-    for name in ("alpha", "beta", "gamma"):
-        v = make_part(rt, name)
-        cache_part(rt, name, v, 128)          # composite tiles render at half size
+    for name in ("alpha", "beta"):
+        make_part(rt, name)
+    rt.assembly_store.add_instance(pid, Instance(part_id="alpha", name="a1", transform=_shift(0)))
+    rt.assembly_store.add_instance(pid, Instance(part_id="alpha", name="a2", transform=_shift(60)))
+    jobs: list = []
+    monkeypatch.setattr(thumbs, "run_render_job", _fake_render(jobs))
+    r = client.get(f"/projects/{pid}/thumb.png", headers=AUTH)
+    assert r.status_code == 200, r.text
+    assert r.headers["content-type"] == "image/png"
+    assert len(jobs) == 1
+    assert [(n, t) for n, t, _c in jobs[0]] == [("alpha", _shift(0)), ("alpha", _shift(60))]
+    w, h, rgba = thumb_render.decode_png(r.content)
+    assert (w, h) == (thumbs.COVER_W, thumbs.COVER_W * 10 // 16)
+    assert rgba[3] == 0                                     # background keyed out (themed)
+    etag = r.headers["etag"]
+    again = client.get(f"/projects/{pid}/thumb.png", headers={**AUTH, "If-None-Match": etag})
+    assert again.status_code == 304
+    # moving an instance changes the cover's key
+    inst = rt.assembly_store.get(pid).instances[1]
+    rt.assembly_store.update_instance(pid, inst.id, transform=_shift(90))
+    r2 = client.get(f"/projects/{pid}/thumb.png", headers={**AUTH, "If-None-Match": etag})
+    assert r2.status_code == 200 and r2.headers["etag"] != etag
+
+
+def test_a_new_cover_evicts_the_legacy_grid_tiles(client, rt, monkeypatch):
+    # the pre-D24 2x2 composites were cached as <size>-<digest>.png; writing a cover drops them
+    pid = rt.active_project_id()
+    make_part(rt, "alpha")
+    cdir = rt.home / "parts" / thumbs.THUMBS_DIR / f"project-{pid}"
+    cdir.mkdir(parents=True, exist_ok=True)
+    (cdir / "256-0123456789abcdef.png").write_bytes(_png(8))
+    (cdir / "128-fedcba9876543210.png").write_bytes(_png(8))
+    monkeypatch.setattr(thumbs, "run_render_job", _fake_render([]))
+    assert client.get(f"/projects/{pid}/thumb.png", headers=AUTH).status_code == 200
+    names = sorted(p.name for p in cdir.glob("*.png"))
+    assert len(names) == 1 and names[0].startswith(f"cover{thumbs.COVER_W}-")
+
+
+def test_project_thumb_falls_back_to_the_largest_part(client, rt, monkeypatch):
+    pid = rt.active_project_id()
+    make_part(rt, "small")
+    make_part(rt, "large")
+    d = rt.home / "parts" / "large"
+    (d / "metrics.json").write_text(json.dumps({**METRICS, "volume_mm3": 90000.0}))
+    jobs: list = []
+    monkeypatch.setattr(thumbs, "run_render_job", _fake_render(jobs))
     r = client.get(f"/projects/{pid}/thumb.png", headers=AUTH)
     assert r.status_code == 200
-    assert r.headers["content-type"] == "image/png"
-    w, h, _ = thumb_render.decode_png(r.content)
-    assert (w, h) == (256, 256)
+    assert [(n, t) for n, t, _c in jobs[0]] == [("large", None)]
 
 
 def test_project_thumb_404_when_no_previews(client, rt):

@@ -1,0 +1,44 @@
+{
+  "concept": {
+    "project_id": "453b20dbc0d5",
+    "status": "sketching",
+    "sketch_ids": [
+      "cks_1d3567e8c8c4",
+      "cks_e3806c1fd60e"
+    ],
+    "chosen_option": "Companion's body + Athlete's legs",
+    "pitch_ids": [
+      "ckp_2b925b6ac694"
+    ],
+    "approved_sketch_id": null,
+    "updated_at": 1793422098.984391
+  },
+  "design_class": {
+    "cls": "mixed",
+    "source": "fallback"
+  },
+  "required": "sketch",
+  "next": "revise on the user's marks, or build once they approve",
+  "sketches": [
+    {
+      "sketch_id": "cks_1d3567e8c8c4",
+      "version": 1,
+      "parent_sketch_id": null,
+      "views": [
+        "three_quarter",
+        "side"
+      ]
+    },
+    {
+      "sketch_id": "cks_e3806c1fd60e",
+      "version": 2,
+      "parent_sketch_id": "cks_1d3567e8c8c4",
+      "views": [
+        "three_quarter",
+        "side"
+      ]
+    }
+  ],
+  "sketches_total": 2,
+  "gate": "open"
+}

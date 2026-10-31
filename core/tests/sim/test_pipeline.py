@@ -6,6 +6,7 @@ import pytest
 
 from mises.cad.tools import CreateArgs, PartArgs, mirror_measure, mirror_part_create
 from mises.sim import ccx as ccx_mod
+from mises.sim import studies
 from mises.sim import tools as sim_tools
 from mises.sim.ccx import INSTALL_HINT, find_ccx
 from mises.sim.results import read_glb
@@ -128,6 +129,8 @@ async def test_queue_wait_is_bounded(tmp_path, monkeypatch):
     assert sim_tools.QUEUE_TIMEOUT_S + sim_tools.STUDY_MAX_S < sim_tools.TOOL_TIMEOUT_S
     monkeypatch.setattr(sim_tools, "find_ccx", lambda: "/usr/bin/false")
     monkeypatch.setattr(sim_tools, "QUEUE_TIMEOUT_S", 0.05)
+    monkeypatch.setenv("MISES_CONCURRENT_STUDIES", "1")
+    studies._sems.clear()
     ctx = _ctx(tmp_path)
     await _beam(ctx)
     sem = sim_tools._semaphore()

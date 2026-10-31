@@ -6,7 +6,7 @@ import logging
 import time
 from typing import TYPE_CHECKING, Callable
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 from .types import StepKind
 
@@ -17,11 +17,51 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
+# ---- streams (Plan 9 D4): agent output comes out in three parallel streams the app shows at
+# once: "sim" (studies), "view" (renders, immersive views, critiques) and "text" (the rest).
+STREAMS = ("text", "sim", "view")
+SIM_TOOLS = frozenset({"design_review", "design_review_get", "study_run", "study_get",
+                       "job_wait"})
+VIEW_TOOLS = frozenset({"render_views", "present_view", "critique_model", "part_show",
+                        "section_check", "assembly_animate"})
+SIM_EVENTS = frozenset({"sim_progress", "sim_finished", "study_progress", "topopt_progress",
+                        "topopt_finished"})
+VIEW_EVENTS = frozenset({"part_shown", "assembly_animate"})
+#: announcement cards that are pictures of the model (the rest are conversation cards)
+VIEW_ANNOUNCE = frozenset({"view_presented", "critique_round", "part_shown"})
+
+
+def tool_stream(name: str | None) -> str:
+    bare = (name or "").split("mcp__mises__", 1)[-1]
+    if bare.startswith(("sim_", "topopt_")) or bare in SIM_TOOLS:
+        return "sim"
+    return "view" if bare in VIEW_TOOLS else "text"
+
+
+def stream_of(event_type: str, data: dict | None = None) -> str:
+    """The stream an event (or a step, by its kind and payload) belongs to."""
+    if event_type in SIM_EVENTS or event_type == "sim_run":
+        return "sim"
+    if event_type in VIEW_EVENTS or event_type.startswith("view_"):
+        return "view"
+    data = data or {}
+    card = data if event_type == "agent_announce" else data.get("agent_announce")
+    if isinstance(card, dict) and card.get("kind") in VIEW_ANNOUNCE:
+        return "view"
+    name = data.get("name")
+    return tool_stream(name) if isinstance(name, str) else "text"
+
+
 class Event(BaseModel):
     type: str
     run_id: str | None = None
     data: dict = Field(default_factory=dict)
     ts: float = Field(default_factory=time.time)
+
+    @computed_field
+    @property
+    def stream(self) -> str:
+        return stream_of(self.type, self.data)
 
 
 class EventBus:
@@ -103,6 +143,8 @@ TOOL_LABELS: dict[str, str] = {
     "agent_spawn": "delegating", "orchestrator_run": "delegating",
     "agent_wait": "waiting on subagents", "agent_result": "collecting a subagent",
     "sim_run": "running a study", "design_review": "reviewing the design",
+    "sim_wait": "waiting on a study", "job_wait": "waiting on a background job",
+    "design_review_get": "reading a design review",
     "study_apply": "applying a variant", "study_get": "reading a design study",
     "interview_plan": "planning the interview", "spec_get": "reading the spec",
     "loads_impact": "estimating impact loads", "catalog_get": "reading a catalog part",

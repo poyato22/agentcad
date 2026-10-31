@@ -6,6 +6,7 @@
 //   POST /__fake/rotate_token  {token}                                    → new token; sockets closed, reconnects get 4401
 //   POST /__fake/agent_edit    {part_id, vars?, source?, run_id?, summary?} → an agent's part edit (part_changed by "agent")
 //   POST /__fake/restart_core                                            → leads become unreachable (next prompt starts a new lead)
+//   POST /__fake/jobs          {jobs}                                    → set the running background jobs (GET /jobs)
 import type { EmitExtras, EventIn, FakeCore, Scenario } from "./server";
 
 export async function handleControl(core: FakeCore, method: string, path: string, body: unknown): Promise<unknown> {
@@ -20,6 +21,10 @@ export async function handleControl(core: FakeCore, method: string, path: string
     return { ok: true };
   }
   if (method === "GET" && path === "/__fake/calls") return core.state.calls;
+  if (method === "POST" && path === "/__fake/jobs") {          // Plan 9 B3: set the running jobs
+    core.state.jobs = Array.isArray(b.jobs) ? structuredClone(b.jobs) as typeof core.state.jobs : [];
+    return { ok: true };
+  }
   if (method === "POST" && path === "/__fake/agent_edit") return core.agentEdit(b);
   if (method === "POST" && path === "/__fake/restart_core") { core.restartCore(); return { ok: true }; }
   if (method === "POST" && path === "/__fake/drop_sockets") {

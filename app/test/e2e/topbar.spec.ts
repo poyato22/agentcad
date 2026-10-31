@@ -7,17 +7,19 @@ test.beforeEach(async ({ fake, page }) => {
 
 const light = (page: import("@playwright/test").Page, name: string) => page.locator(`[data-light=${name}]`);
 
-test("active_tab_blue_underline_and_tabs_navigate", async ({ page }) => {
+// Plan 9 Visual spec: the current tab is ink on a Raised pill (blue stays for selection / agents /
+// needs you), the others are dim
+test("active_tab_raised_and_tabs_navigate", async ({ page }) => {
   await page.goto("/");
   const design = page.getByRole("tab", { name: "Design" });
-  await expect(design).toHaveCSS("border-bottom-color", "rgb(61, 139, 255)");
-  await expect(design).toHaveCSS("border-bottom-width", "2px");
+  await expect(design).toHaveCSS("background-color", "rgb(37, 41, 48)");
+  await expect(design).toHaveCSS("color", "rgb(233, 235, 238)");
   const studies = page.getByRole("tab", { name: "Studies" });
-  await expect(studies).not.toHaveAttribute("aria-disabled", "true");
+  await expect(studies).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   await studies.click();
   await expect(studies).toHaveAttribute("aria-selected", "true");
   await expect(design).toHaveAttribute("aria-selected", "false");
-  await expect(studies).toHaveCSS("border-bottom-color", "rgb(61, 139, 255)");
+  await expect(studies).toHaveCSS("background-color", "rgb(37, 41, 48)");
   await expect(page.locator('[data-region="page"]')).toContainText("Studies");
 });
 
@@ -25,8 +27,8 @@ test("topbar_geometry_and_colors", async ({ page }) => {
   await page.goto("/");
   const bar = page.locator("header.topbar");
   await expect(bar).toHaveCSS("height", "44px");
-  await expect(bar).toHaveCSS("background-color", "rgb(20, 20, 20)");
-  await expect(bar).toHaveCSS("border-bottom-color", "rgb(51, 51, 51)");
+  await expect(bar).toHaveCSS("background-color", "rgb(20, 22, 26)");     // Graphite
+  await expect(bar).toHaveCSS("border-bottom-color", "rgb(47, 52, 59)");  // Hairline
   await expect(bar).toHaveCSS("grid-template-columns", /px \d+(\.\d+)?px \d+(\.\d+)?px/);
 });
 

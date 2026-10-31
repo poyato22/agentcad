@@ -396,6 +396,19 @@ def build_ui_router(runtime: Runtime) -> UiRouter:
                 failed.append({"run_id": run.id, "error": f"{type(e).__name__}: {e}"})
                 continue
             cancelled.append(run.id)
+        # Plan 9 D4: an agent whose turn has ended may still own background studies, reviews
+        # or design studies; stop each such family at its root (where its notes would go)
+        from .. import jobs
+        for root in sorted({jobs.root_of(runtime.store, j.run_id) for j in jobs.running()
+                            if j.run_id}):
+            try:
+                runtime.stop_background(root)
+            except Exception as e:  # noqa: BLE001 - keep stopping the rest
+                log.exception("cancel_all: could not stop the jobs of %s", root)
+                failed.append({"run_id": root, "error": f"{type(e).__name__}: {e}"})
+                continue
+            if root not in cancelled:
+                cancelled.append(root)
         log.info("cancel_all: cancelled %d run(s), %d failed", len(cancelled), len(failed))
         return {"cancelled": cancelled, "failed": failed}
 

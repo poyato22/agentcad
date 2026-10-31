@@ -2,7 +2,7 @@
 // appearance with finish presets, multi-select, duplicate / delete / export, and the viewer
 // background saved to the profile.
 import type { Page } from "@playwright/test";
-import { expect, test, type FakeCall, type FakeControl } from "./fixtures";
+import { expect, openPartView, test, type FakeCall, type FakeControl } from "./fixtures";
 
 test.beforeEach(async ({ fake }) => { await fake.reset("builds"); });
 test.afterEach(async ({ fake }) => { await fake.reset("base"); });
@@ -23,7 +23,7 @@ test("right_click_opens_the_part_menu_with_useful_items", async ({ page }) => {
   const menu = page.getByRole("menu", { name: "top plate actions" });
   await expect(menu).toBeVisible();
   await expect(menu.getByRole("menuitem")).toHaveText([/Rename/, "Appearance…", /Hide/, "Isolate", "Measure", "Add to assembly",
-    /Duplicate/, "Export STEP", "Export STL", /Properties/, "Modify…", "Delete"]);
+    /Duplicate/, "Export STEP", "Export STL", /Properties/, "Modify…", "Generative design…", /^Delete…/]);
   // the right-click selected the row
   await expect(tree(page).getByRole("button", { name: "top plate", exact: true })).toHaveAttribute("aria-pressed", "true");
   await page.keyboard.press("Escape");
@@ -74,14 +74,15 @@ test("duplicate_export_and_delete_from_the_menu", async ({ page, fake }) => {
   expect((await callsTo(fake, "POST", "/parts/top_plate/export")).at(-1)?.body).toEqual({ format: "step" });
 
   await rowOf(page, "top_plate_copy").click({ button: "right" });
-  await page.getByRole("menuitem", { name: "Delete" }).click();
-  await page.getByRole("menuitem", { name: "Click again to delete" }).click();
+  await page.getByRole("menuitem", { name: /^Delete…/ }).click();
+  await page.getByTestId("confirm-delete").getByRole("button", { name: "Delete" }).click();   // Plan 9 D29: asked once
   await expect(tree(page).getByRole("button", { name: "top plate copy", exact: true })).toHaveCount(0);
   expect(await callsTo(fake, "DELETE", "/parts/top_plate_copy")).toHaveLength(1);
 });
 
 test("viewer_background_from_the_view_menu_is_saved_to_the_profile", async ({ page, fake }) => {
   await open(page);
+  await openPartView(page);
   const vp = page.getByTestId("viewer");
   await expect(vp).toHaveAttribute("data-bg-mode", "theme");
   // View ▸ Background… (the sheet keeps only Part | Assembly and View)
@@ -95,5 +96,6 @@ test("viewer_background_from_the_view_menu_is_saved_to_the_profile", async ({ pa
   // the profile has it on the next launch
   await page.evaluate(() => localStorage.clear());
   await page.reload();
+  await openPartView(page);
   await expect(page.getByTestId("viewer")).toHaveAttribute("data-bg-mode", "gradient");
 });

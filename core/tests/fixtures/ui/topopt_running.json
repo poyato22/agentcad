@@ -1,0 +1,187 @@
+{
+  "topopt_id": "to_bab050f4287a",
+  "tool": "topopt_generate",
+  "part_id": "block",
+  "project_id": "6933d7e7cde2",
+  "run_id": "97dfdfab4344",
+  "call_id": "ui_7cdb8da889f3",
+  "status": "running",
+  "created_at": 1793426339.437962,
+  "finished_at": null,
+  "reason": "lightest stiff block",
+  "objective": "min_compliance",
+  "min_safety_factor": 1.5,
+  "max_deflection_mm": null,
+  "material": {
+    "name": "PLA",
+    "e_mpa": 2300.0,
+    "nu": 0.35,
+    "yield_mpa": 51.0,
+    "density_g_cm3": 1.24,
+    "hdt_c": 55.0,
+    "source": "Prusament PLA TDS v1.1 (printed, horizontal)",
+    "k_w_mk": 0.13,
+    "alpha_per_k": 6.8e-05,
+    "knockdown": 0.7,
+    "stiffness_factor": 1.0,
+    "custom": false,
+    "tangent_modulus_mpa": null,
+    "e_z_mpa": null,
+    "z_strength_mpa": null,
+    "build_dir": null,
+    "sn_a_mpa": null,
+    "sn_b": null,
+    "basis": "datasheet / estimate",
+    "calibration": null,
+    "basis_by_property": null,
+    "fdm_strength_factor": 1.0,
+    "allowable_mpa": 35.699999999999996,
+    "e_eff_mpa": 2300.0,
+    "tangent_eff_mpa": 23.0,
+    "tangent_source": "estimate (1% of E)",
+    "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers"
+  },
+  "args": {
+    "part_id": "block",
+    "design_space": "part",
+    "keep": [],
+    "keep_out": [],
+    "fixtures": [
+      {
+        "kind": "fixed",
+        "face": "x-min"
+      }
+    ],
+    "load_cases": [
+      {
+        "name": "tip",
+        "loads": [
+          {
+            "face": "x-max",
+            "newtons": 40.0,
+            "direction": "-z"
+          }
+        ],
+        "weight": 1.0
+      }
+    ],
+    "material": "PLA",
+    "objective": "min_compliance",
+    "volume_fraction": 0.35,
+    "max_deflection_mm": null,
+    "min_safety_factor": 1.5,
+    "resolution_mm": 1.0,
+    "filter_radius_mm": null,
+    "max_iter": 60,
+    "manufacturing": {
+      "process": "none",
+      "symmetry": [
+        "y"
+      ],
+      "extrusion_axis": null,
+      "overhang": null,
+      "min_member_mm": null
+    },
+    "verify": true,
+    "reason": "lightest stiff block",
+    "variants": [],
+    "sweep": {
+      "volume_fraction": [
+        0.3,
+        0.4
+      ]
+    },
+    "max_variants": 2
+  },
+  "variants": [
+    {
+      "id": "v0",
+      "name": "vf 0.30 \u00b7 r 2.0 mm \u00b7 sym y",
+      "delta": {
+        "volume_fraction": 0.3
+      },
+      "status": "running",
+      "phase": "optimize",
+      "pct": 11.2,
+      "it": 5,
+      "max_iter": 60,
+      "preview": 5,
+      "volume_fraction": 0.3,
+      "resolution_mm": 1.0,
+      "filter_radius_mm": 2.0,
+      "manufacturing": {
+        "process": "none",
+        "symmetry": [
+          "y"
+        ],
+        "extrusion_axis": null,
+        "overhang": null,
+        "min_member_mm": null
+      },
+      "warnings": [],
+      "error": null,
+      "verified": false,
+      "passes": null,
+      "rank": null,
+      "pareto": false,
+      "started_at": 1793426339.4449432,
+      "compliance": 127.64863595828092,
+      "vf": 0.2999992355920771,
+      "urls": {
+        "preview": "/topopt/to_bab050f4287a/variants/v0/preview.glb",
+        "result": "/topopt/to_bab050f4287a/variants/v0/result.glb",
+        "stress": "/topopt/to_bab050f4287a/variants/v0/stress.glb",
+        "render": "/topopt/to_bab050f4287a/variants/v0/render.png",
+        "step": "/topopt/to_bab050f4287a/variants/v0/part.step",
+        "stl": "/topopt/to_bab050f4287a/variants/v0/part.stl"
+      }
+    },
+    {
+      "id": "v1",
+      "name": "vf 0.40 \u00b7 r 2.0 mm \u00b7 sym y",
+      "delta": {
+        "volume_fraction": 0.4
+      },
+      "status": "running",
+      "phase": "optimize",
+      "pct": 11.2,
+      "it": 5,
+      "max_iter": 60,
+      "preview": 5,
+      "volume_fraction": 0.4,
+      "resolution_mm": 1.0,
+      "filter_radius_mm": 2.0,
+      "manufacturing": {
+        "process": "none",
+        "symmetry": [
+          "y"
+        ],
+        "extrusion_axis": null,
+        "overhang": null,
+        "min_member_mm": null
+      },
+      "warnings": [],
+      "error": null,
+      "verified": false,
+      "passes": null,
+      "rank": null,
+      "pareto": false,
+      "started_at": 1793426339.4458811,
+      "compliance": 41.582098961609006,
+      "vf": 0.4000049543678861,
+      "urls": {
+        "preview": "/topopt/to_bab050f4287a/variants/v1/preview.glb",
+        "result": "/topopt/to_bab050f4287a/variants/v1/result.glb",
+        "stress": "/topopt/to_bab050f4287a/variants/v1/stress.glb",
+        "render": "/topopt/to_bab050f4287a/variants/v1/render.png",
+        "step": "/topopt/to_bab050f4287a/variants/v1/part.step",
+        "stl": "/topopt/to_bab050f4287a/variants/v1/part.stl"
+      }
+    }
+  ],
+  "pareto": [],
+  "recommended": null,
+  "accepted": [],
+  "summary": "generative design to_bab050f4287a of block: running, 0/2 variants",
+  "stream": "sim"
+}

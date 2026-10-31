@@ -205,6 +205,8 @@ def test_prompts_use_calibrations_and_ask_for_fatigue_cycles():
     defs = load_definitions()
     eng = defs["engineer"].body
     assert "calibration_list" in eng and "calibrated" in eng
-    assert "fatigue" in eng and "cycles" in eng and "drone" in eng.lower()
+    assert "fatigue" in eng and "cycles" in eng and "motor" in eng.lower()
+    # D26: the engineer's examples are product-neutral; no drone wording leaks into every lead
+    assert "drone" not in eng.lower()
     sim = defs["sim"]
     assert "calibration_list" in sim.tools and "fatigue" in sim.body

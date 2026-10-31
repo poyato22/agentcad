@@ -10,6 +10,11 @@ does not count against the job's own timeout.
 The cap is sized from the hardware (hardware.machine()): half the performance cores, and no
 more than one per 2 GB of usable memory, between 1 and MAX_SLOTS; MISES_HEAVY_WORKERS overrides
 it. Slots are per event loop (the core runs one), like studies.semaphore.
+
+Renders never starve (Plan 9 D4): RENDER_RESERVE slots are kept for render kinds (the render
+worker, drawings). Every other kind (the solver, the mesher, CFD, measure) shares the rest, so
+a study holding every solve slot still leaves a render slot free. A one-slot machine gets one
+extra slot for renders rather than none.
 """
 from __future__ import annotations
 
@@ -21,8 +26,13 @@ from collections.abc import AsyncIterator
 
 MAX_SLOTS = 8
 GB_PER_SLOT = 2.0
+RENDER_RESERVE = 1
+#: kinds that may use the reserved slot: what the user looks at (views, cards, drawings)
+RENDER_KINDS = frozenset({"the render", "drawing"})
 
-_sems: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore]" = \
+_Pair = tuple[asyncio.Semaphore, asyncio.Semaphore]
+# per event loop: (every heavy slot, the slots non-render kinds may take)
+_sems: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, _Pair]" = \
     weakref.WeakKeyDictionary()
 _busy: dict[str, int] = {}
 
@@ -41,19 +51,38 @@ def heavy_limit(machine_info: dict | None = None) -> int:
     return max(1, min(MAX_SLOTS, by_cpu, by_mem))
 
 
-def _sem() -> asyncio.Semaphore:
+def solve_limit(machine_info: dict | None = None) -> int:
+    """Slots every non-render kind shares: the cap less the render reserve, at least one."""
+    return max(1, heavy_limit(machine_info) - RENDER_RESERVE)
+
+
+def total_slots(machine_info: dict | None = None) -> int:
+    """All heavy slots: the cap, grown so the render reserve exists beside the solve slots."""
+    return max(heavy_limit(machine_info), solve_limit(machine_info) + RENDER_RESERVE)
+
+
+def _sem() -> _Pair:
     loop = asyncio.get_running_loop()
     s = _sems.get(loop)
     if s is None:
-        s = _sems[loop] = asyncio.Semaphore(heavy_limit())
+        s = _sems[loop] = (asyncio.Semaphore(total_slots()), asyncio.Semaphore(solve_limit()))
     return s
 
 
 @contextlib.asynccontextmanager
 async def heavy_slot(kind: str) -> AsyncIterator[None]:
-    """Hold one heavy-worker slot while the process runs. `kind` is for status / tests."""
-    sem = _sem()
-    await sem.acquire()
+    """Hold one heavy-worker slot while the process runs. `kind` is for status / tests; a
+    render kind may take the reserved slot, any other kind waits for a solve slot first."""
+    total, solve = _sem()
+    general = kind not in RENDER_KINDS
+    if general:
+        await solve.acquire()
+    try:
+        await total.acquire()
+    except BaseException:
+        if general:
+            solve.release()
+        raise
     _busy[kind] = _busy.get(kind, 0) + 1
     try:
         yield
@@ -61,7 +90,9 @@ async def heavy_slot(kind: str) -> AsyncIterator[None]:
         _busy[kind] -= 1
         if not _busy[kind]:
             del _busy[kind]
-        sem.release()
+        total.release()
+        if general:
+            solve.release()
 
 
 def in_use() -> dict[str, int]:

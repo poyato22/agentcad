@@ -21,7 +21,7 @@ const callsTo = async (fake: FakeControl, method: string, path: string): Promise
 
 async function openPlate(page: Page): Promise<{ cx: number; cy: number }> {
   await page.goto("/");
-  await expect(page.getByRole("tab", { name: "Quad frame" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("button", { name: /^Build: Quad frame/ })).toBeVisible();
   await tree(page).getByRole("button", { name: "top plate", exact: true }).click();
   const canvas = page.getByTestId("viewer-canvas");
   await expect(canvas).toHaveAttribute("data-bbox-size", "40.00,40.00,3.00", { timeout: 15_000 });

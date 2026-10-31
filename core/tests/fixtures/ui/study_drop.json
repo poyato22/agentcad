@@ -1,8 +1,8 @@
 {
-  "sim_id": "sim_5c66fe428185",
+  "sim_id": "sim_6b84805c1270",
   "part_id": "beam",
   "type": "drop",
-  "run_id": "b3287052853b",
+  "run_id": "3d8889e2ca76",
   "call_id": "s5",
   "step_id": 21,
   "reason": "1 m drop onto the floor",
@@ -10,8 +10,8 @@
   "stage": "done",
   "phase": "done",
   "pct": 100.0,
-  "created_at": 1793384755.659623,
-  "finished_at": 1793384756.809757,
+  "created_at": 1793422871.609847,
+  "finished_at": 1793422873.234588,
   "analysis": "drop",
   "guide": true,
   "label": "guide only, not a guarantee",
@@ -82,7 +82,7 @@
       "max_levels": 4
     }
   },
-  "geometry_hash": "3a056a9860334e4b689492920fb36d02bf8d162cdc78579761fcd057abb39b8d",
+  "geometry_hash": "7e9e797dead972400fb1777172fdc8421e69fdab0fc9cb282f5bc44fbd67ac42",
   "material": {
     "name": "PLA",
     "e_mpa": 2300.0,
@@ -126,11 +126,11 @@
     "Peak stress excludes nodes on the fixed face (an ideal clamp gives a constraint singularity there); that value and a safety factor including it are reported separately."
   ],
   "urls": {
-    "record": "/sims/sim_5c66fe428185",
-    "glb": "/sims/sim_5c66fe428185/result.glb",
-    "charts": "/sims/sim_5c66fe428185/charts",
-    "probe": "/sims/sim_5c66fe428185/probe",
-    "section": "/sims/sim_5c66fe428185/section"
+    "record": "/sims/sim_6b84805c1270",
+    "glb": "/sims/sim_6b84805c1270/result.glb",
+    "charts": "/sims/sim_6b84805c1270/charts",
+    "probe": "/sims/sim_6b84805c1270/probe",
+    "section": "/sims/sim_6b84805c1270/section"
   },
   "solver": {
     "name": "CalculiX",
@@ -275,7 +275,7 @@
       "impact_velocity_m_s": 4.4294469180700204
     }
   },
-  "inputs_hash": "a048af21eb784bb3aae6713a491d83943df96c28a2da9e6f82d528d53a3743f3",
+  "inputs_hash": "4595525c86e96959572f329dfb4a1c3e09946f0df8611ad2a76c0dee61093ff7",
   "glb": "result.glb",
   "outputs": [
     "result.glb",
@@ -293,7 +293,7 @@
       "measured": 27860.09705599586,
       "unit": "",
       "status": "warn",
-      "sim_id": "sim_5c66fe428185",
+      "sim_id": "sim_6b84805c1270",
       "note": null
     }
   ],
@@ -310,7 +310,7 @@
     ],
     "governing_case_id": "impact",
     "material_basis": "datasheet / estimate",
-    "sim_id": "sim_5c66fe428185",
+    "sim_id": "sim_6b84805c1270",
     "type": "drop",
     "status": "done",
     "verdict": "warn",
@@ -355,7 +355,7 @@
         "measured": 27860.09705599586,
         "unit": "",
         "status": "warn",
-        "sim_id": "sim_5c66fe428185",
+        "sim_id": "sim_6b84805c1270",
         "note": null
       }
     ],
@@ -364,15 +364,15 @@
       "mesh not converged: peak stress changed 19% between the coarse and fine mesh; treat the peak as uncertain"
     ],
     "reason": "1 m drop onto the floor",
-    "run_id": "b3287052853b",
+    "run_id": "3d8889e2ca76",
     "step_id": 21,
     "urls": {
-      "record": "/sims/sim_5c66fe428185",
-      "glb": "/sims/sim_5c66fe428185/result.glb",
-      "charts": "/sims/sim_5c66fe428185/charts",
-      "probe": "/sims/sim_5c66fe428185/probe",
-      "section": "/sims/sim_5c66fe428185/section"
+      "record": "/sims/sim_6b84805c1270",
+      "glb": "/sims/sim_6b84805c1270/result.glb",
+      "charts": "/sims/sim_6b84805c1270/charts",
+      "probe": "/sims/sim_6b84805c1270/probe",
+      "section": "/sims/sim_6b84805c1270/section"
     },
-    "charts_url": "/sims/sim_5c66fe428185/charts"
+    "charts_url": "/sims/sim_6b84805c1270/charts"
   }
 }

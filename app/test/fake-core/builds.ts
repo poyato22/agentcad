@@ -13,6 +13,7 @@
 // part without a tree row joins the active build on its first listing (like the core's
 // registration of a newly built part).
 import { HttpError, mises, type Body, type EventIn, type Route } from "./server";
+import type { Instance, Joint } from "../../src/api/assembly";
 import type { PartSummary } from "../../src/api/types";
 import { PRESETS, type Appearance } from "../../src/lib/appearance";
 import { partName } from "../../src/lib/names";
@@ -124,7 +125,14 @@ export interface BuildsDeps {
   /** Live work in these builds (the core's _blocked rule: running / queued, or a pending approval):
    *  Empty Trash refuses as a whole while any (409 {reason, run_ids, project_ids, message, hint}). */
   blockers?(projectIds: readonly string[]): { reason: "running" | "pending_approval"; run_ids: string[] } | null;
+  /** Plan 9 D29: the builds' assemblies (a part delete refuses or cascades over its instances). */
+  assembly?(): { byProject: Map<string, { instances: Instance[]; joints: Joint[] }> };
 }
+
+/** Plan 9 D29: what an Undo of a part delete puts back (core trash/parts/<id>.<ns>.json). */
+interface Trashed { part: PartSummary; row: Row; children: string[]; instances: Instance[]; joints: Joint[] }
+const trashed = new Map<string, Trashed>();
+let trashSeq = 0;
 
 export function buildRoutes(d: BuildsDeps): Route[] {
   const B = () => d.get();
@@ -272,6 +280,24 @@ export function buildRoutes(d: BuildsDeps): Route[] {
       },
     },
     {
+      // core POST /projects/{id}/purge (D30 "Delete forever"): Empty Trash for one trashed build
+      method: "POST", re: /^\/projects\/([^/]+)\/purge$/, h: (m) => {
+        const b = project(m[1]);
+        if (b.trashed_at === null) throw bad(`build '${b.id}' is not in the Trash`, "move it to the Trash first");
+        const busy = d.blockers?.([b.id]) ?? null;
+        if (busy) {
+          throw new HttpError(409, {
+            ...busy, project_ids: [b.id],
+            message: `a build in the Trash still has ${busy.reason.replace(/_/g, " ")} runs`,
+            hint: "wait for them to finish, or cancel them, then empty the Trash",
+          });
+        }
+        B().builds = B().builds.filter((x) => x.id !== b.id);
+        for (const [id, r] of [...B().rows]) if (r.project_id === b.id) B().rows.delete(id);
+        return { purged: [b.id], count: 1 };
+      },
+    },
+    {
       method: "POST", re: /^\/projects\/([^/]+)\/restore$/, h: (m) => {
         const b = project(m[1]);
         b.trashed_at = null;
@@ -362,13 +388,56 @@ export function buildRoutes(d: BuildsDeps): Route[] {
       },
     },
     {
-      method: "DELETE", re: /^\/parts\/([^/]+)$/, h: (m) => {
+      // core projects.delete_part: refused while the assembly uses it, unless ?cascade=true (D29)
+      method: "DELETE", re: /^\/parts\/([^/]+)$/, h: (m, q) => {
         const p = part(decodeURIComponent(m[1]));
         const r = B().rows.get(p.part_id) as Row;
-        for (const x of B().rows.values()) if (x.parent_id === p.part_id) x.parent_id = r.parent_id;
+        const asm = d.assembly?.().byProject.get(r.project_id);
+        const used = (asm?.instances ?? []).filter((i) => i.part_id === p.part_id);
+        if (used.length && q.get("cascade") !== "true") {
+          throw mises("invalid_input", `${p.part_id} is in the assembly (${used.slice(0, 3).map((i) => i.name).join(", ")})`, "remove it from the assembly first");
+        }
+        const ids = new Set(used.map((i) => i.id));
+        const joints = (asm?.joints ?? []).filter((j) => ids.has(j.a.instance_id) || ids.has(j.b.instance_id));
+        if (asm && used.length) {
+          asm.instances = asm.instances.filter((i) => !ids.has(i.id));
+          asm.joints = asm.joints.filter((j) => !joints.includes(j));
+        }
+        const children = [...B().rows.entries()].filter(([, x]) => x.parent_id === p.part_id).map(([k]) => k);
+        for (const k of children) (B().rows.get(k) as Row).parent_id = r.parent_id;
+        const undo = `${p.part_id}.${Date.now()}${String(++trashSeq).padStart(6, "0")}`;
+        trashed.set(undo, { part: structuredClone(p), row: structuredClone(r), children, instances: structuredClone(used), joints: structuredClone(joints) });
         B().rows.delete(p.part_id);
         d.setParts(d.parts().filter((x) => x.part_id !== p.part_id));
-        return { deleted: p.part_id };
+        if (used.length) d.emit({ type: "assembly_changed", run_id: null, data: { project_id: r.project_id } });
+        return { deleted: p.part_id, removed_instances: used.map((i) => i.id), removed_joints: joints.map((j) => j.id), undo };
+      },
+    },
+    {
+      // Plan 9 D29: Undo of a delete (core projects.restore_part)
+      method: "POST", re: /^\/parts\/([^/]+)\/restore$/, h: (m, _q, raw) => {
+        const id = decodeURIComponent(m[1]);
+        const undo = String((raw as Body | null)?.["undo"] ?? "");
+        if (!undo.startsWith(`${id}.`)) throw mises("invalid_input", `${JSON.stringify(undo)} is not an undo of ${id}`);
+        const t = trashed.get(undo);
+        if (!t) throw mises("not_found", `nothing to undo for ${id}`, "the trash was emptied");
+        if (B().rows.has(id)) throw mises("invalid_input", `a part ${id} exists again`, "rename or delete it first");
+        trashed.delete(undo);
+        const parent = t.row.parent_id && B().rows.has(t.row.parent_id) ? t.row.parent_id : null;
+        B().rows.set(id, { ...t.row, parent_id: parent });
+        for (const k of t.children) { const c = B().rows.get(k); if (c && c.parent_id === t.row.parent_id) c.parent_id = id; }
+        d.setParts([...d.parts(), t.part]);
+        const all = d.assembly?.().byProject;
+        let restored = 0;
+        if (all && t.instances.length) {
+          let a = all.get(t.row.project_id);
+          if (!a) { a = { instances: [], joints: [] }; all.set(t.row.project_id, a); }
+          a.instances.push(...t.instances);
+          a.joints.push(...t.joints);
+          restored = t.instances.length;
+          d.emit({ type: "assembly_changed", run_id: null, data: { project_id: t.row.project_id } });
+        }
+        return { ...rowView(part(id)), restored_instances: restored };
       },
     },
     {

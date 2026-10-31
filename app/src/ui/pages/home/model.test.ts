@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Build } from "../../../api/builds";
-import { buildStatus, DEFAULT_VIEW, fmtLastEdited, partsLabel, viewBuilds } from "./model";
+import { buildStatus, DEFAULT_VIEW, fmtLastEdited, fmtMass, partsLabel, viewBuilds } from "./model";
 
 function build(p: Partial<Build>): Build {
   return {
@@ -76,6 +76,18 @@ describe("fmtLastEdited", () => {
     expect(fmtLastEdited(now - 2 * 86400, now)).toBe("2 days ago");
     expect(fmtLastEdited(now - 1 * 86400, now)).toBe("1 day ago");
     expect(fmtLastEdited(now - 40 * 86400, now)).toMatch(/\d{4}/);   // falls back to a date
+  });
+});
+
+describe("fmtMass (D24 tile)", () => {
+  it("grams under a kilo, kilos above; null when unknown", () => {
+    expect(fmtMass(180)).toBe("180 g");
+    expect(fmtMass(4.25)).toBe("4.3 g");
+    expect(fmtMass(1240)).toBe("1.24 kg");
+    expect(fmtMass(31000)).toBe("31.0 kg");
+    expect(fmtMass(null)).toBeNull();
+    expect(fmtMass(undefined)).toBeNull();
+    expect(fmtMass(Number.NaN)).toBeNull();
   });
 });
 

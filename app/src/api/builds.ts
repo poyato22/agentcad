@@ -15,10 +15,13 @@ export interface Build {
   id: string; name: string; created_at: number; updated_at: number; trashed_at: number | null;
   last_edited_at?: number;
   part_count: number; run_count: number; onshape: { did: string; wid: string } | null;
+  /** The build's total mass in grams (D24 tile; Plan 9 B2's mass sum), when the core reports it. */
+  mass_g?: number | null;
 }
 export const buildSchema = z.object({
   id: z.string(), name: z.string(), created_at: z.number(), updated_at: z.number(),
   last_edited_at: z.number().optional().catch(undefined),
+  mass_g: z.number().nullable().optional().catch(undefined),
   trashed_at: z.number().nullable().default(null),
   part_count: z.number().default(0), run_count: z.number().default(0),
   onshape: z.object({ did: z.string(), wid: z.string() }).nullable().catch(null).default(null),

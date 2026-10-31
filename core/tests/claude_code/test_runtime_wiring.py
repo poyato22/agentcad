@@ -275,6 +275,24 @@ async def test_bad_alias_rejected(rt, ref):
 
 
 @needs_sandbox
+async def test_claude_code_lead_spawns_a_claude_code_child(rt, claude_bin, signed_in):
+    """D3: a claude-code/<alias> lead's sub-agent inherits claude-code — it must not fall back
+    to the keyless Anthropic default (which 401'd). The child is a real (fake-binary) claude run
+    on the same alias."""
+    async with served(rt):
+        lead = await rt.start_run("designer", "hello", model_ref="claude-code/sonnet", role="lead")
+        await asyncio.wait_for(rt.wait(lead), 15)
+        out = await rt.gate.call(lead, "agent_spawn",
+                                 {"agent": "verifier", "prompt": "hello", "wait": False},
+                                 call_id="c1", workdir=rt.workdir(lead))
+        child = out.data["run_id"]
+        await asyncio.wait_for(rt.wait(child), 15)
+        run = rt.store.get_run(child)
+        assert (run.provider, run.model, run.external) == ("claude-code", "sonnet", True)
+        assert run.parent_id == lead
+
+
+@needs_sandbox
 async def test_profile_default_model_can_be_claude_code(rt, claude_bin, signed_in):
     from mises.profile import Profile, save_profile
     save_profile(rt.home, Profile(default_model="claude-code/haiku"))

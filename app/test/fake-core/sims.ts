@@ -12,6 +12,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { FACE_ID_RE, SIM_DIRECTIONS, SIM_FACE_PRESETS, type SimEnvironment, type SimMaterial, type SimRecord, type SimSolvers } from "../../src/api/sims";
 import type { AgentRun, PartSummary } from "../../src/api/types";
+import { DEFAULT_PROJECT } from "./assembly";
 import { withOpenFoam, type OpenFoamState } from "./accuracy";
 import { asBody, HttpError, mises, RAW, type EmitExtras, type EventIn, type Route } from "./server";
 import {
@@ -223,7 +224,7 @@ function start(d: SimDeps, b: Record<string, unknown>): unknown {
   if (!d.parts().some((p) => p.part_id === partId && p.metrics !== null)) throw mises("not_found", `no built part '${partId}'`);
 
   const run = d.newRun("studies", "ui", "studies-page", `Studies page: static study of ${partId}`, true);
-  const input = { part_id: partId, fix, load: { face: loadFace, newtons: l.newtons, direction }, material: b.material ?? null, environment: b.environment ?? null, fine: b.fine ?? true };
+  const input = { part_id: partId, fix, load: { face: loadFace, newtons: l.newtons, direction }, material: b.material ?? null, environment: b.environment ?? null, fine: b.fine ?? true, wait: b.wait ?? null };
   const callId = `ui-${hex(6)}`;
   d.emit({ type: "run_started", run_id: run.id, data: { agent: "studies", provider: "ui", model: "studies-page", parent_id: null, external: true } });
   const emitted = d.emit({ type: "tool_call", run_id: run.id, data: { call_id: callId, name: "sim_static_run", input } },
@@ -235,6 +236,10 @@ function start(d: SimDeps, b: Record<string, unknown>): unknown {
   sims.timers.set(run.id, timers);
   const at = (i: number, fn: () => void) => timers.push(setTimeout(fn, sims.stepMs * i));
   const finish = (status: "done" | "failed", ok: boolean, summaryText: string, data: Record<string, unknown>) => {
+    // Plan 9 D4: like core jobs.finished, every study end is a sim_finished (stream "sim")
+    d.emit({ type: "sim_finished", run_id: run.id, data: {
+      kind: "sim", job_id: simId, run_id: run.id, build_id: (run as { project_id?: string | null }).project_id ?? DEFAULT_PROJECT,
+      status, summary: summaryText, cancel_url: `/jobs/${simId}/cancel`, sim_id: simId, type: "static", part_id: partId } });
     d.emit({ type: "tool_result", run_id: run.id, data: { call_id: callId, name: "sim_static_run", ok, summary: summaryText } },
       { steps: [{ kind: ok ? "sim_run" : "error", payload: ok
         ? { call_id: callId, name: "sim_static_run", output: { ok, summary: summaryText, data, handles: [], warnings: [], step_kind: "sim_run", images: [] } }
@@ -300,7 +305,7 @@ function start(d: SimDeps, b: Record<string, unknown>): unknown {
   if (sims.outcome === "solver_missing") {
     at(1, () => {
       progress("failed", "failed", 0, REAL.failed.error ?? "CalculiX (ccx) is not installed");
-      Object.assign(rec, { status: "failed", stage: "failed", error: REAL.failed.error, hint: REAL.failed.hint, finished_at: now(), card: cardOf(REAL.failed, {}) });
+      Object.assign(rec, { status: "failed", stage: "failed", error: REAL.failed.error, hint: REAL.failed.hint, error_code: "solver_missing", finished_at: now(), card: cardOf(REAL.failed, {}) });
       finish("failed", false, `study failed: ${REAL.failed.error} (${REAL.failed.hint})`,
         { sim_id: simId, error: "solver_missing", missing: ["ccx"], install: REAL.solvers.ccx.install, hint: REAL.failed.hint });
     });
@@ -314,7 +319,7 @@ function start(d: SimDeps, b: Record<string, unknown>): unknown {
   if (sims.outcome === "solve_failed") {
     at(5, () => {
       progress("failed", "failed", 67.5, "CalculiX failed: see the solver log");
-      Object.assign(rec, { status: "failed", stage: "failed", error: "CalculiX failed: see the solver log", hint: "check the setup (is the part held?)", finished_at: now(), card: cardOf(REAL.failed, {}) });
+      Object.assign(rec, { status: "failed", stage: "failed", error: "CalculiX failed: see the solver log", hint: "check the setup (is the part held?)", error_code: "solve_failed", finished_at: now(), card: cardOf(REAL.failed, {}) });
       finish("failed", false, `study failed: ${rec.error} (${rec.hint})`, { sim_id: simId, error: "solve_failed", hint: rec.hint });
     });
     return { run_id: run.id, status: "running" };

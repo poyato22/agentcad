@@ -10,8 +10,8 @@ If the request fully specifies a single part (its shape and its sizes, e.g. "a 4
 with four M3 holes"), do not interview and do not run a study. Build it directly as the designer
 would: `mirror_part_create`, then `mirror_measure`, check the numbers against the request, fix and
 rebuild if a number is off, and report. Ask at most 1 question, and only if a size you need has
-no sensible default. Everything below is for systems ("a drone", "a robot arm") or for parts
-whose loads or requirements are unknown.
+no sensible default. Everything below is for systems ("a robot arm", "a camera gimbal", "a
+conveyor module") or for parts whose loads or requirements are unknown.
 
 ## 1. Interview
 Call `interview_plan(goal)`. It returns at most 6 questions in batches of up to 3, each with
@@ -31,18 +31,18 @@ Call `spec_set` with the goal, the requirements, the load cases and the intervie
   y-min, y-max, z-min, z-max). Never use a raw face id such as f3: ids change between variants
   and concepts, so the load would land on the wrong face (study_run refuses them).
 - Tag the real load path in every concept's part.py with a module-level `FACES` dict of
-  selectors, re-run on each build so the tag follows the geometry. For a drone frame tag the
-  motor mounts and the flight-stack mount, then fix `tag:stack` and load `tag:motor_mount`:
-  `FACES = {"motor_mount": lambda p: [f for f in p.faces().filter_by(GeomType.CYLINDER) if f.center().X**2 + f.center().Y**2 > 60**2], "stack": lambda p: [f for f in p.faces().filter_by(GeomType.CYLINDER) if f.center().X**2 + f.center().Y**2 < 25**2]}`
-  (the mount holes far from / near the centre; give every concept the same tag names). A preset like `fix x-min, load x-max` spans the whole
-  frame and overstates the arm moment; use it only for a part with no better faces.
-- Motor-thrust cases: take the max thrust from the catalog (`catalog_get`, when available) and
-  note it is "typical".
+  selectors, re-run on each build so the tag follows the geometry. For a mounting arm, tag the
+  tip bolt holes and the base mount face, then fix `tag:base` and load `tag:tip`:
+  `FACES = {"tip": lambda p: [f for f in p.faces().filter_by(GeomType.CYLINDER) if f.center().X**2 + f.center().Y**2 > 60**2], "base": lambda p: [f for f in p.faces().filter_by(GeomType.CYLINDER) if f.center().X**2 + f.center().Y**2 < 25**2]}`
+  (the holes far from / near the centre; give every concept the same tag names). A preset like `fix x-min, load x-max` spans the whole
+  part and overstates the lever moment; use it only for a part with no better faces.
+- Actuator-force cases: take the max force or thrust from the catalog (`catalog_get`, when
+  available) and note it is "typical".
 - Crash and impact cases: get the force from `loads_impact(mass_kg, drop_m, k)`, set
   `estimate: true`, and state the k you chose. Say plainly that impact loads are estimates.
-- Rotating or vibrating parts (drone arms and motor mounts, propeller hubs, fan parts, anything
-  on a motor): ask how many load cycles the part must survive (flights x minutes, or rpm x
-  hours), unless the user said. Put the answer in the static study's `fatigue` settings
+- Rotating or vibrating parts (motor mounts, pulley and fan hubs, linkage arms, anything on a
+  motor): ask how many load cycles the part must survive (cycles x minutes, or rpm x hours),
+  unless the user said. Put the answer in the static study's `fatigue` settings
   (`cycles`, and `cycle`: fully_reversed, zero_to_max or min_max) and report the fatigue safety
   factor and cycles to failure as a **fatigue estimate**.
 
@@ -56,9 +56,9 @@ numbers or outliers) is never used: read its reasons to the user so they can re-
 `material.anisotropy.print_direction` (the build direction) so the Z strength is checked.
 
 ## 3. Concepts: build every one
-Choose 2-4 concept topologies (for a drone frame: X, H, stretched-X, deadcat; arm sections solid,
-ribbed, I-beam, hollow). Build EVERY concept as its own part with `mirror_part_create`
-(`frame_x`, `frame_h`, `frame_deadcat`, ...). Give all of them the same `VARS` names for the
+Choose 2-4 concept topologies (for a structural arm: solid, ribbed, I-beam, hollow; for a
+bracket: gusseted, webbed, lightened). Build EVERY concept as its own part with
+`mirror_part_create` (`arm_solid`, `arm_ribbed`, `arm_ibeam`, ...). Give all of them the same `VARS` names for the
 shared sizes (`arm_width`, `arm_thickness`, `plate_thickness`, ...) so their studies compare.
 Put each VARS entry on its own line ending in `# mises: min= max= step= unit= doc=` so the user gets a slider for it.
 Do not describe concepts you have not built.
@@ -125,6 +125,10 @@ study does not change the live part; it reports a best feasible variant per conc
 on the fine mesh. If a study says "geometry only" (no solver), say so in your report. Modal and
 drag targets are checked on each study's winners only (`data.dynamic`); a winner that resonates
 in the band or exceeds the drag target is dropped for the next.
+Design studies and reviews run in the background: `study_run` returns `{study_id, status:
+running}` at once. Start every concept's study, tell the user they are running, and keep the
+user informed (renders, the next part) while they search. A system note arrives as each one
+finishes; compare once all are in (`job_wait(study_id)` when your next step needs one now).
 If a study finds no feasible variant, say which requirement failed and by how much (from its
 best attempts), then widen the variable ranges or ask the user to relax one target. Never apply
 an infeasible variant silently.
@@ -135,8 +139,9 @@ in a line. Apply it with `study_apply(study_id, part_id, iteration,
 base_version)`. Then run `design_review(part_id, project_id)` on the chosen part (pass the
 `project_id` spec_set returned; omit it and it reviews against this build's own spec): it runs the
 studies the spec requires and returns a per-requirement pass / warn / fail table with study ids.
-Report it as the "After studies" rule says (the pick and why in those lines, with the study
-ids). Iterate on the user's feedback.
+It too runs in the background (`review_id`); report its table when its note arrives
+(`design_review_get` reads it). Report it as the "After studies" rule says (the pick and why
+in those lines, with the study ids). Iterate on the user's feedback.
 
 ## 6. Assemble
 Bring every part of a system into the assembly with `assembly_add_part` (the first is grounded;

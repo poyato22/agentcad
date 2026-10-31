@@ -76,6 +76,76 @@ async def test_on_face_sits_one_face_on_another(ctx, tmp_path):
     assert _pt(t, [0, 0, 0])[2] == pytest.approx(7)
 
 
+async def test_add_part_joins_the_auto_placed_instance_instead_of_a_copy(ctx):
+    """Plan 9 D10: a new part was placed by itself (free, no joint); assembly_add_part joins
+    that instance, a second call adds a second copy."""
+    from mises.assembly.model import Instance
+    store = ctx.services["assembly"]
+    base = store.add_instance("p", Instance(part_id="base", name="base", fixed=True))
+    store.mark_auto("p", base.id)
+    auto = store.add_instance("p", Instance(part_id="arm", name="Arm",
+                                            transform=[[1, 0, 0, 50], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]))
+    store.mark_auto("p", auto.id)
+    r = await _add(ctx, "arm", offset=[10, 0, 0])
+    assert r.data["instance"]["id"] == auto.id and r.data["instance"]["name"] == "Arm"
+    assert r.data["joint"]["a"]["instance_id"] == base.id
+    assert _pt(r.data["world_transform"], [0, 0, 0]) == pytest.approx([10, 0, 0])
+    asm = store.get("p")
+    assert [i.id for i in asm.instances] == [base.id, auto.id] and len(asm.joints) == 1
+    r2 = await _add(ctx, "arm", offset=[-10, 0, 0])
+    assert r2.data["instance"]["id"] != auto.id and len(store.get("p").instances) == 3
+    # the auto-grounded base: adding it keeps that one instance (offset applied), once
+    r3 = await _add(ctx, "base", offset=[0, 0, 3])
+    assert r3.data["instance"]["id"] == base.id and r3.data["instance"]["transform"][2][3] == 3
+    assert len(store.get("p").instances) == 3
+    assert store.auto_ids("p") == set()
+    await _add(ctx, "base")
+    assert len(store.get("p").instances) == 4
+
+
+async def test_joining_an_auto_placed_part_keeps_the_joints_other_parts_have_to_it(ctx):
+    """Review I2: bracket is auto-placed, bolt is joined TO it, then bracket joins the frame:
+    bolt's joint survives (the instance is updated in place, never deleted and re-added)."""
+    from mises.assembly.model import Instance
+    store = ctx.services["assembly"]
+    frame = store.add_instance("p", Instance(part_id="frame", name="frame", fixed=True))
+    bracket = store.add_instance("p", Instance(part_id="bracket", name="bracket"))
+    store.mark_auto("p", bracket.id)
+    bolt = (await _add(ctx, "bolt", mate={"instance_id": bracket.id})).data
+    assert bracket.id in store.auto_ids("p")              # joined TO: still the core's placement
+    r = await _add(ctx, "bracket", offset=[5, 0, 0])
+    assert r.data["instance"]["id"] == bracket.id and r.data["joint"]["a"]["instance_id"] == frame.id
+    asm = store.get("p")
+    assert len(asm.instances) == 3 and len(asm.joints) == 2
+    assert any(j.id == bolt["joint"]["id"] for j in asm.joints)
+    assert store.auto_ids("p") == set()
+
+
+async def test_a_refused_join_keeps_the_mark_so_the_retry_never_copies(ctx):
+    """Review I3: a bad mate (unknown instance) is refused and changes nothing; the retry joins
+    the same auto-placed instance."""
+    from mises.assembly.model import Instance
+    store = ctx.services["assembly"]
+    store.add_instance("p", Instance(part_id="frame", name="frame", fixed=True))
+    arm = store.add_instance("p", Instance(part_id="arm", name="arm"))
+    store.mark_auto("p", arm.id)
+    with pytest.raises(MisesError, match="no instance"):
+        await _add(ctx, "arm", mate={"instance_id": "nope"})
+    assert arm.id in store.auto_ids("p")
+    r = await _add(ctx, "arm")
+    assert r.data["instance"]["id"] == arm.id and len(store.get("p").instances) == 2
+
+
+async def test_a_mate_on_the_grounded_auto_part_is_reported_not_dropped_silently(ctx):
+    from mises.assembly.model import Instance
+    store = ctx.services["assembly"]
+    base = store.add_instance("p", Instance(part_id="base", name="base", fixed=True))
+    store.mark_auto("p", base.id)
+    store.add_instance("p", Instance(part_id="other", name="other", fixed=True))
+    r = await _add(ctx, "base", mate={"kind": "revolute"})
+    assert r.data["mate_ignored"] is True and "mate was not applied" in r.summary
+
+
 async def test_add_part_with_a_revolute_mate(ctx):
     await _add(ctx, "base")
     r = await _add(ctx, "arm", mate={"kind": "revolute", "limits": [-90, 90]})

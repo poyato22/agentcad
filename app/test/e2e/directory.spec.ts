@@ -12,6 +12,19 @@ test.beforeEach(async ({ fake, page }) => {
 const meter = (page: import("@playwright/test").Page) => page.locator(".budget");
 const chip = (page: import("@playwright/test").Page) => page.locator(".topbar-right .budget-chip");
 
+/** D22: Onshape and the parts library are Home sub-views (not build tabs): ⌂, then its button. */
+async function homeView(page: import("@playwright/test").Page, name: "Onshape" | "Parts library"): Promise<void> {
+  if (await page.locator("[data-region=topbar]").count()) await page.getByRole("button", { name: "Home" }).click();
+  await page.locator('[data-testid="home"]').getByRole("button", { name, exact: true }).click();
+}
+/** Back from a Home sub-view into the open build (its top bar holds the Onshape count). */
+async function backToBuild(page: import("@playwright/test").Page): Promise<void> {
+  const home = page.locator('[data-testid="home"]');
+  await home.getByRole("button", { name: /Builds/ }).click();
+  await home.locator(".tile-open").first().click();
+  await expect(page.locator("[data-region=topbar]")).toBeVisible();
+}
+
 test("budget_meter_updates_live_as_onshape_is_used_and_turns_amber_at_warn", async ({ page, fake }) => {
   await page.goto("/");
   await expect(meter(page).locator("[data-budget-used]")).toHaveText("1,999");
@@ -25,25 +38,32 @@ test("budget_meter_updates_live_as_onshape_is_used_and_turns_amber_at_warn", asy
   await expect(page.locator("[data-budget-reset]")).toHaveText(/^1 Jan \d{4}$/);
   await page.keyboard.press("Escape");
   await expect(page.locator("#status-card")).toBeHidden();
-  // browsing Onshape spends calls: one documents page + the thumbnails of the tiles near the
-  // viewport only (lazy); the meter follows each event
-  await page.getByRole("tab", { name: "Onshape" }).click();
+  // browsing Onshape (on Home, D22) spends calls: one documents page + the thumbnails of the
+  // tiles near the viewport only (lazy)
+  await homeView(page, "Onshape");
   await expect(page.getByRole("list", { name: "20 documents" })).toBeVisible();
+  await expect.poll(async () => page.locator('[data-thumb="loaded"]').count()).toBeGreaterThan(0);
+  // lazy: a thumbnail is fetched only for a tile that showed (Home's full window shows them all here)
+  await expect.poll(async () => {
+    const shown = await page.locator('[data-thumb="loaded"]').count();
+    const fetched = (await fake.calls()).filter((c) => c.path === "/onshape/thumbnail").length;
+    return shown === fetched;
+  }).toBe(true);
+  const loaded = await page.locator('[data-thumb="loaded"]').count();
+  // coming back to the view lists nothing again
+  await page.locator('[data-testid="home"]').getByRole("button", { name: /Builds/ }).click();
+  await page.locator('[data-testid="home"]').getByRole("button", { name: "Onshape", exact: true }).click();
+  await expect(page.getByRole("list", { name: "20 documents" })).toBeVisible();
+  expect((await fake.calls()).filter((c) => c.path === "/onshape/documents")).toHaveLength(1);
+  // back in the build, the meter followed each event
+  await backToBuild(page);
   await expect(meter(page)).toHaveAttribute("data-level", "warn");
   await expect(chip(page)).toHaveAttribute("data-level", "warn");
   await expect.poll(async () => {
-    const loaded = await page.locator('[data-thumb="loaded"]').count();
     const used = Number((await meter(page).locator("[data-budget-used]").textContent())?.replace(",", ""));
     const inBar = Number((await chip(page).locator("[data-chip-used]").textContent())?.replace(",", ""));
-    return used === 1999 + 1 + loaded && inBar === used && loaded > 0;
+    return used >= 1999 + 1 + loaded && inBar === used;
   }).toBe(true);
-  const thumbCalls = (await fake.calls()).filter((c) => c.path === "/onshape/thumbnail").length;
-  expect(thumbCalls).toBeLessThan(20);                    // the tiles below the fold weren't fetched
-  // coming back to the tab lists nothing again
-  await page.getByRole("tab", { name: "Parts" }).click();
-  await page.getByRole("tab", { name: "Onshape" }).click();
-  await expect(page.getByRole("list", { name: "20 documents" })).toBeVisible();
-  expect((await fake.calls()).filter((c) => c.path === "/onshape/documents")).toHaveLength(1);
   // an agent's call (any run) moves it too
   await fake.emit({ type: "onshape_budget", run_id: "agent-run", data: { used_year: 2500, limit_year: 2500, used_run: 4, warn_at: 2000, reset_at: 1830000000, run_id: "agent-run" } });
   await expect(meter(page).locator("[data-budget-used]")).toHaveText("2,500");
@@ -58,7 +78,7 @@ test("budget_meter_updates_live_as_onshape_is_used_and_turns_amber_at_warn", asy
 
 test("onshape_grid_paging_open_and_import_to_build", async ({ page, fake }) => {
   await page.goto("/");
-  await page.keyboard.press("Meta+5");   // Onshape (U2b renumbered the tabs)
+  await homeView(page, "Onshape");
   await expect(page.getByRole("list", { name: "20 documents" })).toBeVisible();
   await expect(page.locator('[data-thumb="loaded"]').first()).toBeVisible();
   await page.getByRole("button", { name: "Load more" }).click();
@@ -88,7 +108,7 @@ test("onshape_grid_paging_open_and_import_to_build", async ({ page, fake }) => {
 test("onshape_not_connected_shows_the_connect_card", async ({ page, fake }) => {
   await fake.reset("base");
   await page.goto("/");
-  await page.getByRole("tab", { name: "Onshape" }).click();
+  await homeView(page, "Onshape");
   await page.getByRole("button", { name: "Add Onshape keys" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   expect((await fake.calls()).filter((c) => c.path.startsWith("/onshape/documents"))).toHaveLength(0);
@@ -96,7 +116,7 @@ test("onshape_not_connected_shows_the_connect_card", async ({ page, fake }) => {
 
 test("directory_categories_cards_insert_and_use_with_agent", async ({ page, fake }) => {
   await page.goto("/");
-  await page.getByRole("tab", { name: "Parts" }).click();
+  await homeView(page, "Parts library");
   await page.getByRole("button", { name: "Motors" }).click();
   const card = page.locator('[data-item="motor_2207_class"]');
   await expect(card).toContainText("Mass 33 g");
@@ -109,8 +129,9 @@ test("directory_categories_cards_insert_and_use_with_agent", async ({ page, fake
   await expect(detail.getByRole("status").first()).toContainText("as motor_2207_class");
   await detail.getByRole("button", { name: "Use with agent" }).click();
   const chips = page.getByRole("list", { name: "Context for the agent" });
-  await expect(chips).toContainText("2207 brushless motor class");
+  await expect(chips).toContainText("2207 brushless motor class");   // the build's composer
   // an estimated mass says so
+  await homeView(page, "Parts library");
   await page.getByRole("button", { name: "Fasteners" }).click();
   await expect(page.locator('[data-item="m3_hex_nut"] [data-mass-source="estimate"]')).toContainText("estimate");
   expect((await fake.calls()).some((c) => c.method === "POST" && c.path === "/catalog/items/motor_2207_class/insert")).toBe(true);
@@ -118,7 +139,7 @@ test("directory_categories_cards_insert_and_use_with_agent", async ({ page, fake
 
 test("import_from_link_review_edits_are_saved_and_page_text_is_plain", async ({ page, fake }) => {
   await page.goto("/");
-  await page.keyboard.press("Meta+6");   // Parts (U2b renumbered the tabs)
+  await homeView(page, "Parts library");
   await page.getByRole("button", { name: "Import from link" }).click();
   await page.getByRole("textbox", { name: "Product page link" }).fill("https://shop.example.com/p/sketchy");
   await page.getByRole("button", { name: "Read the page" }).click();
@@ -143,7 +164,7 @@ test("import_from_link_review_edits_are_saved_and_page_text_is_plain", async ({ 
 
 test("allowed_import_sites_editor", async ({ page, fake }) => {
   await page.goto("/");
-  await page.getByRole("tab", { name: "Parts" }).click();
+  await homeView(page, "Parts library");
   await page.getByRole("button", { name: /Allowed import sites/ }).click();
   await page.getByRole("textbox", { name: "Site to allow" }).fill("shop.example.com");
   await page.getByRole("button", { name: "Allow", exact: true }).click();

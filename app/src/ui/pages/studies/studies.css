@@ -91,3 +91,24 @@
 .st-caveats ul { margin: 6px 0; padding-left: 16px; }
 .st-caveats p { margin: 0; }
 
+/* Plan 9 U-D: agent-first. The studies agent takes the left ~40% (it fills the window height and
+   scrolls inside); history and the collapsed manual setup sit below it, and the side scrolls as
+   a whole once the manual setup is open. The result viewport on the right is large. */
+.st.st-agentfirst { grid-template-columns: minmax(360px, 40%) minmax(0, 1fr); align-items: start; }
+.st-agentfirst .st-side { position: sticky; top: 0; height: calc(100vh - var(--topbar-h) - 32px); overflow: auto; gap: 12px; padding-right: 2px; }
+.st-agentfirst .st-side > .sa { flex: 1 0 440px; height: auto; }
+.st-agentfirst .st-side > .st-history, .st-agentfirst .st-side > .st-band { flex: none; }
+.st-agentfirst .sv-vp { height: clamp(360px, 62vh, 760px); }
+.st-manual-toggle {
+  flex: none; display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; text-align: left;
+  background: transparent; border: 1px solid var(--line); border-radius: 6px; color: var(--ink); cursor: pointer;
+  font: 600 12.5px/1.2 var(--font-ui, "Instrument Sans", -apple-system, BlinkMacSystemFont, sans-serif);
+}
+.st-manual-toggle:hover { background: var(--paper2); }
+.st-manual-toggle:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
+.st-manual-toggle[aria-expanded="true"] { border-color: var(--line2); }
+.st-manual-caret { width: 10px; color: var(--dim); }
+.st-manual { flex: none; display: flex; flex-direction: column; gap: 14px; }
+/* section headers: plain sentence-case text, not boxed or letter-spaced (visual spec) */
+.st-h { margin: 0; font: 600 12.5px/1.3 var(--font-ui, "Instrument Sans", -apple-system, BlinkMacSystemFont, sans-serif); color: var(--ink); letter-spacing: 0; text-transform: none; }
+

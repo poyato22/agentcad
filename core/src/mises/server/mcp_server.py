@@ -76,7 +76,8 @@ def build_mcp_server(runtime: Runtime) -> Server:
             if params.name in INTERNAL_ONLY:
                 raise MisesError(ErrorCode.NOT_FOUND, f"unknown tool: {params.name}")
             out = await runtime.gate.call(run_id, params.name, dict(params.arguments or {}),
-                                          call_id=call_id, workdir=runtime.workdir(run_id))
+                                          call_id=call_id, workdir=runtime.workdir(run_id),
+                                          agent=True)
         except MisesError as e:
             return types.CallToolResult(
                 content=[types.TextContent(type="text", text=canonical_json(e.to_dict()))],

@@ -1,0 +1,14 @@
+{
+  "error": "invalid_input",
+  "message": "1 validation error for TopoptGenerateArgs",
+  "errors": [
+    {
+      "type": "less_than",
+      "loc": [
+        "volume_fraction"
+      ],
+      "msg": "Input should be less than 0.8",
+      "input": 0.95
+    }
+  ]
+}

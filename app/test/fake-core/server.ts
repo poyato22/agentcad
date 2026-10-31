@@ -17,14 +17,19 @@ import { INSTALL_DEPS } from "../../src/api/types";
 import { assemblyFrom, assemblyRoutes, DEFAULT_PROJECT, DEFAULT_PROJECT_ROW, type AssemblyScenario, type FakeAssembly } from "./assembly";
 import { agentEdit, buildRoutes, buildsFrom, type BuildsDeps, type BuildsScenario, type FakeBuilds } from "./builds";
 import { measureRoutes } from "./measure";
+import { conceptFrom, conceptRoutes, conceptSeedSteps, stopConcept, type ConceptScenario, type FakeConcept } from "./concept";
 import { handleControl } from "./control";
 import { directoryFrom, directoryRoutes, type DirectoryScenario, type FakeDirectory } from "./directory";
 import { bomRoutes, browserBomFrom, browserRoutes, type BrowserBomScenario, type FakeBrowserBom } from "./browser";
 import { printingFrom, printingRoutes, stopPrinting, type FakePrinting, type PrintScenario } from "./printing";
 import { setupFrom, setupRoutes, type FakeSetup, type SetupScenario } from "./setup";
 import { cancelSimsOfRun, clearSimTimers, simRoutes, simsFrom, type FakeSims, type SimScenario } from "./sims";
+import { studiesAgentRoutes, type StudiesAgentMode } from "./studiesAgent";
 import { importRoutes, parseMultipart, type FakeImport } from "./imports";
 import { specFrom, specRoutes, type FakeSpec, type SpecScenario } from "./spec";
+import { streamOf } from "./streams";
+import type { BackgroundJob } from "../../src/api/jobs";
+import { topoptFake } from "./topopt";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const SCENARIO_DIR = resolve(HERE, "scenarios");
@@ -121,6 +126,13 @@ export interface Scenario {
   /** GET /tools (the QA-fix core's registry list). Absent: every real core tool; null: no route
    *  (404, an older core). */
   tools?: FakeTool[] | null;
+  /** Plan 9 U-D: GET /studies/context proposals — the studies agent's own ("agent"), the core's
+   *  rules ("rules", the default) or none. */
+  studies_agent?: StudiesAgentMode;
+  /** Plan 9 G-A: the concept stage (pitch, sketch versions), from the real core's dump. */
+  concept?: ConceptScenario;
+  /** Plan 9 B3: an agent's running background jobs (GET /jobs; POST /jobs/{id}/cancel). */
+  jobs?: BackgroundJob[];
 }
 
 /** A GET /tools row, as core server/app.py list_tools answers it. */
@@ -174,12 +186,18 @@ export interface FakeState {
   directory: FakeDirectory;
   /** Plan 7 R3/R4/R5: agent browser snapshots and the build parts list (BOM). */
   browserBom: FakeBrowserBom;
+  concept: FakeConcept;
   assembly: FakeAssembly;
   spec: FakeSpec;
   /** Plan 5 A3: builds, part-tree rows, scripts and versions. */
   builds: FakeBuilds;
   /** GET /tools; null answers 404. */
   tools: FakeTool[] | null;
+  /** Plan 9 U-D: which proposals GET /studies/context serves. */
+  studiesAgent: StudiesAgentMode;
+  /** Plan 9 B3: running background jobs, and the ids of those that ended (cancel: 409). */
+  jobs: BackgroundJob[];
+  jobsEnded: Set<string>;
 }
 
 export interface FakeCore {
@@ -253,7 +271,25 @@ function stateFrom(sc: Scenario, token: string): FakeState {
     ...sharedBuilds(sc),
     spec: specFrom(sc.spec),
     browserBom: browserBomFrom(sc.browser),
+    studiesAgent: sc.studies_agent ?? "rules",
+    jobs: structuredClone(sc.jobs ?? []), jobsEnded: new Set(),
+    concept: conceptFrom(sc.concept ?? { start: "none" }, DEFAULT_PROJECT),
   };
+}
+
+/** A concept scenario's cards: the pitch and sketch announcements, as steps on the build's lead. */
+function seedConcept(state: FakeState, sc: Scenario): FakeState {
+  if (!sc.concept) return state;
+  let id = state.steps.reduce((m, s) => Math.max(m, s.id), 0);
+  for (const seed of conceptSeedSteps(state.concept)) {
+    const lead = (sc.concept.lead_run ? state.runs.get(sc.concept.lead_run) : undefined)
+      ?? [...state.runs.values()].find((r) => r.parent_id === null && r.project_id === seed.run_hint);
+    if (!lead) continue;
+    const ann = { ...(seed.payload.agent_announce as Record<string, unknown>), run_id: lead.id };
+    state.steps.push({ id: ++id, run_id: lead.id, ts: lead.created_at + id / 1000, kind: "decision", payload: { agent_announce: ann },
+      evidence_hash: "0".repeat(64), prev_hash: null, collapsed: false });
+  }
+  return state;
 }
 
 /** The scenario's open build tabs, on the fake profile (C1 profile.active_project_id / open_project_ids). */
@@ -347,7 +383,7 @@ export function asBody(v: unknown): Body {
 export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
   const origins = new Set([...UI_ORIGINS, ...(opts.origins ?? [])]);
   const defaultGlb = opts.glbPath ?? DEFAULT_GLB;
-  let state = stateFrom(loadScenario(opts.scenario), opts.token ?? "dev-token");
+  let state = (() => { const sc = loadScenario(opts.scenario); return seedConcept(stateFrom(sc, opts.token ?? "dev-token"), sc); })();
   let scriptTimers: ReturnType<typeof setTimeout>[] = [];
   let scriptStarted = false;
   const sockets = new Set<{ ws: WebSocket; runId: string | null }>();
@@ -362,13 +398,14 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     const step: Step = {
       id, run_id: runId, ts: s.ts ?? now(), kind: s.kind, payload: s.payload ?? {},
       evidence_hash: s.evidence_hash ?? hex(32), prev_hash: s.prev_hash ?? prev?.evidence_hash ?? null,
-      collapsed: s.collapsed ?? false,
+      collapsed: s.collapsed ?? false, stream: s.stream ?? streamOf(s.kind, s.payload),
     };
     state.steps = [...state.steps.filter((x) => x.id !== id), step].sort((a, b) => a.id - b.id);
     return step;
   }
 
-  function broadcast(ev: MisesEvent) {
+  function broadcast(evIn: MisesEvent) {
+    const ev: MisesEvent = { ...evIn, stream: evIn.stream ?? streamOf(evIn.type, evIn.data) };
     const text = JSON.stringify(ev);
     for (const s of sockets) {
       if (s.runId !== null && ev.run_id !== s.runId) continue;
@@ -409,10 +446,22 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         // U3c: a lead's waiting messages are delivered at its turn boundary
         if (st !== "running" && leadQueues.has(r.id)) { const id = r.id; setTimeout(() => drainLead(id, st), 0); }
       }
+    } else if (ev.type === "sim_finished" && typeof d.job_id === "string") {
+      // like core jobs.finished: the job is no longer running
+      state.jobs = state.jobs.filter((j) => j.job_id !== d.job_id);
+      state.jobsEnded.add(d.job_id);
     } else if (ev.type === "run_started" && ev.run_id && d.resumed === true) {
       const r = state.runs.get(ev.run_id);
       if (r) state.runs.set(r.id, { ...r, status: "running", updated_at: now() });
     }
+  }
+
+  /** A background job ends: sim_finished, shaped like the real core's (jobs.finished). */
+  function endJob(j: BackgroundJob, status: string, summary: string): void {
+    if (!state.jobs.some((x) => x.job_id === j.job_id)) return;
+    emit({ type: "sim_finished", run_id: j.run_id, data: {
+      kind: j.kind, job_id: j.job_id, run_id: j.run_id, build_id: j.build_id, status, summary, cancel_url: j.cancel_url,
+      ...(j.kind === "sim" ? { sim_id: j.job_id, type: "static", part_id: j.part_id ?? null } : { part_id: j.part_id ?? null }) } });
   }
 
   function emit(evIn: EventIn, extras: EmitExtras = {}): { step_ids: number[] } {
@@ -716,6 +765,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
 
   const buildsDeps: BuildsDeps = {
     get: () => state.builds, parts: () => state.parts, setParts: (list) => { state.parts = list; },
+    assembly: () => state.assembly,
     profile: () => state.setup.profile as unknown as ReturnType<BuildsDeps["profile"]>,
     emit: (ev) => { emit(ev); },
     blockers: (projectIds) => {
@@ -727,6 +777,8 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     },
   };
 
+  // Plan 9 D14: generative design runs (records live with this fake core, cleared on reset)
+  const topopt = topoptFake({ parts: () => state.parts, setParts: (p) => { state.parts = p; }, emit: (ev) => { emit(ev); } });
   const routes: Route[] = [
     { method: "GET", re: /^\/health$/, h: () => ({ ok: true }) },
     {
@@ -826,7 +878,33 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       method: "POST", re: /^\/runs\/cancel_all$/, h: () => {
         const ids = [...state.runs.values()].filter((r) => r.status === "running").map((r) => r.id);
         ids.forEach(cancelRun);
+        // like the core (B3 N1): an idle agent's background jobs stop too, at their run
+        for (const j of [...state.jobs]) {
+          endJob(j, "cancelled", `${j.label || j.kind} cancelled`);
+          if (j.run_id && !ids.includes(j.run_id)) ids.push(j.run_id);
+        }
         return { cancelled: ids, failed: [] };
+      },
+    },
+    // ---- Plan 9 B3: an agent's background jobs (core server/sim_api.py)
+    {
+      method: "GET", re: /^\/jobs$/, h: (_m, q) => {
+        const pid = q.get("project_id");
+        return state.jobs.filter((j) => !pid || j.build_id === pid).sort((a, b) => b.started_at - a.started_at);
+      },
+    },
+    {
+      method: "POST", re: /^\/jobs\/([^/]+)\/cancel$/, h: (m) => {
+        const id = decodeURIComponent(m[1]);
+        if (!/^(sim_|review_|study_|to_)[0-9a-f]{12}$/.test(id)) throw mises("invalid_input", `bad job id: '${id}'`, "sim_…, review_…, study_… or to_… ids");
+        const j = state.jobs.find((x) => x.job_id === id);
+        if (!j) {
+          if (state.jobsEnded.has(id)) throw new HttpError(409, { error: "not_running", status: "cancelled", message: `${id} is not running` });
+          throw mises("not_found", `no background job ${id} here`);
+        }
+        // a user-stopped job ends cancelled; its note starts no agent turn (the core defers it)
+        setTimeout(() => endJob(j, "cancelled", `${j.label || j.kind} was cancelled by the user`), 0);
+        return { job_id: id, status: "cancelling" };
       },
     },
     {
@@ -911,7 +989,8 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       method: "GET", re: /^\/runs\/([^/]+)\/steps$/, h: (m, q) => {
         getRun(m[1]);
         const after = Number(q.get("after_id") ?? 0);
-        return state.steps.filter((s) => s.run_id === m[1] && s.id > after);
+        return state.steps.filter((s) => s.run_id === m[1] && s.id > after)
+          .map((s) => ({ ...s, stream: s.stream ?? streamOf(s.kind, s.payload) }));
       },
     },
     {
@@ -1086,6 +1165,18 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         return RAW;
       },
     },
+    // D24 Home cover (core projects_api project_thumb: one 16:10 render of the build's assembly,
+    // transparent background): scenarios/renders/cover.png for a build that has parts, else 404
+    {
+      method: "GET", re: /^\/projects\/([^/]+)\/thumb\.png$/, h: (m, _q, _b, _r, res) => {
+        const has = [...state.builds.rows.values()].some((r) => r.project_id === m[1]);
+        const file = resolve(SCENARIO_DIR, "renders", "cover.png");
+        if (!has || !existsSync(file)) throw mises("not_found", `no preview for build ${m[1]} yet`, "it has no parts with a built mesh");
+        res.writeHead(200, { "Content-Type": "image/png", "Content-Length": statSync(file).size, ETag: `"cover-${m[1]}"` });
+        res.end(readFileSync(file));
+        return RAW;
+      },
+    },
     ...setupRoutes(() => state.setup, () => state.parts),
     // ---- Plan 4: Ollama on this Mac (core local_models.py); 404 without a `local` block (older core)
     { method: "GET", re: /^\/local\/status$/, h: () => localState() },
@@ -1137,6 +1228,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         return { ok: true };
       },
     },
+    ...topopt.routes,
     ...simRoutes({
       sims: () => state.sims, parts: () => state.parts, defaultMaterial: () => state.setup.profile.default_material,
       newRun, emit,
@@ -1146,6 +1238,13 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       activeProject: () => (state.setup.profile as { active_project_id?: string | null }).active_project_id ?? state.builds.defaultId ?? DEFAULT_PROJECT,
     }),
     ...directoryRoutes({ get: () => state.directory, emit: (ev) => { emit(ev); } }),
+    ...studiesAgentRoutes({
+      // the build each part is in, as the fake's GET /parts serves it (its tree rows)
+      parts: () => state.parts.map((p) => ({ ...p, project_id: state.builds.rows.get(p.part_id)?.project_id ?? p.project_id ?? state.builds.defaultId })),
+      liveBuild: (id) => state.builds.builds.some((b) => b.id === id && b.trashed_at === null),
+      buildName: (id) => state.builds.builds.find((b) => b.id === id)?.name ?? null, mode: () => state.studiesAgent,
+      records: () => (state.sims.records as unknown as Map<string, import("../../src/api/studies").StudyRecord>).values(),
+    }),
     ...browserRoutes({
       get: () => state.browserBom, hasRun: (id) => state.runs.has(id),
       setSites: (sites) => { state.setup.profile = { ...state.setup.profile, suggested_sites: sites }; },
@@ -1166,6 +1265,13 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       emit: (ev, extras) => { emit(ev, extras); }, approval: (id) => state.approvals.get(id),
     }),
     ...assemblyRoutes({ get: () => state.assembly, parts: () => state.parts, emit: (ev) => { emit(ev); } }),
+    // Plan 9 G-A: the concept stage
+    ...conceptRoutes({
+      get: () => state.concept, liveBuild: (id) => state.builds.builds.some((b) => b.id === id && b.trashed_at === null),
+      runs: () => [...state.runs.values()],
+      newRun: (task, projectId) => { const r = newRun("engineer", "fake", "fake-model", task, false, "done"); r.project_id = projectId; return r; },
+      appendStep: (st, runId) => appendStep(st, runId), emit: (ev) => { emit(ev); },
+    }),
     // Plan 7 U2a: measure and feedback pins
     ...measureRoutes({
       parts: () => state.parts, partVersion: (id) => state.builds.rows.get(id)?.version, partProject: (id) => state.builds.rows.get(id)?.project_id,
@@ -1361,12 +1467,15 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     scriptTimers = [];
     scriptStarted = false;
     clearSimTimers(state.sims);
+    topopt.reset();
     dropSockets();
     stopPrinting(state.print);
     // the live activity belongs to the old scenario's runs (GET /runs/{id} serves it, C-3)
     lastActivity.clear(); beforeWaiting.clear(); askedAt.clear(); leadQueues.clear(); unreachableLeads.clear();
     stopping.clear();
-    state = stateFrom(loadScenario(scenario), token ?? state.token);
+    stopConcept(state.concept);
+    const sc = loadScenario(scenario);
+    state = seedConcept(stateFrom(sc, token ?? state.token), sc);
   }
 
   await new Promise<void>((ok, fail) => {
@@ -1393,6 +1502,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     async stop() {
       scriptTimers.forEach(clearTimeout);
       clearSimTimers(state.sims);
+      topopt.reset();
       stopPrinting(state.print);
       dropSockets("terminate");
       wss.close();

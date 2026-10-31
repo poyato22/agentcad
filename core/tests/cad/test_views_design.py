@@ -88,7 +88,7 @@ async def test_design_build_uses_a_separate_judge_with_the_rubric(tmp_path):
     # images come first, then the text that asks about them; hero views at 1024 px
     blocks = req.messages[0].content
     assert type(blocks[-1]).__name__ == "TextBlock"
-    assert all(type(b).__name__ == "ImageBlock" for b in blocks[:-1]) and len(blocks) == 4
+    assert all(type(b).__name__ == "ImageBlock" for b in blocks[:-1]) and len(blocks) == 5   # 3 views + zebra hero (G-R styles)
     # the score is the weighted rubric: surface 0.2 weight scored 0 -> below the judge's 0.9
     w = di.KNOBS["design"]["critique"]["weights"]
     expect = (w["silhouette"] + w["proportion"] + w["details"] + w["function"] + w["dfm"]) / (
@@ -107,8 +107,8 @@ async def test_design_views_are_hero_side_front_at_1024(tmp_path):
     store, ctx = _ctx(tmp_path, "a robotic dog", rt)
     out = await views.critique_model.handler(ctx, views.CritiqueArgs(part_id="cube", request="dog"))
     assert out.data["mode"] == "self"            # no separate judge: the builder looks itself
-    assert [i.label for i in out.images] == ["iso", "side", "front"]
-    assert all(max(_size(i)) == 1024 for i in out.images)
+    assert [i.label for i in out.images] == ["iso", "side", "front", "zebra"]   # G-R renderer has styles
+    assert all(max(_size(i)) == 1024 for i in out.images[:3])
     assert {c["id"] for c in out.data["checks"]} >= {"silhouette", "no_bars", "zebra"}
     assert "checks" in out.data["report_format"]
 
@@ -293,7 +293,7 @@ async def test_claude_code_run_is_judged_by_a_fresh_sub_agent(tmp_path):
     assert out.data["mode"] == "vision_model" and out.data["judge"] == "separate sub-agent"
     run_id, system, text, images = calls[0]
     assert run_id == ctx.run_id and "checkable question" in system
-    assert len(images) == 3 and all(m == "image/png" for m, _b in images)
+    assert len(images) == 4 and all(m == "image/png" for m, _b in images)   # + zebra hero
 
 
 async def test_claude_code_judge_failure_is_reported_not_graded(tmp_path):
