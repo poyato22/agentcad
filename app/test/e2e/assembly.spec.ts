@@ -137,10 +137,73 @@ test("section_one_click_cuts_the_assembly_and_the_slider_sweeps_the_plane", asyn
   await page.getByRole("group", { name: "Section plane normal" }).getByRole("button", { name: "Y", exact: true }).click();
   await expect(page.getByRole("group", { name: "Section plane normal" }).getByRole("button", { name: "Y", exact: true })).toHaveAttribute("aria-pressed", "true");
   await sweep(0.5);
-  await shots(page, "uc-assembly-section");
   await page.getByTestId("pill-section").click();
   await expect(page.getByTestId("assembly-canvas")).toHaveAttribute("data-section", "off");
   await expect.poll(async () => (await pixels(page)).total).toBeGreaterThan(far * 0.9);
+});
+
+/** The Pi enclosure (geometry scenario) as an assembly whose tree matches it: case, lid and an
+ *  Electronics group (board, battery, fan) — every row with its mass, the group its sum. */
+function enclosure(): Record<string, unknown> {
+  const sc = JSON.parse(readFileSync("test/fake-core/scenarios/geometry.json", "utf8")) as { parts: Record<string, unknown>[] } & Record<string, unknown>;
+  const ids = ["pi_case", "pi_lid", "pi_board", "pi_battery", "pi_fan"];
+  const I = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]];
+  const stored = { instances: ids.map((id, i) => ({ id: `i_${id}`, part_id: id, name: id.replace("pi_", ""), fixed: i === 0, transform: I })), joints: [] };
+  return {
+    ...sc, script: [],
+    parts: [...sc.parts, { part_id: "electronics", vars: {}, metrics: null, mtime: 0 }],
+    builds: { tree: {
+      pi_case: { label: "Case", order: 0 }, pi_lid: { label: "Lid", order: 1 }, electronics: { label: "Electronics", kind: "group", order: 2 },
+      pi_board: { label: "Board", parent_id: "electronics", order: 0 }, pi_battery: { label: "Battery", parent_id: "electronics", order: 1 },
+      pi_fan: { label: "Fan", parent_id: "electronics", order: 2 },
+    } },
+    assembly: { by_project: { [PROJECT]: stored, b0default000: stored }, interference: "none" },
+  };
+}
+
+/** Pixels on the assembly canvas lit well above the dark faces (luma > 150). */
+async function bright(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const src = document.querySelector<HTMLCanvasElement>("[data-testid=assembly-canvas]") as HTMLCanvasElement;
+    const c = document.createElement("canvas");
+    c.width = src.width; c.height = src.height;
+    const ctx = c.getContext("2d") as CanvasRenderingContext2D;
+    ctx.drawImage(src, 0, 0);
+    const d = ctx.getImageData(0, 0, c.width, c.height).data;
+    let n = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      if ((d[i + 3] ?? 0) < 200) continue;
+      if (0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2] > 150) n++;
+    }
+    return n;
+  });
+}
+
+test("the_section_is_unmistakable_from_the_default_camera_and_the_tree_matches_the_assembly", async ({ page, fake }) => {
+  await fake.reset(enclosure());
+  await page.goto("/");
+  await expect(page.getByTestId("assembly-canvas")).toHaveAttribute("data-instances", "5");
+  await expect.poll(async () => (await pixels(page)).total, { timeout: 15_000 }).toBeGreaterThan(2000);
+  // D9: every row its mass, the group the sum of its children, the total under the tree
+  for (const id of ["pi_case", "pi_lid", "pi_board", "pi_battery", "pi_fan"]) {
+    await expect(page.locator(`[data-part="${id}"] [data-testid=row-mass]`).first()).toHaveText(/\d g$/);
+  }
+  await expect(page.locator('[data-part="electronics"] > .tree-row [data-testid=row-mass]')).toHaveText("23.9 g");   // 5.555 + 15.475 + 2.867
+  await expect(page.getByTestId("parts-total")).toContainText("73.6 g");
+  // one click from the default camera: the cut faces the camera, filled far from the faces
+  await page.getByTestId("pill-section").click();
+  const handle = page.getByTestId("section-handle");
+  await expect(handle).toBeVisible();
+  await page.waitForTimeout(300);
+  // the cap: a large fill far brighter than the dark faces (dark theme), hatched; off, only the
+  // thin edge lines are that bright
+  const on = await bright(page);
+  await page.getByTestId("pill-section").click();
+  await page.waitForTimeout(300);
+  const off = await bright(page);
+  expect(on - off, `bright pixels with the cut ${on} vs without ${off}`).toBeGreaterThan(3000);
+  await page.getByTestId("pill-section").click();
+  await shots(page, "uc-assembly-section");
 });
 
 test("x_ray_and_explode_work_on_the_assembly", async ({ page }) => {

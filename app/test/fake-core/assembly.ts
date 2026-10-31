@@ -31,17 +31,22 @@ export interface AssemblyScenario {
   projects?: ProjectRowIn[];
   /** Stored assemblies per project id (stored transforms; GET answers solved ones). */
   by_project?: Record<string, { instances: Instance[]; joints: Joint[] }>;
+  /** "none": the solids sit inside each other's boxes but don't touch (a nested enclosure), so the
+   *  box-overlap check would report clashes the real (solid) check doesn't. Default "boxes". */
+  interference?: "boxes" | "none";
 }
 
 export interface FakeAssembly {
   projects: ProjectRowIn[];
   byProject: Map<string, { instances: Instance[]; joints: Joint[] }>;
+  interference: "boxes" | "none";
 }
 
 export function assemblyFrom(sc: AssemblyScenario | undefined): FakeAssembly {
   return {
     projects: structuredClone(sc?.projects ?? [{ id: DEFAULT_PROJECT, name: "Default", created_at: DEFAULT_PROJECT_ROW.created_at, trashed_at: null }]),
     byProject: new Map(Object.entries(structuredClone(sc?.by_project ?? {}))),
+    interference: sc?.interference ?? "boxes",
   };
 }
 
@@ -237,6 +242,7 @@ export function assemblyRoutes(d: Deps): Route[] {
     {
       method: "GET", re: new RegExp(`${base.source}/interference$`), h: (m) => {
         const s = solved(m[1]);
+        if (d.get().interference === "none") return [];
         const boxes = s.instances.map((i) => {
           const bb = d.parts().find((p) => p.part_id === i.part_id)?.metrics?.bbox;
           if (!bb) return null;

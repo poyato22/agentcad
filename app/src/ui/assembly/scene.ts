@@ -358,6 +358,14 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
     }
     return out;
   }
+  /** Parts moved (a glide, an animation): the view modes re-place their caps and outline, once a
+   *  frame at most (review M1: a moving part's cut never shows hollow). */
+  let modesFrame = 0;
+  function followModes(): void {
+    if (modesFrame || disposed || restyled.size === 0) return;
+    modesFrame = requestAnimationFrame(() => { modesFrame = 0; if (!disposed) for (const f of [...restyled]) f(); });
+  }
+
   const host: ModeHost = {
     scene, camera, controls: orbit, canvas,
     parts: shownParts,
@@ -404,6 +412,7 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
       root.updateMatrixWorld(true);
       rebuildOverlaps();
       refitIfNew();
+      followModes();
       requestRender();
     },
     setSelected(id) { selected = id; restyle(); },
@@ -436,6 +445,7 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
     dispose() {
       disposed = true;
       if (frame) cancelAnimationFrame(frame);
+      if (modesFrame) cancelAnimationFrame(modesFrame);
       canvas.removeEventListener("pointerdown", onDown);
       canvas.removeEventListener("pointerup", onUp);
       canvas.removeEventListener("dblclick", onDbl);

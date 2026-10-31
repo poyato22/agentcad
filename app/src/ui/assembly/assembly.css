@@ -25,7 +25,8 @@
 }
 .pill-btn {
   display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px;
-  font: inherit; color: var(--dim); background: transparent; border: 0; border-radius: 7px !important; cursor: pointer; white-space: nowrap;
+  font: inherit; color: color-mix(in srgb, var(--ink) 82%, var(--dim)); background: transparent; border: 0; border-radius: 7px !important;
+  cursor: pointer; white-space: nowrap;
 }
 .pill-btn:hover:not(:disabled) { color: var(--ink); background: var(--raised, var(--paper2)); }
 .pill-btn[aria-pressed="true"] { color: var(--ink); background: var(--blue-tint); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--blue) 55%, transparent); }
@@ -37,11 +38,11 @@
 .pill-section { display: inline-flex; align-items: center; gap: 8px; padding: 0 6px 0 2px; }
 .pill-axes { display: inline-flex; gap: 1px; padding: 2px; border-radius: 7px !important; background: var(--raised, var(--paper2)); }
 .pill-axis {
-  min-width: 24px; height: 22px; padding: 0 6px; font: 11px/1 var(--font-mono); color: var(--dim);
+  min-width: 24px; height: 22px; padding: 0 6px; font: 600 11px/1 var(--font-mono); color: color-mix(in srgb, var(--ink) 78%, var(--dim));
   background: transparent; border: 0; border-radius: 5px !important; cursor: pointer;
 }
 .pill-axis:hover { color: var(--ink); }
-.pill-axis[aria-pressed="true"] { color: var(--ink); background: var(--paper); }
+.pill-axis[aria-pressed="true"] { color: var(--ink); background: var(--paper); box-shadow: inset 0 0 0 1px var(--line2); }
 .pill-range { width: clamp(72px, 11vw, 168px); accent-color: var(--blue); }
 .pill-range:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; border-radius: 4px !important; }
 .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }

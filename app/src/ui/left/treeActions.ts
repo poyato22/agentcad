@@ -3,7 +3,8 @@
 // (optimistic) and are put back, with the core's reason, if the core refuses them.
 import { signal, type Signal } from "@preact/signals";
 import { CoreError } from "../../api/client";
-import type { PartSummary } from "../../api/types";
+import { onCoreEvent } from "../../api/events";
+import type { MisesEvent, PartSummary } from "../../api/types";
 import { fromPreset, withColor, type Appearance, type PresetId } from "../../lib/appearance";
 import { partName } from "../../lib/names";
 import { activeBuildId, isActiveBuild, loadParts } from "../../state/builds";
@@ -147,6 +148,24 @@ export async function deleteParts(ids: readonly string[]): Promise<boolean> {
   return done === ids.length;
 }
 
+/** An agent's part_delete (always approved by the user first): the tree re-reads and the same
+ *  Undo toast offers it back (coordinator ruling, U-C fix round 1). */
+export function onAgentDeleted(ev: MisesEvent): void {
+  if (ev.type !== "part_deleted") return;
+  const d = ev.data;
+  const id = typeof d["part_id"] === "string" ? d["part_id"] : null;
+  const undo = typeof d["undo"] === "string" ? d["undo"] : null;
+  const build = typeof d["project_id"] === "string" ? d["project_id"] : null;
+  if (!id || !isActiveBuild(build)) return;
+  const n = Array.isArray(d["removed_instances"]) ? d["removed_instances"].length : 0;
+  const name = typeof d["label"] === "string" && d["label"] ? d["label"] : nameOf(id);
+  void loadParts(build);
+  lastDeleted.value = undo ? {
+    text: `An agent deleted ${name}${n ? (n === 1 ? " and its instance" : ` and ${n} instances`) : ""}`, build, items: [{ id, undo }],
+  } : null;
+}
+onCoreEvent(onAgentDeleted);
+
 /** Undo the last delete: each part comes back (files, tree row, assembly instances). */
 export async function undoDelete(): Promise<boolean> {
   const d = lastDeleted.peek();
@@ -172,7 +191,25 @@ export function instanceCount(ids: readonly string[]): number {
   return asm ? asm.instances.filter((i) => ids.includes(i.part_id)).length : 0;
 }
 /** The build view's assembly (set by ui/assembly, so this module needs no Three.js). */
-export const assemblyOf: Signal<{ instances: readonly { part_id: string }[] } | null> = signal(null);
+export const assemblyOf: Signal<{ instances: readonly { id: string; part_id: string }[] } | null> = signal(null);
+
+/** "Remove from assembly" (review M4): takes these parts' instances out of the build's assembly
+ *  and keeps the parts (the core emits assembly_changed; the view follows). */
+export async function removeFromAssembly(ids: readonly string[]): Promise<boolean> {
+  const build = activeBuildId.peek();
+  const asm = assemblyOf.peek();
+  if (!build || !asm) return false;
+  treeError.value = null;
+  const gone = asm.instances.filter((i) => ids.includes(i.part_id));
+  try {
+    for (const i of gone) await actions.client().deleteInstance(build, i.id);
+  } catch (e) {
+    treeError.value = `Couldn't remove it from the assembly: ${reason(e)}`;
+    return false;
+  }
+  note(gone.length === 1 ? `Removed ${nameOf(gone[0].part_id)} from the assembly` : `Removed ${gone.length} instances from the assembly`);
+  return true;
+}
 
 export async function exportPart(id: string, format: "step" | "stl"): Promise<boolean> {
   treeError.value = null;

@@ -33,7 +33,7 @@ import { PartProperties } from "./PartProperties";
 import { clickSelect, selectedIds, targetsFor } from "./partSelection";
 import { dropPosAt, flatten, planDrop, planIndent, planOutdent, planStep, type DropPos, type Move } from "./tree";
 import {
-  addToAssembly, commitMove, deleteParts, duplicateParts, exportPart, instanceCount, renamePart, setColor, setFinish, treeError, treeNote,
+  addToAssembly, commitMove, deleteParts, duplicateParts, exportPart, instanceCount, removeFromAssembly, renamePart, setColor, setFinish, treeError, treeNote,
 } from "./treeActions";
 import { hiddenParts, isolate, setHidden, showAll } from "./visibility";
 import "./partlist.css";
@@ -261,6 +261,8 @@ export function PartList(): JSX.Element {
     });
     items.push("sep",
       { label: `Add to assembly${many}`, disabled: !allBuilt, title: whyNot, run: () => { void addToAssembly(targets); } },
+      ...(instanceCount(targets) > 0 ? [{ label: `Remove from assembly${many}`, title: "Takes its instances out of the assembly; the part stays",
+        run: () => { void removeFromAssembly(targets); } }] : []),
       { label: `Duplicate${many}`, keys: "⌘D", disabled: !allBuilt, title: whyNot, run: () => { void duplicateParts(targets); } });
     if (single) {
       items.push(

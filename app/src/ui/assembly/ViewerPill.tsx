@@ -23,6 +23,14 @@ function axisOf(n: Vec3): string | null {
   return null;
 }
 
+/** The plane's normal, signed so the kept side faces the camera: you look straight at the cut
+ *  (review I1). The clip keeps n·p <= at, and the cap is seen from +n. */
+export function towardCamera(host: ModeHost | null, normal: Vec3): Vec3 {
+  if (!host) return normal;
+  const look = host.camera.position.clone().sub(host.controls.target);
+  return unit(normal).dot(look) >= 0 ? normal : [-normal[0], -normal[1], -normal[2]];
+}
+
 export interface CheckIssue { tone: "fail" | "warn"; text: string }
 
 /** What the check chip says: clashes first (fail), then joints that can't apply (warn). */
@@ -70,7 +78,7 @@ export function ViewerPill({ host, modesCtl: ctl, modes, onModes, animate, issue
         </button>
         <span class="pill-sep" aria-hidden="true" />
         <button type="button" class="pill-btn" aria-pressed={sec.on} data-testid="pill-section" disabled={!box}
-          title="Cut the assembly with a plane" onClick={() => set({ section: { ...sec, on: !sec.on, at: sec.on ? sec.at : null } })}>
+          title="Cut the assembly with a plane" onClick={() => set({ section: sec.on ? { ...sec, on: false } : { on: true, normal: towardCamera(host, sec.normal), at: null } })}>
           <span aria-hidden="true">◧</span> Section
         </button>
         {sec.on && (
@@ -78,7 +86,7 @@ export function ViewerPill({ host, modesCtl: ctl, modes, onModes, animate, issue
             <span class="pill-axes" role="group" aria-label="Section plane normal">
               {AXES.map((a) => (
                 <button key={a.key} type="button" class="pill-axis" aria-pressed={axisOf(sec.normal) === a.key}
-                  onClick={() => set({ section: { on: true, normal: a.normal, at: null } })}>{a.key}</button>
+                  onClick={() => set({ section: { on: true, normal: towardCamera(host, a.normal), at: null } })}>{a.key}</button>
               ))}
               <button type="button" class="pill-axis" title="Look at the cut from the other side" aria-label="Flip the section"
                 onClick={() => set({ section: { on: true, normal: [-sec.normal[0], -sec.normal[1], -sec.normal[2]], at: -at } })}>⇄</button>

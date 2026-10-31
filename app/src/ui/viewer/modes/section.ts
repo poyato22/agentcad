@@ -38,8 +38,8 @@ export function clipPlane(n: THREE.Vector3, at: number, into = new THREE.Plane()
 }
 
 const CAP_HATCH_PX = 64;
-/** Hatch tiles (one line each) across a cap: about 16 lines over the part's cross-section. */
-const HATCH_TILES = 24;
+/** Hatch tiles (one line each) across a cap: dense enough to read as "cut" at a glance. */
+const HATCH_TILES = 40;
 const hatchCache = new Map<string, THREE.Texture | null>();
 
 /** 45° section hatching: lines in the edge color over the cap color (null: no 2D canvas, flat). */
@@ -53,7 +53,7 @@ function hatchTexture(bg: string, line: string): THREE.Texture | null {
     if (c && g) {
       c.width = c.height = CAP_HATCH_PX;
       g.fillStyle = bg; g.fillRect(0, 0, CAP_HATCH_PX, CAP_HATCH_PX);
-      g.strokeStyle = line; g.globalAlpha = 0.55; g.lineWidth = 3;
+      g.strokeStyle = line; g.globalAlpha = 0.9; g.lineWidth = 6;
       // three diagonals so the pattern tiles seamlessly
       for (const o of [-CAP_HATCH_PX, 0, CAP_HATCH_PX]) { g.beginPath(); g.moveTo(o, CAP_HATCH_PX); g.lineTo(o + CAP_HATCH_PX, 0); g.stroke(); }
       tex = new THREE.CanvasTexture(c);
@@ -65,11 +65,51 @@ function hatchTexture(bg: string, line: string): THREE.Texture | null {
   return tex;
 }
 
-/** The cap's color: the part's own color, else the theme's face grey lifted toward the edge grey
- *  (the cut must read apart from the outer faces). */
+/** The cap's color (Plan 9 D17: the cut must be unmistakable): the part's color (else the face
+ *  grey) pushed well toward the edge ink, so it stands far apart from the outer faces in both
+ *  themes; its hatch lines go the other way (see hatchLine). */
 export function capColor(part: ShownPart, colors = meshColors()): string {
-  if (part.color) return part.color;
-  return `#${new THREE.Color(colors.face).lerp(new THREE.Color(colors.edge), 0.22).getHexString()}`;
+  return `#${new THREE.Color(part.color ?? colors.face).lerp(new THREE.Color(colors.edge), 0.7).getHexString()}`;
+}
+
+/** The hatch lines over a cap: the face grey (dark in dark mode, light in light mode), the
+ *  strongest contrast against the cap fill. */
+export function hatchLine(colors = meshColors()): string {
+  return `#${new THREE.Color(colors.face).getHexString()}`;
+}
+
+/** Where the plane (n·p = at, n unit) cuts a part's triangles, as world-space line segments
+ *  (pairs of points). The outline of the cut. */
+export function cutSegments(root: THREE.Object3D, n: THREE.Vector3, at: number, max = 400_000): number[] {
+  const out: number[] = [];
+  const a = new THREE.Vector3(); const b = new THREE.Vector3(); const c = new THREE.Vector3();
+  let seen = 0;
+  root.traverse((o) => {
+    if (!(o instanceof THREE.Mesh) || o.userData["modeHelper"]) return;
+    const pos = o.geometry.getAttribute("position");
+    if (!pos) return;
+    const idx = o.geometry.getIndex();
+    const count = idx ? idx.count : pos.count;
+    seen += count / 3;
+    if (seen > max) return;                         // a huge mesh: caps only, no outline
+    o.updateMatrixWorld(true);
+    const m = o.matrixWorld;
+    const tri = [a, b, c];
+    for (let i = 0; i < count; i += 3) {
+      for (let k = 0; k < 3; k++) tri[k].fromBufferAttribute(pos, idx ? idx.getX(i + k) : i + k).applyMatrix4(m);
+      const d = tri.map((v) => n.dot(v) - at);
+      const pts: THREE.Vector3[] = [];
+      for (let k = 0; k < 3; k++) {
+        const j = (k + 1) % 3;
+        if ((d[k] < 0) !== (d[j] < 0)) {
+          const t = d[k] / (d[k] - d[j]);
+          pts.push(tri[k].clone().lerp(tri[j], t));
+        }
+      }
+      if (pts.length === 2) out.push(pts[0].x, pts[0].y, pts[0].z, pts[1].x, pts[1].y, pts[1].z);
+    }
+  });
+  return out;
 }
 
 interface Entry { part: ShownPart; stencils: THREE.Mesh[]; cap: THREE.Mesh }
@@ -91,6 +131,8 @@ export class SectionCaps {
   private entries: Entry[] = [];
   private builtFor: THREE.Object3D[] = [];
   private on = false;
+  /** The cut's outline: where the plane crosses each part's faces, in the edge ink. */
+  private readonly outline: THREE.LineSegments;
 
   private readonly host: ModeHost;
 
@@ -99,7 +141,19 @@ export class SectionCaps {
     this.group.name = "section-caps";
     this.group.userData["modeHelper"] = true;
     host.scene.add(this.group);
+    const mat = new THREE.LineBasicMaterial({ depthFunc: THREE.LessEqualDepth });
+    this.outline = new THREE.LineSegments(new THREE.BufferGeometry(), mat);
+    this.outline.name = "section-outline";
+    this.outline.userData["modeHelper"] = true;
+    this.outline.renderOrder = RENDER_BASE + 10_000;
+    this.outline.frustumCulled = false;
+    this.outline.raycast = () => {};
+    this.outline.visible = false;
+    host.scene.add(this.outline);
   }
+
+  /** How many outline segments the cut has (tests). */
+  outlineSegments(): number { return (this.outline.geometry.getAttribute("position")?.count ?? 0) / 2; }
 
   get active(): boolean { return this.on; }
   /** The caps (tests read their colors and placement). */
@@ -108,7 +162,7 @@ export class SectionCaps {
   apply(s: SectionMode, parts: readonly ShownPart[], box: THREE.Box3 | null): void {
     this.on = s.on && parts.length > 0;
     for (const p of parts) clipPart(p, this.on ? this.plane : null);
-    if (!this.on) { this.group.visible = false; return; }
+    if (!this.on) { this.group.visible = false; this.outline.visible = false; return; }
     this.host.enableLocalClipping();
     const n = unit(s.normal);
     clipPlane(n, sectionAt(s, box), this.plane);
@@ -127,7 +181,7 @@ export class SectionCaps {
       const mat = e.cap.material as THREE.MeshBasicMaterial;
       const col = capColor(e.part, colors);
       e.cap.userData["capColor"] = col;
-      const hatch = hatchTexture(col, colors.edge);
+      const hatch = hatchTexture(col, hatchLine(colors));
       if (hatch) {
         // the texture carries the color (cap color + hatch lines); white leaves it as drawn
         if (!mat.map || mat.map.source !== hatch.source) { mat.map?.dispose(); mat.map = hatch.clone(); mat.needsUpdate = true; }
@@ -140,6 +194,15 @@ export class SectionCaps {
       e.cap.updateMatrixWorld(true);
     }
     this.group.visible = true;
+    // the outline: where the plane crosses the faces, a hair toward the viewer so it sits on the cap
+    const pts: number[] = [];
+    for (const p of parts) for (const v of cutSegments(p.scene.object, n, at)) pts.push(v);
+    const lift = Math.max(1e-3, 1e-4 * (box ? box.getSize(new THREE.Vector3()).length() : 1));
+    for (let i = 0; i < pts.length; i += 3) { pts[i] += n.x * lift; pts[i + 1] += n.y * lift; pts[i + 2] += n.z * lift; }
+    this.outline.geometry.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
+    this.outline.geometry.computeBoundingSphere();
+    (this.outline.material as THREE.LineBasicMaterial).color.set(colors.edge);
+    this.outline.visible = pts.length > 0;
   }
 
   private rebuild(parts: readonly ShownPart[]): void {
@@ -196,6 +259,9 @@ export class SectionCaps {
   dispose(): void {
     this.clear();
     this.group.removeFromParent();
+    this.outline.geometry.dispose();
+    (this.outline.material as THREE.Material).dispose();
+    this.outline.removeFromParent();
   }
 }
 
