@@ -238,7 +238,9 @@ async def part_thumb(home: Path, part_id: str, version: int, size: int = DEFAULT
 
 
 COVER_W = 640                          # the cover's default width; its height is 10/16 of it
-_COVER_MARGIN = 0.07                   # of each side, kept clear around the framed content
+_COVER_MARGIN = 0.08                   # of each side, kept clear around the framed silhouette
+_SOLID_ALPHA = 128                     # alpha at or above: the model's silhouette (framed on)
+_ALPHA_NOISE = 4                       # alpha below: invisible shadow tail / noise, dropped
 _COVER_PREFIX = "cover"
 
 # (part id, part version, world transform or None for the part's own frame, appearance look)
@@ -278,19 +280,34 @@ def _framed(png: bytes, w: int, h: int) -> bytes:
     cropped to its content and fitted (aspect kept, margins clear) into the centre of a
     transparent w x h frame. No colour keying: the render is already transparent, so the soft
     shadow and the anti-aliased fringe stay as alpha, never an opaque grey slab (FW-core I-4)."""
+    import numpy as np
     from PIL import Image
     with Image.open(io.BytesIO(png)) as src:
-        im = src.convert("RGBA")
-    box = im.getchannel("A").getbbox()
-    frame = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-    if box is not None:
-        im = im.crop(box)
-        room_w, room_h = w * (1 - 2 * _COVER_MARGIN), h * (1 - 2 * _COVER_MARGIN)
-        k = min(room_w / im.width, room_h / im.height)
-        nw, nh = max(1, round(im.width * k)), max(1, round(im.height * k))
-        im = im.resize((nw, nh), Image.LANCZOS)
-        frame.alpha_composite(im, ((w - nw) // 2, (h - nh) // 2))
-    return thumb_render.encode_png(w, h, frame.tobytes())
+        a = np.asarray(src.convert("RGBA")).copy()
+    alpha = a[..., 3]
+    alpha[alpha < _ALPHA_NOISE] = 0              # sub-visible shadow tails: not content
+    # frame on the projected silhouette (the opaque model, perspective included), never on the
+    # faint shadow, which spreads far and pushed the model off-centre
+    solid = np.argwhere(alpha >= _SOLID_ALPHA)
+    pts = solid if len(solid) else np.argwhere(alpha > 0)
+    if not len(pts):
+        return thumb_render.encode_png(w, h, bytes(w * h * 4))
+    (y0, x0), (y1, x1) = pts.min(axis=0), pts.max(axis=0) + 1
+    room_w, room_h = w * (1 - 2 * _COVER_MARGIN), h * (1 - 2 * _COVER_MARGIN)
+    k = min(room_w / (x1 - x0), room_h / (y1 - y0))
+    sh, sw = a.shape[:2]
+    big = Image.fromarray(a, "RGBA").resize((max(1, round(sw * k)), max(1, round(sh * k))),
+                                            Image.LANCZOS)
+    cx, cy = (x0 + x1) / 2 * k, (y0 + y1) / 2 * k     # the silhouette's centre, scaled
+    left, top = round(cx - w / 2), round(cy - h / 2)
+    out = np.asarray(big.crop((left, top, left + w, top + h))).copy()   # outside: transparent
+    # keep the soft shadow inside the frame: feather alpha to 0 across the margin band, so a
+    # shadow that runs past the edge fades out instead of being cut
+    band_x, band_y = max(1.0, w * _COVER_MARGIN), max(1.0, h * _COVER_MARGIN)
+    fx = np.clip(np.minimum(np.arange(w), w - 1 - np.arange(w)) / band_x, 0.0, 1.0)
+    fy = np.clip(np.minimum(np.arange(h), h - 1 - np.arange(h)) / band_y, 0.0, 1.0)
+    out[..., 3] = (out[..., 3] * np.minimum.outer(fy, fx)).astype(np.uint8)
+    return thumb_render.encode_png(w, h, out.tobytes())
 
 
 async def _render_cover(home: Path, project_id: str, shown: list[Placement], w: int,

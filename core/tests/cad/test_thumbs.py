@@ -98,6 +98,47 @@ def _png_rgba(w: int, h: int, pixels: bytes) -> bytes:
     return buf.getvalue()
 
 
+def _solid_box(png: bytes, solid: int = 128):
+    """(w, h, x0, y0, x1, y1) of the silhouette (alpha >= solid), x1/y1 exclusive."""
+    w, h, rgba = thumb_render.decode_png(png)
+    xs, ys = [], []
+    for i in range(3, len(rgba), 4):
+        if rgba[i] >= solid:
+            px = i // 4
+            xs.append(px % w)
+            ys.append(px // w)
+    return w, h, min(xs), min(ys), max(xs) + 1, max(ys) + 1
+
+
+def _assert_framed(png: bytes) -> None:
+    """The cover's silhouette is centred (+-5% of each side) and fills >= 80% of the tighter
+    axis, and the frame's edge rows/columns are fully transparent (the shadow stays inside)."""
+    w, h, x0, y0, x1, y1 = _solid_box(png)
+    assert abs((x0 + x1) / 2 - w / 2) <= 0.05 * w, (x0, x1, w)
+    assert abs((y0 + y1) / 2 - h / 2) <= 0.05 * h, (y0, y1, h)
+    assert max((x1 - x0) / w, (y1 - y0) / h) >= 0.80, (x0, y0, x1, y1)
+    _w, _h, rgba = thumb_render.decode_png(png)
+    edge = [rgba[(y * w + x) * 4 + 3] for x in range(w) for y in (0, h - 1)] + \
+           [rgba[(y * w + x) * 4 + 3] for y in range(h) for x in (0, w - 1)]
+    assert max(edge) == 0                               # nothing cut at the frame edge
+
+
+def test_framed_centres_the_silhouette_not_the_shadow():
+    # coordinator fix: a long faint shadow to one side and a noise speck far away must not push
+    # the model off-centre; the silhouette is centred and fills the tighter axis
+    side = 120
+    px = bytearray(side * side * 4)
+    for y in range(side):
+        for x in range(side):
+            i = (y * side + x) * 4
+            if 10 <= x < 50 and 8 <= y < 40:                 # the model, up and to the left
+                px[i:i + 4] = bytes((120, 120, 120, 255))
+            elif 30 <= x < 115 and 40 <= y < 110:            # a long, faint shadow down-right
+                px[i:i + 4] = bytes((20, 20, 20, 40))
+    px[(118 * side + 2) * 4 + 3] = 2                         # a sub-visible speck in a corner
+    _assert_framed(thumbs._framed(_png_rgba(side, side, bytes(px)), 320, 200))
+
+
 def test_framed_keeps_the_shadow_in_alpha_no_opaque_slab():
     # FW-core I-4: the cover render is already transparent; _framed must NOT key by colour or
     # force the soft shadow opaque. A grey, semi-transparent shadow pixel stays semi-transparent.
@@ -154,9 +195,8 @@ async def test_project_cover_renders_the_assembly_not_a_grid(tmp_path, monkeypat
     assert any(0 < rgba[i] < 255 for i in range(3, len(rgba), 4))
     w, h, x0, y0, x1, y1 = _alpha_box(png)
     assert (w, h) == (320, 200)
-    # framed: the content fills most of the frame and is centred (not one quadrant of a grid)
-    assert x1 - x0 > w * 0.6 or y1 - y0 > h * 0.6
-    assert abs((x0 + x1) / 2 - w / 2) < w * 0.1 and abs((y0 + y1) / 2 - h / 2) < h * 0.1
+    # framed on the silhouette: centred (+-5%) and filling >= 80% of the tighter axis
+    _assert_framed(png)
     assert (home / "parts" / thumbs.THUMBS_DIR / "project-proj1").is_dir()
     # cached by the assembly + parts: the same placement serves the cache, a moved one re-renders
     assert await thumbs.project_cover(home, "proj1", placed, size=320) == png
