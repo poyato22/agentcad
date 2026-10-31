@@ -102,9 +102,14 @@ export const STEP_KINDS = [
   "onshape_call", "sim_run", "measure", "verify", "compaction",
 ] as const satisfies readonly StepKind[];
 
+/** Which dock stream a step or event belongs to (Plan 9 B3; optional: older cores omit it and
+ *  the app classifies by type — ui/console/streams.ts). */
+export type StreamKind = "text" | "sim" | "view";
+
 export interface Step {
   id: number; run_id: string; ts: number; kind: StepKind; payload: Record<string, unknown>;
   evidence_hash: string; prev_hash: string | null; collapsed: boolean;
+  stream?: StreamKind;
 }
 
 export interface ToolOutput {
@@ -120,7 +125,7 @@ export interface Approval {
   expires_at: number; decided_by: string | null; decided_at: number | null; edited_payload: Record<string, unknown> | null;
 }
 
-export interface MisesEvent { type: string; run_id: string | null; data: Record<string, unknown>; ts: number }
+export interface MisesEvent { type: string; run_id: string | null; data: Record<string, unknown>; ts: number; stream?: StreamKind }
 
 /** One structured question of a batched `ui_ask_user` (C3): an id for the answer, the prompt,
  *  options and how to pick them. `multi`: several options; `rank`: order them (first = most
