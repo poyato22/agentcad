@@ -1,9 +1,28 @@
 """Plan 9 final fix wave (FW-core): regression tests for the whole-branch review findings
 that are not covered by an existing suite. Each is one of the reviewer's own probes."""
+import time
+
+from mises import jobs
 from mises.agent.definitions import load_definitions
 from mises.orchestrator.orchestrator import inherited_model_ref
 from mises.providers.registry import resolve
 from mises.runtime import Runtime
+
+
+def test_finished_jobs_are_pruned_running_ones_are_kept():
+    # FW-core M-8: jobs._jobs is pruned so finished ToolOutputs do not live for the whole process.
+    jobs.reset_for_tests()
+    now = time.time()
+    live = jobs.register(jobs.Job(id="sim_live", kind="sim", run_id="r"))
+    old = jobs.register(jobs.Job(id="sim_old", kind="sim", run_id="r"))
+    old.status, old.finished_at = "done", now - jobs.FINISHED_KEEP_S - 1
+    recent = jobs.register(jobs.Job(id="sim_new", kind="sim", run_id="r"))
+    recent.status, recent.finished_at = "done", now
+    jobs._prune(now)
+    assert jobs.get("sim_old") is None                 # long finished: dropped
+    assert jobs.get("sim_live") is live                # still running: kept
+    assert jobs.get("sim_new") is recent               # finished but recent: kept (result readable)
+    jobs.reset_for_tests()
 
 
 # ---- I-2: an agent whose tools start a background job must also offer the reader the finish

@@ -632,6 +632,14 @@ async def _run_job(events, rec: dict, d: Path, args: TopoptRunArgs, plan_: dict,
         rec.update(pareto=pareto, recommended=best, finished_at=time.time())
         rec["summary"] = summary(rec)
         save()
+        # mark the background Job finished FIRST, so an exception in _publish cannot leave it
+        # listed as running in GET /jobs for the life of the process (FW-core M-8)
+        from .. import jobs as bg
+        job = bg.get(rec["topopt_id"])
+        if job is not None and job.status == "running":
+            job.status = rec["status"]
+            job.summary = rec.get("summary") or ""
+            job.finished_at = time.time()
         _publish(events, rec, "topopt_finished", {
             "run_id": rec.get("run_id"), "status": rec["status"], "summary": rec["summary"],
             "recommended": best, "pareto": pareto})
@@ -642,6 +650,8 @@ async def _run_job(events, rec: dict, d: Path, args: TopoptRunArgs, plan_: dict,
 async def start(ctx, args: TopoptRunArgs, tool: str) -> dict:
     """Plan (refusing bad input before anything exists), write the record and start the job in
     the background. Returns the record."""
+    from .. import jobs as bg
+    bg.check_room(ctx)                 # a 4-hour run counts against the family's job budget (M-8)
     plan_ = await asyncio.to_thread(plan, ctx, args)
     plan_["runtime"] = (getattr(ctx, "services", None) or {}).get("runtime")
     home = home_of(ctx)

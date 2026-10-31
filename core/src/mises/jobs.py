@@ -57,6 +57,19 @@ class Job:
 _jobs: dict[str, Job] = {}
 _tasks: set[asyncio.Future] = set()
 
+#: a finished job is dropped from memory this long after it ended (its result is still on disk
+#: as <home>/jobs/<id>.json, which design_review_get / sim_result_get fall back to), so a long
+#: session does not pile up ToolOutputs for the life of the process
+FINISHED_KEEP_S = 600.0
+
+
+def _prune(now: float | None = None) -> None:
+    now = time.time() if now is None else now
+    for jid, j in list(_jobs.items()):
+        if j.status != "running" and j.finished_at is not None and \
+                now - j.finished_at > FINISHED_KEEP_S:
+            del _jobs[jid]
+
 
 def get(job_id: str) -> Job | None:
     return _jobs.get(job_id)
@@ -68,6 +81,7 @@ def active(job_id: str) -> bool:
 
 
 def register(job: Job) -> Job:
+    _prune()                           # drop long-finished jobs when a new one starts
     _jobs[job.id] = job
     if job.task is not None:
         _tasks.add(job.task)
@@ -108,6 +122,7 @@ def root_of(store, run_id: str | None) -> str | None:
 
 
 def running() -> list[Job]:
+    _prune()
     return [j for j in _jobs.values() if j.status == "running"]
 
 
