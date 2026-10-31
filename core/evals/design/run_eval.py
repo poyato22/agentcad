@@ -37,6 +37,7 @@ def _load_preview():
     spec = importlib.util.spec_from_file_location("mises_design_eval_preview",
                                                   HERE / "preview.py")
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod       # a unique name (dataclasses look it up); no sys.path
     spec.loader.exec_module(mod)
     return mod
 

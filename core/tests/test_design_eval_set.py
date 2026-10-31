@@ -2,6 +2,7 @@
 and the classifier agrees with every label. Also a check that the eval scripts import cleanly
 (they are run by hand, never in CI)."""
 import importlib.util
+import sys
 import json
 from collections import Counter
 from pathlib import Path
@@ -30,6 +31,8 @@ def test_classifier_matches_the_label(item):
 @pytest.mark.parametrize("script", ["run_eval.py", "preference_sheet.py", "humanoid_proof.py",
                                     "preview.py"])
 def test_eval_scripts_import(script):
-    spec = importlib.util.spec_from_file_location(script[:-3], EVALS / script)
+    spec = importlib.util.spec_from_file_location("mises_design_eval_" + script[:-3],
+                                                  EVALS / script)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod       # a unique name (dataclasses look it up); no sys.path
     spec.loader.exec_module(mod)          # module level only: no build, no model, no network
