@@ -42,6 +42,12 @@ for (const theme of ["dark", "light"] as const) {
     else expect(filter).toBe("none");
     // Plan 9 Visual spec: buttons are 7px round
     expect(await page.getByRole("button", { name: "Export SVG" }).evaluate((b) => getComputedStyle(b).borderRadius)).toBe("7px");
+    // FW-app M10: the zoom controls sit above the viewport, never over the fitted sheet
+    const tools = (await page.getByRole("group", { name: "Zoom" }).boundingBox())!;
+    const vp = (await page.locator(".drawing-viewport").boundingBox())!;
+    const img = (await sheet(page).boundingBox())!;
+    expect(tools.y + tools.height).toBeLessThanOrEqual(vp.y + 0.5);
+    expect(tools.y + tools.height).toBeLessThanOrEqual(img.y + 0.5);
   });
 
   test(`pan_and_zoom_${theme}`, async ({ page }) => {
