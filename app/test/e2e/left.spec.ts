@@ -6,7 +6,8 @@ test("left_pane_shows_parts_and_history_and_no_variables", async ({ page }) => {
   await page.goto("/");
   const left = page.locator("[data-region=left]");
   await expect(left.getByRole("button", { name: "mount plate", exact: true })).toBeVisible();
-  await expect(left.getByText("4.8 g")).toBeVisible();
+  // the tree mass: volume x the build default material (Plan 9 B2), not the scenario's stale metrics.mass_g
+  await expect(left.getByText("5.7 g")).toBeVisible();
   // Plan 7 U2b (R14): the Variables panel left the main UI
   await expect(left.getByRole("region", { name: "Variables" })).toHaveCount(0);
   await expect(page.getByTestId("var-thickness")).toHaveCount(0);

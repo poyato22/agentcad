@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import type { AssemblyPart } from "../../api/assembly";
 import { onCoreEvent } from "../../api/events";
 import { isTrustedKey } from "../../lib/keys";
+import { assemblyMassTitle, fmtMass } from "../../lib/mass";
 import { actions, parts as storeParts } from "../../state/store";
 import type { PartScene } from "../viewer/loadPart";
 import { PartLoader } from "../viewer/partLoader";
@@ -303,6 +304,12 @@ export function AssemblyView(): JSX.Element {
           aria-label="Assembly view" />
         <span class="tick tick-tl" /><span class="tick tick-tr" /><span class="tick tick-bl" /><span class="tick tick-br" />
         <span class="label vp-fig">FIG. 2 — ASSEMBLY</span>
+        {data && data.instances.length > 0 && (
+          <span class="label asm-mass" data-testid="assembly-mass" title={assemblyMassTitle(data.mass_unknown)}>
+            {`MASS ${data.total_mass_g === null || data.total_mass_g === undefined ? "—" : fmtMass(data.total_mass_g, 1)}`}
+            {data.mass_unknown.length > 0 ? ` · ${data.mass_unknown.length} unknown` : ""}
+          </span>
+        )}
         <ModeSwitch />
         <div class="viewer-tools" role="toolbar" aria-label="Assembly tools">
           <button type="button" class="vt-btn" aria-pressed={gmode === "move"} data-active={gmode === "move"} data-selected={(gmode === "move") ? "" : undefined} onClick={() => { ctl.gizmo.value = "move"; }}>move</button>

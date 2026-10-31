@@ -22,6 +22,16 @@ describe("TitleBlock", () => {
     expect(text).toContain("you");
     expect(container.querySelectorAll("[data-cell]").length).toBe(4);
   });
+  it("shows the tree mass, a group's sum, or a dash (Plan 9 B2)", () => {
+    const petg = render(<TitleBlock part={{ ...part, mass_g: 12.7, mass_source: "built", material: "PETG" }} runLabel={null} />);
+    expect(petg.container.textContent).toContain("12.70 g");
+    petg.unmount();
+    const group = render(<TitleBlock part={{ ...part, kind: "group", metrics: null, mass_g: 30, mass_source: "sum" }} runLabel={null} />);
+    expect(group.container.textContent).toContain("Σ 30.00 g");
+    group.unmount();
+    const unknown = render(<TitleBlock part={{ ...part, mass_g: null, mass_source: "unknown", mass_note: "not built yet" }} runLabel={null} />);
+    expect(unknown.container.querySelector('[data-cell="MASS"]')?.textContent).toContain("—");
+  });
   it("shows the run label", () => {
     const { container } = render(<TitleBlock part={part} runLabel="designer · stiffen upright" />);
     expect(container.textContent).toContain("designer · stiffen upright");

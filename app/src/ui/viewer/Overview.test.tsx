@@ -36,6 +36,12 @@ beforeEach(() => {
 afterEach(() => { cleanup(); closeOverview(); parts.value = []; });
 
 describe("Overview (all parts grid)", () => {
+  it("shows the tree mass and a part's own material (Plan 9 B2)", async () => {
+    parts.value = [part({ part_id: "base", label: "Base plate", metrics: metrics(42.5), mass_g: 43.5, mass_source: "built", material: "PETG" })];
+    render(<Overview />);
+    const card = await screen.findByTitle("Focus Base plate");
+    await waitFor(() => expect(card.textContent).toContain("PETG · 43.50 g"));
+  });
   it("lists each built part with its name and mass, skipping groups", () => {
     render(<Overview />);
     expect(screen.getByText("Base plate")).toBeTruthy();

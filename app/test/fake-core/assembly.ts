@@ -49,6 +49,8 @@ interface Deps {
   get(): FakeAssembly;
   parts(): readonly PartSummary[];
   emit(ev: EventIn): void;
+  /** Plan 9 B2: a part's tree mass (fake-core/builds.ts fakeTreeMass); absent = metrics.mass_g. */
+  massOf?(partId: string): { mass_g: number | null; mass_note: string | null };
 }
 
 const newId = () => randomBytes(6).toString("hex");
@@ -119,6 +121,20 @@ export function assemblyRoutes(d: Deps): Route[] {
     const f = d.parts().find((p) => p.part_id === partId)?.metrics?.face_list?.find((x) => x.id === faceId);
     return f && f.normal ? [f.center, f.normal] : null;
   };
+  /** Core mass.assembly_total: instances x part mass; unknown parts listed with their reason. */
+  const totalMass = (ids: string[]): Pick<Assembly, "total_mass_g" | "mass_unknown"> => {
+    let total = 0;
+    const unknown = new Map<string, { part_id: string; count: number; reason: string }>();
+    for (const id of ids) {
+      const m = d.massOf?.(id) ?? { mass_g: d.parts().find((p) => p.part_id === id)?.metrics?.mass_g ?? null, mass_note: "not built yet" };
+      if (m.mass_g === null) {
+        const u = unknown.get(id) ?? { part_id: id, count: 0, reason: m.mass_note ?? "unknown mass" };
+        u.count += 1;
+        unknown.set(id, u);
+      } else total += m.mass_g;
+    }
+    return { total_mass_g: Math.round(total * 1e4) / 1e4, mass_unknown: [...unknown.values()] };
+  };
   const solved = (pid: string): Assembly => {
     const a = store(pid);
     const r = solve(a, faceResolver);
@@ -130,6 +146,7 @@ export function assemblyRoutes(d: Deps): Route[] {
       joints: structuredClone(a.joints),
       dof_remaining: dof,
       overconstrained: [],
+      ...totalMass(a.instances.map((i) => i.part_id)),
     };
   };
   const base = /^\/projects\/([^/]+)\/assembly/;

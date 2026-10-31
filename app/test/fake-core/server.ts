@@ -15,7 +15,7 @@ import type {
 } from "../../src/api/types";
 import { INSTALL_DEPS } from "../../src/api/types";
 import { assemblyFrom, assemblyRoutes, DEFAULT_PROJECT, DEFAULT_PROJECT_ROW, type AssemblyScenario, type FakeAssembly } from "./assembly";
-import { agentEdit, buildRoutes, buildsFrom, type BuildsDeps, type BuildsScenario, type FakeBuilds } from "./builds";
+import { agentEdit, buildRoutes, buildsFrom, fakeTreeMass, type BuildsDeps, type BuildsScenario, type FakeBuilds } from "./builds";
 import { measureRoutes } from "./measure";
 import { handleControl } from "./control";
 import { directoryFrom, directoryRoutes, type DirectoryScenario, type FakeDirectory } from "./directory";
@@ -1160,7 +1160,8 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       get: () => state.print, parts: () => state.parts, defaultMaterial: () => state.setup.profile.default_material,
       emit: (ev, extras) => { emit(ev, extras); }, approval: (id) => state.approvals.get(id),
     }),
-    ...assemblyRoutes({ get: () => state.assembly, parts: () => state.parts, emit: (ev) => { emit(ev); } }),
+    ...assemblyRoutes({ get: () => state.assembly, parts: () => state.parts, emit: (ev) => { emit(ev); },
+      massOf: (id) => fakeTreeMass(state.parts, state.builds.rows, id) }),
     // Plan 7 U2a: measure and feedback pins
     ...measureRoutes({
       parts: () => state.parts, partVersion: (id) => state.builds.rows.get(id)?.version, partProject: (id) => state.builds.rows.get(id)?.project_id,

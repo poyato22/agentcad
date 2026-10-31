@@ -15,7 +15,7 @@ const [BASE, LID] = HINGE.instances.map((i) => i.id);
 
 function scenario(): Record<string, unknown> {
   const base = JSON.parse(readFileSync("test/fake-core/scenarios/base.json", "utf8")) as Record<string, unknown>;
-  const { dof_remaining: _d, overconstrained: _o, ...stored } = HINGE as unknown as Record<string, unknown>;
+  const { dof_remaining: _d, overconstrained: _o, total_mass_g: _m, mass_unknown: _u, ...stored } = HINGE as unknown as Record<string, unknown>;
   return { ...base, script: [], assembly: { by_project: { [PROJECT]: stored } } };
 }
 
@@ -74,6 +74,13 @@ test("assembly_toggle_shows_the_hinge_and_option_cmd_A_flips_back", async ({ pag
   await expect(page.getByTestId("viewer-canvas")).toBeVisible();
   await page.keyboard.press("Meta+Alt+KeyA");
   await expect(page.getByTestId("assembly-canvas")).toBeVisible();
+});
+
+test("the_assembly_shows_its_total_mass (Plan 9 B2)", async ({ page }) => {
+  await openAssembly(page);
+  // two mount plates: instances x the part's tree mass (volume x PLA, the build default)
+  await expect(page.getByTestId("assembly-mass")).toHaveText(/^MASS \d+\.\d g$/);
+  await expect(page.getByTestId("assembly-mass")).toHaveAttribute("title", /every instance/);
 });
 
 test("joint_slider_drives_the_core", async ({ page, fake }) => {

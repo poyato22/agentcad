@@ -135,3 +135,6 @@
 @media (prefers-reduced-motion: reduce) {
   .asm-scale::before { transition: none; }
 }
+
+/* Plan 9 B2: the assembly's total mass, under the figure label */
+.asm-mass { position: absolute; left: 22px; top: 64px; z-index: 2; }

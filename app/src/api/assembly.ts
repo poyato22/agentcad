@@ -41,6 +41,9 @@ export type Joint = z.infer<typeof jointSchema>;
 export const assemblySchema = z.object({
   instances: z.array(instanceSchema), joints: z.array(jointSchema),
   dof_remaining: z.number().default(0), overconstrained: z.array(z.array(z.string())).default([]),
+  // Plan 9 B2: instances x part mass; parts with no known mass are listed (older cores: absent)
+  total_mass_g: z.number().nullish().catch(null),
+  mass_unknown: z.array(z.object({ part_id: z.string(), count: z.number(), reason: z.string() })).catch([]).default([]),
 });
 export type Assembly = z.infer<typeof assemblySchema>;
 

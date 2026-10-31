@@ -16,7 +16,7 @@ import type { JSX } from "preact";
 import { memo } from "preact/compat";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { appearanceName, materialOf, swatchStyle, type MaterialParams } from "../../lib/appearance";
-import { fmtGrams } from "../../lib/format";
+import { partMassNote, partMassText } from "../../lib/mass";
 import { partName } from "../../lib/names";
 import { activeBuildId } from "../../state/builds";
 import { agentFlash } from "../../state/partEdits";
@@ -74,6 +74,8 @@ interface RowProps {
   editing: boolean; drop: DropPos | null; dragging: boolean; lookOpen: boolean; menuOpen: boolean;
   /** materialKey() of the part's look. */
   mat: string; lookName: string; mass: string;
+  /** Plan 9 B2: why the mass is what it is (a group's sum, or the reason it is unknown). */
+  massNote?: string | null;
 }
 
 const materialKey = (m: MaterialParams) => `${m.color ?? ""}|${m.metalness}|${m.roughness}|${m.opacity}|${m.shiny ? 1 : 0}`;
@@ -127,7 +129,7 @@ const PartRow = memo(function PartRow(p: RowProps): JSX.Element {
               {p.busy && <span class="tag-changing">changing</span>}
             </button>
           )}
-        <span class="row-hint faint">{p.mass}</span>
+        <span class="row-hint faint" data-testid="row-mass" title={p.massNote ?? undefined}>{p.mass}</span>
         <button type="button" class="tree-more" tabIndex={-1} aria-haspopup="menu" aria-expanded={p.menuOpen} aria-label={`Actions for ${p.name}`}
           title="Actions (right-click the row)" onClick={(e) => c.current.menu(e, p.id)}>⋯</button>
       </div>
@@ -448,7 +450,7 @@ export function PartList(): JSX.Element {
               collapsed={collapsed.has(id)} selected={selection.has(id)} primary={id === primary} busy={changing.has(id)} flash={flashing.has(id)}
               hidden={hidden.has(id)} catalog={p.kind === "catalog"} skeleton={p.kind === "skeleton"} editing={editing === id} drop={drop?.id === id ? drop.pos : null}
               dragging={drag === id} lookOpen={pop?.kind === "look" && pop.id === id} menuOpen={pop?.kind === "menu" && pop.id === id}
-              mat={materialKey(m)} lookName={appearanceName(p.appearance) ?? ""} mass={p.metrics ? fmtGrams(p.metrics.mass_g, 1) : ""} />
+              mat={materialKey(m)} lookName={appearanceName(p.appearance) ?? ""} mass={p.kind === "skeleton" ? "" : partMassText(p)} massNote={partMassNote(p)} />
           );
         })}
         {end < rows.length && <li class="tree-spacer" aria-hidden="true" style={{ height: `${(rows.length - end) * ROW_PX}px` }} />}

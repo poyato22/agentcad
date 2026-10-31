@@ -4,8 +4,8 @@
 import type { JSX } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import type { PartSummary } from "../../api/types";
-import { fmtGrams } from "../../lib/format";
 import { registerShortcut } from "../../lib/keys";
+import { partMassNote, partMassText } from "../../lib/mass";
 import { partName } from "../../lib/names";
 import { closeOverview, overviewOpen, toggleOverview } from "../../state/home";
 import { actions, parts, selectedPartId } from "../../state/store";
@@ -32,7 +32,7 @@ export function Overview(): JSX.Element {
 
   useEffect(() => {
     let live = true;
-    // one cheap read for the build's material (parts don't carry their own yet — see the report)
+    // one cheap read for the build's default material (a part's own `material` wins, Plan 9 B2)
     actions.client().getProfile().then((p) => { if (live) setMaterial(p.default_material); }).catch(() => {});
     // Esc through the shared key layer (capture phase); stopPropagation keeps it from also
     // clearing the viewer's selection underneath
@@ -63,7 +63,8 @@ export function Overview(): JSX.Element {
                 <div class="ov-card-body">
                   <span class="ov-card-name">{partName(p)}</span>
                   <span class="ov-card-meta dim">
-                    {material ? `${material} · ` : ""}{p.metrics ? fmtGrams(p.metrics.mass_g) : "—"}
+                    {(p.material ?? material) ? `${p.material ?? material} · ` : ""}
+                    <span title={partMassNote(p) ?? undefined}>{partMassText(p, 2)}</span>
                   </span>
                 </div>
               </button>
