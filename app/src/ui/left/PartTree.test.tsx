@@ -31,7 +31,7 @@ const LIST = () => [row("frame", 0), row("arm_a", 0, "frame"), row("arm_b", 1, "
 
 type Fn = ReturnType<typeof vi.fn>;
 let client: {
-  reorderParts: Fn; patchPart: Fn; parts: Fn; deletePart: Fn; restorePart: Fn; deleteInstance: Fn; duplicatePart: Fn; exportPart: Fn; assembly: Fn; addInstance: Fn; getProfile: Fn; bom: Fn;
+  reorderParts: Fn; patchPart: Fn; parts: Fn; deletePart: Fn; restorePart: Fn; deleteInstance: Fn; removePartsFromAssembly: Fn; restoreAssembly: Fn; duplicatePart: Fn; exportPart: Fn; assembly: Fn; addInstance: Fn; getProfile: Fn; bom: Fn;
 };
 
 beforeEach(() => {
@@ -43,6 +43,8 @@ beforeEach(() => {
     deletePart: vi.fn(async (id: string) => ({ deleted: id, removed_instances: [], undo: null })),
     restorePart: vi.fn(async (id: string) => row(id, 1)),
     deleteInstance: vi.fn(async () => []),
+    removePartsFromAssembly: vi.fn(async () => ({ removed_instances: ["i1", "i2"], removed_joints: [], undo: { instances: [{ id: "i1" }], joints: [] } })),
+    restoreAssembly: vi.fn(async () => ({ restored_instances: 2, restored_joints: 0 })),
     bom: vi.fn(async () => { throw new Error("no bom here"); }),
     duplicatePart: vi.fn(async (id: string) => row(`${id}_copy`, 9)),
     exportPart: vi.fn(async (id: string, f: string) => ({ path: `/Users/me/Downloads/${id}.${f}`, name: `${id}.${f}`, format: f })),
@@ -394,18 +396,37 @@ describe("part tree", () => {
     expect(screen.queryByTestId("undo-toast")).toBeNull();
   });
 
-  it("Remove from assembly takes the part's instances out and keeps the part", async () => {
+  it("Remove from assembly takes the instances out, keeps the part, and Undo puts them back", async () => {
     parts.value = LIST().map((p) => ({ ...p, metrics: METRICS }));
-    assemblyOf.value = { instances: [{ id: "i1", part_id: "plate" }, { id: "i2", part_id: "plate" }] };
-    render(<PartTree />);
+    assemblyOf.value = { instances: [{ id: "i1", part_id: "plate" }, { id: "i2", part_id: "plate" }], joints: [] };
+    render(<LeftPane />);
     fireEvent.contextMenu(rowEl("frame"), { clientX: 10, clientY: 10 });
     expect(screen.queryByRole("menuitem", { name: /Remove from assembly/ })).toBeNull();      // not in the assembly
     fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
     fireEvent.contextMenu(rowEl("plate"), { clientX: 10, clientY: 10 });
-    fireEvent.click(screen.getByRole("menuitem", { name: "Remove from assembly" }));
-    await waitFor(() => expect(client.deleteInstance.mock.calls).toEqual([["b1", "i1"], ["b1", "i2"]]));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Remove from assembly" }));       // no joints: no question
+    await waitFor(() => expect(client.removePartsFromAssembly).toHaveBeenCalledWith("b1", ["plate"]));
     expect(client.deletePart).not.toHaveBeenCalled();
-    await screen.findByText("Removed 2 instances from the assembly");
+    expect((await screen.findByTestId("undo-toast")).textContent).toContain("Removed 2 instances from the assembly");
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    await waitFor(() => expect(client.restoreAssembly).toHaveBeenCalledWith("b1", { instances: [{ id: "i1" }], joints: [] }));
+  });
+
+  it("Remove from assembly asks first when joints come loose, naming the parts on their other end", async () => {
+    parts.value = LIST().map((p) => ({ ...p, metrics: METRICS }));
+    assemblyOf.value = {
+      instances: [{ id: "i0", part_id: "frame", name: "frame" }, { id: "i1", part_id: "plate", name: "plate" }, { id: "i9", part_id: "arm_a", name: "left arm" }],
+      joints: [{ a: { instance_id: "i0" }, b: { instance_id: "i1" } }, { a: { instance_id: "i1" }, b: { instance_id: "i9" } }],
+    };
+    render(<PartTree />);
+    fireEvent.contextMenu(rowEl("plate"), { clientX: 10, clientY: 10 });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Remove from assembly" }));
+    const ask = screen.getByTestId("confirm-delete");
+    expect(ask.textContent).toContain("Remove 1 instance from the assembly?");
+    expect(ask.textContent).toContain("2 joints come loose (frame, left arm)");
+    expect(client.removePartsFromAssembly).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    await waitFor(() => expect(client.removePartsFromAssembly).toHaveBeenCalledWith("b1", ["plate"]));
   });
 
   it("an agent's approved delete gets the same Undo toast", async () => {
@@ -415,10 +436,11 @@ describe("part tree", () => {
     act(() => onAgentDeleted({ type: "part_deleted", run_id: "r1", ts: 1,
       data: { part_id: "plate", project_id: "b1", label: "Plate", undo: "plate.7", removed_instances: ["i1"], by: "agent" } }));
     expect((await screen.findByTestId("undo-toast")).textContent).toContain("An agent deleted Plate and its instance");
-    // another build's delete is not this tree's
+    // another build's delete keeps its Undo too, naming the build
     lastDeleted.value = null;
-    act(() => onAgentDeleted({ type: "part_deleted", run_id: "r1", ts: 1, data: { part_id: "x", project_id: "b9", undo: "x.1" } }));
-    expect(lastDeleted.value).toBeNull();
+    act(() => onAgentDeleted({ type: "part_deleted", run_id: "r1", ts: 1, data: { part_id: "x", project_id: "b9", label: "X", undo: "x.1" } }));
+    expect(lastDeleted.peek()?.text).toBe("An agent deleted X in another build");
+    expect(client.parts).toHaveBeenCalledTimes(1);                 // only this build's tree re-read
   });
 
   it("Export saves STEP / STL and says where; Properties shows mass, volume, size and material", async () => {

@@ -605,6 +605,17 @@ export class CoreClient {
       deleted: z.string(), removed_instances: z.array(z.string()).default([]), undo: z.string().nullish().transform((v) => v ?? null),
     }));
   }
+  /** Plan 9 D29: the tree's "Remove from assembly": every instance of these parts (and the joints
+   *  that come loose) leaves the build's assembly; `undo` goes back to restoreAssembly as is. */
+  removePartsFromAssembly(projectId: string, partIds: string[]): Promise<{ removed_instances: string[]; removed_joints: string[]; undo: AssemblyUndo }> {
+    return this.json("POST", `/projects/${enc(projectId)}/assembly/remove_parts`, z.object({
+      removed_instances: z.array(z.string()), removed_joints: z.array(z.string()), undo: assemblyUndoSchema,
+    }), { body: { part_ids: partIds } });
+  }
+  restoreAssembly(projectId: string, undo: AssemblyUndo): Promise<{ restored_instances: number; restored_joints: number }> {
+    return this.json("POST", `/projects/${enc(projectId)}/assembly/restore`,
+      z.object({ restored_instances: z.number(), restored_joints: z.number() }), { body: undo });
+  }
   /** Plan 9 D29: undo a delete (the files, the tree row and the assembly instances). */
   restorePart(id: string, undo: string): Promise<PartSummary> {
     return this.json("POST", `/parts/${enc(id)}/restore`, partSummarySchema, { body: { undo } });
@@ -841,5 +852,10 @@ const lenientSteps: z.ZodType<Step[]> =z.array(z.unknown()).transform((items) =>
 
 const enc = encodeURIComponent;
 const asm = (projectId: string) => `/projects/${enc(projectId)}/assembly`;
+/** remove_parts' undo: the removed pieces as the core stored them (with their list places and
+ *  marks); the app only sends it back. */
+export const assemblyUndoSchema = z.object({ instances: z.array(z.record(z.string(), z.unknown())), joints: z.array(z.record(z.string(), z.unknown())) });
+export type AssemblyUndo = z.infer<typeof assemblyUndoSchema>;
+
 const bomPath = (projectId: string) => `/projects/${enc(projectId)}/bom`;
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));

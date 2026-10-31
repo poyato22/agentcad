@@ -195,6 +195,12 @@ async def dump(out: Path) -> None:
             write("part_delete_cascade.json", gone)
             write("part_restore.json", await call("POST", f"/parts/{dup2['id']}/restore",
                                                   {"undo": gone["undo"]}))
+            # the tree's Remove from assembly, then its Undo (instances and loose joints)
+            taken = await call("POST", f"/projects/{default_id}/assembly/remove_parts",
+                             {"part_ids": [dup2["id"]]})
+            write("assembly_remove_parts.json", taken)
+            write("assembly_restore.json", await call(
+                "POST", f"/projects/{default_id}/assembly/restore", taken["undo"]))
 
             # the skeleton panel's GET /projects/{id}/skeleton: none yet, then one saved
             from mises.cad import skeleton as sk

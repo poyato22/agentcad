@@ -2,12 +2,12 @@
 // and the part menu's duplicate / delete / export / add-to-assembly. Edits show at once
 // (optimistic) and are put back, with the core's reason, if the core refuses them.
 import { signal, type Signal } from "@preact/signals";
-import { CoreError } from "../../api/client";
+import { CoreError, type AssemblyUndo } from "../../api/client";
 import { onCoreEvent } from "../../api/events";
 import type { MisesEvent, PartSummary } from "../../api/types";
 import { fromPreset, withColor, type Appearance, type PresetId } from "../../lib/appearance";
 import { partName } from "../../lib/names";
-import { activeBuildId, isActiveBuild, loadParts } from "../../state/builds";
+import { activeBuildId, builds, isActiveBuild, loadParts } from "../../state/builds";
 import { actions, parts } from "../../state/store";
 import { applyMove, type Move } from "./tree";
 
@@ -116,7 +116,11 @@ export async function duplicateParts(ids: readonly string[]): Promise<string[]> 
 }
 
 /** Plan 9 D29: the last delete, for its Undo toast (null once undone, replaced or timed out). */
-export interface DeletedParts { text: string; build: string | null; items: { id: string; undo: string }[] }
+export interface DeletedParts {
+  text: string; build: string | null; items: { id: string; undo: string }[];
+  /** "Remove from assembly": the instances and joints to put back (no part was deleted). */
+  assembly?: { build: string; undo: AssemblyUndo; count: number };
+}
 export const lastDeleted: Signal<DeletedParts | null> = signal<DeletedParts | null>(null);
 
 /** Deletes parts with their assembly instances (DELETE /parts/{id}?cascade=true); the Undo toast
@@ -156,13 +160,16 @@ export function onAgentDeleted(ev: MisesEvent): void {
   const id = typeof d["part_id"] === "string" ? d["part_id"] : null;
   const undo = typeof d["undo"] === "string" ? d["undo"] : null;
   const build = typeof d["project_id"] === "string" ? d["project_id"] : null;
-  if (!id || !isActiveBuild(build)) return;
+  if (!id) return;
   const n = Array.isArray(d["removed_instances"]) ? d["removed_instances"].length : 0;
   const name = typeof d["label"] === "string" && d["label"] ? d["label"] : nameOf(id);
-  void loadParts(build);
-  lastDeleted.value = undo ? {
-    text: `An agent deleted ${name}${n ? (n === 1 ? " and its instance" : ` and ${n} instances`) : ""}`, build, items: [{ id, undo }],
-  } : null;
+  const here = isActiveBuild(build);
+  if (here) void loadParts(build);
+  // another build's delete keeps its Undo too, naming the build (re-review N4)
+  const where = here ? "" : ` in ${builds.peek().find((b) => b.id === build)?.name ?? "another build"}`;
+  if (undo) lastDeleted.value = {
+    text: `An agent deleted ${name}${where}${n ? (n === 1 ? " and its instance" : ` and ${n} instances`) : ""}`, build, items: [{ id, undo }],
+  };
 }
 onCoreEvent(onAgentDeleted);
 
@@ -173,6 +180,16 @@ export async function undoDelete(): Promise<boolean> {
   lastDeleted.value = null;
   treeError.value = null;
   let ok = true;
+  if (d.assembly) {
+    try {
+      await actions.client().restoreAssembly(d.assembly.build, d.assembly.undo);
+      note(d.assembly.count === 1 ? "Put it back in the assembly" : `Put ${d.assembly.count} instances back in the assembly`);
+      return true;
+    } catch (e) {
+      treeError.value = `Couldn't put it back in the assembly: ${reason(e)}`;
+      return false;
+    }
+  }
   // newest first, so a parent comes back before its re-parented children look for it
   for (const it of [...d.items].reverse()) {
     try { await actions.client().restorePart(it.id, it.undo); } catch (e) {
@@ -191,24 +208,41 @@ export function instanceCount(ids: readonly string[]): number {
   return asm ? asm.instances.filter((i) => ids.includes(i.part_id)).length : 0;
 }
 /** The build view's assembly (set by ui/assembly, so this module needs no Three.js). */
-export const assemblyOf: Signal<{ instances: readonly { id: string; part_id: string }[] } | null> = signal(null);
+export const assemblyOf: Signal<{
+  instances: readonly { id: string; part_id: string; name?: string }[];
+  joints?: readonly { a: { instance_id: string }; b: { instance_id: string } }[];
+} | null> = signal(null);
 
-/** "Remove from assembly" (review M4): takes these parts' instances out of the build's assembly
- *  and keeps the parts (the core emits assembly_changed; the view follows). */
+/** What "Remove from assembly" takes with it: the instances, and the joints that come loose with
+ *  the names of the parts on their other end (for the confirm). */
+export function removalOf(ids: readonly string[]): { instances: number; joints: number; loose: string[] } {
+  const asm = assemblyOf.value;
+  if (!asm) return { instances: 0, joints: 0, loose: [] };
+  const gone = new Set(asm.instances.filter((i) => ids.includes(i.part_id)).map((i) => i.id));
+  const js = (asm.joints ?? []).filter((j) => gone.has(j.a.instance_id) || gone.has(j.b.instance_id));
+  const other = new Set(js.flatMap((j) => [j.a.instance_id, j.b.instance_id]).filter((x) => !gone.has(x)));
+  const loose = asm.instances.filter((i) => other.has(i.id)).map((i) => i.name ?? nameOf(i.part_id));
+  return { instances: gone.size, joints: js.length, loose };
+}
+
+/** "Remove from assembly": takes these parts' instances (and the joints that come loose) out of
+ *  the build's assembly and keeps the parts; the Undo toast puts them back exactly (re-review N1). */
 export async function removeFromAssembly(ids: readonly string[]): Promise<boolean> {
   const build = activeBuildId.peek();
-  const asm = assemblyOf.peek();
-  if (!build || !asm) return false;
+  if (!build) return false;
   treeError.value = null;
-  const gone = asm.instances.filter((i) => ids.includes(i.part_id));
   try {
-    for (const i of gone) await actions.client().deleteInstance(build, i.id);
+    const r = await actions.client().removePartsFromAssembly(build, [...ids]);
+    const n = r.removed_instances.length;
+    const j = r.removed_joints.length;
+    const what = n === 1 ? `Removed ${nameOf(ids[0])} from the assembly` : `Removed ${n} instances from the assembly`;
+    lastDeleted.value = n ? { text: j ? `${what} (${j} joint${j === 1 ? "" : "s"} came loose)` : what, build, items: [],
+      assembly: { build, undo: r.undo, count: n } } : null;
+    return true;
   } catch (e) {
     treeError.value = `Couldn't remove it from the assembly: ${reason(e)}`;
     return false;
   }
-  note(gone.length === 1 ? `Removed ${nameOf(gone[0].part_id)} from the assembly` : `Removed ${gone.length} instances from the assembly`);
-  return true;
 }
 
 export async function exportPart(id: string, format: "step" | "stl"): Promise<boolean> {

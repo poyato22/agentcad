@@ -11,6 +11,8 @@ export interface ConfirmDeleteProps {
   anchor: { left: number; top: number };
   onConfirm(): void;
   onClose(): void;
+  /** Another question in the same box ("Remove from assembly"): its own words and button. */
+  text?: { title: string; detail: string; action: string };
 }
 
 export function confirmText(names: readonly string[], instances: number): { title: string; detail: string } {
@@ -20,10 +22,10 @@ export function confirmText(names: readonly string[], instances: number): { titl
   return { title, detail };
 }
 
-export function ConfirmDelete({ names, instances, anchor, onConfirm, onClose }: ConfirmDeleteProps): JSX.Element {
+export function ConfirmDelete({ names, instances, anchor, onConfirm, onClose, text }: ConfirmDeleteProps): JSX.Element {
   const ref = useRef<HTMLDivElement>(null);
   const yes = useRef<HTMLButtonElement>(null);
-  const { title, detail } = confirmText(names, instances);
+  const { title, detail } = text ?? confirmText(names, instances);
 
   useLayoutEffect(() => {
     const el = ref.current;
@@ -50,7 +52,7 @@ export function ConfirmDelete({ names, instances, anchor, onConfirm, onClose }: 
       <p class="pconfirm-detail" id="pconfirm-detail">{detail}</p>
       <div class="pconfirm-actions">
         <button type="button" class="pconfirm-btn" onClick={onClose}>Cancel</button>
-        <button ref={yes} type="button" class="pconfirm-btn pconfirm-yes" onClick={onConfirm}>Delete</button>
+        <button ref={yes} type="button" class="pconfirm-btn pconfirm-yes" onClick={onConfirm}>{text?.action ?? "Delete"}</button>
       </div>
     </div>
   );

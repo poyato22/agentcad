@@ -33,7 +33,7 @@ import { PartProperties } from "./PartProperties";
 import { clickSelect, selectedIds, targetsFor } from "./partSelection";
 import { dropPosAt, flatten, planDrop, planIndent, planOutdent, planStep, type DropPos, type Move } from "./tree";
 import {
-  addToAssembly, commitMove, deleteParts, duplicateParts, exportPart, instanceCount, removeFromAssembly, renamePart, setColor, setFinish, treeError, treeNote,
+  addToAssembly, commitMove, deleteParts, duplicateParts, exportPart, instanceCount, removalOf, removeFromAssembly, renamePart, setColor, setFinish, treeError, treeNote,
 } from "./treeActions";
 import { hiddenParts, isolate, setHidden, showAll } from "./visibility";
 import "./partlist.css";
@@ -52,7 +52,7 @@ type Pop =
   | { kind: "menu"; id: string; at: { x: number; y: number } }
   | { kind: "look"; id: string; anchor: { left: number; top: number; bottom: number } }
   | { kind: "props"; id: string; anchor: { left: number; top: number } }
-  | { kind: "delete"; id: string; ids: string[]; anchor: { left: number; top: number } }
+  | { kind: "delete" | "remove"; id: string; ids: string[]; anchor: { left: number; top: number } }
   | null;
 
 /** The handlers every row calls; one stable object, so rows can be memoized on their values. */
@@ -262,7 +262,7 @@ export function PartList(): JSX.Element {
     items.push("sep",
       { label: `Add to assembly${many}`, disabled: !allBuilt, title: whyNot, run: () => { void addToAssembly(targets); } },
       ...(instanceCount(targets) > 0 ? [{ label: `Remove from assembly${many}`, title: "Takes its instances out of the assembly; the part stays",
-        run: () => { void removeFromAssembly(targets); } }] : []),
+        run: () => askRemove(id) }] : []),
       { label: `Duplicate${many}`, keys: "⌘D", disabled: !allBuilt, title: whyNot, run: () => { void duplicateParts(targets); } });
     if (single) {
       items.push(
@@ -299,6 +299,13 @@ export function PartList(): JSX.Element {
     if (ids.some((t) => changing.has(t))) return;
     const r = rowRect(id);
     setPop({ kind: "delete", id, ids, anchor: { left: (r?.left ?? 0) + 12, top: (r?.bottom ?? 0) + 2 } });
+  }
+  /** Remove from assembly: straight away (Undo follows), but asked first when joints come loose. */
+  function askRemove(id: string): void {
+    const ids = targetsFor(id);
+    if (removalOf(ids).joints === 0) { void removeFromAssembly(ids); return; }
+    const r = rowRect(id);
+    setPop({ kind: "remove", id, ids, anchor: { left: (r?.left ?? 0) + 12, top: (r?.bottom ?? 0) + 2 } });
   }
   function openMenu(id: string, at?: { x: number; y: number }): void {
     if (!at) {
@@ -486,6 +493,16 @@ export function PartList(): JSX.Element {
           onFinish={(f) => { void setFinish(lookTargets, f); }} onColor={(c) => { void setColor(lookTargets, c); }}
           onClose={() => closePop(true, pop.id)} />
       )}
+      {pop?.kind === "remove" && popPart && (() => {
+        const r = removalOf(pop.ids);
+        const loose = r.loose.slice(0, 3).join(", ") + (r.loose.length > 3 ? "…" : "");
+        return (
+          <ConfirmDelete names={[]} instances={r.instances} anchor={pop.anchor}
+            text={{ title: `Remove ${r.instances === 1 ? "1 instance" : `${r.instances} instances`} from the assembly?`,
+              detail: `${r.joints === 1 ? "1 joint comes" : `${r.joints} joints come`} loose${loose ? ` (${loose})` : ""}. The part stays; you can undo this.`, action: "Remove" }}
+            onConfirm={() => { const ids = pop.ids; closePop(false); void removeFromAssembly(ids); }} onClose={() => closePop(true, pop.id)} />
+        );
+      })()}
       {pop?.kind === "delete" && popPart && (
         <ConfirmDelete names={pop.ids.map((t) => partName(byId(t) ?? { part_id: t }))} instances={instanceCount(pop.ids)} anchor={pop.anchor}
           onConfirm={() => { const ids = pop.ids; closePop(false); void deleteParts(ids); }} onClose={() => closePop(true, pop.id)} />
