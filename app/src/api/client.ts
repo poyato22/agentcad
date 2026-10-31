@@ -27,6 +27,7 @@ import {
   type CustomMaterialBody, type StudyCharts, type StudyCompare, type StudyMaterial, type StudyMaterials, type StudyProbe, type StudyRecord,
   type StudySection, type StudySolvers, type StudyStartBody, type StudySummary, type StudyTemplate, type StudyType, type StudyTypeInfo,
 } from "./studies";
+import { studiesContextSchema, type StudiesContext } from "./studiesAgent";
 import type {
   AgentDefBody, AgentDetail, AgentInfo, AgentRun, Approval, CancelAllResult, ClaudeCodeStatus, CleanupBody, CleanupResult, CoreInfo, CoreStatusInfo, DecisionBody, DeleteRefused, ErrorCode, KeyStatus, LocalActionResult, LocalStatus, LocalTestResult,
   AgentsView, CreateRunResult, ModelsInfo, NewRunBody, OnshapeTestResult, PartSummary, Profile, ProfilePatch, Question, RunNode, RunPatch, SetupState, SketchSummary, SketchUpload, Step,
@@ -263,6 +264,10 @@ export class CoreClient {
   // ---- every study type (Plan 5 C7: core sim/studies.py, server/sim_api.py; Task A8)
 
   studyTypes(): Promise<StudyTypeInfo[]> { return this.json("GET", "/sims/types", z.array(studyTypeInfoSchema)); }
+  /** Plan 9 U-D: the studies agent's build context and proposed next studies. */
+  studiesContext(projectId: string): Promise<StudiesContext> {
+    return this.json("GET", "/studies/context", studiesContextSchema, { query: { project_id: projectId } });
+  }
   studySolvers(): Promise<StudySolvers> { return this.json("GET", "/sims/solvers", studySolversSchema); }
   listStudies(filter: { partId?: string; runId?: string } = {}): Promise<StudySummary[]> {
     return this.json("GET", "/sims", z.array(studySummarySchema), { query: { part_id: filter.partId, run_id: filter.runId } });

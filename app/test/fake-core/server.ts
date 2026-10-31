@@ -23,6 +23,7 @@ import { bomRoutes, browserBomFrom, browserRoutes, type BrowserBomScenario, type
 import { printingFrom, printingRoutes, stopPrinting, type FakePrinting, type PrintScenario } from "./printing";
 import { setupFrom, setupRoutes, type FakeSetup, type SetupScenario } from "./setup";
 import { cancelSimsOfRun, clearSimTimers, simRoutes, simsFrom, type FakeSims, type SimScenario } from "./sims";
+import { studiesAgentRoutes, type StudiesAgentMode } from "./studiesAgent";
 import { importRoutes, parseMultipart, type FakeImport } from "./imports";
 import { specFrom, specRoutes, type FakeSpec, type SpecScenario } from "./spec";
 
@@ -121,6 +122,9 @@ export interface Scenario {
   /** GET /tools (the QA-fix core's registry list). Absent: every real core tool; null: no route
    *  (404, an older core). */
   tools?: FakeTool[] | null;
+  /** Plan 9 U-D: GET /studies/context proposals — the studies agent's own ("agent"), the core's
+   *  rules ("rules", the default) or none. */
+  studies_agent?: StudiesAgentMode;
 }
 
 /** A GET /tools row, as core server/app.py list_tools answers it. */
@@ -180,6 +184,8 @@ export interface FakeState {
   builds: FakeBuilds;
   /** GET /tools; null answers 404. */
   tools: FakeTool[] | null;
+  /** Plan 9 U-D: which proposals GET /studies/context serves. */
+  studiesAgent: StudiesAgentMode;
 }
 
 export interface FakeCore {
@@ -253,6 +259,7 @@ function stateFrom(sc: Scenario, token: string): FakeState {
     ...sharedBuilds(sc),
     spec: specFrom(sc.spec),
     browserBom: browserBomFrom(sc.browser),
+    studiesAgent: sc.studies_agent ?? "rules",
   };
 }
 
@@ -1141,6 +1148,12 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       activeProject: () => (state.setup.profile as { active_project_id?: string | null }).active_project_id ?? state.builds.defaultId ?? DEFAULT_PROJECT,
     }),
     ...directoryRoutes({ get: () => state.directory, emit: (ev) => { emit(ev); } }),
+    ...studiesAgentRoutes({
+      // the build each part is in, as the fake's GET /parts serves it (its tree rows)
+      parts: () => state.parts.map((p) => ({ ...p, project_id: state.builds.rows.get(p.part_id)?.project_id ?? p.project_id ?? state.builds.defaultId })),
+      liveBuild: (id) => state.builds.builds.some((b) => b.id === id && b.trashed_at === null),
+      buildName: (id) => state.builds.builds.find((b) => b.id === id)?.name ?? null, mode: () => state.studiesAgent,
+    }),
     ...browserRoutes({
       get: () => state.browserBom, hasRun: (id) => state.runs.has(id),
       setSites: (sites) => { state.setup.profile = { ...state.setup.profile, suggested_sites: sites }; },

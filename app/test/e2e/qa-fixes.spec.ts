@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Page } from "@playwright/test";
 import type { AgentRun } from "../../src/api/types";
-import { expect, test } from "./fixtures";
+import { expect, openManualStudySetup, test } from "./fixtures";
 
 const BASE = JSON.parse(readFileSync(resolve(import.meta.dirname, "../fake-core/scenarios/base.json"), "utf8")) as Record<string, unknown> & { runs: AgentRun[] };
 const RUN = BASE.runs[0].id;   // a running designer run
@@ -171,6 +171,7 @@ const GLB = { beam: resolve(FX, "study_part_beam.glb"), cube: resolve(FX, "study
 const studiesScenario = () => ({ ...BASE, parts: PARTS, glb: GLB, runs: [], steps: [], approvals: [], sims: { studies: true, step_ms: 60 } });
 
 async function openStudies(page: Page, part = "beam") {
+  await openManualStudySetup(page);
   await open(page);
   await page.getByRole("tab", { name: "Studies" }).click();
   await expect(page.getByTestId("studies")).toBeVisible();

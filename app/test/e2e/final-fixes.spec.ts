@@ -4,7 +4,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Locator, Page } from "@playwright/test";
-import { expect, test, type FakeCall, type FakeControl } from "./fixtures";
+import { expect, openManualStudySetup, test, type FakeCall, type FakeControl } from "./fixtures";
 
 const QUAD = "q0quadframe0";
 const BENCH = "b0benchrig00";
@@ -189,6 +189,7 @@ test("M-3: the Into build picker follows a build-tab switch after a pick", async
 });
 
 test("M-9: the Studies type picker moves with the arrow keys", async ({ page }) => {
+  await openManualStudySetup(page);
   await page.goto("/");
   await page.locator("[data-region=app][data-conn=open]").waitFor();
   await page.getByRole("tab", { name: "Studies" }).click();
