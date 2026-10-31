@@ -58,6 +58,7 @@ from .renders_api import build_renders_router
 from .spec_api import build_spec_router
 from .ui_api import add_cors, build_ui_router
 from .agents_api import build_agents_router
+from ..concept.api import build_concept_router
 from ..orchestrator import lead as _lead
 from ..orchestrator.router import Attachment
 
@@ -266,6 +267,7 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
     app.include_router(build_measure_router(runtime))
     app.include_router(build_system_router(runtime))
     app.include_router(build_agents_router(runtime))
+    app.include_router(build_concept_router(runtime))
 
     @app.exception_handler(MisesError)
     async def _mises_error(_req, e: MisesError):
