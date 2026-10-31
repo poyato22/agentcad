@@ -1,5 +1,4 @@
-/* Drawing + Print pages: shared page bits (pg-*) and the drawing view. Plan tokens only; square
-   corners; blue only for selected / needs-you; green/amber/red only for pass/warn/fail. */
+/* Drawing + Print pages: shared page bits (pg-*) and the drawing view. Plan tokens only; blue only for selected / needs-you; green/amber/red only for pass/warn/fail. */
 .pg-toolbar { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; padding-bottom: 12px; }
 .pg-field { display: flex; flex-direction: column; gap: 3px; min-width: 160px; }
 .pg-spacer { flex: 1; }
@@ -11,11 +10,14 @@
 }
 
 .drawing { display: flex; flex-direction: column; height: 100%; min-height: 0; position: relative; }
-.drawing-stage { position: relative; flex: 1; min-height: 320px; display: flex; flex-direction: column; border: 1px solid var(--line2); }
+.drawing-stage { position: relative; flex: 1; min-height: 320px; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--r-surface); overflow: hidden; }
+/* zoom: a small floating pill, bottom right of the stage (clear of the sheet's title block side) */
 .drawing-tools {
-  position: absolute; top: 6px; right: 6px; z-index: 2; display: flex; align-items: center; gap: 2px;
-  background: var(--paper); border: 1px solid var(--line2); padding: 2px;
+  position: absolute; right: 12px; bottom: 12px; z-index: 2; display: flex; align-items: center; gap: 2px; padding: 3px;
+  background: var(--surface); -webkit-backdrop-filter: blur(var(--surface-blur)); backdrop-filter: blur(var(--surface-blur));
+  border: 1px solid var(--line); border-radius: var(--r-surface); box-shadow: var(--shadow);
 }
+.drawing-tools .btn { border-color: transparent; min-height: 26px; padding: 3px 9px; }
 .drawing-zoom { min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; }
 .drawing-viewport {
   position: relative; flex: 1; min-height: 0; overflow: hidden; cursor: grab; touch-action: none;

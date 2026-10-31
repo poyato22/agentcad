@@ -1,7 +1,7 @@
 /* Parts list (BOM) page (R5). Tokens only, square corners; numbers are tabular and right-aligned
    the way an engineer reads a bill of materials. The estimate tag borrows the console's warn tone
    (amber = a caution / honesty label), nothing else is coloured. */
-.bom { display: flex; flex-direction: column; gap: 16px; max-width: 1040px; }
+.bom { display: flex; flex-direction: column; gap: 16px; max-width: 1040px; margin: 0 auto; }
 .bom-bar { display: flex; align-items: center; gap: 8px; }
 .bom-title { margin: 0; font: 600 var(--fs-display)/1.2 var(--font-ui); color: var(--ink); }
 .bom-spacer { flex: 1; }
