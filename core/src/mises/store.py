@@ -11,7 +11,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, computed_field, field_validator
 
 from .types import Caps, SafetyClass, StepKind, canonical_json, sha256_hex
 
@@ -76,6 +76,13 @@ class Step(BaseModel):
     evidence_hash: str
     prev_hash: str | None = None
     collapsed: bool = False
+
+    @computed_field
+    @property
+    def stream(self) -> str:
+        """text / sim / view (Plan 9 D4): sim_run steps and sim tools' steps are "sim"."""
+        from .events import stream_of
+        return stream_of(str(self.kind), self.payload)
 
 
 class Approval(BaseModel):

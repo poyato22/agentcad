@@ -109,7 +109,7 @@ async def _run_dyn_sim(ctx: ToolContext, args) -> ToolOutput:
 
 def _static_args(part_id: str, case: LoadCase, *, fine: bool):
     from ..sim.tools import StaticArgs
-    return StaticArgs(part_id=part_id, fix=case.fix, fine=fine,
+    return StaticArgs(part_id=part_id, fix=case.fix, fine=fine, wait=True,
                       load={"face": case.load, "newtons": case.newtons,
                             "direction": case.direction})
 
@@ -508,7 +508,8 @@ async def _dynamic_checks(ctx: ToolContext, root: Path, part_id: str, iterations
                 out = await asyncio.wait_for(_run_dyn_sim(sctx, SimRunArgs(
                     type=p["type"], part_id=part_id, settings=p["settings"],
                     requirements=p["requirements"],
-                    reason=f"design study winner #{it['n']}: {p['type']}")), DYNAMIC_MAX_S)
+                    reason=f"design study winner #{it['n']}: {p['type']}", wait=True)),
+                    DYNAMIC_MAX_S)
                 checks = (out.data or {}).get("checks") if out.ok else None
                 note = None if out.ok else (out.summary or "")[:200]
             except asyncio.CancelledError:

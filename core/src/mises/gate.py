@@ -37,13 +37,14 @@ class Gate:
         self.services = services if services is not None else {}
 
     async def call(self, run_id: str, tool_name: str, raw_input: dict, *, call_id: str,
-                   workdir: Path) -> ToolOutput:
+                   workdir: Path, agent: bool = False) -> ToolOutput:
+        """`agent`: the call came straight from a model (ToolContext.agent_call)."""
         self.store.append_step(run_id, StepKind.TOOL_CALL,
                                {"call_id": call_id, "name": tool_name, "input": raw_input})
         self.events.publish(Event(type="tool_call", run_id=run_id,
                                   data={"call_id": call_id, "name": tool_name, "input": raw_input}))
         try:
-            out = await self._run(run_id, tool_name, raw_input, call_id, Path(workdir))
+            out = await self._run(run_id, tool_name, raw_input, call_id, Path(workdir), agent)
         except MisesError as e:
             e = self._redact_error(e, run_id)
             self._error(run_id, tool_name, call_id, e)
@@ -67,7 +68,7 @@ class Gate:
                                         **e.to_dict()}))
 
     async def _run(self, run_id: str, name: str, raw_input: dict, call_id: str,
-                   workdir: Path) -> ToolOutput:
+                   workdir: Path, agent: bool = False) -> ToolOutput:
         t = self.registry.get(name)                                              # 1
         try:                                                                     # 2
             args = t.input_model.model_validate(raw_input)
@@ -82,7 +83,8 @@ class Gate:
 
         payload = args.model_dump()
         ctx = ToolContext(run_id=run_id, user=self.user, store=self.store, events=self.events,
-                          workdir=workdir, policy=policy, call_id=call_id, services=self.services)
+                          workdir=workdir, policy=policy, call_id=call_id, services=self.services,
+                          agent_call=agent)
         # irreversible tools always ask; any other tool may ask for one call (needs_approval)
         reason = t.needs_approval(ctx, args) if t.needs_approval else None
         if t.safety == SafetyClass.IRREVERSIBLE or reason:                       # 6

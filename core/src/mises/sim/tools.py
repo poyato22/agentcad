@@ -38,7 +38,7 @@ from .types import SimError
 MESH_TIMEOUT_S = 180.0
 SOLVE_TIMEOUT_S = 300.0
 # One static study is at most two meshes + two solves (+ margin for post-processing). Studies
-# run one at a time; the Gate's timeout covers the queue wait too, so the wait is bounded such
+# queue for a study slot (studies.semaphore); the Gate's timeout covers the queue wait too, so the wait is bounded such
 # that a study that gets the slot always has its full time left (else: ok=false, "busy").
 STUDY_MAX_S = 2 * (MESH_TIMEOUT_S + SOLVE_TIMEOUT_S) + 60
 TOOL_TIMEOUT_S = 2 * STUDY_MAX_S + 60
@@ -47,7 +47,6 @@ QUEUE_TIMEOUT_S = TOOL_TIMEOUT_S - STUDY_MAX_S - 30
 # timeout is a backstop; every mesher / solver process has its own hard timeout.
 SIM_RUN_TIMEOUT_S = 4 * 3600.0
 REVIEW_TIMEOUT_S = 8 * 3600.0
-STUDY_SLOTS = 1   # studies are memory bound: one at a time (see studies.semaphore)
 CAVEATS = studies.CAVEATS_FEM + [studies.CAVEATS_STATIC_FIXTURE]
 FaceSpec = str
 Direction = Literal["+x", "-x", "+y", "-y", "+z", "-z"]
@@ -83,6 +82,10 @@ class StaticArgs(BaseModel):
     fine: bool = Field(default=True, description="false: coarse mesh only (a fast screening "
                        "solve with no error band, e.g. inside a design study); confirm any "
                        "result you rely on with the default fine+coarse run")
+    wait: bool | None = Field(None, description="false (the default for agents): return "
+                              "{sim_id, status: running} at once and run the study in the "
+                              "background; you get a note when it finishes (sim_wait / "
+                              "sim_result_get read it). true: block until the result is in")
 
     @field_validator("fix")
     @classmethod
@@ -107,6 +110,10 @@ class SimRunArgs(BaseModel):
                                                "pass / warn / fail against the result")
     estimate: bool = Field(False, description="the load is an estimate (e.g. F = m*g*k); the "
                            "card is labelled and a pass is reported as warn")
+    wait: bool | None = Field(None, description="false (the default for agents): return "
+                              "{sim_id, status: running} at once and run the study in the "
+                              "background; you get a note when it finishes (sim_wait / "
+                              "sim_result_get read it). true: block until the result is in")
 
     @model_validator(mode="after")
     def _target(self):
@@ -131,6 +138,16 @@ def _run_scope(a) -> list[str]:
 
 class ResultArgs(BaseModel):
     sim_id: str = Field(pattern=SIM_ID_RE.pattern)
+
+
+SIM_WAIT_MAX_S = 600.0
+
+
+class WaitArgs(BaseModel):
+    sim_id: str = Field(pattern=SIM_ID_RE.pattern)
+    timeout_s: float = Field(120, gt=0, le=SIM_WAIT_MAX_S, description="how long to wait, s "
+                             f"(at most {SIM_WAIT_MAX_S:g}); a study still running then comes "
+                             "back as status running")
 
 
 class CompareArgs(BaseModel):
@@ -171,6 +188,14 @@ class ReviewArgs(BaseModel):
 
 # ---- helpers
 
+def _wait(ctx: ToolContext, wait: bool | None) -> bool:
+    """A study blocks its call only when asked to; an agent's call defaults to the background
+    (Plan 9 D4), the app's own calls and in-core callers (design_review, design studies) wait."""
+    if wait is not None:
+        return wait
+    return not getattr(ctx, "agent_call", False)
+
+
 def _bad(e: SimError) -> MisesError:
     return MisesError(ErrorCode.INVALID_INPUT, e.message, hint=e.hint)
 
@@ -206,7 +231,7 @@ def _load_rec(ctx: ToolContext, sim_id: str) -> dict:
 
 async def _run(ctx: ToolContext, type_id: str, part_id: str, settings: dict, *,
                reason=None, requirements=None, inputs_extra=None, solve_timeout_s=None,
-               coarse_only: bool = False):
+               coarse_only: bool = False, wait: bool = True):
     _check_part_id(part_id)
     part = _existing(ctx, part_id)
     try:
@@ -215,7 +240,8 @@ async def _run(ctx: ToolContext, type_id: str, part_id: str, settings: dict, *,
         raise _bad(e) from None
     return await studies.run_study(ctx, type_id, part_id, part, model, reason=reason,
                                    requirements=requirements, inputs_extra=inputs_extra,
-                                   solve_timeout_s=solve_timeout_s, coarse_only=coarse_only)
+                                   solve_timeout_s=solve_timeout_s, coarse_only=coarse_only,
+                                   wait=wait)
 
 
 # ---- tools
@@ -237,14 +263,18 @@ async def _run(ctx: ToolContext, type_id: str, part_id: str, settings: dict, *,
                   "f3@<instance id>; instances interact only through settings.nonlinear."
                   "contacts). Faces are presets or face "
                   "ids from mirror_measure / mirror_faces. Give a one-line `reason`; pass spec "
-                  "`requirements` to get pass / warn / fail checks. Results are a GUIDE ONLY: "
+                  "`requirements` to get pass / warn / fail checks. By default the study runs in "
+                  "the background: the call returns {sim_id, status: running} at once, keep "
+                  "talking and working, and a note tells you when it finishes (wait: true "
+                  "blocks instead). Results are a GUIDE ONLY: "
                   "always say so, with the solver, mesh and error band.")
 async def sim_run(ctx: ToolContext, args: SimRunArgs) -> ToolOutput:
     extra = {"estimate": True} if args.estimate else None
     if args.project_id is not None:
         return await _run_assembly(ctx, args, extra)
     return await _run(ctx, args.type, args.part_id, args.settings, reason=args.reason,
-                      requirements=args.requirements, inputs_extra=extra)
+                      requirements=args.requirements, inputs_extra=extra,
+                      wait=_wait(ctx, args.wait))
 
 
 async def _run_assembly(ctx: ToolContext, args: SimRunArgs, extra: dict | None):
@@ -261,7 +291,7 @@ async def _run_assembly(ctx: ToolContext, args: SimRunArgs, extra: dict | None):
                                    requirements=args.requirements,
                                    inputs_extra={"project_id": target["project_id"],
                                                  **(extra or {})},
-                                   assembly=target)
+                                   assembly=target, wait=_wait(ctx, args.wait))
 
 
 @tool("sim_static_run", safety=SafetyClass.LOCAL_MUTATE, scope_arg="part_id",
@@ -273,7 +303,8 @@ async def _run_assembly(ctx: ToolContext, args: SimRunArgs, extra: dict | None):
                   "the fixed face, whose peak is reported separately), max displacement (mm), "
                   "safety factor (yield x FDM knock-down 0.7 / peak) and an error band from a "
                   "coarse vs fine mesh. For more load cases, supports or other study types use "
-                  "sim_run. Results are a GUIDE ONLY: always say so when you report them.")
+                  "sim_run. Runs in the background by default, like sim_run (wait: true blocks). "
+                  "Results are a GUIDE ONLY: always say so when you report them.")
 async def sim_static_run(ctx: ToolContext, args: StaticArgs) -> ToolOutput:
     _check_part_id(args.part_id)
     _existing(ctx, args.part_id)
@@ -285,7 +316,8 @@ async def sim_static_run(ctx: ToolContext, args: StaticArgs) -> ToolOutput:
     if not args.fine:  # only screening runs record it, so default records are unchanged
         extra["fine"] = False
     return await _run(ctx, "static", args.part_id, settings, inputs_extra=extra,
-                      solve_timeout_s=SOLVE_TIMEOUT_S, coarse_only=not args.fine)
+                      solve_timeout_s=SOLVE_TIMEOUT_S, coarse_only=not args.fine,
+                      wait=_wait(ctx, args.wait))
 
 
 @tool("sim_types_list", safety=SafetyClass.READ,
@@ -304,10 +336,30 @@ async def sim_types_list(ctx: ToolContext, args: TypesArgs) -> ToolOutput:
                   "results, error band, warnings, checks; stale=true if the part changed "
                   "since).")
 async def sim_result_get(ctx: ToolContext, args: ResultArgs) -> ToolOutput:
-    rec = _load_rec(ctx, args.sim_id)
-    summary = (f"{args.sim_id}: " + studies.summary(rec)
+    return _result(_load_rec(ctx, args.sim_id))
+
+
+def _result(rec: dict) -> ToolOutput:
+    sim_id = rec["sim_id"]
+    if rec.get("status") == "running":
+        pct = rec.get("pct")
+        return ToolOutput(summary=f"{sim_id} is still running ({rec.get('stage')}"
+                          + (f", {pct:g}%" if isinstance(pct, (int, float)) else "") + ")",
+                          data={**studies.compact(rec), "stream": "sim"})
+    summary = (f"{sim_id}: " + studies.summary(rec)
                + ("; STALE: the part changed since this study" if rec["stale"] else ""))
     return ToolOutput(summary=summary, data=studies.compact(rec), step_kind=StepKind.SIM_RUN)
+
+
+@tool("sim_wait", safety=SafetyClass.READ, timeout_s=SIM_WAIT_MAX_S + 30,
+      description="Wait for a background study (sim_run / sim_static_run) to finish, up to "
+                  f"timeout_s (at most {SIM_WAIT_MAX_S:g} s), and return its result like "
+                  "sim_result_get; still running then: status running. You need not wait: a "
+                  "note arrives when it finishes.")
+async def sim_wait(ctx: ToolContext, args: WaitArgs) -> ToolOutput:
+    _load_rec(ctx, args.sim_id)                     # exists and is in scope
+    await studies.wait_for(args.sim_id, args.timeout_s)
+    return _result(_load_rec(ctx, args.sim_id))
 
 
 @tool("sim_compare", safety=SafetyClass.READ,
@@ -534,7 +586,7 @@ def _parallel(ctx: ToolContext) -> int:
         lim = int(rt.parallel_limit()) if rt is not None else 1
     except Exception:  # noqa: BLE001
         lim = 1
-    return max(1, min(lim, STUDY_SLOTS))
+    return max(1, min(lim, studies.study_limit()))
 
 
 @tool("design_review", safety=SafetyClass.READ, scope_arg="part_id", timeout_s=REVIEW_TIMEOUT_S,
@@ -583,6 +635,7 @@ async def design_review(ctx: ToolContext, args: ReviewArgs) -> ToolOutput:
                 settings["solver"] = solver
             call_id = f"{ctx.call_id}.r{i + 1}"
             payload = {"type": p["type"], "part_id": args.part_id, "settings": settings,
+                       "wait": True,      # the review needs every child's result
                        "requirements": p["requirements"], "estimate": bool(p.get("estimate")),
                        "reason": f"design review: {p['type']} {p['case']}"[:200]}
             try:  # the budget is a hard cap on every child study too
@@ -696,8 +749,8 @@ def _fit_review(data: dict) -> None:
 
 def register_sim_tools(registry: ToolRegistry) -> None:
     """Idempotent."""
-    for t in (sim_static_run, sim_run, sim_types_list, sim_result_get, sim_compare, sim_cancel,
-              sim_env_list, design_review):
+    for t in (sim_static_run, sim_run, sim_types_list, sim_result_get, sim_wait, sim_compare,
+              sim_cancel, sim_env_list, design_review):
         if not registry.list([t.name]):
             registry.register(t)
     from .calibration_tools import register_calibration_tools  # S3

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import math
 import re
 import secrets
@@ -24,6 +25,8 @@ from .router import Attachment, Routed, route
 if TYPE_CHECKING:
     from ..runtime import Runtime
     from ..store import AgentRun
+
+_log = logging.getLogger(__name__)
 
 LEAD, SUB = "lead", "sub"
 TASK_TITLE_CHARS = 60
@@ -205,6 +208,81 @@ def _enqueue(rt: Runtime, lead_id: str, text: str, log: dict | None, routed: Rou
     if task is None or task.done():
         rt.lead_drainers[lead_id] = asyncio.get_running_loop().create_task(_drain(rt, lead_id))
     return {"message_id": mid, "position": len(q)}
+
+
+def owning_lead(rt: Runtime, run_id: str) -> AgentRun | None:
+    """The run a background job of `run_id` reports to: the lead at the root of its family,
+    else its build's lead, else the family's root run (an explicitly started agent). None for
+    the app's own runs (ui, external agents) and a lead this process cannot talk to."""
+    try:
+        run = rt.store.get_run(run_id)
+        seen = {run.id}
+        while run.parent_id and run.parent_id not in seen:
+            run = rt.store.get_run(run.parent_id)
+            seen.add(run.id)
+    except KeyError:
+        return None
+    owner = run
+    if run.role != LEAD:
+        lead = find_lead(rt.store, run.project_id) if run.project_id else None
+        owner = lead if lead is not None else run
+    if owner.archived or owner.provider in ("ui", "acp") or not _reachable(rt, owner):
+        return None
+    return owner
+
+
+def _drop(rt: Runtime, lead_id: str, m: dict, reason: str) -> None:
+    rt.store.append_step(lead_id, StepKind.DECISION, {
+        "queued_message_dropped": {"message_id": m["message_id"], "reason": reason}})
+    _publish(rt, "message_dropped", lead_id, {"message_id": m["message_id"], "reason": reason})
+
+
+def _enqueue_note(rt: Runtime, lead_id: str, text: str, log: dict) -> dict | None:
+    """A system note counts toward QUEUE_MAX but never raises 429: at the cap the oldest
+    waiting note makes room; a queue full of user messages drops the new note instead."""
+    q = rt.lead_queues.setdefault(lead_id, [])
+    if len(q) >= QUEUE_MAX:
+        old = next((m for m in q if m.get("note")), None)
+        if old is None:
+            mid = "msg_" + secrets.token_hex(6)
+            _drop(rt, lead_id, {"message_id": mid}, "the lead's queue is full")
+            return None
+        q.remove(old)
+        _drop(rt, lead_id, old, "a newer system note replaced it (queue full)")
+    mid = "msg_" + secrets.token_hex(6)
+    q.append({"message_id": mid, "text": text, "log": log, "shown": text, "note": True})
+    rt.store.append_step(lead_id, StepKind.DECISION, {"queued_message": {
+        "message_id": mid, "text": text, "position": len(q), "routed": None,
+        "system_note": log.get("system_note")}})
+    _publish(rt, "message_queued", lead_id, {"message_id": mid, "text": text,
+                                             "position": len(q), "system_note": True})
+    task = rt.lead_drainers.get(lead_id)
+    if task is None or task.done():
+        rt.lead_drainers[lead_id] = asyncio.get_running_loop().create_task(_drain(rt, lead_id))
+    return {"message_id": mid, "position": len(q)}
+
+
+async def deliver_note(rt: Runtime, run_id: str, text: str, meta: dict) -> dict | None:
+    """A short system note (e.g. "Study ... finished: ...") to the lead that owns `run_id`:
+    sent now when it is idle (it reacts in a new turn), else queued behind its current turn.
+    Never raises: a note that cannot be delivered is dropped (the event bus still has it)."""
+    try:
+        owner = owning_lead(rt, run_id)
+        if owner is None:
+            return None
+        log = {"text": text, "system_note": meta}
+        if rt.lead_queues.get(owner.id) or rt.run_busy(owner.id):
+            return _enqueue_note(rt, owner.id, text, log)
+        try:
+            await rt.send(owner.id, text, log=log)
+            return {"run_id": owner.id, "sent": True}
+        except MisesError as e:
+            if not (e.code == ErrorCode.INVALID_INPUT and "still working" in e.message):
+                raise
+            return _enqueue_note(rt, owner.id, text, log)
+    except Exception:  # noqa: BLE001 - a note must never break the job that sends it
+        _log.exception("could not deliver a note to %s's lead", run_id)
+        return None
 
 
 async def _drain(rt: Runtime, lead_id: str) -> None:

@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import os
 import re
 import secrets
@@ -37,6 +38,8 @@ from .materials import Material, custom_material, get_material, with_anisotropy,
 from .mesh import INSTANCE_FACE_RE
 from .settings import SETTINGS_MODELS, unit_vec
 from .types import SimError
+
+log = logging.getLogger(__name__)
 
 SIM_ID_RE = re.compile(r"^sim_[0-9a-f]{12}$")
 GUIDE_LABEL = "guide only, not a guarantee"
@@ -348,11 +351,30 @@ _active: dict[str, asyncio.Task] = {}
 _cancel_requested: set[str] = set()
 
 
+#: studies at once when the heavy pool has at least WIDE_POOL_SLOTS slots (Plan 9 D4); a
+#: smaller Mac runs one at a time. MISES_CONCURRENT_STUDIES overrides it.
+WIDE_POOL_STUDIES = 2
+WIDE_POOL_SLOTS = 3
+
+
+def study_limit(machine_info: dict | None = None) -> int:
+    """How many studies may solve at once: studies are memory bound, so one, or two when the
+    heavy-worker pool is wide enough to hold both and still keep a render slot."""
+    env = os.environ.get("MISES_CONCURRENT_STUDIES")
+    if env:
+        try:
+            return max(1, int(env))
+        except ValueError:
+            pass
+    from ..heavy import heavy_limit
+    return WIDE_POOL_STUDIES if heavy_limit(machine_info) >= WIDE_POOL_SLOTS else 1
+
+
 def semaphore() -> asyncio.Semaphore:
     loop = asyncio.get_running_loop()
     s = _sems.get(loop)
     if s is None:
-        s = _sems[loop] = asyncio.Semaphore(1)
+        s = _sems[loop] = asyncio.Semaphore(study_limit())
     return s
 
 
@@ -517,8 +539,11 @@ async def run_study(ctx, type_id: str, part_id: str | None, part_dir: Path | Non
                     reason: str | None = None, requirements: list[dict] | None = None,
                     inputs_extra: dict | None = None,
                     solve_timeout_s: float | None = None,
-                    coarse_only: bool = False, assembly: dict | None = None) -> ToolOutput:
-    """assembly: a resolved build target (assembly_study.resolve) instead of a part."""
+                    coarse_only: bool = False, assembly: dict | None = None,
+                    wait: bool = True) -> ToolOutput:
+    """assembly: a resolved build target (assembly_study.resolve) instead of a part.
+    wait=False (Plan 9 D4): return {sim_id, status: running} once the record exists; the study
+    runs as a background job, publishes sim_finished and notes the owning lead when it ends."""
     t = STUDY_TYPES[type_id]
     home = _home(ctx)
     try:
@@ -682,28 +707,120 @@ async def run_study(ctx, type_id: str, part_id: str | None, part_dir: Path | Non
 
     task = asyncio.ensure_future(body())
     _active[sim_id] = task
+
+    async def supervise() -> ToolOutput:
+        try:
+            return await task
+        except asyncio.CancelledError:
+            rec.update(status="cancelled", stage="cancelled", error="cancelled",
+                       finished_at=time.time())
+            write_record(sim_dir, rec)
+            terminal("cancelled")
+            cur = asyncio.current_task()
+            if sim_id in _cancel_requested and not (cur is not None and cur.cancelling()):
+                return ToolOutput(ok=False, summary=f"study {sim_id} cancelled by the user",
+                                  step_kind=StepKind.ERROR,
+                                  data={"sim_id": sim_id, "error": "cancelled",
+                                        "message": "cancelled", "card": card(rec)})
+            task.cancel()
+            raise
+        except Exception as e:
+            fail("internal", f"{type(e).__name__}: {e}", None)
+            raise
+        finally:
+            _active.pop(sim_id, None)
+            _cancel_requested.discard(sim_id)
+            shutil.rmtree(job_root, ignore_errors=True)
+            finished(ctx, rec)
+
+    if wait:
+        return await supervise()
+
+    async def background() -> None:
+        try:
+            await supervise()
+        except asyncio.CancelledError:
+            pass
+        except Exception:  # noqa: BLE001 - recorded as failed by supervise
+            log.exception("background study %s failed", sim_id)
+        finally:
+            note_lead(ctx, rec)
+
+    bg = asyncio.ensure_future(background())
+    _background.add(bg)
+    bg.add_done_callback(_background.discard)
+    return ToolOutput(summary=f"study {sim_id} ({type_id}) started in the background "
+                              f"({GUIDE_LABEL}); you get a note when it finishes. Keep "
+                              "working; read it with sim_result_get or sim_wait.",
+                      data={"sim_id": sim_id, "status": "running", "stream": "sim",
+                            "type": type_id, "part_id": part_id, "card": card(rec),
+                            "urls": urls(sim_id)})
+
+
+# ---- background studies (Plan 9 D4): the tool returns at once, the study finishes later
+
+_background: set[asyncio.Future] = set()
+#: the lead notes being delivered (strong refs: a bare create_task may be collected)
+_notes: set[asyncio.Task] = set()
+
+
+def build_of(ctx, rec: dict) -> str | None:
+    """The build a study belongs to: an assembly study's own, else its run's."""
+    if rec.get("project_id"):
+        return rec["project_id"]
+    store, run_id = getattr(ctx, "store", None), rec.get("run_id")
+    if store is None or not run_id:
+        return None
     try:
-        return await task
-    except asyncio.CancelledError:
-        rec.update(status="cancelled", stage="cancelled", error="cancelled",
-                   finished_at=time.time())
-        write_record(sim_dir, rec)
-        terminal("cancelled")
-        cur = asyncio.current_task()
-        if sim_id in _cancel_requested and not (cur is not None and cur.cancelling()):
-            return ToolOutput(ok=False, summary=f"study {sim_id} cancelled by the user",
-                              step_kind=StepKind.ERROR,
-                              data={"sim_id": sim_id, "error": "cancelled",
-                                    "message": "cancelled", "card": card(rec)})
-        task.cancel()
-        raise
-    except Exception as e:
-        fail("internal", f"{type(e).__name__}: {e}", None)
-        raise
-    finally:
-        _active.pop(sim_id, None)
-        _cancel_requested.discard(sim_id)
-        shutil.rmtree(job_root, ignore_errors=True)
+        return getattr(store.get_run(run_id), "project_id", None)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def finished(ctx, rec: dict) -> None:
+    """sim_finished on the bus: the study ended (done / failed / cancelled), waited or not."""
+    events = getattr(ctx, "events", None)
+    if events is None or rec.get("status") == "running":
+        return
+    events.publish(Event(type="sim_finished", run_id=rec.get("run_id"),
+                         data={"sim_id": rec.get("sim_id"), "run_id": rec.get("run_id"),
+                               "build_id": build_of(ctx, rec), "status": rec.get("status"),
+                               "type": rec.get("type"), "part_id": rec.get("part_id"),
+                               "summary": summary(rec)}))
+
+
+def note_text(rec: dict) -> str:
+    target = rec.get("part_id") or (f"build {rec['project_id']}" if rec.get("project_id")
+                                    else "?")
+    verb = {"done": "finished", "cancelled": "was cancelled"}.get(rec.get("status"), "failed")
+    return (f"[Mises system note, not from the user] Study {rec.get('type')} of {target} "
+            f"({rec.get('sim_id')}) {verb}: {summary(rec)}. Read it with sim_result_get "
+            f"{rec.get('sim_id')}.")[:600]
+
+
+def note_lead(ctx, rec: dict) -> None:
+    """A background study ended: tell the owning lead with a short note in its queue."""
+    rt = (getattr(ctx, "services", None) or {}).get("runtime")
+    run_id = rec.get("run_id")
+    if rt is None or not run_id:
+        return
+    from ..orchestrator.lead import deliver_note
+    meta = {"kind": "sim_finished", "sim_id": rec.get("sim_id"), "status": rec.get("status")}
+    t = asyncio.ensure_future(deliver_note(rt, run_id, note_text(rec), meta))
+    _notes.add(t)
+    t.add_done_callback(_notes.discard)
+
+
+async def wait_for(sim_id: str, timeout_s: float) -> bool:
+    """Wait up to timeout_s for a study running in this process; True once it has ended (or
+    when it is not running here)."""
+    t = _active.get(sim_id)
+    if t is None or t.done():
+        return True
+    done, _ = await asyncio.wait({t}, timeout=timeout_s)
+    if done:
+        await asyncio.sleep(0)      # let its supervisor write the final record
+    return bool(done)
 
 
 def _tools_attr(name: str, default):
