@@ -169,11 +169,18 @@
   },
   {
     "name": "design_review",
-    "description": "Review a part against its spec: picks the studies the spec needs (static per load case, modal for an excitation band, wind for a drag requirement, drop for an impact), runs them as sim_run calls (each one a local_mutate tool call through the Gate), and returns a requirement-by-requirement pass / warn / fail table with the study ids. The spec comes from `spec` or spec_get of project_id. Results are a GUIDE ONLY; cite the study ids.",
+    "description": "Review a part against its spec: picks the studies the spec needs (static per load case, modal for an excitation band, wind for a drag requirement, drop for an impact), runs them as sim_run calls (each one a local_mutate tool call through the Gate), and returns a requirement-by-requirement pass / warn / fail table with the study ids. The spec comes from `spec` or spec_get of project_id. Runs in the background by default (returns {review_id, status: running}; a note arrives when it finishes; wait: true blocks). Results are a GUIDE ONLY; cite the study ids.",
     "safety": "read",
     "implied_classes": [
       "local_mutate"
     ],
+    "open_world": false
+  },
+  {
+    "name": "design_review_get",
+    "description": "Return a background design review's table by review_id (status running while it still runs).",
+    "safety": "read",
+    "implied_classes": [],
     "open_world": false
   },
   {
@@ -207,6 +214,13 @@
   {
     "name": "interview_plan",
     "description": "Suggested requirements interview for a request: at most 6 questions in batches of up to 3, each with options. Ask each batch with one ui_ask_user call (a one-line `question` intro plus the batch as `questions`, as is), then write the spec from the answers.",
+    "safety": "read",
+    "implied_classes": [],
+    "open_world": false
+  },
+  {
+    "name": "job_wait",
+    "description": "Wait for a background job (a study sim_\u2026, a design review review_\u2026 or a design study study_\u2026) up to timeout_s (at most 600 s) and return its result; still running then: status running. You need not wait: a note arrives when it finishes.",
     "safety": "read",
     "implied_classes": [],
     "open_world": false
@@ -556,7 +570,7 @@
   },
   {
     "name": "study_run",
-    "description": "Run a design study on one parametric part: search its variables for the best variant that meets the project spec (Latin-hypercube sampling, then coordinate refinement). Each variant is built as a scratch copy and, if CalculiX is installed, gets a coarse-mesh stress study per load case; the winner is confirmed on the fine mesh. Modal and wind targets (custom avoid_band_hz / min_natural_freq_hz / max_drag_n) are too costly per variant: they are checked on the winners only (best first, at most 3), and a winner that fails one is dropped for the next. The live part is NOT changed: apply a variant with study_apply. Objective: min_mass (default), max:min_sf, min:max_disp_mm, or weights / the user's priorities. Budget capped at 24 evaluations / 20 minutes; a variant whose build or stress study fails is infeasible. Emits study_progress; cancellable (partial results are kept). Runs its stress studies internally under this call's approval.",
+    "description": "Run a design study on one parametric part: search its variables for the best variant that meets the project spec (Latin-hypercube sampling, then coordinate refinement). Each variant is built as a scratch copy and, if CalculiX is installed, gets a coarse-mesh stress study per load case; the winner is confirmed on the fine mesh. Modal and wind targets (custom avoid_band_hz / min_natural_freq_hz / max_drag_n) are too costly per variant: they are checked on the winners only (best first, at most 3), and a winner that fails one is dropped for the next. The live part is NOT changed: apply a variant with study_apply. Objective: min_mass (default), max:min_sf, min:max_disp_mm, or weights / the user's priorities. Budget capped at 24 evaluations / 20 minutes; a variant whose build or stress study fails is infeasible. Emits study_progress; cancellable (partial results are kept). Runs its stress studies internally under this call's approval. Runs in the background by default (returns {study_id, status: running}; a note arrives when it finishes; wait: true blocks).",
     "safety": "local_mutate",
     "implied_classes": [],
     "open_world": false

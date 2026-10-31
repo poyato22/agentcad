@@ -93,7 +93,9 @@ async def dump(out: Path) -> None:
             sim_id = next(s.payload["output"]["data"]["sim_id"] for s in rt.store.steps(lead)
                           if s.payload.get("name") == "sim_run" and "output" in s.payload)
             assert studies.find_sim(home / "parts", sim_id) is not None
-            await studies.wait_for(sim_id, 900)
+            # wait without reading it (sim_wait would count as read: no note)
+            from mises import jobs
+            await asyncio.wait({jobs.get(sim_id).task}, timeout=900)
             for _ in range(600):              # the note's turn
                 await asyncio.sleep(0.1)
                 notes = [s for s in rt.store.steps(lead) if s.payload.get("system_note")]

@@ -1,22 +1,22 @@
 [
   {
     "id": 4,
-    "run_id": "6ad7ad0d2516",
-    "ts": 1793416207.0099158,
+    "run_id": "31f160032988",
+    "ts": 1793422967.7192771,
     "kind": "message",
     "payload": {
       "role": "user",
       "text": "check the beam for stress and show it"
     },
-    "evidence_hash": "30365eb365e5aebc7104eb85078f23dd5dd0e422427b7c701632cdd3bc2ea160",
+    "evidence_hash": "f0f54c58151dbf54300b77442b44d6329c9576b918e1a30bd2128f7d7bdee3e0",
     "prev_hash": null,
     "collapsed": false,
     "stream": "text"
   },
   {
     "id": 5,
-    "run_id": "6ad7ad0d2516",
-    "ts": 1793416207.029616,
+    "run_id": "31f160032988",
+    "ts": 1793422967.735453,
     "kind": "message",
     "payload": {
       "role": "assistant",
@@ -33,15 +33,15 @@
         }
       ]
     },
-    "evidence_hash": "91ad1d50740cb50bfcf5906bab40827a97276cf067121ed794c32c208179532a",
-    "prev_hash": "30365eb365e5aebc7104eb85078f23dd5dd0e422427b7c701632cdd3bc2ea160",
+    "evidence_hash": "2bc251044c2d8cd87514c80edfe6bbeadc97f2ddcdf3c2eb2be4d1a3d2e24176",
+    "prev_hash": "f0f54c58151dbf54300b77442b44d6329c9576b918e1a30bd2128f7d7bdee3e0",
     "collapsed": false,
     "stream": "text"
   },
   {
     "id": 6,
-    "run_id": "6ad7ad0d2516",
-    "ts": 1793416207.0299919,
+    "run_id": "31f160032988",
+    "ts": 1793422967.735678,
     "kind": "tool_call",
     "payload": {
       "call_id": "s1",
@@ -73,15 +73,15 @@
       },
       "name": "sim_run"
     },
-    "evidence_hash": "a940b901e3c2d334e83c48573cd0f989dfddc1778b179bdd197f4c0ba029ff92",
-    "prev_hash": "91ad1d50740cb50bfcf5906bab40827a97276cf067121ed794c32c208179532a",
+    "evidence_hash": "fc7c97d34e8e77e96c6b4679f93e03bd6acf9a79d222cc6907c9aec803added3",
+    "prev_hash": "2bc251044c2d8cd87514c80edfe6bbeadc97f2ddcdf3c2eb2be4d1a3d2e24176",
     "collapsed": false,
     "stream": "sim"
   },
   {
     "id": 7,
-    "run_id": "6ad7ad0d2516",
-    "ts": 1793416207.034417,
+    "run_id": "31f160032988",
+    "ts": 1793422967.738755,
     "kind": "tool_result",
     "payload": {
       "call_id": "s1",
@@ -89,7 +89,7 @@
       "output": {
         "data": {
           "card": {
-            "charts_url": "/sims/sim_072ebfd509ab/charts",
+            "charts_url": "/sims/sim_241e166740c6/charts",
             "checks": [],
             "fidelity_class": "fem",
             "fidelity_note": null,
@@ -126,50 +126,50 @@
             "pct": 0.0,
             "phase": "queued",
             "reason": "tip load on the beam",
-            "run_id": "6ad7ad0d2516",
-            "sim_id": "sim_072ebfd509ab",
+            "run_id": "31f160032988",
+            "sim_id": "sim_241e166740c6",
             "status": "running",
             "step_id": 6,
             "type": "static",
             "urls": {
-              "charts": "/sims/sim_072ebfd509ab/charts",
-              "glb": "/sims/sim_072ebfd509ab/result.glb",
-              "probe": "/sims/sim_072ebfd509ab/probe",
-              "record": "/sims/sim_072ebfd509ab",
-              "section": "/sims/sim_072ebfd509ab/section"
+              "charts": "/sims/sim_241e166740c6/charts",
+              "glb": "/sims/sim_241e166740c6/result.glb",
+              "probe": "/sims/sim_241e166740c6/probe",
+              "record": "/sims/sim_241e166740c6",
+              "section": "/sims/sim_241e166740c6/section"
             },
             "verdict": null,
             "warnings": []
           },
           "part_id": "beam",
-          "sim_id": "sim_072ebfd509ab",
+          "sim_id": "sim_241e166740c6",
           "status": "running",
           "stream": "sim",
           "type": "static",
           "urls": {
-            "charts": "/sims/sim_072ebfd509ab/charts",
-            "glb": "/sims/sim_072ebfd509ab/result.glb",
-            "probe": "/sims/sim_072ebfd509ab/probe",
-            "record": "/sims/sim_072ebfd509ab",
-            "section": "/sims/sim_072ebfd509ab/section"
+            "charts": "/sims/sim_241e166740c6/charts",
+            "glb": "/sims/sim_241e166740c6/result.glb",
+            "probe": "/sims/sim_241e166740c6/probe",
+            "record": "/sims/sim_241e166740c6",
+            "section": "/sims/sim_241e166740c6/section"
           }
         },
         "handles": [],
         "ok": true,
         "step_kind": "tool_result",
-        "summary": "study sim_072ebfd509ab (static) started in the background (guide only, not a guarantee); you get a note when it finishes. Keep working; read it with sim_result_get or sim_wait.",
+        "summary": "study sim_241e166740c6 (static) started in the background (guide only, not a guarantee); you get a note when it finishes. Keep working; read it with sim_result_get or sim_wait.",
         "warnings": []
       }
     },
-    "evidence_hash": "b63c073dce06008f31773216a70b4f8c0779abbfcee3dc8a5c1ca752ae260b4e",
-    "prev_hash": "a940b901e3c2d334e83c48573cd0f989dfddc1778b179bdd197f4c0ba029ff92",
+    "evidence_hash": "5fb87779565d6404c915b7dcb8edcbb96e441f05e233d4929c4e7312c66f700c",
+    "prev_hash": "fc7c97d34e8e77e96c6b4679f93e03bd6acf9a79d222cc6907c9aec803added3",
     "collapsed": false,
     "stream": "sim"
   },
   {
     "id": 8,
-    "run_id": "6ad7ad0d2516",
-    "ts": 1793416207.034998,
+    "run_id": "31f160032988",
+    "ts": 1793422967.739106,
     "kind": "tool_call",
     "payload": {
       "call_id": "v1",
@@ -182,15 +182,15 @@
       },
       "name": "render_views"
     },
-    "evidence_hash": "b75e25727a4667298c20aae7196d682ff943da4b9264e3e63047f7995b4b8f09",
-    "prev_hash": "b63c073dce06008f31773216a70b4f8c0779abbfcee3dc8a5c1ca752ae260b4e",
+    "evidence_hash": "78ebd4d361597de34b49061c26f1ddebdc03a887d38e773c4712768941ded237",
+    "prev_hash": "5fb87779565d6404c915b7dcb8edcbb96e441f05e233d4929c4e7312c66f700c",
     "collapsed": false,
     "stream": "view"
   },
   {
     "id": 9,
-    "run_id": "6ad7ad0d2516",
-    "ts": 1793416207.192362,
+    "run_id": "31f160032988",
+    "ts": 1793422967.8516889,
     "kind": "measure",
     "payload": {
       "call_id": "v1",
@@ -211,18 +211,18 @@
             "beam"
           ],
           "render_ids": {
-            "iso": "rv_6ad7ad0d_f6f31cf7f5_iso"
+            "iso": "rv_31f16003_6dbeec2828_iso"
           },
           "size": 256,
           "view_axes": {
             "iso": "camera at (+X, -Y, +Z), looking at the centre"
           },
           "views": {
-            "iso": "/Users/fixture/Mises/renders/rv_6ad7ad0d_f6f31cf7f5_iso.png"
+            "iso": "/Users/fixture/Mises/renders/rv_31f16003_6dbeec2828_iso.png"
           }
         },
         "handles": [
-          "/Users/fixture/Mises/renders/rv_6ad7ad0d_f6f31cf7f5_iso.png"
+          "/Users/fixture/Mises/renders/rv_31f16003_6dbeec2828_iso.png"
         ],
         "ok": true,
         "step_kind": "measure",
@@ -230,15 +230,15 @@
         "warnings": []
       }
     },
-    "evidence_hash": "f933c227a6988e0f6059a0cba9b7d7a1daf80ba2533ec980b3233962ea401831",
-    "prev_hash": "b75e25727a4667298c20aae7196d682ff943da4b9264e3e63047f7995b4b8f09",
+    "evidence_hash": "c279623d096d1e82760a4dd0726e2a287fdcc47dc3bf99649cff1517d8ad8280",
+    "prev_hash": "78ebd4d361597de34b49061c26f1ddebdc03a887d38e773c4712768941ded237",
     "collapsed": false,
     "stream": "view"
   },
   {
     "id": 10,
-    "run_id": "6ad7ad0d2516",
-    "ts": 1793416207.193685,
+    "run_id": "31f160032988",
+    "ts": 1793422967.8524249,
     "kind": "message",
     "payload": {
       "role": "assistant",
@@ -246,34 +246,36 @@
       "text": "The study runs in the background; the render is above.",
       "tool_calls": []
     },
-    "evidence_hash": "43c96bc1a31eb67bf265b5f026caf37b6e2a9ff8b558fab4916b7badb4510df3",
-    "prev_hash": "f933c227a6988e0f6059a0cba9b7d7a1daf80ba2533ec980b3233962ea401831",
+    "evidence_hash": "c47438cbe0a556711e50e613ea18eba8e66a4b732b0516f29be9cc49809cca23",
+    "prev_hash": "c279623d096d1e82760a4dd0726e2a287fdcc47dc3bf99649cff1517d8ad8280",
     "collapsed": false,
     "stream": "text"
   },
   {
     "id": 11,
-    "run_id": "6ad7ad0d2516",
-    "ts": 1793416208.135784,
+    "run_id": "31f160032988",
+    "ts": 1793422968.5538828,
     "kind": "message",
     "payload": {
       "role": "user",
       "system_note": {
+        "id": "sim_241e166740c6",
+        "job": "sim",
         "kind": "sim_finished",
-        "sim_id": "sim_072ebfd509ab",
+        "sim_id": "sim_241e166740c6",
         "status": "done"
       },
-      "text": "[Mises system note, not from the user] Study static of beam (sim_072ebfd509ab) finished: GUIDE ONLY - CalculiX 2.23, fine mesh 2.5 mm (coarse 5 mm), material PLA isotropic linear elastic, strength x0.7 FDM knock-down: beam max von Mises 6.04 MPa (error band 0.7%), max displacement 1.74 mm, safety factor 5.91; peak excludes the fixed face; at fixture: 5.58 MPa (safety factor incl. fixture 5.91). Read it with sim_result_get sim_072ebfd509ab."
+      "text": "[Mises system note, not from the user] static study of beam (sim_241e166740c6) finished. Result summary (data): \"GUIDE ONLY - CalculiX 2.23, fine mesh 2.5 mm (coarse 5 mm), material PLA isotropic linear elastic, strength x0.7 FDM knock-down: beam max von Mises 6.04 MPa (error band 0.7%), max displacement 1.74 mm, safety factor 5.91; peak excludes the fixed face; at fixture: 5.58 MPa (safety factor incl. fixture 5.91)\". Read it with sim_result_get sim_241e166740c6."
     },
-    "evidence_hash": "987da7db409a3c04825779ea909a596c2e895b79e6bf7bf13a4c55aca7f582ac",
-    "prev_hash": "43c96bc1a31eb67bf265b5f026caf37b6e2a9ff8b558fab4916b7badb4510df3",
+    "evidence_hash": "48fb4d40eb1abf413556ae61c3f04feca20e78b0a5f962096756098460bf044b",
+    "prev_hash": "c47438cbe0a556711e50e613ea18eba8e66a4b732b0516f29be9cc49809cca23",
     "collapsed": false,
     "stream": "text"
   },
   {
     "id": 12,
-    "run_id": "6ad7ad0d2516",
-    "ts": 1793416208.153213,
+    "run_id": "31f160032988",
+    "ts": 1793422968.569352,
     "kind": "message",
     "payload": {
       "role": "assistant",
@@ -281,8 +283,8 @@
       "text": "The study finished: see its card (guide only).",
       "tool_calls": []
     },
-    "evidence_hash": "0e80850e447dfeb24f3d14ef5e72192f06e46561adf4f86e0d3d8bd1ab944747",
-    "prev_hash": "987da7db409a3c04825779ea909a596c2e895b79e6bf7bf13a4c55aca7f582ac",
+    "evidence_hash": "f63a7908f53593dbeead5e80a7dc895b59a0a7694c3a89d12667497c6841d97e",
+    "prev_hash": "48fb4d40eb1abf413556ae61c3f04feca20e78b0a5f962096756098460bf044b",
     "collapsed": false,
     "stream": "text"
   }

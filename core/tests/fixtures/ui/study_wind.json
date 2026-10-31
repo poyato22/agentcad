@@ -1,8 +1,8 @@
 {
-  "sim_id": "sim_365543c1a1ad",
+  "sim_id": "sim_f22720d97fca",
   "part_id": "cube",
   "type": "wind",
-  "run_id": "b3287052853b",
+  "run_id": "3d8889e2ca76",
   "call_id": "s6",
   "step_id": 24,
   "reason": "drag of the cube at 5 m/s",
@@ -10,8 +10,8 @@
   "stage": "done",
   "phase": "done",
   "pct": 100.0,
-  "created_at": 1793384756.817558,
-  "finished_at": 1793384764.422194,
+  "created_at": 1793422873.247757,
+  "finished_at": 1793422887.4475951,
   "analysis": "wind",
   "guide": true,
   "label": "guide only, not a guarantee",
@@ -68,7 +68,7 @@
     "cpus": 4,
     "shape_class": "auto"
   },
-  "geometry_hash": "24d0c6596b1a254a8acd9963b206facbca8654200d7e2c24d63d30a9cc1dab37",
+  "geometry_hash": "d889114728c277c4cae6f2048c6543163dbbd95f8ffb7f514d227b4f1ad7ec9b",
   "material": null,
   "environment": null,
   "error": null,
@@ -85,11 +85,11 @@
     "Validated on a sphere and a flat plate (see the Mises C7 report); expect 10-30% error on other shapes, more on streamlined bodies whose drag is mostly friction."
   ],
   "urls": {
-    "record": "/sims/sim_365543c1a1ad",
-    "glb": "/sims/sim_365543c1a1ad/result.glb",
-    "charts": "/sims/sim_365543c1a1ad/charts",
-    "probe": "/sims/sim_365543c1a1ad/probe",
-    "section": "/sims/sim_365543c1a1ad/section"
+    "record": "/sims/sim_f22720d97fca",
+    "glb": "/sims/sim_f22720d97fca/result.glb",
+    "charts": "/sims/sim_f22720d97fca/charts",
+    "probe": "/sims/sim_f22720d97fca/probe",
+    "section": "/sims/sim_f22720d97fca/section"
   },
   "solver": {
     "name": "Mises lattice-Boltzmann",
@@ -578,7 +578,7 @@
       "converged": false
     }
   },
-  "inputs_hash": "ae29b635ce49fb9f994313c9fa5b00fbbd91baf8a3e1fc91a9c64c7abe86ca18",
+  "inputs_hash": "2ddb007b5434b4f214211f6e2d4318fd9d2b5fd5f298d540dc87e64d9cc430c6",
   "glb": "result.glb",
   "outputs": [
     "result.glb",
@@ -598,13 +598,13 @@
       "measured": 0.028096656510070196,
       "unit": "N",
       "status": "pass",
-      "sim_id": "sim_365543c1a1ad",
+      "sim_id": "sim_f22720d97fca",
       "note": "clear of the \u00b140% model error band"
     }
   ],
   "stale": false,
   "card": {
-    "sim_id": "sim_365543c1a1ad",
+    "sim_id": "sim_f22720d97fca",
     "type": "wind",
     "status": "done",
     "verdict": "warn",
@@ -657,7 +657,7 @@
         "measured": 0.028096656510070196,
         "unit": "N",
         "status": "pass",
-        "sim_id": "sim_365543c1a1ad",
+        "sim_id": "sim_f22720d97fca",
         "note": "clear of the \u00b140% model error band"
       }
     ],
@@ -668,15 +668,15 @@
       "tunnel blockage 11.1% inflates drag; raise domain_multiplier"
     ],
     "reason": "drag of the cube at 5 m/s",
-    "run_id": "b3287052853b",
+    "run_id": "3d8889e2ca76",
     "step_id": 24,
     "urls": {
-      "record": "/sims/sim_365543c1a1ad",
-      "glb": "/sims/sim_365543c1a1ad/result.glb",
-      "charts": "/sims/sim_365543c1a1ad/charts",
-      "probe": "/sims/sim_365543c1a1ad/probe",
-      "section": "/sims/sim_365543c1a1ad/section"
+      "record": "/sims/sim_f22720d97fca",
+      "glb": "/sims/sim_f22720d97fca/result.glb",
+      "charts": "/sims/sim_f22720d97fca/charts",
+      "probe": "/sims/sim_f22720d97fca/probe",
+      "section": "/sims/sim_f22720d97fca/section"
     },
-    "charts_url": "/sims/sim_365543c1a1ad/charts"
+    "charts_url": "/sims/sim_f22720d97fca/charts"
   }
 }

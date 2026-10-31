@@ -47,12 +47,13 @@ describe("p9 streams fixtures", () => {
     expect(firstTurnEnd).toBeLessThan(finished);
     const fin = evs[finished];
     expect(fin.stream).toBe("sim");
-    expect(Object.keys(fin.data).sort()).toEqual(["build_id", "part_id", "run_id", "sim_id", "status", "summary", "type"]);
+    expect(Object.keys(fin.data).sort()).toEqual(["build_id", "job_id", "kind", "part_id", "run_id", "sim_id", "status", "summary", "type"]);
+    expect(fin.data).toMatchObject({ kind: "sim", job_id: fin.data.sim_id });
     const st = steps(join(DIR, "streams_steps.json"));
     const out = st.find((s) => s.kind === "tool_result" && s.payload.name === "sim_run")?.payload.output as { data: Record<string, unknown> };
     expect(out.data).toMatchObject({ status: "running", stream: "sim", sim_id: fin.data.sim_id });
     const note = st.find((s) => s.kind === "message" && s.payload.system_note);
-    expect(note?.payload.system_note).toEqual({ kind: "sim_finished", sim_id: fin.data.sim_id, status: "done" });
+    expect(note?.payload.system_note).toEqual({ kind: "sim_finished", job: "sim", id: fin.data.sim_id, sim_id: fin.data.sim_id, status: "done" });
     expect(note?.stream).toBe("text");
   });
 });
