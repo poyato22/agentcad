@@ -25,7 +25,10 @@ def test_engineering_requests_class_as_engineering(prompt):
 
 
 def test_jet_engine_is_mixed_with_a_designed_nacelle():
-    dc = di.design_intensity("jet engine compressor")
+    # fix round 3: the head object decides, so "jet engine compressor" is a compressor
+    # (engineering); the engine itself is mixed
+    assert di.design_intensity("jet engine compressor")["cls"] == "engineering"
+    dc = di.design_intensity("a jet engine")
     assert dc["cls"] == "mixed", dc
     assert dc["per_part"]["nacelle"] >= 0.6 and dc["per_part"]["fan disk"] <= 0.1
 
@@ -79,7 +82,7 @@ def test_knobs_follow_research_table():
 
 def test_prompt_section_only_for_design_and_mixed():
     eng = di.prompt_section(di.design_intensity("injection mold for a cap"))
-    mixed = di.prompt_section(di.design_intensity("jet engine compressor"))
+    mixed = di.prompt_section(di.design_intensity("a jet engine"))
     design = di.prompt_section(di.design_intensity("a humanoid robot"))
     assert eng == ""
     for text in (mixed, design):

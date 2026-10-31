@@ -61,7 +61,7 @@ _ARCH_WORDS = {"humanoid": ("humanoid", "head height", "shoulder:hip"),
 
 
 @pytest.mark.parametrize("prompt, own", [
-    ("a sleek kettle", None), ("jet engine compressor", None),
+    ("a sleek kettle", None), ("a jet engine", None),
     ("build me a robotic dog", "quadruped"), ("design a car body", "car"),
     ("a humanoid robot", "humanoid")])
 def test_prompt_block_names_no_other_archetype(prompt, own):

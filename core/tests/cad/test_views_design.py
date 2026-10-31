@@ -202,7 +202,7 @@ async def test_design_round_that_passes_recommends_a_final_review(tmp_path):
 async def test_mixed_build_gets_three_views_at_768(tmp_path):
     _make_part(tmp_path, "cube")
     rt, judge = _rt(tmp_path, sees=False, turns=[[TextDelta(text=_judge(0.95))]])
-    store, ctx = _ctx(tmp_path, "jet engine compressor", rt)
+    store, ctx = _ctx(tmp_path, "a jet engine", rt)
     out = await views.critique_model.handler(ctx, views.CritiqueArgs(part_id="cube", request="j"))
     assert out.data["design_class"] == "mixed" and out.data["max_rounds"] == 3
     imgs = [b for b in judge.requests[0].messages[0].content if type(b).__name__ == "ImageBlock"]
@@ -314,7 +314,7 @@ async def test_bars_in_a_mixed_build_only_fail_designed_parts(tmp_path):
         _make_part(tmp_path, pid)
         (tmp_path / "parts" / pid / "metrics.json").write_text(json.dumps(_BAR_METRICS))
     rt, _ = _rt(tmp_path, sees=False, turns=[[TextDelta(text=_judge(0.97))] for _ in range(2)])
-    store, ctx = _ctx(tmp_path, "jet engine compressor", rt)
+    store, ctx = _ctx(tmp_path, "a jet engine", rt)
     shaft = await views.critique_model.handler(ctx, views.CritiqueArgs(part_id="fan_shaft",
                                                                        request="j"))
     assert "bars" not in shaft.data and shaft.data["score"] == pytest.approx(0.97)

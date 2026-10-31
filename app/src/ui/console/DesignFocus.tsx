@@ -23,19 +23,26 @@ export function runDesignClass(run: AgentRun | null): Shown | null {
   return { cls, byUser: (raw as { source?: unknown }).source === "user" };
 }
 
-/** What the user just chose per build, shown until the run payload catches up. */
-export const chosenFocus = signal<Record<string, Shown | null>>({});
+/** What the core answered to the user's last pick, per build, with the run payload it was
+ *  answered against: shown until that payload changes (the runs refetch), so an "auto" never
+ *  flashes the old user-set class back (re-review 2 m7). */
+export const chosenFocus = signal<Record<string, { shown: Shown; basis: string } | null>>({});
+
+const key = (s: Shown | null) => (s ? `${s.cls}:${s.byUser ? "user" : "auto"}` : "");
 
 export function DesignFocus({ run, buildId }: { run: AgentRun | null; buildId: string | null }): JSX.Element | null {
-  const local = buildId ? chosenFocus.value[buildId] : undefined;
-  const shown = local !== undefined && local !== null ? local : runDesignClass(run);
+  const fromRun = runDesignClass(run);
+  const local = buildId ? chosenFocus.value[buildId] : null;
+  const shown = local && local.basis === key(fromRun) ? local.shown : fromRun;
   if (!buildId || !shown) return null;
   const pick = async (cls: DesignCls) => {
     const next = shown.byUser && shown.cls === cls ? "auto" : cls;
     try {
       const out = await actions.client().setDesignClass(buildId, next);
-      const dc = (out as { design_class?: { cls?: DesignCls } | null }).design_class;
-      chosenFocus.value = { ...chosenFocus.value, [buildId]: next === "auto" || !dc?.cls ? null : { cls: dc.cls, byUser: true } };
+      const dc = (out as { design_class?: { cls?: unknown; source?: unknown } | null }).design_class;
+      const got: Shown | null = dc && (dc.cls === "engineering" || dc.cls === "mixed" || dc.cls === "design")
+        ? { cls: dc.cls, byUser: dc.source === "user" } : null;
+      chosenFocus.value = { ...chosenFocus.value, [buildId]: got ? { shown: got, basis: key(fromRun) } : null };
     } catch {
       /* the core refused (offline, unknown build): the chip keeps showing the current class */
     }

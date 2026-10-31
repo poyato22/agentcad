@@ -199,4 +199,9 @@ test("design_focus_chip_shows_the_class_and_sets_the_users_own", async ({ page, 
   await expect(chip).toHaveAttribute("data-design-focus", "engineering");
   await expect(chip.locator("[data-focus-by-user]")).toBeVisible();
   expect((await fake.calls()).some((c) => c.method === "PATCH" && c.path === `/projects/${BUILD}`)).toBe(true);
+  // clicking the user's own class hands it back: the classifier's answer shows, no "you"
+  await chip.locator("[data-focus=engineering]").click();
+  await expect(chip.locator("[data-focus-by-user]")).toHaveCount(0);
+  await expect(chip).toHaveAttribute("data-design-focus", "engineering");
+  expect((await fake.calls()).filter((c) => c.method === "PATCH" && c.path === `/projects/${BUILD}`).length).toBe(2);
 });

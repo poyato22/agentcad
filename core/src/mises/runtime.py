@@ -80,13 +80,39 @@ STRONG_MODEL_TOOLS = frozenset({"orchestrator_run", "agent_spawn", "agent_wait",
                                 "orchestrator_submit_plan"})
 
 
+#: `log` key naming the words the design-class classifier may read for this message (the
+#: user's own; None or "" for none). Never stored: send / start_run strip it.
+CLASSIFY = "_classify"
+#: stored-step keys that mark a message whose `text` someone other than the user wrote (a
+#: concept pick's label is the agent's option name): classified only via CLASSIFY
+_NOT_USER_TEXT = ("concept_choice", "concept_feedback", "system_note")
+
+
 def _user_words(text: str, user_log: dict | None) -> str:
-    """The text the design-class classifier may read: the user's own words. A feedback pin's
-    message wraps the user's note in agent-written context (part labels, nearby features), so
-    when the stored user step carries the user's own `text`, that is what is classified
-    (Plan 9 G-B: agent-written text never moves the class)."""
-    own = (user_log or {}).get("text")
+    """The text the design-class classifier may read: the user's own words, never an agent's
+    (Plan 9 G-B I3).
+    - `log[CLASSIFY]` set: exactly that (the caller knows which words are the user's; None
+      for an agent-to-lead message such as a studies agent's report);
+    - a log marked as not the user's text (a concept choice / feedback summary): nothing;
+    - a feedback pin's log `text` (the user's note; the message wraps it in agent-written
+      part labels): that note;
+    - no log: the message itself (the user typed it)."""
+    lg = user_log or {}
+    if CLASSIFY in lg:
+        own = lg[CLASSIFY]
+        return own if isinstance(own, str) else ""
+    if any(k in lg for k in _NOT_USER_TEXT):
+        return ""
+    own = lg.get("text")
     return own if isinstance(own, str) and own.strip() else text
+
+
+def _public_log(user_log: dict | None) -> dict | None:
+    """The stored-step overrides without the classifier's private key."""
+    if not user_log or CLASSIFY not in user_log:
+        return user_log
+    rest = {k: v for k, v in user_log.items() if k != CLASSIFY}
+    return rest or None
 
 
 def tools_withheld_for(model_ref: str) -> frozenset[str]:
@@ -784,6 +810,7 @@ class Runtime:
         if defn is None:
             raise MisesError(ErrorCode.NOT_FOUND, f"unknown agent: {agent}",
                              hint=f"agents: {', '.join(sorted(self.definitions))}")
+        words, log = _user_words(prompt, log), _public_log(log)
         meta = {k: v for k, v in (("role", role), ("title", title), ("routed", routed))
                 if v is not None}
         project_id = self.project_for(project_id, parent_id)
@@ -801,7 +828,7 @@ class Runtime:
                                                 parent_id=parent_id,
                                                 allowed_classes=allowed_classes,
                                                 sketch_id=sketch_id, project_id=project_id,
-                                                meta=meta, log=log,
+                                                meta=meta, log=log, design_words=words,
                                                 first_context=first_context, images=images)
         provider, model = self._resolve_provider(ref, prof)
         if hardware.model_kind(ref) == "local":
@@ -814,9 +841,9 @@ class Runtime:
             from .orchestrator.lead import lead_definition
             defn = lead_definition(defn)
         shape = self._note_shape_complexity(run.id, prompt)
-        design = self._note_design_class(run.id, _user_words(prompt, log), parent_id)
-        if parent_id is None:        # a sub-agent inherits; only a top-level request is rated
-            self._design_model_rubric(run.id, _user_words(prompt, log), prof)
+        design = self._note_design_class(run.id, words, parent_id)
+        if parent_id is None and words.strip():   # a sub-agent inherits; only the user's
+            self._design_model_rubric(run.id, words, prof)  # own request is rated
         defn = self._design_rules_for(defn, role, design)
         classes = set(SafetyClass) if allowed_classes is None else set(allowed_classes)
         self.store.create_policy(run.id, list(edit_scope), list(read_scope), caps,
@@ -1027,18 +1054,66 @@ class Runtime:
     def set_build_design_class(self, project_id: str, cls: str | None) -> dict | None:
         """PATCH /projects/{id} {design_class}: the user's class for the build (None hands it
         back to the classifier). Every run of the build takes it now, and a live native loop's
-        prompt is refreshed; G-A's concept gate reads it from the runs."""
+        prompt is refreshed; G-A's concept gate reads it from the runs.
+
+        Setting it keeps each run's classifier result (meta `design_class_auto:<run>`); "auto"
+        restores exactly that (with the user's follow-up raises and lowers), never
+        reclassifying agent-written text (a run's `task` may be a feedback pin's wrapped
+        message or a sub-agent's brief). A run started while the override was on: a top-level
+        run is classified from its first user step's own words, a sub-agent inherits its
+        parent's restored class. Returns the lead's class now (the user's, or the restored
+        classifier result for "auto")."""
+        import json as _json
+
         from . import design_intensity as design_mod
         self.store.set_project_design_class(project_id, cls)
-        out = None
-        for run in self.store.list_runs(10_000, project_id=project_id):
-            dc = (design_mod.user_override(cls) if cls
-                  else design_mod.design_intensity(run.task or ""))
+        runs = self.store.list_runs(10_000, project_id=project_id)
+        ids = {r.id for r in runs}
+        ordered, placed = [], set()
+        while len(ordered) < len(runs):          # parents before their sub-agents
+            before = len(ordered)
+            for r in runs:
+                if r.id not in placed and (r.parent_id not in ids or r.parent_id in placed):
+                    ordered.append(r)
+                    placed.add(r.id)
+            if len(ordered) == before:           # a cycle (never expected): keep the rest
+                ordered += [r for r in runs if r.id not in placed]
+                break
+        out, restored = None, {}
+        for run in ordered:
+            key = f"design_class_auto:{run.id}"
+            cur = run.design_class
+            if cls:
+                if cur and cur.get("source") != "user":
+                    self.store.meta_set(key, _json.dumps(cur))
+                dc = design_mod.user_override(cls, (cur or {}).get("archetype"))
+            else:
+                saved = self.store.meta_get(key)
+                if saved:
+                    dc = _json.loads(saved)
+                elif run.parent_id:
+                    dc = restored.get(run.parent_id) or design_mod.design_intensity("")
+                else:
+                    dc = design_mod.design_intensity(self._first_user_words(run.id))
+                self.store.meta_delete(key)
+            restored[run.id] = dc
             self.store.set_design_class(run.id, dc)
             self._refresh_design_rules(run.id, dc)
             if run.role == "lead" or out is None:
                 out = dc
-        return out if cls else None
+        return out
+
+    def _first_user_words(self, run_id: str) -> str:
+        """The user's own words in a run's first user step ("" when that step is not the
+        user's: a concept pick, an agent's message)."""
+        try:
+            steps = self.store.steps(run_id, [StepKind.MESSAGE])
+        except Exception:  # noqa: BLE001
+            return ""
+        for s in steps:
+            if s.payload.get("role") == "user":
+                return _user_words(str(s.payload.get("text") or ""), s.payload)
+        return ""
 
     def _refresh_design_rules(self, run_id: str, dc: dict) -> None:
         st = self._runs.get(run_id)
@@ -1148,6 +1223,7 @@ class Runtime:
                                 sketch_id: str | None = None,
                                 project_id: str | None = None,
                                 meta: dict | None = None, log: dict | None = None,
+                                design_words: str | None = None,
                                 first_context: dict | None = None,
                                 images: list[tuple[str, str]] | None = None) -> str:
         url, token = await self._mcp()
@@ -1161,9 +1237,10 @@ class Runtime:
             self.store.update_run(rid, **meta)
         self._note_shape_complexity(rid, prompt)
         # before the session starts too: its rules file carries the design-class block
-        self._note_design_class(rid, _user_words(prompt, log), parent_id)
-        if parent_id is None:
-            self._design_model_rubric(rid, _user_words(prompt, log), self.profile())
+        words = _user_words(prompt, log) if design_words is None else design_words
+        self._note_design_class(rid, words, parent_id)
+        if parent_id is None and words.strip():
+            self._design_model_rubric(rid, words, self.profile())
         st = self._claude[rid] = _ClaudeRun(ref=ref, first_context=first_context)
         st.slot, st.started_data = self._external_slots.pop(rid, (None, {}))
         text = prompt
@@ -1572,11 +1649,13 @@ class Runtime:
             raise MisesError(ErrorCode.INVALID_INPUT, "run is still working",
                              hint="wait for it to finish or cancel it")
         busy = self.run_busy(run_id)
+        words, log = _user_words(text, log), _public_log(log)
         self._sending.add(run_id)
         try:
             if not busy and user_turn:
                 self.new_user_turn(run_id)
-                self._raise_design_class(run_id, _user_words(text, log))
+                if words.strip():      # only the user's own words move the class (G-B I3)
+                    self._raise_design_class(run_id, words)
             elif user_turn:     # joins a running turn: still the user, so notes may wake it
                 self.note_turns.pop(run_id, None)
                 self.note_hold.discard(run_id)

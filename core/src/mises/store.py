@@ -428,6 +428,10 @@ class Store:
         with self._tx() as db:
             db.execute("INSERT OR REPLACE INTO meta VALUES (?,?)", (key, value))
 
+    def meta_delete(self, key: str) -> None:
+        with self._tx() as db:
+            db.execute("DELETE FROM meta WHERE key=?", (key,))
+
     # Plan 9 G-B: the user's design-class override on a build (engineering|mixed|design), kept
     # in meta so the project payload is unchanged; None = let the classifier decide
     def project_design_class(self, project_id: str) -> str | None:

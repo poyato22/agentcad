@@ -291,7 +291,11 @@ export function buildRoutes(d: BuildsDeps): Route[] {
           const cls = String(bb.design_class);
           if (!["engineering", "mixed", "design", "auto"].includes(cls)) throw new HttpError(422, { detail: "design_class must be engineering, mixed, design or auto" });
           const score: Record<string, number> = { engineering: 0.15, mixed: 0.5, design: 0.85 };
-          dc = cls === "auto" ? null : { score: score[cls], cls, per_part: {}, reasons: ["set by the user on this build"], source: "user", archetype: null };
+          // "auto" answers the restored classifier result (fix round 3); the fake has no
+          // classifier, so it is the prior for a request with no design signal
+          dc = cls === "auto"
+            ? { score: 0.2, cls: "engineering", per_part: {}, reasons: ["no archetype or styling signal: engineering by default (design needs evidence)"], source: "prior", archetype: null }
+            : { score: score[cls], cls, per_part: {}, reasons: ["set by the user on this build"], source: "user", archetype: null };
         }
         if (bb.name !== undefined && bb.name !== null) {
           const name = String(bb.name).trim();

@@ -61,6 +61,21 @@ describe("design focus chip", () => {
     fireEvent.click(container.querySelector("[data-focus=mixed]") as HTMLElement);
     await flush();
     expect(c.setDesignClass).toHaveBeenCalledWith("b1", "auto");
+    // re-review 2 m7: the classifier's answer shows at once, never the stale user-set class
+    // from the run payload (which still says source "user" until the runs refetch)
+    expect(container.querySelector("[data-design-focus]")?.getAttribute("data-design-focus")).toBe("design");
+    expect(container.querySelector("[data-focus-by-user]")).toBeNull();
+  });
+
+  it("drops its local answer once the run payload changes", async () => {
+    bind({ design_class: { cls: "engineering", source: "user" } });
+    const { container, rerender } = render(<DesignFocus run={withClass("design")} buildId="b1" />);
+    fireEvent.click(container.querySelector("[data-focus=engineering]") as HTMLElement);
+    await flush();
+    expect(container.querySelector("[data-design-focus]")?.getAttribute("data-design-focus")).toBe("engineering");
+    // the runs refetch: a later follow-up made it mixed (classifier): the payload wins now
+    rerender(<DesignFocus run={withClass("mixed")} buildId="b1" />);
+    expect(container.querySelector("[data-design-focus]")?.getAttribute("data-design-focus")).toBe("mixed");
   });
 
   it("keeps the current class when the core refuses", async () => {

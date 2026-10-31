@@ -44,6 +44,9 @@ _ARCHETYPES: list[tuple[str, str, float, str, dict[str, float]]] = [
     ("quadruped", r"robot(?:ic)? dog|robodog|quadruped|legged robot|spot robot|"
      r"(?:like |boston dynamics )spot|unitree go2|go2 robot|robot (?:cat|pet|animal)", 0.75,
      "legged robot animal: a consumer-facing silhouette", {}),
+    # a bare robot / dog as the head object (a "dog bowl" is a bowl: only the head counts)
+    ("robot", r"robot|mecha?|android companion|companion robot|pet robot|dog|cat", 0.7,
+     "a robot or creature: judged by how it looks", {}),
     ("car", r"car body|car|sports car|supercar|hatchback|sedan|coupe|suv|roadster|"
      r"concept car|vehicle body|bodywork", 0.85, "car body: styling and proportion", {}),
     ("rider_vehicle", r"motorcycle|scooter|e-?bike|helmet", 0.75,
@@ -131,8 +134,145 @@ def _main_clause(text: str) -> str:
     return re.split(r"\b(?:with|that|which|including)\b", text, maxsplit=1)[0]
 
 
+# ---- the head object (Plan 9 G-B fix round 3) -----------------------------------------------
+# A request names one object; every other noun modifies it ("a car seat gap filler" is a
+# filler, "a water bottle cage for my bike" a cage, "a keyboard wrist rest" a rest). Without
+# styling words, only the head object decides: design when it is a design-heavy product or
+# character, engineering when unsure (the user raises it with the Design focus chip).
+_BOUNDARY = frozenset((
+    "for of on in into onto to from at under over behind like between inside around above below "
+    "near by about using without with that which including so and or but where when while "
+    "holding attached via per than within across along through against").split())
+#: words that are never the head object: the next phrase names it ("a model of a robot")
+_GENERIC_HEAD = frozenset((
+    "a an the my our your this some me it us something thing things one ones model models "
+    "version replica mockup mock-up kind type sort set pair piece pieces design designs "
+    "prototype cad render rendering please look looks looking version variant style shape "
+    "concept new simple custom printable 3d 3d-printable printed cad-model").split())
+_UNITS = frozenset(("mm cm m km in inch inches ft foot feet l litre litres liter liters ml g kg "
+                    "n nm v w mah bar psi rpm deg degrees x").split())
+#: heads that are a part OF something: the product they belong to governs ("a drone frame",
+#: "a mouse shell"). The skin of a design-heavy product is design work. A case / cover /
+#: housing is not here: "a phone case" or "a remote battery cover" is an accessory that fits a
+#: product the user already has (engineering unless styled).
+_SKIN_HEADS = frozenset(("shell shells body bodywork canopy fairing fairings cowl cowling skin "
+                         "hood visor faceplate torso chest").split())
+_STRUCT_HEADS = frozenset("frame airframe chassis arm arms leg legs link links".split())
+#: covers / panels: the skin of a robot or vehicle ("the humanoid robot covers", "a car door
+#: panel"); for a consumer product they are accessories ("a phone cover", "a keyboard cover")
+_COVER_HEADS = frozenset("cover covers panel panels door doors".split())
+_COVER_OWNERS = frozenset(("humanoid quadruped robot car rider_vehicle drone robot_arm "
+                           "aircraft jet_engine").split())
+SKIN_MIN = 0.7                           # the skin of a design-heavy product is design work
+
+
+def _segments(text: str) -> list[list[str]]:
+    """The request's noun phrases, in order: tokens split at prepositions, conjunctions and
+    punctuation, with numbers and their units dropped ("a 5 inch fpv drone frame")."""
+    out, cur, skip_unit = [], [], False
+    for tok in re.findall(r"[a-z0-9]+(?:['\-][a-z0-9]+)*|[,.;:!?()/]", text):
+        tok = tok[:-2] if tok.endswith("'s") else tok
+        if tok in _BOUNDARY or not tok[0].isalnum():
+            if cur:
+                out.append(cur)
+            cur, skip_unit = [], False
+            continue
+        if re.fullmatch(r"\d[\d.:x]*(?:mm|cm|m|in|l|ml|kg|g|v|w)?", tok):
+            skip_unit = True
+            continue
+        if skip_unit and tok in _UNITS:
+            skip_unit = False
+            continue
+        skip_unit = False
+        cur.append(tok)
+    if cur:
+        out.append(cur)
+    return out
+
+
+def _ends_with(phrase: str, key_filter) -> tuple | None:
+    """The archetype whose pattern covers the end of `phrase` (its head word), if any.
+    Precedence: tooling, functional, then the highest-scoring specific one, then generic."""
+    found = []
+    for key, pat, score, why, parts in _ARCHETYPES:
+        if not key_filter(key):
+            continue
+        m = re.search(_word(pat) + r"$", phrase)
+        if m:
+            found.append((key, score, why, parts, m.group(0)))
+    if not found:
+        return None
+    rank = {"tooling": 3, "functional": 2}
+    return max(found, key=lambda h: (rank.get(h[0], 1 if h[0] not in _GENERIC else 0), h[1]))
+
+
+def _owner(words: list[str]) -> tuple | None:
+    """The product a part head belongs to: the head object of the words before it, resolved
+    the same way ("the humanoid robot covers" -> humanoid; "a car door panel" -> car)."""
+    _head, hit, _how = head_object(" ".join(words))
+    return hit if hit is not None and hit[0] not in _GENERIC else None
+
+
+def head_object(text: str) -> tuple[str, tuple | None, str]:
+    """(head word, governing archetype hit or None, how) for a request."""
+    for seg in _segments(text):
+        while seg and seg[-1] in _GENERIC_HEAD:
+            seg = seg[:-1]
+        if not seg:
+            continue
+        head = seg[-1]
+        phrase = " ".join(seg)
+        hit = _ends_with(phrase, lambda k: True)
+        if hit is not None and hit[0] not in _GENERIC and len(hit[4]) > len(head):
+            return head, hit, "head"            # a multi-word archetype ("a robot arm")
+        if head in ("robot", "robots") and len(seg) > 1:
+            kind = _ends_with(" ".join(seg[:-1]), lambda k: k not in _GENERIC | {"robot"})
+            if kind is not None:                # "a humanoid robot", "a delivery robot"
+                return head, kind, "head"
+        if head in _COVER_HEADS and len(seg) > 1:
+            owner = _owner(seg[:-1])
+            if owner is not None and owner[0] in _COVER_OWNERS:
+                return head, owner, "skin"
+        if head in _SKIN_HEADS or head in _STRUCT_HEADS:
+            owner = _owner(seg[:-1]) if len(seg) > 1 else None
+            if owner is not None:
+                if owner[0] in _FUNCTIONAL:
+                    return head, owner, "part of a functional product"
+                return head, owner, "skin" if head in _SKIN_HEADS else "structure"
+        if hit is not None and hit[0] in _GENERIC:
+            return head, None, "generic"        # a bare enclosure / case / housing
+        return head, hit, "head"
+    return "", None, "none"
+
+
 def _prior(text: str, styled: bool):
-    """(score, reasons, per-part defaults, archetype key or None)."""
+    """(score, reasons, per-part defaults, archetype key or None). Without styling words the
+    head object alone decides; with them, the head's own archetype if it has a design one, else
+    the strongest archetype named anywhere (styling words turn a "phone mount" into product
+    design: the user asked for looks)."""
+    head, hit, how = head_object(text)
+    if styled and hit is not None and hit[0] not in _FUNCTIONAL:
+        key, score, why, parts, word = hit
+        if how == "skin":
+            score = max(score, SKIN_MIN)
+        return score, [f"{word}: {why}"], dict(parts), key
+    if not styled:
+        if hit is None:
+            if not head:
+                return NEUTRAL, [], {}, None
+            return NEUTRAL, [f"head object '{head}' is not a design-heavy product: engineering "
+                             "by default (raise it with Design focus)"], {}, None
+        key, score, why, parts, word = hit
+        if key in _FUNCTIONAL:
+            return score, [f"{word}: {why}" + (" (the part, not the product it is for)"
+                                               if how == "part of a functional product"
+                                               or word != head else "")], dict(parts), None
+        if how == "skin":
+            score = max(score, SKIN_MIN)
+            return score, [f"{word} {head}: the visible skin of a {key.replace('_', ' ')}"], \
+                dict(parts), key
+        return score, [f"{word}" + (f" {head}" if how == "structure" else "") + f": {why}"], \
+            dict(parts), key
     hits = []
     for key, pat, score, why, parts in _ARCHETYPES:
         m = re.search(_word(pat), text)

@@ -26,7 +26,8 @@ def make(tmp_path, n=4, text="ok"):
 @pytest.mark.parametrize("prompt, cls", [
     ("a humanoid robot", "design"), ("build me a robotic dog", "design"),
     ("design a car body", "design"), ("injection mold for a cap", "engineering"),
-    ("an L bracket with four M3 holes", "engineering"), ("jet engine compressor", "mixed")])
+    ("an L bracket with four M3 holes", "engineering"), ("a jet engine", "mixed"),
+    ("jet engine compressor", "engineering")])
 async def test_start_run_classifies_and_stores_the_design_class(tmp_path, prompt, cls):
     rt, fake = make(tmp_path)
     rid = await rt.start_run("designer", prompt)

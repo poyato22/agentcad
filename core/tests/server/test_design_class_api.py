@@ -50,8 +50,35 @@ def test_patch_sets_and_clears_the_override(client, rt):
     client.portal.call(rt.wait, rid2)
     assert rt.store.get_run(rid2).design_class["cls"] == "engineering"
     r = client.patch(f"/projects/{pid}", headers=AUTH, json={"design_class": "auto"})
-    assert r.status_code == 200 and r.json()["design_class"] is None
+    # fix round 3 (m7): "auto" answers the classifier's class now, so the chip shows it at once
+    assert r.status_code == 200 and r.json()["design_class"]["source"] != "user"
     assert rt.store.get_run(rid).design_class["cls"] == "design"
+
+
+def test_auto_restores_the_classifier_result_never_agent_text(client, rt):
+    """Re-review 2 m6: "auto" restores each run's own classifier result (with the user's
+    follow-ups), never reclassifying a run's task (agent-written for a sub-agent or a pin)."""
+    pid = rt.active_project_id()
+    rid = client.portal.call(_run, rt, "an L bracket with four M3 holes")
+    client.portal.call(rt.send, rid, "now make it sleek and sculpted")   # the user raises it
+    client.portal.call(rt.wait, rid)
+    raised = rt.store.get_run(rid).design_class
+    assert raised["cls"] != "engineering"
+    # a sub-agent whose (agent-written) brief names a car body
+    sub = rt.store.create_run("engineer", "fake", "m", "style the car body shell like a supercar",
+                              parent_id=rid, project_id=pid).id
+    rt.store.set_design_class(sub, raised)
+    client.patch(f"/projects/{pid}", headers=AUTH, json={"design_class": "engineering"})
+    r = client.patch(f"/projects/{pid}", headers=AUTH, json={"design_class": "auto"})
+    assert r.json()["design_class"]["cls"] == raised["cls"]
+    assert rt.store.get_run(rid).design_class == raised        # the follow-up raise is kept
+    assert rt.store.get_run(sub).design_class == raised        # inherited, not its brief
+    # a run started while the override was on: its first user step's own words
+    client.patch(f"/projects/{pid}", headers=AUTH, json={"design_class": "design"})
+    rid3 = client.portal.call(_run, rt, "a phone case for an iPhone 15")
+    assert rt.store.get_run(rid3).design_class["source"] == "user"
+    client.patch(f"/projects/{pid}", headers=AUTH, json={"design_class": "auto"})
+    assert rt.store.get_run(rid3).design_class["cls"] == "engineering"
 
 
 def test_patch_rejects_bad_values_and_the_agent_token(client, rt):
@@ -72,7 +99,7 @@ def test_name_only_patch_is_unchanged(client, rt):
 
 def test_design_class_get_tool(client, rt):
     pid = rt.active_project_id()
-    rid = client.portal.call(_run, rt, "jet engine compressor")
+    rid = client.portal.call(_run, rt, "a jet engine")
     out = client.portal.call(design_class_get.handler, _ctx(rt, rid), DesignClassGetArgs())
     assert out.data["design_class"]["cls"] == "mixed" and out.data["set_by_user"] is False
     assert out.data["knobs"]["critique"]["rounds"] == 3
