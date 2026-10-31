@@ -6,6 +6,7 @@
 // deflection, peak stress, verified ✓ / ✗) with Accept. Mounted once at the app root.
 import type { JSX } from "preact";
 import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
+import { FacePickView } from "./FacePickView";
 import type { PartFace } from "../../api/types";
 import { partLabel } from "../../lib/names";
 import { parts } from "../../state/store";
@@ -48,9 +49,16 @@ function FaceSelect({ value, faces, label, onChange }: { value: string; faces: r
 
 function Panel({ controller: c, partId, topoptId }: { controller: TopoptController; partId: string; topoptId: string | null }): JSX.Element {
   const panel = useRef<HTMLDivElement>(null);
+  /** The setup's "stop picking" (true when a picker was armed). */
+  const disarm = useRef<(() => boolean) | null>(null);
   useFocusTrap(panel);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); c.close(); } };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      if (disarm.current?.()) return;
+      c.close();
+    };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
   }, [c]);
@@ -65,19 +73,54 @@ function Panel({ controller: c, partId, topoptId }: { controller: TopoptControll
         </header>
         {topoptId
           ? <RunView c={c} topoptId={topoptId} />
-          : <Setup c={c} partId={partId} faces={part?.metrics?.face_list ?? []} built={part?.metrics != null} />}
+          : <Setup c={c} partId={partId} faces={part?.metrics?.face_list ?? []} built={part?.metrics != null} disarm={disarm} />}
       </div>
     </div>
   );
 }
 
-function Setup({ c, partId, faces, built }: { c: TopoptController; partId: string; faces: readonly PartFace[]; built: boolean }): JSX.Element {
+type Armed = { list: "fixtures" | "loads" | "keepFaces"; index: number; label: string };
+
+function Setup({ c, partId, faces, built, disarm }: {
+  c: TopoptController; partId: string; faces: readonly PartFace[]; built: boolean; disarm: { current: (() => boolean) | null };
+}): JSX.Element {
   const [f, setF] = useState<GdForm>(() => forms.get(partId) ?? defaultForm(partId));
   const set = (patch: Partial<GdForm>) => { const next = { ...f, ...patch }; forms.set(partId, next); setF(next); };
+  const [armed, setArmed] = useState<Armed | null>(null);
+  disarm.current = () => { if (!armed) return false; setArmed(null); return true; };
+  const loadPartGlb = useCallback(() => c.client().partGlb(partId), [c, partId]);
+  const pickInto = (id: string) => {
+    if (!armed) return;
+    const { list, index } = armed;
+    if (list === "loads") set({ loads: f.loads.map((x, j) => (j === index ? { ...x, face: id } : x)) });
+    else set({ [list]: f[list].map((x, j) => (j === index ? id : x)) } as Partial<GdForm>);
+    setArmed(null);
+  };
+  const arm = (list: Armed["list"], index: number, label: string) =>
+    setArmed(armed && armed.list === list && armed.index === index ? null : { list, index, label });
+  const PickBtn = ({ list, index, label }: { list: Armed["list"]; index: number; label: string }) => {
+    const on = armed?.list === list && armed.index === index;
+    return (
+      <Button variant={on ? "primary" : "ghost"} aria-pressed={on} onClick={() => arm(list, index, label)}
+        aria-label={on ? `Picking ${label.toLowerCase()}: click a face on the part, or press Escape` : `Pick ${label.toLowerCase()} on the part`}>
+        {on ? "Click a face…" : "Pick"}
+      </Button>
+    );
+  };
+  const used = [...f.fixtures, ...f.loads.map((l) => l.face), ...f.keepFaces];
+  // a new keep face starts as the largest face no one uses yet (not just the first in the list)
+  const freshKeep = (): string => [...faces].filter((x) => !used.includes(x.id)).sort((a, b) => b.area - a.area)[0]?.id ?? "top";
   const err = (field: string) => c.errors.value.find((e) => e.field === field || e.field.startsWith(`${field}.`))?.message;
   const toggleAxis = (a: Axis) => set({ symmetry: f.symmetry.includes(a) ? f.symmetry.filter((x) => x !== a) : [...f.symmetry, a] });
   return (
     <form class="gd-body gd-setup" onSubmit={(e) => { e.preventDefault(); void c.start(f); }}>
+      <section class="gd-pick">
+        <h3 class="gd-sec-title">The part</h3>
+        {built
+          ? <FacePickView load={loadPartGlb} faces={faces} used={used} armedLabel={armed?.label ?? null} onPick={pickInto} />
+          : <p class="faint">This part has no built model yet.</p>}
+        <p class="faint gd-note">Pick a face with “Pick”, then click it here; the lists work too.</p>
+      </section>
       <section class="gd-sec">
         <h3 class="gd-sec-title">Design space</h3>
         <div class="gd-seg" role="radiogroup" aria-label="Design space">
@@ -91,10 +134,11 @@ function Setup({ c, partId, faces, built }: { c: TopoptController; partId: strin
           {f.keepFaces.map((face, i) => (
             <span key={i} class="gd-item">
               <FaceSelect value={face} faces={faces} label={`Keep face ${i + 1}`} onChange={(v) => set({ keepFaces: f.keepFaces.map((x, j) => (j === i ? v : x)) })} />
+              <PickBtn list="keepFaces" index={i} label={`Keep face ${i + 1}`} />
               <Button variant="ghost" aria-label={`Remove keep face ${i + 1}`} onClick={() => set({ keepFaces: f.keepFaces.filter((_, j) => j !== i) })}>✕</Button>
             </span>
           ))}
-          <Button onClick={() => set({ keepFaces: [...f.keepFaces, faces[0]?.id ?? "top"] })}>Add face to keep</Button>
+          <Button onClick={() => set({ keepFaces: [...f.keepFaces, freshKeep()] })}>Add face to keep</Button>
           {f.keepFaces.length > 0 && (
             <label class="gd-inline">Band <input type="number" min={0.5} max={20} step={0.5} value={f.keepThickness} class="num"
               onInput={(e) => set({ keepThickness: Number((e.target as HTMLInputElement).value) })} /> mm</label>
@@ -107,6 +151,7 @@ function Setup({ c, partId, faces, built }: { c: TopoptController; partId: strin
         {f.fixtures.map((face, i) => (
           <span key={i} class="gd-item">
             <FaceSelect value={face} faces={faces} label={`Held face ${i + 1}`} onChange={(v) => set({ fixtures: f.fixtures.map((x, j) => (j === i ? v : x)) })} />
+            <PickBtn list="fixtures" index={i} label={`Held face ${i + 1}`} />
             <Button variant="ghost" aria-label={`Remove held face ${i + 1}`} onClick={() => set({ fixtures: f.fixtures.filter((_, j) => j !== i) })}>✕</Button>
           </span>
         ))}
@@ -119,6 +164,7 @@ function Setup({ c, partId, faces, built }: { c: TopoptController; partId: strin
         {f.loads.map((l, i) => (
           <span key={i} class="gd-item">
             <FaceSelect value={l.face} faces={faces} label={`Load ${i + 1} face`} onChange={(v) => set({ loads: f.loads.map((x, j) => (j === i ? { ...x, face: v } : x)) })} />
+            <PickBtn list="loads" index={i} label={`Load ${i + 1} face`} />
             <input type="number" class="num gd-n" min={0} step={1} value={l.newtons} aria-label={`Load ${i + 1} force (N)`}
               onInput={(e) => set({ loads: f.loads.map((x, j) => (j === i ? { ...x, newtons: Number((e.target as HTMLInputElement).value) } : x)) })} />
             <span class="dim">N</span>
@@ -143,6 +189,7 @@ function Setup({ c, partId, faces, built }: { c: TopoptController; partId: strin
         )}
         <label class="gd-choice"><input type="radio" name="gd-goal" checked={f.goal === "deflection"} onChange={() => set({ goal: "deflection", maxDeflection: f.maxDeflection ?? 1 })} />
           As light as possible within a deflection</label>
+        {f.goal === "deflection" && <p class="faint gd-note">Tries {Math.max(3, f.variants)} amounts of material and keeps the lightest that stays within it.</p>}
         {f.goal === "deflection" && (
           <label class="gd-inline">Largest deflection <input type="number" min={0.01} step={0.05} class="num" value={f.maxDeflection ?? ""}
             onInput={(e) => set({ maxDeflection: Number((e.target as HTMLInputElement).value) || null })} /> mm</label>

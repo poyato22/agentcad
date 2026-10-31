@@ -20,6 +20,20 @@ test("generative_design_from_the_part_menu_runs_and_accepts_a_variant", async ({
   const dlg = page.getByRole("dialog", { name: "Generative design" });
   await expect(dlg).toBeVisible();
   await expect(dlg.getByRole("heading", { name: /top plate/ })).toBeVisible();
+  // the part in 3D: hover names a face, an armed Pick takes the clicked one
+  const view = dlg.getByTestId("gd-pick-view");
+  await expect(view).toHaveAttribute("data-state", "ok");
+  const box = await view.locator("canvas").boundingBox();
+  if (!box) throw new Error("no pick canvas");
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await expect(dlg.getByTestId("gd-pick-caption")).toContainText(/f\d+ · /);
+  await dlg.getByRole("button", { name: "Add face to keep" }).click();
+  await dlg.getByRole("button", { name: "Pick keep face 1 on the part" }).click();
+  await expect(dlg.getByTestId("gd-pick-caption")).toContainText("Click a face for keep face 1");
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await expect(dlg.getByRole("button", { name: "Pick keep face 1 on the part" })).toHaveAttribute("aria-pressed", "false");
+  await expect(dlg.getByLabel("Keep face 1", { exact: true })).toHaveValue(/^f\d+$/);
+  await dlg.getByRole("button", { name: "Remove keep face 1" }).click();
   await dlg.getByLabel("Held face 1", { exact: true }).selectOption("x-min");
   await dlg.getByLabel("Load 1 face", { exact: true }).selectOption("x-max");
   await dlg.getByLabel("Load 1 force (N)").fill("40");
@@ -62,6 +76,8 @@ test("generative_design_can_be_cancelled_and_opened_from_studies", async ({ page
   await expect(tree(page).getByRole("button", { name: "top plate", exact: true })).toBeVisible();
   await tree(page).getByRole("button", { name: "top plate", exact: true }).click();
   await page.keyboard.press("Meta+2");
+  // U-D: the manual setup (where the entry lives) is behind "Set up manually"
+  await page.getByTestId("manual-setup-toggle").click();
   const open = page.getByTestId("open-generative");
   await expect(open).toBeVisible();
   await open.click();

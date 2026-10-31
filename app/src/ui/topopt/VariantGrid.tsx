@@ -27,6 +27,26 @@ function Render({ variant, load }: { variant: TopoptVariant; load: RenderLoader 
     : <div class="gd-render gd-render-empty faint" aria-hidden="true">{variant.status === "done" ? "" : `${Math.round(variant.pct)}%`}</div>;
 }
 
+/** Accept; a variant that is not a passing, verified one asks once more, saying why. */
+function AcceptButton({ v, best, busy, onAccept }: { v: TopoptVariant; best: boolean; busy: boolean; onAccept: (id: string) => void }): JSX.Element {
+  const [confirm, setConfirm] = useState(false);
+  const risky = !(v.verified && v.passes);
+  const why = !v.verified ? "It was not verified in CalculiX." : "It fails the safety factor or deflection target.";
+  if (confirm) {
+    return (
+      <>
+        <p class="gd-confirm" role="alert">{why} Accept it anyway?</p>
+        <Button variant="danger" disabled={busy} onClick={() => { setConfirm(false); onAccept(v.id); }}
+          aria-label={`Accept ${v.name} anyway`}>Accept anyway</Button>
+      </>
+    );
+  }
+  return (
+    <Button variant={best ? "primary" : "default"} disabled={busy} onClick={() => (risky ? setConfirm(true) : onAccept(v.id))}
+      aria-label={`Accept ${v.name} as a new part`}>Accept</Button>
+  );
+}
+
 export function VariantGrid({ rec, loadRender, onAccept, busy, compact = false }: {
   rec: TopoptRecord; loadRender: RenderLoader; onAccept?: (variant: string) => void; busy?: boolean; compact?: boolean;
 }): JSX.Element {
@@ -58,8 +78,7 @@ export function VariantGrid({ rec, loadRender, onAccept, busy, compact = false }
             {!compact && onAccept && v.status === "done" && (
               accepted.has(v.id)
                 ? <span class="gd-accepted dim">Added as {rec.accepted.find((a) => a.variant === v.id)?.part_id}</span>
-                : <Button variant={best ? "primary" : "default"} disabled={busy} onClick={() => onAccept(v.id)}
-                  aria-label={`Accept ${v.name} as a new part`}>Accept</Button>
+                : <AcceptButton v={v} best={best} busy={busy ?? false} onAccept={onAccept} />
             )}
           </li>
         );

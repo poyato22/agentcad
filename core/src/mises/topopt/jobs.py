@@ -537,6 +537,30 @@ async def _run_variant(ctx_events, rec: dict, v: dict, d: Path, args: TopoptRunA
     v.update(status="done", phase="done", pct=100.0, finished_at=time.time())
 
 
+_note_tasks: set[asyncio.Task] = set()
+
+
+def note_lead(rt, rec: dict) -> bool:
+    """Tell the agent that started the run that it finished, the way B3 tells it a study did
+    (orchestrator.lead.deliver_note: sent now when idle, queued behind a busy turn, never a
+    new user turn), so it reacts without polling. Returns whether a note was sent.
+    TODO(B3 merge): this is a no-op until B3's `deliver_note` is on the branch; the hook
+    finds it by name, so the merge needs no change here."""
+    if rt is None or not rec.get("run_id"):
+        return False
+    from ..orchestrator import lead
+    deliver = getattr(lead, "deliver_note", None)
+    if deliver is None:
+        return False
+    text = f"Generative design {rec['topopt_id']} finished: {rec.get('summary')}"
+    meta = {"kind": "topopt_finished", "topopt_id": rec["topopt_id"],
+            "status": rec["status"], "stream": STREAM}
+    t = asyncio.ensure_future(deliver(rt, rec["run_id"], text, meta))
+    _note_tasks.add(t)
+    t.add_done_callback(_note_tasks.discard)
+    return True
+
+
 def parallel_variants() -> int:
     """Variants run at once: at most MAX_PARALLEL, one per MEMORY_MB of usable memory (each
     worker's watchdog budget) and half the heavy-worker slots (a variant's worker, then its
@@ -594,12 +618,15 @@ async def _run_job(events, rec: dict, d: Path, args: TopoptRunArgs, plan_: dict,
         _publish(events, rec, "topopt_finished", {
             "run_id": rec.get("run_id"), "status": rec["status"], "summary": rec["summary"],
             "recommended": best, "pareto": pareto})
+        if rec["status"] in ("done", "failed"):     # a user's cancel starts no note turn
+            note_lead(plan_.get("runtime"), rec)
 
 
 async def start(ctx, args: TopoptRunArgs, tool: str) -> dict:
     """Plan (refusing bad input before anything exists), write the record and start the job in
     the background. Returns the record."""
     plan_ = await asyncio.to_thread(plan, ctx, args)
+    plan_["runtime"] = (getattr(ctx, "services", None) or {}).get("runtime")
     home = home_of(ctx)
     tid = "to_" + secrets.token_hex(6)
     d = job_dir(home, tid)

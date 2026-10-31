@@ -13,6 +13,9 @@ const num = z.number().nullable();
 export const topoptVerifySchema = z.looseObject({
   compliance: z.number().optional(), max_deflection_mm: z.number().optional(),
   max_von_mises_mpa: z.number().optional(), safety_factor: num.optional(), allowable_mpa: z.number().optional(),
+  /** The conservative peak (the fixture zone included): the safety factor's basis. */
+  max_von_mises_incl_fixture_mpa: z.number().optional(), max_von_mises_at_fixture_mpa: z.number().nullish(),
+  safety_factor_basis: z.string().optional(), safety_factor_away_from_fixture: num.optional(),
   nodes: z.number().optional(), tets: z.number().optional(), mesher: z.string().optional(),
   error: z.string().nullish(), hint: z.string().nullish(),
 });

@@ -79,10 +79,12 @@ export function toBody(f: GdForm): TopoptStartBody {
   };
   if (f.keepFaces.length) body.keep = [{ kind: "faces", faces: [...f.keepFaces], thickness_mm: f.keepThickness }];
   if (f.goal === "deflection") {
+    // the lightest variant within a deflection needs several amounts of material: at least 3
+    const n = Math.max(3, f.variants);
     body.objective = "min_mass";
     if (f.maxDeflection !== null) body.max_deflection_mm = f.maxDeflection;
-    if (f.variants > 1) body.sweep = { volume_fraction: vfSpread(0.25, f.variants) };
-    body.max_variants = f.variants;
+    body.sweep = { volume_fraction: vfSpread(0.25, n) };
+    body.max_variants = n;
   } else {
     body.volume_fraction = round2(f.volumeFraction);
     if (f.variants > 1) {
@@ -183,8 +185,11 @@ export function variantRows(v: TopoptVariant): VariantRow[] {
   return [
     { label: "Mass", value: fmtMass(v.mass_g) },
     { label: "Deflection", value: fmtNum(ver?.max_deflection_mm, "mm") },
-    { label: "Peak stress", value: fmtNum(ver?.max_von_mises_mpa, "MPa") },
+    { label: "Peak stress", value: fmtNum(ver?.max_von_mises_incl_fixture_mpa ?? ver?.max_von_mises_mpa, "MPa") },
     { label: "Safety factor", value: ver?.safety_factor ? ver.safety_factor.toFixed(2) : "—" },
+    ...(ver?.max_von_mises_incl_fixture_mpa !== undefined && ver.max_von_mises_mpa !== undefined
+      && ver.max_von_mises_incl_fixture_mpa > ver.max_von_mises_mpa
+      ? [{ label: "Away from the fixture", value: fmtNum(ver.max_von_mises_mpa, "MPa") }] : []),
   ];
 }
 

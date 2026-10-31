@@ -105,6 +105,23 @@ async def test_each_variant_is_marked_verified_as_it_finishes(tmp_path, fake):  
         assert all(v["verified"] and v["passes"] for v in done)
 
 
+async def test_finish_notes_the_starting_agent_when_b3s_note_exists(monkeypatch):
+    from mises.orchestrator import lead
+    rec = {"topopt_id": "to_0123456789ab", "run_id": "r1", "status": "done", "summary": "ok"}
+    monkeypatch.delattr(lead, "deliver_note", raising=False)
+    assert jobs.note_lead(object(), rec) is False        # TODO hook: no-op before B3
+    sent = []
+
+    async def deliver(rt, run_id, text, meta):
+        sent.append((run_id, text, meta))
+    monkeypatch.setattr(lead, "deliver_note", deliver, raising=False)
+    assert jobs.note_lead(object(), rec) is True
+    await asyncio.sleep(0)
+    assert sent[0][0] == "r1" and "to_0123456789ab finished" in sent[0][1]
+    assert sent[0][2]["kind"] == "topopt_finished" and sent[0][2]["stream"] == "sim"
+    assert jobs.note_lead(None, rec) is False
+
+
 def test_parallel_variants_fit_memory_and_leave_heavy_slots(monkeypatch):
     from mises import hardware, heavy
     monkeypatch.setattr(heavy, "heavy_limit", lambda *a: 6)

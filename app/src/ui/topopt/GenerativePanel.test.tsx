@@ -38,6 +38,7 @@ function client(states: TopoptRecord[] = [RUNNING, DONE]) {
     topoptAccept: vi.fn().mockResolvedValue(ACCEPT),
     topoptGlb: vi.fn().mockRejectedValue(new Error("no GLB in jsdom")),
     topoptRender: vi.fn().mockResolvedValue(new Blob(["png"], { type: "image/png" })),
+    partGlb: vi.fn().mockRejectedValue(new Error("no GLB in jsdom")),
   };
 }
 
@@ -124,6 +125,49 @@ describe("generative design panel", () => {
     fireEvent.keyDown(window, { key: "Escape" });
     await settle();
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+});
+
+describe("accepting a failing variant", () => {
+  it("asks once more and says why", async () => {
+    const failing = topoptRecordSchema.parse({ ...DONE, recommended: null,
+      variants: DONE.variants.map((v) => ({ ...v, passes: false })) });
+    c = client([failing]);
+    ctl = new TopoptController(() => c);
+    ctl.open("block", failing.topopt_id);
+    render(<GenerativeRoot controller={ctl} />);
+    await settle();
+    const card = screen.getByTestId("gd-variants").querySelector("[data-variant]") as HTMLElement;
+    fireEvent.click(within(card).getByRole("button", { name: /^Accept / }));
+    expect(c.topoptAccept).not.toHaveBeenCalled();
+    expect(within(card).getByRole("alert").textContent).toMatch(/fails the safety factor/);
+    fireEvent.click(within(card).getByRole("button", { name: /anyway/ }));
+    await settle();
+    expect(c.topoptAccept).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("face picking", () => {
+  it("highlights a planar face's own triangles", async () => {
+    const { faceTriangles } = await import("./FacePickView");
+    // two triangles on z=0 facing -z, one on x=10 facing +x
+    const pos = new Float32Array([0, 0, 0, 0, 10, 0, 10, 0, 0, 10, 0, 0, 0, 10, 0, 10, 10, 0, 10, 0, 0, 10, 10, 0, 10, 0, 5]);
+    const bottom = faceTriangles(pos, { id: "f0", type: "plane", center: [5, 5, 0], normal: [0, 0, -1], area: 100 }, 20);
+    expect(bottom.length).toBe(18);
+    const side = faceTriangles(pos, { id: "f1", type: "plane", center: [10, 5, 2.5], normal: [1, 0, 0], area: 50 }, 20);
+    expect(side.length).toBe(9);
+  });
+
+  it("each face has a Pick button that arms the 3D view, and Escape disarms before closing", async () => {
+    ctl.open("block");
+    render(<GenerativeRoot controller={ctl} />);
+    const pick = screen.getByRole("button", { name: "Pick held face 1 on the part" });
+    fireEvent.click(pick);
+    expect(screen.getByRole("button", { name: /Picking held face 1/ }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.keyDown(window, { key: "Escape" });
+    await settle();
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Pick held face 1 on the part" }).getAttribute("aria-pressed")).toBe("false");
   });
 });
 

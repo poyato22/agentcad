@@ -38,6 +38,17 @@ describe("form", () => {
     expect(b.objective).toBe("min_mass");
     expect(b.max_deflection_mm).toBe(0.8);
     expect(b.volume_fraction).toBeUndefined();
+    // one variant asked for: still a sweep of 3 (the lightest within the target needs several)
+    const one = toBody({ ...defaultForm("p"), goal: "deflection", maxDeflection: 0.8, variants: 1 });
+    expect(one.sweep?.volume_fraction).toHaveLength(3);
+    expect(one.max_variants).toBe(3);
+  });
+
+  it("states the conservative peak (fixture zone included) and the one away from it", () => {
+    const v = topoptRecordSchema.parse({ topopt_id: "t", part_id: "p", status: "done", variants: [variant("v0", {
+      verify: { max_deflection_mm: 0.7, max_von_mises_mpa: 12.5, max_von_mises_incl_fixture_mpa: 20.1, safety_factor: 1.78 } })] }).variants[0];
+    expect(variantRows(v).map((r) => `${r.label}: ${r.value}`)).toEqual([
+      "Mass: 11.8 g", "Deflection: 0.7 mm", "Peak stress: 20.1 MPa", "Safety factor: 1.78", "Away from the fixture: 12.5 MPa"]);
   });
 
   it("checks the setup", () => {

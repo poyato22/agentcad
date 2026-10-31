@@ -1,14 +1,14 @@
 [
   {
-    "topopt_id": "to_5ae5cc3a0c76",
+    "topopt_id": "to_bab050f4287a",
     "tool": "topopt_generate",
     "part_id": "block",
-    "project_id": "371c86ab3a57",
-    "run_id": "ac6c3a05aa2a",
-    "call_id": "ui_835647ca4a06",
+    "project_id": "6933d7e7cde2",
+    "run_id": "97dfdfab4344",
+    "call_id": "ui_7cdb8da889f3",
     "status": "done",
-    "created_at": 1793422973.401352,
-    "finished_at": 1793422983.0177321,
+    "created_at": 1793426339.437962,
+    "finished_at": 1793426363.83828,
     "reason": "lightest stiff block",
     "objective": "min_compliance",
     "min_safety_factor": 1.5,
@@ -125,7 +125,7 @@
         "passes": true,
         "rank": 2,
         "pareto": true,
-        "started_at": 1793422973.4033751,
+        "started_at": 1793426339.4449432,
         "compliance": 17.408135865618597,
         "vf": 0.3000007069231771,
         "report": {
@@ -150,20 +150,20 @@
           "mesh": {
             "tris": 3920,
             "watertight": true,
-            "volume_mm3": 1288.9639851532752
+            "volume_mm3": 1314.7549830688995
           },
-          "faces": 1774,
-          "final_vf": 0.304289683505225,
+          "faces": 1766,
+          "final_vf": 0.3054790881599751,
           "islands_dropped_pct": 0.0,
           "times_s": {
-            "voxelize": 0.07,
-            "optimize": 4.73,
-            "surface": 0.22,
+            "voxelize": 0.24,
+            "optimize": 11.98,
+            "surface": 0.44,
             "brep": 0.0,
-            "boolean": 0.3,
-            "export": 0.22
+            "boolean": 0.49,
+            "export": 0.35
           },
-          "total_s": 5.6
+          "total_s": 13.6
         },
         "history": [
           [
@@ -362,59 +362,63 @@
             0.3000007069231771
           ]
         ],
-        "volume_mm3": 934.7779077280512,
-        "mass_g": 1.1591246055827835,
-        "faces": 1774,
-        "step_bytes": 4605670,
+        "volume_mm3": 938.4317588274434,
+        "mass_g": 1.16365538094603,
+        "faces": 1766,
+        "step_bytes": 4580044,
         "thin_member_pct": 5.0,
-        "overhang_area_pct": 3.27,
+        "overhang_area_pct": 3.05,
         "verify": {
           "solver": "CalculiX",
           "element": "C3D10 (quadratic tetrahedra)",
           "mesher": "gmsh OCC (STEP) 4.15.2",
           "mesh_size_mm": 1.5,
-          "nodes": 14629,
-          "tets": 7266,
+          "nodes": 14199,
+          "tets": 7050,
           "surface": null,
           "fixtures": [
             {
               "face": "x-min",
-              "triangles": 150
+              "triangles": 166
             }
           ],
           "cases": [
             {
               "name": "tip",
               "weight": 1.0,
-              "compliance": 17.146210480218585,
-              "max_deflection_mm": 0.4599762029119583,
-              "max_von_mises_mpa": 20.76596441471339,
+              "compliance": 17.199218530575074,
+              "max_deflection_mm": 0.4613524527032254,
+              "max_von_mises_mpa": 19.919579848367462,
               "max_von_mises_at": [
-                2.425724917405,
-                11.650359905311,
-                -2.979499707981e-18
+                2.445058224185,
+                4.349124910865,
+                -2.790503979337e-18
               ],
-              "max_von_mises_at_fixture_mpa": 14.671687563480898,
-              "max_displacement_mm": 0.4599762029119583
+              "max_von_mises_at_fixture_mpa": 14.028804162850088,
+              "max_displacement_mm": 0.4613524527032254
             }
           ],
-          "compliance": 17.146210480218585,
-          "max_deflection_mm": 0.4599762029119583,
-          "max_von_mises_mpa": 20.76596441471339,
+          "compliance": 17.199218530575074,
+          "max_deflection_mm": 0.4613524527032254,
+          "max_von_mises_mpa": 19.919579848367462,
+          "max_von_mises_at_fixture_mpa": 14.028804162850088,
+          "max_von_mises_incl_fixture_mpa": 19.919579848367462,
           "allowable_mpa": 35.699999999999996,
-          "safety_factor": 1.719159259210968,
-          "seconds": 1.9
+          "safety_factor": 1.7922064758271414,
+          "safety_factor_basis": "peak including the fixture zone (conservative)",
+          "safety_factor_away_from_fixture": 1.7922064758271414,
+          "seconds": 2.7
         },
-        "compliance_error_pct": -1.5,
-        "finished_at": 1793422983.017063,
-        "max_deflection_mm": 0.4599762029119583,
+        "compliance_error_pct": -1.2,
+        "finished_at": 1793426363.83747,
+        "max_deflection_mm": 0.4613524527032254,
         "urls": {
-          "preview": "/topopt/to_5ae5cc3a0c76/variants/v0/preview.glb",
-          "result": "/topopt/to_5ae5cc3a0c76/variants/v0/result.glb",
-          "stress": "/topopt/to_5ae5cc3a0c76/variants/v0/stress.glb",
-          "render": "/topopt/to_5ae5cc3a0c76/variants/v0/render.png",
-          "step": "/topopt/to_5ae5cc3a0c76/variants/v0/part.step",
-          "stl": "/topopt/to_5ae5cc3a0c76/variants/v0/part.stl"
+          "preview": "/topopt/to_bab050f4287a/variants/v0/preview.glb",
+          "result": "/topopt/to_bab050f4287a/variants/v0/result.glb",
+          "stress": "/topopt/to_bab050f4287a/variants/v0/stress.glb",
+          "render": "/topopt/to_bab050f4287a/variants/v0/render.png",
+          "step": "/topopt/to_bab050f4287a/variants/v0/part.step",
+          "stl": "/topopt/to_bab050f4287a/variants/v0/part.stl"
         }
       },
       {
@@ -447,9 +451,9 @@
         "passes": true,
         "rank": 1,
         "pareto": true,
-        "started_at": 1793422973.403595,
+        "started_at": 1793426339.4458811,
         "compliance": 11.316022821327259,
-        "vf": 0.39999862842035494,
+        "vf": 0.3999995551189139,
         "report": {
           "grid": [
             24,
@@ -472,20 +476,20 @@
           "mesh": {
             "tris": 4256,
             "watertight": true,
-            "volume_mm3": 1708.9634279690533
+            "volume_mm3": 1748.2012136774272
           },
-          "faces": 1894,
-          "final_vf": 0.41852203818245465,
+          "faces": 1886,
+          "final_vf": 0.4208952427222444,
           "islands_dropped_pct": 0.0,
           "times_s": {
-            "voxelize": 0.07,
-            "optimize": 3.84,
-            "surface": 0.24,
+            "voxelize": 0.22,
+            "optimize": 10.59,
+            "surface": 0.48,
             "brep": 0.0,
-            "boolean": 0.34,
-            "export": 0.25
+            "boolean": 0.59,
+            "export": 0.42
           },
-          "total_s": 4.8
+          "total_s": 12.3
         },
         "history": [
           [
@@ -664,19 +668,19 @@
             0.4000014869965723
           ]
         ],
-        "volume_mm3": 1285.6997012965007,
-        "mass_g": 1.594267629607661,
-        "faces": 1894,
-        "step_bytes": 4865695,
+        "volume_mm3": 1292.9901856427348,
+        "mass_g": 1.6033078301969912,
+        "faces": 1886,
+        "step_bytes": 4833301,
         "thin_member_pct": 10.3,
-        "overhang_area_pct": 5.45,
+        "overhang_area_pct": 5.33,
         "verify": {
           "solver": "CalculiX",
           "element": "C3D10 (quadratic tetrahedra)",
           "mesher": "gmsh OCC (STEP) 4.15.2",
           "mesh_size_mm": 1.5,
-          "nodes": 16694,
-          "tets": 8559,
+          "nodes": 17227,
+          "tets": 8913,
           "surface": null,
           "fixtures": [
             {
@@ -688,35 +692,39 @@
             {
               "name": "tip",
               "weight": 1.0,
-              "compliance": 10.928586676947093,
-              "max_deflection_mm": 0.2963175855371107,
-              "max_von_mises_mpa": 10.90329167200401,
+              "compliance": 10.949633956367316,
+              "max_deflection_mm": 0.2968102906263791,
+              "max_von_mises_mpa": 10.257240626604295,
               "max_von_mises_at": [
-                3.40780441849,
-                7.428151012206,
-                -2.064376141715e-18
+                1.0504234259855088,
+                1.0488949801156613,
+                8.0
               ],
-              "max_von_mises_at_fixture_mpa": 9.33652253069498,
-              "max_displacement_mm": 0.2963175855371107
+              "max_von_mises_at_fixture_mpa": 9.287063395114302,
+              "max_displacement_mm": 0.2968102906263791
             }
           ],
-          "compliance": 10.928586676947093,
-          "max_deflection_mm": 0.2963175855371107,
-          "max_von_mises_mpa": 10.90329167200401,
+          "compliance": 10.949633956367316,
+          "max_deflection_mm": 0.2968102906263791,
+          "max_von_mises_mpa": 10.257240626604295,
+          "max_von_mises_at_fixture_mpa": 9.287063395114302,
+          "max_von_mises_incl_fixture_mpa": 10.257240626604295,
           "allowable_mpa": 35.699999999999996,
-          "safety_factor": 3.274240575592929,
-          "seconds": 2.4
+          "safety_factor": 3.4804682174857624,
+          "safety_factor_basis": "peak including the fixture zone (conservative)",
+          "safety_factor_away_from_fixture": 3.4804682174857624,
+          "seconds": 3.5
         },
-        "compliance_error_pct": -3.42,
-        "finished_at": 1793422982.8300219,
-        "max_deflection_mm": 0.2963175855371107,
+        "compliance_error_pct": -3.24,
+        "finished_at": 1793426363.786744,
+        "max_deflection_mm": 0.2968102906263791,
         "urls": {
-          "preview": "/topopt/to_5ae5cc3a0c76/variants/v1/preview.glb",
-          "result": "/topopt/to_5ae5cc3a0c76/variants/v1/result.glb",
-          "stress": "/topopt/to_5ae5cc3a0c76/variants/v1/stress.glb",
-          "render": "/topopt/to_5ae5cc3a0c76/variants/v1/render.png",
-          "step": "/topopt/to_5ae5cc3a0c76/variants/v1/part.step",
-          "stl": "/topopt/to_5ae5cc3a0c76/variants/v1/part.stl"
+          "preview": "/topopt/to_bab050f4287a/variants/v1/preview.glb",
+          "result": "/topopt/to_bab050f4287a/variants/v1/result.glb",
+          "stress": "/topopt/to_bab050f4287a/variants/v1/stress.glb",
+          "render": "/topopt/to_bab050f4287a/variants/v1/render.png",
+          "step": "/topopt/to_bab050f4287a/variants/v1/part.step",
+          "stl": "/topopt/to_bab050f4287a/variants/v1/part.stl"
         }
       }
     ],
@@ -726,7 +734,7 @@
     ],
     "recommended": "v1",
     "accepted": [],
-    "summary": "generative design to_5ae5cc3a0c76 of block: done, 2/2 variants; recommended v1 (vf 0.40 \u00b7 r 2.0 mm \u00b7 sym y): 1.6 g, deflection 0.296 mm, peak 10.9 MPa, SF 3.27 (CalculiX, guide only)",
+    "summary": "generative design to_bab050f4287a of block: done, 2/2 variants; recommended v1 (vf 0.40 \u00b7 r 2.0 mm \u00b7 sym y): 1.6 g, deflection 0.297 mm, peak 10.3 MPa incl. the fixture zone (10.3 MPa away from it), SF 3.48 (CalculiX, guide only)",
     "stream": "sim"
   }
 ]
