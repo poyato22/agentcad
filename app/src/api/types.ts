@@ -153,7 +153,7 @@ export interface CreateRunResult {
 /** `agent_announce` event kinds (U3c announce.KINDS): the clear things an agent did, shown as a
  *  card in the thread (R16) whatever the model says. view_presented / critique_round are Plan 8
  *  G1's (geometry quality) cards, their fields in `ref`. */
-export const ANNOUNCE_KINDS = ["part_created", "agent_spawned", "assembly_added", "bom_added", "part_shown", "drawing_imported", "view_presented", "critique_round"] as const;
+export const ANNOUNCE_KINDS = ["part_created", "agent_spawned", "assembly_added", "bom_added", "part_shown", "drawing_imported", "view_presented", "critique_round", "concept_sketch", "concept_pitch"] as const;
 export type AnnounceKind = (typeof ANNOUNCE_KINDS)[number];
 
 /** Where an announcement points: a part, a child run, an assembly instance, a BOM row, a part-card
@@ -161,6 +161,8 @@ export type AnnounceKind = (typeof ANNOUNCE_KINDS)[number];
 export interface AnnounceRef {
   part_id?: string | null; run_id?: string | null; instance_id?: string | null;
   bom_id?: string | null; snapshot_id?: string | null; catalog_id?: string | null; import_id?: string | null;
+  /** Plan 9 G-A concept cards: the sketch version / the pitch the card shows. */
+  sketch_id?: string | null; pitch_id?: string | null;
 }
 
 /** Parsed `agent_announce` event (U3c). `title` is a short line; `detail` an optional second line.

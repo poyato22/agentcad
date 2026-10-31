@@ -41,6 +41,10 @@ import {
   type BuildRef, type CatalogEdit, type CatalogItem, type OnshapeBudget, type OnshapeDoc, type OnshapeElement, type PartResult,
 } from "./directory";
 import { drawingImportSchema, type DrawingImport } from "./imports";
+import {
+  conceptDecisionSchema, conceptSketchSchema, conceptViewSchema, feedbackSentSchema, pitchChosenSchema,
+  type ChooseBody, type ConceptDecision, type ConceptSketch, type ConceptView, type FeedbackSent, type PitchChosen, type SketchFeedbackBody,
+} from "./concept";
 import type { DrawingInfo, NewPrinterBody, PrintCall, PrintCapabilities, Printer, PrinterStatus, PrintStart, Slice, SliceStart } from "./types";
 import {
   assemblyPartSchema, assemblySchema, driveResultSchema, instanceDeletedSchema, instanceSchema, interferenceSchema, jointDeletedSchema,
@@ -289,6 +293,19 @@ export class CoreClient {
   studySlice(simId: string, name: "slice_xz" | "slice_xy"): Promise<Blob> { return this.blob(`/sims/${enc(simId)}/slices/${name}.png`, "image/png"); }
   /** A render_views image (Plan 8 G1: critique-round before/after, a presented view's thumbnail). */
   renderImage(imageId: string): Promise<Blob> { return this.blob(`/renders/${enc(imageId)}.png`, "image/png"); }
+  // ---- Plan 9 G-A: the concept stage (core concept/api.py)
+  concept(projectId: string): Promise<ConceptView> { return this.json("GET", `/projects/${enc(projectId)}/concept`, conceptViewSchema); }
+  conceptSketch(sketchId: string): Promise<ConceptSketch> { return this.json("GET", `/concept/sketches/${enc(sketchId)}`, conceptSketchSchema); }
+  sketchFeedback(sketchId: string, body: SketchFeedbackBody): Promise<FeedbackSent> {
+    return this.json("POST", `/concept/sketches/${enc(sketchId)}/feedback`, feedbackSentSchema, { body });
+  }
+  approveConcept(projectId: string, sketchId: string | null): Promise<ConceptDecision> {
+    return this.json("POST", `/projects/${enc(projectId)}/concept/approve`, conceptDecisionSchema, { body: sketchId ? { sketch_id: sketchId } : {} });
+  }
+  skipConcept(projectId: string): Promise<ConceptDecision> { return this.json("POST", `/projects/${enc(projectId)}/concept/skip`, conceptDecisionSchema); }
+  choosePitch(pitchId: string, body: ChooseBody): Promise<PitchChosen> {
+    return this.json("POST", `/concept/pitches/${enc(pitchId)}/choose`, pitchChosenSchema, { body });
+  }
   compareStudies(ids: readonly string[]): Promise<StudyCompare> { return this.json("POST", "/sims/compare", studyCompareSchema, { body: { ids } }); }
   studyTemplates(): Promise<StudyTemplate[]> { return this.json("GET", "/sims/templates", z.array(studyTemplateSchema)); }
   addStudyTemplate(body: { name: string; type: StudyType; settings: Record<string, unknown> }): Promise<StudyTemplate> {

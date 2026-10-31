@@ -65,6 +65,7 @@ const CARD_TOOLS: Readonly<Record<string, string>> = {
   assembly_add_instance: "assembly_added", assembly_add_part: "assembly_added", bom_add: "bom_added",
   part_show: "part_shown", drawing_import: "drawing_imported", drawing_import_build: "drawing_imported",
   agent_spawn: "agent_spawned", present_view: "view_presented", critique_model: "critique_round",
+  concept_sketch: "concept_sketch", pitch_options: "concept_pitch",
 };
 
 /** Take out of `out` the newest raw row (since the last non-row item) of a tool the card of `kind`
