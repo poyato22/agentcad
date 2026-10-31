@@ -10,7 +10,7 @@ import { assemblySchema } from "../src/api/assembly";
 import { stepSchema } from "../src/api/schemas";
 import type { Step } from "../src/api/types";
 import { g4Announcement } from "../src/ui/console/cards/critique/announce";
-import { parseAnimateSpec } from "../src/state/assemblyAnimation";
+import { parseAnimateSpec, parseAnimateSteps } from "../src/state/assemblyAnimation";
 import { SCENARIO_DIR } from "./fake-core/server";
 
 const DIR = resolve(import.meta.dirname, "../../core/tests/fixtures/ui/motion");
@@ -53,6 +53,12 @@ describe("contract: the real core's motion cards ↔ the app", () => {
     const spec = parseAnimateSpec({ ...ev, ts: 0 });
     expect(spec?.steps).toHaveLength(2);
     expect(spec?.loops).toBe(2);
+  });
+
+  it("the saved animations route parses into playable steps on the same joint", () => {
+    const saved = real("motion_animations.json") as { name: string; steps: unknown; loops: number }[];
+    expect(saved.map((a) => a.name)).toEqual(["Open and shut the lid"]);
+    expect(parseAnimateSteps(saved[0].steps).map((s) => s.joint_id)).toEqual([asm.joints[0].id, asm.joints[0].id]);
   });
 
   it("the fake core serves both thumbnails", () => {

@@ -229,9 +229,8 @@ test("play_in_the_pill_opens_the_agent's_latest_animation_with_the_same_controls
 
 test("after_a_reload_play_finds_the_builds_saved_animation", async ({ page, fake }) => {
   // no live assembly_animate this session: the core's saved one (GET …/assembly/animations)
-  const card = read("motion_animate_tool.json") as { animation_id: string; view_spec: { animation: Record<string, unknown> } };
-  const saved = { id: card.animation_id, ...card.view_spec.animation };
-  await fake.reset({ ...scenario(), assembly: { ...(scenario().assembly as object), animations: { [PROJECT]: [saved] } } } as never);
+  const saved = read("motion_animations.json") as unknown[];            // the real route's answer
+  await fake.reset({ ...scenario(), assembly: { ...(scenario().assembly as object), animations: { [PROJECT]: saved } } } as never);
   await page.goto("/");
   await expect(page.getByTestId("assembly-canvas")).toHaveAttribute("data-instances", "2");
   await page.getByTestId("pill-play").click();

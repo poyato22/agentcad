@@ -1,7 +1,7 @@
 {
   "instances": [
     {
-      "id": "76e1fe321afb",
+      "id": "16d156f51fbc",
       "part_id": "mount_plate",
       "name": "base",
       "transform": [
@@ -33,7 +33,7 @@
       "fixed": true
     },
     {
-      "id": "d8c033d433bb",
+      "id": "1a478cd496f3",
       "part_id": "mount_plate",
       "name": "lid",
       "transform": [
@@ -67,10 +67,10 @@
   ],
   "joints": [
     {
-      "id": "7bcff6183326",
+      "id": "74067abc017b",
       "kind": "revolute",
       "a": {
-        "instance_id": "76e1fe321afb",
+        "instance_id": "16d156f51fbc",
         "frame": {
           "origin": [
             20.0,
@@ -86,7 +86,7 @@
         }
       },
       "b": {
-        "instance_id": "d8c033d433bb",
+        "instance_id": "1a478cd496f3",
         "frame": {
           "origin": [
             -20.0,

@@ -12,7 +12,8 @@ fixture of dump_ui_fixtures.py: `lid` hangs off the grounded `base`'s +X edge, a
     uv run python scripts/dump_motion_fixtures.py --out tests/fixtures/ui/motion \
         --renders ../app/test/fake-core/scenarios/renders
 
-motion_assembly.json (GET the build's assembly), motion_projects.json, motion_steps.json (the
+motion_assembly.json (GET the build's assembly), motion_animations.json (GET its saved
+animations), motion_projects.json, motion_steps.json (the
 lead's thread: both cards as stored decision steps), motion_events.jsonl (assembly_animate and
 the view_presented announcements), motion_animate_tool.json / motion_sweep_tool.json (the tools'
 data). The thumbnails the cards name are copied to --renders so the fake core serves them.
@@ -111,6 +112,7 @@ async def dump(out: Path, renders: Path | None) -> None:
             "s1")
         write("motion_sweep_tool.json", sweep.data)
         write("motion_assembly.json", ok(c.get(base_url, headers=h)))
+        write("motion_animations.json", ok(c.get(f"{base_url}/animations", headers=h)))
         write("motion_projects.json", ok(c.get("/projects", headers=h)))
         write("motion_steps.json", ok(c.get(f"/runs/{lead}/steps", headers=h)))
 

@@ -3,8 +3,8 @@
     "kind": "section_sweep",
     "target": {
       "kind": "project",
-      "id": "f1969371182e",
-      "project_id": "f1969371182e",
+      "id": "16c880ed9e83",
+      "project_id": "16c880ed9e83",
       "parts": [
         "mount_plate"
       ],
@@ -39,10 +39,10 @@
       "to": 60.0,
       "duration_s": 4.0
     },
-    "thumbnail_id": "pv_01408fb7_100887ce11_iso"
+    "thumbnail_id": "pv_56ec27e2_df92f61bae_iso"
   },
-  "thumbnail": "/var/folders/h4/y3qg30g91736x48bxcvczsfc0000gn/T/mises-fixtures-motion-5gn5qhgc/renders/pv_01408fb7_100887ce11_iso.png",
-  "thumbnail_id": "pv_01408fb7_100887ce11_iso",
+  "thumbnail": "/var/folders/h4/y3qg30g91736x48bxcvczsfc0000gn/T/mises-fixtures-motion-e0x58_74/renders/pv_56ec27e2_df92f61bae_iso.png",
+  "thumbnail_id": "pv_56ec27e2_df92f61bae_iso",
   "parts": [
     "mount_plate"
   ],
