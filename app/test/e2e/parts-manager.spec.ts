@@ -23,7 +23,7 @@ test("right_click_opens_the_part_menu_with_useful_items", async ({ page }) => {
   const menu = page.getByRole("menu", { name: "top plate actions" });
   await expect(menu).toBeVisible();
   await expect(menu.getByRole("menuitem")).toHaveText([/Rename/, "Appearance…", /Hide/, "Isolate", "Measure", "Add to assembly",
-    /Duplicate/, "Export STEP", "Export STL", /Properties/, "Modify…", "Delete"]);
+    /Duplicate/, "Export STEP", "Export STL", /Properties/, "Modify…", "Generative design…", "Delete"]);
   // the right-click selected the row
   await expect(tree(page).getByRole("button", { name: "top plate", exact: true })).toHaveAttribute("aria-pressed", "true");
   await page.keyboard.press("Escape");

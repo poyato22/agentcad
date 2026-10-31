@@ -13,6 +13,7 @@ import type { StudyType } from "../../../api/studies";
 import { partLabel } from "../../../lib/names";
 import { activePart } from "../../../state/selection";
 import { DesignStudies } from "../../spec";
+import { openGenerative } from "../../topopt";
 import { actions, parts } from "../../../state/store";
 import { Button } from "../../common/Button";
 import { PhaseBar } from "../../console/studycard/StudyCard";
@@ -163,6 +164,10 @@ export function StudiesPage({ controller = studies, deps = {} }: { controller?: 
             })}
           </div>
           {info && <p class="faint st-note text" data-testid="type-doc">{info.doc} · {info.solver} · <b class="st-fid">{info.fidelity_class === "cfd_lbm" ? "low fidelity" : info.fidelity_class === "fem_estimate" ? "estimate" : "FEM"}</b></p>}
+          {partId && built && (
+            <Button onClick={() => openGenerative(partId)} data-testid="open-generative"
+              title="Topology optimization: an organic part from the design space, loads and keep-outs, verified in CalculiX">Generative design…</Button>
+          )}
           {c.typesError.value && <p class="tone-red text">Could not read the study types: {c.typesError.value}</p>}
           {c.solversError.value && <p class="tone-red text">Could not read the solver status: {c.solversError.value}</p>}
           {solvers && needsCcx && <InstallCard solvers={solvers} checking={checking} onRecheck={() => { setChecking(true); void c.loadSolvers().finally(() => setChecking(false)); }} />}

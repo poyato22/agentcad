@@ -7,6 +7,7 @@ import { runLabel } from "../../lib/names";
 import type { InflightCall } from "../../state/reduce";
 import type { LogFilter } from "../../state/store";
 import { isStudyCallName } from "./studycard/cardModel";
+import { isTopoptCallName } from "../topopt/names";
 import { isPartShowName } from "./cards/partcard/cardModel";
 
 type CallItem = {
@@ -486,6 +487,7 @@ function fold(rows: Raw[], expanded: ReadonlySet<string>): LogItem[] {
   const foldable = (r: Raw | undefined) => r !== undefined && r.item.kind === "call" && r.item.ok === true
     && !r.item.name.replace(/^mcp__mises__/, "").startsWith("onshape_propose")
     && !isStudyCallName(r.item.name) // study / review cards stay in sight (Task A8)
+    && !isTopoptCallName(r.item.name) // generative design cards too (Plan 9 D14)
     && !isPartShowName(r.item.name); // part cards stay in sight (Plan 7 R4)
   let i = 0;
   while (i < rows.length) {
