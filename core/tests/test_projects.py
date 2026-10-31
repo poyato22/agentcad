@@ -257,3 +257,22 @@ def test_runs_tree_nests_by_parent(store):
     assert len(tree) == 1 and tree[0]["id"] == root.id
     assert [c["id"] for c in tree[0]["children"]] == [child.id]
     assert tree[0]["cost"] == {"usd": 0.0, "tokens": 0, "usd_note": budget.UNKNOWN_NOTE}
+
+
+def test_project_view_carries_the_builds_tree_mass(store, tmp_path):
+    """FW-app M2: a Home tile shows the build's mass: the tree's total (B2's mass rows, roots
+    summed, a parent's subtree once), null for a build with no known mass."""
+    a = store.create_project("Drone")
+    b = store.create_project("Rover")
+    _built(store, tmp_path, a.id, "left_arm", "right_arm", "hub")
+    for i, n in enumerate(("left_arm", "right_arm", "hub")):   # volume x the build default
+        (tmp_path / "parts" / n / "metrics.json").write_text(json.dumps({"volume_mm3": 1000.0 * (i + 1)}))
+    store.update_part("right_arm", parent_id="hub")       # counted once, inside the hub's sum
+    rows = projects.list_parts(store, tmp_path, a.id)
+    want = round(sum(r["mass_g"] for r in rows if not r.get("parent_id")), 4)
+    assert want > 0
+    views = {v["id"]: v for v in projects.list_projects(store, tmp_path)}
+    assert views[a.id]["mass_g"] == pytest.approx(want)
+    assert views[b.id]["mass_g"] is None
+    # without a home (no disk to weigh) the field is there, null
+    assert projects.list_projects(store)[0]["mass_g"] is None

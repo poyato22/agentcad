@@ -11,6 +11,7 @@ placement (label, parent, order, color, kind, version) the user and agents edit.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import shutil
@@ -27,6 +28,8 @@ from .store import AgentRun, Part, Project, Store
 from .types import ErrorCode, MisesError
 
 _HEX_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+log = logging.getLogger(__name__)
+
 THUMBS_DIR = ".mises-thumbs"   # mirrors cad.thumbs.THUMBS_DIR (kept here: no cad import cycle)
 # runs whose cleanup is allowed: only ones that have finished one way or another
 TERMINAL = ("done", "failed", "cancelled")
@@ -74,13 +77,32 @@ def last_edited_at(store: Store, p: Project, home: Path | None = None) -> float:
     return float(max(t for t in ts if t is not None))
 
 
+def build_mass_g(store: Store, home: Path | None, project_id: str) -> float | None:
+    """The build's mass for its Home tile (FW-app M2): the part tree's total by B2's rule (the
+    roots' masses, a parent or group counting its subtree once); None when no part has a
+    known mass yet, or with no home to weigh."""
+    if home is None:
+        return None
+    try:
+        rows = mass_rows(store, home, project_id, versions=False)
+    except Exception:  # noqa: BLE001 - a tile never fails the listing
+        log.debug("build mass of %s unavailable", project_id, exc_info=True)
+        return None
+    ids = {r["id"] for r in rows}
+    known = [r["mass_g"] for r in rows if r.get("kind") != "skeleton" and r.get("mass_g") is not None
+             and not (r.get("parent_id") in ids and r.get("parent_id") != r["id"])]
+    return round(sum(known), 4) if known else None
+
+
 def project_view(store: Store, p: Project, home: Path | None = None) -> dict:
     """The GET /projects shape. onshape stays null until C5's import links a document.
-    `last_edited_at` is derived (see last_edited_at); `updated_at` keeps its row meaning."""
+    `last_edited_at` is derived (see last_edited_at); `updated_at` keeps its row meaning.
+    `mass_g`: the build's tree mass (build_mass_g), for the Home tile."""
     return {"id": p.id, "name": p.name, "created_at": p.created_at, "updated_at": p.updated_at,
             "last_edited_at": last_edited_at(store, p, home),
             "trashed_at": p.trashed_at, "part_count": store.project_part_count(p.id),
-            "run_count": store.project_run_count(p.id), "onshape": None}
+            "run_count": store.project_run_count(p.id), "onshape": None,
+            "mass_g": build_mass_g(store, home, p.id)}
 
 
 def list_projects(store: Store, home: Path | None = None) -> list[dict]:

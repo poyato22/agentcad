@@ -1,6 +1,9 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/preact";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Build } from "../../../api/builds";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { buildSchema, type Build } from "../../../api/builds";
+import { fmtMass } from "../../../lib/mass";
 import { builds } from "../../../state/builds";
 import { atHome, homeView, resetHome } from "../../../state/home";
 import { bindClient, resetStore } from "../../../state/store";
@@ -204,6 +207,15 @@ describe("HomePage", () => {
     builds.value = [build({ id: "dog", name: "Dog", part_count: 4, mass_g: 3100 })];
     render(<HomePage />);
     expect(screen.getByTitle("Open Dog").textContent).toContain("3.10 kg");
+  });
+
+  it("FW-app M2: the real core's GET /projects carries the build's mass, and the tile shows it", () => {
+    const real = (JSON.parse(readFileSync(resolve(__dirname, "../../../../../core/tests/fixtures/ui/projects.json"), "utf8")) as unknown[])
+      .map((r) => buildSchema.parse(r));
+    expect(real[0].mass_g).toBeGreaterThan(0);
+    builds.value = real;
+    render(<HomePage />);
+    expect(screen.getByTitle(`Open ${real[0].name}`).textContent).toContain(fmtMass(real[0].mass_g as number));
   });
 
   it("falls back to a placeholder when a build has no preview", async () => {

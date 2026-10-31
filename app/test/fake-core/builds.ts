@@ -174,8 +174,14 @@ let trashSeq = 0;
 export function buildRoutes(d: BuildsDeps): Route[] {
   const B = () => d.get();
   const view = (b: FakeBuild) => {
-    const parts = [...B().rows.values()].filter((r) => r.project_id === b.id).length;
-    return { id: b.id, name: b.name, created_at: b.created_at, updated_at: b.updated_at, last_edited_at: b.updated_at, trashed_at: b.trashed_at, part_count: parts, run_count: 0, onshape: null };
+    const mine = [...B().rows.entries()].filter(([, r]) => r.project_id === b.id);
+    const parts = mine.length;
+    // core projects.build_mass_g (FW-app M2): the roots' tree masses summed, null when none known
+    const ids = new Set(mine.map(([id]) => id));
+    const known = mine.filter(([id, r]) => r.kind !== "skeleton" && !(r.parent_id && ids.has(r.parent_id) && r.parent_id !== id))
+      .map(([id]) => fakeTreeMass(d.parts(), B().rows, id).mass_g).filter((g): g is number => g !== null);
+    const mass_g = known.length ? Math.round(known.reduce((a, g) => a + g, 0) * 1e4) / 1e4 : null;
+    return { id: b.id, name: b.name, created_at: b.created_at, updated_at: b.updated_at, last_edited_at: b.updated_at, trashed_at: b.trashed_at, part_count: parts, run_count: 0, onshape: null, mass_g };
   };
   const project = (id: string): FakeBuild => {
     const b = B().builds.find((x) => x.id === id);

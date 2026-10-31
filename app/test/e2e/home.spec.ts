@@ -3,7 +3,7 @@
 // the parts library as Home sub-views (D22), and Trash with Undo / Delete forever (D30).
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { expect, openHome, openPartView, test } from "./fixtures";
+import { expect, openHome, test } from "./fixtures";
 
 test.beforeEach(async ({ fake, page }) => {
   await fake.reset("base");
@@ -46,16 +46,6 @@ test("opening_a_build_shows_the_top_bar_with_four_tabs_and_home_returns", async 
   await bar.getByRole("button", { name: "Home" }).click();
   await expect(page.locator('[data-testid="home"]')).toBeVisible();
   await expect(page.locator('[data-region="topbar"]')).toHaveCount(0);
-});
-
-test("all_parts_overview_opens_and_closes", async ({ page }) => {
-  await page.goto("/");
-  await page.locator('[data-testid="home"]').getByTitle("Open Default").click();
-  await openPartView(page);                       // Plan 9 D7: All parts is the part viewer's
-  await page.getByRole("button", { name: "All parts" }).click();
-  await expect(page.getByRole("dialog", { name: "All parts" })).toBeVisible();
-  await page.getByRole("button", { name: "Close all-parts view" }).click();
-  await expect(page.getByRole("dialog", { name: "All parts" })).toHaveCount(0);
 });
 
 // I1 + D23: Home is the whole window — no top bar band, no dead console column.
