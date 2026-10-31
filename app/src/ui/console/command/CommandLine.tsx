@@ -11,6 +11,7 @@ import { actions, corePid, filter, follow, runs, sessionRuns, type LogFilter } f
 import { stopAll } from "../../topbar/stopAll";
 import { followLead, leadUnreachable, NEW_LEAD_NOTE } from "../leadFollow";
 import { shownPending } from "../queued";
+import { busyRuns, stopBusy } from "../stopTarget";
 import { allTargets } from "./isExternal";
 import { parseCommand, type Command } from "./parseCommand";
 import "./command.css";
@@ -19,7 +20,7 @@ const FILTER_KINDS: readonly LogFilter["kind"][] = ["everything", "decisions", "
 
 const HELP = [
   "@designer … message a run by agent or label · @all … every finished (done) run of this core session",
-  "/new  new run · /stop  stop the selected run · /stopall  stop every run (⌘⇧.)",
+  "/new  new run · /stop  stop the selected run · Esc  stop the agents · /stopall  stop every run (⌘⇧.)",
   "/follow [on|off] · /filter everything|decisions|tool_calls|files|errors|all|run · /clear",
   "approvals are decided on their card, never here",
 ].join("\n");
@@ -49,6 +50,8 @@ export function CommandLine(): JSX.Element {
   // right after a new lead took over still has a target)
   const selected = effectiveRun.value ?? shownPending.value ?? undefined;
   const chip = chipText(parsed, selected, allRuns, corePid.value);
+  // the send button is Stop while the build's lead (or a sub-agent) works (Plan 9 D2)
+  const stoppable = busyRuns.value.length > 0;
 
   async function execute(cmd: Command): Promise<boolean> {
     if (cmd.kind === "invalid") { setError(cmd.reason); return false; }
@@ -182,7 +185,12 @@ export function CommandLine(): JSX.Element {
   function onKeyDown(e: KeyboardEvent): void {
     if (e.isComposing) return;
     const el = e.currentTarget as HTMLTextAreaElement;
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === "Escape" && stoppable && !e.defaultPrevented) {
+      // Esc stops the busy agents like the Stop button (Plan 9 D2) — not one that waits on your
+      // approval or answer, and not when another handler (Animate) already took this Esc
+      e.preventDefault();
+      void stopBusy(true);
+    } else if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       void submit();
     } else if (e.key === "ArrowUp" && !e.shiftKey && !el.value.slice(0, el.selectionStart).includes("\n")) {
@@ -202,18 +210,30 @@ export function CommandLine(): JSX.Element {
         </div>
       )}
       <div class="cmd-row">
-        <span class="cmd-prompt" aria-hidden="true">❯</span>
         <textarea
           ref={input}
           class="cmd-input"
           aria-label="Command line"
-          placeholder="message an agent, @all, or / for commands…"
+          placeholder="Message the agent, @all, or / for commands…"
           rows={rows}
           value={value}
           spellcheck={false}
           onInput={(e) => { setValue(e.currentTarget.value); cursor.current = -1; setError(null); }}
           onKeyDown={onKeyDown}
         />
+        {stoppable
+          ? (
+            <button type="button" class="cmd-send is-stop" aria-label="Stop" title="Stop the agents (Esc)" data-testid="composer-stop"
+              onClick={() => { void stopBusy(); input.current?.focus(); }}>
+              <span class="cmd-stop-sq" aria-hidden="true" />
+            </button>
+          )
+          : (
+            <button type="button" class="cmd-send" aria-label="Send" title="Send (⏎)" data-testid="composer-send"
+              disabled={busy || !value.trim()} onClick={() => { void submit(); input.current?.focus(); }}>
+              <span aria-hidden="true">↑</span>
+            </button>
+          )}
       </div>
       {error && <div class="cmd-error text" role="alert">{error}</div>}
       {info && !error && <div class="cmd-info text dim" data-testid="cmd-info">{info}</div>}

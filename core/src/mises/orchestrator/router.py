@@ -3,7 +3,7 @@
 A cheap classifier: keyword rules first, and only when they are unsure (confidence below
 ROUTER_ASK_BELOW) an optional small-model call that may override them. Defaults:
 - an attached drawing (pdf, png/jpg, dxf)        -> drawing-import
-- a system build (drone, robot arm, mechanism)   -> engineer
+- a system build (robot arm, gearbox, mechanism) -> engineer
 - a single part (bracket, plate with holes)      -> designer
 - "test / analyze" (stress, modal, wind, drop)   -> sim
 - "check / review / verify"                      -> verifier

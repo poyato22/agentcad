@@ -28,8 +28,9 @@ describe("App shell", () => {
     const { container } = render(<App />);
     expect(container.querySelector('[data-testid="home"]')).not.toBeNull();
     expect(container.querySelector('[data-region="viewer"]')).toBeNull();
-    // the Home button in the top bar reads as active
-    expect(screen.getByRole("button", { name: "Home" }).getAttribute("aria-pressed")).toBe("true");
+    // D23: Home has no top bar at all — the top bar exists only inside a build
+    expect(container.querySelector('[data-region="topbar"]')).toBeNull();
+    expect(container.querySelector(".topbar")).toBeNull();
   });
 
   it("renders_every_real_pane_in_its_region", () => {
@@ -38,20 +39,24 @@ describe("App shell", () => {
     for (const r of ["app", "topbar", "left", "viewer", "console"]) {
       expect(container.querySelector(`[data-region="${r}"]`)).not.toBeNull();
     }
-    expect(inRegion("topbar", "nav[aria-label=location]")).not.toBeNull();             // Task 4
-    expect(screen.getByRole("button", { name: /stop all/i }).closest("[data-region=topbar]")).not.toBeNull();
+    expect(inRegion("topbar", "button[aria-label=Home]")).not.toBeNull();              // D1: ⌂ + build name
+    expect([...container.querySelectorAll('[data-region="topbar"] [role=tab]')].map((t) => t.textContent))
+      .toEqual(["Design", "Studies", "Print", "BOM"]);                                  // D9
+    expect(container.querySelector('[data-testid="build-tabs"]')).toBeNull();          // D1: no build tabs
     expect(inRegion("left", '[data-testid="left-pane"]')).not.toBeNull();              // Task 5
     expect(container.querySelector('[data-region="left"]')?.textContent).toMatch(/Parts[\s\S]*BOM/);
     expect(inRegion("viewer", '[data-testid="assembly-view"]')).not.toBeNull();        // Plan 9 D7: the build view
-    expect(inRegion("console", "[data-console] [data-run-switcher]")).not.toBeNull();  // conversation view (default)
+    expect(inRegion("console", "[data-console] [data-dock]")).not.toBeNull();  // the agent dock (default)
+    for (const s of ["view", "sim", "text"]) expect(inRegion("console", `[data-dock] [data-stream=${s}]`)).not.toBeNull();
     expect(inRegion("console", "[data-console] [data-conversation]")).not.toBeNull();
     expect(inRegion("console", "[data-console] [data-command-line] textarea")).not.toBeNull(); // Task 9
     expect(container.querySelector("[data-stub]")).toBeNull(); // no placeholder left anywhere
   });
 
-  it("new_button_opens_the_inline_composer", async () => {
+  it("the_conversation_menu_opens_the_inline_composer", async () => {
     render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    fireEvent.click(screen.getByRole("button", { name: "Conversation options" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "New run…" }));
     expect(await screen.findByRole("form", { name: "New run" })).toBeTruthy();
     expect(screen.queryByRole("dialog")).toBeNull();
   });

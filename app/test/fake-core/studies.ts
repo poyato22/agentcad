@@ -310,7 +310,8 @@ export function startStudy(d: StudyDeps, b: Record<string, unknown>): { run_id: 
       d.emit({ type: "run_finished", run_id: run.id, data: { status: "cancelled", stop_reason: "cancelled", error: null, final_text: "", external: true } });
       return;
     }
-    Object.assign(rec, { ...structuredClone(real), sim_id: simId, part_id: partId, run_id: run.id, call_id: callId, settings, reason: rec.reason, created_at: rec.created_at, finished_at: now(), stale: false });
+    Object.assign(rec, { ...structuredClone(real), sim_id: simId, part_id: partId, run_id: run.id, call_id: callId, settings, reason: rec.reason, created_at: rec.created_at, finished_at: now(), stale: false,
+      ...("inputs" in real ? { inputs: { ...(real.inputs as object), settings } } : {}) });
     // several load cases: like core sim/static.py (QA B1-3), results.per_case
     // [{case_id, name, max_vm_mpa, max_disp_mm, sf}] + results.governing_case_id (case names are
     // the ids), each case's figures scaled from the real result by its load, the largest governing
@@ -334,10 +335,31 @@ export function startStudy(d: StudyDeps, b: Record<string, unknown>): { run_id: 
         sf_by_case: Object.fromEntries(perCase.map((x) => [x.name, x.sf])),
       };
     }
+    if (cases.length === 1) {
+      // one posted case (a studies-agent proposal, Plan 9 U-D): the real two-case result keeps
+      // its governing case's figures under the posted case's name, so the result names it
+      const res = (rec.results ?? {}) as Record<string, unknown>;
+      const name = cases[0].name ?? "case 1";
+      const gov = String(res.governing_case_id ?? res.governing_case ?? "");
+      type Row = Record<string, unknown>;
+      const pick = (xs: unknown, key: string): Row[] | undefined => Array.isArray(xs)
+        ? [{ ...((xs as Row[]).find((x) => x[key] === gov) ?? (xs as Row[])[0]), [key]: name, name }] : undefined;
+      const sf = res.sf_by_case && typeof res.sf_by_case === "object" ? (res.sf_by_case as Record<string, unknown>)[gov] : undefined;
+      rec.results = {
+        ...res, governing_case: name, governing_case_id: name, ...(pick(res.per_case, "case_id") ? { per_case: pick(res.per_case, "case_id") } : {}),
+        ...(pick(res.cases, "name") ? { cases: pick(res.cases, "name") } : {}), ...(sf !== undefined ? { sf_by_case: { [name]: sf } } : {}),
+      };
+    }
     const resNow = (rec.results ?? {}) as Record<string, unknown>;
     // core studies.card: a static result's per-case table rides on the card too
     const caseCard = Array.isArray(resNow.per_case) ? { per_case: resNow.per_case, governing_case_id: resNow.governing_case_id ?? null } : {};
     rec.card = { ...structuredClone(real.card!), ...caseCard, sim_id: simId, run_id: run.id, reason: rec.reason, urls: { record: `/sims/${simId}`, glb: `/sims/${simId}/result.glb`, charts: `/sims/${simId}/charts`, probe: `/sims/${simId}/probe`, section: `/sims/${simId}/section` }, charts_url: `/sims/${simId}/charts` };
+    // like core studies.card: with no requirements posted there are no checks, and the verdict
+    // comes from the study's own warnings (the real record's checks were its agent's requirements)
+    if (!Array.isArray(b.requirements) || b.requirements.length === 0) {
+      if ("checks" in rec) rec.checks = [];
+      rec.card = { ...rec.card, checks: [], verdict: (rec.warnings ?? []).length ? "warn" : "pass" };
+    }
     p6Finish(rec, type, settings, st.cal, ofState); // Plan 6: S1 nonlinear, S2 OpenFOAM, S3 fatigue / anisotropy / calibration (real shapes)
     const data = { sim_id: simId, part_id: partId, type, status: "done", card: rec.card, checks: rec.card.checks, results: rec.results };
     const summary = `GUIDE ONLY - ${type} study of ${partId} (fake core, real ${type} numbers)`;

@@ -3,13 +3,13 @@
    numbers in Iosevka. Blue only for: selected, being changed by an agent. */
 .left-pane {
   display: flex; flex-direction: column; height: 100%; min-height: 0; position: relative;
-  font-family: var(--font-ui, "Instrument Sans", system-ui, -apple-system, sans-serif); font-size: 12.5px;
+  font-family: var(--font-ui); font-size: 12.5px;
 }
 .left-parts { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
 .left-parts-body { flex: 1 1 0; min-height: 0; overflow: auto; }
 .left-sec-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px 4px; }
 .left-sec-title { font-size: 12.5px; font-weight: 600; color: var(--ink); letter-spacing: 0; text-transform: none; }
-.left-link { background: none; border: 0; padding: 2px 4px; font: inherit; font-size: 12px; color: var(--dim); cursor: pointer; border-radius: 6px !important; }
+.left-link { background: none; border: 0; padding: 2px 4px; font: inherit; font-size: 12px; color: var(--dim); cursor: pointer; border-radius: var(--r-row); }
 .left-link:hover { color: var(--ink); background: var(--raised, var(--paper2)); }
 .left-link:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
 .left-total {
@@ -20,18 +20,18 @@
 .left-bom { border-top: 1px solid var(--line); padding-bottom: 8px; flex: none; }
 .left-bom-line {
   display: flex; justify-content: space-between; align-items: baseline; gap: 8px; width: calc(100% - 16px); margin: 0 8px; padding: 6px 4px;
-  background: transparent; border: 0; font: inherit; color: var(--ink); cursor: pointer; text-align: left; border-radius: 6px !important;
+  background: transparent; border: 0; font: inherit; color: var(--ink); cursor: pointer; text-align: left; border-radius: var(--r-row);
 }
 .left-bom-line:hover { background: var(--raised, var(--paper2)); }
 .left-bom-line:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
-.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
 .row-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tag-changing { flex: none; color: var(--blue2); font-size: 11px; }
 .left-toast {
   position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 8; display: flex; align-items: center; justify-content: space-between; gap: 8px;
   padding: 7px 8px 7px 12px; color: var(--ink);
-  background: color-mix(in srgb, var(--surface, var(--paper)) 92%, transparent); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
-  border: 1px solid var(--line2); border-radius: 10px !important; box-shadow: 0 8px 28px rgba(0, 0, 0, .28);
+  background: var(--surface); -webkit-backdrop-filter: blur(var(--surface-blur)); backdrop-filter: blur(var(--surface-blur));
+  border: 1px solid var(--line2); border-radius: var(--r-surface); box-shadow: var(--shadow);
 }
 .left-toast-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .left-toast .left-link { color: var(--blue2); font-weight: 600; }

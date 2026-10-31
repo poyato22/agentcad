@@ -2,11 +2,10 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CoreClient } from "../../api/client";
 import type { AgentRun, Approval, CancelAllResult, CoreStatusInfo } from "../../api/types";
-import { isAutoNumbered } from "../../lib/names";
-import { approvals, bindClient, conn, coreStatus, parts, questions, resetStore, retiredApprovals, runs, selectedPartId, shellStatus } from "../../state/store";
+import { approvals, bindClient, conn, coreStatus, questions, resetStore, retiredApprovals, runs, shellStatus } from "../../state/store";
+import { activeBuildId, builds } from "../../state/builds";
 import { activePage, setPage, TAB_PAGES } from "../pages/router";
 import { atHome } from "../../state/home";
-import { Breadcrumb } from "./Breadcrumb";
 import { ModeTabs } from "./ModeTabs";
 import { StatusLights } from "./StatusLights";
 import { TopBar } from "./TopBar";
@@ -40,27 +39,20 @@ afterEach(() => cleanup());
 describe("ModeTabs", () => {
   afterEach(() => { setPage("design"); });
 
-  it("on_home_no_page_tab_reads_as_shown_and_a_tab_leaves_home (m1)", () => {
-    atHome.value = true;
+  it("a build has exactly four tabs: Design · Studies · Print · BOM (D9, D21, D22)", () => {
+    atHome.value = false;
     render(<ModeTabs />);
-    expect(screen.getByRole("tab", { name: "Design" }).getAttribute("aria-selected")).toBe("false");
-    expect(screen.getByRole("tab", { name: "Design" }).getAttribute("tabindex")).toBe("0");
-    fireEvent.click(screen.getByRole("tab", { name: "Studies" }));
-    expect(atHome.value).toBe(false);
-    expect(activePage.value).toBe("studies");
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Design", "Studies", "Print", "BOM"]);
+    for (const gone of ["Drawing", "Onshape", "Parts", "History", "Sketch"]) {
+      expect(screen.queryByRole("tab", { name: gone })).toBeNull();
+    }
+    expect(screen.getByRole("tab", { name: "Print" }).getAttribute("title")).toBe("Print (⌘3)");
+    expect(screen.getByRole("tab", { name: "BOM" }).getAttribute("title")).toBe("BOM (⌘4)");
   });
 
   it("every_tab_is_clickable_and_navigates", async () => {
     atHome.value = false;
     render(<ModeTabs />);
-    // no tab is disabled any more
-    for (const n of ["Design", "Studies", "Drawing", "Print", "Onshape", "Parts"]) {
-      expect(screen.getByRole("tab", { name: n }).getAttribute("aria-disabled")).toBeNull();
-    }
-    // Plan 7 U2b: no Sketch tab, and each tab's tooltip names its renumbered shortcut
-    expect(screen.queryByRole("tab", { name: "Sketch" })).toBeNull();
-    expect(screen.getByRole("tab", { name: "Drawing" }).getAttribute("title")).toBe("Drawing (⌘3)");
-    expect(screen.getByRole("tab", { name: "Parts" }).getAttribute("title")).toBe("Parts (⌘6)");
     expect(screen.getByRole("tab", { name: "Design" }).getAttribute("aria-selected")).toBe("true");
     fireEvent.click(screen.getByRole("tab", { name: "Studies" }));
     expect(activePage.value).toBe("studies");
@@ -293,13 +285,12 @@ describe("stop all", () => {
     expect(cancelAll).toHaveBeenCalledTimes(2);
   });
 
-  it("button_is_red_only_while_a_run_is_running", async () => {
+  it("the button shows only while a run is running (⇧⌘. works always)", async () => {
     bindFake(() => Promise.resolve({ cancelled: [], failed: [] }));
     render(<TopBar />);
-    const btn = screen.getByRole("button", { name: /stop all/i });
-    expect(btn.className).not.toContain("btn-danger");
+    expect(screen.queryByRole("button", { name: /stop all/i })).toBeNull();
     runs.value = new Map([["a", run("a")]]);
-    await waitFor(() => expect(btn.className).toContain("btn-danger"));
+    await waitFor(() => expect(screen.getByRole("button", { name: /stop all/i }).className).toContain("btn-danger"));
   });
 
   it("shortcut_works_while_typing_in_command_line", async () => {
@@ -319,6 +310,7 @@ describe("stop all", () => {
 
   it("toast_counts_runs_the_core_could_not_cancel", async () => {
     bindFake(() => Promise.resolve({ cancelled: ["a", "b"], failed: [{ run_id: "c", error: "RuntimeError: stuck" }] }));
+    runs.value = new Map([["a", run("a")]]);
     render(<TopBar />);
     fireEvent.click(screen.getByRole("button", { name: /stop all/i }));
     await waitFor(() => expect(screen.getByRole("status").textContent).toBe("stopped 2 · 1 failed"));
@@ -327,6 +319,7 @@ describe("stop all", () => {
   it("failure_shows_a_toast_and_releases_busy", async () => {
     const cancelAll = vi.fn().mockRejectedValueOnce(new Error("down")).mockResolvedValue({ cancelled: [], failed: [] });
     bindFake(cancelAll);
+    runs.value = new Map([["a", run("a")]]);
     render(<TopBar />);
     const btn = screen.getByRole("button", { name: /stop all/i });
     fireEvent.click(btn);
@@ -336,42 +329,43 @@ describe("stop all", () => {
   });
 });
 
-const plate = (part_id: string) => ({ part_id, vars: {}, metrics: null, mtime: 1 });
+describe("top bar left: Home + the build's name (D1)", () => {
+  const theBuild = { id: "dog", name: "Robotic Dog", created_at: 0, updated_at: 0, trashed_at: null, part_count: 2, run_count: 0, onshape: null };
+  beforeEach(() => { builds.value = [theBuild]; activeBuildId.value = "dog"; });
+  afterEach(() => { builds.value = []; activeBuildId.value = null; atHome.value = true; });
 
-describe("Breadcrumb", () => {
-  it("shows_no_part_without_selection", () => {
-    render(<Breadcrumb />);
-    expect(document.body.textContent).toContain("◇ LOCAL / no part");
+  it("shows Home and the build's name; no build tabs, no + / ▾ / +N", () => {
+    render(<TopBar />);
+    expect(screen.getByRole("button", { name: "Home" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Build: Robotic Dog. Rename" }).textContent).toBe("Robotic Dog");
+    expect(document.querySelector("[data-testid=build-tabs]")).toBeNull();
+    expect(screen.queryByRole("tablist", { name: "Open builds" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Add a build" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "All builds and the Trash" })).toBeNull();
   });
-  it("shows_part_label", () => {
-    parts.value = [plate("bolt_m3"), plate("mount_plate")];
-    selectedPartId.value = "mount_plate";
-    render(<Breadcrumb />);
-    expect(document.body.textContent).toContain("◇ LOCAL / Part · mount plate");
-    expect(document.querySelector("[data-crumb=part]")?.getAttribute("data-fallback")).toBeNull();
+
+  it("⌂ goes Home", () => {
+    atHome.value = false;
+    render(<TopBar />);
+    fireEvent.click(screen.getByRole("button", { name: "Home" }));
+    expect(atHome.value).toBe(true);
   });
-  it("shows_the_fallback_part_plainly_like_viewer_and_variables", () => {
-    // nothing selected: the viewer and Variables show the first part, so does the breadcrumb (not as selected)
-    parts.value = [plate("bolt_m3"), plate("mount_plate")];
-    render(<Breadcrumb />);
-    const el = document.querySelector("[data-crumb=part]") as HTMLElement;
-    expect(el.textContent).toBe("Part · bolt m3");
-    expect(el.getAttribute("data-fallback")).toBe("true");
-    expect(el.className).toBe("crumb-fallback");
-  });
-  it("breadcrumb_never_shows_auto_numbered", () => {
-    // labels come from partLabel unchanged; ids are chosen names (the core rejects numbered ids)
-    parts.value = [plate("mount_plate"), plate("bolt_m3")];
-    for (const [id, label] of [["mount_plate", "Part · mount plate"], ["bolt_m3", "Part · bolt m3"]]) {
-      selectedPartId.value = id;
-      const { unmount } = render(<Breadcrumb />);
-      expect(document.querySelector("[data-crumb=part]")?.textContent).toBe(label);
-      unmount();
-    }
-    selectedPartId.value = null;
-    const { unmount } = render(<Breadcrumb />);
-    expect(isAutoNumbered(document.querySelector("[data-crumb=part]")?.textContent ?? "")).toBe(false);
-    unmount();
+
+  it("a click on the name renames it in place; Esc keeps the old name", async () => {
+    const renameBuild = vi.fn().mockResolvedValue({ ...theBuild, name: "Robot dog v2" });
+    bindClient({ renameBuild } as unknown as CoreClient);
+    render(<TopBar />);
+    fireEvent.click(screen.getByRole("button", { name: /^Build: Robotic Dog/ }));
+    let input = screen.getByRole("textbox", { name: "Rename Robotic Dog" }) as HTMLInputElement;
+    fireEvent.input(input, { target: { value: "Nope" } });
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(renameBuild).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: /^Build: Robotic Dog/ }));
+    input = screen.getByRole("textbox", { name: "Rename Robotic Dog" }) as HTMLInputElement;
+    fireEvent.input(input, { target: { value: "Robot dog v2" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(renameBuild).toHaveBeenCalledWith("dog", "Robot dog v2"));
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Build: Robot dog v2/ })).toBeTruthy());
   });
 });
 

@@ -20,8 +20,8 @@ test("layout_regions_exist", async ({ page }) => {
   expect(top.height).toBe(44);
   expect(top.width).toBe(1440);
   expect(left.width).toBe(240);
-  expect(consoleBox.width).toBe(420);
-  expect(viewer.width).toBe(1440 - 240 - 420);
+  expect(consoleBox.width).toBe(440);   // the agent dock's default width (Plan 9 visual spec)
+  expect(viewer.width).toBe(1440 - 240 - 440);
   expect(consoleBox.y).toBe(44);
   expect(consoleBox.height).toBe(900 - 44);
   expect(left.y).toBe(44);
@@ -39,45 +39,47 @@ test("min_window_size_is_1280_by_800", async ({ page }) => {
 test("tokens_exact_dark_is_the_default", async ({ page }) => {
   await page.goto("/");
   const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
-  expect(bg).toBe("rgb(10, 10, 10)");
+  expect(bg).toBe("rgb(20, 22, 26)");                       // Plan 9 Graphite
   const tokens = await page.evaluate(() => {
     const s = getComputedStyle(document.documentElement);
     const names = ["--bg", "--paper", "--paper2", "--head", "--vp", "--line", "--line2", "--ink", "--dim", "--faint",
       "--blue", "--blue2", "--blue-tint", "--green", "--amber", "--red"];
     return Object.fromEntries(names.map((n) => [n, s.getPropertyValue(n).trim()]));
   });
+  // Plan 9 Visual spec: Graphite / Panel / Raised / Hairline / Ink / Dim; semantic colors unchanged
   expect(tokens).toEqual({
-    "--bg": "#0a0a0a", "--paper": "#111111", "--paper2": "#161616", "--head": "#141414", "--vp": "#0d0d0d",
-    "--line": "#242424", "--line2": "#333333", "--ink": "#ececec", "--dim": "#9a9a9a", "--faint": "#5e5e5e",
-    "--blue": "#3d8bff", "--blue2": "#8dbaff", "--blue-tint": "rgba(61,139,255,.10)",
+    "--bg": "#14161a", "--paper": "#1b1e23", "--paper2": "#252930", "--head": "#1b1e23", "--vp": "#16181c",
+    "--line": "#2f343b", "--line2": "#3b414a", "--ink": "#e9ebee", "--dim": "#9aa1aa", "--faint": "#6b727c",
+    "--blue": "#4b93ff", "--blue2": "#8dbaff", "--blue-tint": "rgba(75,147,255,.10)",
     "--green": "#4fd18b", "--amber": "#f2b134", "--red": "#ff5a4a",
   });
   const size = await page.evaluate(() => getComputedStyle(document.body).fontSize);
-  expect(size).toBe("12px");
+  expect(size).toBe("12.5px");
 });
 
-test("font_is_iosevka_everywhere_and_no_ibm_plex", async ({ page }) => {
+test("ui_text_is_instrument_sans_and_numbers_iosevka", async ({ page }) => {
+  // Plan 9 Visual spec: Instrument Sans for UI text (bundled, offline), Iosevka for numbers only
   await page.goto("/");
-  // every element's resolved font-family begins with Iosevka and names no IBM Plex
-  const bad = await page.evaluate(() => {
-    const out: string[] = [];
-    const skip = new Set(["SCRIPT", "STYLE", "CANVAS"]);
-    for (const el of [document.body, ...Array.from(document.body.querySelectorAll("*"))]) {
-      if (skip.has(el.tagName)) continue;
-      // Plan 9 visual spec: the build view's surfaces (left pane, assembly pill) set UI text in
-      // Instrument Sans, numbers in Iosevka (the shell task moves the rest over)
-      if (el.closest(".left-pane, .asm, .pconfirm")) continue;
-      const ff = getComputedStyle(el).fontFamily;
-      if (!ff) continue; // SVG and the like can report no family
-      if (/ibm plex/i.test(ff)) out.push(`ibm-plex: ${el.tagName} ${ff}`);
-      if (!/^["']?iosevka/i.test(ff.trim())) out.push(`not-iosevka: ${el.tagName} ${ff}`);
-    }
-    return out.slice(0, 5);
+  await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
+  const fam = await page.evaluate(() => ({
+    body: getComputedStyle(document.body).fontFamily,
+    tab: getComputedStyle(document.querySelector(".tab") as Element).fontFamily,
+    loaded: document.fonts.check('12px "Instrument Sans"'),
+  }));
+  expect(fam.body).toMatch(/^"?Instrument Sans/);
+  expect(fam.tab).toMatch(/^"?Instrument Sans/);
+  expect(fam.body).not.toMatch(/ibm plex/i);
+  expect(fam.loaded).toBe(true);
+  const num = await page.evaluate(() => {
+    const el = document.createElement("span"); el.className = "num"; el.textContent = "1.24 kg";
+    document.body.append(el);
+    const f = getComputedStyle(el); const out = [f.fontFamily, f.fontVariantNumeric]; el.remove(); return out;
   });
-  expect(bad).toEqual([]);
+  expect(num[0]).toMatch(/^"?Iosevka/);
+  expect(num[1]).toBe("tabular-nums");
 });
 
-test("fonts_are_local_iosevka", async ({ page }) => {
+test("fonts_are_local_instrument_sans_and_iosevka", async ({ page }) => {
   const remote: string[] = [];
   const fontFiles: string[] = [];
   page.on("request", (r) => {
@@ -89,11 +91,14 @@ test("fonts_are_local_iosevka", async ({ page }) => {
   const loaded = await page.evaluate(async () => {
     await document.fonts.load('12px "Iosevka"');
     await document.fonts.load('700 14px "Iosevka"');
+    await document.fonts.load('12.5px "Instrument Sans"');
+    await document.fonts.load('600 14px "Instrument Sans"');
     await document.fonts.ready;
     const faces = [...document.fonts].filter((f) => f.status === "loaded").map((f) => f.family.replace(/["']/g, ""));
     return [...new Set(faces)].sort();
   });
-  expect(loaded).toEqual(["Iosevka"]);
+  // Plan 9 Visual spec: Instrument Sans (UI) + Iosevka (numbers), both bundled
+  expect(loaded).toEqual(["Instrument Sans", "Iosevka"]);
   expect(fontFiles.length).toBeGreaterThan(0);
   for (const u of fontFiles) expect(new URL(u).origin).toBe(new URL(page.url()).origin);
   expect(remote).toEqual([]);
@@ -151,7 +156,7 @@ for (const size of [{ width: 1280, height: 800 }, { width: 1600, height: 1000 }]
 
 // ---- every surface that can sit under the traffic lights, in light, dark and system (OS both ways)
 type Mode = "light" | "dark" | "system-light" | "system-dark";
-const BG = { light: "rgb(244, 244, 242)", dark: "rgb(10, 10, 10)" };
+const BG = { light: "rgb(242, 243, 245)", dark: "rgb(20, 22, 26)" };
 
 async function useMode(page: Page, mode: Mode): Promise<void> {
   const [attr, os] = mode.startsWith("system") ? ["system", mode.slice(7) as "light" | "dark"] : [mode, mode === "light" ? "dark" : "light"];
@@ -274,16 +279,16 @@ test("tabs_navigate_between_pages", async ({ page }) => {
   await expect(page.locator("[data-region=viewer]")).toBeVisible();
 });
 
-test("cmd_1_to_6_navigate", async ({ page }) => {
+test("cmd_1_to_4_navigate", async ({ page }) => {
   await page.goto("/");
-  // Plan 7 U2b: Sketch is gone, so ⌘3 is Drawing and ⌘4 Print
+  // Plan 9 D9/D21/D22: Design · Studies · Print · BOM; ⌘5–⌘7 do nothing any more
   await expect(page.getByRole("tab", { name: "Sketch" })).toHaveCount(0);
   await page.keyboard.press("Meta+3");
-  await expect(page.getByRole("tab", { name: "Drawing" })).toHaveAttribute("aria-selected", "true");
-  await page.keyboard.press("Meta+4");
   await expect(page.getByRole("tab", { name: "Print" })).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("Meta+4");
+  await expect(page.getByRole("tab", { name: "BOM" })).toHaveAttribute("aria-selected", "true");
   await page.keyboard.press("Meta+6");
-  await expect(page.getByRole("tab", { name: "Parts" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tab", { name: "BOM" })).toHaveAttribute("aria-selected", "true");
   await page.keyboard.press("Meta+1");
   await expect(page.locator("[data-region=viewer]")).toBeVisible();
 });
@@ -291,11 +296,11 @@ test("cmd_1_to_6_navigate", async ({ page }) => {
 test("console_collapses_to_a_rail_and_expands", async ({ page }) => {
   await page.goto("/");
   const consoleRegion = page.locator("[data-region=console]");
-  expect((await consoleRegion.boundingBox())?.width).toBe(420);
+  expect((await consoleRegion.boundingBox())?.width).toBe(440);
   await page.getByRole("button", { name: "Collapse the agent console" }).click();
   await expect.poll(async () => (await consoleRegion.boundingBox())?.width).toBe(36);
   await page.getByRole("button", { name: "Expand the agent console" }).click();
-  await expect.poll(async () => (await consoleRegion.boundingBox())?.width).toBe(420);
+  await expect.poll(async () => (await consoleRegion.boundingBox())?.width).toBe(440);
 });
 
 test("theme_switch_persists_via_put_profile_and_sets_data_theme", async ({ page, fake }) => {
@@ -311,26 +316,25 @@ test("theme_switch_persists_via_put_profile_and_sets_data_theme", async ({ page,
   expect(puts.length).toBeGreaterThanOrEqual(1);
   expect((puts.at(-1)?.body as { theme?: string }).theme).toBe("light");
   // light palette is live
-  await expect(page.locator("body")).toHaveCSS("background-color", "rgb(244, 244, 242)");
+  await expect(page.locator("body")).toHaveCSS("background-color", "rgb(242, 243, 245)");
 });
 
-test("square_corners", async ({ page }) => {
+test("rounded_corners_from_the_visual_spec", async ({ page }) => {
+  // Plan 9: buttons 7px, rows/inputs 6px, cards and floating surfaces 10px
   await page.goto("/");
-  await page.evaluate(() => {
+  const r = await page.evaluate(() => {
     const host = document.createElement("div");
-    host.id = "corner-probe";
-    const b = document.createElement("button"); b.textContent = "probe"; b.style.borderRadius = "8px";
-    const i = document.createElement("input"); i.style.borderRadius = "8px";
-    const c = document.createElement("div"); c.setAttribute("data-card", ""); c.style.borderRadius = "8px";
-    host.append(b, i, c);
+    const b = document.createElement("button"); b.className = "btn";
+    const i = document.createElement("input");
+    const c = document.createElement("div"); c.setAttribute("data-card", "");
+    const f = document.createElement("div"); f.className = "surface";
+    host.append(b, i, c, f);
     document.body.append(host);
+    const out = [b, i, c, f].map((el) => getComputedStyle(el).borderRadius);
+    host.remove();
+    return out;
   });
-  const radii = await page.evaluate(() =>
-    // Plan 9 visual spec: the build view's floating surfaces are rounded (the shell task moves the rest over)
-    [...document.querySelectorAll("button, input, textarea, select, [data-card]")].filter((el) => !el.closest(".left-pane, .asm, .pconfirm"))
-      .map((el) => getComputedStyle(el).borderRadius));
-  expect(radii.length).toBeGreaterThanOrEqual(3);
-  for (const r of radii) expect(r).toBe("0px");
+  expect(r).toEqual(["7px", "6px", "10px", "10px"]);
 });
 
 test("tauri_startup_crash_before_listen_shows_red_core_light_with_reason", async ({ page }) => {
@@ -415,7 +419,7 @@ for (const theme of ["dark", "light"] as const) {
     await page.goto("/");
     await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
     await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
-    const top = await chromeOffsets(page, [".crumb", ".tab", ".profile-btn", ".stop-all", ".status-btn"]);
+    const top = await chromeOffsets(page, [".build-name", ".tab", ".profile-btn", ".status-btn"]);
     expect(top.centre).toBe(22);
     for (const [sel, d] of top.off) expect(d, `top bar ${sel}`).toBeLessThanOrEqual(2);
     // the setup wizard header

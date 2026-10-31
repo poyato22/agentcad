@@ -10,7 +10,7 @@ const rec = (v: unknown): Record<string, unknown> => (typeof v === "object" && v
 function parseRef(v: unknown): AnnounceRef {
   const r = rec(v);
   const out: AnnounceRef = {};
-  for (const k of ["part_id", "run_id", "instance_id", "bom_id", "snapshot_id", "catalog_id", "import_id"] as const) {
+  for (const k of ["part_id", "run_id", "instance_id", "bom_id", "snapshot_id", "catalog_id", "import_id", "sketch_id", "pitch_id"] as const) {
     const s = str(r[k]);
     if (s) out[k] = s;
   }

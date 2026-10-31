@@ -590,6 +590,10 @@ async def dump_trash_and_delete(out: Path, call, rt) -> list[str]:
         await call("POST", f"/runs/{live['run_id']}/cancel")
         await call("DELETE", f"/runs/{live['run_id']}")
         await call("POST", "/projects/trash/empty")
+        # D30: "Delete forever" on one Trash tile purges that build only
+        scrap = (await call("POST", "/projects", {"name": "Scrap"})).json()
+        await call("DELETE", f"/projects/{scrap['id']}")
+        write("projects_purge.json", (await call("POST", f"/projects/{scrap['id']}/purge")).json())
         lines: list[str] = []
         while not sub.queue.empty():
             ev = sub.queue.get_nowait()

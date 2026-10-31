@@ -7,7 +7,7 @@
 .tree { list-style: none; margin: 0; padding: 2px 0; }
 .tree-spacer { list-style: none; pointer-events: none; }
 .tree-row {
-  position: relative; display: flex; align-items: center; gap: 5px; height: 24px; padding: 0 4px; margin: 0 6px; border-radius: 6px !important;
+  position: relative; display: flex; align-items: center; gap: 5px; height: 24px; padding: 0 4px; margin: 0 6px; border-radius: var(--r-row);
   border-left: 2px solid transparent; box-sizing: border-box;
   /* the drag is pointer events: no text selection or scrolling gestures from a press on a row */
   touch-action: none; user-select: none; -webkit-user-select: none;
@@ -132,15 +132,15 @@
 /* Plan 9 D29: the delete confirm under the row */
 .pconfirm {
   position: fixed; z-index: 40; width: 248px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px;
-  background: var(--paper); color: var(--ink); border: 1px solid var(--line2); border-radius: 10px !important;
-  box-shadow: 0 8px 28px rgb(0 0 0 / 30%); font-family: var(--font-ui, "Instrument Sans", system-ui, sans-serif); font-size: 12.5px;
+  background: var(--paper); color: var(--ink); border: 1px solid var(--line2); border-radius: var(--r-surface);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 30%); font-family: var(--font-ui); font-size: 12.5px;
 }
 .pconfirm-title { margin: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pconfirm-detail { margin: 0; color: var(--dim); line-height: 1.35; }
 .pconfirm-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 4px; }
 .pconfirm-btn {
   height: 26px; padding: 0 12px; font: inherit; color: var(--ink); background: var(--paper2); border: 1px solid var(--line2);
-  border-radius: 7px !important; cursor: pointer;
+  border-radius: var(--r-btn); cursor: pointer;
 }
 .pconfirm-btn:hover { border-color: var(--dim); }
 .pconfirm-btn:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }

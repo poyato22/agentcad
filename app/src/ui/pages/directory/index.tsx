@@ -22,6 +22,7 @@ import { composerOpen } from "../../console/view";
 import { describeError } from "../../profile/common";
 import { PageShell } from "../PageShell";
 import { setConsoleCollapsed } from "../router";
+import { atHome } from "../../../state/home";
 import { AllowedSites } from "./AllowedSites";
 import { BuildPicker, useBuilds } from "./BuildPicker";
 import { ImportPanel } from "./ImportPanel";
@@ -222,6 +223,8 @@ function ItemDetail({ id, onClose, onChanged }: { id: string; onClose: () => voi
   function useWithAgent(): void {
     if (!item) return;
     if (addCatalogChip(item.id, item.name)) {
+      // the composer lives in the open build (the library is a Home sub-view, D22): go there
+      atHome.value = false;
       setConsoleCollapsed(false);
       composerOpen.value = true;
       setChipNote("Added to the new-run composer. The agent reads it with catalog_get.");

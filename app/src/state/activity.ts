@@ -28,6 +28,7 @@ export function parseActivity(ev: MisesEvent): AgentActivity | null {
 }
 
 export function recordActivity(ev: MisesEvent): void {
+  if (ev.type === "sim_finished") { recordSimFinished(ev); return; }
   // a finished run is no longer active, even when no final idle/done activity came (a crash, or
   // a delete whose tracker is forgotten without one): drop it so no stale state lingers (A2)
   if (ev.type === "run_finished" && ev.run_id && activityByRun.value.has(ev.run_id)) {
@@ -123,4 +124,31 @@ export function seedActivity(snapshots: ReadonlyMap<string, unknown>, finished: 
 }
 
 /** Clears activity (a new core session starts fresh). */
-export function resetActivity(): void { activityByRun.value = new Map(); }
+export function resetActivity(): void { activityByRun.value = new Map(); finishedSims.value = new Map(); }
+
+// ---- Plan 9 (D2 / D4): what the agent dock needs to know
+
+/** Studies the core reported finished (`sim_finished {sim_id, status}`, B3), by sim id → status.
+ *  A study started with wait:false returns "running" at once; this is how its card learns it
+ *  ended without the run's next step. Bounded (oldest dropped). */
+export const finishedSims: Signal<ReadonlyMap<string, string>> = signal<ReadonlyMap<string, string>>(new Map());
+const FINISHED_KEEP = 200;
+
+export function recordSimFinished(ev: MisesEvent): void {
+  if (ev.type !== "sim_finished") return;
+  const id = typeof ev.data.sim_id === "string" ? ev.data.sim_id : null;
+  if (!id) return;
+  const m = new Map(finishedSims.peek());
+  m.delete(id);
+  m.set(id, typeof ev.data.status === "string" ? ev.data.status : "done");
+  while (m.size > FINISHED_KEEP) m.delete(m.keys().next().value as string);
+  finishedSims.value = m;
+}
+
+/** Is the run busy, so the composer offers Stop? A queued or running run, unless its activity says
+ *  its turn ended (an idle Claude Code session between turns is "running" but not busy). Waiting on
+ *  you counts: Stop is how you end a run you don't want to answer. */
+export function runBusy(run: { status: string }, activity: AgentActivity | undefined): boolean {
+  if (run.status !== "running" && run.status !== "queued") return false;
+  return activity === undefined || (activity.state !== "idle" && activity.state !== "done");
+}

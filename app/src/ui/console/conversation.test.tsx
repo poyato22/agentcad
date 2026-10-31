@@ -23,6 +23,11 @@ function setSteps(list: Step[]) {
   steps.value = m;
 }
 async function frame() { await act(async () => { await new Promise((r) => setTimeout(r, 40)); }); }
+/** The Conversation header's one ⋯ menu (Plan 9 D2: no button bar). */
+function openMenuItem(name: string) {
+  fireEvent.click(screen.getByRole("button", { name: "Conversation options" }));
+  fireEvent.click(within(screen.getByRole("menu", { name: "Conversation options" })).getByRole("menuitem", { name }));
+}
 
 const MODELS = {
   default: "anthropic/claude-sonnet-5-5",
@@ -125,8 +130,10 @@ describe("conversation view (default)", () => {
     approvals.value = new Map([["ap2", approval("ap2", "r2")]]);
     render(<ConsolePane />);
     await frame();
-    const needs = screen.getByRole("button", { name: "checker · check holes needs you" });
-    expect(needs.textContent).toContain("▲ 1 needs you");
+    // a small blue count in the Conversation header (Plan 9 D2)
+    const needs = screen.getByRole("button", { name: "checker · check holes needs you · 1 waiting" });
+    expect(needs.textContent).toBe("1");
+    expect(needs.closest("[data-conversation-head]")).toBeTruthy();
     fireEvent.click(needs);
     await frame();
     expect(selectedRunId.value).toBe("r2");
@@ -143,30 +150,32 @@ describe("conversation view (default)", () => {
     approvals.value = new Map([["apu", approval("apu", "ui1")]]);
     render(<ConsolePane />);
     await frame();
-    const needs = screen.getByRole("button", { name: "You (Mises) needs you" });
-    expect(needs.textContent).toContain("▲ 1 needs you");
+    const needs = screen.getByRole("button", { name: "You (Mises) needs you · 1 waiting" });
+    expect(needs.textContent).toBe("1");
     fireEvent.click(needs);
     await frame();
     expect(selectedRunId.value).toBe("ui1");
     expect(document.querySelector('[data-approval="apu"]')).toBeTruthy();
-    expect(screen.getByRole("button", { name: /^Run: You \(Mises\)/ })).toBeTruthy();
+    // a thread that isn't the lead's names whose it is in the header
+    expect(document.querySelector("[data-conversation-head] [data-run-label]")?.textContent).toBe("You (Mises)");
   });
 
-  it("run_switcher_is_one_dropdown_with_status_dots", async () => {
+  it("there_is_no_button_bar_only_one_menu_in_the_conversation_header", async () => {
+    // Plan 9 D2: no agent dropdown, no Stop / New / Manage / Browser / Full log buttons, no
+    // "provider · model → agent" line; the agent browser and full log are in the ⋯ menu
     client();
-    setRuns([run("r1", { created_at: 2, task: "stiffen the upright" }), run("r2", { created_at: 1, agent: "checker", task: "check the holes", status: "failed" })]);
-    render(<ConsolePane />);
+    setRuns([run("r1", { created_at: 2, task: "stiffen the upright", routed: { agent: "engineer", reason: "system build", confidence: 0.9 } })]);
+    const { container } = render(<ConsolePane />);
     await frame();
-    const sw = screen.getByRole("button", { name: /^Run: designer · stiffen upright/ });
-    expect(sw.querySelector("[data-tone=blue]")).toBeTruthy();       // running: being changed by an agent
-    fireEvent.click(sw);
-    const list = screen.getByRole("listbox", { name: "Runs" });
-    const opts = within(list).getAllByRole("option");
-    expect(opts.map((o) => o.querySelector("[data-run-label]")?.textContent)).toEqual(["designer · stiffen upright", "checker · check holes"]);
-    expect(opts[1].querySelector("[data-tone=red]")).toBeTruthy();
-    fireEvent.click(opts[1]);
-    expect(selectedRunId.value).toBe("r2");
-    expect(screen.queryByRole("listbox", { name: "Runs" })).toBeNull();
+    for (const name of ["New", "Manage", "Browser", "Full log"]) expect(screen.queryByRole("button", { name, exact: true } as never)).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Run:/ })).toBeNull();
+    expect(container.querySelector("[data-run-switcher], .cv-who, .cv-routed")).toBeNull();
+    expect(container.textContent).not.toContain("fake · m");
+    fireEvent.click(screen.getByRole("button", { name: "Conversation options" }));
+    const menu = screen.getByRole("menu", { name: "Conversation options" });
+    expect(within(menu).getAllByRole("menuitem").map((b) => b.textContent)).toEqual(["New run…", "Agent browser", "Full log"]);
+    fireEvent.keyDown(menu, { key: "Escape" });
+    expect(screen.queryByRole("menu")).toBeNull();
   });
 
   it("details_toggle_shows_the_dense_log_and_is_remembered", async () => {
@@ -175,7 +184,7 @@ describe("conversation view (default)", () => {
     setSteps(REAL);
     const { container } = render(<ConsolePane />);
     await frame();
-    fireEvent.click(screen.getByRole("button", { name: "Full log" }));
+    openMenuItem("Full log");
     await frame();
     expect(container.querySelector("[data-filters]")).toBeTruthy();
     expect(container.querySelector("[data-roster]")).toBeTruthy();
@@ -330,7 +339,7 @@ describe("inline composer", () => {
     const c = client();
     render(<ConsolePane />);
     await frame();
-    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    openMenuItem("New run…");
     expect(composerOpen.value).toBe(true);
     const form = screen.getByRole("form", { name: "New run" });
     // R8: no agent picker by default — the core routes from the prompt
@@ -352,7 +361,7 @@ describe("inline composer", () => {
     const c = client();
     render(<ConsolePane />);
     await frame();
-    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    openMenuItem("New run…");
     const form = screen.getByRole("form", { name: "New run" });
     await waitFor(() => expect(within(form).getByRole("button", { name: /^Model: Claude Code · opus/ })).toBeTruthy());
     fireEvent.click(within(form).getByRole("button", { name: "More options" }));
@@ -371,7 +380,7 @@ describe("inline composer", () => {
     addCatalogChip("bearing_608_deep_groove", "608 bearing");
     render(<ConsolePane />);
     await frame();
-    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    openMenuItem("New run…");
     const form = screen.getByRole("form", { name: "New run" });
     const chips = within(form).getByRole("list", { name: "Context for the agent" });
     expect(chips.textContent).toContain("2207 brushless motor class");
@@ -390,7 +399,7 @@ describe("inline composer", () => {
       models: vi.fn().mockResolvedValue({ ...MODELS, vendors: [{ vendor: "anthropic", key: "none" }] }) });
     render(<ConsolePane />);
     await frame();
-    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    openMenuItem("New run…");
     const form = screen.getByRole("form", { name: "New run" });
     await waitFor(() => expect(form.textContent).toContain("no API key — add one in Profile"));
     fireEvent.input(within(form).getByLabelText("Task"), { target: { value: "go" } });
@@ -402,7 +411,7 @@ describe("inline composer", () => {
     const c = client();
     render(<ConsolePane />);
     await frame();
-    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    openMenuItem("New run…");
     const form = screen.getByRole("form", { name: "New run" });
     await waitFor(() => expect(within(form).getByRole("button", { name: /^Model: Claude Code · opus/ })).toBeTruthy());
     fireEvent.input(within(form).getByLabelText("Task"), { target: { value: "go" } });
@@ -421,7 +430,7 @@ describe("inline composer", () => {
     setRuns([run("lead1", { status: "running", role: "lead" })]);
     render(<ConsolePane />);
     await frame();
-    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    openMenuItem("New run…");
     const form = screen.getByRole("form", { name: "New run" });
     await waitFor(() => expect(within(form).getByRole("button", { name: /^Model: Claude Code · opus/ })).toBeTruthy());
     // usable while the lead works: Start is enabled, nothing says "still working"
@@ -437,7 +446,7 @@ describe("inline composer", () => {
     client({ createRun: vi.fn().mockRejectedValue(new CoreError("invalid_input", "the lead agent already has 20 messages waiting", { status: 429, hint: "wait for it to work through them, or cancel it" })) });
     render(<ConsolePane />);
     await frame();
-    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    openMenuItem("New run…");
     const form = screen.getByRole("form", { name: "New run" });
     await waitFor(() => expect(within(form).getByRole("button", { name: /^Model: Claude Code · opus/ })).toBeTruthy());
     fireEvent.input(within(form).getByLabelText("Task"), { target: { value: "one more" } });
@@ -450,7 +459,7 @@ describe("inline composer", () => {
     client({ createRun: vi.fn().mockRejectedValue(new Error("unknown agent")) });
     render(<ConsolePane />);
     await frame();
-    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    openMenuItem("New run…");
     const form = screen.getByRole("form", { name: "New run" });
     await waitFor(() => expect(within(form).getByRole("button", { name: /^Model: Claude Code · opus/ })).toBeTruthy());
     fireEvent.input(within(form).getByLabelText("Task"), { target: { value: "go" } });

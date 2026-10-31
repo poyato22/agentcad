@@ -73,9 +73,13 @@ export const agentDetailSchema = z.object({
 export const cleanupResultSchema = z.object({ ids: z.array(z.string()), count: z.number().int() });
 export const deleteRefusedSchema = z.object({ reason: z.enum(["running", "pending_approval"]), children: z.array(z.string()).default([]) });
 
+/** Plan 9 B3's dock stream; an unknown value from a newer core reads as absent (type fallback). */
+export const streamKindSchema = z.enum(["text", "sim", "view"]).optional().catch(undefined);
+
 export const stepSchema = z.object({
   id: z.number().int(), run_id: z.string(), ts: z.number(), kind: stepKindSchema, payload: record,
   evidence_hash: z.string(), prev_hash: z.string().nullable(), collapsed: z.boolean(),
+  stream: streamKindSchema,
 });
 
 export const toolOutputSchema = z.object({
@@ -92,7 +96,7 @@ export const approvalSchema = z.object({
 });
 
 export const eventSchema = z.object({
-  type: z.string(), run_id: z.string().nullable(), data: record, ts: z.number(),
+  type: z.string(), run_id: z.string().nullable(), data: record, ts: z.number(), stream: streamKindSchema,
 });
 
 export const agentInfoSchema = z.object({

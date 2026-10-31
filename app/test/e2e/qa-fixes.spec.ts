@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Page } from "@playwright/test";
 import type { AgentRun } from "../../src/api/types";
-import { expect, test } from "./fixtures";
+import { expect, openManualStudySetup, test } from "./fixtures";
 
 const BASE = JSON.parse(readFileSync(resolve(import.meta.dirname, "../fake-core/scenarios/base.json"), "utf8")) as Record<string, unknown> & { runs: AgentRun[] };
 const RUN = BASE.runs[0].id;   // a running designer run
@@ -83,8 +83,8 @@ test("C6_a_deleted_run_leaves_the_manager_and_cannot_be_opened", async ({ page, 
   await expect(manager(page).locator("[data-cleanup-outcome]")).toBeVisible();
   for (const id of ["r_zulu", "r_old1", "r_old2"]) await expect(manager(page).locator(`[data-run-row="${id}"]`)).toHaveCount(0);
   await page.keyboard.press("Escape");
-  // the selection moved off the deleted run: the switcher never names it
-  await expect(page.locator("[data-run-switcher]")).not.toContainText("hello zulu");
+  // the selection moved off the deleted run: the Conversation header never names it
+  await expect(page.locator("[data-conversation-head]")).not.toContainText("hello zulu");
 });
 
 test("C4_a_hidden_built_in_agent_is_not_offered_in_new_run", async ({ page, fake }) => {
@@ -164,6 +164,7 @@ const GLB = { beam: resolve(FX, "study_part_beam.glb"), cube: resolve(FX, "study
 const studiesScenario = () => ({ ...BASE, parts: PARTS, glb: GLB, runs: [], steps: [], approvals: [], sims: { studies: true, step_ms: 60 } });
 
 async function openStudies(page: Page, part = "beam") {
+  await openManualStudySetup(page);
   await open(page);
   await page.getByRole("tab", { name: "Studies" }).click();
   await expect(page.getByTestId("studies")).toBeVisible();
@@ -286,7 +287,7 @@ test("A7_the_budget_meter_shows_idle_when_onshape_is_not_connected", async ({ pa
   await expect(page.locator('[data-light="onshape"]')).toHaveAttribute("title", /Onshape not set up/);
 });
 
-// ---- builds (Empty Trash 409, overflowed tabs)
+// ---- builds (Empty Trash 409)
 
 const BUILDS = JSON.parse(readFileSync(resolve(import.meta.dirname, "../fake-core/scenarios/builds.json"), "utf8")) as Record<string, unknown> & { builds: { builds: { id: string; name: string; trashed_at?: number | null }[]; open: string[]; active: string } };
 
@@ -296,40 +297,13 @@ test("empty_trash_refused_names_the_runs_that_block_it", async ({ page, fake }) 
   const runs = [...((sc.runs as AgentRun[] | undefined) ?? []), run("r_trash", { status: "running", task: "still sanding", project_id: "t0oldbuild00" })];
   await fake.reset({ ...sc, runs });
   await open(page);
-  await page.getByRole("button", { name: "All builds and the Trash" }).click();
-  await page.getByRole("menuitem", { name: "Empty trash…" }).click();
-  await page.getByRole("button", { name: "Empty trash", exact: true }).click();
-  await expect(page.locator(".btab-error")).toContainText("The Trash wasn't emptied: 1 run in a trashed build is still working (designer · still sanding)");
-  // nothing was purged; the menu lists the blocking run, and opening it shows the run
-  await page.getByRole("button", { name: "All builds and the Trash" }).click();
-  await expect(page.getByRole("menuitem", { name: /Old build/ })).toBeVisible();
-  const blocking = page.locator('[data-blocking-run="r_trash"]');
-  await expect(blocking).toContainText("designer · still sanding");
-  await blocking.click();
-  await expect(page.locator("[data-run-switcher] [data-run-label]").first()).toContainText("still sanding");
-});
-
-test("an_overflowed_build_can_be_renamed_and_trashed_from_the_builds_menu", async ({ page, fake }) => {
-  const sc = structuredClone(BUILDS);
-  const extra = ["Gimbal mount with a long name", "Camera cage", "Landing gear"].map((name, i) => ({ id: `x${i}extrabuild0`.slice(0, 12), name }));
-  sc.builds.builds = [...sc.builds.builds, ...extra];
-  sc.builds.open = ["q0quadframe0", "b0benchrig00", ...extra.map((b) => b.id)];
-  sc.builds.active = "q0quadframe0";
-  await fake.reset(sc);
-  await page.setViewportSize({ width: 1280, height: 800 });
-  await open(page);
-  await expect(page.locator(".btab-more")).toBeVisible();
-  await expect(page.getByRole("tab", { name: "Landing gear" })).toHaveCount(0);   // behind "+N"
-  await page.getByRole("button", { name: "All builds and the Trash" }).click();
-  await page.getByRole("menuitem", { name: "Rename build Landing gear" }).click();
-  const field = page.getByRole("textbox", { name: "Rename Landing gear" });
-  await field.fill("Skids");
-  await field.press("Enter");
-  await expect(page.getByRole("menuitemradio", { name: /Skids/ })).toBeVisible();
-  expect((await fake.calls()).some((c) => c.method === "PATCH" && c.path === `/projects/${extra[2].id}`)).toBe(true);
-  // still the same active tab: renaming never switched builds
-  await expect(page.getByRole("tab", { name: "Quad frame" })).toHaveAttribute("aria-selected", "true");
-  await page.getByRole("menuitem", { name: "Move build Camera cage to the Trash" }).click();
-  await expect(page.getByRole("menuitem", { name: /Camera cage.*Restore|Restore/ }).filter({ hasText: "Camera cage" })).toBeVisible();
-  await expect(page.getByRole("tab", { name: "Quad frame" })).toHaveAttribute("aria-selected", "true");
+  // D30: the Trash lives on Home (no builds menu any more)
+  await page.getByRole("button", { name: "Home" }).click();
+  const home = page.locator('[data-testid="home"]');
+  await home.getByRole("button", { name: /^Trash/ }).click();
+  await home.getByRole("button", { name: "Empty trash…" }).click();
+  await home.getByRole("button", { name: "Empty trash", exact: true }).click();
+  await expect(home.getByRole("alert")).toContainText("The Trash wasn't emptied: 1 run in a trashed build is still working (designer · still sanding)");
+  // nothing was purged
+  await expect(home.locator("[data-build]", { hasText: "Old build" })).toBeVisible();
 });

@@ -1,20 +1,21 @@
-// Page router for the app shell. One `activePage` signal drives which top-level page shows:
-// Design keeps today's layout (left pane + viewer); the others render full-width under the top bar.
-// The agent console stays available on every page and can collapse to a rail.
+// Page router for a build. One `activePage` signal drives which page of the open build shows:
+// Design keeps the left pane + viewer; the others render full-width under the top bar. The agent
+// console stays available on every page and can collapse to a rail.
 //
-// Navigation: the top tabs (ui/topbar/ModeTabs) and ⌘1–⌘7 both call setPage(). A page component
+// Navigation: the top tabs (ui/topbar/ModeTabs) and ⌘1–⌘4 both call setPage(). A page component
 // is just the default/exported component of ui/pages/<id>/index.tsx, rendered by App when active.
 // To read or change the active page from anywhere, import `activePage` / `setPage` / `PAGES` from here.
 //
-// Shortcuts (Plan 7 U2b removed the Sketch page and renumbered the rest; every shortcut in the
-// app is listed in lib/shortcuts.ts and docs/shortcuts.md):
-//   ⌘1 Design · ⌘2 Studies · ⌘3 Drawing · ⌘4 Print · ⌘5 Onshape · ⌘6 Parts · ⌘7 BOM
-//   ⌘0 is Home (U1).
+// Plan 9 (D9, D21, D22): a build has exactly four pages — Design · Studies · Print · BOM. Drawings
+// are a mode of Print (ui/pages/print/mode.ts); Onshape and the parts library are Home sub-views
+// (state/home.ts homeView), not build pages. Every shortcut in the app is listed in
+// lib/shortcuts.ts and docs/shortcuts.md:
+//   ⌘1 Design · ⌘2 Studies · ⌘3 Print · ⌘4 BOM · ⌘0 Home (U1)
 import { signal, type Signal } from "@preact/signals";
 import { isTrustedKey, registerShortcut } from "../../lib/keys";
 import { atHome } from "../../state/home";
 
-export type Page = "design" | "studies" | "drawing" | "print" | "onshape" | "directory" | "bom";
+export type Page = "design" | "studies" | "print" | "bom";
 
 export interface PageDef {
   id: Page;
@@ -23,27 +24,21 @@ export interface PageDef {
   /** Page header title (PageShell) and document-level heading. */
   title: string;
   /** ⌘<key> digit that navigates to this page. */
-  key: "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9";
-  /** A reachable page that is NOT a top-bar mode tab (its own build-scoped entry opens it).
-   *  Keeps the mode-tab strip within its width budget. */
-  hidden?: boolean;
+  key: "1" | "2" | "3" | "4";
 }
 
 /** Order is the tab order and the ⌘<digit> order. Design is first and is the default. */
 export const PAGES: readonly PageDef[] = [
   { id: "design", label: "Design", title: "Design", key: "1" },
   { id: "studies", label: "Studies", title: "Studies", key: "2" },
-  { id: "drawing", label: "Drawing", title: "Drawing", key: "3" },
-  { id: "print", label: "Print", title: "Print", key: "4" },
-  // Plan 5 A6
-  { id: "onshape", label: "Onshape", title: "Onshape", key: "5" },
-  { id: "directory", label: "Parts", title: "Parts directory", key: "6" },
-  // Plan 7 R5: the build's parts list, a top tab with a short label now that Sketch is gone (U2b)
-  { id: "bom", label: "BOM", title: "Parts list (BOM)", key: "7" },
+  // D21: drawings live inside Print (its 3D print | Drawing switch)
+  { id: "print", label: "Print", title: "Print", key: "3" },
+  // Plan 7 R5: the build's parts list (D9: it takes History's place in the bar)
+  { id: "bom", label: "BOM", title: "Parts list (BOM)", key: "4" },
 ];
 
-/** The mode tabs shown in the top bar (hidden pages have their own entry points). */
-export const TAB_PAGES: readonly PageDef[] = PAGES.filter((p) => !p.hidden);
+/** The mode tabs shown in the top bar: every build page (D9). */
+export const TAB_PAGES: readonly PageDef[] = PAGES;
 
 export const DEFAULT_PAGE: Page = "design";
 
@@ -56,7 +51,7 @@ export function isPage(v: unknown): v is Page {
 export function setPage(p: Page): void {
   if (!isPage(p)) return;
   activePage.value = p;
-  atHome.value = false;     // a mode tab (or ⌘1–⌘7) on Home opens that page of the open build (m1)
+  atHome.value = false;     // ⌘1–⌘4 on Home opens that page of the open build (m1)
 }
 
 /** The page a ⌘<digit> shortcut maps to, or null. */
@@ -81,7 +76,7 @@ export interface PageShortcutDeps {
   isModalOpen?: () => boolean;
 }
 
-/** Registers ⌘1–⌘7 to navigate between pages (capture phase, works inside inputs). Synthetic or
+/** Registers ⌘1–⌘4 to navigate between pages (capture phase, works inside inputs). Synthetic or
  *  auto-repeat keys are ignored, and so is everything while a modal is open (the page must not
  *  change under the wizard, Profile or a dialog). Returns an unregister function. */
 export function installPageShortcuts(deps: PageShortcutDeps = {}): () => void {

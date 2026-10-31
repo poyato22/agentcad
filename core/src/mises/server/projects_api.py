@@ -112,24 +112,59 @@ def build_projects_router(runtime: Runtime) -> APIRouter:
         from ..cad.skeleton_tools import skeleton_view
         return await run_in_threadpool(skeleton_view, _home(), store, project_id)
 
+    def _cover_placements(home: Path, project_id: str) -> list[thumbs.Placement]:
+        """What the cover draws: every assembly instance at its solved world transform (a solve
+        that fails keeps the stored transforms, as the agents' views do), each in its part's
+        finish; with no instance, the build's largest built part (by volume) in its own frame.
+        Thumbs skips parts without a mesh."""
+        from ..assembly.geometry import face_resolver
+        from ..assembly.solve import solve
+        asm_store = getattr(runtime, "assembly_store", None)
+        insts = []
+        if asm_store is not None:
+            asm = asm_store.get(project_id)
+            insts = list(asm.instances)
+            tf: dict = {}
+            if insts:
+                try:
+                    tf = solve(asm, resolve_face=face_resolver(home / "parts")).transforms
+                except Exception:  # noqa: BLE001 - a broken solve still shows the stored layout
+                    tf = {}
+        rows: dict = {}
+
+        def part(pid: str):
+            if pid not in rows:
+                rows[pid] = store.get_part(pid)
+            return rows[pid]
+        placed = [(i.part_id, _projects.part_version(home, r), tf.get(i.id) or i.transform,
+                   render_params(r))
+                  for i in insts if (r := part(i.part_id)) is not None]
+        if any(thumbs.mesh_stamp(home, p[0]) for p in placed):
+            return placed
+        built = [p for p in _projects.list_parts(store, home, project_id)
+                 if p.get("kind") == "part" and thumbs.mesh_stamp(home, p["part_id"])]
+        if not built:
+            return []
+        big = max(built, key=lambda p: float((p.get("metrics") or {}).get("volume_mm3") or 0))
+        r = store.get_part(big["part_id"])
+        return [(big["part_id"], big["version"], None, render_params(r) if r else None)]
+
     @router.get("/projects/{project_id}/thumb.png")
-    async def project_thumb(project_id: str, request: Request, size: int = thumbs.DEFAULT_SIZE):
-        """A composite tile of up to four of the build's parts (each rendered in the sandboxed
-        worker, cached by version; composed on the host). 404 until a part has a built mesh."""
+    async def project_thumb(project_id: str, request: Request, size: int = thumbs.COVER_W):
+        """The build's Home cover (D24): one sandboxed render of its assembly, every instance at
+        its solved pose in its finish, 16:10 (`size` is the width), background transparent;
+        the largest built part when nothing is placed. 404 until a part has a built mesh."""
         _projects._project_or_404(store, project_id)
         home = _home()
-        chosen = [(p["part_id"], p["version"])
-                  for p in _projects.list_parts(store, home, project_id)
-                  if p.get("kind") == "part"][:4]
-        sz = thumbs.clamp_size(size)
-        looks = {pid: render_params(r) for pid, _v in chosen
-                 if (r := store.get_part(pid)) is not None}            # U8 appearance
-        etag = f'"proj-{project_id}-{thumbs.project_key(home, chosen, sz, looks)}"'   # = the cache key
+        placed = await run_in_threadpool(_cover_placements, home, project_id)
+        key = thumbs.cover_key(home, placed, size)
+        etag = f'"proj-{project_id}-{key}"'                       # = the cache key
         headers = {"ETag": etag, "Cache-Control": "private, no-cache"}
         inm = request.headers.get("if-none-match")
-        if inm and any(t.strip().removeprefix("W/") == etag for t in inm.split(",")):
+        if key is not None and inm and any(t.strip().removeprefix("W/") == etag
+                                           for t in inm.split(",")):
             return Response(status_code=304, headers=headers)
-        png = await thumbs.project_thumb(home, project_id, chosen, sz, looks)
+        png = await thumbs.project_cover(home, project_id, placed, size)
         if png is None:
             raise MisesError(ErrorCode.NOT_FOUND, f"no preview for build {project_id!r} yet",
                              hint="it has no parts with a built mesh")
@@ -143,6 +178,15 @@ def build_projects_router(runtime: Runtime) -> APIRouter:
     async def empty_trash():
         try:
             return runtime.empty_trash()
+        except _projects.TrashBusy as e:
+            return JSONResponse(e.body(), status_code=409)
+
+    @router.post("/projects/{project_id}/purge")
+    async def purge_project(project_id: str):
+        """Delete one trashed build for good (Home's "Delete forever"): Empty Trash for that
+        build only, with the same live-work refusal (409)."""
+        try:
+            return runtime.empty_trash(only=project_id)
         except _projects.TrashBusy as e:
             return JSONResponse(e.body(), status_code=409)
 

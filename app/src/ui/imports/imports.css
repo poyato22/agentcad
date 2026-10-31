@@ -13,6 +13,9 @@
 
 .imp-overlay-anchor { position: absolute; inset: 0; pointer-events: none; z-index: 30; }
 .imp-drop-overlay { position: absolute; inset: 12px; border-width: 2px; pointer-events: none; }
+/* Home (a scrolling page): the drop target covers the window, not the scrolled content */
+.imp-overlay-page { position: fixed; }
+.imp-overlay-page .imp-drop-overlay { border-radius: var(--r-surface); }
 .imp-file { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .imp-empty-hint {
   position: absolute; left: 50%; top: calc(50% + 22px); transform: translateX(-50%);

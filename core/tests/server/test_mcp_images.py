@@ -30,7 +30,8 @@ async def test_render_views_returns_image_blocks_to_claude_code(rt):
     texts = [c for c in res.content if isinstance(c, TextContent)]
     images = [c for c in res.content if isinstance(c, ImageContent)]
     assert len(texts) == 1 and len(images) == 4
-    assert all(i.mime_type == "image/png" and max(_png_size(i.data)) <= 512 for i in images)
+    # several views: each at most 1024 px (Plan 9 G-R; 4 still fit the MCP output cap)
+    assert all(i.mime_type == "image/png" and max(_png_size(i.data)) <= 1024 for i in images)
     body = json.loads(texts[0].text)
     assert body["ok"] and "images" not in body                 # pixels never in the JSON text
 

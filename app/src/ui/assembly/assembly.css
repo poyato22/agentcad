@@ -2,18 +2,17 @@
    a few quiet floating surfaces — the viewer pill bottom-centre, a selection caption, an error
    toast. Floating surfaces: radius 10px, panel at 92% with an 18px backdrop blur, one soft shadow;
    buttons radius 7px; sentence case; numbers in Iosevka (tabular). Blue only for selected /
-   pressed / agent-changing; red / amber only for the check chip and interference tags. The shell's
-   tokens (U-A) may define --font-ui and --surface; these fall back to the current palette. The
-   radii are !important while base.css squares every corner (the shell task replaces that). */
+   pressed / agent-changing; red / amber only for the check chip and interference tags. All from
+   the shell's tokens (--surface, --surface-blur, --shadow, --r-*, --font-ui, --font-num). */
 .asm { position: relative; height: 100%; min-height: 0; }
 .asm-sheet { min-width: 0; height: 100%; }
 
 .asm-float, .asm-pill, .asm-caption, .asm-error, .asm-imm-bar {
-  background: color-mix(in srgb, var(--surface, var(--paper)) 92%, transparent);
-  -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
-  border: 1px solid var(--line2); border-radius: 10px !important;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, .28), 0 1px 2px rgba(0, 0, 0, .2);
-  font-family: var(--font-ui, "Instrument Sans", system-ui, -apple-system, sans-serif);
+  background: var(--surface);
+  -webkit-backdrop-filter: blur(var(--surface-blur)); backdrop-filter: blur(var(--surface-blur));
+  border: 1px solid var(--line2); border-radius: var(--r-surface);
+  box-shadow: var(--shadow);
+  font-family: var(--font-ui);
   font-size: 12.5px; color: var(--ink);
 }
 
@@ -25,7 +24,7 @@
 }
 .pill-btn {
   display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px;
-  font: inherit; color: color-mix(in srgb, var(--ink) 82%, var(--dim)); background: transparent; border: 0; border-radius: 7px !important;
+  font: inherit; color: color-mix(in srgb, var(--ink) 82%, var(--dim)); background: transparent; border: 0; border-radius: var(--r-btn);
   cursor: pointer; white-space: nowrap;
 }
 .pill-btn:hover:not(:disabled) { color: var(--ink); background: var(--raised, var(--paper2)); }
@@ -36,20 +35,20 @@
 .pill-clear { padding: 0 8px; }
 .pill-sep { width: 1px; height: 18px; margin: 0 4px; background: var(--line2); }
 .pill-section { display: inline-flex; align-items: center; gap: 8px; padding: 0 6px 0 2px; }
-.pill-axes { display: inline-flex; gap: 1px; padding: 2px; border-radius: 7px !important; background: var(--raised, var(--paper2)); }
+.pill-axes { display: inline-flex; gap: 1px; padding: 2px; border-radius: var(--r-btn); background: var(--raised, var(--paper2)); }
 .pill-axis {
   min-width: 24px; height: 22px; padding: 0 6px; font: 600 11px/1 var(--font-mono); color: color-mix(in srgb, var(--ink) 78%, var(--dim));
-  background: transparent; border: 0; border-radius: 5px !important; cursor: pointer;
+  background: transparent; border: 0; border-radius: 5px; cursor: pointer;
 }
 .pill-axis:hover { color: var(--ink); }
 .pill-axis[aria-pressed="true"] { color: var(--ink); background: var(--paper); box-shadow: inset 0 0 0 1px var(--line2); }
 .pill-range { width: clamp(72px, 11vw, 168px); accent-color: var(--blue); }
-.pill-range:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; border-radius: 4px !important; }
-.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.pill-range:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; border-radius: 4px; }
+.num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
 .pill-val { min-width: 56px; font-size: 11px; color: var(--ink); text-align: right; }
 .pill-chip {
   display: inline-flex; align-items: center; gap: 6px; height: 24px; margin-left: 4px; padding: 0 9px;
-  border-radius: 7px !important; font-size: 11px; color: var(--ink); background: var(--raised, var(--paper2)); cursor: default;
+  border-radius: var(--r-btn); font-size: 11px; color: var(--ink); background: var(--raised, var(--paper2)); cursor: default;
 }
 .pill-chip[data-status="fail"] { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--red) 60%, transparent); }
 .pill-chip[data-status="warn"] { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 60%, transparent); }
@@ -64,12 +63,12 @@
   position: absolute; left: 50%; top: 52px; transform: translateX(-50%); z-index: 7; max-width: min(560px, calc(100% - 32px));
   display: flex; gap: 8px; align-items: center; padding: 5px 6px 5px 12px;
 }
-.asm-empty { font-family: var(--font-ui, "Instrument Sans", system-ui, sans-serif); font-size: 12.5px; letter-spacing: 0; text-transform: none; }
+.asm-empty { font-family: var(--font-ui); font-size: 12.5px; letter-spacing: 0; text-transform: none; }
 
 /* interference tag: hangs off the overlap, red (fail) */
 .asm-tag {
   position: absolute; transform: translate(-50%, calc(-100% - 10px)); white-space: nowrap; pointer-events: none;
-  font: 11px/1.4 var(--font-mono); color: var(--red); background: var(--vp); border: 1px solid var(--red); border-radius: 6px !important; padding: 1px 6px;
+  font: 11px/1.4 var(--font-mono); color: var(--red); background: var(--vp); border: 1px solid var(--red); border-radius: var(--r-row); padding: 1px 6px;
   font-variant-numeric: tabular-nums;
 }
 .asm-tag::after {

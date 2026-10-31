@@ -30,7 +30,9 @@ KINDS = ("part_created", "agent_spawned", "assembly_added", "bom_added", "part_s
          "drawing_imported",
          # Plan 8 G1 (geometry quality): its view and critique cards go through announce() too,
          # their fields in `ref`, so they are stored as steps the same way
-         "view_presented", "critique_round")
+         "view_presented", "critique_round",
+         # Plan 9 G-A: the concept stage's sketch and pitch cards (View stream)
+         "concept_sketch", "concept_pitch")
 TITLE_CHARS = 120
 DETAIL_CHARS = 300
 

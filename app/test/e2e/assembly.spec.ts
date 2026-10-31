@@ -297,7 +297,7 @@ test("backspace_on_a_tree_row_asks_first_and_esc_keeps_the_part", async ({ page 
 test("blue_only_on_selected_or_pressed_in_the_build_view", async ({ page }) => {
   await openAssembly(page);
   const offenders = await page.evaluate(() => {
-    const BLUE = new Set(["rgb(61, 139, 255)", "rgb(141, 186, 255)"]);
+    const BLUE = new Set(["rgb(75, 147, 255)", "rgb(141, 186, 255)"]);
     const ALLOWED = "[data-selected], [data-changing], [data-card], .active-tab, .cmd-prompt, .needs-you, [aria-pressed=true]";
     const out: string[] = [];
     for (const el of document.querySelectorAll<HTMLElement>("[data-region=viewer] *")) {

@@ -1,9 +1,9 @@
 // Plan 4 Task 5 against the fake core ("agent-ux" scenario): the conversation view is the
-// default console, with the approval card and failed calls inline; the run switcher; the inline
+// default console, with the approval card and failed calls inline; no button bar; the inline
 // composer; the model picker's groups, badges, "Start Ollama" and a download with progress; Auto
 // parallel agents; a run that queues for a slot. Approval safety itself is approvals.spec.ts.
 import type { Page } from "@playwright/test";
-import { expect, test } from "./fixtures";
+import { consoleMenu, expect, showRun, test } from "./fixtures";
 
 const DES = "b7c79a57cbb4";
 const AID = "a332e73aa8f2";
@@ -12,7 +12,8 @@ const RED = "rgb(255, 90, 74)";
 const consoleRegion = (page: Page) => page.locator("[data-region=console]");
 const thread = (page: Page) => page.getByRole("log", { name: "Conversation" });
 const acts = (page: Page) => thread(page).locator("[data-activity] [data-activity-text]");
-const switcher = (page: Page) => page.getByRole("button", { name: /^Run: / });
+/** Whose thread the dock shows (the Conversation header names a run that is not the build's lead). */
+const switcher = (page: Page) => page.locator("[data-conversation-head] [data-run-label]");
 
 test.beforeEach(async ({ page, fake }) => {
   await fake.reset("agent-ux");
@@ -24,23 +25,24 @@ async function open(page: Page) {
   await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
 }
 
-test("console_header_stays_one_line_at_1280x800", async ({ page }) => {
-  // real-app QA: the run label wrapped onto a second line and "+ New" / "Full log" broke in two
+test("dock_header_has_no_button_bar_and_stays_one_line_at_1280x800", async ({ page }) => {
+  // Plan 9 D2: no Stop / New / Manage / Browser / Full log buttons, no agent dropdown, no
+  // "provider · model → agent" line; one ⋯ menu in the Conversation header
   await page.setViewportSize({ width: 1280, height: 800 });
   await open(page);
-  const row = consoleRegion(page).locator(".cv-top-row");
-  const lineH = await row.locator("[data-run-label]").evaluate((el) => parseFloat(getComputedStyle(el).lineHeight) || 16);
-  for (const name of ["New", "Full log"]) {
-    const h = (await row.getByRole("button", { name, exact: true }).boundingBox())?.height ?? 0;
-    expect(h, name).toBeLessThan(lineH * 2);
-  }
-  const label = await row.locator("[data-run-label]").evaluate((el) => ({ h: el.getBoundingClientRect().height, ws: getComputedStyle(el).whiteSpace }));
+  const con = consoleRegion(page);
+  for (const name of ["New", "Manage", "Browser", "Full log"]) await expect(con.getByRole("button", { name, exact: true })).toHaveCount(0);
+  await expect(con.getByRole("button", { name: /^Run: / })).toHaveCount(0);
+  await expect(con.locator("[data-run-switcher], .cv-who, .cv-routed")).toHaveCount(0);
+  const head = con.locator("[data-stream=text] .dock-h");
+  const lineH = await head.locator("[data-run-label]").evaluate((el) => parseFloat(getComputedStyle(el).lineHeight) || 16);
+  const label = await head.locator("[data-run-label]").evaluate((el) => ({ h: el.getBoundingClientRect().height, ws: getComputedStyle(el).whiteSpace }));
   expect(label.ws).toBe("nowrap");
   expect(label.h).toBeLessThan(lineH * 1.6);
-  // and "Full log" is not under the pinned collapse button
-  const full = await row.getByRole("button", { name: "Full log", exact: true }).boundingBox();
+  // the stream headers stay clear of the pinned collapse button
+  const top = await con.locator("[data-stream=view] .dock-t").boundingBox();
   const collapse = await page.getByRole("button", { name: "Collapse the agent console" }).boundingBox();
-  expect(full && collapse && full.x + full.width <= collapse.x + 0.5).toBe(true);
+  expect(top && collapse && top.x + top.width <= collapse.x + 0.5).toBe(true);
 });
 
 test("conversation_is_the_default_with_activity_lines_and_the_approval_card_inline", async ({ page }) => {
@@ -66,10 +68,8 @@ test("conversation_is_the_default_with_activity_lines_and_the_approval_card_inli
 
 test("failed_calls_and_errors_are_red_inline_and_another_run_needing_you_is_one_click_away", async ({ page }) => {
   await open(page);
-  await switcher(page).click();
-  const menu = page.getByRole("listbox", { name: "Runs" });
-  await expect(menu.getByRole("option")).toHaveCount(2);
-  await menu.getByRole("option", { name: /checker · check hole spacing/ }).click();
+  // another run's thread opens from the agent manager (the console has no run dropdown, Plan 9 D2)
+  await showRun(page, "c4e1a9f0d2b3");
   await expect(switcher(page)).toContainText("checker · check hole spacing");
   const fail = thread(page).locator("[data-activity][data-tone=fail]");
   await expect(fail).toContainText("changing mount plate failed · wall 0.4 mm is below the 0.8 mm minimum");
@@ -79,15 +79,15 @@ test("failed_calls_and_errors_are_red_inline_and_another_run_needing_you_is_one_
   await expect(err).toContainText("transient · provider timed out");
   await expect(err.locator(".cv-fail").first()).toHaveCSS("color", RED);
   // the designer's approval is still one click away
-  const needs = page.getByRole("button", { name: "designer · thicken mount plate to needs you" });
-  await expect(needs).toHaveText("▲ 1 needs you");
+  const needs = page.getByRole("button", { name: "designer · thicken mount plate to needs you · 1 waiting" });
+  await expect(needs).toHaveText("1");
   await needs.click();
   await expect(thread(page).locator(`[data-approval="${AID}"]`)).toBeVisible();
 });
 
 test("details_toggle_shows_the_dense_log_and_is_remembered", async ({ page }) => {
   await open(page);
-  await page.getByRole("button", { name: "Full log", exact: true }).click();
+  await consoleMenu(page, "Full log");
   await expect(consoleRegion(page).locator("[data-roster]")).toBeVisible();
   await expect(consoleRegion(page).locator("[data-filters]")).toBeVisible();
   await expect(page.locator(`[data-roster] [data-run="${DES}"]`)).toBeVisible();
@@ -99,7 +99,7 @@ test("details_toggle_shows_the_dense_log_and_is_remembered", async ({ page }) =>
 
 test("inline_composer_starts_a_run_with_profile_defaults", async ({ page, fake }) => {
   await open(page);
-  await page.getByRole("button", { name: "New", exact: true }).click();
+  await consoleMenu(page, "New run…");
   const form = page.getByRole("form", { name: "New run" });
   await expect(form).toBeVisible();
   await expect(page.getByRole("dialog", { name: "New run" })).toHaveCount(0);
@@ -112,14 +112,14 @@ test("inline_composer_starts_a_run_with_profile_defaults", async ({ page, fake }
   await expect(form).toHaveCount(0);
   const posts = (await fake.calls()).filter((c) => c.method === "POST" && c.path === "/runs");
   expect(posts.map((c) => c.body)).toEqual([{ prompt: "stiffen the upright", model_ref: "claude-code/opus", edit_scope: ["*"], read_scope: ["*"], project_id: expect.any(String) }]);
-  await expect(switcher(page)).toContainText("designer · stiffen upright");
+  await expect(thread(page).locator("[data-msg=user]").first()).toContainText("stiffen the upright");
   await expect(acts(page)).toHaveText(["measured mount plate · 8.0 cm³"]);
   await expect(thread(page).locator("[data-msg=agent]")).toContainText("Measuring the plate first.");
 });
 
 test("enter_in_the_picker's_other_model_box_never_starts_a_run", async ({ page, fake }) => {
   await open(page);
-  await page.getByRole("button", { name: "New", exact: true }).click();
+  await consoleMenu(page, "New run…");
   const form = page.getByRole("form", { name: "New run" });
   await expect(form.getByRole("button", { name: /^Model: Claude Code · opus/ })).toBeVisible();
   await form.getByLabel("Task").fill("stiffen the upright");
@@ -164,7 +164,7 @@ test("scrolled_up_the_thread_counts_new_rows_and_a_new_card_comes_into_view", as
 
 test("model_picker_groups_badges_start_ollama_and_download_with_progress", async ({ page, fake }) => {
   await open(page);
-  await page.getByRole("button", { name: "New", exact: true }).click();
+  await consoleMenu(page, "New run…");
   const form = page.getByRole("form", { name: "New run" });
   await form.getByRole("button", { name: /^Model:/ }).click();
   const panel = form.getByRole("region", { name: "Choose a model" });
@@ -210,12 +210,11 @@ test("a_run_beyond_the_parallel_limit_waits_for_a_slot", async ({ page, fake }) 
   sc.status.parallel = { limit: 1, auto: true, reason: "M5 Pro · 24 GB · local model → 1" };
   await fake.reset(sc);
   await open(page);
-  await page.getByRole("button", { name: "New", exact: true }).click();
+  await consoleMenu(page, "New run…");
   const form = page.getByRole("form", { name: "New run" });
   await expect(form).toContainText("1 running · queues for a free slot (Auto: 1)");
   await form.getByLabel("Task").fill("add a gusset");
   await form.getByRole("button", { name: "Start" }).click();
-  await expect(switcher(page)).toContainText("designer · add gusset");
   await expect(thread(page)).toContainText("waiting for a free agent slot · Auto: 1 on this Mac");
   await expect(thread(page).locator("[data-msg=user]")).toContainText("add a gusset");
 });
@@ -226,7 +225,7 @@ test("blue_only_where_allowed_in_the_conversation_view", async ({ page }) => {
   await page.mouse.move(700, 450);
   const bad = await page.evaluate(() => {
     const ALLOWED = "[data-selected], [data-changing], [data-card], .active-tab, .cmd-prompt, .needs-you";
-    const BLUE = ["rgb(61, 139, 255)", "rgb(141, 186, 255)", "rgba(61, 139, 255, 0.1)"];
+    const BLUE = ["rgb(75, 147, 255)", "rgb(141, 186, 255)", "rgba(75, 147, 255, 0.1)"];
     const out: string[] = [];
     for (const el of document.querySelectorAll("[data-region=console] *")) {
       const cs = getComputedStyle(el);

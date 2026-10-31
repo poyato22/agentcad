@@ -95,7 +95,7 @@ test("drafting_grid_and_fig_label_visible", async ({ page }) => {
     const s = getComputedStyle(el);
     return { bg: s.backgroundColor, img: s.backgroundImage, size: s.backgroundSize };
   });
-  expect(style.bg).toBe("rgb(13, 13, 13)");
+  expect(style.bg).toBe("rgb(22, 24, 28)");                 // Plan 9 --vp
   expect(style.img).toContain("rgba(255, 255, 255, 0.07)");
   expect(style.img).toMatch(/rgba\(255, 255, 255, 0\.02[45]\)/); // 8-bit alpha quantisation
   expect(style.size).toContain("100px 100px");

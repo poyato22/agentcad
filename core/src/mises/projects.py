@@ -290,12 +290,19 @@ def _owned_by(parent: Path, record: str, project_id: str) -> list[str]:
 
 
 def empty_trash(store: Store, home: Path | None = None, *, assembly: Any = None,
-                busy: BusyFn | None = None) -> dict:
+                busy: BusyFn | None = None, only: str | None = None) -> dict:
     """Purge every trashed build and everything it owns: part-tree rows, spec, studies,
     build-scoped catalog items, assembly rows and (with `home`) its parts' files, meta and
     study scratch. Refused as a whole (TrashBusy -> 409) while any trashed build has a run
-    that is running, queued, busy or awaiting approval. Runs stay as history until cleaned up."""
-    purged = [p.id for p in store.list_projects() if p.trashed_at is not None]
+    that is running, queued, busy or awaiting approval. Runs stay as history until cleaned up.
+    `only` purges that one build (Home's "Delete forever"); it must already be in the Trash."""
+    if only is not None:
+        p = _project_or_404(store, only)
+        if p.trashed_at is None:
+            raise MisesError(ErrorCode.INVALID_INPUT, f"build {only!r} is not in the Trash",
+                             hint="move it to the Trash first")
+    purged = [p.id for p in store.list_projects()
+              if p.trashed_at is not None and (only is None or p.id == only)]
     blocked = trash_blockers(store, purged, busy)
     if blocked is not None:
         raise TrashBusy(blocked[0], blocked[1], purged)

@@ -1,6 +1,6 @@
 // Activity indicators in the thread (Task A2): the live status line per run driven by
-// agent_activity transitions, the "Show thinking" disclosure (agent_thinking), the run switcher's
-// animated dots — and approval / failed-call visibility unchanged while a run waits (Plan 4
+// agent_activity transitions, the "Show thinking" disclosure (agent_thinking), the composer's
+// send / Stop button — and approval / failed-call visibility unchanged while a run waits (Plan 4
 // Review Focus 3).
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/preact";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -154,16 +154,16 @@ describe("Show thinking", () => {
   });
 });
 
-describe("run switcher dots", () => {
-  it("animate by activity state", async () => {
+describe("composer send / Stop follows activity (Plan 9 D2)", () => {
+  it("is Stop while the run works and Send once its turn ended", async () => {
     mount();
     recordActivity(act_("thinking"));
     await frame();
-    const dot = document.querySelector("[data-run-switcher] .cv-actdot") as HTMLElement;
-    expect(dot.dataset.activity).toBe("thinking");
-    recordActivity(act_("tool", "measuring"));
+    expect(screen.getByRole("button", { name: "Stop" })).toBeTruthy();
+    recordActivity(act_("idle"));
     await frame();
-    expect(dot.dataset.activity).toBe("tool");
+    expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Send" })).toBeTruthy();
   });
 });
 

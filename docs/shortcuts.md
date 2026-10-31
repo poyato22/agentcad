@@ -12,15 +12,18 @@ noted (the viewer or the parts list focused, a focused approval card).
 | ⌘0 | Home (all builds) |
 | ⌘1 | Design page |
 | ⌘2 | Studies page |
-| ⌘3 | Drawing page |
-| ⌘4 | Print page |
-| ⌘5 | Onshape page |
-| ⌘6 | Parts directory page |
-| ⌘7 | Parts list (BOM) page |
+| ⌘3 | Print page |
+| ⌘4 | Parts list (BOM) page |
 | ⌘K | Focus the command line |
 | ⌘N | New agent run |
 | ⇧⌘A | Agent manager |
 | ⇧⌘. | Stop all runs |
+
+## Top bar (inside a build)
+
+| Keys | Action |
+|---|---|
+| F2 | Rename the build (its name in the top bar focused; a click does the same) |
 
 ## Design page
 
@@ -60,3 +63,10 @@ View ▾ menu: ↓ / ↑ open it, ↑ ↓ Home End move, Enter / Space pick, Esc
 | Keys | Action |
 |---|---|
 | ⌘[ ⌘] | Previous / next view or study (immersive) |
+
+## Agent dock (the composer focused)
+
+| Keys | Action |
+|---|---|
+| ⏎ | Send (⇧⏎ a new line) |
+| Esc | Stop the agents while they work (the send button is Stop then) |

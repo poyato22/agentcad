@@ -17,10 +17,11 @@ test.describe("drawing import from Home", () => {
   });
 
   for (const file of [{ name: "plate_vector.pdf", kind: "PDF", text: /PDF text/ }, { name: "plate_drawing.png", kind: "PNG", text: /only the model's reading was checked/ }]) {
-    test(`a ${file.kind} from the Home tile makes a part, shown full width, and Open part goes to it`, async ({ page, fake }) => {
+    test(`a ${file.kind} from Home's Import drawing… makes a part, shown full width, and Open part goes to it`, async ({ page, fake }) => {
       await page.goto("/");
       await expect(page.locator('[data-testid="home"]')).toBeVisible();
-      await page.locator("[data-drawing-drop=tile] [data-drawing-input]").setInputFiles({
+      // review m1: Home's header "Import drawing…" (the grid holds only builds)
+      await page.locator(".home-bar [data-drawing-input]").setInputFiles({
         name: file.name, mimeType: file.kind === "PDF" ? "application/pdf" : "image/png", buffer: readFileSync(resolve(DRAWINGS, file.name)),
       });
       const card = page.locator(".home-imports .imp-card").first();
@@ -53,7 +54,7 @@ test.describe("measure and the parts list", () => {
 
   async function openPlate(page: Page): Promise<void> {
     await page.goto("/");
-    await expect(page.getByRole("tab", { name: "Quad frame" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("button", { name: /^Build: Quad frame/ })).toBeVisible();
     await tree(page).getByRole("button", { name: "top plate", exact: true }).click();
     await expect(page.getByTestId("viewer-canvas")).toHaveAttribute("data-bbox-size", "40.00,40.00,3.00", { timeout: 15_000 });
   }
@@ -90,7 +91,7 @@ test.describe("measure and the parts list", () => {
 
   test("multi-select: Shift selects a range, ⌘ toggles one, and the menu acts on the selection", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByRole("tab", { name: "Quad frame" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("button", { name: /^Build: Quad frame/ })).toBeVisible();
     await tree(page).getByRole("button", { name: "Quad arm", exact: true }).click();
     await tree(page).getByRole("button", { name: "top plate", exact: true }).click({ modifiers: ["Shift"] });
     await expect(tree(page).locator(".tree-row.sel")).toHaveCount(2);
