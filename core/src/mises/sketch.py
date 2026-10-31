@@ -35,7 +35,7 @@ from .types import ErrorCode, MisesError
 SKETCH_ID_RE = re.compile(r"^sk_[0-9a-f]{12}$")
 MAX_PHOTO_BYTES = 10 * 1024 * 1024
 MAX_RENDER_BYTES = 8 * 1024 * 1024
-MAX_IMAGE_EDGE = 1568           # Anthropic's recommended long edge
+MAX_IMAGE_EDGE = 2048           # high-res tier (long edge up to 2576 px); renders cap at 2048
 MIN_IMAGE_EDGE = 512            # stepping down to fit the budget stops here (then lowers quality)
 MAX_PIXELS = 40_000_000         # refused from the header, before any decoding
 JPEG_QUALITY = 85

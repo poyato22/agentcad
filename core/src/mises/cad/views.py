@@ -48,7 +48,11 @@ from .render_job import MeshIn, RenderOut, run_render_job
 from .tools import PART_ID_RE, _check_part_id
 
 STD_VIEWS = ("front", "top", "side", "iso")
-_SIZE_MIN, _SIZE_MAX, _SIZE_DEFAULT = 128, 1024, 512
+_SIZE_MIN, _SIZE_MAX, _SIZE_DEFAULT = 128, render_mod.MAX_SIZE, 512
+DESIGN_SIZE = 1024                     # default edge for design critique / hero renders
+# images returned to the calling model: one view may use the high-res tier, several stay
+# small enough that 4 of them fit Claude Code's MCP output cap
+_IMG_EDGE_ONE, _IMG_EDGE_MANY = 2048, 1024
 _MASK_SIZE = 256                       # silhouettes for IoU need no more resolution than this
 # distinct muted part colours (0..1 rgb), cycled over the parts of a build
 _PALETTE = [
@@ -64,6 +68,7 @@ _now = time.monotonic                  # patched by the time-budget tests
 # view's camera sits on, so "front" is never mistaken for head-on.
 
 ViewNaming = Literal["standard", "aircraft"]
+RenderStyle = Literal["shaded", "zebra", "sketch", "silhouette"]
 NoseAxis = Literal["+x", "-x", "+y", "-y"]
 _AXIS_VEC = {"+x": (1.0, 0.0, 0.0), "-x": (-1.0, 0.0, 0.0),
              "+y": (0.0, 1.0, 0.0), "-y": (0.0, -1.0, 0.0)}
@@ -301,10 +306,40 @@ def _mesh_inputs(ctx: ToolContext, shown: list[Placed], *, xray: set[str] | None
     xray = xray or set()
     color = {p: _PALETTE[i % len(_PALETTE)]
              for i, p in enumerate(dict.fromkeys(p for p, _ in shown))}
-    out = [MeshIn(_part_dir(ctx, p), p, color[p], 0.28 if p in xray else 1.0, tf)
+    look = {p: _look(ctx, p) for p in color}
+    out = [MeshIn(_part_dir(ctx, p), p, look[p][0] or color[p], 0.28 if p in xray else 1.0, tf,
+                  roughness=look[p][1], metalness=look[p][2])
            for p, tf in shown]
     out += [MeshIn(_part_dir(ctx, g), g, _GHOST_COLOR, 0.15, tf) for g, tf in ghost]
     return out
+
+
+def _hex_rgb(h) -> tuple[float, float, float] | None:
+    h = str(h or "").lstrip("#")
+    if len(h) != 6:
+        return None
+    try:
+        return tuple(int(h[i:i + 2], 16) / 255 for i in (0, 2, 4))   # type: ignore[return-value]
+    except ValueError:
+        return None
+
+
+def _look(ctx: ToolContext, part_id: str) -> tuple[tuple | None, float, float]:
+    """(rgb or None for the palette colour, roughness, metalness) from the part's appearance
+    (U8 `part_set_appearance`): the colour, material and finish the shaded style shows."""
+    store = getattr(ctx, "store", None)
+    row = None
+    if store is not None:
+        try:
+            row = store.get_part(part_id)
+        except Exception:  # noqa: BLE001 - bare unit tests have no part row
+            row = None
+    if row is None:
+        return None, 0.9, 0.0
+    from ..appearance import render_params
+    p = render_params(row)
+    return (_hex_rgb(p.get("color")), float(p.get("roughness", 0.9)),
+            float(p.get("metalness", 0.0)))
 
 
 async def _render(ctx: ToolContext, meshes: list[MeshIn], *, renders: list[dict] = (),
@@ -455,6 +490,15 @@ class RenderViewsArgs(BaseModel):
                                "tail, bottom, iso.")
     nose: NoseAxis = Field(default="-x", description="aircraft naming: the axis the nose "
                            "points along (Z is up).")
+    style: RenderStyle = Field(default="shaded", description="'shaded' (smooth, part colours and "
+                               "finishes, studio light, ground shadow), 'zebra' (surface-"
+                               "continuity stripes: a jump is a G0 edge, a kink G1), 'sketch' "
+                               "(hand-drawn line art on paper, for concept sketches), "
+                               "'silhouette' (black fill: proportions only).")
+    perspective: bool = Field(default=False, description="A 35 mm-equivalent perspective camera "
+                              "(hero shots) instead of orthographic.")
+    figure: bool = Field(default=False, description="sketch: draw a 1.75 m human beside the "
+                         "model for scale.")
 
 
 def _axes_note(where: dict[str, str]) -> str:
@@ -467,10 +511,13 @@ def _axes_note(where: dict[str, str]) -> str:
                   "solved positions) to views, for an ad-hoc look (critique_model already "
                   "renders, so do not call this before it). Standard views: front (camera on "
                   "-Y), top (+Z), side (+X), iso; or naming='aircraft' with `nose` for nose "
-                  "(head-on), top, left, right, tail, bottom, iso. At most 4, 512 px by default. "
+                  "(head-on), top, left, right, tail, bottom, iso. At most 4, 512 px by default "
+                  "(up to 2048). `style`: shaded (default), zebra (surface continuity), sketch "
+                  "(concept line art), silhouette; `perspective` for a hero shot. "
                   "Pass `section` {origin, normal} for a cutaway that reveals internals (the "
                   "+normal half is removed), or `transparent` for an x-ray. If your model can see "
-                  "images, the renders come back to you as images (<= 4 at <= 512 px); otherwise "
+                  "images, the renders come back to you as images (one view up to 2048 px, several "
+                  "up to 1024 px each); otherwise "
                   "as PNG handles.")
 async def render_views(ctx: ToolContext, args: RenderViewsArgs) -> ToolOutput:
     views, cameras, where = view_set(args.naming, args.nose, args.views,
@@ -482,17 +529,22 @@ async def render_views(ctx: ToolContext, args: RenderViewsArgs) -> ToolOutput:
     out = await _render(ctx, _mesh_inputs(ctx, shown), renders=[{
         "key": "rv", "views": views, "size": args.size, "cameras": cameras,
         "section": args.section.job() if args.section else None,
-        "transparent": args.transparent}])
+        "transparent": args.transparent, "style": args.style,
+        "perspective": args.perspective, "figure": args.figure}])
     imgs = out.pngs["rv"]
     handles = _write_pngs(ctx, _tag(ctx, "rv"), imgs)
     what = part_ids[0] if len(part_ids) == 1 else f"{len(part_ids)} parts"
     note = " (section)" if args.section else (" (x-ray)" if args.transparent else "")
+    if args.style != "shaded":
+        note += f" ({args.style})"
     data = {"parts": part_ids, "views": handles, "render_ids": render_ids(handles),
             "size": args.size, "naming": args.naming, "view_axes": where,
+            "style": args.style, "perspective": args.perspective,
             "instances": len(shown)}
     images: list[ToolImage] = []
     if _sees_images(ctx):
-        images, tokens = await _tool_images(imgs)
+        edge = min(args.size, _IMG_EDGE_ONE if len(imgs) == 1 else _IMG_EDGE_MANY)
+        images, tokens = await _tool_images(imgs, max_edge=edge)
         data["image_tokens"] = tokens
         note += f"; {len(images)} image(s) attached — look at them"
     note += f". Views: {_axes_note(where)}"
