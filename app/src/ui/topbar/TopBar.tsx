@@ -1,25 +1,20 @@
 // The build's top bar (only inside a build; Home has none — D23):
 //   ⌂ Home · the build's name (click to rename it in place) | Design · Studies · Print · BOM |
-//   working agents · Onshape count · Status · Profile · Stop all (only while something runs).
+//   working agents · Onshape count · Status · Profile.
 // There are no build tabs (D1): switching builds goes through Home (⌂ or ⌘0).
 import type { JSX } from "preact";
 import { useRef, useState } from "preact/hooks";
 import { activeBuild, buildActions } from "../../state/builds";
 import { goHome } from "../../state/home";
-import { runs } from "../../state/store";
-import { Button } from "../common/Button";
 import { ActivityPill } from "./ActivityPill";
 import { BudgetChip } from "./BudgetMeter";
 import { ModeTabs } from "./ModeTabs";
 import { ProfileButton } from "./ProfileButton";
 import { StatusLights } from "./StatusLights";
-import { toast, useStopAll } from "./stopAll";
+import { toast } from "./stopAll";
 import "./topbar.css";
 
 export function TopBar(): JSX.Element {
-  const { stopAll, busy } = useStopAll();
-  let anyRunning = false;
-  for (const r of runs.value.values()) if (r.status === "running") { anyRunning = true; break; }
   return (
     // Empty top-bar space is the macOS window drag region (overlay title bar).
     <header class="topbar" data-tauri-drag-region>
@@ -40,11 +35,8 @@ export function TopBar(): JSX.Element {
         <BudgetChip />
         <StatusLights />
         <ProfileButton />
-        {/* ⇧⌘. stops everything from anywhere (App); the button shows only while it has work */}
-        {anyRunning && (
-          <Button variant="danger" class="stop-all" title="Stop all runs (⇧⌘.)" aria-busy={busy || undefined}
-            onClick={() => { void stopAll(); }}>Stop all</Button>
-        )}
+        {/* FW-layout (D2/D20): no Stop all button — the composer's Stop is the visible control;
+            ⇧⌘. (App) and /stopall still stop everything */}
       </div>
       <div class="toast" role="status" aria-live="polite">{toast.value}</div>
     </header>

@@ -12,7 +12,7 @@ import { TopBar } from "./TopBar";
 import { initials, ProfileButton } from "./ProfileButton";
 import { closeProfile, openProfile, profileOpen, profileSection } from "../profile/open";
 import { printersChanged } from "../../state/printers";
-import { installStopAllShortcut, resetStopAll } from "./stopAll";
+import { installStopAllShortcut, resetStopAll, stopAll } from "./stopAll";
 import { applyBudget, resetOnshapeBudget } from "../../state/onshapeBudget";
 import type { OnshapeBudget } from "../../api/directory";
 
@@ -269,28 +269,26 @@ describe("stop all", () => {
     bindClient({ cancelAll } as unknown as CoreClient);
   }
 
-  it("stop_all_button_calls_cancel_all_once", async () => {
+  it("stop_all_calls_cancel_all_once_at_a_time", async () => {
     let resolveIt: (v: CancelAllResult) => void = () => {};
     const cancelAll = vi.fn(() => new Promise<CancelAllResult>((r) => { resolveIt = r; }));
     bindFake(cancelAll);
-    runs.value = new Map([["a", run("a")]]);
     render(<TopBar />);
-    const btn = screen.getByRole("button", { name: /stop all/i });
-    fireEvent.click(btn);
-    fireEvent.click(btn);
+    void stopAll();
+    void stopAll();
     expect(cancelAll).toHaveBeenCalledTimes(1);
     resolveIt({ cancelled: ["a", "b"], failed: [] });
     await waitFor(() => expect(screen.getByRole("status").textContent).toBe("stopped 2"));
-    fireEvent.click(btn);
+    void stopAll();
     expect(cancelAll).toHaveBeenCalledTimes(2);
   });
 
-  it("the button shows only while a run is running (⇧⌘. works always)", async () => {
+  it("the top bar has no Stop all button, even while a run is running (FW-layout: ⇧⌘. and the composer's Stop)", async () => {
     bindFake(() => Promise.resolve({ cancelled: [], failed: [] }));
-    render(<TopBar />);
-    expect(screen.queryByRole("button", { name: /stop all/i })).toBeNull();
     runs.value = new Map([["a", run("a")]]);
-    await waitFor(() => expect(screen.getByRole("button", { name: /stop all/i }).className).toContain("btn-danger"));
+    render(<TopBar />);
+    await Promise.resolve();
+    expect(screen.queryByRole("button", { name: /stop all/i })).toBeNull();
   });
 
   it("shortcut_works_while_typing_in_command_line", async () => {
@@ -310,21 +308,18 @@ describe("stop all", () => {
 
   it("toast_counts_runs_the_core_could_not_cancel", async () => {
     bindFake(() => Promise.resolve({ cancelled: ["a", "b"], failed: [{ run_id: "c", error: "RuntimeError: stuck" }] }));
-    runs.value = new Map([["a", run("a")]]);
     render(<TopBar />);
-    fireEvent.click(screen.getByRole("button", { name: /stop all/i }));
+    void stopAll();
     await waitFor(() => expect(screen.getByRole("status").textContent).toBe("stopped 2 · 1 failed"));
   });
 
   it("failure_shows_a_toast_and_releases_busy", async () => {
     const cancelAll = vi.fn().mockRejectedValueOnce(new Error("down")).mockResolvedValue({ cancelled: [], failed: [] });
     bindFake(cancelAll);
-    runs.value = new Map([["a", run("a")]]);
     render(<TopBar />);
-    const btn = screen.getByRole("button", { name: /stop all/i });
-    fireEvent.click(btn);
+    void stopAll();
     await waitFor(() => expect(screen.getByRole("status").textContent).toContain("stop all failed"));
-    fireEvent.click(btn);
+    void stopAll();
     expect(cancelAll).toHaveBeenCalledTimes(2);
   });
 });
