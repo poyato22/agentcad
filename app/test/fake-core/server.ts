@@ -17,6 +17,7 @@ import { INSTALL_DEPS } from "../../src/api/types";
 import { assemblyFrom, assemblyRoutes, DEFAULT_PROJECT, DEFAULT_PROJECT_ROW, type AssemblyScenario, type FakeAssembly } from "./assembly";
 import { agentEdit, buildRoutes, buildsFrom, type BuildsDeps, type BuildsScenario, type FakeBuilds } from "./builds";
 import { measureRoutes } from "./measure";
+import { conceptFrom, conceptRoutes, conceptSeedSteps, stopConcept, type ConceptScenario, type FakeConcept } from "./concept";
 import { handleControl } from "./control";
 import { directoryFrom, directoryRoutes, type DirectoryScenario, type FakeDirectory } from "./directory";
 import { bomRoutes, browserBomFrom, browserRoutes, type BrowserBomScenario, type FakeBrowserBom } from "./browser";
@@ -121,6 +122,8 @@ export interface Scenario {
   /** GET /tools (the QA-fix core's registry list). Absent: every real core tool; null: no route
    *  (404, an older core). */
   tools?: FakeTool[] | null;
+  /** Plan 9 G-A: the concept stage (pitch, sketch versions), from the real core's dump. */
+  concept?: ConceptScenario;
 }
 
 /** A GET /tools row, as core server/app.py list_tools answers it. */
@@ -174,6 +177,7 @@ export interface FakeState {
   directory: FakeDirectory;
   /** Plan 7 R3/R4/R5: agent browser snapshots and the build parts list (BOM). */
   browserBom: FakeBrowserBom;
+  concept: FakeConcept;
   assembly: FakeAssembly;
   spec: FakeSpec;
   /** Plan 5 A3: builds, part-tree rows, scripts and versions. */
@@ -253,7 +257,23 @@ function stateFrom(sc: Scenario, token: string): FakeState {
     ...sharedBuilds(sc),
     spec: specFrom(sc.spec),
     browserBom: browserBomFrom(sc.browser),
+    concept: conceptFrom(sc.concept ?? { start: "none" }, DEFAULT_PROJECT),
   };
+}
+
+/** A concept scenario's cards: the pitch and sketch announcements, as steps on the build's lead. */
+function seedConcept(state: FakeState, sc: Scenario): FakeState {
+  if (!sc.concept) return state;
+  let id = state.steps.reduce((m, s) => Math.max(m, s.id), 0);
+  for (const seed of conceptSeedSteps(state.concept)) {
+    const lead = (sc.concept.lead_run ? state.runs.get(sc.concept.lead_run) : undefined)
+      ?? [...state.runs.values()].find((r) => r.parent_id === null && r.project_id === seed.run_hint);
+    if (!lead) continue;
+    const ann = { ...(seed.payload.agent_announce as Record<string, unknown>), run_id: lead.id };
+    state.steps.push({ id: ++id, run_id: lead.id, ts: lead.created_at + id / 1000, kind: "decision", payload: { agent_announce: ann },
+      evidence_hash: "0".repeat(64), prev_hash: null, collapsed: false });
+  }
+  return state;
 }
 
 /** The scenario's open build tabs, on the fake profile (C1 profile.active_project_id / open_project_ids). */
@@ -347,7 +367,7 @@ export function asBody(v: unknown): Body {
 export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
   const origins = new Set([...UI_ORIGINS, ...(opts.origins ?? [])]);
   const defaultGlb = opts.glbPath ?? DEFAULT_GLB;
-  let state = stateFrom(loadScenario(opts.scenario), opts.token ?? "dev-token");
+  let state = (() => { const sc = loadScenario(opts.scenario); return seedConcept(stateFrom(sc, opts.token ?? "dev-token"), sc); })();
   let scriptTimers: ReturnType<typeof setTimeout>[] = [];
   let scriptStarted = false;
   const sockets = new Set<{ ws: WebSocket; runId: string | null }>();
@@ -1161,6 +1181,13 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       emit: (ev, extras) => { emit(ev, extras); }, approval: (id) => state.approvals.get(id),
     }),
     ...assemblyRoutes({ get: () => state.assembly, parts: () => state.parts, emit: (ev) => { emit(ev); } }),
+    // Plan 9 G-A: the concept stage
+    ...conceptRoutes({
+      get: () => state.concept, liveBuild: (id) => state.builds.builds.some((b) => b.id === id && b.trashed_at === null),
+      runs: () => [...state.runs.values()],
+      newRun: (task, projectId) => { const r = newRun("engineer", "fake", "fake-model", task, false, "done"); r.project_id = projectId; return r; },
+      appendStep: (st, runId) => appendStep(st, runId), emit: (ev) => { emit(ev); },
+    }),
     // Plan 7 U2a: measure and feedback pins
     ...measureRoutes({
       parts: () => state.parts, partVersion: (id) => state.builds.rows.get(id)?.version, partProject: (id) => state.builds.rows.get(id)?.project_id,
@@ -1361,7 +1388,9 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     // the live activity belongs to the old scenario's runs (GET /runs/{id} serves it, C-3)
     lastActivity.clear(); beforeWaiting.clear(); askedAt.clear(); leadQueues.clear(); unreachableLeads.clear();
     stopping.clear();
-    state = stateFrom(loadScenario(scenario), token ?? state.token);
+    stopConcept(state.concept);
+    const sc = loadScenario(scenario);
+    state = seedConcept(stateFrom(sc, token ?? state.token), sc);
   }
 
   await new Promise<void>((ok, fail) => {

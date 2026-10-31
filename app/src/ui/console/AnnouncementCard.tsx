@@ -4,6 +4,7 @@
 // app can open it (announceJumps). Title and detail are untrusted model/tool text: rendered as text.
 import type { JSX } from "preact";
 import type { Announcement } from "../../api/types";
+import { conceptCardFor } from "../sketch/register";
 import { jumpFor } from "./announceJumps";
 
 interface Meta { glyph: string; label: string }
@@ -18,12 +19,17 @@ export const ANNOUNCE_META: Readonly<Record<string, Meta>> = {
   drawing_imported: { glyph: "▦", label: "Imported a drawing" },
   view_presented: { glyph: "◫", label: "Presented a view" },
   critique_round: { glyph: "✎", label: "Reviewed the geometry" },
+  concept_sketch: { glyph: "✐", label: "Sketched the concept" },
+  concept_pitch: { glyph: "◇", label: "Pitched directions" },
 };
 const FALLBACK: Meta = { glyph: "•", label: "Update" };
 const firstWord = (s: string) => s.trim().split(/\s+/)[0]?.toLowerCase() ?? "";
 
 export function AnnouncementCard({ announcement }: { announcement: Announcement & { projectId?: string | null; jointId?: string | null } }): JSX.Element {
   const a = announcement;
+  // Plan 9 G-A: a concept sketch / pitch is a full card of its own (View stream)
+  const concept = conceptCardFor(a);
+  if (concept) return concept;
   const meta = ANNOUNCE_META[a.kind] ?? FALLBACK;
   // m6: "Created a part · Created part arm_link" said it twice — the label is left out when the
   // title already starts with its verb (the glyph still marks the kind)

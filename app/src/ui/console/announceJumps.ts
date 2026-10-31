@@ -37,6 +37,8 @@ export const PENDING_JUMPS: Readonly<Partial<Record<AnnounceKind, string>>> = {
   drawing_imported: "U5: the import result card (ref.import_id) when no part was built",
   view_presented: "Plan 8 G1: the presented view",
   critique_round: "Plan 8 G1: the critique round",
+  concept_sketch: "Plan 9 G-A: the card is the sketch itself (it opens the full-window review)",
+  concept_pitch: "Plan 9 G-A: the card is the pitch itself (pick or mix on it)",
 };
 
 export function jumpFor(a: JumpInput): Jump | null {
