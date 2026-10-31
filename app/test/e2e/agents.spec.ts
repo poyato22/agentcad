@@ -125,7 +125,9 @@ test("after_a_core_restart_the_console_follows_the_new_lead", async ({ page, fak
   // a native lead from the previous core process, finished
   const first = run("lead01", { agent: "engineer", task: "build robot arm", role: "lead", project_id: build, created_at: Date.now() / 1000 });
   await fake.emit({ type: "run_finished", run_id: first.id, data: { status: "done" } }, { run: first });
-  await page.locator("[data-region=left]").getByRole("button", { name: /engineer · build robot arm/ }).click();
+  // Plan 9 D9: the left pane's History is gone; the console's run list picks the lead
+  await page.locator("[data-run-switcher] .cv-switch").click();
+  await page.getByRole("listbox", { name: "Runs" }).locator(`[data-run="${first.id}"]`).click();
   await expect(page.getByTestId("target-chip")).toContainText("engineer · build robot arm");
   await fake.restartCore();
   const cmd = page.getByLabel("Command line");

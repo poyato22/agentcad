@@ -1,7 +1,7 @@
 // R1 + R17: the Home build grid on launch, opening a build into the shell, and the in-build
 // "All parts" overview. The fake core serves no thumbnail route, so tiles fall back to the
 // placeholder glyph — the grid, search, open and overview still work.
-import { expect, openHome, test } from "./fixtures";
+import { expect, openHome, openPartView, test } from "./fixtures";
 
 test.beforeEach(async ({ fake, page }) => {
   await fake.reset("base");
@@ -40,6 +40,7 @@ test("opening_a_tile_opens_the_build_and_home_button_returns", async ({ page }) 
 test("all_parts_overview_opens_and_closes", async ({ page }) => {
   await page.goto("/");
   await page.locator('[data-testid="home"]').getByTitle("Open Default").click();
+  await openPartView(page);                       // Plan 9 D7: All parts is the part viewer's
   await page.getByRole("button", { name: "All parts" }).click();
   await expect(page.getByRole("dialog", { name: "All parts" })).toBeVisible();
   await page.getByRole("button", { name: "Close all-parts view" }).click();

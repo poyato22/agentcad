@@ -4,7 +4,7 @@
 // control one. This walks the Tab order of the main screens and checks the controls the final
 // review found unreachable. Runs in both engines.
 import type { Page } from "@playwright/test";
-import { expect, openHome, test } from "./fixtures";
+import { expect, openHome, openPartView, test } from "./fixtures";
 
 /** Press Tab until focus comes back round (or `max` presses), collecting each stop's name. */
 async function tabStops(page: Page, max = 400): Promise<string[]> {
@@ -38,9 +38,13 @@ test.beforeEach(async ({ fake, page }) => {
 test("design: Tab reaches Home, the part list, View, All parts, the console header and the command line", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
+  // Plan 9: the build view's pill, then a part opened alone (View, All parts, ← Assembly)
+  const pill = await tabStops(page);
+  for (const want of [/^X-ray$/]) expect(has(pill, want), `${want} in ${JSON.stringify(pill)}`).toBe(true);
+  await openPartView(page);
   await page.locator("[data-region=viewer]").click({ position: { x: 300, y: 400 } });
   const stops = await tabStops(page);
-  for (const want of [/^Home$/, /^View options$/, /^All parts$/, /^Command line$/, /^New$/, /^Manage$/, /mount plate/, /^Add a build$/]) {
+  for (const want of [/^Home$/, /^View options$/, /^All parts$/, /Assembly/, /^Command line$/, /^New$/, /^Manage$/, /mount plate/, /^Add a build$/]) {
     expect(has(stops, want), `${want} in ${JSON.stringify(stops)}`).toBe(true);
   }
 });

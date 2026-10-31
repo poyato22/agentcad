@@ -145,25 +145,28 @@ test("I-5: interview — chip vs text, multi + text, keyboard ranking, counter a
   });
 });
 
-test("M-1: in Code view the Part | Assembly switch is on top and usable", async ({ page }) => {
+test("M-1 (Plan 9 D7): in Code view the ← Assembly chip is on top and usable", async ({ page }) => {
   await page.goto("/");
   await page.locator("[data-region=app][data-conn=open]").waitFor();
+  await page.locator('[data-part="mount_plate"] .tree-name').click();       // a tree click opens the part alone
   // Plan 7 U2b: the script opens from View ▸ Part script; "Back to the model" returns
   await page.getByRole("button", { name: "View options" }).click();
   await page.locator("#view-menu [role^=menuitem]", { hasText: "Part script" }).click();
   await page.getByTestId("source-editor").waitFor();
-  const ms = page.getByTestId("mode-switch");
+  const ms = page.getByTestId("back-to-assembly");
   const bb = await ms.boundingBox();
   expect(bb).not.toBeNull();
   const onTop = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest("[data-testid]")?.getAttribute("data-testid"), [bb!.x + bb!.width / 2, bb!.y + bb!.height / 2]);
-  expect(onTop).toBe("mode-switch");
+  expect(onTop).toBe("back-to-assembly");
   const back = page.getByRole("button", { name: "Back to the model" });
   const bk = await back.boundingBox();
-  expect(Math.abs(bk!.y + bk!.height / 2 - (bb!.y + bb!.height / 2))).toBeLessThan(2);   // one row with the switch
+  expect(Math.abs(bk!.y + bk!.height / 2 - (bb!.y + bb!.height / 2))).toBeLessThan(2);   // one row with the chip
   expect(bk!.x).toBeGreaterThan(bb!.x + bb!.width);                                      // after it, not over it
-  await shots(page, "m1-code-view-mode-switch", page.locator(".vp").first());
+  await shots(page, "m1-code-view-back-to-assembly", page.locator(".vp").first());
   await back.click();
   await expect(page.getByTestId("source-editor")).toHaveCount(0);
+  await ms.click();
+  await expect(page.getByTestId("assembly-view")).toBeVisible();
 });
 
 test("M-3: the Into build picker follows a build-tab switch after a pick", async ({ page, fake }) => {

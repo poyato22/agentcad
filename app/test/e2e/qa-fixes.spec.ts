@@ -25,7 +25,6 @@ async function open(page: Page) {
   await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
 }
 const manager = (page: Page) => page.getByRole("dialog", { name: "Agent manager" });
-const historyRow = (page: Page, id: string) => page.locator(`[data-testid=run-row][data-run="${id}"]`);
 
 test("C3_activity_is_seeded_on_load_so_the_pill_shows_a_working_run", async ({ page, fake }) => {
   await fake.reset("base");
@@ -50,10 +49,10 @@ test("C2_a_pending_question_comes_back_after_a_reload", async ({ page, fake }) =
   await expect(page.locator(".activity-pill")).toContainText("1 waiting");
 });
 
-test("C5_a_rename_in_the_manager_shows_in_history_and_the_switcher", async ({ page, fake }) => {
+test("C5_a_rename_in_the_manager_sticks", async ({ page, fake }) => {
   await fake.reset({ ...BASE, runs: [...BASE.runs, run("r_crash")] });
   await open(page);
-  await expect(historyRow(page, "r_crash")).toContainText("designer · crash now please");
+  // Plan 9 D9: the left pane's History is gone (the BOM took its place); the manager lists runs
   await page.keyboard.press("Meta+Shift+KeyA");
   await manager(page).getByRole("button", { name: "Advanced ▸" }).click();
   await manager(page).getByRole("tab", { name: "All runs" }).click();   // the dense run tree (R10: the simple Agents view is the default)
@@ -63,16 +62,11 @@ test("C5_a_rename_in_the_manager_shows_in_history_and_the_switcher", async ({ pa
   await row.getByRole("textbox", { name: "Run title" }).press("Enter");
   await expect(row).toContainText("QA renamed run");
   await page.keyboard.press("Escape");
-  await expect(historyRow(page, "r_crash")).toContainText("designer · QA renamed run");
-  await historyRow(page, "r_crash").click();
-  await expect(page.locator("[data-run-switcher] [data-run-label]").first()).toContainText("QA renamed run");
 });
 
-test("C6_a_deleted_run_leaves_history_and_cannot_be_opened", async ({ page, fake }) => {
+test("C6_a_deleted_run_leaves_the_manager_and_cannot_be_opened", async ({ page, fake }) => {
   await fake.reset({ ...BASE, runs: [...BASE.runs, run("r_zulu", { task: "hello zulu" }), run("r_old1", { task: "old one" }), run("r_old2", { task: "old two" })] });
   await open(page);
-  await historyRow(page, "r_zulu").click();
-  await expect(historyRow(page, "r_zulu")).toBeVisible();
   await page.keyboard.press("Meta+Shift+KeyA");
   await manager(page).getByRole("button", { name: "Advanced ▸" }).click();
   await manager(page).getByRole("tab", { name: "All runs" }).click();   // the dense run tree
@@ -80,16 +74,15 @@ test("C6_a_deleted_run_leaves_history_and_cannot_be_opened", async ({ page, fake
   await row.getByRole("button", { name: "Delete", exact: true }).click();
   await row.getByRole("button", { name: "Confirm delete" }).click();
   await expect(row).toHaveCount(0);
-  // Clean up deletes the rest; History follows
+  // Clean up deletes the rest
   await manager(page).getByRole("button", { name: "Clean up…" }).click();
   await manager(page).getByRole("combobox", { name: "Age" }).selectOption("null");
   await manager(page).getByRole("button", { name: "Check" }).click();
   await manager(page).getByRole("button", { name: /^Delete \d+ runs?$/ }).click();
   await manager(page).getByRole("button", { name: /^Really delete/ }).click();
   await expect(manager(page).locator("[data-cleanup-outcome]")).toBeVisible();
+  for (const id of ["r_zulu", "r_old1", "r_old2"]) await expect(manager(page).locator(`[data-run-row="${id}"]`)).toHaveCount(0);
   await page.keyboard.press("Escape");
-  for (const id of ["r_zulu", "r_old1", "r_old2"]) await expect(historyRow(page, id)).toHaveCount(0);
-  await expect(historyRow(page, RUN)).toBeVisible();
   // the selection moved off the deleted run: the switcher never names it
   await expect(page.locator("[data-run-switcher]")).not.toContainText("hello zulu");
 });

@@ -129,7 +129,6 @@ export function AssemblyView(): JSX.Element {
     const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
     ro?.observe(host);
     const offPose = ctl.onPose((pose) => scene?.setPose(pose));
-    void ctl.open();
     return () => {
       ro?.disconnect();
       offPose();
@@ -141,6 +140,12 @@ export function AssemblyView(): JSX.Element {
       templates.current.clear();
     };
   }, []);
+
+  // the active build's assembly (a build switch re-opens it, onBuildSwitch above)
+  const build = activeBuildId.value;
+  useEffect(() => {
+    if (build && (ctl.projectId.peek() !== build || ctl.data.peek() === null)) void ctl.open(build);
+  }, [build]);
 
   // part geometry: one GLB per part in the assembly, refetched when the part is rebuilt
   const used = [...new Set((data?.instances ?? []).map((i) => i.part_id))];
@@ -180,19 +185,28 @@ export function AssemblyView(): JSX.Element {
   }, [data, templateTick, ctl.parts.value]);
 
   // a rebuilt part (the global part list moved on): re-read the build's parts
-  useEffect(() => effect(() => {
-    void storeParts.value;
-    void ctl.reloadParts();
-  }), []);
+  // (only on a real change after the assembly loaded: the first list is the one open() read)
+  useEffect(() => {
+    let seen: string | null = null;
+    return effect(() => {
+      const key = storeParts.value.map((p) => `${p.part_id}@${p.mtime}@${p.version ?? 0}@${p.color ?? ""}`).join(",");
+      const loaded = ctl.data.value !== null;
+      if (!loaded) return;
+      if (seen !== null && seen !== key) void ctl.reloadParts();
+      seen = key;
+    });
+  }, []);
 
   useEffect(() => { sceneRef.current?.setSelected(ctl.selected.value); }, [ctl.selected.value]);
   useEffect(() => { sceneRef.current?.setArriving(ctl.arriving.value); }, [ctl.arriving.value]);
 
   const it = ctl.interference.value;
+  // exploded, the clash blocks would hang where the parts were: they show assembled only
+  const apart = assemblyModes.value.explode > 0;
   useEffect(() => {
     const byName = (n: string) => (data?.instances ?? []).filter((i) => (i.name || i.id) === n).map((i) => i.id);
-    sceneRef.current?.setInterference(it.items.map((x) => ({ a: byName(x.a), b: byName(x.b), text: `${x.a} · ${x.b}  ${fmtVolume(x.volume_mm3)}` })));
-  }, [it, data]);
+    sceneRef.current?.setInterference(apart ? [] : it.items.map((x) => ({ a: byName(x.a), b: byName(x.b), text: `${x.a} · ${x.b}  ${fmtVolume(x.volume_mm3)}` })));
+  }, [it, data, apart]);
 
   // ---- Play: the full-window view
   const imm = immersive.value;

@@ -1,7 +1,7 @@
 // The final review's app fixes (final-678-app.md) that have no better home: the layout skeleton's
 // row (I4b) and the "All parts" toggle's place (I3).
 import type { PartSummary } from "../../src/api/types";
-import { expect, test } from "./fixtures";
+import { expect, openPartView, test } from "./fixtures";
 import { CORE_URL } from "./ports";
 
 test.beforeEach(async ({ fake, page }) => {
@@ -74,6 +74,10 @@ test("the part row's ⋯ is a full hit target (m8)", async ({ page }) => {
 
 test("All parts sits in the viewer's tool row, not over a panel, and Assembly view doesn't offer it (I3)", async ({ page }) => {
   await page.goto("/");
+  // Plan 9 D7: the build view (the assembly) has no All parts; an opened part does
+  await expect(page.getByTestId("assembly-view")).toBeVisible();
+  await expect(page.getByRole("button", { name: "All parts" })).toHaveCount(0);
+  await openPartView(page);
   const toggle = page.getByRole("button", { name: "All parts" });
   const view = page.getByRole("button", { name: "View options" });
   await expect(toggle).toBeVisible();
@@ -81,6 +85,6 @@ test("All parts sits in the viewer's tool row, not over a panel, and Assembly vi
   const v = (await view.boundingBox())!;
   expect(Math.abs((t.y + t.height / 2) - (v.y + v.height / 2))).toBeLessThan(2);   // one row
   expect(t.x + t.width).toBeLessThanOrEqual(v.x);                                    // left of View ▾
-  await page.getByRole("radio", { name: "Assembly" }).click();
+  await page.getByTestId("back-to-assembly").click();
   await expect(page.getByRole("button", { name: "All parts" })).toHaveCount(0);
 });

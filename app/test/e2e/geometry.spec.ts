@@ -2,7 +2,7 @@
 // presented-view cards in the thread, the full-window view and the model warning.
 // Chromium with SwiftShader software WebGL (stencil buffer included).
 import type { Page } from "@playwright/test";
-import { expect, test } from "./fixtures";
+import { expect, openPartView, test } from "./fixtures";
 
 test.use({ launchOptions: { args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] } });
 
@@ -19,6 +19,7 @@ async function viewItem(page: Page, label: string): Promise<void> {
 
 async function openDesign(page: Page): Promise<void> {
   await page.goto("/");
+  await openPartView(page);
   await expect(page.locator("[data-testid=viewer-canvas]")).toHaveAttribute("data-bbox-size", /.+/, { timeout: 15_000 });
 }
 

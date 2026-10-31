@@ -64,6 +64,9 @@ test("font_is_iosevka_everywhere_and_no_ibm_plex", async ({ page }) => {
     const skip = new Set(["SCRIPT", "STYLE", "CANVAS"]);
     for (const el of [document.body, ...Array.from(document.body.querySelectorAll("*"))]) {
       if (skip.has(el.tagName)) continue;
+      // Plan 9 visual spec: the build view's surfaces (left pane, assembly pill) set UI text in
+      // Instrument Sans, numbers in Iosevka (the shell task moves the rest over)
+      if (el.closest(".left-pane, .asm, .pconfirm")) continue;
       const ff = getComputedStyle(el).fontFamily;
       if (!ff) continue; // SVG and the like can report no family
       if (/ibm plex/i.test(ff)) out.push(`ibm-plex: ${el.tagName} ${ff}`);
@@ -323,7 +326,9 @@ test("square_corners", async ({ page }) => {
     document.body.append(host);
   });
   const radii = await page.evaluate(() =>
-    [...document.querySelectorAll("button, input, textarea, select, [data-card]")].map((el) => getComputedStyle(el).borderRadius));
+    // Plan 9 visual spec: the build view's floating surfaces are rounded (the shell task moves the rest over)
+    [...document.querySelectorAll("button, input, textarea, select, [data-card]")].filter((el) => !el.closest(".left-pane, .asm, .pconfirm"))
+      .map((el) => getComputedStyle(el).borderRadius));
   expect(radii.length).toBeGreaterThanOrEqual(3);
   for (const r of radii) expect(r).toBe("0px");
 });
@@ -374,10 +379,11 @@ test("connects_to_fake_core_without_errors", async ({ page, fake }) => {
   // builds (GET /projects + the profile's tabs); A7: the console spec strip loads the active
   // build's spec and studies. (Plan 7 U2b: no Variables panel, so no GET /parts/{id}/source on boot.)
   await expect.poll(async () => (await fake.calls()).map((c) => c.path.replace(/^\/projects\/[^/]+\//, "/projects/{id}/")).filter((p) => p !== "/context").sort()).toEqual(
-    ["/approvals", "/onshape/budget", "/onshape/budget", "/parts", "/parts/mount_plate/model.glb", "/printers", "/profile", "/profile",
+    // Plan 9: the build view loads the build's assembly (and its parts), the left pane the BOM
+    ["/approvals", "/onshape/budget", "/onshape/budget", "/parts", "/parts", "/printers", "/profile", "/profile",
       // C-2/C-3: the running run's live activity and open questions are seeded on connect (GET
       // /runs/{id} carries `pending`, as the real core's does, so no GET /runs/{id}/pending)
-      "/projects", "/projects/{id}/spec", "/projects/{id}/studies", "/runs", "/runs/b7c79a57cbb4", "/runs/b7c79a57cbb4/steps", "/setup", "/status"]);
+      "/projects", "/projects/{id}/assembly", "/projects/{id}/bom", "/projects/{id}/bom", "/projects/{id}/spec", "/projects/{id}/studies", "/runs", "/runs/b7c79a57cbb4", "/runs/b7c79a57cbb4/steps", "/setup", "/status"]);
   // PUT /context goes out 150 ms after the session starts (state/context.ts debounce)
   await expect.poll(async () => (await fake.calls()).filter((c) => c.path === "/context").length).toBeGreaterThanOrEqual(1);
   const ctx = (await fake.calls()).filter((c) => c.path === "/context");

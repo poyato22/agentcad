@@ -21,7 +21,7 @@
 .asm-pill {
   position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 6;
   display: flex; align-items: center; gap: 2px; padding: 4px; max-width: calc(100% - 32px);
-  flex-wrap: wrap; justify-content: center;
+  flex-wrap: nowrap; justify-content: center; white-space: nowrap;
 }
 .pill-btn {
   display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px;
@@ -42,10 +42,10 @@
 }
 .pill-axis:hover { color: var(--ink); }
 .pill-axis[aria-pressed="true"] { color: var(--ink); background: var(--paper); }
-.pill-range { width: 168px; accent-color: var(--blue); }
+.pill-range { width: clamp(72px, 11vw, 168px); accent-color: var(--blue); }
 .pill-range:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; border-radius: 4px !important; }
 .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
-.pill-val { min-width: 62px; font-size: 11px; color: var(--ink); text-align: right; }
+.pill-val { min-width: 56px; font-size: 11px; color: var(--ink); text-align: right; }
 .pill-chip {
   display: inline-flex; align-items: center; gap: 6px; height: 24px; margin-left: 4px; padding: 0 9px;
   border-radius: 7px !important; font-size: 11px; color: var(--ink); background: var(--raised, var(--paper2)); cursor: default;

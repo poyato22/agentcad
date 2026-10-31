@@ -12,7 +12,7 @@ test.beforeEach(async ({ fake, page }) => {
 });
 
 test("the parts list shows one total per currency, estimates and the unpriced count, edits and exports", async ({ page, fake }) => {
-  await page.getByRole("button", { name: "Parts list", exact: true }).click();
+  await page.getByTestId("bom-summary").getByRole("button", { name: "Open" }).click();   // Plan 9 D9: the left surface's BOM section
   await expect(page.locator("[data-bom-page]")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Made in-house" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Bought" })).toBeVisible();
@@ -70,7 +70,7 @@ test("the part card loads from the core and adds itself to its build's parts lis
   await expect(card.getByRole("button", { name: /is in the parts list/ })).toBeDisabled();
   const post = (await fake.calls()).find((c) => c.method === "POST" && /\/bom$/.test(c.path));
   expect(Object.keys(post?.body as object).sort()).toEqual(["catalog_id", "currency", "kind", "name", "qty", "specs", "unit_cost", "url", "vendor"]);
-  await page.getByRole("button", { name: "Parts list", exact: true }).click();
+  await page.getByTestId("bom-summary").getByRole("button", { name: "Open" }).click();   // Plan 9 D9: the left surface's BOM section
   await expect(page.locator("[data-bom-page]").getByText("Micro servo - TowerPro SG92R")).toBeVisible();
 });
 

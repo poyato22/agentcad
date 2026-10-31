@@ -4,6 +4,7 @@
 import type { AnnounceKind, AnnounceRef } from "../../api/types";
 import { actions } from "../../state/store";
 import { setPage } from "../pages/router";
+import { openPart } from "../assembly/focus";
 
 export interface JumpInput { kind: string; ref: AnnounceRef; projectId: string | null; jointId: string | null }
 export interface Jump { label: string; go: () => void }
@@ -17,7 +18,7 @@ export function registerAnnounceJump(kind: string, r: Resolver): () => void {
   return () => { if (resolvers.get(kind) === r) resolvers.delete(kind); };
 }
 
-const showPart = (id: string): Jump => ({ label: "Show part", go: () => { setPage("design"); actions.selectPart(id); } });
+const showPart = (id: string): Jump => ({ label: "Show part", go: () => { setPage("design"); openPart(id); } });
 const openAgent = (id: string): Jump => ({ label: "Open agent", go: () => actions.selectRun(id) });
 
 /** The defaults, for targets the console can reach itself. */

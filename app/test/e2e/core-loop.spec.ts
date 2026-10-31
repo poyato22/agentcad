@@ -2,7 +2,7 @@
 // it work, review the change, approve it from the card, see it finish. Plus the stream-gap,
 // token-rotation and stop-all paths, and the visual rules (§5.1) over the whole running app.
 import type { Page } from "@playwright/test";
-import { expect, test, useDetailsView, type FakeControl } from "./fixtures";
+import { expect, openPartView, test, useDetailsView, type FakeControl } from "./fixtures";
 import { isAutoNumbered } from "../../src/lib/names";
 import { CORE_TOKEN, CORE_URL } from "./ports";
 
@@ -20,6 +20,7 @@ const rows = (page: Page, kind?: string) => page.locator(kind ? `[data-row][data
 async function open(page: Page): Promise<void> {
   await page.goto("/");
   await expect(app(page)).toHaveAttribute("data-conn", "open");
+  await openPartView(page);              // Plan 9 D7: the part viewer is one tree click away
 }
 
 /** ⌘N → designer + task → Start. Returns the new run id (from the fake core's call log). */
