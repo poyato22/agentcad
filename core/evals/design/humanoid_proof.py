@@ -22,9 +22,19 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE))
 
-import preview  # noqa: E402
+
+def _load_preview():
+    """evals/design/preview.py, loaded by path (no sys.path change: nothing can shadow it)."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("mises_design_eval_preview",
+                                                  HERE / "preview.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+preview = _load_preview()
 
 
 def _overlap(a, b) -> float:
@@ -76,7 +86,9 @@ def main(argv: list[str] | None = None) -> int:
     upright = a.kind == "humanoid"
     hero = "hero" if upright else "hero_x"
     aspect = 0.75 if upright else 1.3
-    shots = [("hero", hero, "shaded"), ("front", "front", "shaded"),
+    # "front" looks at the model's face and "side" at its profile: a humanoid faces -Y (the
+    # camera on -Y is its front); a car or a dog faces +X (the camera on +X is its front)
+    shots = [("hero", hero, "shaded"), ("front", "front" if upright else "side", "shaded"),
              ("side", "side" if upright else "front", "shaded"), ("rear34", "rear34", "shaded"),
              ("hero_zebra", hero, "zebra")]
     sheet = []
@@ -85,8 +97,9 @@ def main(argv: list[str] | None = None) -> int:
         (out / f"{a.kind}_{name}.png").write_bytes(png)
         sheet.append((f"{a.kind} {name}", png))
     m_items = [preview.Item(n, s, "joint") for n, s in massing.parts.items()]
-    png = preview.render_preview(m_items, "front" if upright else "front", a.size, "silhouette",
-                                 aspect=aspect, lines=False)
+    # the silhouette that reads the archetype: a humanoid from the front, a car or dog in profile
+    png = preview.render_preview(m_items, "front", a.size, "silhouette", aspect=aspect,
+                                 lines=False)
     (out / f"{a.kind}_massing.png").write_bytes(png)
     sheet.append((f"{a.kind} massing silhouette", png))
     (out / f"{a.kind}_sheet.png").write_bytes(preview.contact_sheet(sheet, cols=3, cell=480))

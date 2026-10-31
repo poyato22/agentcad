@@ -186,6 +186,8 @@ class Runtime:
         register_import_tools(self.registry)
         register_appearance_tools(self.registry)
         register_view_tools(self.registry)
+        from .design_tools import register_design_tools     # Plan 9 G-B
+        register_design_tools(self.registry)
         self.orchestrator = Orchestrator(self)
         self.started_at = time.time()
         self.catalog = Catalog(self.store)
@@ -781,8 +783,9 @@ class Runtime:
             from .orchestrator.lead import lead_definition
             defn = lead_definition(defn)
         shape = self._note_shape_complexity(run.id, prompt)
-        design = self._note_design_class(run.id, prompt, parent_id,
-                                         await self._design_model_score(prompt, prof))
+        design = self._note_design_class(run.id, prompt, parent_id)
+        if parent_id is None:        # a sub-agent inherits; only a top-level request is rated
+            self._design_model_rubric(run.id, prompt, prof)
         defn = self._design_rules_for(defn, role, design)
         classes = set(SafetyClass) if allowed_classes is None else set(allowed_classes)
         self.store.create_policy(run.id, list(edit_scope), list(read_scope), caps,
@@ -932,35 +935,90 @@ class Runtime:
             log.debug("could not store shape_complexity for %s", run_id, exc_info=True)
         return est
 
-    def _note_design_class(self, run_id: str, prompt: str, parent_id: str | None = None,
-                           model: float | None = None) -> dict:
-        """Classify how design-heavy the request is (D27), store it on the run as
-        `design_class`. A sub-agent inherits its lead's class unless its own task scores
-        higher; a later user message may raise the class, never lower it. Never fatal."""
+    def _user_design_class(self, run_id: str) -> dict | None:
+        """The class the user set on the run's build (PATCH /projects/{id}), if any."""
         from . import design_intensity as design_mod
-        dc = design_mod.combine(design_mod.design_intensity(prompt), model)
         try:
-            prior = self.store.get_run(run_id).design_class
+            pid = self.store.get_run(run_id).project_id
+            cls = self.store.project_design_class(pid) if pid else None
+        except Exception:  # noqa: BLE001
+            return None
+        return design_mod.user_override(cls) if cls else None
+
+    def _note_design_class(self, run_id: str, prompt: str, parent_id: str | None = None) -> dict:
+        """Classify how design-heavy the request is (D27) and store it on the run as
+        `design_class`. The user's own class on the build always wins; otherwise a sub-agent
+        inherits its lead's class unless its own task scores higher. Never fatal."""
+        from . import design_intensity as design_mod
+        dc = self._user_design_class(run_id) or design_mod.design_intensity(prompt)
+        try:
             parent = self.store.get_run(parent_id).design_class if parent_id else None
-            dc = design_mod.strongest(design_mod.strongest(dc, parent), prior) or dc
+            if dc.get("source") != "user":
+                dc = design_mod.strongest(dc, parent) or dc
             self.store.set_design_class(run_id, dc)
         except Exception:  # noqa: BLE001 - a process hint must never break a run
             log.debug("could not store design_class for %s", run_id, exc_info=True)
         return dc
 
-    async def _design_model_score(self, prompt: str, prof) -> float | None:
-        """The optional cheap-model rubric (profile `design_classifier_model`, e.g. a Haiku):
-        bounded to a few seconds, never required, any failure keeps the prior."""
+    def _design_model_rubric(self, run_id: str, prompt: str, prof) -> None:
+        """The optional cheap-model rubric (profile `design_classifier_model`, e.g. a Haiku),
+        off the critical path: a background task bounded to 2 s whose usage is billed to the
+        run. It may raise the stored class for later turns and the critique, never lower it,
+        and never past a user-set class or the user's "keep it plain"."""
         ref = getattr(prof, "design_classifier_model", None)
         if not ref or model_alias(ref) is not None:
-            return None
+            return
         from . import design_intensity as design_mod
+
+        async def rate() -> None:
+            try:
+                provider, model = self._resolve_provider(ref, prof)
+                score = await asyncio.wait_for(design_mod.model_score(
+                    provider, model, prompt,
+                    on_usage=lambda u: self.store.add_usage(
+                        run_id, input_tokens=u.input_tokens, output_tokens=u.output_tokens,
+                        usd=max(0.0, u.usd or 0.0))), 2.0)
+                cur = self.store.get_run(run_id).design_class
+                if cur and cur.get("source") != "user":
+                    new = design_mod.combine(cur, score)
+                    if new is not cur:
+                        self.store.set_design_class(run_id, new)
+            except Exception:  # noqa: BLE001 - never fatal
+                log.debug("design classifier model unavailable", exc_info=True)
+        task = asyncio.get_running_loop().create_task(rate())
+        self._bg_tasks = getattr(self, "_bg_tasks", set())
+        self._bg_tasks.add(task)
+        task.add_done_callback(self._bg_tasks.discard)
+
+    def set_build_design_class(self, project_id: str, cls: str | None) -> dict | None:
+        """PATCH /projects/{id} {design_class}: the user's class for the build (None hands it
+        back to the classifier). Every run of the build takes it now, and a live native loop's
+        prompt is refreshed; G-A's concept gate reads it from the runs."""
+        from . import design_intensity as design_mod
+        self.store.set_project_design_class(project_id, cls)
+        out = None
+        for run in self.store.list_runs(10_000, project_id=project_id):
+            dc = (design_mod.user_override(cls) if cls
+                  else design_mod.design_intensity(run.task or ""))
+            self.store.set_design_class(run.id, dc)
+            self._refresh_design_rules(run.id, dc)
+            if run.role == "lead" or out is None:
+                out = dc
+        return out if cls else None
+
+    def _refresh_design_rules(self, run_id: str, dc: dict) -> None:
+        st = self._runs.get(run_id)
+        if st is None:
+            return
         try:
-            provider, model = self._resolve_provider(ref, prof)
-            return await asyncio.wait_for(design_mod.model_score(provider, model, prompt), 8.0)
-        except Exception:  # noqa: BLE001
-            log.debug("design classifier model unavailable", exc_info=True)
-            return None
+            run = self.store.get_run(run_id)
+        except KeyError:
+            return
+        from .orchestrator.lead import lead_definition
+        base = self.definitions.get(run.agent)
+        if base is not None:
+            base = lead_definition(base) if run.role == "lead" else base
+            st.loop.defn = self._design_rules_for(base, run.role, dc)
 
     @staticmethod
     def _design_rules_for(defn, role: str | None, dc: dict | None):
@@ -981,6 +1039,40 @@ class Runtime:
             return False
         st = self._runs.get(run_id)
         return is_vision_model(st.ref if st is not None else f"{run.provider}/{run.model}")
+
+    #: how long a design critique waits for its judge sub-agent before reporting "no judge"
+    JUDGE_TIMEOUT_S = 140.0
+
+    async def judge_subagent(self, run_id: str, system: str, text: str,
+                             images: list[tuple[str, str]]) -> str | None:
+        """Plan 9 G-B (I6): a separate design judge for a run whose own model is not reachable
+        as a plain API call (a Claude Code run). The judge is a fresh sub-agent of the run on
+        the run's OWN runtime and model, with no tools (no action class allowed, empty scopes),
+        given only the rubric, the request and the renders (images). Returns its final text,
+        or None when it could not run (no session, an error, the timeout)."""
+        try:
+            run = self.store.get_run(run_id)
+        except KeyError:
+            return None
+        st = self._runs.get(run_id)
+        ref = st.ref if st is not None else f"{run.provider}/{run.model}"
+        prompt = (system + "\n\n---\n\n" + text +
+                  "\n\nYou have no tools in this run: look at the attached renders and reply "
+                  "with the one JSON object only.")
+        rid = None
+        try:
+            rid = await self.start_run("verifier", prompt, model_ref=ref, parent_id=run_id,
+                                       role="sub", title="Design judge", edit_scope=(),
+                                       read_scope=(), allowed_classes=set(),
+                                       project_id=run.project_id, images=images)
+            res = await asyncio.wait_for(self.wait(rid), self.JUDGE_TIMEOUT_S)
+        except Exception:  # noqa: BLE001 - no judge: the critique says so
+            log.warning("design judge sub-agent for %s failed", run_id, exc_info=True)
+            if rid is not None:
+                with contextlib.suppress(Exception):
+                    self.cancel(rid)
+            return None
+        return res.final_text if res.stop_reason == "end_turn" and res.final_text else None
 
     def vision_model_for(self, run_id: str):
         """(provider, model, reason) for a critique of `run_id`: the run's own model when it can
@@ -1032,8 +1124,9 @@ class Runtime:
             self.store.update_run(rid, **meta)
         self._note_shape_complexity(rid, prompt)
         # before the session starts too: its rules file carries the design-class block
-        self._note_design_class(rid, prompt, parent_id,
-                                await self._design_model_score(prompt, self.profile()))
+        self._note_design_class(rid, prompt, parent_id)
+        if parent_id is None:
+            self._design_model_rubric(rid, prompt, self.profile())
         st = self._claude[rid] = _ClaudeRun(ref=ref, first_context=first_context)
         st.slot, st.started_data = self._external_slots.pop(rid, (None, {}))
         text = prompt
@@ -1464,23 +1557,26 @@ class Runtime:
             budget_mod.start_turn(self.store, run_id)
 
     def _raise_design_class(self, run_id: str, text: str) -> None:
-        """A follow-up message may make a build more design-heavy ("now make it sleek"): the
-        run's class only ever rises, and a native lead's prompt picks up the new block on its
-        next turn (a Claude Code session's rules file is written when the session starts)."""
+        """A follow-up message may change the class (design_intensity.follow_up): it rises on
+        an archetype or styling signal ("now make it sleek"), falls when the user asks for
+        plain geometry ("keep it simple, just functional"), and never moves a class the user
+        set on the build. A native lead's prompt picks up the new block on its next turn (a
+        Claude Code session's rules file is written when the session starts)."""
+        from . import design_intensity as design_mod
         try:
             run = self.store.get_run(run_id)
         except KeyError:
             return
-        before = run.design_class
-        dc = self._note_design_class(run_id, text)
-        st = self._runs.get(run_id)
-        if st is None or (before or {}).get("cls") == dc.get("cls"):
+        before = self._user_design_class(run_id) or run.design_class
+        dc = design_mod.follow_up(before, text)
+        if dc is None or dc == run.design_class:
             return
-        from .orchestrator.lead import lead_definition
-        base = self.definitions.get(run.agent)
-        if base is not None:
-            base = lead_definition(base) if run.role == "lead" else base
-            st.loop.defn = self._design_rules_for(base, run.role, dc)
+        try:
+            self.store.set_design_class(run_id, dc)
+        except Exception:  # noqa: BLE001
+            return
+        if (before or {}).get("cls") != dc.get("cls"):
+            self._refresh_design_rules(run_id, dc)
 
     async def _send(self, run_id: str, text: str, log: dict | None = None) -> None:
         if self._is_claude_run(run_id):

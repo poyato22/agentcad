@@ -30,53 +30,80 @@ MIXED_AT, DESIGN_AT = 0.3, 0.65
 NEUTRAL = 0.2                    # no archetype, no styling words: engineering by default
 
 # ---- the prior: archetypes (what the thing is) set the base score ----------------------
-# (pattern, score, reason, default per-part scores). The highest-scoring archetype wins,
-# except that tooling (a mold FOR a bottle cap) overrides the product it makes, and the
-# generic enclosure archetype yields to any more specific one (a gearbox housing).
-_ARCHETYPES: list[tuple[str, float, str, dict[str, float]]] = [
-    (r"humanoid|android|biped(?:al)?(?: robot)?|optimus|\bneo\b|figure 0\d", 0.85,
+# (key, pattern, score, reason, default per-part scores). Patterns match whole words (an
+# optional plural; "bottleneck" is not a bottle, "characteristic" not a character). Precedence:
+# 1. tooling (a mold FOR a bottle cap) is tooling;
+# 2. a functional part in the main clause (before any "with ...") governs the product it is
+#    for or of ("a lamp bracket", "a phone mount for my car", "a kettle lid hinge pin"),
+#    unless the request carries explicit styling words;
+# 3. else the highest-scoring archetype; the generic enclosure yields to a specific one.
+_ARCHETYPES: list[tuple[str, str, float, str, dict[str, float]]] = [
+    ("humanoid", r"humanoid|android|biped(?:al)? robot|bipedal|(?:like |tesla )optimus|"
+     r"optimus robot|1x neo|neo (?:gamma|robot)|figure 0\d", 0.85,
      "humanoid robot: judged by how it looks and moves", {}),
-    (r"robot(?:ic)? dog|robodog|quadruped|legged robot|\bspot\b|go2|robot (?:cat|pet|animal)",
-     0.75, "legged robot animal: a consumer-facing silhouette", {}),
-    (r"car body|\bcar\b|sports car|supercar|hatchback|sedan|coupe|\bsuv\b|roadster|"
+    ("quadruped", r"robot(?:ic)? dog|robodog|quadruped|legged robot|spot robot|"
+     r"(?:like |boston dynamics )spot|unitree go2|go2 robot|robot (?:cat|pet|animal)", 0.75,
+     "legged robot animal: a consumer-facing silhouette", {}),
+    ("car", r"car body|car|sports car|supercar|hatchback|sedan|coupe|suv|roadster|"
      r"concept car|vehicle body|bodywork", 0.85, "car body: styling and proportion", {}),
-    (r"motorcycle|scooter|e-?bike|helmet", 0.75, "vehicle a rider sees and touches", {}),
-    (r"kettle|toaster|coffee (?:machine|maker)|speaker|headphones?|earbuds?|lamp|chair|"
-     r"furniture|\bwatch\b|wearable|phone|game ?controller|\bmouse\b|keyboard|vase|"
-     r"toothbrush|razor|appliance|consumer product|bottle|perfume|lighter|camera body|"
-     r"(?:robot )?vacuum|robot mower|smart speaker|thermostat|drink(?:ing)? glass",
-     0.72, "consumer product: most of its surface is customer-facing", {}),
-    (r"figurine|statue|sculpture|toy|mascot|character", 0.8, "a sculpted object", {}),
-    (r"jet engine|turbofan|turbojet|turbine engine|nacelle", 0.42,
+    ("rider_vehicle", r"motorcycle|scooter|e-?bike|helmet", 0.75,
+     "vehicle a rider sees and touches", {}),
+    ("consumer_product", r"kettle|toaster|coffee (?:machine|maker)|speaker|headphones?|"
+     r"earbuds?|lamp|chair|furniture|watch|wearable|phone|game ?controller|mouse|keyboard|"
+     r"vase|toothbrush|razor|appliance|consumer product|bottle|perfume|lighter|camera body|"
+     r"robot vacuum|vacuum robot|robot mower|smart speaker|thermostat|drinking glass", 0.72,
+     "consumer product: most of its surface is customer-facing", {}),
+    ("sculpture", r"figurine|statue|sculpture|toy|mascot|character", 0.8,
+     "a sculpted object", {}),
+    ("jet_engine", r"jet engine|turbofan|turbojet|turbine engine|nacelle", 0.42,
      "engineering core with a designed shell (the nacelle)",
      {"nacelle": 0.6, "cowl": 0.6, "spinner": 0.5, "fan disk": 0.1, "fan blade": 0.25,
       "compressor": 0.1, "turbine": 0.1, "combustor": 0.05, "shaft": 0.05, "casing": 0.2}),
-    (r"drone|quadcopter|multirotor|\bfpv\b", 0.4,
+    ("drone", r"drone|quadcopter|multirotor|fpv", 0.4,
      "a functional airframe; the canopy and arms can be styled",
      {"canopy": 0.65, "shell": 0.6, "body": 0.5, "arm": 0.35, "frame": 0.2}),
-    (r"aircraft|airplane|aeroplane|glider|fuselage|flying wing|\bb-2\b|bomber|fighter",
-     0.5, "aero surfaces are judged by flow and by eye", {}),
-    (r"robot arm|robotic arm|manipulator|cobot|gripper", 0.4,
+    ("aircraft", r"aircraft|airplane|aeroplane|glider|fuselage|flying wing|b-2|bomber|"
+     r"fighter jet", 0.5, "aero surfaces are judged by flow and by eye", {}),
+    ("robot_arm", r"robot arm|robotic arm|manipulator|cobot|gripper", 0.4,
      "a mechanism with visible covers", {"cover": 0.7, "shell": 0.7, "link": 0.45}),
-    (r"enclosure|case|housing", 0.38, "a visible enclosure", {}),
-    (r"injection mold|injection mould|\bmold\b|\bmould\b|die cast|tooling", 0.08,
+    ("enclosure", r"enclosure|case|housing", 0.38, "a visible enclosure", {}),
+    ("tooling", r"injection mold|injection mould|mold|mould|die cast|tooling", 0.08,
      "tooling: judged by moldability", {}),
-    (r"bracket|mount(?:ing)? plate|gearbox|gear train|manifold|fixture|\bjig\b|flange|"
-     r"bushing|shaft|heat ?sink|pcb|test rig|spacer|standoff|clamp|bearing block", 0.12,
+    ("functional", r"bracket|mount|mounting plate|plate|gearbox|gear train|gear|manifold|"
+     r"fixture|jig|flange|bushing|shaft|axle|hinge|pin|bolt|screw|nut|washer|lid|adapter|"
+     r"coupler|clip|heat ?sink|pcb|test rig|spacer|standoff|clamp|bearing block|"
+     r"spring|heat exchanger|bearing|pulley|sprocket", 0.12,
      "a functional part judged by fit and load", {}),
 ]
+_GENERIC = {"enclosure"}                  # yields to a more specific archetype
+_FUNCTIONAL = {"tooling", "functional"}   # govern the product they are for / of
 # ---- modifiers: styling words push up, specification words push down ---------------------
-_DESIGN_WORDS = (r"sleek|beautiful|elegant|premium|iconic|friendly|cute|aesthetic|styl(?:e|ed|"
-                 r"ing)|organic|sculpt(?:ed)?|futuristic|minimal(?:ist)?|clean lines|design "
-                 r"language|like (?:the )?(?:optimus|neo|tesla|apple|dyson|braun|porsche)|"
-                 r"concept|show ?car|good[- ]looking|looks? (?:great|good|nice)|covered|"
-                 r"fairings?|skin|shell")
-_ENG_WORDS = (r"tolerance|load|torque|\biso\b|dfm|cooling channel|ejector|draft angle|flow rate|"
-              r"stress|safety factor|fatigue|clearance|\bfit\b|press[- ]fit|rpm|pressure|"
-              r"thermal|efficien|manufacturab|cnc|machin(?:ed|ing)|weld|bolt pattern|"
-              r"compressor|turbine blade|bearing")
+_DESIGN_WORDS = (r"sleek|beautiful|elegant|premium|iconic|friendly|cute|aesthetic|"
+                 r"styl(?:e|ed|ing|ish)|organic|sculpt(?:ed|ural)?|futuristic|minimalist|"
+                 r"clean lines|design language|like (?:the )?(?:optimus|neo|tesla|apple|dyson|"
+                 r"braun|porsche)|concept|show ?car|good[- ]looking|looks? (?:great|good|nice)|"
+                 r"covered|fairings?|streamlined|gorgeous|refined")
+_ENG_WORDS = (r"tolerance|load|torque|iso|dfm|cooling channels?|ejectors?|draft angle|flow rate|"
+              r"stress|safety factor|fatigue|clearance|fit|press[- ]fit|rpm|pressure|"
+              r"thermal|efficiency|manufacturable|manufacturability|cnc|machined|machining|"
+              r"weld(?:ed|ing)?|bolt pattern|compressor|turbine blades?|bearings?")
+# the user asking for plain, functional geometry: lowers the class, even below a prior
+_DOWN_WORDS = (r"simple|plain|basic|just functional|purely functional|functional only|"
+               r"no styling|no need to style|unstyled|don'?t care (?:how|what) it looks|"
+               r"looks don'?t matter|appearance doesn'?t matter|utilitarian|no frills")
 _DESIGN_W, _ENG_W = 0.18, 0.12
-_FLOOR = {"jet engine": 0.35}           # an engineering core still has its designed nacelle
+DOWN_CAP = 0.2                           # an explicit "keep it plain" caps the score here
+_FLOOR = {"jet_engine": 0.35}            # an engineering core still has its designed nacelle
+
+
+def _word(pat: str) -> str:
+    """A whole-word pattern with an optional plural."""
+    return r"(?<![a-z0-9])(?:" + pat + r")(?:e?s)?(?![a-z0-9])"
+
+
+def _hits(pattern: str, text: str) -> list[str]:
+    return sorted({m.group(0) for m in re.finditer(_word(pattern), text)})
+
 
 # per-part words, used when parts are named (a cover is design work, a shaft is not)
 _PART_DESIGN = (r"cover|shell|fairing|cowl|nacelle|canopy|hood|bonnet|bumper|fender|door|roof|"
@@ -91,27 +118,34 @@ def classify(score: float) -> str:
     return DESIGN if score > DESIGN_AT else MIXED if score >= MIXED_AT else ENGINEERING
 
 
-def _hits(pattern: str, text: str) -> list[str]:
-    return sorted({m.group(0) for m in re.finditer(pattern, text)})
+def _main_clause(text: str) -> str:
+    """The request's head phrase: the text before its first "with" / "that" / "which"."""
+    return re.split(r"\b(?:with|that|which|including)\b", text, maxsplit=1)[0]
 
 
-_TOOLING = r"injection mold|injection mould|\bmold\b|\bmould\b|die cast|tooling"
-_WEAK = r"enclosure|case|housing"
-
-
-def _prior(text: str) -> tuple[float, list[str], dict[str, float], str | None]:
+def _prior(text: str, styled: bool):
+    """(score, reasons, per-part defaults, archetype key or None)."""
     hits = []
-    for pat, score, why, parts in _ARCHETYPES:
-        hit = re.search(r"(?<![a-z0-9])(?:" + pat + r")", text)
-        if hit:
-            hits.append((pat, score, why, parts, hit.group(0)))
+    for key, pat, score, why, parts in _ARCHETYPES:
+        m = re.search(_word(pat), text)
+        if m:
+            hits.append((key, score, why, parts, m.group(0)))
     if not hits:
         return NEUTRAL, [], {}, None
-    tooling = [h for h in hits if h[0] == _TOOLING]
-    specific = [h for h in hits if h[0] != _WEAK]
-    pat, score, why, parts, word = (tooling[0] if tooling
-                                    else max(specific or hits, key=lambda h: h[1]))
-    return score, [f"{word}: {why}"], dict(parts), word
+    head = _main_clause(text)
+    func = [h for h in hits if h[0] in _FUNCTIONAL and re.search(_word(re.escape(h[4])), head)]
+    tooling = [h for h in func if h[0] == "tooling"]
+    if tooling or (func and not styled):
+        key, score, why, parts, word = (tooling or func)[0]
+        products = [h[4] for h in hits if h[0] not in _FUNCTIONAL | _GENERIC]
+        why = why + (f" (for / of a {products[0]}: the part, not the product, is the job)"
+                     if products else "")
+        return score, [f"{word}: {why}"], dict(parts), None
+    specific = [h for h in hits if h[0] not in _GENERIC | _FUNCTIONAL] or \
+        [h for h in hits if h[0] not in _FUNCTIONAL] or hits
+    key, score, why, parts, word = max(specific, key=lambda h: h[1])
+    return score, [f"{word}: {why}"], dict(parts), (None if key in _FUNCTIONAL | _GENERIC
+                                                     else key)
 
 
 def _part_name(p) -> str:
@@ -134,38 +168,63 @@ def part_score(name: str, overall: float, defaults: dict[str, float] | None = No
     return round(overall, 2)
 
 
+def wants_plain(text: str) -> bool:
+    """True when the user explicitly asks for plain / functional geometry."""
+    return bool(_hits(_DOWN_WORDS, " ".join((text or "").lower().split())))
+
+
 def design_intensity(prompt: str, parts: Iterable | None = None) -> dict:
-    """{score 0..1, cls, per_part {name: score}, reasons [..], source "prior"} for `prompt`.
+    """{score 0..1, cls, per_part {name: score}, reasons [..], source "prior", archetype} for
+    `prompt`. `archetype` is the matched archetype key (humanoid, quadruped, car, ...) or None;
+    the prompt block names archetype-specific recipes and proportions only for it.
 
     `parts`: names (or {name}/objects with .name) of the build's parts to score one by one;
     without them, per_part holds the archetype's own defaults (e.g. a jet engine's nacelle)."""
     text = " ".join((prompt or "").lower().split())
-    base, reasons, defaults, arch = _prior(text)
     up = _hits(_DESIGN_WORDS, text)
     down = _hits(_ENG_WORDS, text)
+    plain = _hits(_DOWN_WORDS, text)
+    base, reasons, defaults, arch = _prior(text, styled=bool(up) and not plain)
     score = base
-    if up:
+    if up and not plain:
         score = 1 - (1 - score) * (1 - _DESIGN_W) ** len(up)
         reasons.append("styling words: " + ", ".join(up[:6]))
     if down:
         score = score * (1 - _ENG_W) ** len(down)
         reasons.append("specification words: " + ", ".join(down[:6]))
-    if arch is not None:
-        for key, floor in _FLOOR.items():
-            if key in arch or key in text:
-                score = max(score, floor)
+    if arch in _FLOOR:
+        score = max(score, _FLOOR[arch])
+    if plain:
+        score = min(score, DOWN_CAP)
+        reasons.append("the user asked for plain geometry: " + ", ".join(plain[:4]))
     if not reasons:
-        reasons.append("no archetype or styling signal: engineering by default (design needs evidence)")
+        reasons.append("no archetype or styling signal: engineering by default "
+                       "(design needs evidence)")
     score = round(max(0.0, min(1.0, score)), 2)
     names = [_part_name(p) for p in parts] if parts is not None else list(defaults)
     per_part = {n: part_score(n, score, defaults) for n in names if n}
     return {"score": score, "cls": classify(score), "per_part": per_part, "reasons": reasons,
-            "source": "prior"}
+            "source": "prior", "archetype": arch if classify(score) != ENGINEERING else None}
+
+
+#: what a user-set class means as a score (PATCH /projects/{id} {design_class})
+USER_SCORES = {ENGINEERING: 0.15, MIXED: 0.5, DESIGN: 0.85}
+
+
+def user_override(cls: str, archetype: str | None = None) -> dict:
+    """The class the user set on the build: it always wins over the classifier."""
+    if cls not in CLASSES:
+        raise ValueError(f"design_class must be one of {', '.join(CLASSES)}")
+    return {"score": USER_SCORES[cls], "cls": cls, "per_part": {},
+            "reasons": ["set by the user on this build"], "source": "user",
+            "archetype": archetype if cls != ENGINEERING else None}
 
 
 def combine(prior: dict, model: float | None) -> dict:
-    """research §6: d = max(prior, model rubric). A model score only ever raises the class."""
-    if model is None or not 0.0 <= model <= 1.0 or model <= prior["score"]:
+    """research §6: d = max(prior, model rubric). A model score only ever raises the class,
+    and never past the user's own "keep it plain"."""
+    if (model is None or not 0.0 <= model <= 1.0 or model <= prior["score"]
+            or any("plain geometry" in r for r in prior.get("reasons", []))):
         return prior
     out = dict(prior)
     out.update(score=round(model, 2), cls=classify(model), source="prior+model",
@@ -175,12 +234,33 @@ def combine(prior: dict, model: float | None) -> dict:
 
 def strongest(a: dict | None, b: dict | None) -> dict | None:
     """The more design-heavy of two estimates (a sub-agent inherits its lead's class unless
-    its own task scores higher)."""
+    its own task scores higher). A user-set class always wins."""
+    for d in (a, b):
+        if d and d.get("source") == "user":
+            return d
     if not a:
         return b
     if not b:
         return a
     return a if a.get("score", 0) >= b.get("score", 0) else b
+
+
+def follow_up(current: dict | None, text: str) -> dict | None:
+    """The class after a follow-up message. A user-set class never changes here. An explicit
+    "keep it plain" lowers it; otherwise it rises only on a follow-up with an archetype or
+    styling signal that is not a functional-part request ("add a phone mount" never raises)."""
+    if current and current.get("source") == "user":
+        return current
+    new = design_intensity(text)
+    if any("plain geometry" in r for r in new["reasons"]):
+        return new
+    if current is None:
+        return new
+    signal = new.get("archetype") is not None or any(r.startswith("styling words")
+                                                      for r in new["reasons"])
+    if signal and new["score"] > current.get("score", 0):
+        return new
+    return current
 
 
 # ---- optional cheap-model rubric ----------------------------------------------------------
@@ -194,9 +274,11 @@ RUBRIC_SYSTEM = (
     'ONE JSON object and nothing else: {"score": <0..1>}')
 
 
-async def model_score(provider, model: str, prompt: str, *, max_tokens: int = 60) -> float | None:
-    """A cheap model's 0..1 design score for `prompt`, or None on any failure (never fatal)."""
-    from .providers.base import ModelRequest, TextDelta
+async def model_score(provider, model: str, prompt: str, *, max_tokens: int = 60,
+                      on_usage=None) -> float | None:
+    """A cheap model's 0..1 design score for `prompt`, or None on any failure (never fatal).
+    `on_usage(Usage)` bills the call (the runtime adds it to the run's usage)."""
+    from .providers.base import ModelRequest, TextDelta, Usage
     from .types import Message, TextBlock
 
     req = ModelRequest(model=model, system=RUBRIC_SYSTEM, max_tokens=max_tokens,
@@ -207,6 +289,8 @@ async def model_score(provider, model: str, prompt: str, *, max_tokens: int = 60
         async for ev in provider.stream(req):
             if isinstance(ev, TextDelta):
                 parts.append(ev.text)
+            elif isinstance(ev, Usage) and on_usage is not None:
+                on_usage(ev)
         raw = "".join(parts)
         i, j = raw.find("{"), raw.rfind("}")
         val = json.loads(raw[i:j + 1]).get("score") if 0 <= i < j else None
@@ -290,14 +374,30 @@ loft: shell it as outer loft minus inset loft and `ms.trust()` it.
 boolean edges. Keep loft seams off split planes.
 - At most 3 CMF materials, by hierarchy (e.g. light gloss shells, dark matte joints, one \
 accent); set them with `part_set_appearance`.
-- Proportion in units first (heads, wheel diameters, body:leg), then surfaces, then detail. \
-Start an archetype from `ms.humanoid`, `ms.quadruped` or `ms.car_body` and edit its stations.\
+- Proportion first, in the units the product is judged by (set them in the brief), then \
+surfaces, then detail.\
 """
+
+#: archetype-specific guidance, emitted only when the request matched that archetype (a kettle
+#: build never hears about head heights or wheel diameters)
+ARCHETYPE_NOTES = {
+    "humanoid": "## Archetype: humanoid\n- Proportion unit: head heights (7.5-8 reads heroic); "
+                "thigh girth well above calf, upper arm above forearm.\n- Start from "
+                "`ms.humanoid(...)` (`recipe_doc('humanoid')`) and edit its stations; a pitch "
+                "proportion note reads like \"8 heads, 1.4:1 shoulder:hip\".",
+    "quadruped": "## Archetype: legged robot animal\n- Proportion unit: body length to leg "
+                 "length (about 2:1 reads planted); thigh shells house the hip and knee "
+                 "actuators, calves taper to the foot.\n- Start from `ms.quadruped(...)` "
+                 "(`recipe_doc('quadruped')`) and edit its stations.",
+    "car": "## Archetype: car body\n- Proportion unit: wheel diameters (wheelbase about 3.5-4); "
+           "greenhouse about a third of the height; arches about 1.2x the tyre radius.\n- Start "
+           "from `ms.car_body(...)` (`recipe_doc('car_body')`) and edit its stations.",
+}
 
 _STAGES = """\
 ## Design stages (gate each one)
 Brief (one design-intent sentence) -> mood and pitch -> massing sketch (rough solids only, \
-in proportion units; `shell=False` archetypes) -> skeleton (hardpoints, actuator envelopes, \
+in proportion units) -> skeleton (hardpoints, actuator envelopes, \
 design curves: silhouette, spine or beltline) -> primary surfaces -> split lines and CMF -> \
 detail -> engineering pass (walls, ribs, draft, mass, range-of-motion sweep). No detail \
 geometry before the massing is approved.
@@ -311,11 +411,11 @@ baseline (covers only where needed):
 - a name and 3 mood words ("Monolith: calm, appliance, soft-white");
 - a black silhouette pair (front and side) from a 30-second massing variant on the same \
 skeleton, and a 3/4 sketch with 2-4 callouts;
-- a proportion note ("8 heads, 1.4:1 shoulder:hip"), a CMF swatch (2-3 colours / finishes);
+- a proportion note in the product's own units, a CMF swatch (2-3 colours / finishes);
 - a trade-offs table: mass, part count, molding complexity, cost tier, risk, what is given up;
-- your recommendation with one reason; the user picks, mixes ("A's torso + B's legs") or \
-comments. Directions differ in silhouette and proportion, not just colour. Re-pitch later only \
-for a genuinely open decision (e.g. the head), with at most 2 options.
+- your recommendation with one reason; the user picks, mixes two directions region by \
+region, or comments. Directions differ in silhouette and proportion, not just colour. Re-pitch \
+later only for a genuinely open decision about one region, with at most 2 options.
 """
 
 
@@ -344,8 +444,8 @@ def prompt_section(dc: dict | None) -> str:
         body = [
             "## Process for this build",
             f"- Concept: {k['concept']['note']}. Skeleton: {', '.join(k['skeleton'])}.",
-            "- Surfacing: covers over a functional core: the visible shell (nacelle, canopy, "
-            "covers) follows the surfacing rules below; the functional core is engineered "
+            "- Surfacing: covers over a functional core: the visible shell follows the "
+            "surfacing rules below; the functional core is engineered "
             "(prismatic, fillets for stress, DFM hard gate on structural parts).",
             f"- Critique: up to {crit['rounds']} rounds; weights {w}.",
             parts_line,
@@ -358,11 +458,14 @@ def prompt_section(dc: dict | None) -> str:
             f"- Skeleton: {', '.join(k['skeleton'])} (`skeleton_set` before any cover part).",
             "- DFM: warn during design; hard gate before release.",
             f"- Critique: up to {crit['rounds']} rounds, hero 3/4, side, front and a zebra view "
-            f"for surfaces; weights {w}; switch strategy when an issue survives a round. The "
-            "final design review uses a stronger judge (" + str(crit["final_review"]) + ").",
+            f"for surfaces; weights {w}; switch strategy when an issue survives a round. "
+            "Before release, run `design_review_final` (a fresh judge, the full rubric).",
             parts_line,
             _SURFACING, "", _STAGES, _PITCH,
         ]
+    note = ARCHETYPE_NOTES.get(dc.get("archetype") or "")
+    if note:
+        body += ["", note]
     return "\n".join([*head, *[b for b in body if b != ""], SECTION_END])
 
 

@@ -7,7 +7,7 @@ owned by Task C6; this router covers the rest of the Builds and Part-tree contra
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse
@@ -31,6 +31,9 @@ class NewProject(BaseModel):
 
 class PatchProject(BaseModel):
     name: str | None = None
+    # Plan 9 G-B (D27): the user's design class for the build; "auto" hands it back to the
+    # classifier. The user's choice always wins over the classifier.
+    design_class: Literal["engineering", "mixed", "design", "auto"] | None = None
 
 
 class Reorder(BaseModel):
@@ -81,10 +84,18 @@ def build_projects_router(runtime: Runtime) -> APIRouter:
 
     @router.patch("/projects/{project_id}")
     async def patch_project(project_id: str, body: PatchProject):
+        if body.design_class is not None:
+            _projects._project_or_404(store, project_id)
+            dc = runtime.set_build_design_class(
+                project_id, None if body.design_class == "auto" else body.design_class)
         if body.name is None:
-            return _projects.project_view(store, _projects._project_or_404(store, project_id),
-                                          _home())
-        return _projects.rename_project(store, project_id, body.name)
+            out = _projects.project_view(store, _projects._project_or_404(store, project_id),
+                                         _home())
+        else:
+            out = _projects.rename_project(store, project_id, body.name)
+        if body.design_class is not None:
+            out = {**out, "design_class": dc}
+        return out
 
     @router.delete("/projects/{project_id}")
     async def trash_project(project_id: str):

@@ -15,6 +15,7 @@ OUT gets:
 
 Pair two runs (two models, or two judge settings) with preference_sheet.py. Not run in CI:
 it spends real model time. Live model calls go through the user's own configured runtime.
+Unattended: every approval request is auto-REJECTED (never approved; see reject_approvals).
 """
 from __future__ import annotations
 
@@ -28,9 +29,19 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE))
 
-import preview  # noqa: E402  (evals/design/preview.py)
+
+def _load_preview():
+    """evals/design/preview.py, loaded by path (no sys.path change: nothing can shadow it)."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("mises_design_eval_preview",
+                                                  HERE / "preview.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+preview = _load_preview()
 
 
 def load_prompts(only: str | None = None) -> list[dict]:
@@ -89,6 +100,22 @@ def render_build(rt, project_id: str, out: Path) -> dict:
     return {"parts": [i.name for i in items], "bars": bars}
 
 
+async def reject_approvals(rt) -> None:
+    """Unattended eval: every approval an agent asks for is REJECTED at once (never approved),
+    so a needs_approval action neither waits out the timeout nor happens. The rejection is
+    recorded as decided by "design-eval" and the agent sees a normal refusal."""
+    sub = rt.events.subscribe()
+    while True:
+        ev = await sub.queue.get()
+        if ev.type != "approval_requested":
+            continue
+        try:
+            rt.approvals.decide(ev.data["id"], ev.data["payload_hash"], approve=False,
+                                decided_by="design-eval (unattended: auto-reject)")
+        except Exception as e:  # noqa: BLE001 - already decided or expired
+            print(f"   approval {ev.data.get('id')}: {e}", flush=True)
+
+
 async def run_one(rt, item: dict, model: str, out: Path, timeout: float) -> dict:
     from mises import projects
     from mises.orchestrator import lead
@@ -131,6 +158,7 @@ async def main(argv: list[str] | None = None) -> int:
     a.out.mkdir(parents=True, exist_ok=True)
     rt = Runtime(home=home)
     _port, _token, handle = await serve_async(rt, write_server_json=False)
+    rejector = asyncio.get_running_loop().create_task(reject_approvals(rt))
     rows = []
     try:
         for item in load_prompts(a.only):
@@ -139,6 +167,7 @@ async def main(argv: list[str] | None = None) -> int:
             print(f"   -> {rows[-1].get('stop_reason') or rows[-1].get('error')} "
                   f"{len(rows[-1]['parts'])} parts, {rows[-1]['seconds']} s", flush=True)
     finally:
+        rejector.cancel()
         await rt.close_claude_sessions()
         await handle.stop()
         await rt.aclose()

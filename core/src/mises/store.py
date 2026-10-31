@@ -416,6 +416,19 @@ class Store:
         with self._tx() as db:
             db.execute("INSERT OR REPLACE INTO meta VALUES (?,?)", (key, value))
 
+    # Plan 9 G-B: the user's design-class override on a build (engineering|mixed|design), kept
+    # in meta so the project payload is unchanged; None = let the classifier decide
+    def project_design_class(self, project_id: str) -> str | None:
+        return self.meta_get(f"design_class:{project_id}")
+
+    def set_project_design_class(self, project_id: str, cls: str | None) -> None:
+        with self._tx() as db:
+            if cls is None:
+                db.execute("DELETE FROM meta WHERE key=?", (f"design_class:{project_id}",))
+            else:
+                db.execute("INSERT OR REPLACE INTO meta VALUES (?,?)",
+                           (f"design_class:{project_id}", cls))
+
     def _ensure_default_in(self, db) -> str:
         """The Default build, found by the id recorded in meta (never by name: the user may
         rename it, or name another build "Default"). Recreated if it was purged."""
