@@ -358,7 +358,8 @@ def test_every_tool_maps_to_its_intended_stream(make_rt):
     assert {"sim_run", "sim_static_run", "sim_wait", "sim_result_get", "design_review",
             "design_review_get", "job_wait", "study_run", "study_get"} <= sim
     assert view == {"render_views", "present_view", "critique_model", "part_show",
-                    "section_check", "assembly_animate"}
+                    "section_check", "assembly_animate",
+                    "concept_sketch", "pitch_options"}       # G-A concept cards -> View (M-3)
     # a tool that sounds like a study or a view but is tagged text must be a conscious choice
     text_ok = {"study_apply", "interview_plan", "mirror_drawing", "drawing_spec_submit",
                "calibration_list",

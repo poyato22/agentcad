@@ -23,12 +23,16 @@ STREAMS = ("text", "sim", "view")
 SIM_TOOLS = frozenset({"design_review", "design_review_get", "study_run", "study_get",
                        "job_wait"})
 VIEW_TOOLS = frozenset({"render_views", "present_view", "critique_model", "part_show",
-                        "section_check", "assembly_animate"})
+                        "section_check", "assembly_animate",
+                        # Plan 9 G-A: the concept stage's cards live in the View stream
+                        "concept_sketch", "pitch_options"})
 SIM_EVENTS = frozenset({"sim_progress", "sim_finished", "study_progress", "topopt_progress",
                         "topopt_finished"})
 VIEW_EVENTS = frozenset({"part_shown", "assembly_animate"})
-#: announcement cards that are pictures of the model (the rest are conversation cards)
-VIEW_ANNOUNCE = frozenset({"view_presented", "critique_round", "part_shown"})
+#: announcement cards that are pictures of the model (the rest are conversation cards). G-A's
+#: concept sketch and pitch cards are pictures of the design, so they ride the View stream too.
+VIEW_ANNOUNCE = frozenset({"view_presented", "critique_round", "part_shown",
+                           "concept_sketch", "concept_pitch"})
 
 
 def tool_stream(name: str | None) -> str:
@@ -40,6 +44,9 @@ def tool_stream(name: str | None) -> str:
 
 def stream_of(event_type: str, data: dict | None = None) -> str:
     """The stream an event (or a step, by its kind and payload) belongs to."""
+    # an explicit stream hint on the payload wins (topopt_accepted, studies_proposed mark "sim")
+    if isinstance(data, dict) and data.get("stream") in STREAMS:
+        return data["stream"]
     if event_type in SIM_EVENTS or event_type == "sim_run":
         return "sim"
     if event_type in VIEW_EVENTS or event_type.startswith("view_"):

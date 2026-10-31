@@ -85,61 +85,31 @@ def _part_rows(store, home: Path, project_id: str) -> list[dict]:
 
 
 def _parts(store, home: Path, project_id: str, default_material: str) -> list[dict]:
-    """The build's tree rows with material and mass. Mass: B2's `mass_g` when the row has it;
-    else volume x the density of the part's material (built), the stated mass (catalog), or the
-    sum of the children (groups); None with a reason when it cannot be known."""
+    """The build's tree rows with material and mass. Mass, its source and note come straight from
+    B2's single source (`projects.list_parts` -> `mass.annotate`: built volume x density, catalog
+    mass, and the subtree sum for a parent or group), so the studies agent never drifts from the
+    tree, the BOM and the assembly total (FW-core M-6)."""
     rows = _part_rows(store, home, project_id)
-    out: dict[str, dict] = {}
+    out: list[dict] = []
     for r in rows:
         metrics = r.get("metrics") if isinstance(r.get("metrics"), dict) else None
         material, msrc = _material_name(r, default_material)
-        mass = _num(r.get("mass_g"))
-        source = r.get("mass_source") if mass is not None else None
-        note = None
         vol = _num((metrics or {}).get("volume_mm3"))
-        if mass is None:
-            if r.get("kind") == "catalog":
-                mass = _num((metrics or {}).get("mass_g"))
-                source = "catalog" if mass is not None else None
-            elif vol is not None:
-                dens = _density(material, home)
-                if dens is not None:
-                    mass, source = vol / 1000.0 * dens, "built"
-            if mass is None and r.get("kind") == "part":
-                note = "not built yet" if metrics is None else "no volume measured"
         bbox = ((metrics or {}).get("bbox") or {}).get("size")
-        out[r["id"]] = {
+        out.append({
             "part_id": r["id"], "label": r.get("label") or r["id"], "kind": r.get("kind", "part"),
             "parent_id": r.get("parent_id"), "built": metrics is not None,
             "material": material, "material_source": msrc,
-            "mass_g": None if mass is None else round(mass, 2), "mass_source": source,
-            "mass_note": note, "volume_mm3": None if vol is None else round(vol, 1),
+            "mass_g": _num(r.get("mass_g")), "mass_source": r.get("mass_source"),
+            "mass_note": r.get("mass_note"), "volume_mm3": None if vol is None else round(vol, 1),
             "bbox_mm": [round(float(x), 2) for x in bbox] if isinstance(bbox, list) else None,
             "faces": (metrics or {}).get("faces"), "holes": len((metrics or {}).get("holes") or []),
-        }
-    # groups: the sum of their children (recursive, cycle-safe)
-    kids: dict[str, list[str]] = {}
-    for p in out.values():
-        if p["parent_id"] in out:
-            kids.setdefault(p["parent_id"], []).append(p["part_id"])
-
-    def total(pid: str, seen: frozenset[str]) -> float | None:
-        p = out[pid]
-        if p["kind"] != "group":
-            return p["mass_g"]
-        vals = [total(k, seen | {pid}) for k in kids.get(pid, []) if k not in seen]
-        known = [v for v in vals if v is not None]
-        return round(sum(known), 2) if known else None
-
-    for p in out.values():
-        if p["kind"] == "group" and p["mass_g"] is None:
-            p["mass_g"] = total(p["part_id"], frozenset())
-            p["mass_source"] = "sum" if p["mass_g"] is not None else None
-            p["mass_note"] = None if p["mass_g"] is not None else "no child has a known mass"
-    return list(out.values())
+        })
+    return out
 
 
-def _assembly(assembly_store, project_id: str, parts: list[dict]) -> dict | None:
+def _assembly(assembly_store, project_id: str, parts: list[dict],
+              store=None, home: Path | None = None) -> dict | None:
     if assembly_store is None:
         return None
     try:
@@ -148,19 +118,23 @@ def _assembly(assembly_store, project_id: str, parts: list[dict]) -> dict | None
         return None
     if not asm.instances:
         return {"instances": 0, "joints": 0, "parts": [], "total_mass_g": None, "unknown_mass": []}
-    mass = {p["part_id"]: p["mass_g"] for p in parts}
-    total, unknown = 0.0, []
-    for inst in asm.instances:
-        m = mass.get(inst.part_id)
-        if m is None:
-            unknown.append(inst.part_id)
-        else:
-            total += m
+    # B2's single source for the assembly total and which parts weigh nothing (FW-core M-6)
+    if store is not None and home is not None:
+        from .. import mass as _mass
+        tot = _mass.assembly_total(store, home, project_id, asm.instances)
+        total_mass_g = tot["total_mass_g"]
+        unknown = sorted({u["part_id"] for u in tot["mass_unknown"]})
+    else:                              # a bare unit context: fall back to the rows we were given
+        by_id = {p["part_id"]: p["mass_g"] for p in parts}
+        known = [by_id.get(i.part_id) for i in asm.instances]
+        unknown = sorted({i.part_id for i in asm.instances if by_id.get(i.part_id) is None})
+        vals = [m for m in known if m is not None]
+        total_mass_g = round(sum(vals), 4) if vals else None
     return {"instances": len(asm.instances), "joints": len(asm.joints),
             "parts": sorted({i.part_id for i in asm.instances}),
             "grounded": [i.part_id for i in asm.instances if i.fixed],
             "joint_kinds": sorted({str(j.kind) for j in asm.joints}),
-            "total_mass_g": round(total, 2), "unknown_mass": sorted(set(unknown))}
+            "total_mass_g": total_mass_g, "unknown_mass": unknown}
 
 
 def _spec(store, home: Path, project_id: str, parts: list[dict]) -> dict | None:
@@ -590,7 +564,7 @@ def studies_context(home: Path, store, project_id: str, *, assembly_store=None,
     """The whole build, as the studies agent and the Studies page see it."""
     home = Path(home)
     parts = _parts(store, home, project_id, default_material)
-    asm = _assembly(assembly_store, project_id, parts)
+    asm = _assembly(assembly_store, project_id, parts, store=store, home=home)
     spec = _spec(store, home, project_id, parts)
     rows, records, n = _studies(home, project_id, parts)
     rules = rule_proposals(parts, spec, records, asm)

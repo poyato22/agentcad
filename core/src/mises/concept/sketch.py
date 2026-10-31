@@ -26,6 +26,7 @@ from xml.sax.saxutils import escape
 import numpy as np
 
 from ..cad import safe_io
+from ..cad.render import FIGURE_HEIGHT_MM
 from ..cad.render_job import MeshIn, RenderOut, run_render_job
 from ..cad.runner import run_build
 from ..types import ErrorCode, MisesError
@@ -46,7 +47,7 @@ VIEW_LABEL = {"three_quarter": "3/4 front", "side": "Side", "front": "Front", "r
 PERSPECTIVE_VIEWS = ("three_quarter",)
 DEFAULT_VIEWS = ("three_quarter", "side")
 SILHOUETTE_VIEWS = ("front", "side")
-FIGURE_MM = 1750.0
+FIGURE_MM = FIGURE_HEIGHT_MM            # one shared figure height (FW-core M-7)
 # a figure only helps read scale when the design is person-sized (mm): beside a kettle or a
 # robot dog a person would shrink the design in its own sketch; those get their size in the
 # notes instead

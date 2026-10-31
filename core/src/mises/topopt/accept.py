@@ -150,8 +150,15 @@ async def _new_part(ctx, pid: str, src: str, body: bytes,
             if material:
                 ctx.store.update_part(pid, material=material)
         version = _finish_edit(ctx, pid, d, f"created {pid} from generative design")
-    return ToolOutput(summary=_summary(pid, res.metrics),
-                      data={"part_id": pid, "version": version, **_inline(res.metrics)})
+        # D10 (FW-core I-5): a part an agent delivers lands in the build's assembly by itself,
+        # the same as mirror_part_create; the user's own Accept (the ui run) is not auto-placed.
+        from ..cad.tools import _auto_place
+        placed = await _auto_place(ctx, pid, d)
+    return ToolOutput(summary=_summary(pid, res.metrics)
+                      + (f"; placed in the assembly as {placed['instance']['name']}"
+                         if placed else ""),
+                      data={"part_id": pid, "version": version,
+                            **({"placed": placed} if placed else {}), **_inline(res.metrics)})
 
 
 async def _replace(ctx, pid: str, src: str, body: bytes, base_version: int | None) -> ToolOutput:
