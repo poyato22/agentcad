@@ -313,6 +313,15 @@ async def _render_cover(home: Path, project_id: str, shown: list[Placement], w: 
         return None
 
 
+def _drop_legacy_tiles(cdir: Path) -> None:
+    """Remove the pre-D24 2x2 composites (`<size>-<digest>.png`) a cover replaces."""
+    try:
+        for old in cdir.glob("[0-9]*-*.png"):
+            old.unlink(missing_ok=True)
+    except OSError:
+        pass                          # a cache; leftover files only cost disk
+
+
 async def project_cover(home: Path, project_id: str, placed: list[Placement],
                         size: int | None = None) -> bytes | None:
     """The build's Home cover PNG (16:10, transparent background) of `placed` (its assembly
@@ -333,6 +342,7 @@ async def project_cover(home: Path, project_id: str, placed: list[Placement],
         png = await _render_cover(home, project_id, shown, w, h)
         if png is not None:
             _write_cache(cdir, name, png, keep_prefix=f"{_COVER_PREFIX}{w}-")
+            _drop_legacy_tiles(cdir)
         return png
 
     return await _once((str(home), f"project-{project_id}", key), make)

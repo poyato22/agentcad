@@ -94,6 +94,18 @@ def test_delete_forever_purges_one_trashed_build_only(client, rt):
     assert client.post("/projects/nope123/purge", headers=AUTH).status_code == 404
 
 
+def test_delete_forever_needs_the_admin_token(rt):
+    # destructive: no token is 401, the MCP-only (agent) token is 403, and nothing is purged
+    mcp = "mcp-only-token-purge"
+    with TestClient(create_app(rt, TOKEN, mcp_token=mcp), base_url="http://127.0.0.1") as c:
+        pid = c.post("/projects", json={"name": "Keep"}, headers=AUTH).json()["id"]
+        c.delete(f"/projects/{pid}", headers=AUTH)
+        assert c.post(f"/projects/{pid}/purge").status_code == 401
+        r = c.post(f"/projects/{pid}/purge", headers={"Authorization": f"Bearer {mcp}"})
+        assert r.status_code == 403
+        assert any(p["id"] == pid for p in c.get("/projects", headers=AUTH).json())
+
+
 def test_delete_forever_refuses_live_runs(client, rt):
     pid = client.post("/projects", json={"name": "Jet"}, headers=AUTH).json()["id"]
     _mk_part(rt, "fan_blade", project_id=pid)

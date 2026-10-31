@@ -166,6 +166,20 @@ def test_project_thumb_renders_the_assembly(client, rt, monkeypatch):
     assert r2.status_code == 200 and r2.headers["etag"] != etag
 
 
+def test_a_new_cover_evicts_the_legacy_grid_tiles(client, rt, monkeypatch):
+    # the pre-D24 2x2 composites were cached as <size>-<digest>.png; writing a cover drops them
+    pid = rt.active_project_id()
+    make_part(rt, "alpha")
+    cdir = rt.home / "parts" / thumbs.THUMBS_DIR / f"project-{pid}"
+    cdir.mkdir(parents=True, exist_ok=True)
+    (cdir / "256-0123456789abcdef.png").write_bytes(_png(8))
+    (cdir / "128-fedcba9876543210.png").write_bytes(_png(8))
+    monkeypatch.setattr(thumbs, "run_render_job", _fake_render([]))
+    assert client.get(f"/projects/{pid}/thumb.png", headers=AUTH).status_code == 200
+    names = sorted(p.name for p in cdir.glob("*.png"))
+    assert len(names) == 1 and names[0].startswith(f"cover{thumbs.COVER_W}-")
+
+
 def test_project_thumb_falls_back_to_the_largest_part(client, rt, monkeypatch):
     pid = rt.active_project_id()
     make_part(rt, "small")
