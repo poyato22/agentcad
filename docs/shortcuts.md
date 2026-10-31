@@ -19,6 +19,12 @@ noted (the viewer or the parts list focused, a focused approval card).
 | ⇧⌘A | Agent manager |
 | ⇧⌘. | Stop all runs |
 
+## Top bar (inside a build)
+
+| Keys | Action |
+|---|---|
+| F2 | Rename the build (its name in the top bar focused; a click does the same) |
+
 ## Design page
 
 | Keys | Action |

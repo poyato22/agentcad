@@ -195,12 +195,12 @@ test("drafting_look_blue_only_on_the_current_step", async ({ page, fake }) => {
   await expect(heading(page, "Model")).toBeVisible();
   await expect(wizard(page)).toHaveCSS("background-color", "rgb(20, 22, 26)");   // Plan 9 Graphite
   await expect(page.locator(".setup-steps [aria-current=step] .setup-step-name")).toHaveText("Model");
-  await expect(page.locator(".setup-steps [aria-current=step]")).toHaveCSS("border-bottom-color", "rgb(61, 139, 255)");
+  await expect(page.locator(".setup-steps [aria-current=step]")).toHaveCSS("border-bottom-color", "rgb(75, 147, 255)");
   // (Plan 9 dropped the square-corner rule: the Visual spec rounds buttons, rows and surfaces)
   // nothing else is blue: no blue fills or text in the wizard before anything needs the human
   const blue = await wizard(page).locator("*").evaluateAll((els) => els.filter((e) => {
     const cs = getComputedStyle(e);
-    return [cs.color, cs.backgroundColor].some((c) => c === "rgb(61, 139, 255)" || c === "rgb(141, 186, 255)");
+    return [cs.color, cs.backgroundColor].some((c) => c === "rgb(75, 147, 255)" || c === "rgb(141, 186, 255)");
   }).length);
   expect(blue).toBe(0);
 });

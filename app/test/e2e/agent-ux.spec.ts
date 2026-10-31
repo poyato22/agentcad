@@ -226,7 +226,7 @@ test("blue_only_where_allowed_in_the_conversation_view", async ({ page }) => {
   await page.mouse.move(700, 450);
   const bad = await page.evaluate(() => {
     const ALLOWED = "[data-selected], [data-changing], [data-card], .active-tab, .cmd-prompt, .needs-you";
-    const BLUE = ["rgb(61, 139, 255)", "rgb(141, 186, 255)", "rgba(61, 139, 255, 0.1)"];
+    const BLUE = ["rgb(75, 147, 255)", "rgb(141, 186, 255)", "rgba(75, 147, 255, 0.1)"];
     const out: string[] = [];
     for (const el of document.querySelectorAll("[data-region=console] *")) {
       const cs = getComputedStyle(el);

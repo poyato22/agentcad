@@ -36,7 +36,7 @@
   margin-left: auto;
 }
 .home-search {
-  width: 220px;
+  width: 200px;
   max-width: 30vw;
   height: 28px;
   padding: 0 10px;
@@ -233,38 +233,18 @@
 .tile-link-danger { color: var(--red); }
 .tile-confirm { display: flex; align-items: center; gap: 10px; font-size: var(--fs-small); }
 
-/* --- the New-build tile: the same 16:10 frame, dashed */
-.tile-new {
-  display: grid;
-  place-items: center;
-  align-content: center;
-  gap: 6px;
-  aspect-ratio: 16 / 10;
-  flex: none !important;
-  padding: 0;
-  background: transparent;
-  border: 1px dashed var(--line2);
-  border-radius: var(--r-surface);
-  color: var(--dim);
-  font: inherit;
-  cursor: pointer;
-  transition: border-color var(--t-fast) ease, color var(--t-fast) ease;
-}
-button.tile-new:hover { color: var(--ink); border-color: var(--blue); }
-button.tile-new:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
-.tile-plus { font-size: 26px; line-height: 1; font-weight: 300; }
-.tile-new-label { font-size: var(--fs); font-weight: 500; }
-.tile-new-input {
-  width: 78%;
-  height: 30px;
+/* --- header actions (review m1): Import drawing… and the primary New build, not grid tiles */
+.home-tools .btn { min-height: 28px; }
+.home-new { padding: 3px 14px; }
+.home-new-field { display: inline-flex; }
+.home-new-input {
+  width: 180px;
+  height: 28px;
   padding: 0 10px;
   background: var(--paper);
   border: 1px solid var(--blue);
   border-radius: var(--r-btn);
-  text-align: center;
 }
-/* the drawing drop tile shares the frame */
-.home-cell-drop .imp-drop-tile { aspect-ratio: 16 / 10; min-height: 0; border-radius: var(--r-surface); background: transparent; }
 
 .home-empty { grid-column: 1 / -1; padding: 24px 2px; }
 

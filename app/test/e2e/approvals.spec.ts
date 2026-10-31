@@ -104,7 +104,7 @@ test("evidence_link_scrolls_to_and_highlights_the_call_row", async ({ page, fake
   await expect(row).toHaveAttribute("data-focused", "");
   await expect(row).toBeInViewport();
   await expect(row).toContainText("mirror_measure");
-  await expect(row).toHaveCSS("background-color", "rgba(61, 139, 255, 0.1)");
+  await expect(row).toHaveCSS("background-color", "rgba(75, 147, 255, 0.1)");
   await expect(row).not.toHaveAttribute("data-focused", "", { timeout: 4000 });
   expect(await decideCalls(fake)).toEqual([]);
 });
@@ -353,9 +353,9 @@ test("card_styles_blue_border_rounded_corners", async ({ page }) => {
     const c = getComputedStyle(el);
     return { border: c.borderTopColor, width: c.borderTopWidth, radius: c.borderRadius, bg: c.backgroundColor };
   });
-  expect(s).toEqual({ border: "rgb(61, 139, 255)", width: "1px", radius: "10px", bg: "rgba(61, 139, 255, 0.1)" });   // Plan 9: --r-surface
+  expect(s).toEqual({ border: "rgb(75, 147, 255)", width: "1px", radius: "10px", bg: "rgba(75, 147, 255, 0.1)" });   // Plan 9: --r-surface
   const primary = await page.getByRole("button", { name: /^Merge/ }).evaluate((el) => getComputedStyle(el).backgroundColor);
-  expect(primary).toBe("rgb(61, 139, 255)");
+  expect(primary).toBe("rgb(75, 147, 255)");
 });
 
 // ---- fix round 1: native button activation, presses across a change, question cards

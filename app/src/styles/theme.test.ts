@@ -55,7 +55,7 @@ describe("theme tokens", () => {
       "--bg": "#14161a", "--paper": "#1b1e23", "--paper2": "#252930", "--raised": "#252930",
       "--line": "#2f343b", "--ink": "#e9ebee", "--dim": "#9aa1aa",
       // semantic colors unchanged
-      "--blue": "#3d8bff", "--blue2": "#8dbaff",
+      "--blue": "#4b93ff", "--blue2": "#8dbaff",
       "--green": "#4fd18b", "--amber": "#f2b134", "--red": "#ff5a4a",
       "--surface": "rgba(27,30,35,.92)", "--surface-blur": "18px",
       "--r-surface": "10px", "--r-row": "6px", "--r-btn": "7px",
@@ -83,11 +83,23 @@ describe("theme tokens", () => {
   });
 
   it("light-mode text meets WCAG AA: ink, dim, faint and every status color used as text ≥ 4.5:1", () => {
-    const surfaces = { bg: LIGHT["--bg"], paper: LIGHT["--paper"], paper2: LIGHT["--paper2"] };
+    const surfaces = { bg: LIGHT["--bg"], paper: LIGHT["--paper"], paper2: LIGHT["--paper2"], raised: LIGHT["--raised"] };
     const text = ["--ink", "--dim", "--faint", "--blue", "--blue2", "--green", "--amber", "--red"];
     const fails: string[] = [];
     for (const t of text) for (const [name, s] of Object.entries(surfaces)) {
       const r = ratio(LIGHT[t], s);
+      if (r < 4.5) fails.push(`${t} on ${name}: ${r.toFixed(2)}`);
+    }
+    expect(fails).toEqual([]);
+  });
+
+  it("dark-mode text meets WCAG AA: ink, dim, blue and every status color on bg / paper / raised", () => {
+    // --faint is decorative / disabled text (it was 3.05:1 before Plan 9 too), so it is not held to AA
+    const surfaces = { bg: DARK["--bg"], paper: DARK["--paper"], raised: DARK["--raised"], paper2: DARK["--paper2"] };
+    const text = ["--ink", "--dim", "--blue", "--blue2", "--green", "--amber", "--red"];
+    const fails: string[] = [];
+    for (const t of text) for (const [name, s] of Object.entries(surfaces)) {
+      const r = ratio(DARK[t], s);
       if (r < 4.5) fails.push(`${t} on ${name}: ${r.toFixed(2)}`);
     }
     expect(fails).toEqual([]);

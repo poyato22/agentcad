@@ -186,7 +186,7 @@ test("blue_only_on_selected_or_picking_in_assembly_mode", async ({ page }) => {
   await page.locator(`[data-instance-id="${LID}"]`).click();
   await page.getByRole("button", { name: "New joint" }).click();
   const offenders = await page.evaluate(() => {
-    const BLUE = new Set(["rgb(61, 139, 255)", "rgb(141, 186, 255)"]);
+    const BLUE = new Set(["rgb(75, 147, 255)", "rgb(141, 186, 255)"]);
     const ALLOWED = "[data-selected], [data-changing], [data-card], .active-tab, .cmd-prompt, .needs-you";
     const out: string[] = [];
     for (const el of document.querySelectorAll<HTMLElement>("[data-region=viewer] *")) {

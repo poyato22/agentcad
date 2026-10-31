@@ -603,9 +603,10 @@ export class CoreClient {
     return parsed.data;
   }
   buildTabs(): Promise<BuildTabsProfile> { return this.json("GET", "/profile", buildTabsProfileSchema); }
-  /** The active build and the open tabs (profile fields; PUT /profile merges, nothing else changes). */
-  setBuildTabs(tabs: BuildTabsProfile): Promise<BuildTabsProfile> {
-    return this.json("PUT", "/profile", buildTabsProfileSchema, { body: { active_project_id: tabs.active_project_id, open_project_ids: tabs.open_project_ids } });
+  /** The active build (a profile field; PUT /profile merges, nothing else changes). Plan 9: the
+   *  old open_project_ids is read (buildTabs) but never written — there are no build tabs. */
+  setActiveBuild(id: string | null): Promise<BuildTabsProfile> {
+    return this.json("PUT", "/profile", buildTabsProfileSchema, { body: { active_project_id: id } });
   }
 
   /** PATCH semantics: a key left out is unchanged; `color: null` / `parent_id: null` clear it.

@@ -50,7 +50,7 @@ test("home: Tab reaches search, sort, Agents, Onshape, the parts library, Trash,
   await page.goto("/");
   await expect(page.locator('[data-testid="home"]')).toBeVisible();
   const stops = await tabStops(page);
-  for (const want of [/^Search builds$/, /^Sort builds$/, /^Agents/, /Show trashed builds|^Trash/, /New build/, /^Open Default$/, /^More for Default$/, /^Onshape$/, /^Parts library$/]) {
+  for (const want of [/^Search builds$/, /^Sort builds$/, /^Agents/, /Show trashed builds|^Trash/, /New build/, /Import drawing/, /^Open Default$/, /^More for Default$/, /^Onshape$/, /^Parts library$/]) {
     expect(has(stops, want), `${want} in ${JSON.stringify(stops)}`).toBe(true);
   }
 });

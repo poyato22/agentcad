@@ -256,7 +256,7 @@ test("no_auto_numbered_anywhere", async ({ page, fake }) => {
 test("blue_only_where_allowed", async ({ page, fake }) => {
   await midRun(page, fake);
   const offenders = await page.evaluate(() => {
-    const BLUE = new Set(["rgb(61, 139, 255)", "rgb(141, 186, 255)"]);
+    const BLUE = new Set(["rgb(75, 147, 255)", "rgb(141, 186, 255)"]);
     const ALLOWED = "[data-selected], [data-changing], [data-card], .active-tab, .cmd-prompt, .needs-you";
     const out: string[] = [];
     for (const el of document.querySelectorAll<HTMLElement>("body *")) {

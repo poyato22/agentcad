@@ -23,7 +23,7 @@ const client = {
   createBuild: vi.fn(),
   listBuilds: vi.fn().mockResolvedValue(BUILDS),
   buildTabs: vi.fn().mockResolvedValue({ active_project_id: null, open_project_ids: [] }),
-  setBuildTabs: vi.fn().mockResolvedValue({}),
+  setActiveBuild: vi.fn().mockResolvedValue({}),
   parts: vi.fn().mockResolvedValue([]),
   restoreBuild: vi.fn().mockResolvedValue(build({ id: "old", name: "Scrap", trashed_at: null })),
   trashBuild: vi.fn().mockResolvedValue(build({ id: "gear", name: "Gearbox", part_count: 1, trashed_at: 1000 })),
@@ -63,11 +63,31 @@ describe("HomePage", () => {
     expect(screen.getByText(/1 part\b/)).toBeTruthy();
   });
 
-  it("has U5's drawing drop tile next to New build (not in the Trash)", () => {
+  it("review m1: every grid slot is a build; New build and Import drawing… live in the header; Home is a drop target", () => {
     render(<HomePage />);
-    expect(screen.getByTestId("home").querySelector(".home-cell-drop")).not.toBeNull();
+    const home = screen.getByTestId("home");
+    const grid = home.querySelector(".home-grid") as HTMLElement;
+    expect([...grid.querySelectorAll(":scope > li")].map((li) => li.querySelector("[data-build]")?.getAttribute("data-build")))
+      .toEqual(["arm", "gear"]);
+    const header = home.querySelector(".home-bar") as HTMLElement;
+    expect(within(header).getByRole("button", { name: "New build" }).className).toContain("btn-primary");
+    expect(within(header).getByRole("button", { name: "Import drawing…" })).toBeTruthy();
+    expect(home.querySelector(".imp-overlay-page")).not.toBeNull();     // drop anywhere on Home
     fireEvent.click(screen.getByRole("button", { name: /^Trash/ }));
-    expect(screen.getByTestId("home").querySelector(".home-cell-drop")).toBeNull();
+    expect(screen.getByTestId("home").querySelector(".imp-overlay-page")).toBeNull();
+  });
+
+  it("a file dragged over Home shows the drop target and the drop starts an import", async () => {
+    const importDrawing = vi.fn(() => new Promise(() => {}));
+    bindClient({ ...client, importDrawing } as unknown as CoreClient);
+    render(<HomePage />);
+    const home = screen.getByTestId("home");
+    const files = { types: ["Files"], files: [new File(["x"], "bracket.pdf", { type: "application/pdf" })] };
+    fireEvent.dragEnter(home, { dataTransfer: files });
+    expect(home.querySelector("[data-drawing-drop='overlay']")).not.toBeNull();
+    fireEvent.drop(home, { dataTransfer: files });
+    expect(home.querySelector("[data-drawing-drop='overlay']")).toBeNull();
+    await waitFor(() => expect(importDrawing).toHaveBeenCalled());
   });
 
   it("searches by name", () => {
@@ -81,7 +101,7 @@ describe("HomePage", () => {
     render(<HomePage />);
     fireEvent.click(screen.getByTitle("Open Robot arm"));
     await waitFor(() => expect(atHome.value).toBe(false));
-    expect(client.setBuildTabs).toHaveBeenCalled();
+    expect(client.setActiveBuild).toHaveBeenCalledWith("arm");
   });
 
   it("creates a build from the New tile and opens it", async () => {
@@ -131,10 +151,10 @@ describe("HomePage", () => {
     await waitFor(() => expect(client.trashBuild).toHaveBeenCalledWith("gear"));
     const toast = await screen.findByRole("status");
     expect(toast.textContent).toContain("Moved “Gearbox” to the Trash");
-    const tabWrites = client.setBuildTabs.mock.calls.length;
+    const tabWrites = client.setActiveBuild.mock.calls.length;
     fireEvent.click(within(toast).getByRole("button", { name: "Undo" }));
     await waitFor(() => expect(client.restoreBuild).toHaveBeenCalledWith("gear"));
-    expect(client.setBuildTabs.mock.calls.length).toBe(tabWrites);  // Undo never switches builds
+    expect(client.setActiveBuild.mock.calls.length).toBe(tabWrites);  // Undo never switches builds
     expect(atHome.value).toBe(true);
   });
 

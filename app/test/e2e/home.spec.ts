@@ -1,6 +1,8 @@
 // R1 + R17 + Plan 9: the Home build grid on launch (no top bar, D23), opening a build into the
 // shell (a top bar with exactly four tabs, D9), ⌂ / ⌘0 back, the build covers (D24), Onshape and
 // the parts library as Home sub-views (D22), and Trash with Undo / Delete forever (D30).
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { expect, openHome, test } from "./fixtures";
 
 test.beforeEach(async ({ fake, page }) => {
@@ -86,6 +88,35 @@ test("tiles_show_the_assembly_cover_full_bleed_16_10", async ({ page, fake }) =>
   expect(Math.abs(thumb.width / thumb.height - 1.6)).toBeLessThan(0.02);
   const ib = (await img.boundingBox())!;
   expect(Math.round(ib.width)).toBe(Math.round(thumb.width));
+});
+
+// Review m1: every grid slot is a build; New build is the header's primary button, and a drawing
+// is imported from the header or dropped anywhere on Home.
+test("grid_holds_only_builds_and_a_drawing_dropped_anywhere_on_home_imports", async ({ page }) => {
+  await page.goto("/");
+  const home = page.locator('[data-testid="home"]');
+  await expect(home.locator(".home-grid > li").first().locator("[data-build]")).toBeVisible();
+  await expect(home.locator(".home-grid .tile-new, .home-grid [data-drawing-drop]")).toHaveCount(0);
+  await expect(home.locator(".home-bar").getByRole("button", { name: "New build" })).toBeVisible();
+  await expect(home.locator(".home-bar").getByRole("button", { name: "Import drawing…" })).toBeVisible();
+  const png = readFileSync(resolve(import.meta.dirname, "../../../core/tests/fixtures/drawings/plate_drawing.png"));
+  await page.evaluate(({ b64 }) => {
+    const target = document.querySelector(".home-grid") as HTMLElement;
+    const dt = new DataTransfer();
+    dt.items.add(new File([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], "plate.png"));
+    const fire = (type: string) => target.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: dt }));
+    fire("dragenter");
+    fire("dragover");
+  }, { b64: png.toString("base64") });
+  await expect(page.locator("[data-drawing-drop=overlay]")).toBeVisible();
+  await page.evaluate(({ b64 }) => {
+    const target = document.querySelector(".home-grid") as HTMLElement;
+    const dt = new DataTransfer();
+    dt.items.add(new File([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], "plate.png"));
+    target.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: dt }));
+  }, { b64: png.toString("base64") });
+  await expect(page.locator("[data-drawing-drop=overlay]")).toHaveCount(0);
+  await expect(home.locator(".home-imports [data-import-cards] .imp-card").first()).toBeVisible();
 });
 
 // I7: Home has a visible way into every build's agents.

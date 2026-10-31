@@ -32,9 +32,9 @@
   --ink: #e9ebee;
   --dim: #9aa1aa;
   --faint: #6b727c;
-  --blue: #3d8bff;
+  --blue: #4b93ff;   /* AA on Raised: 4.81:1 (Plan 9 review m3) */
   --blue2: #8dbaff;
-  --blue-tint: rgba(61,139,255,.10);
+  --blue-tint: rgba(75,147,255,.10);
   --green: #4fd18b;
   --amber: #f2b134;
   --red: #ff5a4a;

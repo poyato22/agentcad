@@ -1,10 +1,11 @@
-// Builds (Plan 5 C1 projects): which builds exist, which are open as tabs and which one is active.
-// The active build scopes the part tree (GET /parts?project_id), the History pane's runs and new
-// runs (the core files a run without project_id under the profile's active build), so switching
-// writes active_project_id / open_project_ids back to the profile.
+// Builds (Plan 5 C1 projects): which builds exist and which one is open (active). The active build
+// scopes the part tree (GET /parts?project_id), the History pane's runs and new runs (the core
+// files a run without project_id under the profile's active build), so switching writes
+// active_project_id back to the profile. Plan 9 D1 removed the build tabs: builds switch through
+// Home, and the profile's old open_project_ids is only read (never written), to pick a fallback.
 //
 // Switching keeps each build's own part selection; the old build's parts never show under the new
-// tab (a parts answer for a build that is no longer active is dropped).
+// build (a parts answer for a build that is no longer active is dropped).
 import { batch, computed, effect, signal, type ReadonlySignal, type Signal } from "@preact/signals";
 import type { Build, EmptyTrashRefused } from "../api/builds";
 import { CoreError } from "../api/client";
@@ -16,19 +17,12 @@ import { actions, conn, parts, runs, selectedPartId, selectedRunId } from "./sto
 /** Every build the core knows, the trashed ones included. */
 export const builds: Signal<readonly Build[]> = signal<readonly Build[]>([]);
 export const activeBuildId: Signal<string | null> = signal<string | null>(null);
-export const openBuildIds: Signal<readonly string[]> = signal<readonly string[]>([]);
 /** The last failed build action, in plain words (shown under the tabs until the next action). */
 export const buildsError: Signal<string | null> = signal<string | null>(null);
 
 export const liveBuilds: ReadonlySignal<Build[]> = computed(() => builds.value.filter((b) => b.trashed_at === null));
 export const trashedBuilds: ReadonlySignal<Build[]> = computed(() => builds.value.filter((b) => b.trashed_at !== null));
 export const activeBuild: ReadonlySignal<Build | null> = computed(() => builds.value.find((b) => b.id === activeBuildId.value) ?? null);
-
-/** The open tabs in order (live builds only; the active build is always one of them). */
-export const openBuilds: ReadonlySignal<Build[]> = computed(() => {
-  const live = new Map(liveBuilds.value.map((b) => [b.id, b]));
-  return openBuildIds.value.map((id) => live.get(id)).filter((b): b is Build => b !== undefined);
-});
 
 /** Selected part per build, so coming back to a tab shows what you left there. */
 const selectionByBuild = new Map<string, string | null>();
@@ -93,15 +87,16 @@ function applyParts(list: PartSummary[]): void {
   if (sel !== null && !list.some((p) => p.part_id === sel)) selectedPartId.value = null;
 }
 
-/** Writes the tabs to the profile; false (and a plain-words error under the tabs) when it failed.
- *  New runs don't depend on it (they name their build), only the tabs restored at the next launch. */
+/** Writes the active build to the profile; false (and a plain-words error) when it failed. New
+ *  runs don't depend on it (they name their build), only the build reopened at the next launch.
+ *  open_project_ids is never written (Plan 9 review m2: without tabs it would only grow). */
 async function persist(): Promise<boolean> {
   const active = activeBuildId.peek();
   try {
-    await actions.client().setBuildTabs({ active_project_id: active, open_project_ids: [...openBuildIds.peek()] });
+    await actions.client().setActiveBuild(active);
     return true;
   } catch (e) {
-    fail("Saving the open builds failed (this tab won't be restored next launch)", e);
+    fail("Saving the open build failed (it won't be reopened next launch)", e);
     return false;
   }
 }
@@ -147,21 +142,20 @@ function followRuns(buildId: string): void {
 }
 
 export const buildActions = {
-  /** Reloads the builds and the open tabs from the core (on every connect). */
+  /** Reloads the builds and the active build from the core (on every connect). */
   async refresh(): Promise<void> {
     try {
       const c = actions.client();
       const [all, tabs] = await Promise.all([c.listBuilds(), c.buildTabs()]);
-      const n = normalizeTabs(all, activeBuildId.peek() ?? tabs.active_project_id, openBuildIds.peek().length ? openBuildIds.peek() : tabs.open_project_ids);
+      const n = normalizeTabs(all, activeBuildId.peek() ?? tabs.active_project_id, tabs.open_project_ids);
       // the first load: the part list sync fetched without a build is the core's active build,
       // which is the profile's when that is live (else Default) — reload only if we settled on another one.
-      // Nothing is written back until the user changes tabs.
+      // Nothing is written back until the user opens another build.
       const prev = activeBuildId.peek();
       const reload = prev === null ? tabs.active_project_id !== null && n.active !== tabs.active_project_id : n.active !== prev;
       batch(() => {
         builds.value = all;
         activeBuildId.value = n.active;
-        openBuildIds.value = n.open;
       });
       if (reload) await loadParts(n.active);
     } catch (e) {
@@ -176,41 +170,24 @@ export const buildActions = {
     catch (e) { fail("Loading the builds failed", e); }
   },
 
-  /** Make a build the active tab (opening it if it isn't). */
+  /** Make a build the active (open) one. */
   async switchTo(id: string): Promise<void> {
     buildsError.value = null;
     const target = liveBuilds.peek().find((b) => b.id === id);
     if (!target) return;
     const prev = activeBuildId.peek();
-    const open = openBuildIds.peek().includes(id) ? openBuildIds.peek() : [...openBuildIds.peek(), id];
-    if (prev === id && open === openBuildIds.peek()) return;
+    if (prev === id) return;
     if (prev) selectionByBuild.set(prev, selectedPartId.peek());
     batch(() => {
       activeBuildId.value = id;
-      openBuildIds.value = open;
-      if (prev !== id) {
-        parts.value = [];
-        selectedPartId.value = selectionByBuild.get(id) ?? null;
-      }
+      parts.value = [];
+      selectedPartId.value = selectionByBuild.get(id) ?? null;
     });
     const saved = persist();
-    if (prev !== id) {
-      followRuns(id);
-      announceSwitch(id);
-      await loadParts(id);
-    }
+    followRuns(id);
+    announceSwitch(id);
+    await loadParts(id);
     await saved;
-  },
-
-  /** Close a tab; the neighbour to its right (else left) becomes active. The last tab stays. */
-  async close(id: string): Promise<void> {
-    const open = openBuildIds.peek();
-    const i = open.indexOf(id);
-    if (i < 0 || open.length <= 1) return;
-    const rest = open.filter((x) => x !== id);
-    openBuildIds.value = rest;
-    if (activeBuildId.peek() === id) await buildActions.switchTo(rest[Math.min(i, rest.length - 1)]);
-    else await persist();
   },
 
   async create(name: string): Promise<Build | null> {
@@ -243,21 +220,17 @@ export const buildActions = {
     buildsError.value = null;
     try {
       const b = await actions.client().trashBuild(id);
-      const open = openBuildIds.peek();
-      const i = open.indexOf(id);
-      const rest = open.filter((x) => x !== id);
       builds.value = builds.peek().map((x) => (x.id === id ? b : x));
-      openBuildIds.value = rest;
       selectionByBuild.delete(id);
       if (activeBuildId.peek() === id) {
-        const next = rest[Math.min(Math.max(i, 0), rest.length - 1)] ?? liveBuilds.peek()[0]?.id ?? null;
+        const next = liveBuilds.peek()[0]?.id ?? null;
         if (next) await buildActions.switchTo(next);
         else {
           // the core starts a fresh Default when every build is in the Trash
           activeBuildId.value = null;
           await buildActions.refresh();
         }
-      } else await persist();
+      }
     } catch (e) {
       fail("Moving the build to the Trash failed", e);
     }
@@ -340,7 +313,6 @@ export function resetBuilds(): void {
   batch(() => {
     builds.value = [];
     activeBuildId.value = null;
-    openBuildIds.value = [];
     buildsError.value = null;
     trashBlocked.value = null;
   });

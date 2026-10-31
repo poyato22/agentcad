@@ -50,7 +50,7 @@ test("tokens_exact_dark_is_the_default", async ({ page }) => {
   expect(tokens).toEqual({
     "--bg": "#14161a", "--paper": "#1b1e23", "--paper2": "#252930", "--head": "#1b1e23", "--vp": "#16181c",
     "--line": "#2f343b", "--line2": "#3b414a", "--ink": "#e9ebee", "--dim": "#9aa1aa", "--faint": "#6b727c",
-    "--blue": "#3d8bff", "--blue2": "#8dbaff", "--blue-tint": "rgba(61,139,255,.10)",
+    "--blue": "#4b93ff", "--blue2": "#8dbaff", "--blue-tint": "rgba(75,147,255,.10)",
     "--green": "#4fd18b", "--amber": "#f2b134", "--red": "#ff5a4a",
   });
   const size = await page.evaluate(() => getComputedStyle(document.body).fontSize);

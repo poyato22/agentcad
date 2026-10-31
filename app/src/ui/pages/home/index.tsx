@@ -4,8 +4,9 @@
 //
 // The grid: one tile per build, its cover (D24: a render of the build's assembly, 16:10,
 // full-bleed) over its name, mass (when known) and when it was last edited, with a lead-agent
-// status dot. Search, sort, the agents panel, the Onshape page and the parts library (Home
-// sub-views, D22) and the Trash sit in the header. A tile's ⋯ button and its context menu move it
+// status dot; every grid slot is a build. Search, sort, the agents panel, the Onshape page and
+// the parts library (Home sub-views, D22), the Trash, "Import drawing…" and the primary New build
+// sit in the header, and a drawing dropped anywhere on Home starts a part. A tile's ⋯ button and its context menu move it
 // to the Trash, with a 5 s Undo (D30); the Trash shows Restore and "Delete forever" per tile, and
 // Empty trash. Opening a tile opens that build.
 import type { JSX } from "preact";
@@ -17,7 +18,7 @@ import { actions, conn, runs } from "../../../state/store";
 import { Led } from "../../common/Led";
 import { Thumb } from "../../common/Thumb";
 import { useDismiss } from "../../common/dismiss";
-import { DrawingDrop, ImportCards } from "../../imports";
+import { DrawingDrop, ImportCards, ImportDrawingButton } from "../../imports";
 import { openAgentManager } from "../../agents/manager";
 import { DirectoryPage } from "../directory";
 import { OnshapePage } from "../onshape";
@@ -110,6 +111,12 @@ function BuildGrid(): JSX.Element {
             title="Show trashed builds" onClick={() => { setTrash((t) => !t); setConfirmEmpty(false); }}>
             {`Trash${trashCount ? ` · ${trashCount}` : ""}`}
           </button>
+          <span class="home-sep" aria-hidden="true" />
+          {/* U5 / review m1: a drawing becomes a part — this button, or drop one anywhere on Home */}
+          <ImportDrawingButton />
+          {creating
+            ? <NewBuildField onDone={(name) => { setCreating(false); if (name) void create(name); }} />
+            : <button type="button" class="btn btn-primary home-new" onClick={() => setCreating(true)}>New build</button>}
         </div>
       </header>
       {buildsError.value && (
@@ -136,20 +143,8 @@ function BuildGrid(): JSX.Element {
 
       {/* m2: import results get the page's full width, not a grid cell */}
       {!trash && <div class="home-imports"><ImportCards /></div>}
+      {/* every grid slot is a build (review m1); a drawing dropped anywhere on Home starts a part */}
       <ul class="home-grid" role="list" aria-label={trash ? "Trashed builds" : "Builds"}>
-        {!trash && (
-          <li class="home-cell">
-            {creating
-              ? <NewTile onDone={(name) => { setCreating(false); if (name) void create(name); }} />
-              : <button type="button" class="tile tile-new" onClick={() => setCreating(true)}>
-                  <span class="tile-plus" aria-hidden="true">+</span>
-                  <span class="tile-new-label">New build</span>
-                </button>}
-          </li>
-        )}
-        {/* U5: drop a technical drawing to start a part (the core picks or makes its build) */}
-        {!trash && <li class="home-cell home-cell-drop"><DrawingDrop variant="tile" cards={false} /></li>}
-
         {shown.map((b) => (
           <li key={b.id} class="home-cell">
             {trash ? <TrashTile build={b} /> : <BuildTile build={b} onTrash={() => { void moveToTrash(b); }} />}
@@ -158,7 +153,7 @@ function BuildGrid(): JSX.Element {
 
         {shown.length === 0 && (
           <li class="home-empty dim">
-            {trash ? "The Trash is empty." : query ? `No builds match “${query}”.` : "No builds yet. Start one with New build."}
+            {trash ? "The Trash is empty." : query ? `No builds match “${query}”.` : "No builds yet. Start one with New build, or drop a drawing here."}
           </li>
         )}
       </ul>
@@ -169,6 +164,7 @@ function BuildGrid(): JSX.Element {
           <button type="button" class="home-toast-undo" onClick={undoTrash}>Undo</button>
         </div>
       )}
+      {!trash && <DrawingDrop variant="home" />}
     </section>
   );
 
@@ -271,14 +267,14 @@ function TrashTile({ build: b }: { build: Build }): JSX.Element {
   );
 }
 
-function NewTile({ onDone }: { onDone(name: string | null): void }): JSX.Element {
+/** The header's New build button turned into a name field: Enter creates, Esc / empty cancels. */
+function NewBuildField({ onDone }: { onDone(name: string | null): void }): JSX.Element {
   const [v, setV] = useState("");
   const done = useRef(false);
   const finish = (name: string | null) => { if (done.current) return; done.current = true; onDone(name); };
   return (
-    <div class="tile tile-new">
-      <span class="tile-plus" aria-hidden="true">+</span>
-      <input class="tile-new-input" aria-label="New build name" placeholder="Build name" maxLength={80} value={v}
+    <span class="home-new-field">
+      <input class="home-new-input" aria-label="New build name" placeholder="Build name" maxLength={80} value={v}
         ref={(el) => { if (el && !done.current && document.activeElement !== el) el.focus(); }}
         onInput={(e) => setV((e.target as HTMLInputElement).value)}
         onKeyDown={(e) => {
@@ -286,6 +282,6 @@ function NewTile({ onDone }: { onDone(name: string | null): void }): JSX.Element
           if (e.key === "Escape") { e.preventDefault(); finish(null); }
         }}
         onBlur={() => finish(v.trim() || null)} />
-    </div>
+    </span>
   );
 }
