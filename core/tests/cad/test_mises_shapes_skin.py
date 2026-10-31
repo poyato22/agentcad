@@ -151,7 +151,7 @@ def test_trust_accepts_a_good_shell_and_refuses_disagreeing_volumes(monkeypatch)
     ("squircle", 108908.7), ("station_loft", 858365.9), ("skin_shell", 115689.9),
     ("tapered_capsule", 105412.0), ("joint_cowl", 113935.5), ("panel_split", 115210.8),
     ("clamshell", 115386.3), ("cover_for", 126458.4), ("trust", 115689.9),
-    ("humanoid", 65706488.9), ("quadruped", 35605121.9), ("car_body", 5918928067.0)])
+    ("humanoid", 64285498.9), ("quadruped", 35605121.9), ("car_body", 5918928067.0)])
 def test_new_recipe_examples_match_their_reference_volume(name, ref):
     near(vol(EX[name]()), ref)
 

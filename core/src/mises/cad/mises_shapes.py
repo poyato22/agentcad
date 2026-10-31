@@ -1405,11 +1405,13 @@ def humanoid(height: float = 1700.0, heads: float = 8.0, shoulder_heads: float =
                                 end=(-sx * 12 * k, -44 * k, -78 * k))
         me.add(f"hand_{side}", _placed(_as_shape(hand + thumb), wrist, (0, tilt, 0)), "joint")
         # ---- shoulder: a light deltoid cap lofted outward from the chest over the actuator
-        cap = station_loft([S(0, 74, 86, 2.4), S(45, 72, 72, 2.5), S(95, 62, 64, 2.4),
-                            S(122, 44, 46, 2.2), S(136, 24, 26, 2.0), S(141, 8, 9, 2.0)],
-                           seam_deg=100.0)
-        x_in = shoulder[0] - sx * 62 * k
-        me.add(f"shoulder_cap_{side}", _placed(cap, (x_in, 0, z_sh + 8 * k), (0, 90 * sx, 0)),
+        # a dome, not a block: rounder sections that fall away fast past the actuator
+        cap_l = 120.0                  # an elliptical taper: r = R * sqrt(1 - (x / L)^2)
+        cap = station_loft([S(x, 66 * f, 74 * f, 2.2) for x, f in (
+            (x, math.sqrt(1 - (x / cap_l) ** 2)) for x in (0, 30, 60, 85, 105, 116, 119))],
+            seam_deg=100.0)
+        x_in = shoulder[0] - sx * 58 * k
+        me.add(f"shoulder_cap_{side}", _placed(cap, (x_in, 0, z_sh + 4 * k), (0, 90 * sx, 0)),
                "shell")
         _joint(me, f"shoulder_{side}", shoulder, 52 * k, 84 * k, 0, 0, shell=False, wall=W)
         # ---- elbow, knee and ankle: cowls the width of the limb, nested in the socketed
