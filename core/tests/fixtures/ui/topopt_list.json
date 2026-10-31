@@ -1,14 +1,14 @@
 [
   {
-    "topopt_id": "to_08221292db84",
+    "topopt_id": "to_5ae5cc3a0c76",
     "tool": "topopt_generate",
     "part_id": "block",
-    "project_id": "c656182feb69",
-    "run_id": "3000960a87bf",
-    "call_id": "ui_195fbef1112e",
+    "project_id": "371c86ab3a57",
+    "run_id": "ac6c3a05aa2a",
+    "call_id": "ui_835647ca4a06",
     "status": "done",
-    "created_at": 1793422824.515274,
-    "finished_at": 1793422837.088979,
+    "created_at": 1793422973.401352,
+    "finished_at": 1793422983.0177321,
     "reason": "lightest stiff block",
     "objective": "min_compliance",
     "min_safety_factor": 1.5,
@@ -123,9 +123,9 @@
         "error": null,
         "verified": true,
         "passes": true,
-        "rank": 1,
+        "rank": 2,
         "pareto": true,
-        "started_at": 1793422824.519445,
+        "started_at": 1793422973.4033751,
         "compliance": 17.408135865618597,
         "vf": 0.3000007069231771,
         "report": {
@@ -156,14 +156,14 @@
           "final_vf": 0.304289683505225,
           "islands_dropped_pct": 0.0,
           "times_s": {
-            "voxelize": 0.09,
-            "optimize": 5.96,
-            "surface": 0.28,
+            "voxelize": 0.07,
+            "optimize": 4.73,
+            "surface": 0.22,
             "brep": 0.0,
-            "boolean": 0.43,
-            "export": 0.32
+            "boolean": 0.3,
+            "export": 0.22
           },
-          "total_s": 7.1
+          "total_s": 5.6
         },
         "history": [
           [
@@ -403,18 +403,18 @@
           "max_von_mises_mpa": 20.76596441471339,
           "allowable_mpa": 35.699999999999996,
           "safety_factor": 1.719159259210968,
-          "seconds": 2.7
+          "seconds": 1.9
         },
         "compliance_error_pct": -1.5,
-        "finished_at": 1793422837.0879822,
+        "finished_at": 1793422983.017063,
         "max_deflection_mm": 0.4599762029119583,
         "urls": {
-          "preview": "/topopt/to_08221292db84/variants/v0/preview.glb",
-          "result": "/topopt/to_08221292db84/variants/v0/result.glb",
-          "stress": "/topopt/to_08221292db84/variants/v0/stress.glb",
-          "render": "/topopt/to_08221292db84/variants/v0/render.png",
-          "step": "/topopt/to_08221292db84/variants/v0/part.step",
-          "stl": "/topopt/to_08221292db84/variants/v0/part.stl"
+          "preview": "/topopt/to_5ae5cc3a0c76/variants/v0/preview.glb",
+          "result": "/topopt/to_5ae5cc3a0c76/variants/v0/result.glb",
+          "stress": "/topopt/to_5ae5cc3a0c76/variants/v0/stress.glb",
+          "render": "/topopt/to_5ae5cc3a0c76/variants/v0/render.png",
+          "step": "/topopt/to_5ae5cc3a0c76/variants/v0/part.step",
+          "stl": "/topopt/to_5ae5cc3a0c76/variants/v0/part.stl"
         }
       },
       {
@@ -445,9 +445,9 @@
         "error": null,
         "verified": true,
         "passes": true,
-        "rank": 2,
+        "rank": 1,
         "pareto": true,
-        "started_at": 1793422824.51992,
+        "started_at": 1793422973.403595,
         "compliance": 11.316022821327259,
         "vf": 0.39999862842035494,
         "report": {
@@ -478,14 +478,14 @@
           "final_vf": 0.41852203818245465,
           "islands_dropped_pct": 0.0,
           "times_s": {
-            "voxelize": 0.09,
-            "optimize": 4.84,
-            "surface": 0.38,
+            "voxelize": 0.07,
+            "optimize": 3.84,
+            "surface": 0.24,
             "brep": 0.0,
-            "boolean": 0.44,
-            "export": 0.33
+            "boolean": 0.34,
+            "export": 0.25
           },
-          "total_s": 6.1
+          "total_s": 4.8
         },
         "history": [
           [
@@ -705,18 +705,18 @@
           "max_von_mises_mpa": 10.90329167200401,
           "allowable_mpa": 35.699999999999996,
           "safety_factor": 3.274240575592929,
-          "seconds": 3.2
+          "seconds": 2.4
         },
         "compliance_error_pct": -3.42,
-        "finished_at": 1793422836.866304,
+        "finished_at": 1793422982.8300219,
         "max_deflection_mm": 0.2963175855371107,
         "urls": {
-          "preview": "/topopt/to_08221292db84/variants/v1/preview.glb",
-          "result": "/topopt/to_08221292db84/variants/v1/result.glb",
-          "stress": "/topopt/to_08221292db84/variants/v1/stress.glb",
-          "render": "/topopt/to_08221292db84/variants/v1/render.png",
-          "step": "/topopt/to_08221292db84/variants/v1/part.step",
-          "stl": "/topopt/to_08221292db84/variants/v1/part.stl"
+          "preview": "/topopt/to_5ae5cc3a0c76/variants/v1/preview.glb",
+          "result": "/topopt/to_5ae5cc3a0c76/variants/v1/result.glb",
+          "stress": "/topopt/to_5ae5cc3a0c76/variants/v1/stress.glb",
+          "render": "/topopt/to_5ae5cc3a0c76/variants/v1/render.png",
+          "step": "/topopt/to_5ae5cc3a0c76/variants/v1/part.step",
+          "stl": "/topopt/to_5ae5cc3a0c76/variants/v1/part.stl"
         }
       }
     ],
@@ -726,7 +726,7 @@
     ],
     "recommended": "v1",
     "accepted": [],
-    "summary": "generative design to_08221292db84 of block: done, 2/2 variants; recommended v1 (vf 0.40 \u00b7 r 2.0 mm \u00b7 sym y): 1.6 g, deflection 0.296 mm, peak 10.9 MPa, SF 3.27 (CalculiX, guide only)",
+    "summary": "generative design to_5ae5cc3a0c76 of block: done, 2/2 variants; recommended v1 (vf 0.40 \u00b7 r 2.0 mm \u00b7 sym y): 1.6 g, deflection 0.296 mm, peak 10.9 MPa, SF 3.27 (CalculiX, guide only)",
     "stream": "sim"
   }
 ]

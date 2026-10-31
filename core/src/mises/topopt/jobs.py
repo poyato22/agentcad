@@ -322,8 +322,9 @@ def _dominates(a: dict, b: dict) -> bool:
 def rank(variants: list[dict], *, min_safety_factor: float,
          max_deflection_mm: float | None) -> tuple[list[str], str | None]:
     """Mark each variant's verified / passes / pareto / rank in place; returns (Pareto ids,
-    recommended id). Order: passing Pareto (by mass), other passing (by mass), verified but
-    failing (best safety factor first), unverified, failed."""
+    recommended id). Order: the recommended variant, the rest of the passing Pareto front (by
+    mass), other passing (by mass), verified but failing (best safety factor first), unverified,
+    failed."""
     for v in variants:
         ver = v.get("verify") or {}
         v["verified"] = v.get("status") == "done" and bool(ver) and ver.get("error") is None
@@ -346,8 +347,6 @@ def rank(variants: list[dict], *, min_safety_factor: float,
                      key=lambda v: -((v.get("verify") or {}).get("safety_factor") or 0))
     unverified = [v for v in variants if v.get("status") == "done" and not v["verified"]]
     broken = [v for v in variants if v.get("status") != "done"]
-    for i, v in enumerate([*pareto, *rest, *failing, *unverified, *broken], 1):
-        v["rank"] = i
     rec = None
     if pareto:
         if max_deflection_mm is not None:
@@ -356,7 +355,12 @@ def rank(variants: list[dict], *, min_safety_factor: float,
             # the stiffest per gram (lowest mass x deflection), printability breaks ties
             rec = min(pareto, key=lambda v: (round(v["mass_g"] * v["max_deflection_mm"], 6),
                                              v.get("overhang_area_pct") or 0))
-    return [v["id"] for v in pareto], (rec["id"] if rec else None)
+    ids = [v["id"] for v in pareto]
+    if rec is not None:          # the recommendation is rank 1, the rest of the front by mass
+        pareto = [rec, *(v for v in pareto if v is not rec)]
+    for i, v in enumerate([*pareto, *rest, *failing, *unverified, *broken], 1):
+        v["rank"] = i
+    return ids, (rec["id"] if rec else None)
 
 
 def summary(rec: dict) -> str:

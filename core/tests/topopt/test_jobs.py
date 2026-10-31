@@ -186,6 +186,9 @@ def test_rank_with_a_deflection_target_picks_the_lightest_passing():
           for i, (m, d) in enumerate([(6.5, 2.5), (11.8, 0.75), (18.1, 0.44)])]
     pareto, best = jobs.rank(vs, min_safety_factor=1.5, max_deflection_mm=1.0)
     assert best == "v1" and pareto == ["v1", "v2"] and vs[0]["passes"] is False
+    # without a target: the stiffest per gram is recommended, and ranked first
+    pareto, best = jobs.rank(vs, min_safety_factor=1.5, max_deflection_mm=None)
+    assert best == "v2" and vs[2]["rank"] == 1 and vs[0]["rank"] == 2 and vs[1]["rank"] == 3
 
 
 def test_expand_variants():
