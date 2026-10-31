@@ -337,7 +337,7 @@ export class AssemblyController {
 
   /** The pose `u` ms into one pass of `steps`: steps before the current one at their end, the
    *  current one on its way (eased), later ones at their start. */
-  private showMotionAt(usable: readonly MotionStep[], durs: readonly number[], u: number): void {
+  private motionValuesAt(usable: readonly MotionStep[], durs: readonly number[], u: number): { pose: Map<string, JointValue>; i: number } {
     let i = 0;
     while (i < usable.length - 1 && u >= durs[i]) { u -= durs[i]; i++; }
     const pose = new Map<string, JointValue>();
@@ -347,6 +347,26 @@ export class AssemblyController {
       else if (k === i) pose.set(s.joint_id, clampJoint(lerpValue(s.from, s.to, ease(Math.min(1, u / durs[i]))), j.limits));
       else if (!pose.has(s.joint_id)) pose.set(s.joint_id, clampJoint(s.from, j.limits));
     });
+    return { pose, i };
+  }
+
+  /** The poses the open motion passes through (`n` + 1 samples, ends included), for framing it
+   *  (fix round 1: the full window frames what the motion sweeps, not every joint's full reach). */
+  motionPoses(n = 24): Record<string, Mat4>[] {
+    const d = this.data.peek();
+    const total = this.motionDurs.reduce((a, b) => a + b, 0);
+    if (!d || this.motion.peek() === null || total <= 0) return [];
+    const out: Record<string, Mat4>[] = [];
+    for (let k = 0; k <= n; k++) {
+      const { pose } = this.motionValuesAt(this.motionSteps, this.motionDurs, (k / n) * total);
+      const joints = d.joints.map((j) => ({ ...j, value: pose.get(j.id) ?? this.values.peek()[j.id] ?? j.value }));
+      out.push(solve({ instances: d.instances, joints }, this.resolver()).transforms);
+    }
+    return out;
+  }
+
+  private showMotionAt(usable: readonly MotionStep[], durs: readonly number[], u: number): void {
+    const { pose, i } = this.motionValuesAt(usable, durs, u);
     const next = { ...this.values.peek() };
     for (const [id, v] of pose) { this.moving.set(id, v); next[id] = v; }
     batch(() => {

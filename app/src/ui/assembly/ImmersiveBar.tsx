@@ -14,6 +14,7 @@ import type { AssemblyController } from "./controller";
 import { assemblyModes, type Immersive } from "./state";
 import { AXIS_NORMAL, SWEEP_REST_AT, sweepEnds, sweepSection } from "./sweep";
 import { towardCamera } from "./ViewerPill";
+import { modalOpen } from "../pages/router";
 
 const SPEEDS = [0.5, 1, 2] as const;
 const fmtS = (s: number) => `${s.toFixed(1)}`;
@@ -39,7 +40,30 @@ function CloseButton({ onClose }: { onClose(): void }): JSX.Element {
   return <button type="button" class="pill-btn" data-testid="assembly-immersive-close" onClick={onClose} title="Close (Esc)">Close</button>;
 }
 
+/** ←/→ anywhere in the full window (not while typing, not on a focused slider: its own keys),
+ *  ⇧ for bigger steps: `nudge(±1, big)`. */
+function useArrows(nudge: (dir: 1 | -1, big: boolean) => void): void {
+  const ref = useRef(nudge);
+  ref.current = nudge;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.key !== "ArrowLeft" && e.key !== "ArrowRight") || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || modalOpen()) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+      e.preventDefault();
+      ref.current(e.key === "ArrowRight" ? 1 : -1, e.shiftKey);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+}
+
 function MotionBar({ ctl, onClose }: { ctl: AssemblyController; onClose(): void }): JSX.Element {
+  // a twentieth of the motion a press (a quarter with ⇧), paused there
+  useArrows((dir, big) => {
+    const cur = ctl.motion.peek();
+    if (cur) ctl.seekMotion(cur.t + dir * cur.duration * (big ? 0.25 : 0.05));
+  });
   const m = ctl.motion.value;
   if (!m) {
     return (
@@ -109,6 +133,12 @@ function SweepBar({ imm, host, onClose }: { imm: Extract<Immersive, { mode: "swe
   const take = (v: number) => { cancel.current?.(); cancel.current = null; setPhase("manual"); show(v); };
   const lo = ends ? Math.min(ends[0], ends[1]) : 0;
   const hi = ends ? Math.max(ends[0], ends[1]) : 0;
+  // ←/→ nudge the cut a fiftieth of the range (a tenth with ⇧): the user's from then on
+  useArrows((dir, big) => {
+    if (!ready) return;
+    const cur = value ?? lo;
+    take(Math.min(hi, Math.max(lo, cur + dir * (hi - lo) * (big ? 0.1 : 0.02))));
+  });
   return (
     <div class="asm-imm-bar" data-testid="sweep-bar" data-sweep={ready ? phase : "waiting"}>
       <span class="pill-axis imm-axis" aria-label={`Cut across ${sweep.axis.toUpperCase()}`}>{sweep.axis.toUpperCase()}</span>

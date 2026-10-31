@@ -4,7 +4,7 @@
 // on a part selects it (its row in the left tree too); a double-click on empty space or F fits.
 // Play opens the assembly full-window: the agent's latest animation, else an exploded orbit tour.
 import { materialOf } from "../../lib/appearance";
-import { effect } from "@preact/signals";
+import { effect, useComputed } from "@preact/signals";
 import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { AssemblyPart } from "../../api/assembly";
@@ -31,9 +31,25 @@ import { prefersReducedMotion } from "../viewer/modes/motion";
 import type { ModesState } from "../viewer/modes/state";
 import { activeBuildId, onBuildSwitch } from "../../state/builds";
 import { assemblyOf } from "../left/treeActions";
-import { setAnimationPlayer } from "../../state/assemblyAnimation";
+import { parseAnimateSteps, setAnimationPlayer } from "../../state/assemblyAnimation";
+import type { AnimateStep } from "../../api/types";
 import { registerAnnounceJump } from "../console/announceJumps";
 import "./assembly.css";
+
+/** The full window frames its model at about 70% of the limiting side. */
+const IMMERSIVE_MARGIN = 1.4;
+
+/** The build's newest saved animation (core G-D route), parsed as untrusted data. */
+async function savedAnimation(pid: string): Promise<{ name: string; steps: AnimateStep[]; loops: number } | null> {
+  try {
+    const all = await actions.client().assemblyAnimations(pid);
+    for (const a of [...all].reverse()) {
+      const steps = parseAnimateSteps(a.steps);
+      if (steps.length) return { name: a.name.slice(0, 60) || "Animation", steps, loops: Math.min(10, Math.max(1, Math.floor(a.loops))) };
+    }
+  } catch { /* an older core: no saved animations */ }
+  return null;
+}
 
 /** One per app: opening a part and coming back keeps the build loaded. */
 export const assembly = new AssemblyController(() => actions.client());
@@ -50,6 +66,7 @@ setAnimationPlayer({
   watch: async (spec, onEnd) => {
     setPage("design");
     closePart();
+    immersive.value = null;           // the full window closes first (its own cleanup restores)
     if (assembly.data.peek() === null || (spec.project_id && assembly.projectId.peek() !== spec.project_id)) await assembly.open(spec.project_id);
     return assembly.play(spec.steps, { loops: spec.loops, onEnd });
   },
@@ -226,18 +243,38 @@ export function AssemblyView(): JSX.Element {
   /** The modes before the full window opened (they come back on close). */
   const beforeImm = useRef<ModesState | null>(null);
   function play(): void {
-    const spec = latestAnimation(ctl.projectId.peek());
-    const usable = spec?.steps.some((s) => ctl.joint(s.joint_id) !== null);
-    immersive.value = spec && usable
-      ? { mode: "animation", steps: spec.steps, loop: spec.loops > 1, title: "The agent's animation", caption: "" }
-      : { mode: "tour" };
+    const pid = ctl.projectId.peek();
+    const spec = latestAnimation(pid);
+    const usable = (steps: readonly { joint_id: string }[]) => steps.some((s) => ctl.joint(s.joint_id) !== null);
+    if (spec && usable(spec.steps)) {
+      immersive.value = { mode: "animation", steps: spec.steps, loop: spec.loops > 1, title: "The agent's animation", caption: "" };
+      return;
+    }
+    // after a reload no live animation is known: the build's newest saved one, else the tour
+    immersive.value = { mode: "tour" };
+    if (!pid) return;
+    void savedAnimation(pid).then((saved) => {
+      if (!saved || !usable(saved.steps) || immersive.peek()?.mode !== "tour" || ctl.projectId.peek() !== pid) return;
+      immersive.value = { mode: "animation", steps: saved.steps, loop: saved.loops > 1, title: saved.name, caption: "" };
+    });
   }
   // the full window opens (Play, or an agent's presented card): what it shows starts here
   const loaded = data !== null;
   // kept as the view opens, before any child's effect (the sweep's first cut) changes the modes
   if (imm && beforeImm.current === null) beforeImm.current = assemblyModes.peek();
   useEffect(() => {
-    if (!imm || !beforeImm.current) return;
+    if (!imm) {
+      // closed (Close, Esc, Watch, leaving the page): the motion stops, the modes come back
+      if (beforeImm.current === null) return;
+      orbiter.current?.stop();
+      ctl.closeMotion();
+      animate.current = true;
+      assemblyModes.value = beforeImm.current;
+      beforeImm.current = null;
+      sceneRef.current?.setFraming(null);
+      return;
+    }
+    if (!beforeImm.current) return;
     if (imm.mode === "tour") {
       animate.current = true;
       assemblyModes.value = { ...beforeImm.current, explode: 1 };
@@ -249,16 +286,7 @@ export function AssemblyView(): JSX.Element {
       assemblyModes.value = { ...assemblyModes.peek(), explode: 0 };
     }
   }, [imm, loaded]);
-  function closeImmersive(): void {
-    if (immersive.peek() === null) return;
-    immersive.value = null;
-    orbiter.current?.stop();
-    ctl.closeMotion();
-    animate.current = true;
-    assemblyModes.value = beforeImm.current ?? MODES_OFF;
-    beforeImm.current = null;
-    requestAnimationFrame(() => sceneRef.current?.fit());
-  }
+  function closeImmersive(): void { immersive.value = null; }
   const tour = imm?.mode === "tour";
   useEffect(() => {
     if (!tour || !modeHost) return;
@@ -267,9 +295,29 @@ export function AssemblyView(): JSX.Element {
     o.start(1, 14);
     return () => { o.stop(); };
   }, [tour, modeHost]);
-  // the canvas grew to the window (or back): frame the assembly in it
-  useEffect(() => { requestAnimationFrame(() => sceneRef.current?.fit()); }, [imm]);
-  useEffect(() => () => { if (immersive.peek()) closeImmersive(); }, []);
+  // the canvas grew to the window (or back): frame what the view shows, the model ~70% of it —
+  // a motion's envelope (not every joint's full reach), the posed parts for a sweep or the tour
+  // (again once the tour's explode has glided out); resizes keep that framing
+  const motionOpen = useComputed(() => ctl.motion.value !== null).value;   // not every frame
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+    if (!imm) { requestAnimationFrame(() => sceneRef.current?.fit()); return; }
+    const frame = () => {
+      const poses = imm.mode === "animation" ? ctl.motionPoses() : [];
+      sceneRef.current?.setFraming(poses.length ? { kind: "poses", poses } : { kind: "posed" }, IMMERSIVE_MARGIN);
+    };
+    const id = requestAnimationFrame(frame);
+    const later = imm.mode === "tour" ? setTimeout(frame, 600) : null;
+    return () => { cancelAnimationFrame(id); if (later) clearTimeout(later); };
+  }, [imm, motionOpen, templateTick]);
+  useEffect(() => () => {
+    // leaving the page with it open: nothing is left moved, cut or exploded for the next visit
+    if (immersive.peek()) immersive.value = null;
+    ctl.closeMotion();
+    if (beforeImm.current) assemblyModes.value = beforeImm.current;
+    beforeImm.current = null;
+  }, []);
 
   // keys: Esc closes Play's view, else stops an animation; F fits (never while typing or under a modal)
   const animating = ctl.animating.value;

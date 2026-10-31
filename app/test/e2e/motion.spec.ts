@@ -58,6 +58,26 @@ async function pixels(page: Page): Promise<{ total: number; sig: string }> {
     return { total: total * ((src.width * src.height) / (64 * 40)), sig };
   });
 }
+/** How much of the canvas the model fills on its limiting side (its opaque pixels' box). */
+async function fill(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const src = document.querySelector<HTMLCanvasElement>("[data-testid=assembly-canvas]");
+    if (!src) throw new Error("no canvas");
+    const W = 288; const H = Math.round((288 * src.height) / src.width);
+    const c = document.createElement("canvas");
+    c.width = W; c.height = H;
+    const ctx = c.getContext("2d");
+    if (!ctx) throw new Error("no 2d");
+    ctx.drawImage(src, 0, 0, W, H);
+    const d = ctx.getImageData(0, 0, W, H).data;
+    let x0 = W; let x1 = -1; let y0 = H; let y1 = -1;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      if ((d[(y * W + x) * 4 + 3] ?? 0) < 120) continue;
+      x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+    }
+    return x1 < 0 ? 0 : Math.max((x1 - x0 + 1) / W, (y1 - y0 + 1) / H);
+  });
+}
 const differs = (a: string, b: string) => [...a].filter((ch, i) => ch !== b[i]).length;
 
 async function shots(page: Page, name: string): Promise<void> {
@@ -91,6 +111,12 @@ test("an_animation_card_opens_the_assembly_full_window_and_plays_with_scrub_loop
   await expect(imm).toContainText("Open and shut the lid");
   const box = await page.getByTestId("assembly-view").boundingBox();
   expect([box?.width, box?.height]).toEqual([1440, 900]);              // full window
+  // the model is the hero: framed to what the motion sweeps, ~70% of the limiting side
+  await expect.poll(() => fill(page), { timeout: 5000 }).toBeGreaterThan(0.55);
+  await page.setViewportSize({ width: 1100, height: 760 });
+  await expect.poll(() => fill(page), { timeout: 5000 }).toBeGreaterThan(0.55);
+  expect(await fill(page)).toBeLessThan(0.95);                          // and never cropped
+  await page.setViewportSize({ width: 1440, height: 900 });
   const bar = page.getByTestId("motion-bar");
   await expect(bar).toHaveAttribute("data-playing", "true");
   await expect(page.getByTestId("motion-loop")).toHaveAttribute("aria-pressed", "true");   // it plays 2x: looping
@@ -105,6 +131,13 @@ test("an_animation_card_opens_the_assembly_full_window_and_plays_with_scrub_loop
   await seek(1);
   await expect(bar).toHaveAttribute("data-playing", "false");
   await expect(page.getByTestId("motion-time")).toHaveText("1.0");
+  // ←/→ scrub from anywhere (no focus needed), ⇧ for bigger steps
+  await page.locator("body").focus();
+  await page.keyboard.press("ArrowRight");                              // + 1/20 of 3.5 s
+  await expect(page.getByTestId("motion-time")).toHaveText("1.2");
+  await page.keyboard.press("Shift+ArrowLeft");                         // − 1/4
+  await expect(page.getByTestId("motion-time")).toHaveText("0.3");
+  await seek(1);
   const half = await pixels(page);
   await seek(2);                                                        // fully open (120°)
   const open120 = await pixels(page);
@@ -138,7 +171,6 @@ test("a_section_sweep_card_sweeps_the_cut_once_then_the_user_drags_it", async ({
   const c = view(page).getByTestId("motion-card");
   await expect(c.getByTestId("motion-card-meta")).toHaveText("Cuts across X from -20 to 60 mm");
   await shots(page, "sweep-card");
-  const whole = (await pixels(page)).total;
 
   await c.getByTestId("motion-card-open").click();
   const imm = page.getByTestId("assembly-immersive");
@@ -153,6 +185,14 @@ test("a_section_sweep_card_sweeps_the_cut_once_then_the_user_drags_it", async ({
   await shots(page, "sweep-immersive");
   await expect(bar).toHaveAttribute("data-sweep", "manual", { timeout: 6000 });
   expect(await mm()).toBeCloseTo(60, 0);
+  expect(await fill(page)).toBeGreaterThan(0.55);                       // the posed parts, framed
+  const whole = (await pixels(page)).total;                             // cut at the far end: all of it
+  // ←/→ nudge the cut from anywhere: 1/50 of the 80 mm range, 1/10 with ⇧
+  await page.locator("body").focus();
+  await page.keyboard.press("ArrowLeft");
+  await expect(page.getByTestId("sweep-value")).toHaveText("58.4 mm");
+  await page.keyboard.press("Shift+ArrowLeft");
+  await expect(page.getByTestId("sweep-value")).toHaveText("50.4 mm");
   // the slider is the user's now
   const slider = page.getByTestId("sweep-slider");
   const to = async (v: number) => {
@@ -185,4 +225,36 @@ test("play_in_the_pill_opens_the_agent's_latest_animation_with_the_same_controls
   await expect(page.getByTestId("motion-scrub")).toHaveAttribute("max", "3.5");
   await page.getByTestId("assembly-immersive-close").click();
   await expect(page.getByTestId("viewer-pill")).toBeVisible();
+});
+
+test("after_a_reload_play_finds_the_builds_saved_animation", async ({ page, fake }) => {
+  // no live assembly_animate this session: the core's saved one (GET …/assembly/animations)
+  const card = read("motion_animate_tool.json") as { animation_id: string; view_spec: { animation: Record<string, unknown> } };
+  const saved = { id: card.animation_id, ...card.view_spec.animation };
+  await fake.reset({ ...scenario(), assembly: { ...(scenario().assembly as object), animations: { [PROJECT]: [saved] } } } as never);
+  await page.goto("/");
+  await expect(page.getByTestId("assembly-canvas")).toHaveAttribute("data-instances", "2");
+  await page.getByTestId("pill-play").click();
+  const imm = page.getByTestId("assembly-immersive");
+  await expect(imm).toHaveAttribute("data-mode", "animation");
+  await expect(imm).toContainText("Open and shut the lid");
+  await expect(page.getByTestId("motion-scrub")).toHaveAttribute("max", "3.5");
+});
+
+test("under_reduced_motion_nothing_moves_by_itself", async ({ page, fake }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await open(page, fake, "animation");
+  await view(page).getByTestId("motion-card-open").click();
+  await expect(page.getByTestId("motion-bar")).toHaveAttribute("data-playing", "false");
+  await page.waitForTimeout(400);
+  await expect(page.getByTestId("motion-time")).toHaveText("0.0");
+  await page.getByTestId("motion-play").click();                         // the user starts it
+  await expect(page.getByTestId("motion-bar")).toHaveAttribute("data-playing", "true");
+  await page.keyboard.press("Escape");
+  await fake.emit({ type: "agent_announce", run_id: LEAD, data: card("section_sweep") });
+  await expect(view(page).getByTestId("motion-card")).toHaveAttribute("data-kind", "section_sweep");
+  await view(page).getByTestId("motion-card-open").click();
+  // no auto sweep: the cut lands 45% along (-20 → 60 mm) and the slider is the user's
+  await expect(page.getByTestId("sweep-bar")).toHaveAttribute("data-sweep", "manual");
+  await expect(page.getByTestId("sweep-value")).toHaveText("16.0 mm");
 });

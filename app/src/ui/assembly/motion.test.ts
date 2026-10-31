@@ -84,6 +84,18 @@ describe("motion playback (a presented animation)", () => {
     expect(ctl.motion.value).toBeNull();
   });
 
+  it("samples_the_poses_the_motion_passes_through_for_framing", () => {
+    expect(ctl.motionPoses()).toEqual([]);                 // no motion open
+    ctl.openMotion([{ joint_id: JOINT, from: 0, to: 120, duration_s: 2 }], { autoplay: false });
+    const poses = ctl.motionPoses(4);
+    expect(poses).toHaveLength(5);
+    // the lid's +X point (40, 0, 0 in its frame) swings from lying flat to standing past vertical
+    const tip = (m: number[][]) => m[2][0] * 20 + m[2][3];
+    const zs = poses.map((p) => tip(p[LID] as number[][]));
+    expect(Math.max(...zs) - Math.min(...zs)).toBeGreaterThan(10);
+    expect(v()).toBeCloseTo(0, 5);                        // sampling never moves what is shown
+  });
+
   it("an_agents_live_play_replaces_the_scrubbing", () => {
     ctl.openMotion(OPEN_SHUT, { loop: true });
     ctl.play([{ joint_id: JOINT, from: 10, to: 20, duration_s: 1 }]);
