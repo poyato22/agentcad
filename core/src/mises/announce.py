@@ -89,8 +89,26 @@ def _part_created(args: dict, data: dict) -> Announcement | None:
     pid = data.get("part_id") or args.get("part_id")
     if not pid or data.get("existing") or (data.get("version") or 1) > 1:
         return None                      # a rebuild or a re-import is not a new part
+    # Plan 9 D10: the card shows the part's render (GET /parts/{id}/thumb.png, a core route)
     return {"kind": "part_created", "title": f"Created part {pid}",
-            "ref": {"part_id": pid}}
+            "ref": {"part_id": pid, "thumb_url": thumb_url(pid)}}
+
+
+def thumb_url(part_id: str) -> str:
+    return f"/parts/{part_id}/thumb.png"
+
+
+def _auto_placed(args: dict, data: dict) -> Announcement | None:
+    """Plan 9 D10: mirror_part_create placed the new part into the assembly itself."""
+    placed = data.get("placed") or {}
+    inst = placed.get("instance") or {}
+    if not inst.get("id"):
+        return None
+    pid = inst.get("part_id") or data.get("part_id")
+    return {"kind": "assembly_added", "title": f"Added {pid} to the assembly",
+            "detail": "placed by itself" + (", grounded" if inst.get("fixed") else ""),
+            "ref": {"project_id": placed.get("project_id"), "instance_id": inst["id"],
+                    "part_id": pid}}
 
 
 def _catalog_part(args: dict, data: dict) -> Announcement | None:
@@ -161,6 +179,12 @@ MAPPERS: dict[str, Mapper] = {
 }
 
 
+#: tool name -> further announcements one result can imply (after MAPPERS' one)
+FOLLOW_UPS: dict[str, tuple[Mapper, ...]] = {
+    "mirror_part_create": (_auto_placed,),
+}
+
+
 def from_tool_result(name: str, args: dict, out: ToolOutput) -> Announcement | None:
     """The announcement a successful tool result implies, or None."""
     if not out.ok:
@@ -171,14 +195,23 @@ def from_tool_result(name: str, args: dict, out: ToolOutput) -> Announcement | N
     return mapper(args or {}, out.data or {})
 
 
+def all_from_tool_result(name: str, args: dict, out: ToolOutput) -> list[Announcement]:
+    """Every announcement a successful result implies, in order (from_tool_result's first)."""
+    first = from_tool_result(name, args, out)
+    if not out.ok:
+        return []
+    more = [m(args or {}, out.data or {})
+            for m in FOLLOW_UPS.get(name.split("mcp__mises__", 1)[-1], ())]
+    return [a for a in (first, *more) if a is not None]
+
+
 def on_tool_result(gate, run_id: str, name: str, args: dict, out: ToolOutput) -> None:
     """The Gate's hook. Calls the app's own UI started (its "ui" runs) are the user's doing,
     not an agent's: they are not announced."""
     if run_id in (gate.services.get("ui_run_ids") or ()):
         return
     try:
-        a = from_tool_result(name, args, out)
-        if a is not None:
+        for a in all_from_tool_result(name, args, out):
             announce(gate.events, gate.store, run_id, a["kind"], a["title"],
                      a.get("detail", ""), a.get("ref"))
     except Exception:  # noqa: BLE001 - an announcement never fails the call it describes
