@@ -3,12 +3,13 @@
 // the lead's tree. The send button turns into Stop while this list is not empty; Esc in the
 // composer and /stop do the same (Esc spares a run that waits on your approval or answer).
 // A build whose agents are idle but still have background jobs (B3: studies, reviews and design
-// studies an agent started) is busy too: Stop / Esc stop those jobs.
+// studies an agent started) is busy too: Stop / Esc stop those jobs — never a generative run you
+// started from the panel (B3-I2: its own card's Stop does).
 import { computed, type ReadonlySignal } from "@preact/signals";
 import type { AgentActivity, AgentRun } from "../../api/types";
 import { debug } from "../../lib/log";
 import { activityByRun, runBusy } from "../../state/activity";
-import { buildJobs, stopBuildJobs } from "../../state/jobs";
+import { agentBuildJobs, stopBuildJobs } from "../../state/jobs";
 import { effectiveRun } from "../../state/selection";
 import { actions } from "../../state/store";
 import { buildRuns } from "./derived";
@@ -30,7 +31,7 @@ export const busyRuns: ReadonlySignal<readonly AgentRun[]> = computed(() =>
   stopTargets(buildRuns.value, effectiveRun.value ?? shownPending.value, activityByRun.value));
 
 /** Is there anything for the composer's Stop to stop: a busy run, or a background job? */
-export const stoppable: ReadonlySignal<boolean> = computed(() => busyRuns.value.length > 0 || buildJobs.value.length > 0);
+export const stoppable: ReadonlySignal<boolean> = computed(() => busyRuns.value.length > 0 || agentBuildJobs.value.length > 0);
 
 /** Stop every busy run of the tree, each explicitly (the core cancels only the run asked, not its
  *  children), and the build's background jobs. `fromEsc`: leave runs that wait on you alone. */

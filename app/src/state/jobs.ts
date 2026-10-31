@@ -2,14 +2,15 @@
 // design studies, GET /jobs). An agent whose turn has ended can still have some: the composer's
 // Stop / Esc count them as busy, and each running card in the Simulations stream has its own Stop
 // (POST /jobs/{id}/cancel). Refetched when the build changes and on the events that start or end a
-// job (a sim tool's tool_result, sim_finished); a job's sim_finished drops it at once.
+// job (a sim or generative tool's tool_result, sim_finished, topopt_finished); a job's
+// sim_finished / topopt_finished drops it at once. The composer's Stop stops only the agents' jobs.
 import { computed, effect, signal, type ReadonlySignal, type Signal } from "@preact/signals";
 import type { BackgroundJob } from "../api/jobs";
 import { onCoreEvent } from "../api/events";
 import type { MisesEvent } from "../api/types";
 import { debug } from "../lib/log";
 import { activeBuildId } from "./builds";
-import { actions, conn } from "./store";
+import { actions, conn, runs } from "./store";
 
 export const liveJobs: Signal<readonly BackgroundJob[]> = signal<readonly BackgroundJob[]>([]);
 /** Job ids the user asked to stop (the card shows "stopping…" until sim_finished). */
@@ -19,6 +20,17 @@ export const stoppingJobs: Signal<ReadonlySet<string>> = signal<ReadonlySet<stri
 export const buildJobs: ReadonlySignal<readonly BackgroundJob[]> = computed(() => {
   const b = activeBuildId.value;
   return b ? liveJobs.value.filter((j) => j.build_id === b) : [];
+});
+
+/** The shown build's jobs an AGENT started (B3-I2 ruling): what the composer's Stop / Esc stop.
+ *  A generative run you started from the panel rides the build's "ui" run (not in GET /runs):
+ *  only its own card's Stop stops it. */
+export const agentBuildJobs: ReadonlySignal<readonly BackgroundJob[]> = computed(() => {
+  const known = runs.value;
+  return buildJobs.value.filter((j) => {
+    const r = j.run_id ? known.get(j.run_id) : undefined;
+    return r !== undefined && r.provider !== "ui";
+  });
 });
 
 export function isLiveJob(jobId: string | null): boolean {
@@ -51,9 +63,9 @@ export async function stopJob(jobId: string): Promise<boolean> {
   }
 }
 
-/** Stop every running job of the shown build (the composer's Stop / Esc). */
+/** Stop every running job the shown build's agents started (the composer's Stop / Esc). */
 export async function stopBuildJobs(): Promise<void> {
-  await Promise.all(buildJobs.peek().map((j) => stopJob(j.job_id)));
+  await Promise.all(agentBuildJobs.peek().map((j) => stopJob(j.job_id)));
 }
 
 function dropJob(jobId: string): void {
@@ -65,7 +77,7 @@ function dropJob(jobId: string): void {
   }
 }
 
-const SIM_TOOLS = /^(mcp__mises__)?(sim_run|sim_static_run|design_review|study_run)$/;
+const SIM_TOOLS = /^(mcp__mises__)?(sim_run|sim_static_run|design_review|study_run|topopt_run|topopt_generate)$/;
 
 let timer: ReturnType<typeof setTimeout> | undefined;
 function soon(): void {
@@ -75,8 +87,9 @@ function soon(): void {
 
 /** A core event that starts or ends a job (exported for tests). */
 export function onJobEvent(ev: MisesEvent): void {
-  if (ev.type === "sim_finished") {
-    const id = ev.data.job_id;
+  if (ev.type === "sim_finished" || ev.type === "topopt_finished") {
+    // a generative run ends with topopt_finished (B3-I1), its job id the topopt id
+    const id = ev.type === "sim_finished" ? ev.data.job_id : ev.data.topopt_id;
     if (typeof id === "string") dropJob(id);
     soon();
   } else if (ev.type === "tool_result" && typeof ev.data.name === "string" && SIM_TOOLS.test(ev.data.name)) {
