@@ -71,9 +71,12 @@
 
 /* ---- View stream: the newest view large (full dock width), older ones in a filmstrip */
 .vs { display: flex; flex-direction: column; gap: 8px; padding: 0 12px 10px; min-height: 0; flex: 1; }
-.vs-main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.vs-main > .vcard { max-width: none; flex: 1; display: flex; flex-direction: column; border-radius: 10px; overflow: hidden; }
-.vs-main > .vcard .vcard-stage { flex: 1; height: auto; min-height: 160px; }
+/* a tall card (a concept sketch or pitch) scrolls in place; a view card fits: its stage gives way
+   so the caption row under it always shows (FW-app M4) */
+.vs-main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; }
+.vs-main > .vcard { max-width: none; flex: 1; display: flex; flex-direction: column; border-radius: 10px; overflow: hidden; min-height: 0; }
+.vs-main > .vcard .vcard-stage { flex: 1 1 auto; height: auto; min-height: 72px; }
+.vs-main > .vcard .vcard-foot { flex: none; }
 .vs-main > .crit { border-radius: 10px; }
 .vs-main > .cv-line, .vs-main > .cv-announce { margin-left: 0; margin-right: 0; }
 .vs-strip { flex: none; display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
@@ -81,7 +84,8 @@
   flex: none; width: 64px; height: 44px; padding: 0; border: 1px solid var(--line2); border-radius: 6px; overflow: hidden;
   background: var(--vp); cursor: pointer; display: grid; place-items: center;
 }
-.vs-tile img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.vs-tile img, .vs-tile .vs-tile-thumb { width: 100%; height: 100%; object-fit: contain; display: block; }
+.vs-tile .thumb-blank { display: grid; place-items: center; color: var(--dim); }
 .vs-tile[aria-current="true"] { border-color: var(--ink); }
 .vs-tile:hover { border-color: var(--dim); }
 .vs-tile:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }

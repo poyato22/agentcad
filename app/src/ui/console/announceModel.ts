@@ -14,6 +14,8 @@ function parseRef(v: unknown): AnnounceRef {
     const s = str(r[k]);
     if (s) out[k] = s;
   }
+  const img = Array.isArray(r.image_ids) ? str(r.image_ids[0]) : null;
+  if (img) out.image_id = img;
   return out;
 }
 

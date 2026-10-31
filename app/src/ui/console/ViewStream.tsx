@@ -3,16 +3,20 @@
 // newest is large, the full dock width (click opens it full window, ViewImmersive), naming the
 // agent that made it; the older ones sit in a filmstrip under it, and picking one shows it large
 // until something new lands. Only the large view renders live; a strip tile fetches its still
-// only once it scrolls into the strip's view (a long build has many).
+// only once it scrolls into the strip's view (a long build has many). Every tile shows a picture
+// (FW-app M4): a view's still, a critique's image, a part card's part render, a concept sketch's
+// first image, a view not rendered yet its part; a card with none (a pitch) shows its kind's mark.
 import type { JSX } from "preact";
 import { memo } from "preact/compat";
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { AgentRun } from "../../api/types";
+import { actions, parts } from "../../state/store";
+import { Thumb } from "../common/Thumb";
 import { AnnouncementCard, ANNOUNCE_META } from "./AnnouncementCard";
 import { CritiqueCard } from "./cards/critique/CritiqueCard";
 import { useImageUrl, useKeyedImageUrl } from "./cards/critique/images";
 import { ViewCard } from "./cards/critique/ViewCard";
-import { VIEW_KIND_TEXT } from "../viewer/modes/viewSpec";
+import { partsForSpec, VIEW_KIND_TEXT } from "../viewer/modes/viewSpec";
 import { Item } from "./Conversation";
 import { RunTag } from "./SimStream";
 import type { ThreadItem } from "./threadModel";
@@ -91,15 +95,35 @@ function Tile({ entry, root, current, onPick }: { entry: DockEntry; root: { curr
   const item = entry.item;
   const label = tileLabel(item);
   const [ref, seen] = useSeenIn(root);
+  const ann = item.kind === "announce" ? item.announcement : null;
   const view = seen && item.kind === "view" ? item.view.thumbnail : null;
-  const crit = seen && item.kind === "critique" ? item.round.after ?? item.round.before : null;
+  const crit = seen && item.kind === "critique" ? item.round.after ?? item.round.before
+    : seen && ann?.ref.image_id ? { id: ann.ref.image_id } : null;
   const keyed = useKeyedImageUrl(view);
   const plain = useImageUrl(crit);
   const img = keyed ?? plain;
+  // no still: a part card's part, or a view (not rendered yet) its first part
+  const partId = ann && !ann.ref.image_id ? ann.ref.part_id ?? null
+    : item.kind === "view" ? partsForSpec(item.view.spec, parts.value)[0] ?? null : null;
+  const glyph = ann ? ANNOUNCE_META[ann.kind]?.glyph ?? "◫" : "◫";
   return (
     <button type="button" ref={ref} class="vs-tile" aria-current={current ? "true" : undefined} aria-label={`Show ${label}`} title={label}
-      data-tile={entry.key} data-tile-kind={item.kind === "view" ? item.view.spec.kind : item.kind} data-seen={seen ? "" : undefined} onClick={onPick}>
-      {img ? <img src={img} alt="" draggable={false} /> : <span class="vs-tile-glyph faint" aria-hidden="true">◫</span>}
+      data-tile={entry.key} data-tile-kind={item.kind === "view" ? item.view.spec.kind : ann ? ann.kind : item.kind} data-seen={seen ? "" : undefined} onClick={onPick}>
+      {img ? <img src={img} alt="" draggable={false} data-tile-img />
+        : partId && seen ? <PartTile partId={partId} glyph={glyph} />
+          : <span class="vs-tile-glyph faint" aria-hidden="true">{glyph}</span>}
     </button>
   );
 }
+
+/** A part card's tile: the part's render (the same route as the card's, small). */
+function PartTile({ partId, glyph }: { partId: string; glyph: string }): JSX.Element {
+  const version = parts.value.find((p) => p.part_id === partId)?.version ?? 0;
+  return (
+    <Thumb class="vs-tile-thumb" alt="" glyph={glyph} cacheKey={`${partId}:${version}:tile`}
+      load={() => { try { return actions.client().partThumb(partId, TILE_PX); } catch (e) { return Promise.reject(e); } }} />
+  );
+}
+
+/** A tile's render size (2x its 64 px width). */
+const TILE_PX = 128;

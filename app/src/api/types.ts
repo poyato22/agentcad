@@ -166,6 +166,8 @@ export interface AnnounceRef {
   bom_id?: string | null; snapshot_id?: string | null; catalog_id?: string | null; import_id?: string | null;
   /** Plan 9 G-A concept cards: the sketch version / the pitch the card shows. */
   sketch_id?: string | null; pitch_id?: string | null;
+  /** A concept sketch's first image (its ref.image_ids[0], a render id): the View filmstrip's tile. */
+  image_id?: string | null;
 }
 
 /** Parsed `agent_announce` event (U3c). `title` is a short line; `detail` an optional second line.
