@@ -55,8 +55,12 @@ def nodal_field(x: np.ndarray, n: tuple[int, int, int], outside: np.ndarray) -> 
     p = np.pad(e, 1, mode="edge")
     p = np.pad(p, 1)                      # the void shell
     nx, ny, nz = n
-    return sum(p[a:a + nx + 3, b:b + ny + 3, c:c + nz + 3]
-               for a in (0, 1) for b in (0, 1) for c in (0, 1)) / 8.0
+    F = sum(p[a:a + nx + 3, b:b + ny + 3, c:c + nz + 3]
+            for a in (0, 1) for b in (0, 1) for c in (0, 1)) / 8.0
+    # the outer node layer averages the void shell: at most 0.5, but 0.5000000000000001 in
+    # floating point would open the surface there; it is void by construction
+    F[0], F[-1], F[:, 0], F[:, -1], F[:, :, 0], F[:, :, -1] = (0.0,) * 6
+    return F
 
 
 # ---- iso-surface
@@ -354,6 +358,12 @@ def decimate(V: np.ndarray, T: np.ndarray, target_tris: int, *, max_error: float
             opp.update(T[f].tolist())
         opp -= {u, v}
         if neighbours(u) & neighbours(v) != opp or len(neighbours(u) | neighbours(v)) <= 3:
+            continue
+        # the edge half of the link condition: no edge in both links (a valence-3 opposite
+        # vertex would leave two coincident, opposite triangles)
+        lk_u = {frozenset(T[f].tolist()) - {u} for f in vf[u]}
+        lk_v = {frozenset(T[f].tolist()) - {v} for f in vf[v]}
+        if lk_u & lk_v:
             continue
         p = np.array(p)
         ok = True

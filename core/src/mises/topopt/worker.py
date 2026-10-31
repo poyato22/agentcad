@@ -85,6 +85,22 @@ def face_tris(faces, tol: float) -> np.ndarray:
     return np.concatenate([vx.tris_of(f, tol) for f in faces]) if faces else np.zeros((0, 3, 3))
 
 
+def tributary_weights(pts: np.ndarray, tris: np.ndarray, h: float) -> np.ndarray:
+    """Each load node's share of the face area (sums to 1): the face is sampled densely and
+    each sample's area goes to its nearest load node. Equal shares would put the face's
+    perimeter nodes at 2-4x their real load, a line load along every edge that makes the voxel
+    model artificially soft."""
+    from scipy.spatial import cKDTree
+    fine = vx.densify(tris, h / 4)
+    a, b, c = fine[:, 0], fine[:, 1], fine[:, 2]
+    area = np.linalg.norm(np.cross(b - a, c - a), axis=1) / 2
+    _, idx = cKDTree(pts).query(fine.mean(1))
+    w = np.bincount(idx, weights=area, minlength=len(pts))
+    if w.sum() <= 0:
+        return np.full(len(pts), 1.0 / len(pts))
+    return w / w.sum()
+
+
 # ---- the problem
 
 def _region_mask(r: dict, centres: np.ndarray, grid: vx.Grid, job: Path, shape, bbox,
@@ -161,8 +177,9 @@ def build_problem(spec: dict, job: Path, shape) -> tuple[simp.Problem, vx.Grid, 
                 raise TopoptError(f"load face {ld['face']} touches no free element at {h:g} mm")
             d = np.asarray(ld["direction"], float)
             d = d / np.linalg.norm(d)
+            w = tributary_weights(nodes[sel], tri, h)
             for a in range(3):
-                f[3 * sel + a] += ld["newtons"] * d[a] / len(sel)
+                f[3 * sel + a] += ld["newtons"] * d[a] * w
             keep_in |= space & ~keep_out & (fd(centres, cutoff=skin) <= skin)
             rows.append({"face": ld["face"], "newtons": ld["newtons"],
                          "direction": d.tolist(), "tris": tri.tolist()})
@@ -234,13 +251,18 @@ def printability(stl_tris: np.ndarray, build_dir: str | None) -> dict:
 
 
 def thin_member_pct(x: np.ndarray, p: simp.Problem) -> float:
-    """Share of solid voxels in members under 3 voxels thick (distance to void <= 1)."""
-    from scipy.ndimage import distance_transform_edt
+    """Share of solid voxels in members under 3 voxels thick: the ones a morphological opening
+    with a 3x3x3 cube removes. The voxel model is only trustworthy for members >= 3 voxels
+    (research §4), so a high share means: refine, or raise the filter radius."""
+    from scipy.ndimage import binary_opening
     solid = geo.element_grid3(x > 0.5, p.n)
+    space = geo.element_grid3(p.space, p.n)
     if not solid.any():
         return 0.0
-    dist = distance_transform_edt(np.pad(solid, 1))[1:-1, 1:-1, 1:-1]
-    return round(100 * float((dist[solid] <= 1.0).mean()), 1)
+    # outside the design space counts as solid, so a member cut by the boundary is not thin
+    opened = binary_opening(solid | ~space, structure=np.ones((3, 3, 3), bool),
+                            border_value=1)
+    return round(100 * float((solid & ~opened).sum() / solid.sum()), 1)
 
 
 def run(job: Path, progress=None) -> dict:
