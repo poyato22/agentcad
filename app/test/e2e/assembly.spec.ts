@@ -195,7 +195,7 @@ test("the_section_is_unmistakable_from_the_default_camera_and_the_tree_matches_t
   for (const id of ["pi_case", "pi_lid", "pi_board", "pi_battery", "pi_fan"]) {
     await expect(page.locator(`[data-part="${id}"] [data-testid=row-mass]`).first()).toHaveText(/\d g$/);
   }
-  await expect(page.locator('[data-part="electronics"] > .tree-row [data-testid=row-mass]')).toHaveText("23.9 g");   // 5.555 + 15.475 + 2.867
+  await expect(page.locator('[data-part="electronics"] > .tree-row [data-testid=row-mass]')).toHaveText("Σ 23.9 g");   // 5.555 + 15.475 + 2.867 (Σ: a sum, B2)
   await expect(page.getByTestId("parts-total")).toContainText("73.6 g");
   // one click from the default camera: the cut faces the camera, filled far from the faces
   await page.getByTestId("pill-section").click();
