@@ -38,8 +38,9 @@ from .types import SimError
 MESH_TIMEOUT_S = 180.0
 SOLVE_TIMEOUT_S = 300.0
 # One static study is at most two meshes + two solves (+ margin for post-processing). Studies
-# queue for a study slot (studies.semaphore); the Gate's timeout covers the queue wait too, so the wait is bounded such
-# that a study that gets the slot always has its full time left (else: ok=false, "busy").
+# queue for a study slot (studies.semaphore); the Gate's timeout covers the queue wait too, so
+# the wait is bounded such that a study that gets the slot always has its full time left (else:
+# ok=false, "busy").
 STUDY_MAX_S = 2 * (MESH_TIMEOUT_S + SOLVE_TIMEOUT_S) + 60
 TOOL_TIMEOUT_S = 2 * STUDY_MAX_S + 60
 QUEUE_TIMEOUT_S = TOOL_TIMEOUT_S - STUDY_MAX_S - 30
