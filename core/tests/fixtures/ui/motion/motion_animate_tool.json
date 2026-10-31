@@ -1,15 +1,15 @@
 {
   "animation": {
-    "project_id": "4a57eac83297",
+    "project_id": "f1969371182e",
     "sequence": [
       {
-        "joint_id": "43d6ccc16a00",
+        "joint_id": "7bcff6183326",
         "from": 0.0,
         "to": 120.0,
         "duration_s": 2.0
       },
       {
-        "joint_id": "43d6ccc16a00",
+        "joint_id": "7bcff6183326",
         "from": 120.0,
         "to": 0.0,
         "duration_s": 1.5
@@ -17,15 +17,15 @@
     ],
     "loop": true,
     "loops": 2,
-    "animation_id": "be2160cbd3ae"
+    "animation_id": "056b6d220d2d"
   },
   "poses": [
     {
       "t": 0.0,
-      "joint_id": "43d6ccc16a00",
+      "joint_id": "7bcff6183326",
       "value": 0.0,
       "transforms": {
-        "fdb73b598536": [
+        "d8c033d433bb": [
           [
             1.0,
             0.0,
@@ -55,10 +55,10 @@
     },
     {
       "t": 0.5,
-      "joint_id": "43d6ccc16a00",
+      "joint_id": "7bcff6183326",
       "value": 30.0,
       "transforms": {
-        "fdb73b598536": [
+        "d8c033d433bb": [
           [
             0.866,
             0.0,
@@ -88,10 +88,10 @@
     },
     {
       "t": 1.0,
-      "joint_id": "43d6ccc16a00",
+      "joint_id": "7bcff6183326",
       "value": 60.0,
       "transforms": {
-        "fdb73b598536": [
+        "d8c033d433bb": [
           [
             0.5,
             0.0,
@@ -121,10 +121,10 @@
     },
     {
       "t": 1.5,
-      "joint_id": "43d6ccc16a00",
+      "joint_id": "7bcff6183326",
       "value": 90.0,
       "transforms": {
-        "fdb73b598536": [
+        "d8c033d433bb": [
           [
             0.0,
             0.0,
@@ -154,10 +154,10 @@
     },
     {
       "t": 2.0,
-      "joint_id": "43d6ccc16a00",
+      "joint_id": "7bcff6183326",
       "value": 120.0,
       "transforms": {
-        "fdb73b598536": [
+        "d8c033d433bb": [
           [
             -0.5,
             0.0,
@@ -187,10 +187,10 @@
     },
     {
       "t": 2.0,
-      "joint_id": "43d6ccc16a00",
+      "joint_id": "7bcff6183326",
       "value": 120.0,
       "transforms": {
-        "fdb73b598536": [
+        "d8c033d433bb": [
           [
             -0.5,
             0.0,
@@ -220,10 +220,10 @@
     },
     {
       "t": 2.375,
-      "joint_id": "43d6ccc16a00",
+      "joint_id": "7bcff6183326",
       "value": 90.0,
       "transforms": {
-        "fdb73b598536": [
+        "d8c033d433bb": [
           [
             0.0,
             0.0,
@@ -253,10 +253,10 @@
     },
     {
       "t": 2.75,
-      "joint_id": "43d6ccc16a00",
+      "joint_id": "7bcff6183326",
       "value": 60.0,
       "transforms": {
-        "fdb73b598536": [
+        "d8c033d433bb": [
           [
             0.5,
             0.0,
@@ -286,10 +286,10 @@
     },
     {
       "t": 3.125,
-      "joint_id": "43d6ccc16a00",
+      "joint_id": "7bcff6183326",
       "value": 30.0,
       "transforms": {
-        "fdb73b598536": [
+        "d8c033d433bb": [
           [
             0.866,
             0.0,
@@ -319,10 +319,10 @@
     },
     {
       "t": 3.5,
-      "joint_id": "43d6ccc16a00",
+      "joint_id": "7bcff6183326",
       "value": 0.0,
       "transforms": {
-        "fdb73b598536": [
+        "d8c033d433bb": [
           [
             1.0,
             0.0,
@@ -351,13 +351,13 @@
       }
     }
   ],
-  "animation_id": "be2160cbd3ae",
+  "animation_id": "056b6d220d2d",
   "view_spec": {
     "kind": "animation",
     "target": {
       "kind": "project",
-      "id": "4a57eac83297",
-      "project_id": "4a57eac83297",
+      "id": "f1969371182e",
+      "project_id": "f1969371182e",
       "parts": [
         "mount_plate"
       ],
@@ -375,17 +375,17 @@
     "orbit": null,
     "caption": "The lid swings 120° on its hinge and closes again",
     "animation": {
-      "animation_id": "be2160cbd3ae",
+      "animation_id": "056b6d220d2d",
       "name": "Open and shut the lid",
       "steps": [
         {
-          "joint_id": "43d6ccc16a00",
+          "joint_id": "7bcff6183326",
           "from": 0.0,
           "to": 120.0,
           "duration_s": 2.0
         },
         {
-          "joint_id": "43d6ccc16a00",
+          "joint_id": "7bcff6183326",
           "from": 120.0,
           "to": 0.0,
           "duration_s": 1.5
@@ -395,6 +395,6 @@
       "duration_s": 3.5
     },
     "sweep": null,
-    "thumbnail_id": "pv_1ba49f80_5de69ed7c7_iso"
+    "thumbnail_id": "pv_01408fb7_6c211bd014_iso"
   }
 }
