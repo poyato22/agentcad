@@ -31,6 +31,7 @@ import {
   type CustomMaterialBody, type StudyCharts, type StudyCompare, type StudyMaterial, type StudyMaterials, type StudyProbe, type StudyRecord,
   type StudySection, type StudySolvers, type StudyStartBody, type StudySummary, type StudyTemplate, type StudyType, type StudyTypeInfo,
 } from "./studies";
+import { studiesContextSchema, type StudiesContext } from "./studiesAgent";
 import type {
   AgentDefBody, AgentDetail, AgentInfo, AgentRun, Approval, CancelAllResult, ClaudeCodeStatus, CleanupBody, CleanupResult, CoreInfo, CoreStatusInfo, DecisionBody, DeleteRefused, ErrorCode, KeyStatus, LocalActionResult, LocalStatus, LocalTestResult,
   AgentsView, CreateRunResult, ModelsInfo, NewRunBody, OnshapeTestResult, PartSummary, Profile, ProfilePatch, Question, RunNode, RunPatch, SetupState, SketchSummary, SketchUpload, Step,
@@ -44,6 +45,10 @@ import {
   type BuildRef, type CatalogEdit, type CatalogItem, type OnshapeBudget, type OnshapeDoc, type OnshapeElement, type PartResult,
 } from "./directory";
 import { drawingImportSchema, type DrawingImport } from "./imports";
+import {
+  conceptDecisionSchema, conceptSketchSchema, conceptViewSchema, feedbackSentSchema, pitchChosenSchema,
+  type ChooseBody, type ConceptDecision, type ConceptSketch, type ConceptView, type FeedbackSent, type PitchChosen, type SketchFeedbackBody,
+} from "./concept";
 import type { DrawingInfo, NewPrinterBody, PrintCall, PrintCapabilities, Printer, PrinterStatus, PrintStart, Slice, SliceStart } from "./types";
 import {
   assemblyPartSchema, assemblySchema, driveResultSchema, instanceDeletedSchema, instanceSchema, interferenceSchema, jointDeletedSchema,
@@ -245,7 +250,9 @@ export class CoreClient {
   /** The build's layout skeleton (G3; core skeleton_tools.skeleton_view): what skeleton_get
    *  answers, read by viewer/skeleton.ts parseSkeleton (loose: an older core lacks the route). */
   projectSkeleton(projectId: string): Promise<unknown> { return this.json("GET", `/projects/${enc(projectId)}/skeleton`, anyBody); }
-  projectThumb(projectId: string, size = 256): Promise<Blob> {
+  /** The build's Home cover (D24): one 16:10 render of its assembly, transparent background;
+   *  `size` is its width. */
+  projectThumb(projectId: string, size = 640): Promise<Blob> {
     return this.blob(`/projects/${enc(projectId)}/thumb.png`, "image/png", { size });
   }
 
@@ -267,6 +274,10 @@ export class CoreClient {
   // ---- every study type (Plan 5 C7: core sim/studies.py, server/sim_api.py; Task A8)
 
   studyTypes(): Promise<StudyTypeInfo[]> { return this.json("GET", "/sims/types", z.array(studyTypeInfoSchema)); }
+  /** Plan 9 U-D: the studies agent's build context and proposed next studies. */
+  studiesContext(projectId: string): Promise<StudiesContext> {
+    return this.json("GET", "/studies/context", studiesContextSchema, { query: { project_id: projectId } });
+  }
   studySolvers(): Promise<StudySolvers> { return this.json("GET", "/sims/solvers", studySolversSchema); }
   listStudies(filter: { partId?: string; runId?: string } = {}): Promise<StudySummary[]> {
     return this.json("GET", "/sims", z.array(studySummarySchema), { query: { part_id: filter.partId, run_id: filter.runId } });
@@ -288,6 +299,19 @@ export class CoreClient {
   studySlice(simId: string, name: "slice_xz" | "slice_xy"): Promise<Blob> { return this.blob(`/sims/${enc(simId)}/slices/${name}.png`, "image/png"); }
   /** A render_views image (Plan 8 G1: critique-round before/after, a presented view's thumbnail). */
   renderImage(imageId: string): Promise<Blob> { return this.blob(`/renders/${enc(imageId)}.png`, "image/png"); }
+  // ---- Plan 9 G-A: the concept stage (core concept/api.py)
+  concept(projectId: string): Promise<ConceptView> { return this.json("GET", `/projects/${enc(projectId)}/concept`, conceptViewSchema); }
+  conceptSketch(sketchId: string): Promise<ConceptSketch> { return this.json("GET", `/concept/sketches/${enc(sketchId)}`, conceptSketchSchema); }
+  sketchFeedback(sketchId: string, body: SketchFeedbackBody): Promise<FeedbackSent> {
+    return this.json("POST", `/concept/sketches/${enc(sketchId)}/feedback`, feedbackSentSchema, { body });
+  }
+  approveConcept(projectId: string, sketchId: string | null): Promise<ConceptDecision> {
+    return this.json("POST", `/projects/${enc(projectId)}/concept/approve`, conceptDecisionSchema, { body: sketchId ? { sketch_id: sketchId } : {} });
+  }
+  skipConcept(projectId: string): Promise<ConceptDecision> { return this.json("POST", `/projects/${enc(projectId)}/concept/skip`, conceptDecisionSchema); }
+  choosePitch(pitchId: string, body: ChooseBody): Promise<PitchChosen> {
+    return this.json("POST", `/concept/pitches/${enc(pitchId)}/choose`, pitchChosenSchema, { body });
+  }
   compareStudies(ids: readonly string[]): Promise<StudyCompare> { return this.json("POST", "/sims/compare", studyCompareSchema, { body: { ids } }); }
   studyTemplates(): Promise<StudyTemplate[]> { return this.json("GET", "/sims/templates", z.array(studyTemplateSchema)); }
   addStudyTemplate(body: { name: string; type: StudyType; settings: Record<string, unknown> }): Promise<StudyTemplate> {
@@ -606,10 +630,29 @@ export class CoreClient {
     if (!parsed.success) throw new CoreError("validation", "POST /projects/trash/empty: unexpected response shape", { status: res.status });
     return parsed.data;
   }
+  /** Deletes one trashed build for good (D30 "Delete forever"; core POST /projects/{id}/purge).
+   *  A 409 (it still has live work; nothing was deleted) comes back as `{ refused }`. */
+  async purgeBuild(id: string): Promise<EmptyTrashResult | { refused: EmptyTrashRefused }> {
+    const path = `/projects/${enc(id)}/purge`;
+    const res = await this.request("POST", path, {});
+    if (res.status === 409) {
+      let body: unknown = null;
+      try { body = await res.clone().json(); } catch { /* fall through to the generic error */ }
+      const r = emptyTrashRefusedSchema.safeParse(body);
+      if (r.success) return { refused: r.data };
+    }
+    if (!res.ok) throw await toError(res);
+    let data: unknown;
+    try { data = await res.json(); } catch { throw new CoreError("validation", `POST ${path}: response is not JSON`, { status: res.status }); }
+    const parsed = emptyTrashSchema.safeParse(data);
+    if (!parsed.success) throw new CoreError("validation", `POST ${path}: unexpected response shape`, { status: res.status });
+    return parsed.data;
+  }
   buildTabs(): Promise<BuildTabsProfile> { return this.json("GET", "/profile", buildTabsProfileSchema); }
-  /** The active build and the open tabs (profile fields; PUT /profile merges, nothing else changes). */
-  setBuildTabs(tabs: BuildTabsProfile): Promise<BuildTabsProfile> {
-    return this.json("PUT", "/profile", buildTabsProfileSchema, { body: { active_project_id: tabs.active_project_id, open_project_ids: tabs.open_project_ids } });
+  /** The active build (a profile field; PUT /profile merges, nothing else changes). Plan 9: the
+   *  old open_project_ids is read (buildTabs) but never written — there are no build tabs. */
+  setActiveBuild(id: string | null): Promise<BuildTabsProfile> {
+    return this.json("PUT", "/profile", buildTabsProfileSchema, { body: { active_project_id: id } });
   }
 
   /** PATCH semantics: a key left out is unchanged; `color: null` / `parent_id: null` clear it.
@@ -622,9 +665,27 @@ export class CoreClient {
   duplicatePart(id: string): Promise<PartSummary> {
     return this.json("POST", `/parts/${enc(id)}/duplicate`, partSummarySchema);
   }
-  /** Moves the part's files to the core's trash; refused (400) while the assembly uses it. */
-  deletePart(id: string): Promise<{ deleted: string }> {
-    return this.json("DELETE", `/parts/${enc(id)}`, z.object({ deleted: z.string() }));
+  /** Moves the part's files to the core's trash; refused (400) while the assembly uses it, unless
+   *  `cascade` (Plan 9 D29): then its instances leave the assembly too. `undo` restores it all. */
+  deletePart(id: string, opts: { cascade?: boolean } = {}): Promise<{ deleted: string; removed_instances: string[]; undo: string | null }> {
+    return this.json("DELETE", `/parts/${enc(id)}${opts.cascade ? "?cascade=true" : ""}`, z.object({
+      deleted: z.string(), removed_instances: z.array(z.string()).default([]), undo: z.string().nullish().transform((v) => v ?? null),
+    }));
+  }
+  /** Plan 9 D29: the tree's "Remove from assembly": every instance of these parts (and the joints
+   *  that come loose) leaves the build's assembly; `undo` goes back to restoreAssembly as is. */
+  removePartsFromAssembly(projectId: string, partIds: string[]): Promise<{ removed_instances: string[]; removed_joints: string[]; undo: AssemblyUndo }> {
+    return this.json("POST", `/projects/${enc(projectId)}/assembly/remove_parts`, z.object({
+      removed_instances: z.array(z.string()), removed_joints: z.array(z.string()), undo: assemblyUndoSchema,
+    }), { body: { part_ids: partIds } });
+  }
+  restoreAssembly(projectId: string, undo: AssemblyUndo): Promise<{ restored_instances: number; restored_joints: number }> {
+    return this.json("POST", `/projects/${enc(projectId)}/assembly/restore`,
+      z.object({ restored_instances: z.number(), restored_joints: z.number() }), { body: undo });
+  }
+  /** Plan 9 D29: undo a delete (the files, the tree row and the assembly instances). */
+  restorePart(id: string, undo: string): Promise<PartSummary> {
+    return this.json("POST", `/parts/${enc(id)}/restore`, partSummarySchema, { body: { undo } });
   }
   /** Saves model.step / model.stl to the export folder (~/Downloads) as "<label>.<fmt>". */
   exportPart(id: string, format: "step" | "stl"): Promise<{ path: string; name: string; format: string }> {
@@ -858,5 +919,10 @@ const lenientSteps: z.ZodType<Step[]> =z.array(z.unknown()).transform((items) =>
 
 const enc = encodeURIComponent;
 const asm = (projectId: string) => `/projects/${enc(projectId)}/assembly`;
+/** remove_parts' undo: the removed pieces as the core stored them (with their list places and
+ *  marks); the app only sends it back. */
+export const assemblyUndoSchema = z.object({ instances: z.array(z.record(z.string(), z.unknown())), joints: z.array(z.record(z.string(), z.unknown())) });
+export type AssemblyUndo = z.infer<typeof assemblyUndoSchema>;
+
 const bomPath = (projectId: string) => `/projects/${enc(projectId)}/bom`;
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));

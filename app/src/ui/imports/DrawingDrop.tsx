@@ -6,6 +6,9 @@
 //   · variant "overlay" (inside a build's viewer): the whole viewer becomes the drop target while
 //     a file is dragged over it. The cards float in its corner. An empty build also shows a small
 //     "Choose a drawing…" line under the viewer's empty state (the keyboard path).
+//   · variant "home" (Plan 9 review m1): the whole Home page is the drop target, with no hint and
+//     no cards of its own (Home lists them); Home's header has <ImportDrawingButton /> for the
+//     keyboard path.
 //
 // Only drags that carry files are taken; part / tab drags inside the app pass through untouched.
 import type { JSX } from "preact";
@@ -33,6 +36,11 @@ export function ImportCards({ floating = false }: { floating?: boolean }): JSX.E
       {list.map((e) => <ImportCard key={e.key} entry={e} />)}
     </div>
   );
+}
+
+/** A button that opens the file picker for a drawing (Home's header "Import drawing…"). */
+export function ImportDrawingButton({ projectId = null, label = "Import drawing…" }: { projectId?: string | null; label?: string }): JSX.Element {
+  return <ChooseFile projectId={projectId} label={label} />;
 }
 
 function ChooseFile({ projectId, label }: { projectId: string | null; label: string }): JSX.Element {
@@ -68,7 +76,7 @@ function Tile({ projectId, cards }: { projectId: string | null; cards: boolean }
   );
 }
 
-function Overlay({ projectId }: { projectId: string | null }): JSX.Element {
+function Overlay({ projectId, page = false }: { projectId: string | null; page?: boolean }): JSX.Element {
   const anchor = useRef<HTMLDivElement>(null);
   const [over, setOver] = useState(false);
   useEffect(() => {
@@ -101,8 +109,8 @@ function Overlay({ projectId }: { projectId: string | null }): JSX.Element {
     };
   }, [projectId]);
   return (
-    <div ref={anchor} class="imp-overlay-anchor">
-      {!over && parts.value.length === 0 && (
+    <div ref={anchor} class={page ? "imp-overlay-anchor imp-overlay-page" : "imp-overlay-anchor"}>
+      {!page && !over && parts.value.length === 0 && (
         <div class="imp-empty-hint">
           <span class="faint">or drop a drawing to make a part</span>
           <ChooseFile projectId={projectId} label="Choose a drawing…" />
@@ -114,12 +122,13 @@ function Overlay({ projectId }: { projectId: string | null }): JSX.Element {
           <p class="imp-drop-sub">PDF, PNG, JPG or DXF · up to 20 MB</p>
         </div>
       )}
-      <ImportCards floating />
+      {!page && <ImportCards floating />}
     </div>
   );
 }
 
 /** `cards={false}`: the host shows ImportCards itself (Home puts them in a full-width row — m2). */
-export function DrawingDrop({ variant = "tile", projectId = null, cards = true }: { variant?: "tile" | "overlay"; projectId?: string | null; cards?: boolean }): JSX.Element {
+export function DrawingDrop({ variant = "tile", projectId = null, cards = true }: { variant?: "tile" | "overlay" | "home"; projectId?: string | null; cards?: boolean }): JSX.Element {
+  if (variant === "home") return <Overlay projectId={projectId} page />;
   return variant === "overlay" ? <Overlay projectId={projectId} /> : <Tile projectId={projectId} cards={cards} />;
 }

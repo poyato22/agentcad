@@ -57,7 +57,7 @@
 /* The corner holds Part | Assembly (and, in the Code view, "Back to the model"), above the Code
    view (which starts at 44px) */
 .vp-corner { position: absolute; left: 22px; top: 14px; display: flex; align-items: center; gap: 12px; z-index: 5; }
-.vp-corner .mode-switch { position: static; }
+.vp-back-asm { text-transform: none; letter-spacing: 0; }
 .vt-btn:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
 
 /* U2b: the View menu (ViewerTools) — one button, a drafting-card list under it */

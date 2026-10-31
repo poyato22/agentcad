@@ -332,8 +332,8 @@ class SNCurve(_M):
 
 class FatigueSettings(_M):
     cycles: float = Field(gt=0, le=1e12, description="load cycles the part must survive "
-                          "(a drone arm: flights x minutes x motor-speed changes; a fan: rpm x "
-                          "hours x 60)")
+                          "(a linkage arm: duty cycles x minutes x motor-speed changes; a fan: "
+                          "rpm x hours x 60)")
     cycle: Literal["fully_reversed", "zero_to_max", "min_max"] = Field(
         "zero_to_max", description="fully_reversed: +F to -F; zero_to_max: 0 to F; "
         "min_max: min_pct x F to F (F = the load case's load)")

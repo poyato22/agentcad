@@ -1,21 +1,28 @@
-/* Base styles and shared primitives (pane header, LED, buttons, inputs). */
+/* Base styles and shared primitives (pane header, LED, buttons, inputs, floating surface).
+   Plan 9 Visual spec (tokens.css): Instrument Sans UI text in sentence case, Iosevka only for
+   numbers (.num), rounded quiet surfaces, motion only in response to an action. */
 
-* { box-sizing: border-box; border-radius: 0 !important; }
+* { box-sizing: border-box; }
 
 html, body { margin: 0; height: 100%; }
 
 body {
   background: var(--bg);
   color: var(--ink);
-  font: var(--fs)/1.4 var(--font-mono);
+  font: 400 var(--fs)/1.45 var(--font-ui);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "kern";
   overflow: hidden;
 }
 
 #app { height: 100%; }
 
-/* Headings share the one family (Iosevka) at a heavier weight — no second typeface. */
-h1, h2, h3, h4 { font-family: var(--font-head); font-weight: 700; margin: 0; }
+/* Headings: the UI face, semibold; never upper-cased. */
+h1, h2, h3, h4 { font-family: var(--font-head); font-weight: 600; margin: 0; letter-spacing: -0.005em; }
+
+/* Numbers and dimensions (mass, lengths, costs, stresses): Iosevka, tabular figures. */
+.num { font-family: var(--font-num); font-variant-numeric: tabular-nums; letter-spacing: 0; }
 
 /* Untrusted text (agent output, tool I/O, names, paths) is rendered as text with pre-wrap. */
 .text { white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -28,7 +35,9 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: 700; margin: 0; }
 .region-console, .region-page { -webkit-user-select: text; user-select: text; }
 [data-tauri-drag-region] { -webkit-user-select: none; user-select: none; }
 
-/* ---- app grid */
+/* ---- app grid
+   Inside a build: a 44px top bar, then left surface · viewer · agent dock.
+   Home (D23) has no top bar: its page spans the whole window (it keeps the traffic-light inset). */
 .app {
   display: grid;
   grid-template-rows: var(--topbar-h) 1fr;
@@ -37,18 +46,18 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: 700; margin: 0; }
   height: 100vh;
   min-width: 1280px;
   min-height: 800px;
-  background: var(--paper);
+  background: var(--bg);
   overflow: hidden;
 }
 .region { min-width: 0; min-height: 0; overflow: hidden; position: relative; }
 .region-topbar { grid-row: 1; grid-column: 1 / -1; }
-.region-left { grid-row: 2; grid-column: 1; border-right: 1px solid var(--line2); }
+.region-left { grid-row: 2; grid-column: 1; border-right: 1px solid var(--line); }
 .region-viewer { grid-row: 2; grid-column: 2; }
-/* Full-width pages (Studies/Drawing/Print/Onshape/Parts) take the left + center tracks. */
+/* Full-width pages (Studies/Print/BOM) take the left + center tracks. */
 .region-page { grid-row: 2; grid-column: 1 / 3; }
-.region-console { grid-row: 2; grid-column: 3; border-left: 1px solid var(--line2); }
-/* Home has no console: it spans every track (no dead console column). */
-.app[data-home] .region-page { grid-column: 1 / -1; }
+.region-console { grid-row: 2; grid-column: 3; border-left: 1px solid var(--line); }
+/* Home: no top bar and no console — the page takes every row and track. */
+.app[data-home] .region-page { grid-row: 1 / -1; grid-column: 1 / -1; }
 
 /* Pages other than Design drop the left pane (240→0) so the page spans full width. */
 .app[data-page]:not([data-page="design"]) { --left-w: 0px; }
@@ -56,56 +65,65 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: 700; margin: 0; }
 .app[data-console="rail"] { --console-w: var(--console-rail-w); }
 
 /* Console rail: a 36px vertical strip with an expand button. */
-.console-rail { display: flex; flex-direction: column; align-items: center; height: 100%; background: var(--head); }
+.console-rail { display: flex; flex-direction: column; align-items: center; height: 100%; background: var(--bg); }
 .console-rail-btn {
-  writing-mode: vertical-rl; text-orientation: mixed; letter-spacing: .14em; text-transform: uppercase;
-  font: 600 var(--fs-label)/1 var(--font-head); color: var(--dim); background: transparent; border: 0;
-  padding: 10px 0; cursor: pointer; width: 100%;
+  writing-mode: vertical-rl; text-orientation: mixed;
+  font: 500 var(--fs-small)/1 var(--font-ui); color: var(--dim); background: transparent; border: 0;
+  padding: 12px 0; cursor: pointer; width: 100%;
 }
 .console-rail-btn:hover { color: var(--ink); }
-.console-rail-btn:focus-visible { outline: 1px solid var(--blue); outline-offset: -2px; }
+.console-rail-btn:focus-visible { outline: 2px solid var(--blue); outline-offset: -3px; border-radius: var(--r-row); }
 /* A card waits for the human: a blue count on the collapsed rail (blue = needs you). */
 .console-rail-needs {
-  color: var(--blue); border: 1px solid var(--blue); font: 600 var(--fs-label)/1 var(--font-mono);
-  min-width: 18px; padding: 2px 3px; margin-top: 2px; text-align: center;
+  color: var(--on-blue); background: var(--blue); font: 600 var(--fs-label)/1 var(--font-num);
+  min-width: 18px; padding: 3px 5px; margin-top: 2px; text-align: center; border-radius: 9px;
 }
 /* Collapse control pinned in the console pane header (region is position:relative). */
 .console-collapse {
-  position: absolute; top: 0; right: 0; z-index: 3; height: var(--pane-head-h); width: 24px;
+  position: absolute; top: 2px; right: 4px; z-index: 3; height: 24px; width: 24px;
   display: inline-flex; align-items: center; justify-content: center;
-  background: var(--head); border: 1px solid var(--line2); color: var(--dim); cursor: pointer;
+  background: transparent; border: 0; border-radius: var(--r-row); color: var(--dim); cursor: pointer;
 }
-.console-collapse:hover { color: var(--ink); border-color: var(--dim); }
-.console-collapse:focus-visible { outline: 1px solid var(--blue); outline-offset: -2px; }
+.console-collapse:hover { color: var(--ink); background: var(--raised); }
+.console-collapse:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
 /* keep the console's own top-row controls clear of the collapse button */
-.region-console .cv-top-row, .region-console > .pane > .pane-head { padding-right: 30px; }
+.region-console .cv-top-row, .region-console > .pane > .pane-head { padding-right: 32px; }
 
 /* macOS overlay traffic lights occupy the top-left; keep the setup wizard header clear of them
    (its height, --chrome-h, centres its text on the lights).
    Adjusted here (shared styles) rather than in the component's own CSS. */
 .setup .setup-head { padding-left: var(--chrome-inset-x); }
 
-/* ---- pane */
+/* ---- floating surface (left surface, agent dock, viewer pill, menus): Panel at 92% + blur, the
+   app's one soft shadow. Use on things that float over the viewport only. */
+.surface {
+  background: var(--surface);
+  -webkit-backdrop-filter: blur(var(--surface-blur)) saturate(1.2);
+  backdrop-filter: blur(var(--surface-blur)) saturate(1.2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-surface);
+  box-shadow: var(--shadow);
+}
+
+/* ---- pane: section headers are plain semibold text, not boxed bars */
 .pane { display: flex; flex-direction: column; background: var(--paper); min-height: 0; height: 100%; }
 .pane-head {
   display: flex; align-items: center; gap: 8px; flex: none;
-  height: var(--pane-head-h); padding: 0 8px;
-  border-bottom: 1px solid var(--line); background: var(--head);
+  height: var(--pane-head-h); padding: 0 12px;
+  background: transparent;
 }
-.pane-title {
-  font: 600 var(--fs-label)/1 var(--font-head);
-  letter-spacing: .14em; text-transform: uppercase; color: var(--dim);
-}
-.pane-right { margin-left: auto; color: var(--faint); font-size: 10px; }
+.pane-title { font: 600 var(--fs)/1 var(--font-head); color: var(--ink); }
+.pane-right { margin-left: auto; color: var(--faint); font-size: var(--fs-small); }
 .pane-body { flex: 1; min-height: 0; overflow: auto; position: relative; }
-.pane-empty { padding: 10px 8px; color: var(--faint); }
+.pane-empty { padding: 10px 12px; color: var(--faint); }
 
-.label { font-size: var(--fs-label); letter-spacing: .14em; text-transform: uppercase; color: var(--faint); }
+/* a quiet field label / caption — sentence case, never letter-spaced capitals */
+.label { font-size: var(--fs-label); color: var(--dim); }
 .faint { color: var(--faint); }
 .dim { color: var(--dim); }
 
 /* ---- LED */
-.led { display: inline-block; width: 7px; height: 7px; flex: none; background: var(--faint); }
+.led { display: inline-block; width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--faint); }
 .led-blue { background: var(--blue); }
 .led-green { background: var(--green); }
 .led-amber { background: var(--amber); }
@@ -115,13 +133,14 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: 700; margin: 0; }
 /* ---- buttons */
 button { font: inherit; color: inherit; }
 .btn {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 2px 9px; border: 1px solid var(--line2); background: transparent;
-  color: var(--ink); font: 500 var(--fs-small)/1.5 var(--font-mono); cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 26px; padding: 3px 11px; border: 1px solid var(--line2); border-radius: var(--r-btn);
+  background: transparent; color: var(--ink); font: 500 var(--fs)/1.3 var(--font-ui); cursor: pointer;
+  transition: background-color var(--t-fast) ease, border-color var(--t-fast) ease, color var(--t-fast) ease;
 }
-.btn:hover:not(:disabled) { border-color: var(--dim); background: var(--paper2); }
+.btn:hover:not(:disabled) { border-color: var(--dim); background: var(--raised); }
 .btn:active:not(:disabled) { background: var(--line); }
-.btn:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
+.btn:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
 .btn:disabled, .btn[aria-disabled="true"] { color: var(--faint); cursor: default; }
 .btn-primary { background: var(--blue); border-color: var(--blue); color: var(--on-blue); font-weight: 600; }
 .btn-primary:hover:not(:disabled) { border-color: var(--blue2); background: var(--blue); }
@@ -130,20 +149,25 @@ button { font: inherit; color: inherit; }
 .btn-ink:hover:not(:disabled) { background: var(--dim); border-color: var(--dim); }
 .btn-ink:disabled { background: transparent; border-color: var(--line2); color: var(--faint); }
 .btn-danger { color: var(--red); }
-/* secondary: still a visible 1px box (every button reads as a button), quieter border and text */
+/* secondary: still a visible 1px outline (every button reads as a button), quieter text */
 .btn-ghost { border-color: var(--line2); color: var(--dim); }
 .btn-ghost:hover:not(:disabled) { color: var(--ink); }
 
 /* ---- inputs */
 input, textarea, select {
   font: inherit; color: var(--ink); background: var(--bg);
-  border: 1px solid var(--line2); padding: 3px 6px;
+  border: 1px solid var(--line2); border-radius: var(--r-row); padding: 4px 8px;
 }
 input:focus, textarea:focus, select:focus { outline: none; border-color: var(--blue); }
 input::placeholder, textarea::placeholder { color: var(--faint); }
 
 /* ---- cards (approvals, questions) */
-[data-card] { border: 1px solid var(--line2); }
+[data-card] { border: 1px solid var(--line2); border-radius: var(--r-surface); }
 
 /* scrollbars */
 * { scrollbar-width: thin; scrollbar-color: var(--line2) transparent; }
+
+/* Motion only answers an action, and none at all under reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0ms !important; animation-duration: 0ms !important; }
+}

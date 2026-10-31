@@ -1,9 +1,10 @@
 """The requirements interview.
 
-"Build me a drone" is a spec waiting to be written, not a shape to guess. The engineer asks a
+"Build me a <system>" is a spec waiting to be written, not a shape to guess. The engineer asks a
 short, structured interview first: at most 6 questions, batched 2-3 at a time, each with options
-and a free-text fallback. The questions are domain-aware (a drone asks about prop size and the
-flight-controller mount) with a sensible generic fallback for anything else.
+and a free-text fallback. The questions are domain-aware (a legged robot asks about gait and
+actuators; a drone about prop size and the flight-controller mount) with a sensible generic
+fallback for anything else.
 """
 from __future__ import annotations
 
@@ -59,6 +60,28 @@ def _drone_questions() -> list[Question]:
     ]
 
 
+def _legged_robot_questions() -> list[Question]:
+    return [
+        Question(id="use", text="What will the robot carry or do, and roughly what payload (kg)?",
+                 options=["inspection / cameras", "light cargo", "manipulation (arm on top)",
+                          "research platform"]),
+        Question(id="gait_speed", text="Gait and rough top speed?",
+                 options=["walk (slow, stable)", "trot (medium)", "run / dynamic (fast)"]),
+        Question(id="terrain", text="Where does it operate?",
+                 options=["flat indoors", "rough / outdoors", "stairs and obstacles"]),
+        Question(id="runtime", text="Battery runtime target per charge?",
+                 options=["~15 min", "~30 min", "~60 min+"]),
+        Question(id="legs_dof",
+                 text="How many legs, degrees of freedom per leg, and actuator class?",
+                 options=["quadruped, 3 DOF/leg, hobby servo", "quadruped, 3 DOF/leg, BLDC+gearbox",
+                          "biped / humanoid, 6 DOF/leg, BLDC+gearbox"]),
+        Question(id="aesthetic",
+                 text="Aesthetic intent for the look?",
+                 options=["sleek covered (Optimus / NEO-class skin over skeleton)",
+                          "exposed mechanical", "functional / no preference"]),
+    ]
+
+
 def _generic_questions(noun: str) -> list[Question]:
     return [
         Question(id="use", text=f"What is the {noun} for, and where does it mount or sit?",
@@ -77,15 +100,22 @@ def _generic_questions(noun: str) -> list[Question]:
     ]
 
 
-_DOMAINS: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"\bdrone|quad(copter)?|fpv|multirotor\b", re.I), "drone"),
-]
+# A legged robot (quadruped / humanoid / walker) is not a drone, even when the word "quad"
+# appears: "quadruped" and "robot dog" must never be read as a quadcopter (D26). Legged words
+# are checked first so they win over an ambiguous "quad".
+_LEGGED_RE = re.compile(
+    r"\b(?:quadrupeds?|biped(?:al)?s?|hexapods?|legged|walkers?|humanoids?|dogs?)\b", re.I)
+# Each drone stem carries its own \b, so "quadruped" / "squad" no longer match "quad"
+# (the previous pattern's single trailing \b left "quad" unanchored).
+_DRONE_RE = re.compile(r"\b(?:drones?|quad(?:copter)?s?|fpv|multirotors?)\b", re.I)
 
 
 def detect_domain(goal: str) -> str:
-    for pat, name in _DOMAINS:
-        if pat.search(goal or ""):
-            return name
+    text = goal or ""
+    if _LEGGED_RE.search(text):
+        return "legged_robot"
+    if _DRONE_RE.search(text):
+        return "drone"
     return "generic"
 
 
@@ -101,6 +131,11 @@ def build_interview(goal: str) -> Interview:
     """At most MAX_QUESTIONS questions for this request. Never guesses silently: every question
     carries options and a free-text fallback."""
     domain = detect_domain(goal)
-    qs = _drone_questions() if domain == "drone" else _generic_questions(_noun(goal))
+    if domain == "drone":
+        qs = _drone_questions()
+    elif domain == "legged_robot":
+        qs = _legged_robot_questions()
+    else:
+        qs = _generic_questions(_noun(goal))
     qs = qs[:MAX_QUESTIONS]
     return Interview(domain=domain, goal=goal or "", questions=qs)

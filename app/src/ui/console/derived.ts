@@ -5,10 +5,13 @@ import { activeBuildId } from "../../state/builds";
 import { computed, effect, signal, type ReadonlySignal } from "@preact/signals";
 import type { AgentRun } from "../../api/types";
 import { runLabel } from "../../lib/names";
-import { effectiveRunId, rosterOrder } from "../../state/selection";
+import { effectiveRun, effectiveRunId, rosterOrder } from "../../state/selection";
 import { actions, approvals, filter, inflight, liveText, questions, runs, steps } from "../../state/store";
 import { buildLog, buildLogFrame, type BuildLogInput, type LogFrame } from "./logModel";
 import { buildThread, type ThreadItem } from "./threadModel";
+import { shownPending } from "./queued";
+import { dockTree } from "./runTree";
+import { createTreeStreams, type TreeStreams } from "./treeStreams";
 
 /** Folds the user opened, by foldKey. */
 export const expandedFolds = signal<ReadonlySet<string>>(new Set());
@@ -155,6 +158,49 @@ export function retainThreadFrames(schedule: Schedule = rafSchedule): () => void
     released = true;
     if (--threadUsers === 0) { stopThread?.(); stopThread = null; }
   };
+}
+
+// ---- Plan 9 D4: the View and Simulations streams over the build's agent tree (treeStreams),
+// rebuilt at most once per frame like the thread.
+
+export interface TreeFrame extends TreeStreams { buildId: string | null }
+
+export const treeFrame = signal<TreeFrame>({ buildId: null, view: [], sim: [] });
+
+let treeUsers = 0;
+let stopTree: (() => void) | null = null;
+
+/** Start (ref-counted) the once-per-frame tree rebuild. Returns a release function. */
+export function retainTreeFrames(schedule: Schedule = rafSchedule): () => void {
+  if (treeUsers++ === 0) stopTree = startTree(schedule);
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    if (--treeUsers === 0) { stopTree?.(); stopTree = null; }
+  };
+}
+
+function startTree(schedule: Schedule): () => void {
+  let cancel: (() => void) | null = null;
+  // N1: per-run cached; a run whose steps didn't change is not rebuilt, and an unchanged result
+  // is not written (the dock's View and Simulations don't re-render for a streamed token)
+  const aggregate = createTreeStreams();
+  const flush = () => {
+    cancel = null;
+    const tree = dockTree(buildRuns.peek(), effectiveRun.peek() ?? shownPending.peek());
+    const out = aggregate({ runs: runList.peek(), steps: steps.peek(), inflight: inflight.peek() }, tree);
+    const buildId = activeBuildId.peek();
+    const prev = treeFrame.peek();
+    if (prev.view === out.view && prev.sim === out.sim && prev.buildId === buildId) return;
+    treeFrame.value = { buildId, view: out.view, sim: out.sim };
+  };
+  const dispose = effect(() => {
+    // only what views and studies depend on: never liveText, approvals or questions
+    void runs.value; void steps.value; void inflight.value; void effectiveRunId.value; void activeBuildId.value; void shownPending.value;
+    if (!cancel) cancel = schedule(flush);
+  });
+  return () => { dispose(); cancel?.(); cancel = null; treeFrame.value = { buildId: null, view: [], sim: [] }; };
 }
 
 function startThread(schedule: Schedule): () => void {

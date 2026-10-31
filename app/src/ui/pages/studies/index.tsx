@@ -1,10 +1,13 @@
-// Studies page: every study type with full control. Left: the part, the study type (Static,
-// Modal, Buckling, Thermal, Drop, Wind), templates, the settings form generated from the type's
-// schema (load cases, supports, materials, mesh, solver, an Advanced fold), Run with progress by
-// phase and Cancel, and the part's history with compare. Right: the viewport (the setup with its
-// load markers and face picking, or the result with channels, legend range, deformation, mode
-// shapes, airflow, section and probe), the result (metrics, checks, charts, "guide only" and the
-// fidelity note always visible), compare and the material editor. Every result is a guide only.
+// Studies page, agent-first (Plan 9 U-D, D19). Left (~40%): the studies agent — the build's next
+// 1–3 studies with why, each with a Run button (POST /sims through the Gate, like the form), the
+// study that started as a card, the agent's conversation and composer — then the part's history
+// and, collapsed behind "Set up manually", every study type with full control: the part, the type
+// (Static, Modal, Buckling, Thermal, Drop, Wind), templates, the settings form generated from the
+// type's schema (load cases, supports, materials, mesh, solver, an Advanced fold), Run with
+// progress by phase and Cancel. Right: the viewport, large (the setup with its load markers and
+// face picking, or the result with channels, legend range, deformation, mode shapes, airflow,
+// section and probe), then the result (metrics, checks, charts, "guide only" and the fidelity
+// note always visible), compare and the material editor. Every result is a guide only.
 import { computed, signal } from "@preact/signals";
 import type { JSX } from "preact";
 import { useEffect, useMemo, useState } from "preact/hooks";
@@ -14,7 +17,11 @@ import { partLabel } from "../../../lib/names";
 import { activePart } from "../../../state/selection";
 import { DesignStudies } from "../../spec";
 import { openGenerative } from "../../topopt";
-import { actions, parts } from "../../../state/store";
+import { activeBuildId } from "../../../state/builds";
+import { actions, parts, runs } from "../../../state/store";
+import type { StudyProposal } from "../../../api/studiesAgent";
+import { AgentPane } from "./agent/AgentPane";
+import { StudiesAgentController, studiesAgentRun } from "./agent/model";
 import { Button } from "../../common/Button";
 import { PhaseBar } from "../../console/studycard/StudyCard";
 import { PageShell } from "../PageShell";
@@ -40,24 +47,40 @@ import "./studies-a8.css";
 /** One per app: leaving and re-opening the page keeps following a running study. */
 export const studies = new StudiesController(() => actions.client());
 onCoreEvent((ev) => studies.onEvent(ev));
+/** The studies agent's context and conversation (one per app, like the study controller). */
+export const studiesAgent = new StudiesAgentController(() => actions.client());
+onCoreEvent((ev) => studiesAgent.onEvent(ev, runs.peek()));
 
 // the setup survives page switches (module state, like the controller)
 const typeSig = signal<StudyType>("static");
 const settingsSig = signal<Partial<Record<StudyType, Record<string, unknown>>>>({});
 const caseSig = signal<number | null>(0);
 const viewSig = signal<"setup" | "result">("result");
+/** "Set up manually": collapsed unless the user opened it (remembered per Mac). */
+const MANUAL_KEY = "mises.studies.manual";
+const readManual = (): boolean => { try { return localStorage.getItem(MANUAL_KEY) === "1"; } catch { return false; } };
+const manualSig = signal<boolean>(readManual());
+function setManual(open: boolean): void {
+  manualSig.value = open;
+  try { localStorage.setItem(MANUAL_KEY, open ? "1" : "0"); } catch { /* private window: per session only */ }
+}
 
-/** Tests: back to a fresh setup. */
+/** Tests: back to a fresh setup (the manual setup collapsed). */
 export function resetStudiesPage(): void {
-  typeSig.value = "static"; settingsSig.value = {}; caseSig.value = 0; viewSig.value = "result";
+  typeSig.value = "static"; settingsSig.value = {}; caseSig.value = 0; viewSig.value = "result"; manualSig.value = false;
 }
 
 export interface StudiesDeps { view?: StudyViewDeps }
 
 const builtParts = computed(() => parts.value.filter((p) => p.metrics !== null));
 
-export function StudiesPage({ controller = studies, deps = {} }: { controller?: StudiesController; deps?: StudiesDeps }): JSX.Element {
+export function StudiesPage({ controller = studies, agent = studiesAgent, deps = {} }: { controller?: StudiesController; agent?: StudiesAgentController; deps?: StudiesDeps }): JSX.Element {
   const c = controller;
+  const buildId = activeBuildId.value;
+  useEffect(() => { void agent.load(buildId); }, [agent, buildId]);
+  const agentRun = studiesAgentRun(runs.value.values(), buildId);
+  useEffect(() => { agent.noteRun(agentRun); }, [agent, agentRun?.id]);
+  const manual = manualSig.value;
   const part = activePart.value;
   const partId = part?.part_id ?? null;
   const built = part !== null && part.metrics !== null;
@@ -122,10 +145,70 @@ export function StudiesPage({ controller = studies, deps = {} }: { controller?: 
   const immersive = (simId: string) => openImmersive({ simId, ids: doneIds });
   const activeHere = active && active.partId === partId ? active : null;
 
+  // the agent's proposals: why one cannot run now, and Run (the same POST /sims as the form)
+  const blocked = (p: StudyProposal): string | null => {
+    const target = parts.value.find((x) => x.part_id === p.part_id);
+    if (!target) return "This part is not in the build any more.";
+    if (target.metrics === null) return "This part has no built model yet.";
+    const ti = c.types.value.find((t) => t.id === p.type);
+    if (ti && !ti.available) return ti.detail ?? `${ti.name} is not available on this Mac.`;
+    if (p.type !== "wind" && c.ccxMissing.value) return "Install CalculiX to run FEM studies (wind studies still run).";
+    return null;
+  };
+  const startProposal = (p: StudyProposal) => {
+    if (p.part_id !== partId) actions.selectPart(p.part_id);
+    // the proposal's settings become the manual setup of that type, so "Set up manually" edits them
+    typeSig.value = p.type; settingsSig.value = { ...settingsSig.peek(), [p.type]: p.settings }; caseSig.value = 0;
+    c.fieldErrors.value = []; setPicking(null); viewSig.value = "setup";
+    agent.noteRan(p);
+    void c.start(p.part_id, p.type, p.settings);
+  };
+  // the page runs one study at a time: Run on another proposal while one runs queues it (press
+  // again to take it off); only the running proposal's own Run is disabled
+  const runProposal = (p: StudyProposal) => {
+    if (blocked(p) !== null) return;
+    if (active) { agent.queued.value = agent.queued.peek()?.id === p.id ? null : p; return; }
+    startProposal(p);
+  };
+  const queued = agent.queued.value;
+  useEffect(() => {
+    if (active || !queued) return;
+    agent.queued.value = null;
+    if (blocked(queued) === null) startProposal(queued);
+  }, [active === null, queued]);
+  const ran = agent.ranProposal.value;
+  const ranRecord = ran && rec && rec.part_id === ran.partId && (rec.created_at ?? 0) >= ran.at - 30 ? rec : null;
+  const runningId = active && ran && active.partId === ran.partId && active.startedAt >= ran.at - 30 ? ran.id : null;
+
   return (
     <PageShell title="Studies">
-      <div class="st" data-testid="studies">
+      <div class="st st-agentfirst" data-testid="studies" data-manual={String(manual)}>
         <aside class="st-side">
+          <AgentPane agent={agent} run={agentRun} blocked={blocked} onRun={runProposal} runningId={runningId} queuedId={queued?.id ?? null}
+            active={active} ranRecord={active ? null : ranRecord} onCancel={() => { void c.cancel(); }}
+            onWatch={() => { if (active) openImmersive({ simId: active.simId, ids: doneIds, pending: active.simId ? null : { runId: active.runId, type: active.type, partId: active.partId, sinceTs: active.startedAt } }); }}
+            onOpenResult={(id) => { setPicking(null); viewSig.value = "result"; void c.select(id); }}
+            onOpenRun={openRun} />
+          {c.runError.value && !manual && (
+            <div class="st-band st-band-red" data-testid="run-error" role="alert">
+              <div>
+                <div class="text">{c.runError.value.message}</div>
+                {c.runError.value.hint && <div class="text dim">{c.runError.value.hint}</div>}
+              </div>
+            </div>
+          )}
+          {partId && (
+            <History list={c.history.value} selected={c.selectedSimId.value} error={c.historyError.value}
+              onSelect={(id) => { viewSig.value = "result"; void c.select(id); }}
+              compare={c.compareIds.value} onToggleCompare={(id) => c.toggleCompare(id)}
+              onCompare={() => { setPanel("compare"); void c.runCompare(); }} />
+          )}
+          <button type="button" class="st-manual-toggle" aria-expanded={manual} aria-controls="st-manual" data-testid="manual-setup-toggle"
+            onClick={() => setManual(!manual)}>
+            <span aria-hidden="true" class="st-manual-caret">{manual ? "▾" : "▸"}</span>Set up manually
+          </button>
+          {manual && (
+          <div class="st-manual" id="st-manual" data-testid="manual-setup">
           <div class="st-field">
             <label class="label" for="st-part">Part</label>
             {parts.value.length === 0
@@ -214,11 +297,7 @@ export function StudiesPage({ controller = studies, deps = {} }: { controller?: 
               </div>
             </div>
           )}
-          {partId && (
-            <History list={c.history.value} selected={c.selectedSimId.value} error={c.historyError.value}
-              onSelect={(id) => { viewSig.value = "result"; void c.select(id); }}
-              compare={c.compareIds.value} onToggleCompare={(id) => c.toggleCompare(id)}
-              onCompare={() => { setPanel("compare"); void c.runCompare(); }} />
+          </div>
           )}
         </aside>
         <section class="st-main" aria-label="Study">
@@ -231,7 +310,7 @@ export function StudiesPage({ controller = studies, deps = {} }: { controller?: 
                   {recShown?.type ? `${typeName(recShown.type)} result` : "Result"}
                 </button>
                 {/* the shown result's own type, when it isn't the setup's (M-2) */}
-                {showResult && recShown.type && recShown.type !== type && (
+                {manual && showResult && recShown.type && recShown.type !== type && (
                   <span class="faint st-note" data-testid="result-type-note">{`a ${typeName(recShown.type)} study · the setup above is ${TYPE_NAMES[type]}`}</span>
                 )}
                 {!showResult && markers.length > 0 && <span class="faint st-note">{markers.filter((m) => m.role === "load").length} loads · {markers.filter((m) => m.role !== "load").length} held or thermal faces</span>}

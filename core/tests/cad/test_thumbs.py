@@ -73,23 +73,60 @@ async def test_part_thumb_none_without_mesh(tmp_path):
     assert await thumbs.part_thumb(home, "nope", 1) is None
 
 
-async def test_project_thumb_composites_parts(tmp_path):
+def _shift(dx: float) -> list[list[float]]:
+    return [[1, 0, 0, dx], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+
+
+def _alpha_box(png: bytes) -> tuple[int, int, int, int, int, int]:
+    """(w, h, x0, y0, x1, y1) of the non-transparent pixels."""
+    w, h, rgba = thumb_render.decode_png(png)
+    xs, ys = [], []
+    for i in range(3, len(rgba), 4):
+        if rgba[i] > 0:
+            px = i // 4
+            xs.append(px % w)
+            ys.append(px // w)
+    return w, h, min(xs), min(ys), max(xs), max(ys)
+
+
+async def test_project_cover_renders_the_assembly_not_a_grid(tmp_path, monkeypatch):
+    # D24: two instances of one part, placed apart, render as ONE assembly picture in one job,
+    # 16:10, framed to the content's bbox (a 2x2 grid is square with a tile per quadrant)
+    from mises.cad import render_job
     home = tmp_path / "home"
     platform.register_sandbox_home(home)
-    await _build_part(home, "box_d", BOX)
-    await _build_part(home, "plate_d", PLATE)
+    await _build_part(home, "box_g", BOX)
+    jobs = []
+    real = render_job.run_render_job
 
-    png = await thumbs.project_thumb(home, "proj1", [("box_d", 1), ("plate_d", 1)], size=128)
-    assert png is not None
-    w, h, _ = thumb_render.decode_png(png)
-    assert (w, h) == (128, 128)
+    async def spy(*a, **kw):
+        jobs.append([(m.name, m.transform) for m in a[1]])
+        return await real(*a, **kw)
+
+    monkeypatch.setattr(thumbs, "run_render_job", spy)
+    placed = [("box_g", 1, _shift(0), None), ("box_g", 1, _shift(80), None)]
+    png = await thumbs.project_cover(home, "proj1", placed, size=320)
+    assert png is not None and png[:8] == b"\x89PNG\r\n\x1a\n"
+    assert len(jobs) == 1 and [t for _n, t in jobs[0]] == [_shift(0), _shift(80)]
+    w, h, x0, y0, x1, y1 = _alpha_box(png)
+    assert (w, h) == (320, 200)
+    # framed: the content fills most of the frame and is centred (not one quadrant of a grid)
+    assert x1 - x0 > w * 0.6 or y1 - y0 > h * 0.6
+    assert abs((x0 + x1) / 2 - w / 2) < w * 0.1 and abs((y0 + y1) / 2 - h / 2) < h * 0.1
     assert (home / "parts" / thumbs.THUMBS_DIR / "project-proj1").is_dir()
+    # cached by the assembly + parts: the same placement serves the cache, a moved one re-renders
+    assert await thumbs.project_cover(home, "proj1", placed, size=320) == png
+    assert len(jobs) == 1
+    moved = [placed[0], ("box_g", 1, _shift(40), None)]
+    assert thumbs.cover_key(home, moved, 320) != thumbs.cover_key(home, placed, 320)
+    await thumbs.project_cover(home, "proj1", moved, size=320)
+    assert len(jobs) == 2
 
 
-async def test_project_thumb_none_when_no_meshes(tmp_path):
+async def test_project_cover_none_when_no_meshes(tmp_path):
     home = tmp_path / "home"
     platform.register_sandbox_home(home)
-    assert await thumbs.project_thumb(home, "empty", [("ghost", 1)]) is None
+    assert await thumbs.project_cover(home, "empty", [("ghost", 1, None, None)]) is None
 
 
 async def test_reused_id_after_purge_gets_a_fresh_thumbnail(tmp_path):

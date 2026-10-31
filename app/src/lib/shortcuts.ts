@@ -4,7 +4,7 @@
 // here, that no two global shortcuts collide, and that docs/shortcuts.md documents each one.
 import { PAGES } from "../ui/pages/router";
 
-export type ShortcutScope = "global" | "design" | "viewer" | "parts" | "approvals" | "immersive";
+export type ShortcutScope = "global" | "topbar" | "design" | "viewer" | "parts" | "approvals" | "immersive" | "composer";
 
 export interface Shortcut {
   /** The registerShortcut combo ("Meta+Shift+A"), or the key a focused handler reads. */
@@ -19,21 +19,26 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { combo: "Meta+0", keys: "⌘0", action: "Home (all builds)", scope: "global" },
   // the mode tabs, in tab order (ui/pages/router.ts PAGES)
   ...PAGES.map((p): Shortcut => ({ combo: `Meta+${p.key}`, keys: `⌘${p.key}`, action: `${p.title} page`, scope: "global" })),
+  // Plan 9 D1: the build's name in the top bar (focused) renames the build in place
+  { combo: "F2", keys: "F2", action: "Rename the build (its name in the top bar focused)", scope: "topbar" },
   { combo: "Meta+K", keys: "⌘K", action: "Focus the command line", scope: "global" },
   { combo: "Meta+N", keys: "⌘N", action: "New agent run", scope: "global" },
   { combo: "Meta+Shift+A", keys: "⇧⌘A", action: "Agent manager", scope: "global" },
   { combo: "Meta+Shift+.", keys: "⇧⌘.", action: "Stop all runs", scope: "global" },
-  { combo: "Meta+Alt+A", keys: "⌥⌘A", action: "Part / Assembly (Design page)", scope: "design" },
+  { combo: "F", keys: "F", action: "Fit the assembly in the view (or double-click empty space)", scope: "design" },
+  { combo: "Escape", keys: "Esc", action: "Back to the assembly from an open part / close Play", scope: "design" },
   { combo: "M", keys: "M", action: "Measure (viewer focused; again for Select)", scope: "viewer" },
   { combo: "Escape", keys: "Esc", action: "Back to Select / close the overview, a menu or an immersive view", scope: "viewer" },
   { combo: "F2", keys: "F2", action: "Rename the part", scope: "parts" },
   { combo: "H", keys: "H", action: "Hide / show the selected parts", scope: "parts" },
   { combo: "Meta+D", keys: "⌘D", action: "Duplicate the selected parts", scope: "parts" },
   { combo: "Meta+I", keys: "⌘I", action: "Part properties", scope: "parts" },
+  { combo: "Backspace", keys: "⌫", action: "Delete the selected parts (and their assembly instances)", scope: "parts" },
   { combo: "Alt+ArrowUp", keys: "⌥↑ ⌥↓", action: "Move the part up / down", scope: "parts" },
   { combo: "Alt+ArrowRight", keys: "⌥→ ⌥←", action: "Nest the part / move it out", scope: "parts" },
   { combo: "approve", keys: "M", action: "Approve (a focused approval card, after it arms)", scope: "approvals" },
   { combo: "reject", keys: "R", action: "Reject (a focused approval card)", scope: "approvals" },
   { combo: "keep", keys: "K", action: "Keep the branch (a focused approval card)", scope: "approvals" },
   { combo: "Meta+[", keys: "⌘[ ⌘]", action: "Previous / next view or study (immersive)", scope: "immersive" },
+  { combo: "Escape", keys: "Esc", action: "Stop the agents (the composer focused, while they work)", scope: "composer" },
 ];

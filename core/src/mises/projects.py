@@ -290,12 +290,19 @@ def _owned_by(parent: Path, record: str, project_id: str) -> list[str]:
 
 
 def empty_trash(store: Store, home: Path | None = None, *, assembly: Any = None,
-                busy: BusyFn | None = None) -> dict:
+                busy: BusyFn | None = None, only: str | None = None) -> dict:
     """Purge every trashed build and everything it owns: part-tree rows, spec, studies,
     build-scoped catalog items, assembly rows and (with `home`) its parts' files, meta and
     study scratch. Refused as a whole (TrashBusy -> 409) while any trashed build has a run
-    that is running, queued, busy or awaiting approval. Runs stay as history until cleaned up."""
-    purged = [p.id for p in store.list_projects() if p.trashed_at is not None]
+    that is running, queued, busy or awaiting approval. Runs stay as history until cleaned up.
+    `only` purges that one build (Home's "Delete forever"); it must already be in the Trash."""
+    if only is not None:
+        p = _project_or_404(store, only)
+        if p.trashed_at is None:
+            raise MisesError(ErrorCode.INVALID_INPUT, f"build {only!r} is not in the Trash",
+                             hint="move it to the Trash first")
+    purged = [p.id for p in store.list_projects()
+              if p.trashed_at is not None and (only is None or p.id == only)]
     blocked = trash_blockers(store, purged, busy)
     if blocked is not None:
         raise TrashBusy(blocked[0], blocked[1], purged)
@@ -640,23 +647,32 @@ def part_blockers(store: Store, row: Part, busy: BusyFn | None = None) -> list[s
     return out
 
 
+_UNDO_RE = re.compile(r"^([a-z][a-z0-9_]{1,40})\.(\d{1,25})$")
+
+
 def delete_part(store: Store, home: Path, part_id: str, *, assembly: Any = None,
-                busy: BusyFn | None = None) -> dict:
+                busy: BusyFn | None = None, cascade: bool = False,
+                ignore_runs: tuple[str, ...] | list[str] = ()) -> dict:
     """Remove a part from its build. Its files move to home/trash/parts/<id>.<time> (nothing is
-    destroyed); its children move up to its parent. Refused while the build's assembly uses it,
-    and (PartBusy, 409) while an agent run that may edit it is live."""
+    destroyed); its children move up to its parent. While the build's assembly uses it the
+    delete is refused, unless `cascade` (Plan 9 D29): then its instances (and their joints) go
+    too. Refused (PartBusy, 409) while an agent run that may edit it is live (`ignore_runs`:
+    the deleting run itself). Returns {deleted, removed_instances, removed_joints, undo}: `undo`
+    names the trash entry restore_part puts back (files, tree row, instances and joints)."""
     from .cad import safe_io
     row = _part_or_404(store, part_id)
-    blockers = part_blockers(store, row, busy)
+    blockers = [r for r in part_blockers(store, row, busy) if r not in ignore_runs]
     if blockers:
         raise PartBusy(part_id, blockers)
+    used: list = []
     if assembly is not None and row.project_id:
         try:
-            used = [i.name for i in assembly.get(row.project_id).instances if i.part_id == part_id]
+            asm = assembly.get(row.project_id)
         except KeyError:
-            used = []
-        if used:
-            raise _bad(f"{part_id} is in the assembly ({', '.join(used[:3])})",
+            asm = None
+        used = [i for i in (asm.instances if asm else []) if i.part_id == part_id]
+        if used and not cascade:
+            raise _bad(f"{part_id} is in the assembly ({', '.join(i.name for i in used[:3])})",
                        hint="remove it from the assembly first")
     # another build's assembly may place this part too (a "*"-scoped run can): the same
     # guard as Empty Trash, so that build never loses a placed part
@@ -666,21 +682,81 @@ def delete_part(store: Store, home: Path, part_id: str, *, assembly: Any = None,
     root = _parts_root(home)
     stamp = f"{part_id}.{time.time_ns()}"
     trash = Path(home) / "trash" / "parts"
+    moved_files = False
     for src in (root / part_id, root / ".mises-meta" / part_id, root / THUMBS_DIR / part_id):
         real = _contained(root, src) if root.is_dir() else None
         if real is None or not os.path.isdir(real) or os.path.islink(src):
             continue
+        moved_files = moved_files or src.parent == root
         dest = trash / stamp if src.parent == root else trash / src.parent.name / stamp
         # each level made (or checked) top-down through safe_io: a link planted at home/trash
         # or below is refused, never followed
         for level in (Path(home) / "trash", trash, dest.parent):
             safe_io.ensure_dir(level)
         os.rename(real, safe_io.real_dir(dest.parent) / dest.name)
-    for child in store.list_part_rows(row.project_id):
-        if child.parent_id == part_id:
-            store.update_part(child.id, parent_id=row.parent_id)
+    # D29: the cascade, once the files are in the trash; what Undo needs comes back with it
+    taken = assembly.take_out(row.project_id, [part_id]) if used else {"instances": [], "joints": []}
+    children = [c.id for c in store.list_part_rows(row.project_id) if c.parent_id == part_id]
+    for child in children:
+        store.update_part(child, parent_id=row.parent_id)
+    # what Undo needs: the tree row, its children and the assembly pieces (host-only trash)
+    safe_io.ensure_dir(Path(home) / "trash")
+    safe_io.ensure_dir(trash)
+    safe_io.write_text(trash, f"{stamp}.json", json.dumps({
+        "part": row.model_dump(mode="json"), "children": children,
+        "instances": taken["instances"], "joints": taken["joints"], "had_files": moved_files}))
     store.delete_part_row(part_id)
-    return {"deleted": part_id}
+    return {"deleted": part_id, "removed_instances": [i.id for i in used],
+            "removed_joints": [j["id"] for j in taken["joints"]], "undo": stamp}
+
+
+def restore_part(store: Store, home: Path, part_id: str, undo: str, *,
+                 assembly: Any = None) -> dict:
+    """Undo a delete_part (Plan 9 D29): its files come back from the trash, then its tree row
+    (label, look, parent, children), then the assembly instances and joints the delete removed.
+    Refused when the trash entry is gone or a part of that id exists again."""
+    from .cad import safe_io
+    m = _UNDO_RE.fullmatch(undo or "")
+    if m is None or m.group(1) != part_id:
+        raise _bad(f"{undo!r} is not an undo of {part_id}")
+    trash = Path(home) / "trash" / "parts"
+    try:
+        manifest = safe_io.read_json(trash, f"{undo}.json")
+    except (OSError, ValueError, safe_io.UnsafePath):
+        manifest = None
+    if not isinstance(manifest, dict):
+        raise MisesError(ErrorCode.NOT_FOUND, f"nothing to undo for {part_id}",
+                         hint="the trash was emptied")
+    if store.get_part(part_id) is not None:
+        raise _bad(f"a part {part_id} exists again", hint="rename or delete it first")
+    if manifest.get("had_files") and not os.path.isdir(trash / undo):
+        raise MisesError(ErrorCode.NOT_FOUND, f"the files of {part_id} are no longer in the trash",
+                         hint="the trash was emptied")
+    root = _parts_root(home)
+    for src, dest in ((trash / undo, root / part_id),
+                      (trash / ".mises-meta" / undo, root / ".mises-meta" / part_id),
+                      (trash / THUMBS_DIR / undo, root / THUMBS_DIR / part_id)):
+        if os.path.islink(src) or not os.path.isdir(src) or os.path.lexists(dest):
+            continue
+        safe_io.ensure_dir(root)
+        safe_io.ensure_dir(dest.parent)
+        os.rename(safe_io.real_dir(src.parent) / src.name, safe_io.real_dir(dest.parent) / dest.name)
+    old = Part.model_validate(manifest["part"])
+    project = old.project_id or store.ensure_default_project().id
+    store.register_part(part_id, project, label=old.label, kind=old.kind)
+    parent = old.parent_id if old.parent_id and store.get_part(old.parent_id) else None
+    store.update_part(part_id, color=old.color, appearance=old.appearance, parent_id=parent,
+                      ord=old.order, version=old.version)
+    for child in manifest.get("children") or []:
+        c = store.get_part(child)
+        if c is not None and c.project_id == project and c.parent_id == old.parent_id:
+            store.update_part(child, parent_id=part_id)
+    restored = 0
+    if assembly is not None:
+        restored, _ = assembly.put_back(project, manifest)
+    safe_io.unlink(trash, f"{undo}.json")
+    return {**part_view(store, home, _part_or_404(store, part_id)),
+            "restored_instances": restored}
 
 
 EXPORT_FORMATS = ("step", "stl")

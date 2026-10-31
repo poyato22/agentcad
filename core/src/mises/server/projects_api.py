@@ -18,6 +18,7 @@ from .. import projects as _projects
 from ..agent import definitions as _defs
 from ..appearance import render_params
 from ..cad import thumbs
+from ..events import Event
 from ..profile import load_profile, save_profile
 from ..types import ErrorCode, MisesError
 
@@ -37,6 +38,10 @@ class Reorder(BaseModel):
     project_id: str
     parent_id: str | None = None
     ids: list[str]
+
+
+class RestoreBody(BaseModel):
+    undo: str  # DELETE /parts/{id}'s `undo`
 
 
 class ExportBody(BaseModel):
@@ -107,24 +112,59 @@ def build_projects_router(runtime: Runtime) -> APIRouter:
         from ..cad.skeleton_tools import skeleton_view
         return await run_in_threadpool(skeleton_view, _home(), store, project_id)
 
+    def _cover_placements(home: Path, project_id: str) -> list[thumbs.Placement]:
+        """What the cover draws: every assembly instance at its solved world transform (a solve
+        that fails keeps the stored transforms, as the agents' views do), each in its part's
+        finish; with no instance, the build's largest built part (by volume) in its own frame.
+        Thumbs skips parts without a mesh."""
+        from ..assembly.geometry import face_resolver
+        from ..assembly.solve import solve
+        asm_store = getattr(runtime, "assembly_store", None)
+        insts = []
+        if asm_store is not None:
+            asm = asm_store.get(project_id)
+            insts = list(asm.instances)
+            tf: dict = {}
+            if insts:
+                try:
+                    tf = solve(asm, resolve_face=face_resolver(home / "parts")).transforms
+                except Exception:  # noqa: BLE001 - a broken solve still shows the stored layout
+                    tf = {}
+        rows: dict = {}
+
+        def part(pid: str):
+            if pid not in rows:
+                rows[pid] = store.get_part(pid)
+            return rows[pid]
+        placed = [(i.part_id, _projects.part_version(home, r), tf.get(i.id) or i.transform,
+                   render_params(r))
+                  for i in insts if (r := part(i.part_id)) is not None]
+        if any(thumbs.mesh_stamp(home, p[0]) for p in placed):
+            return placed
+        built = [p for p in _projects.list_parts(store, home, project_id)
+                 if p.get("kind") == "part" and thumbs.mesh_stamp(home, p["part_id"])]
+        if not built:
+            return []
+        big = max(built, key=lambda p: float((p.get("metrics") or {}).get("volume_mm3") or 0))
+        r = store.get_part(big["part_id"])
+        return [(big["part_id"], big["version"], None, render_params(r) if r else None)]
+
     @router.get("/projects/{project_id}/thumb.png")
-    async def project_thumb(project_id: str, request: Request, size: int = thumbs.DEFAULT_SIZE):
-        """A composite tile of up to four of the build's parts (each rendered in the sandboxed
-        worker, cached by version; composed on the host). 404 until a part has a built mesh."""
+    async def project_thumb(project_id: str, request: Request, size: int = thumbs.COVER_W):
+        """The build's Home cover (D24): one sandboxed render of its assembly, every instance at
+        its solved pose in its finish, 16:10 (`size` is the width), background transparent;
+        the largest built part when nothing is placed. 404 until a part has a built mesh."""
         _projects._project_or_404(store, project_id)
         home = _home()
-        chosen = [(p["part_id"], p["version"])
-                  for p in _projects.list_parts(store, home, project_id)
-                  if p.get("kind") == "part"][:4]
-        sz = thumbs.clamp_size(size)
-        looks = {pid: render_params(r) for pid, _v in chosen
-                 if (r := store.get_part(pid)) is not None}            # U8 appearance
-        etag = f'"proj-{project_id}-{thumbs.project_key(home, chosen, sz, looks)}"'   # = the cache key
+        placed = await run_in_threadpool(_cover_placements, home, project_id)
+        key = thumbs.cover_key(home, placed, size)
+        etag = f'"proj-{project_id}-{key}"'                       # = the cache key
         headers = {"ETag": etag, "Cache-Control": "private, no-cache"}
         inm = request.headers.get("if-none-match")
-        if inm and any(t.strip().removeprefix("W/") == etag for t in inm.split(",")):
+        if key is not None and inm and any(t.strip().removeprefix("W/") == etag
+                                           for t in inm.split(",")):
             return Response(status_code=304, headers=headers)
-        png = await thumbs.project_thumb(home, project_id, chosen, sz, looks)
+        png = await thumbs.project_cover(home, project_id, placed, size)
         if png is None:
             raise MisesError(ErrorCode.NOT_FOUND, f"no preview for build {project_id!r} yet",
                              hint="it has no parts with a built mesh")
@@ -138,6 +178,15 @@ def build_projects_router(runtime: Runtime) -> APIRouter:
     async def empty_trash():
         try:
             return runtime.empty_trash()
+        except _projects.TrashBusy as e:
+            return JSONResponse(e.body(), status_code=409)
+
+    @router.post("/projects/{project_id}/purge")
+    async def purge_project(project_id: str):
+        """Delete one trashed build for good (Home's "Delete forever"): Empty Trash for that
+        build only, with the same live-work refusal (409)."""
+        try:
+            return runtime.empty_trash(only=project_id)
         except _projects.TrashBusy as e:
             return JSONResponse(e.body(), status_code=409)
 
@@ -172,15 +221,39 @@ def build_projects_router(runtime: Runtime) -> APIRouter:
         async with part_lock(_home() / "parts" / part_id):
             return await run_in_threadpool(_projects.duplicate_part, store, _home(), part_id)
 
+    def _assembly_changed(project_id: str | None) -> None:
+        events = getattr(runtime, "events", None)
+        if events is not None and project_id:
+            events.publish(Event(type="assembly_changed", data={"project_id": project_id}))
+
     @router.delete("/parts/{part_id}")
-    async def delete_part(part_id: str):
-        # the same live-work rule as the build's Empty Trash (409 while an agent may edit it)
+    async def delete_part(part_id: str, cascade: bool = False):
+        # the same live-work rule as the build's Empty Trash (409 while an agent may edit it);
+        # Plan 9 D29: ?cascade=true also removes the part's instances from the assembly
+        project = getattr(store.get_part(part_id), "project_id", None)
         try:
-            return _projects.delete_part(store, _home(), part_id,
-                                         assembly=getattr(runtime, "assembly_store", None),
-                                         busy=getattr(runtime, "_busy_for_trash", None))
+            out = _projects.delete_part(store, _home(), part_id,
+                                        assembly=getattr(runtime, "assembly_store", None),
+                                        busy=getattr(runtime, "_busy_for_trash", None),
+                                        cascade=cascade)
         except _projects.PartBusy as e:
             return JSONResponse(e.body(), status_code=409)
+        if out["removed_instances"]:
+            _assembly_changed(project)
+        return out
+
+    @router.post("/parts/{part_id}/restore")
+    async def restore_part(part_id: str, body: RestoreBody):
+        """Undo of DELETE /parts/{id}: the files, the tree row and the assembly instances."""
+        from ..cad.tools import PART_ID_RE, _lock as part_lock
+        if not PART_ID_RE.match(part_id):
+            raise MisesError(ErrorCode.INVALID_INPUT, f"bad part id: {part_id!r}")
+        async with part_lock(_home() / "parts" / part_id):   # as delete: never mid-build
+            out = _projects.restore_part(store, _home(), part_id, body.undo,
+                                         assembly=getattr(runtime, "assembly_store", None))
+        if out["restored_instances"]:
+            _assembly_changed(out.get("project_id"))
+        return out
 
     @router.post("/parts/{part_id}/export")
     async def export_part(part_id: str, body: ExportBody):

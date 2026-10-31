@@ -8,7 +8,7 @@
 import type { JSX } from "preact";
 import { budgetLevel, onshapeBudget, onshapeBudgetTick, onshapeRunUsed } from "../../state/onshapeBudget";
 import { coreStatus, selectedRunId } from "../../state/store";
-import { setPage } from "../pages/router";
+import { showHome } from "../../state/home";
 
 const num = (n: number) => n.toLocaleString("en-US");
 
@@ -29,7 +29,7 @@ export function BudgetChip(): JSX.Element | null {
   return (
     <button type="button" class="budget-chip" data-level={level} title="Onshape calls this year: opens the Onshape page"
       aria-label={`Onshape: ${num(b.used_year)} of ${num(b.limit_year)} calls used this year.${note} Opens the Onshape page.`}
-      onClick={() => setPage("onshape")}>
+      onClick={() => showHome("onshape")}>
       <span class="budget-chip-name">Onshape </span>
       <span key={tick} class={tick > 0 ? "budget-chip-used budget-moved" : "budget-chip-used"} data-chip-used>{num(b.used_year)}</span>
       <span class="budget-limit">/{num(b.limit_year)}</span>
@@ -78,7 +78,7 @@ export function BudgetMeter({ onOpen }: { onOpen?: () => void } = {}): JSX.Eleme
       {delta !== null && <div class="budget-card-row"><span>Used {whose}</span><span data-budget-delta>+{num(delta)}</span></div>}
       <div class="budget-card-row"><span>Resets</span><span data-budget-reset>{reset}</span></div>
       {note && <p class="budget-card-note budget-card-state">{note}</p>}
-      <button type="button" class="btn budget-open" onClick={() => { setPage("onshape"); onOpen?.(); }}>Open the Onshape page</button>
+      <button type="button" class="btn budget-open" onClick={() => { showHome("onshape"); onOpen?.(); }}>Open the Onshape page</button>
     </div>
   );
 }

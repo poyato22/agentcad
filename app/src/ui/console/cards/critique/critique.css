@@ -88,5 +88,4 @@
 /* ---- model warning */
 .mwarn { display: inline-flex; align-items: center; gap: 5px; margin-left: 8px; color: var(--amber); cursor: help; white-space: nowrap; }
 .mwarn:focus-visible { outline: 1px solid var(--blue); outline-offset: 2px; }
-.cv-who:has(.mwarn) { display: flex; align-items: center; }
 .vimm-stage .vm { top: 14px; }

@@ -3,7 +3,6 @@
 import type { Page } from "@playwright/test";
 import { expect, test, type FakeCall, type FakeControl } from "./fixtures";
 
-const QUAD = "q0quadframe0";
 const BENCH = "b0benchrig00";
 
 test.beforeEach(async ({ fake }) => { await fake.reset("builds"); });
@@ -20,57 +19,70 @@ const callsTo = async (fake: FakeControl, method: string, path: string | RegExp)
 
 async function open(page: Page): Promise<void> {
   await page.goto("/");
-  await expect(page.getByRole("tab", { name: "Quad frame" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("button", { name: /^Build: Quad frame/ })).toBeVisible();
   await expect(tree(page).getByRole("button", { name: "Quad arm", exact: true })).toBeVisible();
 }
 
-test("build_tabs_open_switch_close_with_their_own_parts", async ({ page, fake }) => {
+/** Home (D1: the only way between builds), then a build's tile. */
+async function viaHome(page: Page, name: string): Promise<void> {
+  await page.getByRole("button", { name: "Home" }).click();
+  await page.locator('[data-testid="home"]').getByRole("button", { name: `Open ${name}`, exact: true }).click();
+  await expect(page.getByRole("button", { name: new RegExp(`^Build: ${name}`) })).toBeVisible();
+}
+
+test("switching_builds_goes_through_home_each_with_its_own_parts", async ({ page, fake }) => {
   await open(page);
+  // D1: no tab strip, no + / ▾ / +N
+  await expect(page.getByTestId("build-tabs")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "All builds and the Trash" })).toHaveCount(0);
   await expect(tree(page).getByRole("button", { name: "top plate", exact: true })).toBeVisible();
   await expect(tree(page).getByRole("button", { name: "bench plate", exact: true })).toHaveCount(0);
 
-  await page.getByRole("button", { name: "All builds and the Trash" }).click();
-  await page.getByRole("menuitemradio", { name: /Bench rig/ }).click();
-  await expect(page.getByRole("tab", { name: "Bench rig" })).toHaveAttribute("aria-selected", "true");
+  await viaHome(page, "Bench rig");
   await expect(tree(page).getByRole("button", { name: "bench plate", exact: true })).toBeVisible();
   await expect(tree(page).getByRole("button", { name: "Quad arm", exact: true })).toHaveCount(0);
   expect((await callsTo(fake, "GET", "/parts")).some((c) => c.query.project_id === BENCH)).toBe(true);
   const put = (await callsTo(fake, "PUT", "/profile")).at(-1);
-  expect(put?.body).toEqual({ active_project_id: BENCH, open_project_ids: [QUAD, BENCH] });
+  expect((put?.body as { active_project_id: string }).active_project_id).toBe(BENCH);
 
-  // keyboard: ← to the first tab, Enter switches
-  await page.getByRole("tab", { name: "Bench rig" }).focus();
-  await page.keyboard.press("ArrowLeft");
-  await page.keyboard.press("Enter");
-  await expect(page.getByRole("tab", { name: "Quad frame" })).toHaveAttribute("aria-selected", "true");
+  await viaHome(page, "Quad frame");
   await expect(tree(page).getByRole("button", { name: "Quad arm", exact: true })).toBeVisible();
-
-  await page.getByRole("button", { name: "Close Bench rig" }).click();
-  await expect(page.getByTestId("build-tabs").getByRole("tab")).toHaveCount(1);
 });
 
-test("new_build_rename_trash_restore", async ({ page, fake }) => {
+test("new_build_rename_in_the_top_bar_trash_undo_and_restore_from_home", async ({ page, fake }) => {
   await open(page);
-  await page.getByRole("button", { name: "Add a build" }).click();
+  await page.getByRole("button", { name: "Home" }).click();
+  const home = page.locator('[data-testid="home"]');
+  await home.getByRole("button", { name: "New build" }).click();
   await page.getByRole("textbox", { name: "New build name" }).fill("Gimbal mount");
   await page.keyboard.press("Enter");
-  await expect(page.getByRole("tab", { name: "Gimbal mount" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("button", { name: /^Build: Gimbal mount/ })).toBeVisible();
   await expect(page.getByTestId("left-pane")).toContainText("No parts in this build yet.");
 
-  await page.getByRole("tab", { name: "Gimbal mount" }).dblclick();
+  // the name in the top bar renames in place
+  await page.getByRole("button", { name: /^Build: Gimbal mount/ }).click();
   await page.getByRole("textbox", { name: "Rename Gimbal mount" }).fill("Gimbal arm");
   await page.keyboard.press("Enter");
-  await expect(page.getByRole("tab", { name: "Gimbal arm" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Build: Gimbal arm/ })).toBeVisible();
 
-  await page.getByRole("button", { name: "All builds and the Trash" }).click();
-  await page.getByRole("menuitem", { name: "Move “Gimbal arm” to the Trash" }).click();
-  await expect(page.getByRole("tab", { name: "Gimbal arm" })).toHaveCount(0);
-  await expect(page.getByRole("tab", { name: "Quad frame" })).toHaveAttribute("aria-selected", "true");
+  // D30: Home tile ⋯ → Move to Trash, Undo brings it back
+  await page.getByRole("button", { name: "Home" }).click();
+  await home.locator('[data-build]', { hasText: "Gimbal arm" }).hover();
+  await home.getByRole("button", { name: "More for Gimbal arm" }).click();
+  await page.getByRole("menuitem", { name: "Move to Trash" }).click();
+  await expect(home.getByRole("button", { name: "Open Gimbal arm" })).toHaveCount(0);
   expect((await callsTo(fake, "DELETE", /^\/projects\//)).length).toBe(1);
+  await home.getByRole("status").getByRole("button", { name: "Undo" }).click();
+  await expect(home.getByRole("button", { name: "Open Gimbal arm" })).toBeVisible();
 
-  await page.getByRole("button", { name: "All builds and the Trash" }).click();
-  await page.getByRole("menuitem", { name: /Gimbal arm\s*Restore/ }).click();
-  await expect(page.getByRole("tab", { name: "Gimbal arm" })).toHaveAttribute("aria-selected", "true");
+  // the context menu trashes too; the Trash view restores
+  await home.getByRole("button", { name: "Open Gimbal arm" }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Move to Trash" }).click();
+  await expect(home.getByRole("button", { name: "Open Gimbal arm" })).toHaveCount(0);
+  await home.getByRole("button", { name: /^Trash/ }).click();
+  await home.locator('[data-build]', { hasText: "Gimbal arm" }).getByRole("button", { name: "Restore" }).click();
+  await home.getByRole("button", { name: /^Trash/ }).click();
+  await expect(home.getByRole("button", { name: "Open Gimbal arm" })).toBeVisible();
 });
 
 // dragging and the keyboard way: builds-drag.spec.ts (Chromium and WebKit)

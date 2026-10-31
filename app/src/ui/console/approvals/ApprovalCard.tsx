@@ -45,9 +45,25 @@ function mergeRoute(a: Approval): { branch: string; target: string } {
 
 const clip = (t: string) => (t.length > MAX_VALUE ? `${t.slice(0, MAX_VALUE - 1)}…` : t);
 
-/** Top-level payload fields as short "key: value" strings (the summary is shown as agent says). */
+/** Payload fields whose text is the thing approved (Plan 9 U-D: the studies agent's message to
+ *  the build's lead): shown in full whatever their length, never clipped. */
+const TEXT_FIELDS: Readonly<Record<string, readonly string[]>> = { agent_message: ["text"] };
+const isProse = (v: string) => v.length > MAX_VALUE && /\s/.test(v);
+
+/** String payload fields shown whole (wrapped, scrolling when long): a text action's text, and
+ *  any long prose field of another card. Rendered as text only. */
+function proseFields(a: Approval): [string, string][] {
+  if (a.action === MERGE_ACTION) return [];
+  const always = TEXT_FIELDS[a.action] ?? [];
+  return Object.entries(a.payload).filter((e): e is [string, string] =>
+    e[0] !== "summary" && typeof e[1] === "string" && (always.includes(e[0]) ? e[1].trim() !== "" : isProse(e[1])));
+}
+
+/** Top-level payload fields as short "key: value" strings (the summary is shown as agent says;
+ *  prose fields show whole, see proseFields). */
 function payloadFields(a: Approval): { items: string[]; more: number } {
-  const entries = Object.entries(a.payload).filter(([k]) => k !== "summary");
+  const prose = new Set(proseFields(a).map(([k]) => k));
+  const entries = Object.entries(a.payload).filter(([k]) => k !== "summary" && !prose.has(k));
   const items = entries.slice(0, MAX_FIELDS).map(([k, v]) => {
     const text = typeof v === "string" ? v : (JSON.stringify(v) ?? String(v));
     return clip(`${k}: ${text}`);
@@ -220,6 +236,8 @@ export function ApprovalCard(props: { approval: Approval; runLabel: string }): J
   const says = agentSays(a);
   const route = mergeRoute(a);
   const fields = payloadFields(a);
+  const prose = proseFields(a);
+  const reason = str(a.deltas.approval_reason);
   const preview = mergePreviewSummary(a.deltas.merge_preview);
   const print = printFacts(a);
   const changes = changeFacts(a);
@@ -244,6 +262,13 @@ export function ApprovalCard(props: { approval: Approval; runLabel: string }): J
           {fields.more > 0 && <span class="faint">+{fields.more} more (Diff)</span>}
         </div>
       )}
+      {reason && <div class="acard-reason text" data-approval-reason>{reason}</div>}
+      {prose.map(([k, v]) => (
+        <div key={k} class="acard-prose" data-prose-field={k}>
+          <span class="faint">{k}</span>
+          <div class="acard-prose-text text" tabIndex={0} aria-label={`${k}: the exact text you approve`}>{v}</div>
+        </div>
+      ))}
       {print && (
         <div class="acard-what acard-fields text" data-print-facts>
           <span class="tone-amber">Approving starts printing on this printer:</span>

@@ -102,9 +102,14 @@ export const STEP_KINDS = [
   "onshape_call", "sim_run", "measure", "verify", "compaction",
 ] as const satisfies readonly StepKind[];
 
+/** Which dock stream a step or event belongs to (Plan 9 B3; optional: older cores omit it and
+ *  the app classifies by type — ui/console/streams.ts). */
+export type StreamKind = "text" | "sim" | "view";
+
 export interface Step {
   id: number; run_id: string; ts: number; kind: StepKind; payload: Record<string, unknown>;
   evidence_hash: string; prev_hash: string | null; collapsed: boolean;
+  stream?: StreamKind;
 }
 
 export interface ToolOutput {
@@ -120,7 +125,7 @@ export interface Approval {
   expires_at: number; decided_by: string | null; decided_at: number | null; edited_payload: Record<string, unknown> | null;
 }
 
-export interface MisesEvent { type: string; run_id: string | null; data: Record<string, unknown>; ts: number }
+export interface MisesEvent { type: string; run_id: string | null; data: Record<string, unknown>; ts: number; stream?: StreamKind }
 
 /** One structured question of a batched `ui_ask_user` (C3): an id for the answer, the prompt,
  *  options and how to pick them. `multi`: several options; `rank`: order them (first = most
@@ -148,7 +153,7 @@ export interface CreateRunResult {
 /** `agent_announce` event kinds (U3c announce.KINDS): the clear things an agent did, shown as a
  *  card in the thread (R16) whatever the model says. view_presented / critique_round are Plan 8
  *  G1's (geometry quality) cards, their fields in `ref`. */
-export const ANNOUNCE_KINDS = ["part_created", "agent_spawned", "assembly_added", "bom_added", "part_shown", "drawing_imported", "view_presented", "critique_round"] as const;
+export const ANNOUNCE_KINDS = ["part_created", "agent_spawned", "assembly_added", "bom_added", "part_shown", "drawing_imported", "view_presented", "critique_round", "concept_sketch", "concept_pitch"] as const;
 export type AnnounceKind = (typeof ANNOUNCE_KINDS)[number];
 
 /** Where an announcement points: a part, a child run, an assembly instance, a BOM row, a part-card
@@ -156,6 +161,8 @@ export type AnnounceKind = (typeof ANNOUNCE_KINDS)[number];
 export interface AnnounceRef {
   part_id?: string | null; run_id?: string | null; instance_id?: string | null;
   bom_id?: string | null; snapshot_id?: string | null; catalog_id?: string | null; import_id?: string | null;
+  /** Plan 9 G-A concept cards: the sketch version / the pitch the card shows. */
+  sketch_id?: string | null; pitch_id?: string | null;
 }
 
 /** Parsed `agent_announce` event (U3c). `title` is a short line; `detail` an optional second line.
@@ -267,6 +274,10 @@ export interface PartSummary {
   color?: string | null; kind?: PartKind; version?: number;
   /** Plan 7 U8: the part's material (lib/appearance.ts); absent or null = the drafting look. */
   appearance?: Appearance | null;
+  /** Plan 9 B2: the part's mass (a group: its children's sum); null with `mass_note` saying why. */
+  mass_g?: number | null;
+  mass_source?: "built" | "catalog" | "sum" | "unknown" | null;
+  mass_note?: string | null;
 }
 
 /** From the Rust shell's `core_info` command (camelCase), or the dev/test env fallback. */
