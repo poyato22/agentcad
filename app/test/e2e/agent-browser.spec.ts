@@ -2,7 +2,7 @@
 // and the Profile Browsing editor, against the fake core's "parts-list" scenario: the base run
 // plus the real core's dumped snapshots, part cards and parts list (scenarios/make_parts_list.py).
 import type { Page } from "@playwright/test";
-import { expect, test } from "./fixtures";
+import { consoleMenu, expect, test } from "./fixtures";
 
 test.beforeEach(async ({ fake, page }) => {
   await fake.reset("parts-list");
@@ -75,7 +75,7 @@ test("the part card loads from the core and adds itself to its build's parts lis
 });
 
 test("the agent Browser tab shows the search, the page as escaped text, and the blocked page", async ({ page }) => {
-  await page.getByRole("button", { name: "Browser", exact: true }).click();
+  await consoleMenu(page, "Agent browser");
   const panel = page.locator("[data-browser-panel]");
   const product = panel.locator('[data-kind="page"]:not([data-blocked])');
   await expect(product.locator(".brz-title")).toHaveText("Micro servo - TowerPro SG92R : ID 169 : Adafruit");

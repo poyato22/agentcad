@@ -20,7 +20,7 @@ export const WIDTH_MAX = 640;
 export const STREAM_MIN = 96;
 export const TEXT_MIN = 200;
 
-export const DEFAULT_LAYOUT: DockLayout = { width: 440, view: 300, sim: 180, collapsed: { view: false, sim: false, text: false } };
+export const DEFAULT_LAYOUT: DockLayout = { width: 440, view: 290, sim: 210, collapsed: { view: false, sim: false, text: false } };
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 const num = (v: unknown, d: number) => (typeof v === "number" && Number.isFinite(v) ? v : d);

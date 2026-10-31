@@ -65,7 +65,7 @@ test("C5_a_rename_in_the_manager_shows_in_history_and_the_switcher", async ({ pa
   await page.keyboard.press("Escape");
   await expect(historyRow(page, "r_crash")).toContainText("designer · QA renamed run");
   await historyRow(page, "r_crash").click();
-  await expect(page.locator("[data-run-switcher] [data-run-label]").first()).toContainText("QA renamed run");
+  await expect(page.locator("[data-conversation-head] [data-run-label]").first()).toContainText("QA renamed run");
 });
 
 test("C6_a_deleted_run_leaves_history_and_cannot_be_opened", async ({ page, fake }) => {
@@ -90,8 +90,8 @@ test("C6_a_deleted_run_leaves_history_and_cannot_be_opened", async ({ page, fake
   await page.keyboard.press("Escape");
   for (const id of ["r_zulu", "r_old1", "r_old2"]) await expect(historyRow(page, id)).toHaveCount(0);
   await expect(historyRow(page, RUN)).toBeVisible();
-  // the selection moved off the deleted run: the switcher never names it
-  await expect(page.locator("[data-run-switcher]")).not.toContainText("hello zulu");
+  // the selection moved off the deleted run: the Conversation header never names it
+  await expect(page.locator("[data-conversation-head]")).not.toContainText("hello zulu");
 });
 
 test("C4_a_hidden_built_in_agent_is_not_offered_in_new_run", async ({ page, fake }) => {
@@ -313,7 +313,7 @@ test("empty_trash_refused_names_the_runs_that_block_it", async ({ page, fake }) 
   const blocking = page.locator('[data-blocking-run="r_trash"]');
   await expect(blocking).toContainText("designer · still sanding");
   await blocking.click();
-  await expect(page.locator("[data-run-switcher] [data-run-label]").first()).toContainText("still sanding");
+  await expect(page.locator("[data-conversation-head] [data-run-label]").first()).toContainText("still sanding");
 });
 
 test("an_overflowed_build_can_be_renamed_and_trashed_from_the_builds_menu", async ({ page, fake }) => {

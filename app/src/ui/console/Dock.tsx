@@ -87,11 +87,11 @@ function Section({ stream, runId, keys, count, running = 0, height = null, fill 
           title={collapsed ? `Show ${title.toLowerCase()}` : `Collapse ${title.toLowerCase()}`}>
           <span class="dock-chev" aria-hidden="true">{collapsed ? "▸" : "▾"}</span>
           <span class="dock-title">{title}</span>
-          {count !== null && count > 0 && <span class="dock-n num">{count}</span>}
+          {/* a running count replaces the total: "2 running ●" reads at a glance; idle streams show how many */}
+          {count !== null && count > 0 && running === 0 && <span class="dock-n num">{count}</span>}
           {running > 0 && (
             <span class="dock-running" data-changing data-running={running} title={`${running} running`}>
-              <span class="num">{running}</span><span class="dock-dot" aria-hidden="true" />
-              <span class="sr-only"> running</span>
+              <span class="num">{running}</span> running<span class="dock-dot" aria-hidden="true" />
             </span>
           )}
           {unread > 0 && <span class="dock-unread num" data-unread={unread} aria-label={`${unread} new`}>{unread}</span>}

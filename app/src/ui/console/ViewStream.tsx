@@ -22,7 +22,7 @@ export function ViewStream({ items, agent, runId }: { items: readonly ThreadItem
   const main = (pick ? items.find((i) => i.key === pick) : null) ?? newest;
   return (
     <div class="vs" data-view-stream>
-      <div class="vs-main" data-view-main={main.key}><Large item={main} agent={agent} runId={runId} /></div>
+      <div class="vs-main" data-view-main={main.key}><Large key={main.key} item={main} agent={agent} runId={runId} /></div>
       {items.length > 1 && (
         <div class="vs-strip" role="list" aria-label="Earlier views" data-filmstrip>
           {items.map((it) => (
@@ -66,7 +66,7 @@ function Tile({ item, current, onPick }: { item: ThreadItem; current: boolean; o
   const img = keyed ?? plain;
   return (
     <button type="button" class="vs-tile" aria-current={current ? "true" : undefined} aria-label={`Show ${label}`} title={label}
-      data-tile={item.key} onClick={onPick}>
+      data-tile={item.key} data-tile-kind={item.kind === "view" ? item.view.spec.kind : item.kind} onClick={onPick}>
       {img ? <img src={img} alt="" draggable={false} /> : <span class="vs-tile-glyph faint" aria-hidden="true">◫</span>}
     </button>
   );

@@ -42,7 +42,8 @@
 
 /* ---- Conversation header: whose thread, needs-you count, ⋯ */
 .dock-hx { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1; justify-content: flex-end; }
-.dock-who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+/* `.dock-hx .dock-who` outranks the global `.text` (pre-wrap): one line, ending in "…" */
+.dock-hx .dock-who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
 .dock-hx .mwarn { margin-left: 0; font-size: 11px; }
 .dock-needs {
   flex: none; min-width: 20px; padding: 1px 6px; border: 0; border-radius: 9px; background: var(--blue); color: #fff;
