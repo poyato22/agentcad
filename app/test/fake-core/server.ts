@@ -25,6 +25,7 @@ import { setupFrom, setupRoutes, type FakeSetup, type SetupScenario } from "./se
 import { cancelSimsOfRun, clearSimTimers, simRoutes, simsFrom, type FakeSims, type SimScenario } from "./sims";
 import { importRoutes, parseMultipart, type FakeImport } from "./imports";
 import { specFrom, specRoutes, type FakeSpec, type SpecScenario } from "./spec";
+import { streamOf } from "./streams";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const SCENARIO_DIR = resolve(HERE, "scenarios");
@@ -362,13 +363,14 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     const step: Step = {
       id, run_id: runId, ts: s.ts ?? now(), kind: s.kind, payload: s.payload ?? {},
       evidence_hash: s.evidence_hash ?? hex(32), prev_hash: s.prev_hash ?? prev?.evidence_hash ?? null,
-      collapsed: s.collapsed ?? false,
+      collapsed: s.collapsed ?? false, stream: s.stream ?? streamOf(s.kind, s.payload),
     };
     state.steps = [...state.steps.filter((x) => x.id !== id), step].sort((a, b) => a.id - b.id);
     return step;
   }
 
-  function broadcast(ev: MisesEvent) {
+  function broadcast(evIn: MisesEvent) {
+    const ev: MisesEvent = { ...evIn, stream: evIn.stream ?? streamOf(evIn.type, evIn.data) };
     const text = JSON.stringify(ev);
     for (const s of sockets) {
       if (s.runId !== null && ev.run_id !== s.runId) continue;
@@ -906,7 +908,8 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       method: "GET", re: /^\/runs\/([^/]+)\/steps$/, h: (m, q) => {
         getRun(m[1]);
         const after = Number(q.get("after_id") ?? 0);
-        return state.steps.filter((s) => s.run_id === m[1] && s.id > after);
+        return state.steps.filter((s) => s.run_id === m[1] && s.id > after)
+          .map((s) => ({ ...s, stream: s.stream ?? streamOf(s.kind, s.payload) }));
       },
     },
     {

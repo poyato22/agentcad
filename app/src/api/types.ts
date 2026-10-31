@@ -102,9 +102,13 @@ export const STEP_KINDS = [
   "onshape_call", "sim_run", "measure", "verify", "compaction",
 ] as const satisfies readonly StepKind[];
 
+/** Plan 9 D4: the core tags every step and event with the stream it belongs to (studies,
+ *  renders / views, or the conversation). Optional: older fixtures and cores omit it. */
+export type Stream = "text" | "sim" | "view";
+
 export interface Step {
   id: number; run_id: string; ts: number; kind: StepKind; payload: Record<string, unknown>;
-  evidence_hash: string; prev_hash: string | null; collapsed: boolean;
+  evidence_hash: string; prev_hash: string | null; collapsed: boolean; stream?: Stream;
 }
 
 export interface ToolOutput {
@@ -120,7 +124,7 @@ export interface Approval {
   expires_at: number; decided_by: string | null; decided_at: number | null; edited_payload: Record<string, unknown> | null;
 }
 
-export interface MisesEvent { type: string; run_id: string | null; data: Record<string, unknown>; ts: number }
+export interface MisesEvent { type: string; run_id: string | null; data: Record<string, unknown>; ts: number; stream?: Stream }
 
 /** One structured question of a batched `ui_ask_user` (C3): an id for the answer, the prompt,
  *  options and how to pick them. `multi`: several options; `rank`: order them (first = most

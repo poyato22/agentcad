@@ -30,7 +30,8 @@
     },
     "evidence_hash": "07e964d11d441fbd38ddf4077f60b5efddd6ac1c042c3c90a5c68f818709cd75",
     "prev_hash": null,
-    "collapsed": false
+    "collapsed": false,
+    "stream": "text"
   },
   {
     "id": 4,
@@ -65,7 +66,8 @@
     },
     "evidence_hash": "50be859f359d2fd2369d2d37ba04c50222249df41173aec131ce35c1ed5bab27",
     "prev_hash": "07e964d11d441fbd38ddf4077f60b5efddd6ac1c042c3c90a5c68f818709cd75",
-    "collapsed": false
+    "collapsed": false,
+    "stream": "text"
   },
   {
     "id": 5,
@@ -80,6 +82,7 @@
     },
     "evidence_hash": "498d0fc5f02033c6b8c12288d697ffa0398e18629880a73e9e043c6057453755",
     "prev_hash": "50be859f359d2fd2369d2d37ba04c50222249df41173aec131ce35c1ed5bab27",
-    "collapsed": false
+    "collapsed": false,
+    "stream": "text"
   }
 ]

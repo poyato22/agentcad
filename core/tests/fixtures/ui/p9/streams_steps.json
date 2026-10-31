@@ -1,0 +1,289 @@
+[
+  {
+    "id": 4,
+    "run_id": "6ad7ad0d2516",
+    "ts": 1793416207.0099158,
+    "kind": "message",
+    "payload": {
+      "role": "user",
+      "text": "check the beam for stress and show it"
+    },
+    "evidence_hash": "30365eb365e5aebc7104eb85078f23dd5dd0e422427b7c701632cdd3bc2ea160",
+    "prev_hash": null,
+    "collapsed": false,
+    "stream": "text"
+  },
+  {
+    "id": 5,
+    "run_id": "6ad7ad0d2516",
+    "ts": 1793416207.029616,
+    "kind": "message",
+    "payload": {
+      "role": "assistant",
+      "stop_reason": "tool_use",
+      "text": "Starting the stress study and a render.",
+      "tool_calls": [
+        {
+          "id": "s1",
+          "name": "sim_run"
+        },
+        {
+          "id": "v1",
+          "name": "render_views"
+        }
+      ]
+    },
+    "evidence_hash": "91ad1d50740cb50bfcf5906bab40827a97276cf067121ed794c32c208179532a",
+    "prev_hash": "30365eb365e5aebc7104eb85078f23dd5dd0e422427b7c701632cdd3bc2ea160",
+    "collapsed": false,
+    "stream": "text"
+  },
+  {
+    "id": 6,
+    "run_id": "6ad7ad0d2516",
+    "ts": 1793416207.0299919,
+    "kind": "tool_call",
+    "payload": {
+      "call_id": "s1",
+      "input": {
+        "part_id": "beam",
+        "reason": "tip load on the beam",
+        "settings": {
+          "load_cases": [
+            {
+              "loads": [
+                {
+                  "direction": "-z",
+                  "face": "x-max",
+                  "kind": "force",
+                  "newtons": 10
+                }
+              ],
+              "name": "tip",
+              "supports": [
+                {
+                  "face": "x-min",
+                  "kind": "fixed"
+                }
+              ]
+            }
+          ]
+        },
+        "type": "static"
+      },
+      "name": "sim_run"
+    },
+    "evidence_hash": "a940b901e3c2d334e83c48573cd0f989dfddc1778b179bdd197f4c0ba029ff92",
+    "prev_hash": "91ad1d50740cb50bfcf5906bab40827a97276cf067121ed794c32c208179532a",
+    "collapsed": false,
+    "stream": "sim"
+  },
+  {
+    "id": 7,
+    "run_id": "6ad7ad0d2516",
+    "ts": 1793416207.034417,
+    "kind": "tool_result",
+    "payload": {
+      "call_id": "s1",
+      "name": "sim_run",
+      "output": {
+        "data": {
+          "card": {
+            "charts_url": "/sims/sim_072ebfd509ab/charts",
+            "checks": [],
+            "fidelity_class": "fem",
+            "fidelity_note": null,
+            "label": "guide only, not a guarantee",
+            "material_basis": "datasheet / estimate",
+            "metrics": [
+              {
+                "key": "max_von_mises_mpa",
+                "label": "max von Mises",
+                "unit": "MPa",
+                "value": null
+              },
+              {
+                "key": "safety_factor",
+                "label": "safety factor",
+                "unit": "",
+                "value": null
+              },
+              {
+                "key": "max_displacement_mm",
+                "label": "max displacement",
+                "unit": "mm",
+                "value": null
+              },
+              {
+                "key": "error_band_pct",
+                "label": "error band",
+                "unit": "%",
+                "value": null
+              }
+            ],
+            "notes": [],
+            "part_id": "beam",
+            "pct": 0.0,
+            "phase": "queued",
+            "reason": "tip load on the beam",
+            "run_id": "6ad7ad0d2516",
+            "sim_id": "sim_072ebfd509ab",
+            "status": "running",
+            "step_id": 6,
+            "type": "static",
+            "urls": {
+              "charts": "/sims/sim_072ebfd509ab/charts",
+              "glb": "/sims/sim_072ebfd509ab/result.glb",
+              "probe": "/sims/sim_072ebfd509ab/probe",
+              "record": "/sims/sim_072ebfd509ab",
+              "section": "/sims/sim_072ebfd509ab/section"
+            },
+            "verdict": null,
+            "warnings": []
+          },
+          "part_id": "beam",
+          "sim_id": "sim_072ebfd509ab",
+          "status": "running",
+          "stream": "sim",
+          "type": "static",
+          "urls": {
+            "charts": "/sims/sim_072ebfd509ab/charts",
+            "glb": "/sims/sim_072ebfd509ab/result.glb",
+            "probe": "/sims/sim_072ebfd509ab/probe",
+            "record": "/sims/sim_072ebfd509ab",
+            "section": "/sims/sim_072ebfd509ab/section"
+          }
+        },
+        "handles": [],
+        "ok": true,
+        "step_kind": "tool_result",
+        "summary": "study sim_072ebfd509ab (static) started in the background (guide only, not a guarantee); you get a note when it finishes. Keep working; read it with sim_result_get or sim_wait.",
+        "warnings": []
+      }
+    },
+    "evidence_hash": "b63c073dce06008f31773216a70b4f8c0779abbfcee3dc8a5c1ca752ae260b4e",
+    "prev_hash": "a940b901e3c2d334e83c48573cd0f989dfddc1778b179bdd197f4c0ba029ff92",
+    "collapsed": false,
+    "stream": "sim"
+  },
+  {
+    "id": 8,
+    "run_id": "6ad7ad0d2516",
+    "ts": 1793416207.034998,
+    "kind": "tool_call",
+    "payload": {
+      "call_id": "v1",
+      "input": {
+        "part_id": "beam",
+        "size": 256,
+        "views": [
+          "iso"
+        ]
+      },
+      "name": "render_views"
+    },
+    "evidence_hash": "b75e25727a4667298c20aae7196d682ff943da4b9264e3e63047f7995b4b8f09",
+    "prev_hash": "b63c073dce06008f31773216a70b4f8c0779abbfcee3dc8a5c1ca752ae260b4e",
+    "collapsed": false,
+    "stream": "view"
+  },
+  {
+    "id": 9,
+    "run_id": "6ad7ad0d2516",
+    "ts": 1793416207.192362,
+    "kind": "measure",
+    "payload": {
+      "call_id": "v1",
+      "images": [
+        {
+          "b64_bytes": 2192,
+          "label": "iso",
+          "media_type": "image/png"
+        }
+      ],
+      "name": "render_views",
+      "output": {
+        "data": {
+          "image_tokens": 87,
+          "instances": 1,
+          "naming": "standard",
+          "parts": [
+            "beam"
+          ],
+          "render_ids": {
+            "iso": "rv_6ad7ad0d_f6f31cf7f5_iso"
+          },
+          "size": 256,
+          "view_axes": {
+            "iso": "camera at (+X, -Y, +Z), looking at the centre"
+          },
+          "views": {
+            "iso": "/Users/fixture/Mises/renders/rv_6ad7ad0d_f6f31cf7f5_iso.png"
+          }
+        },
+        "handles": [
+          "/Users/fixture/Mises/renders/rv_6ad7ad0d_f6f31cf7f5_iso.png"
+        ],
+        "ok": true,
+        "step_kind": "measure",
+        "summary": "rendered beam: iso; 1 image(s) attached \u2014 look at them. Views: iso = camera at (+X, -Y, +Z), looking at the centre",
+        "warnings": []
+      }
+    },
+    "evidence_hash": "f933c227a6988e0f6059a0cba9b7d7a1daf80ba2533ec980b3233962ea401831",
+    "prev_hash": "b75e25727a4667298c20aae7196d682ff943da4b9264e3e63047f7995b4b8f09",
+    "collapsed": false,
+    "stream": "view"
+  },
+  {
+    "id": 10,
+    "run_id": "6ad7ad0d2516",
+    "ts": 1793416207.193685,
+    "kind": "message",
+    "payload": {
+      "role": "assistant",
+      "stop_reason": "end_turn",
+      "text": "The study runs in the background; the render is above.",
+      "tool_calls": []
+    },
+    "evidence_hash": "43c96bc1a31eb67bf265b5f026caf37b6e2a9ff8b558fab4916b7badb4510df3",
+    "prev_hash": "f933c227a6988e0f6059a0cba9b7d7a1daf80ba2533ec980b3233962ea401831",
+    "collapsed": false,
+    "stream": "text"
+  },
+  {
+    "id": 11,
+    "run_id": "6ad7ad0d2516",
+    "ts": 1793416208.135784,
+    "kind": "message",
+    "payload": {
+      "role": "user",
+      "system_note": {
+        "kind": "sim_finished",
+        "sim_id": "sim_072ebfd509ab",
+        "status": "done"
+      },
+      "text": "[Mises system note, not from the user] Study static of beam (sim_072ebfd509ab) finished: GUIDE ONLY - CalculiX 2.23, fine mesh 2.5 mm (coarse 5 mm), material PLA isotropic linear elastic, strength x0.7 FDM knock-down: beam max von Mises 6.04 MPa (error band 0.7%), max displacement 1.74 mm, safety factor 5.91; peak excludes the fixed face; at fixture: 5.58 MPa (safety factor incl. fixture 5.91). Read it with sim_result_get sim_072ebfd509ab."
+    },
+    "evidence_hash": "987da7db409a3c04825779ea909a596c2e895b79e6bf7bf13a4c55aca7f582ac",
+    "prev_hash": "43c96bc1a31eb67bf265b5f026caf37b6e2a9ff8b558fab4916b7badb4510df3",
+    "collapsed": false,
+    "stream": "text"
+  },
+  {
+    "id": 12,
+    "run_id": "6ad7ad0d2516",
+    "ts": 1793416208.153213,
+    "kind": "message",
+    "payload": {
+      "role": "assistant",
+      "stop_reason": "end_turn",
+      "text": "The study finished: see its card (guide only).",
+      "tool_calls": []
+    },
+    "evidence_hash": "0e80850e447dfeb24f3d14ef5e72192f06e46561adf4f86e0d3d8bd1ab944747",
+    "prev_hash": "987da7db409a3c04825779ea909a596c2e895b79e6bf7bf13a4c55aca7f582ac",
+    "collapsed": false,
+    "stream": "text"
+  }
+]

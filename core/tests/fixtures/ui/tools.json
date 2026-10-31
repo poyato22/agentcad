@@ -479,14 +479,14 @@
   },
   {
     "name": "sim_run",
-    "description": "Run a study on a local mirror part. type: static (stress, several load cases: force, pressure, moment, gravity, bolt bearing, remote force; supports fixed / pinned / roller / symmetry), modal (natural frequencies, flags modes in an excitation band), buckling (load factors), thermal (steady state), drop (equivalent static impact load, an ESTIMATE) or wind (CFD: Cd, Cl, drag and lift in N, surface Cp, yaw sweep; LOW FIDELITY). settings follow the type's schema from sim_types_list (mesh, material incl. custom and FDM infill, convergence, solver timeout and threads). Static settings.nonlinear adds large deflection, plasticity, contact / bonded pairs and rigid supports (slower; reports the load fraction reached, plastic strain and contact pressure with a validated error band). project_id instead of part_id runs a static study of the build's assembly (instance faces f3@<instance id>; instances interact only through settings.nonlinear.contacts). Faces are presets or face ids from mirror_measure / mirror_faces. Give a one-line `reason`; pass spec `requirements` to get pass / warn / fail checks. Results are a GUIDE ONLY: always say so, with the solver, mesh and error band.",
+    "description": "Run a study on a local mirror part. type: static (stress, several load cases: force, pressure, moment, gravity, bolt bearing, remote force; supports fixed / pinned / roller / symmetry), modal (natural frequencies, flags modes in an excitation band), buckling (load factors), thermal (steady state), drop (equivalent static impact load, an ESTIMATE) or wind (CFD: Cd, Cl, drag and lift in N, surface Cp, yaw sweep; LOW FIDELITY). settings follow the type's schema from sim_types_list (mesh, material incl. custom and FDM infill, convergence, solver timeout and threads). Static settings.nonlinear adds large deflection, plasticity, contact / bonded pairs and rigid supports (slower; reports the load fraction reached, plastic strain and contact pressure with a validated error band). project_id instead of part_id runs a static study of the build's assembly (instance faces f3@<instance id>; instances interact only through settings.nonlinear.contacts). Faces are presets or face ids from mirror_measure / mirror_faces. Give a one-line `reason`; pass spec `requirements` to get pass / warn / fail checks. By default the study runs in the background: the call returns {sim_id, status: running} at once, keep talking and working, and a note tells you when it finishes (wait: true blocks instead). Results are a GUIDE ONLY: always say so, with the solver, mesh and error band.",
     "safety": "local_mutate",
     "implied_classes": [],
     "open_world": false
   },
   {
     "name": "sim_static_run",
-    "description": "Run a static linear-elastic stress study (gmsh + CalculiX) on a local mirror part: one face held fixed, a force spread over another face. Faces are presets (bottom, top, x-min, ...) or face ids from mirror_measure face_list (largest faces) or mirror_faces (all). Returns max von Mises (MPa, excluding the fixed face, whose peak is reported separately), max displacement (mm), safety factor (yield x FDM knock-down 0.7 / peak) and an error band from a coarse vs fine mesh. For more load cases, supports or other study types use sim_run. Results are a GUIDE ONLY: always say so when you report them.",
+    "description": "Run a static linear-elastic stress study (gmsh + CalculiX) on a local mirror part: one face held fixed, a force spread over another face. Faces are presets (bottom, top, x-min, ...) or face ids from mirror_measure face_list (largest faces) or mirror_faces (all). Returns max von Mises (MPa, excluding the fixed face, whose peak is reported separately), max displacement (mm), safety factor (yield x FDM knock-down 0.7 / peak) and an error band from a coarse vs fine mesh. For more load cases, supports or other study types use sim_run. Runs in the background by default, like sim_run (wait: true blocks). Results are a GUIDE ONLY: always say so when you report them.",
     "safety": "local_mutate",
     "implied_classes": [],
     "open_world": false
@@ -494,6 +494,13 @@
   {
     "name": "sim_types_list",
     "description": "List the study types (static, modal, buckling, thermal, drop, wind) with their solver, fidelity class, availability and the JSON schema of their settings (defaults, ranges, units, docs).",
+    "safety": "read",
+    "implied_classes": [],
+    "open_world": false
+  },
+  {
+    "name": "sim_wait",
+    "description": "Wait for a background study (sim_run / sim_static_run) to finish, up to timeout_s (at most 600 s), and return its result like sim_result_get; still running then: status running. You need not wait: a note arrives when it finishes.",
     "safety": "read",
     "implied_classes": [],
     "open_world": false
