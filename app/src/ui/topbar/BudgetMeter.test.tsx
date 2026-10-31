@@ -6,7 +6,8 @@ import type { OnshapeBudget } from "../../api/directory";
 import type { CoreStatusInfo, MisesEvent } from "../../api/types";
 import { applyBudget, parseBudgetEvent, resetOnshapeBudget } from "../../state/onshapeBudget";
 import { coreStatus, resetStore, selectedRunId } from "../../state/store";
-import { activePage, setPage } from "../pages/router";
+import { setPage } from "../pages/router";
+import { atHome, homeView, resetHome } from "../../state/home";
 import { BudgetChip, BudgetMeter, fmtResetDate } from "./BudgetMeter";
 import { onshapeTone } from "./StatusLights";
 
@@ -22,7 +23,7 @@ const feed = (e: MisesEvent) => act(() => { const g = parseBudgetEvent(e); if (g
 const meter = () => document.querySelector(".budget") as HTMLElement;
 const used = () => document.querySelector("[data-budget-used]")?.textContent;
 
-afterEach(() => { cleanup(); resetOnshapeBudget(); resetStore(); setPage("design"); });
+afterEach(() => { cleanup(); resetOnshapeBudget(); resetStore(); setPage("design"); resetHome(); });
 
 describe("BudgetMeter", () => {
   it("shows used / limit for the year and the session delta", () => {
@@ -72,7 +73,7 @@ describe("BudgetMeter", () => {
     expect(fmtResetDate(BUDGET.reset_at)).toMatch(/^1 Jan \d{4}$/);
     expect(meter().textContent).toContain("Left2,495");
     fireEvent.click(screen.getByRole("button", { name: "Open the Onshape page" }));
-    expect(activePage.value).toBe("onshape");
+    expect(atHome.value && homeView.value === "onshape").toBe(true);
     expect(opened).toBe(1);
   });
 
@@ -132,7 +133,7 @@ describe("BudgetChip", () => {
     applyBudget(BUDGET, null);
     render(<BudgetChip />);
     fireEvent.click(chip() as HTMLElement);
-    expect(activePage.value).toBe("onshape");
+    expect(atHome.value && homeView.value === "onshape").toBe(true);
   });
 
   it("is not in the bar while Onshape isn't connected, or before any figure is known", () => {

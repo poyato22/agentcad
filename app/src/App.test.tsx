@@ -28,8 +28,9 @@ describe("App shell", () => {
     const { container } = render(<App />);
     expect(container.querySelector('[data-testid="home"]')).not.toBeNull();
     expect(container.querySelector('[data-region="viewer"]')).toBeNull();
-    // the Home button in the top bar reads as active
-    expect(screen.getByRole("button", { name: "Home" }).getAttribute("aria-pressed")).toBe("true");
+    // D23: Home has no top bar at all — the top bar exists only inside a build
+    expect(container.querySelector('[data-region="topbar"]')).toBeNull();
+    expect(container.querySelector(".topbar")).toBeNull();
   });
 
   it("renders_every_real_pane_in_its_region", () => {
@@ -38,8 +39,10 @@ describe("App shell", () => {
     for (const r of ["app", "topbar", "left", "viewer", "console"]) {
       expect(container.querySelector(`[data-region="${r}"]`)).not.toBeNull();
     }
-    expect(inRegion("topbar", "nav[aria-label=location]")).not.toBeNull();             // Task 4
-    expect(screen.getByRole("button", { name: /stop all/i }).closest("[data-region=topbar]")).not.toBeNull();
+    expect(inRegion("topbar", "button[aria-label=Home]")).not.toBeNull();              // D1: ⌂ + build name
+    expect([...container.querySelectorAll('[data-region="topbar"] [role=tab]')].map((t) => t.textContent))
+      .toEqual(["Design", "Studies", "Print", "BOM"]);                                  // D9
+    expect(container.querySelector('[data-testid="build-tabs"]')).toBeNull();          // D1: no build tabs
     expect(inRegion("left", '[data-testid="left-pane"]')).not.toBeNull();              // Task 5
     expect(container.querySelector('[data-region="left"]')?.textContent).toMatch(/Parts[\s\S]*History/i);
     expect(inRegion("viewer", '[data-testid="viewer"]')).not.toBeNull();               // Task 6

@@ -1,9 +1,9 @@
 /* Print page + the printer form (also used in Profile → Printers). Plan tokens only. */
 .print { display: grid; grid-template-columns: minmax(320px, 1fr) minmax(320px, 1fr); gap: 12px; align-items: start; max-width: 1200px; }
 .pr-install, .pr-result { grid-column: 1 / -1; }
-.pr-card { background: var(--paper2); border: 1px solid var(--line2); padding: 12px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.pr-card { background: var(--paper2); border: 1px solid var(--line); border-radius: var(--r-surface); padding: 14px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .pr-card p { margin: 0; }
-.pr-card-title { margin: 0; font: 700 var(--fs-label)/1 var(--font-head); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+.pr-card-title { margin: 0; font: 600 var(--fs)/1.2 var(--font-head); color: var(--ink); }
 .pr-install { border-left: 2px solid var(--amber); }
 .pr-code { display: block; padding: 6px 8px; background: var(--bg); border: 1px solid var(--line); user-select: all; }
 .pr-row { display: flex; align-items: flex-end; gap: 8px; flex-wrap: wrap; }
@@ -22,3 +22,17 @@
 .pr-facts dd { margin: 0; }
 .pr-send { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: 8px; }
 .pr-request { display: flex; align-items: center; gap: 6px; }
+
+/* D21: Print holds two modes; the switch sits above the chosen mode's page */
+.print-root { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--paper); }
+.print-modebar { flex: none; display: flex; align-items: center; padding: 14px 16px 0; }
+.print-mode-body { flex: 1; min-height: 0; position: relative; }
+.seg { display: inline-flex; padding: 2px; gap: 2px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-btn); }
+.seg-btn {
+  height: 26px; padding: 0 12px; border: 0; border-radius: 5px; background: transparent;
+  color: var(--dim); font: 500 var(--fs)/1 var(--font-ui); cursor: pointer;
+  transition: background-color var(--t-fast) ease, color var(--t-fast) ease;
+}
+.seg-btn:hover { color: var(--ink); }
+.seg-btn.on { background: var(--raised); color: var(--ink); }
+.seg-btn:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }

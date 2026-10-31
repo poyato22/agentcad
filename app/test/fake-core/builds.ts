@@ -272,6 +272,24 @@ export function buildRoutes(d: BuildsDeps): Route[] {
       },
     },
     {
+      // core POST /projects/{id}/purge (D30 "Delete forever"): Empty Trash for one trashed build
+      method: "POST", re: /^\/projects\/([^/]+)\/purge$/, h: (m) => {
+        const b = project(m[1]);
+        if (b.trashed_at === null) throw bad(`build '${b.id}' is not in the Trash`, "move it to the Trash first");
+        const busy = d.blockers?.([b.id]) ?? null;
+        if (busy) {
+          throw new HttpError(409, {
+            ...busy, project_ids: [b.id],
+            message: `a build in the Trash still has ${busy.reason.replace(/_/g, " ")} runs`,
+            hint: "wait for them to finish, or cancel them, then empty the Trash",
+          });
+        }
+        B().builds = B().builds.filter((x) => x.id !== b.id);
+        for (const [id, r] of [...B().rows]) if (r.project_id === b.id) B().rows.delete(id);
+        return { purged: [b.id], count: 1 };
+      },
+    },
+    {
       method: "POST", re: /^\/projects\/([^/]+)\/restore$/, h: (m) => {
         const b = project(m[1]);
         b.trashed_at = null;

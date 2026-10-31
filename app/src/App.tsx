@@ -1,7 +1,9 @@
-// App shell: 44px top bar (--topbar-h; the macOS traffic lights sit on its centre line) across the top. Below it the active page shows:
-//   · Design keeps today's layout — left 240px · viewer · console. Its viewer is either one part
+// App shell. Home (the build grid and its Onshape / parts-library sub-views) fills the whole
+// window with no top bar (D23). Inside a build: a 44px top bar (--topbar-h; the macOS traffic
+// lights sit on its centre line) across the top, then the active page:
+//   · Design keeps its layout — left 240px · viewer · console. Its viewer is either one part
 //     or the build's assembly (ui/assembly/mode: the Part | Assembly switch, ⌥⌘A).
-//   · Studies / Drawing / Print / Onshape / Parts render full-width under the top bar.
+//   · Studies / Print (3D print | Drawing) / BOM render full-width under the top bar.
 // The agent console stays on every page as a right-hand panel that can collapse to a 36px rail.
 // The new-run dialog, the Profile panel and the setup gate mount at the root.
 import type { JSX } from "preact";
@@ -22,17 +24,15 @@ import { Overview } from "./ui/viewer/Overview";
 import { activePage, consoleCollapsed, installPageShortcuts, modalOpen, toggleConsole } from "./ui/pages/router";
 import { activeBuildId } from "./state/builds";
 import { DrawingDrop } from "./ui/imports";
-import { DirectoryPage } from "./ui/pages/directory";
 import { BomPage } from "./ui/pages/bom";
-import { DrawingPage } from "./ui/pages/drawing";
-import { OnshapePage } from "./ui/pages/onshape";
-import { PrintPage } from "./ui/pages/print";
+import { PrintSection } from "./ui/pages/print";
 import { StudiesPage } from "./ui/pages/studies";
 import { ImmersiveRoot } from "./ui/pages/studies/immersive/Immersive";
 import { ViewImmersiveRoot } from "./ui/console/cards/critique";
 import { closeProfile, profileOpen, profileSection } from "./ui/profile/open";
 import { ProfilePane } from "./ui/profile/ProfilePane";
 import { SetupGate } from "./ui/setup/SetupGate";
+import { installStopAllShortcut } from "./ui/topbar/stopAll";
 import { TopBar } from "./ui/topbar/TopBar";
 import { Viewer } from "./ui/viewer/Viewer";
 
@@ -40,10 +40,7 @@ function PageRegion(): JSX.Element {
   // Design keeps the left pane + viewer; every other page renders full-width.
   switch (activePage.value) {
     case "studies": return <div class="region region-page" data-region="page"><StudiesPage /></div>;
-    case "drawing": return <div class="region region-page" data-region="page"><DrawingPage /></div>;
-    case "print": return <div class="region region-page" data-region="page"><PrintPage /></div>;
-    case "onshape": return <div class="region region-page" data-region="page"><OnshapePage /></div>;
-    case "directory": return <div class="region region-page" data-region="page"><DirectoryPage /></div>;
+    case "print": return <div class="region region-page" data-region="page"><PrintSection /></div>;
     case "bom": return <div class="region region-page" data-region="page"><BomPage /></div>;
     default: return (
       <>
@@ -88,6 +85,8 @@ function ConsoleRegion(): JSX.Element {
 
 export function App(): JSX.Element {
   useEffect(() => installPageShortcuts(), []);
+  // ⇧⌘. works on Home too, which has no top bar (D23)
+  useEffect(() => installStopAllShortcut(), []);
   useEffect(() => installModeShortcut(() => activePage.peek() === "design"), []);
   // ⌘0 returns to the Home grid (not while a modal is open, and only on a real key press).
   useEffect(() => registerShortcut("Meta+0", (e) => {
@@ -97,10 +96,9 @@ export function App(): JSX.Element {
   return (
     <div class="app" data-region="app" data-conn={conn.value} data-home={home ? "" : undefined}
       data-page={activePage.value} data-console={consoleCollapsed.value ? "rail" : "open"}>
-      <div class="region region-topbar" data-region="topbar"><TopBar /></div>
       {home
         ? <div class="region region-page" data-region="page"><HomePage /></div>
-        : <><PageRegion /><ConsoleRegion /></>}
+        : <><div class="region region-topbar" data-region="topbar"><TopBar /></div><PageRegion /><ConsoleRegion /></>}
       <ImmersiveRoot />
       <ViewImmersiveRoot />
       <NewRunDialog />

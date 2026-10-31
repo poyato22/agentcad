@@ -241,7 +241,9 @@ export class CoreClient {
   /** The build's layout skeleton (G3; core skeleton_tools.skeleton_view): what skeleton_get
    *  answers, read by viewer/skeleton.ts parseSkeleton (loose: an older core lacks the route). */
   projectSkeleton(projectId: string): Promise<unknown> { return this.json("GET", `/projects/${enc(projectId)}/skeleton`, anyBody); }
-  projectThumb(projectId: string, size = 256): Promise<Blob> {
+  /** The build's Home cover (D24): one 16:10 render of its assembly, transparent background;
+   *  `size` is its width. */
+  projectThumb(projectId: string, size = 640): Promise<Blob> {
     return this.blob(`/projects/${enc(projectId)}/thumb.png`, "image/png", { size });
   }
 
@@ -580,6 +582,24 @@ export class CoreClient {
     try { data = await res.json(); } catch { throw new CoreError("validation", "POST /projects/trash/empty: response is not JSON", { status: res.status }); }
     const parsed = emptyTrashSchema.safeParse(data);
     if (!parsed.success) throw new CoreError("validation", "POST /projects/trash/empty: unexpected response shape", { status: res.status });
+    return parsed.data;
+  }
+  /** Deletes one trashed build for good (D30 "Delete forever"; core POST /projects/{id}/purge).
+   *  A 409 (it still has live work; nothing was deleted) comes back as `{ refused }`. */
+  async purgeBuild(id: string): Promise<EmptyTrashResult | { refused: EmptyTrashRefused }> {
+    const path = `/projects/${enc(id)}/purge`;
+    const res = await this.request("POST", path, {});
+    if (res.status === 409) {
+      let body: unknown = null;
+      try { body = await res.clone().json(); } catch { /* fall through to the generic error */ }
+      const r = emptyTrashRefusedSchema.safeParse(body);
+      if (r.success) return { refused: r.data };
+    }
+    if (!res.ok) throw await toError(res);
+    let data: unknown;
+    try { data = await res.json(); } catch { throw new CoreError("validation", `POST ${path}: response is not JSON`, { status: res.status }); }
+    const parsed = emptyTrashSchema.safeParse(data);
+    if (!parsed.success) throw new CoreError("validation", `POST ${path}: unexpected response shape`, { status: res.status });
     return parsed.data;
   }
   buildTabs(): Promise<BuildTabsProfile> { return this.json("GET", "/profile", buildTabsProfileSchema); }

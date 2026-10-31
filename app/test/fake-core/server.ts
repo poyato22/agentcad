@@ -1081,6 +1081,18 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         return RAW;
       },
     },
+    // D24 Home cover (core projects_api project_thumb: one 16:10 render of the build's assembly,
+    // transparent background): scenarios/renders/cover.png for a build that has parts, else 404
+    {
+      method: "GET", re: /^\/projects\/([^/]+)\/thumb\.png$/, h: (m, _q, _b, _r, res) => {
+        const has = [...state.builds.rows.values()].some((r) => r.project_id === m[1]);
+        const file = resolve(SCENARIO_DIR, "renders", "cover.png");
+        if (!has || !existsSync(file)) throw mises("not_found", `no preview for build ${m[1]} yet`, "it has no parts with a built mesh");
+        res.writeHead(200, { "Content-Type": "image/png", "Content-Length": statSync(file).size, ETag: `"cover-${m[1]}"` });
+        res.end(readFileSync(file));
+        return RAW;
+      },
+    },
     ...setupRoutes(() => state.setup, () => state.parts),
     // ---- Plan 4: Ollama on this Mac (core local_models.py); 404 without a `local` block (older core)
     { method: "GET", re: /^\/local\/status$/, h: () => localState() },

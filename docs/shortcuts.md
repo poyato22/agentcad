@@ -12,11 +12,8 @@ noted (the viewer or the parts list focused, a focused approval card).
 | ⌘0 | Home (all builds) |
 | ⌘1 | Design page |
 | ⌘2 | Studies page |
-| ⌘3 | Drawing page |
-| ⌘4 | Print page |
-| ⌘5 | Onshape page |
-| ⌘6 | Parts directory page |
-| ⌘7 | Parts list (BOM) page |
+| ⌘3 | Print page |
+| ⌘4 | Parts list (BOM) page |
 | ⌘K | Focus the command line |
 | ⌘N | New agent run |
 | ⇧⌘A | Agent manager |

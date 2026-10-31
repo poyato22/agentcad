@@ -1,37 +1,92 @@
-// Home — the launcher shown on startup (R1). An Onshape-Documents-style grid of build tiles:
-// a composite thumbnail, the build's name, its part count and when it was last edited, and a
-// lead-agent status dot. Search and sort sit in the toolbar; a New-build tile starts a build;
-// the Trash filter shows trashed builds with Restore. Opening a tile opens that build as a tab.
+// Home — the launcher shown on startup (R1), and the only way between builds (D1). It fills the
+// whole window: there is no top bar on Home (D23), so its own header keeps clear of the macOS
+// traffic lights and is the window's drag region.
+//
+// The grid: one tile per build, its cover (D24: a render of the build's assembly, 16:10,
+// full-bleed) over its name, mass (when known) and when it was last edited, with a lead-agent
+// status dot. Search, sort, the agents panel, the Onshape page and the parts library (Home
+// sub-views, D22) and the Trash sit in the header. A tile's ⋯ button and its context menu move it
+// to the Trash, with a 5 s Undo (D30); the Trash shows Restore and "Delete forever" per tile, and
+// Empty trash. Opening a tile opens that build.
 import type { JSX } from "preact";
-import { useEffect, useRef, useState } from "preact/hooks";
+import { type MutableRef, useEffect, useRef, useState } from "preact/hooks";
 import { lastEditedAt, type Build } from "../../../api/builds";
 import { buildActions, builds, buildsError } from "../../../state/builds";
-import { atHome, openBuild } from "../../../state/home";
+import { atHome, homeView, openBuild } from "../../../state/home";
 import { actions, conn, runs } from "../../../state/store";
 import { Led } from "../../common/Led";
 import { Thumb } from "../../common/Thumb";
+import { useDismiss } from "../../common/dismiss";
 import { DrawingDrop, ImportCards } from "../../imports";
 import { openAgentManager } from "../../agents/manager";
-import { buildStatus, DEFAULT_VIEW, fmtLastEdited, partsLabel, SORTS, type HomeSort, viewBuilds } from "./model";
+import { DirectoryPage } from "../directory";
+import { OnshapePage } from "../onshape";
+import { buildStatus, DEFAULT_VIEW, fmtLastEdited, fmtMass, partsLabel, SORTS, type HomeSort, viewBuilds } from "./model";
 import "./home.css";
 
+/** How long a "Moved to the Trash" toast offers Undo. */
+export const UNDO_MS = 5000;
+
 export function HomePage(): JSX.Element {
+  const view = homeView.value;
+  if (view === "onshape") return <HomeSubView title="Onshape"><OnshapePage /></HomeSubView>;
+  if (view === "library") return <HomeSubView title="Parts library"><DirectoryPage /></HomeSubView>;
+  return <BuildGrid />;
+}
+
+/** A Home sub-view (D22): not part of any build, so it lives here with a way back to the grid. */
+function HomeSubView({ title, children }: { title: string; children: JSX.Element }): JSX.Element {
+  return (
+    <section class="home home-sub" data-testid="home" data-home-view={homeView.value} aria-label={title}>
+      <header class="home-bar" data-tauri-drag-region>
+        <button type="button" class="home-back" onClick={() => { homeView.value = "builds"; }}>
+          <span aria-hidden="true">←</span> Builds
+        </button>
+        <h1 class="home-title" data-tauri-drag-region>{title}</h1>
+      </header>
+      <div class="home-sub-body">{children}</div>
+    </section>
+  );
+}
+
+interface Undo { id: string; name: string }
+
+function BuildGrid(): JSX.Element {
   const [query, setQuery] = useState(DEFAULT_VIEW.query);
   const [sort, setSort] = useState<HomeSort>(DEFAULT_VIEW.sort);
   const [trash, setTrash] = useState(DEFAULT_VIEW.trash);
   const [creating, setCreating] = useState(false);
+  const [confirmEmpty, setConfirmEmpty] = useState(false);
+  const [undo, setUndo] = useState<Undo | null>(null);
+  const undoTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   // m1: the tiles (part count, last edited) are refetched every time Home shows, so returning with
   // ⌘0 never shows a stale count. The first launch is covered by the connect-time refresh.
   useEffect(() => { if (conn.peek() === "open") void buildActions.reloadList(); }, []);
+  useEffect(() => () => clearTimeout(undoTimer.current), []);
 
   const shown = viewBuilds(builds.value, { query, sort, trash });
   const trashCount = builds.value.filter((b) => b.trashed_at !== null).length;
   const working = [...runs.value.values()].filter((r) => !r.archived && r.status === "running").length;
 
+  const moveToTrash = async (b: Build) => {
+    await buildActions.trash(b.id);
+    if (builds.peek().some((x) => x.id === b.id && x.trashed_at !== null)) {
+      setUndo({ id: b.id, name: b.name });
+      clearTimeout(undoTimer.current);
+      undoTimer.current = setTimeout(() => setUndo(null), UNDO_MS);
+    }
+  };
+  const undoTrash = () => {
+    if (!undo) return;
+    clearTimeout(undoTimer.current);
+    setUndo(null);
+    void buildActions.restore(undo.id, { open: false });
+  };
+
   return (
-    <section class="home" data-testid="home" aria-label="Builds">
-      <header class="home-bar">
-        <h1 class="home-title">Builds</h1>
+    <section class="home" data-testid="home" data-home-view="builds" aria-label="Builds">
+      <header class="home-bar" data-tauri-drag-region>
+        <h1 class="home-title" data-tauri-drag-region>{trash ? "Trash" : "Builds"}</h1>
         <div class="home-tools">
           <input class="home-search" type="search" placeholder="Search builds" aria-label="Search builds"
             value={query} onInput={(e) => setQuery((e.target as HTMLInputElement).value)} />
@@ -41,23 +96,45 @@ export function HomePage(): JSX.Element {
               {SORTS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
             </select>
           </label>
+          <span class="home-sep" aria-hidden="true" />
           {/* I7: the one easy view of every build's agents, reachable from Home (also ⇧⌘A) */}
-          <button type="button" class="home-trash home-agents" title="Every build's lead and sub-agents (⇧⌘A)"
-            onClick={() => openAgentManager()}>{`Agents${working ? ` · ${working} working` : ""}`}</button>
-          <button type="button" class={trash ? "home-trash on" : "home-trash"} aria-pressed={trash}
-            title="Show trashed builds" onClick={() => setTrash((t) => !t)}>
+          <button type="button" class="home-tool home-agents" title="Every build's lead and sub-agents (⇧⌘A)"
+            onClick={() => openAgentManager()}>
+            {working > 0 && <span class="home-working-dot" aria-hidden="true" />}
+            {`Agents${working ? ` · ${working} working` : ""}`}
+          </button>
+          {/* D22: Onshape and the parts library are not part of one build */}
+          <button type="button" class="home-tool" onClick={() => { homeView.value = "onshape"; }}>Onshape</button>
+          <button type="button" class="home-tool" onClick={() => { homeView.value = "library"; }}>Parts library</button>
+          <button type="button" class={trash ? "home-tool on" : "home-tool"} aria-pressed={trash}
+            title="Show trashed builds" onClick={() => { setTrash((t) => !t); setConfirmEmpty(false); }}>
             {`Trash${trashCount ? ` · ${trashCount}` : ""}`}
           </button>
         </div>
       </header>
       {buildsError.value && (
         <p class="home-error" role="alert">
-          {buildsError.value}
+          <span class="text">{buildsError.value}</span>
           <button type="button" class="home-error-x" aria-label="Dismiss" onClick={() => { buildsError.value = null; }}>×</button>
         </p>
       )}
 
-      {/* m2: import results get the page's full width, not a 200 px grid cell */}
+      {trash && trashCount > 0 && (
+        <div class="home-trashbar">
+          <span class="dim">Builds in the Trash keep their files until you delete them for good.</span>
+          {confirmEmpty
+            ? (
+              <span class="home-confirm" role="group" aria-label="Confirm emptying the Trash">
+                <span>{`Delete ${trashCount} build${trashCount === 1 ? "" : "s"} for good?`}</span>
+                <button type="button" class="btn btn-danger" onClick={() => { setConfirmEmpty(false); void buildActions.emptyTrash(); }}>Empty trash</button>
+                <button type="button" class="btn" ref={(el) => el?.focus()} onClick={() => setConfirmEmpty(false)}>Keep</button>
+              </span>
+            )
+            : <button type="button" class="btn" onClick={() => setConfirmEmpty(true)}>Empty trash…</button>}
+        </div>
+      )}
+
+      {/* m2: import results get the page's full width, not a grid cell */}
       {!trash && <div class="home-imports"><ImportCards /></div>}
       <ul class="home-grid" role="list" aria-label={trash ? "Trashed builds" : "Builds"}>
         {!trash && (
@@ -75,7 +152,7 @@ export function HomePage(): JSX.Element {
 
         {shown.map((b) => (
           <li key={b.id} class="home-cell">
-            {trash ? <TrashTile build={b} /> : <BuildTile build={b} />}
+            {trash ? <TrashTile build={b} /> : <BuildTile build={b} onTrash={() => { void moveToTrash(b); }} />}
           </li>
         ))}
 
@@ -85,48 +162,110 @@ export function HomePage(): JSX.Element {
           </li>
         )}
       </ul>
+
+      {undo && (
+        <div class="home-toast" role="status" aria-live="polite">
+          <span class="text">{`Moved “${undo.name}” to the Trash`}</span>
+          <button type="button" class="home-toast-undo" onClick={undoTrash}>Undo</button>
+        </div>
+      )}
     </section>
   );
 
   async function create(name: string): Promise<void> {
     const b = await buildActions.create(name);
-    if (b) atHome.value = false;        // created builds open straight into their tab
+    if (b) atHome.value = false;        // created builds open straight into the build
   }
 }
 
-function BuildTile({ build: b }: { build: Build }): JSX.Element {
+function BuildTile({ build: b, onTrash }: { build: Build; onTrash(): void }): JSX.Element {
   const status = buildStatus(b.id, runs.value.values());
   const edited = lastEditedAt(b);
+  const mass = fmtMass(b.mass_g);
+  const [menuAt, setMenuAt] = useState<{ x: number; y: number } | null>(null);
+  const more = useRef<HTMLButtonElement>(null);
   return (
-    <button type="button" class="tile" data-build={b.id}
-      title={`Open ${b.name}`} onClick={() => { void openBuild(b.id); }}>
-      <div class="tile-thumb">
-        <Thumb class="tile-img" alt={`${b.name} preview`} cacheKey={`${b.id}:${edited}:${b.part_count}`}
-          load={b.part_count > 0 ? () => actions.client().projectThumb(b.id) : null} />
-      </div>
-      <div class="tile-body">
-        <span class="tile-name">{b.name}</span>
-        <span class="tile-meta dim">
-          <Led tone={status.tone} title={status.label} />
-          {`${partsLabel(b.part_count)} · ${fmtLastEdited(edited)}`}
-        </span>
-      </div>
-    </button>
+    <div class="tile" data-build={b.id}
+      onContextMenu={(e) => { e.preventDefault(); setMenuAt({ x: e.clientX, y: e.clientY }); }}>
+      <button type="button" class="tile-open" title={`Open ${b.name}`} aria-label={`Open ${b.name}`}
+        onClick={() => { void openBuild(b.id); }}>
+        <div class="tile-thumb">
+          <Thumb class="tile-img" alt={`${b.name} cover`} glyph="" cacheKey={`${b.id}:${edited}:${b.part_count}`}
+            load={b.part_count > 0 ? () => actions.client().projectThumb(b.id) : null} />
+        </div>
+        <div class="tile-body">
+          <span class="tile-name">{b.name}</span>
+          <span class="tile-meta">
+            <Led tone={status.tone} title={status.label} />
+            {mass ? <span class="num">{mass}</span> : <span>{partsLabel(b.part_count)}</span>}
+            <span class="tile-dot" aria-hidden="true">·</span>
+            <span>{fmtLastEdited(edited)}</span>
+          </span>
+        </div>
+      </button>
+      <button type="button" ref={more} class="tile-more" aria-label={`More for ${b.name}`} aria-haspopup="menu"
+        aria-expanded={menuAt !== null}
+        onClick={(e) => {
+          const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+          setMenuAt(menuAt ? null : { x: r.right - 180, y: r.bottom + 4 });
+        }}>⋯</button>
+      {menuAt && (
+        <TileMenu at={menuAt} name={b.name} trigger={more} onClose={() => setMenuAt(null)}
+          onOpen={() => { void openBuild(b.id); }} onTrash={onTrash} />
+      )}
+    </div>
+  );
+}
+
+function TileMenu({ at, name, trigger, onClose, onOpen, onTrash }: {
+  at: { x: number; y: number }; name: string; trigger: MutableRef<HTMLButtonElement | null>;
+  onClose(): void; onOpen(): void; onTrash(): void;
+}): JSX.Element {
+  const ref = useRef<HTMLDivElement>(null);
+  useDismiss(ref, onClose, [trigger]);
+  const run = (f: () => void) => { onClose(); f(); };
+  return (
+    <div ref={(el) => { ref.current = el; if (el && !el.contains(document.activeElement)) el.querySelector<HTMLButtonElement>("button")?.focus(); }}
+      class="tile-menu surface" role="menu" aria-label={`${name} actions`}
+      style={{ left: `${Math.max(8, at.x)}px`, top: `${at.y}px` }}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); onClose(); return; }
+        if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+        e.preventDefault();
+        const f = [...(ref.current?.querySelectorAll<HTMLButtonElement>("button") ?? [])];
+        const i = f.indexOf(document.activeElement as HTMLButtonElement);
+        f[(i + (e.key === "ArrowDown" ? 1 : -1) + f.length) % f.length]?.focus();
+      }}>
+      <button type="button" role="menuitem" class="tile-menu-item" onClick={() => run(onOpen)}>Open</button>
+      <button type="button" role="menuitem" class="tile-menu-item tile-menu-danger" onClick={() => run(onTrash)}>Move to Trash</button>
+    </div>
   );
 }
 
 function TrashTile({ build: b }: { build: Build }): JSX.Element {
+  const [confirm, setConfirm] = useState(false);
   return (
     <div class="tile tile-trashed" data-build={b.id}>
       <div class="tile-thumb">
-        <Thumb class="tile-img" alt={`${b.name} preview`} cacheKey={`${b.id}:${lastEditedAt(b)}`}
-          load={() => actions.client().projectThumb(b.id)} />
+        <Thumb class="tile-img" alt={`${b.name} cover`} glyph="" cacheKey={`${b.id}:${lastEditedAt(b)}`}
+          load={b.part_count > 0 ? () => actions.client().projectThumb(b.id) : null} />
       </div>
       <div class="tile-body">
         <span class="tile-name">{b.name}</span>
-        <span class="tile-meta">
-          <button type="button" class="tile-restore" onClick={() => { void buildActions.restore(b.id); }}>Restore</button>
-        </span>
+        {confirm
+          ? (
+            <span class="tile-confirm" role="group" aria-label={`Confirm deleting ${b.name}`}>
+              <span class="dim">Delete for good?</span>
+              <button type="button" class="tile-link tile-link-danger" onClick={() => { setConfirm(false); void buildActions.purge(b.id); }}>Delete</button>
+              <button type="button" class="tile-link" ref={(el) => el?.focus()} onClick={() => setConfirm(false)}>Keep</button>
+            </span>
+          )
+          : (
+            <span class="tile-meta">
+              <button type="button" class="tile-link" onClick={() => { void buildActions.restore(b.id, { open: false }); }}>Restore</button>
+              <button type="button" class="tile-link tile-link-danger" onClick={() => setConfirm(true)}>Delete forever</button>
+            </span>
+          )}
       </div>
     </div>
   );

@@ -263,14 +263,38 @@ export const buildActions = {
     }
   },
 
-  async restore(id: string): Promise<void> {
+  /** Bring a build back from the Trash; `open: false` (Home's Undo) leaves the active build alone. */
+  async restore(id: string, opts: { open?: boolean } = {}): Promise<void> {
     buildsError.value = null;
     try {
       const b = await actions.client().restoreBuild(id);
       builds.value = builds.peek().map((x) => (x.id === id ? b : x));
-      await buildActions.switchTo(id);
+      if (opts.open !== false) await buildActions.switchTo(id);
     } catch (e) {
       fail("Restoring the build failed", e);
+    }
+  },
+
+  /** Delete one trashed build for good (D30). Refused (nothing deleted) while it has live work. */
+  async purge(id: string): Promise<boolean> {
+    buildsError.value = null;
+    trashBlocked.value = null;
+    try {
+      const r = await actions.client().purgeBuild(id);
+      if ("refused" in r) {
+        trashBlocked.value = r.refused;
+        buildsError.value = trashRefusalText(r.refused, (rid) => {
+          const run = runs.peek().get(rid);
+          return run ? runLabel(run, [...runs.peek().values()]) : `run ${rid}`;
+        });
+        return false;
+      }
+      const gone = new Set(r.purged);
+      builds.value = builds.peek().filter((b) => !gone.has(b.id));
+      return true;
+    } catch (e) {
+      fail("Deleting the build failed", e);
+      return false;
     }
   },
 

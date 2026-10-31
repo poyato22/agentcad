@@ -50,26 +50,25 @@ function hue(hex: string): number {
 const hueGap = (a: number, b: number) => Math.min(Math.abs(a - b), 360 - Math.abs(a - b));
 
 describe("theme tokens", () => {
-  it("dark palette keeps the exact plan values (unchanged)", () => {
+  it("dark palette is the Plan 9 Visual spec (Graphite / Panel / Raised / Hairline / Ink / Dim)", () => {
     expect(DARK).toMatchObject({
-      "--bg": "#0a0a0a", "--paper": "#111111", "--paper2": "#161616", "--head": "#141414", "--vp": "#0d0d0d",
-      "--line": "#242424", "--line2": "#333333", "--ink": "#ececec", "--dim": "#9a9a9a", "--faint": "#5e5e5e",
-      "--blue": "#3d8bff", "--blue2": "#8dbaff", "--blue-tint": "rgba(61,139,255,.10)",
+      "--bg": "#14161a", "--paper": "#1b1e23", "--paper2": "#252930", "--raised": "#252930",
+      "--line": "#2f343b", "--ink": "#e9ebee", "--dim": "#9aa1aa",
+      // semantic colors unchanged
+      "--blue": "#3d8bff", "--blue2": "#8dbaff",
       "--green": "#4fd18b", "--amber": "#f2b134", "--red": "#ff5a4a",
-      "--mesh-face": "#2a2a2a", "--mesh-edge": "#e6e6e6",
+      "--surface": "rgba(27,30,35,.92)", "--surface-blur": "18px",
+      "--r-surface": "10px", "--r-row": "6px", "--r-btn": "7px",
+      "--fs-label": "11px", "--fs": "12.5px", "--fs-title": "14px", "--fs-display": "18px",
     });
+    expect(DARK["--font-ui"]).toMatch(/^"Instrument Sans"/);
+    expect(DARK["--font-num"]).toMatch(/^"Iosevka"/);
     expect(DARK["--font-mono"]).toContain("Iosevka");
-    expect(DARK["--font-mono"]).not.toMatch(/ibm plex/i);
   });
 
-  it("light palette values (constraint surfaces + ruled text tones); the switch flips every color token", () => {
-    expect(LIGHT).toMatchObject({
-      "--bg": "#f4f4f2", "--paper": "#ffffff", "--paper2": "#ececea",
-      "--line": "#d6d6d2", "--line2": "#bdbdb8",
-      "--ink": "#111111", "--dim": "#4a4a4a", "--faint": "#6a6a6a",
-      "--blue": "#0a5bd8", "--blue-tint": "rgba(10,91,216,.10)", "--red": "#c8321e",
-    });
-    const colorTokens = /^--(bg|paper|paper2|head|vp|line|line2|ink|dim|faint|blue|blue2|blue-tint|green|amber|red|grid-strong|grid-faint|mesh-face|mesh-edge)$/;
+  it("light palette keeps parity: every color token is redefined for light", () => {
+    expect(LIGHT).toMatchObject({ "--paper": "#ffffff", "--blue": "#0a5bd8", "--blue-tint": "rgba(10,91,216,.10)" });
+    const colorTokens = /^--(bg|paper|paper2|raised|head|vp|line|line2|ink|dim|faint|blue|blue2|blue-tint|green|amber|red|surface|shadow|grid-strong|grid-faint|mesh-face|mesh-edge)$/;
     for (const k of Object.keys(DARK).filter((x) => colorTokens.test(x))) {
       expect(LIGHT[k], `${k} redefined for light`).toBeDefined();
       expect(LIGHT[k], k).not.toBe(DARK[k]);
