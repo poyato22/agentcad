@@ -59,7 +59,7 @@ describe("background jobs state", () => {
 
   it("the composer's jobs are the agents': a run you started from the panel is not one (B3-I2)", () => {
     activeBuildId.value = JOB.build_id;
-    runs.value = new Map([[JOB.run_id, { id: JOB.run_id, agent: "designer", provider: "anthropic" } as unknown as AgentRun]]);
+    runs.value = new Map([[JOB.run_id as string, { id: JOB.run_id, agent: "designer", provider: "anthropic" } as unknown as AgentRun]]);
     const mine = { ...JOB, job_id: "to_0123456789ab", kind: "topopt", run_id: "ui_run_00001" };   // the build's ui run: not in GET /runs
     liveJobs.value = [JOB, mine];
     expect(buildJobs.value.map((j) => j.job_id)).toEqual([JOB.job_id, mine.job_id]);   // its card still has Stop

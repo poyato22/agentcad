@@ -163,7 +163,8 @@ export function retainThreadFrames(schedule: Schedule = rafSchedule): () => void
 // ---- Plan 9 D4: the View and Simulations streams over the build's agent tree (treeStreams),
 // rebuilt at most once per frame like the thread.
 
-export interface TreeFrame extends TreeStreams { buildId: string | null }
+/** `runIds`: the dock tree's runs (their studies come from their steps, FW-app I3). */
+export interface TreeFrame extends TreeStreams { buildId: string | null; runIds?: readonly string[] }
 
 export const treeFrame = signal<TreeFrame>({ buildId: null, view: [], sim: [] });
 
@@ -192,8 +193,10 @@ function startTree(schedule: Schedule): () => void {
     const out = aggregate({ runs: runList.peek(), steps: steps.peek(), inflight: inflight.peek() }, tree);
     const buildId = activeBuildId.peek();
     const prev = treeFrame.peek();
-    if (prev.view === out.view && prev.sim === out.sim && prev.buildId === buildId) return;
-    treeFrame.value = { buildId, view: out.view, sim: out.sim };
+    const ids = tree.map((r) => r.id);
+    const sameIds = (prev.runIds ?? []).length === ids.length && ids.every((id, i) => prev.runIds?.[i] === id);
+    if (prev.view === out.view && prev.sim === out.sim && prev.buildId === buildId && sameIds) return;
+    treeFrame.value = { buildId, view: out.view, sim: out.sim, runIds: sameIds ? prev.runIds : ids };
   };
   const dispose = effect(() => {
     // only what views and studies depend on: never liveText, approvals or questions

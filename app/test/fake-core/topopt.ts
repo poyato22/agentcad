@@ -38,6 +38,8 @@ export interface TopoptDeps {
   setParts: (p: PartSummary[]) => void;
   emit: (ev: EventIn) => void;
   stepMs?: number;
+  /** The build a part belongs to (the core's record carries it as project_id). */
+  projectOf?: (partId: string) => string | null;
 }
 
 export interface FakeTopopt { routes: Route[]; reset(): void; records: Map<string, TopoptRecord> }
@@ -76,7 +78,9 @@ export function topoptFake(d: TopoptDeps): FakeTopopt {
       ...structuredClone(tmpl), id: `v${i}`, volume_fraction: sweep?.[i] ?? (typeof vf === "number" ? vf : 0.25),
       name: `vf ${(sweep?.[i] ?? (typeof vf === "number" ? vf : 0.25)).toFixed(2)} · r ${tmpl.filter_radius_mm.toFixed(1)} mm`,
     }));
+    // like the core: the run belongs to the part's build
     const rec: TopoptRecord = { ...structuredClone(REAL_TOPOPT.start), topopt_id: id, part_id: String(partId), status: "running",
+      project_id: d.projectOf?.(String(partId)) ?? null,
       tool: n > 1 ? "topopt_generate" : "topopt_run", created_at: Date.now() / 1000, variants, accepted: [], recommended: null, pareto: [] };
     records.set(id, rec);
     const ts: ReturnType<typeof setTimeout>[] = [];
@@ -119,7 +123,8 @@ export function topoptFake(d: TopoptDeps): FakeTopopt {
     } },
     { method: "GET", re: /^\/topopt$/, h: (_m, q) => {
       const part = q.get("part_id");
-      return [...records.values()].filter((r) => part === null || r.part_id === part).sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0));
+      const project = q.get("project_id");
+      return [...records.values()].filter((r) => (part === null || r.part_id === part) && (project === null || r.project_id === project)).sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0));
     } },
     { method: "GET", re: /^\/topopt\/([^/]+)$/, h: (m) => get(decodeURIComponent(m[1])) },
     { method: "POST", re: /^\/topopt\/([^/]+)\/cancel$/, h: (m) => {

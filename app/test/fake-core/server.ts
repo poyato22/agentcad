@@ -778,7 +778,9 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
   };
 
   // Plan 9 D14: generative design runs (records live with this fake core, cleared on reset)
-  const topopt = topoptFake({ parts: () => state.parts, setParts: (p) => { state.parts = p; }, emit: (ev) => { emit(ev); } });
+  const topopt = topoptFake({ parts: () => state.parts, setParts: (p) => { state.parts = p; }, emit: (ev) => { emit(ev); },
+    projectOf: (id) => state.builds.rows.get(id)?.project_id
+      ?? (state.setup.profile as { active_project_id?: string | null }).active_project_id ?? state.builds.defaultId ?? DEFAULT_PROJECT });
   const routes: Route[] = [
     { method: "GET", re: /^\/health$/, h: () => ({ ok: true }) },
     {

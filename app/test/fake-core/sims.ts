@@ -175,8 +175,11 @@ export function simRoutes(d: SimDeps): Route[] {
       method: "GET", re: /^\/sims$/, h: (_m, q) => {
         const part = q.get("part_id");
         const run = q.get("run_id");
+        // like the core: project_id lists that build's assembly studies (part studies by part_id)
+        const project = q.get("project_id");
         if (part !== null && !PART_ID_RE.test(part)) throw mises("invalid_input", `bad part id: '${part}'`, `part ids match ${PART_ID_RE.source}`);
-        return sorted().filter((r) => (part === null || r.part_id === part) && (run === null || r.run_id === run)).map(summary);
+        return sorted().filter((r) => (part === null || r.part_id === part) && (run === null || r.run_id === run)
+          && (project === null || (r as { project_id?: string | null }).project_id === project)).map(summary);
       },
     },
     { method: "GET", re: /^\/sims\/([^/]+)$/, h: (m) => withStale(record(decodeURIComponent(m[1]))) },

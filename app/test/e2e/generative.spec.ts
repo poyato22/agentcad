@@ -69,6 +69,8 @@ test("generative_design_from_the_part_menu_runs_and_accepts_a_variant", async ({
   await page.keyboard.press("Escape");
   await expect(dlg).toHaveCount(0);
   await expect(tree(page).locator('[data-part="top_plate_generative"]')).toBeVisible();
+  // FW-app I3: the run you started from the panel is in the dock's Simulations stream too
+  await expect(page.locator("[data-dock] [data-stream=sim] [data-record=topopt] [data-testid=topopt-card]")).toHaveCount(1);
 });
 
 test("generative_design_can_be_cancelled_and_opened_from_studies", async ({ page, fake }) => {

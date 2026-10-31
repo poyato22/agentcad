@@ -23,7 +23,8 @@ import { DesignFocus } from "./DesignFocus";
 import { buildRuns, effectiveRunId, labelOf, offListRuns, retainThreadFrames, retainTreeFrames, runLabels, threadFrame, treeFrame } from "./derived";
 import { dockLayout, resizeStream, resizeWidth, setDockLayout, toggleStream } from "./dockLayout";
 import { shownPending } from "./queued";
-import { SimStream } from "./SimStream";
+import { retainBuildStudies } from "./buildStudies";
+import { SimStream, simExtras, simExtrasRunning } from "./SimStream";
 import { simRunning, splitStreams } from "./streams";
 import { markSeen, unreadOf } from "./unread";
 import { composerOpen, setConsoleView } from "./view";
@@ -35,13 +36,16 @@ const TITLE: Record<StreamKind, string> = { view: "View", sim: "Simulations", te
 export function Dock(): JSX.Element {
   useEffect(() => retainThreadFrames(), []);
   useEffect(() => retainTreeFrames(), []);
+  // FW-app I3: the build's other studies and generative runs (Studies page, studies agent, panel)
+  useEffect(() => retainBuildStudies(), []);
   const frame = threadFrame.value;
   // the Conversation is the shown run's thread; View and Simulations are the whole build's tree
   const text = useMemo(() => splitStreams(frame.items).text, [frame.items]);
   const tree = treeFrame.value;
   // stable key lists: a Section only marks rows seen when its rows changed (N4)
   const viewKeys = useMemo(() => tree.view.map((e) => e.key), [tree.view]);
-  const simKeys = useMemo(() => tree.sim.map((e) => e.key), [tree.sim]);
+  const extras = simExtras.value;
+  const simKeys = useMemo(() => [...tree.sim.map((e) => e.key), ...extras.map((r) => `rec/${r.id}`)], [tree.sim, extras]);
   const textKeys = useMemo(() => text.map((i) => i.key), [text]);
   const shownId = effectiveRunId.value;
   // the first fallback (newest running run) becomes an explicit choice once (as in the roster)
@@ -50,13 +54,14 @@ export function Dock(): JSX.Element {
   }, [shownId]);
   const layout = dockLayout.value;
   const root = useRef<HTMLDivElement>(null);
-  const running = tree.sim.filter((e) => simRunning(e.item, finishedSims.value)).length;
+  const running = tree.sim.filter((e) => simRunning(e.item, finishedSims.value)).length + simExtrasRunning.value;
   // unread rows of View / Simulations are counted per build (they span its runs); the
   // Conversation's per shown run
   const buildKey = `build:${tree.buildId ?? ""}`;
 
   const open = (s: StreamKind) => !layout.collapsed[s];
-  const filled = (s: "view" | "sim") => open(s) && tree[s].length > 0;
+  const simCount = tree.sim.length + extras.length;
+  const filled = (s: "view" | "sim") => open(s) && (s === "sim" ? simCount : tree.view.length) > 0;
   return (
     <div class="dock" ref={root} data-dock data-text-collapsed={layout.collapsed.text ? "" : undefined}>
       <WidthEdge />
@@ -65,7 +70,7 @@ export function Dock(): JSX.Element {
         <ViewStream entries={tree.view} />
       </Section>
       {filled("view") && <Divider which="view" root={root} />}
-      <Section stream="sim" runId={buildKey} keys={simKeys} count={tree.sim.length} running={running}
+      <Section stream="sim" runId={buildKey} keys={simKeys} count={simCount} running={running}
         height={filled("sim") ? layout.sim : null}>
         <SimStream entries={tree.sim} />
       </Section>

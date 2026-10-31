@@ -280,8 +280,9 @@ export class CoreClient {
     return this.json("GET", "/studies/context", studiesContextSchema, { query: { project_id: projectId } });
   }
   studySolvers(): Promise<StudySolvers> { return this.json("GET", "/sims/solvers", studySolversSchema); }
-  listStudies(filter: { partId?: string; runId?: string } = {}): Promise<StudySummary[]> {
-    return this.json("GET", "/sims", z.array(studySummarySchema), { query: { part_id: filter.partId, run_id: filter.runId } });
+  /** `projectId`: that build's assembly studies (the core lists a part's by part_id). */
+  listStudies(filter: { partId?: string; runId?: string; projectId?: string } = {}): Promise<StudySummary[]> {
+    return this.json("GET", "/sims", z.array(studySummarySchema), { query: { part_id: filter.partId, run_id: filter.runId, project_id: filter.projectId } });
   }
   getStudy(simId: string): Promise<StudyRecord> { return this.json("GET", `/sims/${enc(simId)}`, studyRecordSchema); }
   /** 202: a "studies" run drives sim_run through the Gate. Bad settings: 400 before any run. */

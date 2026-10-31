@@ -58,6 +58,31 @@ for (const theme of ["dark", "light"] as const) {
   });
 }
 
+test("a_study_run_from_the_studies_page_lands_in_the_docks_simulations_stream (FW-app I3)", async ({ page, fake }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await fake.reset(scenario() as never);
+  await open(page);
+  // the build's earlier studies (the scenario's real records) are in the stream already
+  await page.getByRole("tab", { name: "Design" }).click();
+  const sim = page.locator("[data-dock] [data-stream=sim]");
+  const cards = sim.locator("[data-record=sim] [data-testid=study-card]");
+  await expect(sim.locator("[data-stream-empty]")).toHaveCount(0);
+  const before = await cards.count();
+  expect(before).toBeGreaterThan(0);
+  await page.getByRole("tab", { name: "Studies" }).click();
+  const first = page.getByTestId("study-proposal").first();
+  const partId = await first.getAttribute("data-part");
+  await first.getByTestId("run-proposal").click();
+  await expect(page.getByTestId("agent-study-card")).toBeVisible();
+  // back on the build: the dock's Simulations stream has it too (its own "studies" run is not in
+  // the dock's agent tree) — on top while it runs, newest first once done
+  await page.getByRole("tab", { name: "Design" }).click();
+  await expect(cards).toHaveCount(before + 1, { timeout: 10_000 });
+  const mine = cards.first();
+  await expect(mine).toHaveAttribute("aria-label", new RegExp(`study of ${partId}`));
+  await expect(mine).toHaveAttribute("data-status", "done", { timeout: 15_000 });
+});
+
 test("run_on_a_proposal_starts_its_study_and_its_card_appears", async ({ page, fake }) => {
   await fake.reset(scenario() as never);
   await open(page);
