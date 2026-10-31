@@ -37,6 +37,10 @@ export function Dock(): JSX.Element {
   // the Conversation is the shown run's thread; View and Simulations are the whole build's tree
   const text = useMemo(() => splitStreams(frame.items).text, [frame.items]);
   const tree = treeFrame.value;
+  // stable key lists: a Section only marks rows seen when its rows changed (N4)
+  const viewKeys = useMemo(() => tree.view.map((e) => e.key), [tree.view]);
+  const simKeys = useMemo(() => tree.sim.map((e) => e.key), [tree.sim]);
+  const textKeys = useMemo(() => text.map((i) => i.key), [text]);
   const shownId = effectiveRunId.value;
   // the first fallback (newest running run) becomes an explicit choice once (as in the roster)
   useEffect(() => {
@@ -54,17 +58,17 @@ export function Dock(): JSX.Element {
   return (
     <div class="dock" ref={root} data-dock data-text-collapsed={layout.collapsed.text ? "" : undefined}>
       <WidthEdge />
-      <Section stream="view" runId={buildKey} keys={tree.view.map((e) => e.key)} count={tree.view.length}
+      <Section stream="view" runId={buildKey} keys={viewKeys} count={tree.view.length}
         height={filled("view") ? layout.view : null}>
         <ViewStream entries={tree.view} />
       </Section>
       {filled("view") && <Divider which="view" root={root} />}
-      <Section stream="sim" runId={buildKey} keys={tree.sim.map((e) => e.key)} count={tree.sim.length} running={running}
+      <Section stream="sim" runId={buildKey} keys={simKeys} count={tree.sim.length} running={running}
         height={filled("sim") ? layout.sim : null}>
         <SimStream entries={tree.sim} />
       </Section>
       {filled("sim") && open("text") && <Divider which="sim" root={root} />}
-      <Section stream="text" runId={frame.runId} keys={text.map((i) => i.key)} count={null} fill head={<ConversationHead />}>
+      <Section stream="text" runId={frame.runId} keys={textKeys} count={null} fill head={<ConversationHead />}>
         <SpecPanel />
         <Conversation items={text} />
       </Section>
@@ -80,7 +84,7 @@ function Section({ stream, runId, keys, count, running = 0, height = null, fill 
 }): JSX.Element {
   const collapsed = dockLayout.value.collapsed[stream];
   const unread = collapsed ? unreadOf(runId, stream, keys) : 0;
-  useEffect(() => { if (!collapsed) markSeen(runId, stream, keys); });
+  useEffect(() => { if (!collapsed) markSeen(runId, stream, keys); }, [collapsed, runId, keys]);
   const title = TITLE[stream];
   const style = !collapsed && height !== null ? { height: `${height}px` } : undefined;
   return (

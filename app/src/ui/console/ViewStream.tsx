@@ -5,6 +5,7 @@
 // until something new lands. Only the large view renders live; a strip tile fetches its still
 // only once it scrolls into the strip's view (a long build has many).
 import type { JSX } from "preact";
+import { memo } from "preact/compat";
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { AgentRun } from "../../api/types";
 import { AnnouncementCard, ANNOUNCE_META } from "./AnnouncementCard";
@@ -17,7 +18,10 @@ import { RunTag } from "./SimStream";
 import type { ThreadItem } from "./threadModel";
 import type { DockEntry } from "./treeStreams";
 
-export function ViewStream({ entries }: { entries: readonly DockEntry[] }): JSX.Element {
+/** Memoized: re-renders only when the entries change (a streamed token never changes them). */
+export const ViewStream = memo(ViewStreamList);
+
+function ViewStreamList({ entries }: { entries: readonly DockEntry[] }): JSX.Element {
   const newest = entries[entries.length - 1] ?? null;
   const [pick, setPick] = useState<string | null>(null);
   const strip = useRef<HTMLDivElement>(null);

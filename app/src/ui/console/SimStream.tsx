@@ -4,6 +4,7 @@
 // conversation or the views: they are separate streams. Study tools without a card (B3's
 // sim_wait / sim_result_get) read as their one-line row.
 import type { JSX } from "preact";
+import { memo } from "preact/compat";
 import { finishedSims } from "../../state/activity";
 import { Item } from "./Conversation";
 import { labelOf } from "./derived";
@@ -12,7 +13,10 @@ import { StudyCardSlot } from "./studycard";
 import { studyCallView } from "./studycard/cardModel";
 import type { DockEntry } from "./treeStreams";
 
-export function SimStream({ entries }: { entries: readonly DockEntry[] }): JSX.Element {
+/** Memoized: re-renders only when the entries change (a streamed token never changes them). */
+export const SimStream = memo(SimStreamList);
+
+function SimStreamList({ entries }: { entries: readonly DockEntry[] }): JSX.Element {
   if (entries.length === 0) return <p class="dock-empty faint" data-stream-empty>Studies the agents run show here, live.</p>;
   return (
     <div class="ss" data-sim-stream>

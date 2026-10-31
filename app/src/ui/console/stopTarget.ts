@@ -26,8 +26,8 @@ export function waitingOnYou(a: AgentActivity | undefined): boolean {
 export const busyRuns: ReadonlySignal<readonly AgentRun[]> = computed(() =>
   stopTargets(buildRuns.value, effectiveRun.value ?? shownPending.value, activityByRun.value));
 
-/** Stop every busy run of the tree (the core also stops a lead's children; asking twice is
- *  harmless). `fromEsc`: leave runs that wait on you alone. */
+/** Stop every busy run of the tree, each explicitly (the core cancels only the run asked, not its
+ *  children). `fromEsc`: leave runs that wait on you alone. */
 export async function stopBusy(fromEsc = false): Promise<void> {
   const act = activityByRun.peek();
   const targets = busyRuns.peek().filter((r) => !fromEsc || !waitingOnYou(act.get(r.id)));

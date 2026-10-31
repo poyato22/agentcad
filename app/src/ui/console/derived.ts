@@ -11,7 +11,7 @@ import { buildLog, buildLogFrame, type BuildLogInput, type LogFrame } from "./lo
 import { buildThread, type ThreadItem } from "./threadModel";
 import { shownPending } from "./queued";
 import { dockTree } from "./runTree";
-import { treeStreams, type TreeStreams } from "./treeStreams";
+import { createTreeStreams, type TreeStreams } from "./treeStreams";
 
 /** Folds the user opened, by foldKey. */
 export const expandedFolds = signal<ReadonlySet<string>>(new Set());
@@ -183,14 +183,21 @@ export function retainTreeFrames(schedule: Schedule = rafSchedule): () => void {
 
 function startTree(schedule: Schedule): () => void {
   let cancel: (() => void) | null = null;
+  // N1: per-run cached; a run whose steps didn't change is not rebuilt, and an unchanged result
+  // is not written (the dock's View and Simulations don't re-render for a streamed token)
+  const aggregate = createTreeStreams();
   const flush = () => {
     cancel = null;
     const tree = dockTree(buildRuns.peek(), effectiveRun.peek() ?? shownPending.peek());
-    treeFrame.value = { buildId: activeBuildId.peek(), ...treeStreams(readInput(), tree) };
+    const out = aggregate({ runs: runList.peek(), steps: steps.peek(), inflight: inflight.peek() }, tree);
+    const buildId = activeBuildId.peek();
+    const prev = treeFrame.peek();
+    if (prev.view === out.view && prev.sim === out.sim && prev.buildId === buildId) return;
+    treeFrame.value = { buildId, view: out.view, sim: out.sim };
   };
   const dispose = effect(() => {
-    void runs.value; void steps.value; void approvals.value; void questions.value; void liveText.value;
-    void inflight.value; void effectiveRunId.value; void activeBuildId.value; void shownPending.value;
+    // only what views and studies depend on: never liveText, approvals or questions
+    void runs.value; void steps.value; void inflight.value; void effectiveRunId.value; void activeBuildId.value; void shownPending.value;
     if (!cancel) cancel = schedule(flush);
   });
   return () => { dispose(); cancel?.(); cancel = null; treeFrame.value = { buildId: null, view: [], sim: [] }; };
