@@ -49,6 +49,7 @@ MAX_PARALLEL = 3
 VARIANT_TIMEOUT_S = 3600.0
 MEMORY_MB = 4096.0
 POLL_S = 0.5
+SAVE_EVERY_S = 2.0
 DEFAULT_SWEEP = (0.15, 0.25, 0.35)
 STREAM = "sim"
 _FILES = {"preview.glb": "model/gltf-binary", "result.glb": "model/gltf-binary",
@@ -443,6 +444,8 @@ async def _run_variant(ctx_events, rec: dict, v: dict, d: Path, args: TopoptRunA
             "preview_url": (f"/topopt/{tid}/variants/{v['id']}/preview.glb?v={v['preview']}"
                             if v.get("preview") else None)})
 
+    saved = [0.0]
+
     def on_progress(p: dict) -> None:
         v["phase"] = p.get("phase") or v["phase"]
         v["pct"] = float(p.get("pct") or v["pct"])
@@ -452,6 +455,11 @@ async def _run_variant(ctx_events, rec: dict, v: dict, d: Path, args: TopoptRunA
         if p.get("c") is not None:
             v["compliance"], v["vf"] = p["c"], p.get("vf")
         emit()
+        # the record on disk follows too (GET /topopt/{id} polls), at most every SAVE_EVERY_S
+        now = time.monotonic()
+        if now - saved[0] >= SAVE_EVERY_S:
+            saved[0] = now
+            save()
 
     v.update(status="running", phase="setup", pct=0.5, started_at=time.time())
     save()

@@ -48,9 +48,8 @@ async def test_cancel_kills_the_sandboxed_worker(tmp_path):
     out = await tools.topopt_run.handler(ctx, TopoptRunArgs(**{**ARGS, "resolution_mm": 0.5},
                                                             verify=False))
     tid = out.data["topopt_id"]
-    for _ in range(600):
-        rec = jobs.read_record(tmp_path, tid)
-        if rec["variants"][0].get("it"):
+    for _ in range(600):   # the optimizer is iterating
+        if any(e.type == "topopt_progress" and e.data.get("it") for e in ctx.events.events):
             break
         await asyncio.sleep(0.1)
     assert (await tools.topopt_cancel.handler(ctx, IdArgs(topopt_id=tid))).ok
