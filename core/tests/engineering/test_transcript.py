@@ -56,8 +56,10 @@ SPEC = dict(
     answers={"use": "freestyle", "size_class": '5"'},
 )
 SCRIPT = "VARS = {'wall': 5.0}\ndef build(v):\n    return Box(100, 100, v['wall'])\n"
+# wait: the transcript checks each study's result in the same run (an agent's default is the
+# background, Plan 9 D4)
 STUDY = dict(variables=[{"name": "wall", "lo": 1.0, "hi": 9.0}], max_evals=6,
-             priorities=["impact strength", "weight"])
+             priorities=["impact strength", "weight"], wait=True)
 
 TRANSCRIPT = [
     [_call("t1", "interview_plan", goal="build me a 5 inch drone"), Done(stop_reason="tool_use")],

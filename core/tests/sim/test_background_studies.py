@@ -10,7 +10,7 @@ import time
 import pytest
 
 import mises.runtime as runtime_mod
-from mises import heavy
+from mises import heavy, jobs
 from mises.events import Event, stream_of
 from mises.orchestrator import lead as lead_mod
 from mises.providers.base import Done, TextDelta, ToolCall
@@ -84,6 +84,16 @@ def make_rt(tmp_path, monkeypatch):
 def _run(rt):
     return rt.create_external_run("engineer", provider="fake", model="m",
                                   allowed_classes={SafetyClass.READ, SafetyClass.LOCAL_MUTATE})
+
+
+async def _settle(job_id, timeout=10):
+    """Wait for a background job to end WITHOUT reading it (sim_wait would mark it read and
+    suppress its note)."""
+    j = jobs.get(job_id)
+    if j is not None and j.task is not None:
+        await asyncio.wait({j.task}, timeout=timeout)
+    for _ in range(5):
+        await asyncio.sleep(0)
 
 
 def _record(rt, sim_id):
@@ -274,7 +284,7 @@ async def test_the_lead_replies_before_a_5s_study_finishes_and_gets_a_note(make_
                if s.payload.get("name") == "sim_run" and "output" in s.payload)
     assert _record(rt, sid)["status"] == "running"     # the reply came first
     # the study ends: a system note starts the lead's next turn
-    await studies.wait_for(sid, 10)
+    await _settle(sid)
     for _ in range(200):
         await asyncio.sleep(0.02)
         notes = [s for s in rt.store.steps(lead) if s.kind == StepKind.MESSAGE
@@ -282,9 +292,10 @@ async def test_the_lead_replies_before_a_5s_study_finishes_and_gets_a_note(make_
         if notes and not rt.run_busy(lead):
             break
     [note] = notes
-    assert note.payload["system_note"] == {"kind": "sim_finished", "sim_id": sid,
-                                           "status": "done"}
+    assert note.payload["system_note"] == {"kind": "sim_finished", "job": "sim", "id": sid,
+                                           "sim_id": sid, "status": "done"}
     assert f"of beam ({sid}) finished" in note.payload["text"]
+    assert 'Result summary (data): "GUIDE ONLY' in note.payload["text"]
     await rt.wait(lead)
     assert "safety factor 3.1" in rt.store.steps(lead)[-1].payload.get("text", "") or any(
         "safety factor 3.1" in (s.payload.get("text") or "") for s in rt.store.steps(lead))
@@ -303,13 +314,14 @@ async def test_a_note_for_a_busy_lead_is_queued_and_never_429s(make_rt):
     rt.lead_drainers[lead] = asyncio.get_running_loop().create_future()   # not done: no drain
     first = await lead_mod.deliver_note(rt, lead, "note 1", {"kind": "sim_finished"})
     assert first is not None and len(rt.lead_queues[lead]) == lead_mod.QUEUE_MAX
-    second = await lead_mod.deliver_note(rt, lead, "note 2", {"kind": "sim_finished"})
+    second = await lead_mod.deliver_note(rt, lead, "note 2", {"kind": "sim_finished",
+                                                              "id": "sim_2"})
     q = rt.lead_queues[lead]
-    assert second is not None and len(q) == lead_mod.QUEUE_MAX
-    assert [m["text"] for m in q if m.get("note")] == ["note 2"]      # the oldest note made room
-    dropped = [s.payload["queued_message_dropped"] for s in rt.store.steps(lead)
-               if "queued_message_dropped" in s.payload]
-    assert len(dropped) == 1
+    # notes waiting for the same turn are one message, so the cap is never hit by notes
+    assert second["coalesced"] and len(q) == lead_mod.QUEUE_MAX
+    [waiting] = [m for m in q if m.get("note")]
+    assert waiting["text"] == "note 1\nnote 2"
+    assert [i.get("id") for i in waiting["log"]["system_note"]["items"]] == [None, "sim_2"]
     # a queue full of user messages: the note is dropped, nothing raises
     rt.lead_queues[lead] = [{"message_id": f"msg_v{i}", "text": "u", "log": None,
                              "shown": "u"} for i in range(lead_mod.QUEUE_MAX)]

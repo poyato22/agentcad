@@ -222,6 +222,12 @@ class Runtime:
         self.lead_queues: dict[str, list] = {}
         self.lead_locks: dict[str, asyncio.Lock] = {}
         self.lead_drainers: dict[str, asyncio.Task] = {}
+        # Plan 9 D4: system notes (a background study finished): turns they started since the
+        # user's last message, runs whose user pressed Stop (notes wait), and notes that ride
+        # along with the next one (orchestrator/lead.py deliver_note)
+        self.note_turns: dict[str, int] = {}
+        self.note_hold: set[str] = set()
+        self.deferred_notes: dict[str, list] = {}
         # question id -> its question_asked payload (+ run_id, asked_at), so a reloaded app can
         # recover the open question cards (GET /runs/{id}/pending; QA C-2)
         self._question_data: dict[str, dict] = {}
@@ -1384,9 +1390,11 @@ class Runtime:
             raise MisesError(ErrorCode.NOT_FOUND, f"unknown run: {run_id}")
         return st
 
-    async def send(self, run_id: str, text: str, *, log: dict | None = None) -> None:
+    async def send(self, run_id: str, text: str, *, log: dict | None = None,
+                   user_turn: bool = True) -> None:
         """`log` overrides the stored user step's fields (e.g. a feedback pin's note instead of
-        the wrapped message the model reads)."""
+        the wrapped message the model reads). `user_turn=False` (a system note): the turn it
+        starts is not a new user turn, so the user message's budget window goes on."""
         if run_id in self._deleting:
             raise MisesError(ErrorCode.NOT_FOUND, f"run {run_id} is being deleted")
         if run_id in self._sending:
@@ -1395,7 +1403,7 @@ class Runtime:
         busy = self.run_busy(run_id)
         self._sending.add(run_id)
         try:
-            if not busy:
+            if not busy and user_turn:
                 self.new_user_turn(run_id)
             # the plain two-argument call when there is no log (tests patch _send that way)
             await (self._send(run_id, text) if log is None else self._send(run_id, text, log))
@@ -1413,6 +1421,8 @@ class Runtime:
         A message that joins a turn still running is not a new turn: nothing resets."""
         from .cad.views import reset_loop
         reset_loop(run_id)
+        self.note_turns.pop(run_id, None)        # the user is back: notes may start turns again
+        self.note_hold.discard(run_id)
         try:
             run = self.store.get_run(run_id)
         except KeyError:
@@ -1477,6 +1487,7 @@ class Runtime:
 
     def cancel(self, run_id: str) -> None:
         self.parallel.withdraw(run_id)      # a queued run never starts
+        self._stop_background(run_id)
         if run_id in self._external:
             # mark it cancelled first (the MCP endpoint then refuses its calls), then let the
             # owner stop the agent process
@@ -1499,6 +1510,17 @@ class Runtime:
         st.loop.cancel()
         self.approvals.cancel_run(run_id)
         self.store.release_run_reservations(run_id)
+
+    def _stop_background(self, run_id: str) -> None:
+        """Stop reaches the background jobs (studies, reviews, design studies) of the run and
+        of every run below it, and no note wakes them until the user writes again."""
+        from . import jobs
+        try:
+            fam = {run_id, *self.store.descendants(run_id)}
+        except Exception:  # noqa: BLE001
+            fam = {run_id}
+        self.note_hold.update(fam)
+        jobs.cancel_run(fam)
 
     # ---- questions (ui_ask_user)
     async def ask(self, run_id: str, question: str, options: list[str], *,

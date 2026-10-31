@@ -20,7 +20,8 @@ log = logging.getLogger(__name__)
 # ---- streams (Plan 9 D4): agent output comes out in three parallel streams the app shows at
 # once: "sim" (studies), "view" (renders, immersive views, critiques) and "text" (the rest).
 STREAMS = ("text", "sim", "view")
-SIM_TOOLS = frozenset({"design_review", "study_run", "study_get"})
+SIM_TOOLS = frozenset({"design_review", "design_review_get", "study_run", "study_get",
+                       "job_wait"})
 VIEW_TOOLS = frozenset({"render_views", "present_view", "critique_model", "part_show",
                         "section_check", "assembly_animate"})
 SIM_EVENTS = frozenset({"sim_progress", "sim_finished", "study_progress"})
@@ -135,6 +136,8 @@ TOOL_LABELS: dict[str, str] = {
     "agent_spawn": "delegating", "orchestrator_run": "delegating",
     "agent_wait": "waiting on subagents", "agent_result": "collecting a subagent",
     "sim_run": "running a study", "design_review": "reviewing the design",
+    "sim_wait": "waiting on a study", "job_wait": "waiting on a background job",
+    "design_review_get": "reading a design review",
     "study_apply": "applying a variant", "study_get": "reading a design study",
     "interview_plan": "planning the interview", "spec_get": "reading the spec",
     "loads_impact": "estimating impact loads", "catalog_get": "reading a catalog part",

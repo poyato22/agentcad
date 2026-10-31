@@ -169,6 +169,10 @@ class StudyRunArgs(BaseModel):
     project_id: str | None = None
     max_evals: int = Field(default=MAX_EVALS, ge=1, le=MAX_EVALS)
     max_minutes: float = Field(default=MAX_MINUTES, gt=0, le=MAX_MINUTES)
+    wait: bool | None = Field(None, description="false (the default for agents): return "
+                              "{study_id, status: running} at once and search in the "
+                              "background; a note arrives when it finishes (study_get / "
+                              "job_wait read it). true: block until the study is done")
 
 
 class StudyGetArgs(BaseModel):
@@ -606,7 +610,8 @@ def _objective(args: StudyRunArgs) -> Objective:
                   f"{MAX_EVALS} evaluations / {MAX_MINUTES:g} minutes; a variant whose build or "
                   "stress study fails is infeasible. Emits study_progress; cancellable (partial "
                   "results are kept). Runs its stress studies internally under this call's "
-                  "approval.")
+                  "approval. Runs in the background by default (returns {study_id, status: "
+                  "running}; a note arrives when it finishes; wait: true blocks).")
 async def study_run(ctx: ToolContext, args: StudyRunArgs) -> ToolOutput:
     _check_part(args.part_id)
     pid = _resolve_project(ctx, args.project_id)
@@ -633,6 +638,10 @@ async def study_run(ctx: ToolContext, args: StudyRunArgs) -> ToolOutput:
     budget = Budget(evals=args.max_evals, minutes=args.max_minutes).clamped()
     max_parallel = _max_parallel()
 
+    if not _wait_arg(ctx, args.wait):
+        from .. import jobs
+        jobs.check_room(ctx)
+    background = [False]          # set once the study runs as a background job
     study_id = STUDY_ID_PREFIX + secrets.token_hex(6)
     root = _study_root(ctx) / study_id
     root.mkdir(parents=True, exist_ok=True)
@@ -653,7 +662,7 @@ async def study_run(ctx: ToolContext, args: StudyRunArgs) -> ToolOutput:
                                  data={"study_id": study_id, "n": len(its),
                                        "total": budget.evals}))
         rt = (ctx.services or {}).get("runtime")     # the status line: "design study · 6/24"
-        if rt is not None and hasattr(rt, "activity_tracker"):
+        if rt is not None and hasattr(rt, "activity_tracker") and not background[0]:
             rt.activity_tracker(ctx.run_id).set("tool", f"design study · {len(its)}/{budget.evals}")
 
     def save(status: str, best_id: int | None) -> None:
@@ -671,52 +680,76 @@ async def study_run(ctx: ToolContext, args: StudyRunArgs) -> ToolOutput:
                                        "best_id": best_id,
                                        "kept_variants": record["kept_variants"]}))
 
-    try:
-        result = await run_study(variables, _static_evaluator(ctx, args.part_id, d, base_vars,
-                                                              spec, root, have_solver),
-                                 objective=obj, feasible=feasible, budget=budget,
-                                 on_iteration=on_iteration, iterations=iterations,
-                                 max_parallel=max_parallel, seed=0)
-        best_id = result["best_id"]
-        dyn_plan = _dynamic_plan(spec, have_solver) if best_id is not None else []
-        if dyn_plan:
-            record["dynamic"] = await _dynamic_checks(ctx, root, args.part_id, iterations,
-                                                      dyn_plan, best_id)
-            best_id = finalize(iterations, obj)   # a winner that failed modal/wind is out
-        if best_id is not None and have_solver and spec.load_cases:
-            best = next(it for it in iterations if it["n"] == best_id)
-            record["confirmation"] = await _confirm(ctx, root, args.part_id, spec, best,
-                                                    feasible)
-    except asyncio.CancelledError:
-        save("cancelled", finalize(iterations, obj))  # keep what finished
-        raise
-    except BaseException:
-        save("failed", finalize(iterations, obj))
-        raise
-    save(result["status"], best_id)
+    async def body() -> ToolOutput:
+        try:
+            result = await run_study(variables, _static_evaluator(ctx, args.part_id, d, base_vars,
+                                                                  spec, root, have_solver),
+                                     objective=obj, feasible=feasible, budget=budget,
+                                     on_iteration=on_iteration, iterations=iterations,
+                                     max_parallel=max_parallel, seed=0)
+            best_id = result["best_id"]
+            dyn_plan = _dynamic_plan(spec, have_solver) if best_id is not None else []
+            if dyn_plan:
+                record["dynamic"] = await _dynamic_checks(ctx, root, args.part_id, iterations,
+                                                          dyn_plan, best_id)
+                best_id = finalize(iterations, obj)   # a winner that failed modal/wind is out
+            if best_id is not None and have_solver and spec.load_cases:
+                best = next(it for it in iterations if it["n"] == best_id)
+                record["confirmation"] = await _confirm(ctx, root, args.part_id, spec, best,
+                                                        feasible)
+        except asyncio.CancelledError:
+            save("cancelled", finalize(iterations, obj))  # keep what finished
+            raise
+        except BaseException:
+            save("failed", finalize(iterations, obj))
+            raise
+        save(result["status"], best_id)
 
-    warnings = []
-    if not have_solver:
-        warnings.append("CalculiX is not installed: safety-factor and deflection requirements "
-                        "were not evaluated; the result is on mass and geometry only")
-    conf = record["confirmation"]
-    if conf is not None and not conf["confirmed"]:
-        warnings.append("the winner did not hold up on the fine mesh: treat it as unconfirmed "
-                        "and check it with sim_static_run")
-    if result["status"] == "budget_exhausted":
-        warnings.append("the study hit its time budget; results are partial")
-    dyn = record.get("dynamic")
-    if dyn and best_id is not None and best_id not in dyn["checked"]:
-        warnings.append(f"winner(s) {dyn['failed']} failed the {'/'.join(dyn['types'])} "
-                        f"target; the new best #{best_id} was NOT checked for it — run "
-                        "design_review on it before applying")
-    return ToolOutput(summary=_study_summary(record), data=compact_study(record),
-                      warnings=warnings, step_kind=StepKind.SIM_RUN)
+        warnings = []
+        if not have_solver:
+            warnings.append("CalculiX is not installed: safety-factor and deflection requirements "
+                            "were not evaluated; the result is on mass and geometry only")
+        conf = record["confirmation"]
+        if conf is not None and not conf["confirmed"]:
+            warnings.append("the winner did not hold up on the fine mesh: treat it as unconfirmed "
+                            "and check it with sim_static_run")
+        if result["status"] == "budget_exhausted":
+            warnings.append("the study hit its time budget; results are partial")
+        dyn = record.get("dynamic")
+        if dyn and best_id is not None and best_id not in dyn["checked"]:
+            warnings.append(f"winner(s) {dyn['failed']} failed the {'/'.join(dyn['types'])} "
+                            f"target; the new best #{best_id} was NOT checked for it — run "
+                            "design_review on it before applying")
+        return ToolOutput(summary=_study_summary(record), data=compact_study(record),
+                          warnings=warnings, step_kind=StepKind.SIM_RUN)
+
+    if _wait_arg(ctx, args.wait):
+        return await body()
+    from .. import jobs
+    background[0] = True
+    job = jobs.start(ctx, "design_study", study_id, f"design study of {args.part_id}", body,
+                     timeout_s=STUDY_TOOL_TIMEOUT_S,
+                     data=lambda out: {"part_id": args.part_id, "study_id": study_id})
+    job.scope = [args.part_id]
+    return ToolOutput(summary=f"design study {study_id} of {args.part_id} started in the "
+                              f"background (up to {budget.evals} variants); you get a note when "
+                              "it finishes. Keep working; read it with study_get or job_wait.",
+                      data={"study_id": study_id, "status": "running", "stream": "sim",
+                            "part_id": args.part_id})
+
+
+def _wait_arg(ctx: ToolContext, wait: bool | None) -> bool:
+    """Like sim_run: an agent's call defaults to the background (Plan 9 D4)."""
+    return wait if wait is not None else not getattr(ctx, "agent_call", False)
 
 
 def mark_interrupted(store, rec: dict) -> dict:
     """A study still "running" whose run has ended was interrupted (Mises restarted or the run
-    died mid-study): report it as such. Its iterations so far are kept."""
+    died mid-study): report it as such. Its iterations so far are kept. A background study
+    still running in this process is not interrupted."""
+    from .. import jobs
+    if rec.get("status") == "running" and jobs.active(rec.get("id") or ""):
+        return rec
     if rec.get("status") == "running" and rec.get("run_id"):
         try:
             if store.get_run(rec["run_id"]).status not in ("running", "queued"):

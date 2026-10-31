@@ -1,7 +1,7 @@
 // Plan 9 D4: the stream an event or step belongs to. Same rules as core events.stream_of.
 import type { Stream } from "../../src/api/types";
 
-const SIM_TOOLS = new Set(["design_review", "study_run", "study_get"]);
+const SIM_TOOLS = new Set(["design_review", "design_review_get", "study_run", "study_get", "job_wait"]);
 const VIEW_TOOLS = new Set(["render_views", "present_view", "critique_model", "part_show", "section_check", "assembly_animate"]);
 const SIM_EVENTS = new Set(["sim_progress", "sim_finished", "study_progress"]);
 const VIEW_EVENTS = new Set(["part_shown", "assembly_animate"]);

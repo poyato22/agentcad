@@ -496,10 +496,78 @@ def wind_memory_cap(ctx) -> int:
     return min(cap, wind_limits(ctx)["memory_mb"])
 
 
+#: what one FEM study (gmsh + CalculiX) is assumed to hold, for the shared memory budget
+FEM_MEMORY_MB = 4096
+_mem: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, dict]" = weakref.WeakKeyDictionary()
+
+
+def memory_budget_mb(ctx) -> int:
+    """The memory every running study together may hold: RAM - 6 GB for macOS, Mises and the
+    CAD kernel - what local models hold now (never below 64 MB)."""
+    from .. import hardware
+    from .cfd import OS_RESERVE_MB
+    rt = (getattr(ctx, "services", None) or {}).get("runtime")
+    try:
+        local = rt.parallel.local_gb_in_use() if rt is not None else 0.0
+    except Exception:  # noqa: BLE001
+        local = 0.0
+    ram = float(hardware.machine().get("ram_gb") or 16.0)
+    return int(max(64, ram * 1024 - OS_RESERVE_MB - local * 1024))
+
+
+def study_memory_mb(ctx, type_id: str) -> int:
+    """One study's share: a wind study its memory cap, a FEM study FEM_MEMORY_MB."""
+    need = wind_memory_cap(ctx) if type_id == "wind" else FEM_MEMORY_MB
+    return max(64, min(int(need), memory_budget_mb(ctx)))
+
+
+def _mem_state() -> dict:
+    loop = asyncio.get_running_loop()
+    st = _mem.get(loop)
+    if st is None:
+        st = _mem[loop] = {"used": 0, "cond": asyncio.Condition()}
+    return st
+
+
+async def _mem_acquire(mb: int, ctx, timeout_s: float) -> bool:
+    """Reserve mb of the shared budget; wait (up to timeout_s) while the running studies leave
+    too little. A study alone always gets its share."""
+    st = _mem_state()
+    budget = memory_budget_mb(ctx)
+
+    def room() -> bool:
+        return st["used"] == 0 or st["used"] + mb <= budget
+    async with st["cond"]:
+        try:
+            await asyncio.wait_for(st["cond"].wait_for(room), timeout_s)
+        except asyncio.TimeoutError:
+            return False
+        st["used"] += mb
+        return True
+
+
+def _mem_release(mb: int) -> None:
+    st = _mem_state()
+    st["used"] = max(0, st["used"] - mb)
+
+    async def wake() -> None:
+        async with st["cond"]:
+            st["cond"].notify_all()
+    asyncio.ensure_future(wake())
+
+
+def memory_in_use_mb() -> int:
+    try:
+        return int(_mem_state()["used"])
+    except RuntimeError:
+        return 0
+
+
 def wind_limits(ctx) -> dict:
     """The user's ceilings for an agent's wind settings (profile wind_max_*): memory, OpenFOAM
-    cores and time per run. Studies run one at a time, but they share the Mac with warm
-    measure workers, renders and local models."""
+    cores and time per run. Up to study_limit() studies run at once and share one memory
+    budget (memory_budget_mb), and the Mac with warm measure workers, renders and local
+    models."""
     from ..profile import Profile, load_profile
     rt = (getattr(ctx, "services", None) or {}).get("runtime")
     try:
@@ -540,7 +608,8 @@ async def run_study(ctx, type_id: str, part_id: str | None, part_dir: Path | Non
                     inputs_extra: dict | None = None,
                     solve_timeout_s: float | None = None,
                     coarse_only: bool = False, assembly: dict | None = None,
-                    wait: bool = True) -> ToolOutput:
+                    wait: bool = True,
+                    background_timeout_s: float | None = None) -> ToolOutput:
     """assembly: a resolved build target (assembly_study.resolve) instead of a part.
     wait=False (Plan 9 D4): return {sim_id, status: running} once the record exists; the study
     runs as a background job, publishes sim_finished and notes the owning lead when it ends."""
@@ -551,6 +620,9 @@ async def run_study(ctx, type_id: str, part_id: str | None, part_dir: Path | Non
                                   assembly)
     except SimError as e:
         raise MisesError(ErrorCode.INVALID_INPUT, e.message, hint=e.hint) from None
+    if not wait:
+        from .. import jobs
+        jobs.check_room(ctx)          # a bounded number of background jobs per run family
 
     parts_root = Path(ctx.workdir) / "parts"
     sim_id = "sim_" + secrets.token_hex(6)
@@ -642,7 +714,7 @@ async def run_study(ctx, type_id: str, part_id: str | None, part_dir: Path | Non
 
     def fail(code: str, message: str, hint: str | None, extra: dict | None = None,
              status: str = "failed") -> ToolOutput:
-        rec.update(status=status, stage=status, error=message, hint=hint,
+        rec.update(status=status, stage=status, error=message, hint=hint, error_code=code,
                    finished_at=time.time())
         write_record(sim_dir, rec)
         terminal(status, message)
@@ -662,6 +734,7 @@ async def run_study(ctx, type_id: str, part_id: str | None, part_dir: Path | Non
                             {"missing": ["ccx"], "install": INSTALL_HINT})
             version = await asyncio.to_thread(ccx_version, ccx) or "unknown"
         sem = semaphore()
+        queued_at = time.monotonic()
         try:
             await asyncio.wait_for(sem.acquire(), queue_timeout())
         except asyncio.TimeoutError:
@@ -669,11 +742,21 @@ async def run_study(ctx, type_id: str, part_id: str | None, part_dir: Path | Non
                                 f"{queue_timeout():g}s", "retry when the running study has "
                                                          "finished")
         try:
-            out = await _dispatch(type_id, job_root, metrics, material, ccx, settings, env,
-                                  progress, sim_id, part_id, solve_timeout_s,
-                                  wind_memory_cap(ctx), coarse_only=coarse_only,
-                                  wind_limits=wind_limits(ctx),
-                                  assembly=(assembly, snap) if assembly is not None else None)
+            # concurrent studies share one memory budget: a second one waits for room
+            need = study_memory_mb(ctx, type_id)
+            left = max(0.0, queue_timeout() - (time.monotonic() - queued_at))
+            if not await _mem_acquire(need, ctx, left):
+                return fail("busy", f"the running studies kept the memory budget full for "
+                                    f"{queue_timeout():g}s", "retry when they have finished")
+            try:
+                out = await _dispatch(type_id, job_root, metrics, material, ccx, settings, env,
+                                      progress, sim_id, part_id, solve_timeout_s,
+                                      min(wind_memory_cap(ctx), need), coarse_only=coarse_only,
+                                      wind_limits=wind_limits(ctx),
+                                      assembly=(assembly, snap) if assembly is not None
+                                      else None)
+            finally:
+                _mem_release(need)
         except SimError as e:
             return fail(e.code, e.message, e.hint)
         finally:
@@ -712,6 +795,10 @@ async def run_study(ctx, type_id: str, part_id: str | None, part_dir: Path | Non
         try:
             return await task
         except asyncio.CancelledError:
+            if sim_id in _timed_out:    # the background job's overall backstop
+                limit = _timed_out[sim_id]
+                return fail("timeout", f"the study ran past its {limit:g}s limit and was "
+                            "stopped", "simplify the setup or use a coarser mesh")
             rec.update(status="cancelled", stage="cancelled", error="cancelled",
                        finished_at=time.time())
             write_record(sim_dir, rec)
@@ -730,25 +817,40 @@ async def run_study(ctx, type_id: str, part_id: str | None, part_dir: Path | Non
         finally:
             _active.pop(sim_id, None)
             _cancel_requested.discard(sim_id)
+            _timed_out.pop(sim_id, None)
             shutil.rmtree(job_root, ignore_errors=True)
-            finished(ctx, rec)
+            if wait:
+                finished(ctx, rec)
 
     if wait:
         return await supervise()
 
+    from .. import jobs
+    limit = background_timeout_s or _tools_attr("SIM_RUN_TIMEOUT_S", 4 * 3600.0)
+    job = jobs.Job(id=sim_id, kind="sim", run_id=rec["run_id"], label=_label(rec),
+                   cancel=lambda: cancel(sim_id))
+
     async def background() -> None:
+        sup = asyncio.ensure_future(supervise())
         try:
-            await supervise()
+            done, _ = await asyncio.wait({sup}, timeout=limit)
+            if not done:
+                _timed_out[sim_id] = limit
+                task.cancel()
+            await sup
         except asyncio.CancelledError:
             pass
         except Exception:  # noqa: BLE001 - recorded as failed by supervise
             log.exception("background study %s failed", sim_id)
         finally:
-            note_lead(ctx, rec)
+            job.status = rec.get("status") if rec.get("status") != "running" else "failed"
+            job.summary = summary(rec)
+            job.error = rec.get("error")
+            job.defer = rec.get("error_code") == "busy"
+            jobs.finished(ctx, job, build_id=build_of(ctx, rec), data=_finish_data(rec))
 
-    bg = asyncio.ensure_future(background())
-    _background.add(bg)
-    bg.add_done_callback(_background.discard)
+    job.task = asyncio.ensure_future(background())
+    jobs.register(job)
     return ToolOutput(summary=f"study {sim_id} ({type_id}) started in the background "
                               f"({GUIDE_LABEL}); you get a note when it finishes. Keep "
                               "working; read it with sim_result_get or sim_wait.",
@@ -758,62 +860,49 @@ async def run_study(ctx, type_id: str, part_id: str | None, part_dir: Path | Non
 
 
 # ---- background studies (Plan 9 D4): the tool returns at once, the study finishes later
+# (jobs.py holds the job, its note and the run-family cancel)
 
-_background: set[asyncio.Future] = set()
-#: the lead notes being delivered (strong refs: a bare create_task may be collected)
-_notes: set[asyncio.Task] = set()
+#: sim_id -> the overall limit it ran past (supervise records it as a timeout, not a cancel)
+_timed_out: dict[str, float] = {}
+
+
+def _label(rec: dict) -> str:
+    target = rec.get("part_id") or (f"build {rec['project_id']}" if rec.get("project_id")
+                                    else "?")
+    return f"{rec.get('type')} study of {target}"
+
+
+def _finish_data(rec: dict) -> dict:
+    return {"sim_id": rec.get("sim_id"), "type": rec.get("type"), "part_id": rec.get("part_id")}
 
 
 def build_of(ctx, rec: dict) -> str | None:
     """The build a study belongs to: an assembly study's own, else its run's."""
     if rec.get("project_id"):
         return rec["project_id"]
-    store, run_id = getattr(ctx, "store", None), rec.get("run_id")
-    if store is None or not run_id:
-        return None
-    try:
-        return getattr(store.get_run(run_id), "project_id", None)
-    except Exception:  # noqa: BLE001
-        return None
+    from ..jobs import build_of as run_build
+    return run_build(ctx, rec.get("run_id"))
 
 
 def finished(ctx, rec: dict) -> None:
-    """sim_finished on the bus: the study ended (done / failed / cancelled), waited or not."""
-    events = getattr(ctx, "events", None)
-    if events is None or rec.get("status") == "running":
+    """sim_finished on the bus for a study its caller waited for (no note: the caller has the
+    result); a background study's goes through its job (jobs.finished)."""
+    if rec.get("status") == "running":
         return
-    events.publish(Event(type="sim_finished", run_id=rec.get("run_id"),
-                         data={"sim_id": rec.get("sim_id"), "run_id": rec.get("run_id"),
-                               "build_id": build_of(ctx, rec), "status": rec.get("status"),
-                               "type": rec.get("type"), "part_id": rec.get("part_id"),
-                               "summary": summary(rec)}))
-
-
-def note_text(rec: dict) -> str:
-    target = rec.get("part_id") or (f"build {rec['project_id']}" if rec.get("project_id")
-                                    else "?")
-    verb = {"done": "finished", "cancelled": "was cancelled"}.get(rec.get("status"), "failed")
-    return (f"[Mises system note, not from the user] Study {rec.get('type')} of {target} "
-            f"({rec.get('sim_id')}) {verb}: {summary(rec)}. Read it with sim_result_get "
-            f"{rec.get('sim_id')}.")[:600]
-
-
-def note_lead(ctx, rec: dict) -> None:
-    """A background study ended: tell the owning lead with a short note in its queue."""
-    rt = (getattr(ctx, "services", None) or {}).get("runtime")
-    run_id = rec.get("run_id")
-    if rt is None or not run_id:
-        return
-    from ..orchestrator.lead import deliver_note
-    meta = {"kind": "sim_finished", "sim_id": rec.get("sim_id"), "status": rec.get("status")}
-    t = asyncio.ensure_future(deliver_note(rt, run_id, note_text(rec), meta))
-    _notes.add(t)
-    t.add_done_callback(_notes.discard)
+    from .. import jobs
+    job = jobs.Job(id=rec["sim_id"], kind="sim", run_id=rec.get("run_id"), label=_label(rec),
+                   status=rec.get("status"), summary=summary(rec))
+    jobs.finished(ctx, job, build_id=build_of(ctx, rec), data=_finish_data(rec), note=False)
 
 
 async def wait_for(sim_id: str, timeout_s: float) -> bool:
     """Wait up to timeout_s for a study running in this process; True once it has ended (or
-    when it is not running here)."""
+    when it is not running here). A background study counts as read (no note)."""
+    from .. import jobs
+    j = jobs.get(sim_id)
+    if j is not None:
+        await jobs.wait(sim_id, timeout_s)
+        return j.status != "running"
     t = _active.get(sim_id)
     if t is None or t.done():
         return True
