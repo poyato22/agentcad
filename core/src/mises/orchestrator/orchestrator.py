@@ -78,6 +78,48 @@ def _run_tools(runtime: Runtime, run_id: str) -> list[str] | None:
     return None if defn is None or defn.tools is None else list(defn.tools)
 
 
+def inherited_model_ref(rt: Runtime, parent_run_id: str) -> str | None:
+    """The model a child should inherit from its parent (D3): the parent's live model ref — a
+    Claude Code session's ref first, else a native run's ref — else the provider/model stored on
+    the run. Returns None for a `ui` or `acp` parent (they drive no model a child can inherit),
+    so the child falls back to its definition's or the profile's model.
+
+    This is passed as `model_ref`, never folded into `child_policy()`: the planner and plan
+    tasks already pass `model_ref=` next to `**child_policy(...)`, so a duplicate keyword would
+    raise. Without it a Claude Code lead's children defaulted to the Anthropic API with no key
+    and 401'd."""
+    cst = getattr(rt, "_claude", {}).get(parent_run_id)
+    if cst is not None and getattr(cst, "ref", None):
+        return cst.ref
+    st = getattr(rt, "_runs", {}).get(parent_run_id)
+    if st is not None and getattr(st, "ref", None):
+        return st.ref
+    try:
+        run = rt.store.get_run(parent_run_id)
+    except KeyError:
+        return None
+    if run.provider in ("ui", "acp"):
+        return None
+    return f"{run.provider}/{run.model}"
+
+
+def _pinned(rt: Runtime, agent: str) -> bool:
+    """The agent's definition names its own model (not "inherit")."""
+    defn = rt.definitions.get(agent)
+    return defn is not None and bool(defn.model) and defn.model != "inherit"
+
+
+def _for_child(rt: Runtime, agent: str, model_ref: str | None) -> str | None:
+    """`model_ref` for a child of `agent`, unless its definition pins a model (that one wins
+    in model_ref_for). Shared by agent_spawn, the planner and plan tasks (D3)."""
+    return None if _pinned(rt, agent) else model_ref
+
+
+def _child_model_ref(rt: Runtime, parent_run_id: str, agent: str) -> str | None:
+    """Inherit the parent's model unless the child's definition pins its own (D3)."""
+    return _for_child(rt, agent, inherited_model_ref(rt, parent_run_id))
+
+
 def child_policy(runtime: Runtime, parent_run_id: str, agent: str,
                  edit_scope: list[str] | None = None) -> dict:
     """start_run kwargs for a child: scopes, classes and caps only ever narrow the parent's."""
@@ -168,7 +210,7 @@ class Orchestrator:
         known = set(rt.definitions) - {PLANNER}
         prompt = (f"Goal: {goal}\n\nAvailable agents for tasks: {', '.join(sorted(known))}.\n"
                   "Submit the plan with orchestrator_submit_plan.")
-        return await rt.start_run(PLANNER, prompt, model_ref=model_ref,
+        return await rt.start_run(PLANNER, prompt, model_ref=_for_child(rt, PLANNER, model_ref),
                                   **child_policy(rt, parent_run_id, PLANNER))
 
     async def _collect_plan(self, pid: str) -> Plan:
@@ -206,7 +248,8 @@ class Orchestrator:
         plan = await self._plan(goal, parent_run_id, model_ref)
 
         async def spawn(task: PlanTask, deps: dict[str, TaskResult]) -> TaskResult:
-            rid = await rt.start_run(task.agent, task_prompt(task, deps), model_ref=model_ref,
+            rid = await rt.start_run(task.agent, task_prompt(task, deps),
+                                     model_ref=_for_child(rt, task.agent, model_ref),
                                      role=SUB, title=task_title(task.title, task.prompt),
                                      **child_policy(rt, parent_run_id, task.agent))
             _announce_spawn(rt, parent_run_id, rid, task.agent, task_title(task.title,
@@ -295,6 +338,7 @@ async def _start_sub(rt: Runtime, ctx: ToolContext, args: SpawnArgs) -> str:
                               " turn' in the profile")
     title = task_title(args.task, args.prompt)
     rid = await rt.start_run(args.agent, args.prompt, role=SUB, title=title,
+                             model_ref=_child_model_ref(rt, ctx.run_id, args.agent),
                              **child_policy(rt, ctx.run_id, args.agent, args.edit_scope))
     _announce_spawn(rt, ctx.run_id, rid, args.agent, title)
     return rid
@@ -419,7 +463,10 @@ async def agent_result(ctx: ToolContext, args: ResultArgs) -> ToolOutput:
 async def orchestrator_run(ctx: ToolContext, args: OrchestrateArgs) -> ToolOutput:
     rt, orch = _services(ctx)
     check_depth(rt, ctx.run_id)
-    out = await orch.run(args.goal, parent_run_id=ctx.run_id)
+    # the planner and plan tasks inherit the caller's model (D3): a Claude Code lead's whole
+    # plan runs on Claude Code, not the keyless Anthropic default
+    out = await orch.run(args.goal, parent_run_id=ctx.run_id,
+                         model_ref=inherited_model_ref(rt, ctx.run_id))
     results = out["results"]
     counts: dict[str, int] = {}
     for r in results.values():
