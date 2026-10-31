@@ -15,6 +15,7 @@ import { lastEditedAt, type Build } from "../../../api/builds";
 import { buildActions, builds, buildsError } from "../../../state/builds";
 import { atHome, homeView, openBuild } from "../../../state/home";
 import { actions, conn, runs } from "../../../state/store";
+import { CubeMark } from "../../boot/CubeMark";
 import { Led } from "../../common/Led";
 import { Thumb } from "../../common/Thumb";
 import { useDismiss } from "../../common/dismiss";
@@ -144,7 +145,10 @@ function BuildGrid(): JSX.Element {
       {/* m2: import results get the page's full width, not a grid cell */}
       {!trash && <div class="home-imports"><ImportCards /></div>}
       {/* every grid slot is a build (review m1); a drawing dropped anywhere on Home starts a part */}
-      <ul class="home-grid" role="list" aria-label={trash ? "Trashed builds" : "Builds"}>
+      {/* FW-layout (D20): the grid fills the window (3–5 columns of 280–420px); one or two builds sit
+          as a centred pair of large covers with a quiet hint under them, none as a centred start */}
+      <ul class="home-grid" role="list" aria-label={trash ? "Trashed builds" : "Builds"}
+        data-few={shown.length <= 2 ? String(shown.length) : undefined}>
         {shown.map((b) => (
           <li key={b.id} class="home-cell">
             {trash ? <TrashTile build={b} /> : <BuildTile build={b} onTrash={() => { void moveToTrash(b); }} />}
@@ -152,11 +156,16 @@ function BuildGrid(): JSX.Element {
         ))}
 
         {shown.length === 0 && (
-          <li class="home-empty dim">
-            {trash ? "The Trash is empty." : query ? `No builds match “${query}”.` : "No builds yet. Start one with New build, or drop a drawing here."}
+          <li class="home-empty">
+            {!trash && !query && <CubeMark />}
+            <span class="home-empty-title">{trash ? "The Trash is empty." : query ? `No builds match “${query}”.` : "No builds yet"}</span>
+            {!trash && !query && <span class="dim">Start one with New build, or drop a drawing anywhere on this window.</span>}
           </li>
         )}
       </ul>
+      {!trash && !query && shown.length > 0 && shown.length <= 2 && (
+        <p class="home-hint dim">New build starts another; a drawing dropped anywhere here becomes a part.</p>
+      )}
 
       {undo && (
         <div class="home-toast" role="status" aria-live="polite">
