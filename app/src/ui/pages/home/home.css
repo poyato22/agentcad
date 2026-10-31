@@ -73,15 +73,27 @@
 .home-tool:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
 .home-working-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
 
+/* FW-layout (D20): the grid fills the window — tiles 280–420px, 3 to 5 columns (never more than 5:
+   the minimum grows to a fifth of the row), the row capped at 5 × 420 and centred on very wide
+   windows. One or two builds: a centred pair of large covers with a hint under them. */
 .home-grid {
+  --home-gap: 20px;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 22px 18px;
-  padding: 12px 24px 40px;
-  margin: 0;
+  grid-template-columns: repeat(auto-fill, minmax(max(280px, calc((100% - 4 * var(--home-gap)) / 5)), 1fr));
+  gap: 28px var(--home-gap);
+  max-width: calc(5 * 420px + 4 * var(--home-gap) + 48px);
+  padding: 16px 24px 48px;
+  margin: 0 auto;
   list-style: none;
   align-content: start;
 }
+.home-grid[data-few] {
+  grid-template-columns: repeat(auto-fit, minmax(280px, 420px));
+  justify-content: center;
+  padding-top: clamp(24px, 9vh, 96px);
+  padding-bottom: 12px;
+}
+.home-hint { margin: 8px 24px 48px; text-align: center; font-size: var(--fs); }
 .home-cell { display: flex; flex-direction: column; min-width: 0; }
 .home-cell > .tile { flex: 1; }
 
@@ -246,7 +258,12 @@
   border-radius: var(--r-btn);
 }
 
-.home-empty { grid-column: 1 / -1; padding: 24px 2px; }
+.home-empty {
+  grid-column: 1 / -1; display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: clamp(24px, 12vh, 140px) 24px 24px; text-align: center; color: var(--dim);
+}
+.home-empty .cube-mark { margin-bottom: 8px; opacity: .9; }
+.home-empty-title { color: var(--ink); font: 600 var(--fs-display)/1.2 var(--font-ui); }
 
 /* Undo after "Move to Trash" (D30): a floating toast, bottom centre */
 .home-toast {

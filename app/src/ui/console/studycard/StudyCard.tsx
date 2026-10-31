@@ -152,7 +152,7 @@ export function StudyCard({ view, siblings = [] }: StudyCardProps): JSX.Element 
         </div>
       )}
       <p class="scard-fidelity" data-testid="fidelity">
-        <span class="scard-guide">GUIDE ONLY</span>
+        <span class="scard-guide">Guide only</span>
         <span class="scard-fidelity-note text" data-testid="fidelity-note">{hon.fidelity}</span>
         {hon.band && <span class="scard-band text" data-testid="error-band">{hon.band}</span>}
       </p>

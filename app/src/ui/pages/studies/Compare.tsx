@@ -11,7 +11,7 @@ export function Compare({ data, onClose, onOpen }: { data: StudyCompare; onClose
     <section class="st-compare" aria-label="Compare studies" data-testid="compare-view">
       <header class="st-compare-head">
         <h2 class="label">Compare</h2>
-        <span class="st-guide-tag">GUIDE ONLY</span>
+        <span class="st-guide-tag">Guide only</span>
         <span class="faint text">{data.label}</span>
         <Button variant="ghost" onClick={onClose}>Close</Button>
       </header>

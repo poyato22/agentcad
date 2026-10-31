@@ -3,14 +3,14 @@
    pointing the way you look at the cut. */
 /* under the figure label in the sheet's top-left, opening downward: clear of the title block and of
    the tool strip on the right; the strip first, the rows of the modes that are on below it */
-.vm { position: absolute; left: 22px; top: 68px; z-index: 4; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; max-width: calc(100% - 44px); pointer-events: none; }
+.vm { position: absolute; left: calc(var(--inset-l, 0px) + 14px); top: 58px; z-index: 4; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; max-width: calc(100% - var(--inset-l, 0px) - var(--inset-r, 0px) - 28px); pointer-events: none; }
 .vm > * { pointer-events: auto; }
 .vm-strip { display: flex; order: -1; }
 .vm-strip .vt-btn:first-child { margin-left: 0; }
 .vm-rows { display: flex; flex-direction: column; border: 1px solid var(--line2); background: var(--paper); }
 .vm-row { display: flex; align-items: center; gap: 8px; padding: 5px 8px; min-width: 0; flex-wrap: wrap; }
 .vm-row + .vm-row { border-top: 1px solid var(--line); }
-.vm-name { font: 700 var(--fs-label)/1 var(--font-head); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); width: 64px; flex: none; }
+.vm-name { font: 700 var(--fs-label)/1 var(--font-head); color: var(--dim); width: 64px; flex: none; }
 .vm-sub { font-size: var(--fs-small); }
 .vm-val { color: var(--ink); font-size: var(--fs-small); font-variant-numeric: tabular-nums; min-width: 52px; }
 .vm-row input[type="range"] { width: 120px; accent-color: var(--dim); }

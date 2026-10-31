@@ -89,8 +89,10 @@ test("title_block_values_never_overlap_at_1280x800", async ({ page, fake }) => {
   expect(outer && vp && outer.x + outer.width <= vp.x + vp.width).toBe(true);
 });
 
-test("drafting_grid_and_fig_label_visible", async ({ page }) => {
-  await expect(page.getByText("FIG. 1 — DESIGN")).toBeVisible();
+test("drafting_grid_visible_without_fig_caption_or_ticks", async ({ page }) => {
+  // FW-layout (D20): no drafting "FIG." caption or corner ticks; the facts card is a floating surface
+  await expect(page.getByTestId("title-block")).toBeVisible();
+  await expect(page.getByText(/FIG\./)).toHaveCount(0);
   const style = await page.locator(".vp").evaluate((el) => {
     const s = getComputedStyle(el);
     return { bg: s.backgroundColor, img: s.backgroundImage, size: s.backgroundSize };
@@ -100,9 +102,9 @@ test("drafting_grid_and_fig_label_visible", async ({ page }) => {
   expect(style.img).toMatch(/rgba\(255, 255, 255, 0\.02[45]\)/); // 8-bit alpha quantisation
   expect(style.size).toContain("100px 100px");
   expect(style.size).toContain("20px 20px");
-  await expect(page.locator(".tick")).toHaveCount(4);
-  const radius = await page.locator(".title-block .tb-cells").evaluate((el) => getComputedStyle(el).borderRadius);
-  expect(radius).toBe("0px");
+  await expect(page.locator(".tick")).toHaveCount(0);
+  const radius = await page.locator(".title-block").evaluate((el) => getComputedStyle(el).borderRadius);
+  expect(radius).toBe("10px");
 });
 
 test("highlight_blue_while_agent_changes_part", async ({ page, fake }) => {

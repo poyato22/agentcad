@@ -251,8 +251,6 @@ export function StudyView(props: StudyViewProps): JSX.Element {
           style={{ cursor: props.picking || probeOn ? "crosshair" : undefined }}
           data-markers={st?.markers ?? 0} data-particles={st?.particles ?? 0} data-streamlines={st?.streamlines ?? 0}
           data-animating={st?.animating ? "true" : "false"} data-section={st?.section ? "true" : "false"} />
-        <span class="tick tick-tl" /><span class="tick tick-tr" /><span class="tick tick-bl" /><span class="tick tick-br" />
-        <span class="label vp-fig">{simId ? `FIG. — ${channelText(channel ?? "result").toUpperCase()}` : "FIG. — SETUP"}</span>
         {labels.map((l) => <span key={l.key} class="sv-mlabel" style={{ left: `${l.x}px`, top: `${l.y}px` }}>{l.text}</span>)}
         {props.picking && <div class="sv-hint" role="status" data-testid="pick-hint">{props.pickHint ?? "Click a face of the part · Esc to stop"}</div>}
         {caption && <div class="sv-caption" role="status" data-testid="live-caption">{caption}</div>}

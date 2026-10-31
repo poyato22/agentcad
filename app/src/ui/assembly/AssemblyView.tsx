@@ -35,6 +35,7 @@ import { assemblyOf } from "../left/treeActions";
 import { parseAnimateSteps, setAnimationPlayer } from "../../state/assemblyAnimation";
 import type { AnimateStep } from "../../api/types";
 import { registerAnnounceJump } from "../console/announceJumps";
+import { NO_INSETS, viewInsets } from "../shell/insets";
 import "./assembly.css";
 
 /** The full window frames its model at about 70% of the limiting side. */
@@ -170,6 +171,11 @@ export function AssemblyView(): JSX.Element {
       templates.current.clear();
     };
   }, []);
+
+  // FW-layout: the model centres in what the floating surfaces leave (Play's full window: all of it)
+  const fullWindow = immersive.value !== null;
+  const insets = fullWindow ? NO_INSETS : viewInsets.value;
+  useEffect(() => { sceneRef.current?.setInsets(insets.left, insets.right); }, [insets.left, insets.right]);
 
   // the active build's assembly (a build switch re-opens it, onBuildSwitch above)
   const build = activeBuildId.value;

@@ -71,7 +71,7 @@ describe("ApprovalCard", () => {
     expect(card.getAttribute("role")).toBe("group");
     expect(card.getAttribute("tabindex")).toBe("0");
     expect(card.getAttribute("aria-label")).toBe("Needs you: onshape_merge_request");
-    expect(card.textContent).toContain("▲ NEEDS YOU");
+    expect(card.textContent).toContain("Needs you");
     expect(card.textContent).toContain("designer · stiffen upright bracket");
     expect(card.textContent).toContain("merge agent/designer into main: 2 ribs on the upright");
     expect(card.textContent).toContain("+4.1 g");

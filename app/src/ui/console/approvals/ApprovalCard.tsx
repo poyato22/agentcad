@@ -248,7 +248,7 @@ export function ApprovalCard(props: { approval: Approval; runLabel: string }): J
       aria-label={`Needs you: ${a.action}`} onKeyDown={onKeyDown} onKeyUp={onKeyUp}
       onFocusIn={onFocusIn} onPointerDownCapture={onPointerDownIn} onMouseDownCapture={onPointerDownIn}>
       <div class="acard-head">
-        <span class="acard-flag">▲ NEEDS YOU</span>
+        <span class="acard-flag">Needs you</span>
         <span class="acard-action text">{a.action}</span>
         <span class="faint text acard-run">{props.runLabel}</span>
       </div>

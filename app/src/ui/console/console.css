@@ -15,7 +15,7 @@
 .con-ag.sel { background: var(--blue-tint); color: var(--ink); box-shadow: inset 2px 0 var(--blue); }
 .con-ag-name { min-width: 0; }
 .con-ag .con-ag-label { display: block; color: var(--ink); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.con-ag .con-ag-who { display: block; font-size: 9px; color: var(--faint); letter-spacing: .04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.con-ag .con-ag-who { display: block; font-size: 9px; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .con-ag .con-ag-task { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .con-ag-t { text-align: right; font-size: 10px; color: var(--faint); }
 .con-ag-x { visibility: hidden; border: 1px solid var(--line2); background: transparent; color: var(--dim); padding: 0 4px; cursor: pointer; font-size: 10px; }

@@ -45,7 +45,7 @@ test("the parts list shows one total per currency, estimates and the unpriced co
   await page.getByRole("button", { name: "Export CSV" }).click();
   await expect.poll(async () => (await fake.calls()).some((c) => /\/bom\.csv$/.test(c.path))).toBe(true);
 
-  await page.getByRole("button", { name: "Back to design" }).first().click();
+  await page.getByRole("tab", { name: "Design" }).click();
   await expect(page.locator('[data-region="viewer"]')).toBeVisible();
 });
 

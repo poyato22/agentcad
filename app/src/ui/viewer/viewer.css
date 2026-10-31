@@ -12,13 +12,12 @@
   background-size: 100px 100px, 100px 100px, 20px 20px, 20px 20px;
 }
 .vp-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
-.tick { position: absolute; width: 10px; height: 10px; border: 0 solid var(--dim); pointer-events: none; }
-.tick-tl { left: 8px; top: 8px; border-left-width: 1px; border-top-width: 1px; }
-.tick-tr { right: 8px; top: 8px; border-right-width: 1px; border-top-width: 1px; }
-.tick-bl { left: 8px; bottom: 8px; border-left-width: 1px; border-bottom-width: 1px; }
-.tick-br { right: 8px; bottom: 8px; border-right-width: 1px; border-bottom-width: 1px; }
-.vp-fig { position: absolute; left: 22px; top: 46px; pointer-events: none; }
-.vp-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+/* FW-layout: the build view runs under the floating surfaces; its own chrome keeps to the part of
+   the sheet they leave (--inset-l / --inset-r, set by App from ui/shell/insets; 0 elsewhere). */
+.vp-empty {
+  position: absolute; inset: 0 var(--inset-r, 0px) 0 var(--inset-l, 0px); display: flex; align-items: center; justify-content: center;
+  padding: 0 24px; text-align: center; pointer-events: none; color: var(--dim);
+}
 /* I4b: the layout skeleton's values, centred on the sheet in place of a model */
 .skel {
   position: absolute; left: 50%; top: 96px; transform: translateX(-50%); z-index: 3; width: min(520px, calc(100% - 44px));
@@ -34,47 +33,58 @@
 .skel-row dt { color: var(--dim); overflow: hidden; text-overflow: ellipsis; }
 .skel-row dd { margin: 0; }
 
-.viewer-tools { position: absolute; right: 22px; top: 14px; display: flex; gap: 0; }
+/* the part view's tools (top right) and its way back (top left): small floating buttons in the
+   UI face, sentence case */
+.viewer-tools { position: absolute; right: calc(var(--inset-r, 0px) + 14px); top: 14px; display: flex; gap: 6px; z-index: 5; }
 .vt-btn {
-  font: var(--fs-small)/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase;
-  color: var(--dim); background: var(--paper); border: 1px solid var(--line2); padding: 5px 9px; margin-left: -1px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 11px;
+  font: 500 var(--fs)/1 var(--font-ui); letter-spacing: 0; text-transform: none;
+  color: var(--ink); cursor: pointer;
+  background: var(--surface); -webkit-backdrop-filter: blur(var(--surface-blur)); backdrop-filter: blur(var(--surface-blur));
+  border: 1px solid var(--line); border-radius: var(--r-btn); box-shadow: var(--shadow);
+  transition: background-color var(--t-fast) ease, border-color var(--t-fast) ease;
 }
-.vt-btn:hover { color: var(--ink); }
-.vt-btn[data-active="true"] { color: var(--blue2); border-color: var(--blue); position: relative; }
+.vt-btn:hover { background: var(--raised); }
+.vt-btn[data-active="true"] { color: var(--ink); background: var(--blue-tint); border-color: color-mix(in srgb, var(--blue) 55%, transparent); position: relative; }
 .vt-btn[aria-disabled="true"] { color: var(--faint); cursor: default; }
-.vt-btn[aria-disabled="true"]:hover { color: var(--faint); }
+.vt-btn[aria-disabled="true"]:hover { color: var(--faint); background: var(--surface); }
 
-.title-block { position: absolute; right: 22px; bottom: 22px; max-width: calc(100% - 44px); background: var(--vp); }
-.tb-cells { display: flex; border: 1px solid var(--dim); }
-/* PART / SIZE / MASS keep their width; BY (a run label, can be long) gives way and ends in "…"
+/* the open part's facts: one quiet floating card, bottom right */
+.title-block {
+  position: absolute; right: calc(var(--inset-r, 0px) + 14px); bottom: 14px; z-index: 4;
+  max-width: calc(100% - var(--inset-l, 0px) - var(--inset-r, 0px) - 28px);
+  background: var(--surface); -webkit-backdrop-filter: blur(var(--surface-blur)); backdrop-filter: blur(var(--surface-blur));
+  border: 1px solid var(--line); border-radius: var(--r-surface); box-shadow: var(--shadow); overflow: hidden;
+}
+.tb-cells { display: flex; }
+/* Part / Size / Mass keep their width; By (a run label, can be long) gives way and ends in "…"
    so no value spills into its neighbour at narrow windows (QA at 1280×800). */
-.tb-cell { display: flex; flex-direction: column; gap: 4px; padding: 5px 10px; min-width: 70px; border-left: 1px solid var(--dim); flex: none; }
+.tb-cell { display: flex; flex-direction: column; gap: 3px; padding: 8px 12px; min-width: 70px; border-left: 1px solid var(--line); flex: none; }
 .tb-cell[data-cell="BY"] { flex: 0 1 auto; min-width: 70px; overflow: hidden; }
 .tb-cell:first-child { border-left: 0; }
 .tb-value { color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tb-error { border: 1px solid var(--dim); border-top: 0; padding: 4px 10px; color: var(--red); }
+.tb-error { border-top: 1px solid var(--line); padding: 6px 12px; color: var(--red); }
 
-/* The corner holds Part | Assembly (and, in the Code view, "Back to the model"), above the Code
+/* The corner holds "← Assembly" (and, in the Code view, "Back to the model"), above the Code
    view (which starts at 44px) */
-.vp-corner { position: absolute; left: 22px; top: 14px; display: flex; align-items: center; gap: 12px; z-index: 5; }
-.vp-back-asm { text-transform: none; letter-spacing: 0; }
-.vt-btn:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
+.vp-corner { position: absolute; left: calc(var(--inset-l, 0px) + 14px); top: 14px; display: flex; align-items: center; gap: 8px; z-index: 5; }
+.vt-btn:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
 
-/* U2b: the View menu (ViewerTools) — one button, a drafting-card list under it */
+/* U2b: the View menu (ViewerTools) — one button, a floating menu under it */
 .view-menu { z-index: 6; }
-.view-btn { display: inline-flex; gap: 6px; align-items: center; padding: 6px 10px; font-size: var(--fs); letter-spacing: 0; text-transform: none; }
-.view-btn[aria-expanded="true"] { color: var(--ink); border-color: var(--dim); }
+.view-btn[aria-expanded="true"] { background: var(--raised); }
 .view-list {
-  position: absolute; right: 0; top: calc(100% + 4px); min-width: 200px; padding: 4px 0;
-  background: var(--paper2); border: 1px solid var(--line2); display: flex; flex-direction: column;
+  position: absolute; right: 0; top: calc(100% + 6px); min-width: 210px; padding: 4px;
+  background: var(--surface); -webkit-backdrop-filter: blur(var(--surface-blur)); backdrop-filter: blur(var(--surface-blur));
+  border: 1px solid var(--line); border-radius: var(--r-surface); box-shadow: var(--shadow); display: flex; flex-direction: column;
 }
 .view-group { display: flex; flex-direction: column; padding: 2px 0; }
-.view-group + .view-group { border-top: 1px solid var(--line); }
+.view-group + .view-group { border-top: 1px solid var(--line); margin-top: 2px; padding-top: 4px; }
 .view-item {
   display: grid; grid-template-columns: 14px 1fr auto; align-items: center; gap: 6px; width: 100%; text-align: left;
-  padding: 5px 12px 5px 8px; background: transparent; border: 0; color: var(--ink); font: inherit; cursor: pointer;
+  padding: 6px 10px 6px 6px; background: transparent; border: 0; border-radius: var(--r-row); color: var(--ink); font: inherit; cursor: pointer;
 }
-.view-item:hover, .view-item:focus { background: var(--blue-tint); outline: none; }
+.view-item:hover, .view-item:focus { background: var(--raised); outline: none; }
 .view-item:focus-visible { outline: 1px solid var(--blue); outline-offset: -1px; }
 .view-item[aria-disabled="true"] { color: var(--faint); cursor: default; }
 .view-item[aria-disabled="true"]:hover { background: transparent; }
@@ -82,14 +92,13 @@
 .view-hint { font-size: var(--fs-small); }
 .vt-gap { width: 8px; }
 .vt-btn:disabled { color: var(--faint); cursor: default; }
-.vp[data-tab="code"] .vp-fig, .vp[data-tab="code"] .title-block { visibility: hidden; }
-.vp[data-tab="code"] .src { top: 44px; }
+.vp[data-tab="code"] .title-block { visibility: hidden; }
+.vp[data-tab="code"] .src { top: 56px; left: calc(var(--inset-l, 0px) + 12px); right: calc(var(--inset-r, 0px) + 12px); bottom: 12px; border: 1px solid var(--line); border-radius: var(--r-surface); overflow: hidden; }
 .src-empty { display: flex; align-items: center; justify-content: center; }
 
 /* "All parts" overview toggle: a tool-row button left of View ▾ (R17; I3 — in the row's flow, so it
    never floats over the X-ray rows or a panel). It takes .vt-btn's look. */
-.overview-toggle { margin-right: 8px; padding: 6px 10px; font-size: var(--fs); letter-spacing: 0; text-transform: none; }
-.overview-toggle.on { color: var(--ink); border-color: var(--blue); background: var(--blue-tint); }
+.overview-toggle.on { color: var(--ink); border-color: color-mix(in srgb, var(--blue) 55%, transparent); background: var(--blue-tint); }
 .overview-toggle:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
 /* ---- Plan 7 U2a: selection label, measure panel, comment box, feedback pins (greys; blue marks the pick) */
 .vx-label {
@@ -105,8 +114,8 @@
 .vx-link:focus-visible, .vx-x:focus-visible, .vx-pin:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
 
 .vx-panel {
-  /* top-left, under the FIG label: the title block owns the bottom edge */
-  position: absolute; left: 22px; top: 112px; z-index: 3; width: 248px; max-width: calc(100% - 44px);
+  /* top-left, under "← Assembly" and the view modes: the facts card owns the bottom edge */
+  position: absolute; left: calc(var(--inset-l, 0px) + 14px); top: 102px; z-index: 3; width: 248px; max-width: calc(100% - 44px);
   display: flex; flex-direction: column; gap: 6px; padding: 7px 10px 9px;
   background: var(--paper); border: 1px solid var(--line2); border-top: 2px solid var(--blue); font-size: var(--fs-small);
 }
@@ -131,7 +140,7 @@
 .vx-comment-label { display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-small); }
 .vx-comment textarea { resize: vertical; min-height: 54px; padding: 4px 6px; font: inherit; color: var(--ink); background: var(--paper2); border: 1px solid var(--line2); }
 .vx-comment textarea:focus { outline: 1px solid var(--blue); outline-offset: -1px; }
-.vx-mode-hint { position: absolute; left: 50%; top: 50px; transform: translateX(-50%); padding: 3px 9px; background: var(--paper); border: 1px solid var(--line2); pointer-events: none; z-index: 2; }
+.vx-mode-hint { position: absolute; left: calc(var(--inset-l, 0px) + (100% - var(--inset-l, 0px) - var(--inset-r, 0px)) / 2); top: 58px; transform: translateX(-50%); padding: 3px 9px; background: var(--paper); border: 1px solid var(--line2); pointer-events: none; z-index: 2; }
 
 .vx-pins { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
 .vx-dot { position: absolute; width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px; background: var(--blue); border-radius: 50%; }

@@ -1,5 +1,5 @@
 /* Viewer background menu (bottom-left of the sheet) and the light-background overlay tweaks. */
-.vp-bg { position: absolute; right: 22px; top: 44px; z-index: 6; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.vp-bg { position: absolute; right: calc(var(--inset-r, 0px) + 14px); top: 50px; z-index: 6; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 .vp-bg-btn { display: inline-flex; align-items: center; gap: 6px; }
 .vp-bg-chip {
   display: inline-block; width: 12px; height: 12px; flex: none; border: 1px solid var(--line2);

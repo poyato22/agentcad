@@ -74,7 +74,7 @@ describe("inline study cards", () => {
     expect(within(wind).getByTestId("card-note").textContent).toMatch(/skin-friction estimate/);
     expect(wind.textContent).toContain("drag of the cube at 5 m/s");
     expect(wind.textContent).toContain("sim:"); // which agent ran it
-    expect(wind.textContent).toContain("GUIDE ONLY");
+    expect(wind.textContent).toContain("Guide only");
     // R18: checks and the chart live behind the card's expand
     fireEvent.click(within(wind).getByTestId("card-expand"));
     expect(within(wind).getAllByTestId("check")[0].dataset.status).toBe("pass");

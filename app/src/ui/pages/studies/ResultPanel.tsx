@@ -1,4 +1,4 @@
-// A study's result on the Studies page, for every type: the verdict, "GUIDE ONLY" with the
+// A study's result on the Studies page, for every type: the verdict, "Guide only" with the
 // fidelity note up front (wind: "low fidelity · ±X% (validated)" and the skin-friction note),
 // the key metrics (wind: the Cd / Cl readout), the requirement checks, every chart (the yaw sweep,
 // the excitation band, the stress histogram …), the solver / mesh / material label, warnings,
@@ -96,7 +96,7 @@ export function ResultPanel({ rec, charts, onAsk, onOpenRun, asked, onImmersive 
         </span>
       </div>
       <p class="st-guide" data-testid="guide-label">
-        <span class="st-guide-tag">GUIDE ONLY</span>
+        <span class="st-guide-tag">Guide only</span>
         <span class="st-fidelity text" data-testid="fidelity-note">{card ? fidelityText(card) : rec.fidelity_class}</span>
         <span class="faint text">{rec.label}</span>
       </p>

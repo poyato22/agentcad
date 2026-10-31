@@ -12,7 +12,7 @@
   flex: none; height: var(--chrome-h); display: flex; align-items: center; gap: 16px; padding: 0 16px;
   background: var(--head); border-bottom: 1px solid var(--line2);
 }
-.setup-title { font: 600 12px/1 var(--font-head); letter-spacing: .08em; text-transform: uppercase; color: var(--ink); }
+.setup-title { font: 600 12px/1 var(--font-head); color: var(--ink); }
 .setup-head nav { height: 100%; }
 .setup-steps { display: flex; gap: 2px; margin: 0; padding: 0; list-style: none; height: 100%; }
 .setup-steps li { display: flex; height: 100%; }
@@ -34,13 +34,13 @@
 .setup-step { display: flex; flex-direction: column; gap: 12px; }
 .setup-step > p { margin: 0; max-width: 62ch; }
 .setup-step-head { display: flex; flex-direction: column; gap: 4px; border-bottom: 1px solid var(--line2); padding-bottom: 8px; }
-.setup-h { font-size: 20px; letter-spacing: .02em; }
+.setup-h { font-size: 20px; }
 .setup-sub { margin: 0; }
 
 .setup-cards { display: flex; flex-direction: column; gap: 8px; }
 .setup-card { background: var(--paper2); border: 1px solid var(--line2); padding: 12px; display: flex; flex-direction: column; gap: 8px; }
 .setup-card p { margin: 0; }
-.setup-card-title { font: 600 var(--fs-label)/1 var(--font-head); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+.setup-card-title { font: 600 var(--fs-label)/1 var(--font-head); color: var(--dim); }
 .setup-form { gap: 6px; }
 .setup-field { display: flex; flex-direction: column; gap: 3px; }
 .setup-field input, .setup-field select { width: 100%; }

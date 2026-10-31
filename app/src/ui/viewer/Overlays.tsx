@@ -9,11 +9,13 @@ import { fmtValueOnly, labelFor, shownValues, type Picked } from "./interact";
 import type { Pin } from "./pins";
 
 type At = { x: number; y: number };
-type Bounds = { w: number; h: number };
+/** The part of the sheet a box may use: x0 → w (FW-layout: clear of the floating surfaces). */
+type Bounds = { w: number; h: number; x0?: number };
 
 /** Keep a box of w × h near `at` (right-below it) inside the sheet. */
 function place(at: At, w: number, h: number, b: Bounds): { left: string; top: string } {
-  const x = Math.min(Math.max(8, at.x + 14), Math.max(8, b.w - w - 8));
+  const x0 = (b.x0 ?? 0) + 8;
+  const x = Math.min(Math.max(x0, at.x + 14), Math.max(x0, b.w - w - 8));
   const y = Math.min(Math.max(8, at.y + 14), Math.max(8, b.h - h - 8));
   return { left: `${x}px`, top: `${y}px` };
 }

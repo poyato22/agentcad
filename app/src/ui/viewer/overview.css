@@ -1,13 +1,14 @@
 /* Build overview (R17): the "All parts" grid, overlaying the viewer. Tokens only. */
 .overview {
   position: absolute;
-  inset: 0;
+  /* FW-layout: between the floating surfaces */
+  inset: 0 var(--inset-r, 0px) 0 var(--inset-l, 0px);
   z-index: 7;   /* over the sheet's View ▾ menu (6) and its toggles */
   display: flex;
   flex-direction: column;
   background: var(--bg);
   color: var(--ink);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--fs);
 }
 .overview-bar {
