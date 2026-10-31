@@ -449,9 +449,17 @@ def _part_disk(home: Path, part_id: str) -> dict | None:
             continue
         if stat.S_ISREG(st.st_mode):
             mtimes.append(st.st_mtime)
-    return {"vars": vars_ if isinstance(vars_, dict) else {},
-            "metrics": metrics if isinstance(metrics, dict) else None,
-            "mtime": float(max(mtimes)) if mtimes else real.stat().st_mtime}
+    out = {"vars": vars_ if isinstance(vars_, dict) else {},
+           "metrics": metrics if isinstance(metrics, dict) else None,
+           "mtime": float(max(mtimes)) if mtimes else real.stat().st_mtime}
+    if out["metrics"] is None:
+        # a recorded failed build (cad.tools._mark_build, host-only meta): mass says "build
+        # failed" only then; otherwise the part is "not built yet"
+        from . import edits
+        err = _safe_json(root / edits.META_DIR / part_id, "build_error.json")
+        if isinstance(err, dict) and isinstance(err.get("error"), str):
+            out["build_error"] = err["error"]
+    return out
 
 
 _NO_DISK = {"vars": {}, "metrics": None, "mtime": None}

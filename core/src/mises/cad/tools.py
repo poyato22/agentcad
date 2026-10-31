@@ -256,12 +256,33 @@ async def _build_guarded(d: Path, vars_: dict, snap: dict[str, bytes], ctx=None,
     bad = _after_build(d)
     if bad:
         _restore(d, snap)
-        return BuildResult(False, error="the build left links or special files in the part "
-                           f"dir ({', '.join(bad[:5])}); they were removed and the edit refused",
-                           stdout_tail=res.stdout_tail)
-    if not res.ok:
+        res = BuildResult(False, error="the build left links or special files in the part "
+                          f"dir ({', '.join(bad[:5])}); they were removed and the edit refused",
+                          stdout_tail=res.stdout_tail)
+    elif not res.ok:
         _restore(d, snap)
+    _mark_build(d, None if res.ok else (res.error or "build failed"))
     return res
+
+
+BUILD_ERROR = "build_error.json"      # host-only (parts/.mises-meta/<id>/): the last build failed
+
+
+def _mark_build(d: Path, error: str | None) -> None:
+    """Record (host-only) that the part has a failed build and no successful one, so the tree,
+    BOM and studies say "build failed" only then and "not built yet" otherwise; cleared once a
+    build succeeds or the part has an earlier good build (its metrics.json)."""
+    from ..edits import meta_dir
+    try:
+        md = meta_dir(d)
+        if error is None or safe_io.exists(d, "metrics.json"):
+            if safe_io.exists(md, BUILD_ERROR):
+                safe_io.unlink(md, BUILD_ERROR)
+            return
+        safe_io.ensure_dir(md)
+        safe_io.write_text(md, BUILD_ERROR, json.dumps({"error": " ".join(error.split())[-400:]}))
+    except (OSError, safe_io.UnsafePath):
+        pass                          # a note for the mass column; never fails the build
 
 
 def _accept(d: Path, res) -> None:

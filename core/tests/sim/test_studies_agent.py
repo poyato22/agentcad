@@ -127,7 +127,7 @@ def test_context_has_the_whole_build(rt):
     assert parts["hip_bracket"]["material"] == "PLA"
     assert parts["legs"]["mass_g"] == pytest.approx(24.8) and parts["legs"]["mass_source"] == "sum"
     # mass, its source and note come from B2's single source now (FW-core M-6), not a re-impl
-    assert parts["head"]["mass_g"] is None and "no successful build" in parts["head"]["mass_note"]
+    assert parts["head"]["mass_g"] is None and parts["head"]["mass_note"] == "not built yet"
     assert parts["hip_bracket"]["bbox_mm"] == [40.0, 20.0, 10.0] and parts["hip_bracket"]["holes"] == 1
     # the assembly: instances and total mass
     asm = c["assembly"]

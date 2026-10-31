@@ -119,8 +119,12 @@ def _own(r: dict, has_disk: bool, home: Path | None, default_mat: str,
         return None, "unknown", ("the catalog item states no mass" if has_disk
                                  else "the catalog part has no geometry or stated mass")
     if metrics is None:
-        return None, "unknown", ("build failed: the part has no successful build yet"
-                                 if has_disk else "not built yet")
+        # the one wording source for tree / BOM / studies: a part with no successful build is
+        # "not built yet"; "build failed" only when the row records an actual failed build
+        err = r.get("build_error")
+        if isinstance(err, str) and err.strip():
+            return None, "unknown", f"build failed: {' '.join(err.split())[:200]}"
+        return None, "unknown", "not built yet"
     vol = _num(metrics.get("volume_mm3"))
     if vol is None or vol < 0:
         return None, "unknown", "the build reported no volume; rebuild the part"
