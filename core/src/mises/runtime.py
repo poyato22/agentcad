@@ -407,12 +407,12 @@ class Runtime:
             return True
         return any(c.run_id == run_id and c.status == "running" for c in self.ui_calls.values())
 
-    def empty_trash(self) -> dict:
+    def empty_trash(self, only: str | None = None) -> dict:
         """Purge every trashed build (projects.empty_trash; TrashBusy while one has live work).
         The check and the purge run with no await between them. A purged build's ui run is
         finished and forgotten, so no later UI call lands in a build that no longer exists."""
         out = projects_mod.empty_trash(self.store, self.home, assembly=self.assembly_store,
-                                       busy=self._busy_for_trash)
+                                       busy=self._busy_for_trash, only=only)
         for pid in out["purged"]:
             rid = self._ui_runs.pop(pid, None)
             if rid is not None and rid in self._external:

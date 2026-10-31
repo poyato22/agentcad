@@ -75,6 +75,35 @@ def test_empty_trash_refuses_live_runs_then_purges_and_drops_ui_run(client, rt):
     assert pid not in rt._ui_runs and rt.store.get_run(ui).status == "done"
 
 
+def test_delete_forever_purges_one_trashed_build_only(client, rt):
+    # D30: Home's "Delete forever" on one Trash tile purges that build, not the whole Trash
+    a = client.post("/projects", json={"name": "Dog"}, headers=AUTH).json()["id"]
+    b = client.post("/projects", json={"name": "Car"}, headers=AUTH).json()["id"]
+    _mk_part(rt, "dog_leg", project_id=a)
+    (run,) = rt.store.runs_in_project(a)
+    rt.store.update_run(run.id, status="done")
+    # a live build is refused: only a build in the Trash can be deleted for good
+    assert client.post(f"/projects/{a}/purge", headers=AUTH).status_code == 400
+    client.delete(f"/projects/{a}", headers=AUTH)
+    client.delete(f"/projects/{b}", headers=AUTH)
+    r = client.post(f"/projects/{a}/purge", headers=AUTH)
+    assert r.status_code == 200 and r.json() == {"purged": [a], "count": 1}
+    assert not (rt.home / "parts" / "dog_leg").exists()
+    listed = {p["id"]: p for p in client.get("/projects", headers=AUTH).json()}
+    assert a not in listed and listed[b]["trashed_at"] is not None
+    assert client.post("/projects/nope123/purge", headers=AUTH).status_code == 404
+
+
+def test_delete_forever_refuses_live_runs(client, rt):
+    pid = client.post("/projects", json={"name": "Jet"}, headers=AUTH).json()["id"]
+    _mk_part(rt, "fan_blade", project_id=pid)
+    (run,) = rt.store.runs_in_project(pid)
+    client.delete(f"/projects/{pid}", headers=AUTH)
+    r = client.post(f"/projects/{pid}/purge", headers=AUTH)
+    assert r.status_code == 409 and r.json()["run_ids"] == [run.id]
+    assert (rt.home / "parts" / "fan_blade").exists()
+
+
 # ---- part tree
 
 def test_parts_list_patch_reorder(client, rt):

@@ -176,6 +176,15 @@ def build_projects_router(runtime: Runtime) -> APIRouter:
         except _projects.TrashBusy as e:
             return JSONResponse(e.body(), status_code=409)
 
+    @router.post("/projects/{project_id}/purge")
+    async def purge_project(project_id: str):
+        """Delete one trashed build for good (Home's "Delete forever"): Empty Trash for that
+        build only, with the same live-work refusal (409)."""
+        try:
+            return runtime.empty_trash(only=project_id)
+        except _projects.TrashBusy as e:
+            return JSONResponse(e.body(), status_code=409)
+
     # ---- part tree (metadata only; GET /parts lives in ui_api; /source, /vars, /ops are C6)
     @router.patch("/parts/{part_id}")
     async def patch_part(part_id: str, request: Request):
