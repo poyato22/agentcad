@@ -33,11 +33,15 @@ export function useImageUrl(ref: ImageRef | null): string | null {
 
 export function resetImageCache(): void { cache.clear(); keyed.clear(); }
 
-/** m10: the core renders on white, a white box in the dark theme. Make the white that touches the
- *  image's edge transparent (a flood fill from the border, so a white part's own faces stay), so
- *  the card's sheet shows through. Pure on the pixel array, for tests. */
-export function knockOutBackground(px: Uint8ClampedArray, w: number, h: number, threshold = 244): number {
-  const white = (i: number) => px[i * 4] >= threshold && px[i * 4 + 1] >= threshold && px[i * 4 + 2] >= threshold && px[i * 4 + 3] > 0;
+/** m10: the core renders on a light backdrop (white; G-R's studio grey #eeeef0), a light box in the
+ *  dark theme. Make the backdrop that touches the image's edge transparent (a flood fill from the
+ *  border of pixels within `tolerance` of the corner's colour, so a white part's own faces stay),
+ *  so the card's sheet shows through. A dark corner: nothing to key. Pure, for tests. */
+export function knockOutBackground(px: Uint8ClampedArray, w: number, h: number, tolerance = 11): number {
+  const key = [px[0], px[1], px[2]];
+  if (key.some((c) => c < 200)) return 0;
+  const white = (i: number) => Math.abs(px[i * 4] - key[0]) <= tolerance && Math.abs(px[i * 4 + 1] - key[1]) <= tolerance
+    && Math.abs(px[i * 4 + 2] - key[2]) <= tolerance && px[i * 4 + 3] > 0;
   const seen = new Uint8Array(w * h);
   const stack: number[] = [];
   const push = (i: number) => { if (!seen[i] && white(i)) { seen[i] = 1; stack.push(i); } };

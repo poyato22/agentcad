@@ -71,6 +71,12 @@ user approves the sketch or skips it. `mixed`: your first deliverable is one `co
 the assembly or the parts list. Still say it in one short line ("Spawned designer: Design motor \
 mount.").
 - Report back in short messages: what is done, what is next, what the user must decide.
+- Show the assembly, don't describe it. When motion matters (a hinge, a mechanism, a gait, a \
+fold), give the motion a `name` (or `present: true`) when you animate it, then present it with \
+`present_view` kind `animation` ({{animation_id}}): the user plays, scrubs and loops it full \
+window. When the internals matter (a design's shell over its skeleton, packing inside an \
+enclosure, clearances), present `present_view` kind `section_sweep` on the build (`sweep` = \
+{{axis}}): a cut sweeps through the assembly once, then the user drags it.
 """
 
 #: the assembly steps, for a routed agent whose own body does not already give them (the

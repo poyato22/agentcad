@@ -66,6 +66,15 @@
 .vcard-play:hover { color: var(--ink); }
 .vcard-play:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
 .vcard-foot { padding: 6px 8px; display: flex; flex-direction: column; gap: 3px; }
+/* Plan 9 G-D: an animation / section sweep card — the still with one round play mark, centred */
+.mcard-open { cursor: pointer; }
+.mcard-mark {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 44px; height: 44px; border-radius: 50%;
+  display: grid; place-items: center; padding-left: 2px; font-size: 15px; color: var(--ink);
+  background: var(--surface); -webkit-backdrop-filter: blur(var(--surface-blur)); backdrop-filter: blur(var(--surface-blur));
+  border: 1px solid var(--line2); box-shadow: var(--shadow); pointer-events: none;
+}
+.mcard-open:hover .mcard-mark, .mcard-open:focus-visible .mcard-mark { color: var(--blue); border-color: color-mix(in srgb, var(--blue) 55%, var(--line2)); }
 .vcard-caption { margin: 0; color: var(--ink); }
 .vcard-meta { margin: 0; display: flex; gap: 10px; font-size: var(--fs-small); }
 .vcard-meta span:last-child:not(:first-child) { margin-left: auto; }

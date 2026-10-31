@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from enum import StrEnum
 from typing import Annotated, Any, Literal
 
@@ -125,6 +126,17 @@ class Caps(BaseModel):
 
 def canonical_json(obj: Any) -> str:
     return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+def finite_json(obj: Any) -> Any:
+    """`obj` with every NaN / ±inf float replaced by None (strict JSON, as HTTP responses are)."""
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
+    if isinstance(obj, dict):
+        return {k: finite_json(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [finite_json(v) for v in obj]
+    return obj
 
 
 def sha256_hex(s: str) -> str:

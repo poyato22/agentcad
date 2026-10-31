@@ -577,6 +577,14 @@ export class CoreClient {
     return this.json("POST", `${asm(projectId)}/drive`, driveResultSchema, { body: { joint_id: jointId, value } });
   }
   /** OCCT common volume per instance pair over 0.01 mm³ (sandboxed worker; can take seconds). */
+  /** Plan 9 G-D: the build's saved animations, oldest first. Untrusted: callers parse the steps
+   *  (state/assemblyAnimation parseAnimateSteps). */
+  assemblyAnimations(projectId: string): Promise<{ id: string; name: string; steps: unknown; loops: number }[]> {
+    return this.json("GET", `${asm(projectId)}/animations`, z.array(z.object({
+      id: z.string(), name: z.string(), steps: z.unknown(), loops: z.number().catch(1),
+    })));
+  }
+
   interference(projectId: string): Promise<Interference[]> {
     return this.json("GET", `${asm(projectId)}/interference`, z.array(interferenceSchema));
   }

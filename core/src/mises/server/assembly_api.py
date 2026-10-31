@@ -205,6 +205,11 @@ def build_assembly_router(runtime: Runtime) -> APIRouter:
         return {"applied": res.applied.get(body.joint_id, body.value),
                 "transforms": {i.id: res.transforms[i.id] for i in asm.instances}}
 
+    @router.get("/projects/{project_id}/assembly/animations")
+    async def animations(project_id: str):
+        """Plan 9 G-D: the build's saved animations, oldest first (Play plays the newest)."""
+        return store.list_animations(project_id)
+
     @router.get("/projects/{project_id}/assembly/interference")
     async def interference(project_id: str):
         asm, res = _solved(project_id)

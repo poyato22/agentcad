@@ -1,0 +1,50 @@
+{
+  "view_spec": {
+    "kind": "section_sweep",
+    "target": {
+      "kind": "project",
+      "id": "16c880ed9e83",
+      "project_id": "16c880ed9e83",
+      "parts": [
+        "mount_plate"
+      ],
+      "ghost": []
+    },
+    "is_project": true,
+    "parts": [
+      "mount_plate"
+    ],
+    "ghost": [],
+    "section": {
+      "origin": [
+        16.0,
+        0.0,
+        0.0
+      ],
+      "normal": [
+        1.0,
+        0.0,
+        0.0
+      ]
+    },
+    "xray_parts": [],
+    "explode": 0.0,
+    "camera": "auto",
+    "orbit": null,
+    "caption": "A cut through both plates and the hinge line",
+    "animation": null,
+    "sweep": {
+      "axis": "x",
+      "from": -20.0,
+      "to": 60.0,
+      "duration_s": 4.0
+    },
+    "thumbnail_id": "pv_56ec27e2_df92f61bae_iso"
+  },
+  "thumbnail": "/var/folders/h4/y3qg30g91736x48bxcvczsfc0000gn/T/mises-fixtures-motion-e0x58_74/renders/pv_56ec27e2_df92f61bae_iso.png",
+  "thumbnail_id": "pv_56ec27e2_df92f61bae_iso",
+  "parts": [
+    "mount_plate"
+  ],
+  "ghost": []
+}

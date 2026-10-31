@@ -1,0 +1,22 @@
+[
+  {
+    "id": "70eb2080c99f",
+    "name": "Open and shut the lid",
+    "steps": [
+      {
+        "joint_id": "74067abc017b",
+        "from": 0.0,
+        "to": 120.0,
+        "duration_s": 2.0
+      },
+      {
+        "joint_id": "74067abc017b",
+        "from": 120.0,
+        "to": 0.0,
+        "duration_s": 1.5
+      }
+    ],
+    "loops": 2,
+    "duration_s": 3.5
+  }
+]
