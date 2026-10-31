@@ -41,13 +41,22 @@ VIEWS: dict[str, tuple[tuple[float, float, float], tuple[float, float, float]]] 
     "side": ((-1.0, 0.0, 0.0), (0.0, 0.0, 1.0)),    # look -X (from +X), Z up
     "iso": ((-1.0, 1.0, -1.0), (0.0, 0.0, 1.0)),    # three-quarter
 }
+# "hero": a product-shot 3/4 for covers and design reviews -- the iso quadrant (camera at +X,
+# -Y) but low, 35 deg round from the front and 18 deg up, always through the 35 mm lens
+HERO_AZIMUTH_DEG, HERO_ELEVATION_DEG = 35.0, 18.0
+_ha, _he = np.radians(HERO_AZIMUTH_DEG), np.radians(HERO_ELEVATION_DEG)
+VIEWS["hero"] = ((-float(np.sin(_ha) * np.cos(_he)), float(np.cos(_ha) * np.cos(_he)),
+                  -float(np.sin(_he))), (0.0, 0.0, 1.0))
+PERSPECTIVE_VIEWS = frozenset({"hero"})
 DEFAULT_VIEWS = ("front", "top", "side", "iso")
 # Where each standard view's camera sits, by axis (Z up): "front" looks along +Y from the -Y
 # side, "side" looks along -X from the +X side. Shown next to the view names so a model whose
 # nose points along X is not misread ("front" is then a side-on view).
 VIEW_AXES = {"front": "camera on -Y, looking +Y", "top": "camera on +Z, looking down -Z",
              "side": "camera on +X, looking -X",
-             "iso": "camera at (+X, -Y, +Z), looking at the centre"}
+             "iso": "camera at (+X, -Y, +Z), looking at the centre",
+             "hero": "low product 3/4: camera at (+X, -Y), 35 deg from the front, 18 deg up, "
+                     "35 mm perspective"}
 
 # Lighting: a key light from the camera's side (slightly above and to the right of the eye, in
 # camera space) so whatever a view looks at is lit, whichever way the model faces; plus a fixed
@@ -891,9 +900,47 @@ def _ground_shadow(meshes: list[Mesh], cam: _Cam, framing) -> np.ndarray | None:
     return out.reshape(S, S)
 
 
+def _sweep(axis_pts: np.ndarray, rx: np.ndarray, ry: np.ndarray, n: int = 24) -> np.ndarray:
+    """Triangles of a closed tube through rings centred on `axis_pts` (K, 3) with half-widths
+    rx (sideways) and ry (depth) per ring; the end rings may have zero radius (a closed tip).
+    Rings are perpendicular to the local axis direction."""
+    th = np.linspace(0.0, 2 * np.pi, n, endpoint=False)
+    k = len(axis_pts)
+    tang = np.gradient(axis_pts, axis=0)
+    tang /= np.maximum(np.linalg.norm(tang, axis=1), 1e-12)[:, None]
+    side = np.cross(tang, np.array([0.0, 1.0, 0.0]))          # local x (width)
+    bad = np.linalg.norm(side, axis=1) < 1e-6
+    side[bad] = [1.0, 0.0, 0.0]
+    side /= np.linalg.norm(side, axis=1)[:, None]
+    depth = np.cross(side, tang)
+    ring = (axis_pts[:, None, :] + rx[:, None, None] * np.cos(th)[None, :, None] * side[:, None]
+            + ry[:, None, None] * np.sin(th)[None, :, None] * depth[:, None])
+    a, b = ring[:-1], ring[1:]
+    c, d = np.roll(b, -1, axis=1), np.roll(a, -1, axis=1)
+    quads = np.concatenate([np.stack([a, b, c], 2), np.stack([a, c, d], 2)], axis=1)
+    return quads.reshape(-1, 3, 3) if k > 1 else np.zeros((0, 3, 3))
+
+
+def _capsule(p0, p1, r0: float, r1: float, depth: float = 1.0, steps: int = 14) -> np.ndarray:
+    """A tapered capsule from p0 (radius r0) to p1 (radius r1) with round ends; `depth` scales
+    the front-back radius (limbs are a little flatter than round)."""
+    p0, p1 = np.asarray(p0, dtype=np.float64), np.asarray(p1, dtype=np.float64)
+    ax = p1 - p0
+    length = float(np.linalg.norm(ax)) or 1.0
+    u = ax / length
+    cap = np.linspace(0.0, np.pi / 2, steps // 2)
+    # start hemisphere, the straight taper, end hemisphere
+    s = np.concatenate([-r0 * np.cos(cap), np.linspace(0.0, length, steps)[1:-1],
+                        length + r1 * np.sin(cap)])
+    rad = np.concatenate([r0 * np.sin(cap), np.linspace(r0, r1, steps)[1:-1],
+                          r1 * np.cos(cap)])
+    return _sweep(p0 + s[:, None] * u, rad, rad * depth)
+
+
 def _figure_mesh(meshes: list[Mesh], cam_f: np.ndarray, cam_right: np.ndarray) -> Mesh | None:
-    """A 1.75 m human figure standing on the ground beside the model (for scale), facing the
-    camera, made of elliptical-section tubes. None for a model with nothing to measure."""
+    """A 1.75 m human standing on the ground beside the model (for scale), facing the camera:
+    smooth tapered capsules and ellipsoids (head, neck, torso, pelvis, arms, legs, feet), so it
+    reads as a person's silhouette in the sketch. None for a model with nothing to measure."""
     lo, hi = bbox(meshes)
     if not np.isfinite(lo).all():
         return None
@@ -909,36 +956,30 @@ def _figure_mesh(meshes: list[Mesh], cam_f: np.ndarray, cam_right: np.ndarray) -
     base = center + r * (reach + 450.0)
     base[2] = lo[2]
 
-    def tube(secs):            # secs: (z, half-width, half-depth, x offset)
-        th = np.linspace(0.0, 2 * np.pi, 18, endpoint=False)
-        rings = np.array([[base + r * (ox + a * np.cos(q)) + fwd * (b * np.sin(q))
-                           + np.array([0.0, 0.0, z]) for q in th] for z, a, b, ox in secs])
-        out = []
-        n = len(th)
-        for i in range(len(secs) - 1):
-            for j in range(n):
-                p, q2 = rings[i, j], rings[i, (j + 1) % n]
-                s, u = rings[i + 1, j], rings[i + 1, (j + 1) % n]
-                out += [[p, q2, u], [p, u, s]]
-        for ring in (rings[0], rings[-1]):                   # caps
-            c = ring.mean(axis=0)
-            out += [[c, ring[j], ring[(j + 1) % n]] for j in range(n)]
-        return out
+    def ellipsoid(c, a, b, h):                 # centre (x, z) in figure space, radii
+        phi = np.linspace(0.0, np.pi, 14)
+        zs = c[1] - h * np.cos(phi)
+        pts = np.stack([np.full(14, c[0]), np.zeros(14), zs], axis=1)
+        return _sweep(pts, a * np.sin(phi), b * np.sin(phi))
 
-    phi = np.linspace(np.pi, 0.0, 11)                                       # head
-    tris = tube([(1645 + 105 * np.cos(q), max(1.0, 82 * np.sin(q)), max(1.0, 95 * np.sin(q)), 0)
-                 for q in phi])
-    tris += tube([(1450, 45, 45, 0), (1560, 45, 45, 0)])                     # neck
-    tris += tube([(930, 150, 95, 0), (1100, 140, 90, 0), (1300, 175, 100, 0),
-                  (1440, 200, 95, 0), (1490, 120, 70, 0)])                   # torso
+    parts = [ellipsoid((0, 1648), 80, 95, 108),                               # head
+             _capsule((0, 0, 1470), (0, 0, 1560), 46, 42),                     # neck
+             # torso: a smooth station sweep, hips -> waist -> chest -> rounded shoulders
+             _sweep(np.array([[0, 0, z] for z in (900, 905, 960, 1080, 1220, 1340, 1420,
+                                                   1468, 1490)], dtype=np.float64),
+                    np.array([0, 150, 165, 140, 168, 190, 195, 160, 70], dtype=np.float64),
+                    np.array([0, 90, 100, 88, 102, 104, 98, 80, 45], dtype=np.float64))]
     for sx in (-1.0, 1.0):
-        tris += tube([(80, 55, 55, sx * 95), (470, 50, 55, sx * 95), (520, 55, 60, sx * 92),
-                      (900, 80, 80, sx * 85)])                              # leg
-        tris += tube([(0, 50, 120, sx * 95), (80, 50, 110, sx * 95)])       # foot
-        tris += tube([(780, 32, 32, sx * 245), (1100, 38, 38, sx * 238),
-                      (1440, 50, 50, sx * 222)])                            # arm
-    return Mesh(np.array(tris, dtype=np.float64), color=(1.0, 1.0, 1.0), name="scale figure",
-                role="figure")
+        parts += [_capsule((sx * 190, 0, 1415), (sx * 228, 0, 1130), 50, 40, 0.9),   # upper arm
+                  _capsule((sx * 228, 0, 1130), (sx * 245, 15, 860), 39, 30, 0.85),  # forearm
+                  ellipsoid((sx * 248, 790), 26, 40, 75),                           # hand
+                  _capsule((sx * 92, 0, 900), (sx * 88, 0, 500), 78, 54, 0.95),       # thigh
+                  _capsule((sx * 88, 0, 500), (sx * 84, 0, 95), 52, 37, 0.95),        # shin
+                  _capsule((sx * 86, -20, 40), (sx * 92, -150, 35), 42, 36, 0.8)]     # foot
+    local = np.concatenate([p for p in parts if len(p)], axis=0)
+    world = (base + local[..., :1] * r + local[..., 1:2] * fwd
+             + local[..., 2:3] * np.array([0.0, 0.0, 1.0]))
+    return Mesh(world, color=(1.0, 1.0, 1.0), name="scale figure", role="figure")
 
 
 _PIX_CHUNK = 200_000                      # covered pixels shaded per batch (bounds memory)
@@ -1159,8 +1200,11 @@ def _render_one(meshes: list[Mesh], view: str, size: int,
 
 
 def _to_png(arr: np.ndarray, max_bytes: int = MAX_PNG_BYTES) -> bytes:
-    """PNG of an RGB or RGBA uint8 image, kept under `max_bytes`: when the lossless encoding
-    is too big it is palettised (256 colours, dithered), then, if still too big, scaled down."""
+    """PNG of an RGB or RGBA uint8 image, kept under `max_bytes` and ALWAYS at the image's own
+    pixel size (callers map pixels back to 3D through the camera, so it is never scaled):
+    when the lossless encoding is too big it is palettised, with fewer colours each step
+    (dithered down to 16, then flat), until it fits. Real renders are far below the budget;
+    only noise-like content ever reaches the small palettes, and 2 colours always fit."""
     from PIL import Image
     im = Image.fromarray(arr, "RGBA" if arr.shape[-1] == 4 else "RGB")
 
@@ -1172,14 +1216,12 @@ def _to_png(arr: np.ndarray, max_bytes: int = MAX_PNG_BYTES) -> bytes:
     data = enc(im)
     if len(data) <= max_bytes:
         return data
-    method = Image.Quantize.FASTOCTREE if im.mode == "RGBA" else Image.Quantize.MEDIANCUT
-    q = im.quantize(256, method=method, dither=Image.Dither.FLOYDSTEINBERG)
-    data = enc(q)
-    while len(data) > max_bytes and min(q.size) > 64:
-        im = im.resize((int(im.size[0] * 0.85), int(im.size[1] * 0.85)),
-                       Image.Resampling.LANCZOS)
-        q = im.quantize(256, method=method, dither=Image.Dither.FLOYDSTEINBERG)
-        data = enc(q)
+    method = Image.Quantize.FASTOCTREE          # fast for RGB and RGBA (median cut is not)
+    for colors in (256, 128, 64, 32, 16, 8, 4, 2):
+        dither = Image.Dither.FLOYDSTEINBERG if colors >= 16 else Image.Dither.NONE
+        data = enc(im.quantize(colors, method=method, dither=dither))
+        if len(data) <= max_bytes:
+            break
     return data
 
 
@@ -1252,8 +1294,9 @@ def render_views(meshes, *, views=DEFAULT_VIEWS, size: int = 512,
                 drawn = [*ms, fig]
                 frame = bbox(drawn)
                 cn = _mesh_normals(drawn, style)
+        persp = perspective or (view in PERSPECTIVE_VIEWS and not (cameras and view in cameras))
         arr = _render_one(drawn, view, size, frame, transparent, cameras, style=style,
-                          perspective=perspective, shadow=shadow, background=background,
+                          perspective=persp, shadow=shadow, background=background,
                           normals=cn)
         out[view] = _to_png(arr)
     return out
@@ -1267,7 +1310,8 @@ def render_mask(meshes, view: str, *, size: int = 512,
     if section is not None:
         o, n = section
         ms = [Mesh(section_mesh(m.tris, o, n)) for m in ms]
-    cam = _make_cam(view, size, bbox(ms), cameras, perspective)
+    persp = perspective or (view in PERSPECTIVE_VIEWS and not (cameras and view in cameras))
+    cam = _make_cam(view, size, bbox(ms), cameras, persp)
     tri_at, _z = _coverage(ms, cam)
     return (tri_at >= 0).reshape(size, size)
 

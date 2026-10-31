@@ -515,15 +515,15 @@ def _axes_note(where: dict[str, str]) -> str:
       description="Render a built part (or the whole build, its assembly instances at their "
                   "solved positions) to views, for an ad-hoc look (critique_model already "
                   "renders, so do not call this before it). Standard views: front (camera on "
-                  "-Y), top (+Z), side (+X), iso; or naming='aircraft' with `nose` for nose "
-                  "(head-on), top, left, right, tail, bottom, iso. At most 4, 512 px by default "
-                  "(up to 2048). `style`: shaded (default), zebra (surface continuity), sketch "
-                  "(concept line art), silhouette; `perspective` for a hero shot. "
-                  "Pass `section` {origin, normal} for a cutaway that reveals internals (the "
-                  "+normal half is removed), or `transparent` for an x-ray. If your model can see "
-                  "images, the renders come back to you as images (one view up to 2048 px, several "
-                  "up to 1024 px each); otherwise "
-                  "as PNG handles.")
+                  "-Y), top (+Z), side (+X), iso, and 'hero' (a low 3/4 product shot in "
+                  "perspective, for covers and design review); or naming='aircraft' with `nose` "
+                  "for nose (head-on), top, left, right, tail, bottom, iso. At most 4, 512 px by "
+                  "default (up to 2048). `style`: shaded (default), zebra (surface continuity), "
+                  "sketch (concept line art), silhouette; `perspective` puts any view through a "
+                  "35 mm lens. Pass `section` {origin, normal} for a cutaway that reveals "
+                  "internals (the +normal half is removed), or `transparent` for an x-ray. If "
+                  "your model can see images, the renders come back to you as images (one view "
+                  "up to 2048 px, several up to 1024 px each); otherwise as PNG handles.")
 async def render_views(ctx: ToolContext, args: RenderViewsArgs) -> ToolOutput:
     views, cameras, where = view_set(args.naming, args.nose, args.views,
                                      "views" in args.model_fields_set

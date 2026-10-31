@@ -298,14 +298,16 @@ def test_sizes_up_to_2048_and_bad_args_refused():
             render.render_views(body, views=("iso",), **{"size": 64, **bad})
 
 
-def test_png_stays_under_1_mb():
+def test_png_stays_under_1_mb_and_never_shrinks():
     rng = np.random.default_rng(0)
-    noise = rng.integers(0, 256, (2048, 2048, 3), dtype=np.uint8)
-    png = render._to_png(noise)
-    assert len(png) < 1024 * 1024
-    assert png.startswith(b"\x89PNG")
-    rgba = np.concatenate([noise, rng.integers(0, 256, (2048, 2048, 1), dtype=np.uint8)], -1)
-    assert len(render._to_png(rgba)) < 1024 * 1024
+    noise = rng.integers(0, 256, (1024, 1024, 3), dtype=np.uint8)      # 3 MB raw: worst case
+    budget = 300 * 1024                         # scaled to the 1024 px frame (1 MB at 2048)
+    png = render._to_png(noise, budget)
+    assert len(png) <= budget and png.startswith(b"\x89PNG")
+    assert _rgb(png).shape[:2] == (1024, 1024)  # the pixel size is never changed
+    rgba = np.concatenate([noise, rng.integers(0, 256, (1024, 1024, 1), dtype=np.uint8)], -1)
+    png = render._to_png(rgba, budget)
+    assert len(png) <= budget and _rgb(png).shape[:2] == (1024, 1024)
     small = render._to_png(np.zeros((64, 64, 3), dtype=np.uint8))
     assert _rgb(small).shape == (64, 64, 3)
 
@@ -338,3 +340,19 @@ def test_huge_meshes_fall_back_to_flat_normals(monkeypatch):
     png = render.render_views(body, views=("iso",), size=128)["iso"]   # still renders, flat
     assert _rgb(png).shape[:2] == (128, 128)
     assert render_shade.weld(body.tris).dtype == np.int32
+
+
+def test_hero_view_is_a_low_three_quarter_in_perspective():
+    f, _up = render.VIEWS["hero"]
+    f = np.asarray(f) / np.linalg.norm(f)
+    assert np.degrees(np.arcsin(-f[2])) == pytest.approx(render.HERO_ELEVATION_DEG)
+    assert f[0] < 0 and f[1] > 0                         # camera on the +X, -Y side, like iso
+    assert "hero" in render.VIEW_AXES
+    near = _box_tris(20, 20, 20, center=(30, -30, 0))     # toward the hero camera
+    far = _box_tris(20, 20, 20, center=(-30, 30, 0))
+    both = [Mesh(near), Mesh(far)]
+    hero = render.render_mask(both, "hero", size=200)
+    persp = render.render_mask(both, "hero", size=200, perspective=True)
+    assert (hero == persp).all()                          # hero is always perspective
+    png = render.render_views(both, views=("hero",), size=128)["hero"]
+    assert _rgb(png).shape[:2] == (128, 128)

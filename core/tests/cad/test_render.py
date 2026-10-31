@@ -260,10 +260,14 @@ def test_every_standard_view_of_a_thin_wing_is_lit_not_inked():
     # a thin curved wing seen edge-on: its smooth grazing surfaces must be shaded by a light
     # from the camera's side, not drawn solid with depth-edge ink
     wing = render.Mesh(_wing())
+    measured = 0
     for view, png in render.render_views(wing, size=512).items():
         lum, ink = _fg_stats(png, render.render_mask(wing, view, size=512))
         assert lum is None or lum > 110, (view, lum)
         assert ink < 0.5, (view, ink)
+        measured += lum is not None
+    # only the true edge-on view (side: the 4 mm section seen end-on) may lack an interior
+    assert measured >= 3, measured
 
 
 @pytest.mark.parametrize("view", ["front", "top", "side"])
