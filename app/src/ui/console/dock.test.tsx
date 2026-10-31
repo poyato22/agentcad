@@ -83,6 +83,27 @@ describe("agent dock: three streams at once", () => {
     expect(conv.querySelector("[data-study-slot], [data-testid=view-card]")).toBeNull();
   });
 
+  it("a sub-agent's studies and views show in the build's dock while the lead's thread is shown, naming that agent", async () => {
+    const SUB = "sub0001";
+    mount([message(RID, "user", "make the lid", 1)]);
+    act(() => {
+      const sub = run(SUB, { parent_id: RID, role: "sub", agent: "simulation", task: "check the lid" });
+      runs.value = new Map([...runs.value, [SUB, sub]]);
+      steps.value = new Map([...steps.value, [SUB, [
+        ...STUDY.slice(0, 4).map((s) => ({ ...s, run_id: SUB })),
+        { ...view(91_001, 2e9, "the lid from the sub-agent"), run_id: SUB },
+      ]]]);
+    });
+    await frame();
+    expect(selectedRunId.value).toBe(RID);
+    expect(section("sim").querySelectorAll("[data-study-slot]").length).toBe(1);   // the sub-agent's one study
+    expect(section("sim").querySelector(`[data-run="${SUB}"] [data-run-tag]`)?.textContent).toContain("simulation");
+    expect(section("view").querySelector("[data-testid=view-card]")?.textContent).toContain("the lid from the sub-agent");
+    expect(section("view").querySelector(`[data-view-main] [data-run-tag="${SUB}"]`)).toBeTruthy();
+    // the lead's own conversation stays its own
+    expect(within(section("text")).getByRole("log", { name: "Conversation" }).querySelector("[data-study-slot]")).toBeNull();
+  });
+
   it("an empty stream shrinks to one quiet line instead of a blank box", async () => {
     mount(TEXT);
     await frame();

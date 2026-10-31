@@ -5,7 +5,7 @@ import {
   DEFAULT_LAYOUT, dockLayout, LAYOUT_KEY, parseLayout, resetDockLayout, resizeStream, resizeWidth, setDockLayout, STREAM_MIN, TEXT_MIN,
   toggleStream, WIDTH_MAX, WIDTH_MIN,
 } from "./dockLayout";
-import { stopTargets } from "./stopTarget";
+import { stopTargets, waitingOnYou } from "./stopTarget";
 import { run } from "./testSteps";
 import { markSeen, resetUnread, unreadCount, unreadOf } from "./unread";
 
@@ -85,5 +85,23 @@ describe("what Stop stops (Plan 9 D2)", () => {
     // no live lead: the shown run's tree
     expect(stopTargets([other, run("C", { parent_id: "O" })], other, new Map()).map((r) => r.id)).toEqual(["O", "C"]);
     expect(stopTargets([], null, new Map())).toEqual([]);
+  });
+
+  it("fix round 1 (I2): a busy shown run outside the lead's tree, and its sub-agents, get Stop too", () => {
+    const lead = run("L", { role: "lead" });
+    const other = run("O");
+    const child = run("OC", { parent_id: "O" });
+    const idleLead = new Map([["L", act("idle")]]);
+    expect(stopTargets([lead, other, child], other, idleLead).map((r) => r.id)).toEqual(["O", "OC"]);
+    // both trees busy: the lead's first, then the shown run's, each once
+    expect(stopTargets([lead, other, child], other, new Map()).map((r) => r.id)).toEqual(["L", "O", "OC"]);
+    expect(stopTargets([lead, other], lead, new Map()).map((r) => r.id)).toEqual(["L"]);
+  });
+
+  it("Esc spares a run that waits on your approval or answer (the button still stops it)", () => {
+    expect(waitingOnYou(act("waiting_approval"))).toBe(true);
+    expect(waitingOnYou(act("waiting_user"))).toBe(true);
+    expect(waitingOnYou(act("tool"))).toBe(false);
+    expect(waitingOnYou(undefined)).toBe(false);
   });
 });

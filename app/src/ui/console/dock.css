@@ -50,22 +50,15 @@
   font-size: 10.5px; font-weight: 600; cursor: pointer;
 }
 .dock-needs:focus-visible { outline: 1px solid var(--blue); outline-offset: 2px; }
-.dock-more { position: relative; flex: none; }
-.dock-more-btn {
-  width: 26px; height: 22px; border: 0; border-radius: 7px; background: none; color: var(--dim); cursor: pointer; font-size: 14px; line-height: 1;
-}
-.dock-more-btn:hover, .dock-more-btn[aria-expanded="true"] { background: var(--paper2); color: var(--ink); }
-.dock-more-btn:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
-.dock-menu {
-  position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; min-width: 168px; padding: 4px;
-  display: flex; flex-direction: column; background: var(--paper2); border: 1px solid var(--line2); border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, .28);
-}
-.dock-menu [role=menuitem] {
-  padding: 6px 10px; border: 0; border-radius: 6px; background: none; color: var(--ink); text-align: left; cursor: pointer; font-size: 12px;
-}
-.dock-menu [role=menuitem]:hover:not(:disabled), .dock-menu [role=menuitem]:focus-visible { background: var(--paper); outline: none; }
-.dock-menu [role=menuitem]:disabled { color: var(--faint); cursor: default; }
+/* the ⋯ menu is the shared OverflowMenu, restyled for the dock */
+.dock-more .ovm-btn { width: 26px; height: 22px; padding: 0; border: 0; border-radius: 7px; font-size: 14px; line-height: 1; }
+.dock-more .ovm-btn:hover, .dock-more .ovm-btn[aria-expanded="true"] { background: var(--paper2); color: var(--ink); }
+.dock-more .ovm-menu { top: calc(100% + 4px); min-width: 168px; padding: 4px; border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, .28); }
+.dock-more .ovm-item { padding: 6px 10px; border-radius: 6px; font-size: 12px; }
+.dock-more .ovm-item:hover:not(:disabled), .dock-more .ovm-item:focus-visible { background: var(--paper); }
+
+/* which agent a View / Simulations card came from */
+.dock-run { font-size: 10.5px; margin: 0 0 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ---- View stream: the newest view large (full dock width), older ones in a filmstrip */
 .vs { display: flex; flex-direction: column; gap: 8px; padding: 0 12px 10px; min-height: 0; flex: 1; }

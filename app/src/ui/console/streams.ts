@@ -72,7 +72,9 @@ export function splitStreams(items: readonly ThreadItem[]): Streams {
     const s = streamOf(it);
     if (s === "sim" && it.kind === "studies") {
       it.calls.forEach((call, i) => out.sim.push({
-        kind: "activity", key: `${it.key}:${call.callId}`, text: call.name, tone: call.ok === false ? "fail" : call.result === null ? "running" : "ok",
+        // the key the study has on its own (logModel itemKey "c:<call id>"): joining a group
+        // never remounts its card nor makes it unread again
+        kind: "activity", key: `c:${call.callId}`, text: call.name, tone: call.ok === false ? "fail" : call.result === null ? "running" : "ok",
         ts: call.startedTs, call, diff: null, extra: [], hint: call.ok === false ? call.hint : null, stepIds: i === 0 ? it.stepIds : [],
       }));
       continue;
@@ -101,8 +103,9 @@ export function simRunning(item: ThreadItem, finished: ReadonlyMap<string, strin
 }
 
 /** The Simulations stream's order: running studies on top, then the rest, newest first in each. */
-export function simOrder(items: readonly ThreadItem[], finished: ReadonlyMap<string, string> = new Map()): ThreadItem[] {
-  const indexed = items.map((it, i) => ({ it, i, run: simRunning(it, finished) }));
+export function simOrder<T = ThreadItem>(items: readonly T[], finished: ReadonlyMap<string, string> = new Map(),
+  itemOf: (x: T) => ThreadItem = (x) => x as unknown as ThreadItem): T[] {
+  const indexed = items.map((it, i) => ({ it, i, run: simRunning(itemOf(it), finished) }));
   indexed.sort((a, b) => (a.run === b.run ? b.i - a.i : a.run ? -1 : 1));
   return indexed.map((x) => x.it);
 }

@@ -19,7 +19,7 @@ export function registerAnnounceJump(kind: string, r: Resolver): () => void {
 
 const showPart = (id: string): Jump => ({ label: "Show part", go: () => { setPage("design"); actions.selectPart(id); } });
 const showInAssembly = (id: string): Jump => ({ label: "Show in assembly", go: () => { setPage("design"); actions.selectPart(id); } });
-const openAgent =(id: string): Jump => ({ label: "Open agent", go: () => actions.selectRun(id) });
+const openAgent = (id: string): Jump => ({ label: "Open agent", go: () => actions.selectRun(id) });
 
 /** The defaults, for targets the console can reach itself. */
 const DEFAULTS: Partial<Record<AnnounceKind, Resolver>> = {

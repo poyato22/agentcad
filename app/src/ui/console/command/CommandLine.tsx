@@ -185,10 +185,11 @@ export function CommandLine(): JSX.Element {
   function onKeyDown(e: KeyboardEvent): void {
     if (e.isComposing) return;
     const el = e.currentTarget as HTMLTextAreaElement;
-    if (e.key === "Escape" && stoppable) {
-      // Esc stops the busy lead (and its sub-agents), like the Stop button (Plan 9 D2)
+    if (e.key === "Escape" && stoppable && !e.defaultPrevented) {
+      // Esc stops the busy agents like the Stop button (Plan 9 D2) — not one that waits on your
+      // approval or answer, and not when another handler (Animate) already took this Esc
       e.preventDefault();
-      void stopBusy();
+      void stopBusy(true);
     } else if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       void submit();

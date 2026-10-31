@@ -148,3 +148,38 @@ test("collapse_a_stream_count_what_arrives_and_resize_with_the_divider_remembere
   await expect(stream(page, "sim").locator(".dock-t")).toHaveAttribute("aria-expanded", "false");
   await expect.poll(async () => Math.round((await stream(page, "view").boundingBox())!.height)).toBe(Math.round(h));
 });
+
+test("a_sub_agent_s_study_and_view_appear_in_the_build_s_dock_while_the_lead_s_thread_is_shown", async ({ page, fake }) => {
+  // fix round 1 (I1): View and Simulations aggregate the build's agent tree
+  await fake.reset(scenario() as never);
+  await open(page, "dark");
+  const SUB = "sub0aa01";
+  const base = BASE.runs[0];
+  // the lead spawns a sub-agent (as the core does: run_started, then the lead's announcement)
+  await fake.emit({ type: "run_started", run_id: SUB, data: {} },
+    { run: { ...base, id: SUB, parent_id: LEAD, role: "sub", agent: "simulation", task: "check the beam", title: "Check the beam", project_id: BUILD, status: "running" } as never });
+  await fake.emit({ type: "agent_announce", run_id: LEAD, data: { run_id: LEAD, kind: "agent_spawned", title: "Spawned simulation: Check the beam", detail: "", ref: { agent: "simulation", parent_id: LEAD, run_id: SUB } } });
+  await fake.emit({ type: "tool_call", run_id: SUB, data: { call_id: CALL.payload.call_id, name: "sim_run", input: CALL.payload.input } }, { steps: [stepOf(CALL)] });
+  await fake.emit({ type: "agent_announce", run_id: SUB, data: { ...VIEW, run_id: SUB } });
+  // still the lead's thread
+  await expect(page.locator("[data-conversation-head] [data-run-label]")).toHaveCount(0);
+  await expect(stream(page, "text").getByRole("log", { name: "Conversation" })).toContainText("thicken the mount plate to 6 mm");
+  const sim = stream(page, "sim");
+  await expect(sim.locator(`[data-run="${SUB}"] [data-study-slot]`)).toHaveCount(1);
+  await expect(sim.locator(`[data-run="${SUB}"] [data-run-tag]`)).toContainText("simulation");
+  const view = stream(page, "view");
+  await expect(view.getByTestId("view-card")).toContainText("the mount plate, from above");
+  await expect(view.locator(`[data-view-main] [data-run-tag="${SUB}"]`)).toContainText("simulation");
+  // the view the core mirrors onto the lead shows once
+  await expect(view.locator("[data-filmstrip]")).toHaveCount(0);
+});
+
+test("esc_never_cancels_a_run_waiting_on_your_approval_the_card_decides", async ({ page, fake }) => {
+  await fake.reset(scenario() as never);
+  await open(page, "dark");
+  await activity(fake, "waiting_approval", "waiting for approval: fixture_merge");
+  await expect(con(page).getByRole("button", { name: "Stop" })).toBeVisible();
+  await con(page).getByRole("textbox", { name: "Command line" }).press("Escape");
+  await page.waitForTimeout(300);
+  expect((await fake.calls()).some((c) => c.method === "POST" && c.path === `/runs/${LEAD}/cancel`)).toBe(false);
+});

@@ -1,22 +1,24 @@
-// The agent dock (Plan 9 D2 / D4): three streams stacked and visible at once — View, Simulations,
-// Conversation — over the shown run's thread (streams.ts splits it). Each scrolls on its own and
+// The agent dock (Plan 9 D2 / D4): three streams stacked and visible at once — View and Simulations
+// over the whole build's agent tree (treeStreams: the lead and every sub-agent), and the
+// Conversation of the shown run (streams.ts splits it). Each scrolls on its own and
 // collapses to its header (with an unread count while collapsed); the dividers between them drag
 // to resize, and the dock's left edge drags its width (dockLayout, remembered). An empty stream
 // shrinks to one quiet line. The composer sits at the foot. There is no button bar: the
 // Conversation header holds the "needs you" count and one ⋯ menu (new run, agent browser, full log).
 import type { ComponentChildren, JSX } from "preact";
-import { useEffect, useMemo, useRef, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef } from "preact/hooks";
 import type { StreamKind } from "../../api/types";
 import { runLabel } from "../../lib/names";
 import { finishedSims } from "../../state/activity";
 import { effectiveRun, needsYou } from "../../state/selection";
 import { actions, selectedRunId } from "../../state/store";
 import { SpecPanel } from "../spec";
+import { OverflowMenu } from "../common/OverflowMenu";
 import { ModelWarning } from "./cards/critique/ModelWarning";
 import { CommandLine } from "./command/CommandLine";
 import { Composer } from "./Composer";
 import { Conversation } from "./Conversation";
-import { buildRuns, effectiveRunId, labelOf, offListRuns, retainThreadFrames, runLabels, threadFrame } from "./derived";
+import { buildRuns, effectiveRunId, labelOf, offListRuns, retainThreadFrames, retainTreeFrames, runLabels, threadFrame, treeFrame } from "./derived";
 import { dockLayout, resizeStream, resizeWidth, setDockLayout, toggleStream } from "./dockLayout";
 import { shownPending } from "./queued";
 import { SimStream } from "./SimStream";
@@ -30,9 +32,11 @@ const TITLE: Record<StreamKind, string> = { view: "View", sim: "Simulations", te
 
 export function Dock(): JSX.Element {
   useEffect(() => retainThreadFrames(), []);
+  useEffect(() => retainTreeFrames(), []);
   const frame = threadFrame.value;
-  const streams = useMemo(() => splitStreams(frame.items), [frame.items]);
-  const run = effectiveRun.value ?? shownPending.value;
+  // the Conversation is the shown run's thread; View and Simulations are the whole build's tree
+  const text = useMemo(() => splitStreams(frame.items).text, [frame.items]);
+  const tree = treeFrame.value;
   const shownId = effectiveRunId.value;
   // the first fallback (newest running run) becomes an explicit choice once (as in the roster)
   useEffect(() => {
@@ -40,28 +44,29 @@ export function Dock(): JSX.Element {
   }, [shownId]);
   const layout = dockLayout.value;
   const root = useRef<HTMLDivElement>(null);
-  const agent = run?.agent ?? "agent";
-  const runId = run?.id ?? null;
-  const running = streams.sim.filter((i) => simRunning(i, finishedSims.value)).length;
+  const running = tree.sim.filter((e) => simRunning(e.item, finishedSims.value)).length;
+  // unread rows of View / Simulations are counted per build (they span its runs); the
+  // Conversation's per shown run
+  const buildKey = `build:${tree.buildId ?? ""}`;
 
   const open = (s: StreamKind) => !layout.collapsed[s];
-  const filled = (s: StreamKind) => open(s) && streams[s].length > 0;
+  const filled = (s: "view" | "sim") => open(s) && tree[s].length > 0;
   return (
     <div class="dock" ref={root} data-dock data-text-collapsed={layout.collapsed.text ? "" : undefined}>
       <WidthEdge />
-      <Section stream="view" runId={frame.runId} keys={streams.view.map((i) => i.key)} count={streams.view.length}
+      <Section stream="view" runId={buildKey} keys={tree.view.map((e) => e.key)} count={tree.view.length}
         height={filled("view") ? layout.view : null}>
-        <ViewStream items={streams.view} agent={agent} runId={runId} />
+        <ViewStream entries={tree.view} />
       </Section>
       {filled("view") && <Divider which="view" root={root} />}
-      <Section stream="sim" runId={frame.runId} keys={streams.sim.map((i) => i.key)} count={streams.sim.length} running={running}
+      <Section stream="sim" runId={buildKey} keys={tree.sim.map((e) => e.key)} count={tree.sim.length} running={running}
         height={filled("sim") ? layout.sim : null}>
-        <SimStream items={streams.sim} agent={agent} runId={runId} />
+        <SimStream entries={tree.sim} />
       </Section>
       {filled("sim") && open("text") && <Divider which="sim" root={root} />}
-      <Section stream="text" runId={frame.runId} keys={streams.text.map((i) => i.key)} count={null} fill head={<ConversationHead />}>
+      <Section stream="text" runId={frame.runId} keys={text.map((i) => i.key)} count={null} fill head={<ConversationHead />}>
         <SpecPanel />
-        <Conversation items={streams.text} />
+        <Conversation items={text} />
       </Section>
       {composerOpen.value ? <Composer /> : <CommandLine />}
     </div>
@@ -184,37 +189,13 @@ function ConversationHead(): JSX.Element {
   );
 }
 
+/** The Conversation's one menu (Plan 9 D2: no button bar). */
 function MoreMenu({ hasRun }: { hasRun: boolean }): JSX.Element {
-  const [open, setOpen] = useState(false);
-  const root = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const away = (e: MouseEvent) => { if (root.current && !root.current.contains(e.target as Node)) setOpen(false); };
-    document.addEventListener("mousedown", away);
-    return () => document.removeEventListener("mousedown", away);
-  }, [open]);
-  useEffect(() => { if (open) root.current?.querySelector<HTMLElement>("[role=menuitem]:not([disabled])")?.focus(); }, [open]);
-  const pick = (f: () => void) => { setOpen(false); f(); };
   return (
-    <div class="dock-more" ref={root}>
-      <button type="button" class="dock-more-btn" aria-haspopup="menu" aria-expanded={open} aria-label="Conversation options"
-        title="Conversation options" onClick={() => setOpen(!open)}>⋯</button>
-      {open && (
-        <div class="dock-menu" role="menu" aria-label="Conversation options"
-          onKeyDown={(e) => {
-            if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setOpen(false); root.current?.querySelector<HTMLElement>(".dock-more-btn")?.focus(); }
-            if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-              e.preventDefault();
-              const items = [...(root.current?.querySelectorAll<HTMLElement>("[role=menuitem]:not([disabled])") ?? [])];
-              const at = items.indexOf(document.activeElement as HTMLElement);
-              items[(at + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length]?.focus();
-            }
-          }}>
-          <button type="button" role="menuitem" onClick={() => pick(() => { composerOpen.value = true; })}>New run…</button>
-          <button type="button" role="menuitem" disabled={!hasRun} onClick={() => pick(() => setConsoleView("browser", false))}>Agent browser</button>
-          <button type="button" role="menuitem" onClick={() => pick(() => setConsoleView("details"))}>Full log</button>
-        </div>
-      )}
-    </div>
+    <OverflowMenu label="Conversation options" class="dock-more" items={[
+      { label: "New run…", onSelect: () => { composerOpen.value = true; } },
+      { label: "Agent browser", onSelect: () => setConsoleView("browser", false), disabled: !hasRun },
+      { label: "Full log", onSelect: () => setConsoleView("details") },
+    ]} />
   );
 }
