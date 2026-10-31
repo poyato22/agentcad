@@ -759,6 +759,10 @@ MAX_SIZE = 2048
 MAX_PNG_BYTES = 1024 * 1024 - 1          # every PNG stays under 1 MB (model image input)
 _PAPER = (250, 249, 245)
 _INK = (36, 38, 44)
+#: the single height of the "human for scale" figure (mm): both this renderer's figure
+#: (render_views figure=True) and the concept massing figure (concept.sketch.figure_tris) stand
+#: this tall, so the scale reference can never drift between the two (FW-core M-7)
+FIGURE_HEIGHT_MM = 1750.0
 _FIGURE_INK = 0.6                        # the scale figure is drawn lighter than the design
 _LINE_CREASE_DEG = 35.0                   # normal step between neighbouring pixels: a line
 

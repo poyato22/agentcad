@@ -291,3 +291,19 @@ def test_custom_cameras_render_named_views_and_bad_ones_are_refused():
                             cameras={"nose": ((float("nan"), 0, 0), (0, 0, 1))})
     with pytest.raises(ValueError):
         render.render_views(render.Mesh(tris), views=("nowhere",))
+
+
+def test_the_scale_figure_height_is_a_single_shared_constant():
+    # FW-core M-7: the renderer's scale figure and the concept massing figure stand the same
+    # height, so the "human for scale" can never drift between the two pipelines.
+    from mises.concept.sketch import FIGURE_MM, figure_tris
+    assert FIGURE_MM == render.FIGURE_HEIGHT_MM
+    # the concept figure is built to the shared height exactly
+    tris = figure_tris(0.0, 0.0, 0.0)
+    assert tris[..., 2].max() == pytest.approx(render.FIGURE_HEIGHT_MM)
+    # the renderer's figure stands within a head's tolerance of the same height
+    fig = render._figure_mesh([render.Mesh(_box_tris(300, 300, 300))],
+                              np.array([0.0, 1.0, 0.0]), np.array([1.0, 0.0, 0.0]))
+    assert fig is not None
+    height = float(fig.tris[..., 2].max() - fig.tris[..., 2].min())
+    assert abs(height - render.FIGURE_HEIGHT_MM) < 120.0
