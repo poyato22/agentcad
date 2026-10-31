@@ -43,7 +43,7 @@
   },
   {
     "name": "assembly_animate",
-    "description": "Show a joint's motion to the user: the app plays the joint (or a sequence of joints, one after another) from `from` to `to` over duration_s, optionally looping. Nothing is stored. Returns the solved poses at key frames; check interference across the same range with assembly_check sweep.",
+    "description": "Show a joint's motion to the user: the app plays the joint (or a sequence of joints, one after another) from `from` to `to` over duration_s, optionally looping. The joints keep their values. Pass `name` to save the motion (its animation_id goes to present_view kind 'animation'), or `present` to show it as a view card right away. Returns the solved poses at key frames; check interference across the same range with assembly_check sweep.",
     "safety": "read",
     "implied_classes": [],
     "open_world": false
@@ -416,7 +416,7 @@
   },
   {
     "name": "present_view",
-    "description": "Present a live view of the build in your reply: an orbiting shot (kind 'orbit'), an x-ray internal shot ('internal'), a section cutaway ('section'), an exploded view ('exploded'), or a subset of parts ('subset', drawn with the rest of the build ghosted for context). `target` = {kind: 'part'|'project', id, parts?, ghost?}. Camera: azimuth in degrees from -Y toward +X with Z up, elevation above the XY plane. It shows as a card the user can open full-window. Pass `caption` to say what it shows. When presenting results show 1-3 well-chosen views and keep the text short.",
+    "description": "Present a live view of the build in your reply: an orbiting shot (kind 'orbit'), an x-ray internal shot ('internal'), a section cutaway ('section'), an exploded view ('exploded'), or a subset of parts ('subset', drawn with the rest of the build ghosted for context). For the assembly (target = the build): 'animation' plays a motion the user can scrub, loop and speed up (`animation` = {animation_id} saved by assembly_animate `name`, or inline `keyframes` [{joint_id, from?, to, duration_s}]) \u2014 present it when motion matters; 'section_sweep' sweeps a cut plane through it once, then hands the slider to the user (`sweep` = {axis: x|y|z, from?, to? in mm, default the assembly's box}) \u2014 present it when the internals matter (design, packing). `target` = {kind: 'part'|'project', id, parts?, ghost?}. Camera: azimuth in degrees from -Y toward +X with Z up, elevation above the XY plane. It shows as a card the user can open full-window. Pass `caption` to say what it shows. When presenting results show 1-3 well-chosen views and keep the text short.",
     "safety": "read",
     "implied_classes": [],
     "open_world": false

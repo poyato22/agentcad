@@ -581,6 +581,14 @@ class AnimateArgs(BaseModel):
                                           "always stop it.")
     keyframes: int = Field(default=5, ge=2, le=21,
                            description="Poses returned per step, ends included.")
+    name: str | None = Field(default=None, min_length=1, max_length=60,
+                             description="Save the motion under this name in the build (the "
+                                         "same name replaces it); returns its animation_id for "
+                                         "present_view kind 'animation'.")
+    present: bool = Field(default=False, description="Also show it as a view card the user "
+                                                     "opens full window to play, scrub and loop "
+                                                     "(saves it; default name 'Motion').")
+    caption: str = Field(default="", max_length=200, description="The card's caption.")
 
     @model_validator(mode="after")
     def _one_form(self) -> "AnimateArgs":
@@ -594,7 +602,9 @@ class AnimateArgs(BaseModel):
 @tool("assembly_animate", safety=SafetyClass.READ, scope_arg="project_id",
       description="Show a joint's motion to the user: the app plays the joint (or a sequence of "
                   "joints, one after another) from `from` to `to` over duration_s, optionally "
-                  "looping. Nothing is stored. Returns the solved poses at key frames; check "
+                  "looping. The joints keep their values. Pass `name` to save the motion (its "
+                  "animation_id goes to present_view kind 'animation'), or `present` to show it "
+                  "as a view card right away. Returns the solved poses at key frames; check "
                   "interference across the same range with assembly_check sweep.")
 async def assembly_animate(ctx: ToolContext, args: AnimateArgs) -> ToolOutput:
     pid = _build_of(ctx, args.project_id)
@@ -604,33 +614,34 @@ async def assembly_animate(ctx: ToolContext, args: AnimateArgs) -> ToolOutput:
                        **({"from": args.from_} if args.from_ is not None else {}))])
     resolver = face_resolver(_parts_root(ctx))
     values = {j.id: j.value for j in asm.joints}
-    plan, step_poses, frames, t0 = [], [], [], 0.0
-    for st in steps:
-        joint = _joint_or_404(asm, st.joint_id)
-        start = values[joint.id] if st.from_ is None else st.from_
-        start = motion.clamp_value(start, joint.limits)
-        end = motion.clamp_value(st.to, joint.limits)
-        plan.append({"joint_id": joint.id, "from": start, "to": end,
-                     "duration_s": st.duration_s})
+    plan = animation_plan(asm, steps)
+    step_poses, t0 = [], 0.0
+    for p in plan:
+        jid, frames = p["joint_id"], []
         for k in range(args.keyframes):
             f = k / (args.keyframes - 1)
-            values[joint.id] = motion.lerp(start, end, f)
+            values[jid] = motion.lerp(p["from"], p["to"], f)
             res = solve(motion.with_values(asm, values), resolve_face=resolver)
-            frames.append((round(t0 + f * st.duration_s, 4), values[joint.id],
+            frames.append((round(t0 + f * p["duration_s"], 4), values[jid],
                            {i: motion.round_mat(m) for i, m in res.transforms.items()}))
         # only the instances this step moves (the rest hold still), so the result stays small
         moving = {i for i in frames[0][2] if any(fr[2][i] != frames[0][2][i] for fr in frames)}
-        step_poses.append([{"t": t, "joint_id": joint.id, "value": v,
+        step_poses.append([{"t": t, "joint_id": jid, "value": v,
                             "transforms": {i: m for i, m in tr.items() if i in moving}}
                            for t, v, tr in frames])
-        frames = []
-        values[joint.id] = end
-        t0 += st.duration_s
+        values[jid] = p["to"]
+        t0 += p["duration_s"]
     loops = args.loops or (MAX_LOOPS if args.loop else 1)
     if args.sequence:
         event = {"project_id": pid, "sequence": plan, "loop": loops > 1, "loops": loops}
     else:
         event = {"project_id": pid, **plan[0], "loop": loops > 1, "loops": loops}
+    name = args.name or ("Motion" if args.present else None)
+    saved = None
+    if name:
+        saved = _store(ctx).save_animation(pid, name, {"steps": plan, "loops": loops,
+                                                       "duration_s": round(t0, 4)})
+        event["animation_id"] = saved["id"]
     ctx.events.publish(Event(type="assembly_animate", run_id=getattr(ctx, "run_id", None),
                              data=event))
     size = sum(len(p["transforms"]) for sp in step_poses for p in sp)
@@ -639,10 +650,43 @@ async def assembly_animate(ctx: ToolContext, args: AnimateArgs) -> ToolOutput:
     poses = [p for sp in step_poses for p in sp]
     what = (f"joint {plan[0]['joint_id']} from {plan[0]['from']} to {plan[0]['to']}"
             if len(plan) == 1 else f"{len(plan)} joints in sequence")
+    data: dict = {"animation": event, "poses": poses}
+    warnings: list[str] = []
+    note = ""
+    if saved:
+        data["animation_id"] = saved["id"]
+        note = f"; saved as {saved['name']!r} (animation_id {saved['id']})"
+    if args.present and saved:
+        from ..cad import views            # the view card renders through the view tools
+        try:
+            card = await views.present_view.handler(ctx, views.PresentViewArgs(
+                target={"kind": "project", "id": pid}, kind="animation",
+                animation={"animation_id": saved["id"]}, caption=args.caption))
+            data["view_spec"] = (card.data or {}).get("view_spec")
+            note += "; shown as a view card"
+        except MisesError as e:
+            warnings.append(f"no view card: {e.message}")
     return ToolOutput(summary=f"animating {what} over {t0:g} s"
                               + (f" ({loops}x)" if loops > 1 else "")
-                              + f"; {len(poses)} key poses returned",
-                      data={"animation": event, "poses": poses}, step_kind=StepKind.MEASURE)
+                              + f"; {len(poses)} key poses returned" + note,
+                      data=data, warnings=warnings, step_kind=StepKind.MEASURE)
+
+
+def animation_plan(asm, steps) -> list[dict]:
+    """The steps of a motion as played: [{joint_id, from, to, duration_s}], each value clamped
+    to its joint's limits; a step with no `from` starts where the motion left that joint (else
+    its current value). Shared with present_view kind 'animation' (inline keyframes)."""
+    values = {j.id: j.value for j in asm.joints}
+    plan = []
+    for st in steps:
+        joint = _joint_or_404(asm, st.joint_id)
+        start = values[joint.id] if st.from_ is None else st.from_
+        start = motion.clamp_value(start, joint.limits)
+        end = motion.clamp_value(st.to, joint.limits)
+        plan.append({"joint_id": joint.id, "from": start, "to": end,
+                     "duration_s": st.duration_s})
+        values[joint.id] = end
+    return plan
 
 
 def register_assembly_tools(registry: ToolRegistry) -> None:
