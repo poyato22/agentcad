@@ -19,13 +19,15 @@ test("layout_regions_exist", async ({ page }) => {
   const consoleBox = await box("console");
   expect(top.height).toBe(44);
   expect(top.width).toBe(1440);
+  // FW-layout (D20): the build view is full-bleed under the top bar; the Parts surface and the
+  // agent dock float over it, 12px in from the window edges
+  expect([viewer.x, viewer.y, viewer.width, viewer.height]).toEqual([0, 44, 1440, 900 - 44]);
   expect(left.width).toBe(240);
+  expect([left.x, left.y]).toEqual([12, 44 + 12]);
   expect(consoleBox.width).toBe(440);   // the agent dock's default width (Plan 9 visual spec)
-  expect(viewer.width).toBe(1440 - 240 - 440);
-  expect(consoleBox.y).toBe(44);
-  expect(consoleBox.height).toBe(900 - 44);
-  expect(left.y).toBe(44);
-  expect(viewer.y).toBe(44);
+  expect(consoleBox.x + consoleBox.width).toBe(1440 - 12);
+  expect(consoleBox.y).toBe(44 + 12);
+  expect(consoleBox.height).toBe(900 - 44 - 24);
 });
 
 test("min_window_size_is_1280_by_800", async ({ page }) => {
@@ -298,7 +300,8 @@ test("console_collapses_to_a_rail_and_expands", async ({ page }) => {
   const consoleRegion = page.locator("[data-region=console]");
   expect((await consoleRegion.boundingBox())?.width).toBe(440);
   await page.getByRole("button", { name: "Collapse the agent console" }).click();
-  await expect.poll(async () => (await consoleRegion.boundingBox())?.width).toBe(36);
+  // folded: a slim floating tab
+  await expect.poll(async () => (await consoleRegion.boundingBox())?.width).toBe(34);
   await page.getByRole("button", { name: "Expand the agent console" }).click();
   await expect.poll(async () => (await consoleRegion.boundingBox())?.width).toBe(440);
 });

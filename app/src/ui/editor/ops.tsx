@@ -81,7 +81,8 @@ export interface OpsMenuProps {
   keyboard: boolean;
   /** Where to draw the callout (px in the viewer), and the pick it points at. */
   at: { x: number; y: number } | null;
-  bounds: { w: number; h: number };
+  /** The sheet a callout may use: x0 → w (FW-layout: clear of the floating surfaces). */
+  bounds: { w: number; h: number; x0?: number };
   /** The face / edge the menu now targets (the viewer draws the blue marker). */
   onTarget(face: PartFace | null, edge: PartEdge | null): void;
   onClose(): void;
@@ -138,7 +139,8 @@ export function OpsMenu({ part, target, baseVersion, keyboard, at, bounds, onTar
 
   // callout placement: right-below the pick, kept inside the sheet
   const W = 248; const H = 210;
-  const x = at ? Math.min(Math.max(8, at.x + 28), Math.max(8, bounds.w - W - 8)) : 22;
+  const x0 = bounds.x0 ?? 0;
+  const x = at ? Math.min(Math.max(x0 + 8, at.x + 28), Math.max(x0 + 8, bounds.w - W - 8)) : x0 + 22;
   const y = at ? Math.min(Math.max(8, at.y + 20), Math.max(8, bounds.h - H - 8)) : 52;
   const faces = part.metrics?.face_list ?? [];
   const edges = part.metrics?.edge_list ?? [];

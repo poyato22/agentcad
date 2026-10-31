@@ -164,7 +164,7 @@ function BuildGrid(): JSX.Element {
         )}
       </ul>
       {!trash && !query && shown.length > 0 && shown.length <= 2 && (
-        <p class="home-hint dim">New build starts another; a drawing dropped anywhere here becomes a part.</p>
+        <p class="home-hint dim">Start another from the button above; a drawing dropped anywhere here becomes a part.</p>
       )}
 
       {undo && (

@@ -50,8 +50,8 @@ for (const theme of ["dark", "light"] as const) {
     await expect.poll(() => preview.evaluate((i) => (i as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
     expect((await calls(fake, "POST", "/slices"))[0].body).toEqual({ part_id: "mount_plate", printer_id: "bench_mk4", material: "PLA" });
 
-    // collapse the console first: sending must open it on the card
-    await page.getByRole("button", { name: "Collapse the agent console" }).click();
+    // the dock starts folded on Print (FW-layout): sending must open it on the card
+    await expect(page.locator("[data-region=app]")).toHaveAttribute("data-console", "rail");
     await sendBtn(page).click();
     await expect(pageRegion(page).getByRole("status", { name: "Print request" })).toContainText("Approve or reject the card in the console");
     await expect(page.locator("[data-region=app]")).toHaveAttribute("data-console", "open");
@@ -95,7 +95,9 @@ test("a_sent_card_on_the_ui_run_stays_reachable_via_the_chip_and_show_card", asy
 
   // and via "Show card" on the Print page after collapsing the console and leaving the ui run
   await showDesigner();
-  await page.getByRole("button", { name: "Collapse the agent console" }).click();
+  const fold = page.getByRole("button", { name: "Collapse the agent console" });
+  if (await fold.count()) await fold.click();
+  await expect(page.locator("[data-region=app]")).toHaveAttribute("data-console", "rail");
   await pageRegion(page).getByRole("button", { name: "Show card" }).click();
   await expect(page.locator("[data-region=app]")).toHaveAttribute("data-console", "open");
   await expect(printCard(page)).toBeVisible();

@@ -93,7 +93,7 @@
 .vt-gap { width: 8px; }
 .vt-btn:disabled { color: var(--faint); cursor: default; }
 .vp[data-tab="code"] .title-block { visibility: hidden; }
-.vp[data-tab="code"] .src { top: 44px; }
+.vp[data-tab="code"] .src { top: 56px; left: calc(var(--inset-l, 0px) + 12px); right: calc(var(--inset-r, 0px) + 12px); bottom: 12px; border: 1px solid var(--line); border-radius: var(--r-surface); overflow: hidden; }
 .src-empty { display: flex; align-items: center; justify-content: center; }
 
 /* "All parts" overview toggle: a tool-row button left of View ▾ (R17; I3 — in the row's flow, so it
@@ -114,8 +114,8 @@
 .vx-link:focus-visible, .vx-x:focus-visible, .vx-pin:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
 
 .vx-panel {
-  /* top-left, under "← Assembly": the facts card owns the bottom edge */
-  position: absolute; left: calc(var(--inset-l, 0px) + 14px); top: 58px; z-index: 3; width: 248px; max-width: calc(100% - 44px);
+  /* top-left, under "← Assembly" and the view modes: the facts card owns the bottom edge */
+  position: absolute; left: calc(var(--inset-l, 0px) + 14px); top: 102px; z-index: 3; width: 248px; max-width: calc(100% - 44px);
   display: flex; flex-direction: column; gap: 6px; padding: 7px 10px 9px;
   background: var(--paper); border: 1px solid var(--line2); border-top: 2px solid var(--blue); font-size: var(--fs-small);
 }

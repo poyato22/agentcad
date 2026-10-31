@@ -113,7 +113,7 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: 600; margin: 0; let
 @media (prefers-reduced-motion: no-preference) {
   .region-left.surface, .region-console.surface { animation: surface-in var(--t-open) ease-out; }
 }
-@keyframes surface-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@keyframes surface-in { from { opacity: 0; } to { opacity: 1; } }
 
 /* macOS overlay traffic lights occupy the top-left; keep the setup wizard header clear of them
    (its height, --chrome-h, centres its text on the lights).

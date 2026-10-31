@@ -287,6 +287,6 @@ test("topbar_zones_never_overlap_with_busy_lights", async ({ page, fake }) => {
     const crumb = await box(".topbar-left");
     expect(lights.x, `status overlaps the tabs at ${width}px`).toBeGreaterThanOrEqual(tabs.x + tabs.width);
     expect(crumb.x + crumb.width, `Home + build name overlap the tabs at ${width}px`).toBeLessThanOrEqual(tabs.x);
-    await expect(page.getByRole("button", { name: "STOP ALL" })).toBeInViewport({ ratio: 1 });
+    await expect(page.locator(".topbar-right")).toBeInViewport({ ratio: 1 });
   }
 });
