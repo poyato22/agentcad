@@ -65,6 +65,13 @@ beforeAll(async () => {
   fake.set("part_delete.json", await ok("DELETE", `/parts/${dup.part_id}`));
   // Plan 8 G3's skeleton panel route (dump_builds_edit_fixtures.py: the Default build, none yet)
   const builds = (await ok("GET", "/projects")) as { id: string }[];
+  // Plan 9 D29 (dump_builds_edit_fixtures.py): a copy placed in the assembly, deleted with its
+  // instance, then undone
+  const dup2 = (await ok("POST", "/parts/mount_plate/duplicate")) as { part_id: string };
+  await req("POST", `/projects/${builds[0].id}/assembly/instances`, { part_id: dup2.part_id, name: "plate copy", fixed: true });
+  const gone = (await ok("DELETE", `/parts/${dup2.part_id}?cascade=true`)) as { undo: string };
+  fake.set("part_delete_cascade.json", gone);
+  fake.set("part_restore.json", await ok("POST", `/parts/${dup2.part_id}/restore`, { undo: gone.undo }));
   fake.set("project_skeleton_empty.json", await ok("GET", `/projects/${builds[0].id}/skeleton`));
   // POST /runs: the real core's dump started its run from a sketch (sketch_run.json); the answer is
   // the same {run_id} without one, and the app no longer sends sketches (Plan 7 U2b)
@@ -113,6 +120,8 @@ const projectSkeletonSchema = z.object({
   project_id: z.string(), skeleton_id: z.string(), version: z.number(),
   skeleton: z.record(z.string(), z.unknown()).nullable(), dependents: z.array(z.unknown()),
 });
+/** DELETE /parts/{id} (Plan 9 D29: what went with it, and the Undo token). */
+const partDeleteSchema = z.object({ deleted: z.string(), removed_instances: z.array(z.string()), removed_joints: z.array(z.string()), undo: z.string() });
 const CASES: [string, z.ZodType<unknown>][] = [
   ["health.json", okSchema], ["run.json", agentRunSchema], ["context.json", anyJson],
   ["key_set.json", keyStatusSchema], ["key_delete.json", keyStatusSchema],
@@ -124,7 +133,8 @@ const CASES: [string, z.ZodType<unknown>][] = [
   ["runs_tree.json", z.array(runNodeSchema)], ["runs_cleanup.json", cleanupResultSchema],
   ["run_patch.json", agentRunSchema], ["run_delete.json", okSchema],
   ["tools.json", toolListSchema], ["run_pending.json", runPendingSchema],
-  ["part_duplicate.json", partSummarySchema], ["part_delete.json", z.object({ deleted: z.string() })],
+  ["part_duplicate.json", partSummarySchema], ["part_delete.json", partDeleteSchema],
+  ["part_delete_cascade.json", partDeleteSchema], ["part_restore.json", partSummarySchema.and(z.object({ restored_instances: z.number().int() }))],
   ["project_skeleton_empty.json", projectSkeletonSchema],
 ];
 
@@ -255,6 +265,7 @@ const COVERAGE: Record<string, string> = {
   // Plan 7 U8: the part menu's duplicate / delete / export (core tests/server/test_parts_manager_api.py)
   "POST /parts/{part_id}/duplicate": "part_duplicate.json",   // Plan 7 U8 (dump_builds_edit_fixtures.py)
   "DELETE /parts/{part_id}": "part_delete.json",
+  "POST /parts/{part_id}/restore": "part_restore.json",   // Plan 9 D29 (dump_builds_edit_fixtures.py)
   "POST /parts/{part_id}/export": "EXEMPT: Plan 7 U8; writes to ~/Downloads (MISES_EXPORT_DIR), so the dump can't run it on the dev home; core test_parts_manager_api covers it",
   "POST /projects": "project_create.json",
   "POST /projects/trash/empty": "projects_trash_empty.json",

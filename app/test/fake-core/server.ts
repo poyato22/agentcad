@@ -714,6 +714,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
 
   const buildsDeps: BuildsDeps = {
     get: () => state.builds, parts: () => state.parts, setParts: (list) => { state.parts = list; },
+    assembly: () => state.assembly,
     profile: () => state.setup.profile as unknown as ReturnType<BuildsDeps["profile"]>,
     emit: (ev) => { emit(ev); },
     blockers: (projectIds) => {

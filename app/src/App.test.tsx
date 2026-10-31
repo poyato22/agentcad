@@ -41,8 +41,8 @@ describe("App shell", () => {
     expect(inRegion("topbar", "nav[aria-label=location]")).not.toBeNull();             // Task 4
     expect(screen.getByRole("button", { name: /stop all/i }).closest("[data-region=topbar]")).not.toBeNull();
     expect(inRegion("left", '[data-testid="left-pane"]')).not.toBeNull();              // Task 5
-    expect(container.querySelector('[data-region="left"]')?.textContent).toMatch(/Parts[\s\S]*History/i);
-    expect(inRegion("viewer", '[data-testid="viewer"]')).not.toBeNull();               // Task 6
+    expect(container.querySelector('[data-region="left"]')?.textContent).toMatch(/Parts[\s\S]*BOM/);
+    expect(inRegion("viewer", '[data-testid="assembly-view"]')).not.toBeNull();        // Plan 9 D7: the build view
     expect(inRegion("console", "[data-console] [data-run-switcher]")).not.toBeNull();  // conversation view (default)
     expect(inRegion("console", "[data-console] [data-conversation]")).not.toBeNull();
     expect(inRegion("console", "[data-console] [data-command-line] textarea")).not.toBeNull(); // Task 9

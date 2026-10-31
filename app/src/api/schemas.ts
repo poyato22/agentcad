@@ -169,6 +169,11 @@ export const partSummarySchema = z.object({
   version: z.number().int().optional(),
   // a malformed appearance falls back to the drafting look (the row is never dropped)
   appearance: appearanceSchema.nullish().catch(null),
+  // Plan 9 B2: mass for every part (groups: the sum). Optional: a core without B2 leaves it out
+  // and the app falls back to metrics.mass_g (ui/left/mass.ts)
+  mass_g: z.number().nullish().catch(null),
+  mass_source: z.enum(["built", "catalog", "sum", "unknown"]).nullish().catch(null),
+  mass_note: z.string().nullish().catch(null),
 });
 
 export const coreErrorBodySchema = z.object({

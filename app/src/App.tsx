@@ -1,6 +1,6 @@
 // App shell: 44px top bar (--topbar-h; the macOS traffic lights sit on its centre line) across the top. Below it the active page shows:
-//   · Design keeps today's layout — left 240px · viewer · console. Its viewer is either one part
-//     or the build's assembly (ui/assembly/mode: the Part | Assembly switch, ⌥⌘A).
+//   · Design keeps today's layout — left 240px · viewer · console. Its viewer is the build's
+//     assembly; a part clicked in the left tree opens alone (ui/assembly/focus, ← Assembly / Esc).
 //   · Studies / Drawing / Print / Onshape / Parts render full-width under the top bar.
 // The agent console stays on every page as a right-hand panel that can collapse to a 36px rail.
 // The new-run dialog, the Profile panel and the setup gate mount at the root.
@@ -13,7 +13,7 @@ import { needsYou } from "./state/selection";
 import { HomePage } from "./ui/pages/home";
 import { AgentManager } from "./ui/agents/AgentManager";
 import { AssemblyView } from "./ui/assembly/AssemblyView";
-import { designMode, installModeShortcut } from "./ui/assembly/mode";
+import { openPartId } from "./ui/assembly/focus";
 import { BootOverlay } from "./ui/boot/BootOverlay";
 import { ConsolePane } from "./ui/console/ConsolePane";
 import { NewRunDialog } from "./ui/dialogs/NewRunDialog";
@@ -48,11 +48,11 @@ function PageRegion(): JSX.Element {
     default: return (
       <>
         <div class="region region-left" data-region="left"><LeftPane /></div>
-        <main class="region region-viewer" data-region="viewer" data-mode={designMode.value}>
-          {designMode.value === "assembly" ? <AssemblyView /> : <Viewer />}
-          {/* "All parts" lives in the Part viewer's tool row (Viewer → ViewerTools); Assembly view
-              lists its parts in its own panel, so the overview isn't offered over it (I3) */}
-          {overviewOpen.value && designMode.value !== "assembly" && <Overview />}
+        <main class="region region-viewer" data-region="viewer" data-mode={openPartId.value === null ? "assembly" : "part"}>
+          {openPartId.value === null ? <AssemblyView /> : <Viewer />}
+          {/* "All parts" lives in the Part viewer's tool row (Viewer → ViewerTools); the build view
+              is the parts put together, so the overview isn't offered over it (I3) */}
+          {overviewOpen.value && openPartId.value !== null && <Overview />}
           <DrawingDrop variant="overlay" projectId={activeBuildId.value} />
         </main>
       </>
@@ -88,7 +88,6 @@ function ConsoleRegion(): JSX.Element {
 
 export function App(): JSX.Element {
   useEffect(() => installPageShortcuts(), []);
-  useEffect(() => installModeShortcut(() => activePage.peek() === "design"), []);
   // ⌘0 returns to the Home grid (not while a modal is open, and only on a real key press).
   useEffect(() => registerShortcut("Meta+0", (e) => {
     if (isTrustedKey(e) && !modalOpen()) goHome();

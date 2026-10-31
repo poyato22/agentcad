@@ -114,22 +114,65 @@ export async function duplicateParts(ids: readonly string[]): Promise<string[]> 
   return made;
 }
 
+/** Plan 9 D29: the last delete, for its Undo toast (null once undone, replaced or timed out). */
+export interface DeletedParts { text: string; build: string | null; items: { id: string; undo: string }[] }
+export const lastDeleted: Signal<DeletedParts | null> = signal<DeletedParts | null>(null);
+
+/** Deletes parts with their assembly instances (DELETE /parts/{id}?cascade=true); the Undo toast
+ *  (lastDeleted) puts them all back. */
 export async function deleteParts(ids: readonly string[]): Promise<boolean> {
   const build = activeBuildId.peek();
   treeError.value = null;
   const names = ids.map(nameOf);
+  const items: { id: string; undo: string }[] = [];
   let done = 0;
+  let instances = 0;
   try {
-    for (const id of ids) { await actions.client().deletePart(id); done++; }
+    for (const id of ids) {
+      const r = await actions.client().deletePart(id, { cascade: true });
+      if (r.undo) items.push({ id, undo: r.undo });
+      instances += r.removed_instances.length;
+      done++;
+    }
   } catch (e) {
     treeError.value = `Couldn't delete ${names[done]}: ${reason(e)}`;
   }
   if (done && isActiveBuild(build)) {
     await loadParts(build);
-    note(done === 1 ? `Deleted ${names[0]}` : `Deleted ${done} parts`);
+    const what = done === 1 ? `Deleted ${names[0]}` : `Deleted ${done} parts`;
+    const text = instances ? `${what} and ${instances === 1 ? "its instance" : `${instances} instances`}` : what;
+    lastDeleted.value = items.length ? { text, build, items } : null;
+    if (!items.length) note(text);
   }
   return done === ids.length;
 }
+
+/** Undo the last delete: each part comes back (files, tree row, assembly instances). */
+export async function undoDelete(): Promise<boolean> {
+  const d = lastDeleted.peek();
+  if (!d) return false;
+  lastDeleted.value = null;
+  treeError.value = null;
+  let ok = true;
+  // newest first, so a parent comes back before its re-parented children look for it
+  for (const it of [...d.items].reverse()) {
+    try { await actions.client().restorePart(it.id, it.undo); } catch (e) {
+      ok = false;
+      treeError.value = `Couldn't undo the delete of ${it.id}: ${reason(e)}`;
+    }
+  }
+  if (isActiveBuild(d.build)) await loadParts(d.build);
+  if (ok) note(d.items.length === 1 ? "Restored the part" : `Restored ${d.items.length} parts`);
+  return ok;
+}
+
+/** How many assembly instances these parts have in the build view's assembly (for the confirm). */
+export function instanceCount(ids: readonly string[]): number {
+  const asm = assemblyOf.value;
+  return asm ? asm.instances.filter((i) => ids.includes(i.part_id)).length : 0;
+}
+/** The build view's assembly (set by ui/assembly, so this module needs no Three.js). */
+export const assemblyOf: Signal<{ instances: readonly { part_id: string }[] } | null> = signal(null);
 
 export async function exportPart(id: string, format: "step" | "stl"): Promise<boolean> {
   treeError.value = null;

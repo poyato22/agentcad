@@ -598,9 +598,16 @@ export class CoreClient {
   duplicatePart(id: string): Promise<PartSummary> {
     return this.json("POST", `/parts/${enc(id)}/duplicate`, partSummarySchema);
   }
-  /** Moves the part's files to the core's trash; refused (400) while the assembly uses it. */
-  deletePart(id: string): Promise<{ deleted: string }> {
-    return this.json("DELETE", `/parts/${enc(id)}`, z.object({ deleted: z.string() }));
+  /** Moves the part's files to the core's trash; refused (400) while the assembly uses it, unless
+   *  `cascade` (Plan 9 D29): then its instances leave the assembly too. `undo` restores it all. */
+  deletePart(id: string, opts: { cascade?: boolean } = {}): Promise<{ deleted: string; removed_instances: string[]; undo: string | null }> {
+    return this.json("DELETE", `/parts/${enc(id)}${opts.cascade ? "?cascade=true" : ""}`, z.object({
+      deleted: z.string(), removed_instances: z.array(z.string()).default([]), undo: z.string().nullish().transform((v) => v ?? null),
+    }));
+  }
+  /** Plan 9 D29: undo a delete (the files, the tree row and the assembly instances). */
+  restorePart(id: string, undo: string): Promise<PartSummary> {
+    return this.json("POST", `/parts/${enc(id)}/restore`, partSummarySchema, { body: { undo } });
   }
   /** Saves model.step / model.stl to the export folder (~/Downloads) as "<label>.<fmt>". */
   exportPart(id: string, format: "step" | "stl"): Promise<{ path: string; name: string; format: string }> {

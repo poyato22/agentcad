@@ -267,6 +267,10 @@ export interface PartSummary {
   color?: string | null; kind?: PartKind; version?: number;
   /** Plan 7 U8: the part's material (lib/appearance.ts); absent or null = the drafting look. */
   appearance?: Appearance | null;
+  /** Plan 9 B2: the part's mass (a group: its children's sum); null with `mass_note` saying why. */
+  mass_g?: number | null;
+  mass_source?: "built" | "catalog" | "sum" | "unknown" | null;
+  mass_note?: string | null;
 }
 
 /** From the Rust shell's `core_info` command (camelCase), or the dev/test env fallback. */

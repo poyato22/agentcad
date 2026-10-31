@@ -10,7 +10,9 @@ import { viewScope } from "../viewer/Viewer";
 import { measureHook } from "./partMenuHooks";
 import { resetSelection, selectedIds } from "./partSelection";
 import { PartTree } from "./PartTree";
-import { treeError, treeNote } from "./treeActions";
+import { assemblyOf, lastDeleted, treeError, treeNote } from "./treeActions";
+import { LeftPane } from "./LeftPane";
+import { openPartId } from "../assembly/focus";
 import { hiddenParts, resetVisibility } from "./visibility";
 import { modifyRequest } from "../viewer/tool";
 
@@ -29,7 +31,7 @@ const LIST = () => [row("frame", 0), row("arm_a", 0, "frame"), row("arm_b", 1, "
 
 type Fn = ReturnType<typeof vi.fn>;
 let client: {
-  reorderParts: Fn; patchPart: Fn; parts: Fn; deletePart: Fn; duplicatePart: Fn; exportPart: Fn; assembly: Fn; addInstance: Fn; getProfile: Fn;
+  reorderParts: Fn; patchPart: Fn; parts: Fn; deletePart: Fn; restorePart: Fn; duplicatePart: Fn; exportPart: Fn; assembly: Fn; addInstance: Fn; getProfile: Fn; bom: Fn;
 };
 
 beforeEach(() => {
@@ -38,7 +40,9 @@ beforeEach(() => {
   activeBuildId.value = "b1";
   parts.value = LIST();
   client = {
-    deletePart: vi.fn(async (id: string) => ({ deleted: id })),
+    deletePart: vi.fn(async (id: string) => ({ deleted: id, removed_instances: [], undo: null })),
+    restorePart: vi.fn(async (id: string) => row(id, 1)),
+    bom: vi.fn(async () => { throw new Error("no bom here"); }),
     duplicatePart: vi.fn(async (id: string) => row(`${id}_copy`, 9)),
     exportPart: vi.fn(async (id: string, f: string) => ({ path: `/Users/me/Downloads/${id}.${f}`, name: `${id}.${f}`, format: f })),
     assembly: vi.fn(async () => ({ instances: [], joints: [], dof_remaining: 0, overconstrained: [] })),
@@ -53,7 +57,7 @@ beforeEach(() => {
   };
   bindClient(client as unknown as CoreClient);
 });
-afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); assemblyOf.value = null; lastDeleted.value = null; openPartId.value = null; });
 
 const rowEl = (id: string) => document.querySelector<HTMLElement>(`[data-part="${id}"] .tree-row`) as HTMLElement;
 const names = () => [...document.querySelectorAll("[data-part]")].map((el) => `${el.getAttribute("data-depth")}${el.getAttribute("data-part")}`);
@@ -154,7 +158,7 @@ describe("part tree", () => {
     expect(menu.contains(document.activeElement)).toBe(true);
     const labels = screen.getAllByRole("menuitem").map((b) => b.textContent);
     expect(labels).toEqual(["RenameF2", "Appearance…", "HideH", "Isolate", "Measure", "Add to assembly", "Duplicate⌘D",
-      "Export STEP", "Export STL", "Properties⌘I", "Modify…", "Delete"]);   // Modify…: U2a's item (the viewer registers it)
+      "Export STEP", "Export STL", "Properties⌘I", "Modify…", "Delete…⌫"]);   // Modify…: U2a's item (the viewer registers it)
     fireEvent.keyDown(menu, { key: "Escape" });
     expect(screen.queryByRole("menu")).toBeNull();
     fireEvent.contextMenu(rowEl("frame"), { clientX: 30, clientY: 40 });
@@ -319,10 +323,10 @@ describe("part tree", () => {
     fireEvent.keyDown(menu, { key: "ArrowDown" });
     expect(document.activeElement?.textContent).toBe("HideH");
     fireEvent.keyDown(menu, { key: "End" });
-    expect(document.activeElement?.textContent).toBe("Delete");
+    expect(document.activeElement?.textContent).toBe("Delete…⌫");
     fireEvent.keyDown(menu, { key: "Home" });
     fireEvent.keyDown(menu, { key: "ArrowUp" });               // wraps to the last
-    expect(document.activeElement?.textContent).toBe("Delete");
+    expect(document.activeElement?.textContent).toBe("Delete…⌫");
     fireEvent.keyDown(menu, { key: "Escape" });
     expect(screen.queryByRole("menu")).toBeNull();
     await waitFor(() => expect(document.activeElement).toBe(rowEl("plate").querySelector(".tree-name")));
@@ -345,15 +349,19 @@ describe("part tree", () => {
     expect(hiddenParts.value.size).toBe(0);
   });
 
-  it("Delete asks once more in place, then deletes and reloads; Duplicate selects the copy", async () => {
+  it("Delete asks once, naming the assembly instances, then deletes with them and reloads; Duplicate selects the copy", async () => {
     parts.value = LIST().map((p) => ({ ...p, metrics: METRICS }));
     client.parts.mockImplementation(async () => parts.peek().filter((p) => p.part_id !== "plate"));
+    assemblyOf.value = { instances: [{ part_id: "plate" }, { part_id: "plate" }, { part_id: "frame" }] };
     render(<PartTree />);
     fireEvent.contextMenu(rowEl("plate"), { clientX: 10, clientY: 10 });
-    fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /^Delete…/ }));
+    const ask = screen.getByTestId("confirm-delete");
+    expect(ask.textContent).toContain("Delete plate?");
+    expect(ask.textContent).toContain("Also removes 2 instances from the assembly.");
     expect(client.deletePart).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Click again to delete" }));
-    await waitFor(() => expect(client.deletePart).toHaveBeenCalledWith("plate"));
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(client.deletePart).toHaveBeenCalledWith("plate", { cascade: true }));
     await screen.findByText("Deleted plate");
     expect(names()).not.toContain("0plate");
 
@@ -361,6 +369,28 @@ describe("part tree", () => {
     fireEvent.contextMenu(rowEl("frame"), { clientX: 10, clientY: 10 });
     fireEvent.click(screen.getByRole("menuitem", { name: /^Duplicate/ }));
     await waitFor(() => expect(selectedPartId.value).toBe("frame_copy"));
+  });
+
+  it("⌫ on a row asks the same; Esc cancels; the Undo toast restores the part and its instances", async () => {
+    parts.value = LIST().map((p) => ({ ...p, metrics: METRICS }));
+    client.deletePart.mockImplementation(async (id: string) => ({ deleted: id, removed_instances: ["i1"], undo: `${id}.42` }));
+    client.parts.mockImplementation(async () => parts.peek().filter((p) => p.part_id !== "plate"));
+    assemblyOf.value = { instances: [{ part_id: "plate" }] };
+    render(<LeftPane />);
+    const name = rowEl("plate").querySelector(".tree-name") as HTMLElement;
+    fireEvent.keyDown(name, { key: "Backspace" });
+    expect(screen.getByTestId("confirm-delete").textContent).toContain("Also removes 1 instance from the assembly.");
+    fireEvent.keyDown(screen.getByTestId("confirm-delete"), { key: "Escape" });
+    expect(screen.queryByTestId("confirm-delete")).toBeNull();
+    fireEvent.keyDown(name, { key: "Backspace" });
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    const toast = await screen.findByTestId("undo-toast");
+    expect(toast.textContent).toContain("Deleted plate and its instance");
+    client.parts.mockImplementation(async () => LIST().map((p) => ({ ...p, metrics: METRICS })));
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    await waitFor(() => expect(client.restorePart).toHaveBeenCalledWith("plate", "plate.42"));
+    await waitFor(() => expect(names()).toContain("0plate"));
+    expect(screen.queryByTestId("undo-toast")).toBeNull();
   });
 
   it("Export saves STEP / STL and says where; Properties shows mass, volume, size and material", async () => {

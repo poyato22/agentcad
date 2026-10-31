@@ -1,23 +1,40 @@
-/* Left pane. Blue only for: selected, being changed by an agent. LED colors come from base.css. */
-.left-pane { display: flex; flex-direction: column; height: 100%; min-height: 0; }
-.left-pane > .pane { height: auto; flex: 1 1 0; border-bottom: 1px solid var(--line); }
-.left-pane > .pane:last-child { border-bottom: 0; }
-/* Parts gets most of the height: it is what you work from; History is a short trail under it */
-.left-pane > .left-parts { flex: 1.8 1 0; }
-
-.left-list, .step-list { list-style: none; margin: 0; padding: 0; }
-.left-row {
-  display: flex; align-items: center; gap: 6px; width: 100%; text-align: left;
-  padding: 3px 8px; border: 0; border-left: 2px solid transparent; background: transparent;
-  color: var(--ink); font: inherit; cursor: pointer;
+/* Left surface of the build view (Plan 9 visual spec): the parts tree with masses and the total,
+   then the BOM summary — plain 12.5px semibold section headers, not boxed bars; sentence case;
+   numbers in Iosevka. Blue only for: selected, being changed by an agent. */
+.left-pane {
+  display: flex; flex-direction: column; height: 100%; min-height: 0; position: relative;
+  font-family: var(--font-ui, "Instrument Sans", system-ui, -apple-system, sans-serif); font-size: 12.5px;
 }
-.left-row:hover { background: var(--paper2); }
-.left-row:focus-visible { outline: 1px solid var(--blue); outline-offset: -1px; }
-.left-row.sel { border-left-color: var(--blue); background: var(--blue-tint); }
-.left-row.changing { color: var(--blue2); }
+.left-parts { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
+.left-parts-body { flex: 1 1 0; min-height: 0; overflow: auto; }
+.left-sec-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px 4px; }
+.left-sec-title { font-size: 12.5px; font-weight: 600; color: var(--ink); letter-spacing: 0; text-transform: none; }
+.left-link { background: none; border: 0; padding: 2px 4px; font: inherit; font-size: 12px; color: var(--dim); cursor: pointer; border-radius: 6px !important; }
+.left-link:hover { color: var(--ink); background: var(--raised, var(--paper2)); }
+.left-link:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.left-total {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 7px 12px 8px 30px;
+  border-top: 1px solid var(--line); color: var(--dim); font-weight: 600;
+}
+.left-total .num { color: var(--ink); }
+.left-bom { border-top: 1px solid var(--line); padding-bottom: 8px; flex: none; }
+.left-bom-line {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 8px; width: calc(100% - 16px); margin: 0 8px; padding: 6px 4px;
+  background: transparent; border: 0; font: inherit; color: var(--ink); cursor: pointer; text-align: left; border-radius: 6px !important;
+}
+.left-bom-line:hover { background: var(--raised, var(--paper2)); }
+.left-bom-line:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
+.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 .row-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.row-right { margin-left: auto; flex: none; font-size: var(--fs-small); }
-.tag-changing { flex: none; color: var(--blue2); font-size: var(--fs-label); letter-spacing: .1em; text-transform: uppercase; }
+.tag-changing { flex: none; color: var(--blue2); font-size: 11px; }
+.left-toast {
+  position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 8; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 7px 8px 7px 12px; color: var(--ink);
+  background: color-mix(in srgb, var(--surface, var(--paper)) 92%, transparent); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+  border: 1px solid var(--line2); border-radius: 10px !important; box-shadow: 0 8px 28px rgba(0, 0, 0, .28);
+}
+.left-toast-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.left-toast .left-link { color: var(--blue2); font-weight: 600; }
 
 /* ---- variables: name + field on one line, the scale under it (a drafting rule: hairline track,
    square thumb). A range the core only guessed draws dashed and its numbers carry "~". */
@@ -56,15 +73,3 @@
 .vars-error { color: var(--red); }
 .vars-conflict { color: var(--ink); background: var(--blue-tint); border-top-color: var(--blue); }
 .vars-actions { display: inline-flex; gap: 6px; margin-left: auto; }
-
-.left-bom-link { flex: none; background: none; border: 0; padding: 0; font: inherit; color: var(--dim); text-decoration: underline; cursor: pointer; }
-.left-bom-link:hover { color: var(--ink); }
-.left-bom-link:focus-visible { outline: 1px solid var(--blue); }
-
-.step-list { padding-left: 21px; }
-.step-row {
-  display: block; width: 100%; text-align: left; padding: 2px 8px; border: 0; background: transparent;
-  color: var(--dim); font: inherit; font-size: var(--fs-small); cursor: pointer;
-}
-.step-row:hover { background: var(--paper2); color: var(--ink); }
-.step-empty { padding: 2px 8px; font-size: var(--fs-small); }
