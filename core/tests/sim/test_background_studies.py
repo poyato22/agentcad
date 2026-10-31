@@ -361,6 +361,10 @@ async def test_a_sub_agents_study_notes_its_lead(make_rt):
     (("tool_call", {"name": "mirror_part_create"}), "text"),
     (("text_delta", {}), "text"), (("agent_activity", {}), "text"),
     (("message_queued", {}), "text"),
+    (("agent_announce", {"kind": "view_presented"}), "view"),
+    (("agent_announce", {"kind": "critique_round"}), "view"),
+    (("agent_announce", {"kind": "part_shown"}), "view"),
+    (("agent_announce", {"kind": "part_created"}), "text"),
 ])
 def test_every_event_carries_its_stream(ev, stream):
     e = Event(type=ev[0], run_id="r", data=ev[1])
@@ -377,6 +381,8 @@ def test_every_step_carries_its_stream():
     assert step(StepKind.TOOL_RESULT, {"name": "present_view"}).stream == "view"
     assert step(StepKind.MESSAGE, {"role": "assistant", "text": "hi"}).stream == "text"
     assert step(StepKind.DECISION, {"agent_thinking": "x"}).stream == "text"
+    assert step(StepKind.DECISION, {"agent_announce": {"kind": "view_presented"}}).stream == "view"
+    assert step(StepKind.DECISION, {"agent_announce": {"kind": "agent_spawned"}}).stream == "text"
     assert step(StepKind.MESSAGE, {"role": "user", "system_note": {"kind": "sim_finished"}}
                 ).stream == "text"
     assert step(StepKind.TOOL_CALL, {"name": "sim_run"}).model_dump()["stream"] == "sim"

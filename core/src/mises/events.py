@@ -26,6 +26,8 @@ VIEW_TOOLS = frozenset({"render_views", "present_view", "critique_model", "part_
                         "section_check", "assembly_animate"})
 SIM_EVENTS = frozenset({"sim_progress", "sim_finished", "study_progress"})
 VIEW_EVENTS = frozenset({"part_shown", "assembly_animate"})
+#: announcement cards that are pictures of the model (the rest are conversation cards)
+VIEW_ANNOUNCE = frozenset({"view_presented", "critique_round", "part_shown"})
 
 
 def tool_stream(name: str | None) -> str:
@@ -41,7 +43,11 @@ def stream_of(event_type: str, data: dict | None = None) -> str:
         return "sim"
     if event_type in VIEW_EVENTS or event_type.startswith("view_"):
         return "view"
-    name = (data or {}).get("name")
+    data = data or {}
+    card = data if event_type == "agent_announce" else data.get("agent_announce")
+    if isinstance(card, dict) and card.get("kind") in VIEW_ANNOUNCE:
+        return "view"
+    name = data.get("name")
     return tool_stream(name) if isinstance(name, str) else "text"
 
 
