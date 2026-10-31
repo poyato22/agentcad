@@ -166,7 +166,7 @@ def annotate(rows: list[dict], home: Path | None, *, has_disk: set[str],
         m, src, note = own[i]
         if kids.get(i) and r.get("kind") != "skeleton":
             total, unknown = subtree(i, frozenset({i}))
-            n = sum(1 for _ in kids[i])
+            n = len(kids[i])
             if total is None:
                 m, src = None, "unknown"
                 note = "no part in it has a known mass yet"
