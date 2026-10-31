@@ -72,6 +72,9 @@ export interface DesignViewerHandle extends ViewerHandle {
   /** The scene internals the view modes (modes/: X-ray, section, explode, views) drive. Optional:
    *  test doubles of the handle leave it out and the modes stay off. */
   modeHost?(): ModeHost;
+  /** FW-layout: CSS px of the canvas the floating surfaces cover at each side; the model is
+   *  framed and centred in the rest (ui/shell/insets). Optional for test doubles. */
+  setInsets?(left: number, right: number): void;
 }
 
 /** What the view modes (ui/viewer/modes) need from a viewer: its scene, camera and parts, a way to
@@ -146,6 +149,23 @@ export function fitOrtho(camera: THREE.OrthographicCamera, bbox: THREE.Box3, asp
   camera.updateProjectionMatrix();
 }
 
+/** FW-layout (D20): floating surfaces cover `insetL` / `insetR` CSS px at the sides of a canvas
+ *  `width` × `height`. The frustum keeps its height (the scale) and shifts sideways so the camera's
+ *  axis, where a fit puts the model, sits in the middle of what is left. Zoom and pan still work
+ *  around that axis. */
+export function offsetOrtho(camera: THREE.OrthographicCamera, width: number, height: number, insetL: number, insetR: number): void {
+  const halfH = (camera.top - camera.bottom) / 2;
+  const s = (2 * halfH) / Math.max(1, height);
+  const cx = insetL + visibleWidth(width, insetL, insetR) / 2;
+  camera.left = -cx * s; camera.right = (width - cx) * s;
+  camera.updateProjectionMatrix();
+}
+
+/** The canvas width the floating surfaces leave (at least a third of it). */
+export function visibleWidth(width: number, insetL: number, insetR: number): number {
+  return Math.max(width / 3, width - insetL - insetR, 1);
+}
+
 /** Ambient light for plain (drafting) parts; with a shiny part on the sheet it drops to
  *  SHINY_AMBIENT (a flat ambient washes PBR finishes out) and plain Lambert faces get the
  *  difference back as emissive, so they look exactly as before. */
@@ -194,6 +214,11 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
 
 
   let width = 1; let height = 1;
+  let insetL = 0; let insetR = 0;
+  const frameView = (box: THREE.Box3) => {
+    fitOrtho(camera, box, visibleWidth(width, insetL, insetR) / height);
+    offsetOrtho(camera, width, height, insetL, insetR);
+  };
   let items: ShownPart[] = [];
   let mode: "shaded" | "wire" = "shaded";
   let highlight = false;
@@ -217,6 +242,9 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
   const controls = new OrbitControls(camera, canvas);
   controls.enableDamping = false;
   controls.addEventListener("change", requestRender);
+  /** The user turned, panned or zoomed since the last fit: a fold then only slides the view. */
+  let moved = false;
+  controls.addEventListener("start", () => { moved = true; });
 
   const onLost = (e: Event) => { e.preventDefault(); };
   const onRestored = () => { requestRender(); };
@@ -364,7 +392,8 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
   function fit(): void {
     const box = fitBox();
     if (!box) return;
-    fitOrtho(camera, box, width / height);
+    moved = false;
+    frameView(box);
     controls.target.copy(box.getCenter(new THREE.Vector3()));
     controls.update();
     placeSoftbox();
@@ -510,12 +539,16 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
       width = Math.max(1, w); height = Math.max(1, h);
       renderer.setSize(width, height, false);
       const box = fitBox();
-      if (box) fitOrtho(camera, box, width / height);
-      else {
-        const halfH = (camera.top - camera.bottom) / 2;
-        camera.left = -halfH * (width / height); camera.right = halfH * (width / height);
-        camera.updateProjectionMatrix();
-      }
+      if (box) frameView(box);
+      else offsetOrtho(camera, width, height, insetL, insetR);
+      requestRender();
+    },
+    setInsets(l, r) {
+      if (l === insetL && r === insetR) return;
+      insetL = l; insetR = r;
+      // untouched since the last fit: refit to the new room; else keep the user's view, re-centred
+      if (!moved && fitBox()) fit();
+      else offsetOrtho(camera, width, height, insetL, insetR);
       requestRender();
     },
     dispose() {

@@ -41,6 +41,7 @@ import "./viewer.css";
 import { addPartMenuItem, measureHook } from "../left/partMenuHooks";
 import { closePart, openPart } from "../assembly/focus";
 import { requestModify } from "./tool";
+import { viewInsets } from "../shell/insets";
 
 // U2a's part actions in U8's part menu (the one place a part's actions live): Measure opens the
 // viewer's measure tool on the part; Modify… opens the ops form (hole / shell / fillet / chamfer).
@@ -234,6 +235,11 @@ export function Viewer(): JSX.Element {
   useEffect(() => { viewerRef.current?.setMode(mode); }, [mode]);
   useEffect(() => { viewerRef.current?.setHighlight(highlight); }, [highlight]);
   useEffect(() => { viewerRef.current?.restyle?.(); }, [bg]);
+  // FW-layout: the part centres in what the floating surfaces leave
+  const insets = viewInsets.value;
+  useEffect(() => { viewerRef.current?.setInsets?.(insets.left, insets.right); }, [insets.left, insets.right]);
+  // callouts (selection label, comment box, feature ops) keep to the sheet the surfaces leave
+  const room = { x0: insets.left, w: Math.max(insets.left + 1, bounds.w - insets.right), h: bounds.h };
 
   /** Put the loaded parts on the sheet. */
   function compose(refit: boolean): void {
@@ -497,7 +503,6 @@ export function Viewer(): JSX.Element {
         onPointerDown={(e) => { if (e.button === 0) down.current = { x: e.clientX, y: e.clientY }; }}
         onPointerUp={onPointerUp}
       />
-      <span class="tick tick-tl" /><span class="tick tick-tr" /><span class="tick tick-bl" /><span class="tick tick-br" />
       {/* Plan 9 D7: one part open alone; the corner leads back to the build's assembly (or Esc).
           The script opens from View ▸ Part script, and while it shows "Back to the model" sits here */}
       <div class="vp-corner">
@@ -522,7 +527,7 @@ export function Viewer(): JSX.Element {
           { id: "background", label: "Background…", onSelect: () => setBgOpen(true) },
         ]} />
       {part !== null && part.kind !== "skeleton" && <DesignViewModes host={modeHost} focusId={partId} partIds={shown.map((p) => p.part_id)} />}
-      {part === null && <div class="vp-empty label">NO PART · ask an agent to create one</div>}
+      {part === null && <div class="vp-empty label">No part yet. Ask an agent to create one.</div>}
       {part?.kind === "skeleton" && tab === "model" && <SkeletonPanel part={part} />}
       {tab === "model" && tool === "comment" && !comment && <div class="vx-mode-hint label" role="status">Click the model where something should change</div>}
       {tab === "model" && v && (shownPins.length > 0 || dots.length > 0) && (
@@ -530,7 +535,7 @@ export function Viewer(): JSX.Element {
           onThread={(p) => { actions.selectRun(p.runId); setOpenPin(null); }} />
       )}
       {tab === "model" && tool === "select" && chip && !ops && (
-        <SelectionLabel key={chip.seq} picked={chip.picked} at={chip.at} bounds={bounds}
+        <SelectionLabel key={chip.seq} picked={chip.picked} at={chip.at} bounds={room}
           canModify={canEdit && chip.picked.kind !== "vertex" && chip.picked.kind !== "point"}
           onModify={() => modifyChip(chip)} onClose={() => setChip(null)} />
       )}
@@ -538,11 +543,11 @@ export function Viewer(): JSX.Element {
         <MeasurePanel picks={picks} state={measured} onClear={() => setPicks([])} onClose={() => { viewerTool.value = "select"; }} />
       )}
       {tab === "model" && tool === "comment" && comment && (
-        <CommentBox key={`${comment.at.x},${comment.at.y}`} at={comment.at} bounds={bounds} where={comment.where} busy={sending} error={commentError}
+        <CommentBox key={`${comment.at.x},${comment.at.y}`} at={comment.at} bounds={room} where={comment.where} busy={sending} error={commentError}
           onSend={(t) => { void sendComment(t); }} onCancel={() => { setComment(null); setCommentError(null); }} />
       )}
       {ops && opsPart && tab === "model" && (
-        <OpsMenu key={ops.seq} part={opsPart} target={ops.target} baseVersion={ops.baseVersion} keyboard={ops.keyboard} at={ops.at} bounds={bounds}
+        <OpsMenu key={ops.seq} part={opsPart} target={ops.target} baseVersion={ops.baseVersion} keyboard={ops.keyboard} at={ops.at} bounds={room}
           onTarget={(f, ed) => viewerRef.current?.setMarker(markerFor(opsPart, f, ed))}
           onClose={() => { setOps(null); canvasRef.current?.focus(); }} />
       )}

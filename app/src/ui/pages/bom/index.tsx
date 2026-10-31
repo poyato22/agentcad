@@ -50,7 +50,6 @@ export function BomPage(): JSX.Element {
     return onCoreEvent((ev) => { if (ev.type === "bom_changed" && ev.data.project_id === build.id) reload(build.id); });
   }, [build?.id]);
 
-  // BOM is a tab of the build (Plan 9 D9): the tabs lead back, the page has no "← Design" (FW-app M8)
   if (!build) {
     return (
       <PageShell title="Parts list">
@@ -75,7 +74,8 @@ export function BomPage(): JSX.Element {
     <PageShell title="Parts list">
       <div class="bom" data-bom-page data-build={build.id}>
         <div class="bom-bar">
-          <div class="bom-buildname text">{build.name || "Untitled build"}</div>
+          {/* FW-layout: BOM is a top-bar tab (D9), so no "← Design" here; the top bar names the build */}
+          <h2 class="bom-title">Parts list</h2>
           <span class="bom-spacer" />
           <Button variant="default" onClick={() => setAdding(true)}>Add bought part</Button>
           <Button variant="ghost" disabled={!bom || bom.items.length === 0} onClick={() => void exportCsv()}>Export CSV</Button>

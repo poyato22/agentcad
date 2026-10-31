@@ -58,7 +58,7 @@ test("conversation_is_the_default_with_activity_lines_and_the_approval_card_inli
     "asking to merge mount plate",
   ]);
   await expect(thread(page).locator(`[data-approval="${AID}"]`)).toBeVisible();
-  await expect(thread(page).locator(`[data-approval="${AID}"]`)).toContainText("▲ NEEDS YOU");
+  await expect(thread(page).locator(`[data-approval="${AID}"]`)).toContainText("Needs you");
   // ▸ shows the raw tool input/output
   const line = thread(page).locator("[data-activity]", { hasText: "changed mount plate" });
   await line.getByRole("button", { name: /^Show details/ }).click();

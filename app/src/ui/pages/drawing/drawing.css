@@ -1,5 +1,4 @@
-/* Drawing + Print pages: shared page bits (pg-*) and the drawing view. Plan tokens only; square
-   corners; blue only for selected / needs-you; green/amber/red only for pass/warn/fail. */
+/* Drawing + Print pages: shared page bits (pg-*) and the drawing view. Plan tokens only; blue only for selected / needs-you; green/amber/red only for pass/warn/fail. */
 .pg-toolbar { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; padding-bottom: 12px; }
 .pg-field { display: flex; flex-direction: column; gap: 3px; min-width: 160px; }
 .pg-spacer { flex: 1; }
@@ -11,12 +10,13 @@
 }
 
 .drawing { display: flex; flex-direction: column; height: 100%; min-height: 0; position: relative; }
-.drawing-stage { position: relative; flex: 1; min-height: 320px; display: flex; flex-direction: column; border: 1px solid var(--line2); }
-/* the zoom row sits above the viewport, never over the sheet's frame (FW-app M10) */
+.drawing-stage { position: relative; flex: 1; min-height: 320px; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--r-surface); overflow: hidden; }
+/* the zoom row sits above the viewport, never over the sheet's frame or its title block (FW-app M10) */
 .drawing-tools {
   flex: none; display: flex; align-items: center; justify-content: flex-end; gap: 2px;
-  padding: 2px 4px; border-bottom: 1px solid var(--line2); background: var(--paper);
+  padding: 3px 6px; border-bottom: 1px solid var(--line); background: var(--surface);
 }
+.drawing-tools .btn { border-color: transparent; min-height: 26px; padding: 3px 9px; }
 .drawing-zoom { min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; }
 .drawing-viewport {
   position: relative; flex: 1; min-height: 0; overflow: hidden; cursor: grab; touch-action: none;

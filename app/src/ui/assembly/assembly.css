@@ -4,7 +4,14 @@
    buttons radius 7px; sentence case; numbers in Iosevka (tabular). Blue only for selected /
    pressed / agent-changing; red / amber only for the check chip and interference tags. All from
    the shell's tokens (--surface, --surface-blur, --shadow, --r-*, --font-ui, --font-num). */
-.asm { position: relative; height: 100%; min-height: 0; }
+.asm {
+  position: relative; height: 100%; min-height: 0;
+  /* FW-layout: the sheet runs under the floating surfaces (--inset-l / --inset-r from App); the
+     pill, caption and errors centre in what they leave (Play's full window: all of it) */
+  --vis-w: calc(100% - var(--inset-l, 0px) - var(--inset-r, 0px));
+  --mid: calc(var(--inset-l, 0px) + var(--vis-w) / 2);
+}
+.asm[data-immersive] { --inset-l: 0px; --inset-r: 0px; }
 .asm-sheet { min-width: 0; height: 100%; }
 
 .asm-float, .asm-pill, .asm-caption, .asm-error, .asm-imm-bar, .asm-imm-head {
@@ -18,7 +25,7 @@
 
 /* ---- the viewer pill */
 .asm-pill {
-  position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 6;
+  position: absolute; left: var(--mid); bottom: 18px; transform: translateX(-50%); z-index: 6;
   display: flex; align-items: center; gap: 2px; padding: 4px; max-width: calc(100% - 32px);
   flex-wrap: nowrap; justify-content: center; white-space: nowrap;
 }
@@ -55,12 +62,12 @@
 
 /* ---- the selection caption and errors (top-centre) */
 .asm-caption {
-  position: absolute; left: 50%; top: 14px; transform: translateX(-50%); z-index: 5; max-width: calc(100% - 32px);
+  position: absolute; left: var(--mid); top: 14px; transform: translateX(-50%); z-index: 5; max-width: calc(var(--vis-w) - 32px);
   padding: 6px 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none;
 }
 .asm-caption b { font-weight: 600; }
 .asm-error {
-  position: absolute; left: 50%; top: 52px; transform: translateX(-50%); z-index: 7; max-width: min(560px, calc(100% - 32px));
+  position: absolute; left: var(--mid); top: 52px; transform: translateX(-50%); z-index: 7; max-width: min(560px, calc(var(--vis-w) - 32px));
   display: flex; gap: 8px; align-items: center; padding: 5px 6px 5px 12px;
 }
 .asm-empty { font-family: var(--font-ui); font-size: 12.5px; letter-spacing: 0; text-transform: none; }
@@ -106,4 +113,3 @@
   .pill-btn, .pill-axis { transition: none; }
 }
 
-/* Plan 9 B2: the assembly's total mass, top-left of the sheet */

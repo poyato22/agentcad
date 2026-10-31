@@ -38,7 +38,9 @@ describe("Viewer", () => {
     const partGlb = vi.fn();
     bind(partGlb);
     const { container } = render(<Viewer />);
-    expect(container.textContent).toContain("NO PART · ask an agent to create one");
+    // FW-layout (D20): no drafting "FIG." caption; sentence case
+    expect(container.textContent).not.toContain("FIG.");
+    expect(container.textContent).toContain("No part yet. Ask an agent to create one.");
     expect(partGlb).not.toHaveBeenCalled();
   });
 

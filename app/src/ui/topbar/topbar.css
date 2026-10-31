@@ -1,5 +1,5 @@
 /* The build's top bar (Plan 9 Visual spec): 44px, quiet. Left: Home + the build's name; centre:
-   the four page tabs; right: agents, Onshape count, Status, Profile, Stop all (while running).
+   the four page tabs; right: agents, Onshape count, Status, Profile.
    No boxes around things that are not buttons; one hairline under the bar. */
 .topbar {
   position: relative; height: var(--topbar-h);
@@ -93,7 +93,6 @@
 .light-click:hover { background: var(--raised); }
 .light-click:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
 
-.stop-all { flex: none; }
 .toast {
   position: absolute; right: 12px; top: calc(var(--topbar-h) + 6px); z-index: 5;
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-btn); box-shadow: var(--shadow);

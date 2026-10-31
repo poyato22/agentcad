@@ -105,6 +105,9 @@ describe("contract: real core browser/BOM answers ↔ app schemas ↔ fake core"
     // (spec values the core printed from Python floats, "9.0", read back from JSON as 9: the
     // specs column is compared without them)
     const norm = (csv: string) => csv.split("\r\n").map((l) => l.replace(/(\d+)\.0( |;|,|$)/g, "$1$2"));
+    // the dumped build held only the dumped rows: the scenario's own mount plate (an automatic
+    // made row, like the core's) is hidden first so the two lists match (FW-app M8)
+    expect((await fake("DELETE", `/projects/${PROJ}/bom/auto_mount_plate`)).status).toBe(200);
     expect(norm((await fake("GET", `/projects/${PROJ}/bom.csv`)).text)).toEqual(norm(realText("bom.csv")));
   });
 });

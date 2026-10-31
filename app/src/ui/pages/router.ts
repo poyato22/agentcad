@@ -1,6 +1,7 @@
 // Page router for a build. One `activePage` signal drives which page of the open build shows:
-// Design keeps the left pane + viewer; the others render full-width under the top bar. The agent
-// console stays available on every page and can collapse to a rail.
+// Design is the full-bleed build view with the floating Parts surface; the others render full-width
+// under the top bar. The agent dock floats at the right on every page and folds to a slim tab
+// (open by default on Design only; each page remembers its state for the session).
 //
 // Navigation: the top tabs (ui/topbar/ModeTabs) and ⌘1–⌘4 both call setPage(). A page component
 // is just the default/exported component of ui/pages/<id>/index.tsx, rendered by App when active.
@@ -50,6 +51,13 @@ export function isPage(v: unknown): v is Page {
 
 export function setPage(p: Page): void {
   if (!isPage(p)) return;
+  const from = activePage.peek();
+  if (p !== from) {
+    // FW-layout (D20): each page keeps its own dock state for the session; a page not visited yet
+    // starts as DOCK_OPEN_DEFAULT says
+    dockOpenOn[from] = !consoleCollapsed.peek();
+    consoleCollapsed.value = !(dockOpenOn[p] ?? DOCK_OPEN_DEFAULT[p]);
+  }
   activePage.value = p;
   atHome.value = false;     // ⌘1–⌘4 on Home opens that page of the open build (m1)
 }
@@ -89,10 +97,37 @@ export function installPageShortcuts(deps: PageShortcutDeps = {}): () => void {
   return () => offs.forEach((off) => off());
 }
 
-// ---- Agent console collapse (available on every page) ------------------------------------------
+// ---- Floating surfaces: the agent dock and the Parts surface (FW-layout, D20) -------------------
 
-/** Whether the right-hand agent console is collapsed to a 36px rail. */
+/** Whether the agent dock is folded to its slim tab (a floating "Agents" button, top right). */
 export const consoleCollapsed: Signal<boolean> = signal<boolean>(false);
+
+/** Where the dock starts open. Studies has its own agent (the studies agent pane), and Print and
+ *  BOM rarely need the dock, so there it starts as the slim tab; the user can open it. */
+export const DOCK_OPEN_DEFAULT: Readonly<Record<Page, boolean>> = { design: true, studies: false, print: false, bom: false };
+/** The dock state each page was left in (this session). */
+const dockOpenOn: Partial<Record<Page, boolean>> = {};
 
 export function toggleConsole(): void { consoleCollapsed.value = !consoleCollapsed.value; }
 export function setConsoleCollapsed(on: boolean): void { consoleCollapsed.value = on; }
+
+/** Tests: forget the per-page dock states. */
+export function resetDockMemory(): void { for (const k of Object.keys(dockOpenOn)) delete dockOpenOn[k as Page]; }
+
+/** Whether the Design page's Parts surface is folded to its slim tab. */
+export const leftCollapsed: Signal<boolean> = signal<boolean>(false);
+export function toggleLeft(): void { leftCollapsed.value = !leftCollapsed.value; }
+export function setLeftCollapsed(on: boolean): void { leftCollapsed.value = on; }
+
+/** ⌘[ folds / unfolds the Parts surface (Design), ⌘] the agent dock: inside a build, never under
+ *  a modal (the immersive views step with ⌘[ / ⌘], and they are modal). Returns unregister. */
+export function installSurfaceShortcuts(deps: PageShortcutDeps = {}): () => void {
+  const trusted = deps.isTrusted ?? isTrustedKey;
+  const blocked = deps.isModalOpen ?? (() => modalOpen());
+  const ok = (e: KeyboardEvent) => trusted(e) && !blocked() && !atHome.peek();
+  const offs = [
+    registerShortcut("Meta+[", (e) => { if (ok(e) && activePage.peek() === "design") toggleLeft(); }),
+    registerShortcut("Meta+]", (e) => { if (ok(e)) toggleConsole(); }),
+  ];
+  return () => offs.forEach((off) => off());
+}

@@ -4,7 +4,7 @@
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
   border: 1px dashed var(--line2); background: var(--paper); color: var(--ink); text-align: center;
 }
-.imp-drop-title { margin: 0; font: 600 var(--fs)/1.4 var(--font-head); letter-spacing: .02em; }
+.imp-drop-title { margin: 0; font: 600 var(--fs)/1.4 var(--font-head); }
 .imp-drop-sub { margin: 0 0 4px; font-size: var(--fs-small); color: var(--dim); }
 .imp-drop[data-over], .imp-drop-overlay { border-color: var(--blue); background: var(--blue-tint); }
 
@@ -34,7 +34,7 @@
 .imp-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .imp-kind {
   flex: none; padding: 0 4px; border: 1px solid var(--line2); color: var(--dim);
-  font: 600 var(--fs-label)/1.6 var(--font-head); letter-spacing: .1em;
+  font: 600 var(--fs-label)/1.6 var(--font-head);
 }
 .imp-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
 .imp-x { flex: none; border: 0; background: transparent; color: var(--dim); cursor: pointer; padding: 0 4px; font-size: 14px; line-height: 1; }
@@ -67,7 +67,7 @@
 
 .imp-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 .imp-table th, .imp-table td { padding: 3px 6px; border-bottom: 1px solid var(--line); text-align: left; font-weight: 400; }
-.imp-table thead th { color: var(--faint); font: 600 var(--fs-label)/1.4 var(--font-head); letter-spacing: .1em; text-transform: uppercase; }
+.imp-table thead th { color: var(--faint); font: 600 var(--fs-label)/1.4 var(--font-head); }
 .imp-table tbody th { color: var(--ink); }
 .imp-dimtext { color: var(--dim); }
 .imp-table td:nth-child(2), .imp-table td:nth-child(3) { white-space: nowrap; }

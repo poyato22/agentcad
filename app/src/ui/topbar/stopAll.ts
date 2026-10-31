@@ -1,5 +1,6 @@
-// Global stop-all: POST /runs/cancel_all from the top-bar button and ⌘⇧. (works from any focus,
-// including text inputs). One request at a time; a toast reports the result.
+// Global stop-all: POST /runs/cancel_all from ⌘⇧. (works from any focus, including text inputs)
+// and the /stopall command. FW-layout removed the top bar's red button: the composer's Stop is the
+// visible control. One request at a time; a toast reports the result.
 import { signal } from "@preact/signals";
 import { registerShortcut } from "../../lib/keys";
 import { actions } from "../../state/store";
@@ -30,10 +31,6 @@ export async function stopAll(): Promise<string[]> {
   } finally {
     stopBusy.value = false;
   }
-}
-
-export function useStopAll(): { stopAll(): Promise<string[]>; busy: boolean } {
-  return { stopAll, busy: stopBusy.value };
 }
 
 /** Test helper: back to idle. */

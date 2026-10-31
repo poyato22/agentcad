@@ -49,7 +49,9 @@ test("status_lights_reflect_core", async ({ page }) => {
 test("stop_all_stops_running_runs", async ({ page, fake }) => {
   await page.goto("/");
   await expect(light(page, "agents")).toContainText("2 agents");
-  await page.getByRole("button", { name: /stop all/i }).click();
+  // FW-layout: no red button in the bar; ⇧⌘. (and the composer's Stop) stop the agents
+  await expect(page.locator("[data-region=topbar]").getByRole("button", { name: /stop all/i })).toHaveCount(0);
+  await page.keyboard.press("Meta+Shift+.");
   await expect(page.getByRole("status")).toHaveText("stopped 2");
   const calls = await fake.calls();
   expect(calls.filter((c) => c.method === "POST" && c.path === "/runs/cancel_all")).toHaveLength(1);

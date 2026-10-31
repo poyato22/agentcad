@@ -8,7 +8,7 @@
   flex: none; height: var(--pane-head-h); display: flex; align-items: center; gap: 12px; padding: 0 8px 0 12px;
   background: var(--head); border-bottom: 1px solid var(--line2);
 }
-.profile-title { font: 600 var(--fs-label)/1 var(--font-head); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+.profile-title { font: 600 var(--fs-label)/1 var(--font-head); color: var(--dim); }
 .profile-close { margin-left: auto; }
 .profile-main { flex: 1; min-height: 0; display: flex; }
 .profile-nav { flex: none; width: 168px; display: flex; flex-direction: column; border-right: 1px solid var(--line); padding: 8px 0; }
@@ -22,10 +22,10 @@
 .profile-body { flex: 1; min-width: 0; overflow: auto; padding: 16px; }
 
 .profile-section { display: flex; flex-direction: column; gap: 12px; max-width: 640px; }
-.profile-h { font-size: 18px; letter-spacing: .02em; border-bottom: 1px solid var(--line2); padding-bottom: 8px; margin: 0; }
+.profile-h { font-size: 18px; border-bottom: 1px solid var(--line2); padding-bottom: 8px; margin: 0; }
 .profile-card { background: var(--paper2); border: 1px solid var(--line2); padding: 12px; display: flex; flex-direction: column; gap: 8px; }
 .profile-card p { margin: 0; }
-.profile-card-title { margin: 0; font: 600 var(--fs-label)/1 var(--font-head); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+.profile-card-title { margin: 0; font: 600 var(--fs-label)/1 var(--font-head); color: var(--dim); }
 .profile-field { display: flex; flex-direction: column; gap: 3px; }
 .profile-field input, .profile-field select { width: 100%; }
 .profile-pair { display: grid; grid-template-columns: 180px 1fr; gap: 8px; }
@@ -61,7 +61,7 @@
 .sites-main { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .sites-name { color: var(--ink); font-weight: 700; }
 .sites-domain { overflow: hidden; text-overflow: ellipsis; }
-.sites-tag { font-size: var(--fs-label); letter-spacing: .06em; color: var(--dim); border: 1px solid var(--line2); padding: 0 4px; }
+.sites-tag { font-size: var(--fs-label); color: var(--dim); border: 1px solid var(--line2); padding: 0 4px; }
 .sites-row .btn-ghost { margin-left: auto; }
 .sites-cats { font-size: var(--fs-small); }
 .sites-add { display: flex; flex-direction: column; gap: 6px; }

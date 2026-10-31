@@ -1,15 +1,19 @@
-/* Studies page, every study type (Task A8). Tokens only, both themes, square corners.
+/* Studies page, every study type (Task A8). Tokens only, both themes, sentence case.
    Blue: the selected type / tab / load case and a face pick waiting (needs the human). */
 .st { grid-template-columns: 340px minmax(0, 1fr); }
 .st-types, .st-viewtabs { display: flex; flex-wrap: wrap; align-items: center; }
-.st-viewtabs .st-note { margin-left: 12px; }
+.st-viewtabs .st-note { margin-left: 10px; padding-right: 10px; }
+/* FW-layout (D20): segmented switches in the UI face, like Print's 3D print | Drawing */
+.st-types, .st-viewtabs { gap: 2px; }
+.st-viewtabs { align-self: flex-start; padding: 2px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-btn); }
 .st-type {
-  font: var(--fs-small)/1 var(--font-mono); letter-spacing: .06em; color: var(--dim); background: var(--paper);
-  border: 1px solid var(--line2); padding: 6px 9px; margin-left: -1px; cursor: pointer;
+  font: 500 var(--fs)/1 var(--font-ui); color: var(--dim); background: transparent;
+  border: 1px solid transparent; border-radius: 6px; padding: 6px 12px; cursor: pointer;
 }
-.st-type:first-child { margin-left: 0; }
+.st-types .st-type { border-color: var(--line2); }
 .st-type:hover { color: var(--ink); }
-.st-type[aria-selected="true"] { color: var(--blue2); border-color: var(--blue); position: relative; z-index: 1; background: var(--blue-tint); }
+.st-type[aria-selected="true"] { color: var(--ink); background: var(--raised); }
+.st-types .st-type[aria-selected="true"] { border-color: color-mix(in srgb, var(--blue) 55%, transparent); background: var(--blue-tint); }
 .st-type[data-available="false"] { color: var(--faint); }
 .st-type:disabled { color: var(--faint); cursor: default; }
 .st-type:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }

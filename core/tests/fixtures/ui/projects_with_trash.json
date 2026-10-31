@@ -8,7 +8,8 @@
     "trashed_at": null,
     "part_count": 2,
     "run_count": 1,
-    "onshape": null
+    "onshape": null,
+    "mass_g": 12.6028
   },
   {
     "id": "3651ec2481a6",
@@ -19,6 +20,7 @@
     "trashed_at": 1793432022.85024,
     "part_count": 0,
     "run_count": 0,
-    "onshape": null
+    "onshape": null,
+    "mass_g": null
   }
 ]

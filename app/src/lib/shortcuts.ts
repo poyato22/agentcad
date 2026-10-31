@@ -25,6 +25,10 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { combo: "Meta+N", keys: "⌘N", action: "New agent run", scope: "global" },
   { combo: "Meta+Shift+A", keys: "⇧⌘A", action: "Agent manager", scope: "global" },
   { combo: "Meta+Shift+.", keys: "⇧⌘.", action: "Stop all runs", scope: "global" },
+  // FW-layout (D20): the floating surfaces fold to slim tabs (not under a modal: the immersive
+  // views step with ⌘[ / ⌘])
+  { combo: "Meta+]", keys: "⌘]", action: "Show / hide the agent dock", scope: "global" },
+  { combo: "Meta+[", keys: "⌘[", action: "Show / hide the parts surface", scope: "design" },
   { combo: "F", keys: "F", action: "Fit the assembly in the view (or double-click empty space)", scope: "design" },
   { combo: "Escape", keys: "Esc", action: "Back to the assembly from an open part / close Play", scope: "design" },
   { combo: "M", keys: "M", action: "Measure (viewer focused; again for Select)", scope: "viewer" },

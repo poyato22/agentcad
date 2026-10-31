@@ -17,7 +17,8 @@ noted (the viewer or the parts list focused, a focused approval card).
 | ⌘K | Focus the command line |
 | ⌘N | New agent run |
 | ⇧⌘A | Agent manager |
-| ⇧⌘. | Stop all runs |
+| ⇧⌘. | Stop all runs (the composer's Stop stops the build's agents) |
+| ⌘] | Show / hide the agent dock (inside a build; it folds to a slim "Agents" tab) |
 
 ## Top bar (inside a build)
 
@@ -29,6 +30,7 @@ noted (the viewer or the parts list focused, a focused approval card).
 
 | Keys | Action |
 |---|---|
+| ⌘[ | Show / hide the parts surface (it folds to a slim "Parts" tab) |
 | F | Fit the assembly in the view (or double-click empty space) |
 | Esc | Back to the assembly from an open part / close Play |
 | M | Measure (viewer focused; again for Select) |
