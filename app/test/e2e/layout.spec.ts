@@ -92,6 +92,12 @@ for (const size of [{ width: 1440, height: 900 }, { width: 1280, height: 800 }])
     await page.getByRole("button", { name: /^Expand the agent console/ }).click();
     await expect(page.getByTestId("left-pane")).toBeVisible();
     await expect(page.locator("[data-region=console] [data-dock]")).toBeVisible();
+    // a menu opened inside a surface floats free of it (the surface is not its containing block)
+    await page.locator('[data-part="pi_case"] .tree-row').first().click({ button: "right" });
+    const menu = page.getByRole("menu").first();
+    await expect(menu).toBeVisible();
+    expect(await menu.evaluate((el) => (el as HTMLElement).offsetParent)).toBeNull();
+    await page.keyboard.press("Escape");
     // the top bar keeps quiet: no red Stop all while a run works (⇧⌘. and the composer's Stop stay)
     await expect(page.locator("[data-region=topbar]").getByRole("button", { name: /stop all/i })).toHaveCount(0);
   });

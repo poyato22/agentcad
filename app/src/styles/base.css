@@ -106,8 +106,18 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: 600; margin: 0; let
 .surface-fold:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
 /* keep the console's own top-row controls clear of the fold button */
 .region-console .cv-top-row, .region-console > .con > .pane > .pane-head, .region-console .cv-detailsbar { padding-right: 36px; }
+/* The two big surfaces hold position:fixed menus (the part menu, properties, the dock's ⋯). A
+   backdrop-filter on the surface itself would make it their containing block (clipped, placed
+   wrong), so the blurred panel is painted by a ::before layer behind the content instead. */
+.region-console.surface, .region-left.surface {
+  background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; isolation: isolate;
+}
+.region-console.surface::before, .region-left.surface::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none;
+  background: var(--surface);
+  -webkit-backdrop-filter: blur(var(--surface-blur)) saturate(1.2); backdrop-filter: blur(var(--surface-blur)) saturate(1.2);
+}
 /* inside a floating surface, panes are see-through: the surface is the background */
-.region-console.surface, .region-left.surface { background: var(--surface); }
 .region-console .con, .region-console .dock, .region-console .pane, .region-left .pane { background: transparent; }
 /* the open dock's first stream header starts beside the fold button */
 @media (prefers-reduced-motion: no-preference) {
