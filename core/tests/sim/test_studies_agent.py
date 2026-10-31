@@ -101,6 +101,21 @@ def _ctx(rt, pid):
                            default_material="PLA", solvers=lambda: SOLVERS)
 
 
+def test_mass_matches_b2_exactly_no_drift(rt):
+    # FW-core M-6: the studies agent's per-part mass and the assembly total come from B2's single
+    # source, so they never drift from the tree / BOM / assembly.
+    from mises import mass, projects
+    pid = _build(rt)
+    c = _ctx(rt, pid)
+    rows = {r["id"]: r for r in projects.list_parts(rt.store, rt.home, pid)}
+    for p in c["parts"]:
+        assert p["mass_g"] == rows[p["part_id"]]["mass_g"]
+        assert p["mass_source"] == rows[p["part_id"]]["mass_source"]
+    total = mass.assembly_total(rt.store, rt.home, pid, rt.assembly_store.get(pid).instances)
+    assert c["assembly"]["total_mass_g"] == total["total_mass_g"]
+    assert c["assembly"]["unknown_mass"] == sorted({u["part_id"] for u in total["mass_unknown"]})
+
+
 def test_context_has_the_whole_build(rt):
     pid = _build(rt)
     c = _ctx(rt, pid)
@@ -111,7 +126,8 @@ def test_context_has_the_whole_build(rt):
     assert parts["hip_bracket"]["mass_source"] == "built"
     assert parts["hip_bracket"]["material"] == "PLA"
     assert parts["legs"]["mass_g"] == pytest.approx(24.8) and parts["legs"]["mass_source"] == "sum"
-    assert parts["head"]["mass_g"] is None and parts["head"]["mass_note"] == "not built yet"
+    # mass, its source and note come from B2's single source now (FW-core M-6), not a re-impl
+    assert parts["head"]["mass_g"] is None and "no successful build" in parts["head"]["mass_note"]
     assert parts["hip_bracket"]["bbox_mm"] == [40.0, 20.0, 10.0] and parts["hip_bracket"]["holes"] == 1
     # the assembly: instances and total mass
     asm = c["assembly"]
