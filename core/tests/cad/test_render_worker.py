@@ -183,3 +183,27 @@ async def test_design_styles_render_in_the_worker_within_memory(tmp_path):
     with pytest.raises(MisesError):
         await run_render_job(tmp_path / "jobs", [m], timeout_s=60, renders=[
             {"key": "b", "views": ["iso"], "size": 128, "style": "oil-paint"}])
+
+
+@pytest.mark.timeout(300)
+async def test_a_1_5m_triangle_assembly_renders_in_every_style_under_the_real_cap(tmp_path):
+    """Plan 9 G-R fix round: the smooth-normal pass must not shrink what fits under the 1 GB
+    worker budget. Three connected 500k-triangle parts (each STL under the 50 MB cap): the
+    default shaded critique render and every design style at up to 1024 px succeed under the
+    real memory limit (above SMOOTH_MAX_TRIANGLES the styles shade flat, without
+    supersampling)."""
+    from mises.cad import render as render_mod
+    part = blended_wing_tris(500, 500)
+    meshes = [_part(tmp_path, f"p{i}", part + np.array([0.0, 300.0 * i, 0.0]))
+              for i in range(3)]
+    assert 3 * len(part) > render_mod.SMOOTH_MAX_TRIANGLES
+    out = await run_render_job(tmp_path / "jobs", meshes, timeout_s=300, memory_mb=1024,
+                               renders=[
+        {"key": "crit", "views": ["front", "top", "side", "iso"], "size": 512},
+        {"key": "hero", "views": ["iso"], "size": 1024, "perspective": True},
+        {"key": "zebra", "views": ["iso"], "size": 1024, "style": "zebra"},
+        {"key": "sketch", "views": ["iso"], "size": 1024, "style": "sketch",
+         "perspective": True}])
+    assert out.triangles == 3 * len(part)
+    assert all(png.startswith(b"\x89PNG") for v in out.pngs.values() for png in v.values())
+    assert out.peak_rss_mb < 1024, out.peak_rss_mb

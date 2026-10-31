@@ -123,15 +123,26 @@ def clean_triangles(tris: np.ndarray) -> tuple[np.ndarray, int]:
     tris = np.asarray(tris, dtype=np.float64).reshape(-1, 3, 3)
     if len(tris) == 0:
         return tris, 0
+    # chunked, and no copy when nothing is dropped: the mesh may be MAX_TRIANGLES big and the
+    # worker's memory budget is fixed
+    step = 250_000
     with np.errstate(invalid="ignore", over="ignore"):
-        ok = np.isfinite(tris).all(axis=(1, 2)) & (np.abs(tris) < MAX_COORD_MM).all(axis=(1, 2))
-        kept = tris[ok]
+        ok = np.empty(len(tris), dtype=bool)
+        for i in range(0, len(tris), step):
+            t = tris[i:i + step]
+            ok[i:i + step] = (np.isfinite(t).all(axis=(1, 2))
+                              & (np.abs(t) < MAX_COORD_MM).all(axis=(1, 2)))
+        kept = tris if ok.all() else tris[ok]
         if len(kept):
-            pts = kept.reshape(-1, 3)
-            center = np.median(pts, axis=0)
-            dist = np.linalg.norm(pts - center, axis=1).reshape(-1, 3).max(axis=1)
+            center = np.array([np.median(kept[:, :, ax]) for ax in range(3)])
+            dist = np.empty(len(kept))
+            for i in range(0, len(kept), step):
+                d = kept[i:i + step] - center
+                dist[i:i + step] = np.sqrt((d * d).sum(axis=2)).max(axis=1)
             limit = max(float(np.percentile(dist, 90)) * OUTLIER_FACTOR, 1e-6)
-            kept = kept[dist <= limit]
+            keep = dist <= limit
+            if not keep.all():
+                kept = kept[keep]
     return kept, int(len(tris) - len(kept))
 
 
@@ -174,11 +185,12 @@ def _load_ascii_stl(data: bytes) -> np.ndarray:
 # ---- geometry helpers
 
 def bbox(meshes: list[Mesh]) -> tuple[np.ndarray, np.ndarray]:
-    pts = [m.tris.reshape(-1, 3) for m in meshes if len(m.tris)]
-    if not pts:
+    """(min, max) corner over every mesh's vertices (per mesh: no concatenated copy)."""
+    live = [m.tris.reshape(-1, 3) for m in meshes if len(m.tris)]
+    if not live:
         return np.zeros(3), np.ones(3)
-    allpts = np.concatenate(pts, axis=0)
-    return allpts.min(axis=0), allpts.max(axis=0)
+    return (np.min([p.min(axis=0) for p in live], axis=0),
+            np.max([p.max(axis=0) for p in live], axis=0))
 
 
 def _camera(view: str, cameras: dict | None = None):
@@ -388,30 +400,52 @@ class _Frame:
     zlin: np.ndarray | None = None            # (N, 3) linear camera depth (mm)
     live: list | None = None                  # the meshes with triangles, in order
     face_unit: np.ndarray | None = None       # (N, 3) unit face normals (float32)
+    starts: np.ndarray | None = None          # lite frames: first global triangle of each mesh
+
+    def rows(self, t: np.ndarray) -> np.ndarray:
+        """World triangles (M, 3, 3) of global triangle indices `t`, gathered from the meshes
+        (a lite frame keeps no concatenated copy)."""
+        if self.starts is None:
+            return self.tris[t]
+        out = np.empty((len(t), 3, 3))
+        which = np.searchsorted(self.starts, t, side="right") - 1
+        for i in np.unique(which):
+            sel = which == i
+            out[sel] = self.live[i].tris[t[sel] - self.starts[i]]
+        return out
+
+    def count(self) -> int:
+        return len(self.mesh_of) if self.mesh_of is not None else 0
 
 
-def _project(meshes: list[Mesh], cam: _Cam) -> _Frame:
+def _project(meshes: list[Mesh], cam: _Cam, flat: bool = False) -> _Frame:
+    """Project the meshes for `cam`. Per-triangle data stays lean (it scales with up to
+    MAX_TRIANGLES): face normals float32, mesh ids int32, the linear depth shares the z-buffer
+    depth when orthographic, and the flat per-triangle shade (x-ray only) only when asked."""
     live = [m for m in meshes if len(m.tris)]
     if not live:
         z = np.zeros((0, 3))
-        return _Frame(z, z, z, z, np.zeros(0), np.zeros((0, 3, 3)), np.zeros(0, np.int64), z, [])
-    tris = np.concatenate([m.tris for m in live], axis=0)
-    color = np.concatenate([np.broadcast_to(np.asarray(m.color, dtype=np.float64),
-                                            (len(m.tris), 3)) for m in live], axis=0)
-    alpha = np.concatenate([np.full(len(m.tris), float(m.opacity)) for m in live])
-    mesh_of = np.concatenate([np.full(len(m.tris), i, dtype=np.int64)
+        return _Frame(z, z, z, z, np.zeros(0), np.zeros((0, 3, 3)), np.zeros(0, np.int32), z,
+                      [], np.zeros((0, 3), dtype=np.float32))
+    tris = live[0].tris if len(live) == 1 else np.concatenate([m.tris for m in live], axis=0)
+    alpha = np.concatenate([np.full(len(m.tris), float(m.opacity), dtype=np.float32)
+                            for m in live])
+    mesh_of = np.concatenate([np.full(len(m.tris), i, dtype=np.int32)
                               for i, m in enumerate(live)])
     px, py, zl = cam.screen(tris)
     # perspective: 1/z interpolates linearly in screen space, so the z-buffer stores -1/z
     pz = -1.0 / np.maximum(zl, 1e-9) if cam.persp else zl
-    nrm = np.cross(tris[:, 1] - tris[:, 0], tris[:, 2] - tris[:, 0])
-    ln = np.linalg.norm(nrm, axis=1)
-    unit = nrm / np.maximum(ln, 1e-12)[:, None]
-    key = np.abs(unit @ key_light(cam.f, cam.right, cam.up))       # double-sided Lambert
-    fill = np.abs(unit @ _FILL_DIR)
-    intensity = np.where(ln > 1e-12, _AMBIENT + _KEY * key + _FILL * fill, _AMBIENT)
-    flat = np.clip(color * intensity[:, None], 0.0, 1.0)
-    return _Frame(px, py, pz, flat, alpha, tris, mesh_of, zl, live, unit.astype(np.float32))
+    unit = shade.unit_normals(tris)
+    shaded = np.zeros((0, 3))
+    if flat:
+        color = np.concatenate([np.broadcast_to(np.asarray(m.color, dtype=np.float32),
+                                                (len(m.tris), 3)) for m in live], axis=0)
+        key = np.abs(unit @ key_light(cam.f, cam.right, cam.up).astype(np.float32))
+        fill = np.abs(unit @ _FILL_DIR.astype(np.float32))
+        lit = (np.abs(unit).sum(axis=1) > 0)                   # degenerate: ambient only
+        intensity = np.where(lit, _AMBIENT + _KEY * key + _FILL * fill, _AMBIENT)
+        shaded = np.clip(color * intensity[:, None], 0.0, 1.0)
+    return _Frame(px, py, pz, shaded, alpha, tris, mesh_of, zl, live, unit)
 
 
 def _setup(fr: _Frame, size: int):
@@ -619,6 +653,75 @@ def _depth_edges(zbuf: np.ndarray, mask: np.ndarray, thresh: float) -> np.ndarra
     return edge & mask
 
 
+_RASTER_CHUNK = 250_000                    # triangles projected at once by _coverage
+
+
+def _chunks(meshes: list[Mesh]):
+    """(global index of the first triangle, triangles) slices of at most _RASTER_CHUNK
+    triangles, over the meshes with triangles in _project's order."""
+    at = 0
+    for m in meshes:
+        if not len(m.tris):
+            continue
+        for s in range(0, len(m.tris), _RASTER_CHUNK):
+            yield at + s, m.tris[s:s + _RASTER_CHUNK]
+        at += len(m.tris)
+
+
+def _screen_frame(cam: _Cam, tris: np.ndarray) -> _Frame:
+    px, py, zl = cam.screen(tris)
+    pz = -1.0 / np.maximum(zl, 1e-9) if cam.persp else zl
+    return _Frame(px, py, pz, np.zeros((0, 3)), np.zeros(0))
+
+
+def _projected_layers(meshes: list[Mesh], cam: _Cam) -> float:
+    """Average triangles per pixel (projected area / frame area), computed chunk by chunk."""
+    area = 0.0
+    for _at, tris in _chunks(meshes):
+        px, py, _z = cam.screen(tris)
+        area += 0.5 * float(np.abs((px[:, 1] - px[:, 0]) * (py[:, 2] - py[:, 0])
+                                   - (px[:, 2] - px[:, 0]) * (py[:, 1] - py[:, 0])).sum())
+    return area / float(cam.size * cam.size)
+
+
+def _coverage(meshes: list[Mesh], cam: _Cam) -> tuple[np.ndarray, np.ndarray]:
+    """The opaque z-buffer of `meshes` for `cam`: (triangle index per pixel in _project's
+    order, -1 for background; raster depth), flat arrays. Triangles are projected and
+    rasterised _RASTER_CHUNK at a time, so the per-triangle screen arrays never exist for the
+    whole mesh at once; the MAX_LAYERS budget is checked over all chunks before any work."""
+    size = cam.size
+    layers = _projected_layers(meshes, cam)
+    if layers > MAX_LAYERS:
+        raise RenderError(f"the view is too complex to render: about {layers:.0f} layers per "
+                          f"pixel (limit {MAX_LAYERS})")
+    zbuf = np.full(size * size, np.inf, dtype=np.float32)
+    tri_at = np.full(size * size, -1, dtype=np.int32)          # MAX_TRIANGLES fits int32
+    for at, tris in _chunks(meshes):
+        fr = _screen_frame(cam, tris)
+        for pix, dep, tri in _fragment_batches(fr, size):
+            win = _nearest_per_pixel(pix, dep)
+            p, d = pix[win], dep[win]
+            closer = d < zbuf[p]
+            zbuf[p[closer]] = d[closer]
+            tri_at[p[closer]] = tri[win][closer] + at
+    return tri_at, zbuf
+
+
+def _lite_frame(meshes: list[Mesh]) -> _Frame:
+    """What per-pixel shading needs per triangle (world triangles, mesh ids, float32 face
+    normals) without any screen arrays: those are recomputed for the visible triangles."""
+    live = [m for m in meshes if len(m.tris)]
+    if not live:
+        return _Frame(*([np.zeros((0, 3))] * 4), np.zeros(0), np.zeros((0, 3, 3)),
+                      np.zeros(0, np.int32), None, [], np.zeros((0, 3), dtype=np.float32))
+    mesh_of = np.concatenate([np.full(len(m.tris), i, dtype=np.int32)
+                              for i, m in enumerate(live)])
+    unit = np.concatenate([shade.unit_normals(m.tris) for m in live], axis=0)
+    starts = np.cumsum([0] + [len(m.tris) for m in live[:-1]])
+    z = np.zeros((0, 3))
+    return _Frame(z, z, z, z, np.zeros(0), None, mesh_of, None, live, unit, starts)
+
+
 def _zbuffer(fr: _Frame, size: int) -> tuple[np.ndarray, np.ndarray]:
     """(triangle index per pixel, -1 for background; raster depth per pixel), flat arrays."""
     zbuf = np.full(size * size, np.inf)
@@ -653,25 +756,16 @@ def _supersample(size: int) -> int:
     return 2 if size * 2 <= MAX_SIZE else 1
 
 
-def _layers(fr: _Frame, size: int) -> float:
-    """Average triangles per pixel of a projected frame (projected area / frame area)."""
-    if len(fr.px) == 0:
-        return 0.0
-    px, py = fr.px, fr.py
-    area = 0.5 * np.abs((px[:, 1] - px[:, 0]) * (py[:, 2] - py[:, 0])
-                        - (px[:, 2] - px[:, 0]) * (py[:, 1] - py[:, 0]))
-    return float(area.sum()) / float(size * size)
-
-
 def _pixel_attrs(fr: _Frame, cam: _Cam, tri_at: np.ndarray, pix: np.ndarray):
     """For the covered pixels `pix` (flat indices): (triangle, perspective-correct barycentric
-    weights (M, 3))."""
+    weights (M, 3) float32, linear camera depth (M,)). Screen coordinates are recomputed for
+    just these triangles."""
     S = cam.size
     t = tri_at[pix]
     gy, gx = np.divmod(pix, S)
     gx = gx + 0.5
     gy = gy + 0.5
-    tx, ty = fr.px[t], fr.py[t]
+    tx, ty, tz = cam.screen(fr.rows(t))
     dn = ((ty[:, 1] - ty[:, 2]) * (tx[:, 0] - tx[:, 2])
           + (tx[:, 2] - tx[:, 1]) * (ty[:, 0] - ty[:, 2]))
     dn = np.where(np.abs(dn) > 1e-12, dn, 1e-12)
@@ -679,9 +773,29 @@ def _pixel_attrs(fr: _Frame, cam: _Cam, tri_at: np.ndarray, pix: np.ndarray):
     b = ((ty[:, 2] - ty[:, 0]) * (gx - tx[:, 2]) + (tx[:, 0] - tx[:, 2]) * (gy - ty[:, 2])) / dn
     w = np.clip(np.stack([a, b, 1.0 - a - b], axis=1), 0.0, 1.0)
     if cam.persp:
-        w = w / np.maximum(fr.zlin[t], 1e-9)
+        w = w / np.maximum(tz, 1e-9)
     w = w / np.maximum(w.sum(axis=1), 1e-12)[:, None]
-    return t, w.astype(np.float32)
+    return t, w.astype(np.float32), (w * tz).sum(axis=1)
+
+
+_BAND_ROWS = 256                           # rows per band for full-frame line passes
+
+
+def _banded(fn, arrays: tuple, halo: int):
+    """Apply a per-pixel neighbourhood pass `fn(*arrays) -> bool masks` in row bands with
+    `halo` rows of context, so its temporaries scale with a band, not the frame."""
+    h = arrays[0].shape[0]
+    outs = None
+    for r0 in range(0, h, _BAND_ROWS):
+        r1 = min(h, r0 + _BAND_ROWS)
+        a, b = max(0, r0 - halo), min(h, r1 + halo)
+        res = fn(*(x[a:b] for x in arrays))
+        res = res if isinstance(res, tuple) else (res,)
+        if outs is None:
+            outs = [np.zeros((h,) + r.shape[1:], dtype=r.dtype) for r in res]
+        for o, r in zip(outs, res):
+            o[r0:r1] = r[r0 - a:r0 - a + (r1 - r0)]
+    return tuple(outs) if len(outs) > 1 else outs[0]
 
 
 def _neighbour_lines(img_n: np.ndarray, mid: np.ndarray, mask: np.ndarray, cos_t: float):
@@ -752,11 +866,11 @@ def _ground_shadow(meshes: list[Mesh], cam: _Cam, framing) -> np.ndarray | None:
     margin = 0.6 * float(max(ext[0], ext[1], ext[2]))
     lframe = (lo - margin, hi + margin)
     lcam = _make_cam("__light", _SHADOW_MAP, lframe, {"__light": (tuple(-ls), hint)}, fill=1.0)
-    full, _ = _zbuffer(_project(casting, lcam), _SHADOW_MAP)
+    full, _ = _coverage(casting, lcam)
     hc = z0 + 0.04 * float(max(ext[2], 1e-6))
     near = [replace(m, tris=section_mesh(m.tris, (0.0, 0.0, hc), (0.0, 0.0, 1.0)))
             for m in casting]
-    contact, _ = _zbuffer(_project(near, lcam), _SHADOW_MAP)
+    contact, _ = _coverage(near, lcam)
     sz = (_SHADOW_MAP, _SHADOW_MAP)
     wide = shade.blur((full >= 0).reshape(sz).astype(np.float32), 0.03 * _SHADOW_MAP)
     tight = shade.blur((contact >= 0).reshape(sz).astype(np.float32), 0.008 * _SHADOW_MAP)
@@ -830,19 +944,32 @@ def _figure_mesh(meshes: list[Mesh], cam_f: np.ndarray, cam_right: np.ndarray) -
 _PIX_CHUNK = 200_000                      # covered pixels shaded per batch (bounds memory)
 
 
+# Above this many triangles the shaded/zebra/sketch styles use flat face normals and skip
+# supersampling: smooth normals cost ~120 bytes per triangle at peak, and meshes this fine are
+# tessellated near pixel size anyway. Picked from measurement (see the G-R report): every mesh
+# that rendered under the 1 GB worker cap before Plan 9 still does, in every style.
+SMOOTH_MAX_TRIANGLES = 600_000
+
+
 def _mesh_normals(meshes: list[Mesh], style: str) -> np.ndarray | None:
-    """Corner normals (N, 3, 3) of the meshes with triangles, in _project's order: view
-    independent, so render_views computes them once for all its views."""
+    """Corner normals (N, 3, 3) float32 of the meshes with triangles, in _project's order,
+    welded and crease-split per mesh: view independent, so render_views computes them once for
+    all its views. None means flat face normals: the silhouette style needs none, and meshes
+    over SMOOTH_MAX_TRIANGLES in total are shaded flat to stay inside the memory budget."""
     if style == "silhouette":
         return None
     live = [m for m in meshes if len(m.tris)]
-    if not live:
-        return np.zeros((0, 3, 3))
-    tris = np.concatenate([m.tris for m in live], axis=0)
-    mesh_of = np.concatenate([np.full(len(m.tris), i, dtype=np.int64)
-                              for i, m in enumerate(live)])
+    n = sum(len(m.tris) for m in live)
+    if n > SMOOTH_MAX_TRIANGLES:
+        return None
     crease = shade.ZEBRA_CREASE_DEG if style == "zebra" else shade.CREASE_DEG
-    return shade.corner_normals(tris, shade.weld(tris, mesh_of), crease).astype(np.float32)
+    out = np.empty((n, 3, 3), dtype=np.float32)
+    at = 0
+    for m in live:
+        k = len(m.tris)
+        out[at:at + k] = shade.corner_normals(m.tris, shade.weld(m.tris), crease)
+        at += k
+    return out
 
 
 def _style_pixels(style: str, fr: _Frame, cam: _Cam, tri_at: np.ndarray, framing,
@@ -867,8 +994,7 @@ def _style_pixels(style: str, fr: _Frame, cam: _Cam, tri_at: np.ndarray, framing
     if style == "silhouette":
         rgb[covered] = 0.0
         return rgb.reshape(S, S, 3), mask, lines, figure
-    if cn is None or len(cn) != len(fr.tris):
-        cn = _mesh_normals(fr.live, style)
+    smooth = cn is not None and len(cn) == fr.count()        # else: flat face normals
     # per-pixel shading runs in float32 (twice the throughput, half the memory)
     rig = {k: d.astype(np.float32) for k, d in shade.lights(cam.f, cam.right, cam.up).items()}
     up = np.array([0.0, 0.0, 1.0], dtype=np.float32)
@@ -883,11 +1009,14 @@ def _style_pixels(style: str, fr: _Frame, cam: _Cam, tri_at: np.ndarray, framing
     dark = np.zeros(S * S, dtype=bool) if style == "sketch" else None
     for c0 in range(0, len(covered), _PIX_CHUNK):
         pix = covered[c0:c0 + _PIX_CHUNK]
-        t, w = _pixel_attrs(fr, cam, tri_at, pix)
-        n = np.einsum("mi,mij->mj", w, cn[t])
-        n /= np.maximum(np.linalg.norm(n, axis=1), 1e-12)[:, None]
+        t, w, depth = _pixel_attrs(fr, cam, tri_at, pix)
+        if smooth:
+            n = np.einsum("mi,mij->mj", w, cn[t])
+            n /= np.maximum(np.linalg.norm(n, axis=1), 1e-12)[:, None]
+        else:
+            n = fr.face_unit[t].copy()
         if cam.persp:
-            v = (cam.eye[None, :] - np.einsum("mi,mij->mj", w, fr.tris[t])).astype(np.float32)
+            v = (cam.eye[None, :] - np.einsum("mi,mij->mj", w, fr.rows(t))).astype(np.float32)
             v /= np.maximum(np.linalg.norm(v, axis=1), 1e-12)[:, None]
         else:
             v = np.broadcast_to(-f32["f"], n.shape).copy()
@@ -907,14 +1036,16 @@ def _style_pixels(style: str, fr: _Frame, cam: _Cam, tri_at: np.ndarray, framing
             rgb[pix] = paper[None, :] * tone[:, None]
             dark[pix[(lam <= 0.25) & ~fig]] = True
         img_n[pix] = n
-        zl[pix] = np.einsum("mi,mi->m", w, fr.zlin[t])
+        zl[pix] = depth
     if dark is not None:
         lines["hatch"] = dark.reshape(S, S)
-    part, cr = _neighbour_lines(img_n.reshape(S, S, 3), mid, mask,
-                                float(np.cos(np.radians(_LINE_CREASE_DEG))))
+    cos_l = float(np.cos(np.radians(_LINE_CREASE_DEG)))
+    part, cr = _banded(lambda n_, m_, k_: _neighbour_lines(n_, m_, k_, cos_l),
+                       (img_n.reshape(S, S, 3), mid, mask), halo=2)
     del img_n
     lines["silhouette"] = _silhouette_edges(mask) | part
-    lines["contour"] = _depth_edges(zl.reshape(S, S), mask, 0.01 * cam.reach)
+    lines["contour"] = _banded(lambda z_, m_: _depth_edges(z_, m_, 0.01 * cam.reach),
+                               (zl.reshape(S, S), mask), halo=4)
     lines["crease"] = cr
     return rgb.reshape(S, S, 3), mask, lines, figure
 
@@ -933,13 +1064,13 @@ def _render_styled(meshes: list[Mesh], view: str, size: int, framing, cameras: d
     """One opaque view as uint8 HxWx3 (or HxWx4 for a transparent background)."""
     ss = _supersample(size)
     cam = _make_cam(view, size * ss, framing, cameras, perspective)
-    fr = _project(meshes, cam)
-    if ss > 1 and _layers(fr, size * ss) > _SS_MAX_LAYERS:
-        ss = 1                                   # a dense stack: anti-aliasing would 4x it
+    big = sum(len(m.tris) for m in meshes) > SMOOTH_MAX_TRIANGLES
+    if ss > 1 and (big or _projected_layers(meshes, cam) > _SS_MAX_LAYERS):
+        ss = 1                    # a huge mesh or a dense stack: anti-aliasing would 4x it
         cam = cam.scaled(size)
-        fr = _project(meshes, cam)
     S = size * ss
-    tri_at, _z = _zbuffer(fr, S)
+    tri_at, _z = _coverage(meshes, cam)
+    fr = _lite_frame(meshes)
     rgb, mask, lines, figure = _style_pixels(style, fr, cam, tri_at, framing, normals)
     del fr, tri_at, _z                           # the raster is no longer needed: free it
     alpha = mask.astype(np.float32)
@@ -1022,7 +1153,7 @@ def _render_one(meshes: list[Mesh], view: str, size: int,
                               background, normals)
     # x-ray: weighted-blended transparency of flat-shaded triangles (unchanged)
     cam = _make_cam(view, size, framing, cameras, perspective)
-    img, mask, _zbuf = _raster(_project(meshes, cam), size, transparent)
+    img, mask, _zbuf = _raster(_project(meshes, cam, flat=True), size, transparent)
     img[_silhouette_edges(mask)] = np.array(_EDGE) / 255.0
     return (np.clip(img, 0.0, 1.0) * 255.0).astype(np.uint8)
 
@@ -1120,7 +1251,7 @@ def render_views(meshes, *, views=DEFAULT_VIEWS, size: int = 512,
             if fig is not None:
                 drawn = [*ms, fig]
                 frame = bbox(drawn)
-                cn = None
+                cn = _mesh_normals(drawn, style)
         arr = _render_one(drawn, view, size, frame, transparent, cameras, style=style,
                           perspective=perspective, shadow=shadow, background=background,
                           normals=cn)
@@ -1137,7 +1268,7 @@ def render_mask(meshes, view: str, *, size: int = 512,
         o, n = section
         ms = [Mesh(section_mesh(m.tris, o, n)) for m in ms]
     cam = _make_cam(view, size, bbox(ms), cameras, perspective)
-    tri_at, _z = _zbuffer(_project(ms, cam), size)
+    tri_at, _z = _coverage(ms, cam)
     return (tri_at >= 0).reshape(size, size)
 
 

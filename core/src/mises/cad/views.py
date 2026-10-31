@@ -348,8 +348,13 @@ async def _render(ctx: ToolContext, meshes: list[MeshIn], *, renders: list[dict]
 
 
 def _dropped_warning(out: RenderOut) -> list[str]:
-    return ([f"{out.dropped} invalid triangle(s) (non-finite or far-outlier vertices) were "
+    warn = ([f"{out.dropped} invalid triangle(s) (non-finite or far-outlier vertices) were "
              "skipped; the part's mesh may be broken"] if out.dropped else [])
+    if out.triangles > render_mod.SMOOTH_MAX_TRIANGLES:
+        warn.append(f"{out.triangles} triangles (over {render_mod.SMOOTH_MAX_TRIANGLES}): "
+                    "shaded with flat facets and no anti-aliasing to stay in the render "
+                    "memory budget; faceting here is the renderer, not the geometry")
+    return warn
 
 
 RENDER_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,96}$")

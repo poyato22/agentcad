@@ -312,6 +312,7 @@ def test_png_stays_under_1_mb():
 
 # ---- the G-R speed budget
 
+@pytest.mark.timeout(120)
 def test_1024px_shaded_render_of_a_200k_triangle_assembly_under_3s():
     """Plan 9 G-R: 1024 px shaded (smooth normals, CMF, shadow) of ~200k triangles in < 3 s.
     MISES_RENDER_BUDGET_S loosens it on a heavily loaded machine (it is never tightened)."""
@@ -326,3 +327,14 @@ def test_1024px_shaded_render_of_a_200k_triangle_assembly_under_3s():
     budget = max(3.0, float(os.environ.get("MISES_RENDER_BUDGET_S", "3.0")))
     print(f"1024 px shaded, 200k tris: {best:.3f} s")
     assert best < budget, f"took {best:.2f} s (budget {budget} s)"
+
+
+def test_huge_meshes_fall_back_to_flat_normals(monkeypatch):
+    body = Mesh(_ellipse_loft())
+    assert render._mesh_normals([body], "shaded") is not None
+    assert render._mesh_normals([body], "silhouette") is None
+    monkeypatch.setattr(render, "SMOOTH_MAX_TRIANGLES", len(body.tris) - 1)
+    assert render._mesh_normals([body], "shaded") is None
+    png = render.render_views(body, views=("iso",), size=128)["iso"]   # still renders, flat
+    assert _rgb(png).shape[:2] == (128, 128)
+    assert render_shade.weld(body.tris).dtype == np.int32

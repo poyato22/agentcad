@@ -21,28 +21,54 @@ import numpy as np
 CREASE_DEG = 30.0             # shaded / sketch: dihedral above this is a crease
 ZEBRA_CREASE_DEG = 20.0       # zebra keeps smaller kinks visible (export tessellates at ~6 deg)
 _MAX_VALENCE = 32             # corners per vertex for the exact pairwise crease test
-_PAIR_CHUNK = 2_000_000       # corner pairs per batch
+_PAIR_CHUNK = 250_000         # corner pairs per batch
+_TRI_CHUNK = 100_000          # triangles per batch for face normals and angles
 
 
 # ---- welding and normals
 
-def weld(tris: np.ndarray, mesh_of: np.ndarray) -> np.ndarray:
-    """(N, 3) vertex ids: corners at the same position (to ~1e-7 of the model size, at least
-    1e-4 mm) of the same mesh share an id. STL stores every triangle's corners separately."""
+def _weld_one(pts: np.ndarray) -> np.ndarray:
+    """Vertex ids (int32) of one mesh's corner points (M, 3): one packed int64 key per point
+    (21 bits per axis), sorted -- no float row compares, no stacked copies."""
+    lo = pts.min(axis=0)
+    span = float((pts.max(axis=0) - lo).max()) or 1.0
+    q = max(1e-4, span / (2 ** 21 - 2))      # >= 1e-4 mm; ~1e-3 mm for a 2 m mesh (21 bits)
+    key = np.zeros(len(pts), dtype=np.int64)
+    for ax in range(3):
+        k = np.rint((pts[:, ax] - lo[ax]) / q).astype(np.int64)
+        key |= k << (21 * (2 - ax))
+        del k
+    order = np.argsort(key, kind="stable")
+    sk = key[order]
+    del key
+    new = np.empty(len(sk), dtype=bool)
+    new[0] = True
+    np.not_equal(sk[1:], sk[:-1], out=new[1:])
+    del sk
+    vid = np.empty(len(order), dtype=np.int32)
+    vid[order] = np.cumsum(new, dtype=np.int32) - 1
+    return vid
+
+
+def weld(tris: np.ndarray, mesh_of: np.ndarray | None = None) -> np.ndarray:
+    """(N, 3) int32 vertex ids: corners at the same position (to ~1e-6 of the mesh size, at
+    most 1e-4 mm apart) of the same mesh share an id. STL stores every triangle's corners
+    separately."""
+    n = len(tris)
+    if n == 0:
+        return np.zeros((0, 3), dtype=np.int32)
     pts = tris.reshape(-1, 3)
-    if len(pts) == 0:
-        return np.zeros((0, 3), dtype=np.int64)
-    span = float(np.ptp(pts, axis=0).max()) or 1.0
-    q = max(1e-4, span * 1e-7)
-    key = np.round(pts / q).astype(np.int64)
-    m = np.repeat(np.asarray(mesh_of, dtype=np.int64), 3)
-    order = np.lexsort((key[:, 2], key[:, 1], key[:, 0], m))
-    ks = np.column_stack([m, key])[order]
-    new = np.ones(len(order), dtype=bool)
-    new[1:] = (ks[1:] != ks[:-1]).any(axis=1)
-    vid = np.empty(len(order), dtype=np.int64)
-    vid[order] = np.cumsum(new) - 1
-    return vid.reshape(-1, 3)
+    if mesh_of is None:
+        return _weld_one(pts).reshape(-1, 3)
+    mesh_of = np.asarray(mesh_of)
+    out = np.empty(n * 3, dtype=np.int32)
+    base = 0
+    for m in np.unique(mesh_of):
+        sel = np.repeat(mesh_of == m, 3)
+        v = _weld_one(pts[sel])
+        out[sel] = v + base
+        base += int(v.max()) + 1
+    return out.reshape(-1, 3)
 
 
 def face_normals(tris: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -52,80 +78,90 @@ def face_normals(tris: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return fn, fn / np.maximum(ln, 1e-30)[:, None]
 
 
+def unit_normals(tris: np.ndarray) -> np.ndarray:
+    """(N, 3) float32 unit face normals, computed in bounded batches."""
+    out = np.empty((len(tris), 3), dtype=np.float32)
+    for s in range(0, len(tris), _TRI_CHUNK):
+        t = tris[s:s + _TRI_CHUNK]
+        out[s:s + _TRI_CHUNK] = face_normals(t)[1]
+    return out
+
+
 def corner_angles(tris: np.ndarray) -> np.ndarray:
-    """(N, 3) interior angle (radians) of each triangle at each corner."""
-    out = np.zeros(tris.shape[:2])
-    for k in range(3):
-        a = tris[:, (k + 1) % 3] - tris[:, k]
-        b = tris[:, (k + 2) % 3] - tris[:, k]
-        na = np.linalg.norm(a, axis=1) * np.linalg.norm(b, axis=1)
-        c = np.einsum("ij,ij->i", a, b) / np.maximum(na, 1e-30)
-        out[:, k] = np.arccos(np.clip(c, -1.0, 1.0))
+    """(N, 3) float32 interior angle (radians) of each triangle at each corner."""
+    out = np.empty(tris.shape[:2], dtype=np.float32)
+    for s in range(0, len(tris), _TRI_CHUNK):
+        t = tris[s:s + _TRI_CHUNK]
+        for k in range(3):
+            a = t[:, (k + 1) % 3] - t[:, k]
+            b = t[:, (k + 2) % 3] - t[:, k]
+            na = np.linalg.norm(a, axis=1) * np.linalg.norm(b, axis=1)
+            c = np.einsum("ij,ij->i", a, b) / np.maximum(na, 1e-30)
+            out[s:s + _TRI_CHUNK, k] = np.arccos(np.clip(c, -1.0, 1.0))
     return out
 
 
 def corner_normals(tris: np.ndarray, vid: np.ndarray, crease_deg: float = CREASE_DEG
                    ) -> np.ndarray:
-    """(N, 3, 3) unit normal per triangle corner: the angle-weighted mean of the normals of the
-    faces around that vertex that are within `crease_deg` of this corner's own face. A vertex on
-    a crease therefore carries one normal per side and the crease stays sharp.
+    """(N, 3, 3) float32 unit normal per triangle corner: the angle-weighted mean of the
+    normals of the faces around that vertex that are within `crease_deg` of this corner's own
+    face. A vertex on a crease therefore carries one normal per side and the crease stays sharp.
 
     Exact for vertices with up to _MAX_VALENCE corners (all real tessellations); a hub with more
     (a fan centre, a hostile mesh) uses its one smooth normal where it is within the crease
-    angle of the face, else the face normal -- so the work is bounded by _MAX_VALENCE x corners."""
+    angle of the face, else the face normal -- so the work is bounded by _MAX_VALENCE x corners.
+    Everything is float32 / int32 and batched: about 120 bytes per triangle at peak."""
     n = len(tris)
-    _fn, unit = face_normals(tris)
-    cv = vid.reshape(-1)
-    cf = np.repeat(np.arange(n), 3)
-    out = unit[cf].copy()
+    unit = unit_normals(tris)
     if n == 0:
-        return out.reshape(0, 3, 3)
-    cos_t = float(np.cos(np.radians(crease_deg)))
+        return np.zeros((0, 3, 3), dtype=np.float32)
+    out = np.repeat(unit, 3, axis=0)                          # (3N, 3): the face normal
+    cos_t = np.float32(np.cos(np.radians(crease_deg)))
     # angle-weighted (Thurmer & Wuthrich): unlike area weights, independent of how the
     # tessellator happened to split a smooth patch, so irregular meshes do not look blotchy
-    wn = (unit[:, None, :] * corner_angles(tris)[:, :, None]).reshape(-1, 3)
-    order = np.argsort(cv, kind="stable")
-    sv = cv[order]
-    starts = np.flatnonzero(np.r_[True, sv[1:] != sv[:-1]])
-    counts = np.diff(np.r_[starts, len(sv)])
-    grp = np.repeat(np.arange(len(starts)), counts)          # group of each sorted position
-    c_of, s_of = counts[grp], starts[grp]
-    face_s = cf[order]                                       # face of each sorted corner
+    ang = corner_angles(tris).reshape(-1)
+    order = np.argsort(vid.reshape(-1), kind="stable").astype(np.int32)
+    sv = vid.reshape(-1)[order]
+    starts = np.flatnonzero(np.r_[True, sv[1:] != sv[:-1]]).astype(np.int32)
+    del sv
+    counts = np.diff(np.r_[starts, 3 * n]).astype(np.int32)
+    grp = np.repeat(np.arange(len(starts), dtype=np.int32), counts)   # group per sorted pos
+    c_of = counts[grp]
+    face_s = order // 3                                      # face of each sorted corner
 
-    small = np.flatnonzero(c_of <= _MAX_VALENCE)
+    small = np.flatnonzero(c_of <= _MAX_VALENCE).astype(np.int32)
     if len(small):
-        cum = np.cumsum(c_of[small])
+        cum = np.cumsum(c_of[small], dtype=np.int64)
         cuts = np.searchsorted(cum, np.arange(0, cum[-1], _PAIR_CHUNK), side="right")
         bounds = sorted(set([0, *cuts.tolist(), len(small)]))
         for b0, b1 in zip(bounds[:-1], bounds[1:]):
             P = small[b0:b1]
             reps = c_of[P]
-            local = np.repeat(np.arange(len(P)), reps)
-            offs = np.arange(len(local)) - np.repeat(np.cumsum(reps) - reps, reps)
+            local = np.repeat(np.arange(len(P), dtype=np.int32), reps)
+            offs = (np.arange(len(local), dtype=np.int32)
+                    - np.repeat(np.cumsum(reps, dtype=np.int32) - reps, reps))
             fi = face_s[P][local]
-            cj = order[s_of[P][local] + offs]
+            cj = order[starts[grp[P]][local] + offs]
             fj = cj // 3
-            ok = np.einsum("ij,ij->i", unit[fi], unit[fj]) >= cos_t
-            acc = np.zeros((len(P), 3))
+            w = ang[cj] * (np.einsum("ij,ij->i", unit[fi], unit[fj]) >= cos_t)
+            acc = np.empty((len(P), 3), dtype=np.float32)
             for ax in range(3):
-                acc[:, ax] = np.bincount(local, weights=wn[cj, ax] * ok, minlength=len(P))
+                acc[:, ax] = np.bincount(local, weights=unit[fj, ax] * w, minlength=len(P))
             ln = np.linalg.norm(acc, axis=1)
             good = ln > 1e-30
-            corner = order[P]
-            out[corner[good]] = acc[good] / ln[good, None]
+            out[order[P][good]] = acc[good] / ln[good, None]
 
     big = np.flatnonzero(c_of > _MAX_VALENCE)
     if len(big):
         g = grp[big]
         sums = np.zeros((len(starts), 3))
         for ax in range(3):
-            sums[:, ax] = np.bincount(grp[big], weights=wn[order[big], ax],
+            sums[:, ax] = np.bincount(g, weights=unit[face_s[big], ax] * ang[order[big]],
                                       minlength=len(starts))
         nv = sums[g]
         nv = nv / np.maximum(np.linalg.norm(nv, axis=1), 1e-30)[:, None]
-        corner = order[big]
         use = np.einsum("ij,ij->i", nv, unit[face_s[big]]) >= cos_t
-        out[corner[use]] = nv[use]
+        out[order[big][use]] = nv[use]
     return out.reshape(n, 3, 3)
 
 
