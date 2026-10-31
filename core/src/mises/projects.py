@@ -191,6 +191,12 @@ def trash_blockers(store: Store, project_ids: list[str],
                 running.append(r.id)
             elif why is not None:
                 pending.append(r.id)
+    # a background study or generative run still writing a trashed build's files blocks the
+    # purge, so Empty Trash never recreates a ghost part dir under a reused id (FW-core I-1)
+    for pid in project_ids:
+        for rid in _job_blocker_runs(pid):
+            if rid not in running:
+                running.append(rid)
     if running:
         return "running", running + pending
     if pending:
@@ -694,10 +700,26 @@ class PartBusy(MisesError):
                 "message": self.message, "hint": self.hint, "retryable": False}
 
 
+def _job_blocker_runs(project_id: str | None, part_id: str | None = None) -> list[str]:
+    """The run ids of background jobs (B3 studies, design reviews, generative-design runs) still
+    running on this build or part. After B3 an agent's turn ends while its study keeps writing
+    the part's files, so a delete that ignores these recreates a ghost part dir and Undo cannot
+    get the geometry back (FW-core I-1). jobs._jobs is empty in tests that never start one."""
+    from . import jobs
+    out: list[str] = []
+    for j in jobs.running():
+        hit = (part_id is not None and j.part_id == part_id) or (
+            project_id is not None and j.build_id == project_id)
+        if hit and j.run_id:
+            out.append(j.run_id)
+    return out
+
+
 def part_blockers(store: Store, row: Part, busy: BusyFn | None = None) -> list[str]:
     """Runs of the part's build that are live (running, queued or busy, the build-delete rule)
     and may edit it: their edit scope is "*" or names the part. A run without a policy counts.
-    The app's own `ui` run blocks only while one of its calls is in flight."""
+    The app's own `ui` run blocks only while one of its calls is in flight. A live background job
+    (a study or generative run) on the build or the part blocks too (FW-core I-1)."""
     out: list[str] = []
     if not row.project_id:
         return out
@@ -714,6 +736,9 @@ def part_blockers(store: Store, row: Part, busy: BusyFn | None = None) -> list[s
             scope = {"*"}
         if "*" in scope or row.id in scope:
             out.append(r.id)
+    for rid in _job_blocker_runs(row.project_id, row.id):
+        if rid not in out:
+            out.append(rid)
     return out
 
 
@@ -803,6 +828,13 @@ def restore_part(store: Store, home: Path, part_id: str, undo: str, *,
         raise MisesError(ErrorCode.NOT_FOUND, f"the files of {part_id} are no longer in the trash",
                          hint="the trash was emptied")
     root = _parts_root(home)
+    # the part's files must not already exist: a background study that was still running when the
+    # part was deleted can recreate the dir, and silently skipping the move leaves the geometry in
+    # the trash (the part reads as "build failed"). Refuse instead of losing it (FW-core I-1).
+    if manifest.get("had_files") and os.path.lexists(root / part_id):
+        raise _bad(f"files for {part_id} are already there",
+                   hint="a background study may have recreated them; stop it and remove them, "
+                        "then undo again")
     for src, dest in ((trash / undo, root / part_id),
                       (trash / ".mises-meta" / undo, root / ".mises-meta" / part_id),
                       (trash / THUMBS_DIR / undo, root / THUMBS_DIR / part_id)):
@@ -909,7 +941,14 @@ def delete_reason(store: Store, run: AgentRun,
             continue
         if _blocked(store, child, busy) is not None:
             children.append(cid)
-    own = _blocked(store, run, busy)
+    # a background job (B3 study / review / generative run) this run or a descendant started and
+    # is still running is live work the status column does not show (FW-core I-1)
+    from . import jobs
+    family = {run.id, *store.descendants(run.id)}
+    job_runs = [j.run_id for j in jobs.running() if j.run_id in family and j.run_id != run.id]
+    children.extend(r for r in job_runs if r not in children)
+    own = _blocked(store, run, busy) or ("running" if any(
+        j.run_id == run.id for j in jobs.running()) else None)
     if children:
         return "running", children
     if own is not None:
