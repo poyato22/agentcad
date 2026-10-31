@@ -1,0 +1,730 @@
+{
+  "topopt_id": "to_08221292db84",
+  "tool": "topopt_generate",
+  "part_id": "block",
+  "project_id": "c656182feb69",
+  "run_id": "3000960a87bf",
+  "call_id": "ui_195fbef1112e",
+  "status": "done",
+  "created_at": 1793422824.515274,
+  "finished_at": 1793422837.088979,
+  "reason": "lightest stiff block",
+  "objective": "min_compliance",
+  "min_safety_factor": 1.5,
+  "max_deflection_mm": null,
+  "material": {
+    "name": "PLA",
+    "e_mpa": 2300.0,
+    "nu": 0.35,
+    "yield_mpa": 51.0,
+    "density_g_cm3": 1.24,
+    "hdt_c": 55.0,
+    "source": "Prusament PLA TDS v1.1 (printed, horizontal)",
+    "k_w_mk": 0.13,
+    "alpha_per_k": 6.8e-05,
+    "knockdown": 0.7,
+    "stiffness_factor": 1.0,
+    "custom": false,
+    "tangent_modulus_mpa": null,
+    "e_z_mpa": null,
+    "z_strength_mpa": null,
+    "build_dir": null,
+    "sn_a_mpa": null,
+    "sn_b": null,
+    "basis": "datasheet / estimate",
+    "calibration": null,
+    "basis_by_property": null,
+    "fdm_strength_factor": 1.0,
+    "allowable_mpa": 35.699999999999996,
+    "e_eff_mpa": 2300.0,
+    "tangent_eff_mpa": 23.0,
+    "tangent_source": "estimate (1% of E)",
+    "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers"
+  },
+  "args": {
+    "part_id": "block",
+    "design_space": "part",
+    "keep": [],
+    "keep_out": [],
+    "fixtures": [
+      {
+        "kind": "fixed",
+        "face": "x-min"
+      }
+    ],
+    "load_cases": [
+      {
+        "name": "tip",
+        "loads": [
+          {
+            "face": "x-max",
+            "newtons": 40.0,
+            "direction": "-z"
+          }
+        ],
+        "weight": 1.0
+      }
+    ],
+    "material": "PLA",
+    "objective": "min_compliance",
+    "volume_fraction": 0.35,
+    "max_deflection_mm": null,
+    "min_safety_factor": 1.5,
+    "resolution_mm": 1.0,
+    "filter_radius_mm": null,
+    "max_iter": 60,
+    "manufacturing": {
+      "process": "none",
+      "symmetry": [
+        "y"
+      ],
+      "extrusion_axis": null,
+      "overhang": null,
+      "min_member_mm": null
+    },
+    "verify": true,
+    "reason": "lightest stiff block",
+    "variants": [],
+    "sweep": {
+      "volume_fraction": [
+        0.3,
+        0.4
+      ]
+    },
+    "max_variants": 2
+  },
+  "variants": [
+    {
+      "id": "v0",
+      "name": "vf 0.30 \u00b7 r 2.0 mm \u00b7 sym y",
+      "delta": {
+        "volume_fraction": 0.3
+      },
+      "status": "done",
+      "phase": "done",
+      "pct": 100.0,
+      "it": 39,
+      "max_iter": 60,
+      "preview": 35,
+      "volume_fraction": 0.3,
+      "resolution_mm": 1.0,
+      "filter_radius_mm": 2.0,
+      "manufacturing": {
+        "process": "none",
+        "symmetry": [
+          "y"
+        ],
+        "extrusion_axis": null,
+        "overhang": null,
+        "min_member_mm": null
+      },
+      "warnings": [],
+      "error": null,
+      "verified": true,
+      "passes": true,
+      "rank": 1,
+      "pareto": true,
+      "started_at": 1793422824.519445,
+      "compliance": 17.408135865618597,
+      "vf": 0.3000007069231771,
+      "report": {
+        "grid": [
+          24,
+          16,
+          8
+        ],
+        "h_mm": 1.0,
+        "elements": 3072,
+        "space_elements": 3072,
+        "iters": 39,
+        "converged": true,
+        "levels": 2,
+        "fallback_at": null,
+        "compliance_gray": 26.479254622589835,
+        "compliance_bw": 17.408135865618597,
+        "deflection_bw": [
+          0.4352033966404649
+        ],
+        "vf_bw": 0.2838541666666667,
+        "mesh": {
+          "tris": 3920,
+          "watertight": true,
+          "volume_mm3": 1288.9639851532752
+        },
+        "faces": 1774,
+        "final_vf": 0.304289683505225,
+        "islands_dropped_pct": 0.0,
+        "times_s": {
+          "voxelize": 0.09,
+          "optimize": 5.96,
+          "surface": 0.28,
+          "brep": 0.0,
+          "boolean": 0.43,
+          "export": 0.32
+        },
+        "total_s": 7.1
+      },
+      "history": [
+        [
+          0,
+          285.51203704620036,
+          0.3000121170548398
+        ],
+        [
+          1,
+          236.9193338867534,
+          0.29999484337257826
+        ],
+        [
+          2,
+          174.6676074557922,
+          0.3000008728042169
+        ],
+        [
+          3,
+          150.3265805618193,
+          0.30000953177760503
+        ],
+        [
+          4,
+          127.64863595828092,
+          0.2999992355920771
+        ],
+        [
+          5,
+          102.4224139352911,
+          0.3000000946122774
+        ],
+        [
+          6,
+          78.48518802075269,
+          0.2999898904717072
+        ],
+        [
+          7,
+          60.73234610321217,
+          0.29999244282254045
+        ],
+        [
+          8,
+          51.2716552220199,
+          0.2999929795306604
+        ],
+        [
+          9,
+          45.394193643970645,
+          0.3000043606018345
+        ],
+        [
+          10,
+          41.268968269993316,
+          0.29999846455995477
+        ],
+        [
+          11,
+          38.188706227958804,
+          0.30000330845929674
+        ],
+        [
+          12,
+          35.67575188758448,
+          0.30000341659707636
+        ],
+        [
+          13,
+          33.62239079589768,
+          0.3000025987217432
+        ],
+        [
+          14,
+          32.004378479965865,
+          0.3000043915724695
+        ],
+        [
+          15,
+          30.79647427060825,
+          0.3000017670378691
+        ],
+        [
+          16,
+          29.870307483373164,
+          0.29999657651661377
+        ],
+        [
+          17,
+          29.191705929357123,
+          0.29999595388038885
+        ],
+        [
+          18,
+          28.66027355606858,
+          0.3000019443899764
+        ],
+        [
+          19,
+          28.240327522463275,
+          0.3000007515160605
+        ],
+        [
+          20,
+          27.918914382745783,
+          0.299999063584018
+        ],
+        [
+          21,
+          27.668116258996733,
+          0.2999983314107004
+        ],
+        [
+          22,
+          27.469040147007625,
+          0.30000071061688416
+        ],
+        [
+          23,
+          27.306134512542556,
+          0.29999939902969786
+        ],
+        [
+          24,
+          27.174099323196067,
+          0.2999994508217954
+        ],
+        [
+          25,
+          27.064063192717477,
+          0.29999989355122947
+        ],
+        [
+          26,
+          26.97776330623168,
+          0.30000064786614844
+        ],
+        [
+          27,
+          26.900125247905525,
+          0.30000123532773626
+        ],
+        [
+          28,
+          26.830374049316763,
+          0.3000008480637771
+        ],
+        [
+          29,
+          26.76415115599732,
+          0.29999962228028204
+        ],
+        [
+          30,
+          26.704041593897976,
+          0.30000018719642596
+        ],
+        [
+          31,
+          26.65435978863775,
+          0.2999993562347522
+        ],
+        [
+          32,
+          26.60578384492843,
+          0.30000068024018267
+        ],
+        [
+          33,
+          26.570010101435,
+          0.29999994651466183
+        ],
+        [
+          34,
+          26.549516470733884,
+          0.2999993170792255
+        ],
+        [
+          35,
+          26.531390598652877,
+          0.29999963002415253
+        ],
+        [
+          36,
+          26.51374647575312,
+          0.300000021691695
+        ],
+        [
+          37,
+          26.49644046273471,
+          0.30000041135621136
+        ],
+        [
+          38,
+          26.479254622589835,
+          0.3000007069231771
+        ]
+      ],
+      "volume_mm3": 934.7779077280512,
+      "mass_g": 1.1591246055827835,
+      "faces": 1774,
+      "step_bytes": 4605670,
+      "thin_member_pct": 5.0,
+      "overhang_area_pct": 3.27,
+      "verify": {
+        "solver": "CalculiX",
+        "element": "C3D10 (quadratic tetrahedra)",
+        "mesher": "gmsh OCC (STEP) 4.15.2",
+        "mesh_size_mm": 1.5,
+        "nodes": 14629,
+        "tets": 7266,
+        "surface": null,
+        "fixtures": [
+          {
+            "face": "x-min",
+            "triangles": 150
+          }
+        ],
+        "cases": [
+          {
+            "name": "tip",
+            "weight": 1.0,
+            "compliance": 17.146210480218585,
+            "max_deflection_mm": 0.4599762029119583,
+            "max_von_mises_mpa": 20.76596441471339,
+            "max_von_mises_at": [
+              2.425724917405,
+              11.650359905311,
+              -2.979499707981e-18
+            ],
+            "max_von_mises_at_fixture_mpa": 14.671687563480898,
+            "max_displacement_mm": 0.4599762029119583
+          }
+        ],
+        "compliance": 17.146210480218585,
+        "max_deflection_mm": 0.4599762029119583,
+        "max_von_mises_mpa": 20.76596441471339,
+        "allowable_mpa": 35.699999999999996,
+        "safety_factor": 1.719159259210968,
+        "seconds": 2.7
+      },
+      "compliance_error_pct": -1.5,
+      "finished_at": 1793422837.0879822,
+      "max_deflection_mm": 0.4599762029119583,
+      "urls": {
+        "preview": "/topopt/to_08221292db84/variants/v0/preview.glb",
+        "result": "/topopt/to_08221292db84/variants/v0/result.glb",
+        "stress": "/topopt/to_08221292db84/variants/v0/stress.glb",
+        "render": "/topopt/to_08221292db84/variants/v0/render.png",
+        "step": "/topopt/to_08221292db84/variants/v0/part.step",
+        "stl": "/topopt/to_08221292db84/variants/v0/part.stl"
+      }
+    },
+    {
+      "id": "v1",
+      "name": "vf 0.40 \u00b7 r 2.0 mm \u00b7 sym y",
+      "delta": {
+        "volume_fraction": 0.4
+      },
+      "status": "done",
+      "phase": "done",
+      "pct": 100.0,
+      "it": 35,
+      "max_iter": 60,
+      "preview": 35,
+      "volume_fraction": 0.4,
+      "resolution_mm": 1.0,
+      "filter_radius_mm": 2.0,
+      "manufacturing": {
+        "process": "none",
+        "symmetry": [
+          "y"
+        ],
+        "extrusion_axis": null,
+        "overhang": null,
+        "min_member_mm": null
+      },
+      "warnings": [],
+      "error": null,
+      "verified": true,
+      "passes": true,
+      "rank": 2,
+      "pareto": true,
+      "started_at": 1793422824.51992,
+      "compliance": 11.316022821327259,
+      "vf": 0.39999862842035494,
+      "report": {
+        "grid": [
+          24,
+          16,
+          8
+        ],
+        "h_mm": 1.0,
+        "elements": 3072,
+        "space_elements": 3072,
+        "iters": 35,
+        "converged": true,
+        "levels": 2,
+        "fallback_at": null,
+        "compliance_gray": 15.760825947610531,
+        "compliance_bw": 11.316022821327259,
+        "deflection_bw": [
+          0.28290057053318146
+        ],
+        "vf_bw": 0.3919270833333333,
+        "mesh": {
+          "tris": 4256,
+          "watertight": true,
+          "volume_mm3": 1708.9634279690533
+        },
+        "faces": 1894,
+        "final_vf": 0.41852203818245465,
+        "islands_dropped_pct": 0.0,
+        "times_s": {
+          "voxelize": 0.09,
+          "optimize": 4.84,
+          "surface": 0.38,
+          "brep": 0.0,
+          "boolean": 0.44,
+          "export": 0.33
+        },
+        "total_s": 6.1
+      },
+      "history": [
+        [
+          0,
+          94.45641535809499,
+          0.399993512601532
+        ],
+        [
+          1,
+          68.53968016134598,
+          0.40002116042702257
+        ],
+        [
+          2,
+          52.996309734566225,
+          0.40001725780317504
+        ],
+        [
+          3,
+          46.88052535152406,
+          0.4000085484191392
+        ],
+        [
+          4,
+          41.582098961609006,
+          0.4000049543678861
+        ],
+        [
+          5,
+          36.57582791265061,
+          0.3999862561329861
+        ],
+        [
+          6,
+          32.165896137063854,
+          0.40001433951323245
+        ],
+        [
+          7,
+          27.856708827629753,
+          0.4000106546293319
+        ],
+        [
+          8,
+          24.385840132986313,
+          0.40000031785115314
+        ],
+        [
+          9,
+          21.92195124770474,
+          0.40000966461673015
+        ],
+        [
+          10,
+          20.30286654644889,
+          0.4000072922867153
+        ],
+        [
+          11,
+          19.179183168522044,
+          0.40000415288316304
+        ],
+        [
+          12,
+          18.366308107125615,
+          0.3999905040234561
+        ],
+        [
+          13,
+          17.77302727613733,
+          0.4000055978411688
+        ],
+        [
+          14,
+          17.32253235397502,
+          0.3999986337569951
+        ],
+        [
+          15,
+          16.98493882098274,
+          0.39999696282075553
+        ],
+        [
+          16,
+          16.729232722007907,
+          0.39999911584141473
+        ],
+        [
+          17,
+          16.531347077642767,
+          0.3999998527701518
+        ],
+        [
+          18,
+          16.380334824811513,
+          0.4000034770184923
+        ],
+        [
+          19,
+          16.27085817049764,
+          0.4000011737156181
+        ],
+        [
+          20,
+          16.18427876494962,
+          0.39999899199406114
+        ],
+        [
+          21,
+          16.115623107161,
+          0.3999978685284244
+        ],
+        [
+          22,
+          16.060911527090738,
+          0.3999975444171711
+        ],
+        [
+          23,
+          16.018013626039654,
+          0.40000248186039356
+        ],
+        [
+          24,
+          15.977389655983847,
+          0.3999985488988595
+        ],
+        [
+          25,
+          15.939587107767775,
+          0.4000016179958144
+        ],
+        [
+          26,
+          15.90416401345849,
+          0.3999979466172527
+        ],
+        [
+          27,
+          15.870419038933065,
+          0.4000020176449485
+        ],
+        [
+          28,
+          15.84111223167453,
+          0.39999992972677284
+        ],
+        [
+          29,
+          15.818376052865002,
+          0.40000133344537075
+        ],
+        [
+          30,
+          15.803394299570998,
+          0.3999989998355718
+        ],
+        [
+          31,
+          15.791693722148434,
+          0.4000011303822386
+        ],
+        [
+          32,
+          15.780951022673612,
+          0.3999995551189139
+        ],
+        [
+          33,
+          15.770845356849353,
+          0.39999862842035494
+        ],
+        [
+          34,
+          15.760825947610531,
+          0.4000014869965723
+        ]
+      ],
+      "volume_mm3": 1285.6997012965007,
+      "mass_g": 1.594267629607661,
+      "faces": 1894,
+      "step_bytes": 4865695,
+      "thin_member_pct": 10.3,
+      "overhang_area_pct": 5.45,
+      "verify": {
+        "solver": "CalculiX",
+        "element": "C3D10 (quadratic tetrahedra)",
+        "mesher": "gmsh OCC (STEP) 4.15.2",
+        "mesh_size_mm": 1.5,
+        "nodes": 16694,
+        "tets": 8559,
+        "surface": null,
+        "fixtures": [
+          {
+            "face": "x-min",
+            "triangles": 150
+          }
+        ],
+        "cases": [
+          {
+            "name": "tip",
+            "weight": 1.0,
+            "compliance": 10.928586676947093,
+            "max_deflection_mm": 0.2963175855371107,
+            "max_von_mises_mpa": 10.90329167200401,
+            "max_von_mises_at": [
+              3.40780441849,
+              7.428151012206,
+              -2.064376141715e-18
+            ],
+            "max_von_mises_at_fixture_mpa": 9.33652253069498,
+            "max_displacement_mm": 0.2963175855371107
+          }
+        ],
+        "compliance": 10.928586676947093,
+        "max_deflection_mm": 0.2963175855371107,
+        "max_von_mises_mpa": 10.90329167200401,
+        "allowable_mpa": 35.699999999999996,
+        "safety_factor": 3.274240575592929,
+        "seconds": 3.2
+      },
+      "compliance_error_pct": -3.42,
+      "finished_at": 1793422836.866304,
+      "max_deflection_mm": 0.2963175855371107,
+      "urls": {
+        "preview": "/topopt/to_08221292db84/variants/v1/preview.glb",
+        "result": "/topopt/to_08221292db84/variants/v1/result.glb",
+        "stress": "/topopt/to_08221292db84/variants/v1/stress.glb",
+        "render": "/topopt/to_08221292db84/variants/v1/render.png",
+        "step": "/topopt/to_08221292db84/variants/v1/part.step",
+        "stl": "/topopt/to_08221292db84/variants/v1/part.stl"
+      }
+    }
+  ],
+  "pareto": [
+    "v0",
+    "v1"
+  ],
+  "recommended": "v1",
+  "accepted": [],
+  "summary": "generative design to_08221292db84 of block: done, 2/2 variants; recommended v1 (vf 0.40 \u00b7 r 2.0 mm \u00b7 sym y): 1.6 g, deflection 0.296 mm, peak 10.9 MPa, SF 3.27 (CalculiX, guide only)",
+  "stream": "sim"
+}
