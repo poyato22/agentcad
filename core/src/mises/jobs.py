@@ -38,6 +38,7 @@ class Job:
     run_id: str | None
     label: str = ""                # "static study of beam", shown in the note
     scope: list = field(default_factory=list)   # scope keys whose readers may read it
+    build_id: str | None = None
     task: asyncio.Future | None = None
     cancel: Callable[[], None] | None = None
     status: str = "running"
@@ -88,6 +89,50 @@ def family(store, run_id: str | None) -> set[str]:
         return {root, *store.descendants(root)}
     except Exception:  # noqa: BLE001
         return {run_id}
+
+
+def root_of(store, run_id: str | None) -> str | None:
+    """The root of run_id's family (the agent its notes go to)."""
+    if not run_id or store is None:
+        return run_id
+    try:
+        seen = {run_id}
+        r = store.get_run(run_id)
+        while r.parent_id and r.parent_id not in seen:
+            seen.add(r.parent_id)
+            r = store.get_run(r.parent_id)
+        return r.id
+    except Exception:  # noqa: BLE001
+        return run_id
+
+
+def running() -> list[Job]:
+    return [j for j in _jobs.values() if j.status == "running"]
+
+
+def view(job: Job) -> dict:
+    """A job as GET /jobs lists it (the app's Simulations stream and its Stop buttons)."""
+    return {"job_id": job.id, "kind": job.kind, "run_id": job.run_id, "build_id": job.build_id,
+            "label": job.label, "status": job.status, "started_at": job.started_at,
+            "cancel_url": cancel_url(job.id)}
+
+
+def cancel_url(job_id: str) -> str:
+    return f"/jobs/{job_id}/cancel"
+
+
+def user_cancel(job_id: str) -> bool:
+    """The user stopped this one job (POST /jobs/{id}/cancel): it ends cancelled and its note
+    starts no turn of its own (it rides along with the next one). False if not running."""
+    j = _jobs.get(job_id)
+    if j is None or j.status != "running":
+        return False
+    j.defer = True
+    if j.cancel is not None:
+        j.cancel()
+    elif j.task is not None:
+        j.task.cancel()
+    return True
 
 
 def outstanding(run_ids: set[str]) -> list[Job]:
@@ -206,7 +251,10 @@ def finished(ctx, job: Job, *, build_id: str | None = None, data: dict | None = 
         events.publish(Event(type="sim_finished", run_id=job.run_id, data={
             "kind": job.kind, "job_id": job.id, "run_id": job.run_id,
             "build_id": build_id if build_id is not None else build_of(ctx, job.run_id),
-            "status": job.status, "summary": job.summary, **(data or {})}))
+            "status": job.status, "summary": job.summary, "cancel_url": cancel_url(job.id),
+            **(data or {})}))
+    if job.status == "cancelled" and job.defer and not job.stopped:
+        job.summary = f"{job.label or job.kind} was cancelled by the user"
     if not note or job.stopped or job.consumed or job.waiters:
         if job.waiters:
             job.consumed = True
@@ -230,6 +278,7 @@ def start(ctx, kind: str, job_id: str, label: str,
     """Run `make()` as a background job of ctx's run, capped at timeout_s (the Gate's
     timeout for the same tool when it blocks). Its ToolOutput is the job's result."""
     job = Job(id=job_id, kind=kind, run_id=getattr(ctx, "run_id", None), label=label)
+    job.build_id = build_of(ctx, job.run_id)
 
     async def runner() -> None:
         try:

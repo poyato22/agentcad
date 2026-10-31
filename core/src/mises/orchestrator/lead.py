@@ -336,14 +336,18 @@ async def deliver_note(rt: Runtime, run_id: str, text: str, meta: dict, *,
             _park(rt, owner.id, text, meta, why)
             return None
         rt.note_turns[owner.id] = rt.note_turns.get(owner.id, 0) + 1
+        sent = False
         try:
             await rt.send(owner.id, text, log=log, user_turn=False)
+            sent = True
             return {"run_id": owner.id, "sent": True}
         except MisesError as e:
-            rt.note_turns[owner.id] -= 1
             if not (e.code == ErrorCode.INVALID_INPUT and "still working" in e.message):
                 raise
             return _enqueue_note(rt, owner.id, text, log)
+        finally:
+            if not sent:
+                rt.note_turns[owner.id] = max(0, rt.note_turns.get(owner.id, 1) - 1)
     except Exception as e:  # noqa: BLE001 - a note must never break the job that sends it
         _log.exception("could not deliver a note to %s's agent", run_id)
         _park(rt, owner.id if owner is not None else run_id, text, meta,

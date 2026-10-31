@@ -735,7 +735,7 @@ async def study_run(ctx: ToolContext, args: StudyRunArgs) -> ToolOutput:
                               f"background (up to {budget.evals} variants); you get a note when "
                               "it finishes. Keep working; read it with study_get or job_wait.",
                       data={"study_id": study_id, "status": "running", "stream": "sim",
-                            "part_id": args.part_id})
+                            "part_id": args.part_id, "cancel_url": jobs.cancel_url(study_id)})
 
 
 def _wait_arg(ctx: ToolContext, wait: bool | None) -> bool:

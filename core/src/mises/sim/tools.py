@@ -437,6 +437,10 @@ async def job_wait(ctx: ToolContext, args: JobArgs) -> ToolOutput:
         return await sim_wait.handler(ctx, WaitArgs(sim_id=args.job_id,
                                                     timeout_s=args.timeout_s))
     from .. import jobs
+    if args.job_id.startswith("study_") and jobs.get(args.job_id) is None:
+        # a design study that ran blocking (the Studies page) or before a restart: its record
+        from ..engineering.tools import StudyGetArgs, study_get
+        return await study_get.handler(ctx, StudyGetArgs(study_id=args.job_id))
     _job_result(ctx, args.job_id)                    # exists and is in scope
     await jobs.wait(args.job_id, args.timeout_s)
     if args.job_id.startswith("study_"):
@@ -828,7 +832,7 @@ async def design_review(ctx: ToolContext, args: ReviewArgs) -> ToolOutput:
                               "when it finishes. Keep working; read it with design_review_get "
                               "or job_wait.",
                       data={"review_id": review_id, "status": "running", "stream": "sim",
-                            "part_id": args.part_id,
+                            "part_id": args.part_id, "cancel_url": jobs.cancel_url(review_id),
                             "plan": [{"type": p["type"], "case": p["case"]} for p in plan]})
 
 

@@ -373,9 +373,42 @@ def build_sim_router(runtime: Runtime) -> APIRouter:
         except ValueError as e:
             raise MisesError(ErrorCode.INVALID_INPUT, str(e)) from None
 
+    @router.get("/jobs")
+    async def list_jobs(project_id: str | None = None, run_id: str | None = None):
+        """Running background jobs (an agent's studies, reviews and design studies), newest
+        first; the app's Simulations stream and its busy state read it."""
+        from .. import jobs
+        out = [jobs.view(j) for j in jobs.running()
+               if (project_id is None or j.build_id == project_id)
+               and (run_id is None or j.run_id == run_id)]
+        return sorted(out, key=lambda j: j["started_at"], reverse=True)
+
+    @router.post("/jobs/{job_id}/cancel")
+    async def cancel_job(job_id: str):
+        """Stop one background job (sim_…, review_…, study_…). Its note starts no turn."""
+        from .. import jobs
+        from ..sim.tools import JOB_ID_RE
+        if not re.fullmatch(JOB_ID_RE, job_id):
+            raise MisesError(ErrorCode.INVALID_INPUT, f"bad job id: {job_id!r}",
+                             hint="sim_…, review_… or study_… ids")
+        j = jobs.get(job_id)
+        if j is None and job_id.startswith("sim_"):   # a blocking (UI) study: its own cancel
+            if studies.cancel(job_id):
+                return {"job_id": job_id, "status": "cancelling"}
+        if j is None:
+            raise MisesError(ErrorCode.NOT_FOUND, f"no background job {job_id} here")
+        if not jobs.user_cancel(job_id):
+            return JSONResponse({"error": "not_running", "status": j.status,
+                                 "message": f"{job_id} is not running"}, status_code=409)
+        return {"job_id": job_id, "status": "cancelling"}
+
     @router.post("/sims/{sim_id}/cancel")
     async def cancel(sim_id: str):
         rec = _record(_dir(sim_id))
+        from .. import jobs
+        if jobs.active(sim_id):                       # an agent's background study
+            jobs.user_cancel(sim_id)
+            return {"sim_id": sim_id, "status": "cancelling"}
         if not studies.cancel(sim_id):
             return JSONResponse({"error": "not_running", "status": rec.get("status"),
                                  "message": f"{sim_id} is not running"}, status_code=409)

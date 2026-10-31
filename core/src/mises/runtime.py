@@ -1405,6 +1405,9 @@ class Runtime:
         try:
             if not busy and user_turn:
                 self.new_user_turn(run_id)
+            elif user_turn:     # joins a running turn: still the user, so notes may wake it
+                self.note_turns.pop(run_id, None)
+                self.note_hold.discard(run_id)
             # the plain two-argument call when there is no log (tests patch _send that way)
             await (self._send(run_id, text) if log is None else self._send(run_id, text, log))
         finally:
@@ -1487,7 +1490,7 @@ class Runtime:
 
     def cancel(self, run_id: str) -> None:
         self.parallel.withdraw(run_id)      # a queued run never starts
-        self._stop_background(run_id)
+        self.stop_background(run_id)
         if run_id in self._external:
             # mark it cancelled first (the MCP endpoint then refuses its calls), then let the
             # owner stop the agent process
@@ -1511,7 +1514,7 @@ class Runtime:
         self.approvals.cancel_run(run_id)
         self.store.release_run_reservations(run_id)
 
-    def _stop_background(self, run_id: str) -> None:
+    def stop_background(self, run_id: str) -> None:
         """Stop reaches the background jobs (studies, reviews, design studies) of the run and
         of every run below it, and no note wakes them until the user writes again."""
         from . import jobs

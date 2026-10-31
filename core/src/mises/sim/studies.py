@@ -828,7 +828,7 @@ async def run_study(ctx, type_id: str, part_id: str | None, part_dir: Path | Non
     from .. import jobs
     limit = background_timeout_s or _tools_attr("SIM_RUN_TIMEOUT_S", 4 * 3600.0)
     job = jobs.Job(id=sim_id, kind="sim", run_id=rec["run_id"], label=_label(rec),
-                   cancel=lambda: cancel(sim_id))
+                   cancel=lambda: cancel(sim_id), build_id=build_of(ctx, rec))
 
     async def background() -> None:
         sup = asyncio.ensure_future(supervise())
@@ -846,7 +846,7 @@ async def run_study(ctx, type_id: str, part_id: str | None, part_dir: Path | Non
             job.status = rec.get("status") if rec.get("status") != "running" else "failed"
             job.summary = summary(rec)
             job.error = rec.get("error")
-            job.defer = rec.get("error_code") == "busy"
+            job.defer = job.defer or rec.get("error_code") == "busy"
             jobs.finished(ctx, job, build_id=build_of(ctx, rec), data=_finish_data(rec))
 
     job.task = asyncio.ensure_future(background())
@@ -856,7 +856,7 @@ async def run_study(ctx, type_id: str, part_id: str | None, part_dir: Path | Non
                               "working; read it with sim_result_get or sim_wait.",
                       data={"sim_id": sim_id, "status": "running", "stream": "sim",
                             "type": type_id, "part_id": part_id, "card": card(rec),
-                            "urls": urls(sim_id)})
+                            "urls": urls(sim_id), "cancel_url": jobs.cancel_url(sim_id)})
 
 
 # ---- background studies (Plan 9 D4): the tool returns at once, the study finishes later
