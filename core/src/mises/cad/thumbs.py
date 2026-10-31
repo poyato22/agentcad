@@ -13,8 +13,13 @@ route's ETag uses — so a part id reused after Empty Trash (whose version resta
 failed edit restored at the same version, never serves an old picture — plus a digest of the
 appearance, so a new color or finish re-renders. The routes build their ETags from the same key.
 
-Project tiles compose up to four part thumbnails (rendered at half size) into a 2x2 grid on the
-host (pure code, no sandbox needed: the inputs are our own PNGs).
+A build's Home cover (D24) is ONE render of its assembly: every instance at its solved pose in
+its part's finish, the iso 3/4 view, in a single sandboxed job. The renderer's background is
+keyed out (the app shows the cover on its themed background) and the picture is framed to the
+content's bounding box in a 16:10 frame. A build with no placed instance falls back to its
+largest part; a cover is never a grid of parts. It is cached by every instance's part key
+(version + mesh stamp + appearance) and pose, so moving an instance or rebuilding a part
+refreshes it.
 
 Renders are capped at _CONCURRENCY at once, a render already in flight for a key is shared, and
 a failed render is remembered for _FAIL_TTL_S so a broken part isn't re-rendered on every visit.
@@ -33,14 +38,13 @@ from pathlib import Path
 from ..types import MisesError
 from . import safe_io, thumb_render
 from .render import _BG, _DEFAULT_COLOR
-from .render_job import MeshIn, run_render_job
+from .render_job import MAX_MESHES, MeshIn, run_render_job
 
 THUMBS_DIR = ".mises-thumbs"          # <home>/parts/.mises-thumbs/<id> — never a valid part id
 DEFAULT_SIZE = 256
 MIN_SIZE = 16
 MAX_SIZE = 1024
 _TIMEOUT_S = 30.0
-_MAX_TILES = 4
 _CONCURRENCY = 2
 _FAIL_TTL_S = 60.0
 
@@ -162,7 +166,8 @@ async def _render(home: Path, part_dir: Path, size: int, look: dict | None = Non
         async with _semaphore():
             out = await run_render_job(base / "jobs", [mesh], renders=[{
                 "key": "t", "views": ["iso"], "size": max(size, _RENDER_MIN),
-                "transparent": mesh.opacity < 1.0}])
+                "transparent": mesh.opacity < 1.0, "background": "transparent",
+                "shadow": False}])
     except (MisesError, OSError, safe_io.UnsafePath):
         return None
     png = (out.pngs.get("t") or {}).get("iso")
@@ -225,41 +230,120 @@ async def part_thumb(home: Path, part_id: str, version: int, size: int = DEFAULT
     return await _once((str(home), part_id, key), make)
 
 
-def project_key(home: Path, parts: list[tuple[str, int]], size: int,
-                looks: dict[str, dict] | None = None) -> str:
-    """The cache/ETag key of a project tile: its size and the keys of the tiles it composes."""
-    cell = max(MIN_SIZE, clamp_size(size) // 2)
-    looks = looks or {}
-    keys = [f"{pid}:{part_key(home, pid, ver, cell, looks.get(pid))}"
-            for pid, ver in parts[:_MAX_TILES]]
-    digest = hashlib.sha256(",".join(keys).encode()).hexdigest()[:16]
-    return f"{clamp_size(size)}-{digest}"
+COVER_W = 640                          # the cover's default width; its height is 10/16 of it
+_COVER_MARGIN = 0.07                   # of each side, kept clear around the framed content
+_COVER_PREFIX = "cover"
+
+# (part id, part version, world transform or None for the part's own frame, appearance look)
+Placement = tuple[str, int, "list[list[float]] | None", "dict | None"]
 
 
-async def project_thumb(home: Path, project_id: str, parts: list[tuple[str, int]],
-                        size: int = DEFAULT_SIZE,
-                        looks: dict[str, dict] | None = None) -> bytes | None:
-    """A 2x2 composite of up to four of the project's parts, each rendered at half size so the
-    grid is a straight copy. Cached by the tiles' own keys, so a rebuild or a new part refreshes
-    it. None when no part has a mesh."""
-    size = clamp_size(size)
-    chosen = parts[:_MAX_TILES]
-    cell = max(MIN_SIZE, size // 2)
-    looks = looks or {}
-    key = project_key(home, chosen, size, looks)
+def cover_size(size: int | None) -> tuple[int, int]:
+    """The cover's (width, height) for a requested width: 16:10."""
+    w = clamp_size(size or COVER_W)
+    return w, max(MIN_SIZE, w * 10 // 16)
+
+
+def _shown(home: Path, placed: list[Placement], w: int) -> list[tuple[Placement, str]]:
+    """The placements whose part has a mesh, each with its part key; at most MAX_MESHES."""
+    out = []
+    for p in placed:
+        k = part_key(home, p[0], p[1], w, p[3])
+        if k is not None:
+            out.append((p, k))
+    return out[:MAX_MESHES]
+
+
+def cover_key(home: Path, placed: list[Placement], size: int | None = None) -> str | None:
+    """The cache/ETag key of a build cover: its size and every shown instance's part key and
+    pose. None when no placed part has a mesh."""
+    w, _h = cover_size(size)
+    shown = _shown(home, placed, w)
+    if not shown:
+        return None
+    items = [[p[0], k, p[2]] for p, k in shown]
+    digest = hashlib.sha256(json.dumps(items, sort_keys=True).encode()).hexdigest()[:16]
+    return f"{_COVER_PREFIX}{w}-{digest}"
+
+
+def _framed(png: bytes, w: int, h: int) -> bytes:
+    """The renderer's RGB PNG keyed to transparency, cropped to its content and fitted (aspect
+    kept, margins clear) into the centre of a transparent w x h frame. Our own worker's PNG."""
+    from PIL import Image
+    with Image.open(io.BytesIO(png)) as src:
+        side = src.size[0]
+    sw, sh, rgba = thumb_render.decode_png(_keyed_rgba(png, side))
+    im = Image.frombytes("RGBA", (sw, sh), bytes(rgba))
+    box = im.getchannel("A").getbbox()
+    frame = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    if box is not None:
+        im = im.crop(box)
+        room_w, room_h = w * (1 - 2 * _COVER_MARGIN), h * (1 - 2 * _COVER_MARGIN)
+        k = min(room_w / im.width, room_h / im.height)
+        nw, nh = max(1, round(im.width * k)), max(1, round(im.height * k))
+        im = im.resize((nw, nh), Image.LANCZOS)
+        frame.alpha_composite(im, ((w - nw) // 2, (h - nh) // 2))
+    return thumb_render.encode_png(w, h, frame.tobytes())
+
+
+async def _render_cover(home: Path, project_id: str, shown: list[Placement], w: int,
+                        h: int) -> bytes | None:
+    base = _cache_dir(home, f"project-{project_id}")
+    try:
+        safe_io.ensure_dir(base)
+    except (OSError, safe_io.UnsafePath):
+        return None
+    meshes = [MeshIn(Path(home) / "parts" / pid, pid, _rgb((look or {}).get("color")),
+                     float((look or {}).get("opacity") or 1.0), tf)
+              for pid, _v, tf, look in shown]
+    # rendered larger than the frame: cropping to the content then scales it down (smooth edges)
+    rsize = min(MAX_SIZE, max(_RENDER_MIN, round(w * 1.5)))
+    try:
+        async with _semaphore():
+            out = await run_render_job(base / "jobs", meshes, renders=[{
+                "key": "t", "views": ["iso"], "size": rsize,
+                "transparent": any(m.opacity < 1.0 for m in meshes)}])
+    except (MisesError, OSError, safe_io.UnsafePath):
+        return None
+    png = (out.pngs.get("t") or {}).get("iso")
+    if png is None:
+        return None
+    try:
+        return await asyncio.to_thread(_framed, png, w, h)
+    except (OSError, ValueError):
+        return None
+
+
+def _drop_legacy_tiles(cdir: Path) -> None:
+    """Remove the pre-D24 2x2 composites (`<size>-<digest>.png`) a cover replaces."""
+    try:
+        for old in cdir.glob("[0-9]*-*.png"):
+            old.unlink(missing_ok=True)
+    except OSError:
+        pass                          # a cache; leftover files only cost disk
+
+
+async def project_cover(home: Path, project_id: str, placed: list[Placement],
+                        size: int | None = None) -> bytes | None:
+    """The build's Home cover PNG (16:10, transparent background) of `placed` (its assembly
+    instances, or the largest part the caller fell back to), from cache or one fresh sandboxed
+    render. None when nothing placed has a mesh or the render failed."""
+    w, h = cover_size(size)
+    key = cover_key(home, placed, w)
+    if key is None:
+        return None
+    shown = [p for p, _k in _shown(home, placed, w)]
     cdir = _cache_dir(home, f"project-{project_id}")
     name = f"{key}.png"
     hit = _read_cache(cdir, name)
     if hit is not None:
         return hit
-    tiles = []
-    for pid, ver in chosen:
-        png = await part_thumb(home, pid, ver, cell, looks.get(pid))
+
+    async def make():
+        png = await _render_cover(home, project_id, shown, w, h)
         if png is not None:
-            tiles.append(thumb_render.decode_png(png))
-    if not tiles:
-        return None
-    w, h, rgba = thumb_render.compose_rgba(tiles, size)
-    png = thumb_render.encode_png(w, h, rgba)
-    _write_cache(cdir, name, png, keep_prefix=f"{size}-")
-    return png
+            _write_cache(cdir, name, png, keep_prefix=f"{_COVER_PREFIX}{w}-")
+            _drop_legacy_tiles(cdir)
+        return png
+
+    return await _once((str(home), f"project-{project_id}", key), make)

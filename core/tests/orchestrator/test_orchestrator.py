@@ -2,7 +2,7 @@ import pytest
 from pydantic import BaseModel
 
 import mises.runtime as runtime_mod
-from mises.orchestrator.orchestrator import child_policy, task_prompt
+from mises.orchestrator.orchestrator import child_policy, inherited_model_ref, task_prompt
 from mises.orchestrator.plan import PlanTask
 from mises.orchestrator.scheduler import TaskResult
 from mises.providers.base import Done, TextDelta, ToolCall
@@ -340,18 +340,28 @@ async def test_agent_spawn_wait_false_fans_out(tmp_path):
     assert e.value.code == ErrorCode.DENIED
 
 
+def _native_checker(rt):
+    """A verifier-like child that pins a native model, so it does not inherit the parent's
+    claude-code model (D3) and route to the claude path this test cannot run."""
+    from mises.agent.definitions import AgentDefinition
+    rt.definitions["checker"] = AgentDefinition(
+        name="checker", description="d", model="fake/x", body="# Role: verifier\ncheck it",
+        tools=["mirror_measure", "design_review", "ui_note"])
+
+
 async def test_child_of_claude_code_run_is_narrowed_and_respects_parallel_limit(tmp_path,
                                                                                 monkeypatch):
     # C4 / Review Focus 5: a worker spawned from a Claude Code run stays inside the parent's
     # tools (classes) and scope, and the parent yields its one parallel slot so the child runs.
     prov = RoleProvider(verifier=[text("child done")])
     rt = make(tmp_path, prov)
+    _native_checker(rt)
     monkeypatch.setattr(rt, "_total_limit", lambda prof=None: 1)
     parent = rt.create_external_run("designer", provider="claude-code", model="sonnet",
                                     edit_scope=("bracket",),
                                     allowed_classes={C.READ, C.LOCAL_MUTATE},
                                     slot_ref="claude-code/sonnet")
-    out = await rt.gate.call(parent, "agent_spawn", {"agent": "verifier", "prompt": "check"},
+    out = await rt.gate.call(parent, "agent_spawn", {"agent": "checker", "prompt": "check"},
                              call_id="c1", workdir=rt.workdir(parent))
     assert out.ok
     (child,) = [r for r in rt.store.list_runs() if r.parent_id == parent]
@@ -369,12 +379,13 @@ async def test_agent_result_without_agent_wait_yields_the_slot(tmp_path, monkeyp
     import asyncio
     prov = RoleProvider(verifier=[text("checked")])
     rt = make(tmp_path, prov)
+    _native_checker(rt)
     monkeypatch.setattr(rt, "_total_limit", lambda prof=None: 1)
     parent = rt.create_external_run("designer", provider="claude-code", model="sonnet",
                                     slot_ref="claude-code/sonnet")
     assert rt.parallel.active() == {parent}
     out = await rt.gate.call(parent, "agent_spawn",
-                             {"agent": "verifier", "prompt": "check", "wait": False},
+                             {"agent": "checker", "prompt": "check", "wait": False},
                              call_id="c1", workdir=rt.workdir(parent))
     rid = out.data["run_id"]
     assert rt.store.get_run(rid).status == "queued"
@@ -419,6 +430,116 @@ async def test_delegation_tools_withheld_from_a_worker_that_cannot_delegate(tmp_
     offered = [{t.name for t in r.tools} for r in prov.requests]
     assert "agent_spawn" in offered[0]
     assert not offered[1] & DELEGATION_TOOLS
+
+
+@pytest.mark.parametrize("prompt", ["a robotic dog", "a humanoid robot", "a car body",
+                                    "an injection mold for a cap", "a jet engine compressor"])
+async def test_no_drone_leak_in_a_leads_first_turn_context(tmp_path, prompt):
+    # D26: the lead's first-turn system + user context, assembled by the real submit path on a
+    # fake model, must not mention drones/quadcopters/props unless the prompt itself did.
+    import re
+
+    from mises.orchestrator.lead import submit
+    prov = FakeProvider([text("ok")])
+    rt = make(tmp_path, prov)
+    project = rt.store.create_project("B").id
+    out = await submit(rt, prompt, project_id=project)
+    await rt.wait(out["run_id"])
+    req = prov.requests[0]
+    user = " ".join(getattr(b, "text", "") or "" for m in req.messages for b in m.content)
+    blob = (req.system + "\n" + user).lower()
+    for leak in (r"\bdrones?\b", r"\bquad(?:copter)?s?\b", r"\bfpv\b", r"\bpropellers?\b",
+                 r"\bprops?\b", r"\bmultirotors?\b"):
+        if not re.search(leak, prompt.lower()):
+            assert not re.search(leak, blob), f"{leak!r} leaked into the lead for {prompt!r}"
+
+
+def test_inherited_model_ref_prefers_live_ref_then_store(tmp_path):
+    # D3: the child inherits the parent's live model ref, else the stored provider/model; a
+    # ui/acp parent has none to inherit.
+    rt = make(tmp_path, FakeProvider([]))
+    # a store-only claude-code run: no live session, so the store answers
+    cc = rt.create_external_run("designer", provider="claude-code", model="sonnet")
+    assert inherited_model_ref(rt, cc) == "claude-code/sonnet"
+    # ui and acp parents drive no inheritable model
+    ui = rt.create_external_run("designer", provider="ui", model="x")
+    acp = rt.create_external_run("designer", provider="acp", model="y")
+    assert inherited_model_ref(rt, ui) is None
+    assert inherited_model_ref(rt, acp) is None
+    assert inherited_model_ref(rt, "nope") is None
+
+
+async def test_live_native_lead_ref_wins_over_store(tmp_path):
+    rt = make(tmp_path, FakeProvider([text("done")]))
+    lead = await rt.start_run("designer", "go", model_ref="fake/a")
+    await rt.wait(lead)
+    # the live _runs ref is the lead's actual model, not the store's resolved provider/model
+    assert rt._runs[lead].ref == "fake/a"
+    assert inherited_model_ref(rt, lead) == "fake/a"
+
+
+async def test_spawned_and_orchestrated_children_inherit_the_leads_model(tmp_path):
+    # D3: the lead runs on fake/a; its sub-agents and plan tasks must run on fake/a too, not on
+    # the profile default fake/b (the bug sent Claude Code children to the keyless API default).
+    from mises.profile import Profile, save_profile
+    prov = RoleProvider(
+        # lead turn, spawn-false child, spawn-true child, and the orchestrator "make" task
+        designer=[text("alpha"), text("beta"), text("gamma"), text("made")],
+        planner=[calls(tc("p1", "orchestrator_submit_plan", plan=PLAN)), text("submitted")],
+        verifier=[text("checked")])
+    rt = make(tmp_path, prov)
+    save_profile(rt.home, Profile(default_model="fake/b"))
+    lead = await rt.start_run("designer", "go", model_ref="fake/a")
+    await rt.wait(lead)
+
+    # agent_spawn, wait:false
+    out = await rt.gate.call(lead, "agent_spawn",
+                             {"agent": "designer", "prompt": "x", "wait": False},
+                             call_id="c1", workdir=rt.workdir(lead))
+    assert rt._runs[out.data["run_id"]].ref == "fake/a"
+    # agent_spawn, wait:true
+    out = await rt.gate.call(lead, "agent_spawn",
+                             {"agent": "designer", "prompt": "y", "wait": True},
+                             call_id="c2", workdir=rt.workdir(lead))
+    assert rt._runs[out.data["run_id"]].ref == "fake/a"
+    # orchestrator_run: the planner and every plan task inherit fake/a
+    await rt.gate.call(lead, "orchestrator_run", {"goal": "bracket"},
+                       call_id="o1", workdir=rt.workdir(lead))
+    kids = [r for r in rt.store.list_runs() if r.parent_id == lead]
+    assert {r.agent for r in kids} >= {"planner", "designer", "verifier"}
+    for r in kids:
+        assert rt._runs[r.id].ref == "fake/a", f"{r.agent} did not inherit the lead's model"
+
+
+async def test_a_pinned_child_model_is_not_overridden_by_inheritance(tmp_path):
+    # D3: a child whose definition pins its own model keeps it (inheritance only fills the gap).
+    from mises.agent.definitions import AgentDefinition
+    plan = {"goal": "g", "tasks": [
+        {"id": "p", "title": "P", "agent": "pinned", "prompt": "pinned task"},
+        {"id": "d", "title": "D", "agent": "designer", "prompt": "free task"}]}
+    prov = RoleProvider(designer=[text("lead"), text("free done")],
+                        pinned=[text("child"), text("pinned task done")],
+                        planner=[calls(tc("p1", "orchestrator_submit_plan", plan=plan)),
+                                 text("submitted")])
+    rt = make(tmp_path, prov)
+    rt.definitions["pinned"] = AgentDefinition(name="pinned", description="d", model="fake/c",
+                                               body="# Role: pinned\ndo it")
+    lead = await rt.start_run("designer", "go", model_ref="fake/a")
+    await rt.wait(lead)
+    out = await rt.gate.call(lead, "agent_spawn",
+                             {"agent": "pinned", "prompt": "x", "wait": False},
+                             call_id="c1", workdir=rt.workdir(lead))
+    spawned = out.data["run_id"]
+    assert rt._runs[spawned].ref == "fake/c"
+    await rt.wait(spawned)
+    # orchestrator_run: the pinned plan task keeps fake/c; the unpinned one and the planner
+    # inherit the lead's fake/a
+    res = await rt.gate.call(lead, "orchestrator_run", {"goal": "g"},
+                             call_id="o1", workdir=rt.workdir(lead))
+    assert res.ok, res.summary
+    refs = {r.agent: rt._runs[r.id].ref for r in rt.store.list_runs()
+            if r.parent_id == lead and r.id != spawned}
+    assert refs == {"pinned": "fake/c", "designer": "fake/a", "planner": "fake/a"}
 
 
 async def test_children_release_their_claude_session_once_collected(tmp_path, monkeypatch):

@@ -108,7 +108,7 @@ describe("section", () => {
     for (const m of faceMats(scenes[0])) expect(m.clippingPlanes).toBeNull();
   });
 
-  it("caps each part on the plane, in the part's color, facing the viewer side", async () => {
+  it("caps each part on the plane, in its color pushed toward the ink, facing the viewer side, outlined", async () => {
     const { c } = await setup(["case", "board"]);
     c.set(modes({ section: { on: true, normal: [1, 0, 0], at: 2.5 } }));
     const caps = c.caps.caps();
@@ -120,10 +120,14 @@ describe("section", () => {
       const m = cap.material as THREE.MeshBasicMaterial;
       expect(m.stencilFunc).toBe(THREE.NotEqualStencilFunc);
     }
-    expect(caps[1].userData["capColor"]).toBe("#c9a227");
-    // the default grey cap stands apart from the face grey
+    // Plan 9 D17: far from the part's own faces (a cut must be unmistakable), still its hue
+    const tinted = new THREE.Color(caps[1].userData["capColor"] as string);
+    expect(tinted.r).toBeGreaterThan(new THREE.Color("#c9a227").r * 0.99);
+    expect(caps[1].userData["capColor"]).not.toBe("#c9a227");
     expect(caps[0].userData["capColor"]).not.toBe("#2a2a2a");
-    expect(capColor({ id: "x", scene: null as never, color: null, focus: false }, { face: "#000000", edge: "#ffffff" })).toBe("#818181");
+    expect(capColor({ id: "x", scene: null as never, color: null, focus: false }, { face: "#000000", edge: "#ffffff" })).toBe("#dadada");   // (mixed in linear light)
+    // the cut is outlined where the plane crosses the faces
+    expect(c.caps.outlineSegments()).toBeGreaterThan(3);
   });
 
   it("stencil passes count back faces up and front faces down, after the parts and before each cap", async () => {

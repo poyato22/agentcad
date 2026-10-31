@@ -2,7 +2,7 @@
 // presented-view cards in the thread, the full-window view and the model warning.
 // Chromium with SwiftShader software WebGL (stencil buffer included).
 import type { Page } from "@playwright/test";
-import { expect, test } from "./fixtures";
+import { expect, openPartView, test } from "./fixtures";
 
 test.use({ launchOptions: { args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] } });
 
@@ -19,6 +19,7 @@ async function viewItem(page: Page, label: string): Promise<void> {
 
 async function openDesign(page: Page): Promise<void> {
   await page.goto("/");
+  await openPartView(page);
   await expect(page.locator("[data-testid=viewer-canvas]")).toHaveAttribute("data-bbox-size", /.+/, { timeout: 15_000 });
 }
 
@@ -104,25 +105,31 @@ test("explode_glides_the_build_apart_and_back", async ({ page }) => {
   await expect(page.getByTestId("explode-slider")).toHaveCount(0);
 });
 
-test("thread_shows_critique_rounds_and_one_live_view_card", async ({ page }) => {
+const viewStream = (page: Page) => page.locator("[data-dock] [data-stream=view]");
+const tile = (page: Page, kind: string) => viewStream(page).locator(`[data-filmstrip] [data-tile-kind="${kind}"]`);
+
+test("view_stream_shows_the_newest_large_the_rest_in_a_filmstrip_and_one_live_card", async ({ page }) => {
+  // Plan 9 D4 / D13: views and critique rounds sit in the dock's View stream, not the conversation
   await openDesign(page);
-  const cards = page.getByTestId("view-card");
-  await expect(cards).toHaveCount(5, { timeout: 10_000 });
-  await expect(page.getByTestId("critique-card")).toHaveCount(2);
-  await expect(page.locator("[data-testid=view-card][data-live=true]")).toHaveCount(1);
-  await expect(cards.nth(4)).toHaveAttribute("data-live", "true");
-  // the live card draws the parts
-  await expect(cards.nth(4).getByTestId("live-view")).toHaveAttribute("data-state", "ready", { timeout: 10_000 });
-  // hovering another card moves the one live context there
-  await cards.nth(2).scrollIntoViewIfNeeded();
-  await cards.nth(2).hover();
-  await expect(cards.nth(2)).toHaveAttribute("data-live", "true");
-  await expect(page.locator("[data-testid=view-card][data-live=true]")).toHaveCount(1);
+  const strip = viewStream(page).locator("[data-filmstrip] [data-tile]");
+  await expect(strip).toHaveCount(7, { timeout: 10_000 });                 // 5 views + 2 critique rounds
+  await expect(page.getByRole("log", { name: "Conversation" }).locator("[data-testid=view-card], [data-testid=critique-card]")).toHaveCount(0);
+  await expect(viewStream(page).locator("[data-filmstrip] [aria-current=true]")).toHaveCount(1);
+  // pick a view: it shows large, the full dock width, and is the one live card
+  await tile(page, "exploded").click();
+  const big = viewStream(page).getByTestId("view-card");
+  await expect(big).toHaveCount(1);
+  await expect(big).toHaveAttribute("data-kind", "exploded");
+  await expect(big).toHaveAttribute("data-live", "true");
+  expect((await big.boundingBox())!.width).toBeGreaterThanOrEqual(400);
+  await expect(big.getByTestId("live-view")).toHaveAttribute("data-state", "ready", { timeout: 10_000 });
   await expect(page.locator("[data-testid=live-view]")).toHaveCount(1);
-  // the critique round expands to its issues
-  const crit = page.getByTestId("critique-card").first();
+  // a critique round shows large too and expands to its issues
+  await tile(page, "critique").first().click();
+  const crit = viewStream(page).getByTestId("critique-card");
+  await expect(crit).toHaveCount(1);
   await crit.locator("button").first().click();
-  await expect(crit.getByTestId("critique-details")).toContainText("standoffs");
+  await expect(crit.getByTestId("critique-details")).toBeVisible();
   // the small local model on shape work is flagged
   await expect(page.getByTestId("model-warning")).toBeVisible();
   await page.screenshot({ path: test.info().outputPath("thread-cards.png") });
@@ -130,8 +137,8 @@ test("thread_shows_critique_rounds_and_one_live_view_card", async ({ page }) => 
 
 test("view_card_opens_full_window_steps_and_closes", async ({ page }) => {
   await openDesign(page);
-  const section = page.locator("[data-testid=view-card][data-kind=section]");
-  await section.scrollIntoViewIfNeeded();
+  await tile(page, "section").click();
+  const section = viewStream(page).locator("[data-testid=view-card][data-kind=section]");
   await section.getByTestId("view-card-open").click();
   const imm = page.getByTestId("view-immersive");
   await expect(imm).toHaveAttribute("data-kind", "section");
@@ -155,9 +162,8 @@ test("view_card_opens_full_window_steps_and_closes", async ({ page }) => {
 test("reduced_motion_pauses_the_orbit", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await openDesign(page);
-  const orbit = page.locator("[data-testid=view-card][data-kind=orbit]");
-  await orbit.scrollIntoViewIfNeeded();
-  await orbit.hover();
+  await tile(page, "orbit").click();
+  const orbit = viewStream(page).locator("[data-testid=view-card][data-kind=orbit]");
   await expect(orbit).toHaveAttribute("data-live", "true");
   await expect(orbit.getByTestId("live-view")).toHaveAttribute("data-orbit", "paused");
   await orbit.getByTestId("view-card-play").click();

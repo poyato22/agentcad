@@ -4,7 +4,7 @@
 // question stays a card, every failed call and error stays its own (red) line with its hint;
 // only successful calls fold (logModel's rule). Text stays plain strings (rendered as text).
 import { pinOf, type FeedbackPin } from "../../api/measure";
-import type { Announcement, Approval, Question, Step } from "../../api/types";
+import type { Announcement, Approval, Question, Step, StreamKind } from "../../api/types";
 import { announcementOf, deliveredOf, droppedOf, queuedOf } from "./announceModel";
 import { foldKey, itemKey, type LogItem } from "./logModel";
 import { g4Announcement, type CritiqueRound, type PresentedView } from "./cards/critique/announce";
@@ -34,15 +34,15 @@ export type ThreadItem =
     }
   | { kind: "fold"; key: string; text: string; foldKey: string; count: number }
   | { kind: "error"; key: string; code: string; message: string; hint: string | null; ts: number; stepIds: number[] }
-  | { kind: "note"; key: string; text: string; stepIds: number[] }
+  | { kind: "note"; key: string; text: string; stepIds: number[]; stream?: StreamKind }
   | { kind: "approval"; key: string; approval: Approval }
   | { kind: "question"; key: string; question: Question }
   // Plan 8 (G4): a render-and-critique round, and a view an agent presents (with the other views of
   // the same reply, which ⌘[ / ⌘] step through in the immersive view)
-  | { kind: "critique"; key: string; round: CritiqueRound; stepIds: number[] }
-  | { kind: "view"; key: string; view: PresentedView; group: PresentedView[]; stepIds: number[] }
+  | { kind: "critique"; key: string; round: CritiqueRound; stepIds: number[]; stream?: StreamKind }
+  | { kind: "view"; key: string; view: PresentedView; group: PresentedView[]; stepIds: number[]; stream?: StreamKind }
   /** What an agent did (R16), rebuilt from its stored DECISION step. */
-  | { kind: "announce"; key: string; announcement: Announcement & { actor: string | null; projectId: string | null; jointId: string | null }; ts: number; stepIds: number[] }
+  | { kind: "announce"; key: string; announcement: Announcement & { actor: string | null; projectId: string | null; jointId: string | null }; ts: number; stepIds: number[]; stream?: StreamKind }
   /** A message sent while the lead was busy: "queued" until the lead reads it, then "delivered"
    *  (in place: the user step the delivery appends is not shown twice), or "dropped" with why. */
   | { kind: "queued"; key: string; messageId: string; text: string; position: number | null; status: "queued" | "delivered" | "dropped"; reason: string | null; ts: number; stepIds: number[] }
@@ -65,6 +65,7 @@ const CARD_TOOLS: Readonly<Record<string, string>> = {
   assembly_add_instance: "assembly_added", assembly_add_part: "assembly_added", bom_add: "bom_added",
   part_show: "part_shown", drawing_import: "drawing_imported", drawing_import_build: "drawing_imported",
   agent_spawn: "agent_spawned", present_view: "view_presented", critique_model: "critique_round",
+  concept_sketch: "concept_sketch", pitch_options: "concept_pitch",
 };
 
 /** Take out of `out` the newest raw row (since the last non-row item) of a tool the card of `kind`
@@ -79,6 +80,11 @@ function absorbRow(out: ThreadItem[], kind: string): number[] {
     }
   }
   return [];
+}
+
+/** The dock stream a step names (Plan 9 B3), as a spreadable field. */
+function streamOfStep(step: Step): { stream?: StreamKind } {
+  return step.stream ? { stream: step.stream } : {};
 }
 
 function str(v: unknown): string | null { return typeof v === "string" && v.trim() !== "" ? v : null; }
@@ -222,13 +228,13 @@ export function buildThread(items: readonly LogItem[]): ThreadItem[] {
       case "decision": {
         // G1's cards (G4 renders them): a critique round, a presented view
         const g4 = g4Announcement(it.step);
-        if (g4?.kind === "critique_round") { const own = absorbRow(out, "critique_round"); out.push({ kind: "critique", key, round: g4.round, stepIds: [...own, it.step.id] }); last = null; break; }
+        if (g4?.kind === "critique_round") { const own = absorbRow(out, "critique_round"); out.push({ kind: "critique", key, round: g4.round, stepIds: [...own, it.step.id], ...streamOfStep(it.step) }); last = null; break; }
         if (g4?.kind === "view_presented") {
           const view: PresentedView = { ...g4.view, key };
           views ??= [];
           views.push(view);
           const own = absorbRow(out, "view_presented");
-          out.push({ kind: "view", key, view, group: views, stepIds: [...own, it.step.id] });
+          out.push({ kind: "view", key, view, group: views, stepIds: [...own, it.step.id], ...streamOfStep(it.step) });
           last = null;
           break;
         }
@@ -239,7 +245,7 @@ export function buildThread(items: readonly LogItem[]): ThreadItem[] {
           // part_show on the acting run: U4a's rich part card is the one card (int-final)
           if (ann.kind === "part_shown" && (ann.actor ?? it.step.run_id) === it.step.run_id) break;
           const own = absorbRow(out, ann.kind);
-          out.push({ kind: "announce", key, announcement: ann, ts: it.step.ts, stepIds: [...own, it.step.id] }); last = null; break;
+          out.push({ kind: "announce", key, announcement: ann, ts: it.step.ts, stepIds: [...own, it.step.id], ...streamOfStep(it.step) }); last = null; break;
         }
         const q = queuedOf(it.step);
         if (q) {
@@ -265,7 +271,7 @@ export function buildThread(items: readonly LogItem[]): ThreadItem[] {
         // Claude Code's bookkeeping (session start, init, stored thinking) is not a decision the
         // reader needs; it stays in the step log (C-10)
         if (isBookkeeping(it.step)) break;
-        out.push({ kind: "note", key, text: decisionText(it.step), stepIds: [it.step.id] });
+        out.push({ kind: "note", key, text: decisionText(it.step), stepIds: [it.step.id], ...streamOfStep(it.step) });
         last = null;
         break;
       }

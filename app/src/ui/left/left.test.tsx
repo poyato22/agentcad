@@ -1,13 +1,13 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/preact";
 import { readFileSync } from "node:fs";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AgentRun, PartSummary, Step } from "../../api/types";
 import { isAutoNumbered } from "../../lib/names";
-import { actions, focusedStepId, inflight, parts, resetStore, runs, selectedPartId, selectedRunId, steps } from "../../state/store";
+import { actions, inflight, parts, resetStore, runs, selectedPartId, selectedRunId, steps } from "../../state/store";
 import allSteps from "../../../test/fixtures/core-ui/steps.json";
 import allParts from "../../../test/fixtures/core-ui/parts.json";
 import allRuns from "../../../test/fixtures/core-ui/runs.json";
-import { History } from "./History";
+import { openPartId } from "../assembly/focus";
 import { LeftPane } from "./LeftPane";
 import { PartTree as PartList } from "./PartTree";
 import { Variables } from "./Variables";
@@ -31,7 +31,7 @@ beforeEach(() => {
   style.textContent = tokensCss + leftCss;
   document.head.appendChild(style);
 });
-afterEach(() => { cleanup(); document.head.replaceChildren(); });
+afterEach(() => { cleanup(); document.head.replaceChildren(); openPartId.value = null; });
 
 describe("left pane", () => {
   it("part_label_and_mass", () => {
@@ -78,22 +78,6 @@ describe("left pane", () => {
     runs.value = new Map([[RUN, fixtureRuns[0]], [newer.id, newer]]);
     render(<Variables />);
     expect(screen.getByTestId("var-thickness").getAttribute("data-changed")).toBe("true");
-  });
-
-  it("running_elapsed_ticks", () => {
-    vi.useFakeTimers();
-    try {
-      vi.setSystemTime(new Date(1_000_000 * 1000));
-      const r: AgentRun = { ...fixtureRuns[0], status: "running", created_at: 1_000_000 - 5, updated_at: 1_000_000 - 5 };
-      runs.value = new Map([[r.id, r]]);
-      render(<History />);
-      const row = screen.getByTestId("run-row");
-      expect(row.textContent).toContain("5s");
-      act(() => { vi.advanceTimersByTime(3000); });
-      expect(row.textContent).toContain("8s");
-    } finally {
-      vi.useRealTimers();
-    }
   });
 
   it("selecting_part_updates_store", () => {
@@ -143,29 +127,12 @@ describe("left pane", () => {
     expect(leftCss).toMatch(/\.var-value\s*\{[^}]*color:\s*var\(--ink\)/);
   });
 
-  it("history_newest_first_and_click_focuses_step", () => {
-    load();
-    const older: AgentRun = { ...fixtureRuns[0], id: "older0000000", task: "drill the mounting holes", status: "done", created_at: fixtureRuns[0].created_at - 600, updated_at: fixtureRuns[0].created_at - 540 };
-    runs.value = new Map([[older.id, older], [RUN, fixtureRuns[0]]]);
-    render(<History />);
-    const rows = screen.getAllByTestId("run-row");
-    expect(rows.map((r) => r.getAttribute("data-run"))).toEqual([RUN, "older0000000"]);
-    expect(rows[0].querySelector("[data-tone]")?.getAttribute("data-tone")).toBe("blue");
-    expect(rows[1].querySelector("[data-tone]")?.getAttribute("data-tone")).toBe("green");
-    fireEvent.click(rows[0].querySelector("button") as HTMLElement);
-    const step = screen.getByText(/^v-step: thickness 5→6 · \+0\.96 g$/);
-    fireEvent.click(step);
-    expect(selectedRunId.value).toBe(RUN);
-    expect(focusedStepId.value).toBe(8);
-  });
-
   it("no_auto_numbered_labels", () => {
     load();
     selectedRunId.value = RUN;
     const { container } = render(<LeftPane />);
-    fireEvent.click(container.querySelector("[data-testid=run-row] button") as HTMLElement);
     const rowTexts = Array.from(container.querySelectorAll("[data-label]")).map((e) => e.textContent ?? "");
-    expect(rowTexts.length).toBeGreaterThanOrEqual(2);
+    expect(rowTexts.length).toBeGreaterThanOrEqual(1);
     for (const t of rowTexts) {
       const purpose = t.split(" · ").slice(1).join(" · ") || t;
       expect(isAutoNumbered(purpose), t).toBe(false);
@@ -173,12 +140,24 @@ describe("left pane", () => {
     expect(actions).toBeDefined();
   });
 
-  it("has_parts_and_history_only_no_variables_panel", () => {
-    // Plan 7 U2b (R14): the Variables panel left the main UI
+  it("has_parts_with_a_total_and_the_bom_no_history_no_variables", () => {
+    // Plan 9 D9: Parts (mass per row, the total under it) and the BOM summary replace History
     load();
     const { container } = render(<LeftPane />);
-    const titles = Array.from(container.querySelectorAll(".pane-title")).map((e) => e.textContent);
-    expect(titles).toEqual(["Parts", "History"]);
+    const titles = Array.from(container.querySelectorAll(".left-sec-title")).map((e) => e.textContent);
+    expect(titles).toEqual(["Parts", "BOM"]);
+    expect(screen.getByTestId("parts-total").textContent).toContain("5.7 g");
+    expect(screen.queryByText("History")).toBeNull();
+    expect(screen.queryByText("Parts list")).toBeNull();
     expect(container.querySelector(".left-vars, .vars")).toBeNull();
+  });
+
+  it("a_plain_click_opens_the_part_and_a_modifier_click_only_selects", () => {
+    load();
+    render(<PartList />);
+    fireEvent.click(screen.getByText("mount plate"), { metaKey: true });
+    expect(openPartId.value).toBeNull();
+    fireEvent.click(screen.getByText("mount plate"));
+    expect(openPartId.value).toBe("mount_plate");
   });
 });

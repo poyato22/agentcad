@@ -34,7 +34,8 @@ DPI = 200
 MAX_PAGES = 6
 MAX_IMAGES = 16                  # pages first, then tiles
 MAX_PIXELS = 40_000_000
-MAX_IMAGE_EDGE = 1568            # same as mises.sketch
+MAX_IMAGE_EDGE = 1568            # document pages: the standard tier's edge (mises.sketch
+                                 # allows 2048 for renders and sketches since Plan 9 G-R)
 IMAGE_B64_BUDGET = int(3.75 * 1024 * 1024)
 TILE_FROM = 2 * MAX_IMAGE_EDGE   # a rendered page longer than this also gets 2x2 tiles
 TILE_OVERLAP = 0.08

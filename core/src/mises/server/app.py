@@ -51,6 +51,7 @@ from .system_api import build_system_router
 from .print_api import build_print_router
 from .assembly_api import build_assembly_router
 from .sim_api import build_sim_router
+from .studies_context_api import build_studies_context_router
 from .sketch_api import build_sketch_router
 from .imports_api import build_imports_router
 from .references_api import build_references_router
@@ -58,6 +59,7 @@ from .renders_api import build_renders_router
 from .spec_api import build_spec_router
 from .ui_api import add_cors, build_ui_router
 from .agents_api import build_agents_router
+from ..concept.api import build_concept_router
 from ..orchestrator import lead as _lead
 from ..orchestrator.router import Attachment
 
@@ -253,6 +255,7 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
     app.include_router(build_drawing_router(runtime))
     app.include_router(build_print_router(runtime))
     app.include_router(build_sim_router(runtime))
+    app.include_router(build_studies_context_router(runtime))
     app.include_router(build_sketch_router(runtime))
     app.include_router(build_imports_router(runtime))
     app.include_router(build_references_router(runtime))
@@ -266,6 +269,7 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
     app.include_router(build_measure_router(runtime))
     app.include_router(build_system_router(runtime))
     app.include_router(build_agents_router(runtime))
+    app.include_router(build_concept_router(runtime))
 
     @app.exception_handler(MisesError)
     async def _mises_error(_req, e: MisesError):

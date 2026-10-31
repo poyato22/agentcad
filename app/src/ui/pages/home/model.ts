@@ -75,6 +75,13 @@ export function fmtLastEdited(ts: number, now: number = Date.now() / 1000): stri
   return new Date(ts * 1000).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
+/** A build's mass for its tile: "180 g", "1.24 kg"; null when unknown. */
+export function fmtMass(g: number | null | undefined): string | null {
+  if (typeof g !== "number" || !Number.isFinite(g) || g < 0) return null;
+  if (g < 1000) return `${g < 10 ? g.toFixed(1) : Math.round(g)} g`;
+  return `${(g / 1000).toFixed(g < 10000 ? 2 : 1)} kg`;
+}
+
 /** "3 parts" / "1 part". */
 export function partsLabel(n: number): string {
   return `${n} part${n === 1 ? "" : "s"}`;

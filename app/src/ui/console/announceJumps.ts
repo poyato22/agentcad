@@ -4,6 +4,7 @@
 import type { AnnounceKind, AnnounceRef } from "../../api/types";
 import { actions } from "../../state/store";
 import { setPage } from "../pages/router";
+import { closePart, openPart } from "../assembly/focus";
 
 export interface JumpInput { kind: string; ref: AnnounceRef; projectId: string | null; jointId: string | null }
 export interface Jump { label: string; go: () => void }
@@ -17,13 +18,17 @@ export function registerAnnounceJump(kind: string, r: Resolver): () => void {
   return () => { if (resolvers.get(kind) === r) resolvers.delete(kind); };
 }
 
-const showPart = (id: string): Jump => ({ label: "Show part", go: () => { setPage("design"); actions.selectPart(id); } });
+// Plan 9 D7: "Show part" opens the part alone; "Show in assembly" goes to the build view with the
+// part selected (its row, and its instance once the assembly view resolves assembly_added)
+const showPart = (id: string): Jump => ({ label: "Show part", go: () => { setPage("design"); openPart(id); } });
+const showInAssembly = (id: string): Jump => ({ label: "Show in assembly", go: () => { setPage("design"); closePart(); actions.selectPart(id); } });
 const openAgent = (id: string): Jump => ({ label: "Open agent", go: () => actions.selectRun(id) });
 
 /** The defaults, for targets the console can reach itself. */
 const DEFAULTS: Partial<Record<AnnounceKind, Resolver>> = {
   agent_spawned: (a) => (a.ref.run_id ? openAgent(a.ref.run_id) : null),
-  part_created: (a) => (a.ref.part_id ? showPart(a.ref.part_id) : null),
+  // D10: a created part is placed in the build's assembly; the card jumps there with it selected
+  part_created: (a) => (a.ref.part_id ? showInAssembly(a.ref.part_id) : null),
   // the instance itself once the assembly view registers its resolver; the part until then
   assembly_added: (a) => (a.ref.part_id ? showPart(a.ref.part_id) : null),
   drawing_imported: (a) => (a.ref.part_id ? showPart(a.ref.part_id) : null),
@@ -37,6 +42,8 @@ export const PENDING_JUMPS: Readonly<Partial<Record<AnnounceKind, string>>> = {
   drawing_imported: "U5: the import result card (ref.import_id) when no part was built",
   view_presented: "Plan 8 G1: the presented view",
   critique_round: "Plan 8 G1: the critique round",
+  concept_sketch: "Plan 9 G-A: the card is the sketch itself (it opens the full-window review)",
+  concept_pitch: "Plan 9 G-A: the card is the pitch itself (pick or mix on it)",
 };
 
 export function jumpFor(a: JumpInput): Jump | null {

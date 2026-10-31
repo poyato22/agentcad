@@ -2,12 +2,13 @@
 // → the rows the step log shows. Tool calls are paired with their result step by call_id, runs of
 // ≥3 successful calls fold into "▸ N more tool calls", filters and the run/all scope apply here.
 // Everything here is plain data; untrusted text stays a string and is rendered as text.
-import type { AgentRun, Approval, Question, Step } from "../../api/types";
+import type { AgentRun, Approval, Question, Step, StreamKind } from "../../api/types";
 import { runLabel } from "../../lib/names";
 import type { InflightCall } from "../../state/reduce";
 import type { LogFilter } from "../../state/store";
 import { isStudyCallName } from "./studycard/cardModel";
 import { isPartShowName } from "./cards/partcard/cardModel";
+import { toolStream } from "./streams";
 
 type CallItem = {
   kind: "call"; callId: string; name: string; input: Record<string, unknown>; result: Step | null;
@@ -17,6 +18,8 @@ type CallItem = {
   /** Steps that happened inside this call and show on its row instead of as rows of their own
    *  (onshape_call ledger steps, other step kinds without a call_id). */
   attached: Step[];
+  /** The dock stream its tool_call step names (Plan 9 B3), if any. */
+  stream?: StreamKind;
 };
 
 type LogItemBody =
@@ -244,6 +247,7 @@ function runItems(runId: string, input: BuildLogInput, prevVars: ReadonlyMap<num
       if (calls.get(cid) !== s) continue;
       const result = results.get(cid) ?? null;
       const item = callItem(cid, str(p.name) ?? "", rec(p.input), s.ts, result);
+      if (s.stream) item.stream = s.stream;
       push(item, s.ts, s.collapsed);
       lastStarted = item;
       if (result) {
@@ -486,7 +490,8 @@ function fold(rows: Raw[], expanded: ReadonlySet<string>): LogItem[] {
   const foldable = (r: Raw | undefined) => r !== undefined && r.item.kind === "call" && r.item.ok === true
     && !r.item.name.replace(/^mcp__mises__/, "").startsWith("onshape_propose")
     && !isStudyCallName(r.item.name) // study / review cards stay in sight (Task A8)
-    && !isPartShowName(r.item.name); // part cards stay in sight (Plan 7 R4)
+    && !isPartShowName(r.item.name) // part cards stay in sight (Plan 7 R4)
+    && (r.item.stream ?? toolStream(r.item.name)) === "text"; // view / sim rows go to their dock stream (Plan 9 D4)
   let i = 0;
   while (i < rows.length) {
     if (!foldable(rows[i])) { out.push(rows[i].item); i++; continue; }

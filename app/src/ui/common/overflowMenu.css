@@ -5,3 +5,4 @@
 .ovm-menu { position: absolute; right: 0; top: 100%; z-index: 30; display: flex; flex-direction: column; min-width: 160px; padding: 3px 0; background: var(--paper2); border: 1px solid var(--line2); }
 .ovm-item { border: 0; background: transparent; color: var(--ink); font: inherit; text-align: left; padding: 4px 10px; cursor: pointer; white-space: nowrap; }
 .ovm-item:hover, .ovm-item:focus-visible { background: var(--blue-tint); outline: none; }
+.ovm-item:disabled { color: var(--faint); cursor: default; background: transparent; }

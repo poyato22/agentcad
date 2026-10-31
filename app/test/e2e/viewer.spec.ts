@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Page } from "@playwright/test";
 import type { PartSummary } from "../../src/api/types";
-import { expect, test, type FakeControl } from "./fixtures";
+import { expect, openPartView, test, type FakeControl } from "./fixtures";
 
 test.use({ launchOptions: { args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] } });
 
@@ -13,6 +13,7 @@ test.beforeEach(async ({ fake, page }) => {
   await fake.reset("viewer");
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
+  await openPartView(page);
   await expect(page.locator("[data-testid=viewer-canvas]")).toHaveAttribute("data-bbox-size", /.+/, { timeout: 15_000 });
 });
 
@@ -71,6 +72,7 @@ test("title_block_values_never_overlap_at_1280x800", async ({ page, fake }) => {
   await fake.reset(sc as never);
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.reload();
+  await openPartView(page);
   const tb = page.getByTestId("title-block");
   await expect(tb).toContainText("Part · mount plate");
   await expect(tb).toContainText("create part called");
@@ -93,7 +95,7 @@ test("drafting_grid_and_fig_label_visible", async ({ page }) => {
     const s = getComputedStyle(el);
     return { bg: s.backgroundColor, img: s.backgroundImage, size: s.backgroundSize };
   });
-  expect(style.bg).toBe("rgb(13, 13, 13)");
+  expect(style.bg).toBe("rgb(22, 24, 28)");                 // Plan 9 --vp
   expect(style.img).toContain("rgba(255, 255, 255, 0.07)");
   expect(style.img).toMatch(/rgba\(255, 255, 255, 0\.02[45]\)/); // 8-bit alpha quantisation
   expect(style.size).toContain("100px 100px");

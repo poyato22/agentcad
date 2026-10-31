@@ -1,0 +1,70 @@
+/* Studies agent pane (Plan 9 U-D). Visual spec D20: one quiet floating surface (radius 10, soft
+   shadow), rows radius 6, buttons radius 7; sentence case, plain 12.5px semibold headers; UI text
+   in the UI face, numbers in Iosevka with tabular figures. Tokens only; blue = agent / needs you,
+   green/amber/red = pass/warn/fail. */
+.sa {
+  --sa-ui: var(--font-ui, "Instrument Sans", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif);
+  display: flex; flex-direction: column; min-height: 0; height: 100%;
+  background: var(--paper); border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, .18); font-family: var(--sa-ui); font-size: 12.5px; line-height: 1.45;
+  overflow: hidden;
+}
+.sa .num, .sa-nums dd { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.sa-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); flex: none; }
+.sa-title { margin: 0; font: 600 14px/1.2 var(--sa-ui); color: var(--ink); letter-spacing: 0; text-transform: none; }
+.sa-state { display: inline-flex; align-items: center; gap: 6px; color: var(--dim); font-size: 11px; }
+.sa-link { margin-left: auto; background: none; border: 0; padding: 2px 4px; color: var(--dim); font: inherit; font-size: 11px; cursor: pointer; border-radius: 6px; }
+.sa-link:hover { color: var(--ink); background: var(--paper2); }
+.sa-link:focus-visible { outline: 1px solid var(--blue); }
+
+.sa-body { flex: 1; min-height: 0; overflow: auto; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+.sa-msg { margin: 0; }
+
+/* the opening message: lead line, basis, proposal cards */
+.sa-open { display: flex; flex-direction: column; gap: 8px; }
+.sa-lead { margin: 0; color: var(--ink); font-size: 14px; }
+.sa-basis { margin: 0; font-size: 11px; }
+.sa-props { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.sa-prop { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper2); }
+.sa-prop-head { display: flex; align-items: baseline; gap: 8px; }
+.sa-prop-n { flex: none; color: var(--dim); font-size: 11px; }
+.sa-prop-title { font-weight: 600; color: var(--ink); }
+.sa-prop-why { margin: 0; color: var(--ink); opacity: .86; }
+.sa-prop-foot { display: flex; align-items: center; gap: 10px; }
+.sa-prop-meta { flex: 1; min-width: 0; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sa-prop-why-not { margin: 0; font-size: 11px; }
+.sa .btn { border-radius: 7px; font-family: var(--sa-ui); text-transform: none; letter-spacing: 0; }
+.sa-run { flex: none; min-width: 64px; }
+
+/* the study Run started */
+.sa-card { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1px solid var(--line2); border-radius: 6px; background: var(--paper); }
+.sa-card-head { display: flex; align-items: center; gap: 8px; }
+.sa-card-title { flex: 1; min-width: 0; font-weight: 600; }
+.sa-verdict { font-weight: 600; text-transform: none; }
+.sa-nums { display: flex; flex-wrap: wrap; gap: 8px 22px; margin: 0; }
+.sa-nums div { display: flex; flex-direction: column; gap: 2px; }
+.sa-nums dt { font-size: 11px; }
+.sa-nums dd { margin: 0; font-size: 14px; color: var(--ink); }
+.sa-card-note { margin: 0; font-size: 11px; }
+.sa-card-actions { display: flex; gap: 8px; }
+
+/* the conversation */
+.sa-user { align-self: flex-end; max-width: 88%; padding: 7px 10px; border-radius: 10px 10px 2px 10px; background: var(--paper2); color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; }
+.sa-queued { opacity: .7; }
+.sa-agent { color: var(--ink); overflow-wrap: anywhere; }
+.sa-act { font-size: 11px; color: var(--dim); padding-left: 2px; }
+.sa-needs { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--blue); border-radius: 6px; background: var(--blue-tint); }
+.sa-needs > span { flex: 1; }
+
+/* composer */
+.sa-compose { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 10px 14px 14px; border-top: 1px solid var(--line); }
+.sa-chip { align-self: flex-start; padding: 4px 10px; border: 1px solid var(--line2); border-radius: 999px; background: transparent; color: var(--ink); font: inherit; font-size: 11.5px; cursor: pointer; }
+.sa-chip:hover { background: var(--paper2); }
+.sa-chip:focus-visible { outline: 1px solid var(--blue); }
+.sa-send-err { margin: 0; }
+.sa-input { display: flex; align-items: flex-end; gap: 8px; padding: 6px 6px 6px 10px; border: 1px solid var(--line2); border-radius: 10px; background: var(--bg); }
+.sa-input:focus-within { border-color: var(--blue); }
+.sa-input textarea { flex: 1; min-width: 0; resize: none; border: 0; outline: 0; background: transparent; color: var(--ink); font: inherit; padding: 4px 0; }
+.sa-send { flex: none; width: 28px; height: 28px; border-radius: 50%; border: 0; background: var(--ink); color: var(--bg); font: 600 14px/1 var(--sa-ui); cursor: pointer; }
+.sa-send:disabled { opacity: .35; cursor: default; }
+.sa-send:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }

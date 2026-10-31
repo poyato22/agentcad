@@ -84,6 +84,10 @@ beforeAll(async () => {
   fake.set("project_restore.json", await ok("POST", `/projects/${bench.id}/restore`));
   await ok("DELETE", `/projects/${bench.id}`);
   fake.set("projects_trash_empty.json", await ok("POST", "/projects/trash/empty"));
+  // D30: Delete forever on one Trash tile
+  const scrap = (await ok("POST", "/projects", { name: "Scrap" })) as { id: string };
+  await ok("DELETE", `/projects/${scrap.id}`);
+  fake.set("projects_purge.json", await ok("POST", `/projects/${scrap.id}/purge`));
   // a trashed build with a live (external) run: Empty Trash refuses as a whole (QA I4)
   const doomed = (await ok("POST", "/projects", { name: "Doomed" })) as { id: string };
   const live = (await ok("POST", "/runs/external", { agent: "fixture-acp", provider: "acp", model: "fixture", project_id: doomed.id })) as { run_id: string };
@@ -102,7 +106,7 @@ const parts = z.array(partSummarySchema);
 const CASES: [string, z.ZodType<unknown>][] = [
   ["projects.json", z.array(buildSchema)], ["projects_with_trash.json", z.array(buildSchema)], ["project_create.json", buildSchema],
   ["project_rename.json", buildSchema], ["project_trash.json", buildSchema], ["project_restore.json", buildSchema],
-  ["projects_trash_empty.json", emptyTrashSchema], ["profile_builds.json", buildTabsProfileSchema],
+  ["projects_trash_empty.json", emptyTrashSchema], ["projects_purge.json", emptyTrashSchema], ["profile_builds.json", buildTabsProfileSchema],
   ["part_patch.json", partSummarySchema], ["part_patch_parent.json", partSummarySchema], ["parts_reorder.json", parts], ["parts_tree.json", parts],
   ["part_source.json", partSourceSchema], ["part_source_ops.json", partSourceSchema],
   ["part_vars.json", partEditResultSchema], ["part_ops.json", partEditResultSchema], ["part_ops_fillet.json", partEditResultSchema],

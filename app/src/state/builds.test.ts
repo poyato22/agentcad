@@ -5,7 +5,7 @@ import { z } from "zod";
 import { buildSchema, type Build } from "../api/builds";
 import type { CoreClient } from "../api/client";
 import type { AgentRun, PartSummary } from "../api/types";
-import { activeBuildId, buildActions, builds, buildsError, normalizeTabs, openBuildIds, openBuilds, resetBuilds, runBuild, selectBuildLead, trashBlocked, trashedBuilds, trashRefusalText } from "./builds";
+import { activeBuildId, buildActions, builds, buildsError, normalizeTabs, resetBuilds, runBuild, selectBuildLead, trashBlocked, trashedBuilds, trashRefusalText } from "./builds";
 import { bindClient, parts, resetStore, runs, selectedPartId, selectedRunId } from "./store";
 
 const FX = resolve(import.meta.dirname, "../../test/fixtures/core-ui");
@@ -20,7 +20,7 @@ function fakeClient(all: Build[], tabs = { active_project_id: "a" as string | nu
   return {
     listBuilds: vi.fn(async () => all),
     buildTabs: vi.fn(async () => tabs),
-    setBuildTabs: vi.fn(async (t: typeof tabs) => t),
+    setActiveBuild: vi.fn(async (id: string | null) => ({ ...tabs, active_project_id: id })),
     parts: vi.fn(async (id: string | null) => byBuild[id ?? "a"] ?? []),
     createBuild: vi.fn(async (name: string) => b("n", name)),
     renameBuild: vi.fn(async (id: string, name: string) => ({ ...all.find((x) => x.id === id) as Build, name })),
@@ -51,11 +51,10 @@ describe("builds", () => {
     bindClient(c as unknown as CoreClient);
     await buildActions.refresh();
     expect(activeBuildId.value).toBe("b");
-    expect(openBuilds.value.map((x) => x.name)).toEqual(["Quad", "Bench"]);
     expect(trashedBuilds.value.map((x) => x.id)).toEqual(["t"]);
     // sync already loaded the core's active build (the profile's): no second /parts, no write-back
     expect(c.parts).not.toHaveBeenCalled();
-    expect(c.setBuildTabs).not.toHaveBeenCalled();
+    expect(c.setActiveBuild).not.toHaveBeenCalled();
   });
 
   it("refresh reloads the parts when the profile's active build is gone (trashed)", async () => {
@@ -67,7 +66,7 @@ describe("builds", () => {
     expect(parts.value.map((p) => p.part_id)).toEqual(["arm"]);
   });
 
-  it("switching opens the tab, saves the tabs, shows that build's parts and keeps each build's selection", async () => {
+  it("switching saves only the active build (never open_project_ids), shows that build's parts and keeps each build's selection", async () => {
     const c = fakeClient([b("a", "Quad"), b("b", "Bench")]);
     bindClient(c as unknown as CoreClient);
     runs.value = new Map<string, AgentRun>([
@@ -78,8 +77,7 @@ describe("builds", () => {
     selectedPartId.value = "arm";
     selectedRunId.value = "r1";
     await buildActions.switchTo("b");
-    expect(openBuildIds.value).toEqual(["a", "b"]);
-    expect(c.setBuildTabs).toHaveBeenLastCalledWith({ active_project_id: "b", open_project_ids: ["a", "b"] });
+    expect(c.setActiveBuild).toHaveBeenLastCalledWith("b");
     expect(parts.value.map((p) => p.part_id)).toEqual(["motor"]);
     expect(selectedPartId.value).toBeNull();
     expect(selectedRunId.value).toBe("r2");             // the run shown follows the build
@@ -122,18 +120,7 @@ describe("builds", () => {
     expect(parts.value.map((p) => p.part_id)).toEqual(["plate"]);
   });
 
-  it("closing the active tab moves to its neighbour; the last tab can't close", async () => {
-    const c = fakeClient([b("a", "Quad"), b("b", "Bench")], { active_project_id: "a", open_project_ids: ["a", "b"] });
-    bindClient(c as unknown as CoreClient);
-    await buildActions.refresh();
-    await buildActions.close("a");
-    expect(activeBuildId.value).toBe("b");
-    expect(openBuildIds.value).toEqual(["b"]);
-    await buildActions.close("b");
-    expect(openBuildIds.value).toEqual(["b"]);
-  });
-
-  it("trash moves the active build out of the tabs; restore brings it back as the active tab", async () => {
+  it("trashing the active build opens another live one; restore brings it back as the active build", async () => {
     const all = [b("a", "Quad"), b("b", "Bench")];
     const c = fakeClient(all, { active_project_id: "a", open_project_ids: ["a", "b"] });
     bindClient(c as unknown as CoreClient);
@@ -141,7 +128,6 @@ describe("builds", () => {
     await buildActions.trash("a");
     expect(c.trashBuild).toHaveBeenCalledWith("a");
     expect(activeBuildId.value).toBe("b");
-    expect(openBuildIds.value).toEqual(["b"]);
     expect(trashedBuilds.value.map((x) => x.id)).toEqual(["a"]);
     await buildActions.restore("a");
     expect(activeBuildId.value).toBe("a");
@@ -154,7 +140,6 @@ describe("builds", () => {
     await buildActions.refresh();
     await buildActions.create("Gimbal");
     expect(activeBuildId.value).toBe("n");
-    expect(openBuilds.value.map((x) => x.name)).toEqual(["Quad", "Gimbal"]);
     await buildActions.emptyTrash();
     expect(builds.value.map((x) => x.id)).toEqual(["a", "n"]);
   });
@@ -208,7 +193,7 @@ describe("integration: a build switch reaches the other build-scoped views", () 
     bindClient(c as unknown as CoreClient);
     await buildActions.refresh();
     let reject!: (e: Error) => void;
-    c.setBuildTabs.mockImplementationOnce(() => new Promise((_r, rej) => { reject = rej; }));
+    c.setActiveBuild.mockImplementationOnce(() => new Promise((_r, rej) => { reject = rej; }));
     let done = false;
     const sw = buildActions.switchTo("b").then(() => { done = true; });
     expect(activeBuildId.value).toBe("b");             // the UI switches at once
@@ -217,7 +202,7 @@ describe("integration: a build switch reaches the other build-scoped views", () 
     expect(done).toBe(false);                          // still saving
     reject(new Error("disk full"));
     await sw;
-    expect(buildsError.value).toContain("Saving the open builds failed");
+    expect(buildsError.value).toContain("Saving the open build failed");
     expect(buildsError.value).toContain("disk full");
     expect(activeBuildId.value).toBe("b");
   });

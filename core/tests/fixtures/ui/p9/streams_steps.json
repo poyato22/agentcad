@@ -1,22 +1,22 @@
 [
   {
-    "id": 4,
-    "run_id": "31f160032988",
-    "ts": 1793422967.7192771,
+    "id": 5,
+    "run_id": "7a9a9e61222e",
+    "ts": 1793426060.20368,
     "kind": "message",
     "payload": {
       "role": "user",
       "text": "check the beam for stress and show it"
     },
-    "evidence_hash": "f0f54c58151dbf54300b77442b44d6329c9576b918e1a30bd2128f7d7bdee3e0",
+    "evidence_hash": "a83292d13fcac1c61392182cc62d98a4f4f5821c492c903e90bbf108092a2da7",
     "prev_hash": null,
     "collapsed": false,
     "stream": "text"
   },
   {
-    "id": 5,
-    "run_id": "31f160032988",
-    "ts": 1793422967.735453,
+    "id": 6,
+    "run_id": "7a9a9e61222e",
+    "ts": 1793426060.222305,
     "kind": "message",
     "payload": {
       "role": "assistant",
@@ -33,15 +33,15 @@
         }
       ]
     },
-    "evidence_hash": "2bc251044c2d8cd87514c80edfe6bbeadc97f2ddcdf3c2eb2be4d1a3d2e24176",
-    "prev_hash": "f0f54c58151dbf54300b77442b44d6329c9576b918e1a30bd2128f7d7bdee3e0",
+    "evidence_hash": "65c38d4128d95adc6e837363f28c0977c979a3f21ef7c604ae3fc5d509d2e227",
+    "prev_hash": "a83292d13fcac1c61392182cc62d98a4f4f5821c492c903e90bbf108092a2da7",
     "collapsed": false,
     "stream": "text"
   },
   {
-    "id": 6,
-    "run_id": "31f160032988",
-    "ts": 1793422967.735678,
+    "id": 7,
+    "run_id": "7a9a9e61222e",
+    "ts": 1793426060.222474,
     "kind": "tool_call",
     "payload": {
       "call_id": "s1",
@@ -73,23 +73,24 @@
       },
       "name": "sim_run"
     },
-    "evidence_hash": "fc7c97d34e8e77e96c6b4679f93e03bd6acf9a79d222cc6907c9aec803added3",
-    "prev_hash": "2bc251044c2d8cd87514c80edfe6bbeadc97f2ddcdf3c2eb2be4d1a3d2e24176",
+    "evidence_hash": "ee1e75e50a4916bb67309e40b1ab83ead8d000cc1bc237dc9831455be98d04df",
+    "prev_hash": "65c38d4128d95adc6e837363f28c0977c979a3f21ef7c604ae3fc5d509d2e227",
     "collapsed": false,
     "stream": "sim"
   },
   {
-    "id": 7,
-    "run_id": "31f160032988",
-    "ts": 1793422967.738755,
+    "id": 8,
+    "run_id": "7a9a9e61222e",
+    "ts": 1793426060.2272708,
     "kind": "tool_result",
     "payload": {
       "call_id": "s1",
       "name": "sim_run",
       "output": {
         "data": {
+          "cancel_url": "/jobs/sim_128f682a0f8b/cancel",
           "card": {
-            "charts_url": "/sims/sim_241e166740c6/charts",
+            "charts_url": "/sims/sim_128f682a0f8b/charts",
             "checks": [],
             "fidelity_class": "fem",
             "fidelity_note": null,
@@ -126,50 +127,50 @@
             "pct": 0.0,
             "phase": "queued",
             "reason": "tip load on the beam",
-            "run_id": "31f160032988",
-            "sim_id": "sim_241e166740c6",
+            "run_id": "7a9a9e61222e",
+            "sim_id": "sim_128f682a0f8b",
             "status": "running",
-            "step_id": 6,
+            "step_id": 7,
             "type": "static",
             "urls": {
-              "charts": "/sims/sim_241e166740c6/charts",
-              "glb": "/sims/sim_241e166740c6/result.glb",
-              "probe": "/sims/sim_241e166740c6/probe",
-              "record": "/sims/sim_241e166740c6",
-              "section": "/sims/sim_241e166740c6/section"
+              "charts": "/sims/sim_128f682a0f8b/charts",
+              "glb": "/sims/sim_128f682a0f8b/result.glb",
+              "probe": "/sims/sim_128f682a0f8b/probe",
+              "record": "/sims/sim_128f682a0f8b",
+              "section": "/sims/sim_128f682a0f8b/section"
             },
             "verdict": null,
             "warnings": []
           },
           "part_id": "beam",
-          "sim_id": "sim_241e166740c6",
+          "sim_id": "sim_128f682a0f8b",
           "status": "running",
           "stream": "sim",
           "type": "static",
           "urls": {
-            "charts": "/sims/sim_241e166740c6/charts",
-            "glb": "/sims/sim_241e166740c6/result.glb",
-            "probe": "/sims/sim_241e166740c6/probe",
-            "record": "/sims/sim_241e166740c6",
-            "section": "/sims/sim_241e166740c6/section"
+            "charts": "/sims/sim_128f682a0f8b/charts",
+            "glb": "/sims/sim_128f682a0f8b/result.glb",
+            "probe": "/sims/sim_128f682a0f8b/probe",
+            "record": "/sims/sim_128f682a0f8b",
+            "section": "/sims/sim_128f682a0f8b/section"
           }
         },
         "handles": [],
         "ok": true,
         "step_kind": "tool_result",
-        "summary": "study sim_241e166740c6 (static) started in the background (guide only, not a guarantee); you get a note when it finishes. Keep working; read it with sim_result_get or sim_wait.",
+        "summary": "study sim_128f682a0f8b (static) started in the background (guide only, not a guarantee); you get a note when it finishes. Keep working; read it with sim_result_get or sim_wait.",
         "warnings": []
       }
     },
-    "evidence_hash": "5fb87779565d6404c915b7dcb8edcbb96e441f05e233d4929c4e7312c66f700c",
-    "prev_hash": "fc7c97d34e8e77e96c6b4679f93e03bd6acf9a79d222cc6907c9aec803added3",
+    "evidence_hash": "80fdb5ea589277f505681c3ee15afa5487d86dfc59240f8aa8d2b3b72ad79cc8",
+    "prev_hash": "ee1e75e50a4916bb67309e40b1ab83ead8d000cc1bc237dc9831455be98d04df",
     "collapsed": false,
     "stream": "sim"
   },
   {
-    "id": 8,
-    "run_id": "31f160032988",
-    "ts": 1793422967.739106,
+    "id": 9,
+    "run_id": "7a9a9e61222e",
+    "ts": 1793426060.227539,
     "kind": "tool_call",
     "payload": {
       "call_id": "v1",
@@ -182,21 +183,21 @@
       },
       "name": "render_views"
     },
-    "evidence_hash": "78ebd4d361597de34b49061c26f1ddebdc03a887d38e773c4712768941ded237",
-    "prev_hash": "5fb87779565d6404c915b7dcb8edcbb96e441f05e233d4929c4e7312c66f700c",
+    "evidence_hash": "b744fb4ace2db83b2208a794bdb2580ee0bed948502ba5e0f3cc76d629dea8d9",
+    "prev_hash": "80fdb5ea589277f505681c3ee15afa5487d86dfc59240f8aa8d2b3b72ad79cc8",
     "collapsed": false,
     "stream": "view"
   },
   {
-    "id": 9,
-    "run_id": "31f160032988",
-    "ts": 1793422967.8516889,
+    "id": 10,
+    "run_id": "7a9a9e61222e",
+    "ts": 1793426060.40365,
     "kind": "measure",
     "payload": {
       "call_id": "v1",
       "images": [
         {
-          "b64_bytes": 2192,
+          "b64_bytes": 11724,
           "label": "iso",
           "media_type": "image/png"
         }
@@ -204,25 +205,60 @@
       "name": "render_views",
       "output": {
         "data": {
+          "cameras": {
+            "iso": {
+              "center": [
+                50.0,
+                5.0,
+                5.0
+              ],
+              "eye": null,
+              "forward": [
+                -0.5773502691896258,
+                0.5773502691896258,
+                -0.5773502691896258
+              ],
+              "perspective": false,
+              "right": [
+                0.7071067811865476,
+                0.7071067811865476,
+                -0.0
+              ],
+              "scale_px": 2.962134588825101,
+              "screen_center": [
+                0.0,
+                0.0
+              ],
+              "size": 256,
+              "up": [
+                -0.4082482904638631,
+                0.4082482904638631,
+                0.8164965809277261
+              ]
+            }
+          },
           "image_tokens": 87,
           "instances": 1,
           "naming": "standard",
           "parts": [
             "beam"
           ],
+          "perspective": false,
           "render_ids": {
-            "iso": "rv_31f16003_6dbeec2828_iso"
+            "iso": "rv_7a9a9e61_97ff08f9c8_iso"
           },
+          "requested_size": 256,
           "size": 256,
+          "style": "shaded",
           "view_axes": {
             "iso": "camera at (+X, -Y, +Z), looking at the centre"
           },
           "views": {
-            "iso": "/Users/fixture/Mises/renders/rv_31f16003_6dbeec2828_iso.png"
+            "iso": "/Users/fixture/Mises/renders/rv_7a9a9e61_97ff08f9c8_iso.png"
           }
         },
         "handles": [
-          "/Users/fixture/Mises/renders/rv_31f16003_6dbeec2828_iso.png"
+          "/Users/fixture/Mises/renders/rv_7a9a9e61_97ff08f9c8_iso.png"
         ],
         "ok": true,
         "step_kind": "measure",
@@ -230,15 +266,15 @@
         "warnings": []
       }
     },
-    "evidence_hash": "c279623d096d1e82760a4dd0726e2a287fdcc47dc3bf99649cff1517d8ad8280",
-    "prev_hash": "78ebd4d361597de34b49061c26f1ddebdc03a887d38e773c4712768941ded237",
+    "evidence_hash": "df6bbc9219b40d30c257a5474b9e38ab780f95393d57e1de56d08b40f73355fa",
+    "prev_hash": "b744fb4ace2db83b2208a794bdb2580ee0bed948502ba5e0f3cc76d629dea8d9",
     "collapsed": false,
     "stream": "view"
   },
   {
-    "id": 10,
-    "run_id": "31f160032988",
-    "ts": 1793422967.8524249,
+    "id": 11,
+    "run_id": "7a9a9e61222e",
+    "ts": 1793426060.4043782,
     "kind": "message",
     "payload": {
       "role": "assistant",
@@ -246,36 +282,36 @@
       "text": "The study runs in the background; the render is above.",
       "tool_calls": []
     },
-    "evidence_hash": "c47438cbe0a556711e50e613ea18eba8e66a4b732b0516f29be9cc49809cca23",
-    "prev_hash": "c279623d096d1e82760a4dd0726e2a287fdcc47dc3bf99649cff1517d8ad8280",
-    "collapsed": false,
-    "stream": "text"
-  },
-  {
-    "id": 11,
-    "run_id": "31f160032988",
-    "ts": 1793422968.5538828,
-    "kind": "message",
-    "payload": {
-      "role": "user",
-      "system_note": {
-        "id": "sim_241e166740c6",
-        "job": "sim",
-        "kind": "sim_finished",
-        "sim_id": "sim_241e166740c6",
-        "status": "done"
-      },
-      "text": "[Mises system note, not from the user] static study of beam (sim_241e166740c6) finished. Result summary (data): \"GUIDE ONLY - CalculiX 2.23, fine mesh 2.5 mm (coarse 5 mm), material PLA isotropic linear elastic, strength x0.7 FDM knock-down: beam max von Mises 6.04 MPa (error band 0.7%), max displacement 1.74 mm, safety factor 5.91; peak excludes the fixed face; at fixture: 5.58 MPa (safety factor incl. fixture 5.91)\". Read it with sim_result_get sim_241e166740c6."
-    },
-    "evidence_hash": "48fb4d40eb1abf413556ae61c3f04feca20e78b0a5f962096756098460bf044b",
-    "prev_hash": "c47438cbe0a556711e50e613ea18eba8e66a4b732b0516f29be9cc49809cca23",
+    "evidence_hash": "31077310fc348a3a93b9dd390901c23ffd34f91d8999a658a3baf0a681540e58",
+    "prev_hash": "df6bbc9219b40d30c257a5474b9e38ab780f95393d57e1de56d08b40f73355fa",
     "collapsed": false,
     "stream": "text"
   },
   {
     "id": 12,
-    "run_id": "31f160032988",
-    "ts": 1793422968.569352,
+    "run_id": "7a9a9e61222e",
+    "ts": 1793426061.1600242,
+    "kind": "message",
+    "payload": {
+      "role": "user",
+      "system_note": {
+        "id": "sim_128f682a0f8b",
+        "job": "sim",
+        "kind": "sim_finished",
+        "sim_id": "sim_128f682a0f8b",
+        "status": "done"
+      },
+      "text": "[Mises system note, not from the user] static study of beam (sim_128f682a0f8b) finished. Result summary (data): \"GUIDE ONLY - CalculiX 2.23, fine mesh 2.5 mm (coarse 5 mm), material PLA isotropic linear elastic, strength x0.7 FDM knock-down: beam max von Mises 6.04 MPa (error band 0.7%), max displacement 1.74 mm, safety factor 5.91; peak excludes the fixed face; at fixture: 5.58 MPa (safety factor incl. fixture 5.91)\". Read it with sim_result_get sim_128f682a0f8b."
+    },
+    "evidence_hash": "63391958fc3eeaeea983166c93e0126a7854754a9c0d6eb16d079a6e4ee090bb",
+    "prev_hash": "31077310fc348a3a93b9dd390901c23ffd34f91d8999a658a3baf0a681540e58",
+    "collapsed": false,
+    "stream": "text"
+  },
+  {
+    "id": 13,
+    "run_id": "7a9a9e61222e",
+    "ts": 1793426061.176673,
     "kind": "message",
     "payload": {
       "role": "assistant",
@@ -283,8 +319,8 @@
       "text": "The study finished: see its card (guide only).",
       "tool_calls": []
     },
-    "evidence_hash": "f63a7908f53593dbeead5e80a7dc895b59a0a7694c3a89d12667497c6841d97e",
-    "prev_hash": "48fb4d40eb1abf413556ae61c3f04feca20e78b0a5f962096756098460bf044b",
+    "evidence_hash": "670d2ad0a33ca2c8f7122f30080508b72306f6a174517b6bb76d92b9e32e4f76",
+    "prev_hash": "63391958fc3eeaeea983166c93e0126a7854754a9c0d6eb16d079a6e4ee090bb",
     "collapsed": false,
     "stream": "text"
   }

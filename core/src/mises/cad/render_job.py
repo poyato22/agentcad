@@ -49,6 +49,9 @@ class MeshIn:
     opacity: float = 1.0
     # the instance's world transform (4x4, row-major, mm), or None for the part's own frame
     transform: list[list[float]] | None = None
+    # CMF from the part's appearance (shaded style): 0..1
+    roughness: float = 0.9
+    metalness: float = 0.0
 
 
 def check_transform(m) -> list[list[float]] | None:
@@ -75,6 +78,8 @@ class RenderOut:
     dropped: int = 0                                                   # invalid triangles
     triangles: int = 0
     peak_rss_mb: float = 0.0
+    # key -> view -> camera (render.camera_info: actual size, axes, scale), checked data
+    cameras: dict[str, dict[str, dict]] = field(default_factory=dict)
 
 
 def _read_stl(part_dir: Path, name: str) -> bytes:
@@ -101,7 +106,8 @@ async def run_render_job(jobs_root: Path, meshes: list[MeshIn], *, renders: list
                          masks: list[dict] = (), timeout_s: float | None = None,
                          memory_mb: float | None = None,
                          max_layers: float | None = None) -> RenderOut:
-    """Render `renders` ({key, views, size, section?, explode?, transparent?}) and compute
+    """Render `renders` ({key, views, size, section?, explode?, transparent?, style?,
+    perspective?, shadow?, background?, figure?}; see render.render_views) and compute
     `masks` ({key, view, size, section?}) of `meshes` in the sandboxed worker. `max_layers`
     overrides the worker's complexity budget (tests only; tools never pass it)."""
     if len(meshes) > MAX_MESHES:
@@ -122,7 +128,8 @@ async def run_render_job(jobs_root: Path, meshes: list[MeshIn], *, renders: list
                 fname = files[key] = f"m{len(files)}.stl"
                 safe_io.write_bytes(job_dir, fname, _read_stl(m.part_dir, m.name))
             spec["meshes"].append({"file": fname, "name": m.name, "color": list(m.color),
-                                   "opacity": m.opacity,
+                                   "opacity": m.opacity, "roughness": float(m.roughness),
+                                   "metalness": float(m.metalness),
                                    "transform": check_transform(m.transform)})
         safe_io.write_text(job_dir, "job.json", json.dumps(spec))
         nonce = secrets.token_hex(16)
@@ -144,6 +151,41 @@ async def run_render_job(jobs_root: Path, meshes: list[MeshIn], *, renders: list
         shutil.rmtree(job_dir, ignore_errors=True)
 
 
+_CAM_VECS = ("forward", "right", "up", "center")
+
+
+def _cameras(raw) -> dict[str, dict[str, dict]]:
+    """The worker's per-view cameras, kept only when they are well-formed finite numbers (the
+    worker read a hostile mesh: its result is data, re-checked here)."""
+    out: dict[str, dict[str, dict]] = {}
+    if not isinstance(raw, dict):
+        return out
+
+    def vec(v, n):
+        if not isinstance(v, list) or len(v) != n:
+            raise ValueError
+        f = [float(x) for x in v]
+        if not all(np.isfinite(f)):
+            raise ValueError
+        return f
+    for key, views in list(raw.items())[:64]:
+        if not isinstance(views, dict):
+            continue
+        for view, c in list(views.items())[:16]:
+            try:
+                cam = {k: vec(c[k], 3) for k in _CAM_VECS}
+                cam["eye"] = vec(c["eye"], 3) if c.get("eye") is not None else None
+                cam["screen_center"] = vec(c["screen_center"], 2)
+                cam["scale_px"] = vec([c["scale_px"]], 1)[0]
+                cam["size"] = int(c["size"])
+                cam["perspective"] = bool(c["perspective"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if 1 <= cam["size"] <= 4096:
+                out.setdefault(str(key)[:64], {})[str(view)[:64]] = cam
+    return out
+
+
 def _collect(job_dir: Path, nonce: str) -> RenderOut:
     try:
         res = json.loads(safe_io.read_bytes(job_dir, "result.json") or b"null")
@@ -156,7 +198,8 @@ def _collect(job_dir: Path, nonce: str) -> RenderOut:
                          hint="simplify the model, render fewer parts, or use a section")
     out = RenderOut(dropped=int(res.get("dropped") or 0),
                     triangles=int(res.get("triangles") or 0),
-                    peak_rss_mb=float(res.get("peak_rss_mb") or 0.0))
+                    peak_rss_mb=float(res.get("peak_rss_mb") or 0.0),
+                    cameras=_cameras(res.get("cameras")))
     out_dir = job_dir / "out"
     for key, views in (res.get("pngs") or {}).items():
         out.pngs[key] = {}

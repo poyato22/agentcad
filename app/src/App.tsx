@@ -1,7 +1,9 @@
-// App shell: 44px top bar (--topbar-h; the macOS traffic lights sit on its centre line) across the top. Below it the active page shows:
-//   · Design keeps today's layout — left 240px · viewer · console. Its viewer is either one part
-//     or the build's assembly (ui/assembly/mode: the Part | Assembly switch, ⌥⌘A).
-//   · Studies / Drawing / Print / Onshape / Parts render full-width under the top bar.
+// App shell. Home (the build grid and its Onshape / parts-library sub-views) fills the whole
+// window with no top bar (D23). Inside a build: a 44px top bar (--topbar-h; the macOS traffic
+// lights sit on its centre line) across the top, then the active page:
+//   · Design keeps its layout — left 240px · viewer · console. Its viewer is the build's
+//     assembly; a part clicked in the left tree opens alone (ui/assembly/focus, ← Assembly / Esc).
+//   · Studies / Print (3D print | Drawing) / BOM render full-width under the top bar.
 // The agent console stays on every page as a right-hand panel that can collapse to a 36px rail.
 // The new-run dialog, the Profile panel and the setup gate mount at the root.
 import type { JSX } from "preact";
@@ -13,26 +15,26 @@ import { needsYou } from "./state/selection";
 import { HomePage } from "./ui/pages/home";
 import { AgentManager } from "./ui/agents/AgentManager";
 import { AssemblyView } from "./ui/assembly/AssemblyView";
-import { designMode, installModeShortcut } from "./ui/assembly/mode";
+import { openPartId } from "./ui/assembly/focus";
 import { BootOverlay } from "./ui/boot/BootOverlay";
 import { ConsolePane } from "./ui/console/ConsolePane";
+import { dockLayout } from "./ui/console/dockLayout";
 import { NewRunDialog } from "./ui/dialogs/NewRunDialog";
 import { LeftPane } from "./ui/left/LeftPane";
 import { Overview } from "./ui/viewer/Overview";
 import { activePage, consoleCollapsed, installPageShortcuts, modalOpen, toggleConsole } from "./ui/pages/router";
 import { activeBuildId } from "./state/builds";
 import { DrawingDrop } from "./ui/imports";
-import { DirectoryPage } from "./ui/pages/directory";
 import { BomPage } from "./ui/pages/bom";
-import { DrawingPage } from "./ui/pages/drawing";
-import { OnshapePage } from "./ui/pages/onshape";
-import { PrintPage } from "./ui/pages/print";
+import { PrintSection } from "./ui/pages/print";
 import { StudiesPage } from "./ui/pages/studies";
 import { ImmersiveRoot } from "./ui/pages/studies/immersive/Immersive";
 import { ViewImmersiveRoot } from "./ui/console/cards/critique";
+import { SketchReviewRoot } from "./ui/sketch/register";
 import { closeProfile, profileOpen, profileSection } from "./ui/profile/open";
 import { ProfilePane } from "./ui/profile/ProfilePane";
 import { SetupGate } from "./ui/setup/SetupGate";
+import { installStopAllShortcut } from "./ui/topbar/stopAll";
 import { TopBar } from "./ui/topbar/TopBar";
 import { Viewer } from "./ui/viewer/Viewer";
 
@@ -40,19 +42,16 @@ function PageRegion(): JSX.Element {
   // Design keeps the left pane + viewer; every other page renders full-width.
   switch (activePage.value) {
     case "studies": return <div class="region region-page" data-region="page"><StudiesPage /></div>;
-    case "drawing": return <div class="region region-page" data-region="page"><DrawingPage /></div>;
-    case "print": return <div class="region region-page" data-region="page"><PrintPage /></div>;
-    case "onshape": return <div class="region region-page" data-region="page"><OnshapePage /></div>;
-    case "directory": return <div class="region region-page" data-region="page"><DirectoryPage /></div>;
+    case "print": return <div class="region region-page" data-region="page"><PrintSection /></div>;
     case "bom": return <div class="region region-page" data-region="page"><BomPage /></div>;
     default: return (
       <>
         <div class="region region-left" data-region="left"><LeftPane /></div>
-        <main class="region region-viewer" data-region="viewer" data-mode={designMode.value}>
-          {designMode.value === "assembly" ? <AssemblyView /> : <Viewer />}
-          {/* "All parts" lives in the Part viewer's tool row (Viewer → ViewerTools); Assembly view
-              lists its parts in its own panel, so the overview isn't offered over it (I3) */}
-          {overviewOpen.value && designMode.value !== "assembly" && <Overview />}
+        <main class="region region-viewer" data-region="viewer" data-mode={openPartId.value === null ? "assembly" : "part"}>
+          {openPartId.value === null ? <AssemblyView /> : <Viewer />}
+          {/* "All parts" lives in the Part viewer's tool row (Viewer → ViewerTools); the build view
+              is the parts put together, so the overview isn't offered over it (I3) */}
+          {overviewOpen.value && openPartId.value !== null && <Overview />}
           <DrawingDrop variant="overlay" projectId={activeBuildId.value} />
         </main>
       </>
@@ -88,7 +87,8 @@ function ConsoleRegion(): JSX.Element {
 
 export function App(): JSX.Element {
   useEffect(() => installPageShortcuts(), []);
-  useEffect(() => installModeShortcut(() => activePage.peek() === "design"), []);
+  // ⇧⌘. works on Home too, which has no top bar (D23)
+  useEffect(() => installStopAllShortcut(), []);
   // ⌘0 returns to the Home grid (not while a modal is open, and only on a real key press).
   useEffect(() => registerShortcut("Meta+0", (e) => {
     if (isTrustedKey(e) && !modalOpen()) goHome();
@@ -96,13 +96,15 @@ export function App(): JSX.Element {
   const home = atHome.value;
   return (
     <div class="app" data-region="app" data-conn={conn.value} data-home={home ? "" : undefined}
-      data-page={activePage.value} data-console={consoleCollapsed.value ? "rail" : "open"}>
-      <div class="region region-topbar" data-region="topbar"><TopBar /></div>
+      data-page={activePage.value} data-console={consoleCollapsed.value ? "rail" : "open"}
+      // the agent dock's width (360–640 px, dragged at its left edge; ui/console/dockLayout)
+      style={consoleCollapsed.value ? undefined : { "--console-w": `${dockLayout.value.width}px` }}>
       {home
         ? <div class="region region-page" data-region="page"><HomePage /></div>
-        : <><PageRegion /><ConsoleRegion /></>}
+        : <><div class="region region-topbar" data-region="topbar"><TopBar /></div><PageRegion /><ConsoleRegion /></>}
       <ImmersiveRoot />
       <ViewImmersiveRoot />
+      <SketchReviewRoot />
       <NewRunDialog />
       <AgentManager />
       <ProfilePane open={profileOpen.value} section={profileSection.value} onClose={closeProfile} />

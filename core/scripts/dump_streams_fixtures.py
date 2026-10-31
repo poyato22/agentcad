@@ -9,7 +9,8 @@ sim_finished and the lead gets a system note, which starts its next turn.
 
 Writes streams_steps.json (the lead's steps, each with `stream`), streams_events.jsonl (the
 lead's events, each with `stream`: text, sim or view) and streams_sim.json (the finished
-record). Needs CalculiX (ccx) and gmsh; a throwaway MISES_HOME and no network.
+record), streams_jobs.json (GET /jobs while it runs) and
+streams_job_cancel*.json (POST /jobs/{id}/cancel of a second study). Needs CalculiX (ccx) and gmsh; a throwaway MISES_HOME and no network.
 """
 import argparse
 import asyncio
@@ -90,6 +91,10 @@ async def dump(out: Path) -> None:
             lead = await rt.start_run("engineer", "check the beam for stress and show it",
                                       project_id=rt.active_project_id(), role=lead_mod.LEAD)
             await rt.wait(lead)
+            # the lead's turn has ended; its study still runs: GET /jobs lists it
+            running_jobs = (await c.get("/jobs", headers=auth,
+                                        params={"project_id": rt.active_project_id()})).json()
+            assert running_jobs and running_jobs[0]["status"] == "running", running_jobs
             sim_id = next(s.payload["output"]["data"]["sim_id"] for s in rt.store.steps(lead)
                           if s.payload.get("name") == "sim_run" and "output" in s.payload)
             assert studies.find_sim(home / "parts", sim_id) is not None
@@ -118,6 +123,27 @@ async def dump(out: Path) -> None:
                                if json.loads(e)["type"] == "tool_result"
                                and json.loads(e)["data"].get("name") == "render_views")
             assert render_done < kinds.index("sim_finished"), kinds
+            write("streams_jobs.json", running_jobs)
+            # one job stopped from the app: POST /jobs/{id}/cancel (its note starts no turn)
+            o2 = await rt.gate.call(lead, "sim_run", {"type": "static", "part_id": "beam",
+                                                      "settings": {"load_cases": [CASE]}},
+                                    call_id="s2", workdir=rt.workdir(lead), agent=True)
+            sid2 = o2.data["sim_id"]
+            await asyncio.sleep(0.2)
+            r = await c.post(o2.data["cancel_url"], headers=auth)
+            assert r.status_code == 200, r.text
+            write("streams_job_cancel.json", r.json())
+            await asyncio.wait({jobs.get(sid2).task}, timeout=60)
+            fin = None
+            while not sub.queue.empty():
+                ev = sub.queue.get_nowait()
+                if ev.type == "sim_finished" and ev.data.get("job_id") == sid2:
+                    fin = json.loads(ev.model_dump_json())
+            assert fin is not None and fin["data"]["status"] == "cancelled", fin
+            write("streams_job_cancelled_event.json", fin)
+            again = await c.post(o2.data["cancel_url"], headers=auth)
+            assert again.status_code == 409, again.text
+            write("streams_job_cancel_not_running.json", again.json())
     finally:
         sub.close()
         await rt.aclose()

@@ -246,6 +246,8 @@ def finished(ctx, job: Job, *, build_id: str | None = None, data: dict | None = 
              note: bool = True) -> None:
     """The job ended: sim_finished on the bus, and the note unless it is not wanted."""
     job.finished_at = job.finished_at or time.time()
+    if job.status == "cancelled" and job.defer and not job.stopped:
+        job.summary = f"{job.label or job.kind} was cancelled by the user"
     events = getattr(ctx, "events", None)
     if events is not None:
         events.publish(Event(type="sim_finished", run_id=job.run_id, data={
@@ -253,8 +255,6 @@ def finished(ctx, job: Job, *, build_id: str | None = None, data: dict | None = 
             "build_id": build_id if build_id is not None else build_of(ctx, job.run_id),
             "status": job.status, "summary": job.summary, "cancel_url": cancel_url(job.id),
             **(data or {})}))
-    if job.status == "cancelled" and job.defer and not job.stopped:
-        job.summary = f"{job.label or job.kind} was cancelled by the user"
     if not note or job.stopped or job.consumed or job.waiters:
         if job.waiters:
             job.consumed = True

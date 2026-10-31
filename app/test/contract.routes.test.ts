@@ -11,7 +11,7 @@ import {
   localActionSchema, okSchema, runIdSchema, runNodeSchema,
   partSummarySchema,
 } from "../src/api/schemas";
-import { parsePendingQuestions, toolListSchema } from "../src/api/client";
+import { assemblyUndoSchema, parsePendingQuestions, toolListSchema } from "../src/api/client";
 import type { Approval } from "../src/api/types";
 import { loadScenario, startFakeCore, type FakeCore, type Scenario } from "./fake-core/server";
 import { shapeDiff, type Json } from "./shape";
@@ -65,6 +65,16 @@ beforeAll(async () => {
   fake.set("part_delete.json", await ok("DELETE", `/parts/${dup.part_id}`));
   // Plan 8 G3's skeleton panel route (dump_builds_edit_fixtures.py: the Default build, none yet)
   const builds = (await ok("GET", "/projects")) as { id: string }[];
+  // Plan 9 D29 (dump_builds_edit_fixtures.py): a copy placed in the assembly, deleted with its
+  // instance, then undone
+  const dup2 = (await ok("POST", "/parts/mount_plate/duplicate")) as { part_id: string };
+  await req("POST", `/projects/${builds[0].id}/assembly/instances`, { part_id: dup2.part_id, name: "plate copy", fixed: true });
+  const gone = (await ok("DELETE", `/parts/${dup2.part_id}?cascade=true`)) as { undo: string };
+  fake.set("part_delete_cascade.json", gone);
+  fake.set("part_restore.json", await ok("POST", `/parts/${dup2.part_id}/restore`, { undo: gone.undo }));
+  const taken = (await ok("POST", `/projects/${builds[0].id}/assembly/remove_parts`, { part_ids: [dup2.part_id] })) as { undo: unknown };
+  fake.set("assembly_remove_parts.json", taken);
+  fake.set("assembly_restore.json", await ok("POST", `/projects/${builds[0].id}/assembly/restore`, taken.undo));
   fake.set("project_skeleton_empty.json", await ok("GET", `/projects/${builds[0].id}/skeleton`));
   // POST /runs: the real core's dump started its run from a sketch (sketch_run.json); the answer is
   // the same {run_id} without one, and the app no longer sends sketches (Plan 7 U2b)
@@ -113,6 +123,8 @@ const projectSkeletonSchema = z.object({
   project_id: z.string(), skeleton_id: z.string(), version: z.number(),
   skeleton: z.record(z.string(), z.unknown()).nullable(), dependents: z.array(z.unknown()),
 });
+/** DELETE /parts/{id} (Plan 9 D29: what went with it, and the Undo token). */
+const partDeleteSchema = z.object({ deleted: z.string(), removed_instances: z.array(z.string()), removed_joints: z.array(z.string()), undo: z.string() });
 const CASES: [string, z.ZodType<unknown>][] = [
   ["health.json", okSchema], ["run.json", agentRunSchema], ["context.json", anyJson],
   ["key_set.json", keyStatusSchema], ["key_delete.json", keyStatusSchema],
@@ -124,7 +136,10 @@ const CASES: [string, z.ZodType<unknown>][] = [
   ["runs_tree.json", z.array(runNodeSchema)], ["runs_cleanup.json", cleanupResultSchema],
   ["run_patch.json", agentRunSchema], ["run_delete.json", okSchema],
   ["tools.json", toolListSchema], ["run_pending.json", runPendingSchema],
-  ["part_duplicate.json", partSummarySchema], ["part_delete.json", z.object({ deleted: z.string() })],
+  ["part_duplicate.json", partSummarySchema], ["part_delete.json", partDeleteSchema],
+  ["part_delete_cascade.json", partDeleteSchema],
+  ["assembly_remove_parts.json", z.object({ removed_instances: z.array(z.string()), removed_joints: z.array(z.string()), undo: assemblyUndoSchema })],
+  ["assembly_restore.json", z.object({ restored_instances: z.number(), restored_joints: z.number() })], ["part_restore.json", partSummarySchema.and(z.object({ restored_instances: z.number().int() }))],
   ["project_skeleton_empty.json", projectSkeletonSchema],
 ];
 
@@ -201,7 +216,7 @@ const COVERAGE: Record<string, string> = {
   "GET /agents/{name}": "agent_get.json",
   "GET /parts": "parts.json", "GET /parts/{part_id}/model.glb": "mount_plate.glb",
   "GET /parts/{part_id}/thumb.png": "EXEMPT: a PNG rendered in the sandboxed worker (needs a real build); core test_thumb_api + test_thumbs cover it end to end",
-  "GET /projects/{project_id}/thumb.png": "EXEMPT: a composite PNG of sandboxed part renders; core test_thumb_api + test_thumbs cover it",
+  "GET /projects/{project_id}/thumb.png": "EXEMPT: a PNG render of the build's assembly in the sandboxed worker (D24 cover); core test_thumb_api + test_thumbs cover it",
   "GET /runs": "runs.json", "GET /runs/{run_id}": "run.json", "GET /runs/{run_id}/steps": "steps.json",
   "GET /runs/{run_id}/pending": "run_pending.json", "GET /tools": "tools.json",
   "POST /runs": "sketch_run.json", "POST /runs/external": "run_external.json", "POST /runs/{run_id}/cancel": "run_cancel.json",
@@ -255,9 +270,13 @@ const COVERAGE: Record<string, string> = {
   // Plan 7 U8: the part menu's duplicate / delete / export (core tests/server/test_parts_manager_api.py)
   "POST /parts/{part_id}/duplicate": "part_duplicate.json",   // Plan 7 U8 (dump_builds_edit_fixtures.py)
   "DELETE /parts/{part_id}": "part_delete.json",
+  "POST /parts/{part_id}/restore": "part_restore.json",
+  "POST /projects/{project_id}/assembly/remove_parts": "assembly_remove_parts.json",   // Plan 9 D29
+  "POST /projects/{project_id}/assembly/restore": "assembly_restore.json",   // Plan 9 D29 (dump_builds_edit_fixtures.py)
   "POST /parts/{part_id}/export": "EXEMPT: Plan 7 U8; writes to ~/Downloads (MISES_EXPORT_DIR), so the dump can't run it on the dev home; core test_parts_manager_api covers it",
   "POST /projects": "project_create.json",
   "POST /projects/trash/empty": "projects_trash_empty.json",
+  "POST /projects/{project_id}/purge": "projects_purge.json",
   "POST /projects/{project_id}/restore": "project_restore.json",
   "POST /runs/cleanup": "runs_cleanup.json",
   "PUT /agents/{name}": "agent_put.json",
@@ -300,6 +319,7 @@ const COVERAGE: Record<string, string> = {
   "GET /sims/materials": "study_materials.json", // contract.studies.test.ts (Task A8)
   "GET /sims/templates": "study_templates.json", // contract.studies.test.ts (Task A8)
   "GET /sims/types": "study_types.json", // contract.studies.test.ts (Task A8)
+  "GET /studies/context": "studies_context.json", // contract.studiesAgent.test.ts (Plan 9 U-D)
   "GET /sims/{sim_id}/charts": "study_wind_charts.json", // contract.studies.test.ts (Task A8)
   "GET /sims/{sim_id}/probe": "study_probe.json", // contract.studies.test.ts (Task A8)
   "GET /sims/{sim_id}/section": "study_section.json", // contract.studies.test.ts (Task A8)

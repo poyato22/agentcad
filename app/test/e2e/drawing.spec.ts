@@ -13,7 +13,9 @@ async function openDrawing(page: Page, theme: "dark" | "light") {
   await page.goto("/");
   await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
   await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
-  await page.locator("[data-region=topbar]").getByRole("tab", { name: "Drawing" }).click();
+  // D21: Drawing is a mode of the Print tab
+  await page.locator("[data-region=topbar]").getByRole("tab", { name: "Print" }).click();
+  await page.getByRole("radio", { name: "Drawing" }).click();
   await expect(sheet(page)).toBeVisible();
   // the SVG really decoded as a picture
   await expect.poll(() => sheet(page).evaluate((i) => (i as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
@@ -38,8 +40,8 @@ for (const theme of ["dark", "light"] as const) {
     const filter = await sheet(page).evaluate((i) => getComputedStyle(i).filter);
     if (theme === "dark") expect(filter).toContain("invert");
     else expect(filter).toBe("none");
-    // square corners
-    expect(await page.getByRole("button", { name: "Export SVG" }).evaluate((b) => getComputedStyle(b).borderRadius)).toBe("0px");
+    // Plan 9 Visual spec: buttons are 7px round
+    expect(await page.getByRole("button", { name: "Export SVG" }).evaluate((b) => getComputedStyle(b).borderRadius)).toBe("7px");
   });
 
   test(`pan_and_zoom_${theme}`, async ({ page }) => {
@@ -104,7 +106,9 @@ test("regenerates_when_the_part_is_rebuilt_and_on_material_change", async ({ pag
 test("an_unbuilt_part_says_what_to_do", async ({ page, fake }) => {
   await fake.reset({ ...loadScenario("base"), print: { unbuilt: ["mount_plate"] } } as unknown as Record<string, unknown>);
   await page.goto("/");
-  await page.locator("[data-region=topbar]").getByRole("tab", { name: "Drawing" }).click();
+  // D21: Drawing is a mode of the Print tab
+  await page.locator("[data-region=topbar]").getByRole("tab", { name: "Print" }).click();
+  await page.getByRole("radio", { name: "Drawing" }).click();
   await expect(page.getByRole("alert")).toContainText("Part · mount plate has no built model yet.");
   await expect(page.getByRole("alert")).toContainText("build it with mirror_part_create");
 });

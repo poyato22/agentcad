@@ -1,5 +1,5 @@
 // Integration (Plan 5 wave D): the top bar carries A1/A2's activity pill beside the Status button
-// (Plan 7 U2b folded the lights and A6's Onshape meter into it), profile and STOP ALL. Nothing may clip or overlap at the two
+// (Plan 7 U2b folded the lights and A6's Onshape meter into it), profile and Stop all. Nothing may clip or overlap at the two
 // window widths the app is designed for (1280 and 1440), in either theme. MISES_SHOTS=<dir> also
 // saves a screenshot of each.
 import type { Page } from "@playwright/test";
@@ -57,14 +57,11 @@ for (const width of [1280, 1440]) {
           expect(clipped, `${sel} #${i} text is not clipped`).toBe(false);
         }
       }
-      // the mode tabs all fit (⌘1–⌘7), and A3's build tabs never run under them
-      for (const sel of [".btab", ".btab-add"]) {
-        const els = page.locator(`.topbar-left ${sel}`);
-        for (let i = 0; i < await els.count(); i++) {
-          const b = await els.nth(i).boundingBox();
-          if (b) expect(right(b), `${sel} #${i} stays left of the mode tabs`).toBeLessThanOrEqual(tabs.x + 0.5);
-        }
-      }
+      // D1: Home + the build's name on the left, never under the four page tabs (⌘1–⌘4)
+      const name = await boxOf(page, ".topbar-left .build-name");
+      expect(name.x).toBeGreaterThanOrEqual(78);                    // clear of the traffic lights
+      expect(right(name)).toBeLessThanOrEqual(tabs.x + 0.5);
+      await expect(page.getByRole("tablist", { name: "mode" }).getByRole("tab")).toHaveCount(4);
       const tabEls = page.getByRole("tablist", { name: "mode" }).getByRole("tab");
       for (let i = 0; i < await tabEls.count(); i++) {
         const b = await tabEls.nth(i).boundingBox();

@@ -2,7 +2,7 @@
 // and the Profile Browsing editor, against the fake core's "parts-list" scenario: the base run
 // plus the real core's dumped snapshots, part cards and parts list (scenarios/make_parts_list.py).
 import type { Page } from "@playwright/test";
-import { expect, test } from "./fixtures";
+import { consoleMenu, expect, test } from "./fixtures";
 
 test.beforeEach(async ({ fake, page }) => {
   await fake.reset("parts-list");
@@ -12,7 +12,7 @@ test.beforeEach(async ({ fake, page }) => {
 });
 
 test("the parts list shows one total per currency, estimates and the unpriced count, edits and exports", async ({ page, fake }) => {
-  await page.getByRole("button", { name: "Parts list", exact: true }).click();
+  await page.getByTestId("bom-summary").getByRole("button", { name: "Open" }).click();   // Plan 9 D9: the left surface's BOM section
   await expect(page.locator("[data-bom-page]")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Made in-house" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Bought" })).toBeVisible();
@@ -70,12 +70,12 @@ test("the part card loads from the core and adds itself to its build's parts lis
   await expect(card.getByRole("button", { name: /is in the parts list/ })).toBeDisabled();
   const post = (await fake.calls()).find((c) => c.method === "POST" && /\/bom$/.test(c.path));
   expect(Object.keys(post?.body as object).sort()).toEqual(["catalog_id", "currency", "kind", "name", "qty", "specs", "unit_cost", "url", "vendor"]);
-  await page.getByRole("button", { name: "Parts list", exact: true }).click();
+  await page.getByTestId("bom-summary").getByRole("button", { name: "Open" }).click();   // Plan 9 D9: the left surface's BOM section
   await expect(page.locator("[data-bom-page]").getByText("Micro servo - TowerPro SG92R")).toBeVisible();
 });
 
 test("the agent Browser tab shows the search, the page as escaped text, and the blocked page", async ({ page }) => {
-  await page.getByRole("button", { name: "Browser", exact: true }).click();
+  await consoleMenu(page, "Agent browser");
   const panel = page.locator("[data-browser-panel]");
   const product = panel.locator('[data-kind="page"]:not([data-blocked])');
   await expect(product.locator(".brz-title")).toHaveText("Micro servo - TowerPro SG92R : ID 169 : Adafruit");
