@@ -24,7 +24,8 @@ SIM_TOOLS = frozenset({"design_review", "design_review_get", "study_run", "study
                        "job_wait"})
 VIEW_TOOLS = frozenset({"render_views", "present_view", "critique_model", "part_show",
                         "section_check", "assembly_animate"})
-SIM_EVENTS = frozenset({"sim_progress", "sim_finished", "study_progress"})
+SIM_EVENTS = frozenset({"sim_progress", "sim_finished", "study_progress", "topopt_progress",
+                        "topopt_finished"})
 VIEW_EVENTS = frozenset({"part_shown", "assembly_animate"})
 #: announcement cards that are pictures of the model (the rest are conversation cards)
 VIEW_ANNOUNCE = frozenset({"view_presented", "critique_round", "part_shown"})
@@ -32,7 +33,7 @@ VIEW_ANNOUNCE = frozenset({"view_presented", "critique_round", "part_shown"})
 
 def tool_stream(name: str | None) -> str:
     bare = (name or "").split("mcp__mises__", 1)[-1]
-    if bare.startswith("sim_") or bare in SIM_TOOLS:
+    if bare.startswith(("sim_", "topopt_")) or bare in SIM_TOOLS:
         return "sim"
     return "view" if bare in VIEW_TOOLS else "text"
 

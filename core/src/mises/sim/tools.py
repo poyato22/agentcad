@@ -144,7 +144,7 @@ class ResultArgs(BaseModel):
 
 SIM_WAIT_MAX_S = 600.0
 REVIEW_ID_PREFIX = "review_"
-JOB_ID_RE = r"^(sim|review|study)_[0-9a-f]{12}$"
+JOB_ID_RE = r"^(sim_|review_|study_|to_)[0-9a-f]{12}$"
 
 
 class WaitArgs(BaseModel):
@@ -382,7 +382,8 @@ async def sim_wait(ctx: ToolContext, args: WaitArgs) -> ToolOutput:
 
 
 class JobArgs(BaseModel):
-    job_id: str = Field(pattern=JOB_ID_RE, description="a sim_…, review_… or study_… id")
+    job_id: str = Field(pattern=JOB_ID_RE, description="a sim_…, review_…, study_… or to_… "
+                        "(generative design) id")
     timeout_s: float = Field(120, gt=0, le=SIM_WAIT_MAX_S)
 
 
@@ -436,6 +437,11 @@ async def job_wait(ctx: ToolContext, args: JobArgs) -> ToolOutput:
     if args.job_id.startswith("sim_"):
         return await sim_wait.handler(ctx, WaitArgs(sim_id=args.job_id,
                                                     timeout_s=args.timeout_s))
+    if args.job_id.startswith("to_"):
+        from ..topopt.spec import WaitArgs as TopoptWaitArgs
+        from ..topopt.tools import topopt_wait
+        return await topopt_wait.handler(ctx, TopoptWaitArgs(topopt_id=args.job_id,
+                                                             timeout_s=args.timeout_s))
     from .. import jobs
     if args.job_id.startswith("study_") and jobs.get(args.job_id) is None:
         # a design study that ran blocking (the Studies page) or before a restart: its record

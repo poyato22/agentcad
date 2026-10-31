@@ -14,9 +14,9 @@ export const STREAMS: readonly StreamKind[] = ["view", "sim", "text"];
 
 const bare = (name: string): string => name.replace(/^mcp__mises__/, "");
 
-/** Study tools: B3's sim_* (sim_run, sim_static_run, sim_wait, sim_result_get, …), study_* and
- *  the design review. */
-const SIM_TOOL = /^(sim_|study_|studies_)|^design_review$/;
+/** Study tools: B3's sim_* (sim_run, sim_static_run, sim_wait, sim_result_get, …), study_*, the
+ *  design review and generative design (topopt_*, Plan 9 D14). */
+const SIM_TOOL = /^(sim_|study_|studies_|topopt_)|^design_review$/;
 /** Tools whose output is a picture of the model. */
 const VIEW_TOOL = /^(present_view|critique_model|part_show|part_render|assembly_animate)$|^render(_|$)|^view_/;
 
@@ -36,7 +36,7 @@ const VIEW_ANNOUNCE: ReadonlySet<string> = new Set(["view_presented", "critique_
 export function eventStream(ev: Pick<MisesEvent, "type"> & { stream?: StreamKind }): StreamKind {
   if (ev.stream) return ev.stream;
   const t = ev.type;
-  if (/^(sim|study)_/.test(t)) return "sim";
+  if (/^(sim|study|topopt)_/.test(t)) return "sim";
   if (/^(render|view|critique)_/.test(t) || t === "part_shown") return "view";
   return "text";
 }
@@ -96,7 +96,8 @@ export function simRunning(item: ThreadItem, finished: ReadonlyMap<string, strin
   const data = typeof out === "object" && out !== null ? (out as Record<string, unknown>).data : null;
   const d = typeof data === "object" && data !== null ? (data as Record<string, unknown>) : {};
   const v = studyCallView(c);
-  const simId = (v?.kind === "study" ? v.simId : null) ?? (typeof d.sim_id === "string" ? d.sim_id : null);
+  const simId = (v?.kind === "study" ? v.simId : null) ?? (typeof d.sim_id === "string" ? d.sim_id : null)
+    ?? (typeof d.topopt_id === "string" ? d.topopt_id : null);
   if (simId && finished.has(simId)) return false;
   if (v?.kind === "study" && v.card?.status === "running") return true;
   return d.status === "running";

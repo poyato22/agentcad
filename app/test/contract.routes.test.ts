@@ -354,6 +354,12 @@ const COVERAGE: Record<string, string> = {
   "POST /projects/{project_id}/bom": "browser/bom_add.json",
   "PATCH /projects/{project_id}/bom/{item_id}": "browser/bom_patch.json",
   "GET /projects/{project_id}/skeleton": "project_skeleton_empty.json",
+  // Plan 9 D14 generative design: contract.topopt.test.ts, fixtures from
+  // core/scripts/dump_topopt_fixtures.py
+  "POST /topopt": "topopt_start.json", "GET /topopt": "topopt_list.json",
+  "GET /topopt/{topopt_id}": "topopt_record.json", "POST /topopt/{topopt_id}/cancel": "topopt_cancel_conflict.json",
+  "POST /topopt/{topopt_id}/accept": "topopt_accept.json",
+  "GET /topopt/{topopt_id}/variants/{vid}/{name}": "topopt_render.png",
   "DELETE /projects/{project_id}/bom/{item_id}": "EXEMPT: answers {ok: true} (the generic ok shape); contract.browser.test.ts and the fake-core tests drive it",
 };
 

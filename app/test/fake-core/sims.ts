@@ -239,7 +239,7 @@ function start(d: SimDeps, b: Record<string, unknown>): unknown {
     // Plan 9 D4: like core jobs.finished, every study end is a sim_finished (stream "sim")
     d.emit({ type: "sim_finished", run_id: run.id, data: {
       kind: "sim", job_id: simId, run_id: run.id, build_id: (run as { project_id?: string | null }).project_id ?? DEFAULT_PROJECT,
-      status, summary: summaryText, sim_id: simId, type: "static", part_id: partId } });
+      status, summary: summaryText, cancel_url: `/jobs/${simId}/cancel`, sim_id: simId, type: "static", part_id: partId } });
     d.emit({ type: "tool_result", run_id: run.id, data: { call_id: callId, name: "sim_static_run", ok, summary: summaryText } },
       { steps: [{ kind: ok ? "sim_run" : "error", payload: ok
         ? { call_id: callId, name: "sim_static_run", output: { ok, summary: summaryText, data, handles: [], warnings: [], step_kind: "sim_run", images: [] } }

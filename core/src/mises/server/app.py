@@ -51,6 +51,7 @@ from .system_api import build_system_router
 from .print_api import build_print_router
 from .assembly_api import build_assembly_router
 from .sim_api import build_sim_router
+from .topopt_api import build_topopt_router
 from .studies_context_api import build_studies_context_router
 from .sketch_api import build_sketch_router
 from .imports_api import build_imports_router
@@ -255,6 +256,7 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
     app.include_router(build_drawing_router(runtime))
     app.include_router(build_print_router(runtime))
     app.include_router(build_sim_router(runtime))
+    app.include_router(build_topopt_router(runtime))
     app.include_router(build_studies_context_router(runtime))
     app.include_router(build_sketch_router(runtime))
     app.include_router(build_imports_router(runtime))

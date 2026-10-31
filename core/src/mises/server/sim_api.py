@@ -385,12 +385,12 @@ def build_sim_router(runtime: Runtime) -> APIRouter:
 
     @router.post("/jobs/{job_id}/cancel")
     async def cancel_job(job_id: str):
-        """Stop one background job (sim_…, review_…, study_…). Its note starts no turn."""
+        """Stop one background job (sim_…, review_…, study_…, to_…). Its note starts no turn."""
         from .. import jobs
         from ..sim.tools import JOB_ID_RE
         if not re.fullmatch(JOB_ID_RE, job_id):
             raise MisesError(ErrorCode.INVALID_INPUT, f"bad job id: {job_id!r}",
-                             hint="sim_…, review_… or study_… ids")
+                             hint="sim_…, review_…, study_… or to_… ids")
         j = jobs.get(job_id)
         if j is None and job_id.startswith("sim_"):   # a blocking (UI) study: its own cancel
             if studies.cancel(job_id):

@@ -40,6 +40,7 @@ from .appearance import register_appearance_tools
 from .part_tools import register_part_tools
 from .engineering import register_engineering_tools
 from .sim.tools import register_sim_tools
+from .topopt.tools import register_topopt_tools
 from .claude_code import detect as claude_detect
 from .claude_code.session import MCP_FILE as CLAUDE_MCP_FILE, SOURCE as CLAUDE_CODE
 from .claude_code.prompts import context_block
@@ -192,6 +193,7 @@ class Runtime:
         register_appearance_tools(self.registry)
         register_part_tools(self.registry)  # Plan 9 D29
         register_view_tools(self.registry)
+        register_topopt_tools(self.registry)  # Plan 9 D14: generative design
         register_studies_agent_tools(self.registry)  # Plan 9 U-D: the studies agent
         register_concept_tools(self.registry)   # Plan 9 G-A: concept sketch + pitch
         self.orchestrator = Orchestrator(self)
