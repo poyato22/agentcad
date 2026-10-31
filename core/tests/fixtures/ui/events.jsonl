@@ -1,21 +1,21 @@
-{"type":"run_started","run_id":"daf8f32980c9","data":{"agent":"designer","provider":"fake","model":"fake-model","parent_id":null,"shape_complexity":{"score":0.0,"level":"low","signals":[],"vision_recommended":false}},"ts":1793416255.091079}
-{"type":"agent_activity","run_id":"daf8f32980c9","data":{"state":"starting","detail":"","since":1793416255.091087},"ts":1793416255.091089}
-{"type":"agent_activity","run_id":"daf8f32980c9","data":{"state":"tool","detail":"building part","since":1793416255.115482},"ts":1793416255.115486}
-{"type":"tool_call","run_id":"daf8f32980c9","data":{"call_id":"c1","name":"mirror_part_create","input":{"part_id":"mount_plate","script":"from build123d import *\nVARS = {\"thickness\": 5.0}\ndef build(v):\n    with BuildPart() as p:\n        Box(40, 20, v[\"thickness\"])\n        with Locations((10, 0, 0), (-10, 0, 0)):\n            Hole(2.1)\n    return p.part\n","vars":{"thickness":5.0}}},"ts":1793416255.115741}
-{"type":"part_changed","run_id":"daf8f32980c9","data":{"part_id":"mount_plate","version":1,"by":"agent","run_id":"daf8f32980c9","summary":"created mount_plate from script"},"ts":1793416257.7278411}
-{"type":"tool_result","run_id":"daf8f32980c9","data":{"call_id":"c1","name":"mirror_part_create","ok":true,"summary":"mount_plate: volume 3861.5 mm3, mass 4.79 g, bbox 40.0x20.0x5.0 mm, 2 hole(s), valid=True"},"ts":1793416257.729043}
-{"type":"agent_announce","run_id":"daf8f32980c9","data":{"run_id":"daf8f32980c9","kind":"part_created","title":"Created part mount_plate","detail":"","ref":{"part_id":"mount_plate"}},"ts":1793416257.729577}
-{"type":"agent_activity","run_id":"daf8f32980c9","data":{"state":"tool","detail":"mirror part set vars","since":1793416257.73165},"ts":1793416257.731654}
-{"type":"tool_call","run_id":"daf8f32980c9","data":{"call_id":"c2","name":"mirror_part_set_vars","input":{"part_id":"mount_plate","vars":{"thickness":6.0}}},"ts":1793416257.732011}
-{"type":"part_changed","run_id":"daf8f32980c9","data":{"part_id":"mount_plate","version":2,"by":"agent","run_id":"daf8f32980c9","summary":"set thickness=6.0"},"ts":1793416260.965473}
-{"type":"tool_result","run_id":"daf8f32980c9","data":{"call_id":"c2","name":"mirror_part_set_vars","ok":true,"summary":"mount_plate: volume 4633.7 mm3, mass 5.75 g, bbox 40.0x20.0x6.0 mm, 2 hole(s), valid=True; volume delta +772.3 mm3"},"ts":1793416260.967123}
-{"type":"agent_activity","run_id":"daf8f32980c9","data":{"state":"tool","detail":"measuring","since":1793416260.9693341},"ts":1793416260.9693599}
-{"type":"tool_call","run_id":"daf8f32980c9","data":{"call_id":"c3","name":"mirror_measure","input":{"part_id":"mount_plate"}},"ts":1793416260.970083}
-{"type":"tool_result","run_id":"daf8f32980c9","data":{"call_id":"c3","name":"mirror_measure","ok":true,"summary":"mount_plate: volume 4633.7 mm3, mass 5.75 g, bbox 40.0x20.0x6.0 mm, 2 hole(s), valid=True"},"ts":1793416260.972165}
-{"type":"text_delta","run_id":"daf8f32980c9","data":{"text":"Thickened the plate to 6 mm; asking to merge."},"ts":1793416260.973192}
-{"type":"agent_activity","run_id":"daf8f32980c9","data":{"state":"writing","detail":"","since":1793416260.973203},"ts":1793416260.973206}
-{"type":"agent_activity","run_id":"daf8f32980c9","data":{"state":"tool","detail":"fixture merge","since":1793416260.973852},"ts":1793416260.973855}
-{"type":"tool_call","run_id":"daf8f32980c9","data":{"call_id":"c4","name":"fixture_merge","input":{"part_id":"mount_plate"}},"ts":1793416260.9749272}
-{"type":"approval_requested","run_id":"daf8f32980c9","data":{"id":"77250a079da2","run_id":"daf8f32980c9","action":"fixture_merge","payload":{"part_id":"mount_plate"},"payload_hash":"f340f4e1fa8ae34092bf3a8c8d58a3ff866253aadd8512f337db0b56512710b9","microversion":null,"deltas":{},"status":"pending","expires_at":1793418060.978125,"decided_by":null,"decided_at":null,"edited_payload":null},"ts":1793416260.980478}
-{"type":"agent_activity","run_id":"daf8f32980c9","data":{"state":"waiting_approval","detail":"waiting for approval: fixture_merge","since":1793416260.980546},"ts":1793416260.980549}
-{"type":"run_deleted","run_id":"a595f3ce38a6","data":{"run_id":"a595f3ce38a6","project_id":"ab636e4f913b"},"ts":1793416334.259243}
+{"type":"run_started","run_id":"c2f6ec9f8a0e","data":{"agent":"designer","provider":"fake","model":"fake-model","parent_id":null,"shape_complexity":{"score":0.0,"level":"low","signals":[],"vision_recommended":false}},"ts":1793426481.433711}
+{"type":"agent_activity","run_id":"c2f6ec9f8a0e","data":{"state":"starting","detail":"","since":1793426481.433721},"ts":1793426481.433724}
+{"type":"agent_activity","run_id":"c2f6ec9f8a0e","data":{"state":"tool","detail":"building part","since":1793426481.476019},"ts":1793426481.476025}
+{"type":"tool_call","run_id":"c2f6ec9f8a0e","data":{"call_id":"c1","name":"mirror_part_create","input":{"part_id":"mount_plate","script":"from build123d import *\nVARS = {\"thickness\": 5.0}\ndef build(v):\n    with BuildPart() as p:\n        Box(40, 20, v[\"thickness\"])\n        with Locations((10, 0, 0), (-10, 0, 0)):\n            Hole(2.1)\n    return p.part\n","vars":{"thickness":5.0},"place":false}},"ts":1793426481.4764218}
+{"type":"part_changed","run_id":"c2f6ec9f8a0e","data":{"part_id":"mount_plate","version":1,"by":"agent","run_id":"c2f6ec9f8a0e","summary":"created mount_plate from script"},"ts":1793426485.415185}
+{"type":"tool_result","run_id":"c2f6ec9f8a0e","data":{"call_id":"c1","name":"mirror_part_create","ok":true,"summary":"mount_plate: volume 3861.5 mm3, mass 4.79 g, bbox 40.0x20.0x5.0 mm, 2 hole(s), valid=True"},"ts":1793426485.416288}
+{"type":"agent_announce","run_id":"c2f6ec9f8a0e","data":{"run_id":"c2f6ec9f8a0e","kind":"part_created","title":"Created part mount_plate","detail":"","ref":{"part_id":"mount_plate","thumb_url":"/parts/mount_plate/thumb.png"}},"ts":1793426485.416557}
+{"type":"agent_activity","run_id":"c2f6ec9f8a0e","data":{"state":"tool","detail":"mirror part set vars","since":1793426485.417877},"ts":1793426485.417886}
+{"type":"tool_call","run_id":"c2f6ec9f8a0e","data":{"call_id":"c2","name":"mirror_part_set_vars","input":{"part_id":"mount_plate","vars":{"thickness":6.0}}},"ts":1793426485.4182599}
+{"type":"part_changed","run_id":"c2f6ec9f8a0e","data":{"part_id":"mount_plate","version":2,"by":"agent","run_id":"c2f6ec9f8a0e","summary":"set thickness=6.0"},"ts":1793426489.052341}
+{"type":"tool_result","run_id":"c2f6ec9f8a0e","data":{"call_id":"c2","name":"mirror_part_set_vars","ok":true,"summary":"mount_plate: volume 4633.7 mm3, mass 5.75 g, bbox 40.0x20.0x6.0 mm, 2 hole(s), valid=True; volume delta +772.3 mm3"},"ts":1793426489.0545092}
+{"type":"agent_activity","run_id":"c2f6ec9f8a0e","data":{"state":"tool","detail":"measuring","since":1793426489.055512},"ts":1793426489.055516}
+{"type":"tool_call","run_id":"c2f6ec9f8a0e","data":{"call_id":"c3","name":"mirror_measure","input":{"part_id":"mount_plate"}},"ts":1793426489.0559108}
+{"type":"tool_result","run_id":"c2f6ec9f8a0e","data":{"call_id":"c3","name":"mirror_measure","ok":true,"summary":"mount_plate: volume 4633.7 mm3, mass 5.75 g, bbox 40.0x20.0x6.0 mm, 2 hole(s), valid=True"},"ts":1793426489.05808}
+{"type":"text_delta","run_id":"c2f6ec9f8a0e","data":{"text":"Thickened the plate to 6 mm; asking to merge."},"ts":1793426489.058678}
+{"type":"agent_activity","run_id":"c2f6ec9f8a0e","data":{"state":"writing","detail":"","since":1793426489.0586839},"ts":1793426489.058686}
+{"type":"agent_activity","run_id":"c2f6ec9f8a0e","data":{"state":"tool","detail":"fixture merge","since":1793426489.059037},"ts":1793426489.05904}
+{"type":"tool_call","run_id":"c2f6ec9f8a0e","data":{"call_id":"c4","name":"fixture_merge","input":{"part_id":"mount_plate"}},"ts":1793426489.059423}
+{"type":"approval_requested","run_id":"c2f6ec9f8a0e","data":{"id":"4f4afb7704e3","run_id":"c2f6ec9f8a0e","action":"fixture_merge","payload":{"part_id":"mount_plate"},"payload_hash":"f340f4e1fa8ae34092bf3a8c8d58a3ff866253aadd8512f337db0b56512710b9","microversion":null,"deltas":{},"status":"pending","expires_at":1793428289.0596979,"decided_by":null,"decided_at":null,"edited_payload":null},"ts":1793426489.059934}
+{"type":"agent_activity","run_id":"c2f6ec9f8a0e","data":{"state":"waiting_approval","detail":"waiting for approval: fixture_merge","since":1793426489.059946},"ts":1793426489.059947}
+{"type":"run_deleted","run_id":"84d3cfa2cecc","data":{"run_id":"84d3cfa2cecc","project_id":"36bf474a4831"},"ts":1793426583.9604769}

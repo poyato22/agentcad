@@ -281,8 +281,13 @@ async def test_render_views_attaches_images_for_a_seeing_model(tmp_path):
     out = await views.render_views.handler(ctx, views.RenderViewsArgs(part_id="cube", size=1024))
     assert [i.label for i in out.images] == ["front", "top", "side", "iso"]
     assert all(i.media_type == "image/png" for i in out.images)
-    assert all(max(_decoded_png_size(i)) <= 512 for i in out.images)   # capped at 512 px
-    assert out.data["image_tokens"] == 4 * (512 * 512 // 750)
+    # several views: each capped at 1024 px (4 fit Claude Code's MCP output cap)
+    assert all(max(_decoded_png_size(i)) == 1024 for i in out.images)
+    assert out.data["image_tokens"] == 4 * (1024 * 1024 // 750)
+    one = await views.render_views.handler(ctx, views.RenderViewsArgs(
+        part_id="cube", size=2048, views=["iso"], style="zebra", perspective=True))
+    assert max(_decoded_png_size(one.images[0])) == 2048          # one view: the full 2048
+    assert one.data["style"] == "zebra" and one.data["perspective"] is True
 
 
 async def test_render_views_no_images_for_a_blind_model(tmp_path):
@@ -865,3 +870,19 @@ async def test_critique_model_only_reads_references_of_its_own_build(tmp_path, m
         await views.critique_model.handler(ctx2, views.CritiqueArgs(
             part_id="cube", request="x", reference_image_ids=[mine, theirs]))
     assert e.value.code == "out_of_scope" and theirs in e.value.message
+
+
+def test_mesh_inputs_carry_each_parts_appearance(tmp_path):
+    """Plan 9 G-R: the shaded style shows each part's CMF: its appearance colour, roughness and
+    metalness reach the render job; a part without one keeps the palette colour, matte."""
+    rows = {"shell": SimpleNamespace(appearance={"preset": "polished_metal"}, color=None),
+            "trim": SimpleNamespace(appearance=None, color="#ff0000")}
+    store = SimpleNamespace(get_part=lambda pid: rows.get(pid),
+                            get_run=lambda rid: SimpleNamespace(project_id=None))
+    ctx = _bare_ctx(tmp_path, store=store)
+    by = {m.name: m for m in views._mesh_inputs(ctx, [("shell", None), ("trim", None),
+                                                      ("bare", None)])}
+    assert by["shell"].metalness == 1.0 and by["shell"].roughness < 0.1
+    assert by["shell"].color == pytest.approx((0xe6 / 255, 0xe8 / 255, 0xeb / 255))
+    assert by["trim"].color == (1.0, 0.0, 0.0) and by["trim"].roughness == 0.9
+    assert by["bare"].color in views._PALETTE and by["bare"].metalness == 0.0

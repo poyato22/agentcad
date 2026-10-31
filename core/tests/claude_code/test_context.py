@@ -38,8 +38,7 @@ async def test_put_context_sets_selection(rt):
         g = await http.get("/context", headers={"Authorization": f"Bearer {TOKEN}"})
     ctx = g.json()
     assert ctx["selected_part_id"] == "mount_plate" and ctx["picks"] == [{"face": 3}]
-    assert ctx["metrics"] == {"mass_g": 5.7412, "volume_mm3": 4630.0, "material": "PLA",
-                              "mass_note": "4630 mm3 x 1.24 g/cm3 (PLA, build default)"}
+    assert ctx["metrics"] == {"mass_g": 5.7412, "volume_mm3": 4630.0}
     assert ctx["vars"] == {"width": 40.0}
     assert ui_context(rt).selected_part_id == "mount_plate"
 
@@ -57,6 +56,29 @@ def test_user_edits_are_labelled_untrusted_and_filtered_by_part(rt):
     assert [e["part_id"] for e in got] == ["mount_plate"]
     # reading the context counts as having seen the selected part's version
     assert _seen[_seen_key("run_a", rt.home / "parts" / "mount_plate")] == ctx["version"]
+
+
+def test_selection_from_another_build_does_not_leak(rt):
+    # D26: a part and run selected in build A never enter a lead's context in build B; the
+    # lead in build A still sees its own selection.
+    a = rt.store.create_project("A").id
+    b = rt.store.create_project("B").id
+    d = rt.home / "parts" / "mount_plate"
+    d.mkdir(parents=True)
+    (d / "metrics.json").write_text(json.dumps({"mass_g": 12.5}))
+    rt.store.register_part("mount_plate", a, label="Mount")
+    run_a = rt.store.create_run("designer", "claude-code", "sonnet", "t", project_id=a).id
+    ui_context(rt).update(selected_part_id="mount_plate", selected_run_id=run_a, picks=[])
+
+    lead_b = rt.store.create_run("designer", "claude-code", "sonnet", "t", project_id=b).id
+    ctx = build_context(rt, lead_b)
+    assert ctx["selected_part_id"] is None and ctx["metrics"] is None
+    assert ctx["selected_run_id"] is None
+
+    lead_a = rt.store.create_run("designer", "claude-code", "sonnet", "t", project_id=a).id
+    ctx = build_context(rt, lead_a)
+    assert ctx["selected_part_id"] == "mount_plate" and ctx["metrics"] == {"mass_g": 12.5}
+    assert ctx["selected_run_id"] == run_a
 
 
 async def test_context_route_needs_admin_token(rt):

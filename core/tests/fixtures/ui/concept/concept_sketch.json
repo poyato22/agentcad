@@ -1,0 +1,294 @@
+{
+  "sketch_id": "cks_1d3567e8c8c4",
+  "parent_sketch_id": null,
+  "run_id": "e411ee27277d",
+  "images": [
+    {
+      "view": "three_quarter",
+      "label": "3/4 front",
+      "render_id": "cks_1d3567e8c8c4_three_quarter",
+      "width": 1024,
+      "height": 1024,
+      "camera": {
+        "view": "three_quarter",
+        "forward": [
+          -0.62,
+          1.0,
+          -0.36
+        ],
+        "up": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "projection": "perspective",
+        "framing": {
+          "min": [
+            -383.371,
+            -450.871,
+            -2.1
+          ],
+          "max": [
+            383.371,
+            315.871,
+            525.0
+          ]
+        },
+        "size": [
+          1024,
+          1024
+        ],
+        "style": "sketch"
+      }
+    },
+    {
+      "view": "side",
+      "label": "Side",
+      "render_id": "cks_1d3567e8c8c4_side",
+      "width": 1024,
+      "height": 1024,
+      "camera": {
+        "view": "side",
+        "forward": [
+          -1.0,
+          0.0,
+          0.0
+        ],
+        "up": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "projection": "orthographic",
+        "framing": {
+          "min": [
+            -383.371,
+            -450.871,
+            -2.1
+          ],
+          "max": [
+            383.371,
+            315.871,
+            525.0
+          ]
+        },
+        "size": [
+          1024,
+          1024
+        ],
+        "style": "sketch"
+      }
+    }
+  ],
+  "notes": "Companion body on Athlete legs",
+  "callouts": [
+    {
+      "view": "side",
+      "x": 0.08,
+      "y": 0.12,
+      "text": "long legs",
+      "to": [
+        0.4,
+        0.7
+      ]
+    }
+  ],
+  "overlay_svg": {
+    "side": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1024 1024\" width=\"1024\" height=\"1024\"><line x1=\"81.9\" y1=\"122.9\" x2=\"409.6\" y2=\"716.8\" stroke=\"#1b1e23\" stroke-width=\"1.5\"/><circle cx=\"409.6\" cy=\"716.8\" r=\"3\" fill=\"#1b1e23\"/><text x=\"81.9\" y=\"122.9\" font-size=\"18\" fill=\"#1b1e23\" font-family=\"sans-serif\">long legs</text></svg>",
+    "three_quarter": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1024 1024\" width=\"1024\" height=\"1024\"></svg>"
+  },
+  "option": "Companion + Athlete",
+  "scale": {
+    "framing": {
+      "min": [
+        -383.371,
+        -450.871,
+        -2.1
+      ],
+      "max": [
+        383.371,
+        315.871,
+        525.0
+      ]
+    },
+    "figure": false,
+    "massing_size_mm": [
+      220.0,
+      675.0,
+      525.0
+    ]
+  },
+  "massing": {
+    "size_mm": [
+      220.0,
+      675.0,
+      525.0
+    ],
+    "volume_mm3": 22688651.05973043
+  },
+  "project_id": "453b20dbc0d5",
+  "build_id": "453b20dbc0d5",
+  "version": 1,
+  "created_at": 1793422094.6060958,
+  "feedback": [
+    {
+      "feedback_id": "ckf_193931c7b66d",
+      "version": 1,
+      "marks": [
+        {
+          "image": 0,
+          "comment": "rounder head",
+          "kind": "circle",
+          "cx": 0.5,
+          "cy": 0.36,
+          "r": 0.09,
+          "n": 1,
+          "view": "three_quarter",
+          "camera": {
+            "view": "three_quarter",
+            "forward": [
+              -0.62,
+              1.0,
+              -0.36
+            ],
+            "up": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "projection": "perspective",
+            "framing": {
+              "min": [
+                -383.371,
+                -450.871,
+                -2.1
+              ],
+              "max": [
+                383.371,
+                315.871,
+                525.0
+              ]
+            },
+            "size": [
+              1024,
+              1024
+            ],
+            "style": "sketch"
+          }
+        },
+        {
+          "image": 1,
+          "comment": "shorter body",
+          "kind": "lasso",
+          "points": [
+            [
+              0.3,
+              0.42
+            ],
+            [
+              0.62,
+              0.4
+            ],
+            [
+              0.66,
+              0.55
+            ],
+            [
+              0.32,
+              0.58
+            ]
+          ],
+          "n": 2,
+          "view": "side",
+          "camera": {
+            "view": "side",
+            "forward": [
+              -1.0,
+              0.0,
+              0.0
+            ],
+            "up": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "projection": "orthographic",
+            "framing": {
+              "min": [
+                -383.371,
+                -450.871,
+                -2.1
+              ],
+              "max": [
+                383.371,
+                315.871,
+                525.0
+              ]
+            },
+            "size": [
+              1024,
+              1024
+            ],
+            "style": "sketch"
+          }
+        },
+        {
+          "image": 0,
+          "comment": "thicker legs",
+          "kind": "pin",
+          "x": 0.42,
+          "y": 0.78,
+          "n": 3,
+          "view": "three_quarter",
+          "camera": {
+            "view": "three_quarter",
+            "forward": [
+              -0.62,
+              1.0,
+              -0.36
+            ],
+            "up": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "projection": "perspective",
+            "framing": {
+              "min": [
+                -383.371,
+                -450.871,
+                -2.1
+              ],
+              "max": [
+                383.371,
+                315.871,
+                525.0
+              ]
+            },
+            "size": [
+              1024,
+              1024
+            ],
+            "style": "sketch"
+          }
+        }
+      ],
+      "comment": "Love the stance; make the head friendlier.",
+      "annotated": [
+        {
+          "view": "three_quarter",
+          "image": 0,
+          "render_id": "ckf_193931c7b66d_three_quarter"
+        },
+        {
+          "view": "side",
+          "image": 1,
+          "render_id": "ckf_193931c7b66d_side"
+        }
+      ],
+      "project_id": "453b20dbc0d5",
+      "sketch_id": "cks_1d3567e8c8c4",
+      "created_at": 1793422094.679959
+    }
+  ]
+}

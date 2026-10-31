@@ -14,14 +14,20 @@ export function partMassG(p: Pick<PartSummary, "mass_g" | "metrics">): number | 
   return typeof m === "number" && Number.isFinite(m) ? m : null;
 }
 
-/** "12.4 g", "1.24 kg" (≥ 1 kg), or "—". */
-export function fmtMass(g: number | null, digits = 1): string {
+/** "—" when unknown; with `digits`, fixed grams ("12.40 g") up to 1 kg; without, about three
+ *  significant figures: "180 g", "12.3 g", "0.42 g". From 1 kg on: "1.24 kg", "12.5 kg". */
+export function fmtMass(g: number | null, digits?: number): string {
   if (g === null || !Number.isFinite(g)) return DASH;
-  return Math.abs(g) >= 1000 ? `${(g / 1000).toFixed(2)} kg` : fmtGrams(g, digits);
+  const a = Math.abs(g);
+  if (a >= 1000) return `${(g / 1000).toFixed(a >= 10_000 ? 1 : 2)} kg`;
+  if (digits !== undefined) return fmtGrams(g, digits);
+  if (a >= 100) return `${Math.round(g)} g`;
+  if (a >= 10) return `${g.toFixed(1)} g`;
+  return `${g.toFixed(a >= 1 ? 1 : 2)} g`;
 }
 
 /** The text a mass cell shows: the mass, "Σ" in front for a group's / parent's sum, or "—". */
-export function partMassText(p: Pick<PartSummary, "mass_g" | "metrics" | "mass_source">, digits = 1): string {
+export function partMassText(p: Pick<PartSummary, "mass_g" | "metrics" | "mass_source">, digits?: number): string {
   const g = partMassG(p);
   if (g === null) return DASH;
   return p.mass_source === "sum" ? `Σ ${fmtMass(g, digits)}` : fmtMass(g, digits);

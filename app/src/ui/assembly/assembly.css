@@ -1,140 +1,93 @@
-/* Assembly mode. Same drafting sheet as the Design viewer; one bold element: each joint's scale
-   (big live readout over a ticked rule). Blue only for selected / agent-changing / the face being
-   picked. Green / amber / red only for the check (pass / warn / fail). */
-.asm { display: grid; grid-template-columns: minmax(0, 1fr) 288px; height: 100%; min-height: 0; }
-.asm-sheet { min-width: 0; }
+/* The build view (Plan 9 visual spec, "the model is the hero"): the assembly full-bleed, chrome as
+   a few quiet floating surfaces — the viewer pill bottom-centre, a selection caption, an error
+   toast. Floating surfaces: radius 10px, panel at 92% with an 18px backdrop blur, one soft shadow;
+   buttons radius 7px; sentence case; numbers in Iosevka (tabular). Blue only for selected /
+   pressed / agent-changing; red / amber only for the check chip and interference tags. All from
+   the shell's tokens (--surface, --surface-blur, --shadow, --r-*, --font-ui, --font-num). */
+.asm { position: relative; height: 100%; min-height: 0; }
+.asm-sheet { min-width: 0; height: 100%; }
 
-/* Part | Assembly (U2b): the sheet's top-left corner in both modes (in the Design viewer it leads
-   .vp-corner, before Model | Code). A filled segmented control, sentence case, a step larger than
-   the uppercase view toggles: it says which view you are in. The selected half is inverted ink. */
-.mode-switch { position: absolute; left: 22px; top: 14px; z-index: 6; }
-.seg { display: inline-flex; gap: 2px; padding: 2px; background: var(--paper); border: 1px solid var(--line2); }
-.seg-btn {
-  font: var(--fs)/1 var(--font-mono); color: var(--dim); background: transparent; border: 0; border-radius: 0;
-  padding: 5px 14px; cursor: pointer;
+.asm-float, .asm-pill, .asm-caption, .asm-error, .asm-imm-bar {
+  background: var(--surface);
+  -webkit-backdrop-filter: blur(var(--surface-blur)); backdrop-filter: blur(var(--surface-blur));
+  border: 1px solid var(--line2); border-radius: var(--r-surface);
+  box-shadow: var(--shadow);
+  font-family: var(--font-ui);
+  font-size: 12.5px; color: var(--ink);
 }
-.seg-btn:hover { color: var(--ink); background: var(--paper2); }
-.seg-btn[aria-checked="true"] { color: var(--bg); background: var(--ink); cursor: default; }
-.seg-btn:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
-.viewer-tools .vt-btn:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; z-index: 1; }
 
-.asm-hint {
-  position: absolute; left: 22px; bottom: 22px; max-width: calc(100% - 44px);
-  font-size: var(--fs-small); color: var(--dim); background: var(--vp); padding: 4px 8px; border: 1px solid var(--line2);
-  pointer-events: none;
+/* ---- the viewer pill */
+.asm-pill {
+  position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 6;
+  display: flex; align-items: center; gap: 2px; padding: 4px; max-width: calc(100% - 32px);
+  flex-wrap: nowrap; justify-content: center; white-space: nowrap;
 }
-.asm-canvas-picking { cursor: crosshair; }
+.pill-btn {
+  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px;
+  font: inherit; color: color-mix(in srgb, var(--ink) 82%, var(--dim)); background: transparent; border: 0; border-radius: var(--r-btn);
+  cursor: pointer; white-space: nowrap;
+}
+.pill-btn:hover:not(:disabled) { color: var(--ink); background: var(--raised, var(--paper2)); }
+.pill-btn[aria-pressed="true"] { color: var(--ink); background: var(--blue-tint); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--blue) 55%, transparent); }
+.pill-btn:disabled { opacity: .45; cursor: default; }
+.pill-btn:focus-visible, .pill-axis:focus-visible, .pill-chip:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.pill-play { color: var(--ink); font-weight: 600; }
+.pill-clear { padding: 0 8px; }
+.pill-sep { width: 1px; height: 18px; margin: 0 4px; background: var(--line2); }
+.pill-section { display: inline-flex; align-items: center; gap: 8px; padding: 0 6px 0 2px; }
+.pill-axes { display: inline-flex; gap: 1px; padding: 2px; border-radius: var(--r-btn); background: var(--raised, var(--paper2)); }
+.pill-axis {
+  min-width: 24px; height: 22px; padding: 0 6px; font: 600 11px/1 var(--font-mono); color: color-mix(in srgb, var(--ink) 78%, var(--dim));
+  background: transparent; border: 0; border-radius: 5px; cursor: pointer;
+}
+.pill-axis:hover { color: var(--ink); }
+.pill-axis[aria-pressed="true"] { color: var(--ink); background: var(--paper); box-shadow: inset 0 0 0 1px var(--line2); }
+.pill-range { width: clamp(72px, 11vw, 168px); accent-color: var(--blue); }
+.pill-range:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; border-radius: 4px; }
+.num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+.pill-val { min-width: 56px; font-size: 11px; color: var(--ink); text-align: right; }
+.pill-chip {
+  display: inline-flex; align-items: center; gap: 6px; height: 24px; margin-left: 4px; padding: 0 9px;
+  border-radius: var(--r-btn); font-size: 11px; color: var(--ink); background: var(--raised, var(--paper2)); cursor: default;
+}
+.pill-chip[data-status="fail"] { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--red) 60%, transparent); }
+.pill-chip[data-status="warn"] { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 60%, transparent); }
+
+/* ---- the selection caption and errors (top-centre) */
+.asm-caption {
+  position: absolute; left: 50%; top: 14px; transform: translateX(-50%); z-index: 5; max-width: calc(100% - 32px);
+  padding: 6px 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none;
+}
+.asm-caption b { font-weight: 600; }
 .asm-error {
-  position: absolute; left: 50%; top: 46px; transform: translateX(-50%); max-width: min(560px, calc(100% - 44px));
-  display: flex; gap: 8px; align-items: center; padding: 5px 6px 5px 10px; background: var(--paper);
-  border: 1px solid var(--line2); color: var(--ink); font-size: var(--fs-small);
+  position: absolute; left: 50%; top: 52px; transform: translateX(-50%); z-index: 7; max-width: min(560px, calc(100% - 32px));
+  display: flex; gap: 8px; align-items: center; padding: 5px 6px 5px 12px;
 }
+.asm-empty { font-family: var(--font-ui); font-size: 12.5px; letter-spacing: 0; text-transform: none; }
+
 /* interference tag: hangs off the overlap, red (fail) */
 .asm-tag {
   position: absolute; transform: translate(-50%, calc(-100% - 10px)); white-space: nowrap; pointer-events: none;
-  font-size: var(--fs-small); color: var(--red); background: var(--vp); border: 1px solid var(--red); padding: 2px 6px;
+  font: 11px/1.4 var(--font-mono); color: var(--red); background: var(--vp); border: 1px solid var(--red); border-radius: var(--r-row); padding: 1px 6px;
   font-variant-numeric: tabular-nums;
 }
 .asm-tag::after {
   content: ""; position: absolute; left: 50%; top: 100%; width: 1px; height: 9px; background: var(--red);
 }
 
-/* ---- panel */
-.asm-panel {
-  display: flex; flex-direction: column; min-height: 0; overflow: auto; background: var(--paper);
-  border-left: 1px solid var(--line2);
+/* ---- Play: the assembly fills the window (above the shell), a bar to close it */
+.asm[data-immersive] { position: fixed; inset: 0; z-index: 60; background: var(--vp); }
+.asm[data-immersive] .asm-sheet { height: 100vh; }
+.asm-imm-bar {
+  position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 6;
+  display: flex; align-items: center; gap: 4px; padding: 4px 4px 4px 14px;
 }
-.asm-sec { border-bottom: 1px solid var(--line); padding-bottom: 6px; }
-.asm-sec:last-child { border-bottom: 0; }
-.asm-sec > .pane-head { position: sticky; top: 0; z-index: 1; }
-.asm-swatch { width: 8px; height: 8px; flex: none; border: 1px solid var(--line2); }
-.asm-hot { flex: none; color: var(--red); font-size: var(--fs-label); letter-spacing: .1em; text-transform: uppercase; }
-.asm-row-actions { display: flex; gap: 6px; padding: 6px 8px 0; flex-wrap: wrap; }
+.asm-imm-title { font-weight: 600; margin-right: 8px; }
 
-.asm-details, .asm-add { padding: 6px 8px 0; display: flex; flex-direction: column; gap: 6px; }
-.asm-details { border-top: 1px dashed var(--line2); margin-top: 4px; }
-.asm-add { border-top: 1px solid var(--line); margin-top: 6px; }
-.asm-field { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.asm-input {
-  font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line2); padding: 3px 6px; min-width: 0;
-  font-variant-numeric: tabular-nums;
-}
-.asm-input:focus-visible { outline: 1px solid var(--blue); outline-offset: -1px; }
-.asm-input:disabled { color: var(--faint); }
-.asm-check { display: flex; gap: 6px; align-items: flex-start; color: var(--dim); font-size: var(--fs-small); line-height: 1.35; }
-.asm-check input { margin: 1px 0 0; accent-color: var(--blue); }
-.asm-problem { margin: 0; color: var(--ink); font-size: var(--fs-small); border-left: 2px solid var(--amber); padding-left: 6px; }
-.asm-note { margin: 0; font-size: var(--fs-small); }
-.asm-xyz { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-.asm-turns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-.asm-turn { display: flex; align-items: center; gap: 0; }
-.asm-turn .faint { width: 12px; font-size: var(--fs-small); }
-.asm-turn .vt-btn { padding: 4px 5px; }
-
-/* ---- joints: the scale */
-.asm-joint { padding: 8px 8px 6px; border-bottom: 1px dashed var(--line2); }
-.asm-joint[data-animating] { background: var(--paper2); }
-.asm-joint-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.asm-joint-kind { font-weight: 700; color: var(--ink); }
-.asm-joint-pair { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dim); font-size: var(--fs-small); }
-.asm-x { padding: 4px 7px; }
-.asm-scale-row { margin-top: 6px; }
-.asm-readout { display: flex; align-items: baseline; justify-content: space-between; }
-.asm-value { font-size: 26px; line-height: 1.05; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
-.asm-unit { font-size: var(--fs); font-weight: 400; color: var(--dim); margin-left: 2px; }
-.asm-scale {
-  position: relative; height: 22px; margin-top: 2px;
-  /* a drafting rule: a tick every 10%, a taller one every 50% */
-  background:
-    linear-gradient(90deg, var(--dim) 1px, transparent 1px) 0 100% / 50% 9px repeat-x,
-    linear-gradient(90deg, var(--line2) 1px, transparent 1px) 0 100% / 10% 5px repeat-x;
-  border-bottom: 1px solid var(--line2);
-}
-.asm-scale::before { /* travel so far, from the low limit */
-  content: ""; position: absolute; left: 0; bottom: -1px; height: 2px; width: var(--pct); background: var(--ink);
-}
-.asm-scale input[type="range"] {
-  position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; background: transparent; cursor: ew-resize;
-  -webkit-appearance: none; appearance: none;
-}
-.asm-scale input[type="range"]::-webkit-slider-runnable-track { height: 100%; background: transparent; }
-.asm-scale input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none; appearance: none; width: 11px; height: 22px; background: var(--paper);
-  border: 1px solid var(--ink); margin-top: 0;
-}
-.asm-scale input[type="range"]::-moz-range-thumb { width: 11px; height: 22px; background: var(--paper); border: 1px solid var(--ink); border-radius: 0; }
-.asm-scale input[type="range"]:focus-visible { outline: none; }
-.asm-scale input[type="range"]:focus-visible::-webkit-slider-thumb { border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue); }
-.asm-joint[data-animating] .asm-scale input[type="range"]::-webkit-slider-thumb { background: var(--ink); }
-.asm-limits { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 3px; font-size: var(--fs-small); }
-.asm-limit { width: 62px; padding: 1px 4px; font-size: var(--fs-small); }
-.asm-limits .asm-limit:last-child { text-align: right; }
-
-/* ---- new joint */
-.asm-jointform { display: flex; flex-direction: column; gap: 7px; padding: 8px; border-top: 1px dashed var(--line2); }
-.asm-kinds { display: flex; flex-wrap: wrap; }
-.asm-kinds .vt-btn { margin-bottom: -1px; }
-.asm-face { border: 1px solid var(--line2); margin: 0; padding: 4px 6px 6px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.asm-face-active { border-color: var(--blue); }
-.asm-face-active legend { color: var(--blue2); }
-.asm-face legend { padding: 0 3px; }
-.asm-limits-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: var(--fs-small); }
-
-/* ---- check */
-.asm-check-body { padding: 4px 8px 0; display: flex; flex-direction: column; gap: 4px; }
-.asm-check-body p { margin: 0; font-size: var(--fs-small); display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
-.asm-check-body .led { align-self: center; }
-.asm-pass { color: var(--green); }
-.asm-fail { color: var(--ink); }
-.asm-fail b { color: var(--red); font-weight: 600; font-variant-numeric: tabular-nums; }
-.asm-warn { color: var(--ink); }
-
-@media (max-width: 1100px) {
-  .asm { grid-template-columns: minmax(0, 1fr) 248px; }
-}
+/* the view modes' section handle is drawn by ui/viewer/modes (modes.css) */
 @media (prefers-reduced-motion: reduce) {
-  .asm-scale::before { transition: none; }
+  .pill-btn, .pill-axis { transition: none; }
 }
 
-/* Plan 9 B2: the assembly's total mass, under the figure label */
-.asm-mass { position: absolute; left: 22px; top: 64px; z-index: 2; }
+/* Plan 9 B2: the assembly's total mass, top-left of the sheet */
+.asm-mass { position: absolute; left: 14px; top: 12px; z-index: 2; font-size: var(--fs); color: var(--dim); pointer-events: auto; }

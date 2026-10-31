@@ -25,7 +25,7 @@ def test_part_created_only_for_new_parts():
     a = announce.from_tool_result("mirror_part_create", {"part_id": "plate"},
                                   ok(part_id="plate", version=1))
     assert a == {"kind": "part_created", "title": "Created part plate",
-                 "ref": {"part_id": "plate"}}
+                 "ref": {"part_id": "plate", "thumb_url": "/parts/plate/thumb.png"}}
     assert announce.from_tool_result("mirror_part_create", {}, ok(part_id="p", version=3)) is None
     assert announce.from_tool_result("catalog_insert", {"item_id": "m3"},
                                      ok(part_id="m3_screw", existing=True)) is None
@@ -139,3 +139,52 @@ async def test_a_broken_mapper_never_fails_the_call(rt, monkeypatch):
     out = await rt.gate.call(lead, "assembly_add_part", {"part_id": "arm"}, call_id="c1",
                              workdir=rt.workdir(lead))
     assert out.ok
+
+
+def test_an_auto_placed_part_is_announced_as_added_too():
+    """Plan 9 D10: one create result → part_created (with its render) + assembly_added."""
+    inst = {"id": "i1", "part_id": "plate", "name": "plate", "fixed": True}
+    got = announce.all_from_tool_result(
+        "mirror_part_create", {"part_id": "plate"},
+        ok(part_id="plate", version=1, placed={"project_id": "b1", "instance": inst}))
+    assert [a["kind"] for a in got] == ["part_created", "assembly_added"]
+    assert got[0]["ref"]["thumb_url"] == "/parts/plate/thumb.png"
+    assert got[1]["ref"] == {"project_id": "b1", "instance_id": "i1", "part_id": "plate"}
+    # not placed (place: false, or a rebuild): only the part card
+    assert [a["kind"] for a in announce.all_from_tool_result(
+        "mirror_part_create", {}, ok(part_id="plate", version=1))] == ["part_created"]
+    assert announce.all_from_tool_result("mirror_part_create", {},
+                                         ToolOutput(ok=False, summary="x")) == []
+
+
+BOX = "VARS = {'s': 10.0}\n\ndef build(v):\n    return Box(v['s'], v['s'], v['s'])\n"
+
+
+@pytest.mark.slow
+@pytest.mark.timeout(240)
+async def test_an_agents_new_part_lands_in_the_assembly(rt):
+    lead = await _run(rt)
+    project = rt.store.get_run(lead).project_id
+    events = rt.events.subscribe()
+    for pid in ("cube_a", "cube_b"):
+        out = await rt.gate.call(lead, "mirror_part_create", {"part_id": pid, "script": BOX},
+                                 call_id=f"c-{pid}", workdir=rt.workdir(lead))
+        assert out.ok, out.summary
+        assert out.data["placed"]["project_id"] == project
+    asm = rt.assembly_store.get(project)
+    assert [i.part_id for i in asm.instances] == ["cube_a", "cube_b"]
+    assert asm.instances[0].fixed and not asm.instances[1].fixed
+    assert asm.instances[1].transform[0][3] >= 10        # beside the first cube, not inside it
+    kinds, changed = [], 0
+    while not events.queue.empty():
+        ev = events.queue.get_nowait()
+        if ev.type == "agent_announce":
+            kinds.append(ev.data["kind"])
+        changed += ev.type == "assembly_changed"
+    assert kinds == ["part_created", "assembly_added"] * 2 and changed == 2
+    # place: false opts out
+    out = await rt.gate.call(lead, "mirror_part_create",
+                             {"part_id": "cube_c", "script": BOX, "place": False},
+                             call_id="c3", workdir=rt.workdir(lead))
+    assert out.ok and "placed" not in out.data
+    assert len(rt.assembly_store.get(project).instances) == 2

@@ -32,7 +32,6 @@ import { TitleBlock } from "./TitleBlock";
 import { ViewerTools, type ViewMode, type ViewScope } from "./ViewerTools";
 import { AllPartsToggle } from "./Overview";
 import { SkeletonPanel } from "./SkeletonPanel";
-import { ModeSwitch } from "../assembly/mode";
 import { materialOf } from "../../lib/appearance";
 import { backgroundStyle, edgeInk, isLight, viewerBackground } from "./background";
 import { BackgroundMenu } from "./BackgroundMenu";
@@ -41,16 +40,16 @@ import { explodeOffset } from "./modes/explode";
 import type { ModeHost } from "./scene";
 import "./viewer.css";
 import { addPartMenuItem, measureHook } from "../left/partMenuHooks";
-import { setDesignMode } from "../assembly/mode";
+import { closePart, openPart } from "../assembly/focus";
 import { requestModify } from "./tool";
 
 // U2a's part actions in U8's part menu (the one place a part's actions live): Measure opens the
 // viewer's measure tool on the part; Modify… opens the ops form (hole / shell / fillet / chamfer).
-measureHook.value = (ids) => { if (ids[0]) actions.selectPart(ids[0]); setDesignMode("part"); viewerTool.value = "measure"; };
+measureHook.value = (ids) => { if (ids[0]) openPart(ids[0]); viewerTool.value = "measure"; };
 addPartMenuItem({
   label: "Modify…", single: true,
   disabled: (ids) => { const p = parts.peek().find((x) => x.part_id === ids[0]); return !p || p.metrics === null || (p.kind ?? "part") !== "part"; },
-  run: (ids) => { const id = ids[0]; if (!id) return; actions.selectPart(id); setDesignMode("part"); requestModify(id); },
+  run: (ids) => { const id = ids[0]; if (!id) return; openPart(id); requestModify(id); },
 });
 
 /** The part on the sheet: the selected one, else the first part (state/selection.ts). */
@@ -168,6 +167,8 @@ export function Viewer(): JSX.Element {
   const [bgOpen, setBgOpen] = useState(false);   // View ▸ Background… (U8's picker)
   const [bounds, setBounds] = useState({ w: 1, h: 1 });
   const [chip, setChip] = useState<Chip | null>(null);
+  /** Something on the sheet that Esc closes first (a label, the ops, a comment, a pin). */
+  const chipOpen = useRef(false);
   const [picks, setPicks] = useState<Picked[]>([]);
   const [measured, setMeasured] = useState<MeasureState>(IDLE);
   const measureSeq = useRef(0);
@@ -390,7 +391,8 @@ export function Viewer(): JSX.Element {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === "m" || e.key === "M") { e.preventDefault(); viewerTool.value = viewerTool.peek() === "measure" ? "select" : "measure"; }
       else if (e.key === "Escape" && viewerTool.peek() !== "select") { e.preventDefault(); viewerTool.value = "select"; }
-      else if (e.key === "Escape") setChip(null);
+      else if (e.key === "Escape" && chipOpen.current) { setChip(null); setOps(null); setComment(null); setOpenPin(null); }
+      else if (e.key === "Escape") { e.preventDefault(); closePart(); }   // D7: back to the assembly
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -478,6 +480,7 @@ export function Viewer(): JSX.Element {
     setOps({ seq: ++pickSeq.current, partId: c.partId, target: { face, edge, point: face ? c.point : null }, at: c.at, keyboard: false, baseVersion: c.baseVersion });
   }
 
+  chipOpen.current = chip !== null || ops !== null || comment !== null || openPin !== null;
   const v = viewerRef.current;
   const shownIds = new Set(shown.map((p) => p.part_id));
   // m11: a pin rides with its exploded body (it used to hang in mid-air at its rest point)
@@ -501,10 +504,11 @@ export function Viewer(): JSX.Element {
         onPointerUp={onPointerUp}
       />
       <span class="tick tick-tl" /><span class="tick tick-tr" /><span class="tick tick-bl" /><span class="tick tick-br" />
-      {/* the sheet corner holds only Part | Assembly (U2b), above the Code view (M-1); the script
-          opens from View ▸ Part script, and while it shows a "Back to the model" button sits here */}
+      {/* Plan 9 D7: one part open alone; the corner leads back to the build's assembly (or Esc).
+          The script opens from View ▸ Part script, and while it shows "Back to the model" sits here */}
       <div class="vp-corner">
-        <ModeSwitch />
+        <button type="button" class="vt-btn vp-back-asm" data-testid="back-to-assembly" title="Back to the assembly (Esc)"
+          onClick={() => closePart()}>← Assembly</button>
         {tab === "code" && (
           <button type="button" class="vt-btn vp-back" onClick={() => { viewTab.value = "model"; }}>Back to the model</button>
         )}

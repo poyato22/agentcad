@@ -1,138 +1,160 @@
-/* Home (the launcher). Monochrome, one Iosevka family, hairline borders — the grid of model
-   previews carries the page; everything else stays quiet. Tokens only (tokens.css). */
+/* Home (the launcher). Full window, no top bar (D23): its own header keeps clear of the macOS
+   traffic lights and is the window's drag region. The covers carry the page; everything else is
+   quiet. Tokens only (tokens.css). */
 .home {
   position: absolute;
-  inset: 0;   /* the page region already sits under the top bar */
+  inset: 0;
   overflow-y: auto;
   background: var(--bg);
   color: var(--ink);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--fs);
 }
 
 .home-bar {
   position: sticky;
   top: 0;
-  z-index: 1;
+  z-index: 2;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 16px;
-  padding: 20px 24px 14px;
-  background: var(--bg);
-  border-bottom: 1px solid var(--line);
+  height: var(--chrome-h);                  /* text on the traffic lights' centre line */
+  padding: 0 24px 0 var(--chrome-inset-x);
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  -webkit-backdrop-filter: blur(var(--surface-blur));
+  backdrop-filter: blur(var(--surface-blur));
 }
 .home-title {
   margin: 0;
-  font-family: var(--font-head);
-  font-weight: 600;
-  font-size: 20px;
-  letter-spacing: 0.01em;
+  font: 600 var(--fs-display)/1 var(--font-head);
+  letter-spacing: -0.01em;
 }
 .home-tools {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   margin-left: auto;
 }
 .home-search {
-  width: 220px;
-  max-width: 44vw;
-  height: 26px;
-  padding: 0 9px;
+  width: 200px;
+  max-width: 30vw;
+  height: 28px;
+  padding: 0 10px;
   background: var(--paper);
-  color: var(--ink);
-  border: 1px solid var(--line2);
-  border-radius: 5px;
-  font: inherit;
+  border: 1px solid var(--line);
+  border-radius: var(--r-btn);
 }
 .home-search:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
-.home-sort { display: flex; align-items: center; gap: 6px; color: var(--dim); }
-.home-sort .label { font-size: var(--fs-label); text-transform: none; }
+.home-sort { display: flex; align-items: center; gap: 6px; color: var(--dim); margin-left: 4px; }
 .home-sort select {
-  height: 26px;
-  padding: 0 6px;
+  height: 28px;
+  padding: 0 8px;
   background: var(--paper);
-  color: var(--ink);
-  border: 1px solid var(--line2);
-  border-radius: 5px;
-  font: inherit;
+  border: 1px solid var(--line);
+  border-radius: var(--r-btn);
 }
-.home-trash {
-  height: 26px;
+.home-sep { width: 1px; height: 18px; margin: 0 6px; background: var(--line); }
+.home-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 28px;
   padding: 0 11px;
-  background: var(--paper);
+  background: transparent;
   color: var(--dim);
-  border: 1px solid var(--line2);
-  border-radius: 5px;
-  font: inherit;
+  border: 0;
+  border-radius: var(--r-btn);
+  font: 500 var(--fs)/1 var(--font-ui);
   cursor: pointer;
+  transition: background-color var(--t-fast) ease, color var(--t-fast) ease;
 }
-.home-trash.on { color: var(--ink); border-color: var(--blue); background: var(--blue-tint); }
-.home-trash:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.home-tool:hover { color: var(--ink); background: var(--raised); }
+.home-tool.on { color: var(--ink); background: var(--raised); box-shadow: inset 0 0 0 1px var(--line2); }
+.home-tool:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.home-working-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
 
 .home-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(196px, 1fr));
-  gap: 16px;
-  padding: 20px 24px 32px;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 22px 18px;
+  padding: 12px 24px 40px;
   margin: 0;
   list-style: none;
   align-content: start;
 }
-.home-cell { display: flex; flex-direction: column; }
+.home-cell { display: flex; flex-direction: column; min-width: 0; }
 .home-cell > .tile { flex: 1; }
 
 .home-error {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 12px 24px 0;
-  padding: 7px 10px;
+  margin: 8px 24px 0;
+  padding: 8px 12px;
   border: 1px solid var(--red);
-  border-radius: 5px;
+  border-radius: var(--r-row);
   color: var(--ink);
 }
 .home-error-x { margin-left: auto; background: none; border: none; color: var(--dim); font: inherit; cursor: pointer; }
 
-/* --- a tile --- */
+.home-trashbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 4px 24px 0;
+  min-height: 32px;
+}
+.home-confirm { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; }
+.home-trashbar > .btn { margin-left: auto; }
+
+/* --- a tile: the cover full-bleed on top, then name and facts; no box around the facts */
 .tile {
+  position: relative;
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  color: var(--ink);
+  font: inherit;
+}
+.tile-open {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   padding: 0;
   text-align: left;
-  background: var(--paper);
-  color: var(--ink);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  overflow: hidden;
+  background: none;
+  border: 0;
+  color: inherit;
   font: inherit;
   cursor: pointer;
-  transition: border-color 120ms ease;
 }
-button.tile:hover { border-color: var(--line2); }
-button.tile:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.tile-open:focus-visible { outline: none; }
+.tile-open:focus-visible .tile-thumb { outline: 2px solid var(--blue); outline-offset: 2px; }
 
 .tile-thumb {
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 16 / 10;
   display: grid;
   place-items: center;
-  background: var(--vp);
-  background-image: linear-gradient(var(--grid-faint) 1px, transparent 1px),
-                    linear-gradient(90deg, var(--grid-faint) 1px, transparent 1px);
-  background-size: 18px 18px;
-  border-bottom: 1px solid var(--line);
+  overflow: hidden;
+  border-radius: var(--r-surface);
+  /* a soft studio backdrop under the transparent cover */
+  background:
+    radial-gradient(120% 90% at 50% 30%, color-mix(in srgb, var(--paper2) 100%, transparent) 0%, var(--paper) 70%);
+  box-shadow: inset 0 0 0 1px var(--line);
+  transition: box-shadow var(--t-fast) ease, transform var(--t-open) ease;
 }
-.tile-img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.tile-open:hover .tile-thumb { box-shadow: inset 0 0 0 1px var(--line2), var(--shadow); }
+.tile-img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .thumb-blank {
   width: 100%; height: 100%;
   display: grid; place-items: center;
   color: var(--faint);
-  font-size: 30px;
+  font-size: var(--fs-small);
 }
 
-.tile-body { display: flex; flex-direction: column; gap: 3px; padding: 9px 11px 11px; }
+.tile-body { display: flex; flex-direction: column; gap: 3px; padding: 0 2px; min-width: 0; }
 .tile-name {
-  font-weight: 600;
+  font: 600 var(--fs-title)/1.25 var(--font-ui);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -140,59 +162,143 @@ button.tile:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px;
 .tile-meta {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
+  color: var(--dim);
   font-size: var(--fs-small);
+  min-width: 0;
 }
+.tile-meta .num { color: var(--ink); }
+.tile-dot { color: var(--faint); }
 
-.tile-restore {
+/* hover ⋯: the tile's actions (also its context menu) */
+.tile-more {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 30px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--r-btn);
+  background: var(--surface);
+  -webkit-backdrop-filter: blur(var(--surface-blur));
+  backdrop-filter: blur(var(--surface-blur));
+  color: var(--ink);
+  font: 600 15px/1 var(--font-ui);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--t-fast) ease;
+}
+.tile:hover .tile-more, .tile-more:focus-visible, .tile-more[aria-expanded="true"] { opacity: 1; }
+.tile-more:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.tile-menu {
+  position: fixed;
+  z-index: 40;
+  min-width: 180px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+}
+.tile-menu-item {
+  height: 30px;
+  padding: 0 10px;
+  text-align: left;
+  border: 0;
+  border-radius: var(--r-row);
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+.tile-menu-item:hover, .tile-menu-item:focus-visible { background: var(--raised); outline: none; }
+.tile-menu-danger { color: var(--red); }
+
+/* the Trash */
+.tile-trashed .tile-thumb { opacity: 0.7; }
+.tile-trashed .tile-img, .tile-trashed .thumb-blank { filter: grayscale(1); }
+.tile-trashed .tile-name { color: var(--dim); }
+.tile-trashed .tile-body { margin-top: 10px; }
+.tile-link {
   padding: 0;
   background: none;
   border: none;
-  color: var(--blue);
+  color: var(--blue2);
   font: inherit;
   font-size: var(--fs-small);
   cursor: pointer;
 }
-.tile-restore:hover { text-decoration: underline; }
-.tile-trashed { cursor: default; opacity: 0.85; }
-.tile-trashed .tile-img, .tile-trashed .thumb-blank { filter: grayscale(1); }
+.tile-link:hover { text-decoration: underline; }
+.tile-link:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; border-radius: 2px; }
+.tile-link-danger { color: var(--red); }
+.tile-confirm { display: flex; align-items: center; gap: 10px; font-size: var(--fs-small); }
 
-/* --- the New-build tile --- */
-.tile-new {
-  display: grid;
-  place-items: center;
-  gap: 8px;
-  aspect-ratio: auto;
-  min-height: 180px;
-  background: transparent;
-  border-style: dashed;
-  border-color: var(--line2);
-  color: var(--dim);
-}
-button.tile-new:hover { color: var(--ink); border-color: var(--blue); }
-.tile-plus { font-size: 28px; line-height: 1; }
-.tile-new-label { font-size: var(--fs-small); }
-.tile-new-input {
-  width: 78%;
-  height: 26px;
-  padding: 0 8px;
+/* --- header actions (review m1): Import drawing… and the primary New build, not grid tiles */
+.home-tools .btn { min-height: 28px; }
+.home-new { padding: 3px 14px; }
+.home-new-field { display: inline-flex; }
+.home-new-input {
+  width: 180px;
+  height: 28px;
+  padding: 0 10px;
   background: var(--paper);
-  color: var(--ink);
   border: 1px solid var(--blue);
-  border-radius: 5px;
-  font: inherit;
-  text-align: center;
+  border-radius: var(--r-btn);
 }
 
 .home-empty { grid-column: 1 / -1; padding: 24px 2px; }
 
-@media (max-width: 560px) {
-  .home-bar { flex-wrap: wrap; padding: 16px 16px 12px; }
-  .home-tools { margin-left: 0; width: 100%; }
-  .home-search { flex: 1; max-width: none; }
-  .home-grid { padding: 16px; gap: 12px; }
+/* Undo after "Move to Trash" (D30): a floating toast, bottom centre */
+.home-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 9px 10px 9px 16px;
+  background: var(--surface);
+  -webkit-backdrop-filter: blur(var(--surface-blur));
+  backdrop-filter: blur(var(--surface-blur));
+  border: 1px solid var(--line);
+  border-radius: var(--r-surface);
+  box-shadow: var(--shadow);
 }
+.home-toast-undo {
+  height: 26px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--r-btn);
+  background: var(--raised);
+  color: var(--blue2);
+  font: 600 var(--fs)/1 var(--font-ui);
+  cursor: pointer;
+}
+.home-toast-undo:hover { color: var(--ink); }
+.home-toast-undo:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
 
-/* m2: drawing-import results span the page above the grid (not squeezed into the drop tile's cell) */
-.home-imports { padding: 16px 24px 0; max-width: 1100px; }
+/* a Home sub-view (Onshape, parts library): the page under Home's own header */
+.home-sub { display: flex; flex-direction: column; overflow: hidden; }
+.home-sub .home-bar { position: static; flex: none; }
+.home-sub-body { flex: 1; min-height: 0; position: relative; }
+.home-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--r-btn);
+  background: transparent;
+  color: var(--dim);
+  font: 500 var(--fs)/1 var(--font-ui);
+  cursor: pointer;
+}
+.home-back:hover { color: var(--ink); background: var(--raised); }
+.home-back:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+
+/* m2: drawing-import results span the page above the grid (not squeezed into a grid cell) */
+.home-imports { padding: 12px 24px 0; max-width: 1100px; }
 .home-imports:empty { display: none; }

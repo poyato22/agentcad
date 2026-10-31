@@ -37,6 +37,16 @@ class InstanceBody(BaseModel):
         return check_part_id(v)
 
 
+class RemoveParts(BaseModel):
+    part_ids: list[str]
+
+
+class RestoreBody(BaseModel):
+    """remove_parts' `undo`, sent back as is (the app's own answer; admin token only)."""
+    instances: list[dict] = []
+    joints: list[dict] = []
+
+
 class InstancePatch(BaseModel):
     part_id: str | None = None
     name: str | None = None
@@ -131,6 +141,23 @@ def build_assembly_router(runtime: Runtime) -> APIRouter:
             raise _not_found(e)
         _changed(project_id)
         return {"removed_instance": iid, "removed_joints": removed}
+
+    # Plan 9 D29: the parts tree's "Remove from assembly" and its Undo (exact: ids, places, the
+    # placed-by-core mark, and every joint that came loose)
+    @router.post("/projects/{project_id}/assembly/remove_parts")
+    async def remove_parts(project_id: str, body: RemoveParts):
+        taken = store.take_out(project_id, body.part_ids)
+        if taken["instances"]:
+            _changed(project_id)
+        return {"removed_instances": [i["id"] for i in taken["instances"]],
+                "removed_joints": [j["id"] for j in taken["joints"]], "undo": taken}
+
+    @router.post("/projects/{project_id}/assembly/restore")
+    async def restore(project_id: str, body: RestoreBody):
+        ni, nj = store.put_back(project_id, {"instances": body.instances, "joints": body.joints})
+        if ni or nj:
+            _changed(project_id)
+        return {"restored_instances": ni, "restored_joints": nj}
 
     @router.post("/projects/{project_id}/assembly/joints", status_code=201)
     async def add_joint(project_id: str, body: JointBody):

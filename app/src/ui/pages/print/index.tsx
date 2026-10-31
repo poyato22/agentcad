@@ -19,16 +19,29 @@ import { printersChanged } from "../../../state/printers";
 import { Button } from "../../common/Button";
 import { Led } from "../../common/Led";
 import { describeError } from "../../profile/common";
+import { DrawingPage } from "../drawing";
 import { PartPicker } from "../drawing/PartPicker";
 import "../drawing/drawing.css";
 import { PageShell } from "../PageShell";
 import { setConsoleCollapsed } from "../router";
 import { LAN_NOTE, PrinterForm } from "./PrinterForm";
+import { printMode, PrintModeSwitch } from "./mode";
 import { printerLight, printOutcome, sendBlock } from "./printLogic";
 import { currentPrint, currentSlice, POLL, usePoll, usePrinterStatus } from "./usePrint";
 import "./print.css";
 
 const INSTALL_FALLBACK = "brew install --cask prusaslicer";
+
+/** The Print tab (D21): the `3D print | Drawing` switch above whichever mode is chosen. */
+export function PrintSection(): JSX.Element {
+  const mode = printMode.value;
+  return (
+    <div class="print-root" data-print-mode={mode}>
+      <div class="print-modebar"><PrintModeSwitch /></div>
+      <div class="print-mode-body">{mode === "drawing" ? <DrawingPage /> : <PrintPage />}</div>
+    </div>
+  );
+}
 
 export function PrintPage(): JSX.Element {
   const part = activePart.value;

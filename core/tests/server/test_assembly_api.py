@@ -26,6 +26,29 @@ def test_routes_need_token(client):
     assert client.get("/projects/p/assembly").status_code == 401
 
 
+def test_remove_parts_and_undo_put_instances_and_their_joints_back_exactly(client, rt):
+    """Plan 9 D29 (re-review N1): the tree's Remove from assembly, then Undo."""
+    add = lambda part, name, fixed=False: client.post(  # noqa: E731
+        "/projects/p/assembly/instances", headers=AUTH, json={"part_id": part, "name": name, "fixed": fixed}).json()
+    base, lid, pin = add("plate", "base", True), add("lid", "lid"), add("pin", "pin")
+    j1 = client.post("/projects/p/assembly/joints", headers=AUTH,
+                     json={"kind": "revolute", "a": _frame(base["id"]), "b": _frame(lid["id"])}).json()
+    j2 = client.post("/projects/p/assembly/joints", headers=AUTH,
+                     json={"kind": "fixed", "a": _frame(lid["id"]), "b": _frame(pin["id"])}).json()
+    rt.assembly_store.mark_auto("p", pin["id"])
+    before = rt.assembly_store.get("p")
+    r = client.post("/projects/p/assembly/remove_parts", headers=AUTH, json={"part_ids": ["lid"]})
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["removed_instances"] == [lid["id"]] and sorted(out["removed_joints"]) == sorted([j1["id"], j2["id"]])
+    assert [i.id for i in rt.assembly_store.get("p").instances] == [base["id"], pin["id"]]
+    back = client.post("/projects/p/assembly/restore", headers=AUTH, json=out["undo"]).json()
+    assert back == {"restored_instances": 1, "restored_joints": 2}
+    after = rt.assembly_store.get("p")
+    assert after.model_dump() == before.model_dump()          # ids, order, transforms, joints
+    assert rt.assembly_store.auto_ids("p") == {pin["id"]}
+
+
 def test_instance_crud_and_solve(client):
     base = client.post("/projects/p/assembly/instances", headers=AUTH,
                         json={"part_id": "plate", "name": "base", "fixed": True})

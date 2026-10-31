@@ -3,7 +3,7 @@
 // then done with Cancel and delete, and the live activity indicators in the thread.
 import type { Page } from "@playwright/test";
 import type { AgentRun } from "../../src/api/types";
-import { expect, test } from "./fixtures";
+import { consoleMenu, expect, showRun, test } from "./fixtures";
 import { CORE_URL } from "./ports";
 
 const DES = "b7c79a57cbb4";       // the scenario's running designer run
@@ -55,7 +55,7 @@ test("cmd_shift_a_opens_the_manager_with_the_orchestrator_worker_tree_and_esc_cl
 test("the_build_lead_with_its_titled_sub_agent_and_a_message_queued_while_it_works", async ({ page, fake }) => {
   await open(page);
   // a routed prompt starts the build's lead; it spawns a titled sub-agent and keeps working
-  await page.getByRole("button", { name: "New", exact: true }).click();
+  await consoleMenu(page, "New run…");
   const form = page.getByRole("form", { name: "New run" });
   await form.getByLabel("Task").fill("Build me a drone");
   await form.getByRole("button", { name: "Start" }).click();     // waits for the model to prefill
@@ -67,7 +67,7 @@ test("the_build_lead_with_its_titled_sub_agent_and_a_message_queued_while_it_wor
   // R16: the card shows in the lead's thread
   await expect(page.locator("[data-announce=agent_spawned]")).toContainText("Started an agent");
   // I2: the lead is still working — the composer stays usable and the message queues
-  await page.getByRole("button", { name: "New", exact: true }).click();
+  await consoleMenu(page, "New run…");
   await form.getByLabel("Task").fill("paint it red");
   await form.getByRole("button", { name: "Start" }).click();
   const queued = page.locator("[data-kind=queued]", { hasText: "paint it red" });
@@ -85,7 +85,7 @@ test("the_build_lead_with_its_titled_sub_agent_and_a_message_queued_while_it_wor
 
 test("a_working_run_is_refused_in_plain_words_then_cancel_and_delete_removes_it", async ({ page, fake }) => {
   await open(page);
-  await page.getByRole("button", { name: "Manage", exact: true }).click();
+  await page.keyboard.press("Meta+Shift+KeyA");   // the agent manager (no console button bar, Plan 9 D2)
   const r = row(page, DES);
   await r.getByRole("button", { name: /^More for / }).click();
   await r.getByRole("menuitem", { name: "Delete…" }).click();
@@ -125,7 +125,8 @@ test("after_a_core_restart_the_console_follows_the_new_lead", async ({ page, fak
   // a native lead from the previous core process, finished
   const first = run("lead01", { agent: "engineer", task: "build robot arm", role: "lead", project_id: build, created_at: Date.now() / 1000 });
   await fake.emit({ type: "run_finished", run_id: first.id, data: { status: "done" } }, { run: first });
-  await page.locator("[data-region=left]").getByRole("button", { name: /engineer · build robot arm/ }).click();
+  // Plan 9 D9: the left pane's History is gone; the agent manager opens the lead
+  await showRun(page, first.id);
   await expect(page.getByTestId("target-chip")).toContainText("engineer · build robot arm");
   await fake.restartCore();
   const cmd = page.getByLabel("Command line");

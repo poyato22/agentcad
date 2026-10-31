@@ -1,25 +1,40 @@
-/* Design tokens. Exact values from the plan's Global Constraints — do not add colors.
+/* Design tokens — Plan 9 Visual spec (D20, "the model is the hero"). The build is a full-bleed
+   studio viewport; chrome is a few quiet floating surfaces.
+
    Blue: selected / being changed by an agent / needs the human. Only.
    Green / amber / red: pass / warn / fail (amber also marks locked interfaces). Only.
+   No other accent colors.
+
+   The token NAMES predate Plan 9 and every surface consumes them, so they stay; their values are
+   the Visual spec's:
+     --bg      Graphite  #14161a  page / viewport edge
+     --paper   Panel     #1b1e23  floating surfaces (as --surface: 92% opacity + 18px blur)
+     --paper2  Raised    #252930  hover / selected rows   (also --raised)
+     --line    Hairline  #2f343b
+     --ink     #e9ebee · --dim #9aa1aa
+   New in Plan 9: --surface / --surface-blur / --shadow (floating surfaces only), --raised,
+   --r-surface 10px / --r-row 6px / --r-btn 7px, --font-ui (Instrument Sans) and --font-num
+   (Iosevka, numbers and dimensions only), and the type scale 11 / 12.5 / 14 / 18 px.
 
    Themes are applied through `data-theme` on <html> (ui/profile stores theme in the profile):
-   - the dark palette (unchanged values) lives on :root and is the default;
+   - the dark palette lives on :root and is the default;
    - `data-theme="light"` and `data-theme="system"` under prefers-color-scheme: light switch to the
      light palette below. Setting it to "dark" always keeps the dark palette. */
 :root {
-  --bg: #0a0a0a;
-  --paper: #111111;
-  --paper2: #161616;
-  --head: #141414;
-  --vp: #0d0d0d;
-  --line: #242424;
-  --line2: #333333;
-  --ink: #ececec;
-  --dim: #9a9a9a;
-  --faint: #5e5e5e;
-  --blue: #3d8bff;
+  --bg: #14161a;
+  --paper: #1b1e23;
+  --paper2: #252930;
+  --raised: #252930;
+  --head: #1b1e23;
+  --vp: #16181c;
+  --line: #2f343b;
+  --line2: #3b414a;
+  --ink: #e9ebee;
+  --dim: #9aa1aa;
+  --faint: #6b727c;
+  --blue: #4b93ff;   /* AA on Raised: 4.81:1 (Plan 9 review m3) */
   --blue2: #8dbaff;
-  --blue-tint: rgba(61,139,255,.10);
+  --blue-tint: rgba(75,147,255,.10);
   --green: #4fd18b;
   --amber: #f2b134;
   --red: #ff5a4a;
@@ -27,21 +42,44 @@
      stays ≥4.5:1 — dark on the light dark-mode blue, white on the darker light-mode blue. */
   --on-blue: #111111;
 
+  /* Floating surfaces (left surface, agent dock, viewer pill, menus): Panel at 92% over the
+     viewport, blurred; the one soft shadow in the app. */
+  --surface: rgba(27,30,35,.92);
+  --surface-blur: 18px;
+  --shadow: 0 10px 30px rgba(0,0,0,.38), 0 1px 3px rgba(0,0,0,.30);
+
   /* Viewer drafting grid (on top of --vp); tinted per theme so it follows the viewport. */
   --grid-strong: rgba(255,255,255,.07);
   --grid-faint: rgba(255,255,255,.025);
   /* Viewer mesh (read by ui/viewer/loadPart.ts + scene.ts; grey only). */
-  --mesh-face: #2a2a2a;
-  --mesh-edge: #e6e6e6;
+  --mesh-face: #2a2e35;
+  --mesh-edge: #e6e8eb;
 
   color-scheme: dark;
 
+  /* Type: Instrument Sans for every UI word; Iosevka only for numbers and dimensions (mass,
+     lengths, costs, stresses — tabular figures) and code. Sentence case everywhere. */
+  --font-ui: "Instrument Sans", -apple-system, BlinkMacSystemFont, "Helvetica Neue", system-ui, sans-serif;
+  --font-num: "Iosevka", ui-monospace, Menlo, monospace;
+  /* code and machine text (scripts, logs, paths); the same face as --font-num */
   --font-mono: "Iosevka", ui-monospace, Menlo, monospace;
-  /* Headings use the same family at a heavier weight — no second typeface. */
-  --font-head: "Iosevka", ui-monospace, Menlo, monospace;
-  --fs: 12px;
-  --fs-small: 10.5px;
-  --fs-label: 9.5px;
+  /* headings and section titles: the UI face at a heavier weight */
+  --font-head: var(--font-ui);
+  /* scale: 11 / 12.5 / 14 / 18 */
+  --fs-label: 11px;
+  --fs-small: 11px;
+  --fs: 12.5px;
+  --fs-title: 14px;
+  --fs-display: 18px;
+
+  /* Shape */
+  --r-surface: 10px;
+  --r-row: 6px;
+  --r-btn: 7px;
+
+  /* Motion: only in response to an action, ≤160ms; zero under reduced motion (base.css). */
+  --t-fast: 120ms;
+  --t-open: 160ms;
 
   /* macOS overlay title bar: tauri.conf.json's trafficLightPosition moves the traffic lights so
      their vertical centre is --chrome-center-y (the middle of the 44px top bar) on every macOS
@@ -53,7 +91,7 @@
   --left-w: 240px;
   --console-w: 420px;
   --console-rail-w: 36px;
-  --pane-head-h: 24px;
+  --pane-head-h: 28px;
 
   /* macOS overlay traffic lights sit top-left; keep content out of this zone on every
      full-height surface that touches the top-left corner. */
@@ -61,61 +99,68 @@
   --chrome-inset-y: 32px; /* the lights end at y≈29 (centre 22, 14px tall) */
 }
 
-/* ---- light palette: the pages/models/UX Global Constraints values, except where the contrast
-   ruling (text ≥ 4.5:1 on bg/paper/paper2) needed darker text tones: --faint #6a6a6a (ruled), and
-   --green/--amber/--blue2, which are also used as text, darkened in hue (constraint swatches
-   #1f8a4c / #b7790f / #2f6fe0 measured 3.3–4.3:1). The two blocks below must stay identical
+/* ---- light palette: the same roles in light (parity with dark). Text tones are dark enough for
+   WCAG AA (≥ 4.5:1) on bg / paper / paper2; --green/--amber/--blue2 are also used as text, so
+   they are darker than their dark-mode values. The two blocks below must stay identical
    (theme.test.ts checks parity). */
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #f4f4f2;
+  --bg: #f2f3f5;
   --paper: #ffffff;
-  --paper2: #ececea;
-  --head: #ececea;
-  --vp: #ffffff;
-  --line: #d6d6d2;
-  --line2: #bdbdb8;
-  --ink: #111111;
-  --dim: #4a4a4a;
-  --faint: #6a6a6a;
+  --paper2: #eceef2;
+  --raised: #eceef2;
+  --head: #ffffff;
+  --vp: #f7f8fa;
+  --line: #dde0e5;
+  --line2: #c6cbd2;
+  --ink: #15171b;
+  --dim: #4b525c;
+  --faint: #5f6670;
   --blue: #0a5bd8;
   --blue2: #2560c4;
   --blue-tint: rgba(10,91,216,.10);
   --green: #17763f;
   --amber: #8f5e0a;
-  --red: #c8321e;
+  --red: #c02f1c;
   --on-blue: #ffffff;
 
-  --grid-strong: rgba(10,20,40,.09);
-  --grid-faint: rgba(10,20,40,.035);
-  --mesh-face: #d6d6d2;
-  --mesh-edge: #4a4a4a;
+  --surface: rgba(255,255,255,.92);
+  --shadow: 0 10px 30px rgba(20,28,40,.12), 0 1px 3px rgba(20,28,40,.10);
+
+  --grid-strong: rgba(10,20,40,.08);
+  --grid-faint: rgba(10,20,40,.03);
+  --mesh-face: #d9dce1;
+  --mesh-edge: #4b525c;
 }
 
 @media (prefers-color-scheme: light) {
   :root[data-theme="system"] {
     color-scheme: light;
-    --bg: #f4f4f2;
+    --bg: #f2f3f5;
     --paper: #ffffff;
-    --paper2: #ececea;
-    --head: #ececea;
-    --vp: #ffffff;
-    --line: #d6d6d2;
-    --line2: #bdbdb8;
-    --ink: #111111;
-    --dim: #4a4a4a;
-    --faint: #6a6a6a;
+    --paper2: #eceef2;
+    --raised: #eceef2;
+    --head: #ffffff;
+    --vp: #f7f8fa;
+    --line: #dde0e5;
+    --line2: #c6cbd2;
+    --ink: #15171b;
+    --dim: #4b525c;
+    --faint: #5f6670;
     --blue: #0a5bd8;
     --blue2: #2560c4;
     --blue-tint: rgba(10,91,216,.10);
     --green: #17763f;
     --amber: #8f5e0a;
-    --red: #c8321e;
+    --red: #c02f1c;
     --on-blue: #ffffff;
 
-    --grid-strong: rgba(10,20,40,.09);
-    --grid-faint: rgba(10,20,40,.035);
-    --mesh-face: #d6d6d2;
-    --mesh-edge: #4a4a4a;
+    --surface: rgba(255,255,255,.92);
+    --shadow: 0 10px 30px rgba(20,28,40,.12), 0 1px 3px rgba(20,28,40,.10);
+
+    --grid-strong: rgba(10,20,40,.08);
+    --grid-faint: rgba(10,20,40,.03);
+    --mesh-face: #d9dce1;
+    --mesh-edge: #4b525c;
   }
 }

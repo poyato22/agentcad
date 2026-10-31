@@ -72,13 +72,42 @@ def _latest(runtime, run_id: str, pred) -> dict | None:
     return None
 
 
+def _part_in_project(runtime, part_id: str, run_project: str | None) -> bool:
+    """D26 defence in depth: a selected part only enters a run's context when it belongs to that
+    run's build. An unknown build (no run yet) and a part not in the store (on-disk only) are
+    not filtered; a part registered to a different build is dropped."""
+    if run_project is None:
+        return True
+    try:
+        part = runtime.store.get_part(part_id)
+    except Exception:  # noqa: BLE001 - a lookup failure never fails context
+        return True
+    return part is None or part.project_id == run_project
+
+
+def _run_in_project(runtime, sel_run_id: str, run_project: str | None) -> bool:
+    """D26: a selected run only feeds this run's context when it is in the same build."""
+    if run_project is None:
+        return True
+    try:
+        return runtime.store.get_run(sel_run_id).project_id == run_project
+    except KeyError:
+        return True
+
+
 def build_context(runtime, run_id: str | None = None) -> dict:
     """The selection plus: the selected part's metrics and vars, the Onshape document the
-    selected run (else `run_id`) opened last, and that run's most recent simulation."""
+    selected run (else `run_id`) opened last, and that run's most recent simulation.
+
+    The user's selection is global, but a lead only ever sees it when it belongs to the lead's
+    own build: a part or run selected in another build never leaks into this one (D26)."""
     ui = ui_context(runtime)
+    run_project = _run_project(runtime, run_id)
     metrics = vars_ = None
     version = None
     pid = ui.selected_part_id
+    if pid and not _part_in_project(runtime, pid, run_project):
+        pid = None
     if pid and PART_ID_RE.match(pid):
         d = Path(runtime.home) / "parts" / pid
         metrics, vars_ = _part_json(d, "metrics.json"), _part_json(d, "vars.json")
@@ -89,6 +118,8 @@ def build_context(runtime, run_id: str | None = None) -> dict:
         if run_id and metrics is not None:
             note_seen(run_id, d, version)   # the run has now seen this version of the part
     selected = ui.selected_run_id if not _is_ui_run(runtime, ui.selected_run_id) else None
+    if selected and not _run_in_project(runtime, selected, run_project):
+        selected = None
     source_run = selected or run_id
     doc_url = recent_sim = None
     if source_run:

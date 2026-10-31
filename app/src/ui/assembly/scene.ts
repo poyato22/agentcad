@@ -1,23 +1,19 @@
-// Three.js scene for assembly mode: one group per instance (posed by its 4x4, mm, Z up) holding a
-// clone of its part's model, an iso orthographic camera like the Design viewer, picking, and a
-// TransformControls gizmo. Rendered on demand.
-//
-// The gizmo drives either a free part (move / turn, snapped 1 mm / 15°) or a jointed part along
-// its joint only: a turn ring about a revolute axis, an arrow along a slider. It moves a proxy;
-// the controller poses the real groups from the values it reports.
+// Three.js scene for the build view (the assembly): one group per instance (posed by its 4x4, mm,
+// Z up) holding a clone of its part's model, an iso orthographic camera like the Design viewer,
+// click-to-select, and the view modes' host (ui/viewer/modes: section, X-ray, explode) so the
+// assembly gets the same modes as the part viewer, on the instances' poses. Rendered on demand.
+// Double-click on empty space (or F, AssemblyView) fits the camera.
 //
 // Colors: part color when set, else the theme's grey; selected edges blue; red faces where parts
 // interfere (status: fail); blue edges while an agent's change glides in.
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { TransformControls } from "three/addons/controls/TransformControls.js";
 import type { Mat4 } from "../../api/assembly";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import type { MaterialParams } from "../../lib/appearance";
 import { meshColors, type PartScene } from "../viewer/loadPart";
-import { fitOrtho, ISO_AZIMUTH_DEG, ISO_ELEVATION_DEG, type RendererLike } from "../viewer/scene";
+import { fitOrtho, ISO_AZIMUTH_DEG, ISO_ELEVATION_DEG, type ModeHost, type RendererLike, type ShownPart } from "../viewer/scene";
 import type { Vec3 } from "./kinematics";
-import { angleAboutZ, snapMove, snapTurn, TURN_STEP_DEG } from "./snap";
 
 export interface SceneInstance {
   id: string; template: PartScene | null; color: string | null;
@@ -26,27 +22,11 @@ export interface SceneInstance {
   material?: MaterialParams;
 }
 
-/** Where the gizmo sits and what it moves. */
-export type GizmoSpec =
-  | null
-  | { kind: "free"; id: string; mode: "move" | "turn"; transform: Mat4; snap: boolean }
-  | { kind: "joint"; frame: Mat4; motion: "turn" | "slide"; value: number; sign: 1 | -1; snap: boolean };
-
-export interface PickMarker { instanceId: string; origin: Vec3; axis: Vec3; role: "a" | "b" | "hover" }
-
 export interface OverlayLabel { key: string; x: number; y: number; text: string }
 
 export interface SceneCallbacks {
-  /** A click on a part (null: empty space). Not called while picking faces. */
+  /** A click on a part (null: empty space). */
   onSelect(id: string | null): void;
-  /** A click on a part while picking: hit point and surface normal in that part's coordinates. */
-  onPick(instanceId: string, point: Vec3, normal: Vec3): void;
-  /** Pointer over a part while picking (null: off every part); return the marker to show. */
-  onHoverPick(instanceId: string | null, point: Vec3, normal: Vec3): PickMarker | null;
-  onDragStart(): void;
-  /** Free part: its new transform. Joint: the new joint value (gizmo sign applied). */
-  onDrag(v: { transform: Mat4 } | { value: number }): void;
-  onDragEnd(v: { transform: Mat4 } | { value: number }): void;
   /** Interference tags, in canvas CSS pixels, after every render. */
   onLabels(labels: OverlayLabel[]): void;
 }
@@ -60,12 +40,11 @@ export interface AssemblyScene {
   setArriving(on: boolean): void;
   /** Spheres the moving parts can sweep through (joint origin + reach); the camera frames them too. */
   setReach(spheres: readonly { center: Vec3; radius: number }[]): void;
-  setPicking(on: boolean): void;
-  setMarkers(markers: readonly PickMarker[]): void;
-  setGizmo(spec: GizmoSpec): void;
   fit(): void;
-  /** A world point (mm) → client pixels; the gizmo handle under the pointer. Test probes. */
-  probe(): { project(p: Vec3): { x: number; y: number }; gizmoAxis(): string | null };
+  /** What the view modes drive (ui/viewer/modes): the instances as shown parts, by instance id. */
+  modeHost(): ModeHost;
+  /** A world point (mm) → client pixels. Test probe. */
+  probe(): { project(p: Vec3): { x: number; y: number } };
   resize(w: number, h: number): void;
   dispose(): void;
 }
@@ -76,28 +55,20 @@ export function toMatrix4(m: Mat4): THREE.Matrix4 {
   return new THREE.Matrix4().set(...(m.flat() as Parameters<THREE.Matrix4["set"]>));
 }
 
-export function fromMatrix4(m: THREE.Matrix4): Mat4 {
-  const e = m.elements;
-  return [0, 1, 2, 3].map((r) => [0, 1, 2, 3].map((c) => {
-    const v = e[c * 4 + r];
-    return Math.abs(v) < 1e-12 ? 0 : v;
-  }));
-}
-
-function tokens(): { face: string; edge: string; blue: string; red: string; dim: string } {
+function tokens(): { face: string; edge: string; blue: string; red: string } {
   const base = meshColors();
-  let blue = ""; let red = ""; let dim = "";
+  let blue = ""; let red = "";
   if (typeof document !== "undefined" && typeof getComputedStyle === "function") {
     const s = getComputedStyle(document.documentElement);
     blue = s.getPropertyValue("--blue").trim();
     red = s.getPropertyValue("--red").trim();
-    dim = s.getPropertyValue("--dim").trim();
   }
-  return { ...base, blue: blue || "#3d8bff", red: red || "#ff5a4a", dim: dim || "#9a9a9a" };
+  return { ...base, blue: blue || "#3d8bff", red: red || "#ff5a4a" };
 }
 
 function defaultRenderer(canvas: HTMLCanvasElement): RendererLike {
-  return new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
+  // stencil: the section caps (viewer/modes/section.ts) fill the cut by stencil parity
+  return new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true, stencil: true });
 }
 
 interface Entry { id: string; group: THREE.Group; body: THREE.Object3D | null; template: PartScene | null; color: string | null; material: MaterialParams | null }
@@ -122,8 +93,6 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
 
   const root = new THREE.Group();
   scene.add(root);
-  const markerRoot = new THREE.Group();
-  scene.add(markerRoot);
 
   let width = 1; let height = 1;
   let frame = 0;
@@ -133,13 +102,12 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
   let selected: string | null = null;
   let interference: { a: string[]; b: string[]; text: string }[] = [];
   let arriving = false;
-  let picking = false;
-  let markers: PickMarker[] = [];
-  let hoverMarker: PickMarker | null = null;
   /** The parts (with geometry) the camera was last fitted to: a part added or removed refits. */
   let fittedKey = "";
   let reach: { center: Vec3; radius: number }[] = [];
   const FIT_MARGIN = 1.15;
+  /** The view modes re-apply after every restyle (fresh materials, opacity reset). */
+  const restyled = new Set<() => void>();
 
   const draw = () => {
     frame = 0;
@@ -152,106 +120,6 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
   const orbit = new OrbitControls(camera, canvas);
   orbit.enableDamping = false;
   orbit.addEventListener("change", requestRender);
-
-  // ---- gizmo
-  const gizmo = new TransformControls(camera, canvas);
-  gizmo.setSize(0.75);
-  const helper = gizmo.getHelper();
-  scene.add(helper);
-  const jointFrame = new THREE.Group();
-  jointFrame.matrixAutoUpdate = false;
-  scene.add(jointFrame);
-  const proxy = new THREE.Object3D();
-  let spec: GizmoSpec = null;
-  const startQ = new THREE.Quaternion();
-  const startP = new THREE.Vector3();
-  let lastValue = 0;
-  let justDragged = false;
-
-  function gizmoColors(): void {
-    gizmo.setColors(colors.dim, colors.dim, colors.dim, colors.blue);
-  }
-  gizmoColors();
-
-  function proxyValue(): number {
-    if (!spec || spec.kind !== "joint") return 0;
-    const raw = spec.motion === "turn" ? angleAboutZ(proxy.quaternion, lastValue * spec.sign) : proxy.position.z;
-    const step = spec.motion === "turn" ? TURN_STEP_DEG : 1;
-    const v = spec.snap ? Math.round(raw / step) * step : Math.round(raw * 10) / 10;
-    return v * spec.sign;
-  }
-
-  function placeProxyForJoint(value: number): void {
-    if (!spec || spec.kind !== "joint") return;
-    proxy.position.set(0, 0, 0);
-    proxy.quaternion.identity();
-    if (spec.motion === "turn") proxy.quaternion.setFromAxisAngle(new THREE.Vector3(0, 0, 1), THREE.MathUtils.degToRad(value * spec.sign));
-    else proxy.position.z = value * spec.sign;
-    proxy.updateMatrixWorld(true);
-  }
-
-  gizmo.addEventListener("dragging-changed", (e) => {
-    const dragging = (e as unknown as { value: boolean }).value;
-    orbit.enabled = !dragging;
-    if (dragging) {
-      startQ.copy(proxy.quaternion);
-      startP.copy(proxy.position);
-      if (spec?.kind === "joint") lastValue = spec.value;
-      cb.onDragStart();
-    } else {
-      justDragged = true;
-      cb.onDragEnd(current());
-    }
-  });
-  gizmo.addEventListener("objectChange", () => {
-    if (!spec) return;
-    if (spec.kind === "free" && spec.snap) {
-      if (spec.mode === "move") proxy.position.fromArray(snapMove(startP.toArray(), proxy.position.toArray()));
-      else proxy.quaternion.copy(snapTurn(startQ, proxy.quaternion));
-    }
-    if (spec.kind === "joint") {
-      const v = proxyValue();
-      lastValue = v;
-      placeProxyForJoint(v);
-    }
-    cb.onDrag(current());
-    requestRender();
-  });
-  gizmo.addEventListener("change", requestRender);
-
-  function current(): { transform: Mat4 } | { value: number } {
-    if (spec?.kind === "joint") return { value: lastValue };
-    proxy.updateMatrix();
-    return { transform: fromMatrix4(proxy.matrix) };
-  }
-
-  function applyGizmo(next: GizmoSpec): void {
-    if (gizmo.dragging) return; // the drag owns the proxy until it ends
-    spec = next;
-    gizmo.detach();
-    proxy.removeFromParent();
-    if (!next || picking) { requestRender(); return; }
-    gizmo.showX = gizmo.showY = gizmo.showZ = true;
-    if (next.kind === "free") {
-      scene.add(proxy);
-      const m = toMatrix4(next.transform);
-      m.decompose(proxy.position, proxy.quaternion, proxy.scale);
-      gizmo.setSpace("world");
-      gizmo.setMode(next.mode === "move" ? "translate" : "rotate");
-    } else {
-      jointFrame.matrix.copy(toMatrix4(next.frame));
-      jointFrame.updateMatrixWorld(true);
-      jointFrame.add(proxy);
-      lastValue = next.value;
-      placeProxyForJoint(next.value);
-      gizmo.setSpace("local");
-      gizmo.setMode(next.motion === "turn" ? "rotate" : "translate");
-      gizmo.showX = false;
-      gizmo.showY = false;
-    }
-    gizmo.attach(proxy);
-    requestRender();
-  }
 
   // ---- materials
 
@@ -318,6 +186,7 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
       });
     }
     rebuildOverlaps();
+    for (const f of [...restyled]) f();
     requestRender();
   }
 
@@ -366,53 +235,6 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
     body?.removeFromParent();
   }
 
-  // ---- markers (picked faces, hover)
-
-  function markerObject(m: PickMarker): THREE.Object3D {
-    const g = new THREE.Group();
-    const e = entries.get(m.instanceId);
-    const size = e?.template ? Math.max(2, e.template.bbox.getSize(new THREE.Vector3()).length() * 0.08) : 4;
-    const mat = new THREE.LineBasicMaterial({ color: colors.blue, depthTest: false, transparent: true, opacity: m.role === "hover" ? 0.6 : 1 });
-    const pts: THREE.Vector3[] = [];
-    for (let i = 0; i <= 48; i++) { const t = (i / 48) * Math.PI * 2; pts.push(new THREE.Vector3(Math.cos(t) * size, Math.sin(t) * size, 0)); }
-    const ring = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), mat);
-    const stem = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(0, 0, size * 2)]), mat);
-    g.add(ring, stem);
-    if (m.role !== "hover") {
-      const dot = new THREE.Mesh(new THREE.CircleGeometry(size * 0.35, 24), new THREE.MeshBasicMaterial({ color: colors.blue, depthTest: false, side: THREE.DoubleSide }));
-      g.add(dot);
-    }
-    g.renderOrder = 10;
-    g.traverse((o) => { o.renderOrder = 10; });
-    const z = new THREE.Vector3(...m.axis).normalize();
-    g.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), z);
-    g.position.set(...m.origin);
-    const holder = new THREE.Group();
-    holder.matrixAutoUpdate = false;
-    if (e) holder.matrix.copy(e.group.matrix);
-    holder.userData["instanceId"] = m.instanceId;
-    holder.add(g);
-    return holder;
-  }
-
-  function rebuildMarkers(): void {
-    for (const c of [...markerRoot.children]) {
-      c.traverse((o) => {
-        if (o instanceof THREE.Line || o instanceof THREE.Mesh) { o.geometry.dispose(); (o.material as THREE.Material).dispose(); }
-      });
-      c.removeFromParent();
-    }
-    for (const m of [...markers, ...(hoverMarker ? [hoverMarker] : [])]) markerRoot.add(markerObject(m));
-    requestRender();
-  }
-
-  function syncMarkerPoses(): void {
-    for (const c of markerRoot.children) {
-      const e = entries.get(c.userData["instanceId"] as string);
-      if (e) c.matrix.copy(e.group.matrix);
-    }
-  }
-
   // ---- labels
 
   const box = new THREE.Box3();
@@ -437,61 +259,50 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
   const ray = new THREE.Raycaster();
   const ndc = new THREE.Vector2();
 
-  function hit(ev: PointerEvent): { id: string; point: Vec3; normal: Vec3 } | null {
+  function hit(ev: PointerEvent | MouseEvent): string | null {
     const r = canvas.getBoundingClientRect();
     ndc.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
     ray.setFromCamera(ndc, camera);
     const meshes: THREE.Object3D[] = [];
     for (const e of entries.values()) e.body?.traverse((o) => { if (o instanceof THREE.Mesh) meshes.push(o); });
-    const h = ray.intersectObjects(meshes, false)[0];
-    if (!h || !h.face) return null;
+    // a section keeps only the near side: a hit on a clipped-away face is not a hit
+    const plane = sectionPlane();
+    const h = ray.intersectObjects(meshes, false).find((x) => !plane || plane.distanceToPoint(x.point) >= -1e-6);
+    if (!h) return null;
     let o: THREE.Object3D | null = h.object;
     while (o && o.userData["instanceId"] === undefined) o = o.parent;
     const id = o?.userData["instanceId"] as string | undefined;
-    const e = id ? entries.get(id) : undefined;
-    if (!e) return null;
-    const inv = e.group.matrixWorld.clone().invert();
-    const p = h.point.clone().applyMatrix4(inv);
-    const n = h.face.normal.clone().transformDirection(h.object.matrixWorld).transformDirection(inv);
-    const r3 = (v: THREE.Vector3): Vec3 => [Number(v.x.toFixed(4)), Number(v.y.toFixed(4)), Number(v.z.toFixed(4))];
-    return { id: e.id, point: r3(p), normal: r3(n.normalize()) };
+    return id && entries.has(id) ? id : null;
   }
 
-  let down: { x: number; y: number; onGizmo: boolean } | null = null;
-  const onDown = (ev: PointerEvent) => { down = { x: ev.clientX, y: ev.clientY, onGizmo: gizmo.axis !== null }; };
+  /** The section's clip plane while one is on (read off the parts' materials). */
+  function sectionPlane(): THREE.Plane | null {
+    for (const e of entries.values()) {
+      let found: THREE.Plane | null = null;
+      e.body?.traverse((o) => {
+        if (!found && o instanceof THREE.Mesh) found = (o.material as THREE.Material).clippingPlanes?.[0] ?? null;
+      });
+      if (found) return found;
+    }
+    return null;
+  }
+
+  let down: { x: number; y: number } | null = null;
+  const onDown = (ev: PointerEvent) => { down = { x: ev.clientX, y: ev.clientY }; };
   const onUp = (ev: PointerEvent) => {
     const d = down;
     down = null;
-    if (!d || d.onGizmo || justDragged) { justDragged = false; return; }
-    if (Math.hypot(ev.clientX - d.x, ev.clientY - d.y) > 4) return; // an orbit, not a click
-    const h = hit(ev);
-    if (picking) { if (h) cb.onPick(h.id, h.point, h.normal); return; }
-    cb.onSelect(h?.id ?? null);
+    if (!d || Math.hypot(ev.clientX - d.x, ev.clientY - d.y) > 4) return; // an orbit, not a click
+    cb.onSelect(hit(ev));
   };
-  let moveFrame = 0;
-  let lastMove: PointerEvent | null = null;
-  const onMove = (ev: PointerEvent) => {
-    if (!picking) return;
-    lastMove = ev;
-    if (moveFrame) return;
-    moveFrame = requestAnimationFrame(() => {
-      moveFrame = 0;
-      if (!lastMove || !picking) return;
-      const h = hit(lastMove);
-      const next = h ? cb.onHoverPick(h.id, h.point, h.normal) : cb.onHoverPick(null, [0, 0, 0], [0, 0, 1]);
-      const same = next && hoverMarker && next.instanceId === hoverMarker.instanceId && next.origin.join() === hoverMarker.origin.join() && next.axis.join() === hoverMarker.axis.join();
-      if (same || (!next && !hoverMarker)) return;
-      hoverMarker = next;
-      canvas.style.cursor = next ? "crosshair" : "";
-      rebuildMarkers();
-    });
-  };
+  // D6: Fit is a double-click on empty space (or F)
+  const onDbl = (ev: MouseEvent) => { if (hit(ev) === null) fit(); };
   canvas.addEventListener("pointerdown", onDown);
   canvas.addEventListener("pointerup", onUp);
-  canvas.addEventListener("pointermove", onMove);
+  canvas.addEventListener("dblclick", onDbl);
 
   // ---- theme
-  const onTheme = () => { colors = tokens(); gizmoColors(); restyle(); rebuildMarkers(); };
+  const onTheme = () => { colors = tokens(); restyle(); };
   const themeObserver = typeof MutationObserver === "function" && typeof document !== "undefined" ? new MutationObserver(onTheme) : null;
   themeObserver?.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
   const osScheme = typeof window !== "undefined" && typeof window.matchMedia === "function" ? window.matchMedia("(prefers-color-scheme: light)") : null;
@@ -525,11 +336,49 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
     requestRender();
   }
 
+  // ---- the view modes' host: each posed instance is one shown part. Its bbox is its template's
+  // box through the instance pose (the assembled layout: an explode never moves it).
+  const shown = new Map<string, ShownPart>();
+  function shownParts(): readonly ShownPart[] {
+    const out: ShownPart[] = [];
+    for (const e of entries.values()) {
+      if (!e.body || !e.template) { shown.delete(e.id); continue; }
+      let s = shown.get(e.id);
+      if (!s || s.scene.object !== e.body) {
+        const body = e.body as THREE.Group;
+        const tpl = e.template;
+        const group = e.group;
+        s = {
+          id: e.id, color: e.color, focus: false, ...(e.material ? { material: e.material } : {}),
+          scene: { object: body, get bbox() { group.updateMatrixWorld(true); return tpl.bbox.clone().applyMatrix4(group.matrixWorld); }, dispose() { /* the scene's */ } },
+        };
+        shown.set(e.id, s);
+      }
+      out.push(s);
+    }
+    return out;
+  }
+  /** Parts moved (a glide, an animation): the view modes re-place their caps and outline, once a
+   *  frame at most (review M1: a moving part's cut never shows hollow). */
+  let modesFrame = 0;
+  function followModes(): void {
+    if (modesFrame || disposed || restyled.size === 0) return;
+    modesFrame = requestAnimationFrame(() => { modesFrame = 0; if (!disposed) for (const f of [...restyled]) f(); });
+  }
+
+  const host: ModeHost = {
+    scene, camera, controls: orbit, canvas,
+    parts: shownParts,
+    requestRender,
+    onRestyle(f) { restyled.add(f); return () => { restyled.delete(f); }; },
+    enableLocalClipping() { renderer.localClippingEnabled = true; },
+  };
+
   return {
     setInstances(list) {
       const keep = new Set(list.map((i) => i.id));
       for (const [id, e] of entries) {
-        if (!keep.has(id)) { disposeBody(e.body); e.group.removeFromParent(); entries.delete(id); }
+        if (!keep.has(id)) { disposeBody(e.body); e.group.removeFromParent(); entries.delete(id); shown.delete(id); }
       }
       for (const inst of list) {
         let e = entries.get(inst.id);
@@ -562,23 +411,16 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
       }
       root.updateMatrixWorld(true);
       rebuildOverlaps();
-      syncMarkerPoses();
-      markerRoot.updateMatrixWorld(true);
       refitIfNew();
+      followModes();
       requestRender();
     },
     setSelected(id) { selected = id; restyle(); },
     setInterference(pairs) { interference = [...pairs]; restyle(); },
     setArriving(on) { if (arriving !== on) { arriving = on; restyle(); } },
     setReach(list) { reach = [...list]; },
-    setPicking(on) {
-      picking = on;
-      if (!on) { hoverMarker = null; canvas.style.cursor = ""; rebuildMarkers(); }
-      applyGizmo(on ? null : spec);
-    },
-    setMarkers(list) { markers = [...list]; rebuildMarkers(); },
-    setGizmo(next) { applyGizmo(next); },
     fit,
+    modeHost: () => host,
     probe() {
       return {
         project(p) {
@@ -586,7 +428,6 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
           const r = canvas.getBoundingClientRect();
           return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height };
         },
-        gizmoAxis: () => gizmo.axis,
       };
     },
     resize(w, h) {
@@ -604,20 +445,18 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
     dispose() {
       disposed = true;
       if (frame) cancelAnimationFrame(frame);
-      if (moveFrame) cancelAnimationFrame(moveFrame);
+      if (modesFrame) cancelAnimationFrame(modesFrame);
       canvas.removeEventListener("pointerdown", onDown);
       canvas.removeEventListener("pointerup", onUp);
-      canvas.removeEventListener("pointermove", onMove);
-      gizmo.detach();
-      gizmo.dispose();
+      canvas.removeEventListener("dblclick", onDbl);
       orbit.dispose();
       themeObserver?.disconnect();
       osScheme?.removeEventListener("change", onTheme);
       for (const e of entries.values()) disposeBody(e.body);
       unitBox.dispose(); unitEdges.dispose(); overlapFill.dispose(); overlapLine.dispose();
       entries.clear();
-      markers = []; hoverMarker = null;
-      rebuildMarkers();
+      shown.clear();
+      restyled.clear();
       envTex?.dispose();
       renderer.dispose();
     },

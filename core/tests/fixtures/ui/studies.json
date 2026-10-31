@@ -34,16 +34,16 @@
         },
         "sim_failed_by_case": {},
         "sim_ids_by_case": {
-          "desk_load": "sim_1a1fb6722bbb",
-          "drop_hit": "sim_c3f28783fea8"
+          "desk_load": "sim_c96e774e8c6f",
+          "drop_hit": "sim_762418420860"
         },
         "variant": "e5"
       },
       "n": 5
     },
-    "created_at": 1793416282.856253,
+    "created_at": 1793426501.713297,
     "geometry_only": false,
-    "id": "study_9159992cb3de",
+    "id": "study_0068ec61dec4",
     "iterations": [
       {
         "feasible": false,
@@ -78,8 +78,8 @@
           },
           "sim_failed_by_case": {},
           "sim_ids_by_case": {
-            "desk_load": "sim_cc6a83fada5c",
-            "drop_hit": "sim_ab9563420154"
+            "desk_load": "sim_fed3c9288825",
+            "drop_hit": "sim_c740dcaf6669"
           },
           "sims_removed": true,
           "variant": "e0"
@@ -123,8 +123,8 @@
           },
           "sim_failed_by_case": {},
           "sim_ids_by_case": {
-            "desk_load": "sim_c5185315aeb8",
-            "drop_hit": "sim_996b68674973"
+            "desk_load": "sim_412ce105ef6e",
+            "drop_hit": "sim_95f80731a7d0"
           },
           "sims_removed": true,
           "variant": "e1"
@@ -168,8 +168,8 @@
           },
           "sim_failed_by_case": {},
           "sim_ids_by_case": {
-            "desk_load": "sim_5c36d30f8f4d",
-            "drop_hit": "sim_3c8dcf427455"
+            "desk_load": "sim_f07665a42bad",
+            "drop_hit": "sim_45f74771a976"
           },
           "sims_removed": true,
           "variant": "e2"
@@ -213,8 +213,8 @@
           },
           "sim_failed_by_case": {},
           "sim_ids_by_case": {
-            "desk_load": "sim_b9d7ae14ac90",
-            "drop_hit": "sim_1b7f7d5886be"
+            "desk_load": "sim_fe2dd27a73a0",
+            "drop_hit": "sim_e4136edb2254"
           },
           "variant": "e3"
         },
@@ -257,8 +257,8 @@
           },
           "sim_failed_by_case": {},
           "sim_ids_by_case": {
-            "desk_load": "sim_848c399333bd",
-            "drop_hit": "sim_c9cb598e70c8"
+            "desk_load": "sim_636b5723331f",
+            "drop_hit": "sim_2edb16339e0d"
           },
           "variant": "e4"
         },
@@ -301,8 +301,8 @@
           },
           "sim_failed_by_case": {},
           "sim_ids_by_case": {
-            "desk_load": "sim_4808836cf518",
-            "drop_hit": "sim_2e18810285fa"
+            "desk_load": "sim_5b8a48ecb071",
+            "drop_hit": "sim_35814da9bf42"
           },
           "variant": "e5"
         },
@@ -322,7 +322,7 @@
     "objective": "min_mass",
     "part_id": "mount_plate",
     "project_id": "74ab71a5279a",
-    "run_id": "17cf0308f7ed",
+    "run_id": "edf2ca24e0e9",
     "solver": "CalculiX",
     "status": "done",
     "variables": [

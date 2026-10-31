@@ -16,12 +16,14 @@ import type { JSX } from "preact";
 import { memo } from "preact/compat";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { appearanceName, materialOf, swatchStyle, type MaterialParams } from "../../lib/appearance";
-import { partMassNote, partMassText } from "../../lib/mass";
 import { partName } from "../../lib/names";
 import { activeBuildId } from "../../state/builds";
 import { agentFlash } from "../../state/partEdits";
 import { parts, selectedPartId } from "../../state/store";
 import { viewScope } from "../viewer/Viewer";
+import { openPart } from "../assembly/focus";
+import { ConfirmDelete } from "./ConfirmDelete";
+import { masses, rowMassText } from "./mass";
 import { AppearancePopover } from "./AppearancePopover";
 import { swatchName } from "./colors";
 import { changingParts } from "./derived";
@@ -31,7 +33,7 @@ import { PartProperties } from "./PartProperties";
 import { clickSelect, selectedIds, targetsFor } from "./partSelection";
 import { dropPosAt, flatten, planDrop, planIndent, planOutdent, planStep, type DropPos, type Move } from "./tree";
 import {
-  addToAssembly, commitMove, deleteParts, duplicateParts, exportPart, renamePart, setColor, setFinish, treeError, treeNote,
+  addToAssembly, commitMove, deleteParts, duplicateParts, exportPart, instanceCount, removalOf, removeFromAssembly, renamePart, setColor, setFinish, treeError, treeNote,
 } from "./treeActions";
 import { hiddenParts, isolate, setHidden, showAll } from "./visibility";
 import "./partlist.css";
@@ -50,6 +52,7 @@ type Pop =
   | { kind: "menu"; id: string; at: { x: number; y: number } }
   | { kind: "look"; id: string; anchor: { left: number; top: number; bottom: number } }
   | { kind: "props"; id: string; anchor: { left: number; top: number } }
+  | { kind: "delete" | "remove"; id: string; ids: string[]; anchor: { left: number; top: number } }
   | null;
 
 /** The handlers every row calls; one stable object, so rows can be memoized on their values. */
@@ -129,7 +132,7 @@ const PartRow = memo(function PartRow(p: RowProps): JSX.Element {
               {p.busy && <span class="tag-changing">changing</span>}
             </button>
           )}
-        <span class="row-hint faint" data-testid="row-mass" title={p.massNote ?? undefined}>{p.mass}</span>
+        <span class="row-hint num" data-testid="row-mass" title={p.massNote ?? undefined}>{p.mass}</span>
         <button type="button" class="tree-more" tabIndex={-1} aria-haspopup="menu" aria-expanded={p.menuOpen} aria-label={`Actions for ${p.name}`}
           title="Actions (right-click the row)" onClick={(e) => c.current.menu(e, p.id)}>⋯</button>
       </div>
@@ -187,6 +190,7 @@ export function PartList(): JSX.Element {
   useEffect(() => () => endDrag.current?.(), []);
 
   const rows = useMemo(() => flatten(list, collapsed), [list, collapsed]);
+  const massOf = useMemo(() => masses(list), [list]);
   const order = useMemo(() => rows.map((r) => r.part.part_id), [rows]);
   const orderRef = useRef(order);
   orderRef.current = order;
@@ -257,6 +261,8 @@ export function PartList(): JSX.Element {
     });
     items.push("sep",
       { label: `Add to assembly${many}`, disabled: !allBuilt, title: whyNot, run: () => { void addToAssembly(targets); } },
+      ...(instanceCount(targets) > 0 ? [{ label: `Remove from assembly${many}`, title: "Takes its instances out of the assembly; the part stays",
+        run: () => askRemove(id) }] : []),
       { label: `Duplicate${many}`, keys: "⌘D", disabled: !allBuilt, title: whyNot, run: () => { void duplicateParts(targets); } });
     if (single) {
       items.push(
@@ -267,10 +273,11 @@ export function PartList(): JSX.Element {
     }
     for (const x of extras) items.push({ label: x.label, disabled: x.disabled?.(targets) ?? false, run: () => x.run(targets) });
     items.push("sep", {
-      label: `Delete${many}`, danger: true, confirm: single ? "Click again to delete" : `Click again to delete${many}`,
+      label: `Delete${many}…`, keys: "⌫", danger: true,
       // an agent changing it now would rebuild it half-deleted (the core refuses too: 409)
       disabled: busy.length > 0,
-      title: busy.length ? "An agent is changing it: wait for it to finish" : "Moves its files to the trash", run: () => { void deleteParts(targets); },
+      title: busy.length ? "An agent is changing it: wait for it to finish" : "Moves its files to the trash (and its instances out of the assembly)",
+      run: () => askDelete(id),
     });
     return items;
   }
@@ -285,6 +292,20 @@ export function PartList(): JSX.Element {
   function openProps(id: string): void {
     const r = rowRect(id);
     setPop({ kind: "props", id, anchor: { left: (r?.right ?? 0) + 6, top: r?.top ?? 0 } });
+  }
+  /** D29: ⌫ or the menu's Delete… asks first, naming the assembly instances that go with it. */
+  function askDelete(id: string): void {
+    const ids = targetsFor(id);
+    if (ids.some((t) => changing.has(t))) return;
+    const r = rowRect(id);
+    setPop({ kind: "delete", id, ids, anchor: { left: (r?.left ?? 0) + 12, top: (r?.bottom ?? 0) + 2 } });
+  }
+  /** Remove from assembly: straight away (Undo follows), but asked first when joints come loose. */
+  function askRemove(id: string): void {
+    const ids = targetsFor(id);
+    if (removalOf(ids).joints === 0) { void removeFromAssembly(ids); return; }
+    const r = rowRect(id);
+    setPop({ kind: "remove", id, ids, anchor: { left: (r?.left ?? 0) + 12, top: (r?.bottom ?? 0) + 2 } });
   }
   function openMenu(id: string, at?: { x: number; y: number }): void {
     if (!at) {
@@ -373,7 +394,10 @@ export function PartList(): JSX.Element {
       endDrag.current = () => finish(false);
     },
     click(e, id) {
+      const multi = e.shiftKey || e.metaKey || e.ctrlKey;
       clickSelect(id, { shift: e.shiftKey, toggle: e.metaKey || e.ctrlKey }, orderRef.current);
+      // Plan 9 D7: a plain click opens the part alone (a group has no model of its own)
+      if (!multi && (byId(id)?.kind ?? "part") !== "group") openPart(id);
     },
     rename(id) { setEditing(id); },
     renamed(id, v) { setEditing(null); if (v !== null) void renamePart(id, v); focusRow(id); },
@@ -394,6 +418,7 @@ export function PartList(): JSX.Element {
       }
       if ((e.metaKey || e.ctrlKey) && (e.key === "d" || e.key === "D")) { e.preventDefault(); void duplicateParts(targetsFor(id)); return; }
       if ((e.metaKey || e.ctrlKey) && (e.key === "i" || e.key === "I")) { e.preventDefault(); openProps(id); return; }
+      if ((e.key === "Backspace" || e.key === "Delete") && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); askDelete(id); return; }
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
         e.preventDefault();
         const next = orderRef.current[i + (e.key === "ArrowDown" ? 1 : -1)];
@@ -450,7 +475,8 @@ export function PartList(): JSX.Element {
               collapsed={collapsed.has(id)} selected={selection.has(id)} primary={id === primary} busy={changing.has(id)} flash={flashing.has(id)}
               hidden={hidden.has(id)} catalog={p.kind === "catalog"} skeleton={p.kind === "skeleton"} editing={editing === id} drop={drop?.id === id ? drop.pos : null}
               dragging={drag === id} lookOpen={pop?.kind === "look" && pop.id === id} menuOpen={pop?.kind === "menu" && pop.id === id}
-              mat={materialKey(m)} lookName={appearanceName(p.appearance) ?? ""} mass={p.kind === "skeleton" ? "" : partMassText(p)} massNote={partMassNote(p)} />
+              mat={materialKey(m)} lookName={appearanceName(p.appearance) ?? ""}
+              mass={rowMassText(p, massOf.get(id))} massNote={massOf.get(id)?.note ?? null} />
           );
         })}
         {end < rows.length && <li class="tree-spacer" aria-hidden="true" style={{ height: `${(rows.length - end) * ROW_PX}px` }} />}
@@ -465,6 +491,20 @@ export function PartList(): JSX.Element {
           title={lookTargets.length > 1 ? `${lookTargets.length} parts` : partName(popPart)} anchor={pop.anchor}
           onFinish={(f) => { void setFinish(lookTargets, f); }} onColor={(c) => { void setColor(lookTargets, c); }}
           onClose={() => closePop(true, pop.id)} />
+      )}
+      {pop?.kind === "remove" && popPart && (() => {
+        const r = removalOf(pop.ids);
+        const loose = r.loose.slice(0, 3).join(", ") + (r.loose.length > 3 ? "…" : "");
+        return (
+          <ConfirmDelete names={[]} instances={r.instances} anchor={pop.anchor}
+            text={{ title: `Remove ${r.instances === 1 ? "1 instance" : `${r.instances} instances`} from the assembly?`,
+              detail: `${r.joints === 1 ? "1 joint comes" : `${r.joints} joints come`} loose${loose ? ` (${loose})` : ""}. The part stays; you can undo this.`, action: "Remove" }}
+            onConfirm={() => { const ids = pop.ids; closePop(false); void removeFromAssembly(ids); }} onClose={() => closePop(true, pop.id)} />
+        );
+      })()}
+      {pop?.kind === "delete" && popPart && (
+        <ConfirmDelete names={pop.ids.map((t) => partName(byId(t) ?? { part_id: t }))} instances={instanceCount(pop.ids)} anchor={pop.anchor}
+          onConfirm={() => { const ids = pop.ids; closePop(false); void deleteParts(ids); }} onClose={() => closePop(true, pop.id)} />
       )}
       {pop?.kind === "props" && popPart && (
         <PartProperties key={pop.id} part={popPart} anchor={pop.anchor} onClose={() => closePop(true, pop.id)} />

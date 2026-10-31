@@ -82,9 +82,10 @@ def test_delete_moves_the_part_to_the_trash_and_lifts_its_children(client, rt):
     client.patch("/parts/pin", json={"parent_id": "arm"}, headers=AUTH)
     r = client.delete("/parts/arm", headers=AUTH)
     assert r.status_code == 200, r.text
-    assert r.json() == {"deleted": "arm"}
+    body = r.json()
+    assert body["deleted"] == "arm" and body["removed_instances"] == [] and body["undo"].startswith("arm.")
     assert not (rt.home / "parts" / "arm").exists()
-    trashed = list((rt.home / "trash" / "parts").iterdir())
+    trashed = [p for p in (rt.home / "trash" / "parts").iterdir() if p.is_dir()]
     assert len(trashed) == 1 and (trashed[0] / "part.py").exists()
     listed = client.get("/parts", headers=AUTH).json()
     assert [(p["part_id"], p["parent_id"]) for p in listed] == [("pin", None)]
@@ -136,6 +137,68 @@ def test_delete_refused_while_in_the_assembly(client, rt):
     r = client.delete("/parts/arm", headers=AUTH)
     assert r.status_code == 400 and "assembly" in r.json()["message"]
     assert (rt.home / "parts" / "arm").exists()
+
+
+def test_cascade_delete_removes_the_instances_and_undo_puts_everything_back(client, rt):
+    """Plan 9 D29: ?cascade=true takes the part's instances (and their joints) out of the
+    assembly, then trashes the part; POST /parts/{id}/restore with `undo` restores both."""
+    _mk_part(rt, "base")
+    _mk_part(rt, "arm")
+    _mk_part(rt, "pin")
+    pid = rt.active_project_id()
+    client.patch("/parts/arm", json={"label": "Arm", "color": "#aa0000"}, headers=AUTH)
+    client.patch("/parts/pin", json={"parent_id": "arm"}, headers=AUTH)
+    add = lambda part, name, fixed=False: client.post(  # noqa: E731
+        f"/projects/{pid}/assembly/instances", json={"part_id": part, "name": name, "fixed": fixed},
+        headers=AUTH).json()
+    base = add("base", "base", True)
+    arm1, arm2 = add("arm", "arm 1"), add("arm", "arm 2")
+    frame = {"origin": [0, 0, 0], "axis": [0, 0, 1]}
+    j = client.post(f"/projects/{pid}/assembly/joints", json={
+        "kind": "revolute", "a": {"instance_id": base["id"], "frame": frame},
+        "b": {"instance_id": arm1["id"], "frame": frame}}, headers=AUTH)
+    assert j.status_code == 201, j.text
+    add("base", "tail")                                         # after the arms in the list
+    rt.assembly_store.mark_auto(pid, arm2["id"])                 # the core placed this one
+    before = [i.id for i in rt.assembly_store.get(pid).instances]
+    events = rt.events.subscribe()
+    r = client.delete("/parts/arm?cascade=true", headers=AUTH)
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert sorted(out["removed_instances"]) == sorted([arm1["id"], arm2["id"]])
+    assert out["removed_joints"] == [j.json()["id"]]
+    asm = rt.assembly_store.get(pid)
+    assert [i.part_id for i in asm.instances] == ["base", "base"] and asm.joints == []
+    assert not (rt.home / "parts" / "arm").exists()
+    types = []
+    while not events.queue.empty():
+        types.append(events.queue.get_nowait().type)
+    assert "assembly_changed" in types
+
+    r = client.post("/parts/arm/restore", json={"undo": out["undo"]}, headers=AUTH)
+    assert r.status_code == 200, r.text
+    row = r.json()
+    assert row["label"] == "Arm" and row["color"] == "#aa0000" and row["restored_instances"] == 2
+    assert (rt.home / "parts" / "arm" / "part.py").exists()
+    listed = {p["part_id"]: p["parent_id"] for p in client.get("/parts", headers=AUTH).json()}
+    assert listed["pin"] == "arm"
+    asm = rt.assembly_store.get(pid)
+    assert [i.id for i in asm.instances] == before                   # back where they were
+    assert rt.assembly_store.auto_ids(pid) == {arm2["id"]}           # and still the core's
+    assert [jj.id for jj in asm.joints] == [j.json()["id"]]
+    # one undo only; a bad token is refused
+    assert client.post("/parts/arm/restore", json={"undo": out["undo"]}, headers=AUTH).status_code == 404
+    assert client.post("/parts/arm/restore", json={"undo": "../x"}, headers=AUTH).status_code == 400
+
+
+def test_undo_is_refused_once_the_parts_files_left_the_trash(client, rt):
+    import shutil
+    _mk_part(rt, "arm")
+    undo = client.delete("/parts/arm", headers=AUTH).json()["undo"]
+    shutil.rmtree(rt.home / "trash" / "parts" / undo)        # the trash was emptied by hand
+    r = client.post("/parts/arm/restore", json={"undo": undo}, headers=AUTH)
+    assert r.status_code == 404 and "no longer in the trash" in r.json()["message"]
+    assert all(p["part_id"] != "arm" for p in client.get("/parts", headers=AUTH).json())
 
 
 def test_delete_refused_while_an_agent_may_be_editing_the_part(client, rt):

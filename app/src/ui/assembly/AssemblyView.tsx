@@ -1,5 +1,8 @@
-// Assembly mode of the Design page: the sheet with every part of the build's assembly posed by its
-// joints, a gizmo to drag them, face picking for new joints, interference tags, and the panel.
+// The build view (Plan 9: the Design page IS the assembly): every part of the build's assembly
+// posed by its joints, full-bleed, with interference tags and the floating viewer pill (Play,
+// Section, X-ray, Explode, the check chip). Placement, joints and checks are agent-driven; a click
+// on a part selects it (its row in the left tree too); a double-click on empty space or F fits.
+// Play opens the assembly full-window: the agent's latest animation, else an exploded orbit tour.
 import { materialOf } from "../../lib/appearance";
 import { effect } from "@preact/signals";
 import type { JSX } from "preact";
@@ -11,58 +14,72 @@ import { assemblyMassTitle, fmtMass } from "../../lib/mass";
 import { actions, parts as storeParts } from "../../state/store";
 import type { PartScene } from "../viewer/loadPart";
 import { PartLoader } from "../viewer/partLoader";
+import type { ModeHost } from "../viewer/scene";
+import { Orbiter } from "../viewer/modes/camera";
+import { MODES_OFF } from "../viewer/modes/state";
+import { useModesController } from "../viewer/modes/ViewModes";
 import "../viewer/viewer.css";
-import { AssemblyPanel, fmtVolume, KIND_LABEL } from "./AssemblyPanel";
-import { AssemblyController, valueAt, withComponent } from "./controller";
+import { AssemblyController } from "./controller";
 import { jointWorldFrame, transformPoint } from "./kinematics";
 import { activePage, modalOpen, setPage } from "../pages/router";
-import { designMode, ModeSwitch, setDesignMode } from "./mode";
-import { faceOptions, pickOption, type FaceOption } from "./pick";
-import { createAssemblyScene, type AssemblyScene, type GizmoSpec, type OverlayLabel, type PickMarker } from "./scene";
-import { onBuildSwitch } from "../../state/builds";
+import { closePart, openPartId } from "./focus";
+import { fmtVolume, KIND_LABEL } from "./format";
+import { createAssemblyScene, type AssemblyScene, type OverlayLabel } from "./scene";
+import { assemblyModes, immersive, latestAnimation } from "./state";
+import { checkIssues, ViewerPill } from "./ViewerPill";
+import { activeBuildId, onBuildSwitch } from "../../state/builds";
+import { assemblyOf } from "../left/treeActions";
 import { setAnimationPlayer } from "../../state/assemblyAnimation";
 import { registerAnnounceJump } from "../console/announceJumps";
 import "./assembly.css";
 
-/** One per app: leaving assembly mode and coming back keeps the build loaded. */
+/** One per app: opening a part and coming back keeps the build loaded. */
 export const assembly = new AssemblyController(() => actions.client());
 onCoreEvent((ev) => assembly.onEvent(ev));
 // Plan 7 R19: an agent's `assembly_animate` plays through the controller (its steps, loops) when
 // that build's assembly is on screen; Watch brings it on screen first; Stop puts the joints back.
 const onScreen = (pid: string | null) =>
-  activePage.peek() === "design" && designMode.peek() === "assembly" && assembly.data.peek() !== null
+  activePage.peek() === "design" && openPartId.peek() === null && assembly.data.peek() !== null
   && (pid === null || assembly.projectId.peek() === pid);
 setAnimationPlayer({
   play: (spec, onEnd) => onScreen(spec.project_id) && assembly.play(spec.steps, { loops: spec.loops, onEnd }),
   watch: async (spec, onEnd) => {
     setPage("design");
-    setDesignMode("assembly");
+    closePart();
     if (assembly.data.peek() === null || (spec.project_id && assembly.projectId.peek() !== spec.project_id)) await assembly.open(spec.project_id);
     return assembly.play(spec.steps, { loops: spec.loops, onEnd });
   },
   stop: () => assembly.stopAnimate(),
 });
-// Plan 7 I5: an "Added to the assembly" card opens that instance in Assembly mode
+// Plan 7 I5: an "Added to the assembly" card shows that instance in the build view
 registerAnnounceJump("assembly_added", (a) => (a.ref.instance_id ? {
   label: "Show in assembly",
   go: () => {
     setPage("design");
-    setDesignMode("assembly");
+    closePart();
     const id = a.ref.instance_id as string;
     const pick = () => assembly.select(id);
     if (assembly.data.peek() === null || (a.projectId && assembly.projectId.peek() !== a.projectId)) void assembly.open(a.projectId).then(pick);
     else pick();
   },
 } : null));
-// A3's build tabs: switching builds re-opens the assembly on the new build (once it was opened)
-onBuildSwitch((id) => { if (assembly.projectId.peek() !== null && assembly.projectId.peek() !== id) void assembly.open(id); });
+// switching builds re-opens the assembly on the new build (once it was opened)
+onBuildSwitch((id) => {
+  if (assembly.projectId.peek() !== null && assembly.projectId.peek() !== id) {
+    assemblyModes.value = MODES_OFF;
+    void assembly.open(id);
+  }
+});
 
-/** What the gizmo is moving right now (read by the scene callbacks). */
-type GizmoTarget = { kind: "free"; id: string } | { kind: "joint"; jointId: string; component: number } | null;
+// the parts tree's delete confirm counts this build's instances (D29)
+effect(() => {
+  const d = assembly.data.value;
+  assemblyOf.value = d && assembly.projectId.value === activeBuildId.value ? d : null;
+});
 
-function bboxSize(p: AssemblyPart | null): number {
-  const s = p?.metrics?.bbox.size;
-  return s ? Math.hypot(s[0], s[1], s[2]) : 100;
+function typing(t: EventTarget | null): boolean {
+  const el = t as HTMLElement | null;
+  return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable);
 }
 
 export function AssemblyView(): JSX.Element {
@@ -70,14 +87,15 @@ export function AssemblyView(): JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sceneRef = useRef<AssemblyScene | null>(null);
-  const target = useRef<GizmoTarget>(null);
   const templates = useRef(new Map<string, { loader: PartLoader; scene: PartScene | null; mtime: number }>());
   const [templateTick, setTemplateTick] = useState(0);
   const [labels, setLabels] = useState<OverlayLabel[]>([]);
   const [noGl, setNoGl] = useState(false);
+  const [modeHost, setModeHost] = useState<ModeHost | null>(null);
+  const animate = useRef(false);
+  const modesCtl = useModesController(modeHost, assemblyModes.value, animate);
 
   const data = ctl.data.value;
-  const draft = ctl.draft.value;
 
   // the scene: created once per mount
   useEffect(() => {
@@ -85,46 +103,22 @@ export function AssemblyView(): JSX.Element {
     const host = hostRef.current;
     if (!canvas || !host) return;
     let scene: AssemblyScene | null = null;
-    const optionFor = (instanceId: string, p: [number, number, number], n: [number, number, number]): FaceOption | null => {
-      const inst = ctl.instance(instanceId);
-      const part = inst ? ctl.part(inst.part_id) : null;
-      if (!inst) return null;
-      return pickOption(faceOptions(part?.metrics), part?.metrics, p, n, bboxSize(part));
-    };
     try {
       scene = createAssemblyScene(canvas, {
-        onSelect: (id) => ctl.select(id),
-        onPick: (id, p, n) => { const o = optionFor(id, p, n); if (o) ctl.pickFace(id, o); },
-        onHoverPick: (id, p, n) => {
-          if (id === null) return null;
-          const o = optionFor(id, p, n);
-          return o ? { instanceId: id, origin: o.origin, axis: o.axis, role: "hover" } : null;
-        },
-        onDragStart: () => {
-          const t = target.current;
-          if (t?.kind === "free") ctl.beginDrag();
-          else if (t?.kind === "joint") ctl.beginJointGesture();
-        },
-        onDrag: (v) => {
-          const t = target.current;
-          if (t?.kind === "free" && "transform" in v) ctl.dragInstance(t.id, v.transform);
-          else if (t?.kind === "joint" && "value" in v) {
-            const j = ctl.joint(t.jointId);
-            if (j) ctl.setJointValue(j.id, withComponent(j.kind, ctl.values.peek()[j.id] ?? j.value, t.component, v.value));
-          }
-        },
-        onDragEnd: (v) => {
-          const t = target.current;
-          if (t?.kind === "free" && "transform" in v) void ctl.commitInstance(t.id, v.transform);
-          else if (t?.kind === "joint") ctl.endJointGesture();
+        onSelect: (id) => {
+          ctl.select(id);
+          // the part's row in the left tree follows (it does not open the part)
+          const inst = ctl.instance(id);
+          if (inst) actions.selectPart(inst.part_id);
         },
         onLabels: (next) => setLabels((prev) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next)),
       });
     } catch {
-      scene = null; // no WebGL: the panel still works
+      scene = null; // no WebGL
       setNoGl(true);
     }
     sceneRef.current = scene;
+    setModeHost(scene?.modeHost() ?? null);
     if (scene && import.meta.env.MODE !== "production") {
       (window as unknown as { __misesAssembly?: ReturnType<AssemblyScene["probe"]> }).__misesAssembly = scene.probe();
     }
@@ -136,17 +130,23 @@ export function AssemblyView(): JSX.Element {
     const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
     ro?.observe(host);
     const offPose = ctl.onPose((pose) => scene?.setPose(pose));
-    void ctl.open();
     return () => {
       ro?.disconnect();
       offPose();
       ctl.pause();
+      setModeHost(null);
       scene?.dispose();
       sceneRef.current = null;
       for (const t of templates.current.values()) t.scene?.dispose();
       templates.current.clear();
     };
   }, []);
+
+  // the active build's assembly (a build switch re-opens it, onBuildSwitch above)
+  const build = activeBuildId.value;
+  useEffect(() => {
+    if (build && (ctl.projectId.peek() !== build || ctl.data.peek() === null)) void ctl.open(build);
+  }, [build]);
 
   // part geometry: one GLB per part in the assembly, refetched when the part is rebuilt
   const used = [...new Set((data?.instances ?? []).map((i) => i.part_id))];
@@ -186,57 +186,77 @@ export function AssemblyView(): JSX.Element {
   }, [data, templateTick, ctl.parts.value]);
 
   // a rebuilt part (the global part list moved on): re-read the build's parts
-  useEffect(() => effect(() => {
-    void storeParts.value;
-    void ctl.reloadParts();
-  }), []);
+  // (only on a real change after the assembly loaded: the first list is the one open() read)
+  useEffect(() => {
+    let seen: string | null = null;
+    return effect(() => {
+      const key = storeParts.value.map((p) => `${p.part_id}@${p.mtime}@${p.version ?? 0}@${p.color ?? ""}`).join(",");
+      const loaded = ctl.data.value !== null;
+      if (!loaded) return;
+      if (seen && seen !== key) void ctl.reloadParts();     // an empty list was just not loaded yet
+      seen = key;
+    });
+  }, []);
 
   useEffect(() => { sceneRef.current?.setSelected(ctl.selected.value); }, [ctl.selected.value]);
+  useEffect(() => { sceneRef.current?.setArriving(ctl.arriving.value); }, [ctl.arriving.value]);
 
-  // Esc stops Animate and puts the joint back, wherever focus is (not under a modal)
+  const it = ctl.interference.value;
+  // exploded, the clash blocks would hang where the parts were: they show assembled only
+  const apart = assemblyModes.value.explode > 0;
+  useEffect(() => {
+    const byName = (n: string) => (data?.instances ?? []).filter((i) => (i.name || i.id) === n).map((i) => i.id);
+    sceneRef.current?.setInterference(apart ? [] : it.items.map((x) => ({ a: byName(x.a), b: byName(x.b), text: `${x.a} · ${x.b}  ${fmtVolume(x.volume_mm3)}` })));
+  }, [it, data, apart]);
+
+  // ---- Play: the full-window view
+  const imm = immersive.value;
+  const orbiter = useRef<Orbiter | null>(null);
+  const beforeImm = useRef(MODES_OFF);
+  function play(): void {
+    const spec = latestAnimation(ctl.projectId.peek());
+    beforeImm.current = assemblyModes.peek();
+    if (spec && ctl.play(spec.steps, { loops: spec.loops })) { immersive.value = "animation"; return; }
+    immersive.value = "tour";
+    animate.current = true;
+    assemblyModes.value = { ...assemblyModes.peek(), explode: 1 };
+  }
+  function closeImmersive(): void {
+    if (immersive.peek() === null) return;
+    const was = immersive.peek();
+    immersive.value = null;
+    orbiter.current?.stop();
+    if (was === "animation") ctl.stopAnimate();
+    animate.current = true;
+    assemblyModes.value = beforeImm.current;
+    requestAnimationFrame(() => sceneRef.current?.fit());
+  }
+  useEffect(() => {
+    if (imm !== "tour" || !modeHost) return;
+    const o = new Orbiter(modeHost);
+    orbiter.current = o;
+    o.start(1, 14);
+    return () => { o.stop(); };
+  }, [imm, modeHost]);
+  // the canvas grew to the window (or back): frame the assembly in it
+  useEffect(() => { requestAnimationFrame(() => sceneRef.current?.fit()); }, [imm]);
+  useEffect(() => () => { if (immersive.peek()) closeImmersive(); }, []);
+
+  // keys: Esc closes Play's view, else stops an animation; F fits (never while typing or under a modal)
   const animating = ctl.animating.value;
   useEffect(() => {
-    if (animating === null) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || !isTrustedKey(e) || modalOpen()) return;
-      e.preventDefault();
-      ctl.stopAnimate();
+      if (!isTrustedKey(e) || modalOpen() || e.defaultPrevented) return;
+      if (e.key === "Escape" && immersive.peek() !== null) { e.preventDefault(); closeImmersive(); return; }
+      if (e.key === "Escape" && ctl.animating.peek() !== null) { e.preventDefault(); ctl.stopAnimate(); return; }
+      if ((e.key === "f" || e.key === "F") && !e.metaKey && !e.ctrlKey && !e.altKey && !typing(e.target)) {
+        e.preventDefault();
+        sceneRef.current?.fit();
+      }
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
   }, [animating]);
-  useEffect(() => { sceneRef.current?.setArriving(ctl.arriving.value); }, [ctl.arriving.value]);
-
-  const it = ctl.interference.value;
-  useEffect(() => {
-    const byName = (n: string) => (data?.instances ?? []).filter((i) => (i.name || i.id) === n).map((i) => i.id);
-    sceneRef.current?.setInterference(it.items.map((x) => ({ a: byName(x.a), b: byName(x.b), text: `${x.a} · ${x.b}  ${fmtVolume(x.volume_mm3)}` })));
-  }, [it, data]);
-
-  // picking: on while a joint is being made; markers on the picked faces
-  useEffect(() => {
-    const scene = sceneRef.current;
-    if (!scene) return;
-    scene.setPicking(draft !== null);
-    const m: PickMarker[] = [];
-    if (draft?.a) m.push({ instanceId: draft.a.instanceId, origin: draft.a.option.origin, axis: draft.a.option.axis, role: "a" });
-    if (draft?.b) m.push({ instanceId: draft.b.instanceId, origin: draft.b.option.origin, axis: draft.b.option.axis, role: "b" });
-    scene.setMarkers(m);
-  }, [draft]);
-
-  // the gizmo: on the selected part, free or along its joint
-  const sel = ctl.selected.value;
-  const gmode = ctl.gizmo.value;
-  const snap = ctl.snap.value;
-  const values = ctl.values.value;
-  const solved = ctl.solved.value;
-  useEffect(() => {
-    const scene = sceneRef.current;
-    if (!scene) return;
-    const { spec, t } = gizmoFor(sel, gmode, snap);
-    target.current = t;
-    scene.setGizmo(draft ? null : spec);
-  }, [sel, gmode, snap, values, solved, draft, data]);
 
   /** Where each jointed part can swing: around its joint origin, as far as its farthest corner. */
   function reachOf(): { center: [number, number, number]; radius: number }[] {
@@ -264,75 +284,62 @@ export function AssemblyView(): JSX.Element {
     return out;
   }
 
-  function gizmoFor(id: string | null, mode: "move" | "turn", snapOn: boolean): { spec: GizmoSpec; t: GizmoTarget } {
-    const none = { spec: null, t: null };
-    if (!id || !data) return none;
-    const m = ctl.mobilityOf(id);
-    const pose = ctl.currentPose();
-    if (!m || m.kind === "grounded" || m.kind === "locked" || !pose[id]) return none;
-    if (m.kind === "free") return { spec: { kind: "free", id, mode, transform: pose[id], snap: snapOn }, t: { kind: "free", id } };
-    const j = ctl.joint(m.joint);
-    if (!j || j.kind === "fixed" || j.kind === "ball") return none;
-    const motion = j.kind === "revolute" ? "turn" : j.kind === "slider" ? "slide" : mode === "turn" ? "turn" : "slide";
-    const component = j.kind === "cylindrical" && motion === "slide" ? 1 : 0;
-    const frame = jointWorldFrame(data, pose, j, m.from, ctl.resolver());
-    if (!frame) return none;
-    const value = valueAt(ctl.values.peek()[j.id] ?? j.value, component);
-    return {
-      spec: { kind: "joint", frame, motion, value, sign: m.from === "a" ? 1 : -1, snap: snapOn },
-      t: { kind: "joint", jointId: j.id, component },
-    };
-  }
-
-  const selInst = ctl.instance(sel);
-  const selMob = sel ? ctl.mobilityOf(sel) : null;
+  const sel = ctl.instance(ctl.selected.value);
+  const selMob = sel ? ctl.mobilityOf(sel.id) : null;
   const selJoint = selMob?.kind === "joint" ? ctl.joint(selMob.joint) : null;
-  const hint = draft
-    ? (draft.a === null ? "Click a face on the first part." : draft.b === null ? "Click a face on the second part." : "Check the preview, then create the joint.")
-    : selInst
-      ? selMob?.kind === "grounded" ? `${selInst.name} is grounded.`
-        : selMob?.kind === "locked" ? `${selInst.name} is locked: its joint names a missing face.`
-        : selMob?.kind === "joint" && selJoint ? `Drag ${selInst.name} along its ${KIND_LABEL[selJoint.kind].toLowerCase()}.`
-          : `Drag ${selInst.name} to place it.`
-      : (data?.instances.length ?? 0) > 0 ? "Click a part to move it." : null;
+  const selPart: AssemblyPart | null = sel ? ctl.part(sel.part_id) : null;
+  const selWhat = !sel ? null
+    : selMob?.kind === "grounded" ? "grounded"
+      : selMob?.kind === "locked" ? "locked: its joint names a missing face"
+        : selJoint ? `on a ${KIND_LABEL[selJoint.kind].toLowerCase()} to ${ctl.instance(selMob?.kind === "joint" ? (selJoint.a.instance_id === sel.id ? selJoint.b.instance_id : selJoint.a.instance_id) : null)?.name ?? "a part"}`
+          : "placed freely";
+  const issues = checkIssues(it.status === "done" ? it.items : [], data?.overconstrained ?? []);
+  const count = data?.instances.length ?? 0;
 
   return (
-    <div class="asm" data-testid="assembly-view">
+    <div class="asm" data-testid="assembly-view" data-immersive={imm ?? undefined}>
       <div class="vp asm-sheet" ref={hostRef}>
         <canvas ref={canvasRef} class="vp-canvas" data-testid="assembly-canvas"
-          data-instances={data?.instances.length ?? 0} data-picking={draft ? "on" : "off"} data-arriving={ctl.arriving.value ? "on" : "off"}
+          data-instances={count} data-arriving={ctl.arriving.value ? "on" : "off"}
+          data-section={assemblyModes.value.section.on ? "on" : "off"} data-explode={assemblyModes.value.explode > 0 ? "on" : "off"}
           aria-label="Assembly view" />
-        <span class="tick tick-tl" /><span class="tick tick-tr" /><span class="tick tick-bl" /><span class="tick tick-br" />
-        <span class="label vp-fig">FIG. 2 — ASSEMBLY</span>
-        {data && data.instances.length > 0 && (
-          <span class="label asm-mass" data-testid="assembly-mass" title={assemblyMassTitle(data.mass_unknown)}>
-            {`MASS ${data.total_mass_g === null || data.total_mass_g === undefined ? "—" : fmtMass(data.total_mass_g, 1)}`}
-            {data.mass_unknown.length > 0 ? ` · ${data.mass_unknown.length} unknown` : ""}
+        {data && count > 0 && (
+          <span class="asm-mass num" data-testid="assembly-mass" title={assemblyMassTitle(data.mass_unknown)}>
+            {`Mass ${data.total_mass_g === null || data.total_mass_g === undefined ? "—" : fmtMass(data.total_mass_g)}`}
+            {data.mass_unknown.length > 0 ? <span class="dim">{` · ${data.mass_unknown.length} unknown`}</span> : null}
           </span>
         )}
-        <ModeSwitch />
-        <div class="viewer-tools" role="toolbar" aria-label="Assembly tools">
-          <button type="button" class="vt-btn" aria-pressed={gmode === "move"} data-active={gmode === "move"} data-selected={(gmode === "move") ? "" : undefined} onClick={() => { ctl.gizmo.value = "move"; }}>move</button>
-          <button type="button" class="vt-btn" aria-pressed={gmode === "turn"} data-active={gmode === "turn"} data-selected={(gmode === "turn") ? "" : undefined} onClick={() => { ctl.gizmo.value = "turn"; }}>turn</button>
-          <button type="button" class="vt-btn" aria-pressed={snap} data-active={snap} data-selected={(snap) ? "" : undefined} title="Snap: moves to whole mm, turns to 15°"
-            onClick={() => { ctl.snap.value = !snap; }}>snap</button>
-          <button type="button" class="vt-btn" onClick={() => sceneRef.current?.fit()}>fit</button>
-        </div>
         {labels.map((l) => (
           <span key={l.key} class="asm-tag" style={{ left: `${l.x}px`, top: `${l.y}px` }} data-testid="interference-tag">{l.text}</span>
         ))}
-        {ctl.loading.value && !data && <div class="vp-empty label">Loading the assembly…</div>}
-        {data && data.instances.length === 0 && <div class="vp-empty label">No parts in this assembly · add one from the panel</div>}
-        {noGl && <div class="vp-empty label">3D view unavailable on this Mac · the panel still works</div>}
-        {hint && <div class="asm-hint" data-testid="assembly-hint">{hint}</div>}
+        {ctl.loading.value && !data && <div class="vp-empty asm-empty">Loading the assembly…</div>}
+        {data && count === 0 && <div class="vp-empty asm-empty">Nothing in this assembly yet. Parts an agent builds land here by themselves.</div>}
+        {noGl && <div class="vp-empty asm-empty">3D view unavailable on this Mac.</div>}
+        {sel && !imm && (
+          <div class="asm-caption" data-testid="assembly-selection" role="status">
+            <b>{sel.name}</b>{selPart?.label && selPart.label !== sel.name ? <span class="dim"> · {selPart.label}</span> : null}
+            <span class="dim"> · {selWhat}</span>
+          </div>
+        )}
         {ctl.error.value && (
           <div class="asm-error" role="alert">
             {ctl.error.value}
-            <button type="button" class="vt-btn" onClick={() => { ctl.error.value = null; }} aria-label="Dismiss">×</button>
+            <button type="button" class="pill-btn" onClick={() => { ctl.error.value = null; }} aria-label="Dismiss">✕</button>
           </div>
         )}
+        {imm ? (
+          <div class="asm-imm-bar" data-testid="assembly-immersive" role="dialog" aria-label="Assembly, full window">
+            <span class="asm-imm-title">{imm === "animation" ? "The agent's animation" : "Exploded tour"}</span>
+            {imm === "animation" && (
+              <button type="button" class="pill-btn" onClick={() => { const s = latestAnimation(ctl.projectId.peek()); if (s) ctl.play(s.steps, { loops: s.loops }); }}>Replay</button>
+            )}
+            <button type="button" class="pill-btn" data-testid="assembly-immersive-close" onClick={closeImmersive} title="Close (Esc)">Close</button>
+          </div>
+        ) : (
+          <ViewerPill host={modeHost} modesCtl={modesCtl} modes={assemblyModes.value} onModes={(m) => { assemblyModes.value = m; }} animate={animate}
+            issues={issues} onPlay={play} canPlay={count > 0} />
+        )}
       </div>
-      <AssemblyPanel ctl={ctl} />
     </div>
   );
 }

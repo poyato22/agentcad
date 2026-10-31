@@ -18,7 +18,15 @@ function initialHome(): boolean {
 /** True while the full-screen build grid is shown instead of a build. Starts true (launch). */
 export const atHome: Signal<boolean> = signal<boolean>(initialHome());
 
-export function goHome(): void { atHome.value = true; }
+export function goHome(): void { homeView.value = "builds"; atHome.value = true; }
+
+/** What Home shows (D22): the build grid, or a sub-view that is not part of any one build — the
+ *  Onshape page and the parts library. */
+export type HomeView = "builds" | "onshape" | "library";
+export const homeView: Signal<HomeView> = signal<HomeView>("builds");
+
+/** Go to Home and show one of its views (the top bar's Onshape meter opens "onshape"). */
+export function showHome(view: HomeView): void { homeView.value = view; atHome.value = true; }
 
 /** Build overview (R17): the full-build "All parts" grid, shown over the viewer. */
 export const overviewOpen: Signal<boolean> = signal<boolean>(false);
@@ -33,4 +41,4 @@ export async function openBuild(id: string): Promise<void> {
 }
 
 /** Back to the launch state (tests). */
-export function resetHome(): void { atHome.value = true; overviewOpen.value = false; }
+export function resetHome(): void { atHome.value = true; overviewOpen.value = false; homeView.value = "builds"; }

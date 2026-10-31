@@ -173,15 +173,15 @@ def part_mass(store, home: Path, part_id: str, metrics: dict | None = ...,  # ty
 
 
 def with_part_mass(metrics: dict | None, store, home: Path, part_id: str) -> dict | None:
-    """A copy of `metrics` whose mass_g is the part's own tree mass (see part_mass), plus the
-    material it used; None stays None. For tools that hand a part's metrics to an agent."""
+    """A copy of `metrics` whose mass_g is the part's own tree mass (see part_mass); None
+    stays None. For tools that hand a part's metrics to an agent. The metrics keep their
+    shape (only mass_g changes): the part's material is in the part row."""
     if not isinstance(metrics, dict):
         return metrics
     pm = part_mass(store, home, part_id, metrics)
     if pm["mass_g"] is None:
         return metrics
-    return {**metrics, "mass_g": pm["mass_g"], "mass_note": pm["mass_note"],
-            "material": pm["material"] or default_material(home)}
+    return {**metrics, "mass_g": pm["mass_g"]}
 
 
 def annotate(rows: list[dict], home: Path | None, *, has_disk: set[str],

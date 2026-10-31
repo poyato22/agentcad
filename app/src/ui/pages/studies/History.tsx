@@ -15,7 +15,7 @@ export function History({ list, selected, onSelect, error, compare, onToggleComp
   return (
     <section class="st-history" aria-label="Studies of this part">
       <div class="st-history-head">
-        <h2 class="label">History</h2>
+        <h2 class="st-h">Past studies of this part</h2>
         {list.length > 1 && (
           <Button variant="ghost" disabled={compare.length < 2} onClick={onCompare} data-testid="compare">
             {compare.length < 2 ? "Tick two to compare" : `Compare ${compare.length}`}

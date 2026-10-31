@@ -31,17 +31,22 @@ export interface AssemblyScenario {
   projects?: ProjectRowIn[];
   /** Stored assemblies per project id (stored transforms; GET answers solved ones). */
   by_project?: Record<string, { instances: Instance[]; joints: Joint[] }>;
+  /** "none": the solids sit inside each other's boxes but don't touch (a nested enclosure), so the
+   *  box-overlap check would report clashes the real (solid) check doesn't. Default "boxes". */
+  interference?: "boxes" | "none";
 }
 
 export interface FakeAssembly {
   projects: ProjectRowIn[];
   byProject: Map<string, { instances: Instance[]; joints: Joint[] }>;
+  interference: "boxes" | "none";
 }
 
 export function assemblyFrom(sc: AssemblyScenario | undefined): FakeAssembly {
   return {
     projects: structuredClone(sc?.projects ?? [{ id: DEFAULT_PROJECT, name: "Default", created_at: DEFAULT_PROJECT_ROW.created_at, trashed_at: null }]),
     byProject: new Map(Object.entries(structuredClone(sc?.by_project ?? {}))),
+    interference: sc?.interference ?? "boxes",
   };
 }
 
@@ -193,6 +198,42 @@ export function assemblyRoutes(d: Deps): Route[] {
       },
     },
     {
+      // Plan 9 D29: core assembly_api remove_parts / restore (AssemblyStore.take_out / put_back)
+      method: "POST", re: new RegExp(`${base.source}/remove_parts$`), h: (m, _q, raw) => {
+        const ids = (asBody(raw).part_ids as unknown[] | undefined ?? []).map(String);
+        const a = store(m[1]);
+        const used = a.instances.map((i, k) => ({ i, k })).filter(({ i }) => ids.includes(i.part_id));
+        const gone = new Set(used.map(({ i }) => i.id));
+        const joints = a.joints.map((j, k) => ({ j, k })).filter(({ j }) => gone.has(j.a.instance_id) || gone.has(j.b.instance_id));
+        a.instances = a.instances.filter((i) => !gone.has(i.id));
+        a.joints = a.joints.filter((j) => !joints.some((x) => x.j === j));
+        if (used.length) changed(m[1]);
+        return {
+          removed_instances: used.map(({ i }) => i.id), removed_joints: joints.map(({ j }) => j.id),
+          undo: { instances: used.map(({ i, k }) => ({ ...i, _ord: k, _auto: false })), joints: joints.map(({ j, k }) => ({ ...j, _ord: k })) },
+        };
+      },
+    },
+    {
+      method: "POST", re: new RegExp(`${base.source}/restore$`), h: (m, _q, raw) => {
+        const b = asBody(raw);
+        const a = store(m[1]);
+        const strip = <T extends Record<string, unknown>>(x: T) => Object.fromEntries(Object.entries(x).filter(([k]) => !k.startsWith("_")));
+        let ni = 0; let nj = 0;
+        for (const x of (b.instances as Record<string, unknown>[] | undefined) ?? []) {
+          if (a.instances.some((i) => i.id === x.id)) continue;
+          a.instances.splice(Math.min(Number(x._ord ?? a.instances.length), a.instances.length), 0, strip(x) as unknown as Instance);
+          ni++;
+        }
+        for (const x of (b.joints as Record<string, unknown>[] | undefined) ?? []) {
+          a.joints.splice(Math.min(Number(x._ord ?? a.joints.length), a.joints.length), 0, strip(x) as unknown as Joint);
+          nj++;
+        }
+        if (ni || nj) changed(m[1]);
+        return { restored_instances: ni, restored_joints: nj };
+      },
+    },
+    {
       method: "POST", re: new RegExp(`${base.source}/joints$`), h: (m, _q, raw) => {
         const b = asBody(raw);
         const j: Joint = {
@@ -254,6 +295,7 @@ export function assemblyRoutes(d: Deps): Route[] {
     {
       method: "GET", re: new RegExp(`${base.source}/interference$`), h: (m) => {
         const s = solved(m[1]);
+        if (d.get().interference === "none") return [];
         const boxes = s.instances.map((i) => {
           const bb = d.parts().find((p) => p.part_id === i.part_id)?.metrics?.bbox;
           if (!bb) return null;

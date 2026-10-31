@@ -55,10 +55,43 @@ export async function useDetailsView(page: import("@playwright/test").Page): Pro
   await page.addInitScript(() => { try { localStorage.setItem("mises.console.view", "details"); } catch { /* none */ } });
 }
 
+/** Pick an item of the Conversation header's ⋯ menu ("New run…", "Agent browser", "Full log"):
+ *  the agent dock has no button bar (Plan 9 D2). */
+export async function consoleMenu(page: import("@playwright/test").Page, item: "New run…" | "Agent browser" | "Full log"): Promise<void> {
+  await page.getByRole("button", { name: "Conversation options" }).click();
+  await page.getByRole("menu", { name: "Conversation options" }).getByRole("menuitem", { name: item }).click();
+}
+
+/** Show a run's thread in the dock, from the agent manager's run tree (the console has no run
+ *  dropdown, Plan 9 D2). */
+export async function showRun(page: import("@playwright/test").Page, runId: string): Promise<void> {
+  await page.keyboard.press("Meta+Shift+KeyA");
+  const manager = page.getByRole("dialog", { name: "Agent manager" });
+  const adv = manager.getByRole("button", { name: "Advanced ▸" });
+  if (await adv.count()) await adv.click();
+  await manager.getByRole("tab", { name: "All runs" }).click();
+  await manager.locator(`[data-run-row="${runId}"]`).focus();
+  await page.keyboard.press("Enter");
+}
+
 /** Launch straight into the build shell (not the Home grid) — the default for shell specs. Home
  *  specs call `openHome` instead. */
 export async function openBuildShell(page: import("@playwright/test").Page): Promise<void> {
   await page.addInitScript(() => { try { localStorage.setItem("mises.home.open", "0"); } catch { /* none */ } });
+}
+
+/** Plan 9 D7: the Design page shows the build's assembly; a part opens alone from the left tree.
+ *  Opens `partId` (default: the first row) in the part viewer, as a click on its row does. */
+export async function openPartView(page: import("@playwright/test").Page, partId?: string): Promise<void> {
+  const row = partId ? page.locator(`[data-part="${partId}"] .tree-name`) : page.locator("[data-part] .tree-name").first();
+  await row.click();
+  await page.getByTestId("viewer-canvas").waitFor();
+}
+
+/** Plan 9 U-D: the Studies page opens on the studies agent with "Set up manually" collapsed;
+ *  specs about the manual form open it up front. Call before page.goto. */
+export async function openManualStudySetup(page: import("@playwright/test").Page): Promise<void> {
+  await page.addInitScript(() => { try { localStorage.setItem("mises.studies.manual", "1"); } catch { /* none */ } });
 }
 
 /** Launch into the Home grid explicitly. */

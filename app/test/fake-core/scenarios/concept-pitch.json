@@ -1,0 +1,196 @@
+{
+ "_comment": "Plan 9 G-A: a robot-dog build whose lead pitched three directions (concept fixtures: core/scripts/dump_concept_fixtures.py). After feedback the lead answers with v2.",
+ "runs": [
+  {
+   "id": "c0ce0a1ead00",
+   "parent_id": null,
+   "agent": "engineer",
+   "provider": "fake",
+   "model": "fake-model",
+   "task": "A friendly robot dog with sleek covers",
+   "status": "done",
+   "branch": null,
+   "onshape_calls": 0,
+   "input_tokens": 0,
+   "output_tokens": 0,
+   "usd": 0.0,
+   "created_at": 1792869413.016629,
+   "updated_at": 1792869413.016629,
+   "owner_pid": 37495,
+   "project_id": "74ab71a5279a",
+   "role": "lead"
+  }
+ ],
+ "steps": [
+  {
+   "id": 1,
+   "run_id": "c0ce0a1ead00",
+   "ts": 1792869413.017629,
+   "kind": "message",
+   "payload": {
+    "role": "user",
+    "text": "A friendly robot dog with sleek covers"
+   },
+   "evidence_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+   "prev_hash": null,
+   "collapsed": false
+  }
+ ],
+ "approvals": [],
+ "parts": [],
+ "agents": [
+  {
+   "name": "designer",
+   "description": "Main CAD agent. Designs and edits parts using the local mirror and Onshape.",
+   "model": "inherit"
+  },
+  {
+   "name": "planner",
+   "description": "Turns a design request into a step-by-step plan. Produces a plan only; changes nothing.",
+   "model": "inherit"
+  },
+  {
+   "name": "sim",
+   "description": "Placeholder for simulation work (milestone 4). Simulation is not available yet.",
+   "model": "inherit"
+  },
+  {
+   "name": "verifier",
+   "description": "Skeptical read-only checker. Tries to prove a change wrong and reports pass/fail per requirement.",
+   "model": "inherit"
+  }
+ ],
+ "models": {
+  "default": "anthropic/claude-sonnet-5-5",
+  "vendors": [
+   {
+    "vendor": "anthropic",
+    "key": "env",
+    "entries": [
+     {
+      "model": "anthropic/claude-opus-5-5",
+      "recommended": "best",
+      "note": "Leads CAD code benchmarks (CADGenBench 86.9% with a tool loop)"
+     }
+    ]
+   },
+   {
+    "vendor": "openai",
+    "key": "none"
+   },
+   {
+    "vendor": "gemini",
+    "key": "none"
+   },
+   {
+    "vendor": "openrouter",
+    "key": "none",
+    "models": [
+     "openrouter/qwen/qwen3-coder:free"
+    ],
+    "free": true,
+    "entries": [
+     {
+      "model": "openrouter/qwen/qwen3-coder:free",
+      "recommended": "free",
+      "note": "Free on OpenRouter: 20 requests/min, one run at a time"
+     }
+    ]
+   },
+   {
+    "vendor": "ollama",
+    "key": "not_needed",
+    "models": [
+     "ollama/gpt-oss:20b"
+    ],
+    "entries": [
+     {
+      "model": "ollama/gpt-oss:20b",
+      "recommended": "local",
+      "note": "Safest memory fit: tools and thinking, leaves room for the CAD kernel"
+     }
+    ]
+   },
+   {
+    "vendor": "lmstudio",
+    "key": "not_needed",
+    "models": [],
+    "hint": "LM Studio isn't running \u2014 start its local server (Developer tab)"
+   },
+   {
+    "vendor": "claude-code",
+    "key": "signed_in",
+    "models": [
+     "sonnet",
+     "opus",
+     "haiku",
+     "fable"
+    ],
+    "entries": [
+     {
+      "model": "claude-code/sonnet",
+      "recommended": null,
+      "note": null
+     },
+     {
+      "model": "claude-code/opus",
+      "recommended": "best",
+      "note": "Leads CAD code benchmarks with a build123d tool loop; uses your Claude Code plan"
+     },
+     {
+      "model": "claude-code/haiku",
+      "recommended": null,
+      "note": null
+     },
+     {
+      "model": "claude-code/fable",
+      "recommended": null,
+      "note": null
+     }
+    ]
+   }
+  ],
+  "recommended": [
+   {
+    "model": "claude-code/opus",
+    "recommended": "best",
+    "note": "Leads CAD code benchmarks with a build123d tool loop; uses your Claude Code plan"
+   },
+   {
+    "model": "anthropic/claude-opus-5-5",
+    "recommended": "best",
+    "note": "Leads CAD code benchmarks (CADGenBench 86.9% with a tool loop)"
+   },
+   {
+    "model": "ollama/gpt-oss:20b",
+    "recommended": "local",
+    "note": "Safest memory fit: tools and thinking, leaves room for the CAD kernel"
+   },
+   {
+    "model": "openrouter/qwen/qwen3-coder:free",
+    "recommended": "free",
+    "note": "Free on OpenRouter: 20 requests/min, one run at a time"
+   }
+  ]
+ },
+ "status": {
+  "core_version": "0.1.0",
+  "onshape": "not_configured",
+  "onshape_calls_year": 0,
+  "onshape_cap_year": 2500,
+  "runs_running": 1,
+  "approvals_pending": 1,
+  "data_dir": "/Users/fake/Library/Application Support/Mises",
+  "runs_queued": 0,
+  "parallel": {
+   "limit": 4,
+   "auto": true,
+   "reason": "M5 Pro \u00b7 24 GB \u00b7 cloud model \u2192 4"
+  }
+ },
+ "concept": {
+  "start": "pitching",
+  "revise_ms": 600,
+  "design_class": "design"
+ }
+}

@@ -208,11 +208,9 @@ test("data_about_and_run_setup_again", async ({ page }) => {
   await expect(page.getByRole("dialog", { name: "Set up Mises" })).toBeVisible();
 });
 
-test("visual_rules_square_corners_and_blue_only_on_the_selected_section", async ({ page }) => {
+test("visual_rules_blue_only_on_the_selected_section", async ({ page }) => {
   await open(page, "Models");
-  const radii = await panel(page).locator("button, input, select, section").evaluateAll((els) => els.map((e) => getComputedStyle(e).borderRadius));
-  expect(radii.length).toBeGreaterThan(10);
-  expect(new Set(radii)).toEqual(new Set(["0px"]));
+  // (Plan 9 dropped the square-corner rule: the Visual spec rounds buttons, rows and surfaces)
   await expect(nav(page, "Models")).toHaveAttribute("aria-current", "page");
   await expect(nav(page, "Profile")).not.toHaveAttribute("aria-current", "page");
   // inside the panel (the top bar's AGENTS light is rightly blue while a run is working)

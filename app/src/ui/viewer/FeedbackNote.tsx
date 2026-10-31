@@ -3,8 +3,8 @@
 import type { JSX } from "preact";
 import type { FeedbackPin } from "../../api/measure";
 import { partName } from "../../lib/names";
-import { actions, parts } from "../../state/store";
-import { setDesignMode } from "../assembly/mode";
+import { parts } from "../../state/store";
+import { openPart } from "../assembly/focus";
 import { pinNumber } from "./pins";
 import { viewTab } from "./Viewer";
 import "./viewer.css";
@@ -19,7 +19,7 @@ export function FeedbackNote({ feedback, runId }: { feedback: FeedbackPin; runId
     <>
       <div class="cv-text text">{feedback.text}</div>
       <button type="button" class="vx-thread-pin" data-feedback-pin title="Show this spot on the model"
-        onClick={() => { setDesignMode("part"); viewTab.value = "model"; actions.selectPart(feedback.part_id); }}>
+        onClick={() => { viewTab.value = "model"; openPart(feedback.part_id); }}>
         <span class="vx-thread-flag" aria-hidden="true">{n ?? "•"}</span>
         {`${n === null ? "Comment" : `Comment ${n}`} · on ${name}${near ? ` · ${near}` : ""}`}
       </button>

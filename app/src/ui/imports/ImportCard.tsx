@@ -10,6 +10,7 @@ import type { DrawingImport, MatchRow } from "../../api/imports";
 import { builds } from "../../state/builds";
 import { openBuild } from "../../state/home";
 import { actions } from "../../state/store";
+import { openPart as openPartAlone } from "../assembly/focus";
 import { Button } from "../common/Button";
 import { dismissImport, type ImportEntry } from "./state";
 
@@ -168,7 +169,7 @@ function buildName(id: string | null): string | null {
 
 async function openPart(rec: DrawingImport, key: string): Promise<void> {
   if (rec.project_id && builds.peek().some((b) => b.id === rec.project_id && b.trashed_at === null)) await openBuild(rec.project_id);
-  if (rec.part_id) actions.selectPart(rec.part_id);
+  if (rec.part_id) openPartAlone(rec.part_id);              // Plan 9 D7: opened alone, ← Assembly returns
   dismissImport(key);
 }
 

@@ -159,3 +159,78 @@ async def test_job_dir_is_cleaned_up(tmp_path):
     await run_render_job(tmp_path / "jobs", [m], renders=[{"key": "k", "views": ["iso"],
                                                            "size": 128}])
     assert not any((tmp_path / "jobs").iterdir())
+
+
+async def test_design_styles_render_in_the_worker_within_memory(tmp_path):
+    """Plan 9 G-R: style / perspective / background / CMF travel to the sandboxed worker, and a
+    1024 px supersampled render (a 2048 px internal raster) stays inside the 1 GB budget."""
+    import io
+
+    from PIL import Image
+    m = _part(tmp_path, "wing", blended_wing_tris())
+    m.roughness, m.metalness = 0.2, 1.0
+    out = await run_render_job(tmp_path / "jobs", [m], timeout_s=120, memory_mb=1024, renders=[
+        {"key": "s", "views": ["iso"], "size": 1024, "style": "sketch", "perspective": True},
+        {"key": "z", "views": ["iso"], "size": 256, "style": "zebra"},
+        {"key": "t", "views": ["iso"], "size": 256, "background": "transparent"},
+        {"key": "x", "views": ["front"], "size": 256, "style": "silhouette"}])
+    for key, rgba in (("s", False), ("z", False), ("t", True), ("x", False)):
+        png = next(iter(out.pngs[key].values()))
+        assert len(png) < 1024 * 1024
+        with Image.open(io.BytesIO(png)) as im:
+            assert (im.mode == "RGBA") == rgba, (key, im.mode)
+    assert out.peak_rss_mb < 1024, out.peak_rss_mb
+    with pytest.raises(MisesError):
+        await run_render_job(tmp_path / "jobs", [m], timeout_s=60, renders=[
+            {"key": "b", "views": ["iso"], "size": 128, "style": "oil-paint"}])
+
+
+@pytest.mark.timeout(300)
+async def test_a_1_5m_triangle_assembly_renders_in_every_style_under_the_real_cap(tmp_path):
+    """Plan 9 G-R fix round: the smooth-normal pass must not shrink what fits under the 1 GB
+    worker budget. Three connected 500k-triangle parts (each STL under the 50 MB cap): the
+    default shaded critique render and every design style at up to 1024 px succeed under the
+    real memory limit (above SMOOTH_MAX_TRIANGLES the styles shade flat, without
+    supersampling)."""
+    from mises.cad import render as render_mod
+    part = blended_wing_tris(500, 500)
+    meshes = [_part(tmp_path, f"p{i}", part + np.array([0.0, 300.0 * i, 0.0]))
+              for i in range(3)]
+    assert 3 * len(part) > render_mod.SMOOTH_MAX_TRIANGLES
+    out = await run_render_job(tmp_path / "jobs", meshes, timeout_s=300, memory_mb=1024,
+                               renders=[
+        {"key": "crit", "views": ["front", "top", "side", "iso"], "size": 512},
+        {"key": "hero", "views": ["iso"], "size": 1024, "perspective": True},
+        {"key": "zebra", "views": ["iso"], "size": 1024, "style": "zebra"},
+        {"key": "sketch", "views": ["iso"], "size": 1024, "style": "sketch",
+         "perspective": True}])
+    assert out.triangles == 3 * len(part)
+    assert all(png.startswith(b"\x89PNG") for v in out.pngs.values() for png in v.values())
+    assert out.peak_rss_mb < 1024, out.peak_rss_mb
+
+
+@pytest.mark.timeout(300)
+async def test_a_1_5m_triangle_assembly_at_2048px_keeps_25_percent_headroom(tmp_path):
+    """Plan 9 G-R: a >1M-triangle render asked for 2048 px is made at LARGE_MESH_MAX_SIZE and
+    the worker's peak stays <= 768 MB (25% under the 1 GB cap); the result reports the size
+    actually rendered and each view's camera, so pixels still map back to 3D."""
+    import io
+
+    from PIL import Image
+
+    from mises.cad import render as render_mod
+    part = blended_wing_tris(500, 500)
+    meshes = [_part(tmp_path, f"p{i}", part + np.array([0.0, 300.0 * i, 0.0]))
+              for i in range(3)]
+    out = await run_render_job(tmp_path / "jobs", meshes, timeout_s=300, memory_mb=1024,
+                               renders=[
+        {"key": "hero", "views": ["hero"], "size": 2048},
+        {"key": "sketch", "views": ["iso"], "size": 2048, "style": "sketch",
+         "perspective": True}])
+    edge = render_mod.LARGE_MESH_MAX_SIZE
+    for key, view in (("hero", "hero"), ("sketch", "iso")):
+        with Image.open(io.BytesIO(out.pngs[key][view])) as im:
+            assert im.size == (edge, edge)
+        cam = out.cameras[key][view]
+        assert cam["size"] == edge and cam["perspective"] is True and cam["scale_px"] > 0
+    assert out.peak_rss_mb <= 768, out.peak_rss_mb

@@ -8,8 +8,10 @@ afterEach(() => { setPage(DEFAULT_PAGE); setConsoleCollapsed(false); });
 
 describe("page router", () => {
   it("has the pages in tab/shortcut order, Design first", () => {
-    expect(PAGES.map((p) => p.id)).toEqual(["design", "studies", "drawing", "print", "onshape", "directory", "bom"]);
-    expect(PAGES.map((p) => p.key)).toEqual(["1", "2", "3", "4", "5", "6", "7"]);
+    // D9/D21/D22: exactly Design · Studies · Print · BOM (Drawing is in Print; Onshape and the
+    // parts library are on Home)
+    expect(PAGES.map((p) => p.id)).toEqual(["design", "studies", "print", "bom"]);
+    expect(PAGES.map((p) => p.key)).toEqual(["1", "2", "3", "4"]);
     expect(DEFAULT_PAGE).toBe("design");
   });
 
@@ -17,10 +19,12 @@ describe("page router", () => {
     expect(isPage("studies")).toBe(true);
     expect(isPage("sketch")).toBe(false);   // Plan 7 U2b: the Sketch page is gone
     expect(isPage("nope")).toBe(false);
-    expect(pageForDigit("3")).toBe("drawing");
-    expect(pageForDigit("6")).toBe("directory");
-    expect(pageForDigit("7")).toBe("bom");
-    expect(pageForDigit("8")).toBeNull();
+    expect(pageForDigit("3")).toBe("print");
+    expect(isPage("drawing")).toBe(false);
+    expect(isPage("onshape")).toBe(false);
+    expect(isPage("directory")).toBe(false);
+    expect(pageForDigit("4")).toBe("bom");
+    expect(pageForDigit("5")).toBeNull();
   });
 
   it("setPage changes activePage and ignores junk", () => {
@@ -47,7 +51,7 @@ describe("page router", () => {
     expect(activePage.value).toBe("design");
     modal = false;
     press("3");
-    expect(activePage.value).toBe("drawing");
+    expect(activePage.value).toBe("print");
     off();
   });
 
@@ -60,13 +64,13 @@ describe("page router", () => {
     d.remove();
   });
 
-  it("⌘1–⌘7 navigate and unregister cleanly", () => {
+  it("⌘1–⌘4 navigate and unregister cleanly", () => {
     const off = installPageShortcuts({ isTrusted: () => true, isModalOpen: () => false });
     const press = (key: string) =>
       window.dispatchEvent(new KeyboardEvent("keydown", { key, code: `Digit${key}`, metaKey: true, bubbles: true, cancelable: true }));
     press("2");
     expect(activePage.value).toBe("studies");
-    press("4");
+    press("3");
     expect(activePage.value).toBe("print");
     off();
     press("1");

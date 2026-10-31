@@ -1,6 +1,6 @@
 [
   {
-    "id": "daf8f32980c9",
+    "id": "c2f6ec9f8a0e",
     "parent_id": null,
     "agent": "designer",
     "provider": "fake",
@@ -12,16 +12,16 @@
     "input_tokens": 0,
     "output_tokens": 0,
     "usd": 0.0,
-    "created_at": 1793416255.08899,
-    "updated_at": 1793416255.090941,
-    "owner_pid": 77933,
+    "created_at": 1793426481.4304729,
+    "updated_at": 1793426481.433533,
+    "owner_pid": 78933,
     "external": false,
     "session_ref": null,
     "project_id": "74ab71a5279a",
     "title": null,
     "pinned": false,
     "archived": false,
-    "last_activity_at": 1793416260.9693708,
+    "last_activity_at": 1793426489.055524,
     "role": null,
     "routed": null,
     "shape_complexity": {
