@@ -429,6 +429,7 @@ def _static_evaluator(ctx: ToolContext, part_id: str, part_dir: Path, base_vars:
     source = safe_io.read_text(part_dir, "part.py")   # live part: read, links never followed
     if source is None:
         raise MisesError(ErrorCode.NOT_FOUND, f"{part_id} has no part.py", hint="rebuild it")
+    body = safe_io.read_bytes(part_dir, "topopt_body.step")
 
     async def evaluate(vars: dict) -> dict:
         variant = f"e{next(counter)}"
@@ -439,6 +440,8 @@ def _static_evaluator(ctx: ToolContext, part_id: str, part_dir: Path, base_vars:
         vpart.parent.mkdir(parents=True, exist_ok=True)
         safe_io.ensure_dir(vpart)
         safe_io.write_text(vpart, "part.py", source)
+        if body is not None:    # a generative-design part's script imports its body (D14)
+            safe_io.write_bytes(vpart, "topopt_body.step", body)
         out = _empty_metrics(variant)
         # the live part's staged layout skeleton (Plan 8 G3), so skeleton() works in variants
         res = await run_build(vpart, {**base_vars, **vars},

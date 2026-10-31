@@ -183,12 +183,21 @@ async def verify(job: Path, material: Material, ccx: str, *, size_mm: float,
                                         "max_von_mises_mpa": vm_max})
     (d / "mesh.json").unlink(missing_ok=True)
     allow = material.allowable_mpa
+    # a bracket's real peak is often at its root: the safety factor that ranks and passes is
+    # the conservative one, from the peak INCLUDING the fixture zone (an ideal clamp also
+    # exaggerates it, so the peak away from the fixture is reported beside it)
+    vm_fix = max((c["max_von_mises_at_fixture_mpa"] or 0.0) for c in cases)
+    vm_all = max(vm_max, vm_fix)
     return {"solver": "CalculiX", "element": "C3D10 (quadratic tetrahedra)",
             "mesher": f"{mesher} {mesh.gmsh_version}",
             "mesh_size_mm": size_mm, "nodes": len(mesh.nodes), "tets": len(mesh.tets),
             "surface": surf, "fixtures": plan["fixtures"],
             "cases": cases, "compliance": total_c,
             "max_deflection_mm": max(c["max_deflection_mm"] for c in cases),
-            "max_von_mises_mpa": vm_max,
-            "allowable_mpa": allow, "safety_factor": allow / vm_max if vm_max > 0 else None,
+            "max_von_mises_mpa": vm_max, "max_von_mises_at_fixture_mpa": vm_fix,
+            "max_von_mises_incl_fixture_mpa": vm_all,
+            "allowable_mpa": allow,
+            "safety_factor": allow / vm_all if vm_all > 0 else None,
+            "safety_factor_basis": "peak including the fixture zone (conservative)",
+            "safety_factor_away_from_fixture": allow / vm_max if vm_max > 0 else None,
             "seconds": round(time.perf_counter() - t0, 1)}

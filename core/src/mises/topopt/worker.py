@@ -24,6 +24,8 @@ from ..sim.environments import FACE_PRESETS
 
 PREVIEW_SMOOTH = 3
 FINAL_SMOOTH = 10
+SEAM_SMOOTH = 25          # extra fairing iterations in the band around the cut planes
+SEAM_BAND = 1.5           # voxels
 STL_TOL, STL_ANG = 0.05, 0.3
 
 
@@ -330,8 +332,15 @@ def run(job: Path, progress=None) -> dict:
     target = int(spec.get("decimate_tris", 5000))
     total_tris = sum(len(c[1]) for c in bodies) or 1
     solids, dec = [], {"tris": 0, "watertight": True, "volume_mm3": 0.0}
+    # the seam: where the organic surface will be cut by the design space's own faces, voxel
+    # stair-steps would leave a saw-tooth outline on the exact faces; fair a band around them
+    seam = vx.FaceDistance(vx.tris_of(space_solid(spec, shape), max(0.02, 0.05 * p.h)),
+                           max_edge=p.h)
     for Vc, Tc, _vol in bodies:
         Vc = geo.taubin(Vc, Tc, FINAL_SMOOTH)
+        band = seam(Vc, cutoff=SEAM_BAND * p.h) <= SEAM_BAND * p.h
+        if band.any():
+            Vc = geo.taubin(Vc, Tc, SEAM_SMOOTH, mask=band)
         Vd, Td = geo.decimate(Vc, Tc, max(200, target * len(Tc) // total_tris),
                               max_error=0.25 * p.h)
         st = geo.mesh_stats(Vd, Td)

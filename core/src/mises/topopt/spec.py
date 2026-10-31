@@ -153,6 +153,22 @@ class TopoptRunArgs(BaseModel):
         return self
 
 
+# a variant's label: shown on cards and stored in records, never spliced into source
+NAME_RE = r"^[A-Za-z0-9][A-Za-z0-9 ._+\-/]{0,39}$"
+
+
+class VariantDelta(BaseModel):
+    """One variant's changes, held to the top-level fields' ranges."""
+    model_config = {"extra": "forbid"}
+
+    name: str | None = Field(None, pattern=NAME_RE)
+    volume_fraction: float | None = Field(None, gt=0.03, lt=0.8)
+    filter_radius_mm: float | None = Field(None, gt=0, le=100)
+    resolution_mm: float | None = Field(None, ge=0.2, le=20)
+    max_iter: int | None = Field(None, ge=5, le=200)
+    manufacturing: Manufacturing | None = None
+
+
 class TopoptGenerateArgs(TopoptRunArgs):
     variants: list[dict[str, Any]] = Field(default_factory=list, max_length=12, description=(
         "explicit deltas, e.g. [{\"volume_fraction\": 0.15}, {\"filter_radius_mm\": 3}, "
@@ -166,11 +182,15 @@ class TopoptGenerateArgs(TopoptRunArgs):
     @field_validator("variants")
     @classmethod
     def _variants(cls, v):
+        out = []
         for d in v:
             bad = set(d) - VARIANT_KEYS
             if bad:
                 raise ValueError(f"unknown variant keys {sorted(bad)}; use {sorted(VARIANT_KEYS)}")
-        return v
+            # the same ranges as the top-level fields (a delta is not a side door)
+            out.append(VariantDelta.model_validate(d).model_dump(exclude_none=True,
+                                                                  exclude_unset=True))
+        return out
 
     @field_validator("sweep")
     @classmethod
@@ -183,6 +203,8 @@ class TopoptGenerateArgs(TopoptRunArgs):
         for k, vals in v.items():
             if not vals or len(vals) > 6:
                 raise ValueError(f"sweep {k}: 1 to 6 values")
+            for x in vals:
+                VariantDelta.model_validate({k: x})
         return v
 
 

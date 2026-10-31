@@ -206,14 +206,18 @@ def _adjacency(V: np.ndarray, T: np.ndarray) -> sp.csr_matrix:
     return A
 
 
-def taubin(V: np.ndarray, T: np.ndarray, iters: int = 10) -> np.ndarray:
+def taubin(V: np.ndarray, T: np.ndarray, iters: int = 10,
+           mask: np.ndarray | None = None) -> np.ndarray:
+    """Taubin smoothing; with `mask`, only those vertices move (a local fairing pass)."""
     A = _adjacency(V, T)
     deg = np.asarray(A.sum(1)).ravel()
     W = sp.diags(1 / np.maximum(deg, 1)) @ A
     V = V.copy()
+    m = None if mask is None else np.asarray(mask, bool)[:, None]
     for _ in range(iters):
-        V += TAUBIN_LAMBDA * (W @ V - V)
-        V += TAUBIN_MU * (W @ V - V)
+        for k in (TAUBIN_LAMBDA, TAUBIN_MU):
+            step = k * (W @ V - V)
+            V += step if m is None else np.where(m, step, 0.0)
     return V
 
 

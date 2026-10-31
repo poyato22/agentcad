@@ -27,18 +27,20 @@ BUILD_TIMEOUT_S = 300.0
 
 
 def script(topopt_id: str, vid: str, source: str, name: str) -> str:
-    return f'''"""Generative design: {name} (variant {vid} of {topopt_id}, from {source}).
-
-The organic body is a topology-optimized, mesh-derived solid stored next to this script
-({BODY}); its mounting faces and bores are exact. Add features on top (holes, fillets on the
-exact faces) or run generative design again to change the body itself."""
-VARS = {{}}
-
-
-def build(v: dict):
-    import os
-    return import_step(os.path.join(os.path.dirname(__file__), "{BODY}"))
-'''
+    """The accepted part's script. Nothing free-form is ever spliced into source text: the run's
+    ids and the variant's label go in as repr() literals of one data assignment (untrusted text
+    stays data)."""
+    meta = {"topopt_id": str(topopt_id), "variant": str(vid), "source": str(source),
+            "name": str(name)}
+    return ('"""Generative design: a topology-optimized body (see GENERATIVE below).\n\n'
+            f"The organic body is a mesh-derived solid stored next to this script ({BODY}); its\n"
+            "mounting faces and bores are exact. Add features on top (holes, fillets on the exact\n"
+            'faces) or run generative design again to change the body itself."""\n'
+            f"GENERATIVE = {meta!r}\n"
+            "VARS = {}\n\n\n"
+            "def build(v: dict):\n"
+            "    import os\n"
+            f"    return import_step(os.path.join(os.path.dirname(__file__), {BODY!r}))\n")
 
 
 def _free_id(parts_root: Path, base: str) -> str:
@@ -81,6 +83,10 @@ async def accept(ctx, args: AcceptArgs) -> ToolOutput:
     src = script(args.topopt_id, v["id"], args.part_id, v.get("name") or v["id"])
     if args.mode == "new":
         pid = args.new_part_id or _free_id(Path(ctx.workdir) / "parts", args.part_id)
+        if not jobs._in_scope(ctx, pid, write=True):   # like mirror_part_create's scope_arg
+            raise MisesError(ErrorCode.OUT_OF_SCOPE, f"creating {pid} is outside this run's "
+                             "edit scope", hint="ask the user to widen the scope, or use "
+                                                "mode=replace on the source part")
         out = await _new_part(ctx, pid, src, body)
     else:
         out = await _replace(ctx, args.part_id, src, body, args.base_version)

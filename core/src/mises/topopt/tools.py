@@ -35,7 +35,10 @@ def _compact_variant(v: dict) -> dict:
                                   "compliance_error_pct", "error")}
     if ver:
         out["verify"] = {k: ver.get(k) for k in ("compliance", "max_deflection_mm",
-                                                  "max_von_mises_mpa", "safety_factor",
+                                                  "max_von_mises_mpa",
+                                                  "max_von_mises_incl_fixture_mpa",
+                                                  "safety_factor", "safety_factor_basis",
+                                                  "safety_factor_away_from_fixture",
                                                   "allowable_mpa", "nodes", "error")}
     if v.get("warnings"):
         out["warnings"] = v["warnings"][:4]

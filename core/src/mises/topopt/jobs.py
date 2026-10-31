@@ -43,6 +43,7 @@ ROOT = "topopt"
 RECORD = "record.json"
 WORKER_MODULE = "mises.topopt.worker"
 TARGET_ELEMENTS = 50_000
+MAX_FILTER_VOXELS = 6.0
 MAX_ELEMENTS = 160_000
 LOW_VF = 0.15
 MAX_PARALLEL = 3
@@ -269,7 +270,13 @@ def plan(ctx, args: TopoptRunArgs) -> dict:
         r_mm = delta.get("filter_radius_mm", args.filter_radius_mm)
         if r_mm is None:
             r_mm = max(2.0 * h, (mf.min_member_mm or 0) / 2)
-        r_el = max(1.2, float(r_mm) / h)
+        if float(r_mm) / h > MAX_FILTER_VOXELS:
+            # the filter's non-zeros grow with r^3 (r 6: ~0.8 GB on a 48k grid; r 10: ~4 GB):
+            # a wide filter runs on coarser voxels instead
+            h0, h = h, math.ceil(100 * float(r_mm) / MAX_FILTER_VOXELS) / 100
+            warnings.append(f"a {float(r_mm):g} mm filter radius is over {MAX_FILTER_VOXELS} voxels "
+                            f"of {h0:g} mm: using {h:g} mm voxels")
+        r_el = min(MAX_FILTER_VOXELS, max(1.2, float(r_mm) / h))
         reg = []
         for k, r in enumerate(args.keep):
             reg.append({**r.model_dump(exclude_none=True),
@@ -372,10 +379,12 @@ def summary(rec: dict) -> str:
     best = next((v for v in vs if v["id"] == rec.get("recommended")), None)
     if best is not None:
         ver = best.get("verify") or {}
+        peak = ver.get("max_von_mises_incl_fixture_mpa", ver.get("max_von_mises_mpa", 0))
         head += (f"; recommended {best['id']} ({best['name']}): {best['mass_g']:.1f} g, "
                  f"deflection {ver.get('max_deflection_mm', 0):.3g} mm, peak "
-                 f"{ver.get('max_von_mises_mpa', 0):.3g} MPa, SF {ver.get('safety_factor', 0):.2f}"
-                 " (CalculiX, guide only)")
+                 f"{peak:.3g} MPa incl. the fixture zone "
+                 f"({ver.get('max_von_mises_mpa', 0):.3g} MPa away from it), SF "
+                 f"{ver.get('safety_factor') or 0:.2f} (CalculiX, guide only)")
     elif rec.get("status") == "done":
         head += "; no variant passed verification"
         fails = [v for v in vs if v.get("error")]
@@ -528,10 +537,20 @@ async def _run_variant(ctx_events, rec: dict, v: dict, d: Path, args: TopoptRunA
     v.update(status="done", phase="done", pct=100.0, finished_at=time.time())
 
 
+def parallel_variants() -> int:
+    """Variants run at once: at most MAX_PARALLEL, one per MEMORY_MB of usable memory (each
+    worker's watchdog budget) and half the heavy-worker slots (a variant's worker, then its
+    mesher and solver, hold a slot for minutes: renders and studies keep the rest)."""
+    from .. import hardware
+    from ..heavy import heavy_limit
+    by_mem = int(hardware.usable_memory_gb() * 1024 // MEMORY_MB)
+    return max(1, min(MAX_PARALLEL, by_mem, heavy_limit() // 2))
+
+
 async def _run_job(events, rec: dict, d: Path, args: TopoptRunArgs, plan_: dict, save) -> None:
     from ..sim.ccx import find_ccx
     ccx = find_ccx() if args.verify else None
-    sem = asyncio.Semaphore(min(MAX_PARALLEL, len(rec["variants"])))
+    sem = asyncio.Semaphore(min(parallel_variants(), len(rec["variants"])))
 
     async def one(v: dict) -> None:
         async with sem:
@@ -549,6 +568,9 @@ async def _run_job(events, rec: dict, d: Path, args: TopoptRunArgs, plan_: dict,
             except Exception as e:  # noqa: BLE001
                 v.update(status="failed", phase="failed", error=f"{type(e).__name__}: {e}")
             finally:
+                # this variant's verified / passes marks right away (the order is final at the end)
+                rank(rec["variants"], min_safety_factor=args.min_safety_factor,
+                     max_deflection_mm=args.max_deflection_mm)
                 save()
 
     rec["status"] = "running"
