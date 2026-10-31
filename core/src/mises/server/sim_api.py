@@ -35,6 +35,7 @@ from ..sim.ccx import solver_status
 from ..sim.cfd import cfd_solver_status
 from ..sim.charts import charts
 from ..sim.fields import FIELDS_FILE, Fields
+from .. import mass as mass_mod
 from ..sim.materials import (MATERIALS, custom_material, delete_custom, load_custom,
                              upsert_custom)
 from ..sim.settings import CustomMaterial
@@ -424,7 +425,7 @@ def build_sim_router(runtime: Runtime) -> APIRouter:
         try:
             await run_in_threadpool(
                 studies.preflight, type_id, studies.validate_settings(type_id, settings), part,
-                runtime.home, runtime.profile().default_material)
+                runtime.home, mass_mod.part_material(runtime.store, runtime.home, part_id))
         except SimError as e:
             raise _bad(e) from None
         rid = runtime.create_external_run(

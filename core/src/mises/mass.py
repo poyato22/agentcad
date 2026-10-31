@@ -69,6 +69,16 @@ def default_material(home: Path | None) -> str:
     return load_profile(home).default_material or DEFAULT_MATERIAL
 
 
+def part_material(store, home: Path | None, part_id: str | None) -> str:
+    """The material a part is made of: its row's material, else the build default. Drawings,
+    printing and studies default to this (an explicit material in the call still wins)."""
+    try:
+        row = store.get_part(part_id) if store is not None and part_id else None
+    except Exception:  # noqa: BLE001 - a bare test context
+        row = None
+    return getattr(row, "material", None) or default_material(home)
+
+
 def build_density(store, home: Path, part_id: str) -> float:
     """The density a part's next build hands the worker (so the build's own metrics agree with
     the tree): its row's material, else the build default; PLA when neither is known."""

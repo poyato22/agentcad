@@ -159,7 +159,9 @@ async def print_slice(ctx: ToolContext, args: SliceArgs) -> ToolOutput:
         raise MisesError(ErrorCode.NOT_FOUND, f"no built part {args.part_id!r}",
                          hint="create it with mirror_part_create")
     printer = find_printer(home, args.printer_id)
-    material = (args.material or load_profile(home).default_material).upper()
+    from .. import mass as _mass       # Plan 9 B2: the part's own material, else the default
+    material = (args.material or _mass.part_material(getattr(ctx, "store", None), home,
+                                                     args.part_id)).upper()
     mat = slicer.material_of(material)
     slicer.require_slicer()
     # a fresh id every time; only the app's own calls (trusted meta) may name it, so an agent

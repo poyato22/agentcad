@@ -740,7 +740,7 @@
                 }
               ],
               "default": null,
-              "description": "a built-in or saved material; null = the profile's default material",
+              "description": "a built-in or saved material; null = the part's own material, else the profile's default (one without simulation data is refused)",
               "title": "Name"
             },
             "custom": {
@@ -1802,7 +1802,7 @@
                 }
               ],
               "default": null,
-              "description": "a built-in or saved material; null = the profile's default material",
+              "description": "a built-in or saved material; null = the part's own material, else the profile's default (one without simulation data is refused)",
               "title": "Name"
             },
             "custom": {
@@ -2711,7 +2711,7 @@
                 }
               ],
               "default": null,
-              "description": "a built-in or saved material; null = the profile's default material",
+              "description": "a built-in or saved material; null = the part's own material, else the profile's default (one without simulation data is refused)",
               "title": "Name"
             },
             "custom": {
@@ -3601,7 +3601,7 @@
                 }
               ],
               "default": null,
-              "description": "a built-in or saved material; null = the profile's default material",
+              "description": "a built-in or saved material; null = the part's own material, else the profile's default (one without simulation data is refused)",
               "title": "Name"
             },
             "custom": {
@@ -4178,7 +4178,7 @@
                 }
               ],
               "default": null,
-              "description": "a built-in or saved material; null = the profile's default material",
+              "description": "a built-in or saved material; null = the part's own material, else the profile's default (one without simulation data is refused)",
               "title": "Name"
             },
             "custom": {

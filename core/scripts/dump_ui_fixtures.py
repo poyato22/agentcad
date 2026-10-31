@@ -129,7 +129,8 @@ def _pin_default_build(home: Path) -> None:
     st = Store(home / "mises.db")
     with st._tx() as db:
         now = time.time()
-        db.execute("INSERT OR IGNORE INTO projects VALUES (?,?,?,?,?)",
+        db.execute("INSERT OR IGNORE INTO projects (id, name, created_at, updated_at,"
+                   " trashed_at) VALUES (?,?,?,?,?)",
                    (DEFAULT_BUILD_ID, "Default", now, now, None))
         db.execute("INSERT OR REPLACE INTO meta VALUES ('default_project_id', ?)",
                    (DEFAULT_BUILD_ID,))

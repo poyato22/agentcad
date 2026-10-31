@@ -17,6 +17,7 @@ from starlette.concurrency import run_in_threadpool
 
 from .. import platform as _platform
 from ..cad.tools import PART_ID_RE
+from .. import mass as mass_mod
 from ..print import slicer
 from ..print.prusalink import SENDABLE_STATES
 from ..print.tools import (KEYCHAIN_SERVICE, SLICE_ID_RE, client_for, find_printer,
@@ -153,7 +154,8 @@ def build_print_router(runtime: Runtime) -> APIRouter:
             raise MisesError(ErrorCode.NOT_FOUND, f"no built part {part_id!r}",
                              hint="build it with mirror_part_create")
         printer = find_printer(runtime.home, printer_id)
-        material = str(body.get("material") or load_profile(runtime.home).default_material).upper()
+        material = str(body.get("material") or mass_mod.part_material(
+            runtime.store, runtime.home, part_id)).upper()
         slicer.material_of(material)
         if slicer.find_slicer() is None:
             return JSONResponse({"error": "tool_failed", "message": "PrusaSlicer is not installed",

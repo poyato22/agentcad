@@ -283,3 +283,79 @@ def test_part_view_reads_only_the_part_and_its_subtree(store, tmp_path, build, m
     calls.clear()
     g = projects.part_view(store, tmp_path, store.get_part("frame"))
     assert sorted(calls) == ["frame", "kid"] and g["mass_g"] == pytest.approx(1.24)
+
+
+# ---- fix round 2
+
+def test_a_study_of_a_part_material_without_sim_data_is_refused(store, tmp_path, build):
+    from mises.sim import studies
+    from mises.sim.settings import MaterialSettings
+    from mises.sim.types import SimError
+    _built(store, tmp_path, build, "boot", 10000.0, material="TPU")
+    ctx = SimpleNamespace(workdir=tmp_path, store=store, services={})
+    assert studies.default_material(ctx, "boot") == "TPU"           # never swapped for PLA
+    for ms in (None, MaterialSettings()):
+        with pytest.raises(SimError) as e:
+            studies.resolve_material(ms, studies.default_material(ctx, "boot"), tmp_path)
+        assert e.value.message == ("TPU has no simulation data; set a sim material for this "
+                                   "study or calibrate one")
+        assert "PETG" in (e.value.hint or "")
+    # an explicit material in the call is studied as asked
+    m = studies.resolve_material(MaterialSettings(name="PETG"), "TPU", tmp_path)
+    assert m.name == "PETG"
+    # a name nobody knows keeps the plain unknown-material error
+    with pytest.raises(SimError) as e:
+        studies.resolve_material(None, "unobtainium", tmp_path)
+    assert "unknown material" in e.value.message
+
+
+def test_design_review_weighs_max_mass_with_the_spec_check_mass(store, tmp_path, build):
+    from mises.engineering.spec import Spec
+    from mises.engineering.tools import spec_report
+    from mises.sim.tools import _metric_rows
+    _built(store, tmp_path, build, "boot", 10000.0, material="TPU")
+    spec = {"requirements": [{"id": "m", "kind": "max_mass_g", "target": 12.2}]}
+    metrics = json.loads((tmp_path / "parts" / "boot" / "metrics.json").read_text())
+    row = _metric_rows(spec, metrics, mass.part_mass(store, tmp_path, "boot", metrics))[0]
+    checked = spec_report(tmp_path, Spec.model_validate(spec), "boot", store)["requirements"][0]
+    assert row["measured"] == checked["measured"] == pytest.approx(12.1)    # TPU 1.21
+    # the verdict bands stay each tool's own (design_review warns on a near-miss below target,
+    # like its stress rows); the mass they judge is the one number
+    assert row["note"].startswith("the part's mass: ") and "TPU" in row["note"]
+
+
+def test_drawings_and_prints_default_to_the_parts_material(store, tmp_path, build):
+    _built(store, tmp_path, build, "plate", 1000.0, material="PETG")
+    _built(store, tmp_path, build, "arm", 1000.0)
+    assert mass.part_material(store, tmp_path, "plate") == "PETG"
+    assert mass.part_material(store, tmp_path, "arm") == "PLA"           # the build default
+    assert mass.part_material(None, tmp_path, None) == "PLA"
+
+
+def test_concurrent_reparents_never_form_a_cycle(store, tmp_path, build):
+    import threading
+    _built(store, tmp_path, build, "a", 1000.0)
+    _built(store, tmp_path, build, "b", 1000.0)
+    errors = []
+
+    def move(child, parent):
+        for _ in range(40):
+            try:
+                projects.patch_part(store, tmp_path, child, parent_id=parent)
+            except MisesError:
+                pass                                      # the second move is refused
+            except Exception as e:  # noqa: BLE001
+                errors.append(e)
+            try:
+                projects.patch_part(store, tmp_path, child, parent_id=None)
+            except MisesError:
+                pass
+
+    ts = [threading.Thread(target=move, args=("a", "b")), threading.Thread(target=move, args=("b", "a"))]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join()
+    assert not errors
+    a, b = store.get_part("a"), store.get_part("b")
+    assert not (a.parent_id == "b" and b.parent_id == "a")

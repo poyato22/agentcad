@@ -15,6 +15,7 @@ import os
 import re
 import shutil
 import stat
+import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -519,7 +520,19 @@ def _parent_in(store: Store, parent_id: str, project_id: str | None) -> None:
         raise _bad("the parent part belongs to another build")
 
 
-def patch_part(store: Store, home: Path, part_id: str, *, label: str | None = None,
+# PATCH /parts runs in worker threads (Plan 9 B2): the cycle check and the write must not
+# interleave with another re-parent, or two moves (A under B, B under A) could both pass
+_TREE_LOCK = threading.RLock()
+
+
+def patch_part(store: Store, home: Path, part_id: str, **kw: Any) -> dict:
+    """Rename, recolor, re-material or re-parent a part (see _patch_part), validated and
+    written under one tree lock."""
+    with _TREE_LOCK:
+        return _patch_part(store, home, part_id, **kw)
+
+
+def _patch_part(store: Store, home: Path, part_id: str, *, label: str | None = None,
                color: str | None | object = ..., parent_id: str | None | object = ...,
                appearance: dict | None | object = ...,
                material: str | None | object = ...) -> dict:
@@ -567,6 +580,12 @@ def patch_part(store: Store, home: Path, part_id: str, *, label: str | None = No
 
 def reorder_parts(store: Store, home: Path, project_id: str, parent_id: str | None,
                   ids: list[str]) -> list[dict]:
+    with _TREE_LOCK:
+        return _reorder_parts(store, home, project_id, parent_id, ids)
+
+
+def _reorder_parts(store: Store, home: Path, project_id: str, parent_id: str | None,
+                   ids: list[str]) -> list[dict]:
     """Order (and re-parent) siblings. Every id and the parent must belong to project_id."""
     _project_or_404(store, project_id)
     if parent_id is not None:

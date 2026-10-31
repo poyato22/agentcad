@@ -76,7 +76,9 @@ class StaticArgs(BaseModel):
     fix: FaceSpec = Field(description="face held fixed: a preset or a face id (e.g. 'f3')")
     load: LoadSpec
     material: str | None = Field(default=None, description=f"one of {list(MATERIALS)}; "
-                                 "default: the profile's default_material")
+                                 "default: the part's own material, else the profile's "
+                                 "default_material (a material without simulation data is "
+                                 "refused: name one here)")
     environment: str | None = Field(default=None, description="optional preset from "
                                     "sim_env_list; its temperature is checked against the "
                                     "material")
@@ -456,18 +458,24 @@ def plan_review(spec: dict, wind_overrides: dict | None = None,
     return plan
 
 
-def _metric_rows(spec: dict, metrics: dict, material) -> list[dict]:
+def _metric_rows(spec: dict, metrics: dict, mass: dict) -> list[dict]:
+    """`mass`: mises.mass.part_mass of the part, the number spec_check and the UI show."""
     rows = []
     for r in spec.get("requirements") or []:
         if not isinstance(r, dict):
             continue
         kind, target = r.get("kind"), r.get("target")
         if kind == "max_mass_g" and isinstance(target, (int, float)):
-            mass = metrics.get("volume_mm3", 0) * material.density_g_cm3 / 1000.0
-            st = studies._verdict(mass, float(target), "max", None)
+            g = mass.get("mass_g")
+            if g is None:
+                rows.append({"requirement_id": r.get("id"), "kind": kind, "target": target,
+                             "measured": None, "unit": "g", "status": "not_checked",
+                             "sim_id": None, "note": mass.get("mass_note") or "mass unknown"})
+                continue
+            st = studies._verdict(g, float(target), "max", None)
             rows.append({"requirement_id": r.get("id"), "kind": kind, "target": target,
-                         "measured": round(mass, 2), "unit": "g", "status": st, "sim_id": None,
-                         "note": f"from the volume x {material.name} density (solid)"})
+                         "measured": g, "unit": "g", "status": st, "sim_id": None,
+                         "note": f"the part's mass: {mass.get('mass_note')}"})
         elif kind == "envelope_mm" and isinstance(target, list) and len(target) == 3:
             size = sorted(metrics.get("bbox", {}).get("size", [0, 0, 0]))
             ok = all(a <= b + 1e-6 for a, b in zip(size, sorted(float(t) for t in target)))
@@ -554,10 +562,10 @@ async def design_review(ctx: ToolContext, args: ReviewArgs) -> ToolOutput:
                          hint="pass spec, or a project_id whose spec is set (spec_set)")
     spec = normalize_spec(spec)
     metrics = safe_io.read_json(part, "metrics.json") or {}
-    try:
-        material = studies.resolve_material(None, args.material
-                                             or studies.default_material(ctx, args.part_id),
-                                             studies._home(ctx))
+    try:   # refused before any study starts (e.g. a part material with no simulation data)
+        studies.resolve_material(None, args.material
+                                 or studies.default_material(ctx, args.part_id),
+                                 studies._home(ctx))
     except SimError as e:
         raise _bad(e) from None
     plan = plan_review(spec, args.wind, args.material)
@@ -598,7 +606,10 @@ async def design_review(ctx: ToolContext, args: ReviewArgs) -> ToolOutput:
                 results[i] = {"plan": p, "call_id": call_id, "error": f"{e.code}: {e.message}"}
 
     await asyncio.gather(*(one(i, p) for i, p in enumerate(plan)))
-    table = _metric_rows(spec, metrics, material)
+    from .. import mass as _mass       # the same mass as spec_check and the UI (Plan 9 B2)
+    table = _metric_rows(spec, metrics, _mass.part_mass(getattr(ctx, "store", None),
+                                                        Path(ctx.workdir), args.part_id,
+                                                        metrics or None))
     studies_run = []
     for res in results:
         p = res["plan"]
