@@ -1,17 +1,17 @@
 {
-  "sim_id": "sim_55ea8720c75f",
+  "sim_id": "sim_6c1d1a2d96b0",
   "part_id": "mount_plate",
   "type": "static",
-  "run_id": "85c876ca6932",
-  "call_id": "ui-b399d3442474",
+  "run_id": "a384b2c14413",
+  "call_id": "ui-75486a0a477a",
   "step_id": 16,
   "reason": null,
   "status": "failed",
   "stage": "failed",
   "phase": "queued",
   "pct": 0.0,
-  "created_at": 1793426495.275543,
-  "finished_at": 1793426495.2785122,
+  "created_at": 1793432051.432353,
+  "finished_at": 1793432051.4329002,
   "analysis": "static",
   "guide": true,
   "label": "guide only, not a guarantee",
@@ -128,7 +128,7 @@
     "nonlinear": null,
     "fatigue": null
   },
-  "geometry_hash": "13ddce0cd7e8e6baf4f261db29bfa7c6e263052f9fdeb5f56bcd5ffeb0270623",
+  "geometry_hash": "b892546ccd80774690ef0a417cd7714fd40415a2a6ba5a9b2a358356ae5eebb5",
   "material": {
     "name": "PETG",
     "e_mpa": 1500.0,
@@ -182,16 +182,17 @@
     "Peak stress excludes nodes on the fixed face (an ideal clamp gives a constraint singularity there); that value and a safety factor including it are reported separately."
   ],
   "urls": {
-    "record": "/sims/sim_55ea8720c75f",
-    "glb": "/sims/sim_55ea8720c75f/result.glb",
-    "charts": "/sims/sim_55ea8720c75f/charts",
-    "probe": "/sims/sim_55ea8720c75f/probe",
-    "section": "/sims/sim_55ea8720c75f/section"
+    "record": "/sims/sim_6c1d1a2d96b0",
+    "glb": "/sims/sim_6c1d1a2d96b0/result.glb",
+    "charts": "/sims/sim_6c1d1a2d96b0/charts",
+    "probe": "/sims/sim_6c1d1a2d96b0/probe",
+    "section": "/sims/sim_6c1d1a2d96b0/section"
   },
+  "error_code": "solver_missing",
   "stale": false,
   "card": {
     "material_basis": "datasheet / estimate",
-    "sim_id": "sim_55ea8720c75f",
+    "sim_id": "sim_6c1d1a2d96b0",
     "type": "static",
     "status": "failed",
     "verdict": "fail",
@@ -231,15 +232,15 @@
     "checks": [],
     "warnings": [],
     "reason": null,
-    "run_id": "85c876ca6932",
+    "run_id": "a384b2c14413",
     "step_id": 16,
     "urls": {
-      "record": "/sims/sim_55ea8720c75f",
-      "glb": "/sims/sim_55ea8720c75f/result.glb",
-      "charts": "/sims/sim_55ea8720c75f/charts",
-      "probe": "/sims/sim_55ea8720c75f/probe",
-      "section": "/sims/sim_55ea8720c75f/section"
+      "record": "/sims/sim_6c1d1a2d96b0",
+      "glb": "/sims/sim_6c1d1a2d96b0/result.glb",
+      "charts": "/sims/sim_6c1d1a2d96b0/charts",
+      "probe": "/sims/sim_6c1d1a2d96b0/probe",
+      "section": "/sims/sim_6c1d1a2d96b0/section"
     },
-    "charts_url": "/sims/sim_55ea8720c75f/charts"
+    "charts_url": "/sims/sim_6c1d1a2d96b0/charts"
   }
 }

@@ -1,8 +1,8 @@
 [
   {
     "id": 3,
-    "run_id": "f636ae2eecd1",
-    "ts": 1793416244.008655,
+    "run_id": "38cd6ece70e1",
+    "ts": 1793432032.455101,
     "kind": "decision",
     "payload": {
       "feedback": {
@@ -28,14 +28,15 @@
         "text": "make these holes M3 clearance"
       }
     },
-    "evidence_hash": "57834e81bbbf6bbaa88dfc0843e45605c093a5b4054cc668f055a80744e744af",
+    "evidence_hash": "77e5a6bfa6f21a2238bc5009c1ae205e674aa8ac4e5d1cb7cbbfea28f222cfad",
     "prev_hash": null,
-    "collapsed": false
+    "collapsed": false,
+    "stream": "text"
   },
   {
     "id": 4,
-    "run_id": "f636ae2eecd1",
-    "ts": 1793416244.01216,
+    "run_id": "38cd6ece70e1",
+    "ts": 1793432032.457972,
     "kind": "message",
     "payload": {
       "feedback": {
@@ -63,14 +64,15 @@
       "role": "user",
       "text": "make these holes M3 clearance"
     },
-    "evidence_hash": "434d5b7102cad6613e1c35a8965cb184649378858404a5ecde2853b4b345c00c",
-    "prev_hash": "57834e81bbbf6bbaa88dfc0843e45605c093a5b4054cc668f055a80744e744af",
-    "collapsed": false
+    "evidence_hash": "e86bf9174fb8a0ce6538c1f17e4c28e29e08b98fb0f34b4b3c46ea37d256c6a2",
+    "prev_hash": "77e5a6bfa6f21a2238bc5009c1ae205e674aa8ac4e5d1cb7cbbfea28f222cfad",
+    "collapsed": false,
+    "stream": "text"
   },
   {
     "id": 5,
-    "run_id": "f636ae2eecd1",
-    "ts": 1793416244.049002,
+    "run_id": "38cd6ece70e1",
+    "ts": 1793432032.485436,
     "kind": "message",
     "payload": {
       "role": "assistant",
@@ -78,8 +80,9 @@
       "text": "ok",
       "tool_calls": []
     },
-    "evidence_hash": "10e13bf53c896f5e5c84550882c5920f54ff35be0f88763d6f3e2070e8a7f5ef",
-    "prev_hash": "434d5b7102cad6613e1c35a8965cb184649378858404a5ecde2853b4b345c00c",
-    "collapsed": false
+    "evidence_hash": "22b4611aad7f38e3d21678872beec1b1dc68076515c2088d66aefa811e75b01a",
+    "prev_hash": "e86bf9174fb8a0ce6538c1f17e4c28e29e08b98fb0f34b4b3c46ea37d256c6a2",
+    "collapsed": false,
+    "stream": "text"
   }
 ]

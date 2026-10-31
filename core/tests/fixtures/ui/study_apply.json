@@ -1,8 +1,8 @@
 {
-  "study_id": "study_0068ec61dec4",
+  "study_id": "study_0040f297ccd2",
   "part_id": "mount_plate",
   "iteration": 5,
-  "summary": "applied study_0068ec61dec4 #5: mount_plate: volume 5004.3 mm3, mass 6.21 g, bbox 40.0x20.0x6.5 mm, 2 hole(s), valid=True; volume delta +370.5 mm3",
+  "summary": "applied study_0040f297ccd2 #5: mount_plate: volume 5004.3 mm3, mass 6.21 g, bbox 40.0x20.0x6.5 mm, 2 hole(s), valid=True; volume delta +370.5 mm3",
   "warnings": [],
   "data": {
     "part_id": "mount_plate",
@@ -197,7 +197,7 @@
     "face_count": 8,
     "face_list_truncated": false,
     "edge_count": 18,
-    "study_id": "study_0068ec61dec4",
+    "study_id": "study_0040f297ccd2",
     "iteration": 5
   }
 }

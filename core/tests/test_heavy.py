@@ -52,5 +52,65 @@ async def test_run_sandboxed_takes_a_slot_and_its_wait_is_not_its_timeout(monkey
         return 0, "", ""
     monkeypatch.setattr(proc, "_run_sandboxed", fake)
     await asyncio.gather(proc.run_sandboxed(["x"], tmp_path, timeout_s=0.06, what="CalculiX"),
-                         proc.run_sandboxed(["x"], tmp_path, timeout_s=0.06, what="the render"))
-    assert seen == [("CalculiX", {"CalculiX": 1}), ("the render", {"the render": 1})]
+                         proc.run_sandboxed(["x"], tmp_path, timeout_s=0.06, what="gmsh meshing"))
+    assert seen == [("CalculiX", {"CalculiX": 1}), ("gmsh meshing", {"gmsh meshing": 1})]
+
+
+# ---- Plan 9 B3 (D4): renders never starve behind the solver
+
+async def test_a_render_gets_a_slot_while_every_solve_slot_is_held(monkeypatch):
+    monkeypatch.setenv("MISES_HEAVY_WORKERS", "3")
+    release = asyncio.Event()
+    holding = []
+
+    async def solve(kind):
+        async with heavy.heavy_slot(kind):
+            holding.append(kind)
+            await release.wait()
+
+    solvers = [asyncio.create_task(solve(k)) for k in ("CalculiX", "gmsh meshing",
+                                                         "the wind solver", "OpenFOAM")]
+    for _ in range(20):
+        await asyncio.sleep(0)
+    assert len(holding) == 2                      # 3 slots, one reserved for renders
+    assert heavy.solve_limit() == 2 and heavy.total_slots() == 3
+    async with asyncio.timeout(1):                # a render does not wait for the solves
+        async with heavy.heavy_slot("the render"):
+            assert heavy.in_use()["the render"] == 1
+        async with heavy.heavy_slot("drawing"):
+            pass
+    release.set()
+    await asyncio.gather(*solvers)
+    assert heavy.in_use() == {}
+
+
+async def test_renders_may_use_every_slot_and_measure_is_not_a_render(monkeypatch):
+    monkeypatch.setenv("MISES_HEAVY_WORKERS", "3")
+    now, peak = {"r": 0, "m": 0}, {"r": 0, "m": 0}
+
+    async def job(kind, key):
+        async with heavy.heavy_slot(kind):
+            now[key] += 1
+            peak[key] = max(peak[key], now[key])
+            await asyncio.sleep(0.03)
+            now[key] -= 1
+    await asyncio.gather(*(job("the render", "r") for _ in range(5)))
+    await asyncio.gather(*(job("measure", "m") for _ in range(5)))
+    assert peak == {"r": 3, "m": 2}
+
+
+async def test_one_slot_machines_still_keep_a_render_slot(monkeypatch):
+    monkeypatch.setenv("MISES_HEAVY_WORKERS", "1")
+    assert heavy.solve_limit() == 1 and heavy.total_slots() == 2
+    release = asyncio.Event()
+
+    async def solve():
+        async with heavy.heavy_slot("CalculiX"):
+            await release.wait()
+    t = asyncio.create_task(solve())
+    await asyncio.sleep(0)
+    async with asyncio.timeout(1):
+        async with heavy.heavy_slot("the render"):
+            pass
+    release.set()
+    await t

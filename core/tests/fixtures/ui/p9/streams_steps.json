@@ -1,0 +1,327 @@
+[
+  {
+    "id": 5,
+    "run_id": "ab2d326b70fa",
+    "ts": 1793426271.2601118,
+    "kind": "message",
+    "payload": {
+      "role": "user",
+      "text": "check the beam for stress and show it"
+    },
+    "evidence_hash": "3b405b8cd34a38f60be95da4df2e389cd4c652f24d0922024a1541d5cde3139f",
+    "prev_hash": null,
+    "collapsed": false,
+    "stream": "text"
+  },
+  {
+    "id": 6,
+    "run_id": "ab2d326b70fa",
+    "ts": 1793426271.281392,
+    "kind": "message",
+    "payload": {
+      "role": "assistant",
+      "stop_reason": "tool_use",
+      "text": "Starting the stress study and a render.",
+      "tool_calls": [
+        {
+          "id": "s1",
+          "name": "sim_run"
+        },
+        {
+          "id": "v1",
+          "name": "render_views"
+        }
+      ]
+    },
+    "evidence_hash": "ef45718160d3413318c44afc6c405e5d8fda705efd5231727e253cf9ceb81b02",
+    "prev_hash": "3b405b8cd34a38f60be95da4df2e389cd4c652f24d0922024a1541d5cde3139f",
+    "collapsed": false,
+    "stream": "text"
+  },
+  {
+    "id": 7,
+    "run_id": "ab2d326b70fa",
+    "ts": 1793426271.281558,
+    "kind": "tool_call",
+    "payload": {
+      "call_id": "s1",
+      "input": {
+        "part_id": "beam",
+        "reason": "tip load on the beam",
+        "settings": {
+          "load_cases": [
+            {
+              "loads": [
+                {
+                  "direction": "-z",
+                  "face": "x-max",
+                  "kind": "force",
+                  "newtons": 10
+                }
+              ],
+              "name": "tip",
+              "supports": [
+                {
+                  "face": "x-min",
+                  "kind": "fixed"
+                }
+              ]
+            }
+          ]
+        },
+        "type": "static"
+      },
+      "name": "sim_run"
+    },
+    "evidence_hash": "1a4c7e292837d0f9e7895ca35058213b8602d8fd2fca70dc27092f71a822bf24",
+    "prev_hash": "ef45718160d3413318c44afc6c405e5d8fda705efd5231727e253cf9ceb81b02",
+    "collapsed": false,
+    "stream": "sim"
+  },
+  {
+    "id": 8,
+    "run_id": "ab2d326b70fa",
+    "ts": 1793426271.28804,
+    "kind": "tool_result",
+    "payload": {
+      "call_id": "s1",
+      "name": "sim_run",
+      "output": {
+        "data": {
+          "cancel_url": "/jobs/sim_a17a7b23fc44/cancel",
+          "card": {
+            "charts_url": "/sims/sim_a17a7b23fc44/charts",
+            "checks": [],
+            "fidelity_class": "fem",
+            "fidelity_note": null,
+            "label": "guide only, not a guarantee",
+            "material_basis": "datasheet / estimate",
+            "metrics": [
+              {
+                "key": "max_von_mises_mpa",
+                "label": "max von Mises",
+                "unit": "MPa",
+                "value": null
+              },
+              {
+                "key": "safety_factor",
+                "label": "safety factor",
+                "unit": "",
+                "value": null
+              },
+              {
+                "key": "max_displacement_mm",
+                "label": "max displacement",
+                "unit": "mm",
+                "value": null
+              },
+              {
+                "key": "error_band_pct",
+                "label": "error band",
+                "unit": "%",
+                "value": null
+              }
+            ],
+            "notes": [],
+            "part_id": "beam",
+            "pct": 0.0,
+            "phase": "queued",
+            "reason": "tip load on the beam",
+            "run_id": "ab2d326b70fa",
+            "sim_id": "sim_a17a7b23fc44",
+            "status": "running",
+            "step_id": 7,
+            "type": "static",
+            "urls": {
+              "charts": "/sims/sim_a17a7b23fc44/charts",
+              "glb": "/sims/sim_a17a7b23fc44/result.glb",
+              "probe": "/sims/sim_a17a7b23fc44/probe",
+              "record": "/sims/sim_a17a7b23fc44",
+              "section": "/sims/sim_a17a7b23fc44/section"
+            },
+            "verdict": null,
+            "warnings": []
+          },
+          "part_id": "beam",
+          "sim_id": "sim_a17a7b23fc44",
+          "status": "running",
+          "stream": "sim",
+          "type": "static",
+          "urls": {
+            "charts": "/sims/sim_a17a7b23fc44/charts",
+            "glb": "/sims/sim_a17a7b23fc44/result.glb",
+            "probe": "/sims/sim_a17a7b23fc44/probe",
+            "record": "/sims/sim_a17a7b23fc44",
+            "section": "/sims/sim_a17a7b23fc44/section"
+          }
+        },
+        "handles": [],
+        "ok": true,
+        "step_kind": "tool_result",
+        "summary": "study sim_a17a7b23fc44 (static) started in the background (guide only, not a guarantee); you get a note when it finishes. Keep working; read it with sim_result_get or sim_wait.",
+        "warnings": []
+      }
+    },
+    "evidence_hash": "d7f1ad4b49a1e558276a9dc72f75afebe7573a4806f16aa2c8c14691c0932ea9",
+    "prev_hash": "1a4c7e292837d0f9e7895ca35058213b8602d8fd2fca70dc27092f71a822bf24",
+    "collapsed": false,
+    "stream": "sim"
+  },
+  {
+    "id": 9,
+    "run_id": "ab2d326b70fa",
+    "ts": 1793426271.2884421,
+    "kind": "tool_call",
+    "payload": {
+      "call_id": "v1",
+      "input": {
+        "part_id": "beam",
+        "size": 256,
+        "views": [
+          "iso"
+        ]
+      },
+      "name": "render_views"
+    },
+    "evidence_hash": "622f3d6c38949c82224b7371e7c63ec7e2350d2331a47553ea84b302d43edf13",
+    "prev_hash": "d7f1ad4b49a1e558276a9dc72f75afebe7573a4806f16aa2c8c14691c0932ea9",
+    "collapsed": false,
+    "stream": "view"
+  },
+  {
+    "id": 10,
+    "run_id": "ab2d326b70fa",
+    "ts": 1793426271.4868789,
+    "kind": "measure",
+    "payload": {
+      "call_id": "v1",
+      "images": [
+        {
+          "b64_bytes": 11724,
+          "label": "iso",
+          "media_type": "image/png"
+        }
+      ],
+      "name": "render_views",
+      "output": {
+        "data": {
+          "cameras": {
+            "iso": {
+              "center": [
+                50.0,
+                5.0,
+                5.0
+              ],
+              "eye": null,
+              "forward": [
+                -0.5773502691896258,
+                0.5773502691896258,
+                -0.5773502691896258
+              ],
+              "perspective": false,
+              "right": [
+                0.7071067811865476,
+                0.7071067811865476,
+                -0.0
+              ],
+              "scale_px": 2.962134588825101,
+              "screen_center": [
+                0.0,
+                0.0
+              ],
+              "size": 256,
+              "up": [
+                -0.4082482904638631,
+                0.4082482904638631,
+                0.8164965809277261
+              ]
+            }
+          },
+          "image_tokens": 87,
+          "instances": 1,
+          "naming": "standard",
+          "parts": [
+            "beam"
+          ],
+          "perspective": false,
+          "render_ids": {
+            "iso": "rv_ab2d326b_ec0e3b6429_iso"
+          },
+          "requested_size": 256,
+          "size": 256,
+          "style": "shaded",
+          "view_axes": {
+            "iso": "camera at (+X, -Y, +Z), looking at the centre"
+          },
+          "views": {
+            "iso": "/Users/fixture/Mises/renders/rv_ab2d326b_ec0e3b6429_iso.png"
+          }
+        },
+        "handles": [
+          "/Users/fixture/Mises/renders/rv_ab2d326b_ec0e3b6429_iso.png"
+        ],
+        "ok": true,
+        "step_kind": "measure",
+        "summary": "rendered beam: iso; 1 image(s) attached \u2014 look at them. Views: iso = camera at (+X, -Y, +Z), looking at the centre",
+        "warnings": []
+      }
+    },
+    "evidence_hash": "98c3701b1279d9f98e5bdde06dea1dde591fc4a932e36fa5bf63b60afbf740d7",
+    "prev_hash": "622f3d6c38949c82224b7371e7c63ec7e2350d2331a47553ea84b302d43edf13",
+    "collapsed": false,
+    "stream": "view"
+  },
+  {
+    "id": 11,
+    "run_id": "ab2d326b70fa",
+    "ts": 1793426271.4876869,
+    "kind": "message",
+    "payload": {
+      "role": "assistant",
+      "stop_reason": "end_turn",
+      "text": "The study runs in the background; the render is above.",
+      "tool_calls": []
+    },
+    "evidence_hash": "3176cb910256299e4c034c63910c200fe9be92c21539195c73b620aa16ecc092",
+    "prev_hash": "98c3701b1279d9f98e5bdde06dea1dde591fc4a932e36fa5bf63b60afbf740d7",
+    "collapsed": false,
+    "stream": "text"
+  },
+  {
+    "id": 12,
+    "run_id": "ab2d326b70fa",
+    "ts": 1793426272.361556,
+    "kind": "message",
+    "payload": {
+      "role": "user",
+      "system_note": {
+        "id": "sim_a17a7b23fc44",
+        "job": "sim",
+        "kind": "sim_finished",
+        "sim_id": "sim_a17a7b23fc44",
+        "status": "done"
+      },
+      "text": "[Mises system note, not from the user] static study of beam (sim_a17a7b23fc44) finished. Result summary (data): \"GUIDE ONLY - CalculiX 2.23, fine mesh 2.5 mm (coarse 5 mm), material PLA isotropic linear elastic, strength x0.7 FDM knock-down: beam max von Mises 6.04 MPa (error band 0.7%), max displacement 1.74 mm, safety factor 5.91; peak excludes the fixed face; at fixture: 5.58 MPa (safety factor incl. fixture 5.91)\". Read it with sim_result_get sim_a17a7b23fc44."
+    },
+    "evidence_hash": "deec0938fa313831d61781693d5f60235fca0d6922ecb471971eee27077c16de",
+    "prev_hash": "3176cb910256299e4c034c63910c200fe9be92c21539195c73b620aa16ecc092",
+    "collapsed": false,
+    "stream": "text"
+  },
+  {
+    "id": 13,
+    "run_id": "ab2d326b70fa",
+    "ts": 1793426272.3802292,
+    "kind": "message",
+    "payload": {
+      "role": "assistant",
+      "stop_reason": "end_turn",
+      "text": "The study finished: see its card (guide only).",
+      "tool_calls": []
+    },
+    "evidence_hash": "e13ec51fe2d98e5ff35ebae3e1d87aa1e98e01185ec405741bda5dc76116cacb",
+    "prev_hash": "deec0938fa313831d61781693d5f60235fca0d6922ecb471971eee27077c16de",
+    "collapsed": false,
+    "stream": "text"
+  }
+]

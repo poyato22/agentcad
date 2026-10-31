@@ -1,12 +1,12 @@
 {
   "removed_instances": [
-    "bc7ea02a147a"
+    "e4e89fd4a0f5"
   ],
   "removed_joints": [],
   "undo": {
     "instances": [
       {
-        "id": "bc7ea02a147a",
+        "id": "e4e89fd4a0f5",
         "part_id": "mount_plate_copy",
         "name": "plate copy",
         "transform": [

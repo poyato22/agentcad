@@ -28,6 +28,9 @@ class ToolContext:
     policy: AgentPolicy
     call_id: str
     services: dict[str, Any] = field(default_factory=dict)
+    # the call came straight from a model (the native loop, an MCP agent), not from the app or
+    # another tool; long jobs (studies) then default to the background (Plan 9 D4)
+    agent_call: bool = False
 
 
 @dataclass(frozen=True)

@@ -105,21 +105,40 @@ async def test_each_variant_is_marked_verified_as_it_finishes(tmp_path, fake):  
         assert all(v["verified"] and v["passes"] for v in done)
 
 
-async def test_finish_notes_the_starting_agent_when_b3s_note_exists(monkeypatch):
+async def test_finish_notes_the_starting_agent_through_b3s_deliver_note(monkeypatch):
+    """The B3 merge wired the hook: a finished run is a sim_finished-style note to the agent that
+    started it; a run it already waited on, or one stopped with its agent, sends none; a run
+    the user stopped on its own rides along with the next note (defer)."""
+    from mises import jobs as bg
     from mises.orchestrator import lead
-    rec = {"topopt_id": "to_0123456789ab", "run_id": "r1", "status": "done", "summary": "ok"}
-    monkeypatch.delattr(lead, "deliver_note", raising=False)
-    assert jobs.note_lead(object(), rec) is False        # TODO hook: no-op before B3
+    bg.reset_for_tests()
+    rec = {"topopt_id": "to_0123456789ab", "run_id": "r1", "status": "done", "summary": "ok",
+           "part_id": "bracket"}
     sent = []
 
-    async def deliver(rt, run_id, text, meta):
-        sent.append((run_id, text, meta))
-    monkeypatch.setattr(lead, "deliver_note", deliver, raising=False)
+    async def deliver(rt, run_id, text, meta, defer=False):
+        sent.append((run_id, text, meta, defer))
+    monkeypatch.setattr(lead, "deliver_note", deliver)
     assert jobs.note_lead(object(), rec) is True
     await asyncio.sleep(0)
-    assert sent[0][0] == "r1" and "to_0123456789ab finished" in sent[0][1]
-    assert sent[0][2]["kind"] == "topopt_finished" and sent[0][2]["stream"] == "sim"
+    run_id, text, meta, defer = sent[0]
+    assert run_id == "r1" and "(to_0123456789ab) finished" in text and not defer
+    assert text.startswith("[Mises system note, not from the user]") and '(data): "ok"' in text
+    assert meta == {"kind": "sim_finished", "job": "topopt", "id": "to_0123456789ab",
+                    "topopt_id": "to_0123456789ab", "status": "done"}
     assert jobs.note_lead(None, rec) is False
+    # read with topopt_wait / stopped with its agent: no note
+    job = bg.register(bg.Job(id="to_0123456789ab", kind="topopt", run_id="r1"))
+    job.consumed = True
+    assert jobs.note_lead(object(), rec) is False
+    job.consumed, job.stopped = False, True
+    assert jobs.note_lead(object(), {**rec, "status": "cancelled"}) is False
+    # the user stopped this one run: a deferred note
+    job.stopped, job.defer = False, True
+    assert jobs.note_lead(object(), {**rec, "status": "cancelled"}) is True
+    await asyncio.sleep(0)
+    assert sent[-1][3] is True and "cancelled by the user" in sent[-1][1]
+    bg.reset_for_tests()
 
 
 def test_parallel_variants_fit_memory_and_leave_heavy_slots(monkeypatch):

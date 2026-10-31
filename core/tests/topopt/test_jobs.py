@@ -225,6 +225,41 @@ async def test_cancel_kills_the_run(tmp_path, monkeypatch):
     assert not again.ok
 
 
+async def test_stop_reaches_a_generative_design_run_like_any_background_job(tmp_path,
+                                                                            monkeypatch):
+    """B3 merge: the run is a background job — Stop (jobs.cancel_run, what Runtime.cancel and
+    Stop all call) cancels it with no note; GET /jobs lists it; a one-job cancel defers."""
+    from mises import jobs as bg
+    bg.reset_for_tests()
+    _part(tmp_path)
+    w = FakeWorker(hang=True)
+    monkeypatch.setattr(jobs, "run_sandboxed", w)
+    ctx = _ctx(tmp_path)
+    out = await tools.topopt_run.handler(ctx, TopoptRunArgs(**BASE, verify=False))
+    tid = out.data["topopt_id"]
+    await asyncio.wait_for(w.started.wait(), 5)
+    job = bg.get(tid)
+    assert job is not None and job.kind == "topopt" and bg.view(job)["cancel_url"] == \
+        f"/jobs/{tid}/cancel"
+    assert [j.id for j in bg.running()] == [tid]
+    assert bg.cancel_run({"r1"}) == [tid]
+    with pytest.raises(asyncio.CancelledError):
+        await _settle(tid)
+    assert jobs.read_record(tmp_path, tid)["status"] == "cancelled"
+    assert job.stopped and job.status == "cancelled" and bg.running() == []
+    # a second run, stopped on its own (POST /jobs/{id}/cancel): deferred
+    w2 = FakeWorker(hang=True)
+    monkeypatch.setattr(jobs, "run_sandboxed", w2)
+    out = await tools.topopt_run.handler(ctx, TopoptRunArgs(**BASE, verify=False))
+    tid2 = out.data["topopt_id"]
+    await asyncio.wait_for(w2.started.wait(), 5)
+    assert bg.user_cancel(tid2)
+    with pytest.raises(asyncio.CancelledError):
+        await _settle(tid2)
+    assert bg.get(tid2).defer and bg.get(tid2).status == "cancelled"
+    bg.reset_for_tests()
+
+
 async def test_bad_input_is_refused_before_a_run_exists(tmp_path, fake):
     _part(tmp_path)
     ctx = _ctx(tmp_path)

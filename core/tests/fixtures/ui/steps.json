@@ -1,21 +1,22 @@
 [
   {
     "id": 1,
-    "run_id": "c2f6ec9f8a0e",
-    "ts": 1793426481.434197,
+    "run_id": "e4b427694cfc",
+    "ts": 1793432043.09763,
     "kind": "message",
     "payload": {
       "role": "user",
       "text": "thicken the mount plate to 6 mm"
     },
-    "evidence_hash": "9765989a2269f7542d923a9769efc7ccb40c9a08d608287d3bc45b4c2953719f",
+    "evidence_hash": "a8687f4e3a943c72e9de8a6c1a75f9a9d268290eba8c817daf731e662b800fa6",
     "prev_hash": null,
-    "collapsed": false
+    "collapsed": false,
+    "stream": "text"
   },
   {
     "id": 2,
-    "run_id": "c2f6ec9f8a0e",
-    "ts": 1793426481.475738,
+    "run_id": "e4b427694cfc",
+    "ts": 1793432043.122129,
     "kind": "message",
     "payload": {
       "role": "assistant",
@@ -28,14 +29,15 @@
         }
       ]
     },
-    "evidence_hash": "c1d5fffbd9b357b38339c19d0a1697d8472402916cf65a2fa4d8227d507d60f3",
-    "prev_hash": "9765989a2269f7542d923a9769efc7ccb40c9a08d608287d3bc45b4c2953719f",
-    "collapsed": false
+    "evidence_hash": "87cde8d99fffe28c94666fa3f03873c2b039ab93d50e58d42cbf6387d582cd27",
+    "prev_hash": "a8687f4e3a943c72e9de8a6c1a75f9a9d268290eba8c817daf731e662b800fa6",
+    "collapsed": false,
+    "stream": "text"
   },
   {
     "id": 3,
-    "run_id": "c2f6ec9f8a0e",
-    "ts": 1793426481.476179,
+    "run_id": "e4b427694cfc",
+    "ts": 1793432043.122435,
     "kind": "tool_call",
     "payload": {
       "call_id": "c1",
@@ -49,14 +51,15 @@
       },
       "name": "mirror_part_create"
     },
-    "evidence_hash": "43693c0b5b1fee5f6c6b8b71bd0439975a17d2da676d8e5b40bce6221e304e0d",
-    "prev_hash": "c1d5fffbd9b357b38339c19d0a1697d8472402916cf65a2fa4d8227d507d60f3",
-    "collapsed": false
+    "evidence_hash": "93e58538e5bd790c0d544154feae292bbb9ea336df6ddb1d6d7f7498fb3228b2",
+    "prev_hash": "87cde8d99fffe28c94666fa3f03873c2b039ab93d50e58d42cbf6387d582cd27",
+    "collapsed": false,
+    "stream": "text"
   },
   {
     "id": 4,
-    "run_id": "c2f6ec9f8a0e",
-    "ts": 1793426485.416029,
+    "run_id": "e4b427694cfc",
+    "ts": 1793432045.6489239,
     "kind": "tool_result",
     "payload": {
       "call_id": "c1",
@@ -254,14 +257,15 @@
         "warnings": []
       }
     },
-    "evidence_hash": "c4b080805d16e424831dd7c6d101b2c4d3c9870b0cabed4bf86fd64eefe1f167",
-    "prev_hash": "43693c0b5b1fee5f6c6b8b71bd0439975a17d2da676d8e5b40bce6221e304e0d",
-    "collapsed": false
+    "evidence_hash": "cce09a01200af489f2bccc8c186f1822c51aa02bcc6cc2fa7609ea4f9223a92c",
+    "prev_hash": "93e58538e5bd790c0d544154feae292bbb9ea336df6ddb1d6d7f7498fb3228b2",
+    "collapsed": false,
+    "stream": "text"
   },
   {
     "id": 5,
-    "run_id": "c2f6ec9f8a0e",
-    "ts": 1793426485.416418,
+    "run_id": "e4b427694cfc",
+    "ts": 1793432045.649101,
     "kind": "decision",
     "payload": {
       "agent_announce": {
@@ -271,18 +275,19 @@
           "part_id": "mount_plate",
           "thumb_url": "/parts/mount_plate/thumb.png"
         },
-        "run_id": "c2f6ec9f8a0e",
+        "run_id": "e4b427694cfc",
         "title": "Created part mount_plate"
       }
     },
-    "evidence_hash": "20178b4df93bfad8b22fdb7f3b8dbd1537e8cf31cd2310b11d457d3e6d1634ff",
-    "prev_hash": "c4b080805d16e424831dd7c6d101b2c4d3c9870b0cabed4bf86fd64eefe1f167",
-    "collapsed": false
+    "evidence_hash": "6c17d6dd38f30ddb121e742605116da5fd03f2c9bd73fd9c1b568fec6d67ca61",
+    "prev_hash": "cce09a01200af489f2bccc8c186f1822c51aa02bcc6cc2fa7609ea4f9223a92c",
+    "collapsed": false,
+    "stream": "text"
   },
   {
     "id": 6,
-    "run_id": "c2f6ec9f8a0e",
-    "ts": 1793426485.417652,
+    "run_id": "e4b427694cfc",
+    "ts": 1793432045.649937,
     "kind": "message",
     "payload": {
       "role": "assistant",
@@ -295,14 +300,15 @@
         }
       ]
     },
-    "evidence_hash": "59fc3b10570ae52d2d2e7c214d89a5239d3dffc787ff1d3707cb6d35b8b548fa",
-    "prev_hash": "20178b4df93bfad8b22fdb7f3b8dbd1537e8cf31cd2310b11d457d3e6d1634ff",
-    "collapsed": false
+    "evidence_hash": "7d78a949986f90f49f5c5135417dc8d77cbe1b1202622159cce330ec356936bb",
+    "prev_hash": "6c17d6dd38f30ddb121e742605116da5fd03f2c9bd73fd9c1b568fec6d67ca61",
+    "collapsed": false,
+    "stream": "text"
   },
   {
     "id": 7,
-    "run_id": "c2f6ec9f8a0e",
-    "ts": 1793426485.418043,
+    "run_id": "e4b427694cfc",
+    "ts": 1793432045.650111,
     "kind": "tool_call",
     "payload": {
       "call_id": "c2",
@@ -314,14 +320,15 @@
       },
       "name": "mirror_part_set_vars"
     },
-    "evidence_hash": "bded56d027e42b91e54e47e55c892eac8152cf639ae1070bc95977170d80ea24",
-    "prev_hash": "59fc3b10570ae52d2d2e7c214d89a5239d3dffc787ff1d3707cb6d35b8b548fa",
-    "collapsed": false
+    "evidence_hash": "e271023fdf0fedb74ea9abb8e107f8622e5b5378cf4bac00d069bf63c55058f0",
+    "prev_hash": "7d78a949986f90f49f5c5135417dc8d77cbe1b1202622159cce330ec356936bb",
+    "collapsed": false,
+    "stream": "text"
   },
   {
     "id": 8,
-    "run_id": "c2f6ec9f8a0e",
-    "ts": 1793426489.0542169,
+    "run_id": "e4b427694cfc",
+    "ts": 1793432047.71943,
     "kind": "diff",
     "payload": {
       "call_id": "c2",
@@ -528,14 +535,15 @@
         "warnings": []
       }
     },
-    "evidence_hash": "3cda8e618536b1b1a710cbb98b6c82498de54a85b9a2510d810fd88131619406",
-    "prev_hash": "bded56d027e42b91e54e47e55c892eac8152cf639ae1070bc95977170d80ea24",
-    "collapsed": false
+    "evidence_hash": "c7a9643cc85f4ea39bf2b27ac40c036ca214026c8d3af121f742a86a58aad13b",
+    "prev_hash": "e271023fdf0fedb74ea9abb8e107f8622e5b5378cf4bac00d069bf63c55058f0",
+    "collapsed": false,
+    "stream": "text"
   },
   {
     "id": 9,
-    "run_id": "c2f6ec9f8a0e",
-    "ts": 1793426489.0554008,
+    "run_id": "e4b427694cfc",
+    "ts": 1793432047.720164,
     "kind": "message",
     "payload": {
       "role": "assistant",
@@ -548,14 +556,15 @@
         }
       ]
     },
-    "evidence_hash": "7bf9bc43eac4f6f9d9272a4ee439c6cbe495fbd0d0b111d209c217653bad9c7a",
-    "prev_hash": "3cda8e618536b1b1a710cbb98b6c82498de54a85b9a2510d810fd88131619406",
-    "collapsed": false
+    "evidence_hash": "f15a06ab7d95fd560a86d4cfd32ee73a85ebcb4c36271d74a93b1ab581b35860",
+    "prev_hash": "c7a9643cc85f4ea39bf2b27ac40c036ca214026c8d3af121f742a86a58aad13b",
+    "collapsed": false,
+    "stream": "text"
   },
   {
     "id": 10,
-    "run_id": "c2f6ec9f8a0e",
-    "ts": 1793426489.0557902,
+    "run_id": "e4b427694cfc",
+    "ts": 1793432047.720405,
     "kind": "tool_call",
     "payload": {
       "call_id": "c3",
@@ -564,14 +573,15 @@
       },
       "name": "mirror_measure"
     },
-    "evidence_hash": "6fdca3b3fd1bd810aa117f38da0873a9c4f6a43c69c67dade1a5d5cf178cfc7b",
-    "prev_hash": "7bf9bc43eac4f6f9d9272a4ee439c6cbe495fbd0d0b111d209c217653bad9c7a",
-    "collapsed": false
+    "evidence_hash": "c98c70900799e9e86dbeaf4fd7503be0657ce8283a2042bf7221541a85765552",
+    "prev_hash": "f15a06ab7d95fd560a86d4cfd32ee73a85ebcb4c36271d74a93b1ab581b35860",
+    "collapsed": false,
+    "stream": "text"
   },
   {
     "id": 11,
-    "run_id": "c2f6ec9f8a0e",
-    "ts": 1793426489.0577438,
+    "run_id": "e4b427694cfc",
+    "ts": 1793432047.721047,
     "kind": "measure",
     "payload": {
       "call_id": "c3",
@@ -766,14 +776,15 @@
         "warnings": []
       }
     },
-    "evidence_hash": "59c69461aaf269a0eb02747d3e918e0436981a97b639edefeb92b67da34cf1b1",
-    "prev_hash": "6fdca3b3fd1bd810aa117f38da0873a9c4f6a43c69c67dade1a5d5cf178cfc7b",
-    "collapsed": false
+    "evidence_hash": "ae895a97ca811804e6e1f72f5bcb81df82597cd62ab9787cc3d3dbf0ad8d9c90",
+    "prev_hash": "c98c70900799e9e86dbeaf4fd7503be0657ce8283a2042bf7221541a85765552",
+    "collapsed": false,
+    "stream": "text"
   },
   {
     "id": 12,
-    "run_id": "c2f6ec9f8a0e",
-    "ts": 1793426489.0588732,
+    "run_id": "e4b427694cfc",
+    "ts": 1793432047.721428,
     "kind": "message",
     "payload": {
       "role": "assistant",
@@ -786,14 +797,15 @@
         }
       ]
     },
-    "evidence_hash": "98a86217fb622fd609d0219ca15b9096edea38b0e16c5ab586f2117897d5b9e4",
-    "prev_hash": "59c69461aaf269a0eb02747d3e918e0436981a97b639edefeb92b67da34cf1b1",
-    "collapsed": false
+    "evidence_hash": "12178676977b6ac6ff3cad16111ce8a0b4b42e3ce855370477ea1afcf3b889f8",
+    "prev_hash": "ae895a97ca811804e6e1f72f5bcb81df82597cd62ab9787cc3d3dbf0ad8d9c90",
+    "collapsed": false,
+    "stream": "text"
   },
   {
     "id": 13,
-    "run_id": "c2f6ec9f8a0e",
-    "ts": 1793426489.059184,
+    "run_id": "e4b427694cfc",
+    "ts": 1793432047.721535,
     "kind": "tool_call",
     "payload": {
       "call_id": "c4",
@@ -802,8 +814,9 @@
       },
       "name": "fixture_merge"
     },
-    "evidence_hash": "18a3f174bb457db1012984ca3ddf435fb546469c98dc56965c7bbf64893bb5a0",
-    "prev_hash": "98a86217fb622fd609d0219ca15b9096edea38b0e16c5ab586f2117897d5b9e4",
-    "collapsed": false
+    "evidence_hash": "12e7d71e99c5dc55d13010c5d8634acc378cd3bfde9d3977cb639fa9dca4bae4",
+    "prev_hash": "12178676977b6ac6ff3cad16111ce8a0b4b42e3ce855370477ea1afcf3b889f8",
+    "collapsed": false,
+    "stream": "text"
   }
 ]

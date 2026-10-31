@@ -546,19 +546,33 @@ _note_tasks: set[asyncio.Task] = set()
 def note_lead(rt, rec: dict) -> bool:
     """Tell the agent that started the run that it finished, the way B3 tells it a study did
     (orchestrator.lead.deliver_note: sent now when idle, queued behind a busy turn, never a
-    new user turn), so it reacts without polling. Returns whether a note was sent.
-    TODO(B3 merge): this is a no-op until B3's `deliver_note` is on the branch; the hook
-    finds it by name, so the merge needs no change here."""
+    new user turn), so it reacts without polling. No note for a run the agent already waited
+    on or read (topopt_wait), or one stopped with its agent (Stop); a run the user stopped on
+    its own rides along with the next note. Returns whether a note was sent."""
+    from .. import jobs as bg
+    job = bg.get(rec["topopt_id"])
+    if job is not None:
+        job.status, job.summary = rec["status"], rec.get("summary") or ""
+        job.finished_at = time.time()
+        if job.stopped or job.consumed or job.waiters:
+            job.consumed = job.consumed or bool(job.waiters)
+            return False
     if rt is None or not rec.get("run_id"):
         return False
-    from ..orchestrator import lead
-    deliver = getattr(lead, "deliver_note", None)
-    if deliver is None:
+    if rec["status"] == "cancelled" and (job is None or not job.defer):
         return False
-    text = f"Generative design {rec['topopt_id']} finished: {rec.get('summary')}"
-    meta = {"kind": "topopt_finished", "topopt_id": rec["topopt_id"],
-            "status": rec["status"], "stream": STREAM}
-    t = asyncio.ensure_future(deliver(rt, rec["run_id"], text, meta))
+    from ..orchestrator.lead import deliver_note
+    label = f"generative design of {rec.get('part_id')}"
+    verb = {"done": "finished", "cancelled": "was cancelled by the user"}.get(rec["status"],
+                                                                             "failed")
+    summary = " ".join(str(rec.get("summary") or "").split())[:400].replace('"', "'")
+    text = (f"[Mises system note, not from the user] {label} ({rec['topopt_id']}) {verb}. "
+            f"Result summary (data): \"{summary}\". Read it with topopt_result "
+            f"{rec['topopt_id']}.")
+    meta = {"kind": "sim_finished", "job": "topopt", "id": rec["topopt_id"],
+            "topopt_id": rec["topopt_id"], "status": rec["status"]}
+    t = asyncio.ensure_future(deliver_note(rt, rec["run_id"], text, meta,
+                                           defer=bool(job is not None and job.defer)))
     _note_tasks.add(t)
     t.add_done_callback(_note_tasks.discard)
     return True
@@ -621,8 +635,8 @@ async def _run_job(events, rec: dict, d: Path, args: TopoptRunArgs, plan_: dict,
         _publish(events, rec, "topopt_finished", {
             "run_id": rec.get("run_id"), "status": rec["status"], "summary": rec["summary"],
             "recommended": best, "pareto": pareto})
-        if rec["status"] in ("done", "failed"):     # a user's cancel starts no note turn
-            note_lead(plan_.get("runtime"), rec)
+        # a user's cancel starts no note turn (deferred); a Stop sends none (note_lead)
+        note_lead(plan_.get("runtime"), rec)
 
 
 async def start(ctx, args: TopoptRunArgs, tool: str) -> dict:
@@ -666,6 +680,12 @@ async def start(ctx, args: TopoptRunArgs, tool: str) -> dict:
             _cancel_requested.discard(tid)
 
     _active[tid] = asyncio.ensure_future(body())
+    # B3: a background job like a study's — Stop / Stop all / POST /jobs/{id}/cancel reach it
+    from .. import jobs as bg
+    bg.register(bg.Job(id=tid, kind="topopt", run_id=rec["run_id"],
+                       label=f"generative design of {args.part_id}", task=_active[tid],
+                       cancel=lambda: cancel(tid), build_id=project_id, part_id=args.part_id,
+                       scope=[args.part_id]))
     return rec
 
 
@@ -680,11 +700,21 @@ def cancel(topopt_id: str) -> bool:
 
 async def wait(home: Path, topopt_id: str, timeout_s: float) -> tuple[dict, bool]:
     """(record, finished) after at most timeout_s; never cancels the job itself."""
+    from .. import jobs as bg
+    job = bg.get(topopt_id)
     t = _active.get(topopt_id)
     if t is not None and not t.done():
-        done, _ = await asyncio.wait({t}, timeout=timeout_s)
+        if job is not None:
+            job.waiters += 1         # an agent waiting on it reads the result: no note
+        try:
+            done, _ = await asyncio.wait({t}, timeout=timeout_s)
+        finally:
+            if job is not None:
+                job.waiters -= 1
         if not done:
             return read_record(home, topopt_id), False
+    if job is not None:
+        job.consumed = True
     return read_record(home, topopt_id), True
 
 

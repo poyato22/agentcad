@@ -1,13 +1,13 @@
 {
-  "call_id": "ui_718cb320c777",
-  "run_id": "edf2ca24e0e9",
+  "call_id": "ui_2aa11f2beb29",
+  "run_id": "318069a8a4b7",
   "tool": "print_send",
   "status": "done",
   "output": {
     "ok": true,
     "summary": "sent mises_mount_plate.gcode to Bench MK4; the printer is starting the job",
     "data": {
-      "slice_id": "slice_a243d60b0f",
+      "slice_id": "slice_048d8e7e05",
       "printer_id": "bench_mk4",
       "file": "mises_mount_plate.gcode"
     },

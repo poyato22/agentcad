@@ -1,7 +1,7 @@
-{"type":"part_changed","run_id":"52ecf4c888a6","data":{"part_id":"quad_arm","version":1,"by":"user","run_id":null,"summary":"created quad_arm from script"},"ts":1793426452.2151308}
-{"type":"part_changed","run_id":"52ecf4c888a6","data":{"part_id":"top_plate","version":1,"by":"user","run_id":null,"summary":"created top_plate from script"},"ts":1793426456.091476}
-{"type":"part_changed","run_id":"52ecf4c888a6","data":{"part_id":"quad_arm","version":2,"by":"user","run_id":null,"summary":"set thickness=5.0"},"ts":1793426459.573277}
-{"type":"part_changed","run_id":"52ecf4c888a6","data":{"part_id":"quad_arm","version":3,"by":"user","run_id":null,"summary":"hole op on quad_arm"},"ts":1793426463.035599}
-{"type":"part_changed","run_id":"52ecf4c888a6","data":{"part_id":"quad_arm","version":4,"by":"user","run_id":null,"summary":"fillet op on quad_arm"},"ts":1793426466.301193}
-{"type":"part_changed","run_id":"52ecf4c888a6","data":{"part_id":"quad_arm","version":5,"by":"user","run_id":null,"summary":"edited quad_arm source"},"ts":1793426473.3964689}
-{"type":"part_changed","run_id":"52ecf4c888a6","data":{"part_id":"mount_plate","version":1,"by":"user","run_id":null,"summary":"created mount_plate from script"},"ts":1793426477.4334478}
+{"type":"part_changed","run_id":"e66977827fc4","data":{"part_id":"quad_arm","version":1,"by":"user","run_id":null,"summary":"created quad_arm from script"},"ts":1793432009.4461482,"stream":"text"}
+{"type":"part_changed","run_id":"e66977827fc4","data":{"part_id":"top_plate","version":1,"by":"user","run_id":null,"summary":"created top_plate from script"},"ts":1793432012.0445282,"stream":"text"}
+{"type":"part_changed","run_id":"e66977827fc4","data":{"part_id":"quad_arm","version":2,"by":"user","run_id":null,"summary":"set thickness=5.0"},"ts":1793432014.3751612,"stream":"text"}
+{"type":"part_changed","run_id":"e66977827fc4","data":{"part_id":"quad_arm","version":3,"by":"user","run_id":null,"summary":"hole op on quad_arm"},"ts":1793432016.548979,"stream":"text"}
+{"type":"part_changed","run_id":"e66977827fc4","data":{"part_id":"quad_arm","version":4,"by":"user","run_id":null,"summary":"fillet op on quad_arm"},"ts":1793432018.7239838,"stream":"text"}
+{"type":"part_changed","run_id":"e66977827fc4","data":{"part_id":"quad_arm","version":5,"by":"user","run_id":null,"summary":"edited quad_arm source"},"ts":1793432022.8367841,"stream":"text"}
+{"type":"part_changed","run_id":"e66977827fc4","data":{"part_id":"mount_plate","version":1,"by":"user","run_id":null,"summary":"created mount_plate from script"},"ts":1793432025.280965,"stream":"text"}

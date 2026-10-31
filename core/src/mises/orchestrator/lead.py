@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import math
 import re
 import secrets
@@ -24,6 +25,8 @@ from .router import Attachment, Routed, route
 if TYPE_CHECKING:
     from ..runtime import Runtime
     from ..store import AgentRun
+
+_log = logging.getLogger(__name__)
 
 LEAD, SUB = "lead", "sub"
 TASK_TITLE_CHARS = 60
@@ -226,9 +229,155 @@ def _enqueue(rt: Runtime, lead_id: str, text: str, log: dict | None, routed: Rou
     return {"message_id": mid, "position": len(q)}
 
 
+#: turns system notes may start in a row without a user message; later notes wait, shown in
+#: the thread, until the user writes again (a note is never a user turn: no new budget window)
+NOTE_TURNS_MAX = 3
+
+
+def note_owner(rt: Runtime, run_id: str) -> AgentRun | None:
+    """The agent a background job of `run_id` reports to: the root of its run family (the
+    lead for a lead's sub-agent, else the agent the user started). None for the app's own
+    runs (ui, external agents), an archived run, or one this process cannot talk to."""
+    try:
+        run = rt.store.get_run(run_id)
+        seen = {run.id}
+        while run.parent_id and run.parent_id not in seen:
+            run = rt.store.get_run(run.parent_id)
+            seen.add(run.id)
+    except KeyError:
+        return None
+    if run.archived or run.provider in ("ui", "acp") or not _reachable(rt, run):
+        return None
+    return run
+
+
+owning_lead = note_owner      # the B3 name
+
+
+def _drop(rt: Runtime, lead_id: str, m: dict, reason: str) -> None:
+    rt.store.append_step(lead_id, StepKind.DECISION, {
+        "queued_message_dropped": {"message_id": m["message_id"], "reason": reason}})
+    _publish(rt, "message_dropped", lead_id, {"message_id": m["message_id"], "reason": reason})
+
+
+def _park(rt: Runtime, run_id: str, text: str, meta: dict, reason: str) -> None:
+    """A note that starts no turn: kept in the thread (a DECISION step) and on the bus."""
+    try:
+        rt.store.append_step(run_id, StepKind.DECISION, {"system_note_parked": {
+            "text": text, "system_note": meta, "reason": reason}})
+        _publish(rt, "note_parked", run_id, {"text": text, "system_note": meta,
+                                             "reason": reason})
+    except Exception:  # noqa: BLE001 - e.g. the run was deleted meanwhile
+        _log.debug("could not park a note on %s", run_id, exc_info=True)
+
+
+def _merge(meta: dict, more: dict) -> dict:
+    items = list(meta.get("items") or [meta]) + list(more.get("items") or [more])
+    return {"kind": "sim_finished", "items": items}
+
+
+def _enqueue_note(rt: Runtime, lead_id: str, text: str, log: dict) -> dict | None:
+    """A system note counts toward QUEUE_MAX but never raises 429. Notes waiting for the same
+    turn are coalesced into one message; at the cap the oldest waiting note makes room, and a
+    queue full of user messages drops the new note instead."""
+    q = rt.lead_queues.setdefault(lead_id, [])
+    waiting = next((m for m in q if m.get("note")), None)
+    if waiting is not None:                       # one message for every note of this turn
+        waiting["text"] = waiting["shown"] = waiting["text"] + "\n" + text
+        waiting["log"] = {"text": waiting["text"],
+                          "system_note": _merge(waiting["log"]["system_note"],
+                                                log["system_note"])}
+        rt.store.append_step(lead_id, StepKind.DECISION, {"queued_message_updated": {
+            "message_id": waiting["message_id"], "text": waiting["text"],
+            "system_note": waiting["log"]["system_note"]}})
+        _publish(rt, "message_queued", lead_id, {"message_id": waiting["message_id"],
+                                                 "text": waiting["text"],
+                                                 "position": q.index(waiting) + 1,
+                                                 "system_note": True})
+        return {"message_id": waiting["message_id"], "position": q.index(waiting) + 1,
+                "coalesced": True}
+    if len(q) >= QUEUE_MAX:
+        mid = "msg_" + secrets.token_hex(6)
+        _drop(rt, lead_id, {"message_id": mid}, "the lead's queue is full")
+        return None
+    mid = "msg_" + secrets.token_hex(6)
+    q.append({"message_id": mid, "text": text, "log": log, "shown": text, "note": True})
+    rt.store.append_step(lead_id, StepKind.DECISION, {"queued_message": {
+        "message_id": mid, "text": text, "position": len(q), "routed": None,
+        "system_note": log.get("system_note")}})
+    _publish(rt, "message_queued", lead_id, {"message_id": mid, "text": text,
+                                             "position": len(q), "system_note": True})
+    task = rt.lead_drainers.get(lead_id)
+    if task is None or task.done():
+        rt.lead_drainers[lead_id] = asyncio.get_running_loop().create_task(_drain(rt, lead_id))
+    return {"message_id": mid, "position": len(q)}
+
+
+def _hold_reason(rt: Runtime, owner_id: str) -> str | None:
+    """Why a note may not start a turn now: the user stopped the agent, the notes already
+    started NOTE_TURNS_MAX turns since the user's last message, or its dollar cap is spent."""
+    if owner_id in rt.note_hold:
+        return "the agent was stopped; the note waits for your next message"
+    if rt.note_turns.get(owner_id, 0) >= NOTE_TURNS_MAX:
+        return (f"{NOTE_TURNS_MAX} turns in a row came from system notes; the note waits for "
+                "your next message")
+    from .. import budget
+    if budget.usd_exhausted(rt.store, owner_id) is not None:
+        return "the agent's budget for this message is spent; the note waits for you"
+    return None
+
+
+async def deliver_note(rt: Runtime, run_id: str, text: str, meta: dict, *,
+                       defer: bool = False) -> dict | None:
+    """A short system note (e.g. "Study ... finished: ...") to the agent that owns `run_id`
+    (note_owner): sent now when it is idle (it reacts in a turn that is NOT a new user turn:
+    the budget window and the critique loop of the user's message go on), queued and
+    coalesced behind its current turn when busy, or parked in the thread when it may not
+    start a turn (_hold_reason). `defer`: never a turn of its own; it rides along with the
+    next note. Never raises."""
+    owner = None
+    try:
+        owner = note_owner(rt, run_id)
+        if owner is None:
+            _park(rt, run_id, text, meta, "no agent to tell")
+            return None
+        if defer:
+            rt.deferred_notes.setdefault(owner.id, []).append((text, meta))
+            _park(rt, owner.id, text, meta, "told with the next note")
+            return None
+        for t, m in rt.deferred_notes.pop(owner.id, []):
+            text, meta = t + "\n" + text, _merge(m, meta)
+        log = {"text": text, "system_note": meta}
+        if rt.lead_queues.get(owner.id) or rt.run_busy(owner.id):
+            return _enqueue_note(rt, owner.id, text, log)
+        why = _hold_reason(rt, owner.id)
+        if why is not None:
+            _park(rt, owner.id, text, meta, why)
+            return None
+        rt.note_turns[owner.id] = rt.note_turns.get(owner.id, 0) + 1
+        sent = False
+        try:
+            await rt.send(owner.id, text, log=log, user_turn=False)
+            sent = True
+            return {"run_id": owner.id, "sent": True}
+        except MisesError as e:
+            if not (e.code == ErrorCode.INVALID_INPUT and "still working" in e.message):
+                raise
+            return _enqueue_note(rt, owner.id, text, log)
+        finally:
+            if not sent:
+                rt.note_turns[owner.id] = max(0, rt.note_turns.get(owner.id, 1) - 1)
+    except Exception as e:  # noqa: BLE001 - a note must never break the job that sends it
+        _log.exception("could not deliver a note to %s's agent", run_id)
+        _park(rt, owner.id if owner is not None else run_id, text, meta,
+              f"could not be delivered: {type(e).__name__}")
+        return None
+
+
 async def _drain(rt: Runtime, lead_id: str) -> None:
     """Deliver the lead's queued messages in order, each once its current turn has ended.
-    A cancelled turn drops the rest of the queue (the user stopped the lead)."""
+    A cancelled turn drops the rest of the queue (the user stopped the lead). A system note
+    starts no new user turn, and is parked instead when it may not start one now."""
     while rt.lead_queues.get(lead_id):
         try:
             res = await rt.wait(lead_id)
@@ -253,12 +402,24 @@ async def _drain(rt: Runtime, lead_id: str) -> None:
             await asyncio.sleep(0.05)
             continue
         m = q[0]
+        note = bool(m.get("note"))
+        if note:
+            why = _hold_reason(rt, lead_id)
+            if why is not None:
+                q.pop(0)
+                _drop(rt, lead_id, m, why)
+                _park(rt, lead_id, m["text"], m["log"].get("system_note") or {}, why)
+                continue
+            rt.note_turns[lead_id] = rt.note_turns.get(lead_id, 0) + 1
         try:
             if m.get("images"):
-                await rt.send(lead_id, m["text"], log=m["log"], images=m["images"])
+                await rt.send(lead_id, m["text"], log=m["log"], images=m["images"],
+                              user_turn=not note)
             else:
-                await rt.send(lead_id, m["text"], log=m["log"])
+                await rt.send(lead_id, m["text"], log=m["log"], user_turn=not note)
         except MisesError as e:
+            if note:
+                rt.note_turns[lead_id] -= 1
             if "still working" in e.message:
                 await asyncio.sleep(0.05)
                 continue

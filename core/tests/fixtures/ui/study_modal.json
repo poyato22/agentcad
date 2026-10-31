@@ -1,8 +1,8 @@
 {
-  "sim_id": "sim_7ac0ad6f0a03",
+  "sim_id": "sim_3f15c9cca42b",
   "part_id": "beam",
   "type": "modal",
-  "run_id": "b3287052853b",
+  "run_id": "3d8889e2ca76",
   "call_id": "s2",
   "step_id": 12,
   "reason": "keep the beam's modes clear of the 2-blade prop at 12k rpm",
@@ -10,8 +10,8 @@
   "stage": "done",
   "phase": "done",
   "pct": 100.0,
-  "created_at": 1793384751.5425432,
-  "finished_at": 1793384752.896823,
+  "created_at": 1793422863.090112,
+  "finished_at": 1793422865.853877,
   "analysis": "modal",
   "guide": true,
   "label": "guide only, not a guarantee",
@@ -92,7 +92,7 @@
       "margin_pct": 15.0
     }
   },
-  "geometry_hash": "3a056a9860334e4b689492920fb36d02bf8d162cdc78579761fcd057abb39b8d",
+  "geometry_hash": "7e9e797dead972400fb1777172fdc8421e69fdab0fc9cb282f5bc44fbd67ac42",
   "material": {
     "name": "PLA",
     "e_mpa": 2300.0,
@@ -132,11 +132,11 @@
     "Small deflections assumed; contact, creep, fatigue, temperature and vibration are not simulated unless this study type says so."
   ],
   "urls": {
-    "record": "/sims/sim_7ac0ad6f0a03",
-    "glb": "/sims/sim_7ac0ad6f0a03/result.glb",
-    "charts": "/sims/sim_7ac0ad6f0a03/charts",
-    "probe": "/sims/sim_7ac0ad6f0a03/probe",
-    "section": "/sims/sim_7ac0ad6f0a03/section"
+    "record": "/sims/sim_3f15c9cca42b",
+    "glb": "/sims/sim_3f15c9cca42b/result.glb",
+    "charts": "/sims/sim_3f15c9cca42b/charts",
+    "probe": "/sims/sim_3f15c9cca42b/probe",
+    "section": "/sims/sim_3f15c9cca42b/section"
   },
   "solver": {
     "name": "CalculiX",
@@ -248,7 +248,7 @@
       "converged": null
     }
   },
-  "inputs_hash": "450e5ab20b2b7fbd85c9f258443ed872e4d01968f70b9561713e3d7bcb917ab1",
+  "inputs_hash": "7d8bce0e479c6a893b1d4205d562bb33753b5f8178ca1e1ceee19c5932455a2e",
   "glb": "result.glb",
   "outputs": [
     "result.glb",
@@ -265,13 +265,13 @@
       "measured": 0,
       "unit": "modes",
       "status": "pass",
-      "sim_id": "sim_7ac0ad6f0a03"
+      "sim_id": "sim_3f15c9cca42b"
     }
   ],
   "stale": false,
   "card": {
     "material_basis": "datasheet / estimate",
-    "sim_id": "sim_7ac0ad6f0a03",
+    "sim_id": "sim_3f15c9cca42b",
     "type": "modal",
     "status": "done",
     "verdict": "pass",
@@ -313,21 +313,21 @@
         "measured": 0,
         "unit": "modes",
         "status": "pass",
-        "sim_id": "sim_7ac0ad6f0a03",
+        "sim_id": "sim_3f15c9cca42b",
         "note": null
       }
     ],
     "warnings": [],
     "reason": "keep the beam's modes clear of the 2-blade prop at 12k rpm",
-    "run_id": "b3287052853b",
+    "run_id": "3d8889e2ca76",
     "step_id": 12,
     "urls": {
-      "record": "/sims/sim_7ac0ad6f0a03",
-      "glb": "/sims/sim_7ac0ad6f0a03/result.glb",
-      "charts": "/sims/sim_7ac0ad6f0a03/charts",
-      "probe": "/sims/sim_7ac0ad6f0a03/probe",
-      "section": "/sims/sim_7ac0ad6f0a03/section"
+      "record": "/sims/sim_3f15c9cca42b",
+      "glb": "/sims/sim_3f15c9cca42b/result.glb",
+      "charts": "/sims/sim_3f15c9cca42b/charts",
+      "probe": "/sims/sim_3f15c9cca42b/probe",
+      "section": "/sims/sim_3f15c9cca42b/section"
     },
-    "charts_url": "/sims/sim_7ac0ad6f0a03/charts"
+    "charts_url": "/sims/sim_3f15c9cca42b/charts"
   }
 }

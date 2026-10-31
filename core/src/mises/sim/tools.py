@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import secrets
 import time
 from pathlib import Path
 from typing import Any, Literal
@@ -38,8 +39,9 @@ from .types import SimError
 MESH_TIMEOUT_S = 180.0
 SOLVE_TIMEOUT_S = 300.0
 # One static study is at most two meshes + two solves (+ margin for post-processing). Studies
-# run one at a time; the Gate's timeout covers the queue wait too, so the wait is bounded such
-# that a study that gets the slot always has its full time left (else: ok=false, "busy").
+# queue for a study slot (studies.semaphore); the Gate's timeout covers the queue wait too, so
+# the wait is bounded such that a study that gets the slot always has its full time left (else:
+# ok=false, "busy").
 STUDY_MAX_S = 2 * (MESH_TIMEOUT_S + SOLVE_TIMEOUT_S) + 60
 TOOL_TIMEOUT_S = 2 * STUDY_MAX_S + 60
 QUEUE_TIMEOUT_S = TOOL_TIMEOUT_S - STUDY_MAX_S - 30
@@ -47,7 +49,6 @@ QUEUE_TIMEOUT_S = TOOL_TIMEOUT_S - STUDY_MAX_S - 30
 # timeout is a backstop; every mesher / solver process has its own hard timeout.
 SIM_RUN_TIMEOUT_S = 4 * 3600.0
 REVIEW_TIMEOUT_S = 8 * 3600.0
-STUDY_SLOTS = 1   # studies are memory bound: one at a time (see studies.semaphore)
 CAVEATS = studies.CAVEATS_FEM + [studies.CAVEATS_STATIC_FIXTURE]
 FaceSpec = str
 Direction = Literal["+x", "-x", "+y", "-y", "+z", "-z"]
@@ -85,6 +86,10 @@ class StaticArgs(BaseModel):
     fine: bool = Field(default=True, description="false: coarse mesh only (a fast screening "
                        "solve with no error band, e.g. inside a design study); confirm any "
                        "result you rely on with the default fine+coarse run")
+    wait: bool | None = Field(None, description="false (the default for agents): return "
+                              "{sim_id, status: running} at once and run the study in the "
+                              "background; you get a note when it finishes (sim_wait / "
+                              "sim_result_get read it). true: block until the result is in")
 
     @field_validator("fix")
     @classmethod
@@ -109,6 +114,10 @@ class SimRunArgs(BaseModel):
                                                "pass / warn / fail against the result")
     estimate: bool = Field(False, description="the load is an estimate (e.g. F = m*g*k); the "
                            "card is labelled and a pass is reported as warn")
+    wait: bool | None = Field(None, description="false (the default for agents): return "
+                              "{sim_id, status: running} at once and run the study in the "
+                              "background; you get a note when it finishes (sim_wait / "
+                              "sim_result_get read it). true: block until the result is in")
 
     @model_validator(mode="after")
     def _target(self):
@@ -133,6 +142,18 @@ def _run_scope(a) -> list[str]:
 
 class ResultArgs(BaseModel):
     sim_id: str = Field(pattern=SIM_ID_RE.pattern)
+
+
+SIM_WAIT_MAX_S = 600.0
+REVIEW_ID_PREFIX = "review_"
+JOB_ID_RE = r"^(sim_|review_|study_|to_)[0-9a-f]{12}$"
+
+
+class WaitArgs(BaseModel):
+    sim_id: str = Field(pattern=SIM_ID_RE.pattern)
+    timeout_s: float = Field(120, gt=0, le=SIM_WAIT_MAX_S, description="how long to wait, s "
+                             f"(at most {SIM_WAIT_MAX_S:g}); a study still running then comes "
+                             "back as status running")
 
 
 class CompareArgs(BaseModel):
@@ -163,6 +184,10 @@ class ReviewArgs(BaseModel):
     material: str | None = None
     budget_minutes: float = Field(60, ge=1, le=480)
     wind: dict[str, Any] | None = Field(None, description="wind settings overrides")
+    wait: bool | None = Field(None, description="false (the default for agents): return "
+                              "{review_id, status: running} at once and review in the "
+                              "background; a note arrives when it finishes (design_review_get / "
+                              "job_wait read it). true: block until the table is in")
 
     @model_validator(mode="after")
     def _t(self):
@@ -172,6 +197,14 @@ class ReviewArgs(BaseModel):
 
 
 # ---- helpers
+
+def _wait(ctx: ToolContext, wait: bool | None) -> bool:
+    """A study blocks its call only when asked to; an agent's call defaults to the background
+    (Plan 9 D4), the app's own calls and in-core callers (design_review, design studies) wait."""
+    if wait is not None:
+        return wait
+    return not getattr(ctx, "agent_call", False)
+
 
 def _bad(e: SimError) -> MisesError:
     return MisesError(ErrorCode.INVALID_INPUT, e.message, hint=e.hint)
@@ -208,7 +241,8 @@ def _load_rec(ctx: ToolContext, sim_id: str) -> dict:
 
 async def _run(ctx: ToolContext, type_id: str, part_id: str, settings: dict, *,
                reason=None, requirements=None, inputs_extra=None, solve_timeout_s=None,
-               coarse_only: bool = False):
+               coarse_only: bool = False, wait: bool = True,
+               background_timeout_s: float | None = None):
     _check_part_id(part_id)
     part = _existing(ctx, part_id)
     try:
@@ -217,7 +251,8 @@ async def _run(ctx: ToolContext, type_id: str, part_id: str, settings: dict, *,
         raise _bad(e) from None
     return await studies.run_study(ctx, type_id, part_id, part, model, reason=reason,
                                    requirements=requirements, inputs_extra=inputs_extra,
-                                   solve_timeout_s=solve_timeout_s, coarse_only=coarse_only)
+                                   solve_timeout_s=solve_timeout_s, coarse_only=coarse_only,
+                                   wait=wait, background_timeout_s=background_timeout_s)
 
 
 # ---- tools
@@ -239,14 +274,18 @@ async def _run(ctx: ToolContext, type_id: str, part_id: str, settings: dict, *,
                   "f3@<instance id>; instances interact only through settings.nonlinear."
                   "contacts). Faces are presets or face "
                   "ids from mirror_measure / mirror_faces. Give a one-line `reason`; pass spec "
-                  "`requirements` to get pass / warn / fail checks. Results are a GUIDE ONLY: "
+                  "`requirements` to get pass / warn / fail checks. By default the study runs in "
+                  "the background: the call returns {sim_id, status: running} at once, keep "
+                  "talking and working, and a note tells you when it finishes (wait: true "
+                  "blocks instead). Results are a GUIDE ONLY: "
                   "always say so, with the solver, mesh and error band.")
 async def sim_run(ctx: ToolContext, args: SimRunArgs) -> ToolOutput:
     extra = {"estimate": True} if args.estimate else None
     if args.project_id is not None:
         return await _run_assembly(ctx, args, extra)
     return await _run(ctx, args.type, args.part_id, args.settings, reason=args.reason,
-                      requirements=args.requirements, inputs_extra=extra)
+                      requirements=args.requirements, inputs_extra=extra,
+                      wait=_wait(ctx, args.wait), background_timeout_s=SIM_RUN_TIMEOUT_S)
 
 
 async def _run_assembly(ctx: ToolContext, args: SimRunArgs, extra: dict | None):
@@ -263,7 +302,8 @@ async def _run_assembly(ctx: ToolContext, args: SimRunArgs, extra: dict | None):
                                    requirements=args.requirements,
                                    inputs_extra={"project_id": target["project_id"],
                                                  **(extra or {})},
-                                   assembly=target)
+                                   assembly=target, wait=_wait(ctx, args.wait),
+                                   background_timeout_s=SIM_RUN_TIMEOUT_S)
 
 
 @tool("sim_static_run", safety=SafetyClass.LOCAL_MUTATE, scope_arg="part_id",
@@ -275,7 +315,8 @@ async def _run_assembly(ctx: ToolContext, args: SimRunArgs, extra: dict | None):
                   "the fixed face, whose peak is reported separately), max displacement (mm), "
                   "safety factor (yield x FDM knock-down 0.7 / peak) and an error band from a "
                   "coarse vs fine mesh. For more load cases, supports or other study types use "
-                  "sim_run. Results are a GUIDE ONLY: always say so when you report them.")
+                  "sim_run. Runs in the background by default, like sim_run (wait: true blocks). "
+                  "Results are a GUIDE ONLY: always say so when you report them.")
 async def sim_static_run(ctx: ToolContext, args: StaticArgs) -> ToolOutput:
     _check_part_id(args.part_id)
     _existing(ctx, args.part_id)
@@ -287,7 +328,8 @@ async def sim_static_run(ctx: ToolContext, args: StaticArgs) -> ToolOutput:
     if not args.fine:  # only screening runs record it, so default records are unchanged
         extra["fine"] = False
     return await _run(ctx, "static", args.part_id, settings, inputs_extra=extra,
-                      solve_timeout_s=SOLVE_TIMEOUT_S, coarse_only=not args.fine)
+                      solve_timeout_s=SOLVE_TIMEOUT_S, coarse_only=not args.fine,
+                      wait=_wait(ctx, args.wait), background_timeout_s=TOOL_TIMEOUT_S)
 
 
 @tool("sim_types_list", safety=SafetyClass.READ,
@@ -306,10 +348,118 @@ async def sim_types_list(ctx: ToolContext, args: TypesArgs) -> ToolOutput:
                   "results, error band, warnings, checks; stale=true if the part changed "
                   "since).")
 async def sim_result_get(ctx: ToolContext, args: ResultArgs) -> ToolOutput:
-    rec = _load_rec(ctx, args.sim_id)
-    summary = (f"{args.sim_id}: " + studies.summary(rec)
+    return _result(_load_rec(ctx, args.sim_id))
+
+
+def _consumed(rec: dict) -> None:
+    """The agent read a final result: its job sends no note."""
+    from .. import jobs
+    j = jobs.get(rec.get("sim_id") or "")
+    if j is not None and rec.get("status") != "running":
+        j.consumed = True
+
+
+def _result(rec: dict) -> ToolOutput:
+    sim_id = rec["sim_id"]
+    _consumed(rec)
+    if rec.get("status") == "running":
+        pct = rec.get("pct")
+        return ToolOutput(summary=f"{sim_id} is still running ({rec.get('stage')}"
+                          + (f", {pct:g}%" if isinstance(pct, (int, float)) else "") + ")",
+                          data={**studies.compact(rec), "stream": "sim"})
+    summary = (f"{sim_id}: " + studies.summary(rec)
                + ("; STALE: the part changed since this study" if rec["stale"] else ""))
     return ToolOutput(summary=summary, data=studies.compact(rec), step_kind=StepKind.SIM_RUN)
+
+
+@tool("sim_wait", safety=SafetyClass.READ, timeout_s=SIM_WAIT_MAX_S + 30,
+      description="Wait for a background study (sim_run / sim_static_run) to finish, up to "
+                  f"timeout_s (at most {SIM_WAIT_MAX_S:g} s), and return its result like "
+                  "sim_result_get; still running then: status running. You need not wait: a "
+                  "note arrives when it finishes.")
+async def sim_wait(ctx: ToolContext, args: WaitArgs) -> ToolOutput:
+    _load_rec(ctx, args.sim_id)                     # exists and is in scope
+    await studies.wait_for(args.sim_id, args.timeout_s)
+    return _result(_load_rec(ctx, args.sim_id))
+
+
+class JobArgs(BaseModel):
+    job_id: str = Field(pattern=JOB_ID_RE, description="a sim_…, review_…, study_… or to_… "
+                        "(generative design) id")
+    timeout_s: float = Field(120, gt=0, le=SIM_WAIT_MAX_S)
+
+
+class ReviewGetArgs(BaseModel):
+    review_id: str = Field(pattern=r"^review_[0-9a-f]{12}$")
+
+
+def _job_result(ctx: ToolContext, job_id: str) -> ToolOutput:
+    """A background review / design study: its result once it ended, else status running."""
+    from .. import jobs
+    j = jobs.get(job_id)
+    stored = None if j is not None and j.status == "running" else (
+        jobs.load(ctx, job_id) if j is None else None)
+    scope = (j.scope if j is not None else (stored or {}).get("scope")) or []
+    if j is None and stored is None:
+        raise MisesError(ErrorCode.NOT_FOUND, f"no background job {job_id} here",
+                         hint="it may have run in an earlier session; read the part's studies")
+    if scope and not _in_read_scope(ctx, scope):
+        raise MisesError(ErrorCode.OUT_OF_SCOPE, f"{job_id} is outside this run's scope")
+    if j is not None and j.status == "running":
+        return ToolOutput(summary=f"{job_id} ({j.label}) is still running",
+                          data={"job_id": job_id, "status": "running", "stream": "sim"})
+    if j is not None:
+        j.consumed = True
+        if j.output is not None:
+            return j.output
+        return ToolOutput(ok=False, summary=j.summary, data={"job_id": job_id,
+                                                              "status": j.status,
+                                                              "error": j.error})
+    out = (stored or {}).get("output")
+    if out:
+        return ToolOutput.model_validate(out)
+    return ToolOutput(ok=False, summary=stored.get("summary") or job_id,
+                      data={"job_id": job_id, "status": stored.get("status"),
+                            "error": stored.get("error")})
+
+
+@tool("design_review_get", safety=SafetyClass.READ,
+      description="Return a background design review's table by review_id (status running "
+                  "while it still runs).")
+async def design_review_get(ctx: ToolContext, args: ReviewGetArgs) -> ToolOutput:
+    return _job_result(ctx, args.review_id)
+
+
+@tool("job_wait", safety=SafetyClass.READ, timeout_s=SIM_WAIT_MAX_S + 30,
+      description="Wait for a background job (a study sim_…, a design review review_… or a "
+                  f"design study study_…) up to timeout_s (at most {SIM_WAIT_MAX_S:g} s) and "
+                  "return its result; still running then: status running. You need not wait: "
+                  "a note arrives when it finishes.")
+async def job_wait(ctx: ToolContext, args: JobArgs) -> ToolOutput:
+    if args.job_id.startswith("sim_"):
+        return await sim_wait.handler(ctx, WaitArgs(sim_id=args.job_id,
+                                                    timeout_s=args.timeout_s))
+    if args.job_id.startswith("to_"):
+        from ..topopt.spec import WaitArgs as TopoptWaitArgs
+        from ..topopt.tools import topopt_wait
+        return await topopt_wait.handler(ctx, TopoptWaitArgs(topopt_id=args.job_id,
+                                                             timeout_s=args.timeout_s))
+    from .. import jobs
+    if args.job_id.startswith("study_") and jobs.get(args.job_id) is None:
+        # a design study that ran blocking (the Studies page) or before a restart: its record
+        from ..engineering.tools import StudyGetArgs, study_get
+        return await study_get.handler(ctx, StudyGetArgs(study_id=args.job_id))
+    _job_result(ctx, args.job_id)                    # exists and is in scope
+    await jobs.wait(args.job_id, args.timeout_s)
+    if args.job_id.startswith("study_"):
+        from ..engineering.tools import StudyGetArgs, study_get
+        j = jobs.get(args.job_id)
+        if j is not None and j.status != "running":
+            j.consumed = True
+            if j.output is not None:
+                return j.output
+        return await study_get.handler(ctx, StudyGetArgs(study_id=args.job_id))
+    return _job_result(ctx, args.job_id)
 
 
 @tool("sim_compare", safety=SafetyClass.READ,
@@ -542,7 +692,7 @@ def _parallel(ctx: ToolContext) -> int:
         lim = int(rt.parallel_limit()) if rt is not None else 1
     except Exception:  # noqa: BLE001
         lim = 1
-    return max(1, min(lim, STUDY_SLOTS))
+    return max(1, min(lim, studies.study_limit()))
 
 
 @tool("design_review", safety=SafetyClass.READ, scope_arg="part_id", timeout_s=REVIEW_TIMEOUT_S,
@@ -552,7 +702,9 @@ def _parallel(ctx: ToolContext) -> int:
                   "drop for an impact), runs them as sim_run calls (each one a local_mutate "
                   "tool call through the Gate), and returns a requirement-by-requirement "
                   "pass / warn / fail table with the study ids. The spec comes from `spec` or "
-                  "spec_get of project_id. Results are a GUIDE ONLY; cite the study ids.")
+                  "spec_get of project_id. Runs in the background by default (returns "
+                  "{review_id, status: running}; a note arrives when it finishes; wait: true "
+                  "blocks). Results are a GUIDE ONLY; cite the study ids.")
 async def design_review(ctx: ToolContext, args: ReviewArgs) -> ToolOutput:
     _check_part_id(args.part_id)
     part = _existing(ctx, args.part_id)
@@ -572,111 +724,134 @@ async def design_review(ctx: ToolContext, args: ReviewArgs) -> ToolOutput:
     gate = _gate(ctx)
     if plan and gate is None:
         raise MisesError(ErrorCode.TOOL_FAILED, "design_review needs the Gate to run studies")
-    deadline = time.monotonic() + args.budget_minutes * 60
-    lim = asyncio.Semaphore(_parallel(ctx))
-    results: list[dict | None] = [None] * len(plan)
 
-    async def one(i: int, p: dict) -> None:
-        async with lim:
-            if time.monotonic() > deadline:
-                results[i] = {"plan": p, "error": "not run: the review's time budget ran out"}
-                return
-            settings = dict(p["settings"])
-            left = max(MIN_CHILD_S, deadline - time.monotonic())
-            if p["type"] == "wind":
-                settings["timeout_s"] = min(float(settings.get("timeout_s", 600)), left)
-            else:  # each solve gets at most the time left (a study solves >= 2 meshes)
-                solver = dict(settings.get("solver") or {})
-                solver["timeout_s"] = max(5.0, min(float(solver.get("timeout_s", 300)),
-                                                   left / 2))
-                settings["solver"] = solver
-            call_id = f"{ctx.call_id}.r{i + 1}"
-            payload = {"type": p["type"], "part_id": args.part_id, "settings": settings,
-                       "requirements": p["requirements"], "estimate": bool(p.get("estimate")),
-                       "reason": f"design review: {p['type']} {p['case']}"[:200]}
-            try:  # the budget is a hard cap on every child study too
-                out = await asyncio.wait_for(
-                    gate.call(ctx.run_id, "sim_run", payload, call_id=call_id,
-                              workdir=Path(ctx.workdir)), left + CHILD_GRACE_S)
-                results[i] = {"plan": p, "out": out, "call_id": call_id}
-            except asyncio.TimeoutError:
-                results[i] = {"plan": p, "call_id": call_id,
-                              "error": "stopped: the review's time budget ran out"}
-            except MisesError as e:
-                results[i] = {"plan": p, "call_id": call_id, "error": f"{e.code}: {e.message}"}
+    async def review() -> ToolOutput:
+        deadline = time.monotonic() + args.budget_minutes * 60
+        lim = asyncio.Semaphore(_parallel(ctx))
+        results: list[dict | None] = [None] * len(plan)
 
-    await asyncio.gather(*(one(i, p) for i, p in enumerate(plan)))
-    from .. import mass as _mass       # the same mass as spec_check and the UI (Plan 9 B2)
-    table = _metric_rows(spec, metrics, _mass.part_mass(getattr(ctx, "store", None),
-                                                        Path(ctx.workdir), args.part_id,
-                                                        metrics or None))
-    studies_run = []
-    for res in results:
-        p = res["plan"]
-        out = res.get("out")
-        data = out.data if out is not None else {}
-        if out is not None and not data.get("sim_id") and res.get("call_id"):
-            # output spilled or trimmed: the record on disk is the source of truth
-            rec = _rec_by_call(Path(ctx.workdir) / "parts", args.part_id, res["call_id"])
-            if rec is not None:
-                data = {"sim_id": rec["sim_id"], "checks": rec.get("checks"),
-                        "card": studies.card(rec)}
-        sid = data.get("sim_id")
-        studies_run.append({"type": p["type"], "case": p["case"], "sim_id": sid,
-                            "ok": bool(out and out.ok), "error": res.get("error") or (
-                                None if out is None or out.ok else out.summary),
-                            "url": f"/sims/{sid}" if sid else None,
-                            "card": data.get("card")})
-        checks = data.get("checks") if out is not None and out.ok else None
-        if checks:
-            for c in checks:
-                row = {**c, "study": p["type"], "case": p["case"], "url": f"/sims/{sid}"}
-                if p.get("estimate") and row.get("status") == "pass":
-                    # physics honesty: an estimated load (F = m*g*k) never comes back as a clean
-                    # pass; it passes the estimate only
-                    row["status"] = "warn"
-                    row["estimate"] = True
-                    row["note"] = ((row.get("note") + "; ") if row.get("note") else "") + \
-                        "passes, but the load is an estimate (F = m*g*k)"
-                table.append(row)
-        else:
-            # the study produced no checks: it was denied, errored or timed out, or ran but gave
-            # no requirement verdict. Either way we have no evidence, so the row is "not checked"
-            # (warn), never "fail" — a fail must mean a study ran and a requirement failed.
-            note = (res.get("error") or (out.summary[:200] if out else None)
-                    or "not checked: the study produced no result")
-            for r in p["requirements"]:
+        async def one(i: int, p: dict) -> None:
+            async with lim:
+                if time.monotonic() > deadline:
+                    results[i] = {"plan": p, "error": "not run: the review's time budget ran out"}
+                    return
+                settings = dict(p["settings"])
+                left = max(MIN_CHILD_S, deadline - time.monotonic())
+                if p["type"] == "wind":
+                    settings["timeout_s"] = min(float(settings.get("timeout_s", 600)), left)
+                else:  # each solve gets at most the time left (a study solves >= 2 meshes)
+                    solver = dict(settings.get("solver") or {})
+                    solver["timeout_s"] = max(5.0, min(float(solver.get("timeout_s", 300)),
+                                                       left / 2))
+                    settings["solver"] = solver
+                call_id = f"{ctx.call_id}.r{i + 1}"
+                payload = {"type": p["type"], "part_id": args.part_id, "settings": settings,
+                           "wait": True,      # the review needs every child's result
+                           "requirements": p["requirements"], "estimate": bool(p.get("estimate")),
+                           "reason": f"design review: {p['type']} {p['case']}"[:200]}
+                try:  # the budget is a hard cap on every child study too
+                    out = await asyncio.wait_for(
+                        gate.call(ctx.run_id, "sim_run", payload, call_id=call_id,
+                                  workdir=Path(ctx.workdir)), left + CHILD_GRACE_S)
+                    results[i] = {"plan": p, "out": out, "call_id": call_id}
+                except asyncio.TimeoutError:
+                    results[i] = {"plan": p, "call_id": call_id,
+                                  "error": "stopped: the review's time budget ran out"}
+                except MisesError as e:
+                    results[i] = {"plan": p, "call_id": call_id, "error": f"{e.code}: {e.message}"}
+
+        await asyncio.gather(*(one(i, p) for i, p in enumerate(plan)))
+        from .. import mass as _mass   # the same mass as spec_check and the UI (Plan 9 B2)
+        table = _metric_rows(spec, metrics, _mass.part_mass(getattr(ctx, "store", None),
+                                                            Path(ctx.workdir), args.part_id,
+                                                            metrics or None))
+        studies_run = []
+        for res in results:
+            p = res["plan"]
+            out = res.get("out")
+            data = out.data if out is not None else {}
+            if out is not None and not data.get("sim_id") and res.get("call_id"):
+                # output spilled or trimmed: the record on disk is the source of truth
+                rec = _rec_by_call(Path(ctx.workdir) / "parts", args.part_id, res["call_id"])
+                if rec is not None:
+                    data = {"sim_id": rec["sim_id"], "checks": rec.get("checks"),
+                            "card": studies.card(rec)}
+            sid = data.get("sim_id")
+            studies_run.append({"type": p["type"], "case": p["case"], "sim_id": sid,
+                                "ok": bool(out and out.ok), "error": res.get("error") or (
+                                    None if out is None or out.ok else out.summary),
+                                "url": f"/sims/{sid}" if sid else None,
+                                "card": data.get("card")})
+            checks = data.get("checks") if out is not None and out.ok else None
+            if checks:
+                for c in checks:
+                    row = {**c, "study": p["type"], "case": p["case"], "url": f"/sims/{sid}"}
+                    if p.get("estimate") and row.get("status") == "pass":
+                        # physics honesty: an estimated load (F = m*g*k) never comes back as a clean
+                        # pass; it passes the estimate only
+                        row["status"] = "warn"
+                        row["estimate"] = True
+                        row["note"] = ((row.get("note") + "; ") if row.get("note") else "") + \
+                            "passes, but the load is an estimate (F = m*g*k)"
+                    table.append(row)
+            else:
+                # the study produced no checks: it was denied, errored or timed out, or ran but
+                # gave no requirement verdict. Either way we have no evidence, so the row is
+                # "not checked" (warn), never "fail" — a fail must mean a study ran and a
+                # requirement failed.
+                note = (res.get("error") or (out.summary[:200] if out else None)
+                        or "not checked: the study produced no result")
+                for r in p["requirements"]:
+                    table.append({"requirement_id": r.get("id"), "kind": r.get("kind"),
+                                  "target": r.get("target"), "measured": None, "unit": "",
+                                  "status": "warn", "checked": False, "sim_id": sid,
+                                  "study": p["type"], "case": p["case"],
+                                  "url": f"/sims/{sid}" if sid else None, "note": note})
+        # requirements that no study or metric answered
+        answered = {(r.get("requirement_id"), r.get("case")) for r in table}
+        ids_answered = {a for a, _ in answered}
+        for r in spec.get("requirements") or []:
+            if isinstance(r, dict) and r.get("id") not in ids_answered:
                 table.append({"requirement_id": r.get("id"), "kind": r.get("kind"),
                               "target": r.get("target"), "measured": None, "unit": "",
-                              "status": "warn", "checked": False, "sim_id": sid,
-                              "study": p["type"], "case": p["case"],
-                              "url": f"/sims/{sid}" if sid else None, "note": note})
-    # requirements that no study or metric answered
-    answered = {(r.get("requirement_id"), r.get("case")) for r in table}
-    ids_answered = {a for a, _ in answered}
-    for r in spec.get("requirements") or []:
-        if isinstance(r, dict) and r.get("id") not in ids_answered:
-            table.append({"requirement_id": r.get("id"), "kind": r.get("kind"),
-                          "target": r.get("target"), "measured": None, "unit": "",
-                          "status": "warn", "sim_id": None,
-                          "note": "no study answers this requirement (missing load case?)"})
-    order = {"fail": 0, "warn": 1, "pass": 2}
-    verdict = min((r["status"] for r in table), key=lambda s: order[s], default="warn")
-    if any(not s["ok"] for s in studies_run):
-        verdict = "fail" if verdict == "fail" else "warn"
-    head = (f"design review of {args.part_id} ({GUIDE_LABEL}): {verdict.upper()}; "
-            f"{sum(r['status'] == 'pass' for r in table)} pass, "
-            f"{sum(r['status'] == 'warn' for r in table)} warn, "
-            f"{sum(r['status'] == 'fail' for r in table)} fail")
-    rows = "; ".join(f"{r.get('requirement_id')} {r['kind']}: {r['status']}"
-                     + (f" ({r['measured']:.4g}{r.get('unit') or ''} vs {r['target']})"
-                        if isinstance(r.get("measured"), (int, float)) else "")
-                     + (f" [{r['sim_id']}]" if r.get("sim_id") else "") for r in table)
-    data = {"verdict": verdict, "table": table, "studies": studies_run,
-            "label": GUIDE_LABEL, "part_id": args.part_id}
-    _fit_review(data)
-    return ToolOutput(summary=head + (": " + rows if rows else ""), data=data,
-                      warnings=[s["error"] for s in studies_run if s.get("error")])
+                              "status": "warn", "sim_id": None,
+                              "note": "no study answers this requirement (missing load case?)"})
+        order = {"fail": 0, "warn": 1, "pass": 2}
+        verdict = min((r["status"] for r in table), key=lambda s: order[s], default="warn")
+        if any(not s["ok"] for s in studies_run):
+            verdict = "fail" if verdict == "fail" else "warn"
+        head = (f"design review of {args.part_id} ({GUIDE_LABEL}): {verdict.upper()}; "
+                f"{sum(r['status'] == 'pass' for r in table)} pass, "
+                f"{sum(r['status'] == 'warn' for r in table)} warn, "
+                f"{sum(r['status'] == 'fail' for r in table)} fail")
+        rows = "; ".join(f"{r.get('requirement_id')} {r['kind']}: {r['status']}"
+                         + (f" ({r['measured']:.4g}{r.get('unit') or ''} vs {r['target']})"
+                            if isinstance(r.get("measured"), (int, float)) else "")
+                         + (f" [{r['sim_id']}]" if r.get("sim_id") else "") for r in table)
+        data = {"verdict": verdict, "table": table, "studies": studies_run,
+                "label": GUIDE_LABEL, "part_id": args.part_id}
+        _fit_review(data)
+        return ToolOutput(summary=head + (": " + rows if rows else ""), data=data,
+                          warnings=[s["error"] for s in studies_run if s.get("error")])
+
+    if _wait(ctx, args.wait):
+        return await review()
+    from .. import jobs
+    jobs.check_room(ctx)
+    review_id = REVIEW_ID_PREFIX + secrets.token_hex(6)
+    job = jobs.start(ctx, "design_review", review_id, f"design review of {args.part_id}",
+                     review, timeout_s=REVIEW_TIMEOUT_S,
+                     data=lambda out: {"part_id": args.part_id,
+                                       "verdict": (out.data or {}).get("verdict")
+                                       if out is not None else None})
+    job.scope, job.part_id = [args.part_id], args.part_id
+    return ToolOutput(summary=f"design review {review_id} of {args.part_id} started in the "
+                              f"background ({len(plan)} studies, {GUIDE_LABEL}); you get a note "
+                              "when it finishes. Keep working; read it with design_review_get "
+                              "or job_wait.",
+                      data={"review_id": review_id, "status": "running", "stream": "sim",
+                            "part_id": args.part_id, "cancel_url": jobs.cancel_url(review_id),
+                            "plan": [{"type": p["type"], "case": p["case"]} for p in plan]})
 
 
 REVIEW_SOFT_MAX_BYTES = 14 * 1024
@@ -708,8 +883,8 @@ def _fit_review(data: dict) -> None:
 
 def register_sim_tools(registry: ToolRegistry) -> None:
     """Idempotent."""
-    for t in (sim_static_run, sim_run, sim_types_list, sim_result_get, sim_compare, sim_cancel,
-              sim_env_list, design_review):
+    for t in (sim_static_run, sim_run, sim_types_list, sim_result_get, sim_wait, sim_compare,
+              sim_cancel, sim_env_list, design_review, design_review_get, job_wait):
         if not registry.list([t.name]):
             registry.register(t)
     from .calibration_tools import register_calibration_tools  # S3

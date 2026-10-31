@@ -356,7 +356,7 @@ class AgentLoop:
             self._to_gate.add(c.id)
             try:
                 out = await self.gate.call(self.run_id, c.name, c.input, call_id=c.id,
-                                           workdir=self.workdir)
+                                           workdir=self.workdir, agent=True)
             except MisesError as e:
                 err = e
             except Exception as e:  # a bug below the gate must not kill the run
