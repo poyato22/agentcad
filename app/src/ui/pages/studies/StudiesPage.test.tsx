@@ -58,7 +58,12 @@ const noGl = { createRenderer: () => { throw new Error("no WebGL in tests"); }, 
 let c: ReturnType<typeof client>;
 let ctl: StudiesController;
 async function settle() { await act(async () => { await new Promise((r) => setTimeout(r, 20)); }); }
-function mount() { return render(<StudiesPage controller={ctl} deps={{ view: noGl }} />); }
+/** The page with "Set up manually" opened (Plan 9 U-D: the form sits behind it, collapsed). */
+function mount() {
+  const r = render(<StudiesPage controller={ctl} deps={{ view: noGl }} />);
+  fireEvent.click(screen.getByTestId("manual-setup-toggle"));
+  return r;
+}
 
 beforeEach(() => {
   resetStore(); resetStudiesPage();

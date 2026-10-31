@@ -24,6 +24,7 @@ from .assembly.tools import register_assembly_tools
 from .cad.recipes import register_recipe_tools
 from .cad.tools import register_mirror_tools
 from .cad.views import register_view_tools
+from .sim.studies_agent import register_studies_agent_tools
 from .catalog import Catalog
 from .catalog.tools import register_catalog_tools
 from .bom import BomStore
@@ -186,6 +187,7 @@ class Runtime:
         register_import_tools(self.registry)
         register_appearance_tools(self.registry)
         register_view_tools(self.registry)
+        register_studies_agent_tools(self.registry)  # Plan 9 U-D: the studies agent
         self.orchestrator = Orchestrator(self)
         self.started_at = time.time()
         self.catalog = Catalog(self.store)

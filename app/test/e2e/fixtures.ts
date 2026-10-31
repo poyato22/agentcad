@@ -61,6 +61,12 @@ export async function openBuildShell(page: import("@playwright/test").Page): Pro
   await page.addInitScript(() => { try { localStorage.setItem("mises.home.open", "0"); } catch { /* none */ } });
 }
 
+/** Plan 9 U-D: the Studies page opens on the studies agent with "Set up manually" collapsed;
+ *  specs about the manual form open it up front. Call before page.goto. */
+export async function openManualStudySetup(page: import("@playwright/test").Page): Promise<void> {
+  await page.addInitScript(() => { try { localStorage.setItem("mises.studies.manual", "1"); } catch { /* none */ } });
+}
+
 /** Launch into the Home grid explicitly. */
 export async function openHome(page: import("@playwright/test").Page): Promise<void> {
   await page.addInitScript(() => { try { localStorage.setItem("mises.home.open", "1"); } catch { /* none */ } });

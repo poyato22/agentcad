@@ -4,7 +4,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Page } from "@playwright/test";
-import { expect, test } from "./fixtures";
+import { expect, openManualStudySetup, test } from "./fixtures";
 
 const FX = resolve(import.meta.dirname, "../../../core/tests/fixtures/ui");
 const read = (n: string): unknown => JSON.parse(readFileSync(resolve(FX, n), "utf8"));
@@ -23,6 +23,7 @@ const scenario = (sims: Record<string, unknown> = {}, extra: Record<string, unkn
 });
 
 async function open(page: Page, theme: "dark" | "light" = "dark") {
+  await openManualStudySetup(page);
   await page.goto("/");
   await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
   await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
