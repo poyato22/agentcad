@@ -735,6 +735,12 @@ class MessageArgs(BaseModel):
 AGENT_NOTE_TAG = "agent_note"
 
 
+def lead_log(sender: str, text: str) -> dict:
+    """The lead's stored user step for an agent's message: shown as the agent's words, and
+    never classified as the user's (Plan 9 G-B I3: "_classify" None; the runtime strips it)."""
+    return {"text": f"From the {sender} agent: {text}", "_classify": None}
+
+
 def lead_message(sender: str, text: str, nonce: str | None = None) -> str:
     """The lead's message: one line of framing, then the sender's text as one nonce-delimited
     JSON block (JSON escapes "<", so nothing inside can close it)."""
@@ -791,7 +797,7 @@ async def agent_message(ctx: ToolContext, args: MessageArgs) -> ToolOutput:
                          hint="wait until the lead has read it; one message at a time")
     sender = me.agent or "studies"
     text = lead_message(sender, args.text)
-    log = {"text": f"From the {sender} agent: {args.text}"}
+    log = lead_log(sender, args.text)
     routed = Routed(agent=lead.agent, reason=f"a message from the {sender} agent",
                     confidence=1.0)
     queued = None

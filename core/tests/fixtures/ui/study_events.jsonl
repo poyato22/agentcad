@@ -1,4 +1,4 @@
-{"type":"run_started","run_id":"3d8889e2ca76","data":{"agent":"sim","provider":"fake","model":"fake-model","parent_id":null,"shape_complexity":{"score":0.0,"level":"low","signals":[],"vision_recommended":false}},"ts":1793422861.2016692,"stream":"text"}
+{"type":"run_started","run_id":"3d8889e2ca76","data":{"agent":"sim","provider":"fake","model":"fake-model","parent_id":null,"shape_complexity":{"score":0.0,"level":"low","signals":[],"vision_recommended":false},"design_class":{"score":0.2,"cls":"engineering","per_part":{},"reasons":["no archetype or styling signal: engineering by default (design needs evidence)"],"source":"prior","archetype":null}},"ts":1793422861.2016692,"stream":"text"}
 {"type":"agent_activity","run_id":"3d8889e2ca76","data":{"state":"starting","detail":"","since":1793422861.201691},"ts":1793422861.201695,"stream":"text"}
 {"type":"text_delta","run_id":"3d8889e2ca76","data":{"text":"Running the static study."},"ts":1793422861.208365,"stream":"text"}
 {"type":"agent_activity","run_id":"3d8889e2ca76","data":{"state":"writing","detail":"","since":1793422861.208384},"ts":1793422861.208386,"stream":"text"}

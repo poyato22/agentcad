@@ -556,6 +556,8 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       last_activity_at: r.last_activity_at ?? r.updated_at,
       // Plan 8 G1 (the shape hint): null on a plain run, as the core's AgentRun has it
       shape_complexity: (r as { shape_complexity?: unknown }).shape_complexity ?? null,
+      // Plan 9 G-B (D27): the run's design class, null on a run the core never classified
+      design_class: (r as { design_class?: unknown }).design_class ?? null,
       // the lead's per-turn caps window (core budget.start_turn): null until a turn starts
       turn_started_at: r.turn_started_at ?? null,
       turn_usd0: r.turn_usd0 ?? null,
@@ -846,7 +848,10 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
           return answer;
         }
         // Plan 8 G1: the core estimates the prompt's shape complexity on start (null: unknown here)
-        emit({ type: "run_started", run_id: run.id, data: { agent, provider: vendor, model, parent_id: null, shape_complexity: { score: 0, level: "low", signals: [], vision_recommended: false }, ...(claude ? { external: true } : {}) } });
+        emit({ type: "run_started", run_id: run.id, data: { agent, provider: vendor, model, parent_id: null, shape_complexity: { score: 0, level: "low", signals: [], vision_recommended: false },
+          // Plan 9 G-B: the core's class for a prompt with no design signal (engineering by default)
+          design_class: { score: 0.2, cls: "engineering", per_part: {}, reasons: ["no archetype or styling signal: engineering by default (design needs evidence)"], source: "prior", archetype: null },
+          ...(claude ? { external: true } : {}) } });
         play(state.on.create_run, run.id);
         return answer;
       },

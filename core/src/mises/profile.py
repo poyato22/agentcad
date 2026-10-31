@@ -181,6 +181,9 @@ class Profile(BaseModel):
     critique_max_rounds: int = Field(3, ge=1, le=6)
     critique_time_budget_s: float = Field(300.0, ge=30, le=3600)
     critique_max_image_tokens: int = Field(12_000, ge=1000, le=100_000)
+    # Plan 9 G-B (D27): an optional cheap model ("vendor/model", e.g. a Haiku) that rates how
+    # design-heavy a request is; the keyword prior is used alone when unset or unavailable
+    design_classifier_model: str | None = None
 
     @field_validator("catalog_allowed_domains")
     @classmethod

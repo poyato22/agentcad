@@ -66,7 +66,27 @@ def examples() -> dict:
         "vent_slots": vents,
         "cable_path": lambda: ms.cable_path([(0, 0, 0), (20, 20, 10), (40, 0, 20), (60, 10, 0)]),
         "check_solid": lambda: ms.check_solid(rounded_block()),
+        # Plan 9 G-B: skin over skeleton (a thigh-like limb) and archetype massing
+        "squircle": lambda: ms.station_loft([(0, 30, 20, 3.0), (60, 24, 18, 3.0)]),
+        "station_loft": lambda: ms.station_loft(THIGH),
+        "skin_shell": lambda: ms.skin_shell(THIGH, wall=2.5),
+        "tapered_capsule": lambda: ms.tapered_capsule(20, 12, start=(0, 0, 0), end=(40, 30, 90)),
+        "joint_cowl": lambda: ms.joint_cowl(34, 50, rom_deg=120),
+        "panel_split": lambda: bd.Compound(list(ms.panel_split(
+            ms.skin_shell(THIGH, wall=2.5), bd.Plane.XY.offset(-110), gap=0.8))),
+        "clamshell": lambda: bd.Compound(list(ms.clamshell(ms.skin_shell(THIGH, wall=2.5)))),
+        "cover_for": lambda: ms.cover_for(THIGH, components=[((0, 2, -60), (40, 20, 40))],
+                                          bulkheads=[-90]),
+        "trust": lambda: ms.trust(ms.skin_shell(THIGH, wall=2.5), "thigh shell"),
+        "humanoid": lambda: ms.humanoid(shell=False).compound(),
+        "quadruped": lambda: ms.quadruped(shell=False).compound(),
+        "car_body": lambda: ms.car_body(shell=False).compound(),
     }
+
+
+# a thigh shell's stations (z, half width, half depth, n, dx, dy): hip at z=0, knee below
+THIGH = [(-10, 38, 34, 2.2), (-60, 42, 40, 2.6, 0, -4), (-120, 36, 34, 2.6, 0, -3),
+         (-180, 30, 28, 2.4), (-212, 28, 26, 2.2)]
 
 
 def main(out_dir: str) -> int:

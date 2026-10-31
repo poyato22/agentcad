@@ -204,7 +204,9 @@ async def test_the_gate_reads_design_class_from_the_lead_or_the_build(home, wher
     rt, project, run = _gate_rt(home, "design")
     table, row = ("runs", run.id) if where == "run" else ("projects", project)
     with rt.store._tx() as db:
-        db.execute(f"ALTER TABLE {table} ADD COLUMN design_class TEXT")
+        cols = {r[1] for r in db.execute(f"PRAGMA table_info({table})")}
+        if "design_class" not in cols:          # G-B's migration adds it on runs
+            db.execute(f"ALTER TABLE {table} ADD COLUMN design_class TEXT")
         db.execute(f"UPDATE {table} SET design_class=? WHERE id=?",
                    ('{"score": 0.82, "cls": "design", "per_part": {}, "reasons": ["humanoid"]}', row))
     cls = gate_mod.design_class(rt.store, project, run.id)

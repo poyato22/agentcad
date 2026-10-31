@@ -48,6 +48,9 @@ export interface AgentRun {
   /** Plan 8 G1: how shape-heavy the prompt looks (the router prefers strong vision models for it).
    *  Kept raw: ui/console/cards/critique/shapeWarning.ts reads a score, a level or {level, score, keywords}. */
   shape_complexity?: unknown;
+  /** Plan 9 G-B (D27): how design-heavy the build is ({score, cls, per_part, reasons, source};
+   *  cls engineering | mixed | design). Raw: the concept gate and the UI read `cls`. */
+  design_class?: unknown;
   /** The lead's per-turn caps window (core budget.start_turn): null until a turn starts. */
   turn_started_at?: number | null;
   turn_usd0?: number | null;
