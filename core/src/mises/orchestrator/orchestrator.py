@@ -103,12 +103,21 @@ def inherited_model_ref(rt: Runtime, parent_run_id: str) -> str | None:
     return f"{run.provider}/{run.model}"
 
 
+def _pinned(rt: Runtime, agent: str) -> bool:
+    """The agent's definition names its own model (not "inherit")."""
+    defn = rt.definitions.get(agent)
+    return defn is not None and bool(defn.model) and defn.model != "inherit"
+
+
+def _for_child(rt: Runtime, agent: str, model_ref: str | None) -> str | None:
+    """`model_ref` for a child of `agent`, unless its definition pins a model (that one wins
+    in model_ref_for). Shared by agent_spawn, the planner and plan tasks (D3)."""
+    return None if _pinned(rt, agent) else model_ref
+
+
 def _child_model_ref(rt: Runtime, parent_run_id: str, agent: str) -> str | None:
     """Inherit the parent's model unless the child's definition pins its own (D3)."""
-    defn = rt.definitions.get(agent)
-    if defn is not None and defn.model and defn.model != "inherit":
-        return None                      # the definition's pinned model wins (model_ref_for)
-    return inherited_model_ref(rt, parent_run_id)
+    return _for_child(rt, agent, inherited_model_ref(rt, parent_run_id))
 
 
 def child_policy(runtime: Runtime, parent_run_id: str, agent: str,
@@ -201,7 +210,7 @@ class Orchestrator:
         known = set(rt.definitions) - {PLANNER}
         prompt = (f"Goal: {goal}\n\nAvailable agents for tasks: {', '.join(sorted(known))}.\n"
                   "Submit the plan with orchestrator_submit_plan.")
-        return await rt.start_run(PLANNER, prompt, model_ref=model_ref,
+        return await rt.start_run(PLANNER, prompt, model_ref=_for_child(rt, PLANNER, model_ref),
                                   **child_policy(rt, parent_run_id, PLANNER))
 
     async def _collect_plan(self, pid: str) -> Plan:
@@ -239,7 +248,8 @@ class Orchestrator:
         plan = await self._plan(goal, parent_run_id, model_ref)
 
         async def spawn(task: PlanTask, deps: dict[str, TaskResult]) -> TaskResult:
-            rid = await rt.start_run(task.agent, task_prompt(task, deps), model_ref=model_ref,
+            rid = await rt.start_run(task.agent, task_prompt(task, deps),
+                                     model_ref=_for_child(rt, task.agent, model_ref),
                                      role=SUB, title=task_title(task.title, task.prompt),
                                      **child_policy(rt, parent_run_id, task.agent))
             _announce_spawn(rt, parent_run_id, rid, task.agent, task_title(task.title,

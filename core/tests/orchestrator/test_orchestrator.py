@@ -514,7 +514,13 @@ async def test_spawned_and_orchestrated_children_inherit_the_leads_model(tmp_pat
 async def test_a_pinned_child_model_is_not_overridden_by_inheritance(tmp_path):
     # D3: a child whose definition pins its own model keeps it (inheritance only fills the gap).
     from mises.agent.definitions import AgentDefinition
-    prov = RoleProvider(designer=[text("lead")], pinned=[text("child")])
+    plan = {"goal": "g", "tasks": [
+        {"id": "p", "title": "P", "agent": "pinned", "prompt": "pinned task"},
+        {"id": "d", "title": "D", "agent": "designer", "prompt": "free task"}]}
+    prov = RoleProvider(designer=[text("lead"), text("free done")],
+                        pinned=[text("child"), text("pinned task done")],
+                        planner=[calls(tc("p1", "orchestrator_submit_plan", plan=plan)),
+                                 text("submitted")])
     rt = make(tmp_path, prov)
     rt.definitions["pinned"] = AgentDefinition(name="pinned", description="d", model="fake/c",
                                                body="# Role: pinned\ndo it")
@@ -523,7 +529,17 @@ async def test_a_pinned_child_model_is_not_overridden_by_inheritance(tmp_path):
     out = await rt.gate.call(lead, "agent_spawn",
                              {"agent": "pinned", "prompt": "x", "wait": False},
                              call_id="c1", workdir=rt.workdir(lead))
-    assert rt._runs[out.data["run_id"]].ref == "fake/c"
+    spawned = out.data["run_id"]
+    assert rt._runs[spawned].ref == "fake/c"
+    await rt.wait(spawned)
+    # orchestrator_run: the pinned plan task keeps fake/c; the unpinned one and the planner
+    # inherit the lead's fake/a
+    res = await rt.gate.call(lead, "orchestrator_run", {"goal": "g"},
+                             call_id="o1", workdir=rt.workdir(lead))
+    assert res.ok, res.summary
+    refs = {r.agent: rt._runs[r.id].ref for r in rt.store.list_runs()
+            if r.parent_id == lead and r.id != spawned}
+    assert refs == {"pinned": "fake/c", "designer": "fake/a", "planner": "fake/a"}
 
 
 async def test_children_release_their_claude_session_once_collected(tmp_path, monkeypatch):
