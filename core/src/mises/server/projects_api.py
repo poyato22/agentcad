@@ -155,7 +155,8 @@ def build_projects_router(runtime: Runtime) -> APIRouter:
             store, _home(), part_id, label=body.get("label"),
             color=body["color"] if "color" in body else ...,
             parent_id=body["parent_id"] if "parent_id" in body else ...,
-            appearance=body["appearance"] if "appearance" in body else ...)
+            appearance=body["appearance"] if "appearance" in body else ...,
+            material=body["material"] if "material" in body else ...)
 
     @router.post("/parts/reorder")
     async def reorder(body: Reorder):

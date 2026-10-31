@@ -234,12 +234,16 @@ def _ops_note(kept: bool, dropped: int) -> str:
     return " (kept its feature ops)" if kept else ""
 
 
-async def _build_guarded(d: Path, vars_: dict, snap: dict[str, bytes]):
+async def _build_guarded(d: Path, vars_: dict, snap: dict[str, bytes], ctx=None):
     """run_build that puts the part dir back as it was on ANY exception or cancellation, and
     that fails (and restores) a build that left links or special files behind, so a
-    half-applied or hostile edit can never be left behind."""
+    half-applied or hostile edit can never be left behind. The worker weighs the part with
+    its own material's density (Plan 9 B2; `ctx` gives the store with the part's row)."""
+    from .. import mass as _mass
+    density = _mass.build_density(getattr(ctx, "store", None), Path(d).parent.parent,
+                                  Path(d).name)
     try:
-        res = await run_build(d, vars_)
+        res = await run_build(d, vars_, density_g_cm3=density)
     except BaseException:
         try:
             _after_build(d)
@@ -500,7 +504,7 @@ async def mirror_part_create(ctx: ToolContext, args: CreateArgs) -> ToolOutput:
         _stage_skeleton(ctx, args.part_id, d)
         safe_io.write_text(d, "part.py", script)
         try:
-            res = await _build_guarded(d, args.vars, snap)
+            res = await _build_guarded(d, args.vars, snap, ctx)
         except BaseException:
             if not snap:
                 shutil.rmtree(d, ignore_errors=True)
@@ -543,7 +547,7 @@ async def mirror_part_set_vars(ctx: ToolContext, args: SetVarsArgs) -> ToolOutpu
         prev = _read_json(d, "metrics.json")
         snap = _snapshot(d)
         _stage_skeleton(ctx, args.part_id, d)
-        res = await _build_guarded(d, new_vars, snap)
+        res = await _build_guarded(d, new_vars, snap, ctx)
         if not res.ok:
             return _fail(res.error or "build failed", res.stdout_tail)
         _accept(d, res)
@@ -671,7 +675,7 @@ async def mirror_part_set_source(ctx: ToolContext, args: SetSourceArgs) -> ToolO
         snap = _snapshot(d)            # includes part.py
         _stage_skeleton(ctx, args.part_id, d)
         safe_io.write_text(d, "part.py", source)
-        res = await _build_guarded(d, build_vars, snap)
+        res = await _build_guarded(d, build_vars, snap, ctx)
         if not res.ok:
             return _fail(res.error or "build failed", res.stdout_tail)
         _accept(d, res)
@@ -701,7 +705,7 @@ async def mirror_part_op(ctx: ToolContext, args: OpArgs) -> ToolOutput:
         snap = _snapshot(d)            # includes part.py: a failed op drops its block
         _stage_skeleton(ctx, args.part_id, d)
         safe_io.write_text(d, "part.py", new_source)
-        res = await _build_guarded(d, build_vars, snap)
+        res = await _build_guarded(d, build_vars, snap, ctx)
         if not res.ok:
             return _fail(res.error or f"{args.op} op failed to build", res.stdout_tail)
         _accept(d, res)

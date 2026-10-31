@@ -426,6 +426,10 @@ def _static_evaluator(ctx: ToolContext, part_id: str, part_dir: Path, base_vars:
     candidate's vars, measured, then a coarse-mesh stress study per load case on that copy.
     The live part is only read (its part.py), never written."""
     counter = itertools.count()
+    # Plan 9 B2: candidates weigh the live part's material, like its own builds
+    from .. import mass as _mass
+    density = _mass.build_density(getattr(ctx, "store", None), Path(part_dir).parent.parent,
+                                  part_id)
     source = safe_io.read_text(part_dir, "part.py")   # live part: read, links never followed
     if source is None:
         raise MisesError(ErrorCode.NOT_FOUND, f"{part_id} has no part.py", hint="rebuild it")
@@ -441,7 +445,7 @@ def _static_evaluator(ctx: ToolContext, part_id: str, part_dir: Path, base_vars:
         safe_io.write_text(vpart, "part.py", source)
         out = _empty_metrics(variant)
         # the live part's staged layout skeleton (Plan 8 G3), so skeleton() works in variants
-        res = await run_build(vpart, {**base_vars, **vars},
+        res = await run_build(vpart, {**base_vars, **vars}, density_g_cm3=density,
                               skeleton_file=skeleton.staged_file(part_dir))
         bad = _after_build(vpart)
         if bad:

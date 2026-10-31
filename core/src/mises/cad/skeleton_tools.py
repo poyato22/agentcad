@@ -225,7 +225,7 @@ async def regenerate(ctx: ToolContext, project_id: str, changed: dict,
             before = T._edits.read_version(d)
             snap = T._snapshot(d)
             sk.stage(root, d, project_id)
-            res = await T._build_guarded(d, build_vars, snap)
+            res = await T._build_guarded(d, build_vars, snap, ctx)
             if not res.ok:
                 failed.append({"part_id": pid, "error": (res.error or "build failed")[-800:]})
                 sk.mark_stale(d, skel_version, "its rebuild against the new skeleton failed")

@@ -423,24 +423,46 @@ def part_version(home: Path, row: Part) -> int:
     return v
 
 
-def part_view(store: Store, home: Path, row: Part) -> dict:
-    d = row.model_dump()
-    d["version"] = part_version(home, row)
+def _row_view(home: Path, r: Part, disk: dict | None, version: bool = True) -> dict:
     # `part_id` is kept beside the contract's `id` so older UI code keeps working
-    return {**d, "part_id": row.id, **(_part_disk(home, row.id) or _NO_DISK)}
+    return {**r.model_dump(), "version": part_version(home, r) if version else r.version,
+            "part_id": r.id, **(disk or _NO_DISK)}
+
+
+def mass_rows(store: Store, home: Path, project_id: str | None,
+              default_material: str | None = None, *, versions: bool = True,
+              only: str | None = None) -> list[dict]:
+    """Every tree row of the build (parts with no build included) with its mass (Plan 9 B2:
+    mass_g, mass_source, mass_note; groups and parents sum their subtree). A part without a
+    material of its own is weighed as `default_material` (default: the profile's).
+    `versions=False` skips the version lookup (it can migrate a version file) for rows other
+    than `only`; mass alone never needs it."""
+    from . import mass
+    rows, has_disk = [], set()
+    for r in store.list_part_rows(project_id):
+        disk = _part_disk(home, r.id)
+        if disk is not None:
+            has_disk.add(r.id)
+        rows.append(_row_view(home, r, disk, versions or r.id == only))
+    return mass.annotate(rows, home, has_disk=has_disk, default_mat=default_material)
+
+
+def part_view(store: Store, home: Path, row: Part) -> dict:
+    for r in mass_rows(store, home, row.project_id, versions=False, only=row.id):
+        if r["id"] == row.id:
+            return r
+    from . import mass   # a row outside any build's list (should not happen): itself alone
+    disk = _part_disk(home, row.id)
+    return mass.annotate([_row_view(home, row, disk)], home,
+                         has_disk={row.id} if disk is not None else set())[0]
 
 
 def list_parts(store: Store, home: Path, project_id: str) -> list[dict]:
-    """The build's tree rows. A `part` row whose on-disk build is gone is left out (groups
-    and catalog parts have no build directory of their own)."""
-    out = []
-    for r in store.list_part_rows(project_id):
-        disk = _part_disk(home, r.id)
-        if disk is None and r.kind == "part":
-            continue
-        out.append({**r.model_dump(), "version": part_version(home, r), "part_id": r.id,
-                    **(disk or _NO_DISK)})
-    return out
+    """The build's tree rows with their mass. A `part` row whose on-disk build is gone is left
+    out (groups and catalog parts have no build directory of their own), and weighs nothing in
+    its parent's sum."""
+    return [r for r in mass_rows(store, home, project_id)
+            if not (r["kind"] == "part" and r["mtime"] is None)]   # mtime None: no build dir
 
 
 def _part_or_404(store: Store, part_id: str) -> Part:
@@ -474,7 +496,8 @@ def _parent_in(store: Store, parent_id: str, project_id: str | None) -> None:
 
 def patch_part(store: Store, home: Path, part_id: str, *, label: str | None = None,
                color: str | None | object = ..., parent_id: str | None | object = ...,
-               appearance: dict | None | object = ...) -> dict:
+               appearance: dict | None | object = ...,
+               material: str | None | object = ...) -> dict:
     """Rename, recolor, re-material or re-parent a part. `color`/`parent_id`/`appearance` left
     as the sentinel are unchanged; None clears them. The parent must be in the same build, and
     a move that would form a cycle is rejected. The row's color and appearance.color stay equal:
@@ -504,6 +527,9 @@ def patch_part(store: Store, home: Path, part_id: str, *, label: str | None = No
             fields["appearance"] = a
             if a["color"] is not None:
                 fields["color"] = a["color"]
+    if material is not ...:
+        from . import mass
+        fields["material"] = mass.check_material(material, home)   # type: ignore[arg-type]
     if parent_id is not ...:
         if parent_id is not None:
             _parent_in(store, str(parent_id), row.project_id)
