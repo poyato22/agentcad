@@ -1,5 +1,5 @@
 {
-  "project_id": "de86eea64b19",
+  "project_id": "b0c17fedc0a4",
   "material": "PLA",
   "items": [
     {
@@ -85,7 +85,9 @@
       "source": "auto",
       "estimate": false,
       "estimate_note": null,
-      "line_total": 5.95
+      "line_total": 5.95,
+      "geometry_part_id": "micro_servo_towerpro_sg92r",
+      "geometry": "envelope"
     },
     {
       "id": "auto_servo_mg996r_standard",
@@ -124,10 +126,12 @@
       "source": "auto",
       "estimate": false,
       "estimate_note": null,
-      "line_total": null
+      "line_total": null,
+      "geometry_part_id": "servo_mg996r_standard",
+      "geometry": "envelope"
     },
     {
-      "id": "bom_c1e3c49c79c7",
+      "id": "bom_89ccd9aa0b4d",
       "kind": "bought",
       "part_id": null,
       "catalog_id": null,
@@ -153,7 +157,7 @@
       "geometry": null
     },
     {
-      "id": "bom_e3604b5f4d81",
+      "id": "bom_7090df45dbcb",
       "kind": "bought",
       "part_id": null,
       "catalog_id": null,
@@ -173,7 +177,7 @@
       "geometry": null
     },
     {
-      "id": "bom_8d26bada650a",
+      "id": "bom_e901843ab03f",
       "kind": "bought",
       "part_id": null,
       "catalog_id": null,
@@ -193,7 +197,7 @@
       "geometry": null
     },
     {
-      "id": "bom_4620806c3903",
+      "id": "bom_6e505226ad09",
       "kind": "bought",
       "part_id": null,
       "catalog_id": null,

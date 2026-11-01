@@ -36,7 +36,7 @@ describe("BOM model", () => {
     expect(money(3, null)).toBe("3.00 (currency unknown)");
     expect(money(1250, "SEK")).toBe("1,250.00 SEK");
     expect(currencies(BOM.totals.by_currency)).toEqual(["EUR", "USD", "unknown"]);
-    expect(perCurrency(BOM.totals.bought)).toBe("€2.40 · $35.70 · 3.00 (currency unknown)");
+    expect(perCurrency(BOM.totals.bought)).toBe("€2.40 · $41.65 · 3.00 (currency unknown)");
   });
   it("quantities are whole numbers from 1; currencies are 3-letter codes or empty", () => {
     expect(validQty("6")).toBe(6);
@@ -75,11 +75,11 @@ describe("BomPage", () => {
     expect(screen.getByRole("heading", { name: "Made in-house" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Bought" })).toBeTruthy();
     const totals = document.querySelector("[data-bom-totals]") as HTMLElement;
-    expect(within(totals.querySelector('[data-currency="USD"]') as HTMLElement).getByText("$35.97")).toBeTruthy();
+    expect(within(totals.querySelector('[data-currency="USD"]') as HTMLElement).getByText("$41.92")).toBeTruthy();
     expect(within(totals.querySelector('[data-currency="EUR"]') as HTMLElement).getByText("€2.40")).toBeTruthy();
     expect(within(totals.querySelector('[data-currency="unknown"]') as HTMLElement).getByText("3.00 (currency unknown)")).toBeTruthy();
     expect(within(totals).getByText(/listed separately, never added together/)).toBeTruthy();
-    expect(within(totals).getByText("1 part has no price yet, so it isn't in the totals.")).toBeTruthy();
+    expect(within(totals).getByText("2 parts have no price yet, so they aren't in the totals.")).toBeTruthy();
     expect(within(totals).getByText("Adafruit")).toBeTruthy();
     const est = within(document.querySelector(`[data-bom-line="${AUTO.id}"]`) as HTMLElement).getByText("estimate");
     expect(est.getAttribute("title")).toBe(AUTO.estimate_note);
@@ -87,7 +87,8 @@ describe("BomPage", () => {
     expect(within(document.querySelector(`[data-bom-line="${SERVO.id}"]`) as HTMLElement).queryByText("estimate")).toBeNull();
     expect(screen.getByText('=HYPERLINK("https://evil.example")')).toBeTruthy();
     // a link shows its domain
-    expect(screen.getByText("· www.adafruit.com")).toBeTruthy();
+    // (two rows link to Adafruit since P10 E15: the inserted servo and the user's row)
+    expect(screen.getAllByText("· www.adafruit.com").length).toBeGreaterThan(0);
   });
 
   it("edits a quantity, and refuses a fraction", async () => {

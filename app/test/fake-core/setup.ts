@@ -74,6 +74,8 @@ const PLAN5_PROFILE_DEFAULTS = {
   critique_max_rounds: 3, critique_time_budget_s: 300.0, critique_max_image_tokens: 12_000,
   // Plan 9 G-B: the optional design-intensity classifier model (unset: keyword prior only)
   design_classifier_model: null,
+  // Plan 10 E3: extra environment for Claude Code (CA bundle / proxy); empty by default
+  claude_code_env: {},
   suggested_sites: DEFAULT_SUGGESTED_SITES, browser_fetches_per_run: DEFAULT_BROWSER_FETCHES,
 };
 const withVersion = (p: Profile) => ({ schema_version: PROFILE_SCHEMA_VERSION, ...PLAN5_PROFILE_DEFAULTS, ...p, printers: [] });

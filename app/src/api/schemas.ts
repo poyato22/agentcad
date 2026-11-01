@@ -244,6 +244,8 @@ export const profileSchema = z.object({
   // Plan 7 R3: the agent's curated browse list (apart in api/browser.ts)
   suggested_sites: suggestedSitesSchema.optional(),
   browser_fetches_per_run: z.number().int().optional(),
+  // Plan 10 E3: extra environment for Claude Code (CA bundle path / proxy URL; credentials masked)
+  claude_code_env: z.record(z.string(), z.string()).optional(),
   setup_completed_at: z.number().nullable().default(null),
   // the core's Profile carries `schema_version` and `printers`; both are stripped here and never sent
   // back in PUT /profile (the core merges the patch, so they are kept; printers go through /printers)

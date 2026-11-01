@@ -24,17 +24,17 @@ test("the parts list shows one total per currency, estimates and the unpriced co
   await expect(page.getByText('=HYPERLINK("https://evil.example")')).toBeVisible();
   // one total per currency, never summed
   const totals = page.locator("[data-bom-totals]");
-  await expect(totals.locator('[data-currency="USD"]')).toContainText("$36.10");     // 35.97 + the mount plate's 0.13
+  await expect(totals.locator('[data-currency="USD"]')).toContainText("$42.05");     // 41.92 (P10 E15: + the inserted servo) + the mount plate's 0.13
   await expect(totals.locator('[data-currency="EUR"]')).toContainText("€2.40");
   await expect(totals.locator('[data-currency="unknown"]')).toContainText("3.00 (currency unknown)");
-  await expect(totals.getByText("1 part has no price yet, so it isn't in the totals.")).toBeVisible();
+  await expect(totals.getByText("2 parts have no price yet, so they aren't in the totals.")).toBeVisible();
 
   // editing a quantity persists via PATCH (only the core's fields)
   const qty = page.getByLabel("Quantity of Micro servo SG92R");
   await qty.fill("8");
   await qty.press("Enter");
   await expect.poll(async () => (await fake.calls()).find((c) => c.method === "PATCH" && /\/bom\//.test(c.path))?.body).toEqual({ qty: 8 });
-  await expect(totals.locator('[data-currency="USD"]')).toContainText("$48.00");    // 8 × 5.95 + 0.27 + 0.13, re-read from the core
+  await expect(totals.locator('[data-currency="USD"]')).toContainText("$53.95");    // 8 × 5.95 + 5.95 (inserted servo) + 0.27 + 0.13, re-read from the core
 
   // adding a bought part with no currency keeps it unknown
   await page.getByRole("button", { name: "Add bought part" }).click();

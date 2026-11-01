@@ -61,8 +61,9 @@ describe("real-core answers parse", () => {
 
   it("GET /projects/{id}/bom: per-currency totals, estimate flags and the auto source", () => {
     const bom = bomSchema.parse(real("bom.json"));
-    expect(bom.totals.by_currency).toEqual({ USD: 35.97, EUR: 2.4, unknown: 3.0 });
-    expect(bom.totals.unpriced).toBe(1);
+  // P10 E15: the dumped part_show inserts the servo, so its auto row adds $5.95
+    expect(bom.totals.by_currency).toEqual({ USD: 41.92, EUR: 2.4, unknown: 3.0 });
+    expect(bom.totals.unpriced).toBe(2);         // + the inserted MG996R (no price)
     const auto = bom.items.find((r) => r.source === "auto");
     expect(auto?.estimate).toBe(true);
     expect(auto?.estimate_note).toMatch(/^estimate: 12\.4 g of PLA/);
