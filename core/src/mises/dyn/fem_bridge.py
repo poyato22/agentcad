@@ -15,7 +15,6 @@ instance's transform. Points also go through the body origin.
 """
 from __future__ import annotations
 
-import math
 
 import numpy as np
 
@@ -177,7 +176,3 @@ def rank(reactions: list[dict], sizes: dict[str, float], n: int) -> list[dict]:
     scored = [(load_index(r, sizes.get(r["body"], 0.05)), r) for r in reactions]
     scored.sort(key=lambda x: -x[0])
     return [dict(r, load_index_nm=round(s, 4)) for s, r in scored[:n]]
-
-
-def deg(rad: float) -> float:
-    return math.degrees(rad)

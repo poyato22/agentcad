@@ -12,7 +12,6 @@ Joint values in and out are Mises units (deg, mm); trajectories name Mises joint
 """
 from __future__ import annotations
 
-import math
 import secrets
 from pathlib import Path
 from typing import Literal
@@ -626,7 +625,3 @@ TOOLS = (dyn_build, dyn_torque, dyn_stability, dyn_reactions, dyn_rom_sweep, dyn
 def register_dyn_tools(registry: ToolRegistry) -> None:
     for t in TOOLS:
         registry.register(t)
-
-
-def deg(x: float) -> float:
-    return math.degrees(x)
