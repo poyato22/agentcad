@@ -11,7 +11,10 @@ import { resetCatalog } from "../dialogs/catalog";
 import { ConsolePane } from "./ConsolePane";
 import { expandedFolds, resetOffListRuns } from "./derived";
 import { approval, message, resetIds, run, step, toolCall, toolFailure } from "./testSteps";
-import { composerOpen, consoleView, resetConsoleView, VIEW_KEY } from "./view";
+import { consoleView, resetConsoleView, VIEW_KEY } from "./view";
+import { activeBuildId } from "../../state/builds";
+import { resetChat } from "./chat";
+import { resetMessageActions } from "./MessageActions";
 
 const REAL: Step[] = (JSON.parse(readFileSync(resolve(__dirname, "../../../test/fixtures/core-ui/steps.json"), "utf8")) as unknown[]).map((s) => stepSchema.parse(s));
 const RID = REAL[0].run_id;
@@ -44,6 +47,8 @@ function client(over: Record<string, unknown> = {}) {
     localStatus: vi.fn().mockRejectedValue(new Error("404")),
     getProfile: vi.fn().mockResolvedValue({ default_agent: "verifier", default_model: "claude-code/opus" }),
     createRun: vi.fn().mockResolvedValue({ run_id: "new1" }),
+    chat: vi.fn().mockResolvedValue({ run_id: "new1", role: "lead", new_lead: true, notes: [] }),
+    cancelQueued: vi.fn().mockResolvedValue(true),
     cancel: vi.fn().mockResolvedValue({ ok: true }),
     message: vi.fn().mockResolvedValue({ ok: true }),
     ...over,
@@ -117,7 +122,9 @@ describe("conversation view (default)", () => {
     expect(fail.textContent).toContain("try again");
     expect(fail.querySelector("[data-activity-text]")?.classList.contains("cv-fail")).toBe(true);
     const err = thread.querySelector("[data-error]") as HTMLElement;
-    expect(err.textContent).toContain("transient · provider timed out");
+    expect(err.querySelector("[data-error-message]")?.textContent).toBe("provider timed out");
+    expect(err.querySelector(".cv-err-code")?.textContent).toBe("transient");
+    expect(within(err).getByRole("button", { name: "Retry" })).toBeTruthy();
     expect(err.textContent).toContain("try again later");
     expect(thread.querySelector('[data-approval="ap1"]')).toBeTruthy();
     expect(thread.querySelector('[data-question="q1"]')).toBeTruthy();
@@ -173,7 +180,7 @@ describe("conversation view (default)", () => {
     expect(container.textContent).not.toContain("fake · m");
     fireEvent.click(screen.getByRole("button", { name: "Conversation options" }));
     const menu = screen.getByRole("menu", { name: "Conversation options" });
-    expect(within(menu).getAllByRole("menuitem").map((b) => b.textContent)).toEqual(["New run…", "Agent browser", "Full log"]);
+    expect(within(menu).getAllByRole("menuitem").map((b) => b.textContent)).toEqual(["Agent browser", "Full log"]);
     fireEvent.keyDown(menu, { key: "Escape" });
     expect(screen.queryByRole("menu")).toBeNull();
   });
@@ -334,137 +341,131 @@ describe("feedback pins in the thread (U2a)", () => {
   });
 });
 
-describe("inline composer", () => {
-  it("+new_opens_the_composer_with_profile_defaults_and_starts_a_run", async () => {
-    const c = client();
+describe("one chat per build (P10 E24)", () => {
+  const box = () => screen.getByLabelText("Command line") as HTMLTextAreaElement;
+  const send = (text: string) => { fireEvent.input(box(), { target: { value: text } }); fireEvent.keyDown(box(), { key: "Enter" }); };
+  beforeEach(() => { activeBuildId.value = "b1"; });
+  afterEach(() => { activeBuildId.value = null; resetChat(); resetMessageActions(); });
+
+  it("no New run anywhere: the first message starts the build's lead through the chat", async () => {
+    const c = client({ chat: vi.fn().mockResolvedValue({ run_id: "lead1", role: "lead", new_lead: true, queued: false, notes: [] }) });
     render(<ConsolePane />);
     await frame();
-    openMenuItem("New run…");
-    expect(composerOpen.value).toBe(true);
-    const form = screen.getByRole("form", { name: "New run" });
-    // R8: no agent picker by default — the core routes from the prompt
-    expect(within(form).queryByLabelText("Agent")).toBeNull();
-    expect(form.textContent).toContain("Mises picks the right agent from your prompt.");
-    await waitFor(() => expect(within(form).getByRole("button", { name: /^Model: Claude Code · opus/ })).toBeTruthy());
-    expect(screen.queryByRole("dialog")).toBeNull();             // inline, not the dialog
-    fireEvent.input(within(form).getByLabelText("Task"), { target: { value: "stiffen the upright" } });
-    fireEvent.keyDown(within(form).getByLabelText("Task"), { key: "Enter" });
-    await waitFor(() => expect(c.createRun).toHaveBeenCalledTimes(1));
-    expect(c.createRun.mock.calls[0][0]).toEqual({
-      prompt: "stiffen the upright", model_ref: "claude-code/opus", edit_scope: ["*"], read_scope: ["*"],
-    });
-    await waitFor(() => expect(composerOpen.value).toBe(false));
-    expect(selectedRunId.value).toBe("new1");
+    fireEvent.click(screen.getByRole("button", { name: "Conversation options" }));
+    expect(within(screen.getByRole("menu", { name: "Conversation options" })).getAllByRole("menuitem").map((b) => b.textContent))
+      .toEqual(["Agent browser", "Full log"]);
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    expect(screen.getByTestId("target-chip").textContent).toBe("→ the build's agent (starts with your first message)");
+    expect(document.querySelector("[data-chat-empty]")?.textContent).toMatch(/first message starts this build's agent/);
+    send("design a two-finger gripper");
+    await waitFor(() => expect(c.chat).toHaveBeenCalledWith("b1", "design a two-finger gripper"));
+    expect(c.createRun).not.toHaveBeenCalled();
+    await waitFor(() => expect(selectedRunId.value).toBe("lead1"));
   });
 
-  it("use_a_specific_agent_override_sends_that_agent", async () => {
-    const c = client();
+  it("a message to a busy lead is queued for it; a full queue (429) says so and keeps the text", async () => {
+    const c = client({ chat: vi.fn().mockResolvedValue({ run_id: "lead1", role: "lead", new_lead: false, queued: true, message_id: "m1", position: 1, notes: [] }) });
+    setRuns([run("lead1", { status: "running", role: "lead", project_id: "b1" })]);
+    selectedRunId.value = "lead1";
     render(<ConsolePane />);
     await frame();
-    openMenuItem("New run…");
-    const form = screen.getByRole("form", { name: "New run" });
-    await waitFor(() => expect(within(form).getByRole("button", { name: /^Model: Claude Code · opus/ })).toBeTruthy());
-    fireEvent.click(within(form).getByRole("button", { name: "More options" }));
-    fireEvent.click(within(form).getByRole("menuitem", { name: "Use a specific agent…" }));
-    fireEvent.change(within(form).getByLabelText("Choose an agent"), { target: { value: "designer" } });
-    expect((within(form).getByLabelText("Agent") as HTMLSelectElement).value).toBe("designer");
-    fireEvent.input(within(form).getByLabelText("Task"), { target: { value: "make a bracket" } });
-    fireEvent.click(within(form).getByRole("button", { name: "Start" }));
-    await waitFor(() => expect(c.createRun).toHaveBeenCalledTimes(1));
-    expect(c.createRun.mock.calls[0][0].agent).toBe("designer");
+    send("paint it red");
+    await waitFor(() => expect(c.chat).toHaveBeenCalledWith("b1", "paint it red"));
+    expect(selectedRunId.value).toBe("lead1");
+    c.chat.mockRejectedValue(new CoreError("invalid_input", "the lead agent already has 20 messages waiting", { status: 429 }));
+    send("one more");
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/full queue of messages waiting/));
+    expect(box().value).toBe("one more");
   });
 
-  it("parts_directory_chips_show_and_their_ids_are_added_to_the_task", async () => {
-    const c = client();
+  it("parts-directory chips ride along with the message", async () => {
+    const c = client({ chat: vi.fn().mockResolvedValue({ run_id: "lead1", role: "lead", new_lead: true, notes: [] }) });
     addCatalogChip("motor_2207_class", "2207 brushless motor class");
-    addCatalogChip("bearing_608_deep_groove", "608 bearing");
     render(<ConsolePane />);
     await frame();
-    openMenuItem("New run…");
-    const form = screen.getByRole("form", { name: "New run" });
-    const chips = within(form).getByRole("list", { name: "Context for the agent" });
-    expect(chips.textContent).toContain("2207 brushless motor class");
-    fireEvent.click(within(chips).getByRole("button", { name: "Remove 608 bearing" }));
-    await waitFor(() => expect(within(form).getByRole("button", { name: /^Model: Claude Code · opus/ })).toBeTruthy());
-    fireEvent.input(within(form).getByLabelText("Task"), { target: { value: "design a motor mount" } });
-    fireEvent.keyDown(within(form).getByLabelText("Task"), { key: "Enter" });
-    await waitFor(() => expect(c.createRun).toHaveBeenCalledTimes(1));
-    expect(c.createRun.mock.calls[0][0].prompt).toBe(
-      "design a motor mount\n\nParts directory items to use (read each with catalog_get): motor_2207_class");
+    send("design a motor mount");
+    await waitFor(() => expect(c.chat).toHaveBeenCalledWith("b1", "design a motor mount\n\nParts directory items to use (read each with catalog_get): motor_2207_class"));
     await waitFor(() => expect(agentChips.value).toEqual([]));
   });
 
-  it("a_model_that_cannot_run_blocks_start_and_says_why", async () => {
-    const c = client({ getProfile: vi.fn().mockResolvedValue({ default_agent: "designer", default_model: "anthropic/claude-sonnet-5-5" }),
-      models: vi.fn().mockResolvedValue({ ...MODELS, vendors: [{ vendor: "anthropic", key: "none" }] }) });
+  it("a sub-agent's thread is read-only until you choose to message it", async () => {
+    const c = client({ chat: vi.fn().mockResolvedValue({ run_id: "lead1", role: "lead", new_lead: false, notes: [] }) });
+    setRuns([run("lead1", { role: "lead", project_id: "b1", status: "done" }), run("sub1", { role: "sub", parent_id: "lead1", project_id: "b1", agent: "verifier", status: "done" })]);
+    selectedRunId.value = "sub1";
     render(<ConsolePane />);
     await frame();
-    openMenuItem("New run…");
-    const form = screen.getByRole("form", { name: "New run" });
-    await waitFor(() => expect(form.textContent).toContain("no API key — add one in Profile"));
-    fireEvent.input(within(form).getByLabelText("Task"), { target: { value: "go" } });
-    expect((within(form).getByRole("button", { name: "Start" }) as HTMLButtonElement).disabled).toBe(true);
-    expect(c.createRun).not.toHaveBeenCalled();
+    expect(document.querySelector("[data-viewing-sub]")?.textContent).toContain("your message goes to the lead");
+    send("for the lead");
+    await waitFor(() => expect(c.chat).toHaveBeenCalledWith("b1", "for the lead"));
+    expect(c.message).not.toHaveBeenCalled();
+    selectedRunId.value = "sub1";
+    await frame();
+    fireEvent.click(screen.getByTestId("message-this-agent"));
+    await frame();
+    expect(screen.getByTestId("back-to-lead")).toBeTruthy();
+    send("check the hinge again");
+    await waitFor(() => expect(c.message).toHaveBeenCalledWith("sub1", "check the hinge again"));
   });
 
-  it("enter_in_the_picker_never_starts_a_run_and_a_typed_ref_sticks", async () => {
-    const c = client();
+  it("Edit puts your words back; sending them is a new turn and marks the old message edited", async () => {
+    const c = client({ chat: vi.fn().mockResolvedValue({ run_id: "lead1", role: "lead", new_lead: false, notes: [] }) });
+    setRuns([run("lead1", { role: "lead", project_id: "b1", status: "done" })]);
+    setSteps([message("lead1", "user", "make it 5 mm", 1), message("lead1", "assistant", "done", 2)]);
+    selectedRunId.value = "lead1";
     render(<ConsolePane />);
     await frame();
-    openMenuItem("New run…");
-    const form = screen.getByRole("form", { name: "New run" });
-    await waitFor(() => expect(within(form).getByRole("button", { name: /^Model: Claude Code · opus/ })).toBeTruthy());
-    fireEvent.input(within(form).getByLabelText("Task"), { target: { value: "go" } });
-    fireEvent.click(within(form).getByRole("button", { name: /^Model:/ }));
-    const other = within(form).getByLabelText("Other model");
-    fireEvent.input(other, { target: { value: "gemini/gemini-3-pro" } });
-    fireEvent.keyDown(other, { key: "Enter" });
+    fireEvent.click(screen.getByRole("button", { name: "Edit and resend" }));
     await frame();
-    expect(within(form).getByRole("button", { name: /^Model: gemini · gemini-3-pro/ })).toBeTruthy();
-    expect(c.createRun).not.toHaveBeenCalled();
+    expect(box().value).toBe("make it 5 mm");
+    expect(screen.getByTestId("editing-chip")).toBeTruthy();
+    fireEvent.input(box(), { target: { value: "make it 6 mm" } });
+    fireEvent.keyDown(box(), { key: "Enter" });
+    await waitFor(() => expect(c.chat).toHaveBeenCalledWith("b1", "make it 6 mm"));
+    await waitFor(() => expect(document.querySelector("[data-msg=user][data-edited]")?.textContent).toContain("edited"));
+    expect(screen.queryByTestId("editing-chip")).toBeNull();
   });
 
-  it("a_prompt_to_a_busy_lead_is_queued_and_shows_that_lead", async () => {
-    const c = client({ createRun: vi.fn().mockResolvedValue({ run_id: "lead1", role: "lead", new_lead: false, queued: true, message_id: "msg_1", position: 1,
-      routed: { agent: "engineer", reason: "system build", confidence: 0.85 }, notes: [] }) });
-    setRuns([run("lead1", { status: "running", role: "lead" })]);
+  it("an error card is plain wrapped text with the cause, what to do and Retry (the same words again)", async () => {
+    const c = client({ chat: vi.fn().mockResolvedValue({ run_id: "lead1", role: "lead", new_lead: false, notes: [] }) });
+    const ssl = "Claude Code: API Error: Unable to connect to API due to SSL error (UNABLE_TO_GET_ISSUER_CERT_LOCALLY)";
+    setRuns([run("lead1", { role: "lead", project_id: "b1", status: "failed", provider: "claude-code" })]);
+    setSteps([
+      message("lead1", "user", "add a wrist joint", 1),
+      message("lead1", "assistant", `API Error: ${ssl}`, 2),
+      step("lead1", "error", { error: "tool_failed", message: ssl, source: "claude_code" }, 3),
+    ]);
+    selectedRunId.value = "lead1";
     render(<ConsolePane />);
     await frame();
-    openMenuItem("New run…");
-    const form = screen.getByRole("form", { name: "New run" });
-    await waitFor(() => expect(within(form).getByRole("button", { name: /^Model: Claude Code · opus/ })).toBeTruthy());
-    // usable while the lead works: Start is enabled, nothing says "still working"
-    fireEvent.input(within(form).getByLabelText("Task"), { target: { value: "paint it red" } });
-    expect((within(form).getByRole("button", { name: "Start" }) as HTMLButtonElement).disabled).toBe(false);
-    fireEvent.click(within(form).getByRole("button", { name: "Start" }));
-    await waitFor(() => expect(c.createRun).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(selectedRunId.value).toBe("lead1"));
-    expect(composerOpen.value).toBe(false);
+    const err = document.querySelector("[data-error]") as HTMLElement;
+    expect(err.getAttribute("data-error-kind")).toBe("tls");
+    expect(err.querySelector("[data-error-message]")?.textContent).toBe(ssl);
+    expect(err.querySelector("[data-error-hint]")?.textContent).toContain("NODE_EXTRA_CA_CERTS");
+    expect(err.querySelector("em, strong")).toBeNull();
+    // the echoed reply is plain text too: the code stays whole
+    expect(document.querySelector("[data-plain-error]")?.textContent).toContain("UNABLE_TO_GET_ISSUER_CERT_LOCALLY");
+    fireEvent.click(within(err).getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(c.chat).toHaveBeenCalledWith("b1", "add a wrist joint"));
   });
 
-  it("a_full_lead_queue_429_says_so_plainly_and_keeps_the_text", async () => {
-    client({ createRun: vi.fn().mockRejectedValue(new CoreError("invalid_input", "the lead agent already has 20 messages waiting", { status: 429, hint: "wait for it to work through them, or cancel it" })) });
+  it("a queued message can be cancelled; a core without the route hides Cancel", async () => {
+    const c = client({ cancelQueued: vi.fn().mockResolvedValue(true) });
+    setRuns([run("lead1", { role: "lead", project_id: "b1", status: "running" })]);
+    setSteps([
+      message("lead1", "user", "build the base", 1),
+      step("lead1", "decision", { queued_message: { message_id: "m1", text: "and a lid", position: 1 } }, 2),
+      step("lead1", "decision", { queued_message: { message_id: "m2", text: "and a hinge", position: 2 } }, 3),
+    ]);
+    selectedRunId.value = "lead1";
     render(<ConsolePane />);
     await frame();
-    openMenuItem("New run…");
-    const form = screen.getByRole("form", { name: "New run" });
-    await waitFor(() => expect(within(form).getByRole("button", { name: /^Model: Claude Code · opus/ })).toBeTruthy());
-    fireEvent.input(within(form).getByLabelText("Task"), { target: { value: "one more" } });
-    fireEvent.click(within(form).getByRole("button", { name: "Start" }));
-    await waitFor(() => expect(within(form).getByRole("alert").textContent).toMatch(/full queue of messages waiting/));
-    expect((within(form).getByLabelText("Task") as HTMLTextAreaElement).value).toBe("one more");
-  });
-
-  it("a_core_error_shows_inline_and_keeps_the_task", async () => {
-    client({ createRun: vi.fn().mockRejectedValue(new Error("unknown agent")) });
-    render(<ConsolePane />);
-    await frame();
-    openMenuItem("New run…");
-    const form = screen.getByRole("form", { name: "New run" });
-    await waitFor(() => expect(within(form).getByRole("button", { name: /^Model: Claude Code · opus/ })).toBeTruthy());
-    fireEvent.input(within(form).getByLabelText("Task"), { target: { value: "go" } });
-    fireEvent.click(within(form).getByRole("button", { name: "Start" }));
-    await waitFor(() => expect(within(form).getByRole("alert").textContent).toBe("unknown agent"));
-    expect((within(form).getByLabelText("Task") as HTMLTextAreaElement).value).toBe("go");
+    fireEvent.click(document.querySelector('[data-cancel-queued="m1"]') as HTMLElement);
+    await waitFor(() => expect(c.cancelQueued).toHaveBeenCalledWith("lead1", "m1"));
+    await waitFor(() => expect(document.querySelector('[data-queued-message="m1"]')?.getAttribute("data-queued-status")).toBe("dropped"));
+    expect(document.querySelector('[data-queued-message="m1"] [data-queued-chip]')?.textContent).toBe("cancelled");
+    c.cancelQueued.mockResolvedValue(false);
+    fireEvent.click(document.querySelector('[data-cancel-queued="m2"]') as HTMLElement);
+    await waitFor(() => expect(document.querySelector("[data-cancel-queued]")).toBeNull());
+    expect(document.querySelector('[data-queued-message="m2"]')?.getAttribute("data-queued-status")).toBe("queued");
   });
 });

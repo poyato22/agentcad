@@ -15,7 +15,6 @@ noted (the viewer or the parts list focused, a focused approval card).
 | ⌘3 | Print page |
 | ⌘4 | Parts list (BOM) page |
 | ⌘K | Focus the command line |
-| ⌘N | New agent run |
 | ⇧⌘A | Agent manager |
 | ⇧⌘. | Stop all runs (the composer's Stop stops the build's agents) |
 | ⌘] | Show / hide the agent dock (inside a build; it folds to a slim "Agents" tab) |

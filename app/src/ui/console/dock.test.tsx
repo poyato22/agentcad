@@ -3,7 +3,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/preact";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import type { CoreClient } from "../../api/client";
 import type { BackgroundJob } from "../../api/jobs";
 import { stepSchema } from "../../api/schemas";
@@ -15,7 +15,7 @@ import { bindClient, resetStore, runs, selectedRunId, steps } from "../../state/
 import { resetCatalog } from "../dialogs/catalog";
 import { ConsolePane } from "./ConsolePane";
 import { resetOffListRuns } from "./derived";
-import { DEFAULT_LAYOUT, dockLayout, LAYOUT_KEY, resetDockLayout } from "./dockLayout";
+import { DEFAULT_LAYOUT, dockLayout, LAYOUT_KEY, resetDockLayout, setDockLayout } from "./dockLayout";
 import { message, resetIds, run, step, toolCall } from "./testSteps";
 import { resetUnread } from "./unread";
 import { resetConsoleView } from "./view";
@@ -54,10 +54,12 @@ function mount(list: Step[], over: Partial<AgentRun> = {}) {
 
 const section = (s: string) => document.querySelector(`[data-dock] [data-stream=${s}]`) as HTMLElement;
 
-beforeEach(() => { resetIds(70_000); resetConsoleView(); try { localStorage.removeItem(LAYOUT_KEY); } catch { /* none */ } resetDockLayout(); resetUnread(); });
+beforeEach(() => { resetIds(70_000); resetConsoleView(); try { localStorage.removeItem(LAYOUT_KEY); } catch { /* none */ } resetDockLayout(); resetUnread();
+  // P10 E6: these tests see all three columns (the default opens the Conversation alone)
+  setDockLayout({ ...DEFAULT_LAYOUT, collapsed: { view: false, sim: false, text: false } }, false); });
 afterEach(() => { cleanup(); resetStore(); resetCatalog(); resetConsoleView(); resetOffListRuns(); resetActivity(); dockLayout.value = DEFAULT_LAYOUT; });
 
-describe("agent dock: three streams at once", () => {
+describe("agent dock: three columns side by side", () => {
   it("shows views, studies and the conversation together, each in its own scroller", async () => {
     mount([...TEXT, ...STUDY, view(90_001, 2e9, "the lid"), view(90_002, 2e9 + 1, "the lid, closer")]);
     await frame();
@@ -110,44 +112,96 @@ describe("agent dock: three streams at once", () => {
     expect(within(section("text")).getByRole("log", { name: "Conversation" }).querySelector("[data-study-slot]")).toBeNull();
   });
 
-  it("an empty stream shrinks to one quiet line instead of a blank box", async () => {
+  it("an empty column says so in one quiet line instead of a blank box", async () => {
     mount(TEXT);
     await frame();
     expect(section("view").querySelector("[data-stream-empty]")?.textContent).toContain("Views and renders");
-    expect(section("view").hasAttribute("data-sized")).toBe(false);
-    expect(document.querySelector("[data-divider=view]")).toBeNull();
   });
 
-  it("a collapsed stream keeps its header and counts what arrives while it is closed; the choice is remembered", async () => {
+  it("columns sit side by side in order, with a divider between open neighbours (P10 E6)", async () => {
     mount([...TEXT, ...STUDY]);
     await frame();
-    const toggle = within(section("sim")).getByRole("button", { name: /^Simulations/ });
-    fireEvent.click(toggle);
+    const cols = document.querySelector("[data-dock] .dock-cols") as HTMLElement;
+    expect([...cols.querySelectorAll("[data-stream]")].map((e) => e.getAttribute("data-stream"))).toEqual(["view", "sim", "text"]);
+    expect([...cols.querySelectorAll("[data-divider]")].map((e) => e.getAttribute("data-divider"))).toEqual(["view|sim", "sim|text"]);
+    expect(document.querySelector("[data-dock]")?.getAttribute("data-cols")).toBe("3");
+    // the composer is the Conversation column's foot
+    expect(section("text").querySelector("[data-command-line]")).toBeTruthy();
+  });
+
+  it("a closed column is a slim tab that counts what arrives while it is closed; the choice is remembered", async () => {
+    mount([...TEXT, ...STUDY]);
     await frame();
-    expect(toggle.getAttribute("aria-expanded")).toBe("false");
-    expect(section("sim").querySelector("[data-stream-body]")).toBeNull();
+    fireEvent.click(within(section("sim")).getByRole("button", { name: /^Simulations/ }));
+    await frame();
+    const tab = section("sim");
+    expect(tab.tagName).toBe("BUTTON");
+    expect(tab.getAttribute("aria-expanded")).toBe("false");
+    expect(tab.querySelector("[data-stream-body]")).toBeNull();
     expect(JSON.parse(localStorage.getItem(LAYOUT_KEY) as string).collapsed.sim).toBe(true);
+    expect([...document.querySelectorAll("[data-divider]")].map((e) => e.getAttribute("data-divider"))).toEqual(["view|text"]);
     // two more studies land
     act(() => {
       steps.value = new Map([[RID, [...(steps.value.get(RID) ?? []), toolCall(RID, "n1", "sim_run", { type: "static" }, 3e9), toolCall(RID, "n2", "sim_run", { type: "modal" }, 3e9 + 1)]]]);
     });
     await frame();
     expect(section("sim").querySelector("[data-unread]")?.textContent).toBe("2");
-    fireEvent.click(toggle);
+    expect(section("sim").getAttribute("aria-label")).toBe("Show simulations · 2 new · 2 running");
+    fireEvent.click(section("sim"));
     await frame();
     expect(section("sim").querySelector("[data-unread]")).toBeNull();
     // the running count in the header (an agent working: blue, data-changing)
     expect(section("sim").querySelector("[data-running]")?.getAttribute("data-running")).toBe("2");
   });
 
-  it("a divider drags the stream above it and saves at the end of the drag", async () => {
+  it("the last open column stays open", async () => {
+    setDockLayout(DEFAULT_LAYOUT, false);
+    mount(TEXT);
+    await frame();
+    expect(section("view").tagName).toBe("BUTTON");
+    const t = section("text").querySelector(".dock-t") as HTMLElement;
+    expect(t.getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(t);
+    await frame();
+    expect(section("text").tagName).toBe("SECTION");
+  });
+
+  it("a divider moves width between its two columns and saves at the end", async () => {
     mount([...TEXT, ...STUDY, view(90_001, 2e9, "the lid")]);
     await frame();
-    const div = document.querySelector("[data-divider=view]") as HTMLElement;
-    expect(section("view").style.height).toBe(`${DEFAULT_LAYOUT.view}px`);
-    fireEvent.keyDown(div, { key: "ArrowDown" });
-    expect(dockLayout.value.view).toBeGreaterThan(DEFAULT_LAYOUT.view);
-    expect(JSON.parse(localStorage.getItem(LAYOUT_KEY) as string).view).toBe(dockLayout.value.view);
+    const div = document.querySelector('[data-divider="view|sim"]') as HTMLElement;
+    fireEvent.keyDown(div, { key: "ArrowRight" });
+    const l = dockLayout.value;
+    expect(l.share.view).toBeGreaterThan(1);
+    expect(l.share.sim).toBeLessThan(1);
+    expect(l.share.text).toBe(1);
+    expect(JSON.parse(localStorage.getItem(LAYOUT_KEY) as string).share).toEqual(l.share);
+    expect(section("view").style.flex).toContain(String(l.share.view));
+  });
+
+  it("dragging an edge or a divider never selects text (P10 E10)", async () => {
+    const w = window.innerWidth;
+    Object.defineProperty(window, "innerWidth", { value: 2400, configurable: true });
+    onTestFinished(() => { Object.defineProperty(window, "innerWidth", { value: w, configurable: true }); });
+    mount(TEXT);
+    await frame();
+    const edge = screen.getByRole("separator", { name: "Resize the agent dock" });
+    const down = new PointerEvent("pointerdown", { bubbles: true, cancelable: true, button: 0, clientX: 500, pointerId: 1 });
+    edge.dispatchEvent(down);
+    expect(down.defaultPrevented).toBe(true);
+    expect(document.body.classList.contains("dock-resizing")).toBe(true);
+    fireEvent.pointerMove(edge, { clientX: 440, pointerId: 1 });
+    expect(dockLayout.value.widths[2]).toBe(1140);                 // three open: wider by 60
+    fireEvent.pointerUp(edge, { pointerId: 1 });
+    expect(document.body.classList.contains("dock-resizing")).toBe(false);
+    expect(JSON.parse(localStorage.getItem(LAYOUT_KEY) as string).widths[2]).toBe(1140);
+    const div = document.querySelector('[data-divider="sim|text"]') as HTMLElement;
+    const d2 = new PointerEvent("pointerdown", { bubbles: true, cancelable: true, button: 0, clientX: 800, pointerId: 2 });
+    div.dispatchEvent(d2);
+    expect(d2.defaultPrevented).toBe(true);
+    expect(document.body.classList.contains("dock-resizing")).toBe(true);
+    fireEvent.pointerCancel(div, { pointerId: 2 });
+    expect(document.body.classList.contains("dock-resizing")).toBe(false);
   });
 });
 

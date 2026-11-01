@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { AgentActivity } from "../../api/types";
 import { runBusy } from "../../state/activity";
 import {
-  DEFAULT_LAYOUT, dockLayout, LAYOUT_KEY, parseLayout, resetDockLayout, resizeStream, resizeWidth, setDockLayout, STREAM_MIN, TEXT_MIN,
-  toggleStream, WIDTH_MAX, WIDTH_MIN,
+  COL_MIN, DEFAULT_LAYOUT, dockLayout, dockWidth, LAYOUT_KEY, openStreams, parseLayout, resetDockLayout, resizeColumns, resizeWidth,
+  setDockLayout, TAB_W, toggleStream, WIDTH_MAX, WIDTH_MIN,
 } from "./dockLayout";
 import { stopTargets, waitingOnYou } from "./stopTarget";
 import { run } from "./testSteps";
@@ -11,37 +11,63 @@ import { markSeen, resetUnread, unreadCount, unreadOf } from "./unread";
 
 afterEach(() => { try { localStorage.removeItem(LAYOUT_KEY); } catch { /* none */ } resetDockLayout(); resetUnread(); });
 
-describe("dock layout (Plan 9 D4)", () => {
-  it("resizes a stream within its bounds and keeps the Conversation's room", () => {
-    const l = DEFAULT_LAYOUT;
-    expect(resizeStream(l, "view", 40, 900).view).toBe(l.view + 40);
-    expect(resizeStream(l, "view", -1000, 900).view).toBe(STREAM_MIN);
-    // 900 tall, sim 180: the view may grow to 900 - TEXT_MIN - 180
-    expect(resizeStream(l, "view", 5000, 900).view).toBe(900 - TEXT_MIN - l.sim);
-    expect(resizeStream(l, "sim", 5000, 900).sim).toBe(900 - TEXT_MIN - l.view);
+const openAll = toggleStream(toggleStream(DEFAULT_LAYOUT, "view"), "sim");
+
+describe("dock layout: side-by-side columns (P10 E6)", () => {
+  it("opens the Conversation alone by default; the dock grows with each open column (440 / 760 / 1080)", () => {
+    expect(openStreams(DEFAULT_LAYOUT)).toEqual(["text"]);
+    expect(dockWidth(DEFAULT_LAYOUT)).toBe(440 + 2 * TAB_W);
+    const two = toggleStream(DEFAULT_LAYOUT, "view");
+    expect(openStreams(two)).toEqual(["view", "text"]);
+    expect(dockWidth(two)).toBe(760 + TAB_W);
+    expect(openStreams(openAll)).toEqual(["view", "sim", "text"]);
+    expect(dockWidth(openAll)).toBe(1080);
   });
 
-  it("keeps the width between 360 and 640 (dragging left widens)", () => {
-    expect(DEFAULT_LAYOUT.width).toBe(440);
-    expect(resizeWidth(DEFAULT_LAYOUT, -60).width).toBe(500);
-    expect(resizeWidth(DEFAULT_LAYOUT, -1000).width).toBe(WIDTH_MAX);
-    expect(resizeWidth(DEFAULT_LAYOUT, 1000).width).toBe(WIDTH_MIN);
+  it("any combination can be open, but never none", () => {
+    const viewOnly = toggleStream(toggleStream(DEFAULT_LAYOUT, "view"), "text");
+    expect(openStreams(viewOnly)).toEqual(["view"]);
+    expect(toggleStream(viewOnly, "view")).toBe(viewOnly);
+    expect(openStreams(toggleStream(openAll, "sim"))).toEqual(["view", "text"]);
   });
 
-  it("persists sizes and collapsed streams, and reads a bad record as the default", () => {
-    const l = toggleStream(resizeStream(DEFAULT_LAYOUT, "sim", 30, 900), "view");
+  it("the left edge sets the width for the number of open columns, within its bounds and the window", () => {
+    expect(resizeWidth(DEFAULT_LAYOUT, -60).widths).toEqual([500, 760, 1080]);
+    expect(resizeWidth(DEFAULT_LAYOUT, 1000).widths[0]).toBe(WIDTH_MIN);
+    expect(resizeWidth(DEFAULT_LAYOUT, -5000).widths[0]).toBe(WIDTH_MAX);
+    expect(resizeWidth(openAll, -500, 1200).widths[2]).toBe(1200);
+    // three columns never below 3 × COL_MIN
+    expect(resizeWidth(openAll, 5000).widths[2]).toBe(3 * COL_MIN);
+  });
+
+  it("a divider moves width from one open column to the next, never below COL_MIN", () => {
+    const l = resizeColumns(openAll, "view", "sim", 60, 1080);
+    const px = (x: typeof l, s: "view" | "sim" | "text") => (x.share[s] / (x.share.view + x.share.sim + x.share.text)) * 1080;
+    expect(Math.round(px(l, "view"))).toBe(420);
+    expect(Math.round(px(l, "sim"))).toBe(300);
+    expect(Math.round(px(l, "text"))).toBe(360);
+    const far = resizeColumns(openAll, "view", "sim", 5000, 1080);
+    expect(Math.round(px(far, "sim"))).toBe(COL_MIN);
+    // a closed column is not resized
+    expect(resizeColumns(DEFAULT_LAYOUT, "view", "text", 40, 440)).toBe(DEFAULT_LAYOUT);
+  });
+
+  it("persists the layout and reads a bad or old record as the default", () => {
+    const l = resizeColumns(resizeWidth(openAll, -40), "sim", "text", 30, 1120);
     setDockLayout(l);
     expect(JSON.parse(localStorage.getItem(LAYOUT_KEY) as string)).toEqual(l);
     dockLayout.value = DEFAULT_LAYOUT;
     resetDockLayout();
     expect(dockLayout.value).toEqual(l);
-    expect(dockLayout.value.collapsed).toEqual({ view: true, sim: false, text: false });
     // a drag in progress is not saved until it ends
-    setDockLayout({ ...l, view: 222 }, false);
-    expect(JSON.parse(localStorage.getItem(LAYOUT_KEY) as string).view).toBe(l.view);
-    expect(parseLayout({ width: "wide", view: -5, collapsed: { sim: "yes" } })).toEqual({ ...DEFAULT_LAYOUT, view: STREAM_MIN });
+    setDockLayout({ ...l, widths: [400, 760, 1080] }, false);
+    expect(JSON.parse(localStorage.getItem(LAYOUT_KEY) as string).widths).toEqual(l.widths);
+    expect(parseLayout({ widths: ["wide", -5], collapsed: { sim: "yes" }, share: { view: 99 } }))
+      .toEqual({ ...DEFAULT_LAYOUT, widths: [440, 2 * COL_MIN, 1080], share: { view: 5, sim: 1, text: 1 } });
     expect(parseLayout(null)).toEqual(DEFAULT_LAYOUT);
-    expect(parseLayout({ width: 9999 }).width).toBe(WIDTH_MAX);
+    expect(parseLayout({ collapsed: { view: true, sim: true, text: true } }).collapsed.text).toBe(false);
+    // the stacked layout of Plan 9 ({width, view, sim}) has no columns: the default
+    expect(parseLayout({ width: 600, view: 300, sim: 200 })).toEqual(DEFAULT_LAYOUT);
     localStorage.setItem(LAYOUT_KEY, "{not json");
     resetDockLayout();
     expect(dockLayout.value).toEqual(DEFAULT_LAYOUT);

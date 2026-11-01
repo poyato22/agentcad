@@ -9,7 +9,7 @@ import type { MisesEvent, Question } from "../../api/types";
 import { bindClient, conn, parts, questions, resetStore } from "../../state/store";
 import { QuestionCard } from "../console/approvals/QuestionCard";
 import { errorWords, SpecController } from "./controller";
-import { SpecPanel, specPanelOpen } from "./index";
+import { DesignStudies } from "./index";
 import { Scatter } from "./Scatter";
 import { openVariant } from "./StudyView";
 import { immersive } from "../pages/studies/immersive/state";
@@ -50,7 +50,6 @@ beforeEach(() => {
 afterEach(async () => {
   cleanup();
   resetStore();
-  specPanelOpen.value = false;
   await core.stop();
 });
 
@@ -353,30 +352,15 @@ describe("study view: preview and use a variant", () => {
   });
 });
 
-describe("console panel", () => {
-  it("is hidden without a spec, and opens to the spec and the latest study", async () => {
-    await start();
-    conn.value = "open";
-    const empty = new SpecController(() => client);
-    const r1 = render(<SpecPanel c={empty} />);
-    await waitFor(() => expect(empty.spec.value).not.toBeNull());
-    expect(r1.container.querySelector("[data-spec-panel]")).toBeNull();
-    r1.unmount();
-    await core.stop();
-
+describe("Studies page section (P10 E12: the requirements live here, not in the dock)", () => {
+  it("shows the spec and the study history", async () => {
     await start({ spec: "fixture", studies: "fixture" });
     conn.value = "open";
     const c = new SpecController(() => client);
-    const { container } = render(<SpecPanel c={c} />);
-    await waitFor(() => expect(container.querySelector("[data-spec-panel]")).toBeTruthy());
-    const bar = screen.getByRole("button", { expanded: false });
-    await waitFor(() => expect(bar.textContent).toContain("2 pass"));
-    expect(bar.textContent).toContain("done");
-    fireEvent.click(bar);
-    expect(container.querySelector("[data-spec-card]")).toBeTruthy();
-    // the console keeps it small: a one-line study summary, the chart lives on the Studies page
-    expect(container.querySelector(`[data-study-line="${STUDY.id}"]`)!.textContent).toContain(`#${STUDY.best_id}`);
-    expect(container.querySelector("[data-scatter]")).toBeNull();
+    const { container } = render(<DesignStudies c={c} />);
+    await waitFor(() => expect(container.querySelector("[data-spec-card]")).toBeTruthy());
+    await waitFor(() => expect(container.querySelector(`[data-study-row="${STUDY.id}"]`)).toBeTruthy());
+    expect(container.querySelector(`[data-study-row="${STUDY.id}"]`)!.textContent).toContain(`#${STUDY.best_id}`);
   });
 
   it("live: study_progress refreshes the studies", async () => {

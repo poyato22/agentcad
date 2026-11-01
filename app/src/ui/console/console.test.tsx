@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CoreClient } from "../../api/client";
 import type { AgentRun, Step } from "../../api/types";
 import { isAutoNumbered } from "../../lib/names";
-import { actions, approvals, bindClient, filter, follow, newRunOpen, resetStore, runs, selectedRunId, steps } from "../../state/store";
+import { actions, approvals, bindClient, filter, follow, resetStore, runs, selectedRunId, steps } from "../../state/store";
 import { ConsolePane } from "./ConsolePane";
 import { expandedFolds, labelOf, resetOffListRuns } from "./derived";
 import { DiffView } from "./DiffView";
@@ -266,13 +266,12 @@ describe("Roster", () => {
     expect(container.textContent).not.toContain("claude-code");
   });
 
-  it("selects_a_run_and_opens_new_run", () => {
+  it("selects_a_run_and_has_no_new_run (P10 E24)", () => {
     setRuns([run("r1"), run("r2", { agent: "checker", created_at: 1792869500 })]);
     const { container } = render(<Roster />);
     fireEvent.click(container.querySelector('[data-run="r1"]') as Element);
     expect(selectedRunId.value).toBe("r1");
-    fireEvent.click(screen.getByText("New run"));
-    expect(newRunOpen.value).toBe(true);
+    expect(screen.queryByText("New run")).toBeNull();
   });
 
   it("cancel_one_run_from_roster", async () => {

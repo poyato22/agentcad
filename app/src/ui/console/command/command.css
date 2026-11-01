@@ -2,6 +2,19 @@
    into a Stop square while the agents work (Plan 9 D2). Tokens only; blue stays for needs-you. */
 .cmd { flex: none; border-top: 1px solid var(--line); background: var(--paper); padding: 8px 10px 10px; }
 .cmd-chip { font-size: var(--fs-small); margin: 0 2px 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmd-chips { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; min-width: 0; }
+.cmd-chips:empty { display: none; }
+.cmd-chips .cmd-chip { min-width: 0; }
+/* P10 E24: a sub-agent's thread is read-only until you choose to message it */
+.cmd-view { display: flex; align-items: baseline; gap: 8px; margin: 0 2px 6px; font-size: var(--fs-small); min-width: 0; }
+.cmd-view-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmd-link {
+  flex: none; padding: 0; border: 0; background: none; color: var(--ink); font: inherit; font-size: var(--fs-small);
+  font-weight: 600; cursor: pointer; text-decoration: underline; text-decoration-color: var(--line2); text-underline-offset: 2px;
+}
+.cmd-link:hover { text-decoration-color: currentColor; }
+.cmd-link:focus-visible { outline: 1px solid var(--blue); outline-offset: 2px; }
+.cmd-editing { display: inline-flex; gap: 8px; color: var(--ink); }
 .cmd-row {
   display: flex; align-items: flex-end; gap: 8px; padding: 5px 5px 5px 10px;
   border: 1px solid var(--line2); border-radius: 10px; background: var(--head);

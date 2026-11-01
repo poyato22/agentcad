@@ -95,15 +95,6 @@
 .sps-note { margin: 2px 0 0; font-size: var(--fs-small); }
 .sps-empty { padding: 16px 0; }
 
-/* ---- console strip */
-.spp { border-bottom: 1px solid var(--line2); background: var(--paper); flex: none; }
-.spp-bar { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 8px; width: 100%; padding: 4px 8px; cursor: pointer; font-size: var(--fs-small); }
-.spp-bar:hover { background: var(--paper2); }
-.spp-bar:focus-visible { outline: 1px solid var(--blue); outline-offset: -1px; }
-.spp-study { margin-left: auto; display: inline-flex; gap: 6px; align-items: center; }
-.spp-body { display: flex; flex-direction: column; gap: 8px; padding: 0 8px 8px; max-height: 35vh; overflow: auto; }
-.spp-line { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: var(--fs-small); }
-.spp-line .btn { margin-left: auto; }
 .sp-conflict { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 8px; border: 1px solid var(--amber); }
 .spp-pick { width: 100%; }
 

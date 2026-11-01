@@ -22,7 +22,6 @@ export const SHORTCUTS: readonly Shortcut[] = [
   // Plan 9 D1: the build's name in the top bar (focused) renames the build in place
   { combo: "F2", keys: "F2", action: "Rename the build (its name in the top bar focused)", scope: "topbar" },
   { combo: "Meta+K", keys: "⌘K", action: "Focus the command line", scope: "global" },
-  { combo: "Meta+N", keys: "⌘N", action: "New agent run", scope: "global" },
   { combo: "Meta+Shift+A", keys: "⇧⌘A", action: "Agent manager", scope: "global" },
   { combo: "Meta+Shift+.", keys: "⇧⌘.", action: "Stop all runs", scope: "global" },
   // FW-layout (D20): the floating surfaces fold to slim tabs (not under a modal: the immersive
