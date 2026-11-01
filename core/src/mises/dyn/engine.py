@@ -192,9 +192,17 @@ def _inverse(m, rec, active, plan, jnames, free: bool):
     d2 = mujoco.MjData(m)
     out = []
     if not free:
+        # the ideal motion's own derivatives, taken on the plan's grid (smooth) and then
+        # sampled: differencing the linearly interpolated targets would spike at grid nodes
         ts = np.array(rec["t"])
-        q = {j: np.interp(ts, plan.times, plan.targets[j]) for j in jnames}
-        dt = SAMPLE_S
+        q, qd, qdd = {}, {}, {}
+        for j in jnames:
+            v = plan.targets[j]
+            d1 = np.gradient(v, plan.times)
+            d2_ = np.gradient(d1, plan.times)
+            q[j] = np.interp(ts, plan.times, v)
+            qd[j] = np.interp(ts, plan.times, d1)
+            qdd[j] = np.interp(ts, plan.times, d2_)
         for i in range(len(ts)):
             d2.qpos[:] = m.qpos0
             d2.qvel[:] = 0
@@ -202,11 +210,9 @@ def _inverse(m, rec, active, plan, jnames, free: bool):
             for j in jnames:
                 jid = m.joint(j).id
                 qa, da = m.jnt_qposadr[jid], m.jnt_dofadr[jid]
-                v = q[j]
-                d2.qpos[qa] = v[i]
-                if 0 < i < len(ts) - 1:
-                    d2.qvel[da] = (v[i + 1] - v[i - 1]) / (2 * dt)
-                    d2.qacc[da] = (v[i + 1] - 2 * v[i] + v[i - 1]) / (dt * dt)
+                d2.qpos[qa] = q[j][i]
+                d2.qvel[da] = qd[j][i]
+                d2.qacc[da] = qdd[j][i]
             mujoco.mj_inverse(m, d2)
             out.append([d2.qfrc_inverse[k] for k in dofs])
         return np.array(out)

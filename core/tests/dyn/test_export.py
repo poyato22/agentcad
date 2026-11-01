@@ -124,3 +124,68 @@ def test_an_arm_on_its_base_is_fixed(home):
     m1 = 24 * 24 * 120 * 1.24e-6
     assert out["joints"][0]["peak_inverse"] == pytest.approx(m1 * 9.81 * 0.06, rel=1e-3)
     assert np.isfinite(out["joints"][0]["peak_servo"])
+
+
+def _rack(home, coupled_on: str):
+    """A pinion (revolute about z) and a rack (slider along x) on a fixed base, coupled at
+    10 mm per rad (C2 contract: value = ratio x partner; rack/screw ratios are mm per rad)."""
+    f0 = Frame(origin=[0, 0, 0], axis=[0, 0, 1])
+    fx = Frame(origin=[0, 0, 0], axis=[1, 0, 0])
+    insts = [Instance(id="base", part_id="quad_torso", name="base", fixed=True),
+             Instance(id="pinion", part_id="quad_fl_thigh", name="pinion"),
+             Instance(id="rack", part_id="quad_fl_shank", name="rack")]
+    joints = [Joint(id="spin", kind="revolute", a=JointRef(instance_id="base", frame=f0),
+                    b=JointRef(instance_id="pinion", frame=f0)),
+              Joint(id="slide", kind="slider", a=JointRef(instance_id="base", frame=fx),
+                    b=JointRef(instance_id="rack", frame=fx), limits=[-50, 50])]
+    asm = Assembly(instances=insts, joints=joints)
+    j = next(x for x in asm.joints if x.id == coupled_on)
+    partner = "spin" if coupled_on == "slide" else "slide"
+    object.__setattr__(j, "coupling", {"kind": "rack", "ratio": 10.0, "partner_joint": partner})
+    ex = export.export(home, None, asm)
+    ex.model["gravity"] = [0, 0, 0]
+    return ex
+
+
+def _run_to(ex, actuator: str, target: float):
+    import mujoco
+    from mises.dyn import mjmodel
+    m, d = mjmodel.compile_model(ex.model)
+    a = m.actuator(actuator).id
+    for _ in range(3000):
+        d.ctrl[a] = target
+        mujoco.mj_step(m, d)
+    return {m.joint(i).name: float(d.qpos[m.jnt_qposadr[i]]) for i in range(m.njnt)}
+
+
+def test_rack_coupling_slider_follows_pinion(home):
+    ex = _rack(home, "slide")
+    eq = next(e for e in ex.model["equalities"] if e["type"] == "joint")
+    assert eq["polycoef"][1] == pytest.approx(0.01)          # 10 mm/rad = 0.01 m/rad
+    q = _run_to(ex, "a_spin", 0.5)
+    assert q["j_spin"] == pytest.approx(0.5, abs=0.01)
+    assert q["j_slide"] == pytest.approx(0.005, abs=2e-4)     # 5 mm
+
+
+def test_rack_coupling_pinion_follows_slider(home):
+    ex = _rack(home, "spin")
+    eq = next(e for e in ex.model["equalities"] if e["type"] == "joint")
+    assert eq["polycoef"][1] == pytest.approx(100.0)         # rad per m = 1000 / 10
+    q = _run_to(ex, "a_slide", 0.005)
+    assert q["j_slide"] == pytest.approx(0.005, abs=2e-4)
+    assert q["j_spin"] == pytest.approx(0.5, abs=0.02)
+
+
+def test_rotary_actuator_on_a_slider_is_not_a_force(home):
+    fx = Frame(origin=[0, 0, 0], axis=[1, 0, 0])
+    asm = Assembly(instances=[Instance(id="base", part_id="quad_torso", name="base",
+                                       fixed=True),
+                              Instance(id="rack", part_id="quad_fl_shank", name="rack")],
+                   joints=[Joint(id="slide", kind="slider",
+                                 a=JointRef(instance_id="base", frame=fx),
+                                 b=JointRef(instance_id="rack", frame=fx))])
+    ex = export.export(home, None, asm, actuators={"slide": "mg996r"})
+    assert ex.model["actuators"][0]["forcerange"] is None
+    assert any("rotary" in n for n in ex.notes)
+    ex = export.export(home, None, asm, slider_force_n={"slide": 40.0})
+    assert ex.model["actuators"][0]["forcerange"] == [-40.0, 40.0]

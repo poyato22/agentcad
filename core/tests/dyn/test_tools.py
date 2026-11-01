@@ -147,3 +147,14 @@ async def test_cable_route_and_thermal(ctx):
     th = await et.thermal_estimate.handler(ctx, et.ThermalArgs(
         project_id="quad", power_w=5.0, size_mm=[100, 70, 40], material="PLA"))
     assert th.data["status"] in ("warn", "fail")
+
+
+async def test_long_motions_are_refused_on_the_host(ctx):
+    from mises.types import MisesError
+    with pytest.raises(MisesError) as e:
+        await dt.dyn_torque.handler(ctx, dt.TorqueArgs(
+            project_id="quad", base="fixed", trajectory=dt.Trajectory(kind="sweep", period_s=30)))
+    assert "at most 60 s" in e.value.message          # 8 joints x 30 s
+    with pytest.raises(MisesError):
+        await dt.dyn_torque.handler(ctx, dt.TorqueArgs(project_id="quad", trajectory=dt.Trajectory(
+            kind="keyframes", keys=[dt.Key(t=90, joints={"fl_hip": 10})])))

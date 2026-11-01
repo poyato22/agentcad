@@ -28,6 +28,7 @@ from . import checks, export, fem_bridge, run
 
 FEM_TOOL_TIMEOUT_S = 3600.0
 SAMPLE_CHART_JOINTS = 8
+MAX_MOTION_S = 60.0       # a dynamics motion is capped on the host (the worker refuses > 120 s)
 
 
 # ---- arguments
@@ -80,6 +81,9 @@ class DynArgs(BaseModel):
                                       "(catalog id or name, e.g. 'mg996r', 'xm430', "
                                       "'ak80_9'); default: each joint's own actuator, else "
                                       "an ideal servo")
+    slider_force_n: dict[str, float] = Field(default_factory=dict, description="slider joint "
+                                             "id -> its linear actuator's force limit, N "
+                                             "(default: an ideal servo)")
 
 
 class TorqueArgs(DynArgs):
@@ -127,9 +131,10 @@ def _build(ctx: ToolContext, requested: str | None) -> str:
 
 
 def _export(ctx: ToolContext, pid: str, args: DynArgs):
+    pipeline.note_actuators(_home(ctx), pid, args.actuators)
     asm = _store(ctx).get(pid)
     ex = export.export(_home(ctx), getattr(ctx, "store", None), asm, base=args.base,
-                       actuators=args.actuators)
+                       actuators=args.actuators, slider_force_n=args.slider_force_n)
     return asm, ex
 
 
@@ -187,7 +192,29 @@ def _traj(ctx: ToolContext, pid: str, t: Trajectory | None, ex: export.Export) -
             raise MisesError(ErrorCode.INVALID_INPUT, "that animation moves no revolute or "
                              "slider joint")
         out = {"kind": "keyframes", "keys": keys}
+    dur = _motion_seconds(out, ex)
+    if dur > MAX_MOTION_S:
+        raise MisesError(ErrorCode.INVALID_INPUT,
+                         f"this {t.kind} motion lasts {dur:.0f} s; dynamics runs at most "
+                         f"{MAX_MOTION_S:g} s", hint="shorten period_s / cycles / duration_s, "
+                         "sweep fewer joints, or split the motion")
     return out
+
+
+def _motion_seconds(t: dict, ex) -> float:
+    """How long the worker would simulate this trajectory (s), before it runs."""
+    k = t.get("kind")
+    period = float(t.get("period_s") or (0.6 if k == "trot" else 2.0))
+    if k == "sweep":
+        n = len(t.get("joints") or [v for v in ex.map["actuators"].values()])
+        return period * max(n, 1)
+    if k in ("squat", "trot"):
+        return period * int(t.get("cycles") or (3 if k == "trot" else 1))
+    if k == "stand_up":
+        return period
+    if k == "keyframes":
+        return max((float(x["t"]) for x in t.get("keys") or []), default=0.0)
+    return float(t.get("duration_s") or 2.0)
 
 
 def _label(t: dict) -> str:
@@ -220,8 +247,9 @@ def _jid(ex, name: str) -> str:
     return (ex.map["joints"].get(name) or {}).get("joint_id", name)
 
 
-def _sig(ctx, asm) -> str:
-    return pipeline.signature(asm, _home(ctx))
+def _sig(ctx, asm, pid: str) -> str:
+    return pipeline.signature(asm, _home(ctx), store=getattr(ctx, "store", None),
+                              project_id=pid)
 
 
 # ---- dyn_build
@@ -297,14 +325,20 @@ async def dyn_torque(ctx: ToolContext, args: TorqueArgs) -> ToolOutput:
     asm, ex, traj, res = await _torque(ctx, pid, args)
     rows = checks.torque_rows(res, ex.map)
     status = checks.overall(rows)
-    if all(r["status"] == "not_checked" for r in rows):
-        status = "warn"           # nothing to judge against: size the actuators
+    bare = [r["joint_id"] for r in rows if r["status"] == "not_checked"]
+    if bare and status in ("pass", "not_checked"):
+        # an unjudged joint never clears the gate (Plan 10 C3 fix round 1)
+        status = "not_checked"
     label = _label(traj)
     worst = sorted(rows, key=lambda r: -(r.get("use_of_stall") or r["peak_nm"]))
     parts = [f"{r['joint_id']} {r['peak_nm']:.2f} N m" +
              (f" ({r['use_of_stall']:.0%} of {r['actuator']})" if r.get("use_of_stall")
               is not None else "") for r in worst[:3]]
     summary = f"{label}: {status}; peaks " + ", ".join(parts)
+    if bare:
+        summary = (f"no actuator assigned to moving joint(s) {', '.join(bare[:8])}: assign "
+                   "actuators (the actuators argument or the joint's actuator) and rerun "
+                   "dyn_torque; " + summary)
     charts = [_chart("Joint torque", "N m",
                      [(f"{_jid(ex, j['joint'])}", j["series"]["t"], j["series"]["servo"])
                       for j in res["joints"][:SAMPLE_CHART_JOINTS]])]
@@ -322,7 +356,7 @@ async def dyn_torque(ctx: ToolContext, args: TorqueArgs) -> ToolOutput:
     rid = run.save_result(_home(ctx), pid, "dyn_torque", {"summary": summary, "card": card,
                                                            "result": res, "trajectory": traj})
     pipeline.record(_home(ctx), pid, "dyn_torque", status=status, summary=summary,
-                    margins=margins, result_id=rid, sig=_sig(ctx, asm),
+                    margins=margins, result_id=rid, sig=_sig(ctx, asm, pid),
                     extra={"rms_nm": {r["joint_id"]: r["rms_nm"] for r in rows},
                            "peak_nm": {r["joint_id"]: r["peak_nm"] for r in rows},
                            "speed_rms": {_jid(ex, j["joint"]): j["rms_speed"]
@@ -359,7 +393,7 @@ async def dyn_stability(ctx: ToolContext, args: StabilityArgs) -> ToolOutput:
         if traj_st:
             traj_st.pop("series", None)
     rows = checks.stability_rows(st, traj_st)
-    status = checks.overall(rows) if st.get("applicable", True) else "not_checked"
+    status = checks.overall(rows) if st.get("applicable", True) else "n/a"
     summary = "stability " + status + ": " + "; ".join(r["reason"] for r in rows if r.get("reason"))
     card = {"kind": "dyn_stability", "title": "Stability", "status": status, "rows": rows,
             "accuracy": checks.ACCURACY["stability"]}
@@ -367,8 +401,9 @@ async def dyn_stability(ctx: ToolContext, args: StabilityArgs) -> ToolOutput:
                                                               "result": st, "trajectory": traj})
     margins = {r["check"]: r.get("margin_mm", r.get("tips_at_deg")) for r in rows}
     pipeline.record(_home(ctx), pid, "dyn_stability",
-                    status="pass" if status == "not_checked" else status, summary=summary,
-                    margins=margins, result_id=rid, sig=_sig(ctx, asm))
+                    status=status, summary=summary if status != "n/a" else
+                    "not applicable: " + (st.get("note") or "fixed base"),
+                    margins=margins, result_id=rid, sig=_sig(ctx, asm, pid))
     _publish(ctx, pid, "dyn_stability", rid, status, summary, card)
     com = st.get("com_m")
     data = {"project_id": pid, "result_id": rid, "status": status, "rows": rows,
@@ -457,7 +492,7 @@ async def dyn_rom_sweep(ctx: ToolContext, args: RomArgs) -> ToolOutput:
                                                               "result": res})
     pipeline.record(_home(ctx), pid, "dyn_rom_sweep", status=status, summary=summary,
                     margins={"colliding_pairs": res["colliding_pairs"]}, result_id=rid,
-                    sig=_sig(ctx, asm))
+                    sig=_sig(ctx, asm, pid))
     _publish(ctx, pid, "dyn_rom_sweep", rid, status, summary, card)
     return ToolOutput(summary=summary, data={"project_id": pid, "result_id": rid,
                                              "status": status, "collisions": rows,
@@ -566,16 +601,19 @@ async def _fem(ctx: ToolContext, pid: str, args: FemArgs) -> ToolOutput:
                      "reason": (f"SF {sf:.2f} vs {args.min_safety_factor:g}" if sf is not None
                                 else out.summary)})
     status = checks.worst(r["status"] for r in rows) if rows else "not_checked"
+    if any(r["status"] == "not_checked" for r in rows) and status in ("pass", "not_checked"):
+        status = "not_checked"      # a link study that failed never clears the gate
     summary = (f"dyn_to_fem {status} ({_label(traj)}): " +
                ", ".join(f"{r['link']} SF {r['safety_factor']:.2f}" if r.get("safety_factor")
-                         is not None else f"{r['link']} {r['status']}" for r in rows))
+                         is not None else f"{r['link']} not evaluated: {r.get('reason')}"
+                         for r in rows))
     card = {"kind": "dyn_to_fem", "title": f"Link stress: {_label(traj)}", "status": status,
             "rows": rows, "accuracy": checks.ACCURACY["fem"] + checks.ACCURACY["dynamics"][:1]}
     rid = run.save_result(_home(ctx), pid, "dyn_to_fem", {"summary": summary, "card": card,
                                                            "trajectory": traj})
     pipeline.record(_home(ctx), pid, "dyn_to_fem", status=status, summary=summary,
                     margins={r["link"]: r.get("safety_factor") for r in rows}, result_id=rid,
-                    sig=_sig(ctx, asm), extra={"sim_ids": [r.get("sim_id") for r in rows]})
+                    sig=_sig(ctx, asm, pid), extra={"sim_ids": [r.get("sim_id") for r in rows]})
     _publish(ctx, pid, "dyn_to_fem", rid, status, summary, card)
     return ToolOutput(summary=summary, data={"project_id": pid, "result_id": rid,
                                              "status": status, "links": rows, "card": card,

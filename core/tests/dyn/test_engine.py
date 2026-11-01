@@ -179,3 +179,30 @@ def test_rom_sweep_finds_a_self_collision():
     assert hit["pose"]["j"] < -0.5        # the bar (+y) swings towards +x at a negative angle
     out = engine.run({"task": "rom", "model": model, "n": 200, "joints": ["j"]})
     assert out["colliding_pairs"] == 1    # deterministic
+
+
+def test_swinging_link_inverse_dynamics_matches_closed_form():
+    """A dynamic known answer: one link (0.4 kg, com 0.1 m out, I_com 0.002 kg m2) lifted from
+    horizontal by 1 rad over 1 s on a cosine profile. tau(t) = (I_com + m d^2) alpha +
+    m g d cos(q), with q = 0.5 (1 - cos(pi t)), alpha = 0.5 pi^2 cos(pi t)."""
+    m_, d, ic = 0.4, 0.1, 0.002
+    model = {"timestep": 0.001, "floor": None, "bodies": [
+        {"name": "link", "parent": None, "pos": [0, 0, 0], "mass": m_, "com": [d, 0, 0],
+         "inertia": [[1e-4, 0, 0], [0, ic, 0], [0, 0, ic]],
+         "joints": [{"name": "j", "type": "hinge", "axis": [0, -1, 0], "armature": 0.0,
+                     "damping": 0.0}],
+         "geoms": [{"name": "g", "size": [0.1, 0.01, 0.01], "pos": [0.1, 0, 0]}]}],
+        "actuators": [{"name": "a", "joint": "j", "kp": 300, "kv": 5}]}
+    out = engine.run({"task": "torque", "model": model, "trajectory": {
+        "kind": "keyframes", "keys": [{"t": 1.0, "q": {"j": 1.0}}]}})
+    s = out["joints"][0]["series"]
+    checked = 0
+    for t, tau in zip(s["t"], s["inverse"]):
+        if not 0.1 < t < 0.9:
+            continue
+        q = 0.5 * (1 - math.cos(math.pi * t))
+        alpha = 0.5 * math.pi ** 2 * math.cos(math.pi * t)
+        want = (ic + m_ * d * d) * alpha + m_ * G * d * math.cos(q)
+        assert tau == pytest.approx(want, rel=0.01, abs=2e-3), t
+        checked += 1
+    assert checked > 50

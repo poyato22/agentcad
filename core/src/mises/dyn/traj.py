@@ -23,6 +23,7 @@ GRID_S = 0.01               # targets are solved every 10 ms and interpolated be
 IK_ITERS = 60
 IK_DAMPING = 1e-3
 IK_TOL_M = 2e-4
+MAX_DURATION_S = 120.0
 
 
 @dataclass
@@ -137,6 +138,8 @@ class IK:
 
 
 def _grid(duration: float) -> np.ndarray:
+    if duration > MAX_DURATION_S:
+        raise ValueError(f"motion of {duration:.0f} s is over {MAX_DURATION_S:g} s")
     n = max(2, int(round(duration / GRID_S)) + 1)
     return np.linspace(0.0, duration, n)
 
@@ -290,5 +293,7 @@ def plan(m, model: dict, traj: dict) -> Plan:
         notes.append(f"sweep: each joint through its range in turn ({period:g} s each)")
     else:
         raise ValueError(f"unknown trajectory kind {kind!r}")
+    if float(times[-1]) > MAX_DURATION_S:     # never reached through the tools (capped at 60)
+        raise ValueError(f"motion of {times[-1]:.0f} s is over {MAX_DURATION_S:g} s")
     return Plan(times=times, targets=targets, start_s=settle, duration_s=float(times[-1]),
                 notes=notes, ik_error_m=err)

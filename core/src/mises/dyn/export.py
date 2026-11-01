@@ -48,6 +48,8 @@ FOOT_BAND_M = 0.015
 # own frequency on its armature stays well inside the 1 ms step (omega dt <= 0.3).
 SERVO_STIFF_RAD = 0.05
 IDEAL_STIFF_RAD = 0.02
+SERVO_STIFF_M = 0.002       # a linear actuator reaches its force limit at 2 mm of error
+IDEAL_STIFF_M = 0.002       # an ideal slider sags 2 mm under the robot's weight
 IDEAL_ARMATURE = 0.005
 STEP_S = 0.001
 
@@ -186,7 +188,9 @@ def _loops(asm) -> list:
 
 
 def export(home: Path, store, asm, *, base: str = "auto", actuators: dict | None = None,
-           friction: float = FLOOR_FRICTION) -> Export:
+           friction: float = FLOOR_FRICTION, slider_force_n: dict | None = None) -> Export:
+    """slider_force_n: joint id -> the force limit (N) of a linear actuator on a slider (a
+    rotary actuator's torque is no slider force: without one the slider is an ideal servo)."""
     home = Path(home)
     notes: list[str] = []
     inst = {i.id: i for i in asm.instances}
@@ -337,6 +341,14 @@ def export(home: Path, store, asm, *, base: str = "auto", actuators: dict | None
                     elif j.limits is not None and k == 0:
                         jd["range"] = [conv(float(j.limits[0])), conv(float(j.limits[1]))]
                 perf = act.resolve(overrides.get(j.id) or _get(j, "actuator"))
+                if perf is not None and mjt == "slide":
+                    # a torque rating says nothing about a slider's force (it depends on the
+                    # pinion radius or the screw lead): drive it through a coupling, or give
+                    # slider_force_n
+                    notes.append(f"joint {j.id}: {perf.name} is rotary; the slider is "
+                                 "modelled as an ideal servo (give slider_force_n, or couple "
+                                 "it to the revolute that drives it)")
+                    perf = None
                 arm = perf.armature() if perf else IDEAL_ARMATURE
                 jd["armature"] = arm
                 body["joints"].append(jd)
@@ -345,15 +357,22 @@ def export(home: Path, store, asm, *, base: str = "auto", actuators: dict | None
                 if mjt == "ball" or j.id in coupled:
                     continue
                 aname = f"a_{j.id}{suffix}"
-                if perf is not None:
-                    stall = perf.stall_torque_nm if mjt == "hinge" else perf.stall_torque_nm * 50.0
+                force = (slider_force_n or {}).get(j.id) if mjt == "slide" else None
+                if force:
+                    kp, kv = _gains(float(force) / SERVO_STIFF_M, arm)
+                    acts.append({"name": aname, "joint": name, "kind": "position", "kp": kp,
+                                 "kv": kv, "forcerange": [-float(force), float(force)]})
+                    amap[aname] = {"joint_id": j.id, "actuator": None, "perf": None,
+                                   "force_n": float(force)}
+                elif perf is not None:
+                    stall = perf.stall_torque_nm
                     kp, kv = _gains(stall / SERVO_STIFF_RAD, arm)
                     acts.append({"name": aname, "joint": name, "kind": "position", "kp": kp,
                                  "kv": kv, "forcerange": [-stall, stall]})
                     amap[aname] = {"joint_id": j.id, "actuator": perf.id, "perf": perf.as_dict()}
                 else:
-                    kp, kv = _gains(tau_scale / IDEAL_STIFF_RAD * (1.0 if mjt == "hinge" else 50.0),
-                                    arm)
+                    kp, kv = _gains(tau_scale / IDEAL_STIFF_RAD if mjt == "hinge"
+                                    else total * G / IDEAL_STIFF_M, arm)
                     acts.append({"name": aname, "joint": name, "kind": "position", "kp": kp,
                                  "kv": kv, "forcerange": None})
                     amap[aname] = {"joint_id": j.id, "actuator": None, "perf": None}

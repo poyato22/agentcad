@@ -11,7 +11,7 @@ import math
 
 from ..engineering import actuators as act
 
-ORDER = {"fail": 3, "warn": 2, "pass": 1, "not_checked": 0}
+ORDER = {"fail": 3, "warn": 2, "pass": 1, "not_checked": 0, "n/a": 0}
 
 #: research §4.5, stated on every result card (guide-only bands)
 ACCURACY = {
@@ -53,7 +53,7 @@ def _worst(rows: list[dict]) -> str:
 
 
 def worst(statuses) -> str:
-    s = [x for x in statuses if x and x != "not_checked"]
+    s = [x for x in statuses if x and x not in ("not_checked", "n/a")]
     return max(s, key=lambda x: ORDER[x]) if s else "not_checked"
 
 

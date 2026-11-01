@@ -247,8 +247,11 @@ def _engineering_checks(ctx: ToolContext, pid: str) -> dict | None:
         asm = asm_store.get(pid)
         if not asm.instances:
             return None
-        rep = pipeline.report(Path(ctx.workdir), pid, asm)
-        return {k: rep[k] for k in ("overall", "missing", "failing", "stale", "rows")}
+        rep = pipeline.report(Path(ctx.workdir), pid, asm,
+                              store=getattr(ctx, "store", None),
+                              running=pipeline.running_checks(pid))
+        return {k: rep[k] for k in ("overall", "missing", "failing", "stale", "unchecked",
+                                    "running", "rows")}
     except Exception:  # noqa: BLE001 - the spec never fails over its checks
         return None
 

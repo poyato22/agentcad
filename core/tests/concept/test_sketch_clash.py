@@ -53,3 +53,33 @@ async def test_tolerance_lets_a_small_overlap_through(tmp_path):
     # 34% of the arm overlaps: a clash at 25%, through at 40%
     assert loose["clashes"]
     assert (await sk.massing_clashes(d, 40.0))["clashes"] == []
+
+
+MANY = '''VARS = {}
+def build(v):
+    return Compound([Pos(30 * i, 30 * j, 0) * Box(20, 20, 20)
+                     for i in range(9) for j in range(8)])
+'''
+
+
+@pytest.mark.timeout(240)
+async def test_many_solids_are_checked_through_the_box_prefilter(tmp_path):
+    from mises.concept.sketch import build_massing
+    d = tmp_path / "m"
+    await build_massing(d, MANY)
+    r = await sk.massing_clashes(d, 2.0)
+    assert len(r["solids"]) == 72 and r["checked"] is True and r["clashes"] == []
+
+
+@pytest.mark.timeout(240)
+async def test_a_check_that_cannot_run_fails_closed(home, monkeypatch):  # noqa: F811
+    rt, project, run = _gate_rt(home, "design")
+
+    async def broken(d, tol):
+        return {"solids": [], "clashes": [], "checked": False, "note": "timed out after 120s"}
+    monkeypatch.setattr(sk, "massing_clashes", broken)
+    out = await rt.gate.call(run.id, "concept_sketch", {"massing_script": APART},
+                             call_id="s1", workdir=rt.home)
+    assert out.ok is False and out.data["error"] == "clash_check_failed"
+    assert "timed out" in out.summary
+    assert rt.concepts.latest_sketch(project) is None

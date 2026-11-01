@@ -166,8 +166,8 @@ async def _sketch_images(ctx: ToolContext, d: Path, script: str, views: list[str
     if clash_tolerance_pct is not None and int(metrics.get("solids") or 1) > 1:
         rep = await sk.massing_clashes(d / "massing", clash_tolerance_pct)
         metrics["clash_check"] = {k: rep.get(k) for k in ("checked", "note")}
-        if rep["clashes"]:
-            raise MassingClash(rep)
+        if rep["clashes"] or not rep.get("checked"):
+            raise MassingClash(rep)      # a check that could not run fails closed
     meshes, info = sk.scene_extras(metrics["bbox"], scale_figure)
     extras = sk.write_extras(d, meshes)
     out = await sk.render_sketch(d / "jobs", d / "massing", extras, views)
@@ -222,6 +222,15 @@ async def concept_sketch(ctx: ToolContext, args: SketchArgs) -> ToolOutput:
                                                      args.clash_tolerance_pct)
     except MassingClash as e:
         cl = e.report["clashes"]
+        if not cl:
+            note = e.report.get("note") or "the interference check could not run"
+            return ToolOutput(ok=False, step_kind=StepKind.ERROR,
+                              summary=f"sketch not shown: the massing could not be checked for "
+                                      f"clipping volumes ({note}). Simplify the massing (fewer, "
+                                      "simpler solids; fuse volumes that are one piece) and "
+                                      "call concept_sketch again",
+                              data={"error": "clash_check_failed", "note": note,
+                                    "solids": e.report.get("solids", [])[:40]})
         lines = "; ".join(f"{c['labels'][0]} x {c['labels'][1]}: {c['overlap_mm3']:.0f} mm3 "
                           f"({c['overlap_pct_of_smaller']:.0f}% of the smaller)"
                           for c in cl[:6])

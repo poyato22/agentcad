@@ -27,6 +27,11 @@ def _build(ctx: ToolContext, requested: str | None) -> str:
     return b(ctx, requested)
 
 
+def _sig(ctx: ToolContext, asm, pid: str) -> str:
+    return pipeline.signature(asm, _home(ctx), store=getattr(ctx, "store", None),
+                              project_id=pid)
+
+
 def _asm(ctx: ToolContext, pid: str):
     from ..assembly.tools import _store
     return _store(ctx).get(pid)
@@ -79,6 +84,7 @@ class SizeArgs(BaseModel):
                   "candidates. Confirm with dyn_torque on a real motion before done.")
 async def actuator_size(ctx: ToolContext, args: SizeArgs) -> ToolOutput:
     pid = _build(ctx, args.project_id)
+    pipeline.note_actuators(_home(ctx), pid, args.actuators)
     asm, kin = _kin(ctx, pid, args.base)
     static = checks.static_torques(kin["instances"], kin["tree"], root=kin["root"],
                                    free=kin["free"], feet=kin["feet"],
@@ -94,9 +100,14 @@ async def actuator_size(ctx: ToolContext, args: SizeArgs) -> ToolOutput:
         f"{r['joint_id']} {r['design_nm']:.2f} N m" + (f" ({r['use_of_stall']:.0%} of "
                                                        f"{r['actuator']})" if r.get("actuator")
                                                        else " (no actuator)") for r in worst)
+    bare = [r["joint_id"] for r in rows if r["status"] == "not_checked"]
+    if bare:
+        summary = (f"no actuator assigned to joint(s) {', '.join(bare[:8])}: assign actuators "
+                   "(the actuators argument, or pick from the candidates) and rerun "
+                   "actuator_size; " + summary)
     pipeline.record(_home(ctx), pid, "actuator_size", status=status, summary=summary,
                     margins={r["joint_id"]: r.get("use_of_stall") for r in rows},
-                    sig=pipeline.signature(asm, _home(ctx)),
+                    sig=_sig(ctx, asm, pid),
                     extra={"design_nm": {r["joint_id"]: r["design_nm"] for r in rows}})
     return ToolOutput(summary=summary, data={"project_id": pid, "status": status,
                                              "dynamic_factor": factor, "free_base": kin["free"],
@@ -106,9 +117,13 @@ async def actuator_size(ctx: ToolContext, args: SizeArgs) -> ToolOutput:
 
 
 def pipeline_status(rows: list[dict]) -> str:
+    """The worst verdict; a joint that could not be judged (no actuator) keeps the check
+    from passing: `not_checked`, which the done gate reports with its reason."""
     from ..dyn.checks import overall
     st = overall(rows)
-    return "warn" if st == "not_checked" and rows else st
+    if any(r["status"] == "not_checked" for r in rows) and st in ("pass", "not_checked"):
+        return "not_checked"
+    return st
 
 
 # ---- electronics + power
@@ -139,7 +154,7 @@ def _actuator_loads(ctx, pid: str, kin: dict, perfs: dict) -> tuple[list[dict], 
     speed per joint) when it is fresh, else a duty assumption (30% of stall RMS)."""
     rec = pipeline.load(_home(ctx), pid).get("dyn_torque") or {}
     asm = _asm(ctx, pid)
-    fresh = rec and rec.get("signature") == pipeline.signature(asm, _home(ctx))
+    fresh = rec and rec.get("signature") == _sig(ctx, asm, pid)
     rows, src = [], "dyn_torque" if fresh else "assumed duty (30% of stall rms)"
     for jid, perf in perfs.items():
         p = perf or act.resolve("mg996r")
@@ -167,6 +182,7 @@ def _actuator_loads(ctx, pid: str, kin: dict, perfs: dict) -> tuple[list[dict], 
                   "assembly_add_instance (reserve the space in the layout before skinning).")
 async def electronics_estimate(ctx: ToolContext, args: ElecArgs) -> ToolOutput:
     pid = _build(ctx, args.project_id)
+    pipeline.note_actuators(_home(ctx), pid, args.actuators)
     try:
         asm, kin = _kin(ctx, pid)
         perfs = _perfs(kin, args.actuators)
@@ -196,13 +212,13 @@ async def electronics_estimate(ctx: ToolContext, args: ElecArgs) -> ToolOutput:
         data["reserve"] = await _reserve(ctx, pid, out, args, warnings)
     pipeline.record(_home(ctx), pid, "electronics_estimate", status=status, summary=summary,
                     margins={"mass_g": out["total_mass_g"]},
-                    sig=pipeline.signature(asm, _home(ctx)),
+                    sig=_sig(ctx, asm, pid),
                     extra={"components": [{k: c[k] for k in ("role", "item_id", "qty",
                                                              "size_mm", "mass_g", "power_w")}
                                           for c in out["components"]]})
     pipeline.record(_home(ctx), pid, "power_budget", status=pb["status"], summary=pb["reason"],
                     margins={"e_needed_wh": pb["e_needed_wh"], "i_peak_a": pb["i_peak_a"]},
-                    sig=pipeline.signature(asm, _home(ctx)))
+                    sig=_sig(ctx, asm, pid))
     return ToolOutput(summary=summary, data=data, warnings=warnings,
                       step_kind=StepKind.MEASURE)
 
@@ -242,6 +258,7 @@ class PowerArgs(BaseModel):
                   "rail and branch, 5 V logic).")
 async def power_budget(ctx: ToolContext, args: PowerArgs) -> ToolOutput:
     pid = _build(ctx, args.project_id)
+    pipeline.note_actuators(_home(ctx), pid, args.actuators)
     asm, kin = _kin(ctx, pid)
     perfs = _perfs(kin, args.actuators)
     loads, src = _actuator_loads(ctx, pid, kin, perfs)
@@ -258,7 +275,7 @@ async def power_budget(ctx: ToolContext, args: PowerArgs) -> ToolOutput:
                              battery_cells=args.battery_cells, simultaneity=args.simultaneity)
     pipeline.record(_home(ctx), pid, "power_budget", status=pb["status"], summary=pb["reason"],
                     margins={"e_needed_wh": pb["e_needed_wh"], "i_peak_a": pb["i_peak_a"]},
-                    sig=pipeline.signature(asm, _home(ctx)))
+                    sig=_sig(ctx, asm, pid))
     return ToolOutput(summary=f"power budget {pb['status']}: {pb['reason']}",
                       data={"project_id": pid, **pb, "actuator_source": src},
                       step_kind=StepKind.MEASURE)
@@ -470,7 +487,9 @@ async def engineering_checks(ctx: ToolContext, args: ChecksArgs) -> ToolOutput:
     pid = _build(ctx, args.project_id)
     asm = _asm(ctx, pid)
     health = await _health(ctx, pid, asm)
-    rep = pipeline.report(_home(ctx), pid, asm, health_available=health is not None)
+    rep = pipeline.report(_home(ctx), pid, asm, health_available=health is not None,
+                          store=getattr(ctx, "store", None),
+                          running=pipeline.running_checks(pid))
     text = pipeline.done_text(rep)
     summary = (f"engineering checks {rep['overall']}" +
                (f": {text}" if text else ": clear (state the margins in your report)"))
@@ -491,7 +510,7 @@ async def _health(ctx: ToolContext, pid: str, asm) -> dict | None:
     except MisesError as e:
         pipeline.record(_home(ctx), pid, "assembly_health", status="fail",
                         summary=f"assembly_health failed: {e.message}",
-                        sig=pipeline.signature(asm, _home(ctx)))
+                        sig=_sig(ctx, asm, pid))
         return {"error": e.message}
     d = out.data or {}
     errors = d.get("errors")
@@ -500,7 +519,7 @@ async def _health(ctx: ToolContext, pid: str, asm) -> dict | None:
     status = "fail" if (not out.ok or errors) else "pass"
     pipeline.record(_home(ctx), pid, "assembly_health", status=status, summary=out.summary,
                     margins={"issues": len(errors) if isinstance(errors, list) else errors},
-                    sig=pipeline.signature(asm, _home(ctx)))
+                    sig=_sig(ctx, asm, pid))
     return d
 
 

@@ -225,8 +225,14 @@ async def massing_clashes(massing_dir: Path, tolerance_pct: float = 2.0) -> dict
                                 "overlap_mm3": round(p["volume_mm3"], 1),
                                 "overlap_pct_of_smaller": round(share, 1)})
         clashes.sort(key=lambda c: -c["overlap_pct_of_smaller"])
-        return {"solids": solids, "clashes": clashes, "checked": True,
-                **({"note": res["note"]} if res.get("note") else {})}
+        failed = res.get("failed_pairs") or []
+        if res.get("incomplete") or failed:
+            # fail closed: a pair we could not intersect may clip
+            note = res.get("incomplete") or (
+                f"the boolean failed for {len(failed)} pair(s) of solids "
+                f"({', '.join(f'{a}-{b}' for a, b in failed[:6])})")
+            return {"solids": solids, "clashes": clashes, "checked": False, "note": note}
+        return {"solids": solids, "clashes": clashes, "checked": True}
     finally:
         shutil.rmtree(job, ignore_errors=True)
 

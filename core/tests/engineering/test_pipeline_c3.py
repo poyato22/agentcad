@@ -27,6 +27,71 @@ def test_report_requires_the_done_checks_for_moving_builds(tmp_path):
     assert rep["failing"] == ["dyn_to_fem"] and "failing: dyn_to_fem" in pipeline.done_text(rep)
 
 
+def test_a_required_check_that_judged_nothing_is_not_clear(tmp_path):
+    """Review I1: not_checked on a required check warns with its reason; n/a is clear."""
+    quad.write_parts(tmp_path)
+    asm = quad.assembly()
+    sig = pipeline.signature(asm, tmp_path, project_id="quad")
+    for c in pipeline.ALL:
+        pipeline.record(tmp_path, "quad", c, status="pass", summary="ok", sig=sig)
+    pipeline.record(tmp_path, "quad", "dyn_torque", status="not_checked", sig=sig,
+                    summary="no actuator assigned to moving joint(s) fl_knee: assign actuators")
+    rep = pipeline.report(tmp_path, "quad", asm)
+    assert [u["check"] for u in rep["unchecked"]] == ["dyn_torque"]
+    text = pipeline.done_text(rep)
+    assert text and "could not be evaluated" in text and "assign actuators" in text
+    pipeline.record(tmp_path, "quad", "dyn_torque", status="pass", summary="ok", sig=sig)
+    pipeline.record(tmp_path, "quad", "dyn_stability", status="n/a", sig=sig,
+                    summary="not applicable: fixed base")
+    assert pipeline.done_text(pipeline.report(tmp_path, "quad", asm)) is None
+
+
+async def test_dyn_torque_without_actuators_does_not_pass(tmp_path):
+    from types import SimpleNamespace as NS
+
+    from mises.dyn import tools as dt
+    quad.write_parts(tmp_path)
+    store = AssemblyStore(tmp_path / "a.db")
+    quad.assembly("quad", store)
+    ctx = NS(workdir=tmp_path, run_id=None, events=None, services={"assembly": store},
+             call_id="c1", store=None, agent_call=False)
+    out = await dt.dyn_torque.handler(ctx, dt.TorqueArgs(project_id="quad"))
+    assert out.data["status"] == "not_checked" and "no actuator" in out.summary
+    rec = pipeline.load(tmp_path, "quad")["dyn_torque"]
+    assert rec["status"] == "not_checked"
+
+
+def test_a_running_dyn_to_fem_is_still_running_not_missing(tmp_path):
+    quad.write_parts(tmp_path)
+    rep = pipeline.report(tmp_path, "quad", quad.assembly(), running={"dyn_to_fem"})
+    assert "dyn_to_fem" in rep["running"] and "dyn_to_fem" not in rep["missing"]
+    assert "still running: dyn_to_fem" in pipeline.done_text(rep)
+
+
+def test_signature_follows_actuators_materials_and_couplings(tmp_path):
+    quad.write_parts(tmp_path)
+    asm = quad.assembly()
+    base = pipeline.signature(asm, tmp_path, project_id="quad")
+    pipeline.note_actuators(tmp_path, "quad", {"fl_knee": "mg996r"})
+    s1 = pipeline.signature(asm, tmp_path, project_id="quad")
+    assert s1 != base
+    j = next(x for x in asm.joints if x.id == "fl_knee")
+    object.__setattr__(j, "coupling", {"kind": "belt", "ratio": 2.0, "partner_joint": "fl_hip"})
+    s2 = pipeline.signature(asm, tmp_path, project_id="quad")
+    assert s2 != s1
+
+    class _Store:
+        def __init__(self, mat):
+            self.mat = mat
+
+        def get_part(self, pid):
+            return NS2(material=self.mat)
+    from types import SimpleNamespace as NS2
+    a = pipeline.signature(asm, tmp_path, store=_Store("PLA"), project_id="quad")
+    b = pipeline.signature(asm, tmp_path, store=_Store("PETG"), project_id="quad")
+    assert a != b
+
+
 def test_a_static_product_needs_no_dynamics(tmp_path):
     quad.write_parts(tmp_path)
     asm = quad.assembly()

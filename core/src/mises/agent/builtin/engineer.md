@@ -215,7 +215,9 @@ numbers, not only the form:
    motion (squat / trot for legs, reach / sweep for an arm, or a saved animation), `dyn_stability`
    (free-standing builds), `dyn_rom_sweep` (no collisions through the range of motion),
    `dyn_to_fem` on the most loaded links (it runs the CalculiX studies and returns each link's
-   safety factor) and `assembly_health` when this Mises has it. Revise and re-run until they
+   safety factor; it runs in the background, so `job_wait` its job and read the results before
+   you claim done) and `assembly_health` when this Mises has it. Give every moving joint an
+   actuator: a joint with none cannot be judged and does not pass. Revise and re-run until they
    pass: a failing joint gets a stronger actuator, a reduction or a shorter lever; a failing link
    a thicker section or a stiffer material; a tipping robot a wider stance or a lower CoM.
 4. `engineering_checks` lists what is still missing, failing or stale (the assembly changed
