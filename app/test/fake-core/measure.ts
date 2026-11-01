@@ -169,6 +169,13 @@ export function measureRoutes(d: MeasureDeps): Route[] {
           const inst = d.instance?.(pid, String(b.instance_id)) ?? null;
           if (!inst || inst.part_id !== partId) throw mises("not_found", `no instance '${String(b.instance_id)}' of '${partId}' in this build's assembly`);
           Object.assign(pin, { instance_id: String(b.instance_id), instance: inst.name, world_point: (wp as number[] | undefined) ?? point });
+          // P11 F4: the instance's box as the app drew it (the real core adds model_bbox / pose_check)
+          const box = b.world_bbox as { min?: unknown; max?: unknown } | undefined;
+          if (box !== undefined && box !== null) {
+            const ok3 = (v: unknown) => Array.isArray(v) && v.length === 3 && v.every((c) => typeof c === "number" && Number.isFinite(c));
+            if (!ok3(box.min) || !ok3(box.max)) throw missing("world_bbox", b);
+            Object.assign(pin, { drawn_bbox: { min: box.min, max: box.max } });
+          }
         }
         const lead = d.runs().filter((r) => r.provider !== "ui" && r.parent_id === null && r.project_id === pid && !r.archived)
           .sort((x, y) => y.created_at - x.created_at)[0] ?? d.newRun(text, pid);

@@ -244,6 +244,7 @@ const COVERAGE: Record<string, string> = {
   "POST /sketches": "EXEMPT: Plan 7 U2b removed the app's Sketch page; the app never calls it (core sketch tests cover it)",
   "GET /sketches/{sketch_id}": "EXEMPT: Plan 7 U2b removed the app's Sketch page; the app never calls it (core sketch tests cover it)",
   // Plan 8 G1 render images and reference uploads
+  "GET /projects/{project_id}/chat-images/{image_id}": "EXEMPT: P11 F7 image bytes of a chat attachment; core test_p11_chat_images covers ids, the build scope and the bytes the agent got",
   "GET /renders/{name}": "EXEMPT: PNG bytes of a sandboxed render; core test_renders_api covers ids, links and auth, and the cards that name them are g1_cards.json (contract-checked in the critique card tests)",
   "POST /references": "EXEMPT: Plan 8 G-R4 reference images; the app has no upload UI yet (the agent reads them from context); core test_references covers it",
   "GET /references/{reference_id}": "EXEMPT: Plan 8 G-R4 reference images; the app has no viewer for them yet; core test_references covers it",

@@ -128,26 +128,26 @@ test("collapse_a_stream_count_what_arrives_and_resize_with_the_divider_remembere
   await open(page, "dark");
   await fake.emit({ type: "agent_announce", run_id: LEAD, data: G1.view_presented });
   await expect(stream(page, "view").getByTestId("view-card")).toBeVisible();
-  // P10 E6: drag the divider between View and Simulations right 60 px: View widens
-  const div = con(page).locator('[data-divider="view|sim"]');
-  const before = (await stream(page, "view").boundingBox())!.width;
-  const d = (await div.boundingBox())!;
+  // P11 F2: drag the bar between the Conversation and the row down 60 px: the Conversation grows
+  const bar = con(page).locator("[data-split]");
+  const before = (await stream(page, "text").boundingBox())!.height;
+  const d = (await bar.boundingBox())!;
   await page.mouse.move(d.x + d.width / 2, d.y + d.height / 2);
   await page.mouse.down();
-  await page.mouse.move(d.x + d.width / 2 + 60, d.y + d.height / 2, { steps: 4 });
+  await page.mouse.move(d.x + d.width / 2, d.y + d.height / 2 + 60, { steps: 4 });
   await page.mouse.up();
-  await expect.poll(async () => (await stream(page, "view").boundingBox())!.width).toBeGreaterThan(before + 50);
+  await expect.poll(async () => (await stream(page, "text").boundingBox())!.height).toBeGreaterThan(before + 50);
   // close Simulations to its slim tab; a study lands meanwhile: an unread count
   await stream(page, "sim").locator(".dock-t").click();
   await expect(stream(page, "sim")).toHaveAttribute("aria-expanded", "false");
   await fake.emit({ type: "tool_call", run_id: LEAD, data: { call_id: CALL.payload.call_id, name: "sim_run", input: CALL.payload.input } }, { steps: [stepOf(CALL)] });
   await expect(stream(page, "sim").locator("[data-unread]")).toHaveText("1");
   // remembered across a reload
-  const w = (await stream(page, "view").boundingBox())!.width;
+  const h = (await stream(page, "text").boundingBox())!.height;
   await page.reload();
   await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
   await expect(stream(page, "sim")).toHaveAttribute("aria-expanded", "false");
-  await expect.poll(async () => Math.round((await stream(page, "view").boundingBox())!.width)).toBe(Math.round(w));
+  await expect.poll(async () => Math.round((await stream(page, "text").boundingBox())!.height)).toBe(Math.round(h));
 });
 
 test("a_sub_agent_s_study_and_view_appear_in_the_build_s_dock_while_the_lead_s_thread_is_shown", async ({ page, fake }) => {
@@ -185,24 +185,16 @@ test("esc_never_cancels_a_run_waiting_on_your_approval_the_card_decides", async 
   expect((await fake.calls()).some((c) => c.method === "POST" && c.path === `/runs/${LEAD}/cancel`)).toBe(false);
 });
 
-// Plan 9 G-B: the Conversation header's "Design focus" chip shows the class the core gave the
-// build and sets the user's own through PATCH /projects/{id} {design_class}
-test("design_focus_chip_shows_the_class_and_sets_the_users_own", async ({ page, fake }) => {
+// P11 F1: the Conversation header has no design focus control any more (the core's classifier
+// and PATCH /projects/{id} {design_class} stay; nothing in the app sends it)
+test("conversation_header_has_no_design_focus_control", async ({ page, fake }) => {
   const dc = { score: 0.82, cls: "design", per_part: {}, reasons: ["humanoid archetype"], source: "prior", archetype: "humanoid" };
   await fake.reset({ ...BASE, runs: [{ ...BASE.runs[0], role: "lead", project_id: BUILD, status: "running", design_class: dc }] } as never);
   await page.setViewportSize({ width: 1440, height: 900 });
   await open(page, "dark");
-  const chip = con(page).locator("[data-conversation-head] [data-design-focus]");
-  await expect(chip).toHaveAttribute("data-design-focus", "design");
-  await expect(chip).toHaveAttribute("aria-label", "Design focus");   // P10 E23: compact, "Focus · Eng | Mixed | Design"
-  await expect(chip.locator("[data-focus=design]")).toHaveAttribute("aria-pressed", "true");
-  await chip.locator("[data-focus=engineering]").click();
-  await expect(chip).toHaveAttribute("data-design-focus", "engineering");
-  await expect(chip.locator("[data-focus-by-user]")).toBeVisible();
-  expect((await fake.calls()).some((c) => c.method === "PATCH" && c.path === `/projects/${BUILD}`)).toBe(true);
-  // clicking the user's own class hands it back: the classifier's answer shows, no "you"
-  await chip.locator("[data-focus=engineering]").click();
-  await expect(chip.locator("[data-focus-by-user]")).toHaveCount(0);
-  await expect(chip).toHaveAttribute("data-design-focus", "engineering");
-  expect((await fake.calls()).filter((c) => c.method === "PATCH" && c.path === `/projects/${BUILD}`).length).toBe(2);
+  const head = con(page).locator("[data-conversation-head]");
+  await expect(head).toHaveCount(1);
+  await expect(page.locator("[data-design-focus], [aria-label='Design focus']")).toHaveCount(0);
+  await expect(head.getByRole("button", { name: /Engineering|Mixed|Design/ })).toHaveCount(0);
+  expect((await fake.calls()).some((c) => c.method === "PATCH" && c.path === `/projects/${BUILD}`)).toBe(false);
 });

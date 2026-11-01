@@ -1,0 +1,26 @@
+{
+ "project_id": "19ee7ccfe166",
+ "step": {
+  "id": 10,
+  "run_id": "7f54101813b6",
+  "ts": 1793554560.735528,
+  "kind": "message",
+  "payload": {
+   "images": [
+    {
+     "bytes": 501,
+     "height": 200,
+     "id": "e1dc535f102b12c5d2aecb43",
+     "media_type": "image/png",
+     "width": 320
+    }
+   ],
+   "role": "user",
+   "text": "why does the lid look offset here?"
+  },
+  "evidence_hash": "13ce248a9304a1b546e69e19428e6d5d03854d62215a4e6b0c2b3424e89bd21a",
+  "prev_hash": null,
+  "collapsed": false,
+  "stream": "text"
+ }
+}

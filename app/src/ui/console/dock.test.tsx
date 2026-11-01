@@ -1,4 +1,4 @@
-// The agent dock (Plan 9 D2 / D4): three streams visible at once over the real core's steps, each
+// The agent dock (Plan 9 D2 / D4, P11 F2 layout): three streams visible at once over the real core's steps, each
 // collapsible (with an unread count) and resizable; the composer's send button turns into Stop.
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/preact";
 import { readFileSync } from "node:fs";
@@ -59,7 +59,7 @@ beforeEach(() => { resetIds(70_000); resetConsoleView(); try { localStorage.remo
   setDockLayout({ ...DEFAULT_LAYOUT, collapsed: { view: false, sim: false, text: false } }, false); });
 afterEach(() => { cleanup(); resetStore(); resetCatalog(); resetConsoleView(); resetOffListRuns(); resetActivity(); dockLayout.value = DEFAULT_LAYOUT; });
 
-describe("agent dock: three columns side by side", () => {
+describe("agent dock: the Conversation over View | Simulations", () => {
   it("shows views, studies and the conversation together, each in its own scroller", async () => {
     mount([...TEXT, ...STUDY, view(90_001, 2e9, "the lid"), view(90_002, 2e9 + 1, "the lid, closer")]);
     await frame();
@@ -118,18 +118,50 @@ describe("agent dock: three columns side by side", () => {
     expect(section("view").querySelector("[data-stream-empty]")?.textContent).toContain("Views and renders");
   });
 
-  it("columns sit side by side in order, with a divider between open neighbours (P10 E6)", async () => {
+  it("the Conversation on top, full width; View | Simulations in a row under it (P11 F2)", async () => {
     mount([...TEXT, ...STUDY]);
     await frame();
-    const cols = document.querySelector("[data-dock] .dock-cols") as HTMLElement;
-    expect([...cols.querySelectorAll("[data-stream]")].map((e) => e.getAttribute("data-stream"))).toEqual(["view", "sim", "text"]);
-    expect([...cols.querySelectorAll("[data-divider]")].map((e) => e.getAttribute("data-divider"))).toEqual(["view|sim", "sim|text"]);
-    expect(document.querySelector("[data-dock]")?.getAttribute("data-cols")).toBe("3");
-    // the composer is the Conversation column's foot
+    const stack = document.querySelector("[data-dock] .dock-stack") as HTMLElement;
+    expect([...stack.children].map((e) => e.getAttribute("data-stream") ?? e.getAttribute("data-split") ?? (e.hasAttribute("data-dock-row") ? "row" : "?")))
+      .toEqual(["text", "", "row"]);
+    const row = stack.querySelector("[data-dock-row]") as HTMLElement;
+    expect([...row.querySelectorAll("[data-stream]")].map((e) => e.getAttribute("data-stream"))).toEqual(["view", "sim"]);
+    expect(document.querySelector("[data-divider]")).toBeNull();
+    // 50/50, and the Conversation keeps its share of the height
+    expect([section("view").style.flexGrow, section("sim").style.flexGrow]).toEqual(["1", "1"]);
+    expect(section("text").style.flex).toContain(String(dockLayout.value.split));
+    // the composer is the Conversation's foot; no design focus control in its header (F1)
     expect(section("text").querySelector("[data-command-line]")).toBeTruthy();
+    expect(document.querySelector("[data-design-focus], [aria-label='Design focus']")).toBeNull();
   });
 
-  it("a closed column is a slim tab that counts what arrives while it is closed; the choice is remembered", async () => {
+  it("hovering View or Simulations widens it to ~90%, leaving the row restores 50/50 (P11 F2)", async () => {
+    mount([...TEXT, ...STUDY, view(90_001, 2e9, "the lid")]);
+    await frame();
+    const row = document.querySelector("[data-dock-row]") as HTMLElement;
+    fireEvent.pointerEnter(section("view"));
+    await frame();
+    expect(row.getAttribute("data-expand")).toBe("view");
+    expect([section("view").style.flexGrow, section("sim").style.flexGrow]).toEqual(["9", "1"]);
+    expect(section("sim").hasAttribute("data-shrunk")).toBe(true);
+    fireEvent.pointerEnter(section("sim"));
+    await frame();
+    expect([section("view").style.flexGrow, section("sim").style.flexGrow]).toEqual(["1", "9"]);
+    expect(section("view").hasAttribute("data-shrunk")).toBe(true);
+    fireEvent.pointerLeave(row);
+    await frame();
+    expect(row.hasAttribute("data-expand")).toBe(false);
+    expect([section("view").style.flexGrow, section("sim").style.flexGrow]).toEqual(["1", "1"]);
+    // one half closed: the other fills the row and hover does nothing
+    fireEvent.click(within(section("sim")).getByRole("button", { name: /^Simulations/ }));
+    await frame();
+    fireEvent.pointerEnter(section("view"));
+    await frame();
+    expect(row.hasAttribute("data-expand")).toBe(false);
+    expect(section("sim").tagName).toBe("BUTTON");
+  });
+
+  it("a closed stream is a slim tab that counts what arrives while it is closed; the choice is remembered", async () => {
     mount([...TEXT, ...STUDY]);
     await frame();
     fireEvent.click(within(section("sim")).getByRole("button", { name: /^Simulations/ }));
@@ -139,7 +171,6 @@ describe("agent dock: three columns side by side", () => {
     expect(tab.getAttribute("aria-expanded")).toBe("false");
     expect(tab.querySelector("[data-stream-body]")).toBeNull();
     expect(JSON.parse(localStorage.getItem(LAYOUT_KEY) as string).collapsed.sim).toBe(true);
-    expect([...document.querySelectorAll("[data-divider]")].map((e) => e.getAttribute("data-divider"))).toEqual(["view|text"]);
     // two more studies land
     act(() => {
       steps.value = new Map([[RID, [...(steps.value.get(RID) ?? []), toolCall(RID, "n1", "sim_run", { type: "static" }, 3e9), toolCall(RID, "n2", "sim_run", { type: "modal" }, 3e9 + 1)]]]);
@@ -152,10 +183,16 @@ describe("agent dock: three columns side by side", () => {
     expect(section("sim").querySelector("[data-unread]")).toBeNull();
     // the running count in the header (an agent working: blue, data-changing)
     expect(section("sim").querySelector("[data-running]")?.getAttribute("data-running")).toBe("2");
+    // both halves closed: the row is a slim bar; the Conversation closed: a bar on top
+    fireEvent.click(within(section("sim")).getByRole("button", { name: /^Simulations/ }));
+    fireEvent.click(within(section("view")).getByRole("button", { name: /^View/ }));
+    await frame();
+    expect(document.querySelector("[data-dock-row]")?.hasAttribute("data-folded")).toBe(true);
+    expect(document.querySelector("[data-split]")).toBeNull();
   });
 
-  it("the last open column stays open", async () => {
-    setDockLayout(DEFAULT_LAYOUT, false);
+  it("the last open stream stays open", async () => {
+    setDockLayout({ ...DEFAULT_LAYOUT, collapsed: { view: true, sim: true, text: false } }, false);
     mount(TEXT);
     await frame();
     expect(section("view").tagName).toBe("BUTTON");
@@ -166,20 +203,17 @@ describe("agent dock: three columns side by side", () => {
     expect(section("text").tagName).toBe("SECTION");
   });
 
-  it("a divider moves width between its two columns and saves at the end", async () => {
-    mount([...TEXT, ...STUDY, view(90_001, 2e9, "the lid")]);
+  it("the bar between the Conversation and the row trades their heights and saves at the end", async () => {
+    mount([...TEXT, ...STUDY]);
     await frame();
-    const div = document.querySelector('[data-divider="view|sim"]') as HTMLElement;
-    fireEvent.keyDown(div, { key: "ArrowRight" });
-    const l = dockLayout.value;
-    expect(l.share.view).toBeGreaterThan(1);
-    expect(l.share.sim).toBeLessThan(1);
-    expect(l.share.text).toBe(1);
-    expect(JSON.parse(localStorage.getItem(LAYOUT_KEY) as string).share).toEqual(l.share);
-    expect(section("view").style.flex).toContain(String(l.share.view));
+    const bar = screen.getByRole("separator", { name: /Resize the conversation/ });
+    const before = dockLayout.value.split;
+    fireEvent.keyDown(bar, { key: "ArrowDown" });
+    expect(dockLayout.value.split).toBeGreaterThan(before);
+    expect(JSON.parse(localStorage.getItem(LAYOUT_KEY) as string).split).toBe(dockLayout.value.split);
   });
 
-  it("dragging an edge or a divider never selects text (P10 E10)", async () => {
+  it("dragging the edge or the bar never selects text (P10 E10)", async () => {
     const w = window.innerWidth;
     Object.defineProperty(window, "innerWidth", { value: 2400, configurable: true });
     onTestFinished(() => { Object.defineProperty(window, "innerWidth", { value: w, configurable: true }); });
@@ -191,16 +225,16 @@ describe("agent dock: three columns side by side", () => {
     expect(down.defaultPrevented).toBe(true);
     expect(document.body.classList.contains("dock-resizing")).toBe(true);
     fireEvent.pointerMove(edge, { clientX: 440, pointerId: 1 });
-    expect(dockLayout.value.widths[2]).toBe(1140);                 // three open: wider by 60
+    expect(dockLayout.value.width).toBe(620);                      // wider by 60
     fireEvent.pointerUp(edge, { pointerId: 1 });
     expect(document.body.classList.contains("dock-resizing")).toBe(false);
-    expect(JSON.parse(localStorage.getItem(LAYOUT_KEY) as string).widths[2]).toBe(1140);
-    const div = document.querySelector('[data-divider="sim|text"]') as HTMLElement;
-    const d2 = new PointerEvent("pointerdown", { bubbles: true, cancelable: true, button: 0, clientX: 800, pointerId: 2 });
-    div.dispatchEvent(d2);
+    expect(JSON.parse(localStorage.getItem(LAYOUT_KEY) as string).width).toBe(620);
+    const bar = document.querySelector("[data-split]") as HTMLElement;
+    const d2 = new PointerEvent("pointerdown", { bubbles: true, cancelable: true, button: 0, clientY: 300, pointerId: 2 });
+    bar.dispatchEvent(d2);
     expect(d2.defaultPrevented).toBe(true);
     expect(document.body.classList.contains("dock-resizing")).toBe(true);
-    fireEvent.pointerCancel(div, { pointerId: 2 });
+    fireEvent.pointerCancel(bar, { pointerId: 2 });
     expect(document.body.classList.contains("dock-resizing")).toBe(false);
   });
 });

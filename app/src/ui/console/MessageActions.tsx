@@ -93,10 +93,30 @@ export function CancelQueuedButton({ runId, messageId }: { runId: string; messag
 /** An error in the thread: what happened, the likely cause, what to do, and Retry when there is a
  *  message of yours to send again. */
 export function ErrorCard({ item, retryText, run }: {
-  item: { code: string; message: string; hint: string | null; cause?: string | null };
+  item: { code: string; message: string; hint: string | null; cause?: string | null; recovery?: { tried: number } | null };
   retryText: string | null; run: AgentRun | null;
 }): JSX.Element {
   const v = explainError(item);
+  // P11 F9: the run recovered by itself until its budget ran out: say what was tried, and offer
+  // Retry (your last message again) and Continue (carry on from here)
+  if (item.recovery) {
+    const n = item.recovery.tried;
+    return (
+      <div class="cv-err" data-error data-error-kind="recovery" data-recovery-exhausted data-row data-kind="error" role="group" aria-label="The run stopped">
+        <div class="cv-err-head">
+          <span class="cv-fail cv-err-glyph" aria-hidden="true">✕</span>
+          <span class="cv-err-title">The run stopped</span>
+          <span class="cv-err-code faint" title="error code">{v.code}</span>
+        </div>
+        <p class="cv-err-msg text" data-error-message>{item.message}</p>
+        <p class="cv-err-line text"><span class="cv-err-l">Tried</span>{`restarting the session ${n} time${n === 1 ? "" : "s"}`}</p>
+        <div class="cv-err-actions">
+          {retryText && <RetryButton text={retryText} run={run} />}
+          <RetryButton text="Continue from where you stopped." run={run} label="Continue" />
+        </div>
+      </div>
+    );
+  }
   return (
     <div class="cv-err" data-error data-error-kind={v.kind} data-row data-kind="error" role="group" aria-label={v.title}>
       <div class="cv-err-head">

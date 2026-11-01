@@ -1,4 +1,4 @@
-// The model's room (P10 FWA, after the final review's I1): however many dock columns are open, the
+// The model's room (P10 FWA, after the final review's I1): however the dock is laid out, the
 // build view keeps at least VIEWPORT_MIN px between the floating surfaces. The dock gives way
 // first — it shrinks toward the narrowest its open columns allow — and when even that leaves the
 // model too little, the Parts surface folds to its slim tab by itself (router.partsAutoFold) and
@@ -7,7 +7,7 @@
 // `dockMax` here, and the dock's edge drag stops there too. The math is pure; the signals wrap it.
 import { computed, effect, signal, type ReadonlySignal, type Signal } from "@preact/signals";
 import { atHome } from "../../state/home";
-import { dockLayout, minWidth, openStreams, STREAMS, TAB_W, VIEWPORT_MIN, type DockLayout } from "../console/dockLayout";
+import { dockLayout, minWidth, VIEWPORT_MIN, type DockLayout } from "../console/dockLayout";
 import { activePage, consoleCollapsed, leftFolded, setPartsAutoFold } from "../pages/router";
 
 /** The shell's --gap: a floating surface sits this far in from the window edge and the model. */
@@ -34,11 +34,9 @@ export function dockCap(win: number, left: number): number {
   return Math.max(DOCK_FLOOR, win - left - VIEWPORT_MIN - 2 * GAP);
 }
 
-/** The narrowest the dock can be with this layout: its open columns at their minimum and a tab per
- *  closed one. */
-export function dockMin(l: DockLayout): number {
-  const n = openStreams(l).length;
-  return minWidth(n) + (STREAMS.length - n) * TAB_W;
+/** The narrowest the dock can be with this layout (P11 F2: one width, whatever is open). */
+export function dockMin(_l: DockLayout): number {
+  return minWidth();
 }
 
 /** Whether the Parts surface must fold so the dock and the model both fit: even at its narrowest

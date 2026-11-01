@@ -3,7 +3,9 @@
 // no "New run". Viewing a sub-agent's thread is read-only; "Message this agent" points the
 // composer at it until you go back to the lead (or show another thread). "@agent …" still
 // addresses a run by name, "@all" every finished run, and "/" the commands. Edit (E9) puts a
-// message of yours back here: sending it starts a new turn and marks the old one edited.
+// message of yours back here: sending it starts a new turn and marks the old one edited. P11 F7:
+// images pasted (⌘V), dropped here or picked with 📎 ride along (attachments.ts), shown as
+// thumbnails above the box; a drawing-like one offers "Make a part from this drawing".
 import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { CoreError } from "../../../api/client";
@@ -21,9 +23,15 @@ import { shownPending } from "../queued";
 import { startErrorText } from "../startError";
 import { stopBusy, stoppable as anyStoppable } from "../stopTarget";
 import { composerOpen } from "../view";
+import { startImport } from "../../imports/state";
+import { addFiles, attachments, clearAttachments, removeAttachment, toImagesIn, type Attachment } from "./attachments";
 import { allTargets } from "./isExternal";
 import { parseCommand, type Command } from "./parseCommand";
 import "./command.css";
+
+/** P11 F7: what an image-only message says (the agent gets the images as image blocks). */
+export const IMAGE_ONLY_TEXT = "See the attached image.";
+const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes("Files");
 
 const FILTER_KINDS: readonly LogFilter["kind"][] = ["everything", "decisions", "tool_calls", "files", "errors"];
 
@@ -54,8 +62,17 @@ export function CommandLine(): JSX.Element {
   const history = useRef<string[]>([]);
   const cursor = useRef<number>(-1); // -1 = not browsing history
   const draft = useRef("");
+  const picker = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
+  const atts = attachments.value;
 
   useEffect(() => registerShortcut("Meta+K", () => input.current?.focus()), []);
+
+  /** P11 F7: paste / drop / 📎 — the images join the next message (shrunk here first). */
+  async function attach(files: Iterable<File>): Promise<void> {
+    const why = await addFiles(files);
+    if (why) setError(why);
+  }
 
   const allRuns = [...runs.value.values()];
   const parsed: Command = value.trim() ? parseCommand(value, allRuns) : { kind: "message", target: "selected", text: "" };
@@ -102,7 +119,9 @@ export function CommandLine(): JSX.Element {
   async function execute(cmd: Command): Promise<boolean> {
     if (cmd.kind === "invalid") { setError(cmd.reason); return false; }
     if (cmd.kind === "slash") return slash(cmd.name, cmd.arg);
+    const images = toImagesIn(attachments.peek());
     if (cmd.target === "all") {
+      if (images.length) { setError("images go to one agent: send them to the lead or a named run, not @all"); return false; }
       const { targets, skipped } = allTargets(allRuns, { pid: corePid.value, started: sessionRuns.value });
       if (targets.length === 0) {
         setError("no idle runs to message — @all only resumes finished (done) runs of this core session");
@@ -128,7 +147,8 @@ export function CommandLine(): JSX.Element {
       to = named;
     }
     try {
-      const sent = await sendChat(cmd.text, to);
+      const sent = await sendChat(cmd.text, to, images);
+      if (images.length) clearAttachments();
       if (sent.note) setInfo(sent.note);
       if (editOf) { markEdited(editOf); setEditOf(null); restore.current = stash.current; stash.current = null; }
       return true;
@@ -174,7 +194,8 @@ export function CommandLine(): JSX.Element {
 
   async function submit(): Promise<void> {
     if (busy) return;
-    const line = value;
+    // images alone are a message too
+    const line = value.trim() ? value : attachments.peek().length ? IMAGE_ONLY_TEXT : value;
     if (!line.trim()) return;
     setBusy(true);
     setError(null);
@@ -236,7 +257,15 @@ export function CommandLine(): JSX.Element {
   const rows = Math.min(5, Math.max(1, value.split("\n").length));
   const shownLabel = shown ? runLabel(shown, allRuns) : "";
   return (
-    <div class="cmd" data-command-line>
+    <div class={`cmd${dragging ? " is-dropping" : ""}`} data-command-line
+      onDragOver={(e) => { if (!hasFiles(e)) return; e.preventDefault(); if (!dragging) setDragging(true); }}
+      onDragLeave={(e) => { if (e.currentTarget === e.target) setDragging(false); }}
+      onDrop={(e) => {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        setDragging(false);
+        void attach(Array.from(e.dataTransfer?.files ?? []));
+      }}>
       {viewingSub && (
         <div class="cmd-view" data-viewing-sub={shown?.id}>
           <span class="cmd-view-t dim text">{`Viewing ${shownLabel} · your message goes to the lead`}</span>
@@ -270,7 +299,19 @@ export function CommandLine(): JSX.Element {
           ))}
         </div>
       )}
+      {atts.length > 0 && (
+        <div class="cmd-atts" role="list" aria-label="Attached images" data-attachments>
+          {atts.map((a) => <AttachmentThumb key={a.id} a={a} />)}
+        </div>
+      )}
       <div class="cmd-row">
+        <button type="button" class="cmd-attach" aria-label="Attach images" title="Attach images (or paste / drop them here)"
+          data-testid="composer-attach" disabled={atts.length >= 5} onClick={() => picker.current?.click()}>
+          <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M10.5 4.5 5.8 9.2a1.5 1.5 0 0 0 2.1 2.1l5-5a3 3 0 0 0-4.2-4.2l-5.2 5.2a4.5 4.5 0 0 0 6.4 6.4l4.3-4.3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" /></svg>
+        </button>
+        <input ref={picker} type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/heic,image/heif,.heic,.heif" multiple
+          class="cmd-file" tabIndex={-1} aria-hidden="true" data-testid="composer-file"
+          onChange={(e) => { const el = e.currentTarget; void attach(Array.from(el.files ?? [])); el.value = ""; }} />
         <textarea
           ref={input}
           class="cmd-input"
@@ -281,6 +322,12 @@ export function CommandLine(): JSX.Element {
           spellcheck={false}
           onInput={(e) => { setValue(e.currentTarget.value); cursor.current = -1; setError(null); }}
           onKeyDown={onKeyDown}
+          onPaste={(e) => {
+            const files = Array.from(e.clipboardData?.files ?? []);
+            if (!files.some((f) => f.type.startsWith("image/"))) return;   // text pastes as text
+            e.preventDefault();
+            void attach(files);
+          }}
         />
         {stoppable
           ? (
@@ -291,7 +338,7 @@ export function CommandLine(): JSX.Element {
           )
           : (
             <button type="button" class="cmd-send" aria-label="Send" title="Send (⏎)" data-testid="composer-send"
-              disabled={busy || !value.trim()} onClick={() => { void submit(); input.current?.focus(); }}>
+              disabled={busy || (!value.trim() && atts.length === 0)} onClick={() => { void submit(); input.current?.focus(); }}>
               <span aria-hidden="true">↑</span>
             </button>
           )}
@@ -299,6 +346,25 @@ export function CommandLine(): JSX.Element {
       {error && <div class="cmd-error text" role="alert">{error}</div>}
       {info && !error && <div class="cmd-info text dim" data-testid="cmd-info">{info}</div>}
     </div>
+  );
+}
+
+/** One attached image: its thumbnail, × to drop it, and — when it looks like a technical
+ *  drawing — the drawing import ("Make a part from this drawing", the existing import path). */
+function AttachmentThumb({ a }: { a: Attachment }): JSX.Element {
+  return (
+    <figure class="cmd-att" role="listitem" data-attachment={a.id} data-drawing={a.drawing ? "" : undefined}
+      title={`${a.name} · ${a.width}×${a.height}`}>
+      <img src={`data:${a.mediaType};base64,${a.dataB64}`} alt={a.name} />
+      <button type="button" class="cmd-att-x" aria-label={`Remove ${a.name}`} onClick={() => removeAttachment(a.id)}>×</button>
+      {a.drawing && (
+        <button type="button" class="cmd-att-make" data-testid="make-part-from-drawing"
+          title="Import it as a drawing: Mises makes the part and checks its dimensions"
+          onClick={() => { startImport(a.file, activeBuildId.peek()); removeAttachment(a.id); }}>
+          Make a part from this drawing
+        </button>
+      )}
+    </figure>
   );
 }
 

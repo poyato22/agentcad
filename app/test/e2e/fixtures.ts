@@ -125,7 +125,7 @@ const ALL_COLUMNS = new Set(["agent-browser.spec.ts", "concept-sketch.spec.ts", 
 export async function openAllDockColumns(page: import("@playwright/test").Page): Promise<void> {
   await page.addInitScript(() => {
     try {
-      if (!localStorage.getItem("mises.dock.columns")) localStorage.setItem("mises.dock.columns", JSON.stringify({ collapsed: { view: false, sim: false, text: false } }));
+      if (!localStorage.getItem("mises.dock.stack")) localStorage.setItem("mises.dock.stack", JSON.stringify({ collapsed: { view: false, sim: false, text: false } }));
     } catch { /* none */ }
   });
 }
@@ -140,7 +140,7 @@ export async function showParts(page: import("@playwright/test").Page): Promise<
 }
 export async function useDefaultDock(page: import("@playwright/test").Page): Promise<void> {
   await page.addInitScript(() => {
-    try { if (!sessionStorage.getItem("dock-default")) { sessionStorage.setItem("dock-default", "1"); localStorage.removeItem("mises.dock.columns"); } } catch { /* none */ }
+    try { if (!sessionStorage.getItem("dock-default")) { sessionStorage.setItem("dock-default", "1"); localStorage.removeItem("mises.dock.stack"); } } catch { /* none */ }
   });
 }
 

@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, Annotated, Any
 import anyio
 import uvicorn
 from fastapi import FastAPI, WebSocket
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from mcp.server.streamable_http_manager import StreamableHTTPASGIApp, StreamableHTTPSessionManager
 from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import BaseModel, Field, StringConstraints
@@ -203,15 +203,36 @@ class Text(BaseModel):
 
 
 class ImageIn(BaseModel):
-    media_type: str = Field(pattern=r"^image/(png|jpeg|webp|gif)$")
+    media_type: str = Field(pattern=r"^image/(png|jpeg|webp|gif|heic|heif)$")
     data_b64: str = Field(min_length=1, max_length=20_000_000)
 
 
 class ChatBody(BaseModel):
-    """E24: one message to the build's lead (the only way the app talks to a build)."""
+    """E24: one message to the build's lead (the only way the app talks to a build). P11 F7:
+    up to 5 attached images (mises.chat_images: checked, shrunk, kept under the build)."""
     text: str
     images: list[ImageIn] = Field(default_factory=list, max_length=8)
     edits: EditsRef | None = None
+
+
+class MessageBody(Text):
+    """A message to one run (a sub-agent's thread), with images like the build's chat."""
+    images: list[ImageIn] = Field(default_factory=list, max_length=8)
+
+
+def _chat_images(runtime, project_id: str | None, images: list[ImageIn], text: str,
+                 log: dict | None) -> tuple[list[tuple[str, str]] | None, dict | None]:
+    """P11 F7: the message's images normalized and stored under the build, as (blocks for the
+    agent, the user step's log with their refs)."""
+    if not images:
+        return None, log
+    from .. import chat_images
+    if project_id is None:
+        raise MisesError(ErrorCode.INVALID_INPUT, "images need a build to be kept in",
+                         hint="send them in a build's chat")
+    blocks, refs = chat_images.store(runtime.home, project_id,
+                                     [(i.media_type, i.data_b64) for i in images])
+    return blocks, {**(log or {"text": text}), "images": refs}
 
 
 class Resume(BaseModel):
@@ -465,19 +486,37 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
         model choice."""
         pid = _projects.check_project(runtime.store, project_id)
         prof = load_profile(runtime.home)
-        images = [(i.media_type, i.data_b64) for i in body.images] or None
         log = {"text": body.text, "edits": body.edits} if body.edits else None
+        images, log = _chat_images(runtime, pid, body.images, body.text, log)
         out = await _lead.submit(runtime, _edited_prompt(runtime, body.text, body.edits),
                                  project_id=pid, route_text=body.text if body.edits else None,
                                  default_agent=prof.default_agent, images=images, log=log)
         return {**out, "routed": out["routed"].model_dump()}
 
     @app.post("/runs/{run_id}/message")
-    async def message(run_id: str, body: Text):
+    async def message(run_id: str, body: MessageBody):
         _run(run_id)
         log = {"text": body.text, "edits": body.edits} if body.edits else None
-        await runtime.send(run_id, _edited_prompt(runtime, body.text, body.edits), log=log)
+        images, log = _chat_images(runtime, runtime.store.get_run(run_id).project_id,
+                                   body.images, body.text, log)
+        prompt = _edited_prompt(runtime, body.text, body.edits)
+        if images:
+            await runtime.send(run_id, prompt, log=log, images=images)
+        else:
+            await runtime.send(run_id, prompt, log=log)
         return {"ok": True}
+
+    @app.get("/projects/{project_id}/chat-images/{image_id}")
+    async def chat_image(project_id: str, image_id: str):
+        """P11 F7: an image attached to a message in this build (the thread's thumbnails)."""
+        from .. import chat_images
+        pid = _projects.check_project(runtime.store, project_id)
+        p = chat_images.path_of(runtime.home, pid, image_id)
+        if p is None:
+            raise MisesError(ErrorCode.NOT_FOUND, f"no image {image_id!r} in this build")
+        return Response(p.read_bytes(),
+                        media_type="image/png" if p.suffix == ".png" else "image/jpeg",
+                        headers={"Cache-Control": "private, max-age=31536000, immutable"})
 
     @app.delete("/runs/{run_id}/queue/{message_id}")
     async def cancel_queued(run_id: str, message_id: str):

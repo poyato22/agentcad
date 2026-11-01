@@ -6,7 +6,7 @@
 // Also here: Edit (your words back in the composer; the old message is marked edited once the new
 // one is sent), Retry (the same words again) and the stall rule (90 s with no sign of life).
 import { computed, signal, type ReadonlySignal, type Signal } from "@preact/signals";
-import { CoreError } from "../../api/client";
+import { CoreError, type ChatImageIn } from "../../api/client";
 import type { AgentActivity, AgentRun, CreateRunResult } from "../../api/types";
 import { agentChips, chipsPromptLine, clearAgentChips } from "../../state/agentChips";
 import { activeBuildId } from "../../state/builds";
@@ -72,15 +72,16 @@ async function firstLeadModel(): Promise<string | null> {
 export interface Sent { runId: string; note: string | null; res: CreateRunResult | null }
 
 /** Send `text` to the build's lead (or to `target`, a sub-agent the user chose). "Use with
- *  agent" chips ride along. Throws the core's error (the composer shows it, the text is kept). */
-export async function sendChat(text: string, target: AgentRun | null = null): Promise<Sent> {
+ *  agent" chips ride along, and `images` (P11 F7: the composer's attachments). Throws the core's
+ *  error (the composer shows it, the text and the images are kept). */
+export async function sendChat(text: string, target: AgentRun | null = null, images: readonly ChatImageIn[] = []): Promise<Sent> {
   const chipLine = chipsPromptLine(agentChips.peek());
   const body = chipLine ? `${text}\n\n${chipLine}` : text;
   const c = actions.client();
   let fellBack = false;
   if (target && target.role !== "lead") {
     try {
-      await c.message(target.id, body);
+      await (images.length ? c.message(target.id, body, images) : c.message(target.id, body));
       if (chipLine) clearAgentChips();
       return { runId: target.id, note: null, res: null };
     } catch (e) {
@@ -93,7 +94,7 @@ export async function sendChat(text: string, target: AgentRun | null = null): Pr
   const buildId = target?.project_id ?? activeBuildId.peek();
   if (!buildId) throw new CoreError("invalid_input", "Open a build first", { hint: "the chat belongs to a build" });
   const lead = leadOf(runs.peek().values(), buildId);
-  let res = await c.chat(buildId, body);
+  let res = await (images.length ? c.chat(buildId, body, images) : c.chat(buildId, body));
   if (res === null) {
     // an older core: POST /runs routes to the lead, or starts one (on the default model we pick)
     const model = lead ? null : await firstLeadModel();

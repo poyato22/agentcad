@@ -32,6 +32,8 @@ import { AnnouncementCard } from "./AnnouncementCard";
 import { StudyGrid } from "./studycard/StudyGrid";
 import { AssemblyAnimationChip } from "./AssemblyAnimationChip";
 import { TopoptCardSlot } from "../topopt/TopoptCard";
+import { activeBuildId } from "../../state/builds";
+import { ChatImages } from "./ChatImages";
 
 const AT_BOTTOM_PX = 24;
 /** Rows rendered at once (the last ones); "show earlier" adds this many more. Same as StepLog. */
@@ -205,6 +207,7 @@ export function Item({ item, agent, runId = null, run = null, retryText = null }
             {!fb && item.key !== "task" && item.text.trim() !== "" && <EditButton text={item.text} rowKey={rowKey} />}
           </div>
           {fb ? <FeedbackNote feedback={fb} runId={runId} /> : <div class="cv-text text">{item.text}</div>}
+          {item.images && <ChatImages images={item.images} buildId={run?.project_id ?? activeBuildId.value} />}
         </div>
       );
     }

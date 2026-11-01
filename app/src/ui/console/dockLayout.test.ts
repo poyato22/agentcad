@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { AgentActivity } from "../../api/types";
 import { runBusy } from "../../state/activity";
 import {
-  COL_MIN, DEFAULT_LAYOUT, dockLayout, dockWidth, LAYOUT_KEY, openStreams, parseLayout, resetDockLayout, resizeColumns, resizeWidth,
-  setDockLayout, TAB_W, toggleStream, WIDTH_MAX, WIDTH_MIN,
+  DEFAULT_LAYOUT, dockLayout, dockWidth, HOVER_GROW, LAYOUT_KEY, openRow, openStreams, parseLayout, resetDockLayout, resizeSplit,
+  resizeWidth, rowGrow, setDockLayout, SPLIT_MAX, SPLIT_MIN, toggleStream, WIDTH_MAX, WIDTH_MIN,
 } from "./dockLayout";
 import { stopTargets, waitingOnYou } from "./stopTarget";
 import { run } from "./testSteps";
@@ -11,63 +11,60 @@ import { markSeen, resetUnread, unreadCount, unreadOf } from "./unread";
 
 afterEach(() => { try { localStorage.removeItem(LAYOUT_KEY); } catch { /* none */ } resetDockLayout(); resetUnread(); });
 
-const openAll = toggleStream(toggleStream(DEFAULT_LAYOUT, "view"), "sim");
+describe("dock layout: the Conversation on top, View | Simulations under it (P11 F2)", () => {
+  it("opens all three by default, one width whatever is open", () => {
+    expect(openStreams(DEFAULT_LAYOUT)).toEqual(["view", "sim", "text"]);
+    expect(openRow(DEFAULT_LAYOUT)).toEqual(["view", "sim"]);
+    expect(dockWidth(DEFAULT_LAYOUT)).toBe(560);
+    expect(dockWidth(toggleStream(DEFAULT_LAYOUT, "view"))).toBe(560);
+  });
 
-describe("dock layout: side-by-side columns (P10 E6)", () => {
-  it("opens the Conversation alone by default; the dock grows with each open column (440 / 760 / 1080)", () => {
-    expect(openStreams(DEFAULT_LAYOUT)).toEqual(["text"]);
-    expect(dockWidth(DEFAULT_LAYOUT)).toBe(440 + 2 * TAB_W);
-    const two = toggleStream(DEFAULT_LAYOUT, "view");
-    expect(openStreams(two)).toEqual(["view", "text"]);
-    expect(dockWidth(two)).toBe(760 + TAB_W);
-    expect(openStreams(openAll)).toEqual(["view", "sim", "text"]);
-    expect(dockWidth(openAll)).toBe(1080);
+  it("View and Simulations share the row 50/50; a hovered one takes ~90%, the other never 0", () => {
+    expect(rowGrow(DEFAULT_LAYOUT, null)).toEqual({ view: 1, sim: 1 });
+    expect(rowGrow(DEFAULT_LAYOUT, "view")).toEqual({ view: HOVER_GROW, sim: 1 });
+    expect(rowGrow(DEFAULT_LAYOUT, "sim")).toEqual({ view: 1, sim: HOVER_GROW });
+    expect(HOVER_GROW / (HOVER_GROW + 1)).toBeCloseTo(0.9);
+    // the Conversation's hover or a half closed: no widening
+    expect(rowGrow(DEFAULT_LAYOUT, "text")).toEqual({ view: 1, sim: 1 });
+    expect(rowGrow(toggleStream(DEFAULT_LAYOUT, "sim"), "view")).toEqual({ view: 1, sim: 1 });
   });
 
   it("any combination can be open, but never none", () => {
-    const viewOnly = toggleStream(toggleStream(DEFAULT_LAYOUT, "view"), "text");
+    const viewOnly = toggleStream(toggleStream(DEFAULT_LAYOUT, "sim"), "text");
     expect(openStreams(viewOnly)).toEqual(["view"]);
     expect(toggleStream(viewOnly, "view")).toBe(viewOnly);
-    expect(openStreams(toggleStream(openAll, "sim"))).toEqual(["view", "text"]);
+    expect(openRow(toggleStream(toggleStream(DEFAULT_LAYOUT, "view"), "sim"))).toEqual([]);
   });
 
-  it("the left edge sets the width for the number of open columns, within its bounds and the window", () => {
-    expect(resizeWidth(DEFAULT_LAYOUT, -60).widths).toEqual([500, 760, 1080]);
-    expect(resizeWidth(DEFAULT_LAYOUT, 1000).widths[0]).toBe(WIDTH_MIN);
-    expect(resizeWidth(DEFAULT_LAYOUT, -5000).widths[0]).toBe(WIDTH_MAX);
-    expect(resizeWidth(openAll, -500, 1200).widths[2]).toBe(1200);
-    // three columns never below 3 × COL_MIN
-    expect(resizeWidth(openAll, 5000).widths[2]).toBe(3 * COL_MIN);
-  });
-
-  it("a divider moves width from one open column to the next, never below COL_MIN", () => {
-    const l = resizeColumns(openAll, "view", "sim", 60, 1080);
-    const px = (x: typeof l, s: "view" | "sim" | "text") => (x.share[s] / (x.share.view + x.share.sim + x.share.text)) * 1080;
-    expect(Math.round(px(l, "view"))).toBe(420);
-    expect(Math.round(px(l, "sim"))).toBe(300);
-    expect(Math.round(px(l, "text"))).toBe(360);
-    const far = resizeColumns(openAll, "view", "sim", 5000, 1080);
-    expect(Math.round(px(far, "sim"))).toBe(COL_MIN);
-    // a closed column is not resized
-    expect(resizeColumns(DEFAULT_LAYOUT, "view", "text", 40, 440)).toBe(DEFAULT_LAYOUT);
+  it("the left edge sets the width within its bounds and the window; the bar trades heights", () => {
+    expect(resizeWidth(DEFAULT_LAYOUT, -60).width).toBe(620);
+    expect(resizeWidth(DEFAULT_LAYOUT, 1000).width).toBe(WIDTH_MIN);
+    expect(resizeWidth(DEFAULT_LAYOUT, -5000).width).toBe(WIDTH_MAX);
+    expect(resizeWidth(DEFAULT_LAYOUT, -500, 700).width).toBe(700);
+    expect(resizeSplit(DEFAULT_LAYOUT, 100, 1000).split).toBeCloseTo(0.66);
+    expect(resizeSplit(DEFAULT_LAYOUT, 5000, 1000).split).toBe(SPLIT_MAX);
+    expect(resizeSplit(DEFAULT_LAYOUT, -5000, 1000).split).toBe(SPLIT_MIN);
+    expect(resizeSplit(DEFAULT_LAYOUT, 10, 0)).toBe(DEFAULT_LAYOUT);
   });
 
   it("persists the layout and reads a bad or old record as the default", () => {
-    const l = resizeColumns(resizeWidth(openAll, -40), "sim", "text", 30, 1120);
+    const l = resizeSplit(resizeWidth(toggleStream(DEFAULT_LAYOUT, "sim"), -40), 50, 1000);
     setDockLayout(l);
     expect(JSON.parse(localStorage.getItem(LAYOUT_KEY) as string)).toEqual(l);
     dockLayout.value = DEFAULT_LAYOUT;
     resetDockLayout();
     expect(dockLayout.value).toEqual(l);
     // a drag in progress is not saved until it ends
-    setDockLayout({ ...l, widths: [400, 760, 1080] }, false);
-    expect(JSON.parse(localStorage.getItem(LAYOUT_KEY) as string).widths).toEqual(l.widths);
-    expect(parseLayout({ widths: ["wide", -5], collapsed: { sim: "yes" }, share: { view: 99 } }))
-      .toEqual({ ...DEFAULT_LAYOUT, widths: [440, 2 * COL_MIN, 1080], share: { view: 5, sim: 1, text: 1 } });
+    setDockLayout({ ...l, width: 400 }, false);
+    expect(JSON.parse(localStorage.getItem(LAYOUT_KEY) as string).width).toBe(l.width);
+    expect(parseLayout({ width: "wide", split: 9, collapsed: { sim: "yes" } }))
+      .toEqual({ ...DEFAULT_LAYOUT, split: SPLIT_MAX });
     expect(parseLayout(null)).toEqual(DEFAULT_LAYOUT);
     expect(parseLayout({ collapsed: { view: true, sim: true, text: true } }).collapsed.text).toBe(false);
-    // the stacked layout of Plan 9 ({width, view, sim}) has no columns: the default
-    expect(parseLayout({ width: 600, view: 300, sim: 200 })).toEqual(DEFAULT_LAYOUT);
+    // the P10 columns record lives under another key: never read
+    localStorage.setItem("mises.dock.columns", JSON.stringify({ collapsed: { view: true, sim: true, text: false } }));
+    resetDockLayout();
+    expect(dockLayout.value).toEqual(l);
     localStorage.setItem(LAYOUT_KEY, "{not json");
     resetDockLayout();
     expect(dockLayout.value).toEqual(DEFAULT_LAYOUT);

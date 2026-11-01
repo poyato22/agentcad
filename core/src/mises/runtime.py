@@ -2009,7 +2009,14 @@ class Runtime:
             # images before the text that asks about them (Claude vision guidance)
             prompt = [*(ImageBlock(media_type=m, data_b64=d) for m, d in images),
                       TextBlock(text=text)]
-            log = {"text": text, **(log or {}), "images": len(images)}
+            # P11 F7: chat images keep their refs (the thread shows them), others a count
+            log = {"text": text, **(log or {}),
+                   "images": (log or {}).get("images") or len(images)}
+        elif images:
+            # a model that cannot see images: the agent is told, the refs stay on the step
+            prompt = (f"{text}\n\n[The user attached {len(images)} image(s); this model cannot "
+                      "see images. Say so if you need what they show.]")
+            log = {"text": text, **(log or {})}
         st.task = asyncio.create_task(self._drive_slotted(run_id, prompt, slot, started,
                                                           user_log=log))
         st.task.add_done_callback(functools.partial(self._slotted_done, run_id))

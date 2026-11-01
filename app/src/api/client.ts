@@ -82,6 +82,9 @@ const anyBody = z.unknown();
 
 export type CoreErrorCode = ErrorCode | "unauthorized" | "validation" | "network";
 
+/** P11 F7: one image attached to a chat message (core server/app.py ImageIn). */
+export interface ChatImageIn { media_type: string; data_b64: string }
+
 export class CoreError extends Error {
   readonly status: number;
   readonly code: CoreErrorCode;
@@ -156,15 +159,21 @@ export class CoreClient {
   projectAgents(projectId: string): Promise<AgentsView> {
     return this.json("GET", `/projects/${enc(projectId)}/agents`, agentsViewSchema);
   }
-  message(runId: string, text: string): Promise<{ ok: true }> {
-    return this.json("POST", `/runs/${enc(runId)}/message`, okSchema, { body: { text } });
+  /** P11 F7: `images` (at most 5, already shrunk by the composer) go with the message as real
+   *  image blocks; the core checks them again and keeps them under the build. */
+  message(runId: string, text: string, images?: readonly ChatImageIn[]): Promise<{ ok: true }> {
+    return this.json("POST", `/runs/${enc(runId)}/message`, okSchema, { body: images?.length ? { text, images } : { text } });
+  }
+  /** P11 F7: an image attached to a message in this build (the thread's thumbnail). */
+  chatImage(projectId: string, imageId: string, mediaType = "image/jpeg"): Promise<Blob> {
+    return this.blob(`/projects/${enc(projectId)}/chat-images/${enc(imageId)}`, mediaType);
   }
   cancel(runId: string): Promise<{ ok: true }> { return this.json("POST", `/runs/${enc(runId)}/cancel`, okSchema); }
   /** P10 E24 (core C1): one chat per build. The message goes to the build's lead (queued behind
    *  its current step while it works); with no lead yet the core starts one on the default model
    *  (Claude Code when signed in). null: this core has no such route (an older core). */
-  async chat(projectId: string, text: string): Promise<CreateRunResult | null> {
-    const res = await this.request("POST", `/projects/${enc(projectId)}/chat`, { body: { text } });
+  async chat(projectId: string, text: string, images?: readonly ChatImageIn[]): Promise<CreateRunResult | null> {
+    const res = await this.request("POST", `/projects/${enc(projectId)}/chat`, { body: images?.length ? { text, images } : { text } });
     if (await routeMissing(res)) return null;
     if (!res.ok) throw await toError(res);
     return createRunResultSchema.parse(await res.json());

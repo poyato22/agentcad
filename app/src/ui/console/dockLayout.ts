@@ -1,66 +1,75 @@
-// The agent dock's layout (P10 E6): View | Simulations | Conversation side by side as columns,
-// each open or closed on its own (a closed one is a slim vertical tab). The open columns share the
-// dock's width by their `share` (the vertical dividers between them move share from one to the
-// next); the dock's width depends on how many are open — one width per count, dragged at its left
-// edge (defaults 440 / 760 / 1080), plus a slim tab per closed column — and CSS caps it so the
-// model always keeps VIEWPORT_MIN (base.css --console-w; ui/shell/room.ts also counts the Parts surface). At least one column stays open. A per-viewer
-// convenience kept in localStorage — it may be unavailable, and then the layout just isn't
-// remembered. The math is pure; the signal and storage wrap it.
+// The agent dock's layout (P11 F2): the Conversation on top, full width; View and Simulations
+// underneath, side by side, 50/50. Hovering View or Simulations widens it to ~90% of the dock
+// (the other keeps ~10%, never 0) and leaving restores 50/50 (`rowGrow`). Each stream opens or
+// closes on its own: a closed Conversation is a slim bar at the top, a closed View or
+// Simulations a slim vertical tab in the row (both closed: a slim bar of two tabs); at least one
+// stream stays open. The dock has one width (dragged at its left edge) and the Conversation's
+// share of the height (dragged at the bar between it and the row). The model always keeps
+// VIEWPORT_MIN (base.css --console-w; ui/shell/room.ts also counts the Parts surface). A
+// per-viewer convenience kept in localStorage — it may be unavailable, and then the layout just
+// isn't remembered. The math is pure; the signal and storage wrap it.
 import { signal, type Signal } from "@preact/signals";
 import type { StreamKind } from "../../api/types";
 
 export const STREAMS: readonly StreamKind[] = ["view", "sim", "text"];
+/** The row under the Conversation, in order. */
+export const ROW: readonly StreamKind[] = ["view", "sim"];
 
 export interface DockLayout {
   collapsed: Record<StreamKind, boolean>;
-  /** The open columns' total width (px) for 1, 2 and 3 open columns. */
-  widths: [number, number, number];
-  /** Each column's relative share of that width while open. */
-  share: Record<StreamKind, number>;
+  /** The dock's width (px). */
+  width: number;
+  /** The Conversation's share of the dock's height while it and the row are both open. */
+  split: number;
 }
 
-/** P10 E6 (was "mises.dock.layout": stacked streams; an old record is not read). */
-export const LAYOUT_KEY = "mises.dock.columns";
-/** The defaults per number of open columns. */
-export const DEFAULT_WIDTHS: readonly [number, number, number] = [440, 760, 1080];
-/** One column is never narrower than this; one open column never narrower than WIDTH_MIN. */
-export const COL_MIN = 260;
+/** P11 F2 (was "mises.dock.columns": three side-by-side columns; an old record is not read). */
+export const LAYOUT_KEY = "mises.dock.stack";
+export const DEFAULT_WIDTH = 560;
 export const WIDTH_MIN = 360;
 export const WIDTH_MAX = 1800;
-/** A closed column's slim tab. */
+export const SPLIT_DEFAULT = 0.56;
+export const SPLIT_MIN = 0.25;
+export const SPLIT_MAX = 0.8;
+/** A closed stream's slim tab (a bar's height, a vertical tab's width). */
 export const TAB_W = 30;
+/** Hover: the hovered half's flex-grow against the other's 1 (~90% / ~10%). */
+export const HOVER_GROW = 9;
 /** The model keeps at least this much of the window (the CSS cap; drags stop there too). */
 export const VIEWPORT_MIN = 520;
 
 export const DEFAULT_LAYOUT: DockLayout = {
-  // the Conversation on its own (the dock's old footprint); View and Simulations wait as tabs
-  // with their unread counts until opened
-  collapsed: { view: true, sim: true, text: false },
-  widths: [...DEFAULT_WIDTHS],
-  share: { view: 1, sim: 1, text: 1 },
+  collapsed: { view: false, sim: false, text: false },
+  width: DEFAULT_WIDTH,
+  split: SPLIT_DEFAULT,
 };
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 const num = (v: unknown, d: number) => (typeof v === "number" && Number.isFinite(v) ? v : d);
 
-/** The open columns, in order. */
+/** The open streams, in order. */
 export function openStreams(l: DockLayout): StreamKind[] { return STREAMS.filter((s) => !l.collapsed[s]); }
 
-/** Smallest width for `n` open columns. */
-export const minWidth = (n: number): number => Math.max(WIDTH_MIN, n * COL_MIN);
+/** The row's open streams (View, Simulations). */
+export function openRow(l: DockLayout): StreamKind[] { return ROW.filter((s) => !l.collapsed[s]); }
 
-/** The dock's width (px): its open columns plus a tab per closed one (before the CSS cap). */
-export function dockWidth(l: DockLayout): number {
-  const n = openStreams(l).length;
-  return (n ? l.widths[n - 1] : 0) + (STREAMS.length - n) * TAB_W;
+/** Smallest dock width (any layout). */
+export const minWidth = (): number => WIDTH_MIN;
+
+/** The dock's width (px, before the CSS cap). */
+export function dockWidth(l: DockLayout): number { return l.width; }
+
+/** Each row stream's flex-grow: 50/50, or the hovered one ~90% while both are open. */
+export function rowGrow(l: DockLayout, hover: StreamKind | null): Record<"view" | "sim", number> {
+  const both = openRow(l).length === 2;
+  if (!both || (hover !== "view" && hover !== "sim")) return { view: 1, sim: 1 };
+  return hover === "view" ? { view: HOVER_GROW, sim: 1 } : { view: 1, sim: HOVER_GROW };
 }
 
 /** A stored layout read defensively: bad or missing fields take the default. */
 export function parseLayout(raw: unknown): DockLayout {
   const r = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
   const c = typeof r.collapsed === "object" && r.collapsed !== null ? (r.collapsed as Record<string, unknown>) : {};
-  const sh = typeof r.share === "object" && r.share !== null ? (r.share as Record<string, unknown>) : {};
-  const w = Array.isArray(r.widths) ? r.widths : [];
   const collapsed = {
     view: typeof c.view === "boolean" ? c.view : DEFAULT_LAYOUT.collapsed.view,
     sim: typeof c.sim === "boolean" ? c.sim : DEFAULT_LAYOUT.collapsed.sim,
@@ -68,45 +77,31 @@ export function parseLayout(raw: unknown): DockLayout {
   };
   // never all closed: the Conversation comes back
   if (collapsed.view && collapsed.sim && collapsed.text) collapsed.text = false;
-  const share = (s: StreamKind) => clamp(num(sh[s], 1), 0.2, 5);
   return {
     collapsed,
-    widths: [0, 1, 2].map((i) => clamp(Math.round(num(w[i], DEFAULT_WIDTHS[i])), minWidth(i + 1), WIDTH_MAX)) as [number, number, number],
-    share: { view: share("view"), sim: share("sim"), text: share("text") },
+    width: clamp(Math.round(num(r.width, DEFAULT_WIDTH)), WIDTH_MIN, WIDTH_MAX),
+    split: clamp(num(r.split, SPLIT_DEFAULT), SPLIT_MIN, SPLIT_MAX),
   };
 }
 
-/** Open or close a column. The last open column stays open. */
+/** Open or close a stream. The last open stream stays open. */
 export function toggleStream(l: DockLayout, s: StreamKind): DockLayout {
   if (!l.collapsed[s] && openStreams(l).length === 1) return l;
   return { ...l, collapsed: { ...l.collapsed, [s]: !l.collapsed[s] } };
 }
 
-/** Drag the dock's left edge by `dx` px (left is wider): the width for the current number of
- *  open columns, never past `max` (the window less the model's room). */
+/** Drag the dock's left edge by `dx` px (left is wider), never past `max` (the window less the
+ *  model's room). */
 export function resizeWidth(l: DockLayout, dx: number, max: number = WIDTH_MAX): DockLayout {
-  const n = openStreams(l).length;
-  if (!n) return l;
-  const i = n - 1;
-  const hi = Math.max(minWidth(n), Math.min(WIDTH_MAX, max));
-  const widths = [...l.widths] as [number, number, number];
-  widths[i] = Math.round(clamp(l.widths[i] - dx, minWidth(n), hi));
-  return { ...l, widths };
+  const hi = Math.max(WIDTH_MIN, Math.min(WIDTH_MAX, max));
+  return { ...l, width: Math.round(clamp(l.width - dx, WIDTH_MIN, hi)) };
 }
 
-/** Drag the divider between open columns `a` (left) and `b` (right) by `dx` px, with the open
- *  columns `total` px wide: `a` grows by dx and `b` shrinks, neither below COL_MIN. */
-export function resizeColumns(l: DockLayout, a: StreamKind, b: StreamKind, dx: number, total: number): DockLayout {
-  const open = openStreams(l);
-  if (!open.includes(a) || !open.includes(b) || total <= 0) return l;
-  const sum = open.reduce((t, s) => t + l.share[s], 0);
-  const px = (s: StreamKind) => (l.share[s] / sum) * total;
-  const pair = px(a) + px(b);
-  // squeezed below COL_MIN each (the model keeps its room: ui/shell/room) the pair still trades width
-  const lo = Math.min(COL_MIN, pair * 0.4);
-  const na = clamp(px(a) + dx, lo, pair - lo);
-  const round = (v: number) => Math.round(v * 1000) / 1000;
-  return { ...l, share: { ...l.share, [a]: round((na / total) * sum), [b]: round(((pair - na) / total) * sum) } };
+/** Drag the bar between the Conversation and the row by `dy` px (down: a taller Conversation)
+ *  in a dock `total` px tall. */
+export function resizeSplit(l: DockLayout, dy: number, total: number): DockLayout {
+  if (total <= 0) return l;
+  return { ...l, split: Math.round(clamp(l.split + dy / total, SPLIT_MIN, SPLIT_MAX) * 1000) / 1000 };
 }
 
 function read(): DockLayout {

@@ -20,24 +20,14 @@ describe("the model's room (P10 FWA)", () => {
     }
   });
 
-  it("folds the Parts surface only when even the narrowest dock would not fit beside it", () => {
-    // 1440: one or two columns shrink beside the open Parts surface; three need its room
-    expect(partsMustFold(1440, ONE)).toBe(false);
-    expect(partsMustFold(1440, TWO)).toBe(false);
-    expect(partsMustFold(1440, THREE)).toBe(true);
-    // 1280: one column fits; two and three fold it
-    expect(partsMustFold(1280, ONE)).toBe(false);
-    expect(partsMustFold(1280, TWO)).toBe(true);
-    expect(partsMustFold(1280, THREE)).toBe(true);
-    // wide windows keep it open with all three
-    expect(partsMustFold(1920, THREE)).toBe(false);
+  it("P11 F2: one dock width whatever is open, so the Parts surface never has to fold at 1280+", () => {
+    for (const l of [ONE, TWO, THREE]) {
+      expect(dockMin(l)).toBe(360);
+      for (const win of [1280, 1440, 1920]) expect(partsMustFold(win, l)).toBe(false);
+    }
+    // a window narrower than the shell's minimum still folds it (the rule itself is unchanged)
+    expect(partsMustFold(1100, THREE)).toBe(true);
     expect(partsMustFold(0, THREE)).toBe(false);
-  });
-
-  it("the narrowest dock is its open columns at their minimum plus the closed tabs", () => {
-    expect(dockMin(ONE)).toBe(360 + 60);
-    expect(dockMin(TWO)).toBe(520 + 30);
-    expect(dockMin(THREE)).toBe(780);
   });
 });
 

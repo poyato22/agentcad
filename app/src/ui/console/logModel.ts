@@ -28,7 +28,7 @@ type LogItemBody =
   | { kind: "fold"; calls: (CallItem & Labelled)[]; names: string[] }               // "▸ N more tool calls · a · b · c"
   | { kind: "diff"; step: Step; partId: string | null; vars: { name: string; prev: number | null; now: number }[];
       delta: { volume_mm3?: number; mass_g?: number; bbox_size?: number[] } }
-  | { kind: "error"; step: Step; code: string; message: string; hint: string | null; cause?: string | null }
+  | { kind: "error"; step: Step; code: string; message: string; hint: string | null; cause?: string | null; recovery?: { tried: number } | null }
   | { kind: "file"; step: Step; callId: string | null; path: string; added: number; removed: number }  // ACP file edit
   | { kind: "decision"; step: Step } | { kind: "note"; text: string; ts: number; stepId: number | null }
   | { kind: "approval"; approval: Approval } | { kind: "question"; question: Question }
@@ -283,12 +283,28 @@ function runItems(runId: string, input: BuildLogInput, prevVars: ReadonlyMap<num
         lastMessage = role === "assistant" ? text : null;
         continue;
       }
-      case "error":
-        push({ kind: "error", step: s, code: str(p.error) ?? str(p.code) ?? "error", message: str(p.message) ?? "", hint: str(p.hint), cause: str(p.cause) }, s.ts);
+      case "error": {
+        // P11 F9: a failure the run recovers from by itself is a quiet line, not a card; the
+        // card is for the end of the recovery budget (Retry / Continue)
+        if (p.recoverable === true) { push({ kind: "note", text: `Stopped: ${str(p.message) ?? "the session ended"}`, ts: s.ts, stepId: s.id }, s.ts); break; }
+        const r = rec(p.recovery);
+        const recovery = r.exhausted === true ? { tried: Array.isArray(r.tried) ? r.tried.length : 0 } : null;
+        push({ kind: "error", step: s, code: str(p.error) ?? str(p.code) ?? "error", message: str(p.message) ?? "", hint: str(p.hint), cause: str(p.cause), recovery }, s.ts);
         break;
-      case "decision": case "plan":
+      }
+      case "decision": case "plan": {
+        // P11 F9: "Recovered: …" and a stuck agent's strategy switch, as quiet lines
+        const recovered = str(rec(p.recovery).text);
+        const stuck = rec(p.stuck);
+        if (recovered) { push({ kind: "note", text: recovered, ts: s.ts, stepId: s.id }, s.ts); break; }
+        if (str(stuck.kind)) {
+          const why = stuck.kind === "oscillation" ? "edits going back and forth" : stuck.kind === "no_progress" ? "no progress" : `${str(stuck.tool) ?? "a call"} failing repeatedly`;
+          push({ kind: "note", text: `Stuck (${why}): told the agent to switch strategy`, ts: s.ts, stepId: s.id }, s.ts);
+          break;
+        }
         push({ kind: "decision", step: s }, s.ts);
         break;
+      }
       case "compaction": {
         const n = typeof p.summarized_messages === "number" ? p.summarized_messages : null;
         push({ kind: "note", text: n === null ? "compacted the conversation" : `compacted ${n} messages`, ts: s.ts, stepId: s.id }, s.ts);

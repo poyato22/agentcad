@@ -13,11 +13,28 @@ import { isStudyCallName } from "./studycard/cardModel";
 type Call = Extract<LogItem, { kind: "call" }>;
 type Diff = Extract<LogItem, { kind: "diff" }>;
 
+/** P11 F7: an attached image as the core lists it on the user's message step. */
+export interface ChatImageRef { id: string; media_type: string; width: number; height: number }
+
+/** The image refs on a user step (`images`: a list of refs; an older step's count is none). */
+export function chatImagesOf(payload: Record<string, unknown>): ChatImageRef[] | undefined {
+  const raw = payload["images"];
+  if (!Array.isArray(raw)) return undefined;
+  const out = raw.flatMap((r): ChatImageRef[] => {
+    const o = r as Record<string, unknown> | null;
+    return o && typeof o.id === "string" && /^[0-9a-f]{24}$/.test(o.id) && typeof o.media_type === "string"
+      ? [{ id: o.id, media_type: o.media_type, width: Number(o.width) || 0, height: Number(o.height) || 0 }] : [];
+  });
+  return out.length ? out : undefined;
+}
+
 export type ThreadItem =
   | {
       kind: "user"; key: string; text: string; ts: number; stepIds: number[];
       /** A comment pinned on the model (U2a/U3c): shown as the words plus the pin chip. */
       feedback?: FeedbackPin | null;
+      /** P11 F7: the images attached to it (kept under the build; GET …/chat-images/{id}). */
+      images?: ChatImageRef[];
     }
   | { kind: "agent"; key: string; text: string; ts: number | null; live: boolean; stepIds: number[] }
   | {
@@ -33,7 +50,7 @@ export type ThreadItem =
       stepIds: number[];
     }
   | { kind: "fold"; key: string; text: string; foldKey: string; count: number }
-  | { kind: "error"; key: string; code: string; message: string; hint: string | null; cause?: string | null; ts: number; stepIds: number[] }
+  | { kind: "error"; key: string; code: string; message: string; hint: string | null; cause?: string | null; recovery?: { tried: number } | null; ts: number; stepIds: number[] }
   | { kind: "note"; key: string; text: string; stepIds: number[]; stream?: StreamKind }
   | { kind: "approval"; key: string; approval: Approval }
   | { kind: "question"; key: string; question: Question }
@@ -190,7 +207,7 @@ export function buildThread(items: readonly LogItem[]): ThreadItem[] {
         // the user step a queued message's delivery appends: already shown, as the queued line
         if (it.role === "user" && echo.length && echo[0] === it.text) { echo.shift(); break; }
         out.push(it.role === "user"
-          ? { kind: "user", key, text: it.text, ts: it.step.ts, stepIds: [it.step.id], feedback: pinOf(it.step.payload) }
+          ? { kind: "user", key, text: it.text, ts: it.step.ts, stepIds: [it.step.id], feedback: pinOf(it.step.payload), images: chatImagesOf(it.step.payload) }
           : { kind: "agent", key, text: it.text, ts: it.step.ts, live: false, stepIds: [it.step.id] });
         last = null;
         break;
@@ -292,7 +309,7 @@ export function buildThread(items: readonly LogItem[]): ThreadItem[] {
         break;
       }
       case "error":
-        out.push({ kind: "error", key, code: it.code, message: it.message, hint: it.hint, cause: it.cause ?? null, ts: it.step.ts, stepIds: [it.step.id] });
+        out.push({ kind: "error", key, code: it.code, message: it.message, hint: it.hint, cause: it.cause ?? null, recovery: it.recovery ?? null, ts: it.step.ts, stepIds: [it.step.id] });
         last = null;
         break;
       case "note":

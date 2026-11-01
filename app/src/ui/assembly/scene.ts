@@ -90,6 +90,8 @@ export interface AssemblyScene {
   partToWorld(instanceId: string, p: Vec3): Vec3 | null;
   /** The inverse: a world point on the body as drawn → the part frame. */
   worldToPart(instanceId: string, w: Vec3): Vec3 | null;
+  /** P11 F4: the box of an instance's mesh as drawn, in its part frame (mm); null: not shown. */
+  partBox(instanceId: string): { min: Vec3; max: Vec3 } | null;
   /** A world point (mm) → client pixels. Test probe. */
   probe(): { project(p: Vec3): { x: number; y: number } };
   resize(w: number, h: number): void;
@@ -641,6 +643,11 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
       if (!m) return null;
       const v = new THREE.Vector3(...w).applyMatrix4(m.invert());
       return [v.x, v.y, v.z];
+    },
+    partBox(iid) {
+      const b = entries.get(iid)?.template?.bbox;
+      if (!b || b.isEmpty()) return null;
+      return { min: [b.min.x, b.min.y, b.min.z], max: [b.max.x, b.max.y, b.max.z] };
     },
     onHover(f) { hoverers.add(f); return () => { hoverers.delete(f); }; },
     toCanvas,

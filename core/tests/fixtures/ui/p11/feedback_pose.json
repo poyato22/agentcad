@@ -1,0 +1,61 @@
+{
+ "id": 9,
+ "run_id": "04248de2092e",
+ "ts": 1793554560.721548,
+ "kind": "decision",
+ "payload": {
+  "feedback": {
+   "drawn_bbox": {
+    "max": [
+     31.6,
+     -328.4,
+     120.0
+    ],
+    "min": [
+     -31.6,
+     -391.6,
+     0.0
+    ]
+   },
+   "face_id": null,
+   "instance": "coupler",
+   "instance_id": "7b2c3ca9eb31",
+   "model_bbox": {
+    "max": [
+     31.6,
+     31.6,
+     480.0
+    ],
+    "min": [
+     -31.6,
+     -31.6,
+     360.0
+    ]
+   },
+   "nearby_feature": null,
+   "nearby_hole": null,
+   "part": "coupler",
+   "part_id": "coupler",
+   "point": [
+    31.5248,
+    -362.7227,
+    59.1526
+   ],
+   "pose_check": {
+    "agrees": false,
+    "note": "the app drew this instance up to 360 mm from where Mises has it (model_bbox, from the part's geometry and the solved pose): the drawn mesh is out of date, not the model. Answer from model_bbox, and rebuild the part to refresh what the user sees.",
+    "offset_mm": 360.0
+   },
+   "text": "what is this doing here",
+   "world_point": [
+    31.5248,
+    -362.7227,
+    59.1526
+   ]
+  }
+ },
+ "evidence_hash": "1b7b5afb5ebd194eb8ac579c136a854f744691d6ee0c38eac46ce414090cd718",
+ "prev_hash": "a49ba8e8396d157f55844542bfeee986532a58e6698c31a0cb0683bb487c9ac0",
+ "collapsed": false,
+ "stream": "text"
+}

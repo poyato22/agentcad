@@ -195,6 +195,14 @@ test("comment pins in the assembly name the instance and follow it through the e
   const body = (sent?.body ?? {}) as Record<string, unknown>;
   expect(body["instance_id"]).toBe("r_turret");
   expect(Array.isArray(body["world_point"])).toBe(true);
+  // P11 F4: the pin carries the instance's world box as drawn, and the clicked spot lies in it
+  const drawnBox = body["world_bbox"] as { min: number[]; max: number[] };
+  const wp = body["world_point"] as number[];
+  expect(drawnBox.min).toHaveLength(3);
+  for (let k = 0; k < 3; k++) {
+    expect(wp[k]).toBeGreaterThanOrEqual(drawnBox.min[k] - 0.5);
+    expect(wp[k]).toBeLessThanOrEqual(drawnBox.max[k] + 0.5);
+  }
   const before = await pin.boundingBox();
   await page.getByTestId("pill-explode").click();
   await page.waitForTimeout(900);

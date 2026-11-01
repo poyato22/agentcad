@@ -1,5 +1,5 @@
-// P10 A2 against the fake core: the dock's View | Simulations | Conversation side by side as
-// columns (E6) that never select text while dragged (E10), the compact design focus (E23), the
+// P10 A2 against the fake core (P11 F2 layout): the Conversation on top, View | Simulations under it
+// (hover widens one), never selecting text while dragged (E10), the
 // critique card at view-card scale (E18), one chat per build with Edit / Retry / Cancel (E9,
 // E24), and error cards as plain wrapped text with the cause and what to do (E3). Steps and cards
 // are the real core's (core/tests/fixtures/ui); the chat and queued-cancel routes are the app's
@@ -23,7 +23,7 @@ const col = (page: Page, s: "view" | "sim" | "text") => con(page).locator(`[data
 const box = (page: Page) => page.getByLabel("Command line");
 
 async function open(page: Page, theme: "dark" | "light" = "dark", layout?: Record<string, unknown>) {
-  if (layout) await page.addInitScript((l) => { try { localStorage.setItem("mises.dock.columns", JSON.stringify(l)); } catch { /* none */ } }, layout);
+  if (layout) await page.addInitScript((l) => { try { localStorage.setItem("mises.dock.stack", JSON.stringify(l)); } catch { /* none */ } }, layout);
   await page.goto("/");
   await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
   await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
@@ -37,65 +37,73 @@ async function rect(page: Page, sel: string) {
 }
 
 for (const theme of ["dark", "light"] as const) {
-  test(`dock_columns_open_side_by_side_1_2_3_and_the_dock_grows_${theme}`, async ({ page, fake }) => {
+  // P11 F2: the Conversation on top, full width; View | Simulations under it, 50/50; hovering one
+  // widens it to ~90% (the other keeps ~10%), leaving restores 50/50
+  test(`dock_conversation_on_top_view_and_sims_below_hover_widens_${theme}`, async ({ page, fake }) => {
     await fake.reset(scenario() as never);
     await page.setViewportSize({ width: 1440, height: 900 });
     await useDefaultDock(page);
     await open(page, theme);
     await fake.emit({ type: "agent_announce", run_id: LEAD, data: G1.view_presented });
-    // the default: the Conversation alone, View and Simulations as slim tabs
-    await expect(col(page, "view")).toHaveAttribute("data-collapsed", "");
-    await expect(col(page, "sim")).toHaveAttribute("data-collapsed", "");
-    await expect(con(page).locator("[data-dock]")).toHaveAttribute("data-cols", "1");
-    const one = await rect(page, "[data-region=console]");
-    expect(Math.round(one.width)).toBe(440 + 60);
-    expect((await rect(page, "[data-dock] [data-stream=view]")).width).toBeLessThanOrEqual(31);
-    if (SHOTS) await page.screenshot({ path: `${SHOTS}/dock-1col-${theme}.png` });
-
-    await col(page, "view").click();
-    await expect(con(page).locator("[data-dock]")).toHaveAttribute("data-cols", "2");
-    const two = await rect(page, "[data-region=console]");
-    // 790 wanted; beside the open Parts surface the model keeps 520 px (1440 − 264 − 520 − 24:
-    // ui/shell/room), and two columns fit that, so the Parts surface stays open
-    expect(Math.round(two.width)).toBe(1440 - 264 - 520 - 24);
-    await expect(page.locator(".app")).toHaveAttribute("data-left", "open");
-    const v = await rect(page, "[data-dock] [data-stream=view]");
+    await expect(con(page).locator("[data-dock]")).toHaveAttribute("data-cols", "3");
+    const dock = await rect(page, "[data-region=console]");
+    expect(Math.round(dock.width)).toBe(560);
+    await expect(page.locator(".app")).toHaveAttribute("data-left", "open");      // one width: the Parts surface stays
     const t = await rect(page, "[data-dock] [data-stream=text]");
-    expect(v.x + v.width).toBeLessThanOrEqual(t.x + 1);                       // side by side, View left
-    expect(Math.abs(v.y - t.y)).toBeLessThan(1);
-    expect(Math.abs(v.height - t.height)).toBeLessThan(1);                     // full height each
+    const v = await rect(page, "[data-dock] [data-stream=view]");
+    const s = await rect(page, "[data-dock] [data-stream=sim]");
+    expect(t.width).toBeGreaterThan(dock.width - 4);                              // full width, on top
+    expect(t.y + t.height).toBeLessThanOrEqual(v.y + 4);
+    expect(Math.abs(v.y - s.y)).toBeLessThan(1);                                  // side by side
+    expect(v.x + v.width).toBeLessThanOrEqual(s.x + 1);
+    expect(Math.abs(v.width - s.width)).toBeLessThan(3);                          // 50/50
     await expect(col(page, "view").locator("[data-testid=view-card]")).toBeVisible();
-    const inset2 = () => page.locator("[data-region=viewer]").evaluate((el) => parseFloat(getComputedStyle(el).getPropertyValue("--inset-r")));
-    await expect.poll(inset2).toBeGreaterThan(two.width);
-    const insetTwo = await inset2();
-    if (SHOTS) await page.screenshot({ path: `${SHOTS}/dock-2col-${theme}.png` });
+    if (SHOTS) await page.locator("[data-region=console]").screenshot({ path: `${SHOTS}/dock-stack-${theme}.png` });
 
-    await col(page, "sim").click();
-    await expect(con(page).locator("[data-dock]")).toHaveAttribute("data-cols", "3");
-    const three = await rect(page, "[data-region=console]");
-    // 1080 wanted; three columns don't fit beside the Parts surface, so it folds to its tab by
-    // itself and the model keeps 520 px (1440 − 58 − 520 − 24)
-    await expect(page.locator(".app")).toHaveAttribute("data-left", "rail");
-    expect(Math.round(three.width)).toBe(1440 - 58 - 520 - 24);
-    const xs = await Promise.all((["view", "sim", "text"] as const).map(async (s) => (await rect(page, `[data-dock] [data-stream=${s}]`)).x));
-    expect([...xs].sort((a, b) => a - b)).toEqual(xs);
-    // the 3D view centres in what is left (shell/insets follows the dock)
-    // (shared with the Parts surface when both cannot fit: shell/insets caps the pair; it is
-    // re-measured on the next resize observation)
-    const insetR = () => page.locator("[data-region=viewer]").evaluate((el) => parseFloat(getComputedStyle(el).getPropertyValue("--inset-r")));
-    await expect.poll(insetR).toBeGreaterThan(Math.max(insetTwo, three.width * 0.9));
-    if (SHOTS) await page.screenshot({ path: `${SHOTS}/dock-3col-${theme}.png` });
+    // hover View: ~90%, Simulations a sliver (never 0)
+    await page.mouse.move(v.x + v.width / 2, v.y + v.height / 2);
+    await expect(con(page).locator("[data-dock-row]")).toHaveAttribute("data-expand", "view");
+    await expect.poll(async () => (await rect(page, "[data-dock] [data-stream=view]")).width / (v.width + s.width)).toBeGreaterThan(0.86);
+    const sliver = (await rect(page, "[data-dock] [data-stream=sim]")).width;
+    expect(sliver).toBeGreaterThan(40);
+    if (SHOTS) await page.locator("[data-region=console]").screenshot({ path: `${SHOTS}/dock-hover-view-${theme}.png` });
 
-    // remembered
+    // over to Simulations: it takes the room
+    const s2 = await rect(page, "[data-dock] [data-stream=sim]");
+    await page.mouse.move(s2.x + s2.width / 2, s2.y + s2.height / 2);
+    await expect(con(page).locator("[data-dock-row]")).toHaveAttribute("data-expand", "sim");
+    await expect.poll(async () => (await rect(page, "[data-dock] [data-stream=sim]")).width / (v.width + s.width)).toBeGreaterThan(0.86);
+    if (SHOTS) await page.locator("[data-region=console]").screenshot({ path: `${SHOTS}/dock-hover-sims-${theme}.png` });
+
+    // leaving the row: 50/50 again
+    await page.mouse.move(t.x + t.width / 2, t.y + 60);
+    await expect(con(page).locator("[data-dock-row]")).not.toHaveAttribute("data-expand", /./);
+    await expect.poll(async () => Math.abs((await rect(page, "[data-dock] [data-stream=view]")).width
+      - (await rect(page, "[data-dock] [data-stream=sim]")).width)).toBeLessThan(3);
+
+    // collapsing still works, and is remembered
+    await col(page, "sim").locator(".dock-t").click();
+    await expect(col(page, "sim")).toHaveAttribute("data-collapsed", "");
+    expect((await rect(page, "[data-dock] [data-stream=view]")).width).toBeGreaterThan(dock.width - 40);
     await page.reload();
-    await expect(con(page).locator("[data-dock]")).toHaveAttribute("data-cols", "3");
+    await expect(col(page, "sim")).toHaveAttribute("data-collapsed", "");
   });
 }
 
-test("dragging_the_dock_edge_or_a_divider_never_selects_text", async ({ page, fake }) => {
+test("reduced_motion_lands_the_hover_width_without_a_transition", async ({ page, fake }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
   await fake.reset(scenario() as never);
   await page.setViewportSize({ width: 1440, height: 900 });
-  await open(page, "dark", { collapsed: { view: false, sim: true, text: false } });
+  await useDefaultDock(page);
+  await open(page, "dark");
+  const dur = await col(page, "view").evaluate((el) => getComputedStyle(el).transitionDuration);
+  expect(dur.split(",").every((d) => parseFloat(d) === 0)).toBe(true);
+});
+
+test("dragging_the_dock_edge_or_the_bar_never_selects_text", async ({ page, fake }) => {
+  await fake.reset(scenario() as never);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await open(page, "dark", { collapsed: { view: false, sim: false, text: false } });
   const edge = await rect(page, "[data-dock] .dock-edge");
   const x = edge.x + edge.width / 2;
   const y = edge.y + 300;
@@ -108,34 +116,15 @@ test("dragging_the_dock_edge_or_a_divider_never_selects_text", async ({ page, fa
   await page.mouse.up();
   expect(await page.evaluate(() => window.getSelection()?.toString() ?? "")).toBe("");
   expect(await page.evaluate(() => document.body.classList.contains("dock-resizing"))).toBe(false);
-  const div = await rect(page, '[data-divider="view|text"]');
-  await page.mouse.move(div.x + 3, div.y + 200);
+  const bar = await rect(page, "[data-dock] [data-split]");
+  const before = await page.evaluate(() => JSON.parse(localStorage.getItem("mises.dock.stack") ?? "{}").split ?? 0.56);
+  await page.mouse.move(bar.x + 200, bar.y + 3);
   await page.mouse.down();
-  await page.mouse.move(div.x + 250, div.y + 260, { steps: 8 });
+  await page.mouse.move(bar.x + 260, bar.y - 120, { steps: 8 });
   await page.mouse.up();
   expect(await page.evaluate(() => window.getSelection()?.toString() ?? "")).toBe("");
-  const share = await page.evaluate(() => JSON.parse(localStorage.getItem("mises.dock.columns") ?? "{}").share);
-  expect(share.view).toBeGreaterThan(share.text);
-});
-
-test("design_focus_fits_the_conversation_header_at_360_px", async ({ page, fake }) => {
-  await fake.reset({ ...scenario(), runs: [{ ...scenario().runs[0], design_class: { cls: "design", source: "classifier", score: 0.8 } }] } as never);
-  await page.setViewportSize({ width: 1280, height: 800 });
-  for (const width of [360, 440, 560]) {
-    await open(page, "dark", { collapsed: { view: true, sim: true, text: false }, widths: [width, 760, 1080] });
-    const head = col(page, "text").locator(".dock-h").first();
-    const chip = head.locator("[data-design-focus]");
-    await expect(chip).toBeVisible();
-    // the header's right end is the pinned collapse button (the ⋯ menu is gone, E22 / E24)
-    const parts = [await head.locator(".dock-t").boundingBox(), await chip.boundingBox(),
-      await page.getByRole("button", { name: "Collapse the agent console" }).boundingBox()];
-    for (const p of parts) expect(p).not.toBeNull();
-    const [title, focus, fold] = parts as { x: number; width: number; y: number; height: number }[];
-    expect(title.x + title.width).toBeLessThanOrEqual(focus.x + 0.5);          // no overlap, in order
-    expect(focus.x + focus.width).toBeLessThanOrEqual(fold.x + 0.5);
-    expect(focus.height).toBeLessThan(30);                                       // one line
-    if (SHOTS && width === 360) await head.screenshot({ path: `${SHOTS}/design-focus-360.png` });
-  }
+  const split = await page.evaluate(() => JSON.parse(localStorage.getItem("mises.dock.stack") ?? "{}").split);
+  expect(split).toBeLessThan(before);                                           // a shorter conversation
 });
 
 test("the_critique_card_fills_the_view_column_like_a_view_card", async ({ page, fake }) => {
@@ -149,7 +138,11 @@ test("the_critique_card_fills_the_view_column_like_a_view_card", async ({ page, 
   const crit = col(page, "view").locator("[data-view-main] [data-testid=critique-card]");
   await expect(crit).toHaveAttribute("data-large", "");
   const critH = (await crit.boundingBox())?.height ?? 0;
-  expect(critH).toBeGreaterThan(viewH * 0.85);
+  // it fills the stream's main area as the view card did (P11 F2: the View half is shorter, so
+  // the filmstrip that now lists both takes a larger share of it)
+  const mainH = (await col(page, "view").locator("[data-view-main]").boundingBox())?.height ?? 0;
+  expect(critH).toBeGreaterThan(mainH * 0.9);
+  expect(critH).toBeGreaterThan(viewH * 0.75);
   const stage = (await crit.locator("[data-crit-stage]").boundingBox())?.height ?? 0;
   expect(stage).toBeGreaterThan(critH * 0.6);
   if (SHOTS) await col(page, "view").screenshot({ path: `${SHOTS}/critique-view-column.png` });

@@ -2,7 +2,7 @@
 // same routes, bearer auth and 401 body, error JSON and status codes, 422 shape, CORS for the
 // app origins, and `WS /events?token=&run_id=` with close 4401 on a bad token.
 // Test-only control routes live under /__fake/* (see control.ts).
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -402,6 +402,30 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     };
     state.steps = [...state.steps.filter((x) => x.id !== id), step].sort((a, b) => a.id - b.id);
     return step;
+  }
+
+  // P11 F7 (core chat_images): images attached to chat messages, kept per build by content id
+  const chatImages = new Map<string, { media_type: string; bytes: Buffer }>();
+  function chatImageRefs(projectId: string, raw: unknown): Record<string, unknown>[] | null {
+    if (raw === undefined || raw === null) return null;
+    if (!Array.isArray(raw)) throw mises("invalid_input", "images must be a list");
+    if (raw.length > 5) throw mises("invalid_input", `at most 5 images per message (${raw.length} attached)`, "send the rest in another message");
+    if (!raw.length) return null;
+    return raw.map((x) => {
+      const o = x as { media_type?: unknown; data_b64?: unknown };
+      if (typeof o.media_type !== "string" || !/^image\/(png|jpeg|webp|gif|heic|heif)$/.test(o.media_type) || typeof o.data_b64 !== "string" || !o.data_b64) {
+        throw mises("invalid_input", "attached images must be PNG, JPEG, WebP, GIF or HEIC");
+      }
+      const bytes = Buffer.from(o.data_b64, "base64");
+      const id = createHash("sha256").update(bytes).digest("hex").slice(0, 24);
+      chatImages.set(`${projectId}/${id}`, { media_type: o.media_type, bytes });
+      return { id, media_type: o.media_type, width: 0, height: 0, bytes: bytes.length };
+    });
+  }
+  /** The lead's newest user message (the one the chat just delivered) carries the refs. */
+  function attachImageRefs(runId: string | undefined, refs: Record<string, unknown>[]): void {
+    const last = [...state.steps].reverse().find((s) => s.run_id === runId && s.kind === "message" && (s.payload as { role?: unknown }).role === "user");
+    if (last) last.payload = { ...last.payload, images: refs };
   }
 
   function broadcast(evIn: MisesEvent) {
@@ -868,8 +892,21 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         const signedIn = models().vendors.some((v) => v.vendor === CLAUDE_CODE && v.key === "signed_in");
         const profileDefault = (state.setup.profile as { default_model?: string | null }).default_model ?? null;
         const modelRef = findLead(projectId) ? null : profileDefault ?? (signedIn ? `${CLAUDE_CODE}/sonnet` : null);
+        const refs = chatImageRefs(projectId, asBody(raw).images);
         const start = routes.find((x) => x.method === "POST" && x.re.source === "^\\/runs$") as Route;
-        return start.h(m, q, { prompt: text, project_id: projectId, ...(modelRef ? { model_ref: modelRef } : {}) }, r, res);
+        const out = start.h(m, q, { prompt: text, project_id: projectId, ...(modelRef ? { model_ref: modelRef } : {}) }, r, res);
+        if (refs) attachImageRefs((out as { run_id?: string }).run_id, refs);
+        return out;
+      },
+    },
+    // P11 F7 (core chat_images): an image attached to a message in this build
+    {
+      method: "GET", re: /^\/projects\/([^/]+)\/chat-images\/([0-9a-f]{24})$/, h: (m, _q, _b, _r, res) => {
+        const img = chatImages.get(`${decodeURIComponent(m[1])}/${m[2]}`);
+        if (!img) throw mises("not_found", `no image '${m[2]}' in this build`);
+        res.writeHead(200, { "Content-Type": img.media_type, "Content-Length": img.bytes.length });
+        res.end(img.bytes);
+        return RAW;
       },
     },
     // P10 E9 (the app's contract for core C1): take back a message still waiting for a busy lead
@@ -1031,7 +1068,8 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         // Claude Code runs are external but take messages: the core continues (or resumes) the session
         if (r.external && r.provider !== CLAUDE_CODE) throw mises("invalid_input", "run is driven by an external agent", "send the message to that agent instead");
         if (r.status === "running") throw mises("invalid_input", "run is still working", "wait for it to finish or stop it");
-        appendStep({ kind: "message", payload: { role: "user", text } }, r.id);
+        const refs = chatImageRefs(r.project_id ?? "", asBody(raw).images);
+        appendStep({ kind: "message", payload: { role: "user", text, ...(refs ? { images: refs } : {}) } }, r.id);
         emit({ type: "run_started", run_id: r.id, data: { resumed: true } });
         return { ok: true };
       },

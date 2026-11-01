@@ -76,14 +76,15 @@ const LAYOUT = {
   3: { view: false, sim: false, text: false },
 } as const;
 // whether the Parts surface must fold for the model's 520 px (ui/shell/room partsMustFold)
-const FOLDS: Record<number, Record<number, boolean>> = { 1280: { 1: false, 2: true, 3: true }, 1440: { 1: false, 2: false, 3: true } };
+// P11 F2: one dock width whatever is open, so it never has to fold at these widths
+const FOLDS: Record<number, Record<number, boolean>> = { 1280: { 1: false, 2: false, 3: false }, 1440: { 1: false, 2: false, 3: false } };
 
 for (const width of [1280, 1440]) {
   for (const n of [1, 2, 3] as const) {
     test(`the model keeps its room and the pill stays in it at ${width} px with ${n} dock column${n > 1 ? "s" : ""}`, async ({ page, fake }) => {
       await fake.reset(robot());
       await page.setViewportSize({ width, height: 900 });
-      await page.addInitScript((c) => { try { localStorage.setItem("mises.dock.columns", JSON.stringify({ collapsed: c })); } catch { /* none */ } }, LAYOUT[n]);
+      await page.addInitScript((c) => { try { localStorage.setItem("mises.dock.stack", JSON.stringify({ collapsed: c })); } catch { /* none */ } }, LAYOUT[n]);
       await page.goto("/");
       await expect(page.getByTestId("assembly-canvas")).toHaveAttribute("data-instances", "13");
       await expect(page.locator("[data-dock]")).toHaveAttribute("data-cols", String(n));
@@ -127,26 +128,20 @@ for (const width of [1280, 1440]) {
   }
 }
 
-test("the Parts surface folds by itself for three columns and comes back when they close", async ({ page, fake }) => {
+test("a wide dock gives way so the model keeps 520 px and the Parts surface stays open", async ({ page, fake }) => {
+  // P11 F2: one width for the dock; a remembered wide one is capped by the room (ui/shell/room)
   await fake.reset(robot());
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.addInitScript((c) => { try { localStorage.setItem("mises.dock.columns", JSON.stringify({ collapsed: c })); } catch { /* none */ } }, LAYOUT[2]);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.addInitScript(() => { try { localStorage.setItem("mises.dock.stack", JSON.stringify({ width: 1400 })); } catch { /* none */ } });
   await page.goto("/");
   const app = page.locator(".app");
-  await expect(app).toHaveAttribute("data-left", "open");
-  await page.locator("[data-dock] [data-stream=sim]").click();               // the third column
-  await expect(page.locator("[data-dock]")).toHaveAttribute("data-cols", "3");
-  await expect(app).toHaveAttribute("data-left", "rail");
-  // asked for anyway: it opens (the dock gives way so the model still keeps 520 px)
-  await page.getByRole("button", { name: "Show the parts" }).click();
+  await expect(page.getByTestId("assembly-canvas")).toHaveAttribute("data-instances", "13");
   await expect(app).toHaveAttribute("data-left", "open");
   const dock = await box(page, "[data-region=console]");
   const left = await box(page, "[data-region=left]");
   expect(dock.x - 12 - (left.x + left.width + 12)).toBeGreaterThanOrEqual(519);
-  // fewer columns: the room is back and it stays open; three again: it folds by itself again
+  // closing streams never changes the dock's width
   await page.locator("[data-dock] [data-stream=sim] .dock-t").click();
   await expect(page.locator("[data-dock]")).toHaveAttribute("data-cols", "2");
-  await expect(app).toHaveAttribute("data-left", "open");
-  await page.locator("[data-dock] [data-stream=sim]").click();
-  await expect(app).toHaveAttribute("data-left", "rail");
+  expect(Math.round((await box(page, "[data-region=console]")).width)).toBe(Math.round(dock.width));
 });

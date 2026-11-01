@@ -96,6 +96,21 @@ export function useAssemblyTools(scene: AssemblyScene | null, ctl: AssemblyContr
     return t ? sub(transformPoint(t, n), transformPoint(t, [0, 0, 0])) : null;
   };
 
+  /** The instance's world box as drawn (assembled: its pose, never the explode), mm. */
+  const drawnBox = (iid: string): { min: Vec3; max: Vec3 } | null => {
+    const b = scene?.partBox(iid);
+    if (!b) return null;
+    const lo: Vec3 = [Infinity, Infinity, Infinity];
+    const hi: Vec3 = [-Infinity, -Infinity, -Infinity];
+    for (const x of [b.min[0], b.max[0]]) for (const y of [b.min[1], b.max[1]]) for (const z of [b.min[2], b.max[2]]) {
+      const w = assembled(iid, [x, y, z]);
+      if (!w) return null;
+      for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], w[k]); hi[k] = Math.max(hi[k], w[k]); }
+    }
+    const r2 = (v: number) => Math.round(v * 100) / 100;
+    return { min: lo.map(r2) as Vec3, max: hi.map(r2) as Vec3 };
+  };
+
   function click(ev: PointerEvent): boolean {
     if (tool === "select" || !scene) return false;
     const h = scene.pickAt(ev.clientX, ev.clientY);
@@ -129,8 +144,14 @@ export function useAssemblyTools(scene: AssemblyScene | null, ctl: AssemblyContr
     setError(null);
     const r6 = (v: number) => Math.round(v * 1e4) / 1e4;
     const point = c.part.map(r6) as Vec3;
+    // P11 F4: the instance's box as drawn (its mesh's box through its pose), so the core can
+    // tell the agent when what the user sees is not where the model is
+    const world_bbox = drawnBox(c.iid);
     try {
-      const res = await actions.client().sendFeedback(build, { part_id: inst.part_id, point, text, instance_id: c.iid, world_point: c.world.map(r6) as Vec3 });
+      const res = await actions.client().sendFeedback(build, {
+        part_id: inst.part_id, point, text, instance_id: c.iid, world_point: c.world.map(r6) as Vec3,
+        ...(world_bbox ? { world_bbox } : {}),
+      });
       addLocalPin({ buildId: build, runId: res.run_id, stepId: res.step_id, partId: inst.part_id, point, faceId: null, text, ts: Date.now() / 1000, instanceId: c.iid });
       actions.selectRun(res.run_id);
       setComment(null);

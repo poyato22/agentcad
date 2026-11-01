@@ -40,6 +40,8 @@ export interface FeedbackBody {
   /** Plan 10 E35: a pin dropped in the assembly view: the instance and the point in world mm
    *  (`point` stays in the part's own frame). */
   instance_id?: string; world_point?: Vec3;
+  /** P11 F4: the clicked instance's world box as the app drew it (mm). */
+  world_bbox?: { min: Vec3; max: Vec3 };
 }
 /** The build's lead the pin went to (core orchestrator/lead.submit_feedback, U3c): `step_id` is
  *  the stored pin (a decision step {feedback}); `queued` when the lead was busy. */
@@ -61,6 +63,9 @@ export const feedbackPinSchema = z.object({
   part_id: z.string(), point: vec3, text: z.string(), face_id: z.string().nullish(), part: z.string().nullish(), nearby_hole: z.string().nullish(),
   nearby_feature: z.object({ face_id: z.string().nullish(), type: z.string().nullish(), area_mm2: z.number().nullish(), center: vec3.nullish() }).nullish(),
   instance_id: z.string().nullish(), instance: z.string().nullish(), world_point: vec3.nullish(),
+  // P11 F4: the instance's box as drawn and as the core has it, and whether they agree
+  drawn_bbox: z.object({ min: vec3, max: vec3 }).nullish(), model_bbox: z.object({ min: vec3, max: vec3 }).nullish(),
+  pose_check: z.object({ agrees: z.boolean(), offset_mm: z.number(), note: z.string().nullish() }).nullish(),
 });
 
 /** The pin on a step's payload, if it carries a well-formed one. */

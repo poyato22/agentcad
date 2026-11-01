@@ -1,0 +1,161 @@
+[
+ {
+  "id": 1,
+  "run_id": "04248de2092e",
+  "ts": 1793554560.719329,
+  "kind": "message",
+  "payload": {
+   "role": "user",
+   "text": "make the fins"
+  },
+  "evidence_hash": "78552e153a20c436356ab3660097b55b4f171d9a40855f26e041acb4ccd8d898",
+  "prev_hash": null,
+  "collapsed": false,
+  "stream": "text"
+ },
+ {
+  "id": 2,
+  "run_id": "04248de2092e",
+  "ts": 1793554560.719656,
+  "kind": "error",
+  "payload": {
+   "code": "tool_failed",
+   "message": "Claude Code exited (code 3) before finishing the turn",
+   "recoverable": true,
+   "source": "claude-code",
+   "stderr_tail": ""
+  },
+  "evidence_hash": "c7fa312c7ef701161ca2971728887603dc052c8aedfdb7c0431381ed2b49aa20",
+  "prev_hash": "78552e153a20c436356ab3660097b55b4f171d9a40855f26e041acb4ccd8d898",
+  "collapsed": false,
+  "stream": "text"
+ },
+ {
+  "id": 3,
+  "run_id": "04248de2092e",
+  "ts": 1793554560.71979,
+  "kind": "decision",
+  "payload": {
+   "recovery": {
+    "action": "resumed the session",
+    "attempt": 1,
+    "cause": "Claude Code exited (code 3) before finishing the turn",
+    "of": 3,
+    "text": "Recovered: resumed the session after Claude Code exited (code 3) before finishing the turn"
+   }
+  },
+  "evidence_hash": "91098cd309bd3aca0eeb5617da4fd59a94a537f1a59ac27150f78a97e93f8ccd",
+  "prev_hash": "c7fa312c7ef701161ca2971728887603dc052c8aedfdb7c0431381ed2b49aa20",
+  "collapsed": false,
+  "stream": "text"
+ },
+ {
+  "id": 4,
+  "run_id": "04248de2092e",
+  "ts": 1793554560.719897,
+  "kind": "error",
+  "payload": {
+   "code": "tool_failed",
+   "message": "Claude Code: error_during_execution",
+   "recoverable": true,
+   "source": "claude-code",
+   "subtype": "error_during_execution"
+  },
+  "evidence_hash": "fe80baa38dd29bd643b6772532c61b884dc89bcedda7ac09659133151563d66f",
+  "prev_hash": "91098cd309bd3aca0eeb5617da4fd59a94a537f1a59ac27150f78a97e93f8ccd",
+  "collapsed": false,
+  "stream": "text"
+ },
+ {
+  "id": 5,
+  "run_id": "04248de2092e",
+  "ts": 1793554560.719978,
+  "kind": "decision",
+  "payload": {
+   "recovery": {
+    "action": "resumed the session",
+    "attempt": 2,
+    "cause": "Claude Code: error_during_execution",
+    "of": 3,
+    "text": "Recovered: resumed the session after Claude Code: error_during_execution"
+   }
+  },
+  "evidence_hash": "cf4c30675d8f2219e0679ae4b7f32b327bcfe472f810470bf11c32d5d07f91b3",
+  "prev_hash": "fe80baa38dd29bd643b6772532c61b884dc89bcedda7ac09659133151563d66f",
+  "collapsed": false,
+  "stream": "text"
+ },
+ {
+  "id": 6,
+  "run_id": "04248de2092e",
+  "ts": 1793554560.720063,
+  "kind": "decision",
+  "payload": {
+   "stuck": {
+    "error": "fin_span must be positive",
+    "kind": "repeated_failure",
+    "note": "This exact call has now failed 3 times.",
+    "times": 3,
+    "tool": "mirror_part_set_vars"
+   }
+  },
+  "evidence_hash": "7f4bcb644bc468e17e9bf780facfe3bb9ffefad4ff1d0a2ac23b0a84355a5c59",
+  "prev_hash": "cf4c30675d8f2219e0679ae4b7f32b327bcfe472f810470bf11c32d5d07f91b3",
+  "collapsed": false,
+  "stream": "text"
+ },
+ {
+  "id": 7,
+  "run_id": "04248de2092e",
+  "ts": 1793554560.720186,
+  "kind": "error",
+  "payload": {
+   "code": "tool_failed",
+   "message": "Claude Code exited (code 3) before finishing the turn",
+   "recoverable": true,
+   "source": "claude-code",
+   "stderr_tail": ""
+  },
+  "evidence_hash": "eeac4d8f799da5439422102ce2126d66f56daf62d8dc251875d8b6e023c67f21",
+  "prev_hash": "7f4bcb644bc468e17e9bf780facfe3bb9ffefad4ff1d0a2ac23b0a84355a5c59",
+  "collapsed": false,
+  "stream": "text"
+ },
+ {
+  "id": 8,
+  "run_id": "04248de2092e",
+  "ts": 1793554560.720279,
+  "kind": "error",
+  "payload": {
+   "code": "tool_failed",
+   "message": "Stopped after 3 recoveries: Claude Code exited (code 3) before finishing the turn",
+   "recovery": {
+    "actions": [
+     "retry",
+     "continue"
+    ],
+    "cause": "Claude Code exited (code 3) before finishing the turn",
+    "exhausted": true,
+    "tried": [
+     {
+      "action": "resumed the session",
+      "cause": "Claude Code exited (code 3) before finishing the turn"
+     },
+     {
+      "action": "resumed the session",
+      "cause": "Claude Code: error_during_execution"
+     },
+     {
+      "action": "started a fresh session with a recap of the thread",
+      "cause": "Claude Code exited (code 3) before finishing the turn"
+     }
+    ]
+   },
+   "source": "claude-code"
+  },
+  "evidence_hash": "a49ba8e8396d157f55844542bfeee986532a58e6698c31a0cb0683bb487c9ac0",
+  "prev_hash": "eeac4d8f799da5439422102ce2126d66f56daf62d8dc251875d8b6e023c67f21",
+  "collapsed": false,
+  "stream": "text"
+ }
+]
