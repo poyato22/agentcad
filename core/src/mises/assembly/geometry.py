@@ -101,7 +101,7 @@ async def run_geometry(parts_root: Path, assembly, result: SolveResult, *, want:
                 copied[inst.part_id] = step
         if step is not None:
             instances.append({"name": inst.id if poses is not None else (inst.name or inst.id),
-                              "step": str(step),
+                              "step": str(step), "id": inst.id,
                               "transform": result.transforms[inst.id]})
     if not instances:
         raise MisesError(ErrorCode.NOT_FOUND, "no built parts in this assembly",

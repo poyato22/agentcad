@@ -52,8 +52,16 @@ export const driveResultSchema = z.object({
 });
 export type DriveResult = z.infer<typeof driveResultSchema>;
 
-/** `a` / `b` are instance NAMES (the worker labels shapes by name, falling back to the id). */
-export const interferenceSchema = z.object({ a: z.string(), b: z.string(), volume_mm3: z.number() });
+/** `a` / `b` are instance NAMES (the worker labels shapes by name, falling back to the id).
+ *  G2 (core assembly/interference.py, the list assembly_health reports): the instance ids, where
+ *  the overlap is (world mm) and, for a declared contact, `intended` (its reason). */
+export const interferenceSchema = z.object({
+  a: z.string(), b: z.string(), volume_mm3: z.number(),
+  a_id: z.string().optional(), b_id: z.string().optional(),
+  intended: z.string().nullable().optional().catch(null),
+  center: vec3.optional().catch(undefined),
+  bbox: z.object({ min: vec3, max: vec3 }).optional().catch(undefined),
+});
 export type Interference = z.infer<typeof interferenceSchema>;
 
 export const instanceDeletedSchema = z.object({ removed_instance: z.string(), removed_joints: z.array(z.string()) });

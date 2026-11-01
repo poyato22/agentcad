@@ -22,7 +22,8 @@ const FIXTURES = resolve(dirname(fileURLToPath(import.meta.url)), "../../../core
 export const DEFAULT_PROJECT_ROW = (JSON.parse(readFileSync(resolve(FIXTURES, "projects.json"), "utf8")) as ProjectRowIn[])[0];
 export const DEFAULT_PROJECT = DEFAULT_PROJECT_ROW.id;
 const PART_ID_RE = /^[a-z][a-z0-9_]{1,40}$/;
-const THRESHOLD_MM3 = 0.01;
+/** G2: the core lists no overlap under this (assembly/interference.py TOL_MM3). */
+const THRESHOLD_MM3 = 0.1;
 
 export interface ProjectRowIn { id: string; name: string; created_at?: number; trashed_at?: number | null }
 
@@ -36,6 +37,8 @@ export interface AssemblyScenario {
   interference?: "boxes" | "none";
   /** Plan 9 G-D: saved animations per project id (GET /projects/{id}/assembly/animations). */
   animations?: Record<string, unknown[]>;
+  /** G2: declared intended contacts per project id (assembly_allow_contact): drawn, not red. */
+  contacts?: Record<string, { a: string; b: string; reason: string }[]>;
 }
 
 export interface FakeAssembly {
@@ -43,6 +46,7 @@ export interface FakeAssembly {
   byProject: Map<string, { instances: Instance[]; joints: Joint[] }>;
   interference: "boxes" | "none";
   animations: Record<string, unknown[]>;
+  contacts: Record<string, { a: string; b: string; reason: string }[]>;
 }
 
 export function assemblyFrom(sc: AssemblyScenario | undefined): FakeAssembly {
@@ -51,6 +55,7 @@ export function assemblyFrom(sc: AssemblyScenario | undefined): FakeAssembly {
     byProject: new Map(Object.entries(structuredClone(sc?.by_project ?? {}))),
     interference: sc?.interference ?? "boxes",
     animations: structuredClone(sc?.animations ?? {}),
+    contacts: structuredClone(sc?.contacts ?? {}),
   };
 }
 
@@ -311,16 +316,21 @@ export function assemblyRoutes(d: Deps): Route[] {
             const p = transformPoint(i.transform, [x, y, z]);
             for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], p[k]); hi[k] = Math.max(hi[k], p[k]); }
           }
-          return { name: i.name || i.id, lo, hi };
+          return { id: i.id, name: i.name || i.id, lo, hi };
         });
-        const out: { a: string; b: string; volume_mm3: number }[] = [];
+        const out: Record<string, unknown>[] = [];
+        const allowed = d.get().contacts[m[1]] ?? [];
         for (let x = 0; x < boxes.length; x++) {
           for (let y = x + 1; y < boxes.length; y++) {
             const A = boxes[x]; const B = boxes[y];
             if (!A || !B) continue;
             let v = 1;
             for (let k = 0; k < 3; k++) v *= Math.max(0, Math.min(A.hi[k], B.hi[k]) - Math.max(A.lo[k], B.lo[k]));
-            if (v > THRESHOLD_MM3) out.push({ a: A.name, b: B.name, volume_mm3: Number(v.toFixed(6)) });
+            if (v < THRESHOLD_MM3) continue;
+            const lo = [0, 1, 2].map((k) => Math.max(A.lo[k], B.lo[k])); const hi = [0, 1, 2].map((k) => Math.min(A.hi[k], B.hi[k]));
+            const intended = allowed.find((c) => (c.a === A.id && c.b === B.id) || (c.a === B.id && c.b === A.id))?.reason ?? null;
+            out.push({ a: A.name, b: B.name, a_id: A.id, b_id: B.id, volume_mm3: Number(v.toFixed(3)), intended,
+              center: [0, 1, 2].map((k) => (lo[k] + hi[k]) / 2), bbox: { min: lo, max: hi } });
           }
         }
         return out;

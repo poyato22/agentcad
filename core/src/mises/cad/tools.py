@@ -343,7 +343,27 @@ def _finish_edit(ctx: ToolContext, part_id: str, d: Path, summary: str) -> int:
                                  run_id=run_id)
         except OSError:
             pass
+    else:
+        _mark_rebuilt(ctx, part_id)
     return version
+
+
+def _mark_rebuilt(ctx: ToolContext, part_id: str) -> None:
+    """G2: an agent rebuilt a part its build's assembly uses: the geometry changed, so the lead
+    reviews the assembly (overlaps) when its turn ends, as after an assembly edit."""
+    store = getattr(ctx, "store", None)
+    asm = (getattr(ctx, "services", None) or {}).get("assembly")
+    if store is None or asm is None or not hasattr(store, "get_part"):
+        return
+    try:
+        row = store.get_part(part_id)
+        if row is None or not row.project_id:
+            return
+        if any(i.part_id == part_id for i in asm.get(row.project_id).instances):
+            from ..assembly.tools import mark_changed
+            mark_changed(ctx, row.project_id)
+    except Exception:  # noqa: BLE001 - bookkeeping never fails the build
+        log.debug("could not mark %s's assembly changed", part_id, exc_info=True)
 
 
 def _op_headers(source: str) -> list[str]:

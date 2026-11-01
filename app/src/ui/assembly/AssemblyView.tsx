@@ -268,10 +268,16 @@ export function AssemblyView(): JSX.Element {
 
   const it = ctl.interference.value;
   // exploded, the clash blocks would hang where the parts were: they show assembled only
-  const apart = assemblyModes.value.explode > 0 || (assemblyModes.value.layout ?? 0) > 0;
+  // (and while a motion moves the parts: the overlaps were found at rest)
+  const moving = ctl.animating.value !== null;
+  const apart = assemblyModes.value.explode > 0 || (assemblyModes.value.layout ?? 0) > 0 || moving;
   useEffect(() => {
     const byName = (n: string) => (data?.instances ?? []).filter((i) => (i.name || i.id) === n).map((i) => i.id);
-    sceneRef.current?.setInterference(apart ? [] : it.items.map((x) => ({ a: byName(x.a), b: byName(x.b), text: `${x.a} · ${x.b}  ${fmtVolume(x.volume_mm3)}` })));
+    const side = (id: string | undefined, n: string) => (id && data?.instances.some((i) => i.id === id) ? [id] : byName(n));
+    sceneRef.current?.setInterference(apart ? [] : it.items.map((x) => ({
+      a: side(x.a_id, x.a), b: side(x.b_id, x.b), text: `${x.a} · ${x.b}  ${fmtVolume(x.volume_mm3)}`,
+      box: x.bbox ?? null, intended: !!x.intended,
+    })));
   }, [it, data, apart]);
 
   // ---- Play: the full-window view

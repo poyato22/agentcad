@@ -134,7 +134,9 @@ describe("contract: assembly routes ↔ schemas ↔ fake core", () => {
   });
 
   it("interference_matches_the_real_core_on_the_hinge", () => {
-    expect(fake.get("assembly_interference.json")).toEqual(read(DIR, "assembly_interference.json"));
+    // G2: the same pairs, volumes and overlap boxes (instance ids are each run's own)
+    const noIds = (v: unknown) => (v as Record<string, unknown>[]).map(({ a_id: _a, b_id: _b, ...rest }) => rest);
+    expect(noIds(fake.get("assembly_interference.json"))).toEqual(noIds(read(DIR, "assembly_interference.json")));
     expect(fake.get("assembly_interference_none.json")).toEqual([]);
   });
 

@@ -926,8 +926,61 @@ async def assembly_health(ctx: ToolContext, args: HealthArgs) -> ToolOutput:
                       step_kind=StepKind.MEASURE)
 
 
+class AllowContactArgs(BaseModel):
+    project_id: str | None = Field(default=None, description="Default: this run's build.")
+    a: str = Field(..., min_length=1, max_length=64, description="An instance id or name.")
+    b: str = Field(..., min_length=1, max_length=64, description="An instance id or name.")
+    reason: str = Field(default="", max_length=200,
+                        description="Why they overlap on purpose: 'press fit', 'bearing seat', "
+                                    "'M3 screw in its hole', 'coincident mating faces'.")
+    allow: bool = Field(default=True, description="false takes the declaration back (the "
+                                                  "overlap is red and reported again).")
+
+
+def _instance_ref(asm, ref: str):
+    for i in asm.instances:
+        if i.id == ref:
+            return i
+    named = [i for i in asm.instances if i.name == ref]
+    if len(named) == 1:
+        return named[0]
+    raise MisesError(ErrorCode.NOT_FOUND, f"no single instance {ref!r}",
+                     hint="pass an instance id (assembly_get lists them)")
+
+
+@tool("assembly_allow_contact", safety=SafetyClass.LOCAL_MUTATE, scope_arg="project_id",
+      description="Declare that two instances overlap ON PURPOSE (a press fit, a bearing seat, "
+                  "a fastener in its hole, coincident mating faces), with the reason. Their "
+                  "overlap is then drawn as intended (not red) and no longer reported by "
+                  "assembly_health. Only for real design intent: a clash you could fix by moving "
+                  "or resizing a part is fixed, not allowed. A joint's design.contact does the "
+                  "same for the pair it joins.")
+async def assembly_allow_contact(ctx: ToolContext, args: AllowContactArgs) -> ToolOutput:
+    pid = _build_of(ctx, args.project_id)
+    store = _store(ctx)
+    asm = store.get(pid)
+    a, b = _instance_ref(asm, args.a), _instance_ref(asm, args.b)
+    if a.id == b.id:
+        raise MisesError(ErrorCode.INVALID_INPUT, "a and b are the same instance")
+    if args.allow:
+        if not args.reason.strip():
+            raise MisesError(ErrorCode.INVALID_INPUT, "say why they overlap on purpose",
+                             hint="reason: 'press fit', 'bearing seat', 'screw in its hole'")
+        store.allow_contact(pid, a.id, b.id, args.reason.strip())
+        summary = f"{a.name} / {b.name}: intended contact ({args.reason.strip()})"
+    else:
+        gone = store.remove_contact(pid, a.id, b.id)
+        summary = (f"{a.name} / {b.name}: no longer an intended contact" if gone
+                   else f"{a.name} / {b.name} had no declared contact")
+    _changed(ctx, pid)
+    return ToolOutput(summary=summary, data={"project_id": pid, "a_id": a.id, "b_id": b.id,
+                                             "allowed": args.allow,
+                                             "contacts": store.list_contacts(pid)},
+                      step_kind=StepKind.DIFF)
+
+
 def register_assembly_tools(registry: ToolRegistry) -> None:
     for t in (assembly_get, assembly_add_instance, assembly_add_joint, assembly_drive,
               assembly_remove, assembly_check, assembly_add_part, assembly_move,
-              assembly_animate, assembly_add_loop, assembly_health):
+              assembly_animate, assembly_add_loop, assembly_health, assembly_allow_contact):
         registry.register(t)

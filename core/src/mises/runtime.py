@@ -326,6 +326,8 @@ class Runtime:
         # E33: root run id -> the build whose assembly its turn changed; the render waiting for
         # its next tool result; the turn-end review tasks (awaited by tests)
         self.assembly_touched: dict[str, str] = {}
+        # G2: root run id -> the overlap set its last turn-end note named (never noted twice)
+        self._overlap_noted: dict[str, tuple] = {}
         # FWC M7: run id -> [stored at (monotonic s), images, turn starts seen since]
         self.pending_assembly_images: dict[str, list] = {}
         self._after_turn_tasks: set[asyncio.Task] = set()
@@ -2310,10 +2312,20 @@ class Runtime:
         except Exception:  # noqa: BLE001 - a review must never break the run
             log.warning("assembly review after %s's turn failed", run_id, exc_info=True)
             report, images = None, []
-        bad = report is not None and not report["ok"] and review.claims_done(final_text)
+        done_bad = report is not None and not report["ok"] and review.claims_done(final_text)
+        # G2: overlaps left by ANY turn that changed the assembly reach the lead (once per set:
+        # it then fixes them, or declares the intended ones and says why)
+        sig = review.overlap_signature(report) if report is not None else ()
+        new_overlaps = bool(sig) and self._overlap_noted.get(run_id) != sig
+        if report is not None:
+            if sig:
+                self._overlap_noted[run_id] = sig
+            else:
+                self._overlap_noted.pop(run_id, None)
+        bad = done_bad or new_overlaps
         info = ({"project_id": pid, "summary": report["summary"],
                  "overlaps": report["overlaps"], "stray": report["stray"],
-                 "floating": report["floating"], "images": len(images)} if bad else None)
+                 "floating": report["floating"], "images": len(images)} if done_bad else None)
         eng = finish_report(self, run_id)              # the C3 gate, after the fresh health
         if eng is not None or info is not None:
             text, payload = eng or ("", {"kind": "engineering_checks", "project_id": pid})
@@ -2326,7 +2338,10 @@ class Runtime:
                 self.pending_assembly_images[run_id] = [time.monotonic(), images, 0]
             return
         from .orchestrator.lead import deliver_note
-        await deliver_note(self, run_id, review.fix_note(report),
+        text = review.overlap_note(report) if new_overlaps else ""
+        if done_bad:
+            text = review.fix_note(report) + ("\n\n" + text if text else "")
+        await deliver_note(self, run_id, text,
                            {"kind": "assembly_health", "summary": report["summary"]},
                            images=[(i.media_type, i.data_b64) for i in images] or None)
 

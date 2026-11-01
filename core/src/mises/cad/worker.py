@@ -1039,36 +1039,99 @@ def _drawing(part_dir: Path, args: dict, nonce: str) -> None:
 # geometry, so the app can still address instances individually).
 
 
+def _rigid(m):
+    """The 4x4 with its rotation re-orthonormalised (Gram-Schmidt on the columns): a solved
+    pose carries float noise, and gp_Trsf takes a non-orthogonal matrix as a slight distortion."""
+    cols = [[m[r][c] for r in range(3)] for c in range(3)]
+    out = []
+    for c in cols:
+        for o in out:
+            d = sum(c[k] * o[k] for k in range(3))
+            c = [c[k] - d * o[k] for k in range(3)]
+        n = sum(x * x for x in c) ** 0.5 or 1.0
+        out.append([x / n for x in c])
+    return [[out[0][r], out[1][r], out[2][r], m[r][3]] for r in range(3)] + [[0, 0, 0, 1]]
+
+
+def _inv_rigid(m):
+    r = [[m[c][r] for c in range(3)] for r in range(3)]
+    t = [-sum(r[i][k] * m[k][3] for k in range(3)) for i in range(3)]
+    return [r[i] + [t[i]] for i in range(3)] + [[0, 0, 0, 1]]
+
+
+def _mul(a, b):
+    return [[sum(a[i][k] * b[k][j] for k in range(4)) for j in range(4)] for i in range(4)]
+
+
+def _apply(m, p):
+    return [m[r][0] * p[0] + m[r][1] * p[1] + m[r][2] * p[2] + m[r][3] for r in range(3)]
+
+
 def _trsf(matrix):
     from OCP.gp import gp_Trsf
     t = gp_Trsf()
-    m = matrix
+    m = _rigid(matrix)
     t.SetValues(m[0][0], m[0][1], m[0][2], m[0][3],
                 m[1][0], m[1][1], m[1][2], m[1][3],
                 m[2][0], m[2][1], m[2][2], m[2][3])
     return t
 
 
-def _assembly_interference(placed, threshold: float) -> list:
-    """placed: list of (name, moved_shape). Pairwise OCCT common volume over the threshold."""
+def _world_box(shape, m):
+    """The world AABB of a part-frame shape posed by `m` (its bbox corners, transformed)."""
+    bb = shape.bounding_box()
+    lo, hi = (bb.min.X, bb.min.Y, bb.min.Z), (bb.max.X, bb.max.Y, bb.max.Z)
+    pts = [_apply(m, [lo[0] if i & 1 else hi[0], lo[1] if i & 2 else hi[1],
+                      lo[2] if i & 4 else hi[2]]) for i in range(8)]
+    return ([min(p[a] for p in pts) for a in range(3)], [max(p[a] for p in pts) for a in range(3)])
+
+
+def _assembly_interference(items, threshold: float) -> list:
+    """items: list of (name, part-frame shape, world matrix, instance id). Pairwise OCCT common
+    volume over the threshold. G2: the common is taken in the first part's own frame (the second
+    moved by the pair's RELATIVE pose), so it depends only on how the two parts sit against each
+    other, never on where the pair is in the world (in world space the same pair gave 0, 0.12,
+    9.7 and 36.5 mm^3 on the ornicopter's four wing roots). World boxes prefilter the pairs.
+    Each hit carries the instance ids and where the overlap is (world centre and box)."""
+    from build123d import Location
+    from OCP.gp import gp_Trsf
+
+    def loc(m):
+        return Location(_trsf(m)) if m is not None else Location(gp_Trsf())
+    boxes = [_world_box(s, m) for _n, s, m, _i in items]
     out = []
-    for i in range(len(placed)):
-        for j in range(i + 1, len(placed)):
-            (na, sa), (nb, sb) = placed[i], placed[j]
+    for i in range(len(items)):
+        for j in range(i + 1, len(items)):
+            (na, sa, ma, ia), (nb, sb, mb, ib) = items[i], items[j]
+            (alo, ahi), (blo, bhi) = boxes[i], boxes[j]
+            if any(ahi[k] < blo[k] or bhi[k] < alo[k] for k in range(3)):
+                continue
+            ra = _rigid(ma)
             try:
-                vol = float((sa & sb).volume)
+                common = sa & sb.moved(loc(_mul(_inv_rigid(ra), _rigid(mb))))
+                vol = float(getattr(common, "volume", 0.0) or 0.0)
             except Exception:  # noqa: BLE001 - non-overlapping solids can raise instead of empty
-                vol = 0.0
+                common, vol = None, 0.0
             if vol > threshold:
-                out.append({"a": na, "b": nb, "volume_mm3": round(vol, 4)})
+                hit = {"a": na, "b": nb, "volume_mm3": round(vol, 4)}
+                if ia is not None:
+                    hit.update(a_id=ia, b_id=ib)
+                try:
+                    lo, hi = _world_box(common, ra)
+                    hit["bbox"] = {"min": [round(v, 3) for v in lo], "max": [round(v, 3) for v in hi]}
+                    hit["center"] = [round((lo[k] + hi[k]) / 2, 3) for k in range(3)]
+                except Exception:  # noqa: BLE001 - the volume stands without a location
+                    pass
+                out.append(hit)
     return out
 
 
 def _sweep_pose(loaded, pose: dict, threshold: float, location) -> dict:
     """One sweep position: pairwise interference, and the smallest clearance between any pair
     (0 where they overlap) with that pair's names."""
-    placed = [(name, shape.moved(location(_trsf(pose.get(name, m))))) for name, shape, m in loaded]
-    hits = _assembly_interference(placed, threshold)
+    placed = [(name, shape.moved(location(_trsf(pose.get(name, m))))) for name, shape, m, _i in loaded]
+    hits = _assembly_interference([(name, shape, pose.get(name, m), None)
+                                   for name, shape, m, _i in loaded], threshold)
     overlap = {(h["a"], h["b"]) for h in hits}
     best = None
     for i in range(len(placed)):
@@ -1186,7 +1249,7 @@ def _assembly(job_path: Path, nonce: str) -> None:
     threshold = float(job.get("threshold", 0.01))
     tol = float(job.get("tolerance", 0.2))
 
-    loaded = [(it["name"], _flat_step(b3, it["step"]), it["transform"])
+    loaded = [(it["name"], _flat_step(b3, it["step"]), it["transform"], it.get("id"))
               for it in job["instances"]]
     result: dict = {"nonce": nonce}
 
@@ -1197,12 +1260,11 @@ def _assembly(job_path: Path, nonce: str) -> None:
                                for pose in job.get("poses") or []]
 
     if want in ("both", "interference"):
-        placed = [(name, shape.moved(Location(_trsf(m)))) for name, shape, m in loaded]
-        result["interferences"] = _assembly_interference(placed, threshold)
+        result["interferences"] = _assembly_interference(loaded, threshold)
 
     if want in ("both", "glb"):
         items = []
-        for name, shape, m in loaded:
+        for name, shape, m, _iid in loaded:
             verts, tris = shape.tessellate(tol)
             items.append((name, [(v.X, v.Y, v.Z) for v in verts], tris, m))
         _assembly_glb(out_dir / "new_assembly.glb", items)

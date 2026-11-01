@@ -16,6 +16,11 @@ describe("the viewer pill (Plan 9 D12 / D17)", () => {
     ]);
   });
 
+  it("a declared contact (press fit, bearing seat) is the design, not a clash (G2)", () => {
+    const got = checkIssues([{ a: "base", b: "pin", volume_mm3: 4, intended: "press fit" }, { a: "base", b: "lid", volume_mm3: 9, intended: null }], []);
+    expect(got).toEqual([{ tone: "fail", text: "base and lid overlap by 9 mm³" }]);
+  });
+
   it("has Play, Section, X-ray, Explode and a chip only when the check found something", () => {
     const onPlay = vi.fn();
     const onModes = vi.fn();

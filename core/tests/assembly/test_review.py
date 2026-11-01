@@ -74,6 +74,36 @@ async def test_bbox_overlap_without_real_contact_is_clean(tmp_path, monkeypatch)
     assert rep["overlaps"] == [] and rep["ok"]
 
 
+async def test_declared_contacts_and_tiny_overlaps_are_not_problems(tmp_path, monkeypatch):
+    """G2: an overlap under the tolerance is never listed; a declared contact (the store's
+    allow_contact, or a joint's design.contact) is listed as intended and never reported; the
+    app's route and the health share the list."""
+    from mises.assembly import interference
+    from mises.assembly.geometry import GeometryResult as GR
+    store, root, ids = _build(tmp_path, [0, 3, 6])
+    store.add_joint("p", Joint(kind="fixed", a=JointRef(instance_id=ids[1], frame=Z),
+                               b=JointRef(instance_id=ids[2], frame=Z),
+                               design={"contact": "bearing seat"}))
+    store.allow_contact("p", ids[1], ids[0], "press fit")
+    hits = [{"a": "box0", "b": "box1", "a_id": "i0", "b_id": "i1", "volume_mm3": 40.0},
+            {"a": "box1", "b": "box2", "a_id": "i1", "b_id": "i2", "volume_mm3": 40.0},
+            {"a": "box0", "b": "box2", "a_id": "i0", "b_id": "i2", "volume_mm3": 0.03}]
+
+    async def occt(*a, **k):
+        return GR(interferences=hits)
+    monkeypatch.setattr(review, "run_geometry", occt)
+    monkeypatch.setattr("mises.assembly.geometry.run_geometry", occt)
+    rep = await review.assembly_report(store, root, "p")
+    assert rep["overlaps"] == [] and rep["ok"]
+    assert sorted(i["intended"] for i in rep["intended"]) == ["bearing seat", "press fit"]
+    listed = await interference.interferences(store, root, "p")
+    assert [(i["a_id"], i["b_id"], i["intended"]) for i in listed] == [
+        ("i0", "i1", "press fit"), ("i1", "i2", "bearing seat")]
+    store.remove_contact("p", "i0", "i1")
+    rep = await review.assembly_report(store, root, "p")
+    assert [(o["a_id"], o["b_id"]) for o in rep["overlaps"]] == [("i0", "i1")]
+
+
 async def test_no_bbox_overlap_runs_no_occt(tmp_path, monkeypatch):
     store, root, _ = _build(tmp_path, [0, 40])
 
@@ -158,10 +188,39 @@ async def test_done_claim_with_bad_health_warns_and_notes_the_lead(rt, monkeypat
     assert rt.store.get_run(lead).status != "failed"          # the user is never blocked
 
 
+STRAY = {**BAD, "summary": "assembly health: 1 stray part(s)", "overlaps": [],
+         "stray": [{"instance": "tail", "instance_id": "t", "distance_mm": 150.0}]}
+
+
+async def test_overlaps_after_any_changing_turn_note_the_lead_once(rt, monkeypatch):
+    """G2: a turn that changed the assembly and left overlaps (done claimed or not) gets a note
+    with each pair, its volume and where it is, plus the render; the same overlaps are not
+    noted again (the lead fixed something else, or explained why they are intended)."""
+    from mises.orchestrator import lead as lead_mod
+    pid = rt.active_project_id()
+    run = rt.store.create_run("engineer", "fake", "m", "go", project_id=pid)
+    hit = {**BAD["overlaps"][0], "center": [1.0, 2.0, 3.0]}
+    _patch(monkeypatch, {**BAD, "overlaps": [hit]})
+    sent = []
+
+    async def fake_note(rt_, run_id, text, meta, **kw):
+        sent.append((text, kw.get("images")))
+    monkeypatch.setattr(lead_mod, "deliver_note", fake_note)
+    rt.mark_assembly_changed(run.id, pid)
+    await rt._after_turn(run.id, "I moved the arm; next I will mate it.")
+    assert len(sent) == 1
+    text, images = sent[0]
+    assert "arm" in text and "base" in text and "30" in text and "(1, 2, 3)" in text
+    assert "assembly_allow_contact" in text and images
+    rt.mark_assembly_changed(run.id, pid)
+    await rt._after_turn(run.id, "Those are intended: the arm is pressed into the base.")
+    assert len(sent) == 1                                # same overlaps: not noted twice
+
+
 async def test_no_done_claim_hands_render_to_next_tool_result(rt, monkeypatch):
     pid = rt.active_project_id()
     run = rt.store.create_run("engineer", "fake", "m", "go", project_id=pid)
-    _patch(monkeypatch, BAD)
+    _patch(monkeypatch, STRAY)
     rt.mark_assembly_changed(run.id, pid)
     await rt._after_turn(run.id, "I moved the arm; next I will mate it.")
     assert _warnings(rt, run.id) == []

@@ -20,6 +20,7 @@ from pathlib import Path
 from ..types import MisesError, ToolImage
 from .geometry import run_geometry
 from .health import finalize, health
+from .interference import TOL_MM3, allowed_contacts, classify, problems
 
 
 log = logging.getLogger(__name__)
@@ -54,29 +55,34 @@ def bbox_report(asm_store, root: Path, project_id: str) -> tuple[dict, object, o
     from .pose import solve_assembly                      # the one pose (P11 F4)
     asm = asm_store.get(project_id)
     res = solve_assembly(asm, root)
-    return (health(asm.instances, res.transforms, _bboxes(root, asm), joints=asm.joints),
-            asm, res)
+    # the prefilter keeps every box overlap that could hold a listed one (G2: common <= box)
+    return (health(asm.instances, res.transforms, _bboxes(root, asm), joints=asm.joints,
+                   overlap_tol_mm3=TOL_MM3), asm, res)
 
 
 async def assembly_report(asm_store, root: Path, project_id: str, *,
                           timeout_s: float = OCCT_TIMEOUT_S) -> dict:
-    """The health report with real interference volumes for bbox-overlapping pairs (E33)."""
+    """The health report with real interference volumes for bbox-overlapping pairs (E33): the
+    same list the app draws (G2, assembly/interference.py), declared intended contacts kept
+    apart under `intended` and never counted as problems."""
     rep, asm, res = bbox_report(asm_store, root, project_id)
     if not rep["overlaps"]:
-        return rep
+        return {**rep, "intended": []}
+    allowed = allowed_contacts(asm_store, asm, project_id)
     try:
         geo = await run_geometry(root, asm, res, want="interference", timeout_s=timeout_s)
     except MisesError as e:
         # no OCCT verdict (a part not built as STEP, a timeout): keep the bbox candidates,
         # marked as approximate, rather than claim the assembly is clear
         log.info("assembly interference check unavailable: %s", e.message)
-        return {**rep, "overlap_method": "bbox", "overlap_note": e.message}
-    by_name = {i.name: i.id for i in asm.instances}
-    real = [{"a": h.get("a"), "b": h.get("b"), "a_id": by_name.get(h.get("a"), h.get("a")),
-             "b_id": by_name.get(h.get("b"), h.get("b")),
-             "volume_mm3": round(float(h.get("volume_mm3") or 0.0), 3)}
-            for h in geo.interferences]
-    return finalize({**rep, "overlaps": real, "overlap_method": "occt"})
+        cand = [o for o in rep["overlaps"]
+                if tuple(sorted((o["a_id"], o["b_id"]))) not in allowed]
+        return finalize({**rep, "overlaps": cand, "intended": [], "overlap_method": "bbox",
+                         "overlap_note": e.message})
+    items = classify(geo.interferences, asm, allowed)
+    return finalize({**rep, "overlaps": problems(items),
+                     "intended": [i for i in items if i.get("intended")],
+                     "overlap_method": "occt"})
 
 
 def record_health(rt, project_id: str, report: dict) -> None:
@@ -162,6 +168,32 @@ _DONE = re.compile(r"\b(done|complete[d]?|finished|ready|all set|built|assembled
 def claims_done(text: str | None) -> bool:
     """Whether a lead's final message reports the work as complete (the finish check)."""
     return bool(_DONE.search(text or ""))
+
+
+def overlap_signature(report: dict) -> tuple:
+    """The overlaps a note told the lead about (pairs and volumes rounded to 0.1 mm^3)."""
+    return tuple(sorted((*sorted((o["a_id"], o["b_id"])), round(o["volume_mm3"], 1))
+                        for o in report.get("overlaps") or []))
+
+
+def _where(o: dict) -> str:
+    c = o.get("center")
+    if not c:
+        return ""
+    return " at (" + ", ".join(f"{v:g}" for v in (round(x, 1) for x in c)) + ") mm"
+
+
+def overlap_note(report: dict) -> str:
+    """G2: the system note to a lead whose turn changed the assembly and left overlaps: every
+    pair the user sees in red (volume, where), and what to do about each."""
+    lines = "\n".join(f"- {o['a']} / {o['b']}: {o['volume_mm3']:g} mm^3{_where(o)}"
+                      for o in report["overlaps"])
+    return ("Assembly check after your last turn: these parts overlap, and the user sees each "
+            f"pair as a red box in the assembly ({report['summary']}):\n{lines}\nResolve them "
+            "before you continue: move, mate or resize the parts (then check again). An overlap "
+            "that is the design (a press fit, a bearing seat, a pin or fastener in its hole, "
+            "coincident mating faces) is declared with assembly_allow_contact(a, b, reason); "
+            "tell the user why for each one you keep.")
 
 
 def fix_note(report: dict) -> str:

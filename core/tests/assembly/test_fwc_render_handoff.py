@@ -4,13 +4,13 @@ turn's assembly change."""
 from mises.agent.loop import RunResult
 from mises.types import ToolOutput
 
-from .test_review import BAD, _patch, rt  # noqa: F401 - the fixture
+from .test_review import STRAY, _patch, rt  # noqa: F401 - the fixture
 
 
 async def _review(rt, monkeypatch, text="I moved the arm; next I will mate it."):  # noqa: F811
     pid = rt.active_project_id()
     run = rt.store.create_run("engineer", "fake", "m", "go", project_id=pid)
-    _patch(monkeypatch, BAD)
+    _patch(monkeypatch, STRAY)          # no overlaps: the render waits (G2 notes overlaps)
     rt.mark_assembly_changed(run.id, pid)
     await rt._after_turn(run.id, text)
     return run.id
@@ -36,7 +36,7 @@ async def test_the_render_rides_the_next_turn_but_not_the_one_after(rt, monkeypa
 async def test_a_new_turns_change_survives_the_previous_review(rt, monkeypatch):  # noqa: F811
     pid = rt.active_project_id()
     run = rt.store.create_run("engineer", "fake", "m", "go", project_id=pid)
-    _patch(monkeypatch, BAD)
+    _patch(monkeypatch, STRAY)          # no overlaps: the render waits (G2 notes overlaps)
     rt.mark_assembly_changed(run.id, pid)
     ok = RunResult(final_text="next I will mate it", messages=[], stop_reason="end_turn")
     assert rt._schedule_after_turn(run.id, ok)

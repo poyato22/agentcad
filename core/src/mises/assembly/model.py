@@ -121,6 +121,11 @@ class JointDesign(BaseModel):
                                         "[lo, hi] (deg or mm); may sit inside the hard limits")
     load_n: float | None = Field(default=None, ge=0, description="design radial load, N")
     fastener: str | None = Field(default=None, max_length=32, description='e.g. "M3"')
+    contact: str | None = Field(default=None, max_length=200,
+                                description="G2: the two parts overlap on purpose here (a press "
+                                            "fit, a bearing seat, a pin in its bore): why. Their "
+                                            "overlap is then drawn as intended, not red, and not "
+                                            "reported by assembly_health")
 
 
 _Finite = Annotated[float, Field(allow_inf_nan=False)]
@@ -201,6 +206,8 @@ CREATE TABLE IF NOT EXISTS assembly_mechs (
 CREATE TABLE IF NOT EXISTS assembly_animations (
   project_id TEXT, id TEXT, name TEXT, spec TEXT, ord INTEGER,
   PRIMARY KEY (project_id, id), UNIQUE (project_id, name));
+CREATE TABLE IF NOT EXISTS assembly_contacts (
+  project_id TEXT, a TEXT, b TEXT, reason TEXT, PRIMARY KEY (project_id, a, b));
 """
 
 #: saved animations kept per build (Plan 9 G-D)
@@ -242,6 +249,8 @@ class AssemblyStore:
                                  (project_id,))
                 self._db.execute("DELETE FROM assembly_loops WHERE project_id=?", (project_id,))
                 self._db.execute("DELETE FROM assembly_mechs WHERE project_id=?", (project_id,))
+                self._db.execute("DELETE FROM assembly_contacts WHERE project_id=?",
+                                 (project_id,))
                 self._db.execute("COMMIT")
             except BaseException:
                 self._db.execute("ROLLBACK")
@@ -357,6 +366,8 @@ class AssemblyStore:
                 self._db.execute(
                     f"DELETE FROM assembly_joints WHERE project_id=? AND id IN "
                     f"({','.join('?' * len(removed))})", (project_id, *removed))
+            self._db.execute("DELETE FROM assembly_contacts WHERE project_id=? AND (a=? OR b=?)",
+                             (project_id, iid, iid))
             self._db.execute("DELETE FROM assembly_instances WHERE project_id=? AND id=?",
                              (project_id, iid))
             self._db.execute("DELETE FROM assembly_auto WHERE project_id=? AND id=?",
@@ -523,6 +534,28 @@ class AssemblyStore:
                                    (project_id, lid))
             if cur.rowcount == 0:
                 raise KeyError(lid)
+
+    # ---- G2: intended contacts (a press fit, a bearing seat, a pin in its bore): the pair's
+    # overlap is drawn as intended and never reported. Keyed by the sorted instance ids.
+    def allow_contact(self, project_id: str, a: str, b: str, reason: str) -> dict:
+        x, y = sorted((a, b))
+        with self._lock:
+            self._db.execute("INSERT OR REPLACE INTO assembly_contacts VALUES (?,?,?,?)",
+                             (project_id, x, y, reason))
+        return {"a": x, "b": y, "reason": reason}
+
+    def remove_contact(self, project_id: str, a: str, b: str) -> bool:
+        x, y = sorted((a, b))
+        with self._lock:
+            cur = self._db.execute("DELETE FROM assembly_contacts WHERE project_id=? AND a=? AND"
+                                   " b=?", (project_id, x, y))
+        return cur.rowcount > 0
+
+    def list_contacts(self, project_id: str) -> list[dict]:
+        with self._lock:
+            rows = self._db.execute("SELECT a, b, reason FROM assembly_contacts WHERE"
+                                    " project_id=? ORDER BY a, b", (project_id,)).fetchall()
+        return [{"a": r["a"], "b": r["b"], "reason": r["reason"]} for r in rows]
 
     # ---- named animations (Plan 9 G-D): an agent's motion, kept so a view card can replay it
     def save_animation(self, project_id: str, name: str, spec: dict) -> dict:

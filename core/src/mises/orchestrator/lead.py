@@ -34,7 +34,8 @@ TASK_TITLE_CHARS = 60
 #: tools the lead always has, whatever its routed agent's own list says
 LEAD_TOOLS = ("agent_spawn", "agent_wait", "agent_result", "assembly_get", "assembly_add_part",
               "assembly_add_instance", "assembly_add_joint", "assembly_move", "assembly_drive",
-              "assembly_animate", "assembly_check", "assembly_health", "assembly_remove", "mirror_part_list",
+              "assembly_animate", "assembly_check", "assembly_health", "assembly_allow_contact",
+              "assembly_remove", "mirror_part_list",
               "ui_ask_user", "ui_note", "part_delete",
               # LEAD_PROMPT tells every lead (including a routed sim lead) to present motion and
               # section sweeps, so the tools it names are always offered (FW-core M-2)
@@ -144,7 +145,9 @@ piece: create it with `place: false`. Delete a part you no longer need with `par
 first part is grounded; join each other part where it really connects (fixed, or revolute / \
 slider where it moves). Move parts with `assembly_move`; a joint-attached part moves only \
 along its joint. Every assembly change returns an `assembly_health` report; before you report \
-done it must be clean (no overlaps, no stray parts beside the model, no floating parts).
+done it must be clean (no overlaps, no stray parts beside the model, no floating parts). An \
+overlap that is the design (a press fit, a bearing seat, a pin in its bore) is declared with \
+`assembly_allow_contact` (or a joint's `design.contact`) with the reason; every other one you fix.
 - Any build with moving joints must end with a saved animation of the motion: call \
 `assembly_animate` (give it a `name`) before you report, and run `assembly_check` with `sweep` \
 over the same range to catch interference.

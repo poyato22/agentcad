@@ -39,6 +39,9 @@ export interface OverlayLabel {
 /** A world point (mm) with a text, placed on screen every frame (setMarks). */
 export interface SceneMark { key: string; point: Vec3; text: string; kind: "layout" | "delta" | "pin" | "pick" | "hover" }
 
+/** One overlapping pair as drawn (instance ids per side; the core names instances). */
+export interface InterferencePair { a: string[]; b: string[]; text: string; box?: { min: Vec3; max: Vec3 } | null; intended?: boolean }
+
 /** A click on a part: which instance, where (world mm) and the face normal there (world). */
 export interface AssemblyHit { instanceId: string; point: Vec3; normal: Vec3 }
 
@@ -56,7 +59,10 @@ export interface AssemblyScene {
   /** Plan 10 E16: the part under the pointer while measuring or commenting (its edges tinted). */
   setHovered(id: string | null): void;
   /** Interfering pairs (instance ids) with their volume label. */
-  setInterference(pairs: readonly { a: string[]; b: string[]; text: string }[]): void;
+  /** G2: the core's overlap list (assembly/interference.py): `box` is where the overlap is (world
+   *  mm, else the two parts' box intersection); an `intended` contact is drawn quietly (blue
+   *  outline, no tag, the parts untinted), never red. */
+  setInterference(pairs: readonly InterferencePair[]): void;
   setArriving(on: boolean): void;
   /** Spheres the moving parts can sweep through (joint origin + reach); the camera frames them too. */
   setReach(spheres: readonly { center: Vec3; radius: number }[]): void;
@@ -161,7 +167,7 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
   const entries = new Map<string, Entry>();
   let selected: string | null = null;
   let hovered: string | null = null;
-  let interference: { a: string[]; b: string[]; text: string }[] = [];
+  let interference: InterferencePair[] = [];
   let arriving = false;
   /** The parts (with geometry) the camera was last fitted to: a part added or removed refits. */
   let fittedKey = "";
@@ -234,7 +240,7 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
 
   function restyle(): void {
     const hot = new Set<string>();
-    for (const p of interference) for (const id of [...p.a, ...p.b]) hot.add(id);
+    for (const p of interference) if (!p.intended) for (const id of [...p.a, ...p.b]) hot.add(id);
     for (const e of entries.values()) {
       if (!e.body) continue;
       // the part keeps its own color; a clash shows as red edges and the red overlap block
@@ -266,22 +272,29 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
   const unitEdges = new THREE.EdgesGeometry(unitBox);
   const overlapFill = new THREE.MeshBasicMaterial({ color: colors.red, transparent: true, opacity: 0.45, depthWrite: false });
   const overlapLine = new THREE.LineBasicMaterial({ color: colors.red });
+  // G2: a declared contact (press fit, bearing seat) is outlined quietly, never red
+  const intendedLine = new THREE.LineBasicMaterial({ color: colors.blue, transparent: true, opacity: 0.7 });
 
   function rebuildOverlaps(): void {
     overlapFill.color.set(colors.red);
     overlapLine.color.set(colors.red);
+    intendedLine.color.set(colors.blue);
     for (const c of [...overlapRoot.children]) c.removeFromParent();
     for (const p of interference) {
       const a = new THREE.Box3(); const b = new THREE.Box3();
       for (const id of p.a) { const e = entries.get(id); if (e?.body && !e.hidden) a.expandByObject(e.group); }
       for (const id of p.b) { const e = entries.get(id); if (e?.body && !e.hidden) b.expandByObject(e.group); }
-      const both = a.intersect(b);
+      // where the core found the overlap; else (an older core) the parts' boxes' intersection
+      const both = a.isEmpty() || b.isEmpty() ? new THREE.Box3()
+        : p.box ? new THREE.Box3(new THREE.Vector3(...p.box.min), new THREE.Vector3(...p.box.max)) : a.intersect(b);
       if (both.isEmpty()) continue;
-      const size = both.getSize(new THREE.Vector3()).max(new THREE.Vector3(0.2, 0.2, 0.2));
+      const size = both.getSize(new THREE.Vector3()).max(new THREE.Vector3(0.6, 0.6, 0.6));
       const g = new THREE.Group();
       g.position.copy(both.getCenter(new THREE.Vector3()));
       g.scale.copy(size);
-      g.add(new THREE.Mesh(unitBox, overlapFill), new THREE.LineSegments(unitEdges, overlapLine));
+      if (p.intended) g.add(new THREE.LineSegments(unitEdges, intendedLine));
+      else g.add(new THREE.Mesh(unitBox, overlapFill), new THREE.LineSegments(unitEdges, overlapLine));
+      g.userData["intended"] = !!p.intended;
       g.renderOrder = 5;
       overlapRoot.add(g);
     }
@@ -342,10 +355,10 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
       const shownGroup = (id: string) => { const e = entries.get(id); return e && !e.hidden ? e.group : undefined; };
       const a = p.a.map(shownGroup).filter(Boolean) as THREE.Group[];
       const b = p.b.map(shownGroup).filter(Boolean) as THREE.Group[];
-      if (!a.length || !b.length) return;
+      if (!a.length || !b.length || p.intended) return;      // an intended contact has no tag
       box.makeEmpty(); for (const g of a) box.expandByObject(g);
       box2.makeEmpty(); for (const g of b) box2.expandByObject(g);
-      const both = box.clone().intersect(box2);
+      const both = p.box ? new THREE.Box3(new THREE.Vector3(...p.box.min), new THREE.Vector3(...p.box.max)) : box.clone().intersect(box2);
       const c = (both.isEmpty() ? box.union(box2) : both).getCenter(new THREE.Vector3()).project(camera);
       out.push({ key: `${i}`, x: ((c.x + 1) / 2) * width, y: ((1 - c.y) / 2) * height, text: p.text });
     });

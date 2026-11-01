@@ -232,14 +232,16 @@ def build_assembly_router(runtime: Runtime) -> APIRouter:
 
     @router.get("/projects/{project_id}/assembly/interference")
     async def interference(project_id: str):
+        """G2: the same list assembly_health reports (assembly/interference.py): pairs over
+        the tolerance with ids, volume and where; a declared contact carries `intended`."""
+        from ..assembly.interference import interferences
         asm, res = _solved(project_id)
         try:
-            geo = await run_geometry(parts_root(), asm, res, want="interference")
+            return await interferences(store, parts_root(), project_id, asm=asm, res=res)
         except MisesError as e:
             if e.code == ErrorCode.NOT_FOUND:
                 return []
             raise
-        return geo.interferences
 
     def _glb_key(asm, res) -> str:
         """Content hash of everything the GLB depends on: each instance's name, part and solved

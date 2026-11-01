@@ -52,6 +52,37 @@ async def test_no_interference_when_apart(tmp_path):
     assert geo.interferences == []
 
 
+ORNI = Path(__file__).parent.parent / "fixtures" / "assembly" / "ornicopter"
+# the user's ornicopter (G2): the rear-left wing root and its spar, both at the root's solved
+# world pose (a 3.88 deg tilt about Y and +50 mm in Y); the spar is fixed in the root's socket
+REAR = [[0.997705, 0.0, 0.067715, -0.306393], [0.0, 1.0, 0.0, 50.0],
+        [-0.067715, 0.0, 0.997705, -1.040405], [0.0, 0.0, 0.0, 1.0]]
+
+
+async def test_interference_depends_only_on_the_pairs_relative_pose(tmp_path):
+    """G2 root cause: the OCCT common taken in world space disagreed with itself for the same
+    pair at the same relative pose (0 / 0.12 / 9.7 / 36.5 mm^3 on the ornicopter's four
+    root/spar pairs). Taken in the first part's own frame it is the real 0.031 mm^3 (the rod's
+    end 0.01 mm into the socket floor) wherever the pair sits; hits carry ids and a location."""
+    parts = tmp_path / "parts"
+    for pid in ("wing_root_left", "spar_rod_left"):
+        (parts / pid).mkdir(parents=True)
+        (parts / pid / "model.step").write_bytes((ORNI / f"{pid}.step").read_bytes())
+    vols = []
+    for tf in (REAR, _shift_x(0.0)):
+        asm = Assembly(instances=[
+            Instance(id="root", part_id="wing_root_left", name="root_rl", transform=tf),
+            Instance(id="spar", part_id="spar_rod_left", name="spar_rl", transform=tf),
+        ])
+        geo = await run_geometry(parts, asm, solve(asm), want="interference")
+        assert len(geo.interferences) == 1
+        hit = geo.interferences[0]
+        assert (hit["a_id"], hit["b_id"]) == ("root", "spar")
+        assert len(hit["center"]) == 3 and len(hit["bbox"]["min"]) == 3
+        vols.append(hit["volume_mm3"])
+    assert vols[0] == pytest.approx(0.0314, abs=0.005) and vols[1] == pytest.approx(vols[0], abs=0.002)
+
+
 async def test_glb_has_one_node_per_instance(tmp_path):
     parts = await _build_box(tmp_path)
     asm = Assembly(instances=[

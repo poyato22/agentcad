@@ -230,7 +230,9 @@ join the others where they really connect: fixed, revolute or slider). Move part
 `assembly_move`; a joint-attached part moves only along its joint. Every assembly change returns
 an `assembly_health` report (overlaps, stray parts beside the model, parts no joint or contact holds
 in place); call `assembly_health` for the whole-assembly view and render. Before you report done it
-must be clean — fix overlaps, mate stray parts where they belong and join floating parts. Any build with moving joints must end with a saved
+must be clean — fix overlaps, mate stray parts where they belong and join floating parts. An overlap
+that is the design (a press fit, a bearing seat, a pin in its bore) is declared with
+`assembly_allow_contact` (or a joint's `design.contact`) with the reason. Any build with moving joints must end with a saved
 animation demonstrating the motion: call `assembly_animate` (give it a `name`) before you report,
 and run `assembly_check` with `sweep` over the same range to catch interference.
 

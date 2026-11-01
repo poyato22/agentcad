@@ -36,9 +36,10 @@ export function towardCamera(host: ModeHost | null, normal: Vec3): Vec3 {
 export interface CheckIssue { tone: "fail" | "warn"; text: string }
 
 /** What the check chip says: clashes first (fail), then joints that can't apply (warn). */
-export function checkIssues(items: readonly { a: string; b: string; volume_mm3: number }[], overconstrained: readonly (readonly string[])[]): CheckIssue[] {
+export function checkIssues(items: readonly { a: string; b: string; volume_mm3: number; intended?: string | null }[], overconstrained: readonly (readonly string[])[]): CheckIssue[] {
   return [
-    ...items.map((x) => ({ tone: "fail" as const, text: `${x.a} and ${x.b} overlap by ${fmtVolume(x.volume_mm3)}` })),
+    // G2: a declared contact (press fit, bearing seat) is the design, not an issue
+    ...items.filter((x) => !x.intended).map((x) => ({ tone: "fail" as const, text: `${x.a} and ${x.b} overlap by ${fmtVolume(x.volume_mm3)}` })),
     ...overconstrained.map((g) => ({ tone: "warn" as const, text: `${g.join(" and ")} are grounded and joined: one joint can't apply` })),
   ];
 }
