@@ -469,6 +469,41 @@ async def test_assembly_pin_without_world_point_maps_the_point_through_the_pose(
     await rt.aclose()
 
 
+async def test_assembly_pin_compares_the_drawn_box_with_the_model(home):
+    """P11 F4: the coupler case. The user clicked a coupler the app drew 360 mm off the axis;
+    the pin carries the instance's box as drawn and as Mises has it, and says they disagree, so
+    the agent answers from evidence instead of calling the click "off the model"."""
+    rt = make(home, RoleProvider(engineer=[text("noted"), text("noted")]))
+    pid = rt.active_project_id()
+    rt.store.register_part("coupler", pid)
+    d = rt.home / "parts" / "coupler"
+    d.mkdir(parents=True)
+    (d / "metrics.json").write_text(json.dumps({"bbox": {
+        "min": [-31.6, -31.6, 360], "max": [31.6, 31.6, 480], "size": [63.2, 63.2, 120]},
+        "face_list": []}))
+    inst = rt.assembly_store.add_instance(pid, Instance(part_id="coupler", name="coupler",
+                                                        fixed=True))
+    drawn = {"min": [-31.6, -391.6, 0], "max": [31.6, -328.4, 120]}    # as the app drew it
+    out = await lead_mod.submit_feedback(
+        rt, pid, part_id="coupler", point=[31.5248, -362.7227, 59.1526], text="what is this",
+        instance_id=inst.id, world_point=[31.5248, -362.7227, 59.1526], world_bbox=drawn)
+    pin = rt.store.get_step(out["step_id"]).payload["feedback"]
+    assert pin["model_bbox"] == {"min": [-31.6, -31.6, 360], "max": [31.6, 31.6, 480]}
+    assert pin["drawn_bbox"] == drawn
+    assert pin["pose_check"]["agrees"] is False and pin["pose_check"]["offset_mm"] == 360
+    assert "out of date" in pin["pose_check"]["note"]
+    msg = lead_mod.feedback_message({k: v for k, v in pin.items() if k != "text"}, "x", nonce="n")
+    assert "model_bbox" in msg and "Check the instance's pose" in msg
+    # drawn where Mises has it: they agree
+    out = await lead_mod.submit_feedback(
+        rt, pid, part_id="coupler", point=[31.6, 0, 400], text="ok", instance_id=inst.id,
+        world_point=[31.6, 0, 400], world_bbox={"min": [-31.5, -31.5, 360.4],
+                                                 "max": [31.6, 31.6, 479.9]})
+    pin = rt.store.get_step(out["step_id"]).payload["feedback"]
+    assert pin["pose_check"] == {"agrees": True, "offset_mm": 0.4}
+    await rt.aclose()
+
+
 def test_assembly_pin_route_validates_the_world_point(home):
     rt = make(home, RoleProvider(engineer=[text("noted")]))
     with TestClient(create_app(rt, TOKEN)) as client:
@@ -486,6 +521,13 @@ def test_assembly_pin_route_validates_the_world_point(home):
             Feedback(part_id="plate", point=[0, 0, 0], text="x", instance_id="abc", world_point=wp)
     with pytest.raises(ValidationError):
         Feedback(part_id="plate", point=[float("nan"), 0, 0], text="x")
+    # P11 F4: the drawn box is three finite numbers a side
+    for bad in ({"min": [0, 0], "max": [1, 1, 1]}, {"min": [0, 0, float("inf")], "max": [1, 1, 1]}):
+        with pytest.raises(ValidationError):
+            Feedback(part_id="plate", point=[0, 0, 0], text="x", world_bbox=bad)
+    ok = Feedback(part_id="plate", point=[0, 0, 0], text="x",
+                  world_bbox={"min": [0, 0, 0], "max": [1, 2, 3]})
+    assert ok.world_bbox.max == [1, 2, 3]
 
 
 def test_feedback_text_cannot_close_the_block():

@@ -25,6 +25,7 @@ from .. import platform as _platform
 from .. import projects as _projects
 from ..appearance import render_params
 from ..cad import thumbs
+from ..cad.glb_frame import GLB_FRAME, fix_stale_glb
 from ..cad.tools import PART_ID_RE
 from ..claude_code.session import MODEL_ALIASES, SOURCE as CLAUDE_CODE
 from ..events import Event
@@ -95,6 +96,15 @@ def _contained(root: Path, p: Path) -> Path | None:
     except (OSError, RuntimeError):
         pass
     return None
+
+
+def _glb_frame(part_dir: Path) -> int:
+    """The frame the worker wrote the part's model.glb in (mises.cad.glb_frame): 0 before P11."""
+    try:
+        m = json.loads((part_dir / "metrics.json").read_text())
+        return int(m.get("glb_frame") or 0) if isinstance(m, dict) else 0
+    except (OSError, ValueError, TypeError):
+        return 0
 
 
 def _etag_matches(header: str | None, etag: str) -> bool:
@@ -330,11 +340,20 @@ def build_ui_router(runtime: Runtime) -> UiRouter:
             raise MisesError(ErrorCode.NOT_FOUND, f"no model for part {part_id!r}",
                              hint="build it with mirror_part_create")
         st = real.stat()
-        etag = f'"{st.st_mtime_ns}-{st.st_size}"'
+        # P11 F4: a model.glb written before the frame fix is served fixed (drawn where the
+        # core has the part); metrics.json says which frame the worker wrote
+        stale = _glb_frame(real.parent) < GLB_FRAME
+        etag = f'"{st.st_mtime_ns}-{st.st_size}{"-f" if stale else ""}"'
         headers = {"ETag": etag, "Cache-Control": "private, no-cache"}
         if _etag_matches(request.headers.get("if-none-match"), etag):
             return Response(status_code=304, headers=headers)
-        return Response(real.read_bytes(), media_type="model/gltf-binary", headers=headers)
+        data = real.read_bytes()
+        if stale:
+            try:
+                data = fix_stale_glb(data)
+            except (ValueError, KeyError, IndexError, TypeError):
+                log.warning("could not fix the frame of %s's model.glb", part_id, exc_info=True)
+        return Response(data, media_type="model/gltf-binary", headers=headers)
 
     @router.get("/parts/{part_id}/thumb.png")
     async def part_thumb(part_id: str, request: Request, size: int = thumbs.DEFAULT_SIZE):

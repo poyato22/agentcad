@@ -137,6 +137,34 @@ def test_glb_etag_and_304(client, rt):
     assert r3.status_code == 200
 
 
+def _old_coupler_glb() -> bytes:
+    """A model.glb as the worker wrote one before P11 F4: a coupler built at z 360-480 with
+    `Pos(0, 0, 360) * tube`, its translation left in the Z-up frame (node T·Rx(-90°))."""
+    from mises.cad.glb_frame import join_glb
+    c = 0.5 ** 0.5
+    gltf = {"asset": {"version": "2.0"}, "scene": 0, "scenes": [{"nodes": [0]}],
+            "nodes": [{"mesh": 0, "translation": [0, 0, 0.36], "rotation": [-c, 0, 0, c]}],
+            "meshes": [{"primitives": [{"attributes": {"POSITION": 0}}]}],
+            "accessors": [{"componentType": 5126, "count": 2, "type": "VEC3",
+                           "min": [-0.0316, -0.0316, 0.0], "max": [0.0316, 0.0316, 0.12]}]}
+    return join_glb(gltf, b"")
+
+
+def test_an_old_model_glb_is_served_in_the_cad_frame(client, rt):
+    """P11 F4: the app drew this coupler 360 mm off the rocket's axis; served fixed, it draws
+    where the core has it. A rebuilt part (metrics glb_frame 2) is served as it is."""
+    from mises.cad.glb_frame import GLB_FRAME, cad_bbox
+    d = write_part(rt, glb=_old_coupler_glb())
+    lo, hi = cad_bbox(_old_coupler_glb())
+    assert hi[1] == pytest.approx(-328.4)                        # the bug: along -Y
+    r = client.get("/parts/mount_plate/model.glb", headers=AUTH)
+    lo, hi = cad_bbox(r.content)
+    assert lo == pytest.approx([-31.6, -31.6, 360]) and hi == pytest.approx([31.6, 31.6, 480])
+    assert r.headers["etag"].endswith('-f"')
+    (d / "metrics.json").write_text(json.dumps({**METRICS, "glb_frame": GLB_FRAME}))
+    assert client.get("/parts/mount_plate/model.glb", headers=AUTH).content == _old_coupler_glb()
+
+
 def test_glb_rejects_traversal(client, rt):
     (rt.home / "secret").mkdir()
     (rt.home / "secret" / "model.glb").write_bytes(b"SECRET")

@@ -1092,6 +1092,24 @@ def _col_major(matrix) -> list:
     return [float(matrix[r][c]) for c in range(4) for r in range(4)]
 
 
+# P11 F4 (mises.cad.glb_frame): model.glb is written as R·L (the shape's location L, then
+# Z-up -> Y-up R = Rx(-90°)); build123d's export_gltf composes L·R (`location *= R`), which
+# leaves a located shape's translation in the Z-up frame (the app then drew a `Pos(0,0,360)*tube`
+# 360 mm off its axis). Exporting with the location conjugated, L' = R·L·R⁻¹, gives
+# L'·R = R·L exactly, without touching the geometry.
+GLB_FRAME = 2
+
+
+def _export_glb(b3, shape, path) -> None:
+    rot = b3.Location((0, 0, 0), (1, 0, 0), -90)
+    loc = shape.location
+    shape.location = rot * loc * rot.inverse()
+    try:
+        b3.export_gltf(shape, path, binary=True)
+    finally:
+        shape.location = loc
+
+
 def _assembly_glb(path: Path, items) -> None:
     """items: list of (name, vertices, triangles, matrix). One node + mesh per instance."""
     import struct
@@ -1368,7 +1386,8 @@ def main(argv: list[str]) -> int:
     tmp = part_dir / "tmp"
     tmp.mkdir(exist_ok=True)
     def export_glb(s, path):  # binary=True: one self-contained .glb, no external .bin
-        b3.export_gltf(s, path, binary=True)
+        _export_glb(b3, s, path)
+    metrics["glb_frame"] = GLB_FRAME
     outs = {"model.step": b3.export_step, "model.stl": b3.export_stl, "model.glb": export_glb}
     for name, fn in outs.items():
         fn(shape, str(tmp / ("new_" + name)))

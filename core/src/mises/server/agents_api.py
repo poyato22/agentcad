@@ -3,9 +3,10 @@
 - GET  /projects/{id}/agents    the lead with its sub-tree (status, live activity), plus the
                                 build's other top-level runs
 - POST /projects/{id}/feedback  {part_id, point:[x,y,z], face_id?, text, instance_id?,
-                                world_point?} -> a message to the build's lead with the
-                                location; returns {run_id, step_id, routed}. A pin from the
-                                assembly view names its instance and the world point (E35).
+                                world_point?, world_bbox?} -> a message to the build's lead
+                                with the location; returns {run_id, step_id, routed}. A pin
+                                from the assembly view names its instance and the world point
+                                (E35), and the instance's box as drawn (P11 F4).
 
 Admin token only, like every app route (app.py's bearer check).
 """
@@ -27,6 +28,11 @@ if TYPE_CHECKING:
 Finite = Annotated[float, Field(allow_inf_nan=False)]
 
 
+class Box(BaseModel):
+    min: list[Finite] = Field(min_length=3, max_length=3)
+    max: list[Finite] = Field(min_length=3, max_length=3)
+
+
 class Feedback(BaseModel):
     part_id: str = Field(min_length=1, max_length=80)
     point: list[Finite] = Field(min_length=3, max_length=3)
@@ -36,6 +42,8 @@ class Feedback(BaseModel):
     # Plan 10 E35: a pin dropped in the assembly view names the instance and the world point
     instance_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]{1,64}$")
     world_point: list[Finite] | None = Field(default=None, min_length=3, max_length=3)
+    # P11 F4: the clicked instance's world box as the app drew it (mm)
+    world_bbox: Box | None = None
 
 
 def build_agents_router(runtime: Runtime) -> APIRouter:
@@ -55,6 +63,8 @@ def build_agents_router(runtime: Runtime) -> APIRouter:
                                            text=body.text, model_ref=body.model_ref,
                                            default_agent=prof.default_agent,
                                            instance_id=body.instance_id,
-                                           world_point=body.world_point)
+                                           world_point=body.world_point,
+                                           world_bbox=body.world_bbox.model_dump()
+                                           if body.world_bbox else None)
 
     return r
