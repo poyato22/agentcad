@@ -76,6 +76,8 @@ CONTROL_TIMEOUT_S = 5.0                # a control_request's answer (effort chan
 # Plan 11 F8: Mises owns the session's effort (--effort, then apply_flag_settings per turn);
 # this variable would pin it and make Claude Code refuse the per-turn change
 EFFORT_ENV = "CLAUDE_CODE_EFFORT_LEVEL"
+_EFFORT_REJECTED = re.compile(r"effort|unknown option|invalid (option|value|argument)|"
+                              r"unexpected argument", re.I)
 CLOSE_GRACE_S = 2.0                    # stdin EOF -> SIGTERM on a normal close
 MCP_FILE, AGENTS_FILE, RULES_FILE = "claude-mcp.json", "claude-agents.json", "mises-rules.md"
 
@@ -402,6 +404,12 @@ class ClaudeCodeSession:
                              f"Claude Code refused {request.get('subtype')}: "
                              f"{str(resp.get('error'))[:200]}")
         return resp
+
+    def effort_rejected(self) -> bool:
+        """Plan 11 F8: the process started with --effort and died before system/init with an
+        option error: the caller retries once without the flag."""
+        return bool(self.start_effort and self.init_info is None
+                    and _EFFORT_REJECTED.search(self.stderr_tail))
 
     async def set_effort(self, level: str) -> str | None:
         """Change the session's effort for the next turn: `apply_flag_settings`

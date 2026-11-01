@@ -66,6 +66,11 @@ _ROUTINE = re.compile(
     r"hide|rename|delete|remove|undo|move|rotate|color|colour|make it (red|blue|green|black|"
     r"white|grey|gray)|set|change the (colou?r|name|material)|thanks|thank you|ok\b|okay)\b",
     re.I)
+# a reasoning question is never "routine", whatever word it opens with
+_REASONING = re.compile(r"\b(why|strongest|stiffest|lightest|best way|clever|smart|which is "
+                        r"better|compare|trade-?offs?|explain|should i|would it|could it|"
+                        r"how (?:do|does|should|would|could|can) )", re.I)
+ROUTINE_MAX_WORDS = 14
 _SMALL_EDIT = re.compile(r"\b\d+(\.\d+)?\s?(mm|cm|m|in|deg|°|%)\b", re.I)
 _HARD_ASK = re.compile(r"\b(think (hard|carefully|deeply)|really (think|careful)|"
                        r"take your time|best possible|optimi[sz]e|from scratch|"
@@ -85,15 +90,18 @@ def auto_pick(text: str, *, design_class: str | None = None, challenge: dict | N
             level = lvl
 
     words = len((text or "").split())
-    routine = bool(_ROUTINE.search(text or "")
-                   or (words <= 14 and _SMALL_EDIT.search(text or "")))
+    routine = (words <= ROUTINE_MAX_WORDS and not _REASONING.search(text or "")
+               and bool(_ROUTINE.search(text or "") or _SMALL_EDIT.search(text or "")))
     sig = challenge_signal(text or "")
     if sig is not None and sig.get("off"):
         sig = None
     if sig:
         what = {"egg_drop": "an egg-drop challenge", "competition": "a design challenge",
                 "creative": "an open-ended creative request"}.get(sig.get("kind"), "a challenge")
-        up("max" if sig.get("creative") else "high", f"open-ended: {what}")
+        # max only for an explicit challenge or competition that asks for something
+        # creative; a creative cue on its own is capped at high (Think: Max reaches max)
+        up("max" if sig.get("creative") and sig.get("kind") != "creative" else "high",
+           f"open-ended: {what}")
     elif challenge and not routine:
         up("high", "a follow-up in an open-ended challenge build")
     if failures >= 2:
@@ -163,8 +171,10 @@ def set_build_default(store, project_id: str, choice: str | None) -> str | None:
     return c
 
 
-def decide(store, run_id: str, text: str, choice: Any = None) -> dict:
-    """The effort decision for one turn of `run_id`: {level, choice, source, reasons}."""
+def decide(store, run_id: str, text: str, choice: Any = None, *,
+           inherit: str | None = None) -> dict:
+    """The effort decision for one turn of `run_id`: {level, choice, source, reasons}.
+    `inherit`: a sub-agent's spawner's level, used unless the sub-task is itself creative."""
     c = normalise(choice)
     if c == "low":
         return {"level": "low", "choice": "auto", "source": "user", "reasons": ["chosen"]}
@@ -180,7 +190,12 @@ def decide(store, run_id: str, text: str, choice: Any = None) -> dict:
     if d in CHOICE_LEVEL:
         return {"level": CHOICE_LEVEL[d], "choice": "auto", "source": "build",
                 "reasons": [f"the build's default ({LABEL[CHOICE_LEVEL[d]]})"]}
-    from .ideation import build_challenge
+    from .ideation import build_challenge, challenge_signal
+    if inherit in LEVELS:
+        sig = challenge_signal(text or "")
+        if not sig or sig.get("off"):
+            return {"level": inherit, "choice": "auto", "source": "lead",
+                    "reasons": [f"follows its lead ({LABEL[inherit]})"]}
     dc = getattr(run, "design_class", None) or {}
     sig = run_signals(store, run_id)
     level, reasons = auto_pick(text, design_class=dc.get("cls") if isinstance(dc, dict) else None,
@@ -196,9 +211,50 @@ _ANTHROPIC_HIGH = re.compile(r"claude-opus-4-5")
 _OPENAI_REASONING = re.compile(r"^(o[1-9]|gpt-5)")
 
 
-def claude_code_effort(level: str) -> str:
-    """Claude Code's --effort / effortLevel value (it takes low, medium, high, xhigh, max)."""
-    return level if level in LEVELS else "medium"
+# Claude Code model refs whose model takes no effort (older ids passed as an alias), and the
+# one that tops out at high; the current aliases (sonnet, opus, haiku, fable) take all levels
+# (verified on 2.1.316: --effort low then apply_flag_settings max applied for each)
+_CC_NONE = re.compile(r"claude-3|claude-haiku-4|claude-sonnet-4-5|claude-(sonnet|opus)-4-[0-4]\b|"
+                      r"claude-(sonnet|opus)-4$", re.I)
+_CC_HIGH = re.compile(r"opus-4-5", re.I)
+
+
+def claude_code_effort(level: str, model: str | None = None) -> str | None:
+    """Claude Code's --effort / effortLevel value for `model` (an alias or model id); None when
+    that model takes no effort (nothing is sent), clamped to high where max is not offered."""
+    if level not in LEVELS:
+        return None
+    m = model or ""
+    if _CC_HIGH.search(m):
+        return "high" if level == "max" else level
+    if _CC_NONE.search(m):
+        return None
+    return level
+
+
+_HELP: dict[str, bool] = {}
+
+
+async def cli_supports_effort(path: str | None, env: dict | None = None) -> bool:
+    """Whether this `claude` binary lists --effort in its --help (cached per binary)."""
+    import asyncio
+    import os
+    if not path:
+        return False
+    key = os.path.realpath(path)
+    if key in _HELP:
+        return _HELP[key]
+    ok = False
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            path, "--help", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+            stdin=asyncio.subprocess.DEVNULL, env=env)
+        out, _ = await asyncio.wait_for(proc.communicate(), 15)
+        ok = b"--effort" in (out or b"")
+    except Exception:  # noqa: BLE001 - no flag rather than a failed run
+        ok = False
+    _HELP[key] = ok
+    return ok
 
 
 def anthropic_effort(model: str, level: str) -> str | None:
@@ -219,8 +275,10 @@ def control(provider: str, model: str, level: str) -> dict:
     """What the runtime is sent for `level`: {runtime, param, value} or {runtime, supported:
     False, note}."""
     if provider == "claude-code":
-        return {"runtime": "claude-code", "param": "--effort / apply_flag_settings.effortLevel",
-                "value": claude_code_effort(level)}
+        v = claude_code_effort(level, model)
+        return ({"runtime": "claude-code", "param": "--effort / apply_flag_settings.effortLevel",
+                 "value": v} if v else {"runtime": "claude-code", "supported": False,
+                                        "note": f"{model} takes no effort setting"})
     if provider == "anthropic":
         v = anthropic_effort(model, level)
         return ({"runtime": "anthropic", "param": "output_config.effort", "value": v}

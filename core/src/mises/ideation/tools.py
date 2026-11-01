@@ -175,8 +175,8 @@ EGG_MASS_KG = 0.06              # a large chicken egg
 EGG_BREAK_N = 35.0
 EGG_BREAK_RANGE_N = (25.0, 45.0)
 EGG_BREAK_SOURCE = ("chicken-egg shell quasi-static compression failure load, ~25-45 N "
-                    "(nominal 35 N), as reported in eggshell breaking-strength studies (e.g. "
-                    "Voisey & Hunt, J. Agric. Eng. Res., 1974); loaded between flat plates, "
+                    "(nominal 35 N), as reported in eggshell breaking-strength studies "
+                    "(citation not re-verified here); loaded between flat plates, "
                     "so a conforming padded cradle tolerates more and a point contact less")
 
 
@@ -214,7 +214,9 @@ def egg_drop(args: EggDropArgs) -> dict:
     force = args.egg_mass_kg * (a_peak + G)
     limit_g = EGG_BREAK_N / (args.egg_mass_kg * G) - 1
     margin = EGG_BREAK_N / force
-    verdict = ("likely survives" if margin >= 1.5 else "marginal" if margin >= 1.0
+    low, high = EGG_BREAK_RANGE_N
+    # the warning starts at the range's LOWER bound: a weak egg breaks at ~25 N
+    verdict = ("likely survives" if force <= low else "marginal" if force <= high
                else "likely breaks")
     return {
         "impact_velocity_m_s": round(v, 3),
@@ -227,13 +229,16 @@ def egg_drop(args: EggDropArgs) -> dict:
         "egg_break_threshold": {"force_n": EGG_BREAK_N, "range_n": list(EGG_BREAK_RANGE_N),
                                 "deceleration_g": round(limit_g, 1),
                                 "source": EGG_BREAK_SOURCE},
-        "margin": round(margin, 2), "verdict": verdict,
+        "margin": round(margin, 2), "margin_vs_lower_bound": round(low / force, 2),
+        "verdict": verdict,
         "estimate": True,
         "assumptions": [
             "quadratic drag at sea-level air density (1.225 kg/m3), no wind",
             "the egg stops over the given stroke; peak = mean / stroke_efficiency",
             "the device lands on the stroke side; a tumble onto a hard face bypasses it",
-            "rigid egg in its cradle: a cradle that conforms spreads the load (more margin)"],
+            "rigid egg in its cradle: a cradle that conforms spreads the load (more margin)",
+            "the threshold is a quasi-static load; a short impact pulse is not the same load "
+            "case, so read the margin as indicative"],
     }
 
 
@@ -249,7 +254,7 @@ async def egg_drop_estimate(ctx: ToolContext, args: EggDropArgs) -> ToolOutput:
     return ToolOutput(
         summary=(f"impact {r['impact_velocity_m_s']} m/s, peak {r['peak_deceleration_g']} g "
                  f"on the egg ({r['peak_egg_force_n']} N vs ~{EGG_BREAK_N:g} N shell failure, "
-                 f"margin {r['margin']}): {r['verdict']} (estimate)"),
+                 f"warning from 25 N): {r['verdict']} (estimate)"),
         data=r)
 
 

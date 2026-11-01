@@ -90,3 +90,54 @@ async def test_the_session_never_inherits_an_effort_env(rt, claude_bin, signed_i
     env_keys = [r["env_keys"] for r in _log(rt, rid) if r["event"] == "argv"][0]
     assert "CLAUDE_CODE_EFFORT_LEVEL" not in env_keys
     assert json.dumps(_argvs(rt, rid)).count("--effort") == 1
+
+
+# ---- fix round 1: an older or stricter CLI never fails a run because of effort
+
+async def test_a_cli_without_effort_gets_no_flag_and_the_level_per_turn(rt, claude_bin, signed_in,
+                                                                         user_home):
+    (user_home / "fake-claude-no-effort").write_text("1")
+    async with served(rt):
+        rid = await rt.start_run("designer", "hello", model_ref="claude-code/sonnet",
+                                 effort="hard")
+        res = await asyncio.wait_for(rt.wait(rid), 15)
+    assert res.final_text == "Hello there"
+    assert "--effort" not in _argvs(rt, rid)[0]
+    assert _controls(rt, rid)[0] == {"subtype": "apply_flag_settings",
+                                     "settings": {"effortLevel": "high"}}
+    assert _turn_efforts(rt, rid) == ["high"]
+    notes = [s.payload for s in rt.store.steps(rid, [StepKind.DECISION])
+             if s.payload.get("claude_code") == "effort_flag_unsupported"]
+    assert len(notes) == 1
+
+
+async def test_a_cli_that_rejects_effort_is_retried_once_without_it(rt, claude_bin, signed_in,
+                                                                    user_home):
+    (user_home / "fake-claude-reject-effort").write_text("1")
+    async with served(rt):
+        rid = await rt.start_run("designer", "hello", model_ref="claude-code/sonnet",
+                                 effort="max")
+        res = await asyncio.wait_for(rt.wait(rid), 20)
+    assert res.stop_reason == "end_turn" and res.final_text == "Hello there"
+    assert rt.store.get_run(rid).status == "done"
+    argvs = _argvs(rt, rid)                       # the rejected start never got to log argv
+    assert argvs and all("--effort" not in a for a in argvs)
+    rejected = [s.payload for s in rt.store.steps(rid, [StepKind.DECISION])
+                if s.payload.get("claude_code") == "effort_flag_rejected"]
+    assert rejected and "unknown option" in rejected[0]["stderr_tail"]
+    assert _turn_efforts(rt, rid) == ["max"]      # applied over the control protocol
+
+
+async def test_an_unanswered_effort_change_times_out_and_the_turn_runs(rt, claude_bin, signed_in,
+                                                                      monkeypatch):
+    from mises.claude_code import session as session_mod
+    monkeypatch.setattr(session_mod, "CONTROL_TIMEOUT_S", 0.3)
+    async with served(rt):
+        rid = await rt.start_run("designer", "hello", model_ref="claude-code/sonnet")
+        await asyncio.wait_for(rt.wait(rid), 15)
+        (rt.workdir(rid) / "fake_effort_silent").write_text("1")
+        await rt.send(rid, "hello again", effort="max")
+        res = await asyncio.wait_for(rt.wait(rid), 15)
+    assert res.final_text == "Hello there"
+    step = [p for p in _effort_steps(rt, rid) if p.get("claude_code") == "effort"][-1]
+    assert step["applied"] is None and "did not answer" in step["error"]

@@ -311,7 +311,13 @@ def test_egg_drop_free_fall_and_parachute():
     assert free["peak_deceleration_g"] == pytest.approx(400, rel=0.01)
     assert free["verdict"] == "likely breaks"
     th = free["egg_break_threshold"]
-    assert th["force_n"] == 35 and "Voisey" in th["source"]
+    assert th["force_n"] == 35 and "breaking-strength" in th["source"]
+    assert th["range_n"] == [25.0, 45.0]
+    # the warning starts at the 25 N lower bound
+    mid = egg_drop(EggDropArgs(drop_height_m=1, total_mass_kg=0.2, stroke_mm=40,
+                               stroke_efficiency=0.5))
+    assert 25 < mid["peak_egg_force_n"] <= 45 and mid["verdict"] == "marginal"
+    assert mid["margin_vs_lower_bound"] < 1
     chute = egg_drop(EggDropArgs(drop_height_m=10, total_mass_kg=0.2, stroke_mm=50,
                                  parachute_diameter_m=0.6, stroke_efficiency=0.8))
     vt = (2 * 0.2 * 9.81 / (1.225 * 1.5 * 3.14159 * 0.09)) ** 0.5

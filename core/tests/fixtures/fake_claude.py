@@ -24,7 +24,9 @@ Run through a `claude` shim on PATH. Never touches the network or any real Claud
     agent:<type>  an assistant tool_use of the Agent tool with that subagent_type
   stream-json control requests (Plan 11 F8): apply_flag_settings {effortLevel} sets the
   effort (answered with an error when <cwd>/fake_effort_error exists), get_settings answers
-  {applied: {effort}} (from --effort until a change); each is logged as a 'control' line,
+  {applied: {effort}} (from --effort until a change); <cwd>/fake_effort_silent: no answer.
+  `--help` lists --effort unless $HOME/fake-claude-no-effort exists; with
+  $HOME/fake-claude-reject-effort a -p run started with --effort exits 1 ("unknown option"); each is logged as a 'control' line,
   and every turn's log line carries the effort it ran at.
   <cwd>/fake_init.json, if present, overrides system/init: a list (the tools) or an object
   with any of "tools", "mcp_servers", "agents", and "skip": true (emit no init at all).
@@ -163,6 +165,8 @@ class Session:
     def control(self, msg: dict) -> None:
         req = msg.get("request") or {}
         rid = msg.get("request_id")
+        if (self.cwd / "fake_effort_silent").exists():
+            return                                   # never answers (a timeout)
         if req.get("subtype") == "apply_flag_settings":
             if (self.cwd / "fake_effort_error").exists():
                 emit({"type": "control_response", "response": {
@@ -276,6 +280,19 @@ def main(argv: list[str]) -> int:
     if argv[:1] == ["--version"]:
         print("2.1.310 (Claude Code)")
         return 0
+    if argv[:1] == ["--help"]:
+        # $HOME/fake-claude-no-effort: an older CLI without --effort
+        no = home_file("fake-claude-no-effort")
+        print("Usage: claude [options]\n  -p, --print  print the response")
+        if not (no and no.exists()):
+            print("  --effort <level>  Effort level for the current session (low, medium, high, "
+                  "xhigh, max)")
+        return 0
+    if "-p" in argv and "--effort" in argv:
+        rej = home_file("fake-claude-reject-effort")
+        if rej and rej.exists():
+            print("error: unknown option '--effort'", file=sys.stderr, flush=True)
+            return 1
     if argv[:2] == ["auth", "status"]:
         return auth_status()
     if argv[:2] == ["auth", "login"]:

@@ -1420,9 +1420,21 @@ class Runtime:
 
     async def _spawn_claude(self, rid: str, st: _ClaudeRun, alias: str, info, auth, url: str,
                             token: str, *, resume: str | None) -> None:
+        start_effort = st.effort
+        if start_effort is not None:
+            # Plan 11 F8: --effort only for a CLI that lists it; otherwise the first prompt
+            # applies the level over the control protocol (recorded; never fails the turn)
+            from . import effort as effort_mod
+            from .claude_code.detect import claude_environment
+            if not await effort_mod.cli_supports_effort(info.path, claude_environment()):
+                start_effort = None
+                self.store.append_step(rid, StepKind.DECISION, {
+                    "claude_code": "effort_flag_unsupported",
+                    "note": "this Claude Code does not list --effort; the level is applied "
+                            "per turn instead"})
         s = st.session = ClaudeCodeSession(self, rid, model_alias=alias, info=info, mcp_url=url,
                                            mcp_token=token, resume_session_id=resume,
-                                           config_dir=auth.config_dir, effort=st.effort)
+                                           config_dir=auth.config_dir, effort=start_effort)
         try:
             await s.start()          # a failure is recorded on the run (error step) and raised
         except BaseException:
@@ -1464,8 +1476,17 @@ class Runtime:
             if first and st.first_context is not None:
                 context = {**(context or {}), **st.first_context}
             level, st.effort = st.effort, None
-            final = await st.session.prompt(text, context=context, images=images, log=log,
-                                            effort=level)
+            try:
+                final = await st.session.prompt(text, context=context, images=images, log=log,
+                                                effort=level)
+            except MisesError:
+                # Plan 11 F8: a CLI that refused --effort at start is retried once without it;
+                # the level then goes over the control protocol. Effort never fails a run.
+                if not (first and st.session.effort_rejected()):
+                    raise
+                await self._respawn_without_effort(rid, st)
+                final = await st.session.prompt(text, context=context, images=images, log=log,
+                                                effort=level)
             result = RunResult(final_text=final, messages=[], stop_reason="end_turn")
         except MisesError as e:
             stop = "cancelled" if e.code == ErrorCode.CANCELLED else "error"
@@ -1479,6 +1500,19 @@ class Runtime:
             # a Claude Code turn ended but the session stays open for the next message
             self.activity_tracker(rid).set("idle", "waiting for your next message")
         return result
+
+    async def _respawn_without_effort(self, rid: str, st: _ClaudeRun) -> None:
+        old = st.session
+        self.store.append_step(rid, StepKind.DECISION, {
+            "claude_code": "effort_flag_rejected", "retry": "without --effort",
+            "stderr_tail": old.stderr_tail if old is not None else ""})
+        if old is not None:
+            await old.close()
+        url, token = await self._mcp()
+        info, auth = await self._claude_ready()
+        st.effort = None
+        await self._spawn_claude(rid, st, self.store.get_run(rid).model, info, auth, url, token,
+                                 resume=None)
 
     def _finish_checks(self, run_id: str, result: RunResult | None = None) -> None:
         """A turn ended (end_turn): the finish checks, as ONE warning step. When the turn
@@ -1923,12 +1957,30 @@ class Runtime:
         event, with what the runtime is sent). Never fatal: None leaves the runtime default."""
         from . import effort as effort_mod
         try:
-            d = effort_mod.decide(self.store, run_id, words, choice)
+            d = effort_mod.decide(self.store, run_id, words, choice,
+                                  inherit=self._parent_level(run_id))
             effort_mod.record(self, run_id, d, effort_mod.control(provider, model, d["level"]))
+            if provider == CLAUDE_CODE:     # clamped, or None for a model without effort
+                return effort_mod.claude_code_effort(d["level"], model)
             return d["level"]
         except Exception:  # noqa: BLE001
             log.warning("could not decide the effort for %s", run_id, exc_info=True)
             return None
+
+    def _parent_level(self, run_id: str) -> str | None:
+        """A sub-agent's spawner's latest effort level (it follows its lead unless its own
+        task is creative); None for a top-level run or a spawner with no decision yet."""
+        try:
+            parent = self.store.get_run(run_id).parent_id
+            if parent is None:
+                return None
+            for st in reversed(self.store.steps(parent, [StepKind.DECISION])):
+                eff = st.payload.get("effort")
+                if isinstance(eff, dict) and eff.get("level"):
+                    return str(eff["level"])
+        except Exception:  # noqa: BLE001
+            return None
+        return None
 
     def _turn_effort(self, run_id: str, words: str, choice: str | None) -> str | None:
         try:
