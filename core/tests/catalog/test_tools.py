@@ -108,13 +108,26 @@ async def test_agent_import_without_a_card(env, web):
     assert "exfiltrate" not in hits.summary
 
 
-async def test_exfil_shaped_import_refused(env, web):
-    # E31: a link that looks like a data carrier is refused outright, nothing fetched
-    bad = "https://shop.example.com/" + "a" * 70 + "/x"
+async def test_exfil_shaped_import_asks_a_card(env, web):
+    # E31 fix round 1: a link that could carry data out asks the approval card (not refused)
+    bad = "https://shop.example.com/" + "k" * 63 + "/x"
     web.fixture(bad, "table_motor.html")
+    task = asyncio.create_task(env.call("catalog_import_url", {"url": bad}))
+    card = await env.next_card()
+    assert web.requests == [] and "long path segment" in card.deltas["approval_reason"]
+    env.decide(card, approve=False)
     with pytest.raises(MisesError) as e:
-        await env.call("catalog_import_url", {"url": bad})
+        await task
     assert e.value.code == ErrorCode.DENIED and web.requests == []
+
+
+async def test_agent_import_redirect_stays_on_site(env, web):
+    # M4: an agent's import may not follow a redirect to another site
+    web.redirect(URL, "https://elsewhere.example.net/p")
+    web.fixture("https://elsewhere.example.net/p", "table_motor.html")
+    with pytest.raises(MisesError):
+        await env.call("catalog_import_url", {"url": URL})
+    assert {r.headers["host"] for r in web.requests} == {"shop.example.com"}
 
 
 async def test_allowlisted_domain_asks_no_card(env, web):

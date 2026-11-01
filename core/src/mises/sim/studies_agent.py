@@ -712,7 +712,9 @@ AGENT_NOTE_TAG = "agent_note"
 def lead_log(sender: str, text: str) -> dict:
     """The lead's stored user step for an agent's message: shown as the agent's words, and
     never classified as the user's (Plan 9 G-B I3: "_classify" None; the runtime strips it)."""
-    return {"text": f"From the {sender} agent: {text}", "_classify": None}
+    # `from_agent` stays on the stored step (the runtime strips only `_classify`), so a retry
+    # never resends an agent's words as the user's (C1 M3)
+    return {"text": f"From the {sender} agent: {text}", "_classify": None, "from_agent": sender}
 
 
 def lead_message(sender: str, text: str, nonce: str | None = None) -> str:
@@ -779,7 +781,8 @@ async def agent_message(ctx: ToolContext, args: MessageArgs) -> ToolOutput:
         queued = lead_mod._enqueue(rt, lead.id, text, log, routed)
     else:
         try:
-            await rt.send(lead.id, text, log=log)
+            # an agent's message, not the user's: the lead's budget window goes on (E20 I2)
+            await rt.send(lead.id, text, log=log, user_turn=False)
         except MisesError as e:
             if "still working" not in e.message:
                 raise

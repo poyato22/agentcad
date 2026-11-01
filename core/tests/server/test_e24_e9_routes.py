@@ -137,6 +137,26 @@ def test_post_queued_cancel_alias_drops_with_reason_cancelled(client, rt):
     assert client.post(f"/runs/{rid}/queued/msg_abc/cancel", headers=AUTH).status_code == 404
 
 
+def test_retry_skips_system_notes_and_agent_messages(client, rt, monkeypatch):
+    # M3: a later system note / agent message in the thread is never resent as the user's words
+    from mises.types import StepKind
+    pid = _pid(client)
+    rid = client.post(f"/projects/{pid}/chat", headers=AUTH,
+                      json={"text": "Build a drone"}).json()["run_id"]
+    wait_status(client, rid)
+    rt.store.append_step(rid, StepKind.MESSAGE, {"role": "user", "text": "Study finished",
+                                                 "system_note": {"kind": "sim_finished"}})
+    rt.store.append_step(rid, StepKind.MESSAGE, {"role": "user", "text": "From the studies agent",
+                                                 "from_agent": "studies"})
+    sent = []
+
+    async def fake_send(run_id, text, **kw):
+        sent.append((text, kw.get("log")))
+    monkeypatch.setattr(rt, "send", fake_send)
+    assert client.post(f"/runs/{rid}/retry", headers=AUTH).status_code == 200
+    assert sent == [("Build a drone", None)]
+
+
 def test_chat_answers_like_post_runs(client):
     pid = _pid(client)
     a = client.post(f"/projects/{pid}/chat", headers=AUTH, json={"text": "x"}).json()

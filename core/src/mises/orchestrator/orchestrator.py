@@ -248,7 +248,8 @@ class Orchestrator:
             if attempt == 0:
                 await rt.send(pid, "The plan was rejected:\n- " + "\n- ".join(problems)
                               + "\nSubmit a corrected plan with orchestrator_submit_plan.",
-                              log={"_classify": None})      # the harness's words, not the user's
+                              log={"_classify": None},      # the harness's words, not the user's
+                              user_turn=False)              # E20 I2: never a fresh budget
         raise MisesError(ErrorCode.INVALID_INPUT, "planner produced an invalid plan: "
                          + "; ".join(problems))
 

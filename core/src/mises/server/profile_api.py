@@ -20,7 +20,8 @@ from starlette.concurrency import run_in_threadpool
 
 from .. import platform as _platform
 from ..profile import (ClaudeStatusFn, LocalProbeFn, Profile, SetupState, load_profile,
-                       probe_local, save_profile, setup_state)
+                       mask_claude_env, missing_claude_ca_paths, probe_local, save_profile,
+                       setup_state, unmask_claude_env)
 from ..providers.registry import VENDORS
 from ..types import ErrorCode, MisesError
 
@@ -75,9 +76,14 @@ def build_profile_router(runtime: Runtime, claude_status: ClaudeStatusFn | None 
     def _profile() -> Profile:
         return load_profile(runtime.home)
 
+    def _shown(p: Profile) -> dict:
+        d = p.model_dump(mode="json")
+        d["claude_code_env"] = mask_claude_env(p.claude_code_env)   # M2: no proxy credentials
+        return d
+
     @router.get("/profile")
     async def get_profile():
-        return _profile().model_dump(mode="json")
+        return _shown(_profile())
 
     @router.put("/profile")
     async def put_profile(request: Request):
@@ -88,6 +94,9 @@ def build_profile_router(runtime: Runtime, claude_status: ClaudeStatusFn | None 
         if not isinstance(patch, dict):
             return _invalid("body must be a JSON object")
         current = _profile()
+        if "claude_code_env" in patch:      # the masked proxy URL comes back: keep the stored one
+            patch = {**patch, "claude_code_env": unmask_claude_env(patch["claude_code_env"],
+                                                                   current.claude_code_env)}
         merged = {**current.model_dump(), **patch}
         try:
             # the app sends the whole profile back: an unchanged value is fine
@@ -105,13 +114,18 @@ def build_profile_router(runtime: Runtime, claude_status: ClaudeStatusFn | None 
                     return _invalid(f"invalid profile: default_material: {me.message}"
                                     + (f" ({me.hint})" if me.hint else ""))
             p = Profile.model_validate(merged)
+            missing = [n for n in missing_claude_ca_paths(p.claude_code_env)
+                       if p.claude_code_env.get(n) != current.claude_code_env.get(n)]
+            if missing:
+                raise ValueError("claude_code_env: no such file or folder for "
+                                 + ", ".join(missing))
         except (ValidationError, ValueError) as e:
             msgs = [f"{'.'.join(map(str, x['loc']))}: {x['msg']}" for x in e.errors()] \
                 if isinstance(e, ValidationError) else [str(e)]
             return _invalid("invalid profile: " + "; ".join(msgs))
         await run_in_threadpool(save_profile, runtime.home, p)
         runtime.parallel.pump()     # a higher max_parallel_agents starts queued runs now
-        return p.model_dump(mode="json")
+        return _shown(p)
 
     # ---- keys
     @router.get("/keys")

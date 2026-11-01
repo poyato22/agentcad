@@ -78,15 +78,22 @@ async def test_no_fallback_when_not_signed_in(rt):
         MisesError(ErrorCode.DENIED, "no API key for anthropic")) is None
 
 
+def _no_key(ref):
+    raise MisesError(ErrorCode.DENIED, "no API key for anthropic")
+
+
+def _set_default(rt, ref):
+    from mises.profile import save_profile
+    save_profile(rt.home, rt.profile().model_copy(update={"default_model": ref}))
+
+
 @pytest.mark.asyncio
 async def test_start_run_falls_back_to_claude_with_note(rt, monkeypatch):
+    # the implicit default (an Anthropic profile default, no key) routes to Claude Code
     _signed_in(rt, True)
+    _set_default(rt, "anthropic/claude-sonnet-5-5")
+    rt.provider_resolver = _no_key
     captured = {}
-
-    def resolver(ref):
-        raise MisesError(ErrorCode.DENIED, "no API key for anthropic")
-
-    rt.provider_resolver = resolver
 
     async def fake_start_claude(agent, prompt, alias, **kw):
         rid = rt.create_external_run(agent, provider=CLAUDE_CODE, model=alias,
@@ -96,24 +103,46 @@ async def test_start_run_falls_back_to_claude_with_note(rt, monkeypatch):
 
     monkeypatch.setattr(rt, "_start_claude_run", fake_start_claude)
     pid = rt.store.create_project("Robot").id
-    rid = await rt.start_run("engineer", "make a bracket", model_ref="anthropic/claude-sonnet-5-5",
-                             project_id=pid)
+    rid = await rt.start_run("engineer", "make a bracket", project_id=pid)
     assert captured["alias"] == "sonnet"
-    steps = rt.store.steps(rid)
-    assert any(s.payload.get("model_fallback") for s in steps), \
-        "a visible note records the switch to Claude Code"
+    assert any(s.payload.get("model_fallback") for s in rt.store.steps(rid))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("how", ["explicit_anthropic", "explicit_openai", "openai_default",
+                                 "pinned"])
+async def test_an_explicit_choice_is_never_overridden(rt, monkeypatch, how):
+    # I3: an explicit model_ref, an agent pin or a non-Anthropic profile default keeps its key
+    # error even with Claude Code signed in
+    _signed_in(rt, True)
+    rt.provider_resolver = lambda ref: (_ for _ in ()).throw(
+        MisesError(ErrorCode.DENIED, f"no API key for {ref.split('/')[0]}"))
+
+    async def must_not(*a, **k):
+        raise AssertionError("rerouted to Claude Code")
+    monkeypatch.setattr(rt, "_start_claude_run", must_not)
+    kw = {}
+    if how == "explicit_anthropic":
+        kw["model_ref"] = "anthropic/claude-sonnet-5-5"
+    elif how == "explicit_openai":
+        kw["model_ref"] = "openai/gpt-5"
+    elif how == "openai_default":
+        _set_default(rt, "openai/gpt-5")
+    else:
+        rt.definitions["engineer"] = rt.definitions["engineer"].model_copy(
+            update={"model": "openai/gpt-5"})
+    pid = rt.store.create_project("Robot").id
+    with pytest.raises(MisesError) as e:
+        await rt.start_run("engineer", "x", project_id=pid, **kw)
+    assert e.value.code == ErrorCode.DENIED
 
 
 @pytest.mark.asyncio
 async def test_start_run_raises_when_not_signed_in(rt):
     _signed_in(rt, False)
-
-    def resolver(ref):
-        raise MisesError(ErrorCode.DENIED, "no API key for anthropic")
-
-    rt.provider_resolver = resolver
+    _set_default(rt, "anthropic/claude-sonnet-5-5")
+    rt.provider_resolver = _no_key
     pid = rt.store.create_project("Robot").id
     with pytest.raises(MisesError) as e:
-        await rt.start_run("engineer", "x", model_ref="anthropic/claude-sonnet-5-5",
-                           project_id=pid)
+        await rt.start_run("engineer", "x", project_id=pid)
     assert e.value.code == ErrorCode.DENIED

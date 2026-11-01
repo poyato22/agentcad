@@ -844,9 +844,12 @@ class Runtime:
             try:
                 provider, model = self._resolve_provider(ref, prof)
             except MisesError as e:
-                # E34 single-point defence: an unresolvable ref (no API key) + Claude Code
-                # signed in routes to the user's Claude Code with a visible note
-                fb = await self._claude_fallback_for(e)
+                # E34 single-point defence: an unresolvable IMPLICIT default (no API key) +
+                # Claude Code signed in routes to the user's Claude Code with a visible note. An
+                # explicit model_ref, an agent's pinned model or a non-Anthropic profile default
+                # is the user's choice and is never overridden (I3): its key error stands.
+                fb = (await self._claude_fallback_for(e)
+                      if self._implicit_default(defn, model_ref, prof) else None)
                 if fb is None:
                     raise
                 fallback_from, ref, alias = ref, fb, model_alias(fb)
@@ -1061,6 +1064,17 @@ class Runtime:
         if not has_key("anthropic") and self._claude_signed_in_cached():
             return f"{CLAUDE_CODE}/{CLAUDE_DEFAULT_ALIAS}"
         return DEFAULT_MODEL
+
+    @staticmethod
+    def _implicit_default(defn, model_ref: str | None, prof) -> bool:
+        """The run's model came from the default path, not a choice (E34 I3): no explicit
+        model_ref, no pinned agent model, and the profile default (if any) is Anthropic's."""
+        from .providers.registry import ref_vendor
+        if model_ref:
+            return False
+        if defn is not None and defn.model and defn.model != "inherit":
+            return False
+        return not prof.default_model or ref_vendor(prof.default_model) == "anthropic"
 
     async def _claude_fallback_for(self, e: MisesError) -> str | None:
         """The Claude Code ref to use after a provider could not be resolved for lack of an API
@@ -1754,11 +1768,14 @@ class Runtime:
             raise MisesError(ErrorCode.INVALID_INPUT, "run is still working",
                              hint="wait for it to finish or cancel it")
         busy = self.run_busy(run_id)
+        harness = bool(log and (CLASSIFY in log or "system_note" in log))
         words, log = _user_words(text, log), _public_log(log)
         self._sending.add(run_id)
         try:
             if not busy and user_turn:
-                self.new_user_turn(run_id)
+                # a sub-agent's fresh budget window is only for the user's own words: a log that
+                # marks harness text (_classify) or a system note never opens one (E20 I2)
+                self.new_user_turn(run_id, sub_window=not harness)
                 if words.strip():      # only the user's own words move the class (G-B I3)
                     self._raise_design_class(run_id, words)
             elif user_turn:     # joins a running turn: still the user, so notes may wake it
@@ -1772,7 +1789,7 @@ class Runtime:
         finally:
             self._sending.discard(run_id)
 
-    def new_user_turn(self, run_id: str) -> None:
+    def new_user_turn(self, run_id: str, *, sub_window: bool = True) -> None:
         """The one hook for "a new user turn begins on this run" (a message to an idle run, or
         a queued message the lead's drainer delivers): everything scoped to a user turn starts
         afresh here.
@@ -1791,7 +1808,7 @@ class Runtime:
             return
         if run.role == "lead":
             budget_mod.start_turn(self.store, run_id)
-        elif run.parent_id is not None:
+        elif run.parent_id is not None and sub_window:
             # E20: a direct user message to a sub-agent is its own user turn, so it gets a
             # fresh dollar budget (its last turn, or a lead turn, may have spent the family cap)
             self._open_sub_window(run_id)
@@ -1960,15 +1977,26 @@ class Runtime:
                            {"kind": "assembly_health", "summary": report["summary"]},
                            images=[(i.media_type, i.data_b64) for i in images] or None)
 
-    def _last_user_text(self, run_id: str) -> str | None:
-        """The text of the run's most recent user message (E9 retry)."""
+    #: stored user-step fields a retry sends back with the text (M3)
+    RETRY_LOG_KEYS = ("text", "feedback", "edits")
+
+    def _last_user_turn(self, run_id: str) -> tuple[str, dict | None] | None:
+        """The run's most recent USER-origin message (E9 retry): skips system notes, agent
+        messages (a studies agent's report), concept picks and harness text. (text, the stored
+        log to resend) or None."""
         try:
             steps = self.store.steps(run_id, [StepKind.MESSAGE])
         except Exception:  # noqa: BLE001
             return None
         for s in reversed(steps):
-            if s.payload.get("role") == "user" and str(s.payload.get("text") or "").strip():
-                return str(s.payload["text"])
+            pl = s.payload
+            if pl.get("role") != "user" or not str(pl.get("text") or "").strip():
+                continue
+            if "system_note" in pl or "from_agent" in pl or CLASSIFY in pl or \
+                    any(k.startswith("concept") for k in pl):
+                continue
+            log = {k: pl[k] for k in self.RETRY_LOG_KEYS if k in pl}
+            return str(pl["text"]), (log if set(log) - {"text"} else None)
         return None
 
     async def retry_last(self, run_id: str) -> dict:
@@ -1981,11 +2009,12 @@ class Runtime:
         if self.run_busy(run_id):
             raise MisesError(ErrorCode.INVALID_INPUT, "run is still working",
                              hint="wait for it to finish or cancel it")
-        text = self._last_user_text(run_id)
-        if not text:
+        turn = self._last_user_turn(run_id)
+        if turn is None:
             raise MisesError(ErrorCode.INVALID_INPUT, "this run has no message to retry",
                              hint="send a new message instead")
-        await self.send(run_id, text)
+        text, log = turn
+        await (self.send(run_id, text, log=log) if log else self.send(run_id, text))
         return {"ok": True, "run_id": run_id}
 
     #: a running turn with no activity for this long is reported as stalled (E9)

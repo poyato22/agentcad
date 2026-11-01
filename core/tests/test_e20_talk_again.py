@@ -91,3 +91,47 @@ def test_child_cap_is_floored_when_family_nearly_spent():
             user = "local"
     pol = child_policy(FakeRT, lead, "designer")
     assert pol["caps"].usd_run == pytest.approx(CHILD_USD_FLOOR)
+
+
+def _family(rt):
+    pid = rt.store.create_project("Robot").id
+    lead = rt.store.create_run("engineer", "fake", "m", "go", project_id=pid)
+    rt.store.update_run(lead.id, role="lead")
+    rt.store.create_policy(lead.id, ["*"], ["*"], Caps(usd_run=5.0), list(C))
+    budget.start_turn(rt.store, lead.id)
+    sub = rt.store.create_run("planner", "fake", "m", "t", parent_id=lead.id, project_id=pid)
+    rt.store.create_policy(sub.id, ["*"], ["*"], Caps(usd_run=5.0), list(C))
+    rt.store.add_usage(sub.id, usd=5.0)
+    return lead.id, sub.id
+
+
+async def _no_send(*a, **k):
+    return None
+
+
+@pytest.mark.parametrize("log,user_turn", [({"_classify": None}, True),
+                                           ({"text": "x", "system_note": {}}, True),
+                                           (None, False)])
+async def test_harness_sends_never_reset_a_sub_or_its_root(rt, monkeypatch, log, user_turn):
+    # I2: the planner-rejection message (orchestrator), a system note or any user_turn=False
+    # send leaves the sub's cap and the root's turn window alone
+    lead, sub = _family(rt)
+    monkeypatch.setattr(rt, "_send", _no_send)
+    before = rt.store.get_run(lead).turn_started_at
+    await rt.send(sub, "The plan was rejected", log=log, user_turn=user_turn)
+    assert rt.store.current_policy(sub).caps.usd_run == 5.0
+    assert rt.store.get_run(lead).turn_started_at == before
+
+
+async def test_a_user_message_to_a_sub_opens_its_window(rt, monkeypatch):
+    lead, sub = _family(rt)
+    monkeypatch.setattr(rt, "_send", _no_send)
+    await rt.send(sub, "please also add a fillet")
+    assert rt.store.current_policy(sub).caps.usd_run > 5.0
+    assert budget.usd_exhausted(rt.store, sub) is None
+
+
+def test_orchestrator_planner_rejection_is_not_a_user_turn():
+    import inspect
+    from mises.orchestrator.orchestrator import Orchestrator
+    assert "user_turn=False" in inspect.getsource(Orchestrator._collect_plan)

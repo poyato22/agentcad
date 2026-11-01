@@ -38,6 +38,81 @@ CLAUDE_CODE_ENV_KEYS = frozenset({
     "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR",
     "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "https_proxy", "http_proxy", "no_proxy",
 })
+CLAUDE_CA_FILE_KEYS = frozenset({"NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE"})
+CLAUDE_CA_DIR_KEYS = frozenset({"SSL_CERT_DIR"})
+CLAUDE_PROXY_KEYS = frozenset({"HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy"})
+_PROXY_SCHEMES = frozenset({"http", "https", "socks5", "socks5h"})
+_NO_PROXY_ITEM = re.compile(r"^(\*|\.?[A-Za-z0-9*][A-Za-z0-9.*\-]*(:\d{1,5})?|"
+                            r"\[?[0-9A-Fa-f:.]+\]?(/\d{1,3})?(:\d{1,5})?)$")
+_CTRL = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def check_claude_env_value(name: str, value: str) -> None:
+    """E3 I4: a Claude Code env value must have its name's shape: an absolute path for the CA
+    bundle/dir variables, an http/https/socks5(h) proxy URL with a host, a comma-separated host
+    list for NO_PROXY. No control characters (NUL, newlines) anywhere. Existence of a CA path is
+    checked when the user saves it (PUT /profile), not on every load."""
+    if _CTRL.search(value) or len(value) > 4096:
+        raise ValueError(f"the value of {name!r} must be one line under 4096 characters, with no "
+                         "control characters")
+    if name in CLAUDE_CA_FILE_KEYS | CLAUDE_CA_DIR_KEYS:
+        if not value.startswith("/") or "/../" in value + "/" or value.endswith("/.."):
+            raise ValueError(f"{name} must be an absolute path to the CA "
+                             f"{'directory' if name in CLAUDE_CA_DIR_KEYS else 'bundle file'}")
+    elif name in CLAUDE_PROXY_KEYS:
+        u = urlsplit(value)
+        if (u.scheme not in _PROXY_SCHEMES or not u.hostname or " " in value
+                or (u.path not in ("", "/"))):
+            raise ValueError(f"{name} must be a proxy URL like http://proxy.example:8080 "
+                             "(http, https, socks5 or socks5h)")
+        try:
+            u.port
+        except ValueError:
+            raise ValueError(f"{name} has a bad port") from None
+    else:                                                     # NO_PROXY / no_proxy
+        items = [x.strip() for x in value.split(",")]
+        if any(not x or not _NO_PROXY_ITEM.fullmatch(x) for x in items):
+            raise ValueError(f"{name} must be a comma-separated list of hosts, domains or IPs")
+
+
+def missing_claude_ca_paths(env: dict[str, str]) -> list[str]:
+    """The CA variables whose path does not exist (or is the wrong kind), by name."""
+    out = []
+    for name, value in env.items():
+        if name in CLAUDE_CA_FILE_KEYS and not os.path.isfile(value):
+            out.append(name)
+        elif name in CLAUDE_CA_DIR_KEYS and not os.path.isdir(value):
+            out.append(name)
+    return out
+
+
+_MASK = "***"
+
+
+def mask_claude_env(env: dict[str, str]) -> dict[str, str]:
+    """M2: a proxy URL's credentials never leave the core (GET /profile, fixtures)."""
+    out = {}
+    for name, value in env.items():
+        u = urlsplit(value) if name in CLAUDE_PROXY_KEYS else None
+        if u is not None and (u.username or u.password):
+            host = u.hostname or ""
+            port = f":{u.port}" if u.port else ""
+            value = f"{u.scheme}://{_MASK}@{host}{port}{u.path}"
+        out[name] = value
+    return out
+
+
+def unmask_claude_env(new: dict, old: dict[str, str]) -> dict:
+    """PUT /profile sends the masked value back unchanged: keep the stored credentials when the
+    masked URL still names the same proxy."""
+    if not isinstance(new, dict):
+        return new
+    out = dict(new)
+    for name, value in new.items():
+        if (isinstance(value, str) and f"//{_MASK}@" in value and name in old
+                and mask_claude_env({name: old[name]})[name] == value):
+            out[name] = old[name]
+    return out
 _DOMAIN_RE = re.compile(r"(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,62}")
 
 KeyStatusFn = Callable[[], dict[str, str]]          # vendor -> "env" | "keychain" | "none" | ...
@@ -204,10 +279,9 @@ class Profile(BaseModel):
             if name not in CLAUDE_CODE_ENV_KEYS:
                 raise ValueError(f"{name!r} is not an allowed Claude Code environment variable "
                                  f"(allowed: {', '.join(sorted(CLAUDE_CODE_ENV_KEYS))})")
-            value = str(value)
-            if "\n" in value or "\r" in value or len(value) > 4096:
-                raise ValueError(f"the value of {name!r} must be one line under 4096 characters")
+            value = str(value).strip()
             if value:
+                check_claude_env_value(name, value)
                 out[name] = value
         return out
 
