@@ -61,8 +61,10 @@ export function currentEntry(): NavEntry {
  *  of one immersive view, or the dock picking the shown run, is not a new step). */
 export function samePlace(a: NavEntry, b: NavEntry): boolean {
   if ((a.study === null) !== (b.study === null) || (a.play === null) !== (b.play === null)) return false;
-  if (a.home !== b.home || a.buildId !== b.buildId) return false;
+  if (a.home !== b.home) return false;
+  // on Home the open build is background; a build first appearing (boot) is no step either
   if (a.home) return a.homeView === b.homeView;
+  if (a.buildId !== b.buildId && a.buildId !== null && b.buildId !== null) return false;
   if (a.page !== b.page) return false;
   if (a.page === "design" && a.partId !== b.partId) return false;
   return a.threadId === b.threadId || (a.runId === null || b.runId === null);
@@ -96,7 +98,7 @@ function schedule(): void {
 async function apply(e: NavEntry): Promise<void> {
   applying++;
   try {
-    if (e.buildId !== null && e.buildId !== activeBuildId.peek() && liveBuilds.peek().some((b) => b.id === e.buildId)) {
+    if (!e.home && e.buildId !== null && e.buildId !== activeBuildId.peek() && liveBuilds.peek().some((b) => b.id === e.buildId)) {
       await buildActions.switchTo(e.buildId);
     }
     if (activePage.peek() !== e.page) setPage(e.page);

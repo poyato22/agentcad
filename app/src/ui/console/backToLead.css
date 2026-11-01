@@ -1,8 +1,10 @@
-/* Plan 10 E13: "← Back to lead" on a sub-agent's thread — a quiet blue text button (blue = agent). */
+/* Plan 10 E13: "← Back to lead" on a sub-agent's thread — a quiet raised button (navigation, so
+   not blue: blue stays for selected / agent / needs you). */
 .dock-back {
   flex: none; display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px;
-  border: 0; border-radius: var(--r-btn); background: var(--blue-tint); color: var(--blue);
+  border: 0; border-radius: var(--r-btn); background: var(--raised); color: var(--ink);
   font: 500 var(--fs-small)/1 var(--font-ui); white-space: nowrap; cursor: pointer;
+  transition: background-color var(--t-fast) ease;
 }
-.dock-back:hover { background: color-mix(in srgb, var(--blue) 18%, transparent); }
+.dock-back:hover { background: color-mix(in srgb, var(--ink) 12%, var(--raised)); }
 .dock-back:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }

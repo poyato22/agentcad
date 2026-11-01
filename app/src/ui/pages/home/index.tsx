@@ -68,8 +68,8 @@ function GearIcon(): JSX.Element {
   return (
     <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
       <circle cx="8" cy="8" r="2.2" fill="none" stroke="currentColor" stroke-width="1.3" />
-      <path d="M8 1.6v1.8M8 12.6v1.8M1.6 8h1.8M12.6 8h1.8M3.5 3.5l1.3 1.3M11.2 11.2l1.3 1.3M3.5 12.5l1.3-1.3M11.2 4.8l1.3-1.3"
-        fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+      <path d="M13.3 6.95 14.94 7.11v1.78l-1.64.16-.81 1.95 1.05 1.28-1.26 1.26-1.28-1.05-1.95.81-.16 1.64H7.11l-.16-1.64-1.95-.81-1.28 1.05-1.26-1.26 1.05-1.28-.81-1.95-1.64-.16V7.11l1.64-.16.81-1.95-1.05-1.28 1.26-1.26 1.28 1.05 1.95-.81.16-1.64h1.78l.16 1.64 1.95.81 1.28-1.05 1.26 1.26-1.05 1.28Z"
+        fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" />
     </svg>
   );
 }

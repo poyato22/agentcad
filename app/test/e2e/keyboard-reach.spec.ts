@@ -49,12 +49,12 @@ test("design: Tab reaches Home, the part list, View, the dock headers and the co
   }
 });
 
-test("home: Tab reaches search, sort, Agents, Onshape, the parts library, Trash, New build and the tiles with their ⋯", async ({ page }) => {
+test("home: Tab reaches ← →, search, sort, Agents, Settings, New build and the tiles with their ⋯", async ({ page }) => {
   await openHome(page);
   await page.goto("/");
   await expect(page.locator('[data-testid="home"]')).toBeVisible();
   const stops = await tabStops(page);
-  for (const want of [/^Search builds$/, /^Sort builds$/, /^Agents/, /Show trashed builds|^Trash/, /New build/, /Import drawing/, /^Open Default$/, /^More for Default$/, /^Onshape$/, /^Parts library$/]) {
+  for (const want of [/^Search builds$/, /^Sort builds$/, /^Agents/, /^Settings$/, /New build/, /Import drawing/, /^Open Default$/, /^More for Default$/]) {
     expect(has(stops, want), `${want} in ${JSON.stringify(stops)}`).toBe(true);
   }
 });

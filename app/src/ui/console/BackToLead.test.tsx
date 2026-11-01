@@ -33,6 +33,28 @@ describe("Back to lead (E13)", () => {
     expect(selectedRunId.value).toBe("lead");
   });
 
+  it("takes the focus when its opener went away (nothing focused), so Esc works at once", () => {
+    (document.activeElement as HTMLElement | null)?.blur();
+    render(<Dock />);
+    expect(document.activeElement?.hasAttribute("data-back-to-lead")).toBe(true);
+  });
+
+  it("Esc with the focus dropped to the page still goes back, unless the last press was elsewhere", () => {
+    render(<><Dock /><button type="button">Viewer</button></>);
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(selectedRunId.value).toBe("lead");
+    selectedRunId.value = "w1";
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Viewer" }));
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(selectedRunId.value).toBe("w1");
+  });
+
+  it("shows nothing when the build has no lead to go back to", () => {
+    runs.value = new Map([["w1", run("w1", "worker")]]);
+    render(<Dock />);
+    expect(screen.queryByRole("button", { name: /Back to lead/ })).toBeNull();
+  });
+
   it("Esc outside the dock is someone else's (the viewer's back to the assembly)", () => {
     render(<><Dock /><button type="button">Viewer</button></>);
     fireEvent.keyDown(screen.getByRole("button", { name: "Viewer" }), { key: "Escape" });

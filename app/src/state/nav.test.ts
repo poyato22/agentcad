@@ -102,6 +102,17 @@ describe("navigation history (E11)", () => {
     expect(activeBuildId.value).toBe("a");
   });
 
+  it("the build loading at boot, or changing behind Home, is not a step", async () => {
+    activeBuildId.value = "b"; await tick();               // on Home
+    expect(navState().entries).toHaveLength(1);
+    expect(canGoBack.value).toBe(false);
+    off(); resetNav();
+    atHome.value = false; activeBuildId.value = null;
+    off = installNav(trusted); await tick();
+    activeBuildId.value = "a"; await tick();                // the boot's build arrives
+    expect(navState().entries).toHaveLength(1);
+  });
+
   it("keeps at most NAV_LIMIT steps", async () => {
     for (let i = 0; i < NAV_LIMIT + 10; i++) { openPartId.value = `p${i}`; atHome.value = false; await tick(); }
     expect(navState().entries).toHaveLength(NAV_LIMIT);
